@@ -11,8 +11,8 @@ import cv2
 import numpy as np
 from loguru import logger
 
+from ...types import BBox, Span
 from ...utils.enum_class import BlockType, ContentType
-from ...types import Span
 from ...utils.image_utils import calculate_contrast
 from ...utils.pdf_image_tools import get_crop_img
 from ...utils.pdf_text_tool import get_lines_from_chars, get_page_chars
@@ -91,7 +91,10 @@ def txt_spans_extract(
                     if block[7] in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.INTERLINE_EQUATION]:
                         continue
                     if calculate_overlap_area_in_bbox1_area_ratio(span.bbox, block[0:4]) > 0.5:
-                        if span._extra["height"] > median_span_height * 2.3 and span._extra["height"] > span._extra["width"] * 2.3:
+                        if (
+                            span._extra["height"] > median_span_height * 2.3
+                            and span._extra["height"] > span._extra["width"] * 2.3
+                        ):
                             vertical_spans.append(span)
                         elif block in all_bboxes:
                             useful_spans.append(span)
@@ -174,9 +177,7 @@ class SpanBlockMatcher:
     @staticmethod
     def _get_grid_size(spans: list[Span]) -> float:
         """根据 span 高度估算索引网格大小，避免过细或过粗。"""
-        heights = [
-            span.bbox[3] - span.bbox[1] for span in spans if span.bbox and span.bbox[3] > span.bbox[1]
-        ]
+        heights = [span.bbox[3] - span.bbox[1] for span in spans if span.bbox and span.bbox[3] > span.bbox[1]]
         if not heights:
             return 1
         return max(1, statistics.median(heights))
@@ -193,14 +194,11 @@ class SpanBlockMatcher:
                 grid[cell_idx].append(index)
         return grid
 
-    def _cell_range(self, bbox: list[float] | tuple[float, ...]) -> tuple[int, int]:
+    def _cell_range(self, bbox: BBox) -> tuple[int, int]:
         """计算 bbox 覆盖的 y 方向网格范围。"""
-        return (
-            int(bbox[1] / self.grid_size),
-            int(bbox[3] / self.grid_size),
-        )
+        return (int(bbox[1] / self.grid_size), int(bbox[3] / self.grid_size))
 
-    def _candidate_indices_for_block(self, block_bbox: list[float]) -> list[int]:
+    def _candidate_indices_for_block(self, block_bbox: BBox) -> list[int]:
         """取出与 block 纵向范围可能相交的 span 原始索引。"""
         start_cell, end_cell = self._cell_range(block_bbox)
         candidate_indices = set()
@@ -210,7 +208,7 @@ class SpanBlockMatcher:
 
     def collect_for_block(
         self,
-        block_bbox: list[float],
+        block_bbox: BBox,
         overlap_ratio_getter: Callable | None = None,
         threshold: float = 0.5,
     ) -> list[Span]:
@@ -233,7 +231,7 @@ class SpanBlockMatcher:
         return [span for index, span in enumerate(self.spans) if index not in self.used_span_indices]
 
     @staticmethod
-    def _default_overlap_ratio(span: Span, block_bbox: list[float]) -> float:
+    def _default_overlap_ratio(span: Span, block_bbox: BBox) -> float:
         """默认沿用旧逻辑：计算 span 面积中落入 block 的比例。"""
         return calculate_overlap_area_in_bbox1_area_ratio(span.bbox, block_bbox)
 
@@ -336,8 +334,8 @@ Span_Height_Ratio = 0.33  # 字符的中轴和span的中轴高度差不能超过
 
 
 def calculate_char_in_span(
-    char_bbox: list[float],
-    span_bbox: list[float],
+    char_bbox: BBox,
+    span_bbox: BBox,
     char: str,
     span_height_ratio: float = Span_Height_Ratio,
 ) -> bool:

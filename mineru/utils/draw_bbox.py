@@ -9,7 +9,7 @@ from loguru import logger
 from pypdf import PageObject, PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
-from ..types import Block, PageInfo, Span
+from ..types import BBox, Block, PageInfo, Span
 from .enum_class import BlockType, ContentType, SplitFlag
 
 # 文本类 block 共用 text bbox 样式，避免新增文本形态时遗漏多个绘制入口。
@@ -37,7 +37,7 @@ def _get_layout_source_blocks(page: PageInfo) -> list[Block]:
     return page.preproc_blocks
 
 
-def cal_canvas_rect(page: Any, bbox: list[float]) -> list[float]:
+def cal_canvas_rect(page: Any, bbox: BBox) -> list[float]:
     """
     Calculate the rectangle coordinates on the canvas based on the original PDF page and bounding box.
 
@@ -88,7 +88,7 @@ def cal_canvas_rect(page: Any, bbox: list[float]) -> list[float]:
 
 def draw_bbox_without_number(
     i: int,
-    bbox_list: list[list[list[float]]],
+    bbox_list: list[list[BBox]],
     page: Any,
     c: Any,
     rgb_config: list[int],
@@ -111,7 +111,7 @@ def draw_bbox_without_number(
 
 def draw_bbox_with_number(
     i: int,
-    bbox_list: list[list[list[float]]],
+    bbox_list: list[list[BBox]],
     page: Any,
     c: Any,
     rgb_config: list[int],

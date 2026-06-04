@@ -8,7 +8,7 @@ from typing import Any
 from loguru import logger
 from PIL import Image
 
-from ...types import Block, Line, Span
+from ...types import BBox, Block, IntBBox, Line, Span
 from ...utils.enum_class import BlockType, ContentType, NotExtractType
 from ...utils.guess_suffix_or_lang import guess_language_by_text
 from ..utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
@@ -402,7 +402,7 @@ class MagicModel:
         hint_block = {"spans": copy.deepcopy(block_spans)}
         return fix_text_block(hint_block)["lines"]
 
-    def cal_real_bbox(self, bbox: list[float]) -> tuple[int, int, int, int]:
+    def cal_real_bbox(self, bbox: BBox) -> IntBBox:
         x1, y1, x2, y2 = bbox
         x_1, y_1, x_2, y_2 = (
             int(x1 * self.width),

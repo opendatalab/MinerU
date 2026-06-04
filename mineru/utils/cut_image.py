@@ -5,7 +5,7 @@ from typing import Any
 
 from loguru import logger
 
-from ..types import Span
+from ..types import BBox, Span
 from .pdf_image_tools import cut_image
 
 
@@ -38,7 +38,7 @@ def cut_image_and_table(
     return span
 
 
-def check_img_bbox(bbox: tuple[float, float, float, float]) -> bool:
+def check_img_bbox(bbox: BBox) -> bool:
     if any([bbox[0] >= bbox[2], bbox[1] >= bbox[3]]):
         logger.warning(f"image_bboxes: 错误的box, {bbox}")
         return False

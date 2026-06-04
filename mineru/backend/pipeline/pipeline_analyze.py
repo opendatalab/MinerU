@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Callable
-from typing import Any, List, Tuple
+from typing import Any
 
 import pypdfium2 as pdfium
 from loguru import logger
@@ -320,7 +320,7 @@ def doc_analyze_streaming(
 
 
 def batch_image_analyze(
-    images_with_extra_info: List[Tuple[Image.Image, bool, str]],
+    images_with_extra_info: list[tuple[Image.Image, bool, str]],
     formula_enable: bool = True,
     table_enable: bool = True,
 ) -> object:

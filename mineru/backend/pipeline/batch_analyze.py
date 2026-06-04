@@ -13,6 +13,7 @@ from loguru import logger
 from PIL import Image
 from tqdm import tqdm
 
+from ...types import BBox
 from ...utils.bbox_utils import normalize_to_int_bbox
 from ...utils.config_reader import (
     get_formula_enable,
@@ -129,47 +130,47 @@ class BatchAnalyze:
         layout_res[:] = [item for item in layout_res if keep_item(item)]
 
     @staticmethod
-    def _bbox_center(bbox: list[float]) -> tuple[float, float]:
+    def _bbox_center(bbox: BBox) -> tuple[float, float]:
         return (float(bbox[0] + bbox[2]) / 2.0, float(bbox[1] + bbox[3]) / 2.0)
 
     @staticmethod
-    def _is_point_in_bbox(point: tuple[float, float], bbox: list[float]) -> bool:
+    def _is_point_in_bbox(point: tuple[float, float], bbox: BBox) -> bool:
         x, y = point
         return bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]
 
     @staticmethod
-    def _bbox_intersection(bbox1: list[float], bbox2: list[float]) -> list[float] | None:
+    def _bbox_intersection(bbox1: BBox, bbox2: BBox) -> BBox | None:
         x0 = max(float(bbox1[0]), float(bbox2[0]))
         y0 = max(float(bbox1[1]), float(bbox2[1]))
         x1 = min(float(bbox1[2]), float(bbox2[2]))
         y1 = min(float(bbox1[3]), float(bbox2[3]))
         if x1 <= x0 or y1 <= y0:
             return None
-        return [x0, y0, x1, y1]
+        return (x0, y0, x1, y1)
 
     @classmethod
-    def _bbox_intersection_area(cls, bbox1: list[float], bbox2: list[float]) -> float:
+    def _bbox_intersection_area(cls, bbox1: BBox, bbox2: BBox) -> float:
         overlap_bbox = cls._bbox_intersection(bbox1, bbox2)
         if overlap_bbox is None:
             return 0.0
         return float(overlap_bbox[2] - overlap_bbox[0]) * float(overlap_bbox[3] - overlap_bbox[1])
 
     @staticmethod
-    def _bbox_to_relative_bbox(bbox: list[float], base_bbox: list[float]) -> list[float]:
-        return [
+    def _bbox_to_relative_bbox(bbox: BBox, base_bbox: BBox) -> BBox:
+        return (
             float(bbox[0]) - float(base_bbox[0]),
             float(bbox[1]) - float(base_bbox[1]),
             float(bbox[2]) - float(base_bbox[0]),
             float(bbox[3]) - float(base_bbox[1]),
-        ]
+        )
 
     @staticmethod
-    def _bbox_to_quad(bbox: list[float]) -> np.ndarray:
+    def _bbox_to_quad(bbox: BBox) -> np.ndarray:
         x0, y0, x1, y1 = bbox
         return np.asarray([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], dtype=np.float32)
 
     @staticmethod
-    def _encode_table_inline_image(np_img: np.ndarray, bbox: list[float]) -> str:
+    def _encode_table_inline_image(np_img: np.ndarray, bbox: BBox) -> str:
         image_h, image_w = np_img.shape[:2]
         image_bbox = normalize_to_int_bbox(bbox, image_size=(image_h, image_w))
         if image_bbox is None:
@@ -192,15 +193,15 @@ class BatchAnalyze:
         return f"data:image/jpg;base64,{b64_str}"
 
     @staticmethod
-    def _get_virtual_image_bbox(bbox: list[float], box_size: float = 10.0) -> list[float]:
+    def _get_virtual_image_bbox(bbox: BBox, box_size: float = 10.0) -> BBox:
         center_x, center_y = BatchAnalyze._bbox_center(bbox)
         half_size = box_size / 2.0
-        return [
+        return (
             center_x - half_size,
             center_y - half_size,
             center_x + half_size,
             center_y + half_size,
-        ]
+        )
 
     @staticmethod
     def _table_supports_inline_objects(table_res_dict: dict[str, Any]) -> bool:

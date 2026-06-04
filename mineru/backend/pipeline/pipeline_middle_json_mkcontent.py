@@ -7,11 +7,11 @@ from typing import Any
 
 from loguru import logger
 
-from ...types import Block, Line, Span
-from ...utils.char_utils import full_to_half_exclude_marks, is_hyphen_at_line_end
+from ...types import BBox, Block, IntBBox, Line, Span
 from ...utils.config_reader import get_latex_delimiter_config
 from ...utils.enum_class import BlockType, ContentType, ContentTypeV2, MakeMode
 from ...utils.language import detect_lang
+from ..utils.char_utils import full_to_half_exclude_marks, is_hyphen_at_line_end
 from ..utils.markdown_utils import escape_conservative_markdown_text, escape_text_block_markdown_prefix
 
 
@@ -459,18 +459,17 @@ def merge_adjacent_ref_text_blocks_for_content(para_blocks: list[Block]) -> list
     return merged_blocks
 
 
-def _build_bbox(para_bbox: list[float], page_size: list[int]) -> list[int] | None:
+def _build_bbox(para_bbox: BBox, page_size: list[int]) -> IntBBox | None:
     if not para_bbox or not page_size:
         return None
-
     page_width, page_height = page_size
     x0, y0, x1, y1 = para_bbox
-    return [
+    return (
         int(x0 * 1000 / page_width),
         int(y0 * 1000 / page_height),
         int(x1 * 1000 / page_width),
         int(y1 * 1000 / page_height),
-    ]
+    )
 
 
 def _get_ref_text_item_blocks(para_block: Block) -> list[Block]:

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ...types import Block, Line, Span
+from ...types import BBox, Block, Line, Span
 from ...utils.enum_class import BlockType, ContentType
 from ...utils.guess_suffix_or_lang import guess_language_by_text
 from ..utils.boxbase import calculate_overlap_area_2_minbox_area_ratio, calculate_overlap_area_in_bbox1_area_ratio
@@ -290,7 +290,7 @@ class MagicModel:
         self.page_text_inline_formula_spans = span_matcher.remaining_spans()
 
     @staticmethod
-    def __formula_number_overlap_ratio(span: Span, block_bbox: list[float]) -> float:
+    def __formula_number_overlap_ratio(span: Span, block_bbox: BBox) -> float:
         """公式编号框较窄时，沿用最小框重叠比例提高回填召回。"""
         return max(
             calculate_overlap_area_in_bbox1_area_ratio(span.bbox, block_bbox),

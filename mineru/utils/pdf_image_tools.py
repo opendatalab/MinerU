@@ -13,6 +13,8 @@ from io import BytesIO
 from typing import Any, Callable, Literal
 
 import numpy as np
+
+from ..types import BBox
 import pypdfium2 as pdfium
 from loguru import logger
 from PIL import Image, ImageOps
@@ -477,7 +479,7 @@ def load_images_from_pdf_doc(
 
 
 def cut_image(
-    bbox: tuple[float, float, float, float],
+    bbox: BBox,
     page_num: int,
     page_pil_img: Image.Image,
     return_path: str | None,
@@ -506,7 +508,7 @@ def cut_image(
     return img_hash256_path
 
 
-def get_crop_img(bbox: tuple[float, float, float, float], pil_img: Image.Image, scale: float = 2.0) -> Image.Image:
+def get_crop_img(bbox: BBox, pil_img: Image.Image, scale: float = 2.0) -> Image.Image:
     scale_bbox = normalize_to_int_bbox([float(v) * scale for v in bbox])
     if scale_bbox is None:
         return pil_img.crop((0, 0, 0, 0))
@@ -514,7 +516,7 @@ def get_crop_img(bbox: tuple[float, float, float, float], pil_img: Image.Image, 
 
 
 def get_crop_np_img(
-    bbox: tuple[float, float, float, float], input_img: Image.Image | np.ndarray, scale: float = 2.0
+    bbox: BBox, input_img: Image.Image | np.ndarray, scale: float = 2.0
 ) -> np.ndarray:
     if isinstance(input_img, Image.Image):
         np_img = np.asarray(input_img)

@@ -17,6 +17,7 @@ from PIL import Image
 from tqdm import tqdm
 
 from ...data.data_reader_writer import DataWriter
+from ...types import BBox
 from ...utils.config_reader import get_device, get_processing_window_size
 from ...utils.enum_class import BlockType as MineruBlockType
 from ...utils.enum_class import ImageType, NotExtractType
@@ -330,7 +331,7 @@ def _normalize_page_size(page_image: Any) -> tuple[int, int]:
     return width, height
 
 
-def _bbox_to_pixel_bbox(bbox: list[float], page_size: list[int]) -> list[float] | None:
+def _bbox_to_pixel_bbox(bbox: BBox, page_size: list[int]) -> BBox | None:
     """将归一化或像素bbox统一成像素bbox，异常bbox返回None。"""
     if bbox is None or len(bbox) != 4:
         return None
@@ -348,12 +349,12 @@ def _bbox_to_pixel_bbox(bbox: list[float], page_size: list[int]) -> list[float] 
     top, bottom = sorted([y0, y1])
     if right <= left or bottom <= top:
         return None
-    return [left, top, right, bottom]
+    return (left, top, right, bottom)
 
 
-def _collect_layout_doc_title_bboxes(layout_res: list[dict[str, Any]], page_size: list[int]) -> list[list[float]]:
+def _collect_layout_doc_title_bboxes(layout_res: list[dict[str, Any]], page_size: list[int]) -> list[BBox]:
     """只收集layout小模型输出的doc_title框，忽略paragraph_title等其他类型。"""
-    doc_title_bboxes = []
+    doc_title_bboxes: list[BBox] = []
     for layout_item in layout_res or []:
         if layout_item.get("label") != MineruBlockType.DOC_TITLE:
             continue
@@ -363,7 +364,7 @@ def _collect_layout_doc_title_bboxes(layout_res: list[dict[str, Any]], page_size
     return doc_title_bboxes
 
 
-def _has_doc_title_overlap(title_bbox: list[float], doc_title_bboxes: list[list[float]], overlap_threshold: float) -> bool:
+def _has_doc_title_overlap(title_bbox: BBox, doc_title_bboxes: list[BBox], overlap_threshold: float) -> bool:
     """判断VLM标题框是否与任一layout doc_title框达到最小框重叠阈值。"""
     return any(
         calculate_overlap_area_2_minbox_area_ratio(title_bbox, doc_title_bbox) >= overlap_threshold

@@ -8,7 +8,7 @@ from typing import Any
 import pypdfium2 as pdfium
 from PIL import Image
 
-from ..types import PageInfo
+from ..types import BBox, PageInfo
 from .draw_bbox import draw_layout_bbox, draw_span_bbox
 from .pdf_classify import classify, get_text_quality_signal_pdfium
 from .pdf_classify import extract_pages as _extract_pages
@@ -107,13 +107,7 @@ class PDFDocument:
         tasks = [self.render_page_async(i, scale=scale) for i in range(start, end + 1)]
         return await asyncio.gather(*tasks)
 
-    def crop_image(
-        self,
-        bbox: tuple[float, float, float, float],
-        page_idx: int,
-        *,
-        scale: int = 2,
-    ) -> bytes:
+    def crop_image(self, bbox: BBox, page_idx: int, *, scale: int = 2) -> bytes:
         pil_img = self.render_page(page_idx, scale=scale)
         crop = get_crop_img(bbox, pil_img, scale=scale)
         return image_to_bytes(crop, image_format="JPEG")

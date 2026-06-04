@@ -10,7 +10,7 @@ from loguru import logger
 from openai import OpenAI
 
 from ..backend.pipeline.pipeline_middle_json_mkcontent import merge_para_with_text
-from ..types import Block, PageInfo
+from ..types import BBox, Block, PageInfo
 from .enum_class import BlockType
 
 TITLE_BLOCK_TYPES = {
@@ -236,16 +236,12 @@ def _normalize_title_types(title_block_refs: list[tuple[PageInfo, Block]]) -> No
             block.type = BlockType.TITLE
 
 
-def _get_title_block_identity(block: Block) -> tuple[str, int] | tuple[str, tuple[float, float, float, float], str]:
+def _get_title_block_identity(block: Block) -> tuple[str, int] | tuple[str, BBox, str]:
     block_index = block.index
     if block_index is not None:
         return ("index", block_index)
 
-    return (
-        "bbox_text",
-        block.bbox,
-        merge_para_with_text(block),
-    )
+    return ("bbox_text", block.bbox, merge_para_with_text(block))
 
 
 def _sync_para_titles_to_preproc(page_info_list: list[PageInfo]) -> None:

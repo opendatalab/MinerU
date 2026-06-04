@@ -5,7 +5,7 @@ import re
 from copy import deepcopy
 from typing import Any
 
-from ...types import Block
+from ...types import BBox, Block
 from ...utils.enum_class import BlockType
 from .boxbase import bbox_center_distance, bbox_distance, calculate_overlap_area_in_bbox1_area_ratio
 from .table_continuation import is_table_continuation_text
@@ -649,20 +649,18 @@ def vertical_gap_between_blocks(first_block: Block, second_block: Block) -> tupl
     return None
 
 
-def is_bbox_intersecting_vertical_gap(bbox: tuple[float, ...], vertical_gap: tuple[float, float]) -> bool:
+def is_bbox_intersecting_vertical_gap(bbox: BBox, vertical_gap: tuple[float, float]) -> bool:
     """判断 bbox 是否与视觉父子块之间的垂直间隔相交。"""
     gap_top, gap_bottom = vertical_gap
     return bbox[1] < gap_bottom and bbox[3] > gap_top
 
 
-def is_bbox_overlapping_visual_relation_block(
-    bbox: tuple[float, ...], child_bbox: tuple[float, ...], main_bbox: tuple[float, ...]
-) -> bool:
+def is_bbox_overlapping_visual_relation_block(bbox: BBox, child_bbox: BBox, main_bbox: BBox) -> bool:
     """判断 bbox 是否覆盖到父子块本身；覆盖时不能当作普通 index 噪声跳过。"""
     return are_bboxes_overlapping(bbox, child_bbox) or are_bboxes_overlapping(bbox, main_bbox)
 
 
-def are_bboxes_overlapping(first_bbox: tuple[float, ...], second_bbox: tuple[float, ...]) -> bool:
+def are_bboxes_overlapping(first_bbox: BBox, second_bbox: BBox) -> bool:
     """判断两个 bbox 是否存在二维相交。"""
     return not (
         first_bbox[2] <= second_bbox[0]
@@ -691,20 +689,20 @@ def child_visual_type(block_type: str) -> str:
     return BlockType.IMAGE
 
 
-def bbox_area(bbox: tuple[float, ...]) -> float:
+def bbox_area(bbox: BBox) -> float:
     return max(0, bbox[2] - bbox[0]) * max(0, bbox[3] - bbox[1])
 
 
-def relative_bbox(child_bbox: tuple[float, ...], parent_bbox: tuple[float, ...]) -> list[float]:
+def relative_bbox(child_bbox: BBox, parent_bbox: BBox) -> BBox:
     parent_x0, parent_y0, parent_x1, parent_y1 = parent_bbox
     parent_w = max(parent_x1 - parent_x0, 1)
     parent_h = max(parent_y1 - parent_y0, 1)
-    return [
+    return (
         clamp_and_round((child_bbox[0] - parent_x0) / parent_w),
         clamp_and_round((child_bbox[1] - parent_y0) / parent_h),
         clamp_and_round((child_bbox[2] - parent_x0) / parent_w),
         clamp_and_round((child_bbox[3] - parent_y0) / parent_h),
-    ]
+    )
 
 
 def clamp_and_round(value: float) -> float:

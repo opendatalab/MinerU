@@ -3,11 +3,13 @@ import math
 
 import numpy as np
 
+from ..types import BBox, IntBBox
+
 
 def normalize_to_int_bbox(
-    box: list[float] | tuple[float, ...] | None,
+    box: list[float] | BBox | None,
     image_size: tuple[int, int] | None = None,
-) -> list[int] | None:
+) -> IntBBox | None:
     if box is None:
         return None
 
@@ -51,4 +53,4 @@ def normalize_to_int_bbox(
     if xmax <= xmin or ymax <= ymin:
         return None
 
-    return [int(xmin), int(ymin), int(xmax), int(ymax)]
+    return (int(xmin), int(ymin), int(xmax), int(ymax))

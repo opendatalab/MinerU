@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 from loguru import logger
 
+from ...types import BBox
 from ...utils.pdf_image_tools import get_crop_img
 
 OCR_DET_PADDING = 50
@@ -32,7 +33,7 @@ def _get_ch_lite_ocr_det_model() -> Any:
 
 
 def _detect_ocr_boxes_from_padded_crop(
-    bbox: tuple[float, float, float, float],
+    bbox: BBox,
     page_pil_img: Any,
     scale: float,
     ocr_model: Any = None,

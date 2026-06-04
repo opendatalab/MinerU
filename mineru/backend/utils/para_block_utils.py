@@ -2,7 +2,7 @@
 import copy
 from collections.abc import Generator
 
-from ...types import Block, Line, PageInfo, Span
+from ...types import BBox, Block, Line, PageInfo, Span
 from ...utils.enum_class import BlockType
 
 LINE_STOP_FLAG = (".", "!", "?", "。", "！", "？", ")", "）", '"', "”", ":", "：", ";", "；")
@@ -323,15 +323,15 @@ def _line_height(line: Line) -> float:
     return bbox[3] - bbox[1]
 
 
-def _build_bbox_fs(block: Block, lines: list[Line]) -> list[float]:
+def _build_bbox_fs(block: Block, lines: list[Line]) -> BBox:
     if lines:
-        return [
+        return (
             min(line.bbox[0] for line in lines),
             min(line.bbox[1] for line in lines),
             max(line.bbox[2] for line in lines),
             max(line.bbox[3] for line in lines),
-        ]
-    return list(block.bbox or [])
+        )
+    return block.bbox
 
 
 def _block_has_lines(block: Block) -> bool:

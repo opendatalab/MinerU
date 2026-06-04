@@ -7,7 +7,7 @@ from typing import Any
 
 from bs4 import BeautifulSoup, Tag
 
-from ...types import Block, PageInfo, Span
+from ...types import BBox, Block, PageInfo, Span
 from ...utils.enum_class import BlockType, SplitFlag
 from ..vlm.vlm_middle_json_mkcontent import merge_para_with_text
 from .char_utils import full_to_half
@@ -665,8 +665,8 @@ def _expand_header_count_by_rowspan(rows: list[Tag], header_count: int) -> int:
 def can_merge_by_structure(
     current_state: TableMergeState,
     previous_state: TableMergeState,
-    current_bbox: tuple[float, float, float, float] | None = None,
-    previous_bbox: tuple[float, float, float, float] | None = None,
+    current_bbox: BBox | None = None,
+    previous_bbox: BBox | None = None,
 ) -> bool:
     """仅基于表格结构判断是否可合并（不检查 caption/footnote）。
 

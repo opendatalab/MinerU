@@ -7,6 +7,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from ..types import BBox
 from .bbox_utils import normalize_to_int_bbox
 
 
@@ -44,11 +45,7 @@ def merge_spans_to_line(spans: list[dict[str, Any]], threshold: float = 0.6) -> 
         return lines
 
 
-def _is_overlaps_y_exceeds_threshold(
-    bbox1: list[float] | tuple[float, ...],
-    bbox2: list[float] | tuple[float, ...],
-    overlap_ratio_threshold: float = 0.8,
-) -> bool:
+def _is_overlaps_y_exceeds_threshold(bbox1: BBox, bbox2: BBox, overlap_ratio_threshold: float = 0.8) -> bool:
     """检查两个bbox在y轴上是否有重叠，并且该重叠区域的高度占两个bbox高度更低的那个超过80%"""
     _, y0_1, _, y1_1 = bbox1
     _, y0_2, _, y1_2 = bbox2
@@ -61,11 +58,7 @@ def _is_overlaps_y_exceeds_threshold(
     return (overlap / min_height) > overlap_ratio_threshold if min_height > 0 else False
 
 
-def _is_overlaps_x_exceeds_threshold(
-    bbox1: list[float] | tuple[float, ...],
-    bbox2: list[float] | tuple[float, ...],
-    overlap_ratio_threshold: float = 0.8,
-) -> bool:
+def _is_overlaps_x_exceeds_threshold(bbox1: BBox, bbox2: BBox, overlap_ratio_threshold: float = 0.8) -> bool:
     """检查两个bbox在x轴上是否有重叠，并且该重叠区域的宽度占两个bbox宽度更低的那个超过指定阈值"""
     x0_1, _, x1_1, _ = bbox1
     x0_2, _, x1_2, _ = bbox2
@@ -132,18 +125,18 @@ def sorted_boxes(dt_boxes: list[Any]) -> list[Any]:
     return _boxes
 
 
-def bbox_to_points(bbox: list[float] | tuple[float, ...]) -> np.ndarray:
+def bbox_to_points(bbox: BBox) -> np.ndarray:
     """将bbox格式转换为四个顶点的数组"""
     x0, y0, x1, y1 = bbox
     return np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]]).astype("float32")
 
 
-def points_to_bbox(points: np.ndarray) -> list[float]:
+def points_to_bbox(points: np.ndarray) -> BBox:
     """将四个顶点的数组转换为bbox格式"""
     x0, y0 = points[0]
     x1, _ = points[1]
     _, y1 = points[2]
-    return [x0, y0, x1, y1]
+    return (x0, y0, x1, y1)
 
 
 def merge_intervals(intervals: list[list[float]]) -> list[list[float]]:
@@ -212,7 +205,8 @@ def update_det_boxes(dt_boxes: list[Any], mfd_res: list[dict[str, Any]]) -> list
         text_remove_mask_range = remove_intervals(text_x_range, masks_list)
         temp_dt_box = []
         for text_remove_mask in text_remove_mask_range:
-            temp_dt_box.append(bbox_to_points([text_remove_mask[0], text_bbox[1], text_remove_mask[1], text_bbox[3]]))
+            _bbox = (text_remove_mask[0], text_bbox[1], text_remove_mask[1], text_bbox[3])
+            temp_dt_box.append(bbox_to_points(_bbox))
         if len(temp_dt_box) > 0:
             new_dt_boxes.extend(temp_dt_box)
 
@@ -221,7 +215,7 @@ def update_det_boxes(dt_boxes: list[Any], mfd_res: list[dict[str, Any]]) -> list
     return new_dt_boxes
 
 
-def merge_overlapping_spans(spans: list[tuple[float, ...]]) -> list[tuple[float, ...]]:
+def merge_overlapping_spans(spans: list[BBox]) -> list[BBox]:
     """
     Merges overlapping spans on the same line.
 

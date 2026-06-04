@@ -2,8 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Iterator, Literal
+from typing import Any, Iterator, Literal, TypeAlias
 
 
 class BlockType:
@@ -364,8 +363,10 @@ def _install_dict_compat(*classes) -> None:
 
 # ── model types ─────────────────────────────────────────────────────
 
+BBox: TypeAlias = tuple[float, float, float, float]
+IntBBox: TypeAlias = tuple[int, int, int, int]
 
-EMPTY_BBOX = (0.0, 0.0, 0.0, 0.0)
+EMPTY_BBOX: BBox = (0.0, 0.0, 0.0, 0.0)
 
 
 @dataclass
@@ -373,7 +374,7 @@ class Span:
     """Leaf node of the block tree.  Holds text, formula, image, or table content."""
 
     type: str
-    bbox: tuple[float, float, float, float]
+    bbox: BBox
     content: str = ""
     score: float = 0.0
     image_path: str = ""
@@ -403,7 +404,7 @@ class Span:
 class Line:
     """A line within a block, containing one or more spans."""
 
-    bbox: tuple[float, float, float, float]
+    bbox: BBox
     spans: list[Span] = field(default_factory=list)
     _extra: dict = field(default_factory=dict)
 
@@ -429,7 +430,7 @@ class Block:
     # Required
     index: int
     type: str
-    bbox: tuple[float, float, float, float]
+    bbox: BBox
     lines: list[Line] = field(default_factory=list)
     blocks: list[Block] = field(default_factory=list)
 

@@ -9,6 +9,8 @@ import numpy as np
 from loguru import logger
 from PIL import Image
 
+from ..types import BBox, IntBBox
+
 try:
     import torch
     import torch_npu
@@ -37,14 +39,14 @@ TEXT_REGION_LABELS = {
 }
 
 
-def _get_bbox(item: dict[str, Any]) -> tuple[float, float, float, float] | None:
+def _get_bbox(item: dict[str, Any]) -> BBox | None:
     bbox = item.get("bbox")
     if bbox is not None:
         xmin, ymin, xmax, ymax = bbox
         return float(xmin), float(ymin), float(xmax), float(ymax)
 
 
-def _get_int_bbox(item: dict[str, Any]) -> tuple[int, int, int, int]:
+def _get_int_bbox(item: dict[str, Any]) -> IntBBox:
     xmin, ymin, xmax, ymax = _get_bbox(item)
     return math.floor(xmin), math.floor(ymin), math.ceil(xmax), math.ceil(ymax)
 
@@ -91,7 +93,7 @@ def get_coords_and_area(block_with_poly: dict[str, Any]) -> tuple[float, float, 
     return xmin, ymin, xmax, ymax, area
 
 
-def calculate_intersection(box1: tuple[float, ...], box2: tuple[float, ...]) -> tuple[float, float, float, float] | None:
+def calculate_intersection(box1: BBox, box2: BBox) -> BBox | None:
     """Calculate intersection coordinates between two boxes."""
     intersection_xmin = max(box1[0], box2[0])
     intersection_ymin = max(box1[1], box2[1])
@@ -105,7 +107,7 @@ def calculate_intersection(box1: tuple[float, ...], box2: tuple[float, ...]) -> 
     return intersection_xmin, intersection_ymin, intersection_xmax, intersection_ymax
 
 
-def is_inside(small_box: tuple[float, ...], big_box: tuple[float, ...], overlap_threshold: float = 0.8) -> bool:
+def is_inside(small_box: BBox, big_box: BBox, overlap_threshold: float = 0.8) -> bool:
     """Check if small_box is inside big_box by at least overlap_threshold."""
     intersection = calculate_intersection(small_box[:4], big_box[:4])
 
