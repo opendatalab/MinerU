@@ -7,8 +7,8 @@ from typing import Any
 
 from loguru import logger
 
-from mineru.utils.config_reader import get_llm_aided_config
-from mineru.utils.llm_aided import llm_aided_title
+from .config_reader import get_llm_aided_config
+from .llm_aided import llm_aided_title
 
 SUPPORTED_PDF_BACKENDS = {"pipeline", "vlm", "hybrid"}
 
@@ -24,7 +24,7 @@ def _resolve_title_aided_config() -> dict[str, Any] | None:
     return deepcopy(title_aided_config)
 
 
-def apply_title_leveling_to_pdf_info(pdf_info: list[dict[str, Any]]):
+def apply_title_leveling_to_pdf_info(pdf_info: list[dict[str, Any]]) -> None:
     title_aided_config = _resolve_title_aided_config()
     if title_aided_config:
         start_time = time.perf_counter()
@@ -47,28 +47,16 @@ def finalize_client_side_middle_json(middle_json: dict[str, Any]) -> dict[str, A
     pdf_info = middle_json.get("pdf_info")
 
     if backend == "pipeline":
-        from mineru.backend.pipeline.model_output_to_middle_json import (
-            finalize_middle_json_from_preproc,
-        )
+        from mineru.backend.pipeline.model_output_to_middle_json import finalize_middle_json_from_preproc
 
-        finalize_middle_json_from_preproc(
-            pdf_info,
-        )
+        finalize_middle_json_from_preproc(pdf_info)
     elif backend == "vlm":
-        from mineru.backend.vlm.model_output_to_middle_json import (
-            finalize_middle_json,
-        )
+        from mineru.backend.vlm.model_output_to_middle_json import finalize_middle_json
 
-        finalize_middle_json(
-            pdf_info,
-        )
+        finalize_middle_json(pdf_info)
     elif backend == "hybrid":
-        from mineru.backend.hybrid.model_output_to_middle_json import (
-            finalize_middle_json_from_preproc,
-        )
+        from mineru.backend.hybrid.model_output_to_middle_json import finalize_middle_json_from_preproc
 
-        finalize_middle_json_from_preproc(
-            pdf_info,
-        )
+        finalize_middle_json_from_preproc(pdf_info)
 
     return middle_json

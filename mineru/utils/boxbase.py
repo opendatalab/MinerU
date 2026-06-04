@@ -1,8 +1,10 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from __future__ import annotations
+
 import math
 
 
-def is_in(box1, box2) -> bool:
+def is_in(box1: tuple[float, ...], box2: tuple[float, ...]) -> bool:
     """box1是否完全在box2里面."""
     x0_1, y0_1, x1_1, y1_1 = box1
     x0_2, y0_2, x1_2, y1_2 = box2
@@ -15,7 +17,7 @@ def is_in(box1, box2) -> bool:
     )  # box1的下边界不在box2的下边外
 
 
-def bbox_relative_pos(bbox1, bbox2):
+def bbox_relative_pos(bbox1: tuple[float, ...], bbox2: tuple[float, ...]) -> tuple[bool, bool, bool, bool]:
     """判断两个矩形框的相对位置关系.
 
     Args:
@@ -37,7 +39,7 @@ def bbox_relative_pos(bbox1, bbox2):
     return left, right, bottom, top
 
 
-def bbox_distance(bbox1, bbox2):
+def bbox_distance(bbox1: tuple[float, ...], bbox2: tuple[float, ...]) -> float:
     """计算两个矩形框的距离。
 
     Args:
@@ -48,7 +50,7 @@ def bbox_distance(bbox1, bbox2):
         float: 矩形框之间的距离。
     """
 
-    def dist(point1, point2):
+    def dist(point1: tuple[float, float], point2: tuple[float, float]) -> float:  # noqa: ANN202
         return math.sqrt((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2)
 
     x1, y1, x1b, y1b = bbox1
@@ -75,7 +77,7 @@ def bbox_distance(bbox1, bbox2):
     return 0.0
 
 
-def bbox_center_distance(bbox1, bbox2):
+def bbox_center_distance(bbox1: tuple[float, ...], bbox2: tuple[float, ...]) -> float:
     """计算两个矩形框中心点之间的欧氏距离。
 
     Args:
@@ -98,7 +100,9 @@ def bbox_center_distance(bbox1, bbox2):
     return math.sqrt((center1_x - center2_x) ** 2 + (center1_y - center2_y) ** 2)
 
 
-def get_minbox_if_overlap_by_ratio(bbox1, bbox2, ratio):
+def get_minbox_if_overlap_by_ratio(
+    bbox1: tuple[float, ...], bbox2: tuple[float, ...], ratio: float
+) -> tuple[float, ...] | None:
     """通过calculate_overlap_area_2_minbox_area_ratio计算两个bbox重叠的面积占最小面积的box的比例
     如果比例大于ratio，则返回小的那个bbox, 否则返回None."""
     x1_min, y1_min, x1_max, y1_max = bbox1
@@ -115,7 +119,7 @@ def get_minbox_if_overlap_by_ratio(bbox1, bbox2, ratio):
         return None
 
 
-def calculate_overlap_area_2_minbox_area_ratio(bbox1, bbox2):
+def calculate_overlap_area_2_minbox_area_ratio(bbox1: tuple[float, ...], bbox2: tuple[float, ...]) -> float:
     """计算box1和box2的重叠面积占最小面积的box的比例."""
     # Determine the coordinates of the intersection rectangle
     x_left = max(bbox1[0], bbox2[0])
@@ -128,15 +132,14 @@ def calculate_overlap_area_2_minbox_area_ratio(bbox1, bbox2):
 
     # The area of overlap area
     intersection_area = (x_right - x_left) * (y_bottom - y_top)
-    min_box_area = min([(bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1]),
-                        (bbox2[3] - bbox2[1]) * (bbox2[2] - bbox2[0])])
+    min_box_area = min([(bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1]), (bbox2[3] - bbox2[1]) * (bbox2[2] - bbox2[0])])
     if min_box_area == 0:
         return 0
     else:
         return intersection_area / min_box_area
 
 
-def calculate_iou(bbox1, bbox2):
+def calculate_iou(bbox1: tuple[float, ...], bbox2: tuple[float, ...]) -> float:
     """计算两个边界框的交并比(IOU)。
 
     Args:
@@ -172,7 +175,7 @@ def calculate_iou(bbox1, bbox2):
     return iou
 
 
-def calculate_overlap_area_in_bbox1_area_ratio(bbox1, bbox2):
+def calculate_overlap_area_in_bbox1_area_ratio(bbox1: tuple[float, ...], bbox2: tuple[float, ...]) -> float:
     """计算box1和box2的重叠面积占bbox1的比例."""
     # Determine the coordinates of the intersection rectangle
     x_left = max(bbox1[0], bbox2[0])
@@ -192,7 +195,7 @@ def calculate_overlap_area_in_bbox1_area_ratio(bbox1, bbox2):
         return intersection_area / bbox1_area
 
 
-def calculate_vertical_projection_overlap_ratio(block1, block2):
+def calculate_vertical_projection_overlap_ratio(block1: tuple[float, ...], block2: tuple[float, ...]) -> float:
     """
     Calculate the proportion of the x-axis covered by the vertical projection of two blocks.
 

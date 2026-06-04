@@ -1,6 +1,9 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from __future__ import annotations
+
 import json
 from io import BytesIO
+from typing import Any
 
 from loguru import logger
 from pypdf import PageObject, PdfReader, PdfWriter
@@ -28,12 +31,12 @@ DIRECT_LAYOUT_BBOX_BLOCK_TYPES = TEXT_LIKE_BLOCK_TYPES_FOR_BBOX | {
 SPAN_SOURCE_BLOCK_TYPES = DIRECT_LAYOUT_BBOX_BLOCK_TYPES
 
 
-def _get_layout_source_blocks(page):
+def _get_layout_source_blocks(page: dict[str, Any]) -> list[dict[str, Any]]:
     """获取 layout.pdf 的页内原始布局块，避免段落合并后跨页子项串页绘制。"""
     return page.get("preproc_blocks", [])
 
 
-def cal_canvas_rect(page, bbox):
+def cal_canvas_rect(page: Any, bbox: list[float]) -> list[float]:
     """
     Calculate the rectangle coordinates on the canvas based on the original PDF page and bounding box.
 
@@ -82,7 +85,14 @@ def cal_canvas_rect(page, bbox):
     return rect
 
 
-def draw_bbox_without_number(i, bbox_list, page, c, rgb_config, fill_config):
+def draw_bbox_without_number(
+    i: int,
+    bbox_list: list[list[list[float]]],
+    page: Any,
+    c: Any,
+    rgb_config: list[int],
+    fill_config: bool,
+) -> Any:
     new_rgb = [float(color) / 255 for color in rgb_config]
     page_data = bbox_list[i]
 
@@ -98,7 +108,15 @@ def draw_bbox_without_number(i, bbox_list, page, c, rgb_config, fill_config):
     return c
 
 
-def draw_bbox_with_number(i, bbox_list, page, c, rgb_config, fill_config, draw_bbox=True):
+def draw_bbox_with_number(
+    i: int,
+    bbox_list: list[list[list[float]]],
+    page: Any,
+    c: Any,
+    rgb_config: list[int],
+    fill_config: bool,
+    draw_bbox: bool = True,
+) -> Any:
     new_rgb = [float(color) / 255 for color in rgb_config]
     page_data = bbox_list[i]
     # 强制转换为 float
@@ -142,7 +160,12 @@ def draw_bbox_with_number(i, bbox_list, page, c, rgb_config, fill_config, draw_b
     return c
 
 
-def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
+def draw_layout_bbox(
+    pdf_info: list[dict[str, Any]],
+    pdf_bytes: bytes,
+    out_path: str,
+    filename: str,
+) -> None:
     dropped_bbox_list = []
     tables_body_list, tables_caption_list, tables_footnote_list = [], [], []
     imgs_body_list, imgs_caption_list, imgs_footnote_list = [], [], []
@@ -313,7 +336,12 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         output_pdf.write(f)
 
 
-def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
+def draw_span_bbox(
+    pdf_info: list[dict[str, Any]],
+    pdf_bytes: bytes,
+    out_path: str,
+    filename: str,
+) -> None:
     text_list = []
     inline_equation_list = []
     interline_equation_list = []
@@ -321,7 +349,7 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
     table_list = []
     dropped_list = []
 
-    def get_span_info(span):
+    def get_span_info(span: dict[str, Any]) -> None:  # noqa: ANN202
         if span["type"] == ContentType.TEXT:
             page_text_list.append(span["bbox"])
         elif span["type"] == ContentType.INLINE_EQUATION:

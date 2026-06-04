@@ -1,42 +1,26 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from io import BytesIO
 from pathlib import Path
-from zipfile import BadZipFile, ZipFile
 from xml.etree import ElementTree
+from zipfile import BadZipFile, ZipFile
 
 from loguru import logger
 from magika import Magika
 
-
 DEFAULT_LANG = "txt"
-PDF_SIG_BYTES = b'%PDF'
+PDF_SIG_BYTES = b"%PDF"
 OOXML_ROOT_RELS = "_rels/.rels"
 OOXML_CONTENT_TYPES = "[Content_Types].xml"
-OOXML_PACKAGE_REL_NS = (
-    "http://schemas.openxmlformats.org/package/2006/relationships"
-)
-OOXML_CONTENT_TYPES_NS = (
-    "http://schemas.openxmlformats.org/package/2006/content-types"
-)
-OOXML_OFFICE_DOCUMENT_REL = (
-    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
-    "officeDocument"
-)
+OOXML_PACKAGE_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+OOXML_CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
+OOXML_OFFICE_DOCUMENT_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
 OOXML_MAIN_CONTENT_TYPES = {
-    (
-        "application/vnd.openxmlformats-officedocument.wordprocessingml."
-        "document.main+xml"
-    ): "docx",
-    (
-        "application/vnd.openxmlformats-officedocument.presentationml."
-        "presentation.main+xml"
-    ): "pptx",
-    (
-        "application/vnd.openxmlformats-officedocument.spreadsheetml."
-        "sheet.main+xml"
-    ): "xlsx",
+    ("application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"): "docx",
+    ("application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"): "pptx",
+    ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"): "xlsx",
 }
 magika = Magika()
+
 
 def _normalize_text_for_language_guess(code: str) -> str:
     if not code:
@@ -70,7 +54,7 @@ def _normalize_text_for_language_guess(code: str) -> str:
     return "".join(normalized)
 
 
-def guess_language_by_text(code):
+def guess_language_by_text(code: str) -> str:
     normalized_code = _normalize_text_for_language_guess(code)
     if not normalized_code:
         return DEFAULT_LANG
@@ -171,18 +155,23 @@ def _guess_ooxml_suffix_by_path(file_path: Path) -> str | None:
         return None
 
 
-def guess_suffix_by_bytes(file_bytes, file_path=None) -> str:
+def guess_suffix_by_bytes(file_bytes: bytes, file_path: str | None = None) -> str:
     ooxml_suffix = _guess_ooxml_suffix_by_bytes(file_bytes)
     if ooxml_suffix:
         return ooxml_suffix
 
     suffix = magika.identify_bytes(file_bytes).prediction.output.label
-    if file_path and suffix in ["ai", "html"] and Path(file_path).suffix.lower() in [".pdf"] and file_bytes[:4] == PDF_SIG_BYTES:
+    if (
+        file_path
+        and suffix in ["ai", "html"]
+        and Path(file_path).suffix.lower() in [".pdf"]
+        and file_bytes[:4] == PDF_SIG_BYTES
+    ):
         suffix = "pdf"
     return suffix
 
 
-def guess_suffix_by_path(file_path) -> str:
+def guess_suffix_by_path(file_path: str | Path) -> str:
     if not isinstance(file_path, Path):
         file_path = Path(file_path)
 
@@ -193,7 +182,7 @@ def guess_suffix_by_path(file_path) -> str:
     suffix = magika.identify_path(file_path).prediction.output.label
     if suffix in ["ai", "html"] and file_path.suffix.lower() in [".pdf"]:
         try:
-            with open(file_path, 'rb') as f:
+            with open(file_path, "rb") as f:
                 if f.read(4) == PDF_SIG_BYTES:
                     suffix = "pdf"
         except Exception as e:

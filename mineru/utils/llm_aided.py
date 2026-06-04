@@ -1,23 +1,26 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from __future__ import annotations
+
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Callable
 
 import json_repair
 from loguru import logger
 from openai import OpenAI
 
-from mineru.backend.pipeline.pipeline_middle_json_mkcontent import merge_para_with_text
-from mineru.utils.enum_class import BlockType
-
+from ..backend.pipeline.pipeline_middle_json_mkcontent import merge_para_with_text
+from .enum_class import BlockType
 
 TITLE_BLOCK_TYPES = {
     BlockType.TITLE,
     BlockType.DOC_TITLE,
     BlockType.PARAGRAPH_TITLE,
 }
+
 MAX_TITLE_GROUP_WORKERS = 4
 
 
-def _get_title_line_avg_height(block):
+def _get_title_line_avg_height(block: dict[str, Any]) -> float:
     line_avg_height = block.get("line_avg_height")
     if isinstance(line_avg_height, (int, float)) and line_avg_height > 0:
         return line_avg_height
@@ -41,7 +44,9 @@ def _get_title_line_avg_height(block):
     return 0
 
 
-def _collect_title_block_refs(page_info_list):
+def _collect_title_block_refs(
+    page_info_list: list[dict[str, Any]],
+) -> tuple[list[tuple[dict[str, Any], dict[str, Any]]], set[Any]]:
     title_block_refs = []
     title_types = set()
 
@@ -55,7 +60,7 @@ def _collect_title_block_refs(page_info_list):
     return title_block_refs, title_types
 
 
-def _build_title_dict(title_block_refs):
+def _build_title_dict(title_block_refs: list[tuple[dict[str, Any], dict[str, Any]]]) -> dict[str, list[Any]]:
     title_dict = {}
 
     for i, (page_info, block) in enumerate(title_block_refs):
@@ -68,7 +73,7 @@ def _build_title_dict(title_block_refs):
     return title_dict
 
 
-def _build_title_optimize_prompt(title_dict):
+def _build_title_optimize_prompt(title_dict: dict[str, list[Any]]) -> str:
     return f"""输入的内容是一篇文档中所有标题组成的字典，请根据以下指南优化标题的结果，使结果符合正常文档的层次结构：
 
 1. 字典中每个value均为一个list，包含以下元素：
@@ -111,7 +116,7 @@ Corrected title list:
 """
 
 
-def _build_relative_title_optimize_prompt(title_dict):
+def _build_relative_title_optimize_prompt(title_dict: dict[str, list[Any]]) -> str:
     return f"""输入内容是某一篇文档中除文章标题外的全部章节/段落标题组成的字典。
 
 请注意：
@@ -157,7 +162,9 @@ Corrected title list:
 """
 
 
-def _request_title_levels(title_aided_config, title_dict, prompt_builder=None):
+def _request_title_levels(
+    title_aided_config: dict[str, Any], title_dict: dict[str, list[Any]], prompt_builder: Callable[..., str] | None = None
+) -> dict[int, int] | None:
     if len(title_dict) == 0:
         return {}
 
@@ -182,9 +189,7 @@ def _request_title_levels(title_aided_config, title_dict, prompt_builder=None):
         "stream": True,
     }
     if "enable_thinking" in title_aided_config:
-        api_params["extra_body"] = {
-            "enable_thinking": title_aided_config["enable_thinking"]
-        }
+        api_params["extra_body"] = {"enable_thinking": title_aided_config["enable_thinking"]}
 
     while retry_count < max_retries:
         try:
@@ -206,9 +211,7 @@ def _request_title_levels(title_aided_config, title_dict, prompt_builder=None):
             if set(dict_completion.keys()) == expected_keys:
                 return dict_completion
 
-            logger.warning(
-                "The keys in the optimized title result do not match the input titles."
-            )
+            logger.warning("The keys in the optimized title result do not match the input titles.")
         except Exception as e:
             logger.exception(e)
 
@@ -218,7 +221,9 @@ def _request_title_levels(title_aided_config, title_dict, prompt_builder=None):
     return None
 
 
-def _apply_levels_to_blocks(title_block_refs, levels_by_index):
+def _apply_levels_to_blocks(
+    title_block_refs: list[tuple[dict[str, Any], dict[str, Any]]], levels_by_index: dict[int, int] | None
+) -> None:
     if levels_by_index is None:
         return
 
@@ -226,13 +231,13 @@ def _apply_levels_to_blocks(title_block_refs, levels_by_index):
         block["level"] = int(levels_by_index[i])
 
 
-def _normalize_title_types(title_block_refs):
+def _normalize_title_types(title_block_refs: list[tuple[dict[str, Any], dict[str, Any]]]) -> None:
     for _, block in title_block_refs:
         if block.get("type") in [BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE]:
             block["type"] = BlockType.TITLE
 
 
-def _get_title_block_identity(block):
+def _get_title_block_identity(block: dict[str, Any]) -> tuple[str, int] | tuple[str, tuple[Any, ...], str]:
     block_index = block.get("index")
     if block_index is not None:
         return ("index", block_index)
@@ -244,7 +249,7 @@ def _get_title_block_identity(block):
     )
 
 
-def _sync_para_titles_to_preproc(page_info_list):
+def _sync_para_titles_to_preproc(page_info_list: list[dict[str, Any]]) -> None:
     for page_info in page_info_list:
         para_title_map = {}
         for block in page_info.get("para_blocks", []):
@@ -267,13 +272,17 @@ def _sync_para_titles_to_preproc(page_info_list):
                 block["level"] = para_block["level"]
 
 
-def _run_single_pass_title_leveling(title_block_refs, title_aided_config):
+def _run_single_pass_title_leveling(
+    title_block_refs: list[tuple[dict[str, Any], dict[str, Any]]], title_aided_config: dict[str, Any]
+) -> None:
     title_dict = _build_title_dict(title_block_refs)
     levels_by_index = _request_title_levels(title_aided_config, title_dict)
     _apply_levels_to_blocks(title_block_refs, levels_by_index)
 
 
-def _split_paragraph_title_groups(title_block_refs):
+def _split_paragraph_title_groups(
+    title_block_refs: list[tuple[dict[str, Any], dict[str, Any]]],
+) -> list[list[tuple[dict[str, Any], dict[str, Any]]]]:
     groups = []
     current_group = []
 
@@ -292,17 +301,16 @@ def _split_paragraph_title_groups(title_block_refs):
     return groups
 
 
-def _offset_paragraph_title_levels(levels_by_index):
+def _offset_paragraph_title_levels(levels_by_index: dict[int, int] | None) -> dict[int, int] | None:
     if not levels_by_index:
         return levels_by_index
 
-    return {
-        index: 2 if level == 1 else level
-        for index, level in levels_by_index.items()
-    }
+    return {index: 2 if level == 1 else level for index, level in levels_by_index.items()}
 
 
-def _request_paragraph_group_levels(title_block_refs, title_aided_config):
+def _request_paragraph_group_levels(
+    title_block_refs: list[tuple[dict[str, Any], dict[str, Any]]], title_aided_config: dict[str, Any]
+) -> dict[int, int] | None:
     title_dict = _build_title_dict(title_block_refs)
     levels_by_index = _request_title_levels(
         title_aided_config,
@@ -312,7 +320,9 @@ def _request_paragraph_group_levels(title_block_refs, title_aided_config):
     return _offset_paragraph_title_levels(levels_by_index)
 
 
-def _run_grouped_title_leveling(title_block_refs, title_aided_config):
+def _run_grouped_title_leveling(
+    title_block_refs: list[tuple[dict[str, Any], dict[str, Any]]], title_aided_config: dict[str, Any]
+) -> None:
     doc_title_refs = []
     for title_ref in title_block_refs:
         _, block = title_ref
@@ -337,8 +347,7 @@ def _run_grouped_title_leveling(title_block_refs, title_aided_config):
             group_levels = [future.result() for future in futures]
     else:
         group_levels = [
-            _request_paragraph_group_levels(title_group, title_aided_config)
-            for title_group in paragraph_title_groups
+            _request_paragraph_group_levels(title_group, title_aided_config) for title_group in paragraph_title_groups
         ]
 
     for title_group, levels_by_index in zip(paragraph_title_groups, group_levels):
@@ -349,7 +358,7 @@ def _run_grouped_title_leveling(title_block_refs, title_aided_config):
         _normalize_title_types(title_group)
 
 
-def llm_aided_title(page_info_list, title_aided_config):
+def llm_aided_title(page_info_list: list[dict[str, Any]], title_aided_config: dict[str, Any]) -> None:
     title_block_refs, title_types = _collect_title_block_refs(page_info_list)
     if len(title_block_refs) == 0:
         logger.info("No titles detected, skipping LLM-aided title optimization.")

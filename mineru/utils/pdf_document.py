@@ -1,15 +1,25 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
+import asyncio
 import os
-from typing import TYPE_CHECKING
 
+import pypdfium2 as pdfium
 from PIL import Image
 
-from .pdfium_guard import close_pdfium_document, get_pdfium_document_page_count, open_pdfium_document, pdfium_guard
-
-if TYPE_CHECKING:
-    from mineru.types import PageInfo
+from ..types import PageInfo
+from .draw_bbox import draw_layout_bbox, draw_span_bbox
+from .pdf_classify import classify, get_text_quality_signal_pdfium
+from .pdf_classify import extract_pages as _extract_pages
+from .pdf_image_tools import get_crop_img, image_to_bytes, images_bytes_to_pdf_bytes
+from .pdf_text_tool import get_lines_from_chars, get_page_chars
+from .pdfium_guard import (
+    close_pdfium_document,
+    get_pdfium_document_page_count,
+    open_pdfium_document,
+    pdfium_guard,
+    rewrite_pdf_bytes_with_pdfium,
+)
 
 
 class PDFDocument:
@@ -29,8 +39,6 @@ class PDFDocument:
 
     @staticmethod
     def from_image(image_bytes: bytes) -> "PDFDocument":
-        from .pdf_image_tools import images_bytes_to_pdf_bytes
-
         return PDFDocument(images_bytes_to_pdf_bytes(image_bytes))
 
     # ------------------------------------------------------------------ #
@@ -86,22 +94,14 @@ class PDFDocument:
             finally:
                 bitmap.close()
 
-    def render_pages(
-        self, start: int = 0, end: int | None = None, *, scale: int = 2
-    ) -> list[Image.Image]:
+    def render_pages(self, start: int = 0, end: int | None = None, *, scale: int = 2) -> list[Image.Image]:
         end = end if end is not None else self.page_count - 1
         return [self.render_page(i, scale=scale) for i in range(start, end + 1)]
 
     async def render_page_async(self, page_idx: int, *, scale: int = 2) -> Image.Image:
-        import asyncio
-
         return await asyncio.to_thread(self.render_page, page_idx, scale=scale)
 
-    async def render_pages_async(
-        self, start: int = 0, end: int | None = None, *, scale: int = 2
-    ) -> list[Image.Image]:
-        import asyncio
-
+    async def render_pages_async(self, start: int = 0, end: int | None = None, *, scale: int = 2) -> list[Image.Image]:
         end = end if end is not None else self.page_count - 1
         tasks = [self.render_page_async(i, scale=scale) for i in range(start, end + 1)]
         return await asyncio.gather(*tasks)
@@ -113,8 +113,6 @@ class PDFDocument:
         *,
         scale: int = 2,
     ) -> bytes:
-        from .pdf_image_tools import get_crop_img, image_to_bytes
-
         pil_img = self.render_page(page_idx, scale=scale)
         crop = get_crop_img(bbox, pil_img, scale=scale)
         return image_to_bytes(crop, image_format="JPEG")
@@ -124,14 +122,10 @@ class PDFDocument:
     # ------------------------------------------------------------------ #
 
     def get_page_chars(self, page_idx: int) -> dict:
-        from .pdf_text_tool import get_page_chars as _get_page_chars
-
         page = self._get_page(page_idx)
-        return _get_page_chars(page)
+        return get_page_chars(page)
 
     def get_page_lines(self, page_idx: int) -> list[dict]:
-        from .pdf_text_tool import get_lines_from_chars
-
         chars_dict = self.get_page_chars(page_idx)
         return get_lines_from_chars(chars_dict["chars"])
 
@@ -140,13 +134,9 @@ class PDFDocument:
     # ------------------------------------------------------------------ #
 
     def classify(self) -> str:
-        from .pdf_classify import classify as _classify
-
-        return _classify(self._pdf_bytes)
+        return classify(self._pdf_bytes)
 
     def get_text_quality(self) -> dict:
-        from .pdf_classify import get_text_quality_signal_pdfium
-
         doc = self._ensure_open()
         page_indices = list(range(self.page_count))
         return get_text_quality_signal_pdfium(doc, page_indices)
@@ -156,8 +146,6 @@ class PDFDocument:
     # ------------------------------------------------------------------ #
 
     def extract_page_range(self, start: int, end: int) -> "PDFDocument":
-        from .pdfium_guard import rewrite_pdf_bytes_with_pdfium
-
         new_bytes = rewrite_pdf_bytes_with_pdfium(
             self._pdf_bytes,
             start_page_id=start,
@@ -166,8 +154,6 @@ class PDFDocument:
         return PDFDocument(new_bytes)
 
     def sample_pages(self, max_pages: int = 3) -> "PDFDocument":
-        from .pdf_classify import extract_pages as _extract_pages
-
         new_bytes = _extract_pages(self._pdf_bytes)
         if max_pages > 0 and new_bytes:
             new_doc = PDFDocument(new_bytes)
@@ -182,15 +168,11 @@ class PDFDocument:
     # ------------------------------------------------------------------ #
 
     def draw_layout_bbox(self, pages: list[PageInfo], output_path: str) -> None:
-        from .draw_bbox import draw_layout_bbox
-
         out_dir = os.path.dirname(output_path) or "."
         filename = os.path.basename(output_path)
         draw_layout_bbox(pages, self._pdf_bytes, out_dir, filename)
 
     def draw_span_bbox(self, pages: list[PageInfo], output_path: str) -> None:
-        from .draw_bbox import draw_span_bbox
-
         out_dir = os.path.dirname(output_path) or "."
         filename = os.path.basename(output_path)
         draw_span_bbox(pages, self._pdf_bytes, out_dir, filename)
@@ -199,12 +181,10 @@ class PDFDocument:
     #  Internal
     # ------------------------------------------------------------------ #
 
-    def _ensure_open(self):
+    def _ensure_open(self) -> pdfium.PdfDocument:
         if self._pdf_doc is None:
-            import pypdfium2 as pdfium
-
             self._pdf_doc = open_pdfium_document(pdfium.PdfDocument, self._pdf_bytes)
         return self._pdf_doc
 
-    def _get_page(self, page_idx: int):
+    def _get_page(self, page_idx: int) -> pdfium.PdfPage:
         return self._ensure_open()[page_idx]

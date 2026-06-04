@@ -2,7 +2,7 @@
 from loguru import logger
 
 
-def get_end_page_id(end_page_id, pdf_page_num):
+def get_end_page_id(end_page_id: int | None, pdf_page_num: int) -> int:
     end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else pdf_page_num - 1
     if end_page_id > pdf_page_num - 1:
         logger.debug("end_page_id is out of range, use images length")

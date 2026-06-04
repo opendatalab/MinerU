@@ -4,7 +4,10 @@ import math
 import numpy as np
 
 
-def normalize_to_int_bbox(box, image_size: tuple[int, int] | None = None) -> list[int] | None:
+def normalize_to_int_bbox(
+    box: list[float] | tuple[float, ...] | None,
+    image_size: tuple[int, int] | None = None,
+) -> list[int] | None:
     if box is None:
         return None
 

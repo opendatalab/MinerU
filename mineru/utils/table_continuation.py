@@ -1,7 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-from mineru.utils.char_utils import full_to_half
-
+from .char_utils import full_to_half
 
 CONTINUATION_END_MARKERS = [
     "(续)",
@@ -26,13 +25,9 @@ def is_table_continuation_text(text: str) -> bool:
     if not continuation_text:
         return False
 
-    return (
-        any(
-            _matches_continuation_end_marker(continuation_text, marker.lower())
-            for marker in CONTINUATION_END_MARKERS
-        )
-        or any(marker.lower() in continuation_text for marker in CONTINUATION_INLINE_MARKERS)
-    )
+    return any(
+        _matches_continuation_end_marker(continuation_text, marker.lower()) for marker in CONTINUATION_END_MARKERS
+    ) or any(marker.lower() in continuation_text for marker in CONTINUATION_INLINE_MARKERS)
 
 
 def _matches_continuation_end_marker(text: str, marker: str) -> bool:

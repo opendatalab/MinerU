@@ -28,19 +28,19 @@ def open_pdfium_document(
         return opener(*args, **kwargs)
 
 
-def get_pdfium_document_page_count(pdf_doc) -> int:
+def get_pdfium_document_page_count(pdf_doc: Any) -> int:
     with pdfium_guard():
         return len(pdf_doc)
 
 
-def close_pdfium_document(pdf_doc) -> None:
+def close_pdfium_document(pdf_doc: Any) -> None:
     if pdf_doc is None:
         return
     with pdfium_guard():
         pdf_doc.close()
 
 
-def close_pdfium_child(pdfium_obj) -> None:
+def close_pdfium_child(pdfium_obj: Any) -> None:
     """显式关闭 PDFium 子对象，避免依赖 weakref/finalizer 延迟释放 native 资源。"""
     if pdfium_obj is None:
         return

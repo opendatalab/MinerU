@@ -2,7 +2,6 @@
 from dataclasses import dataclass
 from typing import Any, Optional
 
-
 VISIBLE_SPACE_STYLES = {"underline", "emphasis", "strikethrough"}
 
 
@@ -77,10 +76,7 @@ def has_non_visible_text_style(format_obj: Any) -> bool:
     """判断格式是否只包含空白文本不可见的字形样式。"""
     if format_obj is None:
         return False
-    return bool(
-        getattr(format_obj, "bold", False)
-        or getattr(format_obj, "italic", False)
-    )
+    return bool(getattr(format_obj, "bold", False) or getattr(format_obj, "italic", False))
 
 
 def normalize_format_for_text(
@@ -88,7 +84,7 @@ def normalize_format_for_text(
     text: str,
     *,
     preserve_blank_non_visible_style: bool = False,
-):
+) -> Any:
     """按文本内容规范 run 格式，避免空白 run 误把不可见样式带到输出。"""
     if format_obj is None:
         return None
@@ -198,17 +194,9 @@ def _format_hyperlink_segments(group: list[OfficeRichTextSegment]) -> str:
         return ""
     hyperlink = group[0].hyperlink
     if not is_valid_hyperlink_target(hyperlink):
-        return "".join(
-            format_text_tag(segment.text, _style_str(segment.style))
-            for segment in group
-            if segment.text
-        )
+        return "".join(format_text_tag(segment.text, _style_str(segment.style)) for segment in group if segment.text)
 
-    text_tags = [
-        format_text_tag(segment.text, _style_str(segment.style), force_tag=True)
-        for segment in group
-        if segment.text
-    ]
+    text_tags = [format_text_tag(segment.text, _style_str(segment.style), force_tag=True) for segment in group if segment.text]
     return f"<hyperlink>{''.join(text_tags)}<url>{hyperlink}</url></hyperlink>"
 
 
@@ -325,9 +313,8 @@ def build_rich_text_from_segments(
             index += 1
             while index < len(normalized_segments):
                 next_segment = normalized_segments[index]
-                if (
-                    not is_valid_hyperlink_target(next_segment.hyperlink)
-                    or str(next_segment.hyperlink) != str(segment.hyperlink)
+                if not is_valid_hyperlink_target(next_segment.hyperlink) or str(next_segment.hyperlink) != str(
+                    segment.hyperlink
                 ):
                     break
                 group.append(next_segment)
@@ -364,11 +351,7 @@ def build_text_mappings_from_elements(
             index += 1
             while index < len(paragraph_elements):
                 next_text, next_format, next_hyperlink = paragraph_elements[index]
-                if (
-                    not next_text
-                    or not is_valid_hyperlink_target(next_hyperlink)
-                    or str(next_hyperlink) != str(hyperlink)
-                ):
+                if not next_text or not is_valid_hyperlink_target(next_hyperlink) or str(next_hyperlink) != str(hyperlink):
                     break
                 group.append((next_text, next_format, next_hyperlink))
                 index += 1

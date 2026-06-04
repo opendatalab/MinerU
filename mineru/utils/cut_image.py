@@ -1,12 +1,21 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from typing import Any
+
 from loguru import logger
 
 from .pdf_image_tools import cut_image
 
 
-def cut_image_and_table(span, page_pil_img, page_img_md5, page_id, image_writer, scale=2):
+def cut_image_and_table(
+    span: dict[str, Any],
+    page_pil_img: Any,
+    page_img_md5: str,
+    page_id: int,
+    image_writer: Any,
+    scale: int = 2,
+) -> dict[str, Any]:
 
-    def return_path(path_type):
+    def return_path(path_type: str) -> str:  # noqa: ANN202
         return f"{path_type}/{page_img_md5}"
 
     span_type = span["type"]
@@ -21,7 +30,7 @@ def cut_image_and_table(span, page_pil_img, page_img_md5, page_id, image_writer,
     return span
 
 
-def check_img_bbox(bbox) -> bool:
+def check_img_bbox(bbox: list[float]) -> bool:
     if any([bbox[0] >= bbox[2], bbox[1] >= bbox[3]]):
         logger.warning(f"image_bboxes: 错误的box, {bbox}")
         return False
