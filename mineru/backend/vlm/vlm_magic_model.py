@@ -7,10 +7,10 @@ from loguru import logger
 from mineru_vl_utils.structs import ContentBlock, ExtractResult
 
 from ...types import Block, Line, Span
-from ...utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from ...utils.enum_class import BlockType, ContentType
 from ...utils.guess_suffix_or_lang import guess_language_by_text
-from ...utils.visual_magic_model_utils import (
+from ..utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
+from ..utils.visual_magic_model_utils import (
     GENERIC_CHILD_TYPES,
     IMAGE_BLOCK_BODY,
     VISUAL_MAIN_TYPES,

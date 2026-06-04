@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 from ...types import EMPTY_BBOX, Block, Line, Span
 from ...utils.enum_class import BlockType, ContentType
-from ...utils.magic_model_utils import tie_up_category_by_index
+from ..utils.magic_model_utils import tie_up_category_by_index
 
 
 class MagicModel:

@@ -3,13 +3,13 @@ from typing import Any
 
 from ...data.data_reader_writer import DataWriter
 from ...types import Block, PageInfo, Span
-from ...utils.char_utils import full_to_half
 from ...utils.cut_image import cut_image_and_table
 from ...utils.enum_class import BlockType, ContentType
 from ...utils.hash_utils import bytes_md5
 from ...utils.pdfium_guard import pdfium_guard
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from ...version import __version__
+from ..utils.char_utils import full_to_half
 from ..utils.html_image_utils import replace_inline_table_images
 from ..utils.middle_json_utils import append_pages, apply_post_ocr, build_middle_json
 from ..utils.runtime_utils import cross_page_table_merge

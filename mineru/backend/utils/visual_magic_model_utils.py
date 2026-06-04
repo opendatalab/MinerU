@@ -4,8 +4,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ...utils.enum_class import BlockType
 from .boxbase import bbox_center_distance, bbox_distance, calculate_overlap_area_in_bbox1_area_ratio
-from .enum_class import BlockType
 from .table_continuation import is_table_continuation_text
 
 IMAGE_BLOCK_BODY = "image_block_body"

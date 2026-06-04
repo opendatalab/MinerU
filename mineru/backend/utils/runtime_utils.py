@@ -8,7 +8,7 @@ from typing import Any
 from loguru import logger
 
 from ...types import PageInfo
-from ...utils.table_merge import merge_table
+from .table_merge import merge_table
 
 
 def cross_page_table_merge(pdf_info: list[PageInfo]) -> None:

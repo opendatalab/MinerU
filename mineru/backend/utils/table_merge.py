@@ -7,9 +7,9 @@ from typing import Any
 
 from bs4 import BeautifulSoup, Tag
 
-from ..backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
+from ...utils.enum_class import BlockType, SplitFlag
+from ..vlm.vlm_middle_json_mkcontent import merge_para_with_text
 from .char_utils import full_to_half
-from .enum_class import BlockType, SplitFlag
 from .table_continuation import is_table_continuation_text
 
 MAX_HEADER_ROWS = 5

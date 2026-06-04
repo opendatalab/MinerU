@@ -4,18 +4,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from ...types import Block, Line, Span
-from ...utils.boxbase import calculate_overlap_area_2_minbox_area_ratio, calculate_overlap_area_in_bbox1_area_ratio
 from ...utils.enum_class import BlockType, ContentType
 from ...utils.guess_suffix_or_lang import guess_language_by_text
-from ...utils.span_block_fix import (
+from ..utils.boxbase import calculate_overlap_area_2_minbox_area_ratio, calculate_overlap_area_in_bbox1_area_ratio
+from ..utils.span_block_fix import (
     is_vertical_text_block_by_spans,
     line_sort_spans_by_left_to_right,
     merge_spans_to_line,
     merge_spans_to_vertical_line,
     vertical_line_sort_spans_from_top_to_bottom,
 )
-from ...utils.span_pre_proc import SpanBlockMatcher, txt_spans_extract
-from ...utils.visual_magic_model_utils import (
+from ..utils.span_pre_proc import SpanBlockMatcher, txt_spans_extract
+from ..utils.visual_magic_model_utils import (
     fallback_inline_caption_fragments,
     fallback_leading_table_continuation_captions,
     find_best_visual_parent,

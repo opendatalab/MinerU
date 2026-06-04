@@ -17,7 +17,6 @@ from PIL import Image
 from tqdm import tqdm
 
 from ...data.data_reader_writer import DataWriter
-from ...utils.boxbase import calculate_overlap_area_2_minbox_area_ratio
 from ...utils.config_reader import get_device, get_processing_window_size
 from ...utils.enum_class import BlockType as MineruBlockType
 from ...utils.enum_class import ImageType, NotExtractType
@@ -41,6 +40,7 @@ from ..pipeline.model_init import (
     run_ocr_det_inference,
     run_ocr_rec_inference,
 )
+from ..utils.boxbase import calculate_overlap_area_2_minbox_area_ratio
 from ..utils.middle_json_utils import append_pages
 from ..utils.runtime_utils import exclude_progress_bar_idle_time
 from ..vlm.vlm_analyze import (
