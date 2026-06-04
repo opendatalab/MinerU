@@ -13,8 +13,7 @@ from .model_init import (
     AtomModelSingleton,
     run_layout_inference,
     run_mfr_inference,
-    run_ocr_det_inference,
-    run_ocr_rec_inference,
+    run_ocr_inference,
 )
 from .model_list import AtomicModel
 from ...utils.config_reader import (
@@ -534,7 +533,7 @@ class BatchAnalyze:
                     if inline_mask_boxes
                     else bgr_image
                 )
-                ocr_result = run_ocr_det_inference(
+                ocr_result = run_ocr_inference(
                     det_ocr_engine.ocr, det_image, rec=False
                 )[0]
                 if ocr_result and formula_mask_boxes:
@@ -565,7 +564,7 @@ class BatchAnalyze:
                     enable_merge_det_boxes=False,
                 )
                 cropped_img_list = [item["cropped_img"] for item in rec_img_list]
-                ocr_res_list = run_ocr_rec_inference(
+                ocr_res_list = run_ocr_inference(
                     ocr_engine.ocr,
                     cropped_img_list,
                     det=False,
@@ -731,7 +730,7 @@ class BatchAnalyze:
 
                     # 批处理检测
                     det_batch_size = min(len(batch_images), self.batch_ratio * OCR_DET_BASE_BATCH_SIZE)
-                    batch_results = run_ocr_det_inference(
+                    batch_results = run_ocr_inference(
                         ocr_model.text_detector.batch_predict, batch_images, det_batch_size
                     )
 
@@ -793,7 +792,7 @@ class BatchAnalyze:
                         bgr_image,
                         adjusted_mfdetrec_res,
                     )
-                    ocr_res = run_ocr_det_inference(
+                    ocr_res = run_ocr_inference(
                         ocr_model.ocr,
                         det_image,
                         mfd_res=adjusted_mfdetrec_res,
@@ -852,7 +851,7 @@ class BatchAnalyze:
                         atom_model_name=AtomicModel.OCR,
                         lang=lang
                     )
-                    ocr_res_list = run_ocr_rec_inference(
+                    ocr_res_list = run_ocr_inference(
                         ocr_model.ocr, img_crop_list, det=False, tqdm_enable=True
                     )[0]
 
@@ -923,7 +922,7 @@ class BatchAnalyze:
                 )
 
             seal_crop_bgr = cv2.cvtColor(seal_crop_rgb, cv2.COLOR_RGB2BGR)
-            seal_ocr_res = run_ocr_det_inference(
+            seal_ocr_res = run_ocr_inference(
                 seal_ocr_model.ocr, seal_crop_bgr, det=True, rec=True
             )[0]
             if not seal_ocr_res:
