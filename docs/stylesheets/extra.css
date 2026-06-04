@@ -1,0 +1,29 @@
+/* demo 页面嵌入 Gradio，需要隐藏右侧目录列并释放主内容宽度。 */
+.md-main__inner:has(.mineru-demo-page) {
+  max-width: 100%;
+}
+
+.md-main__inner:has(.mineru-demo-page) .md-sidebar--secondary {
+  display: none;
+}
+
+.md-main__inner:has(.mineru-demo-page) .md-content {
+  max-width: none;
+}
+
+.md-main__inner:has(.mineru-demo-page) .md-content__inner {
+  margin-right: 0;
+}
+
+.mineru-demo-page {
+  width: 100%;
+}
+
+.mineru-demo-iframe {
+  display: block;
+  width: 100%;
+  min-height: calc(-40px + 100vh);
+  height: 1746px;
+  border: 0;
+  overflow: auto;
+}
