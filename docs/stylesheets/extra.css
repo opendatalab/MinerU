@@ -24,7 +24,7 @@
 .mineru-demo-iframe {
   display: block;
   width: 100%;
-  height: clamp(760px, calc(100vh - 12rem), 1180px);
+  height: clamp(1180px, calc(100vh + 16rem), 1360px);
   border: 0;
   overflow: auto;
 }
