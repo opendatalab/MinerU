@@ -326,6 +326,28 @@ def _build_formula_mask_inputs(images_layout_res):
     return page_formula_masks
 
 
+def _build_inline_formula_det_inputs(images_layout_res):
+    """从 layout 检测结果提取行内公式框，供 VLM-OCR 作为 OCR det hint 使用。"""
+    inline_formula_inputs = []
+    for layout_res in images_layout_res:
+        page_inline_formula_inputs = []
+        for res in layout_res:
+            if res.get('label') != 'inline_formula':
+                continue
+            bbox = _formula_item_to_pixel_bbox(res)
+            if bbox is None:
+                continue
+            page_inline_formula_inputs.append(
+                {
+                    "bbox": bbox,
+                    "score": float(res.get('score', 0.0)),
+                    "latex": "",
+                }
+            )
+        inline_formula_inputs.append(page_inline_formula_inputs)
+    return inline_formula_inputs
+
+
 def _normalize_page_size(page_image):
     """从PIL或numpy图像中读取页面宽高，供归一化bbox还原为像素bbox。"""
     if hasattr(page_image, "size"):
@@ -570,20 +592,22 @@ def _apply_layout_title_split_for_window(
         images_pil_list,
         batch_ratio,
     )
+    formula_mask_inputs = _build_formula_mask_inputs(images_layout_res)
+    inline_formula_list = _build_inline_formula_det_inputs(images_layout_res)
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
     ocr_res_list = ocr_det(
         hybrid_pipeline_model,
         np_images,
         model_list,
-        _build_formula_mask_inputs(images_layout_res),
+        formula_mask_inputs,
         False,
         batch_ratio=batch_ratio,
         fill_text=False,
     )
-    _normalize_bbox([[] for _ in images_pil_list], ocr_res_list, images_pil_list)
+    _normalize_bbox(inline_formula_list, ocr_res_list, images_pil_list)
     model_list[:] = _merge_page_sidecar_items(
         model_list,
-        [[] for _ in images_pil_list],
+        inline_formula_list,
         ocr_res_list,
         keep_ocr_text=False,
     )
