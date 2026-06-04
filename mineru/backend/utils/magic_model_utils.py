@@ -3,11 +3,17 @@
 包含两个MagicModel类中重复使用的方法和逻辑
 """
 
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, TypeVar
 
 from loguru import logger
 
 from .boxbase import bbox_center_distance, bbox_distance, is_in
+
+T = TypeVar("T")
+
+
+def _identical(x: T) -> T:
+    return x
 
 
 def reduct_overlap(bboxes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -60,9 +66,9 @@ def tie_up_category_by_index(
 
     # 如果没有提供自定义提取函数，使用默认函数
     if extract_subject_func is None:
-        extract_subject_func = lambda x: x
+        extract_subject_func = _identical
     if extract_object_func is None:
-        extract_object_func = lambda x: x
+        extract_object_func = _identical
 
     # 初始化结果字典，key为主体索引，value为关联信息
     result_dict = {}

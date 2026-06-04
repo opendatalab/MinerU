@@ -132,13 +132,13 @@ def _normalize_split_title_blocks(pdf_info_list: list[PageInfo]) -> None:
         BlockType.PARAGRAPH_TITLE: 2,
     }
     for page_info in pdf_info_list:
-        for block_key in ["preproc_blocks", "para_blocks"]:
-            for block in page_info.get(block_key, []):
-                title_level = title_type_to_level.get(block.get("type"))
+        for blocks in [page_info.preproc_blocks, page_info.para_blocks]:
+            for block in blocks:
+                title_level = title_type_to_level.get(block.type)
                 if title_level is None:
                     continue
-                block["type"] = BlockType.TITLE
-                block["level"] = title_level
+                block.type = BlockType.TITLE
+                block.level = title_level
 
 
 def init_middle_json(_ocr_enable: bool, _vlm_ocr_enable: bool) -> dict[str, Any]:
@@ -165,10 +165,7 @@ def apply_server_side_postprocess(
 def finalize_middle_json_from_preproc(pdf_info_list: list[PageInfo]) -> None:
     """从 Hybrid preproc_blocks 执行完整 finalize，供服务端完整路径和客户端复用。"""
     build_para_blocks_from_preproc(pdf_info_list)
-    merge_para_text_blocks(
-        pdf_info_list,
-        auto_merge_by_det=True,
-    )
+    merge_para_text_blocks(pdf_info_list, auto_merge_by_det=True)
 
     table_enable = get_table_enable(os.getenv("MINERU_VLM_TABLE_ENABLE", "True").lower() == "true")
     if table_enable:
@@ -186,12 +183,7 @@ def finalize_middle_json(
     _vlm_ocr_enable: bool,
 ) -> None:
     """保持旧入口语义：服务端先做必要 post-OCR，再执行完整 finalize。"""
-    apply_server_side_postprocess(
-        pdf_info_list,
-        hybrid_pipeline_model,
-        _ocr_enable,
-        _vlm_ocr_enable,
-    )
+    apply_server_side_postprocess(pdf_info_list, hybrid_pipeline_model, _ocr_enable, _vlm_ocr_enable)
     finalize_middle_json_from_preproc(pdf_info_list)
 
 

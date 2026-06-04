@@ -82,7 +82,7 @@ class BatchAnalyze:
     @staticmethod
     def _apply_mask_boxes_to_image(
         bgr_image: np.ndarray,
-        mask_boxes: list[dict] | None,
+        mask_boxes: list[dict[str, Any]] | None,
     ) -> np.ndarray:
         if not mask_boxes:
             return bgr_image
@@ -106,14 +106,14 @@ class BatchAnalyze:
     def _get_masked_det_image(
         self,
         bgr_image: np.ndarray,
-        mask_boxes: list[dict] | None,
+        mask_boxes: list[dict[str, Any]] | None,
     ) -> np.ndarray:
         if not self.mask_inline_formula_for_ocr_det:
             return bgr_image
         return self._apply_mask_boxes_to_image(bgr_image, mask_boxes)
 
     @staticmethod
-    def _prune_empty_ocr_text_blocks(layout_res: list[dict], ocr_enable: bool) -> None:
+    def _prune_empty_ocr_text_blocks(layout_res: list[dict[str, Any]], ocr_enable: bool) -> None:
         if not ocr_enable or not layout_res:
             return
 
@@ -265,10 +265,10 @@ class BatchAnalyze:
     @classmethod
     def _extract_table_inline_objects(
         cls,
-        layout_res: list[dict],
+        layout_res: list[dict[str, Any]],
         np_img: np.ndarray,
         formula_enable: bool,
-    ) -> dict[int, list[dict]]:
+    ) -> dict[int, list[dict[str, Any]]]:
         image_h, image_w = np_img.shape[:2]
         image_size = (image_h, image_w)
 

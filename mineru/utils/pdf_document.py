@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from typing import Any
 
 import pypdfium2 as pdfium
 from PIL import Image
@@ -121,11 +122,11 @@ class PDFDocument:
     #  Text
     # ------------------------------------------------------------------ #
 
-    def get_page_chars(self, page_idx: int) -> dict:
+    def get_page_chars(self, page_idx: int) -> dict[str, Any]:
         page = self._get_page(page_idx)
         return get_page_chars(page)
 
-    def get_page_lines(self, page_idx: int) -> list[dict]:
+    def get_page_lines(self, page_idx: int) -> list[dict[str, Any]]:
         chars_dict = self.get_page_chars(page_idx)
         return get_lines_from_chars(chars_dict["chars"])
 
@@ -136,7 +137,7 @@ class PDFDocument:
     def classify(self) -> str:
         return classify(self._pdf_bytes)
 
-    def get_text_quality(self) -> dict:
+    def get_text_quality(self) -> dict[str, Any]:
         doc = self._ensure_open()
         page_indices = list(range(self.page_count))
         return get_text_quality_signal_pdfium(doc, page_indices)

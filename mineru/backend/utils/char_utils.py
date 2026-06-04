@@ -7,7 +7,7 @@ LINE_END_HYPHEN_CHARS = "-\u00ad\u2010\u2011\u2043"
 LINE_END_HYPHEN_RE = re.compile(rf"[A-Za-z]+[{re.escape(LINE_END_HYPHEN_CHARS)}]\s*$")
 
 
-def _is_hyphen_at_line_end(line: str) -> bool:
+def is_hyphen_at_line_end(line: str) -> bool:
     """判断文本行是否以英文单词的跨行断词符结尾。
 
     只识别字母后紧跟行末 hyphen 的断词场景，不处理词内连字符或普通破折号。
@@ -15,7 +15,7 @@ def _is_hyphen_at_line_end(line: str) -> bool:
     return bool(LINE_END_HYPHEN_RE.search(line))
 
 
-def _full_to_half_exclude_marks(text: str) -> str:
+def full_to_half_exclude_marks(text: str) -> str:
     """Convert full-width characters to half-width characters using code point manipulation.
 
     Args:

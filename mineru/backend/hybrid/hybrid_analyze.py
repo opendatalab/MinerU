@@ -284,7 +284,7 @@ def _formula_item_to_pixel_bbox(item: dict[str, Any]) -> list[int] | None:
     return None
 
 
-def _build_inline_formula_inputs(images_layout_res: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+def _build_inline_formula_inputs(images_layout_res: list[list[dict[str, Any]]]) -> list[list[dict[str, Any]]]:
     inline_formula_inputs = []
     for layout_res in images_layout_res:
         page_inline_formula_inputs = []
@@ -330,7 +330,7 @@ def _normalize_page_size(page_image: Any) -> list[int]:
     return width, height
 
 
-def _bbox_to_pixel_bbox(bbox: list[float], page_size: list[int]) -> list[int]:
+def _bbox_to_pixel_bbox(bbox: list[float], page_size: list[int]) -> list[int] | None:
     """将归一化或像素bbox统一成像素bbox，异常bbox返回None。"""
     if bbox is None or len(bbox) != 4:
         return None
@@ -396,7 +396,7 @@ def _predict_layout_for_title_split(
     hybrid_pipeline_model: MineruHybridModel,
     images: list[Image.Image],
     batch_ratio: int,
-) -> list[dict[str, Any]]:
+) -> list[list[dict[str, Any]]]:
     """执行layout小模型检测，专门为Hybrid标题拆分提供页面layout结果。"""
     return run_layout_inference(
         hybrid_pipeline_model.layout_model.batch_predict,

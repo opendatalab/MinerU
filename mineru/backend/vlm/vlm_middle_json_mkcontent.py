@@ -2,14 +2,15 @@
 import os
 import re
 from html import unescape
+from typing import Any
 
 from loguru import logger
 
 from ...types import Block, Line
-from ...utils.char_utils import full_to_half_exclude_marks, is_hyphen_at_line_end
 from ...utils.config_reader import get_formula_enable, get_latex_delimiter_config, get_table_enable
 from ...utils.enum_class import BlockType, ContentType, ContentTypeV2, MakeMode
 from ...utils.language import detect_lang
+from ..utils.char_utils import full_to_half_exclude_marks, is_hyphen_at_line_end
 from ..utils.markdown_utils import escape_conservative_markdown_text, escape_text_block_markdown_prefix
 
 latex_delimiters_config = get_latex_delimiter_config()
@@ -88,8 +89,8 @@ def _build_media_path(img_buket_path: str, image_path: str) -> str:
     return f"{img_buket_path}/{image_path}"
 
 
-def _apply_visual_sub_type(para_content: dict, para_block: Block) -> None:
-    sub_type = para_block.get("sub_type")
+def _apply_visual_sub_type(para_content: dict[str, Any], para_block: Block) -> None:
+    sub_type = para_block.sub_type
     if sub_type:
         para_content["sub_type"] = sub_type
 
@@ -130,15 +131,15 @@ def _get_blocks_in_index_order(blocks: list[Block]) -> list[Block]:
         block
         for _, block in sorted(
             enumerate(blocks),
-            key=lambda item: (item[1].get("index", float("inf")), item[0]),
+            key=lambda item: (item[1].index, item[0]),
         )
     ]
 
 
 def _render_code_block_markdown(block: Block, para_block: Block) -> str:
     code_text = merge_para_with_text(block)
-    if para_block.get("sub_type") == BlockType.CODE:
-        guess_lang = para_block.get("guess_lang", "txt")
+    if para_block.sub_type == BlockType.CODE:
+        guess_lang = para_block.guess_lang or "txt"
         return f"```{guess_lang}\n{code_text}\n```"
     return code_text
 
@@ -171,11 +172,11 @@ def _render_visual_block_segments(
                     continue
                 rendered_segments.extend(
                     _build_visual_body_segments(
-                        span.get("image_path", ""),
-                        span.get("content", ""),
+                        span.image_path,
+                        span.content,
                         img_buket_path,
                         ContentType.IMAGE,
-                        summary_override=para_block.get("sub_type", ""),
+                        summary_override=para_block.sub_type,
                     )
                 )
         return rendered_segments
@@ -188,11 +189,11 @@ def _render_visual_block_segments(
                     continue
                 rendered_segments.extend(
                     _build_visual_body_segments(
-                        span.get("image_path", ""),
-                        span.get("content", ""),
+                        span.image_path,
+                        span.content,
                         img_buket_path,
                         ContentType.CHART,
-                        summary_override=para_block.get("sub_type", ""),
+                        summary_override=para_block.sub_type,
                     )
                 )
         return rendered_segments
@@ -203,17 +204,17 @@ def _render_visual_block_segments(
             for span in line.spans:
                 if span.type != ContentType.TABLE:
                     continue
-                if table_enable and span.get("html", ""):
+                if table_enable and span.html:
                     rendered_segments.append(
                         (
-                            _format_embedded_html(span["html"], img_buket_path),
+                            _format_embedded_html(span.html, img_buket_path),
                             "html_block",
                         )
                     )
-                elif span.get("image_path", ""):
+                elif span.image_path:
                     rendered_segments.append(
                         (
-                            f"![]({_build_media_path(img_buket_path, span['image_path'])})",
+                            f"![]({_build_media_path(img_buket_path, span.image_path)})",
                             "markdown_line",
                         )
                     )
@@ -278,17 +279,17 @@ def merge_para_with_text(
             span_type = span.type
             content = ""
             if span_type == ContentType.TEXT:
-                content = span["content"]
+                content = span.content
                 if escape_markdown_text:
                     content = escape_conservative_markdown_text(content)
             elif span_type == ContentType.INLINE_EQUATION:
-                content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
+                content = f"{inline_left_delimiter}{span.content}{inline_right_delimiter}"
             elif span_type == ContentType.INTERLINE_EQUATION:
                 if formula_enable:
-                    content = f"\n{display_left_delimiter}\n{span['content']}\n{display_right_delimiter}\n"
+                    content = f"\n{display_left_delimiter}\n{span.content}\n{display_right_delimiter}\n"
                 else:
-                    if span.get("image_path", ""):
-                        content = f"![]({img_buket_path}/{span['image_path']})"
+                    if span.image_path:
+                        content = f"![]({img_buket_path}/{span.image_path})"
 
             content = content.strip()
             if content:
@@ -317,10 +318,10 @@ def merge_para_with_text(
                             # 如果下一行的第一个span是小写字母开头，删除连字符
                             if (
                                 i + 1 < len(para_block.lines)
-                                and para_block.lines[i + 1].get("spans")
-                                and para_block.lines[i + 1]["spans"][0].get("type") == ContentType.TEXT
-                                and para_block.lines[i + 1]["spans"][0].get("content", "")
-                                and para_block.lines[i + 1]["spans"][0]["content"][0].islower()
+                                and para_block.lines[i + 1].spans
+                                and para_block.lines[i + 1].spans[0].type == ContentType.TEXT
+                                and para_block.lines[i + 1].spans[0].content
+                                and para_block.lines[i + 1].spans[0].content[0].islower()
                             ):
                                 para_text += content[:-1]
                             else:  # 如果没有下一行，或者下一行的第一个span不是小写字母开头，则保留连字符但不加空格
@@ -400,7 +401,7 @@ def mk_blocks_to_markdown(
     return page_markdown
 
 
-def make_blocks_to_content_list(para_block: Block, img_buket_path: str, page_idx: int, page_size: list[int]) -> dict:
+def make_blocks_to_content_list(para_block: Block, img_buket_path: str, page_idx: int, page_size: list[int]) -> dict[str, Any]:
     para_type = para_block.type
     para_content = {}
     if para_type in [
@@ -420,7 +421,7 @@ def make_blocks_to_content_list(para_block: Block, img_buket_path: str, page_idx
     elif para_type == BlockType.LIST:
         para_content = {
             "type": para_type,
-            "sub_type": para_block.get("sub_type", ""),
+            "sub_type": para_block.sub_type,
             "list_items": [],
         }
         for block in para_block.blocks:
@@ -459,14 +460,10 @@ def make_blocks_to_content_list(para_block: Block, img_buket_path: str, page_idx
                 for line in block.lines:
                     for span in line.spans:
                         if span.type == ContentType.TABLE:
-                            if span.get("html", ""):
-                                para_content[BlockType.TABLE_BODY] = _format_embedded_html(
-                                    span["html"],
-                                    img_buket_path,
-                                )
-
-                            if span.get("image_path", ""):
-                                para_content["img_path"] = f"{img_buket_path}/{span['image_path']}"
+                            if span.html:
+                                para_content[BlockType.TABLE_BODY] = _format_embedded_html(span.html, img_buket_path)
+                            if span.image_path:
+                                para_content["img_path"] = f"{img_buket_path}/{span.image_path}"
 
             if block.type == BlockType.TABLE_CAPTION:
                 para_content[BlockType.TABLE_CAPTION].append(merge_para_with_text(block))
@@ -488,19 +485,19 @@ def make_blocks_to_content_list(para_block: Block, img_buket_path: str, page_idx
             if block.type == BlockType.CHART_FOOTNOTE:
                 para_content[BlockType.CHART_FOOTNOTE].append(merge_para_with_text(block))
     elif para_type == BlockType.CODE:
-        para_content = {"type": BlockType.CODE, "sub_type": para_block["sub_type"], BlockType.CODE_CAPTION: []}
+        para_content = {"type": BlockType.CODE, "sub_type": para_block.sub_type, BlockType.CODE_CAPTION: []}
         for block in para_block.blocks:
             if block.type == BlockType.CODE_BODY:
                 code_text = merge_para_with_text(block)
-                if para_block["sub_type"] == BlockType.CODE:
-                    guess_lang = para_block.get("guess_lang", "txt")
+                if para_block.sub_type == BlockType.CODE:
+                    guess_lang = para_block.guess_lang or "txt"
                     code_text = f"```{guess_lang}\n{code_text}\n```"
                 para_content[BlockType.CODE_BODY] = code_text
             if block.type == BlockType.CODE_CAPTION:
                 para_content[BlockType.CODE_CAPTION].append(merge_para_with_text(block))
 
     page_width, page_height = page_size
-    para_bbox = para_block.get("bbox")
+    para_bbox = para_block.bbox
     if para_bbox:
         x0, y0, x1, y1 = para_bbox
         para_content["bbox"] = [
@@ -658,14 +655,14 @@ def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str, page_
                 code_caption.extend(merge_para_with_text_v2(block))
             if block.type == BlockType.CODE_BODY:
                 code_content = merge_para_with_text_v2(block)
-        sub_type = para_block["sub_type"]
+        sub_type = para_block.sub_type
         if sub_type == BlockType.CODE:
             para_content = {
                 "type": ContentTypeV2.CODE,
                 "content": {
                     "code_caption": code_caption,
                     "code_content": code_content,
-                    "code_language": para_block.get("guess_lang", "txt"),
+                    "code_language": para_block.guess_lang or "txt",
                 },
             }
         elif sub_type == BlockType.ALGORITHM:
@@ -692,13 +689,13 @@ def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str, page_
             },
         }
     elif para_type == BlockType.LIST:
-        if "sub_type" in para_block:
-            if para_block["sub_type"] == BlockType.REF_TEXT:
+        if para_block.sub_type:
+            if para_block.sub_type == BlockType.REF_TEXT:
                 list_type = ContentTypeV2.LIST_REF
-            elif para_block["sub_type"] == BlockType.TEXT:
+            elif para_block.sub_type == BlockType.TEXT:
                 list_type = ContentTypeV2.LIST_TEXT
             else:
-                raise ValueError(f"Unknown list sub_type: {para_block['sub_type']}")
+                raise ValueError(f"Unknown list sub_type: {para_block.sub_type}")
         else:
             list_type = ContentTypeV2.LIST_TEXT
         list_items = []
@@ -720,7 +717,7 @@ def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str, page_
         }
 
     page_width, page_height = page_size
-    para_bbox = para_block.get("bbox")
+    para_bbox = para_block.bbox
     if para_bbox:
         x0, y0, x1, y1 = para_bbox
         para_content["bbox"] = [
@@ -749,15 +746,15 @@ def get_body_data(para_block: Block) -> tuple[str, str]:
             for span in line.spans:
                 span_type = span.type
                 if span_type == ContentType.TABLE:
-                    return span.get("image_path", ""), span.get("html", "")
+                    return span.image_path, span.html
                 elif span_type == ContentType.CHART:
-                    return span.get("image_path", ""), span.get("content", "")
+                    return span.image_path, span.content
                 elif span_type == ContentType.IMAGE:
-                    return span.get("image_path", ""), span.get("content", "")
+                    return span.image_path, span.content
                 elif span_type == ContentType.INTERLINE_EQUATION:
-                    return span.get("image_path", ""), span.get("content", "")
+                    return span.image_path, span.content
                 elif span_type == ContentType.TEXT:
-                    return "", span.get("content", "")
+                    return "", span.content
         return "", ""
 
     # 处理嵌套的 blocks 结构
@@ -779,8 +776,8 @@ def merge_para_with_text_v2(para_block: Block) -> str:
     for line in para_block.lines:
         for span in line.spans:
             if span.type in [ContentType.TEXT]:
-                span["content"] = _normalize_text_content(span.content)
-                block_text += span["content"]
+                span.content = _normalize_text_content(span.content)
+                block_text += span.content
     block_lang = detect_lang(block_text)
 
     para_content = []
@@ -788,7 +785,7 @@ def merge_para_with_text_v2(para_block: Block) -> str:
     for i, line in enumerate(para_block.lines):
         for j, span in enumerate(line.spans):
             span_type = span.type
-            if span.get("content", "").strip():
+            if span.content.strip():
                 if span_type == ContentType.TEXT:
                     if para_type == BlockType.PHONETIC:
                         span_type = ContentTypeV2.SPAN_PHONETIC
@@ -809,29 +806,29 @@ def merge_para_with_text_v2(para_block: Block) -> str:
 
                     if block_lang in cjk_langs:  # 中文/日语/韩文语境下，换行不需要空格分隔,但是如果是行内公式结尾，还是要加空格
                         if has_following_joinable_span and not is_last_span:
-                            span_content = f"{span['content']} "
+                            span_content = f"{span.content} "
                         else:
-                            span_content = span["content"]
+                            span_content = span.content
                     else:
                         # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
-                        if is_last_span and is_hyphen_at_line_end(span["content"]):
+                        if is_last_span and is_hyphen_at_line_end(span.content):
                             # 如果下一行的第一个span是小写字母开头，删除连字符
                             if (
                                 i + 1 < len(para_block.lines)
-                                and para_block.lines[i + 1].get("spans")
-                                and para_block.lines[i + 1]["spans"][0].get("type") == ContentType.TEXT
-                                and para_block.lines[i + 1]["spans"][0].get("content", "")
-                                and para_block.lines[i + 1]["spans"][0]["content"][0].islower()
+                                and para_block.lines[i + 1].spans
+                                and para_block.lines[i + 1].spans[0].type == ContentType.TEXT
+                                and para_block.lines[i + 1].spans[0].content
+                                and para_block.lines[i + 1].spans[0].content[0].islower()
                             ):
-                                span_content = span["content"][:-1]
+                                span_content = span.content[:-1]
                             else:  # 如果没有下一行，或者下一行的第一个span不是小写字母开头，则保留连字符但不加空格
-                                span_content = span["content"]
+                                span_content = span.content
                         else:
                             # 西方文本语境下content间需要空格分隔
                             if has_following_joinable_span:
-                                span_content = f"{span['content']} "
+                                span_content = f"{span.content} "
                             else:
-                                span_content = span["content"]
+                                span_content = span.content
 
                     if para_content and para_content[-1]["type"] == span_type:
                         # 合并相同类型的span
@@ -847,10 +844,7 @@ def merge_para_with_text_v2(para_block: Block) -> str:
                     ContentTypeV2.SPAN_PHONETIC,
                     ContentTypeV2.SPAN_EQUATION_INLINE,
                 ]:
-                    span_content = {
-                        "type": span_type,
-                        "content": span["content"],
-                    }
+                    span_content = {"type": span_type, "content": span.content}
                     para_content.append(span_content)
                 else:
                     logger.warning(f"Unknown span type in merge_para_with_text_v2: {span_type}")
@@ -901,7 +895,9 @@ def union_make(
 
 
 def get_title_level(block: Block) -> int:
-    title_level = block.get("level", 1)
+    title_level = block.level
+    if title_level is None:
+        title_level = 1
     if title_level > 4:
         title_level = 4
     elif title_level < 1:

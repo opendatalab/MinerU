@@ -346,7 +346,7 @@ def _normalize_text_content(content: str) -> str:
     return full_to_half_exclude_marks(content or "")
 
 
-def _render_span(span: Span, escape_markdown: bool = True) -> str:
+def _render_span(span: Span, escape_markdown: bool = True) -> str | None:
     # 将单个 span 渲染成 markdown 片段。
     # 这里只负责“渲染成什么文本”，不决定后面是否补空格。
     span_type = span.type
@@ -596,7 +596,7 @@ def merge_para_with_text_v2(para_block: Block) -> str:
 
 def make_blocks_to_content_list(
     para_block: Block, img_buket_path: str, page_idx: int, page_size: list[int]
-) -> list[dict[str, Any]]:
+) -> list[dict[str, Any]] | None:
     para_type = para_block.type
     para_content = None
     if para_type in [

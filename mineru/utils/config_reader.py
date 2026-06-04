@@ -79,37 +79,37 @@ def get_device() -> str:
     if device_mode is not None:
         return device_mode
     try:
-        if torch.cuda.is_available():
+        if torch.cuda.is_available():  # type: ignore
             return "cuda"
     except Exception:
         pass
     try:
-        if torch.backends.mps.is_available():
+        if torch.backends.mps.is_available():  # type: ignore
             return "mps"
     except Exception:
         pass
     try:
-        if torch_npu.npu.is_available():
+        if torch_npu.npu.is_available():  # type: ignore
             return "npu"
     except Exception:
         pass
     try:
-        if torch.gcu.is_available():
+        if torch.gcu.is_available():  # type: ignore
             return "gcu"
     except Exception:
         pass
     try:
-        if torch.musa.is_available():
+        if torch.musa.is_available():  # type: ignore
             return "musa"
     except Exception:
         pass
     try:
-        if torch.mlu.is_available():
+        if torch.mlu.is_available():  # type: ignore
             return "mlu"
     except Exception:
         pass
     try:
-        if torch.sdaa.is_available():
+        if torch.sdaa.is_available():  # type: ignore
             return "sdaa"
     except Exception:
         pass

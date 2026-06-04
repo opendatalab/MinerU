@@ -28,7 +28,7 @@ def build_middle_json(
     image_writer: DataWriter,
     *,
     init_fn: Callable[..., dict[str, Any]],
-    page_cvt_fn: Callable[[T, dict, Any, DataWriter | None, int], PageInfo],
+    page_cvt_fn: Callable[[T, dict[str, Any], Any, DataWriter | None, int], PageInfo],
     finalize_fn: Callable[..., None],
     **kwargs: Any,
 ) -> dict[str, Any]:
@@ -71,7 +71,7 @@ def append_pages(
     pdf_doc: Any,
     image_writer: DataWriter | None,
     *,
-    page_cvt_fn: Callable[[T, dict, Any, DataWriter | None, int], PageInfo],
+    page_cvt_fn: Callable[[T, dict[str, Any], Any, DataWriter | None, int], PageInfo],
     page_start_index: int = 0,
     progress_bar: Any = None,
     **kwargs: Any,

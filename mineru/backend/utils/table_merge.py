@@ -7,6 +7,7 @@ from typing import Any
 
 from bs4 import BeautifulSoup, Tag
 
+from ...types import Block, PageInfo, Span
 from ...utils.enum_class import BlockType, SplitFlag
 from ..vlm.vlm_middle_json_mkcontent import merge_para_with_text
 from .char_utils import full_to_half
@@ -54,8 +55,8 @@ class RowScanResult:
 
 @dataclass
 class TableMergeState:
-    owner_block: dict[str, Any]
-    body_span: dict[str, Any]
+    owner_block: Block
+    body_span: Span
     soup: Any
     tbody: Any
     rows: list[Any]
@@ -171,40 +172,40 @@ def _build_front_cache(
     return front_header_info, front_first_data_row_metrics
 
 
-def _find_table_body_block(table_block: dict[str, Any]) -> dict[str, Any] | None:
+def _find_table_body_block(table_block: Block) -> Block | None:
     """查找 table block 中的主体子块。"""
-    for block in table_block["blocks"]:
-        if block["type"] == BlockType.TABLE_BODY:
+    for block in table_block.blocks:
+        if block.type == BlockType.TABLE_BODY:
             return block
     return None
 
 
-def _build_post_body_child_index(table_block: dict[str, Any], offset: int) -> int | float | None:
+def _build_post_body_child_index(table_block: Block, offset: int) -> int | float | None:
     """为跨页搬运到上一页表格的子块生成表体后的安全 index。"""
     body_block = _find_table_body_block(table_block)
     if body_block is None:
         return None
 
-    body_index = body_block.get("index")
+    body_index = body_block.index
     if not isinstance(body_index, (int, float)):
         return None
 
     return body_index + offset
 
 
-def _find_table_body_span(table_block: dict[str, Any]) -> dict[str, Any] | None:
+def _find_table_body_span(table_block: Block) -> Span | None:
     body_block = _find_table_body_block(table_block)
-    if body_block and body_block["lines"] and body_block["lines"][0]["spans"]:
-        return body_block["lines"][0]["spans"][0]
+    if body_block and body_block.lines and body_block.lines[0].spans:
+        return body_block.lines[0].spans[0]
     return None
 
 
-def _is_continuation_caption(caption_block: dict[str, Any]) -> bool:
+def _is_continuation_caption(caption_block: Block) -> bool:
     """判断 caption 文本是否带有续表标记。"""
     return is_table_continuation_text(merge_para_with_text(caption_block))
 
 
-def _is_post_table_non_continuation_caption(table_block: dict[str, Any], caption_block: dict[str, Any]) -> bool:
+def _is_post_table_non_continuation_caption(table_block: Block, caption_block: Block) -> bool:
     """判断 caption 是否是误挂到表格下方的新段落标题。
 
     这类 caption 位于 table body 下方，且不含续表标记；它不应作为
@@ -217,31 +218,29 @@ def _is_post_table_non_continuation_caption(table_block: dict[str, Any], caption
     if body_block is None:
         return False
 
-    body_bbox = body_block.get("bbox")
-    caption_bbox = caption_block.get("bbox")
+    body_bbox = body_block.bbox
+    caption_bbox = caption_block.bbox
     if not body_bbox or not caption_bbox:
         return False
 
     return caption_bbox[1] >= body_bbox[3]
 
 
-def _get_post_table_caption_blocks(table_block: dict[str, Any]) -> list[dict[str, Any]]:
+def _get_post_table_caption_blocks(table_block: Block) -> list[Block]:
     """收集当前表格下方、需要恢复为普通文本的非续表 caption。"""
     return [
         block
-        for block in table_block["blocks"]
-        if block["type"] == BlockType.TABLE_CAPTION and _is_post_table_non_continuation_caption(table_block, block)
+        for block in table_block.blocks
+        if block.type == BlockType.TABLE_CAPTION and _is_post_table_non_continuation_caption(table_block, block)
     ]
 
 
-def _restore_post_table_captions_as_text(
-    page_info: dict[str, Any], table_block: dict[str, Any], caption_blocks: list[dict[str, Any]]
-) -> None:
+def _restore_post_table_captions_as_text(page_info: PageInfo, table_block: Block, caption_blocks: list[Block]) -> None:
     """将误挂到表格下方的 caption 迁回当前页，作为独立 text block 输出。"""
     if not caption_blocks:
         return
 
-    para_blocks = page_info.get("para_blocks", [])
+    para_blocks = page_info.para_blocks
     try:
         insert_idx = para_blocks.index(table_block) + 1
     except ValueError:
@@ -250,12 +249,12 @@ def _restore_post_table_captions_as_text(
     restored_blocks = []
     for caption_block in caption_blocks:
         text_block = deepcopy(caption_block)
-        text_block["type"] = BlockType.TEXT
+        text_block.type = BlockType.TEXT
         restored_blocks.append(text_block)
 
     para_blocks[insert_idx:insert_idx] = restored_blocks
     restored_caption_ids = {id(block) for block in caption_blocks}
-    table_block["blocks"] = [block for block in table_block["blocks"] if id(block) not in restored_caption_ids]
+    table_block.blocks = [block for block in table_block.blocks if id(block) not in restored_caption_ids]
 
 
 def _refresh_table_state_metrics(state: TableMergeState) -> None:
@@ -303,12 +302,12 @@ def build_table_state_from_html(
     )
 
 
-def _build_table_state(table_block: dict[str, Any], max_header_rows: int = MAX_HEADER_ROWS) -> TableMergeState | None:
+def _build_table_state(table_block: Block, max_header_rows: int = MAX_HEADER_ROWS) -> TableMergeState | None:
     body_span = _find_table_body_span(table_block)
     if body_span is None:
         return None
 
-    html = body_span.get("html", "")
+    html = body_span.html
     if not html:
         return None
 
@@ -334,7 +333,7 @@ def _build_table_state(table_block: dict[str, Any], max_header_rows: int = MAX_H
 
 
 def _get_or_create_table_state(
-    table_block: dict[str, Any],
+    table_block: Block,
     state_cache: dict[int, TableMergeState],
     max_header_rows: int = MAX_HEADER_ROWS,
 ) -> TableMergeState | None:
@@ -350,7 +349,7 @@ def _get_or_create_table_state(
 
 
 def _serialize_table_state_html(state: TableMergeState) -> None:
-    state.body_span["html"] = str(state.soup)
+    state.body_span._extra["html"] = str(state.soup)
     state.dirty = False
 
 
@@ -687,8 +686,8 @@ def can_merge_tables(current_state: TableMergeState, previous_state: TableMergeS
             "For HTML-only states from build_table_state_from_html(), use can_merge_by_structure() instead."
         )
 
-    footnote_count = sum(1 for block in previous_table_block["blocks"] if block["type"] == BlockType.TABLE_FOOTNOTE)
-    caption_blocks = [block for block in current_table_block["blocks"] if block["type"] == BlockType.TABLE_CAPTION]
+    footnote_count = sum(1 for block in previous_table_block.blocks if block.type == BlockType.TABLE_FOOTNOTE)
+    caption_blocks = [block for block in current_table_block.blocks if block.type == BlockType.TABLE_CAPTION]
     merge_caption_blocks = [
         block for block in caption_blocks if not _is_post_table_non_continuation_caption(current_table_block, block)
     ]
@@ -703,8 +702,8 @@ def can_merge_tables(current_state: TableMergeState, previous_state: TableMergeS
     elif footnote_count > 0:
         return False
 
-    x0_t1, _, x1_t1, _ = current_table_block["bbox"]
-    x0_t2, _, x1_t2, _ = previous_table_block["bbox"]
+    x0_t1, _, x1_t1, _ = current_table_block.bbox
+    x0_t2, _, x1_t2, _ = previous_table_block.bbox
     table1_width = x1_t1 - x0_t1
     table2_width = x1_t2 - x0_t2
 
@@ -1000,8 +999,8 @@ def _apply_cell_merge(
 def perform_table_merge(
     previous_state: TableMergeState,
     current_state: TableMergeState,
-    previous_table_block: dict[str, Any],
-    wait_merge_table_footnotes: list[dict[str, Any]],
+    previous_table_block: Block,
+    wait_merge_table_footnotes: list[Block],
 ) -> None:
     """执行表格合并操作."""
     header_count, _, _ = detect_table_headers(previous_state, current_state)
@@ -1080,23 +1079,21 @@ def perform_table_merge(
             previous_state.last_data_row_metrics = appended_scan.last_nonempty_row_metrics
         previous_state.tail_occupied = appended_scan.tail_occupied
 
-    previous_table_block["blocks"] = [
-        block for block in previous_table_block["blocks"] if block["type"] != BlockType.TABLE_FOOTNOTE
-    ]
+    previous_table_block.blocks = [block for block in previous_table_block.blocks if block.type != BlockType.TABLE_FOOTNOTE]
     for footnote_offset, table_footnote in enumerate(wait_merge_table_footnotes, start=1):
         temp_table_footnote = table_footnote.copy()
-        temp_table_footnote[SplitFlag.CROSS_PAGE] = True
+        temp_table_footnote._extra[SplitFlag.CROSS_PAGE] = True
         post_body_index = _build_post_body_child_index(previous_table_block, footnote_offset)
         if post_body_index is None:
-            temp_table_footnote.pop("index", None)
+            temp_table_footnote._extra.pop("index", None)
         else:
-            temp_table_footnote["index"] = post_body_index
-        previous_table_block["blocks"].append(temp_table_footnote)
+            temp_table_footnote.index = post_body_index
+        previous_table_block.blocks.append(temp_table_footnote)
 
     previous_state.dirty = True
 
 
-def merge_table(page_info_list: list[dict[str, Any]]) -> None:
+def merge_table(page_info_list: list[PageInfo]) -> None:
     """合并跨页表格."""
     state_cache: dict[int, TableMergeState] = {}
     merged_away_blocks: set[int] = set()
@@ -1108,14 +1105,14 @@ def merge_table(page_info_list: list[dict[str, Any]]) -> None:
         page_info = page_info_list[page_idx]
         previous_page_info = page_info_list[page_idx - 1]
 
-        if not (page_info["para_blocks"] and page_info["para_blocks"][0]["type"] == BlockType.TABLE):
+        if not (page_info.para_blocks and page_info.para_blocks[0].type == BlockType.TABLE):
             continue
 
-        if not (previous_page_info["para_blocks"] and previous_page_info["para_blocks"][-1]["type"] == BlockType.TABLE):
+        if not (previous_page_info.para_blocks and previous_page_info.para_blocks[-1].type == BlockType.TABLE):
             continue
 
-        current_table_block = page_info["para_blocks"][0]
-        previous_table_block = previous_page_info["para_blocks"][-1]
+        current_table_block = page_info.para_blocks[0]
+        previous_table_block = previous_page_info.para_blocks[-1]
 
         current_state = _get_or_create_table_state(current_table_block, state_cache)
         previous_state = _get_or_create_table_state(previous_table_block, state_cache)
@@ -1123,9 +1120,7 @@ def merge_table(page_info_list: list[dict[str, Any]]) -> None:
             continue
 
         post_table_caption_blocks = _get_post_table_caption_blocks(current_table_block)
-        wait_merge_table_footnotes = [
-            block for block in current_table_block["blocks"] if block["type"] == BlockType.TABLE_FOOTNOTE
-        ]
+        wait_merge_table_footnotes = [block for block in current_table_block.blocks if block.type == BlockType.TABLE_FOOTNOTE]
 
         if not can_merge_tables(current_state, previous_state):
             continue
@@ -1143,9 +1138,9 @@ def merge_table(page_info_list: list[dict[str, Any]]) -> None:
         )
 
         merged_away_blocks.add(id(current_table_block))
-        for block in current_table_block["blocks"]:
-            block["lines"] = []
-            block[SplitFlag.LINES_DELETED] = True
+        for block in current_table_block.blocks:
+            block.lines = []
+            block._lines_deleted = True
 
     for state in state_cache.values():
         if state.dirty and id(state.owner_block) not in merged_away_blocks:

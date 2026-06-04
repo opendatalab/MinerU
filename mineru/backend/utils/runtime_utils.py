@@ -15,7 +15,7 @@ def cross_page_table_merge(pdf_info: list[PageInfo]) -> None:
     """Merge tables that span across multiple pages in a PDF document.
 
     Args:
-        pdf_info (list[dict]): A list of dictionaries containing information about each page in the PDF.
+        pdf_info (list[PageInfo]): A list of dictionaries containing information about each page in the PDF.
 
     Returns:
         None

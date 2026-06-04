@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from collections.abc import Sequence
+from typing import Any
 
 import click
 
@@ -22,7 +23,7 @@ def _coerce_cli_value(raw_value: str) -> bool | float | int | str:
         return raw_value
 
 
-def parse_unknown_args(args: Sequence[str]) -> dict:
+def parse_unknown_args(args: Sequence[str]) -> dict[str, Any]:
     """Parse unknown click args into keyword arguments."""
     extra_kwargs = {}
     i = 0
@@ -52,5 +53,5 @@ def parse_unknown_args(args: Sequence[str]) -> dict:
     return extra_kwargs
 
 
-def arg_parse(ctx: "click.Context") -> dict:
+def arg_parse(ctx: "click.Context") -> dict[str, Any]:
     return parse_unknown_args(ctx.args)

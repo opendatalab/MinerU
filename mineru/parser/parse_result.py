@@ -8,9 +8,10 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from mineru.types import PageInfo
+
 from ..utils.enum_class import MakeMode
 from ..utils.pdf_document import PDFDocument
-from mineru.types import PageInfo
 
 _INLINE_IMAGE_DATA_URI_RE = re.compile(r"data:image/([^;]+);base64,([^\"]+)", re.DOTALL)
 
@@ -63,11 +64,21 @@ class ParseResult:
     _model_output: Any = None
     _images_cache: dict[str, bytes] | None = None
 
-    def as_dict(self) -> dict:
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> "ParseResult":
+        # TODO
+        ...
+
+    def to_dict(self) -> dict[str, Any]:
         return {"pdf_info": [dataclasses.asdict(p) for p in self.pages]}
 
-    def json(self) -> str:
-        return json.dumps(self.as_dict(), ensure_ascii=False, indent=2)
+    @staticmethod
+    def from_json(s: str) -> "ParseResult":
+        # TODO
+        ...
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
 
     def markdown(self) -> str:
         union_make = _load_union_make(self._backend)

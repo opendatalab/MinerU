@@ -126,10 +126,10 @@ class MagicModel:
                     score=block_score,
                 )
                 if self.__is_seal_layout_block(layout_det):
-                    block["sub_type"] = "seal"
+                    block.sub_type = "seal"
                 self.page_blocks.append(block)
 
-        self.page_blocks.sort(key=lambda x: x["index"])
+        self.page_blocks.sort(key=lambda x: x.index)
         self.__build_page_blocks()
         fallback_inline_caption_fragments(self.page_blocks, self.VISUAL_MAIN_TYPES)
         fallback_leading_table_continuation_captions(self.page_blocks, self.VISUAL_MAIN_TYPES)
@@ -438,10 +438,10 @@ class MagicModel:
                 blocks=[body_block, *captions, *footnotes],
             )
             two_layer_block.index = block.index
-            if block.get("score"):
-                two_layer_block["score"] = block["score"]
-            if original_block_type in [BlockType.IMAGE, BlockType.CHART] and block.get("sub_type"):
-                two_layer_block["sub_type"] = block["sub_type"]
+            if block.score is not None:
+                two_layer_block.score = block.score
+            if original_block_type in [BlockType.IMAGE, BlockType.CHART] and block.sub_type:
+                two_layer_block.sub_type = block.sub_type
             # 对blocks按index排序
             two_layer_block["blocks"].sort(key=lambda x: x["index"])
             rebuilt_page_blocks.append(two_layer_block)

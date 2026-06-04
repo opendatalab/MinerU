@@ -351,7 +351,7 @@ def parse_text_block_spans(content: str) -> list[Span]:
     return spans
 
 
-def parse_list_block(list_block: dict[str, Any]) -> Block:
+def parse_list_block(list_block: dict[str, Any]) -> Block | None:
     """
     递归解析嵌套列表结构，生成与VLM一致的blocks结构。
 
@@ -393,7 +393,7 @@ def parse_list_block(list_block: dict[str, Any]) -> Block:
     return result
 
 
-def parse_index_block(index_block: dict[str, Any]) -> Block:
+def parse_index_block(index_block: dict[str, Any]) -> Block | None:
     """
     递归解析嵌套索引结构（目录），生成与list一致的blocks结构。
 

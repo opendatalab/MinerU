@@ -7,6 +7,7 @@ from typing import Any
 
 from loguru import logger
 
+from ..types import PageInfo
 from .config_reader import get_llm_aided_config
 from .llm_aided import llm_aided_title
 
@@ -24,7 +25,7 @@ def _resolve_title_aided_config() -> dict[str, Any] | None:
     return deepcopy(title_aided_config)
 
 
-def apply_title_leveling_to_pdf_info(pdf_info: list[dict[str, Any]]) -> None:
+def apply_title_leveling_to_pdf_info(pdf_info: list[PageInfo]) -> None:
     title_aided_config = _resolve_title_aided_config()
     if title_aided_config:
         start_time = time.perf_counter()
@@ -43,20 +44,22 @@ def finalize_client_side_middle_json(middle_json: dict[str, Any]) -> dict[str, A
     if not isinstance(middle_json, dict):
         raise ValueError("middle_json must be a dict.")
 
-    backend = middle_json.get("_backend")
-    pdf_info = middle_json.get("pdf_info")
+    from ..parser.parse_result import ParseResult
+
+    result = ParseResult.from_dict(middle_json)
+    backend = result._backend
 
     if backend == "pipeline":
         from mineru.backend.pipeline.model_output_to_middle_json import finalize_middle_json_from_preproc
 
-        finalize_middle_json_from_preproc(pdf_info)
+        finalize_middle_json_from_preproc(result.pages)
     elif backend == "vlm":
         from mineru.backend.vlm.model_output_to_middle_json import finalize_middle_json
 
-        finalize_middle_json(pdf_info)
+        finalize_middle_json(result.pages)
     elif backend == "hybrid":
         from mineru.backend.hybrid.model_output_to_middle_json import finalize_middle_json_from_preproc
 
-        finalize_middle_json_from_preproc(pdf_info)
+        finalize_middle_json_from_preproc(result.pages)
 
     return middle_json

@@ -7,7 +7,8 @@ import os
 import time
 from pathlib import Path
 
-from mineru.constants import ParseStatus, TIER_ORDER, Tier
+from mineru.constants import TIER_ORDER, ParseStatus, Tier
+
 from ..core.file_io import compute_sha256, extract_metadata, get_file_stat
 
 
@@ -148,9 +149,16 @@ class ParseService:
                 "birthtime_ms, sha256, watch_id, first_seen_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    path, Path(path).name, Path(path).suffix.lstrip(".").lower(),
-                    stat["size_bytes"], stat["mtime_ms"], stat["birthtime_ms"],
-                    sha256, watch_id, now, now,
+                    path,
+                    Path(path).name,
+                    Path(path).suffix.lstrip(".").lower(),
+                    stat["size_bytes"],
+                    stat["mtime_ms"],
+                    stat["birthtime_ms"],
+                    sha256,
+                    watch_id,
+                    now,
+                    now,
                 ),
             )
             return await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,))
@@ -234,8 +242,7 @@ class ParseService:
         # insert parse batch
         pages_str = expand_pages(initial_pages, page_count or 1)
         await self.db.execute(
-            "INSERT INTO parses (sha256, tier, pages, status, priority, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, 0, ?, ?)",
+            "INSERT INTO parses (sha256, tier, pages, status, priority, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)",
             (sha256, tier, pages_str, ParseStatus.PENDING, now, now),
         )
 
@@ -248,18 +255,14 @@ class ParseService:
 
     # ── parse request ───────────────────────────────────────────
 
-    async def request_parse(self, path: str, *, tier: str | None = None,
-                            pages: str | None = None, force: bool = False) -> dict:
+    async def request_parse(self, path: str, *, tier: str | None = None, pages: str | None = None, force: bool = False) -> dict:
         """Handle a parse request from CLI.  Returns info for status polling."""
         # ensure file is registered
-        file_row = await self.db.fetchone(
-            "SELECT * FROM files WHERE path=? AND scan_status='active'", (path,)
-        )
+        file_row = await self.db.fetchone("SELECT * FROM files WHERE path=? AND scan_status='active'", (path,))
         if file_row is None or file_row["sha256"] is None:
             file_row = await self.register_file(path)
         if file_row is None:
-            return {"sha256": "", "tier": tier or "", "status": "error",
-                    "tip": "File could not be registered."}
+            return {"sha256": "", "tier": tier or "", "status": "error", "tip": "File could not be registered."}
 
         sha256 = file_row["sha256"]
         doc = await self.db.fetchone("SELECT page_count FROM docs WHERE sha256=?", (sha256,))
@@ -322,8 +325,7 @@ class ParseService:
         # insert new batch
         now = _now_ms()
         await self.db.execute(
-            "INSERT INTO parses (sha256, tier, pages, status, priority, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, 1, ?, ?)",
+            "INSERT INTO parses (sha256, tier, pages, status, priority, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
             (sha256, requested_tier, pages_str, ParseStatus.PENDING, now, now),
         )
 
@@ -339,8 +341,7 @@ class ParseService:
     async def get_queue_length(self) -> int:
         timeout_ms = _now_ms() - 30 * 60 * 1000  # 30min lock timeout
         row = await self.db.fetchone(
-            "SELECT COUNT(*) as cnt FROM parses WHERE status=? "
-            "AND (locked_at IS NULL OR locked_at < ?)",
+            "SELECT COUNT(*) as cnt FROM parses WHERE status=? AND (locked_at IS NULL OR locked_at < ?)",
             (ParseStatus.PENDING, timeout_ms),
         )
         return row["cnt"] if row else 0
@@ -365,9 +366,7 @@ class ParseService:
         pages = task["pages"]
 
         # guard
-        current = await self.db.fetchone(
-            "SELECT status FROM parses WHERE id=?", (task["id"],)
-        )
+        current = await self.db.fetchone("SELECT status FROM parses WHERE id=?", (task["id"],))
         if current is None or current["status"] != ParseStatus.PARSING:
             return False
 
@@ -430,8 +429,8 @@ class ParseService:
             json_path = os.path.join(output_dir, f"{pages_key}.json")
             new_pages: list[dict] = []
             for r in results:
-                if hasattr(r, "as_dict"):
-                    new_pages.extend(r.as_dict().get("pdf_info", []))
+                if hasattr(r, "to_dict"):
+                    new_pages.extend(r.to_dict().get("pdf_info", []))
 
             os.makedirs(output_dir, exist_ok=True)
             try:
@@ -457,8 +456,7 @@ class ParseService:
     async def get_parse_status(self, sha256: str, tier: str) -> dict | None:
         """Get aggregate status for a doc+tier.  Returns latest batch info."""
         done = await self.db.fetchone(
-            "SELECT * FROM parses WHERE sha256=? AND tier=? AND status='done' "
-            "ORDER BY done_at DESC LIMIT 1",
+            "SELECT * FROM parses WHERE sha256=? AND tier=? AND status='done' ORDER BY done_at DESC LIMIT 1",
             (sha256, tier),
         )
         if done:
@@ -473,8 +471,7 @@ class ParseService:
             return {"sha256": sha256, "tier": tier, "status": active["status"], "pages": active["pages"]}
 
         failed = await self.db.fetchone(
-            "SELECT * FROM parses WHERE sha256=? AND tier=? AND status='failed' "
-            "ORDER BY created_at DESC LIMIT 1",
+            "SELECT * FROM parses WHERE sha256=? AND tier=? AND status='failed' ORDER BY created_at DESC LIMIT 1",
             (sha256, tier),
         )
         if failed:

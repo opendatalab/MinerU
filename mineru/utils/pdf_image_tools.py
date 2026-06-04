@@ -10,7 +10,7 @@ import time
 from concurrent.futures import ALL_COMPLETED, ProcessPoolExecutor, wait
 from concurrent.futures.process import BrokenProcessPool
 from io import BytesIO
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 import numpy as np
 import pypdfium2 as pdfium
@@ -51,7 +51,7 @@ _pdf_render_spawn_submit_count = 0
 def pdf_page_to_image(
     page: pdfium.PdfPage,
     dpi: int = DEFAULT_PDF_IMAGE_DPI,
-    image_type: ImageType = ImageType.PIL,
+    image_type: Literal["pil_img", "base64_img"] = ImageType.PIL,
 ) -> dict[str, Any]:
     """Convert pdfium.PdfDocument to image, Then convert the image to base64.
 
@@ -79,7 +79,11 @@ def pdf_page_to_image(
 
 
 def _load_images_from_pdf_worker(
-    pdf_bytes: bytes, dpi: int, start_page_id: int, end_page_id: int, image_type: ImageType
+    pdf_bytes: bytes,
+    dpi: int,
+    start_page_id: int,
+    end_page_id: int,
+    image_type: Literal["pil_img", "base64_img"],
 ) -> list[dict[str, Any]]:
     """用于进程池的包装函数"""
     return load_images_from_pdf_core(pdf_bytes, dpi, start_page_id, end_page_id, image_type)
@@ -260,7 +264,7 @@ def _load_images_from_pdf_bytes_range(
     dpi: int = DEFAULT_PDF_IMAGE_DPI,
     start_page_id: int = 0,
     end_page_id: int = 0,
-    image_type: ImageType = ImageType.PIL,
+    image_type: Literal["pil_img", "base64_img"] = ImageType.PIL,
     timeout: int | None = None,
     threads: int | None = None,
 ) -> list[dict[str, Any]]:
@@ -341,7 +345,7 @@ async def aio_load_images_from_pdf_bytes_range(
     dpi: int = DEFAULT_PDF_IMAGE_DPI,
     start_page_id: int = 0,
     end_page_id: int = 0,
-    image_type: ImageType = ImageType.PIL,
+    image_type: Literal["pil_img", "base64_img"] = ImageType.PIL,
     timeout: int | None = None,
     threads: int | None = None,
 ) -> list[dict[str, Any]]:
@@ -409,7 +413,7 @@ def load_images_from_pdf_core(
     dpi: int = DEFAULT_PDF_IMAGE_DPI,
     start_page_id: int = 0,
     end_page_id: int | None = None,
-    image_type: ImageType = ImageType.PIL,  # PIL or BASE64
+    image_type: Literal["pil_img", "base64_img"] = ImageType.PIL,
 ) -> list[dict[str, Any]]:
     images_list = []
     pdf_doc = None
@@ -439,7 +443,7 @@ def load_images_from_pdf_doc(
     dpi: int = DEFAULT_PDF_IMAGE_DPI,
     start_page_id: int = 0,
     end_page_id: int | None = None,
-    image_type: ImageType = ImageType.PIL,
+    image_type: Literal["pil_img", "base64_img"] = ImageType.PIL,
     pdf_bytes: bytes | None = None,
     timeout: int | None = None,
     threads: int | None = None,

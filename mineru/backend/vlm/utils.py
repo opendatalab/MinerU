@@ -126,7 +126,7 @@ def set_default_batch_size() -> int:
     return batch_size
 
 
-def _get_device_config(device_type: str) -> dict | None:
+def _get_device_config(device_type: str) -> dict[str, Any] | None:
     """获取不同设备类型的配置参数"""
 
     # 各设备类型的配置定义

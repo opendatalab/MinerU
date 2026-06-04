@@ -190,26 +190,26 @@ def get_res_list_from_layout_res(
 
 def clean_memory(device: str = "cuda") -> None:
     if str(device).startswith("cuda"):
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        if torch.cuda.is_available():  # type: ignore
+            torch.cuda.empty_cache()  # type: ignore
             # torch.cuda.ipc_collect()
     elif str(device).startswith("npu"):
-        if torch_npu.npu.is_available():
-            torch_npu.npu.empty_cache()
+        if torch_npu.npu.is_available():  # type: ignore
+            torch_npu.npu.empty_cache()  # type: ignore
     elif str(device).startswith("mps"):
-        torch.mps.empty_cache()
+        torch.mps.empty_cache()  # type: ignore
     elif str(device).startswith("gcu"):
-        if torch.gcu.is_available():
-            torch.gcu.empty_cache()
+        if torch.gcu.is_available():  # type: ignore
+            torch.gcu.empty_cache()  # type: ignore
     elif str(device).startswith("musa"):
-        if torch.musa.is_available():
-            torch.musa.empty_cache()
+        if torch.musa.is_available():  # type: ignore
+            torch.musa.empty_cache()  # type: ignore
     elif str(device).startswith("mlu"):
-        if torch.mlu.is_available():
-            torch.mlu.empty_cache()
+        if torch.mlu.is_available():  # type: ignore
+            torch.mlu.empty_cache()  # type: ignore
     elif str(device).startswith("sdaa"):
-        if torch.sdaa.is_available():
-            torch.sdaa.empty_cache()
+        if torch.sdaa.is_available():  # type: ignore
+            torch.sdaa.empty_cache()  # type: ignore
     gc.collect()
 
 
@@ -240,22 +240,22 @@ def get_vram(device: str) -> int:
 
     # 环境变量未配置或配置错误,根据device自动获取
     total_memory = 1
-    if torch.cuda.is_available() and str(device).startswith("cuda"):
-        total_memory = round(torch.cuda.get_device_properties(device).total_memory / (1024**3))  # 将字节转换为 GB
+    if torch.cuda.is_available() and str(device).startswith("cuda"):  # type: ignore
+        total_memory = round(torch.cuda.get_device_properties(device).total_memory / (1024**3))  # type: ignore  # 将字节转换为 GB
     elif str(device).startswith("npu"):
-        if torch_npu.npu.is_available():
-            total_memory = round(torch_npu.npu.get_device_properties(device).total_memory / (1024**3))  # 转为 GB
+        if torch_npu.npu.is_available():  # type: ignore
+            total_memory = round(torch_npu.npu.get_device_properties(device).total_memory / (1024**3))  # type: ignore  # 转为 GB
     elif str(device).startswith("gcu"):
-        if torch.gcu.is_available():
-            total_memory = round(torch.gcu.get_device_properties(device).total_memory / (1024**3))  # 转为 GB
+        if torch.gcu.is_available():  # type: ignore
+            total_memory = round(torch.gcu.get_device_properties(device).total_memory / (1024**3))  # type: ignore  # 转为 GB
     elif str(device).startswith("musa"):
-        if torch.musa.is_available():
-            total_memory = round(torch.musa.get_device_properties(device).total_memory / (1024**3))  # 转为 GB
+        if torch.musa.is_available():  # type: ignore
+            total_memory = round(torch.musa.get_device_properties(device).total_memory / (1024**3))  # type: ignore  # 转为 GB
     elif str(device).startswith("mlu"):
-        if torch.mlu.is_available():
-            total_memory = round(torch.mlu.get_device_properties(device).total_memory / (1024**3))  # 转为 GB
+        if torch.mlu.is_available():  # type: ignore
+            total_memory = round(torch.mlu.get_device_properties(device).total_memory / (1024**3))  # type: ignore  # 转为 GB
     elif str(device).startswith("sdaa"):
-        if torch.sdaa.is_available():
-            total_memory = round(torch.sdaa.get_device_properties(device).total_memory / (1024**3))  # 转为 GB
+        if torch.sdaa.is_available():  # type: ignore
+            total_memory = round(torch.sdaa.get_device_properties(device).total_memory / (1024**3))  # type: ignore  # 转为 GB
 
     return total_memory

@@ -1,36 +1,44 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from __future__ import annotations
+
 from typing import Any
 
 from loguru import logger
 
+from ..types import Span
 from .pdf_image_tools import cut_image
 
 
 def cut_image_and_table(
-    span: dict[str, Any],
+    span: Span,
     page_pil_img: Any,
     page_img_md5: str,
     page_id: int,
     image_writer: Any,
     scale: int = 2,
-) -> dict[str, Any]:
+) -> Span:
 
-    def return_path(path_type: str) -> str:  # noqa: ANN202
+    def return_path(path_type: str) -> str:
         return f"{path_type}/{page_img_md5}"
 
-    span_type = span["type"]
+    span_type = span.type
 
-    if not check_img_bbox(span["bbox"]) or not image_writer:
-        span["image_path"] = ""
+    if not check_img_bbox(span.bbox) or not image_writer:
+        span._extra["image_path"] = ""
     else:
-        span["image_path"] = cut_image(
-            span["bbox"], page_id, page_pil_img, return_path=return_path(span_type), image_writer=image_writer, scale=scale
+        span._extra["image_path"] = cut_image(
+            span.bbox,
+            page_id,
+            page_pil_img,
+            return_path=return_path(span_type),
+            image_writer=image_writer,
+            scale=scale,
         )
 
     return span
 
 
-def check_img_bbox(bbox: list[float]) -> bool:
+def check_img_bbox(bbox: tuple[float, float, float, float]) -> bool:
     if any([bbox[0] >= bbox[2], bbox[1] >= bbox[3]]):
         logger.warning(f"image_bboxes: 错误的box, {bbox}")
         return False

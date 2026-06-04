@@ -9,6 +9,7 @@ from loguru import logger
 from pypdf import PageObject, PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
+from ..types import Block, PageInfo, Span
 from .enum_class import BlockType, ContentType, SplitFlag
 
 # 文本类 block 共用 text bbox 样式，避免新增文本形态时遗漏多个绘制入口。
@@ -31,9 +32,9 @@ DIRECT_LAYOUT_BBOX_BLOCK_TYPES = TEXT_LIKE_BLOCK_TYPES_FOR_BBOX | {
 SPAN_SOURCE_BLOCK_TYPES = DIRECT_LAYOUT_BBOX_BLOCK_TYPES
 
 
-def _get_layout_source_blocks(page: dict[str, Any]) -> list[dict[str, Any]]:
+def _get_layout_source_blocks(page: PageInfo) -> list[Block]:
     """获取 layout.pdf 的页内原始布局块，避免段落合并后跨页子项串页绘制。"""
-    return page.get("preproc_blocks", [])
+    return page.preproc_blocks
 
 
 def cal_canvas_rect(page: Any, bbox: list[float]) -> list[float]:
@@ -120,7 +121,7 @@ def draw_bbox_with_number(
     new_rgb = [float(color) / 255 for color in rgb_config]
     page_data = bbox_list[i]
     # 强制转换为 float
-    page_width, page_height = float(page.cropbox[2]), float(page.cropbox[3])
+    # page_width, page_height = float(page.cropbox[2]), float(page.cropbox[3])
 
     for j, bbox in enumerate(page_data):
         # 确保bbox的每个元素都是float
@@ -161,7 +162,7 @@ def draw_bbox_with_number(
 
 
 def draw_layout_bbox(
-    pdf_info: list[dict[str, Any]],
+    pdf_info: list[PageInfo],
     pdf_bytes: bytes,
     out_path: str,
     filename: str,
@@ -189,65 +190,65 @@ def draw_layout_bbox(
         list_items = []
         indices = []
 
-        for dropped_bbox in page["discarded_blocks"]:
-            page_dropped_list.append(dropped_bbox["bbox"])
+        for dropped_bbox in page.discarded_blocks:
+            page_dropped_list.append(dropped_bbox.bbox)
         dropped_bbox_list.append(page_dropped_list)
         for block in _get_layout_source_blocks(page):
-            bbox = block["bbox"]
-            if block["type"] == BlockType.TABLE:
-                for nested_block in block["blocks"]:
-                    bbox = nested_block["bbox"]
-                    if nested_block["type"] == BlockType.TABLE_BODY:
+            bbox = block.bbox
+            if block.type == BlockType.TABLE:
+                for nested_block in block.blocks:
+                    bbox = nested_block.bbox
+                    if nested_block.type == BlockType.TABLE_BODY:
                         tables_body.append(bbox)
-                    elif nested_block["type"] == BlockType.TABLE_CAPTION:
+                    elif nested_block.type == BlockType.TABLE_CAPTION:
                         tables_caption.append(bbox)
-                    elif nested_block["type"] == BlockType.TABLE_FOOTNOTE:
-                        if nested_block.get(SplitFlag.CROSS_PAGE, False):
+                    elif nested_block.type == BlockType.TABLE_FOOTNOTE:
+                        if nested_block._extra.get(SplitFlag.CROSS_PAGE, False):
                             continue
                         tables_footnote.append(bbox)
-            elif block["type"] == BlockType.IMAGE:
-                for nested_block in block["blocks"]:
-                    bbox = nested_block["bbox"]
-                    if nested_block["type"] == BlockType.IMAGE_BODY:
+            elif block.type == BlockType.IMAGE:
+                for nested_block in block.blocks:
+                    bbox = nested_block.bbox
+                    if nested_block.type == BlockType.IMAGE_BODY:
                         imgs_body.append(bbox)
-                    elif nested_block["type"] == BlockType.IMAGE_CAPTION:
+                    elif nested_block.type == BlockType.IMAGE_CAPTION:
                         imgs_caption.append(bbox)
-                    elif nested_block["type"] == BlockType.IMAGE_FOOTNOTE:
+                    elif nested_block.type == BlockType.IMAGE_FOOTNOTE:
                         imgs_footnote.append(bbox)
-            elif block["type"] == BlockType.CODE:
-                for nested_block in block["blocks"]:
-                    if nested_block["type"] == BlockType.CODE_BODY:
-                        bbox = nested_block["bbox"]
+            elif block.type == BlockType.CODE:
+                for nested_block in block.blocks:
+                    if nested_block.type == BlockType.CODE_BODY:
+                        bbox = nested_block.bbox
                         codes_body.append(bbox)
-                    elif nested_block["type"] == BlockType.CODE_CAPTION:
-                        bbox = nested_block["bbox"]
+                    elif nested_block.type == BlockType.CODE_CAPTION:
+                        bbox = nested_block.bbox
                         codes_caption.append(bbox)
-                    elif nested_block["type"] == BlockType.CODE_FOOTNOTE:
-                        bbox = nested_block["bbox"]
+                    elif nested_block.type == BlockType.CODE_FOOTNOTE:
+                        bbox = nested_block.bbox
                         codes_footnote.append(bbox)
-            elif block["type"] == BlockType.CHART:
-                for nested_block in block["blocks"]:
-                    if nested_block["type"] == BlockType.CHART_BODY:
-                        bbox = nested_block["bbox"]
+            elif block.type == BlockType.CHART:
+                for nested_block in block.blocks:
+                    if nested_block.type == BlockType.CHART_BODY:
+                        bbox = nested_block.bbox
                         imgs_body.append(bbox)
-                    elif nested_block["type"] == BlockType.CHART_CAPTION:
-                        bbox = nested_block["bbox"]
+                    elif nested_block.type == BlockType.CHART_CAPTION:
+                        bbox = nested_block.bbox
                         imgs_caption.append(bbox)
-                    elif nested_block["type"] == BlockType.CHART_FOOTNOTE:
-                        bbox = nested_block["bbox"]
+                    elif nested_block.type == BlockType.CHART_FOOTNOTE:
+                        bbox = nested_block.bbox
                         imgs_footnote.append(bbox)
-            elif block["type"] == BlockType.TITLE:
+            elif block.type == BlockType.TITLE:
                 titles.append(bbox)
-            elif block["type"] in TEXT_LIKE_BLOCK_TYPES_FOR_BBOX:
+            elif block.type in TEXT_LIKE_BLOCK_TYPES_FOR_BBOX:
                 texts.append(bbox)
-            elif block["type"] == BlockType.INTERLINE_EQUATION:
+            elif block.type == BlockType.INTERLINE_EQUATION:
                 interline_equations.append(bbox)
-            elif block["type"] == BlockType.LIST:
+            elif block.type == BlockType.LIST:
                 lists.append(bbox)
-                if "blocks" in block:
-                    for sub_block in block["blocks"]:
-                        list_items.append(sub_block["bbox"])
-            elif block["type"] == BlockType.INDEX:
+                if block.blocks:
+                    for sub_block in block.blocks:
+                        list_items.append(sub_block.bbox)
+            elif block.type == BlockType.INDEX:
                 indices.append(bbox)
 
         tables_body_list.append(tables_body)
@@ -271,14 +272,14 @@ def draw_layout_bbox(
     for page in pdf_info:
         page_block_list = []
         for block in _get_layout_source_blocks(page):
-            if block["type"] in DIRECT_LAYOUT_BBOX_BLOCK_TYPES:
-                bbox = block["bbox"]
+            if block.type in DIRECT_LAYOUT_BBOX_BLOCK_TYPES:
+                bbox = block.bbox
                 page_block_list.append(bbox)
-            elif block["type"] in [BlockType.IMAGE, BlockType.CHART, BlockType.CODE, BlockType.TABLE]:
-                for sub_block in block["blocks"]:
-                    if sub_block.get(SplitFlag.CROSS_PAGE, False):
+            elif block.type in [BlockType.IMAGE, BlockType.CHART, BlockType.CODE, BlockType.TABLE]:
+                for sub_block in block.blocks:
+                    if sub_block._extra.get(SplitFlag.CROSS_PAGE, False):
                         continue
-                    bbox = sub_block["bbox"]
+                    bbox = sub_block.bbox
                     page_block_list.append(bbox)
 
         layout_bbox_list.append(page_block_list)
@@ -337,7 +338,7 @@ def draw_layout_bbox(
 
 
 def draw_span_bbox(
-    pdf_info: list[dict[str, Any]],
+    pdf_info: list[PageInfo],
     pdf_bytes: bytes,
     out_path: str,
     filename: str,
@@ -349,17 +350,17 @@ def draw_span_bbox(
     table_list = []
     dropped_list = []
 
-    def get_span_info(span: dict[str, Any]) -> None:  # noqa: ANN202
-        if span["type"] == ContentType.TEXT:
-            page_text_list.append(span["bbox"])
-        elif span["type"] == ContentType.INLINE_EQUATION:
-            page_inline_equation_list.append(span["bbox"])
-        elif span["type"] == ContentType.INTERLINE_EQUATION:
-            page_interline_equation_list.append(span["bbox"])
-        elif span["type"] in [ContentType.IMAGE, ContentType.CHART]:
-            page_image_list.append(span["bbox"])
-        elif span["type"] == ContentType.TABLE:
-            page_table_list.append(span["bbox"])
+    def get_span_info(span: Span) -> None:  # noqa: ANN202
+        if span.type == ContentType.TEXT:
+            page_text_list.append(span.bbox)
+        elif span.type == ContentType.INLINE_EQUATION:
+            page_inline_equation_list.append(span.bbox)
+        elif span.type == ContentType.INTERLINE_EQUATION:
+            page_interline_equation_list.append(span.bbox)
+        elif span.type in [ContentType.IMAGE, ContentType.CHART]:
+            page_image_list.append(span.bbox)
+        elif span.type == ContentType.TABLE:
+            page_table_list.append(span.bbox)
 
     for page in pdf_info:
         page_text_list = []
@@ -370,22 +371,22 @@ def draw_span_bbox(
         page_dropped_list = []
 
         # 构造dropped_list
-        for block in page["discarded_blocks"]:
-            for line in block["lines"]:
-                for span in line["spans"]:
-                    page_dropped_list.append(span["bbox"])
+        for block in page.discarded_blocks:
+            for line in block.lines:
+                for span in line.spans:
+                    page_dropped_list.append(span.bbox)
         dropped_list.append(page_dropped_list)
         # 构造其余useful_list
-        # for block in page['para_blocks']:  # span直接用分段合并前的结果就可以
-        for block in page["preproc_blocks"]:
-            if block["type"] in SPAN_SOURCE_BLOCK_TYPES:
-                for line in block["lines"]:
-                    for span in line["spans"]:
+        # for block in page.para_blocks:  # span直接用分段合并前的结果就可以
+        for block in page.preproc_blocks:
+            if block.type in SPAN_SOURCE_BLOCK_TYPES:
+                for line in block.lines:
+                    for span in line.spans:
                         get_span_info(span)
-            elif block["type"] in [BlockType.IMAGE, BlockType.TABLE, BlockType.CHART, BlockType.CODE]:
-                for sub_block in block["blocks"]:
-                    for line in sub_block["lines"]:
-                        for span in line["spans"]:
+            elif block.type in [BlockType.IMAGE, BlockType.TABLE, BlockType.CHART, BlockType.CODE]:
+                for sub_block in block.blocks:
+                    for line in sub_block.lines:
+                        for span in line.spans:
                             get_span_info(span)
         text_list.append(page_text_list)
         inline_equation_list.append(page_inline_equation_list)
