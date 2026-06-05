@@ -23,7 +23,6 @@ from .model_output_to_middle_json import (
     append_batch_results_to_middle_json,
     apply_server_side_postprocess,
     finalize_middle_json,
-    init_middle_json,
 )
 
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # 让mps可以fallback
@@ -114,15 +113,9 @@ def _finalize_processing_window_context(
     if context["closed"]:
         return
     if client_side_output_generation:
-        apply_server_side_postprocess(
-            context["middle_json"]["pdf_info"],
-            lang=context["lang"],
-        )
+        apply_server_side_postprocess(context["middle_json"], lang=context["lang"])
     else:
-        finalize_middle_json(
-            context["middle_json"]["pdf_info"],
-            lang=context["lang"],
-        )
+        finalize_middle_json(context["middle_json"], lang=context["lang"])
     logger.debug(f"Pipeline doc ready: doc{context['doc_index']} pages={context['page_count']}")
     on_doc_ready(
         context["doc_index"],
@@ -175,7 +168,7 @@ def doc_analyze_streaming(
                     "pdf_doc": pdf_doc,
                     "page_count": page_count,
                     "next_page_idx": 0,
-                    "middle_json": init_middle_json(),
+                    "middle_json": [],
                     "model_list": [],
                     "image_writer": image_writer,
                     "lang": lang,

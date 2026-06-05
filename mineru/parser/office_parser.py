@@ -5,9 +5,10 @@ from abc import ABC
 from pathlib import Path
 from typing import Any
 
+from mineru.types import PageInfo
+
 from .base import DocumentParser
 from .parse_result import ParseResult
-from mineru.types import PageInfo
 
 
 class OfficeBaseParser(DocumentParser, ABC):
@@ -32,16 +33,15 @@ class OfficeBaseParser(DocumentParser, ABC):
 
     def _build_result(
         self,
-        middle_json: dict,
+        middle_json: list[PageInfo],
         file_name: str,
         model_output: Any = None,
     ) -> ParseResult:
         from ..version import __version__
 
-        pages = [PageInfo.from_dict(p) for p in middle_json["pdf_info"]]
         return ParseResult(
-            pages=pages,
-            _backend=middle_json.get("_backend", "office"),
+            pages=middle_json,
+            _backend="office",
             _version_name=__version__,
             _file_name=file_name,
             _model_output=model_output if self.return_model_output else None,

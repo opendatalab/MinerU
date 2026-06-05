@@ -3,13 +3,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from mineru.types import Block, Line, PageInfo, Span
+
+from .api_parser import MinerUApiParser
 from .base import DocumentParser
 from .html_parser import HtmlParser
 from .office_parser import DocxParser, OfficeBaseParser, PptxParser, XlsxParser
 from .parse_result import ParseResult
 from .pdf_parser import PdfBaseParser, PdfHybridParser, PdfPipelineParser, PdfVlmParser
-from mineru.types import Block, Line, PageInfo, Span
-from .api_parser import MinerUApiParser
 
 __all__ = [
     "Block",
@@ -103,14 +104,14 @@ def parse(
     return parser.parse(path)
 
 
-def _parse_flash(path: str | Path, start_page_id: int, end_page_id: int | None,
-                output_dir: str = "./output") -> ParseResult:
+def _parse_flash(path: str | Path, start_page_id: int, end_page_id: int | None, output_dir: str = "./output") -> ParseResult:
     """Flash parse — extract text via pypdfium2 and build proper ParseResult."""
     from pathlib import Path as P
 
-    from ..backend.flash.pdf_extractor import extract_text
-    from .. import version
     from mineru.types import Block, Line, PageInfo, Span
+
+    from .. import version
+    from ..backend.flash.pdf_extractor import extract_text
 
     path = P(path)
     text = extract_text(str(path), start_page=start_page_id, end_page=end_page_id)

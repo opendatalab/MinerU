@@ -1,14 +1,16 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
+import asyncio
 import os
 from abc import abstractmethod
 from pathlib import Path
 from typing import Any
 
+from mineru.types import PageInfo
+
 from .base import DocumentParser
 from .parse_result import ParseResult
-from mineru.types import PageInfo
 
 _IMAGE_SUFFIXES = frozenset({"png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"})
 
@@ -37,6 +39,7 @@ def _resolve_hybrid_backend(backend: str) -> str:
 
 class PdfBaseParser(DocumentParser):
     _parse_method: str = ""
+    _backend: str = ""
 
     def parse(self, path: str | Path) -> ParseResult:
         path = Path(path)
@@ -44,23 +47,23 @@ class PdfBaseParser(DocumentParser):
             raise FileNotFoundError(path)
 
         file_name, pdf_bytes = self._prepare_input(path)
-        middle_json, model_output = self._run_analysis(pdf_bytes, image_writer=None)
-        return self._build_result(middle_json, pdf_bytes, file_name, model_output)
+        middle_json = self._run_analysis(pdf_bytes, image_writer=None)
+        return self._build_result(middle_json, pdf_bytes, file_name)
 
     async def parse_async(self, path: str | Path) -> ParseResult:
-        import asyncio
-
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(path)
 
         file_name, pdf_bytes = await asyncio.to_thread(self._prepare_input, path)
-        middle_json, model_output = await self._arun_analysis(pdf_bytes, image_writer=None)
-        return self._build_result(middle_json, pdf_bytes, file_name, model_output)
+        middle_json = await self._arun_analysis(pdf_bytes, image_writer=None)
+        return self._build_result(middle_json, pdf_bytes, file_name)
 
-    async def _arun_analysis(self, pdf_bytes: bytes, image_writer: Any) -> tuple[dict, Any]:
-        import asyncio
+    @abstractmethod
+    def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
+        """Execute backend-specific analysis. Returns (middle_json, model_output)."""
 
+    async def _arun_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
         return await asyncio.to_thread(self._run_analysis, pdf_bytes, image_writer)
 
     def _prepare_input(self, path: Path) -> tuple[str, bytes]:
@@ -91,28 +94,21 @@ class PdfBaseParser(DocumentParser):
                 return extracted.bytes
         return pdf_bytes
 
-    @abstractmethod
-    def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> tuple[dict, Any]:
-        """Execute backend-specific analysis. Returns (middle_json, model_output)."""
-
     def _build_result(
         self,
-        middle_json: dict,
+        middle_json: list[PageInfo],
         pdf_bytes: bytes,
         file_name: str,
-        model_output: Any = None,
     ) -> ParseResult:
         from ..utils.pdf_document import PDFDocument
         from ..version import __version__
 
-        pages = [PageInfo.from_dict(p) for p in middle_json["pdf_info"]]
         return ParseResult(
-            pages=pages,
-            _backend=middle_json.get("_backend", ""),
+            pages=middle_json,
+            _backend=self._backend,
             _version_name=__version__,
             _pdf_doc=PDFDocument(pdf_bytes),
             _file_name=file_name,
-            _model_output=model_output if self.return_model_output else None,
         )
 
 
@@ -120,8 +116,9 @@ class PdfVlmParser(PdfBaseParser):
     """PDF / image parser using the VLM (Vision Language Model) backend."""
 
     _parse_method = "vlm"
+    _backend = "vlm"
 
-    def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> tuple[dict, Any]:
+    def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
         from ..backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 
         backend = _resolve_vlm_backend(self.backend)
@@ -134,28 +131,30 @@ class PdfVlmParser(PdfBaseParser):
             backend=backend,
             server_url=self.server_url,
             image_analysis=self.image_analysis,
-        )
+        )[0]
 
-    async def _arun_analysis(self, pdf_bytes: bytes, image_writer: Any) -> tuple[dict, Any]:
+    async def _arun_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
         from ..backend.vlm.vlm_analyze import aio_doc_analyze as vlm_aio_doc_analyze
 
         backend = _resolve_vlm_backend(self.backend)
         os.environ["MINERU_VLM_FORMULA_ENABLE"] = str(self.formula_enable).lower()
         os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()
 
-        return await vlm_aio_doc_analyze(
+        middle_json, _ = await vlm_aio_doc_analyze(
             pdf_bytes,
             image_writer=image_writer,
             backend=backend,
             server_url=self.server_url,
             image_analysis=self.image_analysis,
         )
+        return middle_json
 
 
 class PdfPipelineParser(PdfBaseParser):
     """PDF / image parser using the pipeline (CV+OCR) backend."""
 
     _parse_method: str = ""
+    _backend = "pipeline"
 
     def parse(self, path: str | Path) -> ParseResult:
         self._parse_method = self.method
@@ -177,10 +176,10 @@ class PdfPipelineParser(PdfBaseParser):
             file_names.append(fn)
             pdf_bytes_list.append(pb)
 
-        results_by_index: dict[int, tuple[dict, Any]] = {}
+        results_by_index: dict[int, list[PageInfo]] = {}
 
-        def on_doc_ready(doc_index: int, model_list: Any, middle_json: dict, _ocr_enable: bool) -> None:
-            results_by_index[doc_index] = (middle_json, model_list)
+        def on_doc_ready(doc_index: int, model_list: Any, middle_json: list[PageInfo], _ocr_enable: bool) -> None:
+            results_by_index[doc_index] = middle_json
 
         doc_analyze_streaming(
             pdf_bytes_list,
@@ -194,8 +193,8 @@ class PdfPipelineParser(PdfBaseParser):
 
         parse_results: list[ParseResult] = []
         for idx in range(len(paths)):
-            middle_json, model_list = results_by_index[idx]
-            result = self._build_result(middle_json, pdf_bytes_list[idx], file_names[idx], model_list)
+            middle_json = results_by_index[idx]
+            result = self._build_result(middle_json, pdf_bytes_list[idx], file_names[idx])
             parse_results.append(result)
 
         return parse_results
@@ -205,13 +204,12 @@ class PdfPipelineParser(PdfBaseParser):
 
         return await asyncio.to_thread(self.parse_batch, paths)
 
-    def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> tuple[dict, Any]:
+    def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
         from ..backend.pipeline.pipeline_analyze import doc_analyze_streaming
 
         result_holder: dict = {}
 
         def on_doc_ready(_doc_index, model_list, middle_json, _ocr_enable):
-            result_holder["model_list"] = model_list
             result_holder["middle_json"] = middle_json
 
         doc_analyze_streaming(
@@ -224,13 +222,14 @@ class PdfPipelineParser(PdfBaseParser):
             table_enable=self.table_enable,
         )
 
-        return result_holder["middle_json"], result_holder["model_list"]
+        return result_holder["middle_json"]
 
 
 class PdfHybridParser(PdfBaseParser):
     """PDF / image parser using the hybrid (pipeline + VLM) backend."""
 
     _parse_method: str = ""
+    _backend = "hybrid"
 
     def parse(self, path: str | Path) -> ParseResult:
         self._parse_method = f"hybrid_{self.method}"
@@ -240,7 +239,7 @@ class PdfHybridParser(PdfBaseParser):
         self._parse_method = f"hybrid_{self.method}"
         return await super().parse_async(path)
 
-    def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> tuple[dict, Any]:
+    def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
         from ..backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
 
         backend = _resolve_hybrid_backend(self.backend)
@@ -259,9 +258,9 @@ class PdfHybridParser(PdfBaseParser):
             image_analysis=self.image_analysis,
         )
 
-        return middle_json, model_list
+        return middle_json
 
-    async def _arun_analysis(self, pdf_bytes: bytes, image_writer: Any) -> tuple[dict, Any]:
+    async def _arun_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
         from ..backend.hybrid.hybrid_analyze import aio_doc_analyze as hybrid_aio_doc_analyze
 
         backend = _resolve_hybrid_backend(self.backend)
@@ -280,4 +279,4 @@ class PdfHybridParser(PdfBaseParser):
             image_analysis=self.image_analysis,
         )
 
-        return middle_json, model_list
+        return middle_json

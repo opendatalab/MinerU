@@ -7,7 +7,6 @@ from typing import Any
 
 from ...types import Block, PageInfo
 from ...utils.enum_class import BlockType
-from ...version import __version__
 from ..utils.html_image_utils import replace_inline_table_images, save_span_image_if_needed
 from .office_magic_model import MagicModel
 
@@ -98,23 +97,22 @@ def _collect_index_text_blocks(index_block: Block, result: list[Block]) -> None:
             result.append(child)
 
 
-def _link_index_entries_by_anchor(middle_json: dict[str, Any]) -> None:
+def _link_index_entries_by_anchor(middle_json: list[PageInfo]) -> None:
     """Keep TOC anchors only when they exist on parsed body blocks."""
-    pdf_info = middle_json.get("pdf_info", [])
     valid_anchors: set[str] = set()
 
-    for page_info in pdf_info:
-        for block in page_info.get("para_blocks", []):
-            anchor = block.get("anchor")
+    for page_info in middle_json:
+        for block in page_info.para_blocks:
+            anchor = block.anchor
             if isinstance(anchor, str) and anchor.strip():
                 valid_anchors.add(anchor.strip())
 
     if not valid_anchors:
         return
 
-    for page_info in pdf_info:
-        for block in page_info.get("para_blocks", []):
-            if block.get("type") != BlockType.INDEX:
+    for page_info in middle_json:
+        for block in page_info.para_blocks:
+            if block.type != BlockType.INDEX:
                 continue
             toc_text_blocks: list[Block] = []
             _collect_index_text_blocks(block, toc_text_blocks)
@@ -130,19 +128,24 @@ def _link_index_entries_by_anchor(middle_json: dict[str, Any]) -> None:
                 text_block.anchor = anchor
 
 
-def result_to_middle_json(model_output_blocks_list: list[list[dict[str, Any]]], image_writer: object) -> dict[str, Any]:
-    middle_json = {"pdf_info": [], "_backend": "office", "_version_name": __version__}
+def result_to_middle_json(
+    model_output_blocks_list: list[list[dict[str, Any]]],
+    image_writer: object,
+) -> list[PageInfo]:
+    middle_json: list[PageInfo] = []
     for index, page_blocks in enumerate(model_output_blocks_list):
         page_info = blocks_to_page_info(page_blocks, image_writer, index)
-        middle_json["pdf_info"].append(page_info)
+        middle_json.append(page_info)
 
     section_counters: dict[int, int] = defaultdict(int)
-    for page_info in middle_json["pdf_info"]:
-        for block in page_info.get("para_blocks", []):
-            if block.get("type") != BlockType.TITLE:
+    for page_info in middle_json:
+        for block in page_info.para_blocks:
+            if block.type != BlockType.TITLE:
                 continue
-            level = block.get("level", 1)
-            if block.get("is_numbered_style", False):
+            level = block.level
+            if level is None:
+                level = 1
+            if block.is_numbered_style:
                 # Ensure all ancestor levels start at 1 (never 0)
                 for ancestor in range(1, level):
                     if section_counters[ancestor] == 0:
@@ -154,15 +157,15 @@ def result_to_middle_json(model_output_blocks_list: list[list[dict[str, Any]]], 
                         section_counters[deeper] = 0
                 # Build section number string, e.g. "1.2.1"
                 section_number = ".".join(str(section_counters[lvl]) for lvl in range(1, level + 1))
-                block["section_number"] = section_number
+                block.section_number = section_number
             else:
                 # Some documents embed the section number directly in the content
                 # (is_numbered_style=False).  Parse it and sync the counters so
                 # that subsequent numbered blocks continue from the right base.
-                lines = block.get("lines", [])
+                lines = block.lines
                 content = ""
-                if lines and lines[0].get("spans"):
-                    content = lines[0]["spans"][0].get("content", "")
+                if lines and lines[0].spans:
+                    content = lines[0].spans[0].content
                 parts = _extract_section_parts_from_content(content, level)
                 if parts:
                     for k, v in enumerate(parts, start=1):

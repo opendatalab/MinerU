@@ -17,7 +17,7 @@ from PIL import Image
 from tqdm import tqdm
 
 from ...data.data_reader_writer import DataWriter
-from ...types import BBox
+from ...types import BBox, PageInfo
 from ...utils.config_reader import get_device, get_processing_window_size
 from ...utils.enum_class import BlockType as MineruBlockType
 from ...utils.enum_class import ImageType, NotExtractType
@@ -55,7 +55,6 @@ from .model_output_to_middle_json import (
     apply_server_side_postprocess,
     blocks_to_page_info,
     finalize_middle_json,
-    init_middle_json,
 )
 
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # 让mps可以fallback
@@ -750,7 +749,7 @@ def doc_analyze(
     server_url: str | None = None,
     image_analysis: bool = True,
     **kwargs: object,
-) -> tuple[dict[str, Any], list[list[dict[str, Any]]], bool]:
+) -> tuple[list[PageInfo], list[list[dict[str, Any]]], bool]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
@@ -761,7 +760,7 @@ def doc_analyze(
     _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
-    middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
+    middle_json: list[PageInfo] = []
     model_list: list[list[dict[str, Any]]] = []
     doc_closed = False
     hybrid_pipeline_model = None
@@ -861,14 +860,14 @@ def doc_analyze(
 
         if client_side_output_generation:
             apply_server_side_postprocess(
-                middle_json["pdf_info"],
+                middle_json,
                 hybrid_pipeline_model,
                 _ocr_enable,
                 _vlm_ocr_enable,
             )
         else:
             finalize_middle_json(
-                middle_json["pdf_info"],
+                middle_json,
                 hybrid_pipeline_model,
                 _ocr_enable,
                 _vlm_ocr_enable,
@@ -901,7 +900,7 @@ async def aio_doc_analyze(
     server_url: str | None = None,
     image_analysis: bool = True,
     **kwargs: object,
-) -> tuple[dict[str, Any], list[list[dict[str, Any]]], bool]:
+) -> tuple[list[PageInfo], list[list[dict[str, Any]]], bool]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
     if predictor is None:
         predictor = await _get_model_async(backend, model_path, server_url, **kwargs)
@@ -912,7 +911,7 @@ async def aio_doc_analyze(
     _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
-    middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
+    middle_json: list[PageInfo] = []
     model_list = []
     doc_closed = False
     hybrid_pipeline_model = None
@@ -1014,7 +1013,7 @@ async def aio_doc_analyze(
         if client_side_output_generation:
             await asyncio.to_thread(
                 apply_server_side_postprocess,
-                middle_json["pdf_info"],
+                middle_json,
                 hybrid_pipeline_model,
                 _ocr_enable,
                 _vlm_ocr_enable,
@@ -1022,7 +1021,7 @@ async def aio_doc_analyze(
         else:
             await asyncio.to_thread(
                 finalize_middle_json,
-                middle_json["pdf_info"],
+                middle_json,
                 hybrid_pipeline_model,
                 _ocr_enable,
                 _vlm_ocr_enable,

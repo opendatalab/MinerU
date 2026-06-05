@@ -6,7 +6,7 @@ from collections.abc import Generator
 from dataclasses import asdict
 from typing import Any
 
-from ....types import Block, Line, Span
+from ....types import Block, Line, PageInfo, Span
 from ....utils.enum_class import BlockType, ContentType, ContentTypeV2, MakeMode
 from .inline_renderer import (
     _append_hyperlink_part,
@@ -736,15 +736,15 @@ def merge_para_with_text_v2(para_block: Block) -> list[dict[str, Any]]:
 
 
 def union_make(
-    pdf_info_dict: list[dict[str, Any]],
+    pdf_info_dict: list[PageInfo],
     make_mode: MakeMode,
     img_bucket_path: str = "",
 ) -> list[str] | None:
     output_content = []
     for page_info in pdf_info_dict:
-        paras_of_layout = page_info.get("para_blocks")
-        paras_of_discarded = page_info.get("discarded_blocks")
-        page_idx = page_info.get("page_idx")
+        paras_of_layout = page_info.para_blocks
+        paras_of_discarded = page_info.discarded_blocks
+        page_idx = page_info.page_idx
         if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
             if not paras_of_layout:
                 continue

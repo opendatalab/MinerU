@@ -6,7 +6,7 @@ from typing import Any
 
 from loguru import logger
 
-from ...types import Block, Line
+from ...types import Block, Line, PageInfo
 from ...utils.config_reader import get_formula_enable, get_latex_delimiter_config, get_table_enable
 from ...utils.enum_class import BlockType, ContentType, ContentTypeV2, MakeMode
 from ...utils.language import detect_lang
@@ -401,7 +401,9 @@ def mk_blocks_to_markdown(
     return page_markdown
 
 
-def make_blocks_to_content_list(para_block: Block, img_bucket_path: str, page_idx: int, page_size: list[int]) -> dict[str, Any]:
+def make_blocks_to_content_list(
+    para_block: Block, img_bucket_path: str, page_idx: int, page_size: tuple[int, int]
+) -> dict[str, Any]:
     para_type = para_block.type
     para_content: dict[str, Any] = {}
 
@@ -513,7 +515,7 @@ def make_blocks_to_content_list(para_block: Block, img_bucket_path: str, page_id
     return para_content
 
 
-def make_blocks_to_content_list_v2(para_block: Block, img_bucket_path: str, page_size: list[int]) -> dict:
+def make_blocks_to_content_list_v2(para_block: Block, img_bucket_path: str, page_size: tuple[int, int]) -> dict:
     para_type = para_block.type
     para_content = {}
     if para_type in [
@@ -847,7 +849,7 @@ def merge_para_with_text_v2(para_block: Block) -> list[dict[str, Any]]:
 
 
 def union_make(
-    pdf_info_dict: list,
+    pdf_info_dict: list[PageInfo],
     make_mode: str,
     img_bucket_path: str = "",
 ) -> str | list | None:
@@ -856,10 +858,12 @@ def union_make(
 
     output_content = []
     for page_info in pdf_info_dict:
-        paras_of_layout = page_info.get("para_blocks")
-        paras_of_discarded = page_info.get("discarded_blocks")
-        page_idx = page_info.get("page_idx")
-        page_size = page_info.get("page_size")
+        paras_of_layout = page_info.para_blocks
+        paras_of_discarded = page_info.discarded_blocks
+        page_idx = page_info.page_idx
+        page_size = page_info.page_size
+        assert page_size is not None
+
         if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
             if not paras_of_layout:
                 continue

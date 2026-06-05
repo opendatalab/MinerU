@@ -8,7 +8,7 @@ from typing import Any
 
 from loguru import logger
 
-from ...types import BBox, Block, IntBBox, Line, Span
+from ...types import BBox, Block, IntBBox, Line, PageInfo, Span
 from ...utils.config_reader import get_latex_delimiter_config
 from ...utils.enum_class import BlockType, ContentType, ContentTypeV2, MakeMode
 from ...utils.language import detect_lang
@@ -445,7 +445,7 @@ def merge_adjacent_ref_text_blocks_for_content(para_blocks: list[Block]) -> list
     return merged_blocks
 
 
-def _build_bbox(para_bbox: BBox, page_size: list[int]) -> IntBBox | None:
+def _build_bbox(para_bbox: BBox, page_size: tuple[int, int]) -> IntBBox | None:
     if not para_bbox or not page_size:
         return None
     page_width, page_height = page_size
@@ -580,7 +580,7 @@ def merge_para_with_text_v2(para_block: Block) -> list[dict[str, Any]]:
 
 
 def make_blocks_to_content_list(
-    para_block: Block, img_bucket_path: str, page_idx: int, page_size: list[int]
+    para_block: Block, img_bucket_path: str, page_idx: int, page_size: tuple[int, int]
 ) -> dict[str, Any] | None:
     para_type = para_block.type
     para_content: dict[str, Any] | None = None
@@ -943,7 +943,7 @@ def make_blocks_to_content_list_v2(para_block: Block, img_bucket_path: str, page
 
 
 def union_make(
-    pdf_info_dict: list[dict[str, Any]],
+    pdf_info_dict: list[PageInfo],
     make_mode: str,
     img_bucket_path: str = "",
 ) -> str | list[dict[str, Any]] | list[list[dict[str, Any]]] | None:
@@ -951,10 +951,10 @@ def union_make(
     output_content_items: list[dict[str, Any]] = []
     output_content_lists: list[list[dict[str, Any]]] = []
     for page_info in pdf_info_dict:
-        paras_of_layout = page_info.get("para_blocks")
-        paras_of_discarded = page_info.get("discarded_blocks")
-        page_idx = page_info.get("page_idx") or 0
-        page_size = page_info.get("page_size") or []
+        paras_of_layout = page_info.para_blocks
+        paras_of_discarded = page_info.discarded_blocks
+        page_idx = page_info.page_idx
+        page_size = page_info.page_size
         if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
             if not paras_of_layout:
                 continue

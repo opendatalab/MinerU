@@ -162,7 +162,7 @@ def draw_bbox_with_number(
 
 
 def draw_layout_bbox(
-    pdf_info: list[PageInfo],
+    pages: list[PageInfo],
     pdf_bytes: bytes,
     out_path: str,
     filename: str,
@@ -178,7 +178,7 @@ def draw_layout_bbox(
     list_items_list = []
     indexs_list = []
 
-    for page in pdf_info:
+    for page in pages:
         page_dropped_list = []
         tables_body, tables_caption, tables_footnote = [], [], []
         imgs_body, imgs_caption, imgs_footnote = [], [], []
@@ -269,7 +269,7 @@ def draw_layout_bbox(
 
     layout_bbox_list = []
 
-    for page in pdf_info:
+    for page in pages:
         page_block_list = []
         for block in _get_layout_source_blocks(page):
             if block.type in DIRECT_LAYOUT_BBOX_BLOCK_TYPES:
@@ -338,7 +338,7 @@ def draw_layout_bbox(
 
 
 def draw_span_bbox(
-    pdf_info: list[PageInfo],
+    pages: list[PageInfo],
     pdf_bytes: bytes,
     out_path: str,
     filename: str,
@@ -362,7 +362,7 @@ def draw_span_bbox(
         elif span.type == ContentType.TABLE:
             page_table_list.append(span.bbox)
 
-    for page in pdf_info:
+    for page in pages:
         page_text_list = []
         page_inline_equation_list = []
         page_interline_equation_list = []

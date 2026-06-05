@@ -13,10 +13,9 @@ from ...utils.enum_class import BlockType, ContentType
 from ...utils.hash_utils import bytes_md5
 from ...utils.pdfium_guard import pdfium_guard
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from ...version import __version__
 from ..pipeline.model_init import MineruHybridModel
 from ..utils.html_image_utils import replace_inline_table_images
-from ..utils.middle_json_utils import apply_post_ocr, build_middle_json
+from ..utils.middle_json_utils import apply_post_ocr
 from ..utils.para_block_utils import (
     build_para_blocks_from_preproc,
     cleanup_internal_para_block_metadata,
@@ -121,17 +120,17 @@ def blocks_to_page_info(
     return page_info
 
 
-def _apply_post_ocr(pdf_info_list: list[PageInfo], hybrid_pipeline_model: MineruHybridModel) -> None:
-    apply_post_ocr(pdf_info_list, hybrid_pipeline_model.ocr_model)
+def _apply_post_ocr(pages: list[PageInfo], hybrid_pipeline_model: MineruHybridModel) -> None:
+    apply_post_ocr(pages, hybrid_pipeline_model.ocr_model)
 
 
-def _normalize_split_title_blocks(pdf_info_list: list[PageInfo]) -> None:
+def _normalize_split_title_blocks(pages: list[PageInfo]) -> None:
     """将Hybrid内部拆分标题统一为输出层通用title，并补齐默认标题层级。"""
     title_type_to_level = {
         BlockType.DOC_TITLE: 1,
         BlockType.PARAGRAPH_TITLE: 2,
     }
-    for page_info in pdf_info_list:
+    for page_info in pages:
         for blocks in [page_info.preproc_blocks, page_info.para_blocks]:
             for block in blocks:
                 title_level = title_type_to_level.get(block.type)
@@ -141,70 +140,31 @@ def _normalize_split_title_blocks(pdf_info_list: list[PageInfo]) -> None:
                 block.level = title_level
 
 
-def init_middle_json(_ocr_enable: bool, _vlm_ocr_enable: bool) -> dict[str, Any]:
-    return {
-        "pdf_info": [],
-        "_backend": "hybrid",
-        "_ocr_enable": _ocr_enable,
-        "_vlm_ocr_enable": _vlm_ocr_enable,
-        "_version_name": __version__,
-    }
-
-
 def apply_server_side_postprocess(
-    pdf_info_list: list[PageInfo],
-    hybrid_pipeline_model: MineruHybridModel,
-    _ocr_enable: bool,
-    _vlm_ocr_enable: bool,
+    pages: list[PageInfo], hybrid_pipeline_model: MineruHybridModel, _ocr_enable: bool, _vlm_ocr_enable: bool
 ) -> None:
     """执行 Hybrid 只能在服务端完成的 post-OCR，避免客户端依赖 pipeline OCR 模型。"""
     if not (_vlm_ocr_enable or _ocr_enable):
-        _apply_post_ocr(pdf_info_list, hybrid_pipeline_model)
+        _apply_post_ocr(pages, hybrid_pipeline_model)
 
 
-def finalize_middle_json_from_preproc(pdf_info_list: list[PageInfo]) -> None:
+def finalize_middle_json_from_preproc(pages: list[PageInfo]) -> None:
     """从 Hybrid preproc_blocks 执行完整 finalize，供服务端完整路径和客户端复用。"""
-    build_para_blocks_from_preproc(pdf_info_list)
-    merge_para_text_blocks(pdf_info_list, auto_merge_by_det=True)
+    build_para_blocks_from_preproc(pages)
+    merge_para_text_blocks(pages, auto_merge_by_det=True)
 
     table_enable = get_table_enable(os.getenv("MINERU_VLM_TABLE_ENABLE", "True").lower() == "true")
     if table_enable:
-        cross_page_table_merge(pdf_info_list)
+        cross_page_table_merge(pages)
 
-    apply_title_leveling_to_pdf_info(pdf_info_list)
-    _normalize_split_title_blocks(pdf_info_list)
-    cleanup_internal_para_block_metadata(pdf_info_list)
+    apply_title_leveling_to_pdf_info(pages)
+    _normalize_split_title_blocks(pages)
+    cleanup_internal_para_block_metadata(pages)
 
 
 def finalize_middle_json(
-    pdf_info_list: list[PageInfo],
-    hybrid_pipeline_model: MineruHybridModel,
-    _ocr_enable: bool,
-    _vlm_ocr_enable: bool,
+    pages: list[PageInfo], hybrid_pipeline_model: MineruHybridModel, _ocr_enable: bool, _vlm_ocr_enable: bool
 ) -> None:
     """保持旧入口语义：服务端先做必要 post-OCR，再执行完整 finalize。"""
-    apply_server_side_postprocess(pdf_info_list, hybrid_pipeline_model, _ocr_enable, _vlm_ocr_enable)
-    finalize_middle_json_from_preproc(pdf_info_list)
-
-
-def result_to_middle_json(
-    model_list: list[list[dict[str, Any]]],
-    images_list: list[dict[str, Any]],
-    pdf_doc: Any,
-    image_writer: DataWriter,
-    _ocr_enable: bool,
-    _vlm_ocr_enable: bool,
-    hybrid_pipeline_model: MineruHybridModel,
-) -> dict[str, Any]:
-    return build_middle_json(
-        model_list,
-        images_list,
-        pdf_doc,
-        image_writer,
-        init_fn=init_middle_json,
-        page_cvt_fn=blocks_to_page_info,
-        finalize_fn=finalize_middle_json,
-        _ocr_enable=_ocr_enable,
-        _vlm_ocr_enable=_vlm_ocr_enable,
-        hybrid_pipeline_model=hybrid_pipeline_model,
-    )
+    apply_server_side_postprocess(pages, hybrid_pipeline_model, _ocr_enable, _vlm_ocr_enable)
+    finalize_middle_json_from_preproc(pages)

@@ -19,6 +19,7 @@ from packaging import version
 from tqdm import tqdm
 
 from ...data.data_reader_writer import DataWriter
+from ...types import PageInfo
 from ...utils.check_sys_env import is_mac_os_version_supported
 from ...utils.config_reader import get_device, get_processing_window_size
 from ...utils.enum_class import ImageType
@@ -27,7 +28,7 @@ from ...utils.pdf_image_tools import aio_load_images_from_pdf_bytes_range, load_
 from ...utils.pdfium_guard import close_pdfium_document, get_pdfium_document_page_count, open_pdfium_document
 from ..utils.middle_json_utils import append_pages
 from ..utils.runtime_utils import exclude_progress_bar_idle_time
-from .model_output_to_middle_json import blocks_to_page_info, finalize_middle_json, init_middle_json
+from .model_output_to_middle_json import blocks_to_page_info, finalize_middle_json
 from .utils import (
     enable_custom_logits_processors,
     mod_kwargs_by_device_type,
@@ -455,14 +456,14 @@ def doc_analyze(
     server_url: str | None = None,
     image_analysis: bool = True,
     **kwargs: Any,
-) -> tuple[dict[str, Any], list[ExtractResult]]:
+) -> tuple[list[PageInfo], list[ExtractResult]]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
-    middle_json = init_middle_json()
+    middle_json: list[PageInfo] = []
     results: list[ExtractResult] = []
     doc_closed = False
     try:
@@ -531,7 +532,7 @@ def doc_analyze(
                 f"processing-window infer finished, cost: {infer_time}, speed: {round(len(results) / infer_time, 3)} page/s"
             )
         if not client_side_output_generation:
-            finalize_middle_json(middle_json["pdf_info"])
+            finalize_middle_json(middle_json)
         close_pdfium_document(pdf_doc)
         doc_closed = True
         return middle_json, results
@@ -556,14 +557,14 @@ async def aio_doc_analyze(
     server_url: str | None = None,
     image_analysis: bool = True,
     **kwargs: Any,
-) -> tuple[dict[str, Any], list[ExtractResult]]:
+) -> tuple[list[PageInfo], list[ExtractResult]]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
     if predictor is None:
         predictor = await _get_model_async(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
-    middle_json = init_middle_json()
+    middle_json: list[PageInfo] = []
     results: list[ExtractResult] = []
     doc_closed = False
     try:
@@ -631,7 +632,7 @@ async def aio_doc_analyze(
                 f"processing-window infer finished, cost: {infer_time}, speed: {round(len(results) / infer_time, 3)} page/s"
             )
         if not client_side_output_generation:
-            await asyncio.to_thread(finalize_middle_json, middle_json["pdf_info"])
+            await asyncio.to_thread(finalize_middle_json, middle_json)
         close_pdfium_document(pdf_doc)
         doc_closed = True
         return middle_json, results

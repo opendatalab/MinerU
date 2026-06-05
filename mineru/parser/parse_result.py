@@ -70,7 +70,7 @@ class ParseResult:
         ...
 
     def to_dict(self) -> dict[str, Any]:
-        return {"pdf_info": [dataclasses.asdict(p) for p in self.pages]}
+        return {"pages": [dataclasses.asdict(p) for p in self.pages]}
 
     @staticmethod
     def from_json(s: str) -> "ParseResult":
@@ -115,7 +115,7 @@ class ParseResult:
 
         # TODO: need rename these files
         writer.write_string(f"{prefix}.md", self.markdown())
-        writer.write_string(f"{prefix}_middle.json", self.json())
+        writer.write_string(f"{prefix}_middle.json", self.to_json())
 
         writer.write_string(
             f"{prefix}_content_list.json",

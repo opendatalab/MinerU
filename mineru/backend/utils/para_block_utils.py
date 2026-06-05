@@ -34,14 +34,14 @@ def iter_block_spans(block: Block) -> Generator[Span, None, None]:
         yield from iter_block_spans(sub_block)
 
 
-def build_para_blocks_from_preproc(pdf_info_list: list[PageInfo]) -> None:
-    for page_info in pdf_info_list:
+def build_para_blocks_from_preproc(pages: list[PageInfo]) -> None:
+    for page_info in pages:
         page_info.para_blocks = copy.deepcopy(page_info.preproc_blocks)
 
 
-def merge_para_text_blocks(pdf_info_list: list[PageInfo], auto_merge_by_det: bool = False) -> None:
+def merge_para_text_blocks(pages: list[PageInfo], auto_merge_by_det: bool = False) -> None:
     ordered_blocks: list[tuple[int, int, Block]] = []
-    for page_info in pdf_info_list:
+    for page_info in pages:
         page_idx = page_info.page_idx
         for order_idx, block in enumerate(page_info.para_blocks):
             ordered_blocks.append((page_idx, order_idx, block))
@@ -189,8 +189,8 @@ def can_auto_merge_text_blocks(
     return _has_mergeable_block_bbox_relation(current_block, previous_block)
 
 
-def cleanup_internal_para_block_metadata(pdf_info_list: list[PageInfo]) -> None:
-    for page_info in pdf_info_list:
+def cleanup_internal_para_block_metadata(pages: list[PageInfo]) -> None:
+    for page_info in pages:
         for block in page_info.preproc_blocks:
             _cleanup_block_internal_metadata(block)
         for block in page_info.para_blocks:

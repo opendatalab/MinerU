@@ -5,7 +5,6 @@ from pathlib import Path
 
 from mineru.utils.pdf_document import PDFDocument
 
-
 VISUALIZATION_FINISHED = "finished"
 VISUALIZATION_SKIPPED = "skipped"
 
@@ -57,8 +56,7 @@ def run_visualization_job(job: VisualizationJob) -> VisualizationResult:
             message=f"failed to read middle.json: {exc}",
         )
 
-    pdf_info = payload.get("pdf_info")
-    if not isinstance(pdf_info, list):
+    if not isinstance(payload, list):
         return VisualizationResult(
             document_stem=job.document_stem,
             parse_dir=job.parse_dir,
@@ -70,10 +68,10 @@ def run_visualization_job(job: VisualizationJob) -> VisualizationResult:
         pdf_bytes = origin_pdf_path.read_bytes()
         doc = PDFDocument(pdf_bytes)
         generated_files = [f"{job.document_stem}_layout.pdf"]
-        doc.draw_layout_bbox(pdf_info, str(job.parse_dir / generated_files[0]))
+        doc.draw_layout_bbox(payload, str(job.parse_dir / generated_files[0]))
         if job.draw_span:
             generated_files.append(f"{job.document_stem}_span.pdf")
-            doc.draw_span_bbox(pdf_info, str(job.parse_dir / generated_files[1]))
+            doc.draw_span_bbox(payload, str(job.parse_dir / generated_files[1]))
     except Exception as exc:
         return VisualizationResult(
             document_stem=job.document_stem,

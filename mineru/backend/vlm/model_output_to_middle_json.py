@@ -14,9 +14,7 @@ from ...utils.enum_class import ContentType
 from ...utils.hash_utils import bytes_md5
 from ...utils.pdfium_guard import pdfium_guard
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from ...version import __version__
 from ..utils.html_image_utils import replace_inline_table_images
-from ..utils.middle_json_utils import build_middle_json
 from ..utils.para_block_utils import (
     build_para_blocks_from_preproc,
     cleanup_internal_para_block_metadata,
@@ -88,36 +86,14 @@ def blocks_to_page_info(
     return page_info
 
 
-def init_middle_json() -> dict[str, Any]:
-    return {"pdf_info": [], "_backend": "vlm", "_version_name": __version__}
-
-
-def finalize_middle_json(pdf_info_list: list[PageInfo]) -> None:
+def finalize_middle_json(pages: list[PageInfo]) -> None:
     """从 VLM preproc_blocks 执行完整 finalize，客户端和服务端完整路径共用。"""
-    build_para_blocks_from_preproc(pdf_info_list)
-    merge_para_text_blocks(pdf_info_list)
+    build_para_blocks_from_preproc(pages)
+    merge_para_text_blocks(pages)
 
     table_enable = get_table_enable(os.getenv("MINERU_VLM_TABLE_ENABLE", "True").lower() == "true")
     if table_enable:
-        cross_page_table_merge(pdf_info_list)
+        cross_page_table_merge(pages)
 
-    apply_title_leveling_to_pdf_info(pdf_info_list)
-
-    cleanup_internal_para_block_metadata(pdf_info_list)
-
-
-def result_to_middle_json(
-    model_output_blocks_list: list[ExtractResult],
-    images_list: list[dict[str, Any]],
-    pdf_doc: Any,
-    image_writer: DataWriter,
-) -> dict[str, Any]:
-    return build_middle_json(
-        model_output_blocks_list,
-        images_list,
-        pdf_doc,
-        image_writer,
-        init_fn=init_middle_json,
-        page_cvt_fn=blocks_to_page_info,
-        finalize_fn=finalize_middle_json,
-    )
+    apply_title_leveling_to_pdf_info(pages)
+    cleanup_internal_para_block_metadata(pages)

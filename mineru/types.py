@@ -1,8 +1,10 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Iterator, Literal, TypeAlias
+from dataclasses import dataclass, field, fields
+from typing import Any, Iterator, Literal, TypeAlias, TypeVar, get_type_hints
+
+T = TypeVar("T", bound="_DocElement")
 
 
 class BlockType:
@@ -305,8 +307,56 @@ IntBBox: TypeAlias = tuple[int, int, int, int]
 EMPTY_BBOX: BBox = (0.0, 0.0, 0.0, 0.0)
 
 
+def _origin_is_list(tp: Any) -> bool:
+    return getattr(tp, "__origin__", None) is list
+
+
+def _list_arg(tp: Any) -> Any | None:
+    args = getattr(tp, "__args__", None)
+    return args[0] if args else None
+
+
 @dataclass
-class Span:
+class _DocElement:
+    """Base class for document-model nodes (Span, Line, Block, PageInfo)."""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dict, excluding private fields (prefixed with ``_``). Nested dataclass lists are recursed."""
+        result: dict[str, Any] = {}
+        for f in fields(self):
+            if f.name.startswith("_"):
+                continue
+            value = getattr(self, f.name)
+            if isinstance(value, list):
+                result[f.name] = [v.to_dict() if isinstance(v, _DocElement) else v for v in value]
+            else:
+                result[f.name] = value
+        return result
+
+    @classmethod
+    def from_dict(cls: type[T], d: dict) -> T:
+        """Reconstruct from dict (inverse of ``to_dict``). Handles nested dataclass lists and list→tuple conversion."""
+        hints = get_type_hints(cls)
+        kwargs: dict[str, Any] = {}
+        for f in fields(cls):
+            if f.name.startswith("_"):
+                continue
+            if f.name not in d:
+                continue
+            value = d[f.name]
+            f_type = hints.get(f.name)
+            if f_type is not None and _origin_is_list(f_type):
+                elem_type = _list_arg(f_type)
+                if isinstance(elem_type, type) and issubclass(elem_type, _DocElement):
+                    value = [elem_type.from_dict(v) for v in value]
+            if f.name in ("bbox", "page_size") and isinstance(value, list):
+                value = tuple(value)
+            kwargs[f.name] = value
+        return cls(**kwargs)
+
+
+@dataclass
+class Span(_DocElement):
     """Leaf node of the block tree.  Holds text, formula, image, or table content."""
 
     type: str
@@ -317,7 +367,6 @@ class Span:
     image_base64: str = ""
     html: str = ""
     latex: str = ""
-    _extra: dict = field(default_factory=dict)
 
     # Internal
     _cross_page: bool = False
@@ -327,27 +376,15 @@ class Span:
     _style: list[str] = field(default_factory=list)
     _children: list[Span] = field(default_factory=list)
 
-    @classmethod
-    def from_dict(cls, d: dict) -> Span:
-        return cls(
-            type=d["type"],
-            bbox=tuple(d["bbox"]),
-            content=d.get("content", ""),
-            score=d.get("score", 0.0),
-            image_path=d.get("image_path", ""),
-            image_base64=d.get("image_base64", ""),
-            html=d.get("html", ""),
-            latex=d.get("latex", ""),
-        )
+    _extra: dict = field(default_factory=dict)
 
 
 @dataclass
-class Line:
+class Line(_DocElement):
     """A line within a block, containing one or more spans."""
 
     bbox: BBox
     spans: list[Span] = field(default_factory=list)
-    _extra: dict = field(default_factory=dict)
 
     # Internal
     _is_list_start: bool = False
@@ -356,16 +393,9 @@ class Line:
     _code_type: str | None = None
     _code_guess_lang: str | None = None
 
-    @classmethod
-    def from_dict(cls, d: dict) -> Line:
-        return cls(
-            bbox=tuple(d["bbox"]),
-            spans=[Span.from_dict(s) for s in d.get("spans", [])],
-        )
-
 
 @dataclass
-class Block:
+class Block(_DocElement):
     """A layout block on a page.  May nest child blocks (e.g. list items, image body)."""
 
     # Required
@@ -406,26 +436,6 @@ class Block:
     _bbox_fs: BBox | None = None
     _sub_images: list[Block] = field(default_factory=list)
 
-    _extra: dict = field(default_factory=dict)
-
-    @classmethod
-    def from_dict(cls, d: dict) -> Block:
-        return cls(
-            index=d["index"],
-            type=d["type"],
-            bbox=tuple(d["bbox"]),
-            lines=[Line.from_dict(line) for line in d.get("lines", [])],
-            blocks=[Block.from_dict(b) for b in d.get("blocks", [])],
-            angle=d.get("angle"),
-            score=d.get("score"),
-            level=d.get("level"),
-            sub_type=d.get("sub_type", ""),
-            guess_lang=d.get("guess_lang", ""),
-            merge_prev=d.get("merge_prev", False),
-            section_number=d.get("section_number", ""),
-            html=d.get("html", ""),
-        )
-
     def all_spans(self) -> Iterator[Span]:
         """Depth-first yield every span in this block tree."""
         for line in self.lines:
@@ -435,7 +445,7 @@ class Block:
 
 
 @dataclass
-class PageInfo:
+class PageInfo(_DocElement):
     """Parsed content of a single page."""
 
     page_idx: int
@@ -443,15 +453,3 @@ class PageInfo:
     preproc_blocks: list[Block] = field(default_factory=list)
     para_blocks: list[Block] = field(default_factory=list)
     discarded_blocks: list[Block] = field(default_factory=list)
-    _extra: dict = field(default_factory=dict)
-
-    @classmethod
-    def from_dict(cls, d: dict) -> PageInfo:
-        ps = d.get("page_size")
-        return cls(
-            page_idx=d["page_idx"],
-            page_size=tuple(ps) if ps else None,
-            preproc_blocks=[Block.from_dict(b) for b in d.get("preproc_blocks", [])],
-            para_blocks=[Block.from_dict(b) for b in d.get("para_blocks", [])],
-            discarded_blocks=[Block.from_dict(b) for b in d.get("discarded_blocks", [])],
-        )

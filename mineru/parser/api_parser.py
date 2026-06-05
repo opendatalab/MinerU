@@ -13,9 +13,10 @@ import json as _json
 from pathlib import Path
 from typing import Any
 
+from mineru.types import PageInfo
+
 from .base import DocumentParser
 from .parse_result import ParseResult
-from mineru.types import PageInfo
 
 
 class MinerUApiParser(DocumentParser):
@@ -409,11 +410,11 @@ def _pages_from_middle_json(mid_json: dict[str, Any] | list[Any] | None) -> list
     if isinstance(mid_json, list):
         return [PageInfo.from_dict(raw) for raw in mid_json if isinstance(raw, dict)]
     if isinstance(mid_json, dict):
-        pdf_info = mid_json.get("pdf_info", [])
-        if isinstance(pdf_info, list):
-            return [PageInfo.from_dict(raw) for raw in pdf_info if isinstance(raw, dict)]
-        if isinstance(pdf_info, dict):
-            raw_pages = pdf_info.get("preproc_blocks", [])
+        pages = mid_json.get("pages", [])
+        if isinstance(pages, list):
+            return [PageInfo.from_dict(raw) for raw in pages if isinstance(raw, dict)]
+        if isinstance(pages, dict):
+            raw_pages = pages.get("preproc_blocks", [])
             return [
                 PageInfo(page_idx=i, page_size=(raw.get("width", 0), raw.get("height", 0)) if isinstance(raw, dict) else (0, 0))
                 for i, raw in enumerate(raw_pages)

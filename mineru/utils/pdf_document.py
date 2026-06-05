@@ -11,7 +11,6 @@ from PIL import Image
 from ..types import BBox, PageInfo
 from .draw_bbox import draw_layout_bbox, draw_span_bbox
 from .pdf_classify import classify, get_text_quality_signal_pdfium
-from .pdf_classify import extract_pages as _extract_pages
 from .pdf_image_tools import get_crop_img, image_to_bytes, images_bytes_to_pdf_bytes
 from .pdf_text_tool import get_lines_from_chars, get_page_chars
 from .pdfium_guard import (
@@ -149,6 +148,8 @@ class PDFDocument:
         return PDFDocument(new_bytes)
 
     def sample_pages(self, max_pages: int = 3) -> "PDFDocument":
+        from .pdf_classify import extract_pages as _extract_pages
+
         new_bytes = _extract_pages(self._pdf_bytes)
         if max_pages > 0 and new_bytes:
             new_doc = PDFDocument(new_bytes)

@@ -9,10 +9,11 @@ from loguru import logger
 
 from ...data.data_reader_writer import FileBasedDataWriter
 from ...model.xlsx.main import convert_binary
+from ...types import PageInfo
 from .model_output_to_middle_json import result_to_middle_json
 
 
-def office_xlsx_analyze(file_bytes: bytes, image_writer: Any = None) -> tuple[dict[str, Any], list[Any]]:
+def office_xlsx_analyze(file_bytes: bytes, image_writer: Any = None) -> tuple[list[PageInfo], list[Any]]:
     infer_start = time.time()
 
     file_stream = BytesIO(file_bytes)

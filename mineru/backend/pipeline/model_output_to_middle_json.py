@@ -8,10 +8,9 @@ from ...utils.enum_class import BlockType, ContentType
 from ...utils.hash_utils import bytes_md5
 from ...utils.pdfium_guard import pdfium_guard
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from ...version import __version__
 from ..utils.char_utils import full_to_half
 from ..utils.html_image_utils import replace_inline_table_images
-from ..utils.middle_json_utils import append_pages, apply_post_ocr, build_middle_json
+from ..utils.middle_json_utils import append_pages, apply_post_ocr
 from ..utils.runtime_utils import cross_page_table_merge
 from .model_init import AtomModelSingleton
 from .para_split import para_split
@@ -61,7 +60,7 @@ def build_page_model_info(page_layout_dets: list[dict[str, Any]], page_index: in
 
 
 def append_batch_results_to_middle_json(
-    middle_json: dict[str, Any],
+    middle_json: list[PageInfo],
     batch_results: list[list[dict[str, Any]]],
     images_list: list[dict[str, Any]],
     pdf_doc: Any,
@@ -127,8 +126,8 @@ def _append_formula_number_tag(equation_block: Block, formula_number_block: Bloc
         equation_span.content = f"{formula}\\tag{{{tag_content}}}"
 
 
-def _optimize_formula_number_blocks(pdf_info_list: list[PageInfo]) -> None:
-    for page_info in pdf_info_list:
+def _optimize_formula_number_blocks(pages: list[PageInfo]) -> None:
+    for page_info in pages:
         optimized_blocks = []
         blocks = page_info.preproc_blocks
         for index, block in enumerate(blocks):
@@ -156,18 +155,18 @@ def _optimize_formula_number_blocks(pdf_info_list: list[PageInfo]) -> None:
         page_info.preproc_blocks = optimized_blocks
 
 
-def _apply_post_ocr(pdf_info_list: list[PageInfo], lang: str | None = None) -> None:
+def _apply_post_ocr(pages: list[PageInfo], lang: str | None = None) -> None:
     atom_model_manager = AtomModelSingleton()
     ocr_model = atom_model_manager.get_atom_model(
         atom_model_name="ocr",
         det_db_box_thresh=0.3,
         lang=lang,
     )
-    apply_post_ocr(pdf_info_list, ocr_model)
+    apply_post_ocr(pages, ocr_model)
 
 
-def _post_block_process(pdf_info_list: list[PageInfo]) -> None:
-    for page_info in pdf_info_list:
+def _post_block_process(pages: list[PageInfo]) -> None:
+    for page_info in pages:
         for blocks in [page_info.preproc_blocks, page_info.para_blocks]:
             for block in blocks:
                 block_type = block.type
@@ -181,50 +180,21 @@ def _post_block_process(pdf_info_list: list[PageInfo]) -> None:
                     block.type = BlockType.TEXT
 
 
-def apply_server_side_postprocess(pdf_info_list: list[PageInfo], lang: str | None = None) -> None:
+def apply_server_side_postprocess(pages: list[PageInfo], lang: str | None = None) -> None:
     """执行只能在服务端完成的后处理；目前仅包含依赖 OCR 模型的 post-OCR。"""
-    _apply_post_ocr(pdf_info_list, lang=lang)
+    _apply_post_ocr(pages, lang=lang)
 
 
-def finalize_middle_json_from_preproc(pdf_info_list: list[PageInfo]) -> None:
+def finalize_middle_json_from_preproc(pages: list[PageInfo]) -> None:
     """从 preproc_blocks 执行确定性 finalize，供服务端完整路径和客户端复用。"""
-    _optimize_formula_number_blocks(pdf_info_list)
-    para_split(pdf_info_list)
-    cross_page_table_merge(pdf_info_list)
-    apply_title_leveling_to_pdf_info(pdf_info_list)
-    _post_block_process(pdf_info_list)
+    _optimize_formula_number_blocks(pages)
+    para_split(pages)
+    cross_page_table_merge(pages)
+    apply_title_leveling_to_pdf_info(pages)
+    _post_block_process(pages)
 
 
-def finalize_middle_json(
-    pdf_info_list: list[PageInfo],
-    lang: str | None = None,
-) -> None:
+def finalize_middle_json(pages: list[PageInfo], lang: str | None = None) -> None:
     """Apply document-level post processing once all page_info entries are ready."""
-    apply_server_side_postprocess(pdf_info_list, lang=lang)
-    finalize_middle_json_from_preproc(pdf_info_list)
-
-
-def init_middle_json() -> dict[str, Any]:
-    return {"pdf_info": [], "_backend": "pipeline", "_version_name": __version__}
-
-
-def result_to_middle_json(
-    model_list: list[dict[str, Any]],
-    images_list: list[dict[str, Any]],
-    pdf_doc: Any,
-    image_writer: DataWriter,
-    lang: str | None = None,
-    ocr_enable: bool = False,
-    formula_enable: bool | None = None,
-) -> dict[str, Any]:
-    return build_middle_json(
-        model_list,
-        images_list,
-        pdf_doc,
-        image_writer,
-        init_fn=init_middle_json,
-        page_cvt_fn=blocks_to_page_info,
-        finalize_fn=finalize_middle_json,
-        lang=lang,
-        ocr_enable=ocr_enable,
-    )
+    apply_server_side_postprocess(pages, lang=lang)
+    finalize_middle_json_from_preproc(pages)
