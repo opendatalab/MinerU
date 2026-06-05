@@ -82,6 +82,7 @@ def blocks_to_page_info(
         discarded_blocks=discarded_blocks,
         page_size=(width, height),
         page_idx=page_index,
+        _backend="vlm",
     )
     return page_info
 

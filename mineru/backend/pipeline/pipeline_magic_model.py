@@ -4,6 +4,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
+from ...render.merge import _merge_para_text
 from ...types import EMPTY_BBOX, BBox, Block, Line, Span
 from ...utils.enum_class import BlockType, ContentType
 from ...utils.guess_suffix_or_lang import guess_language_by_text
@@ -21,7 +22,6 @@ from ..utils.visual_magic_model_utils import (
     fallback_leading_table_continuation_captions,
     find_best_visual_parent,
 )
-from .pipeline_middle_json_mkcontent import _merge_para_text
 
 if TYPE_CHECKING:
     from PIL.Image import Image as PILImage
@@ -164,7 +164,7 @@ class MagicModel:
             for line in sort_block_lines:
                 line._is_list_start = True
             _temp_block = Block(index=0, type="", bbox=EMPTY_BBOX, lines=sort_block_lines)
-            code_content = _merge_para_text(_temp_block, False, "\n")
+            code_content = _merge_para_text(_temp_block, escape_markdown=False, list_line_break="\n")
             guess_lang = guess_language_by_text(code_content)
             if guess_lang not in ["txt", "unknown"]:
                 block.sub_type = "code"

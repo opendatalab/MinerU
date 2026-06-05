@@ -51,6 +51,7 @@ def blocks_to_page_info(
         page_idx=page_index,
         page_size=(page_w, page_h),
         discarded_blocks=discarded_blocks,
+        _backend="pipeline",
     )
 
 

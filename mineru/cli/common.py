@@ -13,12 +13,11 @@ from typing import Any, Callable, Sequence
 from loguru import logger
 
 from mineru.backend.office.docx_analyze import office_docx_analyze
-from mineru.backend.office.office_middle_json_mkcontent import union_make as office_union_make
 from mineru.backend.office.pptx_analyze import office_pptx_analyze
 from mineru.backend.office.xlsx_analyze import office_xlsx_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
-from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
+from mineru.render import render_content_list, render_content_list_v2, render_markdown
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
@@ -256,16 +255,6 @@ def _process_output(
     process_mode: str,
     backend: str,
 ) -> None:
-    from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
-
-    if process_mode == "pipeline":
-        make_func = pipeline_union_make
-    elif process_mode == "vlm":
-        make_func = vlm_union_make
-    elif process_mode in office_suffixes:
-        make_func = office_union_make
-    else:
-        raise Exception(f"Unknown process_mode: {process_mode}")
     """处理输出文件"""
     if f_draw_layout_bbox:
         try:
@@ -294,20 +283,20 @@ def _process_output(
     image_dir = str(os.path.basename(local_image_dir))
 
     if f_dump_md:
-        md_content_str = make_func(middle_json, f_make_md_mode, image_dir)
+        md_content_str = render_markdown(middle_json, image_dir, make_mode=f_make_md_mode)
         md_writer.write_string(
             f"{pdf_file_name}.md",
             md_content_str,
         )
 
     if f_dump_content_list:
-        content_list = make_func(middle_json, MakeMode.CONTENT_LIST, image_dir)
+        content_list = render_content_list(middle_json, image_dir)
         md_writer.write_string(
             f"{pdf_file_name}_content_list.json",
             json.dumps(content_list, ensure_ascii=False, indent=1),
         )
 
-        content_list_v2 = make_func(middle_json, MakeMode.CONTENT_LIST_V2, image_dir)
+        content_list_v2 = render_content_list_v2(middle_json, image_dir)
         md_writer.write_string(
             f"{pdf_file_name}_content_list_v2.json",
             json.dumps(content_list_v2, ensure_ascii=False, indent=1),

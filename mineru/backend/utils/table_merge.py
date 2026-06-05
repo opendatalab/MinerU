@@ -7,9 +7,9 @@ from typing import Any
 
 from bs4 import BeautifulSoup, Tag
 
+from ...render.merge import merge_para_text
 from ...types import BBox, Block, PageInfo, Span
 from ...utils.enum_class import BlockType
-from ..vlm.vlm_middle_json_mkcontent import merge_para_with_text
 from .char_utils import full_to_half
 from .table_continuation import is_table_continuation_text
 
@@ -210,7 +210,7 @@ def _find_table_body_span(table_block: Block) -> Span | None:
 
 def _is_continuation_caption(caption_block: Block) -> bool:
     """判断 caption 文本是否带有续表标记。"""
-    return is_table_continuation_text(merge_para_with_text(caption_block))
+    return is_table_continuation_text(merge_para_text(caption_block))
 
 
 def _is_post_table_non_continuation_caption(table_block: Block, caption_block: Block) -> bool:

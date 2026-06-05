@@ -67,6 +67,7 @@ def blocks_to_page_info(page_blocks: list[dict[str, Any]], image_writer: Any, pa
         para_blocks=blocks,
         discarded_blocks=discarded_blocks,
         page_idx=page_index,
+        _backend="office",
     )
     return page_info
 

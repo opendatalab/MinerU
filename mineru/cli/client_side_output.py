@@ -15,22 +15,9 @@ SUPPORTED_BACKENDS = {*PDF_BACKENDS, "office"}
 
 def _select_union_make(backend: str) -> Callable[[list, str, str], Any]:
     """根据 middle json 后端选择对应的 Markdown/content list 渲染函数。"""
-    if backend == "pipeline":
-        from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make
+    from mineru.render import render_markdown
 
-        return union_make
-    if backend in {"vlm", "hybrid"}:
-        from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make
-
-        return union_make
-    if backend == "office":
-        from mineru.backend.office.office_middle_json_mkcontent import union_make
-
-        return union_make
-
-    raise ValueError(
-        f"Unsupported middle json backend for client-side output generation: {backend}"
-    )
+    return render_markdown
 
 
 def _write_json(path: Path, payload: Any) -> None:

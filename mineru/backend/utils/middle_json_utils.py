@@ -57,6 +57,7 @@ def append_pages(
                     page_idx=page_index,
                     page_size=(page_w, page_h),
                     discarded_blocks=[],
+                    _backend=None,
                 )
         finally:
             close_pdfium_child(page)

@@ -1,256 +1,24 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
-import re
-from copy import deepcopy
-from html import unescape
 from typing import Any
 
 from loguru import logger
 
-from ...types import BBox, Block, IntBBox, Line, PageInfo, Span
-from ...utils.config_reader import get_latex_delimiter_config
+from ...render.markdown import _get_title_level, blocks_to_markdown
+from ...render.merge import (
+    CJK_LANGS,
+    _collect_text_for_lang_detection,
+    _next_line_starts_with_lowercase_text,
+    _normalize_text_content,
+    merge_para_text,
+)
+from ...render.merge_visual import _format_embedded_html, _inherit_parent_code_render_metadata, _normalize_visual_content
+from ...types import BBox, Block, IntBBox, Line, PageInfo
 from ...utils.enum_class import BlockType, ContentType, ContentTypeV2, MakeMode
 from ...utils.language import detect_lang
-from ..utils.char_utils import full_to_half_exclude_marks, is_hyphen_at_line_end
-from ..utils.markdown_utils import escape_conservative_markdown_text, escape_text_block_markdown_prefix
-
-
-def make_blocks_to_markdown(paras_of_layout: list[Block], mode: str, img_bucket_path: str = "") -> list[str]:
-    page_markdown = []
-    for para_block in paras_of_layout:
-        para_text = ""
-        para_type = para_block.type
-        if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX, BlockType.ABSTRACT, BlockType.REF_TEXT]:
-            para_text = merge_para_with_text(para_block)
-        elif para_type == BlockType.TITLE:
-            title_level = get_title_level(para_block)
-            para_text = f"{'#' * title_level} {merge_para_with_text(para_block)}"
-        elif para_type == BlockType.INTERLINE_EQUATION:
-            if len(para_block.lines) == 0 or len(para_block.lines[0].spans) == 0:
-                continue
-            if para_block.lines[0].spans[0].content:
-                para_text = merge_para_with_text(para_block)
-            else:
-                para_text = f"![]({img_bucket_path}/{para_block.lines[0].spans[0].image_path})"
-        elif para_type == BlockType.IMAGE:
-            if mode == MakeMode.NLP_MD:
-                continue
-            elif mode == MakeMode.MM_MD:
-                para_text = merge_visual_blocks_to_markdown(para_block, img_bucket_path)
-        elif para_type == BlockType.CHART:
-            if mode == MakeMode.NLP_MD:
-                continue
-            elif mode == MakeMode.MM_MD:
-                para_text = merge_visual_blocks_to_markdown(para_block, img_bucket_path)
-        elif para_type == BlockType.TABLE:
-            if mode == MakeMode.NLP_MD:
-                continue
-            elif mode == MakeMode.MM_MD:
-                para_text = merge_visual_blocks_to_markdown(para_block, img_bucket_path)
-        elif para_type == BlockType.CODE:
-            para_text = merge_visual_blocks_to_markdown(para_block)
-
-        if para_text.strip() == "":
-            continue
-        else:
-            page_markdown.append(para_text.strip())
-
-    return page_markdown
-
-
-def merge_visual_blocks_to_markdown(para_block: Block, img_bucket_path: str = "") -> str:
-    # 将 image/table/chart/code 这类视觉块的子 block 按阅读顺序拼接成 markdown。
-    # 这里不再写死 caption/body/footnote 的优先级，而是先展开成 segment，
-    # 再根据 markdown_line / html_block 两类片段决定分隔方式。
-    rendered_segments = []
-
-    for block in get_blocks_in_index_order(para_block.blocks):
-        render_block = _inherit_parent_code_render_metadata(block, para_block)
-        rendered_segments.extend(render_visual_block_segments(render_block, img_bucket_path, para_block))
-
-    para_text = ""
-    prev_segment_kind = None
-    for segment_text, segment_kind in rendered_segments:
-        if para_text:
-            para_text += get_visual_block_separator(prev_segment_kind, segment_kind)
-        para_text += segment_text
-        prev_segment_kind = segment_kind
-
-    return para_text
-
-
-def get_blocks_in_index_order(blocks: list[Block]) -> list[Block]:
-    # 按 middle json 中的 index 排序子 block；
-    # 如果 index 缺失，则退化为保持原始顺序。
-    return [
-        block
-        for _, block in sorted(
-            enumerate(blocks),
-            key=lambda item: (item[1].index, item[0]),
-        )
-    ]
-
-
-def _inherit_parent_code_render_metadata(block: Block, parent_block: Block) -> Block:
-    # pipeline_magic_model 会把 code_body 的 sub_type/guess_lang 提升到父 code block。
-    # markdown 渲染 code_body 时需要把这两个字段临时透传回来，但不能修改原始输入。
-    if block.type != BlockType.CODE_BODY:
-        return block
-    if parent_block.type != BlockType.CODE:
-        return block
-
-    needs_sub_type = not block.sub_type and parent_block.sub_type
-    needs_guess_lang = not block.guess_lang and parent_block.guess_lang
-    if not needs_sub_type and not needs_guess_lang:
-        return block
-
-    render_block = deepcopy(block)
-    if needs_sub_type:
-        render_block.sub_type = parent_block.sub_type
-    if needs_guess_lang:
-        render_block.guess_lang = parent_block.guess_lang
-    return render_block
-
-
-def render_visual_block_segments(
-    block: Block, img_bucket_path: str = "", para_block: Block | None = None
-) -> list[tuple[str, str]]:
-    # 将单个视觉子 block 渲染成一个或多个 segment。
-    # 文本类子块统一输出 markdown_line；
-    # table 的 html 输出为 html_block，供后续决定是否需要空行隔开。
-    block_type = block.type
-
-    if block_type in [
-        BlockType.IMAGE_CAPTION,
-        BlockType.IMAGE_FOOTNOTE,
-        BlockType.TABLE_CAPTION,
-        BlockType.TABLE_FOOTNOTE,
-        BlockType.CODE_BODY,
-        BlockType.CODE_CAPTION,
-        BlockType.CODE_FOOTNOTE,
-        BlockType.CHART_CAPTION,
-        BlockType.CHART_FOOTNOTE,
-    ]:
-        block_text = merge_para_with_text(block)
-        if block_text.strip():
-            return [(block_text, "markdown_line")]
-        return []
-
-    if block_type == BlockType.IMAGE_BODY:
-        rendered_segments = []
-        for line in block.lines:
-            for span in line.spans:
-                if span.type != ContentType.IMAGE:
-                    continue
-                if span.image_path:
-                    rendered_segments.append((f"![]({img_bucket_path}/{span.image_path})", "markdown_line"))
-                details_block = _build_visual_details_block(
-                    span.content, (para_block.sub_type if para_block else None) or "image content"
-                )
-                if details_block:
-                    rendered_segments.append((details_block, "details_block"))
-        return rendered_segments
-
-    if block_type == BlockType.CHART_BODY:
-        return [
-            (f"![]({img_bucket_path}/{span.image_path})", "markdown_line")
-            for line in block.lines
-            for span in line.spans
-            if span.type == ContentType.CHART and span.image_path
-        ]
-
-    if block_type == BlockType.TABLE_BODY:
-        rendered_segments = []
-        for line in block.lines:
-            for span in line.spans:
-                if span.type != ContentType.TABLE:
-                    continue
-                if span.html:
-                    rendered_segments.append((_format_embedded_html(span.html, img_bucket_path), "html_block"))
-                elif span.image_path:
-                    rendered_segments.append((f"![]({img_bucket_path}/{span.image_path})", "markdown_line"))
-        return rendered_segments
-
-    return []
-
-
-def get_visual_block_separator(prev_segment_kind: str | None, current_segment_kind: str) -> str:
-    # 根据前后 segment 类型决定分隔符：
-    # 1. 普通 markdown 行之间用 hard break（"  \\n"）
-    # 2. 进入 html block 前只换一行
-    # 3. html block 后必须留空行，否则后续文本仍会被当作 html 块内容
-    if prev_segment_kind == "html_block":
-        # Raw HTML blocks need a blank line after them, otherwise the following
-        # markdown text is still treated as part of the HTML block.
-        return "\n\n"
-    if prev_segment_kind == "details_block" or current_segment_kind == "details_block":
-        return "\n\n"
-    if current_segment_kind == "html_block":
-        return "\n"
-    return "  \n"
-
-
-latex_delimiters_config = get_latex_delimiter_config()
-
-default_delimiters = {"display": {"left": "$$", "right": "$$"}, "inline": {"left": "$", "right": "$"}}
-
-delimiters = latex_delimiters_config if latex_delimiters_config else default_delimiters
-
-display_left_delimiter = delimiters["display"]["left"]
-display_right_delimiter = delimiters["display"]["right"]
-inline_left_delimiter = delimiters["inline"]["left"]
-inline_right_delimiter = delimiters["inline"]["right"]
-
-CJK_LANGS = {"zh", "ja", "ko"}
-
-
-def _prefix_table_img_src(html: str, img_bucket_path: str) -> str:
-    """Prefix non-data image sources in table HTML with img_bucket_path."""
-    if not html or not img_bucket_path:
-        return html
-
-    return re.sub(
-        r'src="(?!data:)([^"]+)"',
-        lambda match: f'src="{img_bucket_path}/{match.group(1)}"',
-        html,
-    )
-
-
-def _replace_eq_tags_in_table_html(html: str) -> str:
-    """Replace <eq>...</eq> tags in table HTML with inline math delimiters."""
-    if not html:
-        return html
-
-    return re.sub(
-        r"<eq>(.*?)</eq>",
-        lambda match: f" {inline_left_delimiter}{unescape(match.group(1))}{inline_right_delimiter} ",
-        html,
-        flags=re.DOTALL,
-    )
-
-
-def _format_embedded_html(html: str, img_bucket_path: str) -> str:
-    """Normalize embedded table HTML for markdown/content outputs."""
-    return _replace_eq_tags_in_table_html(_prefix_table_img_src(html, img_bucket_path))
-
-
-def _normalize_visual_content(content: str) -> str:
-    """将视觉块识别内容统一成字符串，便于 markdown 和结构化输出复用。"""
-    if isinstance(content, list):
-        return "\n".join(str(item) for item in content if str(item).strip())
-    if isinstance(content, str):
-        return content.strip()
-    return ""
-
-
-def _build_visual_details_block(content: str, summary: str) -> str:
-    """根据视觉块的识别文本生成 VLM 风格的折叠详情块。"""
-    normalized_content = _normalize_visual_content(content)
-    if not normalized_content:
-        return ""
-
-    return f"<details>\n<summary>{summary}</summary>\n\n{normalized_content}\n</details>"
+from ..utils.char_utils import is_hyphen_at_line_end
+from ..utils.markdown_utils import escape_conservative_markdown_text
 
 
 def _apply_visual_sub_type(para_content: dict[str, Any], para_block: Block) -> None:
@@ -258,159 +26,6 @@ def _apply_visual_sub_type(para_content: dict[str, Any], para_block: Block) -> N
     sub_type = para_block.sub_type
     if sub_type:
         para_content["sub_type"] = sub_type
-
-
-def merge_para_with_text(para_block: Block) -> str:
-    if _is_fenced_code_block(para_block):
-        code_text = _merge_para_text(para_block, escape_markdown=False, list_line_break="\n")
-        if not code_text:
-            return ""
-        code_text = "\n".join(line.rstrip() for line in code_text.split("\n"))
-        guess_lang = para_block.guess_lang or "txt"
-        return f"```{guess_lang}\n{code_text}\n```"
-
-    para_text = _merge_para_text(para_block)
-    if para_block.type == BlockType.TEXT:
-        para_text = escape_text_block_markdown_prefix(para_text)
-    return para_text
-
-
-def _merge_para_text(para_block: Block, escape_markdown: bool = True, list_line_break: str = "  \n") -> str:
-    # 将普通文本段落 block 渲染成 markdown 字符串。
-    # 处理流程分为三层：
-    # 1. 先收集文本内容做语言检测
-    # 2. 再把每个 span 渲染成 markdown 片段
-    # 3. 最后按语言和上下文决定 span 之间如何补空格/换行
-    block_lang = detect_lang(_collect_text_for_lang_detection(para_block))
-    para_parts = []
-
-    for line_idx, line in enumerate(para_block.lines):
-        line_prefix = _line_prefix(line_idx, line, list_line_break)
-        if line_prefix:
-            para_parts.append(line_prefix)
-
-        for span_idx, span in enumerate(line.spans):
-            rendered_span = _render_span(span, escape_markdown=escape_markdown)
-            if rendered_span is None:
-                continue
-
-            span_type, content = rendered_span
-            content, suffix = _join_rendered_span(
-                para_block,
-                block_lang,
-                line,
-                line_idx,
-                span_idx,
-                span_type,
-                content,
-            )
-            para_parts.append(content)
-            if suffix:
-                para_parts.append(suffix)
-
-    return "".join(para_parts).rstrip()
-
-
-def _is_fenced_code_block(para_block: Block) -> bool:
-    return para_block.type == BlockType.CODE_BODY and para_block.sub_type == BlockType.CODE
-
-
-def _collect_text_for_lang_detection(para_block: Block) -> str:
-    # 只收集 TEXT span 的内容，用于语言检测。
-    # 这里会先做全角转半角，但不会修改原始输入数据。
-    block_text_parts = []
-    for line in para_block.lines:
-        for span in line.spans:
-            if span.type == ContentType.TEXT:
-                block_text_parts.append(_normalize_text_content(span.content))
-    return "".join(block_text_parts)
-
-
-def _normalize_text_content(content: str) -> str:
-    # 对原始文本做统一归一化，当前只负责全角转半角。
-    # 单独拆出来是为了让语言检测和渲染阶段复用同一套文本预处理。
-    return full_to_half_exclude_marks(content or "")
-
-
-def _render_span(span: Span, escape_markdown: bool = True) -> tuple[str, str] | None:
-    # 将单个 span 渲染成 markdown 片段。
-    # 这里只负责“渲染成什么文本”，不决定后面是否补空格。
-    span_type = span.type
-    content = ""
-
-    if span_type == ContentType.TEXT:
-        content = _normalize_text_content(span.content)
-        if escape_markdown:
-            content = escape_special_markdown_char(content)
-    elif span_type == ContentType.INLINE_EQUATION:
-        if span.content:
-            content = f"{inline_left_delimiter}{span.content}{inline_right_delimiter}"
-    elif span_type == ContentType.INTERLINE_EQUATION:
-        if span.content:
-            content = f"\n{display_left_delimiter}\n{span.content}\n{display_right_delimiter}\n"
-    else:
-        return None
-
-    content = content.strip()
-    if not content:
-        return None
-
-    return span_type, content
-
-
-def _join_rendered_span(
-    para_block: Block, block_lang: str, line: Line, line_idx: int, span_idx: int, span_type: str, content: str
-) -> tuple[str, str]:
-    # 根据语言和上下文决定当前 span 后面的分隔符。
-    # 这里集中处理：
-    # 1. CJK 与西文的空格差异
-    # 2. 西文行尾连字符是否需要跨行合并
-    # 3. 独立公式是否作为块内容直接插入
-    if span_type == ContentType.INTERLINE_EQUATION:
-        return content, ""
-
-    is_last_span = span_idx == len(line.spans) - 1
-
-    if block_lang in CJK_LANGS:
-        if is_last_span and span_type != ContentType.INLINE_EQUATION:
-            return content, ""
-        return content, " "
-
-    if span_type not in [ContentType.TEXT, ContentType.INLINE_EQUATION]:
-        return content, ""
-
-    if is_last_span and span_type == ContentType.TEXT and is_hyphen_at_line_end(content):
-        if _next_line_starts_with_lowercase_text(para_block, line_idx):
-            return content[:-1], ""
-        return content, ""
-
-    return content, " "
-
-
-def _line_prefix(line_idx: int, line: Line, list_line_break: str = "  \n") -> str:
-    # 处理进入新 list item 前的 block 级换行。
-    # 这里保留历史语义：list 起始行前插入一个 hard break。
-    if line_idx >= 1 and line._is_list_start:
-        return list_line_break
-    return ""
-
-
-def _next_line_starts_with_lowercase_text(para_block: Block, line_idx: int) -> bool:
-    # 判断下一行是否以小写英文文本开头。
-    # 这个条件用于决定西文行尾的连字符是否应与下一行合并。
-    if line_idx + 1 >= len(para_block.lines):
-        return False
-
-    next_line_spans = para_block.lines[line_idx + 1].spans
-    if not next_line_spans:
-        return False
-
-    next_span = next_line_spans[0]
-    if next_span.type != ContentType.TEXT:
-        return False
-
-    next_content = _normalize_text_content(next_span.content)
-    return bool(next_content) and next_content[0].islower()
 
 
 def merge_adjacent_ref_text_blocks_for_content(para_blocks: list[Block]) -> list[Block]:
@@ -592,7 +207,7 @@ def make_blocks_to_content_list(
     ]:
         para_content = {
             "type": ContentType.TEXT,
-            "text": merge_para_with_text(para_block),
+            "text": merge_para_text(para_block),
         }
     elif para_type in [
         BlockType.HEADER,
@@ -603,7 +218,7 @@ def make_blocks_to_content_list(
     ]:
         para_content = {
             "type": para_type,
-            "text": merge_para_with_text(para_block),
+            "text": merge_para_text(para_block),
         }
     elif para_type == BlockType.REF_TEXT:
         para_content = {
@@ -612,15 +227,15 @@ def make_blocks_to_content_list(
             "list_items": [],
         }
         for block in _get_ref_text_item_blocks(para_block):
-            item_text = merge_para_with_text(block)
+            item_text = merge_para_text(block)
             if item_text.strip():
                 para_content["list_items"].append(item_text)
     elif para_type == BlockType.TITLE:
         para_content = {
             "type": ContentType.TEXT,
-            "text": merge_para_with_text(para_block),
+            "text": merge_para_text(para_block),
         }
-        title_level = get_title_level(para_block)
+        title_level = _get_title_level(para_block)
         if title_level != 0:
             para_content["text_level"] = title_level
     elif para_type == BlockType.INTERLINE_EQUATION:
@@ -631,7 +246,7 @@ def make_blocks_to_content_list(
             "img_path": f"{img_bucket_path}/{para_block.lines[0].spans[0].image_path}",
         }
         if para_block.lines[0].spans[0].content:
-            para_content["text"] = merge_para_with_text(para_block)
+            para_content["text"] = merge_para_text(para_block)
             para_content["text_format"] = "latex"
     elif para_type == BlockType.IMAGE:
         para_content = {"type": ContentType.IMAGE, "img_path": "", BlockType.IMAGE_CAPTION: [], BlockType.IMAGE_FOOTNOTE: []}
@@ -649,9 +264,9 @@ def make_blocks_to_content_list(
                             if span.image_path:
                                 para_content["img_path"] = f"{img_bucket_path}/{span.image_path}"
             if block.type == BlockType.IMAGE_CAPTION:
-                para_content[BlockType.IMAGE_CAPTION].append(merge_para_with_text(block))
+                para_content[BlockType.IMAGE_CAPTION].append(merge_para_text(block))
             if block.type == BlockType.IMAGE_FOOTNOTE:
-                para_content[BlockType.IMAGE_FOOTNOTE].append(merge_para_with_text(block))
+                para_content[BlockType.IMAGE_FOOTNOTE].append(merge_para_text(block))
     elif para_type == BlockType.TABLE:
         para_content = {"type": ContentType.TABLE, "img_path": "", BlockType.TABLE_CAPTION: [], BlockType.TABLE_FOOTNOTE: []}
         for block in para_block.blocks:
@@ -665,9 +280,9 @@ def make_blocks_to_content_list(
                                 para_content["img_path"] = f"{img_bucket_path}/{span.image_path}"
 
             if block.type == BlockType.TABLE_CAPTION:
-                para_content[BlockType.TABLE_CAPTION].append(merge_para_with_text(block))
+                para_content[BlockType.TABLE_CAPTION].append(merge_para_text(block))
             if block.type == BlockType.TABLE_FOOTNOTE:
-                para_content[BlockType.TABLE_FOOTNOTE].append(merge_para_with_text(block))
+                para_content[BlockType.TABLE_FOOTNOTE].append(merge_para_text(block))
     elif para_type == BlockType.CHART:
         para_content = {
             "type": ContentType.CHART,
@@ -683,9 +298,9 @@ def make_blocks_to_content_list(
                         if span.type == ContentType.CHART and span.image_path:
                             para_content["img_path"] = f"{img_bucket_path}/{span.image_path}"
             if block.type == BlockType.CHART_CAPTION:
-                para_content[BlockType.CHART_CAPTION].append(merge_para_with_text(block))
+                para_content[BlockType.CHART_CAPTION].append(merge_para_text(block))
             if block.type == BlockType.CHART_FOOTNOTE:
-                para_content[BlockType.CHART_FOOTNOTE].append(merge_para_with_text(block))
+                para_content[BlockType.CHART_FOOTNOTE].append(merge_para_text(block))
     elif para_type == BlockType.CODE:
         para_content = {
             "type": BlockType.CODE,
@@ -696,11 +311,11 @@ def make_blocks_to_content_list(
         for block in para_block.blocks:
             render_block = _inherit_parent_code_render_metadata(block, para_block)
             if block.type == BlockType.CODE_BODY:
-                para_content[BlockType.CODE_BODY] = merge_para_with_text(render_block)
+                para_content[BlockType.CODE_BODY] = merge_para_text(render_block)
             if block.type == BlockType.CODE_CAPTION:
-                para_content[BlockType.CODE_CAPTION].append(merge_para_with_text(block))
+                para_content[BlockType.CODE_CAPTION].append(merge_para_text(block))
             if block.type == BlockType.CODE_FOOTNOTE:
-                para_content[BlockType.CODE_FOOTNOTE].append(merge_para_with_text(block))
+                para_content[BlockType.CODE_FOOTNOTE].append(merge_para_text(block))
 
     if not para_content:
         return None
@@ -743,7 +358,7 @@ def make_blocks_to_content_list_v2(para_block: Block, img_bucket_path: str, page
             },
         }
     elif para_type == BlockType.TITLE:
-        title_level = get_title_level(para_block)
+        title_level = _get_title_level(para_block)
         if title_level != 0:
             para_content = {
                 "type": ContentTypeV2.TITLE,
@@ -958,7 +573,11 @@ def union_make(
         if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
             if not paras_of_layout:
                 continue
-            page_markdown = make_blocks_to_markdown(paras_of_layout, make_mode, img_bucket_path)
+            page_markdown = blocks_to_markdown(
+                para_blocks=paras_of_layout,
+                img_bucket_path=img_bucket_path,
+                no_rich_content=(make_mode == MakeMode.NLP_MD),
+            )
             output_markdowns.extend(page_markdown)
         elif make_mode == MakeMode.CONTENT_LIST:
             para_blocks = merge_adjacent_ref_text_blocks_for_content((paras_of_layout or []) + (paras_of_discarded or []))
@@ -987,15 +606,6 @@ def union_make(
     else:
         logger.error(f"Unsupported make mode: {make_mode}")
         return None
-
-
-def get_title_level(block: Block) -> int:
-    title_level = block.level
-    if title_level is None:
-        title_level = 1
-    if title_level < 1:
-        title_level = 0
-    return title_level
 
 
 def escape_special_markdown_char(content: str) -> str:

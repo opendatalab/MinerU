@@ -383,57 +383,38 @@ def mk_blocks_to_markdown(
             else:
                 para_text = f"{'#' * title_level} {title_text}"
         elif para_type == BlockType.IMAGE:
-            if make_mode == MakeMode.NLP_MD:
-                continue
-            elif make_mode == MakeMode.MM_MD:
-                for span in _iter_body_spans(
-                    para_block,
-                    BlockType.IMAGE_BODY,
-                    ContentType.IMAGE,
-                ):
-                    if span:
-                        para_text += f"![]({img_bucket_path}/{span.image_path})"
-                for caption_text in _collect_caption_texts(
-                    para_block,
-                    BlockType.IMAGE_CAPTION,
-                ):
-                    para_text += "  \n" + caption_text
+            # if make_mode == MakeMode.NLP_MD:
+            #     continue
+            # elif make_mode == MakeMode.MM_MD:
+            for span in _iter_body_spans(para_block, BlockType.IMAGE_BODY, ContentType.IMAGE):
+                if span:
+                    para_text += f"![]({img_bucket_path}/{span.image_path})"
+            for caption_text in _collect_caption_texts(para_block, BlockType.IMAGE_CAPTION):
+                para_text += "  \n" + caption_text
 
         elif para_type == BlockType.TABLE:
-            if make_mode == MakeMode.NLP_MD:
-                continue
-            elif make_mode == MakeMode.MM_MD:
-                for span in _iter_body_spans(
-                    para_block,
-                    BlockType.TABLE_BODY,
-                    ContentType.TABLE,
-                ):
-                    para_text += f"\n{_format_embedded_html(span.html, img_bucket_path)}\n"
-                for caption_text in _collect_caption_texts(
-                    para_block,
-                    BlockType.TABLE_CAPTION,
-                ):
-                    para_text += "  \n" + caption_text
+            # if make_mode == MakeMode.NLP_MD:
+            #     continue
+            # elif make_mode == MakeMode.MM_MD:
+            for span in _iter_body_spans(para_block, BlockType.TABLE_BODY, ContentType.TABLE):
+                para_text += f"\n{_format_embedded_html(span.html, img_bucket_path)}\n"
+            for caption_text in _collect_caption_texts(para_block, BlockType.TABLE_CAPTION):
+                para_text += "  \n" + caption_text
         elif para_type == BlockType.CHART:
-            if make_mode == MakeMode.NLP_MD:
+            # if make_mode == MakeMode.NLP_MD:
+            #     continue
+            # elif make_mode == MakeMode.MM_MD:
+            image_path, chart_content = get_body_data(para_block)
+            if chart_content:
+                para_text += f"\n{_format_embedded_html(chart_content, img_bucket_path)}\n"
+            elif image_path:
+                para_text += f"![]({_build_media_path(img_bucket_path, image_path)})"
+            else:
                 continue
-            elif make_mode == MakeMode.MM_MD:
-                image_path, chart_content = get_body_data(para_block)
-                if chart_content:
-                    para_text += f"\n{_format_embedded_html(chart_content, img_bucket_path)}\n"
-                elif image_path:
-                    para_text += f"![]({_build_media_path(img_bucket_path, image_path)})"
-                else:
-                    continue
-                for caption_text in _collect_caption_texts(
-                    para_block,
-                    BlockType.CHART_CAPTION,
-                ):
-                    para_text += "  \n" + caption_text
-        if para_text.strip() == "":
-            continue
-        else:
-            # page_markdown.append(para_text.strip())
+            for caption_text in _collect_caption_texts(para_block, BlockType.CHART_CAPTION):
+                para_text += "  \n" + caption_text
+
+        if para_text.strip() != "":
             page_markdown.append(para_text.strip("\r\n"))
 
     return page_markdown

@@ -6,6 +6,7 @@ CONSERVATIVE_MARKDOWN_SPECIAL_CHARS = ("*", "_", "`", "~", "$")
 TEXT_BLOCK_MARKDOWN_PREFIX_RE = re.compile(r"^(?P<indent>[ \t]{0,3})(?P<marker>#{1,6}|[+-])(?=[ \t])")
 
 
+# DONE in render
 def escape_conservative_markdown_text(content: str) -> str:
     """Escape plain-text characters that carry inline Markdown semantics."""
     if not content:
@@ -29,6 +30,7 @@ def escape_conservative_markdown_text(content: str) -> str:
     return "".join(escaped_chars)
 
 
+# DONE in render
 def escape_text_block_markdown_prefix(content: str) -> str:
     """Escape a leading Markdown block marker in an assembled text block."""
     if not content:

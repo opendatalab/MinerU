@@ -8,6 +8,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from mineru.render import render_content_list, render_content_list_v2, render_markdown
 from mineru.types import PageInfo
 
 from ..utils.enum_class import MakeMode
@@ -16,24 +17,8 @@ from ..utils.pdf_document import PDFDocument
 _INLINE_IMAGE_DATA_URI_RE = re.compile(r"data:image/([^;]+);base64,([^\"]+)", re.DOTALL)
 
 
-def _load_union_make(backend: str):
-    if backend == "pipeline":
-        from ..backend.pipeline.pipeline_middle_json_mkcontent import union_make
-
-        return union_make
-    if backend in ("vlm", "hybrid"):
-        from ..backend.vlm.vlm_middle_json_mkcontent import union_make
-
-        return union_make
-    if backend == "flash":
-        return _flash_union_make
-    from ..backend.office.office_middle_json_mkcontent import union_make
-
-    return union_make
-
-
-def _flash_union_make(pages: list, mode) -> str | list:
-    """Minimal union_make for flash: just concatenate text from spans."""
+def _render_flash_markdown(pages: list, mode) -> str | list:
+    """Minimal markdown renderer for flash: just concatenate text from spans."""
     from ..utils.enum_class import MakeMode
 
     if mode == MakeMode.MM_MD:
@@ -81,34 +66,30 @@ class ParseResult:
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
 
     def markdown(self) -> str:
-        union_make = _load_union_make(self._backend)
-        markdown = union_make(self.pages, MakeMode.MM_MD)
-        assert isinstance(markdown, str)
-        return markdown
+        if self._backend == "flash":
+            return _render_flash_markdown(self.pages, MakeMode.MM_MD)  # type: ignore[return-value]
+        return render_markdown(self.pages)
 
     def markdown_with_markers(self, *, page_count: int | None = None) -> str:
         """Generate markdown with page boundary markers (<!-- page N of M -->)."""
         total = page_count or len(self.pages)
-        union_make = _load_union_make(self._backend)
         parts: list[str] = []
         for p in self.pages:
             page_num = p.page_idx + 1  # 1-based
             parts.append(f"<!-- page {page_num} of {total} -->")
             try:
-                page_md = union_make([p], MakeMode.MM_MD)
-                if isinstance(page_md, str) and page_md.strip():
+                page_md = render_markdown([p])
+                if page_md.strip():
                     parts.append(page_md)
             except Exception:
                 pass
         return "\n\n".join(parts)
 
     def content_list(self) -> list[dict[str, Any]]:
-        union_make = _load_union_make(self._backend)
-        return union_make(self.pages, MakeMode.CONTENT_LIST)  # type: ignore[return-value]
+        return render_content_list(self.pages)
 
     def content_list_v2(self) -> list[dict[str, Any]]:
-        union_make = _load_union_make(self._backend)
-        return union_make(self.pages, MakeMode.CONTENT_LIST_V2)  # type: ignore[return-value]
+        return render_content_list_v2(self.pages)
 
     def save(self, writer: Any) -> None:
         prefix = self._file_name

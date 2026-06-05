@@ -9,7 +9,7 @@ import json_repair
 from loguru import logger
 from openai import OpenAI
 
-from ..backend.pipeline.pipeline_middle_json_mkcontent import merge_para_with_text
+from ..render.merge import merge_para_text
 from ..types import BBox, Block, PageInfo
 from .enum_class import BlockType
 
@@ -66,7 +66,7 @@ def _build_title_dict(title_block_refs: list[tuple[PageInfo, Block]]) -> dict[st
 
     for i, (page_info, block) in enumerate(title_block_refs):
         title_dict[str(i)] = [
-            merge_para_with_text(block),
+            merge_para_text(block),
             _get_title_line_avg_height(block),
             page_info.page_idx + 1,
         ]
@@ -241,7 +241,7 @@ def _get_title_block_identity(block: Block) -> tuple[str, int] | tuple[str, BBox
     if block_index is not None:
         return ("index", block_index)
 
-    return ("bbox_text", block.bbox, merge_para_with_text(block))
+    return ("bbox_text", block.bbox, merge_para_text(block))
 
 
 def _sync_para_titles_to_preproc(page_info_list: list[PageInfo]) -> None:
