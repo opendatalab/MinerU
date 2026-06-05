@@ -472,6 +472,7 @@ class BatchAnalyze:
                     rotate_labels = table_orientation_cls_model.batch_predict(
                         table_res_list_all_page,
                         det_batch_size=self.batch_ratio * OCR_DET_BASE_BATCH_SIZE,
+                        tqdm_enable=True,
                     )
                     if len(rotate_labels) != len(table_res_list_all_page):
                         raise ValueError(

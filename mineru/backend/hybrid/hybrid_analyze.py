@@ -431,6 +431,7 @@ def _apply_flash_table_orientation_labels(
         rotate_labels = table_orientation_cls_model.batch_predict(
             table_inputs,
             det_batch_size=max(1, batch_ratio * OCR_DET_BASE_BATCH_SIZE),
+            tqdm_enable=True,
         )
         if len(rotate_labels) != len(table_layout_refs):
             raise ValueError("Table orientation prediction result count mismatch")
