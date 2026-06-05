@@ -88,7 +88,7 @@ docker run --ipc host \
       <td>🟢</td>
     </tr>
     <tr>
-      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
+      <td>&lt;vlm/hybrid&gt;-engine</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
@@ -104,7 +104,7 @@ docker run --ipc host \
       <td>🟢</td>
     </tr>
     <tr>
-      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
+      <td>&lt;vlm/hybrid&gt;-engine</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
@@ -120,7 +120,7 @@ docker run --ipc host \
       <td>🟢</td>
     </tr>
     <tr>
-      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
+      <td>&lt;vlm/hybrid&gt;-engine</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
