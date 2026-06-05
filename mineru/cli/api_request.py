@@ -105,9 +105,9 @@ async def parse_request_form(
 - vlm-engine: High accuracy via local computing power, supports Chinese and English documents only.
 - vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers), supports Chinese and English documents only.
 - hybrid-engine: Next-generation high accuracy solution via local computing power, supports multiple languages.
-- hybrid-flash-engine: Experimental hybrid-flash analyze path via local computing power, supports multiple languages.
+- hybrid-flash-engine: Hybrid flash mode via local computing power, supports multiple languages.
 - hybrid-http-client: High accuracy via remote computing power but requires a little local computing power(client suitable for openai-compatible servers), supports multiple languages.
-- hybrid-flash-http-client: Experimental hybrid-flash analyze path via remote computing power(client suitable for openai-compatible servers), supports multiple languages.""",
+- hybrid-flash-http-client: Hybrid flash mode via remote computing power(client suitable for openai-compatible servers), supports multiple languages.""",
             json_schema_extra=BACKEND_SCHEMA_EXTRA,
         ),
     ] = DEFAULT_BACKEND,

@@ -70,13 +70,9 @@ def ensure_backend_dependencies(backend: str) -> None:
 
 
 def _load_hybrid_analyze_entrypoint(entrypoint_name: str, backend: str):
-    """按 hybrid 后端家族加载普通 hybrid 或 hybrid-flash 的 analyze 入口。"""
+    """加载统一 hybrid analyze 入口，flash/pro 由调用方通过 mode 控制。"""
     ensure_backend_dependencies(backend)
-    module_name = (
-        "mineru.backend.hybrid_flash.hybrid_flash_analyze"
-        if backend.startswith("hybrid-flash-")
-        else "mineru.backend.hybrid.hybrid_analyze"
-    )
+    module_name = "mineru.backend.hybrid.hybrid_analyze"
     try:
         hybrid_analyze = importlib.import_module(module_name)
     except (ImportError, ModuleNotFoundError) as exc:
@@ -505,112 +501,6 @@ def _process_vlm(
         )
 
 
-def _process_hybrid_flash(
-        output_dir,
-        pdf_file_names,
-        pdf_bytes_list,
-        h_lang_list,
-        parse_method,
-        inline_formula_enable,
-        backend,
-        f_draw_layout_bbox,
-        f_draw_span_bbox,
-        f_dump_md,
-        f_dump_middle_json,
-        f_dump_model_output,
-        f_dump_orig_pdf,
-        f_dump_content_list,
-        f_make_md_mode,
-        table_enable,
-        server_url=None,
-        image_analysis=True,
-        **kwargs,
-):
-    """同步运行 hybrid-flash analyze 阶段，当前只产出 analyze 调试结果。"""
-    hybrid_flash_doc_analyze = _load_hybrid_analyze_entrypoint(
-        "doc_analyze",
-        f"hybrid-flash-{backend}",
-    )
-
-    if not backend.endswith("client"):
-        server_url = None
-
-    for idx, (pdf_bytes, lang) in enumerate(zip(pdf_bytes_list, h_lang_list)):
-        pdf_file_name = pdf_file_names[idx]
-        local_image_dir, _local_md_dir = prepare_env(
-            output_dir,
-            pdf_file_name,
-            f"hybrid_{parse_method}",
-        )
-        image_writer = FileBasedDataWriter(local_image_dir)
-
-        hybrid_flash_doc_analyze(
-            pdf_bytes=pdf_bytes,
-            image_writer=image_writer,
-            backend=backend,
-            parse_method=parse_method,
-            language=lang,
-            inline_formula_enable=inline_formula_enable,
-            table_enable=table_enable,
-            server_url=server_url,
-            image_analysis=image_analysis,
-            **kwargs,
-        )
-
-
-async def _async_process_hybrid_flash(
-        output_dir,
-        pdf_file_names,
-        pdf_bytes_list,
-        h_lang_list,
-        parse_method,
-        inline_formula_enable,
-        backend,
-        f_draw_layout_bbox,
-        f_draw_span_bbox,
-        f_dump_md,
-        f_dump_middle_json,
-        f_dump_model_output,
-        f_dump_orig_pdf,
-        f_dump_content_list,
-        f_make_md_mode,
-        table_enable,
-        server_url=None,
-        image_analysis=True,
-        **kwargs,
-):
-    """异步运行 hybrid-flash analyze 阶段，当前只产出 analyze 调试结果。"""
-    aio_hybrid_flash_doc_analyze = _load_hybrid_analyze_entrypoint(
-        "aio_doc_analyze",
-        f"hybrid-flash-{backend}",
-    )
-
-    if not backend.endswith("client"):
-        server_url = None
-
-    for idx, (pdf_bytes, lang) in enumerate(zip(pdf_bytes_list, h_lang_list)):
-        pdf_file_name = pdf_file_names[idx]
-        local_image_dir, _local_md_dir = prepare_env(
-            output_dir,
-            pdf_file_name,
-            f"hybrid_{parse_method}",
-        )
-        image_writer = FileBasedDataWriter(local_image_dir)
-
-        await aio_hybrid_flash_doc_analyze(
-            pdf_bytes=pdf_bytes,
-            image_writer=image_writer,
-            backend=backend,
-            parse_method=parse_method,
-            language=lang,
-            inline_formula_enable=inline_formula_enable,
-            table_enable=table_enable,
-            server_url=server_url,
-            image_analysis=image_analysis,
-            **kwargs,
-        )
-
-
 def _process_hybrid(
         output_dir,
         pdf_file_names,
@@ -628,6 +518,7 @@ def _process_hybrid(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
+        mode="pro",
         **kwargs,
 ):
     hybrid_doc_analyze = _load_hybrid_analyze_entrypoint(
@@ -651,6 +542,7 @@ def _process_hybrid(
             language=lang,
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
+            mode=mode,
             **kwargs,
         )
 
@@ -684,6 +576,7 @@ async def _async_process_hybrid(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
+        mode="pro",
         **kwargs,
 ):
     aio_hybrid_doc_analyze = _load_hybrid_analyze_entrypoint(
@@ -707,6 +600,7 @@ async def _async_process_hybrid(
             language=lang,
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
+            mode=mode,
             **kwargs,
         )
 
@@ -848,9 +742,9 @@ def do_parse(
         elif backend.startswith("hybrid-"):
             ensure_backend_dependencies(backend)
             backend = backend[7:]
-            is_flash = backend.startswith("flash-")
+            mode = "flash" if backend.startswith("flash-") else "pro"
 
-            if is_flash:
+            if mode == "flash":
                 backend = backend[6:]
 
             if backend == "engine":
@@ -859,22 +753,13 @@ def do_parse(
             os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
             os.environ['MINERU_VLM_FORMULA_ENABLE'] = "true"
 
-            if is_flash:
-                _process_hybrid_flash(
-                    output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
-                    f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
-                    f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                    table_enable, server_url, image_analysis=image_analysis,
-                    client_side_output_generation=client_side_output_generation, **kwargs,
-                )
-            else:
-                _process_hybrid(
-                    output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
-                    f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
-                    f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                    server_url, image_analysis=image_analysis,
-                    client_side_output_generation=client_side_output_generation, **kwargs,
-                )
+            _process_hybrid(
+                output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
+                f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
+                f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
+                server_url, mode=mode, image_analysis=image_analysis,
+                client_side_output_generation=client_side_output_generation, **kwargs,
+            )
 
 
 async def aio_do_parse(
@@ -955,9 +840,9 @@ async def aio_do_parse(
         elif backend.startswith("hybrid-"):
             ensure_backend_dependencies(backend)
             backend = backend[7:]
-            is_flash = backend.startswith("flash-")
+            mode = "flash" if backend.startswith("flash-") else "pro"
 
-            if is_flash:
+            if mode == "flash":
                 backend = backend[6:]
 
             if backend == "engine":
@@ -966,22 +851,13 @@ async def aio_do_parse(
             os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
             os.environ['MINERU_VLM_FORMULA_ENABLE'] = "true"
 
-            if is_flash:
-                await _async_process_hybrid_flash(
-                    output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
-                    f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
-                    f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                    table_enable, server_url, image_analysis=image_analysis,
-                    client_side_output_generation=client_side_output_generation, **kwargs,
-                )
-            else:
-                await _async_process_hybrid(
-                    output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
-                    f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
-                    f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                    server_url, image_analysis=image_analysis,
-                    client_side_output_generation=client_side_output_generation, **kwargs,
-                )
+            await _async_process_hybrid(
+                output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
+                f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
+                f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
+                server_url, mode=mode, image_analysis=image_analysis,
+                client_side_output_generation=client_side_output_generation, **kwargs,
+            )
 
 
 if __name__ == "__main__":

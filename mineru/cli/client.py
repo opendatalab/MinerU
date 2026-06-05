@@ -1056,9 +1056,9 @@ async def run_orchestrated_cli(
       vlm-engine: High accuracy via local computing power.
       vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers).
       hybrid-engine: Next-generation high accuracy solution via local computing power.
-      hybrid-flash-engine: Experimental hybrid-flash analyze path via local computing power.
+      hybrid-flash-engine: Hybrid flash mode via local computing power.
       hybrid-http-client: High accuracy but requires a little local computing power(client suitable for openai-compatible servers).
-      hybrid-flash-http-client: Experimental hybrid-flash analyze path via remote computing power(client suitable for openai-compatible servers).
+      hybrid-flash-http-client: Hybrid flash mode via remote computing power(client suitable for openai-compatible servers).
     Without method specified, hybrid-engine will be used by default.""",
 )
 @click.option(
