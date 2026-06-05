@@ -8,6 +8,7 @@ from mineru.utils.boxbase import (
 )
 from mineru.utils.char_utils import full_to_half
 from mineru.utils.enum_class import BlockType, ContentType
+from mineru.utils.visual_magic_model_utils import isolated_formula_clean
 
 Block = dict[str, Any]
 
@@ -44,11 +45,17 @@ def normalize_formula_tag_content(tag_content: str) -> str:
     return tag_content
 
 
+def _normalize_formula_content_for_tag(formula_content: str) -> str:
+    """归一化待合并编号的公式正文，去掉VLM可能携带的展示公式分隔符。"""
+    return isolated_formula_clean(formula_content or "")
+
+
 def build_tagged_formula_content(
     formula_content: str,
     formula_number_block: Block,
 ) -> str:
     """将公式正文和公式编号合成带LaTeX tag的公式内容。"""
+    formula_content = _normalize_formula_content_for_tag(formula_content)
     tag_content = normalize_formula_tag_content(
         extract_formula_number_text(formula_number_block)
     )
