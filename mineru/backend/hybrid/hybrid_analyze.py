@@ -63,6 +63,7 @@ not_extract_list = [item.value for item in NotExtractType]
 HYBRID_OCR_DET_TEXT_TYPES = set(not_extract_list)
 HYBRID_ANALYZE_MODES = {"pro", "flash"}
 FLASH_LAYOUT_VISUAL_LABELS = {"image", "chart", "seal"}
+INLINE_FORMULA_CONTAINER_LABELS = {"table", "image", "chart", "display_formula"}
 FLASH_LAYOUT_LABEL_TO_VLM_TYPE = {
     "abstract": BlockType.TEXT,
     "algorithm": BlockType.CODE,
@@ -451,6 +452,73 @@ def _formula_item_to_pixel_bbox(item):
     return None
 
 
+def _layout_item_to_float_bbox(item):
+    """校验并读取layout检测框，异常或无效bbox返回None。"""
+    bbox = item.get("bbox")
+    if bbox is None or len(bbox) != 4:
+        return None
+
+    try:
+        x0, y0, x1, y1 = [float(v) for v in bbox]
+    except (TypeError, ValueError):
+        return None
+
+    if x1 < x0 or y1 < y0:
+        return None
+
+    return [x0, y0, x1, y1]
+
+
+def _bbox_center_point(bbox):
+    """计算bbox中心点，用于判断行内公式是否落入视觉容器。"""
+    return (float(bbox[0] + bbox[2]) / 2.0, float(bbox[1] + bbox[3]) / 2.0)
+
+
+def _is_point_inside_bbox(point, bbox):
+    """判断点是否位于bbox内部，边界点按内部处理。"""
+    x, y = point
+    return bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]
+
+
+def _is_inline_formula_inside_container(inline_formula_bbox, container_bboxes):
+    """判断行内公式中心点是否落入任一视觉/行间公式容器。"""
+    inline_formula_center = _bbox_center_point(inline_formula_bbox)
+    return any(
+        _is_point_inside_bbox(inline_formula_center, container_bbox)
+        for container_bbox in container_bboxes
+    )
+
+
+def _filter_inline_formulas_inside_containers(images_layout_res):
+    """原地移除位于table/image/chart/display_formula内的行内公式。"""
+    for layout_res in images_layout_res:
+        container_bboxes = []
+        for res in layout_res:
+            if res.get("label") not in INLINE_FORMULA_CONTAINER_LABELS:
+                continue
+            bbox = _layout_item_to_float_bbox(res)
+            if bbox is not None:
+                container_bboxes.append(bbox)
+
+        if not container_bboxes:
+            continue
+
+        kept_layout_res = []
+        for res in layout_res:
+            if res.get("label") != "inline_formula":
+                kept_layout_res.append(res)
+                continue
+
+            inline_formula_bbox = _layout_item_to_float_bbox(res)
+            if inline_formula_bbox is None or not _is_inline_formula_inside_container(
+                inline_formula_bbox,
+                container_bboxes,
+            ):
+                kept_layout_res.append(res)
+
+        layout_res[:] = kept_layout_res
+
+
 def _build_inline_formula_inputs(images_layout_res):
     inline_formula_inputs = []
     for layout_res in images_layout_res:
@@ -613,6 +681,7 @@ def _predict_layout_for_window(
         images_pil_list,
         batch_ratio,
     )
+    _filter_inline_formulas_inside_containers(images_layout_res)
     return images_layout_res, hybrid_pipeline_model
 
 
