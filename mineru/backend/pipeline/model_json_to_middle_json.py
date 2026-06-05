@@ -4,13 +4,13 @@ import copy
 from tqdm import tqdm
 
 from mineru.backend.utils.html_image_utils import replace_inline_table_images
+from mineru.backend.utils.formula_number import optimize_formula_number_blocks
 from mineru.backend.utils.runtime_utils import cross_page_table_merge
 from mineru.backend.pipeline.model_init import (
     AtomModelSingleton,
     run_ocr_inference,
 )
 from mineru.backend.pipeline.para_split import para_split
-from mineru.utils.char_utils import full_to_half
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
@@ -136,15 +136,6 @@ def append_batch_results_to_middle_json(
     )
 
 
-def _extract_text_from_block(block):
-    text_parts = []
-    for line in block.get("lines", []):
-        for span in line.get("spans", []):
-            if span.get("type") == ContentType.TEXT:
-                text_parts.append(span.get("content", ""))
-    return "".join(text_parts).strip()
-
-
 def _iter_block_spans(block):
     for line in block.get("lines", []):
         for span in line.get("spans", []):
@@ -152,61 +143,6 @@ def _iter_block_spans(block):
 
     for sub_block in block.get("blocks", []):
         yield from _iter_block_spans(sub_block)
-
-
-def _normalize_formula_tag_content(tag_content):
-    tag_content = full_to_half(tag_content.strip())
-    if tag_content.startswith("("):
-        tag_content = tag_content[1:].strip()
-    if tag_content.endswith(")"):
-        tag_content = tag_content[:-1].strip()
-    return tag_content
-
-
-def _get_interline_equation_span(block):
-    for line in block.get("lines", []):
-        for span in line.get("spans", []):
-            if span.get("type") == ContentType.INTERLINE_EQUATION:
-                return span
-    return None
-
-
-def _append_formula_number_tag(equation_block, formula_number_block):
-    equation_span = _get_interline_equation_span(equation_block)
-    tag_content = _normalize_formula_tag_content(_extract_text_from_block(formula_number_block))
-    if equation_span is not None:
-        formula = equation_span.get("content", "")
-        equation_span["content"] = f"{formula}\\tag{{{tag_content}}}"
-
-
-def _optimize_formula_number_blocks(pdf_info_list):
-    for page_info in pdf_info_list:
-        optimized_blocks = []
-        blocks = page_info.get("preproc_blocks", [])
-        for index, block in enumerate(blocks):
-            if block.get("type") != BlockType.FORMULA_NUMBER:
-                optimized_blocks.append(block)
-                continue
-
-            prev_block = blocks[index - 1] if index > 0 else None
-            if prev_block and prev_block.get("type") == BlockType.INTERLINE_EQUATION:
-                _append_formula_number_tag(prev_block, block)
-                continue
-
-            next_block = blocks[index + 1] if index + 1 < len(blocks) else None
-            next_next_block = blocks[index + 2] if index + 2 < len(blocks) else None
-            if (
-                next_block
-                and next_block.get("type") == BlockType.INTERLINE_EQUATION
-                and (next_next_block is None or next_next_block.get("type") != BlockType.FORMULA_NUMBER)
-            ):
-                _append_formula_number_tag(next_block, block)
-                continue
-
-            block["type"] = BlockType.TEXT
-            optimized_blocks.append(block)
-
-        page_info["preproc_blocks"] = optimized_blocks
 
 
 def _apply_post_ocr(pdf_info_list, lang=None):
@@ -279,7 +215,7 @@ def apply_server_side_postprocess(pdf_info_list, lang=None):
 
 def finalize_middle_json_from_preproc(pdf_info_list):
     """从 preproc_blocks 执行确定性 finalize，供服务端完整路径和客户端复用。"""
-    _optimize_formula_number_blocks(pdf_info_list)
+    optimize_formula_number_blocks(pdf_info_list)
     para_split(pdf_info_list)
     cross_page_table_merge(pdf_info_list)
     apply_title_leveling_to_pdf_info(pdf_info_list)

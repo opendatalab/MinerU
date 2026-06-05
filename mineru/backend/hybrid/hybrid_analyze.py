@@ -25,6 +25,8 @@ from mineru.backend.pipeline.model_init import (
     run_mfr_inference,
     run_ocr_inference,
 )
+from mineru.backend.pipeline.model_list import AtomicModel
+from mineru.backend.utils.formula_number import optimize_flash_formula_number_blocks
 from mineru.backend.vlm.vlm_analyze import (
     ModelSingleton,
     aio_predictor_execution_guard,
@@ -70,7 +72,7 @@ FLASH_LAYOUT_LABEL_TO_VLM_TYPE = {
     "footer": BlockType.FOOTER,
     "footer_image": BlockType.FOOTER,
     "footnote": BlockType.PAGE_FOOTNOTE,
-    "formula_number": BlockType.TEXT,
+    "formula_number": BlockType.FORMULA_NUMBER,
     "header": BlockType.HEADER,
     "header_image": BlockType.HEADER,
     "number": BlockType.PAGE_NUMBER,
@@ -330,6 +332,42 @@ def _layout_det_bbox_to_unit(layout_det, page_width, page_height):
     return bbox_item["bbox"]
 
 
+def _layout_det_bbox_to_pixel(layout_det, page_width, page_height):
+    """将layout bbox转换为页面像素坐标，兼容归一化和像素两种输入。"""
+    bbox = layout_det.get("bbox")
+    if bbox is None or len(bbox) != 4:
+        return None
+
+    x0, y0, x1, y1 = [float(v) for v in bbox]
+    if (
+        0.0 <= x0 <= 1.0
+        and 0.0 <= y0 <= 1.0
+        and 0.0 <= x1 <= 1.0
+        and 0.0 <= y1 <= 1.0
+    ):
+        x0, x1 = x0 * page_width, x1 * page_width
+        y0, y1 = y0 * page_height, y1 * page_height
+
+    x0 = max(0, min(page_width, x0))
+    y0 = max(0, min(page_height, y0))
+    x1 = max(0, min(page_width, x1))
+    y1 = max(0, min(page_height, y1))
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return [x0, y0, x1, y1]
+
+
+def _normalize_flash_vlm_angle(angle):
+    """将pipeline方向标签转换为mineru-vl-utils接受的整数角度。"""
+    try:
+        normalized_angle = int(angle)
+    except (TypeError, ValueError):
+        return 0
+    if normalized_angle in {0, 90, 180, 270}:
+        return normalized_angle
+    return 0
+
+
 def _build_flash_vlm_layout_blocks(layout_dets, page_width, page_height):
     """用 pipeline layout 构造 VLM 外部 layout 输入，跳过 VLM 自身 layout 解析。"""
     blocks = []
@@ -345,7 +383,7 @@ def _build_flash_vlm_layout_blocks(layout_dets, page_width, page_height):
             block = ContentBlock(
                 vlm_type,
                 bbox,
-                angle=layout_det.get("angle", 0),
+                angle=_normalize_flash_vlm_angle(layout_det.get("angle", 0)),
                 content=layout_det.get("content"),
             )
         except AssertionError as exc:
@@ -353,6 +391,55 @@ def _build_flash_vlm_layout_blocks(layout_dets, page_width, page_height):
             continue
         blocks.append(block)
     return blocks
+
+
+def _apply_flash_table_orientation_labels(
+    images_pil_list,
+    images_layout_res,
+    hybrid_pipeline_model,
+    batch_ratio: int = 1,
+):
+    """复用pipeline表格方向分类，为Hybrid flash的table layout写入VLM旋转角度。"""
+    table_inputs = []
+    table_layout_refs = []
+    for pil_img, layout_res in zip(images_pil_list, images_layout_res):
+        page_width, page_height = pil_img.size
+        for layout_det in layout_res or []:
+            if layout_det.get("label") != "table":
+                continue
+            pixel_bbox = _layout_det_bbox_to_pixel(layout_det, page_width, page_height)
+            if pixel_bbox is None:
+                continue
+            try:
+                table_img, _ = crop_img({"bbox": pixel_bbox}, pil_img)
+            except Exception as exc:
+                logger.warning(
+                    f"Skip Hybrid flash table orientation crop: {layout_det}, error: {exc}"
+                )
+                continue
+            table_inputs.append({"table_img": table_img})
+            table_layout_refs.append(layout_det)
+
+    if not table_inputs:
+        return
+
+    try:
+        table_orientation_cls_model = hybrid_pipeline_model.atom_model_manager.get_atom_model(
+            atom_model_name=AtomicModel.TableOrientationCls,
+            lang=getattr(hybrid_pipeline_model, "lang", None),
+        )
+        rotate_labels = table_orientation_cls_model.batch_predict(
+            table_inputs,
+            det_batch_size=max(1, batch_ratio * OCR_DET_BASE_BATCH_SIZE),
+        )
+        if len(rotate_labels) != len(table_layout_refs):
+            raise ValueError("Table orientation prediction result count mismatch")
+        for layout_det, rotate_label in zip(table_layout_refs, rotate_labels):
+            layout_det["angle"] = str(rotate_label or "0")
+    except Exception as exc:
+        logger.warning(
+            f"Hybrid flash table orientation classification failed: {exc}, using original table images"
+        )
 
 
 def _formula_item_to_pixel_bbox(item):
@@ -891,6 +978,12 @@ def doc_analyze(
                         _vlm_ocr_enable,
                     )
                     if mode == "flash":
+                        _apply_flash_table_orientation_labels(
+                            images_pil_list,
+                            images_layout_res,
+                            hybrid_pipeline_model,
+                            batch_ratio=batch_ratio,
+                        )
                         vlm_blocks_list = [
                             _build_flash_vlm_layout_blocks(
                                 page_layout_res,
@@ -906,6 +999,7 @@ def doc_analyze(
                                 not_extract_list=None if _vlm_ocr_enable else not_extract_list,
                                 image_analysis=image_analysis,
                             )
+                        optimize_flash_formula_number_blocks(window_model_list)
                         if _vlm_ocr_enable:
                             _apply_vlm_ocr_det_sidecars_for_window(
                                 images_pil_list,
@@ -1092,6 +1186,13 @@ async def aio_doc_analyze(
                         _vlm_ocr_enable,
                     )
                     if mode == "flash":
+                        await asyncio.to_thread(
+                            _apply_flash_table_orientation_labels,
+                            images_pil_list,
+                            images_layout_res,
+                            hybrid_pipeline_model,
+                            batch_ratio,
+                        )
                         vlm_blocks_list = [
                             _build_flash_vlm_layout_blocks(
                                 page_layout_res,
@@ -1107,6 +1208,7 @@ async def aio_doc_analyze(
                                 not_extract_list=None if _vlm_ocr_enable else not_extract_list,
                                 image_analysis=image_analysis,
                             )
+                        optimize_flash_formula_number_blocks(window_model_list)
                         if _vlm_ocr_enable:
                             await asyncio.to_thread(
                                 _apply_vlm_ocr_det_sidecars_for_window,
