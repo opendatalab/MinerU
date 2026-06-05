@@ -297,6 +297,8 @@ def doc_analyze(
     **kwargs,
 ):
     """hybrid-flash第一阶段analyze：返回pipeline形态model_list和backend元信息。"""
+    # hybrid-flash 当前只执行 analyze，客户端输出开关属于最终输出阶段，不能下传到模型初始化。
+    kwargs.pop("client_side_output_generation", None)
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
@@ -425,6 +427,8 @@ async def aio_doc_analyze(
     **kwargs,
 ):
     """异步hybrid-flash analyze入口，返回pipeline形态model_list和backend元信息。"""
+    # hybrid-flash 当前只执行 analyze，客户端输出开关属于最终输出阶段，不能下传到模型初始化。
+    kwargs.pop("client_side_output_generation", None)
     if predictor is None:
         predictor = await _get_model_async(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
