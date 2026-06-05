@@ -930,7 +930,11 @@ def doc_analyze(
     _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
-    middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
+    middle_json = init_middle_json(
+        _ocr_enable,
+        _vlm_ocr_enable,
+        hybrid_mode=mode,
+    )
     model_list = []
     doc_closed = False
     hybrid_pipeline_model = None
@@ -1101,6 +1105,7 @@ def doc_analyze(
                 hybrid_pipeline_model,
                 _ocr_enable,
                 _vlm_ocr_enable,
+                hybrid_mode=mode,
             )
         close_pdfium_document(pdf_doc)
         doc_closed = True
@@ -1138,7 +1143,11 @@ async def aio_doc_analyze(
     _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
-    middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
+    middle_json = init_middle_json(
+        _ocr_enable,
+        _vlm_ocr_enable,
+        hybrid_mode=mode,
+    )
     model_list = []
     doc_closed = False
     hybrid_pipeline_model = None
@@ -1317,6 +1326,7 @@ async def aio_doc_analyze(
                 hybrid_pipeline_model,
                 _ocr_enable,
                 _vlm_ocr_enable,
+                hybrid_mode=mode,
             )
         close_pdfium_document(pdf_doc)
         doc_closed = True
