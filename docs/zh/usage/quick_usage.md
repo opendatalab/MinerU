@@ -74,6 +74,8 @@ mineru -p <input_path> -o <output_path>
   >```
   >
   >http异步调用代码示例：[Python版本](https://github.com/opendatalab/MinerU/blob/master/demo/demo.py)
+  >
+  >MinIO 往返解析示例：本地文件上传到 MinIO，再从 MinIO 回读解析并生成 Markdown：[Python版本](https://github.com/opendatalab/MinerU/blob/master/demo/minio_markdown_demo.py)
 
 - 启动gradio webui 可视化前端：
   ```bash
