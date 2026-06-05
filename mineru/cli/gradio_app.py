@@ -338,6 +338,21 @@ def is_http_client_backend(backend_choice):
     return isinstance(backend_choice, str) and backend_choice.endswith("-http-client")
 
 
+def select_backend_info_key(backend_choice):
+    """根据解析后端选择说明文案的 i18n key，保证 flash 与普通 hybrid 可分别描述。"""
+    if not isinstance(backend_choice, str):
+        return "backend_info_default"
+    if backend_choice.startswith("vlm"):
+        return "backend_info_vlm"
+    if backend_choice == "pipeline":
+        return "backend_info_pipeline"
+    if backend_choice.startswith("hybrid-flash"):
+        return "backend_info_hybrid_flash"
+    if backend_choice.startswith("hybrid"):
+        return "backend_info_hybrid"
+    return "backend_info_default"
+
+
 def resolve_status_step_index(status_lines):
     """根据现有状态日志推断步骤面板中当前应高亮的步骤索引。"""
     if not status_lines:
@@ -1594,6 +1609,7 @@ def main(ctx,
             "backend_info_vlm": "High-precision parsing via VLM, supports Chinese and English documents only.",
             "backend_info_pipeline": "Traditional Multi-model pipeline parsing, supports multiple languages, hallucination-free.",
             "backend_info_hybrid": "High-precision hybrid parsing, supports multiple languages.",
+            "backend_info_hybrid_flash": "Fast, high-precision hybrid parsing, supports multiple languages.",
             "backend_info_default": "Select the backend engine for document parsing.",
         },
         zh={
@@ -1662,6 +1678,7 @@ def main(ctx,
             "backend_info_vlm": "多模态大模型高精度解析，仅支持中英文文档。",
             "backend_info_pipeline": "传统多模型管道解析，支持多语言，无幻觉。",
             "backend_info_hybrid": "高精度混合解析，支持多语言。",
+            "backend_info_hybrid_flash": "高精度快速混合解析，支持多语言。",
             "backend_info_default": "选择文档解析的后端引擎。",
         },
     )
@@ -1688,14 +1705,7 @@ def main(ctx,
             return ""
 
     def get_backend_info(backend_choice):
-        if backend_choice.startswith("vlm"):
-            return i18n("backend_info_vlm")
-        elif backend_choice == "pipeline":
-            return i18n("backend_info_pipeline")
-        elif backend_choice.startswith("hybrid"):
-            return i18n("backend_info_hybrid")
-        else:
-            return i18n("backend_info_default")
+        return i18n(select_backend_info_key(backend_choice))
 
     # 更新界面函数
     def update_interface(backend_choice):
