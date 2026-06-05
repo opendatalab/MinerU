@@ -578,23 +578,11 @@ def __tie_up_category_by_index(blocks: list[Block], subject_block_type: str, obj
     """基于index的主客体关联包装函数"""
 
     # 定义获取主体和客体对象的函数
-    def get_subjects() -> list[dict[str, Any]]:
-        return [
-            {"lines": block.lines, "index": block.index}
-            for block in filter(
-                lambda b: b.type == subject_block_type,
-                blocks,
-            )
-        ]
+    def get_subjects() -> list[Block]:
+        return [block for block in blocks if block.type == subject_block_type]
 
-    def get_objects() -> list[dict[str, Any]]:
-        return [
-            {"lines": block.lines, "index": block.index}
-            for block in filter(
-                lambda b: b.type == object_block_type,
-                blocks,
-            )
-        ]
+    def get_objects() -> list[Block]:
+        return [block for block in blocks if block.type == object_block_type]
 
     # 调用通用方法
     return tie_up_category_by_index(
@@ -628,16 +616,16 @@ def fix_two_layer_blocks(blocks: list[Block], fix_type: Literal["image", "table"
     # 将每个block的caption_list中不连续index的元素提出来作为普通block处理
     for block in need_fix_blocks:
         caption_list = block[f"{fix_type}_caption_list"]
-        body_index = block[f"{fix_type}_body"]["index"]
+        body_index = block[f"{fix_type}_body"].index
 
         # 处理caption_list (从body往前看,caption在body之前)
         if caption_list:
             # 按index降序排列,从最接近body的开始检查
-            caption_list.sort(key=lambda x: x["index"], reverse=True)
+            caption_list.sort(key=lambda x: x.index, reverse=True)
             filtered_captions = [caption_list[0]]
             for i in range(1, len(caption_list)):
-                prev_index = caption_list[i - 1]["index"]
-                curr_index = caption_list[i]["index"]
+                prev_index = caption_list[i - 1].index
+                curr_index = caption_list[i].index
 
                 # 检查是否连续
                 if curr_index == prev_index - 1:
@@ -661,15 +649,15 @@ def fix_two_layer_blocks(blocks: list[Block], fix_type: Literal["image", "table"
         body = block[f"{fix_type}_body"]
         caption_list = block[f"{fix_type}_caption_list"]
 
-        body["type"] = f"{fix_type}_body"
+        body.type = f"{fix_type}_body"
         for caption in caption_list:
-            caption["type"] = f"{fix_type}_caption"
-            processed_indices.add(caption["index"])
+            caption.type = f"{fix_type}_caption"
+            processed_indices.add(caption.index)
 
-        processed_indices.add(body["index"])
+        processed_indices.add(body.index)
 
         two_layer_block = Block(
-            index=body["index"],
+            index=body.index,
             type=fix_type,
             bbox=EMPTY_BBOX,
             blocks=sorted([body, *caption_list], key=lambda x: x.index),
