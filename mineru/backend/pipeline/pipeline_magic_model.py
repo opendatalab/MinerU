@@ -1,9 +1,10 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
-from ...types import BBox, Block, Line, Span
+from ...types import EMPTY_BBOX, BBox, Block, Line, Span
 from ...utils.enum_class import BlockType, ContentType
 from ...utils.guess_suffix_or_lang import guess_language_by_text
 from ..utils.boxbase import calculate_overlap_area_2_minbox_area_ratio, calculate_overlap_area_in_bbox1_area_ratio
@@ -162,7 +163,8 @@ class MagicModel:
         if block.type == BlockType.CODE:
             for line in sort_block_lines:
                 line._is_list_start = True
-            code_content = _merge_para_text({"lines": sort_block_lines}, False, "\n")
+            _temp_block = Block(index=0, type="", bbox=EMPTY_BBOX, lines=sort_block_lines)
+            code_content = _merge_para_text(_temp_block, False, "\n")
             guess_lang = guess_language_by_text(code_content)
             if guess_lang not in ["txt", "unknown"]:
                 block.sub_type = "code"
@@ -174,12 +176,9 @@ class MagicModel:
 
     @staticmethod
     def __copy_block_fields(block: dict[str, Any], **overrides: Any) -> Block:
-        extra = {k: v for k, v in block.items() if k not in {"cls_id", "label"} and k not in Block.__dataclass_fields__}
-        return Block(
-            type=overrides.pop("type", block.get("type", "")),
-            bbox=overrides.pop("bbox", block.get("bbox")),
-            _extra={**extra, **overrides},
-        )
+        kwargs = {k: v for k, v in block.items() if k not in {"cls_id", "label"}}
+        kwargs = {**kwargs, **overrides}
+        return Block(**kwargs)
 
     @staticmethod
     def __is_inline_formula_block(layout_det: dict[str, Any]) -> bool:
@@ -268,16 +267,16 @@ class MagicModel:
             ]:
                 span = Span(type=span_type, bbox=block.bbox)
                 if span_type == ContentType.IMAGE and block.sub_type == "seal":
-                    seal_text = self.__normalize_seal_text(block.get("text"))
+                    seal_text = self.__normalize_seal_text(block.text)
                     if seal_text:
                         span.content = seal_text
-                    block.pop("text", None)
+                    block.text = ""
                 if span_type == ContentType.TABLE:
                     span.html = block.html
                     block.html = ""
                 if span_type == ContentType.INTERLINE_EQUATION:
-                    span.content = block.get("latex", "")
-                    block.pop("latex", None)
+                    span.content = block.latex
+                    block.latex = ""
 
                 self.all_image_spans.append(span)
                 # 构造line对象
@@ -487,7 +486,9 @@ class MagicModel:
 
     @staticmethod
     def __make_child_block(block: Block, block_type: str) -> Block:
-        return MagicModel.__copy_block_fields(block, type=block_type)
+        new_block = deepcopy(block)
+        new_block.type = block_type
+        return new_block
 
     def __sync_layout_det_type(self, block_index: int, block_type: str) -> None:
         layout_det = self.__layout_det_by_index.get(block_index)

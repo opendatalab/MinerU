@@ -384,6 +384,8 @@ class Block:
     merge_prev: bool = False
     section_number: str = ""
     html: str = ""
+    text: str = ""
+    latex: str = ""
 
     # Office
     anchor: str = ""

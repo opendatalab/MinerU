@@ -77,7 +77,7 @@ class MagicModel:
         page_text_inline_formula_spans: list[Span] = []
 
         for inline_formula in self.page_inline_formula:
-            inline_formula["bbox"] = list(self.cal_real_bbox(inline_formula["bbox"]))
+            inline_formula["bbox"] = self.cal_real_bbox(inline_formula["bbox"])
             inline_formula_latex = inline_formula.pop("latex", "")
             if inline_formula_latex:
                 page_text_inline_formula_spans.append(
@@ -89,7 +89,7 @@ class MagicModel:
                     )
                 )
         for ocr_res in self.page_ocr_res:
-            ocr_res["bbox"] = list(self.cal_real_bbox(ocr_res["bbox"]))
+            ocr_res["bbox"] = self.cal_real_bbox(ocr_res["bbox"])
             page_text_inline_formula_spans.append(
                 Span(
                     type=ContentType.TEXT,
@@ -99,7 +99,8 @@ class MagicModel:
                 )
             )
         if not _vlm_ocr_enable and not _ocr_enable:
-            virtual_block = [0, 0, width, height, None, None, None, "text"]
+            # Bad code
+            virtual_block = (0, 0, width, height, None, None, None, "text")
             page_text_inline_formula_spans = txt_spans_extract(
                 page,
                 page_text_inline_formula_spans,
