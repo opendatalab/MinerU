@@ -33,9 +33,6 @@ from mineru.version import __version__
 
 
 VLM_VISUAL_LABELS = {"image", "chart", "seal"}
-VLM_VISUAL_TYPE_BY_LABEL = {
-    "seal": "image",
-}
 VLM_TEXT_LABEL_TO_TYPE = {
     "abstract": "text",
     "algorithm": "code",
@@ -43,15 +40,18 @@ VLM_TEXT_LABEL_TO_TYPE = {
     "content": "text",
     "doc_title": "title",
     "footer": "footer",
+    "footer_image": "footer",
     "footnote": "page_footnote",
     "formula_number": "text",
     "header": "header",
+    "header_image": "header",
     "number": "page_number",
     "paragraph_title": "title",
     "reference_content": "ref_text",
     "text": "text",
     "vertical_text": "text",
-    "vision_footnote": "page_footnote",
+    "figure_title": "image_caption",
+    "vision_footnote": "image_footnote",
 }
 
 
@@ -120,12 +120,15 @@ def _normalize_bbox_to_unit(bbox, page_width: int, page_height: int) -> list[flo
 def _vlm_type_for_layout_det(layout_det: dict, vlm_ocr_enable: bool, table_enable: bool, image_analysis: bool) -> str | None:
     """把pipeline layout label映射为VLM内容抽取类型，未命中则跳过。"""
     label = layout_det.get("label")
+    if label is None:
+        logger.warning("Layout detection result missing label: %s", layout_det)
+        return None
     if label == "table":
         return "table" if table_enable else None
     if label == "display_formula":
         return "equation"
     if label in VLM_VISUAL_LABELS:
-        return VLM_VISUAL_TYPE_BY_LABEL.get(label, label) if image_analysis else None
+        return "image" if image_analysis else None
     if vlm_ocr_enable:
         return VLM_TEXT_LABEL_TO_TYPE.get(label)
     return None
