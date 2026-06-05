@@ -233,13 +233,24 @@ class MineruTableOrientationClsModel:
         imgs: List[Dict],
         resolution_group_stride: int,
     ) -> Dict[tuple[int, int], list[Dict]]:
-        """按归一化分辨率收集竖版表格，横版表格默认保持 0 度跳过后续 OCR。"""
+        """兼容旧私有入口，实际收集逻辑已不再按表格宽高比过滤。"""
+        return cls._collect_orientation_image_groups(
+            imgs,
+            resolution_group_stride,
+        )
+
+    @classmethod
+    def _collect_orientation_image_groups(
+        cls,
+        imgs: List[Dict],
+        resolution_group_stride: int,
+    ) -> Dict[tuple[int, int], list[Dict]]:
+        """按归一化分辨率收集所有有效表格图，旋转判断交给 OCR det/rec 评分。"""
         resolution_groups = defaultdict(list)
         for index, img in enumerate(imgs):
             bgr_img = cls._to_bgr_table_image(img)
             img_height, img_width = bgr_img.shape[:2]
-            img_aspect_ratio = img_height / img_width if img_width > 0 else 1.0
-            if img_aspect_ratio <= 1.2:
+            if img_height <= 0 or img_width <= 0:
                 continue
 
             group_key = (
@@ -281,7 +292,7 @@ class MineruTableOrientationClsModel:
         det_batch_size: int,
         resolution_group_stride: int,
     ) -> list[Dict]:
-        """对竖版表格批量做 OCR det，并筛选需要进入多角度评分的候选。"""
+        """对表格批量做 OCR det，并筛选需要进入多角度评分的候选。"""
         rotated_imgs = []
         for _group_key, group_imgs in resolution_groups.items():
             batch_images = self._pad_group_images(group_imgs, resolution_group_stride)
@@ -353,7 +364,7 @@ class MineruTableOrientationClsModel:
         """
         RESOLUTION_GROUP_STRIDE = 128
         rotate_labels = ["0"] * len(imgs)
-        resolution_groups = self._collect_portrait_image_groups(
+        resolution_groups = self._collect_orientation_image_groups(
             imgs,
             RESOLUTION_GROUP_STRIDE,
         )
