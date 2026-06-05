@@ -4,6 +4,11 @@ from typing import Annotated, Optional
 
 from fastapi import File, Form, HTTPException, Request, UploadFile
 
+from mineru.cli.backend_options import (
+    BACKEND_SCHEMA_EXTRA,
+    DEFAULT_BACKEND,
+    validate_backend as validate_public_backend,
+)
 from mineru.cli.public_http_client_policy import validate_public_http_client_request
 
 ALLOWED_PARSE_METHODS = {"auto", "txt", "ocr"}
@@ -51,6 +56,14 @@ def validate_parse_method(parse_method: str) -> str:
     return parse_method
 
 
+def validate_parse_backend(backend: str) -> str:
+    """校验公开 API 允许的解析后端，避免旧入口名进入下游执行链路。"""
+    try:
+        return validate_public_backend(backend)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 async def parse_request_form(
     request: Request,
     files: Annotated[
@@ -89,14 +102,15 @@ async def parse_request_form(
         Form(
             description="""The backend for parsing:
 - pipeline: More general, supports multiple languages, hallucination-free.
-- vlm-auto-engine: High accuracy via local computing power, supports Chinese and English documents only.
+- vlm-engine: High accuracy via local computing power, supports Chinese and English documents only.
 - vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers), supports Chinese and English documents only.
-- hybrid-auto-engine: Next-generation high accuracy solution via local computing power, supports multiple languages.
-- hybrid-flash-auto-engine: Experimental hybrid-flash analyze path via local computing power, supports multiple languages.
+- hybrid-engine: Next-generation high accuracy solution via local computing power, supports multiple languages.
+- hybrid-flash-engine: Experimental hybrid-flash analyze path via local computing power, supports multiple languages.
 - hybrid-http-client: High accuracy via remote computing power but requires a little local computing power(client suitable for openai-compatible servers), supports multiple languages.
 - hybrid-flash-http-client: Experimental hybrid-flash analyze path via remote computing power(client suitable for openai-compatible servers), supports multiple languages.""",
+            json_schema_extra=BACKEND_SCHEMA_EXTRA,
         ),
-    ] = "hybrid-auto-engine",
+    ] = DEFAULT_BACKEND,
     parse_method: Annotated[
         str,
         Form(
@@ -177,6 +191,7 @@ async def parse_request_form(
     ] = 99999,
 ) -> ParseRequestOptions:
     """解析 API/Router 共用的 multipart 表单，并保持 Swagger 参数同源。"""
+    backend = validate_parse_backend(backend)
     validate_public_http_client_request(
         public_bind_exposed=bool(
             getattr(request.app.state, "public_bind_exposed", False)

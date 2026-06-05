@@ -18,6 +18,11 @@ from mineru.cli.api_protocol import (
     DEFAULT_MAX_CONCURRENT_REQUESTS,
     DEFAULT_PROCESSING_WINDOW_SIZE,
 )
+from mineru.cli.backend_options import (
+    DEFAULT_BACKEND,
+    PUBLIC_BACKEND_CHOICES,
+    normalize_backend,
+)
 from mineru.utils.config_reader import (
     get_max_concurrent_requests as read_max_concurrent_requests,
 )
@@ -83,6 +88,18 @@ class VisualizationContext:
 ServerHealth = _api_client.ServerHealth
 SubmitResponse = _api_client.SubmitResponse
 LocalAPIServer = _api_client.LocalAPIServer
+
+
+def normalize_backend_option(
+    ctx: click.Context,
+    param: click.Parameter,
+    value: str,
+) -> str:
+    """将 CLI 输入的旧 backend 名称规范为当前公开名称。"""
+    try:
+        return normalize_backend(value)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), ctx=ctx, param=param) from exc
 
 
 @dataclass(frozen=True)
@@ -1029,28 +1046,20 @@ async def run_orchestrated_cli(
     "-b",
     "--backend",
     "backend",
-    type=click.Choice(
-        [
-            "pipeline",
-            "vlm-http-client",
-            "hybrid-http-client",
-            "hybrid-flash-http-client",
-            "vlm-auto-engine",
-            "hybrid-auto-engine",
-            "hybrid-flash-auto-engine",
-        ]
-    ),
-    default="hybrid-auto-engine",
+    type=str,
+    default=DEFAULT_BACKEND,
+    callback=normalize_backend_option,
+    metavar="[" + "|".join(PUBLIC_BACKEND_CHOICES) + "]",
     help="""\b
     the backend for parsing pdf:
       pipeline: More general.
-      vlm-auto-engine: High accuracy via local computing power.
+      vlm-engine: High accuracy via local computing power.
       vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers).
-      hybrid-auto-engine: Next-generation high accuracy solution via local computing power.
-      hybrid-flash-auto-engine: Experimental hybrid-flash analyze path via local computing power.
+      hybrid-engine: Next-generation high accuracy solution via local computing power.
+      hybrid-flash-engine: Experimental hybrid-flash analyze path via local computing power.
       hybrid-http-client: High accuracy but requires a little local computing power(client suitable for openai-compatible servers).
       hybrid-flash-http-client: Experimental hybrid-flash analyze path via remote computing power(client suitable for openai-compatible servers).
-    Without method specified, hybrid-auto-engine will be used by default.""",
+    Without method specified, hybrid-engine will be used by default.""",
 )
 @click.option(
     "-l",

@@ -95,7 +95,7 @@ async def run_demo(
     output_dir: str | Path,
     *,
     api_url: str | None = None,
-    backend: str = "hybrid-auto-engine",
+    backend: str = "hybrid-engine",
     parse_method: str = "auto",
     language: str = "ch",
     formula_enable: bool = True,
@@ -212,12 +212,12 @@ def main() -> None:
     api_url = None
 
     # Available examples:
-    # "hybrid-auto-engine"   -> local hybrid parsing, recommended default
+    # "hybrid-engine"        -> local hybrid parsing, recommended default
     # "pipeline"             -> more general OCR/text pipeline
-    # "vlm-auto-engine"      -> local VLM parsing
+    # "vlm-engine"           -> local VLM parsing
     # "vlm-http-client"      -> remote OpenAI-compatible VLM server
     # "hybrid-http-client"   -> remote OpenAI-compatible hybrid server
-    backend = "hybrid-auto-engine"
+    backend = "hybrid-engine"
     # Available options:
     # "auto" -> let MinerU choose between text extraction and OCR
     # "txt"  -> force text extraction

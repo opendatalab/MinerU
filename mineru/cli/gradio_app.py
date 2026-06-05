@@ -38,6 +38,11 @@ from mineru.cli.common import (
     read_fn,
 )
 from mineru.cli import api_client as _api_client
+from mineru.cli.backend_options import (
+    DEFAULT_BACKEND,
+    HTTP_CLIENT_BACKEND_CHOICES,
+    LOCAL_BACKEND_CHOICES,
+)
 from mineru.cli.client_side_output import regenerate_client_side_outputs
 from mineru.cli.output_paths import resolve_parse_dir
 from mineru.cli.vlm_preload import resolve_gradio_local_api_cli_args
@@ -224,17 +229,8 @@ STATUS_QUEUED_ON_SERVER = "Queued on server"
 STATUS_PROCESSING_ON_SERVER = "Processing on server"
 STATUS_QUEUED_LOCALLY_PREFIX = "Queued locally:"
 
-BACKEND_CHOICE_DEFINITIONS = [
-    "pipeline",
-    "vlm-auto-engine",
-    "hybrid-auto-engine",
-    "hybrid-flash-auto-engine",
-]
-HTTP_CLIENT_BACKEND_CHOICE_DEFINITIONS = [
-    "vlm-http-client",
-    "hybrid-http-client",
-    "hybrid-flash-http-client",
-]
+BACKEND_CHOICE_DEFINITIONS = list(LOCAL_BACKEND_CHOICES)
+HTTP_CLIENT_BACKEND_CHOICE_DEFINITIONS = list(HTTP_CLIENT_BACKEND_CHOICES)
 STATUS_STEP_DEFINITIONS = [
     ("status_step_prepare", STATUS_PREPARING_REQUEST),
     ("status_step_check", STATUS_CHECKING_SERVER),
@@ -1778,7 +1774,7 @@ def main(ctx,
                     file_types=suffixes,
                     elem_classes=["mineru-upload-file"],
                 )
-                preferred_option = "hybrid-auto-engine"
+                preferred_option = DEFAULT_BACKEND
                 backend = gr.Dropdown(
                     build_backend_choices(http_client_enable, i18n),
                     label=i18n("backend"),
