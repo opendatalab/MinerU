@@ -46,7 +46,7 @@ def blocks_to_page_info(
     page_model_list: list[dict[str, Any]],
     image_dict: dict[str, Any],
     page: Any,
-    image_writer: DataWriter,
+    image_writer: DataWriter | None,
     page_index: int,
     _ocr_enable: bool,
     _vlm_ocr_enable: bool,
@@ -115,7 +115,7 @@ def blocks_to_page_info(
     page_info = PageInfo(
         preproc_blocks=page_blocks,
         discarded_blocks=discarded_blocks,
-        page_size=[width, height],
+        page_size=(width, height),
         page_idx=page_index,
     )
     return page_info

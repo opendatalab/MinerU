@@ -187,7 +187,7 @@ class MagicModel:
                     span = Span(
                         type=span_type,
                         bbox=block_bbox,
-                        content=block_content,
+                        content=block_content or "",
                     )
 
             # 处理span类型并添加到all_spans

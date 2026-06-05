@@ -141,7 +141,9 @@ def _escape_office_inline_text(content: str, inline_syntax: str) -> str:
 
 
 def get_title_level(para_block: Block) -> int:
-    title_level = para_block.get("level", 2)
+    title_level = para_block.level
+    if title_level is None:
+        title_level = 2
     return title_level
 
 
@@ -483,18 +485,18 @@ def _iter_para_inline_spans(para_block: Block) -> Generator[Span, None, None]:
 
 def _hyperlink_requires_html(span: Span) -> bool:
     """判断 hyperlink 是否存在混合或复杂样式，需要整块切到 HTML。"""
-    children = span.get("children") or []
+    children = span._children
     if not children:
-        return not _is_simple_markdown_style(span.get("style", []))
+        return not _is_simple_markdown_style(span._style)
 
     child_style_keys = set()
     for child in children:
-        if child.get("type") != ContentType.TEXT:
+        if child.type != ContentType.TEXT:
             return True
-        content = str(child.get("content", ""))
+        content = child.content
         if not content.strip():
             continue
-        child_style = child.get("style", [])
+        child_style = child._style
         child_style_key = _get_markdown_style_key(child_style)
         if child_style_key == "":
             return True
@@ -506,8 +508,8 @@ def _hyperlink_requires_html(span: Span) -> bool:
 def _iter_block_inline_units(para_block: Block) -> Generator[dict[str, Any], None, None]:
     """把 block 展开为线性文本单元，用于判断 Markdown 边界风险。"""
     if para_block.type == BlockType.TITLE:
-        section_number = para_block.get("section_number", "")
-        if para_block.get("is_numbered_style", False) and section_number:
+        section_number = para_block.section_number
+        if para_block.is_numbered_style and section_number:
             yield {
                 "span_type": ContentType.TEXT,
                 "content": f"{section_number} ",
@@ -520,24 +522,24 @@ def _iter_block_inline_units(para_block: Block) -> Generator[dict[str, Any], Non
             yield {
                 "span_type": ContentType.TEXT,
                 "content": span.content,
-                "style": span.get("style", []),
+                "style": span._style,
             }
         elif span_type == ContentType.HYPERLINK:
-            children = span.get("children") or []
+            children = span._children
             if children:
                 for child in children:
-                    if child.get("type") != ContentType.TEXT:
+                    if child.type != ContentType.TEXT:
                         continue
                     yield {
                         "span_type": ContentType.HYPERLINK,
-                        "content": str(child.get("content", "")),
-                        "style": child.get("style", []),
+                        "content": str(child.content),
+                        "style": child._style,
                     }
             else:
                 yield {
                     "span_type": ContentType.HYPERLINK,
                     "content": span.content,
-                    "style": span.get("style", []),
+                    "style": span._style,
                 }
         elif span_type in {ContentType.INLINE_EQUATION, ContentType.INTERLINE_EQUATION}:
             yield {
@@ -815,19 +817,14 @@ def _append_style_grouped_text_parts(
         )
 
 
-def _render_hyperlink_children_label(children: list[dict], inline_syntax: str) -> str:
+def _render_hyperlink_children_label(children: list[Span], inline_syntax: str) -> str:
     """渲染 hyperlink 的子文本片段，保留各自样式后再组成同一个链接 label。"""
     child_parts = []
     child_text_spans = []
     for child in children or []:
-        if child.get("type") != ContentType.TEXT:
+        if child.type != ContentType.TEXT:
             continue
-        child_text_spans.append(
-            {
-                "content": child.get("content", ""),
-                "style": child.get("style", []),
-            }
-        )
+        child_text_spans.append({"content": child.content, "style": child._style})
     _append_style_grouped_text_parts(child_parts, child_text_spans, inline_syntax)
     return _join_rendered_parts(child_parts).strip()
 
@@ -839,7 +836,7 @@ def _append_hyperlink_part(
     inline_syntax: str,
     url: str = "",
     plain_text_only: bool = False,
-    children: list[dict[str, Any]] | None = None,
+    children: list[Span] | None = None,
 ) -> None:
     """渲染 hyperlink 片段；HTML block 使用 <a>，Markdown block 使用 []()。"""
     if children:
@@ -886,8 +883,8 @@ def merge_para_with_text(para_block: Block, escape_text_block_prefix: bool = Tru
         text_span_buffer.clear()
 
     if para_block.type == BlockType.TITLE:
-        if para_block.get("is_numbered_style", False):
-            section_number = para_block.get("section_number", "")
+        if para_block.is_numbered_style:
+            section_number = para_block.section_number
             if section_number:
                 parts.append(
                     _make_rendered_part(
@@ -899,7 +896,7 @@ def merge_para_with_text(para_block: Block, escape_text_block_prefix: bool = Tru
     for line in para_block.lines:
         for span in line.spans:
             span_type = span.type
-            span_style = span.get("style", [])
+            span_style = span._style
 
             if span_type == ContentType.TEXT:
                 text_span_buffer.append(
@@ -937,8 +934,8 @@ def merge_para_with_text(para_block: Block, escape_text_block_prefix: bool = Tru
                     span.content,
                     span_style,
                     inline_syntax,
-                    url=span.get("url", ""),
-                    children=span.get("children"),
+                    url=span._url,
+                    children=span._children,
                 )
             else:
                 flush_text_span_buffer()

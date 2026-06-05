@@ -42,7 +42,7 @@ def txt_spans_extract(
     pdf_page: Any,
     spans: list[Span],
     pil_img: Any,
-    scale: int,
+    scale: float,
     all_bboxes: list[tuple[Any, ...]],
     all_discarded_blocks: list[tuple[Any, ...]],
 ) -> list[Span]:
@@ -68,7 +68,7 @@ def txt_spans_extract(
         )
         page_all_chars = [char for char in page_chars["chars"] if _is_supported_rotation(char["rotation"])]
 
-        # 计算所有sapn的高度的中位数
+        # 计算所有span的高度的中位数
         span_height_list = []
         for span in spans:
             if span.type in [ContentType.TEXT]:
@@ -143,7 +143,7 @@ def _prepare_post_ocr_spans(
     need_ocr_spans: list[Span],
     spans: list[Span],
     pil_img: Any,
-    scale: int,
+    scale: float,
 ) -> list[Span]:
     if len(need_ocr_spans) == 0:
         return spans
@@ -160,7 +160,7 @@ def _prepare_post_ocr_spans(
 
         span.content = ""
         span.score = 1.0
-        span._extra["np_img"] = span_img
+        span._np_img = span_img
 
     return spans
 

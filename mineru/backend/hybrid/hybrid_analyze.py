@@ -5,14 +5,14 @@ import asyncio
 import os
 import time
 from collections import defaultdict
-from typing import Any
+from typing import Any, Literal
 
 import cv2
 import numpy as np
 import pypdfium2 as pdfium
 from loguru import logger
 from mineru_vl_utils import MinerUClient
-from mineru_vl_utils.structs import BlockType, ExtractResult
+from mineru_vl_utils.structs import BlockType
 from PIL import Image
 from tqdm import tqdm
 
@@ -88,7 +88,7 @@ def ocr_classify(
     return _ocr_enable
 
 
-def ocr_det(
+def _ocr_det(
     hybrid_pipeline_model: Any,
     np_images: list[Any],
     model_list: list[list[dict[str, Any]]],
@@ -97,7 +97,7 @@ def ocr_det(
     batch_ratio: int = 1,
     *,
     fill_text: bool = True,
-) -> None:
+) -> list[list[dict[str, Any]]]:
     def _set_temp_pixel_bbox(res: dict[str, Any], pixel_bbox: list[int]) -> None:
         res["_normalized_bbox"] = list(res["bbox"])
         res["bbox"] = pixel_bbox
@@ -107,7 +107,8 @@ def ocr_det(
         if normalized_bbox is not None:
             res["bbox"] = normalized_bbox
 
-    ocr_res_list = []
+    ocr_res_list: list[list[dict[str, Any]]] = []
+
     if not hybrid_pipeline_model.enable_ocr_det_batch:
         # 非批处理模式 - 逐页处理
         for np_image, page_mfd_res, page_results in tqdm(
@@ -130,7 +131,7 @@ def ocr_det(
                 finally:
                     _restore_normalized_bbox(res)
                 adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(page_mfd_res, useful_list)
-                bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
+                bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)  # type: ignore
                 ocr_res = run_ocr_det_inference(
                     hybrid_pipeline_model.ocr_model.ocr,
                     bgr_image,
@@ -170,7 +171,7 @@ def ocr_det(
                 finally:
                     _restore_normalized_bbox(res)
                 adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(page_mfd_res, useful_list)
-                bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
+                bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)  # type: ignore
                 all_cropped_images_info.append((bgr_image, useful_list, adjusted_mfdetrec_res, ocr_res_list[-1]))
 
         # 按分辨率分组并同时完成padding
@@ -187,7 +188,7 @@ def ocr_det(
             resolution_groups[group_key].append(crop_info)
 
         # 对每个分辨率组进行批处理
-        for (target_h, target_w), group_crops in tqdm(resolution_groups.items(), desc=f"OCR-det"):
+        for (target_h, target_w), group_crops in tqdm(resolution_groups.items(), desc="OCR-det"):
             # 对所有图像进行padding到统一尺寸
             batch_images = []
             for crop_info in group_crops:
@@ -235,7 +236,7 @@ def ocr_det(
     return ocr_res_list
 
 
-def mask_image_regions(np_images: list[Any], model_list: list[list[dict[str, Any]]]) -> list[Any]:
+def _mask_image_regions(np_images: list[Any], model_list: list[list[dict[str, Any]]]) -> list[Any]:
     # 根据vlm返回的结果，在每一页中将image、table、equation块mask成白色背景图像
     for np_image, vlm_page_results in zip(np_images, model_list):
         img_height, img_width = np_image.shape[:2]
@@ -307,7 +308,7 @@ def _build_inline_formula_inputs(images_layout_res: list[list[dict[str, Any]]]) 
     return inline_formula_inputs
 
 
-def _build_formula_mask_inputs(images_layout_res: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+def _build_formula_mask_inputs(images_layout_res: list[list[dict[str, Any]]]) -> list[list[dict[str, Any]]]:
     """从 layout 检测结果提取公式框，供 OCR det 规避行内/行间公式区域。"""
     page_formula_masks = []
     for layout_res in images_layout_res:
@@ -331,7 +332,7 @@ def _normalize_page_size(page_image: Any) -> tuple[int, int]:
     return width, height
 
 
-def _bbox_to_pixel_bbox(bbox: BBox, page_size: list[int]) -> BBox | None:
+def _bbox_to_pixel_bbox(bbox: BBox | None, page_size: tuple[int, int]) -> BBox | None:
     """将归一化或像素bbox统一成像素bbox，异常bbox返回None。"""
     if bbox is None or len(bbox) != 4:
         return None
@@ -352,7 +353,7 @@ def _bbox_to_pixel_bbox(bbox: BBox, page_size: list[int]) -> BBox | None:
     return (left, top, right, bottom)
 
 
-def _collect_layout_doc_title_bboxes(layout_res: list[dict[str, Any]], page_size: list[int]) -> list[BBox]:
+def _collect_layout_doc_title_bboxes(layout_res: list[dict[str, Any]], page_size: tuple[int, int]) -> list[BBox]:
     """只收集layout小模型输出的doc_title框，忽略paragraph_title等其他类型。"""
     doc_title_bboxes: list[BBox] = []
     for layout_item in layout_res or []:
@@ -375,7 +376,7 @@ def _has_doc_title_overlap(title_bbox: BBox, doc_title_bboxes: list[BBox], overl
 def _apply_layout_title_split(
     model_list: list[list[dict[str, Any]]],
     images_layout_res: list[list[dict[str, Any]]],
-    page_sizes: list[list[int]],
+    page_sizes: list[tuple[int, int]],
     overlap_threshold: float = LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD,
 ) -> None:
     """用layout doc_title框将VLM title拆分为doc_title和paragraph_title。"""
@@ -395,20 +396,20 @@ def _apply_layout_title_split(
 
 def _predict_layout_for_title_split(
     hybrid_pipeline_model: MineruHybridModel,
-    images: list[Image.Image],
+    np_images: list[np.ndarray] | list[Image.Image],
     batch_ratio: int,
 ) -> list[list[dict[str, Any]]]:
     """执行layout小模型检测，专门为Hybrid标题拆分提供页面layout结果。"""
     return run_layout_inference(
         hybrid_pipeline_model.layout_model.batch_predict,
-        images,
+        np_images,
         batch_size=min(8, batch_ratio * LAYOUT_BASE_BATCH_SIZE),
     )
 
 
 def _process_ocr_and_formulas(
     images_pil_list: list[Image.Image],
-    model_list: list[ExtractResult],
+    model_list: list[list[dict[str, Any]]],
     language: str | None,
     inline_formula_enable: bool,
     _ocr_enable: bool,
@@ -431,12 +432,8 @@ def _process_ocr_and_formulas(
     )
 
     # 在进行`行内`公式检测和识别前，先将图像中的图片、表格、`行间`公式区域mask掉
-    layout_images = mask_image_regions(np_images, model_list) if inline_formula_enable else np_images
-    images_layout_res = _predict_layout_for_title_split(
-        hybrid_pipeline_model,
-        layout_images,
-        batch_ratio,
-    )
+    layout_images = _mask_image_regions(np_images, model_list) if inline_formula_enable else np_images
+    images_layout_res = _predict_layout_for_title_split(hybrid_pipeline_model, layout_images, batch_ratio)
 
     if inline_formula_enable:
         images_mfd_res = _build_inline_formula_inputs(images_layout_res)
@@ -462,7 +459,7 @@ def _process_ocr_and_formulas(
         mfd_res.append(page_mfd_res)
 
     # vlm没有执行ocr，需要ocr_det
-    ocr_res_list = ocr_det(
+    ocr_res_list = _ocr_det(
         hybrid_pipeline_model,
         np_images,
         model_list,
@@ -571,7 +568,7 @@ def _process_ocr_and_formulas(
 
 def _apply_layout_title_split_for_window(
     images_pil_list: list[Image.Image],
-    model_list: list[ExtractResult],
+    model_list: list[list[dict[str, Any]]],
     language: str | None,
     batch_ratio: int,
 ) -> MineruHybridModel:
@@ -587,7 +584,7 @@ def _apply_layout_title_split_for_window(
         batch_ratio,
     )
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
-    ocr_res_list = ocr_det(
+    ocr_res_list = _ocr_det(
         hybrid_pipeline_model,
         np_images,
         model_list,
@@ -653,9 +650,9 @@ def _merge_page_sidecar_items(
     ocr_res_list: list[list[dict[str, Any]]],
     keep_ocr_text: bool = True,
 ) -> list[list[dict[str, Any]]]:
-    merged_model_list = []
+    merged_model_list: list[list[dict[str, Any]]] = []
     for page_model_list, page_inline_formula_list, page_ocr_res_list in zip(model_list, inline_formula_list, ocr_res_list):
-        merged_page_model_list = list(page_model_list)
+        merged_page_model_list: list[dict[str, Any]] = list(page_model_list)
         merged_page_model_list.extend(
             _build_inline_formula_model_item(formula) for formula in page_inline_formula_list if formula.get("bbox") is not None
         )
@@ -738,7 +735,14 @@ def doc_analyze(
     pdf_bytes: bytes,
     image_writer: DataWriter | None,
     predictor: MinerUClient | None = None,
-    backend: str = "transformers",
+    backend: Literal[
+        "http-client",
+        "transformers",
+        "mlx-engine",
+        "lmdeploy-engine",
+        "vllm-engine",
+        "vllm-async-engine",
+    ] = "transformers",
     parse_method: str = "auto",
     language: str = "ch",
     inline_formula_enable: bool = True,
@@ -758,7 +762,7 @@ def doc_analyze(
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
-    model_list: list[ExtractResult] = []
+    model_list: list[list[dict[str, Any]]] = []
     doc_closed = False
     hybrid_pipeline_model = None
     try:
@@ -882,7 +886,14 @@ async def aio_doc_analyze(
     pdf_bytes: bytes,
     image_writer: DataWriter | None,
     predictor: MinerUClient | None = None,
-    backend: str = "transformers",
+    backend: Literal[
+        "http-client",
+        "transformers",
+        "mlx-engine",
+        "lmdeploy-engine",
+        "vllm-engine",
+        "vllm-async-engine",
+    ] = "transformers",
     parse_method: str = "auto",
     language: str = "ch",
     inline_formula_enable: bool = True,

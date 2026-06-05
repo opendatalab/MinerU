@@ -8,7 +8,7 @@ across backends.
 from __future__ import annotations
 
 import copy
-from typing import Any, Callable, Iterator, TypeVar
+from typing import Any, Callable, Iterator, TypeVar, Union
 
 from tqdm import tqdm
 
@@ -28,7 +28,11 @@ def build_middle_json(
     image_writer: DataWriter,
     *,
     init_fn: Callable[..., dict[str, Any]],
-    page_cvt_fn: Callable[[T, dict[str, Any], Any, DataWriter | None, int], PageInfo],
+    page_cvt_fn: Union[
+        Callable[[T, dict[str, Any], Any, DataWriter | None, int], PageInfo],
+        Callable[[T, dict[str, Any], Any, DataWriter | None, int, bool], PageInfo],
+        Callable[[T, dict[str, Any], Any, DataWriter | None, int, bool, bool], PageInfo],
+    ],
     finalize_fn: Callable[..., None],
     **kwargs: Any,
 ) -> dict[str, Any]:
@@ -71,7 +75,11 @@ def append_pages(
     pdf_doc: Any,
     image_writer: DataWriter | None,
     *,
-    page_cvt_fn: Callable[[T, dict[str, Any], Any, DataWriter | None, int], PageInfo],
+    page_cvt_fn: Union[
+        Callable[[T, dict[str, Any], Any, DataWriter | None, int], PageInfo],
+        Callable[[T, dict[str, Any], Any, DataWriter | None, int, bool], PageInfo],
+        Callable[[T, dict[str, Any], Any, DataWriter | None, int, bool, bool], PageInfo],
+    ],
     page_start_index: int = 0,
     progress_bar: Any = None,
     **kwargs: Any,
@@ -96,7 +104,7 @@ def append_pages(
                 page_info = PageInfo(
                     preproc_blocks=[],
                     page_idx=page_index,
-                    page_size=[page_w, page_h],
+                    page_size=(page_w, page_h),
                     discarded_blocks=[],
                 )
         finally:
@@ -120,10 +128,10 @@ def apply_post_ocr(pdf_info_list: list[PageInfo], ocr_model: Any) -> None:
         for blocks in [page_info.preproc_blocks, page_info.discarded_blocks]:
             for block in blocks:
                 for span in _iter_block_spans(block):
-                    if "np_img" in span:
+                    if span._np_img:
                         need_ocr_list.append(span)
-                        img_crop_list.append(rotate_vertical_crop_if_needed(span["np_img"]))
-                        span.pop("np_img")
+                        img_crop_list.append(rotate_vertical_crop_if_needed(span._np_img))
+                        span._np_img = None
 
     if not img_crop_list:
         return

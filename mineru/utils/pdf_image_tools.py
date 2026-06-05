@@ -13,13 +13,12 @@ from io import BytesIO
 from typing import Any, Callable, Literal
 
 import numpy as np
-
-from ..types import BBox
 import pypdfium2 as pdfium
 from loguru import logger
 from PIL import Image, ImageOps
 
 from ..data.data_reader_writer import FileBasedDataWriter
+from ..types import BBox
 from .bbox_utils import normalize_to_int_bbox
 from .check_sys_env import is_windows_environment
 from .enum_class import ImageType
@@ -66,9 +65,7 @@ def pdf_page_to_image(
         dict:  {'img_base64': str, 'img_pil': pil_img, 'scale': float }
     """
     pil_img, scale = page_to_image(page, dpi=dpi)
-    image_dict = {
-        "scale": scale,
-    }
+    image_dict: dict[str, Any] = {"scale": scale}
     if image_type == ImageType.BASE64:
         try:
             image_dict["img_base64"] = image_to_b64str(pil_img)
@@ -515,9 +512,7 @@ def get_crop_img(bbox: BBox, pil_img: Image.Image, scale: float = 2.0) -> Image.
     return pil_img.crop(tuple(scale_bbox))
 
 
-def get_crop_np_img(
-    bbox: BBox, input_img: Image.Image | np.ndarray, scale: float = 2.0
-) -> np.ndarray:
+def get_crop_np_img(bbox: BBox, input_img: Image.Image | np.ndarray, scale: float = 2.0) -> np.ndarray:
     if isinstance(input_img, Image.Image):
         np_img = np.asarray(input_img)
     elif isinstance(input_img, np.ndarray):

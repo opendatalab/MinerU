@@ -86,9 +86,9 @@ class MagicModel:
                 and anchor.strip()
                 and block_type in [BlockType.TITLE, BlockType.TEXT, BlockType.INTERLINE_EQUATION]
             ):
-                block["anchor"] = anchor.strip()
+                block.anchor = anchor.strip()
             if block_type == BlockType.TITLE:
-                block["is_numbered_style"] = block_info.get("is_numbered_style", False)
+                block.is_numbered_style = block_info.get("is_numbered_style", False)
                 block.level = block_info.get("level", 1)
             blocks.append(block)
 
@@ -114,10 +114,10 @@ class MagicModel:
                 self.text_blocks.append(block)
             elif block.type == BlockType.TITLE:
                 self.title_blocks.append(block)
-            elif block.type in [BlockType.REF_TEXT]:
-                self.ref_text_blocks.append(block)
-            elif block.type in [BlockType.PHONETIC]:
-                self.phonetic_blocks.append(block)
+            # elif block.type in [BlockType.REF_TEXT]:
+            #     self.ref_text_blocks.append(block)
+            # elif block.type in [BlockType.PHONETIC]:
+            #     self.phonetic_blocks.append(block)
             elif block.type in [
                 BlockType.HEADER,
                 BlockType.FOOTER,
@@ -138,7 +138,7 @@ class MagicModel:
         self.chart_blocks, not_include_chart_blocks = fix_two_layer_blocks(self.chart_blocks, BlockType.CHART)
 
         for block in not_include_image_blocks + not_include_table_blocks + not_include_chart_blocks:
-            block["type"] = BlockType.TEXT
+            block.type = BlockType.TEXT
             self.text_blocks.append(block)
 
     def get_list_blocks(self) -> list[Block]:
@@ -176,14 +176,14 @@ def _parse_style_list(style_str: str | None) -> list[str]:
     return [style.strip() for style in style_str.split(",") if style.strip()]
 
 
-def _parse_hyperlink_text_children(hyperlink_content: str, text_tag_re: re.Pattern[str]) -> tuple[str, list[Span], str]:
+def _parse_hyperlink_text_children(hyperlink_content: str, text_tag_re: re.Pattern[str]) -> tuple[list[Span], str]:
     """解析一个 hyperlink 内部的多个 text 子片段，并保留每段样式。"""
     url_start = hyperlink_content.find("<url>")
     url_end = hyperlink_content.find("</url>")
     if url_start == -1 or url_end == -1 or url_end < url_start:
         return [], ""
 
-    children = []
+    children: list[Span] = []
     pos = 0
     while pos < url_start:
         text_match = text_tag_re.search(hyperlink_content, pos)
@@ -194,13 +194,12 @@ def _parse_hyperlink_text_children(hyperlink_content: str, text_tag_re: re.Patte
         if text_end == -1 or text_end > url_start:
             return [], ""
 
-        child = {
-            "type": ContentType.TEXT,
-            "content": hyperlink_content[text_match.end() : text_end],
-        }
-        style = _parse_style_list(text_match.group(1))
-        if style:
-            child["style"] = style
+        child = Span(
+            type=ContentType.TEXT,
+            bbox=EMPTY_BBOX,
+            content=hyperlink_content[text_match.end() : text_end],
+            _style=_parse_style_list(text_match.group(1)),
+        )
         children.append(child)
         pos = text_end + 7
 
@@ -293,7 +292,7 @@ def parse_text_block_spans(content: str) -> list[Span]:
                 style_str = text_tag_match.group(1) if text_tag_match and text_tag_match.start() == next_tag_pos else None
                 span = Span(type=ContentType.TEXT, bbox=EMPTY_BBOX, content=text_content)
                 if style_str:
-                    span["style"] = [s.strip() for s in style_str.split(",") if s.strip()]
+                    span._style = [s.strip() for s in style_str.split(",") if s.strip()]
                 spans.append(span)
                 pos = text_end + 7
                 last_end = pos
@@ -321,19 +320,18 @@ def parse_text_block_spans(content: str) -> list[Span]:
                         span = Span(
                             type=ContentType.HYPERLINK,
                             bbox=EMPTY_BBOX,
-                            content=child["content"],
+                            content=child.content,
+                            _url=link_url,
+                            _style=child._style,
                         )
-                        span["url"] = link_url
-                        if child.get("style"):
-                            span["style"] = child["style"]
                     else:
                         span = Span(
                             type=ContentType.HYPERLINK,
                             bbox=EMPTY_BBOX,
-                            content="".join(child["content"] for child in children),
+                            content="".join(child.content for child in children),
+                            _url=link_url,
+                            _children=children,
                         )
-                        span["url"] = link_url
-                        span["children"] = children
                     spans.append(span)
                     pos = hyperlink_end + 12
                     last_end = pos
@@ -382,12 +380,15 @@ def parse_list_block(list_block: dict[str, Any]) -> Block | None:
                 blocks.append(nested_list)
 
     # 构建当前列表block
-    result = Block(type=BlockType.LIST, bbox=EMPTY_BBOX, index=0, blocks=blocks)
-    result["attribute"] = list_block.get("attribute", "unordered")
-    result["ilevel"] = list_block.get("ilevel", 0)
-    if "start" in list_block:
-        result["start"] = list_block["start"]
-
+    result = Block(
+        type=BlockType.LIST,
+        bbox=EMPTY_BBOX,
+        index=0,
+        blocks=blocks,
+        start=list_block.get("start"),
+        ilevel=list_block.get("ilevel", 0),
+        _list_attribute=list_block.get("attribute", "unordered"),
+    )
     return result
 
 
@@ -416,7 +417,7 @@ def parse_index_block(index_block: dict[str, Any]) -> Block | None:
             text_block = Block(type=BlockType.TEXT, bbox=EMPTY_BBOX, index=0, lines=[Line(bbox=EMPTY_BBOX, spans=spans)])
             anchor = item.get("anchor")
             if isinstance(anchor, str) and anchor.strip():
-                text_block["anchor"] = anchor.strip()
+                text_block.anchor = anchor.strip()
             blocks.append(text_block)
 
         elif item_type == "index":
@@ -424,9 +425,13 @@ def parse_index_block(index_block: dict[str, Any]) -> Block | None:
             if nested_index:
                 blocks.append(nested_index)
 
-    result = Block(type=BlockType.INDEX, bbox=EMPTY_BBOX, index=0, blocks=blocks)
-    result["ilevel"] = index_block.get("ilevel", 0)
-
+    result = Block(
+        type=BlockType.INDEX,
+        bbox=EMPTY_BBOX,
+        index=0,
+        blocks=blocks,
+        ilevel=index_block.get("ilevel", 0),
+    )
     return result
 
 
@@ -601,7 +606,7 @@ def __tie_up_category_by_index(blocks: list[Block], subject_block_type: str, obj
 
 def get_type_blocks(blocks: list[Block], block_type: Literal["image", "table", "chart"]) -> list[dict[str, Any]]:
     with_captions = __tie_up_category_by_index(blocks, f"{block_type}_body", f"{block_type}_caption")
-    ret = []
+    ret: list[dict[str, Any]] = []
     for v in with_captions:
         record = {
             f"{block_type}_body": v["sub_bbox"],
@@ -611,11 +616,14 @@ def get_type_blocks(blocks: list[Block], block_type: Literal["image", "table", "
     return ret
 
 
-def fix_two_layer_blocks(blocks: list[Block], fix_type: Literal["image", "table", "chart"]) -> list[Block]:
+def fix_two_layer_blocks(blocks: list[Block], fix_type: Literal["image", "table", "chart"]) -> tuple[list[Block], list[Block]]:
+    """TODO: this function has many unknown types."""
+
     need_fix_blocks = get_type_blocks(blocks, fix_type)
-    fixed_blocks = []
-    not_include_blocks = []
-    processed_indices = set()
+
+    fixed_blocks: list[Block] = []
+    not_include_blocks: list[Block] = []
+    processed_indices: set[int] = set()
 
     # 将每个block的caption_list中不连续index的元素提出来作为普通block处理
     for block in need_fix_blocks:
@@ -660,21 +668,18 @@ def fix_two_layer_blocks(blocks: list[Block], fix_type: Literal["image", "table"
 
         processed_indices.add(body["index"])
 
-        two_layer_block = {
-            "type": fix_type,
-            "blocks": [body],
-            "index": body["index"],
-        }
-        two_layer_block["blocks"].extend([*caption_list])
-        # 对blocks按index排序
-        two_layer_block["blocks"].sort(key=lambda x: x["index"])
-
+        two_layer_block = Block(
+            index=body["index"],
+            type=fix_type,
+            bbox=EMPTY_BBOX,
+            blocks=sorted([body, *caption_list], key=lambda x: x.index),
+        )
         fixed_blocks.append(two_layer_block)
 
     # 添加未处理的blocks
     for block in blocks:
-        block.pop("type", None)
-        if block["index"] not in processed_indices and block not in not_include_blocks:
+        block.type = ""
+        if block.index not in processed_indices and block not in not_include_blocks:
             not_include_blocks.append(block)
 
     return fixed_blocks, not_include_blocks

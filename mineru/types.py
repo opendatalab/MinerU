@@ -297,70 +297,6 @@ VISUAL_TYPE_MAPPING = {
 }
 
 
-# ── dict-compatibility for dataclass-backed model objects ──────────
-#
-# Block / Line / Span / PageInfo are dataclasses whose canonical fields
-# are declared below.  Backend code (MagicModel, para_split, union_make)
-# also attaches *internal processing fields* (``index``, ``page_num``,
-# ``_ocr_det_lines``, etc.) via ``block["key"] = value``.  Those
-# non-canonical keys are stored in ``_extra`` so that the dataclass
-# signature stays clean while still providing full dict compatibility
-# during migration.
-
-
-def _extra_getitem(self, key: str) -> Any:
-    try:
-        return getattr(self, key)
-    except AttributeError:
-        pass
-    try:
-        return self._extra[key]
-    except (AttributeError, KeyError):
-        raise KeyError(key) from None
-
-
-def _extra_setitem(self, key: str, value: Any) -> None:
-    if hasattr(self, key):
-        setattr(self, key, value)
-    else:
-        self._extra[key] = value
-
-
-def _extra_get(self, key: str, default: Any = None) -> Any:
-    try:
-        val = getattr(self, key)
-    except AttributeError:
-        return self._extra.get(key, default)
-    return default if val is None and default is not None else val
-
-
-def _extra_contains(self, key: str) -> bool:
-    return hasattr(self, key) or key in self._extra
-
-
-def _extra_delitem(self, key: str) -> None:
-    if hasattr(self, key):
-        raise KeyError(f"Cannot delete canonical field '{key}'")
-    del self._extra[key]
-
-
-def _extra_pop(self, key: str, default: Any = None) -> Any:
-    val = _extra_get(self, key, default)
-    if key in self._extra:
-        del self._extra[key]
-    return val
-
-
-def _install_dict_compat(*classes) -> None:
-    for cls in classes:
-        cls.__getitem__ = _extra_getitem
-        cls.__setitem__ = _extra_setitem
-        cls.__delitem__ = _extra_delitem
-        cls.get = _extra_get
-        cls.pop = _extra_pop
-        cls.__contains__ = _extra_contains
-
-
 # ── model types ─────────────────────────────────────────────────────
 
 BBox: TypeAlias = tuple[float, float, float, float]
@@ -385,6 +321,11 @@ class Span:
 
     # Internal
     _cross_page: bool = False
+    _np_img: Any = None
+
+    _url: str = ""
+    _style: list[str] = field(default_factory=list)
+    _children: list[Span] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, d: dict) -> Span:
@@ -444,6 +385,12 @@ class Block:
     section_number: str = ""
     html: str = ""
 
+    # Office
+    anchor: str = ""
+    start: int | None = None
+    ilevel: int | None = None
+    is_numbered_style: bool = False
+
     # Internal
     _cross_page: bool = False
     _lines_deleted: bool = False
@@ -451,6 +398,11 @@ class Block:
     _line_avg_height: int = 0
     _cell_merge: list[int] = field(default_factory=list)
     _fix_spans: list[Span] = field(default_factory=list)
+    _list_attribute: str = ""
+    _page_num: int | None = None
+    _page_size: tuple[float, float] | None = None
+    _bbox_fs: BBox | None = None
+    _sub_images: list[Block] = field(default_factory=list)
 
     _extra: dict = field(default_factory=dict)
 
@@ -485,7 +437,7 @@ class PageInfo:
     """Parsed content of a single page."""
 
     page_idx: int
-    page_size: tuple[int, int] | list[int, int] | None = None
+    page_size: tuple[int, int] | None = None
     preproc_blocks: list[Block] = field(default_factory=list)
     para_blocks: list[Block] = field(default_factory=list)
     discarded_blocks: list[Block] = field(default_factory=list)
@@ -501,6 +453,3 @@ class PageInfo:
             para_blocks=[Block.from_dict(b) for b in d.get("para_blocks", [])],
             discarded_blocks=[Block.from_dict(b) for b in d.get("discarded_blocks", [])],
         )
-
-
-_install_dict_compat(Span, Line, Block, PageInfo)

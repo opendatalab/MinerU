@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Generator
+from dataclasses import asdict
 from typing import Any
 
 from ....types import Block, Line, Span
@@ -23,13 +24,13 @@ from .inline_renderer import (
 )
 
 
-def _prefix_table_img_src(html: str, img_buket_path: str) -> str:
+def _prefix_table_img_src(html: str, img_bucket_path: str) -> str:
     """给表格 HTML 内的本地图片 src 加上输出图片目录前缀。"""
-    if not html or not img_buket_path:
+    if not html or not img_bucket_path:
         return html
     return re.sub(
         r'src="(?!data:)([^"]+)"',
-        lambda m: f'src="{img_buket_path}/{m.group(1)}"',
+        lambda m: f'src="{img_bucket_path}/{m.group(1)}"',
         html,
     )
 
@@ -46,24 +47,27 @@ def _replace_eq_tags_in_table_html(html: str) -> str:
     )
 
 
-def _format_embedded_html(html: str, img_buket_path: str) -> str:
+def _format_embedded_html(html: str, img_bucket_path: str) -> str:
     """统一处理 Office 嵌入 HTML 的图片路径和行内公式标签。"""
-    return _replace_eq_tags_in_table_html(_prefix_table_img_src(html, img_buket_path))
+    return _replace_eq_tags_in_table_html(_prefix_table_img_src(html, img_bucket_path))
 
 
-def _build_media_path(img_buket_path: str, image_path: str) -> str:
+def _build_media_path(img_bucket_path: str, image_path: str) -> str:
     """构造图片展示路径，空图片路径保持为空。"""
     if not image_path:
         return ""
-    if not img_buket_path:
+    if not img_bucket_path:
         return image_path
-    return f"{img_buket_path}/{image_path}"
+    return f"{img_bucket_path}/{image_path}"
 
 
 def _get_ordered_list_start(list_block: Block) -> int:
     """读取有序列表起始编号，兼容旧版数据缺少 start 字段的情况。"""
     try:
-        return int(list_block.get("start", 1))
+        start = list_block.start
+        if start is None:
+            start = 1
+        return int(start)
     except (TypeError, ValueError):
         return 1
 
@@ -71,7 +75,10 @@ def _get_ordered_list_start(list_block: Block) -> int:
 def _get_list_ilevel(list_block: Block) -> int:
     """安全读取 DOCX 列表原始 ilevel，异常值按顶层 0 处理。"""
     try:
-        return int(list_block.get("ilevel", 0))
+        ilevel = list_block.ilevel
+        if ilevel is None:
+            ilevel = 0
+        return int(ilevel)
     except (TypeError, ValueError):
         return 0
 
@@ -87,12 +94,12 @@ def _flatten_list_items(list_block: Block, root_ilevel: int | None = None) -> li
     if root_ilevel is None:
         root_ilevel = _get_list_ilevel(list_block)
     relative_ilevel = _get_relative_list_ilevel(list_block, root_ilevel)
-    attribute = list_block.get("attribute", "unordered")
+    attribute = list_block._list_attribute or "unordered"
     indent = "    " * relative_ilevel
     ordered_counter = _get_ordered_list_start(list_block)
 
     for block in list_block.blocks:
-        if block["type"] in [BlockType.LIST, BlockType.INDEX]:
+        if block.type in [BlockType.LIST, BlockType.INDEX]:
             items.extend(_flatten_list_items(block, root_ilevel))
         else:
             item_text = merge_para_with_text(block, escape_text_block_prefix=False)
@@ -112,11 +119,11 @@ def _flatten_list_items_v2(list_block: Block, root_ilevel: int | None = None) ->
     if root_ilevel is None:
         root_ilevel = _get_list_ilevel(list_block)
     relative_ilevel = _get_relative_list_ilevel(list_block, root_ilevel)
-    attribute = list_block.get("attribute", "unordered")
+    attribute = list_block._list_attribute or "unordered"
     ordered_counter = _get_ordered_list_start(list_block)
 
     for block in list_block.blocks:
-        if block["type"] in [BlockType.LIST, BlockType.INDEX]:
+        if block.type in [BlockType.LIST, BlockType.INDEX]:
             items.extend(_flatten_list_items_v2(block, root_ilevel))
         else:
             item_content = merge_para_with_text_v2(block)
@@ -132,7 +139,7 @@ def _flatten_list_items_v2(list_block: Block, root_ilevel: int | None = None) ->
                     "prefix": prefix,
                     "item_content": item_content,
                 }
-                anchor = block.get("anchor")
+                anchor = block.anchor
                 if isinstance(anchor, str) and anchor.strip():
                     item["anchor"] = anchor.strip()
                 items.append(item)
@@ -150,19 +157,13 @@ def _collect_index_span_items(text_block: Block) -> list[tuple[str, str, list[st
     span_items = []
     for line in text_block.lines:
         for span in line.spans:
-            span_items.append(
-                (
-                    span.get("content", ""),
-                    span.get("type"),
-                    span.get("style", []),
-                )
-            )
+            span_items.append((span.content, span.type, span._style))
     return span_items
 
 
 def _normalize_anchor(block: Block) -> str | None:
     """规范化 block 锚点，空值返回 None。"""
-    anchor = block.get("anchor")
+    anchor = block.anchor
     if not isinstance(anchor, str) or not anchor.strip():
         return None
     return anchor.strip()
@@ -302,11 +303,14 @@ def _render_index_leaf_item(text_block: Block, indent: str) -> str | None:
 def _flatten_index_items(index_block: Block) -> list[str]:
     """递归展平目录 block，保留目录锚点和目录项样式。"""
     items = []
-    indent = "    " * index_block.get("ilevel", 0)
+    ilevel = index_block.ilevel
+    if ilevel is None:
+        ilevel = 0
+    indent = "    " * ilevel
     for child in index_block.blocks:
-        if child.get("type") == BlockType.INDEX:
+        if child.type == BlockType.INDEX:
             items.extend(_flatten_index_items(child))
-        elif child.get("type") == BlockType.TEXT:
+        elif child.type == BlockType.TEXT:
             item_text = _render_index_leaf_item(child, indent)
             if item_text:
                 items.append(item_text)
@@ -321,7 +325,7 @@ def merge_index_to_markdown(index_block: Block) -> str:
 def _iter_child_blocks(para_block: Block, block_type: str) -> Generator[Block, None, None]:
     """按原始顺序遍历指定类型的子 block。"""
     for block in para_block.blocks:
-        if block.get("type") == block_type:
+        if block.type == block_type:
             yield block
 
 
@@ -336,7 +340,7 @@ def _iter_body_spans(para_block: Block, body_type: str, span_type: str) -> Gener
     """遍历视觉类 block 的 body span，统一 image/table/chart 的查找方式。"""
     for block in _iter_child_blocks(para_block, body_type):
         for span in _iter_block_spans(block):
-            if span.get("type") == span_type:
+            if span.type == span_type:
                 yield span
 
 
@@ -354,16 +358,16 @@ def _collect_caption_v2(para_block: Block, caption_type: str) -> list[dict[str, 
 
 
 def mk_blocks_to_markdown(
-    para_blocks: list[Block], make_mode: MakeMode, img_buket_path: str = "", page_idx: int | None = None
-) -> str:
+    para_blocks: list[Block], make_mode: MakeMode, img_bucket_path: str = "", page_idx: int | None = None
+) -> list[str]:
     page_markdown = []
     for para_block in para_blocks:
         para_text = ""
-        para_type = para_block["type"]
+        para_type = para_block.type
         if para_type in [BlockType.TEXT, BlockType.INTERLINE_EQUATION]:
             para_text = merge_para_with_text(para_block)
             if para_type == BlockType.TEXT:
-                bookmark_anchor = para_block.get("anchor")
+                bookmark_anchor = para_block.anchor
                 if isinstance(bookmark_anchor, str) and bookmark_anchor.strip() and bookmark_anchor.strip().startswith("_Toc"):
                     para_text = f'<a id="{bookmark_anchor.strip()}"></a>\n{para_text}'
         elif para_type == BlockType.LIST:
@@ -373,7 +377,7 @@ def mk_blocks_to_markdown(
         elif para_type == BlockType.TITLE:
             title_level = get_title_level(para_block)
             title_text = merge_para_with_text(para_block)
-            bookmark_anchor = para_block.get("anchor")
+            bookmark_anchor = para_block.anchor
             if isinstance(bookmark_anchor, str) and bookmark_anchor.strip():
                 para_text = f'<a id="{bookmark_anchor.strip()}"></a>\n{"#" * title_level} {title_text}'
             else:
@@ -387,8 +391,8 @@ def mk_blocks_to_markdown(
                     BlockType.IMAGE_BODY,
                     ContentType.IMAGE,
                 ):
-                    if span.get("image_path", ""):
-                        para_text += f"![]({img_buket_path}/{span['image_path']})"
+                    if span:
+                        para_text += f"![]({img_bucket_path}/{span.image_path})"
                 for caption_text in _collect_caption_texts(
                     para_block,
                     BlockType.IMAGE_CAPTION,
@@ -404,7 +408,7 @@ def mk_blocks_to_markdown(
                     BlockType.TABLE_BODY,
                     ContentType.TABLE,
                 ):
-                    para_text += f"\n{_format_embedded_html(span['html'], img_buket_path)}\n"
+                    para_text += f"\n{_format_embedded_html(span.html, img_bucket_path)}\n"
                 for caption_text in _collect_caption_texts(
                     para_block,
                     BlockType.TABLE_CAPTION,
@@ -416,9 +420,9 @@ def mk_blocks_to_markdown(
             elif make_mode == MakeMode.MM_MD:
                 image_path, chart_content = get_body_data(para_block)
                 if chart_content:
-                    para_text += f"\n{_format_embedded_html(chart_content, img_buket_path)}\n"
+                    para_text += f"\n{_format_embedded_html(chart_content, img_bucket_path)}\n"
                 elif image_path:
-                    para_text += f"![]({_build_media_path(img_buket_path, image_path)})"
+                    para_text += f"![]({_build_media_path(img_bucket_path, image_path)})"
                 else:
                     continue
                 for caption_text in _collect_caption_texts(
@@ -435,9 +439,9 @@ def mk_blocks_to_markdown(
     return page_markdown
 
 
-def make_blocks_to_content_list(para_block: Block, img_buket_path: str, page_idx: int | None) -> list[dict[str, Any]]:
-    para_type = para_block["type"]
-    para_content = {}
+def make_blocks_to_content_list(para_block: Block, img_bucket_path: str, page_idx: int | None) -> dict[str, Any]:
+    para_type = para_block.type
+    para_content: dict[str, Any] = {}
     if para_type in [
         BlockType.TEXT,
         BlockType.HEADER,
@@ -479,8 +483,8 @@ def make_blocks_to_content_list(para_block: Block, img_buket_path: str, page_idx
             BlockType.IMAGE_BODY,
             ContentType.IMAGE,
         ):
-            if span.get("image_path", ""):
-                para_content["img_path"] = f"{img_buket_path}/{span['image_path']}"
+            if span.image_path:
+                para_content["img_path"] = f"{img_bucket_path}/{span.image_path}"
         para_content[BlockType.IMAGE_CAPTION].extend(_collect_caption_texts(para_block, BlockType.IMAGE_CAPTION))
     elif para_type == BlockType.TABLE:
         para_content = {"type": ContentType.TABLE, BlockType.TABLE_CAPTION: []}
@@ -489,11 +493,8 @@ def make_blocks_to_content_list(para_block: Block, img_buket_path: str, page_idx
             BlockType.TABLE_BODY,
             ContentType.TABLE,
         ):
-            if span.get("html", ""):
-                para_content[BlockType.TABLE_BODY] = _format_embedded_html(
-                    span["html"],
-                    img_buket_path,
-                )
+            if span.html:
+                para_content[BlockType.TABLE_BODY] = _format_embedded_html(span.html, img_bucket_path)
         para_content[BlockType.TABLE_CAPTION].extend(_collect_caption_texts(para_block, BlockType.TABLE_CAPTION))
     elif para_type == BlockType.CHART:
         para_content = {
@@ -502,33 +503,23 @@ def make_blocks_to_content_list(para_block: Block, img_buket_path: str, page_idx
             "content": "",
             BlockType.CHART_CAPTION: [],
         }
-        for span in _iter_body_spans(
-            para_block,
-            BlockType.CHART_BODY,
-            ContentType.CHART,
-        ):
-            para_content["img_path"] = _build_media_path(
-                img_buket_path,
-                span.get("image_path", ""),
-            )
-            if span.get("content", ""):
-                para_content["content"] = _format_embedded_html(
-                    span["content"],
-                    img_buket_path,
-                )
+        for span in _iter_body_spans(para_block, BlockType.CHART_BODY, ContentType.CHART):
+            para_content["img_path"] = _build_media_path(img_bucket_path, span.image_path)
+            if span.content:
+                para_content["content"] = _format_embedded_html(span.content, img_bucket_path)
         para_content[BlockType.CHART_CAPTION].extend(_collect_caption_texts(para_block, BlockType.CHART_CAPTION))
 
     para_content["page_idx"] = page_idx
-    anchor = para_block.get("anchor")
+    anchor = para_block.anchor
     if isinstance(anchor, str) and anchor.strip():
         para_content["anchor"] = anchor.strip()
 
     return para_content
 
 
-def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str) -> list[dict[str, Any]]:
-    para_type = para_block["type"]
-    para_content = {}
+def make_blocks_to_content_list_v2(para_block: Block, img_bucket_path: str) -> dict[str, Any]:
+    para_type = para_block.type
+    para_content: dict[str, Any] = {}
     if para_type in [
         BlockType.HEADER,
         BlockType.FOOTER,
@@ -583,7 +574,7 @@ def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str) -> li
     elif para_type == BlockType.IMAGE:
         image_path, _ = get_body_data(para_block)
         image_source = {
-            "path": f"{img_buket_path}/{image_path}",
+            "path": f"{img_bucket_path}/{image_path}",
         }
         para_content = {
             "type": ContentTypeV2.IMAGE,
@@ -613,7 +604,7 @@ def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str) -> li
                     para_block,
                     BlockType.TABLE_CAPTION,
                 ),
-                "html": _format_embedded_html(html, img_buket_path),
+                "html": _format_embedded_html(html, img_bucket_path),
                 "table_type": table_type,
                 "table_nest_level": table_nest_level,
             },
@@ -624,9 +615,9 @@ def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str) -> li
             "type": ContentTypeV2.CHART,
             "content": {
                 "image_source": {
-                    "path": _build_media_path(img_buket_path, image_path),
+                    "path": _build_media_path(img_bucket_path, image_path),
                 },
-                "content": _format_embedded_html(chart_content, img_buket_path),
+                "content": _format_embedded_html(chart_content, img_bucket_path),
                 "chart_caption": _collect_caption_v2(
                     para_block,
                     BlockType.CHART_CAPTION,
@@ -635,7 +626,7 @@ def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str) -> li
         }
     elif para_type == BlockType.LIST:
         list_type = ContentTypeV2.LIST_TEXT
-        attribute = para_block.get("attribute", "unordered")
+        attribute = para_block._list_attribute or "unordered"
         para_content = {
             "type": ContentTypeV2.LIST,
             "content": {
@@ -653,7 +644,7 @@ def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str) -> li
             },
         }
 
-    anchor = para_block.get("anchor")
+    anchor = para_block.anchor
     if isinstance(anchor, str) and anchor.strip():
         para_content["anchor"] = anchor.strip()
 
@@ -671,25 +662,25 @@ def get_body_data(para_block: Block) -> tuple[str, str]:
     """
 
     def get_data_from_spans(lines: list[Line]) -> tuple[str, str]:
-        synthetic_block = {"lines": lines}
-        for span in _iter_block_spans(synthetic_block):
-            span_type = span.get("type")
-            if span_type == ContentType.TABLE:
-                return span.get("image_path", ""), span.get("html", "")
-            elif span_type == ContentType.CHART:
-                return span.get("image_path", ""), span.get("content", "")
-            elif span_type == ContentType.IMAGE:
-                return span.get("image_path", ""), ""
-            elif span_type == ContentType.INTERLINE_EQUATION:
-                return span.get("image_path", ""), span.get("content", "")
-            elif span_type == ContentType.TEXT:
-                return "", span.get("content", "")
+        for line in lines:
+            for span in line.spans:
+                span_type = span.type
+                if span_type == ContentType.TABLE:
+                    return span.image_path, span.html
+                elif span_type == ContentType.CHART:
+                    return span.image_path, span.content
+                elif span_type == ContentType.IMAGE:
+                    return span.image_path, ""
+                elif span_type == ContentType.INTERLINE_EQUATION:
+                    return span.image_path, span.content
+                elif span_type == ContentType.TEXT:
+                    return "", span.content
         return "", ""
 
     # 处理嵌套的 blocks 结构
-    if "blocks" in para_block:
-        for block in para_block["blocks"]:
-            block_type = block.get("type")
+    if para_block.blocks:
+        for block in para_block.blocks:
+            block_type = block.type
             if block_type in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.CHART_BODY, BlockType.CODE_BODY]:
                 result = get_data_from_spans(block.lines)
                 if result != ("", ""):
@@ -704,15 +695,15 @@ def get_body_data(para_block: Block) -> tuple[str, str]:
 
 def _span_has_content_for_v2(span: Span, visible_styles: set[str]) -> bool:
     """判断 V2 span 是否应保留，支持 hyperlink children 的可见空白样式。"""
-    content = span.get("content", "")
-    span_style = span.get("style", [])
+    content = span.content
+    span_style = span._style
     if content.strip():
         return True
     if content and span_style and any(s in visible_styles for s in span_style):
         return True
-    for child in span.get("children") or []:
-        child_content = child.get("content", "")
-        child_style = child.get("style", [])
+    for child in span._children:
+        child_content = child.content
+        child_style = child._style
         if child_content.strip():
             return True
         if child_content and child_style and any(s in visible_styles for s in child_style):
@@ -720,12 +711,12 @@ def _span_has_content_for_v2(span: Span, visible_styles: set[str]) -> bool:
     return False
 
 
-def merge_para_with_text_v2(para_block: Block) -> str:
+def merge_para_with_text_v2(para_block: Block) -> list[dict[str, Any]]:
     """将 Office 段落转换为 content_list_v2 spans，避免原地修改 middle_json。"""
     _visible_styles = {"underline", "strikethrough"}
-    para_content = []
-    if para_block.get("type") == BlockType.TITLE:
-        section_number = para_block.get("section_number", "")
+    para_content: list[dict[str, Any]] = []
+    if para_block.type == BlockType.TITLE:
+        section_number = para_block.section_number
         if section_number:
             # v2 保持结构化 spans，同时补上 middle_json 已生成的自动标题编号。
             para_content.append(
@@ -734,10 +725,10 @@ def merge_para_with_text_v2(para_block: Block) -> str:
                     "content": f"{section_number} ",
                 }
             )
-    for line in para_block["lines"]:
-        for span in line["spans"]:
+    for line in para_block.lines:
+        for span in line.spans:
             if _span_has_content_for_v2(span, _visible_styles):
-                rendered_span = dict(span)
+                rendered_span = asdict(span)
                 if rendered_span["type"] == ContentType.INLINE_EQUATION:
                     rendered_span["type"] = ContentTypeV2.SPAN_EQUATION_INLINE
                 para_content.append(rendered_span)
@@ -747,9 +738,8 @@ def merge_para_with_text_v2(para_block: Block) -> str:
 def union_make(
     pdf_info_dict: list[dict[str, Any]],
     make_mode: MakeMode,
-    img_buket_path: str = "",
+    img_bucket_path: str = "",
 ) -> list[str] | None:
-
     output_content = []
     for page_info in pdf_info_dict:
         paras_of_layout = page_info.get("para_blocks")
@@ -758,14 +748,14 @@ def union_make(
         if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
             if not paras_of_layout:
                 continue
-            page_markdown = mk_blocks_to_markdown(paras_of_layout, make_mode, img_buket_path, page_idx=page_idx)
+            page_markdown = mk_blocks_to_markdown(paras_of_layout, make_mode, img_bucket_path, page_idx=page_idx)
             output_content.extend(page_markdown)
         elif make_mode == MakeMode.CONTENT_LIST:
             para_blocks = (paras_of_layout or []) + (paras_of_discarded or [])
             if not para_blocks:
                 continue
             for para_block in para_blocks:
-                para_content = make_blocks_to_content_list(para_block, img_buket_path, page_idx)
+                para_content = make_blocks_to_content_list(para_block, img_bucket_path, page_idx)
                 output_content.append(para_content)
         elif make_mode == MakeMode.CONTENT_LIST_V2:
             # https://github.com/drunkpig/llm-webkit-mirror/blob/dev6/docs/specification/output_format/content_list_spec.md
@@ -773,7 +763,7 @@ def union_make(
             page_contents = []
             if para_blocks:
                 for para_block in para_blocks:
-                    para_content = make_blocks_to_content_list_v2(para_block, img_buket_path)
+                    para_content = make_blocks_to_content_list_v2(para_block, img_bucket_path)
                     page_contents.append(para_content)
             output_content.append(page_contents)
 

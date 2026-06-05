@@ -590,7 +590,8 @@ class BatchAnalyze:
             # 单独拿出有线表格进行预测
             wired_table_res_list = []
             for table_res_dict in table_res_list_all_page:
-                # logger.debug(f"Table classification result: {table_res_dict["table_res"]["cls_label"]} with confidence {table_res_dict["table_res"]["cls_score"]}")
+                # logger.debug(f"Table classification result: {table_res_dict["table_res"]["cls_label"]}
+                # with confidence {table_res_dict["table_res"]["cls_score"]}")
                 if (
                     table_res_dict["table_res"]["cls_label"] == AtomicModel.WirelessTable
                     and table_res_dict["table_res"]["cls_score"] < 0.9
@@ -640,7 +641,7 @@ class BatchAnalyze:
                     )
 
                     # BGR转换
-                    bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
+                    bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)  # type: ignore
                     det_image = self._get_masked_det_image(
                         bgr_image,
                         adjusted_mfdetrec_res,
@@ -753,7 +754,7 @@ class BatchAnalyze:
                         ocr_res_list_dict["single_page_mfdetrec_res"], useful_list
                     )
                     # OCR-det
-                    bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
+                    bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)  # type: ignore
                     det_image = self._get_masked_det_image(
                         bgr_image,
                         adjusted_mfdetrec_res,

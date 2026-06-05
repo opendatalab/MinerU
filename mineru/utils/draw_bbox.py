@@ -10,7 +10,7 @@ from pypdf import PageObject, PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
 from ..types import BBox, Block, PageInfo, Span
-from .enum_class import BlockType, ContentType, SplitFlag
+from .enum_class import BlockType, ContentType
 
 # 文本类 block 共用 text bbox 样式，避免新增文本形态时遗漏多个绘制入口。
 TEXT_LIKE_BLOCK_TYPES_FOR_BBOX = {
@@ -203,7 +203,7 @@ def draw_layout_bbox(
                     elif nested_block.type == BlockType.TABLE_CAPTION:
                         tables_caption.append(bbox)
                     elif nested_block.type == BlockType.TABLE_FOOTNOTE:
-                        if nested_block._extra.get(SplitFlag.CROSS_PAGE, False):
+                        if nested_block._cross_page:
                             continue
                         tables_footnote.append(bbox)
             elif block.type == BlockType.IMAGE:
@@ -277,7 +277,7 @@ def draw_layout_bbox(
                 page_block_list.append(bbox)
             elif block.type in [BlockType.IMAGE, BlockType.CHART, BlockType.CODE, BlockType.TABLE]:
                 for sub_block in block.blocks:
-                    if sub_block._extra.get(SplitFlag.CROSS_PAGE, False):
+                    if sub_block._cross_page:
                         continue
                     bbox = sub_block.bbox
                     page_block_list.append(bbox)

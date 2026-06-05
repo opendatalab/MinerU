@@ -79,7 +79,7 @@ class PDFDocument:
     def page_size(self, page_idx: int) -> tuple[float, float]:
         page = self._get_page(page_idx)
         with pdfium_guard():
-            rect = page.get_bbox()
+            rect: tuple[float, float, float, float] = page.get_bbox()
         return (abs(rect[2] - rect[0]), abs(rect[1] - rect[3]))
 
     # ------------------------------------------------------------------ #

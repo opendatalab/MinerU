@@ -218,7 +218,7 @@ def parse_chart_spec_from_ooxml(chart_xml: bytes) -> ChartSpec | None:
     if axis is None:
         axis = plot_area.find("c:catAx", namespaces=_NS)
     if axis is not None:
-        category_axis_title = _extract_title_text(axis.find("c:title", namespaces=_NS))
+        category_axis_title = _extract_title_text(axis.find("c:title", namespaces=_NS))  # type: ignore
 
     x_axis_title = ""
     value_axis_title = ""
@@ -226,7 +226,7 @@ def parse_chart_spec_from_ooxml(chart_xml: bytes) -> ChartSpec | None:
         for axis in plot_area.findall("c:valAx", namespaces=_NS):
             axis_pos = axis.find("c:axPos", namespaces=_NS)
             axis_position = axis_pos.get("val") if axis_pos is not None else ""
-            title = _extract_title_text(axis.find("c:title", namespaces=_NS))
+            title = _extract_title_text(axis.find("c:title", namespaces=_NS))  # type: ignore
             if axis_position == "b" and not x_axis_title:
                 x_axis_title = title
             elif axis_position == "l" and not value_axis_title:
@@ -236,40 +236,40 @@ def parse_chart_spec_from_ooxml(chart_xml: bytes) -> ChartSpec | None:
     else:
         axis = plot_area.find("c:valAx", namespaces=_NS)
         if axis is not None:
-            value_axis_title = _extract_title_text(axis.find("c:title", namespaces=_NS))
+            value_axis_title = _extract_title_text(axis.find("c:title", namespaces=_NS))  # type: ignore
 
     series_specs = []
     for _, plot_element in plot_elements:
         for series_element in plot_element.findall("c:ser", namespaces=_NS):
             series_specs.append(
                 SeriesSpec(
-                    name_formula=_extract_tx_formula(series_element.find("c:tx", namespaces=_NS)),
-                    literal_name=_extract_tx_text(series_element.find("c:tx", namespaces=_NS)),
-                    cat_formula=_extract_reference_formula(series_element.find("c:cat", namespaces=_NS)),
-                    x_formula=_extract_reference_formula(series_element.find("c:xVal", namespaces=_NS)),
-                    val_formula=_extract_reference_formula(series_element.find("c:val", namespaces=_NS)),
-                    y_formula=_extract_reference_formula(series_element.find("c:yVal", namespaces=_NS)),
-                    bubble_size_formula=_extract_reference_formula(series_element.find("c:bubbleSize", namespaces=_NS)),
+                    name_formula=_extract_tx_formula(series_element.find("c:tx", namespaces=_NS)),  # type: ignore
+                    literal_name=_extract_tx_text(series_element.find("c:tx", namespaces=_NS)),  # type: ignore
+                    cat_formula=_extract_reference_formula(series_element.find("c:cat", namespaces=_NS)),  # type: ignore
+                    x_formula=_extract_reference_formula(series_element.find("c:xVal", namespaces=_NS)),  # type: ignore
+                    val_formula=_extract_reference_formula(series_element.find("c:val", namespaces=_NS)),  # type: ignore
+                    y_formula=_extract_reference_formula(series_element.find("c:yVal", namespaces=_NS)),  # type: ignore
+                    bubble_size_formula=_extract_reference_formula(series_element.find("c:bubbleSize", namespaces=_NS)),  # type: ignore
                     cached_categories=_extract_reference_cache(
-                        series_element.find("c:cat", namespaces=_NS),
+                        series_element.find("c:cat", namespaces=_NS),  # type: ignore
                         date_hint=has_date_axis,
                         date_1904=_chart_uses_date_1904(root),
                     ),
-                    cached_x_values=_extract_reference_cache(series_element.find("c:xVal", namespaces=_NS)),
+                    cached_x_values=_extract_reference_cache(series_element.find("c:xVal", namespaces=_NS)),  # type: ignore
                     cached_values=_extract_reference_cache(
                         _first_non_none(
                             series_element.find("c:val", namespaces=_NS),
                             series_element.find("c:yVal", namespaces=_NS),
-                        )
+                        )  # type: ignore
                     ),
-                    cached_bubble_sizes=_extract_reference_cache(series_element.find("c:bubbleSize", namespaces=_NS)),
+                    cached_bubble_sizes=_extract_reference_cache(series_element.find("c:bubbleSize", namespaces=_NS)),  # type: ignore
                 )
             )
 
     return ChartSpec(
         chart_type=(plot_elements[0][0] if len(plot_elements) == 1 else "comboChart"),
         plot_kind=plot_kind,
-        title=_extract_title_text(root.find(".//c:chart/c:title", namespaces=_NS)),
+        title=_extract_title_text(root.find(".//c:chart/c:title", namespaces=_NS)),  # type: ignore
         category_axis_title=category_axis_title,
         value_axis_title=value_axis_title,
         x_axis_title=x_axis_title,

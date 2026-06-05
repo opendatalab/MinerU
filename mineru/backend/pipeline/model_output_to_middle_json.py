@@ -22,7 +22,7 @@ def blocks_to_page_info(
     page_model_info: dict[str, Any],
     image_dict: dict[str, Any],
     page: Any,
-    image_writer: DataWriter,
+    image_writer: DataWriter | None,
     page_index: int,
     ocr_enable: bool = False,
 ) -> PageInfo:
@@ -31,6 +31,7 @@ def blocks_to_page_info(
     page_img_md5 = bytes_md5(page_pil_img.tobytes())
     with pdfium_guard():
         page_w, page_h = map(int, page.get_size())
+
     magic_model = MagicModel(page_model_info, page, scale, page_pil_img, page_w, page_h, ocr_enable)
 
     """从magic_model对象中获取后面会用到的区块信息"""
@@ -46,15 +47,12 @@ def blocks_to_page_info(
     """构造page_info"""
     replace_inline_table_images(preproc_blocks, image_writer, page_index)
 
-    page_info = make_page_info_dict(
-        preproc_blocks,
-        page_index,
-        page_w,
-        page_h,
-        discarded_blocks,
+    return PageInfo(
+        preproc_blocks=preproc_blocks,
+        page_idx=page_index,
+        page_size=(page_w, page_h),
+        discarded_blocks=discarded_blocks,
     )
-
-    return page_info
 
 
 def build_page_model_info(page_layout_dets: list[dict[str, Any]], page_index: int, pil_img: Any) -> dict[str, Any]:
@@ -211,7 +209,7 @@ def init_middle_json() -> dict[str, Any]:
 
 
 def result_to_middle_json(
-    model_list: list[list[dict[str, Any]]],
+    model_list: list[dict[str, Any]],
     images_list: list[dict[str, Any]],
     pdf_doc: Any,
     image_writer: DataWriter,
@@ -229,13 +227,4 @@ def result_to_middle_json(
         finalize_fn=finalize_middle_json,
         lang=lang,
         ocr_enable=ocr_enable,
-    )
-
-
-def make_page_info_dict(blocks: list[Block], page_id: int, page_w: int, page_h: int, discarded_blocks: list[Block]) -> PageInfo:
-    return PageInfo(
-        preproc_blocks=blocks,
-        page_idx=page_id,
-        page_size=[page_w, page_h],
-        discarded_blocks=discarded_blocks,
     )

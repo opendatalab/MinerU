@@ -53,8 +53,16 @@ class MagicModel:
         "vision_footnote": BlockType.FOOTNOTE,
     }
 
-    VISUAL_MAIN_TYPES: tuple[str, ...] = (BlockType.IMAGE, BlockType.TABLE, BlockType.CHART, BlockType.CODE)
-    VISUAL_CHILD_TYPES: tuple[str, ...] = (BlockType.CAPTION, BlockType.FOOTNOTE)
+    VISUAL_MAIN_TYPES: set[str] = {
+        BlockType.IMAGE,
+        BlockType.TABLE,
+        BlockType.CHART,
+        BlockType.CODE,
+    }
+    VISUAL_CHILD_TYPES: set[str] = {
+        BlockType.CAPTION,
+        BlockType.FOOTNOTE,
+    }
     VISUAL_TYPE_MAPPING: dict[str, dict[str, str]] = {
         BlockType.IMAGE: {
             "body": BlockType.IMAGE_BODY,
@@ -101,7 +109,8 @@ class MagicModel:
         self.__fix_axis()  # bbox坐标修正，删除高度或者宽度小于等于0的spans
         self.__post_process()  # index重排，填充行内公式和文本span
         if not ocr_enable:
-            virtual_block = [0, 0, page_w, page_h, None, None, None, "text"]
+            # Bad code
+            virtual_block = (0, 0, page_w, page_h, None, None, None, "text")
             self.page_ocr_res = txt_spans_extract(
                 page,
                 self.page_ocr_res,

@@ -9,7 +9,7 @@ import os
 import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
-from typing import Any, AsyncIterator, Generator, Iterator
+from typing import Any, AsyncIterator, Generator, Iterator, Literal
 
 import pypdfium2 as pdfium
 from loguru import logger
@@ -50,7 +50,14 @@ class ModelSingleton:
 
     def get_model(
         self,
-        backend: str,
+        backend: Literal[
+            "http-client",
+            "transformers",
+            "mlx-engine",
+            "lmdeploy-engine",
+            "vllm-engine",
+            "vllm-async-engine",
+        ],
         model_path: str | None,
         server_url: str | None,
         **kwargs: Any,
@@ -273,7 +280,14 @@ class ModelSingleton:
 
 
 async def _get_model_async(
-    backend: str,
+    backend: Literal[
+        "http-client",
+        "transformers",
+        "mlx-engine",
+        "lmdeploy-engine",
+        "vllm-engine",
+        "vllm-async-engine",
+    ],
     model_path: str | None,
     server_url: str | None,
     **kwargs: Any,
@@ -429,12 +443,19 @@ def doc_analyze(
     pdf_bytes: bytes,
     image_writer: DataWriter | None,
     predictor: MinerUClient | None = None,
-    backend: str = "transformers",
+    backend: Literal[
+        "http-client",
+        "transformers",
+        "mlx-engine",
+        "lmdeploy-engine",
+        "vllm-engine",
+        "vllm-async-engine",
+    ] = "transformers",
     model_path: str | None = None,
     server_url: str | None = None,
     image_analysis: bool = True,
     **kwargs: Any,
-) -> tuple[dict[str, Any], list[list[dict[str, Any]]]]:
+) -> tuple[dict[str, Any], list[ExtractResult]]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
@@ -523,12 +544,19 @@ async def aio_doc_analyze(
     pdf_bytes: bytes,
     image_writer: DataWriter | None,
     predictor: MinerUClient | None = None,
-    backend: str = "transformers",
+    backend: Literal[
+        "http-client",
+        "transformers",
+        "mlx-engine",
+        "lmdeploy-engine",
+        "vllm-engine",
+        "vllm-async-engine",
+    ] = "transformers",
     model_path: str | None = None,
     server_url: str | None = None,
     image_analysis: bool = True,
     **kwargs: Any,
-) -> tuple[dict[str, Any], list[list[dict[str, Any]]]]:
+) -> tuple[dict[str, Any], list[ExtractResult]]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
     if predictor is None:
         predictor = await _get_model_async(backend, model_path, server_url, **kwargs)
@@ -536,7 +564,7 @@ async def aio_doc_analyze(
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json = init_middle_json()
-    results = []
+    results: list[ExtractResult] = []
     doc_closed = False
     try:
         page_count = get_pdfium_document_page_count(pdf_doc)

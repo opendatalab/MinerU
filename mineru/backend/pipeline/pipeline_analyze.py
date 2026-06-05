@@ -323,7 +323,7 @@ def batch_image_analyze(
     images_with_extra_info: list[tuple[Image.Image, bool, str]],
     formula_enable: bool = True,
     table_enable: bool = True,
-) -> object:
+) -> list[list[dict[str, Any]]]:
     from .batch_analyze import BatchAnalyze
 
     model_manager = ModelSingleton()

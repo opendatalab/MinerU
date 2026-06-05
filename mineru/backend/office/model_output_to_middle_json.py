@@ -50,24 +50,22 @@ def blocks_to_page_info(page_blocks: list[dict[str, Any]], image_writer: Any, pa
     text_blocks = magic_model.get_text_blocks()
     interline_equation_blocks = magic_model.get_interline_equation_blocks()
 
-    page_blocks = []
-    page_blocks.extend(
-        [
-            *image_blocks,
-            *chart_blocks,
-            *table_blocks,
-            *title_blocks,
-            *text_blocks,
-            *interline_equation_blocks,
-            *list_blocks,
-            *index_blocks,
-        ]
-    )
+    blocks = [
+        *image_blocks,
+        *chart_blocks,
+        *table_blocks,
+        *title_blocks,
+        *text_blocks,
+        *interline_equation_blocks,
+        *list_blocks,
+        *index_blocks,
+    ]
+
     # 对page_blocks根据index的值进行排序
-    page_blocks.sort(key=lambda x: x["index"])
+    blocks.sort(key=lambda x: x.index)
 
     page_info = PageInfo(
-        para_blocks=page_blocks,
+        para_blocks=blocks,
         discarded_blocks=discarded_blocks,
         page_idx=page_index,
     )
@@ -121,15 +119,15 @@ def _link_index_entries_by_anchor(middle_json: dict[str, Any]) -> None:
             toc_text_blocks: list[Block] = []
             _collect_index_text_blocks(block, toc_text_blocks)
             for text_block in toc_text_blocks:
-                anchor = text_block.get("anchor")
+                anchor = text_block.anchor
                 if not isinstance(anchor, str):
-                    text_block.pop("anchor", None)
+                    text_block.anchor = ""
                     continue
                 anchor = anchor.strip()
                 if not anchor or anchor not in valid_anchors:
-                    text_block.pop("anchor", None)
+                    text_block.anchor = ""
                     continue
-                text_block["anchor"] = anchor
+                text_block.anchor = anchor
 
 
 def result_to_middle_json(model_output_blocks_list: list[list[dict[str, Any]]], image_writer: object) -> dict[str, Any]:
@@ -155,7 +153,7 @@ def result_to_middle_json(model_output_blocks_list: list[list[dict[str, Any]]], 
                     if deeper > level:
                         section_counters[deeper] = 0
                 # Build section number string, e.g. "1.2.1"
-                section_number = ".".join(str(section_counters[l]) for l in range(1, level + 1))
+                section_number = ".".join(str(section_counters[lvl]) for lvl in range(1, level + 1))
                 block["section_number"] = section_number
             else:
                 # Some documents embed the section number directly in the content

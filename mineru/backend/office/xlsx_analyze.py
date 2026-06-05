@@ -12,7 +12,7 @@ from ...model.xlsx.main import convert_binary
 from .model_output_to_middle_json import result_to_middle_json
 
 
-def office_xlsx_analyze(file_bytes: bytes, image_writer: Any = None) -> dict[str, Any]:
+def office_xlsx_analyze(file_bytes: bytes, image_writer: Any = None) -> tuple[dict[str, Any], list[Any]]:
     infer_start = time.time()
 
     file_stream = BytesIO(file_bytes)

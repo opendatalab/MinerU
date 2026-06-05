@@ -33,20 +33,20 @@ def is_vertical_text_block_by_spans(spans: list[Span]) -> bool:
 
 def fix_text_block(block: Block) -> Block:
     # 文本block中的公式span都应该转换成行内type
-    for span in block._extra["spans"]:
+    for span in block._fix_spans:
         if span.type == ContentType.INTERLINE_EQUATION:
             span.type = ContentType.INLINE_EQUATION
 
-    if is_vertical_text_block_by_spans(block._extra["spans"]):
+    if is_vertical_text_block_by_spans(block._fix_spans):
         # 如果是纵向文本块，则按纵向lines处理
-        block_lines = merge_spans_to_vertical_line(block._extra["spans"])
+        block_lines = merge_spans_to_vertical_line(block._fix_spans)
         sort_block_lines = vertical_line_sort_spans_from_top_to_bottom(block_lines)
     else:
-        block_lines = merge_spans_to_line(block._extra["spans"])
+        block_lines = merge_spans_to_line(block._fix_spans)
         sort_block_lines = line_sort_spans_by_left_to_right(block_lines)
 
     block.lines = sort_block_lines
-    del block._extra["spans"]
+    block._fix_spans = []
     return block
 
 

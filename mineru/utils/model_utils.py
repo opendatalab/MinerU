@@ -39,16 +39,21 @@ TEXT_REGION_LABELS = {
 }
 
 
-def _get_bbox(item: dict[str, Any]) -> BBox | None:
-    bbox = item.get("bbox")
-    if bbox is not None:
-        xmin, ymin, xmax, ymax = bbox
-        return float(xmin), float(ymin), float(xmax), float(ymax)
+def _get_bbox(item: dict[str, Any]) -> BBox:
+    bbox = item["bbox"]
+    assert bbox is not None
+    xmin, ymin, xmax, ymax = bbox
+    return float(xmin), float(ymin), float(xmax), float(ymax)
 
 
 def _get_int_bbox(item: dict[str, Any]) -> IntBBox:
     xmin, ymin, xmax, ymax = _get_bbox(item)
     return math.floor(xmin), math.floor(ymin), math.ceil(xmax), math.ceil(ymax)
+
+
+def _bbox_area(bbox: BBox | IntBBox) -> float:
+    xmin, ymin, xmax, ymax = bbox
+    return abs((xmax - xmin) * (ymax - ymin))
 
 
 def crop_img(
@@ -86,11 +91,11 @@ def crop_img(
     return return_image, return_list
 
 
-def get_coords_and_area(block_with_poly: dict[str, Any]) -> tuple[float, float, float, float, float]:
+def get_bbox_and_area(block_with_poly: dict[str, Any]) -> tuple[BBox, float]:
     """Extract coordinates and area from a table."""
     xmin, ymin, xmax, ymax = _get_bbox(block_with_poly)
     area = (xmax - xmin) * (ymax - ymin)
-    return xmin, ymin, xmax, ymax, area
+    return (xmin, ymin, xmax, ymax), area
 
 
 def calculate_intersection(box1: BBox, box2: BBox) -> BBox | None:
@@ -107,18 +112,16 @@ def calculate_intersection(box1: BBox, box2: BBox) -> BBox | None:
     return intersection_xmin, intersection_ymin, intersection_xmax, intersection_ymax
 
 
-def is_inside(small_box: BBox, big_box: BBox, overlap_threshold: float = 0.8) -> bool:
+def is_inside(small_box: BBox, big_box: BBox, small_area: float, overlap_threshold: float = 0.8) -> bool:
     """Check if small_box is inside big_box by at least overlap_threshold."""
-    intersection = calculate_intersection(small_box[:4], big_box[:4])
-
+    intersection = calculate_intersection(small_box, big_box)
     if not intersection:
         return False
 
     intersection_xmin, intersection_ymin, intersection_xmax, intersection_ymax = intersection
     intersection_area = (intersection_xmax - intersection_xmin) * (intersection_ymax - intersection_ymin)
-
     # Check if overlap exceeds threshold
-    return intersection_area >= overlap_threshold * small_box[4]
+    return intersection_area >= overlap_threshold * small_area
 
 
 def remove_nested_ocr_text_blocks(
@@ -131,18 +134,17 @@ def remove_nested_ocr_text_blocks(
     if not ocr_res_list or len(layout_res) < 2:
         return ocr_res_list, []
 
-    layout_info = [(block, get_coords_and_area(block)) for block in layout_res]
+    layout_info = [(block, get_bbox_and_area(block)) for block in layout_res]
     blocks_to_remove = []
 
     for text_block in ocr_res_list:
-        text_box = get_coords_and_area(text_block)
-        text_area = text_box[4]
-        for parent_block, parent_box in layout_info:
+        text_box, text_area = get_bbox_and_area(text_block)
+        for parent_block, (parent_box, parent_area) in layout_info:
             if parent_block is text_block:
                 continue
-            if parent_box[4] <= text_area * min_area_ratio:
+            if parent_area <= text_area * min_area_ratio:
                 continue
-            if is_inside(text_box, parent_box, overlap_threshold):
+            if is_inside(text_box, parent_box, text_area, overlap_threshold):
                 blocks_to_remove.append(text_block)
                 break
 

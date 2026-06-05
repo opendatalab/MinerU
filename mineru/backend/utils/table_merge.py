@@ -8,7 +8,7 @@ from typing import Any
 from bs4 import BeautifulSoup, Tag
 
 from ...types import BBox, Block, PageInfo, Span
-from ...utils.enum_class import BlockType, SplitFlag
+from ...utils.enum_class import BlockType
 from ..vlm.vlm_middle_json_mkcontent import merge_para_with_text
 from .char_utils import full_to_half
 from .table_continuation import is_table_continuation_text
@@ -192,16 +192,12 @@ def _find_table_body_block(table_block: Block) -> Block | None:
     return None
 
 
-def _build_post_body_child_index(table_block: Block, offset: int) -> int | float | None:
+def _build_post_body_child_index(table_block: Block, offset: int) -> int | None:
     """为跨页搬运到上一页表格的子块生成表体后的安全 index。"""
     body_block = _find_table_body_block(table_block)
     if body_block is None:
         return None
-
     body_index = body_block.index
-    if not isinstance(body_index, (int, float)):
-        return None
-
     return body_index + offset
 
 
@@ -278,7 +274,7 @@ def _refresh_table_state_metrics(state: TableMergeState) -> None:
     state.front_header_info, state.front_first_data_row_metrics = _build_front_cache(state.rows)
 
 
-def build_table_state_from_html(
+def _build_table_state_from_html(
     html: str,
     max_header_rows: int = MAX_HEADER_ROWS,
 ) -> TableMergeState | None:
@@ -361,7 +357,7 @@ def _get_or_create_table_state(
 
 
 def _serialize_table_state_html(state: TableMergeState) -> None:
-    state.body_span._extra["html"] = str(state.soup)
+    state.body_span.html = str(state.soup)
     state.dirty = False
 
 
@@ -1093,11 +1089,11 @@ def perform_table_merge(
 
     previous_table_block.blocks = [block for block in previous_table_block.blocks if block.type != BlockType.TABLE_FOOTNOTE]
     for footnote_offset, table_footnote in enumerate(wait_merge_table_footnotes, start=1):
-        temp_table_footnote = table_footnote.copy()
-        temp_table_footnote._extra[SplitFlag.CROSS_PAGE] = True
+        temp_table_footnote = deepcopy(table_footnote)
+        temp_table_footnote._cross_page = True
         post_body_index = _build_post_body_child_index(previous_table_block, footnote_offset)
         if post_body_index is None:
-            temp_table_footnote._extra.pop("index", None)
+            temp_table_footnote.index = 0
         else:
             temp_table_footnote.index = post_body_index
         previous_table_block.blocks.append(temp_table_footnote)

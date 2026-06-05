@@ -8,7 +8,7 @@ from typing import Any
 from loguru import logger
 from PIL import Image
 
-from ...types import BBox, Block, IntBBox, Line, Span
+from ...types import EMPTY_BBOX, BBox, Block, IntBBox, Line, Span
 from ...utils.enum_class import BlockType, ContentType, NotExtractType
 from ...utils.guess_suffix_or_lang import guess_language_by_text
 from ..utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
@@ -74,8 +74,8 @@ class MagicModel:
 
         blocks: list[Block] = []
         self.all_spans: list[Span] = []
+        page_text_inline_formula_spans: list[Span] = []
 
-        page_text_inline_formula_spans = []
         for inline_formula in self.page_inline_formula:
             inline_formula["bbox"] = list(self.cal_real_bbox(inline_formula["bbox"]))
             inline_formula_latex = inline_formula.pop("latex", "")
@@ -181,7 +181,7 @@ class MagicModel:
             span = None
             if span_type in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART]:
                 span = Span(type=span_type, bbox=block_bbox)
-                if span_type == ContentType.TABLE:
+                if span_type == ContentType.TABLE and block_content is not None:
                     span.html = block_content
                 elif raw_block_type in ["image", "chart"] and block_content is not None:
                     span.content = block_content
@@ -189,7 +189,7 @@ class MagicModel:
                 span = Span(
                     type=span_type,
                     bbox=block_bbox,
-                    content=isolated_formula_clean(block_content),
+                    content=isolated_formula_clean(block_content or ""),
                 )
             elif _vlm_ocr_enable or block_type not in not_extract_list:
                 # vlm_ocr_enable 模式下，所有文本块都直接使用 block 的内容
@@ -250,7 +250,7 @@ class MagicModel:
                     span = Span(
                         type=span_type,
                         bbox=block_bbox,
-                        content=block_content,
+                        content=block_content or "",
                     )
 
             if span_type in [
@@ -399,8 +399,13 @@ class MagicModel:
         if not block_spans:
             return []
 
-        hint_block = {"spans": copy.deepcopy(block_spans)}
-        return fix_text_block(hint_block)["lines"]
+        fix_block = Block(
+            index=0,
+            type="",
+            bbox=EMPTY_BBOX,
+            _fix_spans=copy.deepcopy(block_spans),
+        )
+        return fix_text_block(fix_block).lines
 
     def cal_real_bbox(self, bbox: BBox) -> IntBBox:
         x1, y1, x2, y2 = bbox
@@ -493,7 +498,7 @@ def fix_list_blocks(
             type_count[sub_block_type] += 1
 
         if type_count:
-            list_block.sub_type = max(type_count, key=type_count.get)
+            list_block.sub_type = max(type_count, key=type_count.get)  # type: ignore
         else:
             list_block.sub_type = "unknown"
 

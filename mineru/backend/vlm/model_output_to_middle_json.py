@@ -82,7 +82,7 @@ def blocks_to_page_info(
     page_info = PageInfo(
         preproc_blocks=blocks,
         discarded_blocks=discarded_blocks,
-        page_size=[width, height],
+        page_size=(width, height),
         page_idx=page_index,
     )
     return page_info
@@ -107,7 +107,7 @@ def finalize_middle_json(pdf_info_list: list[PageInfo]) -> None:
 
 
 def result_to_middle_json(
-    model_output_blocks_list: list[list[dict[str, Any]]],
+    model_output_blocks_list: list[ExtractResult],
     images_list: list[dict[str, Any]],
     pdf_doc: Any,
     image_writer: DataWriter,

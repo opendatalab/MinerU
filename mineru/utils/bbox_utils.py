@@ -7,7 +7,7 @@ from ..types import BBox, IntBBox
 
 
 def normalize_to_int_bbox(
-    box: list[float] | BBox | None,
+    box: list[list[float]] | list[float] | BBox | None,
     image_size: tuple[int, int] | None = None,
 ) -> IntBBox | None:
     if box is None:

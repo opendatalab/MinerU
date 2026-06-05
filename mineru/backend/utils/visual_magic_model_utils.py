@@ -99,7 +99,7 @@ def clean_content(content: str | None) -> str | None:
     return content
 
 
-def fallback_inline_caption_fragments(blocks: list[Block], visual_main_types: dict[Any, Any] | set[Any]) -> None:
+def fallback_inline_caption_fragments(blocks: list[Block], visual_main_types: dict[str, str] | set[str]) -> None:
     """将紧贴视觉主体上方的同行 text/footnote 片段兜底为通用 caption。"""
     if len(blocks) < 3:
         return
@@ -214,7 +214,7 @@ def _is_leading_continuation_cluster_near_table(leading_blocks: list[Block], tab
     return True
 
 
-def fallback_stacked_table_caption_fragments(blocks: list[Block], visual_main_types: dict[Any, Any] | set[Any]) -> None:
+def fallback_stacked_table_caption_fragments(blocks: list[Block], visual_main_types: dict[str, str] | set[str]) -> None:
     """将 table 上方紧贴标题簇里的 text/footnote 片段兜底为 caption。"""
     table_main_types = get_table_main_types(visual_main_types)
     if not table_main_types:
@@ -239,7 +239,7 @@ def fallback_stacked_table_caption_fragments(blocks: list[Block], visual_main_ty
                 block.merge_prev = False
 
 
-def get_table_main_types(visual_main_types: dict[Any, Any] | set[Any]) -> set[Any]:
+def get_table_main_types(visual_main_types: dict[str, str] | set[str]) -> set[str]:
     """根据调用方传入的视觉主体类型，找出 table 对应的主体类型。"""
     if isinstance(visual_main_types, dict):
         return {block_type for block_type, visual_type in visual_main_types.items() if visual_type == BlockType.TABLE}
@@ -366,7 +366,7 @@ def regroup_visual_blocks(blocks: list[Block]) -> tuple[dict[Any, list[Block]], 
 
     for main_block in main_blocks:
         if main_block.index in sub_images_by_index:
-            main_block._extra["sub_images"] = sub_images_by_index[main_block.index]
+            main_block._sub_images = sub_images_by_index[main_block.index]
 
     for child_block in child_blocks:
         parent_block = find_best_visual_parent(
@@ -394,7 +394,7 @@ def regroup_visual_blocks(blocks: list[Block]) -> tuple[dict[Any, list[Block]], 
         mapping = VISUAL_TYPE_MAPPING[visual_type]
         body_block = deepcopy(main_block)
         body_block.type = mapping["body"]
-        body_block.pop("sub_images", None)
+        body_block._sub_images = []
         body_block.sub_type = ""
 
         captions = []
@@ -423,8 +423,8 @@ def regroup_visual_blocks(blocks: list[Block]) -> tuple[dict[Any, list[Block]], 
         )
         if visual_type in [BlockType.IMAGE, BlockType.CHART] and main_block.sub_type:
             two_layer_block.sub_type = main_block.sub_type
-        if visual_type == BlockType.IMAGE and main_block._extra.get("sub_images"):
-            two_layer_block["sub_images"] = main_block._extra["sub_images"]
+        if visual_type == BlockType.IMAGE and main_block._sub_images:
+            two_layer_block._sub_images = main_block._sub_images
         if visual_type == BlockType.TABLE and main_block._cell_merge:
             two_layer_block._cell_merge = main_block._cell_merge
         two_layer_block.blocks.sort(key=lambda x: x.index or 0)

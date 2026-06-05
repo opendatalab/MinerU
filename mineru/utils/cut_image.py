@@ -24,9 +24,9 @@ def cut_image_and_table(
     span_type = span.type
 
     if not check_img_bbox(span.bbox) or not image_writer:
-        span._extra["image_path"] = ""
+        span.image_path = ""
     else:
-        span._extra["image_path"] = cut_image(
+        span.image_path = cut_image(
             span.bbox,
             page_id,
             page_pil_img,
