@@ -4,6 +4,7 @@ import time
 
 import pypdfium2 as pdfium
 from loguru import logger
+from mineru_vl_utils import MinerUClient
 from mineru_vl_utils.structs import ContentBlock
 from tqdm import tqdm
 
@@ -284,7 +285,7 @@ def _get_device_for_cleanup():
 def doc_analyze(
     pdf_bytes,
     image_writer: DataWriter | None = None,
-    predictor=None,
+    predictor: MinerUClient | None = None,
     backend="transformers",
     parse_method: str = "auto",
     language: str = "ch",
@@ -412,7 +413,7 @@ def doc_analyze(
 async def aio_doc_analyze(
     pdf_bytes,
     image_writer: DataWriter | None = None,
-    predictor=None,
+    predictor: MinerUClient | None = None,
     backend="transformers",
     parse_method: str = "auto",
     language: str = "ch",

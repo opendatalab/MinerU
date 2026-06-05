@@ -228,10 +228,12 @@ BACKEND_CHOICE_DEFINITIONS = [
     "pipeline",
     "vlm-auto-engine",
     "hybrid-auto-engine",
+    "hybrid-flash-auto-engine",
 ]
 HTTP_CLIENT_BACKEND_CHOICE_DEFINITIONS = [
     "vlm-http-client",
     "hybrid-http-client",
+    "hybrid-flash-http-client",
 ]
 STATUS_STEP_DEFINITIONS = [
     ("status_step_prepare", STATUS_PREPARING_REQUEST),
