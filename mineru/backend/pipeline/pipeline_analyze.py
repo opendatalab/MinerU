@@ -331,10 +331,7 @@ def doc_analyze_streaming(
 def batch_image_analyze(
         images_with_extra_info: List[Tuple[Image.Image, bool, str]],
         formula_enable=True,
-        table_enable=True,
-        formula_recognition_scope="all",
-        ocr_rec_enable=True,
-        seal_ocr_rec_enable=True):
+        table_enable=True):
 
     from .batch_analyze import BatchAnalyze
 
@@ -385,9 +382,6 @@ def batch_image_analyze(
         formula_enable,
         table_enable,
         enable_ocr_det_batch,
-        formula_recognition_scope=formula_recognition_scope,
-        ocr_rec_enable=ocr_rec_enable,
-        seal_ocr_rec_enable=seal_ocr_rec_enable,
     )
     results = batch_model(images_with_extra_info)
 
