@@ -17,8 +17,8 @@ from mineru.backend.office.pptx_analyze import office_pptx_analyze
 from mineru.backend.office.xlsx_analyze import office_xlsx_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
-from mineru.render import render_content_list, render_content_list_v2, render_markdown
 from mineru.data.data_reader_writer import FileBasedDataWriter
+from mineru.render import render_content_list, render_content_list_v2, render_markdown
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.enum_class import MakeMode

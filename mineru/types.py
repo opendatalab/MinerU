@@ -1,7 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields
+from dataclasses import MISSING, Field, dataclass, field, fields
 from typing import Any, Iterator, Literal, TypeAlias, TypeVar, get_type_hints
 
 T = TypeVar("T", bound="_DocElement")
@@ -304,6 +304,15 @@ VISUAL_TYPE_MAPPING = {
 BBox: TypeAlias = tuple[float, float, float, float]
 IntBBox: TypeAlias = tuple[int, int, int, int]
 
+
+def _is_default_value(f: Field, value: Any) -> bool:
+    if f.default is not MISSING:
+        return value == f.default
+    if f.default_factory is not MISSING:
+        return value == f.default_factory()
+    return False
+
+
 EMPTY_BBOX: BBox = (0.0, 0.0, 0.0, 0.0)
 
 
@@ -320,15 +329,21 @@ def _list_arg(tp: Any) -> Any | None:
 class _DocElement:
     """Base class for document-model nodes (Span, Line, Block, PageInfo)."""
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize to dict, excluding private fields (prefixed with ``_``). Nested dataclass lists are recursed."""
+    def to_dict(self, *, skip_defaults: bool = False) -> dict[str, Any]:
+        """Serialize to dict, excluding private fields (prefixed with ``_``).
+
+        When *skip_defaults* is True, fields whose value equals their
+        default are also omitted.
+        """
         result: dict[str, Any] = {}
         for f in fields(self):
             if f.name.startswith("_"):
                 continue
             value = getattr(self, f.name)
+            if skip_defaults and _is_default_value(f, value):
+                continue
             if isinstance(value, list):
-                result[f.name] = [v.to_dict() if isinstance(v, _DocElement) else v for v in value]
+                result[f.name] = [v.to_dict(skip_defaults=skip_defaults) if isinstance(v, _DocElement) else v for v in value]
             else:
                 result[f.name] = value
         return result
@@ -456,3 +471,29 @@ class PageInfo(_DocElement):
 
     # Temporary — will be removed once the render layer converges.
     _backend: Literal["pipeline", "vlm", "hybrid", "office"] | None = None
+
+
+@dataclass
+class ContentItem(_DocElement):
+    """A single item in the Content List (V1) output format."""
+
+    type: str
+    page_idx: int = 0
+    bbox: IntBBox | None = None
+    text: str | None = None
+    text_level: int | None = None
+    text_format: str | None = None
+    img_path: str | None = None
+    content: str | None = None
+    sub_type: str | None = None
+    list_items: list[str] = field(default_factory=list)
+    image_caption: list[str] = field(default_factory=list)
+    image_footnote: list[str] = field(default_factory=list)
+    table_caption: list[str] = field(default_factory=list)
+    table_footnote: list[str] = field(default_factory=list)
+    table_body: str | None = None
+    chart_caption: list[str] = field(default_factory=list)
+    chart_footnote: list[str] = field(default_factory=list)
+    code_caption: list[str] = field(default_factory=list)
+    code_footnote: list[str] = field(default_factory=list)
+    code_body: str | None = None

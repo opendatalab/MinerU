@@ -1,13 +1,11 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import re
-from typing import Any, Dict, List, Optional, Union, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
 
-def calculate_iou(
-    box1: Union[np.ndarray, List], box2: Union[np.ndarray, List]
-) -> float:
+def calculate_iou(box1: Union[np.ndarray, List], box2: Union[np.ndarray, List]) -> float:
     """
     :param box1: Iterable [xmin,ymin,xmax,ymax]
     :param box2: Iterable [xmin,ymin,xmax,ymax]
@@ -38,10 +36,7 @@ def calculate_iou(
     return iou
 
 
-
-def is_box_contained(
-    box1: Union[np.ndarray, List], box2: Union[np.ndarray, List], threshold=0.2
-) -> Union[int, None]:
+def is_box_contained(box1: Union[np.ndarray, List], box2: Union[np.ndarray, List], threshold=0.2) -> Union[int, None]:
     """
     :param box1: Iterable [xmin,ymin,xmax,ymax]
     :param box2: Iterable [xmin,ymin,xmax,ymax]
@@ -63,9 +58,7 @@ def is_box_contained(
     intersect_y2 = min(b1_y2, b2_y2)
 
     # 计算交集的面积
-    intersect_area = max(0, intersect_x2 - intersect_x1) * max(
-        0, intersect_y2 - intersect_y1
-    )
+    intersect_area = max(0, intersect_x2 - intersect_x1) * max(0, intersect_y2 - intersect_y1)
 
     # 计算外面的面积
     b1_outside_area = b1_area - intersect_area
@@ -119,9 +112,7 @@ def is_single_axis_contained(
     return None
 
 
-def sorted_ocr_boxes(
-    dt_boxes: Union[np.ndarray, list], threhold: float = 0.2
-) -> Tuple[Union[np.ndarray, list], List[int]]:
+def sorted_ocr_boxes(dt_boxes: Union[np.ndarray, list], threhold: float = 0.2) -> Tuple[Union[np.ndarray, list], List[int]]:
     """
     Sort text boxes in order from top to bottom, left to right
     args:
@@ -143,14 +134,8 @@ def sorted_ocr_boxes(
         _boxes = np.array(_boxes)
     for i in range(num_boxes - 1):
         for j in range(i, -1, -1):
-            c_idx = is_single_axis_contained(
-                _boxes[j], _boxes[j + 1], axis="y", threhold=threhold
-            )
-            if (
-                c_idx is not None
-                and _boxes[j + 1][0] < _boxes[j][0]
-                and abs(_boxes[j][1] - _boxes[j + 1][1]) < threahold
-            ):
+            c_idx = is_single_axis_contained(_boxes[j], _boxes[j + 1], axis="y", threhold=threhold)
+            if c_idx is not None and _boxes[j + 1][0] < _boxes[j][0] and abs(_boxes[j][1] - _boxes[j + 1][1]) < threahold:
                 _boxes[j], _boxes[j + 1] = _boxes[j + 1].copy(), _boxes[j].copy()
                 indices[j], indices[j + 1] = indices[j + 1], indices[j]
             else:
@@ -196,10 +181,7 @@ def _pred_boxes_to_array(pred_bboxes: np.ndarray) -> np.ndarray:
     if pred_bboxes.size == 0:
         return np.empty((0, 4), dtype=np.float64)
     return np.asarray(
-        [
-            [pred_box[0][0], pred_box[0][1], pred_box[2][0], pred_box[2][1]]
-            for pred_box in pred_bboxes
-        ],
+        [[pred_box[0][0], pred_box[0][1], pred_box[2][0], pred_box[2][1]] for pred_box in pred_bboxes],
         dtype=np.float64,
     )
 
@@ -349,9 +331,7 @@ def _same_row_adjacent_cells(candidate_boxes: List[np.ndarray]) -> bool:
         return False
 
     for left_box, right_box in zip(candidate_boxes, candidate_boxes[1:]):
-        y_overlap = min(float(left_box[3]), float(right_box[3])) - max(
-            float(left_box[1]), float(right_box[1])
-        )
+        y_overlap = min(float(left_box[3]), float(right_box[3])) - max(float(left_box[1]), float(right_box[1]))
         min_height = min(
             float(left_box[3] - left_box[1]),
             float(right_box[3] - right_box[1]),
@@ -517,9 +497,7 @@ def match_ocr_cell(dt_rec_boxes: List[List[Union[Any, str]]], pred_bboxes: np.nd
         projection_indices = np.flatnonzero(projection_mask[i])
         if len(projection_indices) > 1:
             min_segment_width = _min_projection_segment_width(str(gt_box[1]), ocr_boxes[i])
-            projection_indices = projection_indices[
-                inter_width[i][projection_indices] >= min_segment_width
-            ]
+            projection_indices = projection_indices[inter_width[i][projection_indices] >= min_segment_width]
             split_results = _split_cross_cell_ocr_result(
                 gt_box,
                 ocr_boxes[i],
@@ -581,9 +559,7 @@ def gather_ocr_list_by_row(ocr_list: List[Any], threhold: float = 0.2) -> List[A
             next = ocr_list[j]
             cur_box = cur[0]
             next_box = next[0]
-            c_idx = is_single_axis_contained(
-                cur[0], next[0], axis="y", threhold=threhold
-            )
+            c_idx = is_single_axis_contained(cur[0], next[0], axis="y", threhold=threhold)
             if c_idx:
                 dis = max(next_box[0] - cur_box[2], 0)
                 blank_str = int(dis / threshold) * " "
@@ -619,17 +595,13 @@ def _normalize_cell_text_map(cell_box_map: Dict[int, List[str]]) -> Dict[int, Li
             normalized[int(cell_idx)] = [values]
             continue
         try:
-            normalized[int(cell_idx)] = [
-                str(value) for value in values if value is not None
-            ]
+            normalized[int(cell_idx)] = [str(value) for value in values if value is not None]
         except TypeError:
             normalized[int(cell_idx)] = [str(values)]
     return normalized
 
 
-def _normalize_cell_bboxes(
-    cell_bboxes: Optional[Union[np.ndarray, List]]
-) -> Optional[np.ndarray]:
+def _normalize_cell_bboxes(cell_bboxes: Optional[Union[np.ndarray, List]]) -> Optional[np.ndarray]:
     """把单元格物理框统一成 N x 4 x 2，用于判断边缘空列是否是结构噪声。"""
     if cell_bboxes is None:
         return None
@@ -719,29 +691,18 @@ def _estimate_axis_sizes(
         for axis_idx in target_range:
             if 0 <= axis_idx < axis_count:
                 axis_sizes[axis_idx].append(size)
-    return [
-        float(np.median(sizes)) if sizes else None
-        for sizes in axis_sizes
-    ]
+    return [float(np.median(sizes)) if sizes else None for sizes in axis_sizes]
 
 
-def _axis_reference_size(
-    axis_sizes: List[Optional[float]], axis_idx: int
-) -> Optional[float]:
+def _axis_reference_size(axis_sizes: List[Optional[float]], axis_idx: int) -> Optional[float]:
     """用其它行/列的中位尺寸作为参照，避免单个边缘噪声框主导判断。"""
-    sizes = [
-        size
-        for i, size in enumerate(axis_sizes)
-        if i != axis_idx and size is not None and size > 0
-    ]
+    sizes = [size for i, size in enumerate(axis_sizes) if i != axis_idx and size is not None and size > 0]
     if not sizes:
         return None
     return float(np.median(sizes))
 
 
-def _axis_size_is_abnormal(
-    axis_sizes: List[Optional[float]], axis_idx: int
-) -> bool:
+def _axis_size_is_abnormal(axis_sizes: List[Optional[float]], axis_idx: int) -> bool:
     """判断空边缘行/列尺寸是否明显异常；正常尺寸的完整空列需要保留。"""
     axis_size = axis_sizes[axis_idx]
     reference_size = _axis_reference_size(axis_sizes, axis_idx)
@@ -766,10 +727,7 @@ def _edge_axis_has_text(
         positions = (grid[row][axis_idx] for row in range(row_start, row_end + 1))
     else:
         positions = (grid[axis_idx][col] for col in range(col_start, col_end + 1))
-    return any(
-        cell is not None and _cell_has_visible_text(cell_text_map, cell[0])
-        for cell in positions
-    )
+    return any(cell is not None and _cell_has_visible_text(cell_text_map, cell[0]) for cell in positions)
 
 
 def _edge_axis_coverage(
@@ -783,16 +741,10 @@ def _edge_axis_coverage(
 ) -> Tuple[int, int]:
     """统计边缘行/列在当前保留范围内的结构覆盖度，覆盖不完整通常是外围噪声。"""
     if axis == "col":
-        covered = sum(
-            grid[row][axis_idx] is not None
-            for row in range(row_start, row_end + 1)
-        )
+        covered = sum(grid[row][axis_idx] is not None for row in range(row_start, row_end + 1))
         total = row_end - row_start + 1
     else:
-        covered = sum(
-            grid[axis_idx][col] is not None
-            for col in range(col_start, col_end + 1)
-        )
+        covered = sum(grid[axis_idx][col] is not None for col in range(col_start, col_end + 1))
         total = col_end - col_start + 1
     return covered, total
 
@@ -809,13 +761,9 @@ def _is_noise_edge_axis(
     col_end: int,
 ) -> bool:
     """只裁剪无文本且结构不完整或尺寸异常的边缘，保留真实完整空行/空列。"""
-    if _edge_axis_has_text(
-        grid, cell_text_map, axis, axis_idx, row_start, row_end, col_start, col_end
-    ):
+    if _edge_axis_has_text(grid, cell_text_map, axis, axis_idx, row_start, row_end, col_start, col_end):
         return False
-    covered, total = _edge_axis_coverage(
-        grid, axis, axis_idx, row_start, row_end, col_start, col_end
-    )
+    covered, total = _edge_axis_coverage(grid, axis, axis_idx, row_start, row_end, col_start, col_end)
     if covered == 0 or covered < total:
         return True
     return _axis_size_is_abnormal(axis_sizes, axis_idx)
@@ -834,23 +782,19 @@ def _trim_noise_edges(
     col_start, col_end = 0, max_col - 1
 
     while row_start <= row_end and _is_noise_edge_axis(
-        grid, cell_text_map, row_sizes, "row", row_start,
-        row_start, row_end, col_start, col_end,
+        grid, cell_text_map, row_sizes, "row", row_start, row_start, row_end, col_start, col_end
     ):
         row_start += 1
     while row_end >= row_start and _is_noise_edge_axis(
-        grid, cell_text_map, row_sizes, "row", row_end,
-        row_start, row_end, col_start, col_end,
+        grid, cell_text_map, row_sizes, "row", row_end, row_start, row_end, col_start, col_end
     ):
         row_end -= 1
     while col_start <= col_end and _is_noise_edge_axis(
-        grid, cell_text_map, col_sizes, "col", col_start,
-        row_start, row_end, col_start, col_end,
+        grid, cell_text_map, col_sizes, "col", col_start, row_start, row_end, col_start, col_end
     ):
         col_start += 1
     while col_end >= col_start and _is_noise_edge_axis(
-        grid, cell_text_map, col_sizes, "col", col_end,
-        row_start, row_end, col_start, col_end,
+        grid, cell_text_map, col_sizes, "col", col_end, row_start, row_end, col_start, col_end
     ):
         col_end -= 1
 
@@ -871,9 +815,7 @@ def plot_html_table(
     grid, max_row, max_col = _build_table_grid(logic_points)
     row_sizes = _estimate_axis_sizes(logic_points, normalized_bboxes, "row", max_row)
     col_sizes = _estimate_axis_sizes(logic_points, normalized_bboxes, "col", max_col)
-    row_start, row_end, col_start, col_end = _trim_noise_edges(
-        grid, cell_text_map, row_sizes, col_sizes, max_row, max_col
-    )
+    row_start, row_end, col_start, col_end = _trim_noise_edges(grid, cell_text_map, row_sizes, col_sizes, max_row, max_col)
 
     table_html = "<html><body><table>"
     if row_start > row_end or col_start > col_end:
@@ -894,7 +836,9 @@ def plot_html_table(
                 row_span = min(origin_row_end, row_end) - clipped_row_start + 1
                 col_span = min(origin_col_end, col_end) - clipped_col_start + 1
                 text = _cell_text(cell_text_map, cell_idx)
-                temp += f"<td rowspan={row_span} colspan={col_span}>{text}</td>"
+                row_span_str = f" rowspan={row_span}" if row_span > 1 else ""
+                col_span_str = f" colspan={col_span}" if col_span > 1 else ""
+                temp += f"<td{row_span_str}{col_span_str}>{text}</td>"
         table_html = table_html + temp + "</tr>"
 
     table_html += "</table></body></html>"

@@ -27,19 +27,18 @@ def _dispatch_make_content_list(
     img_bucket_path: str,
     page_idx: int,
     page_size: Any,
-) -> Any:  # type: ignore[return]
-    if backend == "pipeline":
-        from ..backend.pipeline.pipeline_middle_json_mkcontent import make_blocks_to_content_list
-
-        return make_blocks_to_content_list(para_block, img_bucket_path, page_idx, page_size)
+) -> Any:
     if backend == "office":
         from ..backend.office.mkcontent.output_builders import make_blocks_to_content_list
 
         return make_blocks_to_content_list(para_block, img_bucket_path, page_idx)
-    # vlm / hybrid
-    from ..backend.vlm.vlm_middle_json_mkcontent import make_blocks_to_content_list
 
-    return make_blocks_to_content_list(para_block, img_bucket_path, page_idx, page_size)
+    from ..render.content_list import block_to_content_list
+
+    item = block_to_content_list(para_block, img_bucket_path, page_idx, page_size)
+    if item is None:
+        return None
+    return item.to_dict(skip_defaults=True)
 
 
 def _dispatch_make_content_list_v2(
@@ -47,7 +46,7 @@ def _dispatch_make_content_list_v2(
     para_block: Any,
     img_bucket_path: str,
     page_size: Any,
-) -> Any:  # type: ignore[return]
+) -> Any:
     if backend == "pipeline":
         from ..backend.pipeline.pipeline_middle_json_mkcontent import make_blocks_to_content_list_v2
 

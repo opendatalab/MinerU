@@ -5,15 +5,15 @@ from typing import Any
 
 from loguru import logger
 
+from ...render.content_list import block_to_content_list
 from ...render.markdown import _get_title_level, blocks_to_markdown
 from ...render.merge import (
     CJK_LANGS,
     _collect_text_for_lang_detection,
     _next_line_starts_with_lowercase_text,
     _normalize_text_content,
-    merge_para_text,
 )
-from ...render.merge_visual import _format_embedded_html, _inherit_parent_code_render_metadata, _normalize_visual_content
+from ...render.merge_visual import _format_embedded_html, _normalize_visual_content
 from ...types import BBox, Block, IntBBox, Line, PageInfo
 from ...utils.enum_class import BlockType, ContentType, ContentTypeV2, MakeMode
 from ...utils.language import detect_lang
@@ -190,140 +190,6 @@ def merge_para_with_text_v2(para_block: Block) -> list[dict[str, Any]]:
         ContentTypeV2.SPAN_PHONETIC,
     ]:
         para_content[-1]["content"] = para_content[-1]["content"].rstrip()
-
-    return para_content
-
-
-def make_blocks_to_content_list(
-    para_block: Block, img_bucket_path: str, page_idx: int, page_size: tuple[int, int]
-) -> dict[str, Any] | None:
-    para_type = para_block.type
-    para_content: dict[str, Any] | None = None
-    if para_type in [
-        BlockType.TEXT,
-        BlockType.INDEX,
-        BlockType.LIST,
-        BlockType.ABSTRACT,
-    ]:
-        para_content = {
-            "type": ContentType.TEXT,
-            "text": merge_para_text(para_block),
-        }
-    elif para_type in [
-        BlockType.HEADER,
-        BlockType.FOOTER,
-        BlockType.PAGE_NUMBER,
-        BlockType.ASIDE_TEXT,
-        BlockType.PAGE_FOOTNOTE,
-    ]:
-        para_content = {
-            "type": para_type,
-            "text": merge_para_text(para_block),
-        }
-    elif para_type == BlockType.REF_TEXT:
-        para_content = {
-            "type": BlockType.LIST,
-            "sub_type": BlockType.REF_TEXT,
-            "list_items": [],
-        }
-        for block in _get_ref_text_item_blocks(para_block):
-            item_text = merge_para_text(block)
-            if item_text.strip():
-                para_content["list_items"].append(item_text)
-    elif para_type == BlockType.TITLE:
-        para_content = {
-            "type": ContentType.TEXT,
-            "text": merge_para_text(para_block),
-        }
-        title_level = _get_title_level(para_block)
-        if title_level != 0:
-            para_content["text_level"] = title_level
-    elif para_type == BlockType.INTERLINE_EQUATION:
-        if len(para_block.lines) == 0 or len(para_block.lines[0].spans) == 0:
-            return None
-        para_content = {
-            "type": ContentType.EQUATION,
-            "img_path": f"{img_bucket_path}/{para_block.lines[0].spans[0].image_path}",
-        }
-        if para_block.lines[0].spans[0].content:
-            para_content["text"] = merge_para_text(para_block)
-            para_content["text_format"] = "latex"
-    elif para_type == BlockType.IMAGE:
-        para_content = {"type": ContentType.IMAGE, "img_path": "", BlockType.IMAGE_CAPTION: [], BlockType.IMAGE_FOOTNOTE: []}
-        image_path, image_content = _get_body_data(para_block)
-        if image_path:
-            para_content["img_path"] = f"{img_bucket_path}/{image_path}"
-        if image_content:
-            para_content["content"] = image_content
-        _apply_visual_sub_type(para_content, para_block)
-        for block in para_block.blocks:
-            if block.type == BlockType.IMAGE_BODY:
-                for line in block.lines:
-                    for span in line.spans:
-                        if span.type == ContentType.IMAGE:
-                            if span.image_path:
-                                para_content["img_path"] = f"{img_bucket_path}/{span.image_path}"
-            if block.type == BlockType.IMAGE_CAPTION:
-                para_content[BlockType.IMAGE_CAPTION].append(merge_para_text(block))
-            if block.type == BlockType.IMAGE_FOOTNOTE:
-                para_content[BlockType.IMAGE_FOOTNOTE].append(merge_para_text(block))
-    elif para_type == BlockType.TABLE:
-        para_content = {"type": ContentType.TABLE, "img_path": "", BlockType.TABLE_CAPTION: [], BlockType.TABLE_FOOTNOTE: []}
-        for block in para_block.blocks:
-            if block.type == BlockType.TABLE_BODY:
-                for line in block.lines:
-                    for span in line.spans:
-                        if span.type == ContentType.TABLE:
-                            if span.html:
-                                para_content[BlockType.TABLE_BODY] = _format_embedded_html(span.html, img_bucket_path)
-                            if span.image_path:
-                                para_content["img_path"] = f"{img_bucket_path}/{span.image_path}"
-
-            if block.type == BlockType.TABLE_CAPTION:
-                para_content[BlockType.TABLE_CAPTION].append(merge_para_text(block))
-            if block.type == BlockType.TABLE_FOOTNOTE:
-                para_content[BlockType.TABLE_FOOTNOTE].append(merge_para_text(block))
-    elif para_type == BlockType.CHART:
-        para_content = {
-            "type": ContentType.CHART,
-            "img_path": "",
-            "content": "",
-            BlockType.CHART_CAPTION: [],
-            BlockType.CHART_FOOTNOTE: [],
-        }
-        for block in para_block.blocks:
-            if block.type == BlockType.CHART_BODY:
-                for line in block.lines:
-                    for span in line.spans:
-                        if span.type == ContentType.CHART and span.image_path:
-                            para_content["img_path"] = f"{img_bucket_path}/{span.image_path}"
-            if block.type == BlockType.CHART_CAPTION:
-                para_content[BlockType.CHART_CAPTION].append(merge_para_text(block))
-            if block.type == BlockType.CHART_FOOTNOTE:
-                para_content[BlockType.CHART_FOOTNOTE].append(merge_para_text(block))
-    elif para_type == BlockType.CODE:
-        para_content = {
-            "type": BlockType.CODE,
-            "sub_type": para_block.sub_type,
-            BlockType.CODE_CAPTION: [],
-            BlockType.CODE_FOOTNOTE: [],
-        }
-        for block in para_block.blocks:
-            render_block = _inherit_parent_code_render_metadata(block, para_block)
-            if block.type == BlockType.CODE_BODY:
-                para_content[BlockType.CODE_BODY] = merge_para_text(render_block)
-            if block.type == BlockType.CODE_CAPTION:
-                para_content[BlockType.CODE_CAPTION].append(merge_para_text(block))
-            if block.type == BlockType.CODE_FOOTNOTE:
-                para_content[BlockType.CODE_FOOTNOTE].append(merge_para_text(block))
-
-    if not para_content:
-        return None
-
-    bbox = _build_bbox(para_block.bbox, page_size)
-    if bbox:
-        para_content["bbox"] = bbox
-    para_content["page_idx"] = page_idx
 
     return para_content
 
@@ -584,9 +450,9 @@ def union_make(
             if not para_blocks:
                 continue
             for para_block in para_blocks:
-                para_content = make_blocks_to_content_list(para_block, img_bucket_path, page_idx, page_size)
+                para_content = block_to_content_list(para_block, img_bucket_path, page_idx, page_size)
                 if para_content:
-                    output_content_items.append(para_content)
+                    output_content_items.append(para_content.to_dict())
         elif make_mode == MakeMode.CONTENT_LIST_V2:
             para_blocks = merge_adjacent_ref_text_blocks_for_content((paras_of_layout or []) + (paras_of_discarded or []))
             page_contents: list[dict[str, Any]] = []
