@@ -62,7 +62,6 @@ LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD = 0.8
 not_extract_list = [item.value for item in NotExtractType]
 HYBRID_OCR_DET_TEXT_TYPES = set(not_extract_list)
 HYBRID_ANALYZE_MODES = {"pro", "flash"}
-FLASH_LAYOUT_VISUAL_LABELS = {"image", "chart", "seal"}
 INLINE_FORMULA_CONTAINER_LABELS = {"table", "image", "chart", "display_formula"}
 FLASH_LAYOUT_LABEL_TO_VLM_TYPE = {
     "abstract": BlockType.TEXT,
@@ -83,6 +82,9 @@ FLASH_LAYOUT_LABEL_TO_VLM_TYPE = {
     "vertical_text": BlockType.TEXT,
     "figure_title": BlockType.IMAGE_CAPTION,
     "vision_footnote": BlockType.IMAGE_FOOTNOTE,
+    "image": BlockType.IMAGE,
+    "chart": BlockType.CHART,
+    "seal": BlockType.IMAGE,
     "table": BlockType.TABLE,
     "display_formula": BlockType.EQUATION,
 }
@@ -95,19 +97,13 @@ def _validate_hybrid_mode(mode: str) -> str:
     return mode
 
 
-def _vlm_type_for_flash_layout_label(label: str | None, image_analysis: bool = True) -> str | None:
-    """将 pipeline layout 标签按 image_analysis 开关映射为 VLM 抽取类型。"""
-    if label in FLASH_LAYOUT_VISUAL_LABELS:
-        if not image_analysis and label == "chart":
-            return BlockType.CHART
-        return BlockType.IMAGE
+def _vlm_type_for_flash_layout_label(label: str | None) -> str | None:
+    """将 pipeline layout 标签映射为 mineru-vl-utils 支持的 VLM 抽取类型。"""
     return FLASH_LAYOUT_LABEL_TO_VLM_TYPE.get(label)
 
 
-def _apply_flash_visual_sub_type(block, label: str | None, image_analysis: bool):
-    """为不开启 image analysis 的视觉块补充下游需要透传的子类型。"""
-    if image_analysis:
-        return
+def _apply_flash_visual_sub_type(block, label: str | None):
+    """为视觉块补充下游需要透传的子类型。"""
     if label == "seal":
         block["sub_type"] = "seal"
 
@@ -379,12 +375,12 @@ def _normalize_flash_vlm_angle(angle):
     return 0
 
 
-def _build_flash_vlm_layout_blocks(layout_dets, page_width, page_height, image_analysis=True):
+def _build_flash_vlm_layout_blocks(layout_dets, page_width, page_height):
     """用 pipeline layout 构造 VLM 外部 layout 输入，跳过 VLM 自身 layout 解析。"""
     blocks = []
     for layout_det in layout_dets or []:
         label = layout_det.get("label")
-        vlm_type = _vlm_type_for_flash_layout_label(label, image_analysis)
+        vlm_type = _vlm_type_for_flash_layout_label(label)
         if vlm_type is None:
             continue
         bbox = _layout_det_bbox_to_unit(layout_det, page_width, page_height)
@@ -400,7 +396,7 @@ def _build_flash_vlm_layout_blocks(layout_dets, page_width, page_height, image_a
         except AssertionError as exc:
             logger.warning(f"Skip invalid Hybrid flash VLM block: {layout_det}, error: {exc}")
             continue
-        _apply_flash_visual_sub_type(block, label, image_analysis)
+        _apply_flash_visual_sub_type(block, label)
         blocks.append(block)
     return blocks
 
@@ -1074,7 +1070,6 @@ def doc_analyze(
                                 page_layout_res,
                                 pil_img.width,
                                 pil_img.height,
-                                image_analysis=image_analysis,
                             )
                             for page_layout_res, pil_img in zip(images_layout_res, images_pil_list)
                         ]
@@ -1289,7 +1284,6 @@ async def aio_doc_analyze(
                                 page_layout_res,
                                 pil_img.width,
                                 pil_img.height,
-                                image_analysis=image_analysis,
                             )
                             for page_layout_res, pil_img in zip(images_layout_res, images_pil_list)
                         ]
