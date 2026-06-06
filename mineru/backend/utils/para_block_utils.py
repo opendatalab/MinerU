@@ -2,8 +2,7 @@
 import copy
 from collections.abc import Generator
 
-from ...types import BBox, Block, Line, PageInfo, Span
-from ...utils.enum_class import BlockType
+from ...types import BBox, Block, BlockType, Line, PageInfo, Span
 
 LINE_STOP_FLAG = (".", "!", "?", "。", "！", "？", ")", "）", '"', "”", ":", "：", ";", "；")
 SECTION_MERGE_BARRIER_TYPES = {

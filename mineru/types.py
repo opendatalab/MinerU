@@ -9,20 +9,29 @@ T = TypeVar("T", bound="_DocElement")
 
 class BlockType:
     IMAGE = "image"
-    TABLE = "table"
-    CHART = "chart"
     IMAGE_BODY = "image_body"
-    TABLE_BODY = "table_body"
-    CHART_BODY = "chart_body"
-    CAPTION = "caption"  # generic caption type (e.g., for Word documents)
     IMAGE_CAPTION = "image_caption"
+    IMAGE_FOOTNOTE = "image_footnote"
+
+    TABLE = "table"
+    TABLE_BODY = "table_body"
     TABLE_CAPTION = "table_caption"
+    TABLE_FOOTNOTE = "table_footnote"
+
+    CHART = "chart"
+    CHART_BODY = "chart_body"
     CHART_CAPTION = "chart_caption"
+    CHART_FOOTNOTE = "chart_footnote"
+
+    # Added in vlm 2.5
+    CODE = "code"
+    CODE_BODY = "code_body"
+    CODE_CAPTION = "code_caption"
+    CODE_FOOTNOTE = "code_footnote"
+
+    CAPTION = "caption"  # generic caption type (e.g., for Word documents)
     ALGORITHM_CAPTION = "algorithm_caption"
     FOOTNOTE = "footnote"  # pp_layout中的vision_footnote
-    IMAGE_FOOTNOTE = "image_footnote"
-    TABLE_FOOTNOTE = "table_footnote"
-    CHART_FOOTNOTE = "chart_footnote"
     TEXT = "text"
     TITLE = "title"
     INTERLINE_EQUATION = "interline_equation"
@@ -32,10 +41,6 @@ class BlockType:
     DISCARDED = "discarded"
 
     # Added in vlm 2.5
-    CODE = "code"
-    CODE_BODY = "code_body"
-    CODE_CAPTION = "code_caption"
-    CODE_FOOTNOTE = "code_footnote"
     ALGORITHM = "algorithm"
     REF_TEXT = "ref_text"
     PHONETIC = "phonetic"
@@ -181,55 +186,51 @@ BLOCK_TYPES = {
     BlockType.FORMULA_NUMBER,
 }
 
+NOT_EXTRACT_TYPES = {
+    BlockType.TEXT,
+    BlockType.TITLE,
+    BlockType.HEADER,
+    BlockType.FOOTER,
+    BlockType.PAGE_NUMBER,
+    BlockType.PAGE_FOOTNOTE,
+    BlockType.REF_TEXT,
+    BlockType.TABLE_CAPTION,
+    BlockType.IMAGE_CAPTION,
+    BlockType.TABLE_FOOTNOTE,
+    BlockType.IMAGE_FOOTNOTE,
+    BlockType.CODE_CAPTION,
+    BlockType.PHONETIC,
+}
+
 # NOT_EXTRACT_TYPES = {
 #     BlockType.TEXT,
-#     BlockType.TITLE,
 #     BlockType.HEADER,
 #     BlockType.FOOTER,
 #     BlockType.PAGE_NUMBER,
 #     BlockType.PAGE_FOOTNOTE,
 #     BlockType.REF_TEXT,
-#     BlockType.TABLE_CAPTION,
-#     BlockType.IMAGE_CAPTION,
-#     BlockType.TABLE_FOOTNOTE,
-#     BlockType.IMAGE_FOOTNOTE,
-#     BlockType.CODE_CAPTION,
 #     BlockType.PHONETIC,
-# }
-# HYBRID_OCR_DET_TEXT_TYPES = NOT_EXTRACT_TYPES
-#
-#
-# class NotExtractType(Enum):
-#     TEXT = BlockType.TEXT
-#     TITLE = BlockType.TITLE
-#     HEADER = BlockType.HEADER
-#     FOOTER = BlockType.FOOTER
-#     PAGE_NUMBER = BlockType.PAGE_NUMBER
-#     PAGE_FOOTNOTE = BlockType.PAGE_FOOTNOTE
-#     REF_TEXT = BlockType.REF_TEXT
-#     TABLE_CAPTION = BlockType.TABLE_CAPTION
-#     IMAGE_CAPTION = BlockType.IMAGE_CAPTION
-#     TABLE_FOOTNOTE = BlockType.TABLE_FOOTNOTE
-#     IMAGE_FOOTNOTE = BlockType.IMAGE_FOOTNOTE
-#     CODE_CAPTION = BlockType.CODE_CAPTION
-#     PHONETIC = BlockType.PHONETIC
-#
-#
-# not_extract_list = [item.value for item in NotExtractType] + [
-#     BlockType.CAPTION,
-#     BlockType.FOOTNOTE,
+#     # Titles
+#     BlockType.TITLE,
 #     BlockType.DOC_TITLE,
 #     BlockType.PARAGRAPH_TITLE,
-# ]
-# OCR_DET_LINE_BLOCK_TYPES = set(not_extract_list) | {
+#     # Captions
+#     BlockType.CAPTION,
+#     BlockType.IMAGE_CAPTION,
+#     BlockType.TABLE_CAPTION,
+#     BlockType.CHART_CAPTION,
+#     BlockType.CODE_CAPTION,
+#     # Footnotes
+#     BlockType.FOOTNOTE,
+#     BlockType.IMAGE_FOOTNOTE,
+#     BlockType.TABLE_FOOTNOTE,
+#     BlockType.CHART_FOOTNOTE,
+#     BlockType.CODE_FOOTNOTE,
+#     # Others
 #     BlockType.LIST,
 #     BlockType.INDEX,
 #     BlockType.ABSTRACT,
 #     BlockType.ASIDE_TEXT,
-#     BlockType.PHONETIC,
-#     BlockType.CHART_CAPTION,
-#     BlockType.CHART_FOOTNOTE,
-#     BlockType.CODE_FOOTNOTE,
 # }
 
 

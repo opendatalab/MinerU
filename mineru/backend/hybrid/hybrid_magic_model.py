@@ -8,8 +8,7 @@ from typing import Any
 from loguru import logger
 from PIL import Image
 
-from ...types import EMPTY_BBOX, BBox, Block, IntBBox, Line, Span
-from ...utils.enum_class import BlockType, ContentType, NotExtractType
+from ...types import EMPTY_BBOX, NOT_EXTRACT_TYPES, BBox, Block, BlockType, ContentType, IntBBox, Line, Span
 from ...utils.guess_suffix_or_lang import guess_language_by_text
 from ..utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from ..utils.span_block_fix import fix_text_block
@@ -26,13 +25,16 @@ from ..utils.visual_magic_model_utils import (
     regroup_visual_blocks,
 )
 
-not_extract_list = [item.value for item in NotExtractType] + [
+not_extract_list = [
+    *NOT_EXTRACT_TYPES,
     BlockType.CAPTION,
     BlockType.FOOTNOTE,
     BlockType.DOC_TITLE,
     BlockType.PARAGRAPH_TITLE,
 ]
-OCR_DET_LINE_BLOCK_TYPES = set(not_extract_list) | {
+
+OCR_DET_LINE_BLOCK_TYPES = {
+    *not_extract_list,
     BlockType.LIST,
     BlockType.INDEX,
     BlockType.ABSTRACT,
@@ -173,7 +175,7 @@ class MagicModel:
                 span_type = ContentType.INTERLINE_EQUATION
 
             if span_type == ContentType.TEXT and block_content is None:
-                # 文本类块缺失 content 时按空文本处理，避免 VLM mkcontent 渲染阶段遇到 None。
+                # 文本类块缺失 content 时按空文本处理，避免 VLM 渲染阶段遇到 None。
                 block_content = ""
 
             # code 和 algorithm 类型的块，如果内容中包含行内公式，则需要将块类型切换为 algorithm

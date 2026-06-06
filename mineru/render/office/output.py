@@ -6,9 +6,8 @@ from collections.abc import Generator
 from dataclasses import asdict
 from typing import Any
 
-from ....types import Block, Line, PageInfo, Span
-from ....utils.enum_class import BlockType, ContentType, ContentTypeV2, MakeMode
-from .inline_renderer import (
+from ...types import Block, BlockType, ContentType, ContentTypeV2, Line, Span
+from .merge import (
     _append_hyperlink_part,
     _append_text_part,
     _apply_configured_style,
@@ -357,8 +356,10 @@ def _collect_caption_v2(para_block: Block, caption_type: str) -> list[dict[str, 
     return caption_content
 
 
-def mk_blocks_to_markdown(
-    para_blocks: list[Block], make_mode: MakeMode, img_bucket_path: str = "", page_idx: int | None = None
+def blocks_to_markdown(
+    para_blocks: list[Block],
+    img_bucket_path: str = "",
+    no_rich_content: bool = False,
 ) -> list[str]:
     page_markdown = []
     for para_block in para_blocks:
@@ -383,9 +384,8 @@ def mk_blocks_to_markdown(
             else:
                 para_text = f"{'#' * title_level} {title_text}"
         elif para_type == BlockType.IMAGE:
-            # if make_mode == MakeMode.NLP_MD:
-            #     continue
-            # elif make_mode == MakeMode.MM_MD:
+            if no_rich_content:
+                continue
             for span in _iter_body_spans(para_block, BlockType.IMAGE_BODY, ContentType.IMAGE):
                 if span:
                     para_text += f"![]({img_bucket_path}/{span.image_path})"
@@ -393,17 +393,15 @@ def mk_blocks_to_markdown(
                 para_text += "  \n" + caption_text
 
         elif para_type == BlockType.TABLE:
-            # if make_mode == MakeMode.NLP_MD:
-            #     continue
-            # elif make_mode == MakeMode.MM_MD:
+            if no_rich_content:
+                continue
             for span in _iter_body_spans(para_block, BlockType.TABLE_BODY, ContentType.TABLE):
                 para_text += f"\n{_format_embedded_html(span.html, img_bucket_path)}\n"
             for caption_text in _collect_caption_texts(para_block, BlockType.TABLE_CAPTION):
                 para_text += "  \n" + caption_text
         elif para_type == BlockType.CHART:
-            # if make_mode == MakeMode.NLP_MD:
-            #     continue
-            # elif make_mode == MakeMode.MM_MD:
+            if no_rich_content:
+                continue
             image_path, chart_content = get_body_data(para_block)
             if chart_content:
                 para_text += f"\n{_format_embedded_html(chart_content, img_bucket_path)}\n"
@@ -714,42 +712,3 @@ def merge_para_with_text_v2(para_block: Block) -> list[dict[str, Any]]:
                     rendered_span["type"] = ContentTypeV2.SPAN_EQUATION_INLINE
                 para_content.append(rendered_span)
     return para_content
-
-
-def union_make(
-    pdf_info_dict: list[PageInfo],
-    make_mode: MakeMode,
-    img_bucket_path: str = "",
-) -> list[str] | None:
-    output_content = []
-    for page_info in pdf_info_dict:
-        paras_of_layout = page_info.para_blocks
-        paras_of_discarded = page_info.discarded_blocks
-        page_idx = page_info.page_idx
-        if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
-            if not paras_of_layout:
-                continue
-            page_markdown = mk_blocks_to_markdown(paras_of_layout, make_mode, img_bucket_path, page_idx=page_idx)
-            output_content.extend(page_markdown)
-        elif make_mode == MakeMode.CONTENT_LIST:
-            para_blocks = (paras_of_layout or []) + (paras_of_discarded or [])
-            if not para_blocks:
-                continue
-            for para_block in para_blocks:
-                para_content = make_blocks_to_content_list(para_block, img_bucket_path, page_idx)
-                output_content.append(para_content)
-        elif make_mode == MakeMode.CONTENT_LIST_V2:
-            # https://github.com/drunkpig/llm-webkit-mirror/blob/dev6/docs/specification/output_format/content_list_spec.md
-            para_blocks = (paras_of_layout or []) + (paras_of_discarded or [])
-            page_contents = []
-            if para_blocks:
-                for para_block in para_blocks:
-                    para_content = make_blocks_to_content_list_v2(para_block, img_bucket_path)
-                    page_contents.append(para_content)
-            output_content.append(page_contents)
-
-    if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
-        return "\n\n".join(output_content)
-    elif make_mode in [MakeMode.CONTENT_LIST, MakeMode.CONTENT_LIST_V2]:
-        return output_content
-    return None

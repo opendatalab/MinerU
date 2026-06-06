@@ -6,8 +6,7 @@ import re
 from loguru import logger
 from mineru_vl_utils.structs import ContentBlock, ExtractResult
 
-from ...types import Block, Line, Span
-from ...utils.enum_class import BlockType, ContentType
+from ...types import Block, BlockType, ContentType, Line, Span
 from ...utils.guess_suffix_or_lang import guess_language_by_text
 from ..utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from ..utils.visual_magic_model_utils import (
@@ -106,7 +105,7 @@ class MagicModel:
                 span_type = ContentType.INTERLINE_EQUATION
 
             if span_type == ContentType.TEXT and block_content is None:
-                # 文本类块缺失 content 时按空文本处理，避免下游 mkcontent 遇到 None。
+                # 文本类块缺失 content 时按空文本处理，避免下游 render 遇到 None。
                 block_content = ""
 
             # code 和 algorithm 类型的块，如果内容中包含行内公式，则需要将块类型切换为 algorithm

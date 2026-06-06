@@ -5,8 +5,7 @@ import re
 from copy import deepcopy
 from typing import Any
 
-from ...types import BBox, Block
-from ...utils.enum_class import BlockType
+from ...types import BBox, Block, BlockType
 from .boxbase import bbox_center_distance, bbox_distance, calculate_overlap_area_in_bbox1_area_ratio
 from .table_continuation import is_table_continuation_text
 

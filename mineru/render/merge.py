@@ -9,9 +9,8 @@ Markdown escaping.
 from __future__ import annotations
 
 from ..backend.utils.char_utils import full_to_half_exclude_marks, is_hyphen_at_line_end
-from ..types import Block, Line, Span
+from ..types import Block, BlockType, ContentType, Line, Span
 from ..utils.config_reader import get_latex_delimiter_config
-from ..utils.enum_class import BlockType, ContentType
 from ..utils.language import detect_lang
 
 CJK_LANGS = frozenset({"zh", "ja", "ko"})

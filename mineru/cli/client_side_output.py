@@ -3,21 +3,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from mineru.utils.enum_class import MakeMode
+from mineru.render import render_content_list, render_content_list_v2, render_markdown
 from mineru.utils.title_level_postprocess import finalize_client_side_middle_json
-
 
 PDF_BACKENDS = {"pipeline", "vlm", "hybrid"}
 SUPPORTED_BACKENDS = {*PDF_BACKENDS, "office"}
-
-
-def _select_union_make(backend: str) -> Callable[[list, str, str], Any]:
-    """根据 middle json 后端选择对应的 Markdown/content list 渲染函数。"""
-    from mineru.render import render_markdown
-
-    return render_markdown
 
 
 def _write_json(path: Path, payload: Any) -> None:
@@ -48,9 +40,7 @@ def regenerate_client_side_outputs(
     backend = middle_json.get("_backend")
     pdf_info = middle_json.get("pdf_info")
     if backend not in SUPPORTED_BACKENDS:
-        raise ValueError(
-            f"Unsupported middle json backend for client-side output generation: {backend}"
-        )
+        raise ValueError(f"Unsupported middle json backend for client-side output generation: {backend}")
     if not isinstance(pdf_info, list):
         raise ValueError("middle_json must contain a list field named pdf_info.")
 
@@ -58,20 +48,19 @@ def regenerate_client_side_outputs(
         finalize_client_side_middle_json(middle_json)
         pdf_info = middle_json["pdf_info"]
 
-    make_func = _select_union_make(backend)
     image_dir = "images"
 
     markdown_path.write_text(
-        make_func(pdf_info, MakeMode.MM_MD, image_dir),
+        render_markdown(pdf_info, image_dir),
         encoding="utf-8",
     )
     _write_json(
         content_list_path,
-        make_func(pdf_info, MakeMode.CONTENT_LIST, image_dir),
+        render_content_list(pdf_info, image_dir),
     )
     _write_json(
         content_list_v2_path,
-        make_func(pdf_info, MakeMode.CONTENT_LIST_V2, image_dir),
+        render_content_list_v2(pdf_info, image_dir),
     )
     if backend in PDF_BACKENDS:
         _write_json(middle_json_path, middle_json)

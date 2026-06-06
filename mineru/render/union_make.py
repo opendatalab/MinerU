@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from ..render.markdown import blocks_to_markdown
 from ..types import PageInfo
-from ..utils.enum_class import MakeMode
+from .markdown import blocks_to_markdown
+from .office.output import blocks_to_markdown as office_blocks_to_markdown
 
 Backend = Literal["pipeline", "vlm", "hybrid", "office"]
 
@@ -29,11 +29,11 @@ def _dispatch_make_content_list(
     page_size: Any,
 ) -> Any:
     if backend == "office":
-        from ..backend.office.mkcontent.output_builders import make_blocks_to_content_list
+        from .office.output import make_blocks_to_content_list
 
         return make_blocks_to_content_list(para_block, img_bucket_path, page_idx)
 
-    from ..render.content_list import block_to_content_list
+    from .content_list import block_to_content_list
 
     item = block_to_content_list(para_block, img_bucket_path, page_idx, page_size)
     if item is None:
@@ -52,7 +52,7 @@ def _dispatch_make_content_list_v2(
 
         return make_blocks_to_content_list_v2(para_block, img_bucket_path, page_size)
     if backend == "office":
-        from ..backend.office.mkcontent.output_builders import make_blocks_to_content_list_v2
+        from .office.output import make_blocks_to_content_list_v2
 
         return make_blocks_to_content_list_v2(para_block, img_bucket_path)
     # vlm / hybrid
@@ -84,28 +84,31 @@ def render_markdown(
     pdf_info: list[PageInfo],
     img_bucket_path: str = "",
     *,
-    formula_enable: bool = True,
-    table_enable: bool = True,
-    make_mode: str = MakeMode.MM_MD,
+    formula_enable: bool = True,  # TODO
+    table_enable: bool = True,  # TODO
+    no_rich_content: bool = False,
 ) -> str:
     """Render pages to a single Markdown string."""
     backend = _backend_from_pages(pdf_info)
-    if backend is None:
-        return ""
-    assert backend != "office", "temp not support"
     output_md: list[str] = []
-    for page_info in pdf_info:
-        paras_of_layout = page_info.para_blocks
-        if not paras_of_layout:
-            continue
-        page_md = blocks_to_markdown(
-            para_blocks=paras_of_layout,
-            img_bucket_path=img_bucket_path,
-            table_as_image=not table_enable,
-            formula_as_image=not formula_enable,
-            no_rich_content=(make_mode == MakeMode.NLP_MD),
-        )
-        output_md.extend(page_md)
+    if backend == "office":
+        for page_info in pdf_info:
+            page_md = office_blocks_to_markdown(
+                para_blocks=page_info.para_blocks,
+                img_bucket_path=img_bucket_path,
+                no_rich_content=no_rich_content,
+            )
+            output_md.extend(page_md)
+    else:  # PDF
+        for page_info in pdf_info:
+            page_md = blocks_to_markdown(
+                para_blocks=page_info.para_blocks,
+                img_bucket_path=img_bucket_path,
+                table_as_image=not table_enable,
+                formula_as_image=not formula_enable,
+                no_rich_content=no_rich_content,
+            )
+            output_md.extend(page_md)
     return "\n\n".join(output_md)
 
 

@@ -1,5 +1,4 @@
-from ..types import Block
-from ..utils.enum_class import BlockType, ContentType
+from ..types import Block, BlockType, ContentType
 from .merge import merge_para_text
 from .merge_visual import _build_media_path, merge_visual_para_text
 

@@ -7,10 +7,9 @@ from dataclasses import dataclass, field
 from html import escape
 from typing import Any
 
-from ....types import Block, Span
-from ....utils.config_reader import get_latex_delimiter_config
-from ....utils.enum_class import BlockType, ContentType
-from ...utils.markdown_utils import escape_conservative_markdown_text, escape_text_block_markdown_prefix
+from ...backend.utils.markdown_utils import escape_conservative_markdown_text, escape_text_block_markdown_prefix
+from ...types import Block, BlockType, ContentType, Span
+from ...utils.config_reader import get_latex_delimiter_config
 
 latex_delimiters_config = get_latex_delimiter_config()
 

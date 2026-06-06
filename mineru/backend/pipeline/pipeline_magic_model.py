@@ -5,8 +5,7 @@ from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
 from ...render.merge import _merge_para_text
-from ...types import EMPTY_BBOX, BBox, Block, Line, Span
-from ...utils.enum_class import BlockType, ContentType
+from ...types import EMPTY_BBOX, BBox, Block, BlockType, ContentType, Line, Span
 from ...utils.guess_suffix_or_lang import guess_language_by_text
 from ..utils.boxbase import calculate_overlap_area_2_minbox_area_ratio, calculate_overlap_area_in_bbox1_area_ratio
 from ..utils.span_block_fix import (

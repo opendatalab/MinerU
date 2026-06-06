@@ -3,30 +3,23 @@ import base64
 from collections import Counter
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Any, Final, BinaryIO, Optional
+from typing import Any, BinaryIO, Final, Optional
 
+from loguru import logger
 from lxml import etree
+from PIL import Image
 from pptx import Presentation, presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.oxml.text import CT_TextLineBreak
-from loguru import logger
-from PIL import Image
 
-from mineru.utils.enum_class import BlockType
-from mineru.backend.utils.office_image import (
-    PIL_IMAGE_LOAD_ERRORS,
-    is_vector_image,
-    serialize_vector_image_with_placeholder,
-)
-from mineru.model.docx.tools.math.omml import oMath2Latex
 from mineru.backend.utils.office_chart import extract_chart_html_from_ooxml
+from mineru.backend.utils.office_image import PIL_IMAGE_LOAD_ERRORS, is_vector_image, serialize_vector_image_with_placeholder
+from mineru.model.docx.tools.math.omml import oMath2Latex
 from mineru.model.office_stream import read_stream_bytes_from_start, rewind_stream
 from mineru.model.pptx.package_normalizer import normalize_pptx_package
 from mineru.model.pptx.xycut_pp_sorter import sort_entries
-from mineru.utils.office_rich_text import (
-    OfficeRichTextSegment,
-    build_rich_text_from_segments,
-)
+from mineru.types import BlockType
+from mineru.utils.office_rich_text import OfficeRichTextSegment, build_rich_text_from_segments
 from mineru.utils.pdf_reader import image_to_b64str
 
 IGNORED_NOTES_PLACEHOLDER_TYPES: Final = {
@@ -86,7 +79,6 @@ class _FlattenedShape:
 
 
 class PptxConverter:
-
     def __init__(self):
         self.namespaces = {
             "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
@@ -341,11 +333,7 @@ class PptxConverter:
     @staticmethod
     def _group_shape_transform(shape) -> _SlideTransform:
         group_properties = getattr(shape._element, "grpSpPr", None)
-        xfrm = (
-            getattr(group_properties, "xfrm", None)
-            if group_properties is not None
-            else None
-        )
+        xfrm = getattr(group_properties, "xfrm", None) if group_properties is not None else None
         if xfrm is None:
             return _SlideTransform()
 
@@ -366,12 +354,7 @@ class PptxConverter:
         except Exception:
             return _SlideTransform()
 
-        if (
-            extent_x <= 0
-            or extent_y <= 0
-            or child_extent_x <= 0
-            or child_extent_y <= 0
-        ):
+        if extent_x <= 0 or extent_y <= 0 or child_extent_x <= 0 or child_extent_y <= 0:
             return _SlideTransform()
 
         scale_x = extent_x / child_extent_x
@@ -524,10 +507,7 @@ class PptxConverter:
             return False
 
         covered_area = self._rectangles_union_area(overlap_bboxes)
-        return (
-            covered_area / picture_area
-            >= BACKGROUND_PICTURE_TEXT_COVERAGE_RATIO
-        )
+        return covered_area / picture_area >= BACKGROUND_PICTURE_TEXT_COVERAGE_RATIO
 
     def _should_skip_picture(
         self,
@@ -566,9 +546,7 @@ class PptxConverter:
                 return
 
             for paragraph in shape.text_frame.paragraphs:
-                note_text = self._normalize_text_block_content(
-                    self._build_paragraph_rich_text(paragraph, shape)
-                )
+                note_text = self._normalize_text_block_content(self._build_paragraph_rich_text(paragraph, shape))
                 if not note_text:
                     continue
                 self.cur_page.append(
@@ -628,9 +606,7 @@ class PptxConverter:
                 if (row_idx, col_idx) in occupied_cells:
                     continue
                 # 获取单元格XML以读取跨度信息
-                cell_xml = table_xml.xpath(
-                    f".//a:tbl/a:tr[{row_idx + 1}]/a:tc[{col_idx + 1}]"
-                )
+                cell_xml = table_xml.xpath(f".//a:tbl/a:tr[{row_idx + 1}]/a:tc[{col_idx + 1}]")
 
                 if not cell_xml:
                     continue
@@ -665,11 +641,7 @@ class PptxConverter:
                 # 获取单元格文本内容
                 cell_text = cell.text.strip() if cell.text else ""
                 # 转义HTML特殊字符，防止XSS
-                cell_text = (
-                    cell_text.replace("&", "&amp;")
-                    .replace("<", "&lt;")
-                    .replace(">", "&gt;")
-                )
+                cell_text = cell_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
                 html_parts.append(f"    <{tag}{attr_str}>{cell_text}</{tag}>")
 
@@ -766,9 +738,7 @@ class PptxConverter:
             pil_image.load()
             return image_to_b64str(pil_image, image_format="JPEG")
 
-        if pil_image.mode in {"RGBA", "LA"} or (
-            pil_image.mode == "P" and "transparency" in pil_image.info
-        ):
+        if pil_image.mode in {"RGBA", "LA"} or (pil_image.mode == "P" and "transparency" in pil_image.info):
             return image_to_b64str(pil_image.convert("RGBA"), image_format="PNG")
 
         return image_to_b64str(pil_image.convert("RGB"), image_format="JPEG")
@@ -808,9 +778,7 @@ class PptxConverter:
             return False
 
         for blip in blips:
-            if blip.get(f"{{{RELATIONSHIP_NS}}}embed") or blip.get(
-                f"{{{RELATIONSHIP_NS}}}link"
-            ):
+            if blip.get(f"{{{RELATIONSHIP_NS}}}embed") or blip.get(f"{{{RELATIONSHIP_NS}}}link"):
                 return False
         return True
 
@@ -824,9 +792,7 @@ class PptxConverter:
                 image_part = shape.part.related_part(relationship_id)
                 image_bytes = image_part.blob
             except Exception as e:
-                logger.warning(
-                    f"Warning: embedded image relation {relationship_id} cannot be loaded: {e}"
-                )
+                logger.warning(f"Warning: embedded image relation {relationship_id} cannot be loaded: {e}")
             else:
                 return image_bytes, getattr(image_part, "content_type", None)
 
@@ -1046,9 +1012,7 @@ class PptxConverter:
             if hlink_click is None:
                 return None
 
-            rid = hlink_click.get(
-                "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
-            )
+            rid = hlink_click.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
             if not rid:
                 return None
 
@@ -1098,17 +1062,9 @@ class PptxConverter:
     @staticmethod
     def _strip_math_delimiters(math_text: str) -> str:
         stripped = math_text.strip()
-        if (
-            stripped.startswith("$$")
-            and stripped.endswith("$$")
-            and len(stripped) >= 4
-        ):
+        if stripped.startswith("$$") and stripped.endswith("$$") and len(stripped) >= 4:
             return stripped[2:-2].strip()
-        if (
-            stripped.startswith("$")
-            and stripped.endswith("$")
-            and len(stripped) >= 2
-        ):
+        if stripped.startswith("$") and stripped.endswith("$") and len(stripped) >= 2:
             return stripped[1:-1].strip()
         return stripped
 
@@ -1240,7 +1196,7 @@ class PptxConverter:
         if end_idx < 0:
             return []
 
-        return trimmed_segments[:end_idx + 1]
+        return trimmed_segments[: end_idx + 1]
 
     @staticmethod
     def _normalize_text_block_content(content: str) -> str:
@@ -1406,9 +1362,7 @@ class PptxConverter:
                     ".//p:txBody",
                     namespaces=self.namespaces,
                 )
-                sources.extend(
-                    self._get_font_sources_from_text_body(layout_tx_body, level)
-                )
+                sources.extend(self._get_font_sources_from_text_body(layout_tx_body, level))
 
             try:
                 placeholder_type = shape.placeholder_format.type
@@ -1477,10 +1431,7 @@ class PptxConverter:
                         run_font_size_pt,
                     )
 
-            if (
-                self._resolve_effective_run_bold(run, paragraph_font_sources)
-                is not True
-            ):
+            if self._resolve_effective_run_bold(run, paragraph_font_sources) is not True:
                 all_bold = False
 
         return {
@@ -1629,11 +1580,7 @@ class PptxConverter:
             start = int(list_block.get("start", 1))
         except (TypeError, ValueError):
             start = 1
-        direct_item_count = sum(
-            1
-            for item in list_block.get("content", [])
-            if item.get("type") != BlockType.LIST
-        )
+        direct_item_count = sum(1 for item in list_block.get("content", []) if item.get("type") != BlockType.LIST)
         return start + direct_item_count
 
     def _should_restart_ordered_list(
@@ -1737,32 +1684,19 @@ class PptxConverter:
             return
 
         bold_font_sizes = sorted(
-            {
-                block[_EFFECTIVE_FONT_SIZE_KEY]
-                for block in bold_text_blocks
-            },
+            {block[_EFFECTIVE_FONT_SIZE_KEY] for block in bold_text_blocks},
             reverse=True,
         )
         level2_font_size_pt = bold_font_sizes[0]
-        level2_candidates = [
-            block
-            for block in bold_text_blocks
-            if block[_EFFECTIVE_FONT_SIZE_KEY] == level2_font_size_pt
-        ]
+        level2_candidates = [block for block in bold_text_blocks if block[_EFFECTIVE_FONT_SIZE_KEY] == level2_font_size_pt]
 
         if len(level2_candidates) != 1:
             return
 
-        if (
-            body_font_size_pt is not None
-            and level2_font_size_pt < body_font_size_pt + 4
-        ):
+        if body_font_size_pt is not None and level2_font_size_pt < body_font_size_pt + 4:
             return
 
-        if (
-            len(bold_font_sizes) > 1
-            and level2_font_size_pt < bold_font_sizes[1] + 2
-        ):
+        if len(bold_font_sizes) > 1 and level2_font_size_pt < bold_font_sizes[1] + 2:
             return
 
         level2_candidates[0]["type"] = BlockType.TITLE
@@ -1838,9 +1772,7 @@ class PptxConverter:
             list_info = self._get_paragraph_list_info(shape, paragraph)
 
             if list_info["is_list"]:
-                rich_text = self._normalize_text_block_content(
-                    self._build_paragraph_rich_text(paragraph, shape)
-                )
+                rich_text = self._normalize_text_block_content(self._build_paragraph_rich_text(paragraph, shape))
                 if rich_text:
                     if list_level_base is None:
                         list_level_base = list_info["level"]
@@ -1861,9 +1793,7 @@ class PptxConverter:
             self.list_block_stack.clear()
             list_level_base = None
 
-            p_text = self._normalize_text_block_content(
-                self._build_paragraph_rich_text(paragraph, shape)
-            )
+            p_text = self._normalize_text_block_content(self._build_paragraph_rich_text(paragraph, shape))
             if not p_text:
                 continue
 
@@ -1929,9 +1859,7 @@ class PptxConverter:
         p = paragraph._element
         if p.find(".//a:buChar", namespaces={"a": self.namespaces["a"]}) is not None:
             return (True, "Bullet")
-        elif (
-            p.find(".//a:buAutoNum", namespaces={"a": self.namespaces["a"]}) is not None
-        ):
+        elif p.find(".//a:buAutoNum", namespaces={"a": self.namespaces["a"]}) is not None:
             return (True, "Numbered")
         elif paragraph.level > 0:
             # 很可能是子列表项(缩进表示嵌套)
@@ -1977,9 +1905,7 @@ class PptxConverter:
 
         # 2) 形状级别的列表样式(txBody/a:lstStyle)
         txBody = shape._element.find(".//p:txBody", namespaces=self.namespaces)
-        is_list, kind, detail, start = self._parse_bullet_from_text_body_list_style(
-            txBody, lvl
-        )
+        is_list, kind, detail, start = self._parse_bullet_from_text_body_list_style(txBody, lvl)
         if is_list is not None:
             return {
                 "is_list": is_list,
@@ -1996,9 +1922,7 @@ class PptxConverter:
             layout_ph = self._resolve_layout_placeholder(shape)
 
             if layout_ph is not None:
-                layout_tx = layout_ph._element.find(
-                    ".//p:txBody", namespaces=self.namespaces
-                )
+                layout_tx = layout_ph._element.find(".//p:txBody", namespaces=self.namespaces)
                 (
                     is_list,
                     kind,
@@ -2216,9 +2140,7 @@ class PptxConverter:
         tag = f"a:lvl{lvl + 1}pPr"
         return lstStyle.find(tag, namespaces=self.namespaces)
 
-    def _get_master_text_style_node(
-        self, slide_master, placeholder_type
-    ) -> Optional[etree._Element]:
+    def _get_master_text_style_node(self, slide_master, placeholder_type) -> Optional[etree._Element]:
         """
         获取占位符的相应主文本样式节点。
         大多数内容占位符(BODY/OBJECT)使用'p:bodyStyle'，而标题使用'p:titleStyle'。
@@ -2231,9 +2153,7 @@ class PptxConverter:
         Returns:
             从主幻灯片的'p:txStyles'中匹配的样式节点('p:bodyStyle'、'p:titleStyle'或'p:otherStyle')，或当未定义样式时返回None。
         """
-        txStyles = slide_master._element.find(
-            ".//p:txStyles", namespaces=self.namespaces
-        )
+        txStyles = slide_master._element.find(".//p:txStyles", namespaces=self.namespaces)
         if txStyles is None:
             return None
 

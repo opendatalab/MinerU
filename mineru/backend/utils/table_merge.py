@@ -8,8 +8,7 @@ from typing import Any
 from bs4 import BeautifulSoup, Tag
 
 from ...render.merge import merge_para_text
-from ...types import BBox, Block, PageInfo, Span
-from ...utils.enum_class import BlockType
+from ...types import BBox, Block, BlockType, PageInfo, Span
 from .char_utils import full_to_half
 from .table_continuation import is_table_continuation_text
 

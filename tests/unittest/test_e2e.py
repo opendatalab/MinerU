@@ -2,22 +2,15 @@
 import json
 import os
 from pathlib import Path
-from loguru import logger
+
 from bs4 import BeautifulSoup
 from fuzzywuzzy import fuzz
-from mineru.cli.common import (
-    convert_pdf_bytes_to_bytes,
-    prepare_env,
-    read_fn,
-)
+from loguru import logger
+
+from mineru.backend.pipeline.pipeline_analyze import doc_analyze_streaming as pipeline_doc_analyze_streaming
+from mineru.cli.common import convert_pdf_bytes_to_bytes, prepare_env, read_fn
 from mineru.data.data_reader_writer import FileBasedDataWriter
-from mineru.utils.enum_class import MakeMode
-from mineru.backend.pipeline.pipeline_analyze import (
-    doc_analyze_streaming as pipeline_doc_analyze_streaming,
-)
-from mineru.backend.pipeline.pipeline_middle_json_mkcontent import (
-    union_make as pipeline_union_make,
-)
+from mineru.render import render_content_list, render_markdown
 
 
 def test_pipeline_with_two_config():
@@ -54,9 +47,7 @@ def test_pipeline_with_two_config():
         output_dir,
         parse_method="txt",
     )
-    res_json_path = (
-        Path(__file__).parent / "output" / "test" / "txt" / "test_content_list.json"
-    ).as_posix()
+    res_json_path = (Path(__file__).parent / "output" / "test" / "txt" / "test_content_list.json").as_posix()
     assert_content(res_json_path, parse_method="txt")
     run_pipeline_parse(
         pdf_file_names,
@@ -65,9 +56,7 @@ def test_pipeline_with_two_config():
         output_dir,
         parse_method="ocr",
     )
-    res_json_path = (
-        Path(__file__).parent / "output" / "test" / "ocr" / "test_content_list.json"
-    ).as_posix()
+    res_json_path = (Path(__file__).parent / "output" / "test" / "ocr" / "test_content_list.json").as_posix()
     assert_content(res_json_path, parse_method="ocr")
 
 
@@ -116,13 +105,13 @@ def write_infer_result(
     pdf_info = middle_json["pdf_info"]
     image_dir = str(os.path.basename(local_image_dir))
 
-    md_content_str = pipeline_union_make(pdf_info, MakeMode.MM_MD, image_dir)
+    md_content_str = render_markdown(pdf_info, image_dir)
     md_writer.write_string(
         f"{pdf_file_name}.md",
         md_content_str,
     )
 
-    content_list = pipeline_union_make(pdf_info, MakeMode.CONTENT_LIST, image_dir)
+    content_list = render_content_list(pdf_info, image_dir)
     md_writer.write_string(
         f"{pdf_file_name}_content_list.json",
         json.dumps(content_list, ensure_ascii=False, indent=4),

@@ -21,7 +21,6 @@ from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.render import render_content_list, render_content_list_v2, render_markdown
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
-from mineru.utils.enum_class import MakeMode
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.utils.pdfium_guard import get_loadable_pdfium_page_indices, rewrite_pdf_bytes_with_pdfium
@@ -283,7 +282,11 @@ def _process_output(
     image_dir = str(os.path.basename(local_image_dir))
 
     if f_dump_md:
-        md_content_str = render_markdown(middle_json, image_dir, make_mode=f_make_md_mode)
+        md_content_str = render_markdown(
+            middle_json,
+            image_dir,
+            no_rich_content=(f_make_md_mode != "mm_markdown"),
+        )
         md_writer.write_string(
             f"{pdf_file_name}.md",
             md_content_str,
@@ -664,7 +667,7 @@ def _process_office_doc(
     f_dump_model_output: bool = True,
     f_dump_orig_file: bool = True,
     f_dump_content_list: bool = True,
-    f_make_md_mode: MakeMode = MakeMode.MM_MD,
+    f_make_md_mode: str = "mm_markdown",
 ) -> list[int]:
     need_remove_index = []
     for i, file_bytes in enumerate(pdf_bytes_list):
@@ -733,7 +736,7 @@ def do_parse(
     f_dump_model_output: bool = True,
     f_dump_orig_pdf: bool = True,
     f_dump_content_list: bool = True,
-    f_make_md_mode: MakeMode = MakeMode.MM_MD,
+    f_make_md_mode: str = "mm_markdown",
     start_page_id: int = 0,
     end_page_id: int | None = None,
     image_analysis: bool = True,
@@ -869,7 +872,7 @@ async def aio_do_parse(
     f_dump_model_output: bool = True,
     f_dump_orig_pdf: bool = True,
     f_dump_content_list: bool = True,
-    f_make_md_mode: MakeMode = MakeMode.MM_MD,
+    f_make_md_mode: str = "mm_markdown",
     start_page_id: int = 0,
     end_page_id: int | None = None,
     image_analysis: bool = True,

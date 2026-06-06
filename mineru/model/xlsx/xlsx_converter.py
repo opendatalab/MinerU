@@ -2,33 +2,29 @@
 import collections
 import html
 import posixpath
-import zipfile
 import re
 import xml.etree.ElementTree as ET
+import zipfile
 from io import BytesIO
+from typing import Annotated, BinaryIO, cast
 from urllib.parse import urlparse
-from typing import BinaryIO, Annotated, cast
 
-
+from loguru import logger
 from openpyxl import load_workbook
 from openpyxl.cell.rich_text import CellRichText
+from openpyxl.drawing.image import Image as XlsImage
 from openpyxl.utils.cell import range_to_tuple
 from openpyxl.worksheet.worksheet import Worksheet
-from openpyxl.drawing.image import Image as XlsImage
 from PIL import Image
-from loguru import logger
-from pydantic import PositiveInt, Field, BaseModel, NonNegativeInt
+from pydantic import BaseModel, Field, NonNegativeInt, PositiveInt
 from pydantic.dataclasses import dataclass
 
-from mineru.utils.enum_class import BlockType
-from mineru.backend.utils.office_image import (
-    is_vector_image,
-    serialize_vector_image_with_placeholder,
-)
-from mineru.utils.pdf_reader import image_to_b64str
+from mineru.backend.utils.office_image import is_vector_image, serialize_vector_image_with_placeholder
 from mineru.model.docx.tools.math.omml import oMath2Latex
 from mineru.model.office_stream import read_stream_bytes_from_start, rewind_stream
 from mineru.model.xlsx.package_normalizer import normalize_xlsx_package
+from mineru.types import BlockType
+from mineru.utils.pdf_reader import image_to_b64str
 
 AUTO_GAP_TOLERANCE_CANDIDATES = (0, 1, 2)
 AUTO_GAP_TOLERANCE_PREFERENCE = {1: 0, 0: 1, 2: 2}
@@ -39,18 +35,10 @@ AUTO_GAP_TOLERANCE_PREFERENCE_MARGIN = 0.15
 class DataRegion:
     """表示工作表中非空单元格的边界矩形区域。"""
 
-    min_row: Annotated[
-        PositiveInt, Field(description="Smallest row index (1-based index).")
-    ]
-    max_row: Annotated[
-        PositiveInt, Field(description="Largest row index (1-based index).")
-    ]
-    min_col: Annotated[
-        PositiveInt, Field(description="Smallest column index (1-based index).")
-    ]
-    max_col: Annotated[
-        PositiveInt, Field(description="Largest column index (1-based index).")
-    ]
+    min_row: Annotated[PositiveInt, Field(description="Smallest row index (1-based index).")]
+    max_row: Annotated[PositiveInt, Field(description="Largest row index (1-based index).")]
+    min_col: Annotated[PositiveInt, Field(description="Smallest column index (1-based index).")]
+    max_col: Annotated[PositiveInt, Field(description="Largest column index (1-based index).")]
 
     def width(self) -> PositiveInt:
         """返回数据区域的列数。"""
@@ -105,12 +93,8 @@ class _MergedCellLookup:
 
     def __init__(self, sheet: Worksheet):
         """从工作表合并区域构建 0-based 坐标索引。"""
-        self._merged_row_intervals: dict[int, list[tuple[int, int]]] = (
-            collections.defaultdict(list)
-        )
-        self._hidden_row_intervals: dict[int, list[tuple[int, int]]] = (
-            collections.defaultdict(list)
-        )
+        self._merged_row_intervals: dict[int, list[tuple[int, int]]] = collections.defaultdict(list)
+        self._hidden_row_intervals: dict[int, list[tuple[int, int]]] = collections.defaultdict(list)
         self._anchor_spans: dict[tuple[int, int], tuple[int, int]] = {}
 
         for merged in sheet.merged_cells.ranges:
@@ -128,9 +112,7 @@ class _MergedCellLookup:
                 self._merged_row_intervals[row].append((min_col, max_col))
                 hidden_start_col = min_col + 1 if row == min_row else min_col
                 if hidden_start_col <= max_col:
-                    self._hidden_row_intervals[row].append(
-                        (hidden_start_col, max_col)
-                    )
+                    self._hidden_row_intervals[row].append((hidden_start_col, max_col))
 
         for intervals in self._merged_row_intervals.values():
             intervals.sort()
@@ -248,9 +230,7 @@ class XlsxConverter:
                     self.cur_page = []
                     self._convert_sheet(sheet)
                     sheet_pages.append((sheet.title, self.cur_page))
-                if self._should_emit_sheet_titles(
-                    [page for _, page in sheet_pages]
-                ):
+                if self._should_emit_sheet_titles([page for _, page in sheet_pages]):
                     self._prepend_sheet_titles(sheet_pages)
                 self.pages.extend(page for _, page in sheet_pages)
             else:
@@ -277,10 +257,7 @@ class XlsxConverter:
             return
 
         for sheet in self.workbook.worksheets:
-            if (
-                not self.include_hidden_sheets
-                and sheet.sheet_state != Worksheet.SHEETSTATE_VISIBLE
-            ):
+            if not self.include_hidden_sheets and sheet.sheet_state != Worksheet.SHEETSTATE_VISIBLE:
                 logger.debug(f"跳过隐藏工作表：{sheet.title}")
                 continue
             yield sheet
@@ -315,9 +292,7 @@ class XlsxConverter:
                 anchor = image_info["anchor"]
                 if anchor[0] is None or anchor[1] is None:
                     continue
-                self.table_image_map[anchor].append(
-                    f'<img src="{image_info["base64"]}" />'
-                )
+                self.table_image_map[anchor].append(f'<img src="{image_info["base64"]}" />')
 
             used_cells, visual_artifacts = self._find_tables_in_sheet(sheet)
             visual_artifacts.extend(self._find_charts_in_sheet(sheet))
@@ -449,19 +424,13 @@ class XlsxConverter:
             return anchor._from.row, anchor._from.col
         return None, None
 
-    def _get_block_sort_anchor(
-        self, row: int | None, col: int | None
-    ) -> tuple[int, int]:
+    def _get_block_sort_anchor(self, row: int | None, col: int | None) -> tuple[int, int]:
         if row is None or col is None:
             return (10**9, 10**9)
         return row, col
 
     def _build_block_from_excel_table(self, excel_table: ExcelTable) -> dict:
-        if (
-            self.treat_singleton_as_text
-            and len(excel_table.data) == 1
-            and self._can_render_singleton_as_text(excel_table)
-        ):
+        if self.treat_singleton_as_text and len(excel_table.data) == 1 and self._can_render_singleton_as_text(excel_table):
             return {
                 "type": BlockType.TEXT,
                 "content": excel_table.data[0].text,
@@ -472,9 +441,7 @@ class XlsxConverter:
             "content": self.excel_table_to_html(excel_table),
         }
 
-    def _find_tables_in_sheet(
-        self, sheet: Worksheet
-    ) -> tuple[set[tuple[int, int]], list[tuple[tuple[int, int], int, dict]]]:
+    def _find_tables_in_sheet(self, sheet: Worksheet) -> tuple[set[tuple[int, int]], list[tuple[tuple[int, int], int, dict]]]:
         used_cells = set()
         visual_artifacts = []
         if self.workbook is not None:
@@ -516,9 +483,7 @@ class XlsxConverter:
     def _iter_chart_reference_formulas(self, chart):
         for series in getattr(chart, "ser", []):
             for attr_name in ("cat", "val", "xVal", "yVal", "bubbleSize"):
-                formula = self._extract_chart_range_formula(
-                    getattr(series, attr_name, None)
-                )
+                formula = self._extract_chart_range_formula(getattr(series, attr_name, None))
                 if formula:
                     yield formula
 
@@ -527,15 +492,16 @@ class XlsxConverter:
             if tx_formula:
                 yield tx_formula
 
-    def _parse_chart_reference_formula(
-        self, formula: str, sheet_title: str
-    ) -> tuple[list[int], list[int]] | None:
+    def _parse_chart_reference_formula(self, formula: str, sheet_title: str) -> tuple[list[int], list[int]] | None:
         try:
-            formula_sheet_name, (
-                min_col,
-                min_row,
-                max_col,
-                max_row,
+            (
+                formula_sheet_name,
+                (
+                    min_col,
+                    min_row,
+                    max_col,
+                    max_row,
+                ),
             ) = range_to_tuple(formula)
         except ValueError:
             logger.debug("Skip unsupported chart reference formula: {}", formula)
@@ -549,10 +515,7 @@ class XlsxConverter:
             )
             return None
 
-        if not all(
-            isinstance(bound, int)
-            for bound in (min_col, min_row, max_col, max_row)
-        ):
+        if not all(isinstance(bound, int) for bound in (min_col, min_row, max_col, max_row)):
             logger.debug(
                 "Skip chart reference formula with open-ended bounds: {}",
                 formula,
@@ -563,9 +526,7 @@ class XlsxConverter:
         cols = list(range(min_col - 1, max_col))
         return rows, cols
 
-    def _collect_chart_source_axes(
-        self, sheet: Worksheet, chart
-    ) -> tuple[list[int], list[int]] | None:
+    def _collect_chart_source_axes(self, sheet: Worksheet, chart) -> tuple[list[int], list[int]] | None:
         referenced_rows = set()
         referenced_cols = set()
         formulas_found = False
@@ -621,9 +582,7 @@ class XlsxConverter:
             source_col=source_col,
         )
 
-    def _build_synthetic_table_from_sheet_selection(
-        self, sheet: Worksheet, rows: list[int], cols: list[int]
-    ) -> ExcelTable:
+    def _build_synthetic_table_from_sheet_selection(self, sheet: Worksheet, rows: list[int], cols: list[int]) -> ExcelTable:
         selected_coords = {(row, col) for row in rows for col in cols}
         hidden_merge_cells = set()
         merge_spans = {}
@@ -633,12 +592,8 @@ class XlsxConverter:
             if top_left not in selected_coords:
                 continue
 
-            selected_rows = [
-                row for row in rows if mr.min_row - 1 <= row <= mr.max_row - 1
-            ]
-            selected_cols = [
-                col for col in cols if mr.min_col - 1 <= col <= mr.max_col - 1
-            ]
+            selected_rows = [row for row in rows if mr.min_row - 1 <= row <= mr.max_row - 1]
+            selected_cols = [col for col in cols if mr.min_col - 1 <= col <= mr.max_col - 1]
             if not selected_rows or not selected_cols:
                 continue
 
@@ -674,9 +629,7 @@ class XlsxConverter:
             data=data,
         )
 
-    def _find_charts_in_sheet(
-        self, sheet: Worksheet
-    ) -> list[tuple[tuple[int, int], int, dict]]:
+    def _find_charts_in_sheet(self, sheet: Worksheet) -> list[tuple[tuple[int, int], int, dict]]:
         chart_artifacts = []
         for order, chart in enumerate(getattr(sheet, "_charts", [])):
             axes = self._collect_chart_source_axes(sheet, chart)
@@ -753,18 +706,14 @@ class XlsxConverter:
             )
         )
 
-    def _cell_has_semantic_content(
-        self, excel_table: ExcelTable, cell: ExcelCell
-    ) -> bool:
+    def _cell_has_semantic_content(self, excel_table: ExcelTable, cell: ExcelCell) -> bool:
         return bool(
             cell.text.strip()
             or any(media.strip() for media in cell.media)
             or self._get_cell_math_formulas(excel_table.anchor, excel_cell=cell)
         )
 
-    def _get_table_semantic_positions(
-        self, excel_table: ExcelTable
-    ) -> set[tuple[int, int]]:
+    def _get_table_semantic_positions(self, excel_table: ExcelTable) -> set[tuple[int, int]]:
         semantic_positions = set()
         for cell in excel_table.data:
             if not self._cell_has_semantic_content(excel_table, cell):
@@ -777,12 +726,8 @@ class XlsxConverter:
             )
         return semantic_positions
 
-    def _filter_semantic_subset_tables(
-        self, tables: list[ExcelTable]
-    ) -> list[ExcelTable]:
-        semantic_positions = [
-            self._get_table_semantic_positions(table) for table in tables
-        ]
+    def _filter_semantic_subset_tables(self, tables: list[ExcelTable]) -> list[ExcelTable]:
+        semantic_positions = [self._get_table_semantic_positions(table) for table in tables]
         filtered_tables = []
 
         for table_idx, table in enumerate(tables):
@@ -797,17 +742,12 @@ class XlsxConverter:
         return filtered_tables
 
     def _build_table_content_mask(self, excel_table: ExcelTable) -> list[list[bool]]:
-        mask = [
-            [False for _ in range(excel_table.num_cols)]
-            for _ in range(excel_table.num_rows)
-        ]
+        mask = [[False for _ in range(excel_table.num_cols)] for _ in range(excel_table.num_rows)]
         for cell in excel_table.data:
             if not self._cell_has_semantic_content(excel_table, cell):
                 continue
             for row_idx in range(cell.row, min(cell.row + cell.row_span, excel_table.num_rows)):
-                for col_idx in range(
-                    cell.col, min(cell.col + cell.col_span, excel_table.num_cols)
-                ):
+                for col_idx in range(cell.col, min(cell.col + cell.col_span, excel_table.num_cols)):
                     mask[row_idx][col_idx] = True
         return mask
 
@@ -825,27 +765,18 @@ class XlsxConverter:
 
     @staticmethod
     def _is_real_singleton_table(excel_table: ExcelTable) -> bool:
-        if (
-            excel_table.num_rows != 1
-            or excel_table.num_cols != 1
-            or len(excel_table.data) != 1
-        ):
+        if excel_table.num_rows != 1 or excel_table.num_cols != 1 or len(excel_table.data) != 1:
             return False
         cell = excel_table.data[0]
         return cell.row_span == 1 and cell.col_span == 1
 
-    def _summarize_table_for_gap_selection(
-        self, excel_table: ExcelTable
-    ) -> dict[str, float | int | bool]:
+    def _summarize_table_for_gap_selection(self, excel_table: ExcelTable) -> dict[str, float | int | bool]:
         table_area = excel_table.num_rows * excel_table.num_cols
         content_mask = self._build_table_content_mask(excel_table)
         content_area = sum(sum(1 for flag in row if flag) for row in content_mask)
         blank_ratio = 1.0 - (content_area / max(table_area, 1))
 
-        interior_blank_rows = [
-            not any(content_mask[row_idx])
-            for row_idx in range(1, max(excel_table.num_rows - 1, 1))
-        ]
+        interior_blank_rows = [not any(content_mask[row_idx]) for row_idx in range(1, max(excel_table.num_rows - 1, 1))]
         interior_blank_cols = [
             not any(content_mask[row_idx][col_idx] for row_idx in range(excel_table.num_rows))
             for col_idx in range(1, max(excel_table.num_cols - 1, 1))
@@ -872,9 +803,7 @@ class XlsxConverter:
             "real_singleton": self._is_real_singleton_table(excel_table),
         }
 
-    def _summarize_candidate_tables(
-        self, tables: list[ExcelTable]
-    ) -> dict[str, float | int]:
+    def _summarize_candidate_tables(self, tables: list[ExcelTable]) -> dict[str, float | int]:
         table_count = len(tables)
         real_singleton_count = 0
         severe_separator_count = 0
@@ -891,18 +820,12 @@ class XlsxConverter:
             blank_ratio = float(table_summary["blank_ratio"])
             interior_blank_row_count = int(table_summary["interior_blank_row_count"])
             interior_blank_col_count = int(table_summary["interior_blank_col_count"])
-            max_consecutive_interior_blank_lines = int(
-                table_summary["max_consecutive_interior_blank_lines"]
-            )
+            max_consecutive_interior_blank_lines = int(table_summary["max_consecutive_interior_blank_lines"])
 
             total_area += table_area
             weighted_blank_numerator += table_area * blank_ratio
-            total_interior_blank_lines += (
-                interior_blank_row_count + interior_blank_col_count
-            )
-            total_possible_interior_lines += max(table.num_rows - 2, 0) + max(
-                table.num_cols - 2, 0
-            )
+            total_interior_blank_lines += interior_blank_row_count + interior_blank_col_count
+            total_possible_interior_lines += max(table.num_rows - 2, 0) + max(table.num_cols - 2, 0)
             for row_idx in range(table.anchor[1], table.anchor[1] + table.num_rows):
                 row_cover_count[row_idx] += 1
 
@@ -914,23 +837,18 @@ class XlsxConverter:
                 severe_separator_count += 1
 
         occupied_row_count = max(len(row_cover_count), 1)
-        row_overlap_excess_ratio = sum(
-            max(0, count - 1) for count in row_cover_count.values()
-        ) / occupied_row_count
+        row_overlap_excess_ratio = sum(max(0, count - 1) for count in row_cover_count.values()) / occupied_row_count
 
         return {
             "real_singleton_ratio": real_singleton_count / max(table_count, 1),
             "weighted_blank_ratio": weighted_blank_numerator / max(total_area, 1),
-            "interior_blank_line_ratio": total_interior_blank_lines
-            / max(total_possible_interior_lines, 1),
+            "interior_blank_line_ratio": total_interior_blank_lines / max(total_possible_interior_lines, 1),
             "sparse_large_table_ratio": sparse_large_table_count / max(table_count, 1),
             "severe_separator_count": severe_separator_count,
             "row_overlap_excess_ratio": row_overlap_excess_ratio,
         }
 
-    def _select_best_gap_candidate(
-        self, sheet: Worksheet
-    ) -> tuple[int, float, list[ExcelTable]]:
+    def _select_best_gap_candidate(self, sheet: Worksheet) -> tuple[int, float, list[ExcelTable]]:
         candidates = []
         for gap_tolerance in AUTO_GAP_TOLERANCE_CANDIDATES:
             raw_tables = self._find_data_tables_with_gap_raw(sheet, gap_tolerance)
@@ -956,8 +874,7 @@ class XlsxConverter:
         near_best_candidates = [
             candidate
             for candidate in candidates
-            if float(candidate["penalty"])
-            <= (min_penalty + AUTO_GAP_TOLERANCE_PREFERENCE_MARGIN)
+            if float(candidate["penalty"]) <= (min_penalty + AUTO_GAP_TOLERANCE_PREFERENCE_MARGIN)
         ]
 
         best_candidate = min(
@@ -1065,12 +982,7 @@ class XlsxConverter:
         if self.workbook is not None:
             for image_info in self.sheet_images:
                 r, c = image_info["anchor"]
-                if (
-                    used_cells
-                    and r is not None
-                    and c is not None
-                    and (r, c) in used_cells
-                ):
+                if used_cells and r is not None and c is not None and (r, c) in used_cells:
                     continue
 
                 self.cur_page.append(
@@ -1095,16 +1007,10 @@ class XlsxConverter:
             return self._select_best_tables(sheet)
         return self._find_data_tables_with_gap(sheet, self.gap_tolerance)
 
-    def _find_data_tables_with_gap(
-        self, sheet: Worksheet, gap_tolerance: int
-    ) -> list[ExcelTable]:
-        return self._filter_semantic_subset_tables(
-            self._find_data_tables_with_gap_raw(sheet, gap_tolerance)
-        )
+    def _find_data_tables_with_gap(self, sheet: Worksheet, gap_tolerance: int) -> list[ExcelTable]:
+        return self._filter_semantic_subset_tables(self._find_data_tables_with_gap_raw(sheet, gap_tolerance))
 
-    def _find_data_tables_with_gap_raw(
-        self, sheet: Worksheet, gap_tolerance: int
-    ) -> list[ExcelTable]:
+    def _find_data_tables_with_gap_raw(self, sheet: Worksheet, gap_tolerance: int) -> list[ExcelTable]:
         """在固定 gap_tolerance 下查找工作表中的所有数据表格。"""
         bounds: DataRegion = self._find_true_data_bounds(sheet)  # 获取真实数据边界
         tables: list[ExcelTable] = []  # 存储已发现的表格
@@ -1140,10 +1046,7 @@ class XlsxConverter:
         for cell in sheet._cells.values():
             if cell.value is None:
                 continue
-            if not (
-                bounds.min_row <= cell.row <= bounds.max_row
-                and bounds.min_col <= cell.column <= bounds.max_col
-            ):
+            if not (bounds.min_row <= cell.row <= bounds.max_row and bounds.min_col <= cell.column <= bounds.max_col):
                 continue
             positions.append((cell.row - 1, cell.column - 1))
         return sorted(positions)
@@ -1175,12 +1078,8 @@ class XlsxConverter:
 
         # 将合并单元格的范围也纳入边界计算
         for merged in sheet.merged_cells.ranges:
-            min_row = (
-                merged.min_row if min_row is None else min(min_row, merged.min_row)
-            )
-            min_col = (
-                merged.min_col if min_col is None else min(min_col, merged.min_col)
-            )
+            min_row = merged.min_row if min_row is None else min(min_row, merged.min_row)
+            min_col = merged.min_col if min_col is None else min(min_col, merged.min_col)
             max_row = max(max_row, merged.max_row)
             max_col = max(max_col, merged.max_col)
 
@@ -1345,9 +1244,7 @@ class XlsxConverter:
 
         zip_target_path = posixpath.normpath(posixpath.join("xl", cell_image_map.get(image_id, "")))
         if self.zf is None or zip_target_path not in self.zf.namelist():
-            logger.warning(
-                f"图片目标文件不存在，image_id={image_id}, target={zip_target_path}"
-            )
+            logger.warning(f"图片目标文件不存在，image_id={image_id}, target={zip_target_path}")
             return ""
 
         try:
@@ -1365,9 +1262,7 @@ class XlsxConverter:
                     img_base64 = image_to_b64str(pil_image, image_format="JPEG")
                 return rf'<img src="{img_base64}" />'
         except Exception as e:
-            logger.warning(
-                f"读取单元格图片失败，image_id={image_id}, target={zip_target_path}, error={e}"
-            )
+            logger.warning(f"读取单元格图片失败，image_id={image_id}, target={zip_target_path}, error={e}")
             return ""
 
     def _load_cell_image_mappings(self):
@@ -1379,10 +1274,7 @@ class XlsxConverter:
         cell_image_embed_to_name = {}
         cellimages_path = "xl/cellimages.xml"
         rels_path = "xl/_rels/cellimages.xml.rels"
-        if (
-            cellimages_path not in self.zf.namelist()
-            or rels_path not in self.zf.namelist()
-        ):
+        if cellimages_path not in self.zf.namelist() or rels_path not in self.zf.namelist():
             return {}
 
         try:
@@ -1403,25 +1295,21 @@ class XlsxConverter:
                     continue
 
                 image_name = c_nv_pr.attrib.get("name")
-                embed_id = blip.attrib.get(f'{{{ns["r"]}}}embed')
+                embed_id = blip.attrib.get(f"{{{ns['r']}}}embed")
                 if image_name and embed_id:
                     cell_image_embed_to_name[embed_id] = image_name
 
             with self.zf.open(rels_path) as f:
                 rel_root = ET.parse(f).getroot()
 
-            rel_ns = {
-                "pr": "http://schemas.openxmlformats.org/package/2006/relationships"
-            }
+            rel_ns = {"pr": "http://schemas.openxmlformats.org/package/2006/relationships"}
             for rel in rel_root.findall("pr:Relationship", rel_ns):
                 rel_id = rel.attrib.get("Id")
                 target = rel.attrib.get("Target")
                 if rel_id and target:
                     image_name = cell_image_embed_to_name.get(rel_id)
                     if not image_name:
-                        logger.warning(
-                            f"跳过缺少 cellImage 名称映射的关系: {rel_id}"
-                        )
+                        logger.warning(f"跳过缺少 cellImage 名称映射的关系: {rel_id}")
                         continue
                     self.cell_image_map[image_name] = target
 
@@ -1433,12 +1321,7 @@ class XlsxConverter:
 
     @staticmethod
     def _escape_text_with_line_breaks(text: str) -> str:
-        return (
-            html.escape(text)
-            .replace("\r\n", "\n")
-            .replace("\r", "\n")
-            .replace("\n", "<br>")
-        )
+        return html.escape(text).replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br>")
 
     @staticmethod
     def _get_cell_hyperlink_target(cell) -> str:
@@ -1521,17 +1404,13 @@ class XlsxConverter:
         if cell.value is None:
             return "", False
 
-        link_target = self._sanitize_hyperlink_target(
-            self._get_cell_hyperlink_target(cell)
-        )
+        link_target = self._sanitize_hyperlink_target(self._get_cell_hyperlink_target(cell))
 
         if isinstance(cell.value, CellRichText):
             html_parts = []
             for part in cell.value:
                 if hasattr(part, "text"):
-                    part_text = self._escape_text_with_line_breaks(
-                        str(getattr(part, "text", ""))
-                    )
+                    part_text = self._escape_text_with_line_breaks(str(getattr(part, "text", "")))
                     html_parts.append(
                         self._apply_inline_font_tags(
                             part_text,
@@ -1565,11 +1444,7 @@ class XlsxConverter:
                 style["text-decoration"] = "underline"
             if cell.font.strike:
                 style["text-decoration"] = "line-through"
-            if (
-                cell.font.color
-                and hasattr(cell.font.color, "rgb")
-                and cell.font.color.rgb
-            ):
+            if cell.font.color and hasattr(cell.font.color, "rgb") and cell.font.color.rgb:
                 # Color might be ARGB "FF000000"
                 color = cell.font.color.rgb
                 if isinstance(color, str) and len(color) == 8:
@@ -1586,11 +1461,7 @@ class XlsxConverter:
         if cell.fill and cell.fill.patternType == "solid" and cell.fill.fgColor:
             # handle bg color
             color = cell.fill.fgColor.rgb
-            if (
-                hasattr(cell.fill.fgColor, "type")
-                and cell.fill.fgColor.type == "rgb"
-                and color
-            ):
+            if hasattr(cell.fill.fgColor, "type") and cell.fill.fgColor.type == "rgb" and color:
                 if isinstance(color, str) and len(color) == 8:
                     style["background-color"] = "#" + color[2:]
         return style
@@ -1607,6 +1478,4 @@ class XlsxConverter:
         返回：
             ContentLayer.INVISIBLE 或 None。
         """
-        return (
-            None if sheet.sheet_state == Worksheet.SHEETSTATE_VISIBLE else "INVISIBLE"
-        )
+        return None if sheet.sheet_state == Worksheet.SHEETSTATE_VISIBLE else "INVISIBLE"

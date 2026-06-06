@@ -3,8 +3,7 @@ from __future__ import annotations
 
 import copy
 
-from ...types import Block, PageInfo
-from ...utils.enum_class import BlockType, ContentType
+from ...types import Block, BlockType, ContentType, PageInfo
 from ...utils.language import detect_lang
 
 LINE_STOP_FLAG = (".", "!", "?", "。", "！", "？", ")", "）", '"', "”", ":", "：", ";", "；")

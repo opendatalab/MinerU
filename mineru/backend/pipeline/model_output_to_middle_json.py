@@ -2,9 +2,8 @@
 from typing import Any
 
 from ...data.data_reader_writer import DataWriter
-from ...types import Block, PageInfo, Span
+from ...types import Block, BlockType, ContentType, PageInfo, Span
 from ...utils.cut_image import cut_image_and_table
-from ...utils.enum_class import BlockType, ContentType
 from ...utils.hash_utils import bytes_md5
 from ...utils.pdfium_guard import pdfium_guard
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info

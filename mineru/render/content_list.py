@@ -1,8 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
-from ..types import EMPTY_BBOX, BBox, Block, ContentItem, IntBBox
-from ..utils.enum_class import BlockType, ContentType
+from ..types import EMPTY_BBOX, BBox, Block, BlockType, ContentItem, ContentType, IntBBox
 from .markdown import _build_media_path, _get_title_level
 from .merge import _merge_para_text, merge_para_text
 from .merge_visual import _format_embedded_html, _inherit_parent_code_render_metadata, _normalize_visual_content

@@ -3,10 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from loguru import logger
-
-from ...render.content_list import block_to_content_list
-from ...render.markdown import _get_title_level, blocks_to_markdown
+from ...render.markdown import _get_title_level
 from ...render.merge import (
     CJK_LANGS,
     _collect_text_for_lang_detection,
@@ -14,11 +11,9 @@ from ...render.merge import (
     _normalize_text_content,
 )
 from ...render.merge_visual import _format_embedded_html, _normalize_visual_content
-from ...types import BBox, Block, IntBBox, Line, PageInfo
-from ...utils.enum_class import BlockType, ContentType, ContentTypeV2, MakeMode
+from ...types import BBox, Block, BlockType, ContentType, ContentTypeV2, IntBBox, Line
 from ...utils.language import detect_lang
 from ..utils.char_utils import is_hyphen_at_line_end
-from ..utils.markdown_utils import escape_conservative_markdown_text
 
 
 def _apply_visual_sub_type(para_content: dict[str, Any], para_block: Block) -> None:
@@ -421,61 +416,3 @@ def make_blocks_to_content_list_v2(para_block: Block, img_bucket_path: str, page
         para_content["bbox"] = bbox
 
     return para_content
-
-
-def union_make(
-    pdf_info_dict: list[PageInfo],
-    make_mode: str,
-    img_bucket_path: str = "",
-) -> str | list[dict[str, Any]] | list[list[dict[str, Any]]] | None:
-    output_markdowns: list[str] = []
-    output_content_items: list[dict[str, Any]] = []
-    output_content_lists: list[list[dict[str, Any]]] = []
-    for page_info in pdf_info_dict:
-        paras_of_layout = page_info.para_blocks
-        paras_of_discarded = page_info.discarded_blocks
-        page_idx = page_info.page_idx
-        page_size = page_info.page_size
-        if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
-            if not paras_of_layout:
-                continue
-            page_markdown = blocks_to_markdown(
-                para_blocks=paras_of_layout,
-                img_bucket_path=img_bucket_path,
-                no_rich_content=(make_mode == MakeMode.NLP_MD),
-            )
-            output_markdowns.extend(page_markdown)
-        elif make_mode == MakeMode.CONTENT_LIST:
-            para_blocks = merge_adjacent_ref_text_blocks_for_content((paras_of_layout or []) + (paras_of_discarded or []))
-            if not para_blocks:
-                continue
-            for para_block in para_blocks:
-                para_content = block_to_content_list(para_block, img_bucket_path, page_idx, page_size)
-                if para_content:
-                    output_content_items.append(para_content.to_dict())
-        elif make_mode == MakeMode.CONTENT_LIST_V2:
-            para_blocks = merge_adjacent_ref_text_blocks_for_content((paras_of_layout or []) + (paras_of_discarded or []))
-            page_contents: list[dict[str, Any]] = []
-            if para_blocks:
-                for para_block in para_blocks:
-                    para_content = make_blocks_to_content_list_v2(para_block, img_bucket_path, page_size)
-                    if para_content:
-                        page_contents.append(para_content)
-            output_content_lists.append(page_contents)
-
-    if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
-        return "\n\n".join(output_markdowns)
-    elif make_mode == MakeMode.CONTENT_LIST:
-        return output_content_items
-    elif make_mode == MakeMode.CONTENT_LIST_V2:
-        return output_content_lists
-    else:
-        logger.error(f"Unsupported make mode: {make_mode}")
-        return None
-
-
-def escape_special_markdown_char(content: str) -> str:
-    """
-    转义正文里对markdown语法有特殊意义的字符
-    """
-    return escape_conservative_markdown_text(content)

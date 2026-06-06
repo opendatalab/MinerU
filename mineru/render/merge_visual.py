@@ -5,8 +5,7 @@ from copy import deepcopy
 from html import unescape
 from typing import Any
 
-from ..types import Block
-from ..utils.enum_class import BlockType, ContentType
+from ..types import Block, BlockType, ContentType
 from .merge import inline_left, inline_right, merge_para_text
 
 # --------------------------------------------------------------------------- #

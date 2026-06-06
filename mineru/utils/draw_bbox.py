@@ -9,8 +9,7 @@ from loguru import logger
 from pypdf import PageObject, PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
-from ..types import BBox, Block, PageInfo, Span
-from .enum_class import BlockType, ContentType
+from ..types import BBox, Block, BlockType, ContentType, PageInfo, Span
 
 # 文本类 block 共用 text bbox 样式，避免新增文本形态时遗漏多个绘制入口。
 TEXT_LIKE_BLOCK_TYPES_FOR_BBOX = {

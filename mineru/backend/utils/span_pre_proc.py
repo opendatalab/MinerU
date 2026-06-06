@@ -11,8 +11,7 @@ import cv2
 import numpy as np
 from loguru import logger
 
-from ...types import BBox, Span
-from ...utils.enum_class import BlockType, ContentType
+from ...types import BBox, BlockType, ContentType, Span
 from ...utils.image_utils import calculate_contrast
 from ...utils.pdf_image_tools import get_crop_img
 from ...utils.pdf_text_tool import get_lines_from_chars, get_page_chars

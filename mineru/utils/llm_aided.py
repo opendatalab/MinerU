@@ -10,8 +10,7 @@ from loguru import logger
 from openai import OpenAI
 
 from ..render.merge import merge_para_text
-from ..types import BBox, Block, PageInfo
-from .enum_class import BlockType
+from ..types import BBox, Block, BlockType, PageInfo
 
 TITLE_BLOCK_TYPES = {
     BlockType.TITLE,

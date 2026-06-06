@@ -1,6 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-from ...types import Block, Line, Span
-from ...utils.enum_class import ContentType
+from ...types import Block, ContentType, Line, Span
 from ...utils.ocr_utils import _is_overlaps_x_exceeds_threshold, _is_overlaps_y_exceeds_threshold
 
 VERTICAL_SPAN_HEIGHT_TO_WIDTH_RATIO_THRESHOLD = 2

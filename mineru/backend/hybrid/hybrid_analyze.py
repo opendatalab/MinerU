@@ -17,10 +17,10 @@ from PIL import Image
 from tqdm import tqdm
 
 from ...data.data_reader_writer import DataWriter
-from ...types import BBox, PageInfo
+from ...types import NOT_EXTRACT_TYPES, BBox, PageInfo
+from ...types import BlockType as MineruBlockType
 from ...utils.config_reader import get_device, get_processing_window_size
-from ...utils.enum_class import BlockType as MineruBlockType
-from ...utils.enum_class import ImageType, NotExtractType
+from ...utils.enum_class import ImageType
 from ...utils.model_utils import clean_memory, crop_img, get_vram
 from ...utils.ocr_utils import (
     OcrConfidence,
@@ -64,13 +64,10 @@ MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 8
 LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD = 0.8
 
-not_extract_list = [item.value for item in NotExtractType]
-HYBRID_OCR_DET_TEXT_TYPES = set(not_extract_list)
-
 
 def _is_hybrid_ocr_det_candidate(block: dict[str, Any]) -> bool:
     """判断 Hybrid 文本类块是否需要 OCR det 生成行级视觉信息。"""
-    return (block.get("type") or block.get("label")) in HYBRID_OCR_DET_TEXT_TYPES
+    return (block.get("type") or block.get("label")) in NOT_EXTRACT_TYPES
 
 
 def ocr_classify(
@@ -812,7 +809,7 @@ def doc_analyze(
                         with predictor_execution_guard(predictor):
                             window_model_list = predictor.batch_two_step_extract(
                                 images=images_pil_list,
-                                not_extract_list=not_extract_list,
+                                not_extract_list=list(NOT_EXTRACT_TYPES),
                                 image_analysis=image_analysis,
                             )
                         window_model_list, hybrid_pipeline_model = _process_ocr_and_formulas(
@@ -963,7 +960,7 @@ async def aio_doc_analyze(
                         async with aio_predictor_execution_guard(predictor):
                             window_model_list = await predictor.aio_batch_two_step_extract(
                                 images=images_pil_list,
-                                not_extract_list=not_extract_list,
+                                not_extract_list=list(NOT_EXTRACT_TYPES),
                                 image_analysis=image_analysis,
                             )
                         window_model_list, hybrid_pipeline_model = await asyncio.to_thread(

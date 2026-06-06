@@ -11,26 +11,21 @@ from typing import Any
 from mineru.render import render_content_list, render_content_list_v2, render_markdown
 from mineru.types import PageInfo
 
-from ..utils.enum_class import MakeMode
 from ..utils.pdf_document import PDFDocument
 
 _INLINE_IMAGE_DATA_URI_RE = re.compile(r"data:image/([^;]+);base64,([^\"]+)", re.DOTALL)
 
 
-def _render_flash_markdown(pages: list, mode) -> str | list:
+def _render_flash_markdown(pages: list) -> str | list:
     """Minimal markdown renderer for flash: just concatenate text from spans."""
-    from ..utils.enum_class import MakeMode
-
-    if mode == MakeMode.MM_MD:
-        parts: list[str] = []
-        for p in pages:
-            for block in getattr(p, "para_blocks", []):
-                for line in getattr(block, "lines", []):
-                    for span in getattr(line, "spans", []):
-                        if getattr(span, "content", ""):
-                            parts.append(span.content)
-        return "\n\n".join(parts)
-    return []
+    parts: list[str] = []
+    for p in pages:
+        for block in getattr(p, "para_blocks", []):
+            for line in getattr(block, "lines", []):
+                for span in getattr(line, "spans", []):
+                    if getattr(span, "content", ""):
+                        parts.append(span.content)
+    return "\n\n".join(parts)
 
 
 @dataclass
@@ -67,7 +62,7 @@ class ParseResult:
 
     def markdown(self) -> str:
         if self._backend == "flash":
-            return _render_flash_markdown(self.pages, MakeMode.MM_MD)  # type: ignore[return-value]
+            return _render_flash_markdown(self.pages)
         return render_markdown(self.pages)
 
     def markdown_with_markers(self, *, page_count: int | None = None) -> str:

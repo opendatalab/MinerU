@@ -7,8 +7,7 @@ import re
 from loguru import logger
 
 from ...data.data_reader_writer import DataWriter
-from ...types import Block, Span
-from ...utils.enum_class import BlockType, ContentType
+from ...types import Block, BlockType, ContentType, Span
 from ...utils.hash_utils import str_sha256
 from .office_image import is_vector_image_part, serialize_office_image
 

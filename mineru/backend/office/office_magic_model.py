@@ -6,8 +6,7 @@ import re
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from ...types import EMPTY_BBOX, Block, Line, Span
-from ...utils.enum_class import BlockType, ContentType
+from ...types import EMPTY_BBOX, Block, BlockType, ContentType, Line, Span
 from ..utils.magic_model_utils import tie_up_category_by_index
 
 

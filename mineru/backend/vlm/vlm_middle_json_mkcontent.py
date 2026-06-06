@@ -1,16 +1,12 @@
 # Copyright (c) Opendatalab. All rights reserved.
-import os
 from typing import Any
 
 from loguru import logger
 
-from ...render.content_list import block_to_content_list
-from ...render.markdown import _get_title_level, blocks_to_markdown
+from ...render.markdown import _get_title_level
 from ...render.merge import _normalize_text_content
 from ...render.merge_visual import _build_media_path, _format_embedded_html
-from ...types import Block, Line, PageInfo
-from ...utils.config_reader import get_formula_enable, get_table_enable
-from ...utils.enum_class import BlockType, ContentType, ContentTypeV2, MakeMode
+from ...types import Block, BlockType, ContentType, ContentTypeV2, Line
 from ...utils.language import detect_lang
 from ..utils.char_utils import is_hyphen_at_line_end
 
@@ -368,55 +364,3 @@ def merge_para_with_text_v2(para_block: Block) -> list[dict[str, Any]]:
                 else:
                     logger.warning(f"Unknown span type in merge_para_with_text_v2: {span_type}")
     return para_content
-
-
-def union_make(
-    pdf_info_dict: list[PageInfo],
-    make_mode: str,
-    img_bucket_path: str = "",
-) -> str | list | None:
-    formula_enable = get_formula_enable(os.getenv("MINERU_VLM_FORMULA_ENABLE", "True").lower() == "true")
-    table_enable = get_table_enable(os.getenv("MINERU_VLM_TABLE_ENABLE", "True").lower() == "true")
-
-    output_content = []
-    for page_info in pdf_info_dict:
-        paras_of_layout = page_info.para_blocks
-        paras_of_discarded = page_info.discarded_blocks
-        page_idx = page_info.page_idx
-        page_size = page_info.page_size
-        assert page_size is not None
-
-        if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
-            if not paras_of_layout:
-                continue
-            page_markdown = blocks_to_markdown(
-                para_blocks=paras_of_layout,
-                img_bucket_path=img_bucket_path,
-                table_as_image=not table_enable,
-                formula_as_image=not formula_enable,
-                no_rich_content=(make_mode == MakeMode.NLP_MD),
-            )
-            output_content.extend(page_markdown)
-        elif make_mode == MakeMode.CONTENT_LIST:
-            para_blocks = (paras_of_layout or []) + (paras_of_discarded or [])
-            if not para_blocks:
-                continue
-            for para_block in para_blocks:
-                para_content = block_to_content_list(para_block, img_bucket_path, page_idx, page_size)
-                if para_content is not None:
-                    output_content.append(para_content.to_dict())
-        elif make_mode == MakeMode.CONTENT_LIST_V2:
-            # https://github.com/drunkpig/llm-webkit-mirror/blob/dev6/docs/specification/output_format/content_list_spec.md
-            para_blocks = (paras_of_layout or []) + (paras_of_discarded or [])
-            page_contents = []
-            if para_blocks:
-                for para_block in para_blocks:
-                    para_content = make_blocks_to_content_list_v2(para_block, img_bucket_path, page_size)
-                    page_contents.append(para_content)
-            output_content.append(page_contents)
-
-    if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
-        return "\n\n".join(output_content)
-    elif make_mode in [MakeMode.CONTENT_LIST, MakeMode.CONTENT_LIST_V2]:
-        return output_content
-    return None
