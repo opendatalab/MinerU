@@ -185,7 +185,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     <tr>
       <th rowspan="2">Parsing Backend</th>
       <th rowspan="2">pipeline</th>
-      <th colspan="2">*-auto-engine</th>
+      <th colspan="2">*-engine</th>
       <th colspan="2">*-http-client</th>
     </tr>
     <tr>

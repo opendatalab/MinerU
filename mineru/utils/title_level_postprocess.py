@@ -74,6 +74,7 @@ def finalize_client_side_middle_json(middle_json: dict[str, Any]) -> dict[str, A
 
         finalize_middle_json_from_preproc(
             pdf_info,
+            hybrid_mode=middle_json.get("_hybrid_mode", "pro"),
         )
 
     return middle_json

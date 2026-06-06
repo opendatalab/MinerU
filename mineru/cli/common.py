@@ -10,6 +10,7 @@ from typing import Sequence
 
 from loguru import logger
 
+from mineru.cli.backend_options import normalize_backend
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
@@ -69,9 +70,11 @@ def ensure_backend_dependencies(backend: str) -> None:
 
 
 def _load_hybrid_analyze_entrypoint(entrypoint_name: str, backend: str):
+    """加载统一 hybrid analyze 入口，flash/pro 由调用方通过 mode 控制。"""
     ensure_backend_dependencies(backend)
+    module_name = "mineru.backend.hybrid.hybrid_analyze"
     try:
-        hybrid_analyze = importlib.import_module("mineru.backend.hybrid.hybrid_analyze")
+        hybrid_analyze = importlib.import_module(module_name)
     except (ImportError, ModuleNotFoundError) as exc:
         raise HybridDependencyError(
             build_hybrid_dependency_error_message(backend)
@@ -515,6 +518,7 @@ def _process_hybrid(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
+        mode="pro",
         **kwargs,
 ):
     hybrid_doc_analyze = _load_hybrid_analyze_entrypoint(
@@ -538,6 +542,7 @@ def _process_hybrid(
             language=lang,
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
+            mode=mode,
             **kwargs,
         )
 
@@ -571,6 +576,7 @@ async def _async_process_hybrid(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
+        mode="pro",
         **kwargs,
 ):
     aio_hybrid_doc_analyze = _load_hybrid_analyze_entrypoint(
@@ -594,6 +600,7 @@ async def _async_process_hybrid(
             language=lang,
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
+            mode=mode,
             **kwargs,
         )
 
@@ -684,6 +691,7 @@ def do_parse(
         client_side_output_generation=False,
         **kwargs,
 ):
+    backend = normalize_backend(backend)
     need_remove_index = _process_office_doc(
         output_dir,
         pdf_file_names=pdf_file_names,
@@ -718,10 +726,7 @@ def do_parse(
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
-            if backend == "vllm-async-engine":
-                raise Exception("vlm-vllm-async-engine backend is not supported in sync mode, please use vlm-vllm-engine backend")
-
-            if backend == "auto-engine":
+            if backend == "engine":
                 backend = get_vlm_engine(inference_engine='auto', is_async=False)
 
             os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
@@ -737,12 +742,12 @@ def do_parse(
         elif backend.startswith("hybrid-"):
             ensure_backend_dependencies(backend)
             backend = backend[7:]
+            mode = "flash" if backend.startswith("flash-") else "pro"
 
-            if backend == "vllm-async-engine":
-                raise Exception(
-                    "hybrid-vllm-async-engine backend is not supported in sync mode, please use hybrid-vllm-engine backend")
+            if mode == "flash":
+                backend = backend[6:]
 
-            if backend == "auto-engine":
+            if backend == "engine":
                 backend = get_vlm_engine(inference_engine='auto', is_async=False)
 
             os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
@@ -752,7 +757,7 @@ def do_parse(
                 output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
                 f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                server_url, image_analysis=image_analysis,
+                server_url, mode=mode, image_analysis=image_analysis,
                 client_side_output_generation=client_side_output_generation, **kwargs,
             )
 
@@ -781,6 +786,7 @@ async def aio_do_parse(
         client_side_output_generation=False,
         **kwargs,
 ):
+    backend = normalize_backend(backend)
     # Office 解析是同步且可能耗时的操作，异步入口需要放到线程中避免阻塞事件循环。
     need_remove_index = await asyncio.to_thread(
         _process_office_doc,
@@ -818,10 +824,7 @@ async def aio_do_parse(
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
-            if backend == "vllm-engine":
-                raise Exception("vlm-vllm-engine backend is not supported in async mode, please use vlm-vllm-async-engine backend")
-
-            if backend == "auto-engine":
+            if backend == "engine":
                 backend = get_vlm_engine(inference_engine='auto', is_async=True)
 
             os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
@@ -837,11 +840,12 @@ async def aio_do_parse(
         elif backend.startswith("hybrid-"):
             ensure_backend_dependencies(backend)
             backend = backend[7:]
+            mode = "flash" if backend.startswith("flash-") else "pro"
 
-            if backend == "vllm-engine":
-                raise Exception("hybrid-vllm-engine backend is not supported in async mode, please use hybrid-vllm-async-engine backend")
+            if mode == "flash":
+                backend = backend[6:]
 
-            if backend == "auto-engine":
+            if backend == "engine":
                 backend = get_vlm_engine(inference_engine='auto', is_async=True)
 
             os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
@@ -851,7 +855,7 @@ async def aio_do_parse(
                 output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
                 f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                server_url, image_analysis=image_analysis,
+                server_url, mode=mode, image_analysis=image_analysis,
                 client_side_output_generation=client_side_output_generation, **kwargs,
             )
 

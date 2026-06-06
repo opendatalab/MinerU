@@ -33,7 +33,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     <tr>
       <th rowspan="2" style="text-align:center; vertical-align:middle;">Parsing Backend</th>
       <th rowspan="2" style="text-align:center; vertical-align:middle;">pipeline</th>
-      <th colspan="2" style="text-align:center;">*-auto-engine</th>
+      <th colspan="2" style="text-align:center;">*-engine</th>
       <th colspan="2" style="text-align:center;">*-http-client</th>
     </tr>
     <tr>

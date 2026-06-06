@@ -38,6 +38,11 @@ from mineru.cli.common import (
     read_fn,
 )
 from mineru.cli import api_client as _api_client
+from mineru.cli.backend_options import (
+    DEFAULT_BACKEND,
+    HTTP_CLIENT_BACKEND_CHOICES,
+    LOCAL_BACKEND_CHOICES,
+)
 from mineru.cli.client_side_output import regenerate_client_side_outputs
 from mineru.cli.output_paths import resolve_parse_dir
 from mineru.cli.vlm_preload import resolve_gradio_local_api_cli_args
@@ -224,15 +229,8 @@ STATUS_QUEUED_ON_SERVER = "Queued on server"
 STATUS_PROCESSING_ON_SERVER = "Processing on server"
 STATUS_QUEUED_LOCALLY_PREFIX = "Queued locally:"
 
-BACKEND_CHOICE_DEFINITIONS = [
-    "pipeline",
-    "vlm-auto-engine",
-    "hybrid-auto-engine",
-]
-HTTP_CLIENT_BACKEND_CHOICE_DEFINITIONS = [
-    "vlm-http-client",
-    "hybrid-http-client",
-]
+BACKEND_CHOICE_DEFINITIONS = list(LOCAL_BACKEND_CHOICES)
+HTTP_CLIENT_BACKEND_CHOICE_DEFINITIONS = list(HTTP_CLIENT_BACKEND_CHOICES)
 STATUS_STEP_DEFINITIONS = [
     ("status_step_prepare", STATUS_PREPARING_REQUEST),
     ("status_step_check", STATUS_CHECKING_SERVER),
@@ -338,6 +336,21 @@ def build_backend_choices(http_client_enable, i18n):
 def is_http_client_backend(backend_choice):
     """判断当前后端是否为 http-client 类型，用于控制服务器地址配置显隐。"""
     return isinstance(backend_choice, str) and backend_choice.endswith("-http-client")
+
+
+def select_backend_info_key(backend_choice):
+    """根据解析后端选择说明文案的 i18n key，保证 flash 与普通 hybrid 可分别描述。"""
+    if not isinstance(backend_choice, str):
+        return "backend_info_default"
+    if backend_choice.startswith("vlm"):
+        return "backend_info_vlm"
+    if backend_choice == "pipeline":
+        return "backend_info_pipeline"
+    if backend_choice.startswith("hybrid-flash"):
+        return "backend_info_hybrid_flash"
+    if backend_choice.startswith("hybrid"):
+        return "backend_info_hybrid"
+    return "backend_info_default"
 
 
 def resolve_status_step_index(status_lines):
@@ -1596,6 +1609,7 @@ def main(ctx,
             "backend_info_vlm": "High-precision parsing via VLM, supports Chinese and English documents only.",
             "backend_info_pipeline": "Traditional Multi-model pipeline parsing, supports multiple languages, hallucination-free.",
             "backend_info_hybrid": "High-precision hybrid parsing, supports multiple languages.",
+            "backend_info_hybrid_flash": "Fast, high-precision hybrid parsing, supports multiple languages.",
             "backend_info_default": "Select the backend engine for document parsing.",
         },
         zh={
@@ -1664,6 +1678,7 @@ def main(ctx,
             "backend_info_vlm": "多模态大模型高精度解析，仅支持中英文文档。",
             "backend_info_pipeline": "传统多模型管道解析，支持多语言，无幻觉。",
             "backend_info_hybrid": "高精度混合解析，支持多语言。",
+            "backend_info_hybrid_flash": "高精度快速混合解析，支持多语言。",
             "backend_info_default": "选择文档解析的后端引擎。",
         },
     )
@@ -1690,14 +1705,7 @@ def main(ctx,
             return ""
 
     def get_backend_info(backend_choice):
-        if backend_choice.startswith("vlm"):
-            return i18n("backend_info_vlm")
-        elif backend_choice == "pipeline":
-            return i18n("backend_info_pipeline")
-        elif backend_choice.startswith("hybrid"):
-            return i18n("backend_info_hybrid")
-        else:
-            return i18n("backend_info_default")
+        return i18n(select_backend_info_key(backend_choice))
 
     # 更新界面函数
     def update_interface(backend_choice):
@@ -1776,7 +1784,7 @@ def main(ctx,
                     file_types=suffixes,
                     elem_classes=["mineru-upload-file"],
                 )
-                preferred_option = "hybrid-auto-engine"
+                preferred_option = DEFAULT_BACKEND
                 backend = gr.Dropdown(
                     build_backend_choices(http_client_enable, i18n),
                     label=i18n("backend"),

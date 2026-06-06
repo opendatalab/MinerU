@@ -408,8 +408,6 @@ class BatchAnalyze:
                 # 移除所有的"inline_formula"
                 layout_res[:] = [res for res in layout_res if res.get("label") != "inline_formula"]
 
-
-
         ocr_res_list_all_page = []
         table_res_list_all_page = []
         for index in range(len(np_images)):
@@ -474,6 +472,7 @@ class BatchAnalyze:
                     rotate_labels = table_orientation_cls_model.batch_predict(
                         table_res_list_all_page,
                         det_batch_size=self.batch_ratio * OCR_DET_BASE_BATCH_SIZE,
+                        tqdm_enable=True,
                     )
                     if len(rotate_labels) != len(table_res_list_all_page):
                         raise ValueError(

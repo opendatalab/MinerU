@@ -74,7 +74,7 @@ class MagicModel:
         for inline_formula in self.page_inline_formula:
             inline_formula["bbox"] = list(self.cal_real_bbox(inline_formula["bbox"]))
             inline_formula_latex = inline_formula.pop("latex", "")
-            if inline_formula_latex:
+            if inline_formula_latex or _vlm_ocr_enable:
                 page_text_inline_formula_spans.append(
                     {
                         "bbox": inline_formula["bbox"],

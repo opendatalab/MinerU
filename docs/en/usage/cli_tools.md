@@ -12,8 +12,8 @@ Options:
   -o, --output PATH               Output directory (required)
   --api-url TEXT                  MinerU FastAPI base URL; if omitted, `mineru` starts a temporary local `mineru-api`
   -m, --method [auto|txt|ocr]     Parsing method: auto (default), txt, ocr (pipeline and hybrid* backend only)
-  -b, --backend [pipeline|hybrid-auto-engine|hybrid-http-client|vlm-auto-engine|vlm-http-client]
-                                  Parsing backend (default: hybrid-auto-engine)
+  -b, --backend [pipeline|vlm-engine|hybrid-engine|hybrid-flash-engine|vlm-http-client|hybrid-http-client|hybrid-flash-http-client]
+                                  Parsing backend (default: hybrid-flash-engine)
   -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|th|el|latin|arabic|east_slavic|cyrillic|devanagari]
                                   Specify document language (improves OCR accuracy, pipeline and hybrid* backend only)
   -u, --url TEXT                  OpenAI-compatible backend URL passed through to the server when using http-client

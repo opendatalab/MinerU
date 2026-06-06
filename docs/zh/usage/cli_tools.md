@@ -12,8 +12,8 @@ Options:
   -o, --output PATH               输出目录（必填）
   --api-url TEXT                  MinerU FastAPI 服务地址；不传时自动拉起本地临时 mineru-api
   -m, --method [auto|txt|ocr]     解析方法：auto（默认）、txt、ocr（仅用于 pipeline 与 hybrid* 后端）
-  -b, --backend [pipeline|hybrid-auto-engine|hybrid-http-client|vlm-auto-engine|vlm-http-client]
-                                  解析后端（默认为 hybrid-auto-engine）
+  -b, --backend [pipeline|vlm-engine|hybrid-engine|hybrid-flash-engine|vlm-http-client|hybrid-http-client|hybrid-flash-http-client]
+                                  解析后端（默认为 hybrid-flash-engine）
   -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|th|el|latin|arabic|east_slavic|cyrillic|devanagari]
                                   指定文档语言（可提升 OCR 准确率，仅用于 pipeline 与 hybrid* 后端）
   -u, --url TEXT                  当使用 http-client 时，传给服务端后端的 OpenAI 兼容地址

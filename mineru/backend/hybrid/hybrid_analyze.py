@@ -9,7 +9,7 @@ import numpy as np
 import pypdfium2 as pdfium
 from loguru import logger
 from mineru_vl_utils import MinerUClient
-from mineru_vl_utils.structs import BlockType
+from mineru_vl_utils.structs import BlockType, ContentBlock
 from tqdm import tqdm
 
 from mineru.backend.hybrid.hybrid_model_output_to_middle_json import (
@@ -25,6 +25,8 @@ from mineru.backend.pipeline.model_init import (
     run_mfr_inference,
     run_ocr_inference,
 )
+from mineru.backend.pipeline.model_list import AtomicModel
+from mineru.backend.utils.formula_number import optimize_flash_formula_number_blocks
 from mineru.backend.vlm.vlm_analyze import (
     ModelSingleton,
     aio_predictor_execution_guard,
@@ -59,6 +61,51 @@ LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD = 0.8
 
 not_extract_list = [item.value for item in NotExtractType]
 HYBRID_OCR_DET_TEXT_TYPES = set(not_extract_list)
+HYBRID_ANALYZE_MODES = {"pro", "flash"}
+INLINE_FORMULA_CONTAINER_LABELS = {"table", "image", "chart", "display_formula"}
+FLASH_LAYOUT_LABEL_TO_VLM_TYPE = {
+    "abstract": BlockType.TEXT,
+    "algorithm": BlockType.CODE,
+    "aside_text": BlockType.ASIDE_TEXT,
+    "content": BlockType.TEXT,
+    "doc_title": BlockType.TITLE,
+    "footer": BlockType.FOOTER,
+    "footer_image": BlockType.FOOTER,
+    "footnote": BlockType.PAGE_FOOTNOTE,
+    "formula_number": BlockType.FORMULA_NUMBER,
+    "header": BlockType.HEADER,
+    "header_image": BlockType.HEADER,
+    "number": BlockType.PAGE_NUMBER,
+    "paragraph_title": BlockType.TITLE,
+    "reference_content": BlockType.REF_TEXT,
+    "text": BlockType.TEXT,
+    "vertical_text": BlockType.TEXT,
+    "figure_title": BlockType.IMAGE_CAPTION,
+    "vision_footnote": BlockType.IMAGE_FOOTNOTE,
+    "image": BlockType.IMAGE,
+    "chart": BlockType.CHART,
+    "seal": BlockType.IMAGE,
+    "table": BlockType.TABLE,
+    "display_formula": BlockType.EQUATION,
+}
+
+
+def _validate_hybrid_mode(mode: str) -> str:
+    """校验 Hybrid 运行模式，避免静默走错解析分支。"""
+    if mode not in HYBRID_ANALYZE_MODES:
+        raise ValueError('mode must be "pro" or "flash"')
+    return mode
+
+
+def _vlm_type_for_flash_layout_label(label: str | None) -> str | None:
+    """将 pipeline layout 标签映射为 mineru-vl-utils 支持的 VLM 抽取类型。"""
+    return FLASH_LAYOUT_LABEL_TO_VLM_TYPE.get(label)
+
+
+def _apply_flash_visual_sub_type(block, label: str | None):
+    """为视觉块补充下游需要透传的子类型。"""
+    if label == "seal":
+        block["sub_type"] = "seal"
 
 
 def _is_hybrid_ocr_det_candidate(block):
@@ -281,6 +328,129 @@ def normalize_bbox_to_unit(item, page_width, page_height):
     return True
 
 
+def _layout_det_bbox_to_unit(layout_det, page_width, page_height):
+    """复制并归一化 layout bbox，避免构造 VLM 输入时改动 pipeline 原始结果。"""
+    bbox = layout_det.get("bbox")
+    if bbox is None or len(bbox) != 4:
+        return None
+    bbox_item = {"bbox": list(bbox)}
+    if not normalize_bbox_to_unit(bbox_item, page_width, page_height):
+        return None
+    return bbox_item["bbox"]
+
+
+def _layout_det_bbox_to_pixel(layout_det, page_width, page_height):
+    """将layout bbox转换为页面像素坐标，兼容归一化和像素两种输入。"""
+    bbox = layout_det.get("bbox")
+    if bbox is None or len(bbox) != 4:
+        return None
+
+    x0, y0, x1, y1 = [float(v) for v in bbox]
+    if (
+        0.0 <= x0 <= 1.0
+        and 0.0 <= y0 <= 1.0
+        and 0.0 <= x1 <= 1.0
+        and 0.0 <= y1 <= 1.0
+    ):
+        x0, x1 = x0 * page_width, x1 * page_width
+        y0, y1 = y0 * page_height, y1 * page_height
+
+    x0 = max(0, min(page_width, x0))
+    y0 = max(0, min(page_height, y0))
+    x1 = max(0, min(page_width, x1))
+    y1 = max(0, min(page_height, y1))
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return [x0, y0, x1, y1]
+
+
+def _normalize_flash_vlm_angle(angle):
+    """将pipeline方向标签转换为mineru-vl-utils接受的整数角度。"""
+    try:
+        normalized_angle = int(angle)
+    except (TypeError, ValueError):
+        return 0
+    if normalized_angle in {0, 90, 180, 270}:
+        return normalized_angle
+    return 0
+
+
+def _build_flash_vlm_layout_blocks(layout_dets, page_width, page_height):
+    """用 pipeline layout 构造 VLM 外部 layout 输入，跳过 VLM 自身 layout 解析。"""
+    blocks = []
+    for layout_det in layout_dets or []:
+        label = layout_det.get("label")
+        vlm_type = _vlm_type_for_flash_layout_label(label)
+        if vlm_type is None:
+            continue
+        bbox = _layout_det_bbox_to_unit(layout_det, page_width, page_height)
+        if bbox is None:
+            continue
+        try:
+            block = ContentBlock(
+                vlm_type,
+                bbox,
+                angle=_normalize_flash_vlm_angle(layout_det.get("angle", 0)),
+                content=layout_det.get("content"),
+            )
+        except AssertionError as exc:
+            logger.warning(f"Skip invalid Hybrid flash VLM block: {layout_det}, error: {exc}")
+            continue
+        _apply_flash_visual_sub_type(block, label)
+        blocks.append(block)
+    return blocks
+
+
+def _apply_flash_table_orientation_labels(
+    images_pil_list,
+    images_layout_res,
+    hybrid_pipeline_model,
+    batch_ratio: int = 1,
+):
+    """复用pipeline表格方向分类，为Hybrid flash的table layout写入VLM旋转角度。"""
+    table_inputs = []
+    table_layout_refs = []
+    for pil_img, layout_res in zip(images_pil_list, images_layout_res):
+        page_width, page_height = pil_img.size
+        for layout_det in layout_res or []:
+            if layout_det.get("label") != "table":
+                continue
+            pixel_bbox = _layout_det_bbox_to_pixel(layout_det, page_width, page_height)
+            if pixel_bbox is None:
+                continue
+            try:
+                table_img, _ = crop_img({"bbox": pixel_bbox}, pil_img)
+            except Exception as exc:
+                logger.warning(
+                    f"Skip Hybrid flash table orientation crop: {layout_det}, error: {exc}"
+                )
+                continue
+            table_inputs.append({"table_img": table_img})
+            table_layout_refs.append(layout_det)
+
+    if not table_inputs:
+        return
+
+    try:
+        table_orientation_cls_model = hybrid_pipeline_model.atom_model_manager.get_atom_model(
+            atom_model_name=AtomicModel.TableOrientationCls,
+            lang=getattr(hybrid_pipeline_model, "lang", None),
+        )
+        rotate_labels = table_orientation_cls_model.batch_predict(
+            table_inputs,
+            det_batch_size=max(1, batch_ratio * OCR_DET_BASE_BATCH_SIZE),
+            tqdm_enable=True,
+        )
+        if len(rotate_labels) != len(table_layout_refs):
+            raise ValueError("Table orientation prediction result count mismatch")
+        for layout_det, rotate_label in zip(table_layout_refs, rotate_labels):
+            layout_det["angle"] = str(rotate_label or "0")
+    except Exception as exc:
+        logger.warning(
+            f"Hybrid flash table orientation classification failed: {exc}, using original table images"
+        )
+
+
 def _formula_item_to_pixel_bbox(item):
     bbox = item.get('bbox')
     if bbox is not None and len(bbox) == 4:
@@ -289,12 +459,79 @@ def _formula_item_to_pixel_bbox(item):
     return None
 
 
+def _layout_item_to_float_bbox(item):
+    """校验并读取layout检测框，异常或无效bbox返回None。"""
+    bbox = item.get("bbox")
+    if bbox is None or len(bbox) != 4:
+        return None
+
+    try:
+        x0, y0, x1, y1 = [float(v) for v in bbox]
+    except (TypeError, ValueError):
+        return None
+
+    if x1 < x0 or y1 < y0:
+        return None
+
+    return [x0, y0, x1, y1]
+
+
+def _bbox_center_point(bbox):
+    """计算bbox中心点，用于判断行内公式是否落入视觉容器。"""
+    return (float(bbox[0] + bbox[2]) / 2.0, float(bbox[1] + bbox[3]) / 2.0)
+
+
+def _is_point_inside_bbox(point, bbox):
+    """判断点是否位于bbox内部，边界点按内部处理。"""
+    x, y = point
+    return bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]
+
+
+def _is_inline_formula_inside_container(inline_formula_bbox, container_bboxes):
+    """判断行内公式中心点是否落入任一视觉/行间公式容器。"""
+    inline_formula_center = _bbox_center_point(inline_formula_bbox)
+    return any(
+        _is_point_inside_bbox(inline_formula_center, container_bbox)
+        for container_bbox in container_bboxes
+    )
+
+
+def _filter_inline_formulas_inside_containers(images_layout_res):
+    """原地移除位于table/image/chart/display_formula内的行内公式。"""
+    for layout_res in images_layout_res:
+        container_bboxes = []
+        for res in layout_res:
+            if res.get("label") not in INLINE_FORMULA_CONTAINER_LABELS:
+                continue
+            bbox = _layout_item_to_float_bbox(res)
+            if bbox is not None:
+                container_bboxes.append(bbox)
+
+        if not container_bboxes:
+            continue
+
+        kept_layout_res = []
+        for res in layout_res:
+            if res.get("label") != "inline_formula":
+                kept_layout_res.append(res)
+                continue
+
+            inline_formula_bbox = _layout_item_to_float_bbox(res)
+            if inline_formula_bbox is None or not _is_inline_formula_inside_container(
+                inline_formula_bbox,
+                container_bboxes,
+            ):
+                kept_layout_res.append(res)
+
+        layout_res[:] = kept_layout_res
+
+
 def _build_inline_formula_inputs(images_layout_res):
     inline_formula_inputs = []
     for layout_res in images_layout_res:
         page_inline_formula_inputs = []
         for res in layout_res:
-            if res.get('label') not in ['inline_formula', 'display_formula']:
+            if res.get('label') != 'inline_formula':
                 continue
             bbox = res.get('bbox')
             if bbox is None or len(bbox) != 4:
@@ -324,6 +561,28 @@ def _build_formula_mask_inputs(images_layout_res):
                 page_masks.append({"bbox": bbox})
         page_formula_masks.append(page_masks)
     return page_formula_masks
+
+
+def _build_inline_formula_det_inputs(images_layout_res):
+    """从 layout 检测结果提取行内公式框，供 VLM-OCR 作为 OCR det hint 使用。"""
+    inline_formula_inputs = []
+    for layout_res in images_layout_res:
+        page_inline_formula_inputs = []
+        for res in layout_res:
+            if res.get('label') != 'inline_formula':
+                continue
+            bbox = _formula_item_to_pixel_bbox(res)
+            if bbox is None:
+                continue
+            page_inline_formula_inputs.append(
+                {
+                    "bbox": bbox,
+                    "score": float(res.get('score', 0.0)),
+                    "latex": "",
+                }
+            )
+        inline_formula_inputs.append(page_inline_formula_inputs)
+    return inline_formula_inputs
 
 
 def _normalize_page_size(page_image):
@@ -411,13 +670,37 @@ def _predict_layout_for_title_split(
     )
 
 
+def _predict_layout_for_window(
+    images_pil_list,
+    language,
+    inline_formula_enable,
+    batch_ratio,
+    vlm_ocr_enable,
+):
+    """为单个处理窗口执行一次 pipeline layout，并返回可复用的小模型实例。"""
+    hybrid_model_singleton = HybridModelSingleton()
+    hybrid_pipeline_model = hybrid_model_singleton.get_model(
+        lang=language,
+        formula_enable=inline_formula_enable and not vlm_ocr_enable,
+    )
+    images_layout_res = _predict_layout_for_title_split(
+        hybrid_pipeline_model,
+        images_pil_list,
+        batch_ratio,
+    )
+    _filter_inline_formulas_inside_containers(images_layout_res)
+    return images_layout_res, hybrid_pipeline_model
+
+
 def _process_ocr_and_formulas(
     images_pil_list,
     model_list,
-    language,
     inline_formula_enable,
     _ocr_enable,
     batch_ratio: int = 1,
+    *,
+    images_layout_res,
+    hybrid_pipeline_model,
 ):
     """处理OCR和公式识别"""
 
@@ -427,21 +710,6 @@ def _process_ocr_and_formulas(
 
     # 将PIL图片转换为numpy数组
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
-
-    # 获取混合模型实例
-    hybrid_model_singleton = HybridModelSingleton()
-    hybrid_pipeline_model = hybrid_model_singleton.get_model(
-        lang=language,
-        formula_enable=inline_formula_enable,
-    )
-
-    # 在进行`行内`公式检测和识别前，先将图像中的图片、表格、`行间`公式区域mask掉
-    layout_images = mask_image_regions(np_images, model_list) if inline_formula_enable else np_images
-    images_layout_res = _predict_layout_for_title_split(
-        hybrid_pipeline_model,
-        layout_images,
-        batch_ratio,
-    )
 
     if inline_formula_enable:
         images_mfd_res = _build_inline_formula_inputs(images_layout_res)
@@ -538,61 +806,43 @@ def _process_ocr_and_formulas(
                 if need_ocr_res in page_ocr_res_list:
                     page_ocr_res_list.remove(need_ocr_res)
 
-    _apply_layout_title_split(
-        model_list,
-        images_layout_res,
-        [_normalize_page_size(image) for image in images_pil_list],
-    )
-
     _normalize_bbox(inline_formula_list, ocr_res_list, images_pil_list)
     merged_model_list = _merge_page_sidecar_items(
         model_list,
         inline_formula_list,
         ocr_res_list,
     )
-    return merged_model_list, hybrid_pipeline_model
+    return merged_model_list
 
 
-def _apply_layout_title_split_for_window(
+def _apply_vlm_ocr_det_sidecars_for_window(
     images_pil_list,
     model_list,
-    language,
     batch_ratio,
+    *,
+    images_layout_res,
+    hybrid_pipeline_model,
 ):
-    """为VLM-OCR路径补跑layout小模型，先基于VLM原始title做OCR det，再拆分标题。"""
-    hybrid_model_singleton = HybridModelSingleton()
-    hybrid_pipeline_model = hybrid_model_singleton.get_model(
-        lang=language,
-        formula_enable=False,
-    )
-    images_layout_res = _predict_layout_for_title_split(
-        hybrid_pipeline_model,
-        images_pil_list,
-        batch_ratio,
-    )
+    """为VLM-OCR路径追加OCR det空文本行和行内公式框sidecar。"""
+    formula_mask_inputs = _build_formula_mask_inputs(images_layout_res)
+    inline_formula_list = _build_inline_formula_det_inputs(images_layout_res)
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
     ocr_res_list = ocr_det(
         hybrid_pipeline_model,
         np_images,
         model_list,
-        _build_formula_mask_inputs(images_layout_res),
+        formula_mask_inputs,
         False,
         batch_ratio=batch_ratio,
         fill_text=False,
     )
-    _normalize_bbox([[] for _ in images_pil_list], ocr_res_list, images_pil_list)
+    _normalize_bbox(inline_formula_list, ocr_res_list, images_pil_list)
     model_list[:] = _merge_page_sidecar_items(
         model_list,
-        [[] for _ in images_pil_list],
+        inline_formula_list,
         ocr_res_list,
         keep_ocr_text=False,
     )
-    _apply_layout_title_split(
-        model_list,
-        images_layout_res,
-        [_normalize_page_size(image) for image in images_pil_list],
-    )
-    return hybrid_pipeline_model
 
 
 def _normalize_bbox(
@@ -740,8 +990,10 @@ def doc_analyze(
         model_path: str | None = None,
         server_url: str | None = None,
         image_analysis: bool = True,
+        mode: str = "pro",
         **kwargs,
 ):
+    mode = _validate_hybrid_mode(mode)
     client_side_output_generation = bool(
         kwargs.pop("client_side_output_generation", False)
     )
@@ -754,7 +1006,11 @@ def doc_analyze(
     _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
-    middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
+    middle_json = init_middle_json(
+        _ocr_enable,
+        _vlm_ocr_enable,
+        hybrid_mode=mode,
+    )
     model_list = []
     doc_closed = False
     hybrid_pipeline_model = None
@@ -789,22 +1045,72 @@ def doc_analyze(
                 )
                 try:
                     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+                    page_sizes = [_normalize_page_size(image) for image in images_pil_list]
                     logger.info(
                         f'Hybrid processing window {window_index + 1}/{total_windows}: '
                         f'pages {window_start + 1}-{window_end + 1}/{page_count} '
                         f'({len(images_pil_list)} pages)'
                     )
-                    if _vlm_ocr_enable:
+                    images_layout_res, hybrid_pipeline_model = _predict_layout_for_window(
+                        images_pil_list,
+                        language,
+                        inline_formula_enable,
+                        batch_ratio,
+                        _vlm_ocr_enable,
+                    )
+                    if mode == "flash":
+                        _apply_flash_table_orientation_labels(
+                            images_pil_list,
+                            images_layout_res,
+                            hybrid_pipeline_model,
+                            batch_ratio=batch_ratio,
+                        )
+                        vlm_blocks_list = [
+                            _build_flash_vlm_layout_blocks(
+                                page_layout_res,
+                                pil_img.width,
+                                pil_img.height,
+                            )
+                            for page_layout_res, pil_img in zip(images_layout_res, images_pil_list)
+                        ]
+                        with predictor_execution_guard(predictor):
+                            window_model_list = predictor.batch_extract_with_layout(
+                                images_pil_list,
+                                vlm_blocks_list,
+                                not_extract_list=None if _vlm_ocr_enable else not_extract_list,
+                                image_analysis=image_analysis,
+                            )
+                        optimize_flash_formula_number_blocks(window_model_list)
+                        if _vlm_ocr_enable:
+                            _apply_vlm_ocr_det_sidecars_for_window(
+                                images_pil_list,
+                                window_model_list,
+                                batch_ratio,
+                                images_layout_res=images_layout_res,
+                                hybrid_pipeline_model=hybrid_pipeline_model,
+                            )
+                        else:
+                            window_model_list = _process_ocr_and_formulas(
+                                images_pil_list,
+                                window_model_list,
+                                inline_formula_enable,
+                                _ocr_enable,
+                                batch_ratio=batch_ratio,
+                                images_layout_res=images_layout_res,
+                                hybrid_pipeline_model=hybrid_pipeline_model,
+                            )
+                    elif _vlm_ocr_enable:
                         with predictor_execution_guard(predictor):
                             window_model_list = predictor.batch_two_step_extract(
                                 images=images_pil_list,
                                 image_analysis=image_analysis,
                             )
-                        hybrid_pipeline_model = _apply_layout_title_split_for_window(
+                        _apply_vlm_ocr_det_sidecars_for_window(
                             images_pil_list,
                             window_model_list,
-                            language,
                             batch_ratio,
+                            images_layout_res=images_layout_res,
+                            hybrid_pipeline_model=hybrid_pipeline_model,
                         )
                     else:
                         with predictor_execution_guard(predictor):
@@ -813,15 +1119,21 @@ def doc_analyze(
                                 not_extract_list=not_extract_list,
                                 image_analysis=image_analysis,
                             )
-                        window_model_list, hybrid_pipeline_model = _process_ocr_and_formulas(
+                        window_model_list = _process_ocr_and_formulas(
                             images_pil_list,
                             window_model_list,
-                            language,
                             inline_formula_enable,
                             _ocr_enable,
                             batch_ratio=batch_ratio,
+                            images_layout_res=images_layout_res,
+                            hybrid_pipeline_model=hybrid_pipeline_model,
                         )
 
+                    _apply_layout_title_split(
+                        window_model_list,
+                        images_layout_res,
+                        page_sizes,
+                    )
                     model_list.extend(window_model_list)
                     if progress_bar is None:
                         progress_bar = tqdm(total=page_count, desc="Processing pages")
@@ -869,6 +1181,7 @@ def doc_analyze(
                 hybrid_pipeline_model,
                 _ocr_enable,
                 _vlm_ocr_enable,
+                hybrid_mode=mode,
             )
         close_pdfium_document(pdf_doc)
         doc_closed = True
@@ -890,8 +1203,10 @@ async def aio_doc_analyze(
     model_path: str | None = None,
     server_url: str | None = None,
     image_analysis: bool = True,
+    mode: str = "pro",
     **kwargs,
 ):
+    mode = _validate_hybrid_mode(mode)
     client_side_output_generation = bool(
         kwargs.pop("client_side_output_generation", False)
     )
@@ -904,7 +1219,11 @@ async def aio_doc_analyze(
     _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
-    middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
+    middle_json = init_middle_json(
+        _ocr_enable,
+        _vlm_ocr_enable,
+        hybrid_mode=mode,
+    )
     model_list = []
     doc_closed = False
     hybrid_pipeline_model = None
@@ -938,23 +1257,77 @@ async def aio_doc_analyze(
                 )
                 try:
                     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+                    page_sizes = [_normalize_page_size(image) for image in images_pil_list]
                     logger.info(
                         f'Hybrid processing window {window_index + 1}/{total_windows}: '
                         f'pages {window_start + 1}-{window_end + 1}/{page_count} '
                         f'({len(images_pil_list)} pages)'
                     )
-                    if _vlm_ocr_enable:
+                    images_layout_res, hybrid_pipeline_model = await asyncio.to_thread(
+                        _predict_layout_for_window,
+                        images_pil_list,
+                        language,
+                        inline_formula_enable,
+                        batch_ratio,
+                        _vlm_ocr_enable,
+                    )
+                    if mode == "flash":
+                        await asyncio.to_thread(
+                            _apply_flash_table_orientation_labels,
+                            images_pil_list,
+                            images_layout_res,
+                            hybrid_pipeline_model,
+                            batch_ratio,
+                        )
+                        vlm_blocks_list = [
+                            _build_flash_vlm_layout_blocks(
+                                page_layout_res,
+                                pil_img.width,
+                                pil_img.height,
+                            )
+                            for page_layout_res, pil_img in zip(images_layout_res, images_pil_list)
+                        ]
+                        async with aio_predictor_execution_guard(predictor):
+                            window_model_list = await predictor.aio_batch_extract_with_layout(
+                                images_pil_list,
+                                vlm_blocks_list,
+                                not_extract_list=None if _vlm_ocr_enable else not_extract_list,
+                                image_analysis=image_analysis,
+                            )
+                        optimize_flash_formula_number_blocks(window_model_list)
+                        if _vlm_ocr_enable:
+                            await asyncio.to_thread(
+                                _apply_vlm_ocr_det_sidecars_for_window,
+                                images_pil_list,
+                                window_model_list,
+                                batch_ratio,
+                                images_layout_res=images_layout_res,
+                                hybrid_pipeline_model=hybrid_pipeline_model,
+                            )
+                        else:
+                            window_model_list = await asyncio.to_thread(
+                                _process_ocr_and_formulas,
+                                images_pil_list,
+                                window_model_list,
+                                inline_formula_enable,
+                                _ocr_enable,
+                                batch_ratio=batch_ratio,
+                                images_layout_res=images_layout_res,
+                                hybrid_pipeline_model=hybrid_pipeline_model,
+                            )
+                    elif _vlm_ocr_enable:
                         async with aio_predictor_execution_guard(predictor):
                             window_model_list = await predictor.aio_batch_two_step_extract(
                                 images=images_pil_list,
                                 image_analysis=image_analysis,
                             )
-                        hybrid_pipeline_model = await asyncio.to_thread(
-                            _apply_layout_title_split_for_window,
+                        await asyncio.to_thread(
+                            _apply_vlm_ocr_det_sidecars_for_window,
                             images_pil_list,
                             window_model_list,
-                            language,
                             batch_ratio,
+                            images_layout_res=images_layout_res,
+                            hybrid_pipeline_model=hybrid_pipeline_model,
                         )
                     else:
                         async with aio_predictor_execution_guard(predictor):
@@ -963,16 +1336,23 @@ async def aio_doc_analyze(
                                 not_extract_list=not_extract_list,
                                 image_analysis=image_analysis,
                             )
-                        window_model_list, hybrid_pipeline_model = await asyncio.to_thread(
+                        window_model_list = await asyncio.to_thread(
                             _process_ocr_and_formulas,
                             images_pil_list,
                             window_model_list,
-                            language,
                             inline_formula_enable,
                             _ocr_enable,
                             batch_ratio=batch_ratio,
+                            images_layout_res=images_layout_res,
+                            hybrid_pipeline_model=hybrid_pipeline_model,
                         )
 
+                    await asyncio.to_thread(
+                        _apply_layout_title_split,
+                        window_model_list,
+                        images_layout_res,
+                        page_sizes,
+                    )
                     model_list.extend(window_model_list)
                     if progress_bar is None:
                         progress_bar = tqdm(total=page_count, desc="Processing pages")
@@ -1022,6 +1402,7 @@ async def aio_doc_analyze(
                 hybrid_pipeline_model,
                 _ocr_enable,
                 _vlm_ocr_enable,
+                hybrid_mode=mode,
             )
         close_pdfium_document(pdf_doc)
         doc_closed = True
