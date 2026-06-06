@@ -1059,7 +1059,7 @@ async def run_orchestrated_cli(
       hybrid-flash-engine: Hybrid flash mode via local computing power.
       hybrid-http-client: High accuracy but requires a little local computing power(client suitable for openai-compatible servers).
       hybrid-flash-http-client: Hybrid flash mode via remote computing power(client suitable for openai-compatible servers).
-    Without method specified, hybrid-engine will be used by default.""",
+    Without backend specified, hybrid-flash-engine will be used by default.""",
 )
 @click.option(
     "-l",
