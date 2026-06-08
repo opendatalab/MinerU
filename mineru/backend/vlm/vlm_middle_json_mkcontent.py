@@ -1,7 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
 import re
-from html import escape, unescape
+from html import unescape
 
 from loguru import logger
 
@@ -12,6 +12,7 @@ from mineru.utils.language import detect_lang
 from mineru.backend.utils.markdown_utils import (
     escape_conservative_markdown_text,
     escape_text_block_markdown_prefix,
+    render_algorithm_html_from_lines,
 )
 
 latex_delimiters_config = get_latex_delimiter_config()
@@ -143,11 +144,19 @@ def _get_blocks_in_index_order(blocks):
 
 
 def _render_code_block_markdown(block, para_block):
-    code_text = merge_para_with_text(block)
-    if para_block.get('sub_type') == BlockType.CODE:
+    if para_block.get('sub_type') == BlockType.ALGORITHM:
+        return render_algorithm_html_from_lines(
+            block.get('lines', []),
+            inline_left_delimiter,
+            inline_right_delimiter,
+            text_normalizer=_normalize_text_content,
+        )
+    elif para_block.get('sub_type') == BlockType.CODE:
+        code_text = merge_para_with_text(block)
         guess_lang = para_block.get('guess_lang', 'txt')
         return f"```{guess_lang}\n{code_text}\n```"
-    return code_text
+    else:
+        raise ValueError(f"Unknown code block sub_type: {para_block.get('sub_type')}")
 
 
 def _render_visual_block_segments(block, para_block, img_buket_path='', table_enable=True):
@@ -223,7 +232,12 @@ def _render_visual_block_segments(block, para_block, img_buket_path='', table_en
     if block_type == BlockType.CODE_BODY:
         block_text = _render_code_block_markdown(block, para_block)
         if block_text.strip():
-            return [(block_text, 'markdown_line')]
+            segment_kind = (
+                'html_block'
+                if para_block.get('sub_type') == BlockType.ALGORITHM
+                else 'markdown_line'
+            )
+            return [(block_text, segment_kind)]
         return []
 
     return []
