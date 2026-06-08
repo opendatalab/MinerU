@@ -26,8 +26,9 @@ router = APIRouter(tags=["config"])
 
 # ── global config ────────────────────────────────────────────────
 
+
 @router.get("/config")
-async def get_config(request: Request):
+async def get_config(request: Request) -> dict:
     state = request.state.app
     cfg = await state.config_svc.get_all()
     watches = await state.config_svc.list_watches()
@@ -37,24 +38,27 @@ async def get_config(request: Request):
 
 # ── watch ────────────────────────────────────────────────────────
 
+
 @router.get("/config/watch")
-async def list_watches(request: Request):
+async def list_watches(request: Request) -> dict:
     state = request.state.app
     watches = await state.config_svc.list_watches()
     return {"watches": watches}
 
 
 @router.post("/config/watch")
-async def add_watch(req: WatchRequest, request: Request):
+async def add_watch(req: WatchRequest, request: Request) -> dict:
     state = request.state.app
     w = await state.config_svc.add_watch(
-        req.path, removable=req.removable, label=req.label,
+        req.path,
+        removable=req.removable,
+        label=req.label,
     )
     return w
 
 
 @router.delete("/config/watch")
-async def remove_watch(request: Request, path: str = Query(...)):
+async def remove_watch(request: Request, path: str = Query(...)) -> dict:
     state = request.state.app
     await state.config_svc.remove_watch(path)
     return {"message": f"Watch removed: {path}"}
@@ -62,24 +66,28 @@ async def remove_watch(request: Request, path: str = Query(...)):
 
 # ── exclude ──────────────────────────────────────────────────────
 
+
 @router.get("/config/exclude")
-async def list_excludes(request: Request):
+async def list_excludes(request: Request) -> dict:
     state = request.state.app
     rules = await state.config_svc.list_rules("exclude")
     return {"rules": rules}
 
 
 @router.post("/config/exclude")
-async def add_exclude(req: RuleRequest, request: Request):
+async def add_exclude(req: RuleRequest, request: Request) -> dict:
     state = request.state.app
     rid = await state.config_svc.add_rule(
-        req.name or "用户规则", "exclude", req.pattern, priority=req.priority,
+        req.name or "用户规则",
+        "exclude",
+        req.pattern,
+        priority=req.priority,
     )
     return {"id": rid}
 
 
 @router.delete("/config/exclude/{rule_id}")
-async def remove_exclude(rule_id: int, request: Request):
+async def remove_exclude(rule_id: int, request: Request) -> dict:
     state = request.state.app
     await state.config_svc.remove_rule(rule_id)
     return {"message": f"Exclude rule {rule_id} removed"}
@@ -87,25 +95,31 @@ async def remove_exclude(rule_id: int, request: Request):
 
 # ── parsing-rules ────────────────────────────────────────────────
 
+
 @router.get("/config/parsing-rules")
-async def list_parsing_rules(request: Request):
+async def list_parsing_rules(request: Request) -> dict:
     state = request.state.app
     rules = await state.config_svc.list_rules("parsing_rule")
     return {"rules": rules}
 
 
 @router.post("/config/parsing-rules")
-async def add_parsing_rule(req: RuleRequest, request: Request):
+async def add_parsing_rule(req: RuleRequest, request: Request) -> dict:
     state = request.state.app
     rid = await state.config_svc.add_rule(
-        req.name or "规则", "parsing_rule", req.pattern,
-        tier=req.tier, pages=req.pages, remote=req.remote, priority=req.priority,
+        req.name or "规则",
+        "parsing_rule",
+        req.pattern,
+        tier=req.tier,
+        pages=req.pages,
+        remote=req.remote,
+        priority=req.priority,
     )
     return {"id": rid}
 
 
 @router.delete("/config/parsing-rules/{rule_id}")
-async def remove_parsing_rule(rule_id: int, request: Request):
+async def remove_parsing_rule(rule_id: int, request: Request) -> dict:
     state = request.state.app
     await state.config_svc.remove_rule(rule_id)
     return {"message": f"Parsing rule {rule_id} removed"}

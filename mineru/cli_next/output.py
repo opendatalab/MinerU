@@ -118,7 +118,7 @@ def format_server_status(data: dict, json_mode: bool = False) -> None:
         table.add_row("Files tracked", str(data.get("files_total", 0)))
         table.add_row("Docs indexed", str(data.get("docs_total", 0)))
         table.add_row("Parse queue", str(data.get("parse_queue_length", 0)))
-        table.add_row("Reg queue", str(data.get("reg_queue_length", 0)))
+        table.add_row("Ingest queue", str(data.get("ingest_queue_length", 0)))
         table.add_row("Watches", str(data.get("watch_count", 0)))
         console.print(table)
     else:

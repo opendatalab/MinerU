@@ -6,11 +6,13 @@ import asyncio
 import logging
 import time
 
+from ..services.parse_svc import ParseService
+
 logger = logging.getLogger("mineru.parse_worker")
 
 
 class ParseWorkerPool:
-    def __init__(self, parse_svc, num_workers: int = 2) -> None:
+    def __init__(self, parse_svc: ParseService, num_workers: int = 2) -> None:
         self.parse_svc = parse_svc
         self.num_workers = num_workers
         self.running = False
@@ -18,7 +20,9 @@ class ParseWorkerPool:
 
     async def run(self) -> None:
         self.running = True
-        self._tasks = [asyncio.create_task(self._worker(i)) for i in range(self.num_workers)]
+        self._tasks = [
+            asyncio.create_task(self._worker(i)) for i in range(self.num_workers)
+        ]
 
     async def _worker(self, worker_id: int) -> None:
         logger.info(f"Parse worker {worker_id} started")
@@ -41,9 +45,13 @@ class ParseWorkerPool:
                 if success:
                     processed += 1
                     if processed % 50 == 0:
-                        logger.info(f"Parse worker {worker_id} processed {processed} batches")
+                        logger.info(
+                            f"Parse worker {worker_id} processed {processed} batches"
+                        )
             except Exception as exc:
-                logger.error(f"Parse worker {worker_id} error on {task.get('sha256')}: {exc}")
+                logger.error(
+                    f"Parse worker {worker_id} error on {task.get('sha256')}: {exc}"
+                )
                 try:
                     now = int(time.time() * 1000)
                     await self.parse_svc.db.execute(

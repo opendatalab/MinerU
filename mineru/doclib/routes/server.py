@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
 import signal
 import time
@@ -13,7 +12,7 @@ router = APIRouter(tags=["server"])
 
 
 @router.get("/server/status")
-async def server_status(request: Request):
+async def server_status(request: Request) -> dict:
     state = request.state.app
 
     files_total = await state.db.fetchone(
@@ -21,7 +20,7 @@ async def server_status(request: Request):
     )
     docs_total = await state.db.fetchone("SELECT COUNT(*) as cnt FROM docs")
     parse_q = await state.parse_svc.get_queue_length()
-    reg_q = await state.db.fetchone(
+    ingest_q = await state.db.fetchone(
         "SELECT COUNT(*) as cnt FROM files WHERE sha256 IS NULL AND scan_status='active'"
     )
     watches = await state.config_svc.list_watches()
@@ -36,7 +35,7 @@ async def server_status(request: Request):
         "files_total": files_total["cnt"] if files_total else 0,
         "docs_total": docs_total["cnt"] if docs_total else 0,
         "parse_queue_length": parse_q,
-        "reg_queue_length": reg_q["cnt"] if reg_q else 0,
+        "ingest_queue_length": ingest_q["cnt"] if ingest_q else 0,
         "watch_count": len(watches),
         "watches": [
             {
@@ -51,12 +50,12 @@ async def server_status(request: Request):
 
 
 @router.post("/shutdown")
-async def shutdown(request: Request):
+async def shutdown(request: Request) -> dict:
     """Gracefully shut down the server."""
     # Signal shutdown in a background task so we can return a response first
     import asyncio
 
-    async def _shutdown():
+    async def _shutdown() -> None:
         await asyncio.sleep(0.1)
         os.kill(os.getpid(), signal.SIGTERM)
 

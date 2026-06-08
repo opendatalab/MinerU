@@ -36,10 +36,10 @@ mineru/
 │   ├── types.py                   # PageInfo, Block, Line, Span
 │   └── api_server.py              # mineru-kit api-server（无状态 HTTP 解析服务，兼容 SaaS API 格式）
 │
-├── server/                        # [填充现有空目录] 本地 Server
+├── doclib/                         # 本地文档库（原 server/）
 │   ├── __init__.py
-│   ├── app.py                     # FastAPI app factory, lifecycle
-│   ├── config.py                  # Server 配置（UDS 路径、端口、SQLite 路径等）
+│   ├── server.py                   # FastAPI app factory, lifecycle
+│   ├── config.py                  # doclib 配置（UDS 路径、端口、SQLite 路径等）
 │   ├── routes/                    # HTTP 路由
 │   │   ├── parse.py
 │   │   ├── search.py
@@ -89,14 +89,19 @@ mineru/
 ## 3. 依赖方向
 
 ```
-cli_next/mineru_cmd  →  client       →  server/  →  parser/  →  backend/
+cli_next/mineru_cmd  →  client       →  doclib/  →  parser/  →  backend/
+                                                     │
+                                                     ├── flash tier: 直接调用
+                                                     └── standard/pro tier: HTTP 调用
+                                                           ├─ mineru-kit api-server (本地)
+                                                           └─ mineru.net/api (远程)
 cli_next/kit_cmd     →  parser/      →  backend/
 mineru-kit api-server → parser/api_server.py     →  parser/  →  backend/
 ```
 
-- `mineru-kit` 只依赖 `parser/`，不碰 `client` 和 `server/`
-- `mineru` 通过 `client` 与 server 通信，server 内部调用 `parser/` 做实际解析
-- `parser/api_server.py` 是无状态 HTTP 解析服务（`mineru-kit api-server`），与 `server/` 完全独立
+- `mineru-kit` 只依赖 `parser/`，不碰 `client` 和 `doclib/`
+- `mineru` 通过 `client` 与 doclib 通信，doclib 内部调用 `parser/` 做 flash 解析，或通过 HTTP 调用 parse-server 做 standard/pro 解析
+- `parser/api_server.py` 是无状态 HTTP 解析服务（`mineru-kit api-server`），与 `doclib/` 完全独立。它实现 NEXT-API.md 的 Files/Uploads/Jobs 端点，被 doclib 的 ParseWorker 通过 HTTP 调用
 - `errors.py`、`constants.py`、`types.py` 是共享基础模块，被各层引用
 
 ---
@@ -108,10 +113,10 @@ mineru-kit api-server → parser/api_server.py     →  parser/  →  backend/
 | `mineru/api/` | `mineru/parser/` | 重构接口签名（加入 tier），保留解析逻辑 |
 | `mineru/api/api_parser.py` | `mineru/parser/remote.py` | MinerUApiParser 移入，改用新 API 格式 |
 | `mineru/cli/` (click) | `mineru/cli_next/` (typer) | 新写，迁移完成后 cli/ 删除、cli_next/ 改名 cli/ |
-| `mineru/cli/fast_api.py` | 删除 | 被 `server/` 替代 |
+| `mineru/cli/fast_api.py` | 删除 | 被 `doclib/` 替代 |
 | `mineru/parse_server.py` | `mineru/parser/api_server.py` | 移入 parser 包，属于 mineru-kit api-server |
-| `mineru/server/` (空) | 填充实现 | — |
-| `mineru/config.py` | `mineru/server/config.py` | 移入 server |
+| `mineru/doclib/` (原 server/) | 已实现 | — |
+| `mineru/config.py` | `mineru/doclib/config.py` | 移入 doclib |
 
 ---
 

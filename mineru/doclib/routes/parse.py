@@ -12,10 +12,13 @@ router = APIRouter(tags=["parse"])
 
 
 @router.post("/parse")
-async def parse(req: ParseRequest, request: Request):
+async def parse(req: ParseRequest, request: Request) -> dict:
     state = request.state.app
     result = await state.parse_svc.request_parse(
-        req.path, tier=req.tier, pages=req.pages, force=req.force,
+        req.path,
+        tier=req.tier,
+        pages=req.pages,
+        force=req.force,
     )
     return result
 
@@ -25,7 +28,7 @@ async def parse_status(
     request: Request,
     sha256: str = Query(...),
     tier: str = Query(...),
-):
+) -> dict:
     state = request.state.app
     result = await state.parse_svc.get_parse_status(sha256, tier)
     if result is None:
@@ -39,14 +42,19 @@ async def parse_content(
     sha256: str = Query(...),
     tier: str = Query(...),
     output: str | None = Query(None),
-):
+) -> dict:
     """Read parsed markdown content from per-batch JSON files."""
     state = request.state.app
     data_dir = getattr(state, "data_dir", os.path.expanduser("~/MinerU"))
     tier_dir = os.path.join(data_dir, "parsed", sha256[:2], sha256, tier)
 
     if not os.path.isdir(tier_dir):
-        return {"sha256": sha256, "tier": tier, "content": None, "error": "Content not found"}
+        return {
+            "sha256": sha256,
+            "tier": tier,
+            "content": None,
+            "error": "Content not found",
+        }
 
     import json as _json
 
@@ -64,7 +72,12 @@ async def parse_content(
             pass
 
     if not pages_by_idx:
-        return {"sha256": sha256, "tier": tier, "content": None, "error": "Content not found"}
+        return {
+            "sha256": sha256,
+            "tier": tier,
+            "content": None,
+            "error": "Content not found",
+        }
 
     sorted_pages = [pages_by_idx[i] for i in sorted(pages_by_idx)]
     content = _markdown_from_pages(sorted_pages)

@@ -8,7 +8,7 @@ router = APIRouter(tags=["info"])
 
 
 @router.get("/info")
-async def info(request: Request, path: str = Query(...)):
+async def info(request: Request, path: str = Query(...)) -> dict:
     state = request.state.app
 
     file_row = await state.db.fetchone(
@@ -18,21 +18,31 @@ async def info(request: Request, path: str = Query(...)):
         return {"path": path, "found": False}
 
     sha = file_row["sha256"]
-    doc = await state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha,)) if sha else None
+    doc = (
+        await state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha,))
+        if sha
+        else None
+    )
 
     # aggregate parse batches
-    parse_rows = await state.db.fetchall(
-        "SELECT * FROM parses WHERE sha256=? ORDER BY tier, created_at DESC", (sha,)
-    ) if sha else []
+    parse_rows = (
+        await state.db.fetchall(
+            "SELECT * FROM parses WHERE sha256=? ORDER BY tier, created_at DESC", (sha,)
+        )
+        if sha
+        else []
+    )
 
     tiers: list[dict] = []
     for pr in parse_rows:
-        tiers.append({
-            "tier": pr["tier"],
-            "status": pr["status"],
-            "pages": pr["pages"],
-            "done_at": pr["done_at"],
-        })
+        tiers.append(
+            {
+                "tier": pr["tier"],
+                "status": pr["status"],
+                "pages": pr["pages"],
+                "done_at": pr["done_at"],
+            }
+        )
 
     return {
         "path": file_row["path"],

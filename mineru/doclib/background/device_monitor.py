@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import os
-import time
+
+from ..core.db import DatabaseManager
+from ..services.config_svc import ConfigService
 
 
 class DeviceMonitor:
-    def __init__(self, db, config_svc) -> None:
+    def __init__(self, db: DatabaseManager, config_svc: ConfigService) -> None:
         self.db = db
         self.config_svc = config_svc
         self.running = False
@@ -23,7 +25,6 @@ class DeviceMonitor:
                 try:
                     os.stat(w["path"])
                 except (FileNotFoundError, OSError):
-                    now = int(time.time() * 1000)
                     await self.config_svc.update_watch_status(w["id"], "unreachable")
                     await self.db.execute(
                         "UPDATE files SET scan_status='unreachable' "

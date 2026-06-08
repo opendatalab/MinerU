@@ -8,7 +8,7 @@ from pathlib import Path
 
 import typer
 
-from mineru.server.client import MineruClient
+from mineru.doclib.client import MineruClient
 from mineru.cli_next.output import format_parse_result, print_error, print_success, print_info
 
 

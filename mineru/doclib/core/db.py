@@ -5,6 +5,8 @@ import time
 
 import aiosqlite
 
+from ..config import SQLiteConfig
+
 SCHEMA_VERSION = 1
 
 CREATE_TABLES_SQL = [
@@ -32,7 +34,6 @@ CREATE_TABLES_SQL = [
     "CREATE INDEX IF NOT EXISTS idx_files_sha256 ON files(sha256);",
     "CREATE INDEX IF NOT EXISTS idx_files_watch_id ON files(watch_id);",
     "CREATE INDEX IF NOT EXISTS idx_files_scan_status ON files(scan_status);",
-
     # ── docs ───────────────────────────────────────────────────────
     """
     CREATE TABLE IF NOT EXISTS docs (
@@ -52,7 +53,6 @@ CREATE_TABLES_SQL = [
         updated_at      INTEGER NOT NULL
     );
     """,
-
     # ── parses ─────────────────────────────────────────────────────
     """
     CREATE TABLE IF NOT EXISTS parses (
@@ -73,7 +73,6 @@ CREATE_TABLES_SQL = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_parses_status ON parses(status, priority DESC, created_at ASC);",
     "CREATE INDEX IF NOT EXISTS idx_parses_doc ON parses(sha256, tier);",
-
     # ── fts_contents ───────────────────────────────────────────────
     """
     CREATE VIRTUAL TABLE IF NOT EXISTS fts_contents USING fts5(
@@ -86,7 +85,6 @@ CREATE_TABLES_SQL = [
         tokenize='unicode61'
     );
     """,
-
     # ── fts_filenames ──────────────────────────────────────────────
     """
     CREATE VIRTUAL TABLE IF NOT EXISTS fts_filenames USING fts5(
@@ -96,7 +94,6 @@ CREATE_TABLES_SQL = [
         tokenize='unicode61'
     );
     """,
-
     # ── watch_targets ──────────────────────────────────────────────
     """
     CREATE TABLE IF NOT EXISTS watch_targets (
@@ -112,7 +109,6 @@ CREATE_TABLES_SQL = [
         last_scan_files INTEGER DEFAULT 0
     );
     """,
-
     # ── rules ──────────────────────────────────────────────────────
     """
     CREATE TABLE IF NOT EXISTS rules (
@@ -128,7 +124,6 @@ CREATE_TABLES_SQL = [
         hit_count       INTEGER NOT NULL DEFAULT 0
     );
     """,
-
     # ── config ─────────────────────────────────────────────────────
     """
     CREATE TABLE IF NOT EXISTS config (
@@ -136,7 +131,6 @@ CREATE_TABLES_SQL = [
         value TEXT NOT NULL
     );
     """,
-
     # ── _migrations ────────────────────────────────────────────────
     """
     CREATE TABLE IF NOT EXISTS _migrations (
@@ -151,7 +145,7 @@ DEFAULT_CONFIG = {
     "data_dir": "~/MinerU",
     "default_tier": "flash",
     "scan_interval_sec": "300",
-    "reg_lock_timeout_sec": "60",
+    "ingest_lock_timeout_sec": "60",
     "parse_lock_timeout_sec": "1800",
     "device_check_interval_sec": "5",
 }
@@ -176,7 +170,7 @@ DEFAULT_EXCLUDE_RULES = [
 class DatabaseManager:
     """Per-operation connection manager — no pooling, no shared state."""
 
-    def __init__(self, db_path: str, sqlite_cfg=None) -> None:
+    def __init__(self, db_path: str, sqlite_cfg: SQLiteConfig | None = None) -> None:
         self.db_path = db_path
         self.sqlite_cfg = sqlite_cfg  # SQLiteConfig or None
 
@@ -304,6 +298,7 @@ class DatabaseManager:
 
 
 # ── helpers ────────────────────────────────────────────────────────
+
 
 def _now_ms() -> int:
     return int(time.time() * 1000)

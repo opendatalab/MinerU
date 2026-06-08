@@ -77,7 +77,7 @@ mineru parse <file> [flags]
 | Flag | 类型 | 默认 | 说明 |
 |------|------|------|------|
 | `--remote` | url (可选) | — | 切换为远端模式。不带参数时使用默认地址 mineru.net；带参数时使用指定地址 |
-| `--api-key` | string | — | API Key（也从配置文件和环境变量 `MINERU_API_KEY` 读取）。仅远端模式有效 |
+| `--api-key` | string | — | API Key（也从配置文件 `parse_server.remote.api_key` 和环境变量 `MINERU_API_KEY` 读取）|
 
 ### 解析配置
 
@@ -131,6 +131,7 @@ mineru parse <file> [flags]
 **CLI ↔ API 对齐**：
 - `--remote` 模式下，`--tier` 参数直接映射到 API 的 `tier` 字段（值相同：`standard` / `pro`）
 - 远端模式下，CLI 统一请求 JSON 格式产物，markdown/text/html 由 CLI 本地从 JSON 生成
+- local parse-server 提供与 mineru.net 完全相同的 API（Files/Uploads/Jobs），ParseWorker 根据 `--remote` 选择 base URL
 
 > **团队讨论项**：是否为 `standard` 提供 `core` 作为短别名。
 
@@ -140,10 +141,12 @@ mineru 是一款强调用户隐私的工具。显式调用 `mineru parse` 时，
 
 ```
 1. 用户是否指定了 --remote？
-   ├─ 是 → 使用远端解析，正常执行
+   ├─ 是 → 优先使用远程解析（--remote 不带参数时默认 mineru.net，带参数时使用指定地址）
+   │        远程不可用时 fallback 到本地 parse-server（如果可用）
+   │        本地也不可用 → 报错
    └─ 否 →
-       2. 本地是否有 standard 或 pro 引擎可用？
-          ├─ 有 → 使用本地引擎解析，正常执行
+       2. 是否有本地 parse-server 可用（managed 或 self-hosted 模式探活成功）？
+          ├─ 是 → 使用本地 parse-server 解析，正常执行
           └─ 没有 →
               3. 用户是否指定了 --tier flash？
                  ├─ 是 → 使用本地 flash 引擎（仅 CPU），正常执行
@@ -158,12 +161,13 @@ Error: 本地未检测到 standard/pro 解析引擎。
 可选方案：
   1. mineru parse doc.pdf --remote          使用远端解析（文件将上传至 mineru.net）
   2. mineru parse doc.pdf --tier flash      使用本地轻量解析（仅 CPU，质量较低）
-  3. 启动本地解析服务后重试               参考: mineru-kit vlm-server --help
+  3. 配置并启动本地解析服务后重试               参考: mineru-kit api-server --help
 ```
 
 **设计要点**：
-- 不会在用户不知情的情况下把文件发到远端
-- 不会在用户不知情的情况下降级到 flash
+- 不会在用户不知情的情况下把文件发到远端。必须显式 `--remote` 才会触发上传
+- 不会在用户不知情的情况下降级到 flash。`auto` tier 不可用时报错而非静默降级
+- `--remote` 远程不可用时 fallback 到本地 parse-server——用户已接受上传，远程偶尔不可用本地兜底
 - agent 收到此报错后可自行判断文件敏感性，决定选 `--remote` 还是 `--tier flash`
 
 ## 输出格式说明
@@ -372,14 +376,14 @@ mineru server status      # 运行状态 + 索引统计 + 队列长度
 Server 启动时：
 - 清空所有未释放的锁（`*_locked_at` 字段）
 - 重置处于 `parsing` 状态的任务为 `error`（可重试）
-- 对已注册文件进行活性验证（检测已删除文件）
+- 对已入库文件进行活性验证（检测已删除文件）
 
 
 # Watch 与 Parsing-Rules
 
 ## Watch 机制
 
-用户配置 mineru 监控哪些目录，系统自动发现并注册文件：
+用户配置 mineru 监控哪些目录，系统自动发现并入库：
 
 ```bash
 mineru config watch add ~/Documents
@@ -389,8 +393,8 @@ mineru config watch rm ~/Documents
 ```
 
 **Watch 行为**：
-- 发现文件 → 注册（计算 SHA-256、记录 path/size/mtime、文件名进 FTS）
-- 注册后默认使用 **flash** tier 解析首尾各 5 页
+- 发现文件 → 入库（计算 SHA-256、记录 path/size/mtime、文件名进 FTS）
+- 入库后默认使用 **flash** tier 解析首尾各 5 页
 - 文件类型决定解析方式：office 文档直接本地全量解析（成本低），PDF/image 用 flash
 
 **文件类型白名单**（Watch 自动发现的范围）：
@@ -465,7 +469,7 @@ mineru config parsing-rules rm <id>
 
 ## mineru search
 
-搜索已注册/已解析的文档内容：
+搜索已入库/已解析的文档内容：
 
 ```bash
 mineru search "关键词"                   # 搜索文档内容
@@ -480,7 +484,7 @@ mineru search "关键词" --json             # JSON 输出（给 agent）
 
 ## mineru find
 
-仅搜索文件名（覆盖所有已注册文件，不论是否解析过）：
+仅搜索文件名（覆盖所有已入库文件，不论是否解析过）：
 
 ```bash
 mineru find "report"
@@ -506,7 +510,23 @@ mineru config show                             # 查看全部配置
 mineru config watch add/list/rm                # Watch 目录管理
 mineru config exclude add/list/rm              # 排除规则（glob pattern）
 mineru config parsing-rules add/list/rm        # 解析规则
+mineru config parse-server local.mode <mode>   # 本地 parse-server 模式: disabled | managed | self_hosted
+mineru config parse-server local.managed-tier <tier>  # managed 模式 tier: standard | pro
+mineru config parse-server local.self_hosted_url <url>  # self_hosted 模式的 parse-server 地址
+mineru config parse-server remote.url <url>    # 远程 parse-server 地址（默认 mineru.net）
+mineru config parse-server remote.api-key <key>  # 远程 API Key
 ```
+
+**parse-server 配置说明**：
+
+| 配置项 | 默认值 | 说明 |
+|------|------|------|
+| `parse_server.local.mode` | `disabled` | `disabled` — 无本地 parse-server；`managed` — doclib 自动拉起；`self_hosted` — 用户管理 |
+| `parse_server.local.managed_tier` | `standard` | managed 模式启动的 tier |
+| `parse_server.local.self_hosted_url` | — | self_hosted 模式的 parse-server HTTP 地址 |
+| `parse_server.local.self_hosted_api_key` | — | self_hosted 模式的 API Key（可选） |
+| `parse_server.remote.url` | `https://mineru.net/api` | 远程 parse-server 地址 |
+| `parse_server.remote.api_key` | — | 远程 API Key（环境变量 `MINERU_API_KEY` 也可设置）|
 
 
 # mineru 数据库设计概要
@@ -543,8 +563,7 @@ config             KV 全局配置
 
 子命令：
 - mineru-kit parse（单个文件、文件夹的解析）
-- mineru-kit api-server（本地启动的端到端解析服务，与MinerU-SaaS的API格式兼容）
-- mineru-kit vlm-server（启动本地VLM服务，提供Layout和OCR能力，与OpenAI的API格式兼容）
+- mineru-kit api-server（本地启动的端到端解析服务，实现 NEXT-API.md 规范，提供 standard / pro tier 的解析能力）
 
 mineru-kit parse 替换：
 - mineru -p xxx.pdf -o xxx.md
@@ -558,6 +577,38 @@ mineru-kit vlm-server 替换：
 - mineru-vllm-server
 - mineru-lmdeploy-server
 - mineru-openai-server
+
+## mineru-kit api-server
+
+`api-server` 是本地部署的 HTTP 解析服务，实现 NEXT-API.md 定义的 Files/Uploads/Jobs 端点。它在功能上与 mineru.net 等价，区别仅在于 base URL 不同（`http://127.0.0.1:15981` vs `https://mineru.net/api`）。
+
+### 与 mineru doclib 的协作
+
+```
+mineru doclib（纯 CPU 进程）
+  │
+  ├─ flash tier → 直接调用 mineru.parser.parse()
+  │
+  └─ standard / pro tier → HTTP 调用
+       ├─ 未指定 --remote → mineru-kit api-server (127.0.0.1:15981)
+       └─ 指定 --remote    → mineru.net/api （或 --remote 指定的地址）
+```
+
+- **managed 模式**：doclib 启动时自动拉起 api-server，停止时一起关闭
+- **self_hosted 模式**：用户独立启动 api-server，通过 config 告知 doclib 地址
+- **API 格式完全一致**：local parse-server 和 mineru.net 使用同一套 API，ParseWorker 仅切换 base URL
+
+### Usage
+
+```bash
+mineru-kit api-server --tier standard --port 15981
+mineru-kit api-server --tier pro --port 15981
+```
+
+| Flag | 默认 | 说明 |
+|------|------|------|
+| `--tier` | `standard` | 服务提供的解析档位：`standard` / `pro` |
+| `--port` | `15981` | 监听端口（仅 127.0.0.1） |
 
 
 # mineru-kit parse

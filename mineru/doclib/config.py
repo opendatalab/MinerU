@@ -65,7 +65,7 @@ class ServerConfig(BaseModel):
     http: HTTPConfig = HTTPConfig()
     log: LogConfig = LogConfig()
     data_dir: str = _default_data_path()
-    reg_workers: int = 2
+    ingest_workers: int = 2
     parse_workers: int = 2
     compaction_interval_sec: int = 3600
 

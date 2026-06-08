@@ -19,7 +19,7 @@ def _server_running() -> bool:
     if not os.path.exists(SOCKET_PATH):
         return False
     try:
-        from mineru.server.client import MineruClient
+        from mineru.doclib.client import MineruClient
         c = MineruClient(timeout=3)
         c.server_status()
         return True
@@ -52,7 +52,7 @@ def start() -> None:
         pass
 
     proc = subprocess.Popen(
-        [sys.executable, "-m", "mineru.server.app"],
+        [sys.executable, "-m", "mineru.doclib.server"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -73,7 +73,7 @@ def stop() -> None:
         return
 
     try:
-        from mineru.server.client import MineruClient
+        from mineru.doclib.client import MineruClient
         c = MineruClient(timeout=5)
         c.shutdown()
     except Exception:
@@ -105,7 +105,7 @@ def status() -> None:
         return
 
     try:
-        from mineru.server.client import MineruClient
+        from mineru.doclib.client import MineruClient
         c = MineruClient(timeout=5)
         data = c.server_status()
         format_server_status(data)

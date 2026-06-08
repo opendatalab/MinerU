@@ -9,13 +9,14 @@ import os
 import time
 
 from mineru.constants import DATA_DIR
+from ..core.db import DatabaseManager
 from ..services.parse_svc import parse_range_set
 
 logger = logging.getLogger("mineru.compaction")
 
 
 class Compaction:
-    def __init__(self, db, interval_sec: int = 600) -> None:
+    def __init__(self, db: DatabaseManager, interval_sec: int = 600) -> None:
         self.db = db
         self.interval_sec = interval_sec
         self.running = False
@@ -101,7 +102,9 @@ class Compaction:
 
         return len(rows) - len(merged_ranges)
 
-    async def _compact_json(self, sha256: str, tier: str, merged_ranges: list[str]) -> None:
+    async def _compact_json(
+        self, sha256: str, tier: str, merged_ranges: list[str]
+    ) -> None:
         """Merge per-batch middle_*.json files to match compacted parses rows."""
         data_dir = os.path.expanduser(DATA_DIR)
         tier_dir = os.path.join(data_dir, "parsed", sha256[:2], sha256, tier)
@@ -134,13 +137,17 @@ class Compaction:
         # write one compacted JSON per merged range
         for pages_str in merged_ranges:
             page_set = parse_range_set(pages_str)
-            json_pages = [pages_by_idx[i] for i in sorted(page_set) if i in pages_by_idx]
+            json_pages = [
+                pages_by_idx[i] for i in sorted(page_set) if i in pages_by_idx
+            ]
             if not json_pages:
                 continue
             json_path = os.path.join(tier_dir, f"{_safe_filename(pages_str)}.json")
             try:
                 with open(json_path, "w", encoding="utf-8") as f:
-                    _json.dump({"pdf_info": json_pages}, f, ensure_ascii=False, indent=2)
+                    _json.dump(
+                        {"pdf_info": json_pages}, f, ensure_ascii=False, indent=2
+                    )
             except Exception:
                 pass
 

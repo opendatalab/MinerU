@@ -32,6 +32,7 @@ TRUNC_KEYWORDS = 1000
 
 # ── SHA-256 ────────────────────────────────────────────────────────
 
+
 def _sha256_sync(filepath: str) -> str:
     h = hashlib.sha256()
     with open(filepath, "rb") as f:
@@ -46,19 +47,23 @@ async def compute_sha256(filepath: str) -> str:
 
 # ── file stat ──────────────────────────────────────────────────────
 
+
 async def get_file_stat(filepath: str) -> dict:
     def _stat() -> dict:
         st = os.stat(filepath)
         return {
             "size_bytes": st.st_size,
             "mtime_ms": int(st.st_mtime * 1000),
-            "birthtime_ms": int(st.st_birthtime * 1000) if hasattr(st, "st_birthtime") else int(st.st_ctime * 1000),
+            "birthtime_ms": int(st.st_birthtime * 1000)
+            if hasattr(st, "st_birthtime")
+            else int(st.st_ctime * 1000),
         }
 
     return await asyncio.to_thread(_stat)
 
 
 # ── metadata extraction ────────────────────────────────────────────
+
 
 async def extract_metadata(filepath: str) -> dict:
     """Extract metadata from file.  Returns dict with keys matching docs table columns.
@@ -98,6 +103,7 @@ async def extract_metadata(filepath: str) -> dict:
 
 # ── PDF metadata ───────────────────────────────────────────────────
 
+
 async def _extract_pdf_meta(filepath: str, result: dict) -> None:
     def _extract() -> None:
         pdf = pypdfium2.PdfDocument(filepath)
@@ -119,6 +125,7 @@ async def _extract_pdf_meta(filepath: str, result: dict) -> None:
 
 
 # ── Office metadata ────────────────────────────────────────────────
+
 
 async def _extract_office_meta(filepath: str, ext: str, result: dict) -> None:
     def _extract() -> None:

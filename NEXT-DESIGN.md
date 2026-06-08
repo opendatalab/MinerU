@@ -10,44 +10,55 @@
 
 ```
 ┌──────────────┐   Unix Domain Socket    ┌───────────────────────────────────┐
-│  mineru CLI  │ ──── HTTP + JSON ────→  │         mineru server             │
+│  mineru CLI  │ ──── HTTP + JSON ────→  │         mineru doclib             │
 │  (typer)     │ ←─── HTTP + JSON ────   │         (FastAPI + uvicorn)       │
 └──────────────┘                         │                                   │
                                          │  ┌─ Routes ── Services ── Core   │
 ┌──────────────┐                         │  │                               │
 │  MCP Server  │ ──── HTTP + JSON ────→  │  └─ Background                   │
 │  (P1)        │                         │     ├─ WatchLoop                  │
-└──────────────┘                         │     ├─ RegistrationWorker         │
+└──────────────┘                         │     ├─ IngestWorker               │
                                          │     ├─ ParseWorker                │
-┌──────────────┐                         │     └─ DeviceMonitor              │
-│  MinerU.app  │ ──── HTTP + JSON ────→  │                                   │
-│  (P1)        │                         └────────────┬──────────────────────┘
-└──────────────┘                                      │
+┌──────────────┐                         │     │   (routes per tier)         │
+│  MinerU.app  │ ──── HTTP + JSON ────→  │     ├─ ParseServerHealthCheck     │
+│  (P1)        │                         │     ├─ DeviceMonitor              │
+└──────────────┘                         │     └─ Compaction                 │
+                                         │                                   │
+                                         └────────────┬──────────────────────┘
+                                                      │
                                                  ┌────┴────┐
                                                  │ SQLite  │
                                                  │ + FTS5  │
                                                  └─────────┘
+
+┌──────────────────────────┐
+│  local parse-server      │  ← 独立进程（可选，仅供 standard / pro tier）
+│  (mineru-kit api-server) │    实现 NEXT-API.md 的 Files/Uploads/Jobs 端点
+│  FastAPI + GPU 模型      │    由 doclib 探活，ParseWorker 通过 HTTP 调用
+└──────────────────────────┘
 ```
 
 ### 1.1 核心设计决策
 
 | 决策 | 选择 | 理由 |
 |------|------|------|
-| 进程模型 | 单进程 asyncio | 简单可靠，避免 IPC 复杂度 |
-| CLI ↔ Server 通信 | HTTP + JSON over Unix Domain Socket | 安全（权限 0600）、低延迟、无端口冲突 |
+| 进程模型 | doclib (单进程 asyncio) + local parse-server (独立进程) | doclib 纯 CPU，local parse-server 加载 GPU 模型；crash 隔离，不互相影响 |
+| CLI ↔ doclib 通信 | HTTP + JSON over Unix Domain Socket | 安全（权限 0600）、低延迟、无端口冲突 |
+| doclib ↔ parse-server 通信 | HTTP + JSON over TCP | parse-server 为独立进程，通过 TCP 环回地址通信 |
 | 数据库 | SQLite (WAL) + FTS5 | 零运维、单文件、全文搜索内置 |
 | 任务队列 | DB rows + 时间戳锁 | 无外部依赖，崩溃恢复简单 |
-| CPU-bound offload | `asyncio.to_thread()` | SHA-256 计算、文件解析等交给线程池 |
+| CPU-bound offload | `asyncio.to_thread()` | SHA-256 计算、flash 解析等交给线程池 |
 | 文件监控 | watchfiles (FSEvents/inotify) | 跨平台、高性能 |
 
 ### 1.2 Socket 与端口
 
 | 通道 | 路径 / 地址 | 权限 | 用途 |
 |------|-----------|------|------|
-| UDS | `/tmp/mineru.sock` | `0600` | CLI / MCP / 桌面端通信 |
-| TCP | `127.0.0.1:<随机端口>` | loopback only | 可选，供浏览器访问 Web UI (P1) |
+| UDS | `/tmp/mineru.sock` | `0600` | CLI / MCP / 桌面端与 doclib 通信 |
+| TCP (parse-server) | `127.0.0.1:15981` | loopback only | doclib ParseWorker 调用 local parse-server API |
+| TCP (doclib Web UI) | `127.0.0.1:<随机端口>` | loopback only | 可选，供浏览器访问 Web UI (P1) |
 
-Server 启动后 UDS sock 文件位于 `/tmp/mineru.sock`（权限 0600）。CLI 通过 sock 连接检测 server 状态。TCP 端口按 config 中 `http.enabled` 决定是否启动。
+doclib 启动后 UDS sock 文件位于 `/tmp/mineru.sock`（权限 0600）。CLI 通过 sock 连接检测 server 状态。TCP 端口按 config 中 `http.enabled` 决定是否启动。parse-server 端口固定为 `127.0.0.1:15981`，仅环回地址可访问。managed 模式下 parse-server 由 doclib 自动拉起，self-hosted 模式下用户自行管理。
 
 ---
 
@@ -82,7 +93,7 @@ Core（数据层：DB、FTS、文件 IO）
 
 | Service | 依赖 | 职责 |
 |---------|------|------|
-| `ParseService` | DB, FTS, ConfigService | 接收解析请求、文件注册（SHA-256 + metadata）、分配任务、管理 per-tier 解析状态 |
+| `ParseService` | DB, FTS, ConfigService | 接收解析请求、文件入库（SHA-256 + metadata）、分配任务、管理 per-tier 解析状态 |
 | `SearchService` | DB, FTS | 内容搜索 (fts_contents)、文件名搜索 (fts_filenames) |
 | `ConfigService` | DB | KV 配置读写、Watch 目录 CRUD、Parsing-Rules CRUD、路径排除判断 |
 | `CleanupService` | DB | 孤儿文档清理、已删除文件清理、解析缓存清理 |
@@ -143,14 +154,14 @@ CREATE TABLE docs (
     keywords        TEXT,
     is_encrypted    INTEGER NOT NULL DEFAULT 0,
     is_scanned      INTEGER NOT NULL DEFAULT 0,
-    meta_tier       TEXT,               -- 当前 metadata 的来源 tier，NULL 表示注册阶段
+    meta_tier       TEXT,               -- 当前 metadata 的来源 tier，NULL 表示尚未解析
     first_seen_at   INTEGER NOT NULL,  -- Unix epoch ms
     updated_at      INTEGER NOT NULL   -- Unix epoch ms
 );
 ```
 
 > **docs 元数据填充策略**：
-> - **注册阶段**（register_file）：SHA-256 已全量读文件，顺手通过 pypdfium2 / python-docx 提取 metadata，成本可忽略。page_count 准确（pypdfium2 仅读 Catalog），title/author/subject/keywords 取自文件 metadata（可能不准，做保护性截断：title≤500、author≤200、subject≤1000、keywords≤1000）。`meta_tier=NULL`
+> - **Ingest 阶段**（ingest_file）：SHA-256 已全量读文件，顺手通过 pypdfium2 / python-docx 提取 metadata，成本可忽略。page_count 准确（pypdfium2 仅读 Catalog），title/author/subject/keywords 取自文件 metadata（可能不准，做保护性截断：title≤500、author≤200、subject≤1000、keywords≤1000）。`meta_tier=NULL`
 > - **解析完成后**（ParseWorker）：引擎产出的 metadata 仅在 `tier ≥ meta_tier`（或 meta_tier 为 NULL）时 UPDATE docs 覆盖，同时更新 `meta_tier`。同一 tier 的多次批次不会重复更新
 > - 解析状态全部在 `parses` 表中按 tier 独立管理
 
@@ -167,6 +178,9 @@ CREATE TABLE parses (
     locked_at   INTEGER,                 -- Unix epoch ms
     error_code  TEXT,                   -- 错误码，e.g. "parse_timeout"
     error_msg   TEXT,                   -- 人类可读错误描述
+    privacy     TEXT    NOT NULL DEFAULT 'local',  -- local / remote
+    remote_url  TEXT,                   -- 用户指定的远程 URL，null = 使用默认 mineru.net
+    via         TEXT,                   -- 实际执行的隐私路径: local / remote（fallback 后可能与 privacy 不同）
     output_path TEXT,                    -- 解析产物存储路径
     done_at     INTEGER,                 -- Unix epoch ms
     created_at  INTEGER NOT NULL,        -- Unix epoch ms
@@ -176,6 +190,16 @@ CREATE TABLE parses (
 CREATE INDEX idx_parses_status ON parses(status, priority DESC, created_at ASC);
 CREATE INDEX idx_parses_doc ON parses(sha256, tier);
 ```
+
+**privacy / remote_url / via 说明**：
+
+| 列 | 含义 |
+|------|------|
+| `privacy` | 用户请求时的隐私偏好。`local` 默认（文档不出本地），`remote` 即 `--remote`（文档上传到远程） |
+| `remote_url` | 用户指定的远程地址。`privacy=remote` 时必带，默认 `mineru.net` |
+| `via` | 实际执行路径。`privacy=remote` 但远程不可用时 fallback 到 `local`，此列记录实际走的路径。缓存键为 `(sha256, tier)`，与 `privacy`/`via` 无关——同一 tier 不同来源产出解析结果一致 |
+
+**缓存命中**：按 `(sha256, tier)` 去重，不区分 `privacy`。同一份文档用 `privacy=local` 和 `privacy=remote` 走同一 tier，只有一条 done 记录命中缓存。
 
 **pages 字段**：
 - 用 range 字符串描述，如 `"1~5"`、`"1~5,46~50"`、`"1~1000"`
@@ -358,7 +382,7 @@ INSERT INTO config (key, value) VALUES
     ('data_dir',              '~/MinerU'),
     ('default_tier',          'flash'),
     ('scan_interval_sec',     '300'),
-    ('reg_lock_timeout_sec',  '60'),
+    ('ingest_lock_timeout_sec',  '60'),
     ('parse_lock_timeout_sec', '1800'),
     ('device_check_interval_sec', '5');
 ```
@@ -372,9 +396,11 @@ INSERT INTO config (key, value) VALUES
 | 组件 | 职责 | 并发数 |
 |------|------|--------|
 | WatchLoop | 文件系统事件监控（watchfiles），发现文件变更 | 1 |
-| RegistrationWorker | 计算 SHA-256、提取 metadata、写入 files/docs、FTS 索引文件名、触发默认 flash 解析 | 2 |
-| ParseWorker | 执行解析任务（调用 `mineru.parser`），写入 FTS | 2 |
+| IngestWorker | 计算 SHA-256、提取 metadata、写入 files/docs、FTS 索引文件名、触发默认 flash 解析 | 2 |
+| ParseWorker | 执行解析任务。按 tier 路由：flash → 直接调用 `mineru.parser`；standard/pro → HTTP 调用 parse-server（本地或 remote，取决于 `privacy`） | 2 |
+| ParseServerHealthCheck | 定期探查 parse-server 健康状态（`GET /tiers`，60s 间隔），结果存内存供 ParseWorker 消费 | 1 |
 | DeviceMonitor | 定期检测 removable watch 路径的可达性 | 1 |
+| Compaction | 合并同一 (sha256, tier) 的 done 批次，减少 parses 表记录数 | 1 |
 
 所有组件均为 asyncio task，在 server 启动时创建，关闭时 graceful stop。
 
@@ -383,7 +409,7 @@ INSERT INTO config (key, value) VALUES
 无外部消息队列。Worker 通过原子 SQL 获取任务：
 
 ```sql
--- RegistrationWorker 获取任务
+-- IngestWorker 获取任务
 UPDATE files
 SET locked_at = ?
 WHERE id = (
@@ -422,60 +448,126 @@ RETURNING *;
 ### 5.1 两阶段模型
 
 ```
-阶段 1: 注册（RegistrationWorker）
+阶段 1: 入库（IngestWorker）
   - 计算 SHA-256
   - 提取 metadata (mime_type, page_count, title, author)
   - FTS 索引文件名
-  - 触发默认 flash 解析（INSERT INTO parses (sha256, tier, pages, status='pending', priority=0)）
+  - 触发默认 flash 解析（INSERT INTO parses (sha256, tier, pages, status='pending', privacy='local', priority=0)）
 
 阶段 2: 解析（ParseWorker）
   - flash tier：提取首尾各 5 页文本，写入 fts_contents
-  - standard/pro tier：完整解析，写入 fts_contents（覆盖 flash 的）
+  - standard/pro tier：按 tier 路由选择执行路径（见 §5.3），完整解析，写入 fts_contents（覆盖 flash 的）
 ```
 
-> **设计简化**：everydoc 的 L1 Index（注册 + 预览文本提取）在 MinerU 中被拆为：注册（仅 SHA-256 + metadata）+ flash 解析（首尾页文本）。用户无需理解"索引"和"解析"两个概念——所有内容提取都是 parse，只是 tier 不同。
+> **设计简化**：everydoc 的 L1 Index（入库 + 预览文本提取）在 MinerU 中被拆为：入库（仅 SHA-256 + metadata）+ flash 解析（首尾页文本）。用户无需理解"索引"和"解析"两个概念——所有内容提取都是 parse，只是 tier 不同。
 
-### 5.2 文件发现 → 注册
+### 5.2 文件发现 → 入库
 
 ```
 Watch 检测到文件事件
   → 过滤（ext 白名单 + exclude 规则）
   → INSERT OR IGNORE INTO files (path, filename, ext, size_bytes, mtime_ms, sha256=NULL)
-  → RegistrationWorker.acquire_task(): UPDATE files SET locked_at WHERE sha256 IS NULL
+  → IngestWorker.acquire_task(): UPDATE files SET locked_at WHERE sha256 IS NULL
   → process_file():
        1. compute SHA-256 (asyncio.to_thread)
        2. INSERT OR IGNORE INTO docs (sha256, size_bytes, page_count, title, author, subject, keywords, is_encrypted)
        3. FTS insert fts_filenames
        4. UPDATE files SET sha256=?, locked_at=NULL
        5. check parsing-rules
-       6. INSERT INTO parses (sha256, tier, pages, status='pending', priority=0)
+       6. INSERT INTO parses (sha256, tier, pages, status='pending', privacy='local', priority=0)
   → 失败时: UPDATE files SET sha256=NULL, error_code=?, error_msg=?（可重试）
 ```
 
-### 5.3 解析请求
+### 5.3 解析请求与 ParseWorker 路由
+
+#### 5.3.1 解析请求入队
 
 ```
-用户请求: mineru parse doc.pdf --tier standard --pages 1~10
+用户请求: mineru parse doc.pdf --tier standard --pages 1~10 [--remote [url]]
   → CLI → Product SDK (client.py) → Server POST /parse
   → ParseService.request_parse():
-       1. 查 files 表获取 sha256（如果文件未注册，先同步注册）
+       1. 查 files 表获取 sha256（如果文件未入库，先同步 ingest）
        2. 查 parses WHERE sha256=? AND tier=? AND status='done'
        3. 已有 done 批次的 pages 覆盖请求范围 → 直接返回缓存
-       4. 否则 → INSERT INTO parses (sha256, tier, pages, priority=1)
+       4. 否则 → INSERT INTO parses (sha256, tier, pages, privacy=?, remote_url=?, priority=1)
        5. --force 时 → DELETE FROM parses WHERE sha256=? AND tier=?，再 INSERT
   → ParseWorker.acquire_task()
-  → process_doc():
-       1. 从 parses 读取 sha256、tier、pages
-       2. resolve_engine(tier) 确定 backend
-       3. 调用 mineru.parser.parse(path, tier=..., pages=...)
-       4. 写入解析产物到 ~/MinerU/parsed/{sha256[:2]}/{sha256}/{tier}/
-       5. INSERT OR REPLACE fts_contents（仅当新 tier ≥ 当前 tier；截断到 30K head+tail）
-       6. UPDATE parses SET status='done', done_at=?
-       7. UPDATE docs（引擎能拿到更好的 title/author/subject/keywords/lang/is_scanned 时覆盖）
-  → 失败时: UPDATE parses SET status='failed', error_code=?, error_msg=?
 ```
 
-### 5.4 解析产物存储
+#### 5.3.2 ParseWorker 路由决策
+
+ParseWorker 取到 task 后，按 tier 和 privacy 决定执行路径：
+
+```
+ParseWorker.acquire_task()
+  → 从 parses 读取 sha256, tier, pages, privacy, remote_url
+  → route_parse(tier, privacy, remote_url):
+
+  ┌─ flash tier ──────────────────────────────────────────────┐
+  │   直接调用 mineru.parser.parse(path, backend="flash", ...) │
+  │   → via = 'local'                                         │
+  └────────────────────────────────────────────────────────────┘
+
+  ┌─ standard / pro tier ─────────────────────────────────────┐
+  │                                                            │
+  │   privacy = 'remote' ?                                     │
+  │   ├─ 是 → 目标: remote_url（默认 mineru.net）              │
+  │   │        ParseServerHealthCheck 探活通过？                │
+  │   │        ├─ 是 → POST {remote_url}/v1/parse/jobs         │
+  │   │        │       via = 'remote'                          │
+  │   │        └─ 否 → fallback 到 local（见下）               │
+  │   │                                                         │
+  │   └─ 否 (privacy = 'local') →                              │
+  │        parse-server 配置？                                  │
+  │        ├─ mode = disabled → 报错 no_engine                 │
+  │        ├─ mode = managed / self-hosted →                   │
+  │        │   ParseServerHealthCheck 探活通过？                │
+  │        │   ├─ 是 → POST {parse-server-url}/v1/parse/jobs   │
+  │        │   │       via = 'local'                           │
+  │        │   └─ 否 → 探活不可用，返回 engine_unavailable     │
+  │        │          （可重试 error code，等待 server 就绪）   │
+  └────────────────────────────────────────────────────────────┘
+
+  → 解析完成:
+       1. 写入解析产物到 ~/MinerU/parsed/{sha256[:2]}/{sha256}/{tier}/
+       2. INSERT OR REPLACE fts_contents（tier 门控）
+       3. UPDATE parses SET status='done', done_at=?, via=?
+       4. UPDATE docs（更高 tier 的 metadata 覆盖）
+  → 失败时:
+       - 可重试 error code → re-enqueue（保持 privacy，下次再走同一条路由）
+       - 不可重试 → UPDATE parses SET status='failed', error_code=?, error_msg=?
+```
+
+**关键设计点**：
+
+- **`--remote` 优先**：用户一旦指定 `--remote`，即优先使用远程，节省本地算力。远程不可用时 fallback 到本地
+- **privacy 不可变**：解析失败后 re-enqueue，保持原始 `privacy` 值不变。用户选择 remote 意味着接受文档上传，不会因重试改变立场
+- **`auto` tier 不可用时报错**：不静默降级，让用户做决定选择 flash 或 --remote
+- **缓存键**：`(sha256, tier)`，与 privacy/via 无关——同一 tier 不同来源产出解析结果一致
+- **remote 产物同样入库**：remote 解析完成后，middle_json 和 markdown 和本地解析一样写入 `~/MinerU/parsed/` 并更新 fts_contents
+
+### 5.4 parse-server 健康检查
+
+```
+ParseServerHealthCheck（asyncio task，每 60s 执行一次）
+  → 根据 config parse-server.* 决定检查哪些 server
+  → local parse-server（managed 或 self-hosted 模式）：
+       GET {url}/v1/tiers
+       成功 → 更新内存状态: local_healthy = true, supported_tiers = [...]
+       失败 → 更新内存状态: local_healthy = false
+  → remote parse-server：
+       GET {remote_url}/v1/tiers（默认 mineru.net）
+       成功 → 更新内存状态: remote_healthy = true, supported_tiers = [...]
+       失败 → 更新内存状态: remote_healthy = false
+  → 状态通过 AppState 暴露给 ParseWorker 消费
+
+健康状态与 ParseWorker 路由联动：
+  - ParseWorker 取 task 时同步读内存健康状态
+  - 探活不可用 → 返回可重试 error code（parse_server_unavailable）
+  - 探活失败不关闭 server，不影响已 running 的解析
+```
+
+### 5.5 解析产物存储
 
 ```
 ~/MinerU/
@@ -499,7 +591,7 @@ Watch 检测到文件事件
 
 每个 tier 独立目录，互不覆盖。
 
-### 5.5 搜索
+### 5.7 搜索
 ```
 用户请求: mineru search "关键词"
   → SearchService.search():
@@ -510,7 +602,7 @@ Watch 检测到文件事件
        5. 结果标注解析状态（flash / standard / pro）
 ```
 
-### 5.6 可插拔设备
+### 5.8 可插拔设备
 
 ```
 DeviceMonitor 每 5 秒检测:
@@ -548,14 +640,24 @@ async def startup():
     parse_svc = ParseService(db, fts, config_svc)
     search_svc = SearchService(db, fts)
 
-    # 5. 启动后台任务
+    # 5. 启动 parse-server（仅 managed 模式）
+    if config.parse_server.local.mode == "managed":
+        subprocess.Popen([
+            sys.executable, "-m", "mineru.parser.api_server",
+            "--tier", config.parse_server.local.managed_tier,
+            "--port", "15981",
+        ])
+
+    # 6. 启动后台任务
     asyncio.create_task(watch_loop.run())
+    asyncio.create_task(parse_server_health_check.run())
     for _ in range(2):
-        asyncio.create_task(registration_worker.run())
+        asyncio.create_task(ingest_worker.run())
         asyncio.create_task(parse_worker.run())
     asyncio.create_task(device_monitor.run())
+    asyncio.create_task(compaction.run())
 
-    # 6. 启动 uvicorn（UDS + 可选 TCP）
+    # 7. 启动 uvicorn（UDS + 可选 TCP）
     await uvicorn_server.serve()
 ```
 
@@ -565,11 +667,18 @@ async def startup():
 async def shutdown():
     # 1. 停止所有后台任务（设置 stop event，等待当前任务完成）
     await watch_loop.stop()
-    await registration_worker_pool.stop()
+    await parse_server_health_check.stop()
+    await ingest_worker_pool.stop()
     await parse_worker_pool.stop()
     await device_monitor.stop()
+    await compaction.stop()
 
-    # 2. 关闭数据库连接
+    # 2. 停止 parse-server（仅 managed 模式）
+    if config.parse_server.local.mode == "managed" and parse_server_proc:
+        parse_server_proc.terminate()
+        parse_server_proc.wait(timeout=10)
+
+    # 3. 关闭数据库连接
     await db.close()
 
     # 3. 删除 socket 文件
@@ -582,9 +691,9 @@ Server 启动时执行以下恢复操作：
 
 | 操作 | 目的 |
 |------|------|
-| `UPDATE files SET locked_at=NULL` | 释放因崩溃而未释放的注册锁 |
+| `UPDATE files SET locked_at=NULL` | 释放因崩溃而未释放的 ingest 锁 |
 | `UPDATE parses SET locked_at=NULL, status='failed' WHERE status='parsing'` | 释放解析锁，标记为可重试 |
-| 检查已注册文件的活性（`os.path.exists`） | 标记已删除的文件 |
+| 检查已入库文件的活性（`os.path.exists`） | 标记已删除的文件 |
 
 ---
 
@@ -594,17 +703,53 @@ Server 启动时执行以下恢复操作：
 
 所有配置存储在 SQLite `config` 表中（KV store），不使用外部配置文件。CLI 通过 `mineru config` 命令管理。
 
-### 7.2 配置项
+### 7.2 本地配置项
+
+这些配置项存储在 SQLite `config` 表中，由 `mineru config` 命令管理。
 
 | key | 默认值 | 说明 |
 |-----|--------|------|
 | `data_dir` | `~/MinerU` | 数据目录根路径 |
 | `default_tier` | `flash` | Watch 自动解析的默认 tier |
 | `scan_interval_sec` | `300` | Watch 全量扫描间隔（秒） |
-| `reg_lock_timeout_sec` | `60` | 注册锁超时 |
+| `ingest_lock_timeout_sec` | `60` | ingest 锁超时 |
 | `parse_lock_timeout_sec` | `1800` | 解析锁超时（30 分钟） |
 
-### 7.3 Watch 目录
+### 7.3 parse-server 配置
+
+parse-server 是独立的 HTTP 服务进程（`mineru-kit api-server`），提供 standard / pro tier 的解析能力。doclib 通过 HTTP 调用 parse-server 执行解析。
+
+config 表中的 parse-server 配置前缀为 `parse_server.*`：
+
+| key | 默认值 | 说明 |
+|-----|--------|------|
+| `parse_server.local.mode` | `disabled` | 本地 parse-server 模式：`disabled` / `managed` / `self_hosted` |
+| `parse_server.local.managed_tier` | `standard` | managed 模式下启动的 tier：`standard` / `pro` |
+| `parse_server.local.self_hosted_url` | — | self_hosted 模式下 parse-server 的 HTTP 地址 |
+| `parse_server.local.self_hosted_api_key` | — | self_hosted 模式下的 API Key（可选） |
+| `parse_server.remote.url` | `https://mineru.net/api` | 远程 parse-server 地址 |
+| `parse_server.remote.api_key` | — | 远程 API Key（从环境变量 `MINERU_API_KEY` 也可读取） |
+
+**`local.mode` 行为**：
+
+| mode | 行为 |
+|------|------|
+| `disabled` | 不使用本地 parse-server。`privacy=local` + standard/pro tier 请求直接报错 `no_engine` |
+| `managed` | doclib 启动时自动拉起 parse-server 进程，停止时一并关闭。生命周期由 doclib 管理 |
+| `self_hosted` | 用户自行启动和管理 parse-server。doclib 启动时不自动拉起，仅通过配置的 URL 连接探活 |
+
+**API Key 读取优先级**：环境变量 `MINERU_API_KEY` > config 中的 `remote.api_key` / `self_hosted_api_key`。
+
+CLI 命令：
+
+```bash
+mineru config parse-server local.mode managed
+mineru config parse-server local.managed-tier pro
+mineru config parse-server local.self_hosted_url http://10.0.1.5:8080
+mineru config parse-server remote.api-key sk-xxx
+```
+
+### 7.4 Watch 目录
 
 通过 `watch_targets` 表管理，CLI 操作：
 
@@ -617,7 +762,7 @@ mineru config watch rm ~/Documents
 
 约束：不允许嵌套、必须绝对路径。
 
-### 7.4 Parsing-Rules
+### 7.5 Parsing-Rules
 
 通过 `rules` 表管理，使用 `fnmatch` glob 匹配：
 
@@ -630,7 +775,7 @@ mineru config parsing-rules rm <id>
 
 规则命中时，系统检查是否具备对应 tier 的能力（本地引擎可用 或 规则包含 `--remote`）。不会因规则配置而静默上传文件到远端。
 
-### 7.5 排除规则
+### 7.6 排除规则
 
 ```bash
 mineru config exclude add "*.tmp"
@@ -714,6 +859,16 @@ flash 的首尾各 5 页文本通常在 30K 限制内，不会触发截断。sta
 | File 级 | 路径不存在、权限不足 | `files.error_code` | 清除 sha256，可重试 |
 | Doc 级 | 文件损坏、加密 | `files.error_code` | 不自动重试 |
 | Parse 级 | 引擎崩溃、超时、OOM | `parses.error_code` | 标记 `status='failed'`，可重试 |
+| Parse-server 级 | parse-server 不可用、探活失败 | `parses.error_code` = `parse_server_unavailable` | 可重试（等待 server 就绪或用户启动），保留 `privacy` 不变 |
+
+**parse-server 相关错误码**：
+
+| code | 触发场景 | 可重试 |
+|------|---------|:--:|
+| `no_engine` | `privacy=local` + parse-server `disabled` + tier 非 flash | 否 |
+| `engine_unavailable` | parse-server 已配置但探活不可用 | 是 |
+| `parse_server_unavailable` | `privacy=remote` 远程不可用，且 local fallback 也不可用 | 是 |
+| `parse_failed` | parse-server 返回解析失败 | 否 |
 
 ---
 

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from ..core.fts import tokenize_for_query, strip_sep
+from ..core.db import DatabaseManager
+from ..core.fts import FTSManager, strip_sep
 
 
 class SearchService:
-    def __init__(self, db, fts) -> None:
+    def __init__(self, db: DatabaseManager, fts: FTSManager) -> None:
         self.db = db
         self.fts = fts
 
@@ -62,24 +63,28 @@ class SearchService:
             snippet = strip_sep(row.get("snippet", ""))
             tier = row.get("tier") or ""
 
-            results.append({
-                "sha256": sha,
-                "title": row.get("title") or fts_file.get("title"),
-                "author": row.get("author") or fts_file.get("author"),
-                "filename": row.get("filename") or fts_file.get("filename"),
-                "ext": fts_file.get("ext", ""),
-                "size_bytes": fts_file.get("size_bytes", 0),
-                "tier": tier,
-                "snippet": snippet,
-                "paths": [f["path"] for f in files],
-            })
+            results.append(
+                {
+                    "sha256": sha,
+                    "title": row.get("title") or fts_file.get("title"),
+                    "author": row.get("author") or fts_file.get("author"),
+                    "filename": row.get("filename") or fts_file.get("filename"),
+                    "ext": fts_file.get("ext", ""),
+                    "size_bytes": fts_file.get("size_bytes", 0),
+                    "tier": tier,
+                    "snippet": snippet,
+                    "paths": [f["path"] for f in files],
+                }
+            )
 
         total = len(results)
-        return results[offset:offset + limit], total
+        return results[offset : offset + limit], total
 
     # ── filename search ─────────────────────────────────────────
 
-    async def search_filenames(self, query: str, limit: int = 50) -> tuple[list[dict], int]:
+    async def search_filenames(
+        self, query: str, limit: int = 50
+    ) -> tuple[list[dict], int]:
         """Search filenames only. Returns (results, total_count)."""
         rows = await self.fts.search_filenames(query, limit=limit)
         if not rows:
@@ -101,16 +106,18 @@ class SearchService:
             fr = files_by_id.get(row["file_id"])
             if not fr:
                 continue
-            results.append({
-                "sha256": fr.get("sha256", ""),
-                "title": fr.get("title"),
-                "filename": fr["filename"],
-                "ext": fr.get("ext", ""),
-                "size_bytes": fr.get("size_bytes", 0),
-                "tier": "",
-                "snippet": strip_sep(row.get("snippet", "")),
-                "paths": [fr["path"]],
-            })
+            results.append(
+                {
+                    "sha256": fr.get("sha256", ""),
+                    "title": fr.get("title"),
+                    "filename": fr["filename"],
+                    "ext": fr.get("ext", ""),
+                    "size_bytes": fr.get("size_bytes", 0),
+                    "tier": "",
+                    "snippet": strip_sep(row.get("snippet", "")),
+                    "paths": [fr["path"]],
+                }
+            )
 
         total = len(results)
         return results, total

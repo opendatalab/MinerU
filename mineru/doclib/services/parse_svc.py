@@ -1,4 +1,4 @@
-"""Parse service: file registration, parse request/acquire/process."""
+"""Parse service: file ingestion, parse request/acquire/process."""
 
 from __future__ import annotations
 
@@ -9,7 +9,10 @@ from pathlib import Path
 
 from mineru.constants import TIER_ORDER, ParseStatus, Tier
 
+from ..core.db import DatabaseManager
 from ..core.file_io import compute_sha256, extract_metadata, get_file_stat
+from ..core.fts import FTSManager
+from .config_svc import ConfigService
 
 
 def _now_ms() -> int:
@@ -110,7 +113,9 @@ def expand_pages(pages: str | None, page_count: int) -> str:
 # ── text truncation ────────────────────────────────────────────────
 
 
-def truncate_head_tail(text: str, max_chars: int = MAX_FTS_CHARS, half: int = FTS_HEAD_HALF) -> str:
+def truncate_head_tail(
+    text: str, max_chars: int = MAX_FTS_CHARS, half: int = FTS_HEAD_HALF
+) -> str:
     if len(text) <= max_chars:
         return text
     return text[:half] + "\n...\n" + text[-half:]
@@ -120,27 +125,39 @@ def truncate_head_tail(text: str, max_chars: int = MAX_FTS_CHARS, half: int = FT
 
 
 class ParseService:
-    def __init__(self, db, fts, config_svc, data_dir: str = "~/MinerU") -> None:
+    def __init__(
+        self,
+        db: DatabaseManager,
+        fts: FTSManager,
+        config_svc: ConfigService,
+        data_dir: str = "~/MinerU",
+    ) -> None:
         self.db = db
         self.fts = fts
         self.config_svc = config_svc
         self.data_dir = os.path.expanduser(data_dir)
 
-    # ── registration (shared) ──────────────────────────────────
+    # ── ingestion (shared) ──────────────────────────────────
 
-    async def register_file(self, path: str, watch_id: int | None = None) -> dict | None:
-        """Register a file: SHA-256 + metadata + trigger default parse."""
+    async def ingest_file(
+        self, path: str, watch_id: int | None = None
+    ) -> dict | None:
+        """Ingest a file: SHA-256 + metadata + trigger default parse."""
         stat = await get_file_stat(path)
         sha256 = await compute_sha256(path)
         now = _now_ms()
 
-        # check if this path is already registered
-        existing_path = await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,))
+        # check if this path is already ingested
+        existing_path = await self.db.fetchone(
+            "SELECT * FROM files WHERE path=?", (path,)
+        )
         if existing_path and existing_path["sha256"]:
             return existing_path
 
         # check if same content (sha256) is already tracked by another path
-        existing_sha = await self.db.fetchone("SELECT * FROM files WHERE sha256=?", (sha256,))
+        existing_sha = await self.db.fetchone(
+            "SELECT * FROM files WHERE sha256=?", (sha256,)
+        )
         if existing_sha:
             # same file, different path — just add this path pointing to the same doc
             await self.db.execute("DELETE FROM files WHERE path=?", (path,))
@@ -255,17 +272,33 @@ class ParseService:
 
     # ── parse request ───────────────────────────────────────────
 
-    async def request_parse(self, path: str, *, tier: str | None = None, pages: str | None = None, force: bool = False) -> dict:
+    async def request_parse(
+        self,
+        path: str,
+        *,
+        tier: str | None = None,
+        pages: str | None = None,
+        force: bool = False,
+    ) -> dict:
         """Handle a parse request from CLI.  Returns info for status polling."""
-        # ensure file is registered
-        file_row = await self.db.fetchone("SELECT * FROM files WHERE path=? AND scan_status='active'", (path,))
+        # ensure file is ingested
+        file_row = await self.db.fetchone(
+            "SELECT * FROM files WHERE path=? AND scan_status='active'", (path,)
+        )
         if file_row is None or file_row["sha256"] is None:
-            file_row = await self.register_file(path)
+            file_row = await self.ingest_file(path)
         if file_row is None:
-            return {"sha256": "", "tier": tier or "", "status": "error", "tip": "File could not be registered."}
+            return {
+                "sha256": "",
+                "tier": tier or "",
+                "status": "error",
+                "tip": "File could not be ingested.",
+            }
 
         sha256 = file_row["sha256"]
-        doc = await self.db.fetchone("SELECT page_count FROM docs WHERE sha256=?", (sha256,))
+        doc = await self.db.fetchone(
+            "SELECT page_count FROM docs WHERE sha256=?", (sha256,)
+        )
         page_count = doc["page_count"] if doc else 1
 
         requested_tier = tier or Tier.FLASH
@@ -276,7 +309,9 @@ class ParseService:
             requested_tier = Tier.FLASH
 
         # expand pages
-        default_pages = f"1~5,-5~-1" if page_count and page_count > 10 else f"1~{page_count}"
+        default_pages = (
+            "1~5,-5~-1" if page_count and page_count > 10 else f"1~{page_count}"
+        )
         raw_pages = pages or default_pages
         pages_str = expand_pages(raw_pages, page_count or 1)
 
@@ -366,7 +401,9 @@ class ParseService:
         pages = task["pages"]
 
         # guard
-        current = await self.db.fetchone("SELECT status FROM parses WHERE id=?", (task["id"],))
+        current = await self.db.fetchone(
+            "SELECT status FROM parses WHERE id=?", (task["id"],)
+        )
         if current is None or current["status"] != ParseStatus.PARSING:
             return False
 
@@ -378,7 +415,12 @@ class ParseService:
         if file_row is None:
             await self.db.execute(
                 "UPDATE parses SET status=?, error_code=?, error_msg=?, locked_at=NULL WHERE id=?",
-                (ParseStatus.FAILED, "no_accessible_file", "No active file found for this document", task["id"]),
+                (
+                    ParseStatus.FAILED,
+                    "no_accessible_file",
+                    "No active file found for this document",
+                    task["id"],
+                ),
             )
             return False
 
@@ -391,7 +433,12 @@ class ParseService:
         except ImportError:
             await self.db.execute(
                 "UPDATE parses SET status=?, error_code=?, error_msg=?, locked_at=NULL WHERE id=?",
-                (ParseStatus.FAILED, "no_engine", "mineru.parser module not available", task["id"]),
+                (
+                    ParseStatus.FAILED,
+                    "no_engine",
+                    "mineru.parser module not available",
+                    task["id"],
+                ),
             )
             return False
 
@@ -468,7 +515,12 @@ class ParseService:
             (sha256, tier),
         )
         if active:
-            return {"sha256": sha256, "tier": tier, "status": active["status"], "pages": active["pages"]}
+            return {
+                "sha256": sha256,
+                "tier": tier,
+                "status": active["status"],
+                "pages": active["pages"],
+            }
 
         failed = await self.db.fetchone(
             "SELECT * FROM parses WHERE sha256=? AND tier=? AND status='failed' ORDER BY created_at DESC LIMIT 1",
@@ -486,9 +538,13 @@ class ParseService:
 
     # ── internal helpers ────────────────────────────────────────
 
-    async def _maybe_update_fts(self, sha256: str, tier: str, text: str, file_row: dict) -> None:
+    async def _maybe_update_fts(
+        self, sha256: str, tier: str, text: str, file_row: dict
+    ) -> None:
         existing_tier = await self.fts.get_tier(sha256)
-        if existing_tier and TIER_ORDER.get(existing_tier, -1) >= TIER_ORDER.get(tier, -1):
+        if existing_tier and TIER_ORDER.get(existing_tier, -1) >= TIER_ORDER.get(
+            tier, -1
+        ):
             return  # current FTS data is from a higher or equal tier
 
         text = truncate_head_tail(text)
@@ -502,11 +558,15 @@ class ParseService:
         )
 
     async def _maybe_update_docs_meta(self, sha256: str, tier: str) -> None:
-        doc = await self.db.fetchone("SELECT meta_tier FROM docs WHERE sha256=?", (sha256,))
+        doc = await self.db.fetchone(
+            "SELECT meta_tier FROM docs WHERE sha256=?", (sha256,)
+        )
         if doc is None:
             return
         existing_tier = doc.get("meta_tier")
-        if existing_tier and TIER_ORDER.get(existing_tier, -1) >= TIER_ORDER.get(tier, -1):
+        if existing_tier and TIER_ORDER.get(existing_tier, -1) >= TIER_ORDER.get(
+            tier, -1
+        ):
             return
 
         # for now just update meta_tier; full metadata update comes when
@@ -530,7 +590,9 @@ def _tier_to_backend(tier: str) -> str:
     return mapping.get(tier, "pipeline")
 
 
-def _split_ranges(pages: str, file_row: dict, sha256: str) -> list[tuple[int, int | None]]:
+def _split_ranges(
+    pages: str, file_row: dict, sha256: str
+) -> list[tuple[int, int | None]]:
     """Split a pages range string into contiguous (start, end) tuples
     suitable for the current parse() API.  start is 0-based, end is inclusive."""
     page_set = parse_range_set(pages)

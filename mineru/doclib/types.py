@@ -112,6 +112,6 @@ class ServerStatus(BaseModel):
     files_total: int = 0
     docs_total: int = 0
     parse_queue_length: int = 0
-    reg_queue_length: int = 0
+    ingest_queue_length: int = 0
     watch_count: int = 0
     watches: list[dict] = []

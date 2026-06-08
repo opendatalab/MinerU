@@ -11,9 +11,15 @@ from watchfiles import awatch
 
 from mineru.constants import ALLOWED_EXTENSIONS
 
+from ..core.db import DatabaseManager
+from ..services.config_svc import ConfigService
+from ..services.parse_svc import ParseService
+
 
 class WatchLoop:
-    def __init__(self, db, config_svc, parse_svc) -> None:
+    def __init__(
+        self, db: DatabaseManager, config_svc: ConfigService, parse_svc: ParseService
+    ) -> None:
         self.db = db
         self.config_svc = config_svc
         self.parse_svc = parse_svc

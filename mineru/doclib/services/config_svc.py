@@ -8,9 +8,11 @@ import time
 
 import fnvhash
 
+from ..core.db import DatabaseManager
+
 
 class ConfigService:
-    def __init__(self, db) -> None:
+    def __init__(self, db: DatabaseManager) -> None:
         self.db = db
 
     # ── KV config ───────────────────────────────────────────────
@@ -30,8 +32,9 @@ class ConfigService:
 
     # ── watch targets ───────────────────────────────────────────
 
-    async def add_watch(self, path: str, removable: bool = False,
-                        label: str | None = None) -> dict:
+    async def add_watch(
+        self, path: str, removable: bool = False, label: str | None = None
+    ) -> dict:
         if not os.path.isabs(path):
             raise ValueError(f"Path must be absolute: {path}")
         if os.path.normpath(path) != path:
@@ -76,9 +79,16 @@ class ConfigService:
 
     # ── rules ───────────────────────────────────────────────────
 
-    async def add_rule(self, name: str, rule_type: str, pattern: str,
-                       tier: str | None = None, pages: str | None = None,
-                       remote: bool = False, priority: int = 0) -> int:
+    async def add_rule(
+        self,
+        name: str,
+        rule_type: str,
+        pattern: str,
+        tier: str | None = None,
+        pages: str | None = None,
+        remote: bool = False,
+        priority: int = 0,
+    ) -> int:
         return await self.db.execute_insert(
             "INSERT INTO rules (name, rule_type, pattern, tier, pages, remote, priority) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",

@@ -7,6 +7,8 @@ try:
 except ImportError:
     jieba = None  # type: ignore[assignment]
 
+from .db import DatabaseManager
+
 FTS_SEP = ""
 
 
@@ -36,24 +38,34 @@ def strip_sep(text: str) -> str:
 
 
 class FTSManager:
-    def __init__(self, db) -> None:
+    def __init__(self, db: DatabaseManager) -> None:
         self.db = db
 
     # ── fts_contents ────────────────────────────────────────────
 
-    async def replace(self, *, sha256: str, tier: str, text: str,
-                      title: str, author: str, filename: str) -> None:
+    async def replace(
+        self,
+        *,
+        sha256: str,
+        tier: str,
+        text: str,
+        title: str,
+        author: str,
+        filename: str,
+    ) -> None:
         """Insert or replace content for a doc.  Caller is responsible
         for tier-gating (only call if new tier >= current)."""
         tokenized = tokenize_for_index(text)
-        await self.db.execute_atomic([
-            ("DELETE FROM fts_contents WHERE sha256=?", (sha256,)),
-            (
-                "INSERT INTO fts_contents (sha256, tier, text, title, author, filename) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (sha256, tier, tokenized, title or "", author or "", filename),
-            ),
-        ])
+        await self.db.execute_atomic(
+            [
+                ("DELETE FROM fts_contents WHERE sha256=?", (sha256,)),
+                (
+                    "INSERT INTO fts_contents (sha256, tier, text, title, author, filename) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (sha256, tier, tokenized, title or "", author or "", filename),
+                ),
+            ]
+        )
 
     async def search(self, query: str, limit: int = 200) -> list[dict]:
         tokens = _sanitize_query_tokens(tokenize_for_query(query))
@@ -83,13 +95,15 @@ class FTSManager:
     # ── fts_filenames ────────────────────────────────────────────
 
     async def upsert_filename(self, file_id: int, filename: str, ext: str) -> None:
-        await self.db.execute_atomic([
-            ("DELETE FROM fts_filenames WHERE file_id=?", (file_id,)),
-            (
-                "INSERT INTO fts_filenames (file_id, filename, ext) VALUES (?, ?, ?)",
-                (file_id, tokenize_for_index(filename), ext),
-            ),
-        ])
+        await self.db.execute_atomic(
+            [
+                ("DELETE FROM fts_filenames WHERE file_id=?", (file_id,)),
+                (
+                    "INSERT INTO fts_filenames (file_id, filename, ext) VALUES (?, ?, ?)",
+                    (file_id, tokenize_for_index(filename), ext),
+                ),
+            ]
+        )
 
     async def search_filenames(self, query: str, limit: int = 50) -> list[dict]:
         tokens = _sanitize_query_tokens(tokenize_for_query(query))
@@ -112,6 +126,7 @@ class FTSManager:
 
 
 # ── helpers ────────────────────────────────────────────────────────
+
 
 def _sanitize_query_tokens(tokenized: str) -> list[str]:
     """Remove special characters and FTS5 operators from query tokens."""

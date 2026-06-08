@@ -6,9 +6,11 @@ import os
 import shutil
 import time
 
+from ..core.db import DatabaseManager
+
 
 class CleanupService:
-    def __init__(self, db, data_dir: str = "~/MinerU") -> None:
+    def __init__(self, db: DatabaseManager, data_dir: str = "~/MinerU") -> None:
         self.db = db
         self.data_dir = os.path.expanduser(data_dir)
 
@@ -42,8 +44,9 @@ class CleanupService:
 
     # ── deleted files ───────────────────────────────────────────
 
-    async def cleanup_deleted(self, older_than_days: int = 30,
-                              dry_run: bool = True) -> int:
+    async def cleanup_deleted(
+        self, older_than_days: int = 30, dry_run: bool = True
+    ) -> int:
         row = await self.db.fetchone(
             "SELECT COUNT(*) as cnt FROM files WHERE scan_status='deleted' "
             "AND deleted_at < ?",

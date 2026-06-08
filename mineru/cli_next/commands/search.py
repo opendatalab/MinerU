@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typer
 
-from mineru.server.client import MineruClient
+from mineru.doclib.client import MineruClient
 from mineru.cli_next.output import format_search_results, format_info, print_error
 
 

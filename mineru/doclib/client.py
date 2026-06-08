@@ -1,26 +1,30 @@
-"""Product SDK — communicates with the local mineru server over UDS."""
+"""Product SDK — communicates with the local mineru doclib over UDS."""
 
 from __future__ import annotations
+
+from typing import Any
 
 import httpx
 
 from mineru.constants import SOCKET_PATH
-from mineru.errors import MineruError, ServerNotRunningError, error_type_for
+from mineru.errors import MineruError, ServerNotRunningError
 
 
 class MineruClient:
-    """httpx-based client for the local mineru server."""
+    """httpx-based client for the local mineru doclib."""
 
     def __init__(self, socket_path: str = SOCKET_PATH, timeout: int = 60) -> None:
         transport = httpx.HTTPTransport(uds=socket_path)
-        self._client = httpx.Client(transport=transport, base_url="http://mineru", timeout=timeout)
+        self._client = httpx.Client(
+            transport=transport, base_url="http://mineru", timeout=timeout
+        )
 
     def close(self) -> None:
         self._client.close()
 
     # ── helpers ────────────────────────────────────────────────
 
-    def _get(self, url_path: str, **params) -> dict:
+    def _get(self, url_path: str, **params: Any) -> dict:
         data = self._request("GET", url_path, query_params=params or None)
         return data
 
@@ -28,13 +32,17 @@ class MineruClient:
         data = self._request("POST", url_path, json_data=json_data)
         return data
 
-    def _delete(self, url_path: str, **params) -> dict:
+    def _delete(self, url_path: str, **params: Any) -> dict:
         data = self._request("DELETE", url_path, query_params=params or None)
         return data
 
-    def _request(self, method: str, url_path: str,
-                 query_params: dict | None = None,
-                 json_data: dict | None = None) -> dict:
+    def _request(
+        self,
+        method: str,
+        url_path: str,
+        query_params: dict | None = None,
+        json_data: dict | None = None,
+    ) -> dict:
         try:
             if method == "GET":
                 resp = self._client.get(url_path, params=query_params or {})
@@ -64,11 +72,23 @@ class MineruClient:
 
     # ── parse ──────────────────────────────────────────────────
 
-    def parse(self, path: str, *, tier: str | None = None,
-              pages: str | None = None, force: bool = False) -> dict:
-        return self._post("/parse", {
-            "path": path, "tier": tier, "pages": pages, "force": force,
-        })
+    def parse(
+        self,
+        path: str,
+        *,
+        tier: str | None = None,
+        pages: str | None = None,
+        force: bool = False,
+    ) -> dict:
+        return self._post(
+            "/parse",
+            {
+                "path": path,
+                "tier": tier,
+                "pages": pages,
+                "force": force,
+            },
+        )
 
     def parse_status(self, sha256: str, tier: str) -> dict:
         return self._get("/parse/status", sha256=sha256, tier=tier)
@@ -81,8 +101,9 @@ class MineruClient:
 
     # ── search ─────────────────────────────────────────────────
 
-    def search(self, query: str, file_type: str | None = None,
-               limit: int = 20, offset: int = 0) -> dict:
+    def search(
+        self, query: str, file_type: str | None = None, limit: int = 20, offset: int = 0
+    ) -> dict:
         return self._get("/search", q=query, type=file_type, limit=limit, offset=offset)
 
     def find(self, query: str, limit: int = 50) -> dict:
@@ -98,9 +119,12 @@ class MineruClient:
     def config_show(self) -> dict:
         return self._get("/config")
 
-    def config_watch_add(self, path: str, *, removable: bool = False,
-                         label: str | None = None) -> dict:
-        return self._post("/config/watch", {"path": path, "removable": removable, "label": label})
+    def config_watch_add(
+        self, path: str, *, removable: bool = False, label: str | None = None
+    ) -> dict:
+        return self._post(
+            "/config/watch", {"path": path, "removable": removable, "label": label}
+        )
 
     def config_watch_list(self) -> dict:
         return self._get("/config/watch")
@@ -117,12 +141,25 @@ class MineruClient:
     def config_exclude_rm(self, rule_id: int) -> dict:
         return self._delete(f"/config/exclude/{rule_id}")
 
-    def config_parsing_rules_add(self, pattern: str, *, tier: str | None = None,
-                                   pages: str | None = None, remote: bool = False,
-                                   name: str | None = None) -> dict:
-        return self._post("/config/parsing-rules", {
-            "pattern": pattern, "tier": tier, "pages": pages, "remote": remote, "name": name,
-        })
+    def config_parsing_rules_add(
+        self,
+        pattern: str,
+        *,
+        tier: str | None = None,
+        pages: str | None = None,
+        remote: bool = False,
+        name: str | None = None,
+    ) -> dict:
+        return self._post(
+            "/config/parsing-rules",
+            {
+                "pattern": pattern,
+                "tier": tier,
+                "pages": pages,
+                "remote": remote,
+                "name": name,
+            },
+        )
 
     def config_parsing_rules_list(self) -> dict:
         return self._get("/config/parsing-rules")

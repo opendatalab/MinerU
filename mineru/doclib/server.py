@@ -1,4 +1,4 @@
-"""mineru server — FastAPI app factory, lifecycle, UDS + optional TCP."""
+"""mineru doclib — FastAPI app factory, lifecycle, UDS + optional TCP."""
 
 from __future__ import annotations
 
@@ -8,21 +8,23 @@ import logging
 import os
 import socket
 import time
+from collections.abc import Callable
 from logging.handlers import RotatingFileHandler
+from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from mineru.errors import MineruError, error_response
-from .config import Config
+from .config import Config, LogConfig
 
 
 def create_app(cfg: Config | None = None) -> FastAPI:
     """Create the FastAPI app.  Accepts an optional Config for testing."""
     if cfg is None:
         cfg = Config()
-    app = FastAPI(title="MinerU Server", version="1.0.0")
+    app = FastAPI(title="MinerU DocLib", version="1.0.0")
     state = AppState()
 
     # ── startup ──────────────────────────────────────────────────
@@ -36,7 +38,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         from .services.config_svc import ConfigService
         from .services.cleanup_svc import CleanupService
         from .background.watch import WatchLoop
-        from .background.reg_worker import RegistrationWorkerPool
+        from .background.ingest import IngestWorkerPool
         from .background.parse_worker import ParseWorkerPool
         from .background.device_monitor import DeviceMonitor
         from .background.compaction import Compaction
@@ -58,20 +60,28 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.cleanup_svc = CleanupService(state.db, data_dir)
 
         # crash recovery
-        await state.db.execute("UPDATE files SET locked_at = NULL WHERE locked_at IS NOT NULL")
+        await state.db.execute(
+            "UPDATE files SET locked_at = NULL WHERE locked_at IS NOT NULL"
+        )
         await state.db.execute(
             "UPDATE parses SET locked_at = NULL, status = 'failed' WHERE status = 'parsing'"
         )
 
         # background tasks
         state.watch = WatchLoop(state.db, state.config_svc, state.parse_svc)
-        state.reg_workers = RegistrationWorkerPool(state.parse_svc, num_workers=cfg.server.reg_workers)
-        state.parse_workers = ParseWorkerPool(state.parse_svc, num_workers=cfg.server.parse_workers)
+        state.ingest_workers = IngestWorkerPool(
+            state.parse_svc, num_workers=cfg.server.ingest_workers
+        )
+        state.parse_workers = ParseWorkerPool(
+            state.parse_svc, num_workers=cfg.server.parse_workers
+        )
         state.device_monitor = DeviceMonitor(state.db, state.config_svc)
-        state.compaction = Compaction(state.db, interval_sec=cfg.server.compaction_interval_sec)
+        state.compaction = Compaction(
+            state.db, interval_sec=cfg.server.compaction_interval_sec
+        )
 
         asyncio.create_task(state.watch.run())
-        asyncio.create_task(state.reg_workers.run())
+        asyncio.create_task(state.ingest_workers.run())
         asyncio.create_task(state.parse_workers.run())
         asyncio.create_task(state.device_monitor.run())
         asyncio.create_task(state.compaction.run())
@@ -85,7 +95,13 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     @app.on_event("shutdown")
     async def shutdown() -> None:
-        for comp in ["watch", "reg_workers", "parse_workers", "device_monitor", "compaction"]:
+        for comp in [
+            "watch",
+            "ingest_workers",
+            "parse_workers",
+            "device_monitor",
+            "compaction",
+        ]:
             c = getattr(state, comp, None)
             if c and hasattr(c, "stop"):
                 await c.stop()
@@ -96,7 +112,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     # ── middleware ────────────────────────────────────────────────
 
     @app.middleware("http")
-    async def attach_state(request: Request, call_next):
+    async def attach_state(request: Request, call_next: Callable) -> Any:
         request.state.app = state
         return await call_next(request)
 
@@ -147,7 +163,7 @@ class AppState:
 
 
 def main() -> None:
-    """Entry point: python -m mineru.server.app"""
+    """Entry point: python -m mineru.doclib.server"""
     cfg = Config()
     uds_path = cfg.server.uds.path
 
@@ -188,7 +204,9 @@ def main() -> None:
             port = cfg.server.http.port
         tcp_sock.listen(cfg.server.http.backlog)
         sockets.append(tcp_sock)
-        print(f"MinerU server listening on UDS {uds_path} and TCP {cfg.server.http.host}:{port}")
+        print(
+            f"MinerU server listening on UDS {uds_path} and TCP {cfg.server.http.host}:{port}"
+        )
     else:
         print(f"MinerU server listening on UDS {uds_path}")
 
@@ -209,7 +227,7 @@ def main() -> None:
         loop.close()
 
 
-def _setup_logging(log_cfg) -> None:
+def _setup_logging(log_cfg: LogConfig) -> None:
     logger = logging.getLogger("mineru")
     level = getattr(logging, log_cfg.level.upper(), logging.INFO)
     logger.setLevel(level)
@@ -218,7 +236,9 @@ def _setup_logging(log_cfg) -> None:
         # console
         ch = logging.StreamHandler()
         ch.setLevel(level)
-        ch.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+        ch.setFormatter(
+            logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+        )
         logger.addHandler(ch)
 
         # file
@@ -226,7 +246,9 @@ def _setup_logging(log_cfg) -> None:
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         fh = RotatingFileHandler(log_path, maxBytes=5 * 1024 * 1024, backupCount=3)
         fh.setLevel(level)
-        fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+        fh.setFormatter(
+            logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+        )
         logger.addHandler(fh)
 
 
