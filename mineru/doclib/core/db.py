@@ -65,6 +65,9 @@ CREATE_TABLES_SQL = [
         locked_at   INTEGER,
         error_code  TEXT,
         error_msg   TEXT,
+        privacy     TEXT    NOT NULL DEFAULT 'local',
+        remote_url  TEXT,
+        via         TEXT,
         output_path TEXT,
         done_at     INTEGER,
         created_at  INTEGER NOT NULL,
@@ -148,6 +151,9 @@ DEFAULT_CONFIG = {
     "ingest_lock_timeout_sec": "60",
     "parse_lock_timeout_sec": "1800",
     "device_check_interval_sec": "5",
+    "parse_server.local.mode": "disabled",
+    "parse_server.local.managed_tier": "standard",
+    "parse_server.remote.url": "https://mineru.net/api",
 }
 
 DEFAULT_EXCLUDE_RULES = [

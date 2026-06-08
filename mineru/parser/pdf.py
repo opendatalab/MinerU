@@ -9,8 +9,7 @@ from typing import Any
 
 from mineru.types import PageInfo
 
-from .base import DocumentParser
-from .parse_result import ParseResult
+from .base import DocumentParser, ParseResult
 
 _IMAGE_SUFFIXES = frozenset({"png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"})
 
@@ -41,22 +40,43 @@ class PdfBaseParser(DocumentParser):
     _parse_method: str = ""
     _backend: str = ""
 
-    def parse(self, path: str | Path) -> ParseResult:
+    def __init__(
+        self,
+        *,
+        backend: str = "hybrid-auto-engine",
+        method: str = "auto",
+        lang: str = "ch",
+        formula_enable: bool = True,
+        table_enable: bool = True,
+        image_analysis: bool = True,
+        server_url: str | None = None,
+    ):
+        self.backend = backend
+        self.method = method
+        self.lang = lang
+        self.formula_enable = formula_enable
+        self.table_enable = table_enable
+        self.image_analysis = image_analysis
+        self.server_url = server_url
+
+    def parse(self, path: str | Path, *, page_range: str = "") -> ParseResult:
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(path)
 
-        file_name, pdf_bytes = self._prepare_input(path)
+        file_name, pdf_bytes = self._prepare_input(path, page_range)
         middle_json = self._run_analysis(pdf_bytes, image_writer=None)
+        self._fix_page_indices(middle_json)
         return self._build_result(middle_json, pdf_bytes, file_name)
 
-    async def parse_async(self, path: str | Path) -> ParseResult:
+    async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(path)
 
-        file_name, pdf_bytes = await asyncio.to_thread(self._prepare_input, path)
+        file_name, pdf_bytes = await asyncio.to_thread(self._prepare_input, path, page_range)
         middle_json = await self._arun_analysis(pdf_bytes, image_writer=None)
+        self._fix_page_indices(middle_json)
         return self._build_result(middle_json, pdf_bytes, file_name)
 
     @abstractmethod
@@ -66,7 +86,7 @@ class PdfBaseParser(DocumentParser):
     async def _arun_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
         return await asyncio.to_thread(self._run_analysis, pdf_bytes, image_writer)
 
-    def _prepare_input(self, path: Path) -> tuple[str, bytes]:
+    def _prepare_input(self, path: Path, page_range: str = "") -> tuple[str, bytes]:
         from ..utils.guess_suffix_or_lang import guess_suffix_by_path
         from ..utils.pdf_document import PDFDocument
 
@@ -77,22 +97,36 @@ class PdfBaseParser(DocumentParser):
         if suffix in _IMAGE_SUFFIXES:
             pdf_bytes = PDFDocument.from_image(pdf_bytes).bytes
 
-        pdf_bytes = self._maybe_adjust_pdf_bytes(pdf_bytes, suffix)
+        pdf_bytes = self._maybe_adjust_pdf_bytes(pdf_bytes, suffix, page_range)
         return file_name, pdf_bytes
 
-    def _maybe_adjust_pdf_bytes(self, pdf_bytes: bytes, suffix: str) -> bytes:
+    def _maybe_adjust_pdf_bytes(self, pdf_bytes: bytes, suffix: str, page_range: str = "") -> bytes:
         if suffix != "pdf":
             return pdf_bytes
 
         from ..utils.pdf_document import PDFDocument
+        from ..utils.pdf_page_id import parse_page_range
 
         doc = PDFDocument(pdf_bytes)
-        end = self.end_page_id if self.end_page_id is not None else doc.page_count - 1
-        if self.start_page_id > 0 or self.end_page_id is not None:
-            extracted = doc.extract_page_range(self.start_page_id, end)
-            if extracted.bytes:
-                return extracted.bytes
-        return pdf_bytes
+        self._page_indices = parse_page_range(page_range, doc.page_count)
+
+        if self._page_indices == list(range(doc.page_count)):
+            return pdf_bytes
+
+        from ..utils.pdfium_guard import rewrite_pdf_bytes_with_pdfium
+
+        extracted = rewrite_pdf_bytes_with_pdfium(pdf_bytes, page_indices=self._page_indices)
+        return extracted or pdf_bytes
+
+    def _fix_page_indices(self, pages: list[PageInfo]) -> None:
+        """Rewrite ``page_idx`` so it reflects the original document position
+        when pages were cropped from a subset."""
+        mapping = getattr(self, "_page_indices", None)
+        if not mapping:
+            return
+        for i, p in enumerate(pages):
+            if i < len(mapping):
+                p.page_idx = mapping[i]
 
     def _build_result(
         self,
@@ -156,15 +190,15 @@ class PdfPipelineParser(PdfBaseParser):
     _parse_method: str = ""
     _backend = "pipeline"
 
-    def parse(self, path: str | Path) -> ParseResult:
+    def parse(self, path: str | Path, *, page_range: str = "") -> ParseResult:
         self._parse_method = self.method
-        return super().parse(path)
+        return super().parse(path, page_range=page_range)
 
-    async def parse_async(self, path: str | Path) -> ParseResult:
+    async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:
         self._parse_method = self.method
-        return await super().parse_async(path)
+        return await super().parse_async(path, page_range=page_range)
 
-    def parse_batch(self, paths: list[str | Path]) -> list[ParseResult]:
+    def parse_batch(self, paths: list[str | Path], *, page_range: str = "") -> list[ParseResult]:
         self._parse_method = self.method
 
         from ..backend.pipeline.pipeline_analyze import doc_analyze_streaming
@@ -172,7 +206,7 @@ class PdfPipelineParser(PdfBaseParser):
         file_names: list[str] = []
         pdf_bytes_list: list[bytes] = []
         for p in paths:
-            fn, pb = self._prepare_input(Path(p))
+            fn, pb = self._prepare_input(Path(p), page_range)
             file_names.append(fn)
             pdf_bytes_list.append(pb)
 
@@ -199,10 +233,10 @@ class PdfPipelineParser(PdfBaseParser):
 
         return parse_results
 
-    async def parse_batch_async(self, paths: list[str | Path]) -> list[ParseResult]:
+    async def parse_batch_async(self, paths: list[str | Path], *, page_range: str = "") -> list[ParseResult]:
         import asyncio
 
-        return await asyncio.to_thread(self.parse_batch, paths)
+        return await asyncio.to_thread(self.parse_batch, paths, page_range=page_range)
 
     def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
         from ..backend.pipeline.pipeline_analyze import doc_analyze_streaming
@@ -231,13 +265,13 @@ class PdfHybridParser(PdfBaseParser):
     _parse_method: str = ""
     _backend = "hybrid"
 
-    def parse(self, path: str | Path) -> ParseResult:
+    def parse(self, path: str | Path, *, page_range: str = "") -> ParseResult:
         self._parse_method = f"hybrid_{self.method}"
-        return super().parse(path)
+        return super().parse(path, page_range=page_range)
 
-    async def parse_async(self, path: str | Path) -> ParseResult:
+    async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:
         self._parse_method = f"hybrid_{self.method}"
-        return await super().parse_async(path)
+        return await super().parse_async(path, page_range=page_range)
 
     def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
         from ..backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
@@ -280,3 +314,46 @@ class PdfHybridParser(PdfBaseParser):
         )
 
         return middle_json
+
+
+class PdfFlashParser(PdfBaseParser):
+    """PDF / image parser using the flash (CPU-only pypdfium2) backend."""
+
+    _backend = "flash"
+
+    def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
+        from mineru.types import Block, Line, PageInfo, Span
+
+        from ..backend.flash.pdf_extractor import extract_text
+
+        filepath = self._pdf_bytes_to_tempfile(pdf_bytes)
+        text = extract_text(filepath)
+        pages_text = text.split("\n\n")
+
+        pages: list[PageInfo] = []
+        page_idx = self._page_indices[0] if self._page_indices else 0
+        block_idx = 0
+        for pt in pages_text:
+            if not pt.strip():
+                continue
+            span = Span(type="text", bbox=(0.0, 0.0, 0.0, 0.0), content=pt.strip())
+            line = Line(bbox=(0.0, 0.0, 0.0, 0.0), spans=[span])
+            block = Block(index=block_idx, type="text", bbox=(0.0, 0.0, 0.0, 0.0), lines=[line])
+            block_idx += 1
+            page = PageInfo(
+                page_idx=page_idx,
+                para_blocks=[block],
+            )
+            pages.append(page)
+            page_idx += 1
+
+        return pages
+
+    @staticmethod
+    def _pdf_bytes_to_tempfile(pdf_bytes: bytes) -> str:
+        import tempfile
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+        tmp.write(pdf_bytes)
+        tmp.close()
+        return tmp.name

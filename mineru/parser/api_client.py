@@ -15,8 +15,17 @@ from typing import Any
 
 from mineru.types import PageInfo
 
-from .base import DocumentParser
-from .parse_result import ParseResult
+from .base import DocumentParser, ParseResult
+
+
+def _tier_to_backend(tier: str) -> str:
+    """Map NEXT-API tier values to api_parser backend names."""
+    mapping: dict[str, str] = {
+        "standard": "pipeline",
+        "pro": "vlm",
+        "auto": "auto",
+    }
+    return mapping.get(tier, "pipeline")
 
 
 class MinerUApiParser(DocumentParser):
@@ -29,7 +38,7 @@ class MinerUApiParser(DocumentParser):
 
         # cloud (paid)
         parser = MinerUApiParser(
-            api_url="https://mineru.net/api", token="msk_...",
+            api_url="https://mineru.net/api", api_key="msk_...",
             backend="vlm",
         )
 
@@ -38,11 +47,9 @@ class MinerUApiParser(DocumentParser):
 
     Constructor parameters (matching :class:`DocumentParser`):
 
-    - ``backend`` → v1 ``preset`` (``"pipeline"`` / ``"vlm"`` / ``"auto"``)
+    - ``backend`` → v1 ``tier`` (``"standard"`` / ``"pro"`` / ``"auto"``)
     - ``method`` → v1 ``ocr`` (``"auto"`` / ``"ocr"`` / ``"txt"``)
-    - ``lang`` → v1 ``language``
-    - ``formula_enable`` / ``table_enable`` / ``image_analysis`` → mapped directly
-    - ``start_page_id`` / ``end_page_id`` → v1 ``page_range``
+    - ``image_analysis`` → mapped directly
     - ``return_md`` / ``return_middle_json`` / ``return_content_list`` /
       ``return_images`` → v1 ``output_formats``
     """
@@ -51,37 +58,41 @@ class MinerUApiParser(DocumentParser):
         self,
         *,
         api_url: str,
-        token: str | None = None,
-        **kwargs: Any,
+        api_key: str | None = None,
+        tier: str | None = None,
+        method: str = "auto",
+        image_analysis: bool = True,
     ) -> None:
-        super().__init__(**kwargs)
         self._base = api_url.rstrip("/")
-        self._token = token
+        self._api_key = api_key
         self._local = self._is_localhost(self._base)
+        self.backend = _tier_to_backend(tier) if tier else "auto"
+        self.method = method
+        self.image_analysis = image_analysis
 
     # ── DocumentParser interface ─────────────────────────────────────
 
-    def parse(self, path: str | Path) -> ParseResult:
+    def parse(self, path: str | Path, *, page_range: str = "") -> ParseResult:
         file_path = Path(path)
         if not file_path.exists():
             raise FileNotFoundError(file_path)
 
-        payload = self._build_payload(file_path)
+        payload = self._build_payload(file_path, page_range)
         job = self._do_parse(payload)
         return self._build_result(job, file_path.name)
 
-    async def parse_async(self, path: str | Path) -> ParseResult:
+    async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:
         file_path = Path(path)
         if not file_path.exists():
             raise FileNotFoundError(file_path)
 
-        payload = self._build_payload(file_path)
+        payload = self._build_payload(file_path, page_range)
         job = await self._async_do_parse(payload)
         return await self._async_build_result(job, file_path.name)
 
     # ── payload construction ─────────────────────────────────────────
 
-    def _build_payload(self, file_path: Path) -> dict[str, Any]:
+    def _build_payload(self, file_path: Path, page_range: str) -> dict[str, Any]:
         source: dict[str, Any]
         if self._local:
             source = {"type": "local", "path": str(file_path)}
@@ -91,29 +102,25 @@ class MinerUApiParser(DocumentParser):
             source = {"type": "file_id", "file_id": file_id}
 
         options: dict[str, Any] = {
-            "language": self.lang,
             "ocr": self._ocr_mode(),
-            "formula": self.formula_enable,
-            "table": self.table_enable,
             "image_analysis": self.image_analysis,
         }
-        page_range = self._page_range_str()
         if page_range:
             options["page_range"] = page_range
 
         return {
             "files": [{"source": source, "options": options}],
-            "preset": self._preset(),
+            "tier": self._tier(),
             "output_formats": self._output_formats(),
         }
 
-    def _preset(self) -> str:
+    def _tier(self) -> str:
         if self.backend == "pipeline":
-            return "pipeline"
+            return "standard"
         if self.backend.startswith("vlm"):
-            return "vlm"
+            return "pro"
         if self.backend.startswith("html"):
-            return "html"
+            return "auto"
         return "auto"
 
     def _ocr_mode(self) -> str:
@@ -123,13 +130,6 @@ class MinerUApiParser(DocumentParser):
             return "txt"
         return "auto"
 
-    def _page_range_str(self) -> str | None:
-        if self.start_page_id == 0 and self.end_page_id is None:
-            return None
-        start = self.start_page_id + 1  # 0-based → 1-based
-        end = self.end_page_id or ""
-        return f"{start}-{end}".rstrip("-")
-
     def _output_formats(self) -> list[str]:
         return ["json"]
 
@@ -137,8 +137,8 @@ class MinerUApiParser(DocumentParser):
 
     def _headers(self) -> dict[str, str]:
         h: dict[str, str] = {}
-        if self._token:
-            h["Authorization"] = f"Bearer {self._token}"
+        if self._api_key:
+            h["Authorization"] = f"Bearer {self._api_key}"
         return h
 
     @staticmethod

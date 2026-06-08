@@ -44,7 +44,7 @@ def finalize_client_side_middle_json(middle_json: dict[str, Any]) -> dict[str, A
     if not isinstance(middle_json, dict):
         raise ValueError("middle_json must be a dict.")
 
-    from ..parser.parse_result import ParseResult
+    from ..parser.base import ParseResult
 
     result = ParseResult.from_dict(middle_json)
     backend = result._backend

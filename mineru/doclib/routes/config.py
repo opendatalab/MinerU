@@ -36,6 +36,26 @@ async def get_config(request: Request) -> dict:
     return {"config": cfg, "watches": watches, "rules": rules}
 
 
+@router.post("/config")
+async def set_config(request: Request) -> dict:
+    """Set a single config key-value pair. Body: {key: str, value: str}."""
+    import json as _json
+
+    body = await request.json()
+    key = body.get("key")
+    value = body.get("value")
+    if not key or value is None:
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(
+            status_code=400,
+            content={"error": {"type": "invalid_request_error", "code": "invalid_request", "message": "Missing key or value"}},
+        )
+    state = request.state.app
+    await state.config_svc.set(key, str(value))
+    return {"key": key, "value": value}
+
+
 # ── watch ────────────────────────────────────────────────────────
 
 

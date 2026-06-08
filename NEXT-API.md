@@ -10,6 +10,9 @@
 
 | 日期 | 修订内容 |
 |------|---------|
+| 2026-06-08 | **本地 Server API Key 鉴权**：本地自部署 server 支持通过 `--api-key` 启用 Bearer 鉴权。未设置 API Key 时所有端点公开（现有行为不变）；设置后除 health/models/tiers 外的全部端点要求 `Authorization: Bearer <key>`，不匹配返回 401。详见 §1.3 |
+| 2026-06-08 | **删除 `language` 参数与 `language_detected` 字段**：API 全面支持自动语言探测，不再需要客户端传入 `language` 参数。请求 `files[].options.language` 移除，响应 `metadata.language_detected` 移除。解析器内部自动识别文档语言 |
+| 2026-06-08 | **删除 `formula` / `table` 细粒度开关**：不再支持通过 `files[].options.formula` 和 `files[].options.table` 关闭公式识别和表格识别。公式和表格解析始终开启，由引擎内部自动处理 |
 | 2026-06-02 | **`Token` → `API Key`**：全文认证凭证术语从 `Token` 统一为 `API Key`，环境变量 `MINERU_TOKEN` → `MINERU_API_KEY`，SDK 参数 `token=` → `api_key=`，错误码 `invalid_token` → `invalid_api_key`、`feature_requires_token` → `feature_requires_api_key`、`list_requires_token` → `list_requires_api_key`。避免与 LLM token 概念混淆 |
 | 2026-06-02 | **错误响应格式对齐 OpenAI**：§2.2 从 `code` + `message` + `details` 改为 OpenAI 兼容的 `type` + `code` + `message` + `param` 四字段结构。新增 `type` 枚举（`invalid_request_error`、`authentication_error`、`permission_error`、`rate_limit_error`、`engine_error`、`api_error`）。详见 NEXT-ERROR.md |
 | 2026-06-01 | **`preset` → `tier`**:全文将 `preset` 概念替换为 `tier`,可选值从 `pipeline/vlm/html/auto` 改为 `standard/pro/auto`。`html` 不再作为显式选项,改为系统根据输入文件类型自动路由到 HTML 解析器。与 CLI (`mineru parse --tier`) 命名统一 |
@@ -101,9 +104,24 @@
 Authorization: Bearer <MINERU_API_KEY>
 ```
 
+**mineru.net 云端**
+
 - **缺省 API Key**:匿名访问,自动降级为 anonymous 档。anonymous 用户的身份标识为**请求 IP**,限流和用量均按 IP 统计。
 - **有效 API Key**:按 API Key 等级解锁更高配额、`docx`/`html`/`latex` 等高级输出格式。
 - **无效 API Key**:返回 `401 Unauthorized`(注意:**不传 API Key ≠ API Key 无效**)。
+
+**本地自部署 Server**
+
+- **未设置 API Key**（默认）:所有端点公开访问，无需认证。适用于单机、内网等信任环境。
+- **设置 API Key**（`--api-key <key>`）:除以下 3 个公开端点外，其余全部端点要求携带 `Authorization: Bearer <key>`，不匹配返回 `401 invalid_api_key`。
+
+| 始终公开的端点 | 说明 |
+|---------------|------|
+| `GET /v1/health` | 健康检查 |
+| `GET /v1/models`、`GET /v1/models/{model}` | 模型列表与详情 |
+| `GET /v1/tiers` | 解析档位列表 |
+
+> **设计说明**:local server 的鉴权目标是"防止未授权访问自部署实例"，而非 mineru.net 的"按 access level 差异化功能"。当 API Key 设置后，通过认证的请求等同于 `registered` 档，可直接使用全部能力和高级输出格式。
 
 ### 1.4 通用约定
 
@@ -1407,10 +1425,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         "file_id": "file-01HXYZ123ABCDEF"
       },
       "options": {
-        "language": "ch",
         "ocr": "auto",
-        "formula": true,
-        "table": true,
         "image_analysis": true,
         "page_range": "1-10"
       }
@@ -1470,10 +1485,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
 
 | 字段 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `language` | string | `"ch"` | `ch` / `en` / `ja` / `korean` / `ch_lite` / `ch_server` / `japan` / `chinese_cht` / `ta` / `te` / `ka` / `th` / `el` / `latin` / `arabic` / `east_slavic` / `cyrillic` / `devanagari`。不传则默认 `ch` |
 | `ocr` | enum | `auto` | `auto` / `true` / `false` / `txt`。`txt` 强制文本提取(不 OCR) |
-| `formula` | bool | `true` | 公式识别 |
-| `table` | bool | `true` | 表格识别 |
 | `image_analysis` | bool | `true` | 图片内容分析 |
 | `page_range` | string | `null` | 页码范围,推荐用 `~` 分隔(如 `"1~10"`、`"1,3,5~7"`、`"-5~-1"`)。也支持 `-` 分隔(如 `"1-10"`、`"2--2"` 到倒数第二页) |
 
@@ -1538,7 +1550,6 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
       "metadata": {
         "pages": 12,
         "model_used": "MinerU2.5-Pro-2604-1.2B",
-        "language_detected": "ch",
         "processing_time_ms": 8234,
         "backend_version": "3.1.14"
       },
@@ -1627,7 +1638,6 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
       "metadata": {
         "pages": 12,
         "model_used": "MinerU2.5-Pro-2604-1.2B",
-        "language_detected": "ch",
         "processing_time_ms": 8234,
         "backend_version": "3.1.14"
       },
@@ -1980,6 +1990,15 @@ Authorization: Bearer <MINERU_API_KEY>
 - `billing_period` 粒度为天,始终 UTC 零点对齐,无时区歧义
 - 若未来引入月度配额上限(如"每月最多 10000 页"),可在 `limits` 中增补字段,向后兼容
 
+**本地 Server 差异**
+
+本地自部署 server 的 `GET /v1/usage` 语义与 mineru.net 不同：
+
+- `billing_period.start` — 服务进程启动时间（ISO-8601），`end` 为 `null`
+- `current.*` — 自启动以来的累计值，不按租户区分
+- `limits.max_file_retention_days` — `null`（本地不自动清理）
+- `access_level` — 取决于请求是否通过 API Key 认证（§1.3）
+
 ---
 
 ## 13. 端到端示例
@@ -2027,7 +2046,7 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
   -d "{
     \"files\": [{
       \"source\": {\"type\":\"file_id\",\"file_id\":\"$FILE_ID\"},
-      \"options\": {\"language\":\"ch\",\"ocr\":\"auto\"}
+      \"options\": {\"ocr\":\"auto\"}
     }],
     \"tier\": \"pro\",    \"output_formats\": [\"markdown\",\"json\",\"images\"]
   }"
@@ -2084,7 +2103,7 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
   -d "{
     \"files\": [{
       \"source\": {\"type\":\"file_id\",\"file_id\":\"$FILE_ID\"},
-      \"options\": {\"language\":\"ch\",\"ocr\":\"auto\"}
+      \"options\": {\"ocr\":\"auto\"}
     }],
     \"tier\": \"pro\",    \"output_formats\": [\"markdown\",\"json\"],
     \"wait\": 30
@@ -2280,7 +2299,7 @@ Content-Type: application/json
 
 {
   "files":[{"source":{"type":"file_id","file_id":"file-..."},
-            "options":{"language":"ch"}}],
+            "options":{}}],
   "tier":"standard",
   "output_formats":["markdown","json","content_list","images"]
 }
@@ -2434,7 +2453,7 @@ Content-Type: application/pdf
 POST /v1/parse/jobs
 {
   "files":[{"source":{"type":"file_id","file_id":"file-01HXYZ..."},
-            "options":{"language":"ch","ocr":"auto","page_range":"1-10"}}],
+            "options":{"ocr":"auto","page_range":"1-10"}}],
   "tier":"pro",
   "output_formats":["markdown","json","images","docx"]
 }
@@ -2552,7 +2571,7 @@ POST /v1/uploads
 POST /v1/parse/jobs
 {
   "files":[{"source":{"type":"file_id","file_id":"file-..."},
-            "options":{"language":"ch","page_range":"1-5","ocr":"auto"}}],
+            "options":{"page_range":"1-5","ocr":"auto"}}],
   "output_formats":["markdown"]
 }
 → 202 {"job_id":"job_...","access_level":"anonymous"}
@@ -2563,7 +2582,7 @@ POST /v1/parse/jobs
 - 旧:**单文件**任务;新:任意数量文件
 - 旧:`{code,msg,data}` envelope;新:扁平资源
 - 旧:无 sha256/秒传概念;新:可选秒传
-- 旧:任务参数写在 Call 1 顶层;新:文件级参数(`page_range`, `language`)在 `files[].options`,任务级参数(`tier`, `output_formats`)在 job 顶层
+- 旧:任务参数写在 Call 1 顶层;新:文件级参数(`page_range`)在 `files[].options`,任务级参数(`tier`, `output_formats`)在 job 顶层
 
 #### Call 2 — 上传字节
 

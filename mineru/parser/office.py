@@ -7,8 +7,7 @@ from typing import Any
 
 from mineru.types import PageInfo
 
-from .base import DocumentParser
-from .parse_result import ParseResult
+from .base import DocumentParser, ParseResult
 
 
 class OfficeBaseParser(DocumentParser, ABC):
@@ -18,10 +17,12 @@ class OfficeBaseParser(DocumentParser, ABC):
     """
 
     _analyze_fn: Any
-
     _suffix: str
 
-    def parse(self, path: str | Path) -> ParseResult:
+    def __init__(self, *, return_model_output: bool = True):
+        self.return_model_output = return_model_output
+
+    def parse(self, path: str | Path, *, page_range: str = "") -> ParseResult:
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(path)

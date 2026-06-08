@@ -19,6 +19,8 @@ def parse_cmd(
         None, "-p", "--pages", help="Page range, e.g. '1~5' or 'all'"
     ),
     force: bool = typer.Option(False, "--force", help="Force re-parse, ignore cache"),
+    remote: bool = typer.Option(False, "--remote", help="Use remote parse-server (default: mineru.net)"),
+    remote_url: str = typer.Option(None, "--remote-url", help="Custom remote parse-server URL. Requires --remote"),
     wait: int = typer.Option(
         60, "--wait", help="Max seconds to wait for parse to complete"
     ),
@@ -49,7 +51,7 @@ def parse_cmd(
 
     # send parse request
     try:
-        result = client.parse(file_path, tier=tier, pages=pages, force=force)
+        result = client.parse(file_path, tier=tier, pages=pages, force=force, remote=remote, remote_url=remote_url)
     except Exception as exc:
         print_error(str(exc))
         raise typer.Exit(1) from None

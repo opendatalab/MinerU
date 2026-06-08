@@ -121,6 +121,22 @@ def format_server_status(data: dict, json_mode: bool = False) -> None:
         table.add_row("Ingest queue", str(data.get("ingest_queue_length", 0)))
         table.add_row("Watches", str(data.get("watch_count", 0)))
         console.print(table)
+
+        # parse-server status
+        ps_data = data.get("parse_server")
+        if ps_data:
+            ps_table = Table(title="Parse Server")
+            ps_table.add_column("Target", style="cyan")
+            ps_table.add_column("Healthy", style="green")
+            ps_table.add_column("Tiers", style="green")
+            for label, key in [("Local", "local"), ("Remote", "remote")]:
+                ps = ps_data.get(key, {})
+                healthy_str = "yes" if ps.get("healthy") else "no"
+                tiers_str = ", ".join(ps.get("supported_tiers", [])) or "-"
+                mode = ps.get("mode", "")
+                label_str = f"{label} ({mode})" if mode else label
+                ps_table.add_row(label_str, healthy_str, tiers_str)
+            console.print(ps_table)
     else:
         print(f"Server running (PID {data.get('pid')}), {data.get('files_total')} files")
 

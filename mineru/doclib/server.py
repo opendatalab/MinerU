@@ -7,6 +7,8 @@ import errno
 import logging
 import os
 import socket
+import subprocess
+import sys
 import time
 from collections.abc import Callable
 from logging.handlers import RotatingFileHandler
@@ -42,6 +44,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         from .background.parse_worker import ParseWorkerPool
         from .background.device_monitor import DeviceMonitor
         from .background.compaction import Compaction
+        from .background.parse_server_health import ParseServerHealthCheck, get_health
 
         data_dir = os.path.expanduser(cfg.server.data_dir)
         os.makedirs(data_dir, exist_ok=True)
@@ -67,6 +70,24 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             "UPDATE parses SET locked_at = NULL, status = 'failed' WHERE status = 'parsing'"
         )
 
+        # managed mode: start parse-server
+        state.parse_server_proc = None
+        local_mode = (await state.config_svc.get("parse_server.local.mode")) or "disabled"
+        health = get_health()
+        health.local_mode = local_mode
+        if local_mode == "managed":
+            managed_tier = (await state.config_svc.get("parse_server.local.managed_tier")) or "standard"
+            try:
+                proc = subprocess.Popen(
+                    [sys.executable, "-m", "mineru.parser.api_server", "--backend", managed_tier, "--port", "15981"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                state.parse_server_proc = proc
+                health.managed_proc = proc
+            except Exception:
+                pass
+
         # background tasks
         state.watch = WatchLoop(state.db, state.config_svc, state.parse_svc)
         state.ingest_workers = IngestWorkerPool(
@@ -79,12 +100,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.compaction = Compaction(
             state.db, interval_sec=cfg.server.compaction_interval_sec
         )
+        state.health_check = ParseServerHealthCheck(state.config_svc)
 
         asyncio.create_task(state.watch.run())
         asyncio.create_task(state.ingest_workers.run())
         asyncio.create_task(state.parse_workers.run())
         asyncio.create_task(state.device_monitor.run())
         asyncio.create_task(state.compaction.run())
+        asyncio.create_task(state.health_check.run())
 
         state.start_time = time.time()
         state.pid = os.getpid()
@@ -95,12 +118,21 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     @app.on_event("shutdown")
     async def shutdown() -> None:
+        # stop managed parse-server
+        if state.parse_server_proc:
+            try:
+                state.parse_server_proc.terminate()
+                state.parse_server_proc.wait(timeout=10)
+            except Exception:
+                pass
+
         for comp in [
             "watch",
             "ingest_workers",
             "parse_workers",
             "device_monitor",
             "compaction",
+            "health_check",
         ]:
             c = getattr(state, comp, None)
             if c and hasattr(c, "stop"):

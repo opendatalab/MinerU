@@ -87,9 +87,14 @@ def render_markdown(
     formula_enable: bool = True,  # TODO
     table_enable: bool = True,  # TODO
     no_rich_content: bool = False,
+    add_markers: bool = False,
 ) -> str:
-    """Render pages to a single Markdown string."""
+    """Render pages to a single Markdown string.
+
+    If *add_markers* is True, each page is prefixed with ``<!-- page N of M -->``.
+    """
     backend = _backend_from_pages(pdf_info)
+    total = len(pdf_info)
     output_md: list[str] = []
     if backend == "office":
         for page_info in pdf_info:
@@ -98,6 +103,9 @@ def render_markdown(
                 img_bucket_path=img_bucket_path,
                 no_rich_content=no_rich_content,
             )
+            if add_markers:
+                page_num = page_info.page_idx + 1
+                output_md.append(f"<!-- page {page_num} of {total} -->")
             output_md.extend(page_md)
     else:  # PDF
         for page_info in pdf_info:
@@ -108,6 +116,9 @@ def render_markdown(
                 formula_as_image=not formula_enable,
                 no_rich_content=no_rich_content,
             )
+            if add_markers:
+                page_num = page_info.page_idx + 1
+                output_md.append(f"<!-- page {page_num} of {total} -->")
             output_md.extend(page_md)
     return "\n\n".join(output_md)
 

@@ -19,6 +19,14 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+class ParseFailure(Exception):
+    """Raised when a parse cannot be completed.  Carries an error code for the parses row."""
+
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        self.message = message
+
+
 MAX_FTS_CHARS = 30_000
 FTS_HEAD_HALF = 15_000
 
@@ -113,9 +121,7 @@ def expand_pages(pages: str | None, page_count: int) -> str:
 # ── text truncation ────────────────────────────────────────────────
 
 
-def truncate_head_tail(
-    text: str, max_chars: int = MAX_FTS_CHARS, half: int = FTS_HEAD_HALF
-) -> str:
+def truncate_head_tail(text: str, max_chars: int = MAX_FTS_CHARS, half: int = FTS_HEAD_HALF) -> str:
     if len(text) <= max_chars:
         return text
     return text[:half] + "\n...\n" + text[-half:]
@@ -139,25 +145,19 @@ class ParseService:
 
     # ── ingestion (shared) ──────────────────────────────────
 
-    async def ingest_file(
-        self, path: str, watch_id: int | None = None
-    ) -> dict | None:
+    async def ingest_file(self, path: str, watch_id: int | None = None) -> dict | None:
         """Ingest a file: SHA-256 + metadata + trigger default parse."""
         stat = await get_file_stat(path)
         sha256 = await compute_sha256(path)
         now = _now_ms()
 
         # check if this path is already ingested
-        existing_path = await self.db.fetchone(
-            "SELECT * FROM files WHERE path=?", (path,)
-        )
+        existing_path = await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,))
         if existing_path and existing_path["sha256"]:
             return existing_path
 
         # check if same content (sha256) is already tracked by another path
-        existing_sha = await self.db.fetchone(
-            "SELECT * FROM files WHERE sha256=?", (sha256,)
-        )
+        existing_sha = await self.db.fetchone("SELECT * FROM files WHERE sha256=?", (sha256,))
         if existing_sha:
             # same file, different path — just add this path pointing to the same doc
             await self.db.execute("DELETE FROM files WHERE path=?", (path,))
@@ -279,12 +279,12 @@ class ParseService:
         tier: str | None = None,
         pages: str | None = None,
         force: bool = False,
+        remote: bool = False,
+        remote_url: str | None = None,
     ) -> dict:
         """Handle a parse request from CLI.  Returns info for status polling."""
         # ensure file is ingested
-        file_row = await self.db.fetchone(
-            "SELECT * FROM files WHERE path=? AND scan_status='active'", (path,)
-        )
+        file_row = await self.db.fetchone("SELECT * FROM files WHERE path=? AND scan_status='active'", (path,))
         if file_row is None or file_row["sha256"] is None:
             file_row = await self.ingest_file(path)
         if file_row is None:
@@ -296,9 +296,7 @@ class ParseService:
             }
 
         sha256 = file_row["sha256"]
-        doc = await self.db.fetchone(
-            "SELECT page_count FROM docs WHERE sha256=?", (sha256,)
-        )
+        doc = await self.db.fetchone("SELECT page_count FROM docs WHERE sha256=?", (sha256,))
         page_count = doc["page_count"] if doc else 1
 
         requested_tier = tier or Tier.FLASH
@@ -308,14 +306,15 @@ class ParseService:
         if ext in ("docx", "pptx", "xlsx", "doc", "xls", "ppt"):
             requested_tier = Tier.FLASH
 
+        # resolve privacy / remote_url
+        privacy = "remote" if remote else "local"
+
         # expand pages
-        default_pages = (
-            "1~5,-5~-1" if page_count and page_count > 10 else f"1~{page_count}"
-        )
+        default_pages = "1~5,-5~-1" if page_count and page_count > 10 else f"1~{page_count}"
         raw_pages = pages or default_pages
         pages_str = expand_pages(raw_pages, page_count or 1)
 
-        # check cache
+        # check cache — (sha256, tier) regardless of privacy
         if not force:
             done_batches = await self.db.fetchall(
                 "SELECT * FROM parses WHERE sha256=? AND tier=? AND status='done'",
@@ -330,7 +329,6 @@ class ParseService:
                         "status": "done",
                         "tip": "Cached. Use --force to re-parse.",
                     }
-                # only parse pages not yet covered
                 uncovered = pages_uncovered(pages_str, done_batches)
                 if not uncovered:
                     return {
@@ -360,8 +358,9 @@ class ParseService:
         # insert new batch
         now = _now_ms()
         await self.db.execute(
-            "INSERT INTO parses (sha256, tier, pages, status, priority, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
-            (sha256, requested_tier, pages_str, ParseStatus.PENDING, now, now),
+            "INSERT INTO parses (sha256, tier, pages, status, privacy, remote_url, priority, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)",
+            (sha256, requested_tier, pages_str, ParseStatus.PENDING, privacy, remote_url, now, now),
         )
 
         return {
@@ -399,11 +398,11 @@ class ParseService:
         sha256 = task["sha256"]
         tier = task["tier"]
         pages = task["pages"]
+        privacy = task.get("privacy", "local")
+        remote_url = task.get("remote_url")
 
         # guard
-        current = await self.db.fetchone(
-            "SELECT status FROM parses WHERE id=?", (task["id"],)
-        )
+        current = await self.db.fetchone("SELECT status FROM parses WHERE id=?", (task["id"],))
         if current is None or current["status"] != ParseStatus.PARSING:
             return False
 
@@ -413,57 +412,27 @@ class ParseService:
             (sha256,),
         )
         if file_row is None:
-            await self.db.execute(
-                "UPDATE parses SET status=?, error_code=?, error_msg=?, locked_at=NULL WHERE id=?",
-                (
-                    ParseStatus.FAILED,
-                    "no_accessible_file",
-                    "No active file found for this document",
-                    task["id"],
-                ),
-            )
+            await self._fail_task(task["id"], "no_accessible_file", "No active file found for this document")
             return False
 
         output_dir = os.path.join(self.data_dir, "parsed", sha256[:2], sha256, tier)
         os.makedirs(output_dir, exist_ok=True)
 
-        # call mineru.parser
+        # route parse based on tier
+        via = "local"
         try:
-            from mineru.parser import parse
-        except ImportError:
-            await self.db.execute(
-                "UPDATE parses SET status=?, error_code=?, error_msg=?, locked_at=NULL WHERE id=?",
-                (
-                    ParseStatus.FAILED,
-                    "no_engine",
-                    "mineru.parser module not available",
-                    task["id"],
-                ),
-            )
+            if tier == Tier.FLASH:
+                results = await self._parse_via_local(file_row, tier, pages)
+            else:
+                results, via = await self._parse_via_api(file_row, tier, pages, privacy, remote_url)
+        except ParseFailure as exc:
+            await self._fail_task(task["id"], exc.code, exc.message)
             return False
-
-        try:
-            # parse each contiguous range sequentially, collect results
-            results: list = []
-            ranges = _split_ranges(pages, file_row, sha256)
-            for start, end in ranges:
-                result = await asyncio.to_thread(
-                    parse,
-                    file_row["path"],
-                    backend=_tier_to_backend(tier),
-                    start_page_id=start,
-                    end_page_id=end,
-                    output_dir=output_dir,
-                )
-                results.append(result)
         except Exception as exc:
-            await self.db.execute(
-                "UPDATE parses SET status=?, error_code=?, error_msg=?, locked_at=NULL WHERE id=?",
-                (ParseStatus.FAILED, "parse_failed", str(exc)[:500], task["id"]),
-            )
+            await self._fail_task(task["id"], "parse_failed", str(exc)[:500])
             return False
 
-        # save per-batch JSON (each parses row → one JSON file)
+        # save per-batch markdown + JSON
         md_text = ""
         for result in results:
             md = result.markdown() if hasattr(result, "markdown") else ""
@@ -473,12 +442,18 @@ class ParseService:
             import json as _json
 
             pages_key = _safe_filename(task["pages"])
+            md_path = os.path.join(output_dir, f"{pages_key}.md")
             json_path = os.path.join(output_dir, f"{pages_key}.json")
+            os.makedirs(output_dir, exist_ok=True)
+            try:
+                with open(md_path, "w", encoding="utf-8") as f:
+                    f.write(md_text)
+            except Exception:
+                pass
             new_pages: list[dict] = []
             for r in results:
                 if hasattr(r, "to_dict"):
                     new_pages.extend(r.to_dict().get("pdf_info", []))
-
             os.makedirs(output_dir, exist_ok=True)
             try:
                 with open(json_path, "w", encoding="utf-8") as f:
@@ -495,10 +470,121 @@ class ParseService:
         # mark done
         now = _now_ms()
         await self.db.execute(
-            "UPDATE parses SET status=?, done_at=?, locked_at=NULL, output_path=?, updated_at=? WHERE id=?",
-            (ParseStatus.DONE, now, output_dir, now, task["id"]),
+            "UPDATE parses SET status=?, done_at=?, locked_at=NULL, via=?, output_path=?, updated_at=? WHERE id=?",
+            (ParseStatus.DONE, now, via, output_dir, now, task["id"]),
         )
         return True
+
+    # ── parse routing helpers ─────────────────────────────────────
+
+    async def _parse_via_local(self, file_row: dict, tier: str, pages: str) -> list:
+        """Parse via local library call."""
+        from mineru.parser import parse
+
+        result = await asyncio.to_thread(
+            parse,
+            file_row["path"],
+            backend=_tier_to_backend(tier),
+            page_range=pages,
+        )
+        return [result]
+
+    async def _parse_via_api(
+        self,
+        file_row: dict,
+        tier: str,
+        pages: str,
+        privacy: str,
+        remote_url: str | None,
+    ) -> tuple[list, str]:
+        """Parse via HTTP API (local or remote parse-server). Returns (results, via)."""
+        from mineru.parser.api_client import MinerUApiParser
+
+        base_url, api_key, via = await self._resolve_api_target(privacy, remote_url, tier)
+
+        # resolve and validate tier against server capabilities
+        resolved_tier = self._resolve_tier(tier, via)
+
+        parser = MinerUApiParser(
+            api_url=base_url,
+            api_key=api_key,
+            tier=resolved_tier,
+        )
+        result = await parser.parse_async(file_row["path"], page_range=pages)
+        return [result], via
+
+    @staticmethod
+    def _resolve_tier(tier: str, via: str) -> str:
+        """Resolve and validate tier against parse-server capabilities.
+
+        - ``auto`` → pick best available tier from health check (pro > standard)
+        - specified tier → validate against supported_tiers, raise tier_mismatch if unsupported
+        """
+        from mineru.doclib.background.parse_server_health import get_health
+
+        health = get_health()
+        if via == "remote":
+            supported = health.remote_supported_tiers
+        else:
+            supported = health.local_supported_tiers
+
+        if not supported:
+            raise ParseFailure("engine_unavailable", "Parse-server health status unknown, cannot validate tier")
+
+        if tier == "auto":
+            tier_order = ["pro", "standard"]
+            for t in tier_order:
+                if t in supported:
+                    return t
+            raise ParseFailure("tier_mismatch", f"No supported tier found. Available: {supported}")
+
+        if tier not in supported:
+            raise ParseFailure("tier_mismatch", f"Tier '{tier}' not supported by parse-server. Available: {supported}")
+        return tier
+
+    async def _resolve_api_target(self, privacy: str, remote_url: str | None, tier: str) -> tuple[str, str | None, str]:
+        """Resolve the api target URL based on privacy and config.
+
+        Returns (base_url, api_key, via_label).
+        """
+        from mineru.doclib.background.parse_server_health import get_health
+
+        health = get_health()
+
+        if privacy == "remote":
+            url = remote_url or (await self.config_svc.get("parse_server.remote.url")) or "https://mineru.net/api"
+            api_key = os.environ.get("MINERU_API_KEY") or (await self.config_svc.get("parse_server.remote.api_key"))
+            if not health.remote_healthy:
+                # try fallback to local
+                local_mode = (await self.config_svc.get("parse_server.local.mode")) or "disabled"
+                if local_mode != "disabled" and health.local_healthy:
+                    local_url = _local_parse_server_url(local_mode, health)
+                    if local_url:
+                        return local_url, api_key, "local"
+                raise ParseFailure("parse_server_unavailable", "Remote parse-server unavailable and no local fallback")
+            return url, api_key, "remote"
+
+        # privacy == local
+        local_mode = (await self.config_svc.get("parse_server.local.mode")) or "disabled"
+        if local_mode == "disabled":
+            raise ParseFailure("no_engine", "Local parse-server is disabled. Use --tier flash or --remote.")
+
+        local_url = _local_parse_server_url(local_mode, health)
+        if local_url is None:
+            raise ParseFailure("engine_unavailable", "Local parse-server URL not configured.")
+
+        if not health.local_healthy:
+            raise ParseFailure("engine_unavailable", "Local parse-server is not ready. Please wait or check server status.")
+
+        api_key = os.environ.get("MINERU_API_KEY") or (await self.config_svc.get("parse_server.local.self_hosted_api_key"))
+        return local_url, api_key, "local"
+
+    async def _fail_task(self, task_id: int, code: str, message: str) -> None:
+        now = _now_ms()
+        await self.db.execute(
+            "UPDATE parses SET status=?, error_code=?, error_msg=?, locked_at=NULL, updated_at=? WHERE id=?",
+            (ParseStatus.FAILED, code, message, now, task_id),
+        )
 
     async def get_parse_status(self, sha256: str, tier: str) -> dict | None:
         """Get aggregate status for a doc+tier.  Returns latest batch info."""
@@ -538,13 +624,9 @@ class ParseService:
 
     # ── internal helpers ────────────────────────────────────────
 
-    async def _maybe_update_fts(
-        self, sha256: str, tier: str, text: str, file_row: dict
-    ) -> None:
+    async def _maybe_update_fts(self, sha256: str, tier: str, text: str, file_row: dict) -> None:
         existing_tier = await self.fts.get_tier(sha256)
-        if existing_tier and TIER_ORDER.get(existing_tier, -1) >= TIER_ORDER.get(
-            tier, -1
-        ):
+        if existing_tier and TIER_ORDER.get(existing_tier, -1) >= TIER_ORDER.get(tier, -1):
             return  # current FTS data is from a higher or equal tier
 
         text = truncate_head_tail(text)
@@ -558,15 +640,11 @@ class ParseService:
         )
 
     async def _maybe_update_docs_meta(self, sha256: str, tier: str) -> None:
-        doc = await self.db.fetchone(
-            "SELECT meta_tier FROM docs WHERE sha256=?", (sha256,)
-        )
+        doc = await self.db.fetchone("SELECT meta_tier FROM docs WHERE sha256=?", (sha256,))
         if doc is None:
             return
         existing_tier = doc.get("meta_tier")
-        if existing_tier and TIER_ORDER.get(existing_tier, -1) >= TIER_ORDER.get(
-            tier, -1
-        ):
+        if existing_tier and TIER_ORDER.get(existing_tier, -1) >= TIER_ORDER.get(tier, -1):
             return
 
         # for now just update meta_tier; full metadata update comes when
@@ -590,29 +668,13 @@ def _tier_to_backend(tier: str) -> str:
     return mapping.get(tier, "pipeline")
 
 
-def _split_ranges(
-    pages: str, file_row: dict, sha256: str
-) -> list[tuple[int, int | None]]:
-    """Split a pages range string into contiguous (start, end) tuples
-    suitable for the current parse() API.  start is 0-based, end is inclusive."""
-    page_set = parse_range_set(pages)
-    if not page_set:
-        return [(0, None)]
-
-    sorted_pages = sorted(page_set)
-    ranges: list[tuple[int, int | None]] = []
-    start = sorted_pages[0]
-    end = start
-
-    for p in sorted_pages[1:]:
-        if p == end + 1:
-            end = p
-        else:
-            ranges.append((start - 1, end - 1))  # convert to 0-based
-            start = p
-            end = p
-    ranges.append((start - 1, end - 1))
-    return ranges
+def _local_parse_server_url(mode: str, health: object) -> str | None:
+    """Resolve local parse-server URL from mode and health state."""
+    if mode == "managed":
+        return "http://127.0.0.1:15981"
+    if mode == "self_hosted":
+        return getattr(health, "self_hosted_url", None)
+    return None
 
 
 def _safe_filename(s: str) -> str:

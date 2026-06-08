@@ -1,23 +1,19 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from .parser import (  # noqa: F401
-    Block,
     DocumentParser,
     DocxParser,
     HtmlParser,
-    Line,
     MinerUApiParser,
-    OfficeBaseParser,
-    PageInfo,
     ParseResult,
-    PdfBaseParser,
+    PdfFlashParser,
     PdfHybridParser,
     PdfPipelineParser,
     PdfVlmParser,
     PptxParser,
-    Span,
     XlsxParser,
     parse,
 )
+from .types import Block, Line, PageInfo, Span  # noqa: F401
 
 __all__ = [
     "Block",
@@ -26,10 +22,9 @@ __all__ = [
     "HtmlParser",
     "Line",
     "MinerUApiParser",
-    "OfficeBaseParser",
     "PageInfo",
     "ParseResult",
-    "PdfBaseParser",
+    "PdfFlashParser",
     "PdfHybridParser",
     "PdfPipelineParser",
     "PdfVlmParser",

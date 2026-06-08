@@ -79,6 +79,8 @@ class MineruClient:
         tier: str | None = None,
         pages: str | None = None,
         force: bool = False,
+        remote: bool = False,
+        remote_url: str | None = None,
     ) -> dict:
         return self._post(
             "/parse",
@@ -87,6 +89,8 @@ class MineruClient:
                 "tier": tier,
                 "pages": pages,
                 "force": force,
+                "remote": remote,
+                "remote_url": remote_url,
             },
         )
 

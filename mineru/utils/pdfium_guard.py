@@ -6,7 +6,6 @@ from typing import Any, Callable, Iterator, Sequence, TypeVar
 
 from loguru import logger
 
-from .pdf_page_id import get_end_page_id
 
 _pdfium_lock = threading.RLock()
 
@@ -81,7 +80,9 @@ def get_loadable_pdfium_page_indices(
                 return [], []
 
             normalized_start_page_id = max(0, start_page_id)
-            normalized_end_page_id = get_end_page_id(end_page_id, total_page_count)
+            normalized_end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else total_page_count - 1
+            if normalized_end_page_id > total_page_count - 1:
+                normalized_end_page_id = total_page_count - 1
             if normalized_start_page_id > normalized_end_page_id:
                 return [], []
 
@@ -128,7 +129,9 @@ def rewrite_pdf_bytes_with_pdfium(
                 if not normalized_page_indices:
                     return b""
             else:
-                normalized_end_page_id = get_end_page_id(end_page_id, total_page_count)
+                normalized_end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else total_page_count - 1
+                if normalized_end_page_id > total_page_count - 1:
+                    normalized_end_page_id = total_page_count - 1
                 normalized_page_indices = list(range(start_page_id, normalized_end_page_id + 1))
 
             output_doc = pdfium.PdfDocument.new()

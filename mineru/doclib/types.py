@@ -13,6 +13,8 @@ class ParseRequest(BaseModel):
     tier: str | None = None
     pages: str | None = None
     force: bool = False
+    remote: bool = False
+    remote_url: str | None = None
 
 
 class ParseResponse(BaseModel):

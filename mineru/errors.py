@@ -23,6 +23,7 @@ _ERROR_TYPE_MAP: dict[str, str] = {
     "job_already_terminal": "invalid_request_error",
     "model_not_found": "invalid_request_error",
     "not_cached": "invalid_request_error",
+    "tier_mismatch": "invalid_request_error",
     # authentication_error
     "invalid_api_key": "authentication_error",
     # permission_error
@@ -43,6 +44,7 @@ _ERROR_TYPE_MAP: dict[str, str] = {
     "server_busy": "api_error",
     "remote_timeout": "api_error",
     "remote_unreachable": "api_error",
+    "parse_server_unavailable": "api_error",
 }
 
 

@@ -80,7 +80,7 @@ def apply_post_ocr(pages: list[PageInfo], ocr_model: Any) -> None:
         for blocks in [page_info.preproc_blocks, page_info.discarded_blocks]:
             for block in blocks:
                 for span in _iter_block_spans(block):
-                    if span._np_img:
+                    if span._np_img is not None:
                         need_ocr_list.append(span)
                         img_crop_list.append(rotate_vertical_crop_if_needed(span._np_img))
                         span._np_img = None
@@ -93,11 +93,11 @@ def apply_post_ocr(pages: list[PageInfo], ocr_model: Any) -> None:
     for index, span in enumerate(need_ocr_list):
         ocr_text, ocr_score = ocr_res_list[index]
         if ocr_score > OcrConfidence.min_confidence:
-            span["content"] = ocr_text
-            span["score"] = float(f"{ocr_score:.3f}")
+            span.content = ocr_text
+            span.score = float(f"{ocr_score:.3f}")
         else:
-            span["content"] = ""
-            span["score"] = 0.0
+            span.content = ""
+            span.score = 0.0
 
 
 def _iter_block_spans(block: Block) -> Iterator[Span]:

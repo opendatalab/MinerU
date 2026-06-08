@@ -5,8 +5,7 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup, Tag
 
-from .base import DocumentParser
-from .parse_result import ParseResult
+from .base import DocumentParser, ParseResult
 from mineru.types import Block, Line, PageInfo, Span
 
 
@@ -16,7 +15,7 @@ class HtmlParser(DocumentParser):
     HTML elements are mapped to typed blocks inside a single page.
     """
 
-    def parse(self, path: str | Path) -> ParseResult:
+    def parse(self, path: str | Path, *, page_range: str = "") -> ParseResult:
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(path)

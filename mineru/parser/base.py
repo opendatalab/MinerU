@@ -1,12 +1,153 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
+import base64
+import dataclasses
+import json
+import re
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any
 
-if TYPE_CHECKING:
-    from .parse_result import ParseResult
+from mineru.render import render_content_list, render_content_list_v2, render_markdown
+from mineru.types import PageInfo
+
+_INLINE_IMAGE_DATA_URI_RE = re.compile(r"data:image/([^;]+);base64,([^\"]+)", re.DOTALL)
+
+
+@dataclass
+class ParseResult:
+    """The parsed result of a document.
+
+    Holds the typed middle representation and exposes markdown / content-list
+    / images as lazily-computed methods.  Call ``save(writer)`` to persist.
+    """
+
+    pages: list[PageInfo]
+    _backend: str
+    _version_name: str
+    _pdf_doc: object | None = None
+    _file_name: str = ""
+    _model_output: Any = None
+    _images_cache: dict[str, bytes] | None = None
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> ParseResult:
+        # TODO
+        ...
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"pages": [dataclasses.asdict(p) for p in self.pages]}
+
+    @staticmethod
+    def from_json(s: str) -> ParseResult:
+        # TODO
+        ...
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
+
+    def markdown(self, *, add_markers: bool = False) -> str:
+        return render_markdown(self.pages, add_markers=add_markers)
+
+    def content_list(self) -> list[dict[str, Any]]:
+        return render_content_list(self.pages)
+
+    def content_list_v2(self) -> list[dict[str, Any]]:
+        return render_content_list_v2(self.pages)
+
+    def save(self, writer: Any) -> None:
+        prefix = self._file_name
+
+        # TODO: need rename these files
+        writer.write_string(f"{prefix}.md", self.markdown())
+        writer.write_string(f"{prefix}_middle.json", self.to_json())
+
+        writer.write_string(
+            f"{prefix}_content_list.json",
+            json.dumps(self.content_list(), ensure_ascii=False, indent=4),
+        )
+        writer.write_string(
+            f"{prefix}_content_list_v2.json",
+            json.dumps(self.content_list_v2(), ensure_ascii=False, indent=4),
+        )
+
+        if self._model_output is not None:
+            writer.write_string(
+                f"{prefix}_model.json",
+                json.dumps(self._model_output, ensure_ascii=False, indent=4),
+            )
+
+        for img_path, img_bytes in self.images().items():
+            writer.write(img_path, img_bytes)
+
+    def images(self) -> dict[str, bytes]:
+        if self._images_cache is not None:
+            return self._images_cache
+        if self._pdf_doc is not None:
+            return self._extract_pdf_images()
+        return self._extract_office_images()
+
+    def _extract_pdf_images(self) -> dict[str, bytes]:
+        result: dict[str, bytes] = {}
+        for page_info in self.pages:
+            pil_img = self._pdf_doc.render_page(page_info.page_idx)  # type: ignore[union-attr]
+            for block in page_info.preproc_blocks:
+                result.update(self._crop_block_spans(block, pil_img, 2))
+            for block in page_info.para_blocks:
+                result.update(self._crop_block_spans(block, pil_img, 2))
+        return result
+
+    @staticmethod
+    def _crop_block_spans(block: Any, pil_img: Any, scale: int) -> dict[str, bytes]:
+        from ..utils.pdf_image_tools import get_crop_img, image_to_bytes
+
+        result: dict[str, bytes] = {}
+        for line in block.lines:
+            for span in line.spans:
+                if not span.image_path or span.bbox is None:
+                    continue
+                crop = get_crop_img(span.bbox, pil_img, scale=scale)
+                result[span.image_path] = image_to_bytes(crop, image_format="JPEG")
+        for child in block.blocks:
+            result.update(ParseResult._crop_block_spans(child, pil_img, scale))
+        return result
+
+    def _extract_office_images(self) -> dict[str, bytes]:
+        from ..utils.hash_utils import str_sha256
+
+        result: dict[str, bytes] = {}
+        for page_info in self.pages:
+            for block in page_info.para_blocks:
+                for span in self._iter_block_spans(block):
+                    result.update(self._decode_span_base64_images(span, str_sha256))
+        return result
+
+    @staticmethod
+    def _iter_block_spans(block: Any):
+        for line in block.lines:
+            yield from line.spans
+        for child in block.blocks:
+            yield from ParseResult._iter_block_spans(child)
+
+    @staticmethod
+    def _decode_span_base64_images(span: Any, hash_fn) -> dict[str, bytes]:
+        result: dict[str, bytes] = {}
+        if span.image_base64:
+            m = _INLINE_IMAGE_DATA_URI_RE.match(span.image_base64)
+            if m:
+                try:
+                    result[span.image_path or f"{hash_fn(span.image_base64)}.{m.group(1)}"] = base64.b64decode(m.group(2))
+                except Exception:
+                    pass
+        if span.html:
+            for m in _INLINE_IMAGE_DATA_URI_RE.finditer(span.html):
+                try:
+                    result[f"{hash_fn(m.group(0))}.{m.group(1)}"] = base64.b64decode(m.group(2))
+                except Exception:
+                    pass
+        return result
 
 
 class DocumentParser(ABC):
@@ -15,47 +156,21 @@ class DocumentParser(ABC):
     Subclasses implement ``parse()`` for a specific document category (PDF, DOCX, PPTX, XLSX).
     """
 
-    def __init__(
-        self,
-        *,
-        backend: str = "hybrid-auto-engine",
-        method: str = "auto",
-        lang: str = "ch",
-        formula_enable: bool = True,
-        table_enable: bool = True,
-        image_analysis: bool = True,
-        server_url: str | None = None,
-        start_page_id: int = 0,
-        end_page_id: int | None = None,
-        return_md: bool = True,
-        return_middle_json: bool = True,
-        return_model_output: bool = True,
-        return_content_list: bool = True,
-        return_images: bool = True,
-        output_dir: str | Path = "./output",
-    ):
-        self.backend = backend
-        self.method = method
-        self.lang = lang
-        self.formula_enable = formula_enable
-        self.table_enable = table_enable
-        self.image_analysis = image_analysis
-        self.server_url = server_url
-        self.start_page_id = start_page_id
-        self.end_page_id = end_page_id
-        self.return_md = return_md
-        self.return_middle_json = return_middle_json
-        self.return_model_output = return_model_output
-        self.return_content_list = return_content_list
-        self.return_images = return_images
-        self.output_dir = Path(output_dir)
-        self._closed = False
+    _closed: bool = False
 
     @abstractmethod
-    def parse(self, path: str | Path) -> ParseResult:
-        """Parse a document and return structured results."""
+    def parse(self, path: str | Path, *, page_range: str = "") -> ParseResult:
+        """Parse a document and return structured results.
 
-    async def parse_async(self, path: str | Path) -> ParseResult:
+        Parameters
+        ----------
+        path:
+            Path to the document file.
+        page_range:
+            1-based page range string (``"1~5,-3~-1"``).  Empty means all pages.
+        """
+
+    async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:
         """Asynchronously parse a document.
 
         The default implementation delegates to ``parse()`` via ``asyncio.to_thread``.
@@ -63,17 +178,17 @@ class DocumentParser(ABC):
         """
         import asyncio
 
-        return await asyncio.to_thread(self.parse, path)
+        return await asyncio.to_thread(self.parse, path, page_range=page_range)
 
-    def parse_batch(self, paths: list[str | Path]) -> list[ParseResult]:
+    def parse_batch(self, paths: list[str | Path], *, page_range: str = "") -> list[ParseResult]:
         """Parse multiple documents synchronously.
 
         The default implementation calls ``parse()`` for each path in order.
         Subclasses may override for batch-optimized execution.
         """
-        return [self.parse(p) for p in paths]
+        return [self.parse(p, page_range=page_range) for p in paths]
 
-    async def parse_batch_async(self, paths: list[str | Path]) -> list[ParseResult]:
+    async def parse_batch_async(self, paths: list[str | Path], *, page_range: str = "") -> list[ParseResult]:
         """Parse multiple documents asynchronously.
 
         The default implementation calls ``parse_async()`` concurrently for all paths.
@@ -81,7 +196,7 @@ class DocumentParser(ABC):
         """
         import asyncio
 
-        return await asyncio.gather(*(self.parse_async(p) for p in paths))
+        return await asyncio.gather(*(self.parse_async(p, page_range=page_range) for p in paths))
 
     def close(self) -> None:
         """Release resources held by this parser instance.

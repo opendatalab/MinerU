@@ -36,6 +36,7 @@ async def server_status(request: Request) -> dict:
         "docs_total": docs_total["cnt"] if docs_total else 0,
         "parse_queue_length": parse_q,
         "ingest_queue_length": ingest_q["cnt"] if ingest_q else 0,
+        "parse_server": _build_parse_server_status(),
         "watch_count": len(watches),
         "watches": [
             {
@@ -61,3 +62,20 @@ async def shutdown(request: Request) -> dict:
 
     asyncio.create_task(_shutdown())
     return {"message": "Server shutting down..."}
+
+
+def _build_parse_server_status() -> dict:
+    from mineru.doclib.background.parse_server_health import get_health
+
+    health = get_health()
+    return {
+        "local": {
+            "mode": health.local_mode,
+            "healthy": health.local_healthy,
+            "supported_tiers": health.local_supported_tiers,
+        },
+        "remote": {
+            "healthy": health.remote_healthy,
+            "supported_tiers": health.remote_supported_tiers,
+        },
+    }

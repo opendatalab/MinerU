@@ -111,30 +111,34 @@ class Compaction:
         if not os.path.isdir(tier_dir):
             return
 
-        # collect all pages from existing JSON files
+        # collect all pages + markdown from existing files
         pages_by_idx: dict[int, dict] = {}
+        md_texts: dict[str, str] = {}
         for fname in os.listdir(tier_dir):
-            if not fname.endswith(".json"):
-                continue
             try:
-                with open(os.path.join(tier_dir, fname), encoding="utf-8") as f:
-                    for p in _json.load(f).get("pdf_info", []):
-                        pages_by_idx[p["page_idx"]] = p
+                if fname.endswith(".json"):
+                    with open(os.path.join(tier_dir, fname), encoding="utf-8") as f:
+                        for p in _json.load(f).get("pdf_info", []):
+                            pages_by_idx[p["page_idx"]] = p
+                elif fname.endswith(".md"):
+                    stem = fname[:-3]  # remove .md
+                    with open(os.path.join(tier_dir, fname), encoding="utf-8") as f:
+                        md_texts[stem] = f.read()
             except Exception:
                 pass
 
         if not pages_by_idx:
             return
 
-        # delete old JSON files
+        # delete old files
         for fname in os.listdir(tier_dir):
-            if fname.endswith(".json"):
+            if fname.endswith(".json") or fname.endswith(".md"):
                 try:
                     os.unlink(os.path.join(tier_dir, fname))
                 except OSError:
                     pass
 
-        # write one compacted JSON per merged range
+        # write one compacted JSON + MD per merged range
         for pages_str in merged_ranges:
             page_set = parse_range_set(pages_str)
             json_pages = [
@@ -142,12 +146,21 @@ class Compaction:
             ]
             if not json_pages:
                 continue
-            json_path = os.path.join(tier_dir, f"{_safe_filename(pages_str)}.json")
+            key = _safe_filename(pages_str)
+            json_path = os.path.join(tier_dir, f"{key}.json")
             try:
                 with open(json_path, "w", encoding="utf-8") as f:
                     _json.dump(
                         {"pdf_info": json_pages}, f, ensure_ascii=False, indent=2
                     )
+            except Exception:
+                pass
+
+            md_path = os.path.join(tier_dir, f"{key}.md")
+            try:
+                merged_md = "\n".join(md for k, md in sorted(md_texts.items()))
+                with open(md_path, "w", encoding="utf-8") as f:
+                    f.write(merged_md)
             except Exception:
                 pass
 

@@ -24,7 +24,6 @@ from .check_sys_env import is_windows_environment
 from .enum_class import ImageType
 from .hash_utils import str_sha256
 from .os_env_config import get_load_images_threads, get_load_images_timeout
-from .pdf_page_id import get_end_page_id
 from .pdf_reader import image_to_b64str, image_to_bytes, page_to_image
 from .pdfium_guard import (
     close_pdfium_child,
@@ -420,7 +419,9 @@ def load_images_from_pdf_core(
         with pdfium_guard():
             pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
             pdf_page_num = len(pdf_doc)
-            end_page_id = get_end_page_id(end_page_id, pdf_page_num)
+            end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else pdf_page_num - 1
+            if end_page_id > pdf_page_num - 1:
+                end_page_id = pdf_page_num - 1
 
             for index in range(start_page_id, end_page_id + 1):
                 # logger.debug(f"Converting page {index}/{pdf_page_num} to image")
@@ -448,7 +449,9 @@ def load_images_from_pdf_doc(
     threads: int | None = None,
 ) -> list[dict[str, Any]]:
     pdf_page_num = get_pdfium_document_page_count(pdf_doc)
-    normalized_end_page_id = get_end_page_id(end_page_id, pdf_page_num)
+    normalized_end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else pdf_page_num - 1
+    if normalized_end_page_id > pdf_page_num - 1:
+        normalized_end_page_id = pdf_page_num - 1
 
     if pdf_bytes is not None:
         return _load_images_from_pdf_bytes_range(
