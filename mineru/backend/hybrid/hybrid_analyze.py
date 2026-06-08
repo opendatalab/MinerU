@@ -1099,35 +1099,38 @@ def doc_analyze(
                                 images_layout_res=images_layout_res,
                                 hybrid_pipeline_model=hybrid_pipeline_model,
                             )
-                    elif _vlm_ocr_enable:
-                        with predictor_execution_guard(predictor):
-                            window_model_list = predictor.batch_two_step_extract(
-                                images=images_pil_list,
-                                image_analysis=image_analysis,
+                    elif mode == "pro":
+                        if _vlm_ocr_enable:
+                            with predictor_execution_guard(predictor):
+                                window_model_list = predictor.batch_two_step_extract(
+                                    images=images_pil_list,
+                                    image_analysis=image_analysis,
+                                )
+                            _apply_vlm_ocr_det_sidecars_for_window(
+                                images_pil_list,
+                                window_model_list,
+                                batch_ratio,
+                                images_layout_res=images_layout_res,
+                                hybrid_pipeline_model=hybrid_pipeline_model,
                             )
-                        _apply_vlm_ocr_det_sidecars_for_window(
-                            images_pil_list,
-                            window_model_list,
-                            batch_ratio,
-                            images_layout_res=images_layout_res,
-                            hybrid_pipeline_model=hybrid_pipeline_model,
-                        )
+                        else:
+                            with predictor_execution_guard(predictor):
+                                window_model_list = predictor.batch_two_step_extract(
+                                    images=images_pil_list,
+                                    not_extract_list=not_extract_list,
+                                    image_analysis=image_analysis,
+                                )
+                            window_model_list = _process_ocr_and_formulas(
+                                images_pil_list,
+                                window_model_list,
+                                inline_formula_enable,
+                                _ocr_enable,
+                                batch_ratio=batch_ratio,
+                                images_layout_res=images_layout_res,
+                                hybrid_pipeline_model=hybrid_pipeline_model,
+                            )
                     else:
-                        with predictor_execution_guard(predictor):
-                            window_model_list = predictor.batch_two_step_extract(
-                                images=images_pil_list,
-                                not_extract_list=not_extract_list,
-                                image_analysis=image_analysis,
-                            )
-                        window_model_list = _process_ocr_and_formulas(
-                            images_pil_list,
-                            window_model_list,
-                            inline_formula_enable,
-                            _ocr_enable,
-                            batch_ratio=batch_ratio,
-                            images_layout_res=images_layout_res,
-                            hybrid_pipeline_model=hybrid_pipeline_model,
-                        )
+                        raise ValueError(f"Unsupported hybrid mode: {mode}")
 
                     _apply_layout_title_split(
                         window_model_list,
@@ -1315,37 +1318,40 @@ async def aio_doc_analyze(
                                 images_layout_res=images_layout_res,
                                 hybrid_pipeline_model=hybrid_pipeline_model,
                             )
-                    elif _vlm_ocr_enable:
-                        async with aio_predictor_execution_guard(predictor):
-                            window_model_list = await predictor.aio_batch_two_step_extract(
-                                images=images_pil_list,
-                                image_analysis=image_analysis,
+                    elif mode == "pro":
+                        if _vlm_ocr_enable:
+                            async with aio_predictor_execution_guard(predictor):
+                                window_model_list = await predictor.aio_batch_two_step_extract(
+                                    images=images_pil_list,
+                                    image_analysis=image_analysis,
+                                )
+                            await asyncio.to_thread(
+                                _apply_vlm_ocr_det_sidecars_for_window,
+                                images_pil_list,
+                                window_model_list,
+                                batch_ratio,
+                                images_layout_res=images_layout_res,
+                                hybrid_pipeline_model=hybrid_pipeline_model,
                             )
-                        await asyncio.to_thread(
-                            _apply_vlm_ocr_det_sidecars_for_window,
-                            images_pil_list,
-                            window_model_list,
-                            batch_ratio,
-                            images_layout_res=images_layout_res,
-                            hybrid_pipeline_model=hybrid_pipeline_model,
-                        )
+                        else:
+                            async with aio_predictor_execution_guard(predictor):
+                                window_model_list = await predictor.aio_batch_two_step_extract(
+                                    images=images_pil_list,
+                                    not_extract_list=not_extract_list,
+                                    image_analysis=image_analysis,
+                                )
+                            window_model_list = await asyncio.to_thread(
+                                _process_ocr_and_formulas,
+                                images_pil_list,
+                                window_model_list,
+                                inline_formula_enable,
+                                _ocr_enable,
+                                batch_ratio=batch_ratio,
+                                images_layout_res=images_layout_res,
+                                hybrid_pipeline_model=hybrid_pipeline_model,
+                            )
                     else:
-                        async with aio_predictor_execution_guard(predictor):
-                            window_model_list = await predictor.aio_batch_two_step_extract(
-                                images=images_pil_list,
-                                not_extract_list=not_extract_list,
-                                image_analysis=image_analysis,
-                            )
-                        window_model_list = await asyncio.to_thread(
-                            _process_ocr_and_formulas,
-                            images_pil_list,
-                            window_model_list,
-                            inline_formula_enable,
-                            _ocr_enable,
-                            batch_ratio=batch_ratio,
-                            images_layout_res=images_layout_res,
-                            hybrid_pipeline_model=hybrid_pipeline_model,
-                        )
+                        raise ValueError(f"Unsupported hybrid mode: {mode}")
 
                     await asyncio.to_thread(
                         _apply_layout_title_split,
