@@ -89,6 +89,28 @@ Core（数据层：DB、FTS、文件 IO）
 
 响应格式：成功时直接返回数据对象（无 envelope），失败时返回 OpenAI 兼容的 `{"error": {"type": ..., "code": ..., "message": ..., "param": ...}}`。
 
+`GET /server/status` 除基础信息外，返回 parse-server 健康状态：
+
+```json
+{
+  "running": true,
+  "pid": 12345,
+  "ingest_queue_length": 5,
+  "parse_queue_length": 3,
+  "parse_server": {
+    "local": {
+      "mode": "managed",
+      "healthy": true,
+      "supported_tiers": ["standard"]
+    },
+    "remote": {
+      "healthy": true,
+      "supported_tiers": ["standard", "pro"]
+    }
+  }
+}
+```
+
 ### 2.2 Services
 
 | Service | 依赖 | 职责 |
@@ -543,8 +565,18 @@ ParseWorker.acquire_task()
 - **`--remote` 优先**：用户一旦指定 `--remote`，即优先使用远程，节省本地算力。远程不可用时 fallback 到本地
 - **privacy 不可变**：解析失败后 re-enqueue，保持原始 `privacy` 值不变。用户选择 remote 意味着接受文档上传，不会因重试改变立场
 - **`auto` tier 不可用时报错**：不静默降级，让用户做决定选择 flash 或 --remote
+- **tier 不匹配时报错**：parse-server 只支持 standard，用户请求 pro → 直接报错，不自动降级
+- **`parse_failed` 不 fallback**：remote 返回解析失败（非网络错误，如文件损坏、加密）→ 不 fallback 到本地，直接标 failed
 - **缓存键**：`(sha256, tier)`，与 privacy/via 无关——同一 tier 不同来源产出解析结果一致
 - **remote 产物同样入库**：remote 解析完成后，middle_json 和 markdown 和本地解析一样写入 `~/MinerU/parsed/` 并更新 fts_contents
+- **`via` 列解析后写入**：解析完成时写 `via=local` 或 `via=remote`，记录实际执行路径。不提前写入，避免解析失败时值为假
+
+**实现层**：
+
+- ParseWorker 通过 `mineru.parser.api_parser.MinerUApiParser`（改造为 async）与 parse-server 通信。api_parser 接受 `base_url` 参数，封装 Files/Uploads/Jobs 完整流程，返回 middle_json
+- flash tier 不经过 api_parser，直接调用 `mineru.parser.parse()`，走纯 CPU 库调用
+- local parse-server 的并发由 server 自身排队处理，doclib 不做额外并发限制
+- **retry 机制 → TODO**：错误重试策略（次数上限、退避算法、由谁触发）后续讨论
 
 ### 5.4 parse-server 健康检查
 
@@ -565,6 +597,11 @@ ParseServerHealthCheck（asyncio task，每 60s 执行一次）
   - ParseWorker 取 task 时同步读内存健康状态
   - 探活不可用 → 返回可重试 error code（parse_server_unavailable）
   - 探活失败不关闭 server，不影响已 running 的解析
+
+managed 模式崩溃恢复：
+  - ParseServerHealthCheck 探测到 managed 进程退出 → 自动重新拉起
+  - 连续重启 3 次失败 → 降为 disabled 模式并记录错误日志
+  - 用户可通过 `mineru server restart` 重置状态
 ```
 
 ### 5.5 解析产物存储
@@ -681,7 +718,7 @@ async def shutdown():
     # 3. 关闭数据库连接
     await db.close()
 
-    # 3. 删除 socket 文件
+    # 4. 删除 socket 文件
     remove_socket()
 ```
 
@@ -694,6 +731,7 @@ Server 启动时执行以下恢复操作：
 | `UPDATE files SET locked_at=NULL` | 释放因崩溃而未释放的 ingest 锁 |
 | `UPDATE parses SET locked_at=NULL, status='failed' WHERE status='parsing'` | 释放解析锁，标记为可重试 |
 | 检查已入库文件的活性（`os.path.exists`） | 标记已删除的文件 |
+| 检测 managed 模式下 parse-server 进程是否存在 | 不存在则自动拉起；连续 3 次失败降为 disabled |
 
 ---
 
@@ -868,7 +906,11 @@ flash 的首尾各 5 页文本通常在 30K 限制内，不会触发截断。sta
 | `no_engine` | `privacy=local` + parse-server `disabled` + tier 非 flash | 否 |
 | `engine_unavailable` | parse-server 已配置但探活不可用 | 是 |
 | `parse_server_unavailable` | `privacy=remote` 远程不可用，且 local fallback 也不可用 | 是 |
-| `parse_failed` | parse-server 返回解析失败 | 否 |
+| `tier_mismatch` | 请求的 tier（如 pro）不被当前 parse-server 支持 | 否 |
+| `parse_failed` | parse-server 返回解析失败（文档损坏、加密等非网络错误） | 否 |
+| `internal_error` | parse-server 返回 500 内部错误 | 否 |
+
+> **retry 机制 → TODO**：可重试错误的重试次数上限、退避算法、由 ParseWorker 直接 re-enqueue 还是由定时任务触发，后续讨论决定。
 
 ---
 

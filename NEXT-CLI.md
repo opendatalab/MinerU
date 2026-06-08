@@ -359,7 +359,7 @@ mineru server 是常驻后台进程，负责：
 mineru server start       # 后台启动
 mineru server stop        # 优雅关闭
 mineru server restart     # 重启
-mineru server status      # 运行状态 + 索引统计 + 队列长度
+mineru server status      # 运行状态 + 索引统计 + 队列长度 + parse-server 探活状态
 ```
 
 ## 内部组件
