@@ -283,7 +283,7 @@ MinerU provides a convenient Docker deployment method, which helps quickly set u
 > - Docker deployment is only supported on Linux and Windows environments with WSL2 support;
 > - macOS users should refer to the two installation methods above for installation instead of using Docker deployment.
 
-You can get the [Docker Deployment Instructions](https://opendatalab.github.io/MinerU/quick_start/docker_deployment/) in the documentation.
+You can get the [Docker Deployment Instructions](https://opendatalab.github.io/MinerU/quick_start/docker_deployment/) in the documentation, including a [CPU-only deployment](https://opendatalab.github.io/MinerU/quick_start/docker_deployment/#cpu-only-deployment-no-gpu-required) option for environments without GPU.
 
 ---
 
