@@ -846,6 +846,11 @@ def is_image_analysis_option_visible(backend):
     return backend.startswith("vlm") or backend.startswith("hybrid")
 
 
+def is_ocr_options_visible(backend):
+    """判断 OCR 语言和强制 OCR 选项是否展示；Hybrid/VLM 已不需要用户指定语言。"""
+    return backend == "pipeline"
+
+
 def should_use_client_side_output_generation(client_side_output_generation):
     """判断当前 Gradio 任务是否需要在客户端生成最终输出。"""
     return client_side_output_generation
@@ -1725,10 +1730,7 @@ def main(ctx,
         image_analysis_update = gr.update(visible=is_image_analysis_option_visible(backend_choice))
         effort_update = gr.update(visible=is_effort_option_visible(backend_choice))
         client_options_update = gr.update(visible=is_http_client_backend(backend_choice))
-        if "vlm" in backend_choice:
-            ocr_options_update = gr.update(visible=False)
-        else:
-            ocr_options_update = gr.update(visible=True)
+        ocr_options_update = gr.update(visible=is_ocr_options_visible(backend_choice))
 
         return client_options_update, ocr_options_update, formula_label_update, backend_info_update, image_analysis_update, effort_update
 
@@ -1921,7 +1923,7 @@ def main(ctx,
                         visible=is_effort_option_visible(preferred_option),
                         info=i18n("hybrid_effort_info"),
                     )
-                with gr.Group() as ocr_options:
+                with gr.Group(visible=is_ocr_options_visible(preferred_option)) as ocr_options:
                     language = gr.Dropdown(
                         all_lang,
                         label=i18n("ocr_language"),

@@ -88,7 +88,7 @@ async def parse_request_form(
     lang_list: Annotated[
         list[str],
         Form(
-            description="""(Adapted only for pipeline and hybrid backend)Input the languages in the pdf to improve OCR accuracy.Options:
+            description="""(Adapted for pipeline backend only) Input the languages in the pdf to improve OCR accuracy. Options:
 - ch: Chinese, English, Chinese Traditional.
 - ch_lite: Chinese, English, Chinese Traditional, Japanese.
 - ch_server: Chinese, English, Chinese Traditional, Japanese.

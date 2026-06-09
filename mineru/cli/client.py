@@ -1121,7 +1121,7 @@ async def run_orchestrated_cli(
     help="""
     Input the languages in the pdf (if known) to improve OCR accuracy.
     Without languages specified, 'ch' will be used by default.
-    Adapted only for the case where the backend is set to 'pipeline' and 'hybrid-*'.
+    Specify document language (improves OCR accuracy, pipeline backend only).
     """,
 )
 @click.option(

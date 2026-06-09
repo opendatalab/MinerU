@@ -16,7 +16,7 @@ Options:
                                   Parsing backend (default: hybrid-engine)
   --effort [medium|high]          Hybrid parsing effort (default: medium)
   -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|th|el|latin|arabic|east_slavic|cyrillic|devanagari]
-                                  Specify document language (improves OCR accuracy, pipeline and hybrid* backend only)
+                                  Specify document language (improves OCR accuracy, pipeline backend only)
   -u, --url TEXT                  OpenAI-compatible backend URL passed through to the server when using http-client
   -s, --start INTEGER             Starting page number for parsing (0-based)
   -e, --end INTEGER               Ending page number for parsing (0-based)

@@ -509,7 +509,6 @@ def _process_hybrid(
         output_dir,
         pdf_file_names,
         pdf_bytes_list,
-        h_lang_list,
         parse_method,
         inline_formula_enable,
         backend,
@@ -533,7 +532,7 @@ def _process_hybrid(
     if not backend.endswith("client"):
         server_url = None
 
-    for idx, (pdf_bytes, lang) in enumerate(zip(pdf_bytes_list, h_lang_list)):
+    for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
@@ -543,7 +542,6 @@ def _process_hybrid(
             image_writer=image_writer,
             backend=backend,
             parse_method=parse_method,
-            language=lang,
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
             effort=validate_effort(effort),
@@ -567,7 +565,6 @@ async def _async_process_hybrid(
         output_dir,
         pdf_file_names,
         pdf_bytes_list,
-        h_lang_list,
         parse_method,
         inline_formula_enable,
         backend,
@@ -591,7 +588,7 @@ async def _async_process_hybrid(
     if not backend.endswith("client"):
         server_url = None
 
-    for idx, (pdf_bytes, lang) in enumerate(zip(pdf_bytes_list, h_lang_list)):
+    for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
@@ -601,7 +598,6 @@ async def _async_process_hybrid(
             image_writer=image_writer,
             backend=backend,
             parse_method=parse_method,
-            language=lang,
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
             effort=validate_effort(effort),
@@ -755,7 +751,7 @@ def do_parse(
             os.environ['MINERU_VLM_FORMULA_ENABLE'] = "true"
 
             _process_hybrid(
-                output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
+                output_dir, pdf_file_names, pdf_bytes_list, parse_method, formula_enable, backend,
                 f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
                 server_url, effort=effort, image_analysis=image_analysis,
@@ -850,7 +846,7 @@ async def aio_do_parse(
             os.environ['MINERU_VLM_FORMULA_ENABLE'] = "true"
 
             await _async_process_hybrid(
-                output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
+                output_dir, pdf_file_names, pdf_bytes_list, parse_method, formula_enable, backend,
                 f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
                 server_url, effort=effort, image_analysis=image_analysis,

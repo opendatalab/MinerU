@@ -672,7 +672,6 @@ def _predict_layout_for_title_split(
 
 def _predict_layout_for_window(
     images_pil_list,
-    language,
     inline_formula_enable,
     batch_ratio,
     vlm_ocr_enable,
@@ -680,7 +679,6 @@ def _predict_layout_for_window(
     """为单个处理窗口执行一次 pipeline layout，并返回可复用的小模型实例。"""
     hybrid_model_singleton = HybridModelSingleton()
     hybrid_pipeline_model = hybrid_model_singleton.get_model(
-        lang=language,
         formula_enable=inline_formula_enable and not vlm_ocr_enable,
     )
     images_layout_res = _predict_layout_for_title_split(
@@ -954,7 +952,7 @@ def get_batch_ratio(device):
     return batch_ratio
 
 
-def _should_enable_vlm_ocr(ocr_enable: bool, language: str, inline_formula_enable: bool) -> bool:
+def _should_enable_vlm_ocr(ocr_enable: bool, inline_formula_enable: bool) -> bool:
     """判断是否启用VLM OCR"""
     force_enable = os.getenv("MINERU_FORCE_VLM_OCR_ENABLE", "0").lower() in ("1", "true", "yes")
     if force_enable:
@@ -963,7 +961,6 @@ def _should_enable_vlm_ocr(ocr_enable: bool, language: str, inline_formula_enabl
     force_pipeline = os.getenv("MINERU_HYBRID_FORCE_PIPELINE_ENABLE", "0").lower() in ("1", "true", "yes")
     return (
             ocr_enable
-            and language in ["ch", "en"]
             and inline_formula_enable
             and not force_pipeline
     )
@@ -985,7 +982,6 @@ def doc_analyze(
         predictor: MinerUClient | None = None,
         backend="transformers",
         parse_method: str = 'auto',
-        language: str = 'ch',
         inline_formula_enable: bool = True,
         model_path: str | None = None,
         server_url: str | None = None,
@@ -1003,7 +999,7 @@ def doc_analyze(
 
     device = get_device()
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
-    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
+    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, inline_formula_enable)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json = init_middle_json(
@@ -1053,7 +1049,6 @@ def doc_analyze(
                     )
                     images_layout_res, hybrid_pipeline_model = _predict_layout_for_window(
                         images_pil_list,
-                        language,
                         inline_formula_enable,
                         batch_ratio,
                         _vlm_ocr_enable,
@@ -1201,7 +1196,6 @@ async def aio_doc_analyze(
     predictor: MinerUClient | None = None,
     backend="transformers",
     parse_method: str = 'auto',
-    language: str = 'ch',
     inline_formula_enable: bool = True,
     model_path: str | None = None,
     server_url: str | None = None,
@@ -1219,7 +1213,7 @@ async def aio_doc_analyze(
 
     device = get_device()
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
-    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
+    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, inline_formula_enable)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json = init_middle_json(
@@ -1269,7 +1263,6 @@ async def aio_doc_analyze(
                     images_layout_res, hybrid_pipeline_model = await asyncio.to_thread(
                         _predict_layout_for_window,
                         images_pil_list,
-                        language,
                         inline_formula_enable,
                         batch_ratio,
                         _vlm_ocr_enable,
