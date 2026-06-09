@@ -1734,10 +1734,13 @@ def main(ctx,
         formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
         backend_info_update = gr.update(info=get_backend_info(backend_choice))
         effort_update = gr.update(visible=is_effort_option_visible(backend_choice))
-        client_options_update = gr.update(visible=is_http_client_backend(backend_choice))
         ocr_options_update = gr.update(visible=is_ocr_options_visible(backend_choice))
 
-        return client_options_update, ocr_options_update, formula_label_update, backend_info_update, effort_update
+        return ocr_options_update, formula_label_update, backend_info_update, effort_update
+
+    def update_client_options_visibility(backend_choice):
+        """仅更新服务器地址控件显隐，避免隐藏 Row 首次切换到 http-client 时挂载失败。"""
+        return gr.update(visible=is_http_client_backend(backend_choice))
 
     def update_image_analysis_visibility(backend_choice, effort_choice):
         """仅更新图片分析控件显隐；实际开关由 Hybrid 后端兜底处理。"""
@@ -1950,7 +1953,14 @@ def main(ctx,
         backend.change(
             fn=update_interface,
             inputs=[backend, hybrid_effort],
-            outputs=[client_options, ocr_options, formula_enable, backend, hybrid_effort],
+            outputs=[ocr_options, formula_enable, backend, hybrid_effort],
+            **_private_api_kwargs
+        )
+        # 服务器地址区域单独更新，避免 Gradio load 多输出影响首次切换到 http-client 的隐藏 Row 挂载。
+        backend.change(
+            fn=update_client_options_visibility,
+            inputs=backend,
+            outputs=client_options,
             **_private_api_kwargs
         )
         # 图片分析显隐单独更新，避免 Gradio load 多输出影响首次 medium -> high 的隐藏组件挂载。
@@ -1964,7 +1974,7 @@ def main(ctx,
         demo.load(
             fn=update_interface,
             inputs=[backend, hybrid_effort],
-            outputs=[client_options, ocr_options, formula_enable, backend, hybrid_effort],
+            outputs=[ocr_options, formula_enable, backend, hybrid_effort],
             **_private_api_kwargs
         )
         hybrid_effort.change(
