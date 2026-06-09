@@ -3,30 +3,28 @@
 BACKEND_PIPELINE = "pipeline"
 BACKEND_VLM_ENGINE = "vlm-engine"
 BACKEND_HYBRID_ENGINE = "hybrid-engine"
-BACKEND_HYBRID_FLASH_ENGINE = "hybrid-flash-engine"
 BACKEND_VLM_HTTP_CLIENT = "vlm-http-client"
 BACKEND_HYBRID_HTTP_CLIENT = "hybrid-http-client"
-BACKEND_HYBRID_FLASH_HTTP_CLIENT = "hybrid-flash-http-client"
+DEFAULT_HYBRID_EFFORT = "medium"
+HYBRID_EFFORT_CHOICES = ("medium", "high")
 
-DEFAULT_BACKEND = BACKEND_HYBRID_FLASH_ENGINE
+DEFAULT_BACKEND = BACKEND_HYBRID_ENGINE
 
 LOCAL_BACKEND_CHOICES = (
     BACKEND_PIPELINE,
     BACKEND_VLM_ENGINE,
     BACKEND_HYBRID_ENGINE,
-    BACKEND_HYBRID_FLASH_ENGINE,
 )
 HTTP_CLIENT_BACKEND_CHOICES = (
     BACKEND_VLM_HTTP_CLIENT,
     BACKEND_HYBRID_HTTP_CLIENT,
-    BACKEND_HYBRID_FLASH_HTTP_CLIENT,
 )
 PUBLIC_BACKEND_CHOICES = LOCAL_BACKEND_CHOICES + HTTP_CLIENT_BACKEND_CHOICES
 BACKEND_SCHEMA_EXTRA = {"enum": list(PUBLIC_BACKEND_CHOICES)}
+HYBRID_EFFORT_SCHEMA_EXTRA = {"enum": list(HYBRID_EFFORT_CHOICES)}
 LEGACY_BACKEND_ALIASES = {
     "vlm-auto-engine": BACKEND_VLM_ENGINE,
     "hybrid-auto-engine": BACKEND_HYBRID_ENGINE,
-    "hybrid-flash-auto-engine": BACKEND_HYBRID_FLASH_ENGINE,
 }
 
 
@@ -50,3 +48,11 @@ def normalize_backend(backend: str) -> str:
 def validate_backend(backend: str) -> str:
     """校验公开入口允许的 backend 名称，并返回规范后的后端名称。"""
     return normalize_backend(backend)
+
+
+def validate_effort(effort: str) -> str:
+    """校验公开 hybrid effort 参数，并返回规范后的 effort 名称。"""
+    if effort not in HYBRID_EFFORT_CHOICES:
+        allowed_values = ", ".join(HYBRID_EFFORT_CHOICES)
+        raise ValueError(f"Invalid effort. Allowed values: {allowed_values}")
+    return effort

@@ -7,7 +7,10 @@ from fastapi import File, Form, HTTPException, Request, UploadFile
 from mineru.cli.backend_options import (
     BACKEND_SCHEMA_EXTRA,
     DEFAULT_BACKEND,
+    DEFAULT_HYBRID_EFFORT,
+    HYBRID_EFFORT_SCHEMA_EXTRA,
     validate_backend as validate_public_backend,
+    validate_effort as validate_public_effort,
 )
 from mineru.cli.public_http_client_policy import validate_public_http_client_request
 
@@ -26,6 +29,7 @@ class ParseRequestOptions:
     files: list[UploadFile]
     lang_list: list[str]
     backend: str
+    effort: str
     parse_method: str
     formula_enable: bool
     table_enable: bool
@@ -60,6 +64,14 @@ def validate_parse_backend(backend: str) -> str:
     """校验公开 API 允许的解析后端，避免旧入口名进入下游执行链路。"""
     try:
         return validate_public_backend(backend)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def validate_parse_effort(effort: str) -> str:
+    """校验公开 API 允许的 hybrid effort，避免非法值进入解析链路。"""
+    try:
+        return validate_public_effort(effort)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -104,13 +116,20 @@ async def parse_request_form(
 - pipeline: More general, supports multiple languages, hallucination-free.
 - vlm-engine: High accuracy via local computing power, supports Chinese and English documents only.
 - vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers), supports Chinese and English documents only.
-- hybrid-engine: Next-generation high accuracy solution via local computing power, supports multiple languages.
-- hybrid-flash-engine: Hybrid flash mode via local computing power, supports multiple languages.
-- hybrid-http-client: High accuracy via remote computing power but requires a little local computing power(client suitable for openai-compatible servers), supports multiple languages.
-- hybrid-flash-http-client: Hybrid flash mode via remote computing power(client suitable for openai-compatible servers), supports multiple languages.""",
+- hybrid-engine: Hybrid parsing via local computing power, supports multiple languages. Use effort to switch medium/high behavior.
+- hybrid-http-client: Hybrid parsing via remote computing power but requires a little local computing power(client suitable for openai-compatible servers), supports multiple languages. Use effort to switch medium/high behavior.""",
             json_schema_extra=BACKEND_SCHEMA_EXTRA,
         ),
     ] = DEFAULT_BACKEND,
+    effort: Annotated[
+        str,
+        Form(
+            description="""(Adapted only for hybrid backend) Hybrid parsing effort:
+- medium: Fast hybrid parsing, equivalent to the previous fast hybrid behavior.
+- high: High-effort hybrid parsing, equivalent to the previous hybrid behavior.""",
+            json_schema_extra=HYBRID_EFFORT_SCHEMA_EXTRA,
+        ),
+    ] = DEFAULT_HYBRID_EFFORT,
     parse_method: Annotated[
         str,
         Form(
@@ -192,6 +211,7 @@ async def parse_request_form(
 ) -> ParseRequestOptions:
     """解析 API/Router 共用的 multipart 表单，并保持 Swagger 参数同源。"""
     backend = validate_parse_backend(backend)
+    effort = validate_parse_effort(effort)
     validate_public_http_client_request(
         public_bind_exposed=bool(
             getattr(request.app.state, "public_bind_exposed", False)
@@ -214,6 +234,7 @@ async def parse_request_form(
         files=files,
         lang_list=lang_list,
         backend=backend,
+        effort=effort,
         parse_method=validate_parse_method(parse_method),
         formula_enable=formula_enable,
         table_enable=table_enable,

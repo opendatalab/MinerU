@@ -10,7 +10,11 @@ from typing import Sequence
 
 from loguru import logger
 
-from mineru.cli.backend_options import normalize_backend
+from mineru.cli.backend_options import (
+    DEFAULT_HYBRID_EFFORT,
+    normalize_backend,
+    validate_effort,
+)
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
@@ -70,7 +74,7 @@ def ensure_backend_dependencies(backend: str) -> None:
 
 
 def _load_hybrid_analyze_entrypoint(entrypoint_name: str, backend: str):
-    """加载统一 hybrid analyze 入口，flash/pro 由调用方通过 mode 控制。"""
+    """加载统一 hybrid analyze 入口，解析强度由公开 effort 参数控制。"""
     ensure_backend_dependencies(backend)
     module_name = "mineru.backend.hybrid.hybrid_analyze"
     try:
@@ -518,7 +522,7 @@ def _process_hybrid(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
-        mode="pro",
+        effort=DEFAULT_HYBRID_EFFORT,
         **kwargs,
 ):
     hybrid_doc_analyze = _load_hybrid_analyze_entrypoint(
@@ -542,7 +546,7 @@ def _process_hybrid(
             language=lang,
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
-            mode=mode,
+            effort=validate_effort(effort),
             **kwargs,
         )
 
@@ -576,7 +580,7 @@ async def _async_process_hybrid(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
-        mode="pro",
+        effort=DEFAULT_HYBRID_EFFORT,
         **kwargs,
 ):
     aio_hybrid_doc_analyze = _load_hybrid_analyze_entrypoint(
@@ -600,7 +604,7 @@ async def _async_process_hybrid(
             language=lang,
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
-            mode=mode,
+            effort=validate_effort(effort),
             **kwargs,
         )
 
@@ -689,6 +693,7 @@ def do_parse(
         end_page_id=None,
         image_analysis=True,
         client_side_output_generation=False,
+        effort=DEFAULT_HYBRID_EFFORT,
         **kwargs,
 ):
     backend = normalize_backend(backend)
@@ -742,10 +747,6 @@ def do_parse(
         elif backend.startswith("hybrid-"):
             ensure_backend_dependencies(backend)
             backend = backend[7:]
-            mode = "flash" if backend.startswith("flash-") else "pro"
-
-            if mode == "flash":
-                backend = backend[6:]
 
             if backend == "engine":
                 backend = get_vlm_engine(inference_engine='auto', is_async=False)
@@ -757,7 +758,7 @@ def do_parse(
                 output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
                 f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                server_url, mode=mode, image_analysis=image_analysis,
+                server_url, effort=effort, image_analysis=image_analysis,
                 client_side_output_generation=client_side_output_generation, **kwargs,
             )
 
@@ -784,6 +785,7 @@ async def aio_do_parse(
         end_page_id=None,
         image_analysis=True,
         client_side_output_generation=False,
+        effort=DEFAULT_HYBRID_EFFORT,
         **kwargs,
 ):
     backend = normalize_backend(backend)
@@ -840,10 +842,6 @@ async def aio_do_parse(
         elif backend.startswith("hybrid-"):
             ensure_backend_dependencies(backend)
             backend = backend[7:]
-            mode = "flash" if backend.startswith("flash-") else "pro"
-
-            if mode == "flash":
-                backend = backend[6:]
 
             if backend == "engine":
                 backend = get_vlm_engine(inference_engine='auto', is_async=True)
@@ -855,7 +853,7 @@ async def aio_do_parse(
                 output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
                 f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                server_url, mode=mode, image_analysis=image_analysis,
+                server_url, effort=effort, image_analysis=image_analysis,
                 client_side_output_generation=client_side_output_generation, **kwargs,
             )
 

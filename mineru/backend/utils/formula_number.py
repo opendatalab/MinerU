@@ -159,3 +159,8 @@ def optimize_flash_formula_number_blocks(model_list: Iterable[list[Block]]) -> N
             _downgrade_formula_number_to_text,
         )
         page_model_list[:] = optimized_blocks
+
+
+def optimize_medium_formula_number_blocks(model_list: Iterable[list[Block]]) -> None:
+    """按 Hybrid medium effort 规则处理 VLM 公式编号块。"""
+    optimize_flash_formula_number_blocks(model_list)

@@ -51,10 +51,12 @@ def build_form_data(
     start_page_id: int,
     end_page_id: int | None,
     image_analysis: bool = True,
+    effort: str = "medium",
 ) -> dict[str, str | list[str]]:
     return _api_client.build_parse_request_form_data(
         lang_list=[language],
         backend=backend,
+        effort=effort,
         parse_method=parse_method,
         formula_enable=formula_enable,
         table_enable=table_enable,
@@ -101,6 +103,7 @@ async def run_demo(
     formula_enable: bool = True,
     table_enable: bool = True,
     image_analysis: bool = True,
+    effort: str = "medium",
     server_url: str | None = None,
     start_page_id: int = 0,
     end_page_id: int | None = None,
@@ -121,6 +124,7 @@ async def run_demo(
         formula_enable=formula_enable,
         table_enable=table_enable,
         image_analysis=image_analysis,
+        effort=effort,
         server_url=server_url,
         start_page_id=start_page_id,
         end_page_id=end_page_id,
@@ -218,6 +222,8 @@ def main() -> None:
     # "vlm-http-client"      -> remote OpenAI-compatible VLM server
     # "hybrid-http-client"   -> remote OpenAI-compatible hybrid server
     backend = "hybrid-engine"
+    # Hybrid parsing effort. "medium" is faster; "high" keeps the high-effort hybrid behavior.
+    effort = "medium"
     # Available options:
     # "auto" -> let MinerU choose between text extraction and OCR
     # "txt"  -> force text extraction
@@ -247,6 +253,7 @@ def main() -> None:
             output_dir=output_dir,
             api_url=api_url,
             backend=backend,
+            effort=effort,
             parse_method=parse_method,
             language=language,
             formula_enable=formula_enable,

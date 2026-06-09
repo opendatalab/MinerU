@@ -26,7 +26,7 @@ from mineru.backend.pipeline.model_init import (
     run_ocr_inference,
 )
 from mineru.backend.pipeline.model_list import AtomicModel
-from mineru.backend.utils.formula_number import optimize_flash_formula_number_blocks
+from mineru.backend.utils.formula_number import optimize_medium_formula_number_blocks
 from mineru.backend.vlm.vlm_analyze import (
     ModelSingleton,
     aio_predictor_execution_guard,
@@ -61,9 +61,9 @@ LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD = 0.8
 
 not_extract_list = [item.value for item in NotExtractType]
 HYBRID_OCR_DET_TEXT_TYPES = set(not_extract_list)
-HYBRID_ANALYZE_MODES = {"pro", "flash"}
+HYBRID_ANALYZE_EFFORTS = {"medium", "high"}
 INLINE_FORMULA_CONTAINER_LABELS = {"table", "image", "chart", "display_formula"}
-FLASH_LAYOUT_LABEL_TO_VLM_TYPE = {
+MEDIUM_EFFORT_LAYOUT_LABEL_TO_VLM_TYPE = {
     "abstract": BlockType.TEXT,
     "algorithm": BlockType.CODE,
     "aside_text": BlockType.ASIDE_TEXT,
@@ -90,19 +90,19 @@ FLASH_LAYOUT_LABEL_TO_VLM_TYPE = {
 }
 
 
-def _validate_hybrid_mode(mode: str) -> str:
-    """校验 Hybrid 运行模式，避免静默走错解析分支。"""
-    if mode not in HYBRID_ANALYZE_MODES:
-        raise ValueError('mode must be "pro" or "flash"')
-    return mode
+def _validate_parse_effort(effort: str = "medium") -> str:
+    """校验 Hybrid effort，避免静默走错解析强度分支。"""
+    if effort not in HYBRID_ANALYZE_EFFORTS:
+        raise ValueError('effort must be "medium" or "high"')
+    return effort
 
 
-def _vlm_type_for_flash_layout_label(label: str | None) -> str | None:
+def _vlm_type_for_medium_layout_label(label: str | None) -> str | None:
     """将 pipeline layout 标签映射为 mineru-vl-utils 支持的 VLM 抽取类型。"""
-    return FLASH_LAYOUT_LABEL_TO_VLM_TYPE.get(label)
+    return MEDIUM_EFFORT_LAYOUT_LABEL_TO_VLM_TYPE.get(label)
 
 
-def _apply_flash_visual_sub_type(block, label: str | None):
+def _apply_medium_visual_sub_type(block, label: str | None):
     """为视觉块补充下游需要透传的子类型。"""
     if label == "seal":
         block["sub_type"] = "seal"
@@ -364,7 +364,7 @@ def _layout_det_bbox_to_pixel(layout_det, page_width, page_height):
     return [x0, y0, x1, y1]
 
 
-def _normalize_flash_vlm_angle(angle):
+def _normalize_medium_vlm_angle(angle):
     """将pipeline方向标签转换为mineru-vl-utils接受的整数角度。"""
     try:
         normalized_angle = int(angle)
@@ -375,12 +375,12 @@ def _normalize_flash_vlm_angle(angle):
     return 0
 
 
-def _build_flash_vlm_layout_blocks(layout_dets, page_width, page_height):
+def _build_medium_vlm_layout_blocks(layout_dets, page_width, page_height):
     """用 pipeline layout 构造 VLM 外部 layout 输入，跳过 VLM 自身 layout 解析。"""
     blocks = []
     for layout_det in layout_dets or []:
         label = layout_det.get("label")
-        vlm_type = _vlm_type_for_flash_layout_label(label)
+        vlm_type = _vlm_type_for_medium_layout_label(label)
         if vlm_type is None:
             continue
         bbox = _layout_det_bbox_to_unit(layout_det, page_width, page_height)
@@ -390,24 +390,24 @@ def _build_flash_vlm_layout_blocks(layout_dets, page_width, page_height):
             block = ContentBlock(
                 vlm_type,
                 bbox,
-                angle=_normalize_flash_vlm_angle(layout_det.get("angle", 0)),
+                angle=_normalize_medium_vlm_angle(layout_det.get("angle", 0)),
                 content=layout_det.get("content"),
             )
         except AssertionError as exc:
-            logger.warning(f"Skip invalid Hybrid flash VLM block: {layout_det}, error: {exc}")
+            logger.warning(f"Skip invalid Hybrid medium effort VLM block: {layout_det}, error: {exc}")
             continue
-        _apply_flash_visual_sub_type(block, label)
+        _apply_medium_visual_sub_type(block, label)
         blocks.append(block)
     return blocks
 
 
-def _apply_flash_table_orientation_labels(
+def _apply_medium_table_orientation_labels(
     images_pil_list,
     images_layout_res,
     hybrid_pipeline_model,
     batch_ratio: int = 1,
 ):
-    """复用pipeline表格方向分类，为Hybrid flash的table layout写入VLM旋转角度。"""
+    """复用pipeline表格方向分类，为Hybrid medium effort 的 table layout 写入VLM旋转角度。"""
     table_inputs = []
     table_layout_refs = []
     for pil_img, layout_res in zip(images_pil_list, images_layout_res):
@@ -422,7 +422,7 @@ def _apply_flash_table_orientation_labels(
                 table_img, _ = crop_img({"bbox": pixel_bbox}, pil_img)
             except Exception as exc:
                 logger.warning(
-                    f"Skip Hybrid flash table orientation crop: {layout_det}, error: {exc}"
+                    f"Skip Hybrid medium effort table orientation crop: {layout_det}, error: {exc}"
                 )
                 continue
             table_inputs.append({"table_img": table_img})
@@ -447,7 +447,7 @@ def _apply_flash_table_orientation_labels(
             layout_det["angle"] = str(rotate_label or "0")
     except Exception as exc:
         logger.warning(
-            f"Hybrid flash table orientation classification failed: {exc}, using original table images"
+            f"Hybrid medium effort table orientation classification failed: {exc}, using original table images"
         )
 
 
@@ -932,7 +932,7 @@ def get_batch_ratio(device):
             logger.info(f"hybrid batch ratio (from env): {batch_ratio}")
             return batch_ratio
         except ValueError as e:
-            logger.warning(f"Invalid MINERU_HYBRID_BATCH_RATIO value: {env_val}, switching to auto mode. Error: {e}")
+            logger.warning(f"Invalid MINERU_HYBRID_BATCH_RATIO value: {env_val}, switching to auto ratio. Error: {e}")
 
     # 2. 根据显存自动推断
     """
@@ -990,10 +990,10 @@ def doc_analyze(
         model_path: str | None = None,
         server_url: str | None = None,
         image_analysis: bool = True,
-        mode: str = "pro",
+        effort: str = "medium",
         **kwargs,
 ):
-    mode = _validate_hybrid_mode(mode)
+    effort = _validate_parse_effort(effort)
     client_side_output_generation = bool(
         kwargs.pop("client_side_output_generation", False)
     )
@@ -1009,7 +1009,7 @@ def doc_analyze(
     middle_json = init_middle_json(
         _ocr_enable,
         _vlm_ocr_enable,
-        hybrid_mode=mode,
+        effort=effort,
     )
     model_list = []
     doc_closed = False
@@ -1058,15 +1058,15 @@ def doc_analyze(
                         batch_ratio,
                         _vlm_ocr_enable,
                     )
-                    if mode == "flash":
-                        _apply_flash_table_orientation_labels(
+                    if effort == "medium":
+                        _apply_medium_table_orientation_labels(
                             images_pil_list,
                             images_layout_res,
                             hybrid_pipeline_model,
                             batch_ratio=batch_ratio,
                         )
                         vlm_blocks_list = [
-                            _build_flash_vlm_layout_blocks(
+                            _build_medium_vlm_layout_blocks(
                                 page_layout_res,
                                 pil_img.width,
                                 pil_img.height,
@@ -1080,7 +1080,7 @@ def doc_analyze(
                                 not_extract_list=None if _vlm_ocr_enable else not_extract_list,
                                 image_analysis=image_analysis,
                             )
-                        optimize_flash_formula_number_blocks(window_model_list)
+                        optimize_medium_formula_number_blocks(window_model_list)
                         if _vlm_ocr_enable:
                             _apply_vlm_ocr_det_sidecars_for_window(
                                 images_pil_list,
@@ -1099,7 +1099,7 @@ def doc_analyze(
                                 images_layout_res=images_layout_res,
                                 hybrid_pipeline_model=hybrid_pipeline_model,
                             )
-                    elif mode == "pro":
+                    elif effort == "high":
                         if _vlm_ocr_enable:
                             with predictor_execution_guard(predictor):
                                 window_model_list = predictor.batch_two_step_extract(
@@ -1130,7 +1130,7 @@ def doc_analyze(
                                 hybrid_pipeline_model=hybrid_pipeline_model,
                             )
                     else:
-                        raise ValueError(f"Unsupported hybrid mode: {mode}")
+                        raise ValueError(f"Unsupported hybrid effort: {effort}")
 
                     _apply_layout_title_split(
                         window_model_list,
@@ -1184,7 +1184,7 @@ def doc_analyze(
                 hybrid_pipeline_model,
                 _ocr_enable,
                 _vlm_ocr_enable,
-                hybrid_mode=mode,
+                effort=effort,
             )
         close_pdfium_document(pdf_doc)
         doc_closed = True
@@ -1206,10 +1206,10 @@ async def aio_doc_analyze(
     model_path: str | None = None,
     server_url: str | None = None,
     image_analysis: bool = True,
-    mode: str = "pro",
+    effort: str = "medium",
     **kwargs,
 ):
-    mode = _validate_hybrid_mode(mode)
+    effort = _validate_parse_effort(effort)
     client_side_output_generation = bool(
         kwargs.pop("client_side_output_generation", False)
     )
@@ -1225,7 +1225,7 @@ async def aio_doc_analyze(
     middle_json = init_middle_json(
         _ocr_enable,
         _vlm_ocr_enable,
-        hybrid_mode=mode,
+        effort=effort,
     )
     model_list = []
     doc_closed = False
@@ -1274,16 +1274,16 @@ async def aio_doc_analyze(
                         batch_ratio,
                         _vlm_ocr_enable,
                     )
-                    if mode == "flash":
+                    if effort == "medium":
                         await asyncio.to_thread(
-                            _apply_flash_table_orientation_labels,
+                            _apply_medium_table_orientation_labels,
                             images_pil_list,
                             images_layout_res,
                             hybrid_pipeline_model,
                             batch_ratio,
                         )
                         vlm_blocks_list = [
-                            _build_flash_vlm_layout_blocks(
+                            _build_medium_vlm_layout_blocks(
                                 page_layout_res,
                                 pil_img.width,
                                 pil_img.height,
@@ -1297,7 +1297,7 @@ async def aio_doc_analyze(
                                 not_extract_list=None if _vlm_ocr_enable else not_extract_list,
                                 image_analysis=image_analysis,
                             )
-                        optimize_flash_formula_number_blocks(window_model_list)
+                        optimize_medium_formula_number_blocks(window_model_list)
                         if _vlm_ocr_enable:
                             await asyncio.to_thread(
                                 _apply_vlm_ocr_det_sidecars_for_window,
@@ -1318,7 +1318,7 @@ async def aio_doc_analyze(
                                 images_layout_res=images_layout_res,
                                 hybrid_pipeline_model=hybrid_pipeline_model,
                             )
-                    elif mode == "pro":
+                    elif effort == "high":
                         if _vlm_ocr_enable:
                             async with aio_predictor_execution_guard(predictor):
                                 window_model_list = await predictor.aio_batch_two_step_extract(
@@ -1351,7 +1351,7 @@ async def aio_doc_analyze(
                                 hybrid_pipeline_model=hybrid_pipeline_model,
                             )
                     else:
-                        raise ValueError(f"Unsupported hybrid mode: {mode}")
+                        raise ValueError(f"Unsupported hybrid effort: {effort}")
 
                     await asyncio.to_thread(
                         _apply_layout_title_split,
@@ -1408,7 +1408,7 @@ async def aio_doc_analyze(
                 hybrid_pipeline_model,
                 _ocr_enable,
                 _vlm_ocr_enable,
-                hybrid_mode=mode,
+                effort=effort,
             )
         close_pdfium_document(pdf_doc)
         doc_closed = True

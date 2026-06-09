@@ -20,8 +20,11 @@ from mineru.cli.api_protocol import (
 )
 from mineru.cli.backend_options import (
     DEFAULT_BACKEND,
+    DEFAULT_HYBRID_EFFORT,
+    HYBRID_EFFORT_CHOICES,
     PUBLIC_BACKEND_CHOICES,
     normalize_backend,
+    validate_effort,
 )
 from mineru.utils.config_reader import (
     get_max_concurrent_requests as read_max_concurrent_requests,
@@ -98,6 +101,18 @@ def normalize_backend_option(
     """将 CLI 输入的旧 backend 名称规范为当前公开名称。"""
     try:
         return normalize_backend(value)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), ctx=ctx, param=param) from exc
+
+
+def normalize_effort_option(
+    ctx: click.Context,
+    param: click.Parameter,
+    value: str,
+) -> str:
+    """将 CLI 输入的 hybrid effort 参数规范为当前公开名称。"""
+    try:
+        return validate_effort(value)
     except ValueError as exc:
         raise click.BadParameter(str(exc), ctx=ctx, param=param) from exc
 
@@ -647,6 +662,7 @@ def build_request_form_data(
     end_page_id: Optional[int],
     image_analysis: bool = True,
     client_side_output_generation: bool = False,
+    effort: str = DEFAULT_HYBRID_EFFORT,
 ) -> dict[str, str | list[str]]:
     # 开启客户端输出生成时，只关闭客户端会重建的最终产物。
     return_md = not client_side_output_generation
@@ -654,6 +670,7 @@ def build_request_form_data(
     return _api_client.build_parse_request_form_data(
         lang_list=[lang],
         backend=backend,
+        effort=effort,
         parse_method=method,
         formula_enable=formula_enable,
         table_enable=table_enable,
@@ -891,6 +908,7 @@ async def run_orchestrated_cli(
     table_enable: bool,
     image_analysis: bool = True,
     client_side_output_generation: bool = False,
+    effort: str = DEFAULT_HYBRID_EFFORT,
     extra_cli_args: tuple[str, ...] = (),
 ) -> None:
     if start_page_id < 0:
@@ -962,6 +980,7 @@ async def run_orchestrated_cli(
                 start_page_id=start_page_id,
                 end_page_id=end_page_id,
                 client_side_output_generation=client_side_output_generation,
+                effort=effort,
             )
             visualization_context = create_visualization_context()
             failures = await execute_planned_tasks(
@@ -1056,10 +1075,22 @@ async def run_orchestrated_cli(
       vlm-engine: High accuracy via local computing power.
       vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers).
       hybrid-engine: Next-generation high accuracy solution via local computing power.
-      hybrid-flash-engine: Hybrid flash mode via local computing power.
       hybrid-http-client: High accuracy but requires a little local computing power(client suitable for openai-compatible servers).
-      hybrid-flash-http-client: Hybrid flash mode via remote computing power(client suitable for openai-compatible servers).
-    Without backend specified, hybrid-flash-engine will be used by default.""",
+    Without backend specified, hybrid-engine will be used by default.""",
+)
+@click.option(
+    "--effort",
+    "effort",
+    type=str,
+    default=DEFAULT_HYBRID_EFFORT,
+    callback=normalize_effort_option,
+    metavar="[" + "|".join(HYBRID_EFFORT_CHOICES) + "]",
+    help="""\b
+    Hybrid parsing effort:
+      medium: Fast hybrid parsing, equivalent to the previous fast hybrid behavior.
+      high: High-effort hybrid parsing, equivalent to the previous hybrid behavior.
+    Without effort specified, medium will be used by default.
+    Adapted only for the case where the backend is set to 'hybrid-*'.""",
 )
 @click.option(
     "-l",
@@ -1159,6 +1190,7 @@ def main(
     api_url: Optional[str],
     method: str,
     backend: str,
+    effort: str,
     lang: str,
     server_url: Optional[str],
     start_page_id: int,
@@ -1174,6 +1206,7 @@ def main(
             output_dir=output_dir,
             method=method,
             backend=backend,
+            effort=effort,
             lang=lang,
             server_url=server_url,
             api_url=api_url,
