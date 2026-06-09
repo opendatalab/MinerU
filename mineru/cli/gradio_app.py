@@ -1733,12 +1733,11 @@ def main(ctx,
     def update_interface(backend_choice, effort_choice):
         formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
         backend_info_update = gr.update(info=get_backend_info(backend_choice))
-        image_analysis_update = gr.update(visible=is_image_analysis_option_visible(backend_choice, effort_choice))
         effort_update = gr.update(visible=is_effort_option_visible(backend_choice))
         client_options_update = gr.update(visible=is_http_client_backend(backend_choice))
         ocr_options_update = gr.update(visible=is_ocr_options_visible(backend_choice))
 
-        return client_options_update, ocr_options_update, formula_label_update, backend_info_update, image_analysis_update, effort_update
+        return client_options_update, ocr_options_update, formula_label_update, backend_info_update, effort_update
 
     def update_image_analysis_visibility(backend_choice, effort_choice):
         """仅更新图片分析控件显隐；实际开关由 Hybrid 后端兜底处理。"""
@@ -1944,21 +1943,28 @@ def main(ctx,
 
         # 添加事件处理
         _private_api_kwargs = (
-            {"api_visibility": "private", "queue": False}
+            {"api_visibility": "private", "queue": False, "show_progress": "hidden"}
             if IS_GRADIO_6
-            else {"api_name": False, "queue": False}
+            else {"api_name": False, "queue": False, "show_progress": "hidden"}
         )
         backend.change(
             fn=update_interface,
             inputs=[backend, hybrid_effort],
-            outputs=[client_options, ocr_options, formula_enable, backend, image_analysis, hybrid_effort],
+            outputs=[client_options, ocr_options, formula_enable, backend, hybrid_effort],
+            **_private_api_kwargs
+        )
+        # 图片分析显隐单独更新，避免 Gradio load 多输出影响首次 medium -> high 的隐藏组件挂载。
+        backend.change(
+            fn=update_image_analysis_visibility,
+            inputs=[backend, hybrid_effort],
+            outputs=image_analysis,
             **_private_api_kwargs
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
             inputs=[backend, hybrid_effort],
-            outputs=[client_options, ocr_options, formula_enable, backend, image_analysis, hybrid_effort],
+            outputs=[client_options, ocr_options, formula_enable, backend, hybrid_effort],
             **_private_api_kwargs
         )
         hybrid_effort.change(

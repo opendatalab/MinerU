@@ -164,6 +164,11 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
 .mineru-advanced-popover .gr-group {
     overflow: visible !important;
 }
+.mineru-advanced-popover [data-testid="status-tracker"] {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
 .mineru-advanced-popover ul.options {
     border-radius: 8px !important;
     box-shadow: var(--mineru-popover-dropdown-shadow) !important;
