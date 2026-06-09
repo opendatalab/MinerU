@@ -150,7 +150,12 @@ async def parse_request_form(
     ] = True,
     image_analysis: Annotated[
         bool,
-        Form(description="Enable image/chart analysis for VLM and hybrid backends."),
+        Form(
+            description=(
+                "Enable image/chart analysis for VLM and hybrid backends. "
+                "Hybrid medium effort automatically disables image/chart analysis."
+            ),
+        ),
     ] = True,
     server_url: Annotated[
         Optional[str],

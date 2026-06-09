@@ -841,9 +841,15 @@ def resolve_parse_method(file_path, is_ocr, backend):
     return "ocr" if is_ocr else "auto"
 
 
-def is_image_analysis_option_visible(backend):
-    """判断 Gradio 图片分析开关是否应展示；pipeline 后端不消费该参数。"""
-    return backend.startswith("vlm") or backend.startswith("hybrid")
+def is_image_analysis_option_visible(backend, effort=DEFAULT_HYBRID_EFFORT):
+    """判断 Gradio 图片分析开关是否应展示；Hybrid medium 会强制关闭该功能。"""
+    if not isinstance(backend, str):
+        return False
+    if backend.startswith("vlm"):
+        return True
+    if backend.startswith("hybrid"):
+        return effort == "high"
+    return False
 
 
 def is_ocr_options_visible(backend):
@@ -1724,15 +1730,19 @@ def main(ctx,
         return i18n(select_backend_info_key(backend_choice))
 
     # 更新界面函数
-    def update_interface(backend_choice):
+    def update_interface(backend_choice, effort_choice):
         formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
         backend_info_update = gr.update(info=get_backend_info(backend_choice))
-        image_analysis_update = gr.update(visible=is_image_analysis_option_visible(backend_choice))
+        image_analysis_update = gr.update(visible=is_image_analysis_option_visible(backend_choice, effort_choice))
         effort_update = gr.update(visible=is_effort_option_visible(backend_choice))
         client_options_update = gr.update(visible=is_http_client_backend(backend_choice))
         ocr_options_update = gr.update(visible=is_ocr_options_visible(backend_choice))
 
         return client_options_update, ocr_options_update, formula_label_update, backend_info_update, image_analysis_update, effort_update
+
+    def update_image_analysis_visibility(backend_choice, effort_choice):
+        """仅更新图片分析控件显隐；实际开关由 Hybrid 后端兜底处理。"""
+        return gr.update(visible=is_image_analysis_option_visible(backend_choice, effort_choice))
 
     del kwargs
     _gradio_local_api_server.configure(
@@ -1913,7 +1923,7 @@ def main(ctx,
                     image_analysis = gr.Checkbox(
                         label=i18n("image_analysis_enable"),
                         value=True,
-                        visible=is_image_analysis_option_visible(preferred_option),
+                        visible=is_image_analysis_option_visible(preferred_option, DEFAULT_HYBRID_EFFORT),
                         info=i18n("image_analysis_info"),
                     )
                     hybrid_effort = gr.Radio(
@@ -1940,15 +1950,21 @@ def main(ctx,
         )
         backend.change(
             fn=update_interface,
-            inputs=[backend],
+            inputs=[backend, hybrid_effort],
             outputs=[client_options, ocr_options, formula_enable, backend, image_analysis, hybrid_effort],
             **_private_api_kwargs
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
-            inputs=[backend],
+            inputs=[backend, hybrid_effort],
             outputs=[client_options, ocr_options, formula_enable, backend, image_analysis, hybrid_effort],
+            **_private_api_kwargs
+        )
+        hybrid_effort.change(
+            fn=update_image_analysis_visibility,
+            inputs=[backend, hybrid_effort],
+            outputs=image_analysis,
             **_private_api_kwargs
         )
         clear_bu.add([input_file, md, doc_show, md_text, content_list_json, output_file, is_ocr, office_html, status_panel])

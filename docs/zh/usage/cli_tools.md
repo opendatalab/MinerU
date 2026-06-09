@@ -22,6 +22,8 @@ Options:
   -e, --end INTEGER               结束解析的页码（从 0 开始）
   -f, --formula BOOLEAN           是否启用公式解析（默认开启）
   -t, --table BOOLEAN             是否启用表格解析（默认开启）
+  --image-analysis BOOLEAN        是否启用 VLM 与 hybrid 的图片/图表分析；Hybrid
+                                  medium 强度会自动关闭图片/图表分析（默认开启）
   --client-side-output-generation BOOLEAN
                                   在客户端基于服务端返回的 middle JSON、图片与原文件
                                   生成 Markdown 和 content list（默认关闭）

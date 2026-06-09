@@ -22,6 +22,9 @@ Options:
   -e, --end INTEGER               Ending page number for parsing (0-based)
   -f, --formula BOOLEAN           Enable formula parsing (default: enabled)
   -t, --table BOOLEAN             Enable table parsing (default: enabled)
+  --image-analysis BOOLEAN        Enable image/chart analysis for VLM and hybrid
+                                  backends. Hybrid medium effort automatically
+                                  disables image/chart analysis (default: enabled)
   --client-side-output-generation BOOLEAN
                                   Generate Markdown and content lists locally
                                   from server-returned middle JSON, images, and

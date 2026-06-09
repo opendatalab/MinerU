@@ -1171,7 +1171,11 @@ async def run_orchestrated_cli(
     "image_analysis",
     type=bool,
     default=True,
-    help="Enable image/chart analysis for VLM and hybrid backends. Default is True. ",
+    help=(
+        "Enable image/chart analysis for VLM and hybrid backends. "
+        "Hybrid medium effort automatically disables image/chart analysis. "
+        "Default is True. "
+    ),
 )
 @click.option(
     "--client-side-output-generation",
