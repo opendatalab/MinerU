@@ -53,9 +53,11 @@ def _normalize_formula_content_for_tag(formula_content: str) -> str:
 def build_tagged_formula_content(
     formula_content: str,
     formula_number_block: Block,
-) -> str:
-    """将公式正文和公式编号合成带LaTeX tag的公式内容。"""
+) -> str | None:
+    """将非空公式正文和公式编号合成带LaTeX tag的公式内容，空公式返回None。"""
     formula_content = _normalize_formula_content_for_tag(formula_content)
+    if not formula_content:
+        return None
     tag_content = normalize_formula_tag_content(
         extract_formula_number_text(formula_number_block)
     )
@@ -74,21 +76,26 @@ def get_interline_equation_span(block: Block) -> Block | None:
 def append_formula_number_tag(
     equation_block: Block,
     formula_number_block: Block,
-) -> None:
-    """将公式编号写入pipeline middle-json行间公式span。"""
+) -> bool:
+    """将公式编号写入pipeline middle-json行间公式span，返回是否成功合并。"""
     equation_span = get_interline_equation_span(equation_block)
     if equation_span is not None:
-        equation_span["content"] = build_tagged_formula_content(
+        tagged_content = build_tagged_formula_content(
             equation_span.get("content", ""),
             formula_number_block,
         )
+        if tagged_content is None:
+            return False
+        equation_span["content"] = tagged_content
+        return True
+    return False
 
 
 def _optimize_formula_number_sequence(
     blocks: Sequence[Block],
     is_formula_number: Callable[[Block], bool],
     is_equation: Callable[[Block], bool],
-    append_tag: Callable[[Block, Block], None],
+    append_tag: Callable[[Block, Block], bool],
     downgrade_block: Callable[[Block], None],
 ) -> list[Block]:
     """按统一相邻规则优化公式编号序列，调用方负责适配不同block结构。"""
@@ -100,7 +107,10 @@ def _optimize_formula_number_sequence(
 
         prev_block = blocks[index - 1] if index > 0 else None
         if prev_block and is_equation(prev_block):
-            append_tag(prev_block, block)
+            if append_tag(prev_block, block):
+                continue
+            downgrade_block(block)
+            optimized_blocks.append(block)
             continue
 
         next_block = blocks[index + 1] if index + 1 < len(blocks) else None
@@ -110,7 +120,10 @@ def _optimize_formula_number_sequence(
             and is_equation(next_block)
             and (next_next_block is None or not is_formula_number(next_next_block))
         ):
-            append_tag(next_block, block)
+            if append_tag(next_block, block):
+                continue
+            downgrade_block(block)
+            optimized_blocks.append(block)
             continue
 
         downgrade_block(block)
@@ -127,12 +140,16 @@ def _downgrade_formula_number_to_text(block: Block) -> None:
 def _append_hybrid_formula_number_tag(
     equation_block: Block,
     formula_number_block: Block,
-) -> None:
-    """将公式编号写入Hybrid的VLM行间公式内容。"""
-    equation_block["content"] = build_tagged_formula_content(
+) -> bool:
+    """将公式编号写入Hybrid的VLM行间公式内容，返回是否成功合并。"""
+    tagged_content = build_tagged_formula_content(
         equation_block.get("content", ""),
         formula_number_block,
     )
+    if tagged_content is None:
+        return False
+    equation_block["content"] = tagged_content
+    return True
 
 
 def optimize_formula_number_blocks(pdf_info_list: Iterable[Block]) -> None:
