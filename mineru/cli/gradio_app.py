@@ -1967,19 +1967,20 @@ def main(ctx,
                             info=i18n("hybrid_effort_info"),
                             elem_classes=["mineru-hybrid-effort"],
                         )
-                with gr.Column(elem_classes=["mineru-ocr-language-options"]):
-                    language = gr.Dropdown(
-                        all_lang,
-                        label=i18n("ocr_language"),
-                        value='ch (Chinese, English, Chinese Traditional)',
-                        info=i18n("ocr_language_info"),
-                    )
                 with gr.Column(elem_classes=["mineru-force-ocr-option"]):
-                    is_ocr = gr.Checkbox(
-                        label=i18n("force_ocr"),
-                        value=False,
-                        info=i18n(select_force_ocr_info_key(preferred_option)),
-                    )
+                    with gr.Group():
+                        with gr.Column(elem_classes=["mineru-ocr-language-options"]):
+                            language = gr.Dropdown(
+                                all_lang,
+                                label=i18n("ocr_language"),
+                                value='ch (Chinese, English, Chinese Traditional)',
+                                info=i18n("ocr_language_info"),
+                            )
+                        is_ocr = gr.Checkbox(
+                            label=i18n("force_ocr"),
+                            value=False,
+                            info=i18n(select_force_ocr_info_key(preferred_option)),
+                        )
 
         # 添加事件处理
         _private_api_kwargs = (
