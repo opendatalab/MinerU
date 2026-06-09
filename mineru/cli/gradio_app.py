@@ -40,6 +40,8 @@ from mineru.cli.common import (
 from mineru.cli import api_client as _api_client
 from mineru.cli.backend_options import (
     DEFAULT_BACKEND,
+    DEFAULT_HYBRID_EFFORT,
+    HYBRID_EFFORT_CHOICES,
     HTTP_CLIENT_BACKEND_CHOICES,
     LOCAL_BACKEND_CHOICES,
 )
@@ -339,18 +341,21 @@ def is_http_client_backend(backend_choice):
 
 
 def select_backend_info_key(backend_choice):
-    """根据解析后端选择说明文案的 i18n key，保证 flash 与普通 hybrid 可分别描述。"""
+    """根据解析后端选择说明文案的 i18n key。"""
     if not isinstance(backend_choice, str):
         return "backend_info_default"
     if backend_choice.startswith("vlm"):
         return "backend_info_vlm"
     if backend_choice == "pipeline":
         return "backend_info_pipeline"
-    if backend_choice.startswith("hybrid-flash"):
-        return "backend_info_hybrid_flash"
     if backend_choice.startswith("hybrid"):
         return "backend_info_hybrid"
     return "backend_info_default"
+
+
+def is_effort_option_visible(backend_choice):
+    """判断当前后端是否需要展示 Hybrid effort 配置。"""
+    return isinstance(backend_choice, str) and backend_choice.startswith("hybrid")
 
 
 def resolve_status_step_index(status_lines):
@@ -974,6 +979,7 @@ async def _run_to_markdown_job(
     formula_enable=True,
     table_enable=True,
     image_analysis=True,
+    effort=DEFAULT_HYBRID_EFFORT,
     language="ch",
     backend="pipeline",
     url=None,
@@ -1001,6 +1007,7 @@ async def _run_to_markdown_job(
     form_data = _api_client.build_parse_request_form_data(
         lang_list=[normalized_language],
         backend=backend,
+        effort=effort,
         parse_method=parse_method,
         formula_enable=formula_enable,
         table_enable=table_enable,
@@ -1124,6 +1131,7 @@ async def stream_to_markdown(
     formula_enable=True,
     table_enable=True,
     image_analysis=True,
+    effort=DEFAULT_HYBRID_EFFORT,
     language="ch",
     backend="pipeline",
     url=None,
@@ -1154,6 +1162,7 @@ async def stream_to_markdown(
                 formula_enable=formula_enable,
                 table_enable=table_enable,
                 image_analysis=image_analysis,
+                effort=effort,
                 language=language,
                 backend=backend,
                 url=url,
@@ -1606,11 +1615,12 @@ def main(ctx,
             "office_preview_source_link": "File url",
             "office_preview_ignore_once": "Dismiss",
             "office_preview_ignore_forever": "Always dismiss",
-            "backend_info_vlm": "High-precision parsing via VLM, supports Chinese and English documents only.",
-            "backend_info_pipeline": "Traditional Multi-model pipeline parsing, supports multiple languages, hallucination-free.",
-            "backend_info_hybrid": "High-precision hybrid parsing, supports multiple languages.",
-            "backend_info_hybrid_flash": "Fast, high-precision hybrid parsing, supports multiple languages.",
+            "backend_info_vlm": "Multimodal large-model end-to-end parsing, high accuracy.",
+            "backend_info_pipeline": "Traditional multi-model pipeline parsing, low resource usage, hallucination-free.",
+            "backend_info_hybrid": "Exclusive hybrid engine parsing, ultra-high accuracy.",
             "backend_info_default": "Select the backend engine for document parsing.",
+            "hybrid_effort": "Hybrid effort",
+            "hybrid_effort_info": "Medium is faster. High is more accurate and may take longer.",
         },
         zh={
             "upload_file": "请选择或粘贴要上传的文件\nPDF、图片、DOCX、PPTX 或 XLSX",
@@ -1675,11 +1685,12 @@ def main(ctx,
             "office_preview_source_link": "文件链接",
             "office_preview_ignore_once": "忽略",
             "office_preview_ignore_forever": "不再提示",
-            "backend_info_vlm": "多模态大模型高精度解析，仅支持中英文文档。",
-            "backend_info_pipeline": "传统多模型管道解析，支持多语言，无幻觉。",
-            "backend_info_hybrid": "高精度混合解析，支持多语言。",
-            "backend_info_hybrid_flash": "高精度快速混合解析，支持多语言。",
+            "backend_info_vlm": "多模态大模型端到端解析，高精度",
+            "backend_info_pipeline": "传统多模型管道解析，低资源，无幻觉",
+            "backend_info_hybrid": "独家混合引擎解析，超高精度",
             "backend_info_default": "选择文档解析的后端引擎。",
+            "hybrid_effort": "解析强度",
+            "hybrid_effort_info": "Medium 速度更快；High 精度更高，耗时可能更长。",
         },
     )
 
@@ -1712,13 +1723,14 @@ def main(ctx,
         formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
         backend_info_update = gr.update(info=get_backend_info(backend_choice))
         image_analysis_update = gr.update(visible=is_image_analysis_option_visible(backend_choice))
+        effort_update = gr.update(visible=is_effort_option_visible(backend_choice))
         client_options_update = gr.update(visible=is_http_client_backend(backend_choice))
         if "vlm" in backend_choice:
             ocr_options_update = gr.update(visible=False)
         else:
             ocr_options_update = gr.update(visible=True)
 
-        return client_options_update, ocr_options_update, formula_label_update, backend_info_update, image_analysis_update
+        return client_options_update, ocr_options_update, formula_label_update, backend_info_update, image_analysis_update, effort_update
 
     del kwargs
     _gradio_local_api_server.configure(
@@ -1746,6 +1758,7 @@ def main(ctx,
         formula_enable=True,
         table_enable=True,
         image_analysis=True,
+        effort=DEFAULT_HYBRID_EFFORT,
         language="ch",
         backend="pipeline",
         url=None,
@@ -1759,6 +1772,7 @@ def main(ctx,
             formula_enable=formula_enable,
             table_enable=table_enable,
             image_analysis=image_analysis,
+            effort=effort,
             language=language,
             backend=backend,
             url=url,
@@ -1900,6 +1914,13 @@ def main(ctx,
                         visible=is_image_analysis_option_visible(preferred_option),
                         info=i18n("image_analysis_info"),
                     )
+                    hybrid_effort = gr.Radio(
+                        list(HYBRID_EFFORT_CHOICES),
+                        label=i18n("hybrid_effort"),
+                        value=DEFAULT_HYBRID_EFFORT,
+                        visible=is_effort_option_visible(preferred_option),
+                        info=i18n("hybrid_effort_info"),
+                    )
                 with gr.Group() as ocr_options:
                     language = gr.Dropdown(
                         all_lang,
@@ -1918,14 +1939,14 @@ def main(ctx,
         backend.change(
             fn=update_interface,
             inputs=[backend],
-            outputs=[client_options, ocr_options, formula_enable, backend, image_analysis],
+            outputs=[client_options, ocr_options, formula_enable, backend, image_analysis, hybrid_effort],
             **_private_api_kwargs
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
             inputs=[backend],
-            outputs=[client_options, ocr_options, formula_enable, backend, image_analysis],
+            outputs=[client_options, ocr_options, formula_enable, backend, image_analysis, hybrid_effort],
             **_private_api_kwargs
         )
         clear_bu.add([input_file, md, doc_show, md_text, content_list_json, output_file, is_ocr, office_html, status_panel])
@@ -1981,7 +2002,7 @@ def main(ctx,
         )
         change_bu.click(
             fn=convert_to_markdown_stream,
-            inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, language, backend, url],
+            inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, hybrid_effort, language, backend, url],
             outputs=[status_panel, output_file, md, md_text, content_list_json, doc_show],
             **_to_md_api_kwargs
         )
