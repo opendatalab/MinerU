@@ -852,9 +852,21 @@ def is_image_analysis_option_visible(backend, effort=DEFAULT_HYBRID_EFFORT):
     return False
 
 
-def is_ocr_options_visible(backend):
-    """判断 OCR 语言和强制 OCR 选项是否展示；Hybrid/VLM 已不需要用户指定语言。"""
+def is_ocr_language_option_visible(backend: object) -> bool:
+    """判断 OCR 语言选项是否展示；lang 参数只对 pipeline 后端生效。"""
     return backend == "pipeline"
+
+
+def is_force_ocr_option_visible(backend: object) -> bool:
+    """判断强制 OCR 开关是否展示；Hybrid 不需要 lang，但仍支持强制 OCR。"""
+    if not isinstance(backend, str):
+        return False
+    return backend == "pipeline" or backend.startswith("hybrid")
+
+
+def frontend_managed_initial_visibility(is_visible: bool):
+    """转换前端托管显隐控件的初始状态；hidden 会保留 DOM 挂载，避免后续重新挂载。"""
+    return True if is_visible else "hidden"
 
 
 def should_use_client_side_output_generation(client_side_output_generation):
@@ -1729,22 +1741,25 @@ def main(ctx,
     def get_backend_info(backend_choice):
         return i18n(select_backend_info_key(backend_choice))
 
-    # 更新界面函数
-    def update_interface(backend_choice, effort_choice):
+    def build_interface_updates(backend_choice, effort_choice):
+        """构建 Gradio 后端联动更新，保证所有事件复用同一套显隐规则。"""
         formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
         backend_info_update = gr.update(info=get_backend_info(backend_choice))
         effort_update = gr.update(visible=is_effort_option_visible(backend_choice))
-        ocr_options_update = gr.update(visible=is_ocr_options_visible(backend_choice))
+        ocr_language_options_update = gr.update(visible=is_ocr_language_option_visible(backend_choice))
+        force_ocr_update = gr.update(visible=is_force_ocr_option_visible(backend_choice))
 
-        return ocr_options_update, formula_label_update, backend_info_update, effort_update
+        return (
+            ocr_language_options_update,
+            force_ocr_update,
+            formula_label_update,
+            backend_info_update,
+            effort_update,
+        )
 
-    def update_client_options_visibility(backend_choice):
-        """仅更新服务器地址控件显隐，避免隐藏 Row 首次切换到 http-client 时挂载失败。"""
-        return gr.update(visible=is_http_client_backend(backend_choice))
-
-    def update_image_analysis_visibility(backend_choice, effort_choice):
-        """仅更新图片分析控件显隐；实际开关由 Hybrid 后端兜底处理。"""
-        return gr.update(visible=is_image_analysis_option_visible(backend_choice, effort_choice))
+    def update_interface(backend_choice, effort_choice):
+        """更新可由 Gradio 稳定管理的基础界面项，易重挂载的控件交给前端状态类处理。"""
+        return build_interface_updates(backend_choice, effort_choice)
 
     del kwargs
     _gradio_local_api_server.configure(
@@ -1818,8 +1833,12 @@ def main(ctx,
                     label=i18n("backend"),
                     value=preferred_option,
                     info=get_backend_info(preferred_option),
+                    elem_classes=["mineru-backend-select"],
                 )
-                with gr.Row(visible=is_http_client_backend(preferred_option)) as client_options:
+                with gr.Row(
+                    visible=frontend_managed_initial_visibility(is_http_client_backend(preferred_option)),
+                    elem_classes=["mineru-client-options"],
+                ) as client_options:
                     url = gr.Textbox(
                         label=i18n("server_url"),
                         value='http://localhost:30000',
@@ -1925,8 +1944,11 @@ def main(ctx,
                     image_analysis = gr.Checkbox(
                         label=i18n("image_analysis_enable"),
                         value=True,
-                        visible=is_image_analysis_option_visible(preferred_option, DEFAULT_HYBRID_EFFORT),
+                        visible=frontend_managed_initial_visibility(
+                            is_image_analysis_option_visible(preferred_option, DEFAULT_HYBRID_EFFORT)
+                        ),
                         info=i18n("image_analysis_info"),
+                        elem_classes=["mineru-image-analysis-option"],
                     )
                     hybrid_effort = gr.Radio(
                         list(HYBRID_EFFORT_CHOICES),
@@ -1934,15 +1956,21 @@ def main(ctx,
                         value=DEFAULT_HYBRID_EFFORT,
                         visible=is_effort_option_visible(preferred_option),
                         info=i18n("hybrid_effort_info"),
+                        elem_classes=["mineru-hybrid-effort"],
                     )
-                with gr.Group(visible=is_ocr_options_visible(preferred_option)) as ocr_options:
+                with gr.Group(visible=is_ocr_language_option_visible(preferred_option)) as ocr_language_options:
                     language = gr.Dropdown(
                         all_lang,
                         label=i18n("ocr_language"),
                         value='ch (Chinese, English, Chinese Traditional)',
                         info=i18n("ocr_language_info"),
                     )
-                    is_ocr = gr.Checkbox(label=i18n("force_ocr"), value=False, info=i18n("force_ocr_info"))
+                is_ocr = gr.Checkbox(
+                    label=i18n("force_ocr"),
+                    value=False,
+                    visible=is_force_ocr_option_visible(preferred_option),
+                    info=i18n("force_ocr_info"),
+                )
 
         # 添加事件处理
         _private_api_kwargs = (
@@ -1953,34 +1981,14 @@ def main(ctx,
         backend.change(
             fn=update_interface,
             inputs=[backend, hybrid_effort],
-            outputs=[ocr_options, formula_enable, backend, hybrid_effort],
-            **_private_api_kwargs
-        )
-        # 服务器地址区域单独更新，避免 Gradio load 多输出影响首次切换到 http-client 的隐藏 Row 挂载。
-        backend.change(
-            fn=update_client_options_visibility,
-            inputs=backend,
-            outputs=client_options,
-            **_private_api_kwargs
-        )
-        # 图片分析显隐单独更新，避免 Gradio load 多输出影响首次 medium -> high 的隐藏组件挂载。
-        backend.change(
-            fn=update_image_analysis_visibility,
-            inputs=[backend, hybrid_effort],
-            outputs=image_analysis,
+            outputs=[ocr_language_options, is_ocr, formula_enable, backend, hybrid_effort],
             **_private_api_kwargs
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
             inputs=[backend, hybrid_effort],
-            outputs=[ocr_options, formula_enable, backend, hybrid_effort],
-            **_private_api_kwargs
-        )
-        hybrid_effort.change(
-            fn=update_image_analysis_visibility,
-            inputs=[backend, hybrid_effort],
-            outputs=image_analysis,
+            outputs=[ocr_language_options, is_ocr, formula_enable, backend, hybrid_effort],
             **_private_api_kwargs
         )
         clear_bu.add([input_file, md, doc_show, md_text, content_list_json, output_file, is_ocr, office_html, status_panel])

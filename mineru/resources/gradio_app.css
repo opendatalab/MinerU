@@ -169,6 +169,16 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
     visibility: hidden !important;
     pointer-events: none !important;
 }
+.mineru-client-options,
+.mineru-image-analysis-option {
+    display: none !important;
+}
+body.mineru-show-client-options .gradio-container .contain .mineru-client-options.mineru-client-options {
+    display: flex !important;
+}
+body.mineru-show-image-analysis .gradio-container .contain .mineru-image-analysis-option.mineru-image-analysis-option {
+    display: block !important;
+}
 .mineru-advanced-popover ul.options {
     border-radius: 8px !important;
     box-shadow: var(--mineru-popover-dropdown-shadow) !important;
