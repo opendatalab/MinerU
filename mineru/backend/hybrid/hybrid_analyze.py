@@ -134,10 +134,7 @@ def ocr_det(
     np_images,
     model_list,
     mfd_res,
-    _ocr_enable,
     batch_ratio: int = 1,
-    *,
-    fill_text: bool = True,
 ):
     def _set_temp_pixel_bbox(res, pixel_bbox):
         res["_normalized_bbox"] = list(res["bbox"])
@@ -188,7 +185,7 @@ def ocr_det(
                     ocr_result_list = get_ocr_result_list(
                         ocr_res,
                         useful_list,
-                        _ocr_enable if fill_text else False,
+                        False,
                         bgr_image,
                         hybrid_pipeline_model.lang,
                     )
@@ -280,7 +277,7 @@ def ocr_det(
                         ocr_result_list = get_ocr_result_list(
                             ocr_res,
                             useful_list,
-                            _ocr_enable if fill_text else False,
+                            False,
                             bgr_image,
                             hybrid_pipeline_model.lang,
                         )
@@ -745,9 +742,7 @@ def _process_ocr_and_formulas(
         np_images,
         model_list,
         mfd_res,
-        False,
         batch_ratio=batch_ratio,
-        fill_text=False,
     )
 
     _normalize_bbox(inline_formula_list, ocr_res_list, images_pil_list)
@@ -776,9 +771,7 @@ def _apply_vlm_ocr_det_sidecars_for_window(
         np_images,
         model_list,
         formula_mask_inputs,
-        False,
         batch_ratio=batch_ratio,
-        fill_text=False,
     )
     _normalize_bbox(inline_formula_list, ocr_res_list, images_pil_list)
     model_list[:] = _merge_page_sidecar_items(
