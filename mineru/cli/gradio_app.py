@@ -1758,16 +1758,12 @@ def main(ctx,
         """构建 Gradio 后端联动更新，保证所有事件复用同一套显隐规则。"""
         formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
         backend_info_update = gr.update(info=get_backend_info(backend_choice))
-        effort_update = gr.update(visible=is_effort_option_visible(backend_choice))
-        ocr_language_options_update = gr.update(visible=is_ocr_language_option_visible(backend_choice))
-        force_ocr_update = gr.update(visible=is_force_ocr_option_visible(backend_choice), info=get_force_ocr_info(backend_choice))
+        force_ocr_update = gr.update(info=get_force_ocr_info(backend_choice))
 
         return (
-            ocr_language_options_update,
             force_ocr_update,
             formula_label_update,
             backend_info_update,
-            effort_update,
         )
 
     def update_interface(backend_choice, effort_choice):
@@ -1963,27 +1959,27 @@ def main(ctx,
                         info=i18n("image_analysis_info"),
                         elem_classes=["mineru-image-analysis-option"],
                     )
-                    hybrid_effort = gr.Radio(
-                        list(HYBRID_EFFORT_CHOICES),
-                        label=i18n("hybrid_effort"),
-                        value=DEFAULT_HYBRID_EFFORT,
-                        visible=is_effort_option_visible(preferred_option),
-                        info=i18n("hybrid_effort_info"),
-                        elem_classes=["mineru-hybrid-effort"],
-                    )
-                with gr.Group(visible=is_ocr_language_option_visible(preferred_option)) as ocr_language_options:
+                    with gr.Column(elem_classes=["mineru-hybrid-effort-option"]):
+                        hybrid_effort = gr.Radio(
+                            list(HYBRID_EFFORT_CHOICES),
+                            label=i18n("hybrid_effort"),
+                            value=DEFAULT_HYBRID_EFFORT,
+                            info=i18n("hybrid_effort_info"),
+                            elem_classes=["mineru-hybrid-effort"],
+                        )
+                with gr.Column(elem_classes=["mineru-ocr-language-options"]):
                     language = gr.Dropdown(
                         all_lang,
                         label=i18n("ocr_language"),
                         value='ch (Chinese, English, Chinese Traditional)',
                         info=i18n("ocr_language_info"),
                     )
-                is_ocr = gr.Checkbox(
-                    label=i18n("force_ocr"),
-                    value=False,
-                    visible=is_force_ocr_option_visible(preferred_option),
-                    info=i18n(select_force_ocr_info_key(preferred_option)),
-                )
+                with gr.Column(elem_classes=["mineru-force-ocr-option"]):
+                    is_ocr = gr.Checkbox(
+                        label=i18n("force_ocr"),
+                        value=False,
+                        info=i18n(select_force_ocr_info_key(preferred_option)),
+                    )
 
         # 添加事件处理
         _private_api_kwargs = (
@@ -1994,14 +1990,14 @@ def main(ctx,
         backend.change(
             fn=update_interface,
             inputs=[backend, hybrid_effort],
-            outputs=[ocr_language_options, is_ocr, formula_enable, backend, hybrid_effort],
+            outputs=[is_ocr, formula_enable, backend],
             **_private_api_kwargs
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
             inputs=[backend, hybrid_effort],
-            outputs=[ocr_language_options, is_ocr, formula_enable, backend, hybrid_effort],
+            outputs=[is_ocr, formula_enable, backend],
             **_private_api_kwargs
         )
         clear_bu.add([input_file, md, doc_show, md_text, content_list_json, output_file, is_ocr, office_html, status_panel])

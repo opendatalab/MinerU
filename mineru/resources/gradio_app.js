@@ -8,6 +8,9 @@
     const POPOVER_OPEN_CLASS = "mineru-advanced-popover-open";
     const CLIENT_OPTIONS_VISIBLE_CLASS = "mineru-show-client-options";
     const IMAGE_ANALYSIS_VISIBLE_CLASS = "mineru-show-image-analysis";
+    const OCR_LANGUAGE_VISIBLE_CLASS = "mineru-show-ocr-language";
+    const FORCE_OCR_HIDDEN_CLASS = "mineru-hide-force-ocr";
+    const HYBRID_EFFORT_HIDDEN_CLASS = "mineru-hide-hybrid-effort";
     const OFFICE_PREVIEW_NOTICE_STORAGE_KEY = "mineru.officePreviewNoticeIgnored";
     const OPEN_DELAY_MS = 120;
     const CLOSE_DELAY_MS = 280;
@@ -131,9 +134,15 @@
         const showClientOptions = backend.endsWith("http-client");
         const showImageAnalysis = backend.startsWith("vlm")
             || (backend.startsWith("hybrid") && effort === "high");
+        const showOcrLanguage = backend === "pipeline";
+        const hideForceOcr = backend !== "pipeline" && !backend.startsWith("hybrid");
+        const hideHybridEffort = !backend.startsWith("hybrid");
 
         document.body.classList.toggle(CLIENT_OPTIONS_VISIBLE_CLASS, showClientOptions);
         document.body.classList.toggle(IMAGE_ANALYSIS_VISIBLE_CLASS, showImageAnalysis);
+        document.body.classList.toggle(OCR_LANGUAGE_VISIBLE_CLASS, showOcrLanguage);
+        document.body.classList.toggle(FORCE_OCR_HIDDEN_CLASS, hideForceOcr);
+        document.body.classList.toggle(HYBRID_EFFORT_HIDDEN_CLASS, hideHybridEffort);
         if (document.body.classList.contains(POPOVER_OPEN_CLASS)) {
             positionPopover();
         }

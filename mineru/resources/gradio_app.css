@@ -170,7 +170,8 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
     pointer-events: none !important;
 }
 .mineru-client-options,
-.mineru-image-analysis-option {
+.mineru-image-analysis-option,
+.mineru-ocr-language-options {
     display: none !important;
 }
 body.mineru-show-client-options .gradio-container .contain .mineru-client-options.mineru-client-options {
@@ -178,6 +179,15 @@ body.mineru-show-client-options .gradio-container .contain .mineru-client-option
 }
 body.mineru-show-image-analysis .gradio-container .contain .mineru-image-analysis-option.mineru-image-analysis-option {
     display: block !important;
+}
+body.mineru-show-ocr-language .gradio-container .contain .mineru-ocr-language-options.mineru-ocr-language-options {
+    display: flex !important;
+}
+body.mineru-hide-force-ocr .gradio-container .contain .mineru-force-ocr-option.mineru-force-ocr-option {
+    display: none !important;
+}
+body.mineru-hide-hybrid-effort .gradio-container .contain .mineru-hybrid-effort-option.mineru-hybrid-effort-option {
+    display: none !important;
 }
 .mineru-advanced-popover ul.options {
     border-radius: 8px !important;
