@@ -229,7 +229,7 @@ def main() -> None:
     # "txt"  -> force text extraction
     # "ocr"  -> force OCR
     parse_method = "auto"
-    # OCR language hint. This is mainly used by pipeline and hybrid backends.
+    # Pipeline OCR language hint; hybrid and VLM backends ignore this value.
     language = "ch"
     # Enable formula parsing in the output.
     formula_enable = True
