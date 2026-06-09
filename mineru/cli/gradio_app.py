@@ -353,6 +353,13 @@ def select_backend_info_key(backend_choice):
     return "backend_info_default"
 
 
+def select_force_ocr_info_key(backend_choice: object) -> str:
+    """根据解析后端选择强制 OCR 说明；只有 pipeline 需要提示 OCR 语言要求。"""
+    if isinstance(backend_choice, str) and backend_choice.startswith("hybrid"):
+        return "force_ocr_info_hybrid"
+    return "force_ocr_info"
+
+
 def is_effort_option_visible(backend_choice):
     """判断当前后端是否需要展示 Hybrid effort 配置。"""
     return isinstance(backend_choice, str) and backend_choice.startswith("hybrid")
@@ -1611,6 +1618,7 @@ def main(ctx,
             "ocr_language_info": "Select the OCR language for image-based PDFs and images.",
             "force_ocr": "Force enable OCR",
             "force_ocr_info": "Enable only if the result is extremely poor. Requires correct OCR language.",
+            "force_ocr_info_hybrid": "Enable only if the result is extremely poor.",
             "convert": "Convert",
             "clear": "Clear",
             "doc_preview": "Document preview",
@@ -1681,6 +1689,7 @@ def main(ctx,
             "ocr_language_info": "为扫描版 PDF 和图片选择 OCR 语言。",
             "force_ocr": "强制启用 OCR",
             "force_ocr_info": "仅在识别效果极差时启用，需选择正确的 OCR 语言。",
+            "force_ocr_info_hybrid": "仅在识别效果极差时启用。",
             "convert": "转换",
             "clear": "清除",
             "doc_preview": "文档预览",
@@ -1741,13 +1750,17 @@ def main(ctx,
     def get_backend_info(backend_choice):
         return i18n(select_backend_info_key(backend_choice))
 
+    def get_force_ocr_info(backend_choice):
+        """根据后端返回强制 OCR 控件说明，避免 Hybrid 显示 pipeline 的语言提示。"""
+        return i18n(select_force_ocr_info_key(backend_choice))
+
     def build_interface_updates(backend_choice, effort_choice):
         """构建 Gradio 后端联动更新，保证所有事件复用同一套显隐规则。"""
         formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
         backend_info_update = gr.update(info=get_backend_info(backend_choice))
         effort_update = gr.update(visible=is_effort_option_visible(backend_choice))
         ocr_language_options_update = gr.update(visible=is_ocr_language_option_visible(backend_choice))
-        force_ocr_update = gr.update(visible=is_force_ocr_option_visible(backend_choice))
+        force_ocr_update = gr.update(visible=is_force_ocr_option_visible(backend_choice), info=get_force_ocr_info(backend_choice))
 
         return (
             ocr_language_options_update,
@@ -1838,7 +1851,7 @@ def main(ctx,
                 with gr.Row(
                     visible=frontend_managed_initial_visibility(is_http_client_backend(preferred_option)),
                     elem_classes=["mineru-client-options"],
-                ) as client_options:
+                ):
                     url = gr.Textbox(
                         label=i18n("server_url"),
                         value='http://localhost:30000',
@@ -1848,7 +1861,7 @@ def main(ctx,
                 # 下面这些选项在上传 office 文件时会被自动隐藏
                 with gr.Group() as options_group:
                     max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
-                    advanced_bu = gr.Button(
+                    gr.Button(
                         i18n("advanced_options"),
                         size="sm",
                         elem_classes=["mineru-advanced-open"],
@@ -1969,7 +1982,7 @@ def main(ctx,
                     label=i18n("force_ocr"),
                     value=False,
                     visible=is_force_ocr_option_visible(preferred_option),
-                    info=i18n("force_ocr_info"),
+                    info=i18n(select_force_ocr_info_key(preferred_option)),
                 )
 
         # 添加事件处理
