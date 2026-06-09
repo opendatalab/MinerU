@@ -194,10 +194,6 @@ Here are the environment variables and their descriptions:
       <= 3   GB               | 2
       <= 2   GB               | 1
 
-- `MINERU_HYBRID_FORCE_PIPELINE_ENABLE`:
-    * Used to force the text extraction part in `hybrid-*` backends to be processed using small models.
-    * Defaults to `false`. Can be set to `true` via environment variable to enable this feature, thereby reducing hallucinations in certain extreme cases.
-
 - `MINERU_VL_MODEL_NAME`:
     * Used to specify the model name for the vlm/hybrid backend, allowing you to designate the model required for MinerU to run when multiple models exist on a remote openai-server.
 

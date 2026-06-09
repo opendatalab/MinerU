@@ -56,7 +56,6 @@ def blocks_to_page_info(
         image_writer,
         page_index,
         _ocr_enable,
-        _vlm_ocr_enable,
 ) -> dict:
     """将blocks转换为页面信息"""
 
@@ -74,7 +73,6 @@ def blocks_to_page_info(
         width,
         height,
         _ocr_enable,
-        _vlm_ocr_enable,
     )
     image_blocks = magic_model.get_image_blocks()
     table_blocks = magic_model.get_table_blocks()
@@ -180,14 +178,13 @@ def _normalize_split_title_blocks(pdf_info_list):
                 block["level"] = title_level
 
 
-def init_middle_json(_ocr_enable, _vlm_ocr_enable, effort="medium"):
+def init_middle_json(_ocr_enable, effort="medium"):
     """初始化 Hybrid middle json，使用公开 effort 元数据描述解析强度。"""
     return {
         "pdf_info": [],
         "_backend": "hybrid",
         "_effort": effort,
         "_ocr_enable": _ocr_enable,
-        "_vlm_ocr_enable": _vlm_ocr_enable,
         "_version_name": __version__
     }
 
@@ -200,7 +197,6 @@ def append_page_results_to_middle_json(
     image_writer,
     page_start_index=0,
     _ocr_enable=False,
-    _vlm_ocr_enable=False,
     progress_bar=None,
 ):
     for offset, (page_model_list, image_dict) in enumerate(
@@ -218,7 +214,6 @@ def append_page_results_to_middle_json(
                 image_writer,
                 page_index,
                 _ocr_enable,
-                _vlm_ocr_enable,
             )
         finally:
             close_pdfium_child(page)
@@ -235,7 +230,6 @@ def append_page_model_list_to_middle_json(
     image_writer,
     page_start_index=0,
     _ocr_enable=False,
-    _vlm_ocr_enable=False,
     progress_bar=None,
 ):
     append_page_results_to_middle_json(
@@ -246,7 +240,6 @@ def append_page_model_list_to_middle_json(
         image_writer,
         page_start_index=page_start_index,
         _ocr_enable=_ocr_enable,
-        _vlm_ocr_enable=_vlm_ocr_enable,
         progress_bar=progress_bar,
     )
 
@@ -255,10 +248,9 @@ def apply_server_side_postprocess(
     pdf_info_list,
     hybrid_pipeline_model,
     _ocr_enable,
-    _vlm_ocr_enable,
 ):
     """执行 Hybrid 只能在服务端完成的 post-OCR，避免客户端依赖 pipeline OCR 模型。"""
-    if not (_vlm_ocr_enable or _ocr_enable):
+    if not _ocr_enable:
         _apply_post_ocr(pdf_info_list, hybrid_pipeline_model)
 
 
@@ -284,7 +276,6 @@ def finalize_middle_json(
     pdf_info_list,
     hybrid_pipeline_model,
     _ocr_enable,
-    _vlm_ocr_enable,
     effort="medium",
 ):
     """服务端先做必要 post-OCR，再按公开 effort 执行完整 finalize。"""
@@ -292,7 +283,6 @@ def finalize_middle_json(
         pdf_info_list,
         hybrid_pipeline_model,
         _ocr_enable,
-        _vlm_ocr_enable,
     )
     finalize_middle_json_from_preproc(pdf_info_list, effort=effort)
 
@@ -303,10 +293,9 @@ def result_to_middle_json(
         pdf_doc,
         image_writer,
         _ocr_enable,
-        _vlm_ocr_enable,
         hybrid_pipeline_model,
 ):
-    middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
+    middle_json = init_middle_json(_ocr_enable)
 
     with tqdm(total=len(model_list), desc="Processing pages") as progress_bar:
         append_page_model_list_to_middle_json(
@@ -316,7 +305,6 @@ def result_to_middle_json(
             pdf_doc,
             image_writer,
             _ocr_enable=_ocr_enable,
-            _vlm_ocr_enable=_vlm_ocr_enable,
             progress_bar=progress_bar,
         )
 
@@ -324,7 +312,6 @@ def result_to_middle_json(
         middle_json["pdf_info"],
         hybrid_pipeline_model,
         _ocr_enable,
-        _vlm_ocr_enable,
     )
     close_pdfium_document(pdf_doc)
     return middle_json

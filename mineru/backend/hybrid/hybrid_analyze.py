@@ -40,7 +40,7 @@ from mineru.utils.config_reader import get_device, get_processing_window_size
 from mineru.utils.enum_class import ImageType, NotExtractType, BlockType as MineruBlockType
 from mineru.utils.model_utils import crop_img, get_vram, clean_memory
 from mineru.utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, sorted_boxes, merge_det_boxes, \
-    update_det_boxes, OcrConfidence
+    update_det_boxes
 from mineru.utils.pdf_classify import classify
 from mineru.utils.pdf_image_tools import (
     aio_load_images_from_pdf_bytes_range,
@@ -681,12 +681,13 @@ def _predict_layout_for_window(
     images_pil_list,
     inline_formula_enable,
     batch_ratio,
-    vlm_ocr_enable,
+    ocr_enable,
 ):
     """为单个处理窗口执行一次 pipeline layout，并返回可复用的小模型实例。"""
     hybrid_model_singleton = HybridModelSingleton()
+    # OCR 模式下文本由 VLM 抽取，pipeline 侧只需要 layout，不再启用公式识别模型。
     hybrid_pipeline_model = hybrid_model_singleton.get_model(
-        formula_enable=inline_formula_enable and not vlm_ocr_enable,
+        formula_enable=inline_formula_enable and not ocr_enable,
     )
     images_layout_res = _predict_layout_for_title_split(
         hybrid_pipeline_model,
@@ -701,7 +702,6 @@ def _process_ocr_and_formulas(
     images_pil_list,
     model_list,
     inline_formula_enable,
-    _ocr_enable,
     batch_ratio: int = 1,
     *,
     images_layout_res,
@@ -710,7 +710,7 @@ def _process_ocr_and_formulas(
     """处理OCR和公式识别"""
 
     # 遍历model_list,对文本块截图交由OCR识别
-    # 根据_ocr_enable决定ocr只开det还是det+rec
+    # 此函数只在非 OCR 模式调用，因此 OCR 只开 det，不做 rec。
     # 根据inline_formula_enable决定是使用mfd和ocr结合的方式,还是纯ocr方式
 
     # 将PIL图片转换为numpy数组
@@ -745,71 +745,10 @@ def _process_ocr_and_formulas(
         np_images,
         model_list,
         mfd_res,
-        _ocr_enable,
+        False,
         batch_ratio=batch_ratio,
+        fill_text=False,
     )
-
-    # 如果需要ocr则做ocr_rec
-    if _ocr_enable:
-        need_ocr_list = []
-        img_crop_list = []
-        for page_ocr_res_list in ocr_res_list:
-            for ocr_res in page_ocr_res_list:
-                if 'np_img' in ocr_res:
-                    need_ocr_list.append((page_ocr_res_list, ocr_res))
-                    img_crop_list.append(ocr_res.pop('np_img'))
-        if len(img_crop_list) > 0:
-            # Process OCR
-            ocr_result_list = run_ocr_inference(
-                hybrid_pipeline_model.ocr_model.ocr,
-                img_crop_list,
-                det=False,
-                tqdm_enable=True,
-            )[0]
-
-            # Verify we have matching counts
-            assert len(ocr_result_list) == len(need_ocr_list), f'ocr_result_list: {len(ocr_result_list)}, need_ocr_list: {len(need_ocr_list)}'
-
-            items_to_remove = []
-            # Process OCR results for this language
-            for index, (page_ocr_res_list, need_ocr_res) in enumerate(need_ocr_list):
-                ocr_text, ocr_score = ocr_result_list[index]
-                need_ocr_res['text'] = ocr_text
-                need_ocr_res['score'] = float(f"{ocr_score:.3f}")
-                should_remove = False
-                if ocr_score < OcrConfidence.min_confidence:
-                    should_remove = True
-                else:
-                    layout_res_bbox = need_ocr_res.get("bbox")
-                    if layout_res_bbox is None and need_ocr_res.get("poly") is not None:
-                        layout_res_bbox = [
-                            need_ocr_res['poly'][0],
-                            need_ocr_res['poly'][1],
-                            need_ocr_res['poly'][4],
-                            need_ocr_res['poly'][5],
-                        ]
-                    if layout_res_bbox is None:
-                        should_remove = True
-                        continue
-                    layout_res_width = layout_res_bbox[2] - layout_res_bbox[0]
-                    layout_res_height = layout_res_bbox[3] - layout_res_bbox[1]
-                    if (
-                            ocr_text in [
-                                '（204号', '（20', '（2', '（2号', '（20号', '号','（204',
-                                '(cid:)', '(ci:)', '(cd:1)', 'cd:)', 'c)', '(cd:)', 'c', 'id:)',
-                                ':)', '√:)', '√i:)', '−i:)', '−:' , 'i:)',
-                            ]
-                            and ocr_score < 0.8
-                            and layout_res_width < layout_res_height
-                    ):
-                        should_remove = True
-
-                if should_remove:
-                    items_to_remove.append((page_ocr_res_list, need_ocr_res))
-
-            for page_ocr_res_list, need_ocr_res in items_to_remove:
-                if need_ocr_res in page_ocr_res_list:
-                    page_ocr_res_list.remove(need_ocr_res)
 
     _normalize_bbox(inline_formula_list, ocr_res_list, images_pil_list)
     merged_model_list = _merge_page_sidecar_items(
@@ -959,19 +898,6 @@ def get_batch_ratio(device):
     return batch_ratio
 
 
-def _should_enable_vlm_ocr(ocr_enable: bool) -> bool:
-    """根据OCR解析需求和强制开关判断是否启用VLM OCR。"""
-    force_enable = os.getenv("MINERU_FORCE_VLM_OCR_ENABLE", "0").lower() in ("1", "true", "yes")
-    if force_enable:
-        return True
-
-    force_pipeline = os.getenv("MINERU_HYBRID_FORCE_PIPELINE_ENABLE", "0").lower() in ("1", "true", "yes")
-    return (
-            ocr_enable
-            and not force_pipeline
-    )
-
-
 def _close_images(images_list):
     for image_dict in images_list or []:
         pil_img = image_dict.get("img_pil")
@@ -1006,12 +932,10 @@ def doc_analyze(
 
     device = get_device()
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
-    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json = init_middle_json(
         _ocr_enable,
-        _vlm_ocr_enable,
         effort=effort,
     )
     model_list = []
@@ -1031,7 +955,7 @@ def doc_analyze(
             f'window_size={configured_window_size}, total_windows={total_windows}'
         )
 
-        batch_ratio = get_batch_ratio(device) if not _vlm_ocr_enable else 1
+        batch_ratio = get_batch_ratio(device) if not _ocr_enable else 1
 
         infer_start = time.time()
         progress_bar = None
@@ -1058,7 +982,7 @@ def doc_analyze(
                         images_pil_list,
                         inline_formula_enable,
                         batch_ratio,
-                        _vlm_ocr_enable,
+                        _ocr_enable,
                     )
                     if effort == "medium":
                         _apply_medium_table_orientation_labels(
@@ -1079,11 +1003,11 @@ def doc_analyze(
                             window_model_list = predictor.batch_extract_with_layout(
                                 images_pil_list,
                                 vlm_blocks_list,
-                                not_extract_list=None if _vlm_ocr_enable else not_extract_list,
+                                not_extract_list=None if _ocr_enable else not_extract_list,
                                 image_analysis=effective_image_analysis,
                             )
                         optimize_hybrid_formula_number_blocks(window_model_list)
-                        if _vlm_ocr_enable:
+                        if _ocr_enable:
                             _apply_vlm_ocr_det_sidecars_for_window(
                                 images_pil_list,
                                 window_model_list,
@@ -1096,13 +1020,12 @@ def doc_analyze(
                                 images_pil_list,
                                 window_model_list,
                                 inline_formula_enable,
-                                _ocr_enable,
                                 batch_ratio=batch_ratio,
                                 images_layout_res=images_layout_res,
                                 hybrid_pipeline_model=hybrid_pipeline_model,
                             )
                     elif effort == "high":
-                        if _vlm_ocr_enable:
+                        if _ocr_enable:
                             with predictor_execution_guard(predictor):
                                 window_model_list = predictor.batch_two_step_extract(
                                     images=images_pil_list,
@@ -1126,7 +1049,6 @@ def doc_analyze(
                                 images_pil_list,
                                 window_model_list,
                                 inline_formula_enable,
-                                _ocr_enable,
                                 batch_ratio=batch_ratio,
                                 images_layout_res=images_layout_res,
                                 hybrid_pipeline_model=hybrid_pipeline_model,
@@ -1156,7 +1078,6 @@ def doc_analyze(
                         image_writer,
                         page_start_index=window_start,
                         _ocr_enable=_ocr_enable,
-                        _vlm_ocr_enable=_vlm_ocr_enable,
                         progress_bar=progress_bar,
                     )
                     last_append_end_time = time.time()
@@ -1178,20 +1099,18 @@ def doc_analyze(
                 middle_json["pdf_info"],
                 hybrid_pipeline_model,
                 _ocr_enable,
-                _vlm_ocr_enable,
             )
         else:
             finalize_middle_json(
                 middle_json["pdf_info"],
                 hybrid_pipeline_model,
                 _ocr_enable,
-                _vlm_ocr_enable,
                 effort=effort,
             )
         close_pdfium_document(pdf_doc)
         doc_closed = True
         clean_memory(device)
-        return middle_json, model_list, _vlm_ocr_enable
+        return middle_json, model_list
     finally:
         if not doc_closed:
             close_pdfium_document(pdf_doc)
@@ -1221,12 +1140,10 @@ async def aio_doc_analyze(
 
     device = get_device()
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
-    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json = init_middle_json(
         _ocr_enable,
-        _vlm_ocr_enable,
         effort=effort,
     )
     model_list = []
@@ -1246,7 +1163,7 @@ async def aio_doc_analyze(
             f'window_size={configured_window_size}, total_windows={total_windows}'
         )
 
-        batch_ratio = get_batch_ratio(device) if not _vlm_ocr_enable else 1
+        batch_ratio = get_batch_ratio(device) if not _ocr_enable else 1
 
         infer_start = time.time()
         progress_bar = None
@@ -1273,7 +1190,7 @@ async def aio_doc_analyze(
                         images_pil_list,
                         inline_formula_enable,
                         batch_ratio,
-                        _vlm_ocr_enable,
+                        _ocr_enable,
                     )
                     if effort == "medium":
                         await asyncio.to_thread(
@@ -1295,11 +1212,11 @@ async def aio_doc_analyze(
                             window_model_list = await predictor.aio_batch_extract_with_layout(
                                 images_pil_list,
                                 vlm_blocks_list,
-                                not_extract_list=None if _vlm_ocr_enable else not_extract_list,
+                                not_extract_list=None if _ocr_enable else not_extract_list,
                                 image_analysis=effective_image_analysis,
                             )
                         optimize_hybrid_formula_number_blocks(window_model_list)
-                        if _vlm_ocr_enable:
+                        if _ocr_enable:
                             await asyncio.to_thread(
                                 _apply_vlm_ocr_det_sidecars_for_window,
                                 images_pil_list,
@@ -1314,13 +1231,12 @@ async def aio_doc_analyze(
                                 images_pil_list,
                                 window_model_list,
                                 inline_formula_enable,
-                                _ocr_enable,
                                 batch_ratio=batch_ratio,
                                 images_layout_res=images_layout_res,
                                 hybrid_pipeline_model=hybrid_pipeline_model,
                             )
                     elif effort == "high":
-                        if _vlm_ocr_enable:
+                        if _ocr_enable:
                             async with aio_predictor_execution_guard(predictor):
                                 window_model_list = await predictor.aio_batch_two_step_extract(
                                     images=images_pil_list,
@@ -1346,7 +1262,6 @@ async def aio_doc_analyze(
                                 images_pil_list,
                                 window_model_list,
                                 inline_formula_enable,
-                                _ocr_enable,
                                 batch_ratio=batch_ratio,
                                 images_layout_res=images_layout_res,
                                 hybrid_pipeline_model=hybrid_pipeline_model,
@@ -1377,7 +1292,6 @@ async def aio_doc_analyze(
                         image_writer,
                         page_start_index=window_start,
                         _ocr_enable=_ocr_enable,
-                        _vlm_ocr_enable=_vlm_ocr_enable,
                         progress_bar=progress_bar,
                     )
                     last_append_end_time = time.time()
@@ -1400,7 +1314,6 @@ async def aio_doc_analyze(
                 middle_json["pdf_info"],
                 hybrid_pipeline_model,
                 _ocr_enable,
-                _vlm_ocr_enable,
             )
         else:
             await asyncio.to_thread(
@@ -1408,13 +1321,12 @@ async def aio_doc_analyze(
                 middle_json["pdf_info"],
                 hybrid_pipeline_model,
                 _ocr_enable,
-                _vlm_ocr_enable,
                 effort=effort,
             )
         close_pdfium_document(pdf_doc)
         doc_closed = True
         clean_memory(device)
-        return middle_json, model_list, _vlm_ocr_enable
+        return middle_json, model_list
     finally:
         if not doc_closed:
             close_pdfium_document(pdf_doc)
