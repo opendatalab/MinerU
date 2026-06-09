@@ -67,6 +67,26 @@ def _is_near_identical_bbox(
     )
 
 
+def _get_near_identical_bbox_bucket_key(
+    bbox_coords: tuple[float, ...],
+) -> tuple[int, int]:
+    """按字符 bbox 左上角生成空间桶 key，缩小近重合判断的候选范围。"""
+    return (
+        math.floor(bbox_coords[0] / NEAR_IDENTICAL_CHAR_BBOX_TOLERANCE),
+        math.floor(bbox_coords[1] / NEAR_IDENTICAL_CHAR_BBOX_TOLERANCE),
+    )
+
+
+def _iter_neighbor_bbox_bucket_keys(
+    bucket_key: tuple[int, int],
+):
+    """遍历当前桶及周围 8 个邻近桶，覆盖 bbox 容差范围内的候选字符。"""
+    bucket_x, bucket_y = bucket_key
+    for offset_x in (-1, 0, 1):
+        for offset_y in (-1, 0, 1):
+            yield bucket_x + offset_x, bucket_y + offset_y
+
+
 def _deduplicate_near_identical_chars(
     chars: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -82,12 +102,20 @@ def _deduplicate_near_identical_chars(
 
         visible_char_key = _get_visible_char_signature(char)
         bbox_coords = _get_char_bbox_coords(char)
+        bbox_bucket_key = _get_near_identical_bbox_bucket_key(bbox_coords)
+        visible_char_bbox_buckets = seen_visible_char_bboxes.setdefault(
+            visible_char_key,
+            {},
+        )
         if any(
             _is_near_identical_bbox(bbox_coords, seen_bbox)
-            for seen_bbox in seen_visible_char_bboxes.get(visible_char_key, [])
+            for neighbor_bucket_key in _iter_neighbor_bbox_bucket_keys(
+                bbox_bucket_key
+            )
+            for seen_bbox in visible_char_bbox_buckets.get(neighbor_bucket_key, [])
         ):
             continue
-        seen_visible_char_bboxes.setdefault(visible_char_key, []).append(bbox_coords)
+        visible_char_bbox_buckets.setdefault(bbox_bucket_key, []).append(bbox_coords)
         deduplicated_chars.append(char)
 
     return deduplicated_chars
