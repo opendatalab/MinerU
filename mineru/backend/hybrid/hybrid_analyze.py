@@ -188,7 +188,7 @@ def ocr_det(
 
                     ocr_res_list[-1].extend(ocr_result_list)
     else:
-        # 批处理模式 - 按语言和分辨率分组
+        # 批处理模式 - 按分辨率分组
         # 收集所有需要OCR检测的裁剪图像
         all_cropped_images_info = []
 
@@ -952,8 +952,8 @@ def get_batch_ratio(device):
     return batch_ratio
 
 
-def _should_enable_vlm_ocr(ocr_enable: bool, inline_formula_enable: bool) -> bool:
-    """判断是否启用VLM OCR"""
+def _should_enable_vlm_ocr(ocr_enable: bool) -> bool:
+    """根据OCR解析需求和强制开关判断是否启用VLM OCR。"""
     force_enable = os.getenv("MINERU_FORCE_VLM_OCR_ENABLE", "0").lower() in ("1", "true", "yes")
     if force_enable:
         return True
@@ -961,7 +961,6 @@ def _should_enable_vlm_ocr(ocr_enable: bool, inline_formula_enable: bool) -> boo
     force_pipeline = os.getenv("MINERU_HYBRID_FORCE_PIPELINE_ENABLE", "0").lower() in ("1", "true", "yes")
     return (
             ocr_enable
-            and inline_formula_enable
             and not force_pipeline
     )
 
@@ -999,7 +998,7 @@ def doc_analyze(
 
     device = get_device()
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
-    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, inline_formula_enable)
+    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json = init_middle_json(
@@ -1213,7 +1212,7 @@ async def aio_doc_analyze(
 
     device = get_device()
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
-    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, inline_formula_enable)
+    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json = init_middle_json(
