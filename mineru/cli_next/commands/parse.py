@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 import time
 from pathlib import Path
 
@@ -14,13 +13,17 @@ from mineru.cli_next.output import format_parse_result, print_error, print_succe
 
 def parse_cmd(
     path: str = typer.Argument(..., help="Path to the document file"),
-    tier: str = typer.Option(None, "--tier", help="Parse tier: flash, standard, pro"),
+    tier: str = typer.Option(None, "--tier", help="Parse tier: flash, standard, pro (default: server decides)"),
     pages: str = typer.Option(
         None, "-p", "--pages", help="Page range, e.g. '1~5' or 'all'"
     ),
+    format: str = typer.Option(
+        "markdown", "-f", "--format", help="Output format: markdown, text, json, html"
+    ),
     force: bool = typer.Option(False, "--force", help="Force re-parse, ignore cache"),
-    remote: bool = typer.Option(False, "--remote", help="Use remote parse-server (default: mineru.net)"),
-    remote_url: str = typer.Option(None, "--remote-url", help="Custom remote parse-server URL. Requires --remote"),
+    remote: bool = typer.Option(False, "--remote", help="Use remote parse-server (https://mineru.net/api)"),
+    remote_url: str = typer.Option(None, "--remote-url", help="Custom remote server URL (overrides default)"),
+    api_key: str = typer.Option(None, "--api-key", envvar="MINERU_API_KEY", help="API key for remote parse-server"),
     wait: int = typer.Option(
         60, "--wait", help="Max seconds to wait for parse to complete"
     ),
@@ -51,7 +54,9 @@ def parse_cmd(
 
     # send parse request
     try:
-        result = client.parse(file_path, tier=tier, pages=pages, force=force, remote=remote, remote_url=remote_url)
+        result = client.parse(file_path, tier=tier, pages=pages, format=format,
+                              force=force, remote=remote, remote_url=remote_url,
+                              api_key=api_key)
     except Exception as exc:
         print_error(str(exc))
         raise typer.Exit(1) from None

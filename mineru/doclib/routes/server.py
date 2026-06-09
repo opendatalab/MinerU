@@ -47,7 +47,17 @@ async def server_status(request: Request) -> dict:
             }
             for w in watches
         ],
+        "recent_logs": _tail_log(getattr(state, "data_dir", "")),
     }
+
+
+def _tail_log(data_dir: str, lines: int = 100) -> list[str]:
+    """Return the last *lines* lines of the server log file."""
+    log_path = os.path.join(os.path.expanduser(data_dir or "~/MinerU"), "mineru.log")
+    if not os.path.isfile(log_path):
+        return []
+    with open(log_path, encoding="utf-8", errors="replace") as fh:
+        return fh.readlines()[-lines:]
 
 
 @router.post("/shutdown")
@@ -72,6 +82,8 @@ def _build_parse_server_status() -> dict:
         "local": {
             "mode": health.local_mode,
             "healthy": health.local_healthy,
+            "starting": health.local_starting,
+            "started_at": health.local_started_at or None,
             "supported_tiers": health.local_supported_tiers,
         },
         "remote": {

@@ -77,16 +77,24 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         health.local_mode = local_mode
         if local_mode == "managed":
             managed_tier = (await state.config_svc.get("parse_server.local.managed_tier")) or "standard"
+            tier_to_backend = {"standard": "pipeline", "pro": "vlm"}
+            backend = tier_to_backend.get(managed_tier, "pipeline")
             try:
+                cmd = [sys.executable, "-m", "mineru.parser.api_server",
+                       "--backend", backend, "--port", "15981"]
+                logging.info("Starting managed parse-server: %s", " ".join(cmd))
                 proc = subprocess.Popen(
-                    [sys.executable, "-m", "mineru.parser.api_server", "--backend", managed_tier, "--port", "15981"],
+                    cmd,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
+                logging.info("Managed parse-server started (PID %d, backend=%s)", proc.pid, backend)
                 state.parse_server_proc = proc
                 health.managed_proc = proc
-            except Exception:
-                pass
+                health.local_starting = True
+                health.local_started_at = time.time()
+            except Exception as exc:
+                logging.error("Failed to start managed parse-server: %s", exc)
 
         # background tasks
         state.watch = WatchLoop(state.db, state.config_svc, state.parse_svc)
@@ -121,10 +129,16 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         # stop managed parse-server
         if state.parse_server_proc:
             try:
+                pid = state.parse_server_proc.pid
+                logging.info("Stopping managed parse-server (PID %d)", pid)
                 state.parse_server_proc.terminate()
                 state.parse_server_proc.wait(timeout=10)
-            except Exception:
-                pass
+                logging.info("Managed parse-server stopped (PID %d)", pid)
+            except subprocess.TimeoutExpired:
+                logging.warning("Managed parse-server did not stop within 10s, killing")
+                state.parse_server_proc.kill()
+            except Exception as exc:
+                logging.error("Error stopping managed parse-server: %s", exc)
 
         for comp in [
             "watch",
@@ -163,6 +177,16 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         return JSONResponse(
             status_code=status_map.get(exc.type, 500),
             content=error_response(exc),
+        )
+
+    @app.exception_handler(Exception)
+    async def catch_all_handler(_request: Request, exc: Exception) -> JSONResponse:
+        import traceback
+
+        logging.error("Unhandled exception: %s\n%s", exc, traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content=error_response(MineruError("internal_error", str(exc))),
         )
 
     # ── routes ───────────────────────────────────────────────────

@@ -50,16 +50,21 @@ class MineruClient:
                 resp = self._client.post(url_path, json=json_data or {})
             else:
                 resp = self._client.delete(url_path, params=query_params or {})
-            resp.raise_for_status()
         except httpx.ConnectError:
             raise ServerNotRunningError() from None
-        data = resp.json()
+        try:
+            data = resp.json()
+        except Exception:
+            resp.raise_for_status()
+            raise MineruError("internal_error", f"Invalid server response: HTTP {resp.status_code}") from None
         if not isinstance(data, dict):
+            resp.raise_for_status()
             return {}
         if "error" in data:
             err = data["error"]
             if isinstance(err, dict):
                 raise _error_from_response(err)
+        resp.raise_for_status()
         return data
 
     # ── server ─────────────────────────────────────────────────
@@ -78,9 +83,11 @@ class MineruClient:
         *,
         tier: str | None = None,
         pages: str | None = None,
+        format: str = "markdown",
         force: bool = False,
         remote: bool = False,
         remote_url: str | None = None,
+        api_key: str | None = None,
     ) -> dict:
         return self._post(
             "/parse",
@@ -88,11 +95,19 @@ class MineruClient:
                 "path": path,
                 "tier": tier,
                 "pages": pages,
+                "format": format,
                 "force": force,
                 "remote": remote,
                 "remote_url": remote_url,
+                "api_key": api_key,
             },
         )
+
+    def invalidate(self, path: str, *, tier: str | None = None) -> dict:
+        params = {"path": path}
+        if tier:
+            params["tier"] = tier
+        return self._get("/parse/invalidate", **params)
 
     def parse_status(self, sha256: str, tier: str) -> dict:
         return self._get("/parse/status", sha256=sha256, tier=tier)

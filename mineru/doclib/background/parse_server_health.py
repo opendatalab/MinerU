@@ -19,6 +19,8 @@ MAX_RESTART_ATTEMPTS = 3
 @dataclass
 class ParseServerHealth:
     local_healthy: bool = False
+    local_starting: bool = False
+    local_started_at: float = 0.0
     local_supported_tiers: list[str] = field(default_factory=list)
     local_mode: str = "disabled"
     self_hosted_url: str | None = None
@@ -64,6 +66,8 @@ class ParseServerHealthCheck:
                     healthy, tiers = await self._probe(url)
                     health.local_healthy = healthy
                     health.local_supported_tiers = tiers
+                    if healthy:
+                        health.local_starting = False
 
             # probe remote
             remote_url = (await self.config_svc.get("parse_server.remote.url")) or "https://mineru.net/api"
@@ -71,28 +75,37 @@ class ParseServerHealthCheck:
             health.remote_healthy = healthy
             health.remote_supported_tiers = tiers
 
-            # managed mode: restart if crashed
+            # managed mode: restart if crashed (skip if still starting — give it 30s)
             if health.local_mode == "managed" and not health.local_healthy:
+                if health.local_starting:
+                    elapsed = asyncio.get_event_loop().time() - health.local_started_at
+                    if elapsed < 30:
+                        continue  # still loading models, don't restart
+                logger.warning("Managed parse-server is unhealthy, attempting restart")
                 await self._try_restart_managed(health)
 
     async def _try_restart_managed(self, health: ParseServerHealth) -> None:
         if health.restart_count >= MAX_RESTART_ATTEMPTS:
             logger.error(
-                f"Managed parse-server failed {health.restart_count} restarts, disabling"
+                f"Managed parse-server failed %d restarts, disabling", MAX_RESTART_ATTEMPTS
             )
             health.local_mode = "disabled"
             return
 
         health.restart_count += 1
         managed_tier = (await self.config_svc.get("parse_server.local.managed_tier")) or "standard"
-        logger.info(f"Restarting managed parse-server (attempt {health.restart_count}/{MAX_RESTART_ATTEMPTS})")
+        tier_to_backend = {"standard": "pipeline", "pro": "vlm"}
+        backend = tier_to_backend.get(managed_tier, "pipeline")
+        cmd = [sys.executable, "-m", "mineru.parser.api_server",
+               "--backend", backend, "--port", "15981"]
+        logger.info("Restarting managed parse-server (attempt %d/%d): %s",
+                    health.restart_count, MAX_RESTART_ATTEMPTS, " ".join(cmd))
         try:
-            proc = subprocess.Popen(
-                [sys.executable, "-m", "mineru.parser.api_server", "--backend", managed_tier, "--port", "15981"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            logger.info("Managed parse-server restarted (PID %d, backend=%s)", proc.pid, backend)
             health.managed_proc = proc
+            health.local_starting = True
+            health.local_started_at = asyncio.get_event_loop().time()
         except Exception as exc:
             logger.error(f"Failed to restart managed parse-server: {exc}")
 

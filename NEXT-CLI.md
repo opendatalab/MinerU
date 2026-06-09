@@ -513,6 +513,7 @@ mineru config parsing-rules add/list/rm        # 解析规则
 mineru config parse-server local.mode <mode>   # 本地 parse-server 模式: disabled | managed | self_hosted
 mineru config parse-server local.managed-tier <tier>  # managed 模式 tier: standard | pro
 mineru config parse-server local.self_hosted_url <url>  # self_hosted 模式的 parse-server 地址
+mineru config parse-server local.self-hosted-api-key <key>  # self_hosted 模式的 API Key（可选）
 mineru config parse-server remote.url <url>    # 远程 parse-server 地址（默认 mineru.net）
 mineru config parse-server remote.api-key <key>  # 远程 API Key
 ```

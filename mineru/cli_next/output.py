@@ -131,12 +131,24 @@ def format_server_status(data: dict, json_mode: bool = False) -> None:
             ps_table.add_column("Tiers", style="green")
             for label, key in [("Local", "local"), ("Remote", "remote")]:
                 ps = ps_data.get(key, {})
-                healthy_str = "yes" if ps.get("healthy") else "no"
+                if ps.get("starting"):
+                    healthy_str = "starting"
+                elif ps.get("healthy"):
+                    healthy_str = "yes"
+                else:
+                    healthy_str = "no"
                 tiers_str = ", ".join(ps.get("supported_tiers", [])) or "-"
                 mode = ps.get("mode", "")
                 label_str = f"{label} ({mode})" if mode else label
                 ps_table.add_row(label_str, healthy_str, tiers_str)
             console.print(ps_table)
+
+        # recent logs
+        logs = data.get("recent_logs", [])
+        if logs:
+            log_text = "".join(logs)  # last 100 lines from server
+            panel = Panel(log_text.strip() or "(empty)", title="Recent Logs", border_style="dim")
+            console.print(panel)
     else:
         print(f"Server running (PID {data.get('pid')}), {data.get('files_total')} files")
 

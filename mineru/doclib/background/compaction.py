@@ -90,6 +90,10 @@ class Compaction:
             "DELETE FROM parses WHERE sha256=? AND tier=? AND status='done'",
             (sha256, tier),
         )
+        await self.db.execute(
+            "DELETE FROM parses WHERE sha256=? AND tier=? AND status='superseded'",
+            (sha256, tier),
+        )
         for pages_str in merged_ranges:
             await self.db.execute(
                 "INSERT INTO parses (sha256, tier, pages, status, done_at, priority, "
@@ -97,33 +101,34 @@ class Compaction:
                 (sha256, tier, pages_str, max_done_at, now, now),
             )
 
-        # compact JSON files
-        await self._compact_json(sha256, tier, merged_ranges)
+        # compact JSON files (only from done batches, not superseded)
+        await self._compact_json(sha256, tier, merged_ranges, rows, max_done_at)
 
         return len(rows) - len(merged_ranges)
 
     async def _compact_json(
-        self, sha256: str, tier: str, merged_ranges: list[str]
+        self, sha256: str, tier: str, merged_ranges: list[str],
+        done_rows: list[dict], max_done_at: int,
     ) -> None:
-        """Merge per-batch middle_*.json files to match compacted parses rows."""
+        """Merge per-batch JSON files to match compacted parses rows.
+        Only reads files belonging to *done_rows* — ignores superseded files."""
         data_dir = os.path.expanduser(DATA_DIR)
         tier_dir = os.path.join(data_dir, "parsed", sha256[:2], sha256, tier)
         if not os.path.isdir(tier_dir):
             return
 
-        # collect all pages + markdown from existing files
+        # only read files from done batches (exclude superseded)
+        # process oldest first → newest overwrites (done_rows is sorted by done_at DESC)
         pages_by_idx: dict[int, dict] = {}
-        md_texts: dict[str, str] = {}
-        for fname in os.listdir(tier_dir):
+        for row in reversed(done_rows):
+            key = _safe_filename(row["pages"], row["done_at"])
+            fpath = os.path.join(tier_dir, f"{key}.json")
+            if not os.path.isfile(fpath):
+                continue
             try:
-                if fname.endswith(".json"):
-                    with open(os.path.join(tier_dir, fname), encoding="utf-8") as f:
-                        for p in _json.load(f).get("pdf_info", []):
-                            pages_by_idx[p["page_idx"]] = p
-                elif fname.endswith(".md"):
-                    stem = fname[:-3]  # remove .md
-                    with open(os.path.join(tier_dir, fname), encoding="utf-8") as f:
-                        md_texts[stem] = f.read()
+                with open(fpath, encoding="utf-8") as f:
+                    for p in _json.load(f).get("pages", []):
+                        pages_by_idx[p["page_idx"]] = p
             except Exception:
                 pass
 
@@ -132,13 +137,13 @@ class Compaction:
 
         # delete old files
         for fname in os.listdir(tier_dir):
-            if fname.endswith(".json") or fname.endswith(".md"):
+            if fname.endswith(".json"):
                 try:
                     os.unlink(os.path.join(tier_dir, fname))
                 except OSError:
                     pass
 
-        # write one compacted JSON + MD per merged range
+        # write one compacted JSON per merged range
         for pages_str in merged_ranges:
             page_set = parse_range_set(pages_str)
             json_pages = [
@@ -146,24 +151,16 @@ class Compaction:
             ]
             if not json_pages:
                 continue
-            key = _safe_filename(pages_str)
+            key = _safe_filename(pages_str, max_done_at)
             json_path = os.path.join(tier_dir, f"{key}.json")
             try:
                 with open(json_path, "w", encoding="utf-8") as f:
                     _json.dump(
-                        {"pdf_info": json_pages}, f, ensure_ascii=False, indent=2
+                        {"pages": json_pages}, f, ensure_ascii=False, indent=2
                     )
             except Exception:
                 pass
 
-            md_path = os.path.join(tier_dir, f"{key}.md")
-            try:
-                merged_md = "\n".join(md for k, md in sorted(md_texts.items()))
-                with open(md_path, "w", encoding="utf-8") as f:
-                    f.write(merged_md)
-            except Exception:
-                pass
 
-
-def _safe_filename(s: str) -> str:
-    return s  # pages string is already safe: "1~5,43~47"
+def _safe_filename(s: str, done_at: int = 0) -> str:
+    return f"{s}_{done_at}" if done_at else s

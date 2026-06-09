@@ -2,147 +2,29 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 
 import aiosqlite
 
 from ..config import SQLiteConfig
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+_MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
 
-CREATE_TABLES_SQL = [
-    # ── files ──────────────────────────────────────────────────────
-    """
-    CREATE TABLE IF NOT EXISTS files (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        path            TEXT    NOT NULL UNIQUE,
-        filename        TEXT    NOT NULL,
-        ext             TEXT    NOT NULL,
-        size_bytes      INTEGER NOT NULL,
-        mtime_ms        INTEGER NOT NULL,
-        birthtime_ms    INTEGER,
-        sha256          TEXT    REFERENCES docs(sha256),
-        watch_id        INTEGER REFERENCES watch_targets(id),
-        scan_status     TEXT    NOT NULL DEFAULT 'active',
-        locked_at       INTEGER,
-        error_code      TEXT,
-        error_msg       TEXT,
-        deleted_at      INTEGER,
-        first_seen_at   INTEGER NOT NULL,
-        updated_at      INTEGER NOT NULL
-    );
-    """,
-    "CREATE INDEX IF NOT EXISTS idx_files_sha256 ON files(sha256);",
-    "CREATE INDEX IF NOT EXISTS idx_files_watch_id ON files(watch_id);",
-    "CREATE INDEX IF NOT EXISTS idx_files_scan_status ON files(scan_status);",
-    # ── docs ───────────────────────────────────────────────────────
-    """
-    CREATE TABLE IF NOT EXISTS docs (
-        sha256          TEXT    PRIMARY KEY,
-        size_bytes      INTEGER NOT NULL,
-        mime_type       TEXT,
-        page_count      INTEGER,
-        lang            TEXT,
-        title           TEXT,
-        author          TEXT,
-        subject         TEXT,
-        keywords        TEXT,
-        is_encrypted    INTEGER NOT NULL DEFAULT 0,
-        is_scanned      INTEGER NOT NULL DEFAULT 0,
-        meta_tier       TEXT,
-        first_seen_at   INTEGER NOT NULL,
-        updated_at      INTEGER NOT NULL
-    );
-    """,
-    # ── parses ─────────────────────────────────────────────────────
-    """
-    CREATE TABLE IF NOT EXISTS parses (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        sha256      TEXT    NOT NULL REFERENCES docs(sha256),
-        tier        TEXT    NOT NULL,
-        pages       TEXT    NOT NULL,
-        status      TEXT    NOT NULL DEFAULT 'pending',
-        priority    INTEGER NOT NULL DEFAULT 0,
-        locked_at   INTEGER,
-        error_code  TEXT,
-        error_msg   TEXT,
-        privacy     TEXT    NOT NULL DEFAULT 'local',
-        remote_url  TEXT,
-        via         TEXT,
-        output_path TEXT,
-        done_at     INTEGER,
-        created_at  INTEGER NOT NULL,
-        updated_at  INTEGER NOT NULL
-    );
-    """,
-    "CREATE INDEX IF NOT EXISTS idx_parses_status ON parses(status, priority DESC, created_at ASC);",
-    "CREATE INDEX IF NOT EXISTS idx_parses_doc ON parses(sha256, tier);",
-    # ── fts_contents ───────────────────────────────────────────────
-    """
-    CREATE VIRTUAL TABLE IF NOT EXISTS fts_contents USING fts5(
-        sha256 UNINDEXED,
-        tier UNINDEXED,
-        text,
-        title,
-        author,
-        filename,
-        tokenize='unicode61'
-    );
-    """,
-    # ── fts_filenames ──────────────────────────────────────────────
-    """
-    CREATE VIRTUAL TABLE IF NOT EXISTS fts_filenames USING fts5(
-        file_id UNINDEXED,
-        filename,
-        ext,
-        tokenize='unicode61'
-    );
-    """,
-    # ── watch_targets ──────────────────────────────────────────────
-    """
-    CREATE TABLE IF NOT EXISTS watch_targets (
-        id              INTEGER PRIMARY KEY,
-        path            TEXT    NOT NULL UNIQUE,
-        label           TEXT,
-        removable       INTEGER NOT NULL DEFAULT 0,
-        enabled         INTEGER NOT NULL DEFAULT 1,
-        recursive       INTEGER NOT NULL DEFAULT 0,
-        watch_status    TEXT    NOT NULL DEFAULT 'active',
-        unreachable_at  INTEGER,
-        last_scan_at    INTEGER,
-        last_scan_files INTEGER DEFAULT 0
-    );
-    """,
-    # ── rules ──────────────────────────────────────────────────────
-    """
-    CREATE TABLE IF NOT EXISTS rules (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        name            TEXT,
-        rule_type       TEXT    NOT NULL,
-        pattern         TEXT    NOT NULL,
-        tier            TEXT,
-        pages           TEXT,
-        remote          INTEGER NOT NULL DEFAULT 0,
-        enabled         INTEGER NOT NULL DEFAULT 1,
-        priority        INTEGER NOT NULL DEFAULT 0,
-        hit_count       INTEGER NOT NULL DEFAULT 0
-    );
-    """,
-    # ── config ─────────────────────────────────────────────────────
-    """
-    CREATE TABLE IF NOT EXISTS config (
-        key   TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-    );
-    """,
-    # ── _migrations ────────────────────────────────────────────────
-    """
-    CREATE TABLE IF NOT EXISTS _migrations (
-        version     INTEGER PRIMARY KEY,
-        applied_at  INTEGER NOT NULL,
-        description TEXT
-    );
-    """,
-]
+_CREATE_TABLES_SQL: list[str] = []  # filled by _load_init_sql()
+
+
+def _load_init_sql() -> list[str]:
+    """Load the initial-schema SQL from the migration file so that
+    ``initialize()`` is self-contained for fresh databases."""
+    init_path = _MIGRATIONS_DIR / "001_init.sql"
+    if not init_path.is_file():
+        return []
+    sql = init_path.read_text(encoding="utf-8")
+    return [s.strip() for s in sql.split(";") if s.strip()]
+
+
+_CREATE_TABLES_SQL = _load_init_sql()
 
 DEFAULT_CONFIG = {
     "data_dir": "~/MinerU",
@@ -208,7 +90,7 @@ class DatabaseManager:
             await conn.execute("PRAGMA wal_autocheckpoint=1000")
             await conn.execute("PRAGMA journal_size_limit=33554432")
 
-        for sql in CREATE_TABLES_SQL:
+        for sql in _CREATE_TABLES_SQL:
             await conn.execute(sql)
 
         # ── migrations ──────────────────────────────────────────
@@ -311,6 +193,22 @@ def _now_ms() -> int:
 
 
 async def _apply_migration(conn: aiosqlite.Connection, version: int) -> None:
-    """Apply a single schema migration.  Extend here as schema evolves."""
-    # version 1: initial schema — already created by CREATE_TABLES_SQL
-    pass
+    """Apply a single schema migration from its SQL file."""
+    candidates = sorted(_MIGRATIONS_DIR.glob(f"{version:03d}_*.sql"))
+    if not candidates:
+        raise FileNotFoundError(f"No migration file found for version {version}")
+    for p in candidates:
+        raw = p.read_text(encoding="utf-8")
+        # strip comment lines, then split into statements
+        lines = [l for l in raw.splitlines() if not l.strip().startswith("--")]
+        sql = "\n".join(lines)
+        for stmt in sql.split(";"):
+            stmt = stmt.strip()
+            if not stmt:
+                continue
+            try:
+                await conn.execute(stmt)
+            except Exception as exc:
+                if "duplicate column name" in str(exc):
+                    continue
+                raise

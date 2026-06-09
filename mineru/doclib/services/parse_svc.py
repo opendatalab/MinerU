@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 from mineru.constants import TIER_ORDER, ParseStatus, Tier
+from mineru.errors import MineruError
 
 from ..core.db import DatabaseManager
 from ..core.file_io import compute_sha256, extract_metadata, get_file_stat
@@ -19,11 +20,11 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-class ParseFailure(Exception):
+class ParseFailure(MineruError):
     """Raised when a parse cannot be completed.  Carries an error code for the parses row."""
 
     def __init__(self, code: str, message: str) -> None:
-        self.code = code
+        super().__init__(code, message)
         self.message = message
 
 
@@ -288,85 +289,80 @@ class ParseService:
         if file_row is None or file_row["sha256"] is None:
             file_row = await self.ingest_file(path)
         if file_row is None:
-            return {
-                "sha256": "",
-                "tier": tier or "",
-                "status": "error",
-                "tip": "File could not be ingested.",
-            }
+            return {"sha256": "", "tier": tier or "", "status": "error", "tip": "File could not be ingested."}
 
         sha256 = file_row["sha256"]
         doc = await self.db.fetchone("SELECT page_count FROM docs WHERE sha256=?", (sha256,))
         page_count = doc["page_count"] if doc else 1
+        privacy = "remote" if remote else "local"
 
-        requested_tier = tier or Tier.FLASH
-
-        # Office documents: always flash, ignore requested tier
+        # ── resolve tier (before cache check) ──
+        requested_tier = tier or _resolve_default_tier(remote)
         ext = file_row["ext"]
         if ext in ("docx", "pptx", "xlsx", "doc", "xls", "ppt"):
             requested_tier = Tier.FLASH
 
-        # resolve privacy / remote_url
-        privacy = "remote" if remote else "local"
-
-        # expand pages
+        # ── expand pages ──
         default_pages = "1~5,-5~-1" if page_count and page_count > 10 else f"1~{page_count}"
         raw_pages = pages or default_pages
-        pages_str = expand_pages(raw_pages, page_count or 1)
+        request_pages_str = expand_pages(raw_pages, page_count or 1)
+        needed = parse_range_set(request_pages_str)
 
-        # check cache — (sha256, tier) regardless of privacy
+        # ── step 1: remove pages covered by valid done batches ──
         if not force:
             done_batches = await self.db.fetchall(
-                "SELECT * FROM parses WHERE sha256=? AND tier=? AND status='done'",
+                "SELECT * FROM parses WHERE sha256=? AND tier=? AND status='done' ORDER BY done_at DESC",
                 (sha256, requested_tier),
             )
-            if done_batches:
-                if pages_covered(pages_str, done_batches):
-                    return {
-                        "sha256": sha256,
-                        "tier": requested_tier,
-                        "pages": pages_str,
-                        "status": "done",
-                        "tip": "Cached. Use --force to re-parse.",
-                    }
-                uncovered = pages_uncovered(pages_str, done_batches)
-                if not uncovered:
-                    return {
-                        "sha256": sha256,
-                        "tier": requested_tier,
-                        "pages": pages_str,
-                        "status": "done",
-                        "tip": "Cached.",
-                    }
-                pages_str = _pages_set_to_str(uncovered)
+            for batch in done_batches:
+                if not _json_file_exists_by_batch(sha256, requested_tier, batch):
+                    continue  # JSON gone → cache invalid
+                covered = parse_range_set(batch["pages"])
+                needed -= covered
 
-        # check if there's already a pending/parsing batch with overlapping pages
-        active = await self.db.fetchone(
-            "SELECT * FROM parses WHERE sha256=? AND tier=? AND status IN ('pending', 'parsing') "
-            "ORDER BY created_at DESC LIMIT 1",
+            if not needed:
+                return _done_response(sha256, requested_tier, request_pages_str)
+
+        # ── step 2: remove pages covered by pending/parsing batches ──
+        active_batches = await self.db.fetchall(
+            "SELECT * FROM parses WHERE sha256=? AND tier=? AND status IN ('pending', 'parsing')",
             (sha256, requested_tier),
         )
-        if active:
-            return {
-                "sha256": sha256,
-                "tier": requested_tier,
-                "pages": pages_str,
-                "status": active["status"],
-                "tip": "Parse already in progress. Check status with: mineru info <path>",
-            }
+        if active_batches:
+            active_covered: set[int] = set()
+            for batch in active_batches:
+                active_covered |= parse_range_set(batch["pages"])
+            needed -= active_covered
 
-        # insert new batch
+            if not needed:
+                # all remaining pages covered by in-progress batches → bump priority
+                now = _now_ms()
+                for batch in active_batches:
+                    if batch["priority"] < 1:
+                        await self.db.execute(
+                            "UPDATE parses SET priority=1, updated_at=? WHERE id=?",
+                            (now, batch["id"]),
+                        )
+                return {
+                    "sha256": sha256,
+                    "tier": requested_tier,
+                    "pages": request_pages_str,
+                    "status": ParseStatus.PENDING,
+                    "tip": "Pages already queued. Priority bumped.",
+                }
+
+        # ── step 3: enqueue remaining uncovered pages ──
+        uncovered_str = _pages_set_to_str(needed)
         now = _now_ms()
         await self.db.execute(
             "INSERT INTO parses (sha256, tier, pages, status, privacy, remote_url, priority, created_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)",
-            (sha256, requested_tier, pages_str, ParseStatus.PENDING, privacy, remote_url, now, now),
+            (sha256, requested_tier, uncovered_str, ParseStatus.PENDING, privacy, remote_url, now, now),
         )
-
         return {
             "sha256": sha256,
             "tier": requested_tier,
-            "pages": pages_str,
+            "pages": uncovered_str,
             "status": ParseStatus.PENDING,
         }
 
@@ -432,34 +428,29 @@ class ParseService:
             await self._fail_task(task["id"], "parse_failed", str(exc)[:500])
             return False
 
-        # save per-batch markdown + JSON
-        md_text = ""
-        for result in results:
-            md = result.markdown() if hasattr(result, "markdown") else ""
-            md_text += md + "\n"
-
+        # save per-batch JSON (markdown is generated on read from /parse/content)
+        done_at_ms = _now_ms()
         if results:
             import json as _json
 
             pages_key = _safe_filename(task["pages"])
-            md_path = os.path.join(output_dir, f"{pages_key}.md")
-            json_path = os.path.join(output_dir, f"{pages_key}.json")
+            json_path = os.path.join(output_dir, f"{pages_key}_{done_at_ms}.json")
             os.makedirs(output_dir, exist_ok=True)
-            try:
-                with open(md_path, "w", encoding="utf-8") as f:
-                    f.write(md_text)
-            except Exception:
-                pass
             new_pages: list[dict] = []
             for r in results:
                 if hasattr(r, "to_dict"):
-                    new_pages.extend(r.to_dict().get("pdf_info", []))
-            os.makedirs(output_dir, exist_ok=True)
+                    new_pages.extend(r.to_dict().get("pages", []))
             try:
                 with open(json_path, "w", encoding="utf-8") as f:
-                    _json.dump({"pdf_info": new_pages}, f, ensure_ascii=False, indent=2)
+                    _json.dump({"pages": new_pages}, f, ensure_ascii=False, indent=2)
             except Exception:
                 pass
+
+        # generate markdown for FTS (not persisted, only for search indexing)
+        md_text = ""
+        for result in results:
+            md = result.markdown(add_markers=False) if hasattr(result, "markdown") else ""
+            md_text += md + "\n"
 
         # update fts_contents (tier-gated)
         await self._maybe_update_fts(sha256, tier, md_text, file_row)
@@ -468,10 +459,9 @@ class ParseService:
         await self._maybe_update_docs_meta(sha256, tier)
 
         # mark done
-        now = _now_ms()
         await self.db.execute(
-            "UPDATE parses SET status=?, done_at=?, locked_at=NULL, via=?, output_path=?, updated_at=? WHERE id=?",
-            (ParseStatus.DONE, now, via, output_dir, now, task["id"]),
+            "UPDATE parses SET status=?, done_at=?, locked_at=NULL, via=?, updated_at=? WHERE id=?",
+            (ParseStatus.DONE, done_at_ms, via, done_at_ms, task["id"]),
         )
         return True
 
@@ -593,7 +583,13 @@ class ParseService:
             (sha256, tier),
         )
         if done:
-            return {"sha256": sha256, "tier": tier, "status": "done", "pages": "TBD"}
+            # still have active batches? → not fully done yet
+            active_count = await self.db.fetchone(
+                "SELECT COUNT(*) as cnt FROM parses WHERE sha256=? AND tier=? AND status IN ('pending', 'parsing')",
+                (sha256, tier),
+            )
+            if active_count and active_count["cnt"] == 0:
+                return {"sha256": sha256, "tier": tier, "status": "done", "pages": "TBD"}
 
         active = await self.db.fetchone(
             "SELECT * FROM parses WHERE sha256=? AND tier=? AND status IN ('pending', 'parsing') "
@@ -621,6 +617,17 @@ class ParseService:
             }
 
         return None
+
+    async def invalidate(self, sha256: str, tier: str | None = None) -> int:
+        """Mark done parses as superseded.  Returns count of affected rows."""
+        now = _now_ms()
+        sql = "UPDATE parses SET status='superseded', updated_at=? WHERE sha256=? AND status='done'"
+        params = [now, sha256]
+        if tier:
+            sql += " AND tier=?"
+            params.append(tier)
+        cursor = await self.db.execute(sql, tuple(params))
+        return cursor.rowcount
 
     # ── internal helpers ────────────────────────────────────────
 
@@ -659,6 +666,28 @@ class ParseService:
 # ── tier → backend mapping ─────────────────────────────────────────
 
 
+def _resolve_default_tier(remote: bool = False) -> str:
+    """Pick the best available tier from health check.  ``pro`` > ``standard`` > ``flash``."""
+    from mineru.doclib.background.parse_server_health import get_health
+
+    health = get_health()
+    supported = health.remote_supported_tiers if remote else health.local_supported_tiers
+    for candidate in (Tier.PRO, Tier.STANDARD):
+        if candidate in supported:
+            return candidate
+    raise ParseFailure(
+        "no_engine", "No standard or pro engine available. Start a parse-server or use --tier flash for text-only preview."
+    )
+
+
+def _json_file_exists_by_batch(sha256: str, tier: str, batch: dict) -> bool:
+    """Check that the JSON result file for a parses batch row actually exists on disk."""
+    data_dir = os.path.expanduser("~/MinerU")
+    key = _safe_filename(batch["pages"], batch["done_at"])
+    json_path = os.path.join(data_dir, "parsed", sha256[:2], sha256, tier, f"{key}.json")
+    return os.path.isfile(json_path)
+
+
 def _tier_to_backend(tier: str) -> str:
     mapping = {
         Tier.FLASH: "flash",
@@ -666,6 +695,16 @@ def _tier_to_backend(tier: str) -> str:
         Tier.PRO: "hybrid-auto-engine",
     }
     return mapping.get(tier, "pipeline")
+
+
+def _done_response(sha256: str, tier: str, pages: str) -> dict:
+    return {
+        "sha256": sha256,
+        "tier": tier,
+        "pages": pages,
+        "status": "done",
+        "tip": "Cached. Use --force to re-parse.",
+    }
 
 
 def _local_parse_server_url(mode: str, health: object) -> str | None:
@@ -677,6 +716,6 @@ def _local_parse_server_url(mode: str, health: object) -> str | None:
     return None
 
 
-def _safe_filename(s: str) -> str:
-    """Convert a pages range string to a safe filename — keep ~ and , as-is."""
-    return s  # pages string is already safe: "1~5,43~47"
+def _safe_filename(s: str, done_at: int = 0) -> str:
+    """Convert a pages range string + done_at to a filename."""
+    return f"{s}_{done_at}" if done_at else s
