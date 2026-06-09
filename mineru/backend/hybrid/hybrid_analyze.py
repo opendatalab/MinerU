@@ -26,7 +26,7 @@ from mineru.backend.pipeline.model_init import (
     run_ocr_inference,
 )
 from mineru.backend.pipeline.model_list import AtomicModel
-from mineru.backend.utils.formula_number import optimize_medium_formula_number_blocks
+from mineru.backend.utils.formula_number import optimize_hybrid_formula_number_blocks
 from mineru.backend.vlm.vlm_analyze import (
     ModelSingleton,
     aio_predictor_execution_guard,
@@ -1080,7 +1080,7 @@ def doc_analyze(
                                 not_extract_list=None if _vlm_ocr_enable else not_extract_list,
                                 image_analysis=image_analysis,
                             )
-                        optimize_medium_formula_number_blocks(window_model_list)
+                        optimize_hybrid_formula_number_blocks(window_model_list)
                         if _vlm_ocr_enable:
                             _apply_vlm_ocr_det_sidecars_for_window(
                                 images_pil_list,
@@ -1297,7 +1297,7 @@ async def aio_doc_analyze(
                                 not_extract_list=None if _vlm_ocr_enable else not_extract_list,
                                 image_analysis=image_analysis,
                             )
-                        optimize_medium_formula_number_blocks(window_model_list)
+                        optimize_hybrid_formula_number_blocks(window_model_list)
                         if _vlm_ocr_enable:
                             await asyncio.to_thread(
                                 _apply_vlm_ocr_det_sidecars_for_window,

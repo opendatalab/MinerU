@@ -124,11 +124,11 @@ def _downgrade_formula_number_to_text(block: Block) -> None:
     block["type"] = BlockType.TEXT
 
 
-def _append_flash_formula_number_tag(
+def _append_hybrid_formula_number_tag(
     equation_block: Block,
     formula_number_block: Block,
 ) -> None:
-    """将公式编号写入Hybrid flash的VLM行间公式内容。"""
+    """将公式编号写入Hybrid的VLM行间公式内容。"""
     equation_block["content"] = build_tagged_formula_content(
         equation_block.get("content", ""),
         formula_number_block,
@@ -148,19 +148,14 @@ def optimize_formula_number_blocks(pdf_info_list: Iterable[Block]) -> None:
         )
 
 
-def optimize_flash_formula_number_blocks(model_list: Iterable[list[Block]]) -> None:
-    """按统一相邻规则处理Hybrid flash的VLM公式编号块。"""
+def optimize_hybrid_formula_number_blocks(model_list: Iterable[list[Block]]) -> None:
+    """按统一相邻规则处理Hybrid的VLM公式编号块。"""
     for page_model_list in model_list:
         optimized_blocks = _optimize_formula_number_sequence(
             page_model_list or [],
             lambda block: block.get("type") == BlockType.FORMULA_NUMBER,
             lambda block: block.get("type") == BlockType.EQUATION,
-            _append_flash_formula_number_tag,
+            _append_hybrid_formula_number_tag,
             _downgrade_formula_number_to_text,
         )
         page_model_list[:] = optimized_blocks
-
-
-def optimize_medium_formula_number_blocks(model_list: Iterable[list[Block]]) -> None:
-    """按 Hybrid medium effort 规则处理 VLM 公式编号块。"""
-    optimize_flash_formula_number_blocks(model_list)
