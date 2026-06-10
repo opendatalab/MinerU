@@ -882,8 +882,6 @@ def get_batch_ratio(device):
         batch_ratio = 8
     elif gpu_memory >= 12:
         batch_ratio = 4
-    elif gpu_memory >= 8:
-        batch_ratio = 2
     else:
         batch_ratio = 1
 
