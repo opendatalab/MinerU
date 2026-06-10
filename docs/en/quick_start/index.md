@@ -52,8 +52,11 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     </tr> 
     <tr>
       <th>Accuracy<sup>1</sup></th>
-      <td style="text-align:center;">85+</td>
-      <td colspan="4" style="text-align:center;">95+</td>
+      <td style="text-align:center;">85.75</td>
+      <td style="text-align:center;">95.39 (high)<br>95.26 (medium)</td>
+      <td style="text-align:center;">95.39</td>
+      <td style="text-align:center;">95.39 (high)<br>95.26 (medium)</td>
+      <td style="text-align:center;">95.39</td>
     </tr>
     <tr>
       <th>Operating System</th>
