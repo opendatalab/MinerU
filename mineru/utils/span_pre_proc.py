@@ -306,7 +306,7 @@ LINE_START_FLAG = (
 
 Span_Height_Ratio = 0.33  # 字符的中轴和span的中轴高度差不能超过1/3span高度
 SCRIPT_BODY_HEIGHT_RATIO = 0.9
-SCRIPT_CENTER_TOLERANCE_RATIO = 0.12
+SCRIPT_CENTER_TOLERANCE_RATIO = 0.15
 
 
 def _is_private_use_char(char: str) -> bool:
