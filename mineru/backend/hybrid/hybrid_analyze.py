@@ -13,12 +13,11 @@ from mineru_vl_utils.structs import BlockType, ContentBlock
 from tqdm import tqdm
 
 from mineru.backend.hybrid.hybrid_model_output_to_middle_json import (
-    apply_server_side_postprocess,
     append_page_model_list_to_middle_json,
+    apply_server_side_postprocess,
     finalize_middle_json,
     init_middle_json,
 )
-from mineru.backend.utils.runtime_utils import exclude_progress_bar_idle_time
 from mineru.backend.pipeline.model_init import (
     HybridModelSingleton,
     run_layout_inference,
@@ -27,20 +26,32 @@ from mineru.backend.pipeline.model_init import (
 )
 from mineru.backend.pipeline.model_list import AtomicModel
 from mineru.backend.utils.formula_number import optimize_hybrid_formula_number_blocks
+from mineru.backend.utils.runtime_utils import exclude_progress_bar_idle_time
 from mineru.backend.vlm.vlm_analyze import (
     ModelSingleton,
+    _get_model_async,
+    _maybe_enable_serial_execution,
     aio_predictor_execution_guard,
     predictor_execution_guard,
-    _maybe_enable_serial_execution,
-    _get_model_async,
 )
 from mineru.data.data_reader_writer import DataWriter
 from mineru.utils.boxbase import calculate_overlap_area_2_minbox_area_ratio
-from mineru.utils.config_reader import get_device, get_processing_window_size
-from mineru.utils.enum_class import ImageType, NotExtractType, BlockType as MineruBlockType
-from mineru.utils.model_utils import crop_img, get_vram, clean_memory
-from mineru.utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, sorted_boxes, merge_det_boxes, \
-    update_det_boxes
+from mineru.utils.config_reader import (
+    get_device,
+    get_ocr_det_mask_inline_formula_enable,
+    get_processing_window_size,
+)
+from mineru.utils.enum_class import BlockType as MineruBlockType
+from mineru.utils.enum_class import ImageType, NotExtractType
+from mineru.utils.model_utils import clean_memory, crop_img, get_vram
+from mineru.utils.ocr_utils import (
+    get_adjusted_mfdetrec_res,
+    get_ocr_result_list,
+    mask_formula_regions_for_ocr_det,
+    merge_det_boxes,
+    sorted_boxes,
+    update_det_boxes,
+)
 from mineru.utils.pdf_classify import classify
 from mineru.utils.pdf_image_tools import (
     aio_load_images_from_pdf_bytes_range,
@@ -136,6 +147,8 @@ def ocr_det(
     mfd_res,
     batch_ratio: int = 1,
 ):
+    mask_formula_for_ocr_det = get_ocr_det_mask_inline_formula_enable(True)
+
     def _set_temp_pixel_bbox(res, pixel_bbox):
         res["_normalized_bbox"] = list(res["bbox"])
         res["bbox"] = pixel_bbox
@@ -175,9 +188,14 @@ def ocr_det(
                     page_mfd_res, useful_list
                 )
                 bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
+                det_image = (
+                    mask_formula_regions_for_ocr_det(bgr_image, adjusted_mfdetrec_res)
+                    if mask_formula_for_ocr_det
+                    else bgr_image
+                )
                 ocr_res = run_ocr_inference(
                     hybrid_pipeline_model.ocr_model.ocr,
-                    bgr_image,
+                    det_image,
                     mfd_res=adjusted_mfdetrec_res,
                     rec=False,
                 )[0]
@@ -221,8 +239,13 @@ def ocr_det(
                     page_mfd_res, useful_list
                 )
                 bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
+                det_image = (
+                    mask_formula_regions_for_ocr_det(bgr_image, adjusted_mfdetrec_res)
+                    if mask_formula_for_ocr_det
+                    else bgr_image
+                )
                 all_cropped_images_info.append((
-                    bgr_image, useful_list, adjusted_mfdetrec_res, ocr_res_list[-1]
+                    bgr_image, det_image, useful_list, adjusted_mfdetrec_res, ocr_res_list[-1]
                 ))
 
         # 按分辨率分组并同时完成padding
@@ -230,7 +253,7 @@ def ocr_det(
 
         resolution_groups = defaultdict(list)
         for crop_info in all_cropped_images_info:
-            cropped_img = crop_info[0]
+            cropped_img = crop_info[1]
             h, w = cropped_img.shape[:2]
             # 直接计算目标尺寸并用作分组键
             target_h = ((h + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
@@ -239,11 +262,11 @@ def ocr_det(
             resolution_groups[group_key].append(crop_info)
 
         # 对每个分辨率组进行批处理
-        for (target_h, target_w), group_crops in tqdm(resolution_groups.items(), desc=f"OCR-det"):
+        for (target_h, target_w), group_crops in tqdm(resolution_groups.items(), desc="OCR-det"):
             # 对所有图像进行padding到统一尺寸
             batch_images = []
             for crop_info in group_crops:
-                img = crop_info[0]
+                img = crop_info[1]
                 h, w = img.shape[:2]
                 # 创建目标尺寸的白色背景
                 padded_img = np.ones((target_h, target_w, 3), dtype=np.uint8) * 255
@@ -260,7 +283,7 @@ def ocr_det(
 
             # 处理批处理结果
             for crop_info, (dt_boxes, _) in zip(group_crops, batch_results):
-                bgr_image, useful_list, adjusted_mfdetrec_res, ocr_page_res_list = crop_info
+                bgr_image, _det_image, useful_list, adjusted_mfdetrec_res, ocr_page_res_list = crop_info
 
                 if dt_boxes is not None and len(dt_boxes) > 0:
                     # 处理检测框
@@ -283,28 +306,6 @@ def ocr_det(
                         )
                         ocr_page_res_list.extend(ocr_result_list)
     return ocr_res_list
-
-def mask_image_regions(np_images, model_list):
-    # 根据vlm返回的结果，在每一页中将image、table、equation块mask成白色背景图像
-    for np_image, vlm_page_results in zip(np_images, model_list):
-        img_height, img_width = np_image.shape[:2]
-        # 收集需要mask的区域
-        mask_regions = []
-        for block in vlm_page_results:
-            if block['type'] in [BlockType.IMAGE, BlockType.TABLE, BlockType.EQUATION]:
-                bbox = block['bbox']
-                # 批量转换归一化坐标到像素坐标,并进行边界检查
-                x0 = max(0, int(bbox[0] * img_width))
-                y0 = max(0, int(bbox[1] * img_height))
-                x1 = min(img_width, int(bbox[2] * img_width))
-                y1 = min(img_height, int(bbox[3] * img_height))
-                # 只添加有效区域
-                if x1 > x0 and y1 > y0:
-                    mask_regions.append((y0, y1, x0, x1))
-        # 批量应用mask
-        for y0, y1, x0, x1 in mask_regions:
-            np_image[y0:y1, x0:x1, :] = 255
-    return np_images
 
 
 def normalize_bbox_to_unit(item, page_width, page_height):
