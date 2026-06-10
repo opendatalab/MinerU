@@ -10,6 +10,16 @@
 
 | 日期 | 修订内容 |
 |------|---------|
+| 2026-06-10 | **明确请求可选字段省略规则**：请求中的可选字段可以省略。`POST /v1/parse/jobs` 的 `files[].page_range` 省略时等价于 `null`，表示解析整个文件 |
+| 2026-06-10 | **Job 列表文件数字段改名为 `file_count`**：`GET /v1/parse/jobs` 的列表项字段从 `files_count` 改为 `file_count`，与单数资源计数字段命名保持一致 |
+| 2026-06-10 | **Parse Job 响应取消输出内容内联**：`POST /v1/parse/jobs` 即使同步等待完成也只返回 `output_files` 文件引用，不再返回 `output_files.markdown.content`。所有解析产物内容统一通过 `GET /v1/files/{file_id}/content` 获取 |
+| 2026-06-10 | **Parse Job 输出格式 `content_list_v2` 改为 `structured_content`**：`POST /v1/parse/jobs` 的公开 `output_formats` 不再使用 `content_list_v2`，新版结构化内容产物统一命名为 `structured_content` |
+| 2026-06-10 | **Job 响应移除原 `metadata.pages` 字段**：`POST /v1/parse/jobs` 系列响应中原 `files[].metadata.pages` 不再迁移到新的 `files[].parse` 对象。现阶段仅通过 `files[].page_range` 表示本次实际解析页码范围 |
+| 2026-06-10 | **Job 响应解析耗时字段改名为 `duration_ms`**：`POST /v1/parse/jobs` 系列响应的 `files[].parse.processing_time_ms` 改名为 `files[].parse.duration_ms`，表示单文件从开始解析到结束的耗时，不包含排队时间 |
+| 2026-06-10 | **Job 响应解析元数据字段改名为 `parse`**：`POST /v1/parse/jobs` 系列响应的 `files[].metadata` 改名为 `files[].parse`，用于承载本次解析执行相关字段 |
+| 2026-06-10 | **Job 响应文件对象新增 `page_range`**：`POST /v1/parse/jobs` 系列响应的 `files[]` 对象新增 `page_range` 字段，返回服务端规范化后的页码范围。未指定时为 `1~{total}`；指定时会展开负数页码、去重并合并连续区间 |
+| 2026-06-10 | **删除 Parse Job `options` 包装层**：`POST /v1/parse/jobs` 的文件级 `page_range` 从 `files[].options.page_range` 提升为 `files[].page_range`。由于 `options` 中已无其他字段，`files[].options` 整体移除 |
+| 2026-06-10 | **删除 Parse Job 文件级 OCR/图片分析开关**：`POST /v1/parse/jobs` 的 `files[].options.ocr` 与 `files[].options.image_analysis` 移除。OCR 策略与图片分析能力由解析档位和服务端引擎自动决定，客户端不再通过文件级参数控制 |
 | 2026-06-08 | **本地 Server API Key 鉴权**：本地自部署 server 支持通过 `--api-key` 启用 Bearer 鉴权。未设置 API Key 时所有端点公开（现有行为不变）；设置后除 health/models/tiers 外的全部端点要求 `Authorization: Bearer <key>`，不匹配返回 401。详见 §1.3 |
 | 2026-06-08 | **删除 `language` 参数与 `language_detected` 字段**：API 全面支持自动语言探测，不再需要客户端传入 `language` 参数。请求 `files[].options.language` 移除，响应 `metadata.language_detected` 移除。解析器内部自动识别文档语言 |
 | 2026-06-08 | **删除 `formula` / `table` 细粒度开关**：不再支持通过 `files[].options.formula` 和 `files[].options.table` 关闭公式识别和表格识别。公式和表格解析始终开启，由引擎内部自动处理 |
@@ -132,7 +142,7 @@ Authorization: Bearer <MINERU_API_KEY>
 - **Content-Type**:`application/json; charset=utf-8`(除上传字节流)
 - **时间**:ISO-8601 UTC 字符串(如 `2026-05-21T08:30:00Z`)或 Unix 秒级时间戳(如 `1719184911`),各端点按场景选用。JOB/Webhook 等任务相关字段用 ISO-8601,File/Upload/Model/ChatCompletion 等资源元数据字段用 Unix 时间戳
 - **ID 格式**:前缀 + 24 字符 base62 随机串,如 `file-r9NSmHLJE6flShV5vQ0Y60Rd`、`upload_r9NSmHLJE6flShV5vQ0Y60Rd`、`job_r9NSmHLJE6flShV5vQ0Y60Rd`。`file` 用连字符 `-`,`upload` 和 `job` 用下划线 `_`(对齐 OpenAI)。代码示例中使用缩写占位符(如 `file-01HXYZ...`)。本地 server 可使用 hex 编码(24 字符,a-f0-9)
-- **空字段**:用 `null`,不省略 key
+- **空字段**:响应中的空字段用 `null`,不省略 key。请求中的可选字段可以省略;省略时按该字段默认值处理
 - **Idempotency-Key**:`POST` 端点支持 `Idempotency-Key` 请求头。传递相同 key 的重复请求返回首次请求的结果,不会重复创建资源(如重复扣费/重复创建 job)。Key 有效期 24 小时
 - **X-Request-Id**:所有响应(含成功与错误)均携带 `X-Request-Id` 头,用于排查问题
 - **URL source 安全约束**(`POST /v1/parse/jobs` 的 `source.type: "url"`):
@@ -395,7 +405,7 @@ GET /v1/tiers  HTTP/1.1
 | `data[].description` | string | 用途说明 |
 | `data[].current_model` | string \| null | 当前该 tier 背后实际使用的模型 ID,对应 `GET /v1/models` 中的 `id`。`auto` 不绑定单一模型,为 `null` |
 
-> **设计说明**:`tier` 是平台精选的解析方案档位,由服务端维护对应的模型版本。客户端用 `tier` 无需关心具体模型,平台升级模型版本时无感。`current_model` 与 job 响应中的 `metadata.model_used` 形成追踪链——用户可从 job 结果反查解析时所使用的模型。
+> **设计说明**:`tier` 是平台精选的解析方案档位,由服务端维护对应的模型版本。客户端用 `tier` 无需关心具体模型,平台升级模型版本时无感。`current_model` 与 job 响应中的 `parse.model_used` 形成追踪链——用户可从 job 结果反查解析时所使用的模型。
 >
 > **HTML 解析**:当输入文件为 HTML 页面(URL 或 `.html` 文件)时,系统自动路由到 HTML 解析器,无需显式指定 tier。`tier` 参数仅影响 PDF/图片等需要版面分析的文档。
 
@@ -1424,11 +1434,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         "type": "file_id",
         "file_id": "file-01HXYZ123ABCDEF"
       },
-      "options": {
-        "ocr": "auto",
-        "image_analysis": true,
-        "page_range": "1-10"
-      }
+      "page_range": "1~10"
     },
     {
       "source": {
@@ -1467,7 +1473,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
 | `files` | array | 是 | 至少 1 个,最多由 access level 决定 |
 | `tier` | enum | 否 | `auto`(默认,平台按文件类型自动选择最佳方案) / `standard` / `pro`。解析档位,服务端按 tier 自动选择模型。HTML 输入自动路由到 HTML 解析器,无需指定 tier |
 | `output_formats` | array | 否 | 选择产物,默认 `["markdown"]`。产物以 File 对象形式存储(`purpose:parse_output`),通过 `GET /v1/files/{file_id}/content` 下载。可选值见下表 |
-| `wait` | int | 否 | 同步等待秒数。`0`:异步模式,立即返回 202。传正值(`[5, 50]`):阻塞等待最多 N 秒,完成返回 200(内容内联),超时返回 202(转为异步轮询)。本地 server 可将上限放宽至 `600` |
+| `wait` | int | 否 | 同步等待秒数。`0`:异步模式,立即返回 202。传正值(`[5, 50]`):阻塞等待最多 N 秒,完成返回 200(只返回产物文件引用),超时返回 202(转为异步轮询)。本地 server 可将上限放宽至 `600` |
 | `callback` | object | 否 | Webhook 通知(需 API Key) |
 
 #### `files[].source`
@@ -1481,13 +1487,15 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
 
 > `local` 类型的文件由服务端直接从磁盘读取,不经过上传流程,不生成 `file_id`。云端 `mineru.net` 不支持此来源,传入返回 `400 invalid_request`。
 
-#### `files[].options`
+#### 文件级字段
+
+除 `source` 外,每个 `files[]` 条目还可包含以下文件级解析字段:
 
 | 字段 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `ocr` | enum | `auto` | `auto` / `true` / `false` / `txt`。`txt` 强制文本提取(不 OCR) |
-| `image_analysis` | bool | `true` | 图片内容分析 |
-| `page_range` | string | `null` | 页码范围,推荐用 `~` 分隔(如 `"1~10"`、`"1,3,5~7"`、`"-5~-1"`)。也支持 `-` 分隔(如 `"1-10"`、`"2--2"` 到倒数第二页) |
+| `page_range` | string | `null` | 页码范围。省略或传 `null` 均表示未指定页码范围,服务端解析整个文件。推荐用 `~` 分隔(如 `"1~10"`、`"1,3,5~7"`、`"-5~-1"`)。也支持 `-` 分隔(如 `"1-10"`、`"2--2"` 到倒数第二页) |
+
+> OCR 策略和图片分析能力由 `tier` 与服务端实际引擎自动决定,客户端不能通过文件级参数单独关闭或开启。
 
 #### `output_formats` 可选值
 
@@ -1496,7 +1504,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
 | `markdown` | 解析产物 | 渲染后的 markdown 文本 | 否 |
 | `json` | 解析产物 | 类型化中间结构(原 `middle_json`) | 否 |
 | `content_list` | 解析产物 | 扁平内容列表 | 否 |
-| `content_list_v2` | 解析产物 | 新版内容列表 | 否 |
+| `structured_content` | 解析产物 | 面向 Agent 和新客户端的结构化内容 JSON | 否 |
 | `images` | 解析产物 | 切片图片 | 否 |
 | `html` | 导出格式 | HTML 格式导出 | **是** |
 | `latex` | 导出格式 | LaTeX 格式导出 | **是** |
@@ -1516,8 +1524,8 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
   "output_formats": ["markdown", "json", "content_list", "images"],
   "access_level": "registered",
   "files": [
-    { "file_id": "file-01HXYZ123ABCDEF", "name": "report.pdf", "status": "queued" },
-    { "file_id": "file-01HXYZ456GHIJKL", "name": "scan.jpg",   "status": "queued" }
+    { "file_id": "file-01HXYZ123ABCDEF", "name": "report.pdf", "page_range": "1~10", "status": "queued" },
+    { "file_id": "file-01HXYZ456GHIJKL", "name": "scan.jpg",   "page_range": "1",    "status": "queued" }
   ],
   "links": {
     "self":   "/v1/parse/jobs/job_01HXYZ123ABCDEF",
@@ -1529,7 +1537,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
 
 **Response (200 OK) — `wait > 0` 且在超时内完成**
 
-文本类产物(`markdown`)内联在 `content` 字段,二进制产物(`images`、`docx`、`zip`)仅返回 `file_id`,需通过 `GET /v1/files/{id}/content` 下载。
+所有解析产物均只返回 File 引用,需通过 `GET /v1/files/{id}/content` 获取内容。
 
 ```json
 {
@@ -1546,18 +1554,17 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
     {
       "file_id": "file-01HXYZ123ABCDEF",
       "name": "report.pdf",
+      "page_range": "1~12",
       "status": "completed",
-      "metadata": {
-        "pages": 12,
+      "parse": {
         "model_used": "MinerU2.5-Pro-2604-1.2B",
-        "processing_time_ms": 8234,
+        "duration_ms": 8234,
         "backend_version": "3.1.14"
       },
       "output_files": {
         "markdown": {
           "file_id": "file-01HXYZMD000001",
-          "bytes": 51407,
-          "content": "# Report\n\n## Section 1\n..."
+          "bytes": 51407
         },
         "json": {
           "file_id": "file-01HXYZJSON000002",
@@ -1572,8 +1579,21 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
 }
 ```
 
-- `markdown` — 唯一内联 `content` 的字段
-- 其他文本/二进制产物(`content_list`、`content_list_v2`、`json`、`html`、`latex`、`images`、`docx`、`zip`) — 仅返回 `file_id` + `bytes`,通过 `GET /v1/files/{id}/content` 下载
+所有输出产物(`markdown`、`content_list`、`structured_content`、`json`、`html`、`latex`、`images`、`docx`、`zip`)均仅返回 `file_id` + `bytes`,通过 `GET /v1/files/{id}/content` 下载。
+
+#### 响应 `files[]` 字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `file_id` | string \| null | 输入 File ID。`local` source 可以为 `null` |
+| `name` | string | 文件显示名 |
+| `page_range` | string | 服务端规范化后的实际解析页码范围。请求未指定时为 `1~{total}`；请求指定时,服务端先按文件总页数展开负数页码,再去重并合并连续页码区间,例如 `1,2,3,-1,-1` 在 10 页文件中规范化为 `1~3,10` |
+| `status` | string | 文件级状态 |
+| `parse` | object | 文件级解析执行信息。仅当该文件 `status="completed"` 时出现 |
+| `output_files` | object | 各输出格式对应的 File 引用。仅当该文件 `status="completed"` 时出现 |
+| `error` | object | 文件失败时出现。仅当该文件 `status="failed"` 时出现 |
+
+`queued`、`running`、`canceled` 状态下的文件可以不返回 `parse`、`output_files` 和 `error`。`partial` job 中,成功文件按 `completed` 文件返回 `parse` 与 `output_files`,失败文件按 `failed` 文件返回 `error`。
 
 **Response (202 Accepted) — `wait=0` 或 `wait` 超时**
 
@@ -1588,8 +1608,8 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
   "output_formats": ["markdown", "json", "images"],
   "access_level": "registered",
   "files": [
-    { "file_id": "file-01HXYZ123ABCDEF", "name": "report.pdf", "status": "running" },
-    { "file_id": "file-01HXYZ456GHIJKL", "name": "scan.jpg",   "status": "running" }
+    { "file_id": "file-01HXYZ123ABCDEF", "name": "report.pdf", "page_range": "1~12", "status": "running" },
+    { "file_id": "file-01HXYZ456GHIJKL", "name": "scan.jpg",   "page_range": "1",    "status": "running" }
   ],
   "links": {
     "self":   "/v1/parse/jobs/job_01HXYZ123ABCDEF",
@@ -1617,6 +1637,8 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
 
 ### 8.2 GET `/v1/parse/jobs/{job_id}` — 查询任务
 
+终态 job 使用与 `POST /v1/parse/jobs` 同步完成响应相同的结构,但只返回产物 File 引用,不返回产物内容。未完成 job 可以只返回当前 `status`、`progress` 和 `files` 的阶段信息。
+
 **Response (200)**
 
 ```json
@@ -1634,11 +1656,11 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
     {
       "file_id": "file-01HXYZ123ABCDEF",
       "name": "report.pdf",
+      "page_range": "1~12",
       "status": "completed",
-      "metadata": {
-        "pages": 12,
+      "parse": {
         "model_used": "MinerU2.5-Pro-2604-1.2B",
-        "processing_time_ms": 8234,
+        "duration_ms": 8234,
         "backend_version": "3.1.14"
       },
       "output_files": {
@@ -1666,6 +1688,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
     {
       "file_id": "file-01HXYZ456GHIJKL",
       "name": "scan.jpg",
+      "page_range": "1",
       "status": "failed",
       "error": {
         "code": "ocr_failed",
@@ -1745,7 +1768,7 @@ data: {"job_id":"job_01HXYZ...","status":"completed"}
       "job_id": "job_01HXYZ...",
       "status": "completed",
       "created_at": "2026-05-21T08:30:00Z",
-      "files_count": 2
+      "file_count": 2
     }
   ],
   "first_id": "job_01HXYZAAA...",
@@ -2046,7 +2069,7 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
   -d "{
     \"files\": [{
       \"source\": {\"type\":\"file_id\",\"file_id\":\"$FILE_ID\"},
-      \"options\": {\"ocr\":\"auto\"}
+      \"page_range\":\"1~10\"
     }],
     \"tier\": \"pro\",    \"output_formats\": [\"markdown\",\"json\",\"images\"]
   }"
@@ -2057,7 +2080,7 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
 curl https://mineru.net/api/v1/parse/jobs/job_... \
   -H "Authorization: Bearer $MINERU_API_KEY"
 
-# → 200 {"status":"completed","files":[{"output_files":{...}}]}
+# → 200 {"status":"completed","files":[{"page_range":"1~10","output_files":{...}}]}
 
 # 6. 下载产物(通过 Files API)
 curl -L "https://mineru.net/api/v1/files/$MD_FILE_ID/content" \
@@ -2091,7 +2114,7 @@ FILE_ID=$(echo "$RESP" | jq -r '.file.id')
 # 后续同 13.1 的步骤 4-6
 ```
 
-### 13.3 同步等待(已有 file_id,一步拿到 markdown)
+### 13.3 同步等待(已有 file_id,减少轮询)
 
 ```bash
 # 上传步骤同 13.1 或 13.2,拿到 FILE_ID 后:
@@ -2102,10 +2125,10 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
   -H "Content-Type: application/json" \
   -d "{
     \"files\": [{
-      \"source\": {\"type\":\"file_id\",\"file_id\":\"$FILE_ID\"},
-      \"options\": {\"ocr\":\"auto\"}
+      \"source\": {\"type\":\"file_id\",\"file_id\":\"$FILE_ID\"}
     }],
-    \"tier\": \"pro\",    \"output_formats\": [\"markdown\",\"json\"],
+    \"tier\": \"pro\",
+    \"output_formats\": [\"markdown\",\"json\"],
     \"wait\": 30
   }"
 
@@ -2114,8 +2137,9 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
 #   "job_id": "job_...",
 #   "status": "completed",
 #   "files": [{
+#     "page_range": "1~12",
 #     "output_files": {
-#       "markdown": {"file_id": "file-md-xxx", "content": "# Report\n..."},
+#       "markdown": {"file_id": "file-md-xxx", "bytes": 51407},
 #       "json":   {"file_id": "file-json-xxx", "bytes": 184320}
 #     }
 #   }]
@@ -2125,10 +2149,9 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
 # {"job_id":"job_...","status":"running","links":{...}}
 # 继续用 GET /v1/parse/jobs/job_... 轮询
 
-# 如果返回 200, markdown 已在 .files[0].output_files.markdown.content 中
-# 图片等二进制产物仍需通过 file_id 下载:
-# curl -L "https://mineru.net/api/v1/files/$IMG_FILE_ID/content" \
-#   -H "Authorization: Bearer $MINERU_API_KEY" -o image.jpg
+# 如果返回 200,从 .files[0].output_files.markdown.file_id 取出产物 File ID,再下载内容:
+curl -L "https://mineru.net/api/v1/files/$MD_FILE_ID/content" \
+  -H "Authorization: Bearer $MINERU_API_KEY" -o report.md
 ```
 
 ### 13.4 批量上传(100 个文件,提供 sha256sum 享受秒传)
@@ -2188,7 +2211,7 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
     "output_formats": ["markdown"]
   }'
 
-# → 202 {"job_id":"job_...","access_level":"anonymous","files":[{"file_id":"file-01HXYZ..."}]}
+# → 202 {"job_id":"job_...","access_level":"anonymous","files":[{"file_id":"file-01HXYZ...","page_range":"1~12"}]}
 # (服务端拉取后,响应中的 file_id 已回填,可后续复用免重新上传)
 ```
 
@@ -2206,7 +2229,7 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
 | `GET /parse/{task_id}` (Flash) | `GET /v1/parse/jobs/{id}` |
 | `markdown_url` (Flash) | `output_files.markdown.file_id` → `GET /v1/files/{id}/content` |
 | —(新增) | `POST /v1/uploads` 携带 `sha256sum` 实现秒传 |
-| —(新增,同步) | `POST /v1/parse/jobs` 携带 `wait:30`,阻塞等待直接拿到 markdown 内容 |
+| —(新增,同步) | `POST /v1/parse/jobs` 携带 `wait:30`,阻塞等待直到任务完成并返回产物 File 引用 |
 
 ---
 
@@ -2299,7 +2322,7 @@ Content-Type: application/json
 
 {
   "files":[{"source":{"type":"file_id","file_id":"file-..."},
-            "options":{}}],
+            "page_range":"1~10"}],
   "tier":"standard",
   "output_formats":["markdown","json","content_list","images"]
 }
@@ -2329,7 +2352,7 @@ Authorization: Bearer <MINERU_API_KEY>
   "job_id":"job_...",
   "status":"completed",
   "progress":{"completed":1,"total":1},
-  "files":[{"file_id":"file-01HXYZ...","output_files":{...}}]
+  "files":[{"file_id":"file-01HXYZ...","page_range":"1~10","output_files":{...}}]
 }
 ```
 
@@ -2453,7 +2476,7 @@ Content-Type: application/pdf
 POST /v1/parse/jobs
 {
   "files":[{"source":{"type":"file_id","file_id":"file-01HXYZ..."},
-            "options":{"ocr":"auto","page_range":"1-10"}}],
+            "page_range":"1~10"}],
   "tier":"pro",
   "output_formats":["markdown","json","images","docx"]
 }
@@ -2462,7 +2485,7 @@ POST /v1/parse/jobs
 
 **差异**
 - 旧:上传 = 解析任务(`batch_id` 同时是上传组和解析任务);新:文件与任务解耦,**同一 `file_id` 可被多个 jobs 复用**(切换 model、改 page_range、跑不同 output_formats 都不必重传)
-- 旧:`page_ranges` 写在 Call 1 的 file 条目里;新:写在 job 的 `options`(因为属于解析行为)
+- 旧:`page_ranges` 写在 Call 1 的 file 条目里;新:`page_range` 写在 job 的 `files[]` 条目里(因为属于本次解析行为)
 - 旧:`model_version` 在 Call 1 顶层;新:`tier` 在 `POST /v1/parse/jobs` 顶层
 
 #### Call 4 — 轮询结果
@@ -2490,10 +2513,12 @@ GET /v1/parse/jobs/job_...
 → 200 {
   "status":"partial",
   "files":[
-    {"file_id":"file-01HXYZ...","status":"completed","output_files":{
-       "markdown":{"url":"..."},"json":{"url":"..."}, "images":[...]
+    {"file_id":"file-01HXYZ...","page_range":"1~10","status":"completed","output_files":{
+       "markdown":{"file_id":"file-MD...","bytes":51407},
+       "json":{"file_id":"file-JSON...","bytes":184320},
+       "images":[{"path":"images/0.jpg","file_id":"file-IM...","bytes":102400}]
     }},
-    {"file_id":"file-01HXYZ...","status":"failed","error":{...}}
+    {"file_id":"file-01HXYZ...","page_range":"1~3","status":"failed","error":{...}}
   ]
 }
 ```
@@ -2502,7 +2527,7 @@ GET /v1/parse/jobs/job_...
 - 旧:`{code,msg,data}` envelope;新:扁平资源对象 + HTTP 状态码
 - 旧:`state` 取值 `done`/`running`/`failed`;新:`status` 含 `queued`/`running`/`completed`/`partial`/`failed`/`canceled`(多出 `partial` 表示部分成功)
 - 旧:成功时只给 `full_zip_url`;新:逐 artifact URL,可只下需要的
-- 新增:`progress`、`metadata.processing_time_ms` 等可观测字段
+- 新增:`progress`、`parse.duration_ms` 等可观测字段
 
 #### Call 5 — 下载结果
 
@@ -2527,7 +2552,7 @@ GET /v1/files/file-IM.../content    → 302 → 单张图片
 
 **差异**(同 13.1 Call 3,要点一致)
 - 单 ZIP → 多 URL 拆分
-- 旧 ZIP 内文件名/结构需客户端解析约定;新 artifact 类型在 metadata 中明确
+- 旧 ZIP 内文件名/结构需客户端解析约定;新 artifact 类型在 parse 信息与输出文件类型中明确
 
 ---
 
@@ -2571,7 +2596,7 @@ POST /v1/uploads
 POST /v1/parse/jobs
 {
   "files":[{"source":{"type":"file_id","file_id":"file-..."},
-            "options":{"page_range":"1-5","ocr":"auto"}}],
+            "page_range":"1~5"}],
   "output_formats":["markdown"]
 }
 → 202 {"job_id":"job_...","access_level":"anonymous"}
@@ -2582,7 +2607,7 @@ POST /v1/parse/jobs
 - 旧:**单文件**任务;新:任意数量文件
 - 旧:`{code,msg,data}` envelope;新:扁平资源
 - 旧:无 sha256/秒传概念;新:可选秒传
-- 旧:任务参数写在 Call 1 顶层;新:文件级参数(`page_range`)在 `files[].options`,任务级参数(`tier`, `output_formats`)在 job 顶层
+- 旧:任务参数写在 Call 1 顶层;新:文件级参数(`page_range`)在 `files[]` 条目上,任务级参数(`tier`, `output_formats`)在 job 顶层
 
 #### Call 2 — 上传字节
 
@@ -2618,7 +2643,8 @@ GET /v1/parse/jobs/job_...
   "status":"completed",
   "files":[{
     "file_id":"file-01HXYZ...",
-    "output_files":{"markdown":{"url":"https://cdn/.../doc.md"}}
+    "page_range":"1~5",
+    "output_files":{"markdown":{"file_id":"file-MD...","bytes":51407}}
   }]
 }
 ```
@@ -2675,7 +2701,7 @@ GET /v1/files/file-MD.../content
 | 新 API | 4 (+轮询) | POST /v1/uploads → PUT → POST /v1/parse/jobs → poll → GET /v1/files/{id}/content |
 | 新 API(秒传命中) | 3 (+轮询) | POST /v1/uploads → POST /v1/parse/jobs → poll → GET /v1/files/{id}/content |
 | 新 API(同 file_id 复用) | 2 (+轮询) | POST /v1/parse/jobs → poll → GET /v1/files/{id}/content |
-| 新 API(同步 wait) | 1 | POST /v1/parse/jobs {wait:30} → 200 content 内联 |
+| 新 API(同步 wait) | 2 | POST /v1/parse/jobs {wait:30} → 200 output_files → GET /v1/files/{id}/content |
 
 > 同 file_id 复用是新 API 独有优势:相同文件换个 `tier` / `page_range` / `output_formats` 重跑无需任何上传。
 
@@ -2683,9 +2709,8 @@ GET /v1/files/file-MD.../content
 
 ## 16. TODO
 
-- **§8.1 `content_list` 与 `content_list_v2` 并存**:v1 何时下线?需制定迁移计划,并考虑以 `schema_version` 替代多值。
+- **§8.1 `content_list` 与 `structured_content` 并存**:v1 何时下线?需制定迁移计划,并考虑以 `schema_version` 替代多值。
 - **§8.1 计量与计费**:文档暂未涉及计费规则(按页/按 token/按文件),需补充分计费说明或独立计费文档。
 - **§1.4 时间格式**:当前 JOB/Webhook 用 ISO-8601,File/Model/Chat 用 Unix 时间戳。未来评估是否需要统一为单一格式。
 
 > 以下为原始文档结尾,end of file.
-
