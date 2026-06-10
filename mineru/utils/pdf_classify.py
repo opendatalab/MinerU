@@ -508,22 +508,35 @@ def get_u72xx_text_signal_pdfium(pdf_doc, page_indices):
     return _get_u72xx_text_signal_from_samples(text_samples)
 
 
-def _count_ascii_punct_run_chars(text: str) -> int:
-    """统计连续 ASCII 标点字符数，仅累计长度达到阈值的 run。"""
+def _get_ascii_punct_run_signal(text: str) -> tuple[int, set[str]]:
+    """统计长连续 ASCII 标点 run 的字符数和标点类型，用于区分目录点线和乱码。"""
     run_chars = 0
+    run_punct_chars = set()
     current_run = 0
+    current_punct_chars = set()
 
     for char in text:
         if char in ASCII_PUNCT_CHARS:
             current_run += 1
+            current_punct_chars.add(char)
             continue
 
         if current_run >= ASCII_PUNCT_RUN_MIN_LENGTH:
             run_chars += current_run
+            run_punct_chars.update(current_punct_chars)
         current_run = 0
+        current_punct_chars.clear()
 
     if current_run >= ASCII_PUNCT_RUN_MIN_LENGTH:
         run_chars += current_run
+        run_punct_chars.update(current_punct_chars)
+
+    return run_chars, run_punct_chars
+
+
+def _count_ascii_punct_run_chars(text: str) -> int:
+    """统计连续 ASCII 标点字符数，仅累计长度达到阈值的 run。"""
+    run_chars, _ = _get_ascii_punct_run_signal(text)
 
     return run_chars
 
@@ -547,7 +560,9 @@ def _get_sampled_ascii_punct_signal_from_samples(text_samples):
         ascii_punct_count = sum(
             1 for char in cleaned_text if char in ASCII_PUNCT_CHARS
         )
-        ascii_punct_run_chars = _count_ascii_punct_run_chars(cleaned_text)
+        ascii_punct_run_chars, ascii_punct_run_char_types = (
+            _get_ascii_punct_run_signal(cleaned_text)
+        )
 
         ascii_punct_ratio = 0.0
         punct_run_ratio = 0.0
@@ -568,6 +583,7 @@ def _get_sampled_ascii_punct_signal_from_samples(text_samples):
             cleaned_text_chars >= SUSPICIOUS_ASCII_PUNCT_MIN_TEXT_CHARS
             and ascii_punct_ratio >= SUSPICIOUS_ASCII_PUNCT_RATIO_THRESHOLD
             and punct_run_ratio >= SUSPICIOUS_ASCII_PUNCT_RUN_RATIO_THRESHOLD
+            and len(ascii_punct_run_char_types) > 1
         ):
             signal["triggered"] = True
             return signal
