@@ -84,7 +84,7 @@ MEDIUM_EFFORT_LAYOUT_LABEL_TO_VLM_TYPE = {
     "abstract": BlockType.TEXT,
     "algorithm": BlockType.CODE,
     "aside_text": BlockType.ASIDE_TEXT,
-    "content": BlockType.TEXT,
+    "content": BlockType.INDEX,
     "doc_title": BlockType.TITLE,
     "footer": BlockType.FOOTER,
     "footer_image": BlockType.FOOTER,

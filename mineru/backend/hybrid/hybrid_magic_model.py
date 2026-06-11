@@ -135,6 +135,7 @@ class MagicModel:
                 "aside_text",
                 "page_footnote",
                 "list",
+                "index",
             ]:
                 span_type = ContentType.TEXT
             elif block_type in ["image_caption", "table_caption", "code_caption"]:
@@ -317,6 +318,10 @@ class MagicModel:
                 }
                 block = fix_text_block(block)
                 _copy_raw_text_block_metadata(raw_block_type, block_info, block)
+
+            if block["type"] == BlockType.INDEX:
+                # index 仅用于 Hybrid medium content 强制走 VLM-OCR，输出前统一还原为正文。
+                block["type"] = BlockType.TEXT
 
             blocks.append(block)
 
