@@ -62,7 +62,7 @@ docker run -u root --name mineru_docker \
       <td>🟢</td>
     </tr>
     <tr>
-      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
+      <td>&lt;vlm/hybrid&gt;-engine</td>
       <td>🟢</td>
     </tr>
     <tr>
@@ -75,7 +75,7 @@ docker run -u root --name mineru_docker \
       <td>🟢</td>
     </tr>
     <tr>
-      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
+      <td>&lt;vlm/hybrid&gt;-engine</td>
       <td>🟢</td>
     </tr>
     <tr>
@@ -88,7 +88,7 @@ docker run -u root --name mineru_docker \
       <td>🟢</td>
     </tr>
     <tr>
-      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
+      <td>&lt;vlm/hybrid&gt;-engine</td>
       <td>🟢</td>
     </tr>
     <tr>

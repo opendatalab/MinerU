@@ -1,10 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from mineru.backend.pipeline.para_split import ListLineTag
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import _merge_para_text
-from mineru.utils.boxbase import (
-    calculate_overlap_area_2_minbox_area_ratio,
-    calculate_overlap_area_in_bbox1_area_ratio,
-)
+from mineru.backend.utils.formula_number import formula_number_max_overlap_ratio
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
 from mineru.utils.span_block_fix import merge_spans_to_vertical_line, vertical_line_sort_spans_from_top_to_bottom, \
@@ -286,7 +283,7 @@ class MagicModel:
                 if block["type"] == BlockType.FORMULA_NUMBER:
                     block_spans = span_matcher.collect_for_block(
                         block["bbox"],
-                        overlap_ratio_getter=self.__formula_number_overlap_ratio,
+                        overlap_ratio_getter=formula_number_max_overlap_ratio,
                     )
                 else:
                     block_spans = span_matcher.collect_for_block(block["bbox"])
@@ -294,14 +291,6 @@ class MagicModel:
                 block["spans"] = block_spans
                 block = self.__fix_text_block(block)
         self.page_text_inline_formula_spans = span_matcher.remaining_spans()
-
-    @staticmethod
-    def __formula_number_overlap_ratio(span, block_bbox):
-        """公式编号框较窄时，沿用最小框重叠比例提高回填召回。"""
-        return max(
-            calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block_bbox),
-            calculate_overlap_area_2_minbox_area_ratio(span['bbox'], block_bbox),
-        )
 
     def __fix_axis(self):
         need_remove_list = []

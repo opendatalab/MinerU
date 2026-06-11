@@ -10,6 +10,11 @@ from typing import Sequence
 
 from loguru import logger
 
+from mineru.cli.backend_options import (
+    DEFAULT_HYBRID_EFFORT,
+    normalize_backend,
+    validate_effort,
+)
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
@@ -69,9 +74,11 @@ def ensure_backend_dependencies(backend: str) -> None:
 
 
 def _load_hybrid_analyze_entrypoint(entrypoint_name: str, backend: str):
+    """加载统一 hybrid analyze 入口，解析强度由公开 effort 参数控制。"""
     ensure_backend_dependencies(backend)
+    module_name = "mineru.backend.hybrid.hybrid_analyze"
     try:
-        hybrid_analyze = importlib.import_module("mineru.backend.hybrid.hybrid_analyze")
+        hybrid_analyze = importlib.import_module(module_name)
     except (ImportError, ModuleNotFoundError) as exc:
         raise HybridDependencyError(
             build_hybrid_dependency_error_message(backend)
@@ -502,7 +509,6 @@ def _process_hybrid(
         output_dir,
         pdf_file_names,
         pdf_bytes_list,
-        h_lang_list,
         parse_method,
         inline_formula_enable,
         backend,
@@ -515,6 +521,7 @@ def _process_hybrid(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
+        effort=DEFAULT_HYBRID_EFFORT,
         **kwargs,
 ):
     hybrid_doc_analyze = _load_hybrid_analyze_entrypoint(
@@ -525,25 +532,24 @@ def _process_hybrid(
     if not backend.endswith("client"):
         server_url = None
 
-    for idx, (pdf_bytes, lang) in enumerate(zip(pdf_bytes_list, h_lang_list)):
+    for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-        middle_json, infer_result, _vlm_ocr_enable = hybrid_doc_analyze(
+        middle_json, infer_result = hybrid_doc_analyze(
             pdf_bytes,
             image_writer=image_writer,
             backend=backend,
             parse_method=parse_method,
-            language=lang,
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
+            effort=validate_effort(effort),
             **kwargs,
         )
 
         pdf_info = middle_json["pdf_info"]
 
-        # f_draw_span_bbox = not _vlm_ocr_enable
         f_draw_span_bbox = False
 
         _process_output(
@@ -558,7 +564,6 @@ async def _async_process_hybrid(
         output_dir,
         pdf_file_names,
         pdf_bytes_list,
-        h_lang_list,
         parse_method,
         inline_formula_enable,
         backend,
@@ -571,6 +576,7 @@ async def _async_process_hybrid(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
+        effort=DEFAULT_HYBRID_EFFORT,
         **kwargs,
 ):
     aio_hybrid_doc_analyze = _load_hybrid_analyze_entrypoint(
@@ -581,25 +587,24 @@ async def _async_process_hybrid(
     if not backend.endswith("client"):
         server_url = None
 
-    for idx, (pdf_bytes, lang) in enumerate(zip(pdf_bytes_list, h_lang_list)):
+    for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-        middle_json, infer_result, _vlm_ocr_enable = await aio_hybrid_doc_analyze(
+        middle_json, infer_result = await aio_hybrid_doc_analyze(
             pdf_bytes,
             image_writer=image_writer,
             backend=backend,
             parse_method=parse_method,
-            language=lang,
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
+            effort=validate_effort(effort),
             **kwargs,
         )
 
         pdf_info = middle_json["pdf_info"]
 
-        # f_draw_span_bbox = not _vlm_ocr_enable
         f_draw_span_bbox = False
 
         _process_output(
@@ -682,8 +687,10 @@ def do_parse(
         end_page_id=None,
         image_analysis=True,
         client_side_output_generation=False,
+        effort=DEFAULT_HYBRID_EFFORT,
         **kwargs,
 ):
+    backend = normalize_backend(backend)
     need_remove_index = _process_office_doc(
         output_dir,
         pdf_file_names=pdf_file_names,
@@ -718,10 +725,7 @@ def do_parse(
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
-            if backend == "vllm-async-engine":
-                raise Exception("vlm-vllm-async-engine backend is not supported in sync mode, please use vlm-vllm-engine backend")
-
-            if backend == "auto-engine":
+            if backend == "engine":
                 backend = get_vlm_engine(inference_engine='auto', is_async=False)
 
             os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
@@ -738,21 +742,17 @@ def do_parse(
             ensure_backend_dependencies(backend)
             backend = backend[7:]
 
-            if backend == "vllm-async-engine":
-                raise Exception(
-                    "hybrid-vllm-async-engine backend is not supported in sync mode, please use hybrid-vllm-engine backend")
-
-            if backend == "auto-engine":
+            if backend == "engine":
                 backend = get_vlm_engine(inference_engine='auto', is_async=False)
 
             os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
             os.environ['MINERU_VLM_FORMULA_ENABLE'] = "true"
 
             _process_hybrid(
-                output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
+                output_dir, pdf_file_names, pdf_bytes_list, parse_method, formula_enable, backend,
                 f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                server_url, image_analysis=image_analysis,
+                server_url, effort=effort, image_analysis=image_analysis,
                 client_side_output_generation=client_side_output_generation, **kwargs,
             )
 
@@ -779,8 +779,10 @@ async def aio_do_parse(
         end_page_id=None,
         image_analysis=True,
         client_side_output_generation=False,
+        effort=DEFAULT_HYBRID_EFFORT,
         **kwargs,
 ):
+    backend = normalize_backend(backend)
     # Office 解析是同步且可能耗时的操作，异步入口需要放到线程中避免阻塞事件循环。
     need_remove_index = await asyncio.to_thread(
         _process_office_doc,
@@ -818,10 +820,7 @@ async def aio_do_parse(
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
-            if backend == "vllm-engine":
-                raise Exception("vlm-vllm-engine backend is not supported in async mode, please use vlm-vllm-async-engine backend")
-
-            if backend == "auto-engine":
+            if backend == "engine":
                 backend = get_vlm_engine(inference_engine='auto', is_async=True)
 
             os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
@@ -838,20 +837,17 @@ async def aio_do_parse(
             ensure_backend_dependencies(backend)
             backend = backend[7:]
 
-            if backend == "vllm-engine":
-                raise Exception("hybrid-vllm-engine backend is not supported in async mode, please use hybrid-vllm-async-engine backend")
-
-            if backend == "auto-engine":
+            if backend == "engine":
                 backend = get_vlm_engine(inference_engine='auto', is_async=True)
 
             os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
             os.environ['MINERU_VLM_FORMULA_ENABLE'] = "true"
 
             await _async_process_hybrid(
-                output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
+                output_dir, pdf_file_names, pdf_bytes_list, parse_method, formula_enable, backend,
                 f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                server_url, image_analysis=image_analysis,
+                server_url, effort=effort, image_analysis=image_analysis,
                 client_side_output_generation=client_side_output_generation, **kwargs,
             )
 

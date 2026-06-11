@@ -296,12 +296,17 @@ def fill_char_in_spans(spans, all_chars, median_span_height):
     return need_ocr_spans
 
 
-LINE_STOP_FLAG = ('.', '!', '?', '。', '！', '？', ')', '）', '"', '”', ':', '：', ';', '；', ']', '】', '}', '}', '>', '》', '、', ',', '，', '-', '—', '–',)
-LINE_START_FLAG = ('(', '（', '"', '“', '【', '{', '《', '<', '「', '『', '【', '[',)
+LINE_STOP_FLAG = (
+    '.', '!', '?', '。', '！', '？', ')', '）', '"', '”', ':', '：', ';',
+    '；', ']', '】', '}', '}', '>', '》', '、', ',', '，', '-', '—', '–',
+)
+LINE_START_FLAG = (
+    '(', '（', '"', '“', '【', '{', '《', '<', '「', '『', '【', '[',
+)
 
 Span_Height_Ratio = 0.33  # 字符的中轴和span的中轴高度差不能超过1/3span高度
 SCRIPT_BODY_HEIGHT_RATIO = 0.9
-SCRIPT_CENTER_TOLERANCE_RATIO = 0.12
+SCRIPT_CENTER_TOLERANCE_RATIO = 0.15
 
 
 def _is_private_use_char(char: str) -> bool:
@@ -386,7 +391,8 @@ def calculate_char_in_span(char_bbox, span_bbox, char, span_height_ratio=Span_He
     if (
         span_bbox[0] < char_center_x < span_bbox[2]
         and span_bbox[1] < char_center_y < span_bbox[3]
-        and abs(char_center_y - span_center_y) < span_height * span_height_ratio  # 字符的中轴和span的中轴高度差不能超过Span_Height_Ratio
+        # 字符的中轴和span的中轴高度差不能超过Span_Height_Ratio
+        and abs(char_center_y - span_center_y) < span_height * span_height_ratio
     ):
         return True
     else:
@@ -520,6 +526,14 @@ def _wrap_script_runs(role_text_parts):
     return ''.join(wrapped_parts)
 
 
+def _remove_control_line_break_chars(chars):
+    """过滤 PDFium 文本片段边界控制换行，避免其参与字符间距补空格。"""
+    return [
+        char for char in chars
+        if char.get('char') not in {'\r', '\n'}
+    ]
+
+
 def chars_to_content(span):
     # 检查span中的char是否为空
     if len(span['chars']) != 0:
@@ -531,34 +545,38 @@ def chars_to_content(span):
         ):
             chars = sorted(chars, key=lambda x: x['char_idx'])
 
-        char_metrics = _get_char_bbox_metrics_list(chars)
-        # Calculate the width of each character
-        char_widths = [metrics['width'] for metrics in char_metrics]
-        # Calculate the median width
-        median_width = statistics.median(char_widths)
-        script_roles = _classify_char_script_roles(chars, char_metrics)
+        chars = _remove_control_line_break_chars(chars)
+        if len(chars) == 0:
+            span['content'] = ''
+        else:
+            char_metrics = _get_char_bbox_metrics_list(chars)
+            # Calculate the width of each character
+            char_widths = [metrics['width'] for metrics in char_metrics]
+            # Calculate the median width
+            median_width = statistics.median(char_widths)
+            script_roles = _classify_char_script_roles(chars, char_metrics)
 
-        role_text_parts = []
-        for idx, char1 in enumerate(chars):
-            char2 = chars[idx + 1] if idx + 1 < len(chars) else None
-            role1 = script_roles[idx]
-            role2 = script_roles[idx + 1] if char2 else None
+            role_text_parts = []
+            for idx, char1 in enumerate(chars):
+                char2 = chars[idx + 1] if idx + 1 < len(chars) else None
+                role1 = script_roles[idx]
+                role2 = script_roles[idx + 1] if char2 else None
 
-            # 如果下一个char的x0和上一个char的x1距离超过0.25个字符宽度，则需要在中间插入一个空格
-            role_text_parts.append((role1, char1['char']))
-            if (
-                char2
-                and char2['bbox'][0] - char1['bbox'][2] > median_width * 0.25
-                and char1['char'] != ' '
-                and char2['char'] != ' '
-            ):
-                space_role = role1 if role1 == role2 else 'body'
-                role_text_parts.append((space_role, ' '))
+                # 如果下一个char的x0和上一个char的x1距离超过0.25个字符宽度，则需要在中间插入一个空格
+                role_text_parts.append((role1, char1['char']))
+                if (
+                    char2
+                    and char2['bbox'][0] - char1['bbox'][2] > median_width * 0.25
+                    and char1['char'] != ' '
+                    and char2['char'] != ' '
+                ):
+                    space_role = role1 if role1 == role2 else 'body'
+                    role_text_parts.append((space_role, ' '))
 
-        content = _wrap_script_runs(role_text_parts)
-        content = __replace_unicode(content)
-        content = __replace_ligatures(content)
-        span['content'] = content.strip()
+            content = _wrap_script_runs(role_text_parts)
+            content = __replace_unicode(content)
+            content = __replace_ligatures(content)
+            span['content'] = content.strip()
 
     del span['chars']
 
