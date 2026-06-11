@@ -12,15 +12,19 @@ Options:
   -o, --output PATH               Output directory (required)
   --api-url TEXT                  MinerU FastAPI base URL; if omitted, `mineru` starts a temporary local `mineru-api`
   -m, --method [auto|txt|ocr]     Parsing method: auto (default), txt, ocr (pipeline and hybrid* backend only)
-  -b, --backend [pipeline|hybrid-auto-engine|hybrid-http-client|vlm-auto-engine|vlm-http-client]
-                                  Parsing backend (default: hybrid-auto-engine)
+  -b, --backend [pipeline|vlm-engine|hybrid-engine|vlm-http-client|hybrid-http-client]
+                                  Parsing backend (default: hybrid-engine)
+  --effort [medium|high]          Hybrid parsing effort (default: medium)
   -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|th|el|latin|arabic|east_slavic|cyrillic|devanagari]
-                                  Specify document language (improves OCR accuracy, pipeline and hybrid* backend only)
+                                  Specify document language (improves OCR accuracy, pipeline backend only)
   -u, --url TEXT                  OpenAI-compatible backend URL passed through to the server when using http-client
   -s, --start INTEGER             Starting page number for parsing (0-based)
   -e, --end INTEGER               Ending page number for parsing (0-based)
   -f, --formula BOOLEAN           Enable formula parsing (default: enabled)
   -t, --table BOOLEAN             Enable table parsing (default: enabled)
+  --image-analysis BOOLEAN        Enable image/chart analysis for VLM and hybrid
+                                  backends. Hybrid medium effort automatically
+                                  disables image/chart analysis (default: enabled)
   --client-side-output-generation BOOLEAN
                                   Generate Markdown and content lists locally
                                   from server-returned middle JSON, images, and
@@ -189,10 +193,6 @@ Here are the environment variables and their descriptions:
       <= 4   GB               | 4
       <= 3   GB               | 2
       <= 2   GB               | 1
-
-- `MINERU_HYBRID_FORCE_PIPELINE_ENABLE`:
-    * Used to force the text extraction part in `hybrid-*` backends to be processed using small models.
-    * Defaults to `false`. Can be set to `true` via environment variable to enable this feature, thereby reducing hallucinations in certain extreme cases.
 
 - `MINERU_VL_MODEL_NAME`:
     * Used to specify the model name for the vlm/hybrid backend, allowing you to designate the model required for MinerU to run when multiple models exist on a remote openai-server.

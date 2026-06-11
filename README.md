@@ -80,6 +80,25 @@ Domestic AI chips: Ascend · Cambricon · Enflame · MetaX · Moore Threads · K
 
 # Changelog
 
+- 2026/06/11 3.3.0 Released
+
+  This release focuses on **Hybrid parsing performance optimization** and **VLM model capability upgrades**. The main updates include:
+
+  - New `effort` parsing-strength parameter for the Hybrid backend
+    - Added two parsing-strength levels, `medium` and `high`, allowing users to balance parsing speed, parsing accuracy, and feature requirements.
+    - On OmniDocBench v1.6, `medium` reduces overall accuracy by only `0.13` points compared with `high`, while delivering `35%` ~ `220%` parsing speed improvements across different devices and scenarios:
+      - Linux: about `80%` faster for text PDF scenarios and about `35%` faster for OCR scenarios
+      - Windows: about `90%` faster for text PDF scenarios and about `45%` faster for OCR scenarios
+      - macOS: about `220%` faster for text PDF scenarios and about `50%` faster for OCR scenarios
+    - The default Hybrid backend now uses `effort=medium`, significantly improving overall parsing efficiency while maintaining high parsing accuracy.
+    - The `medium` level does not support `image analysis`; for maximum parsing accuracy or `image analysis` support, switch to the high-strength parsing mode with `effort=high`, which may have an impact on parsing speed.
+
+  - VLM model upgraded to `MinerU2.5-Pro-2605-1.2B`
+    - Fixed multiple model issues found in the `2604` version, further improving parsing stability on complex documents.
+    - Added native multilingual OCR support, reducing the need for extra language-parameter configuration and improving out-of-the-box usability for multilingual documents.
+
+  With the 3.3.0 release, MinerU further improves Hybrid backend efficiency across platforms and scenarios while maintaining high-accuracy parsing. The default `medium` effort level is better suited for most day-to-day document processing tasks, while `high` is designed for scenarios that require maximum parsing accuracy or `image analysis` capabilities.
+
 - 2026/04/18 3.1.0 Released
 
   This release focuses on **licensing openness, parsing accuracy, and full-format native support**. The main updates include:
@@ -185,7 +204,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     <tr>
       <th rowspan="2">Parsing Backend</th>
       <th rowspan="2">pipeline</th>
-      <th colspan="2">*-auto-engine</th>
+      <th colspan="2">*-engine</th>
       <th colspan="2">*-http-client</th>
     </tr>
     <tr>
@@ -204,8 +223,11 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     </tr> 
     <tr>
       <th>Accuracy<sup>1</sup></th>
-      <td style="text-align:center;">85+</td>
-      <td colspan="4" style="text-align:center;">95+</td>
+      <td style="text-align:center;">85.75</td>
+      <td style="text-align:center;">95.39 (high)<br>95.26 (medium)</td>
+      <td style="text-align:center;">95.30</td>
+      <td style="text-align:center;">95.39 (high)<br>95.26 (medium)</td>
+      <td style="text-align:center;">95.30</td>
     </tr>
     <tr>
       <th>Operating System</th>
@@ -225,8 +247,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     <tr>
       <th>Min VRAM</th>
       <td style="text-align:center;">4GB</td>
-      <td style="text-align:center;">8GB</td>
-      <td style="text-align:center;">8GB</td>
+      <td colspan="2" style="text-align:center;">8GB</td>
       <td style="text-align:center;">2GB</td>
     </tr>
     <tr>
