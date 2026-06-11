@@ -7,21 +7,9 @@ CONSERVATIVE_MARKDOWN_SPECIAL_CHARS = ("*", "_", "`", "~", "$")
 TEXT_BLOCK_MARKDOWN_PREFIX_RE = re.compile(
     r"^(?P<indent>[ \t]{0,3})(?P<marker>#{1,6}|[+-])(?=[ \t])"
 )
-BARE_HTTP_URL_RE = re.compile(
-    r"https?://[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+"
-)
-TRAILING_URL_PUNCTUATION = ".,;:!?"
-TRAILING_URL_BRACKETS = {
-    ")": "(",
-    "]": "[",
-    "}": "{",
-}
 
 
-def escape_conservative_markdown_text(
-    content: str,
-    protect_bare_urls: bool = True,
-) -> str:
+def escape_conservative_markdown_text(content: str) -> str:
     """Escape plain-text characters that carry inline Markdown semantics."""
     if not content:
         return content
@@ -44,74 +32,7 @@ def escape_conservative_markdown_text(
         escaped_chars.append(char)
         preceding_backslashes = 0
 
-    escaped_content = "".join(escaped_chars)
-    if protect_bare_urls:
-        return protect_bare_urls_in_markdown_text(escaped_content)
-    return escaped_content
-
-
-def protect_bare_urls_in_markdown_text(content: str) -> str:
-    """将普通文本中的裸 URL 包成显式 autolink，避免预览器误吞后续正文。"""
-    if not content:
-        return content
-
-    return BARE_HTTP_URL_RE.sub(
-        lambda match: _render_protected_bare_url(content, match),
-        content,
-    )
-
-
-def _render_protected_bare_url(content: str, match: re.Match) -> str:
-    """渲染一个裸 URL 命中；已有 Markdown/HTML 链接上下文保持原样。"""
-    if _is_existing_link_url_context(content, match.start()):
-        return match.group(0)
-
-    url, trailing = _split_trailing_url_punctuation(match.group(0))
-    if not url:
-        return match.group(0)
-
-    return f"<{url}>{trailing}"
-
-
-def _is_existing_link_url_context(content: str, url_start: int) -> bool:
-    """判断 URL 是否已经处在 autolink、Markdown 链接或 HTML 属性中。"""
-    if url_start <= 0:
-        return False
-
-    previous_char = content[url_start - 1]
-    prefix = content[max(0, url_start - 10):url_start].lower()
-
-    if previous_char == "<":
-        return True
-    if previous_char == "(" and url_start >= 2 and content[url_start - 2] == "]":
-        return True
-    return prefix.endswith(('href="', "href='", 'src="', "src='", "href=", "src="))
-
-
-def _split_trailing_url_punctuation(url: str) -> tuple[str, str]:
-    """拆出 URL 末尾不属于地址本体的标点，尤其是正文括号和句读符号。"""
-    trailing = []
-    while url:
-        last_char = url[-1]
-        if last_char in TRAILING_URL_PUNCTUATION:
-            trailing.append(last_char)
-            url = url[:-1]
-            continue
-        if _is_unbalanced_trailing_bracket(url, last_char):
-            trailing.append(last_char)
-            url = url[:-1]
-            continue
-        break
-
-    return url, "".join(reversed(trailing))
-
-
-def _is_unbalanced_trailing_bracket(url: str, last_char: str) -> bool:
-    """判断 URL 末尾闭合括号是否更像正文标点，而不是 URL path 的一部分。"""
-    open_char = TRAILING_URL_BRACKETS.get(last_char)
-    if open_char is None:
-        return False
-    return url.count(last_char) > url.count(open_char)
+    return "".join(escaped_chars)
 
 
 def escape_text_block_markdown_prefix(content: str) -> str:
