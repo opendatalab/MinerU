@@ -125,8 +125,8 @@ async def parse_request_form(
         str,
         Form(
             description="""(Adapted only for hybrid backend) Hybrid parsing effort:
-- medium: Fast hybrid parsing, equivalent to the previous fast hybrid behavior.
-- high: High-effort hybrid parsing, equivalent to the previous hybrid behavior.""",
+- medium: Faster parsing for most documents, balancing accuracy and efficiency. Image/chart analysis is disabled.
+- high: Higher-accuracy parsing with image/chart analysis support, which may take longer.""",
             json_schema_extra=HYBRID_EFFORT_SCHEMA_EXTRA,
         ),
     ] = DEFAULT_HYBRID_EFFORT,
