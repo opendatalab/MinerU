@@ -23,6 +23,80 @@
   .external-link:hover {
     cursor: pointer !important;
   }
+  .mineru-header-menu {
+    position: relative;
+  }
+  .mineru-header-trigger {
+    appearance: none;
+    background: transparent !important;
+    border: 0;
+    border-color: transparent !important;
+    font: inherit;
+  }
+  .mineru-header-trigger:hover,
+  .mineru-header-trigger:focus,
+  .mineru-header-trigger:focus-visible,
+  .mineru-header-trigger:active {
+    background: transparent !important;
+    border-color: transparent !important;
+    color: #ffffff !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  .mineru-header-menu::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    height: 12px;
+  }
+  .mineru-header-popover {
+    position: absolute;
+    left: 50%;
+    top: calc(100% + 10px);
+    z-index: 20;
+    width: 280px;
+    max-width: calc(100vw - 48px);
+    padding: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 8px;
+    background: rgba(17, 24, 39, 0.82);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.28);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, 8px);
+    transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
+    visibility: hidden;
+  }
+  .mineru-model-popover {
+    width: 200px;
+  }
+  .mineru-header-menu:hover .mineru-header-popover,
+  .mineru-header-menu:focus-within .mineru-header-popover {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, 0);
+    visibility: visible;
+  }
+  .mineru-header-popover-link {
+    display: block;
+    padding: 10px 12px;
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.92) !important;
+    font-size: 14px;
+    line-height: 1.25;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .mineru-header-popover-link:hover,
+  .mineru-header-popover-link:focus {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff !important;
+    outline: none;
+    text-decoration: none !important;
+  }
   a {
     text-decoration: none;
   }
@@ -43,6 +117,14 @@
   .mineru-demo-header .external-link *,
   .mineru-demo-header .external-link:hover {
     text-decoration: none !important;
+  }
+  .mineru-demo-header .mineru-header-popover,
+  .mineru-demo-header .mineru-header-popover * {
+    color: rgba(255, 255, 255, 0.92) !important;
+  }
+  .mineru-demo-header .mineru-header-popover-link:hover,
+  .mineru-demo-header .mineru-header-popover-link:focus {
+    color: #ffffff !important;
   }
 </style></head>
 
@@ -110,23 +192,32 @@
             <span style="color: white">{{HEADER_CODE_LINK}}</span>
           </a>
         </span>
-        <!-- Code Link. -->
-        <span class="link-block">
-          <a href="https://huggingface.co/opendatalab/MinerU2.5-Pro-2605-1.2B" target="_blank" class="external-link button is-normal is-rounded is-dark" style="text-decoration: none; cursor: pointer">
+        <!-- Model Links. -->
+        <span class="link-block mineru-header-menu mineru-model-menu">
+          <button type="button" class="external-link button is-normal is-rounded is-dark mineru-header-trigger mineru-model-trigger" style="text-decoration: none; cursor: pointer" aria-haspopup="true">
             <span class="icon" style="margin-right: 4px">
               <i class="fas fa-cube" style="color: white; margin-right: 4px"></i>
             </span>
             <span style="color: white">{{HEADER_MODEL_LINK}}</span>
-          </a>
+          </button>
+          <span class="mineru-header-popover mineru-model-popover">
+            <a href="https://huggingface.co/opendatalab/MinerU2.5-Pro-2605-1.2B" target="_blank" class="mineru-header-popover-link mineru-model-popover-link">{{HEADER_MODEL_HUGGINGFACE_LINK}}</a>
+            <a href="https://modelscope.cn/models/OpenDataLab/MinerU2.5-Pro-2605-1.2B" target="_blank" class="mineru-header-popover-link mineru-model-popover-link">{{HEADER_MODEL_MODELSCOPE_LINK}}</a>
+          </span>
         </span>
-        <!-- arXiv Link. -->
-        <span class="link-block">
-          <a href="https://arxiv.org/abs/2604.04771" target="_blank" class="external-link button is-normal is-rounded is-dark" style="text-decoration: none; cursor: pointer">
+        <!-- arXiv Links. -->
+        <span class="link-block mineru-header-menu mineru-paper-menu">
+          <button type="button" class="external-link button is-normal is-rounded is-dark mineru-header-trigger mineru-paper-trigger" style="text-decoration: none; cursor: pointer" aria-haspopup="true">
             <span class="icon" style="margin-right: 8px">
               <i class="fas fa-file" style="color: white"></i>
             </span>
             <span style="color: white">{{HEADER_PAPER_LINK}}</span>
-          </a>
+          </button>
+          <span class="mineru-header-popover mineru-paper-popover">
+            <a href="https://arxiv.org/abs/2409.18839" target="_blank" class="mineru-header-popover-link mineru-paper-popover-link">{{HEADER_PAPER_MINERU_REPORT}}</a>
+            <a href="https://arxiv.org/abs/2509.22186" target="_blank" class="mineru-header-popover-link mineru-paper-popover-link">{{HEADER_PAPER_MINERU25_REPORT}}</a>
+            <a href="https://arxiv.org/abs/2604.04771" target="_blank" class="mineru-header-popover-link mineru-paper-popover-link">{{HEADER_PAPER_MINERU25PRO_REPORT}}</a>
+          </span>
         </span>
 
         <!-- Homepage Link. -->
