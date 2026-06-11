@@ -10,6 +10,8 @@
 
 | 日期 | 修订内容 |
 |------|---------|
+| 2026-06-11 | **移除公开 `auto` tier**：`tier` 公开取值改为 `standard` / `pro`，请求可省略 `tier` 或传 `null` 表示使用默认选择策略。默认选择策略保持原 `auto` 行为：选择可发现的最高质量非 `flash` tier，且永不降级到 `flash`。`GET /v1/tiers` 只返回真实 tier |
+| 2026-06-10 | **API 响应版本字段 `backend_version` 改为 `parser_version`**：HTTP API 不暴露 backend 概念。`GET /v1/health` 和 `POST /v1/parse/jobs` 系列响应中的 `backend_version` 统一改名为 `parser_version` |
 | 2026-06-10 | **明确请求可选字段省略规则**：请求中的可选字段可以省略。`POST /v1/parse/jobs` 的 `files[].page_range` 省略时等价于 `null`，表示解析整个文件 |
 | 2026-06-10 | **Job 列表文件数字段改名为 `file_count`**：`GET /v1/parse/jobs` 的列表项字段从 `files_count` 改为 `file_count`，与单数资源计数字段命名保持一致 |
 | 2026-06-10 | **Parse Job 响应取消输出内容内联**：`POST /v1/parse/jobs` 即使同步等待完成也只返回 `output_files` 文件引用，不再返回 `output_files.markdown.content`。所有解析产物内容统一通过 `GET /v1/files/{file_id}/content` 获取 |
@@ -258,7 +260,7 @@ Authorization: Bearer <MINERU_API_KEY>
 >
 > | 字段 | 类型 | 说明 |
 > |------|------|------|
-> | `backend_version` | string | 后端引擎版本号 |
+> | `parser_version` | string | 解析器版本号 |
 > | `models` | object | 各模型后端健康状态(如 `{"pipeline":"ok","vlm":"ok","html":"ok"}`) |
 
 ---
@@ -362,7 +364,7 @@ Authorization: Bearer <MINERU_API_KEY>
 
 ### 4.3 GET `/v1/tiers` — 列出可用解析档位
 
-列出所有解析档位及其当前对应的模型。**无需鉴权**,匿名访问返回完整列表。
+列出当前服务实际可用的解析档位及其当前对应的模型。**无需鉴权**,匿名访问返回完整列表。`mineru.net/api` 在相当长时间内只返回 `pro`；本地或兼容服务可以按自身能力返回 `standard` 或 `pro`。
 
 **Request**
 
@@ -377,19 +379,9 @@ GET /v1/tiers  HTTP/1.1
   "object": "list",
   "data": [
     {
-      "id": "standard",
-      "description": "Pipeline-based parsing, balanced speed and quality.",
-      "current_model": "pipeline"
-    },
-    {
       "id": "pro",
       "description": "VLM-based high-accuracy parsing.",
       "current_model": "MinerU2.5-Pro-2605-1.2B"
-    },
-    {
-      "id": "auto",
-      "description": "Platform selects best tier per document.",
-      "current_model": null
     }
   ]
 }
@@ -403,9 +395,11 @@ GET /v1/tiers  HTTP/1.1
 | `data[]` | array | tier 对象数组 |
 | `data[].id` | string | tier 标识,对应 `POST /v1/parse/jobs` 的 `tier` 参数 |
 | `data[].description` | string | 用途说明 |
-| `data[].current_model` | string \| null | 当前该 tier 背后实际使用的模型 ID,对应 `GET /v1/models` 中的 `id`。`auto` 不绑定单一模型,为 `null` |
+| `data[].current_model` | string \| null | 当前该 tier 背后实际使用的模型 ID,对应 `GET /v1/models` 中的 `id` |
 
 > **设计说明**:`tier` 是平台精选的解析方案档位,由服务端维护对应的模型版本。客户端用 `tier` 无需关心具体模型,平台升级模型版本时无感。`current_model` 与 job 响应中的 `parse.model_used` 形成追踪链——用户可从 job 结果反查解析时所使用的模型。
+>
+> 客户端在 `POST /v1/parse/jobs` 中省略 `tier` 或传 `null` 时，服务端使用默认选择策略：选择当前可发现的最高质量非 `flash` tier。
 >
 > **HTML 解析**:当输入文件为 HTML 页面(URL 或 `.html` 文件)时,系统自动路由到 HTML 解析器,无需显式指定 tier。`tier` 参数仅影响 PDF/图片等需要版面分析的文档。
 
@@ -1456,7 +1450,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
       }
     }
   ],
-  "tier": "auto",
+  "tier": null,
   "output_formats": ["markdown", "json", "content_list", "images"],
   "wait": 30,
   "callback": {
@@ -1471,7 +1465,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `files` | array | 是 | 至少 1 个,最多由 access level 决定 |
-| `tier` | enum | 否 | `auto`(默认,平台按文件类型自动选择最佳方案) / `standard` / `pro`。解析档位,服务端按 tier 自动选择模型。HTML 输入自动路由到 HTML 解析器,无需指定 tier |
+| `tier` | enum \| null | 否 | `null` / `standard` / `pro`。省略或传 `null` 表示使用默认选择策略：服务端选择当前可发现的最高质量非 `flash` tier。HTML 输入自动路由到 HTML 解析器,无需指定 tier |
 | `output_formats` | array | 否 | 选择产物,默认 `["markdown"]`。产物以 File 对象形式存储(`purpose:parse_output`),通过 `GET /v1/files/{file_id}/content` 下载。可选值见下表 |
 | `wait` | int | 否 | 同步等待秒数。`0`:异步模式,立即返回 202。传正值(`[5, 50]`):阻塞等待最多 N 秒,完成返回 200(只返回产物文件引用),超时返回 202(转为异步轮询)。本地 server 可将上限放宽至 `600` |
 | `callback` | object | 否 | Webhook 通知(需 API Key) |
@@ -1520,7 +1514,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
   "job_id": "job_01HXYZ123ABCDEF",
   "status": "queued",
   "created_at": "2026-05-21T08:30:00Z",
-  "tier": "auto",
+  "tier": "pro",
   "output_formats": ["markdown", "json", "content_list", "images"],
   "access_level": "registered",
   "files": [
@@ -1559,7 +1553,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
       "parse": {
         "model_used": "MinerU2.5-Pro-2604-1.2B",
         "duration_ms": 8234,
-        "backend_version": "3.1.14"
+        "parser_version": "3.1.14"
       },
       "output_files": {
         "markdown": {
@@ -1604,7 +1598,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
   "job_id": "job_01HXYZ123ABCDEF",
   "status": "running",
   "created_at": "2026-05-21T08:30:00Z",
-  "tier": "auto",
+  "tier": "pro",
   "output_formats": ["markdown", "json", "images"],
   "access_level": "registered",
   "files": [
@@ -1661,7 +1655,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
       "parse": {
         "model_used": "MinerU2.5-Pro-2604-1.2B",
         "duration_ms": 8234,
-        "backend_version": "3.1.14"
+        "parser_version": "3.1.14"
       },
       "output_files": {
         "markdown": {
@@ -1808,7 +1802,7 @@ Access Level 由 API Key 决定,但**响应格式完全一致**。
 | 单任务文件数 | 100 | 100 |
 | 并发任务 | 10+ | 10+ |
 | 队列优先级 | 默认 | 优先 |
-| `tier` 可选 | 全部(`standard`/`pro`/`auto`) | 全部(`standard`/`pro`/`auto`) |
+| `tier` 可选 | 当前服务可用 tier。`mineru.net/api` 当前为 `pro`；可省略或传 `null` | 当前服务可用 tier。`mineru.net/api` 当前为 `pro`；可省略或传 `null` |
 | `output_formats` 高级格式 | 拒绝 `html`/`latex`/`docx` | 全部支持 |
 | `callback` | 拒绝 | 支持 |
 | 产物保留期 | 30d | 30d |
@@ -2334,7 +2328,7 @@ Content-Type: application/json
 - 旧:配置开关散落在 form 字段(`return_md`, `return_middle_json`, ...);新:统一收纳到 `output_formats` 数组
 - 旧:每次调用都重新上传;新:可秒传(若提供 sha256)
 - 旧:无文件级标识;新:不透明 `file_id`(`file-xxx`)+ 可选 `sha256sum` 元信息,file_id 可跨任务复用
-- 旧:`backend` 字段直接选实现;新:`tier` 字段语义化(`standard`/`pro`/`auto`)
+- 旧:`backend` 字段直接选实现;新:`tier` 字段语义化(`standard`/`pro`)，省略或传 `null` 表示默认选择
 
 #### Call 2 — 查询状态
 

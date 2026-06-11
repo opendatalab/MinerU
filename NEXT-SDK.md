@@ -130,7 +130,7 @@ from mineru.parser import parse, ParseResult, PageInfo, Block, Line, Span
 def parse(
     path: str | Path,
     *,
-    tier: str = "auto",           # flash / standard / pro / auto
+    tier: str | None = None,      # flash / standard / pro; None means default selection
     pages: str | None = None,     # 页码范围，如 "1~5" / "all"
     lang: str = "ch",
     formula: bool = True,

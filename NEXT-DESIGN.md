@@ -564,7 +564,7 @@ ParseWorker.acquire_task()
 
 - **`--remote` 优先**：用户一旦指定 `--remote`，即优先使用远程，节省本地算力。远程不可用时 fallback 到本地
 - **privacy 不可变**：解析失败后 re-enqueue，保持原始 `privacy` 值不变。用户选择 remote 意味着接受文档上传，不会因重试改变立场
-- **`auto` tier 不可用时报错**：不静默降级，让用户做决定选择 flash 或 --remote
+- **默认选择不可用时报错**：不静默降级，让用户做决定选择 flash 或 --remote
 - **tier 不匹配时报错**：parse-server 只支持 standard，用户请求 pro → 直接报错，不自动降级
 - **`parse_failed` 不 fallback**：remote 返回解析失败（非网络错误，如文件损坏、加密）→ 不 fallback 到本地，直接标 failed
 - **缓存键**：`(sha256, tier)`，与 privacy/via 无关——同一 tier 不同来源产出解析结果一致

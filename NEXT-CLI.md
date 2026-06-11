@@ -120,10 +120,10 @@ mineru parse <file> [flags]
 
 > **注意**：更高档位不保证在所有场景下效果更好，但通常 flash 的质量上限低于 standard/pro。
 
-**默认值规则**：本地模式下，用户启动了哪个 tier 的引擎配置，就默认使用该 tier。远端模式下，不指定 `--tier` 时 CLI 向 API 发送 `tier: auto`（由服务端选择最佳方案）。
+**默认值规则**：本地模式下，用户启动了哪个 tier 的引擎配置，就默认使用该 tier。远端模式下，不指定 `--tier` 时 CLI 不发送 `tier` 字段，由服务端使用默认选择策略。
 
 **设计约束**：
-- CLI 只暴露三个值：`flash` / `standard` / `pro`。不暴露 `auto`——省略 `--tier` 即为 auto 行为
+- CLI 只暴露三个值：`flash` / `standard` / `pro`。省略 `--tier` 表示使用默认选择策略
 - 档位含义固定，不可通过配置修改映射关系
 - 本地 pro 与远端 pro 效果目标相同
 - 引擎名称不在 `mineru parse` 接口中暴露，用户只需选择档位
@@ -166,7 +166,7 @@ Error: 本地未检测到 standard/pro 解析引擎。
 
 **设计要点**：
 - 不会在用户不知情的情况下把文件发到远端。必须显式 `--remote` 才会触发上传
-- 不会在用户不知情的情况下降级到 flash。`auto` tier 不可用时报错而非静默降级
+- 不会在用户不知情的情况下降级到 flash。默认选择不可用时报错而非静默降级
 - `--remote` 远程不可用时 fallback 到本地 parse-server——用户已接受上传，远程偶尔不可用本地兜底
 - agent 收到此报错后可自行判断文件敏感性，决定选 `--remote` 还是 `--tier flash`
 
@@ -846,4 +846,3 @@ mineru-kit parse a/report.pdf b/report.pdf -o out/ --on-collision rename
 mineru-kit parse a/report.pdf b/report.pdf -o out/ --on-collision path
 # → out/a/report.md + out/b/report.md
 ```
-
