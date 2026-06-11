@@ -27,15 +27,11 @@ not_extract_list = [item.value for item in NotExtractType] + [
     BlockType.PARAGRAPH_TITLE,
 ]
 OCR_DET_LINES_KEY = "_ocr_det_lines"
-OCR_DET_LINE_BLOCK_TYPES = set(not_extract_list) | {
-    BlockType.LIST,
-    BlockType.INDEX,
-    BlockType.ABSTRACT,
-    BlockType.ASIDE_TEXT,
-    BlockType.PHONETIC,
-    BlockType.CHART_CAPTION,
-    BlockType.CHART_FOOTNOTE,
-    BlockType.CODE_FOOTNOTE,
+OCR_DET_LINE_BLOCK_TYPES = {
+    BlockType.TEXT,
+    BlockType.TITLE,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
 }
 
 
@@ -139,6 +135,7 @@ class MagicModel:
                 "aside_text",
                 "page_footnote",
                 "list",
+                "index",
             ]:
                 span_type = ContentType.TEXT
             elif block_type in ["image_caption", "table_caption", "code_caption"]:
@@ -321,6 +318,10 @@ class MagicModel:
                 }
                 block = fix_text_block(block)
                 _copy_raw_text_block_metadata(raw_block_type, block_info, block)
+
+            if block["type"] == BlockType.INDEX:
+                # index 仅用于 Hybrid medium content 强制走 VLM-OCR，输出前统一还原为正文。
+                block["type"] = BlockType.TEXT
 
             blocks.append(block)
 
