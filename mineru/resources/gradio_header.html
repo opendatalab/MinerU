@@ -26,12 +26,25 @@
   .mineru-header-menu {
     position: relative;
   }
-  .mineru-header-trigger {
+  .block.mineru-header-html,
+  .block.mineru-header-html .html-container,
+  .block.mineru-header-html .prose {
+    overflow: visible !important;
+    position: relative !important;
+    z-index: 100 !important;
+  }
+  .mineru-demo-header .mineru-header-trigger {
     appearance: none;
+    font: inherit;
+    display: inline-flex;
+    align-items: center;
+    height: 36px;
+    line-height: 36px;
+    padding: 0 16px !important;
+    margin: 0;
     background: transparent !important;
     border: 0;
     border-color: transparent !important;
-    font: inherit;
   }
   .mineru-header-trigger:hover,
   .mineru-header-trigger:focus,
@@ -71,7 +84,7 @@
     visibility: hidden;
   }
   .mineru-model-popover {
-    width: 200px;
+    width: 160px;
   }
   .mineru-header-menu:hover .mineru-header-popover,
   .mineru-header-menu:focus-within .mineru-header-popover {
@@ -80,14 +93,14 @@
     transform: translate(-50%, 0);
     visibility: visible;
   }
-  .mineru-header-popover-link {
+  .mineru-demo-header .mineru-header-popover-link {
     display: block;
-    padding: 10px 12px;
+    padding: 10px 12px !important;
     border-radius: 6px;
     color: rgba(255, 255, 255, 0.92) !important;
     font-size: 14px;
     line-height: 1.25;
-    text-align: left;
+    text-align: center;
     white-space: nowrap;
   }
   .mineru-header-popover-link:hover,

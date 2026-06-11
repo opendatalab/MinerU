@@ -1843,7 +1843,7 @@ def main(ctx,
     suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + office_suffixes]
     _blocks_kwargs = {} if IS_GRADIO_6 else {"css": APP_CSS, "js": APP_JS}
     with gr.Blocks(**_blocks_kwargs) as demo:
-        gr.HTML(render_header_html(i18n))
+        gr.HTML(render_header_html(i18n), elem_classes=["mineru-header-html"])
         with gr.Row(elem_classes=["mineru-workspace-row"]):
             with gr.Column(variant='panel', scale=2, min_width=280, elem_classes=["mineru-control-column"]):
                 input_file = gr.File(
