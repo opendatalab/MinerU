@@ -72,6 +72,12 @@ LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD = 0.8
 
 not_extract_list = [item.value for item in NotExtractType]
 HYBRID_OCR_DET_TEXT_TYPES = set(not_extract_list)
+HYBRID_VLM_OCR_DET_TEXT_TYPES = {
+    MineruBlockType.TEXT,
+    MineruBlockType.TITLE,
+    MineruBlockType.DOC_TITLE,
+    MineruBlockType.PARAGRAPH_TITLE,
+}
 HYBRID_ANALYZE_EFFORTS = {"medium", "high"}
 INLINE_FORMULA_CONTAINER_LABELS = {"table", "image", "chart", "display_formula"}
 MEDIUM_EFFORT_LAYOUT_LABEL_TO_VLM_TYPE = {
@@ -126,9 +132,10 @@ def _apply_medium_visual_sub_type(block, label: str | None):
         block["sub_type"] = "seal"
 
 
-def _is_hybrid_ocr_det_candidate(block):
+def _is_hybrid_ocr_det_candidate(block, candidate_types=None):
     """判断 Hybrid 文本类块是否需要 OCR det 生成行级视觉信息。"""
-    return (block.get("type") or block.get("label")) in HYBRID_OCR_DET_TEXT_TYPES
+    candidate_types = candidate_types or HYBRID_OCR_DET_TEXT_TYPES
+    return (block.get("type") or block.get("label")) in candidate_types
 
 def ocr_classify(pdf_bytes, parse_method: str = 'auto',) -> bool:
     # 确定OCR设置
@@ -146,6 +153,8 @@ def ocr_det(
     model_list,
     mfd_res,
     batch_ratio: int = 1,
+    *,
+    candidate_types=None,
 ):
     mask_formula_for_ocr_det = get_ocr_det_mask_inline_formula_enable(True)
 
@@ -169,7 +178,7 @@ def ocr_det(
             ocr_res_list.append([])
             img_height, img_width = np_image.shape[:2]
             for res in page_results:
-                if not _is_hybrid_ocr_det_candidate(res):
+                if not _is_hybrid_ocr_det_candidate(res, candidate_types):
                     continue
                 x0 = max(0, int(res['bbox'][0] * img_width))
                 y0 = max(0, int(res['bbox'][1] * img_height))
@@ -220,7 +229,7 @@ def ocr_det(
             ocr_res_list.append([])
             img_height, img_width = np_image.shape[:2]
             for res in page_results:
-                if not _is_hybrid_ocr_det_candidate(res):
+                if not _is_hybrid_ocr_det_candidate(res, candidate_types):
                     continue
                 x0 = max(0, int(res['bbox'][0] * img_width))
                 y0 = max(0, int(res['bbox'][1] * img_height))
@@ -773,6 +782,7 @@ def _apply_vlm_ocr_det_sidecars_for_window(
         model_list,
         formula_mask_inputs,
         batch_ratio=batch_ratio,
+        candidate_types=HYBRID_VLM_OCR_DET_TEXT_TYPES,
     )
     _normalize_bbox(inline_formula_list, ocr_res_list, images_pil_list)
     model_list[:] = _merge_page_sidecar_items(

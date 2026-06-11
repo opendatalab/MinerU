@@ -27,15 +27,11 @@ not_extract_list = [item.value for item in NotExtractType] + [
     BlockType.PARAGRAPH_TITLE,
 ]
 OCR_DET_LINES_KEY = "_ocr_det_lines"
-OCR_DET_LINE_BLOCK_TYPES = set(not_extract_list) | {
-    BlockType.LIST,
-    BlockType.INDEX,
-    BlockType.ABSTRACT,
-    BlockType.ASIDE_TEXT,
-    BlockType.PHONETIC,
-    BlockType.CHART_CAPTION,
-    BlockType.CHART_FOOTNOTE,
-    BlockType.CODE_FOOTNOTE,
+OCR_DET_LINE_BLOCK_TYPES = {
+    BlockType.TEXT,
+    BlockType.TITLE,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
 }
 
 
