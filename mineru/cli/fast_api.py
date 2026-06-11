@@ -220,7 +220,14 @@ def create_app():
 
     global _request_semaphore, _configured_max_concurrent_requests
 
-    if is_mac_environment():
+    # Respect explicit MINERU_API_MAX_CONCURRENT_REQUESTS even on macOS,
+    # where the default is 1.  Apple Silicon with sufficient unified memory
+    # (e.g. M4 Max 128GB) can handle concurrent extraction requests.
+    if os.getenv("MINERU_API_MAX_CONCURRENT_REQUESTS") is not None:
+        max_concurrent_requests = read_max_concurrent_requests(
+            default=DEFAULT_MAX_CONCURRENT_REQUESTS
+        )
+    elif is_mac_environment():
         max_concurrent_requests = 1
     else:
         max_concurrent_requests = read_max_concurrent_requests(
