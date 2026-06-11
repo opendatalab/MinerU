@@ -80,7 +80,7 @@ Domestic AI chips: Ascend · Cambricon · Enflame · MetaX · Moore Threads · K
 
 # Changelog
 
-- 2026/06/11 3.3.0 Released
+- 2026/06/11 3.3 Released
 
   This release focuses on **Hybrid parsing performance optimization** and **VLM model capability upgrades**. The main updates include:
 
