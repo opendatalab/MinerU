@@ -1087,8 +1087,8 @@ async def run_orchestrated_cli(
     metavar="[" + "|".join(HYBRID_EFFORT_CHOICES) + "]",
     help="""\b
     Hybrid parsing effort:
-      medium: Fast hybrid parsing, equivalent to the previous fast hybrid behavior.
-      high: High-effort hybrid parsing, equivalent to the previous hybrid behavior.
+      medium: Faster parsing for most documents, balancing accuracy and efficiency. Image/chart analysis is disabled.
+      high: Higher-accuracy parsing with image/chart analysis support, which may take longer.
     Without effort specified, medium will be used by default.
     Adapted only for the case where the backend is set to 'hybrid-*'.""",
 )
