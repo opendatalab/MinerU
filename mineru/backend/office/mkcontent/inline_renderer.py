@@ -138,7 +138,10 @@ def _escape_office_inline_text(content: str, inline_syntax: str) -> str:
         return content
     if inline_syntax == OFFICE_INLINE_SYNTAX_MARKDOWN:
         return escape_conservative_markdown_text(content)
-    return escape_conservative_markdown_text(escape(content, quote=False))
+    return escape_conservative_markdown_text(
+        escape(content, quote=False),
+        protect_bare_urls=False,
+    )
 
 
 def get_title_level(para_block):
