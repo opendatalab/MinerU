@@ -313,6 +313,27 @@ def _process_output(
 
     if f_dump_md:
         md_content_str = make_func(pdf_info, f_make_md_mode, image_dir)
+        # Guard against silent data loss: if the input had pages but extraction
+        # produced no markdown (e.g. upstream model output didn't match the
+        # expected MinerU format markers), fail loudly instead of writing a
+        # 0-byte .md file that downstream consumers will mistake for success.
+        # Set MINERU_ALLOW_EMPTY_MD=true to opt out (e.g. for legitimately
+        # empty / image-only documents).
+        if (
+            pdf_info
+            and (md_content_str is None or not str(md_content_str).strip())
+            and os.getenv("MINERU_ALLOW_EMPTY_MD", "").lower() != "true"
+        ):
+            from mineru.data.utils.exceptions import EmptyData
+            msg = (
+                f"No markdown content was extracted for '{pdf_file_name}' "
+                f"(input had {len(pdf_info)} page(s), produced {process_mode} "
+                f"mode={f_make_md_mode}). The upstream model output may not "
+                f"match MinerU's expected format. Refusing to write 0-byte "
+                f".md file. Set MINERU_ALLOW_EMPTY_MD=true to override."
+            )
+            logger.error(msg)
+            raise EmptyData(msg)
         md_writer.write_string(
             f"{pdf_file_name}.md",
             md_content_str,
