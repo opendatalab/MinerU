@@ -80,7 +80,7 @@ Domestic AI chips: Ascend · Cambricon · Enflame · MetaX · Moore Threads · K
 
 # Changelog
 
-- 2026/06/11 3.3.0 Released
+- 2026/06/11 3.3 Released
 
   This release focuses on **Hybrid parsing performance optimization** and **VLM model capability upgrades**. The main updates include:
 
@@ -97,7 +97,7 @@ Domestic AI chips: Ascend · Cambricon · Enflame · MetaX · Moore Threads · K
     - Fixed multiple model issues found in the `2604` version, further improving parsing stability on complex documents.
     - Added native multilingual OCR support, reducing the need for extra language-parameter configuration and improving out-of-the-box usability for multilingual documents.
 
-  With the 3.3.0 release, MinerU further improves Hybrid backend efficiency across platforms and scenarios while maintaining high-accuracy parsing. The default `medium` effort level is better suited for most day-to-day document processing tasks, while `high` is designed for scenarios that require maximum parsing accuracy or `image analysis` capabilities.
+  With the 3.3 release, MinerU further improves Hybrid backend efficiency across platforms and scenarios while maintaining high-accuracy parsing. The default `medium` effort level is better suited for most day-to-day document processing tasks, while `high` is designed for scenarios that require maximum parsing accuracy or `image analysis` capabilities.
 
 - 2026/04/18 3.1.0 Released
 
