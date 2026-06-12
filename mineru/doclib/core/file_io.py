@@ -54,9 +54,6 @@ async def get_file_stat(filepath: str) -> dict:
         return {
             "size_bytes": st.st_size,
             "mtime_ms": int(st.st_mtime * 1000),
-            "birthtime_ms": int(st.st_birthtime * 1000)
-            if hasattr(st, "st_birthtime")
-            else int(st.st_ctime * 1000),
         }
 
     return await asyncio.to_thread(_stat)
@@ -71,13 +68,11 @@ async def extract_metadata(filepath: str) -> dict:
     ext = Path(filepath).suffix.lower().lstrip(".")
 
     result = {
-        "mime_type": None,
         "page_count": None,
         "title": None,
         "author": None,
         "subject": None,
         "keywords": None,
-        "is_encrypted": 0,
         "is_scanned": 0,
     }
 
@@ -116,8 +111,6 @@ async def _extract_pdf_meta(filepath: str, result: dict) -> None:
             result["subject"] = meta.get("Subject") or None
             result["keywords"] = meta.get("Keywords") or None
 
-            # pypdfium2 doesn't expose is_encrypted directly;
-            # trying to access pages on an encrypted doc raises.
         finally:
             pdf.close()
 

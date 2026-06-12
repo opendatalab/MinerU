@@ -5,9 +5,8 @@ from abc import ABC
 from pathlib import Path
 from typing import Any
 
-from mineru.types import PageInfo
-
 from .base import DocumentParser, ParseResult
+from ..types import PageInfo
 
 
 class OfficeBaseParser(DocumentParser, ABC):
@@ -38,13 +37,8 @@ class OfficeBaseParser(DocumentParser, ABC):
         file_name: str,
         model_output: Any = None,
     ) -> ParseResult:
-        from ..version import __version__
-
         return ParseResult(
             pages=middle_json,
-            _backend="office",
-            _version_name=__version__,
-            _file_name=file_name,
             _model_output=model_output if self.return_model_output else None,
         )
 

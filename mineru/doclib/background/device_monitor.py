@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 
 from ..core.db import DatabaseManager
 from ..services.config_svc import ConfigService
+from ..types import SCAN_STATUS_ACTIVE, SCAN_STATUS_UNREACHABLE, WATCH_STATUS_ACTIVE, WATCH_STATUS_UNREACHABLE
 
 
 class DeviceMonitor:
@@ -18,29 +20,31 @@ class DeviceMonitor:
     async def run(self) -> None:
         self.running = True
         while self.running:
-            watches = await self.config_svc.get_watches_by_status("active")
+            watches = await self.config_svc.get_watches_by_status(WATCH_STATUS_ACTIVE)
             for w in watches:
                 if not w["removable"]:
                     continue
                 try:
                     os.stat(w["path"])
                 except (FileNotFoundError, OSError):
-                    await self.config_svc.update_watch_status(w["id"], "unreachable")
+                    await self.config_svc.update_watch_status(w["id"], WATCH_STATUS_UNREACHABLE)
+                    now = int(time.time() * 1000)
                     await self.db.execute(
-                        "UPDATE files SET scan_status='unreachable' "
-                        "WHERE watch_id=? AND scan_status='active'",
-                        (w["id"],),
+                        "UPDATE files SET scan_status=?, locked_at=NULL, error_code=NULL, error_msg=NULL, deleted_at=NULL, updated_at=? "
+                        "WHERE watch_id=? AND scan_status=?",
+                        (SCAN_STATUS_UNREACHABLE, now, w["id"], SCAN_STATUS_ACTIVE),
                     )
 
-            unreachable = await self.config_svc.get_watches_by_status("unreachable")
+            unreachable = await self.config_svc.get_watches_by_status(WATCH_STATUS_UNREACHABLE)
             for w in unreachable:
                 try:
                     os.stat(w["path"])
-                    await self.config_svc.update_watch_status(w["id"], "active")
+                    await self.config_svc.update_watch_status(w["id"], WATCH_STATUS_ACTIVE)
+                    now = int(time.time() * 1000)
                     await self.db.execute(
-                        "UPDATE files SET scan_status='active' "
-                        "WHERE watch_id=? AND scan_status='unreachable'",
-                        (w["id"],),
+                        "UPDATE files SET scan_status=?, updated_at=? "
+                        "WHERE watch_id=? AND scan_status=?",
+                        (SCAN_STATUS_ACTIVE, now, w["id"], SCAN_STATUS_UNREACHABLE),
                     )
                 except (FileNotFoundError, OSError):
                     pass

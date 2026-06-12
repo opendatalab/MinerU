@@ -6,9 +6,9 @@ from pathlib import Path
 
 import aiosqlite
 
-from ..config import SQLiteConfig
+from ...config import SQLiteConfig
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 1
 _MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
 
 _CREATE_TABLES_SQL: list[str] = []  # filled by _load_init_sql()
@@ -111,12 +111,13 @@ class DatabaseManager:
                 "INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", (key, value)
             )
 
+        now = _now_ms()
         for name, pattern in DEFAULT_EXCLUDE_RULES:
             await conn.execute(
-                "INSERT OR IGNORE INTO rules (name, rule_type, pattern, priority) "
-                "SELECT ?, 'exclude', ?, 0 "
-                "WHERE NOT EXISTS (SELECT 1 FROM rules WHERE rule_type='exclude' AND pattern=?)",
-                (name, pattern, pattern),
+                "INSERT INTO exclude_rules (name, pattern, priority, created_at, updated_at) "
+                "SELECT ?, ?, 0, ?, ? "
+                "WHERE NOT EXISTS (SELECT 1 FROM exclude_rules WHERE pattern=?)",
+                (name, pattern, now, now, pattern),
             )
 
         await conn.commit()
@@ -200,7 +201,7 @@ async def _apply_migration(conn: aiosqlite.Connection, version: int) -> None:
     for p in candidates:
         raw = p.read_text(encoding="utf-8")
         # strip comment lines, then split into statements
-        lines = [l for l in raw.splitlines() if not l.strip().startswith("--")]
+        lines = [line for line in raw.splitlines() if not line.strip().startswith("--")]
         sql = "\n".join(lines)
         for stmt in sql.split(";"):
             stmt = stmt.strip()

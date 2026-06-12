@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import typer
 
-from mineru.doclib.client import MineruClient
-from mineru.cli_next.output import format_search_results, format_info, print_error
+from ...doclib.client import DoclibClient
+from ..output import format_info, format_search_results, print_error
 
 
 def search_cmd(
@@ -17,7 +17,7 @@ def search_cmd(
 ) -> None:
     """Search parsed document content."""
     try:
-        client = MineruClient(timeout=10)
+        client = DoclibClient(timeout=10)
         result = client.search(query, file_type=file_type, limit=limit, offset=offset)
         format_search_results(result, json_mode=json_mode)
     except Exception as exc:
@@ -32,7 +32,7 @@ def find_cmd(
 ) -> None:
     """Search filenames only (not document content)."""
     try:
-        client = MineruClient(timeout=10)
+        client = DoclibClient(timeout=10)
         result = client.find(query, limit=limit)
         format_search_results(result, json_mode=json_mode)
     except Exception as exc:
@@ -49,8 +49,8 @@ def info_cmd(
 
     file_path = str(Path(path).resolve())
     try:
-        client = MineruClient(timeout=10)
-        result = client.info(file_path)
+        client = DoclibClient(timeout=10)
+        result = client.get_file_info(file_path)
         format_info(result, json_mode=json_mode)
     except Exception as exc:
         print_error(str(exc))

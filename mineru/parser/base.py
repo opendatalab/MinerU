@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from mineru.render import render_content_list, render_content_list_v2, render_markdown
-from mineru.types import PageInfo
+from ..render import render_content_list, render_content_list_v2, render_markdown
+from ..types import PageInfo
 
 _INLINE_IMAGE_DATA_URI_RE = re.compile(r"data:image/([^;]+);base64,([^\"]+)", re.DOTALL)
 
@@ -25,10 +25,7 @@ class ParseResult:
     """
 
     pages: list[PageInfo]
-    _backend: str
-    _version_name: str
     _pdf_doc: object | None = None
-    _file_name: str = ""
     _model_output: Any = None
     _images_cache: dict[str, bytes] | None = None
 
@@ -58,24 +55,21 @@ class ParseResult:
         return render_content_list_v2(self.pages)
 
     def save(self, writer: Any) -> None:
-        prefix = self._file_name
-
-        # TODO: need rename these files
-        writer.write_string(f"{prefix}.md", self.markdown())
-        writer.write_string(f"{prefix}_middle.json", self.to_json())
+        writer.write_string("markdown.md", self.markdown())
+        writer.write_string("middle_json.json", self.to_json())
 
         writer.write_string(
-            f"{prefix}_content_list.json",
+            "content_list.json",
             json.dumps(self.content_list(), ensure_ascii=False, indent=4),
         )
         writer.write_string(
-            f"{prefix}_content_list_v2.json",
+            "structured_content.json",
             json.dumps(self.content_list_v2(), ensure_ascii=False, indent=4),
         )
 
         if self._model_output is not None:
             writer.write_string(
-                f"{prefix}_model.json",
+                "model_output.json",
                 json.dumps(self._model_output, ensure_ascii=False, indent=4),
             )
 

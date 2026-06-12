@@ -7,6 +7,7 @@ import logging
 import time
 
 from ..services.parse_svc import ParseService
+from ..types import SCAN_STATUS_ACTIVE
 
 logger = logging.getLogger("mineru.ingest")
 
@@ -35,7 +36,8 @@ class IngestWorkerPool:
                 no_task_count += 1
                 if no_task_count == 1 or no_task_count % 20 == 0:
                     q = await self.parse_svc.db.fetchone(
-                        "SELECT COUNT(*) as cnt FROM files WHERE sha256 IS NULL AND scan_status='active'"
+                        "SELECT COUNT(*) as cnt FROM files WHERE sha256 IS NULL AND scan_status=?",
+                        (SCAN_STATUS_ACTIVE,),
                     )
                     logger.info(f"Ingest worker {worker_id}: queue={q['cnt'] if q else 0}")
                 await asyncio.sleep(0.5)
@@ -72,11 +74,11 @@ class IngestWorkerPool:
             "UPDATE files SET locked_at=? "
             "WHERE id = ("
             "  SELECT id FROM files "
-            "  WHERE sha256 IS NULL AND scan_status='active' "
+            "  WHERE sha256 IS NULL AND scan_status=? "
             "  AND (locked_at IS NULL OR locked_at < ?) "
             "  ORDER BY first_seen_at ASC LIMIT 1"
             ") RETURNING *",
-            (now, timeout),
+            (now, SCAN_STATUS_ACTIVE, timeout),
         )
 
     async def stop(self) -> None:

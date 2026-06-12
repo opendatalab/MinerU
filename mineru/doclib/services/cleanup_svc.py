@@ -7,10 +7,11 @@ import shutil
 import time
 
 from ..core.db import DatabaseManager
+from ..types import SCAN_STATUS_ACTIVE, SCAN_STATUS_DELETED
 
 
 class CleanupService:
-    def __init__(self, db: DatabaseManager, data_dir: str = "~/MinerU") -> None:
+    def __init__(self, db: DatabaseManager, data_dir: str) -> None:
         self.db = db
         self.data_dir = os.path.expanduser(data_dir)
 
@@ -19,8 +20,9 @@ class CleanupService:
     async def find_orphan_docs(self) -> list[dict]:
         return await self.db.fetchall(
             "SELECT d.* FROM docs d WHERE NOT EXISTS ("
-            "  SELECT 1 FROM files f WHERE f.sha256 = d.sha256 AND f.scan_status = 'active'"
-            ")"
+            "  SELECT 1 FROM files f WHERE f.sha256 = d.sha256 AND f.scan_status = ?"
+            ")",
+            (SCAN_STATUS_ACTIVE,),
         )
 
     async def cleanup_orphans(self, dry_run: bool = True) -> int:
@@ -48,16 +50,16 @@ class CleanupService:
         self, older_than_days: int = 30, dry_run: bool = True
     ) -> int:
         row = await self.db.fetchone(
-            "SELECT COUNT(*) as cnt FROM files WHERE scan_status='deleted' "
+            "SELECT COUNT(*) as cnt FROM files WHERE scan_status=? "
             "AND deleted_at < ?",
-            (_days_ago_ms(older_than_days),),
+            (SCAN_STATUS_DELETED, _days_ago_ms(older_than_days)),
         )
         count = row["cnt"] if row else 0
 
         if not dry_run and count > 0:
             await self.db.execute(
-                "DELETE FROM files WHERE scan_status='deleted' AND deleted_at < ?",
-                (_days_ago_ms(older_than_days),),
+                "DELETE FROM files WHERE scan_status=? AND deleted_at < ?",
+                (SCAN_STATUS_DELETED, _days_ago_ms(older_than_days)),
             )
             await self.db.commit()
             await self.cleanup_orphans(dry_run=False)

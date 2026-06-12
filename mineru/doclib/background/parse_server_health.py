@@ -7,8 +7,11 @@ import logging
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from typing import cast
 
 import httpx
+
+from ...types import TIERS, Tier
 
 logger = logging.getLogger("mineru.health_check")
 
@@ -21,11 +24,11 @@ class ParseServerHealth:
     local_healthy: bool = False
     local_starting: bool = False
     local_started_at: float = 0.0
-    local_supported_tiers: list[str] = field(default_factory=list)
+    local_supported_tiers: list[Tier] = field(default_factory=list)
     local_mode: str = "disabled"
     self_hosted_url: str | None = None
     remote_healthy: bool = False
-    remote_supported_tiers: list[str] = field(default_factory=list)
+    remote_supported_tiers: list[Tier] = field(default_factory=list)
     restart_count: int = 0
     managed_proc: subprocess.Popen | None = None
 
@@ -35,6 +38,16 @@ _parse_server_health = ParseServerHealth()
 
 def get_health() -> ParseServerHealth:
     return _parse_server_health
+
+
+def api_server_args_for_tier(tier: Tier) -> list[str]:
+    """Return managed api-server process args for a doclib tier.
+
+    Managed doclib startup uses ``--tier`` so the api-server resolves its own
+    backend. Backend remains an api-server implementation detail and must not
+    leak into runtime doclib parse requests.
+    """
+    return ["--tier", tier, "--port", "15981"]
 
 
 class ParseServerHealthCheck:
@@ -87,22 +100,19 @@ class ParseServerHealthCheck:
     async def _try_restart_managed(self, health: ParseServerHealth) -> None:
         if health.restart_count >= MAX_RESTART_ATTEMPTS:
             logger.error(
-                f"Managed parse-server failed %d restarts, disabling", MAX_RESTART_ATTEMPTS
+                "Managed parse-server failed %d restarts, disabling", MAX_RESTART_ATTEMPTS
             )
             health.local_mode = "disabled"
             return
 
         health.restart_count += 1
         managed_tier = (await self.config_svc.get("parse_server.local.managed_tier")) or "standard"
-        tier_to_backend = {"standard": "pipeline", "pro": "vlm"}
-        backend = tier_to_backend.get(managed_tier, "pipeline")
-        cmd = [sys.executable, "-m", "mineru.parser.api_server",
-               "--backend", backend, "--port", "15981"]
+        cmd = [sys.executable, "-m", "mineru.parser.api_server", *api_server_args_for_tier(managed_tier)]
         logger.info("Restarting managed parse-server (attempt %d/%d): %s",
                     health.restart_count, MAX_RESTART_ATTEMPTS, " ".join(cmd))
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            logger.info("Managed parse-server restarted (PID %d, backend=%s)", proc.pid, backend)
+            logger.info("Managed parse-server restarted (PID %d, tier=%s)", proc.pid, managed_tier)
             health.managed_proc = proc
             health.local_starting = True
             health.local_started_at = asyncio.get_event_loop().time()
@@ -110,13 +120,17 @@ class ParseServerHealthCheck:
             logger.error(f"Failed to restart managed parse-server: {exc}")
 
     @staticmethod
-    async def _probe(base_url: str) -> tuple[bool, list[str]]:
+    async def _probe(base_url: str) -> tuple[bool, list[Tier]]:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(f"{base_url}/v1/tiers")
                 if resp.status_code == 200:
                     data = resp.json()
-                    tiers = [t.get("id") for t in data.get("data", [])]
+                    tiers: list[Tier] = []
+                    for t in data.get("data", []):
+                        tier_id = t.get("id")
+                        if tier_id in TIERS:
+                            tiers.append(cast(Tier, tier_id))
                     return True, tiers
         except Exception:
             pass

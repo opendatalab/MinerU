@@ -7,6 +7,7 @@ import logging
 import time
 
 from ..services.parse_svc import ParseService
+from ..types import PARSE_STATUS_FAILED
 
 logger = logging.getLogger("mineru.parse_worker")
 
@@ -55,9 +56,9 @@ class ParseWorkerPool:
                 try:
                     now = int(time.time() * 1000)
                     await self.parse_svc.db.execute(
-                        "UPDATE parses SET status='failed', error_code=?, error_msg=?, "
+                        "UPDATE parses SET status=?, error_code=?, error_msg=?, "
                         "locked_at=NULL, updated_at=? WHERE id=?",
-                        ("parse_failed", str(exc)[:500], now, task["id"]),
+                        (PARSE_STATUS_FAILED, "parse_failed", str(exc)[:500], now, task["id"]),
                     )
                 except Exception:
                     pass

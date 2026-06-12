@@ -3,13 +3,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..types import Tier
 from .api_client import MinerUApiParser
 from .base import DocumentParser, ParseResult
 from .html import HtmlParser
 from .office import DocxParser, PptxParser, XlsxParser
 from .pdf import PdfFlashParser, PdfHybridParser, PdfPipelineParser, PdfVlmParser
+from .tier import PARSER_BACKENDS, backend_for_tier, resolve_tier_and_backend
 
 __all__ = [
+    "backend_for_tier",
+    "PARSER_BACKENDS",
     "DocumentParser",
     "DocxParser",
     "HtmlParser",
@@ -22,25 +26,38 @@ __all__ = [
     "PptxParser",
     "XlsxParser",
     "parse",
+    "parse_async",
+    "resolve_tier_and_backend",
 ]
 
 
-def parse(
+def _build_parser(
     path: str | Path,
     *,
-    backend: str = "hybrid-auto-engine",
-    method: str = "auto",
-    lang: str = "ch",
-    formula_enable: bool = True,
-    table_enable: bool = True,
-    image_analysis: bool = True,
+    tier: Tier | None = None,
+    backend: str | None = None,
+    language: str = "ch",
+    ocr_mode: str = "auto",
+    disable_table: bool = False,
+    disable_formula: bool = False,
+    disable_image_analysis: bool = False,
     server_url: str | None = None,
-    page_range: str = "",
-) -> ParseResult:
+    method: str | None = None,
+    lang: str | None = None,
+    table_enable: bool | None = None,
+    formula_enable: bool | None = None,
+    image_analysis: bool | None = None,
+) -> DocumentParser:
     from ..utils.guess_suffix_or_lang import guess_suffix_by_path
 
     path = Path(path)
     suffix = guess_suffix_by_path(path)
+    _, resolved_backend = resolve_tier_and_backend(tier=tier, backend=backend)
+    resolved_ocr_mode = method or ocr_mode
+    resolved_language = lang or language
+    resolved_table_enable = (not disable_table) if table_enable is None else table_enable
+    resolved_formula_enable = (not disable_formula) if formula_enable is None else formula_enable
+    resolved_image_analysis = (not disable_image_analysis) if image_analysis is None else image_analysis
 
     if suffix in ("docx", "pptx", "xlsx"):
         parser_cls: type[DocumentParser] = {
@@ -48,38 +65,110 @@ def parse(
             "pptx": PptxParser,
             "xlsx": XlsxParser,
         }[suffix]
-        parser = parser_cls()
+        return parser_cls()
     elif suffix in ("html", "htm"):
-        parser = HtmlParser()
-    elif backend == "pipeline":
-        parser = PdfPipelineParser(
-            backend=backend,
-            method=method,
-            lang=lang,
-            formula_enable=formula_enable,
-            table_enable=table_enable,
+        return HtmlParser()
+    elif resolved_backend == "pipeline":
+        return PdfPipelineParser(
+            backend=resolved_backend,
+            method=resolved_ocr_mode,
+            lang=resolved_language,
+            formula_enable=resolved_formula_enable,
+            table_enable=resolved_table_enable,
         )
-    elif backend.startswith("vlm-"):
-        parser = PdfVlmParser(
-            backend=backend,
-            formula_enable=formula_enable,
-            table_enable=table_enable,
+    elif resolved_backend.startswith("vlm-"):
+        return PdfVlmParser(
+            backend=resolved_backend,
+            formula_enable=resolved_formula_enable,
+            table_enable=resolved_table_enable,
             server_url=server_url,
-            image_analysis=image_analysis,
+            image_analysis=resolved_image_analysis,
         )
-    elif backend.startswith("hybrid-"):
-        parser = PdfHybridParser(
-            backend=backend,
-            method=method,
-            lang=lang,
-            formula_enable=formula_enable,
-            table_enable=table_enable,
+    elif resolved_backend.startswith("hybrid-"):
+        return PdfHybridParser(
+            backend=resolved_backend,
+            method=resolved_ocr_mode,
+            lang=resolved_language,
+            formula_enable=resolved_formula_enable,
+            table_enable=resolved_table_enable,
             server_url=server_url,
-            image_analysis=image_analysis,
+            image_analysis=resolved_image_analysis,
         )
-    elif backend == "flash":
-        parser = PdfFlashParser()
+    elif resolved_backend == "flash":
+        return PdfFlashParser()
     else:
-        raise ValueError(f"Unknown backend: {backend}")
+        raise ValueError(f"Unknown backend: {resolved_backend}")
 
+
+def parse(
+    path: str | Path,
+    *,
+    tier: Tier | None = None,
+    backend: str | None = None,
+    language: str = "ch",
+    ocr_mode: str = "auto",
+    disable_table: bool = False,
+    disable_formula: bool = False,
+    disable_image_analysis: bool = False,
+    server_url: str | None = None,
+    page_range: str = "",
+    method: str | None = None,
+    lang: str | None = None,
+    table_enable: bool | None = None,
+    formula_enable: bool | None = None,
+    image_analysis: bool | None = None,
+) -> ParseResult:
+    parser = _build_parser(
+        path,
+        tier=tier,
+        backend=backend,
+        language=language,
+        ocr_mode=ocr_mode,
+        disable_table=disable_table,
+        disable_formula=disable_formula,
+        disable_image_analysis=disable_image_analysis,
+        server_url=server_url,
+        method=method,
+        lang=lang,
+        table_enable=table_enable,
+        formula_enable=formula_enable,
+        image_analysis=image_analysis,
+    )
     return parser.parse(path, page_range=page_range)
+
+
+async def parse_async(
+    path: str | Path,
+    *,
+    tier: Tier | None = None,
+    backend: str | None = None,
+    language: str = "ch",
+    ocr_mode: str = "auto",
+    disable_table: bool = False,
+    disable_formula: bool = False,
+    disable_image_analysis: bool = False,
+    server_url: str | None = None,
+    page_range: str = "",
+    method: str | None = None,
+    lang: str | None = None,
+    table_enable: bool | None = None,
+    formula_enable: bool | None = None,
+    image_analysis: bool | None = None,
+) -> ParseResult:
+    parser = _build_parser(
+        path,
+        tier=tier,
+        backend=backend,
+        language=language,
+        ocr_mode=ocr_mode,
+        disable_table=disable_table,
+        disable_formula=disable_formula,
+        disable_image_analysis=disable_image_analysis,
+        server_url=server_url,
+        method=method,
+        lang=lang,
+        table_enable=table_enable,
+        formula_enable=formula_enable,
+        image_analysis=image_analysis,
+    )
+    return await parser.parse_async(path, page_range=page_range)

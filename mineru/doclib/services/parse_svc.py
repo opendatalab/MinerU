@@ -8,6 +8,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from ...errors import MineruError
 from ...types import PageInfo, TIER_ORDER, Tier
@@ -23,6 +24,10 @@ from ..types import (
     PARSE_STATUS_SUPERSEDED,
     RULE_TYPE_PARSING_RULE,
     SCAN_STATUS_ACTIVE,
+    SCAN_STATUS_DELETED,
+    SCAN_STATUS_UNREACHABLE,
+    WATCH_STATUS_UNREACHABLE,
+    FileInfo,
 )
 from .config_svc import ConfigService
 
@@ -42,13 +47,25 @@ class ParseFailure(MineruError):
 MAX_FTS_CHARS = 30_000
 FTS_HEAD_HALF = 15_000
 
+DOC_TYPE_BY_EXT = {
+    "md": "markdown",
+    "markdown": "markdown",
+    "htm": "html",
+    "html": "html",
+}
+
+
+FileRefreshStatus = Literal["known", "new", "changed", "missing", "deleted", "unreachable", "unsupported", "error"]
+
 
 @dataclass(frozen=True)
-class DiscoverResult:
-    file: dict | None
-    changed: bool
-    needs_ingest: bool
-    unsupported: bool = False
+class FileRefreshResult:
+    file: FileInfo | None
+    status: FileRefreshStatus
+
+    @property
+    def needs_ingest(self) -> bool:
+        return self.file is not None and self.file.sha256 is None
 
 
 # ── range helpers ──────────────────────────────────────────────────
@@ -171,28 +188,56 @@ class ParseService:
 
     # ── discovery / ingestion (shared) ──────────────────────
 
-    async def discover_file(self, path: str, watch_id: int | None = None) -> DiscoverResult:
-        """Discover a path and mark it for ingest if stat changed.
+    async def refresh_file(
+        self,
+        path: str,
+        watch_id: int | None = None,
+        *,
+        ensure_ingested: bool = False,
+    ) -> FileRefreshResult:
+        """Refresh one source path against the files table.
 
-        This is the lightweight path used by watch and by synchronous path
-        operations before they trust ``files.sha256``.
+        This method owns file stat, DB row lookup, new/changed/known/missing/deleted
+        classification, and optional synchronous ingest.
         """
         ext = Path(path).suffix.lower().lstrip(".")
+        existing = await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,))
         if ext not in ALLOWED_EXTENSIONS:
-            return DiscoverResult(file=None, changed=False, needs_ingest=False, unsupported=True)
+            return FileRefreshResult(file=_file_info(existing), status="unsupported")
 
-        stat = await get_file_stat(path)
+        try:
+            stat = await get_file_stat(path)
+        except FileNotFoundError:
+            return await self._refresh_missing_file(path, existing)
+        except PermissionError as exc:
+            return await self._refresh_stat_error(existing, "file_permission_denied", str(exc))
+        except OSError as exc:
+            return await self._refresh_stat_error(existing, "stat_failed", str(exc))
+
+        result = await self._refresh_existing_file_with_stat(path, ext, stat, existing, watch_id)
+        if ensure_ingested and result.needs_ingest:
+            row = await self.ingest_file(path, watch_id=watch_id)
+            return FileRefreshResult(file=_file_info(row), status=result.status)
+        return result
+
+    async def _refresh_existing_file_with_stat(
+        self,
+        path: str,
+        ext: str,
+        stat: dict,
+        existing: dict | None,
+        watch_id: int | None,
+    ) -> FileRefreshResult:
         now = _now_ms()
         filename = Path(path).name
 
-        existing = await self.db.fetchone("SELECT * FROM files WHERE path=? AND scan_status=?", (path, SCAN_STATUS_ACTIVE))
-        if existing:
+        if existing and existing["scan_status"] == SCAN_STATUS_ACTIVE:
             unchanged = existing["mtime_ms"] == stat["mtime_ms"] and existing["size_bytes"] == stat["size_bytes"]
             if unchanged:
-                return DiscoverResult(file=existing, changed=False, needs_ingest=existing["sha256"] is None)
+                return FileRefreshResult(file=_file_info(existing), status="known")
 
             await self.db.execute(
-                "UPDATE files SET filename=?, ext=?, size_bytes=?, mtime_ms=?, birthtime_ms=?, "
+                "UPDATE files SET filename=?, ext=?, size_bytes=?, mtime_ms=?, "
                 "sha256=NULL, watch_id=COALESCE(?, watch_id), locked_at=NULL, error_code=NULL, error_msg=NULL, updated_at=? "
                 "WHERE id=?",
                 (
@@ -200,63 +245,105 @@ class ParseService:
                     ext,
                     stat["size_bytes"],
                     stat["mtime_ms"],
-                    stat["birthtime_ms"],
                     watch_id,
                     now,
                     existing["id"],
                 ),
             )
             row = await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],))
-            return DiscoverResult(file=row, changed=True, needs_ingest=True)
+            return FileRefreshResult(file=_file_info(row), status="changed")
 
-        existing_any_status = await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,))
-        if existing_any_status:
+        if existing:
             await self.db.execute(
-                "UPDATE files SET filename=?, ext=?, size_bytes=?, mtime_ms=?, birthtime_ms=?, "
-                "sha256=NULL, watch_id=?, scan_status=?, locked_at=NULL, error_code=NULL, error_msg=NULL, "
+                "UPDATE files SET filename=?, ext=?, size_bytes=?, mtime_ms=?, "
+                "sha256=NULL, watch_id=COALESCE(?, watch_id), scan_status=?, locked_at=NULL, error_code=NULL, error_msg=NULL, "
                 "deleted_at=NULL, updated_at=? WHERE id=?",
                 (
                     filename,
                     ext,
                     stat["size_bytes"],
                     stat["mtime_ms"],
-                    stat["birthtime_ms"],
                     watch_id,
                     SCAN_STATUS_ACTIVE,
                     now,
-                    existing_any_status["id"],
+                    existing["id"],
                 ),
             )
-            row = await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing_any_status["id"],))
-            return DiscoverResult(file=row, changed=True, needs_ingest=True)
+            row = await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],))
+            return FileRefreshResult(file=_file_info(row), status="changed")
 
         file_id = await self.db.execute_insert(
             "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, "
-            "birthtime_ms, watch_id, first_seen_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "watch_id, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 path,
                 filename,
                 ext,
                 stat["size_bytes"],
                 stat["mtime_ms"],
-                stat["birthtime_ms"],
                 watch_id,
                 now,
                 now,
             ),
         )
         row = await self.db.fetchone("SELECT * FROM files WHERE id=?", (file_id,))
-        return DiscoverResult(file=row, changed=True, needs_ingest=True)
+        return FileRefreshResult(file=_file_info(row), status="new")
+
+    async def _refresh_missing_file(self, path: str, existing: dict | None) -> FileRefreshResult:
+        if existing is None:
+            return FileRefreshResult(file=None, status="missing")
+
+        now = _now_ms()
+        scan_status = SCAN_STATUS_DELETED
+        deleted_at = now
+        if existing["scan_status"] != SCAN_STATUS_DELETED and await self._is_missing_due_to_unreachable_watch(existing):
+            scan_status = SCAN_STATUS_UNREACHABLE
+            deleted_at = None
+
+        await self.db.execute(
+            "UPDATE files SET scan_status=?, locked_at=NULL, error_code=NULL, error_msg=NULL, deleted_at=?, updated_at=? WHERE id=?",
+            (scan_status, deleted_at, now, existing["id"]),
+        )
+        row = await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],))
+        status: FileRefreshStatus = "unreachable" if scan_status == SCAN_STATUS_UNREACHABLE else "deleted"
+        return FileRefreshResult(file=_file_info(row), status=status)
+
+    async def _is_missing_due_to_unreachable_watch(self, file_row: dict) -> bool:
+        watch_id = file_row.get("watch_id")
+        if watch_id is None:
+            return False
+        watch = await self.db.fetchone("SELECT * FROM watch_targets WHERE id=?", (watch_id,))
+        if not watch or not watch.get("removable"):
+            return False
+        if watch["watch_status"] == WATCH_STATUS_UNREACHABLE:
+            return True
+        try:
+            await get_file_stat(watch["path"])
+        except OSError:
+            if self.config_svc is not None:
+                await self.config_svc.update_watch_status(watch_id, WATCH_STATUS_UNREACHABLE)
+            return True
+        return False
+
+    async def _refresh_stat_error(self, existing: dict | None, error_code: str, error_msg: str) -> FileRefreshResult:
+        if existing is None:
+            return FileRefreshResult(file=None, status="error")
+
+        now = _now_ms()
+        await self.db.execute(
+            "UPDATE files SET sha256=NULL, locked_at=NULL, error_code=?, error_msg=?, updated_at=? WHERE id=?",
+            (error_code, error_msg[:500], now, existing["id"]),
+        )
+        row = await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],))
+        return FileRefreshResult(file=_file_info(row), status="error")
 
     async def ensure_ingested(self, path: str, watch_id: int | None = None) -> dict | None:
         """Synchronously discover and ingest a source path when needed."""
-        discovered = await self.discover_file(path, watch_id=watch_id)
-        if discovered.file is None:
+        refreshed = await self.refresh_file(path, watch_id=watch_id, ensure_ingested=True)
+        if refreshed.file is None:
             return None
-        if not discovered.needs_ingest:
-            return discovered.file
-        return await self.ingest_file(path, watch_id=watch_id)
+        return await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,))
 
     async def ingest_file(self, path: str, watch_id: int | None = None) -> dict | None:
         """Ingest a discovered file: SHA-256 + metadata + trigger default parse."""
@@ -280,7 +367,7 @@ class ParseService:
             # to the existing doc without duplicating docs/parses.
             if existing_path:
                 await self.db.execute(
-                    "UPDATE files SET filename=?, ext=?, size_bytes=?, mtime_ms=?, birthtime_ms=?, "
+                    "UPDATE files SET filename=?, ext=?, size_bytes=?, mtime_ms=?, "
                     "sha256=?, watch_id=COALESCE(?, watch_id), locked_at=NULL, error_code=NULL, error_msg=NULL, updated_at=? "
                     "WHERE id=?",
                     (
@@ -288,7 +375,6 @@ class ParseService:
                         ext,
                         stat["size_bytes"],
                         stat["mtime_ms"],
-                        stat["birthtime_ms"],
                         sha256,
                         watch_id,
                         now,
@@ -298,15 +384,14 @@ class ParseService:
             else:
                 await self.db.execute(
                     "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, "
-                    "birthtime_ms, sha256, watch_id, first_seen_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "sha256, watch_id, first_seen_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         path,
                         filename,
                         ext,
                         stat["size_bytes"],
                         stat["mtime_ms"],
-                        stat["birthtime_ms"],
                         sha256,
                         watch_id,
                         now,
@@ -327,7 +412,6 @@ class ParseService:
             metadata_error_code = "metadata_failed"
             metadata_error_msg = str(exc)[:500] or "Failed to extract document metadata"
             metadata = {
-                "mime_type": None,
                 "page_count": None,
                 "title": None,
                 "author": None,
@@ -347,15 +431,14 @@ class ParseService:
         now = _now_ms()
         await self.db.execute(
             "INSERT OR IGNORE INTO files (path, filename, ext, size_bytes, mtime_ms, "
-            "birthtime_ms, watch_id, first_seen_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "watch_id, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 path,
                 filename,
                 ext,
                 stat["size_bytes"],
                 stat["mtime_ms"],
-                stat["birthtime_ms"],
                 watch_id,
                 now,
                 now,
@@ -363,13 +446,13 @@ class ParseService:
         )
 
         await self.db.execute(
-            "INSERT OR IGNORE INTO docs (sha256, size_bytes, mime_type, page_count, "
+            "INSERT OR IGNORE INTO docs (sha256, size_bytes, doc_type, page_count, "
             "title, author, subject, keywords, error_code, error_msg, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 sha256,
                 stat["size_bytes"],
-                metadata["mime_type"],
+                _doc_type_from_ext(ext),
                 page_count,
                 metadata["title"],
                 metadata["author"],
@@ -1008,6 +1091,14 @@ def _local_parse_server_url(mode: str, health: object) -> str | None:
     return None
 
 
+def _file_info(row: dict | None) -> FileInfo | None:
+    return FileInfo.model_validate(row) if row is not None else None
+
+
 def _safe_filename(s: str, done_at: int = 0) -> str:
     """Convert a pages range string + done_at to a filename."""
     return f"{s}_{done_at}" if done_at else s
+
+
+def _doc_type_from_ext(ext: str) -> str:
+    return DOC_TYPE_BY_EXT.get(ext, ext or "unknown")

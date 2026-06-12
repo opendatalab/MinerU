@@ -7,9 +7,8 @@ from abc import abstractmethod
 from pathlib import Path
 from typing import Any
 
-from mineru.types import PageInfo
-
 from .base import DocumentParser, ParseResult
+from ..types import PageInfo
 
 _IMAGE_SUFFIXES = frozenset({"png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"})
 
@@ -135,14 +134,10 @@ class PdfBaseParser(DocumentParser):
         file_name: str,
     ) -> ParseResult:
         from ..utils.pdf_document import PDFDocument
-        from ..version import __version__
 
         return ParseResult(
             pages=middle_json,
-            _backend=self._backend,
-            _version_name=__version__,
             _pdf_doc=PDFDocument(pdf_bytes),
-            _file_name=file_name,
         )
 
 
@@ -322,7 +317,7 @@ class PdfFlashParser(PdfBaseParser):
     _backend = "flash"
 
     def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
-        from mineru.types import Block, Line, PageInfo, Span
+        from ..types import Block, Line, PageInfo, Span
 
         from ..backend.flash.pdf_extractor import extract_text
 

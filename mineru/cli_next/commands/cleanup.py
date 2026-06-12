@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import typer
 
-from mineru.doclib.client import MineruClient
-from mineru.cli_next.output import print_error, print_success, print_info
+from ...doclib.client import DoclibClient
+from ...doclib.types import CleanupDeletedRequest, CleanupOrphansRequest, CleanupTempRequest
+from ..output import print_error, print_info, print_success
 
 
 def cleanup_cmd(
@@ -24,42 +25,42 @@ def cleanup_cmd(
         mineru cleanup --temp
     """
     try:
-        client = MineruClient(timeout=30)
+        client = DoclibClient(timeout=30)
     except Exception:
         print_error("Cannot connect to mineru server. Run 'mineru server start' first.")
         raise typer.Exit(1) from None
 
     if orphans:
         try:
-            data = client._post("/cleanup/orphans", json_data={"dry_run": dry_run})
+            data = client.cleanup_orphan_docs(CleanupOrphansRequest(dry_run=dry_run))
         except Exception as exc:
             print_error(str(exc))
             raise typer.Exit(1) from None
-        count = data.get("orphan_docs", 0)
+        count = data.orphan_docs
         if dry_run:
             print_info(f"Would remove {count} orphan doc(s). Use --no-dry-run to proceed.")
         else:
             print_success(f"Removed {count} orphan doc(s).")
     elif deleted:
         try:
-            data = client._post("/cleanup/deleted", json_data={
-                "dry_run": dry_run, "older_than_days": older_than,
-            })
+            data = client.cleanup_deleted_files(
+                CleanupDeletedRequest(dry_run=dry_run, older_than_days=older_than)
+            )
         except Exception as exc:
             print_error(str(exc))
             raise typer.Exit(1) from None
-        count = data.get("deleted_files", 0)
+        count = data.deleted_files
         if dry_run:
             print_info(f"Would remove {count} deleted file record(s). Use --no-dry-run to proceed.")
         else:
             print_success(f"Removed {count} deleted file record(s).")
     elif temp:
         try:
-            data = client._post("/cleanup/temp", json_data={"older_than_days": older_than})
+            data = client.cleanup_temp_files(CleanupTempRequest(older_than_days=older_than))
         except Exception as exc:
             print_error(str(exc))
             raise typer.Exit(1) from None
-        count = data.get("temp_files_removed", 0)
+        count = data.temp_files_removed
         print_success(f"Removed {count} temp file(s).")
     else:
         print_info("Specify --orphans, --deleted, or --temp.")

@@ -8,17 +8,19 @@ import logging
 import os
 import time
 
-from mineru.constants import DATA_DIR
 from ..core.db import DatabaseManager
-from ..services.parse_svc import parse_range_set
+from ..services.parse_svc import parse_batch_json_path, parse_range_set
+from ...types import Tier
+from ..types import PARSE_STATUS_DONE, PARSE_STATUS_SUPERSEDED
 
 logger = logging.getLogger("mineru.compaction")
 
 
 class Compaction:
-    def __init__(self, db: DatabaseManager, interval_sec: int = 600) -> None:
+    def __init__(self, db: DatabaseManager, interval_sec: int, data_dir: str) -> None:
         self.db = db
         self.interval_sec = interval_sec
+        self.data_dir = os.path.expanduser(data_dir)
         self.running = False
 
     async def run(self) -> None:
@@ -40,8 +42,9 @@ class Compaction:
     async def _compact(self) -> int:
         """Scan all (sha256, tier) pairs with multiple done batches and merge them."""
         rows = await self.db.fetchall(
-            "SELECT sha256, tier FROM parses WHERE status='done' "
-            "GROUP BY sha256, tier HAVING COUNT(*) > 1"
+            "SELECT sha256, tier FROM parses WHERE status=? "
+            "GROUP BY sha256, tier HAVING COUNT(*) > 1",
+            (PARSE_STATUS_DONE,),
         )
         total_merged = 0
         for r in rows:
@@ -49,11 +52,11 @@ class Compaction:
             total_merged += merged
         return total_merged
 
-    async def _compact_doc_tier(self, sha256: str, tier: str) -> int:
+    async def _compact_doc_tier(self, sha256: str, tier: Tier) -> int:
         rows = await self.db.fetchall(
-            "SELECT * FROM parses WHERE sha256=? AND tier=? AND status='done' "
+            "SELECT * FROM parses WHERE sha256=? AND tier=? AND status=? "
             "ORDER BY done_at DESC",
-            (sha256, tier),
+            (sha256, tier, PARSE_STATUS_DONE),
         )
         if len(rows) <= 1:
             return 0
@@ -87,18 +90,18 @@ class Compaction:
         # atomic replace
         now = int(time.time() * 1000)
         await self.db.execute(
-            "DELETE FROM parses WHERE sha256=? AND tier=? AND status='done'",
-            (sha256, tier),
+            "DELETE FROM parses WHERE sha256=? AND tier=? AND status=?",
+            (sha256, tier, PARSE_STATUS_DONE),
         )
         await self.db.execute(
-            "DELETE FROM parses WHERE sha256=? AND tier=? AND status='superseded'",
-            (sha256, tier),
+            "DELETE FROM parses WHERE sha256=? AND tier=? AND status=?",
+            (sha256, tier, PARSE_STATUS_SUPERSEDED),
         )
         for pages_str in merged_ranges:
             await self.db.execute(
                 "INSERT INTO parses (sha256, tier, pages, status, done_at, priority, "
-                "created_at, updated_at) VALUES (?, ?, ?, 'done', ?, 0, ?, ?)",
-                (sha256, tier, pages_str, max_done_at, now, now),
+                "created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
+                (sha256, tier, pages_str, PARSE_STATUS_DONE, max_done_at, now, now),
             )
 
         # compact JSON files (only from done batches, not superseded)
@@ -107,13 +110,12 @@ class Compaction:
         return len(rows) - len(merged_ranges)
 
     async def _compact_json(
-        self, sha256: str, tier: str, merged_ranges: list[str],
+        self, sha256: str, tier: Tier, merged_ranges: list[str],
         done_rows: list[dict], max_done_at: int,
     ) -> None:
         """Merge per-batch JSON files to match compacted parses rows.
         Only reads files belonging to *done_rows* — ignores superseded files."""
-        data_dir = os.path.expanduser(DATA_DIR)
-        tier_dir = os.path.join(data_dir, "parsed", sha256[:2], sha256, tier)
+        tier_dir = os.path.join(self.data_dir, "parsed", sha256[:2], sha256, tier)
         if not os.path.isdir(tier_dir):
             return
 
@@ -121,8 +123,7 @@ class Compaction:
         # process oldest first → newest overwrites (done_rows is sorted by done_at DESC)
         pages_by_idx: dict[int, dict] = {}
         for row in reversed(done_rows):
-            key = _safe_filename(row["pages"], row["done_at"])
-            fpath = os.path.join(tier_dir, f"{key}.json")
+            fpath = parse_batch_json_path(self.data_dir, sha256, tier, row["pages"], row["done_at"])
             if not os.path.isfile(fpath):
                 continue
             try:
@@ -151,8 +152,7 @@ class Compaction:
             ]
             if not json_pages:
                 continue
-            key = _safe_filename(pages_str, max_done_at)
-            json_path = os.path.join(tier_dir, f"{key}.json")
+            json_path = parse_batch_json_path(self.data_dir, sha256, tier, pages_str, max_done_at)
             try:
                 with open(json_path, "w", encoding="utf-8") as f:
                     _json.dump(
@@ -160,7 +160,3 @@ class Compaction:
                     )
             except Exception:
                 pass
-
-
-def _safe_filename(s: str, done_at: int = 0) -> str:
-    return f"{s}_{done_at}" if done_at else s

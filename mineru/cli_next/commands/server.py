@@ -9,28 +9,35 @@ import time
 
 import typer
 
-from mineru.constants import SOCKET_PATH
-from mineru.cli_next.output import format_server_status, print_error, print_success, print_info
+from ...config import config
+from ..output import format_server_status, print_error, print_info, print_success
 
 app = typer.Typer(help="Server lifecycle management", no_args_is_help=True)
 
 
+def _socket_path() -> str:
+    return config.doclib.uds.path
+
+
 def _server_running() -> bool:
-    if not os.path.exists(SOCKET_PATH):
+    socket_path = _socket_path()
+    if not os.path.exists(socket_path):
         return False
     try:
-        from mineru.doclib.client import MineruClient
-        c = MineruClient(timeout=3)
-        c.server_status()
+        from ...doclib.client import DoclibClient
+
+        c = DoclibClient(timeout=3)
+        c.get_server_status()
         return True
     except Exception:
         return False
 
 
 def _wait_for_sock(timeout: float = 15.0) -> bool:
+    socket_path = _socket_path()
     deadline = time.time() + timeout
     while time.time() < deadline:
-        if os.path.exists(SOCKET_PATH):
+        if os.path.exists(socket_path):
             time.sleep(0.3)
             if _server_running():
                 return True
@@ -45,14 +52,15 @@ def start() -> None:
         print_info("Server is already running.")
         return
 
+    socket_path = _socket_path()
     # Clean stale socket
     try:
-        os.unlink(SOCKET_PATH)
+        os.unlink(socket_path)
     except OSError:
         pass
 
     proc = subprocess.Popen(
-        [sys.executable, "-m", "mineru.doclib.server"],
+        [sys.executable, "-m", "mineru.doclib.app"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -62,7 +70,7 @@ def start() -> None:
         print_error("Server failed to start within 15 seconds.")
         raise typer.Exit(1)
 
-    print_success(f"Server started (PID {proc.pid}). Socket: {SOCKET_PATH}")
+    print_success(f"Server started (PID {proc.pid}). Socket: {socket_path}")
 
 
 @app.command()
@@ -73,15 +81,16 @@ def stop() -> None:
         return
 
     try:
-        from mineru.doclib.client import MineruClient
-        c = MineruClient(timeout=5)
-        c.shutdown()
+        from ...doclib.client import DoclibClient
+
+        c = DoclibClient(timeout=5)
+        c.shutdown_server()
     except Exception:
         pass
 
     time.sleep(0.5)
     try:
-        os.unlink(SOCKET_PATH)
+        os.unlink(_socket_path())
     except OSError:
         pass
 
@@ -105,9 +114,10 @@ def status() -> None:
         return
 
     try:
-        from mineru.doclib.client import MineruClient
-        c = MineruClient(timeout=5)
-        data = c.server_status()
+        from ...doclib.client import DoclibClient
+
+        c = DoclibClient(timeout=5)
+        data = c.get_server_status()
         format_server_status(data)
     except Exception as exc:
         print_error(str(exc))

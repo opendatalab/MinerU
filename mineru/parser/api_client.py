@@ -2,8 +2,8 @@
 """DocumentParser implementation for the MinerU v1 REST API.
 
 ``MinerUApiParser`` extends ``DocumentParser`` and talks to a v1 API
-server (local or cloud).  All :class:`DocumentParser` constructor
-parameters are mapped to the v1 API job payload automatically.
+server (local or cloud).  It exposes API tier semantics directly and
+does not expose parser backend selection.
 """
 
 from __future__ import annotations
@@ -13,19 +13,8 @@ import json as _json
 from pathlib import Path
 from typing import Any
 
-from mineru.types import PageInfo
-
 from .base import DocumentParser, ParseResult
-
-
-def _tier_to_backend(tier: str) -> str:
-    """Map NEXT-API tier values to api_parser backend names."""
-    mapping: dict[str, str] = {
-        "standard": "pipeline",
-        "pro": "vlm",
-        "auto": "auto",
-    }
-    return mapping.get(tier, "pipeline")
+from ..types import PageInfo, Tier
 
 
 class MinerUApiParser(DocumentParser):
@@ -34,24 +23,21 @@ class MinerUApiParser(DocumentParser):
     Works with local-server, LAN, and cloud (mineru.net) deployments::
 
         # local deployment — uses ``local`` source, no upload needed
-        parser = MinerUApiParser(api_url="http://localhost:8000/api", backend="pipeline")
+        parser = MinerUApiParser(api_url="http://localhost:8000/api", tier="standard")
 
         # cloud (paid)
         parser = MinerUApiParser(
             api_url="https://mineru.net/api", api_key="msk_...",
-            backend="vlm",
+            tier="pro",
         )
 
         result = parser.parse("report.pdf")
         print(result.markdown())
 
-    Constructor parameters (matching :class:`DocumentParser`):
+    Constructor parameters:
 
-    - ``backend`` → v1 ``tier`` (``"standard"`` / ``"pro"`` / ``"auto"``)
-    - ``method`` → v1 ``ocr`` (``"auto"`` / ``"ocr"`` / ``"txt"``)
-    - ``image_analysis`` → mapped directly
-    - ``return_md`` / ``return_middle_json`` / ``return_content_list`` /
-      ``return_images`` → v1 ``output_formats``
+    - ``tier`` → v1 ``tier`` (``"standard"`` / ``"pro"``); ``None`` omits the field
+    - ``page_range`` → per-file v1 ``page_range``
     """
 
     def __init__(
@@ -59,16 +45,12 @@ class MinerUApiParser(DocumentParser):
         *,
         api_url: str,
         api_key: str | None = None,
-        tier: str | None = None,
-        method: str = "auto",
-        image_analysis: bool = True,
+        tier: Tier | None = None,
     ) -> None:
         self._base = api_url.rstrip("/")
         self._api_key = api_key
         self._local = self._is_localhost(self._base)
-        self.backend = _tier_to_backend(tier) if tier else "auto"
-        self.method = method
-        self.image_analysis = image_analysis
+        self.tier = tier
 
     # ── DocumentParser interface ─────────────────────────────────────
 
@@ -81,7 +63,9 @@ class MinerUApiParser(DocumentParser):
         job = self._do_parse(payload)
         return self._build_result(job, file_path.name)
 
-    async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:
+    async def parse_async(
+        self, path: str | Path, *, page_range: str = ""
+    ) -> ParseResult:
         file_path = Path(path)
         if not file_path.exists():
             raise FileNotFoundError(file_path)
@@ -101,37 +85,20 @@ class MinerUApiParser(DocumentParser):
             file_id = self._upload(file_path)
             source = {"type": "file_id", "file_id": file_id}
 
-        options: dict[str, Any] = {
-            "ocr": self._ocr_mode(),
-            "image_analysis": self.image_analysis,
-        }
+        file_entry: dict[str, Any] = {"source": source}
         if page_range:
-            options["page_range"] = page_range
+            file_entry["page_range"] = page_range
 
-        return {
-            "files": [{"source": source, "options": options}],
-            "tier": self._tier(),
+        payload: dict[str, Any] = {
+            "files": [file_entry],
             "output_formats": self._output_formats(),
         }
-
-    def _tier(self) -> str:
-        if self.backend == "pipeline":
-            return "standard"
-        if self.backend.startswith("vlm"):
-            return "pro"
-        if self.backend.startswith("html"):
-            return "auto"
-        return "auto"
-
-    def _ocr_mode(self) -> str:
-        if self.method == "ocr":
-            return "true"
-        if self.method == "txt":
-            return "txt"
-        return "auto"
+        if self.tier is not None:
+            payload["tier"] = self.tier
+        return payload
 
     def _output_formats(self) -> list[str]:
-        return ["json"]
+        return ["middle_json"]
 
     # ── HTTP helpers ─────────────────────────────────────────────────
 
@@ -162,7 +129,11 @@ class MinerUApiParser(DocumentParser):
         if "error" in data:
             err = data["error"]
             raise _V1APIError(err.get("code", "unknown"), err.get("message", str(err)))
-        if "detail" in data and isinstance(data["detail"], dict) and "error" in data["detail"]:
+        if (
+            "detail" in data
+            and isinstance(data["detail"], dict)
+            and "error" in data["detail"]
+        ):
             err = data["detail"]["error"]
             raise _V1APIError(err.get("code", "unknown"), err.get("message", str(err)))
         return data
@@ -198,7 +169,10 @@ class MinerUApiParser(DocumentParser):
                 r2 = cli.put(upload_url, content=fh.read())
             self._check(r2)
 
-            r3 = cli.post(f"{self._base}/v1/uploads/{resp['id']}/complete", headers=self._headers())
+            r3 = cli.post(
+                f"{self._base}/v1/uploads/{resp['id']}/complete",
+                headers=self._headers(),
+            )
             resp3 = self._check(r3)
             return resp3["file"]["id"]
 
@@ -231,7 +205,10 @@ class MinerUApiParser(DocumentParser):
             r2 = await cli.put(upload_url, content=data)
             self._check(r2)
 
-            r3 = await cli.post(f"{self._base}/v1/uploads/{resp['id']}/complete", headers=self._headers())
+            r3 = await cli.post(
+                f"{self._base}/v1/uploads/{resp['id']}/complete",
+                headers=self._headers(),
+            )
             resp3 = self._check(r3)
             return resp3["file"]["id"]
 
@@ -242,11 +219,13 @@ class MinerUApiParser(DocumentParser):
 
         payload["wait"] = 600
         with httpx.Client(timeout=httpx.Timeout(660, connect=30)) as cli:
-            r = cli.post(f"{self._base}/v1/parse/jobs", headers=self._headers(), json=payload)
+            r = cli.post(
+                f"{self._base}/v1/parse/jobs", headers=self._headers(), json=payload
+            )
             job = self._check(r)
-        if job.get("status") not in ("completed", "partial", "failed"):
-            # poll if wait timed out
-            job = self._poll(cli, job["job_id"])
+            if job.get("status") not in ("completed", "partial", "failed", "canceled"):
+                # poll if wait timed out
+                job = self._poll(cli, job["job_id"])
         return job
 
     async def _async_do_parse(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -254,10 +233,12 @@ class MinerUApiParser(DocumentParser):
 
         payload["wait"] = 600
         async with httpx.AsyncClient(timeout=httpx.Timeout(660, connect=30)) as cli:
-            r = await cli.post(f"{self._base}/v1/parse/jobs", headers=self._headers(), json=payload)
+            r = await cli.post(
+                f"{self._base}/v1/parse/jobs", headers=self._headers(), json=payload
+            )
             job = self._check(r)
-        if job.get("status") not in ("completed", "partial", "failed"):
-            job = await self._async_poll(cli, job["job_id"])
+            if job.get("status") not in ("completed", "partial", "failed", "canceled"):
+                job = await self._async_poll(cli, job["job_id"])
         return job
 
     def _poll(self, cli: Any, job_id: str) -> dict[str, Any]:
@@ -268,7 +249,7 @@ class MinerUApiParser(DocumentParser):
             time.sleep(delay)
             r = cli.get(f"{self._base}/v1/parse/jobs/{job_id}", headers=self._headers())
             job = self._check(r)
-            if job.get("status") in ("completed", "partial", "failed"):
+            if job.get("status") in ("completed", "partial", "failed", "canceled"):
                 return job
             delay = min(delay * 2, 30)
         raise _V1APIError("timeout", f"Job {job_id} did not complete within timeout")
@@ -279,9 +260,11 @@ class MinerUApiParser(DocumentParser):
         delay = 2
         for _ in range(150):
             await asyncio.sleep(delay)
-            r = await cli.get(f"{self._base}/v1/parse/jobs/{job_id}", headers=self._headers())
+            r = await cli.get(
+                f"{self._base}/v1/parse/jobs/{job_id}", headers=self._headers()
+            )
             job = self._check(r)
-            if job.get("status") in ("completed", "partial", "failed"):
+            if job.get("status") in ("completed", "partial", "failed", "canceled"):
                 return job
             delay = min(delay * 2, 30)
         raise _V1APIError("timeout", f"Job {job_id} did not complete within timeout")
@@ -291,7 +274,9 @@ class MinerUApiParser(DocumentParser):
     def _build_result(self, job: dict[str, Any], file_name: str) -> ParseResult:
         return _parse_result_from_job(job, file_name, self)
 
-    async def _async_build_result(self, job: dict[str, Any], file_name: str) -> ParseResult:
+    async def _async_build_result(
+        self, job: dict[str, Any], file_name: str
+    ) -> ParseResult:
         return await _async_parse_result_from_job(job, file_name, self)
 
 
@@ -328,7 +313,9 @@ def _mime_type(path: Path) -> str:
     }.get(ext, "application/octet-stream")
 
 
-def _parse_result_from_job(job: dict[str, Any], file_name: str, parser: MinerUApiParser) -> ParseResult:
+def _parse_result_from_job(
+    job: dict[str, Any], file_name: str, parser: MinerUApiParser
+) -> ParseResult:
     files = job.get("files", [])
     outputs: dict[str, Any] = {}
     if files and files[0].get("output_files"):
@@ -336,17 +323,14 @@ def _parse_result_from_job(job: dict[str, Any], file_name: str, parser: MinerUAp
 
     mid_json = _download_json(parser, outputs)
 
-    from mineru.version import __version__
-
     return ParseResult(
         pages=_pages_from_middle_json(mid_json),
-        _backend=parser.backend,
-        _version_name=f"v1-api-{__version__}",
-        _file_name=file_name,
     )
 
 
-async def _async_parse_result_from_job(job: dict[str, Any], file_name: str, parser: MinerUApiParser) -> ParseResult:
+async def _async_parse_result_from_job(
+    job: dict[str, Any], file_name: str, parser: MinerUApiParser
+) -> ParseResult:
     files = job.get("files", [])
     outputs: dict[str, Any] = {}
     if files and files[0].get("output_files"):
@@ -354,18 +338,15 @@ async def _async_parse_result_from_job(job: dict[str, Any], file_name: str, pars
 
     mid_json = await _async_download_json(parser, outputs)
 
-    from mineru.version import __version__
-
     return ParseResult(
         pages=_pages_from_middle_json(mid_json),
-        _backend=parser.backend,
-        _version_name=f"v1-api-{__version__}",
-        _file_name=file_name,
     )
 
 
-def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any] | None:
-    ref = outputs.get("json") or outputs.get("json_")
+def _download_json(
+    parser: MinerUApiParser, outputs: dict[str, Any]
+) -> dict[str, Any] | None:
+    ref = outputs.get("middle_json") or outputs.get("json") or outputs.get("json_")
     if not ref or not ref.get("file_id"):
         return None
     try:
@@ -375,8 +356,10 @@ def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str
         return None
 
 
-async def _async_download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any] | None:
-    ref = outputs.get("json") or outputs.get("json_")
+async def _async_download_json(
+    parser: MinerUApiParser, outputs: dict[str, Any]
+) -> dict[str, Any] | None:
+    ref = outputs.get("middle_json") or outputs.get("json") or outputs.get("json_")
     if not ref or not ref.get("file_id"):
         return None
     try:
@@ -390,7 +373,9 @@ def _download_bytes(parser: MinerUApiParser, file_id: str) -> bytes:
     import httpx
 
     with httpx.Client(timeout=httpx.Timeout(120, connect=30)) as cli:
-        r = cli.get(f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers())
+        r = cli.get(
+            f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers()
+        )
         parser._check(r)
         return r.content
 
@@ -399,7 +384,9 @@ async def _async_download_bytes(parser: MinerUApiParser, file_id: str) -> bytes:
     import httpx
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30)) as cli:
-        r = await cli.get(f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers())
+        r = await cli.get(
+            f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers()
+        )
         parser._check(r)
         return r.content
 
@@ -416,7 +403,12 @@ def _pages_from_middle_json(mid_json: dict[str, Any] | list[Any] | None) -> list
         if isinstance(pages, dict):
             raw_pages = pages.get("preproc_blocks", [])
             return [
-                PageInfo(page_idx=i, page_size=(raw.get("width", 0), raw.get("height", 0)) if isinstance(raw, dict) else (0, 0))
+                PageInfo(
+                    page_idx=i,
+                    page_size=(raw.get("width", 0), raw.get("height", 0))
+                    if isinstance(raw, dict)
+                    else (0, 0),
+                )
                 for i, raw in enumerate(raw_pages)
             ]
     return []

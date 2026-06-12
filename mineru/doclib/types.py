@@ -134,7 +134,6 @@ class FileInfo(DoclibModel):
     ext: str
     size_bytes: int
     mtime_ms: int
-    birthtime_ms: int | None = None
     sha256: str | None = None
     watch_id: int | None = None
     scan_status: ScanStatus
@@ -148,13 +147,13 @@ class FileInfo(DoclibModel):
 class DocInfo(DoclibModel):
     sha256: str
     size_bytes: int
-    mime_type: str | None = None
+    doc_type: str | None = None
     title: str | None = None
     author: str | None = None
     subject: str | None = None
     keywords: str | None = None
     page_count: int | None = None
-    lang: str | None = None
+    language: str | None = None
     is_scanned: int = 0
     meta_tier: Tier | None = None
     error_code: str | None = None

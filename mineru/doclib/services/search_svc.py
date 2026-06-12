@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..core.db import DatabaseManager
 from ..core.fts import FTSManager, strip_sep
+from ..types import SCAN_STATUS_ACTIVE
 
 
 class SearchService:
@@ -33,9 +34,9 @@ class SearchService:
         sql = (
             "SELECT f.*, d.title, d.author, d.page_count "
             "FROM files f JOIN docs d ON f.sha256 = d.sha256 "
-            f"WHERE f.sha256 IN ({placeholders}) AND f.scan_status = 'active'"
+            f"WHERE f.sha256 IN ({placeholders}) AND f.scan_status = ?"
         )
-        params = list(sha256s)
+        params = [*sha256s, SCAN_STATUS_ACTIVE]
 
         if file_type:
             sql += " AND f.ext = ?"
@@ -95,8 +96,8 @@ class SearchService:
         file_rows = await self.db.fetchall(
             f"SELECT f.*, d.title "
             f"FROM files f LEFT JOIN docs d ON f.sha256 = d.sha256 "
-            f"WHERE f.id IN ({placeholders}) AND f.scan_status = 'active'",
-            file_ids,
+            f"WHERE f.id IN ({placeholders}) AND f.scan_status = ?",
+            [*file_ids, SCAN_STATUS_ACTIVE],
         )
 
         files_by_id = {fr["id"]: fr for fr in file_rows}

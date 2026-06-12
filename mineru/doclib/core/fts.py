@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 try:
     import jieba
 except ImportError:
     jieba = None  # type: ignore[assignment]
 
+from ...types import Tier
 from .db import DatabaseManager
 
 FTS_SEP = ""
@@ -47,7 +50,7 @@ class FTSManager:
         self,
         *,
         sha256: str,
-        tier: str,
+        tier: Tier,
         text: str,
         title: str,
         author: str,
@@ -83,11 +86,11 @@ class FTSManager:
         except Exception:
             return []
 
-    async def get_tier(self, sha256: str) -> str | None:
+    async def get_tier(self, sha256: str) -> Tier | None:
         row = await self.db.fetchone(
             "SELECT tier FROM fts_contents WHERE sha256=?", (sha256,)
         )
-        return row["tier"] if row else None
+        return cast(Tier, row["tier"]) if row else None
 
     async def delete(self, sha256: str) -> None:
         await self.db.execute("DELETE FROM fts_contents WHERE sha256=?", (sha256,))

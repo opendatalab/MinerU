@@ -7,6 +7,25 @@ from typing import Any, Iterator, Literal, TypeAlias, TypeVar, get_type_hints
 T = TypeVar("T", bound="_DocElement")
 
 
+Tier = Literal[
+    "flash",
+    "standard",
+    "pro",
+]
+
+TIERS: set[str] = {
+    "flash",
+    "standard",
+    "pro",
+}
+
+TIER_ORDER: dict[Tier, int] = {
+    "flash": 0,
+    "standard": 1,
+    "pro": 2,
+}
+
+
 class BlockType:
     IMAGE = "image"
     IMAGE_BODY = "image_body"

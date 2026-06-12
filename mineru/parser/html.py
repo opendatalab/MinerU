@@ -6,7 +6,7 @@ from pathlib import Path
 from bs4 import BeautifulSoup, Tag
 
 from .base import DocumentParser, ParseResult
-from mineru.types import Block, Line, PageInfo, Span
+from ..types import Block, Line, PageInfo, Span
 
 
 class HtmlParser(DocumentParser):
@@ -20,7 +20,6 @@ class HtmlParser(DocumentParser):
         if not path.exists():
             raise FileNotFoundError(path)
 
-        file_name = path.stem
         html_text = path.read_text(encoding="utf-8")
         soup = BeautifulSoup(html_text, "html.parser")
 
@@ -30,9 +29,6 @@ class HtmlParser(DocumentParser):
 
         return ParseResult(
             pages=[PageInfo(page_idx=0, para_blocks=blocks)],
-            _backend="html",
-            _version_name=_version(),
-            _file_name=file_name,
         )
 
 
@@ -149,8 +145,3 @@ def _build_code(element: Tag) -> Block:
         type="code",
         lines=[Line(spans=[Span(type="code", content=content)])],
     )
-
-
-def _version() -> str:
-    from ..version import __version__
-    return __version__

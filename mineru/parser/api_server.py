@@ -30,7 +30,13 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-# ── literal type aliases (no enum imports) ──────────────────────────
+from ..types import Tier
+from .tier import PARSER_BACKENDS
+from .tier import resolve_tier_and_backend
+
+_API_SERVER_BACKENDS = tuple(backend for backend in PARSER_BACKENDS if backend != "flash")
+
+# ── literal type aliases ────────────────────────────────────────────
 
 JobStatus = Literal["queued", "running", "completed", "partial", "failed", "canceled"]
 """Job lifecycle states."""
@@ -41,14 +47,11 @@ FileStatus = Literal["queued", "running", "completed", "failed"]
 UploadStatus = Literal["pending", "completed", "cancelled", "expired"]
 """Upload lifecycle states."""
 
-Tier = Literal["auto", "standard", "pro"]
-"""Pre-configured parsing tier."""
-
 OutputFormat = Literal[
     "markdown",
-    "json",
+    "middle_json",
     "content_list",
-    "content_list_v2",
+    "structured_content",
     "images",
     "html",
     "latex",
@@ -62,9 +65,6 @@ OutputFormatReqToken = Literal["html", "latex", "docx"]
 
 SourceType = Literal["file_id", "url", "inline", "local"]
 """File source types."""
-
-OcrMode = Literal["auto", "true", "false", "txt"]
-"""OCR mode: auto-detect, force-on, force-off, text-extraction-only."""
 
 AccessLevel = Literal["anonymous", "registered"]
 """Account access level determined by API Key."""
@@ -136,7 +136,7 @@ class HealthResponse(BaseModel):
     model_config = _PYDANTIC_CONFIG
     status: str = "ok"
     version: str
-    backend_version: str | None = None
+    parser_version: str | None = None
     models: ModelHealthStatus | None = None
     features: HealthFeatures = Field(default_factory=lambda: HealthFeatures(sse=False, webhook=False))
 
@@ -284,20 +284,10 @@ FileSource = Annotated[
 ]
 
 
-# ── Job options ──────────────────────────────────────────────────────
-
-
-class FileOptions(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    ocr: OcrMode = "auto"
-    image_analysis: bool = True
-    page_range: str | None = None
-
-
 class JobFileEntry(BaseModel):
     model_config = _PYDANTIC_CONFIG
     source: FileSource
-    options: FileOptions | None = None
+    page_range: str | None = None
 
 
 class CallbackConfig(BaseModel):
@@ -309,7 +299,7 @@ class CallbackConfig(BaseModel):
 class CreateJobRequest(BaseModel):
     model_config = _PYDANTIC_CONFIG
     files: list[JobFileEntry] = Field(min_length=1)
-    tier: Tier = "auto"
+    tier: Tier | None = None
     output_formats: list[OutputFormat] = ["markdown"]
     wait: int = Field(default=0, ge=0)
     callback: CallbackConfig | None = None
@@ -332,19 +322,17 @@ class JobProgress(BaseModel):
     total: int = 0
 
 
-class FileMetadata(BaseModel):
+class FileParseInfo(BaseModel):
     model_config = _PYDANTIC_CONFIG
-    pages: int | None = None
     model_used: str | None = None
-    processing_time_ms: int | None = None
-    backend_version: str | None = None
+    duration_ms: int | None = None
+    parser_version: str | None = None
 
 
 class OutputFileRef(BaseModel):
     model_config = _PYDANTIC_CONFIG
     file_id: str
     bytes: int
-    content: str | dict[str, Any] | None = None  # inline for markdown in sync response
 
 
 class ImageOutputRef(BaseModel):
@@ -355,15 +343,13 @@ class ImageOutputRef(BaseModel):
 
 
 class OutputFiles(BaseModel):
-    """Per-file output artifacts.  `content` is only populated for
-    `markdown` in sync (wait) responses; all other formats carry only
-    `file_id` + `bytes` and must be downloaded via the Files API."""
+    """Per-file output artifacts. Content is downloaded via the Files API."""
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = _PYDANTIC_CONFIG
     markdown: OutputFileRef | None = None
-    json_: OutputFileRef | None = Field(default=None, serialization_alias="json", validation_alias="json")
+    middle_json: OutputFileRef | None = None
     content_list: OutputFileRef | None = None
-    content_list_v2: OutputFileRef | None = None
+    structured_content: OutputFileRef | None = None
     html: OutputFileRef | None = None
     latex: OutputFileRef | None = None
     docx: OutputFileRef | None = None
@@ -373,10 +359,11 @@ class OutputFiles(BaseModel):
 
 class JobFileResult(BaseModel):
     model_config = _PYDANTIC_CONFIG
-    file_id: str
+    file_id: str | None = None
     name: str
+    page_range: str
     status: FileStatus
-    metadata: FileMetadata | None = None
+    parse: FileParseInfo | None = None
     output_files: OutputFiles | None = None
     error: ErrorDetail | None = None
 
@@ -401,7 +388,7 @@ class JobListItem(BaseModel):
     job_id: str
     status: JobStatus
     created_at: str
-    files_count: int
+    file_count: int
 
 
 class JobListResponse(BaseModel):
@@ -582,7 +569,9 @@ class FileStore:
                 status_code=404,
                 detail=ErrorResponse(
                     error=ErrorDetail(
-                        type="invalid_request_error", code="upload_not_found", message=f"Upload {upload_id} not found"
+                        type="invalid_request_error",
+                        code="upload_not_found",
+                        message=f"Upload {upload_id} not found",
                     ),
                 ).model_dump(by_alias=True),
             )
@@ -595,7 +584,9 @@ class FileStore:
                 status_code=409,
                 detail=ErrorResponse(
                     error=ErrorDetail(
-                        type="invalid_request_error", code="upload_not_ready", message="Upload bytes not yet received"
+                        type="invalid_request_error",
+                        code="upload_not_ready",
+                        message="Upload bytes not yet received",
                     ),
                 ).model_dump(by_alias=True),
             )
@@ -608,7 +599,9 @@ class FileStore:
                 status_code=409,
                 detail=ErrorResponse(
                     error=ErrorDetail(
-                        type="invalid_request_error", code="upload_already_terminal", message="Upload is already completed"
+                        type="invalid_request_error",
+                        code="upload_already_terminal",
+                        message="Upload is already completed",
                     ),
                 ).model_dump(by_alias=True),
             )
@@ -617,7 +610,9 @@ class FileStore:
                 status_code=409,
                 detail=ErrorResponse(
                     error=ErrorDetail(
-                        type="invalid_request_error", code="upload_already_terminal", message=f"Upload is {rec.status}"
+                        type="invalid_request_error",
+                        code="upload_already_terminal",
+                        message=f"Upload is {rec.status}",
                     ),
                 ).model_dump(by_alias=True),
             )
@@ -630,14 +625,22 @@ class FileStore:
             raise HTTPException(
                 status_code=400,
                 detail=ErrorResponse(
-                    error=ErrorDetail(type="invalid_request_error", code="file_hash_mismatch", message="SHA-256 mismatch"),
+                    error=ErrorDetail(
+                        type="invalid_request_error",
+                        code="file_hash_mismatch",
+                        message="SHA-256 mismatch",
+                    ),
                 ).model_dump(by_alias=True),
             )
         if rec.sha256sum and rec.sha256sum != actual_sha:
             raise HTTPException(
                 status_code=400,
                 detail=ErrorResponse(
-                    error=ErrorDetail(type="invalid_request_error", code="file_hash_mismatch", message="SHA-256 mismatch"),
+                    error=ErrorDetail(
+                        type="invalid_request_error",
+                        code="file_hash_mismatch",
+                        message="SHA-256 mismatch",
+                    ),
                 ).model_dump(by_alias=True),
             )
 
@@ -672,7 +675,9 @@ class FileStore:
                 status_code=409,
                 detail=ErrorResponse(
                     error=ErrorDetail(
-                        type="invalid_request_error", code="upload_already_terminal", message=f"Upload is {rec.status}"
+                        type="invalid_request_error",
+                        code="upload_already_terminal",
+                        message=f"Upload is {rec.status}",
                     ),
                 ).model_dump(by_alias=True),
             )
@@ -687,7 +692,9 @@ class FileStore:
                 status_code=409,
                 detail=ErrorResponse(
                     error=ErrorDetail(
-                        type="invalid_request_error", code="upload_already_terminal", message=f"Upload is {rec.status}"
+                        type="invalid_request_error",
+                        code="upload_already_terminal",
+                        message=f"Upload is {rec.status}",
                     ),
                 ).model_dump(by_alias=True),
             )
@@ -742,7 +749,11 @@ class FileStore:
             raise HTTPException(
                 status_code=404,
                 detail=ErrorResponse(
-                    error=ErrorDetail(type="invalid_request_error", code="file_not_found", message=f"File {file_id} not found"),
+                    error=ErrorDetail(
+                        type="invalid_request_error",
+                        code="file_not_found",
+                        message=f"File {file_id} not found",
+                    ),
                 ).model_dump(by_alias=True),
             )
         return rec
@@ -766,7 +777,9 @@ class FileStore:
                 status_code=403,
                 detail=ErrorResponse(
                     error=ErrorDetail(
-                        type="permission_error", code="feature_requires_api_key", message="Source files cannot be downloaded"
+                        type="permission_error",
+                        code="feature_requires_api_key",
+                        message="Source files cannot be downloaded",
                     ),
                 ).model_dump(by_alias=True),
             )
@@ -774,7 +787,11 @@ class FileStore:
             raise HTTPException(
                 status_code=500,
                 detail=ErrorResponse(
-                    error=ErrorDetail(type="api_error", code="internal_error", message="File has no sha256sum"),
+                    error=ErrorDetail(
+                        type="api_error",
+                        code="internal_error",
+                        message="File has no sha256sum",
+                    ),
                 ).model_dump(by_alias=True),
             )
         return self.read_blob(rec.sha256sum)
@@ -784,7 +801,11 @@ class FileStore:
             raise HTTPException(
                 status_code=404,
                 detail=ErrorResponse(
-                    error=ErrorDetail(type="invalid_request_error", code="file_not_found", message=f"File {file_id} not found"),
+                    error=ErrorDetail(
+                        type="invalid_request_error",
+                        code="file_not_found",
+                        message=f"File {file_id} not found",
+                    ),
                 ).model_dump(by_alias=True),
             )
         del self._files[file_id]
@@ -866,7 +887,14 @@ _SUPPORTED_SUFFIXES: dict[str, str] = {
     ".htm": "html",
 }
 
-_OUTPUT_FORMATS_LOCAL = {"markdown", "json", "content_list", "content_list_v2", "images", "zip"}
+_OUTPUT_FORMATS_LOCAL = {
+    "markdown",
+    "middle_json",
+    "content_list",
+    "structured_content",
+    "images",
+    "zip",
+}
 
 
 @dataclass
@@ -876,7 +904,7 @@ class _JobRecord:
     created_at: str = ""
     started_at: str | None = None
     finished_at: str | None = None
-    tier: Tier = "auto"
+    tier: Tier = "standard"
     output_formats: list[OutputFormat] = None  # type: ignore[assignment]
     progress: JobProgress | None = None
     files: list[JobFileResult] = None  # type: ignore[assignment]
@@ -906,6 +934,8 @@ class JobStore:
         return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def create(self, req: CreateJobRequest, file_store: FileStore) -> _JobRecord:
+        if req.tier is None:
+            raise ValueError("CreateJobRequest.tier must be resolved before job creation")
         job_id = self._new_job_id()
         now = self._now()
         rec = _JobRecord(
@@ -922,11 +952,11 @@ class JobStore:
         )
         for entry in req.files:
             name = _source_name(entry.source, file_store)
-            fid = entry.source.file_id if isinstance(entry.source, FileIdSource) else ""
             rec.files.append(
                 JobFileResult(
-                    file_id=fid,
+                    file_id=entry.source.file_id if isinstance(entry.source, FileIdSource) else None,
                     name=name,
+                    page_range=entry.page_range or "",
                     status="queued",
                 )
             )
@@ -940,7 +970,11 @@ class JobStore:
             raise HTTPException(
                 status_code=404,
                 detail=ErrorResponse(
-                    error=ErrorDetail(type="invalid_request_error", code="job_not_found", message=f"Job {job_id} not found"),
+                    error=ErrorDetail(
+                        type="invalid_request_error",
+                        code="job_not_found",
+                        message=f"Job {job_id} not found",
+                    ),
                 ).model_dump(by_alias=True),
             )
         return rec
@@ -952,7 +986,9 @@ class JobStore:
                 status_code=409,
                 detail=ErrorResponse(
                     error=ErrorDetail(
-                        type="invalid_request_error", code="job_already_terminal", message=f"Job is {rec.status}"
+                        type="invalid_request_error",
+                        code="job_already_terminal",
+                        message=f"Job is {rec.status}",
                     ),
                 ).model_dump(by_alias=True),
             )
@@ -984,7 +1020,15 @@ class JobStore:
                     break
         page = recs[start : start + limit]
         return JobListResponse(
-            data=[JobListItem(job_id=r.id, status=r.status, created_at=r.created_at, files_count=len(r.files)) for r in page],
+            data=[
+                JobListItem(
+                    job_id=r.id,
+                    status=r.status,
+                    created_at=r.created_at,
+                    file_count=len(r.files),
+                )
+                for r in page
+            ],
             first_id=page[0].id if page else None,
             last_id=page[-1].id if page else None,
             has_more=(start + limit) < len(recs),
@@ -1008,8 +1052,7 @@ class JobStore:
     def usage(self, access_level: AccessLevel) -> UsageResponse:
         completed = sum(1 for j in self._jobs.values() if j.status in ("completed", "partial"))
         pages = sum(
-            sum((fr.metadata and fr.metadata.pages) or 0 for fr in j.files if fr.status == "completed")
-            for j in self._jobs.values()
+            sum(_count_pages_in_range(fr.page_range) for fr in j.files if fr.status == "completed") for j in self._jobs.values()
         )
         return UsageResponse(
             access_level=access_level,
@@ -1047,6 +1090,51 @@ def _source_name(source: FileSource, file_store: FileStore | None = None) -> str
     return "unknown"
 
 
+def _compact_page_numbers(page_numbers: list[int]) -> str:
+    if not page_numbers:
+        return ""
+    ordered = sorted(set(page_numbers))
+    ranges: list[str] = []
+    start = prev = ordered[0]
+    for page in ordered[1:]:
+        if page == prev + 1:
+            prev = page
+            continue
+        ranges.append(str(start) if start == prev else f"{start}~{prev}")
+        start = prev = page
+    ranges.append(str(start) if start == prev else f"{start}~{prev}")
+    return ",".join(ranges)
+
+
+def _page_range_from_result_pages(pages: list[Any]) -> str:
+    page_numbers: list[int] = []
+    for i, page in enumerate(pages):
+        page_idx = getattr(page, "page_idx", i)
+        if isinstance(page_idx, int):
+            page_numbers.append(page_idx + 1)
+    return _compact_page_numbers(page_numbers)
+
+
+def _count_pages_in_range(page_range: str) -> int:
+    total = 0
+    for part in page_range.split(","):
+        token = part.strip()
+        if not token:
+            continue
+        if "~" not in token:
+            total += 1
+            continue
+        left, right = token.split("~", 1)
+        try:
+            start = int(left)
+            end = int(right)
+        except ValueError:
+            total += 1
+            continue
+        total += max(0, end - start + 1)
+    return total
+
+
 async def _extract_bytes(source: FileSource, file_store: FileStore, *, url_timeout: int = 60) -> bytes:
     if isinstance(source, FileIdSource):
         rec = file_store.get_file(source.file_id)
@@ -1076,8 +1164,13 @@ async def _run_job(
     rec: _JobRecord,
     req: CreateJobRequest,
     file_store: FileStore,
-    vlm_available: bool,
     *,
+    server_backend: str,
+    language: str,
+    ocr_mode: str,
+    table_enable: bool,
+    formula_enable: bool,
+    image_analysis: bool,
     url_timeout: int = 60,
 ) -> None:
     rec.status = "running"
@@ -1089,6 +1182,7 @@ async def _run_job(
                 break
             fr = rec.files[i]
             try:
+                file_started = time.monotonic()
                 data = await _extract_bytes(entry.source, file_store, url_timeout=url_timeout)
                 stype = _suffix_type(fr.name)
                 if not stype:
@@ -1099,54 +1193,34 @@ async def _run_job(
                 tmp_path = pathlib.Path(tmpdir) / f"input_{i}{suffix}"
                 tmp_path.write_bytes(data)
 
-                opts = entry.options or FileOptions()
-                kwargs: dict[str, Any] = {
-                    "image_analysis": opts.image_analysis,
-                }
-                page_range = opts.page_range or ""
+                page_range = entry.page_range or ""
 
-                # route to parser
-                if stype in ("html",):
-                    from mineru.parser.html import HtmlParser
+                from . import parse_async
 
-                    parser = HtmlParser(**kwargs)
-                    result = parser.parse(str(tmp_path))
-                elif stype in ("docx", "pptx", "xlsx"):
-                    from mineru.parser.office import DocxParser, PptxParser, XlsxParser
-
-                    cls_map = {"docx": DocxParser, "pptx": PptxParser, "xlsx": XlsxParser}
-                    parser = cls_map[stype](**kwargs)
-                    result = parser.parse(str(tmp_path))
-                else:
-                    # PDF / image — map tier to actual backend
-                    _tier = rec.tier
-                    if _tier == "auto":
-                        _tier = "pro" if vlm_available else "standard"
-                    if _tier == "pro":
-                        from mineru.parser.pdf import PdfVlmParser
-
-                        kwargs["backend"] = "vlm-auto-engine"
-                        parser = PdfVlmParser(**kwargs)
-                        result = await parser.parse_async(str(tmp_path), page_range=page_range)
-                    else:
-                        from mineru.parser.pdf import PdfPipelineParser
-
-                        kwargs["backend"] = "pipeline"
-                        pipeline_method = "auto"
-                        if opts.ocr == "true":
-                            pipeline_method = "ocr"
-                        elif opts.ocr == "txt":
-                            pipeline_method = "txt"
-                        kwargs["method"] = pipeline_method
-                        parser = PdfPipelineParser(**kwargs)
-                        result = await asyncio.to_thread(parser.parse, str(tmp_path), page_range=page_range)
+                result = await parse_async(
+                    str(tmp_path),
+                    tier=rec.tier,
+                    backend=server_backend,
+                    language=language,
+                    ocr_mode=ocr_mode,
+                    disable_table=not table_enable,
+                    disable_formula=not formula_enable,
+                    disable_image_analysis=not image_analysis,
+                    page_range=page_range,
+                )
 
                 # collect outputs
                 out_formats = set(rec.output_formats)
                 output_files = OutputFiles()
                 import json as _json
 
-                for fmt in ("markdown", "json", "content_list", "content_list_v2", "images"):
+                for fmt in (
+                    "markdown",
+                    "middle_json",
+                    "content_list",
+                    "structured_content",
+                    "images",
+                ):
                     if fmt not in out_formats:
                         continue
                     if fmt == "markdown":
@@ -1155,8 +1229,8 @@ async def _run_job(
                         sha = hashlib.sha256(content_bytes).hexdigest()
                         file_store.store_blob(content_bytes, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.md", content_bytes, sha256hex=sha)
-                        output_files.markdown = OutputFileRef(file_id=fid, bytes=len(content_bytes), content=md or "")
-                    elif fmt == "json":
+                        output_files.markdown = OutputFileRef(file_id=fid, bytes=len(content_bytes))
+                    elif fmt == "middle_json":
                         mj = _json.dumps(
                             {"pages": [dataclasses.asdict(p) for p in result.pages]},
                             ensure_ascii=False,
@@ -1164,20 +1238,20 @@ async def _run_job(
 
                         sha = hashlib.sha256(mj).hexdigest()
                         file_store.store_blob(mj, sha256hex=sha)
-                        fid = file_store.create_file_for_output(f"{fr.name}.json", mj, sha256hex=sha)
-                        output_files.json_ = OutputFileRef(file_id=fid, bytes=len(mj))
+                        fid = file_store.create_file_for_output(f"{fr.name}.middle.json", mj, sha256hex=sha)
+                        output_files.middle_json = OutputFileRef(file_id=fid, bytes=len(mj))
                     elif fmt == "content_list":
                         cl = _json.dumps(result.content_list(), ensure_ascii=False).encode("utf-8")
                         sha = hashlib.sha256(cl).hexdigest()
                         file_store.store_blob(cl, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.content_list.json", cl, sha256hex=sha)
                         output_files.content_list = OutputFileRef(file_id=fid, bytes=len(cl))
-                    elif fmt == "content_list_v2":
+                    elif fmt == "structured_content":
                         cl2 = _json.dumps(result.content_list_v2(), ensure_ascii=False).encode("utf-8")
                         sha = hashlib.sha256(cl2).hexdigest()
                         file_store.store_blob(cl2, sha256hex=sha)
-                        fid = file_store.create_file_for_output(f"{fr.name}.content_list_v2.json", cl2, sha256hex=sha)
-                        output_files.content_list_v2 = OutputFileRef(file_id=fid, bytes=len(cl2))
+                        fid = file_store.create_file_for_output(f"{fr.name}.structured_content.json", cl2, sha256hex=sha)
+                        output_files.structured_content = OutputFileRef(file_id=fid, bytes=len(cl2))
                     elif fmt == "images":
                         img_refs: list[ImageOutputRef] = []
                         for img_path, img_bytes in result.images().items():
@@ -1196,15 +1270,16 @@ async def _run_job(
                     with _zipfile.ZipFile(buf, "w", _zipfile.ZIP_DEFLATED) as zf:
                         for fmt_name, attr in [
                             ("markdown", "markdown"),
-                            ("json", "json_"),
+                            ("middle_json", "middle_json"),
                             ("content_list", "content_list"),
-                            ("content_list_v2", "content_list_v2"),
+                            ("structured_content", "structured_content"),
                         ]:
                             ref = getattr(output_files, attr)
                             if ref and ref.file_id:
                                 try:
                                     zf.writestr(
-                                        f"{pathlib.Path(fr.name).stem}.{fmt_name}", file_store.read_file_data(ref.file_id)
+                                        f"{pathlib.Path(fr.name).stem}.{fmt_name}",
+                                        file_store.read_file_data(ref.file_id),
                                     )
                                 except Exception:
                                     pass
@@ -1221,12 +1296,17 @@ async def _run_job(
                     output_files.zip = OutputFileRef(file_id=zip_fid, bytes=len(zip_bytes))
 
                 fr.status = "completed"
+                fr.page_range = _page_range_from_result_pages(result.pages)
                 fr.output_files = output_files
+                from ..version import __version__
+
+                fr.parse = FileParseInfo(
+                    model_used=None,
+                    duration_ms=int((time.monotonic() - file_started) * 1000),
+                    parser_version=__version__,
+                )
                 fr.file_id = file_store.create_file_for_output(fr.name, data)
                 rec.progress.completed += 1
-
-                if hasattr(parser, "close"):
-                    parser.close()
 
             except Exception as exc:
                 fr.status = "failed"
@@ -1271,9 +1351,9 @@ _ERR_429: dict[int | str, dict[str, Any]] = {429: {"model": ErrorResponse}}
 )
 async def get_health() -> HealthResponse:
     """Health check endpoint."""
-    from mineru.version import __version__
+    from ..version import __version__
 
-    return HealthResponse(version=__version__, backend_version=__version__, models=ModelHealthStatus())
+    return HealthResponse(version=__version__, parser_version=__version__, models=ModelHealthStatus())
 
 
 # ── Models ───────────────────────────────────────────────────────────
@@ -1311,7 +1391,11 @@ async def get_model(
         raise HTTPException(
             status_code=404,
             detail=ErrorResponse(
-                error=ErrorDetail(type="invalid_request_error", code="model_not_found", message=f"Model '{model}' not found"),
+                error=ErrorDetail(
+                    type="invalid_request_error",
+                    code="model_not_found",
+                    message=f"Model '{model}' not found",
+                ),
             ).model_dump(by_alias=True),
         )
     now = int(time.time())
@@ -1535,7 +1619,9 @@ async def create_job(
                 status_code=400,
                 detail=ErrorResponse(
                     error=ErrorDetail(
-                        type="invalid_request_error", code="invalid_request", message=f"Unknown output format: {fmt}"
+                        type="invalid_request_error",
+                        code="invalid_request",
+                        message=f"Unknown output format: {fmt}",
                     ),
                 ).model_dump(by_alias=True),
             )
@@ -1547,45 +1633,82 @@ async def create_job(
             status_code=400,
             detail=ErrorResponse(
                 error=ErrorDetail(
-                    type="invalid_request_error", code="invalid_request", message=f"wait must be 0 or [5, {max_wait}]"
+                    type="invalid_request_error",
+                    code="invalid_request",
+                    message=f"wait must be 0 or [5, {max_wait}]",
                 ),
             ).model_dump(by_alias=True),
         )
 
-    # validate tier vs server backend
-    backend: str = request.app.state.backend
-    vlm_available = backend.startswith("vlm") or backend.startswith("hybrid")
-    if body.tier == "pro" and not vlm_available:
+    # Resolve omitted tier to this server's concrete tier, then validate it.
+    body.tier = body.tier or request.app.state.tier
+    supported_tiers = {tier["id"] for tier in request.app.state.tiers}
+    if body.tier not in supported_tiers:
         raise HTTPException(
             status_code=400,
             detail=ErrorResponse(
                 error=ErrorDetail(
                     type="invalid_request_error",
                     code="invalid_request",
-                    message="Pro tier not available in this server backend",
+                    message=f"Tier '{body.tier}' not available in this server",
                 ),
             ).model_dump(by_alias=True),
         )
 
     rec = job_store.create(body, file_store)
+    backend: str = request.app.state.backend
     url_timeout_val: int = request.app.state.url_timeout
-    vlm_available_val = vlm_available
+    language_val: str = request.app.state.language
+    ocr_mode_val: str = request.app.state.ocr_mode
+    table_enable_val: bool = request.app.state.table_enable
+    formula_enable_val: bool = request.app.state.formula_enable
+    image_analysis_val: bool = request.app.state.image_analysis
 
     if body.wait > 0:
         async with job_store._semaphore:
-            task = asyncio.create_task(_run_job(rec, body, file_store, vlm_available_val, url_timeout=url_timeout_val))
+            task = asyncio.create_task(
+                _run_job(
+                    rec,
+                    body,
+                    file_store,
+                    server_backend=backend,
+                    language=language_val,
+                    ocr_mode=ocr_mode_val,
+                    table_enable=table_enable_val,
+                    formula_enable=formula_enable_val,
+                    image_analysis=image_analysis_val,
+                    url_timeout=url_timeout_val,
+                )
+            )
             try:
                 await asyncio.wait_for(task, timeout=body.wait)
             except asyncio.TimeoutError:
                 pass
         if rec.status in ("completed", "partial"):
-            return JSONResponse(content=job_store.build_response(rec).model_dump(by_alias=True), status_code=200)
-        return JSONResponse(content=job_store.build_response(rec).model_dump(by_alias=True), status_code=202)
+            return JSONResponse(
+                content=job_store.build_response(rec).model_dump(by_alias=True),
+                status_code=200,
+            )
+        return JSONResponse(
+            content=job_store.build_response(rec).model_dump(by_alias=True),
+            status_code=202,
+        )
 
     # async — fire and forget
     async def _bg_run() -> None:
         async with job_store._semaphore:
-            await _run_job(rec, body, file_store, vlm_available_val, url_timeout=url_timeout_val)
+            await _run_job(
+                rec,
+                body,
+                file_store,
+                server_backend=backend,
+                language=language_val,
+                ocr_mode=ocr_mode_val,
+                table_enable=table_enable_val,
+                formula_enable=formula_enable_val,
+                image_analysis=image_analysis_val,
+                url_timeout=url_timeout_val,
+            )
 
     asyncio.create_task(_bg_run())
     return JSONResponse(content=job_store.build_response(rec).model_dump(by_alias=True), status_code=202)
@@ -1643,14 +1766,23 @@ async def get_job_events(
             for fr in rec.files:
                 name = fr.name or fr.file_id
                 if fr.status == "running" and name not in yielded:
-                    yield _yield_event("file_started", f'{{"file_id":"{fr.file_id}","status":"running"}}')
+                    yield _yield_event(
+                        "file_started",
+                        f'{{"file_id":"{fr.file_id}","status":"running"}}',
+                    )
                     yielded.add(name)
                 elif fr.status == "completed" and (f"done_{name}" not in yielded):
-                    yield _yield_event("file_completed", f'{{"file_id":"{fr.file_id}","status":"completed"}}')
+                    yield _yield_event(
+                        "file_completed",
+                        f'{{"file_id":"{fr.file_id}","status":"completed"}}',
+                    )
                     yielded.add(f"done_{name}")
                 elif fr.status == "failed" and (f"done_{name}" not in yielded):
                     err_msg = fr.error.message.replace('"', '\\"') if fr.error else ""
-                    yield _yield_event("file_failed", f'{{"file_id":"{fr.file_id}","status":"failed","error":{{"code":"{fr.error.code}","message":"{err_msg}"}}}}')
+                    yield _yield_event(
+                        "file_failed",
+                        f'{{"file_id":"{fr.file_id}","status":"failed","error":{{"code":"{fr.error.code}","message":"{err_msg}"}}}}',
+                    )
                     yielded.add(f"done_{name}")
 
             await asyncio.sleep(1)
@@ -1675,7 +1807,13 @@ async def list_jobs(
     job_store: JobStore = Depends(_get_job_store),
 ) -> JobListResponse:
     """List jobs for the current tenant."""
-    return job_store.list_jobs(status_filter=status_filter, limit=limit, after=after, order=order, created_after=created_after)
+    return job_store.list_jobs(
+        status_filter=status_filter,
+        limit=limit,
+        after=after,
+        order=order,
+        created_after=created_after,
+    )
 
 
 @_router.delete(
@@ -1722,14 +1860,73 @@ def _build_v1_router() -> APIRouter:
     return _router
 
 
+_API_SERVER_LANGUAGES = (
+    "ch",
+    "ch_server",
+    "ch_lite",
+    "en",
+    "korean",
+    "japan",
+    "chinese_cht",
+    "ta",
+    "te",
+    "ka",
+    "th",
+    "el",
+    "latin",
+    "arabic",
+    "east_slavic",
+    "cyrillic",
+    "devanagari",
+)
+
+_OCR_MODES = ("auto", "txt", "ocr")
+
+
+def _resolve_server_tier_and_backend(*, tier: Tier | None, backend: str | None) -> tuple[Tier, str]:
+    resolved_tier = tier or os.getenv("MINERU_TIER") or None
+    resolved_backend = backend or os.getenv("MINERU_BACKEND") or None
+    if resolved_tier is None and resolved_backend is None:
+        resolved_tier = "standard"
+    resolved_tier, resolved_backend = resolve_tier_and_backend(tier=resolved_tier, backend=resolved_backend)
+    if resolved_backend not in _API_SERVER_BACKENDS:
+        raise ValueError(f"Unsupported backend '{resolved_backend}'. Supported backends: {', '.join(_API_SERVER_BACKENDS)}")
+    return resolved_tier, resolved_backend
+
+
+def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[dict[str, Any]]]:
+    if tier == "pro":
+        return ["MinerU2.5-Pro-2604-1.2B", "MinerU-HTML"], [
+            {
+                "id": "pro",
+                "description": "VLM-based high-accuracy parsing.",
+                "current_model": "MinerU2.5-Pro-2604-1.2B",
+            },
+        ]
+
+    return ["pipeline", "MinerU-HTML"], [
+        {
+            "id": "standard",
+            "description": "Pipeline-based parsing, balanced speed and quality.",
+            "current_model": "pipeline",
+        },
+    ]
+
+
 def create_app(
     *,
     upload_dir: str = "",
-    backend: str = "pipeline",
+    tier: Tier | None = None,
+    backend: str | None = None,
     concurrency: int = 1,
     url_timeout: int = 60,
     max_wait: int = 600,
     api_key: str | None = None,
+    language: str = "ch",
+    ocr_mode: str = "auto",
+    table_enable: bool = True,
+    formula_enable: bool = True,
+    image_analysis: bool = True,
 ) -> FastAPI:
     """Create a FastAPI application implementing the MinerU v1 REST API.
 
@@ -1737,9 +1934,13 @@ def create_app(
     ----------
     upload_dir:
         Directory for uploaded files and parse artifacts.
+    tier:
+        Server parsing tier.  ``"standard"`` selects the pipeline backend;
+        ``"pro"`` selects the VLM backend.  If ``backend`` is also provided,
+        both values must be compatible.
     backend:
-        Server backend mode. ``"pipeline"`` exposes the traditional CV+OCR
-        pipeline; ``"vlm"`` exposes ``MinerU2.5-Pro-2604-1.2B``.
+        Advanced server backend mode. ``"pipeline"`` exposes the traditional
+        CV+OCR pipeline; ``"vlm"`` exposes ``MinerU2.5-Pro-2604-1.2B``.
     concurrency:
         Maximum concurrent parse jobs (default 1).
     url_timeout:
@@ -1749,44 +1950,37 @@ def create_app(
     api_key:
         Optional API key.  When set, clients must pass ``Authorization: Bearer <key>``
         to access list endpoints and advanced output formats.
+    language:
+        Parser language hint.
+    ocr_mode:
+        PDF OCR/text extraction mode for pipeline and hybrid backends.
+    table_enable:
+        Whether table recognition is enabled.
+    formula_enable:
+        Whether formula recognition is enabled.
+    image_analysis:
+        Whether image analysis is enabled for VLM/hybrid backends.
     """
     upload_dir = upload_dir or os.getenv("MINERU_UPLOAD_DIR", "")
-    backend = backend or os.getenv("MINERU_BACKEND", "pipeline")
+    tier, backend = _resolve_server_tier_and_backend(tier=tier, backend=backend)
     concurrency = int(os.getenv("MINERU_CONCURRENCY", str(concurrency)))
     url_timeout = int(os.getenv("MINERU_URL_TIMEOUT", str(url_timeout)))
     max_wait = int(os.getenv("MINERU_MAX_WAIT", str(max_wait)))
+    language = os.getenv("MINERU_LANGUAGE", language)
+    ocr_mode = os.getenv("MINERU_OCR_MODE", ocr_mode)
+    table_enable = _env_flag("MINERU_TABLE_ENABLE", default=table_enable)
+    formula_enable = _env_flag("MINERU_FORMULA_ENABLE", default=formula_enable)
+    image_analysis = _env_flag("MINERU_IMAGE_ANALYSIS", default=image_analysis)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
     _upload_dir.mkdir(parents=True, exist_ok=True)
 
-    # resolve models and tiers based on backend
-    _model_ids: list[str]
-    _tiers: list[dict[str, Any]]
-    if backend.startswith("vlm") or backend.startswith("hybrid"):
-        _model_ids = ["pipeline", "MinerU2.5-Pro-2604-1.2B", "MinerU-HTML"]
-        _tiers = [
-            {
-                "id": "standard",
-                "description": "Pipeline-based parsing, balanced speed and quality.",
-                "current_model": "pipeline",
-            },
-            {"id": "pro", "description": "VLM-based high-accuracy parsing.", "current_model": "MinerU2.5-Pro-2604-1.2B"},
-            {"id": "auto", "description": "Platform selects best tier per document.", "current_model": None},
-        ]
-    else:
-        _model_ids = ["pipeline", "MinerU-HTML"]
-        _tiers = [
-            {
-                "id": "standard",
-                "description": "Pipeline-based parsing, balanced speed and quality.",
-                "current_model": "pipeline",
-            },
-            {"id": "auto", "description": "Platform selects best tier per document.", "current_model": None},
-        ]
+    _model_ids, _tiers = _model_ids_and_tiers_for_server_tier(tier)
 
     @asynccontextmanager
     async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
         application.state.upload_dir = _upload_dir
+        application.state.tier = tier
         application.state.backend = backend
         application.state.model_ids = _model_ids
         application.state.tiers = _tiers
@@ -1794,6 +1988,11 @@ def create_app(
         application.state.url_timeout = url_timeout
         application.state.max_wait = max_wait
         application.state.api_key = _api_key
+        application.state.language = language
+        application.state.ocr_mode = ocr_mode
+        application.state.table_enable = table_enable
+        application.state.formula_enable = formula_enable
+        application.state.image_analysis = image_analysis
         yield
         if not upload_dir and _upload_dir.exists():
             shutil.rmtree(_upload_dir, ignore_errors=True)
@@ -1809,6 +2008,7 @@ def create_app(
         lifespan=_lifespan,
     )
     application.state.upload_dir = _upload_dir
+    application.state.tier = tier
     application.state.backend = backend
     application.state.model_ids = _model_ids
     application.state.tiers = _tiers
@@ -1816,6 +2016,11 @@ def create_app(
     application.state.url_timeout = url_timeout
     application.state.max_wait = max_wait
     application.state.api_key = _api_key
+    application.state.language = language
+    application.state.ocr_mode = ocr_mode
+    application.state.table_enable = table_enable
+    application.state.formula_enable = formula_enable
+    application.state.image_analysis = image_analysis
     FileStore(_upload_dir).install(application.state)
     JobStore(concurrency=concurrency).install(application.state)
     application.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -1868,9 +2073,15 @@ app = create_app()
 )
 @click.option(
     "--backend",
-    default="pipeline",
-    type=click.Choice(["pipeline", "vlm"]),
-    help="Server backend: 'pipeline' (CV+OCR) or 'vlm' (Vision Language Model)",
+    default=None,
+    type=click.Choice(_API_SERVER_BACKENDS),
+    help="Advanced parser backend. Defaults from --tier: standard -> pipeline, pro -> hybrid-auto-engine.",
+)
+@click.option(
+    "--tier",
+    default=None,
+    type=click.Choice(["standard", "pro"]),
+    help="Server parsing tier. Defaults to 'standard' when neither --tier nor --backend is provided.",
 )
 @click.option(
     "--concurrency",
@@ -1891,6 +2102,21 @@ app = create_app()
     help="Maximum seconds for the wait parameter (default: 600)",
 )
 @click.option(
+    "--language",
+    default="ch",
+    type=click.Choice(_API_SERVER_LANGUAGES),
+    help="Parser language hint.",
+)
+@click.option(
+    "--ocr-mode",
+    default="auto",
+    type=click.Choice(_OCR_MODES),
+    help="PDF OCR/text extraction mode. Applies to pipeline and hybrid-* backends.",
+)
+@click.option("--disable-table", is_flag=True, help="Disable table recognition.")
+@click.option("--disable-formula", is_flag=True, help="Disable formula recognition.")
+@click.option("--disable-image-analysis", is_flag=True, help="Disable image analysis for VLM/hybrid backends.")
+@click.option(
     "--api-key",
     default=None,
     type=str,
@@ -1901,10 +2127,16 @@ def main(
     port: int,
     reload: bool,
     upload_dir: str,
-    backend: str,
+    backend: str | None,
+    tier: Tier | None,
     concurrency: int,
     url_timeout: int,
     max_wait: int,
+    language: str,
+    ocr_mode: str,
+    disable_table: bool,
+    disable_formula: bool,
+    disable_image_analysis: bool,
     api_key: str | None,
 ) -> None:
     """Start the MinerU v1 REST API server."""
@@ -1912,22 +2144,41 @@ def main(
 
     if upload_dir:
         os.environ["MINERU_UPLOAD_DIR"] = upload_dir
+    if tier:
+        os.environ["MINERU_TIER"] = tier
     if backend:
         os.environ["MINERU_BACKEND"] = backend
     os.environ["MINERU_CONCURRENCY"] = str(concurrency)
     os.environ["MINERU_URL_TIMEOUT"] = str(url_timeout)
     os.environ["MINERU_MAX_WAIT"] = str(max_wait)
+    os.environ["MINERU_LANGUAGE"] = language
+    os.environ["MINERU_OCR_MODE"] = ocr_mode
+    os.environ["MINERU_TABLE_ENABLE"] = str(not disable_table).lower()
+    os.environ["MINERU_FORMULA_ENABLE"] = str(not disable_formula).lower()
+    os.environ["MINERU_IMAGE_ANALYSIS"] = str(not disable_image_analysis).lower()
     if reload:
-        uvicorn.run("mineru.parser.api_server:create_app", host=host, port=port, reload=True, factory=True)
+        uvicorn.run(
+            "mineru.parser.api_server:create_app",
+            host=host,
+            port=port,
+            reload=True,
+            factory=True,
+        )
     else:
         uvicorn.run(
             create_app(
                 upload_dir=upload_dir,
+                tier=tier,
                 backend=backend,
                 concurrency=concurrency,
                 url_timeout=url_timeout,
                 max_wait=max_wait,
                 api_key=api_key,
+                language=language,
+                ocr_mode=ocr_mode,
+                table_enable=not disable_table,
+                formula_enable=not disable_formula,
+                image_analysis=not disable_image_analysis,
             ),
             host=host,
             port=port,
@@ -1949,7 +2200,6 @@ __all__ = [
     "AccessLevel",
     "OutputFormat",
     "SourceType",
-    "OcrMode",
     "FilePurpose",
     "SSEEventType",
     # request models
@@ -1957,7 +2207,6 @@ __all__ = [
     "CompleteUploadRequest",
     "CreateJobRequest",
     "JobFileEntry",
-    "FileOptions",
     "CallbackConfig",
     # source models
     "FileIdSource",
@@ -1981,7 +2230,7 @@ __all__ = [
     "JobAsyncResponse",
     "JobLinks",
     "JobProgress",
-    "FileMetadata",
+    "FileParseInfo",
     "OutputFileRef",
     "ImageOutputRef",
     "OutputFiles",

@@ -4,16 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import os
-import time
 from pathlib import Path
 
 from watchfiles import awatch
 
-from mineru.constants import ALLOWED_EXTENSIONS
-
 from ..core.db import DatabaseManager
+from ..constants import ALLOWED_EXTENSIONS
 from ..services.config_svc import ConfigService
 from ..services.parse_svc import ParseService
+from ..types import WATCH_STATUS_ACTIVE
 
 
 class WatchLoop:
@@ -33,7 +32,7 @@ class WatchLoop:
             active_ids: set[int] = set()
 
             for w in watches:
-                if w["watch_status"] != "active":
+                if w["watch_status"] != WATCH_STATUS_ACTIVE:
                     continue
                 active_ids.add(w["id"])
 
@@ -63,7 +62,7 @@ class WatchLoop:
                         continue
                     if await self.config_svc.is_path_excluded(filepath):
                         continue
-                    await self._discover_file(filepath, watch_id)
+                    await self._refresh_file(filepath, watch_id)
                     file_count += 1
             await self.config_svc.update_watch_scan_stats(watch_id, file_count)
         except Exception:
@@ -85,23 +84,10 @@ class WatchLoop:
             return
         if await self.config_svc.is_path_excluded(filepath):
             return
-        await self._discover_file(filepath, watch_id)
+        await self._refresh_file(filepath, watch_id)
 
-    async def _discover_file(self, filepath: str, watch_id: int) -> None:
-        now = int(time.time() * 1000)
-
-        await self.db.execute(
-            "INSERT OR IGNORE INTO files (path, filename, ext, size_bytes, mtime_ms, "
-            "watch_id, first_seen_at, updated_at) VALUES (?, ?, ?, 0, 0, ?, ?, ?)",
-            (
-                filepath,
-                Path(filepath).name,
-                Path(filepath).suffix.lstrip(".").lower(),
-                watch_id,
-                now,
-                now,
-            ),
-        )
+    async def _refresh_file(self, filepath: str, watch_id: int) -> None:
+        await self.parse_svc.refresh_file(filepath, watch_id=watch_id)
 
     async def stop(self) -> None:
         self.running = False
