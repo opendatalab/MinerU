@@ -19,12 +19,12 @@ CREATE TABLE IF NOT EXISTS files (
     first_seen_at   INTEGER NOT NULL,
     updated_at      INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_files_sha256 ON files(sha256);
 CREATE INDEX IF NOT EXISTS idx_files_watch_id ON files(watch_id);
 CREATE INDEX IF NOT EXISTS idx_files_scan_status ON files(scan_status);
+CREATE INDEX IF NOT EXISTS idx_files_sha256_status ON files(sha256, scan_status);
 
 CREATE TABLE IF NOT EXISTS docs (
-    sha256          TEXT    PRIMARY KEY,
+    sha256          TEXT    PRIMARY KEY NOT NULL,
     size_bytes      INTEGER NOT NULL,
     mime_type       TEXT,
     page_count      INTEGER,
@@ -33,9 +33,10 @@ CREATE TABLE IF NOT EXISTS docs (
     author          TEXT,
     subject         TEXT,
     keywords        TEXT,
-    is_encrypted    INTEGER NOT NULL DEFAULT 0,
     is_scanned      INTEGER NOT NULL DEFAULT 0,
     meta_tier       TEXT,
+    error_code      TEXT,
+    error_msg       TEXT,
     first_seen_at   INTEGER NOT NULL,
     updated_at      INTEGER NOT NULL
 );
@@ -51,14 +52,13 @@ CREATE TABLE IF NOT EXISTS parses (
     error_code  TEXT,
     error_msg   TEXT,
     privacy     TEXT    NOT NULL DEFAULT 'local',
-    remote_url  TEXT,
     via         TEXT,
     done_at     INTEGER,
     created_at  INTEGER NOT NULL,
     updated_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_parses_status ON parses(status, priority DESC, created_at ASC);
-CREATE INDEX IF NOT EXISTS idx_parses_doc ON parses(sha256, tier);
+CREATE INDEX IF NOT EXISTS idx_parses_doc_status ON parses(sha256, tier, status);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS fts_contents USING fts5(
     sha256 UNINDEXED,
@@ -87,20 +87,34 @@ CREATE TABLE IF NOT EXISTS watch_targets (
     watch_status    TEXT    NOT NULL DEFAULT 'active',
     unreachable_at  INTEGER,
     last_scan_at    INTEGER,
-    last_scan_files INTEGER DEFAULT 0
+    last_scan_files INTEGER NOT NULL DEFAULT 0,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS rules (
+CREATE TABLE IF NOT EXISTS exclude_rules (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT,
-    rule_type       TEXT    NOT NULL,
+    pattern         TEXT    NOT NULL,
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    priority        INTEGER NOT NULL DEFAULT 0,
+    hit_count       INTEGER NOT NULL DEFAULT 0,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS parsing_rules (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT,
     pattern         TEXT    NOT NULL,
     tier            TEXT,
     pages           TEXT,
     remote          INTEGER NOT NULL DEFAULT 0,
     enabled         INTEGER NOT NULL DEFAULT 1,
     priority        INTEGER NOT NULL DEFAULT 0,
-    hit_count       INTEGER NOT NULL DEFAULT 0
+    hit_count       INTEGER NOT NULL DEFAULT 0,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS config (

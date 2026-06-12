@@ -174,9 +174,10 @@ CREATE TABLE docs (
     author          TEXT,
     subject         TEXT,
     keywords        TEXT,
-    is_encrypted    INTEGER NOT NULL DEFAULT 0,
     is_scanned      INTEGER NOT NULL DEFAULT 0,
     meta_tier       TEXT,               -- 当前 metadata 的来源 tier，NULL 表示尚未解析
+    error_code      TEXT,               -- 内容身份级错误码，e.g. "metadata_failed"
+    error_msg       TEXT,               -- 人类可读错误描述
     first_seen_at   INTEGER NOT NULL,  -- Unix epoch ms
     updated_at      INTEGER NOT NULL   -- Unix epoch ms
 );
@@ -201,7 +202,6 @@ CREATE TABLE parses (
     error_code  TEXT,                   -- 错误码，e.g. "parse_timeout"
     error_msg   TEXT,                   -- 人类可读错误描述
     privacy     TEXT    NOT NULL DEFAULT 'local',  -- local / remote
-    remote_url  TEXT,                   -- 用户指定的远程 URL，null = 使用默认 mineru.net
     via         TEXT,                   -- 实际执行的隐私路径: local / remote（fallback 后可能与 privacy 不同）
     output_path TEXT,                    -- 解析产物存储路径
     done_at     INTEGER,                 -- Unix epoch ms
@@ -213,12 +213,11 @@ CREATE INDEX idx_parses_status ON parses(status, priority DESC, created_at ASC);
 CREATE INDEX idx_parses_doc ON parses(sha256, tier);
 ```
 
-**privacy / remote_url / via 说明**：
+**privacy / via 说明**：
 
 | 列 | 含义 |
 |------|------|
 | `privacy` | 用户请求时的隐私偏好。`local` 默认（文档不出本地），`remote` 即 `--remote`（文档上传到远程） |
-| `remote_url` | 用户指定的远程地址。`privacy=remote` 时必带，默认 `mineru.net` |
 | `via` | 实际执行路径。`privacy=remote` 但远程不可用时 fallback 到 `local`，此列记录实际走的路径。缓存键为 `(sha256, tier)`，与 `privacy`/`via` 无关——同一 tier 不同来源产出解析结果一致 |
 
 **缓存命中**：按 `(sha256, tier)` 去重，不区分 `privacy`。同一份文档用 `privacy=local` 和 `privacy=remote` 走同一 tier，只有一条 done 记录命中缓存。
@@ -492,7 +491,7 @@ Watch 检测到文件事件
   → IngestWorker.acquire_task(): UPDATE files SET locked_at WHERE sha256 IS NULL
   → process_file():
        1. compute SHA-256 (asyncio.to_thread)
-       2. INSERT OR IGNORE INTO docs (sha256, size_bytes, page_count, title, author, subject, keywords, is_encrypted)
+       2. INSERT OR IGNORE INTO docs (sha256, size_bytes, page_count, title, author, subject, keywords)
        3. FTS insert fts_filenames
        4. UPDATE files SET sha256=?, locked_at=NULL
        5. check parsing-rules
@@ -505,13 +504,13 @@ Watch 检测到文件事件
 #### 5.3.1 解析请求入队
 
 ```
-用户请求: mineru parse doc.pdf --tier standard --pages 1~10 [--remote [url]]
+用户请求: mineru parse doc.pdf --tier standard --pages 1~10 [--remote]
   → CLI → Product SDK (client.py) → Server POST /parse
   → ParseService.request_parse():
        1. 查 files 表获取 sha256（如果文件未入库，先同步 ingest）
        2. 查 parses WHERE sha256=? AND tier=? AND status='done'
        3. 已有 done 批次的 pages 覆盖请求范围 → 直接返回缓存
-       4. 否则 → INSERT INTO parses (sha256, tier, pages, privacy=?, remote_url=?, priority=1)
+       4. 否则 → INSERT INTO parses (sha256, tier, pages, privacy=?, priority=1)
        5. --force 时 → DELETE FROM parses WHERE sha256=? AND tier=?，再 INSERT
   → ParseWorker.acquire_task()
 ```
@@ -522,8 +521,8 @@ ParseWorker 取到 task 后，按 tier 和 privacy 决定执行路径：
 
 ```
 ParseWorker.acquire_task()
-  → 从 parses 读取 sha256, tier, pages, privacy, remote_url
-  → route_parse(tier, privacy, remote_url):
+  → 从 parses 读取 sha256, tier, pages, privacy
+  → route_parse(tier, privacy):
 
   ┌─ flash tier ──────────────────────────────────────────────┐
   │   直接调用 mineru.parser.parse(path, backend="flash", ...) │
@@ -533,9 +532,9 @@ ParseWorker.acquire_task()
   ┌─ standard / pro tier ─────────────────────────────────────┐
   │                                                            │
   │   privacy = 'remote' ?                                     │
-  │   ├─ 是 → 目标: remote_url（默认 mineru.net）              │
+  │   ├─ 是 → 目标: config 中的远端地址（默认 mineru.net）     │
   │   │        ParseServerHealthCheck 探活通过？                │
-  │   │        ├─ 是 → POST {remote_url}/v1/parse/jobs         │
+  │   │        ├─ 是 → POST {remote_base_url}/v1/parse/jobs    │
   │   │        │       via = 'remote'                          │
   │   │        └─ 否 → fallback 到 local（见下）               │
   │   │                                                         │
@@ -588,7 +587,7 @@ ParseServerHealthCheck（asyncio task，每 60s 执行一次）
        成功 → 更新内存状态: local_healthy = true, supported_tiers = [...]
        失败 → 更新内存状态: local_healthy = false
   → remote parse-server：
-       GET {remote_url}/v1/tiers（默认 mineru.net）
+       GET {remote_base_url}/v1/tiers（默认 mineru.net）
        成功 → 更新内存状态: remote_healthy = true, supported_tiers = [...]
        失败 → 更新内存状态: remote_healthy = false
   → 状态通过 AppState 暴露给 ParseWorker 消费
@@ -894,9 +893,9 @@ flash 的首尾各 5 页文本通常在 30K 限制内，不会触发截断。sta
 
 | 层级 | 示例 | 存储位置 | 恢复策略 |
 |------|------|---------|---------|
-| File 级 | 路径不存在、权限不足 | `files.error_code` | 清除 sha256，可重试 |
-| Doc 级 | 文件损坏、加密 | `files.error_code` | 不自动重试 |
-| Parse 级 | 引擎崩溃、超时、OOM | `parses.error_code` | 标记 `status='failed'`，可重试 |
+| File 级 | 路径不存在、权限不足、文件被锁、SHA256 读取失败 | `files.error_code` | 清除 sha256，可重试 |
+| Doc 级 | metadata 读取失败、文件损坏、加密、内容不可识别 | `docs.error_code` | 不自动重试，除非文件内容变化或用户显式重试 |
+| Parse 级 | 引擎崩溃、超时、OOM、没有可访问文件 | `parses.error_code` | 标记 `status='failed'`，可重试 |
 | Parse-server 级 | parse-server 不可用、探活失败 | `parses.error_code` = `parse_server_unavailable` | 可重试（等待 server 就绪或用户启动），保留 `privacy` 不变 |
 
 **parse-server 相关错误码**：

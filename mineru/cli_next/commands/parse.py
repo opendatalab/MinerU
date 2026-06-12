@@ -7,13 +7,15 @@ from pathlib import Path
 
 import typer
 
-from mineru.doclib.client import MineruClient
-from mineru.cli_next.output import format_parse_result, print_error, print_success, print_info
+from ...doclib.client import DoclibClient
+from ...doclib.types import ParseRequest
+from ...types import Tier
+from ..output import format_parse_result, print_error, print_success, print_info
 
 
 def parse_cmd(
     path: str = typer.Argument(..., help="Path to the document file"),
-    tier: str = typer.Option(None, "--tier", help="Parse tier: flash, standard, pro (default: server decides)"),
+    tier: Tier | None = typer.Option(None, "--tier", help="Parse tier: flash, standard, pro (default: server decides)"),
     pages: str = typer.Option(
         None, "-p", "--pages", help="Page range, e.g. '1~5' or 'all'"
     ),
@@ -22,8 +24,6 @@ def parse_cmd(
     ),
     force: bool = typer.Option(False, "--force", help="Force re-parse, ignore cache"),
     remote: bool = typer.Option(False, "--remote", help="Use remote parse-server (https://mineru.net/api)"),
-    remote_url: str = typer.Option(None, "--remote-url", help="Custom remote server URL (overrides default)"),
-    api_key: str = typer.Option(None, "--api-key", envvar="MINERU_API_KEY", help="API key for remote parse-server"),
     wait: int = typer.Option(
         60, "--wait", help="Max seconds to wait for parse to complete"
     ),
@@ -47,33 +47,41 @@ def parse_cmd(
         raise typer.Exit(1)
 
     try:
-        client = MineruClient(timeout=wait + 30)
+        client = DoclibClient(timeout=wait + 30)
     except Exception:
         print_error("Cannot connect to mineru server. Run 'mineru server start' first.")
         raise typer.Exit(1) from None
 
     # send parse request
     try:
-        result = client.parse(file_path, tier=tier, pages=pages, format=format,
-                              force=force, remote=remote, remote_url=remote_url,
-                              api_key=api_key)
+        result = client.ensure_parse(
+            ParseRequest(
+                path=file_path,
+                tier=tier,
+                pages=pages,
+                force=force,
+                remote=remote,
+            )
+        )
     except Exception as exc:
         print_error(str(exc))
         raise typer.Exit(1) from None
 
-    sha256 = result.get("sha256", "")
-    req_tier = result.get("tier", tier or "flash")
-    status = result.get("status", "?")
+    sha256 = result.sha256
+    req_tier = result.tier
+    result_pages = result.pages or pages
+    status = result.status
+    wait_parse_ids = result.wait_parse_ids
 
     # cached
     if status == "done":
         if verbose:
             print_info("Cache hit — returning cached result.")
-        _output_content(client, sha256, req_tier, json_mode, output)
+        _output_content(client, sha256, req_tier, json_mode, output, pages=result_pages, format=format)
         return
 
     # no-wait
-    if no_wait or status not in ("pending", "parsing"):
+    if no_wait or status not in ("pending", "parsing") or not wait_parse_ids:
         format_parse_result(result, json_mode=json_mode)
         return
 
@@ -87,23 +95,25 @@ def parse_cmd(
         time.sleep(interval)
         interval = min(interval * 1.2, 3.0)
         try:
-            s = client.parse_status(sha256, req_tier)
+            s = client.list_parses(ids=wait_parse_ids)
         except Exception:
             continue
 
-        st = s.get("status", "?")
+        parse_rows = s.parses
+        statuses = {row.status for row in parse_rows}
+        st = "done" if parse_rows and statuses == {"done"} else ("failed" if "failed" in statuses else "parsing")
         if verbose or st in ("done", "failed"):
             print_info(f"  Parse status: {st}")
 
         if st == "done":
             if not json_mode:
-                _output_content(client, sha256, req_tier, json_mode, output)
+                _output_content(client, sha256, req_tier, json_mode, output, pages=result_pages, format=format)
             else:
                 format_parse_result(s, json_mode=json_mode)
             return
-        elif st == "failed":
-            err = s.get("error", {})
-            print_error(f"Parse failed: {err.get('code','?')} — {err.get('message','')}")
+        if st == "failed":
+            failed = next((row for row in parse_rows if row.status == "failed"), None)
+            print_error(f"Parse failed: {failed.error_code if failed else '?'} — {failed.error_msg if failed else ''}")
             raise typer.Exit(1)
 
     print_info(
@@ -119,19 +129,26 @@ if __name__ != "__main__":
         app.command()(parse_cmd)
 
 
-def _output_content(client, sha256: str, tier: str, json_mode: bool,
-                     output: str | None = None) -> None:
+def _output_content(
+    client,
+    sha256: str,
+    tier: Tier,
+    json_mode: bool,
+    output: str | None = None,
+    pages: str | None = None,
+    format: str = "markdown",
+) -> None:
     """Fetch and output parsed content.  If --output is specified, server writes to file."""
     try:
-        content = client.parse_content(sha256, tier, output=output)
+        content = client.get_doc_content(sha256, tier=tier, output=output, pages=pages, format=format)
         if output and output != "-":
-            if content.get("output"):
-                print_success(f"Written to {content['output']}")
+            if content.output:
+                print_success(f"Written to {content.output}")
             else:
                 print_error("Failed to write output file.")
             return
 
-        text = content.get("content", "")
+        text = content.content or ""
         if text:
             if json_mode:
                 import json

@@ -3,16 +3,27 @@
 from __future__ import annotations
 
 import asyncio
+import json as _json
 import os
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
-from mineru.constants import TIER_ORDER, ParseStatus, Tier
-from mineru.errors import MineruError
-
+from ...errors import MineruError
+from ...types import PageInfo, TIER_ORDER, Tier
+from ..constants import ALLOWED_EXTENSIONS, TEXT_EXTENSIONS
 from ..core.db import DatabaseManager
 from ..core.file_io import compute_sha256, extract_metadata, get_file_stat
 from ..core.fts import FTSManager
+from ..types import (
+    PARSE_STATUS_DONE,
+    PARSE_STATUS_FAILED,
+    PARSE_STATUS_PARSING,
+    PARSE_STATUS_PENDING,
+    PARSE_STATUS_SUPERSEDED,
+    RULE_TYPE_PARSING_RULE,
+    SCAN_STATUS_ACTIVE,
+)
 from .config_svc import ConfigService
 
 
@@ -32,6 +43,14 @@ MAX_FTS_CHARS = 30_000
 FTS_HEAD_HALF = 15_000
 
 
+@dataclass(frozen=True)
+class DiscoverResult:
+    file: dict | None
+    changed: bool
+    needs_ingest: bool
+    unsupported: bool = False
+
+
 # ── range helpers ──────────────────────────────────────────────────
 
 
@@ -48,6 +67,12 @@ def parse_range_set(s: str) -> set[int]:
         else:
             pages.add(int(part))
     return pages
+
+
+def filter_pages_by_user_range(pages: list[PageInfo], requested_pages: str) -> list[PageInfo]:
+    """Filter 0-based PageInfo objects by a user-facing 1-based page range."""
+    requested = parse_range_set(requested_pages)
+    return [page for page in pages if page.page_idx + 1 in requested]
 
 
 def pages_covered(request_pages: str, done_batches: list[dict]) -> bool:
@@ -137,57 +162,183 @@ class ParseService:
         db: DatabaseManager,
         fts: FTSManager,
         config_svc: ConfigService,
-        data_dir: str = "~/MinerU",
+        data_dir: str,
     ) -> None:
         self.db = db
         self.fts = fts
         self.config_svc = config_svc
         self.data_dir = os.path.expanduser(data_dir)
 
-    # ── ingestion (shared) ──────────────────────────────────
+    # ── discovery / ingestion (shared) ──────────────────────
+
+    async def discover_file(self, path: str, watch_id: int | None = None) -> DiscoverResult:
+        """Discover a path and mark it for ingest if stat changed.
+
+        This is the lightweight path used by watch and by synchronous path
+        operations before they trust ``files.sha256``.
+        """
+        ext = Path(path).suffix.lower().lstrip(".")
+        if ext not in ALLOWED_EXTENSIONS:
+            return DiscoverResult(file=None, changed=False, needs_ingest=False, unsupported=True)
+
+        stat = await get_file_stat(path)
+        now = _now_ms()
+        filename = Path(path).name
+
+        existing = await self.db.fetchone("SELECT * FROM files WHERE path=? AND scan_status=?", (path, SCAN_STATUS_ACTIVE))
+        if existing:
+            unchanged = existing["mtime_ms"] == stat["mtime_ms"] and existing["size_bytes"] == stat["size_bytes"]
+            if unchanged:
+                return DiscoverResult(file=existing, changed=False, needs_ingest=existing["sha256"] is None)
+
+            await self.db.execute(
+                "UPDATE files SET filename=?, ext=?, size_bytes=?, mtime_ms=?, birthtime_ms=?, "
+                "sha256=NULL, watch_id=COALESCE(?, watch_id), locked_at=NULL, error_code=NULL, error_msg=NULL, updated_at=? "
+                "WHERE id=?",
+                (
+                    filename,
+                    ext,
+                    stat["size_bytes"],
+                    stat["mtime_ms"],
+                    stat["birthtime_ms"],
+                    watch_id,
+                    now,
+                    existing["id"],
+                ),
+            )
+            row = await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],))
+            return DiscoverResult(file=row, changed=True, needs_ingest=True)
+
+        existing_any_status = await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,))
+        if existing_any_status:
+            await self.db.execute(
+                "UPDATE files SET filename=?, ext=?, size_bytes=?, mtime_ms=?, birthtime_ms=?, "
+                "sha256=NULL, watch_id=?, scan_status=?, locked_at=NULL, error_code=NULL, error_msg=NULL, "
+                "deleted_at=NULL, updated_at=? WHERE id=?",
+                (
+                    filename,
+                    ext,
+                    stat["size_bytes"],
+                    stat["mtime_ms"],
+                    stat["birthtime_ms"],
+                    watch_id,
+                    SCAN_STATUS_ACTIVE,
+                    now,
+                    existing_any_status["id"],
+                ),
+            )
+            row = await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing_any_status["id"],))
+            return DiscoverResult(file=row, changed=True, needs_ingest=True)
+
+        file_id = await self.db.execute_insert(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, "
+            "birthtime_ms, watch_id, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                path,
+                filename,
+                ext,
+                stat["size_bytes"],
+                stat["mtime_ms"],
+                stat["birthtime_ms"],
+                watch_id,
+                now,
+                now,
+            ),
+        )
+        row = await self.db.fetchone("SELECT * FROM files WHERE id=?", (file_id,))
+        return DiscoverResult(file=row, changed=True, needs_ingest=True)
+
+    async def ensure_ingested(self, path: str, watch_id: int | None = None) -> dict | None:
+        """Synchronously discover and ingest a source path when needed."""
+        discovered = await self.discover_file(path, watch_id=watch_id)
+        if discovered.file is None:
+            return None
+        if not discovered.needs_ingest:
+            return discovered.file
+        return await self.ingest_file(path, watch_id=watch_id)
 
     async def ingest_file(self, path: str, watch_id: int | None = None) -> dict | None:
-        """Ingest a file: SHA-256 + metadata + trigger default parse."""
+        """Ingest a discovered file: SHA-256 + metadata + trigger default parse."""
+        ext = Path(path).suffix.lower().lstrip(".")
+        if ext not in ALLOWED_EXTENSIONS:
+            return None
+
         stat = await get_file_stat(path)
         sha256 = await compute_sha256(path)
         now = _now_ms()
+        filename = Path(path).name
 
-        # check if this path is already ingested
-        existing_path = await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,))
-        if existing_path and existing_path["sha256"]:
+        existing_path = await self.db.fetchone("SELECT * FROM files WHERE path=? AND scan_status=?", (path, SCAN_STATUS_ACTIVE))
+        if existing_path and existing_path["sha256"] == sha256:
             return existing_path
 
         # check if same content (sha256) is already tracked by another path
         existing_sha = await self.db.fetchone("SELECT * FROM files WHERE sha256=?", (sha256,))
         if existing_sha:
-            # same file, different path — just add this path pointing to the same doc
-            await self.db.execute("DELETE FROM files WHERE path=?", (path,))
-            await self.db.execute(
-                "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, "
-                "birthtime_ms, sha256, watch_id, first_seen_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    path,
-                    Path(path).name,
-                    Path(path).suffix.lstrip(".").lower(),
-                    stat["size_bytes"],
-                    stat["mtime_ms"],
-                    stat["birthtime_ms"],
-                    sha256,
-                    watch_id,
-                    now,
-                    now,
-                ),
-            )
-            return await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,))
+            # same content, possibly a new or changed path — bind this file row
+            # to the existing doc without duplicating docs/parses.
+            if existing_path:
+                await self.db.execute(
+                    "UPDATE files SET filename=?, ext=?, size_bytes=?, mtime_ms=?, birthtime_ms=?, "
+                    "sha256=?, watch_id=COALESCE(?, watch_id), locked_at=NULL, error_code=NULL, error_msg=NULL, updated_at=? "
+                    "WHERE id=?",
+                    (
+                        filename,
+                        ext,
+                        stat["size_bytes"],
+                        stat["mtime_ms"],
+                        stat["birthtime_ms"],
+                        sha256,
+                        watch_id,
+                        now,
+                        existing_path["id"],
+                    ),
+                )
+            else:
+                await self.db.execute(
+                    "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, "
+                    "birthtime_ms, sha256, watch_id, first_seen_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        path,
+                        filename,
+                        ext,
+                        stat["size_bytes"],
+                        stat["mtime_ms"],
+                        stat["birthtime_ms"],
+                        sha256,
+                        watch_id,
+                        now,
+                        now,
+                    ),
+                )
+            file_row = await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,))
+            if file_row:
+                await self.fts.upsert_filename(file_row["id"], Path(path).stem, ext)
+            return file_row
 
         # brand new document
-        metadata = await extract_metadata(path)
+        metadata_error_code = None
+        metadata_error_msg = None
+        try:
+            metadata = await extract_metadata(path)
+        except Exception as exc:
+            metadata_error_code = "metadata_failed"
+            metadata_error_msg = str(exc)[:500] or "Failed to extract document metadata"
+            metadata = {
+                "mime_type": None,
+                "page_count": None,
+                "title": None,
+                "author": None,
+                "subject": None,
+                "keywords": None,
+                "is_scanned": 0,
+            }
 
         # Office: no page_count → default to 1
         page_count = metadata["page_count"]
         if page_count is None:
-            ext = Path(path).suffix.lower().lstrip(".")
             if ext in ("docx",):
                 page_count = 1  # reflow docs
             elif ext in ("pptx", "xlsx"):
@@ -200,8 +351,8 @@ class ParseService:
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 path,
-                Path(path).name,
-                Path(path).suffix.lstrip(".").lower(),
+                filename,
+                ext,
                 stat["size_bytes"],
                 stat["mtime_ms"],
                 stat["birthtime_ms"],
@@ -213,8 +364,8 @@ class ParseService:
 
         await self.db.execute(
             "INSERT OR IGNORE INTO docs (sha256, size_bytes, mime_type, page_count, "
-            "title, author, subject, keywords, is_encrypted, first_seen_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "title, author, subject, keywords, error_code, error_msg, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 sha256,
                 stat["size_bytes"],
@@ -224,7 +375,8 @@ class ParseService:
                 metadata["author"],
                 metadata["subject"],
                 metadata["keywords"],
-                metadata["is_encrypted"],
+                metadata_error_code,
+                metadata_error_msg,
                 now,
                 now,
             ),
@@ -236,11 +388,27 @@ class ParseService:
             await self.fts.upsert_filename(
                 file_row["id"],
                 Path(path).stem,
-                Path(path).suffix.lstrip(".").lower(),
+                ext,
             )
 
+        if ext in TEXT_EXTENSIONS:
+            await self.db.execute(
+                "UPDATE files SET sha256=?, locked_at=NULL, updated_at=? WHERE path=?",
+                (sha256, now, path),
+            )
+            text = await asyncio.to_thread(Path(path).read_text, encoding="utf-8", errors="replace")
+            await self.fts.replace(
+                sha256=sha256,
+                tier="flash",
+                text=truncate_head_tail(text),
+                title=metadata["title"] or "",
+                author=metadata["author"] or "",
+                filename=filename,
+            )
+            return await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,))
+
         # determine tier and pages for initial parse
-        tier = Tier.FLASH
+        tier: Tier = "flash"
         if page_count and page_count > 10:
             initial_pages = "1~5,-5~-1"
         elif page_count:
@@ -249,7 +417,7 @@ class ParseService:
             initial_pages = "1~5"
 
         # check parsing-rules
-        matched = await self.config_svc.match_rules(path, "parsing_rule")
+        matched = await self.config_svc.match_rules(path, RULE_TYPE_PARSING_RULE)
         if matched:
             rule = matched[0]
             tier = rule.get("tier") or tier
@@ -261,7 +429,7 @@ class ParseService:
         pages_str = expand_pages(initial_pages, page_count or 1)
         await self.db.execute(
             "INSERT INTO parses (sha256, tier, pages, status, priority, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)",
-            (sha256, tier, pages_str, ParseStatus.PENDING, now, now),
+            (sha256, tier, pages_str, PARSE_STATUS_PENDING, now, now),
         )
 
         await self.db.execute(
@@ -277,17 +445,14 @@ class ParseService:
         self,
         path: str,
         *,
-        tier: str | None = None,
+        tier: Tier | None = None,
         pages: str | None = None,
         force: bool = False,
         remote: bool = False,
-        remote_url: str | None = None,
     ) -> dict:
         """Handle a parse request from CLI.  Returns info for status polling."""
-        # ensure file is ingested
-        file_row = await self.db.fetchone("SELECT * FROM files WHERE path=? AND scan_status='active'", (path,))
-        if file_row is None or file_row["sha256"] is None:
-            file_row = await self.ingest_file(path)
+        # ensure the path is current before trusting files.sha256
+        file_row = await self.ensure_ingested(path)
         if file_row is None:
             return {"sha256": "", "tier": tier or "", "status": "error", "tip": "File could not be ingested."}
 
@@ -299,8 +464,10 @@ class ParseService:
         # ── resolve tier (before cache check) ──
         requested_tier = tier or _resolve_default_tier(remote)
         ext = file_row["ext"]
-        if ext in ("docx", "pptx", "xlsx", "doc", "xls", "ppt"):
-            requested_tier = Tier.FLASH
+        if ext in TEXT_EXTENSIONS:
+            return _text_response(sha256)
+        if ext in ("docx", "pptx", "xlsx"):
+            requested_tier = "flash"
 
         # ── expand pages ──
         default_pages = "1~5,-5~-1" if page_count and page_count > 10 else f"1~{page_count}"
@@ -311,11 +478,11 @@ class ParseService:
         # ── step 1: remove pages covered by valid done batches ──
         if not force:
             done_batches = await self.db.fetchall(
-                "SELECT * FROM parses WHERE sha256=? AND tier=? AND status='done' ORDER BY done_at DESC",
-                (sha256, requested_tier),
+                "SELECT * FROM parses WHERE sha256=? AND tier=? AND status=? ORDER BY done_at DESC",
+                (sha256, requested_tier, PARSE_STATUS_DONE),
             )
             for batch in done_batches:
-                if not _json_file_exists_by_batch(sha256, requested_tier, batch):
+                if not _json_file_exists_by_batch(self.data_dir, sha256, requested_tier, batch):
                     continue  # JSON gone → cache invalid
                 covered = parse_range_set(batch["pages"])
                 needed -= covered
@@ -324,46 +491,60 @@ class ParseService:
                 return _done_response(sha256, requested_tier, request_pages_str)
 
         # ── step 2: remove pages covered by pending/parsing batches ──
+        reused_parse_ids: list[int] = []
         active_batches = await self.db.fetchall(
-            "SELECT * FROM parses WHERE sha256=? AND tier=? AND status IN ('pending', 'parsing')",
-            (sha256, requested_tier),
+            "SELECT * FROM parses WHERE sha256=? AND tier=? AND status IN (?, ?)",
+            (sha256, requested_tier, PARSE_STATUS_PENDING, PARSE_STATUS_PARSING),
         )
         if active_batches:
             active_covered: set[int] = set()
             for batch in active_batches:
-                active_covered |= parse_range_set(batch["pages"])
+                covered = parse_range_set(batch["pages"])
+                if needed & covered:
+                    reused_parse_ids.append(batch["id"])
+                active_covered |= covered
             needed -= active_covered
 
+            # bump priority for reused in-progress batches
+            now = _now_ms()
+            for batch in active_batches:
+                if batch["id"] in reused_parse_ids and batch["priority"] < 1:
+                    await self.db.execute(
+                        "UPDATE parses SET priority=1, updated_at=? WHERE id=?",
+                        (now, batch["id"]),
+                    )
+
             if not needed:
-                # all remaining pages covered by in-progress batches → bump priority
-                now = _now_ms()
-                for batch in active_batches:
-                    if batch["priority"] < 1:
-                        await self.db.execute(
-                            "UPDATE parses SET priority=1, updated_at=? WHERE id=?",
-                            (now, batch["id"]),
-                        )
                 return {
                     "sha256": sha256,
                     "tier": requested_tier,
                     "pages": request_pages_str,
-                    "status": ParseStatus.PENDING,
+                    "status": PARSE_STATUS_PENDING,
+                    "cache_hit": False,
+                    "wait_parse_ids": reused_parse_ids,
+                    "created_parse_ids": [],
+                    "reused_parse_ids": reused_parse_ids,
                     "tip": "Pages already queued. Priority bumped.",
                 }
 
         # ── step 3: enqueue remaining uncovered pages ──
         uncovered_str = _pages_set_to_str(needed)
         now = _now_ms()
-        await self.db.execute(
-            "INSERT INTO parses (sha256, tier, pages, status, privacy, remote_url, priority, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)",
-            (sha256, requested_tier, uncovered_str, ParseStatus.PENDING, privacy, remote_url, now, now),
+        parse_id = await self.db.execute_insert(
+            "INSERT INTO parses (sha256, tier, pages, status, privacy, priority, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+            (sha256, requested_tier, uncovered_str, PARSE_STATUS_PENDING, privacy, now, now),
         )
+        created_parse_ids = [parse_id]
         return {
             "sha256": sha256,
             "tier": requested_tier,
-            "pages": uncovered_str,
-            "status": ParseStatus.PENDING,
+            "pages": request_pages_str,
+            "status": PARSE_STATUS_PENDING,
+            "cache_hit": False,
+            "wait_parse_ids": reused_parse_ids + created_parse_ids,
+            "created_parse_ids": created_parse_ids,
+            "reused_parse_ids": reused_parse_ids,
         }
 
     # ── worker ──────────────────────────────────────────────────
@@ -372,7 +553,7 @@ class ParseService:
         timeout_ms = _now_ms() - 30 * 60 * 1000  # 30min lock timeout
         row = await self.db.fetchone(
             "SELECT COUNT(*) as cnt FROM parses WHERE status=? AND (locked_at IS NULL OR locked_at < ?)",
-            (ParseStatus.PENDING, timeout_ms),
+            (PARSE_STATUS_PENDING, timeout_ms),
         )
         return row["cnt"] if row else 0
 
@@ -386,7 +567,7 @@ class ParseService:
             "  AND (locked_at IS NULL OR locked_at < ?) "
             "  ORDER BY priority DESC, created_at ASC LIMIT 1"
             ") RETURNING *",
-            (now, ParseStatus.PARSING, ParseStatus.PENDING, timeout),
+            (now, PARSE_STATUS_PARSING, PARSE_STATUS_PENDING, timeout),
         )
 
     async def process_doc(self, task: dict) -> bool:
@@ -395,17 +576,16 @@ class ParseService:
         tier = task["tier"]
         pages = task["pages"]
         privacy = task.get("privacy", "local")
-        remote_url = task.get("remote_url")
 
         # guard
         current = await self.db.fetchone("SELECT status FROM parses WHERE id=?", (task["id"],))
-        if current is None or current["status"] != ParseStatus.PARSING:
+        if current is None or current["status"] != PARSE_STATUS_PARSING:
             return False
 
         # find the file
         file_row = await self.db.fetchone(
-            "SELECT * FROM files WHERE sha256=? AND scan_status='active' LIMIT 1",
-            (sha256,),
+            "SELECT * FROM files WHERE sha256=? AND scan_status=? LIMIT 1",
+            (sha256, SCAN_STATUS_ACTIVE),
         )
         if file_row is None:
             await self._fail_task(task["id"], "no_accessible_file", "No active file found for this document")
@@ -417,10 +597,10 @@ class ParseService:
         # route parse based on tier
         via = "local"
         try:
-            if tier == Tier.FLASH:
+            if tier == "flash":
                 results = await self._parse_via_local(file_row, tier, pages)
             else:
-                results, via = await self._parse_via_api(file_row, tier, pages, privacy, remote_url)
+                results, via = await self._parse_via_api(file_row, tier, pages, privacy)
         except ParseFailure as exc:
             await self._fail_task(task["id"], exc.code, exc.message)
             return False
@@ -428,23 +608,29 @@ class ParseService:
             await self._fail_task(task["id"], "parse_failed", str(exc)[:500])
             return False
 
-        # save per-batch JSON (markdown is generated on read from /parse/content)
+        # save per-batch JSON (markdown is generated on read from /docs/{sha256}/content)
         done_at_ms = _now_ms()
+        new_pages: list[dict] = []
         if results:
             import json as _json
 
             pages_key = _safe_filename(task["pages"])
             json_path = os.path.join(output_dir, f"{pages_key}_{done_at_ms}.json")
             os.makedirs(output_dir, exist_ok=True)
-            new_pages: list[dict] = []
             for r in results:
                 if hasattr(r, "to_dict"):
                     new_pages.extend(r.to_dict().get("pages", []))
+            if not new_pages:
+                await self._fail_task(task["id"], "parse_empty", "Parse completed but returned no pages")
+                return False
             try:
                 with open(json_path, "w", encoding="utf-8") as f:
                     _json.dump({"pages": new_pages}, f, ensure_ascii=False, indent=2)
             except Exception:
                 pass
+        else:
+            await self._fail_task(task["id"], "parse_empty", "Parse completed but returned no results")
+            return False
 
         # generate markdown for FTS (not persisted, only for search indexing)
         md_text = ""
@@ -461,20 +647,20 @@ class ParseService:
         # mark done
         await self.db.execute(
             "UPDATE parses SET status=?, done_at=?, locked_at=NULL, via=?, updated_at=? WHERE id=?",
-            (ParseStatus.DONE, done_at_ms, via, done_at_ms, task["id"]),
+            (PARSE_STATUS_DONE, done_at_ms, via, done_at_ms, task["id"]),
         )
         return True
 
     # ── parse routing helpers ─────────────────────────────────────
 
-    async def _parse_via_local(self, file_row: dict, tier: str, pages: str) -> list:
+    async def _parse_via_local(self, file_row: dict, tier: Tier, pages: str) -> list:
         """Parse via local library call."""
-        from mineru.parser import parse
+        from ...parser import parse
 
         result = await asyncio.to_thread(
             parse,
             file_row["path"],
-            backend=_tier_to_backend(tier),
+            tier=tier,
             page_range=pages,
         )
         return [result]
@@ -482,15 +668,14 @@ class ParseService:
     async def _parse_via_api(
         self,
         file_row: dict,
-        tier: str,
+        tier: Tier,
         pages: str,
         privacy: str,
-        remote_url: str | None,
     ) -> tuple[list, str]:
         """Parse via HTTP API (local or remote parse-server). Returns (results, via)."""
-        from mineru.parser.api_client import MinerUApiParser
+        from ...parser.api_client import MinerUApiParser
 
-        base_url, api_key, via = await self._resolve_api_target(privacy, remote_url, tier)
+        base_url, api_key, via = await self._resolve_api_target(privacy, tier)
 
         # resolve and validate tier against server capabilities
         resolved_tier = self._resolve_tier(tier, via)
@@ -504,13 +689,13 @@ class ParseService:
         return [result], via
 
     @staticmethod
-    def _resolve_tier(tier: str, via: str) -> str:
+    def _resolve_tier(tier: Tier, via: str) -> Tier:
         """Resolve and validate tier against parse-server capabilities.
 
-        - ``auto`` → pick best available tier from health check (pro > standard)
-        - specified tier → validate against supported_tiers, raise tier_mismatch if unsupported
+        - validate specified tier against supported_tiers
+        - raise tier_mismatch if unsupported
         """
-        from mineru.doclib.background.parse_server_health import get_health
+        from ..background.parse_server_health import get_health
 
         health = get_health()
         if via == "remote":
@@ -521,28 +706,21 @@ class ParseService:
         if not supported:
             raise ParseFailure("engine_unavailable", "Parse-server health status unknown, cannot validate tier")
 
-        if tier == "auto":
-            tier_order = ["pro", "standard"]
-            for t in tier_order:
-                if t in supported:
-                    return t
-            raise ParseFailure("tier_mismatch", f"No supported tier found. Available: {supported}")
-
         if tier not in supported:
             raise ParseFailure("tier_mismatch", f"Tier '{tier}' not supported by parse-server. Available: {supported}")
         return tier
 
-    async def _resolve_api_target(self, privacy: str, remote_url: str | None, tier: str) -> tuple[str, str | None, str]:
+    async def _resolve_api_target(self, privacy: str, tier: Tier) -> tuple[str, str | None, str]:
         """Resolve the api target URL based on privacy and config.
 
         Returns (base_url, api_key, via_label).
         """
-        from mineru.doclib.background.parse_server_health import get_health
+        from ..background.parse_server_health import get_health
 
         health = get_health()
 
         if privacy == "remote":
-            url = remote_url or (await self.config_svc.get("parse_server.remote.url")) or "https://mineru.net/api"
+            url = (await self.config_svc.get("parse_server.remote.url")) or "https://mineru.net/api"
             api_key = os.environ.get("MINERU_API_KEY") or (await self.config_svc.get("parse_server.remote.api_key"))
             if not health.remote_healthy:
                 # try fallback to local
@@ -573,65 +751,72 @@ class ParseService:
         now = _now_ms()
         await self.db.execute(
             "UPDATE parses SET status=?, error_code=?, error_msg=?, locked_at=NULL, updated_at=? WHERE id=?",
-            (ParseStatus.FAILED, code, message, now, task_id),
+            (PARSE_STATUS_FAILED, code, message, now, task_id),
         )
 
-    async def get_parse_status(self, sha256: str, tier: str) -> dict | None:
-        """Get aggregate status for a doc+tier.  Returns latest batch info."""
-        done = await self.db.fetchone(
-            "SELECT * FROM parses WHERE sha256=? AND tier=? AND status='done' ORDER BY done_at DESC LIMIT 1",
-            (sha256, tier),
-        )
-        if done:
-            # still have active batches? → not fully done yet
-            active_count = await self.db.fetchone(
-                "SELECT COUNT(*) as cnt FROM parses WHERE sha256=? AND tier=? AND status IN ('pending', 'parsing')",
-                (sha256, tier),
-            )
-            if active_count and active_count["cnt"] == 0:
-                return {"sha256": sha256, "tier": tier, "status": "done", "pages": "TBD"}
+    async def get_parse_record(self, parse_id: int) -> dict | None:
+        row = await self.db.fetchone("SELECT * FROM parses WHERE id=?", (parse_id,))
+        return _parse_record_response(row) if row else None
 
-        active = await self.db.fetchone(
-            "SELECT * FROM parses WHERE sha256=? AND tier=? AND status IN ('pending', 'parsing') "
-            "ORDER BY created_at DESC LIMIT 1",
-            (sha256, tier),
-        )
-        if active:
-            return {
-                "sha256": sha256,
-                "tier": tier,
-                "status": active["status"],
-                "pages": active["pages"],
-            }
+    async def list_parse_records(
+        self,
+        *,
+        ids: list[int] | None = None,
+        sha256: str | None = None,
+        tier: Tier | None = None,
+        status: list[str] | None = None,
+        pages: str | None = None,
+        include_superseded: bool = False,
+    ) -> dict:
+        if ids:
+            placeholders = ",".join("?" * len(ids))
+            rows = await self.db.fetchall(f"SELECT * FROM parses WHERE id IN ({placeholders})", tuple(ids))
+            rows_by_id = {row["id"]: row for row in rows}
+            ordered_rows = [rows_by_id[parse_id] for parse_id in ids if parse_id in rows_by_id]
+            return {"parses": [_parse_record_response(row) for row in ordered_rows]}
 
-        failed = await self.db.fetchone(
-            "SELECT * FROM parses WHERE sha256=? AND tier=? AND status='failed' ORDER BY created_at DESC LIMIT 1",
-            (sha256, tier),
-        )
-        if failed:
-            return {
-                "sha256": sha256,
-                "tier": tier,
-                "status": "failed",
-                "error": {"code": failed["error_code"], "message": failed["error_msg"]},
-            }
+        clauses: list[str] = []
+        params: list[object] = []
+        if sha256:
+            clauses.append("sha256=?")
+            params.append(sha256)
+        if tier:
+            clauses.append("tier=?")
+            params.append(tier)
+        if status:
+            placeholders = ",".join("?" * len(status))
+            clauses.append(f"status IN ({placeholders})")
+            params.extend(status)
+        elif not include_superseded:
+            clauses.append("status!=?")
+            params.append(PARSE_STATUS_SUPERSEDED)
 
-        return None
+        sql = "SELECT * FROM parses"
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY created_at DESC"
+        rows = await self.db.fetchall(sql, tuple(params))
+        result = {"parses": [_parse_record_response(row) for row in rows]}
+        if sha256 and tier and pages:
+            result["coverage"] = _parse_coverage(pages, rows)
+        return result
 
-    async def invalidate(self, sha256: str, tier: str | None = None) -> int:
+    async def invalidate(self, sha256: str, tier: Tier | None = None) -> int:
         """Mark done parses as superseded.  Returns count of affected rows."""
         now = _now_ms()
-        sql = "UPDATE parses SET status='superseded', updated_at=? WHERE sha256=? AND status='done'"
-        params = [now, sha256]
+        sql = "UPDATE parses SET status=?, updated_at=? WHERE sha256=? AND status=?"
+        params = [PARSE_STATUS_SUPERSEDED, now, sha256, PARSE_STATUS_DONE]
         if tier:
             sql += " AND tier=?"
             params.append(tier)
         cursor = await self.db.execute(sql, tuple(params))
+        if cursor.rowcount:
+            await self._rebuild_fts_after_invalidate(sha256)
         return cursor.rowcount
 
     # ── internal helpers ────────────────────────────────────────
 
-    async def _maybe_update_fts(self, sha256: str, tier: str, text: str, file_row: dict) -> None:
+    async def _maybe_update_fts(self, sha256: str, tier: Tier, text: str, file_row: dict) -> None:
         existing_tier = await self.fts.get_tier(sha256)
         if existing_tier and TIER_ORDER.get(existing_tier, -1) >= TIER_ORDER.get(tier, -1):
             return  # current FTS data is from a higher or equal tier
@@ -646,64 +831,171 @@ class ParseService:
             filename=file_row["filename"],
         )
 
-    async def _maybe_update_docs_meta(self, sha256: str, tier: str) -> None:
+    async def _maybe_update_docs_meta(self, sha256: str, tier: Tier) -> None:
         doc = await self.db.fetchone("SELECT meta_tier FROM docs WHERE sha256=?", (sha256,))
         if doc is None:
             return
         existing_tier = doc.get("meta_tier")
+        now = _now_ms()
         if existing_tier and TIER_ORDER.get(existing_tier, -1) >= TIER_ORDER.get(tier, -1):
+            await self.db.execute(
+                "UPDATE docs SET error_code=NULL, error_msg=NULL, updated_at=? WHERE sha256=?",
+                (now, sha256),
+            )
             return
 
         # for now just update meta_tier; full metadata update comes when
         # engine provides richer output
-        now = _now_ms()
         await self.db.execute(
-            "UPDATE docs SET meta_tier=?, updated_at=? WHERE sha256=?",
+            "UPDATE docs SET meta_tier=?, error_code=NULL, error_msg=NULL, updated_at=? WHERE sha256=?",
             (tier, now, sha256),
         )
 
+    async def _rebuild_fts_after_invalidate(self, sha256: str) -> None:
+        file_row = await self.db.fetchone(
+            "SELECT * FROM files WHERE sha256=? AND scan_status=? LIMIT 1",
+            (sha256, SCAN_STATUS_ACTIVE),
+        )
+        if file_row is None:
+            await self.fts.delete(sha256)
+            return
 
-# ── tier → backend mapping ─────────────────────────────────────────
+        rows = await self.db.fetchall(
+            "SELECT * FROM parses WHERE sha256=? AND status=? ORDER BY done_at DESC",
+            (sha256, PARSE_STATUS_DONE),
+        )
+        tiers = sorted({row["tier"] for row in rows}, key=lambda t: TIER_ORDER.get(t, -1), reverse=True)
+        for tier in tiers:
+            tier_rows = [row for row in rows if row["tier"] == tier]
+            pages = load_pages_from_done_batches(self.data_dir, sha256, tier, tier_rows)
+            if not pages:
+                continue
+
+            from ...render import render_markdown
+
+            text = truncate_head_tail(render_markdown(pages, add_markers=False))
+            await self.fts.replace(
+                sha256=sha256,
+                tier=tier,
+                text=text,
+                title=file_row.get("title") or "",
+                author=file_row.get("author") or "",
+                filename=file_row["filename"],
+            )
+            return
+
+        await self.fts.delete(sha256)
 
 
-def _resolve_default_tier(remote: bool = False) -> str:
+# ── tier resolution helpers ────────────────────────────────────────
+
+
+def _resolve_default_tier(remote: bool = False) -> Tier:
     """Pick the best available tier from health check.  ``pro`` > ``standard`` > ``flash``."""
-    from mineru.doclib.background.parse_server_health import get_health
+    from ..background.parse_server_health import get_health
 
     health = get_health()
     supported = health.remote_supported_tiers if remote else health.local_supported_tiers
-    for candidate in (Tier.PRO, Tier.STANDARD):
+    for candidate in ("pro", "standard"):
         if candidate in supported:
             return candidate
     raise ParseFailure(
-        "no_engine", "No standard or pro engine available. Start a parse-server or use --tier flash for text-only preview."
+        "quality_tier_unavailable",
+        "No standard or pro engine available. Start a parse-server or use --tier flash for text-only preview.",
     )
 
 
-def _json_file_exists_by_batch(sha256: str, tier: str, batch: dict) -> bool:
+def _json_file_exists_by_batch(data_dir: str, sha256: str, tier: Tier, batch: dict) -> bool:
     """Check that the JSON result file for a parses batch row actually exists on disk."""
-    data_dir = os.path.expanduser("~/MinerU")
-    key = _safe_filename(batch["pages"], batch["done_at"])
-    json_path = os.path.join(data_dir, "parsed", sha256[:2], sha256, tier, f"{key}.json")
+    json_path = parse_batch_json_path(data_dir, sha256, tier, batch["pages"], batch["done_at"])
     return os.path.isfile(json_path)
 
 
-def _tier_to_backend(tier: str) -> str:
-    mapping = {
-        Tier.FLASH: "flash",
-        Tier.STANDARD: "pipeline",
-        Tier.PRO: "hybrid-auto-engine",
-    }
-    return mapping.get(tier, "pipeline")
+def parse_batch_json_path(data_dir: str, sha256: str, tier: Tier, pages: str, done_at: int | None = 0) -> str:
+    """Return the persisted Middle JSON path for one parse batch."""
+    key = _safe_filename(pages, done_at or 0)
+    return os.path.join(os.path.expanduser(data_dir), "parsed", sha256[:2], sha256, tier, f"{key}.json")
 
 
-def _done_response(sha256: str, tier: str, pages: str) -> dict:
+def load_pages_from_done_batches(data_dir: str, sha256: str, tier: Tier, done_rows: list[dict]) -> list[PageInfo]:
+    """Load valid done JSON batches and keep the newest page for duplicate page_idx values."""
+    pages_by_idx: dict[int, PageInfo] = {}
+    for row in reversed(done_rows):
+        fpath = parse_batch_json_path(data_dir, sha256, tier, row["pages"], row["done_at"])
+        if not os.path.isfile(fpath):
+            continue
+        try:
+            with open(fpath, encoding="utf-8") as f:
+                data = _json.load(f)
+            for raw in data.get("pages", []):
+                page = PageInfo.from_dict(raw)
+                pages_by_idx[page.page_idx] = page
+        except Exception:
+            pass
+    return [pages_by_idx[idx] for idx in sorted(pages_by_idx)]
+
+
+def _done_response(sha256: str, tier: Tier, pages: str) -> dict:
     return {
         "sha256": sha256,
         "tier": tier,
         "pages": pages,
-        "status": "done",
+        "status": PARSE_STATUS_DONE,
+        "cache_hit": True,
+        "wait_parse_ids": [],
+        "created_parse_ids": [],
+        "reused_parse_ids": [],
         "tip": "Cached. Use --force to re-parse.",
+    }
+
+
+def _text_response(sha256: str) -> dict:
+    return {
+        "sha256": sha256,
+        "tier": "flash",
+        "pages": "1",
+        "status": PARSE_STATUS_DONE,
+        "cache_hit": False,
+        "wait_parse_ids": [],
+        "created_parse_ids": [],
+        "reused_parse_ids": [],
+        "tip": "Plain text files do not require parsing.",
+    }
+
+
+def _parse_record_response(row: dict) -> dict:
+    error = None
+    if row.get("error_code") or row.get("error_msg"):
+        error = {"code": row.get("error_code"), "message": row.get("error_msg")}
+    return {
+        "id": row["id"],
+        "sha256": row["sha256"],
+        "tier": row["tier"],
+        "pages": row["pages"],
+        "status": row["status"],
+        "done_at": row.get("done_at"),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+        "error": error,
+    }
+
+
+def _parse_coverage(request_pages: str, rows: list[dict]) -> dict:
+    requested = parse_range_set(request_pages)
+    done_pages: set[int] = set()
+    active_pages: set[int] = set()
+    for row in rows:
+        row_pages = parse_range_set(row["pages"]) & requested
+        if row["status"] == PARSE_STATUS_DONE:
+            done_pages |= row_pages
+        elif row["status"] in (PARSE_STATUS_PENDING, PARSE_STATUS_PARSING):
+            active_pages |= row_pages
+    active_pages -= done_pages
+    missing_pages = requested - done_pages - active_pages
+    return {
+        "done_pages": _pages_set_to_str(done_pages),
+        "active_pages": _pages_set_to_str(active_pages),
+        "missing_pages": _pages_set_to_str(missing_pages),
     }
 
 

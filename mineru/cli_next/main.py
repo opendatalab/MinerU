@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import typer
 
+from ..types import Tier
+from .commands import config, server
+
 app = typer.Typer(
     name="mineru",
     help="MinerU — 本地文档中心",
     no_args_is_help=True,
 )
-
-# sub-command groups
-from .commands import server, config
 
 app.add_typer(server.app, name="server")
 app.add_typer(config.app, name="config")
@@ -21,7 +21,7 @@ app.add_typer(config.app, name="config")
 @app.command()
 def parse(
     path: str = typer.Argument(..., help="Path to the document file"),
-    tier: str = typer.Option(None, "--tier", help="Parse tier: flash, standard, pro (default: server decides)"),
+    tier: Tier | None = typer.Option(None, "--tier", help="Parse tier: flash, standard, pro (default: server decides)"),
     pages: str = typer.Option(
         None, "-p", "--pages", help="Page range, e.g. '1~5' or 'all'"
     ),
@@ -30,8 +30,6 @@ def parse(
     ),
     force: bool = typer.Option(False, "--force", help="Force re-parse, ignore cache"),
     remote: bool = typer.Option(False, "--remote", help="Use remote parse-server (https://mineru.net/api)"),
-    remote_url: str = typer.Option(None, "--remote-url", help="Custom remote server URL (overrides default)"),
-    api_key: str = typer.Option(None, "--api-key", envvar="MINERU_API_KEY", help="API key for remote parse-server"),
     wait: int = typer.Option(60, "--wait", help="Max seconds to wait for parse to complete"),
     no_wait: bool = typer.Option(False, "--no-wait", help="Don't wait — return immediately"),
     output: str = typer.Option(None, "-o", "--output", help="Output file path (default: STDOUT)"),
@@ -46,7 +44,7 @@ def parse(
 
     parse_cmd(
         path=path, tier=tier, pages=pages, format=format, force=force,
-        remote=remote, remote_url=remote_url, api_key=api_key,
+        remote=remote,
         wait=wait, no_wait=no_wait, output=output,
         no_marker=no_marker, json_mode=json_mode, verbose=verbose,
     )
@@ -55,7 +53,7 @@ def parse(
 @app.command()
 def invalidate(
     path: str = typer.Argument(..., help="Path to the document file"),
-    tier: str = typer.Option(None, "--tier", help="Parse tier to invalidate (omit = all tiers)"),
+    tier: Tier | None = typer.Option(None, "--tier", help="Parse tier to invalidate (omit = all tiers)"),
 ) -> None:
     """Mark done parse results as superseded so the next parse re-runs."""
     from .commands.invalidate import invalidate_cmd
