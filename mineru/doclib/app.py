@@ -18,7 +18,7 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from ..errors import MineruError, error_response
+from ..errors import MineruError, error_response, http_status_for
 from ..config import Config, LogConfig, config
 from .server import DoclibServer
 from .types import PARSE_STATUS_FAILED, PARSE_STATUS_PARSING
@@ -40,12 +40,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         from .background.ingest import IngestWorkerPool
         from .background.parse_server_health import ParseServerHealthCheck, api_server_args_for_tier, get_health
         from .background.parse_worker import ParseWorkerPool
+        from .background.scan_worker import ScanWorkerPool
         from .background.watch import WatchLoop
         from .core.db import DatabaseManager
         from .core.fts import FTSManager
         from .services.cleanup_svc import CleanupService
         from .services.config_svc import ConfigService
         from .services.parse_svc import ParseService
+        from .services.scan_svc import ScanService
         from .services.search_svc import SearchService
 
         data_dir = os.path.expanduser(cfg.doclib.data_dir)
@@ -61,6 +63,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.fts = FTSManager(state.db)
         state.config_svc = ConfigService(state.db)
         state.parse_svc = ParseService(state.db, state.fts, state.config_svc, data_dir)
+        state.scan_svc = ScanService(state.db, state.config_svc, state.parse_svc)
         state.search_svc = SearchService(state.db, state.fts)
         state.cleanup_svc = CleanupService(state.db, data_dir)
 
@@ -92,7 +95,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             except Exception as exc:
                 logging.error("Failed to start managed parse-server: %s", exc)
 
-        state.watch = WatchLoop(state.db, state.config_svc, state.parse_svc)
+        state.watch = WatchLoop(state.db, state.config_svc, state.parse_svc, state.scan_svc)
+        state.scan_workers = ScanWorkerPool(state.scan_svc, num_workers=1)
         state.ingest_workers = IngestWorkerPool(state.parse_svc, num_workers=cfg.doclib.ingest_workers)
         state.parse_workers = ParseWorkerPool(state.parse_svc, num_workers=cfg.doclib.parse_workers)
         state.device_monitor = DeviceMonitor(state.db, state.config_svc)
@@ -100,6 +104,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.health_check = ParseServerHealthCheck(state.config_svc)
 
         asyncio.create_task(state.watch.run())
+        asyncio.create_task(state.scan_workers.run())
         asyncio.create_task(state.ingest_workers.run())
         asyncio.create_task(state.parse_workers.run())
         asyncio.create_task(state.device_monitor.run())
@@ -128,6 +133,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
         for comp in [
             "watch",
+            "scan_workers",
             "ingest_workers",
             "parse_workers",
             "device_monitor",
@@ -148,16 +154,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     @app.exception_handler(MineruError)
     async def mineru_error_handler(_request: Request, exc: MineruError) -> JSONResponse:
-        status_map = {
-            "invalid_request_error": 400,
-            "authentication_error": 401,
-            "permission_error": 403,
-            "rate_limit_error": 429,
-            "engine_error": 500,
-            "api_error": 500,
-        }
         return JSONResponse(
-            status_code=status_map.get(exc.type, 500),
+            status_code=http_status_for(exc.code, exc.type),
             content=error_response(exc),
         )
 

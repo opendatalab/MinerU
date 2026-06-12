@@ -5,7 +5,7 @@ from __future__ import annotations
 import typer
 
 from ..types import Tier
-from .commands import config, server
+from .commands import cleanup, config, server, watch
 
 app = typer.Typer(
     name="mineru",
@@ -14,10 +14,26 @@ app = typer.Typer(
 )
 
 app.add_typer(server.app, name="server")
+app.add_typer(watch.app, name="watch")
 app.add_typer(config.app, name="config")
+app.add_typer(cleanup.app, name="cleanup")
 
 
 # top-level commands
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def scan(
+    ctx: typer.Context,
+    args: list[str] = typer.Argument(..., help="Path, or subcommand: status/list"),
+    wait: int = typer.Option(30, "--wait", help="Max seconds to wait for scan completion"),
+    no_wait: bool = typer.Option(False, "--no-wait", help="Return immediately after creating the scan"),
+    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+) -> None:
+    """Create a scan task, or inspect scan tasks."""
+    from .commands.scan import scan_cmd
+
+    scan_cmd(args=args + list(ctx.args), wait=wait, no_wait=no_wait, json_mode=json_mode)
+
+
 @app.command()
 def parse(
     path: str = typer.Argument(..., help="Path to the document file"),
@@ -64,7 +80,9 @@ def invalidate(
 @app.command()
 def search(
     query: str = typer.Argument(..., help="Search query"),
-    file_type: str = typer.Option(None, "--type", help="File type filter"),
+    file_type: str | None = typer.Option(None, "--type", help="File type filter"),
+    tier: Tier | None = typer.Option(None, "--tier", help="Exact search index tier: flash, standard, pro"),
+    min_tier: Tier | None = typer.Option(None, "--min-tier", help="Minimum search index tier: flash, standard, pro"),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
     offset: int = typer.Option(0, "--offset", help="Result offset"),
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
@@ -72,19 +90,20 @@ def search(
     """Search parsed document content."""
     from .commands.search import search_cmd
 
-    search_cmd(query=query, file_type=file_type, limit=limit, offset=offset, json_mode=json_mode)
+    search_cmd(query=query, file_type=file_type, tier=tier, min_tier=min_tier, limit=limit, offset=offset, json_mode=json_mode)
 
 
 @app.command()
 def find(
     query: str = typer.Argument(..., help="Filename search query"),
+    ext: str | None = typer.Option(None, "--ext", help="File extension filter, e.g. pdf"),
     limit: int = typer.Option(50, "--limit", "-n", help="Max results"),
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Search filenames only (not document content)."""
     from .commands.search import find_cmd
 
-    find_cmd(query=query, limit=limit, json_mode=json_mode)
+    find_cmd(query=query, ext=ext, limit=limit, json_mode=json_mode)
 
 
 @app.command()
@@ -99,21 +118,15 @@ def info(
 
 
 @app.command()
-def cleanup(
-    orphans: bool = typer.Option(False, "--orphans", help="Clean orphan docs"),
-    deleted: bool = typer.Option(False, "--deleted", help="Clean deleted file records"),
-    temp: bool = typer.Option(False, "--temp", help="Clean temporary files"),
-    older_than: int = typer.Option(30, "--older-than", help="Days threshold for deleted cleanup"),
-    dry_run: bool = typer.Option(True, "--dry-run", help="Preview only"),
+def forget(
+    path: str = typer.Argument(..., help="File or directory path to forget from doclib"),
+    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run", help="Preview only"),
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
-    """Clean up database records and temp files."""
-    from .commands.cleanup import cleanup_cmd
+    """Forget doclib records for a path without deleting source files."""
+    from .commands.forget import forget_cmd
 
-    cleanup_cmd(
-        orphans=orphans, deleted=deleted, temp=temp,
-        older_than=older_than, dry_run=dry_run, json_mode=json_mode,
-    )
+    forget_cmd(path=path, dry_run=dry_run, json_mode=json_mode)
 
 
 def main() -> None:

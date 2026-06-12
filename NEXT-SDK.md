@@ -116,7 +116,7 @@ mineru-kit api-server → parser/api_server.py     →  parser/  →  backend/
 | `mineru/cli/fast_api.py` | 删除 | 被 `doclib/` 替代 |
 | `mineru/parse_server.py` | `mineru/parser/api_server.py` | 移入 parser 包，属于 mineru-kit api-server |
 | `mineru/doclib/` (原 server/) | 已实现 | — |
-| `mineru/config.py` | `mineru/doclib/config.py` | 移入 doclib |
+| `mineru/config.py` | 已实现 | 全局启动配置模块，包含 doclib 启动前配置 |
 
 ---
 
@@ -199,8 +199,17 @@ class MineruClient:
 
     # 查询
     def info(self, path: str | Path) -> FileInfo: ...
-    def search(self, query: str, *, type: str | None = None, limit: int = 20) -> list[SearchResult]: ...
-    def find(self, query: str, *, limit: int = 20) -> list[FileResult]: ...
+    def search(
+        self,
+        query: str,
+        *,
+        file_type: str | None = None,
+        tier: str | None = None,
+        min_tier: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[SearchResult]: ...
+    def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> list[FileResult]: ...
 
     # Server 管理
     def server_status(self) -> ServerStatus: ...

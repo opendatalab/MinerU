@@ -36,7 +36,8 @@ class IngestWorkerPool:
                 no_task_count += 1
                 if no_task_count == 1 or no_task_count % 20 == 0:
                     q = await self.parse_svc.db.fetchone(
-                        "SELECT COUNT(*) as cnt FROM files WHERE sha256 IS NULL AND scan_status=?",
+                        "SELECT COUNT(*) as cnt FROM files WHERE sha256 IS NULL AND scan_status=? "
+                        "AND error_code IS NULL",
                         (SCAN_STATUS_ACTIVE,),
                     )
                     logger.info(f"Ingest worker {worker_id}: queue={q['cnt'] if q else 0}")
@@ -55,15 +56,7 @@ class IngestWorkerPool:
                 logger.error(
                     f"Ingest worker {worker_id} error on {task.get('path')}: {exc}"
                 )
-                try:
-                    now = int(time.time() * 1000)
-                    await self.parse_svc.db.execute(
-                        "UPDATE files SET sha256=NULL, locked_at=NULL, error_code=?, error_msg=?, "
-                        "updated_at=? WHERE id=?",
-                        ("ingest_failed", str(exc)[:500], now, task["id"]),
-                    )
-                except Exception:
-                    pass
+                await self._handle_ingest_error(task, exc)
 
         logger.info(f"Ingest worker {worker_id} stopped, processed {processed} total")
 
@@ -75,11 +68,37 @@ class IngestWorkerPool:
             "WHERE id = ("
             "  SELECT id FROM files "
             "  WHERE sha256 IS NULL AND scan_status=? "
+            "  AND error_code IS NULL "
             "  AND (locked_at IS NULL OR locked_at < ?) "
             "  ORDER BY first_seen_at ASC LIMIT 1"
             ") RETURNING *",
             (now, SCAN_STATUS_ACTIVE, timeout),
         )
+
+    async def _handle_ingest_error(self, task: dict, exc: Exception) -> None:
+        try:
+            if isinstance(exc, FileNotFoundError):
+                watch_id = task.get("watch_id")
+                await self.parse_svc.refresh_file(
+                    str(task["path"]),
+                    watch_id=watch_id if isinstance(watch_id, int) else None,
+                )
+                return
+
+            error_code = "ingest_failed"
+            if isinstance(exc, PermissionError):
+                error_code = "file_permission_denied"
+            elif isinstance(exc, OSError):
+                error_code = "stat_failed"
+
+            now = int(time.time() * 1000)
+            await self.parse_svc.db.execute(
+                "UPDATE files SET sha256=NULL, locked_at=NULL, error_code=?, error_msg=?, "
+                "updated_at=? WHERE id=?",
+                (error_code, str(exc)[:500], now, task["id"]),
+            )
+        except Exception:
+            pass
 
     async def stop(self) -> None:
         self.running = False

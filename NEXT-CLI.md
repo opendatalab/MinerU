@@ -76,8 +76,7 @@ mineru parse <file> [flags]
 
 | Flag | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `--remote` | url (可选) | — | 切换为远端模式。不带参数时使用默认地址 mineru.net；带参数时使用指定地址 |
-| `--api-key` | string | — | API Key（也从配置文件 `parse_server.remote.api_key` 和环境变量 `MINERU_API_KEY` 读取）|
+| `--remote` | bool | false | 切换为远端模式。远端地址和 API Key 来自 config 或环境变量 |
 
 ### 解析配置
 
@@ -141,7 +140,7 @@ mineru 是一款强调用户隐私的工具。显式调用 `mineru parse` 时，
 
 ```
 1. 用户是否指定了 --remote？
-   ├─ 是 → 优先使用远程解析（--remote 不带参数时默认 mineru.net，带参数时使用指定地址）
+   ├─ 是 → 优先使用远程解析（使用 config 指定远端或默认 mineru.net）
    │        远程不可用时 fallback 到本地 parse-server（如果可用）
    │        本地也不可用 → 报错
    └─ 否 →
@@ -304,9 +303,6 @@ mineru parse doc.pdf --tier pro --pages all -o doc.md
 # 远端模式（使用默认 mineru.net）
 mineru parse doc.pdf --remote
 
-# 远端模式（自定义地址）
-mineru parse doc.pdf --remote https://my.server.com
-
 # 输出纯文本
 mineru parse doc.pdf -f text
 
@@ -386,10 +382,11 @@ Server 启动时：
 用户配置 mineru 监控哪些目录，系统自动发现并入库：
 
 ```bash
-mineru config watch add ~/Documents
-mineru config watch add /Volumes/SSD --removable
-mineru config watch list
-mineru config watch rm ~/Documents
+mineru watch add ~/Documents
+mineru watch add /Volumes/SSD --removable
+mineru watch list
+mineru watch remove ~/Documents
+mineru watch rescan ~/Documents
 ```
 
 **Watch 行为**：
@@ -422,7 +419,7 @@ Apple:  pages, key, numbers
 支持外接硬盘、U 盘等可插拔存储设备的 Watch：
 
 ```bash
-mineru config watch add /Volumes/SSD --removable
+mineru watch add /Volumes/SSD --removable
 ```
 
 **设计要点**：
@@ -430,7 +427,7 @@ mineru config watch add /Volumes/SSD --removable
 - 设备拔出 → watch 状态标记为 `unreachable`，该 watch 下所有文件标记为 `unreachable`（非 `deleted`）
 - 设备插回 → 恢复为 `active`，触发增量扫描，重试之前因拔出而失败的任务
 - 正在进行中的解析任务遇到设备拔出 → 标记特殊错误（留有恢复机会），不视为永久失败
-- 搜索结果中 `unreachable` 文件仍可命中，但标注"设备未连接"
+- 第一版默认搜索结果不返回 `unreachable` 文件；后续可增加显式参数返回并标注"设备未连接"
 
 ## Parsing-Rules（解析规则）
 
@@ -474,13 +471,17 @@ mineru config parsing-rules rm <id>
 ```bash
 mineru search "关键词"                   # 搜索文档内容
 mineru search "关键词" --type pdf         # 限定文件类型
+mineru search "关键词" --tier standard    # 限定索引来源 tier
+mineru search "关键词" --min-tier standard # 限定最低索引来源 tier
 mineru search "关键词" --limit 10         # 限制结果数
 mineru search "关键词" --json             # JSON 输出（给 agent）
 ```
 
-搜索结果标注解析状态（agent 可据此判断可信度）：
+搜索结果标注 snippet 来源 tier（agent 可据此判断可信度）：
 - flash 解析：仅搜索到首尾页内容
 - standard/pro 解析：搜索全文内容
+
+搜索结果默认优先返回 active file paths。如果某个已索引 doc 没有任何 active file，则 fallback 返回非 active file paths，避免历史文档完全不可定位。
 
 ## mineru find
 
@@ -488,7 +489,7 @@ mineru search "关键词" --json             # JSON 输出（给 agent）
 
 ```bash
 mineru find "report"
-mineru find "2024" --type pdf --json
+mineru find "2024" --ext pdf --json
 ```
 
 ## mineru info
@@ -507,7 +508,7 @@ mineru info ~/Documents/report.pdf
 
 ```bash
 mineru config show                             # 查看全部配置
-mineru config watch add/list/rm                # Watch 目录管理
+mineru watch add/list/remove/rescan            # Watch 目录管理
 mineru config exclude add/list/rm              # 排除规则（glob pattern）
 mineru config parsing-rules add/list/rm        # 解析规则
 mineru config parse-server local.mode <mode>   # 本地 parse-server 模式: disabled | managed | self_hosted
@@ -548,7 +549,7 @@ config             KV 全局配置
 
 - **File/Doc 分离**：多个路径（备份副本）可指向同一个 doc（SHA-256 去重）
 - **增量解析**：每个 tier 独立追踪 `parsed_pages`，互不影响。同一 tier 内只解析未覆盖的页（增量），不同 tier 之间不存在覆盖关系。`--force` 忽略所有 tier 的缓存，强制重新解析
-- **多 tier 结果共存**：同一文件用 flash 解析过，再用 pro 解析，两份结果共存（不覆盖）。搜索时优先使用最高 tier 的结果，用户可按 tier 查询历史解析
+- **多 tier 结果共存**：同一文件用 flash 解析过，再用 pro 解析，两份结果共存（不覆盖）。搜索索引保留当前最高 tier 的内容，用户可用 `--tier` / `--min-tier` 过滤搜索结果
 - **任务队列**：无实体队列，靠 DB 查询 `WHERE status='pending' AND lock_expired`
 - **锁机制**：时间戳锁，超时自动释放（parse 锁 30 分钟，registration 锁 60 秒）
 - **错误分类**：File 级（路径/权限）、Doc 级（内容损坏/加密）、Parse 级（API 超时/引擎失败）
@@ -592,7 +593,7 @@ mineru doclib（纯 CPU 进程）
   │
   └─ standard / pro tier → HTTP 调用
        ├─ 未指定 --remote → mineru-kit api-server (127.0.0.1:15981)
-       └─ 指定 --remote    → mineru.net/api （或 --remote 指定的地址）
+       └─ 指定 --remote    → config 指定远端或 mineru.net/api
 ```
 
 - **managed 模式**：doclib 启动时自动拉起 api-server，停止时一起关闭

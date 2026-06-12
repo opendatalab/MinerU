@@ -22,6 +22,8 @@ from .types import (
     ExcludeRuleRequest,
     FileInfoResponse,
     FindResponse,
+    ForgetPathRequest,
+    ForgetPathResponse,
     InvalidateRequest,
     InvalidateResponse,
     ListDocsResponse,
@@ -38,6 +40,11 @@ from .types import (
     SearchResponse,
     ServerStatusResponse,
     ShutdownResponse,
+    ScanInfo,
+    ScanKind,
+    ScanListResponse,
+    ScanRequest,
+    ScanTaskStatus,
     WatchInfo,
     WatchListResponse,
     WatchRequest,
@@ -127,6 +134,54 @@ class DoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
+    def forget_path(self, request: ForgetPathRequest) -> ForgetPathResponse:
+        """Forget file rows matching a file or directory path.
+
+        Raises:
+            InvalidRequestError: when the path is malformed or is a configured watch root.
+            MineruError: for server-side failures.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def create_scan(self, request: ScanRequest) -> ScanInfo:
+        """Create or reuse a server-side scan task.
+
+        Raises:
+            InvalidRequestError: when the path, kind, source, or watch id is invalid.
+            MineruError: for server-side failures.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def list_scans(
+        self,
+        *,
+        limit: int = 50,
+        status: ScanTaskStatus | None = None,
+        kind: ScanKind | None = None,
+        watch_id: int | None = None,
+    ) -> ScanListResponse:
+        """List recent scan tasks.
+
+        Raises:
+            InvalidRequestError: when filters are invalid.
+            MineruError: for server-side failures.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def get_scan(self, scan_id: int) -> ScanInfo:
+        """Return one scan task.
+
+        Raises:
+            NotFoundError: when ``scan_id`` does not exist.
+            InvalidRequestError: when ``scan_id`` is invalid.
+            MineruError: for server-side failures.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
     def list_docs(self, *, path: str | None = None) -> ListDocsResponse:
         """List active docs, optionally filtered by path.
 
@@ -168,21 +223,30 @@ class DoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def search(self, query: str, *, file_type: str | None = None, limit: int = 20, offset: int = 0) -> SearchResponse:
+    def search(
+        self,
+        query: str,
+        *,
+        file_type: str | None = None,
+        tier: Tier | None = None,
+        min_tier: Tier | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> SearchResponse:
         """Search parsed document content.
 
         Raises:
-            InvalidRequestError: when query, file type, limit, or offset is invalid.
+            InvalidRequestError: when query, filters, limit, or offset are invalid.
             MineruError: for search backend failures.
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def find(self, query: str, *, limit: int = 50) -> FindResponse:
+    def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse:
         """Search filenames.
 
         Raises:
-            InvalidRequestError: when query or limit is invalid.
+            InvalidRequestError: when query, ext, or limit is invalid.
             MineruError: for search backend failures.
         """
         raise NotImplementedError()
@@ -388,6 +452,33 @@ class AsyncDoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
+    async def forget_path(self, request: ForgetPathRequest) -> ForgetPathResponse:
+        """Async version of ``DoclibInterface.forget_path``."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def create_scan(self, request: ScanRequest) -> ScanInfo:
+        """Async version of ``DoclibInterface.create_scan``."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def list_scans(
+        self,
+        *,
+        limit: int = 50,
+        status: ScanTaskStatus | None = None,
+        kind: ScanKind | None = None,
+        watch_id: int | None = None,
+    ) -> ScanListResponse:
+        """Async version of ``DoclibInterface.list_scans``."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def get_scan(self, scan_id: int) -> ScanInfo:
+        """Async version of ``DoclibInterface.get_scan``."""
+        raise NotImplementedError()
+
+    @abstractmethod
     async def list_docs(self, *, path: str | None = None) -> ListDocsResponse:
         """Async version of ``DoclibInterface.list_docs``."""
         raise NotImplementedError()
@@ -412,12 +503,21 @@ class AsyncDoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    async def search(self, query: str, *, file_type: str | None = None, limit: int = 20, offset: int = 0) -> SearchResponse:
+    async def search(
+        self,
+        query: str,
+        *,
+        file_type: str | None = None,
+        tier: Tier | None = None,
+        min_tier: Tier | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> SearchResponse:
         """Async version of ``DoclibInterface.search``."""
         raise NotImplementedError()
 
     @abstractmethod
-    async def find(self, query: str, *, limit: int = 50) -> FindResponse:
+    async def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse:
         """Async version of ``DoclibInterface.find``."""
         raise NotImplementedError()
 

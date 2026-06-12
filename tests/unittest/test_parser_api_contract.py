@@ -1,0 +1,248 @@
+from pathlib import Path
+import inspect
+
+import pytest
+from pydantic import ValidationError
+
+from mineru.parser.api_client import MinerUApiParser
+from mineru.parser import parse, parse_async
+from mineru.parser.api_server import (
+    _API_SERVER_BACKENDS,
+    CreateJobRequest,
+    FileParseInfo,
+    HealthResponse,
+    JobListItem,
+    OutputFileRef,
+    OutputFiles,
+    create_app,
+    main,
+)
+
+
+def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+    payload = parser._build_payload(pdf, "1,3~5")
+
+    assert payload["output_formats"] == ["middle_json"]
+    assert payload["files"] == [
+        {"source": {"type": "local", "path": str(pdf)}, "page_range": "1,3~5"}
+    ]
+    assert "options" not in payload["files"][0]
+
+
+def test_api_client_uses_tier_without_backend_semantics(tmp_path: Path) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="pro")
+    payload = parser._build_payload(pdf, "")
+
+    assert payload["tier"] == "pro"
+    assert not hasattr(parser, "backend")
+
+
+def test_api_client_omits_tier_when_unspecified(tmp_path: Path) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+
+    parser = MinerUApiParser(api_url="http://localhost:8000")
+    payload = parser._build_payload(pdf, "")
+
+    assert "tier" not in payload
+
+
+def test_api_client_constructor_does_not_expose_ocr_or_image_options() -> None:
+    parameters = inspect.signature(MinerUApiParser).parameters
+
+    assert "method" not in parameters
+    assert "image_analysis" not in parameters
+
+
+def test_parser_entrypoints_expose_api_server_style_options() -> None:
+    for entrypoint in (parse, parse_async):
+        parameters = inspect.signature(entrypoint).parameters
+
+        assert "tier" in parameters
+        assert "backend" in parameters
+        assert "language" in parameters
+        assert "ocr_mode" in parameters
+        assert "disable_table" in parameters
+        assert "disable_formula" in parameters
+        assert "disable_image_analysis" in parameters
+
+
+def test_api_client_omits_page_range_when_unspecified(tmp_path: Path) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+    payload = parser._build_payload(pdf, "")
+
+    assert payload["files"] == [{"source": {"type": "local", "path": str(pdf)}}]
+
+
+def test_create_job_request_accepts_new_format_names_and_rejects_options() -> None:
+    req = CreateJobRequest.model_validate(
+        {
+            "files": [
+                {
+                    "source": {"type": "local", "path": "/tmp/demo.pdf"},
+                    "page_range": None,
+                }
+            ],
+            "output_formats": ["middle_json", "structured_content"],
+        }
+    )
+    assert req.files[0].page_range is None
+    assert req.output_formats == ["middle_json", "structured_content"]
+
+    with pytest.raises(ValidationError):
+        CreateJobRequest.model_validate(
+            {
+                "files": [
+                    {
+                        "source": {"type": "local", "path": "/tmp/demo.pdf"},
+                        "options": {"page_range": "1"},
+                    }
+                ],
+            }
+        )
+
+
+def test_output_files_expose_new_names_without_inline_content() -> None:
+    ref = OutputFileRef(file_id="file-1", bytes=12)
+    outputs = OutputFiles(middle_json=ref, structured_content=ref)
+
+    assert outputs.model_dump(by_alias=True, exclude_none=True) == {
+        "middle_json": {"file_id": "file-1", "bytes": 12},
+        "structured_content": {"file_id": "file-1", "bytes": 12},
+    }
+
+    with pytest.raises(ValidationError):
+        OutputFileRef.model_validate(
+            {"file_id": "file-1", "bytes": 12, "content": "inline"}
+        )
+
+
+def test_job_list_item_uses_file_count() -> None:
+    item = JobListItem(
+        job_id="job_1", status="queued", created_at="2026-06-10T00:00:00Z", file_count=2
+    )
+
+    assert item.model_dump() == {
+        "job_id": "job_1",
+        "status": "queued",
+        "created_at": "2026-06-10T00:00:00Z",
+        "file_count": 2,
+    }
+
+
+def test_api_contract_uses_parser_version_not_backend_version() -> None:
+    parse = FileParseInfo(model_used="model-a", duration_ms=12, parser_version="3.2.1")
+    assert parse.model_dump(exclude_none=True) == {
+        "model_used": "model-a",
+        "duration_ms": 12,
+        "parser_version": "3.2.1",
+    }
+
+    health = HealthResponse(status="ok", version="3.2.1", parser_version="3.2.1")
+    assert health.model_dump(exclude_none=True) == {
+        "status": "ok",
+        "version": "3.2.1",
+        "parser_version": "3.2.1",
+        "features": {"sse": False, "webhook": False},
+    }
+
+    with pytest.raises(ValidationError):
+        FileParseInfo.model_validate({"backend_version": "3.2.1"})
+
+    with pytest.raises(ValidationError):
+        HealthResponse.model_validate({"status": "ok", "version": "3.2.1", "backend_version": "3.2.1"})
+
+
+def test_api_server_tier_selects_compatible_backend(tmp_path: Path) -> None:
+    pro_app = create_app(upload_dir=str(tmp_path / "pro"), tier="pro")
+    standard_app = create_app(upload_dir=str(tmp_path / "standard"), tier="standard")
+
+    assert pro_app.state.tier == "pro"
+    assert pro_app.state.backend == "hybrid-auto-engine"
+    assert [tier["id"] for tier in pro_app.state.tiers] == ["pro"]
+    assert standard_app.state.tier == "standard"
+    assert standard_app.state.backend == "pipeline"
+    assert [tier["id"] for tier in standard_app.state.tiers] == ["standard"]
+
+
+def test_api_server_defaults_to_standard_tier(tmp_path: Path) -> None:
+    app = create_app(upload_dir=str(tmp_path))
+
+    assert app.state.tier == "standard"
+    assert app.state.backend == "pipeline"
+    assert [tier["id"] for tier in app.state.tiers] == ["standard"]
+
+
+def test_api_server_rejects_incompatible_tier_and_backend(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="incompatible"):
+        create_app(upload_dir=str(tmp_path), tier="pro", backend="pipeline")
+
+
+def test_api_server_allows_compatible_tier_and_explicit_backend(tmp_path: Path) -> None:
+    app = create_app(upload_dir=str(tmp_path), tier="pro", backend="vlm-auto-engine")
+
+    assert app.state.tier == "pro"
+    assert app.state.backend == "vlm-auto-engine"
+    assert [tier["id"] for tier in app.state.tiers] == ["pro"]
+
+
+def test_api_server_explicit_backend_infers_tier(tmp_path: Path) -> None:
+    app = create_app(upload_dir=str(tmp_path), backend="hybrid-auto-engine")
+
+    assert app.state.tier == "pro"
+    assert app.state.backend == "hybrid-auto-engine"
+    assert [tier["id"] for tier in app.state.tiers] == ["pro"]
+
+
+def test_api_server_rejects_bare_vlm_backend(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="Unsupported backend"):
+        create_app(upload_dir=str(tmp_path), backend="vlm")
+
+
+def test_api_server_accepts_parser_backend_values(tmp_path: Path) -> None:
+    assert "vlm" not in _API_SERVER_BACKENDS
+    assert "hybrid" not in _API_SERVER_BACKENDS
+
+    for backend in _API_SERVER_BACKENDS:
+        app = create_app(upload_dir=str(tmp_path / backend), backend=backend)
+        expected_tier = "standard" if backend == "pipeline" else "pro"
+
+        assert app.state.backend == backend
+        assert app.state.tier == expected_tier
+
+
+def test_api_server_stores_parser_runtime_options(tmp_path: Path) -> None:
+    app = create_app(
+        upload_dir=str(tmp_path),
+        language="en",
+        ocr_mode="ocr",
+        table_enable=False,
+        formula_enable=False,
+        image_analysis=False,
+    )
+
+    assert app.state.language == "en"
+    assert app.state.ocr_mode == "ocr"
+    assert app.state.table_enable is False
+    assert app.state.formula_enable is False
+    assert app.state.image_analysis is False
+
+
+def test_api_server_cli_exposes_parser_runtime_options() -> None:
+    option_names = {name for param in main.params for name in param.opts}
+
+    assert "--language" in option_names
+    assert "--ocr-mode" in option_names
+    assert "--disable-table" in option_names
+    assert "--disable-formula" in option_names
+    assert "--disable-image-analysis" in option_names

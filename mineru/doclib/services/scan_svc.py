@@ -1,0 +1,331 @@
+"""Scan service: create and execute file refresh tasks."""
+
+from __future__ import annotations
+
+import os
+import time
+import logging
+from pathlib import Path
+from typing import Any
+
+from ...errors import InvalidRequestError, NotFoundError
+from ..constants import ALLOWED_EXTENSIONS
+from ..core.file_io import get_file_stat
+from ..types import (
+    SCAN_KIND_MANUAL,
+    SCAN_KIND_WATCH,
+    SCAN_STATUS_ACTIVE,
+    SCAN_TASK_STATUS_DONE,
+    SCAN_TASK_STATUS_FAILED,
+    SCAN_TASK_STATUS_PENDING,
+    SCAN_TASK_STATUS_RUNNING,
+    SCAN_SOURCE_UNKNOWN,
+    WATCH_STATUS_ACTIVE,
+    WATCH_STATUS_UNREACHABLE,
+    ScanInfo,
+    ScanKind,
+    ScanSource,
+    ScanTaskStatus,
+)
+from ..core.db import DatabaseManager
+from .config_svc import ConfigService
+from .parse_svc import FileRefreshResult, ParseService
+
+logger = logging.getLogger("mineru.scan")
+
+SCAN_LOG_RETENTION_LIMIT = 1000
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+class ScanService:
+    """Create, query, and execute background scan tasks."""
+
+    def __init__(
+        self,
+        db: DatabaseManager,
+        config_svc: ConfigService,
+        parse_svc: ParseService,
+    ) -> None:
+        self.db = db
+        self.config_svc = config_svc
+        self.parse_svc = parse_svc
+
+    async def create_scan(
+        self,
+        path: str,
+        *,
+        kind: ScanKind = SCAN_KIND_MANUAL,
+        source: ScanSource = SCAN_SOURCE_UNKNOWN,
+        watch_id: int | None = None,
+    ) -> ScanInfo:
+        normalized_path = os.path.abspath(os.path.expanduser(path))
+        if kind == SCAN_KIND_WATCH:
+            watch = await self._resolve_watch(normalized_path, watch_id)
+            normalized_path = watch["path"]
+            watch_id = watch["id"]
+        elif watch_id is not None:
+            raise InvalidRequestError("invalid_request", "watch_id is only valid for watch scans.", "watch_id")
+
+        active = await self.db.fetchone(
+            "SELECT * FROM scans WHERE kind=? AND path=? AND status IN (?, ?) ORDER BY created_at ASC LIMIT 1",
+            (kind, normalized_path, SCAN_TASK_STATUS_PENDING, SCAN_TASK_STATUS_RUNNING),
+        )
+        if active is not None:
+            return _scan_info(active)
+
+        now = _now_ms()
+        scan_id = await self.db.execute_insert(
+            "INSERT INTO scans (path, kind, source, watch_id, status, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (normalized_path, kind, source, watch_id, SCAN_TASK_STATUS_PENDING, now, now),
+        )
+        row = await self.db.fetchone("SELECT * FROM scans WHERE id=?", (scan_id,))
+        if row is None:
+            raise NotFoundError("scan_not_found", f"Scan {scan_id} not found after creation.", "scan_id")
+        return _scan_info(row)
+
+    async def list_scans(
+        self,
+        *,
+        limit: int = 50,
+        status: ScanTaskStatus | None = None,
+        kind: ScanKind | None = None,
+        watch_id: int | None = None,
+    ) -> list[ScanInfo]:
+        limit = max(1, min(limit, 200))
+        clauses: list[str] = []
+        params: list[Any] = []
+        if status is not None:
+            clauses.append("status=?")
+            params.append(status)
+        if kind is not None:
+            clauses.append("kind=?")
+            params.append(kind)
+        if watch_id is not None:
+            clauses.append("watch_id=?")
+            params.append(watch_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = await self.db.fetchall(
+            f"SELECT * FROM scans {where} ORDER BY created_at DESC LIMIT ?",
+            (*params, limit),
+        )
+        return [_scan_info(row) for row in rows]
+
+    async def get_scan(self, scan_id: int) -> ScanInfo:
+        row = await self.db.fetchone("SELECT * FROM scans WHERE id=?", (scan_id,))
+        if row is None:
+            raise NotFoundError("scan_not_found", f"Scan {scan_id} not found.", "scan_id")
+        return _scan_info(row)
+
+    async def acquire_task(self) -> dict | None:
+        now = _now_ms()
+        timeout = now - 30 * 60 * 1000
+        return await self.db.fetchone(
+            "UPDATE scans SET locked_at=?, status=?, started_at=COALESCE(started_at, ?), updated_at=? "
+            "WHERE id = ("
+            "  SELECT id FROM scans WHERE status=? AND (locked_at IS NULL OR locked_at < ?) "
+            "  ORDER BY created_at ASC LIMIT 1"
+            ") RETURNING *",
+            (now, SCAN_TASK_STATUS_RUNNING, now, now, SCAN_TASK_STATUS_PENDING, timeout),
+        )
+
+    async def process_scan(self, task: dict) -> bool:
+        try:
+            counters = await self._run_scan(task)
+        except Exception as exc:
+            now = _now_ms()
+            await self.db.execute(
+                "UPDATE scans SET status=?, locked_at=NULL, error_code=?, error_msg=?, finished_at=?, updated_at=? WHERE id=?",
+                (SCAN_TASK_STATUS_FAILED, "scan_failed", str(exc)[:500], now, now, task["id"]),
+            )
+            await self.cleanup_terminal_scan_logs()
+            return False
+
+        now = _now_ms()
+        await self.db.execute(
+            "UPDATE scans SET status=?, locked_at=NULL, files_seen=?, files_refreshed=?, files_new=?, files_changed=?, "
+            "files_deleted=?, files_unreachable=?, files_error=?, files_unsupported=?, files_excluded=?, "
+            "finished_at=?, updated_at=? WHERE id=?",
+            (
+                SCAN_TASK_STATUS_DONE,
+                counters.files_seen,
+                counters.files_refreshed,
+                counters.files_new,
+                counters.files_changed,
+                counters.files_deleted,
+                counters.files_unreachable,
+                counters.files_error,
+                counters.files_unsupported,
+                counters.files_excluded,
+                now,
+                now,
+                task["id"],
+            ),
+        )
+        if task["kind"] == SCAN_KIND_WATCH and task.get("watch_id") is not None:
+            await self.config_svc.update_watch_scan_stats(task["watch_id"], counters.files_refreshed)
+        await self.cleanup_terminal_scan_logs()
+        return True
+
+    async def cleanup_terminal_scan_logs(self, *, keep: int = SCAN_LOG_RETENTION_LIMIT) -> None:
+        try:
+            await self.db.execute(
+                "DELETE FROM scans WHERE status IN (?, ?) AND id NOT IN ("
+                "  SELECT id FROM scans WHERE status IN (?, ?) ORDER BY created_at DESC, id DESC LIMIT ?"
+                ")",
+                (SCAN_TASK_STATUS_DONE, SCAN_TASK_STATUS_FAILED, SCAN_TASK_STATUS_DONE, SCAN_TASK_STATUS_FAILED, keep),
+            )
+        except Exception as exc:
+            logger.warning("Failed to cleanup terminal scan logs: %s", exc)
+
+    async def _run_scan(self, task: dict) -> "_ScanCounters":
+        path = task["path"]
+        kind = task["kind"]
+        watch_id = task.get("watch_id")
+        counters = _ScanCounters()
+
+        if kind == SCAN_KIND_WATCH:
+            watch = await self._resolve_watch(path, watch_id)
+            watch_id = watch["id"]
+            if not watch["enabled"]:
+                raise InvalidRequestError("invalid_request", "Watch target is disabled.", "watch_id")
+            try:
+                await get_file_stat(watch["path"])
+            except OSError:
+                await self.config_svc.update_watch_status(watch["id"], WATCH_STATUS_UNREACHABLE)
+                return counters
+            if watch["watch_status"] == WATCH_STATUS_UNREACHABLE:
+                await self.config_svc.update_watch_status(watch["id"], WATCH_STATUS_ACTIVE)
+
+        if os.path.isdir(path):
+            await self._scan_directory(path, watch_id=watch_id, apply_excludes=True, counters=counters)
+            return counters
+
+        if os.path.exists(path):
+            await self._scan_file(path, watch_id=watch_id, apply_excludes=False, counters=counters)
+            return counters
+
+        await self._scan_missing_path(path, watch_id=watch_id, counters=counters)
+        return counters
+
+    async def _scan_directory(
+        self,
+        path: str,
+        *,
+        watch_id: int | None,
+        apply_excludes: bool,
+        counters: "_ScanCounters",
+    ) -> None:
+        await self._refresh_known_active_files_under(path, watch_id=watch_id, counters=counters)
+        for root, dirs, files in os.walk(path):
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            for fname in files:
+                filepath = os.path.join(root, fname)
+                counters.files_seen += 1
+                ext = Path(filepath).suffix.lstrip(".").lower()
+                if ext not in ALLOWED_EXTENSIONS:
+                    counters.files_unsupported += 1
+                    continue
+                if apply_excludes and await self.config_svc.is_path_excluded(filepath):
+                    counters.files_excluded += 1
+                    continue
+                await self._refresh_file(filepath, watch_id=watch_id, counters=counters)
+
+    async def _scan_file(
+        self,
+        path: str,
+        *,
+        watch_id: int | None,
+        apply_excludes: bool,
+        counters: "_ScanCounters",
+    ) -> None:
+        counters.files_seen += 1
+        if apply_excludes and await self.config_svc.is_path_excluded(path):
+            counters.files_excluded += 1
+            return
+        await self._refresh_file(path, watch_id=watch_id, counters=counters)
+
+    async def _scan_missing_path(self, path: str, *, watch_id: int | None, counters: "_ScanCounters") -> None:
+        existing = await self.db.fetchone("SELECT path FROM files WHERE path=?", (path,))
+        if existing is not None:
+            await self._refresh_file(existing["path"], watch_id=watch_id, counters=counters)
+
+        prefix = _dir_prefix(path)
+        rows = await self.db.fetchall(
+            "SELECT path FROM files WHERE path>=? AND path<? AND scan_status=? ORDER BY path",
+            (prefix, prefix + chr(0x10FFFF), SCAN_STATUS_ACTIVE),
+        )
+        for row in rows:
+            await self._refresh_file(row["path"], watch_id=watch_id, counters=counters)
+
+    async def _refresh_known_active_files_under(
+        self,
+        path: str,
+        *,
+        watch_id: int | None,
+        counters: "_ScanCounters",
+    ) -> None:
+        prefix = _dir_prefix(path)
+        params: tuple[Any, ...]
+        if watch_id is None:
+            sql = "SELECT path FROM files WHERE path>=? AND path<? AND scan_status=? ORDER BY path"
+            params = (prefix, prefix + chr(0x10FFFF), SCAN_STATUS_ACTIVE)
+        else:
+            sql = "SELECT path FROM files WHERE watch_id=? AND scan_status=? ORDER BY path"
+            params = (watch_id, SCAN_STATUS_ACTIVE)
+        rows = await self.db.fetchall(sql, params)
+        for row in rows:
+            await self._refresh_file(row["path"], watch_id=watch_id, counters=counters)
+
+    async def _refresh_file(self, path: str, *, watch_id: int | None, counters: "_ScanCounters") -> FileRefreshResult:
+        result = await self.parse_svc.refresh_file(path, watch_id=watch_id)
+        counters.add_refresh(result.status)
+        return result
+
+    async def _resolve_watch(self, path: str, watch_id: int | None) -> dict:
+        if watch_id is not None:
+            watch = await self.db.fetchone("SELECT * FROM watch_targets WHERE id=?", (watch_id,))
+        else:
+            watch = await self.db.fetchone("SELECT * FROM watch_targets WHERE path=?", (path,))
+        if watch is None:
+            raise NotFoundError("watch_not_found", "Watch target not found.", "watch_id")
+        return watch
+
+
+class _ScanCounters:
+    def __init__(self) -> None:
+        self.files_seen = 0
+        self.files_refreshed = 0
+        self.files_new = 0
+        self.files_changed = 0
+        self.files_deleted = 0
+        self.files_unreachable = 0
+        self.files_error = 0
+        self.files_unsupported = 0
+        self.files_excluded = 0
+
+    def add_refresh(self, status: str) -> None:
+        self.files_refreshed += 1
+        if status == "new":
+            self.files_new += 1
+        elif status == "changed":
+            self.files_changed += 1
+        elif status == "deleted":
+            self.files_deleted += 1
+        elif status == "unreachable":
+            self.files_unreachable += 1
+        elif status == "unsupported":
+            self.files_unsupported += 1
+        elif status == "error":
+            self.files_error += 1
+
+
+def _dir_prefix(path: str) -> str:
+    return path.rstrip(os.sep) + os.sep
+
+
+def _scan_info(row: dict[str, Any]) -> ScanInfo:
+    return ScanInfo.model_validate(row)

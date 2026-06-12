@@ -47,7 +47,7 @@ def finalize_client_side_middle_json(middle_json: dict[str, Any]) -> dict[str, A
     from ..parser.base import ParseResult
 
     result = ParseResult.from_dict(middle_json)
-    backend = result._backend
+    backend = result.pages[0]._backend if result.pages else None
 
     if backend == "pipeline":
         from mineru.backend.pipeline.model_output_to_middle_json import finalize_middle_json_from_preproc

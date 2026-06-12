@@ -25,7 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_files_sha256_status ON files(sha256, scan_status)
 CREATE TABLE IF NOT EXISTS docs (
     sha256          TEXT    PRIMARY KEY NOT NULL,
     size_bytes      INTEGER NOT NULL,
-    doc_type        TEXT,
+    file_type       TEXT,
     page_count      INTEGER,
     language        TEXT,
     title           TEXT,
@@ -58,6 +58,34 @@ CREATE TABLE IF NOT EXISTS parses (
 );
 CREATE INDEX IF NOT EXISTS idx_parses_status ON parses(status, priority DESC, created_at ASC);
 CREATE INDEX IF NOT EXISTS idx_parses_doc_status ON parses(sha256, tier, status);
+
+CREATE TABLE IF NOT EXISTS scans (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    path                TEXT    NOT NULL,
+    kind                TEXT    NOT NULL,
+    source              TEXT    NOT NULL DEFAULT 'unknown',
+    watch_id            INTEGER REFERENCES watch_targets(id),
+    status              TEXT    NOT NULL DEFAULT 'pending',
+    locked_at           INTEGER,
+    files_seen          INTEGER NOT NULL DEFAULT 0,
+    files_refreshed     INTEGER NOT NULL DEFAULT 0,
+    files_new           INTEGER NOT NULL DEFAULT 0,
+    files_changed       INTEGER NOT NULL DEFAULT 0,
+    files_deleted       INTEGER NOT NULL DEFAULT 0,
+    files_unreachable   INTEGER NOT NULL DEFAULT 0,
+    files_error         INTEGER NOT NULL DEFAULT 0,
+    files_unsupported   INTEGER NOT NULL DEFAULT 0,
+    files_excluded      INTEGER NOT NULL DEFAULT 0,
+    error_code          TEXT,
+    error_msg           TEXT,
+    started_at          INTEGER,
+    finished_at         INTEGER,
+    created_at          INTEGER NOT NULL,
+    updated_at          INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scans_status ON scans(status, created_at ASC);
+CREATE INDEX IF NOT EXISTS idx_scans_kind_path_status ON scans(kind, path, status);
+CREATE INDEX IF NOT EXISTS idx_scans_watch_status ON scans(watch_id, status);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS fts_contents USING fts5(
     sha256 UNINDEXED,

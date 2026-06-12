@@ -6,8 +6,11 @@ import os
 import shutil
 import time
 
+from ...errors import InvalidRequestError
 from ..core.db import DatabaseManager
-from ..types import SCAN_STATUS_ACTIVE, SCAN_STATUS_DELETED
+from ..types import SCAN_STATUS_DELETED
+
+FORGET_UNDER_ACTIVE_WATCH_WARNING = "Path is under an active watch and may be rediscovered on the next scan."
 
 
 class CleanupService:
@@ -20,9 +23,8 @@ class CleanupService:
     async def find_orphan_docs(self) -> list[dict]:
         return await self.db.fetchall(
             "SELECT d.* FROM docs d WHERE NOT EXISTS ("
-            "  SELECT 1 FROM files f WHERE f.sha256 = d.sha256 AND f.scan_status = ?"
-            ")",
-            (SCAN_STATUS_ACTIVE,),
+            "  SELECT 1 FROM files f WHERE f.sha256 = d.sha256"
+            ")"
         )
 
     async def cleanup_orphans(self, dry_run: bool = True) -> int:
@@ -46,25 +48,106 @@ class CleanupService:
 
     # ── deleted files ───────────────────────────────────────────
 
-    async def cleanup_deleted(
-        self, older_than_days: int = 30, dry_run: bool = True
-    ) -> int:
+    async def cleanup_deleted(self, dry_run: bool = True) -> int:
         row = await self.db.fetchone(
-            "SELECT COUNT(*) as cnt FROM files WHERE scan_status=? "
-            "AND deleted_at < ?",
-            (SCAN_STATUS_DELETED, _days_ago_ms(older_than_days)),
+            "SELECT COUNT(*) as cnt FROM files WHERE scan_status=?",
+            (SCAN_STATUS_DELETED,),
         )
         count = row["cnt"] if row else 0
 
         if not dry_run and count > 0:
             await self.db.execute(
-                "DELETE FROM files WHERE scan_status=? AND deleted_at < ?",
-                (SCAN_STATUS_DELETED, _days_ago_ms(older_than_days)),
+                "DELETE FROM fts_filenames WHERE file_id IN (SELECT id FROM files WHERE scan_status=?)",
+                (SCAN_STATUS_DELETED,),
+            )
+            await self.db.execute(
+                "DELETE FROM files WHERE scan_status=?",
+                (SCAN_STATUS_DELETED,),
             )
             await self.db.commit()
-            await self.cleanup_orphans(dry_run=False)
 
         return count
+
+    async def cleanup_deleted_older_than(self, older_than_days: int = 7) -> int:
+        threshold = _days_ago_ms(older_than_days)
+        row = await self.db.fetchone(
+            "SELECT COUNT(*) as cnt FROM files WHERE scan_status=? AND deleted_at < ?",
+            (SCAN_STATUS_DELETED, threshold),
+        )
+        count = row["cnt"] if row else 0
+
+        if count > 0:
+            await self.db.execute(
+                "DELETE FROM fts_filenames WHERE file_id IN (SELECT id FROM files WHERE scan_status=? AND deleted_at < ?)",
+                (SCAN_STATUS_DELETED, threshold),
+            )
+            await self.db.execute(
+                "DELETE FROM files WHERE scan_status=? AND deleted_at < ?",
+                (SCAN_STATUS_DELETED, threshold),
+            )
+            await self.db.commit()
+
+        return count
+
+    # ── forget path ─────────────────────────────────────────────
+
+    async def forget_path(self, path: str, *, dry_run: bool = True) -> dict:
+        normalized = _normalize_path(path)
+        if not normalized:
+            raise InvalidRequestError("invalid_request", "Path is required.", "path")
+
+        watches = await self.db.fetchall("SELECT * FROM watch_targets WHERE enabled=1")
+        if any(watch["path"] == normalized for watch in watches):
+            raise InvalidRequestError(
+                "invalid_request",
+                "Path is a configured watch root. Use mineru watch remove <path> to remove the watch first.",
+                "path",
+            )
+
+        file_ids = await self._forget_file_ids(normalized)
+        matched_as = await self._forget_matched_as(normalized, file_ids)
+        active_watch_warning = _active_watch_warning(normalized, watches)
+        warnings = [active_watch_warning] if active_watch_warning else []
+
+        if not dry_run and file_ids:
+            placeholders = ",".join("?" * len(file_ids))
+            await self.db.execute(
+                f"DELETE FROM fts_filenames WHERE file_id IN ({placeholders})",
+                tuple(file_ids),
+            )
+            await self.db.execute(
+                f"DELETE FROM files WHERE id IN ({placeholders})",
+                tuple(file_ids),
+            )
+            await self.db.commit()
+
+        return {
+            "path": normalized,
+            "matched_as": matched_as,
+            "forgotten_files": len(file_ids),
+            "dry_run": dry_run,
+            "warnings": warnings,
+        }
+
+    async def _forget_file_ids(self, path: str) -> list[int]:
+        prefix = _path_prefix(path)
+        upper = prefix + "\U0010ffff"
+        rows = await self.db.fetchall(
+            "SELECT id FROM files WHERE path=? OR (path>=? AND path<?) ORDER BY path",
+            (path, prefix, upper),
+        )
+        return [row["id"] for row in rows]
+
+    async def _forget_matched_as(self, path: str, file_ids: list[int]) -> str:
+        if not file_ids:
+            return "none"
+        if os.path.isdir(path):
+            return "directory"
+        prefix = _path_prefix(path)
+        row = await self.db.fetchone("SELECT 1 FROM files WHERE path>=? AND path<? LIMIT 1", (prefix, prefix + "\U0010ffff"))
+        if row is not None:
+            return "directory"
+        return "file"
 
     # ── temp files ──────────────────────────────────────────────
 
@@ -97,3 +180,21 @@ class CleanupService:
 
 def _days_ago_ms(days: int) -> int:
     return int((time.time() - days * 86400) * 1000)
+
+
+def _normalize_path(path: str) -> str:
+    return os.path.normpath(os.path.abspath(os.path.expanduser(path.strip()))) if path.strip() else ""
+
+
+def _path_prefix(path: str) -> str:
+    return path if path.endswith(os.sep) else path + os.sep
+
+
+def _active_watch_warning(path: str, watches: list[dict]) -> str | None:
+    for watch in watches:
+        watch_path = watch["path"]
+        if watch.get("watch_status") != "active":
+            continue
+        if path != watch_path and path.startswith(_path_prefix(watch_path)):
+            return FORGET_UNDER_ACTIVE_WATCH_WARNING
+    return None

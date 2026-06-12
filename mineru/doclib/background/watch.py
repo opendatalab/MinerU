@@ -12,16 +12,18 @@ from ..core.db import DatabaseManager
 from ..constants import ALLOWED_EXTENSIONS
 from ..services.config_svc import ConfigService
 from ..services.parse_svc import ParseService
-from ..types import WATCH_STATUS_ACTIVE
+from ..services.scan_svc import ScanService
+from ..types import SCAN_STATUS_ACTIVE, WATCH_STATUS_ACTIVE, WATCH_STATUS_UNREACHABLE
 
 
 class WatchLoop:
     def __init__(
-        self, db: DatabaseManager, config_svc: ConfigService, parse_svc: ParseService
+        self, db: DatabaseManager, config_svc: ConfigService, parse_svc: ParseService, scan_svc: ScanService | None = None
     ) -> None:
         self.db = db
         self.config_svc = config_svc
         self.parse_svc = parse_svc
+        self.scan_svc = scan_svc
         self.running = False
         self._active_watchers: dict[int, asyncio.Task] = {}
 
@@ -50,8 +52,25 @@ class WatchLoop:
             await asyncio.sleep(30)
 
     async def _initial_scan(self, path: str, watch_id: int) -> None:
-        """Walk directory tree and discover all existing files."""
+        """Verify known files, then walk directory tree to discover current files."""
+        if self.scan_svc is not None:
+            await self.scan_svc.create_scan(path, kind="watch", source="watch", watch_id=watch_id)
+            return
+
         try:
+            os.stat(path)
+        except OSError:
+            await self.config_svc.update_watch_status(watch_id, WATCH_STATUS_UNREACHABLE)
+            return
+
+        try:
+            rows = await self.db.fetchall(
+                "SELECT path FROM files WHERE watch_id=? AND scan_status=?",
+                (watch_id, SCAN_STATUS_ACTIVE),
+            )
+            for row in rows:
+                await self._refresh_file(row["path"], watch_id)
+
             file_count = 0
             for root, dirs, files in os.walk(path):
                 dirs[:] = [d for d in dirs if not d.startswith(".")]

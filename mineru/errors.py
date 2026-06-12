@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
+ErrorType = Literal[
+    "invalid_request_error",
+    "authentication_error",
+    "permission_error",
+    "rate_limit_error",
+    "engine_error",
+    "api_error",
+]
+
 # ── error_code → type mapping ──────────────────────────────────────
 
-_ERROR_TYPE_MAP: dict[str, str] = {
+_ERROR_TYPE_MAP: dict[str, ErrorType] = {
     # invalid_request_error
     "invalid_request": "invalid_request_error",
     "page_range_invalid": "invalid_request_error",
@@ -23,7 +34,12 @@ _ERROR_TYPE_MAP: dict[str, str] = {
     "job_already_terminal": "invalid_request_error",
     "model_not_found": "invalid_request_error",
     "not_cached": "invalid_request_error",
+    "no_accessible_file": "invalid_request_error",
+    "rule_not_found": "invalid_request_error",
+    "scan_not_found": "invalid_request_error",
+    "stat_failed": "invalid_request_error",
     "tier_mismatch": "invalid_request_error",
+    "watch_not_found": "invalid_request_error",
     # authentication_error
     "invalid_api_key": "authentication_error",
     # permission_error
@@ -35,10 +51,16 @@ _ERROR_TYPE_MAP: dict[str, str] = {
     # engine_error
     "no_engine": "engine_error",
     "engine_unavailable": "engine_error",
+    "parse_empty": "engine_error",
     "parse_failed": "engine_error",
     "parse_timeout": "engine_error",
+    "quality_tier_unavailable": "engine_error",
     # api_error
+    "ingest_failed": "api_error",
     "internal_error": "api_error",
+    "metadata_failed": "api_error",
+    "parse_json_write_failed": "api_error",
+    "scan_failed": "api_error",
     "service_unavailable": "api_error",
     "server_not_running": "api_error",
     "server_busy": "api_error",
@@ -47,9 +69,39 @@ _ERROR_TYPE_MAP: dict[str, str] = {
     "parse_server_unavailable": "api_error",
 }
 
+_ERROR_STATUS_MAP: dict[ErrorType, int] = {
+    "invalid_request_error": 400,
+    "authentication_error": 401,
+    "permission_error": 403,
+    "rate_limit_error": 429,
+    "engine_error": 503,
+    "api_error": 500,
+}
 
-def error_type_for(code: str) -> str:
+_ERROR_CODE_STATUS_MAP: dict[str, int] = {
+    "file_not_found": 404,
+    "job_not_found": 404,
+    "model_not_found": 404,
+    "not_cached": 404,
+    "rule_not_found": 404,
+    "scan_not_found": 404,
+    "upload_not_found": 404,
+    "watch_not_found": 404,
+}
+
+
+def error_type_for(code: str) -> ErrorType:
     return _ERROR_TYPE_MAP.get(code, "api_error")
+
+
+def registered_error_codes() -> frozenset[str]:
+    return frozenset(_ERROR_TYPE_MAP)
+
+
+def http_status_for(code: str, error_type: ErrorType | None = None) -> int:
+    if code in _ERROR_CODE_STATUS_MAP:
+        return _ERROR_CODE_STATUS_MAP[code]
+    return _ERROR_STATUS_MAP.get(error_type or error_type_for(code), 500)
 
 
 # ── exception hierarchy ────────────────────────────────────────────

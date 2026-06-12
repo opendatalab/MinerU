@@ -10,9 +10,13 @@ from ..types import Tier
 
 ParseStatus = Literal["pending", "parsing", "done", "failed", "superseded"]
 ScanStatus = Literal["active", "deleted", "unreachable"]
+ScanTaskStatus = Literal["pending", "running", "done", "failed"]
+ScanKind = Literal["manual", "watch"]
+ScanSource = Literal["unknown", "cli", "sdk", "api", "watch", "system"]
 RuleType = Literal["exclude", "parsing_rule"]
 WatchStatus = Literal["active", "unreachable"]
 InvalidateTarget = Literal["parses"]
+ForgetMatchedAs = Literal["file", "directory", "none"]
 
 PARSE_STATUS_PENDING: ParseStatus = "pending"
 PARSE_STATUS_PARSING: ParseStatus = "parsing"
@@ -23,6 +27,21 @@ PARSE_STATUS_SUPERSEDED: ParseStatus = "superseded"
 SCAN_STATUS_ACTIVE: ScanStatus = "active"
 SCAN_STATUS_DELETED: ScanStatus = "deleted"
 SCAN_STATUS_UNREACHABLE: ScanStatus = "unreachable"
+
+SCAN_TASK_STATUS_PENDING: ScanTaskStatus = "pending"
+SCAN_TASK_STATUS_RUNNING: ScanTaskStatus = "running"
+SCAN_TASK_STATUS_DONE: ScanTaskStatus = "done"
+SCAN_TASK_STATUS_FAILED: ScanTaskStatus = "failed"
+
+SCAN_KIND_MANUAL: ScanKind = "manual"
+SCAN_KIND_WATCH: ScanKind = "watch"
+
+SCAN_SOURCE_UNKNOWN: ScanSource = "unknown"
+SCAN_SOURCE_CLI: ScanSource = "cli"
+SCAN_SOURCE_SDK: ScanSource = "sdk"
+SCAN_SOURCE_API: ScanSource = "api"
+SCAN_SOURCE_WATCH: ScanSource = "watch"
+SCAN_SOURCE_SYSTEM: ScanSource = "system"
 
 RULE_TYPE_EXCLUDE: RuleType = "exclude"
 RULE_TYPE_PARSING_RULE: RuleType = "parsing_rule"
@@ -128,6 +147,77 @@ class InvalidateResponse(DoclibModel):
     invalidated_count: int
 
 
+class ForgetPathRequest(DoclibModel):
+    path: str
+    dry_run: bool = True
+
+
+class ForgetPathResponse(DoclibModel):
+    path: str
+    matched_as: ForgetMatchedAs
+    forgotten_files: int
+    dry_run: bool
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ScanRequest(DoclibModel):
+    path: str
+    kind: ScanKind = "manual"
+    source: ScanSource = "unknown"
+    watch_id: int | None = None
+
+
+class ScanInfo(DoclibModel):
+    id: int
+    path: str
+    kind: ScanKind
+    source: ScanSource = "unknown"
+    watch_id: int | None = None
+    status: ScanTaskStatus
+    files_seen: int = 0
+    files_refreshed: int = 0
+    files_new: int = 0
+    files_changed: int = 0
+    files_deleted: int = 0
+    files_unreachable: int = 0
+    files_error: int = 0
+    files_unsupported: int = 0
+    files_excluded: int = 0
+    error_code: str | None = None
+    error_msg: str | None = None
+    started_at: int | None = None
+    finished_at: int | None = None
+    created_at: int
+    updated_at: int
+
+
+class ScanListResponse(DoclibModel):
+    scans: list[ScanInfo] = Field(default_factory=list)
+
+
+class RecentScanInfo(DoclibModel):
+    id: int
+    path: str
+    kind: ScanKind
+    source: ScanSource = "unknown"
+    watch_id: int | None = None
+    status: ScanTaskStatus
+    files_seen: int = 0
+    files_refreshed: int = 0
+    files_new: int = 0
+    files_changed: int = 0
+    files_deleted: int = 0
+    files_unreachable: int = 0
+    files_error: int = 0
+    files_unsupported: int = 0
+    files_excluded: int = 0
+    error_code: str | None = None
+    started_at: int | None = None
+    finished_at: int | None = None
+    created_at: int
+    updated_at: int
+
+
 class FileInfo(DoclibModel):
     filename: str
     path: str
@@ -147,7 +237,7 @@ class FileInfo(DoclibModel):
 class DocInfo(DoclibModel):
     sha256: str
     size_bytes: int
-    doc_type: str | None = None
+    file_type: str | None = None
     title: str | None = None
     author: str | None = None
     subject: str | None = None
@@ -326,6 +416,38 @@ class ParseServerStatus(DoclibModel):
     remote: RemoteParseServerStatus = Field(default_factory=RemoteParseServerStatus)
 
 
+class WatchStats(DoclibModel):
+    watch_id: int
+    path: str
+    label: str | None = None
+    removable: bool = False
+    watch_status: WatchStatus
+    total_files: int = 0
+    active_files: int = 0
+    deleted_files: int = 0
+    unreachable_files: int = 0
+    pending_ingest_files: int = 0
+    file_error_count: int = 0
+    doc_count: int = 0
+    parse_pending_count: int = 0
+    parse_parsing_count: int = 0
+    parse_failed_count: int = 0
+    parse_done_count: int = 0
+    last_scan_at: int | None = None
+    last_scan_files: int = 0
+
+
+class ErrorBucket(DoclibModel):
+    code: str
+    count: int
+
+
+class ErrorSummary(DoclibModel):
+    file_errors: list[ErrorBucket] = Field(default_factory=list)
+    doc_errors: list[ErrorBucket] = Field(default_factory=list)
+    parse_errors: list[ErrorBucket] = Field(default_factory=list)
+
+
 class ServerStatusResponse(DoclibModel):
     running: bool
     pid: int | None = None
@@ -339,11 +461,13 @@ class ServerStatusResponse(DoclibModel):
     parse_server: ParseServerStatus | None = None
     watch_count: int = 0
     watches: list[WatchInfo] = Field(default_factory=list)
+    watch_stats: list[WatchStats] = Field(default_factory=list)
+    recent_scans: list[RecentScanInfo] = Field(default_factory=list)
+    error_summary: ErrorSummary | None = None
     recent_logs: list[str] = Field(default_factory=list)
 
 
 class CleanupDeletedRequest(DoclibModel):
-    older_than_days: int = 30
     dry_run: bool = True
 
 

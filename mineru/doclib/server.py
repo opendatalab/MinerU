@@ -11,7 +11,7 @@ from typing import Any, cast
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response
+from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
 from ..render import render_markdown
 from ..types import TIERS, Tier
 from .background.parse_server_health import get_health
@@ -29,6 +29,8 @@ from .types import (
     ConfigSetResponse,
     DocContentResponse,
     DocInfo,
+    ErrorBucket,
+    ErrorSummary,
     ExcludeRuleInfo,
     ExcludeRuleListResponse,
     ExcludeRuleRequest,
@@ -36,18 +38,23 @@ from .types import (
     FileInfoResponse,
     FindResponse,
     FindResult,
+    ForgetPathRequest,
+    ForgetPathResponse,
     InvalidateRequest,
     InvalidateResponse,
     ListDocsResponse,
     ListParsesResponse,
     LocalParseServerStatus,
     PARSE_STATUS_DONE,
+    PARSE_STATUS_FAILED,
     PARSE_STATUS_PARSING,
     PARSE_STATUS_PENDING,
     PARSE_STATUS_SUPERSEDED,
     RULE_TYPE_EXCLUDE,
     RULE_TYPE_PARSING_RULE,
     SCAN_STATUS_ACTIVE,
+    SCAN_STATUS_DELETED,
+    SCAN_STATUS_UNREACHABLE,
     ParseCoverage,
     ParseInfo,
     ParseRequest,
@@ -56,6 +63,7 @@ from .types import (
     ParsingRuleInfo,
     ParsingRuleListResponse,
     ParsingRuleRequest,
+    RecentScanInfo,
     RemoteParseServerStatus,
     RemoveExcludeRuleResponse,
     RemoveParsingRuleResponse,
@@ -64,10 +72,16 @@ from .types import (
     SearchResult,
     ServerStatusResponse,
     ShutdownResponse,
+    ScanInfo,
+    ScanKind,
+    ScanListResponse,
+    ScanRequest,
+    ScanTaskStatus,
     TierParseInfo,
     WatchInfo,
     WatchListResponse,
     WatchRequest,
+    WatchStats,
 )
 from .utils.route_utils import get_route_info, has_route_info, route
 
@@ -112,7 +126,7 @@ class DoclibServer(AsyncDoclibInterface):
         )
         docs_total = await self.state.db.fetchone("SELECT COUNT(*) as cnt FROM docs")
         ingest_q = await self.state.db.fetchone(
-            "SELECT COUNT(*) as cnt FROM files WHERE sha256 IS NULL AND scan_status=?",
+            "SELECT COUNT(*) as cnt FROM files WHERE sha256 IS NULL AND scan_status=? AND error_code IS NULL",
             (SCAN_STATUS_ACTIVE,),
         )
         watches = await self.state.config_svc.list_watches()
@@ -131,6 +145,9 @@ class DoclibServer(AsyncDoclibInterface):
             parse_server=_parse_server_status(),
             watch_count=len(watches),
             watches=[_watch_info(row) for row in watches],
+            watch_stats=await _watch_stats(self.state.db, watches),
+            recent_scans=await _recent_scans(self.state.db),
+            error_summary=await _error_summary(self.state.db),
             recent_logs=_tail_log(getattr(self.state, "data_dir", "")),
         )
 
@@ -197,6 +214,36 @@ class DoclibServer(AsyncDoclibInterface):
         count = await self.state.parse_svc.invalidate(sha256, request.tier)
         return InvalidateResponse(target=request.target, sha256=sha256, tier=request.tier, invalidated_count=count)
 
+    @route("POST", "/forget", tags=("files",))
+    async def forget_path(self, request: ForgetPathRequest) -> ForgetPathResponse:
+        result = await self.state.cleanup_svc.forget_path(request.path, dry_run=request.dry_run)
+        return ForgetPathResponse.model_validate(result)
+
+    @route("POST", "/scans", tags=("scan",))
+    async def create_scan(self, request: ScanRequest) -> ScanInfo:
+        return await self.state.scan_svc.create_scan(
+            request.path,
+            kind=request.kind,
+            source=request.source,
+            watch_id=request.watch_id,
+        )
+
+    @route("GET", "/scans", tags=("scan",))
+    async def list_scans(
+        self,
+        *,
+        limit: int = 50,
+        status: ScanTaskStatus | None = None,
+        kind: ScanKind | None = None,
+        watch_id: int | None = None,
+    ) -> ScanListResponse:
+        scans = await self.state.scan_svc.list_scans(limit=limit, status=status, kind=kind, watch_id=watch_id)
+        return ScanListResponse(scans=scans)
+
+    @route("GET", "/scans/{scan_id}", tags=("scan",))
+    async def get_scan(self, scan_id: int) -> ScanInfo:
+        return await self.state.scan_svc.get_scan(scan_id)
+
     @route("GET", "/docs", tags=("docs",))
     async def list_docs(self, *, path: str | None = None) -> ListDocsResponse:
         if path:
@@ -258,13 +305,29 @@ class DoclibServer(AsyncDoclibInterface):
         return DocContentResponse(sha256=sha256, tier=tier, content=content, output=output_path)
 
     @route("GET", "/search", tags=("search",))
-    async def search(self, query: str, *, file_type: str | None = None, limit: int = 20, offset: int = 0) -> SearchResponse:
-        results, total = await self.state.search_svc.search(query=query, file_type=file_type, limit=limit, offset=offset)
+    async def search(
+        self,
+        query: str,
+        *,
+        file_type: str | None = None,
+        tier: Tier | None = None,
+        min_tier: Tier | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> SearchResponse:
+        results, total = await self.state.search_svc.search(
+            query=query,
+            file_type=file_type,
+            tier=tier,
+            min_tier=min_tier,
+            limit=limit,
+            offset=offset,
+        )
         return SearchResponse(results=[_search_result(row) for row in results if row.get("tier") in TIERS], total=total, query=query)
 
     @route("GET", "/find", tags=("search",))
-    async def find(self, query: str, *, limit: int = 50) -> FindResponse:
-        results, total = await self.state.search_svc.search_filenames(query=query, limit=limit)
+    async def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse:
+        results, total = await self.state.search_svc.search_filenames(query=query, ext=ext, limit=limit)
         return FindResponse(results=[_find_result(row) for row in results], total=total, query=query)
 
     @route("GET", "/info", tags=("info",))
@@ -311,7 +374,7 @@ class DoclibServer(AsyncDoclibInterface):
     async def remove_watch(self, path: str) -> RemoveWatchResponse:
         existing = await self.state.db.fetchone("SELECT path FROM watch_targets WHERE path=?", (path,))
         if existing is None:
-            raise NotFoundError("file_not_found", f"Watch target {path} not found.", "path")
+            raise NotFoundError("watch_not_found", f"Watch target {path} not found.", "path")
         await self.state.config_svc.remove_watch(path)
         return RemoveWatchResponse(path=path, removed=True)
 
@@ -335,7 +398,7 @@ class DoclibServer(AsyncDoclibInterface):
     async def remove_exclude_rule(self, rule_id: int) -> RemoveExcludeRuleResponse:
         existing = await self.state.db.fetchone("SELECT id FROM exclude_rules WHERE id=?", (rule_id,))
         if existing is None:
-            raise NotFoundError("invalid_request", f"Exclude rule {rule_id} not found.", "rule_id")
+            raise NotFoundError("rule_not_found", f"Exclude rule {rule_id} not found.", "rule_id")
         await self.state.config_svc.remove_rule(rule_id, RULE_TYPE_EXCLUDE)
         return RemoveExcludeRuleResponse(rule_id=rule_id, removed=True)
 
@@ -362,19 +425,16 @@ class DoclibServer(AsyncDoclibInterface):
     async def remove_parsing_rule(self, rule_id: int) -> RemoveParsingRuleResponse:
         existing = await self.state.db.fetchone("SELECT id FROM parsing_rules WHERE id=?", (rule_id,))
         if existing is None:
-            raise NotFoundError("invalid_request", f"Parsing rule {rule_id} not found.", "rule_id")
+            raise NotFoundError("rule_not_found", f"Parsing rule {rule_id} not found.", "rule_id")
         await self.state.config_svc.remove_rule(rule_id, RULE_TYPE_PARSING_RULE)
         return RemoveParsingRuleResponse(rule_id=rule_id, removed=True)
 
-    @route("POST", "/cleanup/deleted", tags=("cleanup",))
+    @route("POST", "/cleanup/deleted-files", tags=("cleanup",))
     async def cleanup_deleted_files(self, request: CleanupDeletedRequest) -> CleanupDeletedResponse:
-        count = await self.state.cleanup_svc.cleanup_deleted(
-            older_than_days=request.older_than_days,
-            dry_run=request.dry_run,
-        )
+        count = await self.state.cleanup_svc.cleanup_deleted(dry_run=request.dry_run)
         return CleanupDeletedResponse(deleted_files=count, dry_run=request.dry_run)
 
-    @route("POST", "/cleanup/orphans", tags=("cleanup",))
+    @route("POST", "/cleanup/orphan-docs", tags=("cleanup",))
     async def cleanup_orphan_docs(self, request: CleanupOrphansRequest) -> CleanupOrphansResponse:
         count = await self.state.cleanup_svc.cleanup_orphans(dry_run=request.dry_run)
         return CleanupOrphansResponse(orphan_docs=count, dry_run=request.dry_run)
@@ -431,15 +491,7 @@ class DoclibServer(AsyncDoclibInterface):
 
 
 async def _mineru_error_handler(_request: Request, exc: MineruError) -> JSONResponse:
-    status_map = {
-        "invalid_request_error": 400,
-        "authentication_error": 401,
-        "permission_error": 403,
-        "rate_limit_error": 429,
-        "engine_error": 503,
-        "api_error": 500,
-    }
-    return JSONResponse(status_code=status_map.get(exc.type, 500), content=error_response(exc))
+    return JSONResponse(status_code=http_status_for(exc.code, exc.type), content=error_response(exc))
 
 
 async def _unexpected_error_handler(_request: Request, exc: Exception) -> JSONResponse:
@@ -476,6 +528,100 @@ def _tail_log(data_dir: str, lines: int = 100) -> list[str]:
         return fh.readlines()[-lines:]
 
 
+async def _watch_stats(db: Any, watches: list[dict[str, Any]]) -> list[WatchStats]:
+    file_rows = await db.fetchall(
+        "SELECT watch_id, "
+        "COUNT(*) AS total_files, "
+        "SUM(CASE WHEN scan_status=? THEN 1 ELSE 0 END) AS active_files, "
+        "SUM(CASE WHEN scan_status=? THEN 1 ELSE 0 END) AS deleted_files, "
+        "SUM(CASE WHEN scan_status=? THEN 1 ELSE 0 END) AS unreachable_files, "
+        "SUM(CASE WHEN scan_status=? AND sha256 IS NULL AND error_code IS NULL THEN 1 ELSE 0 END) AS pending_ingest_files, "
+        "SUM(CASE WHEN error_code IS NOT NULL THEN 1 ELSE 0 END) AS file_error_count, "
+        "COUNT(DISTINCT sha256) AS doc_count "
+        "FROM files WHERE watch_id IS NOT NULL GROUP BY watch_id",
+        (SCAN_STATUS_ACTIVE, SCAN_STATUS_DELETED, SCAN_STATUS_UNREACHABLE, SCAN_STATUS_ACTIVE),
+    )
+    parse_rows = await db.fetchall(
+        "SELECT f.watch_id AS watch_id, p.status AS status, COUNT(*) AS cnt "
+        "FROM parses p "
+        "JOIN (SELECT DISTINCT watch_id, sha256 FROM files WHERE watch_id IS NOT NULL AND sha256 IS NOT NULL) f "
+        "ON f.sha256 = p.sha256 "
+        "GROUP BY f.watch_id, p.status"
+    )
+
+    files_by_watch = {row["watch_id"]: row for row in file_rows}
+    parses_by_watch: dict[int, dict[str, int]] = {}
+    for row in parse_rows:
+        watch_id = row["watch_id"]
+        parses_by_watch.setdefault(watch_id, {})[row["status"]] = row["cnt"]
+
+    stats: list[WatchStats] = []
+    for watch in watches:
+        watch_id = watch["id"]
+        file_counts = files_by_watch.get(watch_id, {})
+        parse_counts = parses_by_watch.get(watch_id, {})
+        stats.append(
+            WatchStats(
+                watch_id=watch_id,
+                path=watch["path"],
+                label=watch.get("label"),
+                removable=bool(watch.get("removable", False)),
+                watch_status=watch["watch_status"],
+                total_files=file_counts.get("total_files", 0) or 0,
+                active_files=file_counts.get("active_files", 0) or 0,
+                deleted_files=file_counts.get("deleted_files", 0) or 0,
+                unreachable_files=file_counts.get("unreachable_files", 0) or 0,
+                pending_ingest_files=file_counts.get("pending_ingest_files", 0) or 0,
+                file_error_count=file_counts.get("file_error_count", 0) or 0,
+                doc_count=file_counts.get("doc_count", 0) or 0,
+                parse_pending_count=parse_counts.get(PARSE_STATUS_PENDING, 0),
+                parse_parsing_count=parse_counts.get(PARSE_STATUS_PARSING, 0),
+                parse_failed_count=parse_counts.get(PARSE_STATUS_FAILED, 0),
+                parse_done_count=parse_counts.get(PARSE_STATUS_DONE, 0),
+                last_scan_at=watch.get("last_scan_at"),
+                last_scan_files=watch.get("last_scan_files", 0) or 0,
+            )
+        )
+    return stats
+
+
+async def _error_summary(db: Any) -> ErrorSummary:
+    file_errors = await _error_buckets(db, "files")
+    doc_errors = await _error_buckets(db, "docs")
+    parse_errors = await _error_buckets(db, "parses")
+    return ErrorSummary(file_errors=file_errors, doc_errors=doc_errors, parse_errors=parse_errors)
+
+
+async def _recent_scans(db: Any, limit: int = 5) -> list[RecentScanInfo]:
+    rows = await db.fetchall(
+        "SELECT id, path, kind, source, watch_id, status, files_seen, files_refreshed, files_new, files_changed, "
+        "files_deleted, files_unreachable, files_error, files_unsupported, files_excluded, error_code, "
+        "started_at, finished_at, created_at, updated_at "
+        "FROM scans ORDER BY created_at DESC, id DESC LIMIT ?",
+        (limit,),
+    )
+    return [RecentScanInfo.model_validate(row) for row in rows]
+
+
+async def _error_buckets(db: Any, table: str) -> list[ErrorBucket]:
+    sql_by_table = {
+        "files": (
+            "SELECT error_code AS code, COUNT(*) AS cnt FROM files "
+            "WHERE error_code IS NOT NULL GROUP BY error_code ORDER BY cnt DESC, error_code"
+        ),
+        "docs": (
+            "SELECT error_code AS code, COUNT(*) AS cnt FROM docs "
+            "WHERE error_code IS NOT NULL GROUP BY error_code ORDER BY cnt DESC, error_code"
+        ),
+        "parses": (
+            "SELECT error_code AS code, COUNT(*) AS cnt FROM parses "
+            "WHERE error_code IS NOT NULL GROUP BY error_code ORDER BY cnt DESC, error_code"
+        ),
+    }
+    rows = await db.fetchall(sql_by_table[table])
+    return [ErrorBucket(code=row["code"], count=row["cnt"]) for row in rows]
+
+
 def _file_info(row: dict[str, Any]) -> FileInfo:
     return FileInfo.model_validate(row)
 
@@ -506,13 +652,13 @@ def _watch_info(row: dict[str, Any]) -> WatchInfo:
 
 def _exclude_rule_info(row: dict[str, Any] | None) -> ExcludeRuleInfo:
     if row is None:
-        raise NotFoundError("invalid_request", "Exclude rule not found.", "rule_id")
+        raise NotFoundError("rule_not_found", "Exclude rule not found.", "rule_id")
     return ExcludeRuleInfo.model_validate(row)
 
 
 def _parsing_rule_info(row: dict[str, Any] | None) -> ParsingRuleInfo:
     if row is None:
-        raise NotFoundError("invalid_request", "Parsing rule not found.", "rule_id")
+        raise NotFoundError("rule_not_found", "Parsing rule not found.", "rule_id")
     data = dict(row)
     data["remote"] = bool(data.get("remote", False))
     data["enabled"] = bool(data.get("enabled", True))

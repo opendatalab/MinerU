@@ -121,11 +121,13 @@ def search(
     self,
     query: str,
     file_type: str | None = None,
+    tier: Tier | None = None,
+    min_tier: Tier | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> dict: ...
 
-def find(self, query: str, limit: int = 50) -> dict: ...
+def find(self, query: str, ext: str | None = None, limit: int = 50) -> dict: ...
 
 def info(self, file_path: str) -> dict: ...
 ```
@@ -134,9 +136,11 @@ def info(self, file_path: str) -> dict: ...
 
 | 方法 | 响应 |
 |------|------|
-| `search()` | `SearchResponse`，包含全文结果、snippet、paths、tier。 |
-| `find()` | `FindResponse`，包含文件名搜索结果。 |
+| `search()` | `SearchResponse`，包含全文结果、snippet、paths、tier；支持 `file_type`、`tier`、`min_tier` 过滤。 |
+| `find()` | `FindResponse`，包含文件名搜索结果；支持 `ext` 过滤。 |
 | `info()` | `FileInfo`，包含文件元信息、doc metadata 和 parse tiers。 |
+
+`search()` 的 `paths` 优先返回 active files；如果某个已索引 doc 没有任何 active file，则 fallback 返回非 active file paths。搜索结果可信度只通过 `tier` 表达。
 
 ## Config 方法
 

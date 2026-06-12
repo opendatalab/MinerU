@@ -4,12 +4,18 @@ import asyncio
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from mineru.doclib.background.compaction import Compaction
+from mineru.doclib.background.ingest import IngestWorkerPool
 from mineru.doclib.background.parse_server_health import api_server_args_for_tier
+from mineru.doclib.background.watch import WatchLoop
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
+from mineru.errors import InvalidRequestError
+from mineru.doclib.services.cleanup_svc import CleanupService
+from mineru.doclib.services.config_svc import ConfigService
 from mineru.doclib.services import parse_svc as parse_svc_module
 from mineru.doclib.services.parse_svc import (
     ParseService,
@@ -17,6 +23,9 @@ from mineru.doclib.services.parse_svc import (
     load_pages_from_done_batches,
     parse_batch_json_path,
 )
+from mineru.doclib.services.scan_svc import ScanService
+from mineru.doclib.services.search_svc import SearchService
+from mineru.doclib.server import DoclibServer
 from mineru.parser import backend_for_tier, resolve_tier_and_backend
 from mineru.types import PageInfo, Tier
 
@@ -295,11 +304,14 @@ def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: 
         parses=parses,
         file_row={
             "path": path,
+            "filename": "doc.pdf",
             "sha256": sha256,
             "scan_status": "active",
             "ext": "pdf",
             "mtime_ms": int(stat.st_mtime * 1000),
             "size_bytes": stat.st_size,
+            "first_seen_at": 100,
+            "updated_at": 100,
         },
         doc_row={"sha256": sha256, "page_count": 10},
     )
@@ -375,11 +387,13 @@ def test_ensure_ingested_rebinds_changed_text_file_to_new_sha(tmp_path: Path) ->
         assert first["sha256"] == hashlib.sha256(b"old").hexdigest()
 
         source.write_text("new content", encoding="utf-8")
-        discovered = await service.discover_file(str(source))
+        discovered = await service.refresh_file(str(source))
         changed_row = await db.fetchone("SELECT * FROM files WHERE path=?", (str(source),))
 
-        assert discovered.changed is True
+        assert discovered.status == "changed"
         assert discovered.needs_ingest is True
+        assert discovered.file is not None
+        assert discovered.file.sha256 is None
         assert changed_row is not None
         assert changed_row["sha256"] is None
 
@@ -389,6 +403,853 @@ def test_ensure_ingested_rebinds_changed_text_file_to_new_sha(tmp_path: Path) ->
         assert second["sha256"] == hashlib.sha256(b"new content").hexdigest()
         fts_row = await db.fetchone("SELECT sha256, tier, filename FROM fts_contents WHERE sha256=?", (second["sha256"],))
         assert fts_row == {"sha256": second["sha256"], "tier": "flash", "filename": "note.txt"}
+
+    asyncio.run(_run())
+
+
+def test_refresh_file_marks_missing_known_path_deleted(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"))
+        source = tmp_path / "note.txt"
+
+        source.write_text("content", encoding="utf-8")
+        ingested = await service.ensure_ingested(str(source))
+        assert ingested is not None
+        original_sha = ingested["sha256"]
+
+        source.unlink()
+        refreshed = await service.refresh_file(str(source))
+        row = await db.fetchone("SELECT sha256, scan_status, deleted_at FROM files WHERE path=?", (str(source),))
+
+        assert refreshed.status == "deleted"
+        assert refreshed.file is not None
+        assert refreshed.file.sha256 == original_sha
+        assert refreshed.file.scan_status == "deleted"
+        assert row is not None
+        assert row["sha256"] == original_sha
+        assert row["scan_status"] == "deleted"
+        assert row["deleted_at"] is not None
+
+    asyncio.run(_run())
+
+
+def test_refresh_file_records_stat_error_without_marking_deleted(tmp_path: Path, monkeypatch) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"))
+        source = tmp_path / "note.txt"
+
+        source.write_text("content", encoding="utf-8")
+        ingested = await service.ensure_ingested(str(source))
+        assert ingested is not None
+
+        async def _permission_denied(path: str) -> dict[str, Any]:
+            raise PermissionError("permission denied")
+
+        monkeypatch.setattr(parse_svc_module, "get_file_stat", _permission_denied)
+
+        refreshed = await service.refresh_file(str(source))
+        row = await db.fetchone("SELECT scan_status, error_code, error_msg, deleted_at FROM files WHERE path=?", (str(source),))
+
+        assert refreshed.status == "error"
+        assert refreshed.file is not None
+        assert refreshed.file.scan_status == "active"
+        assert refreshed.file.error_code == "file_permission_denied"
+        assert row is not None
+        assert row["scan_status"] == "active"
+        assert row["error_code"] == "file_permission_denied"
+        assert row["error_msg"] == "permission denied"
+        assert row["deleted_at"] is None
+
+    asyncio.run(_run())
+
+
+def test_ingest_worker_skips_files_with_blocking_stat_errors(tmp_path: Path, monkeypatch) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"))
+        source = tmp_path / "note.txt"
+
+        source.write_text("content", encoding="utf-8")
+        assert await service.ensure_ingested(str(source)) is not None
+
+        async def _permission_denied(path: str) -> dict[str, Any]:
+            raise PermissionError("permission denied")
+
+        monkeypatch.setattr(parse_svc_module, "get_file_stat", _permission_denied)
+
+        await service.refresh_file(str(source))
+
+        worker = IngestWorkerPool(service, num_workers=1)
+        assert await worker._acquire_task() is None
+
+        row = await db.fetchone("SELECT error_code, error_msg, locked_at FROM files WHERE path=?", (str(source),))
+        assert row is not None
+        assert row["error_code"] == "file_permission_denied"
+        assert row["error_msg"] == "permission denied"
+        assert row["locked_at"] is None
+
+    asyncio.run(_run())
+
+
+def test_ingest_worker_preserves_precise_file_access_errors(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"))
+        source = tmp_path / "note.txt"
+        now = 1000
+        file_id = await db.execute_insert(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (str(source), source.name, "txt", 10, now, now, now),
+        )
+
+        worker = IngestWorkerPool(service, num_workers=1)
+        await worker._handle_ingest_error(
+            {"id": file_id, "path": str(source), "watch_id": None},
+            PermissionError("permission denied"),
+        )
+
+        row = await db.fetchone("SELECT error_code, error_msg, locked_at FROM files WHERE id=?", (file_id,))
+        assert row is not None
+        assert row["error_code"] == "file_permission_denied"
+        assert row["error_msg"] == "permission denied"
+        assert row["locked_at"] is None
+        assert await worker._acquire_task() is None
+
+    asyncio.run(_run())
+
+
+def test_ingest_worker_skips_any_file_with_existing_error(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"))
+        source = tmp_path / "note.txt"
+        now = 1000
+        await db.execute_insert(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, error_code, error_msg, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(source), source.name, "txt", 10, now, "ingest_failed", "boom", now, now),
+        )
+
+        worker = IngestWorkerPool(service, num_workers=1)
+
+        assert await worker._acquire_task() is None
+        row = await db.fetchone("SELECT error_code, locked_at FROM files WHERE path=?", (str(source),))
+        assert row == {"error_code": "ingest_failed", "locked_at": None}
+
+    asyncio.run(_run())
+
+
+def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        fts = FTSManager(db)
+        service = SearchService(db, fts)
+        now = 1000
+        docs = [
+            ("1" * 64, "flash", "pdf", "flash.pdf"),
+            ("2" * 64, "standard", "pdf", "standard.pdf"),
+            ("3" * 64, "pro", "docx", "pro.docx"),
+        ]
+
+        for sha256, tier, file_type, filename in docs:
+            await db.execute(
+                "INSERT INTO docs (sha256, size_bytes, file_type, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (sha256, 10, file_type, now, now),
+            )
+            await db.execute(
+                "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (str(tmp_path / filename), filename, filename.rsplit(".", 1)[1], 10, now, sha256, "active", now, now),
+            )
+            await fts.replace(sha256=sha256, tier=tier, text="needle content", title="", author="", filename=filename)
+
+        exact_results, exact_total = await service.search("needle", tier="standard")
+        min_results, min_total = await service.search("needle", min_tier="standard")
+        type_results, type_total = await service.search("needle", file_type="docx")
+
+        assert exact_total == 1
+        assert [row["tier"] for row in exact_results] == ["standard"]
+        assert min_total == 2
+        assert {row["tier"] for row in min_results} == {"standard", "pro"}
+        assert type_total == 1
+        assert [row["filename"] for row in type_results] == ["pro.docx"]
+
+    asyncio.run(_run())
+
+
+def test_search_prefers_active_paths_and_falls_back_to_non_active_paths(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        fts = FTSManager(db)
+        service = SearchService(db, fts)
+        now = 1000
+        sha_active = "4" * 64
+        sha_deleted = "5" * 64
+
+        for sha256 in (sha_active, sha_deleted):
+            await db.execute(
+                "INSERT INTO docs (sha256, size_bytes, file_type, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (sha256, 10, "pdf", now, now),
+            )
+            await fts.replace(sha256=sha256, tier="standard", text="fallback needle", title="", author="", filename=f"{sha256[0]}.pdf")
+
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(tmp_path / "active.pdf"), "active.pdf", "pdf", 10, now, sha_active, "active", now, now),
+        )
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(tmp_path / "deleted-copy.pdf"), "deleted-copy.pdf", "pdf", 10, now, sha_active, "deleted", now, now),
+        )
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(tmp_path / "deleted-only.pdf"), "deleted-only.pdf", "pdf", 10, now, sha_deleted, "deleted", now, now),
+        )
+
+        results, total = await service.search("fallback")
+        paths_by_sha = {row["sha256"]: row["paths"] for row in results}
+
+        assert total == 2
+        assert paths_by_sha[sha_active] == [str(tmp_path / "active.pdf")]
+        assert paths_by_sha[sha_deleted] == [str(tmp_path / "deleted-only.pdf")]
+
+    asyncio.run(_run())
+
+
+def test_find_filters_by_ext(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        fts = FTSManager(db)
+        service = SearchService(db, fts)
+        now = 1000
+        sha_pdf = "a" * 64
+        sha_docx = "b" * 64
+
+        for sha256, filename, ext in ((sha_pdf, "report.pdf", "pdf"), (sha_docx, "report.docx", "docx")):
+            await db.execute(
+                "INSERT INTO docs (sha256, size_bytes, file_type, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (sha256, 10, ext, now, now),
+            )
+            file_id = await db.execute_insert(
+                "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (str(tmp_path / filename), filename, ext, 10, now, sha256, "active", now, now),
+            )
+            await fts.upsert_filename(file_id, filename, ext)
+
+        results, total = await service.search_filenames("report", ext="pdf")
+
+        assert total == 1
+        assert [row["filename"] for row in results] == ["report.pdf"]
+
+    asyncio.run(_run())
+
+
+def test_refresh_file_marks_only_current_file_unreachable_when_watch_root_is_missing(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"))
+        root = tmp_path / "removable"
+        root.mkdir()
+        watch = await config_svc.add_watch(str(root), removable=True)
+        source = root / "note.txt"
+        other = root / "other.txt"
+
+        source.write_text("content", encoding="utf-8")
+        other.write_text("other", encoding="utf-8")
+        assert await service.ensure_ingested(str(source), watch_id=watch["id"]) is not None
+        assert await service.ensure_ingested(str(other), watch_id=watch["id"]) is not None
+
+        source.unlink()
+        other.unlink()
+        root.rmdir()
+        refreshed = await service.refresh_file(str(source), watch_id=watch["id"])
+
+        source_row = await db.fetchone("SELECT scan_status, error_code, error_msg, deleted_at FROM files WHERE path=?", (str(source),))
+        other_row = await db.fetchone("SELECT scan_status FROM files WHERE path=?", (str(other),))
+        watch_row = await db.fetchone("SELECT watch_status, unreachable_at FROM watch_targets WHERE id=?", (watch["id"],))
+
+        assert refreshed.status == "unreachable"
+        assert source_row is not None
+        assert source_row["scan_status"] == "unreachable"
+        assert source_row["error_code"] is None
+        assert source_row["error_msg"] is None
+        assert source_row["deleted_at"] is None
+        assert other_row == {"scan_status": "active"}
+        assert watch_row is not None
+        assert watch_row["watch_status"] == "unreachable"
+        assert watch_row["unreachable_at"] is not None
+
+    asyncio.run(_run())
+
+
+def test_remove_watch_converts_unreachable_files_to_deleted_and_unbinds_watch(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"))
+        root = tmp_path / "removable"
+        root.mkdir()
+        watch = await config_svc.add_watch(str(root), removable=True)
+        source = root / "note.txt"
+        source.write_text("content", encoding="utf-8")
+
+        assert await service.ensure_ingested(str(source), watch_id=watch["id"]) is not None
+        now = 123456
+        await db.execute(
+            "INSERT INTO scans (path, kind, source, watch_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (str(root), "watch", "cli", watch["id"], "done", now, now),
+        )
+        await db.execute("UPDATE files SET scan_status=? WHERE path=?", ("unreachable", str(source)))
+
+        await config_svc.remove_watch(str(root))
+        row = await db.fetchone("SELECT watch_id, scan_status, deleted_at FROM files WHERE path=?", (str(source),))
+        watch_row = await db.fetchone("SELECT * FROM watch_targets WHERE id=?", (watch["id"],))
+        scan_row = await db.fetchone("SELECT path, kind, watch_id FROM scans WHERE path=?", (str(root),))
+
+        assert row is not None
+        assert row["watch_id"] is None
+        assert row["scan_status"] == "deleted"
+        assert row["deleted_at"] is not None
+        assert watch_row is None
+        assert scan_row == {"path": str(root), "kind": "watch", "watch_id": None}
+
+    asyncio.run(_run())
+
+
+def test_watch_scan_refreshes_known_active_paths_before_walk(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        fts = FTSManager(db)
+        service = ParseService(db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"))
+        watch_loop = WatchLoop(db=db, config_svc=config_svc, parse_svc=service)
+        root = tmp_path / "watched"
+        root.mkdir()
+        watch = await config_svc.add_watch(str(root), removable=False)
+        source = root / "note.txt"
+
+        source.write_text("content", encoding="utf-8")
+        ingested = await service.ensure_ingested(str(source), watch_id=watch["id"])
+        assert ingested is not None
+
+        source.unlink()
+        await watch_loop._initial_scan(str(root), watch["id"])
+        row = await db.fetchone("SELECT scan_status, deleted_at FROM files WHERE path=?", (str(source),))
+
+        assert row is not None
+        assert row["scan_status"] == "deleted"
+        assert row["deleted_at"] is not None
+
+    asyncio.run(_run())
+
+
+def test_watch_scan_marks_root_unreachable_without_refreshing_all_files(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        fts = FTSManager(db)
+        service = ParseService(db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"))
+        watch_loop = WatchLoop(db=db, config_svc=config_svc, parse_svc=service)
+        root = tmp_path / "removable"
+        root.mkdir()
+        watch = await config_svc.add_watch(str(root), removable=True)
+        source = root / "note.txt"
+
+        source.write_text("content", encoding="utf-8")
+        ingested = await service.ensure_ingested(str(source), watch_id=watch["id"])
+        assert ingested is not None
+
+        source.unlink()
+        root.rmdir()
+        await watch_loop._initial_scan(str(root), watch["id"])
+        file_row = await db.fetchone("SELECT scan_status FROM files WHERE path=?", (str(source),))
+        watch_row = await db.fetchone("SELECT watch_status, unreachable_at FROM watch_targets WHERE id=?", (watch["id"],))
+
+        assert file_row == {"scan_status": "active"}
+        assert watch_row is not None
+        assert watch_row["watch_status"] == "unreachable"
+        assert watch_row["unreachable_at"] is not None
+
+    asyncio.run(_run())
+
+
+def test_scan_service_creates_and_processes_manual_file_scan(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"))
+        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc)
+        source = tmp_path / "note.txt"
+        source.write_text("content", encoding="utf-8")
+
+        scan = await scan_svc.create_scan(str(source), kind="manual", source="cli")
+        task = await scan_svc.acquire_task()
+
+        assert task is not None
+        assert task["id"] == scan.id
+        assert await scan_svc.process_scan(task) is True
+
+        done = await scan_svc.get_scan(scan.id)
+        file_row = await db.fetchone("SELECT path, sha256, scan_status FROM files WHERE path=?", (str(source),))
+
+        assert done.status == "done"
+        assert done.files_seen == 1
+        assert done.files_refreshed == 1
+        assert done.files_new == 1
+        assert file_row is not None
+        assert file_row["sha256"] is None
+        assert file_row["scan_status"] == "active"
+
+    asyncio.run(_run())
+
+
+def test_scan_service_directory_scan_applies_excludes_and_counts_unsupported(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"))
+        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc)
+        root = tmp_path / "docs"
+        root.mkdir()
+        included = root / "included.txt"
+        excluded = root / "excluded.txt"
+        unsupported = root / "image.png"
+        included.write_text("included", encoding="utf-8")
+        excluded.write_text("excluded", encoding="utf-8")
+        unsupported.write_text("unsupported", encoding="utf-8")
+        await config_svc.add_rule("exclude-test", "exclude", f"*{excluded.name}")
+
+        scan = await scan_svc.create_scan(str(root), kind="manual", source="cli")
+        task = await scan_svc.acquire_task()
+        assert task is not None
+        assert await scan_svc.process_scan(task) is True
+
+        done = await scan_svc.get_scan(scan.id)
+        rows = await db.fetchall("SELECT path FROM files ORDER BY path")
+
+        assert done.files_seen == 3
+        assert done.files_refreshed == 1
+        assert done.files_new == 1
+        assert done.files_excluded == 1
+        assert done.files_unsupported == 1
+        assert rows == [{"path": str(included)}]
+
+    asyncio.run(_run())
+
+
+def test_scan_service_reuses_pending_scan_for_same_kind_and_path(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"))
+        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc)
+        root = tmp_path / "docs"
+        root.mkdir()
+
+        first = await scan_svc.create_scan(str(root), kind="manual", source="cli")
+        second = await scan_svc.create_scan(str(root), kind="manual", source="sdk")
+        scans = await scan_svc.list_scans()
+
+        assert second.id == first.id
+        assert len(scans) == 1
+
+    asyncio.run(_run())
+
+
+def test_scan_service_cleanup_keeps_latest_terminal_scans_and_active_tasks(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"))
+        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc)
+
+        for index in range(1002):
+            status = "done" if index % 2 == 0 else "failed"
+            await db.execute(
+                "INSERT INTO scans (path, kind, source, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (f"/tmp/doc-{index}.pdf", "manual", "cli", status, index, index),
+            )
+        await db.execute(
+            "INSERT INTO scans (path, kind, source, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            ("/tmp/pending.pdf", "manual", "cli", "pending", 2000, 2000),
+        )
+        await db.execute(
+            "INSERT INTO scans (path, kind, source, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            ("/tmp/running.pdf", "manual", "cli", "running", 2001, 2001),
+        )
+
+        await scan_svc.cleanup_terminal_scan_logs()
+
+        terminal_count = await db.fetchone("SELECT COUNT(*) AS cnt FROM scans WHERE status IN (?, ?)", ("done", "failed"))
+        active_count = await db.fetchone("SELECT COUNT(*) AS cnt FROM scans WHERE status IN (?, ?)", ("pending", "running"))
+        oldest = await db.fetchone("SELECT MIN(created_at) AS created_at FROM scans WHERE status IN (?, ?)", ("done", "failed"))
+
+        assert terminal_count == {"cnt": 1000}
+        assert active_count == {"cnt": 2}
+        assert oldest == {"created_at": 2}
+
+    asyncio.run(_run())
+
+
+def test_watch_loop_queues_watch_scan_when_scan_service_is_available(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"))
+        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc)
+        watch_loop = WatchLoop(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_svc=scan_svc)
+        root = tmp_path / "watched"
+        root.mkdir()
+        watch = await config_svc.add_watch(str(root), removable=False)
+
+        await watch_loop._initial_scan(str(root), watch["id"])
+        scans = await scan_svc.list_scans(kind="watch", watch_id=watch["id"])
+
+        assert len(scans) == 1
+        assert scans[0].path == str(root)
+        assert scans[0].status == "pending"
+
+    asyncio.run(_run())
+
+
+def test_cleanup_deleted_files_does_not_cleanup_orphan_docs(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        cleanup_svc = CleanupService(db=db, data_dir=str(tmp_path / "data"))
+        now = 1000
+        sha256 = "1" * 64
+
+        await db.execute(
+            "INSERT INTO docs (sha256, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?)",
+            (sha256, 7, now, now),
+        )
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, deleted_at, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(tmp_path / "deleted.txt"), "deleted.txt", "txt", 7, now, sha256, "deleted", now, now, now),
+        )
+        file_row = await db.fetchone("SELECT id FROM files WHERE sha256=?", (sha256,))
+        assert file_row is not None
+        await db.execute(
+            "INSERT INTO fts_filenames (file_id, filename, ext) VALUES (?, ?, ?)",
+            (file_row["id"], "deleted", "txt"),
+        )
+
+        count = await cleanup_svc.cleanup_deleted(dry_run=False)
+        doc = await db.fetchone("SELECT sha256 FROM docs WHERE sha256=?", (sha256,))
+        fts_name = await db.fetchone("SELECT file_id FROM fts_filenames WHERE file_id=?", (file_row["id"],))
+        file_after = await db.fetchone("SELECT id FROM files WHERE id=?", (file_row["id"],))
+
+        assert count == 1
+        assert file_after is None
+        assert fts_name is None
+        assert doc == {"sha256": sha256}
+
+    asyncio.run(_run())
+
+
+def test_cleanup_orphans_keeps_docs_referenced_by_deleted_or_unreachable_files(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        cleanup_svc = CleanupService(db=db, data_dir=str(tmp_path / "data"))
+        now = 1000
+        deleted_sha = "2" * 64
+        unreachable_sha = "3" * 64
+        orphan_sha = "4" * 64
+
+        for sha256 in (deleted_sha, unreachable_sha, orphan_sha):
+            await db.execute(
+                "INSERT INTO docs (sha256, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?)",
+                (sha256, 7, now, now),
+            )
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, deleted_at, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(tmp_path / "deleted.txt"), "deleted.txt", "txt", 7, now, deleted_sha, "deleted", now, now, now),
+        )
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(tmp_path / "unreachable.txt"), "unreachable.txt", "txt", 7, now, unreachable_sha, "unreachable", now, now),
+        )
+
+        count = await cleanup_svc.cleanup_orphans(dry_run=False)
+        deleted_doc = await db.fetchone("SELECT sha256 FROM docs WHERE sha256=?", (deleted_sha,))
+        unreachable_doc = await db.fetchone("SELECT sha256 FROM docs WHERE sha256=?", (unreachable_sha,))
+        orphan_doc = await db.fetchone("SELECT sha256 FROM docs WHERE sha256=?", (orphan_sha,))
+
+        assert count == 1
+        assert deleted_doc == {"sha256": deleted_sha}
+        assert unreachable_doc == {"sha256": unreachable_sha}
+        assert orphan_doc is None
+
+    asyncio.run(_run())
+
+
+def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) -> None:
+    class _ParseQueue:
+        async def get_queue_length(self) -> int:
+            return 2
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        watch = await config_svc.add_watch(str(tmp_path / "watched"), removable=True)
+        now = 1000
+        sha_done = "5" * 64
+        sha_pending = "6" * 64
+
+        for sha256 in (sha_done, sha_pending):
+            await db.execute(
+                "INSERT INTO docs (sha256, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?)",
+                (sha256, 7, now, now),
+            )
+        await db.execute(
+            "UPDATE docs SET error_code=? WHERE sha256=?",
+            ("metadata_failed", sha_pending),
+        )
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, watch_id, scan_status, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(tmp_path / "watched" / "done.pdf"), "done.pdf", "pdf", 7, now, sha_done, watch["id"], "active", now, now),
+        )
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, watch_id, scan_status, error_code, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                str(tmp_path / "watched" / "pending.pdf"),
+                "pending.pdf",
+                "pdf",
+                7,
+                now,
+                sha_pending,
+                watch["id"],
+                "active",
+                "stat_failed",
+                now,
+                now,
+            ),
+        )
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, watch_id, scan_status, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(tmp_path / "watched" / "need-ingest.pdf"), "need-ingest.pdf", "pdf", 7, now, watch["id"], "active", now, now),
+        )
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, watch_id, scan_status, error_code, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(tmp_path / "watched" / "blocked-ingest.pdf"), "blocked-ingest.pdf", "pdf", 7, now, watch["id"], "active", "ingest_failed", now, now),
+        )
+        await db.execute(
+            "INSERT INTO parses (sha256, tier, pages, status, privacy, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (sha_done, "standard", "1", "done", "local", now, now),
+        )
+        await db.execute(
+            "INSERT INTO parses (sha256, tier, pages, status, privacy, error_code, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (sha_pending, "standard", "1", "failed", "local", "parse_failed", now, now),
+        )
+        for index in range(6):
+            await db.execute(
+                "INSERT INTO scans (path, kind, source, status, files_seen, files_new, error_code, error_msg, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    str(tmp_path / f"scan-{index}.pdf"),
+                    "manual",
+                    "cli",
+                    "done",
+                    index,
+                    index + 1,
+                    "scan_failed" if index == 5 else None,
+                    "hidden message",
+                    now + index,
+                    now + index,
+                ),
+            )
+
+        state = SimpleNamespace(
+            db=db,
+            config_svc=config_svc,
+            parse_svc=_ParseQueue(),
+            start_time=0,
+            pid=123,
+            socket_path="/tmp/mineru.sock",
+            data_dir=str(tmp_path / "data"),
+        )
+        status = await DoclibServer(state).get_server_status()
+
+        assert status.watch_count == 1
+        assert status.ingest_queue_length == 1
+        assert len(status.watch_stats) == 1
+        stats = status.watch_stats[0]
+        assert stats.watch_id == watch["id"]
+        assert stats.total_files == 4
+        assert stats.active_files == 4
+        assert stats.pending_ingest_files == 1
+        assert stats.file_error_count == 2
+        assert stats.doc_count == 2
+        assert stats.parse_done_count == 1
+        assert stats.parse_failed_count == 1
+        assert [scan.path for scan in status.recent_scans] == [str(tmp_path / f"scan-{index}.pdf") for index in range(5, 0, -1)]
+        assert status.recent_scans[0].error_code == "scan_failed"
+        assert not hasattr(status.recent_scans[0], "error_msg")
+        assert status.error_summary is not None
+        assert [(bucket.code, bucket.count) for bucket in status.error_summary.file_errors] == [("ingest_failed", 1), ("stat_failed", 1)]
+        assert [(bucket.code, bucket.count) for bucket in status.error_summary.doc_errors] == [("metadata_failed", 1)]
+        assert [(bucket.code, bucket.count) for bucket in status.error_summary.parse_errors] == [("parse_failed", 1)]
+
+    asyncio.run(_run())
+
+
+def test_forget_path_deletes_file_row_and_filename_fts_without_deleting_doc(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        cleanup_svc = CleanupService(db=db, data_dir=str(tmp_path / "data"))
+        now = 1000
+        sha256 = "7" * 64
+        path = str(tmp_path / "doc.pdf")
+
+        await db.execute(
+            "INSERT INTO docs (sha256, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?)",
+            (sha256, 7, now, now),
+        )
+        await db.execute(
+            "INSERT INTO parses (sha256, tier, pages, status, privacy, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (sha256, "standard", "1", "done", "local", now, now),
+        )
+        await db.execute(
+            "INSERT INTO fts_contents (sha256, tier, text, filename) VALUES (?, ?, ?, ?)",
+            (sha256, "standard", "content", "doc.pdf"),
+        )
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (path, "doc.pdf", "pdf", 7, now, sha256, "active", now, now),
+        )
+        file_row = await db.fetchone("SELECT id FROM files WHERE path=?", (path,))
+        assert file_row is not None
+        await db.execute(
+            "INSERT INTO fts_filenames (file_id, filename, ext) VALUES (?, ?, ?)",
+            (file_row["id"], "doc", "pdf"),
+        )
+
+        dry_run = await cleanup_svc.forget_path(path, dry_run=True)
+        assert dry_run["matched_as"] == "file"
+        assert dry_run["forgotten_files"] == 1
+        assert await db.fetchone("SELECT id FROM files WHERE path=?", (path,)) is not None
+
+        result = await cleanup_svc.forget_path(path, dry_run=False)
+
+        assert result["matched_as"] == "file"
+        assert result["forgotten_files"] == 1
+        assert await db.fetchone("SELECT id FROM files WHERE path=?", (path,)) is None
+        assert await db.fetchone("SELECT file_id FROM fts_filenames WHERE file_id=?", (file_row["id"],)) is None
+        assert await db.fetchone("SELECT sha256 FROM docs WHERE sha256=?", (sha256,)) == {"sha256": sha256}
+        assert await db.fetchone("SELECT sha256 FROM parses WHERE sha256=?", (sha256,)) == {"sha256": sha256}
+        assert await db.fetchone("SELECT sha256 FROM fts_contents WHERE sha256=?", (sha256,)) == {"sha256": sha256}
+
+    asyncio.run(_run())
+
+
+def test_forget_directory_matches_historical_prefix_rows(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        cleanup_svc = CleanupService(db=db, data_dir=str(tmp_path / "data"))
+        now = 1000
+        root = tmp_path / "project"
+        sha_a = "8" * 64
+        sha_b = "9" * 64
+
+        for sha256 in (sha_a, sha_b):
+            await db.execute(
+                "INSERT INTO docs (sha256, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?)",
+                (sha256, 7, now, now),
+            )
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(root / "a.pdf"), "a.pdf", "pdf", 7, now, sha_a, "active", now, now),
+        )
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(root / "nested" / "b.pdf"), "b.pdf", "pdf", 7, now, sha_b, "deleted", now, now),
+        )
+
+        result = await cleanup_svc.forget_path(str(root), dry_run=False)
+
+        assert result["matched_as"] == "directory"
+        assert result["forgotten_files"] == 2
+        rows = await db.fetchall("SELECT path FROM files")
+        assert rows == []
+
+    asyncio.run(_run())
+
+
+def test_forget_rejects_watch_root_and_warns_under_active_watch(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        cleanup_svc = CleanupService(db=db, data_dir=str(tmp_path / "data"))
+        root = tmp_path / "watched"
+        root.mkdir()
+        watch = await config_svc.add_watch(str(root), removable=False)
+        path = str(root / "doc.pdf")
+        now = 1000
+
+        await db.execute(
+            "INSERT INTO docs (sha256, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?)",
+            ("a" * 64, 7, now, now),
+        )
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, watch_id, scan_status, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (path, "doc.pdf", "pdf", 7, now, "a" * 64, watch["id"], "active", now, now),
+        )
+
+        try:
+            await cleanup_svc.forget_path(str(root), dry_run=True)
+        except InvalidRequestError as exc:
+            assert exc.param == "path"
+        else:
+            raise AssertionError("watch root forget should be rejected")
+
+        result = await cleanup_svc.forget_path(path, dry_run=True)
+
+        assert result["matched_as"] == "file"
+        assert result["forgotten_files"] == 1
+        assert result["warnings"] == ["Path is under an active watch and may be rediscovered on the next scan."]
 
     asyncio.run(_run())
 
@@ -471,3 +1332,61 @@ def test_process_doc_marks_empty_page_result_failed(tmp_path: Path) -> None:
     assert parses[0]["status"] == "failed"
     assert parses[0]["error_code"] == "parse_empty"
     assert list(tmp_path.rglob("*.json")) == []
+
+
+def test_process_doc_fails_when_batch_json_cannot_be_written(tmp_path: Path) -> None:
+    sha256 = "b" * 64
+    task = {
+        "id": 1,
+        "sha256": sha256,
+        "tier": "flash",
+        "pages": "1",
+        "status": "parsing",
+        "privacy": "local",
+    }
+    parses = [
+        {
+            **task,
+            "error_code": None,
+            "error_msg": None,
+            "done_at": None,
+            "locked_at": 123,
+            "updated_at": 123,
+        }
+    ]
+    db = _FakeDB(
+        parses=parses,
+        file_row={
+            "path": "/tmp/doc.pdf",
+            "sha256": sha256,
+            "scan_status": "active",
+            "filename": "doc.pdf",
+            "title": "",
+            "author": "",
+        },
+    )
+    fts = _FakeFTS()
+    service = ParseService(db=db, fts=fts, config_svc=None, data_dir=str(tmp_path))
+    blocked_output_dir = tmp_path / "parsed" / sha256[:2] / sha256 / "flash"
+    blocked_output_dir.parent.mkdir(parents=True)
+    blocked_output_dir.write_text("not a directory", encoding="utf-8")
+
+    class _PageResult:
+        def to_dict(self) -> dict[str, list]:
+            return {"pages": [{"page_idx": 1, "page_size": [100, 100], "para_blocks": []}]}
+
+        def markdown(self, *, add_markers: bool = False) -> str:
+            return "content"
+
+    async def _parse(file_row: dict, tier: Tier, pages: str) -> list:
+        return [_PageResult()]
+
+    service._parse_via_local = _parse  # type: ignore[method-assign]
+
+    success = asyncio.run(service.process_doc(task))
+
+    assert success is False
+    assert parses[0]["status"] == "failed"
+    assert parses[0]["error_code"] == "parse_json_write_failed"
+    assert parses[0]["done_at"] is None
+    assert fts.replaced == []

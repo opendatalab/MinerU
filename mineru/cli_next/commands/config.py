@@ -5,18 +5,15 @@ from __future__ import annotations
 import typer
 
 from ...doclib.client import DoclibClient
-from ...doclib.types import ConfigResponse, ConfigSetRequest, ExcludeRuleRequest, ParsingRuleRequest, WatchRequest
+from ...doclib.types import ConfigResponse, ConfigSetRequest, ExcludeRuleRequest, ParsingRuleRequest
 from ...types import Tier
 from ..output import print_error, print_success, print_info, print_json
 
 app = typer.Typer(help="Configuration management", no_args_is_help=True)
 
-# sub-command groups
-watch_app = typer.Typer(help="Watch directory management", no_args_is_help=True)
 exclude_app = typer.Typer(help="Exclusion rule management", no_args_is_help=True)
 parsing_rules_app = typer.Typer(help="Parsing rule management", no_args_is_help=True)
 
-app.add_typer(watch_app, name="watch")
 app.add_typer(exclude_app, name="exclude")
 app.add_typer(parsing_rules_app, name="parsing-rules")
 
@@ -34,59 +31,6 @@ def show(json_mode: bool = typer.Option(False, "--json", help="JSON output")) ->
             print_json(data)
         else:
             _print_config(data)
-    except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
-
-
-# ── watch ────────────────────────────────────────────────────────
-
-
-@watch_app.command("add")
-def watch_add(
-    path: str = typer.Argument(..., help="Directory path to watch"),
-    removable: bool = typer.Option(False, "--removable", help="Removable device"),
-    label: str = typer.Option(None, "--label", help="Label for this watch"),
-) -> None:
-    """Add a directory to watch."""
-    try:
-        client = DoclibClient(timeout=10)
-        data = client.add_watch(WatchRequest(path=path, removable=removable, label=label))
-        print_success(f"Watch added: {data.path} (id={data.id})")
-    except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
-
-
-@watch_app.command("list")
-def watch_list(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
-    """List all watched directories."""
-    try:
-        client = DoclibClient(timeout=10)
-        data = client.list_watches()
-        if json_mode:
-            print_json(data)
-        else:
-            watches = data.watches
-            if not watches:
-                print_info("No watches configured.")
-            for w in watches:
-                status = w.watch_status
-                icon = "✓" if status == "active" else "✗"
-                extra = " [removable]" if w.removable else ""
-                print(f"  {icon} {w.path}{extra}  [{status}]")
-    except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
-
-
-@watch_app.command("rm")
-def watch_rm(path: str = typer.Argument(..., help="Watch directory path to remove")) -> None:
-    """Remove a watched directory."""
-    try:
-        client = DoclibClient(timeout=10)
-        client.remove_watch(path)
-        print_success(f"Watch removed: {path}")
     except Exception as exc:
         print_error(str(exc))
         raise typer.Exit(1) from None

@@ -88,6 +88,7 @@ class ConfigService:
                     "WHERE watch_id=? AND scan_status=?",
                     (SCAN_STATUS_DELETED, now, now, watch["id"], SCAN_STATUS_UNREACHABLE),
                 ),
+                ("UPDATE scans SET watch_id=NULL, updated_at=? WHERE watch_id=?", (now, watch["id"])),
                 ("DELETE FROM watch_targets WHERE id=?", (watch["id"],)),
             ]
         )

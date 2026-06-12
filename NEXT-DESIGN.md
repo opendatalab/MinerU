@@ -144,7 +144,6 @@ CREATE TABLE files (
     ext             TEXT    NOT NULL,
     size_bytes      INTEGER NOT NULL,
     mtime_ms        INTEGER NOT NULL,
-    birthtime_ms    INTEGER,           -- 文件创建时间，Unix epoch ms
     sha256          TEXT    REFERENCES docs(sha256),
     watch_id        INTEGER REFERENCES watch_targets(id),
     scan_status     TEXT    NOT NULL DEFAULT 'active',  -- active / deleted / unreachable
@@ -167,9 +166,9 @@ CREATE INDEX idx_files_scan_status ON files(scan_status);
 CREATE TABLE docs (
     sha256          TEXT    PRIMARY KEY,
     size_bytes      INTEGER NOT NULL,
-    mime_type       TEXT,
+    file_type        TEXT,
     page_count      INTEGER,
-    lang            TEXT,
+    language        TEXT,
     title           TEXT,
     author          TEXT,
     subject         TEXT,
@@ -182,6 +181,8 @@ CREATE TABLE docs (
     updated_at      INTEGER NOT NULL   -- Unix epoch ms
 );
 ```
+
+> `birthtime_ms` 暂不进入 P0。文件创建时间在不同平台上的语义和可用性不一致，目前还没有明确的产品或 Agent 行为依赖它；P0 只使用 `size_bytes` 和 `mtime_ms` 做轻量变化检测。
 
 > **docs 元数据填充策略**：
 > - **Ingest 阶段**（ingest_file）：SHA-256 已全量读文件，顺手通过 pypdfium2 / python-docx 提取 metadata，成本可忽略。page_count 准确（pypdfium2 仅读 Catalog），title/author/subject/keywords 取自文件 metadata（可能不准，做保护性截断：title≤500、author≤200、subject≤1000、keywords≤1000）。`meta_tier=NULL`
@@ -471,7 +472,7 @@ RETURNING *;
 ```
 阶段 1: 入库（IngestWorker）
   - 计算 SHA-256
-  - 提取 metadata (mime_type, page_count, title, author)
+  - 提取 metadata (file_type, page_count, title, author)
   - FTS 索引文件名
   - 触发默认 flash 解析（INSERT INTO parses (sha256, tier, pages, status='pending', privacy='local', priority=0)）
 
@@ -491,7 +492,7 @@ Watch 检测到文件事件
   → IngestWorker.acquire_task(): UPDATE files SET locked_at WHERE sha256 IS NULL
   → process_file():
        1. compute SHA-256 (asyncio.to_thread)
-       2. INSERT OR IGNORE INTO docs (sha256, size_bytes, page_count, title, author, subject, keywords)
+       2. INSERT OR IGNORE INTO docs (sha256, size_bytes, file_type, page_count, title, author, subject, keywords)
        3. FTS insert fts_filenames
        4. UPDATE files SET sha256=?, locked_at=NULL
        5. check parsing-rules
@@ -633,9 +634,11 @@ managed 模式崩溃恢复：
   → SearchService.search():
        1. 分词（jieba / unicode61）
        2. FTS5 MATCH on fts_contents
-       3. JOIN files/docs 获取元数据
-       4. 按 sha256 去重（同一文档可能有多个路径）
-       5. 结果标注解析状态（flash / standard / pro）
+       3. 按 tier / min_tier 过滤索引来源
+       4. JOIN files/docs 获取元数据，并按 file_type 过滤
+       5. 按 sha256 去重（同一文档可能有多个路径）
+       6. paths 优先返回 active files；无 active file 时 fallback 返回非 active files
+       7. 结果标注 snippet 来源 tier（flash / standard / pro）
 ```
 
 ### 5.8 可插拔设备
@@ -652,6 +655,8 @@ DeviceMonitor 每 5 秒检测:
        UPDATE files SET scan_status='unreachable' WHERE watch_id=? AND scan_status='active'
        正在进行的解析任务标记特殊错误（非永久失败，设备恢复后可重试）
 ```
+
+同步 path 调用如果发现当前文件缺失且 removable watch root 不可达，只更新当前文件和 watch 状态；不批量更新同一 watch 下的所有文件。批量 active → unreachable / unreachable → active 收敛由 DeviceMonitor 等后台任务负责。
 
 ---
 
@@ -791,10 +796,11 @@ mineru config parse-server remote.api-key sk-xxx
 通过 `watch_targets` 表管理，CLI 操作：
 
 ```bash
-mineru config watch add ~/Documents
-mineru config watch add /Volumes/SSD --removable
-mineru config watch list
-mineru config watch rm ~/Documents
+mineru watch add ~/Documents
+mineru watch add /Volumes/SSD --removable
+mineru watch list
+mineru watch remove ~/Documents
+mineru watch rescan ~/Documents
 ```
 
 约束：不允许嵌套、必须绝对路径。

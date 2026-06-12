@@ -29,6 +29,8 @@ from .types import (
     ExcludeRuleRequest,
     FileInfoResponse,
     FindResponse,
+    ForgetPathRequest,
+    ForgetPathResponse,
     InvalidateRequest,
     InvalidateResponse,
     ListDocsResponse,
@@ -42,6 +44,11 @@ from .types import (
     RemoveExcludeRuleResponse,
     RemoveParsingRuleResponse,
     RemoveWatchResponse,
+    ScanInfo,
+    ScanKind,
+    ScanListResponse,
+    ScanRequest,
+    ScanTaskStatus,
     SearchResponse,
     ServerStatusResponse,
     ShutdownResponse,
@@ -118,6 +125,32 @@ class DoclibClient(DoclibInterface):
     def invalidate(self, request: InvalidateRequest) -> InvalidateResponse:
         return self._request_model(InvalidateResponse, body=request)
 
+    @route("POST", "/forget", tags=("files",))
+    def forget_path(self, request: ForgetPathRequest) -> ForgetPathResponse:
+        return self._request_model(ForgetPathResponse, body=request)
+
+    @route("POST", "/scans", tags=("scan",))
+    def create_scan(self, request: ScanRequest) -> ScanInfo:
+        return self._request_model(ScanInfo, body=request)
+
+    @route("GET", "/scans", tags=("scan",))
+    def list_scans(
+        self,
+        *,
+        limit: int = 50,
+        status: ScanTaskStatus | None = None,
+        kind: ScanKind | None = None,
+        watch_id: int | None = None,
+    ) -> ScanListResponse:
+        return self._request_model(
+            ScanListResponse,
+            params={"limit": limit, "status": status, "kind": kind, "watch_id": watch_id},
+        )
+
+    @route("GET", "/scans/{scan_id}", tags=("scan",))
+    def get_scan(self, scan_id: int) -> ScanInfo:
+        return self._request_model(ScanInfo, path_params={"scan_id": scan_id})
+
     @route("GET", "/docs", tags=("docs",))
     def list_docs(self, *, path: str | None = None) -> ListDocsResponse:
         return self._request_model(ListDocsResponse, params={"path": path})
@@ -150,15 +183,24 @@ class DoclibClient(DoclibInterface):
         )
 
     @route("GET", "/search", tags=("search",))
-    def search(self, query: str, *, file_type: str | None = None, limit: int = 20, offset: int = 0) -> SearchResponse:
+    def search(
+        self,
+        query: str,
+        *,
+        file_type: str | None = None,
+        tier: Tier | None = None,
+        min_tier: Tier | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> SearchResponse:
         return self._request_model(
             SearchResponse,
-            params={"query": query, "file_type": file_type, "limit": limit, "offset": offset},
+            params={"query": query, "file_type": file_type, "tier": tier, "min_tier": min_tier, "limit": limit, "offset": offset},
         )
 
     @route("GET", "/find", tags=("search",))
-    def find(self, query: str, *, limit: int = 50) -> FindResponse:
-        return self._request_model(FindResponse, params={"query": query, "limit": limit})
+    def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse:
+        return self._request_model(FindResponse, params={"query": query, "ext": ext, "limit": limit})
 
     @route("GET", "/info", tags=("info",))
     def get_file_info(self, path: str) -> FileInfoResponse:
@@ -208,11 +250,11 @@ class DoclibClient(DoclibInterface):
     def remove_parsing_rule(self, rule_id: int) -> RemoveParsingRuleResponse:
         return self._request_model(RemoveParsingRuleResponse, path_params={"rule_id": rule_id})
 
-    @route("POST", "/cleanup/deleted", tags=("cleanup",))
+    @route("POST", "/cleanup/deleted-files", tags=("cleanup",))
     def cleanup_deleted_files(self, request: CleanupDeletedRequest) -> CleanupDeletedResponse:
         return self._request_model(CleanupDeletedResponse, body=request)
 
-    @route("POST", "/cleanup/orphans", tags=("cleanup",))
+    @route("POST", "/cleanup/orphan-docs", tags=("cleanup",))
     def cleanup_orphan_docs(self, request: CleanupOrphansRequest) -> CleanupOrphansResponse:
         return self._request_model(CleanupOrphansResponse, body=request)
 
@@ -224,8 +266,8 @@ class DoclibClient(DoclibInterface):
         self,
         response_model: type[T],
         *,
-        path_params: dict[str, object] | None = None,
-        params: dict[str, object] | None = None,
+        path_params: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
         body: BaseModel | None = None,
     ) -> T:
         route_info = get_route_info(self._calling_route_method())
@@ -258,13 +300,13 @@ class DoclibClient(DoclibInterface):
         return getattr(self, method_name)
 
 
-def _format_path(path: str, path_params: dict[str, object]) -> str:
+def _format_path(path: str, path_params: dict[str, Any]) -> str:
     for key, value in path_params.items():
         path = path.replace("{" + key + "}", str(value))
     return path
 
 
-def _compact_params(params: dict[str, object]) -> dict[str, object]:
+def _compact_params(params: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in params.items() if value is not None}
 
 

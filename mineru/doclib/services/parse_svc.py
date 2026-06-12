@@ -446,13 +446,13 @@ class ParseService:
         )
 
         await self.db.execute(
-            "INSERT OR IGNORE INTO docs (sha256, size_bytes, doc_type, page_count, "
+            "INSERT OR IGNORE INTO docs (sha256, size_bytes, file_type, page_count, "
             "title, author, subject, keywords, error_code, error_msg, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 sha256,
                 stat["size_bytes"],
-                _doc_type_from_ext(ext),
+                _file_type_from_ext(ext),
                 page_count,
                 metadata["title"],
                 metadata["author"],
@@ -675,7 +675,6 @@ class ParseService:
             return False
 
         output_dir = os.path.join(self.data_dir, "parsed", sha256[:2], sha256, tier)
-        os.makedirs(output_dir, exist_ok=True)
 
         # route parse based on tier
         via = "local"
@@ -699,7 +698,6 @@ class ParseService:
 
             pages_key = _safe_filename(task["pages"])
             json_path = os.path.join(output_dir, f"{pages_key}_{done_at_ms}.json")
-            os.makedirs(output_dir, exist_ok=True)
             for r in results:
                 if hasattr(r, "to_dict"):
                     new_pages.extend(r.to_dict().get("pages", []))
@@ -707,10 +705,12 @@ class ParseService:
                 await self._fail_task(task["id"], "parse_empty", "Parse completed but returned no pages")
                 return False
             try:
+                os.makedirs(output_dir, exist_ok=True)
                 with open(json_path, "w", encoding="utf-8") as f:
                     _json.dump({"pages": new_pages}, f, ensure_ascii=False, indent=2)
-            except Exception:
-                pass
+            except Exception as exc:
+                await self._fail_task(task["id"], "parse_json_write_failed", str(exc)[:500])
+                return False
         else:
             await self._fail_task(task["id"], "parse_empty", "Parse completed but returned no results")
             return False
@@ -1100,5 +1100,5 @@ def _safe_filename(s: str, done_at: int = 0) -> str:
     return f"{s}_{done_at}" if done_at else s
 
 
-def _doc_type_from_ext(ext: str) -> str:
+def _file_type_from_ext(ext: str) -> str:
     return DOC_TYPE_BY_EXT.get(ext, ext or "unknown")

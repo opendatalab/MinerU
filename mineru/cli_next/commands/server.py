@@ -63,6 +63,7 @@ def start() -> None:
         [sys.executable, "-m", "mineru.doclib.app"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        start_new_session=True,
     )
 
     if not _wait_for_sock():

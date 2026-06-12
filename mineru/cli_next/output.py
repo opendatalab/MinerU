@@ -134,6 +134,81 @@ def format_server_status(data: Any, json_mode: bool = False) -> None:
         table.add_row("Watches", str(_get(data, "watch_count", 0)))
         console.print(table)
 
+        watch_stats = _get(data, "watch_stats", [])
+        if watch_stats:
+            watch_table = Table(title="Watch Stats")
+            watch_table.add_column("Path", style="cyan", no_wrap=True)
+            watch_table.add_column("Status", style="green")
+            watch_table.add_column("Files", justify="right")
+            watch_table.add_column("Active", justify="right")
+            watch_table.add_column("Deleted", justify="right")
+            watch_table.add_column("Unreachable", justify="right")
+            watch_table.add_column("Pending ingest", justify="right")
+            watch_table.add_column("Errors", justify="right")
+            watch_table.add_column("Docs", justify="right")
+            watch_table.add_column("Parses done/pending/parsing/failed", justify="right")
+            for item in watch_stats:
+                parse_counts = (
+                    f"{_get(item, 'parse_done_count', 0)}/"
+                    f"{_get(item, 'parse_pending_count', 0)}/"
+                    f"{_get(item, 'parse_parsing_count', 0)}/"
+                    f"{_get(item, 'parse_failed_count', 0)}"
+                )
+                watch_table.add_row(
+                    _get(item, "path", ""),
+                    _get(item, "watch_status", ""),
+                    str(_get(item, "total_files", 0)),
+                    str(_get(item, "active_files", 0)),
+                    str(_get(item, "deleted_files", 0)),
+                    str(_get(item, "unreachable_files", 0)),
+                    str(_get(item, "pending_ingest_files", 0)),
+                    str(_get(item, "file_error_count", 0)),
+                    str(_get(item, "doc_count", 0)),
+                    parse_counts,
+                )
+            console.print(watch_table)
+
+        error_summary = _get(data, "error_summary")
+        error_rows = _error_summary_rows(error_summary)
+        if error_rows:
+            error_table = Table(title="Error Summary")
+            error_table.add_column("Scope", style="cyan")
+            error_table.add_column("Code", style="red")
+            error_table.add_column("Count", justify="right")
+            for scope, code, count in error_rows:
+                error_table.add_row(scope, code, str(count))
+            console.print(error_table)
+
+        recent_scans = _get(data, "recent_scans", [])
+        if recent_scans:
+            scan_table = Table(title="Recent Scans")
+            scan_table.add_column("ID", justify="right")
+            scan_table.add_column("Kind", style="cyan")
+            scan_table.add_column("Source")
+            scan_table.add_column("Status", style="green")
+            scan_table.add_column("Path", no_wrap=True)
+            scan_table.add_column("Seen", justify="right")
+            scan_table.add_column("New", justify="right")
+            scan_table.add_column("Changed", justify="right")
+            scan_table.add_column("Deleted", justify="right")
+            scan_table.add_column("Errors", justify="right")
+            scan_table.add_column("Error code", style="red")
+            for item in recent_scans:
+                scan_table.add_row(
+                    str(_get(item, "id", "")),
+                    _get(item, "kind", ""),
+                    _get(item, "source", ""),
+                    _get(item, "status", ""),
+                    _get(item, "path", ""),
+                    str(_get(item, "files_seen", 0)),
+                    str(_get(item, "files_new", 0)),
+                    str(_get(item, "files_changed", 0)),
+                    str(_get(item, "files_deleted", 0)),
+                    str(_get(item, "files_error", 0)),
+                    _get(item, "error_code", "") or "",
+                )
+            console.print(scan_table)
+
         # parse-server status
         ps_data = _get(data, "parse_server")
         if ps_data:
@@ -212,3 +287,13 @@ def _format_bytes(n: int | None) -> str:
             return f"{n} {unit}"
         n //= 1024
     return f"{n} TB"
+
+
+def _error_summary_rows(error_summary: Any) -> list[tuple[str, str, int]]:
+    if not error_summary:
+        return []
+    rows: list[tuple[str, str, int]] = []
+    for scope, key in (("file", "file_errors"), ("doc", "doc_errors"), ("parse", "parse_errors")):
+        for bucket in _get(error_summary, key, []):
+            rows.append((scope, _get(bucket, "code", ""), _get(bucket, "count", 0)))
+    return rows

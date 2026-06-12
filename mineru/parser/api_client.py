@@ -8,13 +8,18 @@ does not expose parser backend selection.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
-import json as _json
+import json
+import os
+import time
 from pathlib import Path
 from typing import Any
 
-from .base import DocumentParser, ParseResult
+import httpx
+
 from ..types import PageInfo, Tier
+from .base import DocumentParser, ParseResult
 
 
 class MinerUApiParser(DocumentParser):
@@ -43,10 +48,11 @@ class MinerUApiParser(DocumentParser):
     def __init__(
         self,
         *,
-        api_url: str,
+        api_url: str | None = None,
         api_key: str | None = None,
         tier: Tier | None = None,
     ) -> None:
+        api_url = api_url or os.environ.get("MINERU_API_URL", "https://mineru.net/api")
         self._base = api_url.rstrip("/")
         self._api_key = api_key
         self._local = self._is_localhost(self._base)
@@ -63,9 +69,7 @@ class MinerUApiParser(DocumentParser):
         job = self._do_parse(payload)
         return self._build_result(job, file_path.name)
 
-    async def parse_async(
-        self, path: str | Path, *, page_range: str = ""
-    ) -> ParseResult:
+    async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:
         file_path = Path(path)
         if not file_path.exists():
             raise FileNotFoundError(file_path)
@@ -98,7 +102,7 @@ class MinerUApiParser(DocumentParser):
         return payload
 
     def _output_formats(self) -> list[str]:
-        return ["middle_json"]
+        return ["json"]
 
     # ── HTTP helpers ─────────────────────────────────────────────────
 
@@ -125,15 +129,14 @@ class MinerUApiParser(DocumentParser):
     def _check(r: Any) -> dict[str, Any]:
         if r.status_code >= 400:
             raise _V1APIError("http_error", f"HTTP {r.status_code}: {r.text[:500]}")
-        data = r.json()
+        try:
+            data = r.json()
+        except Exception:
+            return {}  # e.g. OSS PUT returns 200 with empty body
         if "error" in data:
             err = data["error"]
             raise _V1APIError(err.get("code", "unknown"), err.get("message", str(err)))
-        if (
-            "detail" in data
-            and isinstance(data["detail"], dict)
-            and "error" in data["detail"]
-        ):
+        if "detail" in data and isinstance(data["detail"], dict) and "error" in data["detail"]:
             err = data["detail"]["error"]
             raise _V1APIError(err.get("code", "unknown"), err.get("message", str(err)))
         return data
@@ -141,8 +144,6 @@ class MinerUApiParser(DocumentParser):
     # ── upload ───────────────────────────────────────────────────────
 
     def _upload(self, file_path: Path) -> str:
-        import httpx
-
         size = file_path.stat().st_size
         sha = _sha256_file(file_path)
 
@@ -163,10 +164,11 @@ class MinerUApiParser(DocumentParser):
                 return resp["file"]["id"]
 
             upload_url = resp["upload_url"]
+            upload_headers = resp.get("upload_headers", {})
             if upload_url.startswith("/"):
                 upload_url = f"{self._base}{upload_url}"
             with file_path.open("rb") as fh:
-                r2 = cli.put(upload_url, content=fh.read())
+                r2 = cli.put(upload_url, content=fh.read(), headers=upload_headers)
             self._check(r2)
 
             r3 = cli.post(
@@ -177,8 +179,6 @@ class MinerUApiParser(DocumentParser):
             return resp3["file"]["id"]
 
     async def _async_upload(self, file_path: Path) -> str:
-        import httpx
-
         size = file_path.stat().st_size
         sha = _sha256_file(file_path)
 
@@ -199,10 +199,11 @@ class MinerUApiParser(DocumentParser):
                 return resp["file"]["id"]
 
             upload_url = resp["upload_url"]
+            upload_headers = resp.get("upload_headers", {})
             if upload_url.startswith("/"):
                 upload_url = f"{self._base}{upload_url}"
             data = file_path.read_bytes()
-            r2 = await cli.put(upload_url, content=data)
+            r2 = await cli.put(upload_url, content=data, headers=upload_headers)
             self._check(r2)
 
             r3 = await cli.post(
@@ -215,13 +216,8 @@ class MinerUApiParser(DocumentParser):
     # ── parse execution ──────────────────────────────────────────────
 
     def _do_parse(self, payload: dict[str, Any]) -> dict[str, Any]:
-        import httpx
-
-        payload["wait"] = 600
-        with httpx.Client(timeout=httpx.Timeout(660, connect=30)) as cli:
-            r = cli.post(
-                f"{self._base}/v1/parse/jobs", headers=self._headers(), json=payload
-            )
+        with httpx.Client(timeout=httpx.Timeout(120, connect=30)) as cli:
+            r = cli.post(f"{self._base}/v1/parse/jobs", headers=self._headers(), json=payload)
             job = self._check(r)
             if job.get("status") not in ("completed", "partial", "failed", "canceled"):
                 # poll if wait timed out
@@ -229,21 +225,14 @@ class MinerUApiParser(DocumentParser):
         return job
 
     async def _async_do_parse(self, payload: dict[str, Any]) -> dict[str, Any]:
-        import httpx
-
-        payload["wait"] = 600
-        async with httpx.AsyncClient(timeout=httpx.Timeout(660, connect=30)) as cli:
-            r = await cli.post(
-                f"{self._base}/v1/parse/jobs", headers=self._headers(), json=payload
-            )
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30)) as cli:
+            r = await cli.post(f"{self._base}/v1/parse/jobs", headers=self._headers(), json=payload)
             job = self._check(r)
             if job.get("status") not in ("completed", "partial", "failed", "canceled"):
                 job = await self._async_poll(cli, job["job_id"])
         return job
 
     def _poll(self, cli: Any, job_id: str) -> dict[str, Any]:
-        import time
-
         delay = 2
         for _ in range(150):  # max 5 min
             time.sleep(delay)
@@ -255,14 +244,10 @@ class MinerUApiParser(DocumentParser):
         raise _V1APIError("timeout", f"Job {job_id} did not complete within timeout")
 
     async def _async_poll(self, cli: Any, job_id: str) -> dict[str, Any]:
-        import asyncio
-
         delay = 2
         for _ in range(150):
             await asyncio.sleep(delay)
-            r = await cli.get(
-                f"{self._base}/v1/parse/jobs/{job_id}", headers=self._headers()
-            )
+            r = await cli.get(f"{self._base}/v1/parse/jobs/{job_id}", headers=self._headers())
             job = self._check(r)
             if job.get("status") in ("completed", "partial", "failed", "canceled"):
                 return job
@@ -274,9 +259,7 @@ class MinerUApiParser(DocumentParser):
     def _build_result(self, job: dict[str, Any], file_name: str) -> ParseResult:
         return _parse_result_from_job(job, file_name, self)
 
-    async def _async_build_result(
-        self, job: dict[str, Any], file_name: str
-    ) -> ParseResult:
+    async def _async_build_result(self, job: dict[str, Any], file_name: str) -> ParseResult:
         return await _async_parse_result_from_job(job, file_name, self)
 
 
@@ -313,9 +296,7 @@ def _mime_type(path: Path) -> str:
     }.get(ext, "application/octet-stream")
 
 
-def _parse_result_from_job(
-    job: dict[str, Any], file_name: str, parser: MinerUApiParser
-) -> ParseResult:
+def _parse_result_from_job(job: dict[str, Any], file_name: str, parser: MinerUApiParser) -> ParseResult:
     files = job.get("files", [])
     outputs: dict[str, Any] = {}
     if files and files[0].get("output_files"):
@@ -328,9 +309,7 @@ def _parse_result_from_job(
     )
 
 
-async def _async_parse_result_from_job(
-    job: dict[str, Any], file_name: str, parser: MinerUApiParser
-) -> ParseResult:
+async def _async_parse_result_from_job(job: dict[str, Any], file_name: str, parser: MinerUApiParser) -> ParseResult:
     files = job.get("files", [])
     outputs: dict[str, Any] = {}
     if files and files[0].get("output_files"):
@@ -343,50 +322,60 @@ async def _async_parse_result_from_job(
     )
 
 
-def _download_json(
-    parser: MinerUApiParser, outputs: dict[str, Any]
-) -> dict[str, Any] | None:
+def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any] | None:
     ref = outputs.get("middle_json") or outputs.get("json") or outputs.get("json_")
-    if not ref or not ref.get("file_id"):
+    if not ref:
         return None
     try:
-        raw = _download_bytes(parser, ref["file_id"])
-        return _json.loads(raw)
+        raw = _download_bytes(parser, ref)
+        return json.loads(raw)
     except Exception:
         return None
 
 
-async def _async_download_json(
-    parser: MinerUApiParser, outputs: dict[str, Any]
-) -> dict[str, Any] | None:
+async def _async_download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any] | None:
     ref = outputs.get("middle_json") or outputs.get("json") or outputs.get("json_")
-    if not ref or not ref.get("file_id"):
+    if not ref:
         return None
     try:
-        raw = await _async_download_bytes(parser, ref["file_id"])
-        return _json.loads(raw)
+        raw = await _async_download_bytes(parser, ref)
+        return json.loads(raw)
     except Exception:
         return None
 
 
-def _download_bytes(parser: MinerUApiParser, file_id: str) -> bytes:
-    import httpx
+def _download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) -> bytes:
+    # TEMP(2026-06-12): staging server returns {"url": "..."} instead of {"file_id": "...", "bytes": ...}
+    # per NEXT-API.md §8.1.  Once the server aligns, remove the "url" branch.
+    if ref.get("url"):
+        with httpx.Client(timeout=httpx.Timeout(120, connect=30), follow_redirects=True) as cli:
+            r = cli.get(ref["url"])
+            return r.content
+
+    file_id = ref.get("file_id")
+    if not file_id:
+        raise _V1APIError("invalid_response", "No file_id or url in output reference")
 
     with httpx.Client(timeout=httpx.Timeout(120, connect=30)) as cli:
-        r = cli.get(
-            f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers()
-        )
+        r = cli.get(f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers())
         parser._check(r)
         return r.content
 
 
-async def _async_download_bytes(parser: MinerUApiParser, file_id: str) -> bytes:
-    import httpx
+async def _async_download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) -> bytes:
+    # TEMP(2026-06-12): staging server returns {"url": "..."} instead of {"file_id": "...", "bytes": ...}
+    # per NEXT-API.md §8.1.  Once the server aligns, remove the "url" branch.
+    if ref.get("url"):
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), follow_redirects=True) as cli:
+            r = await cli.get(ref["url"])
+            return r.content
+
+    file_id = ref.get("file_id")
+    if not file_id:
+        raise _V1APIError("invalid_response", "No file_id or url in output reference")
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30)) as cli:
-        r = await cli.get(
-            f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers()
-        )
+        r = await cli.get(f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers())
         parser._check(r)
         return r.content
 
@@ -397,7 +386,8 @@ def _pages_from_middle_json(mid_json: dict[str, Any] | list[Any] | None) -> list
     if isinstance(mid_json, list):
         return [PageInfo.from_dict(raw) for raw in mid_json if isinstance(raw, dict)]
     if isinstance(mid_json, dict):
-        pages = mid_json.get("pages", [])
+        # TEMP: also accept "pdf_info" (non-standard, remove once server aligns)
+        pages = mid_json.get("pages") or mid_json.get("pdf_info")
         if isinstance(pages, list):
             return [PageInfo.from_dict(raw) for raw in pages if isinstance(raw, dict)]
         if isinstance(pages, dict):
@@ -405,9 +395,7 @@ def _pages_from_middle_json(mid_json: dict[str, Any] | list[Any] | None) -> list
             return [
                 PageInfo(
                     page_idx=i,
-                    page_size=(raw.get("width", 0), raw.get("height", 0))
-                    if isinstance(raw, dict)
-                    else (0, 0),
+                    page_size=(raw.get("width", 0), raw.get("height", 0)) if isinstance(raw, dict) else (0, 0),
                 )
                 for i, raw in enumerate(raw_pages)
             ]
