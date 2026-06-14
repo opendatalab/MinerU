@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import copy
+
 import cv2
 import numpy as np
 
@@ -12,6 +13,31 @@ class OcrConfidence:
 
 LINE_WIDTH_TO_HEIGHT_RATIO_THRESHOLD = 4  # 一般情况下，行宽度超过高度4倍时才是一个正常的横向文本块
 TEXT_REC_ROTATE_RATIO = 1.5
+
+
+def mask_formula_regions_for_ocr_det(
+    bgr_image: np.ndarray,
+    mask_boxes: list[dict] | None,
+) -> np.ndarray:
+    """在 OCR det 前将公式区域置白，避免公式干扰相邻文本行检测。"""
+    if not mask_boxes:
+        return bgr_image
+
+    masked_image = bgr_image.copy()
+    image_h, image_w = masked_image.shape[:2]
+    for mask_box in mask_boxes:
+        bbox = mask_box.get("bbox")
+        if bbox is None:
+            continue
+
+        int_bbox = normalize_to_int_bbox(bbox, image_size=(image_h, image_w))
+        if int_bbox is None:
+            continue
+
+        x0, y0, x1, y1 = int_bbox
+        masked_image[y0:y1, x0:x1] = 255
+
+    return masked_image
 
 
 def merge_spans_to_line(spans, threshold=0.6):

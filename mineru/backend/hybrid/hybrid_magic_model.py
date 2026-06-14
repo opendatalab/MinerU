@@ -27,15 +27,11 @@ not_extract_list = [item.value for item in NotExtractType] + [
     BlockType.PARAGRAPH_TITLE,
 ]
 OCR_DET_LINES_KEY = "_ocr_det_lines"
-OCR_DET_LINE_BLOCK_TYPES = set(not_extract_list) | {
-    BlockType.LIST,
-    BlockType.INDEX,
-    BlockType.ABSTRACT,
-    BlockType.ASIDE_TEXT,
-    BlockType.PHONETIC,
-    BlockType.CHART_CAPTION,
-    BlockType.CHART_FOOTNOTE,
-    BlockType.CODE_FOOTNOTE,
+OCR_DET_LINE_BLOCK_TYPES = {
+    BlockType.TEXT,
+    BlockType.TITLE,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
 }
 
 
@@ -56,7 +52,6 @@ class MagicModel:
         width,
         height,
         _ocr_enable,
-        _vlm_ocr_enable,
     ):
         (
             self.page_blocks,
@@ -74,7 +69,7 @@ class MagicModel:
         for inline_formula in self.page_inline_formula:
             inline_formula["bbox"] = list(self.cal_real_bbox(inline_formula["bbox"]))
             inline_formula_latex = inline_formula.pop("latex", "")
-            if inline_formula_latex:
+            if inline_formula_latex or _ocr_enable:
                 page_text_inline_formula_spans.append(
                     {
                         "bbox": inline_formula["bbox"],
@@ -93,7 +88,7 @@ class MagicModel:
                     "score": ocr_res["score"],
                 }
             )
-        if not _vlm_ocr_enable and not _ocr_enable:
+        if not _ocr_enable:
             virtual_block = [0, 0, width, height, None, None, None, "text"]
             page_text_inline_formula_spans = txt_spans_extract(
                 page,
@@ -140,6 +135,7 @@ class MagicModel:
                 "aside_text",
                 "page_footnote",
                 "list",
+                "index",
             ]:
                 span_type = ContentType.TEXT
             elif block_type in ["image_caption", "table_caption", "code_caption"]:
@@ -193,9 +189,9 @@ class MagicModel:
                     "type": span_type,
                     "content": isolated_formula_clean(block_content),
                 }
-            elif _vlm_ocr_enable or block_type not in not_extract_list:
-                # vlm_ocr_enable 模式下，所有文本块都直接使用 block 的内容
-                # 非 vlm_ocr_enable 模式下，非提取块仍沿用直接内容模式
+            elif _ocr_enable or block_type not in not_extract_list:
+                # OCR 模式下，所有文本块都直接使用 VLM block 内容。
+                # 非 OCR 模式下，非提取块仍沿用直接内容模式。
                 if block_content:
                     block_content = clean_content(block_content)
 
@@ -263,7 +259,7 @@ class MagicModel:
                     ContentType.CHART,
                     ContentType.INTERLINE_EQUATION,
                 ]
-                or (_vlm_ocr_enable or block_type not in not_extract_list)
+                or (_ocr_enable or block_type not in not_extract_list)
             ):
                 if span is None:
                     continue
@@ -303,7 +299,7 @@ class MagicModel:
                     block["sub_type"] = block_sub_type
                 if raw_block_type == "table" and "cell_merge" in block_info:
                     block["cell_merge"] = block_info["cell_merge"]
-                if _vlm_ocr_enable and self._supports_ocr_det_lines(block_type):
+                if _ocr_enable and self._supports_ocr_det_lines(block_type):
                     ocr_det_lines = self._build_ocr_det_lines(
                         span_matcher.collect_for_block(block_bbox)
                     )
@@ -322,6 +318,10 @@ class MagicModel:
                 }
                 block = fix_text_block(block)
                 _copy_raw_text_block_metadata(raw_block_type, block_info, block)
+
+            if block["type"] == BlockType.INDEX:
+                # index 仅用于 Hybrid medium content 强制走 VLM-OCR，输出前统一还原为正文。
+                block["type"] = BlockType.TEXT
 
             blocks.append(block)
 

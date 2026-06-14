@@ -376,7 +376,13 @@ def batch_image_analyze(
             os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
         enable_ocr_det_batch = True
 
-    batch_model = BatchAnalyze(model_manager, batch_ratio, formula_enable, table_enable, enable_ocr_det_batch)
+    batch_model = BatchAnalyze(
+        model_manager,
+        batch_ratio,
+        formula_enable,
+        table_enable,
+        enable_ocr_det_batch,
+    )
     results = batch_model(images_with_extra_info)
 
     clean_memory(get_device())

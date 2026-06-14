@@ -54,6 +54,7 @@ from mineru.cli.api_protocol import (
     DEFAULT_MAX_CONCURRENT_REQUESTS,
     DEFAULT_PROCESSING_WINDOW_SIZE,
 )
+from mineru.cli.backend_options import DEFAULT_HYBRID_EFFORT
 from mineru.cli.vlm_preload import (
     maybe_preload_vlm_model,
     split_service_and_model_config,
@@ -145,6 +146,7 @@ class AsyncParseTask:
     file_names: list[str]
     created_at: str
     output_dir: str
+    effort: str
     parse_method: str
     lang_list: list[str]
     formula_enable: bool
@@ -841,6 +843,7 @@ async def run_parse_job(
         p_lang_list=list(actual_lang_list),
         backend=request_options.backend,
         parse_method=request_options.parse_method,
+        effort=getattr(request_options, "effort", DEFAULT_HYBRID_EFFORT),
         formula_enable=request_options.formula_enable,
         table_enable=request_options.table_enable,
         image_analysis=request_options.image_analysis,
@@ -897,6 +900,7 @@ async def create_async_parse_task(
             file_names=file_names,
             created_at=utc_now_iso(),
             output_dir=task_output_dir,
+            effort=request_options.effort,
             parse_method=request_options.parse_method,
             lang_list=request_options.lang_list,
             formula_enable=request_options.formula_enable,
