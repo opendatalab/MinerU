@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from typing import cast
 
+from ..rows import CountRow, FileRow, IngestTaskRow
 from ..services.parse_svc import ParseService
-from ..types import SCAN_STATUS_ACTIVE
+from ..types import FILE_STATUS_ACTIVE
 
 logger = logging.getLogger("mineru.ingest")
 
@@ -35,10 +37,13 @@ class IngestWorkerPool:
             if task is None:
                 no_task_count += 1
                 if no_task_count == 1 or no_task_count % 20 == 0:
-                    q = await self.parse_svc.db.fetchone(
-                        "SELECT COUNT(*) as cnt FROM files WHERE sha256 IS NULL AND scan_status=? "
-                        "AND error_code IS NULL",
-                        (SCAN_STATUS_ACTIVE,),
+                    q = cast(
+                        CountRow | None,
+                        await self.parse_svc.db.fetchone(
+                            "SELECT COUNT(*) as cnt FROM files WHERE sha256 IS NULL AND status=? "
+                            "AND error_code IS NULL",
+                            (FILE_STATUS_ACTIVE,),
+                        ),
                     )
                     logger.info(f"Ingest worker {worker_id}: queue={q['cnt'] if q else 0}")
                 await asyncio.sleep(0.5)
@@ -60,22 +65,25 @@ class IngestWorkerPool:
 
         logger.info(f"Ingest worker {worker_id} stopped, processed {processed} total")
 
-    async def _acquire_task(self) -> dict | None:
+    async def _acquire_task(self) -> FileRow | None:
         now = int(time.time() * 1000)
         timeout = now - 60 * 1000  # 60s ingest lock timeout
-        return await self.parse_svc.db.fetchone(
-            "UPDATE files SET locked_at=? "
-            "WHERE id = ("
-            "  SELECT id FROM files "
-            "  WHERE sha256 IS NULL AND scan_status=? "
-            "  AND error_code IS NULL "
-            "  AND (locked_at IS NULL OR locked_at < ?) "
-            "  ORDER BY first_seen_at ASC LIMIT 1"
-            ") RETURNING *",
-            (now, SCAN_STATUS_ACTIVE, timeout),
+        return cast(
+            FileRow | None,
+            await self.parse_svc.db.fetchone(
+                "UPDATE files SET locked_at=? "
+                "WHERE id = ("
+                "  SELECT id FROM files "
+                "  WHERE sha256 IS NULL AND status=? "
+                "  AND error_code IS NULL "
+                "  AND (locked_at IS NULL OR locked_at < ?) "
+                "  ORDER BY first_seen_at ASC LIMIT 1"
+                ") RETURNING *",
+                (now, FILE_STATUS_ACTIVE, timeout),
+            ),
         )
 
-    async def _handle_ingest_error(self, task: dict, exc: Exception) -> None:
+    async def _handle_ingest_error(self, task: IngestTaskRow, exc: Exception) -> None:
         try:
             if isinstance(exc, FileNotFoundError):
                 watch_id = task.get("watch_id")

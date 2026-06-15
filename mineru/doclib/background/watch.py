@@ -13,7 +13,7 @@ from ..constants import ALLOWED_EXTENSIONS
 from ..services.config_svc import ConfigService
 from ..services.parse_svc import ParseService
 from ..services.scan_svc import ScanService
-from ..types import SCAN_STATUS_ACTIVE, WATCH_STATUS_ACTIVE, WATCH_STATUS_UNREACHABLE
+from ..types import FILE_STATUS_ACTIVE, WATCH_STATUS_ACTIVE, WATCH_STATUS_UNREACHABLE
 
 
 class WatchLoop:
@@ -34,7 +34,7 @@ class WatchLoop:
             active_ids: set[int] = set()
 
             for w in watches:
-                if w["watch_status"] != WATCH_STATUS_ACTIVE:
+                if w["status"] != WATCH_STATUS_ACTIVE:
                     continue
                 active_ids.add(w["id"])
 
@@ -65,8 +65,8 @@ class WatchLoop:
 
         try:
             rows = await self.db.fetchall(
-                "SELECT path FROM files WHERE watch_id=? AND scan_status=?",
-                (watch_id, SCAN_STATUS_ACTIVE),
+                "SELECT path FROM files WHERE watch_id=? AND status=?",
+                (watch_id, FILE_STATUS_ACTIVE),
             )
             for row in rows:
                 await self._refresh_file(row["path"], watch_id)

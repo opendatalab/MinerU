@@ -15,12 +15,17 @@ from .types import (
     ConfigResponse,
     ConfigSetRequest,
     ConfigSetResponse,
+    ConfigUnsetResponse,
+    ConfigValueResponse,
+    DocContentExportRequest,
+    DocContentExportResponse,
     DocContentResponse,
     DocInfo,
     ExcludeRuleInfo,
     ExcludeRuleListResponse,
     ExcludeRuleRequest,
     FileInfoResponse,
+    ListFilesResponse,
     FindResponse,
     ForgetPathRequest,
     ForgetPathResponse,
@@ -44,7 +49,8 @@ from .types import (
     ScanKind,
     ScanListResponse,
     ScanRequest,
-    ScanTaskStatus,
+    FileStatus,
+    ScanStatus,
     WatchInfo,
     WatchListResponse,
     WatchRequest,
@@ -102,6 +108,7 @@ class DoclibInterface(ABC):
         status: str | None = None,
         pages: str | None = None,
         include_superseded: bool = False,
+        limit: int = 50,
     ) -> ListParsesResponse:
         """List parse records and optional coverage information.
 
@@ -158,7 +165,7 @@ class DoclibInterface(ABC):
         self,
         *,
         limit: int = 50,
-        status: ScanTaskStatus | None = None,
+        status: ScanStatus | None = None,
         kind: ScanKind | None = None,
         watch_id: int | None = None,
     ) -> ScanListResponse:
@@ -182,7 +189,31 @@ class DoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def list_docs(self, *, path: str | None = None) -> ListDocsResponse:
+    def list_files(
+        self,
+        *,
+        status: FileStatus | None = None,
+        ext: str | None = None,
+        watch_id: int | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> ListFilesResponse:
+        """List file rows known to doclib.
+
+        Raises:
+            InvalidRequestError: when filters, limit, or offset are invalid.
+            MineruError: for server-side failures.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def list_docs(
+        self,
+        *,
+        path: str | None = None,
+        file_type: str | None = None,
+        limit: int = 200,
+    ) -> ListDocsResponse:
         """List active docs, optionally filtered by path.
 
         Raises:
@@ -210,7 +241,6 @@ class DoclibInterface(ABC):
         tier: Tier,
         pages: str | None = None,
         format: str = "markdown",
-        output: str | None = None,
         no_marker: bool = False,
     ) -> DocContentResponse:
         """Render stored doc content from parsed JSON artifacts.
@@ -219,6 +249,17 @@ class DoclibInterface(ABC):
             NotFoundError: when the document or requested parsed content is not cached.
             InvalidRequestError: when tier, pages, format, output, or marker options are invalid.
             MineruError: for render or server-side failures.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def export_doc_content(self, sha256: str, request: DocContentExportRequest) -> DocContentExportResponse:
+        """Render stored doc content and write it to a server-visible output path.
+
+        Raises:
+            NotFoundError: when the document or requested parsed content is not cached.
+            InvalidRequestError: when tier, pages, format, output, or marker options are invalid.
+            MineruError: for render, filesystem, or server-side failures.
         """
         raise NotImplementedError()
 
@@ -272,11 +313,31 @@ class DoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def set_config(self, request: ConfigSetRequest) -> ConfigSetResponse:
+    def get_config_key(self, key: str) -> ConfigValueResponse:
+        """Return one runtime config key.
+
+        Raises:
+            InvalidRequestError: when the key is unknown.
+            MineruError: for server-side failures.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def set_config(self, key: str, request: ConfigSetRequest) -> ConfigSetResponse:
         """Set one runtime config key.
 
         Raises:
             InvalidRequestError: when the key is unknown, read-only, or the value is invalid.
+            MineruError: for server-side failures.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def unset_config(self, key: str) -> ConfigUnsetResponse:
+        """Remove one runtime config override and return the resulting default-backed value.
+
+        Raises:
+            InvalidRequestError: when the key is unknown.
             MineruError: for server-side failures.
         """
         raise NotImplementedError()
@@ -303,12 +364,12 @@ class DoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def remove_watch(self, path: str) -> RemoveWatchResponse:
+    def remove_watch(self, watch_id: int) -> RemoveWatchResponse:
         """Remove a watch target.
 
         Raises:
             NotFoundError: when the watch target does not exist.
-            InvalidRequestError: when the path is malformed.
+            InvalidRequestError: when ``watch_id`` is invalid.
             MineruError: for server-side failures.
         """
         raise NotImplementedError()
@@ -437,6 +498,7 @@ class AsyncDoclibInterface(ABC):
         status: str | None = None,
         pages: str | None = None,
         include_superseded: bool = False,
+        limit: int = 50,
     ) -> ListParsesResponse:
         """Async version of ``DoclibInterface.list_parses``."""
         raise NotImplementedError()
@@ -466,7 +528,7 @@ class AsyncDoclibInterface(ABC):
         self,
         *,
         limit: int = 50,
-        status: ScanTaskStatus | None = None,
+        status: ScanStatus | None = None,
         kind: ScanKind | None = None,
         watch_id: int | None = None,
     ) -> ScanListResponse:
@@ -479,7 +541,26 @@ class AsyncDoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    async def list_docs(self, *, path: str | None = None) -> ListDocsResponse:
+    async def list_files(
+        self,
+        *,
+        status: FileStatus | None = None,
+        ext: str | None = None,
+        watch_id: int | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> ListFilesResponse:
+        """Async version of ``DoclibInterface.list_files``."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def list_docs(
+        self,
+        *,
+        path: str | None = None,
+        file_type: str | None = None,
+        limit: int = 200,
+    ) -> ListDocsResponse:
         """Async version of ``DoclibInterface.list_docs``."""
         raise NotImplementedError()
 
@@ -496,10 +577,14 @@ class AsyncDoclibInterface(ABC):
         tier: Tier,
         pages: str | None = None,
         format: str = "markdown",
-        output: str | None = None,
         no_marker: bool = False,
     ) -> DocContentResponse:
         """Async version of ``DoclibInterface.get_doc_content``."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def export_doc_content(self, sha256: str, request: DocContentExportRequest) -> DocContentExportResponse:
+        """Async version of ``DoclibInterface.export_doc_content``."""
         raise NotImplementedError()
 
     @abstractmethod
@@ -532,8 +617,18 @@ class AsyncDoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    async def set_config(self, request: ConfigSetRequest) -> ConfigSetResponse:
+    async def get_config_key(self, key: str) -> ConfigValueResponse:
+        """Async version of ``DoclibInterface.get_config_key``."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def set_config(self, key: str, request: ConfigSetRequest) -> ConfigSetResponse:
         """Async version of ``DoclibInterface.set_config``."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def unset_config(self, key: str) -> ConfigUnsetResponse:
+        """Async version of ``DoclibInterface.unset_config``."""
         raise NotImplementedError()
 
     @abstractmethod
@@ -547,7 +642,7 @@ class AsyncDoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    async def remove_watch(self, path: str) -> RemoveWatchResponse:
+    async def remove_watch(self, watch_id: int) -> RemoveWatchResponse:
         """Async version of ``DoclibInterface.remove_watch``."""
         raise NotImplementedError()
 

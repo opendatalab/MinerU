@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from ...types import TIER_ORDER, Tier
 from ..core.db import DatabaseManager
 from ..core.fts import FTSManager, strip_sep
-from ..types import SCAN_STATUS_ACTIVE
+from ..rows import ContentSearchResultRow, FilenameSearchFileRow, FilenameSearchResultRow, SearchFileRow
+from ..types import FILE_STATUS_ACTIVE
 
 
 class SearchService:
@@ -23,7 +26,7 @@ class SearchService:
         min_tier: Tier | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> tuple[list[dict], int]:
+    ) -> tuple[list[ContentSearchResultRow], int]:
         """Full-text search. Returns (results, total_count)."""
         rows = await self.fts.search(query, limit=200)
         if not rows:
@@ -49,29 +52,31 @@ class SearchService:
             sql += " AND d.file_type = ?"
             params.append(file_type.lower())
 
-        file_rows = await self.db.fetchall(sql, params)
+        file_rows = cast(list[SearchFileRow], await self.db.fetchall(sql, tuple(params)))
 
         # group files by sha256
-        files_by_doc: dict[str, list[dict]] = {}
+        files_by_doc: dict[str, list[SearchFileRow]] = {}
         for fr in file_rows:
             sha = fr["sha256"]
+            if sha is None:
+                continue
             if sha not in files_by_doc:
                 files_by_doc[sha] = []
             files_by_doc[sha].append(fr)
 
         # build results
-        results: list[dict] = []
+        results: list[ContentSearchResultRow] = []
         for row in rows:
             sha = row["sha256"]
             all_files = files_by_doc.get(sha, [])
             if not all_files:
                 continue
 
-            active_files = [file for file in all_files if file.get("scan_status") == SCAN_STATUS_ACTIVE]
+            active_files = [file for file in all_files if file.get("status") == FILE_STATUS_ACTIVE]
             files = active_files or all_files
             fts_file = files[0]
             snippet = strip_sep(row.get("snippet", ""))
-            tier = row.get("tier") or ""
+            result_tier = row["tier"]
 
             results.append(
                 {
@@ -81,7 +86,7 @@ class SearchService:
                     "filename": row.get("filename") or fts_file.get("filename"),
                     "ext": fts_file.get("ext", ""),
                     "size_bytes": fts_file.get("size_bytes", 0),
-                    "tier": tier,
+                    "tier": result_tier,
                     "snippet": snippet,
                     "paths": [f["path"] for f in files],
                 }
@@ -94,7 +99,7 @@ class SearchService:
 
     async def search_filenames(
         self, query: str, ext: str | None = None, limit: int = 50
-    ) -> tuple[list[dict], int]:
+    ) -> tuple[list[FilenameSearchResultRow], int]:
         """Search filenames only. Returns (results, total_count)."""
         rows = await self.fts.search_filenames(query, limit=limit)
         if not rows:
@@ -105,17 +110,17 @@ class SearchService:
         sql = (
             f"SELECT f.*, d.title "
             f"FROM files f LEFT JOIN docs d ON f.sha256 = d.sha256 "
-            f"WHERE f.id IN ({placeholders}) AND f.scan_status = ?"
+            f"WHERE f.id IN ({placeholders}) AND f.status = ?"
         )
-        params = [*file_ids, SCAN_STATUS_ACTIVE]
+        params = [*file_ids, FILE_STATUS_ACTIVE]
         if ext:
             sql += " AND f.ext = ?"
             params.append(ext.lower().lstrip("."))
-        file_rows = await self.db.fetchall(sql, params)
+        file_rows = cast(list[FilenameSearchFileRow], await self.db.fetchall(sql, tuple(params)))
 
         files_by_id = {fr["id"]: fr for fr in file_rows}
 
-        results: list[dict] = []
+        results: list[FilenameSearchResultRow] = []
         for row in rows:
             fr = files_by_id.get(row["file_id"])
             if not fr:

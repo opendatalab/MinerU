@@ -61,7 +61,7 @@ CREATE TABLE scans (
     path                TEXT    NOT NULL,
     kind                TEXT    NOT NULL,              -- manual / watch
     source              TEXT    NOT NULL DEFAULT 'unknown',
-    watch_id            INTEGER REFERENCES watch_targets(id),
+    watch_id            INTEGER REFERENCES watches(id),
     status              TEXT    NOT NULL DEFAULT 'pending',
     locked_at           INTEGER,
     created_at          INTEGER NOT NULL,
@@ -85,7 +85,7 @@ CREATE TABLE scans (
 
 CREATE INDEX idx_scans_status ON scans(status, created_at);
 CREATE INDEX idx_scans_kind_path_status ON scans(kind, path, status);
-CREATE INDEX idx_scans_watch_status ON scans(watch_id, status);
+CREATE INDEX idx_scans_watch_id_status ON scans(watch_id, status);
 ```
 
 `scans` 不记录 per-file 明细。P0 只做 summary。更细的 refresh log 可作为后续能力另行设计。
@@ -121,7 +121,7 @@ watch scan 负责:
 - 用户或 Agent 触发的 watch rescan。
 - 设备恢复后立即执行的 watch scan。
 
-watch scan 使用 watch 的 enabled/status/removable 语义，并更新 `watch_targets.last_scan_at` / `last_scan_files`。
+watch scan 使用 watch 的 enabled/status/removable 语义，并更新 `watches.last_scan_at` / `last_scan_files`。
 
 ## source
 
@@ -245,7 +245,7 @@ manual scan 或 watch scan 发现新文件 / 变化文件时:
 
 - 应用 exclude rules。
 - 执行两阶段扫描:
-  1. 先读取 DB 中该目录前缀下 `scan_status=active` 的已知 file rows，并逐个 `refresh_file()`，用于发现 deleted / unreachable / stat error。
+  1. 先读取 DB 中该目录前缀下 `status=active` 的已知 file rows，并逐个 `refresh_file()`，用于发现 deleted / unreachable / stat error。
   2. 再执行 `os.walk()`，对当前文件系统中支持的文件逐个 `refresh_file()`，用于发现新文件和变化文件。
 - 统计 exclude 命中的文件为 `files_excluded`。
 - 统计 unsupported extension 为 `files_unsupported`。
@@ -269,7 +269,7 @@ watch scan 必须绑定 watch。
 1. 读取 watch target。
 2. 如果 watch 不存在或 disabled，scan `failed`，写 `error_code`。
 3. 如果 watch root 不可达:
-   - 更新 `watch_targets.watch_status=unreachable`。
+   - 更新 `watches.status=unreachable`。
    - scan status 写 `done`，不是 `failed`。
    - 不在同步 scan 中逐个刷新该 watch 下所有 files。
    - 批量 active -> unreachable 收敛仍由 DeviceMonitor 或后台策略处理。
@@ -277,7 +277,7 @@ watch scan 必须绑定 watch。
    - 更新 watch status 为 `active`。
    - 执行两阶段扫描。
    - 应用 exclude rules。
-   - 更新 `watch_targets.last_scan_at` / `last_scan_files`。
+   - 更新 `watches.last_scan_at` / `last_scan_files`。
 
 watch scan 与 manual directory scan 的主要区别:
 

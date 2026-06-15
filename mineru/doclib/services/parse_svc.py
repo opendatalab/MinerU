@@ -6,16 +6,18 @@ import asyncio
 import json as _json
 import os
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from ...errors import MineruError
 from ...types import PageInfo, TIER_ORDER, Tier
 from ..constants import ALLOWED_EXTENSIONS, TEXT_EXTENSIONS
 from ..core.db import DatabaseManager
-from ..core.file_io import compute_sha256, extract_metadata, get_file_stat
+from ..core.file_io import FileStat, compute_sha256, extract_metadata, get_file_stat
 from ..core.fts import FTSManager
+from ..rows import FileRow, PageCountRow, ParseBatchRow, ParseRow, WatchTargetRow
 from ..types import (
     PARSE_STATUS_DONE,
     PARSE_STATUS_FAILED,
@@ -23,11 +25,12 @@ from ..types import (
     PARSE_STATUS_PENDING,
     PARSE_STATUS_SUPERSEDED,
     RULE_TYPE_PARSING_RULE,
-    SCAN_STATUS_ACTIVE,
-    SCAN_STATUS_DELETED,
-    SCAN_STATUS_UNREACHABLE,
+    FILE_STATUS_ACTIVE,
+    FILE_STATUS_DELETED,
+    FILE_STATUS_UNREACHABLE,
     WATCH_STATUS_UNREACHABLE,
     FileInfo,
+    ParseResponse,
 )
 from .config_svc import ConfigService
 
@@ -92,7 +95,7 @@ def filter_pages_by_user_range(pages: list[PageInfo], requested_pages: str) -> l
     return [page for page in pages if page.page_idx + 1 in requested]
 
 
-def pages_covered(request_pages: str, done_batches: list[dict]) -> bool:
+def pages_covered(request_pages: str, done_batches: list[ParseRow]) -> bool:
     """Check whether request_pages is fully covered by done batches.
     Batches are sorted by done_at DESC so newer batches take precedence."""
     needed = parse_range_set(request_pages)
@@ -104,7 +107,7 @@ def pages_covered(request_pages: str, done_batches: list[dict]) -> bool:
     return False
 
 
-def pages_uncovered(request_pages: str, done_batches: list[dict]) -> set[int]:
+def pages_uncovered(request_pages: str, done_batches: list[ParseRow]) -> set[int]:
     """Return the subset of request_pages NOT covered by any done batch."""
     needed = parse_range_set(request_pages)
     covered: set[int] = set()
@@ -201,7 +204,7 @@ class ParseService:
         classification, and optional synchronous ingest.
         """
         ext = Path(path).suffix.lower().lstrip(".")
-        existing = await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,))
+        existing = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
         if ext not in ALLOWED_EXTENSIONS:
             return FileRefreshResult(file=_file_info(existing), status="unsupported")
 
@@ -224,15 +227,15 @@ class ParseService:
         self,
         path: str,
         ext: str,
-        stat: dict,
-        existing: dict | None,
+        stat: FileStat,
+        existing: FileRow | None,
         watch_id: int | None,
     ) -> FileRefreshResult:
         now = _now_ms()
         filename = Path(path).name
 
-        if existing and existing["scan_status"] == SCAN_STATUS_ACTIVE:
-            unchanged = existing["mtime_ms"] == stat["mtime_ms"] and existing["size_bytes"] == stat["size_bytes"]
+        if existing and existing["status"] == FILE_STATUS_ACTIVE:
+            unchanged = existing["mtime_ms"] == stat.mtime_ms and existing["size_bytes"] == stat.size_bytes
             if unchanged:
                 return FileRefreshResult(file=_file_info(existing), status="known")
 
@@ -243,33 +246,33 @@ class ParseService:
                 (
                     filename,
                     ext,
-                    stat["size_bytes"],
-                    stat["mtime_ms"],
+                    stat.size_bytes,
+                    stat.mtime_ms,
                     watch_id,
                     now,
                     existing["id"],
                 ),
             )
-            row = await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],))
+            row = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],)))
             return FileRefreshResult(file=_file_info(row), status="changed")
 
         if existing:
             await self.db.execute(
                 "UPDATE files SET filename=?, ext=?, size_bytes=?, mtime_ms=?, "
-                "sha256=NULL, watch_id=COALESCE(?, watch_id), scan_status=?, locked_at=NULL, error_code=NULL, error_msg=NULL, "
+                "sha256=NULL, watch_id=COALESCE(?, watch_id), status=?, locked_at=NULL, error_code=NULL, error_msg=NULL, "
                 "deleted_at=NULL, updated_at=? WHERE id=?",
                 (
                     filename,
                     ext,
-                    stat["size_bytes"],
-                    stat["mtime_ms"],
+                    stat.size_bytes,
+                    stat.mtime_ms,
                     watch_id,
-                    SCAN_STATUS_ACTIVE,
+                    FILE_STATUS_ACTIVE,
                     now,
                     existing["id"],
                 ),
             )
-            row = await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],))
+            row = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],)))
             return FileRefreshResult(file=_file_info(row), status="changed")
 
         file_id = await self.db.execute_insert(
@@ -280,43 +283,43 @@ class ParseService:
                 path,
                 filename,
                 ext,
-                stat["size_bytes"],
-                stat["mtime_ms"],
+                stat.size_bytes,
+                stat.mtime_ms,
                 watch_id,
                 now,
                 now,
             ),
         )
-        row = await self.db.fetchone("SELECT * FROM files WHERE id=?", (file_id,))
+        row = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE id=?", (file_id,)))
         return FileRefreshResult(file=_file_info(row), status="new")
 
-    async def _refresh_missing_file(self, path: str, existing: dict | None) -> FileRefreshResult:
+    async def _refresh_missing_file(self, path: str, existing: FileRow | None) -> FileRefreshResult:
         if existing is None:
             return FileRefreshResult(file=None, status="missing")
 
         now = _now_ms()
-        scan_status = SCAN_STATUS_DELETED
+        file_status = FILE_STATUS_DELETED
         deleted_at = now
-        if existing["scan_status"] != SCAN_STATUS_DELETED and await self._is_missing_due_to_unreachable_watch(existing):
-            scan_status = SCAN_STATUS_UNREACHABLE
+        if existing["status"] != FILE_STATUS_DELETED and await self._is_missing_due_to_unreachable_watch(existing):
+            file_status = FILE_STATUS_UNREACHABLE
             deleted_at = None
 
         await self.db.execute(
-            "UPDATE files SET scan_status=?, locked_at=NULL, error_code=NULL, error_msg=NULL, deleted_at=?, updated_at=? WHERE id=?",
-            (scan_status, deleted_at, now, existing["id"]),
+            "UPDATE files SET status=?, locked_at=NULL, error_code=NULL, error_msg=NULL, deleted_at=?, updated_at=? WHERE id=?",
+            (file_status, deleted_at, now, existing["id"]),
         )
-        row = await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],))
-        status: FileRefreshStatus = "unreachable" if scan_status == SCAN_STATUS_UNREACHABLE else "deleted"
-        return FileRefreshResult(file=_file_info(row), status=status)
+        row = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],)))
+        refresh_status: FileRefreshStatus = "unreachable" if file_status == FILE_STATUS_UNREACHABLE else "deleted"
+        return FileRefreshResult(file=_file_info(row), status=refresh_status)
 
-    async def _is_missing_due_to_unreachable_watch(self, file_row: dict) -> bool:
+    async def _is_missing_due_to_unreachable_watch(self, file_row: FileRow) -> bool:
         watch_id = file_row.get("watch_id")
         if watch_id is None:
             return False
-        watch = await self.db.fetchone("SELECT * FROM watch_targets WHERE id=?", (watch_id,))
+        watch = cast(WatchTargetRow | None, await self.db.fetchone("SELECT * FROM watches WHERE id=?", (watch_id,)))
         if not watch or not watch.get("removable"):
             return False
-        if watch["watch_status"] == WATCH_STATUS_UNREACHABLE:
+        if watch["status"] == WATCH_STATUS_UNREACHABLE:
             return True
         try:
             await get_file_stat(watch["path"])
@@ -326,7 +329,7 @@ class ParseService:
             return True
         return False
 
-    async def _refresh_stat_error(self, existing: dict | None, error_code: str, error_msg: str) -> FileRefreshResult:
+    async def _refresh_stat_error(self, existing: FileRow | None, error_code: str, error_msg: str) -> FileRefreshResult:
         if existing is None:
             return FileRefreshResult(file=None, status="error")
 
@@ -335,17 +338,17 @@ class ParseService:
             "UPDATE files SET sha256=NULL, locked_at=NULL, error_code=?, error_msg=?, updated_at=? WHERE id=?",
             (error_code, error_msg[:500], now, existing["id"]),
         )
-        row = await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],))
+        row = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],)))
         return FileRefreshResult(file=_file_info(row), status="error")
 
-    async def ensure_ingested(self, path: str, watch_id: int | None = None) -> dict | None:
+    async def ensure_ingested(self, path: str, watch_id: int | None = None) -> FileRow | None:
         """Synchronously discover and ingest a source path when needed."""
         refreshed = await self.refresh_file(path, watch_id=watch_id, ensure_ingested=True)
         if refreshed.file is None:
             return None
-        return await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,))
+        return cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
 
-    async def ingest_file(self, path: str, watch_id: int | None = None) -> dict | None:
+    async def ingest_file(self, path: str, watch_id: int | None = None) -> FileRow | None:
         """Ingest a discovered file: SHA-256 + metadata + trigger default parse."""
         ext = Path(path).suffix.lower().lstrip(".")
         if ext not in ALLOWED_EXTENSIONS:
@@ -356,12 +359,15 @@ class ParseService:
         now = _now_ms()
         filename = Path(path).name
 
-        existing_path = await self.db.fetchone("SELECT * FROM files WHERE path=? AND scan_status=?", (path, SCAN_STATUS_ACTIVE))
+        existing_path = cast(
+            FileRow | None,
+            await self.db.fetchone("SELECT * FROM files WHERE path=? AND status=?", (path, FILE_STATUS_ACTIVE)),
+        )
         if existing_path and existing_path["sha256"] == sha256:
             return existing_path
 
         # check if same content (sha256) is already tracked by another path
-        existing_sha = await self.db.fetchone("SELECT * FROM files WHERE sha256=?", (sha256,))
+        existing_sha = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE sha256=?", (sha256,)))
         if existing_sha:
             # same content, possibly a new or changed path — bind this file row
             # to the existing doc without duplicating docs/parses.
@@ -373,8 +379,8 @@ class ParseService:
                     (
                         filename,
                         ext,
-                        stat["size_bytes"],
-                        stat["mtime_ms"],
+                        stat.size_bytes,
+                        stat.mtime_ms,
                         sha256,
                         watch_id,
                         now,
@@ -390,15 +396,15 @@ class ParseService:
                         path,
                         filename,
                         ext,
-                        stat["size_bytes"],
-                        stat["mtime_ms"],
+                        stat.size_bytes,
+                        stat.mtime_ms,
                         sha256,
                         watch_id,
                         now,
                         now,
                     ),
                 )
-            file_row = await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,))
+            file_row = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
             if file_row:
                 await self.fts.upsert_filename(file_row["id"], Path(path).stem, ext)
             return file_row
@@ -417,7 +423,7 @@ class ParseService:
                 "author": None,
                 "subject": None,
                 "keywords": None,
-                "is_scanned": 0,
+                "is_image_based": 0,
             }
 
         # Office: no page_count → default to 1
@@ -437,8 +443,8 @@ class ParseService:
                 path,
                 filename,
                 ext,
-                stat["size_bytes"],
-                stat["mtime_ms"],
+                stat.size_bytes,
+                stat.mtime_ms,
                 watch_id,
                 now,
                 now,
@@ -451,7 +457,7 @@ class ParseService:
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 sha256,
-                stat["size_bytes"],
+                stat.size_bytes,
                 _file_type_from_ext(ext),
                 page_count,
                 metadata["title"],
@@ -488,7 +494,7 @@ class ParseService:
                 author=metadata["author"] or "",
                 filename=filename,
             )
-            return await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,))
+            return cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
 
         # determine tier and pages for initial parse
         tier: Tier = "flash"
@@ -520,7 +526,7 @@ class ParseService:
             (sha256, now, path),
         )
 
-        return await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,))
+        return cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
 
     # ── parse request ───────────────────────────────────────────
 
@@ -532,15 +538,17 @@ class ParseService:
         pages: str | None = None,
         force: bool = False,
         remote: bool = False,
-    ) -> dict:
+    ) -> ParseResponse:
         """Handle a parse request from CLI.  Returns info for status polling."""
         # ensure the path is current before trusting files.sha256
         file_row = await self.ensure_ingested(path)
         if file_row is None:
-            return {"sha256": "", "tier": tier or "", "status": "error", "tip": "File could not be ingested."}
+            return _failed_response(tier or "flash", pages or "", "File could not be ingested.")
 
         sha256 = file_row["sha256"]
-        doc = await self.db.fetchone("SELECT page_count FROM docs WHERE sha256=?", (sha256,))
+        if sha256 is None:
+            return _failed_response(tier or "flash", pages or "", "File could not be ingested.")
+        doc = cast(PageCountRow | None, await self.db.fetchone("SELECT page_count FROM docs WHERE sha256=?", (sha256,)))
         page_count = doc["page_count"] if doc else 1
         privacy = "remote" if remote else "local"
 
@@ -560,9 +568,12 @@ class ParseService:
 
         # ── step 1: remove pages covered by valid done batches ──
         if not force:
-            done_batches = await self.db.fetchall(
-                "SELECT * FROM parses WHERE sha256=? AND tier=? AND status=? ORDER BY done_at DESC",
-                (sha256, requested_tier, PARSE_STATUS_DONE),
+            done_batches = cast(
+                list[ParseRow],
+                await self.db.fetchall(
+                    "SELECT * FROM parses WHERE sha256=? AND tier=? AND status=? ORDER BY done_at DESC",
+                    (sha256, requested_tier, PARSE_STATUS_DONE),
+                ),
             )
             for batch in done_batches:
                 if not _json_file_exists_by_batch(self.data_dir, sha256, requested_tier, batch):
@@ -575,9 +586,12 @@ class ParseService:
 
         # ── step 2: remove pages covered by pending/parsing batches ──
         reused_parse_ids: list[int] = []
-        active_batches = await self.db.fetchall(
-            "SELECT * FROM parses WHERE sha256=? AND tier=? AND status IN (?, ?)",
-            (sha256, requested_tier, PARSE_STATUS_PENDING, PARSE_STATUS_PARSING),
+        active_batches = cast(
+            list[ParseRow],
+            await self.db.fetchall(
+                "SELECT * FROM parses WHERE sha256=? AND tier=? AND status IN (?, ?)",
+                (sha256, requested_tier, PARSE_STATUS_PENDING, PARSE_STATUS_PARSING),
+            ),
         )
         if active_batches:
             active_covered: set[int] = set()
@@ -598,17 +612,17 @@ class ParseService:
                     )
 
             if not needed:
-                return {
-                    "sha256": sha256,
-                    "tier": requested_tier,
-                    "pages": request_pages_str,
-                    "status": PARSE_STATUS_PENDING,
-                    "cache_hit": False,
-                    "wait_parse_ids": reused_parse_ids,
-                    "created_parse_ids": [],
-                    "reused_parse_ids": reused_parse_ids,
-                    "tip": "Pages already queued. Priority bumped.",
-                }
+                return ParseResponse(
+                    sha256=sha256,
+                    tier=requested_tier,
+                    pages=request_pages_str,
+                    status=PARSE_STATUS_PENDING,
+                    cache_hit=False,
+                    wait_parse_ids=reused_parse_ids,
+                    created_parse_ids=[],
+                    reused_parse_ids=reused_parse_ids,
+                    tip="Pages already queued. Priority bumped.",
+                )
 
         # ── step 3: enqueue remaining uncovered pages ──
         uncovered_str = _pages_set_to_str(needed)
@@ -619,16 +633,16 @@ class ParseService:
             (sha256, requested_tier, uncovered_str, PARSE_STATUS_PENDING, privacy, now, now),
         )
         created_parse_ids = [parse_id]
-        return {
-            "sha256": sha256,
-            "tier": requested_tier,
-            "pages": request_pages_str,
-            "status": PARSE_STATUS_PENDING,
-            "cache_hit": False,
-            "wait_parse_ids": reused_parse_ids + created_parse_ids,
-            "created_parse_ids": created_parse_ids,
-            "reused_parse_ids": reused_parse_ids,
-        }
+        return ParseResponse(
+            sha256=sha256,
+            tier=requested_tier,
+            pages=request_pages_str,
+            status=PARSE_STATUS_PENDING,
+            cache_hit=False,
+            wait_parse_ids=reused_parse_ids + created_parse_ids,
+            created_parse_ids=created_parse_ids,
+            reused_parse_ids=reused_parse_ids,
+        )
 
     # ── worker ──────────────────────────────────────────────────
 
@@ -640,20 +654,23 @@ class ParseService:
         )
         return row["cnt"] if row else 0
 
-    async def acquire_task(self) -> dict | None:
+    async def acquire_task(self) -> ParseRow | None:
         now = _now_ms()
         timeout = now - 30 * 60 * 1000  # 30min lock timeout
-        return await self.db.fetchone(
-            "UPDATE parses SET locked_at=?, status=? "
-            "WHERE id = ("
-            "  SELECT id FROM parses WHERE status=? "
-            "  AND (locked_at IS NULL OR locked_at < ?) "
-            "  ORDER BY priority DESC, created_at ASC LIMIT 1"
-            ") RETURNING *",
-            (now, PARSE_STATUS_PARSING, PARSE_STATUS_PENDING, timeout),
+        return cast(
+            ParseRow | None,
+            await self.db.fetchone(
+                "UPDATE parses SET locked_at=?, status=? "
+                "WHERE id = ("
+                "  SELECT id FROM parses WHERE status=? "
+                "  AND (locked_at IS NULL OR locked_at < ?) "
+                "  ORDER BY priority DESC, created_at ASC LIMIT 1"
+                ") RETURNING *",
+                (now, PARSE_STATUS_PARSING, PARSE_STATUS_PENDING, timeout),
+            ),
         )
 
-    async def process_doc(self, task: dict) -> bool:
+    async def process_doc(self, task: ParseRow) -> bool:
         """Execute parse for a batch.  Returns True on success."""
         sha256 = task["sha256"]
         tier = task["tier"]
@@ -666,9 +683,12 @@ class ParseService:
             return False
 
         # find the file
-        file_row = await self.db.fetchone(
-            "SELECT * FROM files WHERE sha256=? AND scan_status=? LIMIT 1",
-            (sha256, SCAN_STATUS_ACTIVE),
+        file_row = cast(
+            FileRow | None,
+            await self.db.fetchone(
+                "SELECT * FROM files WHERE sha256=? AND status=? LIMIT 1",
+                (sha256, FILE_STATUS_ACTIVE),
+            ),
         )
         if file_row is None:
             await self._fail_task(task["id"], "no_accessible_file", "No active file found for this document")
@@ -736,7 +756,7 @@ class ParseService:
 
     # ── parse routing helpers ─────────────────────────────────────
 
-    async def _parse_via_local(self, file_row: dict, tier: Tier, pages: str) -> list:
+    async def _parse_via_local(self, file_row: FileRow, tier: Tier, pages: str) -> list:
         """Parse via local library call."""
         from ...parser import parse
 
@@ -750,7 +770,7 @@ class ParseService:
 
     async def _parse_via_api(
         self,
-        file_row: dict,
+        file_row: FileRow,
         tier: Tier,
         pages: str,
         privacy: str,
@@ -838,7 +858,7 @@ class ParseService:
         )
 
     async def get_parse_record(self, parse_id: int) -> dict | None:
-        row = await self.db.fetchone("SELECT * FROM parses WHERE id=?", (parse_id,))
+        row = cast(ParseRow | None, await self.db.fetchone("SELECT * FROM parses WHERE id=?", (parse_id,)))
         return _parse_record_response(row) if row else None
 
     async def list_parse_records(
@@ -853,7 +873,7 @@ class ParseService:
     ) -> dict:
         if ids:
             placeholders = ",".join("?" * len(ids))
-            rows = await self.db.fetchall(f"SELECT * FROM parses WHERE id IN ({placeholders})", tuple(ids))
+            rows = cast(list[ParseRow], await self.db.fetchall(f"SELECT * FROM parses WHERE id IN ({placeholders})", tuple(ids)))
             rows_by_id = {row["id"]: row for row in rows}
             ordered_rows = [rows_by_id[parse_id] for parse_id in ids if parse_id in rows_by_id]
             return {"parses": [_parse_record_response(row) for row in ordered_rows]}
@@ -878,8 +898,8 @@ class ParseService:
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY created_at DESC"
-        rows = await self.db.fetchall(sql, tuple(params))
-        result = {"parses": [_parse_record_response(row) for row in rows]}
+        rows = cast(list[ParseRow], await self.db.fetchall(sql, tuple(params)))
+        result: dict[str, object] = {"parses": [_parse_record_response(row) for row in rows]}
         if sha256 and tier and pages:
             result["coverage"] = _parse_coverage(pages, rows)
         return result
@@ -899,7 +919,7 @@ class ParseService:
 
     # ── internal helpers ────────────────────────────────────────
 
-    async def _maybe_update_fts(self, sha256: str, tier: Tier, text: str, file_row: dict) -> None:
+    async def _maybe_update_fts(self, sha256: str, tier: Tier, text: str, file_row: FileRow) -> None:
         existing_tier = await self.fts.get_tier(sha256)
         if existing_tier and TIER_ORDER.get(existing_tier, -1) >= TIER_ORDER.get(tier, -1):
             return  # current FTS data is from a higher or equal tier
@@ -935,19 +955,26 @@ class ParseService:
         )
 
     async def _rebuild_fts_after_invalidate(self, sha256: str) -> None:
-        file_row = await self.db.fetchone(
-            "SELECT * FROM files WHERE sha256=? AND scan_status=? LIMIT 1",
-            (sha256, SCAN_STATUS_ACTIVE),
+        file_row = cast(
+            FileRow | None,
+            await self.db.fetchone(
+                "SELECT * FROM files WHERE sha256=? AND status=? LIMIT 1",
+                (sha256, FILE_STATUS_ACTIVE),
+            ),
         )
         if file_row is None:
             await self.fts.delete(sha256)
             return
 
-        rows = await self.db.fetchall(
-            "SELECT * FROM parses WHERE sha256=? AND status=? ORDER BY done_at DESC",
-            (sha256, PARSE_STATUS_DONE),
+        rows = cast(
+            list[ParseRow],
+            await self.db.fetchall(
+                "SELECT * FROM parses WHERE sha256=? AND status=? ORDER BY done_at DESC",
+                (sha256, PARSE_STATUS_DONE),
+            ),
         )
-        tiers = sorted({row["tier"] for row in rows}, key=lambda t: TIER_ORDER.get(t, -1), reverse=True)
+        tier_set: set[Tier] = {row["tier"] for row in rows}
+        tiers = sorted(tier_set, key=lambda item: TIER_ORDER.get(item, -1), reverse=True)
         for tier in tiers:
             tier_rows = [row for row in rows if row["tier"] == tier]
             pages = load_pages_from_done_batches(self.data_dir, sha256, tier, tier_rows)
@@ -988,7 +1015,7 @@ def _resolve_default_tier(remote: bool = False) -> Tier:
     )
 
 
-def _json_file_exists_by_batch(data_dir: str, sha256: str, tier: Tier, batch: dict) -> bool:
+def _json_file_exists_by_batch(data_dir: str, sha256: str, tier: Tier, batch: ParseRow) -> bool:
     """Check that the JSON result file for a parses batch row actually exists on disk."""
     json_path = parse_batch_json_path(data_dir, sha256, tier, batch["pages"], batch["done_at"])
     return os.path.isfile(json_path)
@@ -1000,7 +1027,7 @@ def parse_batch_json_path(data_dir: str, sha256: str, tier: Tier, pages: str, do
     return os.path.join(os.path.expanduser(data_dir), "parsed", sha256[:2], sha256, tier, f"{key}.json")
 
 
-def load_pages_from_done_batches(data_dir: str, sha256: str, tier: Tier, done_rows: list[dict]) -> list[PageInfo]:
+def load_pages_from_done_batches(data_dir: str, sha256: str, tier: Tier, done_rows: Sequence[ParseBatchRow]) -> list[PageInfo]:
     """Load valid done JSON batches and keep the newest page for duplicate page_idx values."""
     pages_by_idx: dict[int, PageInfo] = {}
     for row in reversed(done_rows):
@@ -1018,35 +1045,49 @@ def load_pages_from_done_batches(data_dir: str, sha256: str, tier: Tier, done_ro
     return [pages_by_idx[idx] for idx in sorted(pages_by_idx)]
 
 
-def _done_response(sha256: str, tier: Tier, pages: str) -> dict:
-    return {
-        "sha256": sha256,
-        "tier": tier,
-        "pages": pages,
-        "status": PARSE_STATUS_DONE,
-        "cache_hit": True,
-        "wait_parse_ids": [],
-        "created_parse_ids": [],
-        "reused_parse_ids": [],
-        "tip": "Cached. Use --force to re-parse.",
-    }
+def _done_response(sha256: str, tier: Tier, pages: str) -> ParseResponse:
+    return ParseResponse(
+        sha256=sha256,
+        tier=tier,
+        pages=pages,
+        status=PARSE_STATUS_DONE,
+        cache_hit=True,
+        wait_parse_ids=[],
+        created_parse_ids=[],
+        reused_parse_ids=[],
+        tip="Cached. Use --force to re-parse.",
+    )
 
 
-def _text_response(sha256: str) -> dict:
-    return {
-        "sha256": sha256,
-        "tier": "flash",
-        "pages": "1",
-        "status": PARSE_STATUS_DONE,
-        "cache_hit": False,
-        "wait_parse_ids": [],
-        "created_parse_ids": [],
-        "reused_parse_ids": [],
-        "tip": "Plain text files do not require parsing.",
-    }
+def _text_response(sha256: str) -> ParseResponse:
+    return ParseResponse(
+        sha256=sha256,
+        tier="flash",
+        pages="1",
+        status=PARSE_STATUS_DONE,
+        cache_hit=False,
+        wait_parse_ids=[],
+        created_parse_ids=[],
+        reused_parse_ids=[],
+        tip="Plain text files do not require parsing.",
+    )
 
 
-def _parse_record_response(row: dict) -> dict:
+def _failed_response(tier: Tier, pages: str, tip: str) -> ParseResponse:
+    return ParseResponse(
+        sha256="",
+        tier=tier,
+        pages=pages,
+        status=PARSE_STATUS_FAILED,
+        cache_hit=False,
+        wait_parse_ids=[],
+        created_parse_ids=[],
+        reused_parse_ids=[],
+        tip=tip,
+    )
+
+
+def _parse_record_response(row: ParseRow) -> dict:
     error = None
     if row.get("error_code") or row.get("error_msg"):
         error = {"code": row.get("error_code"), "message": row.get("error_msg")}
@@ -1063,7 +1104,7 @@ def _parse_record_response(row: dict) -> dict:
     }
 
 
-def _parse_coverage(request_pages: str, rows: list[dict]) -> dict:
+def _parse_coverage(request_pages: str, rows: list[ParseRow]) -> dict:
     requested = parse_range_set(request_pages)
     done_pages: set[int] = set()
     active_pages: set[int] = set()
@@ -1091,7 +1132,7 @@ def _local_parse_server_url(mode: str, health: object) -> str | None:
     return None
 
 
-def _file_info(row: dict | None) -> FileInfo | None:
+def _file_info(row: FileRow | None) -> FileInfo | None:
     return FileInfo.model_validate(row) if row is not None else None
 
 

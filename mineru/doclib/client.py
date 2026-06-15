@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Final, TypeVar
 
 import httpx
@@ -22,6 +23,10 @@ from .types import (
     ConfigResponse,
     ConfigSetRequest,
     ConfigSetResponse,
+    ConfigUnsetResponse,
+    ConfigValueResponse,
+    DocContentExportRequest,
+    DocContentExportResponse,
     DocContentResponse,
     DocInfo,
     ExcludeRuleInfo,
@@ -34,6 +39,7 @@ from .types import (
     InvalidateRequest,
     InvalidateResponse,
     ListDocsResponse,
+    ListFilesResponse,
     ListParsesResponse,
     ParseInfo,
     ParseRequest,
@@ -48,7 +54,8 @@ from .types import (
     ScanKind,
     ScanListResponse,
     ScanRequest,
-    ScanTaskStatus,
+    FileStatus,
+    ScanStatus,
     SearchResponse,
     ServerStatusResponse,
     ShutdownResponse,
@@ -86,7 +93,7 @@ class DoclibClient(DoclibInterface):
     def get_server_status(self) -> ServerStatusResponse:
         return self._request_model(ServerStatusResponse)
 
-    @route("POST", "/shutdown", tags=("server",))
+    @route("POST", "/server/shutdown", tags=("server",))
     def shutdown_server(self) -> ShutdownResponse:
         return self._request_model(ShutdownResponse)
 
@@ -104,6 +111,7 @@ class DoclibClient(DoclibInterface):
         status: str | None = None,
         pages: str | None = None,
         include_superseded: bool = False,
+        limit: int = 50,
     ) -> ListParsesResponse:
         return self._request_model(
             ListParsesResponse,
@@ -114,6 +122,7 @@ class DoclibClient(DoclibInterface):
                 "status": status,
                 "pages": pages,
                 "include_superseded": include_superseded,
+                "limit": limit,
             },
         )
 
@@ -138,7 +147,7 @@ class DoclibClient(DoclibInterface):
         self,
         *,
         limit: int = 50,
-        status: ScanTaskStatus | None = None,
+        status: ScanStatus | None = None,
         kind: ScanKind | None = None,
         watch_id: int | None = None,
     ) -> ScanListResponse:
@@ -151,9 +160,30 @@ class DoclibClient(DoclibInterface):
     def get_scan(self, scan_id: int) -> ScanInfo:
         return self._request_model(ScanInfo, path_params={"scan_id": scan_id})
 
+    @route("GET", "/files", tags=("files",))
+    def list_files(
+        self,
+        *,
+        status: FileStatus | None = None,
+        ext: str | None = None,
+        watch_id: int | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> ListFilesResponse:
+        return self._request_model(
+            ListFilesResponse,
+            params={"status": status, "ext": ext, "watch_id": watch_id, "limit": limit, "offset": offset},
+        )
+
     @route("GET", "/docs", tags=("docs",))
-    def list_docs(self, *, path: str | None = None) -> ListDocsResponse:
-        return self._request_model(ListDocsResponse, params={"path": path})
+    def list_docs(
+        self,
+        *,
+        path: str | None = None,
+        file_type: str | None = None,
+        limit: int = 200,
+    ) -> ListDocsResponse:
+        return self._request_model(ListDocsResponse, params={"path": path, "file_type": file_type, "limit": limit})
 
     @route("GET", "/docs/{sha256}", tags=("docs",))
     def get_doc(self, sha256: str, *, expand_files: bool = False) -> DocInfo:
@@ -167,7 +197,6 @@ class DoclibClient(DoclibInterface):
         tier: Tier,
         pages: str | None = None,
         format: str = "markdown",
-        output: str | None = None,
         no_marker: bool = False,
     ) -> DocContentResponse:
         return self._request_model(
@@ -177,10 +206,13 @@ class DoclibClient(DoclibInterface):
                 "tier": tier,
                 "pages": pages,
                 "format": format,
-                "output": output,
                 "no_marker": no_marker,
             },
         )
+
+    @route("POST", "/docs/{sha256}/exports", tags=("docs",))
+    def export_doc_content(self, sha256: str, request: DocContentExportRequest) -> DocContentExportResponse:
+        return self._request_model(DocContentExportResponse, path_params={"sha256": sha256}, body=request)
 
     @route("GET", "/search", tags=("search",))
     def search(
@@ -195,7 +227,14 @@ class DoclibClient(DoclibInterface):
     ) -> SearchResponse:
         return self._request_model(
             SearchResponse,
-            params={"query": query, "file_type": file_type, "tier": tier, "min_tier": min_tier, "limit": limit, "offset": offset},
+            params={
+                "query": query,
+                "file_type": file_type,
+                "tier": tier,
+                "min_tier": min_tier,
+                "limit": limit,
+                "offset": offset,
+            },
         )
 
     @route("GET", "/find", tags=("search",))
@@ -206,47 +245,55 @@ class DoclibClient(DoclibInterface):
     def get_file_info(self, path: str) -> FileInfoResponse:
         return self._request_model(FileInfoResponse, params={"path": path})
 
-    @route("GET", "/config", tags=("config",))
+    @route("GET", "/configs", tags=("config",))
     def get_config(self) -> ConfigResponse:
         return self._request_model(ConfigResponse)
 
-    @route("POST", "/config", tags=("config",))
-    def set_config(self, request: ConfigSetRequest) -> ConfigSetResponse:
-        return self._request_model(ConfigSetResponse, body=request)
+    @route("GET", "/configs/{key}", tags=("config",))
+    def get_config_key(self, key: str) -> ConfigValueResponse:
+        return self._request_model(ConfigValueResponse, path_params={"key": key})
 
-    @route("POST", "/config/watch", tags=("config",))
+    @route("PUT", "/configs/{key}", tags=("config",))
+    def set_config(self, key: str, request: ConfigSetRequest) -> ConfigSetResponse:
+        return self._request_model(ConfigSetResponse, path_params={"key": key}, body=request)
+
+    @route("DELETE", "/configs/{key}", tags=("config",))
+    def unset_config(self, key: str) -> ConfigUnsetResponse:
+        return self._request_model(ConfigUnsetResponse, path_params={"key": key})
+
+    @route("POST", "/watches", tags=("watches",))
     def add_watch(self, request: WatchRequest) -> WatchInfo:
         return self._request_model(WatchInfo, body=request)
 
-    @route("GET", "/config/watch", tags=("config",))
+    @route("GET", "/watches", tags=("watches",))
     def list_watches(self) -> WatchListResponse:
         return self._request_model(WatchListResponse)
 
-    @route("DELETE", "/config/watch", tags=("config",))
-    def remove_watch(self, path: str) -> RemoveWatchResponse:
-        return self._request_model(RemoveWatchResponse, params={"path": path})
+    @route("DELETE", "/watches/{watch_id}", tags=("watches",))
+    def remove_watch(self, watch_id: int) -> RemoveWatchResponse:
+        return self._request_model(RemoveWatchResponse, path_params={"watch_id": watch_id})
 
-    @route("POST", "/config/exclude", tags=("config",))
+    @route("POST", "/exclude-rules", tags=("rules",))
     def add_exclude_rule(self, request: ExcludeRuleRequest) -> ExcludeRuleInfo:
         return self._request_model(ExcludeRuleInfo, body=request)
 
-    @route("GET", "/config/exclude", tags=("config",))
+    @route("GET", "/exclude-rules", tags=("rules",))
     def list_exclude_rules(self) -> ExcludeRuleListResponse:
         return self._request_model(ExcludeRuleListResponse)
 
-    @route("DELETE", "/config/exclude/{rule_id}", tags=("config",))
+    @route("DELETE", "/exclude-rules/{rule_id}", tags=("rules",))
     def remove_exclude_rule(self, rule_id: int) -> RemoveExcludeRuleResponse:
         return self._request_model(RemoveExcludeRuleResponse, path_params={"rule_id": rule_id})
 
-    @route("POST", "/config/parsing-rules", tags=("config",))
+    @route("POST", "/parsing-rules", tags=("rules",))
     def add_parsing_rule(self, request: ParsingRuleRequest) -> ParsingRuleInfo:
         return self._request_model(ParsingRuleInfo, body=request)
 
-    @route("GET", "/config/parsing-rules", tags=("config",))
+    @route("GET", "/parsing-rules", tags=("rules",))
     def list_parsing_rules(self) -> ParsingRuleListResponse:
         return self._request_model(ParsingRuleListResponse)
 
-    @route("DELETE", "/config/parsing-rules/{rule_id}", tags=("config",))
+    @route("DELETE", "/parsing-rules/{rule_id}", tags=("rules",))
     def remove_parsing_rule(self, rule_id: int) -> RemoveParsingRuleResponse:
         return self._request_model(RemoveParsingRuleResponse, path_params={"rule_id": rule_id})
 
@@ -280,6 +327,8 @@ class DoclibClient(DoclibInterface):
                 resp = self._client.get(path, params=query_params)
             elif route_info.method == "POST":
                 resp = self._client.post(path, params=query_params, json=json_data or {})
+            elif route_info.method == "PUT":
+                resp = self._client.put(path, params=query_params, json=json_data or {})
             elif route_info.method == "DELETE":
                 resp = self._client.delete(path, params=query_params)
             else:
@@ -290,7 +339,7 @@ class DoclibClient(DoclibInterface):
         data = _decode_response(resp)
         return response_model.model_validate(data)
 
-    def _calling_route_method(self) -> object:
+    def _calling_route_method(self) -> Callable[..., Any]:
         import inspect
 
         frame = inspect.currentframe()

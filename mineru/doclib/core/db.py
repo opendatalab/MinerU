@@ -7,6 +7,7 @@ from pathlib import Path
 import aiosqlite
 
 from ...config import SQLiteConfig
+from ..config_defaults import CONFIG_DEFAULTS
 
 SCHEMA_VERSION = 1
 _MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
@@ -25,18 +26,6 @@ def _load_init_sql() -> list[str]:
 
 
 _CREATE_TABLES_SQL = _load_init_sql()
-
-DEFAULT_CONFIG = {
-    "data_dir": "~/MinerU",
-    "default_tier": "flash",
-    "scan_interval_sec": "300",
-    "ingest_lock_timeout_sec": "60",
-    "parse_lock_timeout_sec": "1800",
-    "device_check_interval_sec": "5",
-    "parse_server.local.mode": "disabled",
-    "parse_server.local.managed_tier": "standard",
-    "parse_server.remote.url": "https://mineru.net/api",
-}
 
 DEFAULT_EXCLUDE_RULES = [
     ("系统-*/Library/*", "*/Library/*"),
@@ -106,10 +95,10 @@ class DatabaseManager:
                 )
 
         # ── seed data ───────────────────────────────────────────
-        for key, value in DEFAULT_CONFIG.items():
-            await conn.execute(
-                "INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", (key, value)
-            )
+        # Config defaults are code-backed; the DB config table stores overrides only.
+        # Clean legacy seeded rows whose values exactly match current defaults.
+        for key, value in CONFIG_DEFAULTS.items():
+            await conn.execute("DELETE FROM config WHERE key=? AND value=?", (key, value))
 
         now = _now_ms()
         for name, pattern in DEFAULT_EXCLUDE_RULES:
@@ -148,6 +137,8 @@ class DatabaseManager:
         await conn.commit()
         lastid = cursor.lastrowid
         await conn.close()
+        if lastid is None:
+            raise RuntimeError("SQLite insert did not return a row id.")
         return lastid
 
     async def fetchone(self, sql: str, params: tuple | None = None) -> dict | None:

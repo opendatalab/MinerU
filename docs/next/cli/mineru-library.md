@@ -149,7 +149,7 @@ mineru cleanup temp
 
 deleted file cleanup:
 
-- 立即删除所有 `scan_status=deleted` 的 file row。
+- 立即删除所有 `status=deleted` 的 file row。
 - 删除 file row 时删除对应 `fts_filenames`。
 - 不自动删除 docs、parses、parsed JSON 或 `fts_contents`。
 - 第一版不提供 `--older-than` 参数；后台任务固定保留 deleted file row 7 天后再清理。
@@ -230,7 +230,7 @@ mineru watch rescan ~/Documents
 mineru watch rescan 3
 ```
 
-`mineru watch rescan <watch-path-or-id>` 只接受已配置 watch root 或 watch id。它创建 `kind=watch` 的后台 scan task，会更新 `watch_targets.last_scan_at` / `last_scan_files`。
+`mineru watch rescan <watch-path-or-id>` 只接受已配置 watch root 或 watch id。它创建 `kind=watch` 的后台 scan task，会更新 `watches.last_scan_at` / `last_scan_files`。
 
 如果只想扫描 watch 下的某个子目录或任意 path，使用 `mineru scan <path>`。
 

@@ -8,7 +8,7 @@ from pathlib import Path
 import typer
 
 from ...doclib.client import DoclibClient
-from ...doclib.types import ParseRequest
+from ...doclib.types import DocContentExportRequest, ParseRequest
 from ...types import Tier
 from ..output import format_parse_result, print_error, print_success, print_info
 
@@ -77,7 +77,7 @@ def parse_cmd(
     if status == "done":
         if verbose:
             print_info("Cache hit — returning cached result.")
-        _output_content(client, sha256, req_tier, json_mode, output, pages=result_pages, format=format)
+        _output_content(client, sha256, req_tier, json_mode, output, pages=result_pages, format=format, no_marker=no_marker)
         return
 
     # no-wait
@@ -107,7 +107,16 @@ def parse_cmd(
 
         if st == "done":
             if not json_mode:
-                _output_content(client, sha256, req_tier, json_mode, output, pages=result_pages, format=format)
+                _output_content(
+                    client,
+                    sha256,
+                    req_tier,
+                    json_mode,
+                    output,
+                    pages=result_pages,
+                    format=format,
+                    no_marker=no_marker,
+                )
             else:
                 format_parse_result(s, json_mode=json_mode)
             return
@@ -130,24 +139,32 @@ if __name__ != "__main__":
 
 
 def _output_content(
-    client,
+    client: DoclibClient,
     sha256: str,
     tier: Tier,
     json_mode: bool,
     output: str | None = None,
     pages: str | None = None,
     format: str = "markdown",
+    no_marker: bool = False,
 ) -> None:
     """Fetch and output parsed content.  If --output is specified, server writes to file."""
     try:
-        content = client.get_doc_content(sha256, tier=tier, output=output, pages=pages, format=format)
         if output and output != "-":
-            if content.output:
-                print_success(f"Written to {content.output}")
-            else:
-                print_error("Failed to write output file.")
+            exported = client.export_doc_content(
+                sha256,
+                DocContentExportRequest(
+                    tier=tier,
+                    pages=pages,
+                    format=format,
+                    output=output,
+                    no_marker=no_marker,
+                ),
+            )
+            print_success(f"Written to {exported.output}")
             return
 
+        content = client.get_doc_content(sha256, tier=tier, pages=pages, format=format, no_marker=no_marker)
         text = content.content or ""
         if text:
             if json_mode:

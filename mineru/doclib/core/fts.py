@@ -10,6 +10,7 @@ except ImportError:
     jieba = None  # type: ignore[assignment]
 
 from ...types import Tier
+from ..rows import FtsContentSearchRow, FtsFilenameSearchRow
 from .db import DatabaseManager
 
 FTS_SEP = ""
@@ -70,18 +71,21 @@ class FTSManager:
             ]
         )
 
-    async def search(self, query: str, limit: int = 200) -> list[dict]:
+    async def search(self, query: str, limit: int = 200) -> list[FtsContentSearchRow]:
         tokens = _sanitize_query_tokens(tokenize_for_query(query))
         if not tokens:
             return []
         fts_query = " ".join(tokens)
         try:
-            return await self.db.fetchall(
-                "SELECT sha256, title, author, filename, tier, "
-                "snippet(fts_contents, 2, '<mark>', '</mark>', '...', 40) AS snippet, rank "
-                "FROM fts_contents WHERE fts_contents MATCH ? "
-                "ORDER BY rank LIMIT ?",
-                (fts_query, limit),
+            return cast(
+                list[FtsContentSearchRow],
+                await self.db.fetchall(
+                    "SELECT sha256, title, author, filename, tier, "
+                    "snippet(fts_contents, 2, '<mark>', '</mark>', '...', 40) AS snippet, rank "
+                    "FROM fts_contents WHERE fts_contents MATCH ? "
+                    "ORDER BY rank LIMIT ?",
+                    (fts_query, limit),
+                ),
             )
         except Exception:
             return []
@@ -108,18 +112,21 @@ class FTSManager:
             ]
         )
 
-    async def search_filenames(self, query: str, limit: int = 50) -> list[dict]:
+    async def search_filenames(self, query: str, limit: int = 50) -> list[FtsFilenameSearchRow]:
         tokens = _sanitize_query_tokens(tokenize_for_query(query))
         if not tokens:
             return []
         fts_query = " ".join(tokens)
         try:
-            return await self.db.fetchall(
-                "SELECT file_id, ext, "
-                "snippet(fts_filenames, 1, '<mark>', '</mark>', '...', 40) AS snippet "
-                "FROM fts_filenames WHERE fts_filenames MATCH ? "
-                "ORDER BY rank LIMIT ?",
-                (fts_query, limit),
+            return cast(
+                list[FtsFilenameSearchRow],
+                await self.db.fetchall(
+                    "SELECT file_id, ext, "
+                    "snippet(fts_filenames, 1, '<mark>', '</mark>', '...', 40) AS snippet "
+                    "FROM fts_filenames WHERE fts_filenames MATCH ? "
+                    "ORDER BY rank LIMIT ?",
+                    (fts_query, limit),
+                ),
             )
         except Exception:
             return []

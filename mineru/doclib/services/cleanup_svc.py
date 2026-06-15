@@ -5,10 +5,12 @@ from __future__ import annotations
 import os
 import shutil
 import time
+from typing import cast
 
 from ...errors import InvalidRequestError
 from ..core.db import DatabaseManager
-from ..types import SCAN_STATUS_DELETED
+from ..rows import CountRow, DocRow, IdRow, WatchTargetRow
+from ..types import FILE_STATUS_DELETED
 
 FORGET_UNDER_ACTIVE_WATCH_WARNING = "Path is under an active watch and may be rediscovered on the next scan."
 
@@ -20,11 +22,14 @@ class CleanupService:
 
     # ── orphan docs ─────────────────────────────────────────────
 
-    async def find_orphan_docs(self) -> list[dict]:
-        return await self.db.fetchall(
-            "SELECT d.* FROM docs d WHERE NOT EXISTS ("
-            "  SELECT 1 FROM files f WHERE f.sha256 = d.sha256"
-            ")"
+    async def find_orphan_docs(self) -> list[DocRow]:
+        return cast(
+            list[DocRow],
+            await self.db.fetchall(
+                "SELECT d.* FROM docs d WHERE NOT EXISTS ("
+                "  SELECT 1 FROM files f WHERE f.sha256 = d.sha256"
+                ")"
+            ),
         )
 
     async def cleanup_orphans(self, dry_run: bool = True) -> int:
@@ -49,20 +54,23 @@ class CleanupService:
     # ── deleted files ───────────────────────────────────────────
 
     async def cleanup_deleted(self, dry_run: bool = True) -> int:
-        row = await self.db.fetchone(
-            "SELECT COUNT(*) as cnt FROM files WHERE scan_status=?",
-            (SCAN_STATUS_DELETED,),
+        row = cast(
+            CountRow | None,
+            await self.db.fetchone(
+                "SELECT COUNT(*) as cnt FROM files WHERE status=?",
+                (FILE_STATUS_DELETED,),
+            ),
         )
         count = row["cnt"] if row else 0
 
         if not dry_run and count > 0:
             await self.db.execute(
-                "DELETE FROM fts_filenames WHERE file_id IN (SELECT id FROM files WHERE scan_status=?)",
-                (SCAN_STATUS_DELETED,),
+                "DELETE FROM fts_filenames WHERE file_id IN (SELECT id FROM files WHERE status=?)",
+                (FILE_STATUS_DELETED,),
             )
             await self.db.execute(
-                "DELETE FROM files WHERE scan_status=?",
-                (SCAN_STATUS_DELETED,),
+                "DELETE FROM files WHERE status=?",
+                (FILE_STATUS_DELETED,),
             )
             await self.db.commit()
 
@@ -70,20 +78,23 @@ class CleanupService:
 
     async def cleanup_deleted_older_than(self, older_than_days: int = 7) -> int:
         threshold = _days_ago_ms(older_than_days)
-        row = await self.db.fetchone(
-            "SELECT COUNT(*) as cnt FROM files WHERE scan_status=? AND deleted_at < ?",
-            (SCAN_STATUS_DELETED, threshold),
+        row = cast(
+            CountRow | None,
+            await self.db.fetchone(
+                "SELECT COUNT(*) as cnt FROM files WHERE status=? AND deleted_at < ?",
+                (FILE_STATUS_DELETED, threshold),
+            ),
         )
         count = row["cnt"] if row else 0
 
         if count > 0:
             await self.db.execute(
-                "DELETE FROM fts_filenames WHERE file_id IN (SELECT id FROM files WHERE scan_status=? AND deleted_at < ?)",
-                (SCAN_STATUS_DELETED, threshold),
+                "DELETE FROM fts_filenames WHERE file_id IN (SELECT id FROM files WHERE status=? AND deleted_at < ?)",
+                (FILE_STATUS_DELETED, threshold),
             )
             await self.db.execute(
-                "DELETE FROM files WHERE scan_status=? AND deleted_at < ?",
-                (SCAN_STATUS_DELETED, threshold),
+                "DELETE FROM files WHERE status=? AND deleted_at < ?",
+                (FILE_STATUS_DELETED, threshold),
             )
             await self.db.commit()
 
@@ -96,7 +107,7 @@ class CleanupService:
         if not normalized:
             raise InvalidRequestError("invalid_request", "Path is required.", "path")
 
-        watches = await self.db.fetchall("SELECT * FROM watch_targets WHERE enabled=1")
+        watches = cast(list[WatchTargetRow], await self.db.fetchall("SELECT * FROM watches WHERE enabled=1"))
         if any(watch["path"] == normalized for watch in watches):
             raise InvalidRequestError(
                 "invalid_request",
@@ -132,9 +143,12 @@ class CleanupService:
     async def _forget_file_ids(self, path: str) -> list[int]:
         prefix = _path_prefix(path)
         upper = prefix + "\U0010ffff"
-        rows = await self.db.fetchall(
-            "SELECT id FROM files WHERE path=? OR (path>=? AND path<?) ORDER BY path",
-            (path, prefix, upper),
+        rows = cast(
+            list[IdRow],
+            await self.db.fetchall(
+                "SELECT id FROM files WHERE path=? OR (path>=? AND path<?) ORDER BY path",
+                (path, prefix, upper),
+            ),
         )
         return [row["id"] for row in rows]
 
@@ -190,10 +204,10 @@ def _path_prefix(path: str) -> str:
     return path if path.endswith(os.sep) else path + os.sep
 
 
-def _active_watch_warning(path: str, watches: list[dict]) -> str | None:
+def _active_watch_warning(path: str, watches: list[WatchTargetRow]) -> str | None:
     for watch in watches:
         watch_path = watch["path"]
-        if watch.get("watch_status") != "active":
+        if watch.get("status") != "active":
             continue
         if path != watch_path and path.startswith(_path_prefix(watch_path)):
             return FORGET_UNDER_ACTIVE_WATCH_WARNING

@@ -145,8 +145,8 @@ CREATE TABLE files (
     size_bytes      INTEGER NOT NULL,
     mtime_ms        INTEGER NOT NULL,
     sha256          TEXT    REFERENCES docs(sha256),
-    watch_id        INTEGER REFERENCES watch_targets(id),
-    scan_status     TEXT    NOT NULL DEFAULT 'active',  -- active / deleted / unreachable
+    watch_id        INTEGER REFERENCES watches(id),
+    status     TEXT    NOT NULL DEFAULT 'active',  -- active / deleted / unreachable
     locked_at       INTEGER,           -- Unix epoch ms
     error_code      TEXT,              -- 错误码，e.g. "permission_denied"
     error_msg       TEXT,              -- 人类可读错误描述
@@ -157,7 +157,7 @@ CREATE TABLE files (
 
 CREATE INDEX idx_files_sha256 ON files(sha256);
 CREATE INDEX idx_files_watch_id ON files(watch_id);
-CREATE INDEX idx_files_scan_status ON files(scan_status);
+CREATE INDEX idx_files_status ON files(status);
 ```
 
 #### docs — 文档内容（SHA-256 去重）
@@ -173,7 +173,7 @@ CREATE TABLE docs (
     author          TEXT,
     subject         TEXT,
     keywords        TEXT,
-    is_scanned      INTEGER NOT NULL DEFAULT 0,
+    is_image_based  INTEGER NOT NULL DEFAULT 0,
     meta_tier       TEXT,               -- 当前 metadata 的来源 tier，NULL 表示尚未解析
     error_code      TEXT,               -- 内容身份级错误码，e.g. "metadata_failed"
     error_msg       TEXT,               -- 人类可读错误描述
@@ -333,17 +333,17 @@ CREATE VIRTUAL TABLE fts_filenames USING fts5(
 );
 ```
 
-#### watch_targets — 监控目录
+#### watches — 监控目录
 
 ```sql
-CREATE TABLE watch_targets (
+CREATE TABLE watches(
     id              INTEGER PRIMARY KEY,  -- 路径的 hash，稳定 ID
     path            TEXT    NOT NULL UNIQUE,
     label           TEXT,
     removable       INTEGER NOT NULL DEFAULT 0,
     enabled         INTEGER NOT NULL DEFAULT 1,
     recursive       INTEGER NOT NULL DEFAULT 0,
-    watch_status    TEXT    NOT NULL DEFAULT 'active',  -- active / unreachable
+    status          TEXT    NOT NULL DEFAULT 'active',  -- active / unreachable
     unreachable_at  INTEGER,           -- Unix epoch ms
     last_scan_at    INTEGER,           -- Unix epoch ms
     last_scan_files INTEGER DEFAULT 0
@@ -437,7 +437,7 @@ SET locked_at = ?
 WHERE id = (
     SELECT id FROM files
     WHERE sha256 IS NULL
-      AND scan_status = 'active'
+      AND status = 'active'
       AND (locked_at IS NULL OR locked_at < ?)
     ORDER BY first_seen_at ASC
     LIMIT 1
@@ -647,12 +647,12 @@ managed 模式崩溃恢复：
 DeviceMonitor 每 5 秒检测:
   → os.stat(watch_path)
   → 成功（设备插入/恢复）:
-       UPDATE watch_targets SET watch_status='active', unreachable_at=NULL
-       UPDATE files SET scan_status='active' WHERE watch_id=? AND scan_status='unreachable'
+       UPDATE watches SET status='active', unreachable_at=NULL
+       UPDATE files SET status='active' WHERE watch_id=? AND status='unreachable'
        触发增量扫描
   → 失败（设备拔出）:
-       UPDATE watch_targets SET watch_status='unreachable', unreachable_at=?
-       UPDATE files SET scan_status='unreachable' WHERE watch_id=? AND scan_status='active'
+       UPDATE watches SET status='unreachable', unreachable_at=?
+       UPDATE files SET status='unreachable' WHERE watch_id=? AND status='active'
        正在进行的解析任务标记特殊错误（非永久失败，设备恢复后可重试）
 ```
 
@@ -793,7 +793,7 @@ mineru config parse-server remote.api-key sk-xxx
 
 ### 7.4 Watch 目录
 
-通过 `watch_targets` 表管理，CLI 操作：
+通过 `watches` 表管理，CLI 操作：
 
 ```bash
 mineru watch add ~/Documents

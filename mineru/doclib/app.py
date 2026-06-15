@@ -155,7 +155,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.exception_handler(MineruError)
     async def mineru_error_handler(_request: Request, exc: MineruError) -> JSONResponse:
         return JSONResponse(
-            status_code=http_status_for(exc.code, exc.type),
+            status_code=http_status_for(exc.code),
             content=error_response(exc),
         )
 
@@ -173,7 +173,26 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
 
 class AppState:
-    pass
+    def __init__(self) -> None:
+        self.db: Any = None
+        self.fts: Any = None
+        self.config_svc: Any = None
+        self.parse_svc: Any = None
+        self.scan_svc: Any = None
+        self.search_svc: Any = None
+        self.cleanup_svc: Any = None
+        self.parse_server_proc: Any = None
+        self.watch: Any = None
+        self.scan_workers: Any = None
+        self.ingest_workers: Any = None
+        self.parse_workers: Any = None
+        self.device_monitor: Any = None
+        self.compaction: Any = None
+        self.health_check: Any = None
+        self.start_time: float = 0.0
+        self.pid: int = 0
+        self.data_dir: str = ""
+        self.config: Config | None = None
 
 
 def main() -> None:

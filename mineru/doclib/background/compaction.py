@@ -7,10 +7,13 @@ import json as _json
 import logging
 import os
 import time
+from collections.abc import Sequence
+from typing import cast
 
-from ..core.db import DatabaseManager
-from ..services.parse_svc import parse_batch_json_path, parse_range_set
 from ...types import Tier
+from ..core.db import DatabaseManager
+from ..rows import ParseBatchRow, ParseGroupRow, ParseRow
+from ..services.parse_svc import parse_batch_json_path, parse_range_set
 from ..types import PARSE_STATUS_DONE, PARSE_STATUS_SUPERSEDED
 
 logger = logging.getLogger("mineru.compaction")
@@ -41,10 +44,13 @@ class Compaction:
 
     async def _compact(self) -> int:
         """Scan all (sha256, tier) pairs with multiple done batches and merge them."""
-        rows = await self.db.fetchall(
-            "SELECT sha256, tier FROM parses WHERE status=? "
-            "GROUP BY sha256, tier HAVING COUNT(*) > 1",
-            (PARSE_STATUS_DONE,),
+        rows = cast(
+            list[ParseGroupRow],
+            await self.db.fetchall(
+                "SELECT sha256, tier FROM parses WHERE status=? "
+                "GROUP BY sha256, tier HAVING COUNT(*) > 1",
+                (PARSE_STATUS_DONE,),
+            ),
         )
         total_merged = 0
         for r in rows:
@@ -53,10 +59,13 @@ class Compaction:
         return total_merged
 
     async def _compact_doc_tier(self, sha256: str, tier: Tier) -> int:
-        rows = await self.db.fetchall(
-            "SELECT * FROM parses WHERE sha256=? AND tier=? AND status=? "
-            "ORDER BY done_at DESC",
-            (sha256, tier, PARSE_STATUS_DONE),
+        rows = cast(
+            list[ParseRow],
+            await self.db.fetchall(
+                "SELECT * FROM parses WHERE sha256=? AND tier=? AND status=? "
+                "ORDER BY done_at DESC",
+                (sha256, tier, PARSE_STATUS_DONE),
+            ),
         )
         if len(rows) <= 1:
             return 0
@@ -110,8 +119,12 @@ class Compaction:
         return len(rows) - len(merged_ranges)
 
     async def _compact_json(
-        self, sha256: str, tier: Tier, merged_ranges: list[str],
-        done_rows: list[dict], max_done_at: int,
+        self,
+        sha256: str,
+        tier: Tier,
+        merged_ranges: list[str],
+        done_rows: Sequence[ParseBatchRow],
+        max_done_at: int,
     ) -> None:
         """Merge per-batch JSON files to match compacted parses rows.
         Only reads files belonging to *done_rows* — ignores superseded files."""

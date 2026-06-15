@@ -10,6 +10,7 @@ from mineru.doclib.server import DoclibServer
 from mineru.doclib.types import (
     ConfigResponse,
     DocInfo,
+    DocContentExportRequest,
     ErrorBucket,
     ErrorInfo,
     ErrorResponse,
@@ -19,6 +20,7 @@ from mineru.doclib.types import (
     ExcludeRuleRequest,
     FileInfo,
     FileInfoResponse,
+    ListFilesResponse,
     FindResponse,
     FindResult,
     ForgetPathRequest,
@@ -63,14 +65,18 @@ def test_doclib_interface_declares_expected_methods() -> None:
         "create_scan",
         "list_scans",
         "get_scan",
+        "list_files",
         "list_docs",
         "get_doc",
         "get_doc_content",
+        "export_doc_content",
         "search",
         "find",
         "get_file_info",
         "get_config",
+        "get_config_key",
         "set_config",
+        "unset_config",
         "add_watch",
         "list_watches",
         "remove_watch",
@@ -143,9 +149,25 @@ def test_interface_app_uses_doclib_server_routes() -> None:
 
     route_paths = {getattr(route, "path", "") for route in app.routes}
     assert "/api/v1/server/status" in route_paths
+    assert "/api/v1/server/shutdown" in route_paths
+    assert "/api/v1/configs" in route_paths
+    assert "/api/v1/configs/{key}" in route_paths
+    assert "/api/v1/watches" in route_paths
+    assert "/api/v1/watches/{watch_id}" in route_paths
+    assert "/api/v1/exclude-rules" in route_paths
+    assert "/api/v1/exclude-rules/{rule_id}" in route_paths
+    assert "/api/v1/parsing-rules" in route_paths
+    assert "/api/v1/parsing-rules/{rule_id}" in route_paths
+    assert "/api/v1/files" in route_paths
     assert "/api/v1/docs" in route_paths
+    assert "/api/v1/docs/{sha256}/exports" in route_paths
     assert "/api/docs" in route_paths
     assert "/docs" not in route_paths
+    assert "/api/v1/config" not in route_paths
+    assert "/api/v1/config/watch" not in route_paths
+    assert "/api/v1/config/exclude" not in route_paths
+    assert "/api/v1/config/parsing-rules" not in route_paths
+    assert "/api/v1/shutdown" not in route_paths
 
     assert "create_parses" not in route_names
     assert "parse_content" not in route_names
@@ -162,7 +184,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     watch_stats = WatchStats(
         watch_id=1,
         path="/tmp",
-        watch_status="active",
+        status="active",
         total_files=3,
         active_files=2,
         deleted_files=1,
@@ -185,13 +207,14 @@ def test_core_doclib_schemas_are_instantiable() -> None:
         mtime_ms=11,
         sha256="abc",
         watch_id=1,
-        scan_status="active",
+        status="active",
         error_code="scan_failed",
         error_msg="failed",
         first_seen_at=20,
         updated_at=30,
         deleted_at=None,
     )
+    files = ListFilesResponse(files=[file_info], total=1, limit=200, offset=0)
     doc_info = DocInfo(
         sha256="abc",
         size_bytes=123,
@@ -199,7 +222,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
         subject="demo",
         keywords="a,b",
         page_count=3,
-        is_scanned=0,
+        is_image_based=0,
         meta_tier="standard",
         first_seen_at=40,
         updated_at=50,
@@ -228,7 +251,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
         parsed_tiers=[tier_info],
         active_parses=[parse_info],
     )
-    watch = WatchInfo(id=1, path="/tmp", recursive=True, watch_status="active", last_scan_at=100, last_scan_files=3)
+    watch = WatchInfo(id=1, path="/tmp", recursive=True, status="active", last_scan_at=100, last_scan_files=3)
     exclude_rule = ExcludeRuleInfo(id=2, pattern="*.tmp", hit_count=4)
     parsing_rule = ParsingRuleInfo(id=3, pattern="*.pdf", tier="standard", pages="1~5", remote=True)
     watches = WatchListResponse(watches=[watch])
@@ -248,9 +271,10 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     find_result = FindResult(filename="a.pdf", ext="pdf", size_bytes=123, page_count=3, paths=["/tmp/a.pdf"])
     search_response = SearchResponse(results=[search_result], total=1, query="matched")
     find_response = FindResponse(results=[find_result], total=1, query="a")
-    config = ConfigResponse(config={"watch_default_tier": "standard"})
+    config = ConfigResponse(config={"watch_default_tier": "standard"}, sources={"watch_default_tier": "override"})
     shutdown_response = ShutdownResponse(accepted=True, message="Server shutting down...")
-    remove_watch_response = RemoveWatchResponse(path="/tmp", removed=True)
+    remove_watch_response = RemoveWatchResponse(watch_id=1, removed=True)
+    export_request = DocContentExportRequest(tier="standard", output="/tmp/a.md")
     remove_exclude_response = RemoveExcludeRuleResponse(rule_id=2, removed=True)
     remove_parsing_response = RemoveParsingRuleResponse(rule_id=3, removed=True)
     exclude_rule_request = ExcludeRuleRequest(pattern="*.tmp")
@@ -263,6 +287,8 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     assert forget_response.matched_as == "file"
     assert scan_request.kind == "manual"
     assert scan_list.scans[0].id == 1
+    assert files.files == [file_info]
+    assert files.total == 1
     assert "format" not in ParseRequest.model_fields
     assert status.files_total == 0
     assert status.watch_stats == [watch_stats]
@@ -295,8 +321,10 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     assert "sha256" not in FindResult.model_fields
     assert "snippet" not in FindResult.model_fields
     assert config.config == {"watch_default_tier": "standard"}
+    assert config.sources == {"watch_default_tier": "override"}
     assert shutdown_response.accepted
-    assert remove_watch_response.path == "/tmp"
+    assert remove_watch_response.watch_id == 1
+    assert export_request.output == "/tmp/a.md"
     assert remove_exclude_response.rule_id == 2
     assert remove_parsing_response.rule_id == 3
     assert exclude_rule_request.pattern == "*.tmp"
@@ -322,6 +350,7 @@ def test_get_semantic_methods_do_not_use_request_body_models() -> None:
     get_semantic_methods = [
         "list_parses",
         "list_scans",
+        "list_files",
         "list_docs",
         "get_doc_content",
         "search",
@@ -338,3 +367,42 @@ def test_get_doc_expands_files_only_when_requested() -> None:
     signature = inspect.signature(DoclibInterface.get_doc)
     assert "expand_files" in signature.parameters
     assert signature.parameters["expand_files"].default is False
+
+
+def test_next_cli_doclib_route_shapes_are_declared() -> None:
+    expected_routes = {
+        "shutdown_server": ("POST", "/server/shutdown"),
+        "list_parses": ("GET", "/parses"),
+        "list_files": ("GET", "/files"),
+        "list_docs": ("GET", "/docs"),
+        "get_doc_content": ("GET", "/docs/{sha256}/content"),
+        "export_doc_content": ("POST", "/docs/{sha256}/exports"),
+        "get_config": ("GET", "/configs"),
+        "get_config_key": ("GET", "/configs/{key}"),
+        "set_config": ("PUT", "/configs/{key}"),
+        "unset_config": ("DELETE", "/configs/{key}"),
+        "add_watch": ("POST", "/watches"),
+        "list_watches": ("GET", "/watches"),
+        "remove_watch": ("DELETE", "/watches/{watch_id}"),
+        "add_exclude_rule": ("POST", "/exclude-rules"),
+        "list_exclude_rules": ("GET", "/exclude-rules"),
+        "remove_exclude_rule": ("DELETE", "/exclude-rules/{rule_id}"),
+        "add_parsing_rule": ("POST", "/parsing-rules"),
+        "list_parsing_rules": ("GET", "/parsing-rules"),
+        "remove_parsing_rule": ("DELETE", "/parsing-rules/{rule_id}"),
+    }
+
+    for method_name, (method, path) in expected_routes.items():
+        client_route = getattr(DoclibClient, method_name)._route_info
+        server_route = getattr(DoclibServer, method_name)._route_info
+        assert client_route.method == method, method_name
+        assert client_route.path == path, method_name
+        assert server_route.method == method, method_name
+        assert server_route.path == path, method_name
+
+    assert "output" not in inspect.signature(DoclibInterface.get_doc_content).parameters
+    assert "limit" in inspect.signature(DoclibInterface.list_parses).parameters
+    assert "limit" in inspect.signature(DoclibInterface.list_docs).parameters
+    assert "file_type" in inspect.signature(DoclibInterface.list_docs).parameters
+    assert "watch_id" in inspect.signature(DoclibInterface.remove_watch).parameters
+    assert "path" not in inspect.signature(DoclibInterface.remove_watch).parameters

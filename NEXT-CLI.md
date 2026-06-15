@@ -536,11 +536,11 @@ mineru config parse-server remote.api-key <key>  # 远程 API Key
 ## 核心表
 
 ```
-files              文件实例（path, sha256, size, mtime, watch_id, scan_status）
+files              文件实例（path, sha256, size, mtime, watch_id, status）
 docs               文档内容（sha256 主键, parse_status, parse_tier, parsed_pages）
 fts_index          全文搜索索引（解析产出的文本）
 fts_filenames      文件名搜索索引
-watch_targets      监控目录配置
+watches            监控目录配置
 rules              解析规则（parsing-rules + exclude）
 config             KV 全局配置
 ```

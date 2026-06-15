@@ -88,7 +88,7 @@ mineru config parse-server ...
 
 - 不创建 watch。
 - 不要求 path 是 watch root。
-- 不更新 `watch_targets.last_scan_at` / `last_scan_files`。
+- 不更新 `watches.last_scan_at` / `last_scan_files`。
 - 写入 `scans.kind = manual`。
 - 扫描目录时应用 exclude rules。
 - 扫描文件时不应用 exclude rules，因为这是显式点名文件。
@@ -114,7 +114,7 @@ mineru config parse-server ...
 - 写入 `scans.kind = watch`。
 - 绑定 `watch_id`。
 - 使用 watch 的 enabled / status / removable 语义。
-- 更新 `watch_targets.last_scan_at` / `last_scan_files`。
+- 更新 `watches.last_scan_at` / `last_scan_files`。
 
 ## `watch rescan` 目标解析
 

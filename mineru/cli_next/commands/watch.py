@@ -51,19 +51,21 @@ def watch_list(json_mode: bool = typer.Option(False, "--json", help="JSON output
         print_info("No watches configured.")
         return
     for watch in data.watches:
-        status = watch.watch_status
+        status = watch.status
         extra = " [removable]" if watch.removable else ""
         print(f"  [{watch.id}] {watch.path}{extra}  [{status}]")
 
 
 @app.command("remove")
 def watch_remove(
-    path: str = typer.Argument(..., help="Watch directory path to remove"),
+    target: str = typer.Argument(..., help="Watch id or exact watch root path to remove"),
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Remove a watched directory."""
     try:
-        result = _client().remove_watch(path)
+        client = _client()
+        watch = _resolve_watch(client, target)
+        result = client.remove_watch(watch.id)
     except Exception as exc:
         print_error(str(exc) or "Cannot remove watch target.")
         raise typer.Exit(1) from None
@@ -71,7 +73,7 @@ def watch_remove(
     if json_mode:
         print_json(result)
         return
-    print_success(f"Watch removed: {result.path}")
+    print_success(f"Watch removed: {watch.path}")
 
 
 @app.command("rescan")

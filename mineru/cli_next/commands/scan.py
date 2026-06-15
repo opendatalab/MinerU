@@ -7,7 +7,7 @@ import time
 import typer
 
 from ...doclib.client import DoclibClient
-from ...doclib.types import ScanKind, ScanRequest, ScanTaskStatus
+from ...doclib.types import ScanKind, ScanRequest, ScanStatus
 from ..output import print_error, print_info, print_json, print_success
 
 
@@ -25,7 +25,7 @@ def scan_cmd(
     command = args[0]
     try:
         if command == "status":
-            _scan_status(args[1:], json_mode=json_mode)
+            _show_scan_task(args[1:], json_mode=json_mode)
             return
         if command == "list":
             _scan_list(args[1:], json_mode=json_mode)
@@ -44,7 +44,7 @@ def _scan_path(path: str, *, wait: int, no_wait: bool, json_mode: bool) -> None:
     _print_scan(scan_info, json_mode=json_mode)
 
 
-def _scan_status(args: list[str], *, json_mode: bool) -> None:
+def _show_scan_task(args: list[str], *, json_mode: bool) -> None:
     if len(args) != 1:
         raise ValueError("Usage: mineru scan status <scan_id>")
     scan_info = _client().get_scan(int(args[0]))
@@ -53,7 +53,7 @@ def _scan_status(args: list[str], *, json_mode: bool) -> None:
 
 def _scan_list(args: list[str], *, json_mode: bool) -> None:
     limit = 50
-    status: ScanTaskStatus | None = None
+    status: ScanStatus | None = None
     kind: ScanKind | None = None
     watch_id: int | None = None
 

@@ -9,14 +9,15 @@ from pydantic import BaseModel, Field
 from ..types import Tier
 
 ParseStatus = Literal["pending", "parsing", "done", "failed", "superseded"]
-ScanStatus = Literal["active", "deleted", "unreachable"]
-ScanTaskStatus = Literal["pending", "running", "done", "failed"]
+FileStatus = Literal["active", "deleted", "unreachable"]
+ScanStatus = Literal["pending", "running", "done", "failed"]
 ScanKind = Literal["manual", "watch"]
 ScanSource = Literal["unknown", "cli", "sdk", "api", "watch", "system"]
 RuleType = Literal["exclude", "parsing_rule"]
 WatchStatus = Literal["active", "unreachable"]
 InvalidateTarget = Literal["parses"]
 ForgetMatchedAs = Literal["file", "directory", "none"]
+ConfigSource = Literal["default", "override"]
 
 PARSE_STATUS_PENDING: ParseStatus = "pending"
 PARSE_STATUS_PARSING: ParseStatus = "parsing"
@@ -24,14 +25,14 @@ PARSE_STATUS_DONE: ParseStatus = "done"
 PARSE_STATUS_FAILED: ParseStatus = "failed"
 PARSE_STATUS_SUPERSEDED: ParseStatus = "superseded"
 
-SCAN_STATUS_ACTIVE: ScanStatus = "active"
-SCAN_STATUS_DELETED: ScanStatus = "deleted"
-SCAN_STATUS_UNREACHABLE: ScanStatus = "unreachable"
+FILE_STATUS_ACTIVE: FileStatus = "active"
+FILE_STATUS_DELETED: FileStatus = "deleted"
+FILE_STATUS_UNREACHABLE: FileStatus = "unreachable"
 
-SCAN_TASK_STATUS_PENDING: ScanTaskStatus = "pending"
-SCAN_TASK_STATUS_RUNNING: ScanTaskStatus = "running"
-SCAN_TASK_STATUS_DONE: ScanTaskStatus = "done"
-SCAN_TASK_STATUS_FAILED: ScanTaskStatus = "failed"
+SCAN_STATUS_PENDING: ScanStatus = "pending"
+SCAN_STATUS_RUNNING: ScanStatus = "running"
+SCAN_STATUS_DONE: ScanStatus = "done"
+SCAN_STATUS_FAILED: ScanStatus = "failed"
 
 SCAN_KIND_MANUAL: ScanKind = "manual"
 SCAN_KIND_WATCH: ScanKind = "watch"
@@ -71,7 +72,7 @@ class ShutdownResponse(DoclibModel):
 
 
 class RemoveWatchResponse(DoclibModel):
-    path: str
+    watch_id: int
     removed: bool
 
 
@@ -173,7 +174,7 @@ class ScanInfo(DoclibModel):
     kind: ScanKind
     source: ScanSource = "unknown"
     watch_id: int | None = None
-    status: ScanTaskStatus
+    status: ScanStatus
     files_seen: int = 0
     files_refreshed: int = 0
     files_new: int = 0
@@ -201,7 +202,7 @@ class RecentScanInfo(DoclibModel):
     kind: ScanKind
     source: ScanSource = "unknown"
     watch_id: int | None = None
-    status: ScanTaskStatus
+    status: ScanStatus
     files_seen: int = 0
     files_refreshed: int = 0
     files_new: int = 0
@@ -226,12 +227,19 @@ class FileInfo(DoclibModel):
     mtime_ms: int
     sha256: str | None = None
     watch_id: int | None = None
-    scan_status: ScanStatus
+    status: FileStatus
     error_code: str | None = None
     error_msg: str | None = None
     deleted_at: int | None = None
     first_seen_at: int
     updated_at: int
+
+
+class ListFilesResponse(DoclibModel):
+    files: list[FileInfo] = Field(default_factory=list)
+    total: int
+    limit: int
+    offset: int = 0
 
 
 class DocInfo(DoclibModel):
@@ -244,7 +252,7 @@ class DocInfo(DoclibModel):
     keywords: str | None = None
     page_count: int | None = None
     language: str | None = None
-    is_scanned: int = 0
+    is_image_based: int = 0
     meta_tier: Tier | None = None
     error_code: str | None = None
     error_msg: str | None = None
@@ -261,7 +269,20 @@ class DocContentResponse(DoclibModel):
     sha256: str
     tier: Tier
     content: str | None = None
-    output: str | None = None
+
+
+class DocContentExportRequest(DoclibModel):
+    tier: Tier
+    pages: str | None = None
+    format: str = "markdown"
+    output: str
+    no_marker: bool = False
+
+
+class DocContentExportResponse(DoclibModel):
+    sha256: str
+    tier: Tier
+    output: str
 
 
 class SearchResult(DoclibModel):
@@ -311,18 +332,31 @@ class TierParseInfo(DoclibModel):
     done_at: int | None = None
 
 
-class ConfigSetRequest(DoclibModel):
-    key: str
+class ConfigValueRequest(DoclibModel):
     value: str
 
 
 class ConfigResponse(DoclibModel):
     config: dict[str, str] = Field(default_factory=dict)
+    sources: dict[str, ConfigSource] = Field(default_factory=dict)
 
 
-class ConfigSetResponse(DoclibModel):
+class ConfigValueResponse(DoclibModel):
     key: str
     value: str
+    source: ConfigSource
+
+
+class ConfigSetRequest(ConfigValueRequest):
+    pass
+
+
+class ConfigSetResponse(ConfigValueResponse):
+    pass
+
+
+class ConfigUnsetResponse(ConfigValueResponse):
+    removed: bool = True
 
 
 class WatchRequest(DoclibModel):
@@ -338,7 +372,7 @@ class WatchInfo(DoclibModel):
     removable: bool = False
     enabled: bool = True
     recursive: bool = False
-    watch_status: WatchStatus
+    status: WatchStatus
     unreachable_at: int | None = None
     last_scan_at: int | None = None
     last_scan_files: int = 0
@@ -421,7 +455,7 @@ class WatchStats(DoclibModel):
     path: str
     label: str | None = None
     removable: bool = False
-    watch_status: WatchStatus
+    status: WatchStatus
     total_files: int = 0
     active_files: int = 0
     deleted_files: int = 0

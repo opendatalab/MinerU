@@ -6,26 +6,27 @@ import os
 import time
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ...errors import InvalidRequestError, NotFoundError
 from ..constants import ALLOWED_EXTENSIONS
 from ..core.file_io import get_file_stat
+from ..rows import PathRow, ScanRow, WatchTargetRow
 from ..types import (
     SCAN_KIND_MANUAL,
     SCAN_KIND_WATCH,
-    SCAN_STATUS_ACTIVE,
-    SCAN_TASK_STATUS_DONE,
-    SCAN_TASK_STATUS_FAILED,
-    SCAN_TASK_STATUS_PENDING,
-    SCAN_TASK_STATUS_RUNNING,
+    FILE_STATUS_ACTIVE,
+    SCAN_STATUS_DONE,
+    SCAN_STATUS_FAILED,
+    SCAN_STATUS_PENDING,
+    SCAN_STATUS_RUNNING,
     SCAN_SOURCE_UNKNOWN,
     WATCH_STATUS_ACTIVE,
     WATCH_STATUS_UNREACHABLE,
     ScanInfo,
     ScanKind,
     ScanSource,
-    ScanTaskStatus,
+    ScanStatus,
 )
 from ..core.db import DatabaseManager
 from .config_svc import ConfigService
@@ -69,9 +70,12 @@ class ScanService:
         elif watch_id is not None:
             raise InvalidRequestError("invalid_request", "watch_id is only valid for watch scans.", "watch_id")
 
-        active = await self.db.fetchone(
-            "SELECT * FROM scans WHERE kind=? AND path=? AND status IN (?, ?) ORDER BY created_at ASC LIMIT 1",
-            (kind, normalized_path, SCAN_TASK_STATUS_PENDING, SCAN_TASK_STATUS_RUNNING),
+        active = cast(
+            ScanRow | None,
+            await self.db.fetchone(
+                "SELECT * FROM scans WHERE kind=? AND path=? AND status IN (?, ?) ORDER BY created_at ASC LIMIT 1",
+                (kind, normalized_path, SCAN_STATUS_PENDING, SCAN_STATUS_RUNNING),
+            ),
         )
         if active is not None:
             return _scan_info(active)
@@ -80,9 +84,9 @@ class ScanService:
         scan_id = await self.db.execute_insert(
             "INSERT INTO scans (path, kind, source, watch_id, status, created_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (normalized_path, kind, source, watch_id, SCAN_TASK_STATUS_PENDING, now, now),
+            (normalized_path, kind, source, watch_id, SCAN_STATUS_PENDING, now, now),
         )
-        row = await self.db.fetchone("SELECT * FROM scans WHERE id=?", (scan_id,))
+        row = cast(ScanRow | None, await self.db.fetchone("SELECT * FROM scans WHERE id=?", (scan_id,)))
         if row is None:
             raise NotFoundError("scan_not_found", f"Scan {scan_id} not found after creation.", "scan_id")
         return _scan_info(row)
@@ -91,7 +95,7 @@ class ScanService:
         self,
         *,
         limit: int = 50,
-        status: ScanTaskStatus | None = None,
+        status: ScanStatus | None = None,
         kind: ScanKind | None = None,
         watch_id: int | None = None,
     ) -> list[ScanInfo]:
@@ -108,38 +112,44 @@ class ScanService:
             clauses.append("watch_id=?")
             params.append(watch_id)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        rows = await self.db.fetchall(
-            f"SELECT * FROM scans {where} ORDER BY created_at DESC LIMIT ?",
-            (*params, limit),
+        rows = cast(
+            list[ScanRow],
+            await self.db.fetchall(
+                f"SELECT * FROM scans {where} ORDER BY created_at DESC LIMIT ?",
+                (*params, limit),
+            ),
         )
         return [_scan_info(row) for row in rows]
 
     async def get_scan(self, scan_id: int) -> ScanInfo:
-        row = await self.db.fetchone("SELECT * FROM scans WHERE id=?", (scan_id,))
+        row = cast(ScanRow | None, await self.db.fetchone("SELECT * FROM scans WHERE id=?", (scan_id,)))
         if row is None:
             raise NotFoundError("scan_not_found", f"Scan {scan_id} not found.", "scan_id")
         return _scan_info(row)
 
-    async def acquire_task(self) -> dict | None:
+    async def acquire_task(self) -> ScanRow | None:
         now = _now_ms()
         timeout = now - 30 * 60 * 1000
-        return await self.db.fetchone(
-            "UPDATE scans SET locked_at=?, status=?, started_at=COALESCE(started_at, ?), updated_at=? "
-            "WHERE id = ("
-            "  SELECT id FROM scans WHERE status=? AND (locked_at IS NULL OR locked_at < ?) "
-            "  ORDER BY created_at ASC LIMIT 1"
-            ") RETURNING *",
-            (now, SCAN_TASK_STATUS_RUNNING, now, now, SCAN_TASK_STATUS_PENDING, timeout),
+        return cast(
+            ScanRow | None,
+            await self.db.fetchone(
+                "UPDATE scans SET locked_at=?, status=?, started_at=COALESCE(started_at, ?), updated_at=? "
+                "WHERE id = ("
+                "  SELECT id FROM scans WHERE status=? AND (locked_at IS NULL OR locked_at < ?) "
+                "  ORDER BY created_at ASC LIMIT 1"
+                ") RETURNING *",
+                (now, SCAN_STATUS_RUNNING, now, now, SCAN_STATUS_PENDING, timeout),
+            ),
         )
 
-    async def process_scan(self, task: dict) -> bool:
+    async def process_scan(self, task: ScanRow) -> bool:
         try:
             counters = await self._run_scan(task)
         except Exception as exc:
             now = _now_ms()
             await self.db.execute(
                 "UPDATE scans SET status=?, locked_at=NULL, error_code=?, error_msg=?, finished_at=?, updated_at=? WHERE id=?",
-                (SCAN_TASK_STATUS_FAILED, "scan_failed", str(exc)[:500], now, now, task["id"]),
+                (SCAN_STATUS_FAILED, "scan_failed", str(exc)[:500], now, now, task["id"]),
             )
             await self.cleanup_terminal_scan_logs()
             return False
@@ -150,7 +160,7 @@ class ScanService:
             "files_deleted=?, files_unreachable=?, files_error=?, files_unsupported=?, files_excluded=?, "
             "finished_at=?, updated_at=? WHERE id=?",
             (
-                SCAN_TASK_STATUS_DONE,
+                SCAN_STATUS_DONE,
                 counters.files_seen,
                 counters.files_refreshed,
                 counters.files_new,
@@ -165,8 +175,9 @@ class ScanService:
                 task["id"],
             ),
         )
-        if task["kind"] == SCAN_KIND_WATCH and task.get("watch_id") is not None:
-            await self.config_svc.update_watch_scan_stats(task["watch_id"], counters.files_refreshed)
+        task_watch_id = task["watch_id"]
+        if task["kind"] == SCAN_KIND_WATCH and task_watch_id is not None:
+            await self.config_svc.update_watch_scan_stats(task_watch_id, counters.files_refreshed)
         await self.cleanup_terminal_scan_logs()
         return True
 
@@ -176,12 +187,12 @@ class ScanService:
                 "DELETE FROM scans WHERE status IN (?, ?) AND id NOT IN ("
                 "  SELECT id FROM scans WHERE status IN (?, ?) ORDER BY created_at DESC, id DESC LIMIT ?"
                 ")",
-                (SCAN_TASK_STATUS_DONE, SCAN_TASK_STATUS_FAILED, SCAN_TASK_STATUS_DONE, SCAN_TASK_STATUS_FAILED, keep),
+                (SCAN_STATUS_DONE, SCAN_STATUS_FAILED, SCAN_STATUS_DONE, SCAN_STATUS_FAILED, keep),
             )
         except Exception as exc:
             logger.warning("Failed to cleanup terminal scan logs: %s", exc)
 
-    async def _run_scan(self, task: dict) -> "_ScanCounters":
+    async def _run_scan(self, task: ScanRow) -> "_ScanCounters":
         path = task["path"]
         kind = task["kind"]
         watch_id = task.get("watch_id")
@@ -197,7 +208,7 @@ class ScanService:
             except OSError:
                 await self.config_svc.update_watch_status(watch["id"], WATCH_STATUS_UNREACHABLE)
                 return counters
-            if watch["watch_status"] == WATCH_STATUS_UNREACHABLE:
+            if watch["status"] == WATCH_STATUS_UNREACHABLE:
                 await self.config_svc.update_watch_status(watch["id"], WATCH_STATUS_ACTIVE)
 
         if os.path.isdir(path):
@@ -249,14 +260,17 @@ class ScanService:
         await self._refresh_file(path, watch_id=watch_id, counters=counters)
 
     async def _scan_missing_path(self, path: str, *, watch_id: int | None, counters: "_ScanCounters") -> None:
-        existing = await self.db.fetchone("SELECT path FROM files WHERE path=?", (path,))
+        existing = cast(PathRow | None, await self.db.fetchone("SELECT path FROM files WHERE path=?", (path,)))
         if existing is not None:
             await self._refresh_file(existing["path"], watch_id=watch_id, counters=counters)
 
         prefix = _dir_prefix(path)
-        rows = await self.db.fetchall(
-            "SELECT path FROM files WHERE path>=? AND path<? AND scan_status=? ORDER BY path",
-            (prefix, prefix + chr(0x10FFFF), SCAN_STATUS_ACTIVE),
+        rows = cast(
+            list[PathRow],
+            await self.db.fetchall(
+                "SELECT path FROM files WHERE path>=? AND path<? AND status=? ORDER BY path",
+                (prefix, prefix + chr(0x10FFFF), FILE_STATUS_ACTIVE),
+            ),
         )
         for row in rows:
             await self._refresh_file(row["path"], watch_id=watch_id, counters=counters)
@@ -271,12 +285,12 @@ class ScanService:
         prefix = _dir_prefix(path)
         params: tuple[Any, ...]
         if watch_id is None:
-            sql = "SELECT path FROM files WHERE path>=? AND path<? AND scan_status=? ORDER BY path"
-            params = (prefix, prefix + chr(0x10FFFF), SCAN_STATUS_ACTIVE)
+            sql = "SELECT path FROM files WHERE path>=? AND path<? AND status=? ORDER BY path"
+            params = (prefix, prefix + chr(0x10FFFF), FILE_STATUS_ACTIVE)
         else:
-            sql = "SELECT path FROM files WHERE watch_id=? AND scan_status=? ORDER BY path"
-            params = (watch_id, SCAN_STATUS_ACTIVE)
-        rows = await self.db.fetchall(sql, params)
+            sql = "SELECT path FROM files WHERE watch_id=? AND status=? ORDER BY path"
+            params = (watch_id, FILE_STATUS_ACTIVE)
+        rows = cast(list[PathRow], await self.db.fetchall(sql, params))
         for row in rows:
             await self._refresh_file(row["path"], watch_id=watch_id, counters=counters)
 
@@ -285,11 +299,11 @@ class ScanService:
         counters.add_refresh(result.status)
         return result
 
-    async def _resolve_watch(self, path: str, watch_id: int | None) -> dict:
+    async def _resolve_watch(self, path: str, watch_id: int | None) -> WatchTargetRow:
         if watch_id is not None:
-            watch = await self.db.fetchone("SELECT * FROM watch_targets WHERE id=?", (watch_id,))
+            watch = cast(WatchTargetRow | None, await self.db.fetchone("SELECT * FROM watches WHERE id=?", (watch_id,)))
         else:
-            watch = await self.db.fetchone("SELECT * FROM watch_targets WHERE path=?", (path,))
+            watch = cast(WatchTargetRow | None, await self.db.fetchone("SELECT * FROM watches WHERE path=?", (path,)))
         if watch is None:
             raise NotFoundError("watch_not_found", "Watch target not found.", "watch_id")
         return watch
@@ -327,5 +341,5 @@ def _dir_prefix(path: str) -> str:
     return path.rstrip(os.sep) + os.sep
 
 
-def _scan_info(row: dict[str, Any]) -> ScanInfo:
+def _scan_info(row: ScanRow) -> ScanInfo:
     return ScanInfo.model_validate(row)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 import pypdfium2
@@ -15,7 +16,7 @@ try:
 except ImportError:
     Document = None  # type: ignore[assignment]
 try:
-    from pptx import Presentation
+    from pptx import Presentation  # type: ignore[reportMissingImports]
 except ImportError:
     Presentation = None  # type: ignore[assignment]
 try:
@@ -48,13 +49,16 @@ async def compute_sha256(filepath: str) -> str:
 # ── file stat ──────────────────────────────────────────────────────
 
 
-async def get_file_stat(filepath: str) -> dict:
-    def _stat() -> dict:
+@dataclass(frozen=True)
+class FileStat:
+    size_bytes: int
+    mtime_ms: int
+
+
+async def get_file_stat(filepath: str) -> FileStat:
+    def _stat() -> FileStat:
         st = os.stat(filepath)
-        return {
-            "size_bytes": st.st_size,
-            "mtime_ms": int(st.st_mtime * 1000),
-        }
+        return FileStat(size_bytes=st.st_size, mtime_ms=int(st.st_mtime * 1000))
 
     return await asyncio.to_thread(_stat)
 
@@ -73,7 +77,7 @@ async def extract_metadata(filepath: str) -> dict:
         "author": None,
         "subject": None,
         "keywords": None,
-        "is_scanned": 0,
+        "is_image_based": 0,
     }
 
     if ext == "pdf":

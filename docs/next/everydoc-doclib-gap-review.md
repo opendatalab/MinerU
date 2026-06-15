@@ -47,7 +47,7 @@
 
 处理结果:
 
-- 数据模型有 `files.scan_status = active / deleted / unreachable`。
+- 数据模型有 `files.status = active / deleted / unreachable`。
 - `refresh_file()` 统一处理 new / changed / known / deleted / unreachable / stat error。
 - 删除/变更检测入口包括 watch event、watch scan，以及 4 个同步 source file path 操作: parse、info、docs?path、invalidate(path)。
 - watch scan 采用两阶段刷新: 先 refresh DB 中该 watch 下的 active paths，再 `os.walk()` 发现当前文件系统中的新路径和变化路径。
@@ -101,9 +101,9 @@
 处理结果:
 
 - `remove_watch(path)` 删除 watch target 前先处理关联 file rows。
-- active files: `watch_id=NULL`，`scan_status` 保持 `active`。
-- deleted files: `watch_id=NULL`，`scan_status` 保持 `deleted`。
-- unreachable files: `watch_id=NULL`，`scan_status` 改为 `deleted`，写入 `deleted_at`。
+- active files: `watch_id=NULL`，`status` 保持 `active`。
+- deleted files: `watch_id=NULL`，`status` 保持 `deleted`。
+- unreachable files: `watch_id=NULL`，`status` 改为 `deleted`，写入 `deleted_at`。
 - 不立即删除 file row，也不清理 FTS。
 
 后续优化:
@@ -181,7 +181,7 @@ P0 结论:
 - 每个 watch stats 包括 total / active / deleted / unreachable files。
 - 每个 watch stats 包括 pending ingest files、file error count、doc count。
 - 每个 watch stats 包括 parse pending / parsing / failed / done count。
-- 每个 watch stats 保留 watch path、label、removable、watch_status、last_scan_at、last_scan_files。
+- 每个 watch stats 保留 watch path、label、removable、status、last_scan_at、last_scan_files。
 - `ServerStatusResponse` 增加 `error_summary`，按 `files` / `docs` / `parses` 聚合 `error_code` 数量。
 - `mineru server status` 在默认输出中增加 Watch Stats 和 Error Summary 表。
 - JSON 模式返回完整结构。

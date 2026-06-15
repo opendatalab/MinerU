@@ -13,7 +13,7 @@
 MinerU 有两类配置：
 
 - **启动前配置**：doclib server 启动之前就必须知道，通常来自文件形式的配置或内置默认值。
-- **运行时配置**：doclib server 启动之后可从 SQLite 读取和修改，由 `config`、`watch_targets`、`exclude_rules`、`parsing_rules` 等表承载。
+- **运行时配置**：doclib server 启动之后可从 SQLite 读取和修改，由 `config`、`watches`、`exclude_rules`、`parsing_rules` 等表承载。
 
 配置必须服务两个产品原则：
 
@@ -61,7 +61,7 @@ MinerU 有两类配置：
 | 来源 | 例子 | 存储 | 说明 |
 |------|------|------|------|
 | SQLite `config` 表 | `watch_default_tier`、`parse_server.local.mode` | KV | doclib 运行时配置 |
-| `watch_targets` 表 | watch 目录、可插拔设备状态 | 表结构 | 文件发现配置 |
+| `watches` 表 | watch 目录、可插拔设备状态 | 表结构 | 文件发现配置 |
 | `exclude_rules` 表 | exclude | 表结构 | 路径排除规则 |
 | `parsing_rules` 表 | parsing-rules | 表结构 | 路径解析规则 |
 | 当前命令显式参数 | `--tier pro`、`--remote` | 不持久化 | 当前请求覆盖 |

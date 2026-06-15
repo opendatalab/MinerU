@@ -12,7 +12,9 @@ from mineru.doclib.background.ingest import IngestWorkerPool
 from mineru.doclib.background.parse_server_health import api_server_args_for_tier
 from mineru.doclib.background.watch import WatchLoop
 from mineru.doclib.core.db import DatabaseManager
+from mineru.doclib.core.file_io import FileStat, get_file_stat
 from mineru.doclib.core.fts import FTSManager
+from mineru.doclib.config_defaults import CONFIG_DEFAULTS
 from mineru.errors import InvalidRequestError
 from mineru.doclib.services.cleanup_svc import CleanupService
 from mineru.doclib.services.config_svc import ConfigService
@@ -26,6 +28,7 @@ from mineru.doclib.services.parse_svc import (
 from mineru.doclib.services.scan_svc import ScanService
 from mineru.doclib.services.search_svc import SearchService
 from mineru.doclib.server import DoclibServer
+from mineru.doclib.types import ParseResponse
 from mineru.parser import backend_for_tier, resolve_tier_and_backend
 from mineru.types import PageInfo, Tier
 
@@ -115,7 +118,7 @@ class _FakeDB:
     async def fetchone(self, sql: str, params: tuple[Any, ...]) -> dict[str, Any] | None:
         if sql.startswith("SELECT * FROM files WHERE path="):
             path = params[0]
-            if self.file_row and self.file_row["path"] == path and self.file_row["scan_status"] == "active":
+            if self.file_row and self.file_row["path"] == path and self.file_row["status"] == "active":
                 return self.file_row
         if sql.startswith("SELECT page_count FROM docs WHERE sha256="):
             sha256 = params[0]
@@ -123,7 +126,7 @@ class _FakeDB:
                 return self.doc_row
         if sql.startswith("SELECT * FROM files WHERE sha256="):
             sha256 = params[0]
-            if self.file_row and self.file_row["sha256"] == sha256 and self.file_row["scan_status"] == "active":
+            if self.file_row and self.file_row["sha256"] == sha256 and self.file_row["status"] == "active":
                 return self.file_row
         if sql.startswith("SELECT status FROM parses WHERE id=") or sql.startswith("SELECT * FROM parses WHERE id="):
             parse_id = params[0]
@@ -211,6 +214,47 @@ def test_managed_api_server_args_use_tier_for_process_start() -> None:
     assert api_server_args_for_tier("pro") == ["--tier", "pro", "--port", "15981"]
 
 
+def test_get_file_stat_returns_typed_file_stat(tmp_path: Path) -> None:
+    source = tmp_path / "note.txt"
+    source.write_text("content", encoding="utf-8")
+
+    stat = asyncio.run(get_file_stat(str(source)))
+
+    assert isinstance(stat, FileStat)
+    assert stat.size_bytes == source.stat().st_size
+    assert stat.mtime_ms == int(source.stat().st_mtime * 1000)
+
+
+def test_config_defaults_are_code_backed_and_unset_removes_override(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        service = ConfigService(db)
+
+        seeded_rows = await db.fetchall("SELECT key, value FROM config ORDER BY key")
+        assert seeded_rows == []
+
+        assert await service.get("parse_server.local.mode") == CONFIG_DEFAULTS["parse_server.local.mode"]
+        config, sources = await service.get_all_with_sources()
+        assert config["parse_server.local.mode"] == CONFIG_DEFAULTS["parse_server.local.mode"]
+        assert sources["parse_server.local.mode"] == "default"
+
+        await service.set("parse_server.local.mode", "managed")
+        assert await service.get("parse_server.local.mode") == "managed"
+        config, sources = await service.get_all_with_sources()
+        assert config["parse_server.local.mode"] == "managed"
+        assert sources["parse_server.local.mode"] == "override"
+
+        await service.unset("parse_server.local.mode")
+        assert await service.get("parse_server.local.mode") == CONFIG_DEFAULTS["parse_server.local.mode"]
+        config, sources = await service.get_all_with_sources()
+        assert config["parse_server.local.mode"] == CONFIG_DEFAULTS["parse_server.local.mode"]
+        assert sources["parse_server.local.mode"] == "default"
+        assert await db.fetchall("SELECT key, value FROM config ORDER BY key") == []
+
+    asyncio.run(_run())
+
+
 def test_compaction_uses_configured_data_dir(tmp_path: Path) -> None:
     sha256 = "b" * 64
     tier = "standard"
@@ -239,7 +283,7 @@ def test_compaction_uses_configured_data_dir(tmp_path: Path) -> None:
 def test_invalidate_deletes_fts_when_no_done_batches_remain(tmp_path: Path) -> None:
     sha256 = "c" * 64
     parses = [{"sha256": sha256, "tier": "standard", "pages": "1", "status": "done", "done_at": 1000}]
-    db = _FakeDB(parses=parses, file_row={"sha256": sha256, "scan_status": "active", "filename": "doc.pdf"})
+    db = _FakeDB(parses=parses, file_row={"sha256": sha256, "status": "active", "filename": "doc.pdf"})
     fts = _FakeFTS()
     service = ParseService(db=db, fts=fts, config_svc=None, data_dir=str(tmp_path))
 
@@ -259,7 +303,7 @@ def test_invalidate_rebuilds_fts_from_highest_remaining_done_tier(tmp_path: Path
         {"sha256": sha256, "tier": "flash", "pages": "1", "status": "done", "done_at": 1000},
         {"sha256": sha256, "tier": "standard", "pages": "1", "status": "done", "done_at": 2000},
     ]
-    db = _FakeDB(parses=parses, file_row={"sha256": sha256, "scan_status": "active", "filename": "doc.pdf"})
+    db = _FakeDB(parses=parses, file_row={"sha256": sha256, "status": "active", "filename": "doc.pdf"})
     fts = _FakeFTS()
     service = ParseService(db=db, fts=fts, config_svc=None, data_dir=str(tmp_path))
 
@@ -306,7 +350,7 @@ def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: 
             "path": path,
             "filename": "doc.pdf",
             "sha256": sha256,
-            "scan_status": "active",
+            "status": "active",
             "ext": "pdf",
             "mtime_ms": int(stat.st_mtime * 1000),
             "size_bytes": stat.st_size,
@@ -319,12 +363,13 @@ def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: 
 
     result = asyncio.run(service.request_parse(path, tier="standard", pages="1~10", force=True))
 
-    assert result["wait_parse_ids"] == [11, 12]
-    assert result["reused_parse_ids"] == [11]
-    assert result["created_parse_ids"] == [12]
-    assert result["pages"] == "1~10"
-    assert result["status"] == "pending"
-    assert result["cache_hit"] is False
+    assert isinstance(result, ParseResponse)
+    assert result.wait_parse_ids == [11, 12]
+    assert result.reused_parse_ids == [11]
+    assert result.created_parse_ids == [12]
+    assert result.pages == "1~10"
+    assert result.status == "pending"
+    assert result.cache_hit is False
     assert db.updated_priorities == [11]
     assert parses[-1]["pages"] == "1~5,9~10"
 
@@ -421,15 +466,15 @@ def test_refresh_file_marks_missing_known_path_deleted(tmp_path: Path) -> None:
 
         source.unlink()
         refreshed = await service.refresh_file(str(source))
-        row = await db.fetchone("SELECT sha256, scan_status, deleted_at FROM files WHERE path=?", (str(source),))
+        row = await db.fetchone("SELECT sha256, status, deleted_at FROM files WHERE path=?", (str(source),))
 
         assert refreshed.status == "deleted"
         assert refreshed.file is not None
         assert refreshed.file.sha256 == original_sha
-        assert refreshed.file.scan_status == "deleted"
+        assert refreshed.file.status == "deleted"
         assert row is not None
         assert row["sha256"] == original_sha
-        assert row["scan_status"] == "deleted"
+        assert row["status"] == "deleted"
         assert row["deleted_at"] is not None
 
     asyncio.run(_run())
@@ -452,14 +497,14 @@ def test_refresh_file_records_stat_error_without_marking_deleted(tmp_path: Path,
         monkeypatch.setattr(parse_svc_module, "get_file_stat", _permission_denied)
 
         refreshed = await service.refresh_file(str(source))
-        row = await db.fetchone("SELECT scan_status, error_code, error_msg, deleted_at FROM files WHERE path=?", (str(source),))
+        row = await db.fetchone("SELECT status, error_code, error_msg, deleted_at FROM files WHERE path=?", (str(source),))
 
         assert refreshed.status == "error"
         assert refreshed.file is not None
-        assert refreshed.file.scan_status == "active"
+        assert refreshed.file.status == "active"
         assert refreshed.file.error_code == "file_permission_denied"
         assert row is not None
-        assert row["scan_status"] == "active"
+        assert row["status"] == "active"
         assert row["error_code"] == "file_permission_denied"
         assert row["error_msg"] == "permission denied"
         assert row["deleted_at"] is None
@@ -566,7 +611,7 @@ def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
                 (sha256, 10, file_type, now, now),
             )
             await db.execute(
-                "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+                "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (str(tmp_path / filename), filename, filename.rsplit(".", 1)[1], 10, now, sha256, "active", now, now),
             )
@@ -604,17 +649,17 @@ def test_search_prefers_active_paths_and_falls_back_to_non_active_paths(tmp_path
             await fts.replace(sha256=sha256, tier="standard", text="fallback needle", title="", author="", filename=f"{sha256[0]}.pdf")
 
         await db.execute(
-            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(tmp_path / "active.pdf"), "active.pdf", "pdf", 10, now, sha_active, "active", now, now),
         )
         await db.execute(
-            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(tmp_path / "deleted-copy.pdf"), "deleted-copy.pdf", "pdf", 10, now, sha_active, "deleted", now, now),
         )
         await db.execute(
-            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(tmp_path / "deleted-only.pdf"), "deleted-only.pdf", "pdf", 10, now, sha_deleted, "deleted", now, now),
         )
@@ -645,7 +690,7 @@ def test_find_filters_by_ext(tmp_path: Path) -> None:
                 (sha256, 10, ext, now, now),
             )
             file_id = await db.execute_insert(
-                "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+                "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (str(tmp_path / filename), filename, ext, 10, now, sha256, "active", now, now),
             )
@@ -681,19 +726,19 @@ def test_refresh_file_marks_only_current_file_unreachable_when_watch_root_is_mis
         root.rmdir()
         refreshed = await service.refresh_file(str(source), watch_id=watch["id"])
 
-        source_row = await db.fetchone("SELECT scan_status, error_code, error_msg, deleted_at FROM files WHERE path=?", (str(source),))
-        other_row = await db.fetchone("SELECT scan_status FROM files WHERE path=?", (str(other),))
-        watch_row = await db.fetchone("SELECT watch_status, unreachable_at FROM watch_targets WHERE id=?", (watch["id"],))
+        source_row = await db.fetchone("SELECT status, error_code, error_msg, deleted_at FROM files WHERE path=?", (str(source),))
+        other_row = await db.fetchone("SELECT status FROM files WHERE path=?", (str(other),))
+        watch_row = await db.fetchone("SELECT status, unreachable_at FROM watches WHERE id=?", (watch["id"],))
 
         assert refreshed.status == "unreachable"
         assert source_row is not None
-        assert source_row["scan_status"] == "unreachable"
+        assert source_row["status"] == "unreachable"
         assert source_row["error_code"] is None
         assert source_row["error_msg"] is None
         assert source_row["deleted_at"] is None
-        assert other_row == {"scan_status": "active"}
+        assert other_row == {"status": "active"}
         assert watch_row is not None
-        assert watch_row["watch_status"] == "unreachable"
+        assert watch_row["status"] == "unreachable"
         assert watch_row["unreachable_at"] is not None
 
     asyncio.run(_run())
@@ -717,16 +762,16 @@ def test_remove_watch_converts_unreachable_files_to_deleted_and_unbinds_watch(tm
             "INSERT INTO scans (path, kind, source, watch_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (str(root), "watch", "cli", watch["id"], "done", now, now),
         )
-        await db.execute("UPDATE files SET scan_status=? WHERE path=?", ("unreachable", str(source)))
+        await db.execute("UPDATE files SET status=? WHERE path=?", ("unreachable", str(source)))
 
         await config_svc.remove_watch(str(root))
-        row = await db.fetchone("SELECT watch_id, scan_status, deleted_at FROM files WHERE path=?", (str(source),))
-        watch_row = await db.fetchone("SELECT * FROM watch_targets WHERE id=?", (watch["id"],))
+        row = await db.fetchone("SELECT watch_id, status, deleted_at FROM files WHERE path=?", (str(source),))
+        watch_row = await db.fetchone("SELECT * FROM watches WHERE id=?", (watch["id"],))
         scan_row = await db.fetchone("SELECT path, kind, watch_id FROM scans WHERE path=?", (str(root),))
 
         assert row is not None
         assert row["watch_id"] is None
-        assert row["scan_status"] == "deleted"
+        assert row["status"] == "deleted"
         assert row["deleted_at"] is not None
         assert watch_row is None
         assert scan_row == {"path": str(root), "kind": "watch", "watch_id": None}
@@ -753,10 +798,10 @@ def test_watch_scan_refreshes_known_active_paths_before_walk(tmp_path: Path) -> 
 
         source.unlink()
         await watch_loop._initial_scan(str(root), watch["id"])
-        row = await db.fetchone("SELECT scan_status, deleted_at FROM files WHERE path=?", (str(source),))
+        row = await db.fetchone("SELECT status, deleted_at FROM files WHERE path=?", (str(source),))
 
         assert row is not None
-        assert row["scan_status"] == "deleted"
+        assert row["status"] == "deleted"
         assert row["deleted_at"] is not None
 
     asyncio.run(_run())
@@ -782,12 +827,12 @@ def test_watch_scan_marks_root_unreachable_without_refreshing_all_files(tmp_path
         source.unlink()
         root.rmdir()
         await watch_loop._initial_scan(str(root), watch["id"])
-        file_row = await db.fetchone("SELECT scan_status FROM files WHERE path=?", (str(source),))
-        watch_row = await db.fetchone("SELECT watch_status, unreachable_at FROM watch_targets WHERE id=?", (watch["id"],))
+        file_row = await db.fetchone("SELECT status FROM files WHERE path=?", (str(source),))
+        watch_row = await db.fetchone("SELECT status, unreachable_at FROM watches WHERE id=?", (watch["id"],))
 
-        assert file_row == {"scan_status": "active"}
+        assert file_row == {"status": "active"}
         assert watch_row is not None
-        assert watch_row["watch_status"] == "unreachable"
+        assert watch_row["status"] == "unreachable"
         assert watch_row["unreachable_at"] is not None
 
     asyncio.run(_run())
@@ -811,7 +856,7 @@ def test_scan_service_creates_and_processes_manual_file_scan(tmp_path: Path) -> 
         assert await scan_svc.process_scan(task) is True
 
         done = await scan_svc.get_scan(scan.id)
-        file_row = await db.fetchone("SELECT path, sha256, scan_status FROM files WHERE path=?", (str(source),))
+        file_row = await db.fetchone("SELECT path, sha256, status FROM files WHERE path=?", (str(source),))
 
         assert done.status == "done"
         assert done.files_seen == 1
@@ -819,7 +864,7 @@ def test_scan_service_creates_and_processes_manual_file_scan(tmp_path: Path) -> 
         assert done.files_new == 1
         assert file_row is not None
         assert file_row["sha256"] is None
-        assert file_row["scan_status"] == "active"
+        assert file_row["status"] == "active"
 
     asyncio.run(_run())
 
@@ -950,7 +995,7 @@ def test_cleanup_deleted_files_does_not_cleanup_orphan_docs(tmp_path: Path) -> N
             (sha256, 7, now, now),
         )
         await db.execute(
-            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, deleted_at, first_seen_at, updated_at) "
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, deleted_at, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(tmp_path / "deleted.txt"), "deleted.txt", "txt", 7, now, sha256, "deleted", now, now, now),
         )
@@ -990,12 +1035,12 @@ def test_cleanup_orphans_keeps_docs_referenced_by_deleted_or_unreachable_files(t
                 (sha256, 7, now, now),
             )
         await db.execute(
-            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, deleted_at, first_seen_at, updated_at) "
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, deleted_at, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(tmp_path / "deleted.txt"), "deleted.txt", "txt", 7, now, deleted_sha, "deleted", now, now, now),
         )
         await db.execute(
-            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(tmp_path / "unreachable.txt"), "unreachable.txt", "txt", 7, now, unreachable_sha, "unreachable", now, now),
         )
@@ -1037,12 +1082,12 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
             ("metadata_failed", sha_pending),
         )
         await db.execute(
-            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, watch_id, scan_status, first_seen_at, updated_at) "
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, watch_id, status, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(tmp_path / "watched" / "done.pdf"), "done.pdf", "pdf", 7, now, sha_done, watch["id"], "active", now, now),
         )
         await db.execute(
-            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, watch_id, scan_status, error_code, first_seen_at, updated_at) "
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, watch_id, status, error_code, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 str(tmp_path / "watched" / "pending.pdf"),
@@ -1059,12 +1104,12 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
             ),
         )
         await db.execute(
-            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, watch_id, scan_status, first_seen_at, updated_at) "
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, watch_id, status, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(tmp_path / "watched" / "need-ingest.pdf"), "need-ingest.pdf", "pdf", 7, now, watch["id"], "active", now, now),
         )
         await db.execute(
-            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, watch_id, scan_status, error_code, first_seen_at, updated_at) "
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, watch_id, status, error_code, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(tmp_path / "watched" / "blocked-ingest.pdf"), "blocked-ingest.pdf", "pdf", 7, now, watch["id"], "active", "ingest_failed", now, now),
         )
@@ -1151,7 +1196,7 @@ def test_forget_path_deletes_file_row_and_filename_fts_without_deleting_doc(tmp_
             (sha256, "standard", "content", "doc.pdf"),
         )
         await db.execute(
-            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (path, "doc.pdf", "pdf", 7, now, sha256, "active", now, now),
         )
@@ -1196,12 +1241,12 @@ def test_forget_directory_matches_historical_prefix_rows(tmp_path: Path) -> None
                 (sha256, 7, now, now),
             )
         await db.execute(
-            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(root / "a.pdf"), "a.pdf", "pdf", 7, now, sha_a, "active", now, now),
         )
         await db.execute(
-            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, scan_status, first_seen_at, updated_at) "
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(root / "nested" / "b.pdf"), "b.pdf", "pdf", 7, now, sha_b, "deleted", now, now),
         )
@@ -1233,7 +1278,7 @@ def test_forget_rejects_watch_root_and_warns_under_active_watch(tmp_path: Path) 
             ("a" * 64, 7, now, now),
         )
         await db.execute(
-            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, watch_id, scan_status, first_seen_at, updated_at) "
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, watch_id, status, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (path, "doc.pdf", "pdf", 7, now, "a" * 64, watch["id"], "active", now, now),
         )
@@ -1306,7 +1351,7 @@ def test_process_doc_marks_empty_page_result_failed(tmp_path: Path) -> None:
         file_row={
             "path": "/tmp/doc.pdf",
             "sha256": sha256,
-            "scan_status": "active",
+            "status": "active",
             "filename": "doc.pdf",
             "title": "",
             "author": "",
@@ -1359,7 +1404,7 @@ def test_process_doc_fails_when_batch_json_cannot_be_written(tmp_path: Path) -> 
         file_row={
             "path": "/tmp/doc.pdf",
             "sha256": sha256,
-            "scan_status": "active",
+            "status": "active",
             "filename": "doc.pdf",
             "title": "",
             "author": "",

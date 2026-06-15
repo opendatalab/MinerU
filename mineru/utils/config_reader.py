@@ -5,13 +5,6 @@ from typing import Any
 
 from loguru import logger
 
-try:
-    import torch
-    import torch_npu
-except ImportError:
-    pass
-
-
 # 定义配置文件名常量
 CONFIG_FILE_NAME = os.getenv("MINERU_TOOLS_CONFIG_JSON", "mineru.json")
 
@@ -79,6 +72,10 @@ def get_device() -> str:
     if device_mode is not None:
         return device_mode
     try:
+        import torch
+    except ImportError:
+        return "cpu"
+    try:
         if torch.cuda.is_available():  # type: ignore
             return "cuda"
     except Exception:
@@ -89,6 +86,8 @@ def get_device() -> str:
     except Exception:
         pass
     try:
+        import torch_npu
+
         if torch_npu.npu.is_available():  # type: ignore
             return "npu"
     except Exception:

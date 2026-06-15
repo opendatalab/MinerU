@@ -9,8 +9,8 @@ CREATE TABLE IF NOT EXISTS files (
     size_bytes      INTEGER NOT NULL,
     mtime_ms        INTEGER NOT NULL,
     sha256          TEXT    REFERENCES docs(sha256),
-    watch_id        INTEGER REFERENCES watch_targets(id),
-    scan_status     TEXT    NOT NULL DEFAULT 'active',
+    watch_id        INTEGER REFERENCES watches(id),
+    status          TEXT    NOT NULL DEFAULT 'active',
     locked_at       INTEGER,
     error_code      TEXT,
     error_msg       TEXT,
@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS files (
     updated_at      INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_files_watch_id ON files(watch_id);
-CREATE INDEX IF NOT EXISTS idx_files_scan_status ON files(scan_status);
-CREATE INDEX IF NOT EXISTS idx_files_sha256_status ON files(sha256, scan_status);
+CREATE INDEX IF NOT EXISTS idx_files_status ON files(status);
+CREATE INDEX IF NOT EXISTS idx_files_sha256_status ON files(sha256, status);
 
 CREATE TABLE IF NOT EXISTS docs (
     sha256          TEXT    PRIMARY KEY NOT NULL,
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS docs (
     author          TEXT,
     subject         TEXT,
     keywords        TEXT,
-    is_scanned      INTEGER NOT NULL DEFAULT 0,
+    is_image_based  INTEGER NOT NULL DEFAULT 0,
     meta_tier       TEXT,
     error_code      TEXT,
     error_msg       TEXT,
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS scans (
     path                TEXT    NOT NULL,
     kind                TEXT    NOT NULL,
     source              TEXT    NOT NULL DEFAULT 'unknown',
-    watch_id            INTEGER REFERENCES watch_targets(id),
+    watch_id            INTEGER REFERENCES watches(id),
     status              TEXT    NOT NULL DEFAULT 'pending',
     locked_at           INTEGER,
     files_seen          INTEGER NOT NULL DEFAULT 0,
@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS scans (
 );
 CREATE INDEX IF NOT EXISTS idx_scans_status ON scans(status, created_at ASC);
 CREATE INDEX IF NOT EXISTS idx_scans_kind_path_status ON scans(kind, path, status);
-CREATE INDEX IF NOT EXISTS idx_scans_watch_status ON scans(watch_id, status);
+CREATE INDEX IF NOT EXISTS idx_scans_watch_id_status ON scans(watch_id, status);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS fts_contents USING fts5(
     sha256 UNINDEXED,
@@ -104,14 +104,14 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts_filenames USING fts5(
     tokenize='unicode61'
 );
 
-CREATE TABLE IF NOT EXISTS watch_targets (
+CREATE TABLE IF NOT EXISTS watches (
     id              INTEGER PRIMARY KEY,
     path            TEXT    NOT NULL UNIQUE,
     label           TEXT,
     removable       INTEGER NOT NULL DEFAULT 0,
     enabled         INTEGER NOT NULL DEFAULT 1,
     recursive       INTEGER NOT NULL DEFAULT 0,
-    watch_status    TEXT    NOT NULL DEFAULT 'active',
+    status          TEXT    NOT NULL DEFAULT 'active',
     unreachable_at  INTEGER,
     last_scan_at    INTEGER,
     last_scan_files INTEGER NOT NULL DEFAULT 0,

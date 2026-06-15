@@ -86,7 +86,7 @@
 
 - ingest worker 只领取:
   - `sha256 IS NULL`
-  - `scan_status = active`
+  - `status = active`
   - `error_code IS NULL`
 - 任何已有 `files.error_code` 的 file 都不会被 ingest worker 自动重试。
 - `file_permission_denied`、`stat_failed`、`ingest_failed` 都会阻止自动领取。
@@ -287,7 +287,7 @@
 
 建议:
 
-- 为 `watch_targets` 增加错误字段，或复用 scan task 记录 watch scan 失败:
+- 为 `watches` 增加错误字段，或复用 scan task 记录 watch scan 失败:
   - `error_code`
   - `error_msg`
   - `last_error_at`

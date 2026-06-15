@@ -156,7 +156,7 @@ def format_server_status(data: Any, json_mode: bool = False) -> None:
                 )
                 watch_table.add_row(
                     _get(item, "path", ""),
-                    _get(item, "watch_status", ""),
+                    _get(item, "status", ""),
                     str(_get(item, "total_files", 0)),
                     str(_get(item, "active_files", 0)),
                     str(_get(item, "deleted_files", 0)),
