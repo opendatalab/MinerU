@@ -49,6 +49,7 @@ PUBLIC_OCR_LANGUAGE_CHOICES = tuple(
 PUBLIC_OCR_LANGUAGE_SCHEMA_EXTRA = {"items": {"enum": list(PUBLIC_OCR_LANGUAGES)}}
 
 _ARABIC_LANG_ALIASES = {"ar", "fa", "ug", "ur", "ps", "ku", "sd", "bal"}
+_CH_LANG_ALIASES = {"en", "japan", "chinese_cht", "latin"}
 _EAST_SLAVIC_LANG_ALIASES = {"ru", "be", "uk"}
 _CYRILLIC_LANG_ALIASES = {
     "rs_cyrillic",
@@ -113,7 +114,9 @@ def format_public_ocr_lang_description() -> str:
 
 
 def validate_public_ocr_lang(lang: str) -> str:
-    """校验公开入口允许的 OCR 语言，已下线语言必须显式拒绝。"""
+    """校验公开入口允许的 OCR 语言，并将兼容入口规范到实际模型 key。"""
+    if lang in _CH_LANG_ALIASES:
+        return "ch"
     if lang not in PUBLIC_OCR_LANGUAGES:
         raise ValueError(
             f"Language {lang} not supported. Allowed values: "
@@ -138,6 +141,8 @@ def normalize_ocr_model_lang(
     normalized_lang = lang or "ch"
     if device == "cpu" and normalized_lang == "seal":
         normalized_lang = "seal_lite"
+    elif normalized_lang in _CH_LANG_ALIASES:
+        normalized_lang = "ch"
     elif normalized_lang in _EAST_SLAVIC_LANG_ALIASES:
         normalized_lang = "east_slavic"
     elif normalized_lang in _ARABIC_LANG_ALIASES:
