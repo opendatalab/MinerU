@@ -30,6 +30,7 @@ from mineru.utils.config_reader import (
     get_max_concurrent_requests as read_max_concurrent_requests,
 )
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
+from mineru.utils.ocr_language import PUBLIC_OCR_LANGUAGES
 from mineru.utils.pdf_page_id import get_end_page_id
 from mineru.utils.pdfium_guard import (
     close_pdfium_document,
@@ -1096,27 +1097,7 @@ async def run_orchestrated_cli(
     "-l",
     "--lang",
     "lang",
-    type=click.Choice(
-        [
-            "ch",
-            "ch_server",
-            "ch_lite",
-            "en",
-            "korean",
-            "japan",
-            "chinese_cht",
-            "ta",
-            "te",
-            "ka",
-            "th",
-            "el",
-            "latin",
-            "arabic",
-            "east_slavic",
-            "cyrillic",
-            "devanagari",
-        ]
-    ),
+    type=click.Choice(PUBLIC_OCR_LANGUAGES),
     default="ch",
     help="""
     Input the languages in the pdf (if known) to improve OCR accuracy.

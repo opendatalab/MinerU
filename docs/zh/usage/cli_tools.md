@@ -15,7 +15,7 @@ Options:
   -b, --backend [pipeline|vlm-engine|hybrid-engine|vlm-http-client|hybrid-http-client]
                                   解析后端（默认为 hybrid-engine）
   --effort [medium|high]          Hybrid 解析强度（默认：medium）
-  -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|th|el|latin|arabic|east_slavic|cyrillic|devanagari]
+  -l, --lang [ch|ch_server|korean|ta|te|ka|th|el|arabic|east_slavic|cyrillic|devanagari]
                                   指定文档语言（可提升 OCR 准确率，仅用于 pipeline 后端）
   -u, --url TEXT                  当使用 http-client 时，传给服务端后端的 OpenAI 兼容地址
   -s, --start INTEGER             开始解析的页码（从 0 开始）
