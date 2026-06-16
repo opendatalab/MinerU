@@ -94,13 +94,13 @@ class TextRecognizer(BaseOCRV20):
 
         self.load_state_dict(weights)
         self.net.eval()
-        self.net.to(self.device)
         for module in self.net.modules():
             if isinstance(module, ConvBNAct):
                 if module.use_act:
                     torch.quantization.fuse_modules(module, ['conv', 'bn', 'act'], inplace=True)
                 else:
                     torch.quantization.fuse_modules(module, ['conv', 'bn'], inplace=True)
+        self._apply_inference_precision(self.device)
 
     def resize_norm_img(self, img, max_wh_ratio):
         imgC, imgH, imgW = self.rec_image_shape
@@ -388,6 +388,11 @@ class TextRecognizer(BaseOCRV20):
                         gsrm_word_pos_inp = gsrm_word_pos_inp.to(self.device)
                         gsrm_slf_attn_bias1_inp = gsrm_slf_attn_bias1_inp.to(self.device)
                         gsrm_slf_attn_bias2_inp = gsrm_slf_attn_bias2_inp.to(self.device)
+                        inp = self._to_inference_dtype(inp)
+                        encoder_word_pos_inp = self._to_inference_dtype(encoder_word_pos_inp)
+                        gsrm_word_pos_inp = self._to_inference_dtype(gsrm_word_pos_inp)
+                        gsrm_slf_attn_bias1_inp = self._to_inference_dtype(gsrm_slf_attn_bias1_inp)
+                        gsrm_slf_attn_bias2_inp = self._to_inference_dtype(gsrm_slf_attn_bias2_inp)
 
                         backbone_out = self.net.backbone(inp) # backbone_feat
                         prob_out = self.net.head(backbone_out, [encoder_word_pos_inp, gsrm_word_pos_inp, gsrm_slf_attn_bias1_inp, gsrm_slf_attn_bias2_inp])
@@ -405,6 +410,7 @@ class TextRecognizer(BaseOCRV20):
                     with torch.no_grad():
                         inp = torch.from_numpy(norm_img_batch)
                         inp = inp.to(self.device)
+                        inp = self._to_inference_dtype(inp)
                         preds = self.net(inp)
 
                 elif self.rec_algorithm == "CAN":
@@ -415,6 +421,7 @@ class TextRecognizer(BaseOCRV20):
 
                     inp = [torch.from_numpy(e_i) for e_i in inputs]
                     inp = [e_i.to(self.device) for e_i in inp]
+                    inp = [self._to_inference_dtype(e_i) for e_i in inp]
                     with torch.no_grad():
                         outputs = self.net(inp)
                         outputs = [v.cpu().numpy() for k, v in enumerate(outputs)]
@@ -427,6 +434,7 @@ class TextRecognizer(BaseOCRV20):
                     with torch.no_grad():
                         inp = torch.from_numpy(norm_img_batch)
                         inp = inp.to(self.device)
+                        inp = self._to_inference_dtype(inp)
                         preds = self.net(inp)
 
                 with torch.no_grad():
