@@ -1,6 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import copy
-from loguru import logger
 from mineru.utils.enum_class import ContentType, BlockType, SplitFlag
 from mineru.utils.language import detect_lang
 
@@ -239,7 +238,8 @@ def __is_list_or_index_block(block):
                         ):
                             line[ListLineTag.IS_LIST_END_LINE] = True
                             line_start_flag = True
-            # 一种有缩进的特殊有序list,start line 左侧不贴边且以数字开头，end line 以 IS_LIST_END_FLAG 结尾且数量和start line 一致
+            # 一种有缩进的特殊有序 list，start line 左侧不贴边且以数字开头，
+            # end line 以 IS_LIST_END_FLAG 结尾且数量和 start line 一致。
             elif num_start_count >= 2 and num_start_count == flag_end_count:
                 for i, line in enumerate(block['lines']):
                     if len(lines_text_list[i]) > 0:
@@ -331,6 +331,8 @@ def __merge_2_vertical_text_blocks(block1, block2):
                             and abs(block1_height - block2_height) < min_block_height
                             and not span_start_with_num
                             and not span_start_with_big_char
+                            # 下一个纵排块的右边界要进入上一个纵排块左边界右侧
+                            and block1['bbox'][2] > block2['bbox'][0]
                         ):
                             if block1['page_num'] != block2['page_num']:
                                 for line in block1['lines']:
