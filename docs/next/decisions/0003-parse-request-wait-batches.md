@@ -6,7 +6,7 @@
 
 ## 背景
 
-doclib 的解析缓存以 `sha256 + tier + pages + done_at` 表示，一个用户请求可能被拆成多个 parse batch。
+doclib 的解析缓存以 `sha256 + tier + page_range + done_at` 表示，一个用户请求可能被拆成多个 parse batch。
 
 典型场景:
 
@@ -27,7 +27,7 @@ parse 请求返回本次请求需要等待的 batch 集合，而不是单个 `pa
 {
   "sha256": "...",
   "tier": "standard",
-  "pages": "1~10",
+  "page_range": "1~10",
   "status": "pending",
   "wait_parse_ids": [12, 13],
   "created_parse_ids": [13],
@@ -52,7 +52,7 @@ parse 请求返回本次请求需要等待的 batch 集合，而不是单个 `pa
 5. `wait_parse_ids = reused_parse_ids + created_parse_ids`。
 6. CLI `--wait` 必须等待 `wait_parse_ids` 中的所有 batch，而不是轮询聚合状态。
 7. 任一 wait batch 失败，本次请求即失败；旧 done cache 是否可读是另一个问题，不应把本次请求显示为成功。
-8. 所有 wait batch 成功后，CLI 再读取目标 `sha256 + tier + pages` 的内容；读取层按有效 done batch 的 `done_at` 选择最新页面。
+8. 所有 wait batch 成功后，CLI 再读取目标 `sha256 + tier + page_range` 的内容；读取层按有效 done batch 的 `done_at` 选择最新页面。
 
 ## 状态查询
 
@@ -69,8 +69,8 @@ GET /parses?ids=12,13
 ```json
 {
   "parses": [
-    {"id": 12, "sha256": "...", "tier": "standard", "pages": "1~5", "status": "done"},
-    {"id": 13, "sha256": "...", "tier": "standard", "pages": "6~10", "status": "parsing"}
+    {"id": 12, "sha256": "...", "tier": "standard", "page_range": "1~5", "status": "done"},
+    {"id": 13, "sha256": "...", "tier": "standard", "page_range": "6~10", "status": "parsing"}
   ]
 }
 ```
@@ -78,7 +78,7 @@ GET /parses?ids=12,13
 不再保留 `/parse/status`。所有状态查询都进入 `/parses`:
 
 - `GET /parses?ids=...` 回答“本次请求关联的 parse record 是否完成”。
-- `GET /parses?sha256=...&tier=...&pages=...` 回答“文档在某个 tier 下的覆盖状态”。
+- `GET /parses?sha256=...&tier=...&page_range=...` 回答“文档在某个 tier 下的覆盖状态”。
 
 CLI wait 必须使用 id 级状态查询。
 
@@ -112,9 +112,9 @@ CLI 影响:
 
 服务端实现影响:
 
-- active batch 覆盖判断需要保留 batch id，而不是只保留 pages set。
+- active batch 覆盖判断需要保留 batch id，而不是只保留 page_range 展开后的页集合。
 - 新建 parse row 后需要返回新 row id。
-- batch 状态查询需要按 id 返回 `status`、`pages`、`error_code`、`error_msg`、`done_at` 等必要字段。
+- batch 状态查询需要按 id 返回 `status`、`page_range`、`error_code`、`error_msg`、`done_at` 等必要字段。
 
 测试影响:
 

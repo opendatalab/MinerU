@@ -131,7 +131,7 @@ def parse(
     path: str | Path,
     *,
     tier: str | None = None,      # flash / standard / pro; None means default selection
-    pages: str | None = None,     # 页码范围，如 "1~5" / "all"
+    page_range: str | None = None,     # 页码范围，如 "1~5" / "all"
     lang: str = "ch",
     formula: bool = True,
     table: bool = True,
@@ -166,8 +166,8 @@ def resolve_engine(tier: str, backend: str | None = None) -> str:
 class ParseResult:
     """解析结果，提供多种输出格式。"""
 
-    def markdown(self, *, pages: str | None = None, marker: bool = True) -> str: ...
-    def text(self, *, pages: str | None = None) -> str: ...
+    def markdown(self, *, page_range: str | None = None, marker: bool = True) -> str: ...
+    def text(self, *, page_range: str | None = None) -> str: ...
     def json(self) -> dict: ...          # middle_json
     def html(self) -> str: ...
     def pages(self) -> list[PageInfo]: ...
@@ -192,7 +192,7 @@ class MineruClient:
         path: str | Path,
         *,
         tier: str | None = None,
-        pages: str | None = None,
+        page_range: str | None = None,
         force: bool = False,
         wait: int = 60,
     ) -> ParseResponse: ...
@@ -225,7 +225,7 @@ class MineruClient:
 
 ## 7. 待补充
 
-- 数据库 DDL（完整建表 SQL，multi-tier parsed_pages 设计）
+- 数据库 DDL（完整建表 SQL，multi-tier page_range 覆盖设计）
 - Server 内部路由表（UDS 端点清单）
 - 测试策略（fixture 列表、CI 配置）
 - 依赖声明（新增 typer、httpx、watchfiles 等）

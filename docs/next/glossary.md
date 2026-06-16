@@ -291,7 +291,7 @@ Markdown 不应反向成为规范源。需要结构化信息时，应使用 Midd
 | SDK `save()` / CLI 导出 | Markdown、Content List、HTML、images 等从 Middle JSON 渲染得到的导出文件 |
 | v1 API 文件资源 | 上传源文件或服务端生成的结果文件 |
 
-在 doclib 中，artifact 按 `sha256 + 实际使用的 tier + pages + done_at` 隔离存储；非 JSON 格式默认读取时转换，不作为 doclib 的持久化产物。
+在 doclib 中，artifact 按 `sha256 + 实际使用的 tier + page_range + done_at` 隔离存储；非 JSON 格式默认读取时转换，不作为 doclib 的持久化产物。
 
 ## 7. 文件、任务与索引
 
@@ -442,7 +442,7 @@ Ingest 不等于 parse。Ingest 可以不产生完整 Middle JSON。
 
 典型内容:
 
-- `watch_default_tier`。
+- parse-server mode / URL / API key。
 - parse-server mode。
 - watch target。
 - exclude rule。
@@ -455,7 +455,7 @@ Ingest 不等于 parse。Ingest 可以不产生完整 Middle JSON。
 
 `parsing rule` 是针对路径或文件集合的自动解析规则。
 
-它可以指定 tier、pages、remote 等策略。规则如果允许远端上传，必须显式写出 remote 语义。
+它可以指定 tier、page_range、remote 等策略。规则如果允许远端上传，必须显式写出 remote 语义。
 
 ### 9.4 Exclude Rule
 

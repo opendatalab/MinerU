@@ -57,7 +57,7 @@ Server（本地 / 远端）在处理请求时返回的错误。本地 Server 和
 | type | code | HTTP | 触发场景 | param |
 |------|------|------|---------|-------|
 | `invalid_request_error` | `invalid_request` | 400 | 参数格式 / 组合非法 | 出错的参数名 |
-| `invalid_request_error` | `page_range_invalid` | 400 | 页码范围超出文档实际页数或格式非法 | `pages` |
+| `invalid_request_error` | `page_range_invalid` | 400 | 页码范围超出文档实际页数或格式非法 | `page_range` |
 | `invalid_request_error` | `file_type_unsupported` | 400 | 文件类型不在支持列表中 | `file` |
 | `invalid_request_error` | `file_encrypted` | 400 | 加密 / 受密码保护 | `file` |
 | `invalid_request_error` | `file_corrupted` | 400 | 文件损坏无法读取 | `file` |

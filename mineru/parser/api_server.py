@@ -13,6 +13,7 @@ import asyncio
 import base64
 import dataclasses
 import hashlib
+import json
 import os
 import pathlib
 import secrets
@@ -31,8 +32,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..types import Tier
-from .tier import PARSER_BACKENDS
-from .tier import resolve_tier_and_backend
+from .tier import PARSER_BACKENDS, resolve_tier_and_backend
 
 _API_SERVER_BACKENDS = tuple(backend for backend in PARSER_BACKENDS if backend != "flash")
 
@@ -1051,14 +1051,14 @@ class JobStore:
 
     def usage(self, access_level: AccessLevel) -> UsageResponse:
         completed = sum(1 for j in self._jobs.values() if j.status in ("completed", "partial"))
-        pages = sum(
+        processed_page_count = sum(
             sum(_count_pages_in_range(fr.page_range) for fr in j.files if fr.status == "completed") for j in self._jobs.values()
         )
         return UsageResponse(
             access_level=access_level,
             billing_period=UsageBillingPeriod(start=self._started_at),
             current=UsageCurrent(
-                pages_processed=pages,
+                pages_processed=processed_page_count,
                 files_processed=completed,
                 jobs_created=len(self._jobs),
             ),
@@ -1212,7 +1212,6 @@ async def _run_job(
                 # collect outputs
                 out_formats = set(rec.output_formats)
                 output_files = OutputFiles()
-                import json as _json
 
                 for fmt in (
                     "markdown",
@@ -1231,7 +1230,7 @@ async def _run_job(
                         fid = file_store.create_file_for_output(f"{fr.name}.md", content_bytes, sha256hex=sha)
                         output_files.markdown = OutputFileRef(file_id=fid, bytes=len(content_bytes))
                     elif fmt == "middle_json":
-                        mj = _json.dumps(
+                        mj = json.dumps(
                             {"pages": [dataclasses.asdict(p) for p in result.pages]},
                             ensure_ascii=False,
                         ).encode("utf-8")
@@ -1241,13 +1240,13 @@ async def _run_job(
                         fid = file_store.create_file_for_output(f"{fr.name}.middle.json", mj, sha256hex=sha)
                         output_files.middle_json = OutputFileRef(file_id=fid, bytes=len(mj))
                     elif fmt == "content_list":
-                        cl = _json.dumps(result.content_list(), ensure_ascii=False).encode("utf-8")
+                        cl = json.dumps(result.content_list(), ensure_ascii=False).encode("utf-8")
                         sha = hashlib.sha256(cl).hexdigest()
                         file_store.store_blob(cl, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.content_list.json", cl, sha256hex=sha)
                         output_files.content_list = OutputFileRef(file_id=fid, bytes=len(cl))
                     elif fmt == "structured_content":
-                        cl2 = _json.dumps(result.content_list_v2(), ensure_ascii=False).encode("utf-8")
+                        cl2 = json.dumps(result.content_list_v2(), ensure_ascii=False).encode("utf-8")
                         sha = hashlib.sha256(cl2).hexdigest()
                         file_store.store_blob(cl2, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.structured_content.json", cl2, sha256hex=sha)

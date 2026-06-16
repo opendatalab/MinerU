@@ -104,7 +104,7 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`standard`、`pr
 | type | code | HTTP | retryable | param | 触发场景 |
 |------|------|------|:--:|-------|----------|
 | `invalid_request_error` | `invalid_request` | 400 | 否 | 出错参数 | 参数格式或组合非法 |
-| `invalid_request_error` | `page_range_invalid` | 400 | 否 | `pages` | 页码范围格式非法或超出文档页数 |
+| `invalid_request_error` | `page_range_invalid` | 400 | 否 | `page_range` | 页码范围格式非法或超出文档页数 |
 | `invalid_request_error` | `file_type_unsupported` | 400 | 否 | `file` | 文件类型不支持 |
 | `invalid_request_error` | `file_encrypted` | 400 | 否 | `file` | 文件加密或受密码保护 |
 | `invalid_request_error` | `file_corrupted` | 400 | 否 | `file` | 文件损坏无法读取 |

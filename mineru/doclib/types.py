@@ -18,6 +18,7 @@ WatchStatus = Literal["active", "unreachable"]
 InvalidateTarget = Literal["parses"]
 ForgetMatchedAs = Literal["file", "directory", "none"]
 ConfigSource = Literal["default", "override"]
+ContentFormat = Literal["markdown"]
 
 PARSE_STATUS_PENDING: ParseStatus = "pending"
 PARSE_STATUS_PARSING: ParseStatus = "parsing"
@@ -89,7 +90,7 @@ class RemoveParsingRuleResponse(DoclibModel):
 class ParseRequest(DoclibModel):
     path: str
     tier: Tier | None = None
-    pages: str | None = None
+    page_range: str | None = None
     force: bool = False
     remote: bool = False
 
@@ -97,7 +98,7 @@ class ParseRequest(DoclibModel):
 class ParseResponse(DoclibModel):
     sha256: str
     tier: Tier
-    pages: str
+    page_range: str
     status: ParseStatus
     cache_hit: bool = False
     wait_parse_ids: list[int] = Field(default_factory=list)
@@ -107,16 +108,16 @@ class ParseResponse(DoclibModel):
 
 
 class ParseCoverage(DoclibModel):
-    done_pages: str
-    active_pages: str
-    missing_pages: str
+    done_page_range: str
+    active_page_range: str
+    missing_page_range: str
 
 
 class ParseInfo(DoclibModel):
     id: int
     sha256: str
     tier: Tier
-    pages: str
+    page_range: str
     status: ParseStatus
     priority: int = 0
     privacy: str
@@ -132,6 +133,9 @@ class ParseInfo(DoclibModel):
 class ListParsesResponse(DoclibModel):
     parses: list[ParseInfo] = Field(default_factory=list)
     coverage: ParseCoverage | None = None
+    total: int
+    limit: int
+    offset: int = 0
 
 
 class InvalidateRequest(DoclibModel):
@@ -194,29 +198,9 @@ class ScanInfo(DoclibModel):
 
 class ScanListResponse(DoclibModel):
     scans: list[ScanInfo] = Field(default_factory=list)
-
-
-class RecentScanInfo(DoclibModel):
-    id: int
-    path: str
-    kind: ScanKind
-    source: ScanSource = "unknown"
-    watch_id: int | None = None
-    status: ScanStatus
-    files_seen: int = 0
-    files_refreshed: int = 0
-    files_new: int = 0
-    files_changed: int = 0
-    files_deleted: int = 0
-    files_unreachable: int = 0
-    files_error: int = 0
-    files_unsupported: int = 0
-    files_excluded: int = 0
-    error_code: str | None = None
-    started_at: int | None = None
-    finished_at: int | None = None
-    created_at: int
-    updated_at: int
+    total: int
+    limit: int
+    offset: int = 0
 
 
 class FileInfo(DoclibModel):
@@ -244,6 +228,7 @@ class ListFilesResponse(DoclibModel):
 
 class DocInfo(DoclibModel):
     sha256: str
+    short_id: str
     size_bytes: int
     file_type: str | None = None
     title: str | None = None
@@ -252,7 +237,7 @@ class DocInfo(DoclibModel):
     keywords: str | None = None
     page_count: int | None = None
     language: str | None = None
-    is_image_based: int = 0
+    is_image_based: bool = False
     meta_tier: Tier | None = None
     error_code: str | None = None
     error_msg: str | None = None
@@ -263,17 +248,43 @@ class DocInfo(DoclibModel):
 
 class ListDocsResponse(DoclibModel):
     docs: list[DocInfo] = Field(default_factory=list)
+    total: int
+    limit: int
+    offset: int = 0
 
 
 class DocContentResponse(DoclibModel):
     sha256: str
+    short_id: str
     tier: Tier
-    content: str | None = None
+    format: ContentFormat = "markdown"
+    content: str
+    request_scope: "ContentRequestScope"
+    content_ranges: list["ContentRange"] = Field(default_factory=list)
+    truncated: bool = False
+    next_request: "ContentNextRequest | None" = None
+
+
+class ContentRequestScope(DoclibModel):
+    page_range: str | None = None
+    after: str | None = None
+    limit: int = 30000
+
+
+class ContentRange(DoclibModel):
+    page_range: str | None = None
+    start: str
+    end: str
+
+
+class ContentNextRequest(DoclibModel):
+    page_range: str | None = None
+    after: str | None = None
 
 
 class DocContentExportRequest(DoclibModel):
     tier: Tier
-    pages: str | None = None
+    page_range: str | None = None
     format: str = "markdown"
     output: str
     no_marker: bool = False
@@ -328,7 +339,7 @@ class FileInfoResponse(DoclibModel):
 class TierParseInfo(DoclibModel):
     tier: Tier
     status: ParseStatus
-    pages: str
+    page_range: str
     done_at: int | None = None
 
 
@@ -394,7 +405,7 @@ class ParsingRuleRequest(DoclibModel):
     pattern: str
     name: str | None = None
     tier: Tier | None = None
-    pages: str | None = None
+    page_range: str | None = None
     remote: bool = False
     priority: int = 0
 
@@ -415,7 +426,7 @@ class ParsingRuleInfo(DoclibModel):
     pattern: str
     name: str | None = None
     tier: Tier | None = None
-    pages: str | None = None
+    page_range: str | None = None
     remote: bool = False
     enabled: bool = True
     priority: int = 0
@@ -496,7 +507,7 @@ class ServerStatusResponse(DoclibModel):
     watch_count: int = 0
     watches: list[WatchInfo] = Field(default_factory=list)
     watch_stats: list[WatchStats] = Field(default_factory=list)
-    recent_scans: list[RecentScanInfo] = Field(default_factory=list)
+    recent_scans: list[ScanInfo] = Field(default_factory=list)
     error_summary: ErrorSummary | None = None
     recent_logs: list[str] = Field(default_factory=list)
 

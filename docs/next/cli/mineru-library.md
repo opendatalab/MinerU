@@ -67,17 +67,11 @@ JSON 输出中的每条结果至少包含:
 | `size_bytes` | 文件大小。 |
 | `page_count` | 文档页数；未知时为 `null`。 |
 
-## 4. info
+## 4. show file
 
-`mineru info` 查看文件、文档或服务状态。
+`mineru show file <path>` 查看本地路径对应的 file/doc/parse 状态。
 
-可能对象：
-
-- 文件路径。
-- SHA256 文档。
-- parse task。
-- 本地 doclib。
-- parse-server。
+`show file` 只接受文件路径。文档、parse task、scan task 等其他对象使用各自明确的 `show <resource>` 入口。
 
 输出应区分实际 tier、缓存状态、产物路径和错误状态。已解析结果使用实际 tier。
 
@@ -95,8 +89,8 @@ JSON 输出至少包含:
 
 ```json
 [
-  {"tier": "flash", "pages": "1~20"},
-  {"tier": "standard", "pages": "1~5,18~20"}
+  {"tier": "flash", "page_range": "1~20"},
+  {"tier": "standard", "page_range": "1~5,18~20"}
 ]
 ```
 
@@ -104,7 +98,7 @@ JSON 输出至少包含:
 
 ```json
 [
-  {"id": 123, "tier": "pro", "pages": "6~17", "status": "parsing"}
+  {"id": 123, "tier": "pro", "page_range": "6~17", "status": "parsing"}
 ]
 ```
 
@@ -116,10 +110,10 @@ JSON 输出至少包含:
 
 | 范围 | 示例 |
 |------|------|
-| 基础配置 | `data_dir`、`watch_default_tier`、扫描间隔 |
+| 基础配置 | 扫描间隔、锁超时、worker 数 |
 | parse-server | local mode、managed tier、self-hosted URL、remote URL、API Key |
 | watch | 添加、列出、删除监控目录 |
-| parsing-rules | 按路径规则触发 tier、pages、remote |
+| parsing-rules | 按路径规则触发 tier、page_range、remote |
 | exclude | 排除路径模式 |
 
 配置不应导致静默上传。只有规则或命令显式允许 remote 时，才可走远端解析。

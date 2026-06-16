@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import base64
-import dataclasses
 import json
 import re
 from abc import ABC, abstractmethod
@@ -34,8 +33,8 @@ class ParseResult:
         # TODO
         ...
 
-    def to_dict(self) -> dict[str, Any]:
-        return {"pages": [dataclasses.asdict(p) for p in self.pages]}
+    def to_dict(self, *, skip_defaults: bool = False) -> dict[str, Any]:
+        return {"pages": [page.to_dict(skip_defaults=skip_defaults) for page in self.pages]}
 
     @staticmethod
     def from_json(s: str) -> ParseResult:
@@ -60,17 +59,17 @@ class ParseResult:
 
         writer.write_string(
             "content_list.json",
-            json.dumps(self.content_list(), ensure_ascii=False, indent=4),
+            json.dumps(self.content_list(), ensure_ascii=False, indent=2),
         )
         writer.write_string(
             "structured_content.json",
-            json.dumps(self.content_list_v2(), ensure_ascii=False, indent=4),
+            json.dumps(self.content_list_v2(), ensure_ascii=False, indent=2),
         )
 
         if self._model_output is not None:
             writer.write_string(
                 "model_output.json",
-                json.dumps(self._model_output, ensure_ascii=False, indent=4),
+                json.dumps(self._model_output, ensure_ascii=False, indent=2),
             )
 
         for img_path, img_bytes in self.images().items():

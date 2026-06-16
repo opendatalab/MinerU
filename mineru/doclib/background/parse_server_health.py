@@ -15,7 +15,6 @@ from ...types import TIERS, Tier
 
 logger = logging.getLogger("mineru.health_check")
 
-CHECK_INTERVAL_SEC = 60
 MAX_RESTART_ATTEMPTS = 3
 
 
@@ -53,8 +52,20 @@ def api_server_args_for_tier(tier: Tier) -> list[str]:
 class ParseServerHealthCheck:
     """Periodically probes parse-server health via GET /v1/tiers."""
 
-    def __init__(self, config_svc) -> None:
+    def __init__(
+        self,
+        config_svc,
+        *,
+        interval_sec: int,
+        probe_timeout_sec: int,
+        startup_grace_sec: int,
+        stop_timeout_sec: int,
+    ) -> None:
         self.config_svc = config_svc
+        self.interval_sec = interval_sec
+        self.probe_timeout_sec = probe_timeout_sec
+        self.startup_grace_sec = startup_grace_sec
+        self.stop_timeout_sec = stop_timeout_sec
         self.running = False
 
     async def run(self) -> None:
@@ -62,10 +73,6 @@ class ParseServerHealthCheck:
         health = get_health()
 
         while self.running:
-            await asyncio.sleep(CHECK_INTERVAL_SEC)
-            if not self.running:
-                break
-
             # refresh config on each cycle (hot-reload)
             mode = (await self.config_svc.get("parse_server.local.mode")) or "disabled"
             health.local_mode = mode
@@ -83,7 +90,7 @@ class ParseServerHealthCheck:
                         health.local_starting = False
 
             # probe remote
-            remote_url = (await self.config_svc.get("parse_server.remote.url")) or "https://mineru.net/api"
+            remote_url = cast(str, await self.config_svc.get("parse_server.remote.url"))
             healthy, tiers = await self._probe(remote_url)
             health.remote_healthy = healthy
             health.remote_supported_tiers = tiers
@@ -92,10 +99,12 @@ class ParseServerHealthCheck:
             if health.local_mode == "managed" and not health.local_healthy:
                 if health.local_starting:
                     elapsed = asyncio.get_event_loop().time() - health.local_started_at
-                    if elapsed < 30:
+                    if elapsed < self.startup_grace_sec:
                         continue  # still loading models, don't restart
                 logger.warning("Managed parse-server is unhealthy, attempting restart")
                 await self._try_restart_managed(health)
+
+            await asyncio.sleep(self.interval_sec)
 
     async def _try_restart_managed(self, health: ParseServerHealth) -> None:
         if health.restart_count >= MAX_RESTART_ATTEMPTS:
@@ -119,10 +128,9 @@ class ParseServerHealthCheck:
         except Exception as exc:
             logger.error(f"Failed to restart managed parse-server: {exc}")
 
-    @staticmethod
-    async def _probe(base_url: str) -> tuple[bool, list[Tier]]:
+    async def _probe(self, base_url: str) -> tuple[bool, list[Tier]]:
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=self.probe_timeout_sec) as client:
                 resp = await client.get(f"{base_url}/v1/tiers")
                 if resp.status_code == 200:
                     data = resp.json()
@@ -150,6 +158,6 @@ class ParseServerHealthCheck:
         if health.managed_proc:
             try:
                 health.managed_proc.terminate()
-                health.managed_proc.wait(timeout=10)
+                health.managed_proc.wait(timeout=self.stop_timeout_sec)
             except Exception:
                 pass

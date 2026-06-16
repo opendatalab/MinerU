@@ -82,7 +82,7 @@ Core（数据层：DB、FTS、文件 IO）
 |-----------|------|---------------|
 | `routes/parse.py` | `POST /parse`, `GET /parse/status` | `ParseService` |
 | `routes/search.py` | `GET /search`, `GET /find` | `SearchService` |
-| `routes/info.py` | `GET /info` | `SearchService` / DB 直查 |
+| `routes/files.py` | `GET /files/by-path` | `SearchService` / DB 直查 |
 | `routes/config.py` | `GET/POST /config/*` | `ConfigService` |
 | `routes/cleanup.py` | `POST /cleanup/*` | `CleanupService` |
 | `routes/server.py` | `GET /server/status` | 直接读取 AppState |
@@ -196,7 +196,7 @@ CREATE TABLE parses (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     sha256      TEXT    NOT NULL REFERENCES docs(sha256),
     tier        TEXT    NOT NULL,         -- flash / standard / pro
-    pages       TEXT    NOT NULL,         -- 页码范围，正值已展开，e.g. "1~5,46~50"
+    page_range  TEXT    NOT NULL,         -- 页码范围，正值已展开，e.g. "1~5,46~50"
     status      TEXT    NOT NULL DEFAULT 'pending',  -- pending / parsing / done / failed
     priority    INTEGER NOT NULL DEFAULT 0,
     locked_at   INTEGER,                 -- Unix epoch ms
@@ -223,7 +223,7 @@ CREATE INDEX idx_parses_doc ON parses(sha256, tier);
 
 **缓存命中**：按 `(sha256, tier)` 去重，不区分 `privacy`。同一份文档用 `privacy=local` 和 `privacy=remote` 走同一 tier，只有一条 done 记录命中缓存。
 
-**pages 字段**：
+**page_range 字段**：
 - 用 range 字符串描述，如 `"1~5"`、`"1~5,46~50"`、`"1~1000"`
 - 仅存正值——用户输入的负索引（如 `-5~-1`）和 `all` 在插入前根据 `docs.page_count` 展开为正值
 - 不存储为逐页展开的数组（1000 页全解析存 `"1~1000"`，不是 `"1,2,3,...,1000"`）
@@ -242,12 +242,12 @@ RETURNING *;
 
 **增量解析**：同一 sha256+tier 可有多行（如 1~5 和 6~10 是两个 batch），各自独立执行。Agent 等待时 `priority=1`，Watch 后台 `priority=0`。
 
-**Force 重解析**：直接 `INSERT` 新行即可（允许与已有行 pages 重叠）：
+**Force 重解析**：直接 `INSERT` 新行即可（允许与已有行 page_range 重叠）：
 
 ```python
 # --force --pages 4~7
 await db.execute(
-    "INSERT INTO parses (sha256, tier, pages, status, priority, created_at, updated_at) "
+    "INSERT INTO parses (sha256, tier, page_range, status, priority, created_at, updated_at) "
     "VALUES (?, ?, ?, 'pending', 1, ?, ?)",
     (sha256, tier, "4~7", now_ms(), now_ms())
 )
@@ -256,14 +256,14 @@ await db.execute(
 **缓存命中**（`request_parse()` 时）：查该 (sha256, tier) 所有 done 行，按 `done_at DESC` 排序取最新覆盖：
 
 ```python
-def pages_covered(request_pages: str, done_rows: list[dict]) -> bool:
-    """检查请求的 pages 是否已被 done 批次完全覆盖。
+def page_range_covered(request_page_range: str, done_rows: list[dict]) -> bool:
+    """检查请求的 page_range 是否已被 done 批次完全覆盖。
     按 done_at 倒序，取最新 batch 的覆盖范围。"""
-    needed = parse_range_set(request_pages)      # → {1,2,3,4,5}
-    covered = set()
+    needed_page_numbers = parse_page_range_set(request_page_range)      # → {1,2,3,4,5}
+    covered_page_numbers = set()
     for r in sorted(done_rows, key=lambda r: r["done_at"], reverse=True):
-        covered |= parse_range_set(r["pages"])
-        if needed <= covered:
+        covered_page_numbers |= parse_page_range_set(r["page_range"])
+        if needed_page_numbers <= covered_page_numbers:
             return True
     return False
 ```
@@ -277,7 +277,7 @@ def pages_covered(request_pages: str, done_rows: list[dict]) -> bool:
 "1~5" + "6~10" + "12~15"   → "1~10" + "12~15"
 
 算法：
-1. 取出所有 done 行，展开 pages 为整数集合
+1. 取出所有 done 行，展开 page_range 为 1-based page_numbers 集合
 2. 排序后合并邻接区间（e.g. [1..5]+[6..10] → "1~10"）
 3. DELETE 旧 done 行 + INSERT 合并后的新行
 4. done_at 取被合并行中的最大值
@@ -359,7 +359,7 @@ CREATE TABLE rules (
     rule_type       TEXT    NOT NULL,  -- exclude / parsing_rule
     pattern         TEXT    NOT NULL,  -- fnmatch glob pattern
     tier            TEXT,              -- parsing_rule: flash / standard / pro
-    pages           TEXT,              -- parsing_rule: page range, e.g. "all"
+    page_range      TEXT,              -- parsing_rule: page range, e.g. "all"
     remote          INTEGER NOT NULL DEFAULT 0,  -- parsing_rule: 是否允许远端
     enabled         INTEGER NOT NULL DEFAULT 1,
     priority        INTEGER NOT NULL DEFAULT 0,
@@ -474,7 +474,7 @@ RETURNING *;
   - 计算 SHA-256
   - 提取 metadata (file_type, page_count, title, author)
   - FTS 索引文件名
-  - 触发默认 flash 解析（INSERT INTO parses (sha256, tier, pages, status='pending', privacy='local', priority=0)）
+  - 触发默认 flash 解析（INSERT INTO parses (sha256, tier, page_range, status='pending', privacy='local', priority=0)）
 
 阶段 2: 解析（ParseWorker）
   - flash tier：提取首尾各 5 页文本，写入 fts_contents
@@ -496,7 +496,7 @@ Watch 检测到文件事件
        3. FTS insert fts_filenames
        4. UPDATE files SET sha256=?, locked_at=NULL
        5. check parsing-rules
-       6. INSERT INTO parses (sha256, tier, pages, status='pending', privacy='local', priority=0)
+       6. INSERT INTO parses (sha256, tier, page_range, status='pending', privacy='local', priority=0)
   → 失败时: UPDATE files SET sha256=NULL, error_code=?, error_msg=?（可重试）
 ```
 
@@ -510,8 +510,8 @@ Watch 检测到文件事件
   → ParseService.request_parse():
        1. 查 files 表获取 sha256（如果文件未入库，先同步 ingest）
        2. 查 parses WHERE sha256=? AND tier=? AND status='done'
-       3. 已有 done 批次的 pages 覆盖请求范围 → 直接返回缓存
-       4. 否则 → INSERT INTO parses (sha256, tier, pages, privacy=?, priority=1)
+       3. 已有 done 批次的 page_range 覆盖请求范围 → 直接返回缓存
+       4. 否则 → INSERT INTO parses (sha256, tier, page_range, privacy=?, priority=1)
        5. --force 时 → DELETE FROM parses WHERE sha256=? AND tier=?，再 INSERT
   → ParseWorker.acquire_task()
 ```
@@ -522,7 +522,7 @@ ParseWorker 取到 task 后，按 tier 和 privacy 决定执行路径：
 
 ```
 ParseWorker.acquire_task()
-  → 从 parses 读取 sha256, tier, pages, privacy
+  → 从 parses 读取 sha256, tier, page_range, privacy
   → route_parse(tier, privacy):
 
   ┌─ flash tier ──────────────────────────────────────────────┐

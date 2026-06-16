@@ -31,7 +31,6 @@ mineru-kit parse 中未出现在 mineru parse 的参数（如 `--backend`、`--m
 子命令：
 - mineru server start/stop/restart
 - mineru parse
-- mineru info
 - mineru search
 
 
@@ -83,7 +82,7 @@ mineru parse <file> [flags]
 | Flag | 简写 | 类型 | 默认 | 说明 |
 |------|------|------|------|------|
 | `--tier` | — | string | (见下文) | 解析档位: `flash`, `standard`, `pro` |
-| `-p, --pages` | `-p` | string | `1~5,-5~-1` | 页码范围。推荐用 `~` 分隔（如 `1~5,-5~-1`），也支持 `-`（如 `1-5,-5--1`）。`all` 表示全部页 |
+| `-p, --pages` | `-p` | string | `1~10` | 页码范围。推荐用 `~` 分隔（如 `1~5,-5~-1`），也支持 `-`（如 `1-5,-5--1`）。`all` 表示全部页 |
 | `--language` | — | string | — | 文档语言提示。部分 tier 设置此参数可改善输出质量。[PDF Only]（逐渐不再推荐使用） |
 | `--force` | — | bool | false | 忽略数据库缓存，强制重新解析 |
 
@@ -207,18 +206,18 @@ Error: 本地未检测到 standard/pro 解析引擎。
 
 ## 渐进式阅读协议
 
-默认 `--pages 1~5,-5~-1` 只解析有限页数。输出末尾的 marker 提示 agent 如何获取更多内容：
+默认 `--pages 1~10` 只解析有限页数。输出末尾的 marker 提示 agent 如何获取更多内容：
 
 ### PDF（物理页码）
 
 ```bash
 $ mineru parse report.pdf
-# → 输出第 1~5 页和第 46~50 页
-# → marker: <!-- pages 6~45 not parsed. Use: mineru parse report.pdf --pages 6~10 -->
+# → 输出第 1~10 页
+# → marker: <!-- next pages available. Use: mineru parse report.pdf --pages 11~20 -->
 
-$ mineru parse report.pdf --pages 6~10
-# → 输出第 6~10 页
-# → marker: <!-- pages 11~45 not parsed. Use: mineru parse report.pdf --pages 11~15 -->
+$ mineru parse report.pdf --pages 11~20
+# → 输出第 11~20 页
+# → marker: <!-- next pages available. Use: mineru parse report.pdf --pages 21~30 -->
 ```
 
 ### 非分页文档（Word/PPT 等）
@@ -261,7 +260,7 @@ $ mineru parse long.docx --offset 30000
 ## STDOUT 输出行为
 
 当输出到 STDOUT（默认）时：
-- 默认只输出 `--pages` 指定范围的内容（默认前后各 5 页）
+- 默认只输出 `--pages` 指定范围的内容（默认前 10 页）
 - 图片不输出二进制数据，仅输出位置信息（页码、坐标）作为 marker
 - 末尾包含提示信息，引导用户/agent 获取更多内容
 
@@ -279,13 +278,13 @@ $ mineru parse long.docx --offset 30000
 **超时行为**：`--wait` 指定的时间内未完成时，输出提示信息（解析仍在后台继续），包含后续查询命令。
 
 **`--no-wait` 行为**：
-- 若文件已在数据库中完整解析过（且请求的 pages 范围已覆盖）→ 直接返回结果
+- 若文件已在数据库中完整解析过（且请求的 page_range 已覆盖）→ 直接返回结果
 - 否则 → 不等待，返回状态信息（行为同 `--wait` 超时）
 
 ## 示例
 
 ```bash
-# 基本用法（输出到终端，默认前后各5页）
+# 基本用法（输出到终端，默认前 10 页）
 mineru parse doc.pdf
 
 # 全文解析，输出到文件
@@ -492,12 +491,12 @@ mineru find "report"
 mineru find "2024" --ext pdf --json
 ```
 
-## mineru info
+## mineru show file
 
 查看文件详情：
 
 ```bash
-mineru info ~/Documents/report.pdf
+mineru show file ~/Documents/report.pdf
 ```
 
 输出：文件路径、类型、大小、SHA-256、解析状态、使用的 tier、已解析页范围、所属 watch 目录。
@@ -537,7 +536,8 @@ mineru config parse-server remote.api-key <key>  # 远程 API Key
 
 ```
 files              文件实例（path, sha256, size, mtime, watch_id, status）
-docs               文档内容（sha256 主键, parse_status, parse_tier, parsed_pages）
+docs               文档内容（sha256 主键, page_count, metadata）
+parses             解析批次（sha256, tier, page_range, status）
 fts_index          全文搜索索引（解析产出的文本）
 fts_filenames      文件名搜索索引
 watches            监控目录配置
@@ -548,7 +548,7 @@ config             KV 全局配置
 ## 关键设计
 
 - **File/Doc 分离**：多个路径（备份副本）可指向同一个 doc（SHA-256 去重）
-- **增量解析**：每个 tier 独立追踪 `parsed_pages`，互不影响。同一 tier 内只解析未覆盖的页（增量），不同 tier 之间不存在覆盖关系。`--force` 忽略所有 tier 的缓存，强制重新解析
+- **增量解析**：每个 tier 独立追踪已完成 parse batch 的 `page_range` 覆盖范围，互不影响。同一 tier 内只解析未覆盖的页（增量），不同 tier 之间不存在覆盖关系。`--force` 忽略 done cache，但仍可复用 active parse batch
 - **多 tier 结果共存**：同一文件用 flash 解析过，再用 pro 解析，两份结果共存（不覆盖）。搜索索引保留当前最高 tier 的内容，用户可用 `--tier` / `--min-tier` 过滤搜索结果
 - **任务队列**：无实体队列，靠 DB 查询 `WHERE status='pending' AND lock_expired`
 - **锁机制**：时间戳锁，超时自动释放（parse 锁 30 分钟，registration 锁 60 秒）

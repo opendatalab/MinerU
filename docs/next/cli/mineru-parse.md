@@ -39,7 +39,7 @@ mineru parse <file> [flags]
 | Flag | 类型 | 默认 | 说明 |
 |------|------|------|------|
 | `--tier` | `flash` / `standard` / `pro` | 不传 | 解析 tier；省略时使用默认选择策略；语义见 [解析 Tier](../tiers.md) |
-| `-p, --pages` | range | `1~5,-5~-1` | 分页文档的页码范围；`all` 表示全部页 |
+| `-p, --pages` | range | `1~10` | 分页文档的页码范围；`all` 表示全部页 |
 | `--offset` | integer | `0` | 非分页长文档的继续读取 offset |
 | `--language` | string | 自动 | 文档语言提示，逐步弱化为高级选项 |
 | `--force` | bool | false | 跳过 done 缓存；复用 active parse 或为未覆盖页创建新 parse；不删除或作废旧缓存 |
@@ -83,12 +83,12 @@ mineru parse <file> [flags]
 
 默认 STDOUT 输出应适合 Agent context。长文档不一次性输出全文，而是输出有限范围，并通过 marker 指示如何继续。
 
-分页文档默认读取范围固定为 `1~5,-5~-1`。这个默认值用于让 Agent 快速获取文档开头、目录、摘要和结尾信息。用户可以通过 `--pages all` 读取全文，或通过显式页码范围继续读取。
+分页文档默认读取范围固定为 `1~10`。这个默认值用于让 Agent 以线性、可预测的方式渐进阅读文档，避免默认读取尾页后在后续续读中重复返回相同页面。用户可以通过 `--pages all` 读取全文，或通过显式页码范围读取任意页段。
 
 PDF 使用物理页码：
 
 ```text
-<!-- pages 6~45 not parsed. Use: mineru parse report.pdf --pages 6~10 -->
+<!-- next pages available. Use: mineru parse report.pdf --pages 11~20 -->
 ```
 
 非分页文档可以使用虚拟页或字符 offset：

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import json as _json
+import json
 import logging
 import os
 import time
@@ -13,7 +13,7 @@ from typing import cast
 from ...types import Tier
 from ..core.db import DatabaseManager
 from ..rows import ParseBatchRow, ParseGroupRow, ParseRow
-from ..services.parse_svc import parse_batch_json_path, parse_range_set
+from ..services.parse_svc import parse_batch_json_path, parse_page_range_set
 from ..types import PARSE_STATUS_DONE, PARSE_STATUS_SUPERSEDED
 
 logger = logging.getLogger("mineru.compaction")
@@ -47,8 +47,7 @@ class Compaction:
         rows = cast(
             list[ParseGroupRow],
             await self.db.fetchall(
-                "SELECT sha256, tier FROM parses WHERE status=? "
-                "GROUP BY sha256, tier HAVING COUNT(*) > 1",
+                "SELECT sha256, tier FROM parses WHERE status=? GROUP BY sha256, tier HAVING COUNT(*) > 1",
                 (PARSE_STATUS_DONE,),
             ),
         )
@@ -62,34 +61,33 @@ class Compaction:
         rows = cast(
             list[ParseRow],
             await self.db.fetchall(
-                "SELECT * FROM parses WHERE sha256=? AND tier=? AND status=? "
-                "ORDER BY done_at DESC",
+                "SELECT * FROM parses WHERE sha256=? AND tier=? AND status=? ORDER BY done_at DESC",
                 (sha256, tier, PARSE_STATUS_DONE),
             ),
         )
         if len(rows) <= 1:
             return 0
 
-        # collect all done pages
-        all_pages: set[int] = set()
+        # collect all done page numbers
+        all_page_numbers: set[int] = set()
         max_done_at = 0
         for r in rows:
-            all_pages |= parse_range_set(r["pages"])
+            all_page_numbers |= parse_page_range_set(r["page_range"])
             if r["done_at"] and r["done_at"] > max_done_at:
                 max_done_at = r["done_at"]
 
         # merge contiguous ranges
-        sorted_pages = sorted(all_pages)
+        sorted_page_numbers = sorted(all_page_numbers)
         merged_ranges: list[str] = []
-        start = sorted_pages[0]
+        start = sorted_page_numbers[0]
         end = start
-        for p in sorted_pages[1:]:
-            if p == end + 1:
-                end = p
+        for page_no in sorted_page_numbers[1:]:
+            if page_no == end + 1:
+                end = page_no
             else:
                 merged_ranges.append(f"{start}~{end}" if start != end else str(start))
-                start = p
-                end = p
+                start = page_no
+                end = page_no
         merged_ranges.append(f"{start}~{end}" if start != end else str(start))
 
         # check if merge actually reduced row count
@@ -106,11 +104,11 @@ class Compaction:
             "DELETE FROM parses WHERE sha256=? AND tier=? AND status=?",
             (sha256, tier, PARSE_STATUS_SUPERSEDED),
         )
-        for pages_str in merged_ranges:
+        for page_range in merged_ranges:
             await self.db.execute(
-                "INSERT INTO parses (sha256, tier, pages, status, done_at, priority, "
+                "INSERT INTO parses (sha256, tier, page_range, status, done_at, priority, "
                 "created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
-                (sha256, tier, pages_str, PARSE_STATUS_DONE, max_done_at, now, now),
+                (sha256, tier, page_range, PARSE_STATUS_DONE, max_done_at, now, now),
             )
 
         # compact JSON files (only from done batches, not superseded)
@@ -134,19 +132,19 @@ class Compaction:
 
         # only read files from done batches (exclude superseded)
         # process oldest first → newest overwrites (done_rows is sorted by done_at DESC)
-        pages_by_idx: dict[int, dict] = {}
+        pages_by_page_idx: dict[int, dict] = {}
         for row in reversed(done_rows):
-            fpath = parse_batch_json_path(self.data_dir, sha256, tier, row["pages"], row["done_at"])
+            fpath = parse_batch_json_path(self.data_dir, sha256, tier, row["page_range"], row["done_at"])
             if not os.path.isfile(fpath):
                 continue
             try:
                 with open(fpath, encoding="utf-8") as f:
-                    for p in _json.load(f).get("pages", []):
-                        pages_by_idx[p["page_idx"]] = p
+                    for p in json.load(f).get("pages", []):
+                        pages_by_page_idx[p["page_idx"]] = p
             except Exception:
                 pass
 
-        if not pages_by_idx:
+        if not pages_by_page_idx:
             return
 
         # delete old files
@@ -158,18 +156,14 @@ class Compaction:
                     pass
 
         # write one compacted JSON per merged range
-        for pages_str in merged_ranges:
-            page_set = parse_range_set(pages_str)
-            json_pages = [
-                pages_by_idx[i] for i in sorted(page_set) if i in pages_by_idx
-            ]
+        for page_range in merged_ranges:
+            page_numbers = parse_page_range_set(page_range)
+            json_pages = [pages_by_page_idx[page_no - 1] for page_no in sorted(page_numbers) if page_no - 1 in pages_by_page_idx]
             if not json_pages:
                 continue
-            json_path = parse_batch_json_path(self.data_dir, sha256, tier, pages_str, max_done_at)
+            json_path = parse_batch_json_path(self.data_dir, sha256, tier, page_range, max_done_at)
             try:
                 with open(json_path, "w", encoding="utf-8") as f:
-                    _json.dump(
-                        {"pages": json_pages}, f, ensure_ascii=False, indent=2
-                    )
+                    json.dump({"pages": json_pages}, f, ensure_ascii=False, indent=2)
             except Exception:
                 pass

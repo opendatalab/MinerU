@@ -25,32 +25,33 @@ from .types import (
     ExcludeRuleListResponse,
     ExcludeRuleRequest,
     FileInfoResponse,
-    ListFilesResponse,
+    FileStatus,
     FindResponse,
     ForgetPathRequest,
     ForgetPathResponse,
     InvalidateRequest,
     InvalidateResponse,
     ListDocsResponse,
+    ListFilesResponse,
     ListParsesResponse,
     ParseInfo,
     ParseRequest,
     ParseResponse,
+    ParseStatus,
     ParsingRuleInfo,
     ParsingRuleListResponse,
     ParsingRuleRequest,
     RemoveExcludeRuleResponse,
     RemoveParsingRuleResponse,
     RemoveWatchResponse,
-    SearchResponse,
-    ServerStatusResponse,
-    ShutdownResponse,
     ScanInfo,
     ScanKind,
     ScanListResponse,
     ScanRequest,
-    FileStatus,
     ScanStatus,
+    SearchResponse,
+    ServerStatusResponse,
+    ShutdownResponse,
     WatchInfo,
     WatchListResponse,
     WatchRequest,
@@ -105,10 +106,11 @@ class DoclibInterface(ABC):
         ids: list[int] | None = None,
         sha256: str | None = None,
         tier: Tier | None = None,
-        status: str | None = None,
-        pages: str | None = None,
+        status: ParseStatus | None = None,
+        page_range: str | None = None,
         include_superseded: bool = False,
         limit: int = 50,
+        offset: int = 0,
     ) -> ListParsesResponse:
         """List parse records and optional coverage information.
 
@@ -168,6 +170,7 @@ class DoclibInterface(ABC):
         status: ScanStatus | None = None,
         kind: ScanKind | None = None,
         watch_id: int | None = None,
+        offset: int = 0,
     ) -> ScanListResponse:
         """List recent scan tasks.
 
@@ -210,14 +213,25 @@ class DoclibInterface(ABC):
     def list_docs(
         self,
         *,
-        path: str | None = None,
         file_type: str | None = None,
         limit: int = 200,
+        offset: int = 0,
     ) -> ListDocsResponse:
-        """List active docs, optionally filtered by path.
+        """List active docs, optionally filtered by file type.
 
         Raises:
-            InvalidRequestError: when ``path`` is malformed.
+            InvalidRequestError: when filters or limit are invalid.
+            MineruError: for server-side failures.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def get_doc_by_path(self, path: str) -> DocInfo:
+        """Return the current doc bound to a local file path.
+
+        Raises:
+            NotFoundError: when the path is unknown, not active, or not currently bound to a doc.
+            InvalidRequestError: when the path is malformed.
             MineruError: for server-side failures.
         """
         raise NotImplementedError()
@@ -239,7 +253,9 @@ class DoclibInterface(ABC):
         sha256: str,
         *,
         tier: Tier,
-        pages: str | None = None,
+        page_range: str | None = None,
+        after: str | None = None,
+        limit: int = 30000,
         format: str = "markdown",
         no_marker: bool = False,
     ) -> DocContentResponse:
@@ -247,7 +263,7 @@ class DoclibInterface(ABC):
 
         Raises:
             NotFoundError: when the document or requested parsed content is not cached.
-            InvalidRequestError: when tier, pages, format, output, or marker options are invalid.
+            InvalidRequestError: when tier, page_range, format, or marker options are invalid.
             MineruError: for render or server-side failures.
         """
         raise NotImplementedError()
@@ -258,7 +274,7 @@ class DoclibInterface(ABC):
 
         Raises:
             NotFoundError: when the document or requested parsed content is not cached.
-            InvalidRequestError: when tier, pages, format, output, or marker options are invalid.
+            InvalidRequestError: when tier, page_range, format, output, or marker options are invalid.
             MineruError: for render, filesystem, or server-side failures.
         """
         raise NotImplementedError()
@@ -293,7 +309,7 @@ class DoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def get_file_info(self, path: str) -> FileInfoResponse:
+    def get_file_by_path(self, path: str) -> FileInfoResponse:
         """Return file, doc, and parse state for a local path.
 
         Raises:
@@ -409,7 +425,7 @@ class DoclibInterface(ABC):
         """Add a parsing rule.
 
         Raises:
-            InvalidRequestError: when the pattern, tier, pages, priority, or name is invalid.
+            InvalidRequestError: when the pattern, tier, page_range, priority, or name is invalid.
             MineruError: for server-side failures.
         """
         raise NotImplementedError()
@@ -495,10 +511,11 @@ class AsyncDoclibInterface(ABC):
         ids: list[int] | None = None,
         sha256: str | None = None,
         tier: Tier | None = None,
-        status: str | None = None,
-        pages: str | None = None,
+        status: ParseStatus | None = None,
+        page_range: str | None = None,
         include_superseded: bool = False,
         limit: int = 50,
+        offset: int = 0,
     ) -> ListParsesResponse:
         """Async version of ``DoclibInterface.list_parses``."""
         raise NotImplementedError()
@@ -531,6 +548,7 @@ class AsyncDoclibInterface(ABC):
         status: ScanStatus | None = None,
         kind: ScanKind | None = None,
         watch_id: int | None = None,
+        offset: int = 0,
     ) -> ScanListResponse:
         """Async version of ``DoclibInterface.list_scans``."""
         raise NotImplementedError()
@@ -557,11 +575,16 @@ class AsyncDoclibInterface(ABC):
     async def list_docs(
         self,
         *,
-        path: str | None = None,
         file_type: str | None = None,
         limit: int = 200,
+        offset: int = 0,
     ) -> ListDocsResponse:
         """Async version of ``DoclibInterface.list_docs``."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def get_doc_by_path(self, path: str) -> DocInfo:
+        """Async version of ``DoclibInterface.get_doc_by_path``."""
         raise NotImplementedError()
 
     @abstractmethod
@@ -575,7 +598,9 @@ class AsyncDoclibInterface(ABC):
         sha256: str,
         *,
         tier: Tier,
-        pages: str | None = None,
+        page_range: str | None = None,
+        after: str | None = None,
+        limit: int = 30000,
         format: str = "markdown",
         no_marker: bool = False,
     ) -> DocContentResponse:
@@ -607,8 +632,8 @@ class AsyncDoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    async def get_file_info(self, path: str) -> FileInfoResponse:
-        """Async version of ``DoclibInterface.get_file_info``."""
+    async def get_file_by_path(self, path: str) -> FileInfoResponse:
+        """Async version of ``DoclibInterface.get_file_by_path``."""
         raise NotImplementedError()
 
     @abstractmethod

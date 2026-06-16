@@ -7,7 +7,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from mineru.doclib.background.compaction import Compaction
+from mineru.doclib.background.device_monitor import DeviceMonitor
 from mineru.doclib.background.ingest import IngestWorkerPool
 from mineru.doclib.background.parse_server_health import api_server_args_for_tier
 from mineru.doclib.background.watch import WatchLoop
@@ -30,6 +33,7 @@ from mineru.doclib.services.search_svc import SearchService
 from mineru.doclib.server import DoclibServer
 from mineru.doclib.types import ParseResponse
 from mineru.parser import backend_for_tier, resolve_tier_and_backend
+from mineru.parser.base import ParseResult
 from mineru.types import PageInfo, Tier
 
 
@@ -97,13 +101,13 @@ class _FakeDB:
     async def execute_insert(self, sql: str, params: tuple[Any, ...]) -> int:
         if sql.startswith("INSERT INTO parses"):
             parse_id = max((row.get("id", 0) for row in self.parses), default=0) + 1
-            sha256, tier, pages, status, privacy, created_at, updated_at = params
+            sha256, tier, page_range, status, privacy, created_at, updated_at = params
             self.parses.append(
                 {
                     "id": parse_id,
                     "sha256": sha256,
                     "tier": tier,
-                    "pages": pages,
+                    "page_range": page_range,
                     "status": status,
                     "privacy": privacy,
                     "priority": 1,
@@ -173,8 +177,8 @@ class _FakeFTS:
         self.replaced.append(kwargs)
 
 
-def _write_batch(data_dir: Path, sha256: str, tier: Tier, pages: str, done_at: int, json_pages: list[dict]) -> None:
-    path = Path(parse_batch_json_path(str(data_dir), sha256, tier, pages, done_at))
+def _write_batch(data_dir: Path, sha256: str, tier: Tier, page_range: str, done_at: int, json_pages: list[dict]) -> None:
+    path = Path(parse_batch_json_path(str(data_dir), sha256, tier, page_range, done_at))
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"pages": json_pages}), encoding="utf-8")
 
@@ -190,8 +194,8 @@ def test_load_pages_from_done_batches_keeps_newest_page_idx(tmp_path: Path) -> N
     _write_batch(tmp_path, sha256, tier, "2", 2000, [newer_duplicate])
 
     done_rows = [
-        {"pages": "2", "done_at": 2000},
-        {"pages": "1~2", "done_at": 1000},
+        {"page_range": "2", "done_at": 2000},
+        {"page_range": "1~2", "done_at": 1000},
     ]
 
     pages = load_pages_from_done_batches(str(tmp_path), sha256, tier, done_rows)
@@ -255,20 +259,54 @@ def test_config_defaults_are_code_backed_and_unset_removes_override(tmp_path: Pa
     asyncio.run(_run())
 
 
+def test_data_dir_is_not_runtime_kv_config(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        service = ConfigService(db)
+
+        config, sources = await service.get_all_with_sources()
+
+        assert "data_dir" not in CONFIG_DEFAULTS
+        assert "data_dir" not in config
+        assert "data_dir" not in sources
+
+        with pytest.raises(InvalidRequestError, match="Unknown config key: data_dir"):
+            await service.get("data_dir")
+        with pytest.raises(InvalidRequestError, match="Unknown config key: data_dir"):
+            await service.set("data_dir", "/tmp/mineru")
+        with pytest.raises(InvalidRequestError, match="Unknown config key: data_dir"):
+            await service.unset("data_dir")
+
+    asyncio.run(_run())
+
+
+def test_remote_parse_server_default_url_is_declared_once() -> None:
+    default_url = CONFIG_DEFAULTS["parse_server.remote.url"]
+    doclib_dir = Path(__file__).parents[2] / "mineru" / "doclib"
+    occurrences = [
+        path
+        for path in doclib_dir.rglob("*.py")
+        if default_url in path.read_text(encoding="utf-8")
+    ]
+
+    assert occurrences == [doclib_dir / "config_defaults.py"]
+
+
 def test_compaction_uses_configured_data_dir(tmp_path: Path) -> None:
     sha256 = "b" * 64
     tier = "standard"
-    older_page = {"page_idx": 1, "content": "old"}
-    older_duplicate = {"page_idx": 2, "content": "old"}
-    newer_duplicate = {"page_idx": 2, "content": "new"}
+    older_page = {"page_idx": 0, "content": "old"}
+    older_duplicate = {"page_idx": 1, "content": "old"}
+    newer_duplicate = {"page_idx": 1, "content": "new"}
 
     _write_batch(tmp_path, sha256, tier, "1~2", 1000, [older_page, older_duplicate])
     _write_batch(tmp_path, sha256, tier, "2", 2000, [newer_duplicate])
 
     compaction = Compaction(db=None, interval_sec=600, data_dir=str(tmp_path))
     done_rows = [
-        {"pages": "2", "done_at": 2000},
-        {"pages": "1~2", "done_at": 1000},
+        {"page_range": "2", "done_at": 2000},
+        {"page_range": "1~2", "done_at": 1000},
     ]
 
     asyncio.run(compaction._compact_json(sha256, tier, ["1~2"], done_rows, 2000))
@@ -282,10 +320,10 @@ def test_compaction_uses_configured_data_dir(tmp_path: Path) -> None:
 
 def test_invalidate_deletes_fts_when_no_done_batches_remain(tmp_path: Path) -> None:
     sha256 = "c" * 64
-    parses = [{"sha256": sha256, "tier": "standard", "pages": "1", "status": "done", "done_at": 1000}]
+    parses = [{"sha256": sha256, "tier": "standard", "page_range": "1", "status": "done", "done_at": 1000}]
     db = _FakeDB(parses=parses, file_row={"sha256": sha256, "status": "active", "filename": "doc.pdf"})
     fts = _FakeFTS()
-    service = ParseService(db=db, fts=fts, config_svc=None, data_dir=str(tmp_path))
+    service = ParseService(db=db, fts=fts, config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
 
     count = asyncio.run(service.invalidate(sha256, "standard"))
 
@@ -300,12 +338,12 @@ def test_invalidate_rebuilds_fts_from_highest_remaining_done_tier(tmp_path: Path
     _write_batch(tmp_path, sha256, "flash", "1", 1000, [{"page_idx": 1, "page_size": [100, 100], "para_blocks": []}])
     _write_batch(tmp_path, sha256, "standard", "1", 2000, [{"page_idx": 1, "page_size": [200, 200], "para_blocks": []}])
     parses = [
-        {"sha256": sha256, "tier": "flash", "pages": "1", "status": "done", "done_at": 1000},
-        {"sha256": sha256, "tier": "standard", "pages": "1", "status": "done", "done_at": 2000},
+        {"sha256": sha256, "tier": "flash", "page_range": "1", "status": "done", "done_at": 1000},
+        {"sha256": sha256, "tier": "standard", "page_range": "1", "status": "done", "done_at": 2000},
     ]
     db = _FakeDB(parses=parses, file_row={"sha256": sha256, "status": "active", "filename": "doc.pdf"})
     fts = _FakeFTS()
-    service = ParseService(db=db, fts=fts, config_svc=None, data_dir=str(tmp_path))
+    service = ParseService(db=db, fts=fts, config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
 
     count = asyncio.run(service.invalidate(sha256, "standard"))
 
@@ -327,7 +365,7 @@ def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: 
             "id": 10,
             "sha256": sha256,
             "tier": "standard",
-            "pages": "1~5",
+            "page_range": "1~5",
             "status": "done",
             "priority": 0,
             "done_at": 1000,
@@ -337,7 +375,7 @@ def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: 
             "id": 11,
             "sha256": sha256,
             "tier": "standard",
-            "pages": "6~8",
+            "page_range": "6~8",
             "status": "pending",
             "priority": 0,
             "done_at": None,
@@ -359,28 +397,28 @@ def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: 
         },
         doc_row={"sha256": sha256, "page_count": 10},
     )
-    service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path))
+    service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
 
-    result = asyncio.run(service.request_parse(path, tier="standard", pages="1~10", force=True))
+    result = asyncio.run(service.request_parse(path, tier="standard", page_range="1~10", force=True))
 
     assert isinstance(result, ParseResponse)
     assert result.wait_parse_ids == [11, 12]
     assert result.reused_parse_ids == [11]
     assert result.created_parse_ids == [12]
-    assert result.pages == "1~10"
+    assert result.page_range == "1~10"
     assert result.status == "pending"
     assert result.cache_hit is False
     assert db.updated_priorities == [11]
-    assert parses[-1]["pages"] == "1~5,9~10"
+    assert parses[-1]["page_range"] == "1~5,9~10"
 
 
 def test_list_parse_records_by_ids_returns_precise_status(tmp_path: Path) -> None:
     parses = [
-        {"id": 1, "sha256": "f" * 64, "tier": "standard", "pages": "1~5", "status": "done", "done_at": 1000},
-        {"id": 2, "sha256": "f" * 64, "tier": "standard", "pages": "6~10", "status": "failed", "error_code": "parse_failed", "error_msg": "boom"},
+        {"id": 1, "sha256": "f" * 64, "tier": "standard", "page_range": "1~5", "status": "done", "done_at": 1000},
+        {"id": 2, "sha256": "f" * 64, "tier": "standard", "page_range": "6~10", "status": "failed", "error_code": "parse_failed", "error_msg": "boom"},
     ]
     db = _FakeDB(parses=parses, file_row=None)
-    service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path))
+    service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
 
     result = asyncio.run(service.list_parse_records(ids=[2, 1]))
 
@@ -389,7 +427,7 @@ def test_list_parse_records_by_ids_returns_precise_status(tmp_path: Path) -> Non
             "id": 2,
             "sha256": "f" * 64,
             "tier": "standard",
-            "pages": "6~10",
+            "page_range": "6~10",
             "status": "failed",
             "done_at": None,
             "created_at": None,
@@ -400,7 +438,7 @@ def test_list_parse_records_by_ids_returns_precise_status(tmp_path: Path) -> Non
             "id": 1,
             "sha256": "f" * 64,
             "tier": "standard",
-            "pages": "1~5",
+            "page_range": "1~5",
             "status": "done",
             "done_at": 1000,
             "created_at": None,
@@ -410,7 +448,7 @@ def test_list_parse_records_by_ids_returns_precise_status(tmp_path: Path) -> Non
     ]
 
 
-def test_filter_pages_by_user_range_uses_one_based_request_pages() -> None:
+def test_filter_pages_by_user_range_uses_one_based_page_numbers() -> None:
     pages = [PageInfo(page_idx=0), PageInfo(page_idx=1), PageInfo(page_idx=2)]
 
     selected = filter_pages_by_user_range(pages, "1")
@@ -418,11 +456,65 @@ def test_filter_pages_by_user_range_uses_one_based_request_pages() -> None:
     assert [page.page_idx for page in selected] == [0]
 
 
+def test_remap_api_result_pages_to_non_contiguous_page_range() -> None:
+    from mineru.doclib.services.parse_svc import _remap_api_result_pages_to_page_range
+
+    result = ParseResult(pages=[PageInfo(page_idx=0), PageInfo(page_idx=1), PageInfo(page_idx=2)])
+
+    _remap_api_result_pages_to_page_range(result, "11,13~14")
+
+    assert [page.page_idx for page in result.pages] == [10, 12, 13]
+
+
+def test_remap_api_result_pages_rejects_count_mismatch() -> None:
+    from mineru.doclib.services.parse_svc import ParseFailure, _remap_api_result_pages_to_page_range
+
+    result = ParseResult(pages=[PageInfo(page_idx=0), PageInfo(page_idx=1)])
+
+    with pytest.raises(ParseFailure) as exc:
+        _remap_api_result_pages_to_page_range(result, "11~13")
+
+    assert exc.value.code == "parse_page_remap_failed"
+
+
+def test_ensure_doc_record_extends_short_id_on_prefix_conflict(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        sha_a = "a" * 64
+        sha_b = ("a" * 7) + ("b" * 57)
+
+        for sha256 in (sha_a, sha_b):
+            await parse_svc_module.ensure_doc_record(
+                db,
+                sha256=sha256,
+                size_bytes=10,
+                file_type="pdf",
+                page_count=1,
+                title=None,
+                author=None,
+                subject=None,
+                keywords=None,
+                error_code=None,
+                error_msg=None,
+                first_seen_at=1000,
+                updated_at=1000,
+            )
+
+        first = await db.fetchone("SELECT short_id FROM docs WHERE sha256=?", (sha_a,))
+        second = await db.fetchone("SELECT short_id FROM docs WHERE sha256=?", (sha_b,))
+
+        assert first == {"short_id": "a" * 7}
+        assert second == {"short_id": ("a" * 7) + "b"}
+
+    asyncio.run(_run())
+
+
 def test_ensure_ingested_rebinds_changed_text_file_to_new_sha(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "mineru.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"))
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
         source = tmp_path / "note.txt"
 
         source.write_text("old", encoding="utf-8")
@@ -456,7 +548,7 @@ def test_refresh_file_marks_missing_known_path_deleted(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "mineru.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"))
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
         source = tmp_path / "note.txt"
 
         source.write_text("content", encoding="utf-8")
@@ -484,7 +576,7 @@ def test_refresh_file_records_stat_error_without_marking_deleted(tmp_path: Path,
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "mineru.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"))
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
         source = tmp_path / "note.txt"
 
         source.write_text("content", encoding="utf-8")
@@ -516,7 +608,7 @@ def test_ingest_worker_skips_files_with_blocking_stat_errors(tmp_path: Path, mon
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "mineru.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"))
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
         source = tmp_path / "note.txt"
 
         source.write_text("content", encoding="utf-8")
@@ -529,7 +621,7 @@ def test_ingest_worker_skips_files_with_blocking_stat_errors(tmp_path: Path, mon
 
         await service.refresh_file(str(source))
 
-        worker = IngestWorkerPool(service, num_workers=1)
+        worker = IngestWorkerPool(service, num_workers=1, lock_timeout_sec=60)
         assert await worker._acquire_task() is None
 
         row = await db.fetchone("SELECT error_code, error_msg, locked_at FROM files WHERE path=?", (str(source),))
@@ -545,7 +637,7 @@ def test_ingest_worker_preserves_precise_file_access_errors(tmp_path: Path) -> N
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "mineru.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"))
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
         source = tmp_path / "note.txt"
         now = 1000
         file_id = await db.execute_insert(
@@ -554,7 +646,7 @@ def test_ingest_worker_preserves_precise_file_access_errors(tmp_path: Path) -> N
             (str(source), source.name, "txt", 10, now, now, now),
         )
 
-        worker = IngestWorkerPool(service, num_workers=1)
+        worker = IngestWorkerPool(service, num_workers=1, lock_timeout_sec=60)
         await worker._handle_ingest_error(
             {"id": file_id, "path": str(source), "watch_id": None},
             PermissionError("permission denied"),
@@ -574,7 +666,7 @@ def test_ingest_worker_skips_any_file_with_existing_error(tmp_path: Path) -> Non
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "mineru.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"))
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
         source = tmp_path / "note.txt"
         now = 1000
         await db.execute_insert(
@@ -583,7 +675,7 @@ def test_ingest_worker_skips_any_file_with_existing_error(tmp_path: Path) -> Non
             (str(source), source.name, "txt", 10, now, "ingest_failed", "boom", now, now),
         )
 
-        worker = IngestWorkerPool(service, num_workers=1)
+        worker = IngestWorkerPool(service, num_workers=1, lock_timeout_sec=60)
 
         assert await worker._acquire_task() is None
         row = await db.fetchone("SELECT error_code, locked_at FROM files WHERE path=?", (str(source),))
@@ -607,8 +699,8 @@ def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
 
         for sha256, tier, file_type, filename in docs:
             await db.execute(
-                "INSERT INTO docs (sha256, size_bytes, file_type, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-                (sha256, 10, file_type, now, now),
+                "INSERT INTO docs (sha256, short_id, size_bytes, file_type, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (sha256, sha256[:7], 10, file_type, now, now),
             )
             await db.execute(
                 "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
@@ -643,8 +735,8 @@ def test_search_prefers_active_paths_and_falls_back_to_non_active_paths(tmp_path
 
         for sha256 in (sha_active, sha_deleted):
             await db.execute(
-                "INSERT INTO docs (sha256, size_bytes, file_type, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-                (sha256, 10, "pdf", now, now),
+                "INSERT INTO docs (sha256, short_id, size_bytes, file_type, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (sha256, sha256[:7], 10, "pdf", now, now),
             )
             await fts.replace(sha256=sha256, tier="standard", text="fallback needle", title="", author="", filename=f"{sha256[0]}.pdf")
 
@@ -686,8 +778,8 @@ def test_find_filters_by_ext(tmp_path: Path) -> None:
 
         for sha256, filename, ext in ((sha_pdf, "report.pdf", "pdf"), (sha_docx, "report.docx", "docx")):
             await db.execute(
-                "INSERT INTO docs (sha256, size_bytes, file_type, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-                (sha256, 10, ext, now, now),
+                "INSERT INTO docs (sha256, short_id, size_bytes, file_type, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (sha256, sha256[:7], 10, ext, now, now),
             )
             file_id = await db.execute_insert(
                 "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
@@ -709,7 +801,7 @@ def test_refresh_file_marks_only_current_file_unreachable_when_watch_root_is_mis
         db = DatabaseManager(str(tmp_path / "mineru.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"))
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
         root = tmp_path / "removable"
         root.mkdir()
         watch = await config_svc.add_watch(str(root), removable=True)
@@ -749,7 +841,7 @@ def test_remove_watch_converts_unreachable_files_to_deleted_and_unbinds_watch(tm
         db = DatabaseManager(str(tmp_path / "mineru.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"))
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
         root = tmp_path / "removable"
         root.mkdir()
         watch = await config_svc.add_watch(str(root), removable=True)
@@ -785,8 +877,8 @@ def test_watch_scan_refreshes_known_active_paths_before_walk(tmp_path: Path) -> 
         await db.initialize()
         config_svc = ConfigService(db)
         fts = FTSManager(db)
-        service = ParseService(db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"))
-        watch_loop = WatchLoop(db=db, config_svc=config_svc, parse_svc=service)
+        service = ParseService(db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        watch_loop = WatchLoop(db=db, config_svc=config_svc, parse_svc=service, scan_interval_sec=300)
         root = tmp_path / "watched"
         root.mkdir()
         watch = await config_svc.add_watch(str(root), removable=False)
@@ -813,8 +905,8 @@ def test_watch_scan_marks_root_unreachable_without_refreshing_all_files(tmp_path
         await db.initialize()
         config_svc = ConfigService(db)
         fts = FTSManager(db)
-        service = ParseService(db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"))
-        watch_loop = WatchLoop(db=db, config_svc=config_svc, parse_svc=service)
+        service = ParseService(db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        watch_loop = WatchLoop(db=db, config_svc=config_svc, parse_svc=service, scan_interval_sec=300)
         root = tmp_path / "removable"
         root.mkdir()
         watch = await config_svc.add_watch(str(root), removable=True)
@@ -838,13 +930,62 @@ def test_watch_scan_marks_root_unreachable_without_refreshing_all_files(tmp_path
     asyncio.run(_run())
 
 
+def test_device_monitor_queues_watch_scan_when_removable_watch_recovers(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        fts = FTSManager(db)
+        parse_svc = ParseService(db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
+        monitor = DeviceMonitor(db=db, config_svc=config_svc, interval_sec=5, scan_svc=scan_svc)
+        root = tmp_path / "removable"
+        root.mkdir()
+        watch = await config_svc.add_watch(str(root), removable=True)
+        source = root / "note.txt"
+
+        source.write_text("content", encoding="utf-8")
+        ingested = await parse_svc.ensure_ingested(str(source), watch_id=watch["id"])
+        assert ingested is not None
+
+        source.unlink()
+        root.rmdir()
+        await monitor._poll_once()
+        unreachable_watch = await db.fetchone("SELECT status FROM watches WHERE id=?", (watch["id"],))
+        unreachable_file = await db.fetchone("SELECT status FROM files WHERE path=?", (str(source),))
+
+        assert unreachable_watch == {"status": "unreachable"}
+        assert unreachable_file == {"status": "unreachable"}
+
+        root.mkdir()
+        await monitor._poll_once()
+        recovered_watch = await db.fetchone("SELECT status FROM watches WHERE id=?", (watch["id"],))
+        recovered_file = await db.fetchone("SELECT status FROM files WHERE path=?", (str(source),))
+        scan = await db.fetchone(
+            "SELECT path, kind, source, watch_id, status FROM scans WHERE watch_id=?",
+            (watch["id"],),
+        )
+
+        assert recovered_watch == {"status": "active"}
+        assert recovered_file == {"status": "active"}
+        assert scan == {
+            "path": str(root),
+            "kind": "watch",
+            "source": "system",
+            "watch_id": watch["id"],
+            "status": "pending",
+        }
+
+    asyncio.run(_run())
+
+
 def test_scan_service_creates_and_processes_manual_file_scan(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "mineru.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"))
-        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc)
+        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
         source = tmp_path / "note.txt"
         source.write_text("content", encoding="utf-8")
 
@@ -874,8 +1015,8 @@ def test_scan_service_directory_scan_applies_excludes_and_counts_unsupported(tmp
         db = DatabaseManager(str(tmp_path / "mineru.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"))
-        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc)
+        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
         root = tmp_path / "docs"
         root.mkdir()
         included = root / "included.txt"
@@ -909,8 +1050,8 @@ def test_scan_service_reuses_pending_scan_for_same_kind_and_path(tmp_path: Path)
         db = DatabaseManager(str(tmp_path / "mineru.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"))
-        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc)
+        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
         root = tmp_path / "docs"
         root.mkdir()
 
@@ -924,13 +1065,80 @@ def test_scan_service_reuses_pending_scan_for_same_kind_and_path(tmp_path: Path)
     asyncio.run(_run())
 
 
+def test_watch_ids_are_non_negative_for_cli_arguments(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        root = tmp_path / "watch-root"
+        root.mkdir()
+
+        watch = await config_svc.add_watch(str(root))
+
+        assert watch["id"] >= 0
+
+    asyncio.run(_run())
+
+
+def test_doclib_server_list_responses_include_pagination_metadata(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
+        server = DoclibServer(SimpleNamespace(db=db, scan_svc=scan_svc))
+
+        for index in range(3):
+            sha256 = str(index + 1) * 64
+            now = 1000 + index
+            await db.execute(
+                "INSERT INTO docs (sha256, short_id, size_bytes, file_type, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (sha256, sha256[:7], 10 + index, "pdf", now, now),
+            )
+            await db.execute(
+                "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (str(tmp_path / f"doc-{index}.pdf"), f"doc-{index}.pdf", "pdf", 10 + index, now, sha256, "active", now, now),
+            )
+            await db.execute(
+                "INSERT INTO parses (sha256, tier, page_range, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (sha256, "standard", "1", "pending", now, now),
+            )
+            await db.execute(
+                "INSERT INTO scans (path, kind, source, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (str(tmp_path / f"doc-{index}.pdf"), "manual", "cli", "done", now, now),
+            )
+
+        parses = await server.list_parses(limit=1, offset=1)
+        scans = await server.list_scans(limit=1, offset=1)
+        docs = await server.list_docs(file_type="pdf", limit=1, offset=1)
+
+        assert parses.total == 3
+        assert parses.limit == 1
+        assert parses.offset == 1
+        assert len(parses.parses) == 1
+
+        assert scans.total == 3
+        assert scans.limit == 1
+        assert scans.offset == 1
+        assert len(scans.scans) == 1
+
+        assert docs.total == 3
+        assert docs.limit == 1
+        assert docs.offset == 1
+        assert len(docs.docs) == 1
+
+    asyncio.run(_run())
+
+
 def test_scan_service_cleanup_keeps_latest_terminal_scans_and_active_tasks(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "mineru.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"))
-        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc)
+        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
 
         for index in range(1002):
             status = "done" if index % 2 == 0 else "failed"
@@ -965,9 +1173,9 @@ def test_watch_loop_queues_watch_scan_when_scan_service_is_available(tmp_path: P
         db = DatabaseManager(str(tmp_path / "mineru.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"))
-        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc)
-        watch_loop = WatchLoop(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_svc=scan_svc)
+        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
+        watch_loop = WatchLoop(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_interval_sec=300, scan_svc=scan_svc)
         root = tmp_path / "watched"
         root.mkdir()
         watch = await config_svc.add_watch(str(root), removable=False)
@@ -991,8 +1199,8 @@ def test_cleanup_deleted_files_does_not_cleanup_orphan_docs(tmp_path: Path) -> N
         sha256 = "1" * 64
 
         await db.execute(
-            "INSERT INTO docs (sha256, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?)",
-            (sha256, 7, now, now),
+            "INSERT INTO docs (sha256, short_id, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (sha256, sha256[:7], 7, now, now),
         )
         await db.execute(
             "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, deleted_at, first_seen_at, updated_at) "
@@ -1031,8 +1239,8 @@ def test_cleanup_orphans_keeps_docs_referenced_by_deleted_or_unreachable_files(t
 
         for sha256 in (deleted_sha, unreachable_sha, orphan_sha):
             await db.execute(
-                "INSERT INTO docs (sha256, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?)",
-                (sha256, 7, now, now),
+                "INSERT INTO docs (sha256, short_id, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (sha256, sha256[:7], 7, now, now),
             )
         await db.execute(
             "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, deleted_at, first_seen_at, updated_at) "
@@ -1074,8 +1282,8 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
 
         for sha256 in (sha_done, sha_pending):
             await db.execute(
-                "INSERT INTO docs (sha256, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?)",
-                (sha256, 7, now, now),
+                "INSERT INTO docs (sha256, short_id, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (sha256, sha256[:7], 7, now, now),
             )
         await db.execute(
             "UPDATE docs SET error_code=? WHERE sha256=?",
@@ -1114,11 +1322,11 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
             (str(tmp_path / "watched" / "blocked-ingest.pdf"), "blocked-ingest.pdf", "pdf", 7, now, watch["id"], "active", "ingest_failed", now, now),
         )
         await db.execute(
-            "INSERT INTO parses (sha256, tier, pages, status, privacy, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO parses (sha256, tier, page_range, status, privacy, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (sha_done, "standard", "1", "done", "local", now, now),
         )
         await db.execute(
-            "INSERT INTO parses (sha256, tier, pages, status, privacy, error_code, created_at, updated_at) "
+            "INSERT INTO parses (sha256, tier, page_range, status, privacy, error_code, created_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (sha_pending, "standard", "1", "failed", "local", "parse_failed", now, now),
         )
@@ -1165,7 +1373,7 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
         assert stats.parse_failed_count == 1
         assert [scan.path for scan in status.recent_scans] == [str(tmp_path / f"scan-{index}.pdf") for index in range(5, 0, -1)]
         assert status.recent_scans[0].error_code == "scan_failed"
-        assert not hasattr(status.recent_scans[0], "error_msg")
+        assert status.recent_scans[0].error_msg == "hidden message"
         assert status.error_summary is not None
         assert [(bucket.code, bucket.count) for bucket in status.error_summary.file_errors] == [("ingest_failed", 1), ("stat_failed", 1)]
         assert [(bucket.code, bucket.count) for bucket in status.error_summary.doc_errors] == [("metadata_failed", 1)]
@@ -1184,11 +1392,11 @@ def test_forget_path_deletes_file_row_and_filename_fts_without_deleting_doc(tmp_
         path = str(tmp_path / "doc.pdf")
 
         await db.execute(
-            "INSERT INTO docs (sha256, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?)",
-            (sha256, 7, now, now),
+            "INSERT INTO docs (sha256, short_id, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (sha256, sha256[:7], 7, now, now),
         )
         await db.execute(
-            "INSERT INTO parses (sha256, tier, pages, status, privacy, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO parses (sha256, tier, page_range, status, privacy, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (sha256, "standard", "1", "done", "local", now, now),
         )
         await db.execute(
@@ -1237,8 +1445,8 @@ def test_forget_directory_matches_historical_prefix_rows(tmp_path: Path) -> None
 
         for sha256 in (sha_a, sha_b):
             await db.execute(
-                "INSERT INTO docs (sha256, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?)",
-                (sha256, 7, now, now),
+                "INSERT INTO docs (sha256, short_id, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (sha256, sha256[:7], 7, now, now),
             )
         await db.execute(
             "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
@@ -1274,8 +1482,8 @@ def test_forget_rejects_watch_root_and_warns_under_active_watch(tmp_path: Path) 
         now = 1000
 
         await db.execute(
-            "INSERT INTO docs (sha256, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?)",
-            ("a" * 64, 7, now, now),
+            "INSERT INTO docs (sha256, short_id, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            ("a" * 64, "a" * 7, 7, now, now),
         )
         await db.execute(
             "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, watch_id, status, first_seen_at, updated_at) "
@@ -1307,7 +1515,7 @@ def test_ingest_records_doc_error_when_metadata_extraction_fails(tmp_path: Path,
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "mineru.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=_NoRulesConfig(), data_dir=str(tmp_path / "data"))
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=_NoRulesConfig(), data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
         source = tmp_path / "broken.pdf"
         source.write_bytes(b"%PDF-1.4\nnot actually a valid pdf")
 
@@ -1332,7 +1540,7 @@ def test_process_doc_marks_empty_page_result_failed(tmp_path: Path) -> None:
         "id": 1,
         "sha256": sha256,
         "tier": "flash",
-        "pages": "1",
+        "page_range": "1",
         "status": "parsing",
         "privacy": "local",
     }
@@ -1357,17 +1565,10 @@ def test_process_doc_marks_empty_page_result_failed(tmp_path: Path) -> None:
             "author": "",
         },
     )
-    service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path))
+    service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
 
-    class _EmptyResult:
-        def to_dict(self) -> dict[str, list]:
-            return {"pages": []}
-
-        def markdown(self, *, add_markers: bool = False) -> str:
-            return ""
-
-    async def _empty_parse(file_row: dict, tier: Tier, pages: str) -> list:
-        return [_EmptyResult()]
+    async def _empty_parse(file_row: dict, tier: Tier, page_range: str) -> ParseResult:
+        return ParseResult(pages=[])
 
     service._parse_via_local = _empty_parse  # type: ignore[method-assign]
 
@@ -1385,7 +1586,7 @@ def test_process_doc_fails_when_batch_json_cannot_be_written(tmp_path: Path) -> 
         "id": 1,
         "sha256": sha256,
         "tier": "flash",
-        "pages": "1",
+        "page_range": "1",
         "status": "parsing",
         "privacy": "local",
     }
@@ -1411,20 +1612,13 @@ def test_process_doc_fails_when_batch_json_cannot_be_written(tmp_path: Path) -> 
         },
     )
     fts = _FakeFTS()
-    service = ParseService(db=db, fts=fts, config_svc=None, data_dir=str(tmp_path))
+    service = ParseService(db=db, fts=fts, config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
     blocked_output_dir = tmp_path / "parsed" / sha256[:2] / sha256 / "flash"
     blocked_output_dir.parent.mkdir(parents=True)
     blocked_output_dir.write_text("not a directory", encoding="utf-8")
 
-    class _PageResult:
-        def to_dict(self) -> dict[str, list]:
-            return {"pages": [{"page_idx": 1, "page_size": [100, 100], "para_blocks": []}]}
-
-        def markdown(self, *, add_markers: bool = False) -> str:
-            return "content"
-
-    async def _parse(file_row: dict, tier: Tier, pages: str) -> list:
-        return [_PageResult()]
+    async def _parse(file_row: dict, tier: Tier, page_range: str) -> ParseResult:
+        return ParseResult(pages=[PageInfo(page_idx=0)])
 
     service._parse_via_local = _parse  # type: ignore[method-assign]
 

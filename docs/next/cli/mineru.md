@@ -25,7 +25,7 @@
 | `mineru server` | 管理本地 doclib 服务 | [mineru server](mineru-server.md) |
 | `mineru search` | 搜索本地文档库内容 | [mineru library](mineru-library.md) |
 | `mineru find` | 搜索或定位文件 | [mineru library](mineru-library.md) |
-| `mineru info` | 查看文件、文档或服务信息 | [mineru library](mineru-library.md) |
+| `mineru show` | 查看 file、doc、parse、scan 等资源详情 | [mineru library](mineru-library.md) |
 | `mineru config` | 管理本地配置、watch、rules | [mineru library](mineru-library.md) |
 
 ## 3. 本地文档库

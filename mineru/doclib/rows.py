@@ -28,6 +28,7 @@ class FileRow(TypedDict):
 
 class DocRow(TypedDict):
     sha256: str
+    short_id: str
     size_bytes: int
     file_type: str | None
     page_count: int | None
@@ -48,7 +49,7 @@ class ParseRow(TypedDict):
     id: int
     sha256: str
     tier: Tier
-    pages: str
+    page_range: str
     status: ParseStatus
     priority: int
     locked_at: int | None
@@ -112,7 +113,7 @@ class ExcludeRuleRow(TypedDict):
     updated_at: int
     rule_type: NotRequired[RuleType]
     tier: NotRequired[None]
-    pages: NotRequired[None]
+    page_range: NotRequired[None]
     remote: NotRequired[int]
 
 
@@ -121,7 +122,7 @@ class ParsingRuleRow(TypedDict):
     name: str | None
     pattern: str
     tier: Tier | None
-    pages: str | None
+    page_range: str | None
     remote: int
     enabled: int
     priority: int
@@ -159,13 +160,17 @@ class Sha256Row(TypedDict):
     sha256: str | None
 
 
+class ShortIdRow(TypedDict):
+    short_id: str | None
+
+
 class ParseGroupRow(TypedDict):
     sha256: str
     tier: Tier
 
 
 class ParseBatchRow(TypedDict):
-    pages: str
+    page_range: str
     done_at: int | None
 
 

@@ -242,7 +242,16 @@ class DoclibConfig(BaseModel):
     data_dir: str = Field(default_factory=_default_data_path)
     ingest_workers: int = 2
     parse_workers: int = 2
+    scan_interval_sec: int = 300
+    device_check_interval_sec: int = 5
+    ingest_lock_timeout_sec: int = 60
+    parse_lock_timeout_sec: int = 1800
+    scan_lock_timeout_sec: int = 1800
     compaction_interval_sec: int = 3600
+    parse_server_health_check_interval_sec: int = 60
+    parse_server_probe_timeout_sec: int = 10
+    parse_server_startup_grace_sec: int = 30
+    parse_server_stop_timeout_sec: int = 10
 
 
 class Config(BaseModel):

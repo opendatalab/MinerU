@@ -4,7 +4,7 @@ import inspect
 import pytest
 from pydantic import ValidationError
 
-from mineru.parser.api_client import MinerUApiParser
+from mineru.parser.api_client import MinerUApiParser, _parse_result_from_job
 from mineru.parser import parse, parse_async
 from mineru.parser.api_server import (
     _API_SERVER_BACKENDS,
@@ -42,6 +42,12 @@ def test_api_client_uses_tier_without_backend_semantics(tmp_path: Path) -> None:
 
     assert payload["tier"] == "pro"
     assert not hasattr(parser, "backend")
+
+
+def test_api_client_uses_json_format_for_staging_compat() -> None:
+    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="pro")
+
+    assert parser._output_formats() == ["json"]
 
 
 def test_api_client_omits_tier_when_unspecified(tmp_path: Path) -> None:
@@ -82,6 +88,36 @@ def test_api_client_omits_page_range_when_unspecified(tmp_path: Path) -> None:
     payload = parser._build_payload(pdf, "")
 
     assert payload["files"] == [{"source": {"type": "local", "path": str(pdf)}}]
+
+
+def test_api_client_surfaces_failed_job_error() -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+
+    with pytest.raises(Exception, match="upstream failed"):
+        _parse_result_from_job(
+            {
+                "job_id": "job_1",
+                "status": "failed",
+                "error": {"code": "remote_failed", "message": "upstream failed"},
+            },
+            "demo.pdf",
+            parser,
+        )
+
+
+def test_api_client_rejects_missing_middle_json_output() -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+
+    with pytest.raises(Exception, match="did not return middle_json output"):
+        _parse_result_from_job(
+            {
+                "job_id": "job_1",
+                "status": "completed",
+                "files": [{"output_files": {}}],
+            },
+            "demo.pdf",
+            parser,
+        )
 
 
 def test_create_job_request_accepts_new_format_names_and_rejects_options() -> None:

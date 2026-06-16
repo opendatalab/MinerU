@@ -442,7 +442,7 @@
 
 适用范围:
 
-- 某个 `sha256 + tier + pages` 批次的问题。
+- 某个 `sha256 + tier + page_range` 批次的问题。
 - parse-server 不可用。
 - parse 返回空。
 - parsed JSON 写入失败。

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from mineru.doclib.config_defaults import CONFIG_DEFAULTS
 from mineru.config import (
     Config,
     PatchedConfig,
@@ -70,6 +71,15 @@ def test_apply_env_overrides_uses_greedy_field_path_matching(monkeypatch: pytest
     monkeypatch.setenv("TEST_MINERU_DOCLIB_HTTP_ENABLED", "true")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_HTTP_PORT", "15990")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_COMPACTION_INTERVAL_SEC", "5")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_SCAN_INTERVAL_SEC", "7")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_DEVICE_CHECK_INTERVAL_SEC", "11")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_INGEST_LOCK_TIMEOUT_SEC", "13")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_PARSE_LOCK_TIMEOUT_SEC", "17")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_SCAN_LOCK_TIMEOUT_SEC", "19")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_PARSE_SERVER_HEALTH_CHECK_INTERVAL_SEC", "23")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_PARSE_SERVER_PROBE_TIMEOUT_SEC", "29")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_PARSE_SERVER_STARTUP_GRACE_SEC", "31")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_PARSE_SERVER_STOP_TIMEOUT_SEC", "37")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_SQLITE_MMAP_SIZE", "0")
     monkeypatch.setenv("TEST_MINERU_UNKNOWN_FIELD", "ignored")
     monkeypatch.setenv("TEST_MINERU_CONFIG", "/tmp/ignored.yaml")
@@ -79,6 +89,15 @@ def test_apply_env_overrides_uses_greedy_field_path_matching(monkeypatch: pytest
     assert cfg.doclib.http.enabled is True
     assert cfg.doclib.http.port == 15990
     assert cfg.doclib.compaction_interval_sec == 5
+    assert cfg.doclib.scan_interval_sec == 7
+    assert cfg.doclib.device_check_interval_sec == 11
+    assert cfg.doclib.ingest_lock_timeout_sec == 13
+    assert cfg.doclib.parse_lock_timeout_sec == 17
+    assert cfg.doclib.scan_lock_timeout_sec == 19
+    assert cfg.doclib.parse_server_health_check_interval_sec == 23
+    assert cfg.doclib.parse_server_probe_timeout_sec == 29
+    assert cfg.doclib.parse_server_startup_grace_sec == 31
+    assert cfg.doclib.parse_server_stop_timeout_sec == 37
     assert cfg.doclib.sqlite.mmap_size == 0
 
 
@@ -95,3 +114,21 @@ def test_patched_config_returns_validated_deep_patch() -> None:
 
     assert cfg.doclib.http.port == 16000
     assert cfg.doclib.sqlite.cache_size == -1
+
+
+def test_interval_and_timeout_config_is_startup_config_not_runtime_kv() -> None:
+    startup_only_keys = {
+        "default_tier",
+        "scan_interval_sec",
+        "device_check_interval_sec",
+        "ingest_lock_timeout_sec",
+        "parse_lock_timeout_sec",
+        "scan_lock_timeout_sec",
+        "compaction_interval_sec",
+        "parse_server_health_check_interval_sec",
+        "parse_server_probe_timeout_sec",
+        "parse_server_startup_grace_sec",
+        "parse_server_stop_timeout_sec",
+    }
+
+    assert startup_only_keys.isdisjoint(CONFIG_DEFAULTS)

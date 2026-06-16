@@ -198,7 +198,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 具体步骤:
 
-1. 构造一个 parse task，包含 `sha256`、`tier`、`pages`。
+1. 构造一个 parse task，包含 `sha256`、`tier`、`page_range`。
 2. mock 本地 parser，使它返回带 `pages` 的 ParseResult-like 对象。
 3. 调用 `ParseService.process_doc()`。
 4. 检查 `parsed/<sha-prefix>/<sha>/<tier>/` 中只有 `.json` 文件。
@@ -544,7 +544,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 具体步骤:
 
 1. 找出 `_safe_filename()`、`_json_file_exists_by_batch()` 和 compaction 中的重复路径逻辑。
-2. 抽出 helper，例如 `parse_batch_json_path(data_dir, sha256, tier, pages, done_at)`。
+2. 抽出 helper，例如 `parse_batch_json_path(data_dir, sha256, tier, page_range, done_at)`。
 3. 所有路径都使用传入的 `data_dir`，不能硬编码 `~/MinerU`。
 4. 更新 process、cache check、compaction 调用。
 5. 补测试覆盖 page range 文件名。
@@ -634,10 +634,10 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 具体步骤:
 
-1. 准备已有 done batch: `pages=1~5`。
-2. 请求 `pages=1~10`。
+1. 准备已有 done batch: `page_range=1~5`。
+2. 请求 `page_range=1~10`。
 3. 期望只创建 `6~10` 的 pending batch。
-4. 准备已有 pending batch: `pages=6~10`。
+4. 准备已有 pending batch: `page_range=6~10`。
 5. 再请求 `1~10`，期望不重复创建，而是提升 priority。
 6. 测试 `force=True` 时跳过 done cache，但复用 active batch。
 7. 测试 `force=True` 只为 active 未覆盖页创建新 parse。
@@ -739,7 +739,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 具体步骤:
 
 1. 定位当前 `parse_content()` 或等价读取入口，并迁移为 `GET /docs/{sha256}/content`。
-2. 实现按 `sha256 + tier + pages` 收集已完成 JSON 批次。
+2. 实现按 `sha256 + tier + page_range` 收集已完成 JSON 批次。
 3. 使用 `ParseResult.from_dict()` 恢复 pages。
 4. 按请求格式调用 `markdown()`、`content_list()`、`content_list_v2()` 或 HTML render。
 5. 如果请求页未被覆盖，返回明确状态或错误，不生成空内容。

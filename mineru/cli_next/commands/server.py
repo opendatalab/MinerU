@@ -108,7 +108,7 @@ def restart() -> None:
 
 
 @app.command()
-def status() -> None:
+def status(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
     """Show server status."""
     if not _server_running():
         print_info("Server is not running.")
@@ -119,6 +119,6 @@ def status() -> None:
 
         c = DoclibClient(timeout=5)
         data = c.get_server_status()
-        format_server_status(data)
+        format_server_status(data, json_mode=json_mode)
     except Exception as exc:
         print_error(str(exc))

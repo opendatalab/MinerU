@@ -1,4 +1,4 @@
-"""mineru config — configuration management."""
+"""mineru config — configuration and rule management."""
 
 from __future__ import annotations
 
@@ -7,253 +7,198 @@ import typer
 from ...doclib.client import DoclibClient
 from ...doclib.types import ConfigResponse, ConfigSetRequest, ExcludeRuleRequest, ParsingRuleRequest
 from ...types import Tier
-from ..output import print_error, print_success, print_info, print_json
+from ..output import print_error, print_info, print_json, print_success
 
 app = typer.Typer(help="Configuration management", no_args_is_help=True)
 
-exclude_app = typer.Typer(help="Exclusion rule management", no_args_is_help=True)
+exclude_rules_app = typer.Typer(help="Exclude rule management", no_args_is_help=True)
 parsing_rules_app = typer.Typer(help="Parsing rule management", no_args_is_help=True)
 
-app.add_typer(exclude_app, name="exclude")
+app.add_typer(exclude_rules_app, name="exclude-rules")
 app.add_typer(parsing_rules_app, name="parsing-rules")
 
 
-# ── config show ─────────────────────────────────────────────────
-
-
-@app.command()
-def show(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
-    """Show all configuration."""
+@app.command("show")
+def config_show(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
+    """Show effective configuration values."""
     try:
-        client = DoclibClient(timeout=10)
-        data = client.get_config()
-        if json_mode:
-            print_json(data)
-        else:
-            _print_config(data)
+        data = _client().get_config()
     except Exception as exc:
         print_error(str(exc))
         raise typer.Exit(1) from None
 
-
-# ── exclude ──────────────────────────────────────────────────────
-
-
-@exclude_app.command("add")
-def exclude_add(
-    pattern: str = typer.Argument(..., help="Glob pattern to exclude"),
-    priority: int = typer.Option(0, "--priority", help="Rule priority"),
-) -> None:
-    """Add an exclusion pattern."""
-    try:
-        client = DoclibClient(timeout=10)
-        data = client.add_exclude_rule(ExcludeRuleRequest(pattern=pattern, priority=priority))
-        print_success(f"Exclude rule added: id={data.id}")
-    except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+    if json_mode:
+        print_json(data)
+        return
+    _print_config(data)
 
 
-@exclude_app.command("list")
-def exclude_list(
+@app.command("get")
+def config_get(
+    key: str = typer.Argument(..., help="Configuration key"),
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
-    """List all exclusion rules."""
+    """Show one effective configuration value."""
     try:
-        client = DoclibClient(timeout=10)
-        data = client.list_exclude_rules()
-        if json_mode:
-            print_json(data)
-        else:
-            rules = data.rules
-            if not rules:
-                print_info("No exclude rules configured.")
-            for r in rules:
-                print(f"  [{r.id}] {r.pattern}  priority={r.priority}")
+        data = _client().get_config_key(key)
     except Exception as exc:
         print_error(str(exc))
         raise typer.Exit(1) from None
 
+    if json_mode:
+        print_json(data)
+        return
+    print(f"{data.key} = {data.value}  [{data.source}]")
 
-@exclude_app.command("rm")
-def exclude_rm(rule_id: int = typer.Argument(..., help="Rule ID to remove")) -> None:
+
+@app.command("set")
+def config_set(
+    key: str = typer.Argument(..., help="Configuration key"),
+    value: str = typer.Argument(..., help="Configuration value"),
+) -> None:
+    """Set a configuration override."""
+    try:
+        data = _client().set_config(key, ConfigSetRequest(value=value))
+    except Exception as exc:
+        print_error(str(exc))
+        raise typer.Exit(1) from None
+
+    print_success(f"{data.key} = {data.value}  [{data.source}]")
+
+
+@app.command("unset")
+def config_unset(key: str = typer.Argument(..., help="Configuration key")) -> None:
+    """Remove a configuration override and fall back to the default."""
+    try:
+        data = _client().unset_config(key)
+    except Exception as exc:
+        print_error(str(exc))
+        raise typer.Exit(1) from None
+
+    action = "removed" if data.removed else "unchanged"
+    print_success(f"{data.key} = {data.value}  [{data.source}] ({action})")
+
+
+@exclude_rules_app.command("add")
+def exclude_rules_add(
+    pattern: str = typer.Argument(..., help="Glob pattern to exclude"),
+    priority: int = typer.Option(0, "--priority", help="Rule priority"),
+    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+) -> None:
+    """Add an exclusion rule."""
+    try:
+        data = _client().add_exclude_rule(ExcludeRuleRequest(pattern=pattern, priority=priority))
+    except Exception as exc:
+        print_error(str(exc))
+        raise typer.Exit(1) from None
+
+    if json_mode:
+        print_json(data)
+        return
+    print_success(f"Exclude rule added: id={data.id}")
+
+
+@exclude_rules_app.command("list")
+def exclude_rules_list(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
+    """List exclusion rules."""
+    try:
+        data = _client().list_exclude_rules()
+    except Exception as exc:
+        print_error(str(exc))
+        raise typer.Exit(1) from None
+
+    if json_mode:
+        print_json(data)
+        return
+    if not data.rules:
+        print_info("No exclude rules configured.")
+        return
+    for rule in data.rules:
+        print(f"  [{rule.id}] {rule.pattern}  priority={rule.priority}")
+
+
+@exclude_rules_app.command("remove")
+def exclude_rules_remove(rule_id: int = typer.Argument(..., help="Rule id to remove")) -> None:
     """Remove an exclusion rule."""
     try:
-        client = DoclibClient(timeout=10)
-        client.remove_exclude_rule(rule_id)
-        print_success(f"Exclude rule {rule_id} removed.")
+        _client().remove_exclude_rule(rule_id)
     except Exception as exc:
         print_error(str(exc))
         raise typer.Exit(1) from None
 
-
-# ── parsing-rules ────────────────────────────────────────────────
+    print_success(f"Exclude rule {rule_id} removed.")
 
 
 @parsing_rules_app.command("add")
 def parsing_rules_add(
     pattern: str = typer.Argument(..., help="Glob pattern to match"),
     tier: Tier | None = typer.Option(None, "--tier", help="Parse tier: flash, standard, pro"),
-    pages: str = typer.Option(None, "--pages", help="Page range, e.g. 'all' or '1~10'"),
+    pages: str | None = typer.Option(None, "--pages", help="Page range, e.g. all or 1~10"),
     remote: bool = typer.Option(False, "--remote", help="Allow remote parsing"),
-    name: str = typer.Option(None, "--name", help="Rule name"),
+    name: str | None = typer.Option(None, "--name", help="Rule name"),
+    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Add a parsing rule."""
     try:
-        client = DoclibClient(timeout=10)
-        data = client.add_parsing_rule(
-            ParsingRuleRequest(pattern=pattern, tier=tier, pages=pages, remote=remote, name=name)
+        data = _client().add_parsing_rule(
+            ParsingRuleRequest(pattern=pattern, tier=tier, page_range=pages, remote=remote, name=name)
         )
-        print_success(f"Parsing rule added: id={data.id}")
     except Exception as exc:
         print_error(str(exc))
         raise typer.Exit(1) from None
+
+    if json_mode:
+        print_json(data)
+        return
+    print_success(f"Parsing rule added: id={data.id}")
 
 
 @parsing_rules_app.command("list")
-def parsing_rules_list(
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
-) -> None:
-    """List all parsing rules."""
+def parsing_rules_list(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
+    """List parsing rules."""
     try:
-        client = DoclibClient(timeout=10)
-        data = client.list_parsing_rules()
-        if json_mode:
-            print_json(data)
-        else:
-            rules = data.rules
-            if not rules:
-                print_info("No parsing rules configured.")
-            for r in rules:
-                flags = []
-                if r.tier:
-                    flags.append(f"tier={r.tier}")
-                if r.pages:
-                    flags.append(f"pages={r.pages}")
-                if r.remote:
-                    flags.append("remote")
-                print(f"  [{r.id}] {r.pattern}  {', '.join(flags)}")
+        data = _client().list_parsing_rules()
     except Exception as exc:
         print_error(str(exc))
         raise typer.Exit(1) from None
 
+    if json_mode:
+        print_json(data)
+        return
+    if not data.rules:
+        print_info("No parsing rules configured.")
+        return
+    for rule in data.rules:
+        flags = []
+        if rule.tier:
+            flags.append(f"tier={rule.tier}")
+        if rule.page_range:
+            flags.append(f"pages={rule.page_range}")
+        if rule.remote:
+            flags.append("remote")
+        suffix = f"  {', '.join(flags)}" if flags else ""
+        print(f"  [{rule.id}] {rule.pattern}{suffix}")
 
-@parsing_rules_app.command("rm")
-def parsing_rules_rm(rule_id: int = typer.Argument(..., help="Rule ID to remove")) -> None:
+
+@parsing_rules_app.command("remove")
+def parsing_rules_remove(rule_id: int = typer.Argument(..., help="Rule id to remove")) -> None:
     """Remove a parsing rule."""
     try:
-        client = DoclibClient(timeout=10)
-        client.remove_parsing_rule(rule_id)
-        print_success(f"Parsing rule {rule_id} removed.")
+        _client().remove_parsing_rule(rule_id)
     except Exception as exc:
         print_error(str(exc))
         raise typer.Exit(1) from None
 
-
-parse_server_app = typer.Typer(help="Parse-server configuration", no_args_is_help=True)
-app.add_typer(parse_server_app, name="parse-server")
+    print_success(f"Parsing rule {rule_id} removed.")
 
 
-# ── parse-server config ──────────────────────────────────────────
-
-
-@parse_server_app.command("local.mode")
-def parse_server_local_mode(
-    mode: str = typer.Argument(..., help="Mode: disabled, managed, self_hosted"),
-) -> None:
-    """Set local parse-server mode."""
-    valid = {"disabled", "managed", "self_hosted"}
-    if mode not in valid:
-        print_error(f"Invalid mode '{mode}'. Must be one of: {', '.join(sorted(valid))}")
-        raise typer.Exit(1)
-    try:
-        client = DoclibClient(timeout=10)
-        client.set_config(ConfigSetRequest(key="parse_server.local.mode", value=mode))
-        print_success(f"Local parse-server mode set to '{mode}'.")
-    except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
-
-
-@parse_server_app.command("local.managed-tier")
-def parse_server_managed_tier(
-    tier: Tier = typer.Argument(..., help="Tier: standard, pro"),
-) -> None:
-    """Set tier for managed local parse-server."""
-    if tier not in ("standard", "pro"):
-        print_error("Tier must be 'standard' or 'pro'.")
-        raise typer.Exit(1)
-    try:
-        client = DoclibClient(timeout=10)
-        client.set_config(ConfigSetRequest(key="parse_server.local.managed_tier", value=tier))
-        print_success(f"Managed tier set to '{tier}'.")
-    except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
-
-
-@parse_server_app.command("local.self-hosted-url")
-def parse_server_self_hosted_url(
-    url: str = typer.Argument(..., help="HTTP URL of self-hosted parse-server"),
-) -> None:
-    """Set URL for self-hosted parse-server."""
-    try:
-        client = DoclibClient(timeout=10)
-        client.set_config(ConfigSetRequest(key="parse_server.local.self_hosted_url", value=url))
-        print_success(f"Self-hosted URL set to '{url}'.")
-    except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
-
-
-@parse_server_app.command("local.self-hosted-api-key")
-def parse_server_self_hosted_api_key(
-    api_key: str = typer.Argument(..., help="API key for self-hosted parse-server"),
-) -> None:
-    """Set API key for self-hosted parse-server."""
-    try:
-        client = DoclibClient(timeout=10)
-        client.set_config(ConfigSetRequest(key="parse_server.local.self_hosted_api_key", value=api_key))
-        print_success("Self-hosted API key set.")
-    except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
-
-
-@parse_server_app.command("remote.url")
-def parse_server_remote_url(
-    url: str = typer.Argument(..., help="Remote parse-server URL (default: https://mineru.net/api)"),
-) -> None:
-    """Set remote parse-server URL."""
-    try:
-        client = DoclibClient(timeout=10)
-        client.set_config(ConfigSetRequest(key="parse_server.remote.url", value=url))
-        print_success(f"Remote URL set to '{url}'.")
-    except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
-
-
-@parse_server_app.command("remote.api-key")
-def parse_server_remote_api_key(
-    api_key: str = typer.Argument(..., help="API key for remote parse-server"),
-) -> None:
-    """Set API key for remote parse-server."""
-    try:
-        client = DoclibClient(timeout=10)
-        client.set_config(ConfigSetRequest(key="parse_server.remote.api_key", value=api_key))
-        print_success("Remote API key set.")
-    except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
-
-
-# ── helpers ──────────────────────────────────────────────────────
+def _client() -> DoclibClient:
+    return DoclibClient(timeout=30)
 
 
 def _print_config(data: ConfigResponse) -> None:
-    cfg = data.config
-
-    print("\n[Global Config]")
-    for k, v in cfg.items():
-        print(f"  {k} = {v}")
+    print("\n[Config]")
+    for key in sorted(data.config):
+        value = data.config[key]
+        source = data.sources.get(key, "default")
+        print(f"  {key} = {value}  [{source}]")

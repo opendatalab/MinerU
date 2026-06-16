@@ -1,4 +1,5 @@
 import inspect
+from typing import get_type_hints
 
 import pytest
 from pydantic import ValidationError
@@ -20,7 +21,9 @@ from mineru.doclib.types import (
     ExcludeRuleRequest,
     FileInfo,
     FileInfoResponse,
+    ListDocsResponse,
     ListFilesResponse,
+    ListParsesResponse,
     FindResponse,
     FindResult,
     ForgetPathRequest,
@@ -29,6 +32,7 @@ from mineru.doclib.types import (
     ParseCoverage,
     ParseInfo,
     ParseRequest,
+    ParseStatus,
     ParseServerStatus,
     ParsingRuleInfo,
     ParsingRuleListResponse,
@@ -37,7 +41,6 @@ from mineru.doclib.types import (
     RemoveExcludeRuleResponse,
     RemoveParsingRuleResponse,
     RemoveWatchResponse,
-    RecentScanInfo,
     SearchResponse,
     SearchResult,
     ServerStatusResponse,
@@ -67,12 +70,13 @@ def test_doclib_interface_declares_expected_methods() -> None:
         "get_scan",
         "list_files",
         "list_docs",
+        "get_doc_by_path",
         "get_doc",
         "get_doc_content",
         "export_doc_content",
         "search",
         "find",
-        "get_file_info",
+        "get_file_by_path",
         "get_config",
         "get_config_key",
         "set_config",
@@ -140,6 +144,27 @@ def test_doclib_client_and_server_route_maps_stay_aligned() -> None:
         assert client_route.tags == server_route.tags, method_name
 
 
+def test_list_parses_status_filter_is_typed() -> None:
+    expected = ParseStatus | None
+
+    assert get_type_hints(DoclibInterface.list_parses)["status"] == expected
+    assert get_type_hints(AsyncDoclibInterface.list_parses)["status"] == expected
+    assert get_type_hints(DoclibClient.list_parses)["status"] == expected
+    assert get_type_hints(DoclibServer.list_parses)["status"] == expected
+
+
+def test_list_methods_expose_consistent_pagination_contract() -> None:
+    for response_model in (ListFilesResponse, ListDocsResponse, ListParsesResponse, ScanListResponse):
+        assert "total" in response_model.model_fields, response_model.__name__
+        assert "limit" in response_model.model_fields, response_model.__name__
+        assert "offset" in response_model.model_fields, response_model.__name__
+
+    for method_name in ("list_files", "list_docs", "list_parses", "list_scans"):
+        signature = inspect.signature(getattr(DoclibInterface, method_name))
+        assert "limit" in signature.parameters, method_name
+        assert "offset" in signature.parameters, method_name
+
+
 def test_interface_app_uses_doclib_server_routes() -> None:
     app = create_app()
     route_names = {getattr(route, "name", "") for route in app.routes}
@@ -174,13 +199,22 @@ def test_interface_app_uses_doclib_server_routes() -> None:
 
 
 def test_core_doclib_schemas_are_instantiable() -> None:
-    parse_request = ParseRequest(path="/tmp/a.pdf", tier=None, pages="1~5")
+    parse_request = ParseRequest(path="/tmp/a.pdf", tier=None, page_range="1~5")
     forget_request = ForgetPathRequest(path="/tmp/a.pdf")
     forget_response = ForgetPathResponse(path="/tmp/a.pdf", matched_as="file", forgotten_files=1, dry_run=True)
     scan_request = ScanRequest(path="/tmp", kind="manual", source="cli")
     scan_info = ScanInfo(id=1, path="/tmp", kind="manual", source="cli", status="pending", created_at=10, updated_at=10)
-    recent_scan = RecentScanInfo(id=1, path="/tmp", kind="manual", source="cli", status="done", created_at=10, updated_at=10)
-    scan_list = ScanListResponse(scans=[scan_info])
+    recent_scan = ScanInfo(
+        id=1,
+        path="/tmp",
+        kind="manual",
+        source="cli",
+        status="done",
+        error_msg="scan detail",
+        created_at=10,
+        updated_at=10,
+    )
+    scan_list = ScanListResponse(scans=[scan_info], total=1, limit=50, offset=0)
     watch_stats = WatchStats(
         watch_id=1,
         path="/tmp",
@@ -217,6 +251,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     files = ListFilesResponse(files=[file_info], total=1, limit=200, offset=0)
     doc_info = DocInfo(
         sha256="abc",
+        short_id="abc",
         size_bytes=123,
         file_type="pdf",
         subject="demo",
@@ -228,12 +263,12 @@ def test_core_doclib_schemas_are_instantiable() -> None:
         updated_at=50,
         files=[file_info],
     )
-    coverage = ParseCoverage(done_pages="1", active_pages="2", missing_pages="")
+    coverage = ParseCoverage(done_page_range="1", active_page_range="2", missing_page_range="")
     parse_info = ParseInfo(
         id=1,
         sha256="abc",
         tier="standard",
-        pages="1~2",
+        page_range="1~2",
         status="pending",
         priority=10,
         privacy="local",
@@ -244,7 +279,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
         error_code="parse_failed",
         error_msg="failed",
     )
-    tier_info = TierParseInfo(tier="standard", pages="1~2", status="pending")
+    tier_info = TierParseInfo(tier="standard", page_range="1~2", status="pending")
     info = FileInfoResponse(
         file=file_info,
         doc=doc_info,
@@ -253,7 +288,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     )
     watch = WatchInfo(id=1, path="/tmp", recursive=True, status="active", last_scan_at=100, last_scan_files=3)
     exclude_rule = ExcludeRuleInfo(id=2, pattern="*.tmp", hit_count=4)
-    parsing_rule = ParsingRuleInfo(id=3, pattern="*.pdf", tier="standard", pages="1~5", remote=True)
+    parsing_rule = ParsingRuleInfo(id=3, pattern="*.pdf", tier="standard", page_range="1~5", remote=True)
     watches = WatchListResponse(watches=[watch])
     exclude_rules = ExcludeRuleListResponse(rules=[exclude_rule])
     parsing_rules = ParsingRuleListResponse(rules=[parsing_rule])
@@ -271,14 +306,14 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     find_result = FindResult(filename="a.pdf", ext="pdf", size_bytes=123, page_count=3, paths=["/tmp/a.pdf"])
     search_response = SearchResponse(results=[search_result], total=1, query="matched")
     find_response = FindResponse(results=[find_result], total=1, query="a")
-    config = ConfigResponse(config={"watch_default_tier": "standard"}, sources={"watch_default_tier": "override"})
+    config = ConfigResponse(config={"parse_server.local.mode": "managed"}, sources={"parse_server.local.mode": "override"})
     shutdown_response = ShutdownResponse(accepted=True, message="Server shutting down...")
     remove_watch_response = RemoveWatchResponse(watch_id=1, removed=True)
     export_request = DocContentExportRequest(tier="standard", output="/tmp/a.md")
     remove_exclude_response = RemoveExcludeRuleResponse(rule_id=2, removed=True)
     remove_parsing_response = RemoveParsingRuleResponse(rule_id=3, removed=True)
     exclude_rule_request = ExcludeRuleRequest(pattern="*.tmp")
-    parsing_rule_request = ParsingRuleRequest(pattern="*.pdf", tier="standard", pages="1~5")
+    parsing_rule_request = ParsingRuleRequest(pattern="*.pdf", tier="standard", page_range="1~5")
     error_info = ErrorInfo(type="invalid_request_error", code="file_not_found", message="missing", param="path")
     error_response = ErrorResponse(error=error_info)
 
@@ -294,8 +329,9 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     assert status.watch_stats == [watch_stats]
     assert status.recent_scans == [recent_scan]
     assert status.error_summary == error_summary
-    assert "error_msg" not in RecentScanInfo.model_fields
+    assert status.recent_scans[0].error_msg == "scan detail"
     assert doc_info.files == [file_info]
+    assert doc_info.is_image_based is False
     assert info.file == file_info
     assert info.doc == doc_info
     assert info.parsed_tiers == [tier_info]
@@ -320,8 +356,8 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     assert find_response.results == [find_result]
     assert "sha256" not in FindResult.model_fields
     assert "snippet" not in FindResult.model_fields
-    assert config.config == {"watch_default_tier": "standard"}
-    assert config.sources == {"watch_default_tier": "override"}
+    assert config.config == {"parse_server.local.mode": "managed"}
+    assert config.sources == {"parse_server.local.mode": "override"}
     assert shutdown_response.accepted
     assert remove_watch_response.watch_id == 1
     assert export_request.output == "/tmp/a.md"
@@ -334,7 +370,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
 
 def test_parse_request_rejects_auto_tier() -> None:
     with pytest.raises(ValidationError):
-        ParseRequest(path="/tmp/a.pdf", tier="auto", pages="1~5")
+        ParseRequest(path="/tmp/a.pdf", tier="auto", page_range="1~5")
 
 
 def test_route_info_exports_from_route_utils() -> None:
@@ -352,10 +388,11 @@ def test_get_semantic_methods_do_not_use_request_body_models() -> None:
         "list_scans",
         "list_files",
         "list_docs",
+        "get_doc_by_path",
         "get_doc_content",
         "search",
         "find",
-        "get_file_info",
+        "get_file_by_path",
     ]
 
     for method_name in get_semantic_methods:
@@ -367,6 +404,7 @@ def test_get_doc_expands_files_only_when_requested() -> None:
     signature = inspect.signature(DoclibInterface.get_doc)
     assert "expand_files" in signature.parameters
     assert signature.parameters["expand_files"].default is False
+    assert "path" not in inspect.signature(DoclibInterface.list_docs).parameters
 
 
 def test_next_cli_doclib_route_shapes_are_declared() -> None:
@@ -374,7 +412,9 @@ def test_next_cli_doclib_route_shapes_are_declared() -> None:
         "shutdown_server": ("POST", "/server/shutdown"),
         "list_parses": ("GET", "/parses"),
         "list_files": ("GET", "/files"),
+        "get_file_by_path": ("GET", "/files/by-path"),
         "list_docs": ("GET", "/docs"),
+        "get_doc_by_path": ("GET", "/docs/by-path"),
         "get_doc_content": ("GET", "/docs/{sha256}/content"),
         "export_doc_content": ("POST", "/docs/{sha256}/exports"),
         "get_config": ("GET", "/configs"),

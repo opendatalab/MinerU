@@ -43,7 +43,16 @@ MinerU 有两类配置：
 | server | `server.data_dir` | `~/MinerU` | 数据目录 |
 | server | `server.ingest_workers` | `2` | ingest worker 数 |
 | server | `server.parse_workers` | `2` | parse worker 数 |
+| server | `server.scan_interval_sec` | `300` | watch 扫描间隔 |
+| server | `server.device_check_interval_sec` | `5` | 可插拔设备检测间隔 |
+| server | `server.ingest_lock_timeout_sec` | `60` | ingest 锁超时 |
+| server | `server.parse_lock_timeout_sec` | `1800` | parse 锁超时 |
+| server | `server.scan_lock_timeout_sec` | `1800` | scan 锁超时 |
 | server | `server.compaction_interval_sec` | `3600` | compaction 间隔 |
+| server | `server.parse_server_health_check_interval_sec` | `60` | parse-server 健康检查间隔 |
+| server | `server.parse_server_probe_timeout_sec` | `10` | parse-server 探测超时 |
+| server | `server.parse_server_startup_grace_sec` | `30` | managed parse-server 启动宽限时间 |
+| server | `server.parse_server_stop_timeout_sec` | `10` | managed parse-server 停止超时 |
 | sqlite | `sqlite.path` | `~/MinerU/mineru.db` | SQLite DB 路径 |
 | sqlite | `sqlite.mmap_size` | `268435456` | mmap size |
 | sqlite | `sqlite.cache_size` | `-20000` | SQLite cache size |
@@ -60,7 +69,7 @@ MinerU 有两类配置：
 
 | 来源 | 例子 | 存储 | 说明 |
 |------|------|------|------|
-| SQLite `config` 表 | `watch_default_tier`、`parse_server.local.mode` | KV | doclib 运行时配置 |
+| SQLite `config` 表 | `parse_server.local.mode`、`parse_server.remote.url` | KV | doclib 运行时配置 |
 | `watches` 表 | watch 目录、可插拔设备状态 | 表结构 | 文件发现配置 |
 | `exclude_rules` 表 | exclude | 表结构 | 路径排除规则 |
 | `parsing_rules` 表 | parsing-rules | 表结构 | 路径解析规则 |
@@ -87,21 +96,13 @@ SDK client 显式参数属于当前调用方传入的请求上下文；当它最
 
 ## 4. 运行时 KV 配置
 
-运行时 KV 配置由 doclib 初始化默认值，并写入 SQLite `config` 表。
+运行时 KV 配置的默认值由代码定义，SQLite `config` 表只保存用户 override。
 
 | key | 默认值 | 说明 |
 |-----|--------|------|
-| `data_dir` | `~/MinerU` | 数据目录，包含 `mineru.db`、日志和解析产物 |
-| `watch_default_tier` | `flash` | watch 自动发现文件时使用的默认 tier |
-| `scan_interval_sec` | `300` | watch 全量扫描间隔 |
-| `ingest_lock_timeout_sec` | `60` | ingest 锁超时 |
-| `parse_lock_timeout_sec` | `1800` | parse 锁超时 |
-| `device_check_interval_sec` | `5` | 可插拔设备检测间隔 |
 | `parse_server.local.mode` | `disabled` | 本地 parse-server 模式 |
 | `parse_server.local.managed_tier` | `standard` | managed 模式启动 tier |
 | `parse_server.remote.url` | `https://mineru.net/api` | 默认远端 API 地址 |
-
-`watch_default_tier=flash` 只适用于 watch 自动发现和索引，不代表 `mineru parse` 的默认阅读质量。主动读取文档时，未指定 tier 表示使用默认选择策略；Python SDK 中的等价表达是 `tier=None`。
 
 ## 5. Parse-server 配置
 
@@ -196,7 +197,7 @@ Watch 用于自动发现文件和建立搜索索引。
 约束：
 
 - watch 默认 tier 是 `flash`。
-- watch 默认 tier 的配置项是 `watch_default_tier`。
+- watch 默认 tier 暂不配置化。
 - watch 的目标是发现、预览和索引，不是最终阅读质量。
 - watch 目录不允许嵌套。
 - removable watch 路径不可达时，应标记 `unreachable`，不永久删除记录。
@@ -249,7 +250,7 @@ SDK 配置应显式、可类型检查，并避免 `**kwargs: Any` 式透传。
 | `base_url` | API 地址 |
 | `api_key` | API Key |
 | `timeout` | 请求超时 |
-| `default_tier` | SDK client 自身默认 tier；未设置时使用默认选择策略，不读取 `watch_default_tier` |
+| `default_tier` | SDK client 自身默认 tier；未设置时使用默认选择策略 |
 | `allow_remote` | 是否允许上传远端，应显式设置 |
 
 SDK client 的配置不应在 import 时读取重依赖或启动服务。

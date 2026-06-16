@@ -41,6 +41,26 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _scan_filters(
+    *,
+    status: ScanStatus | None,
+    kind: ScanKind | None,
+    watch_id: int | None,
+) -> tuple[list[str], list[Any]]:
+    clauses: list[str] = []
+    params: list[Any] = []
+    if status is not None:
+        clauses.append("status=?")
+        params.append(status)
+    if kind is not None:
+        clauses.append("kind=?")
+        params.append(kind)
+    if watch_id is not None:
+        clauses.append("watch_id=?")
+        params.append(watch_id)
+    return clauses, params
+
+
 class ScanService:
     """Create, query, and execute background scan tasks."""
 
@@ -49,10 +69,13 @@ class ScanService:
         db: DatabaseManager,
         config_svc: ConfigService,
         parse_svc: ParseService,
+        *,
+        scan_lock_timeout_sec: int,
     ) -> None:
         self.db = db
         self.config_svc = config_svc
         self.parse_svc = parse_svc
+        self.scan_lock_timeout_ms = scan_lock_timeout_sec * 1000
 
     async def create_scan(
         self,
@@ -98,28 +121,32 @@ class ScanService:
         status: ScanStatus | None = None,
         kind: ScanKind | None = None,
         watch_id: int | None = None,
+        offset: int = 0,
     ) -> list[ScanInfo]:
         limit = max(1, min(limit, 200))
-        clauses: list[str] = []
-        params: list[Any] = []
-        if status is not None:
-            clauses.append("status=?")
-            params.append(status)
-        if kind is not None:
-            clauses.append("kind=?")
-            params.append(kind)
-        if watch_id is not None:
-            clauses.append("watch_id=?")
-            params.append(watch_id)
+        offset = max(0, offset)
+        clauses, params = _scan_filters(status=status, kind=kind, watch_id=watch_id)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = cast(
             list[ScanRow],
             await self.db.fetchall(
-                f"SELECT * FROM scans {where} ORDER BY created_at DESC LIMIT ?",
-                (*params, limit),
+                f"SELECT * FROM scans {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (*params, limit, offset),
             ),
         )
         return [_scan_info(row) for row in rows]
+
+    async def count_scans(
+        self,
+        *,
+        status: ScanStatus | None = None,
+        kind: ScanKind | None = None,
+        watch_id: int | None = None,
+    ) -> int:
+        clauses, params = _scan_filters(status=status, kind=kind, watch_id=watch_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        row = await self.db.fetchone(f"SELECT COUNT(*) AS cnt FROM scans {where}", tuple(params))
+        return row["cnt"] if row else 0
 
     async def get_scan(self, scan_id: int) -> ScanInfo:
         row = cast(ScanRow | None, await self.db.fetchone("SELECT * FROM scans WHERE id=?", (scan_id,)))
@@ -129,7 +156,7 @@ class ScanService:
 
     async def acquire_task(self) -> ScanRow | None:
         now = _now_ms()
-        timeout = now - 30 * 60 * 1000
+        timeout = now - self.scan_lock_timeout_ms
         return cast(
             ScanRow | None,
             await self.db.fetchone(

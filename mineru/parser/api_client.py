@@ -30,9 +30,9 @@ class MinerUApiParser(DocumentParser):
         # local deployment — uses ``local`` source, no upload needed
         parser = MinerUApiParser(api_url="http://localhost:8000/api", tier="standard")
 
-        # cloud (paid)
+        # cloud (remote)
         parser = MinerUApiParser(
-            api_url="https://mineru.net/api", api_key="msk_...",
+            api_url="https://mineru.net/api", api_key="sk_...",
             tier="pro",
         )
 
@@ -102,7 +102,9 @@ class MinerUApiParser(DocumentParser):
         return payload
 
     def _output_formats(self) -> list[str]:
-        return ["json"]
+        if "staging" in self._base:
+            return ["json"]
+        return ["middle_json"]
 
     # ── HTTP helpers ─────────────────────────────────────────────────
 
@@ -297,90 +299,109 @@ def _mime_type(path: Path) -> str:
 
 
 def _parse_result_from_job(job: dict[str, Any], file_name: str, parser: MinerUApiParser) -> ParseResult:
+    _raise_for_terminal_job_error(job)
     files = job.get("files", [])
     outputs: dict[str, Any] = {}
     if files and files[0].get("output_files"):
         outputs = files[0]["output_files"]
 
     mid_json = _download_json(parser, outputs)
-
-    return ParseResult(
-        pages=_pages_from_middle_json(mid_json),
-    )
+    return ParseResult(pages=_pages_from_middle_json(mid_json))
 
 
 async def _async_parse_result_from_job(job: dict[str, Any], file_name: str, parser: MinerUApiParser) -> ParseResult:
+    _raise_for_terminal_job_error(job)
     files = job.get("files", [])
     outputs: dict[str, Any] = {}
     if files and files[0].get("output_files"):
         outputs = files[0]["output_files"]
 
     mid_json = await _async_download_json(parser, outputs)
-
-    return ParseResult(
-        pages=_pages_from_middle_json(mid_json),
-    )
+    return ParseResult(pages=_pages_from_middle_json(mid_json))
 
 
-def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any] | None:
+def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any] | list[Any]:
     ref = outputs.get("middle_json") or outputs.get("json") or outputs.get("json_")
     if not ref:
-        return None
+        available = ", ".join(sorted(outputs)) or "none"
+        raise _V1APIError(
+            "missing_middle_json_output",
+            f"Parse job did not return middle_json output; available outputs: {available}",
+        )
+    raw = _download_bytes(parser, ref)
     try:
-        raw = _download_bytes(parser, ref)
-        return json.loads(raw)
-    except Exception:
-        return None
+        loaded = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise _V1APIError("invalid_middle_json_output", f"middle_json output is not valid JSON: {exc}") from exc
+    if not isinstance(loaded, dict | list):
+        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object or array")
+    return loaded
 
 
-async def _async_download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any] | None:
+async def _async_download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any] | list[Any]:
     ref = outputs.get("middle_json") or outputs.get("json") or outputs.get("json_")
     if not ref:
-        return None
+        available = ", ".join(sorted(outputs)) or "none"
+        raise _V1APIError(
+            "missing_middle_json_output",
+            f"Parse job did not return middle_json output; available outputs: {available}",
+        )
+    raw = await _async_download_bytes(parser, ref)
     try:
-        raw = await _async_download_bytes(parser, ref)
-        return json.loads(raw)
-    except Exception:
-        return None
+        loaded = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise _V1APIError("invalid_middle_json_output", f"middle_json output is not valid JSON: {exc}") from exc
+    if not isinstance(loaded, dict | list):
+        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object or array")
+    return loaded
 
 
 def _download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) -> bytes:
-    # TEMP(2026-06-12): staging server returns {"url": "..."} instead of {"file_id": "...", "bytes": ...}
-    # per NEXT-API.md §8.1.  Once the server aligns, remove the "url" branch.
+    # TEMP(2026-06-12): staging server may return {"url": "..."} instead of
+    # {"file_id": "...", "bytes": ...}. Keep this branch until staging aligns.
     if ref.get("url"):
         with httpx.Client(timeout=httpx.Timeout(120, connect=30), follow_redirects=True) as cli:
             r = cli.get(ref["url"])
+            _check_download_response(r)
             return r.content
 
     file_id = ref.get("file_id")
     if not file_id:
         raise _V1APIError("invalid_response", "No file_id or url in output reference")
 
-    with httpx.Client(timeout=httpx.Timeout(120, connect=30)) as cli:
+    with httpx.Client(timeout=httpx.Timeout(120, connect=30), follow_redirects=True) as cli:
         r = cli.get(f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers())
-        parser._check(r)
+        _check_download_response(r)
         return r.content
 
 
 async def _async_download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) -> bytes:
-    # TEMP(2026-06-12): staging server returns {"url": "..."} instead of {"file_id": "...", "bytes": ...}
-    # per NEXT-API.md §8.1.  Once the server aligns, remove the "url" branch.
+    # TEMP(2026-06-12): staging server may return {"url": "..."} instead of
+    # {"file_id": "...", "bytes": ...}. Keep this branch until staging aligns.
     if ref.get("url"):
         async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), follow_redirects=True) as cli:
             r = await cli.get(ref["url"])
+            _check_download_response(r)
             return r.content
 
     file_id = ref.get("file_id")
     if not file_id:
         raise _V1APIError("invalid_response", "No file_id or url in output reference")
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30)) as cli:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), follow_redirects=True) as cli:
         r = await cli.get(f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers())
-        parser._check(r)
+        _check_download_response(r)
         return r.content
 
 
-def _pages_from_middle_json(mid_json: dict[str, Any] | list[Any] | None) -> list[Any]:
+def _check_download_response(r: httpx.Response) -> None:
+    if r.status_code < 400:
+        return
+    preview = r.text[:500]
+    raise _V1APIError("download_failed", f"HTTP {r.status_code}: {preview}")
+
+
+def _pages_from_middle_json(mid_json: dict[str, Any] | list[Any] | None) -> list[PageInfo]:
     if mid_json is None:
         return []
     if isinstance(mid_json, list):
@@ -400,6 +421,19 @@ def _pages_from_middle_json(mid_json: dict[str, Any] | list[Any] | None) -> list
                 for i, raw in enumerate(raw_pages)
             ]
     return []
+
+
+def _raise_for_terminal_job_error(job: dict[str, Any]) -> None:
+    if job.get("status") not in ("failed", "canceled"):
+        return
+    error = job.get("error")
+    if isinstance(error, dict):
+        code = str(error.get("code") or job.get("status"))
+        message = str(error.get("message") or error)
+        raise _V1APIError(code, message)
+    raise _V1APIError(
+        str(job.get("status")), f"Parse job {job.get('job_id', '<unknown>')} ended with status {job.get('status')}"
+    )
 
 
 class _V1APIError(Exception):

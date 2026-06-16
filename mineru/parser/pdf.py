@@ -7,8 +7,8 @@ from abc import abstractmethod
 from pathlib import Path
 from typing import Any
 
-from .base import DocumentParser, ParseResult
 from ..types import PageInfo
+from .base import DocumentParser, ParseResult
 
 _IMAGE_SUFFIXES = frozenset({"png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"})
 
@@ -317,30 +317,29 @@ class PdfFlashParser(PdfBaseParser):
     _backend = "flash"
 
     def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
+        from ..backend.flash.pdf_extractor import extract_pages_text
         from ..types import Block, Line, PageInfo, Span
 
-        from ..backend.flash.pdf_extractor import extract_text
-
         filepath = self._pdf_bytes_to_tempfile(pdf_bytes)
-        text = extract_text(filepath)
-        pages_text = text.split("\n\n")
+        pages_text = extract_pages_text(filepath)
 
         pages: list[PageInfo] = []
-        page_idx = self._page_indices[0] if self._page_indices else 0
         block_idx = 0
-        for pt in pages_text:
-            if not pt.strip():
-                continue
-            span = Span(type="text", bbox=(0.0, 0.0, 0.0, 0.0), content=pt.strip())
-            line = Line(bbox=(0.0, 0.0, 0.0, 0.0), spans=[span])
-            block = Block(index=block_idx, type="text", bbox=(0.0, 0.0, 0.0, 0.0), lines=[line])
-            block_idx += 1
+        page_indices = self._page_indices if getattr(self, "_page_indices", None) else list(range(len(pages_text)))
+        for index, pt in enumerate(pages_text):
+            page_idx = page_indices[index] if index < len(page_indices) else index
+            para_blocks: list[Block] = []
+            if pt.strip():
+                span = Span(type="text", bbox=(0.0, 0.0, 0.0, 0.0), content=pt.strip())
+                line = Line(bbox=(0.0, 0.0, 0.0, 0.0), spans=[span])
+                block = Block(index=block_idx, type="text", bbox=(0.0, 0.0, 0.0, 0.0), lines=[line])
+                para_blocks.append(block)
+                block_idx += 1
             page = PageInfo(
                 page_idx=page_idx,
-                para_blocks=[block],
+                para_blocks=para_blocks,
             )
             pages.append(page)
-            page_idx += 1
 
         return pages
 

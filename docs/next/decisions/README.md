@@ -38,6 +38,9 @@
 | [ADR-0008](0008-doclib-forget-path.md) | Accepted | Doclib Forget Path 语义 |
 | [ADR-0009](0009-doclib-scan-task.md) | Accepted | Doclib Scan 后台任务 |
 | [ADR-0010](0010-doclib-watch-cli.md) | Accepted | Doclib Watch CLI 与 Rescan 边界 |
+| [ADR-0011](0011-doclib-doc-short-id.md) | Accepted | Doclib Doc Short ID |
+| [ADR-0012](0012-doclib-block-locator.md) | Accepted | Doclib Block Locator |
+| [ADR-0013](0013-doc-content-progressive-reading.md) | Accepted | Doc Content Progressive Reading |
 
 ## 模板
 

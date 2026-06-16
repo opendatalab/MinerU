@@ -32,7 +32,7 @@ Middle JSON 已经有一个事实标准: `mineru/types.py` 中的 `PageInfo`、`
 
 ## 与其他文档的关系
 
-- API 的 `json` 输出见 [Unified API](api.md)。
+- API 的 `middle_json` 输出见 [Unified API](api.md)。
 - SDK 的 `ParseResult` 见 [SDK 设计](sdk.md)。
 - 产品侧 Agent-native 目标见 [产品路线图](roadmap.md)。
 - backend 处理边界见 [系统架构](architecture.md)。

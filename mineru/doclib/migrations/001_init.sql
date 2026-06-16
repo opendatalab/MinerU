@@ -24,6 +24,7 @@ CREATE INDEX IF NOT EXISTS idx_files_sha256_status ON files(sha256, status);
 
 CREATE TABLE IF NOT EXISTS docs (
     sha256          TEXT    PRIMARY KEY NOT NULL,
+    short_id        TEXT    NOT NULL UNIQUE,
     size_bytes      INTEGER NOT NULL,
     file_type       TEXT,
     page_count      INTEGER,
@@ -44,7 +45,7 @@ CREATE TABLE IF NOT EXISTS parses (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     sha256      TEXT    NOT NULL REFERENCES docs(sha256),
     tier        TEXT    NOT NULL,
-    pages       TEXT    NOT NULL,
+    page_range  TEXT    NOT NULL,
     status      TEXT    NOT NULL DEFAULT 'pending',
     priority    INTEGER NOT NULL DEFAULT 0,
     locked_at   INTEGER,
@@ -135,7 +136,7 @@ CREATE TABLE IF NOT EXISTS parsing_rules (
     name            TEXT,
     pattern         TEXT    NOT NULL,
     tier            TEXT,
-    pages           TEXT,
+    page_range      TEXT,
     remote          INTEGER NOT NULL DEFAULT 0,
     enabled         INTEGER NOT NULL DEFAULT 1,
     priority        INTEGER NOT NULL DEFAULT 0,

@@ -33,7 +33,8 @@ class ConfigService:
     # ── KV config ───────────────────────────────────────────────
 
     async def get(self, key: str, default: str | None = None) -> str | None:
-        if key in CONFIG_DEFAULTS and default is None:
+        self._validate_config_key(key)
+        if default is None:
             default = CONFIG_DEFAULTS[key]
         row = cast(ConfigRow | None, await self.db.fetchone("SELECT value FROM config WHERE key=?", (key,)))
         return row["value"] if row else default
@@ -86,9 +87,7 @@ class ConfigService:
         if os.path.normpath(path) != path:
             raise ValueError(f"Path must be normalized: {path}")
 
-        wid = fnvhash.fnv1a_64(path.encode())
-        if wid >= 2**63:
-            wid -= 2**64
+        wid = fnvhash.fnv1a_64(path.encode()) & ((1 << 63) - 1)
 
         now = int(time.time() * 1000)
         await self.db.execute(
@@ -169,7 +168,7 @@ class ConfigService:
         rule_type: RuleType,
         pattern: str,
         tier: Tier | None = None,
-        pages: str | None = None,
+        page_range: str | None = None,
         remote: bool = False,
         priority: int = 0,
     ) -> int:
@@ -182,9 +181,9 @@ class ConfigService:
             )
         if rule_type == RULE_TYPE_PARSING_RULE:
             return await self.db.execute_insert(
-                "INSERT INTO parsing_rules (name, pattern, tier, pages, remote, priority, created_at, updated_at) "
+                "INSERT INTO parsing_rules (name, pattern, tier, page_range, remote, priority, created_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (name, pattern, tier, pages, int(remote), priority, now, now),
+                (name, pattern, tier, page_range, int(remote), priority, now, now),
             )
         raise ValueError(f"Unsupported rule type: {rule_type}")
 
@@ -193,7 +192,7 @@ class ConfigService:
             return cast(
                 list[RuleRow],
                 await self.db.fetchall(
-                    "SELECT id, name, ? AS rule_type, pattern, NULL AS tier, NULL AS pages, "
+                    "SELECT id, name, ? AS rule_type, pattern, NULL AS tier, NULL AS page_range, "
                     "0 AS remote, enabled, priority, hit_count, created_at, updated_at "
                     "FROM exclude_rules WHERE enabled=1 ORDER BY priority DESC",
                     (RULE_TYPE_EXCLUDE,),
@@ -203,7 +202,7 @@ class ConfigService:
             return cast(
                 list[RuleRow],
                 await self.db.fetchall(
-                    "SELECT id, name, ? AS rule_type, pattern, tier, pages, remote, "
+                    "SELECT id, name, ? AS rule_type, pattern, tier, page_range, remote, "
                     "enabled, priority, hit_count, created_at, updated_at "
                     "FROM parsing_rules WHERE enabled=1 ORDER BY priority DESC",
                     (RULE_TYPE_PARSING_RULE,),
@@ -214,11 +213,11 @@ class ConfigService:
         return cast(
             list[RuleRow],
             await self.db.fetchall(
-                "SELECT id, name, ? AS rule_type, pattern, NULL AS tier, NULL AS pages, "
+                "SELECT id, name, ? AS rule_type, pattern, NULL AS tier, NULL AS page_range, "
                 "0 AS remote, enabled, priority, hit_count, created_at, updated_at "
                 "FROM exclude_rules WHERE enabled=1 "
                 "UNION ALL "
-                "SELECT id, name, ? AS rule_type, pattern, tier, pages, remote, "
+                "SELECT id, name, ? AS rule_type, pattern, tier, page_range, remote, "
                 "enabled, priority, hit_count, created_at, updated_at "
                 "FROM parsing_rules WHERE enabled=1 "
                 "ORDER BY rule_type, priority DESC",

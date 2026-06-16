@@ -10,6 +10,7 @@
 
 | 日期 | 修订内容 |
 |------|---------|
+| 2026-06-16 | **Parse Job 输出格式 `json` 改为 `middle_json`**：`POST /v1/parse/jobs` 的公开 `output_formats` 不再使用 `json` 表示 Middle JSON，统一改为 `middle_json`。响应中的 `output_files.json` 同步改为 `output_files.middle_json` |
 | 2026-06-11 | **移除公开 `auto` tier**：`tier` 公开取值改为 `standard` / `pro`，请求可省略 `tier` 或传 `null` 表示使用默认选择策略。默认选择策略保持原 `auto` 行为：选择可发现的最高质量非 `flash` tier，且永不降级到 `flash`。`GET /v1/tiers` 只返回真实 tier |
 | 2026-06-10 | **API 响应版本字段 `backend_version` 改为 `parser_version`**：HTTP API 不暴露 backend 概念。`GET /v1/health` 和 `POST /v1/parse/jobs` 系列响应中的 `backend_version` 统一改名为 `parser_version` |
 | 2026-06-10 | **明确请求可选字段省略规则**：请求中的可选字段可以省略。`POST /v1/parse/jobs` 的 `files[].page_range` 省略时等价于 `null`，表示解析整个文件 |
@@ -63,7 +64,7 @@
 
 | 资源 | 含义 |
 |------|------|
-| `file` | 平台中的文件,由不透明的 `file_id` 唯一标识。包括三种用途:用户上传的源文件(`purpose:parse`)、Chat/Responses 接口的图片输入(`purpose:input_image`)、解析产物如 markdown/json 等(`purpose:parse_output`)。`sha256sum` 是可选元信息,用于秒传与校验 |
+| `file` | 平台中的文件,由不透明的 `file_id` 唯一标识。包括三种用途:用户上传的源文件(`purpose:parse`)、Chat/Responses 接口的图片输入(`purpose:input_image`)、解析产物如 markdown/middle_json 等(`purpose:parse_output`)。`sha256sum` 是可选元信息,用于秒传与校验 |
 | `upload` | OpenAI Uploads API 风格的上传会话对象,驱动文件上传生命周期 |
 | `job` | 一次解析任务(可包含多个文件) |
 
@@ -850,7 +851,7 @@ Authorization: Bearer <MINERU_API_KEY>
 
 ### 5.10 GET `/v1/files/{file_id}/content` — 下载解析产物
 
-下载 `parse_output` 类文件的原始内容(markdown/json/images 等)。源文件(`purpose:parse`)不提供下载——用户理应持有原始文件,平台不充当文件托管。
+下载 `parse_output` 类文件的原始内容(markdown/middle_json/images 等)。源文件(`purpose:parse`)不提供下载——用户理应持有原始文件,平台不充当文件托管。
 
 ```http
 GET /v1/files/file-01HXYZ123ABCDEF/content  HTTP/1.1
@@ -868,7 +869,7 @@ curl -L "https://mineru.net/api/v1/files/file-MD.../content" \
   -H "Authorization: Bearer $MINERU_API_KEY" -o report.md
 ```
 
-> **设计说明**:解析产物(markdown/json/content_list/images)不再有独立的 `/v1/artifacts/` 接口,统一为 File 对象(`purpose:parse_output`),复用 Files API 的内容寻址机制。对齐 OpenAI 架构:Files 是通用内容存储层,`purpose` 区分源文件与产物。
+> **设计说明**:解析产物(markdown/middle_json/content_list/images)不再有独立的 `/v1/artifacts/` 接口,统一为 File 对象(`purpose:parse_output`),复用 Files API 的内容寻址机制。对齐 OpenAI 架构:Files 是通用内容存储层,`purpose` 区分源文件与产物。
 
 **Errors**
 
@@ -1451,7 +1452,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
     }
   ],
   "tier": null,
-  "output_formats": ["markdown", "json", "content_list", "images"],
+  "output_formats": ["markdown", "middle_json", "content_list", "images"],
   "wait": 30,
   "callback": {
     "url": "https://your.app/mineru-webhook",
@@ -1496,14 +1497,14 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
 | 值 | 类型 | 含义 | 需 API Key |
 |----|------|------|----------|
 | `markdown` | 解析产物 | 渲染后的 markdown 文本 | 否 |
-| `json` | 解析产物 | 类型化中间结构(原 `middle_json`) | 否 |
+| `middle_json` | 解析产物 | 完整 Middle JSON | 否 |
 | `content_list` | 解析产物 | 扁平内容列表 | 否 |
 | `structured_content` | 解析产物 | 面向 Agent 和新客户端的结构化内容 JSON | 否 |
 | `images` | 解析产物 | 切片图片 | 否 |
 | `html` | 导出格式 | HTML 格式导出 | **是** |
 | `latex` | 导出格式 | LaTeX 格式导出 | **是** |
 | `docx` | 导出格式 | Word 文档导出 | **是** |
-| `zip` | 打包格式 | 将 `output_formats` 中除 `zip` 外的所有产物打包为 ZIP(如 `["markdown","json","zip"]` 产出 markdown + json + 包含前两者的 zip) | 否 |
+| `zip` | 打包格式 | 将 `output_formats` 中除 `zip` 外的所有产物打包为 ZIP(如 `["markdown","middle_json","zip"]` 产出 markdown + middle_json + 包含前两者的 zip) | 否 |
 
 > 请求 `output_formats` 中包含 API Key-only 格式但无 API Key 时,返回 `403 feature_requires_api_key`。
 
@@ -1515,7 +1516,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
   "status": "queued",
   "created_at": "2026-05-21T08:30:00Z",
   "tier": "pro",
-  "output_formats": ["markdown", "json", "content_list", "images"],
+  "output_formats": ["markdown", "middle_json", "content_list", "images"],
   "access_level": "registered",
   "files": [
     { "file_id": "file-01HXYZ123ABCDEF", "name": "report.pdf", "page_range": "1~10", "status": "queued" },
@@ -1541,7 +1542,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
   "started_at": "2026-05-21T08:30:02Z",
   "finished_at": "2026-05-21T08:30:48Z",
   "tier": "pro",
-  "output_formats": ["markdown", "json", "images"],
+  "output_formats": ["markdown", "middle_json", "images"],
   "access_level": "registered",
   "progress": { "completed": 1, "failed": 0, "total": 1 },
   "files": [
@@ -1560,7 +1561,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
           "file_id": "file-01HXYZMD000001",
           "bytes": 51407
         },
-        "json": {
+        "middle_json": {
           "file_id": "file-01HXYZJSON000002",
           "bytes": 184320
         },
@@ -1573,7 +1574,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
 }
 ```
 
-所有输出产物(`markdown`、`content_list`、`structured_content`、`json`、`html`、`latex`、`images`、`docx`、`zip`)均仅返回 `file_id` + `bytes`,通过 `GET /v1/files/{id}/content` 下载。
+所有输出产物(`markdown`、`content_list`、`structured_content`、`middle_json`、`html`、`latex`、`images`、`docx`、`zip`)均仅返回 `file_id` + `bytes`,通过 `GET /v1/files/{id}/content` 下载。
 
 #### 响应 `files[]` 字段
 
@@ -1599,7 +1600,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
   "status": "running",
   "created_at": "2026-05-21T08:30:00Z",
   "tier": "pro",
-  "output_formats": ["markdown", "json", "images"],
+  "output_formats": ["markdown", "middle_json", "images"],
   "access_level": "registered",
   "files": [
     { "file_id": "file-01HXYZ123ABCDEF", "name": "report.pdf", "page_range": "1~12", "status": "running" },
@@ -1643,7 +1644,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
   "started_at": "2026-05-21T08:30:02Z",
   "finished_at": "2026-05-21T08:30:48Z",
   "tier": "pro",
-  "output_formats": ["markdown", "json", "images"],
+  "output_formats": ["markdown", "middle_json", "images"],
   "access_level": "registered",
   "progress": { "completed": 2, "failed": 0, "total": 2 },
   "files": [
@@ -1662,7 +1663,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
           "file_id": "file-01HXYZMD000001",
           "bytes": 51407
         },
-        "json": {
+        "middle_json": {
           "file_id": "file-01HXYZJSON000002",
           "bytes": 184320
         },
@@ -2065,7 +2066,7 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
       \"source\": {\"type\":\"file_id\",\"file_id\":\"$FILE_ID\"},
       \"page_range\":\"1~10\"
     }],
-    \"tier\": \"pro\",    \"output_formats\": [\"markdown\",\"json\",\"images\"]
+    \"tier\": \"pro\",    \"output_formats\": [\"markdown\",\"middle_json\",\"images\"]
   }"
 
 # → 202 {"job_id":"job_...","status":"queued",...}
@@ -2122,7 +2123,7 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
       \"source\": {\"type\":\"file_id\",\"file_id\":\"$FILE_ID\"}
     }],
     \"tier\": \"pro\",
-    \"output_formats\": [\"markdown\",\"json\"],
+    \"output_formats\": [\"markdown\",\"middle_json\"],
     \"wait\": 30
   }"
 
@@ -2134,7 +2135,7 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
 #     "page_range": "1~12",
 #     "output_files": {
 #       "markdown": {"file_id": "file-md-xxx", "bytes": 51407},
-#       "json":   {"file_id": "file-json-xxx", "bytes": 184320}
+#       "middle_json": {"file_id": "file-middle-json-xxx", "bytes": 184320}
 #     }
 #   }]
 # }
@@ -2241,7 +2242,7 @@ parser = MineruApiParser("http://localhost:8000/api")
 parser = MineruApiParser("https://mineru.net/api")
 
 # 云端 registered 档
-parser = MineruApiParser("https://mineru.net/api", api_key="msk_...")
+parser = MineruApiParser("https://mineru.net/api", api_key="sk_...")
 
 result = parser.parse("./report.pdf")
 print(result.markdown())
@@ -2318,7 +2319,7 @@ Content-Type: application/json
   "files":[{"source":{"type":"file_id","file_id":"file-..."},
             "page_range":"1~10"}],
   "tier":"standard",
-  "output_formats":["markdown","json","content_list","images"]
+  "output_formats":["markdown","middle_json","content_list","images"]
 }
 → 202 {"job_id":"job_...","status":"queued","links":{...}}
 ```
@@ -2376,7 +2377,7 @@ GET http://.../result/abc
 GET /v1/files/file-MD.../content
 → 302 Location: https://cdn/.../doc.md
 
-GET /v1/files/file-JSON.../content
+GET /v1/files/file-MJSON.../content
 → 302 Location: https://cdn/.../result.json
 
 # 图片同理,可并行下载
@@ -2472,7 +2473,7 @@ POST /v1/parse/jobs
   "files":[{"source":{"type":"file_id","file_id":"file-01HXYZ..."},
             "page_range":"1~10"}],
   "tier":"pro",
-  "output_formats":["markdown","json","images","docx"]
+  "output_formats":["markdown","middle_json","images","docx"]
 }
 → 202 {"job_id":"job_...","status":"queued"}
 ```
@@ -2509,7 +2510,7 @@ GET /v1/parse/jobs/job_...
   "files":[
     {"file_id":"file-01HXYZ...","page_range":"1~10","status":"completed","output_files":{
        "markdown":{"file_id":"file-MD...","bytes":51407},
-       "json":{"file_id":"file-JSON...","bytes":184320},
+       "middle_json":{"file_id":"file-MJSON...","bytes":184320},
        "images":[{"path":"images/0.jpg","file_id":"file-IM...","bytes":102400}]
     }},
     {"file_id":"file-01HXYZ...","page_range":"1~3","status":"failed","error":{...}}
@@ -2540,7 +2541,7 @@ GET https://oss.../result.zip
 **新**
 ```http
 GET /v1/files/file-MD.../content    → 302 → markdown 文件
-GET /v1/files/file-JSON.../content    → 302 → result.json
+GET /v1/files/file-MJSON.../content    → 302 → result.json
 GET /v1/files/file-IM.../content    → 302 → 单张图片
 ```
 
@@ -2645,7 +2646,7 @@ GET /v1/parse/jobs/job_...
 
 **差异**
 - 旧:扁平结构(单文件,markdown_url 直接在 data 上);新:`files[]` 数组(即使单文件),`output_files` 字典支持多种产物
-- 旧:仅可获得 `markdown_url`;新:anonymous 档默认 markdown,但若客户端 `output_formats` 列了 json/content_list,registered 档亦可拿到(anonymous 档收到 `403 feature_requires_api_key`)
+- 旧:仅可获得 `markdown_url`;新:anonymous 档默认 markdown,但若客户端 `output_formats` 列了 middle_json/content_list,registered 档亦可拿到(anonymous 档收到 `403 feature_requires_api_key`)
 
 #### Call 4 — 下载 Markdown
 

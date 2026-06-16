@@ -3,55 +3,57 @@
 from __future__ import annotations
 
 import typer
+from click.core import Context
+from typer.core import TyperGroup
 
 from ..types import Tier
-from .commands import cleanup, config, server, watch
+from .commands import cleanup, config, list_resources, server, show, watch
+
+TOP_LEVEL_COMMAND_ORDER = [
+    "parse",
+    "scan",
+    "watch",
+    "search",
+    "find",
+    "list",
+    "show",
+    "server",
+    "config",
+    "invalidate",
+    "forget",
+    "cleanup",
+]
+
+
+class OrderedRootGroup(TyperGroup):
+    def list_commands(self, ctx: Context) -> list[str]:
+        ordered = [name for name in TOP_LEVEL_COMMAND_ORDER if name in self.commands]
+        return ordered + [name for name in self.commands if name not in TOP_LEVEL_COMMAND_ORDER]
+
 
 app = typer.Typer(
     name="mineru",
+    cls=OrderedRootGroup,
     help="MinerU — 本地文档中心",
     no_args_is_help=True,
 )
 
-app.add_typer(server.app, name="server")
-app.add_typer(watch.app, name="watch")
-app.add_typer(config.app, name="config")
-app.add_typer(cleanup.app, name="cleanup")
-
 
 # top-level commands
-@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def scan(
-    ctx: typer.Context,
-    args: list[str] = typer.Argument(..., help="Path, or subcommand: status/list"),
-    wait: int = typer.Option(30, "--wait", help="Max seconds to wait for scan completion"),
-    no_wait: bool = typer.Option(False, "--no-wait", help="Return immediately after creating the scan"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
-) -> None:
-    """Create a scan task, or inspect scan tasks."""
-    from .commands.scan import scan_cmd
-
-    scan_cmd(args=args + list(ctx.args), wait=wait, no_wait=no_wait, json_mode=json_mode)
-
-
 @app.command()
 def parse(
     path: str = typer.Argument(..., help="Path to the document file"),
     tier: Tier | None = typer.Option(None, "--tier", help="Parse tier: flash, standard, pro (default: server decides)"),
-    pages: str = typer.Option(
-        None, "-p", "--pages", help="Page range, e.g. '1~5' or 'all'"
-    ),
-    format: str = typer.Option(
-        "markdown", "-f", "--format", help="Output format: markdown, text, json, html"
-    ),
+    pages: str = typer.Option(None, "-p", "--pages", help="Page range, e.g. '1~5' or 'all'"),
+    after: str = typer.Option(None, "--after", help="Continue reading after a content cursor"),
+    limit: int = typer.Option(30000, "--limit", help="Soft character limit for STDOUT content"),
+    format: str = typer.Option("markdown", "-f", "--format", help="Output format: markdown, text, json, html"),
     force: bool = typer.Option(False, "--force", help="Force re-parse, ignore cache"),
-    remote: bool = typer.Option(False, "--remote", help="Use remote parse-server (https://mineru.net/api)"),
+    remote: bool = typer.Option(False, "--remote", help="Use remote parse-server"),
     wait: int = typer.Option(60, "--wait", help="Max seconds to wait for parse to complete"),
     no_wait: bool = typer.Option(False, "--no-wait", help="Don't wait — return immediately"),
     output: str = typer.Option(None, "-o", "--output", help="Output file path (default: STDOUT)"),
-    no_marker: bool = typer.Option(
-        False, "--no-marker", help="Omit document structure markers from output"
-    ),
+    no_marker: bool = typer.Option(False, "--no-marker", help="Omit document structure markers from output"),
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Verbose output"),
 ) -> None:
@@ -59,22 +61,37 @@ def parse(
     from .commands.parse import parse_cmd
 
     parse_cmd(
-        path=path, tier=tier, pages=pages, format=format, force=force,
+        path=path,
+        tier=tier,
+        pages=pages,
+        after=after,
+        limit=limit,
+        format=format,
+        force=force,
         remote=remote,
-        wait=wait, no_wait=no_wait, output=output,
-        no_marker=no_marker, json_mode=json_mode, verbose=verbose,
+        wait=wait,
+        no_wait=no_wait,
+        output=output,
+        no_marker=no_marker,
+        json_mode=json_mode,
+        verbose=verbose,
     )
 
 
 @app.command()
-def invalidate(
-    path: str = typer.Argument(..., help="Path to the document file"),
-    tier: Tier | None = typer.Option(None, "--tier", help="Parse tier to invalidate (omit = all tiers)"),
+def scan(
+    path: str = typer.Argument(..., help="File or directory path to scan"),
+    wait: int = typer.Option(30, "--wait", help="Max seconds to wait for scan completion"),
+    no_wait: bool = typer.Option(False, "--no-wait", help="Return immediately after creating the scan"),
+    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
-    """Mark done parse results as superseded so the next parse re-runs."""
-    from .commands.invalidate import invalidate_cmd
+    """Create a one-off scan task."""
+    from .commands.scan import scan_cmd
 
-    invalidate_cmd(path=path, tier=tier)
+    scan_cmd(path=path, wait=wait, no_wait=no_wait, json_mode=json_mode)
+
+
+app.add_typer(watch.app, name="watch")
 
 
 @app.command()
@@ -106,15 +123,21 @@ def find(
     find_cmd(query=query, ext=ext, limit=limit, json_mode=json_mode)
 
 
-@app.command()
-def info(
-    path: str = typer.Argument(..., help="File path"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
-) -> None:
-    """Show file/document details and parse status."""
-    from .commands.search import info_cmd
+app.add_typer(list_resources.app, name="list")
+app.add_typer(show.app, name="show")
+app.add_typer(server.app, name="server")
+app.add_typer(config.app, name="config")
 
-    info_cmd(path=path, json_mode=json_mode)
+
+@app.command()
+def invalidate(
+    path: str = typer.Argument(..., help="Path to the document file"),
+    tier: Tier | None = typer.Option(None, "--tier", help="Parse tier to invalidate (omit = all tiers)"),
+) -> None:
+    """Mark done parse results as superseded so the next parse re-runs."""
+    from .commands.invalidate import invalidate_cmd
+
+    invalidate_cmd(path=path, tier=tier)
 
 
 @app.command()
@@ -127,6 +150,9 @@ def forget(
     from .commands.forget import forget_cmd
 
     forget_cmd(path=path, dry_run=dry_run, json_mode=json_mode)
+
+
+app.add_typer(cleanup.app, name="cleanup")
 
 
 def main() -> None:

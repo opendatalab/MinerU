@@ -9,6 +9,9 @@ from typing import Any
 from pydantic import BaseModel
 from pydantic_core import to_json
 
+Table: Any
+Panel: Any
+
 try:
     from rich.console import Console
     from rich.table import Table
@@ -20,21 +23,22 @@ except ImportError:
 
 def print_error(msg: str) -> None:
     if console:
-        console.print(f"[red]Error:[/red] {msg}")
+        console.print("Error:", style="red", end=" ")
+        console.print(msg)
     else:
         print(f"Error: {msg}", file=sys.stderr)
 
 
 def print_success(msg: str) -> None:
     if console:
-        console.print(f"[green]{msg}[/green]")
+        console.print(msg, style="green")
     else:
         print(msg)
 
 
 def print_info(msg: str) -> None:
     if console:
-        console.print(f"[dim]{msg}[/dim]")
+        console.print(msg, style="dim")
     else:
         print(msg)
 

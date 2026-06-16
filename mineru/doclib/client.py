@@ -44,6 +44,7 @@ from .types import (
     ParseInfo,
     ParseRequest,
     ParseResponse,
+    ParseStatus,
     ParsingRuleInfo,
     ParsingRuleListResponse,
     ParsingRuleRequest,
@@ -108,10 +109,11 @@ class DoclibClient(DoclibInterface):
         ids: list[int] | None = None,
         sha256: str | None = None,
         tier: Tier | None = None,
-        status: str | None = None,
-        pages: str | None = None,
+        status: ParseStatus | None = None,
+        page_range: str | None = None,
         include_superseded: bool = False,
         limit: int = 50,
+        offset: int = 0,
     ) -> ListParsesResponse:
         return self._request_model(
             ListParsesResponse,
@@ -120,9 +122,10 @@ class DoclibClient(DoclibInterface):
                 "sha256": sha256,
                 "tier": tier,
                 "status": status,
-                "pages": pages,
+                "page_range": page_range,
                 "include_superseded": include_superseded,
                 "limit": limit,
+                "offset": offset,
             },
         )
 
@@ -150,10 +153,11 @@ class DoclibClient(DoclibInterface):
         status: ScanStatus | None = None,
         kind: ScanKind | None = None,
         watch_id: int | None = None,
+        offset: int = 0,
     ) -> ScanListResponse:
         return self._request_model(
             ScanListResponse,
-            params={"limit": limit, "status": status, "kind": kind, "watch_id": watch_id},
+            params={"limit": limit, "status": status, "kind": kind, "watch_id": watch_id, "offset": offset},
         )
 
     @route("GET", "/scans/{scan_id}", tags=("scan",))
@@ -179,11 +183,15 @@ class DoclibClient(DoclibInterface):
     def list_docs(
         self,
         *,
-        path: str | None = None,
         file_type: str | None = None,
         limit: int = 200,
+        offset: int = 0,
     ) -> ListDocsResponse:
-        return self._request_model(ListDocsResponse, params={"path": path, "file_type": file_type, "limit": limit})
+        return self._request_model(ListDocsResponse, params={"file_type": file_type, "limit": limit, "offset": offset})
+
+    @route("GET", "/docs/by-path", tags=("docs",))
+    def get_doc_by_path(self, path: str) -> DocInfo:
+        return self._request_model(DocInfo, params={"path": path})
 
     @route("GET", "/docs/{sha256}", tags=("docs",))
     def get_doc(self, sha256: str, *, expand_files: bool = False) -> DocInfo:
@@ -195,7 +203,9 @@ class DoclibClient(DoclibInterface):
         sha256: str,
         *,
         tier: Tier,
-        pages: str | None = None,
+        page_range: str | None = None,
+        after: str | None = None,
+        limit: int = 30000,
         format: str = "markdown",
         no_marker: bool = False,
     ) -> DocContentResponse:
@@ -204,7 +214,9 @@ class DoclibClient(DoclibInterface):
             path_params={"sha256": sha256},
             params={
                 "tier": tier,
-                "pages": pages,
+                "page_range": page_range,
+                "after": after,
+                "limit": limit,
                 "format": format,
                 "no_marker": no_marker,
             },
@@ -241,8 +253,8 @@ class DoclibClient(DoclibInterface):
     def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse:
         return self._request_model(FindResponse, params={"query": query, "ext": ext, "limit": limit})
 
-    @route("GET", "/info", tags=("info",))
-    def get_file_info(self, path: str) -> FileInfoResponse:
+    @route("GET", "/files/by-path", tags=("files",))
+    def get_file_by_path(self, path: str) -> FileInfoResponse:
         return self._request_model(FileInfoResponse, params={"path": path})
 
     @route("GET", "/configs", tags=("config",))

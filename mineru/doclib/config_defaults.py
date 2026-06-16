@@ -7,17 +7,12 @@ from typing import Literal
 ConfigSource = Literal["default", "override"]
 
 CONFIG_DEFAULTS: dict[str, str] = {
-    "data_dir": "~/MinerU",
-    "default_tier": "flash",
-    "scan_interval_sec": "300",
-    "ingest_lock_timeout_sec": "60",
-    "parse_lock_timeout_sec": "1800",
-    "device_check_interval_sec": "5",
     "parse_server.local.mode": "disabled",
     "parse_server.local.managed_tier": "standard",
     "parse_server.local.self_hosted_url": "",
     "parse_server.local.self_hosted_api_key": "",
-    "parse_server.remote.url": "https://mineru.net/api",
+    # "parse_server.remote.url": "https://mineru.net/api",
+    "parse_server.remote.url": "https://staging.mineru.org.cn/api",
     "parse_server.remote.api_key": "",
 }
 

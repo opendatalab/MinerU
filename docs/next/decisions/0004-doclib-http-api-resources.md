@@ -26,7 +26,7 @@ GET  /parses
 GET  /parses/{id}
 
 GET  /docs
-GET  /docs?path=...
+GET  /docs/by-path?path=...
 GET  /docs/{sha256}
 GET  /docs/{sha256}/content
 
@@ -36,7 +36,7 @@ POST /invalidate
 
 ### `parses`
 
-`parse` 在 doclib API 中表示一条解析记录。一个 parse record 对应一个 `sha256 + tier + pages` 的解析批次，也对应 `parses` 表中的一行。
+`parse` 在 doclib API 中表示一条解析记录。一个 parse record 对应一个 `sha256 + tier + page_range` 的解析批次，也对应 `parses` 表中的一行。
 
 `POST /parses` 的语义是 ensure parse records:
 
@@ -51,7 +51,7 @@ POST /invalidate
 {
   "sha256": "...",
   "tier": "standard",
-  "pages": "1~10",
+  "page_range": "1~10",
   "status": "pending",
   "cache_hit": false,
   "wait_parse_ids": [12, 13],
@@ -65,11 +65,12 @@ POST /invalidate
 ```http
 GET /parses?ids=12,13
 GET /parses?sha256=...&tier=standard
-GET /parses?sha256=...&tier=standard&status=pending,parsing
-GET /parses?sha256=...&tier=standard&pages=1~10
+GET /parses?sha256=...&tier=standard&status=pending
+GET /parses?sha256=...&tier=standard&page_range=1~10
 ```
 
-`ids` 查询用于 CLI wait 等精确请求状态判断。`sha256 + tier + pages` 查询用于计算页覆盖状态。
+`ids` 查询用于 CLI wait 等精确请求状态判断。`sha256 + tier + page_range` 查询用于计算页覆盖状态。
+所有 list 响应统一包含 `total`、`limit`、`offset` 分页元数据。
 
 `GET /parses/{id}` 返回单条 parse record。
 
@@ -79,18 +80,20 @@ GET /parses?sha256=...&tier=standard&pages=1~10
 
 ```http
 GET /docs
-GET /docs?path=/a/b/report.pdf
+GET /docs/by-path?path=/a/b/report.pdf
 GET /docs/{sha256}
 ```
 
-`GET /docs?path=...` 返回列表。第一版语义为精确匹配 active file path；返回列表是为了保留同一内容多路径、路径别名或后续扩展空间。
+`GET /docs` 返回 active docs 集合，不接受 path 参数。active docs 指当前至少被一个 `status=active` 的 file row 引用的 doc；它不是 `docs` 表所有记录的完整导出。orphan docs 以及只被 `deleted` / `unreachable` file row 引用的 docs 不进入普通列表，后续由 cleanup / maintenance 视图处理。
+
+按路径查当前文档使用 `GET /docs/by-path?path=...`，返回单个 doc；因为 `files.path` 唯一，且任一时刻一个 file row 只绑定一个 `sha256`。
 
 `GET /docs/{sha256}` 默认只返回文档级信息。调用方需要路径实例时，可以传 `expand_files=true`，此时响应中的 `files` 必须是列表；默认不展开时 `files` 可以为 `null` 或省略。
 
 `GET /docs/{sha256}/content` 从有效 done parse record 的 Middle JSON 中读取并转换内容:
 
 ```http
-GET /docs/{sha256}/content?tier=standard&pages=1~10&format=markdown
+GET /docs/{sha256}/content?tier=standard&page_range=1~10&format=markdown
 ```
 
 读取内容不触发解析。缺页时应返回明确错误或 pending 状态，由调用方再决定是否 `POST /parses`。

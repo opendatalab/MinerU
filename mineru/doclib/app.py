@@ -59,11 +59,25 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         state.db = DatabaseManager(db_path, cfg.doclib.sqlite)
         await state.db.initialize()
+        await _assert_required_schema(state.db)
+        state.db_ready = asyncio.Event()
+        state.db_ready.set()
 
         state.fts = FTSManager(state.db)
         state.config_svc = ConfigService(state.db)
-        state.parse_svc = ParseService(state.db, state.fts, state.config_svc, data_dir)
-        state.scan_svc = ScanService(state.db, state.config_svc, state.parse_svc)
+        state.parse_svc = ParseService(
+            state.db,
+            state.fts,
+            state.config_svc,
+            data_dir,
+            parse_lock_timeout_sec=cfg.doclib.parse_lock_timeout_sec,
+        )
+        state.scan_svc = ScanService(
+            state.db,
+            state.config_svc,
+            state.parse_svc,
+            scan_lock_timeout_sec=cfg.doclib.scan_lock_timeout_sec,
+        )
         state.search_svc = SearchService(state.db, state.fts)
         state.cleanup_svc = CleanupService(state.db, data_dir)
 
@@ -91,25 +105,46 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                 state.parse_server_proc = proc
                 health.managed_proc = proc
                 health.local_starting = True
-                health.local_started_at = time.time()
+                health.local_started_at = asyncio.get_event_loop().time()
             except Exception as exc:
                 logging.error("Failed to start managed parse-server: %s", exc)
 
-        state.watch = WatchLoop(state.db, state.config_svc, state.parse_svc, state.scan_svc)
+        state.watch = WatchLoop(
+            state.db,
+            state.config_svc,
+            state.parse_svc,
+            scan_interval_sec=cfg.doclib.scan_interval_sec,
+            scan_svc=state.scan_svc,
+        )
         state.scan_workers = ScanWorkerPool(state.scan_svc, num_workers=1)
-        state.ingest_workers = IngestWorkerPool(state.parse_svc, num_workers=cfg.doclib.ingest_workers)
+        state.ingest_workers = IngestWorkerPool(
+            state.parse_svc,
+            num_workers=cfg.doclib.ingest_workers,
+            lock_timeout_sec=cfg.doclib.ingest_lock_timeout_sec,
+        )
         state.parse_workers = ParseWorkerPool(state.parse_svc, num_workers=cfg.doclib.parse_workers)
-        state.device_monitor = DeviceMonitor(state.db, state.config_svc)
+        state.device_monitor = DeviceMonitor(
+            state.db,
+            state.config_svc,
+            interval_sec=cfg.doclib.device_check_interval_sec,
+            scan_svc=state.scan_svc,
+        )
         state.compaction = Compaction(state.db, interval_sec=cfg.doclib.compaction_interval_sec, data_dir=data_dir)
-        state.health_check = ParseServerHealthCheck(state.config_svc)
+        state.health_check = ParseServerHealthCheck(
+            state.config_svc,
+            interval_sec=cfg.doclib.parse_server_health_check_interval_sec,
+            probe_timeout_sec=cfg.doclib.parse_server_probe_timeout_sec,
+            startup_grace_sec=cfg.doclib.parse_server_startup_grace_sec,
+            stop_timeout_sec=cfg.doclib.parse_server_stop_timeout_sec,
+        )
 
-        asyncio.create_task(state.watch.run())
-        asyncio.create_task(state.scan_workers.run())
-        asyncio.create_task(state.ingest_workers.run())
-        asyncio.create_task(state.parse_workers.run())
-        asyncio.create_task(state.device_monitor.run())
-        asyncio.create_task(state.compaction.run())
-        asyncio.create_task(state.health_check.run())
+        _create_background_task(state, "watch", state.watch.run)
+        _create_background_task(state, "scan_workers", state.scan_workers.run)
+        _create_background_task(state, "ingest_workers", state.ingest_workers.run)
+        _create_background_task(state, "parse_workers", state.parse_workers.run)
+        _create_background_task(state, "device_monitor", state.device_monitor.run)
+        _create_background_task(state, "compaction", state.compaction.run)
+        _create_background_task(state, "health_check", state.health_check.run)
 
         state.start_time = time.time()
         state.pid = os.getpid()
@@ -123,10 +158,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                 pid = state.parse_server_proc.pid
                 logging.info("Stopping managed parse-server (PID %d)", pid)
                 state.parse_server_proc.terminate()
-                state.parse_server_proc.wait(timeout=10)
+                state.parse_server_proc.wait(timeout=cfg.doclib.parse_server_stop_timeout_sec)
                 logging.info("Managed parse-server stopped (PID %d)", pid)
             except subprocess.TimeoutExpired:
-                logging.warning("Managed parse-server did not stop within 10s, killing")
+                logging.warning("Managed parse-server did not stop within configured timeout, killing")
                 state.parse_server_proc.kill()
             except Exception as exc:
                 logging.error("Error stopping managed parse-server: %s", exc)
@@ -181,6 +216,7 @@ class AppState:
         self.scan_svc: Any = None
         self.search_svc: Any = None
         self.cleanup_svc: Any = None
+        self.db_ready: asyncio.Event | None = None
         self.parse_server_proc: Any = None
         self.watch: Any = None
         self.scan_workers: Any = None
@@ -193,6 +229,40 @@ class AppState:
         self.pid: int = 0
         self.data_dir: str = ""
         self.config: Config | None = None
+
+
+REQUIRED_SCHEMA_TABLES = {
+    "_migrations",
+    "config",
+    "docs",
+    "exclude_rules",
+    "files",
+    "fts_contents",
+    "fts_filenames",
+    "parses",
+    "parsing_rules",
+    "scans",
+    "watches",
+}
+
+
+async def _assert_required_schema(db: Any) -> None:
+    rows = await db.fetchall("SELECT name FROM sqlite_master WHERE type='table'")
+    existing = {row["name"] for row in rows}
+    missing = sorted(REQUIRED_SCHEMA_TABLES - existing)
+    if missing:
+        raise RuntimeError(f"Doclib database migration incomplete; missing tables: {', '.join(missing)}")
+
+
+def _create_background_task(state: AppState, name: str, runner: Callable[[], Any]) -> asyncio.Task:
+    return asyncio.create_task(_run_after_db_ready(state, name, runner))
+
+
+async def _run_after_db_ready(state: AppState, name: str, runner: Callable[[], Any]) -> None:
+    if state.db_ready is None:
+        raise RuntimeError(f"Cannot start background task {name}: database is not initialized")
+    await state.db_ready.wait()
+    await runner()
 
 
 def main() -> None:

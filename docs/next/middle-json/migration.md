@@ -38,7 +38,7 @@
 验收:
 
 - 旧 CLI middle_json 可以恢复为 `ParseResult`。
-- API `json` output 可以恢复为 `ParseResult`。
+- API `middle_json` output 可以恢复为 `ParseResult`。
 - doclib 缓存 JSON 可以恢复为 `ParseResult`。
 
 ## Phase 2: Validator
@@ -145,4 +145,4 @@
 6. 定义 `locator_for_block()` 和 `chunk_id()`。
 7. 给 Pipeline/VLM/Office 各加一个 fixture。
 
-完成这 7 项后，Middle JSON 就可以支撑 API/SDK 的 `json` output、doclib 缓存恢复和 Agent citation 的第一版闭环。
+完成这 7 项后，Middle JSON 就可以支撑 API/SDK 的 `middle_json` output、doclib 缓存恢复和 Agent citation 的第一版闭环。

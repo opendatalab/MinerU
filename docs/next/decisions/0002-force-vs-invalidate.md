@@ -22,7 +22,7 @@ doclib 只持久化按页组织的 Middle JSON 批次文件。同一文档、同
 
 `--force` 的语义:
 
-1. 对本次请求的 `sha256 + tier + pages` 忽略已有缓存覆盖判断。
+1. 对本次请求的 `sha256 + tier + page_range` 忽略已有缓存覆盖判断。
 2. 不忽略 `pending` / `parsing` 的 active parse；已经覆盖请求页码的 active parse 可以复用并提升 priority。
 3. 只为未被 active parse 覆盖的页码创建新的 parse record。
 4. 不删除、不标记失效、不提前 supersede 旧的 done batch。

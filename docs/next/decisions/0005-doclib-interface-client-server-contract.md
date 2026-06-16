@@ -78,9 +78,11 @@ def list_parses(
     ids: list[int] | None = None,
     sha256: str | None = None,
     tier: str | None = None,
-    status: str | None = None,
-    pages: str | None = None,
+    status: ParseStatus | None = None,
+    page_range: str | None = None,
     include_superseded: bool = False,
+    limit: int = 50,
+    offset: int = 0,
 ) -> ListParsesResponse: ...
 def get_parse(self, parse_id: int) -> ParseInfo: ...
 def get_doc(self, sha256: str, *, expand_files: bool = False) -> DocInfo: ...
@@ -89,9 +91,10 @@ def get_doc_content(
     sha256: str,
     *,
     tier: str,
-    pages: str | None = None,
+    page_range: str | None = None,
+    after: str | None = None,
+    limit: int = 30000,
     format: str = "markdown",
-    output: str | None = None,
     no_marker: bool = False,
 ) -> DocContentResponse: ...
 def search(
@@ -105,7 +108,7 @@ def search(
     offset: int = 0,
 ) -> SearchResponse: ...
 def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse: ...
-def get_file_info(self, path: str) -> FileInfoResponse: ...
+def get_file_by_path(self, path: str) -> FileInfoResponse: ...
 ```
 
 第一版不以裸 `dict` 作为主契约。确实需要携带扩展字段时，应在 response model 中显式保留扩展字段，例如 `extra: dict[str, Any] = {}`。
@@ -233,7 +236,7 @@ Search / Info:
 
 - `search`
 - `find`
-- `get_file_info`
+- `get_file_by_path`
 
 Config:
 

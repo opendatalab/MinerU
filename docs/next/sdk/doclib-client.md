@@ -58,7 +58,7 @@ def parse(
     path: str,
     *,
     tier: str | None = None,
-    pages: str | None = None,
+    page_range: str | None = None,
     format: str = "markdown",
     force: bool = False,
     remote: bool = False,
@@ -71,7 +71,7 @@ def parse(
 |------|------|
 | `path` | 本地文件路径。 |
 | `tier` | `flash`、`standard`、`pro` 或 `None`。`None` 表示使用 doclib 规则和默认策略。 |
-| `pages` | 页码范围。 |
+| `page_range` | 页码范围。 |
 | `format` | 返回格式，当前主要是 `markdown`。 |
 | `force` | 跳过已有 done 缓存并重新解析；可复用 active parse，只为未覆盖页创建新 parse。 |
 | `remote` | 是否允许调用远端 parse-server。默认 `False`。远端 URL 和 API Key 来自 doclib config 或环境变量。 |
@@ -82,7 +82,7 @@ def parse(
 class ParseResponse:
     sha256: str
     tier: str
-    pages: str
+    page_range: str
     status: str
     cache_hit: bool
     wait_parse_ids: list[int]
@@ -105,9 +105,9 @@ class ParseResponse:
 
 | 方法 | 说明 |
 |------|------|
-| `list_parses(...)` | 对应 `GET /parses`，按 ids、sha256、tier、status 或 pages 查询 parse records 和覆盖状态。 |
+| `list_parses(...)` | 对应 `GET /parses`，按 ids、sha256、tier、status 或 page_range 查询 parse records 和覆盖状态。 |
 | `get_parse(parse_id)` | 对应 `GET /parses/{id}`，查询单条 parse record。 |
-| `parse_content(sha256, tier, pages=None, format="markdown", output=None)` | 对应 `GET /docs/{sha256}/content`，从保存的 JSON 结果读取时转换。 |
+| `parse_content(sha256, tier, page_range=None, format="markdown", output=None)` | 对应 `GET /docs/{sha256}/content`，从保存的 JSON 结果读取时转换。 |
 | `invalidate(target="parses", path=None, sha256=None, tier=None)` | 对应 `POST /invalidate`，将已有解析结果标记为失效；不自动触发重新解析。 |
 
 `parse_status(sha256, tier)` 不再作为 NEXT 稳定方法；调用方应使用 `list_parses(sha256=..., tier=...)`。`parse_content()` 是 doclib 层能力，不等同于 v1 Files API 的 `GET /v1/files/{id}/content`。

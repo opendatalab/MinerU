@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import json as _json
+import json
 import os
 import time
 from collections.abc import Sequence
@@ -12,22 +12,23 @@ from pathlib import Path
 from typing import Literal, cast
 
 from ...errors import MineruError
-from ...types import PageInfo, TIER_ORDER, Tier
+from ...parser.base import ParseResult
+from ...types import TIER_ORDER, PageInfo, Tier
 from ..constants import ALLOWED_EXTENSIONS, TEXT_EXTENSIONS
 from ..core.db import DatabaseManager
 from ..core.file_io import FileStat, compute_sha256, extract_metadata, get_file_stat
 from ..core.fts import FTSManager
-from ..rows import FileRow, PageCountRow, ParseBatchRow, ParseRow, WatchTargetRow
+from ..rows import FileRow, PageCountRow, ParseBatchRow, ParseRow, Sha256Row, ShortIdRow, WatchTargetRow
 from ..types import (
+    FILE_STATUS_ACTIVE,
+    FILE_STATUS_DELETED,
+    FILE_STATUS_UNREACHABLE,
     PARSE_STATUS_DONE,
     PARSE_STATUS_FAILED,
     PARSE_STATUS_PARSING,
     PARSE_STATUS_PENDING,
     PARSE_STATUS_SUPERSEDED,
     RULE_TYPE_PARSING_RULE,
-    FILE_STATUS_ACTIVE,
-    FILE_STATUS_DELETED,
-    FILE_STATUS_UNREACHABLE,
     WATCH_STATUS_UNREACHABLE,
     FileInfo,
     ParseResponse,
@@ -74,74 +75,74 @@ class FileRefreshResult:
 # ── range helpers ──────────────────────────────────────────────────
 
 
-def parse_range_set(s: str) -> set[int]:
-    """Parse a pages range string like '1~5,10~15' into a set of integers."""
-    pages: set[int] = set()
-    for part in s.split(","):
+def parse_page_range_set(page_range: str) -> set[int]:
+    """Parse a page_range string like '1~5,10~15' into 1-based page numbers."""
+    page_numbers: set[int] = set()
+    for part in page_range.split(","):
         part = part.strip()
         if not part:
             continue
         if "~" in part:
             a, b = part.split("~", 1)
-            pages.update(range(int(a.strip()), int(b.strip()) + 1))
+            page_numbers.update(range(int(a.strip()), int(b.strip()) + 1))
         else:
-            pages.add(int(part))
-    return pages
+            page_numbers.add(int(part))
+    return page_numbers
 
 
-def filter_pages_by_user_range(pages: list[PageInfo], requested_pages: str) -> list[PageInfo]:
+def filter_pages_by_user_range(pages: list[PageInfo], page_range: str) -> list[PageInfo]:
     """Filter 0-based PageInfo objects by a user-facing 1-based page range."""
-    requested = parse_range_set(requested_pages)
-    return [page for page in pages if page.page_idx + 1 in requested]
+    requested_page_numbers = parse_page_range_set(page_range)
+    return [page for page in pages if page.page_idx + 1 in requested_page_numbers]
 
 
-def pages_covered(request_pages: str, done_batches: list[ParseRow]) -> bool:
-    """Check whether request_pages is fully covered by done batches.
+def page_range_covered(request_page_range: str, done_batches: list[ParseRow]) -> bool:
+    """Check whether request_page_range is fully covered by done batches.
     Batches are sorted by done_at DESC so newer batches take precedence."""
-    needed = parse_range_set(request_pages)
-    covered: set[int] = set()
+    needed_page_numbers = parse_page_range_set(request_page_range)
+    covered_page_numbers: set[int] = set()
     for b in sorted(done_batches, key=lambda r: r.get("done_at") or 0, reverse=True):
-        covered |= parse_range_set(b["pages"])
-        if needed <= covered:
+        covered_page_numbers |= parse_page_range_set(b["page_range"])
+        if needed_page_numbers <= covered_page_numbers:
             return True
     return False
 
 
-def pages_uncovered(request_pages: str, done_batches: list[ParseRow]) -> set[int]:
-    """Return the subset of request_pages NOT covered by any done batch."""
-    needed = parse_range_set(request_pages)
-    covered: set[int] = set()
+def page_range_uncovered(request_page_range: str, done_batches: list[ParseRow]) -> set[int]:
+    """Return the subset of request_page_range NOT covered by any done batch."""
+    needed_page_numbers = parse_page_range_set(request_page_range)
+    covered_page_numbers: set[int] = set()
     for b in done_batches:
-        covered |= parse_range_set(b["pages"])
-    return needed - covered
+        covered_page_numbers |= parse_page_range_set(b["page_range"])
+    return needed_page_numbers - covered_page_numbers
 
 
-def _pages_set_to_str(pages: set[int]) -> str:
+def _page_numbers_to_range_str(page_numbers: set[int]) -> str:
     """Convert a set of page numbers (1-based) to a compact range string."""
-    if not pages:
+    if not page_numbers:
         return ""
-    sorted_pages = sorted(pages)
+    sorted_page_numbers = sorted(page_numbers)
     ranges: list[str] = []
-    start = sorted_pages[0]
+    start = sorted_page_numbers[0]
     end = start
-    for p in sorted_pages[1:]:
-        if p == end + 1:
-            end = p
+    for page_no in sorted_page_numbers[1:]:
+        if page_no == end + 1:
+            end = page_no
         else:
             ranges.append(f"{start}~{end}" if start != end else str(start))
-            start = p
-            end = p
+            start = page_no
+            end = page_no
     ranges.append(f"{start}~{end}" if start != end else str(start))
     return ",".join(ranges)
 
 
-def expand_pages(pages: str | None, page_count: int) -> str:
-    """Expand shorthand pages like 'all' or negative ranges like '-5~-1'
+def expand_page_range(page_range: str | None, page_count: int) -> str:
+    """Expand shorthand page_range like 'all' or negative ranges like '-5~-1'
     into positive page ranges.  Returns '1~{page_count}' for None/empty."""
-    if not pages or pages.strip() == "all":
+    if not page_range or page_range.strip() == "all":
         return f"1~{page_count}"
     result: list[str] = []
-    for part in pages.split(","):
+    for part in page_range.split(","):
         part = part.strip()
         if not part:
             continue
@@ -164,6 +165,66 @@ def expand_pages(pages: str | None, page_count: int) -> str:
     return ",".join(result)
 
 
+def default_parse_range(page_count: int | None) -> str:
+    """Return the default page range for active reading."""
+    if page_count and page_count > 0:
+        return f"1~{min(page_count, 10)}"
+    return "1"
+
+
+async def ensure_doc_record(
+    db: DatabaseManager,
+    *,
+    sha256: str,
+    size_bytes: int,
+    file_type: str,
+    page_count: int | None,
+    title: str | None,
+    author: str | None,
+    subject: str | None,
+    keywords: str | None,
+    error_code: str | None,
+    error_msg: str | None,
+    first_seen_at: int,
+    updated_at: int,
+) -> None:
+    existing = cast(ShortIdRow | None, await db.fetchone("SELECT short_id FROM docs WHERE sha256=?", (sha256,)))
+    if existing is not None:
+        return
+
+    for length in range(7, len(sha256) + 1):
+        short_id = sha256[:length]
+        await db.execute(
+            "INSERT OR IGNORE INTO docs (sha256, short_id, size_bytes, file_type, page_count, "
+            "title, author, subject, keywords, error_code, error_msg, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                sha256,
+                short_id,
+                size_bytes,
+                file_type,
+                page_count,
+                title,
+                author,
+                subject,
+                keywords,
+                error_code,
+                error_msg,
+                first_seen_at,
+                updated_at,
+            ),
+        )
+        inserted = cast(ShortIdRow | None, await db.fetchone("SELECT short_id FROM docs WHERE sha256=?", (sha256,)))
+        if inserted is not None:
+            return
+        conflict = cast(Sha256Row | None, await db.fetchone("SELECT sha256 FROM docs WHERE short_id=?", (short_id,)))
+        if conflict is not None and conflict["sha256"] != sha256:
+            continue
+        break
+
+    raise RuntimeError(f"Failed to allocate unique short_id for document {sha256}")
+
+
 # ── text truncation ────────────────────────────────────────────────
 
 
@@ -183,11 +244,14 @@ class ParseService:
         fts: FTSManager,
         config_svc: ConfigService,
         data_dir: str,
+        *,
+        parse_lock_timeout_sec: int,
     ) -> None:
         self.db = db
         self.fts = fts
         self.config_svc = config_svc
         self.data_dir = os.path.expanduser(data_dir)
+        self.parse_lock_timeout_ms = parse_lock_timeout_sec * 1000
 
     # ── discovery / ingestion (shared) ──────────────────────
 
@@ -451,24 +515,20 @@ class ParseService:
             ),
         )
 
-        await self.db.execute(
-            "INSERT OR IGNORE INTO docs (sha256, size_bytes, file_type, page_count, "
-            "title, author, subject, keywords, error_code, error_msg, first_seen_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                sha256,
-                stat.size_bytes,
-                _file_type_from_ext(ext),
-                page_count,
-                metadata["title"],
-                metadata["author"],
-                metadata["subject"],
-                metadata["keywords"],
-                metadata_error_code,
-                metadata_error_msg,
-                now,
-                now,
-            ),
+        await ensure_doc_record(
+            self.db,
+            sha256=sha256,
+            size_bytes=stat.size_bytes,
+            file_type=_file_type_from_ext(ext),
+            page_count=page_count,
+            title=metadata["title"],
+            author=metadata["author"],
+            subject=metadata["subject"],
+            keywords=metadata["keywords"],
+            error_code=metadata_error_code,
+            error_msg=metadata_error_msg,
+            first_seen_at=now,
+            updated_at=now,
         )
 
         # FTS filename index
@@ -496,29 +556,24 @@ class ParseService:
             )
             return cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
 
-        # determine tier and pages for initial parse
+        # determine tier and page_range for initial parse
         tier: Tier = "flash"
-        if page_count and page_count > 10:
-            initial_pages = "1~5,-5~-1"
-        elif page_count:
-            initial_pages = f"1~{page_count}"
-        else:
-            initial_pages = "1~5"
+        initial_page_range = default_parse_range(page_count)
 
         # check parsing-rules
         matched = await self.config_svc.match_rules(path, RULE_TYPE_PARSING_RULE)
         if matched:
             rule = matched[0]
             tier = rule.get("tier") or tier
-            rule_pages = rule.get("pages")
-            if rule_pages:
-                initial_pages = expand_pages(rule_pages, page_count or 1)
+            rule_page_range = rule.get("page_range")
+            if rule_page_range:
+                initial_page_range = expand_page_range(rule_page_range, page_count or 1)
 
         # insert parse batch
-        pages_str = expand_pages(initial_pages, page_count or 1)
+        parse_page_range = expand_page_range(initial_page_range, page_count or 1)
         await self.db.execute(
-            "INSERT INTO parses (sha256, tier, pages, status, priority, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)",
-            (sha256, tier, pages_str, PARSE_STATUS_PENDING, now, now),
+            "INSERT INTO parses (sha256, tier, page_range, status, priority, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)",
+            (sha256, tier, parse_page_range, PARSE_STATUS_PENDING, now, now),
         )
 
         await self.db.execute(
@@ -535,7 +590,7 @@ class ParseService:
         path: str,
         *,
         tier: Tier | None = None,
-        pages: str | None = None,
+        page_range: str | None = None,
         force: bool = False,
         remote: bool = False,
     ) -> ParseResponse:
@@ -543,11 +598,11 @@ class ParseService:
         # ensure the path is current before trusting files.sha256
         file_row = await self.ensure_ingested(path)
         if file_row is None:
-            return _failed_response(tier or "flash", pages or "", "File could not be ingested.")
+            return _failed_response(tier or "flash", page_range or "", "File could not be ingested.")
 
         sha256 = file_row["sha256"]
         if sha256 is None:
-            return _failed_response(tier or "flash", pages or "", "File could not be ingested.")
+            return _failed_response(tier or "flash", page_range or "", "File could not be ingested.")
         doc = cast(PageCountRow | None, await self.db.fetchone("SELECT page_count FROM docs WHERE sha256=?", (sha256,)))
         page_count = doc["page_count"] if doc else 1
         privacy = "remote" if remote else "local"
@@ -560,13 +615,13 @@ class ParseService:
         if ext in ("docx", "pptx", "xlsx"):
             requested_tier = "flash"
 
-        # ── expand pages ──
-        default_pages = "1~5,-5~-1" if page_count and page_count > 10 else f"1~{page_count}"
-        raw_pages = pages or default_pages
-        request_pages_str = expand_pages(raw_pages, page_count or 1)
-        needed = parse_range_set(request_pages_str)
+        # ── expand page range ──
+        default_page_range = default_parse_range(page_count)
+        requested_page_range_input = page_range or default_page_range
+        request_page_range = expand_page_range(requested_page_range_input, page_count or 1)
+        needed_page_numbers = parse_page_range_set(request_page_range)
 
-        # ── step 1: remove pages covered by valid done batches ──
+        # ── step 1: remove page numbers covered by valid done batches ──
         if not force:
             done_batches = cast(
                 list[ParseRow],
@@ -578,13 +633,13 @@ class ParseService:
             for batch in done_batches:
                 if not _json_file_exists_by_batch(self.data_dir, sha256, requested_tier, batch):
                     continue  # JSON gone → cache invalid
-                covered = parse_range_set(batch["pages"])
-                needed -= covered
+                covered_page_numbers = parse_page_range_set(batch["page_range"])
+                needed_page_numbers -= covered_page_numbers
 
-            if not needed:
-                return _done_response(sha256, requested_tier, request_pages_str)
+            if not needed_page_numbers:
+                return _done_response(sha256, requested_tier, request_page_range)
 
-        # ── step 2: remove pages covered by pending/parsing batches ──
+        # ── step 2: remove page numbers covered by pending/parsing batches ──
         reused_parse_ids: list[int] = []
         active_batches = cast(
             list[ParseRow],
@@ -594,13 +649,13 @@ class ParseService:
             ),
         )
         if active_batches:
-            active_covered: set[int] = set()
+            active_covered_page_numbers: set[int] = set()
             for batch in active_batches:
-                covered = parse_range_set(batch["pages"])
-                if needed & covered:
+                covered_page_numbers = parse_page_range_set(batch["page_range"])
+                if needed_page_numbers & covered_page_numbers:
                     reused_parse_ids.append(batch["id"])
-                active_covered |= covered
-            needed -= active_covered
+                active_covered_page_numbers |= covered_page_numbers
+            needed_page_numbers -= active_covered_page_numbers
 
             # bump priority for reused in-progress batches
             now = _now_ms()
@@ -611,11 +666,11 @@ class ParseService:
                         (now, batch["id"]),
                     )
 
-            if not needed:
+            if not needed_page_numbers:
                 return ParseResponse(
                     sha256=sha256,
                     tier=requested_tier,
-                    pages=request_pages_str,
+                    page_range=request_page_range,
                     status=PARSE_STATUS_PENDING,
                     cache_hit=False,
                     wait_parse_ids=reused_parse_ids,
@@ -624,19 +679,19 @@ class ParseService:
                     tip="Pages already queued. Priority bumped.",
                 )
 
-        # ── step 3: enqueue remaining uncovered pages ──
-        uncovered_str = _pages_set_to_str(needed)
+        # ── step 3: enqueue remaining uncovered page numbers ──
+        uncovered_page_range = _page_numbers_to_range_str(needed_page_numbers)
         now = _now_ms()
         parse_id = await self.db.execute_insert(
-            "INSERT INTO parses (sha256, tier, pages, status, privacy, priority, created_at, updated_at) "
+            "INSERT INTO parses (sha256, tier, page_range, status, privacy, priority, created_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
-            (sha256, requested_tier, uncovered_str, PARSE_STATUS_PENDING, privacy, now, now),
+            (sha256, requested_tier, uncovered_page_range, PARSE_STATUS_PENDING, privacy, now, now),
         )
         created_parse_ids = [parse_id]
         return ParseResponse(
             sha256=sha256,
             tier=requested_tier,
-            pages=request_pages_str,
+            page_range=request_page_range,
             status=PARSE_STATUS_PENDING,
             cache_hit=False,
             wait_parse_ids=reused_parse_ids + created_parse_ids,
@@ -647,7 +702,7 @@ class ParseService:
     # ── worker ──────────────────────────────────────────────────
 
     async def get_queue_length(self) -> int:
-        timeout_ms = _now_ms() - 30 * 60 * 1000  # 30min lock timeout
+        timeout_ms = _now_ms() - self.parse_lock_timeout_ms
         row = await self.db.fetchone(
             "SELECT COUNT(*) as cnt FROM parses WHERE status=? AND (locked_at IS NULL OR locked_at < ?)",
             (PARSE_STATUS_PENDING, timeout_ms),
@@ -656,7 +711,7 @@ class ParseService:
 
     async def acquire_task(self) -> ParseRow | None:
         now = _now_ms()
-        timeout = now - 30 * 60 * 1000  # 30min lock timeout
+        timeout = now - self.parse_lock_timeout_ms
         return cast(
             ParseRow | None,
             await self.db.fetchone(
@@ -674,7 +729,7 @@ class ParseService:
         """Execute parse for a batch.  Returns True on success."""
         sha256 = task["sha256"]
         tier = task["tier"]
-        pages = task["pages"]
+        page_range = task["page_range"]
         privacy = task.get("privacy", "local")
 
         # guard
@@ -700,9 +755,9 @@ class ParseService:
         via = "local"
         try:
             if tier == "flash":
-                results = await self._parse_via_local(file_row, tier, pages)
+                result = await self._parse_via_local(file_row, tier, page_range)
             else:
-                results, via = await self._parse_via_api(file_row, tier, pages, privacy)
+                result, via = await self._parse_via_api(file_row, tier, page_range, privacy)
         except ParseFailure as exc:
             await self._fail_task(task["id"], exc.code, exc.message)
             return False
@@ -710,36 +765,26 @@ class ParseService:
             await self._fail_task(task["id"], "parse_failed", str(exc)[:500])
             return False
 
+        new_pages = result.to_dict(skip_defaults=True)["pages"]
+        if not new_pages:
+            await self._fail_task(task["id"], "parse_empty", "Parse completed but returned no pages")
+            return False
+
         # save per-batch JSON (markdown is generated on read from /docs/{sha256}/content)
         done_at_ms = _now_ms()
-        new_pages: list[dict] = []
-        if results:
-            import json as _json
-
-            pages_key = _safe_filename(task["pages"])
-            json_path = os.path.join(output_dir, f"{pages_key}_{done_at_ms}.json")
-            for r in results:
-                if hasattr(r, "to_dict"):
-                    new_pages.extend(r.to_dict().get("pages", []))
-            if not new_pages:
-                await self._fail_task(task["id"], "parse_empty", "Parse completed but returned no pages")
-                return False
-            try:
-                os.makedirs(output_dir, exist_ok=True)
-                with open(json_path, "w", encoding="utf-8") as f:
-                    _json.dump({"pages": new_pages}, f, ensure_ascii=False, indent=2)
-            except Exception as exc:
-                await self._fail_task(task["id"], "parse_json_write_failed", str(exc)[:500])
-                return False
-        else:
-            await self._fail_task(task["id"], "parse_empty", "Parse completed but returned no results")
+        json_path = os.path.join(output_dir, _safe_filename(page_range, done_at_ms))
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump({"pages": new_pages}, f, ensure_ascii=False, indent=2)
+        except Exception as exc:
+            await self._fail_task(task["id"], "parse_json_write_failed", str(exc)[:500])
             return False
 
         # generate markdown for FTS (not persisted, only for search indexing)
         md_text = ""
-        for result in results:
-            md = result.markdown(add_markers=False) if hasattr(result, "markdown") else ""
-            md_text += md + "\n"
+        md = result.markdown(add_markers=False) if hasattr(result, "markdown") else ""
+        md_text += md + "\n"
 
         # update fts_contents (tier-gated)
         await self._maybe_update_fts(sha256, tier, md_text, file_row)
@@ -756,7 +801,12 @@ class ParseService:
 
     # ── parse routing helpers ─────────────────────────────────────
 
-    async def _parse_via_local(self, file_row: FileRow, tier: Tier, pages: str) -> list:
+    async def _parse_via_local(
+        self,
+        file_row: FileRow,
+        tier: Tier,
+        page_range: str,
+    ) -> ParseResult:
         """Parse via local library call."""
         from ...parser import parse
 
@@ -764,17 +814,17 @@ class ParseService:
             parse,
             file_row["path"],
             tier=tier,
-            page_range=pages,
+            page_range=page_range,
         )
-        return [result]
+        return result
 
     async def _parse_via_api(
         self,
         file_row: FileRow,
         tier: Tier,
-        pages: str,
+        page_range: str,
         privacy: str,
-    ) -> tuple[list, str]:
+    ) -> tuple[ParseResult, str]:
         """Parse via HTTP API (local or remote parse-server). Returns (results, via)."""
         from ...parser.api_client import MinerUApiParser
 
@@ -788,8 +838,9 @@ class ParseService:
             api_key=api_key,
             tier=resolved_tier,
         )
-        result = await parser.parse_async(file_row["path"], page_range=pages)
-        return [result], via
+        result = await parser.parse_async(file_row["path"], page_range=page_range)
+        _remap_api_result_pages_to_page_range(result, page_range)
+        return result, via
 
     @staticmethod
     def _resolve_tier(tier: Tier, via: str) -> Tier:
@@ -823,7 +874,7 @@ class ParseService:
         health = get_health()
 
         if privacy == "remote":
-            url = (await self.config_svc.get("parse_server.remote.url")) or "https://mineru.net/api"
+            url = cast(str, await self.config_svc.get("parse_server.remote.url"))
             api_key = os.environ.get("MINERU_API_KEY") or (await self.config_svc.get("parse_server.remote.api_key"))
             if not health.remote_healthy:
                 # try fallback to local
@@ -868,12 +919,14 @@ class ParseService:
         sha256: str | None = None,
         tier: Tier | None = None,
         status: list[str] | None = None,
-        pages: str | None = None,
+        page_range: str | None = None,
         include_superseded: bool = False,
     ) -> dict:
         if ids:
             placeholders = ",".join("?" * len(ids))
-            rows = cast(list[ParseRow], await self.db.fetchall(f"SELECT * FROM parses WHERE id IN ({placeholders})", tuple(ids)))
+            rows = cast(
+                list[ParseRow], await self.db.fetchall(f"SELECT * FROM parses WHERE id IN ({placeholders})", tuple(ids))
+            )
             rows_by_id = {row["id"]: row for row in rows}
             ordered_rows = [rows_by_id[parse_id] for parse_id in ids if parse_id in rows_by_id]
             return {"parses": [_parse_record_response(row) for row in ordered_rows]}
@@ -900,8 +953,8 @@ class ParseService:
         sql += " ORDER BY created_at DESC"
         rows = cast(list[ParseRow], await self.db.fetchall(sql, tuple(params)))
         result: dict[str, object] = {"parses": [_parse_record_response(row) for row in rows]}
-        if sha256 and tier and pages:
-            result["coverage"] = _parse_coverage(pages, rows)
+        if sha256 and tier and page_range:
+            result["coverage"] = _parse_coverage(page_range, rows)
         return result
 
     async def invalidate(self, sha256: str, tier: Tier | None = None) -> int:
@@ -1017,39 +1070,39 @@ def _resolve_default_tier(remote: bool = False) -> Tier:
 
 def _json_file_exists_by_batch(data_dir: str, sha256: str, tier: Tier, batch: ParseRow) -> bool:
     """Check that the JSON result file for a parses batch row actually exists on disk."""
-    json_path = parse_batch_json_path(data_dir, sha256, tier, batch["pages"], batch["done_at"])
+    json_path = parse_batch_json_path(data_dir, sha256, tier, batch["page_range"], batch["done_at"])
     return os.path.isfile(json_path)
 
 
-def parse_batch_json_path(data_dir: str, sha256: str, tier: Tier, pages: str, done_at: int | None = 0) -> str:
+def parse_batch_json_path(data_dir: str, sha256: str, tier: Tier, page_range: str, done_at: int | None = 0) -> str:
     """Return the persisted Middle JSON path for one parse batch."""
-    key = _safe_filename(pages, done_at or 0)
-    return os.path.join(os.path.expanduser(data_dir), "parsed", sha256[:2], sha256, tier, f"{key}.json")
+    filename = _safe_filename(page_range, done_at or 0)
+    return os.path.join(os.path.expanduser(data_dir), "parsed", sha256[:2], sha256, tier, filename)
 
 
 def load_pages_from_done_batches(data_dir: str, sha256: str, tier: Tier, done_rows: Sequence[ParseBatchRow]) -> list[PageInfo]:
     """Load valid done JSON batches and keep the newest page for duplicate page_idx values."""
-    pages_by_idx: dict[int, PageInfo] = {}
+    pages_by_page_idx: dict[int, PageInfo] = {}
     for row in reversed(done_rows):
-        fpath = parse_batch_json_path(data_dir, sha256, tier, row["pages"], row["done_at"])
+        fpath = parse_batch_json_path(data_dir, sha256, tier, row["page_range"], row["done_at"])
         if not os.path.isfile(fpath):
             continue
         try:
             with open(fpath, encoding="utf-8") as f:
-                data = _json.load(f)
+                data = json.load(f)
             for raw in data.get("pages", []):
                 page = PageInfo.from_dict(raw)
-                pages_by_idx[page.page_idx] = page
+                pages_by_page_idx[page.page_idx] = page
         except Exception:
             pass
-    return [pages_by_idx[idx] for idx in sorted(pages_by_idx)]
+    return [pages_by_page_idx[page_idx] for page_idx in sorted(pages_by_page_idx)]
 
 
-def _done_response(sha256: str, tier: Tier, pages: str) -> ParseResponse:
+def _done_response(sha256: str, tier: Tier, page_range: str) -> ParseResponse:
     return ParseResponse(
         sha256=sha256,
         tier=tier,
-        pages=pages,
+        page_range=page_range,
         status=PARSE_STATUS_DONE,
         cache_hit=True,
         wait_parse_ids=[],
@@ -1063,7 +1116,7 @@ def _text_response(sha256: str) -> ParseResponse:
     return ParseResponse(
         sha256=sha256,
         tier="flash",
-        pages="1",
+        page_range="1",
         status=PARSE_STATUS_DONE,
         cache_hit=False,
         wait_parse_ids=[],
@@ -1073,11 +1126,11 @@ def _text_response(sha256: str) -> ParseResponse:
     )
 
 
-def _failed_response(tier: Tier, pages: str, tip: str) -> ParseResponse:
+def _failed_response(tier: Tier, page_range: str, tip: str) -> ParseResponse:
     return ParseResponse(
         sha256="",
         tier=tier,
-        pages=pages,
+        page_range=page_range,
         status=PARSE_STATUS_FAILED,
         cache_hit=False,
         wait_parse_ids=[],
@@ -1095,7 +1148,7 @@ def _parse_record_response(row: ParseRow) -> dict:
         "id": row["id"],
         "sha256": row["sha256"],
         "tier": row["tier"],
-        "pages": row["pages"],
+        "page_range": row["page_range"],
         "status": row["status"],
         "done_at": row.get("done_at"),
         "created_at": row.get("created_at"),
@@ -1104,22 +1157,39 @@ def _parse_record_response(row: ParseRow) -> dict:
     }
 
 
-def _parse_coverage(request_pages: str, rows: list[ParseRow]) -> dict:
-    requested = parse_range_set(request_pages)
-    done_pages: set[int] = set()
-    active_pages: set[int] = set()
+def _remap_api_result_pages_to_page_range(result: ParseResult, page_range: str) -> None:
+    """Restore API-backed partial parse pages to original document page indices."""
+    if not result.pages:
+        return
+    requested_page_numbers = sorted(parse_page_range_set(page_range))
+    actual_page_numbers = [page.page_idx + 1 for page in result.pages]
+    if actual_page_numbers == requested_page_numbers:
+        return
+    if len(requested_page_numbers) != len(result.pages):
+        raise ParseFailure(
+            "parse_page_remap_failed",
+            f"Parse result page count does not match requested page_range: requested={page_range}, returned={actual_page_numbers}",
+        )
+    for page, page_no in zip(result.pages, requested_page_numbers, strict=True):
+        page.page_idx = page_no - 1
+
+
+def _parse_coverage(request_page_range: str, rows: list[ParseRow]) -> dict:
+    requested_page_numbers = parse_page_range_set(request_page_range)
+    done_page_numbers: set[int] = set()
+    active_page_numbers: set[int] = set()
     for row in rows:
-        row_pages = parse_range_set(row["pages"]) & requested
+        row_page_numbers = parse_page_range_set(row["page_range"]) & requested_page_numbers
         if row["status"] == PARSE_STATUS_DONE:
-            done_pages |= row_pages
+            done_page_numbers |= row_page_numbers
         elif row["status"] in (PARSE_STATUS_PENDING, PARSE_STATUS_PARSING):
-            active_pages |= row_pages
-    active_pages -= done_pages
-    missing_pages = requested - done_pages - active_pages
+            active_page_numbers |= row_page_numbers
+    active_page_numbers -= done_page_numbers
+    missing_page_numbers = requested_page_numbers - done_page_numbers - active_page_numbers
     return {
-        "done_pages": _pages_set_to_str(done_pages),
-        "active_pages": _pages_set_to_str(active_pages),
-        "missing_pages": _pages_set_to_str(missing_pages),
+        "done_page_range": _page_numbers_to_range_str(done_page_numbers),
+        "active_page_range": _page_numbers_to_range_str(active_page_numbers),
+        "missing_page_range": _page_numbers_to_range_str(missing_page_numbers),
     }
 
 
@@ -1136,9 +1206,9 @@ def _file_info(row: FileRow | None) -> FileInfo | None:
     return FileInfo.model_validate(row) if row is not None else None
 
 
-def _safe_filename(s: str, done_at: int = 0) -> str:
-    """Convert a pages range string + done_at to a filename."""
-    return f"{s}_{done_at}" if done_at else s
+def _safe_filename(page_range: str, done_at: int) -> str:
+    """Convert a page_range string + done_at to a filename."""
+    return f"{page_range}_{done_at}.json" if done_at else page_range
 
 
 def _file_type_from_ext(ext: str) -> str:

@@ -18,12 +18,19 @@ from ..types import FILE_STATUS_ACTIVE, WATCH_STATUS_ACTIVE, WATCH_STATUS_UNREAC
 
 class WatchLoop:
     def __init__(
-        self, db: DatabaseManager, config_svc: ConfigService, parse_svc: ParseService, scan_svc: ScanService | None = None
+        self,
+        db: DatabaseManager,
+        config_svc: ConfigService,
+        parse_svc: ParseService,
+        *,
+        scan_interval_sec: int,
+        scan_svc: ScanService | None = None,
     ) -> None:
         self.db = db
         self.config_svc = config_svc
         self.parse_svc = parse_svc
         self.scan_svc = scan_svc
+        self.scan_interval_sec = scan_interval_sec
         self.running = False
         self._active_watchers: dict[int, asyncio.Task] = {}
 
@@ -49,7 +56,7 @@ class WatchLoop:
                     self._active_watchers[wid].cancel()
                     del self._active_watchers[wid]
 
-            await asyncio.sleep(30)
+            await asyncio.sleep(self.scan_interval_sec)
 
     async def _initial_scan(self, path: str, watch_id: int) -> None:
         """Verify known files, then walk directory tree to discover current files."""

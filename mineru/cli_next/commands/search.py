@@ -1,4 +1,4 @@
-"""mineru search / find / info commands."""
+"""mineru search / find commands."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import typer
 
 from ...doclib.client import DoclibClient
 from ...types import Tier
-from ..output import format_info, format_search_results, print_error
+from ..output import format_search_results, print_error
 
 
 def search_cmd(
@@ -39,23 +39,6 @@ def find_cmd(
         client = DoclibClient(timeout=10)
         result = client.find(query, ext=ext, limit=limit)
         format_search_results(result, json_mode=json_mode)
-    except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
-
-
-def info_cmd(
-    path: str = typer.Argument(..., help="File path"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
-) -> None:
-    """Show file/document details."""
-    from pathlib import Path
-
-    file_path = str(Path(path).resolve())
-    try:
-        client = DoclibClient(timeout=10)
-        result = client.get_file_info(file_path)
-        format_info(result, json_mode=json_mode)
     except Exception as exc:
         print_error(str(exc))
         raise typer.Exit(1) from None

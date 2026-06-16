@@ -81,7 +81,7 @@ class ParseResult:
 兼容要求:
 
 - 读取旧格式时，如果顶层只有 `pages`，仍应成功。
-- 读取 v1 API 的 `json` output 时，应接受顶层 `pages` 或直接 page list。
+- 读取 v1 API 的 `middle_json` output 时，应接受顶层 `pages` 或直接 page list。
 - 未识别字段应保留或忽略，但不能导致常规读取失败。
 
 ## Markdown 与 marker

@@ -42,7 +42,7 @@
 | 本地 api-server 安全 | 本地 api-server 默认监听 loopback；可通过 `--api-key` 设置固定 API Key，默认不设置。 |
 | P0 主链路 | P0 包含完整 watch、rules、search，不再把它们标为可选主链路。 |
 | 配置优先级 | CLI 参数 > 环境变量 > 文件配置 / SQLite 配置；启动前文件配置与 SQLite 配置不应定义同一配置项。 |
-| watch 默认 tier 配置名 | watch 自动解析默认 tier 使用 `watch_default_tier`，避免与主动 parse 默认选择策略混淆。 |
+| watch 默认 tier | watch 自动解析默认 tier 暂不配置化，固定使用 `flash`。 |
 | doclib API 与 SDK | doclib API 和 SDK 是同一套方法/协议；项目内部除 doclib client 外不直接依赖 HTTP，外部客户端未来可以使用 HTTP API。 |
 | `mineru-kit vlm-server` | 纳入当前 CLI 文档第一阶段。 |
 | `mineru-kit parse` 与 doclib | `mineru-kit parse` 不允许复用 `mineru` 的本地 doclib 缓存；kit 是纯工具，不感知 doclib。 |
@@ -50,9 +50,9 @@
 | `mineru-kit` 参数稳定性 | 暂不划分 `stable` / `experimental` 等稳定性等级，先保持简单。 |
 | parsing-rules 默认 tier | parsing-rules 允许不指定 tier；执行时必须解析为实体 tier，并只记录实际 tier；默认选择不能解析为 `flash`。 |
 | Telemetry P0 | P0 必须设计 telemetry；是否作为公开 `docs/telemetry.md` 不强制。 |
-| `mineru parse` 默认页码范围 | 分页文档默认读取 `1~5,-5~-1`。 |
+| `mineru parse` 默认页码范围 | 分页文档默认读取 `1~10`。 |
 | 非分页文档增量读取 | `mineru parse` 正式支持 `--offset`，用于非分页长文档继续读取。 |
-| `search/find/info` JSON 输出 | `search` 输出文件名、文件大小、页数和 snippet；`find` 输出文件名、文件大小、页数；`info` 输出文件大小、页数、文档 metadata 摘要、各 tier 已解析页和 active parse 摘要。 |
+| `search/find/show file` JSON 输出 | `search` 输出文件名、文件大小、页数和 snippet；`find` 输出文件名、文件大小、页数；`show file` 输出文件大小、页数、文档 metadata 摘要、各 tier 已解析页和 active parse 摘要。 |
 
 ## 3. Blocker
 

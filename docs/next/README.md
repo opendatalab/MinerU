@@ -23,11 +23,12 @@
 8. [Unified API](api.md): 理解云端和自部署 API 的统一模型。
 9. [SDK 设计](sdk.md): 理解 Tool SDK 与 Product SDK 的分层。
 10. [Middle JSON](middle-json.md): 理解跨 backend 的中间结构统一方向。
-11. [错误码体系](errors.md): 理解错误响应和本地错误分类。
-12. [配置体系](config.md): 收敛本地、远端和解析参数的配置规则。
-13. [Telemetry 设计](telemetry.md): 理解匿名使用统计、稳定性指标和粗粒度环境画像。
-14. [开放问题清单](open-questions.md): 查看仍未定稿、需要进一步决策的问题。
-15. [设计决策记录](decisions/README.md): 查看已定稿的关键决策。
+11. [页码命名约定](page-naming.md): 统一 `page_range`、`pages`、`page_idx`、`page_no` 和 `page_count`。
+12. [错误码体系](errors.md): 理解错误响应和本地错误分类。
+13. [配置体系](config.md): 收敛本地、远端和解析参数的配置规则。
+14. [Telemetry 设计](telemetry.md): 理解匿名使用统计、稳定性指标和粗粒度环境画像。
+15. [开放问题清单](open-questions.md): 查看仍未定稿、需要进一步决策的问题。
+16. [设计决策记录](decisions/README.md): 查看已定稿的关键决策。
 
 ## 文档地图
 
@@ -43,6 +44,7 @@
 | CLI | [cli.md](cli.md) | `../../NEXT-CLI.md` | CLI 用户、核心开发 |
 | SDK | [sdk.md](sdk.md)、[sdk/](sdk/README.md) | `../../NEXT-SDK.md` | SDK 使用者、核心开发 |
 | Middle JSON | [middle-json.md](middle-json.md)、[middle-json/](middle-json/README.md) | `../../NEXT-JSON.md` | backend 开发、内容输出开发、Agent 能力开发 |
+| 页码命名 | [page-naming.md](page-naming.md) | 用户讨论 / 代码约定 | 核心开发、编程 Agent、SDK/API/CLI 设计参与者 |
 | 错误码 | [errors.md](errors.md) | `../../NEXT-ERROR.md` | API/CLI/SDK 开发 |
 | 配置 | [config.md](config.md) | `../../NEXT-CFG.md` | CLI、服务端、SDK 开发 |
 | Telemetry | [telemetry.md](telemetry.md) | 用户讨论 / `../../NEXT-ROADMAP.md` | 产品、核心开发、数据分析、合规参与者 |

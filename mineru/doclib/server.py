@@ -6,6 +6,7 @@ import asyncio
 import os
 import signal
 import time
+from dataclasses import dataclass
 from typing import Any, cast
 
 from fastapi import APIRouter, FastAPI, Request
@@ -13,10 +14,13 @@ from fastapi.responses import JSONResponse
 
 from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
 from ..render import render_markdown
-from ..types import TIERS, Tier
+from ..render.markdown import blocks_to_markdown
+from ..render.office.output import blocks_to_markdown as office_blocks_to_markdown
+from ..types import TIERS, PageInfo, Tier
 from .background.parse_server_health import get_health
 from .base import AsyncDoclibInterface
 from .core.db import DatabaseManager
+from .locators import block_char_ref, block_ref, page_ref, parse_content_cursor
 from .rows import (
     ContentSearchResultRow,
     DocRow,
@@ -33,8 +37,11 @@ from .rows import (
     WatchStatsFileRow,
     WatchTargetRow,
 )
-from .services.parse_svc import filter_pages_by_user_range, load_pages_from_done_batches, parse_range_set
+from .services.parse_svc import filter_pages_by_user_range, load_pages_from_done_batches, parse_page_range_set
 from .types import (
+    FILE_STATUS_ACTIVE,
+    FILE_STATUS_DELETED,
+    FILE_STATUS_UNREACHABLE,
     PARSE_STATUS_DONE,
     PARSE_STATUS_FAILED,
     PARSE_STATUS_PARSING,
@@ -42,9 +49,6 @@ from .types import (
     PARSE_STATUS_SUPERSEDED,
     RULE_TYPE_EXCLUDE,
     RULE_TYPE_PARSING_RULE,
-    FILE_STATUS_ACTIVE,
-    FILE_STATUS_DELETED,
-    FILE_STATUS_UNREACHABLE,
     CleanupDeletedRequest,
     CleanupDeletedResponse,
     CleanupOrphansRequest,
@@ -56,6 +60,9 @@ from .types import (
     ConfigSetResponse,
     ConfigUnsetResponse,
     ConfigValueResponse,
+    ContentNextRequest,
+    ContentRange,
+    ContentRequestScope,
     DocContentExportRequest,
     DocContentExportResponse,
     DocContentResponse,
@@ -67,7 +74,7 @@ from .types import (
     ExcludeRuleRequest,
     FileInfo,
     FileInfoResponse,
-    ListFilesResponse,
+    FileStatus,
     FindResponse,
     FindResult,
     ForgetPathRequest,
@@ -75,6 +82,7 @@ from .types import (
     InvalidateRequest,
     InvalidateResponse,
     ListDocsResponse,
+    ListFilesResponse,
     ListParsesResponse,
     LocalParseServerStatus,
     ParseCoverage,
@@ -82,10 +90,10 @@ from .types import (
     ParseRequest,
     ParseResponse,
     ParseServerStatus,
+    ParseStatus,
     ParsingRuleInfo,
     ParsingRuleListResponse,
     ParsingRuleRequest,
-    RecentScanInfo,
     RemoteParseServerStatus,
     RemoveExcludeRuleResponse,
     RemoveParsingRuleResponse,
@@ -94,7 +102,6 @@ from .types import (
     ScanKind,
     ScanListResponse,
     ScanRequest,
-    FileStatus,
     ScanStatus,
     SearchResponse,
     SearchResult,
@@ -107,6 +114,16 @@ from .types import (
     WatchStats,
 )
 from .utils.route_utils import get_route_info, has_route_info, route
+
+
+@dataclass(frozen=True)
+class _RenderedContent:
+    content: str
+    content_ranges: list[ContentRange]
+    truncated: bool
+    last_page_no: int
+    next_page_no: int | None = None
+    cut_inside_page: bool = False
 
 
 class DoclibServer(AsyncDoclibInterface):
@@ -144,9 +161,7 @@ class DoclibServer(AsyncDoclibInterface):
 
     @route("GET", "/server/status", tags=("server",))
     async def get_server_status(self) -> ServerStatusResponse:
-        files_total = await self.state.db.fetchone(
-            "SELECT COUNT(*) as cnt FROM files WHERE status=?", (FILE_STATUS_ACTIVE,)
-        )
+        files_total = await self.state.db.fetchone("SELECT COUNT(*) as cnt FROM files WHERE status=?", (FILE_STATUS_ACTIVE,))
         docs_total = await self.state.db.fetchone("SELECT COUNT(*) as cnt FROM docs")
         ingest_q = await self.state.db.fetchone(
             "SELECT COUNT(*) as cnt FROM files WHERE sha256 IS NULL AND status=? AND error_code IS NULL",
@@ -189,7 +204,7 @@ class DoclibServer(AsyncDoclibInterface):
         result = await self.state.parse_svc.request_parse(
             request.path,
             tier=request.tier,
-            pages=request.pages,
+            page_range=request.page_range,
             force=request.force,
             remote=request.remote,
         )
@@ -202,21 +217,29 @@ class DoclibServer(AsyncDoclibInterface):
         ids: list[int] | None = None,
         sha256: str | None = None,
         tier: Tier | None = None,
-        status: str | None = None,
-        pages: str | None = None,
+        status: ParseStatus | None = None,
+        page_range: str | None = None,
         include_superseded: bool = False,
         limit: int = 50,
+        offset: int = 0,
     ) -> ListParsesResponse:
-        rows = await self._select_parse_rows(
+        rows, total, limit, offset = await self._select_parse_rows(
             ids=ids,
             sha256=sha256,
             tier=tier,
             status=status,
             include_superseded=include_superseded,
             limit=limit,
+            offset=offset,
         )
-        coverage = _parse_coverage(pages, rows) if sha256 and tier and pages else None
-        return ListParsesResponse(parses=[_parse_info(row, coverage=coverage) for row in rows], coverage=coverage)
+        coverage = _parse_coverage(page_range, rows) if sha256 and tier and page_range else None
+        return ListParsesResponse(
+            parses=[_parse_info(row, coverage=coverage) for row in rows],
+            coverage=coverage,
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
 
     @route("GET", "/parses/{parse_id}", tags=("parse",))
     async def get_parse(self, parse_id: int) -> ParseInfo:
@@ -261,9 +284,19 @@ class DoclibServer(AsyncDoclibInterface):
         status: ScanStatus | None = None,
         kind: ScanKind | None = None,
         watch_id: int | None = None,
+        offset: int = 0,
     ) -> ScanListResponse:
-        scans = await self.state.scan_svc.list_scans(limit=limit, status=status, kind=kind, watch_id=watch_id)
-        return ScanListResponse(scans=scans)
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        total = await self.state.scan_svc.count_scans(status=status, kind=kind, watch_id=watch_id)
+        scans = await self.state.scan_svc.list_scans(
+            limit=limit,
+            status=status,
+            kind=kind,
+            watch_id=watch_id,
+            offset=offset,
+        )
+        return ScanListResponse(scans=scans, total=total, limit=limit, offset=offset)
 
     @route("GET", "/scans/{scan_id}", tags=("scan",))
     async def get_scan(self, scan_id: int) -> ScanInfo:
@@ -306,41 +339,38 @@ class DoclibServer(AsyncDoclibInterface):
     async def list_docs(
         self,
         *,
-        path: str | None = None,
         file_type: str | None = None,
         limit: int = 200,
+        offset: int = 0,
     ) -> ListDocsResponse:
         limit = max(1, min(limit, 200))
+        offset = max(0, offset)
         clauses: list[str] = []
         params: list[Any] = []
         if file_type:
             clauses.append("d.file_type=?")
             params.append(file_type.lstrip(".").lower())
-        if path:
-            await self.state.parse_svc.ensure_ingested(path)
-            clauses.extend(["f.path=?", "f.status=?"])
-            params.extend([path, FILE_STATUS_ACTIVE])
-            rows = await self.state.db.fetchall(
-                f"SELECT d.* FROM docs d JOIN files f ON f.sha256=d.sha256 WHERE {' AND '.join(clauses)} "
-                "ORDER BY d.updated_at DESC LIMIT ?",
-                (*params, limit),
-            )
-        else:
-            if clauses:
-                clauses.append(
-                    "EXISTS (SELECT 1 FROM files f WHERE f.sha256=d.sha256 AND f.status=?)"
-                )
-                params.append(FILE_STATUS_ACTIVE)
-            else:
-                clauses.append(
-                    "EXISTS (SELECT 1 FROM files f WHERE f.sha256=d.sha256 AND f.status=?)"
-                )
-                params.append(FILE_STATUS_ACTIVE)
-            rows = await self.state.db.fetchall(
-                f"SELECT d.* FROM docs d WHERE {' AND '.join(clauses)} ORDER BY d.updated_at DESC LIMIT ?",
-                (*params, limit),
-            )
-        return ListDocsResponse(docs=[_doc_info(row) for row in rows])
+        clauses.append("EXISTS (SELECT 1 FROM files f WHERE f.sha256=d.sha256 AND f.status=?)")
+        params.append(FILE_STATUS_ACTIVE)
+        where = " AND ".join(clauses)
+        total_row = await self.state.db.fetchone(f"SELECT COUNT(*) AS cnt FROM docs d WHERE {where}", tuple(params))
+        rows = await self.state.db.fetchall(
+            f"SELECT d.* FROM docs d WHERE {where} ORDER BY d.updated_at DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        )
+        total = total_row["cnt"] if total_row else 0
+        return ListDocsResponse(docs=[_doc_info(row) for row in rows], total=total, limit=limit, offset=offset)
+
+    @route("GET", "/docs/by-path", tags=("docs",))
+    async def get_doc_by_path(self, path: str) -> DocInfo:
+        await self.state.parse_svc.ensure_ingested(path)
+        row = await self.state.db.fetchone(
+            "SELECT d.* FROM docs d JOIN files f ON f.sha256=d.sha256 WHERE f.path=? AND f.status=?",
+            (path, FILE_STATUS_ACTIVE),
+        )
+        if row is None:
+            raise NotFoundError("doc_not_found", f"Document for file {path} not found.", "path")
+        return _doc_info(row)
 
     @route("GET", "/docs/{sha256}", tags=("docs",))
     async def get_doc(self, sha256: str, *, expand_files: bool = False) -> DocInfo:
@@ -356,19 +386,28 @@ class DoclibServer(AsyncDoclibInterface):
         sha256: str,
         *,
         tier: Tier,
-        pages: str | None = None,
+        page_range: str | None = None,
+        after: str | None = None,
+        limit: int = 30000,
         format: str = "markdown",
         no_marker: bool = False,
     ) -> DocContentResponse:
-        content = await self._render_doc_content(sha256, tier=tier, pages=pages, format=format, no_marker=no_marker)
-        return DocContentResponse(sha256=sha256, tier=tier, content=content)
+        return await self._render_doc_content_response(
+            sha256,
+            tier=tier,
+            page_range=page_range,
+            after=after,
+            limit=limit,
+            format=format,
+            no_marker=no_marker,
+        )
 
     @route("POST", "/docs/{sha256}/exports", tags=("docs",))
     async def export_doc_content(self, sha256: str, request: DocContentExportRequest) -> DocContentExportResponse:
         content = await self._render_doc_content(
             sha256,
             tier=request.tier,
-            pages=request.pages,
+            page_range=request.page_range,
             format=request.format,
             no_marker=request.no_marker,
         )
@@ -406,12 +445,10 @@ class DoclibServer(AsyncDoclibInterface):
         results, total = await self.state.search_svc.search_filenames(query=query, ext=ext, limit=limit)
         return FindResponse(results=[_find_result(row) for row in results], total=total, query=query)
 
-    @route("GET", "/info", tags=("info",))
-    async def get_file_info(self, path: str) -> FileInfoResponse:
+    @route("GET", "/files/by-path", tags=("files",))
+    async def get_file_by_path(self, path: str) -> FileInfoResponse:
         await self.state.parse_svc.ensure_ingested(path)
-        file_row = await self.state.db.fetchone(
-            "SELECT * FROM files WHERE path=? AND status=?", (path, FILE_STATUS_ACTIVE)
-        )
+        file_row = await self.state.db.fetchone("SELECT * FROM files WHERE path=? AND status=?", (path, FILE_STATUS_ACTIVE))
         if file_row is None:
             raise NotFoundError("file_not_found", f"File {path} not found.", "path")
         sha256 = file_row["sha256"]
@@ -505,7 +542,7 @@ class DoclibServer(AsyncDoclibInterface):
             RULE_TYPE_PARSING_RULE,
             request.pattern,
             tier=request.tier,
-            pages=request.pages,
+            page_range=request.page_range,
             remote=request.remote,
             priority=request.priority,
         )
@@ -546,11 +583,13 @@ class DoclibServer(AsyncDoclibInterface):
         ids: list[int] | None,
         sha256: str | None,
         tier: Tier | None,
-        status: str | None,
+        status: ParseStatus | None,
         include_superseded: bool,
         limit: int,
-    ) -> list[ParseRow]:
+        offset: int,
+    ) -> tuple[list[ParseRow], int, int, int]:
         limit = max(1, min(limit, 200))
+        offset = max(0, offset)
         clauses: list[str] = []
         params: list[object] = []
         if ids:
@@ -559,7 +598,8 @@ class DoclibServer(AsyncDoclibInterface):
                 list[ParseRow], await self.state.db.fetchall(f"SELECT * FROM parses WHERE id IN ({placeholders})", tuple(ids))
             )
             by_id = {row["id"]: row for row in rows}
-            return [by_id[parse_id] for parse_id in ids if parse_id in by_id]
+            ordered = [by_id[parse_id] for parse_id in ids if parse_id in by_id]
+            return ordered[offset : offset + limit], len(ordered), limit, offset
         if sha256:
             clauses.append("sha256=?")
             params.append(sha256)
@@ -567,10 +607,8 @@ class DoclibServer(AsyncDoclibInterface):
             clauses.append("tier=?")
             params.append(tier)
         if status:
-            statuses = [part.strip() for part in status.split(",") if part.strip()]
-            placeholders = ",".join("?" * len(statuses))
-            clauses.append(f"status IN ({placeholders})")
-            params.extend(statuses)
+            clauses.append("status=?")
+            params.append(status)
         elif not include_superseded:
             clauses.append("status!=?")
             params.append(PARSE_STATUS_SUPERSEDED)
@@ -578,15 +616,21 @@ class DoclibServer(AsyncDoclibInterface):
         sql = "SELECT * FROM parses"
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
-        sql += " ORDER BY created_at DESC LIMIT ?"
-        return cast(list[ParseRow], await self.state.db.fetchall(sql, (*params, limit)))
+        count_sql = "SELECT COUNT(*) AS cnt FROM parses"
+        if clauses:
+            count_sql += " WHERE " + " AND ".join(clauses)
+        total_row = await self.state.db.fetchone(count_sql, tuple(params))
+        sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        rows = cast(list[ParseRow], await self.state.db.fetchall(sql, (*params, limit, offset)))
+        total = total_row["cnt"] if total_row else 0
+        return rows, total, limit, offset
 
     async def _render_doc_content(
         self,
         sha256: str,
         *,
         tier: Tier,
-        pages: str | None,
+        page_range: str | None,
         format: str,
         no_marker: bool,
     ) -> str:
@@ -594,15 +638,86 @@ class DoclibServer(AsyncDoclibInterface):
             raise InvalidRequestError("invalid_request", "Only markdown is currently implemented.", "format")
         data_dir = getattr(self.state, "data_dir", os.path.expanduser("~/MinerU"))
         rows = await self.state.db.fetchall(
-            "SELECT pages, done_at FROM parses WHERE sha256=? AND tier=? AND status=? ORDER BY done_at DESC",
+            "SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=? AND status=? ORDER BY done_at DESC",
             (sha256, tier, PARSE_STATUS_DONE),
         )
         loaded_pages = load_pages_from_done_batches(data_dir, sha256, tier, cast(list[ParseBatchRow], rows))
-        if pages:
-            loaded_pages = filter_pages_by_user_range(loaded_pages, pages)
+        if page_range:
+            loaded_pages = filter_pages_by_user_range(loaded_pages, page_range)
         if not loaded_pages:
-            raise NotFoundError("not_cached", "Requested parsed content is not cached.", "pages")
+            raise NotFoundError("not_cached", "Requested parsed content is not cached.", "page_range")
         return render_markdown(loaded_pages, add_markers=not no_marker)
+
+    async def _render_doc_content_response(
+        self,
+        sha256: str,
+        *,
+        tier: Tier,
+        page_range: str | None,
+        after: str | None,
+        limit: int,
+        format: str,
+        no_marker: bool,
+    ) -> DocContentResponse:
+        if format != "markdown":
+            raise InvalidRequestError("invalid_request", "Only markdown is currently implemented.", "format")
+        limit = max(1, limit)
+        doc = cast(
+            DocRow | None,
+            await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,)),
+        )
+        if doc is None:
+            raise NotFoundError("doc_not_found", f"Document {sha256} not found.", "sha256")
+
+        normalized_page_range = _normalize_content_page_range(page_range, after, doc)
+        after_cursor = parse_content_cursor(after) if after else None
+        if after_cursor and after_cursor.short_id != doc["short_id"]:
+            raise InvalidRequestError("invalid_request", "after cursor does not belong to this document.", "after")
+        if after_cursor and after_cursor.tier != tier:
+            raise InvalidRequestError("invalid_request", "after cursor tier does not match request tier.", "after")
+        if after_cursor and normalized_page_range and after_cursor.page_no not in parse_page_range_set(normalized_page_range):
+            raise InvalidRequestError("invalid_request", "after cursor is outside requested page_range.", "after")
+
+        data_dir = getattr(self.state, "data_dir", os.path.expanduser("~/MinerU"))
+        rows = await self.state.db.fetchall(
+            "SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=? AND status=? ORDER BY done_at DESC",
+            (sha256, tier, PARSE_STATUS_DONE),
+        )
+        loaded_pages = load_pages_from_done_batches(data_dir, sha256, tier, cast(list[ParseBatchRow], rows))
+        if normalized_page_range:
+            loaded_pages = filter_pages_by_user_range(loaded_pages, normalized_page_range)
+        if not loaded_pages:
+            raise NotFoundError("not_cached", "Requested parsed content is not cached.", "page_range")
+
+        rendered = _render_progressive_markdown(
+            loaded_pages,
+            short_id=doc["short_id"],
+            tier=tier,
+            after=after_cursor,
+            limit=limit,
+            add_markers=not no_marker,
+        )
+        if not rendered.content_ranges:
+            raise NotFoundError("not_cached", "Requested parsed content is not cached after cursor.", "after")
+
+        next_request = _next_content_request(
+            rendered=rendered,
+            request_page_range=normalized_page_range,
+            after=after,
+            page_count=doc["page_count"],
+            paginated=_is_paginated_doc(doc),
+        )
+        return DocContentResponse(
+            sha256=sha256,
+            short_id=doc["short_id"],
+            tier=tier,
+            format="markdown",
+            content=rendered.content,
+            request_scope=ContentRequestScope(page_range=normalized_page_range, after=after, limit=limit),
+            content_ranges=rendered.content_ranges,
+            truncated=rendered.truncated,
+            next_request=next_request,
+        )
 
     async def _sha256_for_path(self, path: str) -> str | None:
         row = cast(
@@ -665,6 +780,289 @@ def _parse_server_status() -> ParseServerStatus:
             supported_tiers=health.remote_supported_tiers,
         ),
     )
+
+
+def _is_paginated_doc(doc: DocRow) -> bool:
+    page_count = doc.get("page_count")
+    return page_count is not None and page_count > 1
+
+
+def _normalize_content_page_range(page_range: str | None, after: str | None, doc: DocRow) -> str | None:
+    page_count = doc.get("page_count") or 1
+    if _is_paginated_doc(doc):
+        if page_range and page_range.strip() == "all":
+            return f"1~{page_count}"
+        if page_range:
+            return _normalize_page_range(page_range, page_count)
+        if after:
+            cursor = parse_content_cursor(after)
+            end = min(page_count, cursor.page_no + 9)
+            return f"{cursor.page_no}~{end}" if cursor.page_no != end else str(cursor.page_no)
+        end = min(page_count, 10)
+        return f"1~{end}" if end > 1 else "1"
+    if page_range and page_range.strip() == "all":
+        return None
+    return _normalize_page_range(page_range, page_count) if page_range else None
+
+
+def _normalize_page_range(page_range: str, page_count: int) -> str:
+    return _page_numbers_to_range_str(parse_page_range_set(_expand_page_range(page_range, page_count)))
+
+
+def _expand_page_range(page_range: str, page_count: int) -> str:
+    if not page_range or page_range.strip() == "all":
+        return f"1~{page_count}"
+    result: list[str] = []
+    for part in page_range.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "~" in part:
+            raw_start, raw_end = part.split("~", 1)
+            start = int(raw_start.strip())
+            end = int(raw_end.strip())
+            if start < 0:
+                start = page_count + start + 1
+            if end < 0:
+                end = page_count + end + 1
+            result.append(f"{start}~{end}" if start != end else str(start))
+        else:
+            page_no = int(part)
+            if page_no < 0:
+                page_no = page_count + page_no + 1
+            result.append(str(page_no))
+    return ",".join(result)
+
+
+def _page_numbers_to_range_str(page_numbers: set[int]) -> str:
+    if not page_numbers:
+        return ""
+    ranges: list[str] = []
+    ordered = sorted(page_numbers)
+    start = ordered[0]
+    end = ordered[0]
+    for page_no in ordered[1:]:
+        if page_no == end + 1:
+            end = page_no
+            continue
+        ranges.append(f"{start}~{end}" if start != end else str(start))
+        start = page_no
+        end = page_no
+    ranges.append(f"{start}~{end}" if start != end else str(start))
+    return ",".join(ranges)
+
+
+def _render_progressive_markdown(
+    pages: list[PageInfo],
+    *,
+    short_id: str,
+    tier: Tier,
+    after: Any,
+    limit: int,
+    add_markers: bool,
+) -> _RenderedContent:
+    output: list[str] = []
+    ranges: list[ContentRange] = []
+    started = after is None
+    last_page_no = 0
+    next_page_no: int | None = None
+    cut_inside_page = False
+
+    for page in pages:
+        page_no = page.page_idx + 1
+        if after and page_no < after.page_no:
+            continue
+        page_blocks = _page_markdown_blocks(page)
+        page_output: list[str] = []
+        page_start_cursor = page_ref(short_id, tier, page_no)
+        page_end_cursor = page_ref(short_id, tier, page_no)
+        page_started = False
+
+        for block_index, block_text in page_blocks:
+            block_no = block_index + 1
+            if after and page_no == after.page_no:
+                if after.block_no is None:
+                    continue
+                if block_no < after.block_no:
+                    continue
+                if block_no == after.block_no and after.char_offset is None:
+                    continue
+            started = True
+            text = block_text
+            block_start_offset = 0
+            if after and page_no == after.page_no and after.block_no == block_no and after.char_offset is not None:
+                block_start_offset = after.char_offset
+                text = text[block_start_offset:]
+            if not text:
+                continue
+            block_start_cursor = (
+                block_char_ref(short_id, tier, page_no, block_no, block_start_offset)
+                if block_start_offset
+                else block_ref(short_id, tier, page_no, block_no)
+            )
+            if not page_started:
+                page_start_cursor = block_start_cursor if after and after.block_no is not None else page_start_cursor
+                page_started = True
+            candidate_page = [*page_output, text]
+            candidate_content = _join_markdown([*output, *candidate_page])
+            if len(candidate_content) <= limit:
+                page_output.append(text)
+                page_end_cursor = block_ref(short_id, tier, page_no, block_no)
+                continue
+
+            if page_output and not output:
+                cut_inside_page = True
+                break
+            if output:
+                next_page_no = page_no
+                return _RenderedContent(
+                    content=_join_markdown(output),
+                    content_ranges=_merge_content_ranges(ranges),
+                    truncated=True,
+                    last_page_no=last_page_no,
+                    next_page_no=next_page_no,
+                    cut_inside_page=False,
+                )
+
+            cut = _soft_cut(text, limit)
+            if cut <= 0:
+                cut = min(len(text), limit)
+            page_output.append(text[:cut])
+            end_offset = block_start_offset + cut
+            page_end_cursor = block_char_ref(short_id, tier, page_no, block_no, end_offset)
+            cut_inside_page = True
+            break
+
+        if not started or not page_output:
+            continue
+        if add_markers:
+            page_output.insert(0, f"<!-- page {page_no} -->")
+        output.extend(page_output)
+        last_page_no = page_no
+        ranges.append(ContentRange(page_range=str(page_no), start=page_start_cursor, end=page_end_cursor))
+        if cut_inside_page:
+            next_page_no = page_no
+            return _RenderedContent(
+                content=_join_markdown(output),
+                content_ranges=_merge_content_ranges(ranges),
+                truncated=True,
+                last_page_no=last_page_no,
+                next_page_no=next_page_no,
+                cut_inside_page=True,
+            )
+        # Keep whole pages as the normal truncation boundary for paginated docs.
+        if len(_join_markdown(output)) >= limit:
+            next_page_no = page_no + 1
+            return _RenderedContent(
+                content=_join_markdown(output),
+                content_ranges=_merge_content_ranges(ranges),
+                truncated=next_page_no <= (pages[-1].page_idx + 1),
+                last_page_no=last_page_no,
+                next_page_no=next_page_no,
+                cut_inside_page=False,
+            )
+
+    return _RenderedContent(
+        content=_join_markdown(output),
+        content_ranges=_merge_content_ranges(ranges),
+        truncated=False,
+        last_page_no=last_page_no,
+        next_page_no=None,
+        cut_inside_page=False,
+    )
+
+
+def _page_markdown_blocks(page: PageInfo) -> list[tuple[int, str]]:
+    backend = page._backend
+    if backend == "office":
+        rendered = office_blocks_to_markdown(page.para_blocks, img_bucket_path="", no_rich_content=False)
+    else:
+        rendered = blocks_to_markdown(page.para_blocks, img_bucket_path="")
+    return [(index, text) for index, text in enumerate(rendered) if text.strip()]
+
+
+def _join_markdown(parts: list[str]) -> str:
+    return "\n\n".join(part for part in parts if part)
+
+
+def _soft_cut(text: str, limit: int) -> int:
+    if len(text) <= limit:
+        return len(text)
+    window = text[:limit]
+    for pattern in ("\n\n", "\n", "。", ". ", " "):
+        pos = window.rfind(pattern)
+        if pos > max(0, limit // 2):
+            return pos + len(pattern)
+    return limit
+
+
+def _merge_content_ranges(ranges: list[ContentRange]) -> list[ContentRange]:
+    if not ranges:
+        return []
+    merged: list[ContentRange] = []
+    current = ranges[0]
+    for item in ranges[1:]:
+        if current.page_range and item.page_range:
+            current_page_numbers = parse_page_range_set(current.page_range)
+            item_page_numbers = parse_page_range_set(item.page_range)
+            if max(current_page_numbers) + 1 == min(item_page_numbers):
+                current = ContentRange(
+                    page_range=_page_numbers_to_range_str(current_page_numbers | item_page_numbers),
+                    start=current.start,
+                    end=item.end,
+                )
+                continue
+        merged.append(current)
+        current = item
+    merged.append(current)
+    return merged
+
+
+def _next_content_request(
+    *,
+    rendered: _RenderedContent,
+    request_page_range: str | None,
+    after: str | None,
+    page_count: int | None,
+    paginated: bool,
+) -> ContentNextRequest | None:
+    if not rendered.content_ranges:
+        return None
+    if not paginated:
+        if rendered.truncated:
+            return ContentNextRequest(after=rendered.content_ranges[-1].end)
+        return None
+
+    total_page_count = page_count or rendered.last_page_no
+    if rendered.truncated:
+        if rendered.cut_inside_page:
+            start = rendered.next_page_no or rendered.last_page_no
+            end = _last_requested_page(request_page_range) or start
+            return ContentNextRequest(page_range=_range_str(start, end), after=rendered.content_ranges[-1].end)
+        start = rendered.next_page_no or (rendered.last_page_no + 1)
+        end = _last_requested_page(request_page_range) or min(total_page_count, start + 9)
+        if start <= end:
+            return ContentNextRequest(page_range=_range_str(start, end))
+        if after:
+            return ContentNextRequest(page_range=request_page_range, after=rendered.content_ranges[-1].end)
+        return None
+
+    start = rendered.last_page_no + 1
+    if start > total_page_count:
+        return None
+    end = min(total_page_count, start + 9)
+    return ContentNextRequest(page_range=_range_str(start, end))
+
+
+def _last_requested_page(page_range: str | None) -> int | None:
+    if not page_range:
+        return None
+    page_numbers = parse_page_range_set(page_range)
+    return max(page_numbers) if page_numbers else None
+
+
+def _range_str(start: int, end: int) -> str:
+    return f"{start}~{end}" if start != end else str(start)
 
 
 def _tail_log(data_dir: str, lines: int = 100) -> list[str]:
@@ -745,18 +1143,18 @@ async def _error_summary(db: DatabaseManager) -> ErrorSummary:
     return ErrorSummary(file_errors=file_errors, doc_errors=doc_errors, parse_errors=parse_errors)
 
 
-async def _recent_scans(db: DatabaseManager, limit: int = 5) -> list[RecentScanInfo]:
+async def _recent_scans(db: DatabaseManager, limit: int = 5) -> list[ScanInfo]:
     rows = cast(
         list[RecentScanRow],
         await db.fetchall(
             "SELECT id, path, kind, source, watch_id, status, files_seen, files_refreshed, files_new, files_changed, "
-            "files_deleted, files_unreachable, files_error, files_unsupported, files_excluded, error_code, "
+            "files_deleted, files_unreachable, files_error, files_unsupported, files_excluded, error_code, error_msg, "
             "started_at, finished_at, created_at, updated_at "
             "FROM scans ORDER BY created_at DESC, id DESC LIMIT ?",
             (limit,),
         ),
     )
-    return [RecentScanInfo.model_validate(row) for row in rows]
+    return [ScanInfo.model_validate(row) for row in rows]
 
 
 async def _error_buckets(db: DatabaseManager, table: str) -> list[ErrorBucket]:
@@ -831,37 +1229,20 @@ def _find_result(row: FilenameSearchResultRow) -> FindResult:
     return FindResult.model_validate(row)
 
 
-def _parse_coverage(request_pages: str, rows: list[ParseRow]) -> ParseCoverage:
-    requested = parse_range_set(request_pages)
-    done_pages: set[int] = set()
-    active_pages: set[int] = set()
+def _parse_coverage(request_page_range: str, rows: list[ParseRow]) -> ParseCoverage:
+    requested_page_numbers = parse_page_range_set(request_page_range)
+    done_page_numbers: set[int] = set()
+    active_page_numbers: set[int] = set()
     for row in rows:
-        row_pages = parse_range_set(row["pages"]) & requested
+        row_page_numbers = parse_page_range_set(row["page_range"]) & requested_page_numbers
         if row["status"] == PARSE_STATUS_DONE:
-            done_pages |= row_pages
+            done_page_numbers |= row_page_numbers
         elif row["status"] in {PARSE_STATUS_PENDING, PARSE_STATUS_PARSING}:
-            active_pages |= row_pages
-    active_pages -= done_pages
-    missing_pages = requested - done_pages - active_pages
+            active_page_numbers |= row_page_numbers
+    active_page_numbers -= done_page_numbers
+    missing_page_numbers = requested_page_numbers - done_page_numbers - active_page_numbers
     return ParseCoverage(
-        done_pages=_pages_set_to_str(done_pages),
-        active_pages=_pages_set_to_str(active_pages),
-        missing_pages=_pages_set_to_str(missing_pages),
+        done_page_range=_page_numbers_to_range_str(done_page_numbers),
+        active_page_range=_page_numbers_to_range_str(active_page_numbers),
+        missing_page_range=_page_numbers_to_range_str(missing_page_numbers),
     )
-
-
-def _pages_set_to_str(pages: set[int]) -> str:
-    if not pages:
-        return ""
-    sorted_pages = sorted(pages)
-    ranges: list[str] = []
-    start = sorted_pages[0]
-    end = start
-    for page in sorted_pages[1:]:
-        if page == end + 1:
-            end = page
-        else:
-            ranges.append(f"{start}~{end}" if start != end else str(start))
-            start = end = page
-    ranges.append(f"{start}~{end}" if start != end else str(start))
-    return ",".join(ranges)
