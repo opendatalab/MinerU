@@ -14,7 +14,12 @@ jobs:
     steps:
       - run: |
           echo 'The triggering workflow failed'
-          sleep 600
+          # 指数退避：第 1 次 30 秒，第 2 次 60 秒，第 3 次 120 秒
+          case "${{ github.event.workflow_run.run_attempt }}" in
+            1) sleep 30 ;;
+            2) sleep 60 ;;
+            *) sleep 120 ;;
+          esac
           curl -L \
           -X POST \
           -H "Accept: application/vnd.github+json" \

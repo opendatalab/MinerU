@@ -2,7 +2,7 @@
 
 import io
 
-import requests
+import httpx
 
 from .base import IOReader, IOWriter
 
@@ -18,7 +18,7 @@ class HttpReader(IOReader):
         Returns:
             bytes: the content of the file
         """
-        return requests.get(url).content
+        return httpx.get(url).content
 
     def read_at(self, path: str, offset: int = 0, limit: int = -1) -> bytes:
         """Not Implemented."""
@@ -34,5 +34,5 @@ class HttpWriter(IOWriter):
             data (bytes): the data want to write
         """
         files = {'file': io.BytesIO(data)}
-        response = requests.post(url, files=files)
+        response = httpx.post(url, files=files)
         assert 300 > response.status_code and response.status_code > 199

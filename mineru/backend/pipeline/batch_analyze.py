@@ -1,7 +1,4 @@
 # Copyright (c) Opendatalab. All rights reserved.
-import base64
-import html
-import re
 from collections import defaultdict
 
 import cv2
@@ -27,6 +24,19 @@ from ...utils.ocr_utils import (
     update_det_boxes,
 )
 from ...utils.pdf_image_tools import get_crop_np_img
+from ...utils.table_inline_utils import (
+    bbox_intersection,
+    bbox_intersection_area,
+    bbox_to_quad,
+    bbox_to_relative_bbox,
+    encode_table_inline_image,
+    extract_table_inline_objects,
+    get_virtual_image_bbox,
+    is_point_in_bbox,
+    normalize_table_ocr_rec_text,
+    sort_table_ocr_result,
+    table_supports_inline_objects,
+)
 from .model_init import (
     AtomModelSingleton,
     run_layout_inference,
@@ -39,14 +49,6 @@ LAYOUT_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 8
 TABLE_Wired_Wireless_CLS_BATCH_SIZE = 16
-TABLE_OCR_REC_SINGLE_CHAR_REPLACEMENTS = {
-    "香": "否",
-    "哦樂": "哦",
-}
-TABLE_OCR_REC_REGEX_REPLACEMENTS = (
-    # 仅规范化完整的“单个数字 + 號”，避免影响“10號”“第6號”等普通文本。
-    (re.compile(r"^([0-9])號$"), r"\1"),
-)
 
 
 class BatchAnalyze:
@@ -109,84 +111,6 @@ class BatchAnalyze:
         layout_res[:] = [item for item in layout_res if keep_item(item)]
 
     @staticmethod
-    def _bbox_center(bbox: list[float]) -> tuple[float, float]:
-        return (float(bbox[0] + bbox[2]) / 2.0, float(bbox[1] + bbox[3]) / 2.0)
-
-    @staticmethod
-    def _is_point_in_bbox(point: tuple[float, float], bbox: list[float]) -> bool:
-        x, y = point
-        return bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]
-
-    @staticmethod
-    def _bbox_intersection(bbox1: list[float], bbox2: list[float]) -> list[float] | None:
-        x0 = max(float(bbox1[0]), float(bbox2[0]))
-        y0 = max(float(bbox1[1]), float(bbox2[1]))
-        x1 = min(float(bbox1[2]), float(bbox2[2]))
-        y1 = min(float(bbox1[3]), float(bbox2[3]))
-        if x1 <= x0 or y1 <= y0:
-            return None
-        return [x0, y0, x1, y1]
-
-    @classmethod
-    def _bbox_intersection_area(cls, bbox1: list[float], bbox2: list[float]) -> float:
-        overlap_bbox = cls._bbox_intersection(bbox1, bbox2)
-        if overlap_bbox is None:
-            return 0.0
-        return float(overlap_bbox[2] - overlap_bbox[0]) * float(overlap_bbox[3] - overlap_bbox[1])
-
-    @staticmethod
-    def _bbox_to_relative_bbox(bbox: list[float], base_bbox: list[float]) -> list[float]:
-        return [
-            float(bbox[0]) - float(base_bbox[0]),
-            float(bbox[1]) - float(base_bbox[1]),
-            float(bbox[2]) - float(base_bbox[0]),
-            float(bbox[3]) - float(base_bbox[1]),
-        ]
-
-    @staticmethod
-    def _bbox_to_quad(bbox: list[float]) -> np.ndarray:
-        x0, y0, x1, y1 = bbox
-        return np.asarray([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], dtype=np.float32)
-
-    @staticmethod
-    def _encode_table_inline_image(np_img: np.ndarray, bbox: list[float]) -> str:
-        image_h, image_w = np_img.shape[:2]
-        image_bbox = normalize_to_int_bbox(bbox, image_size=(image_h, image_w))
-        if image_bbox is None:
-            return ""
-
-        x0, y0, x1, y1 = image_bbox
-        if x1 <= x0 or y1 <= y0:
-            return ""
-
-        crop_rgb = np_img[y0:y1, x0:x1]
-        if crop_rgb.size == 0:
-            return ""
-
-        crop_bgr = cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2BGR)
-        success, encoded = cv2.imencode(".jpg", crop_bgr)
-        if not success:
-            return ""
-
-        b64_str = base64.b64encode(encoded.tobytes()).decode("ascii")
-        return f"data:image/jpg;base64,{b64_str}"
-
-    @staticmethod
-    def _get_virtual_image_bbox(bbox: list[float], box_size: float = 10.0) -> list[float]:
-        center_x, center_y = BatchAnalyze._bbox_center(bbox)
-        half_size = box_size / 2.0
-        return [
-            center_x - half_size,
-            center_y - half_size,
-            center_x + half_size,
-            center_y + half_size,
-        ]
-
-    @staticmethod
-    def _table_supports_inline_objects(table_res_dict: dict) -> bool:
-        return str(table_res_dict.get("rotate_label", "0")) == "0"
-
-    @staticmethod
     def _apply_table_rotate_label(table_res_dict: dict, rotate_label: str) -> None:
         """根据方向预测结果写回标签，并同步旋转无线和有线表格图片。"""
         rotate_label = str(rotate_label or "0")
@@ -207,133 +131,6 @@ class BatchAnalyze:
             np.asarray(table_res_dict["wired_table_img"]),
             rotate_code,
         )
-
-    @staticmethod
-    def _sort_table_ocr_result(ocr_result: list[list]) -> None:
-        if not ocr_result:
-            return
-
-        sorted_result = sorted(
-            ocr_result,
-            key=lambda item: (float(np.asarray(item[0])[0][1]), float(np.asarray(item[0])[0][0])),
-        )
-
-        for i in range(len(sorted_result) - 1):
-            for j in range(i, -1, -1):
-                cur_box = np.asarray(sorted_result[j][0], dtype=np.float32)
-                next_box = np.asarray(sorted_result[j + 1][0], dtype=np.float32)
-                if (
-                    abs(float(next_box[0][1]) - float(cur_box[0][1])) < 10
-                    and float(next_box[0][0]) < float(cur_box[0][0])
-                ):
-                    sorted_result[j], sorted_result[j + 1] = sorted_result[j + 1], sorted_result[j]
-                else:
-                    break
-
-        ocr_result[:] = sorted_result
-
-    @staticmethod
-    def _normalize_table_ocr_rec_text(text):
-        """规范化表格 OCR rec 的已知误识别，避免后续表格模型消费错误文本。"""
-        if not isinstance(text, str):
-            return text
-        if text in TABLE_OCR_REC_SINGLE_CHAR_REPLACEMENTS:
-            return TABLE_OCR_REC_SINGLE_CHAR_REPLACEMENTS[text]
-        for pattern, replacement in TABLE_OCR_REC_REGEX_REPLACEMENTS:
-            match = pattern.fullmatch(text)
-            if match:
-                return match.expand(replacement)
-        return text
-
-    @classmethod
-    def _extract_table_inline_objects(
-        cls,
-        layout_res: list[dict],
-        np_img: np.ndarray,
-        formula_enable: bool,
-    ) -> dict[int, list[dict]]:
-        image_h, image_w = np_img.shape[:2]
-        image_size = (image_h, image_w)
-
-        tables = []
-        for res in layout_res:
-            if res.get("label") != "table":
-                continue
-            table_bbox = normalize_to_int_bbox(res.get("bbox"), image_size=image_size)
-            if table_bbox is None:
-                continue
-            tables.append((res, table_bbox))
-
-        if not tables:
-            return {}
-
-        table_inline_objects = {id(table_res): [] for table_res, _ in tables}
-        remove_ids = set()
-        candidate_labels = {"image"}
-        if formula_enable:
-            candidate_labels.update({"inline_formula", "display_formula"})
-
-        for layout_item in layout_res:
-            label = layout_item.get("label")
-            if label not in candidate_labels:
-                continue
-
-            item_bbox = normalize_to_int_bbox(layout_item.get("bbox"), image_size=image_size)
-            if item_bbox is None:
-                continue
-
-            item_center = cls._bbox_center(item_bbox)
-            matched_tables = []
-            for table_res, table_bbox in tables:
-                if not cls._is_point_in_bbox(item_center, table_bbox):
-                    continue
-                overlap_area = cls._bbox_intersection_area(item_bbox, table_bbox)
-                matched_tables.append((overlap_area, table_res, table_bbox))
-
-            if not matched_tables:
-                continue
-
-            matched_tables.sort(key=lambda item: item[0], reverse=True)
-            _, table_res, table_bbox = matched_tables[0]
-            overlap_bbox = cls._bbox_intersection(item_bbox, table_bbox)
-            if overlap_bbox is None:
-                continue
-
-            rel_overlap_bbox = cls._bbox_to_relative_bbox(overlap_bbox, table_bbox)
-            score = float(layout_item.get("score", 1.0))
-
-            if label == "image":
-                image_src = cls._encode_table_inline_image(np_img, item_bbox)
-                if not image_src:
-                    continue
-                content = f'<img src="{image_src}"/>'
-                token_bbox = cls._get_virtual_image_bbox(rel_overlap_bbox)
-                kind = "image"
-            else:
-                latex = layout_item.get("latex", "")
-                if not latex:
-                    continue
-                content = f"<eq>{html.escape(latex)}</eq>"
-                token_bbox = rel_overlap_bbox
-                kind = "formula"
-
-            table_inline_objects[id(table_res)].append(
-                {
-                    "kind": kind,
-                    "page_bbox": item_bbox,
-                    "table_rel_mask_bbox": rel_overlap_bbox,
-                    "table_token_bbox": token_bbox,
-                    "content": content,
-                    "score": score,
-                }
-            )
-            remove_ids.add(id(layout_item))
-
-        if remove_ids:
-            layout_res[:] = [item for item in layout_res if id(item) not in remove_ids]
-
-        return table_inline_objects
-
 
     def __call__(self, images_with_extra_info: list) -> list:
         if len(images_with_extra_info) == 0:
@@ -359,7 +156,7 @@ class BatchAnalyze:
             batch_size=min(8, self.batch_ratio * LAYOUT_BASE_BATCH_SIZE),
         )
         # 清理显存
-        clean_vram(self.model.device, vram_threshold=8)
+        clean_vram(self.model.device, batch_ratio=self.batch_ratio)
 
         if self.formula_enable:
             images_mfd_res = []
@@ -387,7 +184,7 @@ class BatchAnalyze:
                     formula_res["latex"] = formula_with_latex.get("latex", "")
 
             # 清理显存
-            clean_vram(self.model.device, vram_threshold=8)
+            clean_vram(self.model.device, batch_ratio=self.batch_ratio)
 
         else:
             for layout_res in images_layout_res:
@@ -401,7 +198,7 @@ class BatchAnalyze:
             layout_res = images_layout_res[index]
             np_img = np_images[index]
             table_inline_objects = (
-                self._extract_table_inline_objects(
+                extract_table_inline_objects(
                     layout_res,
                     np_img,
                     formula_enable=self.formula_enable,
@@ -487,7 +284,7 @@ class BatchAnalyze:
                     f"Table classification failed: {e}, using default model"
                 )
 
-            # OCR det 过程，顺序执行
+            # OCR det 过程：先批量收集所有表格检测图像，再统一批处理
             rec_img_lang_group = defaultdict(list)
             det_ocr_engine = atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.OCR,
@@ -495,13 +292,14 @@ class BatchAnalyze:
                 det_db_unclip_ratio=1.6,
                 enable_merge_det_boxes=False,
             )
-            for index, table_res_dict in enumerate(
-                    tqdm(table_res_list_all_page, desc="Table-ocr det")
-            ):
+
+            # 收集所有表格 det 输入
+            table_det_inputs = []
+            for index, table_res_dict in enumerate(table_res_list_all_page):
                 bgr_image = cv2.cvtColor(table_res_dict["table_img"], cv2.COLOR_RGB2BGR)
                 table_inline_objects = (
                     table_res_dict.get("table_inline_objects", [])
-                    if self._table_supports_inline_objects(table_res_dict)
+                    if table_supports_inline_objects(table_res_dict)
                     else []
                 )
                 inline_mask_boxes = [
@@ -518,24 +316,59 @@ class BatchAnalyze:
                     if inline_mask_boxes
                     else bgr_image
                 )
-                ocr_result = run_ocr_inference(
-                    det_ocr_engine.ocr, det_image, rec=False
-                )[0]
-                if ocr_result and formula_mask_boxes:
-                    ocr_result = update_det_boxes(ocr_result, formula_mask_boxes)
-                if ocr_result:
-                    ocr_result = sorted_boxes(ocr_result)
-                # 构造需要 OCR 识别的图片字典，包括cropped_img, dt_box, table_id，并按照语言进行分组
-                for dt_box in ocr_result:
-                    rec_img_lang_group[table_res_dict["lang"]].append(
-                        {
-                            "cropped_img": get_rotate_crop_image_for_text_rec(
-                                bgr_image, np.asarray(dt_box, dtype=np.float32)
-                            ),
-                            "dt_box": np.asarray(dt_box, dtype=np.float32),
-                            "table_id": index,
-                        }
-                    )
+                table_det_inputs.append(
+                    {
+                        "table_id": index,
+                        "bgr_image": bgr_image,
+                        "det_image": det_image,
+                        "formula_mask_boxes": formula_mask_boxes,
+                        "lang": table_res_dict["lang"],
+                    }
+                )
+
+            # 按分辨率分组并批量执行 OCR det
+            RESOLUTION_GROUP_STRIDE = 64
+            det_resolution_groups = defaultdict(list)
+            for item in table_det_inputs:
+                img = item["det_image"]
+                h, w = img.shape[:2]
+                target_h = ((h + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
+                target_w = ((w + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
+                det_resolution_groups[(target_h, target_w)].append(item)
+
+            det_batch_size = max(1, self.batch_ratio * OCR_DET_BASE_BATCH_SIZE)
+            for (target_h, target_w), group_items in tqdm(
+                det_resolution_groups.items(), desc="Table-ocr det"
+            ):
+                batch_images = []
+                for item in group_items:
+                    img = item["det_image"]
+                    h, w = img.shape[:2]
+                    padded_img = np.full((target_h, target_w, 3), 255, dtype=np.uint8)
+                    padded_img[:h, :w] = img
+                    batch_images.append(padded_img)
+
+                batch_results = run_ocr_inference(
+                    det_ocr_engine.ocr, batch_images, rec=False
+                )
+
+                for item, ocr_result in zip(group_items, batch_results):
+                    formula_mask_boxes = item["formula_mask_boxes"]
+                    bgr_image = item["bgr_image"]
+                    if ocr_result and formula_mask_boxes:
+                        ocr_result = update_det_boxes(ocr_result, formula_mask_boxes)
+                    if ocr_result:
+                        ocr_result = sorted_boxes(ocr_result)
+                    for dt_box in ocr_result or []:
+                        rec_img_lang_group[item["lang"]].append(
+                            {
+                                "cropped_img": get_rotate_crop_image_for_text_rec(
+                                    bgr_image, np.asarray(dt_box, dtype=np.float32)
+                                ),
+                                "dt_box": np.asarray(dt_box, dtype=np.float32),
+                                "table_id": item["table_id"],
+                            }
+                        )
 
             # OCR rec，按照语言分批处理
             for _lang, rec_img_list in rec_img_lang_group.items():
@@ -558,7 +391,7 @@ class BatchAnalyze:
                 )[0]
                 # 按照 table_id 将识别结果进行回填
                 for img_dict, ocr_res in zip(rec_img_list, ocr_res_list):
-                    ocr_text = self._normalize_table_ocr_rec_text(ocr_res[0])
+                    ocr_text = normalize_table_ocr_rec_text(ocr_res[0])
                     ocr_result_item = [img_dict["dt_box"], html.escape(ocr_text), ocr_res[1]]
                     if table_res_list_all_page[img_dict["table_id"]].get("ocr_result"):
                         table_res_list_all_page[img_dict["table_id"]]["ocr_result"].append(
@@ -571,7 +404,7 @@ class BatchAnalyze:
 
             # 先对所有表格使用无线表格模型，然后对分类为有线的表格使用有线表格模型
             for table_res_dict in table_res_list_all_page:
-                if not self._table_supports_inline_objects(table_res_dict):
+                if not table_supports_inline_objects(table_res_dict):
                     continue
 
                 table_inline_objects = table_res_dict.get("table_inline_objects", [])
@@ -582,13 +415,13 @@ class BatchAnalyze:
                 for inline_object in table_inline_objects:
                     table_ocr_result.append(
                         [
-                            self._bbox_to_quad(inline_object["table_token_bbox"]),
+                            bbox_to_quad(inline_object["table_token_bbox"]),
                             inline_object["content"],
                             inline_object["score"],
                         ]
                     )
 
-                self._sort_table_ocr_result(table_ocr_result)
+                sort_table_ocr_result(table_ocr_result)
 
             wireless_table_model = atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.WirelessTable,
@@ -648,9 +481,12 @@ class BatchAnalyze:
                     new_image, useful_list = crop_img(
                         res, ocr_res_list_dict['np_img'], crop_paste_x=50, crop_paste_y=50
                     )
-                    adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
-                        ocr_res_list_dict['single_page_mfdetrec_res'], useful_list
-                    )
+                    if ocr_res_list_dict['single_page_mfdetrec_res']:
+                        adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
+                            ocr_res_list_dict['single_page_mfdetrec_res'], useful_list
+                        )
+                    else:
+                        adjusted_mfdetrec_res = []
 
                     # BGR转换
                     bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
@@ -709,7 +545,7 @@ class BatchAnalyze:
                         img = crop_info[1]
                         h, w = img.shape[:2]
                         # 创建目标尺寸的白色背景
-                        padded_img = np.ones((target_h, target_w, 3), dtype=np.uint8) * 255
+                        padded_img = np.full((target_h, target_w, 3), 255, dtype=np.uint8)
                         padded_img[:h, :w] = img
                         batch_images.append(padded_img)
 
@@ -752,7 +588,7 @@ class BatchAnalyze:
                                 ocr_res_list_dict['layout_res'].extend(ocr_result_list)
 
             # 清理显存
-            clean_vram(self.model.device, vram_threshold=8)
+            clean_vram(self.model.device, batch_ratio=self.batch_ratio)
 
         else:
             # 原始单张处理模式
@@ -768,9 +604,12 @@ class BatchAnalyze:
                     new_image, useful_list = crop_img(
                         res, ocr_res_list_dict['np_img'], crop_paste_x=50, crop_paste_y=50
                     )
-                    adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
-                        ocr_res_list_dict['single_page_mfdetrec_res'], useful_list
-                    )
+                    if ocr_res_list_dict['single_page_mfdetrec_res']:
+                        adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
+                            ocr_res_list_dict['single_page_mfdetrec_res'], useful_list
+                        )
+                    else:
+                        adjusted_mfdetrec_res = []
                     # OCR-det
                     bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
                     det_image = self._get_masked_det_image(

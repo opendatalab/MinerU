@@ -205,13 +205,23 @@ def clean_memory(device='cuda'):
     gc.collect()
 
 
-def clean_vram(device, vram_threshold=8):
+def clean_vram(device, batch_ratio: int = 1):
+    """当显存紧张时清理显存。
+
+    阈值根据 batch_ratio 动态计算：batch 越大越保守，避免大 batch 场景 OOM。
+    当总显存 <= max(2, batch_ratio * 1.5) GB 时触发清理。
+    """
     total_memory = get_vram(device)
-    if total_memory and total_memory <= vram_threshold:
+    if not total_memory:
+        return
+
+    # 动态阈值：batch_ratio 越大，保留的安全余量越大
+    vram_threshold = max(2, int(batch_ratio * 1.5))
+    if total_memory <= vram_threshold:
         gc_start = time.time()
         clean_memory(device)
         gc_time = round(time.time() - gc_start, 2)
-        logger.debug(f"gc time: {gc_time}")
+        logger.debug(f"gc time: {gc_time}, dynamic threshold: {vram_threshold} GB")
 
 
 def get_vram(device) -> int:
