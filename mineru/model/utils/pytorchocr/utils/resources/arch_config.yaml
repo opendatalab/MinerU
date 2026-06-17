@@ -92,6 +92,27 @@ ch_PP-OCRv5_det_server_infer:
         k: 50
         mode: "large"
 
+ch_PP-OCRv6_small_det_infer:
+  model_type: det
+  algorithm: DB
+  Transform: null
+  Backbone:
+    name: PPLCNetV4
+    det: True
+    model_size: small
+  Neck:
+    name: RepLKFPN
+    out_channels: 96
+    dilated_kernel_size: 7
+    shortcut: True
+  Head:
+    name: DBHead
+    k: 50
+    mode: ppocrv6
+    fix_nan: True
+    aux_in_channels: 96
+    kernel_list: [3, 2, 2]
+
 ch_PP-OCRv4_det_server_infer:
   model_type: det
   algorithm: DB
@@ -234,6 +255,57 @@ ch_PP-OCRv5_rec_infer:
             fc_decay: 0.00001
       - NRTRHead:
           nrtr_dim: 384
+          max_text_length: 25
+
+ch_PP-OCRv6_small_rec_infer:
+  model_type: rec
+  algorithm: SVTR_LCNet
+  Transform:
+  Backbone:
+    name: PPLCNetV4
+    model_size: small
+  Head:
+    name: MultiHead
+    out_channels_list:
+      CTCLabelDecode: 18710
+    head_list:
+      - CTCHead:
+          Neck:
+            name: lightsvtr
+            dims: 120
+            depth: 2
+            mlp_ratio: 2.0
+            local_kernel: 7
+          Head:
+            fc_decay: 0.00001
+      - NRTRHead:
+          nrtr_dim: 384
+          max_text_length: 25
+
+ch_PP-OCRv6_medium_rec_infer:
+  model_type: rec
+  algorithm: SVTR_LCNet
+  Transform:
+  Backbone:
+    name: PPLCNetV4
+    model_size: medium
+  Head:
+    name: MultiHead
+    out_channels_list:
+      CTCLabelDecode: 18710
+    head_list:
+      - CTCHead:
+          Neck:
+            name: lightsvtr
+            dims: 192
+            depth: 2
+            mlp_ratio: 4.0
+            local_kernel: 7
+            use_guide: False
+          Head:
+            fc_decay: 0.00001
+      - NRTRHead:
+          nrtr_dim: 512
           max_text_length: 25
 
 ka_PP-OCRv3_rec_infer:

@@ -25,7 +25,7 @@ class DSConv(nn.Module):
         **kwargs
     ):
         super(DSConv, self).__init__()
-        if groups == None:
+        if groups is None:
             groups = in_channels
         self.if_act = if_act
         self.act = act
@@ -283,6 +283,136 @@ class RSEFPN(nn.Module):
 
         fuse = torch.cat([p5, p4, p3, p2], dim=1)
         return fuse
+
+
+class RepLKFPNSqueezeExcitationModule(nn.Module):
+    """PP-OCRv6 RepLKFPN 使用的轻量 SE 模块，命名对齐 safetensors。"""
+
+    def __init__(self, in_channels, reduction, activation="relu"):
+        """初始化通道压缩与恢复卷积。"""
+        super().__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(output_size=1)
+        self.conv1 = nn.Conv2d(in_channels, in_channels // reduction, kernel_size=1, stride=1, padding=0)
+        self.conv2 = nn.Conv2d(in_channels // reduction, in_channels, kernel_size=1, stride=1, padding=0)
+        if activation == "relu":
+            self.act_fn = nn.ReLU()
+        else:
+            raise ValueError(f"Unsupported RepLKFPN SE activation: {activation}")
+
+    def forward(self, hidden_states):
+        """计算 SE 权重并缩放输入特征。"""
+        residual = hidden_states
+        hidden_states = self.avg_pool(hidden_states)
+        hidden_states = self.conv2(self.act_fn(self.conv1(hidden_states)))
+        hidden_states = torch.clamp(0.2 * hidden_states + 0.5, min=0.0, max=1.0)
+        return residual * hidden_states
+
+
+class RepLKFPNDepthwiseSeparableConvLayer(nn.Module):
+    """RepLKFPN 的大核深度卷积 + point-wise 压缩分支。"""
+
+    def __init__(self, in_channels, out_channels, kernel_size, reduction):
+        """初始化 depthwise、pointwise 和 SE 子层。"""
+        super().__init__()
+        self.depthwise_convolution = nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=1,
+            padding=kernel_size // 2,
+            groups=in_channels,
+            bias=True,
+        )
+        self.squeeze_excitation_module = RepLKFPNSqueezeExcitationModule(out_channels // 4, reduction)
+        self.pointwise_convolution = nn.Conv2d(
+            in_channels=out_channels,
+            out_channels=out_channels // 4,
+            kernel_size=1,
+            bias=False,
+        )
+
+    def forward(self, hidden_states):
+        """执行大核 DW 卷积、PW 压缩和 SE 残差增强。"""
+        hidden_states = self.depthwise_convolution(hidden_states)
+        hidden_states = self.pointwise_convolution(hidden_states)
+        hidden_states = hidden_states + self.squeeze_excitation_module(hidden_states)
+        return hidden_states
+
+
+class RepLKFPNResidualSqueezeExcitationLayer(nn.Module):
+    """RepLKFPN 的输入投影层，属性名对齐 `insert_conv.*` 权重。"""
+
+    def __init__(self, in_channels, out_channels, kernel_size, reduction, shortcut=True):
+        """初始化输入投影和 SE 分支。"""
+        super().__init__()
+        self.in_conv = nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            padding=int(kernel_size // 2),
+            bias=False,
+        )
+        self.squeeze_excitation_block = RepLKFPNSqueezeExcitationModule(out_channels, reduction)
+        self.shortcut = shortcut
+
+    def forward(self, hidden_states):
+        """执行 1x1 投影并按配置叠加 SE 输出。"""
+        hidden_states = self.in_conv(hidden_states)
+        if self.shortcut:
+            return hidden_states + self.squeeze_excitation_block(hidden_states)
+        return self.squeeze_excitation_block(hidden_states)
+
+
+class RepLKFPN(nn.Module):
+    """PP-OCRv6 small det 使用的 RepLKFPN neck。"""
+
+    def __init__(self, in_channels, out_channels, shortcut=True, dilated_kernel_size=7, reduction=4, **kwargs):
+        """按四级 backbone 通道创建 v6 FPN 投影和大核融合层。"""
+        super().__init__()
+        self.out_channels = out_channels
+        self.interpolate_mode = kwargs.get("interpolate_mode", "nearest")
+        self.insert_conv = nn.ModuleList()
+        self.input_conv = nn.ModuleList()
+        for channels in in_channels:
+            self.insert_conv.append(
+                RepLKFPNResidualSqueezeExcitationLayer(
+                    in_channels=channels,
+                    out_channels=out_channels,
+                    kernel_size=1,
+                    reduction=reduction,
+                    shortcut=shortcut,
+                )
+            )
+            self.input_conv.append(
+                RepLKFPNDepthwiseSeparableConvLayer(
+                    in_channels=out_channels,
+                    out_channels=out_channels,
+                    kernel_size=dilated_kernel_size,
+                    reduction=reduction,
+                )
+            )
+
+    def forward(self, feature_maps):
+        """融合四级特征并返回 DBHead 需要的单张特征图。"""
+        fused = []
+        for conv, feature in zip(self.insert_conv, feature_maps):
+            fused.append(conv(feature))
+
+        for idx in range(2, -1, -1):
+            fused[idx] = fused[idx] + F.interpolate(
+                fused[idx + 1],
+                scale_factor=2,
+                mode=self.interpolate_mode,
+            )
+
+        features = [conv(feat) for conv, feat in zip(self.input_conv, fused)]
+        processed = []
+        for feat, scale in zip(features, [1, 2, 4, 8]):
+            if scale == 1:
+                processed.append(feat)
+            else:
+                processed.append(F.interpolate(feat, scale_factor=scale, mode=self.interpolate_mode))
+        return torch.cat(processed[::-1], dim=1)
 
 
 class LKPAN(nn.Module):

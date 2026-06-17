@@ -30,6 +30,7 @@ from mineru.utils.config_reader import (
     get_max_concurrent_requests as read_max_concurrent_requests,
 )
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
+from mineru.utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from mineru.utils.pdf_page_id import get_end_page_id
 from mineru.utils.pdfium_guard import (
     close_pdfium_document,
@@ -113,6 +114,18 @@ def normalize_effort_option(
     """将 CLI 输入的 hybrid effort 参数规范为当前公开名称。"""
     try:
         return validate_effort(value)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), ctx=ctx, param=param) from exc
+
+
+def normalize_ocr_lang_option(
+    ctx: click.Context,
+    param: click.Parameter,
+    value: str,
+) -> str:
+    """校验 CLI OCR 语言参数，并将兼容别名归一到实际模型语言。"""
+    try:
+        return validate_public_ocr_lang(value)
     except ValueError as exc:
         raise click.BadParameter(str(exc), ctx=ctx, param=param) from exc
 
@@ -1096,28 +1109,10 @@ async def run_orchestrated_cli(
     "-l",
     "--lang",
     "lang",
-    type=click.Choice(
-        [
-            "ch",
-            "ch_server",
-            "ch_lite",
-            "en",
-            "korean",
-            "japan",
-            "chinese_cht",
-            "ta",
-            "te",
-            "ka",
-            "th",
-            "el",
-            "latin",
-            "arabic",
-            "east_slavic",
-            "cyrillic",
-            "devanagari",
-        ]
-    ),
+    type=str,
     default="ch",
+    callback=normalize_ocr_lang_option,
+    metavar="[" + "|".join(PUBLIC_OCR_LANGUAGES) + "]",
     help="""
     Input the languages in the pdf (if known) to improve OCR accuracy.
     Without languages specified, 'ch' will be used by default.

@@ -49,6 +49,49 @@ class Head(nn.Module):
         return x
 
 
+class PPOCRV6DBConvBatchnormLayer(nn.Module):
+    """PP-OCRv6 DBHead 使用的 Conv-BN-Act 基础层，命名对齐 safetensors。"""
+
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride=1,
+        padding=1,
+        activation="relu",
+        bias=False,
+        convolution_transpose=False,
+    ):
+        """初始化普通卷积或反卷积、BN 和激活层。"""
+        super().__init__()
+        if convolution_transpose:
+            self.convolution = nn.ConvTranspose2d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+            )
+        else:
+            self.convolution = nn.Conv2d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=padding,
+                bias=bias,
+            )
+        self.norm = nn.BatchNorm2d(out_channels)
+        self.act_fn = nn.ReLU() if activation == "relu" else nn.Identity()
+
+    def forward(self, hidden_states):
+        """执行 DBHead v6 分支的卷积、BN 和激活。"""
+        hidden_states = self.convolution(hidden_states)
+        hidden_states = self.norm(hidden_states)
+        hidden_states = self.act_fn(hidden_states)
+        return hidden_states
+
+
 class DBHead(nn.Module):
     """
     Differentiable Binarization (DB) for text detection:
@@ -57,24 +100,51 @@ class DBHead(nn.Module):
         params(dict): super parameters for build DB network
     """
 
-    def __init__(self, in_channels, k=50, **kwargs):
+    def __init__(self, in_channels, k=50, mode=None, kernel_list=None, fix_nan=False, **kwargs):
+        """初始化 DBHead；v6 模式使用 safetensors 对齐的三层上采样 head。"""
         super(DBHead, self).__init__()
         self.k = k
-        binarize_name_list = [
-            'conv2d_56', 'batch_norm_47', 'conv2d_transpose_0', 'batch_norm_48',
-            'conv2d_transpose_1', 'binarize'
-        ]
-        thresh_name_list = [
-            'conv2d_57', 'batch_norm_49', 'conv2d_transpose_2', 'batch_norm_50',
-            'conv2d_transpose_3', 'thresh'
-        ]
-        self.binarize = Head(in_channels, **kwargs)# binarize_name_list)
-        self.thresh = Head(in_channels, **kwargs)#thresh_name_list)
+        self.mode = mode
+        self.fix_nan = fix_nan
+        if mode == "ppocrv6":
+            kernel_list = kernel_list or [3, 2, 2]
+            self.conv_down = PPOCRV6DBConvBatchnormLayer(
+                in_channels=in_channels,
+                out_channels=in_channels // 4,
+                kernel_size=kernel_list[0],
+                padding=int(kernel_list[0] // 2),
+            )
+            self.conv_up = PPOCRV6DBConvBatchnormLayer(
+                in_channels=in_channels // 4,
+                out_channels=in_channels // 4,
+                kernel_size=kernel_list[1],
+                stride=2,
+                convolution_transpose=True,
+            )
+            self.conv_final = nn.ConvTranspose2d(
+                in_channels=in_channels // 4,
+                out_channels=1,
+                kernel_size=kernel_list[2],
+                stride=2,
+            )
+            return
+        self.binarize = Head(in_channels, **kwargs)
+        self.thresh = Head(in_channels, **kwargs)
 
     def step_function(self, x, y):
+        """计算 DB 二值化近似阶跃函数。"""
         return torch.reciprocal(1 + torch.exp(-self.k * (x - y)))
 
     def forward(self, x):
+        """推理时返回统一的 `maps` 字段，兼容现有 OCR-det 后处理。"""
+        if self.mode == "ppocrv6":
+            shrink_maps = self.conv_down(x)
+            shrink_maps = self.conv_up(shrink_maps)
+            shrink_maps = self.conv_final(shrink_maps)
+            shrink_maps = torch.sigmoid(shrink_maps)
+            if self.fix_nan:
+                shrink_maps = torch.nan_to_num(shrink_maps)
+            return {'maps': shrink_maps}
         shrink_maps = self.binarize(x)
         return {'maps': shrink_maps}
 

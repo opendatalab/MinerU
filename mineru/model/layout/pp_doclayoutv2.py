@@ -1095,6 +1095,56 @@ class PPDocLayoutV2LayoutModel:
         box["cls_id"] = cls_id
 
     @staticmethod
+    def _set_header_footer_label(box: Dict, label: str) -> None:
+        """同步设置页眉/页脚相关标签及其类别编号。"""
+        label_cls_ids = {
+            "footer": 8,
+            "footer_image": 9,
+            "header": 12,
+            "header_image": 13,
+        }
+        if label not in label_cls_ids:
+            raise ValueError(f"Unsupported header/footer label: {label}")
+        box["label"] = label
+        box["cls_id"] = label_cls_ids[label]
+
+    @classmethod
+    def _reclassify_header_footer_by_page_half(
+        cls,
+        boxes: List[Dict],
+        image_size: Optional[Tuple[int, int]],
+    ) -> List[Dict]:
+        """按页面上下半区重新校正页眉/页脚锚点，避免跨半页误触发边界规则。"""
+        if image_size is None:
+            return boxes
+
+        page_height = float(image_size[0])
+        if page_height <= 0:
+            return boxes
+
+        page_middle = page_height * 0.5
+        upper_half_labels = {
+            "footer": "header",
+            "footer_image": "header_image",
+        }
+        lower_half_labels = {
+            "header": "footer",
+            "header_image": "footer_image",
+        }
+        for box in boxes:
+            bbox = box.get("bbox")
+            if not bbox or len(bbox) < 4:
+                continue
+            label = box.get("label")
+            y_mid = (float(bbox[1]) + float(bbox[3])) / 2
+            if y_mid < page_middle and label in upper_half_labels:
+                cls._set_header_footer_label(box, upper_half_labels[label])
+            elif y_mid >= page_middle and label in lower_half_labels:
+                cls._set_header_footer_label(box, lower_half_labels[label])
+
+        return boxes
+
+    @staticmethod
     def _union_bbox(box1: Sequence[float], box2: Sequence[float]) -> List[int]:
         x1_min, y1_min, x1_max, y1_max = [float(v) for v in box1]
         x2_min, y2_min, x2_max, y2_max = [float(v) for v in box2]
@@ -1232,6 +1282,10 @@ class PPDocLayoutV2LayoutModel:
         footer_labels = {"footer", "footer_image"}
         exempt_labels = {"aside_text", "footnote", "number"}
         ordered_boxes = sorted(boxes, key=lambda box: box["index"])
+        ordered_boxes = cls._reclassify_header_footer_by_page_half(
+            ordered_boxes,
+            image_size=image_size,
+        )
         boundary_anchor_ids = {
             id(box)
             for box in ordered_boxes
