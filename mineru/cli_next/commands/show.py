@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 
 from ...doclib.client import DoclibClient
+from ..json_errors import exit_with_error
 from ..output import format_info, print_error, print_json
 from .scan import _print_scan
 
@@ -22,8 +23,7 @@ def show_parse(
     try:
         result = _client().get_parse(parse_id)
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     if json_mode:
         print_json(result)
@@ -46,8 +46,7 @@ def show_scan(
     try:
         result = _client().get_scan(scan_id)
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     _print_scan(result, json_mode=json_mode)
 
@@ -62,8 +61,7 @@ def show_file(
     try:
         result = _client().get_file_by_path(file_path)
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     format_info(result, json_mode=json_mode)
 
@@ -77,8 +75,7 @@ def show_doc(
     try:
         result = _client().get_doc(sha256, expand_files=True)
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     if json_mode:
         print_json(result)

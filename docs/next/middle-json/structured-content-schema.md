@@ -159,7 +159,7 @@ p{page_idx}_i{item_idx}
 
 - `id` 在同一 Structured Content 文档内唯一。
 - `id` 不承诺跨不同解析版本稳定。
-- 需要跨解析稳定引用时，使用后续 `chunk_id` 或 locator 规则。
+- 需要跨解析稳定引用时，使用 page/block locator 规则。
 
 ### 4.2 `locator`
 
@@ -186,7 +186,7 @@ p{page_idx}_i{item_idx}
 
 - `locator` 不包含本地文件路径。
 - `block_index` 只有在可从 Middle JSON 稳定映射时才写入。
-- 后续可以增加 `chunk_id`，但第一版不强制。
+- 第一版不增加额外引用 ID，统一使用 locator。
 
 ### 4.3 `bbox`
 
@@ -603,7 +603,7 @@ P0 validator 应检查:
 
 这版 schema 仍需讨论:
 
-1. `chunk_id` 是否第一版必填。
+1. locator 是否第一版必填。
 2. `id` 是否需要跨同一文件、同一 tier、同一版本解析稳定。
 3. `source.filename` 是否默认写入。
 4. `parse.backend` 是否进入公开 Structured Content，还是只放在 API response metadata。

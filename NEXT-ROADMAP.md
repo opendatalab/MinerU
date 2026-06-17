@@ -160,7 +160,7 @@ Privacy First 收窄到两件事，分别处理：
 | 项目 | 验收指标 |
 |------|---------|
 | Skill 决策树 | eval 集 100 题 Agent 首选正确率 ≥85% |
-| 中间结构统一 | 三 backend 通过统一 schema validation；同输入 chunk_id 跨进程一致 |
+| 中间结构统一 | 三 backend 通过统一 schema validation；同输入 page/block locator 跨进程一致 |
 | 文档库 SHA256 缓存 | 二次 parse 相同输入 P95 响应 <100ms；缓存命中率 ≥60% |
 | Agent-native（4.2 七条）| 端到端 5 个 Agent 真实任务场景成功率 ≥80% |
 | 改进计划 | CLI / GUI 首次启动 Tier 1 opt-in 率 ≥40% |
@@ -212,14 +212,14 @@ Agent
 | 结构化 message contract | 所有 CLI 与 MCP 出口遵循统一结构化 schema，替代 free-text 文本输出，Agent 无需文本解析即可消费 |
 | 确定性错误码 | typed error code 替代 free-text 错误信息，每个错误自带修复建议（如 `E_OCR_REQUIRED` 提示加 `--ocr`），Agent 可基于错误码做分支处理与自动重试 |
 | token-budgeted 输出 | 解析支持指定 token 上限，自动按页边界截断并返回 continuation 引导，避免长文档撑爆 Agent context；内置 tokenizer 开箱即用 |
-| 可寻址引用 chunk ID | 每个 chunk 输出稳定 ID（含 backend / page / block），支持按 ID 反查，Agent 答案天然可 citation，用户可回溯原文 |
-| 区域/页面查询 | 解析阶段支持按页码与 chunk 类型过滤，只取所需内容，避免全文解析的 token 与时延浪费 |
+| 可寻址 page/block locator | 每个可引用 block 输出稳定 locator（含 tier / page / block），支持按 locator 反查，Agent 答案天然可 citation，用户可回溯原文 |
+| 区域/页面查询 | 解析阶段支持按页码与 block/content 类型过滤，只取所需内容，避免全文解析的 token 与时延浪费 |
 | Skill 决策树 | Skill 内嵌三类映射："环境检测 → 引导安装（uv install mineru）"、"用户场景 → 命令路由"、"错误码 → 修复动作"。支持普通用户零配置首次使用，降低 Agent 参数选择错误率，配 eval 集回归 |
 | SHA256 内容寻址缓存 | `mineru` 内置文档库提供 SHA256 去重缓存，Agent 相同输入二次调用毫秒级返回 |
 
 #### 依赖
 
-本节多数特性依赖 5.3 节中间结构统一的最小子集（chunk 稳定 ID + page + bbox + type）。
+本节多数特性依赖 5.3 节中间结构统一的最小子集（稳定 page/block locator + page + bbox + type）。
 
 不做的能力（chunking / embedding / chat / RAG / summary 等）见 1.2 节。
 

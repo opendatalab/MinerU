@@ -243,6 +243,6 @@ mineru config parsing-rules add "*/合同/*" --tier pro --remote
 
 parsing-rules 允许不指定 tier。执行时必须解析成实际实体 tier，并记录实际 tier；默认选择不能解析为 `flash`。
 
-## 未决问题
+## 已收敛规则
 
-watch 升级提示集中维护在 [开放问题清单](../open-questions.md)。
+P0 不做基于启发式的 watch 自动提示或自动排队升级。watch 默认使用 `flash`；后台自动升级只由用户显式配置的 parsing-rules 触发。

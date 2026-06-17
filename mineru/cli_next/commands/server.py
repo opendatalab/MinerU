@@ -10,6 +10,8 @@ import time
 import typer
 
 from ...config import config
+from ...doclib.types import ServerStatusResponse
+from ..json_errors import exit_with_error
 from ..output import format_server_status, print_error, print_info, print_success
 
 app = typer.Typer(help="Server lifecycle management", no_args_is_help=True)
@@ -17,6 +19,10 @@ app = typer.Typer(help="Server lifecycle management", no_args_is_help=True)
 
 def _socket_path() -> str:
     return config.doclib.uds.path
+
+
+def _server_log_path() -> str:
+    return os.path.expanduser(config.doclib.log.path)
 
 
 def _server_running() -> bool:
@@ -59,17 +65,31 @@ def start() -> None:
     except OSError:
         pass
 
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "mineru.doclib.app"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    log_path = _server_log_path()
+    log_dir = os.path.dirname(log_path)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
 
-    if not _wait_for_sock():
-        proc.kill()
-        print_error("Server failed to start within 15 seconds.")
-        raise typer.Exit(1)
+    try:
+        with open(log_path, "a", encoding="utf-8") as log_file:
+            log_file.write("\n--- mineru server start ---\n")
+            log_file.flush()
+            proc = subprocess.Popen(
+                [sys.executable, "-m", "mineru.doclib.app"],
+                stdout=log_file,
+                stderr=log_file,
+                start_new_session=True,
+            )
+
+            if not _wait_for_sock():
+                proc.kill()
+                print_error(f"Server failed to start within 15 seconds. See log: {log_path}")
+                raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        print_error(f"Server failed to start: {exc}. See log: {log_path}")
+        raise typer.Exit(1) from None
 
     print_success(f"Server started (PID {proc.pid}). Socket: {socket_path}")
 
@@ -111,6 +131,16 @@ def restart() -> None:
 def status(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
     """Show server status."""
     if not _server_running():
+        if json_mode:
+            format_server_status(
+                ServerStatusResponse(
+                    running=False,
+                    socket_path=_socket_path(),
+                    data_dir=os.path.expanduser(config.doclib.data_dir),
+                ),
+                json_mode=True,
+            )
+            return
         print_info("Server is not running.")
         return
 
@@ -121,4 +151,4 @@ def status(json_mode: bool = typer.Option(False, "--json", help="JSON output")) 
         data = c.get_server_status()
         format_server_status(data, json_mode=json_mode)
     except Exception as exc:
-        print_error(str(exc))
+        exit_with_error(exc, json_mode=json_mode)

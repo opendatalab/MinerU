@@ -7,6 +7,7 @@ import typer
 from ...doclib.client import DoclibClient
 from ...doclib.types import FileStatus, ParseStatus, ScanKind, ScanStatus
 from ...types import Tier
+from ..json_errors import exit_with_error
 from ..output import print_error, print_info, print_json
 
 app = typer.Typer(help="List doclib resources", no_args_is_help=True)
@@ -24,8 +25,7 @@ def list_parses(
     try:
         result = _client().list_parses(status=status, tier=tier, limit=limit, offset=offset)
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     if json_mode:
         print_json(result)
@@ -51,8 +51,7 @@ def list_scans(
     try:
         result = _client().list_scans(status=status, kind=kind, watch_id=watch_id, limit=limit, offset=offset)
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     if json_mode:
         print_json(result)
@@ -81,8 +80,7 @@ def list_files(
     try:
         result = _client().list_files(status=status, ext=ext, watch_id=watch_id, limit=limit, offset=offset)
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     if json_mode:
         print_json(result)
@@ -107,8 +105,7 @@ def list_docs(
     try:
         result = _client().list_docs(file_type=file_type, limit=limit, offset=offset)
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     if json_mode:
         print_json(result)

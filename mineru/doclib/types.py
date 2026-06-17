@@ -18,7 +18,7 @@ WatchStatus = Literal["active", "unreachable"]
 InvalidateTarget = Literal["parses"]
 ForgetMatchedAs = Literal["file", "directory", "none"]
 ConfigSource = Literal["default", "override"]
-ContentFormat = Literal["markdown"]
+ContentFormat = Literal["markdown", "image"]
 
 PARSE_STATUS_PENDING: ParseStatus = "pending"
 PARSE_STATUS_PARSING: ParseStatus = "parsing"
@@ -263,12 +263,15 @@ class DocContentResponse(DoclibModel):
     content_ranges: list["ContentRange"] = Field(default_factory=list)
     truncated: bool = False
     next_request: "ContentNextRequest | None" = None
+    asset: "ContentAsset | None" = None
 
 
 class ContentRequestScope(DoclibModel):
     page_range: str | None = None
     after: str | None = None
     limit: int = 30000
+    locator: str | None = None
+    context: int = 0
 
 
 class ContentRange(DoclibModel):
@@ -280,6 +283,15 @@ class ContentRange(DoclibModel):
 class ContentNextRequest(DoclibModel):
     page_range: str | None = None
     after: str | None = None
+    locator: str | None = None
+
+
+class ContentAsset(DoclibModel):
+    path: str
+    mime_type: str
+    size_bytes: int | None = None
+    width: int | None = None
+    height: int | None = None
 
 
 class DocContentExportRequest(DoclibModel):

@@ -10,6 +10,15 @@
 
 `mineru parse` 是 `mineru` 的主动文档解析入口。它面向“用户或 Agent 决定读取某个文档”的场景，因此默认应追求可阅读质量，而不是只做低成本索引。
 
+与 [mineru read](mineru-read.md) 的边界：
+
+```text
+parse(path) = ensure document is parsed, then read default content
+read(locator) = read existing parsed content by stable locator
+```
+
+`parse` 负责从文件 path 出发，把文档纳入 doclib 并返回第一段可读内容。后续继续阅读、按页读取、按 block 读取或导出 page/block 图像，应转到 `mineru read`。
+
 设计原则：
 
 - 隐私优先：不显式 `--remote` 就不上传文档。
@@ -40,7 +49,6 @@ mineru parse <file> [flags]
 |------|------|------|------|
 | `--tier` | `flash` / `standard` / `pro` | 不传 | 解析 tier；省略时使用默认选择策略；语义见 [解析 Tier](../tiers.md) |
 | `-p, --pages` | range | `1~10` | 分页文档的页码范围；`all` 表示全部页 |
-| `--offset` | integer | `0` | 非分页长文档的继续读取 offset |
 | `--language` | string | 自动 | 文档语言提示，逐步弱化为高级选项 |
 | `--force` | bool | false | 跳过 done 缓存；复用 active parse 或为未覆盖页创建新 parse；不删除或作废旧缓存 |
 
@@ -49,7 +57,8 @@ mineru parse <file> [flags]
 | Flag | 类型 | 默认 | 说明 |
 |------|------|------|------|
 | `-o, --output` | path | `-` | 输出路径；`-` 或省略表示 STDOUT |
-| `-f, --format` | markdown / text / middle-json / content-list / structured-content / html | markdown | 输出格式 |
+| `-f, --format` | markdown | markdown | 输出格式。当前仅支持 `markdown`。 |
+| `--json` | bool | false | 输出命令级 JSON；顶层固定为 `{ "parse": ..., "content": ... }` |
 | `--no-marker` | bool | false | 不输出结构 marker |
 
 ### 同步控制
@@ -85,25 +94,42 @@ mineru parse <file> [flags]
 
 分页文档默认读取范围固定为 `1~10`。这个默认值用于让 Agent 以线性、可预测的方式渐进阅读文档，避免默认读取尾页后在后续续读中重复返回相同页面。用户可以通过 `--pages all` 读取全文，或通过显式页码范围读取任意页段。
 
-PDF 使用物理页码：
+分页文档使用物理页码：
 
 ```text
 <!-- next pages available. Use: mineru parse report.pdf --pages 11~20 -->
 ```
 
-非分页文档可以使用虚拟页或字符 offset：
+非分页文档当前也使用 `--after` cursor 继续读取：
 
 ```text
-<!-- truncated at paragraph boundary (char ~30000 of ~150000). Next: mineru parse long.docx --offset 30000 -->
+<!-- next content available. Use: mineru parse long.docx --after doc:ab12cd3/tier:standard/page:1/block:12/char:520 -->
 ```
 
 marker 是 Agent 的控制协议，不应依赖自然语言猜测。
 
-非分页长文档正式支持 `--offset`。`--offset` 表示从指定字符或逻辑片段位置继续读取；具体 offset 单位和 marker 语法后续在 Agent marker 设计中定稿，但 CLI 参数本身进入正式设计。
+当用户后续已经拥有 locator 时，推荐直接使用 `mineru read <locator>`，而不是继续依赖 path + `--pages` / `--after`。
+
+非分页长文档当前正式使用 `--after` cursor 继续读取。`after` 的值来自服务端返回的结构化 `next_request.after`，CLI marker 只负责把这个值渲染为下一条命令。
 
 ## 7. STDOUT 与文件输出
 
 默认输出到 STDOUT，便于 Agent 直接消费。指定 `--output` 时写入文件。
+
+`--json` 时，`mineru parse` 的顶层返回固定为命令级 envelope：
+
+```json
+{
+  "parse": { "... parse summary ..." },
+  "content": { "... DocContentResponse ..." } | null
+}
+```
+
+规则如下：
+
+- 当解析结果已可读取时，`content` 为 `DocContentResponse`。
+- 当使用 `--no-wait` 或等待超时、解析尚未完成时，`content` 为 `null`。
+- 错误仍返回 [错误码体系](../errors.md) 定义的结构化错误 JSON。
 
 结构化或可机器消费格式应尽量保持稳定：
 

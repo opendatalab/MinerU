@@ -3,24 +3,31 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import re
 import os
 import signal
+import shutil
 import time
 from dataclasses import dataclass
+from io import BytesIO
+from pathlib import Path
 from typing import Any, cast
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
+from PIL import Image
 
 from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
 from ..render import render_markdown
 from ..render.markdown import blocks_to_markdown
 from ..render.office.output import blocks_to_markdown as office_blocks_to_markdown
-from ..types import TIERS, PageInfo, Tier
+from ..types import EMPTY_BBOX, TIERS, Block, PageInfo, Span, Tier
+from ..utils.pdf_document import PDFDocument
 from .background.parse_server_health import get_health
 from .base import AsyncDoclibInterface
 from .core.db import DatabaseManager
-from .locators import block_char_ref, block_ref, page_ref, parse_content_cursor
+from .locators import ContentCursor, block_char_ref, block_ref, page_ref, parse_content_cursor
 from .rows import (
     ContentSearchResultRow,
     DocRow,
@@ -60,6 +67,8 @@ from .types import (
     ConfigSetResponse,
     ConfigUnsetResponse,
     ConfigValueResponse,
+    ContentAsset,
+    ContentFormat,
     ContentNextRequest,
     ContentRange,
     ContentRequestScope,
@@ -124,6 +133,31 @@ class _RenderedContent:
     last_page_no: int
     next_page_no: int | None = None
     cut_inside_page: bool = False
+
+
+@dataclass(frozen=True)
+class _ReadPlan:
+    sha256: str
+    short_id: str
+    tier: Tier
+    page_range: str | None
+    after: str | None
+    locator: str | None
+    context: int
+    limit: int
+    format: ContentFormat
+    no_marker: bool
+    target: ContentCursor | None = None
+    next_mode: str = "parse"
+
+
+@dataclass(frozen=True)
+class _LocatorParts:
+    short_id: str
+    tier: Tier | None = None
+    page_no: int | None = None
+    block_no: int | None = None
+    char_offset: int | None = None
 
 
 class DoclibServer(AsyncDoclibInterface):
@@ -392,14 +426,121 @@ class DoclibServer(AsyncDoclibInterface):
         format: str = "markdown",
         no_marker: bool = False,
     ) -> DocContentResponse:
-        return await self._render_doc_content_response(
-            sha256,
+        return await self._execute_read_plan(
+            await self._build_read_plan_from_parse(
+                sha256,
+                tier=tier,
+                page_range=page_range,
+                after=after,
+                limit=limit,
+                format=format,
+                no_marker=no_marker,
+            )
+        )
+
+    @route("GET", "/content", tags=("docs",))
+    async def read_content(
+        self,
+        locator: str,
+        *,
+        context: int = 0,
+        limit: int = 30000,
+        format: ContentFormat = "markdown",
+        no_marker: bool = False,
+    ) -> DocContentResponse:
+        return await self._execute_read_plan(
+            await self._build_read_plan_from_locator(
+                locator,
+                context=context,
+                limit=limit,
+                format=format,
+                no_marker=no_marker,
+            )
+        )
+
+    async def _build_read_plan_from_parse(
+        self,
+        sha256: str,
+        *,
+        tier: Tier,
+        page_range: str | None,
+        after: str | None,
+        limit: int,
+        format: str,
+        no_marker: bool,
+    ) -> _ReadPlan:
+        if format != "markdown":
+            raise InvalidRequestError("invalid_request", "Only markdown is currently implemented for parse content.", "format")
+        limit = max(1, limit)
+        doc = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,)))
+        if doc is None:
+            raise NotFoundError("doc_not_found", f"Document {sha256} not found.", "sha256")
+
+        normalized_page_range = _normalize_content_page_range(page_range, after, doc)
+        after_cursor = parse_content_cursor(after) if after else None
+        if after_cursor:
+            _validate_cursor_for_doc(after_cursor, doc, tier, normalized_page_range)
+        return _ReadPlan(
+            sha256=sha256,
+            tier=tier,
+            short_id=doc["short_id"],
+            page_range=normalized_page_range,
+            after=after,
+            limit=limit,
+            format="markdown",
+            no_marker=no_marker,
+            locator=None,
+            context=0,
+            target=None,
+            next_mode="parse",
+        )
+
+    async def _build_read_plan_from_locator(
+        self,
+        locator: str,
+        *,
+        context: int,
+        limit: int,
+        format: ContentFormat,
+        no_marker: bool,
+    ) -> _ReadPlan:
+        limit = max(1, limit)
+        context = max(0, context)
+        cursor = _parse_doc_locator(locator)
+        doc = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE short_id=?", (cursor.short_id,)))
+        if doc is None:
+            raise NotFoundError("doc_not_found", f"Document {cursor.short_id} not found.", "locator")
+
+        tier = cursor.tier or await self._default_read_tier(doc["sha256"])
+        if tier is None:
+            raise NotFoundError("tier_not_cached", f"No parsed tier is cached for document {cursor.short_id}.", "locator")
+        if format == "image" and context:
+            raise InvalidRequestError("context_not_applicable", "context is not supported for image reads.", "context")
+        if cursor.page_no is None and context:
+            raise InvalidRequestError("context_not_applicable", "context requires a page, block, or char locator.", "context")
+
+        page_range = _locator_page_range(cursor, doc, context)
+        return _ReadPlan(
+            sha256=doc["sha256"],
+            short_id=doc["short_id"],
             tier=tier,
             page_range=page_range,
-            after=after,
+            after=_locator_after(cursor),
+            locator=_canonical_locator(doc["short_id"], tier, cursor),
+            context=context,
             limit=limit,
             format=format,
             no_marker=no_marker,
+            target=ContentCursor(
+                short_id=doc["short_id"],
+                tier=tier,
+                page_no=cursor.page_no or 1,
+                block_no=cursor.block_no,
+                char_offset=cursor.char_offset,
+            )
+            if cursor.page_no is not None
+            else None,
+            next_mode="read",
         )
 
     @route("POST", "/docs/{sha256}/exports", tags=("docs",))
@@ -648,75 +789,99 @@ class DoclibServer(AsyncDoclibInterface):
             raise NotFoundError("not_cached", "Requested parsed content is not cached.", "page_range")
         return render_markdown(loaded_pages, add_markers=not no_marker)
 
-    async def _render_doc_content_response(
-        self,
-        sha256: str,
-        *,
-        tier: Tier,
-        page_range: str | None,
-        after: str | None,
-        limit: int,
-        format: str,
-        no_marker: bool,
-    ) -> DocContentResponse:
-        if format != "markdown":
-            raise InvalidRequestError("invalid_request", "Only markdown is currently implemented.", "format")
-        limit = max(1, limit)
-        doc = cast(
-            DocRow | None,
-            await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,)),
-        )
-        if doc is None:
-            raise NotFoundError("doc_not_found", f"Document {sha256} not found.", "sha256")
-
-        normalized_page_range = _normalize_content_page_range(page_range, after, doc)
-        after_cursor = parse_content_cursor(after) if after else None
-        if after_cursor and after_cursor.short_id != doc["short_id"]:
-            raise InvalidRequestError("invalid_request", "after cursor does not belong to this document.", "after")
-        if after_cursor and after_cursor.tier != tier:
-            raise InvalidRequestError("invalid_request", "after cursor tier does not match request tier.", "after")
-        if after_cursor and normalized_page_range and after_cursor.page_no not in parse_page_range_set(normalized_page_range):
-            raise InvalidRequestError("invalid_request", "after cursor is outside requested page_range.", "after")
-
+    async def _execute_read_plan(self, plan: _ReadPlan) -> DocContentResponse:
         data_dir = getattr(self.state, "data_dir", os.path.expanduser("~/MinerU"))
         rows = await self.state.db.fetchall(
             "SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=? AND status=? ORDER BY done_at DESC",
-            (sha256, tier, PARSE_STATUS_DONE),
+            (plan.sha256, plan.tier, PARSE_STATUS_DONE),
         )
-        loaded_pages = load_pages_from_done_batches(data_dir, sha256, tier, cast(list[ParseBatchRow], rows))
-        if normalized_page_range:
-            loaded_pages = filter_pages_by_user_range(loaded_pages, normalized_page_range)
+        loaded_pages = load_pages_from_done_batches(data_dir, plan.sha256, plan.tier, cast(list[ParseBatchRow], rows))
+        if plan.page_range:
+            loaded_pages = filter_pages_by_user_range(loaded_pages, plan.page_range)
         if not loaded_pages:
             raise NotFoundError("not_cached", "Requested parsed content is not cached.", "page_range")
 
+        if plan.format == "image":
+            return await self._render_image_response(plan, loaded_pages)
+
+        pages_for_render = _select_context_pages(loaded_pages, plan.target, plan.context)
         rendered = _render_progressive_markdown(
-            loaded_pages,
-            short_id=doc["short_id"],
-            tier=tier,
-            after=after_cursor,
-            limit=limit,
-            add_markers=not no_marker,
+            pages_for_render,
+            short_id=plan.short_id,
+            tier=plan.tier,
+            after=parse_content_cursor(plan.after) if plan.after else None,
+            limit=plan.limit,
+            add_markers=not plan.no_marker,
+            target=plan.target,
+            context=plan.context,
         )
         if not rendered.content_ranges:
             raise NotFoundError("not_cached", "Requested parsed content is not cached after cursor.", "after")
 
-        next_request = _next_content_request(
-            rendered=rendered,
-            request_page_range=normalized_page_range,
-            after=after,
-            page_count=doc["page_count"],
-            paginated=_is_paginated_doc(doc),
+        doc = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (plan.sha256,)))
+        page_count = doc["page_count"] if doc else None
+        paginated = _is_paginated_doc(doc) if doc else True
+        next_request = (
+            _next_read_request(rendered, plan.short_id, plan.tier, page_count)
+            if plan.next_mode == "read"
+            else _next_content_request(
+                rendered=rendered,
+                request_page_range=plan.page_range,
+                after=plan.after,
+                page_count=page_count,
+                paginated=paginated,
+            )
         )
         return DocContentResponse(
-            sha256=sha256,
-            short_id=doc["short_id"],
-            tier=tier,
+            sha256=plan.sha256,
+            short_id=plan.short_id,
+            tier=plan.tier,
             format="markdown",
             content=rendered.content,
-            request_scope=ContentRequestScope(page_range=normalized_page_range, after=after, limit=limit),
+            request_scope=ContentRequestScope(
+                page_range=plan.page_range,
+                after=plan.after,
+                limit=plan.limit,
+                locator=plan.locator,
+                context=plan.context,
+            ),
             content_ranges=rendered.content_ranges,
             truncated=rendered.truncated,
             next_request=next_request,
+        )
+
+    async def _render_image_response(self, plan: _ReadPlan, loaded_pages: list[PageInfo]) -> DocContentResponse:
+        if plan.target is None or plan.target.page_no is None:
+            raise InvalidRequestError("format_not_supported", "image format requires a page or block locator.", "format")
+        if plan.page_range and len(parse_page_range_set(plan.page_range)) != 1:
+            raise InvalidRequestError("multi_page_image_not_supported", "image format supports only one page.", "locator")
+        page = _find_page(loaded_pages, plan.target.page_no)
+        if page is None:
+            raise NotFoundError("page_not_cached", f"Page {plan.target.page_no} is not cached.", "locator")
+
+        if _is_office_page(page):
+            asset = await self._render_office_image_asset(plan, page)
+        else:
+            asset = await self._render_pdf_image_asset(plan, page)
+
+        target_ref = plan.locator or page_ref(plan.short_id, plan.tier, plan.target.page_no)
+        return DocContentResponse(
+            sha256=plan.sha256,
+            short_id=plan.short_id,
+            tier=plan.tier,
+            format="image",
+            content="",
+            request_scope=ContentRequestScope(
+                page_range=plan.page_range,
+                after=plan.after,
+                limit=plan.limit,
+                locator=plan.locator,
+                context=plan.context,
+            ),
+            content_ranges=[ContentRange(page_range=str(plan.target.page_no), start=target_ref, end=target_ref)],
+            truncated=False,
+            next_request=None,
+            asset=asset,
         )
 
     async def _sha256_for_path(self, path: str) -> str | None:
@@ -732,6 +897,131 @@ class DoclibServer(AsyncDoclibInterface):
             await self.state.db.fetchall("SELECT * FROM files WHERE sha256=? AND status=?", (sha256, FILE_STATUS_ACTIVE)),
         )
         return [_file_info(row) for row in rows]
+
+    async def _default_read_tier(self, sha256: str) -> Tier | None:
+        rows = cast(
+            list[ParseRow],
+            await self.state.db.fetchall(
+                "SELECT tier FROM parses WHERE sha256=? AND status=? GROUP BY tier",
+                (sha256, PARSE_STATUS_DONE),
+            ),
+        )
+        tiers = {row["tier"] for row in rows if row["tier"] in TIERS and row["tier"] != "flash"}
+        if not tiers:
+            return None
+        return sorted(tiers, key=lambda t: TIERS.index(t))[-1]
+
+    async def _render_pdf_image_asset(self, plan: _ReadPlan, page: PageInfo) -> ContentAsset:
+        if plan.target is None:
+            raise InvalidRequestError("format_not_supported", "image format requires a page or block locator.", "format")
+        file_row = cast(
+            FileRow | None,
+            await self.state.db.fetchone(
+                "SELECT * FROM files WHERE sha256=? AND status=? LIMIT 1",
+                (plan.sha256, FILE_STATUS_ACTIVE),
+            ),
+        )
+        if file_row is None:
+            raise NotFoundError("no_accessible_file", "No active source file found for this document.", "locator")
+        source_path = file_row["path"]
+        if not source_path.lower().endswith(".pdf"):
+            raise InvalidRequestError("format_not_supported", "image format for page/block is only supported for PDF sources.", "format")
+        pdf_bytes = Path(source_path).read_bytes()
+        with PDFDocument(pdf_bytes) as doc:
+            if plan.target.block_no is None:
+                image = doc.render_page(plan.target.page_no - 1, scale=2)
+                image_bytes = _pil_image_to_bytes(image)
+                width, height = image.size
+            else:
+                block = _find_block_by_no(page, plan.target.block_no)
+                if block is None:
+                    raise NotFoundError("block_not_found", f"Block {plan.target.block_no} not found.", "locator")
+                if _is_empty_bbox(block.bbox):
+                    raise InvalidRequestError("bbox_not_available", "Block bbox is not available for image output.", "locator")
+                image_bytes = doc.crop_image(block.bbox, plan.target.page_no - 1, scale=2)
+                width, height = _image_size_from_bytes(image_bytes)
+        return _write_temp_asset(self.state.data_dir, plan.short_id, "jpg", image_bytes, mime_type="image/jpeg", width=width, height=height)
+
+    async def _render_office_image_asset(self, plan: _ReadPlan, page: PageInfo) -> ContentAsset:
+        if plan.target is None or plan.target.block_no is None:
+            raise InvalidRequestError("format_not_supported", "Office image output requires an image block locator.", "format")
+        block = _find_block_by_no(page, plan.target.block_no)
+        if block is None:
+            raise NotFoundError("block_not_found", f"Block {plan.target.block_no} not found.", "locator")
+        image_span = _first_image_span(block)
+        if image_span is None:
+            raise InvalidRequestError("format_not_supported", "Office image output is only supported for image blocks.", "format")
+        image_bytes, ext, mime_type = _span_image_bytes(image_span)
+        if image_bytes is None and image_span.image_path:
+            candidate = Path(image_span.image_path)
+            if candidate.is_file():
+                image_bytes = candidate.read_bytes()
+                ext = candidate.suffix.lstrip(".") or "png"
+                mime_type = _mime_type_for_ext(ext)
+        if image_bytes is None:
+            raise NotFoundError("asset_not_available", "Office image asset is not available.", "locator")
+        width, height = _image_size_from_bytes(image_bytes)
+        return _write_temp_asset(self.state.data_dir, plan.short_id, ext or "png", image_bytes, mime_type=mime_type, width=width, height=height)
+
+
+_READ_LOCATOR_RE = re.compile(
+    r"^doc:(?P<short_id>[0-9a-fA-F]+)"
+    r"(?:/tier:(?P<tier>flash|standard|pro)"
+    r"(?:/page:(?P<page_no>[1-9][0-9]*)"
+    r"(?:/block:(?P<block_no>[1-9][0-9]*)(?:/char:(?P<char_offset>0|[1-9][0-9]*))?)?)?)?$"
+)
+
+
+def _parse_doc_locator(locator: str) -> _LocatorParts:
+    match = _READ_LOCATOR_RE.match(locator)
+    if match is None:
+        raise InvalidRequestError("invalid_locator", f"Invalid doclib locator: {locator}", "locator")
+    page_no = match.group("page_no")
+    block_no = match.group("block_no")
+    char_offset = match.group("char_offset")
+    return _LocatorParts(
+        short_id=match.group("short_id"),
+        tier=cast(Tier | None, match.group("tier")),
+        page_no=int(page_no) if page_no is not None else None,
+        block_no=int(block_no) if block_no is not None else None,
+        char_offset=int(char_offset) if char_offset is not None else None,
+    )
+
+
+def _canonical_locator(short_id: str, tier: Tier, locator: _LocatorParts) -> str:
+    if locator.page_no is None:
+        return f"doc:{short_id}/tier:{tier}"
+    if locator.block_no is None:
+        return page_ref(short_id, tier, locator.page_no)
+    if locator.char_offset is None:
+        return block_ref(short_id, tier, locator.page_no, locator.block_no)
+    return block_char_ref(short_id, tier, locator.page_no, locator.block_no, locator.char_offset)
+
+
+def _locator_after(locator: _LocatorParts) -> str | None:
+    if locator.page_no is None:
+        return None
+    if locator.block_no is None:
+        return None
+    return _canonical_locator(locator.short_id, locator.tier or "standard", locator) if locator.char_offset is not None else None
+
+
+def _locator_page_range(locator: _LocatorParts, doc: DocRow, context: int) -> str | None:
+    page_count = doc.get("page_count") or 1
+    if locator.page_no is None:
+        return _normalize_content_page_range(None, None, doc)
+    start = max(1, locator.page_no - context)
+    end = min(page_count, locator.page_no + context)
+    return _range_str(start, end)
+
+
+def _validate_cursor_for_doc(cursor: ContentCursor, doc: DocRow, tier: Tier, page_range: str | None) -> None:
+    if cursor.short_id != doc["short_id"]:
+        raise InvalidRequestError("invalid_request", "after cursor does not belong to this document.", "after")
+    if cursor.tier != tier:
+        raise InvalidRequestError("invalid_request", "after cursor tier does not match request tier.", "after")
+    if page_range and cursor.page_no not in parse_page_range_set(page_range):
+        raise InvalidRequestError("invalid_request", "after cursor is outside requested page_range.", "after")
 
 
 def _mask_config(config: dict[str, str]) -> dict[str, str]:
@@ -852,6 +1142,131 @@ def _page_numbers_to_range_str(page_numbers: set[int]) -> str:
     return ",".join(ranges)
 
 
+def _select_context_pages(pages: list[PageInfo], target: ContentCursor | None, context: int) -> list[PageInfo]:
+    if target is None or target.page_no is None or context <= 0:
+        return pages
+    start = target.page_no - context
+    end = target.page_no + context
+    return [page for page in pages if start <= page.page_idx + 1 <= end]
+
+
+def _find_page(pages: list[PageInfo], page_no: int) -> PageInfo | None:
+    return next((page for page in pages if page.page_idx + 1 == page_no), None)
+
+
+def _find_block_by_no(page: PageInfo, block_no: int) -> Block | None:
+    target_index = block_no - 1
+    for block in page.para_blocks:
+        found = _find_block_by_index(block, target_index)
+        if found is not None:
+            return found
+    for block in page.discarded_blocks:
+        found = _find_block_by_index(block, target_index)
+        if found is not None:
+            return found
+    return None
+
+
+def _find_block_by_index(block: Block, index: int) -> Block | None:
+    if block.index == index:
+        return block
+    for child in block.blocks:
+        found = _find_block_by_index(child, index)
+        if found is not None:
+            return found
+    return None
+
+
+def _is_office_page(page: PageInfo) -> bool:
+    return page._backend == "office"
+
+
+def _is_empty_bbox(bbox: object) -> bool:
+    if not isinstance(bbox, (tuple, list)) or len(bbox) != 4:
+        return True
+    try:
+        values = [float(v) for v in bbox]
+    except (TypeError, ValueError):
+        return True
+    return tuple(values) == tuple(float(v) for v in EMPTY_BBOX) or values[0] >= values[2] or values[1] >= values[3]
+
+
+def _first_image_span(block: Block) -> Span | None:
+    for span in _iter_block_spans(block):
+        if span.type == "image":
+            return span
+    return None
+
+
+def _iter_block_spans(block: Block):
+    for line in block.lines:
+        yield from line.spans
+    for child in block.blocks:
+        yield from _iter_block_spans(child)
+
+
+def _span_image_bytes(span: Span) -> tuple[bytes | None, str, str]:
+    if not span.image_base64:
+        return None, "png", "image/png"
+    match = re.match(r"^data:image/(?P<ext>[^;]+);base64,(?P<data>.+)$", span.image_base64, re.DOTALL)
+    if match is None:
+        return None, "png", "image/png"
+    ext = match.group("ext").lower()
+    try:
+        return base64.b64decode(match.group("data")), ext, _mime_type_for_ext(ext)
+    except Exception:
+        return None, ext, _mime_type_for_ext(ext)
+
+
+def _pil_image_to_bytes(image: Image.Image) -> bytes:
+    with BytesIO() as buffer:
+        image.save(buffer, format="JPEG")
+        return buffer.getvalue()
+
+
+def _image_size_from_bytes(image_bytes: bytes) -> tuple[int | None, int | None]:
+    try:
+        with Image.open(BytesIO(image_bytes)) as image:
+            return image.size
+    except Exception:
+        return None, None
+
+
+def _write_temp_asset(
+    data_dir: str,
+    short_id: str,
+    ext: str,
+    image_bytes: bytes,
+    *,
+    mime_type: str,
+    width: int | None,
+    height: int | None,
+) -> ContentAsset:
+    safe_ext = ext.lower().lstrip(".") or "png"
+    output_dir = Path(os.path.expanduser(data_dir)) / "tmp" / "read-assets"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / f"{short_id}-{int(time.time() * 1000)}.{safe_ext}"
+    path.write_bytes(image_bytes)
+    return ContentAsset(
+        path=str(path),
+        mime_type=mime_type,
+        size_bytes=len(image_bytes),
+        width=width,
+        height=height,
+    )
+
+
+def _mime_type_for_ext(ext: str) -> str:
+    normalized = ext.lower().lstrip(".")
+    if normalized in {"jpg", "jpeg"}:
+        return "image/jpeg"
+    if normalized == "webp":
+        return "image/webp"
+    if normalized == "gif":
+        return "image/gif"
+    return "image/png"
+
+
 def _render_progressive_markdown(
     pages: list[PageInfo],
     *,
@@ -860,6 +1275,8 @@ def _render_progressive_markdown(
     after: Any,
     limit: int,
     add_markers: bool,
+    target: ContentCursor | None = None,
+    context: int = 0,
 ) -> _RenderedContent:
     output: list[str] = []
     ranges: list[ContentRange] = []
@@ -873,6 +1290,10 @@ def _render_progressive_markdown(
         if after and page_no < after.page_no:
             continue
         page_blocks = _page_markdown_blocks(page)
+        if target and target.block_no is not None and page_no == target.page_no:
+            start_block_no = max(1, target.block_no - context)
+            end_block_no = target.block_no + context
+            page_blocks = [(index, text) for index, text in page_blocks if start_block_no <= index + 1 <= end_block_no]
         page_output: list[str] = []
         page_start_cursor = page_ref(short_id, tier, page_no)
         page_end_cursor = page_ref(short_id, tier, page_no)
@@ -974,11 +1395,16 @@ def _render_progressive_markdown(
 
 def _page_markdown_blocks(page: PageInfo) -> list[tuple[int, str]]:
     backend = page._backend
-    if backend == "office":
-        rendered = office_blocks_to_markdown(page.para_blocks, img_bucket_path="", no_rich_content=False)
-    else:
-        rendered = blocks_to_markdown(page.para_blocks, img_bucket_path="")
-    return [(index, text) for index, text in enumerate(rendered) if text.strip()]
+    result: list[tuple[int, str]] = []
+    for block in page.para_blocks:
+        if backend == "office":
+            rendered = office_blocks_to_markdown([block], img_bucket_path="", no_rich_content=False)
+        else:
+            rendered = blocks_to_markdown([block], img_bucket_path="")
+        text = _join_markdown([item for item in rendered if item.strip()])
+        if text.strip():
+            result.append((block.index, text))
+    return result
 
 
 def _join_markdown(parts: list[str]) -> str:
@@ -1052,6 +1478,23 @@ def _next_content_request(
         return None
     end = min(total_page_count, start + 9)
     return ContentNextRequest(page_range=_range_str(start, end))
+
+
+def _next_read_request(
+    rendered: _RenderedContent,
+    short_id: str,
+    tier: Tier,
+    page_count: int | None,
+) -> ContentNextRequest | None:
+    if not rendered.content_ranges:
+        return None
+    if rendered.truncated:
+        return ContentNextRequest(locator=rendered.content_ranges[-1].end)
+    total_page_count = page_count or rendered.last_page_no
+    next_page_no = rendered.last_page_no + 1
+    if next_page_no > total_page_count:
+        return None
+    return ContentNextRequest(locator=page_ref(short_id, tier, next_page_no))
 
 
 def _last_requested_page(page_range: str | None) -> int | None:

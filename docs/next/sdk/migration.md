@@ -36,7 +36,8 @@ SDK 迁移的目标不是重写现有 parser，而是稳定已经成形的边界
    - `from mineru.doclib.client import MineruClient`
 3. 决定是否增加:
    - `from mineru.client import MineruClient`
-   - `from mineru.parser.remote import MinerUApiParser`
+
+不新增 `from mineru.parser.remote import MinerUApiParser`；API-backed parser 保持现有入口。
 
 验收:
 

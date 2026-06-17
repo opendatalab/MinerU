@@ -7,7 +7,16 @@
 
 ## 目标结构
 
-下一版 canonical envelope:
+当前 P0 写出的 `pages` 结构先包含顶层 `schema_version` 和 `pages`，暂不写 `_meta`:
+
+```json
+{
+  "schema_version": "1.0",
+  "pages": []
+}
+```
+
+后续 canonical envelope 目标结构:
 
 ```json
 {
@@ -37,14 +46,16 @@
 - 兼容读取旧结构 `pdf_info`。
 - `_meta.backend` 取代长期依赖 `PageInfo._backend`。
 - `schema_version` 放在顶层，便于快速判断 migration。
+- 代码常量定义为 `mineru.schema.middle_json.MIDDLE_JSON_SCHEMA_VERSION`，由 normalize、validate、writer 和 exporter 统一引用。
+- 当前 P0 写出路径只增加 `schema_version`，不新增 `_meta`；`_meta` 由后续 canonical envelope migration / writer 引入。
 
 ## 字段
 
 | 字段 | 类型 | 必带 | 说明 |
 |------|------|:--:|------|
-| `schema_version` | string | 是 | 当前 `"1.0"`。 |
+| `schema_version` | string | 是 | 当前 `"1.0"`；代码常量为 `MIDDLE_JSON_SCHEMA_VERSION`。 |
 | `pages` | list[PageInfo] | 是 | typed pages 的 JSON 表达。 |
-| `_meta` | object | 是 | 元数据。 |
+| `_meta` | object | 后续 | 元数据；当前 P0 写出路径暂不增加。 |
 
 ## `_meta`
 
@@ -56,17 +67,17 @@
 | `file` | object | 是 | 文件级信息。 |
 | `features` | object | 是 | 本次解析启用的能力。 |
 | `models` | object | 是 | 实际模型信息。 |
-| `parsed_at` | string 或 null | 否 | 解析时间。默认不参与 chunk id。 |
+| `parsed_at` | string 或 null | 否 | 解析时间。默认不参与 locator。 |
 
 ## `_meta.file`
 
 | 字段 | 类型 | 必带 | 说明 |
 |------|------|:--:|------|
-| `sha256` | string | 是 | 原文件 SHA-256。Agent chunk id 必需。 |
+| `sha256` | string | 是 | 原文件 SHA-256。Agent locator 严格校验时需要。 |
 | `page_count` | integer | 是 | `len(pages)`。 |
 | `filename` | string 或 null | 否 | 原文件名。存在隐私争议，默认可为 null。 |
 
-如果缺少 `sha256`，不能生成稳定 chunk id。migration 可以允许临时为空，但 Agent locator 功能必须报错。
+如果缺少 `sha256`，可以生成局部 locator，但不能生成可严格校验的跨文档 block reference。migration 可以允许临时为空，但 Agent citation 功能必须明确降级或报错。
 
 ## `_meta.features`
 
@@ -164,7 +175,7 @@ def normalize_middle_json(
 2. 如果 payload 有 `pages`，读取 pages。
 3. 如果 payload 有 `pdf_info`，读取 `pdf_info`。
 4. 如果 payload 有 `_backend`，作为 backend fallback。
-5. 如果没有 sha256，则保留 null，但禁用 chunk id。
+5. 如果没有 sha256，则保留 null，但禁用需要严格校验 source identity 的 citation 能力。
 6. 输出必须是 canonical envelope。
 
 ## Validator
@@ -204,4 +215,4 @@ P1 校验:
 
 ## 未决问题
 
-`schema_version` 位置、`filename` 是否默认写入、`parsed_at` 是否默认写入，集中维护在 [开放问题清单](../open-questions.md)。
+`filename` 是否默认写入、`parsed_at` 是否默认写入，集中维护在 [开放问题清单](../open-questions.md)。

@@ -7,6 +7,7 @@ import typer
 from ...doclib.client import DoclibClient
 from ...doclib.types import ConfigResponse, ConfigSetRequest, ExcludeRuleRequest, ParsingRuleRequest
 from ...types import Tier
+from ..json_errors import exit_with_error
 from ..output import print_error, print_info, print_json, print_success
 
 app = typer.Typer(help="Configuration management", no_args_is_help=True)
@@ -24,8 +25,7 @@ def config_show(json_mode: bool = typer.Option(False, "--json", help="JSON outpu
     try:
         data = _client().get_config()
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     if json_mode:
         print_json(data)
@@ -42,8 +42,7 @@ def config_get(
     try:
         data = _client().get_config_key(key)
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     if json_mode:
         print_json(data)
@@ -60,8 +59,7 @@ def config_set(
     try:
         data = _client().set_config(key, ConfigSetRequest(value=value))
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     print_success(f"{data.key} = {data.value}  [{data.source}]")
 
@@ -72,8 +70,7 @@ def config_unset(key: str = typer.Argument(..., help="Configuration key")) -> No
     try:
         data = _client().unset_config(key)
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     action = "removed" if data.removed else "unchanged"
     print_success(f"{data.key} = {data.value}  [{data.source}] ({action})")
@@ -89,8 +86,7 @@ def exclude_rules_add(
     try:
         data = _client().add_exclude_rule(ExcludeRuleRequest(pattern=pattern, priority=priority))
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     if json_mode:
         print_json(data)
@@ -104,8 +100,7 @@ def exclude_rules_list(json_mode: bool = typer.Option(False, "--json", help="JSO
     try:
         data = _client().list_exclude_rules()
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     if json_mode:
         print_json(data)

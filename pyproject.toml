@@ -58,13 +58,23 @@ dependencies = [
     "pylatexenc>=2.10,<3",
     "lxml>=4.0.0,<7.0.0",
     "openpyxl>=3.1.5,<4",
+    "aiosqlite>=0.20.0,<1",
+    "fnvhash>=0.2.1,<1",
+    "watchfiles>=1.0.0,<2",
     "fastapi",
     "python-multipart",
     "uvicorn",
-    "lxml-stubs",
+    "pydantic>=2.0.0",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "jieba>=0.42.1",
+    "onnxruntime>=1.17.0",
 ]
 
 [project.optional-dependencies]
+dev = [
+    "lxml-stubs",
+]
 test = [
     "mineru[core]",
     "pytest",
@@ -99,7 +109,6 @@ pipeline = [
     "torch>=2.6.0,<3",
     "torchvision",
     "transformers>=4.57.3,<5.0.0",
-    "onnxruntime>1.17.0",
 ]
 gradio = [
     "gradio>=5.49.1,!=6.0.0,!=6.0.1,!=6.0.2,!=6.1.0,!=6.2.0,!=6.3.0,!=6.4.0,!=6.5.0,!=6.5.1,!=6.6.0,!=6.7.0,<6.9.0",
@@ -144,6 +153,7 @@ namespaces = false
 
 [tool.setuptools.package-data]
 "mineru" = ["resources/**"]
+"mineru.doclib.migrations" = ["*.sql"]
 "mineru.model.utils.pytorchocr.utils" = ["resources/**"]
 
 [tool.setuptools]

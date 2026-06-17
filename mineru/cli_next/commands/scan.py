@@ -8,6 +8,7 @@ import typer
 
 from ...doclib.client import DoclibClient
 from ...doclib.types import ScanRequest
+from ..json_errors import exit_with_error
 from ..output import print_error, print_info, print_json, print_success
 
 
@@ -21,8 +22,7 @@ def scan_cmd(
     try:
         _scan_path(path, wait=wait, no_wait=no_wait, json_mode=json_mode)
     except Exception as exc:
-        print_error(str(exc) or "Cannot connect to mineru server. Run 'mineru server start' first.")
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot connect to mineru server. Run 'mineru server start' first.")
 
 
 def _scan_path(path: str, *, wait: int, no_wait: bool, json_mode: bool) -> None:

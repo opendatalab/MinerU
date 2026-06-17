@@ -66,7 +66,7 @@ MVP 还在开发阶段，因此本设计不保留旧命令兼容入口。
 ### 4.1 发起解析
 
 ```bash
-mineru parse <file> [--tier flash|standard|pro] [--pages <range>] [--format markdown|text|json|html] [--force] [--remote] [--wait <sec>] [--no-wait] [-o <path>] [--json] [-v]
+mineru parse <file> [--tier flash|standard|pro] [--pages <range>] [--format markdown] [--force] [--remote] [--wait <sec>] [--no-wait] [-o <path>] [--json] [-v]
 ```
 
 语义：

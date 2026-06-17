@@ -86,6 +86,7 @@ class SearchService:
                     "filename": row.get("filename") or fts_file.get("filename"),
                     "ext": fts_file.get("ext", ""),
                     "size_bytes": fts_file.get("size_bytes", 0),
+                    "page_count": fts_file.get("page_count"),
                     "tier": result_tier,
                     "snippet": snippet,
                     "paths": [f["path"] for f in files],
@@ -108,7 +109,7 @@ class SearchService:
         file_ids = [r["file_id"] for r in rows]
         placeholders = ",".join("?" * len(file_ids))
         sql = (
-            f"SELECT f.*, d.title "
+            f"SELECT f.*, d.title, d.page_count "
             f"FROM files f LEFT JOIN docs d ON f.sha256 = d.sha256 "
             f"WHERE f.id IN ({placeholders}) AND f.status = ?"
         )
@@ -132,6 +133,7 @@ class SearchService:
                     "filename": fr["filename"],
                     "ext": fr.get("ext", ""),
                     "size_bytes": fr.get("size_bytes", 0),
+                    "page_count": fr.get("page_count"),
                     "tier": "",
                     "snippet": strip_sep(row.get("snippet", "")),
                     "paths": [fr["path"]],

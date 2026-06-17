@@ -6,6 +6,7 @@ import typer
 
 from ...doclib.client import DoclibClient
 from ...doclib.types import CleanupDeletedRequest, CleanupOrphansRequest, CleanupTempRequest
+from ..json_errors import exit_with_error
 from ..output import print_error, print_info, print_json, print_success
 
 app = typer.Typer(
@@ -25,8 +26,7 @@ def cleanup_deleted_files(
     try:
         data = client.cleanup_deleted_files(CleanupDeletedRequest(dry_run=dry_run))
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     if json_mode:
         print_json(data)
@@ -49,8 +49,7 @@ def cleanup_orphan_docs(
     try:
         data = client.cleanup_orphan_docs(CleanupOrphansRequest(dry_run=dry_run))
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     if json_mode:
         print_json(data)
@@ -73,8 +72,7 @@ def cleanup_temp_files(
     try:
         data = client.cleanup_temp_files(CleanupTempRequest(older_than_days=older_than))
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     if json_mode:
         print_json(data)
@@ -86,6 +84,5 @@ def cleanup_temp_files(
 def _client() -> DoclibClient:
     try:
         return DoclibClient(timeout=30)
-    except Exception:
-        print_error("Cannot connect to mineru server. Run 'mineru server start' first.")
-        raise typer.Exit(1) from None
+    except Exception as exc:
+        exit_with_error(exc, json_mode=False, fallback_message="Cannot connect to mineru server. Run 'mineru server start' first.")

@@ -1,0 +1,2750 @@
+# mineru CLI 端到端测试用例
+
+状态: Draft
+读者: CLI 测试执行 Agent、QA、核心开发者
+范围: 只测试本地安装的 `mineru` 命令
+非目标: 测试 `mineru-kit`、直接访问数据库、调用内部 Python API、验证具体解析模型质量
+
+## 1. 执行规则
+
+执行 Agent 只允许调用本地安装的 `mineru` 命令。
+
+严禁调用:
+
+- `mineru-kit`
+- `python`
+- `sqlite`
+- `curl`
+- 项目内部模块
+- 任何直接修改 MinerU 数据库或缓存目录的命令
+
+每条用例必须记录:
+
+- case id
+- command
+- exit code
+- stdout
+- stderr
+- pass / fail / blocked
+- 失败原因
+
+## 2. 前置条件
+
+测试环境需提前准备:
+
+- 本地命令 `mineru` 已安装并在 `PATH` 中。
+- 环境变量 `MINERU_E2E_FIXTURE_DIR` 指向测试数据目录。
+- 测试数据目录至少包含:
+  - `$MINERU_E2E_FIXTURE_DIR/sample.pdf`
+  - `$MINERU_E2E_FIXTURE_DIR/sample-copy.pdf`，内容与 `sample.pdf` 相同，路径不同。
+  - `$MINERU_E2E_FIXTURE_DIR/watch-dir/watch-doc.pdf`
+  - `$MINERU_E2E_FIXTURE_DIR/empty-dir/`，空目录。
+  - `$MINERU_E2E_FIXTURE_DIR/unsupported.bin`，不支持的普通二进制或文本文件。
+  - `$MINERU_E2E_FIXTURE_DIR/sample doc.pdf`，文件名包含空格，内容可与 `sample.pdf` 相同。
+  - `$MINERU_E2E_FIXTURE_DIR/中文样例.pdf`，文件名包含中文，内容可与 `sample.pdf` 相同。
+  - `$MINERU_E2E_FIXTURE_DIR/corrupted.pdf`，损坏 PDF。
+  - `$MINERU_E2E_FIXTURE_DIR/empty.pdf`，空文件或无法解析出页面的 PDF。
+  - `$MINERU_E2E_FIXTURE_DIR/sample.docx`、`sample.pptx`、`sample.xlsx`，Office 样例文件；若当前安装不支持 Office，可按预期失败分支判定。
+  - `$MINERU_E2E_FIXTURE_DIR/sample.png`，图片样例文件；若当前安装不支持图片输入，可按预期失败分支判定。
+  - `$MINERU_E2E_FIXTURE_DIR/symlink-sample.pdf`，指向 `sample.pdf` 的符号链接；若平台不支持 symlink，可标记相关用例 BLOCKED。
+  - `$MINERU_E2E_FIXTURE_DIR/no-read.pdf`，权限不可读文件；若平台无法稳定制造权限场景，可标记相关用例 BLOCKED。
+  - `$MINERU_E2E_FIXTURE_DIR/output-dir/`，用于输出文件测试的目录。
+- 测试环境允许启动本地 doclib server。
+- 若本地没有 standard/pro parse-server，默认 tier 相关用例按预期失败分支判定。
+- 若 remote parse-server 不可用，`--remote` 相关用例按预期失败分支判定；若可用，必须验证 remote/via/privacy 等字段。
+
+### 2.1 测试 HOME 与隔离配置
+
+测试 HOME 使用:
+
+```bash
+~/mineru-e2e-test
+```
+
+进入测试目录后，必须设置以下环境变量，让 doclib 的 DB、日志和 UDS socket 都落在测试目录中:
+
+```bash
+cd ~/mineru-e2e-test
+export MINERU_DOCLIB_DATA_DIR=`pwd`
+export MINERU_DOCLIB_SQLITE_PATH=`pwd`/mineru.db
+export MINERU_DOCLIB_LOG_PATH=`pwd`/mineru.log
+export MINERU_DOCLIB_UDS_PATH=`pwd`/mineru.sock
+```
+
+### 2.2 安装方法
+
+在测试 HOME 中创建独立虚拟环境并安装当前仓库:
+
+```bash
+cd ~/mineru-e2e-test
+rm -rf .venv
+uv venv .venv
+source .venv/bin/activate
+uv pip install ~/MinerU-Repo
+alias mineru="python -m mineru.cli_next.main"
+```
+
+安装完成后，执行 Agent 后续仍只调用 `mineru ...` 命令，不直接调用 Python 模块、内部 API 或数据库。
+
+## 3. 顶层命令与帮助
+
+### CLI-001 顶层 help
+
+命令:
+
+```bash
+mineru --help
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `parse`、`read`、`scan`、`watch`、`search`、`find`、`list`、`show`、`server`、`config`、`invalidate`、`forget`、`cleanup`
+- 输出不包含 `mineru-kit`
+
+### CLI-002 子命令 help
+
+命令:
+
+```bash
+mineru parse --help
+mineru read --help
+mineru scan --help
+mineru watch --help
+mineru search --help
+mineru find --help
+mineru list --help
+mineru show --help
+mineru server --help
+mineru config --help
+mineru invalidate --help
+mineru forget --help
+mineru cleanup --help
+```
+
+预期:
+
+- 每条 exit code = 0
+- 每条输出包含 usage 或 options 类帮助信息
+
+### CLI-002A output/help 契约
+
+命令:
+
+```bash
+mineru parse --help
+mineru read --help
+```
+
+预期:
+
+- 两条 exit code = 0
+- `--output` help 文案说明可写入文件
+- `--output` help 文案或相邻说明应体现父目录可自动创建
+- `--json` help 文案或相邻说明应体现 JSON 输出
+- parse/read help 不得暗示 `--output` 与 `--json` 互斥
+
+### CLI-003 不存在旧命令
+
+命令:
+
+```bash
+mineru info --help
+```
+
+预期:
+
+- exit code != 0
+
+## 4. Server 生命周期
+
+### SERVER-001 查询初始状态
+
+命令:
+
+```bash
+mineru server status
+```
+
+预期:
+
+- exit code = 0
+- 输出为 server 运行信息或 `Server is not running.`
+
+### SERVER-001A 查询初始 JSON 状态
+
+命令:
+
+```bash
+mineru server status --json
+```
+
+预期:
+
+- exit code = 0
+- stdout 为可直接解析的 JSON
+- 如果 server 未运行，JSON 为稳定状态结果，至少包含 `running: false`
+- server 未运行不应输出 JSON error
+- stdout 不包含 `Server is not running.` 人类文本
+
+### SERVER-002 启动 server
+
+命令:
+
+```bash
+mineru server start
+```
+
+预期:
+
+- exit code = 0
+- 如果已运行，输出包含 `already running`
+- 如果未运行，输出包含 `started` 或 `Socket`
+
+### SERVER-003 查询运行状态
+
+命令:
+
+```bash
+mineru server status
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 server 状态信息
+- 不提示连接失败
+
+### SERVER-004 JSON 状态
+
+命令:
+
+```bash
+mineru server status --json
+```
+
+预期:
+
+- server 运行时 exit code = 0
+- 输出为 JSON 或等价结构化 server 状态
+- 至少包含 running、socket、data_dir、队列或文档库统计中的若干字段
+
+### SERVER-005 重复启动 server
+
+前置: SERVER-002 已成功，server 正在运行。
+
+命令:
+
+```bash
+mineru server start
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `already running`
+- 不启动第二个不可控 server 进程
+- 后续 `mineru server status` 仍可正常返回
+
+### SERVER-006 restart server
+
+命令:
+
+```bash
+mineru server restart
+mineru server status --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- restart 输出包含 stopped/started、started、Socket 或等价生命周期信息
+- status 输出为 JSON
+- JSON 表示 server 正在运行
+- UDS/socket 路径仍落在测试 HOME 配置下
+
+### SERVER-007 stop 后依赖 server 的命令报错可读
+
+命令:
+
+```bash
+mineru server stop
+mineru list files --limit 1
+mineru server start
+```
+
+预期:
+
+- stop exit code = 0
+- list files exit code != 0
+- list files 输出包含 `Cannot connect`、`server`、`Run 'mineru server start' first` 或等价可操作错误
+- list files 不包含 Python traceback
+- 最后一条 start exit code = 0，用于恢复后续测试环境
+
+### SERVER-009 环境变量路径生效
+
+命令:
+
+```bash
+mineru server status --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为 JSON
+- `data_dir` 等价于 `MINERU_DOCLIB_DATA_DIR`
+- socket/UDS 字段等价于 `MINERU_DOCLIB_UDS_PATH`，如果字段名为 `socket_path` 则不得为空
+- 日志相关字段或启动失败日志路径应落在 `MINERU_DOCLIB_LOG_PATH`
+
+## 5. Config 命令
+
+### CONFIG-001 查看配置
+
+命令:
+
+```bash
+mineru config show
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `Config` 或配置 key
+
+### CONFIG-002 JSON 查看配置
+
+命令:
+
+```bash
+mineru config show --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为 JSON
+- 包含 config 或 sources 信息
+
+### CONFIG-003 设置和读取配置
+
+命令:
+
+```bash
+mineru config set parse_server.local.mode disabled
+mineru config get parse_server.local.mode
+```
+
+预期:
+
+- 两条 exit code = 0
+- get 输出包含 `parse_server.local.mode`
+- get 输出包含 `disabled`
+
+### CONFIG-003A JSON 读取配置
+
+命令:
+
+```bash
+mineru config set parse_server.local.mode disabled
+mineru config get parse_server.local.mode --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- set 使用普通文本输出；本用例不要求 `config set` 支持 `--json`
+- get stdout 为可直接解析的 JSON
+- get JSON 包含 `parse_server.local.mode`
+- get JSON 中 value 为 `disabled` 或等价配置值
+
+### CONFIG-004 unset 配置
+
+命令:
+
+```bash
+mineru config unset parse_server.local.mode
+mineru config get parse_server.local.mode
+```
+
+预期:
+
+- 两条 exit code = 0
+- unset 输出包含 `removed` 或 `unchanged`
+- get 仍能返回有效配置值
+
+### CONFIG-004A unset 后 JSON 读取配置
+
+命令:
+
+```bash
+mineru config set parse_server.local.mode disabled
+mineru config unset parse_server.local.mode
+mineru config get parse_server.local.mode --json
+```
+
+预期:
+
+- 三条 exit code = 0
+- unset 使用普通文本输出；本用例不要求 `config unset` 支持 `--json`
+- get 输出为可直接解析的 JSON
+- unset 后 get 仍能返回有效配置值
+
+### CONFIG-005 exclude-rules
+
+命令:
+
+```bash
+mineru config exclude-rules add "*/tmp-mineru-e2e-ignore/*" --priority 10
+mineru config exclude-rules list
+```
+
+预期:
+
+- 两条 exit code = 0
+- list 输出包含该 pattern 或规则 id
+
+### CONFIG-005A exclude-rules JSON 和 remove
+
+命令:
+
+```bash
+mineru config exclude-rules add "*/tmp-mineru-e2e-remove/*" --priority 11 --json
+mineru config exclude-rules list --json
+mineru config exclude-rules remove <rule_id>
+mineru config exclude-rules list --json
+```
+
+执行说明:
+
+- `<rule_id>` 从第一条 add JSON 输出或第二条 list JSON 输出中提取。
+
+预期:
+
+- 四条 exit code = 0
+- add/list JSON 均可直接解析
+- remove 前 list 中包含 pattern `*/tmp-mineru-e2e-remove/*`
+- remove 输出包含 `removed`、`Exclude rule` 或等价成功信息
+- remove 后 list 中不再包含该 rule id
+
+### CONFIG-006 旧 exclude 命令不可用
+
+命令:
+
+```bash
+mineru config exclude --help
+```
+
+预期:
+
+- exit code != 0
+
+### CONFIG-007 parsing-rules
+
+命令:
+
+```bash
+mineru config parsing-rules add "*/mineru-e2e/*" --tier flash --pages all --name e2e-flash-rule
+mineru config parsing-rules list
+```
+
+预期:
+
+- 两条 exit code = 0
+- list 输出包含 pattern
+- list 输出包含 `flash`
+- list 输出包含 `all`
+
+### CONFIG-008 parsing-rules JSON 和 remove
+
+命令:
+
+```bash
+mineru config parsing-rules add "*/mineru-e2e-remove/*" --tier flash --pages 1~1 --name e2e-remove-rule --json
+mineru config parsing-rules list --json
+mineru config parsing-rules remove <rule_id>
+mineru config parsing-rules list --json
+```
+
+执行说明:
+
+- `<rule_id>` 从第一条 add JSON 输出或第二条 list JSON 输出中提取。
+
+预期:
+
+- 四条 exit code = 0
+- add/list JSON 均可直接解析
+- remove 前 list 中包含 pattern、`flash`、`1~1`
+- remove 输出包含 `removed`、`Parsing rule` 或等价成功信息
+- remove 后 list 中不再包含该 rule id
+
+### CONFIG-009 不存在的配置 key
+
+命令:
+
+```bash
+mineru config get not.a.real.key
+mineru config get not.a.real.key --json
+```
+
+预期:
+
+- 两条命令应有一致、可解释的行为
+- 如果 exit code = 0，输出必须明确表示 key 不存在、值为空或来源为默认缺失
+- 如果 exit code != 0，输出必须包含 not found、unknown key、invalid key 或等价错误
+- `--json` 失败时 stdout 必须为可直接解析的 JSON error，且包含 `error.code` 和 `error.message`
+- 不包含 Python traceback
+
+## 6. Watch 命令
+
+### WATCH-001 添加 watch
+
+命令:
+
+```bash
+mineru watch add "$MINERU_E2E_FIXTURE_DIR/watch-dir" --label e2e-watch
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `Watch added` 或 id
+
+### WATCH-001A 重复添加 watch
+
+前置: WATCH-001 已成功。
+
+命令:
+
+```bash
+mineru watch add "$MINERU_E2E_FIXTURE_DIR/watch-dir" --label e2e-watch
+```
+
+预期:
+
+- 命令应有明确行为:
+  - 若允许幂等，exit code = 0，输出包含 existing、already、Watch added 或等价信息
+  - 若不允许重复，exit code != 0，输出包含 duplicate、already exists 或等价错误
+- 不产生不可解释的重复 watch 记录
+- 不包含 Python traceback
+
+### WATCH-002 列出 watch
+
+命令:
+
+```bash
+mineru watch list
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `$MINERU_E2E_FIXTURE_DIR/watch-dir` 或 `e2e-watch`
+
+### WATCH-003 JSON 列出 watch
+
+命令:
+
+```bash
+mineru watch list --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为 JSON
+- 包含 watches 数组或 watch 信息
+
+### WATCH-004 watch rescan
+
+命令:
+
+```bash
+mineru watch rescan "$MINERU_E2E_FIXTURE_DIR/watch-dir" --wait 30
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `Scan`
+- 状态为 done、running 或 pending 均可接受
+- 不出现 `watch_not_found`
+
+### WATCH-004A 使用 watch id rescan
+
+前置: WATCH-002 或 WATCH-003 可获得 watch id。
+
+命令模板:
+
+```bash
+mineru watch rescan <watch_id> --wait 30
+mineru watch rescan <watch_id> --no-wait --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- 第一条输出包含 `Scan`
+- 第二条输出为可直接解析的 JSON
+- JSON 包含 scan id、status、path 或 watch_id 中的部分字段
+
+### WATCH-005 删除 watch
+
+命令:
+
+```bash
+mineru watch remove "$MINERU_E2E_FIXTURE_DIR/watch-dir"
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `Watch removed`
+
+### WATCH-006 删除不存在的 watch
+
+命令:
+
+```bash
+mineru watch remove "$MINERU_E2E_FIXTURE_DIR/not-a-watch-dir"
+```
+
+预期:
+
+- exit code != 0
+- 输出包含 `watch_not_found`、not found 或等价错误
+- 不包含 Python traceback
+
+### WATCH-007 添加不存在目录
+
+命令:
+
+```bash
+mineru watch add "$MINERU_E2E_FIXTURE_DIR/not-exist-dir" --label e2e-missing-watch
+```
+
+预期:
+
+- exit code != 0
+- 输出包含 not found、unreachable、invalid path 或等价错误
+- 不包含 Python traceback
+
+## 7. Scan 命令
+
+### SCAN-001 扫描单文件
+
+命令:
+
+```bash
+mineru scan "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --wait 30
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `Scan`
+- 输出包含 seen、refreshed、new、changed、deleted 中的统计字段
+
+### SCAN-002 扫描目录 no-wait
+
+命令:
+
+```bash
+mineru scan "$MINERU_E2E_FIXTURE_DIR" --no-wait --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为 JSON
+- 包含 scan id、status、path 或 kind 字段
+- kind 应为 manual
+
+### SCAN-003 扫描不存在路径
+
+命令:
+
+```bash
+mineru scan "$MINERU_E2E_FIXTURE_DIR/not-exist"
+mineru scan "$MINERU_E2E_FIXTURE_DIR/not-exist" --json
+```
+
+预期:
+
+- 两条 exit code != 0
+- 输出包含 not found、unreachable、invalid path 或等价错误
+- 不包含 Python traceback
+- JSON 模式不得输出半截 JSON 混合 traceback
+
+### SCAN-004 扫描空目录
+
+前置: 测试数据目录预先包含空目录 `$MINERU_E2E_FIXTURE_DIR/empty-dir/`。
+
+命令:
+
+```bash
+mineru scan "$MINERU_E2E_FIXTURE_DIR/empty-dir" --wait 30
+mineru scan "$MINERU_E2E_FIXTURE_DIR/empty-dir" --wait 30 --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- JSON 输出可直接解析
+- 统计字段中 seen/new/changed/deleted 等计数为 0 或符合空目录语义
+- 不包含 Python traceback
+
+### SCAN-005 扫描不支持文件类型
+
+前置: 测试数据目录预先包含不支持文件 `$MINERU_E2E_FIXTURE_DIR/unsupported.bin`。
+
+命令:
+
+```bash
+mineru scan "$MINERU_E2E_FIXTURE_DIR/unsupported.bin" --wait 30
+mineru scan "$MINERU_E2E_FIXTURE_DIR/unsupported.bin" --wait 30 --json
+```
+
+预期:
+
+- 两条 exit code = 0 或返回明确的 unsupported 错误
+- 如果 exit code = 0，输出统计中应体现 unsupported 或 excluded 计数
+- 如果 exit code != 0，输出包含 unsupported、invalid type 或等价错误
+- 不包含 Python traceback
+
+## 8. Parse 命令
+
+### PARSE-001 文件不存在
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/not-exist.pdf"
+```
+
+预期:
+
+- exit code != 0
+- 输出包含 `File not found`
+
+### PARSE-002 显式 flash parse
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60
+```
+
+预期:
+
+- exit code = 0
+- 输出不包含 Python traceback
+- 输出为可读 Markdown、文本内容或 parse 状态提示
+
+### PARSE-003 flash parse JSON
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为 JSON
+- 顶层包含 `parse` 与 `content`
+- `parse.sha256` 或等价 doc 标识存在
+- `parse.tier = flash`
+- `parse.status = done`
+- `content` 不为 null
+- `content.request_scope`、`content.content_ranges` 或 `content.next_request` 中至少一部分字段存在
+
+### PARSE-004 cache hit 行为
+
+重复执行:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+```
+
+预期:
+
+- exit code = 0
+- 不重新失败
+- 若 JSON 中包含 cache_hit，应为 true 或体现已复用结果
+- tier 仍为 flash
+
+### PARSE-005 no-wait 行为
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --no-wait --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为 JSON
+- 顶层包含 `parse` 与 `content`
+- `parse.status` 为 `pending`、`parsing` 或 `done`
+- 若 `parse.status` 不是 `done`，则 `content = null`
+- 若命中缓存直接完成，则 `content` 可直接返回
+- 不长时间阻塞
+
+### PARSE-006 force 行为
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --force --wait 60 --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为 JSON
+- 不删除旧缓存导致后续普通 parse 失败
+
+### PARSE-006A force 默认输出不打印过程 status
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --force --wait 60
+```
+
+预期:
+
+- exit code = 0
+- 输出为解析内容、Markdown 或最终可读结果
+- 默认模式输出不包含 `Parse status:`
+- 默认模式输出不包含 `Parse queued`
+- 不包含 Python traceback
+
+### PARSE-006B verbose 输出允许过程 status
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --force --wait 60 --verbose
+```
+
+预期:
+
+- exit code = 0
+- 输出允许包含 `Parse queued`
+- 输出允许包含 `Parse status:`
+- 最终仍输出解析内容、Markdown 或最终可读结果
+- 不包含 Python traceback
+
+### PARSE-007 默认 tier 行为
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --pages 1~1 --wait 20 --json
+```
+
+预期分支:
+
+- 如果本地 standard/pro parse-server 可用:
+  - exit code = 0
+  - 实际 tier 为 standard 或 pro
+  - 实际 tier 不为 flash
+- 如果只有 flash 或没有 quality tier:
+  - exit code != 0
+  - 输出包含 `quality_tier_unavailable`、`no_engine`、`parse_server_unavailable`、start parse-server 或 use remote 等可操作错误
+  - 不允许静默返回 flash 内容
+
+### PARSE-008 输出到文件
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --output "$MINERU_E2E_FIXTURE_DIR/parse-output.md"
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `Written to` 或等价成功信息
+- 不在 stdout 大量打印完整文档内容
+- 后续可通过 `mineru read` 或重新 `mineru parse` 验证解析缓存仍可用
+- 输出文件路径应为命令指定路径
+
+### PARSE-009 JSON 与 output 组合
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --output "$MINERU_E2E_FIXTURE_DIR/parse-output-json.md" --json
+```
+
+预期:
+
+- exit code = 0
+- stdout 为可直接解析的 JSON
+- JSON 顶层保持 `parse --json` envelope，包含 `parse` 和 `content`
+- 当文件写出成功时，`content` 可以为 null
+- JSON 顶层包含 `output`
+- `output.status` = `written`
+- `output.path` 为实际写入路径，建议为绝对路径或规范化绝对路径
+- 输出文件存在，路径为命令指定路径
+- stdout 不允许包含 `Written to`、Rich 表格、Markdown 正文或其它人类提示文本
+- 不包含 Python traceback
+
+### PARSE-010 limit 截断与 next_request
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --limit 20 --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为可直接解析的 JSON
+- `content` 不为 null
+- 如果内容超过 limit，`content` 中应体现 truncated、next_request、cursor、after 或等价续读信息
+- 如果内容未超过 limit，`content` 中应明确表示未截断或没有 next_request
+- 不包含 JSON 外的 status/info 文本
+
+### PARSE-011 after 续读
+
+前置: PARSE-010 返回 next_request.after 或等价 cursor。
+
+命令模板:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --after <after_cursor> --limit 30000 --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为可直接解析的 JSON
+- `content` 不为 null
+- `content.request_scope`、`content.content_ranges` 或等价字段体现 after/cursor 已生效
+- 不返回与第一页起始完全相同的截断片段，除非服务端明确说明 cursor 已到末尾
+
+### PARSE-012 no-marker
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --limit 20 --no-marker
+```
+
+预期:
+
+- exit code = 0
+- 输出不包含 `<!-- Next:`
+- 输出不包含 Python traceback
+
+### PARSE-013 remote parse 分支
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --remote --wait 20 --json
+```
+
+预期分支:
+
+- 如果 remote parse-server 可用:
+  - exit code = 0
+  - 输出为可直接解析的 JSON
+  - JSON 体现 remote/via/privacy/tier 中的部分字段
+- 如果 remote parse-server 不可用:
+  - exit code != 0
+  - 输出包含 remote、parse-server、unavailable、no_engine 或等价可操作错误
+  - stdout 必须为可直接解析的 JSON error，且包含 `error.code` 和 `error.message`
+  - 不包含 Python traceback
+
+### PARSE-013A remote 默认 tier
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --remote --pages 1~1 --wait 60 --json
+```
+
+预期分支:
+
+- 如果 remote parse-server 可用:
+  - exit code = 0
+  - 输出为可直接解析的 JSON
+  - tier 应为 remote 支持的 quality tier，例如 standard 或 pro
+  - JSON 体现 remote/via/privacy 中的部分字段
+  - 不允许在未声明 fallback 的情况下静默返回本地 flash 内容
+- 如果 remote parse-server 不可用:
+  - exit code != 0
+  - `--json` 输出必须为可直接解析的 JSON error
+  - error code/message 包含 remote、parse-server、unavailable、no_engine、quality_tier_unavailable 或等价可操作信息
+  - 不包含 Python traceback
+
+### PARSE-013B remote no-wait
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --remote --pages 1~1 --no-wait --json
+```
+
+预期分支:
+
+- 如果 remote parse-server 可用:
+  - exit code = 0
+  - 输出为可直接解析的 JSON
+  - 输出为已完成内容、pending/parsing 任务状态或明确缓存结果
+  - 不长时间阻塞
+- 如果 remote parse-server 不可用:
+  - exit code != 0
+  - 输出包含 remote、parse-server、unavailable 或等价错误
+  - stdout 必须为可直接解析的 JSON error，且包含 `error.code` 和 `error.message`
+  - 不包含 Python traceback
+
+### PARSE-013C remote force
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --remote --pages 1~1 --force --wait 60 --json
+```
+
+预期分支:
+
+- 如果 remote parse-server 可用:
+  - exit code = 0
+  - 输出为可直接解析的 JSON
+  - 不复用旧的 done batch 作为唯一依据，JSON 中应体现新 parse 或 force 后结果
+  - 后续普通 remote parse 不因 force 损坏缓存
+- 如果 remote parse-server 不可用:
+  - exit code != 0
+  - 输出包含 remote、parse-server、unavailable 或等价错误
+  - stdout 必须为可直接解析的 JSON error，且包含 `error.code` 和 `error.message`
+  - 不包含 Python traceback
+
+### PARSE-013D remote output
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --remote --pages 1~1 --wait 60 --output "$MINERU_E2E_FIXTURE_DIR/output-dir/remote-output.md"
+```
+
+预期分支:
+
+- 如果 remote parse-server 可用:
+  - exit code = 0
+  - 输出包含 `Written to` 或等价成功信息
+  - stdout 不大量打印完整文档内容
+  - 输出路径为命令指定路径
+- 如果 remote parse-server 不可用:
+  - exit code != 0
+  - 输出包含 remote、parse-server、unavailable 或等价错误
+  - 不创建空的成功输出文件
+  - 不包含 Python traceback
+
+### PARSE-013E remote 与 local cache 隔离
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --remote --pages 1~1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+```
+
+预期:
+
+- 第一条和第三条 local flash 命令 exit code = 0，tier = flash
+- 第二条按 PARSE-013A 的 remote 可用/不可用分支判定
+- remote 成功或失败均不得污染 local flash 缓存
+- 第三条不应因为第二条 remote 失败而失败
+
+### PARSE-013F remote 配置规则
+
+命令:
+
+```bash
+mineru config parsing-rules add "*/sample.pdf" --remote --pages 1~1 --name e2e-remote-rule --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --wait 60 --json
+mineru config parsing-rules remove <rule_id>
+```
+
+执行说明:
+
+- `<rule_id>` 从第一条 add JSON 中提取。
+
+预期分支:
+
+- add/remove exit code = 0，JSON 可解析
+- 如果 remote parse-server 可用，parse 应按 remote 规则执行，JSON 体现 remote/via/privacy 中的部分字段
+- 如果 remote parse-server 不可用，parse 应返回明确 remote/parse-server 不可用错误
+- parse 失败且命令带 `--json` 时，stdout 必须为可直接解析的 JSON error
+- remove 后规则不再影响后续 parse
+
+### PARSE-014 非法 format
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --format html
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --format text
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --format json
+```
+
+预期:
+
+- 三条 exit code != 0
+- 输出包含 invalid choice、not one of、unsupported format 或等价错误
+- 不启动解析任务
+- 不包含 Python traceback
+
+### PARSE-015 JSON 输出纯净性
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --force --wait 60 --json
+```
+
+预期:
+
+- exit code = 0
+- stdout 可被 JSON parser 直接解析
+- stdout 第一段非空内容必须是 `{` 或 `[`
+- stdout 不包含 `Parse status:`
+- stdout 不包含 `Parse queued`
+- stdout 不包含 `Written to`
+- stderr 不包含非错误噪声
+
+## 9. Read 命令
+
+前置: PARSE-003 或 PARSE-004 至少成功一次，并从输出、`show file` 或 `list docs` 获得 doc short id。
+
+如果无法获得 short id，READ 子套件标记为 BLOCKED。
+
+### READ-001 读取 page locator
+
+命令模板:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --limit 30000
+```
+
+预期:
+
+- exit code = 0
+- 输出为 Markdown、文本或可读内容
+- 不包含 traceback
+
+### READ-002 read JSON
+
+命令模板:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为 JSON
+- JSON 包含 request_scope
+- request_scope.locator 包含输入 locator 或规范化 locator
+
+### READ-003 read context
+
+命令模板:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --context 1 --limit 1000
+```
+
+预期:
+
+- exit code = 0
+- 不报 `context_not_applicable`，除非 locator 粒度确实不支持 context
+
+### READ-004 invalid locator
+
+命令:
+
+```bash
+mineru read "doc:not-a-real-doc/tier:flash/page:1"
+```
+
+预期:
+
+- exit code != 0
+- 输出包含 not found、invalid 或 locator 相关错误
+- 不包含 traceback
+
+### READ-005 输出到文件
+
+命令模板:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --output "$MINERU_E2E_FIXTURE_DIR/read-output.md"
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `Written to` 或等价成功信息
+- 不在 stdout 大量打印完整文档内容
+- 输出文件路径应为命令指定路径
+- 不包含 traceback
+
+### READ-006 JSON 与 output 组合
+
+命令模板:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --output "$MINERU_E2E_FIXTURE_DIR/read-output-json.md" --json
+```
+
+预期:
+
+- exit code = 0
+- stdout 为可直接解析的 JSON
+- JSON 顶层保持 `read --json` 的 DocContentResponse 风格结构
+- JSON 包含 sha256、short_id、tier、format、request_scope 或等价字段
+- 当文件写出成功时，`content` 应为 null
+- JSON 顶层包含 `output`
+- `output.status` = `written`
+- `output.path` 为实际写入路径，建议为绝对路径或规范化绝对路径
+- 输出文件存在，路径为命令指定路径
+- stdout 不允许包含 `Written to`、Rich 表格、Markdown 正文或其它人类提示文本
+- 不包含 Python traceback
+
+### READ-007 image 格式
+
+命令模板:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --format image --json
+```
+
+预期分支:
+
+- 如果该 locator 支持 image 输出:
+  - exit code = 0
+  - 输出为可直接解析的 JSON
+  - JSON 包含 asset、mime_type、path 或等价字段
+- 如果该 locator 不支持 image 输出:
+  - exit code != 0
+  - 输出包含 unsupported、not available、no image 或等价错误
+- 不包含 Python traceback
+
+### READ-008 image 输出到文件
+
+命令模板:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_E2E_FIXTURE_DIR/read-page.png"
+```
+
+预期分支:
+
+- 如果该 locator 支持 image 输出:
+  - exit code = 0
+  - 输出包含 `Written to` 或等价成功信息
+  - 输出路径为命令指定路径
+- 如果该 locator 不支持 image 输出:
+  - exit code != 0
+  - 输出包含 unsupported、not available、no image 或等价错误
+- 不包含 Python traceback
+
+### READ-008A image JSON 与 output 组合
+
+命令模板:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_E2E_FIXTURE_DIR/read-page-json.png" --json
+```
+
+预期分支:
+
+- 如果该 locator 支持 image 输出:
+  - exit code = 0
+  - stdout 为可直接解析的 JSON
+  - JSON 顶层保持 `read --json` 的 DocContentResponse 风格结构
+  - JSON 包含 `asset` 或等价图片元数据
+  - `content` 应为 null
+  - JSON 顶层包含 `output`
+  - `output.status` = `written`
+  - `output.path` 为命令指定输出路径的实际写入路径
+  - 不应要求调用方依赖服务端临时 asset path
+- 如果该 locator 不支持 image 输出:
+  - exit code != 0
+  - stdout 必须为可直接解析的 JSON error，且包含 `error.code` 和 `error.message`
+- 不包含 Python traceback
+
+### READ-009 limit 截断与 next_request
+
+命令模板:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --limit 20 --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为可直接解析的 JSON
+- 如果内容超过 limit，JSON 应体现 truncated、next_request、cursor、locator 或等价续读信息
+- 如果内容未超过 limit，JSON 应明确表示未截断或没有 next_request
+
+### READ-010 使用 next_request 续读
+
+前置: READ-009 返回 next_request.locator。
+
+命令模板:
+
+```bash
+mineru read "<next_request.locator>" --limit 30000 --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为可直接解析的 JSON
+- request_scope.locator 体现输入 locator 或规范化 locator
+- 不返回与上一段完全相同的起始截断片段，除非服务端明确说明 cursor 已到末尾
+
+### READ-011 no-marker
+
+命令模板:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --limit 20 --no-marker
+```
+
+预期:
+
+- exit code = 0
+- 输出不包含 `<!-- Next:`
+- 不包含 Python traceback
+
+### READ-012 非法 format
+
+命令模板:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --format html
+mineru read "doc:<short_id>/tier:flash/page:1" --format text
+mineru read "doc:<short_id>/tier:flash/page:1" --format json
+```
+
+预期:
+
+- 三条 exit code != 0
+- 输出包含 invalid choice、not one of、unsupported format 或等价错误
+- 不包含 Python traceback
+
+### READ-013 JSON 输出纯净性
+
+命令模板:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --json
+```
+
+预期:
+
+- exit code = 0
+- stdout 可被 JSON parser 直接解析
+- stdout 第一段非空内容必须是 `{` 或 `[`
+- stdout 不包含 `Written to`
+- stdout 不包含 Rich 表格、status/info 文本或 Markdown 内容前缀
+
+## 10. Search 与 Find
+
+### SEARCH-001 find by filename
+
+命令:
+
+```bash
+mineru find "sample"
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `sample.pdf` 或明确 `No results found`
+- 若前面 scan/parse 成功，优先期望找到 `sample.pdf`
+
+### SEARCH-002 find JSON
+
+命令:
+
+```bash
+mineru find "sample" --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为 JSON
+- 包含 results、total 或等价字段
+
+### SEARCH-003 search 内容
+
+命令:
+
+```bash
+mineru search "sample" --limit 10
+```
+
+预期:
+
+- exit code = 0
+- 输出为搜索结果或 `No results found`
+- 不包含 traceback
+
+### SEARCH-004 search tier filter
+
+命令:
+
+```bash
+mineru search "sample" --tier flash --limit 10 --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为 JSON
+- 若有结果，结果 tier 应为 flash
+
+### SEARCH-005 search min-tier
+
+命令:
+
+```bash
+mineru search "sample" --min-tier flash --limit 10 --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为 JSON
+
+### SEARCH-006 find ext filter
+
+命令:
+
+```bash
+mineru find "sample" --ext pdf --json
+mineru find "sample" --ext docx --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- 两条输出均为可直接解析的 JSON
+- pdf 过滤下如果有结果，结果 ext 应为 pdf
+- docx 过滤下如果有结果，结果 ext 应为 docx
+- 不包含 Python traceback
+
+### SEARCH-007 find limit 和 offset 边界
+
+命令:
+
+```bash
+mineru find "sample" --limit 1 --json
+mineru find "sample" --limit 1 --offset 1 --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- 两条输出均为可直接解析的 JSON
+- limit 生效，单次返回结果数量不超过 1
+- offset 不导致崩溃
+
+### SEARCH-008 search type filter
+
+命令:
+
+```bash
+mineru search "sample" --type pdf --limit 10 --json
+mineru search "sample" --type docx --limit 10 --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- 两条输出均为可直接解析的 JSON
+- 如果有结果，结果文件类型应符合对应 type filter
+- 不包含 Python traceback
+
+### SEARCH-009 search offset
+
+命令:
+
+```bash
+mineru search "sample" --limit 1 --offset 0 --json
+mineru search "sample" --limit 1 --offset 1 --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- 两条输出均为可直接解析的 JSON
+- limit 生效，单次返回结果数量不超过 1
+- offset 不导致崩溃
+
+### SEARCH-010 search 无结果
+
+命令:
+
+```bash
+mineru search "mineru-e2e-query-that-should-not-exist" --limit 10
+mineru search "mineru-e2e-query-that-should-not-exist" --limit 10 --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- 普通输出包含 `No results found` 或等价空结果提示
+- JSON 输出可直接解析
+- JSON 中 total 为 0 或 results 为空
+
+### SEARCH-011 find 无结果
+
+命令:
+
+```bash
+mineru find "mineru-e2e-filename-that-should-not-exist"
+mineru find "mineru-e2e-filename-that-should-not-exist" --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- 普通输出包含 `No results found` 或等价空结果提示
+- JSON 输出可直接解析
+- JSON 中 total 为 0 或 results 为空
+
+### SEARCH-012 JSON 输出纯净性
+
+命令:
+
+```bash
+mineru find "sample" --json
+mineru search "sample" --limit 10 --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- stdout 可被 JSON parser 直接解析
+- stdout 第一段非空内容必须是 `{` 或 `[`
+- stdout 不包含 Rich 表格、`No results found` 文本或非 JSON 前缀
+
+## 11. List 命令
+
+### LIST-001 list files
+
+命令:
+
+```bash
+mineru list files --limit 20
+mineru list files --limit 20 --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- JSON 输出可解析
+- 若前面 scan/parse 成功，应能看到 `sample.pdf` 或相关 file record
+
+### LIST-001A list files filters
+
+命令:
+
+```bash
+mineru list files --status active --limit 20 --json
+mineru list files --ext pdf --limit 20 --json
+mineru list files --limit 1 --offset 1 --json
+```
+
+预期:
+
+- 三条 exit code = 0
+- 三条输出均为可直接解析的 JSON
+- status filter 下如果有结果，结果 status 应为 active
+- ext filter 下如果有结果，结果 ext 应为 pdf
+- limit/offset 不导致崩溃，返回数量不超过 limit
+
+### LIST-002 list docs
+
+命令:
+
+```bash
+mineru list docs --limit 20
+mineru list docs --limit 20 --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- JSON 输出可解析
+- 若前面 parse 成功，应能看到对应 doc
+
+### LIST-002A list docs offset
+
+命令:
+
+```bash
+mineru list docs --limit 1 --offset 0 --json
+mineru list docs --limit 1 --offset 1 --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- 两条输出均为可直接解析的 JSON
+- limit 生效，单次返回结果数量不超过 1
+- offset 不导致崩溃
+
+### LIST-003 list parses
+
+命令:
+
+```bash
+mineru list parses --tier flash --limit 20
+mineru list parses --tier flash --limit 20 --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- JSON 输出可解析
+- 若前面 parse 成功，应有 flash parse 记录
+
+### LIST-003A list parses filters
+
+命令:
+
+```bash
+mineru list parses --status done --limit 20 --json
+mineru list parses --tier flash --status done --limit 20 --json
+mineru list parses --limit 1 --offset 1 --json
+```
+
+预期:
+
+- 三条 exit code = 0
+- 三条输出均为可直接解析的 JSON
+- status filter 下如果有结果，结果 status 应为 done
+- tier/status 组合 filter 下如果有结果，结果 tier 应为 flash 且 status 为 done
+- limit/offset 不导致崩溃，返回数量不超过 limit
+
+### LIST-004 list scans
+
+命令:
+
+```bash
+mineru list scans --limit 20
+mineru list scans --limit 20 --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- JSON 输出可解析
+- 若前面 scan/watch rescan 成功，应有 scan 记录
+
+### LIST-004A list scans filters
+
+命令:
+
+```bash
+mineru list scans --status done --limit 20 --json
+mineru list scans --kind manual --limit 20 --json
+mineru list scans --limit 1 --offset 1 --json
+```
+
+预期:
+
+- 三条 exit code = 0
+- 三条输出均为可直接解析的 JSON
+- status filter 下如果有结果，结果 status 应为 done
+- kind filter 下如果有结果，结果 kind 应为 manual
+- limit/offset 不导致崩溃，返回数量不超过 limit
+
+### LIST-005 watch-id filters
+
+前置: WATCH-003 可获得 watch id。
+
+命令模板:
+
+```bash
+mineru list files --watch-id <watch_id> --limit 20 --json
+mineru list scans --watch-id <watch_id> --limit 20 --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- 两条输出均为可直接解析的 JSON
+- 如果有结果，结果应关联该 watch id 或该 watch path
+
+### LIST-006 JSON 输出纯净性
+
+命令:
+
+```bash
+mineru list files --limit 1 --json
+mineru list docs --limit 1 --json
+mineru list parses --limit 1 --json
+mineru list scans --limit 1 --json
+```
+
+预期:
+
+- 四条 exit code = 0
+- stdout 可被 JSON parser 直接解析
+- stdout 第一段非空内容必须是 `{` 或 `[`
+- stdout 不包含 Rich 表格、`No ... found` 文本或非 JSON 前缀
+
+## 12. Show 命令
+
+### SHOW-001 show file
+
+命令:
+
+```bash
+mineru show file "$MINERU_E2E_FIXTURE_DIR/sample.pdf"
+mineru show file "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- JSON 输出可解析
+- 输出包含 filename、size_bytes、page_count 或 parse tiers 中的部分字段
+
+### SHOW-001A show file by sha256
+
+前置: 从 `mineru show file "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --json` 或 `mineru list files --json` 中获得 sha256。
+
+命令模板:
+
+```bash
+mineru show file <sha256>
+mineru show file <sha256> --json
+```
+
+预期分支:
+
+- 如果 CLI 设计支持 sha256 查询 file:
+  - 两条 exit code = 0
+  - JSON 输出可解析
+  - 输出包含 sha256 或对应 filename/path
+- 如果 CLI 设计只支持 path:
+  - 两条 exit code != 0
+  - 输出包含 path、not found、invalid 或等价错误
+  - 不包含 Python traceback
+
+### SHOW-002 show doc
+
+从 `mineru list docs --json` 中取一个 sha256。
+
+命令模板:
+
+```bash
+mineru show doc <sha256>
+mineru show doc <sha256> --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- JSON 输出可解析
+- 输出包含 sha256
+- show doc 展示关联 files 或 doc metadata
+
+### SHOW-003 show parse
+
+从 `mineru list parses --json` 中取一个 parse id。
+
+命令模板:
+
+```bash
+mineru show parse <parse_id>
+mineru show parse <parse_id> --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- 输出包含 parse status、tier、page_range
+
+### SHOW-004 show scan
+
+从 `mineru list scans --json` 中取一个 scan id。
+
+命令模板:
+
+```bash
+mineru show scan <scan_id>
+mineru show scan <scan_id> --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- 输出包含 scan status 和统计字段
+
+### SHOW-005 show 不存在资源
+
+命令:
+
+```bash
+mineru show parse 999999999
+mineru show scan 999999999
+mineru show doc 0000000000000000000000000000000000000000000000000000000000000000
+mineru show file "$MINERU_E2E_FIXTURE_DIR/not-exist.pdf"
+```
+
+预期:
+
+- 四条 exit code != 0
+- 输出包含 not found、invalid 或等价错误
+- 不包含 Python traceback
+
+### SHOW-006 JSON 输出纯净性
+
+命令模板:
+
+```bash
+mineru show file "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --json
+mineru show doc <sha256> --json
+mineru show parse <parse_id> --json
+mineru show scan <scan_id> --json
+```
+
+预期:
+
+- 四条 exit code = 0
+- stdout 可被 JSON parser 直接解析
+- stdout 第一段非空内容必须是 `{` 或 `[`
+- stdout 不包含 Rich 表格或非 JSON 前缀
+
+## 13. Invalidate
+
+### INVALIDATE-001 invalidate flash
+
+命令:
+
+```bash
+mineru invalidate "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `Invalidated` 或 `No done batches found`
+- 不删除源文件
+
+### INVALIDATE-001A invalidate all tiers
+
+命令:
+
+```bash
+mineru invalidate "$MINERU_E2E_FIXTURE_DIR/sample.pdf"
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `Invalidated`、`No done batches found` 或等价结果
+- 不删除源文件
+- 后续可重新 parse
+
+### INVALIDATE-001B invalidate JSON 支持性
+
+命令:
+
+```bash
+mineru invalidate "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --json
+```
+
+预期:
+
+- 命令必须有明确行为:
+  - 如果支持 JSON，exit code = 0，stdout 为可直接解析的 JSON
+  - 如果不支持 JSON，exit code != 0，输出包含 no such option、unknown option 或等价错误
+- 不包含 Python traceback
+
+### INVALIDATE-001C invalidate 不存在文件
+
+命令:
+
+```bash
+mineru invalidate "$MINERU_E2E_FIXTURE_DIR/not-exist.pdf" --tier flash
+```
+
+预期:
+
+- exit code != 0
+- 输出包含 file not found、not found 或等价错误
+- 不包含 Python traceback
+
+### INVALIDATE-002 invalidate 后重新 parse
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为 JSON
+- tier = flash
+- 不因 invalidate 后旧状态损坏而失败
+
+## 14. Forget
+
+### FORGET-001 默认 dry-run
+
+命令:
+
+```bash
+mineru forget "$MINERU_E2E_FIXTURE_DIR/sample-copy.pdf"
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `Would forget`
+- 不删除源文件
+- 后续 `mineru show file "$MINERU_E2E_FIXTURE_DIR/sample-copy.pdf"` 不因 dry-run 改变状态
+
+### FORGET-002 实际 forget
+
+命令:
+
+```bash
+mineru forget "$MINERU_E2E_FIXTURE_DIR/sample-copy.pdf" --no-dry-run
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `Forgot`
+- 不删除源文件
+- 如果后续重新 scan/parse，该路径可被重新发现
+
+### FORGET-003 forget JSON
+
+命令:
+
+```bash
+mineru forget "$MINERU_E2E_FIXTURE_DIR/sample-copy.pdf" --json
+```
+
+预期:
+
+- exit code = 0
+- 输出为 JSON
+- 包含 forgotten_files、matched_as、warnings 或等价字段
+
+### FORGET-004 forget 目录 dry-run
+
+命令:
+
+```bash
+mineru forget "$MINERU_E2E_FIXTURE_DIR/watch-dir"
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `Would forget`
+- 不删除源目录或目录内文件
+- 后续 `mineru watch list` 或 `mineru scan` 不因 dry-run 破坏状态
+
+### FORGET-005 forget 目录 execute
+
+命令:
+
+```bash
+mineru forget "$MINERU_E2E_FIXTURE_DIR/watch-dir" --no-dry-run
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `Forgot`
+- 不删除源目录或目录内文件
+- 后续重新 scan/watch rescan 可重新发现该目录下文件
+
+### FORGET-006 forget 不存在路径
+
+命令:
+
+```bash
+mineru forget "$MINERU_E2E_FIXTURE_DIR/not-exist.pdf"
+mineru forget "$MINERU_E2E_FIXTURE_DIR/not-exist.pdf" --json
+```
+
+预期:
+
+- 两条命令必须有明确行为
+- 普通命令如果 exit code = 0，输出必须明确 forgotten_files 为 0 或有 warning
+- 普通命令如果 exit code != 0，输出必须包含 not found 或等价错误
+- JSON 命令如果 exit code = 0，stdout 必须为可直接解析的 JSON，且明确 forgotten_files 为 0 或有 warning
+- JSON 命令如果 exit code != 0，stdout 必须为可直接解析的 JSON error，且包含 `error.code` 和 `error.message`
+- 不包含 Python traceback
+
+### FORGET-007 JSON 输出纯净性
+
+命令:
+
+```bash
+mineru forget "$MINERU_E2E_FIXTURE_DIR/sample-copy.pdf" --json
+```
+
+预期:
+
+- exit code = 0
+- stdout 可被 JSON parser 直接解析
+- stdout 第一段非空内容必须是 `{` 或 `[`
+- stdout 不包含 `Would forget`、`Forgot` 或非 JSON 前缀
+
+## 15. Cleanup
+
+### CLEANUP-001 cleanup deleted-files dry-run
+
+命令:
+
+```bash
+mineru cleanup deleted-files
+mineru cleanup deleted-files --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- 默认 dry-run
+- JSON 输出可解析
+
+### CLEANUP-002 cleanup deleted-files execute
+
+命令:
+
+```bash
+mineru cleanup deleted-files --no-dry-run
+```
+
+预期:
+
+- exit code = 0
+- 输出包含 `Removed`
+
+### CLEANUP-003 cleanup orphan-docs dry-run
+
+命令:
+
+```bash
+mineru cleanup orphan-docs
+mineru cleanup orphan-docs --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- 默认 dry-run
+- JSON 输出可解析
+
+### CLEANUP-004 cleanup temp
+
+命令:
+
+```bash
+mineru cleanup temp --older-than 7
+mineru cleanup temp --older-than 7 --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- JSON 输出可解析
+- 输出包含 removed temp file count 或等价字段
+
+### CLEANUP-005 cleanup deleted-files execute JSON
+
+命令:
+
+```bash
+mineru cleanup deleted-files --no-dry-run --json
+```
+
+预期:
+
+- exit code = 0
+- stdout 为可直接解析的 JSON
+- JSON 包含 removed/deleted/dry_run 或等价字段
+- 不包含 Python traceback
+
+### CLEANUP-006 cleanup orphan-docs execute
+
+命令:
+
+```bash
+mineru cleanup orphan-docs --no-dry-run
+mineru cleanup orphan-docs --no-dry-run --json
+```
+
+预期:
+
+- 普通命令 exit code = 0
+- 普通输出包含 `Removed`
+- JSON 命令 exit code = 0
+- JSON 命令 stdout 为可直接解析的 JSON
+- JSON 包含 removed/orphan/dry_run 或等价字段
+- 不包含 Python traceback
+
+### CLEANUP-007 cleanup temp 边界参数
+
+命令:
+
+```bash
+mineru cleanup temp --older-than 0 --json
+mineru cleanup temp --older-than -1
+```
+
+预期:
+
+- `--older-than 0 --json` exit code = 0，输出为可直接解析的 JSON
+- `--older-than -1` exit code != 0
+- `--older-than -1` 输出包含 invalid、must be non-negative 或等价错误
+- 不包含 Python traceback
+
+### CLEANUP-008 JSON 输出纯净性
+
+命令:
+
+```bash
+mineru cleanup deleted-files --json
+mineru cleanup orphan-docs --json
+mineru cleanup temp --older-than 7 --json
+```
+
+预期:
+
+- 三条 exit code = 0
+- stdout 可被 JSON parser 直接解析
+- stdout 第一段非空内容必须是 `{` 或 `[`
+- stdout 不包含 `Would remove`、`Removed` 或非 JSON 前缀
+
+## 16. 扩展与边界场景
+
+本章节补充跨命令契约、路径边界、并发、文件类型和更深层行为验证。除明确说明外，执行 Agent 仍只调用 `mineru` 命令。
+
+### JSONERR-001 read JSON 错误输出纯净性
+
+命令:
+
+```bash
+mineru read "doc:not-a-real-doc/tier:flash/page:1" --json
+```
+
+预期:
+
+- exit code != 0
+- stdout 必须为可直接解析的 JSON error
+- JSON 包含 `error.type`、`error.code`、`error.message`
+- stdout 不得混合 `Error:`、Rich 文本、traceback 或半截 JSON
+- stderr 不得混入额外的人类解释文本
+
+### JSONERR-002 watch JSON 错误输出纯净性
+
+命令:
+
+```bash
+mineru watch add "$MINERU_E2E_FIXTURE_DIR/not-exist-dir" --label e2e-missing-watch --json
+mineru watch remove "$MINERU_E2E_FIXTURE_DIR/not-a-watch-dir" --json
+mineru watch rescan "$MINERU_E2E_FIXTURE_DIR/not-a-watch-dir" --json
+```
+
+预期:
+
+- 三条 exit code != 0
+- 三条 stdout 均必须为可直接解析的 JSON error
+- JSON 包含 `error.type`、`error.code`、`error.message`
+- stdout 不得混合 `Error:`、Rich 文本、traceback 或半截 JSON
+- stderr 不得混入额外的人类解释文本
+
+### JSONERR-003 show/config/cleanup JSON 错误输出纯净性
+
+命令:
+
+```bash
+mineru show parse 999999999 --json
+mineru config get not.a.real.key --json
+mineru cleanup temp --older-than -1 --json
+```
+
+预期:
+
+- 三条 exit code != 0
+- 三条 stdout 均必须为可直接解析的 JSON error
+- JSON 包含 `error.type`、`error.code`、`error.message`
+- stdout 不得混合 `Error:`、Rich 文本、traceback 或半截 JSON
+- stderr 不得混入额外的人类解释文本
+
+说明:
+
+- 本用例只覆盖进入命令实现后的业务错误。
+- Typer/Click 参数解析阶段错误不在 JSON 错误统一契约范围内。
+
+### JSONERR-004 server 不可连接时 JSON 错误输出纯净性
+
+命令:
+
+```bash
+mineru server stop
+mineru scan "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --json
+mineru list files --limit 1 --json
+mineru search "sample" --limit 1 --json
+mineru find "sample" --limit 1 --json
+mineru server start
+```
+
+预期:
+
+- stop exit code = 0
+- scan/list/search/find 四条命令 exit code != 0
+- scan/list/search/find 四条 stdout 均必须为可直接解析的 JSON error
+- JSON 包含 `error.type`、`error.code`、`error.message`
+- stdout 不得混合 `Error:`、Rich 文本、traceback 或半截 JSON
+- `mineru server status --json` 的未运行状态不适用本错误契约，见 JSONERR-005
+- start exit code = 0，用于恢复后续测试环境
+
+### JSONERR-005 server status JSON 未运行状态
+
+命令:
+
+```bash
+mineru server stop
+mineru server status --json
+mineru server start
+```
+
+预期:
+
+- stop exit code = 0
+- status exit code = 0
+- status stdout 为可直接解析的 JSON
+- status JSON 至少包含 `running: false`
+- status stdout 不包含 `Server is not running.` 或 JSON error
+- start exit code = 0，用于恢复后续测试环境
+
+### WATCH-008 watch add JSON
+
+命令:
+
+```bash
+mineru watch add "$MINERU_E2E_FIXTURE_DIR/watch-dir" --label e2e-watch-json --json
+mineru watch list --json
+mineru watch remove "$MINERU_E2E_FIXTURE_DIR/watch-dir" --json
+```
+
+预期:
+
+- 三条 exit code = 0
+- 三条 stdout 均为可直接解析的 JSON
+- add JSON 包含 id、path、label、status 或等价字段
+- list JSON 能看到该 watch
+- remove JSON 包含 watch_id/removed 或等价字段
+
+### WATCH-009 removable watch
+
+命令:
+
+```bash
+mineru watch add "$MINERU_E2E_FIXTURE_DIR/watch-dir" --label e2e-removable --removable --json
+mineru watch list --json
+mineru watch remove "$MINERU_E2E_FIXTURE_DIR/watch-dir"
+```
+
+预期:
+
+- 三条 exit code = 0
+- add/list JSON 可直接解析
+- watch 记录中 removable 应为 true
+- 普通 list 输出中应能体现 removable 或 JSON 中明确体现 removable
+
+### WATCH-010 removable watch unreachable 行为
+
+前置: 需要一个可移除或可临时变为不可访问的 watch fixture；如果当前平台无法稳定制造，标记为 BLOCKED。
+
+命令模板:
+
+```bash
+mineru watch add <removable_watch_path> --removable --json
+mineru watch rescan <watch_id> --wait 30 --json
+mineru watch list --json
+```
+
+预期:
+
+- 如果路径可访问，rescan exit code = 0，watch status 为 active
+- 如果路径变为不可访问，命令应返回明确 unreachable 状态、scan error 或 watch status=unreachable
+- 不包含 Python traceback
+
+### LIST-007 list docs file-type filter
+
+命令:
+
+```bash
+mineru list docs --file-type pdf --limit 20 --json
+mineru list docs --file-type docx --limit 20 --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- 两条 stdout 均为可直接解析的 JSON
+- 如果有结果，结果 file_type 应符合过滤条件
+- 不包含 Python traceback
+
+### SEARCH-013 find offset 契约
+
+命令:
+
+```bash
+mineru find "sample" --limit 1 --offset 1 --json
+```
+
+预期:
+
+- 如果 CLI 设计支持 find offset，exit code = 0，stdout 为可直接解析的 JSON，返回数量不超过 1
+- 如果 CLI 设计不支持 find offset，exit code != 0，输出包含 no such option、unknown option 或等价错误
+- 不包含 Python traceback
+
+### PARSE-016 page range 边界
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages all --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 2~1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 999~1000 --wait 60 --json
+```
+
+预期:
+
+- `--pages all` exit code = 0，stdout 为可直接解析的 JSON
+- 反向 page range exit code != 0 或返回明确 page_range_invalid/error JSON
+- 超出页码 exit code != 0 或返回明确 page_range_invalid/not found/empty range 错误
+- 不包含 Python traceback
+
+### READ-014 locator 粒度边界
+
+前置: 从成功 parse/read JSON 中获得 block/char locator 或 next_request locator。
+
+命令模板:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1/block:1" --json
+mineru read "doc:<short_id>/tier:flash/page:1/block:1/char:1" --json
+mineru read "doc:<short_id>/tier:flash/page:999" --json
+mineru read "doc:<short_id>/tier:flash/page:1/block:999" --json
+```
+
+预期:
+
+- 合法 block/char locator exit code = 0，stdout 为可直接解析的 JSON
+- 超出 page/block locator exit code != 0，stdout 必须为可直接解析的 JSON error
+- request_scope.locator 体现输入 locator 或规范化 locator
+- 不包含 Python traceback
+
+### READ-015 跨页 context
+
+命令模板:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --context 2 --limit 30000 --json
+```
+
+预期:
+
+- exit code = 0
+- stdout 为可直接解析的 JSON
+- request_scope.context = 2 或等价字段体现 context 生效
+- 如果文档页数不足，命令应优雅返回可用范围，不报 traceback
+
+### FILETYPE-001 Office 和图片输入
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.docx" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pptx" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.xlsx" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.png" --tier flash --wait 60 --json
+```
+
+预期分支:
+
+- 如果当前安装支持该文件类型，exit code = 0，stdout 为可直接解析的 JSON，content 或 doc metadata 合理存在
+- 如果当前安装不支持该文件类型，exit code != 0，输出包含 unsupported、file_type_unsupported、no_engine 或等价错误
+- 不包含 Python traceback
+
+### FILETYPE-002 损坏、空、不可读文件
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/corrupted.pdf" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/empty.pdf" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/no-read.pdf" --tier flash --wait 60 --json
+```
+
+预期:
+
+- 三条 exit code != 0，除非当前实现对空文件有明确可接受语义
+- 输出包含 file_corrupted、parse_empty、file_permission_denied、file_not_found、unsupported 或等价错误
+- 失败命令带 `--json` 时，stdout 必须为可直接解析的 JSON error
+- 如果 `no-read.pdf` 权限场景无法稳定制造，可标记该子项 BLOCKED
+- 不包含 Python traceback
+
+### PATH-001 路径字符边界
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample doc.pdf" --tier flash --pages 1~1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/中文样例.pdf" --tier flash --pages 1~1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/symlink-sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+```
+
+预期:
+
+- 文件名含空格和中文的两条命令 exit code = 0，stdout 为可直接解析的 JSON
+- symlink 命令如果平台支持 symlink，exit code = 0；如果不支持或 fixture 不存在，标记 BLOCKED
+- JSON 中 source/path/request_scope 不应乱码
+- 不包含 Python traceback
+
+### PATH-002 相对路径和 home 路径
+
+命令:
+
+```bash
+mineru parse "sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+mineru show file "sample.pdf" --json
+mineru parse "~/mineru-e2e-test/sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+```
+
+预期:
+
+- 在测试 HOME 下执行时，三条 exit code = 0
+- stdout 均为可直接解析的 JSON
+- show/parse 应解析到同一个实际文件或等价 canonical path
+- CLI 必须主动对输入 path 中的 `~` 执行 `expanduser`
+- 不能把带引号的 `"~/mineru-e2e-test/sample.pdf"` 当作当前目录下的字面量相对路径
+- 不包含 Python traceback
+
+### OUTPUT-001 output 边界
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --output -
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --output "$MINERU_E2E_FIXTURE_DIR/output-dir/existing.md"
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --output "$MINERU_E2E_FIXTURE_DIR/not-exist-dir/out.md"
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --output "~/mineru-e2e-test/output-dir/home-output.md"
+```
+
+预期:
+
+- `--output -` 应等价于 stdout 输出，exit code = 0，不创建名为 `-` 的文件
+- 输出到已有文件应有明确覆盖或拒绝策略；若覆盖，exit code = 0 且输出包含 `Written to`
+- 输出到不存在父目录应自动创建父目录并成功，exit code = 0
+- 不存在父目录下的目标文件必须存在，且不为空
+- 输出路径中的 `~` 必须由 CLI 主动 `expanduser`，不能创建字面量 `~` 目录
+- 不包含 Python traceback
+
+### OUTPUT-001A output 与 JSON 边界
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --output - --json
+mineru read "doc:<short_id>/tier:flash/page:1" --output - --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- stdout 均为可直接解析的 JSON
+- `--output - --json` 等价于不指定 `--output`
+- JSON 中不新增 `output` 字段
+- 不创建名为 `-` 的文件
+- stdout 不包含 `Written to`、Rich 表格、Markdown 正文或其它人类提示文本
+
+### OUTPUT-002 read image output 后缀边界
+
+命令模板:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_E2E_FIXTURE_DIR/output-dir/page-as-md.md"
+```
+
+预期:
+
+- 如果 image 输出支持任意后缀，exit code = 0，输出文件内容应为图片资产字节
+- 如果要求后缀匹配，exit code != 0，输出包含 invalid extension、mime、image 或等价错误
+- 不包含 Python traceback
+
+### CONCURRENCY-001 并发 parse force
+
+执行方式:
+
+- 启动两个独立 shell，同时执行同一条命令。
+- 执行 Agent 仍只调用 `mineru` 命令，不直接访问数据库。
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --force --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --force --wait 60 --json
+```
+
+预期:
+
+- 两个进程均不出现 Python traceback
+- 至少一个命令成功；另一个可成功、等待已有任务、或返回明确 lock/queue/busy 错误
+- 不允许数据库损坏、后续普通 parse 失败或永久 pending
+
+### CONCURRENCY-002 并发 scan 同一目录
+
+执行方式:
+
+- 启动两个独立 shell，同时执行同一条命令。
+
+命令:
+
+```bash
+mineru scan "$MINERU_E2E_FIXTURE_DIR" --wait 30 --json
+mineru scan "$MINERU_E2E_FIXTURE_DIR" --wait 30 --json
+```
+
+预期:
+
+- 两个进程均不出现 Python traceback
+- 两条命令 exit code = 0 或其中一条返回明确 busy/lock/queue 错误
+- 后续 `mineru list scans --json` 可正常返回
+
+### CONCURRENCY-003 并发 server start
+
+执行方式:
+
+- 确保 server 已停止。
+- 启动两个独立 shell，同时执行 `mineru server start`。
+
+命令:
+
+```bash
+mineru server start
+mineru server start
+```
+
+预期:
+
+- 至少一个命令 exit code = 0
+- 另一个命令 exit code = 0 且输出 already running，或 exit code != 0 且输出可读的 socket/busy/started by another process 错误
+- 最终 `mineru server status --json` 表示只有一个可用 server
+- 不包含 Python traceback
+
+### CONFIG-010 配置持久化
+
+命令:
+
+```bash
+mineru config set parse_server.local.mode disabled
+mineru server restart
+mineru config get parse_server.local.mode --json
+mineru config unset parse_server.local.mode
+```
+
+预期:
+
+- 四条 exit code = 0
+- restart 后 get JSON 仍体现 disabled 或等价 override
+- unset 后恢复默认配置来源
+- 不包含 Python traceback
+
+### CONFIG-011 rule hit_count 与 scan 影响
+
+命令:
+
+```bash
+mineru config exclude-rules add "*/unsupported.bin" --priority 100 --json
+mineru scan "$MINERU_E2E_FIXTURE_DIR" --wait 30 --json
+mineru config exclude-rules list --json
+mineru config exclude-rules remove <rule_id>
+```
+
+预期:
+
+- 四条 exit code = 0
+- scan JSON 中 excluded 或 unsupported 计数符合 exclude 语义
+- list JSON 中该 rule 的 hit_count 应增加，或当前实现明确不统计 scan hit_count
+- remove 后规则不再出现在 list 中
+
+### CLEANUP-009 cleanup deleted-files 真实效果
+
+前置: 通过 `mineru forget "$MINERU_E2E_FIXTURE_DIR/sample-copy.pdf" --no-dry-run` 或其它 CLI 操作制造可清理记录。
+
+命令:
+
+```bash
+mineru cleanup deleted-files --no-dry-run --json
+mineru list files --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- cleanup JSON 可直接解析
+- list files 中不再包含已清理的 deleted 记录，或 cleanup JSON 明确 deleted_files=0
+- 不包含 Python traceback
+
+### CLEANUP-010 cleanup orphan-docs 真实效果
+
+前置: 通过 forget 所有关联文件制造 orphan doc；如果无法只通过 CLI 稳定制造，标记 BLOCKED。
+
+命令:
+
+```bash
+mineru cleanup orphan-docs --no-dry-run --json
+mineru list docs --json
+```
+
+预期:
+
+- 两条 exit code = 0
+- cleanup JSON 可直接解析
+- orphan doc 不再出现在 list docs 中，或 cleanup JSON 明确 orphan_docs=0
+- parsed 输出目录不应再被 read/parse 错误引用
+- 不包含 Python traceback
+
+### CLEANUP-011 cleanup temp 新旧文件边界
+
+前置: 测试环境预置 doclib temp 目录中的过期文件和未过期文件；如果无法只通过 CLI 稳定制造，标记 BLOCKED。
+
+命令:
+
+```bash
+mineru cleanup temp --older-than 7 --json
+```
+
+预期:
+
+- exit code = 0
+- stdout 为可直接解析的 JSON
+- 过期 temp 文件被清理
+- 未过期 temp 文件不被清理
+- 不包含 Python traceback
+
+### SERVER-012 error summary 与 recent logs
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/corrupted.pdf" --tier flash --wait 20 --json
+mineru server status --json
+```
+
+预期:
+
+- 第一条按 FILETYPE-002 损坏 PDF 分支判定
+- 第二条 exit code = 0，stdout 为可直接解析的 JSON
+- status JSON 中 recent_logs 应来自 `MINERU_DOCLIB_LOG_PATH` 或等价日志来源
+- 如果错误被记录，error_summary 中应出现 parse/file 错误计数
+- 如果当前实现不记录该错误，记录为 fail/issue，不作为 BLOCKED
+
+## 17. 停止 server
+
+### SERVER-010 停止 server
+
+命令:
+
+```bash
+mineru server stop
+mineru server status
+```
+
+预期:
+
+- stop exit code = 0
+- status exit code = 0
+- status 输出 `Server is not running` 或等价信息
+
+### SERVER-011 启动失败时保留子进程 stderr
+
+执行顺序:
+
+- 本用例必须作为整套 E2E 的最后一个测试执行。
+- 本用例会故意制造 server 启动失败，执行后无需恢复测试 server。
+
+执行方式:
+
+- 人工制造一个不会成功建立 UDS 的 server 启动环境，例如把 `MINERU_DOCLIB_UDS_PATH` 指向一个父目录不存在且不可创建的位置。
+- 只允许通过环境变量制造失败，不直接修改数据库或内部状态。
+
+命令:
+
+```bash
+mineru server start
+```
+
+预期:
+
+- exit code != 0
+- 输出包含 `See log:` 或等价日志路径提示
+- 日志路径应为 `MINERU_DOCLIB_LOG_PATH` 指向的文件或测试 HOME 下的 mineru log
+- 日志文件中能看到 server 子进程 stderr 或异常信息
+- stdout/stderr 不只给出空泛的启动失败
+
+## 18. 最终报告格式
+
+执行 Agent 最终必须按以下格式汇总:
+
+```text
+Summary:
+- total: N
+- passed: N
+- failed: N
+- blocked: N
+
+Failures:
+1. [case id] command
+   expected:
+   actual exit code:
+   actual stdout:
+   actual stderr:
+   analysis:
+
+Blocked:
+1. [case id] reason
+
+Environment:
+- mineru version: <如果 help/status 输出能看到则填写，否则 unknown>
+- fixture dir: ...
+- quality tier available: standard/pro available | flash only | unknown
+```

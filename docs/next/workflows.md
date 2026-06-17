@@ -184,9 +184,9 @@ watch 默认输出面向系统内部:
 
 ### 5.7 约束
 
-- watch 自动产出的 `flash` 结果可以用于搜索、预览和提示升级。
+- watch 自动产出的 `flash` 结果可以用于搜索和预览；P0 不基于启发式自动提示或自动排队升级。
 - watch 自动产出的 `flash` 结果不能在用户主动阅读时被静默当作最终解析内容返回。
-- 如果 parsing-rule 指定 `standard` 或 `pro`，必须经过能力检查和隐私检查。
+- 后台自动升级只由用户显式配置的 parsing-rules 触发；如果 parsing-rule 指定 `standard` 或 `pro`，必须经过能力检查和隐私检查。
 - parsing-rule 只有显式允许 remote，才可以上传远端。
 
 ### 5.8 Cleanup 边界
@@ -621,12 +621,12 @@ FTS 更新可以在解析完成后临时从 ParseResult 或 Middle JSON 渲染 M
 9. 主动阅读不会静默命中 `flash`。
 10. 错误返回可操作 code 和 suggestion。
 
-### P1: Agent-native 阅读
+### P0: Agent-native 阅读
 
 1. 搜索结果返回来源 tier。
 2. Agent 主动读取时提升到 `standard` 或 `pro`。
 3. 输出支持截断 marker 和下一步 page hint。
-4. Middle JSON 支持 locator 和 chunk id。
+4. Middle JSON 支持稳定 page/block locator。
 5. Markdown 输出可携带可选 locator marker。
 6. 高质量解析完成后刷新搜索索引。
 

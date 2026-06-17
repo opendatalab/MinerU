@@ -61,23 +61,21 @@
 - validator 能区分 error / warning。
 - 当前已知 Office unknown bbox 以 warning 处理，不阻塞。
 
-## Phase 3: Agent Locator 与 Chunk ID
+## Phase 3: Agent Locator
 
 任务:
 
 1. 定义 locator。
-2. 定义 chunk id 函数。
-3. 实现 block locator。
-4. 实现 span locator。
-5. 实现 citation record helper。
-6. doclib 存储 schema version 和 source sha256。
+2. 实现 block locator。
+3. 实现 citation record helper。
+4. doclib 存储 schema version 和 source sha256。
 
 验收:
 
-- 同一文件重复解析 chunk id 稳定。
-- 不同 tier 的 chunk id 可区分。
+- 同一文件重复解析 locator 稳定。
+- 不同 tier 的 block reference 可区分。
 - unknown bbox 输出 `bbox_known=false`。
-- Agent 可以从 chunk id 回查 page/block。
+- Agent 可以从 block reference 回查 page/block。
 
 ## Phase 4: Backend Normalization
 
@@ -122,7 +120,7 @@
 验收:
 
 - 老 `*_middle.json` 能被新版 SDK 读取。
-- 无 sha256 的数据不能生成 chunk id，但仍可 render。
+- 无 sha256 的数据不能生成可严格校验的跨文档引用，但仍可 render。
 - 迁移不会改变用户可见 markdown 输出。
 
 ## 风险
@@ -131,7 +129,7 @@
 |------|------|
 | 强行要求 Office bbox 导致大量无效框 | 使用 `bbox_known=false`，先承认 unknown。 |
 | 改 envelope 破坏旧 CLI | `normalize_middle_json()` 兼容旧 `pdf_info`。 |
-| chunk id 因 index 不稳定而漂移 | 先做 normalization，再生成 locator。 |
+| locator 因 index 不稳定而漂移 | 先做 normalization，再生成 locator。 |
 | render 收敛过大 | 分阶段，先 facade，后 type-specific helper。 |
 | filename 泄露隐私 | `_meta.file.filename` 默认可为空。 |
 
@@ -142,7 +140,7 @@
 3. 增加 validator P0。
 4. 修正 `HtmlParser` 必填字段。
 5. 定义 `bbox_known()` helper。
-6. 定义 `locator_for_block()` 和 `chunk_id()`。
+6. 定义 `locator_for_block()`。
 7. 给 Pipeline/VLM/Office 各加一个 fixture。
 
 完成这 7 项后，Middle JSON 就可以支撑 API/SDK 的 `middle_json` output、doclib 缓存恢复和 Agent citation 的第一版闭环。

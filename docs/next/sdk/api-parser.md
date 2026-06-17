@@ -155,6 +155,12 @@ doclib SDK 或 CLI 在调用它之前必须完成隐私策略判断:
 - `MinerUApiParser` 是该 HTTP 规格的 Python parser 封装。
 - `api_server` 是该 HTTP 规格的本地无状态 server 实现。
 
-## 未决问题
+## 公开入口
 
-`MinerUApiParser` 命名与位置、低层 `V1ApiClient` 是否公开，集中维护在 [开放问题清单](../open-questions.md)。API-backed parser 的异常应收敛到统一 `MineruError` 体系。
+`MinerUApiParser` 保持现有命名和位置，公开入口为:
+
+```python
+from mineru.parser import MinerUApiParser
+```
+
+不新增 `mineru.parser.remote` 迁移路径。低层 `V1ApiClient` 是否公开仍集中维护在 [开放问题清单](../open-questions.md)。API-backed parser 的异常应收敛到统一 `MineruError` 体系。

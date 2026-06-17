@@ -8,6 +8,7 @@ import typer
 
 from ...doclib.client import DoclibClient
 from ...doclib.types import ScanRequest, WatchInfo, WatchRequest
+from ..json_errors import exit_with_error
 from ..output import print_error, print_info, print_json, print_success
 from .scan import _print_scan, _wait_for_scan
 
@@ -25,8 +26,7 @@ def watch_add(
     try:
         data = _client().add_watch(WatchRequest(path=path, removable=removable, label=label))
     except Exception as exc:
-        print_error(str(exc) or "Cannot add watch target.")
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot add watch target.")
 
     if json_mode:
         print_json(data)
@@ -40,8 +40,7 @@ def watch_list(json_mode: bool = typer.Option(False, "--json", help="JSON output
     try:
         data = _client().list_watches()
     except Exception as exc:
-        print_error(str(exc) or "Cannot list watch targets.")
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot list watch targets.")
 
     if json_mode:
         print_json(data)
@@ -67,8 +66,7 @@ def watch_remove(
         watch = _resolve_watch(client, target)
         result = client.remove_watch(watch.id)
     except Exception as exc:
-        print_error(str(exc) or "Cannot remove watch target.")
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot remove watch target.")
 
     if json_mode:
         print_json(result)
@@ -91,8 +89,7 @@ def watch_rescan(
         if not no_wait and wait > 0:
             scan_info = _wait_for_scan(client, scan_info.id, wait)
     except Exception as exc:
-        print_error(str(exc) or "Cannot rescan watch target.")
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot rescan watch target.")
 
     _print_scan(scan_info, json_mode=json_mode)
 

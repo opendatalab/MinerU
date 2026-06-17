@@ -25,6 +25,7 @@ from .types import (
     ConfigSetResponse,
     ConfigUnsetResponse,
     ConfigValueResponse,
+    ContentFormat,
     DocContentExportRequest,
     DocContentExportResponse,
     DocContentResponse,
@@ -216,6 +217,27 @@ class DoclibClient(DoclibInterface):
                 "tier": tier,
                 "page_range": page_range,
                 "after": after,
+                "limit": limit,
+                "format": format,
+                "no_marker": no_marker,
+            },
+        )
+
+    @route("GET", "/content", tags=("docs",))
+    def read_content(
+        self,
+        locator: str,
+        *,
+        context: int = 0,
+        limit: int = 30000,
+        format: ContentFormat = "markdown",
+        no_marker: bool = False,
+    ) -> DocContentResponse:
+        return self._request_model(
+            DocContentResponse,
+            params={
+                "locator": locator,
+                "context": context,
                 "limit": limit,
                 "format": format,
                 "no_marker": no_marker,

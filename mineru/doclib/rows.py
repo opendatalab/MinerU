@@ -205,6 +205,7 @@ class SearchFileRow(FileRow):
 
 class FilenameSearchFileRow(FileRow):
     title: str | None
+    page_count: int | None
 
 
 class ContentSearchResultRow(TypedDict):
@@ -214,6 +215,7 @@ class ContentSearchResultRow(TypedDict):
     filename: str | None
     ext: str | None
     size_bytes: int | None
+    page_count: int | None
     tier: Tier
     snippet: str
     paths: list[str]
@@ -225,6 +227,7 @@ class FilenameSearchResultRow(TypedDict):
     filename: str
     ext: str | None
     size_bytes: int | None
+    page_count: int | None
     tier: str
     snippet: str
     paths: list[str]

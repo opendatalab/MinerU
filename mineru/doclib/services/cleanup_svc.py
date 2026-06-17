@@ -12,6 +12,7 @@ from ..core.db import DatabaseManager
 from ..rows import CountRow, DocRow, IdRow, WatchTargetRow
 from ..types import FILE_STATUS_DELETED
 
+FORGET_WATCH_ROOT_WARNING = "Path is a configured watch root and may be rediscovered on the next scan."
 FORGET_UNDER_ACTIVE_WATCH_WARNING = "Path is under an active watch and may be rediscovered on the next scan."
 
 
@@ -108,17 +109,10 @@ class CleanupService:
             raise InvalidRequestError("invalid_request", "Path is required.", "path")
 
         watches = cast(list[WatchTargetRow], await self.db.fetchall("SELECT * FROM watches WHERE enabled=1"))
-        if any(watch["path"] == normalized for watch in watches):
-            raise InvalidRequestError(
-                "invalid_request",
-                "Path is a configured watch root. Use mineru watch remove <path> to remove the watch first.",
-                "path",
-            )
 
         file_ids = await self._forget_file_ids(normalized)
         matched_as = await self._forget_matched_as(normalized, file_ids)
-        active_watch_warning = _active_watch_warning(normalized, watches)
-        warnings = [active_watch_warning] if active_watch_warning else []
+        warnings = _forget_warnings(normalized, watches)
 
         if not dry_run and file_ids:
             placeholders = ",".join("?" * len(file_ids))
@@ -167,6 +161,9 @@ class CleanupService:
 
     async def cleanup_temp_files(self, older_than_days: int = 7) -> int:
         """Remove process temp files (e.g. incomplete parse artifacts)."""
+        if older_than_days < 0:
+            raise InvalidRequestError("invalid_request", "older_than_days must be non-negative.", "older_than_days")
+
         temp_dir = os.path.join(self.data_dir, "temp")
         if not os.path.isdir(temp_dir):
             return 0
@@ -212,3 +209,11 @@ def _active_watch_warning(path: str, watches: list[WatchTargetRow]) -> str | Non
         if path != watch_path and path.startswith(_path_prefix(watch_path)):
             return FORGET_UNDER_ACTIVE_WATCH_WARNING
     return None
+
+
+def _forget_warnings(path: str, watches: list[WatchTargetRow]) -> list[str]:
+    for watch in watches:
+        if watch["path"] == path:
+            return [FORGET_WATCH_ROOT_WARNING]
+    active_watch_warning = _active_watch_warning(path, watches)
+    return [active_watch_warning] if active_watch_warning else []

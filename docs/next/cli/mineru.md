@@ -22,6 +22,7 @@
 | 子命令 | 作用 | 文档 |
 |--------|------|------|
 | `mineru parse` | 主动解析单个文档 | [mineru parse](mineru-parse.md) |
+| `mineru read` | 按 locator 继续读取已有解析结果 | [mineru read](mineru-read.md) |
 | `mineru server` | 管理本地 doclib 服务 | [mineru server](mineru-server.md) |
 | `mineru search` | 搜索本地文档库内容 | [mineru library](mineru-library.md) |
 | `mineru find` | 搜索或定位文件 | [mineru library](mineru-library.md) |
@@ -57,7 +58,25 @@
 
 纯文本文件可以直接读取；Office 和 HTML 通常可本地 CPU 解析；PDF 和图片按 tier 路由到默认选择、`flash`、`standard` 或 `pro`。
 
-## 5. 与 mineru-kit 的关系
+## 5. parse 与 read
+
+`mineru` 中有两条读取链路：
+
+```text
+parse(path) = ensure document is parsed, then read default content
+read(locator) = read existing parsed content by stable locator
+```
+
+- `mineru parse` 适合第一次从文件 path 出发读取文档。
+- `mineru read` 适合基于 `short_id`、page、block 或 char locator 继续阅读已有解析结果。
+
+典型流程：
+
+1. `mineru parse report.pdf`
+2. 从输出或 JSON 响应中拿到后续 locator
+3. `mineru read doc:ab12cd3/tier:standard/page:11`
+
+## 6. 与 mineru-kit 的关系
 
 `mineru` 使用更少、更稳定的参数集合。复杂批处理、目录展开、stdin 混合输入、输出冲突策略、并发控制等能力放在 `mineru-kit parse`。
 

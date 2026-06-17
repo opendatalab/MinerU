@@ -78,7 +78,7 @@ list[list[dict]]
 - 没有显式 `pages` 字段。
 - 每页没有 `page_idx` / `page_size` / `page_number`。
 - item 默认没有 `page_idx`；页号只能从外层数组位置推断。
-- 没有 `chunk_id` / `locator`。
+- 没有稳定 `locator`。
 
 ## 4. Item 通用形态
 
@@ -556,7 +556,7 @@ Pipeline/Office 输出:
 
 1. 顶层是裸二维数组，缺少 version、metadata 和显式 page 对象。
 2. 页号依赖外层数组下标，缺少稳定 `page_idx`。
-3. item 缺少稳定 `id` / `chunk_id` / `locator`。
+3. item 缺少稳定 `id` / `locator`。
 4. Office span 泄漏内部字段，且和 PDF span 结构不一致。
 5. `bbox=[0,0,0,0]` 可能表示 unknown，而不是真实区域。
 6. 同一语义在不同 backend 下字段不一致，例如 table/image/chart footnote、code footnote、list attribute。
@@ -577,7 +577,7 @@ Pipeline/Office 输出:
 
 - 顶层 envelope。
 - page object。
-- item id / locator / chunk id。
+- item id / locator。
 - span schema。
 - unknown bbox。
 - media source。

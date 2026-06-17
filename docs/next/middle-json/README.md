@@ -34,7 +34,7 @@ Line
 | 顶层 envelope | 旧 CLI 使用 `pdf_info + _backend`；SDK 使用 `ParseResult.pages` / `pages`；底稿希望有 `_meta`。 |
 | backend 细节 | Pipeline/VLM/Hybrid/Office/HTML 对 bbox、index、page_size、preproc_blocks 的质量不同。 |
 | render 消费 | 已有统一 render facade，但内部仍按 backend dispatch。 |
-| Agent 能力 | chunk id、引用定位、稳定 span/block 地址和隐私边界还没有落地。 |
+| Agent 能力 | 引用定位、稳定 page/block 地址和隐私边界还没有落地。 |
 
 ## 下一版目标
 
@@ -43,7 +43,7 @@ Middle JSON 下一版要达到以下目标:
 1. 统一顶层 envelope，兼容历史 `pdf_info` 和当前 `pages`。
 2. 明确 `PageInfo` / `Block` / `Line` / `Span` 字段契约。
 3. 为每个 backend 提供 normalization 任务清单。
-4. 定义 Agent 可引用的稳定 locator 和 chunk id 规则。
+4. 定义 Agent 可引用的稳定 locator 规则。
 5. 明确 render 层依赖哪些字段，逐步移除对 `_backend` 的长期依赖。
 6. 提供 migration / validation 的验收标准。
 
@@ -53,7 +53,7 @@ Middle JSON 下一版要达到以下目标:
 |----|----------|------|
 | Schema | 稳定 dataclass 字段和 envelope。 | `current-standard.md`、`envelope.md` |
 | Normalization | 补齐 backend 差异。 | `backend-gaps.md` |
-| Agent-native | 引用、chunk id、locator。 | `agent-gaps.md` |
+| Agent-native | 引用、locator。 | `agent-gaps.md` |
 | Structured Content | 盘点当前 content_list_v2，作为新 schema 起点。 | `structured-content-current.md` |
 | Structured Content Schema | 定义 NEXT 版目标 schema 草案。 | `structured-content-schema.md` |
 | Rendering | 统一 Markdown / Content List / Structured Content 消费。 | `rendering.md` |
@@ -63,7 +63,7 @@ Middle JSON 下一版要达到以下目标:
 
 下面这些是 P0，因为它们直接阻塞 Agent 场景:
 
-- 稳定 chunk id。
+- 稳定 page/block locator。
 - 可从 Agent answer 追溯到 page / block / bbox / source hash。
 - 历史 middle json 可迁移到当前 envelope。
 - `ParseResult.from_dict()` 可以恢复 API / 缓存结果。

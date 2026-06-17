@@ -2,6 +2,7 @@ from pathlib import Path
 import inspect
 
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from mineru.parser.api_client import MinerUApiParser, _parse_result_from_job
@@ -146,6 +147,25 @@ def test_create_job_request_accepts_new_format_names_and_rejects_options() -> No
                 ],
             }
         )
+
+
+def test_local_parse_server_rejects_callback(tmp_path: Path) -> None:
+    app = create_app(upload_dir=str(tmp_path))
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/parse/jobs",
+        json={
+            "files": [{"source": {"type": "local", "path": str(tmp_path / "demo.pdf")}}],
+            "callback": {"url": "https://example.com/mineru-webhook", "secret": "secret"},
+        },
+    )
+
+    assert response.status_code == 400
+    body = response.json()["detail"]
+    assert body["error"]["code"] == "invalid_request"
+    assert "Webhook callback is not supported" in body["error"]["message"]
+    assert app.state.job_store._jobs == {}
 
 
 def test_output_files_expose_new_names_without_inline_content() -> None:

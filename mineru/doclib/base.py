@@ -20,6 +20,7 @@ from .types import (
     DocContentExportRequest,
     DocContentExportResponse,
     DocContentResponse,
+    ContentFormat,
     DocInfo,
     ExcludeRuleInfo,
     ExcludeRuleListResponse,
@@ -265,6 +266,25 @@ class DoclibInterface(ABC):
             NotFoundError: when the document or requested parsed content is not cached.
             InvalidRequestError: when tier, page_range, format, or marker options are invalid.
             MineruError: for render or server-side failures.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def read_content(
+        self,
+        locator: str,
+        *,
+        context: int = 0,
+        limit: int = 30000,
+        format: ContentFormat = "markdown",
+        no_marker: bool = False,
+    ) -> DocContentResponse:
+        """Render stored doc content from a stable content locator.
+
+        Raises:
+            NotFoundError: when the document or requested parsed content is not cached.
+            InvalidRequestError: when locator, context, format, or marker options are invalid.
+            MineruError: for render, asset, or server-side failures.
         """
         raise NotImplementedError()
 
@@ -605,6 +625,19 @@ class AsyncDoclibInterface(ABC):
         no_marker: bool = False,
     ) -> DocContentResponse:
         """Async version of ``DoclibInterface.get_doc_content``."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def read_content(
+        self,
+        locator: str,
+        *,
+        context: int = 0,
+        limit: int = 30000,
+        format: ContentFormat = "markdown",
+        no_marker: bool = False,
+    ) -> DocContentResponse:
+        """Async version of ``DoclibInterface.read_content``."""
         raise NotImplementedError()
 
     @abstractmethod

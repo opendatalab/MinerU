@@ -1,13 +1,18 @@
 import inspect
+import asyncio
 from typing import get_type_hints
 
 import pytest
 from pydantic import ValidationError
 
+from mineru.errors import InvalidRequestError
 from mineru.doclib.app import create_app
 from mineru.doclib.base import AsyncDoclibInterface, DoclibInterface
 from mineru.doclib.client import DoclibClient
+from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.server import DoclibServer
+from mineru.doclib.services.cleanup_svc import CleanupService
+from mineru.doclib.services.config_svc import ConfigService
 from mineru.doclib.types import (
     ConfigResponse,
     DocInfo,
@@ -73,6 +78,7 @@ def test_doclib_interface_declares_expected_methods() -> None:
         "get_doc_by_path",
         "get_doc",
         "get_doc_content",
+        "read_content",
         "export_doc_content",
         "search",
         "find",
@@ -185,6 +191,7 @@ def test_interface_app_uses_doclib_server_routes() -> None:
     assert "/api/v1/parsing-rules/{rule_id}" in route_paths
     assert "/api/v1/files" in route_paths
     assert "/api/v1/docs" in route_paths
+    assert "/api/v1/content" in route_paths
     assert "/api/v1/docs/{sha256}/exports" in route_paths
     assert "/api/docs" in route_paths
     assert "/docs" not in route_paths
@@ -196,6 +203,49 @@ def test_interface_app_uses_doclib_server_routes() -> None:
 
     assert "create_parses" not in route_names
     assert "parse_content" not in route_names
+
+
+def test_add_watch_rejects_missing_directory(tmp_path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        service = ConfigService(db)
+
+        with pytest.raises(InvalidRequestError, match="Watch path does not exist"):
+            await service.add_watch(str(tmp_path / "not-exist"))
+
+    asyncio.run(_run())
+
+
+def test_forget_watch_root_is_allowed_with_warning(tmp_path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        watch_root = tmp_path / "watch-root"
+        watch_root.mkdir()
+        await ConfigService(db).add_watch(str(watch_root))
+        service = CleanupService(db, str(tmp_path))
+
+        result = await service.forget_path(str(watch_root), dry_run=True)
+
+        assert result["path"] == str(watch_root)
+        assert result["matched_as"] == "none"
+        assert result["forgotten_files"] == 0
+        assert result["warnings"] == ["Path is a configured watch root and may be rediscovered on the next scan."]
+
+    asyncio.run(_run())
+
+
+def test_cleanup_temp_rejects_negative_older_than(tmp_path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        await db.initialize()
+        service = CleanupService(db, str(tmp_path))
+
+        with pytest.raises(InvalidRequestError, match="older_than_days must be non-negative"):
+            await service.cleanup_temp_files(-1)
+
+    asyncio.run(_run())
 
 
 def test_core_doclib_schemas_are_instantiable() -> None:
@@ -390,6 +440,7 @@ def test_get_semantic_methods_do_not_use_request_body_models() -> None:
         "list_docs",
         "get_doc_by_path",
         "get_doc_content",
+        "read_content",
         "search",
         "find",
         "get_file_by_path",
@@ -416,6 +467,7 @@ def test_next_cli_doclib_route_shapes_are_declared() -> None:
         "list_docs": ("GET", "/docs"),
         "get_doc_by_path": ("GET", "/docs/by-path"),
         "get_doc_content": ("GET", "/docs/{sha256}/content"),
+        "read_content": ("GET", "/content"),
         "export_doc_content": ("POST", "/docs/{sha256}/exports"),
         "get_config": ("GET", "/configs"),
         "get_config_key": ("GET", "/configs/{key}"),
@@ -441,6 +493,7 @@ def test_next_cli_doclib_route_shapes_are_declared() -> None:
         assert server_route.path == path, method_name
 
     assert "output" not in inspect.signature(DoclibInterface.get_doc_content).parameters
+    assert "output" not in inspect.signature(DoclibInterface.read_content).parameters
     assert "limit" in inspect.signature(DoclibInterface.list_parses).parameters
     assert "limit" in inspect.signature(DoclibInterface.list_docs).parameters
     assert "file_type" in inspect.signature(DoclibInterface.list_docs).parameters

@@ -6,6 +6,7 @@ import typer
 
 from ...doclib.client import DoclibClient
 from ...types import Tier
+from ..json_errors import exit_with_error
 from ..output import format_search_results, print_error
 
 
@@ -24,8 +25,7 @@ def search_cmd(
         result = client.search(query, file_type=file_type, tier=tier, min_tier=min_tier, limit=limit, offset=offset)
         format_search_results(result, json_mode=json_mode)
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
 
 def find_cmd(
@@ -40,5 +40,4 @@ def find_cmd(
         result = client.find(query, ext=ext, limit=limit)
         format_search_results(result, json_mode=json_mode)
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)

@@ -59,7 +59,7 @@ Structured Content 是面向 Agent、新客户端和结构化下游的推荐 JSO
 
 - 按页组织。
 - 标题、段落、列表、公式、图片、表格、代码等语义类型。
-- 可选 bbox / locator / chunk id。
+- 可选 bbox / locator。
 - 稳定 schema version。
 
 Structured Content 的版本演进通过 schema version 表达，而不是把公开格式名改成 `structured-content-v2`、`structured-content-v3`。

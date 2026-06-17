@@ -303,7 +303,7 @@ P0 结论:
 
 MinerU 当前状态:
 
-- Middle JSON 文档已有 locator / chunk id 方向。
+- Middle JSON 文档已有 locator 方向。
 - 当前 doclib FTS 仍主要是文档级 `fts_contents`。
 
 风险:
@@ -333,7 +333,7 @@ MinerU 当前状态:
 风险:
 
 - parser 或 Middle JSON schema 升级后，无法系统性识别需要重新解析的旧缓存。
-- Agent locator / chunk id 可能因历史数据结构差异而不稳定。
+- Agent locator 可能因历史数据结构差异而不稳定。
 
 建议讨论:
 

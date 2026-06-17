@@ -25,7 +25,7 @@
 | `preproc_blocks` | 部分解决 | PDF backend 有，Office/HTML 主要直接产出 `para_blocks`。 | 明确 public schema 是否保留。 |
 | render 统一 | 部分解决 | 有统一 facade，内部仍按 backend dispatch。 | 收敛 backend-specific content list。 |
 | `_backend` | 部分解决 | render 依赖临时字段。 | 迁移到 envelope `_meta.backend`。 |
-| chunk id | 未解决 | Agent 无稳定引用。 | 定义函数并实现。 |
+| locator | 部分解决 | Agent 需要稳定 page/block 引用。 | 锁定 locator helper 并补齐输出契约。 |
 
 ## Pipeline
 
@@ -75,7 +75,7 @@
 仍需工作:
 
 1. 明确 VLM block 粒度与 Pipeline OCR 粒度的兼容语义。
-2. 统一 VLM-specific type 在 content_list / Agent chunk 中的表达。
+2. 统一 VLM-specific type 在 content_list / Agent citation 中的表达。
 3. 确认归一化坐标绝不进入 public Middle JSON。
 4. 将 VLM content_list_v2 特殊逻辑逐步归并。
 
@@ -109,7 +109,7 @@
 验收:
 
 - Hybrid 输出带可追踪的 `_meta.features`。
-- Hybrid 中每个 Agent chunk 可追溯到原 page 和 bbox。
+- Hybrid 中每个 Agent citation 可追溯到原 page 和 bbox。
 
 ## Office
 
@@ -170,7 +170,7 @@ P0:
 1. 定义 canonical envelope。
 2. 实现 validator。
 3. 实现 migration: `pdf_info/_backend` -> envelope。
-4. 实现 chunk id / locator。
+4. 实现并锁定 locator。
 5. 修正 `ParseResult.from_dict()` / `from_json()`。
 
 P1:

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from ..render import render_content_list, render_content_list_v2, render_markdown
+from ..schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
 from ..types import PageInfo
 
 _INLINE_IMAGE_DATA_URI_RE = re.compile(r"data:image/([^;]+);base64,([^\"]+)", re.DOTALL)
@@ -30,19 +31,39 @@ class ParseResult:
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> ParseResult:
-        # TODO
-        ...
+        if not isinstance(d, dict):
+            raise ValueError("ParseResult.from_dict expects a dict.")
+
+        raw_pages = d.get("pages", d.get("pdf_info", []))
+        if not isinstance(raw_pages, list):
+            raise ValueError("ParseResult pages must be a list.")
+
+        pages: list[PageInfo] = []
+        for raw_page in raw_pages:
+            if not isinstance(raw_page, dict):
+                raise ValueError("ParseResult page entries must be dicts.")
+            page = PageInfo.from_dict(raw_page)
+            backend = raw_page.get("_backend")
+            if isinstance(backend, str):
+                page._backend = backend
+            pages.append(page)
+        return ParseResult(pages=pages)
 
     def to_dict(self, *, skip_defaults: bool = False) -> dict[str, Any]:
-        return {"pages": [page.to_dict(skip_defaults=skip_defaults) for page in self.pages]}
+        return {
+            "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
+            "pages": [page.to_dict(skip_defaults=skip_defaults) for page in self.pages],
+        }
 
     @staticmethod
     def from_json(s: str) -> ParseResult:
-        # TODO
-        ...
+        data = json.loads(s)
+        if not isinstance(data, dict):
+            raise ValueError("ParseResult JSON must decode to a dict.")
+        return ParseResult.from_dict(data)
 
     def to_json(self) -> str:
-        return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
+        return json.dumps(self.to_dict(), ensure_ascii=False, indent=1)
 
     def markdown(self, *, add_markers: bool = False) -> str:
         return render_markdown(self.pages, add_markers=add_markers)
@@ -59,17 +80,17 @@ class ParseResult:
 
         writer.write_string(
             "content_list.json",
-            json.dumps(self.content_list(), ensure_ascii=False, indent=2),
+            json.dumps(self.content_list(), ensure_ascii=False, indent=1),
         )
         writer.write_string(
             "structured_content.json",
-            json.dumps(self.content_list_v2(), ensure_ascii=False, indent=2),
+            json.dumps(self.content_list_v2(), ensure_ascii=False, indent=1),
         )
 
         if self._model_output is not None:
             writer.write_string(
                 "model_output.json",
-                json.dumps(self._model_output, ensure_ascii=False, indent=2),
+                json.dumps(self._model_output, ensure_ascii=False, indent=1),
             )
 
         for img_path, img_bytes in self.images().items():

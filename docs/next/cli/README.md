@@ -36,11 +36,12 @@ MinerU 仓库提供两款命令行工具：
 
 1. [mineru](mineru.md): 理解用户/Agent 入口的整体定位。
 2. [mineru parse](mineru-parse.md): 理解主动解析、默认 tier 选择、隐私、缓存、STDOUT 和 marker。
-3. [mineru server](mineru-server.md): 理解 doclib 生命周期和 parse-server 协作。
-4. [mineru library](mineru-library.md): 理解 search、find、info、config、watch 和 parsing-rules。
-5. [mineru-kit](mineru-kit.md): 理解无状态工具定位。
-6. [mineru-kit parse](mineru-kit-parse.md): 理解批处理解析、目录/stdin、并发和输出冲突。
-7. [mineru-kit api-server](mineru-kit-api-server.md): 理解本地/自部署 parse-server。
+3. [mineru read](mineru-read.md): 理解 locator-first 读取、page/block 定位、image 输出和 continuation。
+4. [mineru server](mineru-server.md): 理解 doclib 生命周期和 parse-server 协作。
+5. [mineru library](mineru-library.md): 理解 search、find、info、config、watch 和 parsing-rules。
+6. [mineru-kit](mineru-kit.md): 理解无状态工具定位。
+7. [mineru-kit parse](mineru-kit-parse.md): 理解批处理解析、目录/stdin、并发和输出冲突。
+8. [mineru-kit api-server](mineru-kit-api-server.md): 理解本地/自部署 parse-server。
 
 ## 4. 共享约束
 

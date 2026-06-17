@@ -1,6 +1,7 @@
 -- v001: Initial schema
 -- Applied to new databases.  For existing databases, see 002_add_parse_columns.sql.
 
+-- STABLE
 CREATE TABLE IF NOT EXISTS files (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     path            TEXT    NOT NULL UNIQUE,
@@ -41,6 +42,7 @@ CREATE TABLE IF NOT EXISTS docs (
     updated_at      INTEGER NOT NULL
 );
 
+-- STABLE
 CREATE TABLE IF NOT EXISTS parses (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     sha256      TEXT    NOT NULL REFERENCES docs(sha256),

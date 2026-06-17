@@ -86,6 +86,8 @@ class ConfigService:
             raise ValueError(f"Path must be absolute: {path}")
         if os.path.normpath(path) != path:
             raise ValueError(f"Path must be normalized: {path}")
+        if not os.path.isdir(path):
+            raise InvalidRequestError("invalid_request", f"Watch path does not exist or is not a directory: {path}", "path")
 
         wid = fnvhash.fnv1a_64(path.encode()) & ((1 << 63) - 1)
 

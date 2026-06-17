@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import dataclasses
 import hashlib
 import json
 import os
@@ -1230,11 +1229,7 @@ async def _run_job(
                         fid = file_store.create_file_for_output(f"{fr.name}.md", content_bytes, sha256hex=sha)
                         output_files.markdown = OutputFileRef(file_id=fid, bytes=len(content_bytes))
                     elif fmt == "middle_json":
-                        mj = json.dumps(
-                            {"pages": [dataclasses.asdict(p) for p in result.pages]},
-                            ensure_ascii=False,
-                        ).encode("utf-8")
-
+                        mj = json.dumps(result.to_dict(skip_defaults=True), ensure_ascii=False).encode("utf-8")
                         sha = hashlib.sha256(mj).hexdigest()
                         file_store.store_blob(mj, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.middle.json", mj, sha256hex=sha)
@@ -1600,6 +1595,21 @@ async def create_job(
     access_level: AccessLevel = Depends(_resolve_access_level),
 ) -> Response:
     """Create a parse job."""
+    if body.callback is not None:
+        raise HTTPException(
+            status_code=400,
+            detail=ErrorResponse(
+                error=ErrorDetail(
+                    type="invalid_request_error",
+                    code="invalid_request",
+                    message=(
+                        "Webhook callback is not supported by this Local Parse Server. "
+                        "Use polling via GET /v1/parse/jobs/{job_id}."
+                    ),
+                ),
+            ).model_dump(by_alias=True),
+        )
+
     # validate output formats — advanced formats require API key
     for fmt in body.output_formats:
         if fmt in ("html", "latex", "docx") and access_level == "anonymous":

@@ -38,7 +38,7 @@ MinerU 当前定义三个公开 tier：
 | 底层原理 | 纯 CPU 实现 | 基于模型 | 基于更强模型 |
 | 质量 | 低 | 中 | 高 |
 | 速度 | 最快 | 中等 | 最慢，取决于硬件和远端服务 |
-| 本地硬件要求 | 无 GPU / 加速器也可用 | 消费级电脑可用，如 MacBook 或 Windows 笔记本 | 需要高端 GPU / 加速器，或使用远端 |
+| 本地硬件要求 | 无 GPU / 加速器也可用 | 使用 pipeline 后端；Apple Silicon macOS 约 4GB 统一内存，Windows / Linux 需要 NVIDIA GPU 且至少 4GB 显存 | 需要高端 GPU / 加速器，或使用远端 |
 | 是否适合 watch 自动处理 | 是 | 一般不默认使用 | 否 |
 | 是否适合用户主动阅读 | 仅在用户明确选择时 | 是，默认最低阅读质量 | 是，质量优先场景 |
 | 典型场景 | 文件发现、快速预览、搜索索引 | 本地隐私解析、普通文档阅读 | 复杂版面、学术论文、高价值文档 |
@@ -68,17 +68,29 @@ MinerU 有 local parse-server，也有 remote parse-server。无论 local 还是
 
 `flash` 的核心用途是支撑大量文件的自动发现和低成本预处理。MinerU 的 watch 机制会发现很多文件；在系统刚看到这些文件时，并不知道每个文件的价值，也不适合立即使用高算力方案处理。因此 watch 默认使用 `flash` 快速提取最基础内容，用于建立搜索索引和后续发现。
 
+P0 不做基于启发式的自动提示或自动排队升级。watch 使用 `flash` 后，如果需要在后台自动解析到 `standard` 或 `pro`，必须来自用户显式配置的 parsing-rules；系统不根据文件名、内容特征、搜索命中或“高价值文档”判断自行升级。
+
 `flash` 不应被当成默认阅读质量。当 Agent 或用户决定真正读取某个文档时，需求已经从“发现它”变成“尽可能准确地理解它”，此时未指定 tier 应使用默认选择策略，并至少解析到 `standard`。
 
 只有在用户明确指定 `flash` 时，才返回 `flash` 的解析内容作为最终阅读结果。
 
 ## 5. Standard
 
-`standard` 是本地主力解析 tier，底层使用模型，面向普通消费级电脑用户。
+`standard` 是本地主力解析 tier，当前使用 `pipeline` 后端。`pipeline` 是一系列小模型串联的解析方案，不加载大的 VLM 模型。
 
 这类用户可能拥有 GPU 或加速器，但显存和算力有限。它们不一定完全跑不动 `pro`，但运行 `pro` 通常会很慢。因此 `standard` 是一个算力消耗较低、质量中等、仍然基于模型的解析方案。
 
 `standard` 的核心价值是本地隐私解析：当用户不接受把文档发送到远端解析，同时硬件又不是特别高端时，`standard` 应成为本地可用的最佳默认方案。
+
+`standard` 的最低硬件基线按 `pipeline` 后端定义:
+
+| 平台 | 最低硬件基线 |
+|------|--------------|
+| macOS | 使用 Apple Silicon / M 系列芯片，约使用 4GB 统一内存。 |
+| Windows | 需要 NVIDIA GPU，至少 4GB 显存。 |
+| Linux | 需要 NVIDIA GPU，至少 4GB 显存。 |
+
+更完整的本地部署要求以项目 README 中的 pipeline 硬件说明为准。
 
 ## 6. Pro
 
@@ -111,6 +123,7 @@ MinerU 的 tier 策略同时遵守隐私优先和质量优先。
 | 请求 | 默认执行路径 |
 |------|--------------|
 | watch 自动发现文件 | 本地 `flash` |
+| watch 命中 parsing-rule | 按 rule 中的 tier、页码范围和 remote 配置执行；必须经过能力检查和隐私检查 |
 | 用户主动 parse，未指定 tier；HTTP API 传 JSON `null`；Python SDK 传 `None` | 解析为当前可发现的最高非 `flash` tier |
 | 用户主动指定 `--tier flash` | 本地 `flash` |
 | 用户主动指定 `--tier standard` | 本地 standard；不可用时报错 |
@@ -134,4 +147,4 @@ CLI、API 和 SDK 暴露 tier 时，应遵守同一语义：
 
 ## 10. 未决问题
 
-与 tier 相关的硬件基线、watch 升级提示和 `mineru-kit` 的 tier/backend 边界，集中维护在 [开放问题清单](open-questions.md)。
+与 tier 相关的未决问题集中维护在 [开放问题清单](open-questions.md)。

@@ -149,6 +149,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.start_time = time.time()
         state.pid = os.getpid()
         state.data_dir = data_dir
+        state.socket_path = os.path.expanduser(cfg.doclib.uds.path)
         state.config = cfg
 
     @app.on_event("shutdown")
@@ -227,6 +228,7 @@ class AppState:
         self.health_check: Any = None
         self.start_time: float = 0.0
         self.pid: int = 0
+        self.socket_path: str = ""
         self.data_dir: str = ""
         self.config: Config | None = None
 

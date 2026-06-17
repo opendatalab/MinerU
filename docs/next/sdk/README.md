@@ -23,6 +23,8 @@
 
 Doclib SDK 与 doclib HTTP/UDS API 使用同一套方法和协议语义。项目内部除 `mineru.doclib.client` 外，不应直接通过 HTTP 调用 doclib API；外部客户端未来可以直接依赖 doclib HTTP API。
 
+其他语言 SDK 暂无开发计划。如果未来开发，只覆盖 v1 Unified API，不覆盖本地 doclib UDS 能力；本地 doclib UDS 能力由 Python Doclib SDK 和 MinerU 自身入口承载。
+
 ## 依赖方向
 
 ```text
@@ -73,4 +75,4 @@ mineru doclib
 
 ## 未决问题
 
-顶层别名、`MinerUApiParser` 位置和其他语言 SDK 覆盖范围，集中维护在 [开放问题清单](../open-questions.md)。
+顶层别名集中维护在 [开放问题清单](../open-questions.md)。`MinerUApiParser` 位置已收敛，保持 `from mineru.parser import MinerUApiParser`。

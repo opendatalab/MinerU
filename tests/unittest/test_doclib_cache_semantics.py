@@ -34,6 +34,7 @@ from mineru.doclib.server import DoclibServer
 from mineru.doclib.types import ParseResponse
 from mineru.parser import backend_for_tier, resolve_tier_and_backend
 from mineru.parser.base import ParseResult
+from mineru.schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
 from mineru.types import PageInfo, Tier
 
 
@@ -314,6 +315,7 @@ def test_compaction_uses_configured_data_dir(tmp_path: Path) -> None:
     compacted_path = Path(parse_batch_json_path(str(tmp_path), sha256, tier, "1~2", 2000))
     compacted = json.loads(compacted_path.read_text(encoding="utf-8"))
 
+    assert compacted["schema_version"] == MIDDLE_JSON_SCHEMA_VERSION
     assert compacted["pages"] == [older_page, newer_duplicate]
     assert sorted(path.name for path in compacted_path.parent.glob("*.json")) == ["1~2_2000.json"]
 
@@ -692,15 +694,16 @@ def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
         service = SearchService(db, fts)
         now = 1000
         docs = [
-            ("1" * 64, "flash", "pdf", "flash.pdf"),
-            ("2" * 64, "standard", "pdf", "standard.pdf"),
-            ("3" * 64, "pro", "docx", "pro.docx"),
+            ("1" * 64, "flash", "pdf", "flash.pdf", 2),
+            ("2" * 64, "standard", "pdf", "standard.pdf", 12),
+            ("3" * 64, "pro", "docx", "pro.docx", 23),
         ]
 
-        for sha256, tier, file_type, filename in docs:
+        for sha256, tier, file_type, filename, page_count in docs:
             await db.execute(
-                "INSERT INTO docs (sha256, short_id, size_bytes, file_type, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (sha256, sha256[:7], 10, file_type, now, now),
+                "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (sha256, sha256[:7], 10, file_type, page_count, now, now),
             )
             await db.execute(
                 "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
@@ -715,10 +718,12 @@ def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
 
         assert exact_total == 1
         assert [row["tier"] for row in exact_results] == ["standard"]
+        assert [row["page_count"] for row in exact_results] == [12]
         assert min_total == 2
         assert {row["tier"] for row in min_results} == {"standard", "pro"}
         assert type_total == 1
         assert [row["filename"] for row in type_results] == ["pro.docx"]
+        assert [row["page_count"] for row in type_results] == [23]
 
     asyncio.run(_run())
 
@@ -735,8 +740,9 @@ def test_search_prefers_active_paths_and_falls_back_to_non_active_paths(tmp_path
 
         for sha256 in (sha_active, sha_deleted):
             await db.execute(
-                "INSERT INTO docs (sha256, short_id, size_bytes, file_type, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (sha256, sha256[:7], 10, "pdf", now, now),
+                "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (sha256, sha256[:7], 10, "pdf", 7 if sha256 == sha_active else 9, now, now),
             )
             await fts.replace(sha256=sha256, tier="standard", text="fallback needle", title="", author="", filename=f"{sha256[0]}.pdf")
 
@@ -762,6 +768,7 @@ def test_search_prefers_active_paths_and_falls_back_to_non_active_paths(tmp_path
         assert total == 2
         assert paths_by_sha[sha_active] == [str(tmp_path / "active.pdf")]
         assert paths_by_sha[sha_deleted] == [str(tmp_path / "deleted-only.pdf")]
+        assert {row["sha256"]: row["page_count"] for row in results} == {sha_active: 7, sha_deleted: 9}
 
     asyncio.run(_run())
 
@@ -778,8 +785,9 @@ def test_find_filters_by_ext(tmp_path: Path) -> None:
 
         for sha256, filename, ext in ((sha_pdf, "report.pdf", "pdf"), (sha_docx, "report.docx", "docx")):
             await db.execute(
-                "INSERT INTO docs (sha256, short_id, size_bytes, file_type, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (sha256, sha256[:7], 10, ext, now, now),
+                "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (sha256, sha256[:7], 10, ext, 11 if ext == "pdf" else 5, now, now),
             )
             file_id = await db.execute_insert(
                 "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
@@ -792,6 +800,7 @@ def test_find_filters_by_ext(tmp_path: Path) -> None:
 
         assert total == 1
         assert [row["filename"] for row in results] == ["report.pdf"]
+        assert [row["page_count"] for row in results] == [11]
 
     asyncio.run(_run())
 

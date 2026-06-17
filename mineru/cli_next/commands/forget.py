@@ -6,6 +6,7 @@ import typer
 
 from ...doclib.client import DoclibClient
 from ...doclib.types import ForgetPathRequest
+from ..json_errors import exit_with_error
 from ..output import print_error, print_info, print_json, print_success
 
 
@@ -17,15 +18,13 @@ def forget_cmd(
 ) -> None:
     try:
         client = DoclibClient(timeout=30)
-    except Exception:
-        print_error("Cannot connect to mineru server. Run 'mineru server start' first.")
-        raise typer.Exit(1) from None
+    except Exception as exc:
+        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot connect to mineru server. Run 'mineru server start' first.")
 
     try:
         result = client.forget_path(ForgetPathRequest(path=path, dry_run=dry_run))
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     if json_mode:
         print_json(result)

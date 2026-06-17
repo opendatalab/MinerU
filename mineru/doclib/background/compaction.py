@@ -10,6 +10,7 @@ import time
 from collections.abc import Sequence
 from typing import cast
 
+from ...schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
 from ...types import Tier
 from ..core.db import DatabaseManager
 from ..rows import ParseBatchRow, ParseGroupRow, ParseRow
@@ -158,12 +159,14 @@ class Compaction:
         # write one compacted JSON per merged range
         for page_range in merged_ranges:
             page_numbers = parse_page_range_set(page_range)
-            json_pages = [pages_by_page_idx[page_no - 1] for page_no in sorted(page_numbers) if page_no - 1 in pages_by_page_idx]
+            json_pages = [
+                pages_by_page_idx[page_no - 1] for page_no in sorted(page_numbers) if page_no - 1 in pages_by_page_idx
+            ]
             if not json_pages:
                 continue
             json_path = parse_batch_json_path(self.data_dir, sha256, tier, page_range, max_done_at)
             try:
                 with open(json_path, "w", encoding="utf-8") as f:
-                    json.dump({"pages": json_pages}, f, ensure_ascii=False, indent=2)
+                    json.dump({"schema_version": MIDDLE_JSON_SCHEMA_VERSION, "pages": json_pages}, f, ensure_ascii=False, indent=1)
             except Exception:
                 pass

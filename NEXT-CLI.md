@@ -31,6 +31,7 @@ mineru-kit parse 中未出现在 mineru parse 的参数（如 `--backend`、`--m
 子命令：
 - mineru server start/stop/restart
 - mineru parse
+- mineru read
 - mineru search
 
 
@@ -91,7 +92,7 @@ mineru parse <file> [flags]
 | Flag | 简写 | 类型 | 默认 | 说明 |
 |------|------|------|------|------|
 | `-o, --output` | `-o` | path | `-` (STDOUT) | 输出路径。`-` 或省略表示输出到 STDOUT |
-| `-f, --format` | `-f` | string | `markdown` | 输出格式: `markdown`, `text`, `json`, `html`。单选 |
+| `-f, --format` | `-f` | string | `markdown` | 输出格式。当前仅支持 `markdown`。 |
 | `--no-marker` | — | bool | false | 输出的 markdown/text 中不含文档结构标记 |
 
 ### 同步控制
@@ -222,40 +223,19 @@ $ mineru parse report.pdf --pages 11~20
 
 ### 非分页文档（Word/PPT 等）
 
-非分页文档的渐进式阅读方案待团队讨论确定，以下为两个候选方案：
-
-**方案 A：虚拟分页（统一 `--pages` 语义）**
-
-系统内部按段落边界将文档切分为虚拟页（每页约 3000~5000 字符），对外暴露统一的页码接口：
+非分页文档当前不引入单独的 `--offset` 参数，而是和分页文档一样复用服务端返回的 continuation cursor。CLI 通过 `--after` 继续读取下一段内容：
 
 ```bash
 $ mineru parse long.docx
-# → 输出虚拟页 1~5 和倒数 5 页
-# → marker: <!-- pages 6~20 not shown. Use: mineru parse long.docx --pages 6~10 -->
+# → 输出第一段内容
+# → marker: <!-- next content available.
+#            Use: mineru parse long.docx --after doc:ab12cd3/tier:standard/page:1/block:12/char:520 -->
+
+$ mineru parse long.docx --after doc:ab12cd3/tier:standard/page:1/block:12/char:520
+# → 输出后续内容
 ```
 
-优势：agent 协议完全统一，不区分文件类型。
-劣势：需要解释"虚拟页"概念。
-
-**方案 B：字符偏移（`--offset`）**
-
-截断位置对齐到段落边界，marker 中给出字符偏移：
-
-```bash
-$ mineru parse long.docx
-# → 输出前 ~30K 字符（对齐到段落边界）
-# → marker: <!-- truncated at paragraph boundary (char ~30000 of ~150000).
-#            Next: mineru parse long.docx --offset 30000 -->
-
-$ mineru parse long.docx --offset 30000
-# → 输出 30K~60K 字符
-# → marker: <!-- Next: mineru parse long.docx --offset 60000 -->
-```
-
-优势：无新概念，实现简单。
-劣势：PDF 用 `--pages`，Word 用 `--offset`，agent 需处理两种参数。
-
-> **团队讨论项**：选择方案 A 或方案 B。
+这意味着非分页文档的增量读取当前以 cursor 为正式协议，字符 offset 只作为 cursor 内部语义的一部分存在，不作为 `parse` 的公开 CLI 参数暴露。
 
 ## STDOUT 输出行为
 
@@ -267,6 +247,20 @@ $ mineru parse long.docx --offset 30000
 当输出到文件（`-o path`）时：
 - 输出 `--pages` 指定范围的完整内容，无额外截断
 - 图片信息同样以 marker 形式嵌入（图片文件单独存储在数据库中）
+
+当使用 `--json` 时，`mineru parse` 输出命令级 JSON envelope，而不是直接输出裸内容对象：
+
+```json
+{
+  "parse": { "... parse summary ..." },
+  "content": { "... DocContentResponse ..." } | null
+}
+```
+
+其中：
+- `parse` 始终存在，描述本次 `parse` 请求的解析状态摘要。
+- `content` 仅在结果已经可读取时存在值；`--no-wait` 或等待超时但尚未完成时为 `null`。
+- 错误场景仍输出结构化错误 JSON。
 
 ## 同步等待行为
 
@@ -316,6 +310,87 @@ mineru parse huge.pdf --pages all --no-wait
 
 # 不含结构标记
 mineru parse doc.pdf --no-marker
+```
+
+
+# mineru read
+
+## 概述
+
+`read` 是 `mineru` 的 locator-first 读取子命令。它读取 doclib 中已有的解析结果，不负责 discover、scan、ingest，也不默认创建 parse task。
+
+与 `parse` 的边界：
+
+```text
+parse(path) = ensure document is parsed, then read default content
+read(locator) = read existing parsed content by stable locator
+```
+
+## Usage
+
+```bash
+mineru read <locator> [flags]
+```
+
+当前 P0 支持：
+
+```bash
+mineru read <locator> [--format markdown|image] [--limit 30000] [--context N] [--output PATH] [--json] [--no-marker]
+```
+
+## Locator
+
+```text
+doc:{short_id}
+doc:{short_id}/tier:{tier}
+doc:{short_id}/tier:{tier}/page:{page_no}
+doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}
+doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
+```
+
+其中：
+- `page_no` 和 `block_no` 使用 1-based 编号
+- `char:{offset}` 使用 block 渲染文本内的 0-based 字符 offset
+
+## 输出
+
+- `--format markdown`：默认读取文本内容
+- `--format image`：读取 page 或 block 的图像输出
+- `--json`：输出完整 `DocContentResponse`
+- `--output`：由 CLI 在本地写入 markdown 文件或 copy image asset
+
+## Image 约束
+
+- PDF：
+  - page locator 支持 image
+  - block locator 仅在 block 有非空 bbox 时支持 image
+- Office：
+  - 仅 image block 支持 image
+- doc locator 和 doc/tier locator 不支持 image
+- 不支持多页 image
+
+## Continuation
+
+`read` 的 continuation 使用 locator：
+
+```text
+<!-- Next: mineru read doc:ab12cd3/tier:standard/page:5 -->
+```
+
+## 示例
+
+```bash
+# 读取某页
+mineru read doc:ab12cd3/tier:standard/page:4
+
+# 读取某个 block 及其上下文
+mineru read doc:ab12cd3/tier:standard/page:4/block:12 --context 2
+
+# 导出 page image
+mineru read doc:ab12cd3/tier:standard/page:4 --format image --output page4.jpg
+
+# JSON 输出
+mineru read doc:ab12cd3/tier:standard/page:4 --json
 ```
 
 
