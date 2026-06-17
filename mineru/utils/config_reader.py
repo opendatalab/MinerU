@@ -30,6 +30,36 @@ def read_config():
         return config
 
 
+def get_configured_model_source(default: str | None = None) -> str | None:
+    """读取配置文件中的固定模型来源配置，auto 或缺失时返回默认值。"""
+    supported_sources = {'huggingface', 'modelscope'}
+    config = read_config()
+    if config is None:
+        return default
+
+    model_source = config.get('model-source')
+    if model_source is None:
+        return default
+    if not isinstance(model_source, str):
+        logger.warning(
+            f"'model-source' in {CONFIG_FILE_NAME} must be a string, use {default} as default"
+        )
+        return default
+
+    normalized_model_source = model_source.strip().lower()
+    if not normalized_model_source:
+        return default
+    if normalized_model_source == "auto":
+        return default
+    if normalized_model_source in supported_sources:
+        return normalized_model_source
+
+    logger.warning(
+        f"Unsupported 'model-source' in {CONFIG_FILE_NAME}: {model_source}, use {default} as default"
+    )
+    return default
+
+
 def get_s3_config(bucket_name: str):
     """~/magic-pdf.json 读出来."""
     config = read_config()
