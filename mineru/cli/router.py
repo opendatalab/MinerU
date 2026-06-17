@@ -1116,10 +1116,63 @@ def parse_submit_response(payload: Any) -> dict[str, Any]:
     }
 
 
+async def submit_payload_to_upstream(
+    base_url: str,
+    payload: MultipartPayload,
+) -> dict[str, Any]:
+    """使用异步 HTTP 客户端向上游提交任务。
+
+    直接复用 httpx.AsyncClient，避免 asyncio.to_thread 带来的线程池开销。
+    """
+    multipart = []
+    for field_name, field_value in payload.fields:
+        multipart.append((field_name, (None, field_value)))
+
+    files_to_close: list = []
+    try:
+        for upload in payload.uploads:
+            fp = open(upload.path, "rb")
+            files_to_close.append(fp)
+            multipart.append(
+                (
+                    upload.field_name,
+                    (upload.upload_name, fp, upload.content_type),
+                )
+            )
+
+        async with httpx.AsyncClient(
+            timeout=build_http_timeout(),
+            follow_redirects=True,
+        ) as client:
+            try:
+                response = await client.post(
+                    f"{base_url}{TASKS_ENDPOINT}",
+                    files=multipart,
+                )
+            except httpx.HTTPError as exc:
+                raise UpstreamSubmissionUnavailable(str(exc)) from exc
+    finally:
+        for fp in files_to_close:
+            fp.close()
+
+    if response.status_code == 202:
+        try:
+            submit_response = _parse_json_object_response(response, "submit payload")
+            return parse_submit_response(submit_response)
+        except ValueError as exc:
+            raise UpstreamSubmissionUnavailable(f"Invalid submit payload: {exc}") from exc
+    if response.status_code in HTTP_RETRYABLE_STATUS_CODES:
+        raise UpstreamSubmissionUnavailable(
+            f"{response.status_code} {response_detail(response)}"
+        )
+    raise UpstreamSubmissionRejected(response.status_code, response_detail(response))
+
+
 def submit_payload_to_upstream_sync(
     base_url: str,
     payload: MultipartPayload,
 ) -> dict[str, Any]:
+    """同步版本，保留给非异步调用方使用。"""
     with ExitStack() as stack, httpx.Client(
         timeout=build_http_timeout(),
         follow_redirects=True,
@@ -1163,13 +1216,6 @@ def submit_payload_to_upstream_sync(
             f"{response.status_code} {response_detail(response)}"
         )
     raise UpstreamSubmissionRejected(response.status_code, response_detail(response))
-
-
-async def submit_payload_to_upstream(
-    base_url: str,
-    payload: MultipartPayload,
-) -> dict[str, Any]:
-    return await asyncio.to_thread(submit_payload_to_upstream_sync, base_url, payload)
 
 
 async def submit_router_task(

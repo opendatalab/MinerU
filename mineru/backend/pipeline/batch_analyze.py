@@ -284,7 +284,7 @@ class BatchAnalyze:
                     f"Table classification failed: {e}, using default model"
                 )
 
-            # OCR det 过程，顺序执行
+            # OCR det 过程：先批量收集所有表格检测图像，再统一批处理
             rec_img_lang_group = defaultdict(list)
             det_ocr_engine = atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.OCR,
@@ -292,9 +292,10 @@ class BatchAnalyze:
                 det_db_unclip_ratio=1.6,
                 enable_merge_det_boxes=False,
             )
-            for index, table_res_dict in enumerate(
-                    tqdm(table_res_list_all_page, desc="Table-ocr det")
-            ):
+
+            # 收集所有表格 det 输入
+            table_det_inputs = []
+            for index, table_res_dict in enumerate(table_res_list_all_page):
                 bgr_image = cv2.cvtColor(table_res_dict["table_img"], cv2.COLOR_RGB2BGR)
                 table_inline_objects = (
                     table_res_dict.get("table_inline_objects", [])
@@ -315,24 +316,59 @@ class BatchAnalyze:
                     if inline_mask_boxes
                     else bgr_image
                 )
-                ocr_result = run_ocr_inference(
-                    det_ocr_engine.ocr, det_image, rec=False
-                )[0]
-                if ocr_result and formula_mask_boxes:
-                    ocr_result = update_det_boxes(ocr_result, formula_mask_boxes)
-                if ocr_result:
-                    ocr_result = sorted_boxes(ocr_result)
-                # 构造需要 OCR 识别的图片字典，包括cropped_img, dt_box, table_id，并按照语言进行分组
-                for dt_box in ocr_result:
-                    rec_img_lang_group[table_res_dict["lang"]].append(
-                        {
-                            "cropped_img": get_rotate_crop_image_for_text_rec(
-                                bgr_image, np.asarray(dt_box, dtype=np.float32)
-                            ),
-                            "dt_box": np.asarray(dt_box, dtype=np.float32),
-                            "table_id": index,
-                        }
-                    )
+                table_det_inputs.append(
+                    {
+                        "table_id": index,
+                        "bgr_image": bgr_image,
+                        "det_image": det_image,
+                        "formula_mask_boxes": formula_mask_boxes,
+                        "lang": table_res_dict["lang"],
+                    }
+                )
+
+            # 按分辨率分组并批量执行 OCR det
+            RESOLUTION_GROUP_STRIDE = 64
+            det_resolution_groups = defaultdict(list)
+            for item in table_det_inputs:
+                img = item["det_image"]
+                h, w = img.shape[:2]
+                target_h = ((h + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
+                target_w = ((w + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
+                det_resolution_groups[(target_h, target_w)].append(item)
+
+            det_batch_size = max(1, self.batch_ratio * OCR_DET_BASE_BATCH_SIZE)
+            for (target_h, target_w), group_items in tqdm(
+                det_resolution_groups.items(), desc="Table-ocr det"
+            ):
+                batch_images = []
+                for item in group_items:
+                    img = item["det_image"]
+                    h, w = img.shape[:2]
+                    padded_img = np.full((target_h, target_w, 3), 255, dtype=np.uint8)
+                    padded_img[:h, :w] = img
+                    batch_images.append(padded_img)
+
+                batch_results = run_ocr_inference(
+                    det_ocr_engine.ocr, batch_images, rec=False
+                )
+
+                for item, ocr_result in zip(group_items, batch_results):
+                    formula_mask_boxes = item["formula_mask_boxes"]
+                    bgr_image = item["bgr_image"]
+                    if ocr_result and formula_mask_boxes:
+                        ocr_result = update_det_boxes(ocr_result, formula_mask_boxes)
+                    if ocr_result:
+                        ocr_result = sorted_boxes(ocr_result)
+                    for dt_box in ocr_result or []:
+                        rec_img_lang_group[item["lang"]].append(
+                            {
+                                "cropped_img": get_rotate_crop_image_for_text_rec(
+                                    bgr_image, np.asarray(dt_box, dtype=np.float32)
+                                ),
+                                "dt_box": np.asarray(dt_box, dtype=np.float32),
+                                "table_id": item["table_id"],
+                            }
+                        )
 
             # OCR rec，按照语言分批处理
             for _lang, rec_img_list in rec_img_lang_group.items():
