@@ -1,6 +1,6 @@
 ---
 name: ocr-mineru
-description: 使用 MinerU 对 PDF 或图片进行 OCR 解析，提取文本、表格、公式和结构化内容
+description: 使用 MinerU 对 PDF 或图片进行 OCR 解析，提取文本、表格、公式和结构化内容。当用户提及 OCR、PDF 解析、图片文字识别、提取表格、MinerU 等需求时调用。也用于回答该 skill 的使用方法、参数说明和 --help 帮助请求。
 triggers:
   - ocr
   - parse pdf
@@ -10,6 +10,10 @@ triggers:
   - 提取 PDF 内容
   - OCR 识别
   - mineru
+  - --help
+  - help
+  - 怎么用
+  - 使用说明
 examples:
   - prompt: 用 MinerU 解析这个 PDF 文件
     response: 好的，我将使用 MinerU 解析该 PDF，并返回 markdown 和结构化内容。
@@ -17,13 +21,19 @@ examples:
     response: 我将使用 MinerU 对该图片进行 OCR 识别。
   - prompt: 提取 PDF 中的所有表格
     response: 我将解析该 PDF 并提取其中的表格内容。
+  - prompt: /ocr-mineru --help
+    response: 输出 ocr-mineru skill 的完整使用说明和参数列表。
 ---
 
 # ocr-mineru
 
 当用户需要对 PDF、图片等文件进行 OCR 或结构化解析时，调用本 skill。
 
-## 适用场景
+## 帮助模式
+
+如果用户输入 `--help`、`help`、`怎么用`、`使用说明` 或 `/ocr-mineru --help`，请直接回复下方的「使用说明」全文，不要执行解析。
+
+## 使用说明
 
 - 从扫描版 PDF 或图片中提取文字
 - 将 PDF 转换为 Markdown
@@ -67,6 +77,22 @@ print(result.images)                # 图片 {文件名: base64 data URL}
 - 如果用户只需要摘要：`result.get_text()`
 - 如果用户需要表格：`result.get_tables()`
 - 如果用户需要图片：`result.get_images()` 或 `result.images`
+
+## 命令行风格调用（--help）
+
+用户可以直接说：
+
+```
+/ocr-mineru --help
+```
+
+或：
+
+```
+ocr-mineru 怎么用？
+```
+
+此时应返回本 skill 的使用说明，而不是执行解析。
 
 ## 参数说明
 
