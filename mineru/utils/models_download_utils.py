@@ -1,10 +1,35 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
+from functools import lru_cache
+
 from huggingface_hub import snapshot_download as hf_snapshot_download
 from modelscope import snapshot_download as ms_snapshot_download
 
 from mineru.utils.config_reader import get_local_models_dir
 from mineru.utils.enum_class import ModelPath
+
+
+@lru_cache(maxsize=None)
+def _snapshot_download_cached(model_source: str, repo_mode: str, repo: str, relative_path: str) -> str:
+    """按进程缓存远端 snapshot_download 结果，减少重复缓存检查和 Fetching 日志。"""
+    if model_source == "huggingface":
+        snapshot_download = hf_snapshot_download
+    elif model_source == "modelscope":
+        snapshot_download = ms_snapshot_download
+    else:
+        raise ValueError(f"未知的仓库类型: {model_source}")
+
+    if repo_mode == 'pipeline':
+        return snapshot_download(repo, allow_patterns=[relative_path, relative_path + "/*"])
+
+    if repo_mode == 'vlm':
+        # VLM 整仓下载和局部路径下载都参与缓存，但保持原有 allow_patterns 行为。
+        if relative_path == "/":
+            return snapshot_download(repo)
+        return snapshot_download(repo, allow_patterns=[relative_path, relative_path + "/*"])
+
+    raise ValueError(f"Unsupported repo_mode: {repo_mode}, must be 'pipeline' or 'vlm'")
+
 
 def auto_download_and_get_model_root_path(relative_path: str, repo_mode='pipeline') -> str:
     """
@@ -45,25 +70,14 @@ def auto_download_and_get_model_root_path(relative_path: str, repo_mode='pipelin
     repo = repo_mapping[repo_mode].get(model_source, repo_mapping[repo_mode]['default'])
 
 
-    if model_source == "huggingface":
-        snapshot_download = hf_snapshot_download
-    elif model_source == "modelscope":
-        snapshot_download = ms_snapshot_download
-    else:
-        raise ValueError(f"未知的仓库类型: {model_source}")
-
-    cache_dir = None
-
     if repo_mode == 'pipeline':
         relative_path = relative_path.strip('/')
-        cache_dir = snapshot_download(repo, allow_patterns=[relative_path, relative_path+"/*"])
     elif repo_mode == 'vlm':
         # VLM 模式下，根据 relative_path 的不同处理方式
-        if relative_path == "/":
-            cache_dir = snapshot_download(repo)
-        else:
+        if relative_path != "/":
             relative_path = relative_path.strip('/')
-            cache_dir = snapshot_download(repo, allow_patterns=[relative_path, relative_path+"/*"])
+
+    cache_dir = _snapshot_download_cached(model_source, repo_mode, repo, relative_path)
 
     if not cache_dir:
         raise FileNotFoundError(f"Failed to download model: {relative_path} from {repo}")
