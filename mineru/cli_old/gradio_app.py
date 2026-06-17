@@ -30,18 +30,18 @@ log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
 logger.remove()  # 移除默认handler
 logger.add(sys.stderr, level=log_level)  # 添加新handler
 
-from mineru.cli.common import (
+from mineru.cli_old.common import (
     image_suffixes,
     normalize_task_stem,
     office_suffixes,
     pdf_suffixes,
     read_fn,
 )
-from mineru.cli import api_client as _api_client
-from mineru.cli.client_side_output import regenerate_client_side_outputs
-from mineru.cli.output_paths import resolve_parse_dir
-from mineru.cli.vlm_preload import resolve_gradio_local_api_cli_args
-from mineru.cli.visualization import VisualizationJob, run_visualization_job
+from mineru.cli_old import api_client as _api_client
+from mineru.cli_old.client_side_output import regenerate_client_side_outputs
+from mineru.cli_old.output_paths import resolve_parse_dir
+from mineru.cli_old.vlm_preload import resolve_gradio_local_api_cli_args
+from mineru.cli_old.visualization import VisualizationJob, run_visualization_job
 
 _gradio_local_api_server = _api_client.ReusableLocalAPIServer()
 

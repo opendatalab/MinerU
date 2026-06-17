@@ -31,7 +31,7 @@ from loguru import logger
 
 from base64 import b64encode
 
-from mineru.cli.common import (
+from mineru.cli_old.common import (
     aio_do_parse,
     do_parse,
     image_suffixes,
@@ -42,19 +42,19 @@ from mineru.cli.common import (
     read_fn,
     uniquify_task_stems,
 )
-from mineru.cli.api_request import ParseRequestOptions, parse_request_form
-from mineru.cli.public_http_client_policy import (
+from mineru.cli_old.api_request import ParseRequestOptions, parse_request_form
+from mineru.cli_old.public_http_client_policy import (
     configure_public_http_client_policy,
     is_public_bind_host,
     warn_if_public_http_client_policy as _warn_if_public_http_client_policy,
 )
-from mineru.cli.output_paths import resolve_parse_dir
-from mineru.cli.api_protocol import (
+from mineru.cli_old.output_paths import resolve_parse_dir
+from mineru.cli_old.api_protocol import (
     API_PROTOCOL_VERSION,
     DEFAULT_MAX_CONCURRENT_REQUESTS,
     DEFAULT_PROCESSING_WINDOW_SIZE,
 )
-from mineru.cli.vlm_preload import (
+from mineru.cli_old.vlm_preload import (
     maybe_preload_vlm_model,
     split_service_and_model_config,
 )
@@ -1447,7 +1447,7 @@ def main(
 
     if reload:
         uvicorn.run(
-            "mineru.cli.fast_api:app",
+            "mineru.cli_old.fast_api:app",
             host=host,
             port=port,
             reload=True,

@@ -1,4 +1,4 @@
-"""mineru CLI — local document center."""
+"""mineru CLI — personal document center, built for agents."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ class OrderedRootGroup(TyperGroup):
 app = typer.Typer(
     name="mineru",
     cls=OrderedRootGroup,
-    help="MinerU — 本地文档中心",
+    help="MinerU — your personal document center, built for agents",
     no_args_is_help=True,
 )
 

@@ -135,14 +135,9 @@ issues = "https://github.com/opendatalab/MinerU/issues"
 License = "https://github.com/opendatalab/MinerU/blob/master/LICENSE.md"
 
 [project.scripts]
-mineru = "mineru.cli.client:main"
-mineru-vllm-server = "mineru.cli.vlm_server:vllm_server"
-mineru-lmdeploy-server = "mineru.cli.vlm_server:lmdeploy_server"
-mineru-openai-server = "mineru.cli.vlm_server:openai_server"
-mineru-models-download = "mineru.cli.models_download:download_models"
-mineru-api = "mineru.cli.fast_api:main"
-mineru-router = "mineru.cli.router:main"
-mineru-gradio = "mineru.cli.gradio_app:main"
+mineru = "mineru.cli.main:app"
+mineru-kit = "mineru.kit.main:app"
+mineru-gradio = "mineru.cli_old.gradio_app:main"
 
 [tool.setuptools.dynamic]
 version = { attr = "mineru.version.__version__" }

@@ -22,7 +22,7 @@ Adding requests: 100%|███████████████████�
 Processed prompts: 100%|██████████████████| 278/278 [00:07<00:00, 37.63it/s, est. speed input: 5264.66 toks/s, output: 2733.31 toks/s]
 
 mineru-gradio --server-name 0.0.0.0 --server-port 7860 --enable-vllm-engine true测试：
-2025-10-05 15:46:55.953 | WARNING  | mineru.cli.common:convert_pdf_bytes_to_bytes_by_pypdfium2:54 - end_page_id is out of range, use pdf_docs length
+2025-10-05 15:46:55.953 | WARNING  | mineru.cli_old.common:convert_pdf_bytes_to_bytes_by_pypdfium2:54 - end_page_id is out of range, use pdf_docs length
 Two Step Extraction: 100%|████████████████████████████████████████████████████████████████████████████| 14/14 [00:18<00:00,  1.30s/it]
 
 ---

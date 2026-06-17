@@ -2,13 +2,13 @@
 
 状态: Draft
 读者: 服务部署者、核心开发者、`mineru server` 集成开发者
-范围: `mineru-kit api-server` 的定位、用途、与 doclib 的协作和 tier 能力发现
+范围: `mineru-kit api-server` 的定位、self-hosted 边界、与 doclib 的协作和参数契约
 非目标: 统一 REST API 的字段级定义；模型服务内部实现
 底稿: `../../../NEXT-CLI.md`
 
 ## 1. 定位
 
-`mineru-kit api-server` 启动一个无状态解析服务，用作 local parse-server 或自部署 parse-server。一个进程只服务一个 tier，可以是 `standard` 或 `pro`。
+`mineru-kit api-server` 是未来唯一正式的 parse-server 启动入口。它启动一个 self-hosted parse server。一个进程只服务一个 tier，可以是 `standard` 或 `pro`。
 
 `mineru doclib` 可以通过 HTTP 调用它执行解析任务。
 
@@ -35,7 +35,7 @@ api-server 负责：
 - 接收解析请求。
 - 执行模型解析。
 - 返回解析产物。
-- 在 managed 模式下负责模型下载、预热、重试和退避。
+- 负责模型下载、预热、重试和退避。
 
 ## 3. Tier 能力发现
 
@@ -52,15 +52,14 @@ api-server 不应把默认选择解析为 `flash`。
 
 如果用户需要同时提供 `standard` 和 `pro`，应启动两个 api-server 进程，由 doclib 或上层配置分别管理地址和 tier。
 
-## 4. 部署模式
+## 4. self-hosted 与 managed
 
-| 模式 | 说明 |
-|------|------|
-| managed | 由 `mineru server` 启停 local parse-server |
-| self-hosted | 用户自行启动，doclib 连接指定 URL |
-| remote-compatible | 用作远端 API 的兼容实现 |
+`mineru-kit api-server` 对用户只对应 self-hosted 场景。
 
-managed 模式下，`mineru server` 负责拉起和停止 api-server 进程，但不负责模型生命周期细节。模型下载、预热、失败重试和退避属于 api-server 自身职责。
+- self-hosted：用户自行启动，doclib 或其它客户端连接指定 URL
+- managed：由 `mineru server` / doclib 在运行时拉起和停止 parse-server 进程
+
+managed 是生命周期管理方式，不是用户直接执行的命令模式。
 
 ## 5. Usage
 
@@ -72,29 +71,55 @@ mineru-kit api-server --tier pro --port 15982
 mineru-kit api-server --tier standard --language en --ocr-mode ocr --disable-table
 ```
 
-`--tier` 会选择该 tier 的默认 backend。高级部署者可以同时传 `--tier` 和 `--backend`，用于在同一 tier 存在多个 backend 实现时选择具体实现；如果二者不兼容，启动应报错。启动完成后，HTTP API 仍只暴露 `tier`，不暴露 backend。
+`--tier` 会选择该 tier 的默认 backend。高级部署者可以同时传 `--tier` 和 `--backend`，用于选择具体实现；如果二者不兼容，启动应报错。
+
+`--tier` 默认值是 `standard`。
+
+启动完成后，HTTP API 不暴露 backend。`GET /v1/tiers` 也不新增 backend 字段；调用方如需推断实现，只能从 `current_model` 做弱推断。
 
 `--backend` 可选值应使用 parser backend 名称，具体集合以 parser backend 常量为准。
 
 裸 `vlm` / `hybrid` 不是合法的 api-server 启动 backend；它们只可作为 Middle JSON 来源标记或内部分类概念。
 
-具体参数仍以底稿为准，稳定后应覆盖：
+正式参数分层：
+
+### 稳定公开参数
 
 - host / port
-- supported tier
-- backend 高级覆盖
+- tier
+- API key
+
+### 稳定解析参数
+
 - language
 - ocr-mode
 - disable-table / disable-formula / disable-image-analysis
-- model path
-- device
 - concurrency
-- API key
-- health endpoint
-- tiers endpoint: `GET /v1/tiers`
+- upload-dir
+- url-timeout
+- max-wait
+
+### 专家参数
+
+- backend
+
+`--reload` 不进入正式命令设计。
 
 本地 api-server 默认监听 loopback。它可以通过 `--api-key` 设置固定 API Key；默认不设置 API Key。设置后，客户端必须发送 `Authorization: Bearer <api-key>`。
 
-## 未决问题
+## 6. API 覆盖范围
 
-api-server 参数稳定性等级、默认端口和多进程发现方式，集中维护在 [开放问题清单](../open-questions.md)。
+`mineru-kit api-server` 目标是实现 v1 API（非 doclib API）中的绝大多数 path。
+
+当前明确排除：
+
+- chat 的两个 path
+
+同时明确不实现：
+
+- doclib 的 `/docs`
+- `/parses`
+- `/search`
+- `/invalidate`
+
+完整设计背景见 [ADR-0017](../decisions/0017-mineru-kit-api-server-command.md)。

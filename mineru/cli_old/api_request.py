@@ -4,7 +4,7 @@ from typing import Annotated, Optional
 
 from fastapi import File, Form, HTTPException, Request, UploadFile
 
-from mineru.cli.public_http_client_policy import validate_public_http_client_request
+from mineru.cli_old.public_http_client_policy import validate_public_http_client_request
 
 ALLOWED_PARSE_METHODS = {"auto", "txt", "ocr"}
 SWAGGER_UI_FILE_ARRAY_SCHEMA_EXTRA = {

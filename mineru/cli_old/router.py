@@ -25,7 +25,7 @@ from loguru import logger
 from starlette.background import BackgroundTask
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from mineru.cli.api_client import (
+from mineru.cli_old.api_client import (
     LOCAL_API_CLEANUP_RETRIES,
     LOCAL_API_CLEANUP_RETRY_INTERVAL_SECONDS,
     LOCAL_API_STARTUP_TIMEOUT_SECONDS,
@@ -40,16 +40,16 @@ from mineru.cli.api_client import (
     strip_local_api_network_args,
     response_detail,
 )
-from mineru.cli.api_protocol import API_PROTOCOL_VERSION
-from mineru.cli.api_request import ParseRequestOptions, parse_request_form
-from mineru.cli.common import normalize_upload_filename
-from mineru.cli.public_http_client_policy import (
+from mineru.cli_old.api_protocol import API_PROTOCOL_VERSION
+from mineru.cli_old.api_request import ParseRequestOptions, parse_request_form
+from mineru.cli_old.common import normalize_upload_filename
+from mineru.cli_old.public_http_client_policy import (
     configure_public_http_client_policy,
     is_public_bind_host,
     validate_public_http_client_request,
     warn_if_public_http_client_policy as _warn_if_public_http_client_policy,
 )
-from mineru.cli.vlm_preload import build_local_api_cli_args
+from mineru.cli_old.vlm_preload import build_local_api_cli_args
 from mineru.version import __version__
 
 TASK_PENDING = "pending"
@@ -428,7 +428,7 @@ class ManagedLocalServer:
         command = [
             sys.executable,
             "-m",
-            "mineru.cli.fast_api",
+            "mineru.cli_old.fast_api",
             "--host",
             self.worker_host,
             "--port",
@@ -1651,7 +1651,7 @@ def main(
 
     if reload:
         uvicorn.run(
-            "mineru.cli.router:app",
+            "mineru.cli_old.router:app",
             host=host,
             port=port,
             reload=True,

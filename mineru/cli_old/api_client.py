@@ -23,7 +23,7 @@ import click
 import httpx
 from loguru import logger
 
-from mineru.cli.api_protocol import (
+from mineru.cli_old.api_protocol import (
     API_PROTOCOL_VERSION,
     DEFAULT_MAX_CONCURRENT_REQUESTS,
 )
@@ -421,7 +421,7 @@ def _run_local_api_via_spawn(
             exc,
         )
 
-    from mineru.cli.fast_api import main as fast_api_main
+    from mineru.cli_old.fast_api import main as fast_api_main
 
     fast_api_main.main(
         args=list(cli_args),
@@ -503,7 +503,7 @@ class LocalAPIServer:
             command = [
                 sys.executable,
                 "-m",
-                "mineru.cli.fast_api",
+                "mineru.cli_old.fast_api",
                 *cli_args,
             ]
             self.process = subprocess.Popen(

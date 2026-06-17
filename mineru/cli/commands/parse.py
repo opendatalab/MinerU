@@ -37,6 +37,26 @@ def _output_info(path: str) -> dict[str, str]:
     return {"status": "written", "path": path}
 
 
+def _validate_page_range_input(page_range: str | None) -> None:
+    if page_range is None or page_range.strip() == "" or page_range.strip() == "all":
+        return
+    try:
+        for raw_part in page_range.split(","):
+            part = raw_part.strip()
+            if not part:
+                raise ValueError
+            if "~" in part:
+                raw_start, raw_end = part.split("~", 1)
+                start = int(raw_start.strip())
+                end = int(raw_end.strip())
+                if start > 0 and end > 0 and start > end:
+                    raise ValueError
+            else:
+                int(part)
+    except ValueError:
+        raise MineruError("page_range_invalid", f"Invalid page range: {page_range}", "pages") from None
+
+
 def parse_cmd(
     path: str = typer.Argument(..., help="Path to the document file"),
     tier: Tier | None = typer.Option(None, "--tier", help="Parse tier: flash, standard, pro (default: server decides)"),
@@ -57,8 +77,12 @@ def parse_cmd(
     file_path = str(Path(os.path.expanduser(path)).resolve())
 
     if not Path(file_path).exists():
-        print_error(f"File not found: {file_path}")
-        raise typer.Exit(1)
+        exit_with_error(MineruError("file_not_found", f"File not found: {file_path}", "path"), json_mode=json_mode)
+
+    try:
+        _validate_page_range_input(pages)
+    except MineruError as exc:
+        exit_with_error(exc, json_mode=json_mode)
 
     try:
         client = DoclibClient(timeout=wait + 30)
@@ -218,6 +242,8 @@ def _output_parse_result(
     except typer.Exit:
         raise
     except Exception as exc:
+        if json_mode:
+            exit_with_error(exc, json_mode=True)
         print_error(f"Failed to read content: {exc}")
         raise typer.Exit(1) from None
 

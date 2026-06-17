@@ -6,11 +6,11 @@ from typing import Any
 
 from typer.testing import CliRunner
 
-from mineru.cli_next.commands import config, list_resources, parse, read, server, show
-from mineru.cli_next.commands import cleanup as cleanup_cmd
-from mineru.cli_next.commands import search as search_mod
-from mineru.cli_next.commands import watch as watch_cmd
-from mineru.cli_next.main import app
+from mineru.cli.commands import config, list_resources, parse, read, server, show
+from mineru.cli.commands import cleanup as cleanup_cmd
+from mineru.cli.commands import search as search_mod
+from mineru.cli.commands import watch as watch_cmd
+from mineru.cli.main import app
 from mineru.doclib.types import (
     ContentAsset,
     ContentNextRequest,
@@ -334,6 +334,49 @@ def test_parse_json_error_output_is_machine_readable(monkeypatch: Any, tmp_path:
     assert "No standard or pro engine available" in payload["error"]["message"]
 
 
+def test_parse_missing_file_json_error_is_machine_readable(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.pdf"
+
+    result = runner.invoke(app, ["parse", str(missing), "--tier", "flash", "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "file_not_found"
+    assert payload["error"]["param"] == "path"
+    assert "Error:" not in result.output
+
+
+def test_parse_rejects_reverse_page_range_as_json_error(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            raise AssertionError("DoclibClient should not be constructed for invalid page ranges")
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["parse", str(source), "--tier", "flash", "--pages", "2~1", "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "page_range_invalid"
+    assert payload["error"]["param"] == "pages"
+    assert "Error:" not in result.output
+
+
+def test_scan_missing_path_json_error_is_machine_readable(tmp_path: Path) -> None:
+    missing = tmp_path / "missing"
+
+    result = runner.invoke(app, ["scan", str(missing), "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "file_not_found"
+    assert payload["error"]["param"] == "path"
+    assert "Error:" not in result.output
+
+
 def test_show_file_uses_get_file_by_path(monkeypatch: Any, tmp_path: Path) -> None:
     calls: list[str] = []
     source = tmp_path / "demo.pdf"
@@ -456,7 +499,10 @@ def test_parse_content_read_failure_exits_nonzero(monkeypatch: Any, tmp_path: Pa
     result = runner.invoke(app, ["parse", str(source), "--tier", "flash", "--json"])
 
     assert result.exit_code == 1
-    assert "Failed to read content: content missing" in result.output
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "api_error"
+    assert "content missing" in payload["error"]["message"]
+    assert "Error:" not in result.output
 
 
 def test_read_passes_locator_parameters_to_doclib_client(monkeypatch: Any) -> None:

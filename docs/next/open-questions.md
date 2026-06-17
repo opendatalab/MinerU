@@ -48,6 +48,9 @@
 | `mineru-kit parse` 与 doclib | `mineru-kit parse` 不允许复用 `mineru` 的本地 doclib 缓存；kit 是纯工具，不感知 doclib。 |
 | `mineru-kit` Agent 暴露 | `mineru-kit` 长期对 Agent skill 隐藏，只作为专家入口；Agent 默认使用 `mineru`。 |
 | `mineru-kit` 参数稳定性 | 暂不划分 `stable` / `experimental` 等稳定性等级，先保持简单。 |
+| `mineru-kit parse` 输入 | 当前只支持文件和目录输入；不支持 stdin、路径列表、URL 输入和递归目录。 |
+| `mineru-kit parse` 输出 | `--output` 必填；单文件可输出到文件路径或目录路径；多文件只能输出到目录路径；同名冲突直接报错并终止整个批次。 |
+| `mineru-kit parse` local/remote | local 支持 `tier/backend` 并校验兼容；remote 支持 `--remote`/`--remote-url`/`--api-key`，允许传 `tier`，禁止传 `backend`。 |
 | parsing-rules 默认 tier | parsing-rules 允许不指定 tier；执行时必须解析为实体 tier，并只记录实际 tier；默认选择不能解析为 `flash`。 |
 | Telemetry P0 | P0 必须实现 doclib server telemetry 状态、聚合、flush 和 CLI 管理入口；纯工具无 telemetry 能力。 |
 | `mineru parse` 默认页码范围 | 分页文档默认读取 `1~10`。 |
@@ -75,21 +78,12 @@
 | OQ-B-003 | 哪些 SQLite 字段进入稳定 v1 schema，哪些仍视为内部或实验字段。 | schema 稳定性说明 | doclib server、SDK、Agent |
 | OQ-B-004 | CLI exit code、`error.code`、`retryable`、`user_action` 和 trace/request id 的稳定契约。 | 错误码补充规格 | CLI、API、SDK |
 
-## 4. Tier 与运行时
-
-| ID | 问题 | 建议归属 |
-|----|------|----------|
-| OQ-T-005 | `mineru-kit` 是否支持不传 tier 的默认选择，还是只接受实体 tier 和 backend。 | CLI 专家工具 |
-
 ## 5. CLI 与 Agent 协议
 
 | ID | 问题 | 建议归属 |
 |----|------|----------|
 | OQ-C-001 | Markdown block marker 作为 P0 Agent-native 输出的一部分时，是否只允许显式 opt-in，而默认只输出普通 Markdown 与 continuation marker。 | CLI / Agent |
 | OQ-C-002 | `mineru` 与 `mineru-kit` 是否共享同一组选项命名。 | CLI |
-| OQ-C-006 | `mineru-kit parse` 是否默认异步处理批量远端任务。 | CLI 专家工具 |
-| OQ-C-007 | `mineru-kit parse` 的 stdin 传文件内容和传路径列表如何区分。 | CLI 专家工具 |
-| OQ-C-008 | `mineru-kit parse` 多格式输出目录结构是否需要稳定 schema。 | CLI 专家工具 |
 | OQ-C-012 | `mineru server status` 的 JSON schema 是否作为稳定 doclib SDK/API schema 发布。 | CLI / API |
 | OQ-C-013 | 多用户或多项目场景下 UDS 路径是否需要命名空间。 | server 生命周期 |
 

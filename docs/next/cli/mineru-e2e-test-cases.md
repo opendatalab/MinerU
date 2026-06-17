@@ -81,10 +81,13 @@ rm -rf .venv
 uv venv .venv
 source .venv/bin/activate
 uv pip install ~/MinerU-Repo
-alias mineru="python -m mineru.cli_next.main"
+mineru --help
+mineru-kit --help
 ```
 
-安装完成后，执行 Agent 后续仍只调用 `mineru ...` 命令，不直接调用 Python 模块、内部 API 或数据库。
+安装完成后，`mineru` 和 `mineru-kit` 都应由 `pyproject.toml` 的脚本入口直接提供，不需要配置 shell alias。
+
+执行 Agent 后续仍只调用 `mineru ...` 命令，不测试 `mineru-kit`，也不直接调用 Python 模块、内部 API 或数据库。
 
 ## 3. 顶层命令与帮助
 
@@ -1072,21 +1075,25 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wai
 
 ```bash
 mineru config parsing-rules add "*/sample.pdf" --remote --pages 1~1 --name e2e-remote-rule --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --wait 60 --json
+mineru watch add "$MINERU_E2E_FIXTURE_DIR" --label e2e-remote-rule-watch --json
+mineru watch rescan "$MINERU_E2E_FIXTURE_DIR" --wait 60 --json
+mineru list parses --limit 20 --json
+mineru watch remove "$MINERU_E2E_FIXTURE_DIR" --json
 mineru config parsing-rules remove <rule_id>
 ```
 
 执行说明:
 
 - `<rule_id>` 从第一条 add JSON 中提取。
+- watch id 从 `watch add` JSON 中提取；如果 watch 已存在，可复用已有 watch 或先 remove 后重建。
 
 预期分支:
 
-- add/remove exit code = 0，JSON 可解析
-- 如果 remote parse-server 可用，parse 应按 remote 规则执行，JSON 体现 remote/via/privacy 中的部分字段
-- 如果 remote parse-server 不可用，parse 应返回明确 remote/parse-server 不可用错误
-- parse 失败且命令带 `--json` 时，stdout 必须为可直接解析的 JSON error
-- remove 后规则不再影响后续 parse
+- add/watch/rescan/list/remove exit code = 0，JSON 可解析
+- parsing-rule 的 `remote` 字段用于规则命中后的自动解析策略，尤其是 watch 自动触发/后台解析；不要求用户主动 `mineru parse <path>` 在未传 `--remote` 时也按该规则上传远端
+- 如果 remote parse-server 可用，规则命中的自动解析任务应体现 remote/privacy/via/tier 中的部分字段，或在 `list parses` 中可观察到对应 remote 解析任务
+- 如果 remote parse-server 不可用，规则命中的自动解析任务应记录明确 remote/parse-server 不可用错误；命令带 `--json` 时 stdout 必须为可直接解析的 JSON
+- remove 后规则不再影响后续 watch 自动解析
 
 ### PARSE-014 非法 format
 
@@ -1732,7 +1739,7 @@ mineru show file "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --json
 - JSON 输出可解析
 - 输出包含 filename、size_bytes、page_count 或 parse tiers 中的部分字段
 
-### SHOW-001A show file by sha256
+### SHOW-001A show file 不支持 sha256
 
 前置: 从 `mineru show file "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --json` 或 `mineru list files --json` 中获得 sha256。
 
@@ -1745,14 +1752,12 @@ mineru show file <sha256> --json
 
 预期分支:
 
-- 如果 CLI 设计支持 sha256 查询 file:
-  - 两条 exit code = 0
-  - JSON 输出可解析
-  - 输出包含 sha256 或对应 filename/path
-- 如果 CLI 设计只支持 path:
-  - 两条 exit code != 0
-  - 输出包含 path、not found、invalid 或等价错误
-  - 不包含 Python traceback
+- 两条 exit code != 0
+- `show file` 只支持 file path，不支持 sha256
+- 普通输出包含 path、not found、invalid 或等价错误
+- `--json` 输出为可直接解析的 JSON error
+- 不包含 Python traceback
+- 使用 sha256 查询文档应走 `mineru show doc <sha256>`
 
 ### SHOW-002 show doc
 
@@ -2721,7 +2726,258 @@ mineru server start
 - 日志文件中能看到 server 子进程 stderr 或异常信息
 - stdout/stderr 不只给出空泛的启动失败
 
-## 18. 最终报告格式
+## 18. 补充覆盖执行套件
+
+本章节用于补足阶段性执行中容易漏跑的场景。执行 Agent 在完成核心 smoke 与新契约回归后，必须按以下批次继续执行，除非对应前置条件无法满足并明确标记 BLOCKED。
+
+### COVERAGE-001 help 与入口补充
+
+必跑 case:
+
+- CLI-001 顶层 help
+- CLI-002 子命令 help
+- CLI-003 不存在旧命令
+
+预期:
+
+- 所有 help 类命令输出稳定、可读
+- 顶层 help 不出现 `mineru-kit`
+- 旧命令入口保持不可用
+
+### COVERAGE-002 server 生命周期补充
+
+必跑 case:
+
+- SERVER-003 查询运行状态
+- SERVER-005 重复启动 server
+- SERVER-006 restart server
+- SERVER-007 stop 后依赖 server 的命令报错可读
+- SERVER-009 环境变量路径生效
+- SERVER-012 error summary 与 recent logs
+- SERVER-010 停止 server
+
+执行要求:
+
+- SERVER-011 必须仍作为整套测试最后一个 case 执行，不放入本批次中间。
+- stop/restart 后必须恢复 server，避免影响后续批次。
+
+### COVERAGE-003 config 普通文本与错误分支补充
+
+必跑 case:
+
+- CONFIG-001 查看配置
+- CONFIG-003 设置和读取配置
+- CONFIG-004 unset 配置
+- CONFIG-005 exclude-rules
+- CONFIG-006 旧 exclude 命令不可用
+- CONFIG-007 parsing-rules
+- CONFIG-009 不存在的配置 key
+
+预期:
+
+- 普通文本输出可读且不包含 traceback
+- JSON 分支遵守 JSON error 契约
+- add/list/remove 后配置状态一致
+
+### COVERAGE-004 watch 普通文本、重复与 removable 补充
+
+必跑 case:
+
+- WATCH-001 添加 watch
+- WATCH-001A 重复添加 watch
+- WATCH-002 列出 watch
+- WATCH-004 watch rescan
+- WATCH-006 删除不存在的 watch
+- WATCH-007 添加不存在目录
+- WATCH-009 removable watch
+- WATCH-010 removable watch unreachable 行为
+
+执行要求:
+
+- WATCH-010 如果平台无法稳定制造路径不可访问，可标记 BLOCKED，但必须说明原因。
+- watch add/remove 需要保持清理，避免污染后续 list/watch-id 用例。
+
+### COVERAGE-005 scan 边界补充
+
+必跑 case:
+
+- SCAN-003 扫描不存在路径
+- SCAN-004 扫描空目录
+- SCAN-005 扫描不支持文件类型
+
+预期:
+
+- 错误分支清晰，不包含 traceback
+- JSON 模式下业务错误输出 JSON error
+- 空目录和不支持类型的行为符合用例分支说明
+
+### COVERAGE-006 parse 边界、续读、cache 与 remote 组合补充
+
+必跑 case:
+
+- PARSE-001 文件不存在
+- PARSE-002 显式 flash parse
+- PARSE-004 cache hit 行为
+- PARSE-005 no-wait 行为
+- PARSE-006 force 行为
+- PARSE-006A force 默认输出不打印过程 status
+- PARSE-006B verbose 输出允许过程 status
+- PARSE-007 默认 tier 行为
+- PARSE-008 输出到文件
+- PARSE-010 limit 截断与 next_request
+- PARSE-011 after 续读
+- PARSE-012 no-marker
+- PARSE-013 remote parse 分支
+- PARSE-013B remote no-wait
+- PARSE-013C remote force
+- PARSE-013D remote output
+- PARSE-013E remote 与 local cache 隔离
+- PARSE-013F remote 配置规则
+- PARSE-015 JSON 输出纯净性
+- PARSE-016 page range 边界
+
+执行要求:
+
+- remote 不可用时，相关命令必须返回 JSON error 或普通可读错误，不能 traceback。
+- remote 可用时，必须验证 remote/via/privacy/tier 中至少部分字段。
+- force/cache/no-wait 用例必须记录 parse id/status 是否符合预期。
+
+### COVERAGE-007 read 边界、续读、image 与 context 补充
+
+必跑 case:
+
+- READ-001 读取 page locator
+- READ-003 read context
+- READ-004 invalid locator
+- READ-005 输出到文件
+- READ-007 image 格式
+- READ-008 image 输出到文件
+- READ-009 limit 截断与 next_request
+- READ-010 使用 next_request 续读
+- READ-011 no-marker
+- READ-012 非法 format
+- READ-013 JSON 输出纯净性
+- READ-014 locator 粒度边界
+- READ-015 跨页 context
+
+执行要求:
+
+- 如果无法从解析结果获得 block/char locator，READ-014 中对应子项可标记 BLOCKED，但 page 越界子项仍必须执行。
+- image 不支持时必须按 JSON error 或普通可读错误判定，不得 traceback。
+
+### COVERAGE-008 search/list/show 过滤、分页与不存在资源补充
+
+必跑 case:
+
+- SEARCH-002 find JSON
+- SEARCH-004 search tier filter
+- SEARCH-005 search min-tier
+- SEARCH-006 find ext filter
+- SEARCH-007 find limit 和 offset 边界
+- SEARCH-008 search type filter
+- SEARCH-009 search offset
+- SEARCH-010 search 无结果
+- SEARCH-011 find 无结果
+- SEARCH-012 JSON 输出纯净性
+- SEARCH-013 find offset 契约
+- LIST-001A list files filters
+- LIST-002A list docs offset
+- LIST-003A list parses filters
+- LIST-004A list scans filters
+- LIST-005 watch-id filters
+- LIST-006 JSON 输出纯净性
+- LIST-007 list docs file-type filter
+- SHOW-001A show file 不支持 sha256
+- SHOW-005 show 不存在资源
+- SHOW-006 JSON 输出纯净性
+
+执行要求:
+
+- `show doc` 必须使用完整 sha256，不使用 short_id。
+- `show file` 必须使用 file path；sha256 查询必须使用 `show doc`。
+- 所有 JSON 输出必须可直接 `json.loads`。
+
+### COVERAGE-009 invalidate 与 forget 补充
+
+必跑 case:
+
+- INVALIDATE-001 invalidate flash
+- INVALIDATE-001A invalidate all tiers
+- INVALIDATE-001B invalidate JSON 支持性
+- INVALIDATE-001C invalidate 不存在文件
+- INVALIDATE-002 invalidate 后重新 parse
+- FORGET-001 默认 dry-run
+- FORGET-002 实际 forget
+- FORGET-003 forget JSON
+- FORGET-004 forget 目录 dry-run
+- FORGET-005 forget 目录 execute
+- FORGET-006 forget 不存在路径
+- FORGET-007 JSON 输出纯净性
+
+执行要求:
+
+- invalidate/forget 不得删除源文件。
+- 实际 forget 后必须验证重新 scan/parse 可重新发现。
+
+### COVERAGE-010 cleanup 真实副作用与边界补充
+
+必跑 case:
+
+- CLEANUP-002 cleanup deleted-files execute
+- CLEANUP-005 cleanup deleted-files execute JSON
+- CLEANUP-006 cleanup orphan-docs execute
+- CLEANUP-007 cleanup temp 边界参数
+- CLEANUP-008 JSON 输出纯净性
+- CLEANUP-009 cleanup deleted-files 真实效果
+- CLEANUP-010 cleanup orphan-docs 真实效果
+- CLEANUP-011 cleanup temp 新旧文件边界
+
+执行要求:
+
+- `--no-dry-run` 用例执行前必须先制造可清理数据。
+- 清理后必须通过 list/show/read/parse 复核真实效果。
+
+### COVERAGE-011 文件类型、路径与 output 边界补充
+
+必跑 case:
+
+- FILETYPE-001 Office 和图片输入
+- FILETYPE-002 损坏、空、不可读文件中尚未执行的 empty/no-read 子项
+- PATH-001 路径字符边界
+- PATH-002 相对路径和 home 路径中相对路径、show file 同源子项
+- OUTPUT-002 read image output 后缀边界
+
+执行要求:
+
+- Office/image 输入如果当前安装不支持，按预期失败分支判定。
+- symlink 或 no-read 权限场景无法稳定制造时，相关子项可 BLOCKED，但必须说明平台限制。
+
+### COVERAGE-012 并发补充
+
+必跑 case:
+
+- CONCURRENCY-001 并发 parse force
+- CONCURRENCY-002 并发 scan 同一目录
+- CONCURRENCY-003 并发 server start
+
+执行要求:
+
+- 并发命令只能调用 `mineru`，不得直接操作数据库。
+- 允许一个命令返回 busy/lock/queue 类明确错误，但不得出现 traceback 或损坏后续 server 状态。
+
+### COVERAGE-013 配置持久化与规则影响补充
+
+必跑 case:
+
+- CONFIG-010 配置持久化
+- CONFIG-011 rule hit_count 与 scan 影响
+
+预期:
+
+- server restart 后配置仍可读取
+- rule hit_count 或等价统计在 scan 后体现规则被使用
+
+## 19. 最终报告格式
 
 执行 Agent 最终必须按以下格式汇总:
 

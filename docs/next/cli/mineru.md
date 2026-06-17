@@ -78,6 +78,6 @@ read(locator) = read existing parsed content by stable locator
 
 ## 6. 与 mineru-kit 的关系
 
-`mineru` 使用更少、更稳定的参数集合。复杂批处理、目录展开、stdin 混合输入、输出冲突策略、并发控制等能力放在 `mineru-kit parse`。
+`mineru` 使用更少、更稳定的参数集合。复杂批处理、目录输入、local/remote 显式切换和文件产物输出等能力放在 `mineru-kit parse`。
 
 如果一个参数只服务解析内核调试或批处理工程化，默认不进入 `mineru`。

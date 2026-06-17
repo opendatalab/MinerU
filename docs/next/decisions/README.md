@@ -43,6 +43,10 @@
 | [ADR-0013](0013-doc-content-progressive-reading.md) | Accepted | Doc Content Progressive Reading |
 | [ADR-0014](0014-mineru-read-command.md) | Accepted | MinerU Read Command |
 | [ADR-0015](0015-cli-output-json-composition.md) | Accepted | CLI Output 与 JSON 组合语义 |
+| [ADR-0016](0016-mineru-kit-parse-command.md) | Accepted | MinerU Kit Parse Command |
+| [ADR-0017](0017-mineru-kit-api-server-command.md) | Accepted | MinerU Kit API Server Command |
+| [ADR-0018](0018-mineru-kit-vlm-server-command.md) | Accepted | MinerU Kit VLM Server Command |
+| [ADR-0019](0019-mineru-kit-models-command.md) | Accepted | MinerU Kit Models Command |
 
 ## 模板
 

@@ -8,7 +8,7 @@ from fuzzywuzzy import fuzz
 from loguru import logger
 
 from mineru.backend.pipeline.pipeline_analyze import doc_analyze_streaming as pipeline_doc_analyze_streaming
-from mineru.cli.common import convert_pdf_bytes_to_bytes, prepare_env, read_fn
+from mineru.cli_old.common import convert_pdf_bytes_to_bytes, prepare_env, read_fn
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.render import render_content_list, render_markdown
 

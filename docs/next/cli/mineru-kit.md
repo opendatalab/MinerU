@@ -21,9 +21,10 @@
 
 | 子命令 | 作用 | 文档 |
 |--------|------|------|
-| `mineru-kit parse` | 无状态文件/目录/URL/stdin 批处理解析 | [mineru-kit parse](mineru-kit-parse.md) |
+| `mineru-kit models` | 下载、查看和校验本地模型配置 | [mineru-kit models](mineru-kit-models.md) |
+| `mineru-kit parse` | 无状态文件/目录批处理解析 | [mineru-kit parse](mineru-kit-parse.md) |
 | `mineru-kit api-server` | 启动兼容统一 API 的本地解析服务 | [mineru-kit api-server](mineru-kit-api-server.md) |
-| `mineru-kit vlm-server` | 本地 VLM 服务，兼容 OpenAI API | 第一阶段纳入，文档待补充 |
+| `mineru-kit vlm-server` | 本地 VLM 服务，兼容 OpenAI Chat Completions 协议 | [mineru-kit vlm-server](mineru-kit-vlm-server.md) |
 
 ## 3. 与 mineru 的边界
 
@@ -43,6 +44,20 @@
 
 `mineru-kit` 参数暂不划分 `stable` / `experimental` 等稳定性等级。第一阶段保持参数体系简单，后续只有在兼容性压力明确出现时再引入分级。
 
-## 未决问题
+当前 `mineru-kit parse` 已确定：
 
-`mineru-kit` 的默认 tier 选择策略，集中维护在 [开放问题清单](../open-questions.md)。
+- 只支持文件和目录输入，不支持 stdin、路径列表、URL 输入和递归目录。
+- `--output` 必填。
+- local 模式支持 `tier` 与 `backend`，并使用与 `mineru-kit api-server` 一致的默认 tier 选择策略，但默认不会落到 `flash`。
+- remote 模式支持 `--remote` / `--remote-url` / `--api-key`，允许传 `--tier`，但禁止传 `--backend`。
+
+详细命令契约见 [ADR-0016](../decisions/0016-mineru-kit-parse-command.md)。
+
+当前 `mineru-kit models` 已确定：
+
+- 第一阶段只提供 `download`、`show`、`verify` 三个子命令。
+- 继续使用旧 `mineru.json` 配置文件体系。
+- `download` 用位置参数显式选择 `pipeline`、`vlm` 或 `all`，不提供默认 bundle。
+- 下载完成后默认更新配置文件，不支持 `--no-config` 或自定义配置文件路径。
+
+详细命令契约见 [ADR-0019](../decisions/0019-mineru-kit-models-command.md)。

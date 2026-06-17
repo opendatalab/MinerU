@@ -11,11 +11,11 @@
 | 定位 | 本地文档解析和管理中心 | 纯文档解析工具 |
 | 受众 | Agent 系统 / 少量文档的非技术用户 | 大规模数据处理的开发人员 |
 | 数据库 | 维护本地 mineru.db，去重 + 可搜索 | 不涉及数据库 |
-| 输入 | 单文件（未来多文件/目录/URL） | 文件/目录/URL/文件列表/stdin 混合 |
+| 输入 | 单文件（未来多文件/目录/URL） | 文件/目录 |
 | 输出默认 | STDOUT（渐进式，默认有限页） | 文件（-o 必填） |
 | 参数风格 | 精简，隐藏专家选项 | 完整，暴露所有引擎/并发/冲突策略参数 |
 
-mineru-kit parse 中未出现在 mineru parse 的参数（如 `--backend`、`--method`、`--on-collision`、`--stdin`、`--concurrency` 等）均为有意不暴露。
+mineru-kit parse 中未出现在 mineru parse 的参数（如 `--backend`、`--tier`、`--remote-url`、`--api-key` 等）均为有意不暴露。
 
 ---
 
@@ -639,6 +639,7 @@ config             KV 全局配置
 不会用到数据库。
 
 子命令：
+- mineru-kit models（模型下载、配置查看与校验）
 - mineru-kit parse（单个文件、文件夹的解析）
 - mineru-kit api-server（本地启动的端到端解析服务，实现 NEXT-API.md 规范，提供 standard / pro tier 的解析能力）
 
@@ -655,9 +656,70 @@ mineru-kit vlm-server 替换：
 - mineru-lmdeploy-server
 - mineru-openai-server
 
+mineru-kit models 替换：
+- mineru-models-download
+
+## mineru-kit models
+
+`models` 是 `mineru-kit` 的模型管理命令组。第一阶段只提供三个子命令：
+
+- `mineru-kit models download`
+- `mineru-kit models show`
+- `mineru-kit models verify`
+
+第一阶段继续使用旧配置文件体系：
+
+- 默认 `~/mineru.json`
+- 或 `MINERU_TOOLS_CONFIG_JSON` 指定的路径
+
+`download` 用位置参数显式指定 bundle，不提供默认 bundle：
+
+```bash
+mineru-kit models download pipeline
+mineru-kit models download vlm --source modelscope
+mineru-kit models download all
+```
+
+规则：
+
+- `--source` 默认 `huggingface`
+- 下载完成后默认更新配置文件
+- 不支持 `--config`
+- 不支持 `--no-config`
+- 不支持显式设置模型目录
+- 当前保持现有下载行为：由 Hugging Face / ModelScope 下载器自行决定缓存路径，MinerU 只记录最终模型目录
+
+`show` 用于查看当前模型配置和基本状态，`verify` 用于轻量校验模型配置与关键路径。
+
+## mineru-kit vlm-server
+
+`vlm-server` 是未来唯一正式的本地 VLM 服务启动入口。它部署的是与 mineru.net chat API 同类的文档理解 VLM 模型，主要用于 OCR、布局理解、页面理解和文档局部问答，不承诺通用聊天能力。
+
+它可以成为 `mineru-kit api-server` 的后端，尤其服务于 `vlm-http-client` / `hybrid-http-client`。
+
+稳定提供的协议范围：
+
+- `GET /v1/health`
+- `GET /v1/models`
+- `POST /v1/chat/completions`
+
+`/v1/responses` 不作为当前稳定承诺。
+
+统一参数仅有：
+
+```bash
+mineru-kit vlm-server --engine auto
+mineru-kit vlm-server --engine vllm
+mineru-kit vlm-server --engine lmdeploy
+mineru-kit vlm-server --engine sglang
+mineru-kit vlm-server --engine mlx
+```
+
+除 `--engine` 外，其余参数原样透传到底层 engine server。
+
 ## mineru-kit api-server
 
-`api-server` 是本地部署的 HTTP 解析服务，实现 NEXT-API.md 定义的 Files/Uploads/Jobs 端点。它在功能上与 mineru.net 等价，区别仅在于 base URL 不同（`http://127.0.0.1:15981` vs `https://mineru.net/api`）。
+`api-server` 是未来唯一正式的 parse-server 启动入口。它启动 self-hosted HTTP 解析服务，实现 v1 API（非 doclib API）中的绝大多数 path。它在功能上与 mineru.net 的 parse API 对齐，区别仅在于 base URL 不同（`http://127.0.0.1:15981` vs `https://mineru.net/api`）。
 
 ### 与 mineru doclib 的协作
 
@@ -671,28 +733,59 @@ mineru doclib（纯 CPU 进程）
        └─ 指定 --remote    → config 指定远端或 mineru.net/api
 ```
 
-- **managed 模式**：doclib 启动时自动拉起 api-server，停止时一起关闭
-- **self_hosted 模式**：用户独立启动 api-server，通过 config 告知 doclib 地址
-- **API 格式完全一致**：local parse-server 和 mineru.net 使用同一套 API，ParseWorker 仅切换 base URL
+- **managed**：doclib 启动时自动拉起 api-server，停止时一起关闭；这不是用户直接执行的命令模式
+- **self-hosted**：用户独立启动 api-server，通过 config 告知 doclib 地址
+- **API 格式一致**：local parse-server 和 mineru.net 使用同一套 v1 parse API，ParseWorker 仅切换 base URL
 
 ### Usage
 
 ```bash
 mineru-kit api-server --tier standard --port 15981
-mineru-kit api-server --tier pro --port 15981
+mineru-kit api-server --tier pro --port 15982
+mineru-kit api-server --tier standard --language en --ocr-mode ocr --disable-table
 ```
 
-| Flag | 默认 | 说明 |
-|------|------|------|
-| `--tier` | `standard` | 服务提供的解析档位：`standard` / `pro` |
-| `--port` | `15981` | 监听端口（仅 127.0.0.1） |
+规则：
+
+- 一个进程只服务一个 tier
+- `--tier` 默认值为 `standard`
+- `--backend` 是高级覆盖参数
+- `--tier` 与 `--backend` 同时出现且不兼容时，启动直接报错
+- 启动后的 HTTP API 不公开 backend；`GET /v1/tiers` 也不新增 backend 字段
+
+稳定公开参数：
+
+- `--host`
+- `--port`
+- `--tier`
+- `--api-key`
+
+稳定解析参数：
+
+- `--language`
+- `--ocr-mode`
+- `--disable-table`
+- `--disable-formula`
+- `--disable-image-analysis`
+- `--concurrency`
+- `--upload-dir`
+- `--url-timeout`
+- `--max-wait`
+
+专家参数：
+
+- `--backend`
+
+不进入正式命令设计：
+
+- `--reload`
 
 
 # mineru-kit parse
 
 ## 概述
 
-`parse` 是 `mineru-kit` 的通用文档解析子命令。支持本地引擎和远端 API 两种执行模式，通过 `--server` 自动切换。输入支持文件路径、目录路径和 URL 的灵活混合，批量处理时提供可配置的输出消歧策略。
+`parse` 是 `mineru-kit` 的通用文档解析子命令。它是无状态批处理命令，支持 local 和 remote 两种执行模式，输入只支持文件和目录。
 
 ## Usage
 
@@ -702,55 +795,49 @@ mineru-kit parse [input...] [flags]
 
 ## 输入
 
-至少指定一种输入来源。`<input>` 位置参数、`--list`、`--stdin-list` 三种来源合并为一个统一输入列表。`--stdin` 为独占模式，与其他输入方式互斥。
+至少指定一个输入。当前只支持 `<input>` 位置参数，不支持 stdin 或路径列表。
 
 ```
-<input>...              文件路径、目录路径或 URL，可混合多个
---list <file>           从文件追加输入（每行一个，# 开头为注释）
---stdin-list            从 stdin 追加输入（每行一个）
---stdin                 独占模式：从 stdin 读取文件原始字节
---stdin-name <name>     stdin 模式的文件名/后缀，用于推断格式 (默认: stdin.pdf)
+<input>...              文件路径或目录路径，可混合多个
 ```
 
 ### 目录展开规则
 
-- 默认仅展开一层（`glob("*")`）
-- `-r` / `--recursive` 开启递归展开
-- 自动跳过隐藏文件和不支持的文件类型
+- 默认仅展开一层
+- 不支持递归展开
+- 自动跳过不支持的文件类型
 - 按文件名排序，保证可复现
 - 目录下无任何支持的文件则报错退出
-
-| Flag | 简写 | 类型 | 默认 | 说明 |
-|------|------|------|------|------|
-| `--recursive` | `-r` | bool | false | 递归展开目录 |
 
 ## 输出
 
 | Flag | 简写 | 类型 | 默认 | 说明 |
 |------|------|------|------|------|
-| `--output` | `-o` | path | — | 输出路径。本地模式必填（视为目录）；远端单文件可选（省略则 stdout）；远端批量必填（视为目录） |
-| `--format` | `-f` | string | `md` | 输出格式，逗号分隔: `md`, `json`, `html`, `latex`, `docx`。仅远端模式支持多格式 |
-| `--on-collision` | — | string | `fail` | 输出文件名冲突策略 (详见下文) |
+| `--output` | `-o` | path | — | 输出路径，必填。单文件可为文件路径或目录路径；多文件只能为目录路径 |
+| `--format` | `-f` | string | `markdown` | 输出格式: `markdown`, `middle_json`, `zip` |
 
-### 冲突处理
+### 命名与冲突
 
-所有输入展开后，预处理阶段全部 stem 完成冲突检测。冲突发生时不静默处理，由 `--on-collision` 决定策略：
+单文件且 `--output` 为目录路径时：
 
-| 值 | 行为 |
-|----|------|
-| `fail` | 报错退出，列出冲突详情和解决建议 (默认) |
-| `rename` | 自动加父目录前缀消歧；前缀不够加多层；根目录仍冲突时回退数字后缀 |
-| `path` | 按输入相对路径镜像输出目录结构，无冲突 |
+- `markdown` -> `<stem>.md`
+- `middle_json` -> `<stem>.json`
+- `zip` -> `<stem>.zip`
+
+多文件时，命名方式相同。
+
+如果一个批次内多个输入映射到同一个输出路径，直接报错，整个批次都不解析。
 
 示例：
 
 ```
 # 不同目录同名文件
-mineru-kit parse a/report.pdf b/report.pdf -o out/ --on-collision rename
-# → out/a_report.md + out/b_report.md
-
-mineru-kit parse a/report.pdf b/report.pdf -o out/ --on-collision path
-# → out/a/report.md + out/b/report.md
+mineru-kit parse a/report.pdf b/report.pdf -o out/
+# Error: output filename collision detected:
+#   report.md
+#     ← a/report.pdf
+#     ← b/report.pdf
+# Entire batch aborted before parsing.
 ```
 
 ## 执行模式
@@ -759,81 +846,38 @@ mineru-kit parse a/report.pdf b/report.pdf -o out/ --on-collision path
 
 | Flag | 简写 | 类型 | 默认 | 说明 |
 |------|------|------|------|------|
-| `--server` | — | url | — | 远端 API 地址。指定则切换为远端模式，否则使用本地引擎 |
-| `--api-key` | — | string | — | API Key (覆盖环境变量 `MINERU_API_KEY`) |
+| `--remote` | — | bool | false | 连接 `mineru.net` 官方解析服务 |
+| `--remote-url` | — | url | — | 连接指定解析服务 |
+| `--api-key` | — | string | — | remote 模式使用的 API Key |
 | `--verbose` | `-v` | bool | false | 详细输出 (远端: HTTP 调试; 本地: 引擎日志) |
-
-### 同步/异步行为
-
-| 场景 | 默认行为 | 覆盖 |
-|------|---------|------|
-| 本地 单文件 | 同步阻塞，进度条 | — |
-| 本地 目录/批量 | 同步阻塞，多任务进度条 | — |
-| 远端 单文件 | 同步等待 (轮询 + 进度条) | `--async` 立即返回 task-id |
-| 远端 批量 | 异步 (提交全部，列 task-id 清单) | `--wait` 同步等到全部完成 |
-| 远端 `--stdin` | 同步等待 | `--async` |
-| 远端 `--fast` | 同步等待 | `--async` |
 
 ## 文档参数
 
 | Flag | 简写 | 类型 | 默认 | 说明 |
 |------|------|------|------|------|
-| `--lang` | `-l` | string | `ch` | 文档语言。支持: `ch`, `ch_server`, `ch_lite`, `en`, `korean`, `japan`, `chinese_cht`, `latin`, `arabic`, 等 |
+| `--language` | — | string | `ch` | 文档语言。支持与 `mineru-kit api-server` 一致的语言集合 |
 | `--pages` | — | string | — | 页码范围，如 `"1-10,15"` (默认全部) |
-| `--formula` | — | bool | true | 公式识别 (`--no-formula` 关闭) |
-| `--table` | — | bool | true | 表格识别 (`--no-table` 关闭) |
+| `--disable-formula` | — | bool | false | 禁用公式识别 |
+| `--disable-table` | — | bool | false | 禁用表格识别 |
 
 ## 本地模式专属
 
 | Flag | 简写 | 类型 | 默认 | 说明 |
 |------|------|------|------|------|
-| `--method` | `-m` | string | `auto` | 解析方法: `auto`, `txt`, `ocr` |
-| `--backend` | `-b` | string | `hybrid-auto-engine` | 后端引擎: `pipeline`, `vlm-http-client`, `hybrid-http-client`, `vlm-auto-engine`, `hybrid-auto-engine` |
-| `--vlm-url` | `-u` | url | — | VLM 推理服务地址 (http-client 后端需要) |
-| `--image-analysis` | — | bool | true | 图片/图表分析 (`--no-image-analysis` 关闭，VLM/hybrid 后端生效) |
+| `--tier` | — | string | — | 解析档位: `flash`, `standard`, `pro`；默认选择与 `api-server` 一致，但不会默认落到 `flash` |
+| `--backend` | `-b` | string | — | 本地后端；允许与 `--tier` 同时出现，但不兼容时应报错 |
+| `--ocr-mode` | — | string | `auto` | OCR / text extraction mode: `auto`, `txt`, `ocr` |
+| `--disable-image-analysis` | — | bool | false | 禁用图片/图表分析（VLM/hybrid 生效） |
 
 ## 远端模式专属
 
 | Flag | 简写 | 类型 | 默认 | 说明 |
 |------|------|------|------|------|
-| `--model` | — | string | `auto` | 模型选择: `auto`, `vlm`, `pipeline`, `html` |
-| `--ocr` | — | bool | false | OCR 模式，用于扫描件 (`--no-ocr` 关闭) |
-| `--fast` | — | bool | false | 轻量模式: 无需认证, 仅 md, ≤10MB/20页 (覆盖 `--format`, `--model`, `--formula`, `--table`) |
-| `--async` | — | bool | false | 提交后立即返回 task-id，不等待结果 |
-| `--wait` | — | bool | false | 批量模式下同步等待全部完成 (覆盖远端批量的默认异步行为) |
+remote 模式允许传 `--tier`，但禁止传 `--backend`。
 
-## 超时与并发
+未传 `--tier` 时，使用目标服务提供的最高 tier。
 
-| Flag | 简写 | 类型 | 默认 | 说明 |
-|------|------|------|------|------|
-| `--timeout` | — | int | 0 | 最大等待秒数。0 表示使用模式默认值: 远端单文件 300s, 远端批量 1800s |
-| `--concurrency` | — | int | 0 | 并发处理数。本地模式默认 1 (GPU 串行)；远端模式默认由服务端控制 |
-
-## 参数适用性矩阵
-
-| Flag | 本地模式 | 远端模式 |
-|------|:---:|:---:|
-| `--output` / `-o` | ● 必填 | ● 单文件可选 |
-| `--format` / `-f` | ○ | ● |
-| `--on-collision` | ● | ● |
-| `--lang` / `-l` | ● | ● |
-| `--pages` | ● | ● |
-| `--formula` / `--no-formula` | ● | ● |
-| `--table` / `--no-table` | ● | ● |
-| `--timeout` | ○ | ● |
-| `--method` / `-m` | ● | ○ |
-| `--backend` / `-b` | ● | ○ |
-| `--vlm-url` / `-u` | ● | ○ |
-| `--image-analysis` | ● | ○ |
-| `--model` | ○ | ● |
-| `--ocr` / `--no-ocr` | ○ | ● |
-| `--fast` | ○ | ● |
-| `--async` | ○ | ● |
-| `--wait` | ○ | ● |
-| `--api-key` | ○ | ● |
-| `--concurrency` | ● | ● |
-
-- ● 有效 / ○ 忽略
+传了 `--tier` 但目标服务不提供时，直接报错。
 
 ## 示例
 
@@ -844,81 +888,39 @@ mineru-kit parse a/report.pdf b/report.pdf -o out/ --on-collision path
 mineru-kit parse doc.pdf -o out/
 
 # 扫描件 OCR
-mineru-kit parse scanned.pdf -o out/ -m ocr
+mineru-kit parse scanned.pdf -o out/ --ocr-mode ocr
 
 # 英文文档，指定后端
-mineru-kit parse report.pdf -o out/ -b pipeline -l en
+mineru-kit parse report.pdf -o out/ --backend pipeline --language en
+
+# 显式使用 flash
+mineru-kit parse report.pdf -o out/ --tier flash
 
 # 目录批量
 mineru-kit parse ./invoices/ -o out/
-
-# 递归目录
-mineru-kit parse ./archive/ -r -o out/
-
-# 从文件列表批量
-mineru-kit parse --list files.txt -o out/
-
-# 混合输入
-mineru-kit parse doc.pdf ./invoices/ --list extra.txt -o out/
 ```
 
 ### 远端模式
 
 ```bash
-# 单文件同步 (stdout)
-mineru-kit parse doc.pdf --server https://api.mineru.net
+# 官方远端
+mineru-kit parse doc.pdf -o out/ --remote
 
-# 多格式输出
-mineru-kit parse doc.pdf --server ... -o out/ -f md,docx
+# 官方远端，显式要求 pro
+mineru-kit parse doc.pdf -o out/ --remote --tier pro --api-key xxx
 
-# 异步提交
-mineru-kit parse huge.pdf --server ... --async
-# → task-id: abc-123-def
-
-# 批量文件 (默认异步)
-mineru-kit parse *.pdf --server ... -o results/
-# → Submitted 47 tasks. batch-id: xyz-456
-
-# 批量同步等待
-mineru-kit parse *.pdf --server ... -o results/ --wait
-
-# 快速模式 (无需认证)
-mineru-kit parse doc.pdf --server ... --fast
-
-# 扫描件 OCR
-mineru-kit parse scanned.pdf --server ... --ocr
-
-# 文件列表批量
-mineru-kit parse --list files.txt --server ... -o out/
-```
-
-### stdin 管道
-
-```bash
-# 管道传文件内容
-curl https://example.com/doc.pdf | mineru-kit parse --stdin --server ... -o out/
-cat doc.pdf | mineru-kit parse --stdin --stdin-name report.pdf -o out/
-
-# 管道传文件路径列表
-find . -name '*.pdf' | mineru-kit parse --stdin-list -o out/
+# 自定义远端
+mineru-kit parse doc.pdf -o out/ --remote-url https://example.com/api --tier standard --api-key xxx
 ```
 
 ### 输出冲突处理
 
 ```bash
-# 报错退出 (默认)
+# 报错退出
 mineru-kit parse a/report.pdf b/report.pdf -o out/
 # Error: output filename collision detected:
 #   report.md
 #     ← a/report.pdf
 #     ← b/report.pdf
-#   Use --on-collision rename or --on-collision path.
-
-# 自动加前缀消歧
-mineru-kit parse a/report.pdf b/report.pdf -o out/ --on-collision rename
-# → out/a_report.md + out/b_report.md
-
-# 镜像目录结构
-mineru-kit parse a/report.pdf b/report.pdf -o out/ --on-collision path
-# → out/a/report.md + out/b/report.md
+# Entire batch aborted before parsing.
 ```

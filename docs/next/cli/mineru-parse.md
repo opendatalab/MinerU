@@ -33,7 +33,7 @@ read(locator) = read existing parsed content by stable locator
 mineru parse <file> [flags]
 ```
 
-当前设计以单个本地文件为主。多文件、目录、文件列表和 stdin 混合输入属于 `mineru-kit parse` 的职责。
+当前设计以单个本地文件为主。多文件和目录输入属于 `mineru-kit parse` 的职责。
 
 ## 3. 核心参数
 

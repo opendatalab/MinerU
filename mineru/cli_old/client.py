@@ -14,7 +14,7 @@ import httpx
 import pypdfium2 as pdfium
 from loguru import logger
 
-from mineru.cli.api_protocol import (
+from mineru.cli_old.api_protocol import (
     DEFAULT_MAX_CONCURRENT_REQUESTS,
     DEFAULT_PROCESSING_WINDOW_SIZE,
 )
@@ -30,7 +30,7 @@ from mineru.utils.pdfium_guard import (
 )
 
 from mineru.version import __version__
-from mineru.cli.common import (
+from mineru.cli_old.common import (
     HybridDependencyError,
     ensure_backend_dependencies,
     image_suffixes,
@@ -38,10 +38,10 @@ from mineru.cli.common import (
     pdf_suffixes,
     uniquify_task_stems,
 )
-from mineru.cli import api_client as _api_client
-from mineru.cli.client_side_output import regenerate_client_side_outputs
-from mineru.cli.output_paths import resolve_parse_dir
-from mineru.cli.visualization import (
+from mineru.cli_old import api_client as _api_client
+from mineru.cli_old.client_side_output import regenerate_client_side_outputs
+from mineru.cli_old.output_paths import resolve_parse_dir
+from mineru.cli_old.visualization import (
     VisualizationJob,
     run_visualization_job,
 )
