@@ -5,6 +5,7 @@ from collections import defaultdict
 from typing import List, Dict
 import cv2
 import numpy as np
+from loguru import logger
 from tqdm import tqdm
 
 
@@ -16,7 +17,7 @@ ROTATED_TEXT_MIN_BOXES = 3
 ORIENTATION_SCORE_MAX_SAMPLE_BOXES = 18
 ORIENTATION_SCORE_MIN_VALID_RESULTS = 5
 ORIENTATION_ZERO_SCORE_PRIORITY_THRESHOLD = 0.9
-ORIENTATION_SCORE_TIE_THRESHOLD = 0.1
+ORIENTATION_SCORE_TIE_THRESHOLD = 0.08
 ORIENTATION_SCORE_LABELS = ("0", "90", "270")
 
 
@@ -187,6 +188,24 @@ class MineruTableOrientationClsModel:
             score_by_label[task["label"]] = self._score_rec_results(task_rec_res)
         return score_by_label
 
+    @staticmethod
+    def _debug_log_orientation_rec_scores(
+        table_index: int,
+        score_by_label: Dict[str, tuple[float, int, int]],
+    ) -> None:
+        """输出单张表格各旋转候选的 OCR-rec 分数，便于排查误旋转。"""
+        score_parts = []
+        for label in ORIENTATION_SCORE_LABELS:
+            score, valid_count, char_count = score_by_label.get(label, (0.0, 0, 0))
+            score_parts.append(
+                f"{label} score={float(score):.4f} "
+                f"valid_count={valid_count} char_count={char_count}"
+            )
+        logger.debug(
+            f"Table orientation rec scores table_index={table_index}: "
+            f"{'; '.join(score_parts)}"
+        )
+
     def _score_rotation_candidate_by_ocr(self, img_bgr: np.ndarray) -> tuple[float, int, int]:
         """对单个候选角度执行 OCR det+抽样 rec，返回平均置信度、有效文本数和字符数。"""
         task = self._build_orientation_score_task("", img_bgr)
@@ -226,6 +245,7 @@ class MineruTableOrientationClsModel:
             rotated_img = self._rotate_image_by_label(img_bgr, label)
             score_by_label[label] = self._score_rotation_candidate_by_ocr(rotated_img)
 
+        self._debug_log_orientation_rec_scores(-1, score_by_label)
         return self._select_rotation_label_by_scores(score_by_label)
 
     @staticmethod
@@ -401,6 +421,7 @@ class MineruTableOrientationClsModel:
 
         for img_info, tasks in img_score_tasks:
             score_by_label = self._score_orientation_tasks_with_rec(tasks, rec_res)
+            self._debug_log_orientation_rec_scores(img_info["index"], score_by_label)
             label_by_index[img_info["index"]] = self._select_rotation_label_by_scores(
                 score_by_label
             )
