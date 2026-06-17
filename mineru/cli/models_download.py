@@ -4,7 +4,7 @@ import json
 import os
 import sys
 import click
-import requests
+import httpx
 from loguru import logger
 
 from mineru.utils.enum_class import ModelPath
@@ -16,7 +16,7 @@ REMOTE_MODEL_SOURCES = ('huggingface', 'modelscope')
 
 def download_json(url):
     """下载JSON文件"""
-    response = requests.get(url)
+    response = httpx.get(url)
     response.raise_for_status()
     return response.json()
 

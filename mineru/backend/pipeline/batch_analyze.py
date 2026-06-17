@@ -156,7 +156,7 @@ class BatchAnalyze:
             batch_size=min(8, self.batch_ratio * LAYOUT_BASE_BATCH_SIZE),
         )
         # 清理显存
-        clean_vram(self.model.device, vram_threshold=8)
+        clean_vram(self.model.device, batch_ratio=self.batch_ratio)
 
         if self.formula_enable:
             images_mfd_res = []
@@ -184,7 +184,7 @@ class BatchAnalyze:
                     formula_res["latex"] = formula_with_latex.get("latex", "")
 
             # 清理显存
-            clean_vram(self.model.device, vram_threshold=8)
+            clean_vram(self.model.device, batch_ratio=self.batch_ratio)
 
         else:
             for layout_res in images_layout_res:
@@ -552,7 +552,7 @@ class BatchAnalyze:
                                 ocr_res_list_dict['layout_res'].extend(ocr_result_list)
 
             # 清理显存
-            clean_vram(self.model.device, vram_threshold=8)
+            clean_vram(self.model.device, batch_ratio=self.batch_ratio)
 
         else:
             # 原始单张处理模式

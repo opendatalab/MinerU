@@ -68,6 +68,11 @@ else:
     MFR_MODEL = "unimernet_small"
 
 
+class ModelInitError(RuntimeError):
+    """模型初始化失败时抛出的异常。"""
+    pass
+
+
 def table_orientation_cls_model_init():
     atom_model_manager = AtomModelSingleton()
     ocr_engine = atom_model_manager.get_atom_model(
@@ -117,8 +122,8 @@ def mfr_model_init(weight_dir, device='cpu'):
     elif MFR_MODEL == "pp_formulanet_plus_m":
         mfr_model = FormulaRecognizer(weight_dir, device)
     else:
-        logger.error('MFR model name not allow')
-        exit(1)
+        logger.error(f'MFR model name not allowed: {MFR_MODEL}')
+        raise ModelInitError(f'MFR model name not allowed: {MFR_MODEL}')
     return mfr_model
 
 
@@ -231,14 +236,13 @@ def atom_model_init(model_name: str, **kwargs):
     elif model_name == AtomicModel.TableOrientationCls:
         atom_model = table_orientation_cls_model_init()
     else:
-        logger.error('model name not allow')
-        exit(1)
+        logger.error(f'model name not allowed: {model_name}')
+        raise ModelInitError(f'model name not allowed: {model_name}')
 
     if atom_model is None:
-        logger.error('model init failed')
-        exit(1)
-    else:
-        return atom_model
+        logger.error(f'model init failed: {model_name}')
+        raise ModelInitError(f'model init failed: {model_name}')
+    return atom_model
 
 
 class MineruPipelineModel:
@@ -261,8 +265,8 @@ class MineruPipelineModel:
             elif MFR_MODEL == "pp_formulanet_plus_m":
                 mfr_model_path = ModelPath.pp_formulanet_plus_m
             else:
-                logger.error('MFR model name not allow')
-                exit(1)
+                logger.error(f'MFR model name not allowed: {MFR_MODEL}')
+                raise ModelInitError(f'MFR model name not allowed: {MFR_MODEL}')
 
             self.mfr_model = atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.MFR,
@@ -396,8 +400,8 @@ class MineruHybridModel:
             elif MFR_MODEL == "pp_formulanet_plus_m":
                 mfr_model_path = ModelPath.pp_formulanet_plus_m
             else:
-                logger.error('MFR model name not allow')
-                exit(1)
+                logger.error(f'MFR model name not allowed: {MFR_MODEL}')
+                raise ModelInitError(f'MFR model name not allowed: {MFR_MODEL}')
 
             self.mfr_model = self.atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.MFR,
