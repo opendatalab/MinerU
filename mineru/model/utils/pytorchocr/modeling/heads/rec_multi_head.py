@@ -1,5 +1,4 @@
 # Copyright (c) Opendatalab. All rights reserved.
-import torch.nn.functional as F
 from torch import nn
 
 from ..necks.rnn import EncoderWithLightSVTR, Im2Seq, SequenceEncoder
@@ -71,7 +70,8 @@ class MultiHead(nn.Module):
             ctc_encoder = ctc_encoder.squeeze(dim=2).permute(0, 2, 1)
             predicts = self.head(ctc_encoder)
             if not self.training:
-                predicts = F.softmax(predicts, dim=2)
+                # 推理阶段保留 raw logits，交给 CTC 解码端按需计算 max 概率，避免整块 softmax 矩阵搬运。
+                return {"ctc_logits": predicts, "ctc_use_raw_logits": True}
             return predicts
         ctc_encoder = self.ctc_encoder(x)
         return self.ctc_head(ctc_encoder)

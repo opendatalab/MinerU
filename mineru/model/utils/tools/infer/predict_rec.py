@@ -364,8 +364,7 @@ class TextRecognizer(BaseOCRV20):
                                                         max_wh_ratio)
                         norm_img = norm_img[np.newaxis, :]
                         norm_img_batch.append(norm_img)
-                norm_img_batch = np.concatenate(norm_img_batch)
-                norm_img_batch = norm_img_batch.copy()
+                norm_img_batch = np.ascontiguousarray(np.concatenate(norm_img_batch))
 
                 if self.rec_algorithm == "SRN":
                     starttime = time.time()
@@ -376,7 +375,7 @@ class TextRecognizer(BaseOCRV20):
                     gsrm_slf_attn_bias2_list = np.concatenate(
                         gsrm_slf_attn_bias2_list)
 
-                    with torch.no_grad():
+                    with torch.inference_mode():
                         inp = torch.from_numpy(norm_img_batch)
                         encoder_word_pos_inp = torch.from_numpy(encoder_word_pos_list)
                         gsrm_word_pos_inp = torch.from_numpy(gsrm_word_pos_list)
@@ -407,7 +406,7 @@ class TextRecognizer(BaseOCRV20):
                     #     valid_ratios,
                     # ]
 
-                    with torch.no_grad():
+                    with torch.inference_mode():
                         inp = torch.from_numpy(norm_img_batch)
                         inp = inp.to(self.device)
                         inp = self._to_inference_dtype(inp)
@@ -422,7 +421,7 @@ class TextRecognizer(BaseOCRV20):
                     inp = [torch.from_numpy(e_i) for e_i in inputs]
                     inp = [e_i.to(self.device) for e_i in inp]
                     inp = [self._to_inference_dtype(e_i) for e_i in inp]
-                    with torch.no_grad():
+                    with torch.inference_mode():
                         outputs = self.net(inp)
                         outputs = [v.cpu().numpy() for k, v in enumerate(outputs)]
 
@@ -431,13 +430,13 @@ class TextRecognizer(BaseOCRV20):
                 else:
                     starttime = time.time()
 
-                    with torch.no_grad():
+                    with torch.inference_mode():
                         inp = torch.from_numpy(norm_img_batch)
                         inp = inp.to(self.device)
                         inp = self._to_inference_dtype(inp)
                         preds = self.net(inp)
 
-                with torch.no_grad():
+                with torch.inference_mode():
                     rec_result = self.postprocess_op(preds)
 
                 for rno in range(len(rec_result)):

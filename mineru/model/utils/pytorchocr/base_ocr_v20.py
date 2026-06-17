@@ -107,6 +107,6 @@ class BaseOCRV20:
         # print('model is loaded: {}'.format(weights_path))
 
     def inference(self, inputs):
-        with torch.no_grad():
+        with torch.inference_mode():
             infer = self.net(inputs)
         return infer
