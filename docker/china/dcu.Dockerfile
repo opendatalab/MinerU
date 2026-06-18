@@ -14,7 +14,7 @@ RUN apt-get update && \
 
 # Install mineru latest
 RUN python3 -m pip install -U pip -i https://mirrors.aliyun.com/pypi/simple && \
-    python3 -m pip install "mineru[gradio]>=3.0.0" \
+    python3 -m pip install "mineru[gradio]>=3.4.0" \
                             "ftfy>=6.3.1,<7" \
                             "shapely>=2.0.7,<3" \
                             "pyclipper>=1.3.0,<2" \

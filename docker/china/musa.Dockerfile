@@ -18,7 +18,7 @@ RUN python3 -m pip install -U pip -i https://mirrors.aliyun.com/pypi/simple && \
     git clone https://gitcode.com/gh_mirrors/vi/vision.git -b v0.20.0 --depth 1 && \
     cd vision && \
     python3 setup.py install && \
-    python3 -m pip install "mineru[gradio]>=3.0.0" \
+    python3 -m pip install "mineru[gradio]>=3.4.0" \
                             "ftfy>=6.3.1,<7" \
                             "shapely>=2.0.7,<3" \
                             "pyclipper>=1.3.0,<2" \
