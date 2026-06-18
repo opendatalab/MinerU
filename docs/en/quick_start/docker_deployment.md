@@ -95,3 +95,47 @@ connect to `openai-server` via `vlm-http-client` backend
   >[!TIP]
   >
   >- Access `http://<server_ip>:7860` in your browser to use the Gradio WebUI.
+
+---
+
+## CPU-Only Deployment (No GPU Required)
+
+For environments without GPU (cloud VMs, ARM servers, etc.), use the lightweight `docker/cpu/` deployment with the `pipeline` backend.
+
+### Build and Start
+
+```bash
+cd docker/
+docker compose -f cpu-compose.yaml build
+docker compose -f cpu-compose.yaml run --rm mineru-api mineru-models-download -s huggingface -m pipeline
+docker compose -f cpu-compose.yaml up -d
+curl http://localhost:8888/health
+```
+
+### Submit Documents
+
+```bash
+# Submit task
+TASK_ID=$(curl -s -X POST http://localhost:8888/tasks \
+  -F "files=@document.pdf" \
+  -F "backend=pipeline" | python3 -c "import sys,json; print(json.load(sys.stdin)['task_id'])")
+
+# Poll status
+while true; do
+  STATUS=$(curl -s http://localhost:8888/tasks/$TASK_ID | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+  [[ "$STATUS" == "completed" || "$STATUS" == "failed" ]] && break
+  sleep 10
+done
+
+# Get result
+python3 -c "
+import urllib.request, json
+data = json.loads(urllib.request.urlopen('http://localhost:8888/tasks/$TASK_ID/result', timeout=120).read())
+for fname, content in data['results'].items():
+    print(content['md_content'])
+"
+```
+
+> [!NOTE]
+> - Always pass `backend=pipeline` in POST requests. The default backend requires GPU.
+> - Pipeline models (~2.4GB) are downloaded to the `mineru-models` Docker volume.
