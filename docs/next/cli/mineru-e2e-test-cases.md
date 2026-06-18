@@ -61,14 +61,11 @@
 ~/mineru-e2e-test
 ```
 
-进入测试目录后，必须设置以下环境变量，让 doclib 的 DB、日志和 UDS socket 都落在测试目录中:
+进入测试目录后，只需设置 `MINERU_HOME`，即可让默认配置文件、DB、日志、UDS socket 和数据目录都落在测试目录中:
 
 ```bash
 cd ~/mineru-e2e-test
-export MINERU_DOCLIB_DATA_DIR=`pwd`
-export MINERU_DOCLIB_SQLITE_PATH=`pwd`/mineru.db
-export MINERU_DOCLIB_LOG_PATH=`pwd`/mineru.log
-export MINERU_DOCLIB_UDS_PATH=`pwd`/mineru.sock
+export MINERU_HOME=`pwd`
 ```
 
 ### 2.2 安装方法
@@ -296,7 +293,7 @@ mineru server status --json
 
 - exit code = 0
 - 输出为 JSON
-- `data_dir` 等价于 `MINERU_DOCLIB_DATA_DIR`
+- `data_dir` 默认位于 `$MINERU_HOME/data`；若显式覆盖 `doclib.data_dir`，则返回该覆盖值
 - socket/UDS 字段等价于 `MINERU_DOCLIB_UDS_PATH`，如果字段名为 `socket_path` 则不得为空
 - 日志相关字段或启动失败日志路径应落在 `MINERU_DOCLIB_LOG_PATH`
 
@@ -334,23 +331,23 @@ mineru config show --json
 命令:
 
 ```bash
-mineru config set parse_server.local.mode disabled
-mineru config get parse_server.local.mode
+mineru config set parse_server.local.managed_tier pro
+mineru config get parse_server.local.managed_tier
 ```
 
 预期:
 
 - 两条 exit code = 0
-- get 输出包含 `parse_server.local.mode`
-- get 输出包含 `disabled`
+- get 输出包含 `parse_server.local.managed_tier`
+- get 输出包含 `pro`
 
 ### CONFIG-003A JSON 读取配置
 
 命令:
 
 ```bash
-mineru config set parse_server.local.mode disabled
-mineru config get parse_server.local.mode --json
+mineru config set parse_server.local.managed_tier pro
+mineru config get parse_server.local.managed_tier --json
 ```
 
 预期:
@@ -358,32 +355,32 @@ mineru config get parse_server.local.mode --json
 - 两条 exit code = 0
 - set 使用普通文本输出；本用例不要求 `config set` 支持 `--json`
 - get stdout 为可直接解析的 JSON
-- get JSON 包含 `parse_server.local.mode`
-- get JSON 中 value 为 `disabled` 或等价配置值
+- get JSON 包含 `parse_server.local.managed_tier`
+- get JSON 中 value 为 `pro`，并且 source 应体现 override 或等价覆盖来源
 
 ### CONFIG-004 unset 配置
 
 命令:
 
 ```bash
-mineru config unset parse_server.local.mode
-mineru config get parse_server.local.mode
+mineru config unset parse_server.local.managed_tier
+mineru config get parse_server.local.managed_tier
 ```
 
 预期:
 
 - 两条 exit code = 0
 - unset 输出包含 `removed` 或 `unchanged`
-- get 仍能返回有效配置值
+- get 仍能返回有效配置值，默认值应为 `standard` 或等价默认 tier
 
 ### CONFIG-004A unset 后 JSON 读取配置
 
 命令:
 
 ```bash
-mineru config set parse_server.local.mode disabled
-mineru config unset parse_server.local.mode
-mineru config get parse_server.local.mode --json
+mineru config set parse_server.local.managed_tier pro
+mineru config unset parse_server.local.managed_tier
+mineru config get parse_server.local.managed_tier --json
 ```
 
 预期:
@@ -391,7 +388,7 @@ mineru config get parse_server.local.mode --json
 - 三条 exit code = 0
 - unset 使用普通文本输出；本用例不要求 `config unset` 支持 `--json`
 - get 输出为可直接解析的 JSON
-- unset 后 get 仍能返回有效配置值
+- unset 后 get 仍能返回有效配置值，默认值应为 `standard` 或等价默认 tier
 
 ### CONFIG-005 exclude-rules
 
@@ -1459,21 +1456,20 @@ mineru find "sample" --ext docx --json
 - docx 过滤下如果有结果，结果 ext 应为 docx
 - 不包含 Python traceback
 
-### SEARCH-007 find limit 和 offset 边界
+### SEARCH-007 find limit 边界
 
 命令:
 
 ```bash
 mineru find "sample" --limit 1 --json
-mineru find "sample" --limit 1 --offset 1 --json
 ```
 
 预期:
 
-- 两条 exit code = 0
-- 两条输出均为可直接解析的 JSON
+- exit code = 0
+- stdout 为可直接解析的 JSON
 - limit 生效，单次返回结果数量不超过 1
-- offset 不导致崩溃
+- `find` 当前只承诺文件名查询、扩展名过滤、limit 和 JSON 输出；offset 契约单独由 SEARCH-013 覆盖
 
 ### SEARCH-008 search type filter
 
@@ -2580,16 +2576,16 @@ mineru server start
 命令:
 
 ```bash
-mineru config set parse_server.local.mode disabled
+mineru config set parse_server.local.managed_tier pro
 mineru server restart
-mineru config get parse_server.local.mode --json
-mineru config unset parse_server.local.mode
+mineru config get parse_server.local.managed_tier --json
+mineru config unset parse_server.local.managed_tier
 ```
 
 预期:
 
 - 四条 exit code = 0
-- restart 后 get JSON 仍体现 disabled 或等价 override
+- restart 后 get JSON 仍体现 `pro`，并且 source 应体现 override 或等价覆盖来源
 - unset 后恢复默认配置来源
 - 不包含 Python traceback
 

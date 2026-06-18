@@ -30,7 +30,7 @@ from mineru.doclib.client import MineruClient
 class MineruClient:
     def __init__(
         self,
-        socket_path: str = "/tmp/mineru.sock",
+        socket_path: str | None = None,
         timeout: int = 60,
     ) -> None: ...
 ```

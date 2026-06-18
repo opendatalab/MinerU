@@ -43,7 +43,7 @@ class IngestWorkerPool:
                             (FILE_STATUS_ACTIVE,),
                         ),
                     )
-                    logger.info(f"Ingest worker {worker_id}: queue={q['cnt'] if q else 0}")
+                    logger.debug(f"Ingest worker {worker_id}: queue={q['cnt'] if q else 0}")
                 await asyncio.sleep(0.5)
                 continue
 

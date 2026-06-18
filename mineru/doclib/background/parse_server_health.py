@@ -6,6 +6,7 @@ import asyncio
 import logging
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from typing import cast
 
@@ -16,6 +17,7 @@ from ...types import TIERS, Tier
 logger = logging.getLogger("mineru.health_check")
 
 MAX_RESTART_ATTEMPTS = 3
+DEFAULT_MANAGED_URL = "http://127.0.0.1:15981"
 
 
 @dataclass
@@ -26,7 +28,16 @@ class ParseServerHealth:
     local_supported_tiers: list[Tier] = field(default_factory=list)
     local_mode: str = "disabled"
     self_hosted_url: str | None = None
+    managed_url: str = DEFAULT_MANAGED_URL
+    managed_tier: Tier | None = None
+    local_last_probe_at: int | None = None
+    local_last_success_at: int | None = None
+    local_last_failure_at: int | None = None
     remote_healthy: bool = False
+    remote_url: str | None = None
+    remote_last_probe_at: int | None = None
+    remote_last_success_at: int | None = None
+    remote_last_failure_at: int | None = None
     remote_supported_tiers: list[Tier] = field(default_factory=list)
     restart_count: int = 0
     managed_proc: subprocess.Popen | None = None
@@ -76,6 +87,8 @@ class ParseServerHealthCheck:
             # refresh config on each cycle (hot-reload)
             mode = (await self.config_svc.get("parse_server.local.mode")) or "disabled"
             health.local_mode = mode
+            managed_tier = (await self.config_svc.get("parse_server.local.managed_tier")) or "standard"
+            health.managed_tier = cast(Tier, managed_tier)
             self_hosted_url = await self.config_svc.get("parse_server.local.self_hosted_url")
             health.self_hosted_url = self_hosted_url if self_hosted_url else None
 
@@ -84,16 +97,28 @@ class ParseServerHealthCheck:
                 url = self._local_url(health)
                 if url:
                     healthy, tiers = await self._probe(url)
+                    now_ms = int(time.time() * 1000)
+                    health.local_last_probe_at = now_ms
                     health.local_healthy = healthy
                     health.local_supported_tiers = tiers
                     if healthy:
+                        health.local_last_success_at = now_ms
                         health.local_starting = False
+                    else:
+                        health.local_last_failure_at = now_ms
 
             # probe remote
             remote_url = cast(str, await self.config_svc.get("parse_server.remote.url"))
+            health.remote_url = remote_url
             healthy, tiers = await self._probe(remote_url)
+            now_ms = int(time.time() * 1000)
+            health.remote_last_probe_at = now_ms
             health.remote_healthy = healthy
             health.remote_supported_tiers = tiers
+            if healthy:
+                health.remote_last_success_at = now_ms
+            else:
+                health.remote_last_failure_at = now_ms
 
             # managed mode: restart if crashed (skip if still starting — give it 30s)
             if health.local_mode == "managed" and not health.local_healthy:

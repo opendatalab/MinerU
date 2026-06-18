@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -752,7 +753,9 @@ def test_cleanup_temp_json_error_output_is_machine_readable(monkeypatch: Any) ->
 def test_server_status_json_not_running_returns_state_json(monkeypatch: Any) -> None:
     monkeypatch.setattr(server, "_server_running", lambda: False)
     monkeypatch.setattr(server, "_socket_path", lambda: "/tmp/mineru.sock")
-    monkeypatch.setattr(server.config.doclib, "data_dir", "~/MinerU")
+    monkeypatch.setattr(server.config.doclib, "data_dir", "~/.mineru")
+    monkeypatch.setattr(server.config.doclib.sqlite, "path", "~/.mineru/mineru.db")
+    monkeypatch.setattr(server.config.doclib.log, "path", "~/.mineru/mineru.log")
 
     result = runner.invoke(app, ["server", "status", "--json"])
 
@@ -760,4 +763,7 @@ def test_server_status_json_not_running_returns_state_json(monkeypatch: Any) -> 
     payload = json.loads(result.output)
     assert payload["running"] is False
     assert payload["socket_path"] == "/tmp/mineru.sock"
+    assert payload["sqlite_path"] == os.path.expanduser("~/.mineru/mineru.db")
+    assert payload["log_path"] == os.path.expanduser("~/.mineru/mineru.log")
+    assert payload["http"] == {"enabled": False, "host": None, "port": None}
     assert "Server is not running." not in result.output

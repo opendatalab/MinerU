@@ -54,11 +54,11 @@
 
 | 通道 | 路径 / 地址 | 权限 | 用途 |
 |------|-----------|------|------|
-| UDS | `/tmp/mineru.sock` | `0600` | CLI / MCP / 桌面端与 doclib 通信 |
+| UDS | `$MINERU_HOME/mineru.sock` | `0600` | CLI / MCP / 桌面端与 doclib 通信 |
 | TCP (parse-server) | `127.0.0.1:15981` | loopback only | doclib ParseWorker 调用 local parse-server API |
 | TCP (doclib Web UI) | `127.0.0.1:<随机端口>` | loopback only | 可选，供浏览器访问 Web UI (P1) |
 
-doclib 启动后 UDS sock 文件位于 `/tmp/mineru.sock`（权限 0600）。CLI 通过 sock 连接检测 server 状态。TCP 端口按 config 中 `http.enabled` 决定是否启动。parse-server 端口固定为 `127.0.0.1:15981`，仅环回地址可访问。managed 模式下 parse-server 由 doclib 自动拉起，self-hosted 模式下用户自行管理。
+doclib 启动后 UDS sock 文件默认位于 `$MINERU_HOME/mineru.sock`，权限 0600。CLI 通过 sock 连接检测 server 状态。TCP 端口按 config 中 `http.enabled` 决定是否启动。parse-server 端口固定为 `127.0.0.1:15981`，仅环回地址可访问。managed 模式下 parse-server 由 doclib 自动拉起，self-hosted 模式下用户自行管理。
 
 ---
 
@@ -401,7 +401,7 @@ PRAGMA wal_autocheckpoint = 1000;
 
 ```sql
 INSERT INTO config (key, value) VALUES
-    ('data_dir',              '~/MinerU'),
+    ('data_dir',              '~/.mineru/data'),
     ('default_tier',          'flash'),
     ('scan_interval_sec',     '300'),
     ('ingest_lock_timeout_sec',  '60'),
@@ -551,7 +551,7 @@ ParseWorker.acquire_task()
   └────────────────────────────────────────────────────────────┘
 
   → 解析完成:
-       1. 写入解析产物到 ~/MinerU/parsed/{sha256[:2]}/{sha256}/{tier}/
+       1. 写入解析产物到 ~/.mineru/data/parsed/{sha256[:2]}/{sha256}/{tier}/
        2. INSERT OR REPLACE fts_contents（tier 门控）
        3. UPDATE parses SET status='done', done_at=?, via=?
        4. UPDATE docs（更高 tier 的 metadata 覆盖）
@@ -568,7 +568,7 @@ ParseWorker.acquire_task()
 - **tier 不匹配时报错**：parse-server 只支持 standard，用户请求 pro → 直接报错，不自动降级
 - **`parse_failed` 不 fallback**：remote 返回解析失败（非网络错误，如文件损坏、加密）→ 不 fallback 到本地，直接标 failed
 - **缓存键**：`(sha256, tier)`，与 privacy/via 无关——同一 tier 不同来源产出解析结果一致
-- **remote 产物同样入库**：remote 解析完成后，middle_json 和 markdown 和本地解析一样写入 `~/MinerU/parsed/` 并更新 fts_contents
+- **remote 产物同样入库**：remote 解析完成后，middle_json 和 markdown 和本地解析一样写入 `~/.mineru/data/parsed/` 并更新 fts_contents
 - **`via` 列解析后写入**：解析完成时写 `via=local` 或 `via=remote`，记录实际执行路径。不提前写入，避免解析失败时值为假
 
 **实现层**：
@@ -607,10 +607,13 @@ managed 模式崩溃恢复：
 ### 5.5 解析产物存储
 
 ```
-~/MinerU/
+~/.mineru/
+  mineru.sock
   mineru.db
   mineru.log
-  parsed/
+  data/
+    parsed/
+    temp/
     ab/                             # sha256 前 2 字符
       ab3f...7e2d/                  # 完整 sha256
         flash/
@@ -751,7 +754,7 @@ Server 启动时执行以下恢复操作：
 
 | key | 默认值 | 说明 |
 |-----|--------|------|
-| `data_dir` | `~/MinerU` | 数据目录根路径 |
+| `data_dir` | `~/.mineru/data` | 数据目录根路径 |
 | `default_tier` | `flash` | Watch 自动解析的默认 tier |
 | `scan_interval_sec` | `300` | Watch 全量扫描间隔（秒） |
 | `ingest_lock_timeout_sec` | `60` | ingest 锁超时 |

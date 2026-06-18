@@ -279,6 +279,8 @@ def test_core_doclib_schemas_are_instantiable() -> None:
         running=True,
         socket_path="/tmp/mineru.sock",
         data_dir="/tmp/mineru",
+        sqlite_path="/tmp/mineru.db",
+        log_path="/tmp/mineru.log",
         watch_stats=[watch_stats],
         recent_scans=[recent_scan],
         error_summary=error_summary,
@@ -343,8 +345,25 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     exclude_rules = ExcludeRuleListResponse(rules=[exclude_rule])
     parsing_rules = ParsingRuleListResponse(rules=[parsing_rule])
     parse_server = ParseServerStatus(
-        local=LocalParseServerStatus(mode="managed", healthy=True, supported_tiers=["standard"]),
-        remote=RemoteParseServerStatus(healthy=False),
+        local=LocalParseServerStatus(
+            mode="managed",
+            healthy=True,
+            url="http://127.0.0.1:15981",
+            port=15981,
+            managed_pid=1234,
+            last_probe_at=1000,
+            last_success_at=900,
+            last_failure_at=800,
+            supported_tiers=["standard"],
+        ),
+        remote=RemoteParseServerStatus(
+            healthy=False,
+            url="https://example.com/api",
+            port=443,
+            last_probe_at=2000,
+            last_success_at=1900,
+            last_failure_at=1800,
+        ),
     )
     search_result = SearchResult(
         sha256="abc",

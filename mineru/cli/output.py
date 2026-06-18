@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from typing import Any
 
 from pydantic import BaseModel
@@ -125,18 +126,76 @@ def format_server_status(data: Any, json_mode: bool = False) -> None:
 
     if console:
         table = Table(title="MinerU Server")
-        table.add_column("Metric", style="cyan")
-        table.add_column("Value", style="green")
+        table.add_column("Field", style="cyan")
+        table.add_column("Current", style="green")
         table.add_row("PID", str(_get(data, "pid", "?")))
         table.add_row("Uptime", f"{_get(data, 'uptime_seconds', 0):.0f}s")
+        table.add_row("Home", _get(data, "mineru_home", ""))
+        table.add_row("Version", _get(data, "version", ""))
+        table.add_row("Python", _get(data, "python_version", ""))
         table.add_row("Socket", _get(data, "socket_path", ""))
         table.add_row("Data dir", _get(data, "data_dir", ""))
+        table.add_row("SQLite", _get(data, "sqlite_path", ""))
+        table.add_row("SQLite size", _format_bytes(_get(data, "sqlite_size_bytes")))
+        table.add_row("Log", _get(data, "log_path", ""))
+        http_data = _get(data, "http")
+        http_enabled = bool(_get(http_data, "enabled", False))
+        http_host = _get(http_data, "host", "") or "-"
+        http_port = _get(http_data, "port")
+        if http_enabled:
+            http_value = (
+                f"http://{http_host}:{http_port}" if http_port is not None else f"http://{http_host}:(pending)"
+            )
+        else:
+            http_value = "disabled"
+        table.add_row("HTTP", http_value)
         table.add_row("Files tracked", str(_get(data, "files_total", 0)))
         table.add_row("Docs indexed", str(_get(data, "docs_total", 0)))
+        table.add_row("Active scans", str(_get(data, "active_scan_count", 0)))
+        table.add_row("Last scan", _format_timestamp_ms(_get(data, "last_scan_at")))
         table.add_row("Parse queue", str(_get(data, "parse_queue_length", 0)))
         table.add_row("Ingest queue", str(_get(data, "ingest_queue_length", 0)))
         table.add_row("Watches", str(_get(data, "watch_count", 0)))
         console.print(table)
+
+        workers = _get(data, "workers")
+        if workers:
+            worker_table = Table(title="Workers")
+            worker_table.add_column("Component", style="cyan")
+            worker_table.add_column("Running", style="green")
+            worker_table.add_column("Workers", justify="right")
+            worker_table.add_row("Watch", "yes" if _get(workers, "watch_running", False) else "no", "-")
+            worker_table.add_row(
+                "Scan",
+                "yes" if _get(workers, "scan_running", False) else "no",
+                str(_get(workers, "scan_workers", 0)),
+            )
+            worker_table.add_row(
+                "Ingest",
+                "yes" if _get(workers, "ingest_running", False) else "no",
+                str(_get(workers, "ingest_workers", 0)),
+            )
+            worker_table.add_row(
+                "Parse",
+                "yes" if _get(workers, "parse_running", False) else "no",
+                str(_get(workers, "parse_workers", 0)),
+            )
+            worker_table.add_row(
+                "Device monitor",
+                "yes" if _get(workers, "device_monitor_running", False) else "no",
+                "-",
+            )
+            worker_table.add_row(
+                "Compaction",
+                "yes" if _get(workers, "compaction_running", False) else "no",
+                "-",
+            )
+            worker_table.add_row(
+                "Health check",
+                "yes" if _get(workers, "health_check_running", False) else "no",
+                "-",
+            )
+            console.print(worker_table)
 
         watch_stats = _get(data, "watch_stats", [])
         if watch_stats:
@@ -219,6 +278,12 @@ def format_server_status(data: Any, json_mode: bool = False) -> None:
             ps_table = Table(title="Parse Server")
             ps_table.add_column("Target", style="cyan")
             ps_table.add_column("Healthy", style="green")
+            ps_table.add_column("Endpoint", style="dim")
+            ps_table.add_column("Managed", style="dim")
+            ps_table.add_column("Restart", justify="right")
+            ps_table.add_column("Last probe", style="dim")
+            ps_table.add_column("Last ok", style="dim")
+            ps_table.add_column("Last fail", style="dim")
             ps_table.add_column("Tiers", style="green")
             for label, key in [("Local", "local"), ("Remote", "remote")]:
                 ps = _get(ps_data, key, {})
@@ -231,7 +296,32 @@ def format_server_status(data: Any, json_mode: bool = False) -> None:
                 tiers_str = ", ".join(_get(ps, "supported_tiers", [])) or "-"
                 mode = _get(ps, "mode", "")
                 label_str = f"{label} ({mode})" if mode else label
-                ps_table.add_row(label_str, healthy_str, tiers_str)
+                endpoint = _get(ps, "url", "") or "-"
+                managed_str = "-"
+                restart_str = "-"
+                if key == "local":
+                    mode_text = _get(ps, "mode", "")
+                    if mode_text == "managed":
+                        managed_tier = _get(ps, "managed_tier", "") or "-"
+                        managed_pid = _get(ps, "managed_pid")
+                        managed_running = "yes" if _get(ps, "managed_running", False) else "no"
+                        managed_str = (
+                            f"tier={managed_tier}, pid={managed_pid or '-'}, running={managed_running}"
+                        )
+                    elif mode_text == "self_hosted":
+                        managed_str = _get(ps, "self_hosted_url", "") or "-"
+                    restart_str = f"{_get(ps, 'restart_count', 0)}/{_get(ps, 'max_restart_attempts', 0)}"
+                ps_table.add_row(
+                    label_str,
+                    healthy_str,
+                    endpoint,
+                    managed_str,
+                    restart_str,
+                    _format_age_ms(_get(ps, "last_probe_at")),
+                    _format_age_ms(_get(ps, "last_success_at")),
+                    _format_age_ms(_get(ps, "last_failure_at")),
+                    tiers_str,
+                )
             console.print(ps_table)
 
         # recent logs
@@ -291,6 +381,34 @@ def _format_bytes(n: int | None) -> str:
             return f"{n} {unit}"
         n //= 1024
     return f"{n} TB"
+
+
+def _format_timestamp_ms(ts: int | None) -> str:
+    if ts is None:
+        return "-"
+    try:
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts / 1000))
+    except Exception:
+        return str(ts)
+
+
+def _format_age_ms(ts: int | None) -> str:
+    if ts is None:
+        return "-"
+    try:
+        age_seconds = max(0, int(time.time() - (ts / 1000)))
+    except Exception:
+        return str(ts)
+    if age_seconds < 60:
+        return f"{age_seconds}s ago"
+    age_minutes = age_seconds // 60
+    if age_minutes < 60:
+        return f"{age_minutes}m ago"
+    age_hours = age_minutes // 60
+    if age_hours < 24:
+        return f"{age_hours}h ago"
+    age_days = age_hours // 24
+    return f"{age_days}d ago"
 
 
 def _error_summary_rows(error_summary: Any) -> list[tuple[str, str, int]]:

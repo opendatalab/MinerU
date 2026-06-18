@@ -7,23 +7,26 @@ import base64
 import re
 import os
 import signal
-import shutil
+import sys
 import time
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 from PIL import Image
 
+from ..config import config
 from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
 from ..render import render_markdown
 from ..render.markdown import blocks_to_markdown
 from ..render.office.output import blocks_to_markdown as office_blocks_to_markdown
 from ..types import EMPTY_BBOX, TIERS, Block, PageInfo, Span, Tier
 from ..utils.pdf_document import PDFDocument
+from ..version import __version__
 from .background.parse_server_health import get_health
 from .base import AsyncDoclibInterface
 from .core.db import DatabaseManager
@@ -90,6 +93,7 @@ from .types import (
     ForgetPathResponse,
     InvalidateRequest,
     InvalidateResponse,
+    HTTPServerStatus,
     ListDocsResponse,
     ListFilesResponse,
     ListParsesResponse,
@@ -121,6 +125,7 @@ from .types import (
     WatchListResponse,
     WatchRequest,
     WatchStats,
+    WorkerStatus,
 )
 from .utils.route_utils import get_route_info, has_route_info, route
 
@@ -197,30 +202,75 @@ class DoclibServer(AsyncDoclibInterface):
     async def get_server_status(self) -> ServerStatusResponse:
         files_total = await self.state.db.fetchone("SELECT COUNT(*) as cnt FROM files WHERE status=?", (FILE_STATUS_ACTIVE,))
         docs_total = await self.state.db.fetchone("SELECT COUNT(*) as cnt FROM docs")
+        active_scans = await self.state.db.fetchone(
+            "SELECT COUNT(*) as cnt FROM scans WHERE status IN (?, ?)",
+            ("pending", "running"),
+        )
+        last_scan = await self.state.db.fetchone("SELECT MAX(updated_at) as ts FROM scans")
         ingest_q = await self.state.db.fetchone(
             "SELECT COUNT(*) as cnt FROM files WHERE sha256 IS NULL AND status=? AND error_code IS NULL",
             (FILE_STATUS_ACTIVE,),
         )
+        local_mode = (await self.state.config_svc.get("parse_server.local.mode")) or "disabled"
+        managed_tier = (await self.state.config_svc.get("parse_server.local.managed_tier")) or "standard"
+        self_hosted_url = await self.state.config_svc.get("parse_server.local.self_hosted_url")
+        remote_url = await self.state.config_svc.get("parse_server.remote.url")
         watches = await self.state.config_svc.list_watches()
         uptime = time.time() - self.state.start_time if hasattr(self.state, "start_time") else 0
+        sqlite_path = getattr(self.state, "sqlite_path", "")
+        sqlite_journal_mode = await _sqlite_journal_mode(self.state.db)
+        health = get_health()
 
         return ServerStatusResponse(
             running=True,
             pid=getattr(self.state, "pid", os.getpid()),
             uptime_seconds=uptime,
+            mineru_home=getattr(self.state, "mineru_home", ""),
+            version=__version__,
+            python_version=sys.version.split()[0],
             socket_path=getattr(self.state, "socket_path", ""),
             data_dir=getattr(self.state, "data_dir", ""),
+            sqlite_path=sqlite_path,
+            log_path=getattr(self.state, "log_path", ""),
+            http=HTTPServerStatus(
+                enabled=bool(getattr(self.state, "http_enabled", False)),
+                host=getattr(self.state, "http_host", "") or None,
+                port=getattr(self.state, "http_port", None),
+            ),
+            active_scan_count=active_scans["cnt"] if active_scans else 0,
+            last_scan_at=last_scan["ts"] if last_scan else None,
+            sqlite_journal_mode=sqlite_journal_mode,
+            sqlite_size_bytes=_file_size(sqlite_path),
+            sqlite_wal_size_bytes=_file_size(f"{sqlite_path}-wal") if sqlite_path else None,
+            workers=WorkerStatus(
+                watch_running=bool(getattr(self.state.watch, "running", False)),
+                scan_running=bool(getattr(self.state.scan_workers, "running", False)),
+                scan_workers=int(getattr(self.state.scan_workers, "num_workers", 0) or 0),
+                ingest_running=bool(getattr(self.state.ingest_workers, "running", False)),
+                ingest_workers=int(getattr(self.state.ingest_workers, "num_workers", 0) or 0),
+                parse_running=bool(getattr(self.state.parse_workers, "running", False)),
+                parse_workers=int(getattr(self.state.parse_workers, "num_workers", 0) or 0),
+                device_monitor_running=bool(getattr(self.state.device_monitor, "running", False)),
+                compaction_running=bool(getattr(self.state.compaction, "running", False)),
+                health_check_running=bool(getattr(self.state.health_check, "running", False)),
+            ),
             files_total=files_total["cnt"] if files_total else 0,
             docs_total=docs_total["cnt"] if docs_total else 0,
             parse_queue_length=await self.state.parse_svc.get_queue_length(),
             ingest_queue_length=ingest_q["cnt"] if ingest_q else 0,
-            parse_server=_parse_server_status(),
+            parse_server=_parse_server_status(
+                local_mode=local_mode,
+                managed_tier=cast(Tier, managed_tier),
+                self_hosted_url=self_hosted_url if self_hosted_url else None,
+                remote_url=remote_url if remote_url else None,
+                health=health,
+            ),
             watch_count=len(watches),
             watches=[_watch_info(row) for row in watches],
             watch_stats=await _watch_stats(self.state.db, watches),
             recent_scans=await _recent_scans(self.state.db),
             error_summary=await _error_summary(self.state.db),
-            recent_logs=_tail_log(getattr(self.state, "data_dir", "")),
+            recent_logs=_tail_log(getattr(self.state, "log_path", "")),
         )
 
     @route("POST", "/server/shutdown", tags=("server",))
@@ -777,7 +827,7 @@ class DoclibServer(AsyncDoclibInterface):
     ) -> str:
         if format != "markdown":
             raise InvalidRequestError("invalid_request", "Only markdown is currently implemented.", "format")
-        data_dir = getattr(self.state, "data_dir", os.path.expanduser("~/MinerU"))
+        data_dir = _effective_data_dir(self.state)
         rows = await self.state.db.fetchall(
             "SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=? AND status=? ORDER BY done_at DESC",
             (sha256, tier, PARSE_STATUS_DONE),
@@ -790,7 +840,7 @@ class DoclibServer(AsyncDoclibInterface):
         return render_markdown(loaded_pages, add_markers=not no_marker)
 
     async def _execute_read_plan(self, plan: _ReadPlan) -> DocContentResponse:
-        data_dir = getattr(self.state, "data_dir", os.path.expanduser("~/MinerU"))
+        data_dir = _effective_data_dir(self.state)
         rows = await self.state.db.fetchall(
             "SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=? AND status=? ORDER BY done_at DESC",
             (plan.sha256, plan.tier, PARSE_STATUS_DONE),
@@ -1055,21 +1105,77 @@ async def _signal_shutdown() -> None:
     os.kill(os.getpid(), signal.SIGTERM)
 
 
-def _parse_server_status() -> ParseServerStatus:
-    health = get_health()
+def _parse_server_status(
+    *,
+    local_mode: str,
+    managed_tier: Tier,
+    self_hosted_url: str | None,
+    remote_url: str | None,
+    health: Any,
+) -> ParseServerStatus:
+    local_url = health.managed_url if local_mode == "managed" else self_hosted_url
+    managed_proc = getattr(health, "managed_proc", None)
     return ParseServerStatus(
         local=LocalParseServerStatus(
-            mode=health.local_mode,
+            mode=local_mode,
             healthy=health.local_healthy,
             starting=health.local_starting,
             started_at=health.local_started_at or None,
+            url=local_url,
+            port=_port_from_url(local_url),
+            managed_pid=managed_proc.pid if managed_proc else None,
+            managed_running=bool(managed_proc and managed_proc.poll() is None),
+            managed_tier=managed_tier,
+            self_hosted_url=self_hosted_url,
+            restart_count=getattr(health, "restart_count", 0),
+            max_restart_attempts=3,
+            last_probe_at=health.local_last_probe_at,
+            last_success_at=health.local_last_success_at,
+            last_failure_at=health.local_last_failure_at,
             supported_tiers=health.local_supported_tiers,
         ),
         remote=RemoteParseServerStatus(
             healthy=health.remote_healthy,
+            url=remote_url,
+            port=_port_from_url(remote_url),
+            last_probe_at=health.remote_last_probe_at,
+            last_success_at=health.remote_last_success_at,
+            last_failure_at=health.remote_last_failure_at,
             supported_tiers=health.remote_supported_tiers,
         ),
     )
+
+
+def _port_from_url(url: str | None) -> int | None:
+    if not url:
+        return None
+    try:
+        parsed = urlparse(url)
+        if parsed.port is not None:
+            return parsed.port
+        if parsed.scheme == "http":
+            return 80
+        if parsed.scheme == "https":
+            return 443
+    except ValueError:
+        return None
+    return None
+
+
+def _file_size(path: str) -> int | None:
+    if not path:
+        return None
+    try:
+        return os.path.getsize(path)
+    except OSError:
+        return None
+
+
+async def _sqlite_journal_mode(db: DatabaseManager) -> str | None:
+    row = await db.fetchone("PRAGMA journal_mode")
+    if not row:
+        return None
+    return cast(str | None, row.get("journal_mode"))
 
 
 def _is_paginated_doc(doc: DocRow) -> bool:
@@ -1243,7 +1349,7 @@ def _write_temp_asset(
     height: int | None,
 ) -> ContentAsset:
     safe_ext = ext.lower().lstrip(".") or "png"
-    output_dir = Path(os.path.expanduser(data_dir)) / "tmp" / "read-assets"
+    output_dir = Path(os.path.expanduser(data_dir)) / "temp" / "read-assets"
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / f"{short_id}-{int(time.time() * 1000)}.{safe_ext}"
     path.write_bytes(image_bytes)
@@ -1508,8 +1614,15 @@ def _range_str(start: int, end: int) -> str:
     return f"{start}~{end}" if start != end else str(start)
 
 
-def _tail_log(data_dir: str, lines: int = 100) -> list[str]:
-    log_path = os.path.join(os.path.expanduser(data_dir or "~/MinerU"), "mineru.log")
+def _effective_data_dir(state: Any) -> str:
+    data_dir = getattr(state, "data_dir", "")
+    if data_dir:
+        return os.path.expanduser(data_dir)
+    return os.path.expanduser(config.doclib.data_dir)
+
+
+def _tail_log(log_path: str, lines: int = 100) -> list[str]:
+    log_path = os.path.expanduser(log_path) if log_path else os.path.expanduser(config.doclib.log.path)
     if not os.path.isfile(log_path):
         return []
     with open(log_path, encoding="utf-8", errors="replace") as fh:

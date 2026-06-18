@@ -2,6 +2,7 @@ from pathlib import Path
 import inspect
 
 import pytest
+from click.testing import CliRunner
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -18,6 +19,8 @@ from mineru.parser.api_server import (
     create_app,
     main,
 )
+
+runner = CliRunner()
 
 
 def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> None:
@@ -166,6 +169,39 @@ def test_local_parse_server_rejects_callback(tmp_path: Path) -> None:
     assert body["error"]["code"] == "invalid_request"
     assert "Webhook callback is not supported" in body["error"]["message"]
     assert app.state.job_store._jobs == {}
+
+
+def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MINERU_TIER", "pro")
+    monkeypatch.setenv("MINERU_BACKEND", "hybrid-auto-engine")
+    monkeypatch.setenv("MINERU_CONCURRENCY", "9")
+    monkeypatch.setenv("MINERU_URL_TIMEOUT", "99")
+    monkeypatch.setenv("MINERU_MAX_WAIT", "999")
+    monkeypatch.setenv("MINERU_LANGUAGE", "en")
+    monkeypatch.setenv("MINERU_OCR_MODE", "ocr")
+    monkeypatch.setenv("MINERU_TABLE_ENABLE", "false")
+    monkeypatch.setenv("MINERU_FORMULA_ENABLE", "false")
+    monkeypatch.setenv("MINERU_IMAGE_ANALYSIS", "false")
+
+    app = create_app(upload_dir=str(tmp_path))
+
+    assert app.state.tier == "standard"
+    assert app.state.backend == "pipeline"
+    assert app.state.concurrency == 1
+    assert app.state.url_timeout == 60
+    assert app.state.max_wait == 600
+    assert app.state.language == "ch"
+    assert app.state.ocr_mode == "auto"
+    assert app.state.table_enable is True
+    assert app.state.formula_enable is True
+    assert app.state.image_analysis is True
+
+
+def test_api_server_cli_no_longer_exposes_reload() -> None:
+    result = runner.invoke(main, ["--reload"])
+
+    assert result.exit_code != 0
+    assert "No such option '--reload'" in result.output
 
 
 def test_output_files_expose_new_names_without_inline_content() -> None:

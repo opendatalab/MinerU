@@ -460,17 +460,52 @@ class LocalParseServerStatus(DoclibModel):
     healthy: bool = False
     starting: bool = False
     started_at: float | int | None = None
+    url: str | None = None
+    port: int | None = None
+    managed_pid: int | None = None
+    managed_running: bool = False
+    managed_tier: Tier | None = None
+    self_hosted_url: str | None = None
+    restart_count: int = 0
+    max_restart_attempts: int = 0
+    last_probe_at: int | None = None
+    last_success_at: int | None = None
+    last_failure_at: int | None = None
     supported_tiers: list[Tier] = Field(default_factory=list)
 
 
 class RemoteParseServerStatus(DoclibModel):
     healthy: bool = False
+    url: str | None = None
+    port: int | None = None
+    last_probe_at: int | None = None
+    last_success_at: int | None = None
+    last_failure_at: int | None = None
     supported_tiers: list[Tier] = Field(default_factory=list)
 
 
 class ParseServerStatus(DoclibModel):
     local: LocalParseServerStatus = Field(default_factory=LocalParseServerStatus)
     remote: RemoteParseServerStatus = Field(default_factory=RemoteParseServerStatus)
+
+
+class HTTPServerStatus(DoclibModel):
+    enabled: bool = False
+    host: str | None = None
+    port: int | None = None
+
+
+class WorkerStatus(DoclibModel):
+    watch_running: bool = False
+    scan_running: bool = False
+    scan_workers: int = 0
+    ingest_running: bool = False
+    ingest_workers: int = 0
+    parse_running: bool = False
+    parse_workers: int = 0
+    device_monitor_running: bool = False
+    compaction_running: bool = False
+    health_check_running: bool = False
 
 
 class WatchStats(DoclibModel):
@@ -509,8 +544,20 @@ class ServerStatusResponse(DoclibModel):
     running: bool
     pid: int | None = None
     uptime_seconds: float | None = None
+    mineru_home: str = ""
+    version: str = ""
+    python_version: str = ""
     socket_path: str
     data_dir: str
+    sqlite_path: str
+    log_path: str
+    http: HTTPServerStatus = Field(default_factory=HTTPServerStatus)
+    active_scan_count: int = 0
+    last_scan_at: int | None = None
+    sqlite_journal_mode: str | None = None
+    sqlite_size_bytes: int | None = None
+    sqlite_wal_size_bytes: int | None = None
+    workers: WorkerStatus = Field(default_factory=WorkerStatus)
     files_total: int = 0
     docs_total: int = 0
     parse_queue_length: int = 0

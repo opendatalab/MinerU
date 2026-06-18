@@ -184,7 +184,7 @@ from mineru.client import MineruClient
 class MineruClient:
     """与本地 mineru server 通信的客户端。"""
 
-    def __init__(self, socket_path: str = "/tmp/mineru.sock"): ...
+    def __init__(self, socket_path: str | None = None): ...
 
     # 解析
     def parse(

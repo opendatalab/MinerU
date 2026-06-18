@@ -197,7 +197,7 @@ CLI 在 TTY 中可以用表格或 rich 文本展示，但非 TTY、`--json` 或 
   "error": {
     "type": "api_error",
     "code": "server_not_running",
-    "message": "Cannot connect to mineru server at /tmp/mineru.sock. Run 'mineru server start' to start the server.",
+    "message": "Cannot connect to mineru server at the configured UDS socket path. Run 'mineru server start' to start the server.",
     "param": null,
     "retryable": true,
     "user_action": "run_mineru_server_start",

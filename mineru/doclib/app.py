@@ -19,7 +19,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from ..errors import MineruError, error_response, http_status_for
-from ..config import Config, LogConfig, config
+from ..config import Config, LogConfig, _mineru_home, config
 from .server import DoclibServer
 from .types import PARSE_STATUS_FAILED, PARSE_STATUS_PARSING
 
@@ -32,6 +32,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     app = DoclibServer(state).app
     app.title = "MinerU DocLib"
     app.version = "1.0.0"
+    app.state.doclib_state = state
 
     @app.on_event("startup")
     async def startup() -> None:
@@ -93,6 +94,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         health.local_mode = local_mode
         if local_mode == "managed":
             managed_tier = (await state.config_svc.get("parse_server.local.managed_tier")) or "standard"
+            health.managed_tier = managed_tier
             try:
                 cmd = [sys.executable, "-m", "mineru.parser.api_server", *api_server_args_for_tier(managed_tier)]
                 logging.info("Starting managed parse-server: %s", " ".join(cmd))
@@ -148,8 +150,13 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
         state.start_time = time.time()
         state.pid = os.getpid()
+        state.mineru_home = _mineru_home()
         state.data_dir = data_dir
+        state.sqlite_path = db_path
+        state.log_path = os.path.expanduser(cfg.doclib.log.path)
         state.socket_path = os.path.expanduser(cfg.doclib.uds.path)
+        state.http_enabled = cfg.doclib.http.enabled
+        state.http_host = cfg.doclib.http.host
         state.config = cfg
 
     @app.on_event("shutdown")
@@ -228,8 +235,14 @@ class AppState:
         self.health_check: Any = None
         self.start_time: float = 0.0
         self.pid: int = 0
+        self.mineru_home: str = ""
         self.socket_path: str = ""
         self.data_dir: str = ""
+        self.sqlite_path: str = ""
+        self.log_path: str = ""
+        self.http_enabled: bool = False
+        self.http_host: str = ""
+        self.http_port: int | None = None
         self.config: Config | None = None
 
 
@@ -307,8 +320,10 @@ def main() -> None:
             port = cfg.doclib.http.port
         tcp_sock.listen(cfg.doclib.http.backlog)
         sockets.append(tcp_sock)
+        app.state.doclib_state.http_port = port
         print(f"MinerU server listening on UDS {uds_path} and TCP {cfg.doclib.http.host}:{port}")
     else:
+        app.state.doclib_state.http_port = None
         print(f"MinerU server listening on UDS {uds_path}")
 
     loop = asyncio.new_event_loop()

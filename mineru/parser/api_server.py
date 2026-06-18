@@ -1893,8 +1893,8 @@ _OCR_MODES = ("auto", "txt", "ocr")
 
 
 def _resolve_server_tier_and_backend(*, tier: Tier | None, backend: str | None) -> tuple[Tier, str]:
-    resolved_tier = tier or os.getenv("MINERU_TIER") or None
-    resolved_backend = backend or os.getenv("MINERU_BACKEND") or None
+    resolved_tier = tier
+    resolved_backend = backend
     if resolved_tier is None and resolved_backend is None:
         resolved_tier = "standard"
     resolved_tier, resolved_backend = resolve_tier_and_backend(tier=resolved_tier, backend=resolved_backend)
@@ -1970,16 +1970,8 @@ def create_app(
     image_analysis:
         Whether image analysis is enabled for VLM/hybrid backends.
     """
-    upload_dir = upload_dir or os.getenv("MINERU_UPLOAD_DIR", "")
+    upload_dir = upload_dir or ""
     tier, backend = _resolve_server_tier_and_backend(tier=tier, backend=backend)
-    concurrency = int(os.getenv("MINERU_CONCURRENCY", str(concurrency)))
-    url_timeout = int(os.getenv("MINERU_URL_TIMEOUT", str(url_timeout)))
-    max_wait = int(os.getenv("MINERU_MAX_WAIT", str(max_wait)))
-    language = os.getenv("MINERU_LANGUAGE", language)
-    ocr_mode = os.getenv("MINERU_OCR_MODE", ocr_mode)
-    table_enable = _env_flag("MINERU_TABLE_ENABLE", default=table_enable)
-    formula_enable = _env_flag("MINERU_FORMULA_ENABLE", default=formula_enable)
-    image_analysis = _env_flag("MINERU_IMAGE_ANALYSIS", default=image_analysis)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
     _upload_dir.mkdir(parents=True, exist_ok=True)
@@ -2062,18 +2054,12 @@ def create_app(
     application.include_router(_build_v1_router())
     return application
 
-
-# Module-level app for uvicorn reload: "mineru.parser.api_server:app"
-app = create_app()
-
-
 # ── CLI ──────────────────────────────────────────────────────────────
 
 
 @click.command()
 @click.option("--host", default="127.0.0.1", help="Server host")
 @click.option("--port", default=8000, type=int, help="Server port")
-@click.option("--reload", is_flag=True, help="Enable auto-reload (development)")
 @click.option(
     "--upload-dir",
     default="",
@@ -2134,7 +2120,6 @@ app = create_app()
 def main(
     host: str,
     port: int,
-    reload: bool,
     upload_dir: str,
     backend: str | None,
     tier: Tier | None,
@@ -2151,55 +2136,30 @@ def main(
     """Start the MinerU v1 REST API server."""
     import uvicorn
 
-    if upload_dir:
-        os.environ["MINERU_UPLOAD_DIR"] = upload_dir
-    if tier:
-        os.environ["MINERU_TIER"] = tier
-    if backend:
-        os.environ["MINERU_BACKEND"] = backend
-    os.environ["MINERU_CONCURRENCY"] = str(concurrency)
-    os.environ["MINERU_URL_TIMEOUT"] = str(url_timeout)
-    os.environ["MINERU_MAX_WAIT"] = str(max_wait)
-    os.environ["MINERU_LANGUAGE"] = language
-    os.environ["MINERU_OCR_MODE"] = ocr_mode
-    os.environ["MINERU_TABLE_ENABLE"] = str(not disable_table).lower()
-    os.environ["MINERU_FORMULA_ENABLE"] = str(not disable_formula).lower()
-    os.environ["MINERU_IMAGE_ANALYSIS"] = str(not disable_image_analysis).lower()
-    if reload:
-        uvicorn.run(
-            "mineru.parser.api_server:create_app",
-            host=host,
-            port=port,
-            reload=True,
-            factory=True,
-        )
-    else:
-        uvicorn.run(
-            create_app(
-                upload_dir=upload_dir,
-                tier=tier,
-                backend=backend,
-                concurrency=concurrency,
-                url_timeout=url_timeout,
-                max_wait=max_wait,
-                api_key=api_key,
-                language=language,
-                ocr_mode=ocr_mode,
-                table_enable=not disable_table,
-                formula_enable=not disable_formula,
-                image_analysis=not disable_image_analysis,
-            ),
-            host=host,
-            port=port,
-        )
+    uvicorn.run(
+        create_app(
+            upload_dir=upload_dir,
+            tier=tier,
+            backend=backend,
+            concurrency=concurrency,
+            url_timeout=url_timeout,
+            max_wait=max_wait,
+            api_key=api_key,
+            language=language,
+            ocr_mode=ocr_mode,
+            table_enable=not disable_table,
+            formula_enable=not disable_formula,
+            image_analysis=not disable_image_analysis,
+        ),
+        host=host,
+        port=port,
+    )
 
 
 if __name__ == "__main__":
     main()
 
 __all__ = [
-    # app
-    "app",
     "create_app",
     # enums (Literal aliases)
     "JobStatus",

@@ -11,6 +11,7 @@ import typer
 
 from ...config import config
 from ...doclib.types import ServerStatusResponse
+from ...version import __version__
 from ..json_errors import exit_with_error
 from ..output import format_server_status, print_error, print_info, print_success
 
@@ -135,8 +136,13 @@ def status(json_mode: bool = typer.Option(False, "--json", help="JSON output")) 
             format_server_status(
                 ServerStatusResponse(
                     running=False,
+                    mineru_home=os.path.expanduser(os.getenv("MINERU_HOME", "~/.mineru")),
+                    version=__version__,
+                    python_version=sys.version.split()[0],
                     socket_path=_socket_path(),
                     data_dir=os.path.expanduser(config.doclib.data_dir),
+                    sqlite_path=os.path.expanduser(config.doclib.sqlite.path),
+                    log_path=os.path.expanduser(config.doclib.log.path),
                 ),
                 json_mode=True,
             )

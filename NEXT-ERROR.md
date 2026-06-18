@@ -194,7 +194,7 @@ CLI 在调用 Server 之前或通信层面产生的错误，不来自 API 响应
   "error": {
     "type": "api_error",
     "code": "server_not_running",
-    "message": "Cannot connect to mineru server at /tmp/mineru.sock. Run 'mineru server start' to start the server.",
+    "message": "Cannot connect to mineru server at the configured UDS socket path. Run 'mineru server start' to start the server.",
     "param": null
   }
 }

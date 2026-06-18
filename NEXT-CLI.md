@@ -43,11 +43,15 @@ Found -> Check path -> calc SHA256 -> Check sha256 -> Plain Text                
 
 # 本地文档库的存储结构
 
-data_dir：默认是 `$HOME/MinerU` ，允许用户配置。
+MinerU home：默认是 `$HOME/.mineru` ，可通过 `MINERU_HOME` 配置。
 
-[data_dir]
+[MINERU_HOME]
+  mineru.sock
   mineru.db
   mineru.log
+  data/
+    parsed/
+    temp/
 
 
 # mineru parse
@@ -421,7 +425,7 @@ mineru server 是常驻后台进程，负责：
 - 单进程，asyncio 事件循环调度
 - CLI ↔ Server 通信：HTTP + JSON over Unix Domain Socket
 - 数据存储：SQLite（WAL 模式）+ FTS5 全文搜索
-- Socket 路径：`/tmp/mineru.sock`（权限 `0600`，仅当前用户）
+- Socket 路径：默认是 `$MINERU_HOME/mineru.sock`，权限 `0600`
 
 ## 生命周期
 
@@ -429,7 +433,7 @@ mineru server 是常驻后台进程，负责：
 mineru server start       # 后台启动
 mineru server stop        # 优雅关闭
 mineru server restart     # 重启
-mineru server status      # 运行状态 + 索引统计 + 队列长度 + parse-server 探活状态
+mineru server status      # 运行状态 + 路径/HTTP/SQLite 摘要 + worker 状态 + parse-server 探活状态
 ```
 
 ## 内部组件

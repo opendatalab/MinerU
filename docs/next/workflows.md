@@ -473,7 +473,7 @@ Tool SDK 是无状态解析工具层:
 doclib 解析产物按内容和实际使用的 tier 隔离。`parsed/` 目录下只保存 JSON:
 
 ```text
-~/MinerU/
+~/.mineru/
   parsed/
     ab/
       ab3f...7e2d/

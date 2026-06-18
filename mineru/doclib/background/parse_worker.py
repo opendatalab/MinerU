@@ -36,7 +36,7 @@ class ParseWorkerPool:
                 no_task_count += 1
                 if no_task_count == 1 or no_task_count % 20 == 0:
                     q = await self.parse_svc.get_queue_length()
-                    logger.info(f"Parse worker {worker_id}: queue={q}")
+                    logger.debug(f"Parse worker {worker_id}: queue={q}")
                 await asyncio.sleep(0.5)
                 continue
 

@@ -169,7 +169,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 完成边界:
 
 - 存在一个可运行的 doclib parse flow 测试文件。
-- 测试能创建临时 data_dir，不污染 `~/MinerU`。
+- 测试能创建临时 data_dir，不污染 `~/.mineru`。
 - 至少一个 smoke test 能启动必要服务对象或 helper，并通过。
 
 验证方式:
@@ -553,14 +553,14 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 1. 找出 `_safe_filename()`、`_json_file_exists_by_batch()` 和 compaction 中的重复路径逻辑。
 2. 抽出 helper，例如 `parse_batch_json_path(data_dir, sha256, tier, page_range, done_at)`。
-3. 所有路径都使用传入的 `data_dir`，不能硬编码 `~/MinerU`。
+3. 所有路径都使用传入的 `data_dir`，不能硬编码 `~/.mineru`。
 4. 更新 process、cache check、compaction 调用。
 5. 补测试覆盖 page range 文件名。
 
 完成边界:
 
 - 生产代码不再在多个地方手写 batch JSON 路径。
-- 测试 data_dir 不会误读 `~/MinerU`。
+- 测试 data_dir 不会误读 `~/.mineru`。
 - 现有 JSON 文件命名保持兼容。
 
 验证方式:
@@ -580,7 +580,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 目标:
 
-确认 cache coverage 判断使用当前 ParseService 的 data_dir，而不是固定 `~/MinerU`。
+确认 cache coverage 判断使用当前 ParseService 的 data_dir，而不是固定 `~/.mineru`。
 
 依赖:
 

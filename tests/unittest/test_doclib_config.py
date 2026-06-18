@@ -2,21 +2,24 @@ from __future__ import annotations
 
 import pytest
 
-from mineru.doclib.config_defaults import CONFIG_DEFAULTS
 from mineru.config import (
     Config,
     PatchedConfig,
-    apply_env_overrides,
-    get_env,
-    interpolate_env,
-    load_config,
+    _apply_env_overrides,
+    _default_config_path,
+    _default_data_path,
+    _default_uds_path,
+    _interpolate_env,
+    _load_config,
+    _read_config,
 )
+from mineru.doclib.config_defaults import CONFIG_DEFAULTS
 
 
 def test_interpolate_env_supports_required_and_default_values(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MINERU_TEST_ROOT", "/tmp/mineru-test")
 
-    data = interpolate_env(
+    data = _interpolate_env(
         {
             "doclib": {
                 "data_dir": "${MINERU_TEST_ROOT}/data",
@@ -39,7 +42,7 @@ def test_interpolate_env_rejects_missing_required_value(monkeypatch: pytest.Monk
     monkeypatch.delenv("MINERU_TEST_MISSING", raising=False)
 
     with pytest.raises(ValueError, match="MINERU_TEST_MISSING"):
-        interpolate_env("${MINERU_TEST_MISSING}")
+        _interpolate_env("${MINERU_TEST_MISSING}")
 
 
 def test_load_config_reads_yaml_and_interpolates_env(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -58,7 +61,7 @@ doclib:
         encoding="utf-8",
     )
 
-    data = load_config(str(config_file))
+    data = _load_config(str(config_file))
 
     assert data["doclib"]["data_dir"] == str(tmp_path / "data")
     assert data["doclib"]["http"]["enabled"] is True
@@ -84,7 +87,7 @@ def test_apply_env_overrides_uses_greedy_field_path_matching(monkeypatch: pytest
     monkeypatch.setenv("TEST_MINERU_UNKNOWN_FIELD", "ignored")
     monkeypatch.setenv("TEST_MINERU_CONFIG", "/tmp/ignored.yaml")
 
-    cfg = apply_env_overrides(Config(), prefix=prefix)
+    cfg = _apply_env_overrides(Config(), prefix=prefix)
 
     assert cfg.doclib.http.enabled is True
     assert cfg.doclib.http.port == 15990
@@ -101,12 +104,58 @@ def test_apply_env_overrides_uses_greedy_field_path_matching(monkeypatch: pytest
     assert cfg.doclib.sqlite.mmap_size == 0
 
 
-def test_get_env_returns_default_and_rejects_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("MINERU_TEST_ENV", raising=False)
+def test_default_paths_derive_from_mineru_home(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MINERU_HOME", "/tmp/mineru-home")
 
-    assert get_env("MINERU_TEST_ENV", "fallback") == "fallback"
-    with pytest.raises(ValueError, match="MINERU_TEST_ENV"):
-        get_env("MINERU_TEST_ENV")
+    assert _default_data_path() == "/tmp/mineru-home/data"
+    assert _default_config_path() == "/tmp/mineru-home/mineru.yaml"
+
+
+def test_read_config_uses_default_config_under_mineru_home(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    mineru_home = tmp_path / "mineru-home"
+    mineru_home.mkdir()
+    monkeypatch.setenv("MINERU_HOME", str(mineru_home))
+    monkeypatch.delenv("MINERU_CONFIG", raising=False)
+    (mineru_home / "mineru.yaml").write_text(
+        """
+doclib:
+  data_dir: /tmp/ignored-data-dir
+  http:
+    port: 18080
+""",
+        encoding="utf-8",
+    )
+
+    data = _read_config()
+
+    assert data["doclib"]["http"]["port"] == 18080
+    assert data["doclib"]["data_dir"] == "/tmp/ignored-data-dir"
+
+
+def test_apply_env_overrides_can_override_doclib_data_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    prefix = "TEST_MINERU_"
+    monkeypatch.setenv("MINERU_HOME", "/tmp/mineru-home")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_DATA_DIR", "/tmp/ignored-data-dir")
+
+    cfg = _apply_env_overrides(Config(), prefix=prefix)
+
+    assert cfg.doclib.data_dir == "/tmp/ignored-data-dir"
+
+
+def test_default_uds_path_uses_mineru_home_on_unix(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("mineru.config._uds_available", lambda: True)
+    monkeypatch.setattr("mineru.config.platform.system", lambda: "Linux")
+    monkeypatch.setenv("MINERU_HOME", "/tmp/mineru-home")
+
+    assert _default_uds_path() == "/tmp/mineru-home/mineru.sock"
+
+
+def test_default_uds_path_uses_mineru_home_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("mineru.config._uds_available", lambda: True)
+    monkeypatch.setattr("mineru.config.platform.system", lambda: "Windows")
+    monkeypatch.setenv("MINERU_HOME", r"C:\MinerU")
+
+    assert _default_uds_path() == r"C:\MinerU/mineru.sock"
 
 
 def test_patched_config_returns_validated_deep_patch() -> None:

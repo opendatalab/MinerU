@@ -8,7 +8,6 @@ import os
 import platform
 import re
 import socket
-import tempfile
 from typing import Any
 
 import yaml
@@ -17,11 +16,22 @@ from pydantic_core import to_jsonable_python
 
 _logger = logging.getLogger(__name__)
 
-CONFIG_ENV = "MINERU_CONFIG"
-ENV_PREFIX = "MINERU_"
-DEFAULT_CONFIG_FILENAME = "mineru.yaml"
+MINERU_HOME_ENV = "MINERU_HOME"
+MINERU_CONFIG_ENV = "MINERU_CONFIG"
+MINERU_ENV_PREFIX = "MINERU_"
 
 _INTERPOLATION_RE = re.compile(r"\$\{(\w+)(?::-([^${}]*))?\}")
+
+
+def _mineru_home() -> str:
+    configured = os.getenv(MINERU_HOME_ENV)
+    if configured not in (None, ""):
+        return os.path.expanduser(configured)
+    return os.path.join(os.path.expanduser("~"), ".mineru")
+
+
+def _default_config_path() -> str:
+    return os.path.join(_mineru_home(), "mineru.yaml")
 
 
 def _uds_available() -> bool:
@@ -38,24 +48,19 @@ def _default_uds_path() -> str:
         raise RuntimeError(f"System [{system}] is not supported.")
     if not _uds_available():
         raise RuntimeError("Unix domain socket is not available.")
-    temp_dir = tempfile.gettempdir() if system == "windows" else "/tmp"
-    return os.path.join(temp_dir, "mineru.sock")
-
-
-def _default_data_path() -> str:
-    return os.path.join(os.path.expanduser("~"), "MinerU")
-
-
-def _default_config_path() -> str:
-    return os.path.join(_default_data_path(), DEFAULT_CONFIG_FILENAME)
+    return os.path.join(_mineru_home(), "mineru.sock")
 
 
 def _default_log_path() -> str:
-    return os.path.join(_default_data_path(), "mineru.log")
+    return os.path.join(_mineru_home(), "mineru.log")
 
 
 def _default_db_path() -> str:
-    return os.path.join(_default_data_path(), "mineru.db")
+    return os.path.join(_mineru_home(), "mineru.db")
+
+
+def _default_data_path() -> str:
+    return os.path.join(_mineru_home(), "data")
 
 
 def _strip_quotes(value: str) -> str:
@@ -86,28 +91,28 @@ def _substitute(value: str, max_depth: int = 20) -> str:
     raise ValueError(f"MinerU config interpolation did not converge after {max_depth} passes.")
 
 
-def interpolate_env(value: Any) -> Any:
+def _interpolate_env(value: Any) -> Any:
     """Recursively substitute ${VAR} and ${VAR:-default} placeholders."""
     if isinstance(value, str):
         return _substitute(value)
     if isinstance(value, dict):
-        return {key: interpolate_env(item) for key, item in value.items()}
+        return {key: _interpolate_env(item) for key, item in value.items()}
     if isinstance(value, list):
-        return [interpolate_env(item) for item in value]
+        return [_interpolate_env(item) for item in value]
     return value
 
 
-def load_config(config_file: str) -> dict[str, Any]:
+def _load_config(config_file: str) -> dict[str, Any]:
     with open(config_file, encoding="utf-8") as file:
         raw = yaml.safe_load(file)
     if isinstance(raw, dict):
-        return interpolate_env(raw)
+        return _interpolate_env(raw)
     _logger.warning("MinerU config file [%s] is empty or invalid.", config_file)
     return {}
 
 
 def _read_config() -> dict[str, Any]:
-    config_file = os.getenv(CONFIG_ENV)
+    config_file = os.getenv(MINERU_CONFIG_ENV)
     if config_file and not os.path.isfile(config_file):
         raise FileNotFoundError(f"MinerU config file [{config_file}] does not exist.")
 
@@ -119,20 +124,11 @@ def _read_config() -> dict[str, Any]:
         _logger.debug(
             "MinerU config file not found. Default path is %s. Use %s to specify a custom path.",
             default_config_file,
-            CONFIG_ENV,
+            MINERU_CONFIG_ENV,
         )
         return {}
 
-    return load_config(config_file)
-
-
-def get_env(key: str, default: str | None = None) -> str:
-    value = os.getenv(key)
-    if value not in (None, ""):
-        return value
-    if default is not None:
-        return default
-    raise ValueError(f"Environment variable {key} is not set.")
+    return _load_config(config_file)
 
 
 def _collect_path(remaining: str, model_class: type[BaseModel]) -> list[str] | None:
@@ -162,7 +158,7 @@ def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, An
     return result
 
 
-def apply_env_overrides(cfg: "Config", prefix: str = ENV_PREFIX) -> "Config":
+def _apply_env_overrides(cfg: "Config", prefix: str = MINERU_ENV_PREFIX) -> "Config":
     """Return a new Config with matching environment variables merged in.
 
     Environment variable names use the prefix plus a greedy field path joined by
@@ -185,7 +181,6 @@ def apply_env_overrides(cfg: "Config", prefix: str = ENV_PREFIX) -> "Config":
         path = _collect_path(remaining, Config)
         if path is None:
             continue
-
         node = overrides
         for part in path[:-1]:
             node = node.setdefault(part, {})
@@ -258,9 +253,10 @@ class Config(BaseModel):
     """Top-level MinerU startup configuration."""
 
     doclib: DoclibConfig = Field(default_factory=DoclibConfig)
+    # render: RenderConfig
 
 
-config = apply_env_overrides(Config(**_read_config()))
+config = _apply_env_overrides(Config(**_read_config()))
 
 
 def PatchedConfig(**kwargs: Any) -> Config:
@@ -269,18 +265,15 @@ def PatchedConfig(**kwargs: Any) -> Config:
 
 
 __all__ = [
-    "CONFIG_ENV",
-    "ENV_PREFIX",
+    "config",
     "Config",
     "DoclibConfig",
     "HTTPConfig",
     "LogConfig",
-    "PatchedConfig",
     "SQLiteConfig",
     "UDSConfig",
-    "apply_env_overrides",
-    "config",
-    "get_env",
-    "interpolate_env",
-    "load_config",
+    "PatchedConfig",
+    "MINERU_HOME_ENV",
+    "MINERU_CONFIG_ENV",
+    "MINERU_ENV_PREFIX",
 ]
