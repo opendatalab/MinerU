@@ -99,6 +99,93 @@ def persist_resolved_model_source(model_source: str) -> None:
         logger.warning(f"Failed to persist resolved model source '{model_source}': {exc}")
 
 
+def normalize_download_relative_path(relative_path: str, repo_mode: str) -> str:
+    """按仓库模式规范化下载相对路径，保持 pipeline 与 VLM 原有路径语义。"""
+    if repo_mode == 'pipeline':
+        return relative_path.strip('/')
+    if repo_mode == 'vlm':
+        if relative_path == "/":
+            return relative_path
+        return relative_path.strip('/')
+    raise ValueError(f"Unsupported repo_mode: {repo_mode}, must be 'pipeline' or 'vlm'")
+
+
+def read_existing_tools_config() -> dict | None:
+    """读取已存在的工具 JSON 配置；不存在或读取失败时返回 None，不影响后续下载。"""
+    config_file = get_tools_config_file_path()
+    if not os.path.exists(config_file):
+        return None
+    try:
+        with open(config_file, encoding='utf-8') as f:
+            config = json.load(f)
+    except Exception as exc:
+        logger.warning(f"Failed to read model config from {config_file}: {exc}")
+        return None
+    if not isinstance(config, dict):
+        logger.warning(f"Model config in {config_file} must be a JSON object.")
+        return None
+    return config
+
+
+def get_configured_repo_model_root(config: dict, repo_mode: str) -> str | None:
+    """从 JSON 配置中获取指定仓库模式的模型根路径，缺失或类型不正确时返回 None。"""
+    models_dir = config.get('models-dir')
+    if not isinstance(models_dir, dict):
+        return None
+    model_root = models_dir.get(repo_mode)
+    if not isinstance(model_root, str):
+        return None
+    model_root = model_root.strip()
+    if not model_root:
+        return None
+    return os.path.expanduser(model_root)
+
+
+def build_configured_model_path(model_root: str, relative_path: str) -> str:
+    """根据模型根路径和本次下载相对路径拼出本地待检查路径。"""
+    if relative_path in ("", "/"):
+        return model_root
+    return os.path.join(model_root, relative_path)
+
+
+def get_existing_configured_model_root(repo_mode: str, relative_path: str) -> str | None:
+    """如果 JSON 中配置的模型路径已包含本次所需模型，则返回该模型根路径以跳过下载。"""
+    config = read_existing_tools_config()
+    if config is None:
+        return None
+
+    model_root = get_configured_repo_model_root(config, repo_mode)
+    if model_root is None:
+        return None
+
+    local_model_path = build_configured_model_path(model_root, relative_path)
+    if os.path.exists(local_model_path):
+        logger.info(f"Use configured local {repo_mode} model path: {local_model_path}")
+        return model_root
+    return None
+
+
+def persist_downloaded_model_config(model_source: str, repo_mode: str, model_root: str) -> None:
+    """snapshot_download 成功后，创建或更新 JSON，写入本次模型根路径和实际来源。"""
+    config_file = get_tools_config_file_path()
+    try:
+        download_and_modify_json(
+            CONFIG_TEMPLATE_URL,
+            config_file,
+            {
+                'models-dir': {
+                    repo_mode: model_root,
+                },
+                'model-source': model_source,
+            },
+        )
+    except Exception as exc:
+        logger.warning(
+            f"Failed to persist downloaded {repo_mode} model config "
+            f"to {config_file}: {exc}"
+        )
+
+
 @lru_cache(maxsize=1)
 def resolve_auto_model_source() -> str:
     """通过 Hugging Face 模型列表页探测 auto 应该使用的实际模型来源。"""
@@ -174,15 +261,19 @@ def _snapshot_download_cached(model_source: str, repo_mode: str, repo: str, rela
         raise ValueError(f"未知的仓库类型: {model_source}")
 
     if repo_mode == 'pipeline':
-        return snapshot_download(repo, allow_patterns=[relative_path, relative_path + "/*"])
-
-    if repo_mode == 'vlm':
+        cache_dir = snapshot_download(repo, allow_patterns=[relative_path, relative_path + "/*"])
+    elif repo_mode == 'vlm':
         # VLM 整仓下载和局部路径下载都参与缓存，但保持原有 allow_patterns 行为。
         if relative_path == "/":
-            return snapshot_download(repo)
-        return snapshot_download(repo, allow_patterns=[relative_path, relative_path + "/*"])
+            cache_dir = snapshot_download(repo)
+        else:
+            cache_dir = snapshot_download(repo, allow_patterns=[relative_path, relative_path + "/*"])
+    else:
+        raise ValueError(f"Unsupported repo_mode: {repo_mode}, must be 'pipeline' or 'vlm'")
 
-    raise ValueError(f"Unsupported repo_mode: {repo_mode}, must be 'pipeline' or 'vlm'")
+    if cache_dir:
+        persist_downloaded_model_config(model_source, repo_mode, cache_dir)
+    return cache_dir
 
 
 def auto_download_and_get_model_root_path(relative_path: str, repo_mode='pipeline') -> str:
@@ -221,12 +312,10 @@ def auto_download_and_get_model_root_path(relative_path: str, repo_mode='pipelin
     # model_source 已解析为实际远端来源后，再选择对应仓库。
     repo = repo_mapping[repo_mode][model_source]
 
-    if repo_mode == 'pipeline':
-        relative_path = relative_path.strip('/')
-    elif repo_mode == 'vlm':
-        # VLM 模式下，根据 relative_path 的不同处理方式
-        if relative_path != "/":
-            relative_path = relative_path.strip('/')
+    relative_path = normalize_download_relative_path(relative_path, repo_mode)
+    configured_model_root = get_existing_configured_model_root(repo_mode, relative_path)
+    if configured_model_root is not None:
+        return configured_model_root
 
     cache_dir = _snapshot_download_cached(model_source, repo_mode, repo, relative_path)
 
