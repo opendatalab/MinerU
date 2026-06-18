@@ -87,6 +87,7 @@ nav:
       - Model Source: usage/model_source.md
       - CLI Tools: usage/cli_tools.md
       - Advanced CLI Parameters: usage/advanced_cli_parameters.md
+      - SGLang Backend: usage/sglang_backend.md
     - Reference:
       - Reference: reference/index.md
       - Output File Format: reference/output_files.md
@@ -105,6 +106,7 @@ nav:
     - Model Source: usage/model_source.md
     - CLI Tools: usage/cli_tools.md
     - Advanced CLI Parameters: usage/advanced_cli_parameters.md
+    - SGLang Backend: usage/sglang_backend.md
   - Reference:
     - Reference: reference/index.md
     - Output File Format: reference/output_files.md
@@ -140,6 +142,7 @@ plugins:
             CLI Tools: 命令行工具
             Model Source: 模型源配置
             Advanced CLI Parameters: 命令行进阶参数
+            SGLang Backend: SGLang 后端
             FAQ: 常见问题解答
             Reference: 参考资料
             Output File Format: 输出文件格式
