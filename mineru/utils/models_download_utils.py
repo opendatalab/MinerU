@@ -160,7 +160,7 @@ def get_existing_configured_model_root(repo_mode: str, relative_path: str) -> st
 
     local_model_path = build_configured_model_path(model_root, relative_path)
     if os.path.exists(local_model_path):
-        logger.info(f"Use configured local {repo_mode} model path: {local_model_path}")
+        logger.debug(f"Use configured local {repo_mode} model path: {local_model_path}")
         return model_root
     return None
 
