@@ -41,6 +41,16 @@ class UnimernetModel(object):
         self.model.eval()
 
     @staticmethod
+    def _should_pin_memory(device) -> bool:
+        """判断 DataLoader 是否需要启用 pinned memory，仅 CUDA 搬运受益。"""
+        return str(device).startswith("cuda")
+
+    @staticmethod
+    def _should_non_blocking_transfer(device) -> bool:
+        """判断 tensor 搬运是否使用 non_blocking，需与 pinned memory 保持一致。"""
+        return UnimernetModel._should_pin_memory(device)
+
+    @staticmethod
     def _normalize_bbox(bbox, image):
         if bbox is None:
             return None
@@ -149,21 +159,32 @@ class UnimernetModel(object):
 
         batch_groups = build_mfr_batch_groups(sorted_areas, batch_size)
         dataset = MathDataset(sorted_images, transform=self.model.transform)
-        dataloader = DataLoader(dataset, batch_sampler=batch_groups, num_workers=0)
+        pin_memory = self._should_pin_memory(self.device)
+        non_blocking = self._should_non_blocking_transfer(self.device)
+        dataloader = DataLoader(
+            dataset,
+            batch_sampler=batch_groups,
+            num_workers=0,
+            pin_memory=pin_memory,
+        )
 
         mfr_res = []
         with tqdm(total=len(sorted_images), desc="MFR Predict") as pbar:
-            for batch_group, mf_img in zip(batch_groups, dataloader):
-                current_batch_size = len(batch_group)
-                mf_img = mf_img.to(dtype=self.model.dtype)
-                mf_img = mf_img.to(self.device)
-                with torch.no_grad():
+            with torch.inference_mode():
+                for batch_group, mf_img in zip(batch_groups, dataloader):
+                    current_batch_size = len(batch_group)
+                    mf_img = mf_img.to(
+                        device=self.device,
+                        dtype=self.model.dtype,
+                        non_blocking=non_blocking,
+                    )
                     output = self.model.generate(
                         {"image": mf_img},
                         batch_size=current_batch_size,
+                        return_full_result=False,
                     )
-                mfr_res.extend(output["fixed_str"])
-                pbar.update(current_batch_size)
+                    mfr_res.extend(output["fixed_str"])
+                    pbar.update(current_batch_size)
 
         unsorted_results = [""] * len(mfr_res)
         for new_idx, latex in enumerate(mfr_res):

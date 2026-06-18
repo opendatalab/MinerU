@@ -13,6 +13,11 @@ from mineru.cli.backend_options import (
     validate_effort as validate_public_effort,
 )
 from mineru.cli.public_http_client_policy import validate_public_http_client_request
+from mineru.utils.ocr_language import (
+    PUBLIC_OCR_LANGUAGE_SCHEMA_EXTRA,
+    format_public_ocr_lang_description,
+    validate_public_ocr_lang_list,
+)
 
 ALLOWED_PARSE_METHODS = {"auto", "txt", "ocr"}
 SWAGGER_UI_FILE_ARRAY_SCHEMA_EXTRA = {
@@ -76,6 +81,14 @@ def validate_parse_effort(effort: str) -> str:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def validate_parse_lang_list(lang_list: list[str]) -> list[str]:
+    """校验公开 API 允许的 OCR 语言列表，避免旧语言入口进入解析链路。"""
+    try:
+        return validate_public_ocr_lang_list(lang_list)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 async def parse_request_form(
     request: Request,
     files: Annotated[
@@ -88,25 +101,8 @@ async def parse_request_form(
     lang_list: Annotated[
         list[str],
         Form(
-            description="""(Adapted for pipeline backend only) Input the languages in the pdf to improve OCR accuracy. Options:
-- ch: Chinese, English, Chinese Traditional.
-- ch_lite: Chinese, English, Chinese Traditional, Japanese.
-- ch_server: Chinese, English, Chinese Traditional, Japanese.
-- en: English.
-- korean: Korean, English.
-- japan: Chinese, English, Chinese Traditional, Japanese.
-- chinese_cht: Chinese, English, Chinese Traditional, Japanese.
-- ta: Tamil, English.
-- te: Telugu, English.
-- ka: Kannada.
-- th: Thai, English.
-- el: Greek, English.
-- latin: French, German, Afrikaans, Italian, Spanish, Bosnian, Portuguese, Czech, Welsh, Danish, Estonian, Irish, Croatian, Uzbek, Hungarian, Serbian (Latin), Indonesian, Occitan, Icelandic, Lithuanian, Maori, Malay, Dutch, Norwegian, Polish, Slovak, Slovenian, Albanian, Swedish, Swahili, Tagalog, Turkish, Latin, Azerbaijani, Kurdish, Latvian, Maltese, Pali, Romanian, Vietnamese, Finnish, Basque, Galician, Luxembourgish, Romansh, Catalan, Quechua.
-- arabic: Arabic, Persian, Uyghur, Urdu, Pashto, Kurdish, Sindhi, Balochi, English.
-- east_slavic: Russian, Belarusian, Ukrainian, English.
-- cyrillic: Russian, Belarusian, Ukrainian, Serbian (Cyrillic), Bulgarian, Mongolian, Abkhazian, Adyghe, Kabardian, Avar, Dargin, Ingush, Chechen, Lak, Lezgin, Tabasaran, Kazakh, Kyrgyz, Tajik, Macedonian, Tatar, Chuvash, Bashkir, Malian, Moldovan, Udmurt, Komi, Ossetian, Buryat, Kalmyk, Tuvan, Sakha, Karakalpak, English.
-- devanagari: Hindi, Marathi, Nepali, Bihari, Maithili, Angika, Bhojpuri, Magahi, Santali, Newari, Konkani, Sanskrit, Haryanvi, English.
-""",
+            description=format_public_ocr_lang_description(),
+            json_schema_extra=PUBLIC_OCR_LANGUAGE_SCHEMA_EXTRA,
         ),
     ] = ["ch"],
     backend: Annotated[
@@ -237,7 +233,7 @@ async def parse_request_form(
     effective_return_original_file = return_original_file and response_format_zip
     return ParseRequestOptions(
         files=files,
-        lang_list=lang_list,
+        lang_list=validate_parse_lang_list(lang_list),
         backend=backend,
         effort=effort,
         parse_method=validate_parse_method(parse_method),

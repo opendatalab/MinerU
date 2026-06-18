@@ -457,7 +457,14 @@ def _can_auto_merge_vertical_text_blocks(
     min_metric_height = min(current_metric_height, previous_metric_height)
     if min_metric_height <= 0:
         return False
-    return abs(current_metric_height - previous_metric_height) < min_metric_height
+    if abs(current_metric_height - previous_metric_height) >= min_metric_height:
+        return False
+    return _has_mergeable_vertical_block_bbox_relation(current_block, previous_block)
+
+
+def _has_mergeable_vertical_block_bbox_relation(current_block, previous_block):
+    """复刻横排同构关系：当前纵排块右边界需要进入前块左边界右侧。"""
+    return current_block["bbox"][2] > previous_block["bbox"][0]
 
 
 def _cleanup_block_internal_metadata(block):

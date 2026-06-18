@@ -257,63 +257,39 @@ def ocr_det(
                     bgr_image, det_image, useful_list, adjusted_mfdetrec_res, ocr_res_list[-1]
                 ))
 
-        # 按分辨率分组并同时完成padding
-        RESOLUTION_GROUP_STRIDE = 64  # 32
+        batch_images = [crop_info[1] for crop_info in all_cropped_images_info]
+        det_batch_size = min(len(batch_images), batch_ratio * OCR_DET_BASE_BATCH_SIZE)
+        batch_results = run_ocr_inference(
+            hybrid_pipeline_model.ocr_model.text_detector.batch_predict,
+            batch_images,
+            det_batch_size,
+            tqdm_enable=True,
+            tqdm_desc="OCR-det",
+        )
 
-        resolution_groups = defaultdict(list)
-        for crop_info in all_cropped_images_info:
-            cropped_img = crop_info[1]
-            h, w = cropped_img.shape[:2]
-            # 直接计算目标尺寸并用作分组键
-            target_h = ((h + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
-            target_w = ((w + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
-            group_key = (target_h, target_w)
-            resolution_groups[group_key].append(crop_info)
+        for crop_info, (dt_boxes, _) in zip(all_cropped_images_info, batch_results):
+            bgr_image, _det_image, useful_list, adjusted_mfdetrec_res, ocr_page_res_list = crop_info
 
-        # 对每个分辨率组进行批处理
-        for (target_h, target_w), group_crops in tqdm(resolution_groups.items(), desc="OCR-det"):
-            # 对所有图像进行padding到统一尺寸
-            batch_images = []
-            for crop_info in group_crops:
-                img = crop_info[1]
-                h, w = img.shape[:2]
-                # 创建目标尺寸的白色背景
-                padded_img = np.ones((target_h, target_w, 3), dtype=np.uint8) * 255
-                padded_img[:h, :w] = img
-                batch_images.append(padded_img)
+            if dt_boxes is not None and len(dt_boxes) > 0:
+                # 处理检测框
+                dt_boxes_sorted = sorted_boxes(dt_boxes)
+                dt_boxes_merged = merge_det_boxes(dt_boxes_sorted) if dt_boxes_sorted else []
 
-            # 批处理检测
-            det_batch_size = min(len(batch_images), batch_ratio * OCR_DET_BASE_BATCH_SIZE)
-            batch_results = run_ocr_inference(
-                hybrid_pipeline_model.ocr_model.text_detector.batch_predict,
-                batch_images,
-                det_batch_size,
-            )
+                # 根据公式位置更新检测框
+                dt_boxes_final = (update_det_boxes(dt_boxes_merged, adjusted_mfdetrec_res)
+                                  if dt_boxes_merged and adjusted_mfdetrec_res
+                                  else dt_boxes_merged)
 
-            # 处理批处理结果
-            for crop_info, (dt_boxes, _) in zip(group_crops, batch_results):
-                bgr_image, _det_image, useful_list, adjusted_mfdetrec_res, ocr_page_res_list = crop_info
-
-                if dt_boxes is not None and len(dt_boxes) > 0:
-                    # 处理检测框
-                    dt_boxes_sorted = sorted_boxes(dt_boxes)
-                    dt_boxes_merged = merge_det_boxes(dt_boxes_sorted) if dt_boxes_sorted else []
-
-                    # 根据公式位置更新检测框
-                    dt_boxes_final = (update_det_boxes(dt_boxes_merged, adjusted_mfdetrec_res)
-                                      if dt_boxes_merged and adjusted_mfdetrec_res
-                                      else dt_boxes_merged)
-
-                    if dt_boxes_final:
-                        ocr_res = [box.tolist() if hasattr(box, 'tolist') else box for box in dt_boxes_final]
-                        ocr_result_list = get_ocr_result_list(
-                            ocr_res,
-                            useful_list,
-                            False,
-                            bgr_image,
-                            hybrid_pipeline_model.lang,
-                        )
-                        ocr_page_res_list.extend(ocr_result_list)
+                if dt_boxes_final:
+                    ocr_res = [box.tolist() if hasattr(box, 'tolist') else box for box in dt_boxes_final]
+                    ocr_result_list = get_ocr_result_list(
+                        ocr_res,
+                        useful_list,
+                        False,
+                        bgr_image,
+                        hybrid_pipeline_model.lang,
+                    )
+                    ocr_page_res_list.extend(ocr_result_list)
     return ocr_res_list
 
 

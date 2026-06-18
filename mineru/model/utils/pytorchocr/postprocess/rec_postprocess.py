@@ -181,11 +181,33 @@ class CTCLabelDecode(BaseRecLabelDecode):
         super(CTCLabelDecode, self).__init__(character_dict_path,
                                              use_space_char)
 
+    def _decode_raw_logits(self, preds):
+        """从 raw logits 直接计算 CTC argmax 和 max softmax 概率，避免完整 softmax。"""
+        logits = preds["ctc_logits"]
+        if torch.is_tensor(logits):
+            preds_idx = logits.argmax(dim=2)
+            max_logits = logits.amax(dim=2)
+            preds_prob = torch.exp(max_logits - torch.logsumexp(logits, dim=2))
+            return preds_prob.float().cpu().numpy(), preds_idx.cpu().numpy()
+
+        logits = np.asarray(logits)
+        preds_idx = logits.argmax(axis=2)
+        max_logits = logits.max(axis=2)
+        stable_logits = logits - max_logits[:, :, None]
+        logsumexp = max_logits + np.log(np.exp(stable_logits).sum(axis=2))
+        preds_prob = np.exp(max_logits - logsumexp).astype(np.float32)
+        return preds_prob, preds_idx
+
     def __call__(self, preds, label=None, return_word_box=False, *args, **kwargs):
-        preds_prob, preds_idx = preds.max(axis=2)
+        if isinstance(preds, dict) and preds.get("ctc_use_raw_logits"):
+            preds_prob, preds_idx = self._decode_raw_logits(preds)
+        else:
+            preds_prob, preds_idx = preds.max(axis=2)
+            preds_idx = preds_idx.cpu().numpy()
+            preds_prob = preds_prob.float().cpu().numpy()
         text = self.decode(
-            preds_idx.cpu().numpy(),
-            preds_prob.float().cpu().numpy(),
+            preds_idx,
+            preds_prob,
             is_remove_duplicate=True,
             return_word_box=return_word_box,
         )
