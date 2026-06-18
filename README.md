@@ -92,7 +92,7 @@ Domestic AI chips: Ascend · Cambricon · Enflame · MetaX · Moore Threads · K
   - Model download logic optimization
     - Added automatic model source selection, allowing first-time installations to choose a better model source based on the current network environment.
     - Before downloading models, MinerU now prioritizes checking locally downloaded model cache files. Cache hits can be reused directly, reducing repeated downloads and unnecessary remote requests.
-    - For more details about model source configuration, automatic source selection, and local model usage, see the [Model Source Documentation](https://opendatalab.github.io/MinerU/en/usage/model_source/).
+    - For more details about model source configuration, automatic source selection, and local model usage, see the [Model Source Documentation](https://opendatalab.github.io/MinerU/usage/model_source/).
 
   With the 3.4 release, MinerU further improves the parsing accuracy and processing efficiency of the `pipeline` backend in OCR scenarios. It also optimizes model downloads, cache reuse, and local configuration write-back, making first-time installation, model updates, and multi-environment deployment more stable and automated.
 
