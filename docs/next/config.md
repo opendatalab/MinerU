@@ -18,8 +18,8 @@ MinerU 有两类配置：
 启动前还存在一个 bootstrap 根目录:
 
 - `MINERU_HOME` 决定 MinerU home，默认 `~/.mineru`。
-- 默认配置文件路径是 `$MINERU_HOME/mineru.yaml`。
-- 默认 DB、日志从 `MINERU_HOME` 派生；默认 `data_dir` 是 `$MINERU_HOME/data`，其下包含 `parsed/` 和 `temp/`。
+- 默认配置文件路径是 `$MINERU_HOME/config.yaml`。
+- 默认 DB、日志和 UDS socket 从 `MINERU_HOME` 派生；默认 `data_dir` 是 `$MINERU_HOME/data`，其下包含 `parsed/` 和 `temp/`。
 - `MINERU_CONFIG` 仍可显式指定配置文件路径；`MINERU_HOME` 只影响默认 home 和默认配置文件位置。
 
 配置必须服务两个产品原则：
@@ -37,7 +37,7 @@ MinerU 有两类配置：
 
 | 分组 | 字段 | 默认值 | 说明 |
 |------|------|--------|------|
-| UDS | `doclib.uds.path` | `~/.mineru/mineru.sock` | CLI / doclib 通信 socket，默认取 `$MINERU_HOME/mineru.sock` |
+| UDS | `doclib.uds.path` | `~/.mineru/doclib.sock` | CLI / doclib 通信 socket，默认取 `$MINERU_HOME/doclib.sock` |
 | UDS | `doclib.uds.permission` | `0o600` | socket 权限 |
 | HTTP | `doclib.http.enabled` | `False` | 是否启用 TCP HTTP |
 | HTTP | `doclib.http.host` | `127.0.0.1` | TCP 监听地址 |
@@ -45,7 +45,7 @@ MinerU 有两类配置：
 | HTTP | `doclib.http.strict_port` | `False` | 端口占用时是否报错 |
 | HTTP | `doclib.http.backlog` | `128` | socket backlog |
 | HTTP | `doclib.http.timeout` | `600` | keep-alive timeout |
-| log | `doclib.log.path` | `~/.mineru/mineru.log` | 日志路径 |
+| log | `doclib.log.path` | `~/.mineru/doclib.log` | 日志路径 |
 | log | `doclib.log.level` | `info` | 日志级别 |
 | doclib | `doclib.data_dir` | `~/.mineru/data` | 数据目录，默认取 `$MINERU_HOME/data`，但仍可通过配置文件或环境变量覆盖 |
 | doclib | `doclib.ingest_workers` | `2` | ingest worker 数 |
@@ -60,7 +60,7 @@ MinerU 有两类配置：
 | doclib | `doclib.parse_server_probe_timeout_sec` | `10` | parse-server 探测超时 |
 | doclib | `doclib.parse_server_startup_grace_sec` | `30` | managed parse-server 启动宽限时间 |
 | doclib | `doclib.parse_server_stop_timeout_sec` | `10` | managed parse-server 停止超时 |
-| sqlite | `doclib.sqlite.path` | `~/.mineru/mineru.db` | SQLite DB 路径 |
+| sqlite | `doclib.sqlite.path` | `~/.mineru/doclib.db` | SQLite DB 路径 |
 | sqlite | `doclib.sqlite.mmap_size` | `268435456` | mmap size |
 | sqlite | `doclib.sqlite.cache_size` | `-20000` | SQLite cache size |
 | sqlite | `doclib.sqlite.wal_autocheckpoint` | `1000` | WAL checkpoint 阈值 |

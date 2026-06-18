@@ -6,7 +6,7 @@ from mineru.doclib.services.parse_svc import ensure_doc_record
 
 def test_ensure_doc_record_extends_short_id_on_prefix_conflict(tmp_path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         now = 1000
         existing_sha = "abcdef0" + "0" * 57

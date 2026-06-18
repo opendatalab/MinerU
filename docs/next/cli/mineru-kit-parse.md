@@ -10,7 +10,7 @@
 
 `mineru-kit parse` 是无状态解析命令。它面向批处理和开发者工作流，接受文件和目录输入，输出到指定文件或目录。
 
-与 `mineru parse` 不同，它不维护本地文档库，也不复用 `mineru.db` 或 doclib 解析缓存。
+与 `mineru parse` 不同，它不维护本地文档库，也不复用 `doclib.db` 或 doclib 解析缓存。
 
 ## 2. Usage
 

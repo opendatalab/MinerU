@@ -207,7 +207,7 @@ def test_interface_app_uses_doclib_server_routes() -> None:
 
 def test_add_watch_rejects_missing_directory(tmp_path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         service = ConfigService(db)
 
@@ -219,7 +219,7 @@ def test_add_watch_rejects_missing_directory(tmp_path) -> None:
 
 def test_forget_watch_root_is_allowed_with_warning(tmp_path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         watch_root = tmp_path / "watch-root"
         watch_root.mkdir()
@@ -238,7 +238,7 @@ def test_forget_watch_root_is_allowed_with_warning(tmp_path) -> None:
 
 def test_cleanup_temp_rejects_negative_older_than(tmp_path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         service = CleanupService(db, str(tmp_path))
 
@@ -277,10 +277,10 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     error_summary = ErrorSummary(file_errors=[ErrorBucket(code="stat_failed", count=1)])
     status = ServerStatusResponse(
         running=True,
-        socket_path="/tmp/mineru.sock",
+        socket_path="/tmp/doclib.sock",
         data_dir="/tmp/mineru",
-        sqlite_path="/tmp/mineru.db",
-        log_path="/tmp/mineru.log",
+        sqlite_path="/tmp/doclib.db",
+        log_path="/tmp/doclib.log",
         watch_stats=[watch_stats],
         recent_scans=[recent_scan],
         error_summary=error_summary,

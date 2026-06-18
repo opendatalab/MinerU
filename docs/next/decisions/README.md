@@ -47,6 +47,7 @@
 | [ADR-0017](0017-mineru-kit-api-server-command.md) | Accepted | MinerU Kit API Server Command |
 | [ADR-0018](0018-mineru-kit-vlm-server-command.md) | Accepted | MinerU Kit VLM Server Command |
 | [ADR-0019](0019-mineru-kit-models-command.md) | Accepted | MinerU Kit Models Command |
+| [ADR-0020](0020-doclib-schema-stability-boundary.md) | Accepted | Doclib Schema Stability Boundary |
 
 ## 模板
 

@@ -23,7 +23,7 @@
 
 `mineru-kit parse` 是无状态批处理解析命令：
 
-- 不使用 `mineru.db`
+- 不使用 `doclib.db`
 - 不复用 doclib 缓存
 - 不承担 Agent 默认阅读体验
 - 主要输出文件产物

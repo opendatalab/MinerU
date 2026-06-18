@@ -232,7 +232,7 @@ def test_get_file_stat_returns_typed_file_stat(tmp_path: Path) -> None:
 
 def test_config_defaults_are_code_backed_and_unset_removes_override(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         service = ConfigService(db)
 
@@ -262,7 +262,7 @@ def test_config_defaults_are_code_backed_and_unset_removes_override(tmp_path: Pa
 
 def test_data_dir_is_not_runtime_kv_config(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         service = ConfigService(db)
 
@@ -481,7 +481,7 @@ def test_remap_api_result_pages_rejects_count_mismatch() -> None:
 
 def test_ensure_doc_record_extends_short_id_on_prefix_conflict(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         sha_a = "a" * 64
         sha_b = ("a" * 7) + ("b" * 57)
@@ -514,7 +514,7 @@ def test_ensure_doc_record_extends_short_id_on_prefix_conflict(tmp_path: Path) -
 
 def test_ensure_ingested_rebinds_changed_text_file_to_new_sha(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
         source = tmp_path / "note.txt"
@@ -548,7 +548,7 @@ def test_ensure_ingested_rebinds_changed_text_file_to_new_sha(tmp_path: Path) ->
 
 def test_refresh_file_marks_missing_known_path_deleted(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
         source = tmp_path / "note.txt"
@@ -576,7 +576,7 @@ def test_refresh_file_marks_missing_known_path_deleted(tmp_path: Path) -> None:
 
 def test_refresh_file_records_stat_error_without_marking_deleted(tmp_path: Path, monkeypatch) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
         source = tmp_path / "note.txt"
@@ -608,7 +608,7 @@ def test_refresh_file_records_stat_error_without_marking_deleted(tmp_path: Path,
 
 def test_ingest_worker_skips_files_with_blocking_stat_errors(tmp_path: Path, monkeypatch) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
         source = tmp_path / "note.txt"
@@ -637,7 +637,7 @@ def test_ingest_worker_skips_files_with_blocking_stat_errors(tmp_path: Path, mon
 
 def test_ingest_worker_preserves_precise_file_access_errors(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
         source = tmp_path / "note.txt"
@@ -666,7 +666,7 @@ def test_ingest_worker_preserves_precise_file_access_errors(tmp_path: Path) -> N
 
 def test_ingest_worker_skips_any_file_with_existing_error(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
         source = tmp_path / "note.txt"
@@ -688,7 +688,7 @@ def test_ingest_worker_skips_any_file_with_existing_error(tmp_path: Path) -> Non
 
 def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         fts = FTSManager(db)
         service = SearchService(db, fts)
@@ -730,7 +730,7 @@ def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
 
 def test_search_prefers_active_paths_and_falls_back_to_non_active_paths(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         fts = FTSManager(db)
         service = SearchService(db, fts)
@@ -775,7 +775,7 @@ def test_search_prefers_active_paths_and_falls_back_to_non_active_paths(tmp_path
 
 def test_find_filters_by_ext(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         fts = FTSManager(db)
         service = SearchService(db, fts)
@@ -807,7 +807,7 @@ def test_find_filters_by_ext(tmp_path: Path) -> None:
 
 def test_refresh_file_marks_only_current_file_unreachable_when_watch_root_is_missing(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
         service = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
@@ -847,7 +847,7 @@ def test_refresh_file_marks_only_current_file_unreachable_when_watch_root_is_mis
 
 def test_remove_watch_converts_unreachable_files_to_deleted_and_unbinds_watch(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
         service = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
@@ -882,7 +882,7 @@ def test_remove_watch_converts_unreachable_files_to_deleted_and_unbinds_watch(tm
 
 def test_watch_scan_refreshes_known_active_paths_before_walk(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
         fts = FTSManager(db)
@@ -910,7 +910,7 @@ def test_watch_scan_refreshes_known_active_paths_before_walk(tmp_path: Path) -> 
 
 def test_watch_scan_marks_root_unreachable_without_refreshing_all_files(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
         fts = FTSManager(db)
@@ -941,7 +941,7 @@ def test_watch_scan_marks_root_unreachable_without_refreshing_all_files(tmp_path
 
 def test_device_monitor_queues_watch_scan_when_removable_watch_recovers(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
         fts = FTSManager(db)
@@ -990,7 +990,7 @@ def test_device_monitor_queues_watch_scan_when_removable_watch_recovers(tmp_path
 
 def test_scan_service_creates_and_processes_manual_file_scan(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
         parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
@@ -1021,7 +1021,7 @@ def test_scan_service_creates_and_processes_manual_file_scan(tmp_path: Path) -> 
 
 def test_scan_service_directory_scan_applies_excludes_and_counts_unsupported(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
         parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
@@ -1056,7 +1056,7 @@ def test_scan_service_directory_scan_applies_excludes_and_counts_unsupported(tmp
 
 def test_scan_service_reuses_pending_scan_for_same_kind_and_path(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
         parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
@@ -1076,7 +1076,7 @@ def test_scan_service_reuses_pending_scan_for_same_kind_and_path(tmp_path: Path)
 
 def test_watch_ids_are_non_negative_for_cli_arguments(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
         root = tmp_path / "watch-root"
@@ -1091,7 +1091,7 @@ def test_watch_ids_are_non_negative_for_cli_arguments(tmp_path: Path) -> None:
 
 def test_doclib_server_list_responses_include_pagination_metadata(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
         parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
@@ -1143,7 +1143,7 @@ def test_doclib_server_list_responses_include_pagination_metadata(tmp_path: Path
 
 def test_scan_service_cleanup_keeps_latest_terminal_scans_and_active_tasks(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
         parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
@@ -1179,7 +1179,7 @@ def test_scan_service_cleanup_keeps_latest_terminal_scans_and_active_tasks(tmp_p
 
 def test_watch_loop_queues_watch_scan_when_scan_service_is_available(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
         parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
@@ -1201,7 +1201,7 @@ def test_watch_loop_queues_watch_scan_when_scan_service_is_available(tmp_path: P
 
 def test_cleanup_deleted_files_does_not_cleanup_orphan_docs(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         cleanup_svc = CleanupService(db=db, data_dir=str(tmp_path / "data"))
         now = 1000
@@ -1238,7 +1238,7 @@ def test_cleanup_deleted_files_does_not_cleanup_orphan_docs(tmp_path: Path) -> N
 
 def test_cleanup_orphans_keeps_docs_referenced_by_deleted_or_unreachable_files(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         cleanup_svc = CleanupService(db=db, data_dir=str(tmp_path / "data"))
         now = 1000
@@ -1281,7 +1281,7 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
             return 2
 
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
         watch = await config_svc.add_watch(str(tmp_path / "watched"), removable=True)
@@ -1363,7 +1363,7 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
             parse_svc=_ParseQueue(),
             start_time=0,
             pid=123,
-            socket_path="/tmp/mineru.sock",
+            socket_path="/tmp/doclib.sock",
             data_dir=str(tmp_path / "data"),
         )
         status = await DoclibServer(state).get_server_status()
@@ -1393,7 +1393,7 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
 
 def test_forget_path_deletes_file_row_and_filename_fts_without_deleting_doc(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         cleanup_svc = CleanupService(db=db, data_dir=str(tmp_path / "data"))
         now = 1000
@@ -1444,7 +1444,7 @@ def test_forget_path_deletes_file_row_and_filename_fts_without_deleting_doc(tmp_
 
 def test_forget_directory_matches_historical_prefix_rows(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         cleanup_svc = CleanupService(db=db, data_dir=str(tmp_path / "data"))
         now = 1000
@@ -1480,7 +1480,7 @@ def test_forget_directory_matches_historical_prefix_rows(tmp_path: Path) -> None
 
 def test_forget_rejects_watch_root_and_warns_under_active_watch(tmp_path: Path) -> None:
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
         cleanup_svc = CleanupService(db=db, data_dir=str(tmp_path / "data"))
@@ -1522,7 +1522,7 @@ def test_ingest_records_doc_error_when_metadata_extraction_fails(tmp_path: Path,
             return []
 
     async def _run() -> None:
-        db = DatabaseManager(str(tmp_path / "mineru.db"))
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         service = ParseService(db=db, fts=FTSManager(db), config_svc=_NoRulesConfig(), data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
         source = tmp_path / "broken.pdf"

@@ -65,6 +65,7 @@
 | `ParseResult` backend 字段 | `ParseResult` 不再持有 `_backend` / `_version_name`；backend 仅允许作为 page / middle-json 内部来源信息存在。 |
 | 其他语言 SDK | 其他语言 SDK 暂无开发计划；如果未来开发，只覆盖 v1 Unified API，不覆盖本地 doclib UDS 能力。 |
 | `mineru server status` | `mineru server status` 使用 doclib `ServerStatusResponse`，不与 parse-server `/v1/health` 强行对齐；后续只需决定该 JSON schema 的稳定发布边界。 |
+| doclib schema 稳定边界 | 稳定的是 doclib public models，不是 SQLite 表结构；稳定性分为 `core stable`、`operational stable` 和 `diagnostic / internal`，详见 [ADR-0020](decisions/0020-doclib-schema-stability-boundary.md)。 |
 | `mineru-kit` 对外暴露 | `mineru-kit` 保留为专家工具入口；Agent 默认入口是 `mineru`，skill 不主动暴露 `mineru-kit`。 |
 | Office/HTML unknown bbox | 公共 schema 允许 unknown bbox；不要求 Office/HTML 在 P0 估算真实 bbox，validator 应区分 unknown 与非法 bbox。 |
 | `standard` 硬件基线 | `standard` 当前使用 pipeline 后端；Apple Silicon macOS 约使用 4GB 统一内存，Windows / Linux 需要 NVIDIA GPU 且至少 4GB 显存。详见 [解析 Tier](tiers.md#5-standard)。 |
@@ -75,7 +76,6 @@
 
 | ID | 问题 | 决策产物 | 影响范围 |
 |----|------|----------|----------|
-| OQ-B-003 | 哪些 SQLite 字段进入稳定 v1 schema，哪些仍视为内部或实验字段。 | schema 稳定性说明 | doclib server、SDK、Agent |
 | OQ-B-004 | CLI exit code、`error.code`、`retryable`、`user_action` 和 trace/request id 的稳定契约。 | 错误码补充规格 | CLI、API、SDK |
 
 ## 5. CLI 与 Agent 协议

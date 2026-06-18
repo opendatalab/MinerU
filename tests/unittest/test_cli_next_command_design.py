@@ -449,7 +449,7 @@ def test_config_set_uses_key_path_and_value_body(monkeypatch: Any) -> None:
 
 def test_server_start_failure_points_to_log_and_does_not_discard_child_stderr(monkeypatch: Any, tmp_path: Path) -> None:
     popen_calls: list[dict[str, Any]] = []
-    log_path = tmp_path / "mineru.log"
+    log_path = tmp_path / "doclib.log"
 
     class _Proc:
         pid = 12345
@@ -467,7 +467,7 @@ def test_server_start_failure_points_to_log_and_does_not_discard_child_stderr(mo
 
     monkeypatch.setattr(server, "_server_running", lambda: False)
     monkeypatch.setattr(server, "_wait_for_sock", lambda: False)
-    monkeypatch.setattr(server, "_socket_path", lambda: str(tmp_path / "mineru.sock"))
+    monkeypatch.setattr(server, "_socket_path", lambda: str(tmp_path / "doclib.sock"))
     monkeypatch.setattr(server, "_server_log_path", lambda: str(log_path))
     monkeypatch.setattr(server.subprocess, "Popen", _popen)
 
@@ -475,7 +475,7 @@ def test_server_start_failure_points_to_log_and_does_not_discard_child_stderr(mo
 
     assert result.exit_code == 1
     assert "See log:" in result.output
-    assert "mineru.log" in result.output
+    assert "doclib.log" in result.output
     assert "child failed\n" in log_path.read_text(encoding="utf-8")
     assert popen_calls[-1] == {"kill": True}
 
@@ -752,18 +752,18 @@ def test_cleanup_temp_json_error_output_is_machine_readable(monkeypatch: Any) ->
 
 def test_server_status_json_not_running_returns_state_json(monkeypatch: Any) -> None:
     monkeypatch.setattr(server, "_server_running", lambda: False)
-    monkeypatch.setattr(server, "_socket_path", lambda: "/tmp/mineru.sock")
+    monkeypatch.setattr(server, "_socket_path", lambda: "/tmp/doclib.sock")
     monkeypatch.setattr(server.config.doclib, "data_dir", "~/.mineru")
-    monkeypatch.setattr(server.config.doclib.sqlite, "path", "~/.mineru/mineru.db")
-    monkeypatch.setattr(server.config.doclib.log, "path", "~/.mineru/mineru.log")
+    monkeypatch.setattr(server.config.doclib.sqlite, "path", "~/.mineru/doclib.db")
+    monkeypatch.setattr(server.config.doclib.log, "path", "~/.mineru/doclib.log")
 
     result = runner.invoke(app, ["server", "status", "--json"])
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["running"] is False
-    assert payload["socket_path"] == "/tmp/mineru.sock"
-    assert payload["sqlite_path"] == os.path.expanduser("~/.mineru/mineru.db")
-    assert payload["log_path"] == os.path.expanduser("~/.mineru/mineru.log")
+    assert payload["socket_path"] == "/tmp/doclib.sock"
+    assert payload["sqlite_path"] == os.path.expanduser("~/.mineru/doclib.db")
+    assert payload["log_path"] == os.path.expanduser("~/.mineru/doclib.log")
     assert payload["http"] == {"enabled": False, "host": None, "port": None}
     assert "Server is not running." not in result.output

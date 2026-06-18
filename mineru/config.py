@@ -31,7 +31,7 @@ def _mineru_home() -> str:
 
 
 def _default_config_path() -> str:
-    return os.path.join(_mineru_home(), "mineru.yaml")
+    return os.path.join(_mineru_home(), "config.yaml")
 
 
 def _uds_available() -> bool:
@@ -48,15 +48,15 @@ def _default_uds_path() -> str:
         raise RuntimeError(f"System [{system}] is not supported.")
     if not _uds_available():
         raise RuntimeError("Unix domain socket is not available.")
-    return os.path.join(_mineru_home(), "mineru.sock")
+    return os.path.join(_mineru_home(), "doclib.sock")
 
 
 def _default_log_path() -> str:
-    return os.path.join(_mineru_home(), "mineru.log")
+    return os.path.join(_mineru_home(), "doclib.log")
 
 
 def _default_db_path() -> str:
-    return os.path.join(_mineru_home(), "mineru.db")
+    return os.path.join(_mineru_home(), "doclib.db")
 
 
 def _default_data_path() -> str:

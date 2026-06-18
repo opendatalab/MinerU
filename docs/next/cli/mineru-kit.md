@@ -8,7 +8,7 @@
 
 ## 1. 定位
 
-`mineru-kit` 是无状态解析工具和服务工具。它不维护 `mineru.db`，不做本地文档库搜索，不负责 Agent 渐进式阅读体验。
+`mineru-kit` 是无状态解析工具和服务工具。它不维护 `doclib.db`，不做本地文档库搜索，不负责 Agent 渐进式阅读体验。
 
 `mineru-kit` 适合：
 

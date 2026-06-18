@@ -44,7 +44,7 @@ mineru-kit models verify
 - `models-dir.pipeline`
 - `models-dir.vlm`
 
-第一阶段不迁移到新的 `mineru/config.py` / `mineru.yaml` 体系。
+第一阶段不迁移到新的 `mineru/config.py` / `config.yaml` 体系。
 
 ### 2. `mineru-kit models download`
 

@@ -10,7 +10,7 @@
 |------|--------|-----------|
 | 定位 | 本地文档解析和管理中心 | 纯文档解析工具 |
 | 受众 | Agent 系统 / 少量文档的非技术用户 | 大规模数据处理的开发人员 |
-| 数据库 | 维护本地 mineru.db，去重 + 可搜索 | 不涉及数据库 |
+| 数据库 | 维护本地 doclib.db，去重 + 可搜索 | 不涉及数据库 |
 | 输入 | 单文件（未来多文件/目录/URL） | 文件/目录 |
 | 输出默认 | STDOUT（渐进式，默认有限页） | 文件（-o 必填） |
 | 参数风格 | 精简，隐藏专家选项 | 完整，暴露所有引擎/并发/冲突策略参数 |
@@ -46,9 +46,10 @@ Found -> Check path -> calc SHA256 -> Check sha256 -> Plain Text                
 MinerU home：默认是 `$HOME/.mineru` ，可通过 `MINERU_HOME` 配置。
 
 [MINERU_HOME]
-  mineru.sock
-  mineru.db
-  mineru.log
+  config.yaml
+  doclib.sock
+  doclib.db
+  doclib.log
   data/
     parsed/
     temp/
@@ -58,7 +59,7 @@ MinerU home：默认是 `$HOME/.mineru` ，可通过 `MINERU_HOME` 配置。
 
 ## 概述
 
-`parse` 是 `mineru` 的文档解析子命令。解析结果自动入库（mineru.db），同时输出到 STDOUT 或指定文件。支持本地引擎和远端 API 两种执行模式。
+`parse` 是 `mineru` 的文档解析子命令。解析结果自动入库（doclib.db），同时输出到 STDOUT 或指定文件。支持本地引擎和远端 API 两种执行模式。
 
 设计原则：
 - **隐私优先**：不会在用户不知情的情况下将文件上传到远端，也不会静默降级解析质量
@@ -425,7 +426,7 @@ mineru server 是常驻后台进程，负责：
 - 单进程，asyncio 事件循环调度
 - CLI ↔ Server 通信：HTTP + JSON over Unix Domain Socket
 - 数据存储：SQLite（WAL 模式）+ FTS5 全文搜索
-- Socket 路径：默认是 `$MINERU_HOME/mineru.sock`，权限 `0600`
+- Socket 路径：默认是 `$MINERU_HOME/doclib.sock`，权限 `0600`
 
 ## 生命周期
 

@@ -35,15 +35,16 @@
 
 ```text
 ~/.mineru/
-  mineru.sock
-  mineru.db
-  mineru.log
+  config.yaml
+  doclib.sock
+  doclib.db
+  doclib.log
   data/
     parsed/
     temp/
 ```
 
-`mineru.db` 记录文件路径、文档 SHA256、解析任务、缓存状态、FTS 索引、watch 目录和配置。详细数据模型见 [系统架构](../architecture.md)。
+`doclib.db` 记录文件路径、文档 SHA256、解析任务、缓存状态、FTS 索引、watch 目录和配置。详细数据模型见 [系统架构](../architecture.md)。
 
 ## 4. 处理模型
 

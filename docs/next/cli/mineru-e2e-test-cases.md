@@ -61,7 +61,7 @@
 ~/mineru-e2e-test
 ```
 
-进入测试目录后，只需设置 `MINERU_HOME`，即可让默认配置文件、DB、日志、UDS socket 和数据目录都落在测试目录中:
+进入测试目录后，只需设置 `MINERU_HOME`，即可让默认配置文件（`$MINERU_HOME/config.yaml`）、DB、日志、UDS socket 和数据目录都落在测试目录中:
 
 ```bash
 cd ~/mineru-e2e-test

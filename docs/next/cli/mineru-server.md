@@ -33,7 +33,7 @@
 6. 启动 watch、ingest、parse、health check、device monitor 和 compaction。
 7. 通过 UDS 提供本地 HTTP + JSON 协议。
 
-默认情况下，UDS socket 位于 `$MINERU_HOME/mineru.sock`。如需覆盖，可设置 `doclib.uds.path` 或环境变量 `MINERU_DOCLIB_UDS_PATH`。
+默认情况下，UDS socket 位于 `$MINERU_HOME/doclib.sock`。如需覆盖，可设置 `doclib.uds.path` 或环境变量 `MINERU_DOCLIB_UDS_PATH`。
 
 关闭时：
 
