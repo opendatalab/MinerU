@@ -60,6 +60,8 @@ dependencies = [
     "fastapi",
     "python-multipart",
     "uvicorn",
+    "albumentations",
+    "hf_xet",
 ]
 
 [project.optional-dependencies]
