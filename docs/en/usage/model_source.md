@@ -2,7 +2,7 @@
 
 MinerU uses `HuggingFace` and `ModelScope` as model repositories. Users can switch model sources or use local models as needed.
 
-- `auto` is the default model source policy. It first requests `https://huggingface.co/models` to check whether Hugging Face is reachable. If reachable, MinerU uses `HuggingFace`; otherwise, it falls back to `ModelScope`.
+- `auto` is the default model source policy. It first checks whether Hugging Face is accessible. If accessible, MinerU uses `HuggingFace`, otherwise it automatically falls back to `ModelScope`.
 - `HuggingFace` provides excellent loading speed and high stability globally.
 - `ModelScope` is the best choice for users in mainland China, providing seamlessly compatible `hf` SDK modules, suitable for users who cannot access HuggingFace.
 
