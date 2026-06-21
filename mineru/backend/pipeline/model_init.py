@@ -17,6 +17,7 @@ from ...model.table.rec.unet_table.main import UnetTableModel
 from ...utils.config_reader import get_device
 from ...utils.enum_class import ModelPath
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
+from ...utils.ocr_language import normalize_ocr_model_lang
 
 PIPELINE_MODEL_INIT_LOCK = threading.RLock()
 # 这些锁保护 pipeline 与 hybrid 共享的 atom model/native 模型推理调用，避免多线程同时进入同一个模型对象。
@@ -74,7 +75,7 @@ def table_orientation_cls_model_init():
         atom_model_name=AtomicModel.OCR,
         det_db_box_thresh=0.5,
         det_db_unclip_ratio=1.6,
-        lang="ch_lite",
+        lang="ch",
         enable_merge_det_boxes=False
     )
     cls_model = MineruTableOrientationClsModel(ocr_engine)
@@ -128,34 +129,20 @@ def pp_doclayout_v2_model_init(weight, device='cpu'):
     model = PPDocLayoutV2LayoutModel(weight, device)
     return model
 
+
 def ocr_model_init(det_db_box_thresh=0.5,
                    lang=None,
                    det_db_unclip_ratio=1.5,
                    enable_merge_det_boxes=True
                    ):
+    ocr_kwargs = {
+        "lang": normalize_ocr_model_lang(lang),
+        "det_db_box_thresh": det_db_box_thresh,
+        "det_db_unclip_ratio": det_db_unclip_ratio,
+        "enable_merge_det_boxes": enable_merge_det_boxes,
+    }
 
-    if lang in [None, "ch"]:
-        use_dilation = True
-        det_db_unclip_ratio = 1.8
-    else:
-        use_dilation = False
-
-    if lang is not None and lang != '':
-        model = PytorchPaddleOCR(
-            det_db_box_thresh=det_db_box_thresh,
-            lang=lang,
-            use_dilation=use_dilation,
-            det_db_unclip_ratio=det_db_unclip_ratio,
-            enable_merge_det_boxes=enable_merge_det_boxes,
-        )
-    else:
-        model = PytorchPaddleOCR(
-            det_db_box_thresh=det_db_box_thresh,
-            use_dilation=use_dilation,
-            det_db_unclip_ratio=det_db_unclip_ratio,
-            enable_merge_det_boxes=enable_merge_det_boxes,
-        )
-    return model
+    return PytorchPaddleOCR(**ocr_kwargs)
 
 
 class AtomModelSingleton:
@@ -172,17 +159,17 @@ class AtomModelSingleton:
     def get_atom_model(self, atom_model_name: str, **kwargs):
 
         lang = kwargs.get('lang', None)
-
+        ocr_singleton_lang = normalize_ocr_model_lang(lang)
         if atom_model_name in [AtomicModel.WiredTable, AtomicModel.WirelessTable]:
             key = (
                 atom_model_name,
-                lang
+                ocr_singleton_lang
             )
         elif atom_model_name in [AtomicModel.OCR]:
             key = (
                 atom_model_name,
                 kwargs.get('det_db_box_thresh', 0.5),
-                lang,
+                ocr_singleton_lang,
                 kwargs.get('det_db_unclip_ratio', 1.5),
                 kwargs.get('enable_merge_det_boxes', True)
             )

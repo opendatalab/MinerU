@@ -144,7 +144,32 @@ class UnimernetModel(VisionEncoderDecoderModel):
         ).loss
         return {"loss": loss}
 
-    def generate(self, samples, do_sample: bool = False, temperature: float = 0.2, top_p: float = 0.95, batch_size=64):
+    def _decode_generate_outputs(self, outputs, return_full_result: bool = True):
+        """统一解码生成结果，轻量路径只保留调用方实际消费的公式文本。"""
+        token_ids = outputs[:, 1:].cpu()
+        result_tokens = token_ids.numpy() if return_full_result else token_ids
+        pred_str = self.tokenizer.token2str(result_tokens)
+        fixed_str = [latex_rm_whitespace(s) for s in pred_str]
+
+        if not return_full_result:
+            return {"fixed_str": fixed_str}
+
+        return {
+            "pred_ids": result_tokens,
+            "pred_tokens": self.tokenizer.detokenize(result_tokens),
+            "pred_str": pred_str,
+            "fixed_str": fixed_str,
+        }
+
+    def generate(
+        self,
+        samples,
+        do_sample: bool = False,
+        temperature: float = 0.2,
+        top_p: float = 0.95,
+        batch_size=64,
+        return_full_result: bool = True,
+    ):
         pixel_values = samples["image"]
         num_channels = pixel_values.shape[1]
         if num_channels == 1:
@@ -169,9 +194,7 @@ class UnimernetModel(VisionEncoderDecoderModel):
             **kwargs,
         )
 
-        outputs = outputs[:, 1:].cpu().numpy()
-        pred_tokens = self.tokenizer.detokenize(outputs)
-        pred_str = self.tokenizer.token2str(outputs)
-        fixed_str = [latex_rm_whitespace(s) for s in pred_str]
-        return {"pred_ids": outputs, "pred_tokens": pred_tokens, "pred_str": pred_str, "fixed_str": fixed_str}
-
+        return self._decode_generate_outputs(
+            outputs,
+            return_full_result=return_full_result,
+        )
