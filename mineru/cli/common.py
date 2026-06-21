@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Sequence
 
+import pypdfium2 as pdfium
 from loguru import logger
 
 from mineru.cli.backend_options import (
@@ -29,7 +30,10 @@ from mineru.backend.office.pptx_analyze import office_pptx_analyze
 from mineru.backend.office.xlsx_analyze import office_xlsx_analyze
 from mineru.backend.office.docx_analyze import office_docx_analyze
 from mineru.utils.pdfium_guard import (
+    close_pdfium_document,
+    get_pdfium_document_page_count,
     get_loadable_pdfium_page_indices,
+    open_pdfium_document,
     rewrite_pdf_bytes_with_pdfium,
 )
 
@@ -84,6 +88,36 @@ def _load_hybrid_analyze_entrypoint(entrypoint_name: str, backend: str):
             build_hybrid_dependency_error_message(backend)
         ) from exc
     return getattr(hybrid_analyze, entrypoint_name)
+
+
+def _file_progress_callback(progress_callback, file_index: int):
+    if progress_callback is None:
+        return None
+
+    def _callback(**payload):
+        progress_callback(file_index=file_index, **payload)
+
+    return _callback
+
+
+def _prime_task_page_totals(pdf_bytes_list, progress_callback):
+    if progress_callback is None:
+        return
+
+    for file_index, pdf_bytes in enumerate(pdf_bytes_list):
+        pdf_doc = None
+        try:
+            pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
+            page_total = get_pdfium_document_page_count(pdf_doc)
+            progress_callback(
+                file_index=file_index,
+                page_total=page_total,
+                page_current=0,
+            )
+        except Exception as exc:
+            logger.warning(f"Unable to read PDF page count for progress: {exc}")
+        finally:
+            close_pdfium_document(pdf_doc)
 
 
 def utf8_byte_length(value: str) -> int:
@@ -365,6 +399,7 @@ def _process_pipeline(
         f_dump_content_list,
         f_make_md_mode,
         client_side_output_generation=False,
+        progress_callback=None,
 ):
     """处理pipeline后端逻辑"""
     from mineru.backend.pipeline.pipeline_analyze import doc_analyze_streaming as pipeline_doc_analyze_streaming
@@ -416,6 +451,7 @@ def _process_pipeline(
             formula_enable=p_formula_enable,
             table_enable=p_table_enable,
             client_side_output_generation=client_side_output_generation,
+            progress_callback=progress_callback,
         )
 
         for future in output_futures:
@@ -444,6 +480,7 @@ async def _async_process_vlm(
     f_draw_span_bbox = False
     if not backend.endswith("client"):
         server_url = None
+    progress_callback = kwargs.pop("progress_callback", None)
 
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
@@ -451,7 +488,12 @@ async def _async_process_vlm(
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
         middle_json, infer_result = await aio_vlm_doc_analyze(
-            pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
+            pdf_bytes,
+            image_writer=image_writer,
+            backend=backend,
+            server_url=server_url,
+            progress_callback=_file_progress_callback(progress_callback, idx),
+            **kwargs,
         )
 
         pdf_info = middle_json["pdf_info"]
@@ -485,6 +527,7 @@ def _process_vlm(
     f_draw_span_bbox = False
     if not backend.endswith("client"):
         server_url = None
+    progress_callback = kwargs.pop("progress_callback", None)
 
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
@@ -492,7 +535,12 @@ def _process_vlm(
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
         middle_json, infer_result = vlm_doc_analyze(
-            pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
+            pdf_bytes,
+            image_writer=image_writer,
+            backend=backend,
+            server_url=server_url,
+            progress_callback=_file_progress_callback(progress_callback, idx),
+            **kwargs,
         )
 
         pdf_info = middle_json["pdf_info"]
@@ -531,6 +579,7 @@ def _process_hybrid(
     """同步处理hybrid后端逻辑"""
     if not backend.endswith("client"):
         server_url = None
+    progress_callback = kwargs.pop("progress_callback", None)
 
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
@@ -545,6 +594,7 @@ def _process_hybrid(
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
             effort=validate_effort(effort),
+            progress_callback=_file_progress_callback(progress_callback, idx),
             **kwargs,
         )
 
@@ -586,6 +636,7 @@ async def _async_process_hybrid(
     """异步处理hybrid后端逻辑"""
     if not backend.endswith("client"):
         server_url = None
+    progress_callback = kwargs.pop("progress_callback", None)
 
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
@@ -600,6 +651,7 @@ async def _async_process_hybrid(
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
             effort=validate_effort(effort),
+            progress_callback=_file_progress_callback(progress_callback, idx),
             **kwargs,
         )
 
@@ -712,6 +764,7 @@ def do_parse(
 
     # 预处理PDF字节数据
     pdf_bytes_list = _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id)
+    progress_callback = kwargs.get("progress_callback")
 
     if backend == "pipeline":
         _process_pipeline(
@@ -720,8 +773,10 @@ def do_parse(
             f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
             f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
             client_side_output_generation=client_side_output_generation,
+            progress_callback=progress_callback,
         )
     else:
+        _prime_task_page_totals(pdf_bytes_list, progress_callback)
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
@@ -806,6 +861,7 @@ async def aio_do_parse(
 
     # 预处理PDF字节数据
     pdf_bytes_list = _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id)
+    progress_callback = kwargs.get("progress_callback")
 
     if backend == "pipeline":
         # pipeline模式暂不支持异步，使用同步处理方式
@@ -815,8 +871,10 @@ async def aio_do_parse(
             f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
             f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
             client_side_output_generation=client_side_output_generation,
+            progress_callback=progress_callback,
         )
     else:
+        _prime_task_page_totals(pdf_bytes_list, progress_callback)
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
