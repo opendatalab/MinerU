@@ -224,3 +224,15 @@ def get_local_models_dir():
     if models_dir is None:
         logger.warning(f"'models-dir' not found in {CONFIG_FILE_NAME}, use None as default")
     return models_dir
+
+
+def get_api_url() -> str | None:
+    """Read the API URL from either the MINERU_API_URL environment variable or the mineru.json config file."""
+    api_url_env = os.getenv('MINERU_API_URL')
+    if api_url_env:
+        return api_url_env
+    config = read_config()
+    if config is not None:
+        return config.get('api_url') or config.get('api-url')
+    return None
+

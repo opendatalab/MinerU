@@ -1532,6 +1532,7 @@ def update_doc_show(file_path):
     '--api-url',
     'api_url',
     type=str,
+    envvar="MINERU_API_URL",
     help="MinerU FastAPI base URL. If omitted, gradio starts a reusable local mineru-api service.",
     default=None,
 )
@@ -1564,6 +1565,9 @@ def main(ctx,
         server_name, server_port, api_url, enable_vlm_preload,
         client_side_output_generation, latex_delimiters_type, **kwargs
 ):
+    if api_url is None:
+        from mineru.utils.config_reader import get_api_url
+        api_url = get_api_url()
 
     # 创建 i18n 实例，支持中英文
     i18n = gr.I18n(

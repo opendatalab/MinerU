@@ -28,6 +28,7 @@ from mineru.cli.backend_options import (
 )
 from mineru.utils.config_reader import (
     get_max_concurrent_requests as read_max_concurrent_requests,
+    get_api_url,
 )
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
 from mineru.utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
@@ -924,6 +925,9 @@ async def run_orchestrated_cli(
     effort: str = DEFAULT_HYBRID_EFFORT,
     extra_cli_args: tuple[str, ...] = (),
 ) -> None:
+    if api_url is None:
+        api_url = get_api_url()
+
     if start_page_id < 0:
         raise click.ClickException("--start must be greater than or equal to 0")
     if end_page_id is not None and end_page_id < 0:
@@ -1058,6 +1062,7 @@ async def run_orchestrated_cli(
     "api_url",
     type=str,
     default=None,
+    envvar="MINERU_API_URL",
     help="MinerU FastAPI base URL. If omitted, mineru starts a temporary local mineru-api service.",
 )
 @click.option(
