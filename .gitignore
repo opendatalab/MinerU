@@ -55,5 +55,9 @@ debug_utils/
 # sphinx docs
 _build/
 
+# local runtime config (copy of mineru.template.json with real credentials);
+# must never be committed — lives in the user's home dir, not the repo
+/mineru.json
+
 
 output/
