@@ -104,6 +104,25 @@ def env_flag_enabled(name: str, default: bool = False) -> bool:
     return value.lower() in ("1", "true", "yes", "on")
 
 
+def get_s3_presign_expires(default: int = 604800) -> int:
+    """Presigned-URL lifetime (seconds) for S3 image uploads.
+
+    Read from MINERU_API_S3_PRESIGN_EXPIRES; defaults to 7 days, the maximum
+    for long-term access keys. Only relevant when S3 image upload is enabled.
+    """
+    value = os.getenv("MINERU_API_S3_PRESIGN_EXPIRES")
+    if value is None:
+        return default
+    try:
+        expires = int(value)
+    except ValueError:
+        logger.warning(
+            f"Invalid MINERU_API_S3_PRESIGN_EXPIRES value: {value}, using default {default}"
+        )
+        return default
+    return max(1, expires)
+
+
 def is_main_multiprocessing_process() -> bool:
     try:
         return multiprocessing.current_process().name == "MainProcess"
@@ -167,8 +186,7 @@ class AsyncParseTask:
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     error: Optional[str] = None
-    _s3_base_url: Optional[str] = field(default=None, repr=False)
-    _s3_bucket: Optional[str] = field(default=None, repr=False)
+    _s3_image_urls: Optional[dict[str, dict[str, str]]] = field(default=None, repr=False)
 
     def to_status_payload(
         self,
@@ -382,44 +400,14 @@ def encode_image(image_path: str) -> str:
 
 
 def _get_s3_upload_config() -> Optional[dict[str, str]]:
-    """Check if S3/MinIO upload is configured and return the config dict.
+    """Read S3/MinIO upload config from mineru.json.
 
-    Searches: ~/mineru.json (via read_config), $MINERU_TOOLS_CONFIG_JSON,
-    then walks up from cwd and common project paths.
+    Reuses the standard config source only — ``MINERU_TOOLS_CONFIG_JSON`` (an
+    explicit absolute path) or ``~/mineru.json`` via ``read_config()``. This does
+    NOT walk the working directory or probe mounted paths: in a long-running
+    API service those could pick up an unrelated config containing credentials.
     """
     config = read_config()
-    if config is None:
-        # Fallback: search cwd and parent dirs for mineru.json
-        import json as _json
-        candidate_dirs = [os.getcwd(), os.path.dirname(os.path.abspath(__file__))]
-        # Also check a few common deployment paths
-        candidate_dirs.extend([
-            '/data/MinerU',
-            '/opt/MinerU',
-            '/app',
-        ])
-        tried: set[str] = set()
-        for start_dir in candidate_dirs:
-            d = os.path.abspath(start_dir)
-            while True:
-                if d in tried:
-                    break
-                tried.add(d)
-                config_path = os.path.join(d, 'mineru.json')
-                if os.path.exists(config_path):
-                    try:
-                        with open(config_path, 'r', encoding='utf-8') as f:
-                            config = _json.load(f)
-                        logger.info(f"Loaded config from fallback path: {config_path}")
-                        break
-                    except Exception:
-                        pass
-                parent = os.path.dirname(d)
-                if parent == d:
-                    break
-                d = parent
-            if config is not None:
-                break
     if config is None:
         return None
     bucket_info = config.get('bucket_info')
@@ -444,13 +432,20 @@ def _upload_images_and_replace_md_urls(
     backend: str,
     parse_method: str,
     s3_config: dict[str, str],
-) -> tuple[str, str]:
+    presign_expires: int = 604800,
+) -> dict[str, dict[str, str]]:
     """Upload images to S3/MinIO and replace local paths with URLs in markdown.
 
-    Returns (base_url, full_bucket_name) so callers can construct URLs.
-    """
-    import json as _json
+    Returns ``{pdf_name: {image_filename: url}}`` for the uploaded images so the
+    caller can surface them in the API response. URLs are presigned GETs bound to
+    the configured endpoint, so the bucket stays private:
 
+    * No bucket is created — the bucket must already exist; upload is skipped
+      for the task if it is not accessible.
+    * No bucket policy is modified — the bucket is never made public.
+    * No credentials appear in the bucket name; the presigned URL carries only
+      the access key id (not the secret) as a signed query parameter.
+    """
     import boto3
     from botocore.config import Config as BotocoreConfig
 
@@ -458,7 +453,7 @@ def _upload_images_and_replace_md_urls(
     if not endpoint_url.startswith(('http://', 'https://')):
         endpoint_url = f'http://{endpoint_url}'
 
-    full_bucket_name = f"{s3_config['access_key']}-{s3_config['bucket_name']}"
+    bucket_name = s3_config['bucket_name']
 
     s3_client = boto3.client(
         service_name='s3',
@@ -471,35 +466,17 @@ def _upload_images_and_replace_md_urls(
         ),
     )
 
-    # Ensure bucket exists and is publicly readable
+    # Require the bucket to already exist; never create buckets or mutate
+    # bucket policy from the parse path.
     try:
-        s3_client.head_bucket(Bucket=full_bucket_name)
-    except Exception:
-        try:
-            s3_client.create_bucket(Bucket=full_bucket_name)
-            logger.info(f"Created S3 bucket: {full_bucket_name}")
-        except Exception as e:
-            logger.error(f"Failed to create S3 bucket {full_bucket_name}: {e}")
-            raise
-
-    # Set public-read bucket policy so browser can access objects directly
-    try:
-        s3_client.put_bucket_policy(
-            Bucket=full_bucket_name,
-            Policy=_json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"AWS": ["*"]},
-                    "Action": ["s3:GetObject"],
-                    "Resource": [f"arn:aws:s3:::{full_bucket_name}/*"],
-                }],
-            }),
-        )
+        s3_client.head_bucket(Bucket=bucket_name)
     except Exception as e:
-        logger.warning(f"Failed to set bucket policy: {e}")
+        logger.warning(
+            f"S3 bucket '{bucket_name}' is not accessible, skipping image upload: {e}"
+        )
+        return {}
 
-    base_url = f"{endpoint_url}/{full_bucket_name}"
+    result_map: dict[str, dict[str, str]] = {}
 
     for pdf_name in pdf_file_names:
         try:
@@ -525,15 +502,30 @@ def _upload_images_and_replace_md_urls(
 
             try:
                 s3_client.put_object(
-                    Bucket=full_bucket_name,
+                    Bucket=bucket_name,
                     Key=s3_key,
                     Body=img_path.read_bytes(),
                     ContentType=content_type,
                 )
-                url_map[img_filename] = f"{base_url}/{s3_key}"
-                logger.debug(f"Uploaded image to S3: {s3_key}")
             except Exception as e:
                 logger.error(f"Failed to upload image {img_filename}: {e}")
+                continue
+
+            try:
+                url = s3_client.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": bucket_name, "Key": s3_key},
+                    ExpiresIn=presign_expires,
+                    HttpMethod="GET",
+                )
+            except Exception as e:
+                logger.error(f"Failed to presign image {img_filename}: {e}")
+                continue
+
+            url_map[img_filename] = url
+            logger.debug(f"Uploaded image to S3: {s3_key}")
+
+        result_map[pdf_name] = url_map
 
         # Replace local image paths with S3 URLs in markdown
         md_path = os.path.join(parse_dir, f"{pdf_name}.md")
@@ -549,7 +541,7 @@ def _upload_images_and_replace_md_urls(
             with open(md_path, "w", encoding="utf-8") as f:
                 f.write(md_content)
 
-    return base_url, full_bucket_name
+    return result_map
 
 
 def get_images_dir_image_paths(images_dir: str) -> list[str]:
@@ -615,7 +607,7 @@ def build_result_dict(
     return_model_output: bool,
     return_content_list: bool,
     return_images: bool,
-    s3_base_url: str | None = None,
+    s3_image_urls: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, dict[str, Any]]:
     result_dict: dict[str, dict[str, Any]] = {}
     for pdf_name in pdf_file_names:
@@ -644,20 +636,14 @@ def build_result_dict(
         if return_images:
             images_dir = os.path.join(parse_dir, "images")
             image_paths = get_images_dir_image_paths(images_dir)
-            if s3_base_url:
-                data["images"] = {
-                    os.path.basename(image_path): (
-                        f"{s3_base_url}/{pdf_name}/images/{os.path.basename(image_path)}"
-                    )
-                    for image_path in image_paths
-                }
-            else:
-                data["images"] = {
-                    os.path.basename(
-                        image_path
-                    ): f"data:{get_image_mime_type(image_path)};base64,{encode_image(image_path)}"
-                    for image_path in image_paths
-                }
+            pdf_image_urls = (s3_image_urls or {}).get(pdf_name) or {}
+            data["images"] = {
+                os.path.basename(image_path): (
+                    pdf_image_urls.get(os.path.basename(image_path))
+                    or f"data:{get_image_mime_type(image_path)};base64,{encode_image(image_path)}"
+                )
+                for image_path in image_paths
+            }
     return result_dict
 
 
@@ -810,7 +796,7 @@ async def build_result_response(
     response_format_zip: bool,
     return_original_file: bool,
     zip_filename: str = "results.zip",
-    s3_base_url: str | None = None,
+    s3_image_urls: dict[str, dict[str, str]] | None = None,
 ) -> Response:
     if response_format_zip:
         zip_task = asyncio.create_task(
@@ -852,7 +838,7 @@ async def build_result_response(
         return_model_output=return_model_output,
         return_content_list=return_content_list,
         return_images=return_images,
-        s3_base_url=s3_base_url,
+        s3_image_urls=s3_image_urls,
     )
     return JSONResponse(
         status_code=status_code,
@@ -896,7 +882,7 @@ async def build_sync_file_parse_response(
             response_format_zip=task.response_format_zip,
             return_original_file=task.return_original_file,
             zip_filename=f"{task.task_id}.zip",
-            s3_base_url=task._s3_base_url,
+            s3_image_urls=task._s3_image_urls,
         )
         response.headers[FILE_PARSE_TASK_ID_HEADER] = task.task_id
         response.headers[FILE_PARSE_TASK_STATUS_HEADER] = task.status
@@ -915,7 +901,7 @@ async def build_sync_file_parse_response(
         return_model_output=task.return_model_output,
         return_content_list=task.return_content_list,
         return_images=task.return_images,
-        s3_base_url=task._s3_base_url,
+        s3_image_urls=task._s3_image_urls,
     )
     return JSONResponse(
         status_code=200,
@@ -1354,20 +1340,25 @@ class AsyncTaskManager:
             config=config,
         )
 
-        # Upload images to S3/MinIO if configured
-        s3_config = _get_s3_upload_config()
-        if s3_config:
-            try:
-                task._s3_base_url, task._s3_bucket = await asyncio.to_thread(
-                    _upload_images_and_replace_md_urls,
-                    output_dir=task.output_dir,
-                    pdf_file_names=task.file_names,
-                    backend=task.backend,
-                    parse_method=task.parse_method,
-                    s3_config=s3_config,
-                )
-            except Exception as exc:
-                logger.error(f"Failed to upload images to S3/MinIO: {exc}")
+        # Upload images to S3/MinIO only when the operator explicitly opts in
+        # (MINERU_API_S3_IMAGE_UPLOAD=1) and bucket_info is configured. Off by
+        # default — uploading parsed images can expose private document content,
+        # so this must never happen silently.
+        if env_flag_enabled("MINERU_API_S3_IMAGE_UPLOAD"):
+            s3_config = _get_s3_upload_config()
+            if s3_config:
+                try:
+                    task._s3_image_urls = await asyncio.to_thread(
+                        _upload_images_and_replace_md_urls,
+                        output_dir=task.output_dir,
+                        pdf_file_names=task.file_names,
+                        backend=task.backend,
+                        parse_method=task.parse_method,
+                        s3_config=s3_config,
+                        presign_expires=get_s3_presign_expires(),
+                    )
+                except Exception as exc:
+                    logger.error(f"Failed to upload images to S3/MinIO: {exc}")
 
         task.status = TASK_COMPLETED
         task.completed_at = utc_now_iso()
@@ -1538,7 +1529,7 @@ async def get_async_task_result(
         response_format_zip=task.response_format_zip,
         return_original_file=task.return_original_file,
         zip_filename=f"{task.task_id}.zip",
-        s3_base_url=task._s3_base_url,
+        s3_image_urls=task._s3_image_urls,
     )
 
 
