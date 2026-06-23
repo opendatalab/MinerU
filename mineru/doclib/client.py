@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Final, TypeVar
 
 import httpx
 from pydantic import BaseModel
 from pydantic_core import to_jsonable_python
 
-from ..config import config
 from ..errors import MineruError, ServerNotRunningError
 from ..types import Tier
 from .base import DoclibInterface
+from .endpoint import (
+    DOCLIB_UDS_BASE_URL,
+    EndpointTransport,
+    config_transports,
+    default_endpoint_path,
+    read_endpoint_file,
+    uds_available,
+)
 from .types import (
     CleanupDeletedRequest,
     CleanupDeletedResponse,
@@ -61,14 +69,22 @@ from .types import (
     SearchResponse,
     ServerStatusResponse,
     ShutdownResponse,
+    TelemetryAction,
+    TelemetryActionResponse,
+    TelemetryObservationsRequest,
+    TelemetryObservationsResponse,
+    TelemetryPreviewResponse,
+    TelemetryStatusResponse,
     WatchInfo,
     WatchListResponse,
     WatchRequest,
 )
+from .telemetry import get_telemetry_context, infer_default_client_context
+from .telemetry.context import TelemetryContext
 from .utils.route_utils import get_route_info, route
 
 T = TypeVar("T", bound=BaseModel)
-_CONFIG_UDS_PATH: Final = object()
+_DISCOVER_ENDPOINT: Final = object()
 
 
 class DoclibClient(DoclibInterface):
@@ -77,19 +93,27 @@ class DoclibClient(DoclibInterface):
     def __init__(
         self,
         *,
-        base_url: str = "http://mineru",
-        socket_path: str | None | object = _CONFIG_UDS_PATH,
+        endpoint_path: str | Path | None = None,
+        socket_path: str | Path | None = None,
+        base_url: str | None = None,
         timeout: int = 60,
         api_prefix: str = "/api/v1",
     ) -> None:
-        if socket_path is _CONFIG_UDS_PATH:
-            socket_path = config.doclib.uds.path
-        transport = httpx.HTTPTransport(uds=socket_path) if isinstance(socket_path, str) and socket_path else None
-        self._client = httpx.Client(transport=transport, base_url=base_url, timeout=timeout)
+        if socket_path is not None and base_url is not None:
+            raise ValueError("socket_path and base_url cannot both be provided.")
+        self._clients = _build_clients(
+            endpoint_path=endpoint_path,
+            socket_path=socket_path,
+            base_url=base_url,
+            timeout=timeout,
+        )
+        self._active_client: httpx.Client | None = self._clients[0] if self._clients else None
         self._api_prefix = api_prefix.rstrip("/")
+        self._default_telemetry_context = infer_default_client_context(source="sdk")
 
     def close(self) -> None:
-        self._client.close()
+        for client in self._clients:
+            client.close()
 
     @route("GET", "/server/status", tags=("server",))
     def get_server_status(self) -> ServerStatusResponse:
@@ -343,6 +367,22 @@ class DoclibClient(DoclibInterface):
     def cleanup_temp_files(self, request: CleanupTempRequest) -> CleanupTempResponse:
         return self._request_model(CleanupTempResponse, body=request)
 
+    @route("GET", "/telemetry/status", tags=("telemetry",))
+    def get_telemetry_status(self) -> TelemetryStatusResponse:
+        return self._request_model(TelemetryStatusResponse)
+
+    @route("GET", "/telemetry/preview", tags=("telemetry",))
+    def get_telemetry_preview(self) -> TelemetryPreviewResponse:
+        return self._request_model(TelemetryPreviewResponse)
+
+    @route("POST", "/telemetry/actions/{action}", tags=("telemetry",))
+    def telemetry_action(self, action: TelemetryAction) -> TelemetryActionResponse:
+        return self._request_model(TelemetryActionResponse, path_params={"action": action})
+
+    @route("POST", "/observations", tags=("telemetry",))
+    def record_observations(self, request: TelemetryObservationsRequest) -> TelemetryObservationsResponse:
+        return self._request_model(TelemetryObservationsResponse, body=request)
+
     def _request_model(
         self,
         response_model: type[T],
@@ -356,22 +396,58 @@ class DoclibClient(DoclibInterface):
         query_params = _compact_params(params or {})
         json_data = to_jsonable_python(body) if body is not None else None
 
-        try:
-            if route_info.method == "GET":
-                resp = self._client.get(path, params=query_params)
-            elif route_info.method == "POST":
-                resp = self._client.post(path, params=query_params, json=json_data or {})
-            elif route_info.method == "PUT":
-                resp = self._client.put(path, params=query_params, json=json_data or {})
-            elif route_info.method == "DELETE":
-                resp = self._client.delete(path, params=query_params)
-            else:
-                raise MineruError("internal_error", f"Unsupported client method: {route_info.method}")
-        except httpx.ConnectError:
-            raise ServerNotRunningError() from None
+        resp = self._send_request(
+            route_info.method,
+            path,
+            params=query_params,
+            json_data=json_data,
+        )
 
         data = _decode_response(resp)
         return response_model.model_validate(data)
+
+    def _send_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any],
+        json_data: Any,
+    ) -> httpx.Response:
+        if not self._clients:
+            raise ServerNotRunningError()
+        clients = self._ordered_clients()
+        for client in clients:
+            try:
+                if method == "GET":
+                    resp = client.get(path, params=params, headers=self._telemetry_headers())
+                elif method == "POST":
+                    resp = client.post(path, params=params, json=json_data or {}, headers=self._telemetry_headers())
+                elif method == "PUT":
+                    resp = client.put(path, params=params, json=json_data or {}, headers=self._telemetry_headers())
+                elif method == "DELETE":
+                    resp = client.delete(path, params=params, headers=self._telemetry_headers())
+                else:
+                    raise MineruError("internal_error", f"Unsupported client method: {method}")
+            except httpx.ConnectError:
+                continue
+            self._active_client = client
+            return resp
+        raise ServerNotRunningError() from None
+
+    def _ordered_clients(self) -> list[httpx.Client]:
+        if self._active_client is None:
+            return list(self._clients)
+        return [self._active_client, *[client for client in self._clients if client is not self._active_client]]
+
+    def _telemetry_headers(self) -> dict[str, str]:
+        ctx = get_telemetry_context()
+        if ctx == TelemetryContext():
+            ctx = self._default_telemetry_context
+        return {
+            "X-MinerU-Telemetry-Source": ctx.source,
+            "X-MinerU-Telemetry-Caller": ctx.caller,
+        }
 
     def _calling_route_method(self) -> Callable[..., Any]:
         import inspect
@@ -391,6 +467,48 @@ def _format_path(path: str, path_params: dict[str, Any]) -> str:
 
 def _compact_params(params: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in params.items() if value is not None}
+
+
+def _build_clients(
+    *,
+    endpoint_path: str | Path | None,
+    socket_path: str | Path | None,
+    base_url: str | None,
+    timeout: int,
+) -> list[httpx.Client]:
+    if socket_path is not None:
+        client = _client_for_transport(EndpointTransport(type="uds", path=str(socket_path)), timeout=timeout)
+        return [client] if client is not None else []
+    if base_url is not None:
+        client = _client_for_transport(EndpointTransport(type="tcp", base_url=base_url), timeout=timeout)
+        return [client] if client is not None else []
+
+    discovery_path = str(endpoint_path) if endpoint_path is not None else default_endpoint_path()
+    transports = read_endpoint_file(discovery_path)
+    if not transports:
+        transports = config_transports()
+
+    clients: list[httpx.Client] = []
+    for transport in sorted(transports, key=lambda item: 0 if item.type == "uds" else 1):
+        client = _client_for_transport(transport, timeout=timeout)
+        if client is not None:
+            clients.append(client)
+    return clients
+
+
+def _client_for_transport(transport: EndpointTransport, *, timeout: int) -> httpx.Client | None:
+    if transport.type == "uds":
+        if not transport.path or not uds_available():
+            return None
+        return httpx.Client(
+            transport=httpx.HTTPTransport(uds=transport.path),
+            base_url=DOCLIB_UDS_BASE_URL,
+            timeout=timeout,
+            trust_env=False,
+        )
+    if not transport.base_url:
+        return None
+    return httpx.Client(base_url=transport.base_url, timeout=timeout, trust_env=False)
 
 
 def _decode_response(resp: httpx.Response) -> dict[str, Any]:

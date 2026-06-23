@@ -12,6 +12,8 @@ from mineru.config import (
     _interpolate_env,
     _load_config,
     _read_config,
+    resolve_tcp_enabled,
+    resolve_uds_enabled,
 )
 from mineru.doclib.config_defaults import CONFIG_DEFAULTS
 
@@ -52,7 +54,7 @@ def test_load_config_reads_yaml_and_interpolates_env(tmp_path, monkeypatch: pyte
         """
 doclib:
   data_dir: ${MINERU_TEST_DATA}
-  http:
+  tcp:
     enabled: true
     port: 18080
   sqlite:
@@ -64,15 +66,15 @@ doclib:
     data = _load_config(str(config_file))
 
     assert data["doclib"]["data_dir"] == str(tmp_path / "data")
-    assert data["doclib"]["http"]["enabled"] is True
-    assert data["doclib"]["http"]["port"] == 18080
+    assert data["doclib"]["tcp"]["enabled"] is True
+    assert data["doclib"]["tcp"]["port"] == 18080
     assert data["doclib"]["sqlite"]["path"] == str(tmp_path / "data" / "doclib.db")
 
 
 def test_apply_env_overrides_uses_greedy_field_path_matching(monkeypatch: pytest.MonkeyPatch) -> None:
     prefix = "TEST_MINERU_"
-    monkeypatch.setenv("TEST_MINERU_DOCLIB_HTTP_ENABLED", "true")
-    monkeypatch.setenv("TEST_MINERU_DOCLIB_HTTP_PORT", "15990")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_TCP_ENABLED", "true")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_TCP_PORT", "15990")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_COMPACTION_INTERVAL_SEC", "5")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_SCAN_INTERVAL_SEC", "7")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_DEVICE_CHECK_INTERVAL_SEC", "11")
@@ -89,8 +91,8 @@ def test_apply_env_overrides_uses_greedy_field_path_matching(monkeypatch: pytest
 
     cfg = _apply_env_overrides(Config(), prefix=prefix)
 
-    assert cfg.doclib.http.enabled is True
-    assert cfg.doclib.http.port == 15990
+    assert cfg.doclib.tcp.enabled is True
+    assert cfg.doclib.tcp.port == 15990
     assert cfg.doclib.compaction_interval_sec == 5
     assert cfg.doclib.scan_interval_sec == 7
     assert cfg.doclib.device_check_interval_sec == 11
@@ -120,7 +122,7 @@ def test_read_config_uses_default_config_under_mineru_home(tmp_path, monkeypatch
         """
 doclib:
   data_dir: /tmp/ignored-data-dir
-  http:
+  tcp:
     port: 18080
 """,
         encoding="utf-8",
@@ -128,7 +130,7 @@ doclib:
 
     data = _read_config()
 
-    assert data["doclib"]["http"]["port"] == 18080
+    assert data["doclib"]["tcp"]["port"] == 18080
     assert data["doclib"]["data_dir"] == "/tmp/ignored-data-dir"
 
 
@@ -143,7 +145,6 @@ def test_apply_env_overrides_can_override_doclib_data_dir(monkeypatch: pytest.Mo
 
 
 def test_default_uds_path_uses_mineru_home_on_unix(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("mineru.config._uds_available", lambda: True)
     monkeypatch.setattr("mineru.config.platform.system", lambda: "Linux")
     monkeypatch.setenv("MINERU_HOME", "/tmp/mineru-home")
 
@@ -151,17 +152,68 @@ def test_default_uds_path_uses_mineru_home_on_unix(monkeypatch: pytest.MonkeyPat
 
 
 def test_default_uds_path_uses_mineru_home_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("mineru.config._uds_available", lambda: True)
     monkeypatch.setattr("mineru.config.platform.system", lambda: "Windows")
     monkeypatch.setenv("MINERU_HOME", r"C:\MinerU")
 
     assert _default_uds_path() == r"C:\MinerU/doclib.sock"
 
 
-def test_patched_config_returns_validated_deep_patch() -> None:
-    cfg = PatchedConfig(doclib={"http": {"port": "16000"}, "sqlite": {"cache_size": "-1"}})
+def test_default_transport_prefers_uds_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("mineru.config._uds_available", lambda: True)
 
-    assert cfg.doclib.http.port == 16000
+    cfg = Config()
+
+    assert cfg.doclib.uds.enabled == "auto"
+    assert cfg.doclib.tcp.enabled == "auto"
+    assert resolve_uds_enabled(cfg) is True
+    assert resolve_tcp_enabled(cfg) is False
+
+
+def test_default_transport_falls_back_to_tcp_when_uds_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("mineru.config._uds_available", lambda: False)
+
+    cfg = Config()
+
+    assert cfg.doclib.uds.enabled == "auto"
+    assert cfg.doclib.tcp.enabled == "auto"
+    assert resolve_uds_enabled(cfg) is False
+    assert resolve_tcp_enabled(cfg) is True
+
+
+def test_transport_enabled_accepts_auto_and_explicit_bool(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("mineru.config._uds_available", lambda: True)
+
+    auto_cfg = Config(doclib={"uds": {"enabled": "auto"}, "tcp": {"enabled": "auto"}})
+    explicit_cfg = Config(doclib={"uds": {"enabled": False}, "tcp": {"enabled": True}})
+
+    assert auto_cfg.doclib.uds.enabled == "auto"
+    assert auto_cfg.doclib.tcp.enabled == "auto"
+    assert resolve_uds_enabled(auto_cfg) is True
+    assert resolve_tcp_enabled(auto_cfg) is False
+    assert explicit_cfg.doclib.uds.enabled is False
+    assert explicit_cfg.doclib.tcp.enabled is True
+    assert resolve_uds_enabled(explicit_cfg) is False
+    assert resolve_tcp_enabled(explicit_cfg) is True
+
+
+def test_transport_enabled_accepts_auto_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    prefix = "TEST_MINERU_"
+    monkeypatch.setattr("mineru.config._uds_available", lambda: True)
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_UDS_ENABLED", "auto")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_TCP_ENABLED", "auto")
+
+    cfg = _apply_env_overrides(Config(doclib={"uds": {"enabled": False}, "tcp": {"enabled": True}}), prefix=prefix)
+
+    assert cfg.doclib.uds.enabled == "auto"
+    assert cfg.doclib.tcp.enabled == "auto"
+    assert resolve_uds_enabled(cfg) is True
+    assert resolve_tcp_enabled(cfg) is False
+
+
+def test_patched_config_returns_validated_deep_patch() -> None:
+    cfg = PatchedConfig(doclib={"tcp": {"port": "16000"}, "sqlite": {"cache_size": "-1"}})
+
+    assert cfg.doclib.tcp.port == 16000
     assert cfg.doclib.sqlite.cache_size == -1
 
 

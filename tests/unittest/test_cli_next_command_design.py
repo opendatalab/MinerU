@@ -5,12 +5,14 @@ import os
 from pathlib import Path
 from typing import Any
 
+import pytest
 from typer.testing import CliRunner
 
-from mineru.cli.commands import config, list_resources, parse, read, server, show
+from mineru.cli.commands import config, list_resources, parse, read, server, show, telemetry
 from mineru.cli.commands import cleanup as cleanup_cmd
 from mineru.cli.commands import search as search_mod
 from mineru.cli.commands import watch as watch_cmd
+from mineru.cli import telemetry as cli_telemetry
 from mineru.cli.main import app
 from mineru.doclib.types import (
     ContentAsset,
@@ -24,6 +26,8 @@ from mineru.doclib.types import (
     ListParsesResponse,
     ParseInfo,
     ParseResponse,
+    TelemetryActionResponse,
+    TelemetryStatusResponse,
 )
 
 
@@ -52,6 +56,62 @@ def test_parse_and_read_help_document_output_parent_creation() -> None:
     assert "directories" in parse_result.output
     assert "creates parent" in read_result.output
     assert "directories" in read_result.output
+
+
+def test_telemetry_command_tree_is_available() -> None:
+    result = runner.invoke(app, ["telemetry", "--help"])
+
+    assert result.exit_code == 0
+    assert "status" in result.output
+    assert "preview" in result.output
+    assert "flush" in result.output
+
+
+def test_telemetry_status_command_prints_installation_id(monkeypatch: Any) -> None:
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 30
+
+        def get_telemetry_status(self) -> TelemetryStatusResponse:
+            return TelemetryStatusResponse(
+                state="unset",
+                installation_id="inst_test",
+                pending_periods=1,
+                pending_metrics=2,
+                last_flush_at=None,
+            )
+
+    monkeypatch.setattr(telemetry, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["telemetry", "status"])
+
+    assert result.exit_code == 0
+    assert "state: unset" in result.output
+    assert "installation_id: inst_test" in result.output
+
+
+def test_interactive_unset_prompt_enables_telemetry(monkeypatch: Any) -> None:
+    actions: list[str] = []
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 5
+
+        def get_telemetry_status(self) -> TelemetryStatusResponse:
+            return TelemetryStatusResponse(state="unset", installation_id="inst_test")
+
+        def telemetry_action(self, action: str) -> TelemetryActionResponse:
+            actions.append(action)
+            return TelemetryActionResponse(action=action, state="enabled", installation_id="inst_test")
+
+    monkeypatch.setattr(cli_telemetry, "DoclibClient", _Client)
+    monkeypatch.setattr(cli_telemetry, "_is_interactive", lambda: True)
+    monkeypatch.setattr("typer.echo", lambda *args, **kwargs: None)
+    monkeypatch.setattr("typer.confirm", lambda *args, **kwargs: True)
+
+    cli_telemetry.maybe_prompt_telemetry_consent()
+
+    assert actions == ["enable"]
 
 
 def test_config_rules_tree_uses_explicit_resource_names_and_remove() -> None:
@@ -466,8 +526,9 @@ def test_server_start_failure_points_to_log_and_does_not_discard_child_stderr(mo
         return _Proc()
 
     monkeypatch.setattr(server, "_server_running", lambda: False)
-    monkeypatch.setattr(server, "_wait_for_sock", lambda: False)
+    monkeypatch.setattr(server, "_wait_for_server", lambda: False)
     monkeypatch.setattr(server, "_socket_path", lambda: str(tmp_path / "doclib.sock"))
+    monkeypatch.setattr(server, "_endpoint_path", lambda: str(tmp_path / "doclib.endpoint.json"))
     monkeypatch.setattr(server, "_server_log_path", lambda: str(log_path))
     monkeypatch.setattr(server.subprocess, "Popen", _popen)
 
@@ -478,6 +539,20 @@ def test_server_start_failure_points_to_log_and_does_not_discard_child_stderr(mo
     assert "doclib.log" in result.output
     assert "child failed\n" in log_path.read_text(encoding="utf-8")
     assert popen_calls[-1] == {"kill": True}
+
+
+def test_server_start_lock_blocks_concurrent_start(monkeypatch: Any, tmp_path: Path) -> None:
+    monkeypatch.setattr(server, "_server_running", lambda: False)
+    lock_path = tmp_path / "doclib.start.lock"
+
+    with server._ServerStartLock(str(lock_path), timeout=0.1, stale_after=60.0) as lock:
+        assert lock.acquired is True
+        assert lock_path.is_file()
+        with pytest.raises(RuntimeError, match="already in progress"):
+            with server._ServerStartLock(str(lock_path), timeout=0.1, stale_after=60.0):
+                pass
+
+    assert not lock_path.exists()
 
 
 def test_parse_content_read_failure_exits_nonzero(monkeypatch: Any, tmp_path: Path) -> None:
@@ -765,5 +840,5 @@ def test_server_status_json_not_running_returns_state_json(monkeypatch: Any) -> 
     assert payload["socket_path"] == "/tmp/doclib.sock"
     assert payload["sqlite_path"] == os.path.expanduser("~/.mineru/doclib.db")
     assert payload["log_path"] == os.path.expanduser("~/.mineru/doclib.log")
-    assert payload["http"] == {"enabled": False, "host": None, "port": None}
+    assert payload["tcp"] == {"enabled": False, "host": None, "port": None}
     assert "Server is not running." not in result.output

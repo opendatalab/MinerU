@@ -31,16 +31,18 @@
 4. 创建 services。
 5. managed 模式下拉起 local parse-server。
 6. 启动 watch、ingest、parse、health check、device monitor 和 compaction。
-7. 通过 UDS 提供本地 HTTP + JSON 协议。
+7. 通过 UDS 或 TCP loopback 提供本地 HTTP + JSON 协议。
 
-默认情况下，UDS socket 位于 `$MINERU_HOME/doclib.sock`。如需覆盖，可设置 `doclib.uds.path` 或环境变量 `MINERU_DOCLIB_UDS_PATH`。
+默认情况下，UDS 可用时使用 `$MINERU_HOME/doclib.sock`；UDS 不可用时自动启用 TCP loopback fallback。server 启动成功后会写入 `$MINERU_HOME/doclib.endpoint.json`，供 CLI / SDK 发现实际 endpoint。
+
+如需覆盖，可设置 `doclib.uds.*` / `doclib.tcp.*` 或对应环境变量，例如 `MINERU_DOCLIB_UDS_PATH`、`MINERU_DOCLIB_TCP_PORT`。
 
 关闭时：
 
 1. 停止后台任务。
 2. managed 模式下停止 local parse-server。
 3. 关闭数据库资源。
-4. 删除 socket 文件。
+4. 删除 socket 文件和 endpoint discovery 文件。
 
 ## 4. 状态输出
 
@@ -58,9 +60,9 @@
 - `log_path`
 - `version`
 - `python_version`
-- `http.enabled`
-- `http.host`
-- `http.port`
+- `tcp.enabled`
+- `tcp.host`
+- `tcp.port`
 - `files_total`
 - `docs_total`
 - `parse_queue_length`
@@ -115,7 +117,7 @@
 人类可读输出应至少展示：
 
 - Server 进程与 uptime
-- `MINERU_HOME`、UDS、HTTP、SQLite、log、data 路径
+- `MINERU_HOME`、UDS、TCP、SQLite、log、data 路径
 - 文件、文档、队列、watch、scan 摘要
 - SQLite 基础信息
 - worker 运行状态与 worker 数量

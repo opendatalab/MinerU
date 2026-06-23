@@ -19,7 +19,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from ..errors import MineruError, error_response, http_status_for
-from ..config import Config, LogConfig, _mineru_home, config
+from ..config import Config, LogConfig, _mineru_home, config, resolve_tcp_enabled, resolve_uds_enabled
+from .endpoint import EndpointTransport, remove_endpoint_file, uds_available, write_endpoint_file
 from .server import DoclibServer
 from .types import PARSE_STATUS_FAILED, PARSE_STATUS_PARSING
 
@@ -42,6 +43,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         from .background.parse_server_health import ParseServerHealthCheck, api_server_args_for_tier, get_health
         from .background.parse_worker import ParseWorkerPool
         from .background.scan_worker import ScanWorkerPool
+        from .background.telemetry_flush import TelemetryFlushLoop
         from .background.watch import WatchLoop
         from .core.db import DatabaseManager
         from .core.fts import FTSManager
@@ -50,6 +52,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         from .services.parse_svc import ParseService
         from .services.scan_svc import ScanService
         from .services.search_svc import SearchService
+        from .telemetry import TelemetryService, TelemetryStore
 
         data_dir = os.path.expanduser(cfg.doclib.data_dir)
         os.makedirs(data_dir, exist_ok=True)
@@ -66,18 +69,22 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
         state.fts = FTSManager(state.db)
         state.config_svc = ConfigService(state.db)
+        state.telemetry_svc = TelemetryService(TelemetryStore(state.db))
+        await state.telemetry_svc.initialize()
         state.parse_svc = ParseService(
             state.db,
             state.fts,
             state.config_svc,
             data_dir,
             parse_lock_timeout_sec=cfg.doclib.parse_lock_timeout_sec,
+            telemetry_svc=state.telemetry_svc,
         )
         state.scan_svc = ScanService(
             state.db,
             state.config_svc,
             state.parse_svc,
             scan_lock_timeout_sec=cfg.doclib.scan_lock_timeout_sec,
+            telemetry_svc=state.telemetry_svc,
         )
         state.search_svc = SearchService(state.db, state.fts)
         state.cleanup_svc = CleanupService(state.db, data_dir)
@@ -139,6 +146,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             startup_grace_sec=cfg.doclib.parse_server_startup_grace_sec,
             stop_timeout_sec=cfg.doclib.parse_server_stop_timeout_sec,
         )
+        state.telemetry_flush = TelemetryFlushLoop(state.telemetry_svc)
 
         _create_background_task(state, "watch", state.watch.run)
         _create_background_task(state, "scan_workers", state.scan_workers.run)
@@ -147,6 +155,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         _create_background_task(state, "device_monitor", state.device_monitor.run)
         _create_background_task(state, "compaction", state.compaction.run)
         _create_background_task(state, "health_check", state.health_check.run)
+        _create_background_task(state, "telemetry_flush", state.telemetry_flush.run)
 
         state.start_time = time.time()
         state.pid = os.getpid()
@@ -155,8 +164,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.sqlite_path = db_path
         state.log_path = os.path.expanduser(cfg.doclib.log.path)
         state.socket_path = os.path.expanduser(cfg.doclib.uds.path)
-        state.http_enabled = cfg.doclib.http.enabled
-        state.http_host = cfg.doclib.http.host
+        state.tcp_enabled = resolve_tcp_enabled(cfg)
+        state.tcp_host = cfg.doclib.tcp.host
         state.config = cfg
 
     @app.on_event("shutdown")
@@ -182,6 +191,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             "device_monitor",
             "compaction",
             "health_check",
+            "telemetry_flush",
         ]:
             c = getattr(state, comp, None)
             if c and hasattr(c, "stop"):
@@ -193,7 +203,19 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.middleware("http")
     async def attach_state(request: Request, call_next: Callable) -> Any:
         request.state.app = state
-        return await call_next(request)
+        from .telemetry import TelemetryContext, reset_telemetry_context, set_telemetry_context
+
+        source = request.headers.get("X-MinerU-Telemetry-Source") or "http_api"
+        caller = request.headers.get("X-MinerU-Telemetry-Caller") or "http_client"
+        if source not in {"cli", "sdk", "http_api", "watch", "background", "unknown"}:
+            source = "unknown"
+        if caller not in {"agent", "user", "sdk", "http_client", "system", "unknown"}:
+            caller = "unknown"
+        token = set_telemetry_context(TelemetryContext(source=source, caller=caller))
+        try:
+            return await call_next(request)
+        finally:
+            reset_telemetry_context(token)
 
     @app.exception_handler(MineruError)
     async def mineru_error_handler(_request: Request, exc: MineruError) -> JSONResponse:
@@ -224,6 +246,7 @@ class AppState:
         self.scan_svc: Any = None
         self.search_svc: Any = None
         self.cleanup_svc: Any = None
+        self.telemetry_svc: Any = None
         self.db_ready: asyncio.Event | None = None
         self.parse_server_proc: Any = None
         self.watch: Any = None
@@ -233,6 +256,7 @@ class AppState:
         self.device_monitor: Any = None
         self.compaction: Any = None
         self.health_check: Any = None
+        self.telemetry_flush: Any = None
         self.start_time: float = 0.0
         self.pid: int = 0
         self.mineru_home: str = ""
@@ -240,9 +264,9 @@ class AppState:
         self.data_dir: str = ""
         self.sqlite_path: str = ""
         self.log_path: str = ""
-        self.http_enabled: bool = False
-        self.http_host: str = ""
-        self.http_port: int | None = None
+        self.tcp_enabled: bool = False
+        self.tcp_host: str = ""
+        self.tcp_port: int | None = None
         self.config: Config | None = None
 
 
@@ -257,6 +281,8 @@ REQUIRED_SCHEMA_TABLES = {
     "parses",
     "parsing_rules",
     "scans",
+    "telemetry_aggregates",
+    "telemetry_state",
     "watches",
 }
 
@@ -280,51 +306,71 @@ async def _run_after_db_ready(state: AppState, name: str, runner: Callable[[], A
     await runner()
 
 
+def _format_transport(transport: EndpointTransport) -> str:
+    if transport.type == "uds":
+        return f"UDS {transport.path}"
+    return f"TCP {transport.base_url}"
+
+
 def main() -> None:
     """Entry point: python -m mineru.doclib.app"""
     cfg = config
-    uds_path = cfg.doclib.uds.path
+    uds_path = os.path.expanduser(cfg.doclib.uds.path)
+    endpoint_path = os.path.expanduser(cfg.doclib.endpoint_path)
+    uds_enabled = resolve_uds_enabled(cfg)
+    tcp_enabled = resolve_tcp_enabled(cfg)
 
-    try:
-        os.unlink(uds_path)
-    except OSError:
-        pass
+    if not uds_enabled and not tcp_enabled:
+        raise RuntimeError("At least one doclib local transport must be enabled.")
+    if uds_enabled and not uds_available():
+        raise RuntimeError("Unix domain socket is enabled but is not available in this Python runtime. Enable doclib.tcp or disable doclib.uds.")
 
     app = create_app(cfg)
     uv_config = uvicorn.Config(
         app,
         lifespan="on",
-        timeout_keep_alive=cfg.doclib.http.timeout,
+        timeout_keep_alive=cfg.doclib.tcp.timeout,
     )
     server = uvicorn.Server(uv_config)
 
-    uds_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    uds_sock.bind(uds_path)
-    os.chmod(uds_path, cfg.doclib.uds.permission)
-    uds_sock.listen(cfg.doclib.http.backlog)
-    sockets = [uds_sock]
+    sockets: list[socket.socket] = []
+    transports: list[EndpointTransport] = []
 
-    if cfg.doclib.http.enabled:
+    if uds_enabled:
+        try:
+            os.unlink(uds_path)
+        except OSError:
+            pass
+        uds_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        uds_sock.bind(uds_path)
+        os.chmod(uds_path, cfg.doclib.uds.permission)
+        uds_sock.listen(cfg.doclib.tcp.backlog)
+        sockets.append(uds_sock)
+        transports.append(EndpointTransport(type="uds", path=uds_path))
+
+    if tcp_enabled:
         tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         tcp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            tcp_sock.bind((cfg.doclib.http.host, cfg.doclib.http.port))
+            tcp_sock.bind((cfg.doclib.tcp.host, cfg.doclib.tcp.port))
         except OSError as exc:
-            if exc.errno == errno.EADDRINUSE and not cfg.doclib.http.strict_port:
-                tcp_sock.bind((cfg.doclib.http.host, 0))
+            if exc.errno == errno.EADDRINUSE and not cfg.doclib.tcp.strict_port:
+                tcp_sock.bind((cfg.doclib.tcp.host, 0))
                 port = tcp_sock.getsockname()[1]
-                print(f"Port {cfg.doclib.http.port} in use, using {port}")
+                print(f"Port {cfg.doclib.tcp.port} in use, using {port}")
             else:
                 raise
         else:
-            port = cfg.doclib.http.port
-        tcp_sock.listen(cfg.doclib.http.backlog)
+            port = tcp_sock.getsockname()[1]
+        tcp_sock.listen(cfg.doclib.tcp.backlog)
         sockets.append(tcp_sock)
-        app.state.doclib_state.http_port = port
-        print(f"MinerU server listening on UDS {uds_path} and TCP {cfg.doclib.http.host}:{port}")
+        app.state.doclib_state.tcp_port = port
+        transports.append(EndpointTransport(type="tcp", base_url=f"http://{cfg.doclib.tcp.host}:{port}"))
     else:
-        app.state.doclib_state.http_port = None
-        print(f"MinerU server listening on UDS {uds_path}")
+        app.state.doclib_state.tcp_port = None
+
+    write_endpoint_file(endpoint_path, pid=os.getpid(), transports=transports)
+    print("MinerU server listening on " + " and ".join(_format_transport(transport) for transport in transports))
 
     loop = asyncio.new_event_loop()
 
@@ -336,10 +382,12 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        try:
-            os.unlink(uds_path)
-        except OSError:
-            pass
+        if uds_enabled:
+            try:
+                os.unlink(uds_path)
+            except OSError:
+                pass
+        remove_endpoint_file(endpoint_path)
         loop.close()
 
 

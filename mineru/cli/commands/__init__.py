@@ -12,6 +12,7 @@ from . import (
     search,
     server,
     show,
+    telemetry,
     watch,
 )
 
@@ -27,5 +28,6 @@ __all__ = [
     "search",
     "server",
     "show",
+    "telemetry",
     "watch",
 ]

@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import json
 import os
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -56,7 +58,8 @@ class MinerUApiParser(DocumentParser):
         api_url = api_url or os.environ.get("MINERU_API_URL", "https://mineru.net/api")
         self._base = api_url.rstrip("/")
         self._api_key = api_key
-        self._local = self._is_localhost(self._base)
+        self._local = _is_local_network_url(self._base)
+        self._trust_env = should_trust_env_for_url(self._base)
         self.tier = tier
 
     # ── DocumentParser interface ─────────────────────────────────────
@@ -117,16 +120,7 @@ class MinerUApiParser(DocumentParser):
 
     @staticmethod
     def _is_localhost(base: str) -> bool:
-        return any(
-            base.startswith(p)
-            for p in (
-                "http://localhost",
-                "http://127.",
-                "http://192.168.",
-                "http://10.",
-                "http://172.",
-            )
-        )
+        return _is_local_network_url(base)
 
     @staticmethod
     def _check(r: Any) -> dict[str, Any]:
@@ -150,7 +144,7 @@ class MinerUApiParser(DocumentParser):
         size = file_path.stat().st_size
         sha = _sha256_file(file_path)
 
-        with httpx.Client(timeout=httpx.Timeout(120, connect=30)) as cli:
+        with httpx.Client(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
             r = cli.post(
                 f"{self._base}/v1/uploads",
                 headers=self._headers(),
@@ -185,7 +179,7 @@ class MinerUApiParser(DocumentParser):
         size = file_path.stat().st_size
         sha = _sha256_file(file_path)
 
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30)) as cli:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
             r = await cli.post(
                 f"{self._base}/v1/uploads",
                 headers=self._headers(),
@@ -219,7 +213,7 @@ class MinerUApiParser(DocumentParser):
     # ── parse execution ──────────────────────────────────────────────
 
     def _do_parse(self, payload: dict[str, Any]) -> dict[str, Any]:
-        with httpx.Client(timeout=httpx.Timeout(120, connect=30)) as cli:
+        with httpx.Client(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
             r = cli.post(f"{self._base}/v1/parse/jobs", headers=self._headers(), json=payload)
             job = self._check(r)
             if job.get("status") not in ("completed", "partial", "failed", "canceled"):
@@ -228,7 +222,7 @@ class MinerUApiParser(DocumentParser):
         return job
 
     async def _async_do_parse(self, payload: dict[str, Any]) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30)) as cli:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
             r = await cli.post(f"{self._base}/v1/parse/jobs", headers=self._headers(), json=payload)
             job = self._check(r)
             if job.get("status") not in ("completed", "partial", "failed", "canceled"):
@@ -403,7 +397,7 @@ def _download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) -> bytes:
     # TEMP(2026-06-12): staging server may return {"url": "..."} instead of
     # {"file_id": "...", "bytes": ...}. Keep this branch until staging aligns.
     if ref.get("url"):
-        with httpx.Client(timeout=httpx.Timeout(120, connect=30), follow_redirects=True) as cli:
+        with httpx.Client(timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env) as cli:
             r = cli.get(ref["url"])
             _check_download_response(r)
             return r.content
@@ -412,7 +406,7 @@ def _download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) -> bytes:
     if not file_id:
         raise _V1APIError("invalid_response", "No file_id or url in output reference")
 
-    with httpx.Client(timeout=httpx.Timeout(120, connect=30), follow_redirects=True) as cli:
+    with httpx.Client(timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env) as cli:
         r = cli.get(f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers())
         _check_download_response(r)
         return r.content
@@ -422,7 +416,7 @@ async def _async_download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) ->
     # TEMP(2026-06-12): staging server may return {"url": "..."} instead of
     # {"file_id": "...", "bytes": ...}. Keep this branch until staging aligns.
     if ref.get("url"):
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), follow_redirects=True) as cli:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env) as cli:
             r = await cli.get(ref["url"])
             _check_download_response(r)
             return r.content
@@ -431,10 +425,29 @@ async def _async_download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) ->
     if not file_id:
         raise _V1APIError("invalid_response", "No file_id or url in output reference")
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), follow_redirects=True) as cli:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env) as cli:
         r = await cli.get(f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers())
         _check_download_response(r)
         return r.content
+
+
+def should_trust_env_for_url(url: str) -> bool:
+    return not _is_local_network_url(url)
+
+
+def _is_local_network_url(url: str) -> bool:
+    parsed = urlparse(url if "://" in url else f"http://{url}")
+    host = parsed.hostname
+    if not host:
+        return False
+    normalized = host.lower()
+    if normalized == "localhost" or normalized.endswith(".localhost"):
+        return True
+    try:
+        address = ipaddress.ip_address(normalized)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_private or address.is_link_local
 
 
 def _check_download_response(r: httpx.Response) -> None:

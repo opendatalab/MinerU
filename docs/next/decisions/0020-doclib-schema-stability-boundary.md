@@ -60,7 +60,7 @@ v1 稳定 schema 绑定的是 **doclib public models 的字段**，而不是 SQL
 - `WatchStats`
 - `ErrorBucket`
 - `ErrorSummary`
-- `HTTPServerStatus`
+- `TCPServerStatus`
 - `WorkerStatus`
 - `LocalParseServerStatus`
 - `RemoteParseServerStatus`

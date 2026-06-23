@@ -8,7 +8,7 @@ import os
 import platform
 import re
 import socket
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -19,6 +19,8 @@ _logger = logging.getLogger(__name__)
 MINERU_HOME_ENV = "MINERU_HOME"
 MINERU_CONFIG_ENV = "MINERU_CONFIG"
 MINERU_ENV_PREFIX = "MINERU_"
+
+AutoBool = Literal["auto"] | bool
 
 _INTERPOLATION_RE = re.compile(r"\$\{(\w+)(?::-([^${}]*))?\}")
 
@@ -46,9 +48,25 @@ def _default_uds_path() -> str:
     system = platform.system().lower()
     if system not in ("windows", "darwin", "linux"):
         raise RuntimeError(f"System [{system}] is not supported.")
-    if not _uds_available():
-        raise RuntimeError("Unix domain socket is not available.")
     return os.path.join(_mineru_home(), "doclib.sock")
+
+
+def resolve_uds_enabled(cfg: "Config") -> bool:
+    value = cfg.doclib.uds.enabled
+    if value == "auto":
+        return _uds_available()
+    return value
+
+
+def resolve_tcp_enabled(cfg: "Config") -> bool:
+    value = cfg.doclib.tcp.enabled
+    if value == "auto":
+        return not _uds_available()
+    return value
+
+
+def _default_endpoint_path() -> str:
+    return os.path.join(_mineru_home(), "doclib.endpoint.json")
 
 
 def _default_log_path() -> str:
@@ -166,7 +184,7 @@ def _apply_env_overrides(cfg: "Config", prefix: str = MINERU_ENV_PREFIX) -> "Con
     rebuilding Config.
 
     Examples:
-        MINERU_DOCLIB_HTTP_PORT=15981 -> config.doclib.http.port
+        MINERU_DOCLIB_TCP_PORT=15981 -> config.doclib.tcp.port
         MINERU_DOCLIB_SQLITE_MMAP_SIZE=0 -> config.doclib.sqlite.mmap_size
     """
     prefix_upper = prefix.upper()
@@ -194,12 +212,13 @@ def _apply_env_overrides(cfg: "Config", prefix: str = MINERU_ENV_PREFIX) -> "Con
 
 
 class UDSConfig(BaseModel):
+    enabled: AutoBool = "auto"
     path: str = Field(default_factory=_default_uds_path)
     permission: int = 0o600
 
 
-class HTTPConfig(BaseModel):
-    enabled: bool = False
+class TCPConfig(BaseModel):
+    enabled: AutoBool = "auto"
     host: str = "127.0.0.1"
     port: int = 15980
     strict_port: bool = False
@@ -231,9 +250,10 @@ class DoclibConfig(BaseModel):
     """
 
     uds: UDSConfig = Field(default_factory=UDSConfig)
-    http: HTTPConfig = Field(default_factory=HTTPConfig)
+    tcp: TCPConfig = Field(default_factory=TCPConfig)
     log: LogConfig = Field(default_factory=LogConfig)
     sqlite: SQLiteConfig = Field(default_factory=SQLiteConfig)
+    endpoint_path: str = Field(default_factory=_default_endpoint_path)
     data_dir: str = Field(default_factory=_default_data_path)
     ingest_workers: int = 2
     parse_workers: int = 2
@@ -265,10 +285,11 @@ def PatchedConfig(**kwargs: Any) -> Config:
 
 
 __all__ = [
+    "AutoBool",
     "config",
     "Config",
     "DoclibConfig",
-    "HTTPConfig",
+    "TCPConfig",
     "LogConfig",
     "SQLiteConfig",
     "UDSConfig",
@@ -276,4 +297,6 @@ __all__ = [
     "MINERU_HOME_ENV",
     "MINERU_CONFIG_ENV",
     "MINERU_ENV_PREFIX",
+    "resolve_tcp_enabled",
+    "resolve_uds_enabled",
 ]

@@ -49,7 +49,7 @@ class IngestWorkerPool:
 
             no_task_count = 0
             try:
-                await self.parse_svc.ingest_file(task["path"], watch_id=task.get("watch_id"))
+                await self.parse_svc.ingest_file(task["path"], watch_id=task.get("watch_id"), trigger="background")
                 processed += 1
                 if processed % 100 == 0:
                     logger.info(f"Ingest worker {worker_id} ingested {processed} files")

@@ -13,7 +13,15 @@ import typer
 
 from ...errors import MineruError
 from ...doclib.client import DoclibClient
-from ...doclib.types import ContentNextRequest, DocContentExportRequest, DocContentResponse, ParseRequest, ParseResponse
+from ...doclib.types import (
+    ContentNextRequest,
+    DocContentExportRequest,
+    DocContentResponse,
+    ParseRequest,
+    ParseResponse,
+    TelemetryObservation,
+    TelemetryObservationsRequest,
+)
 from ...types import Tier
 from ..json_errors import exit_with_error
 from ..output import format_parse_result, print_error, print_info, print_json, print_success
@@ -137,6 +145,7 @@ def parse_cmd(
     if verbose:
         print_info(f"Parse queued (tier={req_tier}). Waiting up to {wait}s...")
 
+    wait_started_at = time.time()
     deadline = time.time() + wait
     interval = 0.5
     while time.time() < deadline:
@@ -155,6 +164,7 @@ def parse_cmd(
             print_info(f"  Parse status: {st}")
 
         if st == "done":
+            _record_parse_wait(client, wait_parse_ids, "succeeded", wait_started_at)
             done_result = result.model_copy(update={"status": "done"})
             _output_parse_result(
                 client,
@@ -170,16 +180,37 @@ def parse_cmd(
             return
         if st == "failed":
             failed = next((row for row in parse_rows if row.status == "failed"), None)
+            _record_parse_wait(client, wait_parse_ids, "failed", wait_started_at)
             exit_with_error(
                 MineruError(failed.error_code if failed else "parse_failed", failed.error_msg if failed else "", None),
                 json_mode=json_mode,
             )
 
+    _record_parse_wait(client, wait_parse_ids, "timeout", wait_started_at)
     if json_mode:
         timeout_result = result.model_copy(update={"status": "parsing", "tip": "Re-run the same command to continue waiting."})
         _print_parse_json_response(timeout_result, None)
     else:
         print_info(f"Parse still in progress (tier={req_tier}). Check status with: mineru show file {file_path}")
+
+
+def _record_parse_wait(client: DoclibClient, parse_ids: list[int], status: str, started_at: float) -> None:
+    duration_ms = max(0, int((time.time() - started_at) * 1000))
+    try:
+        client.record_observations(
+            TelemetryObservationsRequest(
+                observations=[
+                    TelemetryObservation(
+                        metric_name="parse.wait",
+                        parse_ids=parse_ids,
+                        duration_ms=duration_ms,
+                        dimensions={"status": status},
+                    )
+                ]
+            )
+        )
+    except Exception:
+        pass
 
 
 if __name__ != "__main__":

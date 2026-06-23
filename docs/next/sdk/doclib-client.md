@@ -25,20 +25,28 @@ Doclib SDK 是 doclib 本地 API 的推荐承载方式。MinerU 项目内部除 
 目标公开签名:
 
 ```python
+from pathlib import Path
+
 from mineru.doclib.client import MineruClient
 
 class MineruClient:
     def __init__(
         self,
+        endpoint_path: str | Path | None = None,
         socket_path: str | None = None,
+        base_url: str | None = None,
         timeout: int = 60,
+        api_prefix: str = "/api/v1",
     ) -> None: ...
 ```
 
 约束:
 
 - 构造 client 不应启动 doclib server。
-- 无法连接 UDS 时，方法调用抛出 `ServerNotRunningError`。
+- 默认通过 `$MINERU_HOME/doclib.endpoint.json` 发现 doclib endpoint。
+- `socket_path` 表示显式 UDS endpoint；`base_url` 只表示显式 TCP endpoint，例如 `http://127.0.0.1:15980`。
+- `socket_path` 和 `base_url` 不能同时传入。
+- 无法连接任何候选 endpoint 时，方法调用抛出 `ServerNotRunningError`。
 - client 应支持 `close()`，并最终支持 context manager。
 
 示例:

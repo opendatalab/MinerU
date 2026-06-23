@@ -13,7 +13,7 @@ import pytest
 from mineru.doclib.background.compaction import Compaction
 from mineru.doclib.background.device_monitor import DeviceMonitor
 from mineru.doclib.background.ingest import IngestWorkerPool
-from mineru.doclib.background.parse_server_health import api_server_args_for_tier
+from mineru.doclib.background.parse_server_health import ParseServerHealthCheck, api_server_args_for_tier
 from mineru.doclib.background.watch import WatchLoop
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.file_io import FileStat, get_file_stat
@@ -246,6 +246,36 @@ def test_parser_tier_backend_mapping_is_parser_layer_only() -> None:
 def test_managed_api_server_args_use_tier_for_process_start() -> None:
     assert api_server_args_for_tier("standard") == ["--tier", "standard", "--port", "15981"]
     assert api_server_args_for_tier("pro") == ["--tier", "pro", "--port", "15981"]
+
+
+def test_parse_server_health_probe_disables_env_proxy_for_local_urls(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[bool] = []
+
+    class _Response:
+        status_code = 200
+
+        def json(self) -> dict[str, list[dict[str, str]]]:
+            return {"data": [{"id": "standard"}]}
+
+    class _AsyncClient:
+        def __init__(self, *, timeout: int, trust_env: bool) -> None:
+            calls.append(trust_env)
+
+        async def __aenter__(self) -> "_AsyncClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def get(self, url: str) -> _Response:
+            return _Response()
+
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.httpx.AsyncClient", _AsyncClient)
+    checker = ParseServerHealthCheck(None, interval_sec=1, probe_timeout_sec=2, startup_grace_sec=3, stop_timeout_sec=4)
+
+    assert asyncio.run(checker._probe("http://127.0.0.1:15981")) == (True, ["standard"])
+    assert asyncio.run(checker._probe("https://staging.mineru.org.cn/api")) == (True, ["standard"])
+    assert calls == [False, True]
 
 
 def test_get_file_stat_returns_typed_file_stat(tmp_path: Path) -> None:

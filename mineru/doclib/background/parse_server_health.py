@@ -12,6 +12,7 @@ from typing import cast
 
 import httpx
 
+from ...parser.api_client import should_trust_env_for_url
 from ...types import TIERS, Tier
 
 logger = logging.getLogger("mineru.health_check")
@@ -155,7 +156,10 @@ class ParseServerHealthCheck:
 
     async def _probe(self, base_url: str) -> tuple[bool, list[Tier]]:
         try:
-            async with httpx.AsyncClient(timeout=self.probe_timeout_sec) as client:
+            async with httpx.AsyncClient(
+                timeout=self.probe_timeout_sec,
+                trust_env=should_trust_env_for_url(base_url),
+            ) as client:
                 resp = await client.get(f"{base_url}/v1/tiers")
                 if resp.status_code == 200:
                     data = resp.json()

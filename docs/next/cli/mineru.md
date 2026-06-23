@@ -36,6 +36,7 @@
 ```text
 ~/.mineru/
   config.yaml
+  doclib.endpoint.json
   doclib.sock
   doclib.db
   doclib.log
@@ -43,6 +44,8 @@
     parsed/
     temp/
 ```
+
+`doclib.endpoint.json` 记录当前本地 doclib server 实际可用的 transport。UDS 可用时通常会有 `doclib.sock`；在 Windows Python runtime 不支持 UDS 时，doclib 可以只通过 TCP loopback 工作，此时不要求存在可用 socket 文件。
 
 `doclib.db` 记录文件路径、文档 SHA256、解析任务、缓存状态、FTS 索引、watch 目录和配置。详细数据模型见 [系统架构](../architecture.md)。
 

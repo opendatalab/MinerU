@@ -99,6 +99,10 @@ def test_doclib_interface_declares_expected_methods() -> None:
         "cleanup_deleted_files",
         "cleanup_orphan_docs",
         "cleanup_temp_files",
+        "get_telemetry_status",
+        "get_telemetry_preview",
+        "telemetry_action",
+        "record_observations",
     }
 
     assert DoclibInterface.__abstractmethods__ == expected
@@ -181,6 +185,10 @@ def test_interface_app_uses_doclib_server_routes() -> None:
     route_paths = {getattr(route, "path", "") for route in app.routes}
     assert "/api/v1/server/status" in route_paths
     assert "/api/v1/server/shutdown" in route_paths
+    assert "/api/v1/telemetry/status" in route_paths
+    assert "/api/v1/telemetry/preview" in route_paths
+    assert "/api/v1/telemetry/actions/{action}" in route_paths
+    assert "/api/v1/observations" in route_paths
     assert "/api/v1/configs" in route_paths
     assert "/api/v1/configs/{key}" in route_paths
     assert "/api/v1/watches" in route_paths

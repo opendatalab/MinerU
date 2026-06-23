@@ -48,6 +48,7 @@
 | [ADR-0018](0018-mineru-kit-vlm-server-command.md) | Accepted | MinerU Kit VLM Server Command |
 | [ADR-0019](0019-mineru-kit-models-command.md) | Accepted | MinerU Kit Models Command |
 | [ADR-0020](0020-doclib-schema-stability-boundary.md) | Accepted | Doclib Schema Stability Boundary |
+| [ADR-0021](0021-doclib-local-transport-discovery.md) | Accepted | Doclib 本地 Transport 与 Endpoint Discovery |
 
 ## 模板
 

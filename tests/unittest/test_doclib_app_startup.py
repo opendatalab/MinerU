@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from mineru.config import LogConfig, PatchedConfig, config as mineru_config
+from mineru.config import LogConfig, PatchedConfig, config as mineru_config, resolve_tcp_enabled
 from mineru.doclib import app as doclib_app
 from mineru.doclib.app import _assert_required_schema
 from mineru.doclib.core.db import DatabaseManager
@@ -66,7 +66,37 @@ def test_server_status_reports_configured_socket_path(monkeypatch, tmp_path) -> 
     assert payload["socket_path"] == str(tmp_path / "doclib.sock")
     assert payload["sqlite_path"] == str(tmp_path / "doclib.db")
     assert payload["log_path"] == str(tmp_path / "doclib.log")
-    assert payload["http"] == {"enabled": cfg.doclib.http.enabled, "host": cfg.doclib.http.host, "port": None}
+    assert payload["tcp"] == {"enabled": resolve_tcp_enabled(cfg), "host": cfg.doclib.tcp.host, "port": None}
+
+
+def test_telemetry_observation_route_uses_context_headers(monkeypatch, tmp_path) -> None:
+    cfg = PatchedConfig(
+        doclib={
+            "data_dir": str(tmp_path),
+            "sqlite": {"path": str(tmp_path / "doclib.db")},
+            "log": {"path": str(tmp_path / "doclib.log")},
+            "uds": {"path": str(tmp_path / "doclib.sock")},
+        }
+    )
+
+    def _skip_background_task(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
+
+    with TestClient(doclib_app.create_app(cfg)) as client:
+        response = client.post(
+            "/api/v1/observations",
+            headers={"X-MinerU-Telemetry-Source": "cli", "X-MinerU-Telemetry-Caller": "agent"},
+            json={"observations": [{"metric_name": "parse.request.count"}]},
+        )
+        preview = client.get("/api/v1/telemetry/preview")
+
+    assert response.status_code == 200
+    assert response.json() == {"accepted": 1}
+    assert preview.status_code == 200
+    metrics = preview.json()["body"]["metrics"]
+    assert metrics == [{"name": "parse.request.count", "value": 1, "dimensions": {"caller": "agent", "source": "cli"}}]
 
 
 def test_write_temp_asset_uses_temp_read_assets_directory(tmp_path: Path) -> None:

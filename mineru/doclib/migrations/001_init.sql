@@ -152,6 +152,27 @@ CREATE TABLE IF NOT EXISTS config (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS telemetry_state (
+    key        TEXT PRIMARY KEY,
+    value      TEXT    NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS telemetry_aggregates (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    period_start    INTEGER NOT NULL,
+    period_end      INTEGER NOT NULL,
+    metric_name     TEXT    NOT NULL,
+    metric_value    INTEGER NOT NULL DEFAULT 0,
+    dimensions      TEXT    NOT NULL,
+    dimensions_hash TEXT    NOT NULL,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL,
+    UNIQUE(period_start, period_end, metric_name, dimensions_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_telemetry_aggregates_period
+ON telemetry_aggregates(period_start, period_end);
+
 CREATE TABLE IF NOT EXISTS _migrations (
     version     INTEGER PRIMARY KEY,
     applied_at  INTEGER NOT NULL,

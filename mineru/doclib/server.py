@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import re
 import os
+import re
 import signal
 import sys
 import time
@@ -54,6 +54,7 @@ from .services.parse_svc import (
     parse_page_range_set,
     resolve_image_sidecar_path,
 )
+from .telemetry.buckets import pages_bucket, results_bucket
 from .types import (
     FILE_STATUS_ACTIVE,
     FILE_STATUS_DELETED,
@@ -99,7 +100,6 @@ from .types import (
     ForgetPathResponse,
     InvalidateRequest,
     InvalidateResponse,
-    HTTPServerStatus,
     ListDocsResponse,
     ListFilesResponse,
     ListParsesResponse,
@@ -126,6 +126,15 @@ from .types import (
     SearchResult,
     ServerStatusResponse,
     ShutdownResponse,
+    TCPServerStatus,
+    TelemetryAction,
+    TelemetryActionResponse,
+    TelemetryObservation,
+    TelemetryObservationsRequest,
+    TelemetryObservationsResponse,
+    TelemetryPayload,
+    TelemetryPreviewResponse,
+    TelemetryStatusResponse,
     TierParseInfo,
     WatchInfo,
     WatchListResponse,
@@ -241,10 +250,10 @@ class DoclibServer(AsyncDoclibInterface):
             data_dir=getattr(self.state, "data_dir", ""),
             sqlite_path=sqlite_path,
             log_path=getattr(self.state, "log_path", ""),
-            http=HTTPServerStatus(
-                enabled=bool(getattr(self.state, "http_enabled", False)),
-                host=getattr(self.state, "http_host", "") or None,
-                port=getattr(self.state, "http_port", None),
+            tcp=TCPServerStatus(
+                enabled=bool(getattr(self.state, "tcp_enabled", False)),
+                host=getattr(self.state, "tcp_host", "") or None,
+                port=getattr(self.state, "tcp_port", None),
             ),
             active_scan_count=active_scans["cnt"] if active_scans else 0,
             last_scan_at=last_scan["ts"] if last_scan else None,
@@ -294,14 +303,27 @@ class DoclibServer(AsyncDoclibInterface):
 
     @route("POST", "/parses", tags=("parse",))
     async def ensure_parse(self, request: ParseRequest) -> ParseResponse:
-        result = await self.state.parse_svc.request_parse(
-            request.path,
-            tier=request.tier,
-            page_range=request.page_range,
-            force=request.force,
-            remote=request.remote,
-        )
-        return ParseResponse.model_validate(result)
+        start_ms = _now_ms()
+        await _record_telemetry_count(self.state, "parse.request.count")
+        try:
+            result = await self.state.parse_svc.request_parse(
+                request.path,
+                tier=request.tier,
+                page_range=request.page_range,
+                force=request.force,
+                remote=request.remote,
+            )
+            response = ParseResponse.model_validate(result)
+            status = _parse_route_status(response)
+            dims = {"status": status, "tier": response.tier}
+            await _record_telemetry_count(self.state, "parse.finished.count", dimensions=dims)
+            await _record_telemetry_duration(self.state, "parse.duration_bucket.count", start_ms, dimensions=dims)
+            return response
+        except Exception as exc:
+            dims = {"status": "failed", "tier": request.tier or "default", "error_code": _telemetry_error_code(exc)}
+            await _record_telemetry_count(self.state, "parse.finished.count", dimensions=dims)
+            await _record_telemetry_duration(self.state, "parse.duration_bucket.count", start_ms, dimensions=dims)
+            raise
 
     @route("GET", "/parses", tags=("parse",))
     async def list_parses(
@@ -362,6 +384,7 @@ class DoclibServer(AsyncDoclibInterface):
 
     @route("POST", "/scans", tags=("scan",))
     async def create_scan(self, request: ScanRequest) -> ScanInfo:
+        await _record_telemetry_count(self.state, "scan.request.count")
         return await self.state.scan_svc.create_scan(
             request.path,
             kind=request.kind,
@@ -485,17 +508,30 @@ class DoclibServer(AsyncDoclibInterface):
         format: str = "markdown",
         no_marker: bool = False,
     ) -> DocContentResponse:
-        return await self._execute_read_plan(
-            await self._build_read_plan_from_parse(
-                sha256,
-                tier=tier,
-                page_range=page_range,
-                after=after,
-                limit=limit,
-                format=format,
-                no_marker=no_marker,
+        start_ms = _now_ms()
+        dims = {"content_mode": "read", "output_format": _telemetry_output_format(format), "tier": tier}
+        await _record_telemetry_count(self.state, "content.request.count", dimensions=dims)
+        try:
+            response = await self._execute_read_plan(
+                await self._build_read_plan_from_parse(
+                    sha256,
+                    tier=tier,
+                    page_range=page_range,
+                    after=after,
+                    limit=limit,
+                    format=format,
+                    no_marker=no_marker,
+                )
             )
-        )
+            finished_dims = dims | {"status": "succeeded"}
+            await _record_telemetry_count(self.state, "content.finished.count", dimensions=finished_dims)
+            await _record_telemetry_duration(self.state, "content.duration_bucket.count", start_ms, dimensions=finished_dims)
+            return response
+        except Exception:
+            finished_dims = dims | {"status": "failed"}
+            await _record_telemetry_count(self.state, "content.finished.count", dimensions=finished_dims)
+            await _record_telemetry_duration(self.state, "content.duration_bucket.count", start_ms, dimensions=finished_dims)
+            raise
 
     @route("GET", "/content", tags=("docs",))
     async def read_content(
@@ -507,15 +543,28 @@ class DoclibServer(AsyncDoclibInterface):
         format: ContentFormat = "markdown",
         no_marker: bool = False,
     ) -> DocContentResponse:
-        return await self._execute_read_plan(
-            await self._build_read_plan_from_locator(
-                locator,
-                context=context,
-                limit=limit,
-                format=format,
-                no_marker=no_marker,
+        start_ms = _now_ms()
+        dims = {"content_mode": "read", "output_format": _telemetry_output_format(format), "tier": "unknown"}
+        await _record_telemetry_count(self.state, "content.request.count", dimensions=dims)
+        try:
+            response = await self._execute_read_plan(
+                await self._build_read_plan_from_locator(
+                    locator,
+                    context=context,
+                    limit=limit,
+                    format=format,
+                    no_marker=no_marker,
+                )
             )
-        )
+            finished_dims = dims | {"status": "succeeded", "tier": response.tier}
+            await _record_telemetry_count(self.state, "content.finished.count", dimensions=finished_dims)
+            await _record_telemetry_duration(self.state, "content.duration_bucket.count", start_ms, dimensions=finished_dims)
+            return response
+        except Exception:
+            finished_dims = dims | {"status": "failed"}
+            await _record_telemetry_count(self.state, "content.finished.count", dimensions=finished_dims)
+            await _record_telemetry_duration(self.state, "content.duration_bucket.count", start_ms, dimensions=finished_dims)
+            raise
 
     async def _build_read_plan_from_parse(
         self,
@@ -604,18 +653,30 @@ class DoclibServer(AsyncDoclibInterface):
 
     @route("POST", "/docs/{sha256}/exports", tags=("docs",))
     async def export_doc_content(self, sha256: str, request: DocContentExportRequest) -> DocContentExportResponse:
-        content = await self._render_doc_content(
-            sha256,
-            tier=request.tier,
-            page_range=request.page_range,
-            format=request.format,
-            no_marker=request.no_marker,
-        )
-        output_path = os.path.abspath(request.output)
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        return DocContentExportResponse(sha256=sha256, tier=request.tier, output=output_path)
+        start_ms = _now_ms()
+        dims = {"content_mode": "export", "output_format": _telemetry_output_format(request.format), "tier": request.tier}
+        await _record_telemetry_count(self.state, "content.request.count", dimensions=dims)
+        try:
+            content = await self._render_doc_content(
+                sha256,
+                tier=request.tier,
+                page_range=request.page_range,
+                format=request.format,
+                no_marker=request.no_marker,
+            )
+            output_path = os.path.abspath(request.output)
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            finished_dims = dims | {"status": "succeeded"}
+            await _record_telemetry_count(self.state, "content.finished.count", dimensions=finished_dims)
+            await _record_telemetry_duration(self.state, "content.duration_bucket.count", start_ms, dimensions=finished_dims)
+            return DocContentExportResponse(sha256=sha256, tier=request.tier, output=output_path)
+        except Exception:
+            finished_dims = dims | {"status": "failed"}
+            await _record_telemetry_count(self.state, "content.finished.count", dimensions=finished_dims)
+            await _record_telemetry_duration(self.state, "content.duration_bucket.count", start_ms, dimensions=finished_dims)
+            raise
 
     @route("GET", "/search", tags=("search",))
     async def search(
@@ -628,22 +689,50 @@ class DoclibServer(AsyncDoclibInterface):
         limit: int = 20,
         offset: int = 0,
     ) -> SearchResponse:
-        results, total = await self.state.search_svc.search(
-            query=query,
-            file_type=file_type,
-            tier=tier,
-            min_tier=min_tier,
-            limit=limit,
-            offset=offset,
-        )
-        return SearchResponse(
-            results=[_search_result(row) for row in results if row.get("tier") in TIERS], total=total, query=query
-        )
+        start_ms = _now_ms()
+        await _record_telemetry_count(self.state, "search.request.count")
+        try:
+            results, total = await self.state.search_svc.search(
+                query=query,
+                file_type=file_type,
+                tier=tier,
+                min_tier=min_tier,
+                limit=limit,
+                offset=offset,
+            )
+            response = SearchResponse(
+                results=[_search_result(row) for row in results if row.get("tier") in TIERS], total=total, query=query
+            )
+            dims = {"status": "succeeded"}
+            await _record_telemetry_count(self.state, "search.finished.count", dimensions=dims)
+            await _record_telemetry_duration(self.state, "search.duration_bucket.count", start_ms, dimensions=dims)
+            await _record_telemetry_count(
+                self.state, "search.results_bucket.count", dimensions={"bucket": results_bucket(total)}
+            )
+            return response
+        except Exception:
+            dims = {"status": "failed"}
+            await _record_telemetry_count(self.state, "search.finished.count", dimensions=dims)
+            await _record_telemetry_duration(self.state, "search.duration_bucket.count", start_ms, dimensions=dims)
+            raise
 
     @route("GET", "/find", tags=("search",))
     async def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse:
-        results, total = await self.state.search_svc.search_filenames(query=query, ext=ext, limit=limit)
-        return FindResponse(results=[_find_result(row) for row in results], total=total, query=query)
+        start_ms = _now_ms()
+        await _record_telemetry_count(self.state, "find.request.count")
+        try:
+            results, total = await self.state.search_svc.search_filenames(query=query, ext=ext, limit=limit)
+            response = FindResponse(results=[_find_result(row) for row in results], total=total, query=query)
+            dims = {"status": "succeeded"}
+            await _record_telemetry_count(self.state, "find.finished.count", dimensions=dims)
+            await _record_telemetry_duration(self.state, "find.duration_bucket.count", start_ms, dimensions=dims)
+            await _record_telemetry_count(self.state, "find.results_bucket.count", dimensions={"bucket": results_bucket(total)})
+            return response
+        except Exception:
+            dims = {"status": "failed"}
+            await _record_telemetry_count(self.state, "find.finished.count", dimensions=dims)
+            await _record_telemetry_duration(self.state, "find.duration_bucket.count", start_ms, dimensions=dims)
+            raise
 
     @route("GET", "/files/by-path", tags=("files",))
     async def get_file_by_path(self, path: str) -> FileInfoResponse:
@@ -696,8 +785,14 @@ class DoclibServer(AsyncDoclibInterface):
 
     @route("POST", "/watches", tags=("watches",))
     async def add_watch(self, request: WatchRequest) -> WatchInfo:
-        row = await self.state.config_svc.add_watch(request.path, removable=request.removable, label=request.label)
-        return _watch_info(row)
+        await _record_telemetry_count(self.state, "watch.add.count")
+        try:
+            row = await self.state.config_svc.add_watch(request.path, removable=request.removable, label=request.label)
+            await _record_telemetry_count(self.state, "watch.add.finished.count", dimensions={"status": "succeeded"})
+            return _watch_info(row)
+        except Exception:
+            await _record_telemetry_count(self.state, "watch.add.finished.count", dimensions={"status": "failed"})
+            raise
 
     @route("GET", "/watches", tags=("watches",))
     async def list_watches(self) -> WatchListResponse:
@@ -705,11 +800,17 @@ class DoclibServer(AsyncDoclibInterface):
 
     @route("DELETE", "/watches/{watch_id}", tags=("watches",))
     async def remove_watch(self, watch_id: int) -> RemoveWatchResponse:
-        existing = await self.state.db.fetchone("SELECT id FROM watches WHERE id=?", (watch_id,))
-        if existing is None:
-            raise NotFoundError("watch_not_found", f"Watch target {watch_id} not found.", "watch_id")
-        await self.state.config_svc.remove_watch_by_id(watch_id)
-        return RemoveWatchResponse(watch_id=watch_id, removed=True)
+        await _record_telemetry_count(self.state, "watch.remove.count")
+        try:
+            existing = await self.state.db.fetchone("SELECT id FROM watches WHERE id=?", (watch_id,))
+            if existing is None:
+                raise NotFoundError("watch_not_found", f"Watch target {watch_id} not found.", "watch_id")
+            await self.state.config_svc.remove_watch_by_id(watch_id)
+            await _record_telemetry_count(self.state, "watch.remove.finished.count", dimensions={"status": "succeeded"})
+            return RemoveWatchResponse(watch_id=watch_id, removed=True)
+        except Exception:
+            await _record_telemetry_count(self.state, "watch.remove.finished.count", dimensions={"status": "failed"})
+            raise
 
     @route("POST", "/exclude-rules", tags=("rules",))
     async def add_exclude_rule(self, request: ExcludeRuleRequest) -> ExcludeRuleInfo:
@@ -776,6 +877,104 @@ class DoclibServer(AsyncDoclibInterface):
     async def cleanup_temp_files(self, request: CleanupTempRequest) -> CleanupTempResponse:
         count = await self.state.cleanup_svc.cleanup_temp_files(older_than_days=request.older_than_days)
         return CleanupTempResponse(temp_files_removed=count)
+
+    @route("GET", "/telemetry/status", tags=("telemetry",))
+    async def get_telemetry_status(self) -> TelemetryStatusResponse:
+        status = await self.state.telemetry_svc.status()
+        return TelemetryStatusResponse.model_validate(status)
+
+    @route("GET", "/telemetry/preview", tags=("telemetry",))
+    async def get_telemetry_preview(self) -> TelemetryPreviewResponse:
+        body = await self.state.telemetry_svc.preview_body()
+        return TelemetryPreviewResponse(body=TelemetryPayload.model_validate(body))
+
+    @route("POST", "/telemetry/actions/{action}", tags=("telemetry",))
+    async def telemetry_action(self, action: TelemetryAction) -> TelemetryActionResponse:
+        if action == "enable":
+            result = await self.state.telemetry_svc.set_consent("enabled")
+            return TelemetryActionResponse(action=action, **result)
+        if action == "disable":
+            result = await self.state.telemetry_svc.set_consent("disabled")
+            return TelemetryActionResponse(action=action, **result)
+        status = await self.state.telemetry_svc.status()
+        if status["state"] != "enabled":
+            return TelemetryActionResponse(
+                action=action,
+                state=status["state"],
+                installation_id=status["installation_id"],
+                executed=False,
+                reason="telemetry_not_enabled",
+            )
+        flush_result = await self.state.telemetry_svc.flush_once()
+        return TelemetryActionResponse(
+            action=action,
+            state=status["state"],
+            installation_id=status["installation_id"],
+            executed=flush_result.status not in {"disabled", "locked", "no_metrics", "failed"},
+            reason=None if flush_result.status == "success" else flush_result.status,
+            flush_result={
+                "status": flush_result.status,
+                "attempted": flush_result.attempted,
+                "succeeded": flush_result.succeeded,
+                "discarded": flush_result.discarded,
+            },
+        )
+
+    @route("POST", "/observations", tags=("telemetry",))
+    async def record_observations(self, request: TelemetryObservationsRequest) -> TelemetryObservationsResponse:
+        accepted = 0
+        for observation in request.observations:
+            if observation.metric_name == "parse.wait":
+                await self._record_parse_wait_observation(observation)
+                accepted += 1
+                continue
+            if observation.duration_ms is None:
+                await self.state.telemetry_svc.record_count(
+                    observation.metric_name,
+                    value=observation.value,
+                    dimensions=observation.dimensions,
+                )
+            else:
+                await self.state.telemetry_svc.record_duration_bucket(
+                    observation.metric_name,
+                    duration_ms=observation.duration_ms,
+                    dimensions=observation.dimensions,
+                )
+            accepted += 1
+        return TelemetryObservationsResponse(accepted=accepted)
+
+    async def _record_parse_wait_observation(self, observation: TelemetryObservation) -> None:
+        if observation.duration_ms is None or not observation.parse_ids:
+            return
+        placeholders = ",".join("?" * len(observation.parse_ids))
+        rows = cast(
+            list[ParseRow],
+            await self.state.db.fetchall(
+                f"SELECT * FROM parses WHERE id IN ({placeholders}) ORDER BY id ASC",
+                tuple(observation.parse_ids),
+            ),
+        )
+        if not rows:
+            return
+        tier = rows[0]["tier"] if rows[0].get("tier") else "unknown"
+        page_numbers: set[int] = set()
+        for row in rows:
+            try:
+                page_numbers |= parse_page_range_set(row["page_range"])
+            except Exception:
+                continue
+        status = observation.dimensions.get("status") or "unknown"
+        dims = {
+            "status": status,
+            "tier": tier,
+            "pages_bucket": pages_bucket(len(page_numbers) or 1),
+        }
+        await self.state.telemetry_svc.record_count("parse.wait.count", dimensions=dims)
+        await self.state.telemetry_svc.record_duration_bucket(
+            "parse.wait_duration_bucket.count",
+            duration_ms=observation.duration_ms,
+            dimensions=dims,
+        )
 
     async def _select_parse_rows(
         self,
@@ -989,7 +1188,9 @@ class DoclibServer(AsyncDoclibInterface):
             raise NotFoundError("no_accessible_file", "No active source file found for this document.", "locator")
         source_path = file_row["path"]
         if not source_path.lower().endswith(".pdf"):
-            raise InvalidRequestError("format_not_supported", "image format for page/block is only supported for PDF sources.", "format")
+            raise InvalidRequestError(
+                "format_not_supported", "image format for page/block is only supported for PDF sources.", "format"
+            )
         pdf_bytes = Path(source_path).read_bytes()
         with PDFDocument(pdf_bytes) as doc:
             if plan.target.block_no is None:
@@ -1004,7 +1205,9 @@ class DoclibServer(AsyncDoclibInterface):
                     raise InvalidRequestError("bbox_not_available", "Block bbox is not available for image output.", "locator")
                 image_bytes = doc.crop_image(block.bbox, plan.target.page_no - 1, scale=2)
                 width, height = _image_size_from_bytes(image_bytes)
-        return _write_temp_asset(self.state.data_dir, plan.short_id, "jpg", image_bytes, mime_type="image/jpeg", width=width, height=height)
+        return _write_temp_asset(
+            self.state.data_dir, plan.short_id, "jpg", image_bytes, mime_type="image/jpeg", width=width, height=height
+        )
 
     async def _render_office_image_asset(self, plan: _ReadPlan, page: PageInfo) -> ContentAsset:
         if plan.target is None or plan.target.block_no is None:
@@ -1014,7 +1217,9 @@ class DoclibServer(AsyncDoclibInterface):
             raise NotFoundError("block_not_found", f"Block {plan.target.block_no} not found.", "locator")
         image_span = _first_image_span(block)
         if image_span is None:
-            raise InvalidRequestError("format_not_supported", "Office image output is only supported for image blocks.", "format")
+            raise InvalidRequestError(
+                "format_not_supported", "Office image output is only supported for image blocks.", "format"
+            )
         image_bytes, ext, mime_type = _span_image_bytes(image_span)
         if image_bytes is None and image_span.image_path:
             image_dir = parse_image_sidecar_dir(self.state.data_dir, plan.sha256, plan.tier)
@@ -1026,7 +1231,9 @@ class DoclibServer(AsyncDoclibInterface):
         if image_bytes is None:
             raise NotFoundError("asset_not_available", "Office image asset is not available.", "locator")
         width, height = _image_size_from_bytes(image_bytes)
-        return _write_temp_asset(self.state.data_dir, plan.short_id, ext or "png", image_bytes, mime_type=mime_type, width=width, height=height)
+        return _write_temp_asset(
+            self.state.data_dir, plan.short_id, ext or "png", image_bytes, mime_type=mime_type, width=width, height=height
+        )
 
 
 _READ_LOCATOR_RE = re.compile(
@@ -1068,7 +1275,9 @@ def _locator_after(locator: _LocatorParts) -> str | None:
         return None
     if locator.block_no is None:
         return None
-    return _canonical_locator(locator.short_id, locator.tier or "standard", locator) if locator.char_offset is not None else None
+    return (
+        _canonical_locator(locator.short_id, locator.tier or "standard", locator) if locator.char_offset is not None else None
+    )
 
 
 def _locator_page_range(locator: _LocatorParts, doc: DocRow, context: int) -> str | None:
@@ -1727,6 +1936,54 @@ async def _recent_scans(db: DatabaseManager, limit: int = 5) -> list[ScanInfo]:
         ),
     )
     return [ScanInfo.model_validate(row) for row in rows]
+
+
+async def _record_telemetry_count(state: Any, metric_name: str, *, dimensions: dict[str, str] | None = None) -> None:
+    telemetry_svc = getattr(state, "telemetry_svc", None)
+    if telemetry_svc is None:
+        return
+    await telemetry_svc.record_count(metric_name, dimensions=dimensions)
+
+
+async def _record_telemetry_duration(
+    state: Any,
+    metric_name: str,
+    start_ms: int,
+    *,
+    dimensions: dict[str, str] | None = None,
+) -> None:
+    telemetry_svc = getattr(state, "telemetry_svc", None)
+    if telemetry_svc is None:
+        return
+    await telemetry_svc.record_duration_bucket(metric_name, duration_ms=max(0, _now_ms() - start_ms), dimensions=dimensions)
+
+
+def _parse_route_status(response: ParseResponse) -> str:
+    if response.cache_hit:
+        return "cached"
+    if response.created_parse_ids:
+        return "queued"
+    if response.reused_parse_ids:
+        return "reused"
+    return "direct"
+
+
+def _telemetry_error_code(exc: Exception) -> str:
+    if isinstance(exc, MineruError):
+        return exc.code
+    return "internal_error"
+
+
+def _telemetry_output_format(value: str) -> str:
+    if value == "markdown":
+        return "markdown"
+    if value == "image":
+        return "image"
+    return "other"
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
 
 
 async def _error_buckets(db: DatabaseManager, table: str) -> list[ErrorBucket]:

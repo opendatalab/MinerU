@@ -9,7 +9,8 @@ from click.core import Context
 from typer.core import TyperGroup
 
 from ..types import Tier
-from .commands import cleanup, config, list_resources, server, show, watch
+from .commands import cleanup, config, list_resources, server, show, telemetry, watch
+from .telemetry import prepare_cli_telemetry
 
 TOP_LEVEL_COMMAND_ORDER = [
     "parse",
@@ -20,6 +21,7 @@ TOP_LEVEL_COMMAND_ORDER = [
     "find",
     "list",
     "show",
+    "telemetry",
     "server",
     "config",
     "invalidate",
@@ -40,6 +42,11 @@ app = typer.Typer(
     help="MinerU — your personal document center, built for agents",
     no_args_is_help=True,
 )
+
+
+@app.callback()
+def root(ctx: typer.Context) -> None:
+    prepare_cli_telemetry(ctx)
 
 
 # top-level commands
@@ -152,6 +159,7 @@ def find(
 
 app.add_typer(list_resources.app, name="list")
 app.add_typer(show.app, name="show")
+app.add_typer(telemetry.app, name="telemetry")
 app.add_typer(server.app, name="server")
 app.add_typer(config.app, name="config")
 

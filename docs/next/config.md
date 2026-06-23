@@ -37,16 +37,18 @@ MinerU 有两类配置：
 
 | 分组 | 字段 | 默认值 | 说明 |
 |------|------|--------|------|
+| UDS | `doclib.uds.enabled` | `auto` | `auto` / `true` / `false`；`auto` 时当前 Python runtime 支持 UDS 则启用，否则关闭 |
 | UDS | `doclib.uds.path` | `~/.mineru/doclib.sock` | CLI / doclib 通信 socket，默认取 `$MINERU_HOME/doclib.sock` |
 | UDS | `doclib.uds.permission` | `0o600` | socket 权限 |
-| HTTP | `doclib.http.enabled` | `False` | 是否启用 TCP HTTP |
-| HTTP | `doclib.http.host` | `127.0.0.1` | TCP 监听地址 |
-| HTTP | `doclib.http.port` | `15980` | TCP 监听端口 |
-| HTTP | `doclib.http.strict_port` | `False` | 端口占用时是否报错 |
-| HTTP | `doclib.http.backlog` | `128` | socket backlog |
-| HTTP | `doclib.http.timeout` | `600` | keep-alive timeout |
+| TCP | `doclib.tcp.enabled` | `auto` | `auto` / `true` / `false`；`auto` 时 UDS 不可用则启用，作为 Windows fallback |
+| TCP | `doclib.tcp.host` | `127.0.0.1` | TCP 监听地址 |
+| TCP | `doclib.tcp.port` | `15980` | TCP 监听端口 |
+| TCP | `doclib.tcp.strict_port` | `False` | 端口占用时是否报错 |
+| TCP | `doclib.tcp.backlog` | `128` | socket backlog |
+| TCP | `doclib.tcp.timeout` | `600` | keep-alive timeout |
 | log | `doclib.log.path` | `~/.mineru/doclib.log` | 日志路径 |
 | log | `doclib.log.level` | `info` | 日志级别 |
+| doclib | `doclib.endpoint_path` | `~/.mineru/doclib.endpoint.json` | 当前 server 实际可用 endpoint discovery 文件 |
 | doclib | `doclib.data_dir` | `~/.mineru/data` | 数据目录，默认取 `$MINERU_HOME/data`，但仍可通过配置文件或环境变量覆盖 |
 | doclib | `doclib.ingest_workers` | `2` | ingest worker 数 |
 | doclib | `doclib.parse_workers` | `2` | parse worker 数 |
@@ -67,6 +69,8 @@ MinerU 有两类配置：
 | sqlite | `doclib.sqlite.journal_size_limit` | `33554432` | WAL journal size limit |
 | sqlite | `doclib.sqlite.temp_store` | `memory` | temp store |
 | sqlite | `doclib.sqlite.synchronous` | `NORMAL` | synchronous pragma |
+
+`doclib.uds.enabled` 和 `doclib.tcp.enabled` 是 `auto | true | false` 配置项。默认值为 `auto`。当前第一版只在启动前解析 `auto`: UDS 可用则启用 UDS、关闭 TCP；UDS 不可用则关闭 UDS、启用 TCP loopback。用户显式配置 `true` / `false` 时，server 尊重该配置。
 
 这些配置影响 doclib 如何启动，因此不能依赖 `mineru config` 读取。
 
@@ -99,7 +103,7 @@ SDK client 显式参数属于当前调用方传入的请求上下文；当它最
 
 如果一个配置会改变隐私边界，例如启用远端上传，必须要求当前请求或规则显式允许，不能只因为全局配置存在 remote URL 或 API Key 就上传文档。
 
-启动前配置只用于必须在 doclib 初始化前确定的字段，比如 UDS 路径、DB 路径、SQLite pragma。它不与 SQLite 配置定义同一 key，也不在 doclib 启动后被 SQLite 覆盖。`MINERU_HOME` 属于 bootstrap 层，负责默认 home 与默认配置文件位置；`doclib.data_dir` 是独立配置项，默认取 `$MINERU_HOME/data`。
+启动前配置只用于必须在 doclib 初始化前确定的字段，比如 UDS/TCP transport、endpoint discovery 路径、DB 路径、SQLite pragma。它不与 SQLite 配置定义同一 key，也不在 doclib 启动后被 SQLite 覆盖。`MINERU_HOME` 属于 bootstrap 层，负责默认 home 与默认配置文件位置；`doclib.data_dir` 是独立配置项，默认取 `$MINERU_HOME/data`。
 
 ## 4. 运行时 KV 配置
 

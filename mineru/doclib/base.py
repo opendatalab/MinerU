@@ -53,6 +53,12 @@ from .types import (
     SearchResponse,
     ServerStatusResponse,
     ShutdownResponse,
+    TelemetryAction,
+    TelemetryActionResponse,
+    TelemetryObservationsRequest,
+    TelemetryObservationsResponse,
+    TelemetryPreviewResponse,
+    TelemetryStatusResponse,
     WatchInfo,
     WatchListResponse,
     WatchRequest,
@@ -500,6 +506,26 @@ class DoclibInterface(ABC):
         """
         raise NotImplementedError()
 
+    @abstractmethod
+    def get_telemetry_status(self) -> TelemetryStatusResponse:
+        """Return local telemetry state and pending aggregate counts."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def get_telemetry_preview(self) -> TelemetryPreviewResponse:
+        """Return the next telemetry request body without signing or sending it."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def telemetry_action(self, action: TelemetryAction) -> TelemetryActionResponse:
+        """Enable or disable telemetry."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def record_observations(self, request: TelemetryObservationsRequest) -> TelemetryObservationsResponse:
+        """Record client-side telemetry observations."""
+        raise NotImplementedError()
+
 
 class AsyncDoclibInterface(ABC):
     """Asynchronous contract matching ``DoclibInterface`` method-for-method.
@@ -747,4 +773,24 @@ class AsyncDoclibInterface(ABC):
     @abstractmethod
     async def cleanup_temp_files(self, request: CleanupTempRequest) -> CleanupTempResponse:
         """Async version of ``DoclibInterface.cleanup_temp_files``."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def get_telemetry_status(self) -> TelemetryStatusResponse:
+        """Async version of ``DoclibInterface.get_telemetry_status``."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def get_telemetry_preview(self) -> TelemetryPreviewResponse:
+        """Async version of ``DoclibInterface.get_telemetry_preview``."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def telemetry_action(self, action: TelemetryAction) -> TelemetryActionResponse:
+        """Async version of ``DoclibInterface.telemetry_action``."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def record_observations(self, request: TelemetryObservationsRequest) -> TelemetryObservationsResponse:
+        """Async version of ``DoclibInterface.record_observations``."""
         raise NotImplementedError()

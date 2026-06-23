@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -15,6 +15,8 @@ ScanKind = Literal["manual", "watch"]
 ScanSource = Literal["unknown", "cli", "sdk", "api", "watch", "system"]
 RuleType = Literal["exclude", "parsing_rule"]
 WatchStatus = Literal["active", "unreachable"]
+TelemetryConsentState = Literal["unset", "enabled", "disabled"]
+TelemetryAction = Literal["enable", "disable", "flush"]
 InvalidateTarget = Literal["parses"]
 ForgetMatchedAs = Literal["file", "directory", "none"]
 ConfigSource = Literal["default", "override"]
@@ -489,7 +491,7 @@ class ParseServerStatus(DoclibModel):
     remote: RemoteParseServerStatus = Field(default_factory=RemoteParseServerStatus)
 
 
-class HTTPServerStatus(DoclibModel):
+class TCPServerStatus(DoclibModel):
     enabled: bool = False
     host: str | None = None
     port: int | None = None
@@ -551,7 +553,7 @@ class ServerStatusResponse(DoclibModel):
     data_dir: str
     sqlite_path: str
     log_path: str
-    http: HTTPServerStatus = Field(default_factory=HTTPServerStatus)
+    tcp: TCPServerStatus = Field(default_factory=TCPServerStatus)
     active_scan_count: int = 0
     last_scan_at: int | None = None
     sqlite_journal_mode: str | None = None
@@ -595,3 +597,58 @@ class CleanupTempRequest(DoclibModel):
 
 class CleanupTempResponse(DoclibModel):
     temp_files_removed: int
+
+
+class TelemetryMetric(DoclibModel):
+    name: str
+    value: int = 1
+    dimensions: dict[str, str] = Field(default_factory=dict)
+
+
+class TelemetryPayload(DoclibModel):
+    api_version: str
+    batch_id: str
+    schema_version: str
+    installation_id: str
+    period_start: str
+    period_end: str
+    context: dict[str, str] = Field(default_factory=dict)
+    metrics: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class TelemetryStatusResponse(DoclibModel):
+    state: TelemetryConsentState
+    installation_id: str
+    pending_periods: int = 0
+    pending_metrics: int = 0
+    last_flush_at: int | None = None
+
+
+class TelemetryPreviewResponse(DoclibModel):
+    body: TelemetryPayload
+
+
+class TelemetryActionResponse(DoclibModel):
+    action: TelemetryAction
+    state: TelemetryConsentState
+    installation_id: str
+    accepted: bool = True
+    executed: bool = True
+    reason: str | None = None
+    flush_result: dict[str, Any] | None = None
+
+
+class TelemetryObservation(DoclibModel):
+    metric_name: str
+    value: int = 1
+    duration_ms: int | None = None
+    parse_ids: list[int] = Field(default_factory=list)
+    dimensions: dict[str, str] = Field(default_factory=dict)
+
+
+class TelemetryObservationsRequest(DoclibModel):
+    observations: list[TelemetryObservation] = Field(default_factory=list)
+
+
+class TelemetryObservationsResponse(DoclibModel):
+    accepted: int

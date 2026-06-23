@@ -71,11 +71,13 @@ class ScanService:
         parse_svc: ParseService,
         *,
         scan_lock_timeout_sec: int,
+        telemetry_svc: object | None = None,
     ) -> None:
         self.db = db
         self.config_svc = config_svc
         self.parse_svc = parse_svc
         self.scan_lock_timeout_ms = scan_lock_timeout_sec * 1000
+        self.telemetry_svc = telemetry_svc
 
     async def create_scan(
         self,
@@ -101,7 +103,11 @@ class ScanService:
             ),
         )
         if active is not None:
+            await self._record_count("scan.reuse.count", dimensions={"status": "reused"})
             return _scan_info(active)
+
+        if source == "watch":
+            await self._record_count("scan.request.count", dimensions={"source": "watch", "caller": "system"})
 
         now = _now_ms()
         scan_id = await self.db.execute_insert(
@@ -170,6 +176,7 @@ class ScanService:
         )
 
     async def process_scan(self, task: ScanRow) -> bool:
+        start_ms = _now_ms()
         try:
             counters = await self._run_scan(task)
         except Exception as exc:
@@ -179,6 +186,8 @@ class ScanService:
                 (SCAN_STATUS_FAILED, "scan_failed", str(exc)[:500], now, now, task["id"]),
             )
             await self.cleanup_terminal_scan_logs()
+            await self._record_count("scan.finished.count", dimensions={"status": "failed"})
+            await self._record_duration("scan.duration_bucket.count", start_ms, dimensions={"status": "failed"})
             return False
 
         now = _now_ms()
@@ -206,6 +215,9 @@ class ScanService:
         if task["kind"] == SCAN_KIND_WATCH and task_watch_id is not None:
             await self.config_svc.update_watch_scan_stats(task_watch_id, counters.files_refreshed)
         await self.cleanup_terminal_scan_logs()
+        await self._record_count("scan.finished.count", dimensions={"status": "succeeded"})
+        await self._record_duration("scan.duration_bucket.count", start_ms, dimensions={"status": "succeeded"})
+        await self._record_scan_file_counts(counters)
         return True
 
     async def cleanup_terminal_scan_logs(self, *, keep: int = SCAN_LOG_RETENTION_LIMIT) -> None:
@@ -334,6 +346,42 @@ class ScanService:
         if watch is None:
             raise NotFoundError("watch_not_found", "Watch target not found.", "watch_id")
         return watch
+
+    async def _record_scan_file_counts(self, counters: "_ScanCounters") -> None:
+        values = {
+            "seen": counters.files_seen,
+            "refreshed": counters.files_refreshed,
+            "new": counters.files_new,
+            "changed": counters.files_changed,
+            "deleted": counters.files_deleted,
+            "unreachable": counters.files_unreachable,
+            "error": counters.files_error,
+            "unsupported": counters.files_unsupported,
+            "excluded": counters.files_excluded,
+        }
+        for result, value in values.items():
+            if value:
+                await self._record_count("scan.files.count", value=value, dimensions={"result": result})
+
+    async def _record_count(
+        self,
+        metric_name: str,
+        *,
+        value: int = 1,
+        dimensions: dict[str, str] | None = None,
+    ) -> None:
+        if self.telemetry_svc is None:
+            return
+        record = getattr(self.telemetry_svc, "record_count", None)
+        if record is not None:
+            await record(metric_name, value=value, dimensions=dimensions)
+
+    async def _record_duration(self, metric_name: str, start_ms: int, *, dimensions: dict[str, str] | None = None) -> None:
+        if self.telemetry_svc is None:
+            return
+        record = getattr(self.telemetry_svc, "record_duration_bucket", None)
+        if record is not None:
+            await record(metric_name, duration_ms=max(0, _now_ms() - start_ms), dimensions=dimensions)
 
 
 class _ScanCounters:

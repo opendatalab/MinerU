@@ -21,9 +21,9 @@
 - API-backed Parser 是无状态 API client。
 - Doclib SDK 是有状态本地文档库 client。
 
-Doclib SDK 与 doclib HTTP/UDS API 使用同一套方法和协议语义。项目内部除 `mineru.doclib.client` 外，不应直接通过 HTTP 调用 doclib API；外部客户端未来可以直接依赖 doclib HTTP API。
+Doclib SDK 与 doclib 本地 HTTP + JSON API 使用同一套方法和协议语义。doclib 本地 API 可以运行在 UDS 或 TCP loopback transport 上，Python client 默认通过 `$MINERU_HOME/doclib.endpoint.json` 发现实际 endpoint。项目内部除 `mineru.doclib.client` 外，不应直接通过 HTTP 调用 doclib API；外部客户端未来可以直接依赖 doclib HTTP API。
 
-其他语言 SDK 暂无开发计划。如果未来开发，只覆盖 v1 Unified API，不覆盖本地 doclib UDS 能力；本地 doclib UDS 能力由 Python Doclib SDK 和 MinerU 自身入口承载。
+其他语言 SDK 暂无开发计划。如果未来开发，只覆盖 v1 Unified API，不覆盖本地 doclib transport discovery 能力；本地 doclib 能力由 Python Doclib SDK 和 MinerU 自身入口承载。
 
 ## 依赖方向
 
@@ -39,7 +39,7 @@ mineru-kit api-server
 
 mineru doclib
   -> mineru.doclib.client
-      -> doclib server over UDS
+      -> doclib server over UDS or TCP loopback
           -> doclib services
               -> mineru.parser
               -> MinerUApiParser -> local parse-server or mineru.net
@@ -71,7 +71,7 @@ mineru doclib
 - **API-backed parser**: `MinerUApiParser`。
 - **Doclib SDK**: `MineruClient`。
 - **parse-server**: 实现 v1 Unified API 的无状态解析服务。
-- **doclib server**: 本地文档库服务，通过 UDS 暴露本地产品能力。
+- **doclib server**: 本地文档库服务，通过 UDS 或 TCP loopback 暴露本地产品能力。
 
 ## 未决问题
 

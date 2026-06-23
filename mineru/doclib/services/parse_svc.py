@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Literal, cast
+from urllib.parse import urlparse
 
 from ...errors import MineruError
 from ...parser.base import ParseResult
@@ -247,12 +248,14 @@ class ParseService:
         data_dir: str,
         *,
         parse_lock_timeout_sec: int,
+        telemetry_svc: object | None = None,
     ) -> None:
         self.db = db
         self.fts = fts
         self.config_svc = config_svc
         self.data_dir = os.path.expanduser(data_dir)
         self.parse_lock_timeout_ms = parse_lock_timeout_sec * 1000
+        self.telemetry_svc = telemetry_svc
 
     # ── discovery / ingestion (shared) ──────────────────────
 
@@ -413,8 +416,22 @@ class ParseService:
             return None
         return cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
 
-    async def ingest_file(self, path: str, watch_id: int | None = None) -> FileRow | None:
+    async def ingest_file(self, path: str, watch_id: int | None = None, *, trigger: str = "parse") -> FileRow | None:
         """Ingest a discovered file: SHA-256 + metadata + trigger default parse."""
+        start_ms = _now_ms()
+        status = "succeeded"
+        try:
+            return await self._ingest_file(path, watch_id=watch_id)
+        except Exception:
+            status = "failed"
+            raise
+        finally:
+            dimensions = {"status": status, "trigger": trigger}
+            await self._record_count("ingest.finished.count", dimensions=dimensions)
+            await self._record_duration("ingest.duration_bucket.count", start_ms, dimensions=dimensions)
+
+    async def _ingest_file(self, path: str, watch_id: int | None = None) -> FileRow | None:
+        """Ingest implementation without telemetry wrapper."""
         ext = Path(path).suffix.lower().lstrip(".")
         if ext not in ALLOWED_EXTENSIONS:
             return None
@@ -576,6 +593,7 @@ class ParseService:
             "INSERT INTO parses (sha256, tier, page_range, status, priority, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)",
             (sha256, tier, parse_page_range, PARSE_STATUS_PENDING, now, now),
         )
+        await self._record_count("parse_task.created.count", dimensions={"tier": tier})
 
         await self.db.execute(
             "UPDATE files SET sha256=?, locked_at=NULL, updated_at=? WHERE path=?",
@@ -688,6 +706,7 @@ class ParseService:
             "VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
             (sha256, requested_tier, uncovered_page_range, PARSE_STATUS_PENDING, privacy, now, now),
         )
+        await self._record_count("parse_task.created.count", dimensions={"tier": requested_tier})
         created_parse_ids = [parse_id]
         return ParseResponse(
             sha256=sha256,
@@ -713,7 +732,7 @@ class ParseService:
     async def acquire_task(self) -> ParseRow | None:
         now = _now_ms()
         timeout = now - self.parse_lock_timeout_ms
-        return cast(
+        task = cast(
             ParseRow | None,
             await self.db.fetchone(
                 "UPDATE parses SET locked_at=?, status=? "
@@ -725,9 +744,13 @@ class ParseService:
                 (now, PARSE_STATUS_PARSING, PARSE_STATUS_PENDING, timeout),
             ),
         )
+        if task is not None:
+            await self._record_count("parse_task.started.count", dimensions={"tier": task["tier"]})
+        return task
 
     async def process_doc(self, task: ParseRow) -> bool:
         """Execute parse for a batch.  Returns True on success."""
+        task_start_ms = _now_ms()
         sha256 = task["sha256"]
         tier = task["tier"]
         page_range = task["page_range"]
@@ -748,33 +771,61 @@ class ParseService:
         )
         if file_row is None:
             await self._fail_task(task["id"], "no_accessible_file", "No active file found for this document")
+            await self._record_parse_task_finished(
+                task_start_ms,
+                tier=tier,
+                status="failed",
+                error_code="no_accessible_file",
+            )
             return False
 
         output_dir = os.path.join(self.data_dir, "parsed", sha256[:2], sha256, tier)
 
         # route parse based on tier
         via = "local"
+        execute_start_ms = _now_ms()
+        server_dim = "local(flash)" if tier == "flash" else "unknown"
         try:
             if tier == "flash":
                 result = await self._parse_via_local(file_row, tier, page_range)
             else:
                 result, via = await self._parse_via_api(file_row, tier, page_range, privacy)
+                server_dim = await self._telemetry_server_dim(via=via, tier=tier)
         except ParseFailure as exc:
+            await self._record_execute(
+                execute_start_ms,
+                tier=tier,
+                server=server_dim,
+                status="failed",
+                error_code=exc.code,
+            )
             await self._fail_task(task["id"], exc.code, exc.message)
+            await self._record_parse_task_finished(task_start_ms, tier=tier, status="failed", error_code=exc.code)
             return False
         except Exception as exc:
+            await self._record_execute(
+                execute_start_ms,
+                tier=tier,
+                server=server_dim,
+                status="failed",
+                error_code="parse_failed",
+            )
             await self._fail_task(task["id"], "parse_failed", str(exc)[:500])
+            await self._record_parse_task_finished(task_start_ms, tier=tier, status="failed", error_code="parse_failed")
             return False
+        await self._record_execute(execute_start_ms, tier=tier, server=server_dim, status="succeeded")
 
         export_payload = result.to_export_dict(skip_defaults=True)
         new_pages = export_payload["pages"]
         if not new_pages:
             await self._fail_task(task["id"], "parse_empty", "Parse completed but returned no pages")
+            await self._record_parse_task_finished(task_start_ms, tier=tier, status="failed", error_code="parse_failed")
             return False
 
         # save per-batch JSON (markdown is generated on read from /docs/{sha256}/content)
         done_at_ms = _now_ms()
         json_path = os.path.join(output_dir, _safe_filename(page_range, done_at_ms))
+        write_start_ms = _now_ms()
         try:
             os.makedirs(output_dir, exist_ok=True)
             _write_cached_image_sidecars(parse_image_sidecar_dir(self.data_dir, sha256, tier), result.images())
@@ -782,24 +833,57 @@ class ParseService:
                 json.dump(export_payload, f, ensure_ascii=False, indent=4)
         except Exception as exc:
             await self._fail_task(task["id"], "parse_json_write_failed", str(exc)[:500])
+            await self._record_write(
+                write_start_ms,
+                tier=tier,
+                status="failed",
+                error_code="parse_json_write_failed",
+            )
+            await self._record_parse_task_finished(
+                task_start_ms,
+                tier=tier,
+                status="failed",
+                error_code="parse_json_write_failed",
+            )
             return False
 
-        # generate markdown for FTS (not persisted, only for search indexing)
-        md_text = ""
-        md = result.markdown(add_markers=False) if hasattr(result, "markdown") else ""
-        md_text += md + "\n"
+        try:
+            # generate markdown for FTS (not persisted, only for search indexing)
+            md_text = ""
+            md = result.markdown(add_markers=False) if hasattr(result, "markdown") else ""
+            md_text += md + "\n"
 
-        # update fts_contents (tier-gated)
-        await self._maybe_update_fts(sha256, tier, md_text, file_row)
+            # update fts_contents (tier-gated)
+            await self._maybe_update_fts(sha256, tier, md_text, file_row)
 
-        # update docs metadata (tier-gated)
-        await self._maybe_update_docs_meta(sha256, tier)
+            # update docs metadata (tier-gated)
+            await self._maybe_update_docs_meta(sha256, tier)
 
-        # mark done
-        await self.db.execute(
-            "UPDATE parses SET status=?, done_at=?, locked_at=NULL, via=?, updated_at=? WHERE id=?",
-            (PARSE_STATUS_DONE, done_at_ms, via, done_at_ms, task["id"]),
-        )
+            # mark done
+            await self.db.execute(
+                "UPDATE parses SET status=?, done_at=?, locked_at=NULL, via=?, updated_at=? WHERE id=?",
+                (PARSE_STATUS_DONE, done_at_ms, via, done_at_ms, task["id"]),
+            )
+        except Exception as exc:
+            await self._fail_task(task["id"], "parse_json_write_failed", str(exc)[:500])
+            await self._record_write(
+                write_start_ms,
+                tier=tier,
+                status="failed",
+                error_code="parse_json_write_failed",
+            )
+            await self._record_parse_task_finished(
+                task_start_ms,
+                tier=tier,
+                status="failed",
+                error_code="parse_json_write_failed",
+            )
+            return False
+
+        await self._record_write(write_start_ms, tier=tier, status="succeeded")
+        await self._record_count("parse_task.files.count", dimensions={"tier": tier})
+        await self._record_count("parse_task.pages.count", value=len(new_pages), dimensions={"tier": tier})
+        await self._record_parse_task_finished(task_start_ms, tier=tier, status="succeeded")
         return True
 
     # ── parse routing helpers ─────────────────────────────────────
@@ -910,6 +994,84 @@ class ParseService:
             "UPDATE parses SET status=?, error_code=?, error_msg=?, locked_at=NULL, updated_at=? WHERE id=?",
             (PARSE_STATUS_FAILED, code, message, now, task_id),
         )
+
+    async def _telemetry_server_dim(self, *, via: str, tier: Tier) -> str:
+        if tier == "flash":
+            return "local(flash)"
+        if via == "local":
+            local_mode = (await self.config_svc.get("parse_server.local.mode")) or "disabled"
+            if local_mode == "managed":
+                return "local(managed)"
+            if local_mode == "self_hosted":
+                return "local(self-hosted)"
+            return "unknown"
+        if via == "remote":
+            url = cast(str | None, await self.config_svc.get("parse_server.remote.url"))
+            return "remote(official)" if _is_official_remote_url(url or "") else "remote(custom)"
+        return "unknown"
+
+    async def _record_parse_task_finished(
+        self,
+        start_ms: int,
+        *,
+        tier: str,
+        status: str,
+        error_code: str | None = None,
+    ) -> None:
+        dimensions = {"status": status, "tier": tier}
+        if error_code:
+            dimensions["error_code"] = error_code
+        await self._record_count("parse_task.finished.count", dimensions=dimensions)
+        await self._record_duration("parse_task.duration_bucket.count", start_ms, dimensions=dimensions)
+
+    async def _record_execute(
+        self,
+        start_ms: int,
+        *,
+        tier: str,
+        server: str,
+        status: str,
+        error_code: str | None = None,
+    ) -> None:
+        dimensions = {"status": status, "tier": tier, "server": server}
+        if error_code:
+            dimensions["error_code"] = error_code
+        await self._record_count("parse_task.execute.count", dimensions=dimensions)
+        await self._record_duration("parse_task.execute_duration_bucket.count", start_ms, dimensions=dimensions)
+
+    async def _record_write(
+        self,
+        start_ms: int,
+        *,
+        tier: str,
+        status: str,
+        error_code: str | None = None,
+    ) -> None:
+        dimensions = {"status": status, "tier": tier}
+        if error_code:
+            dimensions["error_code"] = error_code
+        await self._record_count("parse_task.write.count", dimensions=dimensions)
+        await self._record_duration("parse_task.write_duration_bucket.count", start_ms, dimensions=dimensions)
+
+    async def _record_count(
+        self,
+        metric_name: str,
+        *,
+        value: int = 1,
+        dimensions: dict[str, str] | None = None,
+    ) -> None:
+        if self.telemetry_svc is None:
+            return
+        record = getattr(self.telemetry_svc, "record_count", None)
+        if record is not None:
+            await record(metric_name, value=value, dimensions=dimensions)
+
+    async def _record_duration(self, metric_name: str, start_ms: int, *, dimensions: dict[str, str] | None = None) -> None:
+        if self.telemetry_svc is None:
+            return
+        record = getattr(self.telemetry_svc, "record_duration_bucket", None)
+        if record is not None:
+            await record(metric_name, duration_ms=max(0, _now_ms() - start_ms), dimensions=dimensions)
 
     async def get_parse_record(self, parse_id: int) -> dict | None:
         row = cast(ParseRow | None, await self.db.fetchone("SELECT * FROM parses WHERE id=?", (parse_id,)))
@@ -1249,6 +1411,12 @@ def _local_parse_server_url(mode: str, health: object) -> str | None:
     if mode == "self_hosted":
         return getattr(health, "self_hosted_url", None)
     return None
+
+
+def _is_official_remote_url(url: str) -> bool:
+    host = urlparse(url).hostname or ""
+    host = host.lower().rstrip(".")
+    return host in {"mineru.net", "mineru.org.cn"} or host.endswith(".mineru.net") or host.endswith(".mineru.org.cn")
 
 
 def _file_info(row: FileRow | None) -> FileInfo | None:

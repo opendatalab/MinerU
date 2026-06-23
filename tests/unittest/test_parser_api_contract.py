@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 import mineru.parser.api_client as api_client
 import mineru.parser.api_server as api_server
-from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job
+from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job, should_trust_env_for_url
 from mineru.parser import parse, parse_async
 from mineru.parser.base import ParseResult
 from mineru.parser.api_server import (
@@ -149,6 +149,44 @@ def test_async_api_client_rejects_unsafe_image_sidecar_paths(monkeypatch: pytest
                 parser,
             )
         )
+
+
+def test_api_client_disables_env_proxy_for_local_network_urls() -> None:
+    assert should_trust_env_for_url("http://localhost:8000/api") is False
+    assert should_trust_env_for_url("http://127.0.0.1:8000/api") is False
+    assert should_trust_env_for_url("http://192.168.1.20:8000/api") is False
+    assert should_trust_env_for_url("https://staging.mineru.org.cn/api") is True
+
+
+def test_api_client_passes_trust_env_from_api_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[bool] = []
+
+    class _Response:
+        status_code = 200
+        text = ""
+
+        def json(self) -> dict[str, str]:
+            return {"job_id": "job_1", "status": "completed"}
+
+    class _Client:
+        def __init__(self, *, timeout: object, trust_env: bool, **_: object) -> None:
+            calls.append(trust_env)
+
+        def __enter__(self) -> "_Client":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def post(self, *args: object, **kwargs: object) -> _Response:
+            return _Response()
+
+    monkeypatch.setattr("mineru.parser.api_client.httpx.Client", _Client)
+
+    MinerUApiParser(api_url="http://127.0.0.1:8000/api")._do_parse({"files": []})
+    MinerUApiParser(api_url="https://mineru.net/api")._do_parse({"files": []})
+
+    assert calls == [False, True]
 
 
 def test_api_client_omits_tier_when_unspecified(tmp_path: Path) -> None:

@@ -138,17 +138,15 @@ def format_server_status(data: Any, json_mode: bool = False) -> None:
         table.add_row("SQLite", _get(data, "sqlite_path", ""))
         table.add_row("SQLite size", _format_bytes(_get(data, "sqlite_size_bytes")))
         table.add_row("Log", _get(data, "log_path", ""))
-        http_data = _get(data, "http")
-        http_enabled = bool(_get(http_data, "enabled", False))
-        http_host = _get(http_data, "host", "") or "-"
-        http_port = _get(http_data, "port")
-        if http_enabled:
-            http_value = (
-                f"http://{http_host}:{http_port}" if http_port is not None else f"http://{http_host}:(pending)"
-            )
+        tcp_data = _get(data, "tcp")
+        tcp_enabled = bool(_get(tcp_data, "enabled", False))
+        tcp_host = _get(tcp_data, "host", "") or "-"
+        tcp_port = _get(tcp_data, "port")
+        if tcp_enabled:
+            tcp_value = f"http://{tcp_host}:{tcp_port}" if tcp_port is not None else f"http://{tcp_host}:(pending)"
         else:
-            http_value = "disabled"
-        table.add_row("HTTP", http_value)
+            tcp_value = "disabled"
+        table.add_row("TCP", tcp_value)
         table.add_row("Files tracked", str(_get(data, "files_total", 0)))
         table.add_row("Docs indexed", str(_get(data, "docs_total", 0)))
         table.add_row("Active scans", str(_get(data, "active_scan_count", 0)))

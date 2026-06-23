@@ -61,7 +61,7 @@
 ~/mineru-e2e-test
 ```
 
-进入测试目录后，只需设置 `MINERU_HOME`，即可让默认配置文件（`$MINERU_HOME/config.yaml`）、DB、日志、UDS socket 和数据目录都落在测试目录中:
+进入测试目录后，只需设置 `MINERU_HOME`，即可让默认配置文件（`$MINERU_HOME/config.yaml`）、DB、日志、endpoint discovery 文件、UDS socket（启用 UDS 时）和数据目录都落在测试目录中:
 
 ```bash
 cd ~/mineru-e2e-test
@@ -100,6 +100,7 @@ mineru --help
 
 - exit code = 0
 - 输出包含 `parse`、`read`、`scan`、`watch`、`search`、`find`、`list`、`show`、`server`、`config`、`invalidate`、`forget`、`cleanup`
+- 输出包含 `telemetry`
 - 输出不包含 `mineru-kit`
 
 ### CLI-002 子命令 help
@@ -115,6 +116,7 @@ mineru search --help
 mineru find --help
 mineru list --help
 mineru show --help
+mineru telemetry --help
 mineru server --help
 mineru config --help
 mineru invalidate --help
@@ -199,7 +201,7 @@ mineru server start
 
 - exit code = 0
 - 如果已运行，输出包含 `already running`
-- 如果未运行，输出包含 `started` 或 `Socket`
+- 如果未运行，输出包含 `started`
 
 ### SERVER-003 查询运行状态
 
@@ -227,7 +229,8 @@ mineru server status --json
 
 - server 运行时 exit code = 0
 - 输出为 JSON 或等价结构化 server 状态
-- 至少包含 running、socket、data_dir、队列或文档库统计中的若干字段
+- 至少包含 `running`、`socket_path`、`tcp`、`data_dir`、队列或文档库统计中的若干字段
+- `tcp` 字段至少包含 `enabled`、`host`、`port`
 
 ### SERVER-005 重复启动 server
 
@@ -258,10 +261,10 @@ mineru server status --json
 预期:
 
 - 两条 exit code = 0
-- restart 输出包含 stopped/started、started、Socket 或等价生命周期信息
+- restart 输出包含 stopped/started、started 或等价生命周期信息
 - status 输出为 JSON
 - JSON 表示 server 正在运行
-- UDS/socket 路径仍落在测试 HOME 配置下
+- `socket_path`、`data_dir`、`sqlite_path`、`log_path` 仍落在测试 HOME 配置下
 
 ### SERVER-007 stop 后依赖 server 的命令报错可读
 
@@ -294,8 +297,321 @@ mineru server status --json
 - exit code = 0
 - 输出为 JSON
 - `data_dir` 默认位于 `$MINERU_HOME/data`；若显式覆盖 `doclib.data_dir`，则返回该覆盖值
-- socket/UDS 字段等价于 `MINERU_DOCLIB_UDS_PATH`，如果字段名为 `socket_path` 则不得为空
+- `socket_path` 字段等价于 `MINERU_DOCLIB_UDS_PATH`，不得为空；即使当前 transport 是 TCP-only，也可以表示配置路径
+- TCP 相关字段应位于 `tcp.enabled`、`tcp.host`、`tcp.port`
 - 日志相关字段或启动失败日志路径应落在 `MINERU_DOCLIB_LOG_PATH`
+
+### SERVER-013 endpoint discovery 文件写入
+
+前置: server 已启动。
+
+命令:
+
+```bash
+cat "$MINERU_HOME/doclib.endpoint.json"
+mineru server status --json
+```
+
+预期:
+
+- endpoint 文件存在，且 stdout 可解析为 JSON
+- endpoint JSON 至少包含 `version`、`pid`、`transports`
+- `transports` 非空，每个 transport 均包含 `type`
+- 默认 UDS 可用环境下，`transports` 至少包含 `{"type": "uds", "path": ...}`，且 path 位于测试 HOME
+- 如果当前环境使用 TCP transport，则对应项包含 `{"type": "tcp", "base_url": "http://127.0.0.1:<port>"}`
+- `mineru server status --json` 能通过 discovery 正常连接 server
+
+### SERVER-014 TCP-only fallback
+
+前置:
+
+- 使用一个新的独立 `MINERU_HOME`，避免与主测试 server 冲突。
+- 执行前保存主测试 HOME，例如 `MAIN_MINERU_HOME="$MINERU_HOME"`；执行结束后恢复 `MINERU_HOME="$MAIN_MINERU_HOME"`。
+- 设置:
+
+```bash
+MAIN_MINERU_HOME="$MINERU_HOME"
+export MINERU_HOME="$HOME/mineru-e2e-test-tcp"
+export MINERU_DOCLIB_UDS_ENABLED=false
+export MINERU_DOCLIB_TCP_ENABLED=true
+export MINERU_DOCLIB_TCP_PORT=0
+```
+
+命令:
+
+```bash
+mineru server start
+mineru server status --json
+cat "$MINERU_HOME/doclib.endpoint.json"
+mineru server stop
+export MINERU_HOME="$MAIN_MINERU_HOME"
+unset MINERU_DOCLIB_UDS_ENABLED MINERU_DOCLIB_TCP_ENABLED MINERU_DOCLIB_TCP_PORT
+```
+
+预期:
+
+- start exit code = 0
+- status JSON 中 `running=true`
+- status JSON 中 `tcp.enabled=true`
+- status JSON 中 `tcp.host=127.0.0.1`
+- status JSON 中 `tcp.port` 是大于 0 的实际端口，不应为 0
+- endpoint JSON 的 `transports` 只需包含 TCP transport，`base_url` 端口必须等于 status JSON 的 `tcp.port`
+- stop exit code = 0
+- stop 后 `$MINERU_HOME/doclib.endpoint.json` 被清理，或后续 `mineru server status --json` 返回 `running=false`
+
+### SERVER-015 endpoint stale 清理
+
+前置:
+
+- 使用独立 `MINERU_HOME`。
+- 执行前保存主测试 HOME，例如 `MAIN_MINERU_HOME="$MINERU_HOME"`；执行结束后恢复 `MINERU_HOME="$MAIN_MINERU_HOME"`。
+- 手工写入一个 stale `$MINERU_HOME/doclib.endpoint.json`，内容指向不存在的本地 TCP 端口。
+
+命令:
+
+```bash
+MAIN_MINERU_HOME="$MINERU_HOME"
+export MINERU_HOME="$HOME/mineru-e2e-test-stale-endpoint"
+mkdir -p "$MINERU_HOME"
+cat > "$MINERU_HOME/doclib.endpoint.json" <<'JSON'
+{"version":1,"pid":999999,"transports":[{"type":"tcp","base_url":"http://127.0.0.1:9"}]}
+JSON
+mineru server status --json
+mineru server stop
+export MINERU_HOME="$MAIN_MINERU_HOME"
+```
+
+预期:
+
+- status exit code = 0
+- status JSON 返回 `running=false`，不因 stale endpoint 输出 Python traceback
+- stop exit code = 0
+- stop 输出 `Server is not running` 或等价信息
+- stop 后 stale endpoint 文件被 best-effort 清理
+
+## 4A. Telemetry 命令
+
+### TELEMETRY-001 telemetry help
+
+命令:
+
+```bash
+mineru telemetry --help
+mineru telemetry status --help
+mineru telemetry enable --help
+mineru telemetry disable --help
+mineru telemetry preview --help
+mineru telemetry flush --help
+```
+
+预期:
+
+- 每条 exit code = 0
+- 输出包含 usage 或 options 类帮助信息
+- `mineru telemetry --help` 输出包含 `status`、`enable`、`disable`、`preview`、`flush`
+- 不触发 telemetry 首次选择 prompt
+- 不包含 Python traceback
+
+### TELEMETRY-002 status JSON 结构
+
+前置: server 正在运行。
+
+命令:
+
+```bash
+mineru telemetry status --json
+```
+
+预期:
+
+- exit code = 0
+- stdout 为可直接解析的 JSON
+- JSON 包含 `state`、`installation_id`、`pending_periods`、`pending_metrics`
+- `state` 取值为 `unset`、`enabled` 或 `disabled`
+- `installation_id` 为非空字符串
+- `pending_periods` 和 `pending_metrics` 为非负整数
+- telemetry status 命令自身不触发首次选择 prompt
+- 不包含 Python traceback
+
+### TELEMETRY-003 preview JSON 结构
+
+前置: server 正在运行。
+
+命令:
+
+```bash
+mineru telemetry preview
+```
+
+预期:
+
+- exit code = 0
+- stdout 为可直接解析的 JSON
+- JSON 为下一次外部 telemetry HTTP 请求 body 的预览，不额外包 CLI metadata
+- JSON 包含 `api_version`、`schema_version`、`batch_id`、`installation_id`、`period_start`、`period_end`、`context`、`metrics`
+- `installation_id` 与 TELEMETRY-002 的 `installation_id` 一致
+- `metrics` 为数组；没有待上报数据时允许为空数组
+- preview 不触发 flush，不要求外网可用
+- 不包含 Python traceback
+
+### TELEMETRY-004 enable / disable 与 installation_id 稳定性
+
+前置: server 正在运行。
+
+命令:
+
+```bash
+mineru telemetry status --json
+mineru telemetry enable --json
+mineru telemetry status --json
+mineru telemetry disable --json
+mineru telemetry status --json
+```
+
+预期:
+
+- 每条 exit code = 0
+- 每条 stdout 为可直接解析的 JSON
+- enable 返回后，后续 status 的 `state` 为 `enabled`
+- disable 返回后，后续 status 的 `state` 为 `disabled`
+- 全流程中 `installation_id` 保持不变
+- enable/disable 命令自身不触发首次选择 prompt
+- 不包含 Python traceback
+
+### TELEMETRY-005 disabled 时不新增聚合
+
+前置: server 正在运行。
+
+命令:
+
+```bash
+mineru telemetry disable --json
+mineru search "mineru-e2e-query-that-should-not-exist" --limit 1 --json
+mineru telemetry preview
+```
+
+预期:
+
+- 三条 exit code = 0
+- search stdout 为可直接解析的 JSON，允许结果为空
+- preview stdout 为可直接解析的 JSON
+- preview JSON 中 `metrics` 为空数组，或至少不包含本次 search 产生的 `search.request.count`、`search.finished.count`、`search.duration_bucket.count`、`search.results_bucket.count`
+- 不包含 Python traceback
+
+### TELEMETRY-006 unset 或 disabled 时 flush 不外发
+
+前置: server 正在运行；如果当前状态不是 `disabled`，先执行 `mineru telemetry disable --json`。
+
+命令:
+
+```bash
+mineru telemetry flush --json
+```
+
+预期:
+
+- exit code = 0
+- stdout 为可直接解析的 JSON
+- JSON 中 `action` = `flush`
+- JSON 中 `executed` = `false`
+- JSON 中 `reason` = `telemetry_not_enabled`
+- 不要求外网可用
+- 不包含 Python traceback
+
+### TELEMETRY-007 enabled 时 preview 可观察业务聚合
+
+前置: server 正在运行。
+
+命令:
+
+```bash
+mineru telemetry enable --json
+mineru search "mineru-e2e-query-that-should-not-exist" --limit 1 --json
+mineru telemetry preview
+```
+
+预期:
+
+- 三条 exit code = 0
+- search stdout 为可直接解析的 JSON，允许结果为空
+- preview stdout 为可直接解析的 JSON
+- preview JSON 中 `metrics` 包含 `search.request.count`
+- preview JSON 中应包含 `search.finished.count` 和 `search.duration_bucket.count`
+- 如果 search 正常返回，`search.finished.count` 的 status 维度为 `succeeded`
+- `metrics` 中不得包含 query 原文 `mineru-e2e-query-that-should-not-exist`
+- 不包含 Python traceback
+
+### TELEMETRY-008 enabled flush 行为
+
+前置: 已执行 TELEMETRY-007，且 preview 中有待上报 metrics。
+
+命令:
+
+```bash
+mineru telemetry flush --json
+mineru telemetry preview
+```
+
+预期分支:
+
+- 如果外部 telemetry endpoint 可访问且接收成功:
+  - flush exit code = 0
+  - flush JSON 中 `action` = `flush`
+  - flush JSON 中 `flush_result.status` 为 `success` 或 `partial_success`
+  - 后续 preview 中已成功发送 period 的 metrics 被清除或减少
+- 如果外部 telemetry endpoint 不可访问、超时或返回 5xx:
+  - flush exit code = 0
+  - flush JSON 中 `flush_result.status` 为 `failed`、`partial_success` 或等价重试状态
+  - 后续 preview 可保留待上报 metrics
+- 两个分支都不应输出外部 endpoint response body
+- 两个分支都不应包含 Python traceback
+
+### TELEMETRY-009 首次交互式 prompt
+
+前置:
+
+- 使用全新的 `MINERU_HOME`，server 已启动，且 `mineru telemetry status --json` 返回 `state=unset`。
+- 本用例必须在真实交互式终端执行；如果执行 Agent 只能非交互执行命令，可标记 BLOCKED。
+
+命令:
+
+```bash
+mineru search "mineru-e2e-query-that-should-not-exist" --limit 1
+```
+
+操作与预期:
+
+- 命令进入业务执行前提示是否开启匿名聚合 telemetry
+- prompt 文案不得包含文件路径、query、文档内容或其它业务输入
+- 输入 Enter、`y` 或 `yes` 后，命令继续执行，后续 `mineru telemetry status --json` 返回 `state=enabled`
+- 在另一轮全新 `MINERU_HOME` 中输入 `n` 或 `no` 后，命令继续执行，后续 `mineru telemetry status --json` 返回 `state=disabled`
+- `mineru telemetry ...`、`mineru server ...`、`mineru config ...` 命令自身不触发 prompt
+- 不包含 Python traceback
+
+### TELEMETRY-010 preview 隐私边界
+
+前置: server 正在运行，telemetry 已启用。
+
+命令:
+
+```bash
+mineru telemetry enable --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+mineru search "mineru-e2e-query-that-should-not-exist" --limit 1 --json
+mineru telemetry preview
+```
+
+预期:
+
+- 前三条业务命令 exit code = 0；如果 parse 因环境缺少 flash 能力失败，可记录失败分支，但仍继续检查 preview 隐私边界
+- preview exit code = 0，stdout 为可直接解析的 JSON
+- preview JSON 不包含:
+  - `$MINERU_E2E_FIXTURE_DIR`
+  - `sample.pdf`
+  - `mineru-e2e-query-that-should-not-exist`
+  - Markdown 正文、snippet、页面文本、traceback
+  - API key、secret、配置对象原文
+- preview JSON 中允许出现 metric name、低基数字段、bucket、status、tier、source、caller、installation_id 和粗粒度环境 context
 
 ## 5. Config 命令
 
@@ -2705,7 +3021,9 @@ mineru server status
 
 执行方式:
 
-- 人工制造一个不会成功建立 UDS 的 server 启动环境，例如把 `MINERU_DOCLIB_UDS_PATH` 指向一个父目录不存在且不可创建的位置。
+- 人工制造一个不会成功建立任何 local transport 的 server 启动环境。可选方式:
+  - 设置 `MINERU_DOCLIB_UDS_ENABLED=false` 且 `MINERU_DOCLIB_TCP_ENABLED=false`。
+  - 或显式设置 `MINERU_DOCLIB_UDS_ENABLED=true`，并把 `MINERU_DOCLIB_UDS_PATH` 指向一个父目录不存在且不可创建的位置。
 - 只允许通过环境变量制造失败，不直接修改数据库或内部状态。
 
 命令:
@@ -2749,13 +3067,16 @@ mineru server start
 - SERVER-006 restart server
 - SERVER-007 stop 后依赖 server 的命令报错可读
 - SERVER-009 环境变量路径生效
+- SERVER-013 endpoint discovery 文件写入
+- SERVER-014 TCP-only fallback
+- SERVER-015 endpoint stale 清理
 - SERVER-012 error summary 与 recent logs
 - SERVER-010 停止 server
 
 执行要求:
 
 - SERVER-011 必须仍作为整套测试最后一个 case 执行，不放入本批次中间。
-- stop/restart 后必须恢复 server，避免影响后续批次。
+- stop/restart 或独立 `MINERU_HOME` transport 测试后必须恢复主测试 server，避免影响后续批次。
 
 ### COVERAGE-003 config 普通文本与错误分支补充
 
@@ -2972,6 +3293,30 @@ mineru server start
 
 - server restart 后配置仍可读取
 - rule hit_count 或等价统计在 scan 后体现规则被使用
+
+### COVERAGE-014 telemetry 补充
+
+必跑 case:
+
+- TELEMETRY-001 telemetry help
+- TELEMETRY-002 status JSON 结构
+- TELEMETRY-003 preview JSON 结构
+- TELEMETRY-004 enable / disable 与 installation_id 稳定性
+- TELEMETRY-005 disabled 时不新增聚合
+- TELEMETRY-006 unset 或 disabled 时 flush 不外发
+- TELEMETRY-007 enabled 时 preview 可观察业务聚合
+- TELEMETRY-008 enabled flush 行为
+- TELEMETRY-010 preview 隐私边界
+
+条件必跑 case:
+
+- TELEMETRY-009 首次交互式 prompt：仅在执行 Agent 能使用真实交互式终端时必跑；否则标记 BLOCKED，并说明执行环境不支持交互输入。
+
+执行要求:
+
+- telemetry E2E 只能通过 `mineru telemetry ...` 和其它 `mineru` 业务命令观察结果，不得直接读取 SQLite 或调用内部 API。
+- 外部 telemetry endpoint 不可用时，flush 用例按失败/保留待上报数据分支判定，不应因此整体失败。
+- 所有 preview 隐私边界检查必须确认不包含路径、文件名、query、snippet、正文、traceback 或 API key。
 
 ## 19. 最终报告格式
 
