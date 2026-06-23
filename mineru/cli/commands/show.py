@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import typer
 
 from ...doclib.client import DoclibClient
 from ..json_errors import exit_with_error
-from ..output import format_info, print_error, print_json
+from ..output import format_info, print_json
+from ..path_utils import normalize_cli_path
 from .scan import _print_scan
 
 app = typer.Typer(help="Show doclib resource details", no_args_is_help=True)
@@ -57,7 +56,7 @@ def show_file(
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Show file, doc, and parse state for a local path."""
-    file_path = str(Path(path).resolve())
+    file_path = normalize_cli_path(path)
     try:
         result = _client().get_file_by_path(file_path)
     except Exception as exc:

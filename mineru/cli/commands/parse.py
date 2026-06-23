@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import os
+import shlex
 import shutil
 import time
 from pathlib import Path
@@ -25,12 +25,13 @@ from ...doclib.types import (
 from ...types import Tier
 from ..json_errors import exit_with_error
 from ..output import format_parse_result, print_error, print_info, print_json, print_success
+from ..path_utils import normalize_cli_path
 
 
 def _normalize_output_path(output: str | None) -> str | None:
     if output is None or output == "-":
         return output
-    return os.path.abspath(os.path.expanduser(output))
+    return normalize_cli_path(output)
 
 
 def _ensure_output_parent(output: str | None) -> str | None:
@@ -82,7 +83,7 @@ def parse_cmd(
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Verbose output"),
 ) -> None:
     """Parse a document file."""
-    file_path = str(Path(os.path.expanduser(path)).resolve())
+    file_path = normalize_cli_path(path)
 
     if not Path(file_path).exists():
         exit_with_error(MineruError("file_not_found", f"File not found: {file_path}", "path"), json_mode=json_mode)
@@ -357,11 +358,12 @@ def output_doc_content_response(
         Path(output_path).write_text(content.content, encoding="utf-8")
         print_success(f"Written to {output_path}")
         return
-    print(content.content)
     if content.next_request and not no_marker:
         marker = _read_next_marker(content.next_request) if read_mode else _parse_next_marker(source_path, content.next_request)
         if marker:
-            print(marker)
+            print(_append_next_marker(content.content, marker))
+            return
+    print(content.content)
 
 
 def _next_request_dict(next_request: ContentNextRequest | None) -> dict[str, str] | None:
@@ -377,6 +379,12 @@ def _next_request_dict(next_request: ContentNextRequest | None) -> dict[str, str
     return result
 
 
+def _append_next_marker(content: str, marker: str) -> str:
+    newline_count = len(content) - len(content.rstrip("\n"))
+    separator = "\n" * max(2 - newline_count, 0)
+    return f"{content}{separator}{marker}"
+
+
 def _parse_next_marker(path: str | None, next_request: ContentNextRequest) -> str | None:
     if not path:
         return None
@@ -385,7 +393,7 @@ def _parse_next_marker(path: str | None, next_request: ContentNextRequest) -> st
         parts.extend(["--pages", next_request.page_range])
     if next_request.after:
         parts.extend(["--after", next_request.after])
-    return f"<!-- Next: {' '.join(parts)} -->"
+    return f"<!-- Next: {shlex.join(parts)} -->"
 
 
 def _read_next_marker(next_request: ContentNextRequest) -> str | None:

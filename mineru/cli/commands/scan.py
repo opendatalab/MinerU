@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 import time
 
@@ -11,6 +10,7 @@ from ...doclib.client import DoclibClient
 from ...doclib.types import ScanRequest
 from ..json_errors import exit_with_error
 from ..output import print_error, print_info, print_json, print_success
+from ..path_utils import normalize_cli_path
 
 
 def scan_cmd(
@@ -27,7 +27,7 @@ def scan_cmd(
 
 
 def _scan_path(path: str, *, wait: int, no_wait: bool, json_mode: bool) -> None:
-    scan_path = os.path.abspath(os.path.expanduser(path))
+    scan_path = normalize_cli_path(path)
     if not Path(scan_path).exists():
         raise MineruError("file_not_found", f"File or directory not found: {scan_path}", "path")
     client = _client()

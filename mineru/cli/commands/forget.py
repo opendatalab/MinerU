@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import typer
-
 from ...doclib.client import DoclibClient
 from ...doclib.types import ForgetPathRequest
 from ..json_errors import exit_with_error
-from ..output import print_error, print_info, print_json, print_success
+from ..output import print_info, print_json, print_success
+from ..path_utils import normalize_cli_path
 
 
 def forget_cmd(
@@ -21,8 +20,9 @@ def forget_cmd(
     except Exception as exc:
         exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot connect to mineru server. Run 'mineru server start' first.")
 
+    file_path = normalize_cli_path(path)
     try:
-        result = client.forget_path(ForgetPathRequest(path=path, dry_run=dry_run))
+        result = client.forget_path(ForgetPathRequest(path=file_path, dry_run=dry_run))
     except Exception as exc:
         exit_with_error(exc, json_mode=json_mode)
 

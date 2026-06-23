@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 from pathlib import Path
 from typing import Any
 
 import pytest
 from typer.testing import CliRunner
 
-from mineru.cli.commands import config, list_resources, parse, read, server, show, telemetry
+from mineru.cli.commands import config, invalidate, list_resources, parse, read, server, show, telemetry
 from mineru.cli.commands import cleanup as cleanup_cmd
 from mineru.cli.commands import search as search_mod
 from mineru.cli.commands import watch as watch_cmd
@@ -23,11 +24,13 @@ from mineru.doclib.types import (
     DocContentResponse,
     FileInfo,
     FileInfoResponse,
+    InvalidateResponse,
     ListParsesResponse,
     ParseInfo,
     ParseResponse,
     TelemetryActionResponse,
     TelemetryStatusResponse,
+    WatchInfo,
 )
 
 
@@ -225,6 +228,24 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
     assert payload["content"]["content"] == "parsed"
 
 
+def test_parse_next_marker_quotes_windows_path() -> None:
+    path = r"C:\Users\jinzhenj\Downloads\2606.20787v1.pdf"
+    marker = parse._parse_next_marker(path, ContentNextRequest(page_range="7~10"))
+
+    assert marker is not None
+    command = marker.removeprefix("<!-- Next: ").removesuffix(" -->")
+    assert shlex.split(command) == ["mineru", "parse", path, "--pages", "7~10"]
+
+
+def test_parse_next_marker_escapes_double_quotes_in_path() -> None:
+    path = r'C:\Users\jinzhenj\Downloads\bad"name.pdf'
+    marker = parse._parse_next_marker(path, ContentNextRequest(page_range="7~10"))
+
+    assert marker is not None
+    command = marker.removeprefix("<!-- Next: ").removesuffix(" -->")
+    assert shlex.split(command) == ["mineru", "parse", path, "--pages", "7~10"]
+
+
 def test_parse_json_no_wait_wraps_parse_and_null_content(monkeypatch: Any, tmp_path: Path) -> None:
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
@@ -283,6 +304,29 @@ def test_parse_expands_user_home_in_input_path(monkeypatch: Any, tmp_path: Path)
 
     assert result.exit_code == 0
     assert seen_paths == [str(source.resolve())]
+
+
+def test_watch_add_normalizes_user_path_before_request(monkeypatch: Any, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    watched = home / "Documents"
+    watched.mkdir(parents=True)
+    seen_paths: list[str] = []
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 30
+
+        def add_watch(self, request: Any) -> WatchInfo:
+            seen_paths.append(request.path)
+            return WatchInfo(id=1, path=request.path, status="active")
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(watch_cmd, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["watch", "add", "~/Documents/../Documents", "--json"])
+
+    assert result.exit_code == 0
+    assert seen_paths == [os.path.normpath(os.path.abspath(os.path.expanduser("~/Documents/../Documents")))]
 
 
 def test_parse_json_output_writes_file_and_returns_output_object(monkeypatch: Any, tmp_path: Path) -> None:
@@ -469,6 +513,65 @@ def test_show_file_uses_get_file_by_path(monkeypatch: Any, tmp_path: Path) -> No
     assert calls == [str(source.resolve())]
 
 
+def test_show_file_normalizes_user_path_before_request(monkeypatch: Any, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    source = home / "docs" / "demo.pdf"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"%PDF-1.7\n")
+    calls: list[str] = []
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 30
+
+        def get_file_by_path(self, path: str) -> FileInfoResponse:
+            calls.append(path)
+            return FileInfoResponse(
+                file=FileInfo(
+                    filename="demo.pdf",
+                    path=path,
+                    ext="pdf",
+                    size_bytes=7,
+                    mtime_ms=1,
+                    status="active",
+                    first_seen_at=1,
+                    updated_at=1,
+                )
+            )
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(show, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["show", "file", "~/docs/../docs/demo.pdf", "--json"])
+
+    assert result.exit_code == 0
+    assert calls == [os.path.normpath(os.path.abspath(os.path.expanduser("~/docs/../docs/demo.pdf")))]
+
+
+def test_invalidate_normalizes_user_path_before_request(monkeypatch: Any, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    source = home / "docs" / "demo.pdf"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"%PDF-1.7\n")
+    calls: list[str] = []
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 10
+
+        def invalidate(self, request: Any) -> InvalidateResponse:
+            calls.append(request.path)
+            return InvalidateResponse(target="parses", sha256="a" * 64, tier=request.tier, invalidated_count=1)
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(invalidate, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["invalidate", "~/docs/../docs/demo.pdf", "--tier", "standard"])
+
+    assert result.exit_code == 0
+    assert calls == [os.path.normpath(os.path.abspath(os.path.expanduser("~/docs/../docs/demo.pdf")))]
+
+
 def test_show_doc_expands_files(monkeypatch: Any) -> None:
     calls: list[tuple[str, bool]] = []
 
@@ -639,6 +742,30 @@ def test_read_json_output_preserves_locator_next_request(monkeypatch: Any) -> No
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["next_request"]["locator"] == "doc:ab12cd3/tier:standard/page:5"
+
+
+def test_read_markdown_output_separates_next_marker_with_blank_line(monkeypatch: Any) -> None:
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 60
+
+        def read_content(self, locator: str, **kwargs: Any) -> DocContentResponse:
+            return DocContentResponse(
+                sha256="a" * 64,
+                short_id="ab12cd3",
+                tier="standard",
+                format="markdown",
+                content="hello",
+                request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
+                next_request=ContentNextRequest(locator="doc:ab12cd3/tier:standard/page:5"),
+            )
+
+    monkeypatch.setattr(read, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:standard/page:4"])
+
+    assert result.exit_code == 0
+    assert "hello\n\n<!-- Next: mineru read doc:ab12cd3/tier:standard/page:5 -->" in result.output
 
 
 def test_read_json_error_output_is_machine_readable(monkeypatch: Any) -> None:

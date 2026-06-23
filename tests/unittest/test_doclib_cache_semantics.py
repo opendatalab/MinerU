@@ -13,7 +13,7 @@ import pytest
 from mineru.doclib.background.compaction import Compaction
 from mineru.doclib.background.device_monitor import DeviceMonitor
 from mineru.doclib.background.ingest import IngestWorkerPool
-from mineru.doclib.background.parse_server_health import ParseServerHealthCheck, api_server_args_for_tier
+from mineru.doclib.background.parse_server_health import ParseServerHealth, ParseServerHealthCheck, api_server_args_for_tier
 from mineru.doclib.background.watch import WatchLoop
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.file_io import FileStat, get_file_stat
@@ -24,7 +24,9 @@ from mineru.doclib.services.cleanup_svc import CleanupService
 from mineru.doclib.services.config_svc import ConfigService
 from mineru.doclib.services import parse_svc as parse_svc_module
 from mineru.doclib.services.parse_svc import (
+    ParseFailure,
     ParseService,
+    _resolve_default_tier,
     filter_pages_by_user_range,
     load_pages_from_done_batches,
     parse_batch_json_path,
@@ -246,6 +248,42 @@ def test_parser_tier_backend_mapping_is_parser_layer_only() -> None:
 def test_managed_api_server_args_use_tier_for_process_start() -> None:
     assert api_server_args_for_tier("standard") == ["--tier", "standard", "--port", "15981"]
     assert api_server_args_for_tier("pro") == ["--tier", "pro", "--port", "15981"]
+
+
+def test_default_tier_error_mentions_remote_when_remote_is_healthy(monkeypatch: pytest.MonkeyPatch) -> None:
+    health = ParseServerHealth(
+        local_healthy=False,
+        local_supported_tiers=["flash"],
+        remote_healthy=True,
+        remote_supported_tiers=["standard", "pro"],
+    )
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
+
+    with pytest.raises(ParseFailure) as exc_info:
+        _resolve_default_tier(remote=False)
+
+    assert exc_info.value.code == "quality_tier_unavailable"
+    assert "--remote" in exc_info.value.message
+    assert "local parse-server" in exc_info.value.message
+    assert "--tier flash" in exc_info.value.message
+
+
+def test_default_tier_error_omits_remote_when_remote_is_unhealthy(monkeypatch: pytest.MonkeyPatch) -> None:
+    health = ParseServerHealth(
+        local_healthy=False,
+        local_supported_tiers=["flash"],
+        remote_healthy=False,
+        remote_supported_tiers=[],
+    )
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
+
+    with pytest.raises(ParseFailure) as exc_info:
+        _resolve_default_tier(remote=False)
+
+    assert exc_info.value.code == "quality_tier_unavailable"
+    assert "--remote" not in exc_info.value.message
+    assert "local parse-server" in exc_info.value.message
+    assert "--tier flash" in exc_info.value.message
 
 
 def test_parse_server_health_probe_disables_env_proxy_for_local_urls(monkeypatch: pytest.MonkeyPatch) -> None:

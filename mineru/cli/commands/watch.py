@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import os
-
 import typer
 
 from ...doclib.client import DoclibClient
 from ...doclib.types import ScanRequest, WatchInfo, WatchRequest
 from ..json_errors import exit_with_error
-from ..output import print_error, print_info, print_json, print_success
+from ..output import print_info, print_json, print_success
+from ..path_utils import normalize_cli_path
 from .scan import _print_scan, _wait_for_scan
 
 app = typer.Typer(help="Watch target management", no_args_is_help=True)
@@ -23,8 +22,9 @@ def watch_add(
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Add a directory to watch."""
+    watch_path = normalize_cli_path(path)
     try:
-        data = _client().add_watch(WatchRequest(path=path, removable=removable, label=label))
+        data = _client().add_watch(WatchRequest(path=watch_path, removable=removable, label=label))
     except Exception as exc:
         exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot add watch target.")
 
@@ -107,8 +107,8 @@ def _resolve_watch(client: DoclibClient, target: str) -> WatchInfo:
                 return watch
         raise ValueError(f"watch_not_found: watch id {watch_id} not found")
 
-    normalized = os.path.abspath(os.path.expanduser(target))
+    normalized = normalize_cli_path(target)
     for watch in watches:
-        if os.path.abspath(os.path.expanduser(watch.path)) == normalized:
+        if normalize_cli_path(watch.path) == normalized:
             return watch
     raise ValueError(f"watch_not_found: watch path {normalized} not found")

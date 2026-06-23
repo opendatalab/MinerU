@@ -1227,10 +1227,22 @@ def _resolve_default_tier(remote: bool = False) -> Tier:
     for candidate in ("pro", "standard"):
         if candidate in supported:
             return candidate
+    actions = ["start a local parse-server"]
+    if not remote and health.remote_healthy and any(tier in health.remote_supported_tiers for tier in ("pro", "standard")):
+        actions.append("use --remote")
+    actions.append("explicitly pass --tier flash for text-only preview")
     raise ParseFailure(
         "quality_tier_unavailable",
-        "No standard or pro engine available. Start a parse-server or use --tier flash for text-only preview.",
+        f"No standard or pro engine available. You can {_format_action_list(actions)}.",
     )
+
+
+def _format_action_list(actions: list[str]) -> str:
+    if len(actions) == 1:
+        return actions[0]
+    if len(actions) == 2:
+        return f"{actions[0]} or {actions[1]}"
+    return f"{', '.join(actions[:-1])}, or {actions[-1]}"
 
 
 def _json_file_exists_by_batch(data_dir: str, sha256: str, tier: Tier, batch: ParseRow) -> bool:

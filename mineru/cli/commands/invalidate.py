@@ -10,6 +10,7 @@ from ...doclib.client import DoclibClient
 from ...doclib.types import InvalidateRequest
 from ...types import Tier
 from ..output import print_error, print_success
+from ..path_utils import normalize_cli_path
 
 
 def invalidate_cmd(
@@ -17,7 +18,7 @@ def invalidate_cmd(
     tier: Tier | None = typer.Option(None, "--tier", help="Parse tier to invalidate (omit = all tiers)"),
 ) -> None:
     """Mark done parse results as superseded."""
-    file_path = str(Path(path).resolve())
+    file_path = normalize_cli_path(path)
 
     if not Path(file_path).exists():
         print_error(f"File not found: {file_path}")
