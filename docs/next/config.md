@@ -19,7 +19,7 @@ MinerU 有两类配置：
 
 - `MINERU_HOME` 决定 MinerU home，默认 `~/.mineru`。
 - 默认配置文件路径是 `$MINERU_HOME/config.yaml`。
-- 默认 DB、日志和 UDS socket 从 `MINERU_HOME` 派生；默认 `data_dir` 是 `$MINERU_HOME/data`，其下包含 `parsed/` 和 `temp/`。
+- 默认 DB、日志和 UDS socket 从 `MINERU_HOME` 派生；默认 `data_dir` 是 `$MINERU_HOME/doclib`，其下包含 `parsed/` 和 `temp/`。
 - `MINERU_CONFIG` 仍可显式指定配置文件路径；`MINERU_HOME` 只影响默认 home 和默认配置文件位置。
 
 配置必须服务两个产品原则：
@@ -46,10 +46,14 @@ MinerU 有两类配置：
 | TCP | `doclib.tcp.strict_port` | `False` | 端口占用时是否报错 |
 | TCP | `doclib.tcp.backlog` | `128` | socket backlog |
 | TCP | `doclib.tcp.timeout` | `600` | keep-alive timeout |
-| log | `doclib.log.path` | `~/.mineru/doclib.log` | 日志路径 |
+| log | `doclib.log.dir` | `~/.mineru/logs` | 默认日志目录；未单独配置的日志路径会从该目录派生 |
+| log | `doclib.log.app_path` | unset → `<dir>/doclib.log` | Python application 日志路径 |
+| log | `doclib.log.access_path` | unset → `<dir>/doclib.access.log` | HTTP access 日志路径 |
+| log | `doclib.log.stdout_path` | unset → `<dir>/doclib.stdout.log` | server 子进程 stdout fallback 日志路径 |
+| log | `doclib.log.stderr_path` | unset → `<dir>/doclib.stderr.log` | server 子进程 stderr fallback 日志路径 |
 | log | `doclib.log.level` | `info` | 日志级别 |
 | doclib | `doclib.endpoint_path` | `~/.mineru/doclib.endpoint.json` | 当前 server 实际可用 endpoint discovery 文件 |
-| doclib | `doclib.data_dir` | `~/.mineru/data` | 数据目录，默认取 `$MINERU_HOME/data`，但仍可通过配置文件或环境变量覆盖 |
+| doclib | `doclib.data_dir` | `~/.mineru/doclib` | 数据目录，默认取 `$MINERU_HOME/doclib`，但仍可通过配置文件或环境变量覆盖 |
 | doclib | `doclib.ingest_workers` | `2` | ingest worker 数 |
 | doclib | `doclib.parse_workers` | `2` | parse worker 数 |
 | doclib | `doclib.scan_interval_sec` | `300` | watch 扫描间隔 |
@@ -103,7 +107,7 @@ SDK client 显式参数属于当前调用方传入的请求上下文；当它最
 
 如果一个配置会改变隐私边界，例如启用远端上传，必须要求当前请求或规则显式允许，不能只因为全局配置存在 remote URL 或 API Key 就上传文档。
 
-启动前配置只用于必须在 doclib 初始化前确定的字段，比如 UDS/TCP transport、endpoint discovery 路径、DB 路径、SQLite pragma。它不与 SQLite 配置定义同一 key，也不在 doclib 启动后被 SQLite 覆盖。`MINERU_HOME` 属于 bootstrap 层，负责默认 home 与默认配置文件位置；`doclib.data_dir` 是独立配置项，默认取 `$MINERU_HOME/data`。
+启动前配置只用于必须在 doclib 初始化前确定的字段，比如 UDS/TCP transport、endpoint discovery 路径、DB 路径、SQLite pragma。它不与 SQLite 配置定义同一 key，也不在 doclib 启动后被 SQLite 覆盖。`MINERU_HOME` 属于 bootstrap 层，负责默认 home 与默认配置文件位置；`doclib.data_dir` 是独立配置项，默认取 `$MINERU_HOME/doclib`。
 
 ## 4. 运行时 KV 配置
 

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from ..config import Config, config, resolve_tcp_enabled, resolve_uds_enabled
+from ..config import Config, config
 
 TransportType = Literal["uds", "tcp"]
 
@@ -77,9 +77,9 @@ def read_endpoint_file(path: str | os.PathLike[str]) -> list[EndpointTransport]:
 def config_transports(cfg: Config | None = None) -> list[EndpointTransport]:
     cfg = config if cfg is None else cfg
     transports: list[EndpointTransport] = []
-    if resolve_uds_enabled(cfg) and uds_available():
+    if cfg.doclib.resolved_uds_enabled and uds_available():
         transports.append(EndpointTransport(type="uds", path=os.path.expanduser(cfg.doclib.uds.path)))
-    if resolve_tcp_enabled(cfg):
+    if cfg.doclib.resolved_tcp_enabled:
         transports.append(EndpointTransport(type="tcp", base_url=f"http://{cfg.doclib.tcp.host}:{cfg.doclib.tcp.port}"))
     return transports
 

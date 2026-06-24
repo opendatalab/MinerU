@@ -1,6 +1,7 @@
 from ..types import Block, BlockType, ContentType
 from .merge import merge_para_text
 from .merge_visual import _build_media_path, merge_visual_para_text
+from .markdown_table import to_markdown_table
 
 
 def blocks_to_markdown(
@@ -9,6 +10,7 @@ def blocks_to_markdown(
     table_as_image: bool = False,
     formula_as_image: bool = False,
     no_rich_content: bool = False,
+    prefer_markdown_table: bool = False,
 ) -> list[str]:
     para_texts: list[str] = []
     for para_block in para_blocks:
@@ -18,6 +20,7 @@ def blocks_to_markdown(
             table_as_image=table_as_image,
             formula_as_image=formula_as_image,
             no_rich_content=no_rich_content,
+            prefer_markdown_table=prefer_markdown_table,
         )
         if para_text := (para_text or "").strip():
             para_texts.append(para_text)
@@ -30,6 +33,7 @@ def _block_to_markdown(
     table_as_image: bool = False,
     formula_as_image: bool = False,
     no_rich_content: bool = False,
+    prefer_markdown_table: bool = False,
 ) -> str | None:
     para_type = para_block.type
     if para_type == BlockType.TEXT:
@@ -62,6 +66,8 @@ def _block_to_markdown(
         return merge_visual_para_text(para_block, img_bucket_path)
     if para_type == BlockType.TABLE:
         if not table_as_image:
+            if prefer_markdown_table:
+                return _render_table_block_as_markdown_table(para_block, img_bucket_path)
             return merge_visual_para_text(para_block, img_bucket_path)
         return _build_image_link(para_block, ContentType.TABLE, img_bucket_path)
     if para_type == BlockType.CHART:
@@ -88,3 +94,14 @@ def _build_image_link(block: Block, target_span_type: str, img_bucket_path: str)
             if media_path := _build_media_path(img_bucket_path, span.image_path):
                 return f"![]({media_path})"
     return None
+
+
+def _render_table_block_as_markdown_table(para_block: Block, img_bucket_path: str) -> str:
+    rendered = merge_visual_para_text(para_block, img_bucket_path)
+    for span in para_block.all_spans():
+        if span.type != ContentType.TABLE or not span.html:
+            continue
+        candidate = to_markdown_table(span.html)
+        if candidate != span.html.strip():
+            return candidate
+    return rendered

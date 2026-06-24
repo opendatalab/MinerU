@@ -155,6 +155,7 @@ CLI `unset` prompt 规则:
 - prompt 触发条件必须同时满足:
   - `consent_state == "unset"`
   - stdin 和 stdout 都是 TTY
+  - 当前不是 `--help` 帮助模式
   - 当前不是 `--json` 输出模式
   - 不在 CI 环境
   - caller 推断不是 `agent`
@@ -169,8 +170,14 @@ CLI `unset` prompt 规则:
 推荐提示文案:
 
 ```text
-MinerU can send anonymous, aggregated telemetry to help improve doclib.
-No document content, filenames, paths, queries, IDs, or error messages are sent.
+Help improve MinerU by sending anonymous, locally aggregated usage and diagnostic data.
+
+Collected: command names, MinerU version, OS, architecture, Python version, install channel, coarse CPU/GPU categories, success/failure status, error categories, tiers, and performance timing buckets.
+Not collected: document contents, extracted text/images, file names, file paths, raw URLs, search queries, prompts, snippets, tracebacks, exception messages, hostnames, usernames, account IDs, API keys, or exact CPU/GPU models.
+
+Press Enter or type Y to enable, or type N to disable.
+You can change this later with `mineru telemetry enable` or `mineru telemetry disable`.
+Preview what would be sent with `mineru telemetry preview`.
 
 Enable telemetry? [Y/n]:
 ```
@@ -1477,6 +1484,7 @@ Route / service tests:
 CLI prompt tests:
 
 - unset + TTY + user -> prompt。
+- unset + `--help` -> no prompt。
 - unset + `--json` -> no prompt。
 - unset + CI -> no prompt。
 - unset + caller agent -> no prompt。

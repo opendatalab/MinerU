@@ -49,8 +49,12 @@ MinerU home：默认是 `$HOME/.mineru` ，可通过 `MINERU_HOME` 配置。
   config.yaml
   doclib.sock
   doclib.db
-  doclib.log
-  data/
+  logs/
+    doclib.log
+    doclib.access.log
+    doclib.stdout.log
+    doclib.stderr.log
+  doclib/
     parsed/
     temp/
 

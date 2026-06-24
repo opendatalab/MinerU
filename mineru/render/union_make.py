@@ -78,6 +78,7 @@ def render_markdown(
     *,
     formula_enable: bool = True,  # TODO
     table_enable: bool = True,  # TODO
+    prefer_markdown_table: bool = False,
     no_rich_content: bool = False,
     add_markers: bool = False,
 ) -> str:
@@ -94,6 +95,7 @@ def render_markdown(
                 para_blocks=page_info.para_blocks,
                 img_bucket_path=img_bucket_path,
                 no_rich_content=no_rich_content,
+                prefer_markdown_table=prefer_markdown_table,
             )
             if add_markers:
                 page_num = page_info.page_idx + 1
@@ -107,6 +109,7 @@ def render_markdown(
                 table_as_image=not table_enable,
                 formula_as_image=not formula_enable,
                 no_rich_content=no_rich_content,
+                prefer_markdown_table=prefer_markdown_table,
             )
             if add_markers:
                 page_num = page_info.page_idx + 1

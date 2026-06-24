@@ -12,11 +12,13 @@ from pydantic_core import to_json
 
 Table: Any
 Panel: Any
+Text: Any
 
 try:
     from rich.console import Console
     from rich.table import Table
     from rich.panel import Panel
+    from rich.text import Text
     console = Console()
 except ImportError:
     console = None
@@ -24,8 +26,9 @@ except ImportError:
 
 def print_error(msg: str) -> None:
     if console:
-        console.print("Error:", style="red", end=" ")
-        console.print(msg)
+        text = Text("Error:", style="red")
+        text.append(f" {msg}")
+        console.print(text)
     else:
         print(f"Error: {msg}", file=sys.stderr)
 
@@ -322,12 +325,17 @@ def format_server_status(data: Any, json_mode: bool = False) -> None:
                 )
             console.print(ps_table)
 
-        # recent logs
-        logs = _get(data, "recent_logs", [])
-        if logs:
-            log_text = "".join(logs)  # last 100 lines from server
-            panel = Panel(log_text.strip() or "(empty)", title="Recent Logs", border_style="dim")
-            console.print(panel)
+        for title, key in (
+            ("Recent App Logs", "app_logs"),
+            ("Recent Access Logs", "access_logs"),
+            ("Recent Stderr Logs", "stderr_logs"),
+            ("Recent Stdout Logs", "stdout_logs"),
+        ):
+            logs = _get(data, key, [])
+            if logs:
+                log_text = "".join(logs)
+                panel = Panel(log_text.strip() or "(empty)", title=title, border_style="dim")
+                console.print(panel)
     else:
         print(f"Server running (PID {_get(data, 'pid')}), {_get(data, 'files_total')} files")
 

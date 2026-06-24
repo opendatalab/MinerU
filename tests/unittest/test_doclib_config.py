@@ -4,16 +4,12 @@ import pytest
 
 from mineru.config import (
     Config,
+    LogConfig,
     PatchedConfig,
     _apply_env_overrides,
-    _default_config_path,
-    _default_data_path,
-    _default_uds_path,
     _interpolate_env,
     _load_config,
     _read_config,
-    resolve_tcp_enabled,
-    resolve_uds_enabled,
 )
 from mineru.doclib.config_defaults import CONFIG_DEFAULTS
 
@@ -25,7 +21,7 @@ def test_interpolate_env_supports_required_and_default_values(monkeypatch: pytes
         {
             "doclib": {
                 "data_dir": "${MINERU_TEST_ROOT}/data",
-                "log": {"path": "${MISSING_LOG:-'/tmp/default.log'}"},
+                "log": {"app_path": "${MISSING_LOG:-'/tmp/default.log'}"},
             },
             "paths": ["${MINERU_TEST_ROOT}/a", "${MISSING_PATH:-/tmp/b}"],
         }
@@ -34,7 +30,7 @@ def test_interpolate_env_supports_required_and_default_values(monkeypatch: pytes
     assert data == {
         "doclib": {
             "data_dir": "/tmp/mineru-test/data",
-            "log": {"path": "/tmp/default.log"},
+            "log": {"app_path": "/tmp/default.log"},
         },
         "paths": ["/tmp/mineru-test/a", "/tmp/b"],
     }
@@ -106,13 +102,6 @@ def test_apply_env_overrides_uses_greedy_field_path_matching(monkeypatch: pytest
     assert cfg.doclib.sqlite.mmap_size == 0
 
 
-def test_default_paths_derive_from_mineru_home(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MINERU_HOME", "/tmp/mineru-home")
-
-    assert _default_data_path() == "/tmp/mineru-home/data"
-    assert _default_config_path() == "/tmp/mineru-home/config.yaml"
-
-
 def test_read_config_uses_default_config_under_mineru_home(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     mineru_home = tmp_path / "mineru-home"
     mineru_home.mkdir()
@@ -144,18 +133,10 @@ def test_apply_env_overrides_can_override_doclib_data_dir(monkeypatch: pytest.Mo
     assert cfg.doclib.data_dir == "/tmp/ignored-data-dir"
 
 
-def test_default_uds_path_uses_mineru_home_on_unix(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("mineru.config.platform.system", lambda: "Linux")
-    monkeypatch.setenv("MINERU_HOME", "/tmp/mineru-home")
+def test_default_doclib_data_dir_uses_doclib_directory() -> None:
+    cfg = Config()
 
-    assert _default_uds_path() == "/tmp/mineru-home/doclib.sock"
-
-
-def test_default_uds_path_uses_mineru_home_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("mineru.config.platform.system", lambda: "Windows")
-    monkeypatch.setenv("MINERU_HOME", r"C:\MinerU")
-
-    assert _default_uds_path() == r"C:\MinerU/doclib.sock"
+    assert cfg.doclib.data_dir.endswith(".mineru/doclib")
 
 
 def test_default_transport_prefers_uds_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -165,8 +146,8 @@ def test_default_transport_prefers_uds_when_available(monkeypatch: pytest.Monkey
 
     assert cfg.doclib.uds.enabled == "auto"
     assert cfg.doclib.tcp.enabled == "auto"
-    assert resolve_uds_enabled(cfg) is True
-    assert resolve_tcp_enabled(cfg) is False
+    assert cfg.doclib.resolved_uds_enabled is True
+    assert cfg.doclib.resolved_tcp_enabled is False
 
 
 def test_default_transport_falls_back_to_tcp_when_uds_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -176,8 +157,8 @@ def test_default_transport_falls_back_to_tcp_when_uds_unavailable(monkeypatch: p
 
     assert cfg.doclib.uds.enabled == "auto"
     assert cfg.doclib.tcp.enabled == "auto"
-    assert resolve_uds_enabled(cfg) is False
-    assert resolve_tcp_enabled(cfg) is True
+    assert cfg.doclib.resolved_uds_enabled is False
+    assert cfg.doclib.resolved_tcp_enabled is True
 
 
 def test_transport_enabled_accepts_auto_and_explicit_bool(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -188,12 +169,12 @@ def test_transport_enabled_accepts_auto_and_explicit_bool(monkeypatch: pytest.Mo
 
     assert auto_cfg.doclib.uds.enabled == "auto"
     assert auto_cfg.doclib.tcp.enabled == "auto"
-    assert resolve_uds_enabled(auto_cfg) is True
-    assert resolve_tcp_enabled(auto_cfg) is False
+    assert auto_cfg.doclib.resolved_uds_enabled is True
+    assert auto_cfg.doclib.resolved_tcp_enabled is False
     assert explicit_cfg.doclib.uds.enabled is False
     assert explicit_cfg.doclib.tcp.enabled is True
-    assert resolve_uds_enabled(explicit_cfg) is False
-    assert resolve_tcp_enabled(explicit_cfg) is True
+    assert explicit_cfg.doclib.resolved_uds_enabled is False
+    assert explicit_cfg.doclib.resolved_tcp_enabled is True
 
 
 def test_transport_enabled_accepts_auto_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -206,8 +187,8 @@ def test_transport_enabled_accepts_auto_from_env(monkeypatch: pytest.MonkeyPatch
 
     assert cfg.doclib.uds.enabled == "auto"
     assert cfg.doclib.tcp.enabled == "auto"
-    assert resolve_uds_enabled(cfg) is True
-    assert resolve_tcp_enabled(cfg) is False
+    assert cfg.doclib.resolved_uds_enabled is True
+    assert cfg.doclib.resolved_tcp_enabled is False
 
 
 def test_patched_config_returns_validated_deep_patch() -> None:
@@ -215,6 +196,80 @@ def test_patched_config_returns_validated_deep_patch() -> None:
 
     assert cfg.doclib.tcp.port == 16000
     assert cfg.doclib.sqlite.cache_size == -1
+
+
+def test_log_config_exposes_separate_log_paths() -> None:
+    defaults = LogConfig()
+
+    assert defaults.dir.endswith("logs")
+    assert defaults.app_path is None
+    assert defaults.access_path is None
+    assert defaults.stdout_path is None
+    assert defaults.stderr_path is None
+    assert defaults.resolved_app_path.endswith("logs/doclib.log")
+    assert defaults.resolved_access_path.endswith("logs/doclib.access.log")
+    assert defaults.resolved_stdout_path.endswith("logs/doclib.stdout.log")
+    assert defaults.resolved_stderr_path.endswith("logs/doclib.stderr.log")
+
+    cfg = Config(
+        doclib={
+            "log": {
+                "dir": "/tmp/mineru-logs",
+                "app_path": "/tmp/app.log",
+                "access_path": "/tmp/access.log",
+                "stdout_path": "/tmp/stdout.log",
+                "stderr_path": "/tmp/stderr.log",
+            }
+        }
+    )
+
+    assert cfg.doclib.log.dir == "/tmp/mineru-logs"
+    assert cfg.doclib.log.app_path == "/tmp/app.log"
+    assert cfg.doclib.log.access_path == "/tmp/access.log"
+    assert cfg.doclib.log.stdout_path == "/tmp/stdout.log"
+    assert cfg.doclib.log.stderr_path == "/tmp/stderr.log"
+    assert cfg.doclib.log.resolved_app_path == "/tmp/app.log"
+    assert cfg.doclib.log.resolved_access_path == "/tmp/access.log"
+    assert cfg.doclib.log.resolved_stdout_path == "/tmp/stdout.log"
+    assert cfg.doclib.log.resolved_stderr_path == "/tmp/stderr.log"
+
+
+def test_log_config_dir_derives_unspecified_log_paths() -> None:
+    cfg = LogConfig(dir="/tmp/mineru-logs", stderr_path="/tmp/custom-stderr.log")
+
+    assert cfg.app_path is None
+    assert cfg.access_path is None
+    assert cfg.stdout_path is None
+    assert cfg.stderr_path == "/tmp/custom-stderr.log"
+    assert cfg.resolved_app_path == "/tmp/mineru-logs/doclib.log"
+    assert cfg.resolved_access_path == "/tmp/mineru-logs/doclib.access.log"
+    assert cfg.resolved_stdout_path == "/tmp/mineru-logs/doclib.stdout.log"
+    assert cfg.resolved_stderr_path == "/tmp/custom-stderr.log"
+
+
+def test_log_config_dir_override_derives_paths_in_deep_patches(monkeypatch: pytest.MonkeyPatch) -> None:
+    prefix = "TEST_MINERU_"
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_LOG_DIR", "/tmp/env-logs")
+
+    env_cfg = _apply_env_overrides(Config(), prefix=prefix)
+    patched_cfg = PatchedConfig(doclib={"log": {"dir": "/tmp/patched-logs"}})
+
+    assert env_cfg.doclib.log.app_path is None
+    assert env_cfg.doclib.log.access_path is None
+    assert env_cfg.doclib.log.stdout_path is None
+    assert env_cfg.doclib.log.stderr_path is None
+    assert env_cfg.doclib.log.resolved_app_path == "/tmp/env-logs/doclib.log"
+    assert env_cfg.doclib.log.resolved_access_path == "/tmp/env-logs/doclib.access.log"
+    assert env_cfg.doclib.log.resolved_stdout_path == "/tmp/env-logs/doclib.stdout.log"
+    assert env_cfg.doclib.log.resolved_stderr_path == "/tmp/env-logs/doclib.stderr.log"
+    assert patched_cfg.doclib.log.app_path is None
+    assert patched_cfg.doclib.log.access_path is None
+    assert patched_cfg.doclib.log.stdout_path is None
+    assert patched_cfg.doclib.log.stderr_path is None
+    assert patched_cfg.doclib.log.resolved_app_path == "/tmp/patched-logs/doclib.log"
+    assert patched_cfg.doclib.log.resolved_access_path == "/tmp/patched-logs/doclib.access.log"
+    assert patched_cfg.doclib.log.resolved_stdout_path == "/tmp/patched-logs/doclib.stdout.log"
+    assert patched_cfg.doclib.log.resolved_stderr_path == "/tmp/patched-logs/doclib.stderr.log"
 
 
 def test_interval_and_timeout_config_is_startup_config_not_runtime_kv() -> None:

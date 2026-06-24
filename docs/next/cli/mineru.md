@@ -39,8 +39,12 @@
   doclib.endpoint.json
   doclib.sock
   doclib.db
-  doclib.log
-  data/
+  logs/
+    doclib.log
+    doclib.access.log
+    doclib.stdout.log
+    doclib.stderr.log
+  doclib/
     parsed/
     temp/
 ```

@@ -1,16 +1,27 @@
 import asyncio
+import logging
 import tomllib
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from mineru.config import LogConfig, PatchedConfig, config as mineru_config, resolve_tcp_enabled
+from mineru.config import LogConfig, PatchedConfig, config as mineru_config
 from mineru.doclib import app as doclib_app
 from mineru.doclib.app import _assert_required_schema
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.server import _tail_log, _write_temp_asset
 from mineru.version import __version__
+
+
+def _clear_test_loggers() -> None:
+    for name in ("mineru", "uvicorn", "uvicorn.error", "uvicorn.access", "py.warnings"):
+        logger = logging.getLogger(name)
+        for handler in list(logger.handlers):
+            logger.removeHandler(handler)
+            handler.close()
+        logger.propagate = True
 
 
 def test_required_schema_check_fails_before_migration_and_passes_after(tmp_path) -> None:
@@ -40,12 +51,65 @@ def test_doclib_runtime_dependencies_are_in_base_install() -> None:
     assert "watchfiles" in dependency_names
 
 
+def test_setup_logging_routes_application_logs_to_rotating_file_without_stderr_duplication(tmp_path: Path) -> None:
+    _clear_test_loggers()
+    log_path = tmp_path / "doclib.log"
+    access_log_path = tmp_path / "doclib.access.log"
+    try:
+        doclib_app._setup_logging(LogConfig(app_path=str(log_path), access_path=str(access_log_path)))
+
+        mineru_logger = logging.getLogger("mineru")
+        uvicorn_error_logger = logging.getLogger("uvicorn.error")
+        uvicorn_access_logger = logging.getLogger("uvicorn.access")
+        warnings_logger = logging.getLogger("py.warnings")
+
+        mineru_rotating_handlers = [handler for handler in mineru_logger.handlers if isinstance(handler, RotatingFileHandler)]
+        mineru_plain_stream_handlers = [
+            handler
+            for handler in mineru_logger.handlers
+            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, RotatingFileHandler)
+        ]
+
+        assert len(mineru_rotating_handlers) == 1
+        assert mineru_rotating_handlers[0].baseFilename == str(log_path)
+        assert mineru_plain_stream_handlers == []
+        assert mineru_logger.propagate is False
+        assert [handler.baseFilename for handler in uvicorn_error_logger.handlers if isinstance(handler, RotatingFileHandler)] == [
+            str(log_path)
+        ]
+        assert [handler.baseFilename for handler in warnings_logger.handlers if isinstance(handler, RotatingFileHandler)] == [
+            str(log_path)
+        ]
+        assert [handler.baseFilename for handler in uvicorn_access_logger.handlers if isinstance(handler, RotatingFileHandler)] == [
+            str(access_log_path)
+        ]
+    finally:
+        _clear_test_loggers()
+
+
 def test_server_status_reports_configured_socket_path(monkeypatch, tmp_path) -> None:
+    app_log_path = tmp_path / "doclib.log"
+    access_log_path = tmp_path / "doclib.access.log"
+    stdout_log_path = tmp_path / "doclib.stdout.log"
+    stderr_log_path = tmp_path / "doclib.stderr.log"
+    for prefix, path, count in (
+        ("app", app_log_path, 30),
+        ("access", access_log_path, 12),
+        ("stdout", stdout_log_path, 12),
+        ("stderr", stderr_log_path, 12),
+    ):
+        path.write_text("".join(f"{prefix}-{idx}\n" for idx in range(count)), encoding="utf-8")
+
     cfg = PatchedConfig(
         doclib={
             "data_dir": str(tmp_path),
             "sqlite": {"path": str(tmp_path / "doclib.db")},
-            "log": {"path": str(tmp_path / "doclib.log")},
+            "log": {
+                "app_path": str(app_log_path),
+                "access_path": str(access_log_path),
+                "stdout_path": str(stdout_log_path),
+                "stderr_path": str(stderr_log_path),
+            },
             "uds": {"path": str(tmp_path / "doclib.sock")},
         }
     )
@@ -66,7 +130,42 @@ def test_server_status_reports_configured_socket_path(monkeypatch, tmp_path) -> 
     assert payload["socket_path"] == str(tmp_path / "doclib.sock")
     assert payload["sqlite_path"] == str(tmp_path / "doclib.db")
     assert payload["log_path"] == str(tmp_path / "doclib.log")
-    assert payload["tcp"] == {"enabled": resolve_tcp_enabled(cfg), "host": cfg.doclib.tcp.host, "port": None}
+    assert payload["access_log_path"] == str(access_log_path)
+    assert payload["stdout_log_path"] == str(stdout_log_path)
+    assert payload["stderr_log_path"] == str(stderr_log_path)
+    assert payload["tcp"] == {"enabled": cfg.doclib.resolved_tcp_enabled, "host": cfg.doclib.tcp.host, "port": None}
+    assert payload["app_logs"] == [f"app-{idx}\n" for idx in range(5, 30)]
+    assert payload["access_logs"] == [f"access-{idx}\n" for idx in range(2, 12)]
+    assert payload["stdout_logs"] == [f"stdout-{idx}\n" for idx in range(2, 12)]
+    assert payload["stderr_logs"] == [f"stderr-{idx}\n" for idx in range(2, 12)]
+
+
+def test_doclib_app_uses_lifespan_instead_of_deprecated_event_handlers(monkeypatch, tmp_path) -> None:
+    cfg = PatchedConfig(
+        doclib={
+            "data_dir": str(tmp_path),
+            "sqlite": {"path": str(tmp_path / "doclib.db")},
+            "log": {
+                "app_path": str(tmp_path / "doclib.log"),
+                "access_path": str(tmp_path / "doclib.access.log"),
+            },
+            "uds": {"path": str(tmp_path / "doclib.sock")},
+        }
+    )
+
+    def _skip_background_task(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
+
+    app = doclib_app.create_app(cfg)
+
+    assert app.router.on_startup == []
+    assert app.router.on_shutdown == []
+    with TestClient(app) as client:
+        response = client.get("/api/v1/server/status")
+
+    assert response.status_code == 200
 
 
 def test_telemetry_observation_route_uses_context_headers(monkeypatch, tmp_path) -> None:
@@ -74,7 +173,10 @@ def test_telemetry_observation_route_uses_context_headers(monkeypatch, tmp_path)
         doclib={
             "data_dir": str(tmp_path),
             "sqlite": {"path": str(tmp_path / "doclib.db")},
-            "log": {"path": str(tmp_path / "doclib.log")},
+            "log": {
+                "app_path": str(tmp_path / "doclib.log"),
+                "access_path": str(tmp_path / "doclib.access.log"),
+            },
             "uds": {"path": str(tmp_path / "doclib.sock")},
         }
     )
@@ -117,6 +219,6 @@ def test_write_temp_asset_uses_temp_read_assets_directory(tmp_path: Path) -> Non
 def test_tail_log_uses_current_config_default_when_data_dir_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     log_path = tmp_path / "doclib.log"
     log_path.write_text("line-1\nline-2\n", encoding="utf-8")
-    monkeypatch.setattr(mineru_config.doclib, "log", LogConfig(path=str(log_path)))
+    monkeypatch.setattr(mineru_config.doclib, "log", LogConfig(app_path=str(log_path)))
 
     assert _tail_log("") == ["line-1\n", "line-2\n"]

@@ -5,6 +5,7 @@ from typing import get_type_hints
 import pytest
 from pydantic import ValidationError
 
+from mineru.config import PatchedConfig
 from mineru.errors import InvalidRequestError
 from mineru.doclib.app import create_app
 from mineru.doclib.base import AsyncDoclibInterface, DoclibInterface
@@ -175,8 +176,10 @@ def test_list_methods_expose_consistent_pagination_contract() -> None:
         assert "offset" in signature.parameters, method_name
 
 
-def test_interface_app_uses_doclib_server_routes() -> None:
-    app = create_app()
+def test_interface_app_uses_doclib_server_routes(tmp_path) -> None:
+    cfg = PatchedConfig(doclib={"log": {"dir": str(tmp_path / "logs")}})
+
+    app = create_app(cfg)
     route_names = {getattr(route, "name", "") for route in app.routes}
 
     for method_name in AsyncDoclibInterface.__abstractmethods__:

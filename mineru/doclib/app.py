@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from typing import Any
 
@@ -19,7 +20,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from ..errors import MineruError, error_response, http_status_for
-from ..config import Config, LogConfig, _mineru_home, config, resolve_tcp_enabled, resolve_uds_enabled
+from ..config import Config, LogConfig, _mineru_home, config
 from .endpoint import EndpointTransport, remove_endpoint_file, uds_available, write_endpoint_file
 from .server import DoclibServer
 from .types import PARSE_STATUS_FAILED, PARSE_STATUS_PARSING
@@ -29,13 +30,13 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     """Create the new interface-backed FastAPI app."""
     if cfg is None:
         cfg = config
+    _setup_logging(cfg.doclib.log)
     state = AppState()
     app = DoclibServer(state).app
     app.title = "MinerU DocLib"
     app.version = "1.0.0"
     app.state.doclib_state = state
 
-    @app.on_event("startup")
     async def startup() -> None:
         from .background.compaction import Compaction
         from .background.device_monitor import DeviceMonitor
@@ -56,8 +57,6 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
         data_dir = os.path.expanduser(cfg.doclib.data_dir)
         os.makedirs(data_dir, exist_ok=True)
-
-        _setup_logging(cfg.doclib.log)
 
         db_path = os.path.expanduser(cfg.doclib.sqlite.path)
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
@@ -162,13 +161,15 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.mineru_home = _mineru_home()
         state.data_dir = data_dir
         state.sqlite_path = db_path
-        state.log_path = os.path.expanduser(cfg.doclib.log.path)
+        state.log_path = os.path.expanduser(cfg.doclib.log.resolved_app_path)
+        state.access_log_path = os.path.expanduser(cfg.doclib.log.resolved_access_path)
+        state.stdout_log_path = os.path.expanduser(cfg.doclib.log.resolved_stdout_path)
+        state.stderr_log_path = os.path.expanduser(cfg.doclib.log.resolved_stderr_path)
         state.socket_path = os.path.expanduser(cfg.doclib.uds.path)
-        state.tcp_enabled = resolve_tcp_enabled(cfg)
+        state.tcp_enabled = cfg.doclib.resolved_tcp_enabled
         state.tcp_host = cfg.doclib.tcp.host
         state.config = cfg
 
-    @app.on_event("shutdown")
     async def shutdown() -> None:
         if state.parse_server_proc:
             try:
@@ -199,6 +200,16 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
         if state.db:
             await state.db.close()
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        await startup()
+        try:
+            yield
+        finally:
+            await shutdown()
+
+    app.router.lifespan_context = lifespan
 
     @app.middleware("http")
     async def attach_state(request: Request, call_next: Callable) -> Any:
@@ -264,6 +275,9 @@ class AppState:
         self.data_dir: str = ""
         self.sqlite_path: str = ""
         self.log_path: str = ""
+        self.access_log_path: str = ""
+        self.stdout_log_path: str = ""
+        self.stderr_log_path: str = ""
         self.tcp_enabled: bool = False
         self.tcp_host: str = ""
         self.tcp_port: int | None = None
@@ -317,8 +331,8 @@ def main() -> None:
     cfg = config
     uds_path = os.path.expanduser(cfg.doclib.uds.path)
     endpoint_path = os.path.expanduser(cfg.doclib.endpoint_path)
-    uds_enabled = resolve_uds_enabled(cfg)
-    tcp_enabled = resolve_tcp_enabled(cfg)
+    uds_enabled = cfg.doclib.resolved_uds_enabled
+    tcp_enabled = cfg.doclib.resolved_tcp_enabled
 
     if not uds_enabled and not tcp_enabled:
         raise RuntimeError("At least one doclib local transport must be enabled.")
@@ -328,6 +342,7 @@ def main() -> None:
     app = create_app(cfg)
     uv_config = uvicorn.Config(
         app,
+        log_config=None,
         lifespan="on",
         timeout_keep_alive=cfg.doclib.tcp.timeout,
     )
@@ -392,22 +407,53 @@ def main() -> None:
 
 
 def _setup_logging(log_cfg: LogConfig) -> None:
-    logger = logging.getLogger("mineru")
     level = getattr(logging, log_cfg.level.upper(), logging.INFO)
-    logger.setLevel(level)
+    log_path = os.path.expanduser(log_cfg.resolved_app_path)
+    access_log_path = os.path.expanduser(log_cfg.resolved_access_path)
+    _ensure_log_dir(log_path)
+    _ensure_log_dir(access_log_path)
 
-    if not logger.handlers:
-        ch = logging.StreamHandler()
-        ch.setLevel(level)
-        ch.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-        logger.addHandler(ch)
+    app_logger_names = ("mineru", "uvicorn", "uvicorn.error", "py.warnings")
+    access_logger_names = ("uvicorn.access",)
+    logger_names = (*app_logger_names, *access_logger_names)
+    old_handlers: list[logging.Handler] = []
+    for name in logger_names:
+        logger = logging.getLogger(name)
+        old_handlers.extend(logger.handlers)
+        logger.handlers.clear()
 
-        log_path = os.path.expanduser(log_cfg.path)
-        os.makedirs(os.path.dirname(log_path), exist_ok=True)
-        fh = RotatingFileHandler(log_path, maxBytes=5 * 1024 * 1024, backupCount=3)
-        fh.setLevel(level)
-        fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-        logger.addHandler(fh)
+    for handler in {id(handler): handler for handler in old_handlers}.values():
+        handler.close()
+
+    app_handler = _rotating_log_handler(log_path, level)
+    access_handler = _rotating_log_handler(access_log_path, level)
+
+    for name in app_logger_names:
+        logger = logging.getLogger(name)
+        logger.setLevel(level)
+        logger.propagate = False
+        logger.addHandler(app_handler)
+
+    for name in access_logger_names:
+        logger = logging.getLogger(name)
+        logger.setLevel(level)
+        logger.propagate = False
+        logger.addHandler(access_handler)
+
+    logging.captureWarnings(True)
+
+
+def _ensure_log_dir(path: str) -> None:
+    log_dir = os.path.dirname(path)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+
+
+def _rotating_log_handler(path: str, level: int) -> RotatingFileHandler:
+    handler = RotatingFileHandler(path, maxBytes=5 * 1024 * 1024, backupCount=3)
+    handler.setLevel(level)
+    handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+    return handler
 
 
 if __name__ == "__main__":

@@ -553,6 +553,9 @@ class ServerStatusResponse(DoclibModel):
     data_dir: str
     sqlite_path: str
     log_path: str
+    access_log_path: str = ""
+    stdout_log_path: str = ""
+    stderr_log_path: str = ""
     tcp: TCPServerStatus = Field(default_factory=TCPServerStatus)
     active_scan_count: int = 0
     last_scan_at: int | None = None
@@ -571,6 +574,10 @@ class ServerStatusResponse(DoclibModel):
     recent_scans: list[ScanInfo] = Field(default_factory=list)
     error_summary: ErrorSummary | None = None
     recent_logs: list[str] = Field(default_factory=list)
+    app_logs: list[str] = Field(default_factory=list)
+    access_logs: list[str] = Field(default_factory=list)
+    stdout_logs: list[str] = Field(default_factory=list)
+    stderr_logs: list[str] = Field(default_factory=list)
 
 
 class CleanupDeletedRequest(DoclibModel):

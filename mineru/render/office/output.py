@@ -6,6 +6,7 @@ from collections.abc import Generator
 from typing import Any
 
 from ...types import Block, BlockType, ContentType, ContentTypeV2, Line, Span
+from ..markdown_table import to_markdown_table
 from .merge import (
     _append_hyperlink_part,
     _append_text_part,
@@ -359,6 +360,7 @@ def blocks_to_markdown(
     para_blocks: list[Block],
     img_bucket_path: str = "",
     no_rich_content: bool = False,
+    prefer_markdown_table: bool = False,
 ) -> list[str]:
     page_markdown = []
     for para_block in para_blocks:
@@ -395,7 +397,11 @@ def blocks_to_markdown(
             if no_rich_content:
                 continue
             for span in _iter_body_spans(para_block, BlockType.TABLE_BODY, ContentType.TABLE):
-                para_text += f"\n{_format_embedded_html(span.content, img_bucket_path)}\n"
+                table_html = _format_embedded_html(span.content, img_bucket_path)
+                if prefer_markdown_table:
+                    para_text += f"\n{to_markdown_table(table_html)}\n"
+                else:
+                    para_text += f"\n{table_html}\n"
             for caption_text in _collect_caption_texts(para_block, BlockType.TABLE_CAPTION):
                 para_text += "  \n" + caption_text
         elif para_type == BlockType.CHART:

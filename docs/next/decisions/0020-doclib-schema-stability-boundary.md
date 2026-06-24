@@ -92,6 +92,10 @@ v1 稳定 schema 绑定的是 **doclib public models 的字段**，而不是 SQL
 - `ServerStatusResponse.sqlite_wal_size_bytes`
 - `ServerStatusResponse.watches`
 - `ServerStatusResponse.recent_logs`
+- `ServerStatusResponse.app_logs`
+- `ServerStatusResponse.access_logs`
+- `ServerStatusResponse.stdout_logs`
+- `ServerStatusResponse.stderr_logs`
 
 这些字段可以继续暴露，但调用方不得把它们当作稳定 v1 契约。
 

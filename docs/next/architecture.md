@@ -296,8 +296,12 @@ ParseWorker 按 `tier`、`privacy` 和 parse-server 健康状态路由：
   doclib.endpoint.json
   doclib.sock
   doclib.db
-  doclib.log
-  data/
+  logs/
+    doclib.log
+    doclib.access.log
+    doclib.stdout.log
+    doclib.stderr.log
+  doclib/
     temp/
     parsed/
       ab/
@@ -366,7 +370,7 @@ doclib 启动期配置由 YAML / 环境变量管理，运行期策略配置由 S
 
 | key | 默认值 | 说明 |
 |-----|--------|------|
-| `data_dir` | `~/.mineru/data` | 数据目录 |
+| `data_dir` | `~/.mineru/doclib` | 数据目录 |
 | `scan_interval_sec` | `300` | watch 全量扫描间隔 |
 | `ingest_lock_timeout_sec` | `60` | ingest 锁超时 |
 | `parse_lock_timeout_sec` | `1800` | parse 锁超时 |

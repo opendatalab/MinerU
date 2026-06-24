@@ -5,7 +5,6 @@ from __future__ import annotations
 import copy
 import logging
 import os
-import platform
 import re
 import socket
 from typing import Any, Literal
@@ -32,8 +31,8 @@ def _mineru_home() -> str:
     return os.path.join(os.path.expanduser("~"), ".mineru")
 
 
-def _default_config_path() -> str:
-    return os.path.join(_mineru_home(), "config.yaml")
+def _default_path(path1: str, /, *paths: str) -> str:
+    return os.path.join(_mineru_home(), path1, *paths)
 
 
 def _uds_available() -> bool:
@@ -42,43 +41,6 @@ def _uds_available() -> bool:
         return True
     except Exception:
         return False
-
-
-def _default_uds_path() -> str:
-    system = platform.system().lower()
-    if system not in ("windows", "darwin", "linux"):
-        raise RuntimeError(f"System [{system}] is not supported.")
-    return os.path.join(_mineru_home(), "doclib.sock")
-
-
-def resolve_uds_enabled(cfg: "Config") -> bool:
-    value = cfg.doclib.uds.enabled
-    if value == "auto":
-        return _uds_available()
-    return value
-
-
-def resolve_tcp_enabled(cfg: "Config") -> bool:
-    value = cfg.doclib.tcp.enabled
-    if value == "auto":
-        return not _uds_available()
-    return value
-
-
-def _default_endpoint_path() -> str:
-    return os.path.join(_mineru_home(), "doclib.endpoint.json")
-
-
-def _default_log_path() -> str:
-    return os.path.join(_mineru_home(), "doclib.log")
-
-
-def _default_db_path() -> str:
-    return os.path.join(_mineru_home(), "doclib.db")
-
-
-def _default_data_path() -> str:
-    return os.path.join(_mineru_home(), "data")
 
 
 def _strip_quotes(value: str) -> str:
@@ -134,7 +96,7 @@ def _read_config() -> dict[str, Any]:
     if config_file and not os.path.isfile(config_file):
         raise FileNotFoundError(f"MinerU config file [{config_file}] does not exist.")
 
-    default_config_file = _default_config_path()
+    default_config_file = _default_path("config.yaml")
     if not config_file and os.path.isfile(default_config_file):
         config_file = default_config_file
 
@@ -213,7 +175,7 @@ def _apply_env_overrides(cfg: "Config", prefix: str = MINERU_ENV_PREFIX) -> "Con
 
 class UDSConfig(BaseModel):
     enabled: AutoBool = "auto"
-    path: str = Field(default_factory=_default_uds_path)
+    path: str = _default_path("doclib.sock")
     permission: int = 0o600
 
 
@@ -227,12 +189,32 @@ class TCPConfig(BaseModel):
 
 
 class LogConfig(BaseModel):
-    path: str = Field(default_factory=_default_log_path)
+    dir: str = _default_path("logs")
+    app_path: str | None = None
+    access_path: str | None = None
+    stdout_path: str | None = None
+    stderr_path: str | None = None
     level: str = "info"
+
+    @property
+    def resolved_app_path(self) -> str:
+        return self.app_path or os.path.join(self.dir, "doclib.log")
+
+    @property
+    def resolved_access_path(self) -> str:
+        return self.access_path or os.path.join(self.dir, "doclib.access.log")
+
+    @property
+    def resolved_stdout_path(self) -> str:
+        return self.stdout_path or os.path.join(self.dir, "doclib.stdout.log")
+
+    @property
+    def resolved_stderr_path(self) -> str:
+        return self.stderr_path or os.path.join(self.dir, "doclib.stderr.log")
 
 
 class SQLiteConfig(BaseModel):
-    path: str = Field(default_factory=_default_db_path)
+    path: str = _default_path("doclib.db")
     mmap_size: int = 268435456
     cache_size: int = -20000
     wal_autocheckpoint: int = 1000
@@ -253,8 +235,8 @@ class DoclibConfig(BaseModel):
     tcp: TCPConfig = Field(default_factory=TCPConfig)
     log: LogConfig = Field(default_factory=LogConfig)
     sqlite: SQLiteConfig = Field(default_factory=SQLiteConfig)
-    endpoint_path: str = Field(default_factory=_default_endpoint_path)
-    data_dir: str = Field(default_factory=_default_data_path)
+    endpoint_path: str = _default_path("doclib.endpoint.json")
+    data_dir: str = _default_path("doclib")
     ingest_workers: int = 2
     parse_workers: int = 2
     scan_interval_sec: int = 300
@@ -267,6 +249,18 @@ class DoclibConfig(BaseModel):
     parse_server_probe_timeout_sec: int = 10
     parse_server_startup_grace_sec: int = 30
     parse_server_stop_timeout_sec: int = 10
+
+    @property
+    def resolved_uds_enabled(self) -> bool:
+        if self.uds.enabled == "auto":
+            return _uds_available()
+        return self.uds.enabled
+
+    @property
+    def resolved_tcp_enabled(self) -> bool:
+        if self.tcp.enabled == "auto":
+            return not _uds_available()
+        return self.tcp.enabled
 
 
 class Config(BaseModel):
@@ -297,6 +291,4 @@ __all__ = [
     "MINERU_HOME_ENV",
     "MINERU_CONFIG_ENV",
     "MINERU_ENV_PREFIX",
-    "resolve_tcp_enabled",
-    "resolve_uds_enabled",
 ]

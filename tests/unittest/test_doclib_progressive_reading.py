@@ -1,4 +1,4 @@
-from mineru.doclib.server import _next_content_request, _normalize_content_page_range, _render_progressive_markdown
+from mineru.doclib.server import _next_content_request, _normalize_content_page_range, _page_markdown_blocks, _render_progressive_markdown
 from mineru.doclib.types import ContentRange
 from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span
 
@@ -154,3 +154,50 @@ def test_paginated_next_request_is_never_after_only() -> None:
     assert next_request is not None
     assert next_request.page_range == "7~10"
     assert next_request.after is not None
+
+
+def test_page_markdown_blocks_prefers_markdown_table_in_doclib() -> None:
+    html = """
+    <table>
+      <tr><th>Name</th><th>Score</th></tr>
+      <tr><td>Alice</td><td>90</td></tr>
+    </table>
+    """.strip()
+    page = PageInfo(
+        page_idx=0,
+        page_size=(100, 100),
+        para_blocks=[
+            Block(
+                index=0,
+                type=BlockType.TABLE,
+                bbox=(0, 0, 10, 10),
+                blocks=[
+                    Block(
+                        index=0,
+                        type=BlockType.TABLE_BODY,
+                        bbox=(0, 0, 10, 10),
+                        lines=[
+                            Line(
+                                bbox=(0, 0, 10, 10),
+                                spans=[Span(type=ContentType.TABLE, bbox=(0, 0, 10, 10), html=html)],
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+        _backend="pipeline",
+    )
+
+    assert _page_markdown_blocks(page) == [
+        (
+            0,
+            "\n".join(
+                [
+                    "| Name | Score |",
+                    "| --- | --- |",
+                    "| Alice | 90 |",
+                ]
+            ),
+        )
+    ]

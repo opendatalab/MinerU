@@ -401,7 +401,7 @@ PRAGMA wal_autocheckpoint = 1000;
 
 ```sql
 INSERT INTO config (key, value) VALUES
-    ('data_dir',              '~/.mineru/data'),
+    ('data_dir',              '~/.mineru/doclib'),
     ('default_tier',          'flash'),
     ('scan_interval_sec',     '300'),
     ('ingest_lock_timeout_sec',  '60'),
@@ -551,7 +551,7 @@ ParseWorker.acquire_task()
   └────────────────────────────────────────────────────────────┘
 
   → 解析完成:
-       1. 写入解析产物到 ~/.mineru/data/parsed/{sha256[:2]}/{sha256}/{tier}/
+       1. 写入解析产物到 ~/.mineru/doclib/parsed/{sha256[:2]}/{sha256}/{tier}/
        2. INSERT OR REPLACE fts_contents（tier 门控）
        3. UPDATE parses SET status='done', done_at=?, via=?
        4. UPDATE docs（更高 tier 的 metadata 覆盖）
@@ -568,7 +568,7 @@ ParseWorker.acquire_task()
 - **tier 不匹配时报错**：parse-server 只支持 standard，用户请求 pro → 直接报错，不自动降级
 - **`parse_failed` 不 fallback**：remote 返回解析失败（非网络错误，如文件损坏、加密）→ 不 fallback 到本地，直接标 failed
 - **缓存键**：`(sha256, tier)`，与 privacy/via 无关——同一 tier 不同来源产出解析结果一致
-- **remote 产物同样入库**：remote 解析完成后，middle_json 和 markdown 和本地解析一样写入 `~/.mineru/data/parsed/` 并更新 fts_contents
+- **remote 产物同样入库**：remote 解析完成后，middle_json 和 markdown 和本地解析一样写入 `~/.mineru/doclib/parsed/` 并更新 fts_contents
 - **`via` 列解析后写入**：解析完成时写 `via=local` 或 `via=remote`，记录实际执行路径。不提前写入，避免解析失败时值为假
 
 **实现层**：
@@ -611,23 +611,27 @@ managed 模式崩溃恢复：
   config.yaml
   doclib.sock
   doclib.db
-  doclib.log
-  data/
-    parsed/
+  logs/
+    doclib.log
+    doclib.access.log
+    doclib.stdout.log
+    doclib.stderr.log
+  doclib/
     temp/
-    ab/                             # sha256 前 2 字符
-      ab3f...7e2d/                  # 完整 sha256
-        flash/
-          output.md
-          middle.json
-        standard/
-          output.md
-          middle.json
-          images/
-        pro/
-          output.md
-          middle.json
-          images/
+    parsed/
+      ab/                             # sha256 前 2 字符
+        ab3f...7e2d/                  # 完整 sha256
+          flash/
+            output.md
+            middle.json
+          standard/
+            output.md
+            middle.json
+            images/
+          pro/
+            output.md
+            middle.json
+            images/
 ```
 
 每个 tier 独立目录，互不覆盖。
@@ -755,7 +759,7 @@ Server 启动时执行以下恢复操作：
 
 | key | 默认值 | 说明 |
 |-----|--------|------|
-| `data_dir` | `~/.mineru/data` | 数据目录根路径 |
+| `data_dir` | `~/.mineru/doclib` | 数据目录根路径 |
 | `default_tier` | `flash` | Watch 自动解析的默认 tier |
 | `scan_interval_sec` | `300` | Watch 全量扫描间隔（秒） |
 | `ingest_lock_timeout_sec` | `60` | ingest 锁超时 |

@@ -29,7 +29,15 @@ def _endpoint_path() -> str:
 
 
 def _server_log_path() -> str:
-    return os.path.expanduser(config.doclib.log.path)
+    return os.path.expanduser(config.doclib.log.resolved_app_path)
+
+
+def _server_stdout_log_path() -> str:
+    return os.path.expanduser(config.doclib.log.resolved_stdout_path)
+
+
+def _server_stderr_log_path() -> str:
+    return os.path.expanduser(config.doclib.log.resolved_stderr_path)
 
 
 def _server_start_lock_path() -> str:
@@ -161,9 +169,11 @@ def start() -> None:
         return
 
     log_path = _server_log_path()
-    log_dir = os.path.dirname(log_path)
-    if log_dir:
-        os.makedirs(log_dir, exist_ok=True)
+    stdout_log_path = _server_stdout_log_path()
+    stderr_log_path = _server_stderr_log_path()
+    _ensure_log_dir(log_path)
+    _ensure_log_dir(stdout_log_path)
+    _ensure_log_dir(stderr_log_path)
 
     try:
         with _ServerStartLock(_server_start_lock_path()) as start_lock:
@@ -182,21 +192,32 @@ def start() -> None:
             with open(log_path, "a", encoding="utf-8") as log_file:
                 log_file.write("\n--- mineru server start ---\n")
                 log_file.flush()
+            with (
+                open(stdout_log_path, "a", encoding="utf-8") as stdout_log_file,
+                open(stderr_log_path, "a", encoding="utf-8") as stderr_log_file,
+            ):
+                stdout_log_file.write("\n--- mineru server stdout ---\n")
+                stderr_log_file.write("\n--- mineru server stderr ---\n")
+                stdout_log_file.flush()
+                stderr_log_file.flush()
                 proc = subprocess.Popen(
                     [sys.executable, "-m", "mineru.doclib.app"],
-                    stdout=log_file,
-                    stderr=log_file,
+                    stdout=stdout_log_file,
+                    stderr=stderr_log_file,
                     start_new_session=True,
                 )
 
                 if not _wait_for_server():
                     proc.kill()
-                    print_error(f"Server failed to start within 15 seconds. See log: {log_path}")
+                    print_error(
+                        "Server failed to start within 15 seconds. "
+                        f"See log: {log_path}; stdout: {stdout_log_path}; stderr: {stderr_log_path}"
+                    )
                     raise typer.Exit(1)
     except typer.Exit:
         raise
     except Exception as exc:
-        print_error(f"Server failed to start: {exc}. See log: {log_path}")
+        print_error(f"Server failed to start: {exc}. See log: {log_path}; stdout: {stdout_log_path}; stderr: {stderr_log_path}")
         raise typer.Exit(1) from None
 
     print_success(f"Server started (PID {proc.pid}).")
@@ -247,7 +268,10 @@ def status(json_mode: bool = typer.Option(False, "--json", help="JSON output")) 
                     socket_path=_socket_path(),
                     data_dir=os.path.expanduser(config.doclib.data_dir),
                     sqlite_path=os.path.expanduser(config.doclib.sqlite.path),
-                    log_path=os.path.expanduser(config.doclib.log.path),
+                    log_path=os.path.expanduser(config.doclib.log.resolved_app_path),
+                    access_log_path=os.path.expanduser(config.doclib.log.resolved_access_path),
+                    stdout_log_path=os.path.expanduser(config.doclib.log.resolved_stdout_path),
+                    stderr_log_path=os.path.expanduser(config.doclib.log.resolved_stderr_path),
                     tcp=TCPServerStatus(enabled=False, host=None, port=None),
                 ),
                 json_mode=True,
@@ -272,3 +296,9 @@ def _cleanup_local_endpoint_files() -> None:
     except OSError:
         pass
     remove_endpoint_file(_endpoint_path())
+
+
+def _ensure_log_dir(path: str) -> None:
+    log_dir = os.path.dirname(path)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)

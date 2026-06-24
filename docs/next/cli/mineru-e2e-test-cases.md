@@ -296,10 +296,10 @@ mineru server status --json
 
 - exit code = 0
 - 输出为 JSON
-- `data_dir` 默认位于 `$MINERU_HOME/data`；若显式覆盖 `doclib.data_dir`，则返回该覆盖值
+- `data_dir` 默认位于 `$MINERU_HOME/doclib`；若显式覆盖 `doclib.data_dir`，则返回该覆盖值
 - `socket_path` 字段等价于 `MINERU_DOCLIB_UDS_PATH`，不得为空；即使当前 transport 是 TCP-only，也可以表示配置路径
 - TCP 相关字段应位于 `tcp.enabled`、`tcp.host`、`tcp.port`
-- 日志相关字段或启动失败日志路径应落在 `MINERU_DOCLIB_LOG_PATH`
+- 日志相关字段或启动失败日志路径应落在 `MINERU_DOCLIB_LOG_DIR`，或显式配置的 `MINERU_DOCLIB_LOG_APP_PATH`
 
 ### SERVER-013 endpoint discovery 文件写入
 
@@ -582,10 +582,15 @@ mineru search "mineru-e2e-query-that-should-not-exist" --limit 1
 操作与预期:
 
 - 命令进入业务执行前提示是否开启匿名聚合 telemetry
-- prompt 文案不得包含文件路径、query、文档内容或其它业务输入
+- prompt 文案应说明收集的是匿名、本地聚合的使用与诊断数据
+- prompt 文案应说明不会收集文档内容、提取文本/图片、文件名、文件路径、URL、query、prompt、snippet、traceback、exception message、hostname、用户名、账号 ID、API Key 或精确 CPU/GPU 型号
+- prompt 文案应说明 Enter / `y` / `yes` 表示开启，`n` / `no` 表示关闭
+- prompt 文案应说明后续可通过 `mineru telemetry enable` / `mineru telemetry disable` 修改，并可通过 `mineru telemetry preview` 查看将要上报的 payload
+- prompt 文案不得包含当前命令的文件路径、query、文档内容或其它业务输入
 - 输入 Enter、`y` 或 `yes` 后，命令继续执行，后续 `mineru telemetry status --json` 返回 `state=enabled`
 - 在另一轮全新 `MINERU_HOME` 中输入 `n` 或 `no` 后，命令继续执行，后续 `mineru telemetry status --json` 返回 `state=disabled`
 - `mineru telemetry ...`、`mineru server ...`、`mineru config ...` 命令自身不触发 prompt
+- `--help`、`--json`、CI、Agent caller、非 TTY、server 不可访问时不触发 prompt
 - 不包含 Python traceback
 
 ### TELEMETRY-010 preview 隐私边界
@@ -2991,7 +2996,9 @@ mineru server status --json
 
 - 第一条按 FILETYPE-002 损坏 PDF 分支判定
 - 第二条 exit code = 0，stdout 为可直接解析的 JSON
-- status JSON 中 recent_logs 应来自 `MINERU_DOCLIB_LOG_PATH` 或等价日志来源
+- status JSON 中 `app_logs` 应来自 `MINERU_DOCLIB_LOG_APP_PATH`，或由 `MINERU_DOCLIB_LOG_DIR` 派生的 app log，最多返回最后 25 条
+- status JSON 中 `access_logs`、`stderr_logs`、`stdout_logs` 应分别来自对应日志文件，最多返回最后 10 条
+- `recent_logs` 保留为兼容字段，内容应等同于最后 25 条 app log
 - 如果错误被记录，error_summary 中应出现 parse/file 错误计数
 - 如果当前实现不记录该错误，记录为 fail/issue，不作为 BLOCKED
 
@@ -3036,7 +3043,7 @@ mineru server start
 
 - exit code != 0
 - 输出包含 `See log:` 或等价日志路径提示
-- 日志路径应为 `MINERU_DOCLIB_LOG_PATH` 指向的文件或测试 HOME 下的 mineru log
+- 日志路径应为 `MINERU_DOCLIB_LOG_APP_PATH` / `MINERU_DOCLIB_LOG_STDERR_PATH` 指向的文件，或由测试 HOME 下 `logs/` 派生的 mineru log
 - 日志文件中能看到 server 子进程 stderr 或异常信息
 - stdout/stderr 不只给出空泛的启动失败
 

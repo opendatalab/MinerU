@@ -416,7 +416,9 @@ async def _async_download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) ->
     # TEMP(2026-06-12): staging server may return {"url": "..."} instead of
     # {"file_id": "...", "bytes": ...}. Keep this branch until staging aligns.
     if ref.get("url"):
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env) as cli:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env
+        ) as cli:
             r = await cli.get(ref["url"])
             _check_download_response(r)
             return r.content
@@ -425,7 +427,9 @@ async def _async_download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) ->
     if not file_id:
         raise _V1APIError("invalid_response", "No file_id or url in output reference")
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env) as cli:
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env
+    ) as cli:
         r = await cli.get(f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers())
         _check_download_response(r)
         return r.content

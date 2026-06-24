@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Iterator, cast
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, FastAPI, Request
@@ -24,7 +24,7 @@ from ..errors import InvalidRequestError, MineruError, NotFoundError, error_resp
 from ..render import render_markdown
 from ..render.markdown import blocks_to_markdown
 from ..render.office.output import blocks_to_markdown as office_blocks_to_markdown
-from ..types import EMPTY_BBOX, TIERS, Block, PageInfo, Span, Tier
+from ..types import EMPTY_BBOX, TIER_ORDER, TIERS, Block, PageInfo, Span, Tier
 from ..utils.pdf_document import PDFDocument
 from ..version import __version__
 from .background.parse_server_health import get_health
@@ -236,6 +236,10 @@ class DoclibServer(AsyncDoclibInterface):
         watches = await self.state.config_svc.list_watches()
         uptime = time.time() - self.state.start_time if hasattr(self.state, "start_time") else 0
         sqlite_path = getattr(self.state, "sqlite_path", "")
+        log_path = getattr(self.state, "log_path", "")
+        access_log_path = getattr(self.state, "access_log_path", "")
+        stdout_log_path = getattr(self.state, "stdout_log_path", "")
+        stderr_log_path = getattr(self.state, "stderr_log_path", "")
         sqlite_journal_mode = await _sqlite_journal_mode(self.state.db)
         health = get_health()
 
@@ -249,7 +253,10 @@ class DoclibServer(AsyncDoclibInterface):
             socket_path=getattr(self.state, "socket_path", ""),
             data_dir=getattr(self.state, "data_dir", ""),
             sqlite_path=sqlite_path,
-            log_path=getattr(self.state, "log_path", ""),
+            log_path=log_path,
+            access_log_path=access_log_path,
+            stdout_log_path=stdout_log_path,
+            stderr_log_path=stderr_log_path,
             tcp=TCPServerStatus(
                 enabled=bool(getattr(self.state, "tcp_enabled", False)),
                 host=getattr(self.state, "tcp_host", "") or None,
@@ -288,7 +295,11 @@ class DoclibServer(AsyncDoclibInterface):
             watch_stats=await _watch_stats(self.state.db, watches),
             recent_scans=await _recent_scans(self.state.db),
             error_summary=await _error_summary(self.state.db),
-            recent_logs=_tail_log(getattr(self.state, "log_path", "")),
+            recent_logs=_tail_log(log_path, lines=25),
+            app_logs=_tail_log(log_path, lines=25),
+            access_logs=_tail_log(access_log_path, lines=10),
+            stdout_logs=_tail_log(stdout_log_path, lines=10),
+            stderr_logs=_tail_log(stderr_log_path, lines=10),
         )
 
     @route("POST", "/server/shutdown", tags=("server",))
@@ -1049,6 +1060,7 @@ class DoclibServer(AsyncDoclibInterface):
             loaded_pages,
             img_bucket_path=_PUBLIC_IMAGE_BUCKET_PATH,
             add_markers=not no_marker,
+            prefer_markdown_table=True,
         )
 
     async def _execute_read_plan(self, plan: _ReadPlan) -> DocContentResponse:
@@ -1169,10 +1181,10 @@ class DoclibServer(AsyncDoclibInterface):
                 (sha256, PARSE_STATUS_DONE),
             ),
         )
-        tiers = {row["tier"] for row in rows if row["tier"] in TIERS and row["tier"] != "flash"}
+        tiers: set[Tier] = {row["tier"] for row in rows if row["tier"] in TIERS and row["tier"] != "flash"}
         if not tiers:
             return None
-        return sorted(tiers, key=lambda t: TIERS.index(t))[-1]
+        return max(tiers, key=lambda t: TIER_ORDER[t])
 
     async def _render_pdf_image_asset(self, plan: _ReadPlan, page: PageInfo) -> ContentAsset:
         if plan.target is None:
@@ -1528,7 +1540,7 @@ def _first_image_span(block: Block) -> Span | None:
     return None
 
 
-def _iter_block_spans(block: Block):
+def _iter_block_spans(block: Block) -> Iterator[Span]:
     for line in block.lines:
         yield from line.spans
     for child in block.blocks:
@@ -1729,9 +1741,9 @@ def _page_markdown_blocks(page: PageInfo, *, img_bucket_path: str = "") -> list[
     result: list[tuple[int, str]] = []
     for block in page.para_blocks:
         if backend == "office":
-            rendered = office_blocks_to_markdown([block], img_bucket_path=img_bucket_path, no_rich_content=False)
+            rendered = office_blocks_to_markdown([block], img_bucket_path=img_bucket_path, prefer_markdown_table=True)
         else:
-            rendered = blocks_to_markdown([block], img_bucket_path=img_bucket_path)
+            rendered = blocks_to_markdown([block], img_bucket_path=img_bucket_path, prefer_markdown_table=True)
         text = _join_markdown([item for item in rendered if item.strip()])
         if text.strip():
             result.append((block.index, text))
@@ -1847,7 +1859,7 @@ def _effective_data_dir(state: Any) -> str:
 
 
 def _tail_log(log_path: str, lines: int = 100) -> list[str]:
-    log_path = os.path.expanduser(log_path) if log_path else os.path.expanduser(config.doclib.log.path)
+    log_path = os.path.expanduser(log_path) if log_path else os.path.expanduser(config.doclib.log.resolved_app_path)
     if not os.path.isfile(log_path):
         return []
     with open(log_path, encoding="utf-8", errors="replace") as fh:

@@ -13,8 +13,10 @@ from mineru.cli.commands import config, invalidate, list_resources, parse, read,
 from mineru.cli.commands import cleanup as cleanup_cmd
 from mineru.cli.commands import search as search_mod
 from mineru.cli.commands import watch as watch_cmd
+from mineru.cli import output as output_mod
 from mineru.cli import telemetry as cli_telemetry
 from mineru.cli.main import app
+from mineru.doclib.telemetry import TelemetryContext
 from mineru.doclib.types import (
     ContentAsset,
     ContentNextRequest,
@@ -70,6 +72,70 @@ def test_telemetry_command_tree_is_available() -> None:
     assert "flush" in result.output
 
 
+def test_print_error_uses_single_rich_render(monkeypatch: Any) -> None:
+    calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    class _Console:
+        def print(self, *args: Any, **kwargs: Any) -> None:
+            calls.append((args, kwargs))
+
+    monkeypatch.setattr(output_mod, "console", _Console())
+
+    output_mod.print_error(
+        "No standard or pro engine available. You can start a local parse-server, use --remote, or explicitly pass "
+        "--tier flash for text-only preview."
+    )
+
+    assert len(calls) == 1
+    rendered = str(calls[0][0][0])
+    assert rendered.startswith("Error: ")
+    assert "--tier flash" in rendered
+
+
+def test_server_status_renders_separate_recent_log_panels(monkeypatch: Any) -> None:
+    printed: list[Any] = []
+    panels: list[dict[str, Any]] = []
+
+    class _Console:
+        def print(self, item: Any, *args: Any, **kwargs: Any) -> None:
+            printed.append(item)
+
+    class _Panel:
+        def __init__(self, renderable: Any, *, title: str, border_style: str) -> None:
+            self.renderable = renderable
+            self.title = title
+            self.border_style = border_style
+            panels.append({"title": title, "renderable": renderable, "border_style": border_style})
+
+    monkeypatch.setattr(output_mod, "console", _Console())
+    monkeypatch.setattr(output_mod, "Panel", _Panel)
+
+    output_mod.format_server_status(
+        {
+            "running": True,
+            "pid": 123,
+            "uptime_seconds": 1,
+            "tcp": {"enabled": False},
+            "workers": {},
+            "app_logs": ["app\n"],
+            "access_logs": ["access\n"],
+            "stderr_logs": ["stderr\n"],
+            "stdout_logs": ["stdout\n"],
+            "recent_logs": ["legacy\n"],
+        }
+    )
+
+    assert [panel["title"] for panel in panels] == [
+        "Recent App Logs",
+        "Recent Access Logs",
+        "Recent Stderr Logs",
+        "Recent Stdout Logs",
+    ]
+    assert [panel["renderable"] for panel in panels] == ["app", "access", "stderr", "stdout"]
+    assert all(panel["border_style"] == "dim" for panel in panels)
+    assert not any(getattr(item, "title", None) == "Recent Logs" for item in printed)
+
+
 def test_telemetry_status_command_prints_installation_id(monkeypatch: Any) -> None:
     class _Client:
         def __init__(self, *, timeout: int) -> None:
@@ -95,6 +161,8 @@ def test_telemetry_status_command_prints_installation_id(monkeypatch: Any) -> No
 
 def test_interactive_unset_prompt_enables_telemetry(monkeypatch: Any) -> None:
     actions: list[str] = []
+    echoed: list[str] = []
+    prompts: list[tuple[str, bool]] = []
 
     class _Client:
         def __init__(self, *, timeout: int) -> None:
@@ -109,12 +177,72 @@ def test_interactive_unset_prompt_enables_telemetry(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(cli_telemetry, "DoclibClient", _Client)
     monkeypatch.setattr(cli_telemetry, "_is_interactive", lambda: True)
-    monkeypatch.setattr("typer.echo", lambda *args, **kwargs: None)
-    monkeypatch.setattr("typer.confirm", lambda *args, **kwargs: True)
+    monkeypatch.setattr("typer.echo", lambda msg="", *args, **kwargs: echoed.append(str(msg)))
+    monkeypatch.setattr("typer.confirm", lambda prompt, default=True, *args, **kwargs: prompts.append((prompt, default)) or True)
 
     cli_telemetry.maybe_prompt_telemetry_consent()
 
     assert actions == ["enable"]
+    prompt_text = "\n".join(echoed)
+    assert "Help improve MinerU by sending anonymous, locally aggregated usage and diagnostic data." in prompt_text
+    assert "Collected: command names, MinerU version, OS, architecture, Python version" in prompt_text
+    assert "coarse CPU/GPU categories" in prompt_text
+    assert "Not collected: document contents, extracted text/images, file names, file paths" in prompt_text
+    assert "search queries, prompts, snippets, tracebacks, exception messages" in prompt_text
+    assert "API keys, or exact CPU/GPU models" in prompt_text
+    assert "Press Enter or type Y to enable, or type N to disable." in prompt_text
+    assert "`mineru telemetry enable` or `mineru telemetry disable`" in prompt_text
+    assert "`mineru telemetry preview`" in prompt_text
+    assert prompts == [("Enable telemetry?", True)]
+
+
+@pytest.mark.parametrize(
+    ("args", "reason"),
+    [
+        (["watch", "--help"], "help"),
+        (["parse", "--help"], "help"),
+        (["search", "needle", "--json"], "json"),
+    ],
+)
+def test_prepare_cli_telemetry_skips_prompt_for_non_interactive_command_modes(
+    monkeypatch: Any, args: list[str], reason: str
+) -> None:
+    del reason
+    calls: list[str] = []
+
+    monkeypatch.setattr(cli_telemetry, "_is_interactive", lambda: True)
+    monkeypatch.setattr(cli_telemetry, "maybe_prompt_telemetry_consent", lambda: calls.append("prompt"))
+
+    result = runner.invoke(app, args)
+
+    assert "Enable telemetry?" not in result.output
+    assert calls == []
+
+
+def test_prepare_cli_telemetry_skips_prompt_in_ci(monkeypatch: Any) -> None:
+    calls: list[str] = []
+
+    monkeypatch.setenv("CI", "true")
+    monkeypatch.setattr(cli_telemetry, "_is_interactive", lambda: True)
+    monkeypatch.setattr(cli_telemetry, "maybe_prompt_telemetry_consent", lambda: calls.append("prompt"))
+
+    result = runner.invoke(app, ["search", "needle", "--limit", "1"])
+
+    assert "Enable telemetry?" not in result.output
+    assert calls == []
+
+
+def test_prepare_cli_telemetry_skips_prompt_for_agent_caller(monkeypatch: Any) -> None:
+    calls: list[str] = []
+
+    monkeypatch.setattr(cli_telemetry, "_is_interactive", lambda: True)
+    monkeypatch.setattr(cli_telemetry, "maybe_prompt_telemetry_consent", lambda: calls.append("prompt"))
+    monkeypatch.setattr(cli_telemetry, "infer_default_client_context", lambda source: TelemetryContext(source=source, caller="agent"))
+
+    result = runner.invoke(app, ["search", "needle", "--limit", "1"])
+
+    assert "Enable telemetry?" not in result.output
+    assert calls == []
 
 
 def test_config_rules_tree_uses_explicit_resource_names_and_remove() -> None:
@@ -613,6 +741,8 @@ def test_config_set_uses_key_path_and_value_body(monkeypatch: Any) -> None:
 def test_server_start_failure_points_to_log_and_does_not_discard_child_stderr(monkeypatch: Any, tmp_path: Path) -> None:
     popen_calls: list[dict[str, Any]] = []
     log_path = tmp_path / "doclib.log"
+    stdout_log_path = tmp_path / "doclib.stdout.log"
+    stderr_log_path = tmp_path / "doclib.stderr.log"
 
     class _Proc:
         pid = 12345
@@ -624,6 +754,9 @@ def test_server_start_failure_points_to_log_and_does_not_discard_child_stderr(mo
         popen_calls.append({"args": args, "kwargs": kwargs})
         assert kwargs["stdout"] is not server.subprocess.DEVNULL
         assert kwargs["stderr"] is not server.subprocess.DEVNULL
+        assert kwargs["stdout"] is not kwargs["stderr"]
+        kwargs["stdout"].write("child stdout\n")
+        kwargs["stdout"].flush()
         kwargs["stderr"].write("child failed\n")
         kwargs["stderr"].flush()
         return _Proc()
@@ -633,6 +766,8 @@ def test_server_start_failure_points_to_log_and_does_not_discard_child_stderr(mo
     monkeypatch.setattr(server, "_socket_path", lambda: str(tmp_path / "doclib.sock"))
     monkeypatch.setattr(server, "_endpoint_path", lambda: str(tmp_path / "doclib.endpoint.json"))
     monkeypatch.setattr(server, "_server_log_path", lambda: str(log_path))
+    monkeypatch.setattr(server, "_server_stdout_log_path", lambda: str(stdout_log_path))
+    monkeypatch.setattr(server, "_server_stderr_log_path", lambda: str(stderr_log_path))
     monkeypatch.setattr(server.subprocess, "Popen", _popen)
 
     result = runner.invoke(app, ["server", "start"])
@@ -640,7 +775,12 @@ def test_server_start_failure_points_to_log_and_does_not_discard_child_stderr(mo
     assert result.exit_code == 1
     assert "See log:" in result.output
     assert "doclib.log" in result.output
-    assert "child failed\n" in log_path.read_text(encoding="utf-8")
+    assert "doclib.stdout.log" in result.output
+    assert "doclib.stderr.log" in result.output
+    assert "child stdout\n" not in log_path.read_text(encoding="utf-8")
+    assert "child failed\n" not in log_path.read_text(encoding="utf-8")
+    assert "child stdout\n" in stdout_log_path.read_text(encoding="utf-8")
+    assert "child failed\n" in stderr_log_path.read_text(encoding="utf-8")
     assert popen_calls[-1] == {"kill": True}
 
 
@@ -957,7 +1097,10 @@ def test_server_status_json_not_running_returns_state_json(monkeypatch: Any) -> 
     monkeypatch.setattr(server, "_socket_path", lambda: "/tmp/doclib.sock")
     monkeypatch.setattr(server.config.doclib, "data_dir", "~/.mineru")
     monkeypatch.setattr(server.config.doclib.sqlite, "path", "~/.mineru/doclib.db")
-    monkeypatch.setattr(server.config.doclib.log, "path", "~/.mineru/doclib.log")
+    monkeypatch.setattr(server.config.doclib.log, "app_path", "~/.mineru/logs/doclib.log")
+    monkeypatch.setattr(server.config.doclib.log, "access_path", "~/.mineru/logs/doclib.access.log")
+    monkeypatch.setattr(server.config.doclib.log, "stdout_path", "~/.mineru/logs/doclib.stdout.log")
+    monkeypatch.setattr(server.config.doclib.log, "stderr_path", "~/.mineru/logs/doclib.stderr.log")
 
     result = runner.invoke(app, ["server", "status", "--json"])
 
@@ -966,6 +1109,9 @@ def test_server_status_json_not_running_returns_state_json(monkeypatch: Any) -> 
     assert payload["running"] is False
     assert payload["socket_path"] == "/tmp/doclib.sock"
     assert payload["sqlite_path"] == os.path.expanduser("~/.mineru/doclib.db")
-    assert payload["log_path"] == os.path.expanduser("~/.mineru/doclib.log")
+    assert payload["log_path"] == os.path.expanduser("~/.mineru/logs/doclib.log")
+    assert payload["access_log_path"] == os.path.expanduser("~/.mineru/logs/doclib.access.log")
+    assert payload["stdout_log_path"] == os.path.expanduser("~/.mineru/logs/doclib.stdout.log")
+    assert payload["stderr_log_path"] == os.path.expanduser("~/.mineru/logs/doclib.stderr.log")
     assert payload["tcp"] == {"enabled": False, "host": None, "port": None}
     assert "Server is not running." not in result.output

@@ -13,7 +13,7 @@ Tier = Literal[
     "pro",
 ]
 
-TIERS: set[str] = {
+TIERS: set[Tier] = {
     "flash",
     "standard",
     "pro",

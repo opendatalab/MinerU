@@ -474,17 +474,18 @@ doclib 解析产物按内容和实际使用的 tier 隔离。`parsed/` 目录下
 
 ```text
 ~/.mineru/
-  parsed/
-    ab/
-      ab3f...7e2d/
-        flash/
-          1~5_1710000000000.json
-          98~102_1710000123000.json
-        standard/
-          1~10_1710001234000.json
-          11~20_1710002234000.json
-        pro/
-          1~20_1710003234000.json
+  doclib/
+    parsed/
+      ab/
+        ab3f...7e2d/
+          flash/
+            1~5_1710000000000.json
+            98~102_1710000123000.json
+          standard/
+            1~10_1710001234000.json
+            11~20_1710002234000.json
+          pro/
+            1~20_1710003234000.json
 ```
 
 单个 JSON 文件表示一次解析批次，基本形态:

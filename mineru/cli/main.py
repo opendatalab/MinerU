@@ -35,6 +35,10 @@ class OrderedRootGroup(TyperGroup):
         ordered = [name for name in TOP_LEVEL_COMMAND_ORDER if name in self.commands]
         return ordered + [name for name in self.commands if name not in TOP_LEVEL_COMMAND_ORDER]
 
+    def parse_args(self, ctx: Context, args: list[str]) -> list[str]:
+        ctx.meta["mineru_raw_args"] = list(args)
+        return super().parse_args(ctx, args)
+
 
 app = typer.Typer(
     name="mineru",
