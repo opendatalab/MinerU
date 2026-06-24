@@ -143,8 +143,8 @@ def replace_inline_table_images(
                 for span in line.spans:
                     if span.type != table_span_type:
                         continue
-                    span.html = _replace_inline_base64_img_src(
-                        span.html,
+                    span.content = _replace_inline_base64_img_src(
+                        span.content,
                         image_writer,
                         page_index,
                     )

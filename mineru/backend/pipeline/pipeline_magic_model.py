@@ -1,6 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
+from dataclasses import dataclass
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
@@ -24,6 +25,54 @@ from ..utils.visual_magic_model_utils import (
 
 if TYPE_CHECKING:
     from PIL.Image import Image as PILImage
+
+
+@dataclass(slots=True)
+class PipelineLayoutBlockDraft:
+    """Pipeline layout_det 的内部适配层，隔离模型输出字段和 middle_json block。"""
+
+    raw_label: str
+    type: str
+    bbox: BBox
+    index: int
+    score: float | None = None
+    text: str | list[str] = ""
+    html: str = ""
+    latex: str = ""
+    angle: int | None = None
+
+    @classmethod
+    def from_layout_det(
+        cls,
+        layout_det: dict[str, Any],
+        *,
+        block_type: str,
+        bbox: BBox,
+        index: int,
+        score: float | None,
+    ) -> PipelineLayoutBlockDraft:
+        """显式抽取 layout_det 中允许进入转换阶段的字段，避免 raw dict 直灌 Block。"""
+        return cls(
+            raw_label=str(layout_det.get("label", "")),
+            type=block_type,
+            bbox=bbox,
+            index=index,
+            score=score,
+            text=layout_det.get("text", ""),
+            html=layout_det.get("html", ""),
+            latex=layout_det.get("latex", ""),
+            angle=layout_det.get("angle"),
+        )
+
+    def to_middle_block(self) -> Block:
+        """生成 middle_json block 包装，raw 载荷保留在 draft 中按 index 查取。"""
+        return Block(
+            index=self.index,
+            type=self.type,
+            bbox=self.bbox,
+            score=self.score,
+            angle=self.angle,
+        )
 
 
 class MagicModel:
@@ -103,6 +152,7 @@ class MagicModel:
         self.image_groups: list[dict[str, Any]] = []
         self.table_groups: list[dict[str, Any]] = []
         self.chart_groups: list[dict[str, Any]] = []
+        self.__layout_draft_by_index: dict[int, PipelineLayoutBlockDraft] = {}
         self.__layout_det_by_index: dict[int, dict[str, Any]] = {}
         self.__scale = scale
         self.__fix_axis()  # bbox坐标修正，删除高度或者宽度小于等于0的spans
@@ -126,13 +176,16 @@ class MagicModel:
                 block_type = self.PP_DOCLAYOUT_V2_LABELS_TO_BLOCK_TYPES[layout_det["label"]]
                 block_index = layout_det["index"]
                 block_score = layout_det["score"]
-                block = self.__copy_block_fields(
+                draft = PipelineLayoutBlockDraft.from_layout_det(
                     layout_det,
-                    type=block_type,
+                    block_type=block_type,
                     bbox=block_bbox,
                     index=block_index,
                     score=block_score,
                 )
+                block = draft.to_middle_block()
+                self.__layout_draft_by_index[block_index] = draft
+                self.__layout_det_by_index[block_index] = layout_det
                 if self.__is_seal_layout_block(layout_det):
                     block.sub_type = "seal"
                 self.page_blocks.append(block)
@@ -173,12 +226,6 @@ class MagicModel:
         return block
 
     @staticmethod
-    def __copy_block_fields(block: dict[str, Any], **overrides: Any) -> Block:
-        kwargs = {k: v for k, v in block.items() if k not in {"cls_id", "label"}}
-        kwargs = {**kwargs, **overrides}
-        return Block(**kwargs)
-
-    @staticmethod
     def __is_inline_formula_block(layout_det: dict[str, Any]) -> bool:
         return layout_det.get("label") == "inline_formula" or layout_det.get("cls_id") == 15
 
@@ -199,6 +246,13 @@ class MagicModel:
         if isinstance(content, str):
             return content.strip()
         return ""
+
+    def __draft_payload(self, block: Block, field_name: str, default: Any = "") -> Any:
+        """从 pipeline draft 读取转换载荷，避免把 raw 字段挂到 middle_json Block。"""
+        draft = self.__layout_draft_by_index.get(block.index)
+        if draft is None:
+            return default
+        return getattr(draft, field_name, default)
 
     def __build_return_blocks(self) -> None:
         self.preproc_blocks: list[Block] = []
@@ -265,16 +319,13 @@ class MagicModel:
             ]:
                 span = Span(type=span_type, bbox=block.bbox)
                 if span_type == ContentType.IMAGE and block.sub_type == "seal":
-                    seal_text = self.__normalize_seal_text(block.text)
+                    seal_text = self.__normalize_seal_text(self.__draft_payload(block, "text", ""))
                     if seal_text:
                         span.content = seal_text
-                    block.text = ""
                 if span_type == ContentType.TABLE:
-                    span.html = block.html
-                    block.html = ""
+                    span.content = self.__draft_payload(block, "html", "")
                 if span_type == ContentType.INTERLINE_EQUATION:
-                    span.content = block.latex
-                    block.latex = ""
+                    span.content = self.__draft_payload(block, "latex", "")
 
                 # 构造line对象
                 spans = [span]

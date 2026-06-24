@@ -41,7 +41,7 @@ class MagicModel:
                 span = Span(type=ContentType.IMAGE, bbox=EMPTY_BBOX, image_base64=block_content)
             elif block_type in ["table"]:
                 block_type = BlockType.TABLE_BODY
-                span = Span(type=ContentType.TABLE, bbox=EMPTY_BBOX, html=clean_table_html(block_content))
+                span = Span(type=ContentType.TABLE, bbox=EMPTY_BBOX, content=clean_table_html(block_content))
             elif block_type in ["chart"]:
                 block_type = BlockType.CHART_BODY
                 span = Span(type=ContentType.CHART, bbox=EMPTY_BBOX, content=block_content)

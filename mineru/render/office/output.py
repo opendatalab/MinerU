@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import re
 from collections.abc import Generator
-from dataclasses import asdict
 from typing import Any
 
 from ...types import Block, BlockType, ContentType, ContentTypeV2, Line, Span
@@ -396,7 +395,7 @@ def blocks_to_markdown(
             if no_rich_content:
                 continue
             for span in _iter_body_spans(para_block, BlockType.TABLE_BODY, ContentType.TABLE):
-                para_text += f"\n{_format_embedded_html(span.html, img_bucket_path)}\n"
+                para_text += f"\n{_format_embedded_html(span.content, img_bucket_path)}\n"
             for caption_text in _collect_caption_texts(para_block, BlockType.TABLE_CAPTION):
                 para_text += "  \n" + caption_text
         elif para_type == BlockType.CHART:
@@ -472,8 +471,8 @@ def make_blocks_to_content_list(para_block: Block, img_bucket_path: str, page_id
             BlockType.TABLE_BODY,
             ContentType.TABLE,
         ):
-            if span.html:
-                para_content[BlockType.TABLE_BODY] = _format_embedded_html(span.html, img_bucket_path)
+            if span.content:
+                para_content[BlockType.TABLE_BODY] = _format_embedded_html(span.content, img_bucket_path)
         para_content[BlockType.TABLE_CAPTION].extend(_collect_caption_texts(para_block, BlockType.TABLE_CAPTION))
     elif para_type == BlockType.CHART:
         para_content = {
@@ -645,7 +644,7 @@ def get_body_data(para_block: Block) -> tuple[str, str]:
             for span in line.spans:
                 span_type = span.type
                 if span_type == ContentType.TABLE:
-                    return span.image_path, span.html
+                    return span.image_path, span.content
                 elif span_type == ContentType.CHART:
                     return span.image_path, span.content
                 elif span_type == ContentType.IMAGE:
@@ -690,6 +689,20 @@ def _span_has_content_for_v2(span: Span, visible_styles: set[str]) -> bool:
     return False
 
 
+def _render_span_for_v2(span: Span) -> dict[str, Any]:
+    """显式渲染 Office v2 span，避免 dataclass 内部字段泄漏到结构化输出。"""
+    rendered_span = span.to_dict()
+    if rendered_span["type"] == ContentType.INLINE_EQUATION:
+        rendered_span["type"] = ContentTypeV2.SPAN_EQUATION_INLINE
+    if span._url:
+        rendered_span["url"] = span._url
+    if span._style:
+        rendered_span["style"] = list(span._style)
+    if span._children:
+        rendered_span["children"] = [_render_span_for_v2(child) for child in span._children]
+    return rendered_span
+
+
 def merge_para_with_text_v2(para_block: Block) -> list[dict[str, Any]]:
     """将 Office 段落转换为 content_list_v2 spans，避免原地修改 middle_json。"""
     _visible_styles = {"underline", "strikethrough"}
@@ -707,8 +720,5 @@ def merge_para_with_text_v2(para_block: Block) -> list[dict[str, Any]]:
     for line in para_block.lines:
         for span in line.spans:
             if _span_has_content_for_v2(span, _visible_styles):
-                rendered_span = asdict(span)
-                if rendered_span["type"] == ContentType.INLINE_EQUATION:
-                    rendered_span["type"] = ContentTypeV2.SPAN_EQUATION_INLINE
-                para_content.append(rendered_span)
+                para_content.append(_render_span_for_v2(span))
     return para_content

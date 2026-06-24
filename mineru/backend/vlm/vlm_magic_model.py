@@ -4,10 +4,11 @@ from __future__ import annotations
 import re
 
 from loguru import logger
-from mineru_vl_utils.structs import ContentBlock, ExtractResult
+from mineru_vl_utils.structs import ExtractResult
 
 from ...types import Block, BlockType, ContentType, Line, Span
 from ...utils.guess_suffix_or_lang import guess_language_by_text
+from ..utils.content_block_draft import VlmContentBlockDraft
 from ..utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from ..utils.visual_magic_model_utils import (
     GENERIC_CHILD_TYPES,
@@ -22,11 +23,10 @@ from ..utils.visual_magic_model_utils import (
 )
 
 
-def _copy_raw_text_block_metadata(raw_block_type: str, block_info: ContentBlock, block: Block) -> None:
-    if raw_block_type != BlockType.TEXT:
+def _copy_raw_text_block_metadata(draft: VlmContentBlockDraft, block: Block) -> None:
+    if draft.raw_type != BlockType.TEXT:
         return
-    if "merge_prev" in block_info:
-        block.merge_prev = block_info["merge_prev"]
+    block.merge_prev = draft.merge_prev
 
 
 class MagicModel:
@@ -34,25 +34,14 @@ class MagicModel:
         blocks: list[Block] = []
         # 解析每个块
         for index, content_block in enumerate(page_blocks):
-            block_bbox = content_block["bbox"]
             try:
-                x1, y1, x2, y2 = block_bbox
-                x_1, y_1, x_2, y_2 = (
-                    int(x1 * width),
-                    int(y1 * height),
-                    int(x2 * width),
-                    int(y2 * height),
-                )
-                if x_2 < x_1:
-                    x_1, x_2 = x_2, x_1
-                if y_2 < y_1:
-                    y_1, y_2 = y_2, y_1
-                block_bbox = (x_1, y_1, x_2, y_2)
-                block_type = content_block["type"]
-                raw_block_type = block_type
-                block_content = content_block.get("content", "")
-                block_angle = content_block.get("angle", 0)
-                block_sub_type = content_block.get("sub_type") if raw_block_type in ["image", "chart"] else None
+                draft = VlmContentBlockDraft.from_content_block(content_block, width, height)
+                block_bbox = draft.bbox
+                block_type = draft.raw_type
+                raw_block_type = draft.raw_type
+                block_content = draft.content
+                block_angle = draft.angle
+                block_sub_type = draft.sub_type if raw_block_type in ["image", "chart"] else None
             except Exception as e:
                 # 如果解析失败，可能是因为格式不正确，跳过这个块
                 logger.warning(f"Invalid block format: {content_block}, error: {e}")
@@ -113,7 +102,7 @@ class MagicModel:
             if span_type in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART]:
                 span = Span(type=span_type, bbox=block_bbox)
                 if span_type == ContentType.TABLE:
-                    span.html = block_content
+                    span.content = block_content or ""
                 elif raw_block_type in ["image", "chart"] and block_content is not None:
                     span.content = block_content
             elif span_type == ContentType.INTERLINE_EQUATION:
@@ -212,9 +201,9 @@ class MagicModel:
                 angle=block_angle,
                 sub_type=block_sub_type or "",
             )
-            if raw_block_type == "table" and "cell_merge" in content_block:
-                block._cell_merge = content_block["cell_merge"]
-            _copy_raw_text_block_metadata(raw_block_type, content_block, block)
+            if raw_block_type == "table" and draft.cell_merge:
+                block._cell_merge = draft.cell_merge
+            _copy_raw_text_block_metadata(draft, block)
 
             blocks.append(block)
 

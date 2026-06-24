@@ -11,6 +11,7 @@ from PIL import Image
 from ...types import EMPTY_BBOX, NOT_EXTRACT_TYPES, BBox, Block, BlockType, ContentType, IntBBox, Line, Span
 from ...utils.guess_suffix_or_lang import guess_language_by_text
 from ..utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
+from ..utils.content_block_draft import VlmContentBlockDraft
 from ..utils.span_block_fix import fix_text_block
 from ..utils.span_pre_proc import SpanBlockMatcher, txt_spans_extract
 from ..utils.visual_magic_model_utils import (
@@ -46,11 +47,10 @@ OCR_DET_LINE_BLOCK_TYPES = {
 }
 
 
-def _copy_raw_text_block_metadata(raw_block_type: str, block_info: dict[str, Any], block: Block) -> None:
-    if raw_block_type != BlockType.TEXT:
+def _copy_raw_text_block_metadata(draft: VlmContentBlockDraft, block: Block) -> None:
+    if draft.raw_type != BlockType.TEXT:
         return
-    if "merge_prev" in block_info:
-        block.merge_prev = block_info["merge_prev"]
+    block.merge_prev = draft.merge_prev
 
 
 class MagicModel:
@@ -115,12 +115,13 @@ class MagicModel:
         # 解析每个块
         for index, block_info in enumerate(page_blocks):
             try:
-                block_bbox = self.cal_real_bbox(block_info["bbox"])
-                block_type = block_info["type"]
-                raw_block_type = block_type
-                block_content = block_info.get("content")
-                block_angle = block_info.get("angle", 0)
-                block_sub_type = block_info.get("sub_type") if raw_block_type in ["image", "chart"] else None
+                draft = VlmContentBlockDraft.from_content_block(block_info, width, height)
+                block_bbox = draft.bbox
+                block_type = draft.raw_type
+                raw_block_type = draft.raw_type
+                block_content = draft.content
+                block_angle = draft.angle
+                block_sub_type = draft.sub_type if raw_block_type in ["image", "chart"] else None
             except Exception as e:
                 # 如果解析失败，可能是因为格式不正确，跳过这个块
                 logger.warning(f"Invalid block format: {block_info}, error: {e}")
@@ -184,7 +185,7 @@ class MagicModel:
             if span_type in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART]:
                 span = Span(type=span_type, bbox=block_bbox)
                 if span_type == ContentType.TABLE and block_content is not None:
-                    span.html = block_content
+                    span.content = block_content
                 elif raw_block_type in ["image", "chart"] and block_content is not None:
                     span.content = block_content
             elif span_type == ContentType.INTERLINE_EQUATION:
@@ -280,19 +281,19 @@ class MagicModel:
                 block = Block(index=index, type=block_type, bbox=block_bbox, lines=[line], angle=block_angle)
                 if block_sub_type:
                     block.sub_type = block_sub_type
-                if raw_block_type == "table" and "cell_merge" in block_info:
-                    block._cell_merge = block_info["cell_merge"]
+                if raw_block_type == "table" and draft.cell_merge:
+                    block._cell_merge = draft.cell_merge
                 if _vlm_ocr_enable and self._supports_ocr_det_lines(block_type):
                     ocr_det_lines = self._build_ocr_det_lines(span_matcher.collect_for_block(block_bbox))
                     if ocr_det_lines:
                         block._ocr_det_lines = ocr_det_lines
-                _copy_raw_text_block_metadata(raw_block_type, block_info, block)
+                _copy_raw_text_block_metadata(draft, block)
             else:
                 block_spans = span_matcher.collect_for_block(block_bbox)
                 block = Block(index=index, type=block_type, bbox=block_bbox, angle=block_angle)
                 block._fix_spans = block_spans
                 block = fix_text_block(block)
-                _copy_raw_text_block_metadata(raw_block_type, block_info, block)
+                _copy_raw_text_block_metadata(draft, block)
 
             blocks.append(block)
 

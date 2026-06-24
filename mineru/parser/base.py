@@ -52,7 +52,7 @@ class ParseResult:
             pages.append(page)
         return ParseResult(pages=pages)
 
-    def to_dict(self, *, skip_defaults: bool = False) -> dict[str, Any]:
+    def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
         return {
             "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
             "pages": [page.to_dict(skip_defaults=skip_defaults) for page in self.pages],
@@ -158,8 +158,8 @@ class ParseResult:
                     result[span.image_path or f"{hash_fn(span.image_base64)}.{m.group(1)}"] = base64.b64decode(m.group(2))
                 except Exception:
                     pass
-        if span.html:
-            for m in _INLINE_IMAGE_DATA_URI_RE.finditer(span.html):
+        if span.content:
+            for m in _INLINE_IMAGE_DATA_URI_RE.finditer(span.content):
                 try:
                     result[f"{hash_fn(m.group(0))}.{m.group(1)}"] = base64.b64decode(m.group(2))
                 except Exception:

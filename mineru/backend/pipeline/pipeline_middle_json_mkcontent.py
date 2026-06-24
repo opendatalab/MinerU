@@ -24,8 +24,9 @@ def _apply_visual_sub_type(para_content: dict[str, Any], para_block: Block) -> N
 
 
 def merge_adjacent_ref_text_blocks_for_content(para_blocks: list[Block]) -> list[Block]:
-    merged_blocks = []
-    ref_group = []
+    """将连续 ref_text 包装为临时父 Block，供 content_list 输出为参考文献列表。"""
+    merged_blocks: list[Block] = []
+    ref_group: list[Block] = []
 
     def flush_ref_group() -> None:
         nonlocal ref_group
@@ -35,11 +36,12 @@ def merge_adjacent_ref_text_blocks_for_content(para_blocks: list[Block]) -> list
             merged_blocks.append(ref_group[0])
         else:
             merged_blocks.append(
-                {
-                    "type": BlockType.REF_TEXT,
-                    "blocks": list(ref_group),
-                    "bbox": ref_group[0].get("bbox"),
-                }
+                Block(
+                    index=ref_group[0].index,
+                    type=BlockType.REF_TEXT,
+                    bbox=ref_group[0].bbox,
+                    blocks=list(ref_group),
+                )
             )
         ref_group = []
 
@@ -104,7 +106,7 @@ def _get_body_data(para_block: Block) -> tuple[str, str]:
             for span in line.spans:
                 span_type = span.type
                 if span_type == ContentType.TABLE:
-                    return span.image_path, span.html
+                    return span.image_path, span.content
                 if span_type == ContentType.CHART:
                     return span.image_path, span.content
                 if span_type == ContentType.IMAGE:

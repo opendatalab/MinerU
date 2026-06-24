@@ -267,7 +267,7 @@ def get_body_data(para_block: Block) -> tuple[str, str]:
             for span in line.spans:
                 span_type = span.type
                 if span_type == ContentType.TABLE:
-                    return span.image_path, span.html
+                    return span.image_path, span.content
                 elif span_type == ContentType.CHART:
                     return span.image_path, span.content
                 elif span_type == ContentType.IMAGE:

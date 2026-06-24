@@ -142,7 +142,7 @@ def _body_data(para_block: Block, img_bucket_path: str) -> tuple[str, str]:
         if span.type == ContentType.IMAGE:
             image_path, content = span.image_path, _normalize_visual_content(span.content)
         elif span.type == ContentType.TABLE:
-            image_path, content = span.image_path, _format_embedded_html(span.html, img_bucket_path)
+            image_path, content = span.image_path, _format_embedded_html(span.content, img_bucket_path)
         elif span.type == ContentType.CHART:
             image_path, content = span.image_path, span.content
         elif span.type == ContentType.INTERLINE_EQUATION:
