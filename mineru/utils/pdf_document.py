@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Any
+from contextlib import contextmanager
+from typing import Any, Iterator
 
 import pypdfium2 as pdfium
 from PIL import Image
@@ -14,11 +15,12 @@ from .pdf_classify import classify, get_text_quality_signal_pdfium
 from .pdf_image_tools import get_crop_img, image_to_bytes, images_bytes_to_pdf_bytes
 from .pdf_text_tool import get_lines_from_chars, get_page_chars
 from .pdfium_guard import (
+    close_pdfium_child,
     close_pdfium_document,
     get_pdfium_document_page_count,
     open_pdfium_document,
     pdfium_guard,
-    rewrite_pdf_bytes_with_pdfium,
+    safe_rewrite_pdf_bytes_with_pdfium,
 )
 
 
@@ -76,9 +78,9 @@ class PDFDocument:
     # ------------------------------------------------------------------ #
 
     def page_size(self, page_idx: int) -> tuple[float, float]:
-        page = self._get_page(page_idx)
-        with pdfium_guard():
-            rect: tuple[float, float, float, float] = page.get_bbox()
+        with self._open_page(page_idx) as page:
+            with pdfium_guard():
+                rect: tuple[float, float, float, float] = page.get_bbox()
         return (abs(rect[2] - rect[0]), abs(rect[1] - rect[3]))
 
     # ------------------------------------------------------------------ #
@@ -86,13 +88,13 @@ class PDFDocument:
     # ------------------------------------------------------------------ #
 
     def render_page(self, page_idx: int, *, scale: int = 2) -> Image.Image:
-        page = self._get_page(page_idx)
-        with pdfium_guard():
-            bitmap = page.render(scale=scale)
-            try:
-                return bitmap.to_pil()
-            finally:
-                bitmap.close()
+        with self._open_page(page_idx) as page:
+            with pdfium_guard():
+                bitmap = page.render(scale=scale)
+                try:
+                    return bitmap.to_pil().copy()
+                finally:
+                    close_pdfium_child(bitmap)
 
     def render_pages(self, start: int = 0, end: int | None = None, *, scale: int = 2) -> list[Image.Image]:
         end = end if end is not None else self.page_count - 1
@@ -116,8 +118,8 @@ class PDFDocument:
     # ------------------------------------------------------------------ #
 
     def get_page_chars(self, page_idx: int) -> dict[str, Any]:
-        page = self._get_page(page_idx)
-        return get_page_chars(page)
+        with self._open_page(page_idx) as page:
+            return get_page_chars(page)
 
     def get_page_lines(self, page_idx: int) -> list[dict[str, Any]]:
         chars_dict = self.get_page_chars(page_idx)
@@ -140,7 +142,7 @@ class PDFDocument:
     # ------------------------------------------------------------------ #
 
     def extract_page_range(self, start: int, end: int) -> "PDFDocument":
-        new_bytes = rewrite_pdf_bytes_with_pdfium(
+        new_bytes = safe_rewrite_pdf_bytes_with_pdfium(
             self._pdf_bytes,
             start_page_id=start,
             end_page_id=end,
@@ -184,3 +186,12 @@ class PDFDocument:
 
     def _get_page(self, page_idx: int) -> pdfium.PdfPage:
         return self._ensure_open()[page_idx]
+
+    @contextmanager
+    def _open_page(self, page_idx: int) -> Iterator[pdfium.PdfPage]:
+        """按页读取 PDFium page，并确保调用完成后释放 native page 对象。"""
+        page = self._get_page(page_idx)
+        try:
+            yield page
+        finally:
+            close_pdfium_child(page)

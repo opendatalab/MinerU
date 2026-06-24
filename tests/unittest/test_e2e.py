@@ -10,6 +10,7 @@ from loguru import logger
 from mineru.backend.pipeline.pipeline_analyze import doc_analyze_streaming as pipeline_doc_analyze_streaming
 from mineru.cli_old.common import convert_pdf_bytes_to_bytes, prepare_env, read_fn
 from mineru.data.data_reader_writer import FileBasedDataWriter
+from mineru.parser.base import ParseResult
 from mineru.render import render_content_list, render_markdown
 
 
@@ -102,7 +103,7 @@ def write_infer_result(
     model_list,
 ):
     md_writer = FileBasedDataWriter(local_md_dir)
-    pdf_info = middle_json["pdf_info"]
+    pdf_info = middle_json
     image_dir = str(os.path.basename(local_image_dir))
 
     md_content_str = render_markdown(pdf_info, image_dir)
@@ -119,7 +120,7 @@ def write_infer_result(
 
     md_writer.write_string(
         f"{pdf_file_name}_middle.json",
-        json.dumps(middle_json, ensure_ascii=False, indent=4),
+        json.dumps(ParseResult(pages=pdf_info).to_dict(), ensure_ascii=False, indent=4),
     )
 
     md_writer.write_string(

@@ -8,10 +8,13 @@ services:
       - 30000:30000
     environment:
       MINERU_MODEL_SOURCE: local
-    entrypoint: mineru-openai-server
+    entrypoint: ["mineru-kit"]
     command:
-      --host 0.0.0.0
-      --port 30000
+      - vlm-server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "30000"
       # --gpu-memory-utilization 0.5  # If encountering VRAM shortage, reduce the KV cache size by this parameter; if VRAM issues persist, try lowering it further to `0.4` or below.
     ulimits:
       memlock: -1
@@ -36,19 +39,19 @@ services:
       - 8000:8000
     environment:
       MINERU_MODEL_SOURCE: local
-    entrypoint: mineru-api
+    entrypoint: ["mineru-kit"]
     command:
-      --host 0.0.0.0
-      --port 8000
-      # --allow-public-http-client  # Disabled by default; when binding to 0.0.0.0 or ::, this re-enables *-http-client backends and server_url. Enable only if you accept the SSRF risk.
-      # parameters for vllm-engine
-      # --gpu-memory-utilization 0.5  # If encountering VRAM shortage, reduce the KV cache size by this parameter; if VRAM issues persist, try lowering it further to `0.4` or below.
+      - api-server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
     ulimits:
       memlock: -1
       stack: 67108864
     ipc: host
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/v1/health || exit 1"]
     deploy:
       resources:
         reservations:
@@ -66,11 +69,15 @@ services:
       - 8002:8002
     environment:
       MINERU_MODEL_SOURCE: local
-    entrypoint: mineru-router
+    entrypoint: ["mineru-kit"]
     command:
-      --host 0.0.0.0
-      --port 8002
-      --local-gpus auto
+      - router
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8002"
+      - --local-gpus
+      - auto
       # --allow-public-http-client  # Disabled by default; when binding to 0.0.0.0 or ::, this re-enables *-http-client backends and server_url. Enable only if you accept the SSRF risk.
       # To aggregate existing mineru-api services instead of starting local workers:
       # --local-gpus none

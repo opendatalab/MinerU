@@ -146,3 +146,81 @@ def rewrite_pdf_bytes_with_pdfium(
             pdf_doc,
             owner="rewrite_pdf_bytes_with_pdfium",
         )
+
+
+def safe_rewrite_pdf_bytes_with_pdfium(
+    src_pdf_bytes: bytes,
+    start_page_id: int = 0,
+    end_page_id: int | None = None,
+    page_indices: Sequence[int] | None = None,
+) -> bytes:
+    """安全重写 PDF 字节；常规重写失败时跳过损坏页并保留可加载页面。"""
+    try:
+        rebuilt_pdf_bytes = rewrite_pdf_bytes_with_pdfium(
+            src_pdf_bytes,
+            start_page_id=start_page_id,
+            end_page_id=end_page_id,
+            page_indices=page_indices,
+        )
+        if rebuilt_pdf_bytes:
+            return rebuilt_pdf_bytes
+        logger.warning("PDFium rewrite returned empty bytes, trying to skip broken pages.")
+    except Exception as fallback_error:
+        logger.warning(
+            f"Error in converting PDF bytes with pdfium: {fallback_error}, trying to skip broken pages."
+        )
+
+    try:
+        if page_indices is not None:
+            requested_page_indices = sorted(
+                {int(page_index) for page_index in page_indices if int(page_index) >= 0}
+            )
+            if not requested_page_indices:
+                logger.warning("PDFium safe rewrite received no valid requested pages, using original PDF bytes.")
+                return src_pdf_bytes
+            probe_start_page_id = requested_page_indices[0]
+            probe_end_page_id = requested_page_indices[-1]
+        else:
+            requested_page_indices = None
+            probe_start_page_id = start_page_id
+            probe_end_page_id = end_page_id
+
+        loadable_page_indices, broken_page_indices = get_loadable_pdfium_page_indices(
+            src_pdf_bytes,
+            start_page_id=probe_start_page_id,
+            end_page_id=probe_end_page_id,
+        )
+        if requested_page_indices is not None:
+            requested_page_index_set = set(requested_page_indices)
+            loadable_page_indices = [
+                page_index
+                for page_index in loadable_page_indices
+                if page_index in requested_page_index_set
+            ]
+            broken_page_indices = [
+                page_index
+                for page_index in broken_page_indices
+                if page_index in requested_page_index_set
+            ]
+
+        if broken_page_indices:
+            skipped_pages = [page_index + 1 for page_index in broken_page_indices]
+            logger.warning(f"Skipped broken PDF pages during PDFium rewrite: {skipped_pages}")
+        if not loadable_page_indices:
+            logger.warning("PDFium skip-broken-page rewrite found no loadable pages, using original PDF bytes.")
+            return src_pdf_bytes
+
+        rebuilt_pdf_bytes = rewrite_pdf_bytes_with_pdfium(
+            src_pdf_bytes,
+            start_page_id=probe_start_page_id,
+            end_page_id=probe_end_page_id,
+            page_indices=loadable_page_indices,
+        )
+        if rebuilt_pdf_bytes:
+            return rebuilt_pdf_bytes
+        logger.warning("PDFium skip-broken-page rewrite returned empty bytes, using original PDF bytes.")
+    except Exception as fallback_error:
+        logger.warning(
+            f"Error in converting PDF bytes with skip-broken-page fallback: {fallback_error}, using original PDF bytes."
+        )
+    return src_pdf_bytes

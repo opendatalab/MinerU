@@ -112,9 +112,9 @@ class PdfBaseParser(DocumentParser):
         if self._page_indices == list(range(doc.page_count)):
             return pdf_bytes
 
-        from ..utils.pdfium_guard import rewrite_pdf_bytes_with_pdfium
+        from ..utils.pdfium_guard import safe_rewrite_pdf_bytes_with_pdfium
 
-        extracted = rewrite_pdf_bytes_with_pdfium(pdf_bytes, page_indices=self._page_indices)
+        extracted = safe_rewrite_pdf_bytes_with_pdfium(pdf_bytes, page_indices=self._page_indices)
         return extracted or pdf_bytes
 
     def _fix_page_indices(self, pages: list[PageInfo]) -> None:

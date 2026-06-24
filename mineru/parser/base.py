@@ -34,7 +34,10 @@ class ParseResult:
         if not isinstance(d, dict):
             raise ValueError("ParseResult.from_dict expects a dict.")
 
-        raw_pages = d.get("pages", d.get("pdf_info", []))
+        if "pages" not in d:
+            raise ValueError("ParseResult JSON must contain a list field named pages.")
+
+        raw_pages = d["pages"]
         if not isinstance(raw_pages, list):
             raise ValueError("ParseResult pages must be a list.")
 

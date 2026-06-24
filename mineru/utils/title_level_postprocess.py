@@ -39,27 +39,17 @@ def apply_title_leveling_to_pdf_info(pdf_info: list[PageInfo]) -> None:
             logger.info(f"title leveling {status}, cost: {elapsed:.2f}s")
 
 
-def finalize_client_side_middle_json(middle_json: dict[str, Any]) -> dict[str, Any]:
-    """根据 staged middle json 的后端类型，在客户端执行完整 finalize。"""
-    if not isinstance(middle_json, dict):
-        raise ValueError("middle_json must be a dict.")
-
-    from ..parser.base import ParseResult
-
-    result = ParseResult.from_dict(middle_json)
-    backend = result.pages[0]._backend if result.pages else None
-
+def finalize_client_side_pages(pages: list[PageInfo], backend: str) -> None:
+    """按调用方传入的后端类型，对 pages 原地执行客户端可完成的 finalize。"""
     if backend == "pipeline":
         from mineru.backend.pipeline.model_output_to_middle_json import finalize_middle_json_from_preproc
 
-        finalize_middle_json_from_preproc(result.pages)
+        finalize_middle_json_from_preproc(pages)
     elif backend == "vlm":
         from mineru.backend.vlm.model_output_to_middle_json import finalize_middle_json
 
-        finalize_middle_json(result.pages)
+        finalize_middle_json(pages)
     elif backend == "hybrid":
         from mineru.backend.hybrid.model_output_to_middle_json import finalize_middle_json_from_preproc
 
-        finalize_middle_json_from_preproc(result.pages)
-
-    return middle_json
+        finalize_middle_json_from_preproc(pages)

@@ -5,7 +5,7 @@ from typing import Any
 
 from typer.testing import CliRunner
 
-from mineru.kit.commands import api_server, models, parse
+from mineru.kit.commands import api_server, models, parse, router, vlm_server
 from mineru.kit.main import app
 
 runner = CliRunner()
@@ -20,6 +20,7 @@ def test_kit_root_and_models_help() -> None:
     assert "models" in result.output
     assert "api-server" in result.output
     assert "vlm-server" in result.output
+    assert "router" in result.output
 
 
 def test_models_download_pipeline(monkeypatch: Any) -> None:
@@ -90,6 +91,76 @@ def test_vlm_server_rejects_unimplemented_engine() -> None:
 
     assert result.exit_code == 1
     assert "not implemented yet" in result.output
+
+
+def test_vlm_server_forwards_extra_args(monkeypatch: Any) -> None:
+    seen: dict[str, Any] = {}
+
+    def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
+        seen["args"] = args
+        seen["prog_name"] = prog_name
+        seen["standalone_mode"] = standalone_mode
+
+    monkeypatch.setattr(vlm_server.old_vlm_server.openai_server, "main", _fake_main)
+
+    result = runner.invoke(app, ["vlm-server", "--host", "0.0.0.0", "--port", "30000"])
+
+    assert result.exit_code == 0
+    assert seen == {
+        "args": ["--engine", "auto", "--host", "0.0.0.0", "--port", "30000"],
+        "prog_name": "mineru-kit vlm-server",
+        "standalone_mode": False,
+    }
+
+
+def test_router_forwards_known_and_extra_args(monkeypatch: Any) -> None:
+    seen: dict[str, Any] = {}
+
+    def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
+        seen["args"] = args
+        seen["prog_name"] = prog_name
+        seen["standalone_mode"] = standalone_mode
+
+    monkeypatch.setattr(router.old_router.main, "main", _fake_main)
+
+    result = runner.invoke(
+        app,
+        [
+            "router",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "8002",
+            "--allow-public-http-client",
+            "--upstream-url",
+            "http://mineru-api:8000",
+            "--local-gpus",
+            "none",
+            "--worker-host",
+            "127.0.0.1",
+            "--gpu-memory-utilization",
+            "0.5",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert seen["prog_name"] == "mineru-kit router"
+    assert seen["standalone_mode"] is False
+    assert seen["args"] == [
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8002",
+        "--allow-public-http-client",
+        "--upstream-url",
+        "http://mineru-api:8000",
+        "--local-gpus",
+        "none",
+        "--worker-host",
+        "127.0.0.1",
+        "--gpu-memory-utilization",
+        "0.5",
+    ]
 
 
 def test_parse_rejects_file_output_for_directory_input(tmp_path: Path) -> None:

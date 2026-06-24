@@ -1,6 +1,8 @@
 from dataclasses import fields
 import json
 
+import pytest
+
 from mineru.parser.base import ParseResult
 from mineru.schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
 from mineru.types import Block, Line, PageInfo, Span
@@ -55,10 +57,15 @@ def test_parse_result_to_dict_includes_schema_version_without_meta() -> None:
     assert "_meta" not in payload
 
 
-def test_parse_result_from_dict_accepts_pdf_info_and_preserves_page_backend() -> None:
+def test_parse_result_from_dict_rejects_missing_pages() -> None:
+    with pytest.raises(ValueError, match="pages"):
+        ParseResult.from_dict({"pdf_info": []})
+
+
+def test_parse_result_from_dict_accepts_pages_and_preserves_page_backend() -> None:
     restored = ParseResult.from_dict(
         {
-            "pdf_info": [
+            "pages": [
                 {
                     "page_idx": 0,
                     "page_size": [100, 200],

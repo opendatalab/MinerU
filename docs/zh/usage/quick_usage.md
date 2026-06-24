@@ -119,7 +119,7 @@ mineru -p <input_path> -o <output_path>
 MinerU 现已实现开箱即用，但也支持通过配置文件扩展功能。您可通过编辑用户目录下的 `mineru.json` 文件，添加自定义配置。
 
 >[!IMPORTANT]
->`mineru.json` 文件会在您使用内置模型下载命令 `mineru-models-download` 时自动生成，也可以通过将[配置模板文件](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json)复制到用户目录下并重命名为 `mineru.json` 来创建。  
+>`mineru.json` 文件会在您使用内置模型下载命令 `mineru-kit models download all` 时自动生成，也可以通过将[配置模板文件](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json)复制到用户目录下并重命名为 `mineru.json` 来创建。
 
 以下是一些可用的配置选项： 
 

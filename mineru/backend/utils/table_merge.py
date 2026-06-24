@@ -273,7 +273,7 @@ def _refresh_table_state_metrics(state: TableMergeState) -> None:
     state.front_header_info, state.front_first_data_row_metrics = _build_front_cache(state.rows)
 
 
-def _build_table_state_from_html(
+def build_table_state_from_html(
     html: str,
     max_header_rows: int = MAX_HEADER_ROWS,
 ) -> TableMergeState | None:

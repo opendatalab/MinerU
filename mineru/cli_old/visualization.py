@@ -3,6 +3,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from mineru.parser.base import ParseResult
 from mineru.utils.pdf_document import PDFDocument
 
 VISUALIZATION_FINISHED = "finished"
@@ -56,22 +57,23 @@ def run_visualization_job(job: VisualizationJob) -> VisualizationResult:
             message=f"failed to read middle.json: {exc}",
         )
 
-    if not isinstance(payload, list):
+    if not isinstance(payload, dict) or not isinstance(payload.get("pages"), list):
         return VisualizationResult(
             document_stem=job.document_stem,
             parse_dir=job.parse_dir,
             status=VISUALIZATION_SKIPPED,
-            message="invalid middle.json: missing pdf_info",
+            message="invalid middle.json: missing pages",
         )
 
     try:
+        pages = ParseResult.from_dict(payload).pages
         pdf_bytes = origin_pdf_path.read_bytes()
         doc = PDFDocument(pdf_bytes)
         generated_files = [f"{job.document_stem}_layout.pdf"]
-        doc.draw_layout_bbox(payload, str(job.parse_dir / generated_files[0]))
+        doc.draw_layout_bbox(pages, str(job.parse_dir / generated_files[0]))
         if job.draw_span:
             generated_files.append(f"{job.document_stem}_span.pdf")
-            doc.draw_span_bbox(payload, str(job.parse_dir / generated_files[1]))
+            doc.draw_span_bbox(pages, str(job.parse_dir / generated_files[1]))
     except Exception as exc:
         return VisualizationResult(
             document_stem=job.document_stem,

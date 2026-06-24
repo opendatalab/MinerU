@@ -6,7 +6,7 @@ from click.testing import CliRunner
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from mineru.parser.api_client import MinerUApiParser, _parse_result_from_job
+from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job
 from mineru.parser import parse, parse_async
 from mineru.parser.api_server import (
     _API_SERVER_BACKENDS,
@@ -124,6 +124,20 @@ def test_api_client_rejects_missing_middle_json_output() -> None:
         )
 
 
+def test_api_client_accepts_pages_middle_json_only() -> None:
+    pages = _pages_from_middle_json({"pages": [{"page_idx": 2, "page_size": [100, 200]}]})
+
+    assert len(pages) == 1
+    assert pages[0].page_idx == 2
+    assert pages[0].page_size == (100, 200)
+
+
+@pytest.mark.parametrize("payload", [[{"page_idx": 0}], {"pdf_info": [{"page_idx": 0}]}])
+def test_api_client_rejects_legacy_middle_json_shapes(payload: object) -> None:
+    with pytest.raises(Exception, match="pages"):
+        _pages_from_middle_json(payload)  # type: ignore[arg-type]
+
+
 def test_create_job_request_accepts_new_format_names_and_rejects_options() -> None:
     req = CreateJobRequest.model_validate(
         {
@@ -201,7 +215,8 @@ def test_api_server_cli_no_longer_exposes_reload() -> None:
     result = runner.invoke(main, ["--reload"])
 
     assert result.exit_code != 0
-    assert "No such option '--reload'" in result.output
+    assert "No such option" in result.output
+    assert "--reload" in result.output
 
 
 def test_output_files_expose_new_names_without_inline_content() -> None:

@@ -6,9 +6,8 @@ import os
 from typing import Any
 
 from ...data.data_reader_writer import DataWriter
-from ...types import Block, BlockType, ContentType, PageInfo
+from ...types import Block, BlockType, PageInfo
 from ...utils.config_reader import get_table_enable
-from ...utils.cut_image import cut_image_and_table
 from ...utils.hash_utils import bytes_md5
 from ...utils.pdfium_guard import pdfium_guard
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
@@ -21,6 +20,7 @@ from ..utils.para_block_utils import (
     merge_para_text_blocks,
 )
 from ..utils.runtime_utils import cross_page_table_merge
+from ..utils.visual_span_utils import cut_visual_spans_in_blocks
 from .hybrid_magic_model import MagicModel
 
 
@@ -84,14 +84,6 @@ def blocks_to_page_info(
     text_blocks = magic_model.get_text_blocks()
     interline_equation_blocks = magic_model.get_interline_equation_blocks()
 
-    all_spans = magic_model.get_all_spans()
-    # 对image/table/chart/interline_equation的span截图
-    for span in all_spans:
-        if span.type in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART, ContentType.INTERLINE_EQUATION]:
-            span = cut_image_and_table(span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale)
-
-    replace_inline_table_images(table_blocks, image_writer, page_index)
-
     page_blocks = []
     page_blocks.extend(
         [
@@ -108,7 +100,18 @@ def blocks_to_page_info(
         ]
     )
     # 对page_blocks根据index的值进行排序
-    page_blocks.sort(key=lambda x: x["index"])
+    page_blocks.sort(key=lambda x: x.index)
+
+    cut_visual_spans_in_blocks(
+        [*page_blocks, *discarded_blocks],
+        page_pil_img,
+        page_img_md5,
+        page_index,
+        image_writer,
+        scale=scale,
+    )
+
+    replace_inline_table_images(table_blocks, image_writer, page_index)
 
     page_info = PageInfo(
         preproc_blocks=page_blocks,

@@ -18,12 +18,13 @@ from mineru.backend.office.xlsx_analyze import office_xlsx_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.data.data_reader_writer import FileBasedDataWriter
+from mineru.parser.base import ParseResult
 from mineru.render import render_content_list, render_content_list_v2, render_markdown
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
-from mineru.utils.pdfium_guard import get_loadable_pdfium_page_indices, rewrite_pdf_bytes_with_pdfium
+from mineru.utils.pdfium_guard import safe_rewrite_pdf_bytes_with_pdfium
 
 from ..types import PageInfo
 from ..version import __version__
@@ -184,45 +185,11 @@ def prepare_env(output_dir: str, pdf_file_name: str, parse_method: str) -> tuple
 
 
 def convert_pdf_bytes_to_bytes(pdf_bytes: bytes, start_page_id: int = 0, end_page_id: int | None = None) -> bytes:
-    try:
-        rebuilt_pdf_bytes = rewrite_pdf_bytes_with_pdfium(
-            pdf_bytes,
-            start_page_id=start_page_id,
-            end_page_id=end_page_id,
-        )
-        if rebuilt_pdf_bytes:
-            return rebuilt_pdf_bytes
-        logger.warning("PDFium rewrite returned empty bytes, trying to skip broken pages.")
-    except Exception as fallback_error:
-        logger.warning(f"Error in converting PDF bytes with pdfium: {fallback_error}, trying to skip broken pages.")
-
-    try:
-        loadable_page_indices, broken_page_indices = get_loadable_pdfium_page_indices(
-            pdf_bytes,
-            start_page_id=start_page_id,
-            end_page_id=end_page_id,
-        )
-        if broken_page_indices:
-            skipped_pages = [page_index + 1 for page_index in broken_page_indices]
-            logger.warning(f"Skipped broken PDF pages during PDFium rewrite: {skipped_pages}")
-        if not loadable_page_indices:
-            logger.warning("PDFium skip-broken-page rewrite found no loadable pages, using original PDF bytes.")
-            return pdf_bytes
-
-        rebuilt_pdf_bytes = rewrite_pdf_bytes_with_pdfium(
-            pdf_bytes,
-            start_page_id=start_page_id,
-            end_page_id=end_page_id,
-            page_indices=loadable_page_indices,
-        )
-        if rebuilt_pdf_bytes:
-            return rebuilt_pdf_bytes
-        logger.warning("PDFium skip-broken-page rewrite returned empty bytes, using original PDF bytes.")
-    except Exception as fallback_error:
-        logger.warning(
-            f"Error in converting PDF bytes with skip-broken-page fallback: {fallback_error}, using original PDF bytes."
-        )
-    return pdf_bytes
+    return safe_rewrite_pdf_bytes_with_pdfium(
+        pdf_bytes,
+        start_page_id=start_page_id,
+        end_page_id=end_page_id,
+    )
 
 
 def _prepare_pdf_bytes(pdf_bytes_list: list[bytes], start_page_id: int, end_page_id: int | None) -> list[bytes]:
@@ -296,21 +263,19 @@ def _process_output(
         content_list = render_content_list(middle_json, image_dir)
         md_writer.write_string(
             f"{pdf_file_name}_content_list.json",
-            json.dumps(content_list, ensure_ascii=False, indent=1),
+            json.dumps(content_list, ensure_ascii=False, indent=4),
         )
 
         content_list_v2 = render_content_list_v2(middle_json, image_dir)
         md_writer.write_string(
             f"{pdf_file_name}_content_list_v2.json",
-            json.dumps(content_list_v2, ensure_ascii=False, indent=1),
+            json.dumps(content_list_v2, ensure_ascii=False, indent=4),
         )
 
     if f_dump_middle_json:
-        dump_dict = {
-            "pdf_info": [page.to_dict() for page in middle_json],
-            "_backend": backend,
-            "_version_name": __version__,
-        }
+        dump_dict = ParseResult(pages=middle_json).to_dict()
+        dump_dict["_backend"] = backend
+        dump_dict["_version_name"] = __version__
         md_writer.write_string(
             f"{pdf_file_name}_middle.json",
             json.dumps(dump_dict, ensure_ascii=False, indent=1),

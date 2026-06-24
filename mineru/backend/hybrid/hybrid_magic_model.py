@@ -75,7 +75,6 @@ class MagicModel:
         self.height = height
 
         blocks: list[Block] = []
-        self.all_spans: list[Span] = []
         page_text_inline_formula_spans: list[Span] = []
 
         for inline_formula in self.page_inline_formula:
@@ -265,10 +264,8 @@ class MagicModel:
                 if span is None:
                     continue
                 if isinstance(span, Span):
-                    self.all_spans.append(span)
                     spans = [span]
                 elif isinstance(span, list):
-                    self.all_spans.extend(span)
                     spans = span
                 else:
                     raise ValueError(f"Invalid span type: {span_type}, expected dict or list, got {type(span)}")
@@ -456,9 +453,6 @@ class MagicModel:
 
     def get_discarded_blocks(self) -> list[Block]:
         return self.discarded_blocks
-
-    def get_all_spans(self) -> list[Span]:
-        return self.all_spans
 
 
 def fix_list_blocks(

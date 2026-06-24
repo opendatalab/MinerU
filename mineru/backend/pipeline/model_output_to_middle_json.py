@@ -3,7 +3,6 @@ from typing import Any
 
 from ...data.data_reader_writer import DataWriter
 from ...types import Block, BlockType, ContentType, PageInfo, Span
-from ...utils.cut_image import cut_image_and_table
 from ...utils.hash_utils import bytes_md5
 from ...utils.pdfium_guard import pdfium_guard
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
@@ -11,6 +10,7 @@ from ..utils.char_utils import full_to_half
 from ..utils.html_image_utils import replace_inline_table_images
 from ..utils.middle_json_utils import append_pages, apply_post_ocr
 from ..utils.runtime_utils import cross_page_table_merge
+from ..utils.visual_span_utils import cut_visual_spans_in_blocks
 from .model_init import AtomModelSingleton
 from .para_split import para_split
 from .pipeline_magic_model import MagicModel
@@ -35,12 +35,15 @@ def blocks_to_page_info(
     """从magic_model对象中获取后面会用到的区块信息"""
     preproc_blocks = magic_model.get_preproc_blocks()
     discarded_blocks = magic_model.get_discarded_blocks()
-    all_image_spans = magic_model.get_all_image_spans()
 
-    # 对image/table/chart/interline_equation的span截图
-    for span in all_image_spans:
-        if span.type in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART, ContentType.INTERLINE_EQUATION]:
-            span = cut_image_and_table(span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale)
+    cut_visual_spans_in_blocks(
+        [*preproc_blocks, *discarded_blocks],
+        page_pil_img,
+        page_img_md5,
+        page_index,
+        image_writer,
+        scale=scale,
+    )
 
     """构造page_info"""
     replace_inline_table_images(preproc_blocks, image_writer, page_index)

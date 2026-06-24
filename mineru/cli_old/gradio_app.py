@@ -1075,7 +1075,13 @@ async def _run_to_markdown_job(
     )
     emit_status(STATUS_PROCESSING_OUTPUT)
     if use_client_side_output_generation:
-        await asyncio.to_thread(regenerate_client_side_outputs, local_md_dir, file_name)
+        output_backend = "office" if file_suffix in office_suffixes else backend
+        await asyncio.to_thread(
+            regenerate_client_side_outputs,
+            local_md_dir,
+            file_name,
+            output_backend,
+        )
 
     preview_pdf_path = maybe_generate_local_preview(
         extract_root=extract_root,

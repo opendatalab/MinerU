@@ -103,7 +103,6 @@ class MagicModel:
         self.image_groups: list[dict[str, Any]] = []
         self.table_groups: list[dict[str, Any]] = []
         self.chart_groups: list[dict[str, Any]] = []
-        self.all_image_spans: list[Span] = []
         self.__layout_det_by_index: dict[int, dict[str, Any]] = {}
         self.__scale = scale
         self.__fix_axis()  # bbox坐标修正，删除高度或者宽度小于等于0的spans
@@ -277,7 +276,6 @@ class MagicModel:
                     span.content = block.latex
                     block.latex = ""
 
-                self.all_image_spans.append(span)
                 # 构造line对象
                 spans = [span]
                 line = Line(spans=spans, bbox=block.bbox)
@@ -496,9 +494,6 @@ class MagicModel:
 
     def get_page_blocks(self) -> list[Block]:
         return self.page_blocks
-
-    def get_all_image_spans(self) -> list[Span]:
-        return self.all_image_spans
 
     def get_preproc_blocks(self) -> list[Block]:
         return self.preproc_blocks

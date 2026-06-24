@@ -32,7 +32,6 @@ def _copy_raw_text_block_metadata(raw_block_type: str, block_info: ContentBlock,
 class MagicModel:
     def __init__(self, page_blocks: ExtractResult, width: int, height: int) -> None:
         blocks: list[Block] = []
-        self.all_spans: list[Span] = []
         # 解析每个块
         for index, content_block in enumerate(page_blocks):
             block_bbox = content_block["bbox"]
@@ -191,10 +190,8 @@ class MagicModel:
 
             # 处理span类型并添加到all_spans
             if isinstance(span, Span):
-                self.all_spans.append(span)
                 spans = [span]
             elif isinstance(span, list):
-                self.all_spans.extend(span)
                 spans = span
             else:
                 raise ValueError(f"Invalid span type: {span_type}, expected dict or list, got {type(span)}")
@@ -322,9 +319,6 @@ class MagicModel:
 
     def get_discarded_blocks(self) -> list[Block]:
         return self.discarded_blocks
-
-    def get_all_spans(self) -> list[Span]:
-        return self.all_spans
 
 
 def fix_list_blocks(

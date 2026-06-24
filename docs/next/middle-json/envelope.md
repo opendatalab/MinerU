@@ -43,7 +43,8 @@
 设计选择:
 
 - 新结构使用 `pages`，对应 `ParseResult.pages`。
-- 兼容读取旧结构 `pdf_info`。
+- 运行时只读取当前结构 `pages`；历史 `pdf_info` 文件需要离线迁移或重新生成。
+- 旧 CLI 当前仍保留顶层 `_backend` / `_version_name` metadata。
 - `_meta.backend` 取代长期依赖 `PageInfo._backend`。
 - `schema_version` 放在顶层，便于快速判断 migration。
 - 代码常量定义为 `mineru.schema.middle_json.MIDDLE_JSON_SCHEMA_VERSION`，由 normalize、validate、writer 和 exporter 统一引用。
@@ -137,7 +138,7 @@ models 也是开放字典。字段粒度可以随 backend 增加。
 - `_meta.backend`，如果调用方提供。
 - `_meta.file.sha256`，如果调用方提供。
 
-### 3. 旧 CLI middle_json
+### 3. 历史旧 CLI middle_json
 
 ```json
 {
@@ -147,7 +148,7 @@ models 也是开放字典。字段粒度可以随 backend 增加。
 }
 ```
 
-migration 应转换为:
+历史文件的离线 migration 可转换为:
 
 - `pages = pdf_info`
 - `_meta.backend = _backend`
@@ -171,12 +172,10 @@ def normalize_middle_json(
 
 规则:
 
-1. 如果 payload 是 list，视为 pages。
-2. 如果 payload 有 `pages`，读取 pages。
-3. 如果 payload 有 `pdf_info`，读取 `pdf_info`。
-4. 如果 payload 有 `_backend`，作为 backend fallback。
-5. 如果没有 sha256，则保留 null，但禁用需要严格校验 source identity 的 citation 能力。
-6. 输出必须是 canonical envelope。
+1. 运行时 payload 必须是 dict，且 `pages` 必须是 list。
+2. 历史 `pdf_info` 只允许由离线 migration 工具转换，不作为运行时读取兼容分支。
+3. 如果没有 sha256，则保留 null，但禁用需要严格校验 source identity 的 citation 能力。
+4. 输出必须是 canonical envelope。
 
 ## Validator
 
