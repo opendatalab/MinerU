@@ -278,13 +278,13 @@ def _process_output(
         dump_dict["_version_name"] = __version__
         md_writer.write_string(
             f"{pdf_file_name}_middle.json",
-            json.dumps(dump_dict, ensure_ascii=False, indent=1),
+            json.dumps(dump_dict, ensure_ascii=False, indent=4),
         )
 
     if f_dump_model_output:
         md_writer.write_string(
             f"{pdf_file_name}_model.json",
-            json.dumps(model_output, ensure_ascii=False, indent=1),
+            json.dumps(model_output, ensure_ascii=False, indent=4),
         )
 
     logger.debug(f"local output dir is {local_md_dir}")

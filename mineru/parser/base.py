@@ -66,7 +66,7 @@ class ParseResult:
         return ParseResult.from_dict(data)
 
     def to_json(self) -> str:
-        return json.dumps(self.to_dict(), ensure_ascii=False, indent=1)
+        return json.dumps(self.to_dict(), ensure_ascii=False, indent=4)
 
     def markdown(self, *, add_markers: bool = False) -> str:
         return render_markdown(self.pages, add_markers=add_markers)
@@ -83,17 +83,17 @@ class ParseResult:
 
         writer.write_string(
             "content_list.json",
-            json.dumps(self.content_list(), ensure_ascii=False, indent=1),
+            json.dumps(self.content_list(), ensure_ascii=False, indent=4),
         )
         writer.write_string(
             "structured_content.json",
-            json.dumps(self.structured_content(), ensure_ascii=False, indent=1),
+            json.dumps(self.structured_content(), ensure_ascii=False, indent=4),
         )
 
         if self._model_output is not None:
             writer.write_string(
                 "model_output.json",
-                json.dumps(self._model_output, ensure_ascii=False, indent=1),
+                json.dumps(self._model_output, ensure_ascii=False, indent=4),
             )
 
         for img_path, img_bytes in self.images().items():
