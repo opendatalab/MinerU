@@ -1,9 +1,8 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
-import base64
+from copy import deepcopy
 import json
-import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,8 +11,12 @@ from typing import Any
 from ..render import render_content_list, render_markdown, render_structured_content
 from ..schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
 from ..types import PageInfo
-
-_INLINE_IMAGE_DATA_URI_RE = re.compile(r"data:image/([^;]+);base64,([^\"]+)", re.DOTALL)
+from ..utils.image_payload import (
+    collect_image_data_uri_bytes,
+    image_path_from_data_uri,
+    parse_image_data_uri,
+    replace_inline_data_uri_sources,
+)
 
 
 @dataclass
@@ -58,6 +61,13 @@ class ParseResult:
             "pages": [page.to_dict(skip_defaults=skip_defaults) for page in self.pages],
         }
 
+    def to_export_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
+        """生成 public middle_json 视图：图片已落盘引用，base64 临时载荷不再输出。"""
+        return {
+            "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
+            "pages": [page.to_dict(skip_defaults=skip_defaults) for page in self.export_pages()],
+        }
+
     @staticmethod
     def from_json(s: str) -> ParseResult:
         data = json.loads(s)
@@ -67,6 +77,10 @@ class ParseResult:
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=4)
+
+    def to_export_json(self) -> str:
+        """序列化导出 middle_json，供本地文件和 API 返回使用。"""
+        return json.dumps(self.to_export_dict(), ensure_ascii=False, indent=4)
 
     def markdown(self, *, add_markers: bool = False) -> str:
         return render_markdown(self.pages, add_markers=add_markers)
@@ -79,7 +93,7 @@ class ParseResult:
 
     def save(self, writer: Any) -> None:
         writer.write_string("markdown.md", self.markdown())
-        writer.write_string("middle_json.json", self.to_json())
+        writer.write_string("middle_json.json", self.to_export_json())
 
         writer.write_string(
             "content_list.json",
@@ -102,72 +116,75 @@ class ParseResult:
     def images(self) -> dict[str, bytes]:
         if self._images_cache is not None:
             return self._images_cache
-        if self._pdf_doc is not None:
-            return self._extract_pdf_images()
-        return self._extract_office_images()
+        images = self._collect_images()
+        self._images_cache = images
+        return images
 
-    def _extract_pdf_images(self) -> dict[str, bytes]:
-        result: dict[str, bytes] = {}
+    def export_pages(self) -> list[PageInfo]:
+        """返回可导出的页面副本：清理 base64，并把内联图片替换为本地路径。"""
+        export_pages, _ = self._export_pages_and_images()
+        return export_pages
+
+    def _export_pages_and_images(self) -> tuple[list[PageInfo], dict[str, bytes]]:
+        """构造导出页面和图片字节映射，避免 ParseResult.save 再渲染 PDF 页面。"""
+        export_pages = deepcopy(self.pages)
+        images: dict[str, bytes] = {}
+        for page_info in export_pages:
+            for block_list in (page_info.preproc_blocks, page_info.para_blocks, page_info.discarded_blocks):
+                for block in block_list:
+                    self._prepare_block_images_for_export(block, images)
+        return export_pages, images
+
+    def _collect_images(self) -> dict[str, bytes]:
+        """遍历原始 middle_json 收集图片字节，不修改页面和 span 内容。"""
+        images: dict[str, bytes] = {}
         for page_info in self.pages:
-            pil_img, actual_scale = self._pdf_doc.render_page_with_actual_scale(page_info.page_idx)  # type: ignore[union-attr]
-            try:
-                for block in page_info.preproc_blocks:
-                    result.update(self._crop_block_spans(block, pil_img, actual_scale))
-                for block in page_info.para_blocks:
-                    result.update(self._crop_block_spans(block, pil_img, actual_scale))
-            finally:
-                pil_img.close()
-        return result
+            for block_list in (page_info.preproc_blocks, page_info.para_blocks, page_info.discarded_blocks):
+                for block in block_list:
+                    self._collect_block_images(block, images)
+        return images
 
     @staticmethod
-    def _crop_block_spans(block: Any, pil_img: Any, scale: float) -> dict[str, bytes]:
-        from ..utils.pdf_image_tools import get_crop_img, image_to_bytes
-
-        result: dict[str, bytes] = {}
+    def _collect_block_images(block: Any, images: dict[str, bytes]) -> None:
+        """递归收集 block 内所有 span 的 base64 图片载荷。"""
         for line in block.lines:
             for span in line.spans:
-                if not span.image_path or span.bbox is None:
-                    continue
-                crop = get_crop_img(span.bbox, pil_img, scale=scale)
-                result[span.image_path] = image_to_bytes(crop, image_format="JPEG")
+                ParseResult._collect_span_images(span, images)
         for child in block.blocks:
-            result.update(ParseResult._crop_block_spans(child, pil_img, scale))
-        return result
-
-    def _extract_office_images(self) -> dict[str, bytes]:
-        from ..utils.hash_utils import str_sha256
-
-        result: dict[str, bytes] = {}
-        for page_info in self.pages:
-            for block in page_info.para_blocks:
-                for span in self._iter_block_spans(block):
-                    result.update(self._decode_span_base64_images(span, str_sha256))
-        return result
+            ParseResult._collect_block_images(child, images)
 
     @staticmethod
-    def _iter_block_spans(block: Any):
-        for line in block.lines:
-            yield from line.spans
-        for child in block.blocks:
-            yield from ParseResult._iter_block_spans(child)
-
-    @staticmethod
-    def _decode_span_base64_images(span: Any, hash_fn) -> dict[str, bytes]:
-        result: dict[str, bytes] = {}
+    def _collect_span_images(span: Any, images: dict[str, bytes]) -> None:
+        """收集单个 span 的图片字节，保持 span 原始内容不变。"""
         if span.image_base64:
-            m = _INLINE_IMAGE_DATA_URI_RE.match(span.image_base64)
-            if m:
-                try:
-                    result[span.image_path or f"{hash_fn(span.image_base64)}.{m.group(1)}"] = base64.b64decode(m.group(2))
-                except Exception:
-                    pass
+            parsed = parse_image_data_uri(span.image_base64)
+            img_path = span.image_path or image_path_from_data_uri(span.image_base64)
+            if parsed is not None and img_path:
+                images[img_path] = parsed[0]
         if span.content:
-            for m in _INLINE_IMAGE_DATA_URI_RE.finditer(span.content):
-                try:
-                    result[f"{hash_fn(m.group(0))}.{m.group(1)}"] = base64.b64decode(m.group(2))
-                except Exception:
-                    pass
-        return result
+            collect_image_data_uri_bytes(span.content, images)
+
+    @staticmethod
+    def _prepare_block_images_for_export(block: Any, images: dict[str, bytes]) -> None:
+        """递归处理 block 内所有 span，将 base64 图片转为 image_path 引用。"""
+        for line in block.lines:
+            for span in line.spans:
+                ParseResult._prepare_span_images_for_export(span, images)
+        for child in block.blocks:
+            ParseResult._prepare_block_images_for_export(child, images)
+
+    @staticmethod
+    def _prepare_span_images_for_export(span: Any, images: dict[str, bytes]) -> None:
+        """处理单个 span 的图片载荷，保留路径字段并清理 base64 临时字段。"""
+        if span.image_base64:
+            parsed = parse_image_data_uri(span.image_base64)
+            img_path = span.image_path or image_path_from_data_uri(span.image_base64)
+            if parsed is not None and img_path:
+                images[img_path] = parsed[0]
+                span.image_path = img_path
+            span.image_base64 = ""
+        if span.content:
+            span.content = replace_inline_data_uri_sources(span.content, images)
 
 
 class DocumentParser(ABC):

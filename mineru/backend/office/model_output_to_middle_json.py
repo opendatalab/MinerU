@@ -6,7 +6,6 @@ from collections import defaultdict
 from typing import Any
 
 from ...types import Block, BlockType, PageInfo
-from ..utils.html_image_utils import replace_inline_table_images, save_span_image_if_needed
 from .office_magic_model import MagicModel
 
 
@@ -17,29 +16,6 @@ def blocks_to_page_info(page_blocks: list[dict[str, Any]], image_writer: Any, pa
     image_blocks = magic_model.get_image_blocks()
     table_blocks = magic_model.get_table_blocks()
     chart_blocks = magic_model.get_chart_blocks()
-
-    if image_writer:
-        # Write embedded images to local storage via image_writer
-        for img_block in image_blocks:
-            for sub_block in img_block.blocks:
-                if sub_block.type != "image_body":
-                    continue
-                for line in sub_block.lines:
-                    for span in line.spans:
-                        save_span_image_if_needed(span, image_writer, page_index)
-
-        replace_inline_table_images(table_blocks, image_writer, page_index)
-
-        # Replace inline base64 images inside chart content with local paths
-        for chart_block in chart_blocks:
-            for sub_block in chart_block.blocks:
-                if sub_block.type != "chart_body":
-                    continue
-                for line in sub_block.lines:
-                    for span in line.spans:
-                        if span.type != "chart":
-                            continue
-                        save_span_image_if_needed(span, image_writer, page_index)
 
     title_blocks = magic_model.get_title_blocks()
     discarded_blocks = magic_model.get_discarded_blocks()

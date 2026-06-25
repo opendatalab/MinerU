@@ -6,7 +6,8 @@ from typing import Any
 from loguru import logger
 
 from ..types import BBox, Span
-from .pdf_image_tools import cut_image
+from .image_payload import image_bytes_to_data_uri, image_path_from_key
+from .pdf_image_tools import get_crop_img, image_to_bytes
 
 
 def cut_image_and_table(
@@ -23,17 +24,16 @@ def cut_image_and_table(
 
     span_type = span.type
 
-    if not check_img_bbox(span.bbox) or not image_writer:
+    if not check_img_bbox(span.bbox):
         span.image_path = ""
+        span.image_base64 = ""
     else:
-        span.image_path = cut_image(
-            span.bbox,
-            page_id,
-            page_pil_img,
-            return_path=return_path(span_type),
-            image_writer=image_writer,
-            scale=scale,
-        )
+        filename = f"{page_id}_{int(span.bbox[0])}_{int(span.bbox[1])}_{int(span.bbox[2])}_{int(span.bbox[3])}"
+        path_key = f"{return_path(span_type)}_{filename}"
+        crop_img = get_crop_img(span.bbox, page_pil_img, scale=scale)
+        img_bytes = image_to_bytes(crop_img, image_format="JPEG")
+        span.image_path = image_path_from_key(path_key, "jpg")
+        span.image_base64 = image_bytes_to_data_uri(img_bytes, "jpeg")
 
     return span
 

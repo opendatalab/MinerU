@@ -7,7 +7,6 @@ from ...utils.hash_utils import bytes_md5
 from ...utils.pdfium_guard import pdfium_guard
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from ..utils.char_utils import full_to_half
-from ..utils.html_image_utils import replace_inline_table_images
 from ..utils.middle_json_utils import append_pages, apply_post_ocr
 from ..utils.runtime_utils import cross_page_table_merge
 from ..utils.visual_span_utils import cut_visual_spans_in_blocks
@@ -44,9 +43,6 @@ def blocks_to_page_info(
         image_writer,
         scale=scale,
     )
-
-    """构造page_info"""
-    replace_inline_table_images(preproc_blocks, image_writer, page_index)
 
     return PageInfo(
         preproc_blocks=preproc_blocks,

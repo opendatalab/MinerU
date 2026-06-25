@@ -12,7 +12,6 @@ from ...utils.hash_utils import bytes_md5
 from ...utils.pdfium_guard import pdfium_guard
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from ..pipeline.model_init import MineruHybridModel
-from ..utils.html_image_utils import replace_inline_table_images
 from ..utils.middle_json_utils import apply_post_ocr
 from ..utils.para_block_utils import (
     build_para_blocks_from_preproc,
@@ -110,8 +109,6 @@ def blocks_to_page_info(
         image_writer,
         scale=scale,
     )
-
-    replace_inline_table_images(table_blocks, image_writer, page_index)
 
     page_info = PageInfo(
         preproc_blocks=page_blocks,

@@ -247,6 +247,10 @@ def _process_output(
             )
 
     image_dir = str(os.path.basename(local_image_dir))
+    export_result = ParseResult(pages=middle_json)
+    image_writer = FileBasedDataWriter(local_image_dir)
+    for img_path, img_bytes in export_result.images().items():
+        image_writer.write(img_path, img_bytes)
 
     if f_dump_md:
         md_content_str = render_markdown(
@@ -273,7 +277,7 @@ def _process_output(
         )
 
     if f_dump_middle_json:
-        dump_dict = ParseResult(pages=middle_json).to_dict()
+        dump_dict = export_result.to_export_dict()
         dump_dict["_backend"] = backend
         dump_dict["_version_name"] = __version__
         md_writer.write_string(

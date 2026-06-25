@@ -1229,7 +1229,7 @@ async def _run_job(
                         fid = file_store.create_file_for_output(f"{fr.name}.md", content_bytes, sha256hex=sha)
                         output_files.markdown = OutputFileRef(file_id=fid, bytes=len(content_bytes))
                     elif fmt == "middle_json":
-                        mj = json.dumps(result.to_dict(skip_defaults=True), ensure_ascii=False).encode("utf-8")
+                        mj = json.dumps(result.to_export_dict(skip_defaults=True), ensure_ascii=False).encode("utf-8")
                         sha = hashlib.sha256(mj).hexdigest()
                         file_store.store_blob(mj, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.middle.json", mj, sha256hex=sha)

@@ -133,12 +133,7 @@ class PdfBaseParser(DocumentParser):
         pdf_bytes: bytes,
         file_name: str,
     ) -> ParseResult:
-        from ..utils.pdf_document import PDFDocument
-
-        return ParseResult(
-            pages=middle_json,
-            _pdf_doc=PDFDocument(pdf_bytes),
-        )
+        return ParseResult(pages=middle_json)
 
 
 class PdfVlmParser(PdfBaseParser):
