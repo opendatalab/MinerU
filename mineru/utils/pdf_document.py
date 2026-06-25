@@ -12,7 +12,7 @@ from PIL import Image
 from ..types import BBox, PageInfo
 from .draw_bbox import draw_layout_bbox, draw_span_bbox
 from .pdf_classify import classify, get_sample_page_indices, get_text_quality_signal_pdfium
-from .pdf_image_tools import get_crop_img, image_to_bytes, images_bytes_to_pdf_bytes
+from .pdf_image_tools import get_crop_img, image_to_bytes, images_bytes_to_pdf_bytes, pdf_page_to_image
 from .pdf_text_tool import get_lines_from_chars, get_page_chars
 from .pdfium_guard import (
     close_pdfium_child,
@@ -87,14 +87,23 @@ class PDFDocument:
     #  Rendering
     # ------------------------------------------------------------------ #
 
-    def render_page(self, page_idx: int, *, scale: int = 2) -> Image.Image:
+    @staticmethod
+    def _scale_to_dpi(scale: float) -> int:
+        """将历史 scale 参数换算为 PDF 渲染工具使用的 DPI。"""
+        if scale <= 0:
+            raise ValueError("scale must be greater than 0")
+        return max(1, int(round(scale * 72)))
+
+    def render_page_with_actual_scale(self, page_idx: int, *, scale: int = 2) -> tuple[Image.Image, float]:
+        """渲染页面并返回真实缩放比例，供后续 bbox 裁剪复用。"""
+        dpi = self._scale_to_dpi(scale)
         with self._open_page(page_idx) as page:
-            with pdfium_guard():
-                bitmap = page.render(scale=scale)
-                try:
-                    return bitmap.to_pil().copy()
-                finally:
-                    close_pdfium_child(bitmap)
+            image_dict = pdf_page_to_image(page, dpi=dpi)
+            return image_dict["img_pil"], image_dict["scale"]
+
+    def render_page(self, page_idx: int, *, scale: int = 2) -> Image.Image:
+        pil_img, _ = self.render_page_with_actual_scale(page_idx, scale=scale)
+        return pil_img
 
     def render_pages(self, start: int = 0, end: int | None = None, *, scale: int = 2) -> list[Image.Image]:
         end = end if end is not None else self.page_count - 1
@@ -109,9 +118,15 @@ class PDFDocument:
         return await asyncio.gather(*tasks)
 
     def crop_image(self, bbox: BBox, page_idx: int, *, scale: int = 2) -> bytes:
-        pil_img = self.render_page(page_idx, scale=scale)
-        crop = get_crop_img(bbox, pil_img, scale=scale)
-        return image_to_bytes(crop, image_format="JPEG")
+        pil_img, actual_scale = self.render_page_with_actual_scale(page_idx, scale=scale)
+        crop = None
+        try:
+            crop = get_crop_img(bbox, pil_img, scale=actual_scale)
+            return image_to_bytes(crop, image_format="JPEG")
+        finally:
+            if crop is not None:
+                crop.close()
+            pil_img.close()
 
     # ------------------------------------------------------------------ #
     #  Text
@@ -188,7 +203,9 @@ class PDFDocument:
         return self._pdf_doc
 
     def _get_page(self, page_idx: int) -> pdfium.PdfPage:
-        return self._ensure_open()[page_idx]
+        pdf_doc = self._ensure_open()
+        with pdfium_guard():
+            return pdf_doc[page_idx]
 
     @contextmanager
     def _open_page(self, page_idx: int) -> Iterator[pdfium.PdfPage]:

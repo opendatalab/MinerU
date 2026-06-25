@@ -109,15 +109,18 @@ class ParseResult:
     def _extract_pdf_images(self) -> dict[str, bytes]:
         result: dict[str, bytes] = {}
         for page_info in self.pages:
-            pil_img = self._pdf_doc.render_page(page_info.page_idx)  # type: ignore[union-attr]
-            for block in page_info.preproc_blocks:
-                result.update(self._crop_block_spans(block, pil_img, 2))
-            for block in page_info.para_blocks:
-                result.update(self._crop_block_spans(block, pil_img, 2))
+            pil_img, actual_scale = self._pdf_doc.render_page_with_actual_scale(page_info.page_idx)  # type: ignore[union-attr]
+            try:
+                for block in page_info.preproc_blocks:
+                    result.update(self._crop_block_spans(block, pil_img, actual_scale))
+                for block in page_info.para_blocks:
+                    result.update(self._crop_block_spans(block, pil_img, actual_scale))
+            finally:
+                pil_img.close()
         return result
 
     @staticmethod
-    def _crop_block_spans(block: Any, pil_img: Any, scale: int) -> dict[str, bytes]:
+    def _crop_block_spans(block: Any, pil_img: Any, scale: float) -> dict[str, bytes]:
         from ..utils.pdf_image_tools import get_crop_img, image_to_bytes
 
         result: dict[str, bytes] = {}
