@@ -1,4 +1,5 @@
 from pathlib import Path
+import asyncio
 import inspect
 
 import pytest
@@ -10,6 +11,7 @@ import mineru.parser.api_client as api_client
 import mineru.parser.api_server as api_server
 from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job
 from mineru.parser import parse, parse_async
+from mineru.parser.base import ParseResult
 from mineru.parser.api_server import (
     _API_SERVER_BACKENDS,
     CreateJobRequest,
@@ -23,6 +25,7 @@ from mineru.parser.api_server import (
     create_app,
     main,
 )
+from mineru.types import Block, Line, PageInfo, Span
 
 runner = CliRunner()
 
@@ -276,6 +279,79 @@ def test_store_image_outputs_creates_downloadable_image_refs(tmp_path: Path) -> 
         ImageOutputRef(path="images/chart.png", file_id=refs[0].file_id, bytes=len(b"chart-bytes"))
     ]
     assert file_store.read_file_data(refs[0].file_id) == b"chart-bytes"
+
+
+@pytest.mark.parametrize(
+    ("output_format", "output_attr"),
+    [
+        ("markdown", "markdown"),
+        ("content_list", "content_list"),
+        ("structured_content", "structured_content"),
+    ],
+)
+def test_api_server_rendered_outputs_store_image_sidecars(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    output_format: str,
+    output_attr: str,
+) -> None:
+    img_bytes = b"rendered-image-bytes"
+    image_base64 = "data:image/png;base64,cmVuZGVyZWQtaW1hZ2UtYnl0ZXM="
+    span = Span(type="image", bbox=(0, 0, 10, 10), image_base64=image_base64)
+    line = Line(bbox=(0, 0, 10, 10), spans=[span])
+    block = Block(index=0, type="image", bbox=(0, 0, 10, 10), lines=[line])
+    parse_result = ParseResult(
+        pages=[
+            PageInfo(
+                page_idx=0,
+                page_size=(100, 100),
+                para_blocks=[block],
+                _backend="pipeline",
+            )
+        ]
+    )
+
+    async def fake_parse_async(*args, **kwargs) -> ParseResult:
+        return parse_result
+
+    monkeypatch.setattr("mineru.parser.parse_async", fake_parse_async)
+    file_store = FileStore(tmp_path / "api-files")
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "tier": "standard",
+            "output_formats": [output_format],
+        }
+    )
+    job_store = api_server.JobStore()
+    rec = job_store.create(request, file_store)
+
+    asyncio.run(
+        api_server._run_job(
+            rec,
+            request,
+            file_store,
+            server_backend="pipeline",
+            language="ch",
+            ocr_mode="auto",
+            table_enable=True,
+            formula_enable=True,
+            image_analysis=True,
+        )
+    )
+
+    output_files = rec.files[0].output_files
+    assert getattr(output_files, output_attr) is not None
+    assert output_files.images == [
+        ImageOutputRef(
+            path=output_files.images[0].path,
+            file_id=output_files.images[0].file_id,
+            bytes=len(img_bytes),
+        )
+    ]
+    assert file_store.read_file_data(output_files.images[0].file_id) == img_bytes
 
 
 def test_job_list_item_uses_file_count() -> None:

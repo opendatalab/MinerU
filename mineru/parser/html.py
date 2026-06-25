@@ -47,6 +47,13 @@ def _extract_text(element: Tag) -> str:
     return element.get_text(separator=" ", strip=True)
 
 
+def _find_image_element(element: Tag) -> Tag | None:
+    """查找 HTML 图片节点；当前元素本身是 img 时不能只搜索后代节点。"""
+    if element.name == "img":
+        return element
+    return element.find("img")
+
+
 def _assign_block_indexes(blocks: list[Block]) -> None:
     """递归补齐 HTML 解析产生的局部顺序号，保证 middle_json block 契约稳定。"""
     for index, block in enumerate(blocks):
@@ -61,7 +68,7 @@ def _line_with_spans(spans: list[Span]) -> Line:
 
 def _build_span(element: Tag) -> Span:
     content = _extract_text(element)
-    img = element.find("img")
+    img = _find_image_element(element)
     if img is not None:
         src: str = img.get("src", "") or ""
         if src.startswith("data:image"):

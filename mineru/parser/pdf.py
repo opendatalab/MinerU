@@ -192,10 +192,11 @@ class PdfBaseParser(DocumentParser):
         if retained_page_indices is None or not broken_page_indices:
             return
 
+        backend = next((page._backend for page in pages if page._backend), None)
         pages_by_index = {page.page_idx: page for page in pages}
         ordered_page_indices = sorted(set(pages_by_index) | set(broken_page_indices))
         pages[:] = [
-            pages_by_index.get(page_idx, PageInfo(page_idx=page_idx))
+            pages_by_index.get(page_idx, PageInfo(page_idx=page_idx, _backend=backend))
             for page_idx in ordered_page_indices
         ]
 

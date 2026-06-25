@@ -146,6 +146,7 @@ def save_parse_result(result: ParseResult, dest: Path, format: KitFormat) -> Non
         return
     if format == "middle_json":
         _write_utf8_text(dest, result.to_export_json())
+        _write_image_sidecars(FileBasedDataWriter(str(dest.parent)), result.images())
         return
     if format == "zip":
         tmp_dir = dest.parent / f".{dest.stem}"
@@ -168,6 +169,12 @@ def save_parse_result(result: ParseResult, dest: Path, format: KitFormat) -> Non
 
 def _write_utf8_text(path: Path, content: str) -> None:
     path.write_bytes(content.encode("utf-8", errors="replace"))
+
+
+def _write_image_sidecars(writer: FileBasedDataWriter, images: dict[str, bytes]) -> None:
+    """将 public middle_json 引用的图片 sidecar 写到输出目录，避免 image_path 悬空。"""
+    for image_path, image_bytes in images.items():
+        writer.write(image_path, image_bytes)
 
 
 def parse_result_payload(path: Path, dest: Path, format: KitFormat) -> dict[str, str]:

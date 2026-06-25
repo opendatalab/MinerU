@@ -906,6 +906,19 @@ _OUTPUT_FORMATS_LOCAL = {
     "zip",
 }
 
+_IMAGE_SIDECAR_FORMATS = frozenset({
+    "markdown",
+    "middle_json",
+    "content_list",
+    "structured_content",
+    "images",
+})
+
+
+def _needs_image_outputs(out_formats: set[OutputFormat] | set[str]) -> bool:
+    """判断请求的输出格式是否会暴露 image_path，从而需要返回图片 sidecar。"""
+    return bool(out_formats.intersection(_IMAGE_SIDECAR_FORMATS))
+
 
 @dataclass
 class _JobRecord:
@@ -1224,7 +1237,7 @@ async def _run_job(
                 output_files = OutputFiles()
                 image_output_refs = (
                     _store_image_outputs(file_store, result.images())
-                    if out_formats.intersection({"middle_json", "images"})
+                    if _needs_image_outputs(out_formats)
                     else None
                 )
                 if image_output_refs is not None:

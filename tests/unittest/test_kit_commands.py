@@ -334,6 +334,35 @@ def test_parse_single_file_markdown(monkeypatch: Any, tmp_path: Path) -> None:
     assert output.read_text(encoding="utf-8") == "# demo\n"
 
 
+def test_parse_single_file_middle_json_writes_image_sidecars(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "demo.pdf"
+    output = tmp_path / "out.json"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Result:
+        def to_export_json(self) -> str:
+            return '{"pages":[{"para_blocks":[{"lines":[{"spans":[{"image_path":"figure.png"}]}]}]}]}'
+
+        def images(self) -> dict[str, bytes]:
+            return {"figure.png": b"figure-bytes"}
+
+    monkeypatch.setattr(parse, "local_parse", lambda *args, **kwargs: _Result())
+
+    result = runner.invoke(
+        app,
+        ["parse", str(source), "-o", str(output), "--format", "middle_json"],
+    )
+
+    assert result.exit_code == 0
+    payload = output.read_text(encoding="utf-8")
+    assert '"image_path":"figure.png"' in payload
+    assert "image_base64" not in payload
+    assert (tmp_path / "figure.png").read_bytes() == b"figure-bytes"
+
+
 def test_parse_output_replaces_surrogate_chars(monkeypatch: Any, tmp_path: Path) -> None:
     source = tmp_path / "demo.pdf"
     output = tmp_path / "out.md"
