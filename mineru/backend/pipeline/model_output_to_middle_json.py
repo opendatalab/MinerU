@@ -1,7 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from typing import Any
 
-from ...data.data_reader_writer import DataWriter
 from ...types import Block, BlockType, ContentType, PageInfo, Span
 from ...utils.hash_utils import bytes_md5
 from ...utils.page_index import resolve_output_page_idx
@@ -20,7 +19,6 @@ def blocks_to_page_info(
     page_model_info: dict[str, Any],
     image_dict: dict[str, Any],
     page: Any,
-    image_writer: DataWriter | None,
     page_index: int,
     ocr_enable: bool = False,
 ) -> PageInfo:
@@ -41,7 +39,6 @@ def blocks_to_page_info(
         page_pil_img,
         page_img_md5,
         page_index,
-        image_writer,
         scale=scale,
     )
 
@@ -64,7 +61,6 @@ def append_batch_results_to_middle_json(
     batch_results: list[list[dict[str, Any]]],
     images_list: list[dict[str, Any]],
     pdf_doc: Any,
-    image_writer: DataWriter,
     page_start_index: int = 0,
     ocr_enable: bool = False,
     model_list: list[dict[str, Any]] | None = None,
@@ -86,7 +82,6 @@ def append_batch_results_to_middle_json(
         page_model_infos,
         images_list,
         pdf_doc,
-        image_writer,
         page_cvt_fn=blocks_to_page_info,
         page_start_index=page_start_index,
         page_index_map=page_index_map,

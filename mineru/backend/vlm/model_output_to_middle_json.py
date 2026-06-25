@@ -6,7 +6,6 @@ from typing import Any
 
 from mineru_vl_utils.structs import ExtractResult
 
-from ...data.data_reader_writer import DataWriter
 from ...types import PageInfo
 from ...utils.config_reader import get_table_enable
 from ...utils.hash_utils import bytes_md5
@@ -26,7 +25,6 @@ def blocks_to_page_info(
     page_blocks: ExtractResult,
     image_dict: dict[str, Any],
     page: Any,
-    image_writer: DataWriter | None,
     page_index: int,
 ) -> PageInfo:
     """将blocks转换为页面信息"""
@@ -72,7 +70,6 @@ def blocks_to_page_info(
         page_pil_img,
         page_img_md5,
         page_index,
-        image_writer,
         scale=scale,
     )
 

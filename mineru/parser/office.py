@@ -28,7 +28,7 @@ class OfficeBaseParser(DocumentParser, ABC):
 
         file_name = path.stem
         file_bytes = path.read_bytes()
-        middle_json, model_output = self._analyze_fn(file_bytes, image_writer=None)
+        middle_json, model_output = self._analyze_fn(file_bytes)
         return self._build_result(middle_json, file_name, model_output)
 
     def _build_result(

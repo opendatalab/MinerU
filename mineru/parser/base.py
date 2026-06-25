@@ -161,6 +161,11 @@ class ParseResult:
         _, images = self._ensure_export_cache()
         return images
 
+    def attach_export_images(self, images: dict[str, bytes]) -> None:
+        """绑定 API sidecar 下载到的图片字节，供后续 images/save 统一写出。"""
+        self._export_pages_cache = deepcopy(self.pages)
+        self._images_cache = dict(images)
+
     def export_pages(self) -> list[PageInfo]:
         """返回可导出的页面副本：清理 base64，并把内联图片替换为本地路径。"""
         export_pages, _ = self._ensure_export_cache()

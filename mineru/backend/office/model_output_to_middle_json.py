@@ -10,7 +10,7 @@ from ...utils.image_payload import image_path_from_data_uri
 from .office_magic_model import MagicModel
 
 
-def blocks_to_page_info(page_blocks: list[dict[str, Any]], image_writer: Any, page_index: int) -> PageInfo:
+def blocks_to_page_info(page_blocks: list[dict[str, Any]], page_index: int) -> PageInfo:
     """将blocks转换为页面信息"""
 
     magic_model = MagicModel(page_blocks)
@@ -118,13 +118,10 @@ def _link_index_entries_by_anchor(middle_json: list[PageInfo]) -> None:
                 text_block.anchor = anchor
 
 
-def result_to_middle_json(
-    model_output_blocks_list: list[list[dict[str, Any]]],
-    image_writer: object,
-) -> list[PageInfo]:
+def result_to_middle_json(model_output_blocks_list: list[list[dict[str, Any]]]) -> list[PageInfo]:
     middle_json: list[PageInfo] = []
     for index, page_blocks in enumerate(model_output_blocks_list):
-        page_info = blocks_to_page_info(page_blocks, image_writer, index)
+        page_info = blocks_to_page_info(page_blocks, index)
         middle_json.append(page_info)
 
     section_counters: dict[int, int] = defaultdict(int)

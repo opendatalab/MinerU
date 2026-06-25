@@ -7,7 +7,8 @@ from loguru import logger
 
 from ..types import BBox, Span
 from .image_payload import image_bytes_to_data_uri, image_path_from_key
-from .pdf_image_tools import get_crop_img, image_to_bytes
+from .pdf_image_tools import get_crop_img
+from .pdf_reader import image_to_bytes
 
 
 def cut_image_and_table(
@@ -15,7 +16,6 @@ def cut_image_and_table(
     page_pil_img: Any,
     page_img_md5: str,
     page_id: int,
-    image_writer: Any,
     scale: int = 2,
 ) -> Span:
 

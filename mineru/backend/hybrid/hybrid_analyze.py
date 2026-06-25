@@ -16,7 +16,6 @@ from mineru_vl_utils.structs import BlockType
 from PIL import Image
 from tqdm import tqdm
 
-from ...data.data_reader_writer import DataWriter
 from ...types import NOT_EXTRACT_TYPES, BBox, PageInfo
 from ...types import BlockType as MineruBlockType
 from ...utils.config_reader import get_device, get_processing_window_size
@@ -729,7 +728,6 @@ def _close_images(images_list: list[dict[str, Any]]) -> None:
 
 def doc_analyze(
     pdf_bytes: bytes,
-    image_writer: DataWriter | None,
     predictor: MinerUClient | None = None,
     backend: Literal[
         "http-client",
@@ -836,7 +834,6 @@ def doc_analyze(
                         window_model_list,
                         images_list,
                         pdf_doc,
-                        image_writer,
                         page_cvt_fn=blocks_to_page_info,
                         page_start_index=window_start,
                         page_index_map=page_index_map,
@@ -882,7 +879,6 @@ def doc_analyze(
 
 async def aio_doc_analyze(
     pdf_bytes: bytes,
-    image_writer: DataWriter | None,
     predictor: MinerUClient | None = None,
     backend: Literal[
         "http-client",
@@ -990,7 +986,6 @@ async def aio_doc_analyze(
                         window_model_list,
                         images_list,
                         pdf_doc,
-                        image_writer,
                         page_cvt_fn=blocks_to_page_info,
                         page_start_index=window_start,
                         page_index_map=page_index_map,

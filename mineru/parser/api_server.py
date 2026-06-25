@@ -845,6 +845,17 @@ class FileStore:
         app_state.file_store = self
 
 
+def _store_image_outputs(file_store: FileStore, images: dict[str, bytes]) -> list[ImageOutputRef]:
+    """将最终导出的图片字节写入 FileStore，并返回可下载的图片引用。"""
+    img_refs: list[ImageOutputRef] = []
+    for img_path, img_bytes in images.items():
+        sha = hashlib.sha256(img_bytes).hexdigest()
+        file_store.store_blob(img_bytes, sha256hex=sha)
+        img_fid = file_store.create_file_for_output(pathlib.Path(img_path).name, img_bytes, sha256hex=sha)
+        img_refs.append(ImageOutputRef(path=img_path, file_id=img_fid, bytes=len(img_bytes)))
+    return img_refs
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  DEPENDENCIES
 # ═══════════════════════════════════════════════════════════════════════
@@ -1211,6 +1222,13 @@ async def _run_job(
                 # collect outputs
                 out_formats = set(rec.output_formats)
                 output_files = OutputFiles()
+                image_output_refs = (
+                    _store_image_outputs(file_store, result.images())
+                    if out_formats.intersection({"middle_json", "images"})
+                    else None
+                )
+                if image_output_refs is not None:
+                    output_files.images = image_output_refs
 
                 for fmt in (
                     "markdown",
@@ -1247,13 +1265,7 @@ async def _run_job(
                         fid = file_store.create_file_for_output(f"{fr.name}.structured_content.json", cl2, sha256hex=sha)
                         output_files.structured_content = OutputFileRef(file_id=fid, bytes=len(cl2))
                     elif fmt == "images":
-                        img_refs: list[ImageOutputRef] = []
-                        for img_path, img_bytes in result.images().items():
-                            sha = hashlib.sha256(img_bytes).hexdigest()
-                            file_store.store_blob(img_bytes, sha256hex=sha)
-                            img_fid = file_store.create_file_for_output(pathlib.Path(img_path).name, img_bytes, sha256hex=sha)
-                            img_refs.append(ImageOutputRef(path=img_path, file_id=img_fid, bytes=len(img_bytes)))
-                        output_files.images = img_refs
+                        continue
 
                 # zip
                 if "zip" in out_formats:

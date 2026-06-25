@@ -12,7 +12,8 @@ from PIL import Image
 from ..types import BBox, PageInfo
 from .draw_bbox import draw_layout_bbox, draw_span_bbox
 from .pdf_classify import classify, get_sample_page_indices, get_text_quality_signal_pdfium
-from .pdf_image_tools import get_crop_img, image_to_bytes, images_bytes_to_pdf_bytes, pdf_page_to_image
+from .pdf_image_tools import get_crop_img, images_bytes_to_pdf_bytes, pdf_page_to_image
+from .pdf_reader import image_to_bytes
 from .pdf_text_tool import get_lines_from_chars, get_page_chars
 from .pdfium_guard import (
     close_pdfium_child,

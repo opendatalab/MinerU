@@ -295,9 +295,9 @@ def _process_output(
         _retained_page_indices=retained_page_indices,
         _broken_page_indices=broken_page_indices,
     )
-    image_writer = FileBasedDataWriter(local_image_dir)
+    final_writer = FileBasedDataWriter(local_image_dir)
     for img_path, img_bytes in export_result.images().items():
-        image_writer.write(img_path, img_bytes)
+        final_writer.write(img_path, img_bytes)
     public_render_pages: list[PageInfo] | None = None
 
     def get_public_render_pages() -> list[PageInfo]:
@@ -372,14 +372,12 @@ def _process_pipeline(
     """处理pipeline后端逻辑"""
     from mineru.backend.pipeline.pipeline_analyze import doc_analyze_streaming as pipeline_doc_analyze_streaming
 
-    image_writer_list = []
     md_writer_list = []
     local_output_info = []
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-        image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
-        image_writer_list.append(image_writer)
+        md_writer = FileBasedDataWriter(local_md_dir)
         md_writer_list.append(md_writer)
         local_output_info.append((pdf_file_name, local_image_dir, local_md_dir))
 
@@ -428,7 +426,6 @@ def _process_pipeline(
 
         pipeline_doc_analyze_streaming(
             pdf_bytes_list,
-            image_writer_list,
             p_lang_list,
             on_doc_ready,
             parse_method=parse_method,
@@ -470,11 +467,10 @@ async def _async_process_vlm(
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-        image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+        md_writer = FileBasedDataWriter(local_md_dir)
 
         middle_json, infer_result = await aio_vlm_doc_analyze(
             pdf_bytes,
-            image_writer=image_writer,
             backend=backend,
             server_url=server_url,
             page_index_map=page_index_map_list[idx] if page_index_map_list is not None else None,
@@ -531,11 +527,10 @@ def _process_vlm(
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-        image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+        md_writer = FileBasedDataWriter(local_md_dir)
 
         middle_json, infer_result = vlm_doc_analyze(
             pdf_bytes,
-            image_writer=image_writer,
             backend=backend,
             server_url=server_url,
             page_index_map=page_index_map_list[idx] if page_index_map_list is not None else None,
@@ -597,11 +592,10 @@ def _process_hybrid(
     for idx, (pdf_bytes, lang) in enumerate(zip(pdf_bytes_list, h_lang_list)):
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
-        image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+        md_writer = FileBasedDataWriter(local_md_dir)
 
         middle_json, infer_result, _vlm_ocr_enable = hybrid_doc_analyze(
             pdf_bytes,
-            image_writer=image_writer,
             backend=backend,
             parse_method=parse_method,
             language=lang,
@@ -669,11 +663,10 @@ async def _async_process_hybrid(
     for idx, (pdf_bytes, lang) in enumerate(zip(pdf_bytes_list, h_lang_list)):
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
-        image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+        md_writer = FileBasedDataWriter(local_md_dir)
 
         middle_json, infer_result, _vlm_ocr_enable = await aio_hybrid_doc_analyze(
             pdf_bytes,
-            image_writer=image_writer,
             backend=backend,
             parse_method=parse_method,
             language=lang,
@@ -728,7 +721,7 @@ def _process_office_doc(
             need_remove_index.append(i)
 
             local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, "office")
-            image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+            md_writer = FileBasedDataWriter(local_md_dir)
 
             if file_suffix in docx_suffixes:
                 office_analyze = office_docx_analyze
@@ -739,10 +732,7 @@ def _process_office_doc(
             else:
                 raise ValueError(f"Unsupported office suffix: {file_suffix}")
 
-            middle_json, infer_result = office_analyze(
-                file_bytes,
-                image_writer=image_writer,
-            )
+            middle_json, infer_result = office_analyze(file_bytes)
 
             f_draw_layout_bbox = False
             f_draw_span_bbox = False

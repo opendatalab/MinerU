@@ -68,11 +68,9 @@ def run_pipeline_parse(
     output_dir,
     parse_method,
 ):
-    image_writer_list = []
     output_info = []
     for pdf_file_name in pdf_file_names:
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-        image_writer_list.append(FileBasedDataWriter(local_image_dir))
         output_info.append((pdf_file_name, local_image_dir, local_md_dir))
 
     def on_doc_ready(doc_index, model_list, middle_json, ocr_enable):
@@ -88,7 +86,6 @@ def run_pipeline_parse(
 
     pipeline_doc_analyze_streaming(
         pdf_bytes_list,
-        image_writer_list,
         p_lang_list,
         on_doc_ready,
         parse_method=parse_method,

@@ -143,7 +143,6 @@ def _emit_zero_page_contexts(
 
 def doc_analyze_streaming(
     pdf_bytes_list: list[bytes],
-    image_writer_list: list[object],
     lang_list: list[str | None],
     on_doc_ready: Callable[..., object],
     parse_method: str = "auto",
@@ -152,15 +151,15 @@ def doc_analyze_streaming(
     client_side_output_generation: bool = False,
     page_index_map_list: list[list[int] | None] | None = None,
 ) -> None:
-    if not (len(pdf_bytes_list) == len(image_writer_list) == len(lang_list)):
-        raise ValueError("pdf_bytes_list, image_writer_list, and lang_list must have the same length")
+    if len(pdf_bytes_list) != len(lang_list):
+        raise ValueError("pdf_bytes_list and lang_list must have the same length")
     if page_index_map_list is not None and len(page_index_map_list) != len(pdf_bytes_list):
         raise ValueError("page_index_map_list must have the same length as pdf_bytes_list")
 
     doc_contexts = []
     try:
         total_pages = 0
-        for doc_index, (pdf_bytes, image_writer, lang) in enumerate(zip(pdf_bytes_list, image_writer_list, lang_list)):
+        for doc_index, (pdf_bytes, lang) in enumerate(zip(pdf_bytes_list, lang_list)):
             _ocr_enable = _get_ocr_enable(pdf_bytes, parse_method)
             pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
             try:
@@ -173,7 +172,6 @@ def doc_analyze_streaming(
                     "next_page_idx": 0,
                     "middle_json": [],
                     "model_list": [],
-                    "image_writer": image_writer,
                     "lang": lang,
                     "ocr_enable": _ocr_enable,
                     "page_index_map": page_index_map_list[doc_index] if page_index_map_list is not None else None,
@@ -278,7 +276,6 @@ def doc_analyze_streaming(
                             result_slice,
                             images_list,
                             context["pdf_doc"],
-                            context["image_writer"],
                             page_start_index=page_start,
                             ocr_enable=context["ocr_enable"],
                             model_list=context["model_list"],

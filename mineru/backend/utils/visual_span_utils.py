@@ -20,7 +20,6 @@ def cut_visual_spans_in_blocks(
     page_pil_img: Any,
     page_img_md5: str,
     page_index: int,
-    image_writer: Any,
     scale: float = 2,
 ) -> None:
     """在最终 block tree 中裁剪视觉 span，避免 regroup/deepcopy 后 image_path 写回旧对象。"""
@@ -32,6 +31,5 @@ def cut_visual_spans_in_blocks(
                     page_pil_img,
                     page_img_md5,
                     page_index,
-                    image_writer,
                     scale=scale,
                 )

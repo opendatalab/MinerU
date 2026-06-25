@@ -77,7 +77,6 @@ class PdfBaseParser(DocumentParser):
         prepared = self._prepare_input(path, page_range)
         middle_json = self._run_analysis(
             prepared.pdf_bytes,
-            image_writer=None,
             page_index_map=prepared.retained_page_indices,
         )
         self._insert_broken_pages(
@@ -101,7 +100,6 @@ class PdfBaseParser(DocumentParser):
         prepared = await asyncio.to_thread(self._prepare_input, path, page_range)
         middle_json = await self._arun_analysis(
             prepared.pdf_bytes,
-            image_writer=None,
             page_index_map=prepared.retained_page_indices,
         )
         self._insert_broken_pages(
@@ -121,7 +119,6 @@ class PdfBaseParser(DocumentParser):
     def _run_analysis(
         self,
         pdf_bytes: bytes,
-        image_writer: Any,
         page_index_map: list[int] | None = None,
     ) -> list[PageInfo]:
         """Execute backend-specific analysis. Returns (middle_json, model_output)."""
@@ -129,10 +126,9 @@ class PdfBaseParser(DocumentParser):
     async def _arun_analysis(
         self,
         pdf_bytes: bytes,
-        image_writer: Any,
         page_index_map: list[int] | None = None,
     ) -> list[PageInfo]:
-        return await asyncio.to_thread(self._run_analysis, pdf_bytes, image_writer, page_index_map)
+        return await asyncio.to_thread(self._run_analysis, pdf_bytes, page_index_map)
 
     def _prepare_input(self, path: Path, page_range: str = "") -> _PreparedPdfInput:
         from ..utils.guess_suffix_or_lang import guess_suffix_by_path
@@ -228,7 +224,6 @@ class PdfVlmParser(PdfBaseParser):
     def _run_analysis(
         self,
         pdf_bytes: bytes,
-        image_writer: Any,
         page_index_map: list[int] | None = None,
     ) -> list[PageInfo]:
         from ..backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
@@ -239,7 +234,6 @@ class PdfVlmParser(PdfBaseParser):
 
         return vlm_doc_analyze(
             pdf_bytes,
-            image_writer=image_writer,
             backend=backend,
             server_url=self.server_url,
             image_analysis=self.image_analysis,
@@ -249,7 +243,6 @@ class PdfVlmParser(PdfBaseParser):
     async def _arun_analysis(
         self,
         pdf_bytes: bytes,
-        image_writer: Any,
         page_index_map: list[int] | None = None,
     ) -> list[PageInfo]:
         from ..backend.vlm.vlm_analyze import aio_doc_analyze as vlm_aio_doc_analyze
@@ -260,7 +253,6 @@ class PdfVlmParser(PdfBaseParser):
 
         middle_json, _ = await vlm_aio_doc_analyze(
             pdf_bytes,
-            image_writer=image_writer,
             backend=backend,
             server_url=self.server_url,
             image_analysis=self.image_analysis,
@@ -302,7 +294,6 @@ class PdfPipelineParser(PdfBaseParser):
 
         doc_analyze_streaming(
             pdf_bytes_list,
-            [None] * len(paths),
             [self.lang] * len(paths),
             on_doc_ready,
             parse_method=self.method,
@@ -339,7 +330,6 @@ class PdfPipelineParser(PdfBaseParser):
     def _run_analysis(
         self,
         pdf_bytes: bytes,
-        image_writer: Any,
         page_index_map: list[int] | None = None,
     ) -> list[PageInfo]:
         from ..backend.pipeline.pipeline_analyze import doc_analyze_streaming
@@ -351,7 +341,6 @@ class PdfPipelineParser(PdfBaseParser):
 
         doc_analyze_streaming(
             [pdf_bytes],
-            [image_writer],
             [self.lang],
             on_doc_ready,
             parse_method=self.method,
@@ -380,7 +369,6 @@ class PdfHybridParser(PdfBaseParser):
     def _run_analysis(
         self,
         pdf_bytes: bytes,
-        image_writer: Any,
         page_index_map: list[int] | None = None,
     ) -> list[PageInfo]:
         from ..backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
@@ -392,7 +380,6 @@ class PdfHybridParser(PdfBaseParser):
 
         middle_json, model_list, _vlm_ocr_enable = hybrid_doc_analyze(
             pdf_bytes,
-            image_writer=image_writer,
             backend=backend,
             parse_method=self.method,
             language=self.lang,
@@ -407,7 +394,6 @@ class PdfHybridParser(PdfBaseParser):
     async def _arun_analysis(
         self,
         pdf_bytes: bytes,
-        image_writer: Any,
         page_index_map: list[int] | None = None,
     ) -> list[PageInfo]:
         from ..backend.hybrid.hybrid_analyze import aio_doc_analyze as hybrid_aio_doc_analyze
@@ -419,7 +405,6 @@ class PdfHybridParser(PdfBaseParser):
 
         middle_json, model_list, _vlm_ocr_enable = await hybrid_aio_doc_analyze(
             pdf_bytes,
-            image_writer=image_writer,
             backend=backend,
             parse_method=self.method,
             language=self.lang,
@@ -440,7 +425,6 @@ class PdfFlashParser(PdfBaseParser):
     def _run_analysis(
         self,
         pdf_bytes: bytes,
-        image_writer: Any,
         page_index_map: list[int] | None = None,
     ) -> list[PageInfo]:
         from ..backend.flash.pdf_extractor import extract_pages_text

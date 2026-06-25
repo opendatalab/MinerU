@@ -6,13 +6,17 @@ from click.testing import CliRunner
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+import mineru.parser.api_client as api_client
+import mineru.parser.api_server as api_server
 from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job
 from mineru.parser import parse, parse_async
 from mineru.parser.api_server import (
     _API_SERVER_BACKENDS,
     CreateJobRequest,
+    FileStore,
     FileParseInfo,
     HealthResponse,
+    ImageOutputRef,
     JobListItem,
     OutputFileRef,
     OutputFiles,
@@ -30,7 +34,7 @@ def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> No
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
     payload = parser._build_payload(pdf, "1,3~5")
 
-    assert payload["output_formats"] == ["middle_json"]
+    assert payload["output_formats"] == ["middle_json", "images"]
     assert payload["files"] == [
         {"source": {"type": "local", "path": str(pdf)}, "page_range": "1,3~5"}
     ]
@@ -52,6 +56,34 @@ def test_api_client_uses_json_format_for_staging_compat() -> None:
     parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="pro")
 
     assert parser._output_formats() == ["json"]
+
+
+def test_api_client_downloads_image_sidecars_and_preserves_pdf_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+    middle_json = {
+        "schema_version": "1.0.0",
+        "_pdf_retained_page_indices": [0, 2],
+        "_pdf_broken_page_indices": [1],
+        "pages": [{"page_idx": 0, "page_size": [100, 200]}],
+    }
+    image_ref = {"path": "images/chart.png", "file_id": "file-image", "bytes": 11}
+
+    monkeypatch.setattr(api_client, "_download_json", lambda _parser, _outputs: middle_json)
+    monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: b"chart-bytes" if ref is image_ref else b"")
+
+    result = _parse_result_from_job(
+        {
+            "job_id": "job_1",
+            "status": "completed",
+            "files": [{"output_files": {"middle_json": {"file_id": "file-middle", "bytes": 10}, "images": [image_ref]}}],
+        },
+        "demo.pdf",
+        parser,
+    )
+
+    assert result._retained_page_indices == [0, 2]
+    assert result._broken_page_indices == [1]
+    assert result.images() == {"images/chart.png": b"chart-bytes"}
 
 
 def test_api_client_omits_tier_when_unspecified(tmp_path: Path) -> None:
@@ -232,6 +264,18 @@ def test_output_files_expose_new_names_without_inline_content() -> None:
         OutputFileRef.model_validate(
             {"file_id": "file-1", "bytes": 12, "content": "inline"}
         )
+
+
+def test_store_image_outputs_creates_downloadable_image_refs(tmp_path: Path) -> None:
+    file_store = FileStore(tmp_path / "api-files")
+
+    assert hasattr(api_server, "_store_image_outputs")
+    refs = api_server._store_image_outputs(file_store, {"images/chart.png": b"chart-bytes"})
+
+    assert refs == [
+        ImageOutputRef(path="images/chart.png", file_id=refs[0].file_id, bytes=len(b"chart-bytes"))
+    ]
+    assert file_store.read_file_data(refs[0].file_id) == b"chart-bytes"
 
 
 def test_job_list_item_uses_file_count() -> None:

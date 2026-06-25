@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from ...data.data_reader_writer import DataWriter
 from ...types import Block, BlockType, PageInfo
 from ...utils.config_reader import get_table_enable
 from ...utils.hash_utils import bytes_md5
@@ -43,7 +42,6 @@ def blocks_to_page_info(
     page_model_list: list[dict[str, Any]],
     image_dict: dict[str, Any],
     page: Any,
-    image_writer: DataWriter | None,
     page_index: int,
     _ocr_enable: bool,
     _vlm_ocr_enable: bool,
@@ -106,7 +104,6 @@ def blocks_to_page_info(
         page_pil_img,
         page_img_md5,
         page_index,
-        image_writer,
         scale=scale,
     )
 

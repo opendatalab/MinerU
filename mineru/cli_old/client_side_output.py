@@ -81,7 +81,11 @@ def regenerate_client_side_outputs(
         structured_content_path,
         render_structured_content(pages, image_dir),
     )
-    output_middle_json = ParseResult(pages=pages).to_dict()
+    output_middle_json = ParseResult(
+        pages=pages,
+        _retained_page_indices=result._retained_page_indices,
+        _broken_page_indices=result._broken_page_indices,
+    ).to_dict()
     output_middle_json["_backend"] = normalized_backend
     output_middle_json["_version_name"] = __version__
     _write_json(middle_json_path, output_middle_json)

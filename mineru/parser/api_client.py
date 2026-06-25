@@ -104,7 +104,7 @@ class MinerUApiParser(DocumentParser):
     def _output_formats(self) -> list[str]:
         if "staging" in self._base:
             return ["json"]
-        return ["middle_json"]
+        return ["middle_json", "images"]
 
     # ── HTTP helpers ─────────────────────────────────────────────────
 
@@ -306,7 +306,11 @@ def _parse_result_from_job(job: dict[str, Any], file_name: str, parser: MinerUAp
         outputs = files[0]["output_files"]
 
     mid_json = _download_json(parser, outputs)
-    return ParseResult(pages=_pages_from_middle_json(mid_json))
+    result = ParseResult.from_dict(mid_json)
+    images = _download_image_sidecars(parser, outputs)
+    if images or "images" in outputs:
+        result.attach_export_images(images)
+    return result
 
 
 async def _async_parse_result_from_job(job: dict[str, Any], file_name: str, parser: MinerUApiParser) -> ParseResult:
@@ -317,7 +321,43 @@ async def _async_parse_result_from_job(job: dict[str, Any], file_name: str, pars
         outputs = files[0]["output_files"]
 
     mid_json = await _async_download_json(parser, outputs)
-    return ParseResult(pages=_pages_from_middle_json(mid_json))
+    result = ParseResult.from_dict(mid_json)
+    images = await _async_download_image_sidecars(parser, outputs)
+    if images or "images" in outputs:
+        result.attach_export_images(images)
+    return result
+
+
+def _download_image_sidecars(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, bytes]:
+    """下载 API 返回的图片 sidecar，并按 middle_json 中的 image_path 建立字节映射。"""
+    images: dict[str, bytes] = {}
+    image_refs = outputs.get("images")
+    if not isinstance(image_refs, list):
+        return images
+    for ref in image_refs:
+        if not isinstance(ref, dict):
+            continue
+        img_path = ref.get("path")
+        if not isinstance(img_path, str) or not img_path:
+            continue
+        images[img_path] = _download_bytes(parser, ref)
+    return images
+
+
+async def _async_download_image_sidecars(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, bytes]:
+    """异步下载 API 返回的图片 sidecar，并按 image_path 建立字节映射。"""
+    images: dict[str, bytes] = {}
+    image_refs = outputs.get("images")
+    if not isinstance(image_refs, list):
+        return images
+    for ref in image_refs:
+        if not isinstance(ref, dict):
+            continue
+        img_path = ref.get("path")
+        if not isinstance(img_path, str) or not img_path:
+            continue
+        images[img_path] = await _async_download_bytes(parser, ref)
+    return images
 
 
 def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any]:

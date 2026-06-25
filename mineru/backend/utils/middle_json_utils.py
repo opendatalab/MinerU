@@ -10,7 +10,6 @@ from __future__ import annotations
 import copy
 from typing import Any, Callable, Iterator, TypeVar, Union
 
-from ...data.data_reader_writer import DataWriter
 from ...types import Block, PageInfo, Span
 from ...utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from ...utils.page_index import resolve_output_page_idx
@@ -25,12 +24,11 @@ def append_pages(
     model_list: list[T],
     images_list: list[dict[str, Any]],
     pdf_doc: Any,
-    image_writer: DataWriter | None,
     *,
     page_cvt_fn: Union[
-        Callable[[T, dict[str, Any], Any, DataWriter | None, int], PageInfo],
-        Callable[[T, dict[str, Any], Any, DataWriter | None, int, bool], PageInfo],
-        Callable[[T, dict[str, Any], Any, DataWriter | None, int, bool, bool], PageInfo],
+        Callable[[T, dict[str, Any], Any, int], PageInfo],
+        Callable[[T, dict[str, Any], Any, int, bool], PageInfo],
+        Callable[[T, dict[str, Any], Any, int, bool, bool], PageInfo],
     ],
     page_start_index: int = 0,
     page_index_map: list[int] | None = None,
@@ -51,7 +49,7 @@ def append_pages(
         try:
             with pdfium_guard():
                 page = pdf_doc[physical_page_idx]
-            page_info = page_cvt_fn(copy.deepcopy(page_data), image_dict, page, image_writer, output_page_idx, **kwargs)
+            page_info = page_cvt_fn(copy.deepcopy(page_data), image_dict, page, output_page_idx, **kwargs)
             if page_info is None:
                 with pdfium_guard():
                     page_w, page_h = map(int, page.get_size())
