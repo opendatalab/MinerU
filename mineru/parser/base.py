@@ -61,13 +61,18 @@ class ParseResult:
         if not isinstance(raw_pages, list):
             raise ValueError("ParseResult pages must be a list.")
 
+        root_backend = d.get("_backend")
+        if not isinstance(root_backend, str):
+            root_backend = None
         pages: list[PageInfo] = []
         for raw_page in raw_pages:
             if not isinstance(raw_page, dict):
                 raise ValueError("ParseResult page entries must be dicts.")
             page = PageInfo.from_dict(raw_page)
             backend = raw_page.get("_backend")
-            if isinstance(backend, str):
+            if not isinstance(backend, str):
+                backend = root_backend
+            if backend is not None:
                 page._backend = backend
             pages.append(page)
         retained_page_indices = _parse_optional_int_list(d.get(_PDF_RETAINED_PAGE_INDICES_KEY))

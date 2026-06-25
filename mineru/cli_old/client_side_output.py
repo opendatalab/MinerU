@@ -7,6 +7,7 @@ from typing import Any
 
 from mineru.parser.base import ParseResult
 from mineru.render import render_content_list, render_markdown, render_structured_content
+from mineru.types import PageInfo
 from mineru.utils.title_level_postprocess import finalize_client_side_pages
 from mineru.version import __version__
 
@@ -34,6 +35,12 @@ def _normalize_client_side_backend(backend: str) -> str:
     raise ValueError(f"Unsupported middle json backend for client-side output generation: {backend}")
 
 
+def _stamp_client_side_backend(pages: list[PageInfo], backend: str) -> None:
+    """按客户端入口的显式后端标记每页，确保后续渲染分发不依赖旧文件残留状态。"""
+    for page in pages:
+        page._backend = backend
+
+
 def regenerate_client_side_outputs(
     parse_dir: str | Path,
     doc_stem: str,
@@ -55,6 +62,7 @@ def regenerate_client_side_outputs(
     normalized_backend = _normalize_client_side_backend(backend)
     result = ParseResult.from_dict(middle_json)
     pages = result.pages
+    _stamp_client_side_backend(pages, normalized_backend)
 
     if normalized_backend in PDF_BACKENDS:
         finalize_client_side_pages(pages, normalized_backend)
