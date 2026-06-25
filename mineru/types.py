@@ -535,6 +535,21 @@ class Block(_DocElement):
         self._merge_prev = _initvar_default(merge_prev, False)
         self._is_numbered_style = _initvar_default(is_numbered_style, False)
 
+    def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
+        """仅在 staged middle_json 需要时输出 merge_prev 合并提示。"""
+        result = super().to_dict(skip_defaults=skip_defaults)
+        if self.merge_prev or not skip_defaults:
+            result["merge_prev"] = self.merge_prev
+        return result
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Block:
+        """读取 staged middle_json 中的 merge_prev 合并提示。"""
+        block = _DocElement.from_dict.__func__(cls, d)
+        if "merge_prev" in d:
+            block.merge_prev = bool(d.get("merge_prev", False))
+        return block
+
     @property
     def angle(self) -> int | None:
         """转换阶段读取的原始旋转角，默认不作为 middle_json block 字段输出。"""
