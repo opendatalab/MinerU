@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..render import render_content_list, render_content_list_v2, render_markdown
+from ..render import render_content_list, render_markdown, render_structured_content
 from ..schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
 from ..types import PageInfo
 
@@ -74,8 +74,8 @@ class ParseResult:
     def content_list(self) -> list[dict[str, Any]]:
         return render_content_list(self.pages)
 
-    def content_list_v2(self) -> list[dict[str, Any]]:
-        return render_content_list_v2(self.pages)
+    def structured_content(self) -> list[list[dict[str, Any]]]:
+        return render_structured_content(self.pages)
 
     def save(self, writer: Any) -> None:
         writer.write_string("markdown.md", self.markdown())
@@ -87,7 +87,7 @@ class ParseResult:
         )
         writer.write_string(
             "structured_content.json",
-            json.dumps(self.content_list_v2(), ensure_ascii=False, indent=1),
+            json.dumps(self.structured_content(), ensure_ascii=False, indent=1),
         )
 
         if self._model_output is not None:

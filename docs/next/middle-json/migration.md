@@ -100,12 +100,12 @@
 
 1. render facade 接受 envelope 或 pages + meta。
 2. 为 markdown 增加可选 Agent marker。
-3. 明确 Content List v2 schema。
-4. 把 backend-specific content_list_v2 逐步收敛到 type-specific helper。
+3. 明确 Structured Content schema。
+4. 把 Office-specific structured_content 逐步收敛到 type-specific helper。
 
 验收:
 
-- Markdown / Content List / Content List v2 均可从 canonical envelope 生成。
+- Markdown / Content List / Structured Content 均可从 canonical envelope 生成。
 - renderer 不依赖 `pdf_info`。
 - backend-specific dispatch 数量下降。
 

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from mineru.parser.base import ParseResult
-from mineru.render import render_content_list, render_content_list_v2, render_markdown
+from mineru.render import render_content_list, render_markdown, render_structured_content
 from mineru.utils.title_level_postprocess import finalize_client_side_pages
 from mineru.version import __version__
 
@@ -44,7 +44,7 @@ def regenerate_client_side_outputs(
     middle_json_path = parse_dir / f"{doc_stem}_middle.json"
     markdown_path = parse_dir / f"{doc_stem}.md"
     content_list_path = parse_dir / f"{doc_stem}_content_list.json"
-    content_list_v2_path = parse_dir / f"{doc_stem}_content_list_v2.json"
+    structured_content_path = parse_dir / f"{doc_stem}_structured_content.json"
 
     if not middle_json_path.exists():
         raise FileNotFoundError(f"Missing middle json file: {middle_json_path}")
@@ -70,8 +70,8 @@ def regenerate_client_side_outputs(
         render_content_list(pages, image_dir),
     )
     _write_json(
-        content_list_v2_path,
-        render_content_list_v2(pages, image_dir),
+        structured_content_path,
+        render_structured_content(pages, image_dir),
     )
     output_middle_json = ParseResult(pages=pages).to_dict()
     output_middle_json["_backend"] = normalized_backend
@@ -82,5 +82,5 @@ def regenerate_client_side_outputs(
         middle_json_path,
         markdown_path,
         content_list_path,
-        content_list_v2_path,
+        structured_content_path,
     )

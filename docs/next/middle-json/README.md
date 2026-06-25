@@ -54,7 +54,7 @@ Middle JSON 下一版要达到以下目标:
 | Schema | 稳定 dataclass 字段和 envelope。 | `current-standard.md`、`envelope.md` |
 | Normalization | 补齐 backend 差异。 | `backend-gaps.md` |
 | Agent-native | 引用、locator。 | `agent-gaps.md` |
-| Structured Content | 盘点当前 content_list_v2，作为新 schema 起点。 | `structured-content-current.md` |
+| Structured Content | 盘点当前 structured_content，作为新 schema 起点。 | `structured-content-current.md` |
 | Structured Content Schema | 定义 NEXT 版目标 schema 草案。 | `structured-content-schema.md` |
 | Rendering | 统一 Markdown / Content List / Structured Content 消费。 | `rendering.md` |
 | Migration | 分阶段落地。 | `migration.md` |

@@ -10,16 +10,16 @@
 当前已有统一入口:
 
 ```python
-from mineru.render import render_markdown, render_content_list, render_content_list_v2
+from mineru.render import render_markdown, render_content_list, render_structured_content
 ```
 
 `ParseResult` 也通过这些入口生成输出:
 
 - `ParseResult.markdown()`
 - `ParseResult.content_list()`
-- `ParseResult.content_list_v2()`
+- `ParseResult.structured_content()`
 
-`content_list_v2` 是当前代码函数名；NEXT 版公开格式名定为 Structured Content，命名决策见 [ADR-0001](../decisions/0001-json-output-formats.md)。
+`structured_content` 是当前代码和 NEXT 版公开格式名，命名决策见 [ADR-0001](../decisions/0001-json-output-formats.md)。
 
 这说明底稿中“三套 union_make 完全割裂”的问题已经部分解决。
 
@@ -31,7 +31,7 @@ from mineru.render import render_markdown, render_content_list, render_content_l
 |------|----------|
 | Markdown | 有统一 facade；Office 仍走 office-specific markdown。 |
 | Content List v1 | 有统一 facade；Office 仍走 office-specific converter。 |
-| Content List v2 | Pipeline / VLM / Office 仍分别调用不同实现。 |
+| Structured Content | PDF 后端共用 `render/structured_content.py`；Office 仍走 office-specific converter。 |
 
 此外，render 当前通过 `PageInfo._backend` 判断 backend。这是临时实现，不应成为长期 schema。
 
@@ -101,22 +101,22 @@ backend = envelope["_meta"]["backend"]
 4. validator 提醒 `_backend` 是 legacy/internal。
 5. backend-specific 逻辑收敛后，render 不再需要 backend 判断。
 
-## Content List v2 收敛
+## Structured Content 收敛
 
 P0:
 
-- 明确 Content List v2 的目标 schema。
-- 确保所有 backend 输出都能生成 v2。
-- 保留当前 backend dispatch，先补 validator。
+- 明确 Structured Content 的目标 schema。
+- 确保所有 backend 输出都能生成 structured_content。
+- 保留当前 Office dispatch，先补 validator。
 
 P1:
 
-- 抽出通用 block-to-v2 映射。
-- 将 pipeline/vlm/office 特殊逻辑变成 type-specific helper，而不是 backend-specific module。
+- PDF 已抽出通用 block-to-structured-content 映射。
+- 将 Office 特殊逻辑逐步变成 type-specific helper，而不是 backend-specific module。
 
 P2:
 
-- 删除 backend-specific v2 converter。
+- 删除 backend-specific structured_content converter。
 - render 只依赖 block type，不依赖 backend。
 
 ## Agent Marker

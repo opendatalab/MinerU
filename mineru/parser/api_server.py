@@ -1241,7 +1241,7 @@ async def _run_job(
                         fid = file_store.create_file_for_output(f"{fr.name}.content_list.json", cl, sha256hex=sha)
                         output_files.content_list = OutputFileRef(file_id=fid, bytes=len(cl))
                     elif fmt == "structured_content":
-                        cl2 = json.dumps(result.content_list_v2(), ensure_ascii=False).encode("utf-8")
+                        cl2 = json.dumps(result.structured_content(), ensure_ascii=False).encode("utf-8")
                         sha = hashlib.sha256(cl2).hexdigest()
                         file_store.store_blob(cl2, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.structured_content.json", cl2, sha256hex=sha)

@@ -5,7 +5,7 @@ import pytest
 
 from mineru.parser.base import ParseResult
 from mineru.schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
-from mineru.types import Block, Line, PageInfo, Span
+from mineru.types import Block, ContentType, Line, PageInfo, Span
 
 
 def test_parse_result_does_not_expose_backend_version_or_file_name() -> None:
@@ -126,3 +126,48 @@ def test_parse_result_from_json_restores_pages() -> None:
     restored = ParseResult.from_json(json.dumps(data))
 
     assert restored.to_dict() == ParseResult.from_dict(data).to_dict()
+
+
+def test_parse_result_structured_content_method_and_save_name() -> None:
+    page = PageInfo(
+        page_idx=0,
+        page_size=(100, 100),
+        para_blocks=[
+            Block(
+                index=0,
+                type="text",
+                bbox=(0.0, 0.0, 10.0, 10.0),
+                lines=[
+                    Line(
+                        bbox=(0.0, 0.0, 10.0, 10.0),
+                        spans=[
+                            Span(
+                                type=ContentType.TEXT,
+                                bbox=(0.0, 0.0, 10.0, 10.0),
+                                content="hello",
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+        _backend="pipeline",
+    )
+    result = ParseResult(pages=[page])
+    writes: dict[str, str] = {}
+
+    class MemoryWriter:
+        def write_string(self, path: str, content: str) -> None:
+            """记录 ParseResult.save 写出的文本产物，避免测试依赖真实文件系统。"""
+            writes[path] = content
+
+        def write(self, path: str, content: bytes) -> None:
+            """记录图片产物写出接口，当前用例不会实际产生图片。"""
+            writes[path] = content.decode("utf-8")
+
+    structured_content = result.structured_content()
+    result.save(MemoryWriter())
+
+    assert structured_content[0][0]["content"]["paragraph_content"][0]["content"] == "hello"
+    assert "structured_content.json" in writes
+    assert "content_list" + "_v2.json" not in writes

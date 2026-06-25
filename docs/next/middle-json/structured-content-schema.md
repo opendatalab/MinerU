@@ -3,7 +3,7 @@
 状态: Draft
 读者: Structured Content 实现者、API/SDK/CLI 开发者、Agent 能力开发者
 范围: NEXT 版 `structured_content` / `structured-content` 的目标 schema 草案
-非目标: 定义 Middle JSON；定义 Markdown/HTML 输出；覆盖所有历史 `content_list_v2` 细节
+非目标: 定义 Middle JSON；定义 Markdown/HTML 输出；覆盖所有历史 v2 细节
 
 ## 1. 定位
 
@@ -16,7 +16,7 @@ Structured Content 是从 Middle JSON render 得到的结构化内容 JSON。它
 1. 比 Middle JSON 更适合直接消费。
 2. 比 Markdown 更结构化。
 3. 保留页、item、span、bbox 和 locator，支持 Agent 引用。
-4. 以当前 `content_list_v2` 为起点，但不照搬其内部字段泄漏和 backend 差异。
+4. 以当前 `structured_content` 为起点，但不照搬其内部字段泄漏和 backend 差异。
 
 ## 2. 顶层结构
 
@@ -109,7 +109,7 @@ Structured Content 是从 Middle JSON render 得到的结构化内容 JSON。它
 
 说明:
 
-- 当前 `content_list_v2` 的外层数组下标应显式提升为 `page_idx`。
+- 当前 `structured_content` 的外层数组下标应显式提升为 `page_idx`。
 - Office/HTML 如果没有真实 page size，应输出 `page_size:null`，不要伪造尺寸。
 
 ## 4. Item 通用结构
@@ -571,7 +571,7 @@ p{page_idx}_i{item_idx}
 
 ## 9. Normalization Rules
 
-从当前 `content_list_v2` 到 Structured Content 的第一版 normalization:
+从当前 `structured_content` 到 Structured Content 的第一版 normalization:
 
 1. 裸二维数组包装为 envelope。
 2. 外层数组下标转成 `page_idx` 和 `page_number`。
@@ -597,7 +597,7 @@ P0 validator 应检查:
 - item `locator.page_idx` 与所在 page 一致。
 - bbox 只能是 `null` 或 0-1000 的四元整数数组。
 - span 不包含 `_` 开头字段。
-- `json`、`content_list_v2`、`content-list-v2` 不作为公开格式名出现。
+- `json` 和历史 v2 格式名不作为公开格式名出现。
 
 ## 11. Open Design Points
 

@@ -44,7 +44,7 @@ class ParseResult:
 
     def markdown(self, *, add_markers: bool = False) -> str: ...
     def content_list(self) -> list[dict]: ...
-    def content_list_v2(self) -> list[dict]: ...
+    def structured_content(self) -> list[list[dict]]: ...
     def images(self) -> dict[str, bytes]: ...
     def save(self, writer) -> None: ...
 ```
@@ -59,7 +59,7 @@ class ParseResult:
 | `from_json()` | TODO | 必须实现。 |
 | `markdown()` | 已有 | 保持，参数名稳定。 |
 | `content_list()` | 已有 | 保持。 |
-| `content_list_v2()` | 已有 | 保持。 |
+| `structured_content()` | 已有 | 保持。 |
 | `images()` | 已有 | 保持，返回 path -> bytes。 |
 | `save()` | 已有 | 需要稳定输出文件命名。 |
 
@@ -126,7 +126,7 @@ writer.write(path: str, data: bytes) -> None
 | `{prefix}.md` | Markdown。 |
 | `{prefix}_middle.json` | `to_json()`。 |
 | `{prefix}_content_list.json` | content list。 |
-| `{prefix}_content_list_v2.json` | content list v2。 |
+| `{prefix}_structured_content.json` | structured content。 |
 | `{prefix}_model.json` | 原始模型输出，可选。 |
 | image paths | 图片 bytes。 |
 

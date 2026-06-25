@@ -20,7 +20,7 @@
 | typed schema | 已解决 | `PageInfo/Block/Line/Span` 已是事实标准。 | 文档化并增加 validation。 |
 | 顶层 envelope | 未解决 | `pdf_info/_backend`、`pages`、`ParseResult.pages` 并存。 | 定义 canonical envelope。 |
 | bbox 缺失 | 部分解决 | Office/HTML 使用 `EMPTY_BBOX`，Agent 定位不足。 | 标准化 unknown bbox 语义和补齐策略。 |
-| page_size 缺失 | 部分解决 | Office/HTML 可能为空，content_list_v2 bbox 归一化受影响。 | Office/HTML 明确 page_size 策略。 |
+| page_size 缺失 | 部分解决 | Office/HTML 可能为空，structured_content bbox 归一化受影响。 | Office/HTML 明确 page_size 策略。 |
 | index 稳定性 | 部分解决 | reading order 可用，但 Agent locator 不够稳定。 | normalization 阶段重编号。 |
 | `preproc_blocks` | 部分解决 | PDF backend 有，Office/HTML 主要直接产出 `para_blocks`。 | 明确 public schema 是否保留。 |
 | render 统一 | 部分解决 | 有统一 facade，内部仍按 backend dispatch。 | 收敛 backend-specific content list。 |
@@ -35,7 +35,7 @@
 - 通常有 `page_size` 和 bbox。
 - 有 `preproc_blocks`，并经过 para split 生成 `para_blocks`。
 - `doc_title` / `paragraph_title` 等类型可能经后处理转为 `title`。
-- content_list_v2 仍有 pipeline-specific 实现。
+- structured_content 的 PDF 后端实现已收敛到 `render/structured_content.py`；Office 仍保留 office-specific converter。
 
 已解决:
 
@@ -46,7 +46,7 @@
 仍需工作:
 
 1. 明确 `preproc_blocks` 是否写入 public envelope。
-2. 将 pipeline-specific content_list_v2 逻辑逐步迁入通用 render。
+2. 继续确认 PDF 通用 structured_content converter 与 Office converter 的字段差异。
 3. 确认 block index 在 `para_blocks + discarded_blocks + children` 中是否满足全页稳定排序。
 4. 清理或规范 `doc_title` / `paragraph_title` / `vertical_text` 等类型进入 render 前的归一化规则。
 
@@ -77,7 +77,7 @@
 1. 明确 VLM block 粒度与 Pipeline OCR 粒度的兼容语义。
 2. 统一 VLM-specific type 在 content_list / Agent citation 中的表达。
 3. 确认归一化坐标绝不进入 public Middle JSON。
-4. 将 VLM content_list_v2 特殊逻辑逐步归并。
+4. 确认 VLM/Hybrid 与 Pipeline 在统一 structured_content converter 下的字段一致性。
 
 验收:
 
@@ -175,7 +175,7 @@ P0:
 
 P1:
 
-1. 收敛 content_list_v2 backend-specific 分支。
+1. 收敛 Office/HTML 与 PDF structured_content 字段差异。
 2. 统一 Office/HTML unknown bbox 语义。
 3. 公开或隐藏 Office style/hyperlink 内部字段。
 4. 将 `_backend` 从 `PageInfo` 迁移到 `_meta.backend`。

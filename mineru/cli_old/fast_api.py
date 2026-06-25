@@ -561,14 +561,14 @@ def create_result_zip(
                         ),
                     )
 
-                path = os.path.join(parse_dir, f"{pdf_name}_content_list_v2.json")
+                path = os.path.join(parse_dir, f"{pdf_name}_structured_content.json")
                 if os.path.exists(path):
                     zf.write(
                         path,
                         arcname=build_zip_arcname(
                             pdf_name,
                             parse_dir,
-                            f"{pdf_name}_content_list_v2.json",
+                            f"{pdf_name}_structured_content.json",
                         ),
                     )
 

@@ -19,7 +19,7 @@ from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyz
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.parser.base import ParseResult
-from mineru.render import render_content_list, render_content_list_v2, render_markdown
+from mineru.render import render_content_list, render_markdown, render_structured_content
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
@@ -266,10 +266,10 @@ def _process_output(
             json.dumps(content_list, ensure_ascii=False, indent=4),
         )
 
-        content_list_v2 = render_content_list_v2(middle_json, image_dir)
+        structured_content = render_structured_content(middle_json, image_dir)
         md_writer.write_string(
-            f"{pdf_file_name}_content_list_v2.json",
-            json.dumps(content_list_v2, ensure_ascii=False, indent=4),
+            f"{pdf_file_name}_structured_content.json",
+            json.dumps(structured_content, ensure_ascii=False, indent=4),
         )
 
     if f_dump_middle_json:
