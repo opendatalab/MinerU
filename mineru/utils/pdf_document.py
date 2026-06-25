@@ -11,7 +11,7 @@ from PIL import Image
 
 from ..types import BBox, PageInfo
 from .draw_bbox import draw_layout_bbox, draw_span_bbox
-from .pdf_classify import classify, get_text_quality_signal_pdfium
+from .pdf_classify import classify, get_sample_page_indices, get_text_quality_signal_pdfium
 from .pdf_image_tools import get_crop_img, image_to_bytes, images_bytes_to_pdf_bytes
 from .pdf_text_tool import get_lines_from_chars, get_page_chars
 from .pdfium_guard import (
@@ -150,15 +150,18 @@ class PDFDocument:
         return PDFDocument(new_bytes)
 
     def sample_pages(self, max_pages: int = 3) -> "PDFDocument":
-        from .pdf_classify import extract_pages as _extract_pages
+        """按 PDF 分类抽样规则提取代表性页面，返回新的 PDFDocument。"""
+        if max_pages <= 0:
+            return PDFDocument(b"")
 
-        new_bytes = _extract_pages(self._pdf_bytes)
-        if max_pages > 0 and new_bytes:
-            new_doc = PDFDocument(new_bytes)
-            count = new_doc.page_count
-            if count > max_pages:
-                return new_doc.extract_page_range(0, max_pages - 1)
-            return new_doc
+        page_indices = get_sample_page_indices(self.page_count, max_pages)
+        if page_indices:
+            new_bytes = safe_rewrite_pdf_bytes_with_pdfium(
+                self._pdf_bytes,
+                page_indices=page_indices,
+            )
+            if new_bytes:
+                return PDFDocument(new_bytes)
         return PDFDocument(b"")
 
     # ------------------------------------------------------------------ #
