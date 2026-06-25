@@ -445,7 +445,7 @@ class PdfFlashParser(PdfBaseParser):
     ) -> list[PageInfo]:
         from ..backend.flash.pdf_extractor import extract_pages_text
         from ..types import Block, Line, PageInfo, Span
-        from ..backend.utils.middle_json_utils import resolve_output_page_idx
+        from ..utils.page_index import resolve_output_page_idx
 
         filepath = self._pdf_bytes_to_tempfile(pdf_bytes)
         pages_text = extract_pages_text(filepath)

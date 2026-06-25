@@ -4,10 +4,11 @@ from typing import Any
 from ...data.data_reader_writer import DataWriter
 from ...types import Block, BlockType, ContentType, PageInfo, Span
 from ...utils.hash_utils import bytes_md5
+from ...utils.page_index import resolve_output_page_idx
 from ...utils.pdfium_guard import pdfium_guard
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from ..utils.char_utils import full_to_half
-from ..utils.middle_json_utils import append_pages, apply_post_ocr, resolve_output_page_idx
+from ..utils.middle_json_utils import append_pages, apply_post_ocr
 from ..utils.runtime_utils import cross_page_table_merge
 from ..utils.visual_span_utils import cut_visual_spans_in_blocks
 from .model_init import AtomModelSingleton

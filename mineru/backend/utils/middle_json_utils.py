@@ -13,22 +13,11 @@ from typing import Any, Callable, Iterator, TypeVar, Union
 from ...data.data_reader_writer import DataWriter
 from ...types import Block, PageInfo, Span
 from ...utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
+from ...utils.page_index import resolve_output_page_idx
 from ...utils.pdfium_guard import close_pdfium_child, pdfium_guard
 from ..pipeline.model_init import run_ocr_rec_inference
 
 T = TypeVar("T")
-
-
-def resolve_output_page_idx(physical_page_idx: int, page_index_map: list[int] | None = None) -> int:
-    """根据物理页序解析输出页号，确保裁图和 middle_json 使用原始页号。"""
-    if page_index_map is None:
-        return physical_page_idx
-    if physical_page_idx < 0 or physical_page_idx >= len(page_index_map):
-        raise ValueError(
-            f"page_index_map does not cover physical page index {physical_page_idx}: "
-            f"map length={len(page_index_map)}"
-        )
-    return page_index_map[physical_page_idx]
 
 
 def append_pages(
