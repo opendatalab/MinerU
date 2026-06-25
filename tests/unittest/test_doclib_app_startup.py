@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from loguru import logger as loguru_logger
 
 from mineru.config import LogConfig, PatchedConfig, config as mineru_config
 from mineru.doclib import app as doclib_app
@@ -47,8 +48,55 @@ def test_doclib_runtime_dependencies_are_in_base_install() -> None:
     dependency_names = {dependency.split(">", 1)[0].split("=", 1)[0].lower() for dependency in dependencies}
 
     assert "aiosqlite" in dependency_names
-    assert "fnvhash" in dependency_names
     assert "watchfiles" in dependency_names
+
+
+def test_background_task_crash_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    async def _boom() -> None:
+        raise RuntimeError("boom")
+
+    async def _run() -> None:
+        task = asyncio.create_task(_boom())
+        await asyncio.sleep(0)
+        doclib_app._log_background_task_result("test-task", task)
+
+    with caplog.at_level(logging.ERROR):
+        asyncio.run(_run())
+
+    assert "Background task test-task crashed: boom" in caplog.text
+
+
+def test_background_tasks_are_cancelled_and_awaited_on_shutdown() -> None:
+    async def _run() -> None:
+        state = doclib_app.AppState()
+        state.db_ready = asyncio.Event()
+
+        async def _blocked() -> None:
+            await asyncio.Event().wait()
+
+        task = doclib_app._create_background_task(state, "blocked", _blocked)
+        await asyncio.sleep(0)
+
+        await doclib_app._cancel_background_tasks(state)
+
+        assert task.cancelled()
+        assert task.done()
+        assert state.background_tasks == []
+
+    asyncio.run(_run())
+
+
+def test_pending_loop_tasks_are_cancelled_before_loop_close() -> None:
+    loop = asyncio.new_event_loop()
+    try:
+        task = loop.create_task(asyncio.Event().wait())
+
+        doclib_app._cancel_pending_loop_tasks(loop)
+
+        assert task.cancelled()
+        assert task.done()
+    finally:
+        loop.close()
 
 
 def test_setup_logging_routes_application_logs_to_rotating_file_without_stderr_duplication(tmp_path: Path) -> None:
@@ -83,6 +131,26 @@ def test_setup_logging_routes_application_logs_to_rotating_file_without_stderr_d
         assert [handler.baseFilename for handler in uvicorn_access_logger.handlers if isinstance(handler, RotatingFileHandler)] == [
             str(access_log_path)
         ]
+    finally:
+        _clear_test_loggers()
+
+
+def test_setup_logging_routes_loguru_records_to_application_log(tmp_path: Path) -> None:
+    _clear_test_loggers()
+    log_path = tmp_path / "doclib.log"
+    access_log_path = tmp_path / "doclib.access.log"
+    try:
+        doclib_app._setup_logging(LogConfig(app_path=str(log_path), access_path=str(access_log_path)))
+
+        patched_logger = loguru_logger.patch(lambda record: record.update(name="mineru.test_loguru"))
+        patched_logger.error("loguru bridged message")
+
+        for handler in logging.getLogger("mineru").handlers:
+            handler.flush()
+
+        content = log_path.read_text(encoding="utf-8")
+        assert "mineru.test_loguru" in content
+        assert "loguru bridged message" in content
     finally:
         _clear_test_loggers()
 
@@ -166,6 +234,41 @@ def test_doclib_app_uses_lifespan_instead_of_deprecated_event_handlers(monkeypat
         response = client.get("/api/v1/server/status")
 
     assert response.status_code == 200
+
+
+def test_startup_resets_running_scans_to_failed(monkeypatch, tmp_path) -> None:
+    db = DatabaseManager(str(tmp_path / "doclib.db"))
+    asyncio.run(db.initialize())
+    asyncio.run(
+        db.execute(
+            "INSERT INTO scans (path, kind, source, status, locked_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (str(tmp_path / "watch-root"), "watch", "watch", "running", 123, 1000, 1000),
+        )
+    )
+
+    cfg = PatchedConfig(
+        doclib={
+            "data_dir": str(tmp_path),
+            "sqlite": {"path": str(tmp_path / "doclib.db")},
+            "log": {
+                "app_path": str(tmp_path / "doclib.log"),
+                "access_path": str(tmp_path / "doclib.access.log"),
+            },
+            "uds": {"path": str(tmp_path / "doclib.sock")},
+        }
+    )
+
+    def _skip_background_task(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
+
+    with TestClient(doclib_app.create_app(cfg)) as client:
+        response = client.get("/api/v1/server/status")
+
+    assert response.status_code == 200
+    row = asyncio.run(db.fetchone("SELECT status, locked_at, error_code FROM scans"))
+    assert row == {"status": "failed", "locked_at": None, "error_code": "scan_interrupted"}
 
 
 def test_telemetry_observation_route_uses_context_headers(monkeypatch, tmp_path) -> None:

@@ -135,7 +135,11 @@ app.add_typer(watch.app, name="watch")
 @app.command()
 def search(
     query: str = typer.Argument(..., help="Search query"),
-    file_type: str | None = typer.Option(None, "--type", help="File type filter"),
+    file_type: str | None = typer.Option(
+        None,
+        "--type",
+        help="File type filter: pdf, docx, pptx, xlsx, html, markdown, csv, rst, tex, txt",
+    ),
     tier: Tier | None = typer.Option(None, "--tier", help="Exact search index tier: flash, standard, pro"),
     min_tier: Tier | None = typer.Option(None, "--min-tier", help="Minimum search index tier: flash, standard, pro"),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
@@ -151,7 +155,11 @@ def search(
 @app.command()
 def find(
     query: str = typer.Argument(..., help="Filename search query"),
-    ext: str | None = typer.Option(None, "--ext", help="File extension filter, e.g. pdf"),
+    ext: str | None = typer.Option(
+        None,
+        "--ext",
+        help="File extension filter: pdf, docx, pptx, xlsx, html, htm, md, markdown, csv, rst, tex, txt",
+    ),
     limit: int = typer.Option(50, "--limit", "-n", help="Max results"),
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:

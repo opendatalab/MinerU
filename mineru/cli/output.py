@@ -60,6 +60,16 @@ def _get(data: Any, key: str, default: Any = None) -> Any:
     return getattr(data, key, default)
 
 
+def _format_result_path(paths: Any) -> str:
+    if not paths:
+        return ""
+    return f" ({paths[0]})"
+
+
+def _format_snippet(snippet: Any) -> str:
+    return str(snippet or "").replace("\r\n", "\n").replace("\r", "\n").replace("\n", "  ")[:80]
+
+
 # ── parse ──────────────────────────────────────────────────────
 
 
@@ -94,25 +104,53 @@ def format_search_results(data: Any, json_mode: bool = False) -> None:
         print_info("No results found.")
         return
 
-    table = Table(title=f"Search results ({total} total)")
-    table.add_column("File", style="cyan", no_wrap=True)
-    table.add_column("Tier", style="green", width=10)
-    table.add_column("Snippet", style="dim")
-    table.add_column("Paths", style="dim")
+    lines = [f"Search results ({total} total)"]
+    for index, result in enumerate(results, start=1):
+        filename = _get(result, "title") or _get(result, "filename", "?")
+        tier = _get(result, "tier", "")
+        snippet = _format_snippet(_get(result, "snippet", ""))
+        path = _format_result_path(_get(result, "paths", []))
+        item_line = f"{index}. {filename}{path}"
+        if tier:
+            item_line += f" Tier: {tier}"
+        lines.append(item_line)
+        if snippet:
+            lines.append(f"   {snippet}")
+        if index < len(results):
+            lines.append("")
 
-    for r in results:
-        table.add_row(
-            _get(r, "title") or _get(r, "filename", "?"),
-            _get(r, "tier", ""),
-            (_get(r, "snippet", "") or "")[:80],
-            ", ".join(_get(r, "paths", [])[:3]),
-        )
-
+    output = "\n".join(lines)
     if console:
-        console.print(table)
+        console.print(Text(output))
     else:
-        for r in results:
-            print(f"{_get(r, 'title')} [{_get(r, 'tier')}] — {', '.join(_get(r, 'paths', []))}")
+        print(output)
+
+
+def format_find_results(data: Any, json_mode: bool = False) -> None:
+    results = _get(data, "results", [])
+    total = _get(data, "total", 0)
+
+    if json_mode:
+        print_json(data)
+        return
+
+    if not results:
+        print_info("No results found.")
+        return
+
+    lines = [f"Search results ({total} total)"]
+    for index, result in enumerate(results, start=1):
+        filename = _get(result, "title") or _get(result, "filename", "?")
+        path = _format_result_path(_get(result, "paths", []))
+        lines.append(f"{index}. {filename}{path}")
+        if index < len(results):
+            lines.append("")
+
+    output = "\n".join(lines)
+    if console:
+        console.print(Text(output))
+    else:
+        print(output)
 
 
 # ── server status ──────────────────────────────────────────────

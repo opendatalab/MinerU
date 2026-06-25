@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from pathlib import Path
 
 from watchfiles import awatch
 
 from ..core.db import DatabaseManager
-from ..constants import ALLOWED_EXTENSIONS
+from ..constants import ALLOWED_EXTENSIONS, is_office_temp_lock_file
 from ..services.config_svc import ConfigService
 from ..services.parse_svc import ParseService
 from ..services.scan_svc import ScanService
 from ..types import FILE_STATUS_ACTIVE, WATCH_STATUS_ACTIVE, WATCH_STATUS_UNREACHABLE
+
+logger = logging.getLogger("mineru.watch")
 
 
 class WatchLoop:
@@ -33,6 +36,7 @@ class WatchLoop:
         self.scan_interval_sec = scan_interval_sec
         self.running = False
         self._active_watchers: dict[int, asyncio.Task] = {}
+        self._wakeup_event = asyncio.Event()
 
     async def run(self) -> None:
         self.running = True
@@ -46,17 +50,26 @@ class WatchLoop:
                 active_ids.add(w["id"])
 
                 if w["id"] not in self._active_watchers:
-                    await self._initial_scan(w["path"], w["id"])
                     task = asyncio.create_task(self._watch_one(w["path"], w["id"]))
+                    task.add_done_callback(
+                        lambda completed, wid=w["id"], path=w["path"]: self._log_watcher_result(wid, path, completed)
+                    )
                     self._active_watchers[w["id"]] = task
+                    await asyncio.sleep(0)
+                    await self._initial_scan(w["path"], w["id"])
 
             # cancel watchers for removed watches
             for wid in list(self._active_watchers):
                 if wid not in active_ids:
                     self._active_watchers[wid].cancel()
-                    del self._active_watchers[wid]
+                    task = self._active_watchers.pop(wid)
+                    await asyncio.gather(task, return_exceptions=True)
 
-            await asyncio.sleep(self.scan_interval_sec)
+            try:
+                await asyncio.wait_for(self._wakeup_event.wait(), timeout=self.scan_interval_sec)
+            except asyncio.TimeoutError:
+                pass
+            self._wakeup_event.clear()
 
     async def _initial_scan(self, path: str, watch_id: int) -> None:
         """Verify known files, then walk directory tree to discover current files."""
@@ -84,15 +97,21 @@ class WatchLoop:
                 for fname in files:
                     filepath = os.path.join(root, fname)
                     ext = Path(filepath).suffix.lstrip(".").lower()
-                    if ext not in ALLOWED_EXTENSIONS:
+                    if ext not in ALLOWED_EXTENSIONS or is_office_temp_lock_file(filepath):
                         continue
                     if await self.config_svc.is_path_excluded(filepath):
                         continue
                     await self._refresh_file(filepath, watch_id)
                     file_count += 1
             await self.config_svc.update_watch_scan_stats(watch_id, file_count)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error(
+                "Watch initial scan failed for watch_id=%s path=%s: %s",
+                watch_id,
+                path,
+                exc,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
 
     async def _watch_one(self, path: str, watch_id: int) -> None:
         try:
@@ -101,12 +120,18 @@ class WatchLoop:
                     break
                 for _change_type, filepath in changes:
                     await self._handle_event(filepath, watch_id)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error(
+                "Watch loop failed for watch_id=%s path=%s: %s",
+                watch_id,
+                path,
+                exc,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
 
     async def _handle_event(self, filepath: str, watch_id: int) -> None:
         ext = Path(filepath).suffix.lstrip(".").lower()
-        if ext not in ALLOWED_EXTENSIONS:
+        if ext not in ALLOWED_EXTENSIONS or is_office_temp_lock_file(filepath):
             return
         if await self.config_svc.is_path_excluded(filepath):
             return
@@ -117,5 +142,30 @@ class WatchLoop:
 
     async def stop(self) -> None:
         self.running = False
-        for t in self._active_watchers.values():
+        self.wakeup()
+        tasks = list(self._active_watchers.values())
+        for t in tasks:
             t.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._active_watchers.clear()
+
+    def wakeup(self) -> None:
+        self._wakeup_event.set()
+
+    @staticmethod
+    def _log_watcher_result(watch_id: int, path: str, task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        try:
+            exc = task.exception()
+        except asyncio.CancelledError:
+            return
+        if exc is not None:
+            logger.error(
+                "Watch task crashed for watch_id=%s path=%s: %s",
+                watch_id,
+                path,
+                exc,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )

@@ -77,12 +77,17 @@ def _build_span(element: Tag) -> Span:
     return Span(type="text", bbox=EMPTY_BBOX, content=content)
 
 
+def _append_block(blocks: list[Block], block: Block) -> None:
+    block.index = len(blocks)
+    blocks.append(block)
+
+
 def _walk_elements(parent: Tag, blocks: list[Block]) -> None:  # type: ignore[type-arg]
     for child in parent.children:
         if not isinstance(child, Tag):
             text = str(child).strip()
             if text:
-                blocks.append(Block(
+                _append_block(blocks, Block(
                     index=0,
                     type="text",
                     bbox=EMPTY_BBOX,
@@ -93,25 +98,25 @@ def _walk_elements(parent: Tag, blocks: list[Block]) -> None:  # type: ignore[ty
         tag_name = child.name
 
         if tag_name in _HEADING_TAGS:
-            blocks.append(_build_heading(child))
+            _append_block(blocks, _build_heading(child))
         elif tag_name in ("p", "span"):
-            blocks.append(_build_text_block(child))
+            _append_block(blocks, _build_text_block(child))
         elif tag_name in _BLOCK_CONTAINER_TAGS:
             _walk_elements(child, blocks)
         elif tag_name in ("ul", "ol"):
-            blocks.append(_build_list(child))
+            _append_block(blocks, _build_list(child))
         elif tag_name == "table":
-            blocks.append(_build_table(child))
+            _append_block(blocks, _build_table(child))
         elif tag_name == "pre":
-            blocks.append(_build_code(child))
+            _append_block(blocks, _build_code(child))
         elif tag_name in ("img",):
-            blocks.append(_build_image_block(child))
+            _append_block(blocks, _build_image_block(child))
         elif tag_name in ("br",):
             pass
         else:
             # fallback: treat unknown inline tags as text
             if child.get_text(strip=True):
-                blocks.append(_build_text_block(child))
+                _append_block(blocks, _build_text_block(child))
 
 
 def _build_heading(element: Tag) -> Block:
@@ -151,7 +156,7 @@ def _build_list(element: Tag) -> Block:
         nested_blocks: list[Block] = []
         _walk_elements(li, nested_blocks)
         items.append(Block(
-            index=0,
+            index=len(items),
             type="list_item",
             bbox=EMPTY_BBOX,
             lines=[_line_with_spans([Span(type="text", bbox=EMPTY_BBOX, content=_extract_text(li))])],

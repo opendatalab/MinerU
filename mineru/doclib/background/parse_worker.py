@@ -24,6 +24,8 @@ class ParseWorkerPool:
         self._tasks = [
             asyncio.create_task(self._worker(i)) for i in range(self.num_workers)
         ]
+        for index, task in enumerate(self._tasks):
+            task.add_done_callback(lambda completed, worker_id=index: self._log_task_result(worker_id, completed))
 
     async def _worker(self, worker_id: int) -> None:
         logger.info(f"Parse worker {worker_id} started")
@@ -51,7 +53,11 @@ class ParseWorkerPool:
                         )
             except Exception as exc:
                 logger.error(
-                    f"Parse worker {worker_id} error on {task.get('sha256')}: {exc}"
+                    "Parse worker %s error on %s: %s",
+                    worker_id,
+                    task.get("sha256"),
+                    exc,
+                    exc_info=(type(exc), exc, exc.__traceback__),
                 )
                 try:
                     now = int(time.time() * 1000)
@@ -71,3 +77,19 @@ class ParseWorkerPool:
             t.cancel()
         if self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
+
+    @staticmethod
+    def _log_task_result(worker_id: int, task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        try:
+            exc = task.exception()
+        except asyncio.CancelledError:
+            return
+        if exc is not None:
+            logger.error(
+                "Parse worker %s crashed: %s",
+                worker_id,
+                exc,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )

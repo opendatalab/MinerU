@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 from collections.abc import Sequence
@@ -16,7 +17,7 @@ from ...errors import MineruError
 from ...parser.base import ParseResult
 from ...types import TIER_ORDER, PageInfo, Tier
 from ...utils.image_payload import parse_image_data_uri
-from ..constants import ALLOWED_EXTENSIONS, TEXT_EXTENSIONS
+from ..constants import ALLOWED_EXTENSIONS, TEXT_EXTENSIONS, is_office_temp_lock_file
 from ..core.db import DatabaseManager
 from ..core.file_io import FileStat, compute_sha256, extract_metadata, get_file_stat
 from ..core.fts import FTSManager
@@ -36,6 +37,8 @@ from ..types import (
     ParseResponse,
 )
 from .config_svc import ConfigService
+
+logger = logging.getLogger("mineru.parse")
 
 
 def _now_ms() -> int:
@@ -273,7 +276,7 @@ class ParseService:
         """
         ext = Path(path).suffix.lower().lstrip(".")
         existing = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
-        if ext not in ALLOWED_EXTENSIONS:
+        if ext not in ALLOWED_EXTENSIONS or is_office_temp_lock_file(path):
             return FileRefreshResult(file=_file_info(existing), status="unsupported")
 
         try:
@@ -412,7 +415,7 @@ class ParseService:
     async def ensure_ingested(self, path: str, watch_id: int | None = None) -> FileRow | None:
         """Synchronously discover and ingest a source path when needed."""
         refreshed = await self.refresh_file(path, watch_id=watch_id, ensure_ingested=True)
-        if refreshed.file is None:
+        if refreshed.file is None or refreshed.status == "unsupported":
             return None
         return cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
 
@@ -433,7 +436,7 @@ class ParseService:
     async def _ingest_file(self, path: str, watch_id: int | None = None) -> FileRow | None:
         """Ingest implementation without telemetry wrapper."""
         ext = Path(path).suffix.lower().lstrip(".")
-        if ext not in ALLOWED_EXTENSIONS:
+        if ext not in ALLOWED_EXTENSIONS or is_office_temp_lock_file(path):
             return None
 
         stat = await get_file_stat(path)
@@ -590,15 +593,14 @@ class ParseService:
         # insert parse batch
         parse_page_range = expand_page_range(initial_page_range, page_count or 1)
         await self.db.execute(
+            "UPDATE files SET sha256=?, locked_at=NULL, updated_at=? WHERE path=?",
+            (sha256, now, path),
+        )
+        await self.db.execute(
             "INSERT INTO parses (sha256, tier, page_range, status, priority, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)",
             (sha256, tier, parse_page_range, PARSE_STATUS_PENDING, now, now),
         )
         await self._record_count("parse_task.created.count", dimensions={"tier": tier})
-
-        await self.db.execute(
-            "UPDATE files SET sha256=?, locked_at=NULL, updated_at=? WHERE path=?",
-            (sha256, now, path),
-        )
 
         return cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
 
@@ -778,6 +780,15 @@ class ParseService:
                 error_code="no_accessible_file",
             )
             return False
+        if is_office_temp_lock_file(file_row["path"]):
+            await self._fail_task(task["id"], "file_type_unsupported", "Office temporary lock files are not supported")
+            await self._record_parse_task_finished(
+                task_start_ms,
+                tier=tier,
+                status="failed",
+                error_code="file_type_unsupported",
+            )
+            return False
 
         output_dir = os.path.join(self.data_dir, "parsed", sha256[:2], sha256, tier)
 
@@ -803,6 +814,15 @@ class ParseService:
             await self._record_parse_task_finished(task_start_ms, tier=tier, status="failed", error_code=exc.code)
             return False
         except Exception as exc:
+            logger.error(
+                "Parse execution failed for task_id=%s path=%s tier=%s page_range=%s: %s",
+                task["id"],
+                file_row["path"],
+                tier,
+                page_range,
+                exc,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
             await self._record_execute(
                 execute_start_ms,
                 tier=tier,
@@ -832,6 +852,15 @@ class ParseService:
             with open(json_path, "w", encoding="utf-8") as f:
                 json.dump(export_payload, f, ensure_ascii=False, indent=4)
         except Exception as exc:
+            logger.error(
+                "Parse post-write finalization failed for task_id=%s path=%s tier=%s page_range=%s: %s",
+                task["id"],
+                file_row["path"],
+                tier,
+                page_range,
+                exc,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
             await self._fail_task(task["id"], "parse_json_write_failed", str(exc)[:500])
             await self._record_write(
                 write_start_ms,

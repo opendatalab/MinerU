@@ -224,7 +224,10 @@ class DoclibServer(AsyncDoclibInterface):
             "SELECT COUNT(*) as cnt FROM scans WHERE status IN (?, ?)",
             ("pending", "running"),
         )
-        last_scan = await self.state.db.fetchone("SELECT MAX(updated_at) as ts FROM scans")
+        last_scan = await self.state.db.fetchone(
+            "SELECT MAX(COALESCE(finished_at, updated_at)) as ts FROM scans WHERE status IN (?, ?)",
+            ("done", "failed"),
+        )
         ingest_q = await self.state.db.fetchone(
             "SELECT COUNT(*) as cnt FROM files WHERE sha256 IS NULL AND status=? AND error_code IS NULL",
             (FILE_STATUS_ACTIVE,),
@@ -799,6 +802,9 @@ class DoclibServer(AsyncDoclibInterface):
         await _record_telemetry_count(self.state, "watch.add.count")
         try:
             row = await self.state.config_svc.add_watch(request.path, removable=request.removable, label=request.label)
+            watch_loop = getattr(self.state, "watch", None)
+            if watch_loop is not None:
+                watch_loop.wakeup()
             await _record_telemetry_count(self.state, "watch.add.finished.count", dimensions={"status": "succeeded"})
             return _watch_info(row)
         except Exception:

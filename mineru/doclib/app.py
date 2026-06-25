@@ -13,17 +13,23 @@ import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
-from typing import Any
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from loguru import logger as loguru_logger
 
-from ..errors import MineruError, error_response, http_status_for
 from ..config import Config, LogConfig, _mineru_home, config
+from ..errors import MineruError, error_response, http_status_for
 from .endpoint import EndpointTransport, remove_endpoint_file, uds_available, write_endpoint_file
 from .server import DoclibServer
-from .types import PARSE_STATUS_FAILED, PARSE_STATUS_PARSING
+from .types import PARSE_STATUS_FAILED, PARSE_STATUS_PARSING, SCAN_STATUS_FAILED, SCAN_STATUS_RUNNING
+
+if TYPE_CHECKING:
+    from loguru import Message as LoguruMessage
+else:
+    LoguruMessage = Any
 
 
 def create_app(cfg: Config | None = None) -> FastAPI:
@@ -92,6 +98,20 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         await state.db.execute(
             "UPDATE parses SET locked_at = NULL, status = ? WHERE status = ?",
             (PARSE_STATUS_FAILED, PARSE_STATUS_PARSING),
+        )
+        now_ms = int(time.time() * 1000)
+        await state.db.execute(
+            "UPDATE scans SET locked_at = NULL, status = ?, error_code = COALESCE(error_code, ?), "
+            "error_msg = COALESCE(error_msg, ?), finished_at = COALESCE(finished_at, ?), updated_at = ? "
+            "WHERE status = ?",
+            (
+                SCAN_STATUS_FAILED,
+                "scan_interrupted",
+                "Scan was interrupted by server shutdown or crash.",
+                now_ms,
+                now_ms,
+                SCAN_STATUS_RUNNING,
+            ),
         )
 
         state.parse_server_proc = None
@@ -198,11 +218,13 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             if c and hasattr(c, "stop"):
                 await c.stop()
 
+        await _cancel_background_tasks(state)
+
         if state.db:
             await state.db.close()
 
     @asynccontextmanager
-    async def lifespan(_app: FastAPI):
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await startup()
         try:
             yield
@@ -268,6 +290,7 @@ class AppState:
         self.compaction: Any = None
         self.health_check: Any = None
         self.telemetry_flush: Any = None
+        self.background_tasks: list[asyncio.Task[Any]] = []
         self.start_time: float = 0.0
         self.pid: int = 0
         self.mineru_home: str = ""
@@ -310,7 +333,52 @@ async def _assert_required_schema(db: Any) -> None:
 
 
 def _create_background_task(state: AppState, name: str, runner: Callable[[], Any]) -> asyncio.Task:
-    return asyncio.create_task(_run_after_db_ready(state, name, runner))
+    task = asyncio.create_task(_run_after_db_ready(state, name, runner), name=f"doclib:{name}")
+    state.background_tasks.append(task)
+    task.add_done_callback(lambda completed: _finish_background_task(state, name, completed))
+    return task
+
+
+def _finish_background_task(state: AppState, name: str, task: asyncio.Task[Any]) -> None:
+    _log_background_task_result(name, task)
+    if task in state.background_tasks:
+        state.background_tasks.remove(task)
+
+
+def _log_background_task_result(name: str, task: asyncio.Task[Any]) -> None:
+    if task.cancelled():
+        return
+    try:
+        exc = task.exception()
+    except asyncio.CancelledError:
+        return
+    if exc is not None:
+        logging.error(
+            "Background task %s crashed: %s",
+            name,
+            exc,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+
+
+async def _cancel_background_tasks(state: AppState) -> None:
+    tasks = list(state.background_tasks)
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    state.background_tasks.clear()
+
+
+def _cancel_pending_loop_tasks(loop: asyncio.AbstractEventLoop) -> None:
+    if loop.is_closed():
+        return
+    tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
 
 
 async def _run_after_db_ready(state: AppState, name: str, runner: Callable[[], Any]) -> None:
@@ -337,7 +405,9 @@ def main() -> None:
     if not uds_enabled and not tcp_enabled:
         raise RuntimeError("At least one doclib local transport must be enabled.")
     if uds_enabled and not uds_available():
-        raise RuntimeError("Unix domain socket is enabled but is not available in this Python runtime. Enable doclib.tcp or disable doclib.uds.")
+        raise RuntimeError(
+            "Unix domain socket is enabled but is not available in this Python runtime. Enable doclib.tcp or disable doclib.uds."
+        )
 
     app = create_app(cfg)
     uv_config = uvicorn.Config(
@@ -403,6 +473,7 @@ def main() -> None:
             except OSError:
                 pass
         remove_endpoint_file(endpoint_path)
+        _cancel_pending_loop_tasks(loop)
         loop.close()
 
 
@@ -441,12 +512,38 @@ def _setup_logging(log_cfg: LogConfig) -> None:
         logger.addHandler(access_handler)
 
     logging.captureWarnings(True)
+    _setup_loguru_bridge(log_cfg.level.upper())
 
 
 def _ensure_log_dir(path: str) -> None:
     log_dir = os.path.dirname(path)
     if log_dir:
         os.makedirs(log_dir, exist_ok=True)
+
+
+def _setup_loguru_bridge(level_name: str) -> None:
+    loguru_logger.remove()
+    loguru_logger.add(
+        _forward_loguru_to_logging,
+        level=level_name,
+        backtrace=False,
+        diagnose=False,
+        format="{message}",
+    )
+
+
+def _forward_loguru_to_logging(message: LoguruMessage) -> None:
+    record = message.record
+    logger_name = record["name"] or "mineru.loguru"
+    exc = record["exception"]
+    exc_info = None
+    if exc is not None and exc.type is not None and exc.value is not None:
+        exc_info = (exc.type, exc.value, exc.traceback)
+    logging.getLogger(logger_name).log(
+        record["level"].no,
+        record["message"],
+        exc_info=exc_info,
+    )
 
 
 def _rotating_log_handler(path: str, level: int) -> RotatingFileHandler:

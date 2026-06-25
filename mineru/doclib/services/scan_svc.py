@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ...errors import InvalidRequestError, NotFoundError
-from ..constants import ALLOWED_EXTENSIONS
+from ..constants import ALLOWED_EXTENSIONS, is_office_temp_lock_file
 from ..core.file_io import get_file_stat
 from ..rows import PathRow, ScanRow, WatchTargetRow
 from ..types import (
@@ -94,6 +94,8 @@ class ScanService:
             watch_id = watch["id"]
         elif watch_id is not None:
             raise InvalidRequestError("invalid_request", "watch_id is only valid for watch scans.", "watch_id")
+
+        await self._fail_stale_running_scans(kind=kind, path=normalized_path)
 
         active = cast(
             ScanRow | None,
@@ -220,6 +222,26 @@ class ScanService:
         await self._record_scan_file_counts(counters)
         return True
 
+    async def _fail_stale_running_scans(self, *, kind: ScanKind, path: str) -> None:
+        now = _now_ms()
+        timeout = now - self.scan_lock_timeout_ms
+        await self.db.execute(
+            "UPDATE scans SET status=?, locked_at=NULL, error_code=COALESCE(error_code, ?), "
+            "error_msg=COALESCE(error_msg, ?), finished_at=COALESCE(finished_at, ?), updated_at=? "
+            "WHERE kind=? AND path=? AND status=? AND locked_at IS NOT NULL AND locked_at < ?",
+            (
+                SCAN_STATUS_FAILED,
+                "scan_interrupted",
+                "Scan lock expired before completion.",
+                now,
+                now,
+                kind,
+                path,
+                SCAN_STATUS_RUNNING,
+                timeout,
+            ),
+        )
+
     async def cleanup_terminal_scan_logs(self, *, keep: int = SCAN_LOG_RETENTION_LIMIT) -> None:
         try:
             await self.db.execute(
@@ -276,7 +298,7 @@ class ScanService:
                 filepath = os.path.join(root, fname)
                 counters.files_seen += 1
                 ext = Path(filepath).suffix.lstrip(".").lower()
-                if ext not in ALLOWED_EXTENSIONS:
+                if ext not in ALLOWED_EXTENSIONS or is_office_temp_lock_file(filepath):
                     counters.files_unsupported += 1
                     continue
                 if apply_excludes and await self.config_svc.is_path_excluded(filepath):

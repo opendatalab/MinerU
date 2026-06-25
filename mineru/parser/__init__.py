@@ -30,6 +30,21 @@ __all__ = [
     "resolve_tier_and_backend",
 ]
 
+_OFFICE_SUFFIXES = frozenset({"docx", "pptx", "xlsx"})
+_HTML_SUFFIXES = frozenset({"html", "htm"})
+_PDF_INPUT_SUFFIXES = frozenset({"pdf", "png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"})
+_PATH_PRIORITY_SUFFIXES = _OFFICE_SUFFIXES | _HTML_SUFFIXES | _PDF_INPUT_SUFFIXES
+
+
+def _resolve_input_suffix(path: Path) -> str:
+    from ..utils.guess_suffix_or_lang import guess_suffix_by_path
+
+    guessed_suffix = guess_suffix_by_path(path)
+    path_suffix = path.suffix.lower().lstrip(".")
+    if path_suffix in _PATH_PRIORITY_SUFFIXES:
+        return path_suffix
+    return guessed_suffix
+
 
 def _build_parser(
     path: str | Path,
@@ -48,10 +63,8 @@ def _build_parser(
     formula_enable: bool | None = None,
     image_analysis: bool | None = None,
 ) -> DocumentParser:
-    from ..utils.guess_suffix_or_lang import guess_suffix_by_path
-
     path = Path(path)
-    suffix = guess_suffix_by_path(path)
+    suffix = _resolve_input_suffix(path)
     _, resolved_backend = resolve_tier_and_backend(tier=tier, backend=backend)
     resolved_ocr_mode = method or ocr_mode
     resolved_language = lang or language
@@ -59,16 +72,20 @@ def _build_parser(
     resolved_formula_enable = (not disable_formula) if formula_enable is None else formula_enable
     resolved_image_analysis = (not disable_image_analysis) if image_analysis is None else image_analysis
 
-    if suffix in ("docx", "pptx", "xlsx"):
+    if suffix in _OFFICE_SUFFIXES:
         parser_cls: type[DocumentParser] = {
             "docx": DocxParser,
             "pptx": PptxParser,
             "xlsx": XlsxParser,
         }[suffix]
         return parser_cls()
-    elif suffix in ("html", "htm"):
+    elif suffix in _HTML_SUFFIXES:
         return HtmlParser()
-    elif resolved_backend == "pipeline":
+
+    if suffix not in _PDF_INPUT_SUFFIXES:
+        raise ValueError(f"Unsupported file type: {suffix or path.suffix or 'unknown'}")
+
+    if resolved_backend == "pipeline":
         return PdfPipelineParser(
             backend=resolved_backend,
             method=resolved_ocr_mode,

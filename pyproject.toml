@@ -59,7 +59,6 @@ dependencies = [
     "lxml>=4.0.0,<7.0.0",
     "openpyxl>=3.1.5,<4",
     "aiosqlite>=0.20.0,<1",
-    "fnvhash>=0.2.1,<1",
     "watchfiles>=1.0.0,<2",
     "fastapi",
     "python-multipart",

@@ -36,7 +36,7 @@ from mineru.doclib.services.scan_svc import ScanService
 from mineru.doclib.services.search_svc import SearchService
 from mineru.doclib.locators import ContentCursor
 from mineru.doclib.server import DoclibServer, _ReadPlan, _render_progressive_markdown
-from mineru.doclib.types import ParseResponse
+from mineru.doclib.types import ParseResponse, WatchRequest
 from mineru.parser import backend_for_tier, resolve_tier_and_backend
 from mineru.parser.base import ParseResult
 from mineru.schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
@@ -190,6 +190,27 @@ class _FakeFTS:
 
     async def replace(self, **kwargs: Any) -> None:
         self.replaced.append(kwargs)
+
+
+class _FilenameOnlyFTS:
+    async def upsert_filename(self, file_id: int, stem: str, ext: str) -> None:
+        pass
+
+
+class _OrderRecordingDB:
+    def __init__(self, db: DatabaseManager) -> None:
+        self.db = db
+        self.events: list[str] = []
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.db, name)
+
+    async def execute(self, sql: str, params: tuple[Any, ...] | None = None) -> Any:
+        if sql.startswith("UPDATE files SET sha256=?"):
+            self.events.append("update_file_sha")
+        elif sql.startswith("INSERT INTO parses"):
+            self.events.append("insert_parse")
+        return await self.db.execute(sql, params)
 
 
 def _write_batch(data_dir: Path, sha256: str, tier: Tier, page_range: str, done_at: int, json_pages: list[dict]) -> None:
@@ -451,6 +472,51 @@ def test_invalidate_rebuilds_fts_from_highest_remaining_done_tier(tmp_path: Path
     assert len(fts.replaced) == 1
     assert fts.replaced[0]["sha256"] == sha256
     assert fts.replaced[0]["tier"] == "flash"
+
+
+def test_ingest_binds_file_sha_before_creating_parse_task(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class _NoRulesConfig:
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            return []
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        recording_db = _OrderRecordingDB(db)
+        service = ParseService(
+            db=recording_db,
+            fts=_FilenameOnlyFTS(),
+            config_svc=_NoRulesConfig(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / "doc.pdf"
+        source.write_bytes(b"%PDF-1.4\n")
+
+        async def _metadata(path: str) -> dict[str, Any]:
+            return {
+                "page_count": 1,
+                "title": None,
+                "author": None,
+                "subject": None,
+                "keywords": None,
+                "is_image_based": 0,
+            }
+
+        monkeypatch.setattr(parse_svc_module, "extract_metadata", _metadata)
+
+        row = await service.ingest_file(str(source))
+        dangling_parses = await db.fetchall(
+            "SELECT p.id FROM parses p "
+            "LEFT JOIN files f ON f.sha256=p.sha256 AND f.status='active' "
+            "WHERE f.id IS NULL",
+        )
+
+        assert row is not None
+        assert recording_db.events.index("update_file_sha") < recording_db.events.index("insert_parse")
+        assert dangling_parses == []
+
+    asyncio.run(_run())
 
 
 def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: Path) -> None:
@@ -1163,6 +1229,106 @@ def test_scan_service_directory_scan_applies_excludes_and_counts_unsupported(tmp
     asyncio.run(_run())
 
 
+def test_refresh_file_ignores_office_temp_lock_files(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=ConfigService(db), data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        source = tmp_path / "~$package-size.xlsx"
+        source.write_bytes(b"\x15Microsoft Office lock")
+
+        refreshed = await service.refresh_file(str(source), ensure_ingested=True)
+        row = await db.fetchone("SELECT path FROM files WHERE path=?", (str(source),))
+
+        assert refreshed.status == "unsupported"
+        assert refreshed.file is None
+        assert row is None
+
+    asyncio.run(_run())
+
+
+def test_ensure_ingested_ignores_existing_office_temp_lock_file_row(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=ConfigService(db), data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        source = tmp_path / "~$package-size.xlsx"
+        source.write_bytes(b"\x15Microsoft Office lock")
+        now = 1000
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, watch_id, status, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(source), source.name, "xlsx", source.stat().st_size, now, None, "active", now, now),
+        )
+
+        ingested = await service.ensure_ingested(str(source))
+
+        assert ingested is None
+
+    asyncio.run(_run())
+
+
+def test_scan_service_directory_scan_ignores_office_temp_lock_files(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
+        root = tmp_path / "docs"
+        root.mkdir()
+        regular = root / "regular.txt"
+        lock_file = root / "~$package-size.xlsx"
+        regular.write_text("regular", encoding="utf-8")
+        lock_file.write_bytes(b"\x15Microsoft Office lock")
+
+        scan = await scan_svc.create_scan(str(root), kind="manual", source="cli")
+        task = await scan_svc.acquire_task()
+        assert task is not None
+        assert await scan_svc.process_scan(task) is True
+
+        done = await scan_svc.get_scan(scan.id)
+        rows = await db.fetchall("SELECT path FROM files ORDER BY path")
+
+        assert done.files_seen == 2
+        assert done.files_refreshed == 1
+        assert done.files_new == 1
+        assert done.files_unsupported == 1
+        assert rows == [{"path": str(regular)}]
+
+    asyncio.run(_run())
+
+
+def test_watch_event_ignores_office_temp_lock_files(tmp_path: Path) -> None:
+    async def _run() -> None:
+        class _ConfigService:
+            async def is_path_excluded(self, path: str) -> bool:
+                return False
+
+        class _ParseService:
+            def __init__(self) -> None:
+                self.refreshed: list[str] = []
+
+            async def refresh_file(self, filepath: str, watch_id: int) -> None:
+                self.refreshed.append(filepath)
+
+        parse_svc = _ParseService()
+        watch_loop = WatchLoop(
+            db=SimpleNamespace(),
+            config_svc=_ConfigService(),
+            parse_svc=parse_svc,
+            scan_interval_sec=300,
+        )
+        lock_file = tmp_path / "~$package-size.xlsx"
+        lock_file.write_bytes(b"\x15Microsoft Office lock")
+
+        await watch_loop._handle_event(str(lock_file), watch_id=1)
+
+        assert parse_svc.refreshed == []
+
+    asyncio.run(_run())
+
+
 def test_scan_service_reuses_pending_scan_for_same_kind_and_path(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
@@ -1183,6 +1349,30 @@ def test_scan_service_reuses_pending_scan_for_same_kind_and_path(tmp_path: Path)
     asyncio.run(_run())
 
 
+def test_scan_service_does_not_reuse_stale_running_scan_for_same_kind_and_path(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1)
+        root = tmp_path / "docs"
+        root.mkdir()
+
+        await db.execute(
+            "INSERT INTO scans (path, kind, source, status, locked_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (str(root), "manual", "cli", "running", 1, 10, 10),
+        )
+
+        fresh = await scan_svc.create_scan(str(root), kind="manual", source="sdk")
+        scans = await scan_svc.list_scans()
+
+        assert len(scans) == 2
+        assert fresh.id != scans[-1].id
+
+    asyncio.run(_run())
+
+
 def test_watch_ids_are_non_negative_for_cli_arguments(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
@@ -1194,6 +1384,24 @@ def test_watch_ids_are_non_negative_for_cli_arguments(tmp_path: Path) -> None:
         watch = await config_svc.add_watch(str(root))
 
         assert watch["id"] >= 0
+
+    asyncio.run(_run())
+
+
+def test_watch_ids_are_stable_standard_library_hashes(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        root = tmp_path / "watch-root"
+        root.mkdir()
+
+        watch = await config_svc.add_watch(str(root))
+        expected = int.from_bytes(hashlib.blake2b(str(root).encode("utf-8"), digest_size=8).digest(), "big") & (
+            (1 << 63) - 1
+        )
+
+        assert watch["id"] == expected
 
     asyncio.run(_run())
 
@@ -1384,6 +1592,106 @@ def test_cleanup_orphans_keeps_docs_referenced_by_deleted_or_unreachable_files(t
     asyncio.run(_run())
 
 
+def test_watch_loop_starts_watcher_before_initial_scan() -> None:
+    async def _run() -> None:
+        class _ConfigService:
+            async def list_watches(self) -> list[dict[str, Any]]:
+                return [{"id": 1, "path": "/watched", "status": "active"}]
+
+        order: list[str] = []
+        watch_loop = WatchLoop(
+            db=None,
+            config_svc=_ConfigService(),
+            parse_svc=None,
+            scan_interval_sec=0,
+        )
+
+        async def _watch_one(path: str, watch_id: int) -> None:
+            order.append("watch")
+            await asyncio.Event().wait()
+
+        async def _initial_scan(path: str, watch_id: int) -> None:
+            order.append("initial")
+            watch_loop.running = False
+
+        watch_loop._watch_one = _watch_one
+        watch_loop._initial_scan = _initial_scan
+
+        await watch_loop.run()
+        await watch_loop.stop()
+
+        assert order[:2] == ["watch", "initial"]
+
+    asyncio.run(_run())
+
+
+def test_watch_loop_wakeup_triggers_next_poll_without_interval_delay() -> None:
+    async def _run() -> None:
+        poll_count = 0
+        second_poll = asyncio.Event()
+
+        class _ConfigService:
+            async def list_watches(self) -> list[dict[str, Any]]:
+                nonlocal poll_count
+                poll_count += 1
+                if poll_count == 2:
+                    second_poll.set()
+                return []
+
+        watch_loop = WatchLoop(
+            db=None,
+            config_svc=_ConfigService(),
+            parse_svc=None,
+            scan_interval_sec=300,
+        )
+        task = asyncio.create_task(watch_loop.run())
+
+        while poll_count == 0:
+            await asyncio.sleep(0)
+
+        watch_loop.wakeup()
+        await asyncio.wait_for(second_poll.wait(), timeout=1)
+        await watch_loop.stop()
+        await asyncio.wait_for(task, timeout=1)
+
+        assert poll_count == 2
+
+    asyncio.run(_run())
+
+
+def test_add_watch_wakes_background_watch_loop() -> None:
+    async def _run() -> None:
+        class _ConfigService:
+            async def add_watch(self, path: str, removable: bool, label: str | None) -> dict[str, Any]:
+                return {
+                    "id": 1,
+                    "path": path,
+                    "label": label,
+                    "removable": int(removable),
+                    "enabled": 1,
+                    "recursive": 1,
+                    "status": "active",
+                }
+
+        class _WatchLoop:
+            def __init__(self) -> None:
+                self.wakeup_count = 0
+
+            def wakeup(self) -> None:
+                self.wakeup_count += 1
+
+        watch = _WatchLoop()
+        state = SimpleNamespace(config_svc=_ConfigService(), telemetry_svc=None, watch=watch)
+        server = DoclibServer(state)
+
+        info = await server.add_watch(WatchRequest(path="/watched", removable=True, label="Docs"))
+
+        assert info.id == 1
+        assert watch.wakeup_count == 1
+
+    asyncio.run(_run())
+
+
 def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) -> None:
     class _ParseQueue:
         async def get_queue_length(self) -> int:
@@ -1393,6 +1701,7 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
+        (tmp_path / "watched").mkdir()
         watch = await config_svc.add_watch(str(tmp_path / "watched"), removable=True)
         now = 1000
         sha_done = "5" * 64
@@ -1465,6 +1774,10 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
                     now + index,
                 ),
             )
+        await db.execute(
+            "INSERT INTO scans (path, kind, source, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (str(tmp_path / "still-running.pdf"), "manual", "cli", "running", now + 99, now + 99),
+        )
 
         state = SimpleNamespace(
             db=db,
@@ -1474,6 +1787,13 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
             pid=123,
             socket_path="/tmp/doclib.sock",
             data_dir=str(tmp_path / "data"),
+            watch=SimpleNamespace(running=False),
+            scan_workers=SimpleNamespace(running=False, num_workers=1),
+            ingest_workers=SimpleNamespace(running=False, num_workers=2),
+            parse_workers=SimpleNamespace(running=False, num_workers=2),
+            device_monitor=SimpleNamespace(running=False),
+            compaction=SimpleNamespace(running=False),
+            health_check=SimpleNamespace(running=False),
         )
         status = await DoclibServer(state).get_server_status()
 
@@ -1489,9 +1809,14 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
         assert stats.doc_count == 2
         assert stats.parse_done_count == 1
         assert stats.parse_failed_count == 1
-        assert [scan.path for scan in status.recent_scans] == [str(tmp_path / f"scan-{index}.pdf") for index in range(5, 0, -1)]
-        assert status.recent_scans[0].error_code == "scan_failed"
-        assert status.recent_scans[0].error_msg == "hidden message"
+        assert [scan.path for scan in status.recent_scans] == [
+            str(tmp_path / "still-running.pdf"),
+            *[str(tmp_path / f"scan-{index}.pdf") for index in range(5, 1, -1)],
+        ]
+        assert status.recent_scans[0].status == "running"
+        assert status.recent_scans[1].error_code == "scan_failed"
+        assert status.recent_scans[1].error_msg == "hidden message"
+        assert status.last_scan_at == now + 5
         assert status.error_summary is not None
         assert [(bucket.code, bucket.count) for bucket in status.error_summary.file_errors] == [("ingest_failed", 1), ("stat_failed", 1)]
         assert [(bucket.code, bucket.count) for bucket in status.error_summary.doc_errors] == [("metadata_failed", 1)]
@@ -1650,6 +1975,52 @@ def test_ingest_records_doc_error_when_metadata_extraction_fails(tmp_path: Path,
         assert doc["error_msg"] == "metadata boom"
 
     asyncio.run(_run())
+
+
+def test_process_doc_rejects_existing_office_temp_lock_file_task(tmp_path: Path) -> None:
+    sha256 = "c" * 64
+    task = {
+        "id": 1,
+        "sha256": sha256,
+        "tier": "flash",
+        "page_range": "1",
+        "status": "parsing",
+        "privacy": "local",
+    }
+    parses = [
+        {
+            **task,
+            "error_code": None,
+            "error_msg": None,
+            "done_at": None,
+            "locked_at": 123,
+            "updated_at": 123,
+        }
+    ]
+    db = _FakeDB(
+        parses=parses,
+        file_row={
+            "path": "/tmp/~$package-size.xlsx",
+            "sha256": sha256,
+            "status": "active",
+            "filename": "~$package-size.xlsx",
+            "title": "",
+            "author": "",
+        },
+    )
+    service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
+
+    async def _unexpected_parse(file_row: dict, tier: Tier, page_range: str) -> ParseResult:
+        raise AssertionError("temporary lock files should not reach parser execution")
+
+    service._parse_via_local = _unexpected_parse  # type: ignore[method-assign]
+
+    success = asyncio.run(service.process_doc(task))
+
+    assert success is False
+    assert parses[0]["status"] == "failed"
+    assert parses[0]["error_code"] == "file_type_unsupported"
+    assert "temporary lock" in parses[0]["error_msg"]
 
 
 def test_process_doc_marks_empty_page_result_failed(tmp_path: Path) -> None:

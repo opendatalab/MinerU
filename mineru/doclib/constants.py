@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 # ── file types ─────────────────────────────────────────────────────
+
+OFFICE_EXTENSIONS: set[str] = {
+    "docx",
+    "pptx",
+    "xlsx",
+}
 
 TEXT_EXTENSIONS: set[str] = {
     "csv",
@@ -15,9 +23,7 @@ TEXT_EXTENSIONS: set[str] = {
 
 ALLOWED_EXTENSIONS: set[str] = {
     "pdf",
-    "docx",
-    "pptx",
-    "xlsx",
+    *OFFICE_EXTENSIONS,
     "html",
     "htm",
     *TEXT_EXTENSIONS,
@@ -38,6 +44,11 @@ ALLOWED_EXTENSIONS: set[str] = {
     # "eml",
     # "mbox",
 }
+
+
+def is_office_temp_lock_file(path: str | Path) -> bool:
+    file_path = Path(path)
+    return file_path.name.startswith("~$") and file_path.suffix.lower().lstrip(".") in OFFICE_EXTENSIONS
 
 DEFAULT_EXCLUDE_PATTERNS: list[str] = [
     "*/Library/*",

@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, TypeVar
 
 from loguru import logger
 
+from ...types import Block
 from .boxbase import bbox_center_distance, bbox_distance, is_in
 
 T = TypeVar("T")
@@ -38,10 +39,10 @@ def reduct_overlap(bboxes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def tie_up_category_by_index(
-    get_subjects_func: Callable,
-    get_objects_func: Callable,
-    extract_subject_func: Callable[..., Any] | None = None,
-    extract_object_func: Callable[..., Any] | None = None,
+    get_subjects_func: Callable[[], list[Block]],
+    get_objects_func: Callable[[], list[Block]],
+    extract_subject_func: Callable[[Block], Any] | None = None,
+    extract_object_func: Callable[[Block], Any] | None = None,
     object_block_type: str = "object",
     include_bbox: bool = True,
 ) -> list[dict[str, Any]]:
@@ -82,7 +83,7 @@ def tie_up_category_by_index(
         }
 
     # 提取所有客体的index集合，用于计算有效index差值
-    object_indices = {obj["index"] for obj in objects}
+    object_indices = {obj.index for obj in objects}
 
     def calc_effective_index_diff(obj_index: int, sub_index: int) -> int:  # noqa: ANN202
         """
@@ -110,13 +111,13 @@ def tie_up_category_by_index(
             # 如果没有主体，跳过客体
             continue
 
-        obj_index = obj["index"]
+        obj_index = obj.index
         min_index_diff = float("inf")
         best_subject_indices = []
 
         # 找出有效index差值最小的所有主体
         for i, subject in enumerate(subjects):
-            sub_index = subject["index"]
+            sub_index = subject.index
             index_diff = calc_effective_index_diff(obj_index, sub_index)
 
             if index_diff < min_index_diff:
@@ -132,41 +133,41 @@ def tie_up_category_by_index(
             # 只有在包含bbox信息时才进行边缘距离的计算和比较，否则直接匹配第一个主体
             if include_bbox:
                 # 计算所有候选主体的边缘距离
-                edge_distances = [(idx, bbox_distance(obj["bbox"], subjects[idx]["bbox"])) for idx in best_subject_indices]
+                edge_distances = [(idx, bbox_distance(obj.bbox, subjects[idx].bbox)) for idx in best_subject_indices]
                 edge_dist_diff = abs(edge_distances[0][1] - edge_distances[1][1])
 
                 for idx, edge_dist in edge_distances:
-                    logger.debug(f"Obj index: {obj_index}, Sub index: {subjects[idx]['index']}, Edge distance: {edge_dist}")
+                    logger.debug(f"Obj index: {obj_index}, Sub index: {subjects[idx].index}, Edge distance: {edge_dist}")
 
                 if edge_dist_diff > 2:
                     # 边缘距离差值大于2，匹配边缘距离更小的主体
                     best_subject_idx = min(edge_distances, key=lambda x: x[1])[0]
                     logger.debug(
                         f"Obj index: {obj_index}, edge_dist_diff > 2, matching to subject with min edge distance,"
-                        f" index: {subjects[best_subject_idx]['index']}"
+                        f" index: {subjects[best_subject_idx].index}"
                     )
                 elif object_block_type == "table_caption":
                     # 边缘距离差值<=2且为table_caption，匹配index更大的主体
-                    best_subject_idx = max(best_subject_indices, key=lambda idx: subjects[idx]["index"])
+                    best_subject_idx = max(best_subject_indices, key=lambda idx: subjects[idx].index)
                     logger.debug(
                         f"Obj index: {obj_index}, edge_dist_diff <= 2 and table_caption,"
-                        f" matching to later subject with index: {subjects[best_subject_idx]['index']}"
+                        f" matching to later subject with index: {subjects[best_subject_idx].index}"
                     )
                 elif object_block_type.endswith("footnote"):
                     # 边缘距离差值<=2且为footnote，匹配index更小的主体
-                    best_subject_idx = min(best_subject_indices, key=lambda idx: subjects[idx]["index"])
+                    best_subject_idx = min(best_subject_indices, key=lambda idx: subjects[idx].index)
                     logger.debug(
                         f"Obj index: {obj_index}, edge_dist_diff <= 2 and footnote,"
-                        f" matching to earlier subject with index: {subjects[best_subject_idx]['index']}"
+                        f" matching to earlier subject with index: {subjects[best_subject_idx].index}"
                     )
                 else:
                     # 边缘距离差值<=2 且不适用特殊匹配规则，使用中心点距离匹配
                     center_distances = [
-                        (idx, bbox_center_distance(obj["bbox"], subjects[idx]["bbox"])) for idx in best_subject_indices
+                        (idx, bbox_center_distance(obj.bbox, subjects[idx].bbox)) for idx in best_subject_indices
                     ]
                     for idx, center_dist in center_distances:
                         logger.debug(
-                            f"Obj index: {obj_index}, Sub index: {subjects[idx]['index']}, Center distance: {center_dist}"
+                            f"Obj index: {obj_index}, Sub index: {subjects[idx].index}, Center distance: {center_dist}"
                         )
                     best_subject_idx = min(center_distances, key=lambda x: x[1])[0]
             else:

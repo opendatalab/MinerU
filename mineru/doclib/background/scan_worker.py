@@ -20,6 +20,8 @@ class ScanWorkerPool:
     async def run(self) -> None:
         self.running = True
         self._tasks = [asyncio.create_task(self._worker(i)) for i in range(self.num_workers)]
+        for index, task in enumerate(self._tasks):
+            task.add_done_callback(lambda completed, worker_id=index: self._log_task_result(worker_id, completed))
 
     async def _worker(self, worker_id: int) -> None:
         logger.info("Scan worker %s started", worker_id)
@@ -34,7 +36,13 @@ class ScanWorkerPool:
                 if success:
                     processed += 1
             except Exception as exc:
-                logger.error("Scan worker %s error on scan %s: %s", worker_id, task.get("id"), exc)
+                logger.error(
+                    "Scan worker %s error on scan %s: %s",
+                    worker_id,
+                    task.get("id"),
+                    exc,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
         logger.info("Scan worker %s stopped, processed %s total", worker_id, processed)
 
     async def stop(self) -> None:
@@ -43,3 +51,19 @@ class ScanWorkerPool:
             task.cancel()
         if self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
+
+    @staticmethod
+    def _log_task_result(worker_id: int, task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        try:
+            exc = task.exception()
+        except asyncio.CancelledError:
+            return
+        if exc is not None:
+            logger.error(
+                "Scan worker %s crashed: %s",
+                worker_id,
+                exc,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )

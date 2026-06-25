@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 import os
 import time
 from typing import cast
-
-import fnvhash
 
 from ...errors import InvalidRequestError
 from ...types import Tier
@@ -79,6 +78,11 @@ class ConfigService:
 
     # ── watch targets ───────────────────────────────────────────
 
+    @staticmethod
+    def _watch_id_for_path(path: str) -> int:
+        digest = hashlib.blake2b(path.encode("utf-8"), digest_size=8).digest()
+        return int.from_bytes(digest, "big") & ((1 << 63) - 1)
+
     async def add_watch(
         self, path: str, removable: bool = False, label: str | None = None
     ) -> WatchTargetRow:
@@ -89,7 +93,7 @@ class ConfigService:
         if not os.path.isdir(path):
             raise InvalidRequestError("invalid_request", f"Watch path does not exist or is not a directory: {path}", "path")
 
-        wid = fnvhash.fnv1a_64(path.encode()) & ((1 << 63) - 1)
+        wid = self._watch_id_for_path(path)
 
         now = int(time.time() * 1000)
         await self.db.execute(

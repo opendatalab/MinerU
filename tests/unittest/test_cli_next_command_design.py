@@ -72,6 +72,19 @@ def test_telemetry_command_tree_is_available() -> None:
     assert "flush" in result.output
 
 
+def test_search_and_find_help_list_filter_values() -> None:
+    search_result = runner.invoke(app, ["search", "--help"])
+    find_result = runner.invoke(app, ["find", "--help"])
+
+    assert search_result.exit_code == 0
+    assert find_result.exit_code == 0
+    assert "File type filter: pdf, docx, pptx," in search_result.output
+    assert "xlsx, html, markdown, csv, rst," in search_result.output
+    assert "tex, txt" in search_result.output
+    assert "File extension filter: pdf, docx, pptx, xlsx," in find_result.output
+    assert "html, htm, md, markdown, csv, rst, tex, txt" in find_result.output
+
+
 def test_print_error_uses_single_rich_render(monkeypatch: Any) -> None:
     calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
 
@@ -90,6 +103,67 @@ def test_print_error_uses_single_rich_render(monkeypatch: Any) -> None:
     rendered = str(calls[0][0][0])
     assert rendered.startswith("Error: ")
     assert "--tier flash" in rendered
+
+
+def test_find_results_render_as_list_without_empty_search_columns(monkeypatch: Any) -> None:
+    printed: list[Any] = []
+
+    class _Console:
+        def print(self, item: Any, *args: Any, **kwargs: Any) -> None:
+            printed.append(item)
+
+    monkeypatch.setattr(output_mod, "console", _Console())
+
+    output_mod.format_find_results(
+        {
+            "total": 2,
+            "results": [
+                {"filename": "resume.pdf", "paths": ["/tmp/resume.pdf"]},
+                {"filename": "cv.docx", "paths": ["/tmp/cv.docx"]},
+            ],
+        }
+    )
+
+    assert len(printed) == 1
+    rendered = str(printed[0])
+    assert "Search results (2 total)" in rendered
+    assert "1. resume.pdf (/tmp/resume.pdf)" in rendered
+    assert "\n\n2. cv.docx (/tmp/cv.docx)" in rendered
+    assert "Tier" not in rendered
+    assert "Snippet" not in rendered
+    assert "Paths" not in rendered
+
+
+def test_search_results_render_as_list_without_table(monkeypatch: Any) -> None:
+    printed: list[Any] = []
+
+    class _Console:
+        def print(self, item: Any, *args: Any, **kwargs: Any) -> None:
+            printed.append(item)
+
+    monkeypatch.setattr(output_mod, "console", _Console())
+
+    output_mod.format_search_results(
+        {
+            "total": 1,
+            "results": [
+                {
+                    "filename": "resume.pdf",
+                    "tier": "standard",
+                    "snippet": "Python\nengineer",
+                    "paths": ["/tmp/resume.pdf"],
+                }
+            ],
+        }
+    )
+
+    assert len(printed) == 1
+    rendered = str(printed[0])
+    assert "Search results (1 total)" in rendered
+    assert "1. resume.pdf (/tmp/resume.pdf) Tier: standard" in rendered
+    assert "   Python  engineer" in rendered
+    assert "Snippet:" not in rendered
+    assert not hasattr(printed[0], "columns")
 
 
 def test_server_status_renders_separate_recent_log_panels(monkeypatch: Any) -> None:

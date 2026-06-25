@@ -25,6 +25,8 @@ class IngestWorkerPool:
     async def run(self) -> None:
         self.running = True
         self._tasks = [asyncio.create_task(self._worker(i)) for i in range(self.num_workers)]
+        for index, task in enumerate(self._tasks):
+            task.add_done_callback(lambda completed, worker_id=index: self._log_task_result(worker_id, completed))
 
     async def _worker(self, worker_id: int) -> None:
         logger.info(f"Ingest worker {worker_id} started")
@@ -54,7 +56,13 @@ class IngestWorkerPool:
                 if processed % 100 == 0:
                     logger.info(f"Ingest worker {worker_id} ingested {processed} files")
             except Exception as exc:
-                logger.error(f"Ingest worker {worker_id} error on {task.get('path')}: {exc}")
+                logger.error(
+                    "Ingest worker %s error on %s: %s",
+                    worker_id,
+                    task.get("path"),
+                    exc,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
                 await self._handle_ingest_error(task, exc)
 
         logger.info(f"Ingest worker {worker_id} stopped, processed {processed} total")
@@ -107,3 +115,19 @@ class IngestWorkerPool:
             t.cancel()
         if self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
+
+    @staticmethod
+    def _log_task_result(worker_id: int, task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        try:
+            exc = task.exception()
+        except asyncio.CancelledError:
+            return
+        if exc is not None:
+            logger.error(
+                "Ingest worker %s crashed: %s",
+                worker_id,
+                exc,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )

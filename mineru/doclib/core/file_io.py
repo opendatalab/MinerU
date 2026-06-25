@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pypdfium2
 
+from ...utils.pdfium_guard import close_pdfium_document, open_pdfium_document, pdfium_guard
+
 # Optional office doc support
 try:
     from docx import Document
@@ -105,18 +107,19 @@ async def extract_metadata(filepath: str) -> dict:
 
 async def _extract_pdf_meta(filepath: str, result: dict) -> None:
     def _extract() -> None:
-        pdf = pypdfium2.PdfDocument(filepath)
+        pdf = open_pdfium_document(pypdfium2.PdfDocument, filepath)
         try:
-            result["page_count"] = len(pdf)
+            with pdfium_guard():
+                result["page_count"] = len(pdf)
+                meta = pdf.get_metadata_dict() or {}
 
-            meta = pdf.get_metadata_dict() or {}
             result["title"] = meta.get("Title") or None
             result["author"] = meta.get("Author") or None
             result["subject"] = meta.get("Subject") or None
             result["keywords"] = meta.get("Keywords") or None
 
         finally:
-            pdf.close()
+            close_pdfium_document(pdf)
 
     await asyncio.to_thread(_extract)
 
