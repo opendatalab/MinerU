@@ -101,6 +101,42 @@ def test_parse_result_from_dict_accepts_pages_and_preserves_page_backend() -> No
     assert restored.pages[0].preproc_blocks[0].level == 1
 
 
+def test_parse_result_preserves_true_merge_prev_in_staged_middle_json() -> None:
+    block = Block(index=0, type="text", bbox=(0.0, 0.0, 10.0, 10.0), merge_prev=True)
+    result = ParseResult(pages=[PageInfo(page_idx=0, preproc_blocks=[block])])
+
+    payload = result.to_dict()
+    restored = ParseResult.from_dict(payload)
+
+    serialized_block = payload["pages"][0]["preproc_blocks"][0]
+    assert serialized_block["merge_prev"] is True
+    assert "angle" not in serialized_block
+    assert "score" not in serialized_block
+    assert restored.pages[0].preproc_blocks[0].merge_prev is True
+
+
+def test_parse_result_from_dict_restores_merge_prev_from_payload() -> None:
+    restored = ParseResult.from_dict(
+        {
+            "pages": [
+                {
+                    "page_idx": 0,
+                    "preproc_blocks": [
+                        {
+                            "index": 0,
+                            "type": "text",
+                            "bbox": [0.0, 0.0, 10.0, 10.0],
+                            "merge_prev": True,
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+    assert restored.pages[0].preproc_blocks[0].merge_prev is True
+
+
 def test_parse_result_from_json_restores_pages() -> None:
     data = {
         "pages": [
