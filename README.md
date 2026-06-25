@@ -303,7 +303,7 @@ uv pip install -U "mineru[all]"
 ```bash
 git clone https://github.com/opendatalab/MinerU.git
 cd MinerU
-uv pip install -e .[all]
+uv pip install -e '.[all]'
 ```
 
 > [!TIP]
