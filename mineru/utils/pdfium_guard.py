@@ -1,6 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import threading
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from io import BytesIO
 from typing import Any, Callable, Iterator, Sequence, TypeVar
 
@@ -10,6 +11,16 @@ from loguru import logger
 _pdfium_lock = threading.RLock()
 
 T = TypeVar("T")
+
+
+@dataclass
+class PdfiumRewriteResult:
+    """记录 PDFium 安全重写结果，供调用方按实际保留页修正原始页号。"""
+
+    pdf_bytes: bytes
+    retained_page_indices: list[int] | None = None
+    broken_page_indices: list[int] = field(default_factory=list)
+    used_original: bool = False
 
 
 @contextmanager
@@ -80,7 +91,11 @@ def get_loadable_pdfium_page_indices(
                 return [], []
 
             normalized_start_page_id = max(0, start_page_id)
-            normalized_end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else total_page_count - 1
+            normalized_end_page_id = (
+                end_page_id
+                if end_page_id is not None and end_page_id >= 0
+                else total_page_count - 1
+            )
             if normalized_end_page_id > total_page_count - 1:
                 normalized_end_page_id = total_page_count - 1
             if normalized_start_page_id > normalized_end_page_id:
@@ -105,6 +120,55 @@ def get_loadable_pdfium_page_indices(
     return loadable_page_indices, broken_page_indices
 
 
+def _normalize_rewrite_page_indices(
+    total_page_count: int,
+    start_page_id: int = 0,
+    end_page_id: int | None = None,
+    page_indices: Sequence[int] | None = None,
+) -> list[int]:
+    """按 rewrite_pdf_bytes_with_pdfium 的规则归一化实际导出的 0-based 页号。"""
+    if total_page_count == 0:
+        return []
+
+    if page_indices is not None:
+        return sorted({int(page_index) for page_index in page_indices if 0 <= int(page_index) < total_page_count})
+
+    normalized_start_page_id = max(0, start_page_id)
+    normalized_end_page_id = (
+        end_page_id
+        if end_page_id is not None and end_page_id >= 0
+        else total_page_count - 1
+    )
+    if normalized_end_page_id > total_page_count - 1:
+        normalized_end_page_id = total_page_count - 1
+    if normalized_start_page_id > normalized_end_page_id:
+        return []
+    return list(range(normalized_start_page_id, normalized_end_page_id + 1))
+
+
+def _get_rewrite_page_indices_from_pdf(
+    src_pdf_bytes: bytes,
+    start_page_id: int = 0,
+    end_page_id: int | None = None,
+    page_indices: Sequence[int] | None = None,
+) -> list[int]:
+    """读取源 PDF 页数并计算本次重写会保留的原始页号。"""
+    import pypdfium2 as pdfium
+
+    pdf_doc = None
+    try:
+        with pdfium_guard():
+            pdf_doc = pdfium.PdfDocument(src_pdf_bytes)
+            return _normalize_rewrite_page_indices(
+                len(pdf_doc),
+                start_page_id=start_page_id,
+                end_page_id=end_page_id,
+                page_indices=page_indices,
+            )
+    finally:
+        close_pdfium_document(pdf_doc)
+
+
 def rewrite_pdf_bytes_with_pdfium(
     src_pdf_bytes: bytes,
     start_page_id: int = 0,
@@ -122,17 +186,14 @@ def rewrite_pdf_bytes_with_pdfium(
             if total_page_count == 0:
                 return b""
 
-            if page_indices is not None:
-                normalized_page_indices = sorted(
-                    {page_index for page_index in page_indices if 0 <= page_index < total_page_count}
-                )
-                if not normalized_page_indices:
-                    return b""
-            else:
-                normalized_end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else total_page_count - 1
-                if normalized_end_page_id > total_page_count - 1:
-                    normalized_end_page_id = total_page_count - 1
-                normalized_page_indices = list(range(start_page_id, normalized_end_page_id + 1))
+            normalized_page_indices = _normalize_rewrite_page_indices(
+                total_page_count,
+                start_page_id=start_page_id,
+                end_page_id=end_page_id,
+                page_indices=page_indices,
+            )
+            if not normalized_page_indices:
+                return b""
 
             output_doc = pdfium.PdfDocument.new()
             output_doc.import_pages(pdf_doc, normalized_page_indices)
@@ -155,6 +216,21 @@ def safe_rewrite_pdf_bytes_with_pdfium(
     page_indices: Sequence[int] | None = None,
 ) -> bytes:
     """安全重写 PDF 字节；常规重写失败时跳过损坏页并保留可加载页面。"""
+    return safe_rewrite_pdf_bytes_with_pdfium_result(
+        src_pdf_bytes,
+        start_page_id=start_page_id,
+        end_page_id=end_page_id,
+        page_indices=page_indices,
+    ).pdf_bytes
+
+
+def safe_rewrite_pdf_bytes_with_pdfium_result(
+    src_pdf_bytes: bytes,
+    start_page_id: int = 0,
+    end_page_id: int | None = None,
+    page_indices: Sequence[int] | None = None,
+) -> PdfiumRewriteResult:
+    """安全重写 PDF 字节，并返回重写后 PDF 对应的原始页号映射。"""
     try:
         rebuilt_pdf_bytes = rewrite_pdf_bytes_with_pdfium(
             src_pdf_bytes,
@@ -163,7 +239,16 @@ def safe_rewrite_pdf_bytes_with_pdfium(
             page_indices=page_indices,
         )
         if rebuilt_pdf_bytes:
-            return rebuilt_pdf_bytes
+            retained_page_indices = _get_rewrite_page_indices_from_pdf(
+                src_pdf_bytes,
+                start_page_id=start_page_id,
+                end_page_id=end_page_id,
+                page_indices=page_indices,
+            )
+            return PdfiumRewriteResult(
+                pdf_bytes=rebuilt_pdf_bytes,
+                retained_page_indices=retained_page_indices,
+            )
         logger.warning("PDFium rewrite returned empty bytes, trying to skip broken pages.")
     except Exception as fallback_error:
         logger.warning(
@@ -177,7 +262,7 @@ def safe_rewrite_pdf_bytes_with_pdfium(
             )
             if not requested_page_indices:
                 logger.warning("PDFium safe rewrite received no valid requested pages, using original PDF bytes.")
-                return src_pdf_bytes
+                return PdfiumRewriteResult(pdf_bytes=src_pdf_bytes, retained_page_indices=None, used_original=True)
             probe_start_page_id = requested_page_indices[0]
             probe_end_page_id = requested_page_indices[-1]
         else:
@@ -208,7 +293,12 @@ def safe_rewrite_pdf_bytes_with_pdfium(
             logger.warning(f"Skipped broken PDF pages during PDFium rewrite: {skipped_pages}")
         if not loadable_page_indices:
             logger.warning("PDFium skip-broken-page rewrite found no loadable pages, using original PDF bytes.")
-            return src_pdf_bytes
+            return PdfiumRewriteResult(
+                pdf_bytes=src_pdf_bytes,
+                retained_page_indices=None,
+                broken_page_indices=broken_page_indices,
+                used_original=True,
+            )
 
         rebuilt_pdf_bytes = rewrite_pdf_bytes_with_pdfium(
             src_pdf_bytes,
@@ -217,10 +307,14 @@ def safe_rewrite_pdf_bytes_with_pdfium(
             page_indices=loadable_page_indices,
         )
         if rebuilt_pdf_bytes:
-            return rebuilt_pdf_bytes
+            return PdfiumRewriteResult(
+                pdf_bytes=rebuilt_pdf_bytes,
+                retained_page_indices=loadable_page_indices,
+                broken_page_indices=broken_page_indices,
+            )
         logger.warning("PDFium skip-broken-page rewrite returned empty bytes, using original PDF bytes.")
     except Exception as fallback_error:
         logger.warning(
             f"Error in converting PDF bytes with skip-broken-page fallback: {fallback_error}, using original PDF bytes."
         )
-    return src_pdf_bytes
+    return PdfiumRewriteResult(pdf_bytes=src_pdf_bytes, retained_page_indices=None, used_original=True)

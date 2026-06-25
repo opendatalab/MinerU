@@ -18,6 +18,21 @@ from ..utils.image_payload import (
     replace_inline_data_uri_sources,
 )
 
+_PDF_RETAINED_PAGE_INDICES_KEY = "_pdf_retained_page_indices"
+_PDF_BROKEN_PAGE_INDICES_KEY = "_pdf_broken_page_indices"
+
+
+def _parse_optional_int_list(value: Any) -> list[int] | None:
+    """解析内部页映射列表；旧 payload 或非法类型直接按缺省处理。"""
+    if not isinstance(value, list):
+        return None
+    parsed: list[int] = []
+    for item in value:
+        if not isinstance(item, int):
+            return None
+        parsed.append(item)
+    return parsed
+
 
 @dataclass
 class ParseResult:
@@ -31,6 +46,8 @@ class ParseResult:
     _pdf_doc: object | None = None
     _model_output: Any = None
     _images_cache: dict[str, bytes] | None = None
+    _retained_page_indices: list[int] | None = None
+    _broken_page_indices: list[int] | None = None
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> ParseResult:
@@ -53,20 +70,37 @@ class ParseResult:
             if isinstance(backend, str):
                 page._backend = backend
             pages.append(page)
-        return ParseResult(pages=pages)
+        retained_page_indices = _parse_optional_int_list(d.get(_PDF_RETAINED_PAGE_INDICES_KEY))
+        broken_page_indices = _parse_optional_int_list(d.get(_PDF_BROKEN_PAGE_INDICES_KEY))
+        return ParseResult(
+            pages=pages,
+            _retained_page_indices=retained_page_indices,
+            _broken_page_indices=broken_page_indices,
+        )
 
     def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
-        return {
+        payload = {
             "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
             "pages": [page.to_dict(skip_defaults=skip_defaults) for page in self.pages],
         }
+        self._append_private_pdf_page_mapping(payload)
+        return payload
 
     def to_export_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
         """生成 public middle_json 视图：图片已落盘引用，base64 临时载荷不再输出。"""
-        return {
+        payload = {
             "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
             "pages": [page.to_dict(skip_defaults=skip_defaults) for page in self.export_pages()],
         }
+        self._append_private_pdf_page_mapping(payload)
+        return payload
+
+    def _append_private_pdf_page_mapping(self, payload: dict[str, Any]) -> None:
+        """附加 PDF 重写页映射的内部元数据，供本地可视化按实际 PDF 页序绘制。"""
+        if self._retained_page_indices is not None:
+            payload[_PDF_RETAINED_PAGE_INDICES_KEY] = list(self._retained_page_indices)
+        if self._broken_page_indices:
+            payload[_PDF_BROKEN_PAGE_INDICES_KEY] = list(self._broken_page_indices)
 
     @staticmethod
     def from_json(s: str) -> ParseResult:

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from mineru.parser.base import ParseResult
+from mineru.types import PageInfo
 from mineru.utils.pdf_document import PDFDocument
 
 VISUALIZATION_FINISHED = "finished"
@@ -26,6 +27,21 @@ class VisualizationResult:
     status: str
     message: str
     generated_files: tuple[str, ...] = ()
+
+
+def select_pages_for_pdf_visualization(
+    pages: list[PageInfo],
+    retained_page_indices: list[int] | None,
+) -> list[PageInfo]:
+    """按重写 PDF 的实际页序筛选页面，避免坏页空占位参与 bbox 绘制。"""
+    if retained_page_indices is None:
+        return pages
+    pages_by_original_index = {page.page_idx: page for page in pages}
+    return [
+        pages_by_original_index[page_idx]
+        for page_idx in retained_page_indices
+        if page_idx in pages_by_original_index
+    ]
 
 
 def run_visualization_job(job: VisualizationJob) -> VisualizationResult:
@@ -66,7 +82,11 @@ def run_visualization_job(job: VisualizationJob) -> VisualizationResult:
         )
 
     try:
-        pages = ParseResult.from_dict(payload).pages
+        parse_result = ParseResult.from_dict(payload)
+        pages = select_pages_for_pdf_visualization(
+            parse_result.pages,
+            parse_result._retained_page_indices,
+        )
         pdf_bytes = origin_pdf_path.read_bytes()
         doc = PDFDocument(pdf_bytes)
         generated_files = [f"{job.document_stem}_layout.pdf"]
