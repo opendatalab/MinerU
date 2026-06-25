@@ -455,6 +455,7 @@ def doc_analyze(
     model_path: str | None = None,
     server_url: str | None = None,
     image_analysis: bool = True,
+    page_index_map: list[int] | None = None,
     **kwargs: Any,
 ) -> tuple[list[PageInfo], list[ExtractResult]]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
@@ -518,6 +519,7 @@ def doc_analyze(
                         image_writer,
                         page_cvt_fn=blocks_to_page_info,
                         page_start_index=window_start,
+                        page_index_map=page_index_map,
                         progress_bar=progress_bar,
                     )
                     last_append_end_time = time.time()
@@ -556,6 +558,7 @@ async def aio_doc_analyze(
     model_path: str | None = None,
     server_url: str | None = None,
     image_analysis: bool = True,
+    page_index_map: list[int] | None = None,
     **kwargs: Any,
 ) -> tuple[list[PageInfo], list[ExtractResult]]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
@@ -618,6 +621,7 @@ async def aio_doc_analyze(
                         image_writer,
                         page_cvt_fn=blocks_to_page_info,
                         page_start_index=window_start,
+                        page_index_map=page_index_map,
                         progress_bar=progress_bar,
                     )
                     last_append_end_time = time.time()

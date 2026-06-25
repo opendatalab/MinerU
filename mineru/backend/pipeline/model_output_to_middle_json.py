@@ -7,7 +7,7 @@ from ...utils.hash_utils import bytes_md5
 from ...utils.pdfium_guard import pdfium_guard
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from ..utils.char_utils import full_to_half
-from ..utils.middle_json_utils import append_pages, apply_post_ocr
+from ..utils.middle_json_utils import append_pages, apply_post_ocr, resolve_output_page_idx
 from ..utils.runtime_utils import cross_page_table_merge
 from ..utils.visual_span_utils import cut_visual_spans_in_blocks
 from .model_init import AtomModelSingleton
@@ -67,12 +67,14 @@ def append_batch_results_to_middle_json(
     page_start_index: int = 0,
     ocr_enable: bool = False,
     model_list: list[dict[str, Any]] | None = None,
+    page_index_map: list[int] | None = None,
     progress_bar: Any = None,
 ) -> None:
     page_model_infos = []
     for offset, (image_dict, page_layout_dets) in enumerate(zip(images_list, batch_results)):
-        page_index = page_start_index + offset
-        page_model_info = build_page_model_info(page_layout_dets, page_index, image_dict["img_pil"])
+        physical_page_idx = page_start_index + offset
+        output_page_idx = resolve_output_page_idx(physical_page_idx, page_index_map)
+        page_model_info = build_page_model_info(page_layout_dets, output_page_idx, image_dict["img_pil"])
         page_model_infos.append(page_model_info)
 
     if model_list is not None:
@@ -86,6 +88,7 @@ def append_batch_results_to_middle_json(
         image_writer,
         page_cvt_fn=blocks_to_page_info,
         page_start_index=page_start_index,
+        page_index_map=page_index_map,
         ocr_enable=ocr_enable,
         progress_bar=progress_bar,
     )

@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
@@ -17,6 +18,7 @@ from mineru.backend.office.pptx_analyze import office_pptx_analyze
 from mineru.backend.office.xlsx_analyze import office_xlsx_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
+from mineru.cli_old.visualization import select_pages_for_pdf_visualization
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.parser.base import ParseResult
 from mineru.render import render_content_list, render_markdown, render_structured_content
@@ -24,7 +26,7 @@ from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
-from mineru.utils.pdfium_guard import safe_rewrite_pdf_bytes_with_pdfium
+from mineru.utils.pdfium_guard import safe_rewrite_pdf_bytes_with_pdfium, safe_rewrite_pdf_bytes_with_pdfium_result
 
 from ..types import PageInfo
 from ..version import __version__
@@ -48,6 +50,15 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # 200 bytes is chosen to stay well below common filesystem limits (e.g. 255 bytes)
 # and to prevent generating excessively long or incompatible filenames.
 MAX_TASK_STEM_BYTES = 200
+
+
+@dataclass(frozen=True)
+class PreparedPdfBytes:
+    """记录旧 CLI PDF 预处理结果，避免页号映射在 backend 前丢失。"""
+
+    pdf_bytes: bytes
+    retained_page_indices: list[int] | None = None
+    broken_page_indices: list[int] | None = None
 
 
 class HybridDependencyError(RuntimeError):
@@ -192,6 +203,30 @@ def convert_pdf_bytes_to_bytes(pdf_bytes: bytes, start_page_id: int = 0, end_pag
     )
 
 
+def prepare_pdf_bytes_with_page_map(
+    pdf_bytes: bytes,
+    start_page_id: int = 0,
+    end_page_id: int | None = None,
+) -> PreparedPdfBytes:
+    """重写 PDF 字节并保留小 PDF 物理页到原始页号的映射。"""
+    rewrite_result = safe_rewrite_pdf_bytes_with_pdfium_result(
+        pdf_bytes,
+        start_page_id=start_page_id,
+        end_page_id=end_page_id,
+    )
+    if rewrite_result.used_original:
+        return PreparedPdfBytes(
+            pdf_bytes=rewrite_result.pdf_bytes or pdf_bytes,
+            retained_page_indices=None,
+            broken_page_indices=rewrite_result.broken_page_indices,
+        )
+    return PreparedPdfBytes(
+        pdf_bytes=rewrite_result.pdf_bytes or pdf_bytes,
+        retained_page_indices=rewrite_result.retained_page_indices,
+        broken_page_indices=rewrite_result.broken_page_indices,
+    )
+
+
 def _prepare_pdf_bytes(pdf_bytes_list: list[bytes], start_page_id: int, end_page_id: int | None) -> list[bytes]:
     """准备处理PDF字节数据"""
     result = []
@@ -199,6 +234,18 @@ def _prepare_pdf_bytes(pdf_bytes_list: list[bytes], start_page_id: int, end_page
         new_pdf_bytes = convert_pdf_bytes_to_bytes(pdf_bytes, start_page_id, end_page_id)
         result.append(new_pdf_bytes)
     return result
+
+
+def _prepare_pdf_inputs(
+    pdf_bytes_list: list[bytes],
+    start_page_id: int,
+    end_page_id: int | None,
+) -> list[PreparedPdfBytes]:
+    """批量准备 PDF 输入，并为 backend 保留逐文档页号映射。"""
+    return [
+        prepare_pdf_bytes_with_page_map(pdf_bytes, start_page_id, end_page_id)
+        for pdf_bytes in pdf_bytes_list
+    ]
 
 
 def _process_output(
@@ -220,17 +267,20 @@ def _process_output(
     *,
     process_mode: str,
     backend: str,
+    retained_page_indices: list[int] | None = None,
+    broken_page_indices: list[int] | None = None,
 ) -> None:
     """处理输出文件"""
+    visualization_pages = select_pages_for_pdf_visualization(middle_json, retained_page_indices)
     if f_draw_layout_bbox:
         try:
-            draw_layout_bbox(middle_json, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
+            draw_layout_bbox(visualization_pages, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
         except Exception as exc:
             logger.warning(f"Skipping layout bbox visualization for {pdf_file_name}: {exc}")
 
     if f_draw_span_bbox:
         try:
-            draw_span_bbox(middle_json, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
+            draw_span_bbox(visualization_pages, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
         except Exception as exc:
             logger.warning(f"Skipping span bbox visualization for {pdf_file_name}: {exc}")
 
@@ -247,7 +297,11 @@ def _process_output(
             )
 
     image_dir = str(os.path.basename(local_image_dir))
-    export_result = ParseResult(pages=middle_json)
+    export_result = ParseResult(
+        pages=middle_json,
+        _retained_page_indices=retained_page_indices,
+        _broken_page_indices=broken_page_indices,
+    )
     image_writer = FileBasedDataWriter(local_image_dir)
     for img_path, img_bytes in export_result.images().items():
         image_writer.write(img_path, img_bytes)
@@ -311,6 +365,8 @@ def _process_pipeline(
     f_dump_content_list: bool,
     f_make_md_mode: str,
     client_side_output_generation: bool = False,
+    page_index_map_list: list[list[int] | None] | None = None,
+    broken_page_indices_list: list[list[int] | None] | None = None,
 ) -> None:
     """处理pipeline后端逻辑"""
     from mineru.backend.pipeline.pipeline_analyze import doc_analyze_streaming as pipeline_doc_analyze_streaming
@@ -332,6 +388,8 @@ def _process_pipeline(
         pdf_file_name, local_image_dir, local_md_dir = local_output_info[doc_index]
         md_writer = md_writer_list[doc_index]
         pdf_bytes = pdf_bytes_list[doc_index]
+        retained_page_indices = page_index_map_list[doc_index] if page_index_map_list is not None else None
+        broken_page_indices = broken_page_indices_list[doc_index] if broken_page_indices_list is not None else None
         logger.debug(f"Pipeline output start: doc{doc_index}")
         try:
             _process_output(
@@ -352,6 +410,8 @@ def _process_pipeline(
                 model_list,
                 process_mode="pipeline",
                 backend="pipeline",
+                retained_page_indices=retained_page_indices,
+                broken_page_indices=broken_page_indices,
             )
             logger.debug(f"Pipeline output complete: doc{doc_index}")
         except Exception:
@@ -374,6 +434,7 @@ def _process_pipeline(
             formula_enable=p_formula_enable,
             table_enable=p_table_enable,
             client_side_output_generation=client_side_output_generation,
+            page_index_map_list=page_index_map_list,
         )
 
         for future in output_futures:
@@ -395,6 +456,8 @@ async def _async_process_vlm(
     f_dump_content_list: bool,
     f_make_md_mode: str,
     server_url: str | None = None,
+    page_index_map_list: list[list[int] | None] | None = None,
+    broken_page_indices_list: list[list[int] | None] | None = None,
     **kwargs: Any,
 ) -> None:
     """异步处理VLM后端逻辑"""
@@ -413,6 +476,7 @@ async def _async_process_vlm(
             image_writer=image_writer,
             backend=backend,
             server_url=server_url,
+            page_index_map=page_index_map_list[idx] if page_index_map_list is not None else None,
             **kwargs,
         )
 
@@ -434,6 +498,8 @@ async def _async_process_vlm(
             infer_result,
             process_mode="vlm",
             backend="vlm",
+            retained_page_indices=page_index_map_list[idx] if page_index_map_list is not None else None,
+            broken_page_indices=broken_page_indices_list[idx] if broken_page_indices_list is not None else None,
         )
 
 
@@ -451,6 +517,8 @@ def _process_vlm(
     f_dump_content_list: bool,
     f_make_md_mode: str,
     server_url: str | None = None,
+    page_index_map_list: list[list[int] | None] | None = None,
+    broken_page_indices_list: list[list[int] | None] | None = None,
     **kwargs: Any,
 ) -> None:
     """同步处理VLM后端逻辑"""
@@ -469,6 +537,7 @@ def _process_vlm(
             image_writer=image_writer,
             backend=backend,
             server_url=server_url,
+            page_index_map=page_index_map_list[idx] if page_index_map_list is not None else None,
             **kwargs,
         )
 
@@ -490,6 +559,8 @@ def _process_vlm(
             infer_result,
             process_mode="vlm",
             backend="vlm",
+            retained_page_indices=page_index_map_list[idx] if page_index_map_list is not None else None,
+            broken_page_indices=broken_page_indices_list[idx] if broken_page_indices_list is not None else None,
         )
 
 
@@ -510,6 +581,8 @@ def _process_hybrid(
     f_dump_content_list: bool,
     f_make_md_mode: str,
     server_url: str | None = None,
+    page_index_map_list: list[list[int] | None] | None = None,
+    broken_page_indices_list: list[list[int] | None] | None = None,
     **kwargs: Any,
 ) -> None:
     hybrid_doc_analyze = _load_hybrid_analyze_entrypoint(
@@ -533,6 +606,7 @@ def _process_hybrid(
             language=lang,
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
+            page_index_map=page_index_map_list[idx] if page_index_map_list is not None else None,
             **kwargs,
         )
 
@@ -557,6 +631,8 @@ def _process_hybrid(
             infer_result,
             process_mode="vlm",
             backend="bybrid",
+            retained_page_indices=page_index_map_list[idx] if page_index_map_list is not None else None,
+            broken_page_indices=broken_page_indices_list[idx] if broken_page_indices_list is not None else None,
         )
 
 
@@ -577,6 +653,8 @@ async def _async_process_hybrid(
     f_dump_content_list: bool,
     f_make_md_mode: str,
     server_url: str | None = None,
+    page_index_map_list: list[list[int] | None] | None = None,
+    broken_page_indices_list: list[list[int] | None] | None = None,
     **kwargs: Any,
 ) -> None:
     aio_hybrid_doc_analyze = _load_hybrid_analyze_entrypoint(
@@ -600,6 +678,7 @@ async def _async_process_hybrid(
             language=lang,
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
+            page_index_map=page_index_map_list[idx] if page_index_map_list is not None else None,
             **kwargs,
         )
 
@@ -624,6 +703,8 @@ async def _async_process_hybrid(
             infer_result,
             process_mode="vlm",
             backend="bybrid",
+            retained_page_indices=page_index_map_list[idx] if page_index_map_list is not None else None,
+            broken_page_indices=broken_page_indices_list[idx] if broken_page_indices_list is not None else None,
         )
 
 
@@ -731,8 +812,11 @@ def do_parse(
         logger.warning("No valid PDF or image files to process.")
         return
 
-    # 预处理PDF字节数据
-    pdf_bytes_list = _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id)
+    # 预处理PDF字节数据，同时保留裁剪后 PDF 页序到原始页号的映射。
+    prepared_pdf_inputs = _prepare_pdf_inputs(pdf_bytes_list, start_page_id, end_page_id)
+    pdf_bytes_list = [prepared.pdf_bytes for prepared in prepared_pdf_inputs]
+    page_index_map_list = [prepared.retained_page_indices for prepared in prepared_pdf_inputs]
+    broken_page_indices_list = [prepared.broken_page_indices for prepared in prepared_pdf_inputs]
 
     if backend == "pipeline":
         _process_pipeline(
@@ -752,6 +836,8 @@ def do_parse(
             f_dump_content_list,
             f_make_md_mode,
             client_side_output_generation=client_side_output_generation,
+            page_index_map_list=page_index_map_list,
+            broken_page_indices_list=broken_page_indices_list,
         )
     else:
         if backend.startswith("vlm-"):
@@ -782,6 +868,8 @@ def do_parse(
                 f_dump_content_list,
                 f_make_md_mode,
                 server_url,
+                page_index_map_list=page_index_map_list,
+                broken_page_indices_list=broken_page_indices_list,
                 image_analysis=image_analysis,
                 client_side_output_generation=client_side_output_generation,
                 **kwargs,
@@ -818,6 +906,8 @@ def do_parse(
                 f_dump_content_list,
                 f_make_md_mode,
                 server_url,
+                page_index_map_list=page_index_map_list,
+                broken_page_indices_list=broken_page_indices_list,
                 image_analysis=image_analysis,
                 client_side_output_generation=client_side_output_generation,
                 **kwargs,
@@ -869,8 +959,11 @@ async def aio_do_parse(
         logger.warning("No valid PDF or image files to process.")
         return
 
-    # 预处理PDF字节数据
-    pdf_bytes_list = _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id)
+    # 预处理PDF字节数据，同时保留裁剪后 PDF 页序到原始页号的映射。
+    prepared_pdf_inputs = _prepare_pdf_inputs(pdf_bytes_list, start_page_id, end_page_id)
+    pdf_bytes_list = [prepared.pdf_bytes for prepared in prepared_pdf_inputs]
+    page_index_map_list = [prepared.retained_page_indices for prepared in prepared_pdf_inputs]
+    broken_page_indices_list = [prepared.broken_page_indices for prepared in prepared_pdf_inputs]
 
     if backend == "pipeline":
         # pipeline模式暂不支持异步，使用同步处理方式
@@ -891,6 +984,8 @@ async def aio_do_parse(
             f_dump_content_list,
             f_make_md_mode,
             client_side_output_generation=client_side_output_generation,
+            page_index_map_list=page_index_map_list,
+            broken_page_indices_list=broken_page_indices_list,
         )
     else:
         if backend.startswith("vlm-"):
@@ -921,6 +1016,8 @@ async def aio_do_parse(
                 f_dump_content_list,
                 f_make_md_mode,
                 server_url,
+                page_index_map_list=page_index_map_list,
+                broken_page_indices_list=broken_page_indices_list,
                 image_analysis=image_analysis,
                 client_side_output_generation=client_side_output_generation,
                 **kwargs,
@@ -957,6 +1054,8 @@ async def aio_do_parse(
                 f_dump_content_list,
                 f_make_md_mode,
                 server_url,
+                page_index_map_list=page_index_map_list,
+                broken_page_indices_list=broken_page_indices_list,
                 image_analysis=image_analysis,
                 client_side_output_generation=client_side_output_generation,
                 **kwargs,

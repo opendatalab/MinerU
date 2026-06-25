@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+import sys
+from types import SimpleNamespace
 from typing import Any
 
 from typer.testing import CliRunner
@@ -21,6 +24,37 @@ def test_kit_root_and_models_help() -> None:
     assert "api-server" in result.output
     assert "vlm-server" in result.output
     assert "router" in result.output
+
+
+def test_kit_main_import_does_not_import_legacy_router() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    code = """
+import importlib.abc
+import sys
+
+
+class BlockLegacyRouterFinder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "mineru.cli_old.router":
+            raise ModuleNotFoundError("blocked legacy router import")
+        return None
+
+
+sys.meta_path.insert(0, BlockLegacyRouterFinder())
+import mineru.kit.main
+print("ok")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
 
 
 def test_models_download_pipeline(monkeypatch: Any) -> None:
@@ -121,7 +155,11 @@ def test_router_forwards_known_and_extra_args(monkeypatch: Any) -> None:
         seen["prog_name"] = prog_name
         seen["standalone_mode"] = standalone_mode
 
-    monkeypatch.setattr(router.old_router.main, "main", _fake_main)
+    monkeypatch.setattr(
+        router,
+        "_load_old_router",
+        lambda: SimpleNamespace(main=SimpleNamespace(main=_fake_main)),
+    )
 
     result = runner.invoke(
         app,

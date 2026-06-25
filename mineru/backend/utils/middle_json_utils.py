@@ -19,6 +19,18 @@ from ..pipeline.model_init import run_ocr_rec_inference
 T = TypeVar("T")
 
 
+def resolve_output_page_idx(physical_page_idx: int, page_index_map: list[int] | None = None) -> int:
+    """根据物理页序解析输出页号，确保裁图和 middle_json 使用原始页号。"""
+    if page_index_map is None:
+        return physical_page_idx
+    if physical_page_idx < 0 or physical_page_idx >= len(page_index_map):
+        raise ValueError(
+            f"page_index_map does not cover physical page index {physical_page_idx}: "
+            f"map length={len(page_index_map)}"
+        )
+    return page_index_map[physical_page_idx]
+
+
 def append_pages(
     middle_json: list[PageInfo],
     model_list: list[T],
@@ -32,6 +44,7 @@ def append_pages(
         Callable[[T, dict[str, Any], Any, DataWriter | None, int, bool, bool], PageInfo],
     ],
     page_start_index: int = 0,
+    page_index_map: list[int] | None = None,
     progress_bar: Any = None,
     **kwargs: Any,
 ) -> None:
@@ -43,18 +56,19 @@ def append_pages(
     """
 
     for offset, (page_data, image_dict) in enumerate(zip(model_list, images_list)):
-        page_index = page_start_index + offset
+        physical_page_idx = page_start_index + offset
+        output_page_idx = resolve_output_page_idx(physical_page_idx, page_index_map)
         page = None
         try:
             with pdfium_guard():
-                page = pdf_doc[page_index]
-            page_info = page_cvt_fn(copy.deepcopy(page_data), image_dict, page, image_writer, page_index, **kwargs)
+                page = pdf_doc[physical_page_idx]
+            page_info = page_cvt_fn(copy.deepcopy(page_data), image_dict, page, image_writer, output_page_idx, **kwargs)
             if page_info is None:
                 with pdfium_guard():
                     page_w, page_h = map(int, page.get_size())
                 page_info = PageInfo(
                     preproc_blocks=[],
-                    page_idx=page_index,
+                    page_idx=output_page_idx,
                     page_size=(page_w, page_h),
                     discarded_blocks=[],
                     _backend=None,
