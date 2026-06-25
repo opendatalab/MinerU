@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+from typing import Any
+
 import typer
 
-from ...cli_old import router as old_router
+
+def _load_old_router() -> Any:
+    """懒加载旧 router 实现，避免 mineru-kit 其他子命令提前加载重依赖。"""
+    from ...cli_old import router as old_router
+
+    return old_router
 
 
 def router_cmd(
@@ -39,6 +46,7 @@ def router_cmd(
         *(list(ctx.args) if ctx is not None else []),
     ]
     try:
+        old_router = _load_old_router()
         old_router.main.main(
             args=args,
             prog_name="mineru-kit router",

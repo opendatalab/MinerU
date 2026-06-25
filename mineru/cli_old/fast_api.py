@@ -35,13 +35,13 @@ from mineru.cli_old.common import (
     aio_do_parse,
     do_parse,
     image_suffixes,
-    normalize_upload_filename,
     office_suffixes,
     pdf_suffixes,
     normalize_task_stem,
     read_fn,
     uniquify_task_stems,
 )
+from mineru.cli_old.upload_utils import normalize_upload_filename
 from mineru.cli_old.api_request import ParseRequestOptions, parse_request_form
 from mineru.cli_old.public_http_client_policy import (
     configure_public_http_client_policy,

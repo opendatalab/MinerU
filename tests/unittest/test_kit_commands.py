@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import ast
+import asyncio
 from pathlib import Path
 import subprocess
 import sys
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
 from typer.testing import CliRunner
 
 from mineru.kit.commands import api_server, models, parse, router, vlm_server
@@ -55,6 +58,101 @@ print("ok")
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "ok"
+
+
+def test_cli_old_router_import_supports_upstream_only_without_local_dependencies() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    code = """
+import importlib.abc
+
+
+class BlockLocalPipelineFinder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname in {"mineru.cli_old.common", "mineru.cli_old.vlm_preload"}:
+            raise ModuleNotFoundError(f"blocked local dependency import: {fullname}")
+        if fullname == "mineru.backend.vlm.vlm_analyze" or fullname.startswith("mineru.backend.office."):
+            raise ModuleNotFoundError(f"blocked local dependency import: {fullname}")
+        return None
+
+
+import sys
+sys.meta_path.insert(0, BlockLocalPipelineFinder())
+
+from mineru.cli_old.router import RouterSettings, WorkerPool, create_app
+
+settings = RouterSettings(upstream_urls=("http://127.0.0.1:8000",), local_gpus="none")
+create_app(settings)
+pool = WorkerPool(settings, object())
+servers = pool.servers
+assert len(servers) == 1
+assert servers[0].source == "remote"
+assert servers[0].local_server is None
+print("ok")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
+def test_router_upstream_only_worker_pool_builds_remote_server() -> None:
+    from mineru.cli_old.router import RouterSettings, WorkerPool
+
+    settings = RouterSettings(upstream_urls=("http://mineru-api:8000",), local_gpus="none")
+    pool = WorkerPool(settings, object())
+
+    assert [(server.server_id, server.source, server.base_url, server.local_server) for server in pool.servers] == [
+        ("remote-1", "remote", "http://mineru-api:8000", None),
+    ]
+
+
+def test_router_startup_with_no_servers_fails_health_check() -> None:
+    from mineru.cli_old.router import RouterSettings, create_app, startup_router_state
+
+    app = create_app(RouterSettings(upstream_urls=(), local_gpus="none"))
+
+    async def _startup() -> None:
+        await startup_router_state(app, RouterSettings(upstream_urls=(), local_gpus="none"))
+
+    with pytest.raises(RuntimeError, match="No healthy upstream MinerU API servers are available"):
+        asyncio.run(_startup())
+
+
+def test_upload_filename_helper_import_boundary_is_explicit() -> None:
+    """校验上传文件名 helper 只由需要的入口直接导入，避免 common.py 继续承担兼容转发。"""
+    repo_root = Path(__file__).resolve().parents[2]
+    common_tree = ast.parse((repo_root / "mineru/cli_old/common.py").read_text(encoding="utf-8"))
+    fast_api_tree = ast.parse((repo_root / "mineru/cli_old/fast_api.py").read_text(encoding="utf-8"))
+
+    common_imports = {
+        alias.name
+        for node in ast.walk(common_tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "upload_utils"
+        for alias in node.names
+    }
+    fast_api_common_imports = {
+        alias.name
+        for node in ast.walk(fast_api_tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "mineru.cli_old.common"
+        for alias in node.names
+    }
+    fast_api_upload_imports = {
+        alias.name
+        for node in ast.walk(fast_api_tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "mineru.cli_old.upload_utils"
+        for alias in node.names
+    }
+
+    assert "normalize_upload_filename" not in common_imports
+    assert "normalize_upload_filename" not in fast_api_common_imports
+    assert "normalize_upload_filename" in fast_api_upload_imports
 
 
 def test_models_download_pipeline(monkeypatch: Any) -> None:
