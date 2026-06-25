@@ -245,19 +245,24 @@ def test_parse_result_structured_content_method_and_save_name() -> None:
     assert "content_list" + "_v2.json" not in writes
 
 
-def test_parse_result_render_methods_use_original_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_parse_result_render_methods_use_export_pages_without_mutating_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    img_bytes = b"render-inline-image"
+    inline_image = _data_uri(img_bytes)
+    html = f'<table><tr><td><img src="{inline_image}"/></td></tr></table>'
     page = PageInfo(
         page_idx=0,
         page_size=(100, 100),
         para_blocks=[
             Block(
                 index=0,
-                type="text",
+                type="table",
                 bbox=(0.0, 0.0, 10.0, 10.0),
                 lines=[
                     Line(
                         bbox=(0.0, 0.0, 10.0, 10.0),
-                        spans=[Span(type=ContentType.TEXT, bbox=(0.0, 0.0, 10.0, 10.0), content="raw pages")],
+                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
                     )
                 ],
             )
@@ -265,16 +270,40 @@ def test_parse_result_render_methods_use_original_pages(monkeypatch: pytest.Monk
         _backend="pipeline",
     )
     result = ParseResult(pages=[page])
+    captured: list[list[PageInfo]] = []
 
-    def fail_export_pages(self: ParseResult) -> list[PageInfo]:
-        """如果 render 方法依赖导出视图，测试应立即失败。"""
-        raise AssertionError("render methods should use original pages")
+    def _assert_clean_export_pages(pages: list[PageInfo]) -> None:
+        """确认 public 渲染入口收到的是清理后的导出页副本，而不是带 staged 载荷的原始页。"""
+        captured.append(pages)
+        content = pages[0].para_blocks[0].lines[0].spans[0].content
+        assert inline_image not in content
+        assert next(iter(result.images())) in content
 
-    monkeypatch.setattr(ParseResult, "export_pages", fail_export_pages)
+    def fake_render_markdown(pages: list[PageInfo], *args, **kwargs) -> str:
+        """记录 markdown 渲染输入，避免测试依赖具体 markdown 输出细节。"""
+        _assert_clean_export_pages(pages)
+        return "markdown"
 
-    assert result.markdown() == "raw pages"
-    assert result.content_list()[0]["text"] == "raw pages"
-    assert result.structured_content()[0][0]["content"]["paragraph_content"][0]["content"] == "raw pages"
+    def fake_render_content_list(pages: list[PageInfo], *args, **kwargs) -> list[dict[str, str]]:
+        """记录 content_list 渲染输入，验证导出视图在所有 public 渲染方法中一致。"""
+        _assert_clean_export_pages(pages)
+        return [{"type": "table"}]
+
+    def fake_render_structured_content(pages: list[PageInfo], *args, **kwargs) -> list[list[dict[str, str]]]:
+        """记录 structured_content 渲染输入，覆盖最新评论指出的 data URI 残留路径。"""
+        _assert_clean_export_pages(pages)
+        return [[{"type": "table"}]]
+
+    monkeypatch.setattr("mineru.parser.base.render_markdown", fake_render_markdown)
+    monkeypatch.setattr("mineru.parser.base.render_content_list", fake_render_content_list)
+    monkeypatch.setattr("mineru.parser.base.render_structured_content", fake_render_structured_content)
+
+    assert result.markdown() == "markdown"
+    assert result.content_list() == [{"type": "table"}]
+    assert result.structured_content() == [[{"type": "table"}]]
+    assert len(captured) == 3
+    assert all(pages is not result.pages for pages in captured)
+    assert inline_image in page.para_blocks[0].lines[0].spans[0].content
 
 
 def test_parse_result_save_writes_base64_images_and_exports_clean_middle_json() -> None:
@@ -324,6 +353,139 @@ def test_parse_result_save_writes_base64_images_and_exports_clean_middle_json() 
     assert exported_span["image_path"] == "figure.png"
     assert "image_base64" not in exported_span
     assert writes["figure.png"] == img_bytes
+
+
+def test_parse_result_save_renders_structured_content_from_clean_export_pages() -> None:
+    img_bytes = b"table-image"
+    inline_image = _data_uri(img_bytes)
+    html = f'<table><tr><td><img src="{inline_image}"/></td></tr></table>'
+    page = PageInfo(
+        page_idx=0,
+        page_size=(100, 100),
+        para_blocks=[
+            Block(
+                index=0,
+                type="table",
+                bbox=(0.0, 0.0, 10.0, 10.0),
+                lines=[
+                    Line(
+                        bbox=(0.0, 0.0, 10.0, 10.0),
+                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
+                    )
+                ],
+            )
+        ],
+        _backend="pipeline",
+    )
+    result = ParseResult(pages=[page])
+    writes: dict[str, bytes | str] = {}
+
+    class MemoryWriter:
+        def write_string(self, path: str, content: str) -> None:
+            """记录 save 写出的文本产物，验证 public 文件不再携带内联 base64 图片。"""
+            writes[path] = content
+
+        def write(self, path: str, content: bytes) -> None:
+            """记录 save 写出的图片产物，验证导出视图引用的图片确实落盘。"""
+            writes[path] = content
+
+    result.save(MemoryWriter())
+    image_path = next(iter(result.images()))
+    structured_content = writes["structured_content.json"]
+
+    assert isinstance(structured_content, str)
+    assert inline_image not in structured_content
+    assert image_path in structured_content
+    assert writes[image_path] == img_bytes
+    assert inline_image in page.para_blocks[0].lines[0].spans[0].content
+
+
+def test_parse_result_public_outputs_reuse_export_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    img_bytes = b"cached-table-image"
+    inline_image = _data_uri(img_bytes)
+    html = f'<table><tr><td><img src="{inline_image}"/></td></tr></table>'
+    page = PageInfo(
+        page_idx=0,
+        page_size=(100, 100),
+        para_blocks=[
+            Block(
+                index=0,
+                type="table",
+                bbox=(0.0, 0.0, 10.0, 10.0),
+                lines=[
+                    Line(
+                        bbox=(0.0, 0.0, 10.0, 10.0),
+                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
+                    )
+                ],
+            )
+        ],
+        _backend="pipeline",
+    )
+    result = ParseResult(pages=[page])
+    original_export = result._export_pages_and_images
+    export_call_count = 0
+
+    def counted_export_pages_and_images():
+        """统计导出视图构造次数，确保多 public 输出复用同一份缓存。"""
+        nonlocal export_call_count
+        export_call_count += 1
+        return original_export()
+
+    monkeypatch.setattr(result, "_export_pages_and_images", counted_export_pages_and_images)
+
+    output_text = json.dumps(
+        {
+            "markdown": result.markdown(),
+            "content_list": result.content_list(),
+            "structured_content": result.structured_content(),
+            "middle_json": result.to_export_dict(),
+            "images": sorted(result.images()),
+        },
+        ensure_ascii=False,
+    )
+
+    assert export_call_count == 1
+    assert inline_image not in output_text
+    assert next(iter(result.images())) in output_text
+    assert inline_image in page.para_blocks[0].lines[0].spans[0].content
+
+
+def test_parse_result_export_pages_returns_defensive_copy_from_cache() -> None:
+    img_bytes = b"defensive-table-image"
+    inline_image = _data_uri(img_bytes)
+    html = f'<table><tr><td><img src="{inline_image}"/></td></tr></table>'
+    page = PageInfo(
+        page_idx=0,
+        page_size=(100, 100),
+        para_blocks=[
+            Block(
+                index=0,
+                type="table",
+                bbox=(0.0, 0.0, 10.0, 10.0),
+                lines=[
+                    Line(
+                        bbox=(0.0, 0.0, 10.0, 10.0),
+                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
+                    )
+                ],
+            )
+        ],
+        _backend="pipeline",
+    )
+    result = ParseResult(pages=[page])
+    first_export = result.export_pages()
+    first_export[0].para_blocks[0].lines[0].spans[0].content = "mutated by caller"
+
+    second_export = result.export_pages()
+    second_content = second_export[0].para_blocks[0].lines[0].spans[0].content
+    exported_json = json.dumps(result.to_export_dict(), ensure_ascii=False)
+
+    assert "mutated by caller" not in second_content
+    assert "mutated by caller" not in exported_json
+    assert inline_image not in second_content
+    assert inline_image not in exported_json
+    assert next(iter(result.images())) in exported_json
 
 
 def test_parse_result_export_rewrites_inline_table_base64_images() -> None:

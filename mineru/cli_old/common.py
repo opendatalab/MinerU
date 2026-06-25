@@ -298,10 +298,18 @@ def _process_output(
     image_writer = FileBasedDataWriter(local_image_dir)
     for img_path, img_bytes in export_result.images().items():
         image_writer.write(img_path, img_bytes)
+    public_render_pages: list[PageInfo] | None = None
+
+    def get_public_render_pages() -> list[PageInfo]:
+        """按需生成 public 渲染页副本，避免 staged base64 载荷进入 markdown/content 输出。"""
+        nonlocal public_render_pages
+        if public_render_pages is None:
+            public_render_pages = export_result.export_pages()
+        return public_render_pages
 
     if f_dump_md:
         md_content_str = render_markdown(
-            middle_json,
+            get_public_render_pages(),
             image_dir,
             no_rich_content=(f_make_md_mode != "mm_markdown"),
         )
@@ -311,13 +319,13 @@ def _process_output(
         )
 
     if f_dump_content_list:
-        content_list = render_content_list(middle_json, image_dir)
+        content_list = render_content_list(get_public_render_pages(), image_dir)
         md_writer.write_string(
             f"{pdf_file_name}_content_list.json",
             json.dumps(content_list, ensure_ascii=False, indent=4),
         )
 
-        structured_content = render_structured_content(middle_json, image_dir)
+        structured_content = render_structured_content(get_public_render_pages(), image_dir)
         md_writer.write_string(
             f"{pdf_file_name}_structured_content.json",
             json.dumps(structured_content, ensure_ascii=False, indent=4),
