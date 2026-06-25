@@ -162,7 +162,7 @@ uv python install 3.12
 Then install MinerU with the supported interpreter that was found, or with Python 3.12 if it was installed as the fallback:
 
 ```bash
-uv tool install --python 3.12 mineru@https://github.com/johnking0099/MinerU-Repo/archive/refs/heads/next.zip
+uv tool install --python 3.12 mineru-next-dev
 ```
 
 ### Install with `pipx`
@@ -179,7 +179,7 @@ PIPX_DEFAULT_PYTHON="$(pipx environment --value PIPX_DEFAULT_PYTHON)"
 Check the `PIPX_DEFAULT_PYTHON` path reported by `pipx`. If that interpreter satisfies `>=3.10,<3.14`, install with `pipx`:
 
 ```bash
-pipx install mineru@https://github.com/johnking0099/MinerU-Repo/archive/refs/heads/next.zip
+pipx install mineru-next-dev
 ```
 
 If `PIPX_DEFAULT_PYTHON` is unsupported, but a supported Python interpreter can be found on the current system, pass it explicitly. `python3.12` is an example; use any interpreter that satisfies `>=3.10,<3.14`.
@@ -187,13 +187,13 @@ If `PIPX_DEFAULT_PYTHON` is unsupported, but a supported Python interpreter can 
 ```bash
 command -v python3.12
 python3.12 --version
-pipx install --python python3.12 mineru@https://github.com/johnking0099/MinerU-Repo/archive/refs/heads/next.zip
+pipx install --python python3.12 mineru-next-dev
 ```
 
 If no supported system interpreter is available and `pipx` supports Python fetching, ask for approval before downloading a standalone Python:
 
 ```bash
-pipx install --python 3.12 --fetch-python=missing mineru@https://github.com/johnking0099/MinerU-Repo/archive/refs/heads/next.zip
+pipx install --python 3.12 --fetch-python=missing mineru-next-dev
 ```
 
 ### Install with global `pip`
@@ -208,7 +208,7 @@ pip --version
 If a `pip` command reports Python `>=3.10,<3.14`, and the user confirms, install with the exact supported `pip` command that was verified. Replace `pip` below with the verified pip command if needed:
 
 ```bash
-pip install mineru@https://github.com/johnking0099/MinerU-Repo/archive/refs/heads/next.zip
+pip install mineru-next-dev
 ```
 
 ### If No Supported Installer Is Available
