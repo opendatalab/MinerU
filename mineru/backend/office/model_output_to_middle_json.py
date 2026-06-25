@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Any
 
 from ...types import Block, BlockType, PageInfo
+from ...utils.image_payload import image_path_from_data_uri
 from .office_magic_model import MagicModel
 
 
@@ -44,7 +45,20 @@ def blocks_to_page_info(page_blocks: list[dict[str, Any]], image_writer: Any, pa
         page_idx=page_index,
         _backend="office",
     )
+    _populate_image_paths_from_base64(page_info)
     return page_info
+
+
+def _populate_image_paths_from_base64(page_info: PageInfo) -> None:
+    """为 Office 内联 base64 图片生成稳定 image_path，保留图片字节给后续统一写出。"""
+    for block_list in (page_info.para_blocks, page_info.discarded_blocks):
+        for block in block_list:
+            for span in block.all_spans():
+                if span.image_path or not span.image_base64:
+                    continue
+                image_path = image_path_from_data_uri(span.image_base64)
+                if image_path is not None:
+                    span.image_path = image_path
 
 
 def _extract_section_parts_from_content(content: str, level: int) -> list[int] | None:

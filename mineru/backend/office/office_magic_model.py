@@ -664,9 +664,10 @@ def fix_two_layer_blocks(blocks: list[Block], fix_type: Literal["image", "table"
 
     # 添加未处理的blocks
     for block in blocks:
-        block.type = ""
-        if block.index not in processed_indices and block not in not_include_blocks:
-            not_include_blocks.append(block)
+        if block.index not in processed_indices:
+            block.type = ""
+            if block not in not_include_blocks:
+                not_include_blocks.append(block)
 
     return fixed_blocks, not_include_blocks
 
