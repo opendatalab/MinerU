@@ -1,6 +1,7 @@
 from pathlib import Path
 import asyncio
 import inspect
+import json
 
 import pytest
 from click.testing import CliRunner
@@ -352,6 +353,67 @@ def test_api_server_rendered_outputs_store_image_sidecars(
         )
     ]
     assert file_store.read_file_data(output_files.images[0].file_id) == img_bytes
+
+
+def test_api_server_middle_json_preserves_backend_for_client_rendering(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    block = Block(
+        index=0,
+        type="text",
+        bbox=(0, 0, 10, 10),
+        lines=[Line(bbox=(0, 0, 10, 10), spans=[Span(type="text", bbox=(0, 0, 10, 10), content="hello")])],
+    )
+    parse_result = ParseResult(
+        pages=[
+            PageInfo(
+                page_idx=0,
+                page_size=(100, 100),
+                para_blocks=[block],
+                _backend="pipeline",
+            )
+        ]
+    )
+
+    async def fake_parse_async(*args, **kwargs) -> ParseResult:
+        return parse_result
+
+    monkeypatch.setattr("mineru.parser.parse_async", fake_parse_async)
+    file_store = FileStore(tmp_path / "api-files")
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "tier": "standard",
+            "output_formats": ["middle_json"],
+        }
+    )
+    job_store = api_server.JobStore()
+    rec = job_store.create(request, file_store)
+
+    asyncio.run(
+        api_server._run_job(
+            rec,
+            request,
+            file_store,
+            server_backend="pipeline",
+            language="ch",
+            ocr_mode="auto",
+            table_enable=True,
+            formula_enable=True,
+            image_analysis=True,
+        )
+    )
+
+    output_ref = rec.files[0].output_files.middle_json
+    payload = json.loads(file_store.read_file_data(output_ref.file_id).decode("utf-8"))
+    roundtrip = ParseResult.from_dict(payload)
+
+    assert payload["_backend"] == "pipeline"
+    assert roundtrip.content_list()
+    assert roundtrip.structured_content()
 
 
 def test_job_list_item_uses_file_count() -> None:

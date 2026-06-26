@@ -88,17 +88,29 @@ class ParseResult:
             "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
             "pages": [page.to_dict(skip_defaults=skip_defaults) for page in self.pages],
         }
+        self._append_root_backend(payload, self.pages)
         self._append_private_pdf_page_mapping(payload)
         return payload
 
     def to_export_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
         """生成 public middle_json 视图：图片已落盘引用，base64 临时载荷不再输出。"""
+        export_pages = self._public_render_pages()
         payload = {
             "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
-            "pages": [page.to_dict(skip_defaults=skip_defaults) for page in self._public_render_pages()],
+            "pages": [page.to_dict(skip_defaults=skip_defaults) for page in export_pages],
         }
+        self._append_root_backend(payload, export_pages)
         self._append_private_pdf_page_mapping(payload)
         return payload
+
+    @staticmethod
+    def _append_root_backend(payload: dict[str, Any], pages: list[PageInfo]) -> None:
+        """在 envelope 级别保存统一 backend，避免 public page 字段暴露私有属性。"""
+        backend = next((page._backend for page in pages if page._backend), None)
+        if backend is None:
+            return
+        if all(page._backend in (None, backend) for page in pages):
+            payload["_backend"] = backend
 
     def _append_private_pdf_page_mapping(self, payload: dict[str, Any]) -> None:
         """附加 PDF 重写页映射的内部元数据，供本地可视化按实际 PDF 页序绘制。"""

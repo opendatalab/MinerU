@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 from pathlib import Path
@@ -27,10 +28,12 @@ from mineru.doclib.services.parse_svc import (
     filter_pages_by_user_range,
     load_pages_from_done_batches,
     parse_batch_json_path,
+    parse_image_sidecar_dir,
 )
 from mineru.doclib.services.scan_svc import ScanService
 from mineru.doclib.services.search_svc import SearchService
-from mineru.doclib.server import DoclibServer, _render_progressive_markdown
+from mineru.doclib.locators import ContentCursor
+from mineru.doclib.server import DoclibServer, _ReadPlan, _render_progressive_markdown
 from mineru.doclib.types import ParseResponse
 from mineru.parser import backend_for_tier, resolve_tier_and_backend
 from mineru.parser.base import ParseResult
@@ -149,6 +152,14 @@ class _FakeDB:
             sha256, tier, status = params
             rows = [
                 row
+                for row in self.parses
+                if row["sha256"] == sha256 and row["tier"] == tier and row["status"] == status
+            ]
+            return sorted(rows, key=lambda row: row["done_at"] or 0, reverse=True)
+        if sql.startswith("SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=? AND status=?"):
+            sha256, tier, status = params
+            rows = [
+                {"page_range": row["page_range"], "done_at": row["done_at"]}
                 for row in self.parses
                 if row["sha256"] == sha256 and row["tier"] == tier and row["status"] == status
             ]
@@ -1709,6 +1720,11 @@ def test_process_doc_writes_cached_image_sidecars(tmp_path: Path) -> None:
     assert success is True
     sidecar = tmp_path / "parsed" / sha256[:2] / sha256 / "flash" / "images" / "figures" / "cache-hit.jpg"
     assert sidecar.read_bytes() == b"fresh-image"
+    batch_path = Path(parse_batch_json_path(str(tmp_path), sha256, "flash", "1", parses[0]["done_at"]))
+    batch = json.loads(batch_path.read_text(encoding="utf-8"))
+    image_span = batch["pages"][0]["para_blocks"][0]["blocks"][0]["lines"][0]["spans"][0]
+    assert image_span["image_path"] == "figures/cache-hit.jpg"
+    assert "image_base64" not in image_span
 
 
 def test_load_pages_from_done_batches_restores_missing_image_sidecars_from_base64(tmp_path: Path) -> None:
@@ -1738,18 +1754,82 @@ def test_load_pages_from_done_batches_keeps_existing_image_sidecar(tmp_path: Pat
     assert sidecar.read_bytes() == b"existing-sidecar"
 
 
-def test_progressive_markdown_uses_doclib_image_sidecar_prefix(tmp_path: Path) -> None:
+def test_progressive_markdown_uses_public_image_sidecar_prefix(tmp_path: Path) -> None:
+    sha256 = "e" * 64
+    tier = "standard"
     page = _image_page("figures/rendered.jpg", b"image")
-    image_dir = tmp_path / "parsed" / "ee" / ("e" * 64) / "standard" / "images"
-
-    rendered = _render_progressive_markdown(
-        [page],
+    _write_batch(tmp_path, sha256, tier, "1", 1000, ParseResult([page]).to_dict(skip_defaults=True)["pages"])
+    image_dir = tmp_path / "parsed" / sha256[:2] / sha256 / tier / "images"
+    db = _FakeDB(
+        parses=[
+            {
+                "sha256": sha256,
+                "tier": tier,
+                "status": "done",
+                "page_range": "1",
+                "done_at": 1000,
+            }
+        ],
+        file_row=None,
+    )
+    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=db))
+    plan = _ReadPlan(
+        sha256=sha256,
         short_id="eeeeeee",
-        tier="standard",
+        tier=tier,
+        page_range=None,
         after=None,
+        locator=None,
+        context=0,
         limit=30000,
-        add_markers=False,
-        img_bucket_path=str(image_dir),
+        format="markdown",
+        no_marker=False,
     )
 
-    assert f"![]({image_dir}/figures/rendered.jpg)" in rendered.content
+    response = asyncio.run(server._execute_read_plan(plan))
+
+    assert str(image_dir) not in response.content
+    assert "![](images/figures/rendered.jpg)" in response.content
+
+
+def test_doclib_office_image_asset_reads_cached_sidecar(tmp_path: Path) -> None:
+    sha256 = "f" * 64
+    tier = "standard"
+    image_dir = Path(parse_image_sidecar_dir(str(tmp_path), sha256, tier))
+    image_path = "figures/office.png"
+    sidecar = image_dir / image_path
+    sidecar.parent.mkdir(parents=True)
+    sidecar.write_bytes(
+        base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+        )
+    )
+
+    image_span = Span(type=ContentType.IMAGE, bbox=(1, 1, 20, 20), image_path=image_path)
+    body = Block(
+        index=0,
+        type=BlockType.IMAGE_BODY,
+        bbox=(1, 1, 20, 20),
+        lines=[Line(bbox=(1, 1, 20, 20), spans=[image_span])],
+    )
+    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(1, 1, 20, 20), blocks=[body])
+    page = PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="office")
+    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=None))
+    plan = _ReadPlan(
+        sha256=sha256,
+        short_id="fffffff",
+        tier=tier,
+        page_range=None,
+        after=None,
+        locator="doc:fffffff/tier:standard/page:1/block:1",
+        context=0,
+        limit=30000,
+        format="image",
+        no_marker=False,
+        target=ContentCursor(short_id="fffffff", tier=tier, page_no=1, block_no=1),
+    )
+
+    asset = asyncio.run(server._render_office_image_asset(plan, page))
+
+    assert Path(asset.path).read_bytes() == sidecar.read_bytes()
+    assert asset.mime_type == "image/png"

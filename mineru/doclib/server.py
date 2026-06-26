@@ -47,7 +47,13 @@ from .rows import (
     WatchStatsFileRow,
     WatchTargetRow,
 )
-from .services.parse_svc import filter_pages_by_user_range, load_pages_from_done_batches, parse_image_sidecar_dir, parse_page_range_set
+from .services.parse_svc import (
+    filter_pages_by_user_range,
+    load_pages_from_done_batches,
+    parse_image_sidecar_dir,
+    parse_page_range_set,
+    resolve_image_sidecar_path,
+)
 from .types import (
     FILE_STATUS_ACTIVE,
     FILE_STATUS_DELETED,
@@ -154,6 +160,9 @@ class _ReadPlan:
     no_marker: bool
     target: ContentCursor | None = None
     next_mode: str = "parse"
+
+
+_PUBLIC_IMAGE_BUCKET_PATH = "images"
 
 
 @dataclass(frozen=True)
@@ -839,7 +848,7 @@ class DoclibServer(AsyncDoclibInterface):
             raise NotFoundError("not_cached", "Requested parsed content is not cached.", "page_range")
         return render_markdown(
             loaded_pages,
-            img_bucket_path=parse_image_sidecar_dir(data_dir, sha256, tier),
+            img_bucket_path=_PUBLIC_IMAGE_BUCKET_PATH,
             add_markers=not no_marker,
         )
 
@@ -868,7 +877,7 @@ class DoclibServer(AsyncDoclibInterface):
             add_markers=not plan.no_marker,
             target=plan.target,
             context=plan.context,
-            img_bucket_path=parse_image_sidecar_dir(data_dir, plan.sha256, plan.tier),
+            img_bucket_path=_PUBLIC_IMAGE_BUCKET_PATH,
         )
         if not rendered.content_ranges:
             raise NotFoundError("not_cached", "Requested parsed content is not cached after cursor.", "after")
@@ -1008,8 +1017,9 @@ class DoclibServer(AsyncDoclibInterface):
             raise InvalidRequestError("format_not_supported", "Office image output is only supported for image blocks.", "format")
         image_bytes, ext, mime_type = _span_image_bytes(image_span)
         if image_bytes is None and image_span.image_path:
-            candidate = Path(image_span.image_path)
-            if candidate.is_file():
+            image_dir = parse_image_sidecar_dir(self.state.data_dir, plan.sha256, plan.tier)
+            candidate = resolve_image_sidecar_path(image_dir, image_span.image_path)
+            if candidate is not None and candidate.is_file():
                 image_bytes = candidate.read_bytes()
                 ext = candidate.suffix.lstrip(".") or "png"
                 mime_type = _mime_type_for_ext(ext)
