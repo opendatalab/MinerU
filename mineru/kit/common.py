@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import zipfile
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Literal
 
 from ..data.data_reader_writer.filebase import FileBasedDataWriter
@@ -143,10 +143,11 @@ def save_parse_result(result: ParseResult, dest: Path, format: KitFormat) -> Non
     dest.parent.mkdir(parents=True, exist_ok=True)
     if format == "markdown":
         _write_utf8_text(dest, result.markdown())
+        _write_image_sidecars(dest.parent, result.images())
         return
     if format == "middle_json":
         _write_utf8_text(dest, result.to_export_json())
-        _write_image_sidecars(FileBasedDataWriter(str(dest.parent)), result.images())
+        _write_image_sidecars(dest.parent, result.images())
         return
     if format == "zip":
         tmp_dir = dest.parent / f".{dest.stem}"
@@ -171,9 +172,38 @@ def _write_utf8_text(path: Path, content: str) -> None:
     path.write_bytes(content.encode("utf-8", errors="replace"))
 
 
-def _write_image_sidecars(writer: FileBasedDataWriter, images: dict[str, bytes]) -> None:
+def _resolve_safe_sidecar_path(output_dir: Path, image_path: str) -> str:
+    """校验图片 sidecar 路径必须落在输出目录内，并返回安全的相对路径。"""
+    posix_path = Path(image_path)
+    windows_path = PureWindowsPath(image_path)
+    if (
+        not image_path
+        or posix_path.is_absolute()
+        or windows_path.is_absolute()
+        or windows_path.drive
+        or windows_path.root
+        or ".." in posix_path.parts
+        or ".." in windows_path.parts
+    ):
+        raise ValueError(f"Unsafe image sidecar path: {image_path}")
+
+    output_root = output_dir.resolve()
+    target_path = (output_root / posix_path).resolve()
+    try:
+        target_path.relative_to(output_root)
+    except ValueError as exc:
+        raise ValueError(f"Unsafe image sidecar path: {image_path}") from exc
+    return target_path.relative_to(output_root).as_posix()
+
+
+def _write_image_sidecars(output_dir: Path, images: dict[str, bytes]) -> None:
     """将 public middle_json 引用的图片 sidecar 写到输出目录，避免 image_path 悬空。"""
-    for image_path, image_bytes in images.items():
+    writer = FileBasedDataWriter(str(output_dir))
+    safe_images = [
+        (_resolve_safe_sidecar_path(output_dir, image_path), image_bytes)
+        for image_path, image_bytes in images.items()
+    ]
+    for image_path, image_bytes in safe_images:
         writer.write(image_path, image_bytes)
 
 

@@ -317,12 +317,19 @@ def test_parse_single_file_markdown(monkeypatch: Any, tmp_path: Path) -> None:
 
     class _Result:
         def markdown(self) -> str:
+            """返回用于单文件 markdown 输出的测试内容。"""
             return "# demo\n"
 
         def to_json(self) -> str:
+            """保留旧 fake 接口，避免无关测试关注 JSON 输出细节。"""
             return '{"pages":[]}'
 
+        def images(self) -> dict[str, bytes]:
+            """当前 markdown 无图片 sidecar 时返回空图片集合。"""
+            return {}
+
         def save(self, writer: Any) -> None:
+            """模拟 zip 输出所需的完整保存接口。"""
             writer.write_string("markdown.md", self.markdown())
             writer.write_string("middle_json.json", self.to_json())
 
@@ -344,9 +351,11 @@ def test_parse_single_file_middle_json_writes_image_sidecars(
 
     class _Result:
         def to_export_json(self) -> str:
+            """返回带图片引用的 public middle_json。"""
             return '{"pages":[{"para_blocks":[{"lines":[{"spans":[{"image_path":"figure.png"}]}]}]}]}'
 
         def images(self) -> dict[str, bytes]:
+            """返回需要随 public middle_json 一起落盘的图片 sidecar。"""
             return {"figure.png": b"figure-bytes"}
 
     monkeypatch.setattr(parse, "local_parse", lambda *args, **kwargs: _Result())
@@ -363,6 +372,153 @@ def test_parse_single_file_middle_json_writes_image_sidecars(
     assert (tmp_path / "figure.png").read_bytes() == b"figure-bytes"
 
 
+def test_parse_single_file_middle_json_rejects_parent_sidecar_paths(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """拒绝 API 或解析结果提供的父目录逃逸 sidecar 路径。"""
+    source = tmp_path / "demo.pdf"
+    output = tmp_path / "out.json"
+    escaped = tmp_path / "escape.png"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Result:
+        def to_export_json(self) -> str:
+            """返回引用逃逸路径的 public middle_json。"""
+            return '{"pages":[]}'
+
+        def images(self) -> dict[str, bytes]:
+            """模拟远端返回包含 .. 的图片 sidecar 路径。"""
+            return {"../escape.png": b"escape-bytes"}
+
+    monkeypatch.setattr(parse, "local_parse", lambda *args, **kwargs: _Result())
+
+    result = runner.invoke(
+        app,
+        ["parse", str(source), "-o", str(output), "--format", "middle_json"],
+    )
+
+    assert result.exit_code == 1
+    assert "Unsafe image sidecar path" in result.output
+    assert not escaped.exists()
+
+
+def test_parse_single_file_middle_json_rejects_absolute_sidecar_paths(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """拒绝 API 或解析结果提供的绝对 sidecar 路径。"""
+    source = tmp_path / "demo.pdf"
+    output = tmp_path / "out.json"
+    absolute = tmp_path / "absolute.png"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Result:
+        def to_export_json(self) -> str:
+            """返回普通 public middle_json 内容，重点验证 sidecar 路径。"""
+            return '{"pages":[]}'
+
+        def images(self) -> dict[str, bytes]:
+            """模拟远端返回绝对图片 sidecar 路径。"""
+            return {str(absolute): b"absolute-bytes"}
+
+    monkeypatch.setattr(parse, "local_parse", lambda *args, **kwargs: _Result())
+
+    result = runner.invoke(
+        app,
+        ["parse", str(source), "-o", str(output), "--format", "middle_json"],
+    )
+
+    assert result.exit_code == 1
+    assert "Unsafe image sidecar path" in result.output
+    assert not absolute.exists()
+
+
+def test_parse_single_file_middle_json_rejects_windows_rooted_sidecar_paths(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """拒绝 Windows rooted 形式的 sidecar 路径，避免跨平台逃逸。"""
+    source = tmp_path / "demo.pdf"
+    output = tmp_path / "out.json"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Result:
+        def to_export_json(self) -> str:
+            """返回普通 public middle_json 内容，重点验证 Windows 路径。"""
+            return '{"pages":[]}'
+
+        def images(self) -> dict[str, bytes]:
+            """模拟远端返回 Windows rooted 图片 sidecar 路径。"""
+            return {"\\escape.png": b"escape-bytes"}
+
+    monkeypatch.setattr(parse, "local_parse", lambda *args, **kwargs: _Result())
+
+    result = runner.invoke(
+        app,
+        ["parse", str(source), "-o", str(output), "--format", "middle_json"],
+    )
+
+    assert result.exit_code == 1
+    assert "Unsafe image sidecar path" in result.output
+    assert not (tmp_path / "\\escape.png").exists()
+
+
+def test_parse_single_file_markdown_writes_image_sidecars(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """markdown 单文件输出也要写出渲染结果引用的图片 sidecar。"""
+    source = tmp_path / "demo.pdf"
+    output = tmp_path / "out.md"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Result:
+        def markdown(self) -> str:
+            """返回带相对图片引用的 markdown 内容。"""
+            return "![](figure.png)\n"
+
+        def images(self) -> dict[str, bytes]:
+            """返回 markdown 引用的图片 sidecar。"""
+            return {"figure.png": b"figure-bytes"}
+
+    monkeypatch.setattr(parse, "local_parse", lambda *args, **kwargs: _Result())
+
+    result = runner.invoke(app, ["parse", str(source), "-o", str(output)])
+
+    assert result.exit_code == 0
+    assert output.read_text(encoding="utf-8") == "![](figure.png)\n"
+    assert (tmp_path / "figure.png").read_bytes() == b"figure-bytes"
+
+
+def test_parse_single_file_markdown_rejects_unsafe_sidecar_paths(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """markdown 补写 sidecar 时同样不能允许路径逃逸输出目录。"""
+    source = tmp_path / "demo.pdf"
+    output = tmp_path / "out.md"
+    escaped = tmp_path / "escape.png"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Result:
+        def markdown(self) -> str:
+            """返回引用逃逸路径的 markdown 内容。"""
+            return "![](../escape.png)\n"
+
+        def images(self) -> dict[str, bytes]:
+            """模拟远端或解析结果返回逃逸图片路径。"""
+            return {"../escape.png": b"escape-bytes"}
+
+    monkeypatch.setattr(parse, "local_parse", lambda *args, **kwargs: _Result())
+
+    result = runner.invoke(app, ["parse", str(source), "-o", str(output)])
+
+    assert result.exit_code == 1
+    assert "Unsafe image sidecar path" in result.output
+    assert not escaped.exists()
+
+
 def test_parse_output_replaces_surrogate_chars(monkeypatch: Any, tmp_path: Path) -> None:
     source = tmp_path / "demo.pdf"
     output = tmp_path / "out.md"
@@ -370,12 +526,19 @@ def test_parse_output_replaces_surrogate_chars(monkeypatch: Any, tmp_path: Path)
 
     class _Result:
         def markdown(self) -> str:
+            """返回包含孤立 surrogate 的 markdown 内容。"""
             return "before \ud83d after\n"
 
         def to_json(self) -> str:
+            """保留旧 fake 接口，避免无关测试关注 JSON 输出细节。"""
             return '{"pages":[]}'
 
+        def images(self) -> dict[str, bytes]:
+            """当前 markdown 无图片 sidecar 时返回空图片集合。"""
+            return {}
+
         def save(self, writer: Any) -> None:
+            """模拟 zip 输出所需的完整保存接口。"""
             writer.write_string("markdown.md", self.markdown())
             writer.write_string("middle_json.json", self.to_json())
 
