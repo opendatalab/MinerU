@@ -1,14 +1,25 @@
 from __future__ import annotations
 
+import ast
+import asyncio
 from pathlib import Path
+import subprocess
+import sys
+from types import SimpleNamespace
 from typing import Any
 
+import pytest
 from typer.testing import CliRunner
 
-from mineru.kit.commands import api_server, models, parse
+from mineru.kit.commands import api_server, models, parse, router, vlm_server
 from mineru.kit.main import app
 
 runner = CliRunner()
+
+
+def _assert_unsafe_sidecar_error(output: str) -> None:
+    """归一化 Typer/Click 自动换行后的错误输出，再匹配 sidecar 安全错误。"""
+    assert "Unsafe image sidecar path" in " ".join(output.split())
 
 
 def test_kit_root_and_models_help() -> None:
@@ -20,6 +31,133 @@ def test_kit_root_and_models_help() -> None:
     assert "models" in result.output
     assert "api-server" in result.output
     assert "vlm-server" in result.output
+    assert "router" in result.output
+
+
+def test_kit_main_import_does_not_import_legacy_router() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    code = """
+import importlib.abc
+import sys
+
+
+class BlockLegacyRouterFinder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "mineru.cli_old.router":
+            raise ModuleNotFoundError("blocked legacy router import")
+        return None
+
+
+sys.meta_path.insert(0, BlockLegacyRouterFinder())
+import mineru.kit.main
+print("ok")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
+def test_cli_old_router_import_supports_upstream_only_without_local_dependencies() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    code = """
+import importlib.abc
+
+
+class BlockLocalPipelineFinder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname in {"mineru.cli_old.common", "mineru.cli_old.vlm_preload"}:
+            raise ModuleNotFoundError(f"blocked local dependency import: {fullname}")
+        if fullname == "mineru.backend.vlm.vlm_analyze" or fullname.startswith("mineru.backend.office."):
+            raise ModuleNotFoundError(f"blocked local dependency import: {fullname}")
+        return None
+
+
+import sys
+sys.meta_path.insert(0, BlockLocalPipelineFinder())
+
+from mineru.cli_old.router import RouterSettings, WorkerPool, create_app
+
+settings = RouterSettings(upstream_urls=("http://127.0.0.1:8000",), local_gpus="none")
+create_app(settings)
+pool = WorkerPool(settings, object())
+servers = pool.servers
+assert len(servers) == 1
+assert servers[0].source == "remote"
+assert servers[0].local_server is None
+print("ok")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
+def test_router_upstream_only_worker_pool_builds_remote_server() -> None:
+    from mineru.cli_old.router import RouterSettings, WorkerPool
+
+    settings = RouterSettings(upstream_urls=("http://mineru-api:8000",), local_gpus="none")
+    pool = WorkerPool(settings, object())
+
+    assert [(server.server_id, server.source, server.base_url, server.local_server) for server in pool.servers] == [
+        ("remote-1", "remote", "http://mineru-api:8000", None),
+    ]
+
+
+def test_router_startup_with_no_servers_fails_health_check() -> None:
+    from mineru.cli_old.router import RouterSettings, create_app, startup_router_state
+
+    app = create_app(RouterSettings(upstream_urls=(), local_gpus="none"))
+
+    async def _startup() -> None:
+        await startup_router_state(app, RouterSettings(upstream_urls=(), local_gpus="none"))
+
+    with pytest.raises(RuntimeError, match="No healthy upstream MinerU API servers are available"):
+        asyncio.run(_startup())
+
+
+def test_upload_filename_helper_import_boundary_is_explicit() -> None:
+    """校验上传文件名 helper 只由需要的入口直接导入，避免 common.py 继续承担兼容转发。"""
+    repo_root = Path(__file__).resolve().parents[2]
+    common_tree = ast.parse((repo_root / "mineru/cli_old/common.py").read_text(encoding="utf-8"))
+    fast_api_tree = ast.parse((repo_root / "mineru/cli_old/fast_api.py").read_text(encoding="utf-8"))
+
+    common_imports = {
+        alias.name
+        for node in ast.walk(common_tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "upload_utils"
+        for alias in node.names
+    }
+    fast_api_common_imports = {
+        alias.name
+        for node in ast.walk(fast_api_tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "mineru.cli_old.common"
+        for alias in node.names
+    }
+    fast_api_upload_imports = {
+        alias.name
+        for node in ast.walk(fast_api_tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "mineru.cli_old.upload_utils"
+        for alias in node.names
+    }
+
+    assert "normalize_upload_filename" not in common_imports
+    assert "normalize_upload_filename" not in fast_api_common_imports
+    assert "normalize_upload_filename" in fast_api_upload_imports
 
 
 def test_models_download_pipeline(monkeypatch: Any) -> None:
@@ -92,6 +230,80 @@ def test_vlm_server_rejects_unimplemented_engine() -> None:
     assert "not implemented yet" in result.output
 
 
+def test_vlm_server_forwards_extra_args(monkeypatch: Any) -> None:
+    seen: dict[str, Any] = {}
+
+    def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
+        seen["args"] = args
+        seen["prog_name"] = prog_name
+        seen["standalone_mode"] = standalone_mode
+
+    monkeypatch.setattr(vlm_server.old_vlm_server.openai_server, "main", _fake_main)
+
+    result = runner.invoke(app, ["vlm-server", "--host", "0.0.0.0", "--port", "30000"])
+
+    assert result.exit_code == 0
+    assert seen == {
+        "args": ["--engine", "auto", "--host", "0.0.0.0", "--port", "30000"],
+        "prog_name": "mineru-kit vlm-server",
+        "standalone_mode": False,
+    }
+
+
+def test_router_forwards_known_and_extra_args(monkeypatch: Any) -> None:
+    seen: dict[str, Any] = {}
+
+    def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
+        seen["args"] = args
+        seen["prog_name"] = prog_name
+        seen["standalone_mode"] = standalone_mode
+
+    monkeypatch.setattr(
+        router,
+        "_load_old_router",
+        lambda: SimpleNamespace(main=SimpleNamespace(main=_fake_main)),
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "router",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "8002",
+            "--allow-public-http-client",
+            "--upstream-url",
+            "http://mineru-api:8000",
+            "--local-gpus",
+            "none",
+            "--worker-host",
+            "127.0.0.1",
+            "--gpu-memory-utilization",
+            "0.5",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert seen["prog_name"] == "mineru-kit router"
+    assert seen["standalone_mode"] is False
+    assert seen["args"] == [
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8002",
+        "--allow-public-http-client",
+        "--upstream-url",
+        "http://mineru-api:8000",
+        "--local-gpus",
+        "none",
+        "--worker-host",
+        "127.0.0.1",
+        "--gpu-memory-utilization",
+        "0.5",
+    ]
+
+
 def test_parse_rejects_file_output_for_directory_input(tmp_path: Path) -> None:
     source_dir = tmp_path / "docs"
     source_dir.mkdir()
@@ -110,12 +322,19 @@ def test_parse_single_file_markdown(monkeypatch: Any, tmp_path: Path) -> None:
 
     class _Result:
         def markdown(self) -> str:
+            """返回用于单文件 markdown 输出的测试内容。"""
             return "# demo\n"
 
         def to_json(self) -> str:
+            """保留旧 fake 接口，避免无关测试关注 JSON 输出细节。"""
             return '{"pages":[]}'
 
+        def images(self) -> dict[str, bytes]:
+            """当前 markdown 无图片 sidecar 时返回空图片集合。"""
+            return {}
+
         def save(self, writer: Any) -> None:
+            """模拟 zip 输出所需的完整保存接口。"""
             writer.write_string("markdown.md", self.markdown())
             writer.write_string("middle_json.json", self.to_json())
 
@@ -127,6 +346,184 @@ def test_parse_single_file_markdown(monkeypatch: Any, tmp_path: Path) -> None:
     assert output.read_text(encoding="utf-8") == "# demo\n"
 
 
+def test_parse_single_file_middle_json_writes_image_sidecars(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "demo.pdf"
+    output = tmp_path / "out.json"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Result:
+        def to_export_json(self) -> str:
+            """返回带图片引用的 public middle_json。"""
+            return '{"pages":[{"para_blocks":[{"lines":[{"spans":[{"image_path":"figure.png"}]}]}]}]}'
+
+        def images(self) -> dict[str, bytes]:
+            """返回需要随 public middle_json 一起落盘的图片 sidecar。"""
+            return {"figure.png": b"figure-bytes"}
+
+    monkeypatch.setattr(parse, "local_parse", lambda *args, **kwargs: _Result())
+
+    result = runner.invoke(
+        app,
+        ["parse", str(source), "-o", str(output), "--format", "middle_json"],
+    )
+
+    assert result.exit_code == 0
+    payload = output.read_text(encoding="utf-8")
+    assert '"image_path":"figure.png"' in payload
+    assert "image_base64" not in payload
+    assert (tmp_path / "figure.png").read_bytes() == b"figure-bytes"
+
+
+def test_parse_single_file_middle_json_rejects_parent_sidecar_paths(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """拒绝 API 或解析结果提供的父目录逃逸 sidecar 路径。"""
+    source = tmp_path / "demo.pdf"
+    output = tmp_path / "out.json"
+    escaped = tmp_path / "escape.png"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Result:
+        def to_export_json(self) -> str:
+            """返回引用逃逸路径的 public middle_json。"""
+            return '{"pages":[]}'
+
+        def images(self) -> dict[str, bytes]:
+            """模拟远端返回包含 .. 的图片 sidecar 路径。"""
+            return {"../escape.png": b"escape-bytes"}
+
+    monkeypatch.setattr(parse, "local_parse", lambda *args, **kwargs: _Result())
+
+    result = runner.invoke(
+        app,
+        ["parse", str(source), "-o", str(output), "--format", "middle_json"],
+    )
+
+    assert result.exit_code == 1
+    _assert_unsafe_sidecar_error(result.output)
+    assert not escaped.exists()
+
+
+def test_parse_single_file_middle_json_rejects_absolute_sidecar_paths(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """拒绝 API 或解析结果提供的绝对 sidecar 路径。"""
+    source = tmp_path / "demo.pdf"
+    output = tmp_path / "out.json"
+    absolute = tmp_path / "absolute.png"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Result:
+        def to_export_json(self) -> str:
+            """返回普通 public middle_json 内容，重点验证 sidecar 路径。"""
+            return '{"pages":[]}'
+
+        def images(self) -> dict[str, bytes]:
+            """模拟远端返回绝对图片 sidecar 路径。"""
+            return {str(absolute): b"absolute-bytes"}
+
+    monkeypatch.setattr(parse, "local_parse", lambda *args, **kwargs: _Result())
+
+    result = runner.invoke(
+        app,
+        ["parse", str(source), "-o", str(output), "--format", "middle_json"],
+    )
+
+    assert result.exit_code == 1
+    _assert_unsafe_sidecar_error(result.output)
+    assert not absolute.exists()
+
+
+def test_parse_single_file_middle_json_rejects_windows_rooted_sidecar_paths(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """拒绝 Windows rooted 形式的 sidecar 路径，避免跨平台逃逸。"""
+    source = tmp_path / "demo.pdf"
+    output = tmp_path / "out.json"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Result:
+        def to_export_json(self) -> str:
+            """返回普通 public middle_json 内容，重点验证 Windows 路径。"""
+            return '{"pages":[]}'
+
+        def images(self) -> dict[str, bytes]:
+            """模拟远端返回 Windows rooted 图片 sidecar 路径。"""
+            return {"\\escape.png": b"escape-bytes"}
+
+    monkeypatch.setattr(parse, "local_parse", lambda *args, **kwargs: _Result())
+
+    result = runner.invoke(
+        app,
+        ["parse", str(source), "-o", str(output), "--format", "middle_json"],
+    )
+
+    assert result.exit_code == 1
+    _assert_unsafe_sidecar_error(result.output)
+    assert not (tmp_path / "\\escape.png").exists()
+
+
+def test_parse_single_file_markdown_writes_image_sidecars(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """markdown 单文件输出也要写出渲染结果引用的图片 sidecar。"""
+    source = tmp_path / "demo.pdf"
+    output = tmp_path / "out.md"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Result:
+        def markdown(self) -> str:
+            """返回带相对图片引用的 markdown 内容。"""
+            return "![](figure.png)\n"
+
+        def images(self) -> dict[str, bytes]:
+            """返回 markdown 引用的图片 sidecar。"""
+            return {"figure.png": b"figure-bytes"}
+
+    monkeypatch.setattr(parse, "local_parse", lambda *args, **kwargs: _Result())
+
+    result = runner.invoke(app, ["parse", str(source), "-o", str(output)])
+
+    assert result.exit_code == 0
+    assert output.read_text(encoding="utf-8") == "![](figure.png)\n"
+    assert (tmp_path / "figure.png").read_bytes() == b"figure-bytes"
+
+
+def test_parse_single_file_markdown_rejects_unsafe_sidecar_paths(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """markdown 补写 sidecar 时同样不能允许路径逃逸输出目录。"""
+    source = tmp_path / "demo.pdf"
+    output = tmp_path / "out.md"
+    escaped = tmp_path / "escape.png"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Result:
+        def markdown(self) -> str:
+            """返回引用逃逸路径的 markdown 内容。"""
+            return "![](../escape.png)\n"
+
+        def images(self) -> dict[str, bytes]:
+            """模拟远端或解析结果返回逃逸图片路径。"""
+            return {"../escape.png": b"escape-bytes"}
+
+    monkeypatch.setattr(parse, "local_parse", lambda *args, **kwargs: _Result())
+
+    result = runner.invoke(app, ["parse", str(source), "-o", str(output)])
+
+    assert result.exit_code == 1
+    _assert_unsafe_sidecar_error(result.output)
+    assert not escaped.exists()
+
+
 def test_parse_output_replaces_surrogate_chars(monkeypatch: Any, tmp_path: Path) -> None:
     source = tmp_path / "demo.pdf"
     output = tmp_path / "out.md"
@@ -134,12 +531,19 @@ def test_parse_output_replaces_surrogate_chars(monkeypatch: Any, tmp_path: Path)
 
     class _Result:
         def markdown(self) -> str:
+            """返回包含孤立 surrogate 的 markdown 内容。"""
             return "before \ud83d after\n"
 
         def to_json(self) -> str:
+            """保留旧 fake 接口，避免无关测试关注 JSON 输出细节。"""
             return '{"pages":[]}'
 
+        def images(self) -> dict[str, bytes]:
+            """当前 markdown 无图片 sidecar 时返回空图片集合。"""
+            return {}
+
         def save(self, writer: Any) -> None:
+            """模拟 zip 输出所需的完整保存接口。"""
             writer.write_string("markdown.md", self.markdown())
             writer.write_string("middle_json.json", self.to_json())
 

@@ -3,22 +3,25 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Any
+from contextlib import contextmanager
+from typing import Any, Iterator
 
 import pypdfium2 as pdfium
 from PIL import Image
 
 from ..types import BBox, PageInfo
 from .draw_bbox import draw_layout_bbox, draw_span_bbox
-from .pdf_classify import classify, get_text_quality_signal_pdfium
-from .pdf_image_tools import get_crop_img, image_to_bytes, images_bytes_to_pdf_bytes
+from .pdf_classify import classify, get_sample_page_indices, get_text_quality_signal_pdfium
+from .pdf_image_tools import get_crop_img, images_bytes_to_pdf_bytes, pdf_page_to_image
+from .pdf_reader import image_to_bytes
 from .pdf_text_tool import get_lines_from_chars, get_page_chars
 from .pdfium_guard import (
+    close_pdfium_child,
     close_pdfium_document,
     get_pdfium_document_page_count,
     open_pdfium_document,
     pdfium_guard,
-    rewrite_pdf_bytes_with_pdfium,
+    safe_rewrite_pdf_bytes_with_pdfium,
 )
 
 
@@ -76,23 +79,32 @@ class PDFDocument:
     # ------------------------------------------------------------------ #
 
     def page_size(self, page_idx: int) -> tuple[float, float]:
-        page = self._get_page(page_idx)
-        with pdfium_guard():
-            rect: tuple[float, float, float, float] = page.get_bbox()
+        with self._open_page(page_idx) as page:
+            with pdfium_guard():
+                rect: tuple[float, float, float, float] = page.get_bbox()
         return (abs(rect[2] - rect[0]), abs(rect[1] - rect[3]))
 
     # ------------------------------------------------------------------ #
     #  Rendering
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def _scale_to_dpi(scale: float) -> int:
+        """将历史 scale 参数换算为 PDF 渲染工具使用的 DPI。"""
+        if scale <= 0:
+            raise ValueError("scale must be greater than 0")
+        return max(1, int(round(scale * 72)))
+
+    def render_page_with_actual_scale(self, page_idx: int, *, scale: int = 2) -> tuple[Image.Image, float]:
+        """渲染页面并返回真实缩放比例，供后续 bbox 裁剪复用。"""
+        dpi = self._scale_to_dpi(scale)
+        with self._open_page(page_idx) as page:
+            image_dict = pdf_page_to_image(page, dpi=dpi)
+            return image_dict["img_pil"], image_dict["scale"]
+
     def render_page(self, page_idx: int, *, scale: int = 2) -> Image.Image:
-        page = self._get_page(page_idx)
-        with pdfium_guard():
-            bitmap = page.render(scale=scale)
-            try:
-                return bitmap.to_pil()
-            finally:
-                bitmap.close()
+        pil_img, _ = self.render_page_with_actual_scale(page_idx, scale=scale)
+        return pil_img
 
     def render_pages(self, start: int = 0, end: int | None = None, *, scale: int = 2) -> list[Image.Image]:
         end = end if end is not None else self.page_count - 1
@@ -107,17 +119,23 @@ class PDFDocument:
         return await asyncio.gather(*tasks)
 
     def crop_image(self, bbox: BBox, page_idx: int, *, scale: int = 2) -> bytes:
-        pil_img = self.render_page(page_idx, scale=scale)
-        crop = get_crop_img(bbox, pil_img, scale=scale)
-        return image_to_bytes(crop, image_format="JPEG")
+        pil_img, actual_scale = self.render_page_with_actual_scale(page_idx, scale=scale)
+        crop = None
+        try:
+            crop = get_crop_img(bbox, pil_img, scale=actual_scale)
+            return image_to_bytes(crop, image_format="JPEG")
+        finally:
+            if crop is not None:
+                crop.close()
+            pil_img.close()
 
     # ------------------------------------------------------------------ #
     #  Text
     # ------------------------------------------------------------------ #
 
     def get_page_chars(self, page_idx: int) -> dict[str, Any]:
-        page = self._get_page(page_idx)
-        return get_page_chars(page)
+        with self._open_page(page_idx) as page:
+            return get_page_chars(page)
 
     def get_page_lines(self, page_idx: int) -> list[dict[str, Any]]:
         chars_dict = self.get_page_chars(page_idx)
@@ -140,7 +158,7 @@ class PDFDocument:
     # ------------------------------------------------------------------ #
 
     def extract_page_range(self, start: int, end: int) -> "PDFDocument":
-        new_bytes = rewrite_pdf_bytes_with_pdfium(
+        new_bytes = safe_rewrite_pdf_bytes_with_pdfium(
             self._pdf_bytes,
             start_page_id=start,
             end_page_id=end,
@@ -148,15 +166,18 @@ class PDFDocument:
         return PDFDocument(new_bytes)
 
     def sample_pages(self, max_pages: int = 3) -> "PDFDocument":
-        from .pdf_classify import extract_pages as _extract_pages
+        """按 PDF 分类抽样规则提取代表性页面，返回新的 PDFDocument。"""
+        if max_pages <= 0:
+            return PDFDocument(b"")
 
-        new_bytes = _extract_pages(self._pdf_bytes)
-        if max_pages > 0 and new_bytes:
-            new_doc = PDFDocument(new_bytes)
-            count = new_doc.page_count
-            if count > max_pages:
-                return new_doc.extract_page_range(0, max_pages - 1)
-            return new_doc
+        page_indices = get_sample_page_indices(self.page_count, max_pages)
+        if page_indices:
+            new_bytes = safe_rewrite_pdf_bytes_with_pdfium(
+                self._pdf_bytes,
+                page_indices=page_indices,
+            )
+            if new_bytes:
+                return PDFDocument(new_bytes)
         return PDFDocument(b"")
 
     # ------------------------------------------------------------------ #
@@ -183,4 +204,15 @@ class PDFDocument:
         return self._pdf_doc
 
     def _get_page(self, page_idx: int) -> pdfium.PdfPage:
-        return self._ensure_open()[page_idx]
+        pdf_doc = self._ensure_open()
+        with pdfium_guard():
+            return pdf_doc[page_idx]
+
+    @contextmanager
+    def _open_page(self, page_idx: int) -> Iterator[pdfium.PdfPage]:
+        """按页读取 PDFium page，并确保调用完成后释放 native page 对象。"""
+        page = self._get_page(page_idx)
+        try:
+            yield page
+        finally:
+            close_pdfium_child(page)

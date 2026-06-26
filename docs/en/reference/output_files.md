@@ -393,13 +393,13 @@ Text levels are distinguished through the `text_level` field:
 ]
 ```
 
-### Common Content List V2 (content_list_v2.json)(development version, subject to change)
+### Common Structured Content (structured_content.json)(development version, subject to change)
 
-**File naming format**: `{original_filename}_content_list_v2.json`
+**File naming format**: `{original_filename}_structured_content.json`
 
 ##### Functionality
 
-`content_list_v2.json` is the new structured output added in 3.0. All backends now emit it in addition to the legacy `content_list.json`:
+`structured_content.json` is the new structured output added in 3.0. All backends now emit it in addition to the legacy `content_list.json`:
 
 - The top level is grouped by page for page-oriented consumption
 - Each item uses a unified `type + content` structure for easier programmatic processing
@@ -672,7 +672,7 @@ Based on the pipeline format, with these VLM-specific extensions:
 - All `discarded_blocks` entries are also output (e.g., headers, footers, page numbers, margin notes, page footnotes).
 - Existing types (`image`, `table`, `text`, `equation`) remain unchanged.
 - `bbox` still uses the 0–1000 normalized coordinate mapping.
-- Starting with 3.0, the VLM backend also emits `*_content_list_v2.json`; see the common V2 section above for the shared structure.
+- Starting with 3.0, the VLM backend also emits `*_structured_content.json`; see the Structured Content section above for the shared structure.
 
 
 ##### Examples
@@ -736,7 +736,7 @@ The above files constitute MinerU's complete output results. Users can choose ap
 - **Content extraction**: (Use simplified files):
     * *.md
     * content_list.json
-    * content_list_v2.json
+    * structured_content.json
   
 - **Secondary development**: (Use structured files):
     * middle.json

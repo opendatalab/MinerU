@@ -42,14 +42,13 @@ from mineru.cli_old.api_client import (
 )
 from mineru.cli_old.api_protocol import API_PROTOCOL_VERSION
 from mineru.cli_old.api_request import ParseRequestOptions, parse_request_form
-from mineru.cli_old.common import normalize_upload_filename
 from mineru.cli_old.public_http_client_policy import (
     configure_public_http_client_policy,
     is_public_bind_host,
     validate_public_http_client_request,
     warn_if_public_http_client_policy as _warn_if_public_http_client_policy,
 )
-from mineru.cli_old.vlm_preload import build_local_api_cli_args
+from mineru.cli_old.upload_utils import normalize_upload_filename
 from mineru.version import __version__
 
 TASK_PENDING = "pending"
@@ -407,6 +406,8 @@ class ManagedLocalServer:
     async def start(self, client: httpx.AsyncClient, port: int | None = None) -> None:
         if self.is_running():
             return
+
+        from mineru.cli_old.vlm_preload import build_local_api_cli_args
 
         self.temp_dir = tempfile.TemporaryDirectory(prefix=f"{self.server_id}-")
         output_root = Path(self.temp_dir.name) / "output"

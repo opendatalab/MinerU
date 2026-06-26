@@ -273,7 +273,7 @@ def _refresh_table_state_metrics(state: TableMergeState) -> None:
     state.front_header_info, state.front_first_data_row_metrics = _build_front_cache(state.rows)
 
 
-def _build_table_state_from_html(
+def build_table_state_from_html(
     html: str,
     max_header_rows: int = MAX_HEADER_ROWS,
 ) -> TableMergeState | None:
@@ -314,7 +314,7 @@ def _build_table_state(table_block: Block, max_header_rows: int = MAX_HEADER_ROW
     if body_span is None:
         return None
 
-    html = body_span.html
+    html = body_span.content
     if not html:
         return None
 
@@ -356,7 +356,7 @@ def _get_or_create_table_state(
 
 
 def _serialize_table_state_html(state: TableMergeState) -> None:
-    state.body_span.html = str(state.soup)
+    state.body_span.content = str(state.soup)
     state.dirty = False
 
 
@@ -687,9 +687,9 @@ def can_merge_tables(current_state: TableMergeState, previous_state: TableMergeS
     current_table_block = current_state.owner_block
     previous_table_block = previous_state.owner_block
 
-    if "blocks" not in previous_table_block or "blocks" not in current_table_block:
+    if not isinstance(previous_table_block, Block) or not isinstance(current_table_block, Block):
         raise ValueError(
-            "can_merge_tables() requires owner_block with 'blocks' key. "
+            "can_merge_tables() requires owner_block to be a Block instance. "
             "For HTML-only states from build_table_state_from_html(), use can_merge_by_structure() instead."
         )
 

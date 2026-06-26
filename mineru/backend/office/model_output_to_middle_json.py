@@ -6,40 +6,17 @@ from collections import defaultdict
 from typing import Any
 
 from ...types import Block, BlockType, PageInfo
-from ..utils.html_image_utils import replace_inline_table_images, save_span_image_if_needed
+from ...utils.image_payload import image_path_from_data_uri
 from .office_magic_model import MagicModel
 
 
-def blocks_to_page_info(page_blocks: list[dict[str, Any]], image_writer: Any, page_index: int) -> PageInfo:
+def blocks_to_page_info(page_blocks: list[dict[str, Any]], page_index: int) -> PageInfo:
     """将blocks转换为页面信息"""
 
     magic_model = MagicModel(page_blocks)
     image_blocks = magic_model.get_image_blocks()
     table_blocks = magic_model.get_table_blocks()
     chart_blocks = magic_model.get_chart_blocks()
-
-    if image_writer:
-        # Write embedded images to local storage via image_writer
-        for img_block in image_blocks:
-            for sub_block in img_block.blocks:
-                if sub_block.type != "image_body":
-                    continue
-                for line in sub_block.lines:
-                    for span in line.spans:
-                        save_span_image_if_needed(span, image_writer, page_index)
-
-        replace_inline_table_images(table_blocks, image_writer, page_index)
-
-        # Replace inline base64 images inside chart content with local paths
-        for chart_block in chart_blocks:
-            for sub_block in chart_block.blocks:
-                if sub_block.type != "chart_body":
-                    continue
-                for line in sub_block.lines:
-                    for span in line.spans:
-                        if span.type != "chart":
-                            continue
-                        save_span_image_if_needed(span, image_writer, page_index)
 
     title_blocks = magic_model.get_title_blocks()
     discarded_blocks = magic_model.get_discarded_blocks()
@@ -68,7 +45,20 @@ def blocks_to_page_info(page_blocks: list[dict[str, Any]], image_writer: Any, pa
         page_idx=page_index,
         _backend="office",
     )
+    _populate_image_paths_from_base64(page_info)
     return page_info
+
+
+def _populate_image_paths_from_base64(page_info: PageInfo) -> None:
+    """为 Office 内联 base64 图片生成稳定 image_path，保留图片字节给后续统一写出。"""
+    for block_list in (page_info.para_blocks, page_info.discarded_blocks):
+        for block in block_list:
+            for span in block.all_spans():
+                if span.image_path or not span.image_base64:
+                    continue
+                image_path = image_path_from_data_uri(span.image_base64)
+                if image_path is not None:
+                    span.image_path = image_path
 
 
 def _extract_section_parts_from_content(content: str, level: int) -> list[int] | None:
@@ -128,13 +118,10 @@ def _link_index_entries_by_anchor(middle_json: list[PageInfo]) -> None:
                 text_block.anchor = anchor
 
 
-def result_to_middle_json(
-    model_output_blocks_list: list[list[dict[str, Any]]],
-    image_writer: object,
-) -> list[PageInfo]:
+def result_to_middle_json(model_output_blocks_list: list[list[dict[str, Any]]]) -> list[PageInfo]:
     middle_json: list[PageInfo] = []
     for index, page_blocks in enumerate(model_output_blocks_list):
-        page_info = blocks_to_page_info(page_blocks, image_writer, index)
+        page_info = blocks_to_page_info(page_blocks, index)
         middle_json.append(page_info)
 
     section_counters: dict[int, int] = defaultdict(int)

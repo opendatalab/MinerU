@@ -15,20 +15,15 @@ from ..utils.language import detect_lang
 
 CJK_LANGS = frozenset({"zh", "ja", "ko"})
 
-_latex_config = get_latex_delimiter_config()
+_default_delimiters = {"display": {"left": "$$", "right": "$$"}, "inline": {"left": "$", "right": "$"}}
+_latex_config = get_latex_delimiter_config() or _default_delimiters
 
-if isinstance(_latex_config, dict):
-    inline_left = _latex_config.get("inline_left", "$")
-    inline_right = _latex_config.get("inline_right", "$")
-    display_left = _latex_config.get("display_left", "$$")
-    display_right = _latex_config.get("display_right", "$$")
-else:
-    inline_left = "$"
-    inline_right = "$"
-    display_left = "$$"
-    display_right = "$$"
+inline_left = _latex_config["inline"]["left"]
+inline_right = _latex_config["inline"]["right"]
+display_left = _latex_config["display"]["left"]
+display_right = _latex_config["display"]["right"]
 
-del _latex_config
+del _default_delimiters, _latex_config
 
 
 # ------------------------------------------------------------------ #

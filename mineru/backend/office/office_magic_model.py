@@ -13,7 +13,6 @@ from ..utils.magic_model_utils import tie_up_category_by_index
 class MagicModel:
     def __init__(self, page_blocks: list[dict[str, Any]]) -> None:
         blocks: list[Block] = []
-        self.all_spans: list[Span] = []
 
         # 对caption块进行分类，将其分类为image_caption, table_caption, chart_caption
         page_blocks = classify_caption_blocks(page_blocks)
@@ -42,7 +41,7 @@ class MagicModel:
                 span = Span(type=ContentType.IMAGE, bbox=EMPTY_BBOX, image_base64=block_content)
             elif block_type in ["table"]:
                 block_type = BlockType.TABLE_BODY
-                span = Span(type=ContentType.TABLE, bbox=EMPTY_BBOX, html=clean_table_html(block_content))
+                span = Span(type=ContentType.TABLE, bbox=EMPTY_BBOX, content=clean_table_html(block_content))
             elif block_type in ["chart"]:
                 block_type = BlockType.CHART_BODY
                 span = Span(type=ContentType.CHART, bbox=EMPTY_BBOX, content=block_content)
@@ -665,9 +664,10 @@ def fix_two_layer_blocks(blocks: list[Block], fix_type: Literal["image", "table"
 
     # 添加未处理的blocks
     for block in blocks:
-        block.type = ""
-        if block.index not in processed_indices and block not in not_include_blocks:
-            not_include_blocks.append(block)
+        if block.index not in processed_indices:
+            block.type = ""
+            if block not in not_include_blocks:
+                not_include_blocks.append(block)
 
     return fixed_blocks, not_include_blocks
 

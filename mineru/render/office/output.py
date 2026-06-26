@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import re
 from collections.abc import Generator
-from dataclasses import asdict
 from typing import Any
 
 from ...types import Block, BlockType, ContentType, ContentTypeV2, Line, Span
@@ -112,8 +111,8 @@ def _flatten_list_items(list_block: Block, root_ilevel: int | None = None) -> li
     return items
 
 
-def _flatten_list_items_v2(list_block: Block, root_ilevel: int | None = None) -> list[dict[str, Any]]:
-    """Recursively flatten nested list blocks into v2-structured item dicts."""
+def _flatten_structured_list_items(list_block: Block, root_ilevel: int | None = None) -> list[dict[str, Any]]:
+    """递归展开 Office 嵌套列表，生成 structured_content list item 字典。"""
     items = []
     if root_ilevel is None:
         root_ilevel = _get_list_ilevel(list_block)
@@ -123,9 +122,9 @@ def _flatten_list_items_v2(list_block: Block, root_ilevel: int | None = None) ->
 
     for block in list_block.blocks:
         if block.type in [BlockType.LIST, BlockType.INDEX]:
-            items.extend(_flatten_list_items_v2(block, root_ilevel))
+            items.extend(_flatten_structured_list_items(block, root_ilevel))
         else:
-            item_content = merge_para_with_text_v2(block)
+            item_content = merge_para_with_structured_spans(block)
             if item_content:
                 if attribute == "ordered":
                     prefix = f"{'    ' * relative_ilevel}{ordered_counter}."
@@ -348,11 +347,11 @@ def _collect_caption_texts(para_block: Block, caption_type: str) -> list[str]:
     return [merge_para_with_text(block) for block in _iter_child_blocks(para_block, caption_type)]
 
 
-def _collect_caption_v2(para_block: Block, caption_type: str) -> list[dict[str, Any]]:
-    """收集 content_list_v2 使用的结构化 caption spans。"""
+def _collect_structured_caption(para_block: Block, caption_type: str) -> list[dict[str, Any]]:
+    """收集 structured_content 使用的结构化 caption spans。"""
     caption_content = []
     for block in _iter_child_blocks(para_block, caption_type):
-        caption_content.extend(merge_para_with_text_v2(block))
+        caption_content.extend(merge_para_with_structured_spans(block))
     return caption_content
 
 
@@ -396,7 +395,7 @@ def blocks_to_markdown(
             if no_rich_content:
                 continue
             for span in _iter_body_spans(para_block, BlockType.TABLE_BODY, ContentType.TABLE):
-                para_text += f"\n{_format_embedded_html(span.html, img_bucket_path)}\n"
+                para_text += f"\n{_format_embedded_html(span.content, img_bucket_path)}\n"
             for caption_text in _collect_caption_texts(para_block, BlockType.TABLE_CAPTION):
                 para_text += "  \n" + caption_text
         elif para_type == BlockType.CHART:
@@ -472,8 +471,8 @@ def make_blocks_to_content_list(para_block: Block, img_bucket_path: str, page_id
             BlockType.TABLE_BODY,
             ContentType.TABLE,
         ):
-            if span.html:
-                para_content[BlockType.TABLE_BODY] = _format_embedded_html(span.html, img_bucket_path)
+            if span.content:
+                para_content[BlockType.TABLE_BODY] = _format_embedded_html(span.content, img_bucket_path)
         para_content[BlockType.TABLE_CAPTION].extend(_collect_caption_texts(para_block, BlockType.TABLE_CAPTION))
     elif para_type == BlockType.CHART:
         para_content = {
@@ -496,7 +495,8 @@ def make_blocks_to_content_list(para_block: Block, img_bucket_path: str, page_id
     return para_content
 
 
-def make_blocks_to_content_list_v2(para_block: Block, img_bucket_path: str) -> dict[str, Any]:
+def block_to_structured_content(para_block: Block, img_bucket_path: str) -> dict[str, Any]:
+    """将 Office middle_json Block 转换为 structured_content 单项。"""
     para_type = para_block.type
     para_content: dict[str, Any] = {}
     if para_type in [
@@ -515,7 +515,7 @@ def make_blocks_to_content_list_v2(para_block: Block, img_bucket_path: str) -> d
         para_content = {
             "type": content_type,
             "content": {
-                f"{content_type}_content": merge_para_with_text_v2(para_block),
+                f"{content_type}_content": merge_para_with_structured_spans(para_block),
             },
         }
     elif para_type == BlockType.TITLE:
@@ -523,13 +523,13 @@ def make_blocks_to_content_list_v2(para_block: Block, img_bucket_path: str) -> d
         if title_level != 0:
             para_content = {
                 "type": ContentTypeV2.TITLE,
-                "content": {"title_content": merge_para_with_text_v2(para_block), "level": title_level},
+                "content": {"title_content": merge_para_with_structured_spans(para_block), "level": title_level},
             }
         else:
             para_content = {
                 "type": ContentTypeV2.PARAGRAPH,
                 "content": {
-                    "paragraph_content": merge_para_with_text_v2(para_block),
+                    "paragraph_content": merge_para_with_structured_spans(para_block),
                 },
             }
     elif para_type in [
@@ -538,7 +538,7 @@ def make_blocks_to_content_list_v2(para_block: Block, img_bucket_path: str) -> d
         para_content = {
             "type": ContentTypeV2.PARAGRAPH,
             "content": {
-                "paragraph_content": merge_para_with_text_v2(para_block),
+                "paragraph_content": merge_para_with_structured_spans(para_block),
             },
         }
     elif para_type == BlockType.INTERLINE_EQUATION:
@@ -559,7 +559,7 @@ def make_blocks_to_content_list_v2(para_block: Block, img_bucket_path: str) -> d
             "type": ContentTypeV2.IMAGE,
             "content": {
                 "image_source": image_source,
-                "image_caption": _collect_caption_v2(
+                "image_caption": _collect_structured_caption(
                     para_block,
                     BlockType.IMAGE_CAPTION,
                 ),
@@ -579,7 +579,7 @@ def make_blocks_to_content_list_v2(para_block: Block, img_bucket_path: str) -> d
         para_content = {
             "type": ContentTypeV2.TABLE,
             "content": {
-                "table_caption": _collect_caption_v2(
+                "table_caption": _collect_structured_caption(
                     para_block,
                     BlockType.TABLE_CAPTION,
                 ),
@@ -597,7 +597,7 @@ def make_blocks_to_content_list_v2(para_block: Block, img_bucket_path: str) -> d
                     "path": _build_media_path(img_bucket_path, image_path),
                 },
                 "content": _format_embedded_html(chart_content, img_bucket_path),
-                "chart_caption": _collect_caption_v2(
+                "chart_caption": _collect_structured_caption(
                     para_block,
                     BlockType.CHART_CAPTION,
                 ),
@@ -611,7 +611,7 @@ def make_blocks_to_content_list_v2(para_block: Block, img_bucket_path: str) -> d
             "content": {
                 "list_type": list_type,
                 "attribute": attribute,
-                "list_items": _flatten_list_items_v2(para_block),
+                "list_items": _flatten_structured_list_items(para_block),
             },
         }
     elif para_type == BlockType.INDEX:
@@ -619,7 +619,7 @@ def make_blocks_to_content_list_v2(para_block: Block, img_bucket_path: str) -> d
             "type": ContentTypeV2.INDEX,
             "content": {
                 "list_type": ContentTypeV2.LIST_TEXT,
-                "list_items": _flatten_list_items_v2(para_block),
+                "list_items": _flatten_structured_list_items(para_block),
             },
         }
 
@@ -645,7 +645,7 @@ def get_body_data(para_block: Block) -> tuple[str, str]:
             for span in line.spans:
                 span_type = span.type
                 if span_type == ContentType.TABLE:
-                    return span.image_path, span.html
+                    return span.image_path, span.content
                 elif span_type == ContentType.CHART:
                     return span.image_path, span.content
                 elif span_type == ContentType.IMAGE:
@@ -672,8 +672,8 @@ def get_body_data(para_block: Block) -> tuple[str, str]:
     return get_data_from_spans(para_block.lines)
 
 
-def _span_has_content_for_v2(span: Span, visible_styles: set[str]) -> bool:
-    """判断 V2 span 是否应保留，支持 hyperlink children 的可见空白样式。"""
+def _span_has_structured_content(span: Span, visible_styles: set[str]) -> bool:
+    """判断 structured span 是否应保留，支持 hyperlink children 的可见空白样式。"""
     content = span.content
     span_style = span._style
     if content.strip():
@@ -690,14 +690,28 @@ def _span_has_content_for_v2(span: Span, visible_styles: set[str]) -> bool:
     return False
 
 
-def merge_para_with_text_v2(para_block: Block) -> list[dict[str, Any]]:
-    """将 Office 段落转换为 content_list_v2 spans，避免原地修改 middle_json。"""
+def _render_structured_span(span: Span) -> dict[str, Any]:
+    """显式渲染 Office structured span，避免 dataclass 内部字段泄漏到结构化输出。"""
+    rendered_span = span.to_dict()
+    if rendered_span["type"] == ContentType.INLINE_EQUATION:
+        rendered_span["type"] = ContentTypeV2.SPAN_EQUATION_INLINE
+    if span._url:
+        rendered_span["url"] = span._url
+    if span._style:
+        rendered_span["style"] = list(span._style)
+    if span._children:
+        rendered_span["children"] = [_render_structured_span(child) for child in span._children]
+    return rendered_span
+
+
+def merge_para_with_structured_spans(para_block: Block) -> list[dict[str, Any]]:
+    """将 Office 段落转换为 structured_content spans，避免原地修改 middle_json。"""
     _visible_styles = {"underline", "strikethrough"}
     para_content: list[dict[str, Any]] = []
     if para_block.type == BlockType.TITLE:
         section_number = para_block.section_number
         if section_number:
-            # v2 保持结构化 spans，同时补上 middle_json 已生成的自动标题编号。
+            # structured_content 保持结构化 spans，同时补上 middle_json 已生成的自动标题编号。
             para_content.append(
                 {
                     "type": ContentTypeV2.SPAN_TEXT,
@@ -706,9 +720,6 @@ def merge_para_with_text_v2(para_block: Block) -> list[dict[str, Any]]:
             )
     for line in para_block.lines:
         for span in line.spans:
-            if _span_has_content_for_v2(span, _visible_styles):
-                rendered_span = asdict(span)
-                if rendered_span["type"] == ContentType.INLINE_EQUATION:
-                    rendered_span["type"] = ContentTypeV2.SPAN_EQUATION_INLINE
-                para_content.append(rendered_span)
+            if _span_has_structured_content(span, _visible_styles):
+                para_content.append(_render_structured_span(span))
     return para_content

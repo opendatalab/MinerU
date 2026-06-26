@@ -211,7 +211,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 3. 调用 `ParseService.process_doc()`。
 4. 检查 `parsed/<sha-prefix>/<sha>/<tier>/` 中只有 `.json` 文件。
 5. 检查 JSON 内容形态为 `{"pages": [...]}`。
-6. 检查没有 `output.md`、`content_list.json`、`content_list_v2.json`、`output.html`。
+6. 检查没有 `output.md`、`content_list.json`、`structured_content.json`、`output.html`。
 
 完成边界:
 
@@ -749,7 +749,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 1. 定位当前 `parse_content()` 或等价读取入口，并迁移为 `GET /docs/{sha256}/content`。
 2. 实现按 `sha256 + tier + page_range` 收集已完成 JSON 批次。
 3. 使用 `ParseResult.from_dict()` 恢复 pages。
-4. 按请求格式调用 `markdown()`、`content_list()`、`content_list_v2()` 或 HTML render。
+4. 按请求格式调用 `markdown()`、`content_list()`、`structured_content()` 或 HTML render。
 5. 如果请求页未被覆盖，返回明确状态或错误，不生成空内容。
 6. 保持输出文件写入只发生在用户指定 `output` 时。
 

@@ -1,6 +1,17 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
+from loguru import logger
+
+
+def get_end_page_id(end_page_id: int | None, pdf_page_num: int) -> int:
+    """归一化旧 CLI 的 0-based 结束页，越界时钳制到最后一页。"""
+    normalized_end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else pdf_page_num - 1
+    if normalized_end_page_id > pdf_page_num - 1:
+        logger.debug("end_page_id is out of range, use images length")
+        normalized_end_page_id = pdf_page_num - 1
+    return normalized_end_page_id
+
 
 def parse_page_range(raw: str, page_count: int) -> list[int]:
     """Parse a 1-based page-range string into a 0-based flattened list of page indices.

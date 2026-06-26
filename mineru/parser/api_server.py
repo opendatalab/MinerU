@@ -845,6 +845,17 @@ class FileStore:
         app_state.file_store = self
 
 
+def _store_image_outputs(file_store: FileStore, images: dict[str, bytes]) -> list[ImageOutputRef]:
+    """将最终导出的图片字节写入 FileStore，并返回可下载的图片引用。"""
+    img_refs: list[ImageOutputRef] = []
+    for img_path, img_bytes in images.items():
+        sha = hashlib.sha256(img_bytes).hexdigest()
+        file_store.store_blob(img_bytes, sha256hex=sha)
+        img_fid = file_store.create_file_for_output(pathlib.Path(img_path).name, img_bytes, sha256hex=sha)
+        img_refs.append(ImageOutputRef(path=img_path, file_id=img_fid, bytes=len(img_bytes)))
+    return img_refs
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  DEPENDENCIES
 # ═══════════════════════════════════════════════════════════════════════
@@ -894,6 +905,19 @@ _OUTPUT_FORMATS_LOCAL = {
     "images",
     "zip",
 }
+
+_IMAGE_SIDECAR_FORMATS = frozenset({
+    "markdown",
+    "middle_json",
+    "content_list",
+    "structured_content",
+    "images",
+})
+
+
+def _needs_image_outputs(out_formats: set[OutputFormat] | set[str]) -> bool:
+    """判断请求的输出格式是否会暴露 image_path，从而需要返回图片 sidecar。"""
+    return bool(out_formats.intersection(_IMAGE_SIDECAR_FORMATS))
 
 
 @dataclass
@@ -1211,6 +1235,13 @@ async def _run_job(
                 # collect outputs
                 out_formats = set(rec.output_formats)
                 output_files = OutputFiles()
+                image_output_refs = (
+                    _store_image_outputs(file_store, result.images())
+                    if _needs_image_outputs(out_formats)
+                    else None
+                )
+                if image_output_refs is not None:
+                    output_files.images = image_output_refs
 
                 for fmt in (
                     "markdown",
@@ -1229,7 +1260,7 @@ async def _run_job(
                         fid = file_store.create_file_for_output(f"{fr.name}.md", content_bytes, sha256hex=sha)
                         output_files.markdown = OutputFileRef(file_id=fid, bytes=len(content_bytes))
                     elif fmt == "middle_json":
-                        mj = json.dumps(result.to_dict(skip_defaults=True), ensure_ascii=False).encode("utf-8")
+                        mj = json.dumps(result.to_export_dict(skip_defaults=True), ensure_ascii=False).encode("utf-8")
                         sha = hashlib.sha256(mj).hexdigest()
                         file_store.store_blob(mj, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.middle.json", mj, sha256hex=sha)
@@ -1241,19 +1272,13 @@ async def _run_job(
                         fid = file_store.create_file_for_output(f"{fr.name}.content_list.json", cl, sha256hex=sha)
                         output_files.content_list = OutputFileRef(file_id=fid, bytes=len(cl))
                     elif fmt == "structured_content":
-                        cl2 = json.dumps(result.content_list_v2(), ensure_ascii=False).encode("utf-8")
+                        cl2 = json.dumps(result.structured_content(), ensure_ascii=False).encode("utf-8")
                         sha = hashlib.sha256(cl2).hexdigest()
                         file_store.store_blob(cl2, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.structured_content.json", cl2, sha256hex=sha)
                         output_files.structured_content = OutputFileRef(file_id=fid, bytes=len(cl2))
                     elif fmt == "images":
-                        img_refs: list[ImageOutputRef] = []
-                        for img_path, img_bytes in result.images().items():
-                            sha = hashlib.sha256(img_bytes).hexdigest()
-                            file_store.store_blob(img_bytes, sha256hex=sha)
-                            img_fid = file_store.create_file_for_output(pathlib.Path(img_path).name, img_bytes, sha256hex=sha)
-                            img_refs.append(ImageOutputRef(path=img_path, file_id=img_fid, bytes=len(img_bytes)))
-                        output_files.images = img_refs
+                        continue
 
                 # zip
                 if "zip" in out_formats:

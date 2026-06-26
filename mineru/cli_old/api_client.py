@@ -17,7 +17,7 @@ import zipfile
 from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Callable, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 import click
 import httpx

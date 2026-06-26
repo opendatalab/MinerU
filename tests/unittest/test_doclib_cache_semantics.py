@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 from pathlib import Path
@@ -27,15 +28,18 @@ from mineru.doclib.services.parse_svc import (
     filter_pages_by_user_range,
     load_pages_from_done_batches,
     parse_batch_json_path,
+    parse_image_sidecar_dir,
 )
 from mineru.doclib.services.scan_svc import ScanService
 from mineru.doclib.services.search_svc import SearchService
-from mineru.doclib.server import DoclibServer
+from mineru.doclib.locators import ContentCursor
+from mineru.doclib.server import DoclibServer, _ReadPlan, _render_progressive_markdown
 from mineru.doclib.types import ParseResponse
 from mineru.parser import backend_for_tier, resolve_tier_and_backend
 from mineru.parser.base import ParseResult
 from mineru.schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
-from mineru.types import PageInfo, Tier
+from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span, Tier
+from mineru.utils.image_payload import image_bytes_to_data_uri
 
 
 class _Cursor:
@@ -152,6 +156,14 @@ class _FakeDB:
                 if row["sha256"] == sha256 and row["tier"] == tier and row["status"] == status
             ]
             return sorted(rows, key=lambda row: row["done_at"] or 0, reverse=True)
+        if sql.startswith("SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=? AND status=?"):
+            sha256, tier, status = params
+            rows = [
+                {"page_range": row["page_range"], "done_at": row["done_at"]}
+                for row in self.parses
+                if row["sha256"] == sha256 and row["tier"] == tier and row["status"] == status
+            ]
+            return sorted(rows, key=lambda row: row["done_at"] or 0, reverse=True)
         if sql.startswith("SELECT * FROM parses WHERE sha256=? AND tier=? AND status IN (?, ?)"):
             sha256, tier, *statuses = params
             return [
@@ -182,6 +194,23 @@ def _write_batch(data_dir: Path, sha256: str, tier: Tier, page_range: str, done_
     path = Path(parse_batch_json_path(str(data_dir), sha256, tier, page_range, done_at))
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"pages": json_pages}), encoding="utf-8")
+
+
+def _image_page(image_path: str, image_bytes: bytes = b"image-bytes") -> PageInfo:
+    image_span = Span(
+        type=ContentType.IMAGE,
+        bbox=(1, 1, 20, 20),
+        image_path=image_path,
+        image_base64=image_bytes_to_data_uri(image_bytes, "jpeg"),
+    )
+    body = Block(
+        index=0,
+        type=BlockType.IMAGE_BODY,
+        bbox=(1, 1, 20, 20),
+        lines=[Line(bbox=(1, 1, 20, 20), spans=[image_span])],
+    )
+    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(1, 1, 20, 20), blocks=[body])
+    return PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="vlm")
 
 
 def test_load_pages_from_done_batches_keeps_newest_page_idx(tmp_path: Path) -> None:
@@ -466,6 +495,18 @@ def test_remap_api_result_pages_to_non_contiguous_page_range() -> None:
     _remap_api_result_pages_to_page_range(result, "11,13~14")
 
     assert [page.page_idx for page in result.pages] == [10, 12, 13]
+
+
+def test_remap_api_result_pages_refreshes_attached_export_cache() -> None:
+    from mineru.doclib.services.parse_svc import _remap_api_result_pages_to_page_range
+
+    result = ParseResult.from_dict({"pages": [{"page_idx": 0}]})
+    result.attach_export_images({"images/figure.png": b"figure-bytes"})
+
+    _remap_api_result_pages_to_page_range(result, "5")
+
+    assert result.to_export_dict()["pages"][0]["page_idx"] == 4
+    assert result.images() == {"images/figure.png": b"figure-bytes"}
 
 
 def test_remap_api_result_pages_rejects_count_mismatch() -> None:
@@ -1638,3 +1679,169 @@ def test_process_doc_fails_when_batch_json_cannot_be_written(tmp_path: Path) -> 
     assert parses[0]["error_code"] == "parse_json_write_failed"
     assert parses[0]["done_at"] is None
     assert fts.replaced == []
+
+
+def test_process_doc_writes_cached_image_sidecars(tmp_path: Path) -> None:
+    sha256 = "c" * 64
+    task = {
+        "id": 1,
+        "sha256": sha256,
+        "tier": "flash",
+        "page_range": "1",
+        "status": "parsing",
+        "privacy": "local",
+    }
+    parses = [
+        {
+            **task,
+            "error_code": None,
+            "error_msg": None,
+            "done_at": None,
+            "locked_at": 123,
+            "updated_at": 123,
+        }
+    ]
+    db = _FakeDB(
+        parses=parses,
+        file_row={
+            "path": "/tmp/doc.pdf",
+            "sha256": sha256,
+            "status": "active",
+            "filename": "doc.pdf",
+            "title": "",
+            "author": "",
+        },
+    )
+    service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
+
+    async def _parse(file_row: dict, tier: Tier, page_range: str) -> ParseResult:
+        return ParseResult(pages=[_image_page("figures/cache-hit.jpg", b"fresh-image")])
+
+    async def _skip_fts(*args: object, **kwargs: object) -> None:
+        return None
+
+    async def _skip_docs_meta(*args: object, **kwargs: object) -> None:
+        return None
+
+    service._parse_via_local = _parse  # type: ignore[method-assign]
+    service._maybe_update_fts = _skip_fts  # type: ignore[method-assign]
+    service._maybe_update_docs_meta = _skip_docs_meta  # type: ignore[method-assign]
+
+    success = asyncio.run(service.process_doc(task))
+
+    assert success is True
+    sidecar = tmp_path / "parsed" / sha256[:2] / sha256 / "flash" / "images" / "figures" / "cache-hit.jpg"
+    assert sidecar.read_bytes() == b"fresh-image"
+    batch_path = Path(parse_batch_json_path(str(tmp_path), sha256, "flash", "1", parses[0]["done_at"]))
+    batch = json.loads(batch_path.read_text(encoding="utf-8"))
+    image_span = batch["pages"][0]["para_blocks"][0]["blocks"][0]["lines"][0]["spans"][0]
+    assert image_span["image_path"] == "figures/cache-hit.jpg"
+    assert "image_base64" not in image_span
+
+
+def test_load_pages_from_done_batches_restores_missing_image_sidecars_from_base64(tmp_path: Path) -> None:
+    sha256 = "d" * 64
+    tier = "standard"
+    page = _image_page("figures/recovered.jpg", b"legacy-image")
+    _write_batch(tmp_path, sha256, tier, "1", 1000, ParseResult([page]).to_dict(skip_defaults=True)["pages"])
+
+    loaded_pages = load_pages_from_done_batches(str(tmp_path), sha256, tier, [{"page_range": "1", "done_at": 1000}])
+
+    sidecar = tmp_path / "parsed" / sha256[:2] / sha256 / tier / "images" / "figures" / "recovered.jpg"
+    assert sidecar.read_bytes() == b"legacy-image"
+    assert loaded_pages[0].para_blocks[0].blocks[0].lines[0].spans[0].image_base64
+
+
+def test_load_pages_from_done_batches_keeps_existing_image_sidecar(tmp_path: Path) -> None:
+    sha256 = "e" * 64
+    tier = "standard"
+    page = _image_page("figures/existing.jpg", b"base64-image")
+    _write_batch(tmp_path, sha256, tier, "1", 1000, ParseResult([page]).to_dict(skip_defaults=True)["pages"])
+    sidecar = tmp_path / "parsed" / sha256[:2] / sha256 / tier / "images" / "figures" / "existing.jpg"
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
+    sidecar.write_bytes(b"existing-sidecar")
+
+    load_pages_from_done_batches(str(tmp_path), sha256, tier, [{"page_range": "1", "done_at": 1000}])
+
+    assert sidecar.read_bytes() == b"existing-sidecar"
+
+
+def test_progressive_markdown_uses_public_image_sidecar_prefix(tmp_path: Path) -> None:
+    sha256 = "e" * 64
+    tier = "standard"
+    page = _image_page("figures/rendered.jpg", b"image")
+    _write_batch(tmp_path, sha256, tier, "1", 1000, ParseResult([page]).to_dict(skip_defaults=True)["pages"])
+    image_dir = tmp_path / "parsed" / sha256[:2] / sha256 / tier / "images"
+    db = _FakeDB(
+        parses=[
+            {
+                "sha256": sha256,
+                "tier": tier,
+                "status": "done",
+                "page_range": "1",
+                "done_at": 1000,
+            }
+        ],
+        file_row=None,
+    )
+    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=db))
+    plan = _ReadPlan(
+        sha256=sha256,
+        short_id="eeeeeee",
+        tier=tier,
+        page_range=None,
+        after=None,
+        locator=None,
+        context=0,
+        limit=30000,
+        format="markdown",
+        no_marker=False,
+    )
+
+    response = asyncio.run(server._execute_read_plan(plan))
+
+    assert str(image_dir) not in response.content
+    assert "![](images/figures/rendered.jpg)" in response.content
+
+
+def test_doclib_office_image_asset_reads_cached_sidecar(tmp_path: Path) -> None:
+    sha256 = "f" * 64
+    tier = "standard"
+    image_dir = Path(parse_image_sidecar_dir(str(tmp_path), sha256, tier))
+    image_path = "figures/office.png"
+    sidecar = image_dir / image_path
+    sidecar.parent.mkdir(parents=True)
+    sidecar.write_bytes(
+        base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+        )
+    )
+
+    image_span = Span(type=ContentType.IMAGE, bbox=(1, 1, 20, 20), image_path=image_path)
+    body = Block(
+        index=0,
+        type=BlockType.IMAGE_BODY,
+        bbox=(1, 1, 20, 20),
+        lines=[Line(bbox=(1, 1, 20, 20), spans=[image_span])],
+    )
+    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(1, 1, 20, 20), blocks=[body])
+    page = PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="office")
+    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=None))
+    plan = _ReadPlan(
+        sha256=sha256,
+        short_id="fffffff",
+        tier=tier,
+        page_range=None,
+        after=None,
+        locator="doc:fffffff/tier:standard/page:1/block:1",
+        context=0,
+        limit=30000,
+        format="image",
+        no_marker=False,
+        target=ContentCursor(short_id="fffffff", tier=tier, page_no=1, block_no=1),
+    )
+
+    asset = asyncio.run(server._render_office_image_asset(plan, page))
+
+    assert Path(asset.path).read_bytes() == sidecar.read_bytes()
+    assert asset.mime_type == "image/png"

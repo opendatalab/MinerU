@@ -1,7 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
-from dataclasses import MISSING, Field, dataclass, field, fields
+from dataclasses import MISSING, Field, InitVar, dataclass, field, fields
 from typing import Any, Iterator, Literal, TypeAlias, TypeVar, get_type_hints
 
 T = TypeVar("T", bound="_DocElement")
@@ -333,6 +333,11 @@ def _is_default_value(f: Field, value: Any) -> bool:
     return False
 
 
+def _initvar_default(value: Any, default: Any) -> Any:
+    """修正 InitVar 与同名 property 共存时产生的 property 默认值。"""
+    return default if isinstance(value, property) else value
+
+
 EMPTY_BBOX: BBox = (0.0, 0.0, 0.0, 0.0)
 
 
@@ -349,7 +354,7 @@ def _list_arg(tp: Any) -> Any | None:
 class _DocElement:
     """Base class for document-model nodes (Span, Line, Block, PageInfo)."""
 
-    def to_dict(self, *, skip_defaults: bool = False) -> dict[str, Any]:
+    def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
         """Serialize to dict, excluding private fields (prefixed with ``_``).
 
         When *skip_defaults* is True, fields whose value equals their
@@ -398,12 +403,12 @@ class Span(_DocElement):
     bbox: BBox
     content: str = ""
     score: float = 0.0
-    image_path: str = ""
-    image_base64: str = ""
-    html: str = ""
-    latex: str = ""
+    image_path: InitVar[str] = ""
+    image_base64: InitVar[str] = ""
 
     # Internal
+    _image_path: str = ""
+    _image_base64: str = ""
     _cross_page: bool = False
     _np_img: Any = None
 
@@ -412,6 +417,48 @@ class Span(_DocElement):
     _children: list[Span] = field(default_factory=list)
 
     _extra: dict = field(default_factory=dict)
+
+    def __post_init__(self, image_path: str, image_base64: str) -> None:
+        """接收图片类 span 的路径字段，但仅在有值时序列化到 middle_json。"""
+        self._image_path = _initvar_default(image_path, "")
+        self._image_base64 = _initvar_default(image_base64, "")
+
+    @property
+    def image_path(self) -> str:
+        """图片类/表格类/公式类 span 的外部图片产物路径。"""
+        return self._image_path
+
+    @image_path.setter
+    def image_path(self, value: str) -> None:
+        self._image_path = value
+
+    @property
+    def image_base64(self) -> str:
+        """Office 等输入中的内联图片，仅在写出图片前临时保留。"""
+        return self._image_base64
+
+    @image_base64.setter
+    def image_base64(self, value: str) -> None:
+        self._image_base64 = value
+
+    def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
+        """按 span 类型输出实际载荷字段，避免文本 span 带空图片字段。"""
+        result = super().to_dict(skip_defaults=skip_defaults)
+        for name, value in (
+            ("image_path", self.image_path),
+            ("image_base64", self.image_base64),
+        ):
+            if value:
+                result[name] = value
+        return result
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Span:
+        """读取当前 middle_json 中图片类 span 的非 content 载荷字段。"""
+        span = _DocElement.from_dict.__func__(cls, d)
+        span.image_path = d.get("image_path", "")
+        span.image_base64 = d.get("image_base64", "")
+        return span
 
 
 @dataclass
@@ -441,25 +488,29 @@ class Block(_DocElement):
     blocks: list[Block] = field(default_factory=list)
 
     # Optional
-    angle: int | None = None
-    score: float | None = None
     level: int | None = None
     sub_type: str = ""
     guess_lang: str = ""
-    merge_prev: bool = False
     section_number: str = ""
-    html: str = ""
-    text: str = ""
-    latex: str = ""
 
     # Office
     anchor: str = ""
     start: int | None = None
     ilevel: int | None = None
-    is_numbered_style: bool = False
+
+    # Init-only draft fields.  These are accepted for backend conversion
+    # compatibility, but are not middle_json block fields and never serialize.
+    angle: InitVar[int | None] = None
+    score: InitVar[float | None] = None
+    merge_prev: InitVar[bool] = False
+    is_numbered_style: InitVar[bool] = False
 
     # Internal
     _cross_page: bool = False
+    _angle: int | None = None
+    _layout_score: float | None = None
+    _merge_prev: bool = False
+    _is_numbered_style: bool = False
     _lines_deleted: bool = False
     _ocr_det_lines: list[Line] = field(default_factory=list)
     _line_avg_height: int = 0
@@ -470,6 +521,70 @@ class Block(_DocElement):
     _page_size: tuple[float, float] | None = None
     _bbox_fs: BBox | None = None
     _sub_images: list[Block] = field(default_factory=list)
+
+    def __post_init__(
+        self,
+        angle: int | None,
+        score: float | None,
+        merge_prev: bool,
+        is_numbered_style: bool,
+    ) -> None:
+        """接收转换阶段临时字段，但只存入内部属性，避免污染 middle_json 输出。"""
+        self._angle = _initvar_default(angle, None)
+        self._layout_score = _initvar_default(score, None)
+        self._merge_prev = _initvar_default(merge_prev, False)
+        self._is_numbered_style = _initvar_default(is_numbered_style, False)
+
+    def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
+        """仅在 staged middle_json 需要时输出 merge_prev 合并提示。"""
+        result = super().to_dict(skip_defaults=skip_defaults)
+        if self.merge_prev or not skip_defaults:
+            result["merge_prev"] = self.merge_prev
+        return result
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Block:
+        """读取 staged middle_json 中的 merge_prev 合并提示。"""
+        block = _DocElement.from_dict.__func__(cls, d)
+        if "merge_prev" in d:
+            block.merge_prev = bool(d.get("merge_prev", False))
+        return block
+
+    @property
+    def angle(self) -> int | None:
+        """转换阶段读取的原始旋转角，默认不作为 middle_json block 字段输出。"""
+        return self._angle
+
+    @angle.setter
+    def angle(self, value: int | None) -> None:
+        self._angle = value
+
+    @property
+    def score(self) -> float | None:
+        """layout 置信度只作为内部调试/传递信息保存，不进入 public block。"""
+        return self._layout_score
+
+    @score.setter
+    def score(self, value: float | None) -> None:
+        self._layout_score = value
+
+    @property
+    def merge_prev(self) -> bool:
+        """raw content block 的合并提示，仅供段落合并阶段消费。"""
+        return self._merge_prev
+
+    @merge_prev.setter
+    def merge_prev(self, value: bool) -> None:
+        self._merge_prev = value
+
+    @property
+    def is_numbered_style(self) -> bool:
+        """Office 标题编号中间状态，生成 section_number 后不输出。"""
+        return self._is_numbered_style
+
+    @is_numbered_style.setter
+    def is_numbered_style(self, value: bool) -> None:
+        self._is_numbered_style = value
 
     def all_spans(self) -> Iterator[Span]:
         """Depth-first yield every span in this block tree."""

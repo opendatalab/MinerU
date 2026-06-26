@@ -6,6 +6,7 @@ from typing import Any, Literal
 from ..types import PageInfo
 from .markdown import blocks_to_markdown
 from .office.output import blocks_to_markdown as office_blocks_to_markdown
+from .structured_content import block_to_structured_content, merge_adjacent_ref_text_blocks_for_content
 
 Backend = Literal["pipeline", "vlm", "hybrid", "office"]
 
@@ -41,36 +42,27 @@ def _dispatch_make_content_list(
     return item.to_dict(skip_defaults=True)
 
 
-def _dispatch_make_content_list_v2(
+def _dispatch_block_to_structured_content(
     backend: Backend,
     para_block: Any,
     img_bucket_path: str,
     page_size: Any,
 ) -> Any:
-    if backend == "pipeline":
-        from ..backend.pipeline.pipeline_middle_json_mkcontent import make_blocks_to_content_list_v2
-
-        return make_blocks_to_content_list_v2(para_block, img_bucket_path, page_size)
     if backend == "office":
-        from .office.output import make_blocks_to_content_list_v2
+        from .office.output import block_to_structured_content as office_block_to_structured_content
 
-        return make_blocks_to_content_list_v2(para_block, img_bucket_path)
-    # vlm / hybrid
-    from ..backend.vlm.vlm_middle_json_mkcontent import make_blocks_to_content_list_v2
+        return office_block_to_structured_content(para_block, img_bucket_path)
 
-    return make_blocks_to_content_list_v2(para_block, img_bucket_path, page_size)
+    return block_to_structured_content(para_block, img_bucket_path, page_size)
 
 
 def _get_merged_para_blocks(paras_of_layout: list, paras_of_discarded: list, backend: Backend) -> list:
     """Build the para-block list for Content-List modes.
 
-    The pipeline backend runs ``merge_adjacent_ref_text_blocks_for_content``
-    before merging layout and discarded blocks; the other backends simply
-    concatenate them.
+    PDF backends merge adjacent ``ref_text`` blocks before rendering so both
+    legacy content_list and structured_content expose references as a list.
     """
-    if backend == "pipeline":
-        from ..backend.pipeline.pipeline_middle_json_mkcontent import merge_adjacent_ref_text_blocks_for_content
-
+    if backend != "office":
         return merge_adjacent_ref_text_blocks_for_content((paras_of_layout or []) + (paras_of_discarded or []))
     return (paras_of_layout or []) + (paras_of_discarded or [])
 
@@ -143,11 +135,11 @@ def render_content_list(
     return output_items
 
 
-def render_content_list_v2(
+def render_structured_content(
     pdf_info: list[PageInfo],
     img_bucket_path: str = "",
 ) -> list[list[dict[str, Any]]]:
-    """Render pages to a per-page Content List (V2)."""
+    """Render pages to per-page Structured Content."""
     backend = _backend_from_pages(pdf_info)
     if backend is None:
         return []
@@ -157,7 +149,7 @@ def render_content_list_v2(
         page_contents: list[dict[str, Any]] = []
         if para_blocks:
             for para_block in para_blocks:
-                item = _dispatch_make_content_list_v2(backend, para_block, img_bucket_path, page_info.page_size)
+                item = _dispatch_block_to_structured_content(backend, para_block, img_bucket_path, page_info.page_size)
                 if item:
                     page_contents.append(item)
         output_lists.append(page_contents)

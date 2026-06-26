@@ -7,13 +7,12 @@ from typing import Any
 
 from loguru import logger
 
-from ...data.data_reader_writer import FileBasedDataWriter
 from ...model.xlsx.main import convert_binary
 from ...types import PageInfo
 from .model_output_to_middle_json import result_to_middle_json
 
 
-def office_xlsx_analyze(file_bytes: bytes, image_writer: Any = None) -> tuple[list[PageInfo], list[Any]]:
+def office_xlsx_analyze(file_bytes: bytes) -> tuple[list[PageInfo], list[Any]]:
     infer_start = time.time()
 
     file_stream = BytesIO(file_bytes)
@@ -23,7 +22,7 @@ def office_xlsx_analyze(file_bytes: bytes, image_writer: Any = None) -> tuple[li
     safe_time = max(infer_time, 0.01)
     logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(results) / safe_time, 3)} page/s")
 
-    middle_json = result_to_middle_json(results, image_writer)
+    middle_json = result_to_middle_json(results)
     return middle_json, results
 
 
@@ -46,21 +45,12 @@ if __name__ == "__main__":
         default=str(default_xlsx),
         help="path to xlsx file (defaults to demo/office_docs/xlsx_01.xlsx relative to project root)",
     )
-    parser.add_argument(
-        "--output-images",
-        help="directory to write image outputs",
-        default="./output_images",
-    )
     args = parser.parse_args()
 
     xlsx_path = Path(args.xlsx)
 
     with open(xlsx_path, "rb") as f:
         file_bytes = f.read()
-    image_writer = FileBasedDataWriter(args.output_images)
-    middle_json, results = office_xlsx_analyze(
-        file_bytes,
-        image_writer=image_writer,
-    )
+    middle_json, results = office_xlsx_analyze(file_bytes)
 
     logger.info(json.dumps(middle_json, indent=2, ensure_ascii=False))

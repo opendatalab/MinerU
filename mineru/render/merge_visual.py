@@ -199,8 +199,8 @@ def _render_visual_block_segments(block: Block, para_block: Block, img_bucket_pa
             for span in line.spans:
                 if span.type != ContentType.TABLE:
                     continue
-                if span.html:  # (VLM) also checks table_enable
-                    table_segments.append((_format_embedded_html(span.html, img_bucket_path), "html_block"))
+                if span.content:  # (VLM) also checks table_enable
+                    table_segments.append((_format_embedded_html(span.content, img_bucket_path), "html_block"))
                 elif span.image_path:
                     if media_path := _build_media_path(img_bucket_path, span.image_path):
                         table_segments.append((f"![]({media_path})", "markdown_line"))

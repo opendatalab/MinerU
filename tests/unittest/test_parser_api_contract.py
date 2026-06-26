@@ -1,24 +1,32 @@
 from pathlib import Path
+import asyncio
 import inspect
+import json
 
 import pytest
 from click.testing import CliRunner
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from mineru.parser.api_client import MinerUApiParser, _parse_result_from_job
+import mineru.parser.api_client as api_client
+import mineru.parser.api_server as api_server
+from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job
 from mineru.parser import parse, parse_async
+from mineru.parser.base import ParseResult
 from mineru.parser.api_server import (
     _API_SERVER_BACKENDS,
     CreateJobRequest,
+    FileStore,
     FileParseInfo,
     HealthResponse,
+    ImageOutputRef,
     JobListItem,
     OutputFileRef,
     OutputFiles,
     create_app,
     main,
 )
+from mineru.types import Block, Line, PageInfo, Span
 
 runner = CliRunner()
 
@@ -30,7 +38,7 @@ def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> No
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
     payload = parser._build_payload(pdf, "1,3~5")
 
-    assert payload["output_formats"] == ["middle_json"]
+    assert payload["output_formats"] == ["middle_json", "images"]
     assert payload["files"] == [
         {"source": {"type": "local", "path": str(pdf)}, "page_range": "1,3~5"}
     ]
@@ -52,6 +60,95 @@ def test_api_client_uses_json_format_for_staging_compat() -> None:
     parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="pro")
 
     assert parser._output_formats() == ["json"]
+
+
+def test_api_client_downloads_image_sidecars_and_preserves_pdf_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+    middle_json = {
+        "schema_version": "1.0.0",
+        "_pdf_retained_page_indices": [0, 2],
+        "_pdf_broken_page_indices": [1],
+        "pages": [{"page_idx": 0, "page_size": [100, 200]}],
+    }
+    image_ref = {"path": "images/chart.png", "file_id": "file-image", "bytes": 11}
+
+    monkeypatch.setattr(api_client, "_download_json", lambda _parser, _outputs: middle_json)
+    monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: b"chart-bytes" if ref is image_ref else b"")
+
+    result = _parse_result_from_job(
+        {
+            "job_id": "job_1",
+            "status": "completed",
+            "files": [{"output_files": {"middle_json": {"file_id": "file-middle", "bytes": 10}, "images": [image_ref]}}],
+        },
+        "demo.pdf",
+        parser,
+    )
+
+    assert result._retained_page_indices == [0, 2]
+    assert result._broken_page_indices == [1]
+    assert result.images() == {"images/chart.png": b"chart-bytes"}
+
+
+@pytest.mark.parametrize("image_path", ["../escape.png", "/tmp/escape.png", "\\escape.png", "C:\\escape.png"])
+def test_api_client_rejects_unsafe_image_sidecar_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    image_path: str,
+) -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+    middle_json = {"schema_version": "1.0.0", "pages": [{"page_idx": 0}]}
+    image_ref = {"path": image_path, "file_id": "file-image", "bytes": 11}
+
+    monkeypatch.setattr(api_client, "_download_json", lambda _parser, _outputs: middle_json)
+
+    def _fail_download(*_args: object, **_kwargs: object) -> bytes:
+        """危险 sidecar 路径必须在下载图片字节前被拒绝。"""
+        raise AssertionError("unsafe sidecar path should be rejected before download")
+
+    monkeypatch.setattr(api_client, "_download_bytes", _fail_download)
+
+    with pytest.raises(ValueError, match="Unsafe image sidecar path"):
+        _parse_result_from_job(
+            {
+                "job_id": "job_1",
+                "status": "completed",
+                "files": [{"output_files": {"middle_json": {"file_id": "file-middle", "bytes": 10}, "images": [image_ref]}}],
+            },
+            "demo.pdf",
+            parser,
+        )
+
+
+def test_async_api_client_rejects_unsafe_image_sidecar_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+    middle_json = {"schema_version": "1.0.0", "pages": [{"page_idx": 0}]}
+    image_ref = {"path": "../escape.png", "file_id": "file-image", "bytes": 11}
+
+    async def _download_json(*_args: object, **_kwargs: object) -> dict[str, object]:
+        """返回最小 middle_json，聚焦验证 sidecar 路径校验。"""
+        return middle_json
+
+    async def _fail_download(*_args: object, **_kwargs: object) -> bytes:
+        """异步路径同样必须在下载图片字节前拒绝危险 sidecar。"""
+        raise AssertionError("unsafe sidecar path should be rejected before download")
+
+    monkeypatch.setattr(api_client, "_async_download_json", _download_json)
+    monkeypatch.setattr(api_client, "_async_download_bytes", _fail_download)
+
+    with pytest.raises(ValueError, match="Unsafe image sidecar path"):
+        asyncio.run(
+            api_client._async_parse_result_from_job(
+                {
+                    "job_id": "job_1",
+                    "status": "completed",
+                    "files": [
+                        {"output_files": {"middle_json": {"file_id": "file-middle", "bytes": 10}, "images": [image_ref]}}
+                    ],
+                },
+                "demo.pdf",
+                parser,
+            )
+        )
 
 
 def test_api_client_omits_tier_when_unspecified(tmp_path: Path) -> None:
@@ -122,6 +219,20 @@ def test_api_client_rejects_missing_middle_json_output() -> None:
             "demo.pdf",
             parser,
         )
+
+
+def test_api_client_accepts_pages_middle_json_only() -> None:
+    pages = _pages_from_middle_json({"pages": [{"page_idx": 2, "page_size": [100, 200]}]})
+
+    assert len(pages) == 1
+    assert pages[0].page_idx == 2
+    assert pages[0].page_size == (100, 200)
+
+
+@pytest.mark.parametrize("payload", [[{"page_idx": 0}], {"pdf_info": [{"page_idx": 0}]}])
+def test_api_client_rejects_legacy_middle_json_shapes(payload: object) -> None:
+    with pytest.raises(Exception, match="pages"):
+        _pages_from_middle_json(payload)  # type: ignore[arg-type]
 
 
 def test_create_job_request_accepts_new_format_names_and_rejects_options() -> None:
@@ -201,7 +312,8 @@ def test_api_server_cli_no_longer_exposes_reload() -> None:
     result = runner.invoke(main, ["--reload"])
 
     assert result.exit_code != 0
-    assert "No such option '--reload'" in result.output
+    assert "No such option" in result.output
+    assert "--reload" in result.output
 
 
 def test_output_files_expose_new_names_without_inline_content() -> None:
@@ -217,6 +329,152 @@ def test_output_files_expose_new_names_without_inline_content() -> None:
         OutputFileRef.model_validate(
             {"file_id": "file-1", "bytes": 12, "content": "inline"}
         )
+
+
+def test_store_image_outputs_creates_downloadable_image_refs(tmp_path: Path) -> None:
+    file_store = FileStore(tmp_path / "api-files")
+
+    assert hasattr(api_server, "_store_image_outputs")
+    refs = api_server._store_image_outputs(file_store, {"images/chart.png": b"chart-bytes"})
+
+    assert refs == [
+        ImageOutputRef(path="images/chart.png", file_id=refs[0].file_id, bytes=len(b"chart-bytes"))
+    ]
+    assert file_store.read_file_data(refs[0].file_id) == b"chart-bytes"
+
+
+@pytest.mark.parametrize(
+    ("output_format", "output_attr"),
+    [
+        ("markdown", "markdown"),
+        ("content_list", "content_list"),
+        ("structured_content", "structured_content"),
+    ],
+)
+def test_api_server_rendered_outputs_store_image_sidecars(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    output_format: str,
+    output_attr: str,
+) -> None:
+    img_bytes = b"rendered-image-bytes"
+    image_base64 = "data:image/png;base64,cmVuZGVyZWQtaW1hZ2UtYnl0ZXM="
+    span = Span(type="image", bbox=(0, 0, 10, 10), image_base64=image_base64)
+    line = Line(bbox=(0, 0, 10, 10), spans=[span])
+    block = Block(index=0, type="image", bbox=(0, 0, 10, 10), lines=[line])
+    parse_result = ParseResult(
+        pages=[
+            PageInfo(
+                page_idx=0,
+                page_size=(100, 100),
+                para_blocks=[block],
+                _backend="pipeline",
+            )
+        ]
+    )
+
+    async def fake_parse_async(*args, **kwargs) -> ParseResult:
+        return parse_result
+
+    monkeypatch.setattr("mineru.parser.parse_async", fake_parse_async)
+    file_store = FileStore(tmp_path / "api-files")
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "tier": "standard",
+            "output_formats": [output_format],
+        }
+    )
+    job_store = api_server.JobStore()
+    rec = job_store.create(request, file_store)
+
+    asyncio.run(
+        api_server._run_job(
+            rec,
+            request,
+            file_store,
+            server_backend="pipeline",
+            language="ch",
+            ocr_mode="auto",
+            table_enable=True,
+            formula_enable=True,
+            image_analysis=True,
+        )
+    )
+
+    output_files = rec.files[0].output_files
+    assert getattr(output_files, output_attr) is not None
+    assert output_files.images == [
+        ImageOutputRef(
+            path=output_files.images[0].path,
+            file_id=output_files.images[0].file_id,
+            bytes=len(img_bytes),
+        )
+    ]
+    assert file_store.read_file_data(output_files.images[0].file_id) == img_bytes
+
+
+def test_api_server_middle_json_preserves_backend_for_client_rendering(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    block = Block(
+        index=0,
+        type="text",
+        bbox=(0, 0, 10, 10),
+        lines=[Line(bbox=(0, 0, 10, 10), spans=[Span(type="text", bbox=(0, 0, 10, 10), content="hello")])],
+    )
+    parse_result = ParseResult(
+        pages=[
+            PageInfo(
+                page_idx=0,
+                page_size=(100, 100),
+                para_blocks=[block],
+                _backend="pipeline",
+            )
+        ]
+    )
+
+    async def fake_parse_async(*args, **kwargs) -> ParseResult:
+        return parse_result
+
+    monkeypatch.setattr("mineru.parser.parse_async", fake_parse_async)
+    file_store = FileStore(tmp_path / "api-files")
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "tier": "standard",
+            "output_formats": ["middle_json"],
+        }
+    )
+    job_store = api_server.JobStore()
+    rec = job_store.create(request, file_store)
+
+    asyncio.run(
+        api_server._run_job(
+            rec,
+            request,
+            file_store,
+            server_backend="pipeline",
+            language="ch",
+            ocr_mode="auto",
+            table_enable=True,
+            formula_enable=True,
+            image_analysis=True,
+        )
+    )
+
+    output_ref = rec.files[0].output_files.middle_json
+    payload = json.loads(file_store.read_file_data(output_ref.file_id).decode("utf-8"))
+    roundtrip = ParseResult.from_dict(payload)
+
+    assert payload["_backend"] == "pipeline"
+    assert roundtrip.content_list()
+    assert roundtrip.structured_content()
 
 
 def test_job_list_item_uses_file_count() -> None:

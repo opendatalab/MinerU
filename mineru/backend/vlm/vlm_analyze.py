@@ -18,7 +18,6 @@ from mineru_vl_utils.structs import ExtractResult
 from packaging import version
 from tqdm import tqdm
 
-from ...data.data_reader_writer import DataWriter
 from ...types import PageInfo
 from ...utils.check_sys_env import is_mac_os_version_supported
 from ...utils.config_reader import get_device, get_processing_window_size
@@ -442,7 +441,6 @@ def _close_images(images_list: list[dict[str, Any]]) -> None:
 
 def doc_analyze(
     pdf_bytes: bytes,
-    image_writer: DataWriter | None,
     predictor: MinerUClient | None = None,
     backend: Literal[
         "http-client",
@@ -455,6 +453,7 @@ def doc_analyze(
     model_path: str | None = None,
     server_url: str | None = None,
     image_analysis: bool = True,
+    page_index_map: list[int] | None = None,
     **kwargs: Any,
 ) -> tuple[list[PageInfo], list[ExtractResult]]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
@@ -515,9 +514,9 @@ def doc_analyze(
                         window_results,
                         images_list,
                         pdf_doc,
-                        image_writer,
                         page_cvt_fn=blocks_to_page_info,
                         page_start_index=window_start,
+                        page_index_map=page_index_map,
                         progress_bar=progress_bar,
                     )
                     last_append_end_time = time.time()
@@ -543,7 +542,6 @@ def doc_analyze(
 
 async def aio_doc_analyze(
     pdf_bytes: bytes,
-    image_writer: DataWriter | None,
     predictor: MinerUClient | None = None,
     backend: Literal[
         "http-client",
@@ -556,6 +554,7 @@ async def aio_doc_analyze(
     model_path: str | None = None,
     server_url: str | None = None,
     image_analysis: bool = True,
+    page_index_map: list[int] | None = None,
     **kwargs: Any,
 ) -> tuple[list[PageInfo], list[ExtractResult]]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
@@ -615,9 +614,9 @@ async def aio_doc_analyze(
                         window_results,
                         images_list,
                         pdf_doc,
-                        image_writer,
                         page_cvt_fn=blocks_to_page_info,
                         page_start_index=window_start,
+                        page_index_map=page_index_map,
                         progress_bar=progress_bar,
                     )
                     last_append_end_time = time.time()

@@ -47,7 +47,13 @@ from .rows import (
     WatchStatsFileRow,
     WatchTargetRow,
 )
-from .services.parse_svc import filter_pages_by_user_range, load_pages_from_done_batches, parse_page_range_set
+from .services.parse_svc import (
+    filter_pages_by_user_range,
+    load_pages_from_done_batches,
+    parse_image_sidecar_dir,
+    parse_page_range_set,
+    resolve_image_sidecar_path,
+)
 from .types import (
     FILE_STATUS_ACTIVE,
     FILE_STATUS_DELETED,
@@ -154,6 +160,9 @@ class _ReadPlan:
     no_marker: bool
     target: ContentCursor | None = None
     next_mode: str = "parse"
+
+
+_PUBLIC_IMAGE_BUCKET_PATH = "images"
 
 
 @dataclass(frozen=True)
@@ -837,7 +846,11 @@ class DoclibServer(AsyncDoclibInterface):
             loaded_pages = filter_pages_by_user_range(loaded_pages, page_range)
         if not loaded_pages:
             raise NotFoundError("not_cached", "Requested parsed content is not cached.", "page_range")
-        return render_markdown(loaded_pages, add_markers=not no_marker)
+        return render_markdown(
+            loaded_pages,
+            img_bucket_path=_PUBLIC_IMAGE_BUCKET_PATH,
+            add_markers=not no_marker,
+        )
 
     async def _execute_read_plan(self, plan: _ReadPlan) -> DocContentResponse:
         data_dir = _effective_data_dir(self.state)
@@ -864,6 +877,7 @@ class DoclibServer(AsyncDoclibInterface):
             add_markers=not plan.no_marker,
             target=plan.target,
             context=plan.context,
+            img_bucket_path=_PUBLIC_IMAGE_BUCKET_PATH,
         )
         if not rendered.content_ranges:
             raise NotFoundError("not_cached", "Requested parsed content is not cached after cursor.", "after")
@@ -1003,8 +1017,9 @@ class DoclibServer(AsyncDoclibInterface):
             raise InvalidRequestError("format_not_supported", "Office image output is only supported for image blocks.", "format")
         image_bytes, ext, mime_type = _span_image_bytes(image_span)
         if image_bytes is None and image_span.image_path:
-            candidate = Path(image_span.image_path)
-            if candidate.is_file():
+            image_dir = parse_image_sidecar_dir(self.state.data_dir, plan.sha256, plan.tier)
+            candidate = resolve_image_sidecar_path(image_dir, image_span.image_path)
+            if candidate is not None and candidate.is_file():
                 image_bytes = candidate.read_bytes()
                 ext = candidate.suffix.lstrip(".") or "png"
                 mime_type = _mime_type_for_ext(ext)
@@ -1383,6 +1398,7 @@ def _render_progressive_markdown(
     add_markers: bool,
     target: ContentCursor | None = None,
     context: int = 0,
+    img_bucket_path: str = "",
 ) -> _RenderedContent:
     output: list[str] = []
     ranges: list[ContentRange] = []
@@ -1395,7 +1411,7 @@ def _render_progressive_markdown(
         page_no = page.page_idx + 1
         if after and page_no < after.page_no:
             continue
-        page_blocks = _page_markdown_blocks(page)
+        page_blocks = _page_markdown_blocks(page, img_bucket_path=img_bucket_path)
         if target and target.block_no is not None and page_no == target.page_no:
             start_block_no = max(1, target.block_no - context)
             end_block_no = target.block_no + context
@@ -1499,14 +1515,14 @@ def _render_progressive_markdown(
     )
 
 
-def _page_markdown_blocks(page: PageInfo) -> list[tuple[int, str]]:
+def _page_markdown_blocks(page: PageInfo, *, img_bucket_path: str = "") -> list[tuple[int, str]]:
     backend = page._backend
     result: list[tuple[int, str]] = []
     for block in page.para_blocks:
         if backend == "office":
-            rendered = office_blocks_to_markdown([block], img_bucket_path="", no_rich_content=False)
+            rendered = office_blocks_to_markdown([block], img_bucket_path=img_bucket_path, no_rich_content=False)
         else:
-            rendered = blocks_to_markdown([block], img_bucket_path="")
+            rendered = blocks_to_markdown([block], img_bucket_path=img_bucket_path)
         text = _join_markdown([item for item in rendered if item.strip()])
         if text.strip():
             result.append((block.index, text))

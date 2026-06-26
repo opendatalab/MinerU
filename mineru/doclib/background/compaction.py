@@ -167,6 +167,6 @@ class Compaction:
             json_path = parse_batch_json_path(self.data_dir, sha256, tier, page_range, max_done_at)
             try:
                 with open(json_path, "w", encoding="utf-8") as f:
-                    json.dump({"schema_version": MIDDLE_JSON_SCHEMA_VERSION, "pages": json_pages}, f, ensure_ascii=False, indent=1)
+                    json.dump({"schema_version": MIDDLE_JSON_SCHEMA_VERSION, "pages": json_pages}, f, ensure_ascii=False, indent=4)
             except Exception:
                 pass

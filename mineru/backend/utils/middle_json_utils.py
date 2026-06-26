@@ -10,9 +10,9 @@ from __future__ import annotations
 import copy
 from typing import Any, Callable, Iterator, TypeVar, Union
 
-from ...data.data_reader_writer import DataWriter
 from ...types import Block, PageInfo, Span
 from ...utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
+from ...utils.page_index import resolve_output_page_idx
 from ...utils.pdfium_guard import close_pdfium_child, pdfium_guard
 from ..pipeline.model_init import run_ocr_rec_inference
 
@@ -24,14 +24,14 @@ def append_pages(
     model_list: list[T],
     images_list: list[dict[str, Any]],
     pdf_doc: Any,
-    image_writer: DataWriter | None,
     *,
     page_cvt_fn: Union[
-        Callable[[T, dict[str, Any], Any, DataWriter | None, int], PageInfo],
-        Callable[[T, dict[str, Any], Any, DataWriter | None, int, bool], PageInfo],
-        Callable[[T, dict[str, Any], Any, DataWriter | None, int, bool, bool], PageInfo],
+        Callable[[T, dict[str, Any], Any, int], PageInfo],
+        Callable[[T, dict[str, Any], Any, int, bool], PageInfo],
+        Callable[[T, dict[str, Any], Any, int, bool, bool], PageInfo],
     ],
     page_start_index: int = 0,
+    page_index_map: list[int] | None = None,
     progress_bar: Any = None,
     **kwargs: Any,
 ) -> None:
@@ -43,18 +43,19 @@ def append_pages(
     """
 
     for offset, (page_data, image_dict) in enumerate(zip(model_list, images_list)):
-        page_index = page_start_index + offset
+        physical_page_idx = page_start_index + offset
+        output_page_idx = resolve_output_page_idx(physical_page_idx, page_index_map)
         page = None
         try:
             with pdfium_guard():
-                page = pdf_doc[page_index]
-            page_info = page_cvt_fn(copy.deepcopy(page_data), image_dict, page, image_writer, page_index, **kwargs)
+                page = pdf_doc[physical_page_idx]
+            page_info = page_cvt_fn(copy.deepcopy(page_data), image_dict, page, output_page_idx, **kwargs)
             if page_info is None:
                 with pdfium_guard():
                     page_w, page_h = map(int, page.get_size())
                 page_info = PageInfo(
                     preproc_blocks=[],
-                    page_idx=page_index,
+                    page_idx=output_page_idx,
                     page_size=(page_w, page_h),
                     discarded_blocks=[],
                     _backend=None,

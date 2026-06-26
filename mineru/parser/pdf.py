@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import os
 from abc import abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,16 @@ from ..types import PageInfo
 from .base import DocumentParser, ParseResult
 
 _IMAGE_SUFFIXES = frozenset({"png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"})
+
+
+@dataclass
+class _PreparedPdfInput:
+    """记录 PDF 输入准备结果，避免跨文档复用 parser 实例状态。"""
+
+    file_name: str
+    pdf_bytes: bytes
+    retained_page_indices: list[int] | None = None
+    broken_page_indices: list[int] | None = None
 
 
 def _resolve_vlm_backend(backend: str) -> str:
@@ -63,29 +74,63 @@ class PdfBaseParser(DocumentParser):
         if not path.exists():
             raise FileNotFoundError(path)
 
-        file_name, pdf_bytes = self._prepare_input(path, page_range)
-        middle_json = self._run_analysis(pdf_bytes, image_writer=None)
-        self._fix_page_indices(middle_json)
-        return self._build_result(middle_json, pdf_bytes, file_name)
+        prepared = self._prepare_input(path, page_range)
+        middle_json = self._run_analysis(
+            prepared.pdf_bytes,
+            page_index_map=prepared.retained_page_indices,
+        )
+        self._insert_broken_pages(
+            middle_json,
+            prepared.retained_page_indices,
+            prepared.broken_page_indices,
+        )
+        return self._build_result(
+            middle_json,
+            prepared.pdf_bytes,
+            prepared.file_name,
+            retained_page_indices=prepared.retained_page_indices,
+            broken_page_indices=prepared.broken_page_indices,
+        )
 
     async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(path)
 
-        file_name, pdf_bytes = await asyncio.to_thread(self._prepare_input, path, page_range)
-        middle_json = await self._arun_analysis(pdf_bytes, image_writer=None)
-        self._fix_page_indices(middle_json)
-        return self._build_result(middle_json, pdf_bytes, file_name)
+        prepared = await asyncio.to_thread(self._prepare_input, path, page_range)
+        middle_json = await self._arun_analysis(
+            prepared.pdf_bytes,
+            page_index_map=prepared.retained_page_indices,
+        )
+        self._insert_broken_pages(
+            middle_json,
+            prepared.retained_page_indices,
+            prepared.broken_page_indices,
+        )
+        return self._build_result(
+            middle_json,
+            prepared.pdf_bytes,
+            prepared.file_name,
+            retained_page_indices=prepared.retained_page_indices,
+            broken_page_indices=prepared.broken_page_indices,
+        )
 
     @abstractmethod
-    def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
+    def _run_analysis(
+        self,
+        pdf_bytes: bytes,
+        page_index_map: list[int] | None = None,
+    ) -> list[PageInfo]:
         """Execute backend-specific analysis. Returns (middle_json, model_output)."""
 
-    async def _arun_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
-        return await asyncio.to_thread(self._run_analysis, pdf_bytes, image_writer)
+    async def _arun_analysis(
+        self,
+        pdf_bytes: bytes,
+        page_index_map: list[int] | None = None,
+    ) -> list[PageInfo]:
+        return await asyncio.to_thread(self._run_analysis, pdf_bytes, page_index_map)
 
-    def _prepare_input(self, path: Path, page_range: str = "") -> tuple[str, bytes]:
+    def _prepare_input(self, path: Path, page_range: str = "") -> _PreparedPdfInput:
         from ..utils.guess_suffix_or_lang import guess_suffix_by_path
         from ..utils.pdf_document import PDFDocument
 
@@ -96,48 +141,78 @@ class PdfBaseParser(DocumentParser):
         if suffix in _IMAGE_SUFFIXES:
             pdf_bytes = PDFDocument.from_image(pdf_bytes).bytes
 
-        pdf_bytes = self._maybe_adjust_pdf_bytes(pdf_bytes, suffix, page_range)
-        return file_name, pdf_bytes
+        pdf_bytes, retained_page_indices, broken_page_indices = self._maybe_adjust_pdf_bytes(
+            pdf_bytes,
+            suffix,
+            page_range,
+        )
+        return _PreparedPdfInput(
+            file_name=file_name,
+            pdf_bytes=pdf_bytes,
+            retained_page_indices=retained_page_indices,
+            broken_page_indices=broken_page_indices,
+        )
 
-    def _maybe_adjust_pdf_bytes(self, pdf_bytes: bytes, suffix: str, page_range: str = "") -> bytes:
+    def _maybe_adjust_pdf_bytes(
+        self,
+        pdf_bytes: bytes,
+        suffix: str,
+        page_range: str = "",
+    ) -> tuple[bytes, list[int] | None, list[int] | None]:
         if suffix != "pdf":
-            return pdf_bytes
+            return pdf_bytes, None, None
 
         from ..utils.pdf_document import PDFDocument
         from ..utils.pdf_page_id import parse_page_range
 
         doc = PDFDocument(pdf_bytes)
-        self._page_indices = parse_page_range(page_range, doc.page_count)
+        page_indices = parse_page_range(page_range, doc.page_count)
 
-        if self._page_indices == list(range(doc.page_count)):
-            return pdf_bytes
+        if page_indices == list(range(doc.page_count)):
+            return pdf_bytes, None, None
 
-        from ..utils.pdfium_guard import rewrite_pdf_bytes_with_pdfium
+        from ..utils.pdfium_guard import safe_rewrite_pdf_bytes_with_pdfium_result
 
-        extracted = rewrite_pdf_bytes_with_pdfium(pdf_bytes, page_indices=self._page_indices)
-        return extracted or pdf_bytes
+        rewrite_result = safe_rewrite_pdf_bytes_with_pdfium_result(pdf_bytes, page_indices=page_indices)
+        if rewrite_result.used_original:
+            return rewrite_result.pdf_bytes or pdf_bytes, None, rewrite_result.broken_page_indices
+        return (
+            rewrite_result.pdf_bytes or pdf_bytes,
+            rewrite_result.retained_page_indices,
+            rewrite_result.broken_page_indices,
+        )
 
-    def _fix_page_indices(self, pages: list[PageInfo]) -> None:
-        """Rewrite ``page_idx`` so it reflects the original document position
-        when pages were cropped from a subset."""
-        mapping = getattr(self, "_page_indices", None)
-        if not mapping:
+    def _insert_broken_pages(
+        self,
+        pages: list[PageInfo],
+        retained_page_indices: list[int] | None = None,
+        broken_page_indices: list[int] | None = None,
+    ) -> None:
+        """按 PDF 重写结果补齐坏页空占位，不再修改 backend 已生成的页号。"""
+        if retained_page_indices is None or not broken_page_indices:
             return
-        for i, p in enumerate(pages):
-            if i < len(mapping):
-                p.page_idx = mapping[i]
+
+        backend = next((page._backend for page in pages if page._backend), None)
+        pages_by_index = {page.page_idx: page for page in pages}
+        ordered_page_indices = sorted(set(pages_by_index) | set(broken_page_indices))
+        pages[:] = [
+            pages_by_index.get(page_idx, PageInfo(page_idx=page_idx, _backend=backend))
+            for page_idx in ordered_page_indices
+        ]
 
     def _build_result(
         self,
         middle_json: list[PageInfo],
         pdf_bytes: bytes,
         file_name: str,
+        *,
+        retained_page_indices: list[int] | None = None,
+        broken_page_indices: list[int] | None = None,
     ) -> ParseResult:
-        from ..utils.pdf_document import PDFDocument
-
         return ParseResult(
             pages=middle_json,
-            _pdf_doc=PDFDocument(pdf_bytes),
+            _retained_page_indices=retained_page_indices,
+            _broken_page_indices=broken_page_indices,
         )
 
 
@@ -147,7 +222,11 @@ class PdfVlmParser(PdfBaseParser):
     _parse_method = "vlm"
     _backend = "vlm"
 
-    def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
+    def _run_analysis(
+        self,
+        pdf_bytes: bytes,
+        page_index_map: list[int] | None = None,
+    ) -> list[PageInfo]:
         from ..backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 
         backend = _resolve_vlm_backend(self.backend)
@@ -156,13 +235,17 @@ class PdfVlmParser(PdfBaseParser):
 
         return vlm_doc_analyze(
             pdf_bytes,
-            image_writer=image_writer,
             backend=backend,
             server_url=self.server_url,
             image_analysis=self.image_analysis,
+            page_index_map=page_index_map,
         )[0]
 
-    async def _arun_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
+    async def _arun_analysis(
+        self,
+        pdf_bytes: bytes,
+        page_index_map: list[int] | None = None,
+    ) -> list[PageInfo]:
         from ..backend.vlm.vlm_analyze import aio_doc_analyze as vlm_aio_doc_analyze
 
         backend = _resolve_vlm_backend(self.backend)
@@ -171,10 +254,10 @@ class PdfVlmParser(PdfBaseParser):
 
         middle_json, _ = await vlm_aio_doc_analyze(
             pdf_bytes,
-            image_writer=image_writer,
             backend=backend,
             server_url=self.server_url,
             image_analysis=self.image_analysis,
+            page_index_map=page_index_map,
         )
         return middle_json
 
@@ -198,12 +281,12 @@ class PdfPipelineParser(PdfBaseParser):
 
         from ..backend.pipeline.pipeline_analyze import doc_analyze_streaming
 
-        file_names: list[str] = []
+        prepared_inputs: list[_PreparedPdfInput] = []
         pdf_bytes_list: list[bytes] = []
         for p in paths:
-            fn, pb = self._prepare_input(Path(p), page_range)
-            file_names.append(fn)
-            pdf_bytes_list.append(pb)
+            prepared = self._prepare_input(Path(p), page_range)
+            prepared_inputs.append(prepared)
+            pdf_bytes_list.append(prepared.pdf_bytes)
 
         results_by_index: dict[int, list[PageInfo]] = {}
 
@@ -212,18 +295,30 @@ class PdfPipelineParser(PdfBaseParser):
 
         doc_analyze_streaming(
             pdf_bytes_list,
-            [None] * len(paths),
             [self.lang] * len(paths),
             on_doc_ready,
             parse_method=self.method,
             formula_enable=self.formula_enable,
             table_enable=self.table_enable,
+            page_index_map_list=[prepared.retained_page_indices for prepared in prepared_inputs],
         )
 
         parse_results: list[ParseResult] = []
         for idx in range(len(paths)):
             middle_json = results_by_index[idx]
-            result = self._build_result(middle_json, pdf_bytes_list[idx], file_names[idx])
+            prepared = prepared_inputs[idx]
+            self._insert_broken_pages(
+                middle_json,
+                prepared.retained_page_indices,
+                prepared.broken_page_indices,
+            )
+            result = self._build_result(
+                middle_json,
+                prepared.pdf_bytes,
+                prepared.file_name,
+                retained_page_indices=prepared.retained_page_indices,
+                broken_page_indices=prepared.broken_page_indices,
+            )
             parse_results.append(result)
 
         return parse_results
@@ -233,7 +328,11 @@ class PdfPipelineParser(PdfBaseParser):
 
         return await asyncio.to_thread(self.parse_batch, paths, page_range=page_range)
 
-    def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
+    def _run_analysis(
+        self,
+        pdf_bytes: bytes,
+        page_index_map: list[int] | None = None,
+    ) -> list[PageInfo]:
         from ..backend.pipeline.pipeline_analyze import doc_analyze_streaming
 
         result_holder: dict = {}
@@ -243,12 +342,12 @@ class PdfPipelineParser(PdfBaseParser):
 
         doc_analyze_streaming(
             [pdf_bytes],
-            [image_writer],
             [self.lang],
             on_doc_ready,
             parse_method=self.method,
             formula_enable=self.formula_enable,
             table_enable=self.table_enable,
+            page_index_map_list=[page_index_map],
         )
 
         return result_holder["middle_json"]
@@ -268,7 +367,11 @@ class PdfHybridParser(PdfBaseParser):
         self._parse_method = f"hybrid_{self.method}"
         return await super().parse_async(path, page_range=page_range)
 
-    def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
+    def _run_analysis(
+        self,
+        pdf_bytes: bytes,
+        page_index_map: list[int] | None = None,
+    ) -> list[PageInfo]:
         from ..backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
 
         backend = _resolve_hybrid_backend(self.backend)
@@ -278,18 +381,22 @@ class PdfHybridParser(PdfBaseParser):
 
         middle_json, model_list, _vlm_ocr_enable = hybrid_doc_analyze(
             pdf_bytes,
-            image_writer=image_writer,
             backend=backend,
             parse_method=self.method,
             language=self.lang,
             inline_formula_enable=self.formula_enable,
             server_url=server_url,
             image_analysis=self.image_analysis,
+            page_index_map=page_index_map,
         )
 
         return middle_json
 
-    async def _arun_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
+    async def _arun_analysis(
+        self,
+        pdf_bytes: bytes,
+        page_index_map: list[int] | None = None,
+    ) -> list[PageInfo]:
         from ..backend.hybrid.hybrid_analyze import aio_doc_analyze as hybrid_aio_doc_analyze
 
         backend = _resolve_hybrid_backend(self.backend)
@@ -299,13 +406,13 @@ class PdfHybridParser(PdfBaseParser):
 
         middle_json, model_list, _vlm_ocr_enable = await hybrid_aio_doc_analyze(
             pdf_bytes,
-            image_writer=image_writer,
             backend=backend,
             parse_method=self.method,
             language=self.lang,
             inline_formula_enable=self.formula_enable,
             server_url=server_url,
             image_analysis=self.image_analysis,
+            page_index_map=page_index_map,
         )
 
         return middle_json
@@ -316,18 +423,22 @@ class PdfFlashParser(PdfBaseParser):
 
     _backend = "flash"
 
-    def _run_analysis(self, pdf_bytes: bytes, image_writer: Any) -> list[PageInfo]:
+    def _run_analysis(
+        self,
+        pdf_bytes: bytes,
+        page_index_map: list[int] | None = None,
+    ) -> list[PageInfo]:
         from ..backend.flash.pdf_extractor import extract_pages_text
         from ..types import Block, Line, PageInfo, Span
+        from ..utils.page_index import resolve_output_page_idx
 
         filepath = self._pdf_bytes_to_tempfile(pdf_bytes)
         pages_text = extract_pages_text(filepath)
 
         pages: list[PageInfo] = []
         block_idx = 0
-        page_indices = self._page_indices if getattr(self, "_page_indices", None) else list(range(len(pages_text)))
         for index, pt in enumerate(pages_text):
-            page_idx = page_indices[index] if index < len(page_indices) else index
+            page_idx = resolve_output_page_idx(index, page_index_map)
             para_blocks: list[Block] = []
             if pt.strip():
                 span = Span(type="text", bbox=(0.0, 0.0, 0.0, 0.0), content=pt.strip())

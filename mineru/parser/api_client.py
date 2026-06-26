@@ -19,6 +19,7 @@ from typing import Any
 import httpx
 
 from ..types import PageInfo, Tier
+from ..utils.image_payload import validate_image_sidecar_path
 from .base import DocumentParser, ParseResult
 
 
@@ -104,7 +105,7 @@ class MinerUApiParser(DocumentParser):
     def _output_formats(self) -> list[str]:
         if "staging" in self._base:
             return ["json"]
-        return ["middle_json"]
+        return ["middle_json", "images"]
 
     # ── HTTP helpers ─────────────────────────────────────────────────
 
@@ -306,7 +307,11 @@ def _parse_result_from_job(job: dict[str, Any], file_name: str, parser: MinerUAp
         outputs = files[0]["output_files"]
 
     mid_json = _download_json(parser, outputs)
-    return ParseResult(pages=_pages_from_middle_json(mid_json))
+    result = ParseResult.from_dict(mid_json)
+    images = _download_image_sidecars(parser, outputs)
+    if images or "images" in outputs:
+        result.attach_export_images(images)
+    return result
 
 
 async def _async_parse_result_from_job(job: dict[str, Any], file_name: str, parser: MinerUApiParser) -> ParseResult:
@@ -317,10 +322,48 @@ async def _async_parse_result_from_job(job: dict[str, Any], file_name: str, pars
         outputs = files[0]["output_files"]
 
     mid_json = await _async_download_json(parser, outputs)
-    return ParseResult(pages=_pages_from_middle_json(mid_json))
+    result = ParseResult.from_dict(mid_json)
+    images = await _async_download_image_sidecars(parser, outputs)
+    if images or "images" in outputs:
+        result.attach_export_images(images)
+    return result
 
 
-def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any] | list[Any]:
+def _download_image_sidecars(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, bytes]:
+    """下载 API 返回的图片 sidecar，并按 middle_json 中的 image_path 建立字节映射。"""
+    images: dict[str, bytes] = {}
+    image_refs = outputs.get("images")
+    if not isinstance(image_refs, list):
+        return images
+    for ref in image_refs:
+        if not isinstance(ref, dict):
+            continue
+        img_path = ref.get("path")
+        if not isinstance(img_path, str) or not img_path:
+            continue
+        safe_img_path = validate_image_sidecar_path(img_path)
+        images[safe_img_path] = _download_bytes(parser, ref)
+    return images
+
+
+async def _async_download_image_sidecars(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, bytes]:
+    """异步下载 API 返回的图片 sidecar，并按 image_path 建立字节映射。"""
+    images: dict[str, bytes] = {}
+    image_refs = outputs.get("images")
+    if not isinstance(image_refs, list):
+        return images
+    for ref in image_refs:
+        if not isinstance(ref, dict):
+            continue
+        img_path = ref.get("path")
+        if not isinstance(img_path, str) or not img_path:
+            continue
+        safe_img_path = validate_image_sidecar_path(img_path)
+        images[safe_img_path] = await _async_download_bytes(parser, ref)
+    return images
+
+
+def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any]:
     ref = outputs.get("middle_json") or outputs.get("json") or outputs.get("json_")
     if not ref:
         available = ", ".join(sorted(outputs)) or "none"
@@ -333,12 +376,12 @@ def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str
         loaded = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise _V1APIError("invalid_middle_json_output", f"middle_json output is not valid JSON: {exc}") from exc
-    if not isinstance(loaded, dict | list):
-        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object or array")
+    if not isinstance(loaded, dict):
+        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object with pages")
     return loaded
 
 
-async def _async_download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any] | list[Any]:
+async def _async_download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any]:
     ref = outputs.get("middle_json") or outputs.get("json") or outputs.get("json_")
     if not ref:
         available = ", ".join(sorted(outputs)) or "none"
@@ -351,8 +394,8 @@ async def _async_download_json(parser: MinerUApiParser, outputs: dict[str, Any])
         loaded = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise _V1APIError("invalid_middle_json_output", f"middle_json output is not valid JSON: {exc}") from exc
-    if not isinstance(loaded, dict | list):
-        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object or array")
+    if not isinstance(loaded, dict):
+        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object with pages")
     return loaded
 
 
@@ -401,26 +444,14 @@ def _check_download_response(r: httpx.Response) -> None:
     raise _V1APIError("download_failed", f"HTTP {r.status_code}: {preview}")
 
 
-def _pages_from_middle_json(mid_json: dict[str, Any] | list[Any] | None) -> list[PageInfo]:
+def _pages_from_middle_json(mid_json: dict[str, Any] | None) -> list[PageInfo]:
     if mid_json is None:
         return []
-    if isinstance(mid_json, list):
-        return [PageInfo.from_dict(raw) for raw in mid_json if isinstance(raw, dict)]
     if isinstance(mid_json, dict):
-        # TEMP: also accept "pdf_info" (non-standard, remove once server aligns)
-        pages = mid_json.get("pages") or mid_json.get("pdf_info")
+        pages = mid_json.get("pages")
         if isinstance(pages, list):
             return [PageInfo.from_dict(raw) for raw in pages if isinstance(raw, dict)]
-        if isinstance(pages, dict):
-            raw_pages = pages.get("preproc_blocks", [])
-            return [
-                PageInfo(
-                    page_idx=i,
-                    page_size=(raw.get("width", 0), raw.get("height", 0)) if isinstance(raw, dict) else (0, 0),
-                )
-                for i, raw in enumerate(raw_pages)
-            ]
-    return []
+    raise _V1APIError("invalid_middle_json_output", "middle_json output must contain a list field named pages")
 
 
 def _raise_for_terminal_job_error(job: dict[str, Any]) -> None:

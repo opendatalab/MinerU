@@ -305,31 +305,31 @@ def _validate_span_content(span: Span, path: str, issues: list[ValidationIssue])
                 message="text span should provide content.",
             )
         )
-    elif span.type in IMAGE_SPAN_TYPES and not (span.image_path or span.image_base64 or span.html):
+    elif span.type in IMAGE_SPAN_TYPES and not (span.image_path or span.image_base64):
         issues.append(
             ValidationIssue(
                 severity="warning",
                 code="span_image_missing",
                 path=path,
-                message="image span should provide image_path, image_base64, or html.",
+                message="image span should provide image_path or image_base64.",
             )
         )
-    elif span.type in TABLE_SPAN_TYPES and not (span.html or span.content):
+    elif span.type in TABLE_SPAN_TYPES and not span.content:
         issues.append(
             ValidationIssue(
                 severity="warning",
                 code="span_table_missing",
                 path=path,
-                message="table span should provide html or content.",
+                message="table span should provide content.",
             )
         )
-    elif span.type in EQUATION_SPAN_TYPES and not (span.content or span.latex):
+    elif span.type in EQUATION_SPAN_TYPES and not span.content:
         issues.append(
             ValidationIssue(
                 severity="warning",
                 code="span_equation_missing",
                 path=path,
-                message="equation span should provide content or latex.",
+                message="equation span should provide content.",
             )
         )
 

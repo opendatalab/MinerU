@@ -8,13 +8,13 @@ import os
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Literal, cast
 
 from ...errors import MineruError
 from ...parser.base import ParseResult
-from ...schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
 from ...types import TIER_ORDER, PageInfo, Tier
+from ...utils.image_payload import parse_image_data_uri
 from ..constants import ALLOWED_EXTENSIONS, TEXT_EXTENSIONS
 from ..core.db import DatabaseManager
 from ..core.file_io import FileStat, compute_sha256, extract_metadata, get_file_stat
@@ -766,7 +766,8 @@ class ParseService:
             await self._fail_task(task["id"], "parse_failed", str(exc)[:500])
             return False
 
-        new_pages = result.to_dict(skip_defaults=True)["pages"]
+        export_payload = result.to_export_dict(skip_defaults=True)
+        new_pages = export_payload["pages"]
         if not new_pages:
             await self._fail_task(task["id"], "parse_empty", "Parse completed but returned no pages")
             return False
@@ -776,8 +777,9 @@ class ParseService:
         json_path = os.path.join(output_dir, _safe_filename(page_range, done_at_ms))
         try:
             os.makedirs(output_dir, exist_ok=True)
+            _write_cached_image_sidecars(parse_image_sidecar_dir(self.data_dir, sha256, tier), result.images())
             with open(json_path, "w", encoding="utf-8") as f:
-                json.dump({"schema_version": MIDDLE_JSON_SCHEMA_VERSION, "pages": new_pages}, f, ensure_ascii=False, indent=1)
+                json.dump(export_payload, f, ensure_ascii=False, indent=4)
         except Exception as exc:
             await self._fail_task(task["id"], "parse_json_write_failed", str(exc)[:500])
             return False
@@ -1081,9 +1083,53 @@ def parse_batch_json_path(data_dir: str, sha256: str, tier: Tier, page_range: st
     return os.path.join(os.path.expanduser(data_dir), "parsed", sha256[:2], sha256, tier, filename)
 
 
+def parse_image_sidecar_dir(data_dir: str, sha256: str, tier: Tier) -> str:
+    """返回 doclib 解析缓存图片 sidecar 目录，供同一文档同一 tier 的多个 batch 共用。"""
+    return os.path.join(os.path.expanduser(data_dir), "parsed", sha256[:2], sha256, tier, "images")
+
+
+def resolve_image_sidecar_path(image_dir: str, image_path: str) -> Path | None:
+    """把 public image_path 安全映射到 doclib 缓存图片目录，拒绝绝对路径和上跳路径。"""
+    if not image_path:
+        return None
+    raw_path = PurePosixPath(image_path)
+    if raw_path.is_absolute() or any(part in {"", ".", ".."} for part in raw_path.parts):
+        return None
+    return Path(image_dir).joinpath(*raw_path.parts)
+
+
+def _write_cached_image_sidecars(image_dir: str, images: dict[str, bytes]) -> None:
+    """把 ParseResult.images() 的图片字节写入 doclib 缓存，保证后续 markdown 链接可访问。"""
+    for image_path, image_bytes in images.items():
+        sidecar_path = resolve_image_sidecar_path(image_dir, image_path)
+        if sidecar_path is None:
+            continue
+        sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+        sidecar_path.write_bytes(image_bytes)
+
+
+def _restore_missing_image_sidecars(page: PageInfo, image_dir: str) -> None:
+    """读取历史缓存时先找 image_path 文件，缺失时再从 image_base64 补写同名 sidecar。"""
+    for block_list in (page.preproc_blocks, page.para_blocks, page.discarded_blocks):
+        for block in block_list:
+            for span in block.all_spans():
+                sidecar_path = resolve_image_sidecar_path(image_dir, span.image_path)
+                if sidecar_path is None or sidecar_path.is_file() or not span.image_base64:
+                    continue
+                parsed = parse_image_data_uri(span.image_base64)
+                if parsed is None:
+                    continue
+                try:
+                    sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+                    sidecar_path.write_bytes(parsed[0])
+                except OSError:
+                    continue
+
+
 def load_pages_from_done_batches(data_dir: str, sha256: str, tier: Tier, done_rows: Sequence[ParseBatchRow]) -> list[PageInfo]:
     """Load valid done JSON batches and keep the newest page for duplicate page_idx values."""
     pages_by_page_idx: dict[int, PageInfo] = {}
+    image_dir = parse_image_sidecar_dir(data_dir, sha256, tier)
     for row in reversed(done_rows):
         fpath = parse_batch_json_path(data_dir, sha256, tier, row["page_range"], row["done_at"])
         if not os.path.isfile(fpath):
@@ -1091,8 +1137,9 @@ def load_pages_from_done_batches(data_dir: str, sha256: str, tier: Tier, done_ro
         try:
             with open(fpath, encoding="utf-8") as f:
                 data = json.load(f)
-            for raw in data.get("pages", []):
-                page = PageInfo.from_dict(raw)
+            parse_result = ParseResult.from_dict(data)
+            for page in parse_result.pages:
+                _restore_missing_image_sidecars(page, image_dir)
                 pages_by_page_idx[page.page_idx] = page
         except Exception:
             pass
@@ -1173,6 +1220,7 @@ def _remap_api_result_pages_to_page_range(result: ParseResult, page_range: str) 
         )
     for page, page_no in zip(result.pages, requested_page_numbers, strict=True):
         page.page_idx = page_no - 1
+    result.refresh_export_cache(preserve_images=True)
 
 
 def _parse_coverage(request_page_range: str, rows: list[ParseRow]) -> dict:

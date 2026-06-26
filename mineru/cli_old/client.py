@@ -828,6 +828,7 @@ async def run_planned_task(
                 regenerate_client_side_outputs,
                 parse_dir,
                 document.stem,
+                "office" if document.suffix in office_suffixes else backend,
             )
     completed_tasks, completed_pages = await mark_task_completed(
         progress,

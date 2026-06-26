@@ -6,12 +6,13 @@ import typer
 from click.core import Context
 from typer.core import TyperGroup
 
-from .commands import api_server, models, parse, vlm_server
+from .commands import api_server, models, parse, router, vlm_server
 
 TOP_LEVEL_COMMAND_ORDER = [
     "parse",
     "api-server",
     "vlm-server",
+    "router",
     "models",
 ]
 
@@ -116,6 +117,47 @@ def vlm_server_command(
 ) -> None:
     """Start the local VLM server with OpenAI-compatible chat completions."""
     vlm_server.vlm_server_cmd(engine=engine, ctx=ctx)
+
+
+@app.command(
+    "router",
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+)
+def router_command(
+    ctx: typer.Context,
+    host: str = typer.Option("127.0.0.1", "--host", help="Server host"),
+    port: int = typer.Option(8002, "--port", help="Server port"),
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload"),
+    allow_public_http_client: bool = typer.Option(
+        False,
+        "--allow-public-http-client",
+        help="Allow *-http-client backends when binding to a public host",
+    ),
+    upstream_url: list[str] | None = typer.Option(
+        None,
+        "--upstream-url",
+        help="Existing MinerU FastAPI base URL; repeat to add multiple upstreams",
+    ),
+    local_gpus: str = typer.Option("auto", "--local-gpus", help="Local GPU workers: auto, none, or CSV such as 0,1,2"),
+    worker_host: str = typer.Option("127.0.0.1", "--worker-host", help="Host for router-managed API workers"),
+    enable_vlm_preload: bool = typer.Option(
+        False,
+        "--enable-vlm-preload",
+        help="Preload the local VLM model in router-managed API workers",
+    ),
+) -> None:
+    """Start the MinerU router service."""
+    router.router_cmd(
+        ctx=ctx,
+        host=host,
+        port=port,
+        reload=reload,
+        allow_public_http_client=allow_public_http_client,
+        upstream_urls=upstream_url,
+        local_gpus=local_gpus,
+        worker_host=worker_host,
+        enable_vlm_preload=enable_vlm_preload,
+    )
 
 
 def main() -> None:

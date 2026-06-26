@@ -17,14 +17,12 @@ import pypdfium2 as pdfium
 from loguru import logger
 from PIL import Image, ImageOps
 
-from ..data.data_reader_writer import FileBasedDataWriter
 from ..types import BBox
 from .bbox_utils import normalize_to_int_bbox
 from .check_sys_env import is_windows_environment
 from .enum_class import ImageType
-from .hash_utils import str_sha256
 from .os_env_config import get_load_images_threads, get_load_images_timeout
-from .pdf_reader import image_to_b64str, image_to_bytes, page_to_image
+from .pdf_reader import image_to_b64str, page_to_image
 from .pdfium_guard import (
     close_pdfium_child,
     close_pdfium_document,
@@ -476,36 +474,6 @@ def load_images_from_pdf_doc(
                 close_pdfium_child(page)
 
     return images_list
-
-
-def cut_image(
-    bbox: BBox,
-    page_num: int,
-    page_pil_img: Image.Image,
-    return_path: str | None,
-    image_writer: FileBasedDataWriter,
-    scale: int = 2,
-) -> str:
-    """从第page_num页的page中，根据bbox进行裁剪出一张jpg图片，返回图片路径 save_path：需要同时支持s3和本地,
-    图片存放在save_path下，文件名是:
-    {page_num}_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}.jpg , bbox内数字取整。"""
-
-    # 拼接文件名
-    filename = f"{page_num}_{int(bbox[0])}_{int(bbox[1])}_{int(bbox[2])}_{int(bbox[3])}"
-
-    # 老版本返回不带bucket的路径
-    img_path = f"{return_path}_{filename}" if return_path is not None else None
-
-    # 新版本生成平铺路径
-    img_hash256_path = f"{str_sha256(img_path)}.jpg"
-    # img_hash256_path = f'{img_path}.jpg'
-
-    crop_img = get_crop_img(bbox, page_pil_img, scale=scale)
-
-    img_bytes = image_to_bytes(crop_img, image_format="JPEG")
-
-    image_writer.write(img_hash256_path, img_bytes)
-    return img_hash256_path
 
 
 def get_crop_img(bbox: BBox, pil_img: Image.Image, scale: float = 2.0) -> Image.Image:

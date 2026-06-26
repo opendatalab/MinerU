@@ -26,19 +26,19 @@ os.environ["MINERU_MODEL_SOURCE"] = "modelscope"
 
 ### 1. 下载模型到本地
 ```bash
-mineru-models-download --help
+mineru-kit models download --help
 ```
-或使用交互式命令行工具选择模型下载：
+或下载全部内置模型包：
 ```bash
-mineru-models-download
+mineru-kit models download all
 ```
 > [!NOTE]
 >- 下载完成后，模型路径会在当前终端窗口输出，并自动写入用户目录下的 `mineru.json`。
 >- 您也可以通过将[配置模板文件](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json)复制到用户目录下并重命名为 `mineru.json` 来创建配置文件。
 >- 模型下载到本地后，您可以自由移动模型文件夹到其他位置，同时需要在 `mineru.json` 中更新模型路径。
 >- 如您将模型文件夹部署到其他服务器上，请确保将 `mineru.json`文件一同移动到新设备的用户目录中并正确配置模型路径。
->- 如您需要更新模型文件，可以再次运行 `mineru-models-download` 命令，模型更新暂不支持自定义路径，如您没有移动本地模型文件夹，模型文件会增量更新；如您移动了模型文件夹，模型文件会重新下载到默认位置并更新`mineru.json`。
->- `mineru-models-download` 必须使用远端模型源执行真实下载；如果当前终端已设置 `MINERU_MODEL_SOURCE=local`，该命令会仅在本次执行中临时忽略该值，并改用您选择的 `huggingface` 或 `modelscope` 下载模型。
+>- 如您需要更新模型文件，可以再次运行 `mineru-kit models download all` 命令，模型更新暂不支持自定义路径，如您没有移动本地模型文件夹，模型文件会增量更新；如您移动了模型文件夹，模型文件会重新下载到默认位置并更新`mineru.json`。
+>- `mineru-kit models download` 必须使用远端模型源执行真实下载；如果当前终端已设置 `MINERU_MODEL_SOURCE=local`，该命令会仅在本次执行中临时忽略该值，并改用您选择的 `huggingface` 或 `modelscope` 下载模型。
 
 ### 2. 使用本地模型进行解析
 

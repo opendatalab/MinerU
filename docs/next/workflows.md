@@ -501,7 +501,7 @@ doclib 不在 `parsed/` 中保存:
 
 - `output.md`
 - `content_list.json`
-- `content_list_v2.json`
+- `structured_content.json`
 - `output.html`
 
 这些格式都由 Middle JSON 读取时转换得到。
