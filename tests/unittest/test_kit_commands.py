@@ -17,6 +17,11 @@ from mineru.kit.main import app
 runner = CliRunner()
 
 
+def _assert_unsafe_sidecar_error(output: str) -> None:
+    """归一化 Typer/Click 自动换行后的错误输出，再匹配 sidecar 安全错误。"""
+    assert "Unsafe image sidecar path" in " ".join(output.split())
+
+
 def test_kit_root_and_models_help() -> None:
     result = runner.invoke(app, ["--help"])
     models_result = runner.invoke(app, ["models", "--help"])
@@ -399,7 +404,7 @@ def test_parse_single_file_middle_json_rejects_parent_sidecar_paths(
     )
 
     assert result.exit_code == 1
-    assert "Unsafe image sidecar path" in result.output
+    _assert_unsafe_sidecar_error(result.output)
     assert not escaped.exists()
 
 
@@ -430,7 +435,7 @@ def test_parse_single_file_middle_json_rejects_absolute_sidecar_paths(
     )
 
     assert result.exit_code == 1
-    assert "Unsafe image sidecar path" in result.output
+    _assert_unsafe_sidecar_error(result.output)
     assert not absolute.exists()
 
 
@@ -460,7 +465,7 @@ def test_parse_single_file_middle_json_rejects_windows_rooted_sidecar_paths(
     )
 
     assert result.exit_code == 1
-    assert "Unsafe image sidecar path" in result.output
+    _assert_unsafe_sidecar_error(result.output)
     assert not (tmp_path / "\\escape.png").exists()
 
 
@@ -515,7 +520,7 @@ def test_parse_single_file_markdown_rejects_unsafe_sidecar_paths(
     result = runner.invoke(app, ["parse", str(source), "-o", str(output)])
 
     assert result.exit_code == 1
-    assert "Unsafe image sidecar path" in result.output
+    _assert_unsafe_sidecar_error(result.output)
     assert not escaped.exists()
 
 

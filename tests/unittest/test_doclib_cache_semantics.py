@@ -497,6 +497,18 @@ def test_remap_api_result_pages_to_non_contiguous_page_range() -> None:
     assert [page.page_idx for page in result.pages] == [10, 12, 13]
 
 
+def test_remap_api_result_pages_refreshes_attached_export_cache() -> None:
+    from mineru.doclib.services.parse_svc import _remap_api_result_pages_to_page_range
+
+    result = ParseResult.from_dict({"pages": [{"page_idx": 0}]})
+    result.attach_export_images({"images/figure.png": b"figure-bytes"})
+
+    _remap_api_result_pages_to_page_range(result, "5")
+
+    assert result.to_export_dict()["pages"][0]["page_idx"] == 4
+    assert result.images() == {"images/figure.png": b"figure-bytes"}
+
+
 def test_remap_api_result_pages_rejects_count_mismatch() -> None:
     from mineru.doclib.services.parse_svc import ParseFailure, _remap_api_result_pages_to_page_range
 

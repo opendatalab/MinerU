@@ -19,6 +19,7 @@ from typing import Any
 import httpx
 
 from ..types import PageInfo, Tier
+from ..utils.image_payload import validate_image_sidecar_path
 from .base import DocumentParser, ParseResult
 
 
@@ -340,7 +341,8 @@ def _download_image_sidecars(parser: MinerUApiParser, outputs: dict[str, Any]) -
         img_path = ref.get("path")
         if not isinstance(img_path, str) or not img_path:
             continue
-        images[img_path] = _download_bytes(parser, ref)
+        safe_img_path = validate_image_sidecar_path(img_path)
+        images[safe_img_path] = _download_bytes(parser, ref)
     return images
 
 
@@ -356,7 +358,8 @@ async def _async_download_image_sidecars(parser: MinerUApiParser, outputs: dict[
         img_path = ref.get("path")
         if not isinstance(img_path, str) or not img_path:
             continue
-        images[img_path] = await _async_download_bytes(parser, ref)
+        safe_img_path = validate_image_sidecar_path(img_path)
+        images[safe_img_path] = await _async_download_bytes(parser, ref)
     return images
 
 

@@ -90,6 +90,67 @@ def test_api_client_downloads_image_sidecars_and_preserves_pdf_mapping(monkeypat
     assert result.images() == {"images/chart.png": b"chart-bytes"}
 
 
+@pytest.mark.parametrize("image_path", ["../escape.png", "/tmp/escape.png", "\\escape.png", "C:\\escape.png"])
+def test_api_client_rejects_unsafe_image_sidecar_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    image_path: str,
+) -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+    middle_json = {"schema_version": "1.0.0", "pages": [{"page_idx": 0}]}
+    image_ref = {"path": image_path, "file_id": "file-image", "bytes": 11}
+
+    monkeypatch.setattr(api_client, "_download_json", lambda _parser, _outputs: middle_json)
+
+    def _fail_download(*_args: object, **_kwargs: object) -> bytes:
+        """危险 sidecar 路径必须在下载图片字节前被拒绝。"""
+        raise AssertionError("unsafe sidecar path should be rejected before download")
+
+    monkeypatch.setattr(api_client, "_download_bytes", _fail_download)
+
+    with pytest.raises(ValueError, match="Unsafe image sidecar path"):
+        _parse_result_from_job(
+            {
+                "job_id": "job_1",
+                "status": "completed",
+                "files": [{"output_files": {"middle_json": {"file_id": "file-middle", "bytes": 10}, "images": [image_ref]}}],
+            },
+            "demo.pdf",
+            parser,
+        )
+
+
+def test_async_api_client_rejects_unsafe_image_sidecar_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+    middle_json = {"schema_version": "1.0.0", "pages": [{"page_idx": 0}]}
+    image_ref = {"path": "../escape.png", "file_id": "file-image", "bytes": 11}
+
+    async def _download_json(*_args: object, **_kwargs: object) -> dict[str, object]:
+        """返回最小 middle_json，聚焦验证 sidecar 路径校验。"""
+        return middle_json
+
+    async def _fail_download(*_args: object, **_kwargs: object) -> bytes:
+        """异步路径同样必须在下载图片字节前拒绝危险 sidecar。"""
+        raise AssertionError("unsafe sidecar path should be rejected before download")
+
+    monkeypatch.setattr(api_client, "_async_download_json", _download_json)
+    monkeypatch.setattr(api_client, "_async_download_bytes", _fail_download)
+
+    with pytest.raises(ValueError, match="Unsafe image sidecar path"):
+        asyncio.run(
+            api_client._async_parse_result_from_job(
+                {
+                    "job_id": "job_1",
+                    "status": "completed",
+                    "files": [
+                        {"output_files": {"middle_json": {"file_id": "file-middle", "bytes": 10}, "images": [image_ref]}}
+                    ],
+                },
+                "demo.pdf",
+                parser,
+            )
+        )
+
+
 def test_api_client_omits_tier_when_unspecified(tmp_path: Path) -> None:
     pdf = tmp_path / "demo.pdf"
     pdf.write_bytes(b"%PDF-1.7\n")

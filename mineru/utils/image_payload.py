@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+from pathlib import Path, PureWindowsPath
 import re
 
 from .hash_utils import str_sha256
@@ -48,6 +49,23 @@ def image_path_from_key(path_key: str, image_format: str = "JPEG") -> str:
     """复用旧裁图路径哈希规则，根据逻辑路径生成稳定图片文件名。"""
     ext = normalize_image_extension(image_format)
     return f"{str_sha256(path_key)}.{ext}"
+
+
+def validate_image_sidecar_path(image_path: str) -> str:
+    """校验图片 sidecar 路径只能是安全的相对子路径，并返回规范化 POSIX 路径。"""
+    posix_path = Path(image_path)
+    windows_path = PureWindowsPath(image_path)
+    if (
+        not image_path
+        or posix_path.is_absolute()
+        or windows_path.is_absolute()
+        or windows_path.drive
+        or windows_path.root
+        or ".." in posix_path.parts
+        or ".." in windows_path.parts
+    ):
+        raise ValueError(f"Unsafe image sidecar path: {image_path}")
+    return posix_path.as_posix()
 
 
 def collect_image_data_uri_bytes(markup: str, images: dict[str, bytes]) -> None:

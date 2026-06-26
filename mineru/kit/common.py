@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import os
 import zipfile
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 from typing import Literal
 
 from ..data.data_reader_writer.filebase import FileBasedDataWriter
 from ..parser.base import ParseResult
 from ..types import Tier
+from ..utils.image_payload import validate_image_sidecar_path
 
 SupportedBundle = Literal["pipeline", "vlm", "all"]
 KitFormat = Literal["markdown", "middle_json", "zip"]
@@ -174,21 +175,9 @@ def _write_utf8_text(path: Path, content: str) -> None:
 
 def _resolve_safe_sidecar_path(output_dir: Path, image_path: str) -> str:
     """校验图片 sidecar 路径必须落在输出目录内，并返回安全的相对路径。"""
-    posix_path = Path(image_path)
-    windows_path = PureWindowsPath(image_path)
-    if (
-        not image_path
-        or posix_path.is_absolute()
-        or windows_path.is_absolute()
-        or windows_path.drive
-        or windows_path.root
-        or ".." in posix_path.parts
-        or ".." in windows_path.parts
-    ):
-        raise ValueError(f"Unsafe image sidecar path: {image_path}")
-
+    safe_image_path = validate_image_sidecar_path(image_path)
     output_root = output_dir.resolve()
-    target_path = (output_root / posix_path).resolve()
+    target_path = (output_root / safe_image_path).resolve()
     try:
         target_path.relative_to(output_root)
     except ValueError as exc:

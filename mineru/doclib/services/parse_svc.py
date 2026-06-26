@@ -1220,6 +1220,7 @@ def _remap_api_result_pages_to_page_range(result: ParseResult, page_range: str) 
         )
     for page, page_no in zip(result.pages, requested_page_numbers, strict=True):
         page.page_idx = page_no - 1
+    result.refresh_export_cache(preserve_images=True)
 
 
 def _parse_coverage(request_page_range: str, rows: list[ParseRow]) -> dict:

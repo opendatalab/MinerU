@@ -178,6 +178,14 @@ class ParseResult:
         self._export_pages_cache = deepcopy(self.pages)
         self._images_cache = dict(images)
 
+    def refresh_export_cache(self, *, preserve_images: bool = False) -> None:
+        """调用方原地修改 pages 后刷新导出缓存；必要时保留已绑定的 sidecar 字节。"""
+        if preserve_images and self._images_cache is not None:
+            self._export_pages_cache = deepcopy(self.pages)
+            return
+        self._export_pages_cache = None
+        self._images_cache = None
+
     def export_pages(self) -> list[PageInfo]:
         """返回可导出的页面副本：清理 base64，并把内联图片替换为本地路径。"""
         export_pages, _ = self._ensure_export_cache()
