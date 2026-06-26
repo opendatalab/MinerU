@@ -9,7 +9,6 @@ from typing import Any, Literal
 
 import cv2
 import numpy as np
-import pypdfium2 as pdfium
 from loguru import logger
 from mineru_vl_utils import MinerUClient
 from mineru_vl_utils.structs import BlockType
@@ -29,9 +28,8 @@ from ...utils.ocr_utils import (
     sorted_boxes,
     update_det_boxes,
 )
-from ...utils.pdf_classify import classify
-from ...utils.pdf_image_tools import aio_load_images_from_pdf_bytes_range, load_images_from_pdf_doc
-from ...utils.pdfium_guard import close_pdfium_document, get_pdfium_document_page_count, open_pdfium_document
+from ...utils.pdf_document import PDFDocument
+from ...utils.pdf_image_tools import aio_load_images_from_pdf_bytes_range, load_images_from_pdf_bytes_range
 from ..pipeline.model_init import (
     HybridModelSingleton,
     MineruHybridModel,
@@ -69,14 +67,11 @@ def _is_hybrid_ocr_det_candidate(block: dict[str, Any]) -> bool:
     return (block.get("type") or block.get("label")) in NOT_EXTRACT_TYPES
 
 
-def ocr_classify(
-    pdf_bytes: bytes,
-    parse_method: str = "auto",
-) -> bool:
+def ocr_classify(pdf_doc: PDFDocument, parse_method: str = "auto") -> bool:
     # 确定OCR设置
     _ocr_enable = False
     if parse_method == "auto":
-        if classify(pdf_bytes) == "ocr":
+        if pdf_doc.classify() == "ocr":
             _ocr_enable = True
     elif parse_method == "ocr":
         _ocr_enable = True
@@ -752,16 +747,17 @@ def doc_analyze(
     predictor = _maybe_enable_serial_execution(predictor, backend)
 
     device = get_device()
-    _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
+
+    pdf_doc = PDFDocument(pdf_bytes)
+    _ocr_enable = ocr_classify(pdf_doc, parse_method=parse_method)
     _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
 
-    pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json: list[PageInfo] = []
     model_list: list[list[dict[str, Any]]] = []
     doc_closed = False
     hybrid_pipeline_model = None
     try:
-        page_count = get_pdfium_document_page_count(pdf_doc)
+        page_count = pdf_doc.page_count
         configured_window_size = get_processing_window_size(default=64)
         effective_window_size = min(page_count, configured_window_size) if page_count else 0
         total_windows = (page_count + effective_window_size - 1) // effective_window_size if effective_window_size else 0
@@ -778,12 +774,11 @@ def doc_analyze(
         try:
             for window_index, window_start in enumerate(range(0, page_count, effective_window_size or 1)):
                 window_end = min(page_count - 1, window_start + effective_window_size - 1)
-                images_list = load_images_from_pdf_doc(
-                    pdf_doc,
+                images_list = load_images_from_pdf_bytes_range(
+                    pdf_bytes=pdf_bytes,
                     start_page_id=window_start,
                     end_page_id=window_end,
                     image_type=ImageType.PIL,
-                    pdf_bytes=pdf_bytes,
                 )
                 try:
                     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
@@ -868,13 +863,13 @@ def doc_analyze(
                 _ocr_enable,
                 _vlm_ocr_enable,
             )
-        close_pdfium_document(pdf_doc)
+        pdf_doc.close()
         doc_closed = True
         clean_memory(device)
         return middle_json, model_list, _vlm_ocr_enable
     finally:
         if not doc_closed:
-            close_pdfium_document(pdf_doc)
+            pdf_doc.close()
 
 
 async def aio_doc_analyze(
@@ -903,16 +898,17 @@ async def aio_doc_analyze(
     predictor = _maybe_enable_serial_execution(predictor, backend)
 
     device = get_device()
-    _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
+
+    pdf_doc = PDFDocument(pdf_bytes)
+    _ocr_enable = ocr_classify(pdf_doc, parse_method=parse_method)
     _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
 
-    pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json: list[PageInfo] = []
     model_list = []
     doc_closed = False
     hybrid_pipeline_model = None
     try:
-        page_count = get_pdfium_document_page_count(pdf_doc)
+        page_count = pdf_doc.page_count
         configured_window_size = get_processing_window_size(default=64)
         effective_window_size = min(page_count, configured_window_size) if page_count else 0
         total_windows = (page_count + effective_window_size - 1) // effective_window_size if effective_window_size else 0
@@ -1022,10 +1018,10 @@ async def aio_doc_analyze(
                 _ocr_enable,
                 _vlm_ocr_enable,
             )
-        close_pdfium_document(pdf_doc)
+        pdf_doc.close()
         doc_closed = True
         clean_memory(device)
         return middle_json, model_list, _vlm_ocr_enable
     finally:
         if not doc_closed:
-            close_pdfium_document(pdf_doc)
+            pdf_doc.close()

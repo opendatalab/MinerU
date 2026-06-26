@@ -6,7 +6,6 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-import pypdfium2 as pdfium
 from loguru import logger
 from PIL import Image
 from tqdm import tqdm
@@ -14,9 +13,8 @@ from tqdm import tqdm
 from ...utils.config_reader import get_device, get_processing_window_size
 from ...utils.enum_class import ImageType
 from ...utils.model_utils import clean_memory, get_vram
-from ...utils.pdf_classify import classify
-from ...utils.pdf_image_tools import load_images_from_pdf_doc
-from ...utils.pdfium_guard import close_pdfium_document, get_pdfium_document_page_count, open_pdfium_document
+from ...utils.pdf_document import PDFDocument
+from ...utils.pdf_image_tools import load_images_from_pdf_bytes_range
 from ..utils.runtime_utils import exclude_progress_bar_idle_time
 from .model_init import PIPELINE_MODEL_INIT_LOCK, MineruPipelineModel
 from .model_output_to_middle_json import (
@@ -83,9 +81,9 @@ def custom_model_init(
     return custom_model
 
 
-def _get_ocr_enable(pdf_bytes: bytes, parse_method: str) -> bool:
+def _get_ocr_enable(pdf_doc: PDFDocument, parse_method: str) -> bool:
     if parse_method == "auto":
-        return classify(pdf_bytes) == "ocr"
+        return pdf_doc.classify() == "ocr"
     if parse_method == "ocr":
         return True
     return False
@@ -123,7 +121,7 @@ def _finalize_processing_window_context(
         context["middle_json"],
         context["ocr_enable"],
     )
-    close_pdfium_document(context["pdf_doc"])
+    context["pdf_doc"].close()
     context["closed"] = True
 
 
@@ -160,10 +158,10 @@ def doc_analyze_streaming(
     try:
         total_pages = 0
         for doc_index, (pdf_bytes, lang) in enumerate(zip(pdf_bytes_list, lang_list)):
-            _ocr_enable = _get_ocr_enable(pdf_bytes, parse_method)
-            pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
+            pdf_doc = PDFDocument(pdf_bytes)
+            _ocr_enable = _get_ocr_enable(pdf_doc, parse_method)
             try:
-                page_count = get_pdfium_document_page_count(pdf_doc)
+                page_count = pdf_doc.page_count
                 context = {
                     "doc_index": doc_index,
                     "pdf_bytes": pdf_bytes,
@@ -178,7 +176,7 @@ def doc_analyze_streaming(
                     "closed": False,
                 }
             except Exception:
-                close_pdfium_document(pdf_doc)
+                pdf_doc.close()
                 raise
             total_pages += page_count
             doc_contexts.append(context)
@@ -224,12 +222,11 @@ def doc_analyze_streaming(
                         continue
                     take_count = min(batch_capacity, context["page_count"] - page_start)
                     page_end = page_start + take_count - 1
-                    images_list = load_images_from_pdf_doc(
-                        context["pdf_doc"],
+                    images_list = load_images_from_pdf_bytes_range(
+                        pdf_bytes=context["pdf_bytes"],
                         start_page_id=page_start,
                         end_page_id=page_end,
                         image_type=ImageType.PIL,
-                        pdf_bytes=context["pdf_bytes"],
                     )
                     images_with_extra_info = [
                         (image_dict["img_pil"], context["ocr_enable"], context["lang"]) for image_dict in images_list
@@ -310,7 +307,7 @@ def doc_analyze_streaming(
     finally:
         for context in doc_contexts:
             if not context["closed"]:
-                close_pdfium_document(context["pdf_doc"])
+                context["pdf_doc"].close()
                 context["closed"] = True
 
 

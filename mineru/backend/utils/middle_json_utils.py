@@ -13,7 +13,7 @@ from typing import Any, Callable, Iterator, TypeVar, Union
 from ...types import Block, PageInfo, Span
 from ...utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from ...utils.page_index import resolve_output_page_idx
-from ...utils.pdfium_guard import close_pdfium_child, pdfium_guard
+from ...utils.pdf_document import PDFDocument, PDFPage
 from ..pipeline.model_init import run_ocr_rec_inference
 
 T = TypeVar("T")
@@ -23,12 +23,12 @@ def append_pages(
     middle_json: list[PageInfo],
     model_list: list[T],
     images_list: list[dict[str, Any]],
-    pdf_doc: Any,
+    pdf_doc: PDFDocument,
     *,
     page_cvt_fn: Union[
-        Callable[[T, dict[str, Any], Any, int], PageInfo],
-        Callable[[T, dict[str, Any], Any, int, bool], PageInfo],
-        Callable[[T, dict[str, Any], Any, int, bool, bool], PageInfo],
+        Callable[[T, dict[str, Any], PDFPage, int], PageInfo],
+        Callable[[T, dict[str, Any], PDFPage, int, bool], PageInfo],
+        Callable[[T, dict[str, Any], PDFPage, int, bool, bool], PageInfo],
     ],
     page_start_index: int = 0,
     page_index_map: list[int] | None = None,
@@ -41,27 +41,23 @@ def append_pages(
     is ``page_cvt_fn``, which converts one page's model output into a
     page_info dict.
     """
-
     for offset, (page_data, image_dict) in enumerate(zip(model_list, images_list)):
         physical_page_idx = page_start_index + offset
         output_page_idx = resolve_output_page_idx(physical_page_idx, page_index_map)
-        page = None
-        try:
-            with pdfium_guard():
-                page = pdf_doc[physical_page_idx]
-            page_info = page_cvt_fn(copy.deepcopy(page_data), image_dict, page, output_page_idx, **kwargs)
-            if page_info is None:
-                with pdfium_guard():
-                    page_w, page_h = map(int, page.get_size())
-                page_info = PageInfo(
-                    preproc_blocks=[],
-                    page_idx=output_page_idx,
-                    page_size=(page_w, page_h),
-                    discarded_blocks=[],
-                    _backend=None,
-                )
-        finally:
-            close_pdfium_child(page)
+
+        pdf_page = pdf_doc[physical_page_idx]
+        page_info = page_cvt_fn(copy.deepcopy(page_data), image_dict, pdf_page, output_page_idx, **kwargs)
+
+        if page_info is None:
+            page_w, page_h = map(int, pdf_page.size)
+            page_info = PageInfo(
+                preproc_blocks=[],
+                page_idx=output_page_idx,
+                page_size=(page_w, page_h),
+                discarded_blocks=[],
+                _backend=None,
+            )
+
         middle_json.append(page_info)
         if progress_bar is not None:
             progress_bar.update(1)

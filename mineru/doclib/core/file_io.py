@@ -8,9 +8,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-import pypdfium2
-
-from ...utils.pdfium_guard import close_pdfium_document, open_pdfium_document, pdfium_guard
+from ...utils.pdf_document import PDFDocument
 
 # Optional office doc support
 try:
@@ -113,18 +111,16 @@ async def extract_metadata(filepath: str) -> dict:
 
 async def _extract_pdf_meta(filepath: str, result: dict) -> None:
     def _extract() -> None:
-        pdf = None
+        pdf_doc = None
         try:
             try:
-                pdf = open_pdfium_document(pypdfium2.PdfDocument, filepath)
-                with pdfium_guard():
-                    result["page_count"] = len(pdf)
+                pdf_doc = PDFDocument(filepath)
+                result["page_count"] = pdf_doc.page_count
             except Exception as exc:
                 raise MetadataExtractionError("open_failed", str(exc) or "Failed to open document") from exc
 
             try:
-                with pdfium_guard():
-                    meta = pdf.get_metadata_dict() or {}
+                meta = pdf_doc.metadata
             except Exception as exc:
                 raise MetadataExtractionError("read_metadata_failed", str(exc) or "Failed to read document metadata") from exc
 
@@ -136,8 +132,8 @@ async def _extract_pdf_meta(filepath: str, result: dict) -> None:
             except Exception as exc:
                 raise MetadataExtractionError("read_metadata_failed", str(exc) or "Failed to read document metadata") from exc
         finally:
-            if pdf is not None:
-                close_pdfium_document(pdf)
+            if pdf_doc is not None:
+                pdf_doc.close()
 
     await asyncio.to_thread(_extract)
 

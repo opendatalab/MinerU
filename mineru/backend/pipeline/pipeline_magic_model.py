@@ -1,13 +1,14 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
-from dataclasses import dataclass
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from ...render.merge import _merge_para_text
 from ...types import EMPTY_BBOX, BBox, Block, BlockType, ContentType, Line, Span
 from ...utils.guess_suffix_or_lang import guess_language_by_text
+from ...utils.pdf_document import PDFPage
 from ..utils.boxbase import calculate_overlap_area_2_minbox_area_ratio, calculate_overlap_area_in_bbox1_area_ratio
 from ..utils.span_block_fix import (
     is_vertical_text_block_by_spans,
@@ -138,7 +139,7 @@ class MagicModel:
     def __init__(
         self,
         page_model_info: dict[str, Any],
-        page: object = None,
+        pdf_page: PDFPage,
         scale: float = 1,
         page_pil_img: PILImage | None = None,
         page_w: int = 0,
@@ -161,7 +162,7 @@ class MagicModel:
             # Bad code
             virtual_block = (0, 0, page_w, page_h, None, None, None, "text")
             self.page_ocr_res = txt_spans_extract(
-                page,
+                pdf_page,
                 self.page_ocr_res,
                 page_pil_img,
                 scale,

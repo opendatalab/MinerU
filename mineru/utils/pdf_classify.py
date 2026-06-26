@@ -11,12 +11,7 @@ import pypdfium2.raw as pdfium_c
 from loguru import logger
 from pypdf import PdfReader
 
-from .pdfium_guard import (
-    close_pdfium_child,
-    close_pdfium_document,
-    open_pdfium_document,
-    pdfium_guard,
-)
+from .pdfium_guard import close_pdfium_child, pdfium_guard
 
 MAX_SAMPLE_PAGES = 10
 CHARS_THRESHOLD = 50
@@ -47,7 +42,7 @@ def _is_disallowed_control_unicode(unicode_code: int) -> bool:
     return (0 <= unicode_code < 32 or 127 <= unicode_code <= 159) and unicode_code not in _ALLOWED_CONTROL_CODES
 
 
-def classify(pdf_bytes: bytes) -> str:
+def classify(pdf_doc: pdfium.PdfDocument, pdf_bytes: bytes) -> str:
     """
     Fast PDF classification path.
 
@@ -57,12 +52,9 @@ def classify(pdf_bytes: bytes) -> str:
         "txt" if the PDF can be parsed as text, otherwise "ocr".
     """
 
-    pdf = None
-
     try:
         with pdfium_guard():
-            pdf = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
-            page_count = len(pdf)
+            page_count = len(pdf_doc)
             if page_count == 0:
                 return "ocr"
 
@@ -71,7 +63,7 @@ def classify(pdf_bytes: bytes) -> str:
                 return "ocr"
 
             extreme_page_index, extreme_ratio = get_extreme_aspect_ratio_page_pdfium(
-                pdf,
+                pdf_doc,
                 page_indices,
             )
             if extreme_page_index is not None:
@@ -81,7 +73,7 @@ def classify(pdf_bytes: bytes) -> str:
                 )
                 return "ocr"
 
-            text_samples = _collect_pdfium_text_samples(pdf, page_indices)
+            text_samples = _collect_pdfium_text_samples(pdf_doc, page_indices)
             avg_cleaned_chars_per_page = _get_avg_cleaned_chars_per_page_from_samples(text_samples)
             if avg_cleaned_chars_per_page < CHARS_THRESHOLD:
                 return "ocr"
@@ -143,15 +135,12 @@ def classify(pdf_bytes: bytes) -> str:
                 )
                 return "ocr"
 
-            if get_high_image_coverage_ratio_pdfium(pdf, page_indices) >= HIGH_IMAGE_COVERAGE_THRESHOLD:
+            if get_high_image_coverage_ratio_pdfium(pdf_doc, page_indices) >= HIGH_IMAGE_COVERAGE_THRESHOLD:
                 return "ocr"
 
     except Exception as e:
         logger.error(f"Failed to classify PDF: {e}")
         return "ocr"
-
-    finally:
-        close_pdfium_document(pdf)
 
     return "txt"
 
@@ -188,7 +177,7 @@ def get_sample_page_indices(page_count: int, max_pages: int = MAX_SAMPLE_PAGES) 
 
 
 def get_extreme_aspect_ratio_page_pdfium(
-    pdf_doc: Any,
+    pdf_doc: pdfium.PdfDocument,
     page_indices: list[int],
     max_page_aspect_ratio: float = MAX_PAGE_ASPECT_RATIO,
 ) -> tuple[Any, Any]:
@@ -258,7 +247,7 @@ def _collect_pdfium_text_sample_from_page(page_index: int, page: Any) -> dict[st
         close_pdfium_child(text_page)
 
 
-def _collect_pdfium_text_samples(pdf_doc: Any, page_indices: list[int]) -> list[dict[str, Any]]:
+def _collect_pdfium_text_samples(pdf_doc: pdfium.PdfDocument, page_indices: list[int]) -> list[dict[str, Any]]:
     """一次性收集抽样页文本统计，返回纯 Python 数据，避免缓存 PDFium 子对象。"""
     text_samples = []
 
@@ -286,7 +275,7 @@ def _get_avg_cleaned_chars_per_page_from_samples(text_samples: list[dict[str, An
     return cleaned_total_chars / len(text_samples)
 
 
-def get_avg_cleaned_chars_per_page_pdfium(pdf_doc: Any, page_indices: list[int]) -> float:
+def get_avg_cleaned_chars_per_page_pdfium(pdf_doc: pdfium.PdfDocument, page_indices: list[int]) -> float:
     text_samples = _collect_pdfium_text_samples(pdf_doc, page_indices)
     return _get_avg_cleaned_chars_per_page_from_samples(text_samples)
 
@@ -322,7 +311,7 @@ def _get_text_quality_signal_from_samples(text_samples: list[dict[str, Any]]) ->
     }
 
 
-def get_text_quality_signal_pdfium(pdf_doc: Any, page_indices: list[int]) -> dict[str, Any]:
+def get_text_quality_signal_pdfium(pdf_doc: pdfium.PdfDocument, page_indices: list[int]) -> dict[str, Any]:
     text_samples = _collect_pdfium_text_samples(pdf_doc, page_indices)
     return _get_text_quality_signal_from_samples(text_samples)
 
@@ -464,7 +453,7 @@ def _get_u72xx_text_signal_from_samples(text_samples: list[dict[str, Any]]) -> d
     }
 
 
-def get_u72xx_text_signal_pdfium(pdf_doc: Any, page_indices: list[int]) -> dict[str, Any]:
+def get_u72xx_text_signal_pdfium(pdf_doc: pdfium.PdfDocument, page_indices: list[int]) -> dict[str, Any]:
     """统计抽样页中扣除常用字后的 U+7280-U+72DF 字符占比，用于识别可疑 ToUnicode 映射。"""
     text_samples = _collect_pdfium_text_samples(pdf_doc, page_indices)
     return _get_u72xx_text_signal_from_samples(text_samples)
@@ -598,7 +587,7 @@ def _resolve_pdf_object(obj: Any) -> Any:
     return obj
 
 
-def get_high_image_coverage_ratio_pdfium(pdf_doc: Any, page_indices: list[int]) -> float:
+def get_high_image_coverage_ratio_pdfium(pdf_doc: pdfium.PdfDocument, page_indices: list[int]) -> float:
     high_image_coverage_pages = 0
 
     with pdfium_guard():
@@ -606,7 +595,7 @@ def get_high_image_coverage_ratio_pdfium(pdf_doc: Any, page_indices: list[int]) 
             page = None
             try:
                 page = pdf_doc[page_index]
-                page_bbox = page.get_bbox()
+                page_bbox: tuple[float, float, float, float] = page.get_bbox()
                 page_area = abs((page_bbox[2] - page_bbox[0]) * (page_bbox[3] - page_bbox[1]))
                 image_area = 0.0
 
@@ -629,6 +618,9 @@ def get_high_image_coverage_ratio_pdfium(pdf_doc: Any, page_indices: list[int]) 
 
 
 if __name__ == "__main__":
+    from .pdf_document import PDFDocument
+
     with open("/Users/myhloli/pdf/luanma2x10.pdf", "rb") as f:
         p_bytes = f.read()
-        logger.info(f"PDF classify result: {classify(p_bytes)}")
+        pdf_doc = PDFDocument(p_bytes)
+        logger.info(f"PDF classify result: {pdf_doc.classify()}")

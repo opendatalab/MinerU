@@ -10,6 +10,7 @@ from PIL import Image
 
 from ...types import EMPTY_BBOX, NOT_EXTRACT_TYPES, BBox, Block, BlockType, ContentType, IntBBox, Line, Span
 from ...utils.guess_suffix_or_lang import guess_language_by_text
+from ...utils.pdf_document import PDFPage
 from ..utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from ..utils.content_block_draft import VlmContentBlockDraft
 from ..utils.span_block_fix import fix_text_block
@@ -57,7 +58,7 @@ class MagicModel:
     def __init__(
         self,
         page_model_list: list[dict[str, Any]],
-        page: object,
+        pdf_page: PDFPage,
         scale: float,
         page_pil_img: Image.Image,
         width: int,
@@ -103,7 +104,7 @@ class MagicModel:
             # Bad code
             virtual_block = (0, 0, width, height, None, None, None, "text")
             page_text_inline_formula_spans = txt_spans_extract(
-                page,
+                pdf_page,
                 page_text_inline_formula_spans,
                 page_pil_img,
                 scale,

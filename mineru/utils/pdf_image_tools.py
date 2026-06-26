@@ -23,13 +23,7 @@ from .check_sys_env import is_windows_environment
 from .enum_class import ImageType
 from .os_env_config import get_load_images_threads, get_load_images_timeout
 from .pdf_reader import image_to_b64str, page_to_image
-from .pdfium_guard import (
-    close_pdfium_child,
-    close_pdfium_document,
-    get_pdfium_document_page_count,
-    open_pdfium_document,
-    pdfium_guard,
-)
+from .pdfium_guard import close_pdfium_child, pdfium_guard
 
 DEFAULT_PDF_IMAGE_DPI = 200
 # DEFAULT_PDF_IMAGE_DPI = 144
@@ -255,7 +249,7 @@ def shutdown_pdf_render_executor() -> None:
 atexit.register(shutdown_pdf_render_executor)
 
 
-def _load_images_from_pdf_bytes_range(
+def load_images_from_pdf_bytes_range(
     pdf_bytes: bytes,
     dpi: int = DEFAULT_PDF_IMAGE_DPI,
     start_page_id: int = 0,
@@ -346,7 +340,7 @@ async def aio_load_images_from_pdf_bytes_range(
     threads: int | None = None,
 ) -> list[dict[str, Any]]:
     return await asyncio.to_thread(
-        _load_images_from_pdf_bytes_range,
+        load_images_from_pdf_bytes_range,
         pdf_bytes,
         dpi=dpi,
         start_page_id=start_page_id,
@@ -415,7 +409,7 @@ def load_images_from_pdf_core(
     pdf_doc = None
     try:
         with pdfium_guard():
-            pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
+            pdf_doc = pdfium.PdfDocument(pdf_bytes)
             pdf_page_num = len(pdf_doc)
             end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else pdf_page_num - 1
             if end_page_id > pdf_page_num - 1:
@@ -431,47 +425,9 @@ def load_images_from_pdf_core(
                 finally:
                     close_pdfium_child(page)
     finally:
-        close_pdfium_document(pdf_doc)
-
-    return images_list
-
-
-def load_images_from_pdf_doc(
-    pdf_doc: pdfium.PdfDocument,
-    dpi: int = DEFAULT_PDF_IMAGE_DPI,
-    start_page_id: int = 0,
-    end_page_id: int | None = None,
-    image_type: Literal["pil_img", "base64_img"] = ImageType.PIL,
-    pdf_bytes: bytes | None = None,
-    timeout: int | None = None,
-    threads: int | None = None,
-) -> list[dict[str, Any]]:
-    pdf_page_num = get_pdfium_document_page_count(pdf_doc)
-    normalized_end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else pdf_page_num - 1
-    if normalized_end_page_id > pdf_page_num - 1:
-        normalized_end_page_id = pdf_page_num - 1
-
-    if pdf_bytes is not None:
-        return _load_images_from_pdf_bytes_range(
-            pdf_bytes,
-            dpi=dpi,
-            start_page_id=start_page_id,
-            end_page_id=normalized_end_page_id,
-            image_type=image_type,
-            timeout=timeout,
-            threads=threads,
-        )
-
-    images_list = []
-    with pdfium_guard():
-        for index in range(start_page_id, normalized_end_page_id + 1):
-            page = None
-            try:
-                page = pdf_doc[index]
-                image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
-                images_list.append(image_dict)
-            finally:
-                close_pdfium_child(page)
+        if pdf_doc is not None:
+            with pdfium_guard():
+                pdf_doc.close()
 
     return images_list
 

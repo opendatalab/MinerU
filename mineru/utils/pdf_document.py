@@ -4,26 +4,23 @@ from __future__ import annotations
 import asyncio
 import os
 from contextlib import contextmanager
-from functools import cached_property
 from io import BytesIO
 from typing import Iterator, Literal, TypeAlias, cast
 
 import pypdfium2 as pdfium
 from pdftext.pdf.chars import deduplicate_chars, get_chars
-from pdftext.pdf.pages import assign_scripts, get_blocks, get_lines, get_spans
-from pdftext.schema import Char, Line, Span
+from pdftext.pdf.pages import assign_scripts, get_lines, get_spans
+from pdftext.schema import Char, Line
 from PIL import Image, ImageOps
 
 from ..types import BBox, PageInfo
 from .draw_bbox import draw_layout_bbox, draw_span_bbox
 from .pdf_classify import classify, get_sample_page_indices
-from .pdf_image_tools import _load_images_from_pdf_bytes_range, get_crop_img
+from .pdf_image_tools import get_crop_img, load_images_from_pdf_bytes_range
 from .pdf_reader import image_to_bytes
 from .pdfium_guard import _pdfium_lock, safe_rewrite_pdf_bytes_with_pdfium
 
 # from .pdf_image_tools import images_bytes_to_pdf_bytes, pdf_page_to_image
-# from .pdf_text_tool import get_lines_from_chars, get_page_chars
-# from .pdfium_guard import close_pdfium_document, get_pdfium_document_page_count, open_pdfium_document
 
 POINTS_PER_INCH: int = 72
 DEFAULT_RENDER_DPI: int = 200
@@ -49,6 +46,22 @@ class PDFPageImage:
         self.scale = scale
 
 
+class PDFPage:
+    def __init__(self, pdf_doc: "PDFDocument", idx: int) -> None:
+        self.pdf_doc = pdf_doc
+        self._idx = idx
+
+    @property
+    def size(self) -> tuple[float, float]:
+        return self.pdf_doc.page_size(self._idx)
+
+    def get_char_count(self) -> int:
+        return self.pdf_doc.page_char_count(self._idx)
+
+    def get_chars(self) -> list[Char]:
+        return self.pdf_doc.get_page_chars(self._idx)
+
+
 class PDFDocument:
     """A PDF file loaded in memory, with lazy pypdfium2 access.
 
@@ -66,11 +79,17 @@ class PDFDocument:
 
     def __init__(
         self,
-        pdf_bytes: bytes,
+        pdf_bytes_or_path: bytes | str,
         render_scale: float = DEFAULT_RENDER_SCALE,
         render_max_edge: int = DEFAULT_RENDER_MAX_EDGE,
     ) -> None:
-        self._pdf_bytes = pdf_bytes
+        if isinstance(pdf_bytes_or_path, bytes):
+            self._pdf_bytes: bytes = pdf_bytes_or_path
+        else:
+            assert isinstance(pdf_bytes_or_path, str)
+            with open(pdf_bytes_or_path, "rb") as f:
+                self._pdf_bytes = f.read()
+
         self._pdf_doc_opened: pdfium.PdfDocument | None = None
         self._page_count: int | None = None
         self.render_scale = render_scale
@@ -109,6 +128,9 @@ class PDFDocument:
 
     def __len__(self) -> int:
         return self.page_count
+
+    def __getitem__(self, idx: int) -> PDFPage:
+        return PDFPage(self, idx)
 
     @property
     def page_count(self) -> int:
@@ -151,7 +173,7 @@ class PDFDocument:
             end = self.page_count - 1
         if scale is None:
             scale = self.render_scale
-        results = _load_images_from_pdf_bytes_range(
+        results = load_images_from_pdf_bytes_range(
             pdf_bytes=self.bytes,
             dpi=max(1, int(round(scale * POINTS_PER_INCH))),
             start_page_id=start,
@@ -213,20 +235,29 @@ class PDFDocument:
         chars = self.get_page_chars(page_idx)
         return get_lines_from_chars(chars)
 
+    def get_page_text(self, page_idx: int) -> str:
+        with self._open_page(page_idx) as page:
+            textpage = None
+            try:
+                textpage = page.get_textpage()
+                text = textpage.get_text_range()
+            finally:
+                _try_close(textpage)
+        return text or ""
+
     # ------------------------------------------------------------------ #
     #  Classification
     # ------------------------------------------------------------------ #
 
     def classify(self) -> Literal["ocr", "txt"]:
-        # TODO: pass _pdf_doc in future.
-        pdf_class = classify(self._pdf_bytes)
+        pdf_class = classify(self._pdf_doc, self.bytes)
         return cast(Literal["ocr", "txt"], pdf_class)
 
     # ------------------------------------------------------------------ #
     #  Page extraction
     # ------------------------------------------------------------------ #
 
-    # TODO
+    # TODO: no caller
     def extract_page_range(self, start: int, end: int) -> "PDFDocument":
         new_bytes = safe_rewrite_pdf_bytes_with_pdfium(
             self._pdf_bytes,
@@ -235,7 +266,7 @@ class PDFDocument:
         )
         return PDFDocument(new_bytes)
 
-    # TODO
+    # TODO: no caller
     def sample_pages(self, max_pages: int = 3) -> "PDFDocument":
         """按 PDF 分类抽样规则提取代表性页面，返回新的 PDFDocument。"""
         if max_pages <= 0:

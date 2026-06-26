@@ -7,7 +7,6 @@ from typing import Any, Callable, Iterator, Sequence, TypeVar
 
 from loguru import logger
 
-
 _pdfium_lock = threading.RLock()
 
 T = TypeVar("T")
@@ -27,20 +26,6 @@ class PdfiumRewriteResult:
 def pdfium_guard() -> Iterator[None]:
     with _pdfium_lock:
         yield
-
-
-def open_pdfium_document(
-    opener: Callable[..., T],
-    *args: Any,
-    **kwargs: Any,
-) -> T:
-    with pdfium_guard():
-        return opener(*args, **kwargs)
-
-
-def get_pdfium_document_page_count(pdf_doc: Any) -> int:
-    with pdfium_guard():
-        return len(pdf_doc)
 
 
 def close_pdfium_document(pdf_doc: Any) -> None:
@@ -91,11 +76,7 @@ def get_loadable_pdfium_page_indices(
                 return [], []
 
             normalized_start_page_id = max(0, start_page_id)
-            normalized_end_page_id = (
-                end_page_id
-                if end_page_id is not None and end_page_id >= 0
-                else total_page_count - 1
-            )
+            normalized_end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else total_page_count - 1
             if normalized_end_page_id > total_page_count - 1:
                 normalized_end_page_id = total_page_count - 1
             if normalized_start_page_id > normalized_end_page_id:
@@ -134,11 +115,7 @@ def _normalize_rewrite_page_indices(
         return sorted({int(page_index) for page_index in page_indices if 0 <= int(page_index) < total_page_count})
 
     normalized_start_page_id = max(0, start_page_id)
-    normalized_end_page_id = (
-        end_page_id
-        if end_page_id is not None and end_page_id >= 0
-        else total_page_count - 1
-    )
+    normalized_end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else total_page_count - 1
     if normalized_end_page_id > total_page_count - 1:
         normalized_end_page_id = total_page_count - 1
     if normalized_start_page_id > normalized_end_page_id:
@@ -251,15 +228,11 @@ def safe_rewrite_pdf_bytes_with_pdfium_result(
             )
         logger.warning("PDFium rewrite returned empty bytes, trying to skip broken pages.")
     except Exception as fallback_error:
-        logger.warning(
-            f"Error in converting PDF bytes with pdfium: {fallback_error}, trying to skip broken pages."
-        )
+        logger.warning(f"Error in converting PDF bytes with pdfium: {fallback_error}, trying to skip broken pages.")
 
     try:
         if page_indices is not None:
-            requested_page_indices = sorted(
-                {int(page_index) for page_index in page_indices if int(page_index) >= 0}
-            )
+            requested_page_indices = sorted({int(page_index) for page_index in page_indices if int(page_index) >= 0})
             if not requested_page_indices:
                 logger.warning("PDFium safe rewrite received no valid requested pages, using original PDF bytes.")
                 return PdfiumRewriteResult(pdf_bytes=src_pdf_bytes, retained_page_indices=None, used_original=True)
@@ -278,15 +251,9 @@ def safe_rewrite_pdf_bytes_with_pdfium_result(
         if requested_page_indices is not None:
             requested_page_index_set = set(requested_page_indices)
             loadable_page_indices = [
-                page_index
-                for page_index in loadable_page_indices
-                if page_index in requested_page_index_set
+                page_index for page_index in loadable_page_indices if page_index in requested_page_index_set
             ]
-            broken_page_indices = [
-                page_index
-                for page_index in broken_page_indices
-                if page_index in requested_page_index_set
-            ]
+            broken_page_indices = [page_index for page_index in broken_page_indices if page_index in requested_page_index_set]
 
         if broken_page_indices:
             skipped_pages = [page_index + 1 for page_index in broken_page_indices]

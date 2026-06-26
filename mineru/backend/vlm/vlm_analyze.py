@@ -11,7 +11,6 @@ import time
 from contextlib import asynccontextmanager, contextmanager
 from typing import Any, AsyncIterator, Generator, Iterator, Literal
 
-import pypdfium2 as pdfium
 from loguru import logger
 from mineru_vl_utils import MinerUClient
 from mineru_vl_utils.structs import ExtractResult
@@ -23,8 +22,8 @@ from ...utils.check_sys_env import is_mac_os_version_supported
 from ...utils.config_reader import get_device, get_processing_window_size
 from ...utils.enum_class import ImageType
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
-from ...utils.pdf_image_tools import aio_load_images_from_pdf_bytes_range, load_images_from_pdf_doc
-from ...utils.pdfium_guard import close_pdfium_document, get_pdfium_document_page_count, open_pdfium_document
+from ...utils.pdf_document import PDFDocument
+from ...utils.pdf_image_tools import aio_load_images_from_pdf_bytes_range, load_images_from_pdf_bytes_range
 from ..utils.middle_json_utils import append_pages
 from ..utils.runtime_utils import exclude_progress_bar_idle_time
 from .model_output_to_middle_json import blocks_to_page_info, finalize_middle_json
@@ -461,12 +460,12 @@ def doc_analyze(
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
 
-    pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
+    pdf_doc = PDFDocument(pdf_bytes)
     middle_json: list[PageInfo] = []
     results: list[ExtractResult] = []
     doc_closed = False
     try:
-        page_count = get_pdfium_document_page_count(pdf_doc)
+        page_count = pdf_doc.page_count
         configured_window_size = get_processing_window_size(default=64)
         effective_window_size = min(page_count, configured_window_size) if page_count else 0
         total_windows = (page_count + effective_window_size - 1) // effective_window_size if effective_window_size else 0
@@ -481,12 +480,11 @@ def doc_analyze(
         try:
             for window_index, window_start in enumerate(range(0, page_count, effective_window_size or 1)):
                 window_end = min(page_count - 1, window_start + effective_window_size - 1)
-                images_list = load_images_from_pdf_doc(
-                    pdf_doc,
+                images_list = load_images_from_pdf_bytes_range(
+                    pdf_bytes=pdf_bytes,
                     start_page_id=window_start,
                     end_page_id=window_end,
                     image_type=ImageType.PIL,
-                    pdf_bytes=pdf_bytes,
                 )
                 try:
                     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
@@ -532,12 +530,12 @@ def doc_analyze(
             )
         if not client_side_output_generation:
             finalize_middle_json(middle_json)
-        close_pdfium_document(pdf_doc)
+        pdf_doc.close()
         doc_closed = True
         return middle_json, results
     finally:
         if not doc_closed:
-            close_pdfium_document(pdf_doc)
+            pdf_doc.close()
 
 
 async def aio_doc_analyze(
@@ -562,12 +560,12 @@ async def aio_doc_analyze(
         predictor = await _get_model_async(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
 
-    pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
+    pdf_doc = PDFDocument(pdf_bytes)
     middle_json: list[PageInfo] = []
     results: list[ExtractResult] = []
     doc_closed = False
     try:
-        page_count = get_pdfium_document_page_count(pdf_doc)
+        page_count = pdf_doc.page_count
         configured_window_size = get_processing_window_size(default=64)
         effective_window_size = min(page_count, configured_window_size) if page_count else 0
         total_windows = (page_count + effective_window_size - 1) // effective_window_size if effective_window_size else 0
@@ -632,9 +630,9 @@ async def aio_doc_analyze(
             )
         if not client_side_output_generation:
             await asyncio.to_thread(finalize_middle_json, middle_json)
-        close_pdfium_document(pdf_doc)
+        pdf_doc.close()
         doc_closed = True
         return middle_json, results
     finally:
         if not doc_closed:
-            close_pdfium_document(pdf_doc)
+            pdf_doc.close()

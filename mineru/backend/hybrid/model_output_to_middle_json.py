@@ -8,7 +8,7 @@ from typing import Any
 from ...types import Block, BlockType, PageInfo
 from ...utils.config_reader import get_table_enable
 from ...utils.hash_utils import bytes_md5
-from ...utils.pdfium_guard import pdfium_guard
+from ...utils.pdf_document import PDFPage
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from ..pipeline.model_init import MineruHybridModel
 from ..utils.middle_json_utils import apply_post_ocr
@@ -41,7 +41,7 @@ def _resolve_title_line_avg_height(title_block: Block) -> int:
 def blocks_to_page_info(
     page_model_list: list[dict[str, Any]],
     image_dict: dict[str, Any],
-    page: Any,
+    pdf_page: PDFPage,
     page_index: int,
     _ocr_enable: bool,
     _vlm_ocr_enable: bool,
@@ -51,12 +51,11 @@ def blocks_to_page_info(
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
     page_img_md5 = bytes_md5(page_pil_img.tobytes())
-    with pdfium_guard():
-        width, height = map(int, page.get_size())
+    width, height = map(int, pdf_page.size)
 
     magic_model = MagicModel(
         page_model_list,
-        page,
+        pdf_page,
         scale,
         page_pil_img,
         width,

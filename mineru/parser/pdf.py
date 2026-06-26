@@ -196,8 +196,7 @@ class PdfBaseParser(DocumentParser):
         pages_by_index = {page.page_idx: page for page in pages}
         ordered_page_indices = sorted(set(pages_by_index) | set(broken_page_indices))
         pages[:] = [
-            pages_by_index.get(page_idx, PageInfo(page_idx=page_idx, _backend=backend))
-            for page_idx in ordered_page_indices
+            pages_by_index.get(page_idx, PageInfo(page_idx=page_idx, _backend=backend)) for page_idx in ordered_page_indices
         ]
 
     def _build_result(
@@ -419,7 +418,7 @@ class PdfHybridParser(PdfBaseParser):
 
 
 class PdfFlashParser(PdfBaseParser):
-    """PDF / image parser using the flash (CPU-only pypdfium2) backend."""
+    """PDF / image parser using the flash backend."""
 
     _backend = "flash"
 

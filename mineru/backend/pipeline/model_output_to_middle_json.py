@@ -4,7 +4,7 @@ from typing import Any
 from ...types import Block, BlockType, ContentType, PageInfo, Span
 from ...utils.hash_utils import bytes_md5
 from ...utils.page_index import resolve_output_page_idx
-from ...utils.pdfium_guard import pdfium_guard
+from ...utils.pdf_document import PDFDocument, PDFPage
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from ..utils.char_utils import full_to_half
 from ..utils.middle_json_utils import append_pages, apply_post_ocr
@@ -18,17 +18,16 @@ from .pipeline_magic_model import MagicModel
 def blocks_to_page_info(
     page_model_info: dict[str, Any],
     image_dict: dict[str, Any],
-    page: Any,
+    pdf_page: PDFPage,
     page_index: int,
     ocr_enable: bool = False,
 ) -> PageInfo:
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
     page_img_md5 = bytes_md5(page_pil_img.tobytes())
-    with pdfium_guard():
-        page_w, page_h = map(int, page.get_size())
+    page_w, page_h = map(int, pdf_page.size)
 
-    magic_model = MagicModel(page_model_info, page, scale, page_pil_img, page_w, page_h, ocr_enable)
+    magic_model = MagicModel(page_model_info, pdf_page, scale, page_pil_img, page_w, page_h, ocr_enable)
 
     """从magic_model对象中获取后面会用到的区块信息"""
     preproc_blocks = magic_model.get_preproc_blocks()
@@ -60,7 +59,7 @@ def append_batch_results_to_middle_json(
     middle_json: list[PageInfo],
     batch_results: list[list[dict[str, Any]]],
     images_list: list[dict[str, Any]],
-    pdf_doc: Any,
+    pdf_doc: PDFDocument,
     page_start_index: int = 0,
     ocr_enable: bool = False,
     model_list: list[dict[str, Any]] | None = None,

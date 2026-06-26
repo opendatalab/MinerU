@@ -11,25 +11,14 @@ from typing import Awaitable, Callable, Optional, TextIO
 
 import click
 import httpx
-import pypdfium2 as pdfium
 from loguru import logger
 
+from mineru.cli_old import api_client as _api_client
 from mineru.cli_old.api_protocol import (
     DEFAULT_MAX_CONCURRENT_REQUESTS,
     DEFAULT_PROCESSING_WINDOW_SIZE,
 )
-from mineru.utils.config_reader import (
-    get_max_concurrent_requests as read_max_concurrent_requests,
-)
-from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
-from mineru.utils.pdf_page_id import get_end_page_id
-from mineru.utils.pdfium_guard import (
-    close_pdfium_document,
-    get_pdfium_document_page_count,
-    open_pdfium_document,
-)
-
-from mineru.version import __version__
+from mineru.cli_old.client_side_output import regenerate_client_side_outputs
 from mineru.cli_old.common import (
     HybridDependencyError,
     ensure_backend_dependencies,
@@ -38,16 +27,22 @@ from mineru.cli_old.common import (
     pdf_suffixes,
     uniquify_task_stems,
 )
-from mineru.cli_old import api_client as _api_client
-from mineru.cli_old.client_side_output import regenerate_client_side_outputs
 from mineru.cli_old.output_paths import resolve_parse_dir
 from mineru.cli_old.visualization import (
     VisualizationJob,
     run_visualization_job,
 )
+from mineru.utils.config_reader import (
+    get_max_concurrent_requests as read_max_concurrent_requests,
+)
+from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
+from mineru.utils.pdf_document import PDFDocument
+from mineru.utils.pdf_page_id import get_end_page_id
+from mineru.version import __version__
 
 os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
 log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
+
 
 @dataclass(frozen=True)
 class InputDocument:
@@ -167,9 +162,7 @@ class LiveTaskStatusRenderer:
                 return
             if isinstance(status_update, _api_client.TaskStatusSnapshot):
                 status = status_update.status
-                queued_ahead = (
-                    status_update.queued_ahead if status == "pending" else None
-                )
+                queued_ahead = status_update.queued_ahead if status == "pending" else None
             else:
                 status = status_update
                 queued_ahead = None
@@ -219,10 +212,7 @@ class LiveTaskStatusRenderer:
             self._task_states.values(),
             key=lambda state: (state.task_index, state.task_id),
         )
-        return [
-            self._build_render_line_locked(state)
-            for state in states
-        ]
+        return [self._build_render_line_locked(state) for state in states]
 
     @staticmethod
     def _build_render_line_locked(state: LiveTaskStatusState) -> str:
@@ -263,6 +253,7 @@ logger.add(_stderr_sink, level=log_level)
 
 def build_http_timeout() -> httpx.Timeout:
     return _api_client.build_http_timeout()
+
 
 def find_free_port() -> int:
     return _api_client.find_free_port()
@@ -393,9 +384,7 @@ def log_visualization_future_result(
         return
 
     if result.status != "finished":
-        logger.warning(
-            f"Skipping visualization for {result.document_stem}: {result.message}"
-        )
+        logger.warning(f"Skipping visualization for {result.document_stem}: {result.message}")
 
 
 def queue_visualization_jobs(
@@ -436,10 +425,7 @@ async def wait_for_visualization_jobs(
     try:
         if visualization_context.futures:
             await asyncio.gather(
-                *(
-                    asyncio.wrap_future(future)
-                    for future in visualization_context.futures
-                ),
+                *(asyncio.wrap_future(future) for future in visualization_context.futures),
                 return_exceptions=True,
             )
     finally:
@@ -478,21 +464,16 @@ def probe_pdf_effective_pages(
     start_page_id: int,
     end_page_id: Optional[int],
 ) -> int:
-    pdf_doc = open_pdfium_document(pdfium.PdfDocument, str(path))
-    try:
-        page_count = get_pdfium_document_page_count(pdf_doc)
-    finally:
-        close_pdfium_document(pdf_doc)
+    with PDFDocument(str(path)) as pdf_doc:
+        page_count = pdf_doc.page_count
 
     if page_count <= 0:
         raise click.ClickException(f"PDF has no pages: {path}")
 
     effective_end_page_id = get_end_page_id(end_page_id, page_count)
     if start_page_id > effective_end_page_id:
-        raise click.ClickException(
-            f"Requested page range is empty for PDF {path}: "
-            f"start={start_page_id}, end={end_page_id}"
-        )
+        raise click.ClickException(f"Requested page range is empty for PDF {path}: start={start_page_id}, end={end_page_id}")
+
     return effective_end_page_id - start_page_id + 1
 
 
@@ -535,18 +516,14 @@ def collect_input_documents(
     if not collected:
         raise click.ClickException(f"No supported documents found under {input_path}")
 
-    normalized_stems, renamed_stems = uniquify_task_stems(
-        [document.stem for document in collected]
-    )
+    normalized_stems, renamed_stems = uniquify_task_stems([document.stem for document in collected])
     if renamed_stems:
         rename_details = ", ".join(
             f"{document.path.name} -> {effective_stem}"
             for document, effective_stem in zip(collected, normalized_stems)
             if document.stem != effective_stem
         )
-        logger.warning(
-            f"Normalized duplicate document stems within this run: {rename_details}"
-        )
+        logger.warning(f"Normalized duplicate document stems within this run: {rename_details}")
         return [
             InputDocument(
                 path=document.path,
@@ -582,11 +559,7 @@ def plan_pipeline_tasks(
             )
             continue
 
-        candidates = [
-            task
-            for task in bins
-            if task.total_pages + document.effective_pages <= processing_window_size
-        ]
+        candidates = [task for task in bins if task.total_pages + document.effective_pages <= processing_window_size]
         if candidates:
             selected = min(candidates, key=lambda task: (task.total_pages, task.index))
             selected.documents.append(document)
@@ -850,9 +823,7 @@ async def run_planned_task(
             parse_method,
         )
     except Exception as exc:
-        logger.warning(
-            f"Skipping visualization for {format_task_log_label(planned_task)}: {exc}"
-        )
+        logger.warning(f"Skipping visualization for {format_task_log_label(planned_task)}: {exc}")
     else:
         queue_visualization_jobs(
             visualization_context,
@@ -905,21 +876,15 @@ async def run_orchestrated_cli(
                 base_url = local_server.start()
                 logger.info(f"Started local mineru-api at {base_url}")
                 server_health = await wait_for_local_api_ready(http_client, local_server)
-                effective_max_concurrent_requests = (
-                    server_health.max_concurrent_requests
-                )
+                effective_max_concurrent_requests = server_health.max_concurrent_requests
             else:
                 server_health = await fetch_server_health(
                     http_client,
                     normalize_base_url(api_url),
                 )
-                effective_max_concurrent_requests = (
-                    resolve_effective_max_concurrent_requests(
-                        read_max_concurrent_requests(
-                            default=DEFAULT_MAX_CONCURRENT_REQUESTS
-                        ),
-                        server_health.max_concurrent_requests,
-                    )
+                effective_max_concurrent_requests = resolve_effective_max_concurrent_requests(
+                    read_max_concurrent_requests(default=DEFAULT_MAX_CONCURRENT_REQUESTS),
+                    server_health.max_concurrent_requests,
                 )
                 live_renderer = create_live_task_status_renderer(api_url)
 
@@ -970,9 +935,7 @@ async def run_orchestrated_cli(
                     f"- task#{failure.task_index} ({', '.join(failure.document_stems)}): {failure.message}"
                     for failure in sorted(failures, key=lambda item: item.task_index)
                 )
-                raise click.ClickException(
-                    f"{len(failures)} task(s) failed while processing documents:\n{details}"
-                )
+                raise click.ClickException(f"{len(failures)} task(s) failed while processing documents:\n{details}")
         finally:
             try:
                 if local_server is not None:
@@ -1135,10 +1098,7 @@ async def run_orchestrated_cli(
     "client_side_output_generation",
     type=bool,
     default=False,
-    help=(
-        "Generate markdown and content lists locally from server-returned "
-        "middle json, images, and original files."
-    ),
+    help=("Generate markdown and content lists locally from server-returned middle json, images, and original files."),
 )
 def main(
     ctx: click.Context,
