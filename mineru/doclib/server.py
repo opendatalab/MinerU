@@ -1212,7 +1212,7 @@ class DoclibServer(AsyncDoclibInterface):
         pdf_bytes = Path(source_path).read_bytes()
         with PDFDocument(pdf_bytes) as doc:
             if plan.target.block_no is None:
-                image = doc.render_page(plan.target.page_no - 1, scale=2)
+                image = doc.render_page(plan.target.page_no - 1, scale=2).pil_image
                 image_bytes = _pil_image_to_bytes(image)
                 width, height = image.size
             else:

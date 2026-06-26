@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,7 @@ from mineru.doclib.types import (
     TelemetryStatusResponse,
     WatchInfo,
 )
+from mineru.version import __version__
 
 
 runner = CliRunner()
@@ -70,6 +72,21 @@ def test_telemetry_command_tree_is_available() -> None:
     assert "status" in result.output
     assert "preview" in result.output
     assert "flush" in result.output
+
+
+def test_version_command_prints_mineru_and_python_versions() -> None:
+    result = runner.invoke(app, ["version"])
+
+    assert result.exit_code == 0
+    assert f"MinerU version: {__version__}" in result.output
+    assert f"Python version: {sys.version.split()[0]}" in result.output
+
+
+def test_version_command_is_last_in_root_help() -> None:
+    result = runner.invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert result.output.rfind("version") > result.output.rfind("cleanup")
 
 
 def test_search_and_find_help_list_filter_values() -> None:

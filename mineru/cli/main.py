@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Literal
 
 import typer
@@ -27,6 +28,7 @@ TOP_LEVEL_COMMAND_ORDER = [
     "invalidate",
     "forget",
     "cleanup",
+    "version",
 ]
 
 
@@ -200,6 +202,15 @@ def forget(
 
 
 app.add_typer(cleanup.app, name="cleanup")
+
+
+@app.command()
+def version() -> None:
+    """Print MinerU and Python versions."""
+    from ..version import __version__
+
+    typer.echo(f"MinerU version: {__version__}")
+    typer.echo(f"Python version: {sys.version.split()[0]}")
 
 
 def main() -> None:

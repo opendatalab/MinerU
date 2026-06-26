@@ -19,7 +19,7 @@ from ...types import TIER_ORDER, PageInfo, Tier
 from ...utils.image_payload import parse_image_data_uri
 from ..constants import ALLOWED_EXTENSIONS, TEXT_EXTENSIONS, is_office_temp_lock_file
 from ..core.db import DatabaseManager
-from ..core.file_io import FileStat, compute_sha256, extract_metadata, get_file_stat
+from ..core.file_io import FileStat, MetadataExtractionError, compute_sha256, extract_metadata, get_file_stat
 from ..core.fts import FTSManager
 from ..rows import FileRow, PageCountRow, ParseBatchRow, ParseRow, Sha256Row, ShortIdRow, WatchTargetRow
 from ..types import (
@@ -499,8 +499,19 @@ class ParseService:
         metadata_error_msg = None
         try:
             metadata = await extract_metadata(path)
+        except MetadataExtractionError as exc:
+            metadata_error_code = exc.code
+            metadata_error_msg = str(exc)[:500] or "Failed to extract document metadata"
+            metadata = {
+                "page_count": None,
+                "title": None,
+                "author": None,
+                "subject": None,
+                "keywords": None,
+                "is_image_based": 0,
+            }
         except Exception as exc:
-            metadata_error_code = "metadata_failed"
+            metadata_error_code = "open_failed"
             metadata_error_msg = str(exc)[:500] or "Failed to extract document metadata"
             metadata = {
                 "page_count": None,

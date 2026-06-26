@@ -1714,7 +1714,7 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
             )
         await db.execute(
             "UPDATE docs SET error_code=? WHERE sha256=?",
-            ("metadata_failed", sha_pending),
+            ("open_failed", sha_pending),
         )
         await db.execute(
             "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, watch_id, status, first_seen_at, updated_at) "
@@ -1819,7 +1819,7 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
         assert status.last_scan_at == now + 5
         assert status.error_summary is not None
         assert [(bucket.code, bucket.count) for bucket in status.error_summary.file_errors] == [("ingest_failed", 1), ("stat_failed", 1)]
-        assert [(bucket.code, bucket.count) for bucket in status.error_summary.doc_errors] == [("metadata_failed", 1)]
+        assert [(bucket.code, bucket.count) for bucket in status.error_summary.doc_errors] == [("open_failed", 1)]
         assert [(bucket.code, bucket.count) for bucket in status.error_summary.parse_errors] == [("parse_failed", 1)]
 
     asyncio.run(_run())
@@ -1963,7 +1963,7 @@ def test_ingest_records_doc_error_when_metadata_extraction_fails(tmp_path: Path,
         source.write_bytes(b"%PDF-1.4\nnot actually a valid pdf")
 
         async def _fail_metadata(path: str) -> dict[str, Any]:
-            raise RuntimeError("metadata boom")
+            raise parse_svc_module.MetadataExtractionError("open_failed", "metadata boom")
 
         monkeypatch.setattr(parse_svc_module, "extract_metadata", _fail_metadata)
 
@@ -1971,7 +1971,7 @@ def test_ingest_records_doc_error_when_metadata_extraction_fails(tmp_path: Path,
 
         doc = await db.fetchone("SELECT error_code, error_msg FROM docs WHERE sha256=?", (row["sha256"],))
         assert doc is not None
-        assert doc["error_code"] == "metadata_failed"
+        assert doc["error_code"] == "open_failed"
         assert doc["error_msg"] == "metadata boom"
 
     asyncio.run(_run())

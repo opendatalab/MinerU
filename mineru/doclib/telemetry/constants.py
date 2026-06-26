@@ -76,7 +76,9 @@ DIM_ERROR_CODE_VALUES = frozenset(
         "parse_failed",
         "parse_timeout",
         "metadata_failed",
+        "open_failed",
         "parse_json_write_failed",
+        "read_metadata_failed",
         "ingest_failed",
         "scan_failed",
     }

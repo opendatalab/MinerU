@@ -33,6 +33,12 @@ TRUNC_SUBJECT = 1000
 TRUNC_KEYWORDS = 1000
 
 
+class MetadataExtractionError(Exception):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 # ── SHA-256 ────────────────────────────────────────────────────────
 
 
@@ -107,19 +113,31 @@ async def extract_metadata(filepath: str) -> dict:
 
 async def _extract_pdf_meta(filepath: str, result: dict) -> None:
     def _extract() -> None:
-        pdf = open_pdfium_document(pypdfium2.PdfDocument, filepath)
+        pdf = None
         try:
-            with pdfium_guard():
-                result["page_count"] = len(pdf)
-                meta = pdf.get_metadata_dict() or {}
+            try:
+                pdf = open_pdfium_document(pypdfium2.PdfDocument, filepath)
+                with pdfium_guard():
+                    result["page_count"] = len(pdf)
+            except Exception as exc:
+                raise MetadataExtractionError("open_failed", str(exc) or "Failed to open document") from exc
 
-            result["title"] = meta.get("Title") or None
-            result["author"] = meta.get("Author") or None
-            result["subject"] = meta.get("Subject") or None
-            result["keywords"] = meta.get("Keywords") or None
+            try:
+                with pdfium_guard():
+                    meta = pdf.get_metadata_dict() or {}
+            except Exception as exc:
+                raise MetadataExtractionError("read_metadata_failed", str(exc) or "Failed to read document metadata") from exc
 
+            try:
+                result["title"] = meta.get("Title") or None
+                result["author"] = meta.get("Author") or None
+                result["subject"] = meta.get("Subject") or None
+                result["keywords"] = meta.get("Keywords") or None
+            except Exception as exc:
+                raise MetadataExtractionError("read_metadata_failed", str(exc) or "Failed to read document metadata") from exc
         finally:
-            close_pdfium_document(pdf)
+            if pdf is not None:
+                close_pdfium_document(pdf)
 
     await asyncio.to_thread(_extract)
 
@@ -132,35 +150,57 @@ async def _extract_office_meta(filepath: str, ext: str, result: dict) -> None:
         if ext == "docx":
             if Document is None:
                 return
-            doc = Document(filepath)
-            cp = doc.core_properties
-            result["title"] = cp.title or None
-            result["author"] = cp.author or None
-            result["subject"] = cp.subject or None
-            result["keywords"] = cp.keywords or None
-            # DOCX has no fixed page count; leave as None (will be set to 1 later by caller)
+            try:
+                doc = Document(filepath)
+            except Exception as exc:
+                raise MetadataExtractionError("open_failed", str(exc) or "Failed to open document") from exc
+
+            try:
+                cp = doc.core_properties
+                result["title"] = cp.title or None
+                result["author"] = cp.author or None
+                result["subject"] = cp.subject or None
+                result["keywords"] = cp.keywords or None
+            except Exception as exc:
+                raise MetadataExtractionError("read_metadata_failed", str(exc) or "Failed to read document metadata") from exc
 
         elif ext == "pptx":
             if Presentation is None:
                 return
-            prs = Presentation(filepath)
-            cp = prs.core_properties
-            result["title"] = cp.title or None
-            result["author"] = cp.author or None
-            result["subject"] = cp.subject or None
-            result["keywords"] = cp.keywords or None
-            result["page_count"] = len(prs.slides)
+            try:
+                prs = Presentation(filepath)
+                result["page_count"] = len(prs.slides)
+            except Exception as exc:
+                raise MetadataExtractionError("open_failed", str(exc) or "Failed to open document") from exc
+
+            try:
+                cp = prs.core_properties
+                result["title"] = cp.title or None
+                result["author"] = cp.author or None
+                result["subject"] = cp.subject or None
+                result["keywords"] = cp.keywords or None
+            except Exception as exc:
+                raise MetadataExtractionError("read_metadata_failed", str(exc) or "Failed to read document metadata") from exc
 
         elif ext == "xlsx":
             if load_workbook is None:
                 return
-            wb = load_workbook(filepath, read_only=True)
-            cp = wb.properties
-            result["title"] = cp.title or None
-            result["author"] = cp.creator or None
-            result["subject"] = cp.subject or None
-            result["keywords"] = cp.keywords or None
-            result["page_count"] = len(wb.sheetnames)
-            wb.close()
+            wb = None
+            try:
+                wb = load_workbook(filepath, read_only=True)
+                result["page_count"] = len(wb.sheetnames)
+            except Exception as exc:
+                raise MetadataExtractionError("open_failed", str(exc) or "Failed to open document") from exc
+            try:
+                cp = wb.properties
+                result["title"] = cp.title or None
+                result["author"] = cp.creator or None
+                result["subject"] = cp.subject or None
+                result["keywords"] = cp.keywords or None
+            except Exception as exc:
+                raise MetadataExtractionError("read_metadata_failed", str(exc) or "Failed to read document metadata") from exc
+            finally:
+                if wb is not None:
+                    wb.close()
 
     await asyncio.to_thread(_extract)

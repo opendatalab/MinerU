@@ -6,11 +6,12 @@ from mineru.errors import http_status_for, error_type_for, registered_error_code
 DOCLIB_PERSISTED_ERROR_CODES = {
     "file_permission_denied",
     "ingest_failed",
-    "metadata_failed",
     "no_accessible_file",
+    "open_failed",
     "parse_empty",
     "parse_failed",
     "parse_json_write_failed",
+    "read_metadata_failed",
     "scan_failed",
     "stat_failed",
 }
@@ -45,8 +46,9 @@ def test_doclib_error_code_types_are_stable() -> None:
     assert error_type_for("quality_tier_unavailable") == "engine_error"
 
     assert error_type_for("ingest_failed") == "api_error"
-    assert error_type_for("metadata_failed") == "api_error"
+    assert error_type_for("open_failed") == "api_error"
     assert error_type_for("parse_json_write_failed") == "api_error"
+    assert error_type_for("read_metadata_failed") == "api_error"
     assert error_type_for("scan_failed") == "api_error"
 
 

@@ -4,37 +4,77 @@ from __future__ import annotations
 import asyncio
 import os
 from contextlib import contextmanager
-from typing import Any, Iterator
+from functools import cached_property
+from io import BytesIO
+from typing import Iterator, Literal, TypeAlias, cast
 
 import pypdfium2 as pdfium
-from PIL import Image
+from pdftext.pdf.chars import deduplicate_chars, get_chars
+from pdftext.pdf.pages import assign_scripts, get_blocks, get_lines, get_spans
+from pdftext.schema import Char, Line, Span
+from PIL import Image, ImageOps
 
 from ..types import BBox, PageInfo
 from .draw_bbox import draw_layout_bbox, draw_span_bbox
-from .pdf_classify import classify, get_sample_page_indices, get_text_quality_signal_pdfium
-from .pdf_image_tools import get_crop_img, images_bytes_to_pdf_bytes, pdf_page_to_image
+from .pdf_classify import classify, get_sample_page_indices
+from .pdf_image_tools import _load_images_from_pdf_bytes_range, get_crop_img
 from .pdf_reader import image_to_bytes
-from .pdf_text_tool import get_lines_from_chars, get_page_chars
-from .pdfium_guard import (
-    close_pdfium_child,
-    close_pdfium_document,
-    get_pdfium_document_page_count,
-    open_pdfium_document,
-    pdfium_guard,
-    safe_rewrite_pdf_bytes_with_pdfium,
-)
+from .pdfium_guard import _pdfium_lock, safe_rewrite_pdf_bytes_with_pdfium
+
+# from .pdf_image_tools import images_bytes_to_pdf_bytes, pdf_page_to_image
+# from .pdf_text_tool import get_lines_from_chars, get_page_chars
+# from .pdfium_guard import close_pdfium_document, get_pdfium_document_page_count, open_pdfium_document
+
+POINTS_PER_INCH: int = 72
+DEFAULT_RENDER_DPI: int = 200
+DEFAULT_RENDER_SCALE: float = DEFAULT_RENDER_DPI / POINTS_PER_INCH
+DEFAULT_RENDER_MAX_EDGE: int = 3500
+
+# See: pdfium.PdfDocument.METADATA_KEYS
+PDFMetadataKey: TypeAlias = Literal[
+    "Title",
+    "Author",
+    "Subject",
+    "Keywords",
+    "Creator",
+    "Producer",
+    "CreationDate",
+    "ModDate",
+]
+
+
+class PDFPageImage:
+    def __init__(self, pil_image: Image.Image, scale: float) -> None:
+        self.pil_image = pil_image
+        self.scale = scale
 
 
 class PDFDocument:
     """A PDF file loaded in memory, with lazy pypdfium2 access.
 
-    All pypdfium2 operations are serialised under a module-level lock for
-    thread safety.  Call ``close()`` when done, or use as a context manager.
+    This object is responsible for all access to, and lifecycle management of,
+    the associated PDFium document/page objects.
+
+    All pypdfium2 operations are serialized under a module-level lock for
+    thread safety. Call ``close()`` when done, or use as a context manager.
+
+    The class does not expose raw PDFium objects or methods without wrapping
+    them first. Callers may use this class to read or operate on the
+    underlying PDFium state, but they must not directly access PDFium objects
+    through this API.
     """
 
-    def __init__(self, pdf_bytes: bytes) -> None:
+    def __init__(
+        self,
+        pdf_bytes: bytes,
+        render_scale: float = DEFAULT_RENDER_SCALE,
+        render_max_edge: int = DEFAULT_RENDER_MAX_EDGE,
+    ) -> None:
         self._pdf_bytes = pdf_bytes
-        self._pdf_doc = None  # type: object | None
+        self._pdf_doc_opened: pdfium.PdfDocument | None = None
+        self._page_count: int | None = None
+        self.render_scale = render_scale
+        self.render_max_edge = render_max_edge
 
     # ------------------------------------------------------------------ #
     #  Factory
@@ -49,9 +89,10 @@ class PDFDocument:
     # ------------------------------------------------------------------ #
 
     def close(self) -> None:
-        if self._pdf_doc is not None:
-            close_pdfium_document(self._pdf_doc)
-            self._pdf_doc = None
+        if self._pdf_doc_opened is not None:
+            with _pdfium_lock:
+                _try_close(self._pdf_doc_opened)
+                self._pdf_doc_opened = None
 
     def __enter__(self) -> "PDFDocument":
         return self
@@ -66,12 +107,23 @@ class PDFDocument:
     #  Properties
     # ------------------------------------------------------------------ #
 
+    def __len__(self) -> int:
+        return self.page_count
+
     @property
     def page_count(self) -> int:
-        return get_pdfium_document_page_count(self._ensure_open())
+        with _pdfium_lock:
+            return len(self._pdf_doc)
+
+    @property
+    def metadata(self) -> dict[PDFMetadataKey, str]:
+        with _pdfium_lock:
+            metadata = self._pdf_doc.get_metadata_dict()
+        return cast(dict[PDFMetadataKey, str], metadata)
 
     @property
     def bytes(self) -> bytes:
+        # TODO: some invoker expected PDF bytes even if input bytes is an Image.
         return self._pdf_bytes
 
     # ------------------------------------------------------------------ #
@@ -80,83 +132,101 @@ class PDFDocument:
 
     def page_size(self, page_idx: int) -> tuple[float, float]:
         with self._open_page(page_idx) as page:
-            with pdfium_guard():
-                rect: tuple[float, float, float, float] = page.get_bbox()
+            # rect: (left, bottom, right, top)
+            rect: tuple[float, float, float, float] = page.get_bbox()
         return (abs(rect[2] - rect[0]), abs(rect[1] - rect[3]))
 
     # ------------------------------------------------------------------ #
     #  Rendering
     # ------------------------------------------------------------------ #
 
-    @staticmethod
-    def _scale_to_dpi(scale: float) -> int:
-        """将历史 scale 参数换算为 PDF 渲染工具使用的 DPI。"""
-        if scale <= 0:
-            raise ValueError("scale must be greater than 0")
-        return max(1, int(round(scale * 72)))
-
-    def render_page_with_actual_scale(self, page_idx: int, *, scale: int = 2) -> tuple[Image.Image, float]:
-        """渲染页面并返回真实缩放比例，供后续 bbox 裁剪复用。"""
-        dpi = self._scale_to_dpi(scale)
+    def render_page(self, page_idx: int, *, scale: float | None = None) -> PDFPageImage:
+        if scale is None:
+            scale = self.render_scale
         with self._open_page(page_idx) as page:
-            image_dict = pdf_page_to_image(page, dpi=dpi)
-            return image_dict["img_pil"], image_dict["scale"]
+            return _page_to_image(page, scale, self.render_max_edge)
 
-    def render_page(self, page_idx: int, *, scale: int = 2) -> Image.Image:
-        pil_img, _ = self.render_page_with_actual_scale(page_idx, scale=scale)
-        return pil_img
+    def render_pages(self, start: int = 0, end: int | None = None, *, scale: float | None = None) -> list[PDFPageImage]:
+        if end is None:
+            end = self.page_count - 1
+        if scale is None:
+            scale = self.render_scale
+        results = _load_images_from_pdf_bytes_range(
+            pdf_bytes=self.bytes,
+            dpi=max(1, int(round(scale * POINTS_PER_INCH))),
+            start_page_id=start,
+            end_page_id=end,
+        )
+        return [PDFPageImage(pil_image=r["img_pil"], scale=r["scale"]) for r in results]
 
-    def render_pages(self, start: int = 0, end: int | None = None, *, scale: int = 2) -> list[Image.Image]:
-        end = end if end is not None else self.page_count - 1
-        return [self.render_page(i, scale=scale) for i in range(start, end + 1)]
-
-    async def render_page_async(self, page_idx: int, *, scale: int = 2) -> Image.Image:
+    async def render_page_async(self, page_idx: int, *, scale: float | None = None) -> PDFPageImage:
         return await asyncio.to_thread(self.render_page, page_idx, scale=scale)
 
-    async def render_pages_async(self, start: int = 0, end: int | None = None, *, scale: int = 2) -> list[Image.Image]:
-        end = end if end is not None else self.page_count - 1
-        tasks = [self.render_page_async(i, scale=scale) for i in range(start, end + 1)]
-        return await asyncio.gather(*tasks)
+    async def render_pages_async(
+        self, start: int = 0, end: int | None = None, *, scale: float | None = None
+    ) -> list[PDFPageImage]:
+        return await asyncio.to_thread(self.render_pages, start, end, scale=scale)
 
+    # TODO: move
     def crop_image(self, bbox: BBox, page_idx: int, *, scale: int = 2) -> bytes:
-        pil_img, actual_scale = self.render_page_with_actual_scale(page_idx, scale=scale)
+        image = self.render_page(page_idx, scale=scale)
         crop = None
         try:
-            crop = get_crop_img(bbox, pil_img, scale=actual_scale)
+            crop = get_crop_img(bbox, image.pil_image, scale=image.scale)
             return image_to_bytes(crop, image_format="JPEG")
         finally:
             if crop is not None:
                 crop.close()
-            pil_img.close()
+            image.pil_image.close()
 
     # ------------------------------------------------------------------ #
     #  Text
     # ------------------------------------------------------------------ #
 
-    def get_page_chars(self, page_idx: int) -> dict[str, Any]:
+    def page_char_count(self, page_idx: int) -> int:
         with self._open_page(page_idx) as page:
-            return get_page_chars(page)
+            textpage = None
+            try:
+                textpage = page.get_textpage()
+                n_chars = textpage.count_chars()
+            finally:
+                _try_close(textpage)
+        return cast(int, n_chars)
 
-    def get_page_lines(self, page_idx: int) -> list[dict[str, Any]]:
-        chars_dict = self.get_page_chars(page_idx)
-        return get_lines_from_chars(chars_dict["chars"])
+    def get_page_chars(self, page_idx: int) -> list[Char]:
+        with self._open_page(page_idx) as page:
+            textpage = None
+            try:
+                textpage = page.get_textpage()
+                page_bbox: list[float] = list(page.get_bbox())
+                page_rotation: int = 0
+                try:
+                    page_rotation = page.get_rotation()
+                except Exception:
+                    pass
+                chars = get_chars(textpage, page_bbox, page_rotation)
+            finally:
+                _try_close(textpage)
+        return deduplicate_chars(chars)
+
+    def get_page_lines(self, page_idx: int) -> list[Line]:
+        chars = self.get_page_chars(page_idx)
+        return get_lines_from_chars(chars)
 
     # ------------------------------------------------------------------ #
     #  Classification
     # ------------------------------------------------------------------ #
 
-    def classify(self) -> str:
-        return classify(self._pdf_bytes)
-
-    def get_text_quality(self) -> dict[str, Any]:
-        doc = self._ensure_open()
-        page_indices = list(range(self.page_count))
-        return get_text_quality_signal_pdfium(doc, page_indices)
+    def classify(self) -> Literal["ocr", "txt"]:
+        # TODO: pass _pdf_doc in future.
+        pdf_class = classify(self._pdf_bytes)
+        return cast(Literal["ocr", "txt"], pdf_class)
 
     # ------------------------------------------------------------------ #
     #  Page extraction
     # ------------------------------------------------------------------ #
 
+    # TODO
     def extract_page_range(self, start: int, end: int) -> "PDFDocument":
         new_bytes = safe_rewrite_pdf_bytes_with_pdfium(
             self._pdf_bytes,
@@ -165,6 +235,7 @@ class PDFDocument:
         )
         return PDFDocument(new_bytes)
 
+    # TODO
     def sample_pages(self, max_pages: int = 3) -> "PDFDocument":
         """按 PDF 分类抽样规则提取代表性页面，返回新的 PDFDocument。"""
         if max_pages <= 0:
@@ -198,21 +269,87 @@ class PDFDocument:
     #  Internal
     # ------------------------------------------------------------------ #
 
-    def _ensure_open(self) -> pdfium.PdfDocument:
-        if self._pdf_doc is None:
-            self._pdf_doc = open_pdfium_document(pdfium.PdfDocument, self._pdf_bytes)
-        return self._pdf_doc
-
-    def _get_page(self, page_idx: int) -> pdfium.PdfPage:
-        pdf_doc = self._ensure_open()
-        with pdfium_guard():
-            return pdf_doc[page_idx]
+    @property
+    def _pdf_doc(self) -> pdfium.PdfDocument:
+        if self._pdf_doc_opened is None:
+            with _pdfium_lock:
+                if self._pdf_doc_opened is None:
+                    self._pdf_doc_opened = pdfium.PdfDocument(self._pdf_bytes)
+        return self._pdf_doc_opened
 
     @contextmanager
     def _open_page(self, page_idx: int) -> Iterator[pdfium.PdfPage]:
-        """按页读取 PDFium page，并确保调用完成后释放 native page 对象。"""
-        page = self._get_page(page_idx)
+        """Open and process page with _pdfium_lock"""
+        with _pdfium_lock:
+            page = None
+            try:
+                page = self._pdf_doc[page_idx]
+                yield page
+            finally:
+                _try_close(page)
+
+
+def _try_close(obj: object) -> None:
+    if callable(close := getattr(obj, "close", None)):
         try:
-            yield page
-        finally:
-            close_pdfium_child(page)
+            close()
+        except Exception:
+            pass
+
+
+def get_lines_from_chars(
+    chars: list[Char],
+    superscript_height_threshold: float = 0.7,
+    line_distance_threshold: float = 0.1,
+) -> list[Line]:
+    """从已提取的字符构建 pdftext lines，避免重复读取 PDFium textpage。"""
+    spans = get_spans(
+        chars,
+        superscript_height_threshold=superscript_height_threshold,
+        line_distance_threshold=line_distance_threshold,
+    )
+    lines = get_lines(spans)
+    assign_scripts(
+        lines,
+        height_threshold=superscript_height_threshold,
+        line_distance_threshold=line_distance_threshold,
+    )
+    return lines
+
+
+def images_bytes_to_pdf_bytes(image_bytes: bytes) -> bytes:
+    # 载入并转换所有图像为 RGB 模式
+    image = Image.open(BytesIO(image_bytes))
+    # 根据 EXIF 信息自动转正（处理手机拍摄的带 Orientation 标记的图片）
+    image = ImageOps.exif_transpose(image) or image
+
+    # 只在必要时转换
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+
+    with BytesIO() as pdf_buffer:
+        # 第一张图保存为 PDF，其余追加
+        image.save(
+            pdf_buffer,
+            format="PDF",
+            resolution=DEFAULT_RENDER_DPI,
+            quality=95,
+            subsampling=0,
+        )
+        return pdf_buffer.getvalue()
+
+
+def _page_to_image(page: pdfium.PdfPage, scale: float, max_edge: int) -> PDFPageImage:
+    long_edge_length = max(*page.get_size())
+    if (long_edge_length * scale) > max_edge:
+        scale = max_edge / long_edge_length
+
+    bitmap = None
+    try:
+        bitmap = page.render(scale=scale)  # type: ignore
+        bitmap = cast(pdfium.PdfBitmap, bitmap)
+        pil_image = bitmap.to_pil()
+    finally:
+        _try_close(bitmap)
+
+    return PDFPageImage(pil_image=pil_image, scale=scale)

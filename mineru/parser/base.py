@@ -1,9 +1,9 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
-from copy import deepcopy
 import json
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -16,6 +16,7 @@ from ..utils.image_payload import (
     parse_image_data_uri,
     replace_inline_data_uri_sources,
 )
+from ..utils.pdf_document import PDFDocument
 
 _PDF_RETAINED_PAGE_INDICES_KEY = "_pdf_retained_page_indices"
 _PDF_BROKEN_PAGE_INDICES_KEY = "_pdf_broken_page_indices"
@@ -42,7 +43,7 @@ class ParseResult:
     """
 
     pages: list[PageInfo]
-    _pdf_doc: object | None = None
+    _pdf_doc: PDFDocument | None = None
     _model_output: Any = None
     _export_pages_cache: list[PageInfo] | None = None
     _images_cache: dict[str, bytes] | None = None
