@@ -1151,6 +1151,11 @@ class AsyncTaskManager:
             task.error = str(exc)
             task.completed_at = utc_now_iso()
             self._signal_task_event(task_id)
+
+            if exc.__class__.__name__ == "EngineDeadError":
+                self.last_worker_error = str(exc)
+                self._wake_waiters()
+
             logger.exception(f"Async task failed: {task_id}")
 
     async def _run_task(self, task: AsyncParseTask) -> None:
