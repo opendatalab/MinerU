@@ -334,7 +334,8 @@ LINE_START_FLAG = (
 
 Span_Height_Ratio = 0.33  # 字符的中轴和span的中轴高度差不能超过1/3span高度
 SCRIPT_BODY_HEIGHT_RATIO = 0.9
-SCRIPT_CENTER_TOLERANCE_RATIO = 0.12
+SCRIPT_CENTER_TOLERANCE_RATIO = 0.15
+CONTROL_LINE_BREAK_CHARS = {"\r", "\n"}
 
 
 def _is_private_use_char(char: str) -> bool:
@@ -559,6 +560,8 @@ def chars_to_content(span: Span) -> None:
 
         role_text_parts = []
         for idx, char1 in enumerate(chars):
+            if char1["char"] in CONTROL_LINE_BREAK_CHARS:
+                continue
             char2 = chars[idx + 1] if idx + 1 < len(chars) else None
             role1 = script_roles[idx]
             role2 = script_roles[idx + 1] if char2 else None
