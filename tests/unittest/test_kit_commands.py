@@ -215,11 +215,13 @@ def test_api_server_omits_tier_when_backend_only(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
 
-    result = runner.invoke(app, ["api-server", "--backend", "hybrid-auto-engine"])
+    result = runner.invoke(app, ["api-server", "--backend", "hybrid-engine", "--effort", "high"])
 
     assert result.exit_code == 0
     assert "--backend" in seen["args"]
-    assert "hybrid-auto-engine" in seen["args"]
+    assert "hybrid-engine" in seen["args"]
+    assert "--effort" in seen["args"]
+    assert "high" in seen["args"]
     assert "--tier" not in seen["args"]
 
 
@@ -344,6 +346,47 @@ def test_parse_single_file_markdown(monkeypatch: Any, tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert output.read_text(encoding="utf-8") == "# demo\n"
+
+
+def test_parse_forwards_backend_alias_and_effort(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    output = tmp_path / "out.md"
+    source.write_bytes(b"%PDF-1.7\n")
+    seen: dict[str, Any] = {}
+
+    class _Result:
+        def markdown(self) -> str:
+            """返回用于验证 parse 参数透传的测试内容。"""
+            return "# demo\n"
+
+        def to_json(self) -> str:
+            """保留 zip 输出所需接口。"""
+            return '{"pages":[]}'
+
+        def images(self) -> dict[str, bytes]:
+            """本用例不关注图片 sidecar。"""
+            return {}
+
+        def save(self, writer: Any) -> None:
+            """模拟 zip 输出所需的完整保存接口。"""
+            writer.write_string("markdown.md", self.markdown())
+            writer.write_string("middle_json.json", self.to_json())
+
+    def _fake_local_parse(*args: Any, **kwargs: Any) -> _Result:
+        """记录 mineru-kit parse 透传给 parser 的运行参数。"""
+        seen.update(kwargs)
+        return _Result()
+
+    monkeypatch.setattr(parse, "local_parse", _fake_local_parse)
+
+    result = runner.invoke(
+        app,
+        ["parse", str(source), "-o", str(output), "--backend", "hybrid-auto-engine", "--effort", "high"],
+    )
+
+    assert result.exit_code == 0
+    assert seen["backend"] == "hybrid-engine"
+    assert seen["effort"] == "high"
 
 
 def test_parse_single_file_middle_json_writes_image_sidecars(

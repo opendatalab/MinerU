@@ -215,6 +215,7 @@ def test_parser_entrypoints_expose_api_server_style_options() -> None:
         assert "backend" in parameters
         assert "language" in parameters
         assert "ocr_mode" in parameters
+        assert "effort" in parameters
         assert "disable_table" in parameters
         assert "disable_formula" in parameters
         assert "disable_image_analysis" in parameters
@@ -329,6 +330,7 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     monkeypatch.setenv("MINERU_MAX_WAIT", "999")
     monkeypatch.setenv("MINERU_LANGUAGE", "en")
     monkeypatch.setenv("MINERU_OCR_MODE", "ocr")
+    monkeypatch.setenv("MINERU_EFFORT", "high")
     monkeypatch.setenv("MINERU_TABLE_ENABLE", "false")
     monkeypatch.setenv("MINERU_FORMULA_ENABLE", "false")
     monkeypatch.setenv("MINERU_IMAGE_ANALYSIS", "false")
@@ -342,6 +344,7 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     assert app.state.max_wait == 600
     assert app.state.language == "ch"
     assert app.state.ocr_mode == "auto"
+    assert app.state.effort == "medium"
     assert app.state.table_enable is True
     assert app.state.formula_enable is True
     assert app.state.image_analysis is True
@@ -559,7 +562,7 @@ def test_api_server_tier_selects_compatible_backend(tmp_path: Path) -> None:
     standard_app = create_app(upload_dir=str(tmp_path / "standard"), tier="standard")
 
     assert pro_app.state.tier == "pro"
-    assert pro_app.state.backend == "hybrid-auto-engine"
+    assert pro_app.state.backend == "hybrid-engine"
     assert [tier["id"] for tier in pro_app.state.tiers] == ["pro"]
     assert standard_app.state.tier == "standard"
     assert standard_app.state.backend == "pipeline"
@@ -583,7 +586,7 @@ def test_api_server_allows_compatible_tier_and_explicit_backend(tmp_path: Path) 
     app = create_app(upload_dir=str(tmp_path), tier="pro", backend="vlm-auto-engine")
 
     assert app.state.tier == "pro"
-    assert app.state.backend == "vlm-auto-engine"
+    assert app.state.backend == "vlm-engine"
     assert [tier["id"] for tier in app.state.tiers] == ["pro"]
 
 
@@ -591,7 +594,7 @@ def test_api_server_explicit_backend_infers_tier(tmp_path: Path) -> None:
     app = create_app(upload_dir=str(tmp_path), backend="hybrid-auto-engine")
 
     assert app.state.tier == "pro"
-    assert app.state.backend == "hybrid-auto-engine"
+    assert app.state.backend == "hybrid-engine"
     assert [tier["id"] for tier in app.state.tiers] == ["pro"]
 
 
@@ -601,14 +604,17 @@ def test_api_server_rejects_bare_vlm_backend(tmp_path: Path) -> None:
 
 
 def test_api_server_accepts_parser_backend_values(tmp_path: Path) -> None:
+    from mineru.utils.backend_options import normalize_backend
+
     assert "vlm" not in _API_SERVER_BACKENDS
     assert "hybrid" not in _API_SERVER_BACKENDS
 
     for backend in _API_SERVER_BACKENDS:
         app = create_app(upload_dir=str(tmp_path / backend), backend=backend)
-        expected_tier = "standard" if backend == "pipeline" else "pro"
+        expected_backend = normalize_backend(backend)
+        expected_tier = "standard" if expected_backend == "pipeline" else "pro"
 
-        assert app.state.backend == backend
+        assert app.state.backend == expected_backend
         assert app.state.tier == expected_tier
 
 
@@ -617,6 +623,7 @@ def test_api_server_stores_parser_runtime_options(tmp_path: Path) -> None:
         upload_dir=str(tmp_path),
         language="en",
         ocr_mode="ocr",
+        effort="high",
         table_enable=False,
         formula_enable=False,
         image_analysis=False,
@@ -624,6 +631,7 @@ def test_api_server_stores_parser_runtime_options(tmp_path: Path) -> None:
 
     assert app.state.language == "en"
     assert app.state.ocr_mode == "ocr"
+    assert app.state.effort == "high"
     assert app.state.table_enable is False
     assert app.state.formula_enable is False
     assert app.state.image_analysis is False
@@ -634,6 +642,7 @@ def test_api_server_cli_exposes_parser_runtime_options() -> None:
 
     assert "--language" in option_names
     assert "--ocr-mode" in option_names
+    assert "--effort" in option_names
     assert "--disable-table" in option_names
     assert "--disable-formula" in option_names
     assert "--disable-image-analysis" in option_names
