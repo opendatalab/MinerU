@@ -728,7 +728,7 @@ mineru-kit vlm-server --engine mlx
 
 ## mineru-kit api-server
 
-`api-server` 是未来唯一正式的 parse-server 启动入口。它启动 self-hosted HTTP 解析服务，实现 v1 API（非 doclib API）中的绝大多数 path。它在功能上与 mineru.net 的 parse API 对齐，区别仅在于 base URL 不同（`http://127.0.0.1:15981` vs `https://mineru.net/api`）。
+`api-server` 是未来唯一正式的 parse-server 启动入口。它启动 self-hosted HTTP 解析服务，实现 v1 API（非 doclib API）中的绝大多数 path。它在功能上与 mineru.net 的 parse API 对齐，区别仅在于 base URL 不同（`http://127.0.0.1:16580` vs `https://mineru.net/api`）。
 
 ### 与 mineru doclib 的协作
 
@@ -738,7 +738,7 @@ mineru doclib（纯 CPU 进程）
   ├─ flash tier → 直接调用 mineru.parser.parse()
   │
   └─ standard / pro tier → HTTP 调用
-       ├─ 未指定 --remote → mineru-kit api-server (127.0.0.1:15981)
+       ├─ 未指定 --remote → mineru-kit api-server (127.0.0.1:16580)
        └─ 指定 --remote    → config 指定远端或 mineru.net/api
 ```
 
@@ -749,7 +749,7 @@ mineru doclib（纯 CPU 进程）
 ### Usage
 
 ```bash
-mineru-kit api-server --tier standard --port 15981
+mineru-kit api-server --tier standard --port 16580
 mineru-kit api-server --tier pro --port 15982
 mineru-kit api-server --tier standard --language en --ocr-mode ocr --disable-table
 ```

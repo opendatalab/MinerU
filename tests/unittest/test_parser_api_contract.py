@@ -1,9 +1,10 @@
-from pathlib import Path
 import asyncio
 import inspect
+import io
 import json
 import sys
 import types
+from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
@@ -13,23 +14,24 @@ from pydantic import ValidationError
 import mineru.parser.api_client as api_client
 import mineru.parser.api_server as api_server
 import mineru.parser.pdf as parser_pdf
-from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job, should_trust_env_for_url
 from mineru.parser import _build_parser, parse, parse_async
-from mineru.parser.base import ParseResult
+from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job, should_trust_env_for_url
 from mineru.parser.api_server import (
     _API_SERVER_BACKENDS,
     _API_SERVER_LANGUAGES,
     CreateJobRequest,
-    FileStore,
     FileParseInfo,
+    FileStore,
     HealthResponse,
     ImageOutputRef,
     JobListItem,
     OutputFileRef,
     OutputFiles,
+    _install_managed_parse_server_stdin_watcher,
     create_app,
     main,
 )
+from mineru.parser.base import ParseResult
 from mineru.types import Block, Line, PageInfo, Span
 from mineru.utils.image_payload import ImagePayloadCache
 
@@ -44,9 +46,7 @@ def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> No
     payload = parser._build_payload(pdf, "1,3~5")
 
     assert payload["output_formats"] == ["middle_json", "images"]
-    assert payload["files"] == [
-        {"source": {"type": "local", "path": str(pdf)}, "page_range": "1,3~5"}
-    ]
+    assert payload["files"] == [{"source": {"type": "local", "path": str(pdf)}, "page_range": "1,3~5"}]
     assert "options" not in payload["files"][0]
 
 
@@ -362,6 +362,28 @@ def test_api_server_cli_no_longer_exposes_reload() -> None:
     assert "--reload" in result.output
 
 
+def test_managed_parse_server_env_enables_stdin_eof_shutdown_watcher(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = type("Server", (), {"should_exit": False})()
+    monkeypatch.setenv("MINERU_MANAGED_PARSE_SERVER", "1")
+    monkeypatch.setattr(api_server.sys, "stdin", type("Stdin", (), {"buffer": io.BytesIO(b"")})())
+
+    watcher = _install_managed_parse_server_stdin_watcher(server)
+
+    assert watcher is not None
+    watcher.join(timeout=1)
+    assert server.should_exit is True
+
+
+def test_managed_parse_server_stdin_watcher_is_disabled_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = type("Server", (), {"should_exit": False})()
+    monkeypatch.delenv("MINERU_MANAGED_PARSE_SERVER", raising=False)
+
+    watcher = _install_managed_parse_server_stdin_watcher(server)
+
+    assert watcher is None
+    assert server.should_exit is False
+
+
 def test_output_files_expose_new_names_without_inline_content() -> None:
     ref = OutputFileRef(file_id="file-1", bytes=12)
     outputs = OutputFiles(middle_json=ref, structured_content=ref)
@@ -372,9 +394,7 @@ def test_output_files_expose_new_names_without_inline_content() -> None:
     }
 
     with pytest.raises(ValidationError):
-        OutputFileRef.model_validate(
-            {"file_id": "file-1", "bytes": 12, "content": "inline"}
-        )
+        OutputFileRef.model_validate({"file_id": "file-1", "bytes": 12, "content": "inline"})
 
 
 def test_store_image_outputs_creates_downloadable_image_refs(tmp_path: Path) -> None:
@@ -383,9 +403,7 @@ def test_store_image_outputs_creates_downloadable_image_refs(tmp_path: Path) -> 
     assert hasattr(api_server, "_store_image_outputs")
     refs = api_server._store_image_outputs(file_store, {"images/chart.png": b"chart-bytes"})
 
-    assert refs == [
-        ImageOutputRef(path="images/chart.png", file_id=refs[0].file_id, bytes=len(b"chart-bytes"))
-    ]
+    assert refs == [ImageOutputRef(path="images/chart.png", file_id=refs[0].file_id, bytes=len(b"chart-bytes"))]
     assert file_store.read_file_data(refs[0].file_id) == b"chart-bytes"
 
 
@@ -526,9 +544,7 @@ def test_api_server_middle_json_preserves_backend_for_client_rendering(
 
 
 def test_job_list_item_uses_file_count() -> None:
-    item = JobListItem(
-        job_id="job_1", status="queued", created_at="2026-06-10T00:00:00Z", file_count=2
-    )
+    item = JobListItem(job_id="job_1", status="queued", created_at="2026-06-10T00:00:00Z", file_count=2)
 
     assert item.model_dump() == {
         "job_id": "job_1",

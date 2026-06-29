@@ -4,16 +4,26 @@ import asyncio
 import base64
 import hashlib
 import json
+import subprocess
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
+from mineru.config import LogConfig, ManagedParseServerConfig
 from mineru.doclib.background.compaction import Compaction
 from mineru.doclib.background.device_monitor import DeviceMonitor
 from mineru.doclib.background.ingest import IngestWorkerPool
-from mineru.doclib.background.parse_server_health import ParseServerHealth, ParseServerHealthCheck, api_server_args_for_tier
+from mineru.doclib.background.parse_server_health import (
+    ParseServerHealth,
+    ParseServerHealthCheck,
+    api_server_args_for_tier,
+    select_available_managed_port,
+    stop_managed_parse_server,
+    start_managed_parse_server,
+)
 from mineru.doclib.background.watch import WatchLoop
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.file_io import FileStat, get_file_stat
@@ -26,6 +36,7 @@ from mineru.doclib.services import parse_svc as parse_svc_module
 from mineru.doclib.services.parse_svc import (
     ParseFailure,
     ParseService,
+    _local_parse_server_url,
     _resolve_default_tier,
     expand_page_range,
     filter_pages_by_user_range,
@@ -36,7 +47,7 @@ from mineru.doclib.services.parse_svc import (
 from mineru.doclib.services.scan_svc import ScanService
 from mineru.doclib.services.search_svc import SearchService
 from mineru.doclib.locators import ContentCursor
-from mineru.doclib.server import DoclibServer, _ReadPlan, _render_progressive_markdown
+from mineru.doclib.server import DoclibServer, _ReadPlan
 from mineru.doclib.types import ParseResponse, WatchRequest
 from mineru.parser import backend_for_tier, resolve_tier_and_backend
 from mineru.parser.base import ParseResult
@@ -273,9 +284,56 @@ def test_parser_tier_backend_mapping_is_parser_layer_only() -> None:
     assert resolve_tier_and_backend(tier="pro", backend="vlm-auto-engine") == ("pro", "vlm-engine")
 
 
-def test_managed_api_server_args_use_tier_for_process_start() -> None:
-    assert api_server_args_for_tier("standard") == ["--tier", "standard", "--port", "15981"]
-    assert api_server_args_for_tier("pro") == ["--tier", "pro", "--port", "15981"]
+def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() -> None:
+    assert api_server_args_for_tier("standard", host="127.0.0.1", port=16580) == [
+        "--tier",
+        "standard",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "16580",
+    ]
+    assert api_server_args_for_tier("pro", host="127.0.0.2", port=16581) == [
+        "--tier",
+        "pro",
+        "--host",
+        "127.0.0.2",
+        "--port",
+        "16581",
+    ]
+
+
+def test_managed_parse_server_port_selection_tries_configured_range(monkeypatch: pytest.MonkeyPatch) -> None:
+    bind_calls: list[tuple[str, int]] = []
+
+    class _Socket:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self.bound_port: int | None = None
+
+        def setsockopt(self, *args: object) -> None:
+            return None
+
+        def bind(self, address: tuple[str, int]) -> None:
+            bind_calls.append(address)
+            _host, port = address
+            if port in (16580, 16581):
+                raise OSError(98, "in use")
+            self.bound_port = port
+
+        def getsockname(self) -> tuple[str, int]:
+            assert self.bound_port is not None
+            return ("127.0.0.1", self.bound_port)
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.socket.socket", _Socket)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.errno.EADDRINUSE", 98)
+
+    port = select_available_managed_port("127.0.0.1", 16580, strict_port=False, port_probe_count=3)
+
+    assert port == 16582
+    assert bind_calls == [("127.0.0.1", 16580), ("127.0.0.1", 16581), ("127.0.0.1", 16582)]
 
 
 def test_default_tier_error_mentions_remote_when_remote_is_healthy(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -314,6 +372,12 @@ def test_default_tier_error_omits_remote_when_remote_is_unhealthy(monkeypatch: p
     assert "--tier flash" in exc_info.value.message
 
 
+def test_managed_local_parse_server_url_uses_health_managed_url() -> None:
+    health = ParseServerHealth(managed_url="http://127.0.0.1:16582")
+
+    assert _local_parse_server_url("managed", health) == "http://127.0.0.1:16582"
+
+
 def test_parse_server_health_probe_disables_env_proxy_for_local_urls(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[bool] = []
 
@@ -339,9 +403,194 @@ def test_parse_server_health_probe_disables_env_proxy_for_local_urls(monkeypatch
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.httpx.AsyncClient", _AsyncClient)
     checker = ParseServerHealthCheck(None, interval_sec=1, probe_timeout_sec=2, startup_grace_sec=3, stop_timeout_sec=4)
 
-    assert asyncio.run(checker._probe("http://127.0.0.1:15981")) == (True, ["standard"])
+    assert asyncio.run(checker._probe("http://127.0.0.1:16580")) == (True, ["standard"])
     assert asyncio.run(checker._probe("https://staging.mineru.org.cn/api")) == (True, ["standard"])
     assert calls == [False, True]
+
+
+def test_start_managed_parse_server_selects_port_and_writes_logs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    parse_stdout_log_path = tmp_path / "doclib.parse-server.stdout.log"
+    parse_stderr_log_path = tmp_path / "doclib.parse-server.stderr.log"
+    popen_calls: list[dict[str, Any]] = []
+
+    class _Proc:
+        pid = 12345
+
+    def _popen(*args: Any, **kwargs: Any) -> _Proc:
+        popen_calls.append({"args": args, "kwargs": kwargs})
+        cmd = args[0]
+        assert "--tier" in cmd
+        assert cmd[cmd.index("--tier") + 1] == "standard"
+        assert "--host" in cmd
+        assert cmd[cmd.index("--host") + 1] == "127.0.0.2"
+        assert "--port" in cmd
+        assert cmd[cmd.index("--port") + 1] == "16582"
+        assert kwargs["stdout"] is not subprocess.DEVNULL
+        assert kwargs["stderr"] is not subprocess.DEVNULL
+        assert kwargs["stdout"] is not kwargs["stderr"]
+        assert kwargs["stdin"] is subprocess.PIPE
+        assert kwargs["env"]["MINERU_MANAGED_PARSE_SERVER"] == "1"
+        kwargs["stdout"].write("parse helper stdout\n")
+        kwargs["stdout"].flush()
+        kwargs["stderr"].write("parse helper stderr\n")
+        kwargs["stderr"].flush()
+        return _Proc()
+
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
+
+    proc, url = start_managed_parse_server(
+        tier="standard",
+        managed_cfg=ManagedParseServerConfig(host="127.0.0.2", port=16580, port_probe_count=3),
+        log_cfg=LogConfig(
+            parse_server_stdout_path=str(parse_stdout_log_path),
+            parse_server_stderr_path=str(parse_stderr_log_path),
+        ),
+        marker="test",
+    )
+
+    assert proc.pid == 12345
+    assert url == "http://127.0.0.2:16582"
+    assert popen_calls
+    assert parse_stdout_log_path.read_text(encoding="utf-8").endswith("parse helper stdout\n")
+    assert parse_stderr_log_path.read_text(encoding="utf-8").endswith("parse helper stderr\n")
+
+
+def test_stop_managed_parse_server_closes_stdin_then_terminates_then_kills() -> None:
+    events: list[str] = []
+
+    class _Stdin:
+        closed = False
+
+        def close(self) -> None:
+            events.append("stdin.close")
+            self.closed = True
+
+    class _Proc:
+        pid = 12345
+        stdin = _Stdin()
+        waits = 0
+
+        def poll(self) -> None:
+            return None
+
+        def wait(self, timeout: int) -> None:
+            self.waits += 1
+            events.append(f"wait:{timeout}")
+            if self.waits < 3:
+                raise subprocess.TimeoutExpired(cmd=["parse-server"], timeout=timeout)
+
+        def terminate(self) -> None:
+            events.append("terminate")
+
+        def kill(self) -> None:
+            events.append("kill")
+
+    stop_managed_parse_server(_Proc(), timeout_sec=4, reason="test")
+
+    assert events == ["stdin.close", "wait:4", "terminate", "wait:4", "kill", "wait:4"]
+
+
+def test_managed_parse_server_restart_writes_stdout_and_stderr_logs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    parse_stdout_log_path = tmp_path / "doclib.parse-server.stdout.log"
+    parse_stderr_log_path = tmp_path / "doclib.parse-server.stderr.log"
+
+    class _ConfigSvc:
+        async def get(self, key: str) -> str:
+            assert key == "parse_server.local.managed_tier"
+            return "standard"
+
+    class _Proc:
+        pid = 12345
+
+    def _popen(*args: Any, **kwargs: Any) -> _Proc:
+        cmd = args[0]
+        assert "--host" in cmd
+        assert cmd[cmd.index("--host") + 1] == "127.0.0.2"
+        assert "--port" in cmd
+        assert cmd[cmd.index("--port") + 1] == "16582"
+        assert kwargs["stdout"] is not None
+        assert kwargs["stderr"] is not None
+        assert kwargs["stdout"] is not subprocess.DEVNULL
+        assert kwargs["stderr"] is not subprocess.DEVNULL
+        assert kwargs["stdout"] is not kwargs["stderr"]
+        kwargs["stdout"].write("parse restart stdout\n")
+        kwargs["stdout"].flush()
+        kwargs["stderr"].write("parse restart stderr\n")
+        kwargs["stderr"].flush()
+        return _Proc()
+
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.get_parse_server_stdout_log_path", lambda: str(parse_stdout_log_path)
+    )
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.get_parse_server_stderr_log_path", lambda: str(parse_stderr_log_path)
+    )
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
+
+    checker = ParseServerHealthCheck(
+        _ConfigSvc(),
+        interval_sec=1,
+        probe_timeout_sec=2,
+        startup_grace_sec=3,
+        stop_timeout_sec=4,
+        managed_parse_server=ManagedParseServerConfig(host="127.0.0.2", port=16580, port_probe_count=3),
+    )
+    health = ParseServerHealth()
+
+    asyncio.run(checker._try_restart_managed(health))
+
+    assert health.managed_url == "http://127.0.0.2:16582"
+    assert parse_stdout_log_path.read_text(encoding="utf-8").endswith("parse restart stdout\n")
+    assert parse_stderr_log_path.read_text(encoding="utf-8").endswith("parse restart stderr\n")
+
+
+def test_managed_parse_server_restart_stops_recorded_proc_before_start(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[str] = []
+    old_proc = object()
+
+    class _ConfigSvc:
+        async def get(self, key: str) -> str:
+            assert key == "parse_server.local.managed_tier"
+            return "standard"
+
+    class _Proc:
+        pid = 67890
+
+    def _stop(proc: object, *, timeout_sec: int, reason: str) -> None:
+        assert proc is old_proc
+        assert timeout_sec == 4
+        assert reason == "restart"
+        events.append("stop")
+
+    def _popen(*args: Any, **kwargs: Any) -> _Proc:
+        assert events == ["stop"]
+        events.append("start")
+        return _Proc()
+
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.stop_managed_parse_server", _stop)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582)
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.open_managed_parse_server_logs",
+        lambda *args, **kwargs: nullcontext((None, None)),
+    )
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
+
+    checker = ParseServerHealthCheck(
+        _ConfigSvc(),
+        interval_sec=1,
+        probe_timeout_sec=2,
+        startup_grace_sec=3,
+        stop_timeout_sec=4,
+        managed_parse_server=ManagedParseServerConfig(host="127.0.0.2", port=16580, port_probe_count=3),
+    )
+    health = ParseServerHealth(managed_proc=old_proc)
+
+    asyncio.run(checker._try_restart_managed(health))
+
+    assert events == ["stop", "start"]
+    assert health.managed_proc.pid == 67890
 
 
 def test_get_file_stat_returns_typed_file_stat(tmp_path: Path) -> None:

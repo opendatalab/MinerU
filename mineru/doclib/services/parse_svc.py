@@ -1444,7 +1444,7 @@ def _parse_coverage(request_page_range: str, rows: list[ParseRow]) -> dict:
 def _local_parse_server_url(mode: str, health: object) -> str | None:
     """Resolve local parse-server URL from mode and health state."""
     if mode == "managed":
-        return "http://127.0.0.1:15981"
+        return getattr(health, "managed_url", None)
     if mode == "self_hosted":
         return getattr(health, "self_hosted_url", None)
     return None

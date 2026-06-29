@@ -198,6 +198,35 @@ def test_patched_config_returns_validated_deep_patch() -> None:
     assert cfg.doclib.sqlite.cache_size == -1
 
 
+def test_tcp_config_exposes_port_probe_count() -> None:
+    cfg = Config(doclib={"tcp": {"port_probe_count": "5"}})
+
+    assert Config().doclib.tcp.port_probe_count == 100
+    assert cfg.doclib.tcp.port_probe_count == 5
+
+
+def test_managed_parse_server_config_is_startup_config() -> None:
+    cfg = Config(
+        doclib={
+            "managed_parse_server": {
+                "host": "127.0.0.2",
+                "port": "16581",
+                "strict_port": "true",
+                "port_probe_count": "5",
+            }
+        }
+    )
+
+    assert Config().doclib.managed_parse_server.host == "127.0.0.1"
+    assert Config().doclib.managed_parse_server.port == 16580
+    assert Config().doclib.managed_parse_server.strict_port is False
+    assert Config().doclib.managed_parse_server.port_probe_count == 100
+    assert cfg.doclib.managed_parse_server.host == "127.0.0.2"
+    assert cfg.doclib.managed_parse_server.port == 16581
+    assert cfg.doclib.managed_parse_server.strict_port is True
+    assert cfg.doclib.managed_parse_server.port_probe_count == 5
+
+
 def test_log_config_exposes_separate_log_paths() -> None:
     defaults = LogConfig()
 
@@ -206,10 +235,14 @@ def test_log_config_exposes_separate_log_paths() -> None:
     assert defaults.access_path is None
     assert defaults.stdout_path is None
     assert defaults.stderr_path is None
+    assert defaults.parse_server_stdout_path is None
+    assert defaults.parse_server_stderr_path is None
     assert defaults.resolved_app_path.endswith("logs/doclib.log")
     assert defaults.resolved_access_path.endswith("logs/doclib.access.log")
     assert defaults.resolved_stdout_path.endswith("logs/doclib.stdout.log")
     assert defaults.resolved_stderr_path.endswith("logs/doclib.stderr.log")
+    assert defaults.resolved_parse_server_stdout_path.endswith("logs/doclib.parse-server.stdout.log")
+    assert defaults.resolved_parse_server_stderr_path.endswith("logs/doclib.parse-server.stderr.log")
 
     cfg = Config(
         doclib={
@@ -219,6 +252,8 @@ def test_log_config_exposes_separate_log_paths() -> None:
                 "access_path": "/tmp/access.log",
                 "stdout_path": "/tmp/stdout.log",
                 "stderr_path": "/tmp/stderr.log",
+                "parse_server_stdout_path": "/tmp/parse-server.stdout.log",
+                "parse_server_stderr_path": "/tmp/parse-server.stderr.log",
             }
         }
     )
@@ -228,10 +263,14 @@ def test_log_config_exposes_separate_log_paths() -> None:
     assert cfg.doclib.log.access_path == "/tmp/access.log"
     assert cfg.doclib.log.stdout_path == "/tmp/stdout.log"
     assert cfg.doclib.log.stderr_path == "/tmp/stderr.log"
+    assert cfg.doclib.log.parse_server_stdout_path == "/tmp/parse-server.stdout.log"
+    assert cfg.doclib.log.parse_server_stderr_path == "/tmp/parse-server.stderr.log"
     assert cfg.doclib.log.resolved_app_path == "/tmp/app.log"
     assert cfg.doclib.log.resolved_access_path == "/tmp/access.log"
     assert cfg.doclib.log.resolved_stdout_path == "/tmp/stdout.log"
     assert cfg.doclib.log.resolved_stderr_path == "/tmp/stderr.log"
+    assert cfg.doclib.log.resolved_parse_server_stdout_path == "/tmp/parse-server.stdout.log"
+    assert cfg.doclib.log.resolved_parse_server_stderr_path == "/tmp/parse-server.stderr.log"
 
 
 def test_log_config_dir_derives_unspecified_log_paths() -> None:
@@ -245,6 +284,8 @@ def test_log_config_dir_derives_unspecified_log_paths() -> None:
     assert cfg.resolved_access_path == "/tmp/mineru-logs/doclib.access.log"
     assert cfg.resolved_stdout_path == "/tmp/mineru-logs/doclib.stdout.log"
     assert cfg.resolved_stderr_path == "/tmp/custom-stderr.log"
+    assert cfg.resolved_parse_server_stdout_path == "/tmp/mineru-logs/doclib.parse-server.stdout.log"
+    assert cfg.resolved_parse_server_stderr_path == "/tmp/mineru-logs/doclib.parse-server.stderr.log"
 
 
 def test_log_config_dir_override_derives_paths_in_deep_patches(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -258,18 +299,26 @@ def test_log_config_dir_override_derives_paths_in_deep_patches(monkeypatch: pyte
     assert env_cfg.doclib.log.access_path is None
     assert env_cfg.doclib.log.stdout_path is None
     assert env_cfg.doclib.log.stderr_path is None
+    assert env_cfg.doclib.log.parse_server_stdout_path is None
+    assert env_cfg.doclib.log.parse_server_stderr_path is None
     assert env_cfg.doclib.log.resolved_app_path == "/tmp/env-logs/doclib.log"
     assert env_cfg.doclib.log.resolved_access_path == "/tmp/env-logs/doclib.access.log"
     assert env_cfg.doclib.log.resolved_stdout_path == "/tmp/env-logs/doclib.stdout.log"
     assert env_cfg.doclib.log.resolved_stderr_path == "/tmp/env-logs/doclib.stderr.log"
+    assert env_cfg.doclib.log.resolved_parse_server_stdout_path == "/tmp/env-logs/doclib.parse-server.stdout.log"
+    assert env_cfg.doclib.log.resolved_parse_server_stderr_path == "/tmp/env-logs/doclib.parse-server.stderr.log"
     assert patched_cfg.doclib.log.app_path is None
     assert patched_cfg.doclib.log.access_path is None
     assert patched_cfg.doclib.log.stdout_path is None
     assert patched_cfg.doclib.log.stderr_path is None
+    assert patched_cfg.doclib.log.parse_server_stdout_path is None
+    assert patched_cfg.doclib.log.parse_server_stderr_path is None
     assert patched_cfg.doclib.log.resolved_app_path == "/tmp/patched-logs/doclib.log"
     assert patched_cfg.doclib.log.resolved_access_path == "/tmp/patched-logs/doclib.access.log"
     assert patched_cfg.doclib.log.resolved_stdout_path == "/tmp/patched-logs/doclib.stdout.log"
     assert patched_cfg.doclib.log.resolved_stderr_path == "/tmp/patched-logs/doclib.stderr.log"
+    assert patched_cfg.doclib.log.resolved_parse_server_stdout_path == "/tmp/patched-logs/doclib.parse-server.stdout.log"
+    assert patched_cfg.doclib.log.resolved_parse_server_stderr_path == "/tmp/patched-logs/doclib.parse-server.stderr.log"
 
 
 def test_interval_and_timeout_config_is_startup_config_not_runtime_kv() -> None:

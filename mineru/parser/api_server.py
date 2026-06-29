@@ -17,7 +17,9 @@ import os
 import pathlib
 import secrets
 import shutil
+import sys
 import tempfile
+import threading
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -37,6 +39,7 @@ from .tier import PARSER_BACKENDS, resolve_tier_and_backend
 
 _API_SERVER_BACKENDS = tuple(backend for backend in PARSER_BACKENDS if backend != "flash")
 _API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
+_MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
 
 # ── literal type aliases ────────────────────────────────────────────
 
@@ -93,6 +96,27 @@ def _env_flag(name: str, default: bool = True) -> bool:
     if val is None:
         return default
     return val.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _install_managed_parse_server_stdin_watcher(server: Any) -> threading.Thread | None:
+    if not _env_flag(_MANAGED_PARSE_SERVER_ENV, default=False):
+        return None
+
+    def _watch_stdin_for_eof() -> None:
+        stdin_stream = getattr(sys.stdin, "buffer", sys.stdin)
+        try:
+            stdin_stream.read()
+        except Exception:
+            return
+        server.should_exit = True
+
+    watcher = threading.Thread(
+        target=_watch_stdin_for_eof,
+        name="mineru-managed-parse-server-stdin-sentinel",
+        daemon=True,
+    )
+    watcher.start()
+    return watcher
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -909,13 +933,15 @@ _OUTPUT_FORMATS_LOCAL = {
     "zip",
 }
 
-_IMAGE_SIDECAR_FORMATS = frozenset({
-    "markdown",
-    "middle_json",
-    "content_list",
-    "structured_content",
-    "images",
-})
+_IMAGE_SIDECAR_FORMATS = frozenset(
+    {
+        "markdown",
+        "middle_json",
+        "content_list",
+        "structured_content",
+        "images",
+    }
+)
 
 
 def _needs_image_outputs(out_formats: set[OutputFormat] | set[str]) -> bool:
@@ -1241,9 +1267,7 @@ async def _run_job(
                 out_formats = set(rec.output_formats)
                 output_files = OutputFiles()
                 image_output_refs = (
-                    _store_image_outputs(file_store, result.images())
-                    if _needs_image_outputs(out_formats)
-                    else None
+                    _store_image_outputs(file_store, result.images()) if _needs_image_outputs(out_formats) else None
                 )
                 if image_output_refs is not None:
                     output_files.images = image_output_refs
@@ -2075,6 +2099,7 @@ def create_app(
     application.include_router(_build_v1_router())
     return application
 
+
 # ── CLI ──────────────────────────────────────────────────────────────
 
 
@@ -2188,11 +2213,14 @@ def main(
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    uvicorn.run(
+    config = uvicorn.Config(
         application,
         host=host,
         port=port,
     )
+    server = uvicorn.Server(config)
+    _install_managed_parse_server_stdin_watcher(server)
+    server.run()
 
 
 if __name__ == "__main__":

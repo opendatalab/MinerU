@@ -66,7 +66,7 @@ managed 是生命周期管理方式，不是用户直接执行的命令模式。
 api-server 启动时应优先使用 `--tier`：
 
 ```bash
-mineru-kit api-server --tier standard --port 15981
+mineru-kit api-server --tier standard --port 16580
 mineru-kit api-server --tier pro --port 15982
 mineru-kit api-server --tier pro --effort high --language en --ocr-mode ocr --disable-table
 ```

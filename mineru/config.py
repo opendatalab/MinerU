@@ -184,6 +184,7 @@ class TCPConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 15980
     strict_port: bool = False
+    port_probe_count: int = Field(default=100, ge=1)
     backlog: int = 128
     timeout: int = 600
 
@@ -194,6 +195,8 @@ class LogConfig(BaseModel):
     access_path: str | None = None
     stdout_path: str | None = None
     stderr_path: str | None = None
+    parse_server_stdout_path: str | None = None
+    parse_server_stderr_path: str | None = None
     level: str = "info"
 
     @property
@@ -212,6 +215,14 @@ class LogConfig(BaseModel):
     def resolved_stderr_path(self) -> str:
         return self.stderr_path or os.path.join(self.dir, "doclib.stderr.log")
 
+    @property
+    def resolved_parse_server_stdout_path(self) -> str:
+        return self.parse_server_stdout_path or os.path.join(self.dir, "doclib.parse-server.stdout.log")
+
+    @property
+    def resolved_parse_server_stderr_path(self) -> str:
+        return self.parse_server_stderr_path or os.path.join(self.dir, "doclib.parse-server.stderr.log")
+
 
 class SQLiteConfig(BaseModel):
     path: str = _default_path("doclib.db")
@@ -221,6 +232,13 @@ class SQLiteConfig(BaseModel):
     journal_size_limit: int = 33_554_432
     temp_store: str = "memory"
     synchronous: str = "NORMAL"
+
+
+class ManagedParseServerConfig(BaseModel):
+    host: str = "127.0.0.1"
+    port: int = 16580
+    strict_port: bool = False
+    port_probe_count: int = Field(default=100, ge=1)
 
 
 class DoclibConfig(BaseModel):
@@ -237,6 +255,7 @@ class DoclibConfig(BaseModel):
     sqlite: SQLiteConfig = Field(default_factory=SQLiteConfig)
     endpoint_path: str = _default_path("doclib.endpoint.json")
     data_dir: str = _default_path("doclib")
+    managed_parse_server: ManagedParseServerConfig = Field(default_factory=ManagedParseServerConfig)
     ingest_workers: int = 2
     parse_workers: int = 2
     scan_interval_sec: int = 300

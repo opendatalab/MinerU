@@ -359,8 +359,8 @@ def test_core_doclib_schemas_are_instantiable() -> None:
         local=LocalParseServerStatus(
             mode="managed",
             healthy=True,
-            url="http://127.0.0.1:15981",
-            port=15981,
+            url="http://127.0.0.1:16580",
+            port=16580,
             managed_pid=1234,
             last_probe_at=1000,
             last_success_at=900,
