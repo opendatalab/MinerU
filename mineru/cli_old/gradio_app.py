@@ -42,6 +42,13 @@ from mineru.cli_old.client_side_output import regenerate_client_side_outputs
 from mineru.cli_old.output_paths import resolve_parse_dir
 from mineru.cli_old.vlm_preload import resolve_gradio_local_api_cli_args
 from mineru.cli_old.visualization import VisualizationJob, run_visualization_job
+from mineru.utils.backend_options import (
+    DEFAULT_BACKEND,
+    DEFAULT_HYBRID_EFFORT,
+    HTTP_CLIENT_BACKEND_CHOICES,
+    HYBRID_EFFORT_CHOICES,
+    LOCAL_BACKEND_CHOICES,
+)
 
 _gradio_local_api_server = _api_client.ReusableLocalAPIServer()
 
@@ -224,15 +231,8 @@ STATUS_QUEUED_ON_SERVER = "Queued on server"
 STATUS_PROCESSING_ON_SERVER = "Processing on server"
 STATUS_QUEUED_LOCALLY_PREFIX = "Queued locally:"
 
-BACKEND_CHOICE_DEFINITIONS = [
-    "pipeline",
-    "vlm-auto-engine",
-    "hybrid-auto-engine",
-]
-HTTP_CLIENT_BACKEND_CHOICE_DEFINITIONS = [
-    "vlm-http-client",
-    "hybrid-http-client",
-]
+BACKEND_CHOICE_DEFINITIONS = list(LOCAL_BACKEND_CHOICES)
+HTTP_CLIENT_BACKEND_CHOICE_DEFINITIONS = list(HTTP_CLIENT_BACKEND_CHOICES)
 STATUS_STEP_DEFINITIONS = [
     ("status_step_prepare", STATUS_PREPARING_REQUEST),
     ("status_step_check", STATUS_CHECKING_SERVER),
@@ -338,6 +338,31 @@ def build_backend_choices(http_client_enable, i18n):
 def is_http_client_backend(backend_choice):
     """判断当前后端是否为 http-client 类型，用于控制服务器地址配置显隐。"""
     return isinstance(backend_choice, str) and backend_choice.endswith("-http-client")
+
+
+def select_backend_info_key(backend_choice):
+    """根据解析后端选择说明文案的 i18n key。"""
+    if not isinstance(backend_choice, str):
+        return "backend_info_default"
+    if backend_choice.startswith("vlm"):
+        return "backend_info_vlm"
+    if backend_choice == "pipeline":
+        return "backend_info_pipeline"
+    if backend_choice.startswith("hybrid"):
+        return "backend_info_hybrid"
+    return "backend_info_default"
+
+
+def select_force_ocr_info_key(backend_choice: object) -> str:
+    """根据解析后端选择强制 OCR 说明；只有 pipeline 需要提示 OCR 语言要求。"""
+    if isinstance(backend_choice, str) and backend_choice.startswith("hybrid"):
+        return "force_ocr_info_hybrid"
+    return "force_ocr_info"
+
+
+def frontend_managed_initial_visibility(is_visible: bool):
+    """转换前端托管显隐控件的初始状态；hidden 会保留 DOM 挂载避免状态丢失。"""
+    return True if is_visible else "hidden"
 
 
 def resolve_status_step_index(status_lines):
@@ -823,9 +848,32 @@ def resolve_parse_method(file_path, is_ocr, backend):
     return "ocr" if is_ocr else "auto"
 
 
-def is_image_analysis_option_visible(backend):
-    """判断 Gradio 图片分析开关是否应展示；pipeline 后端不消费该参数。"""
-    return backend.startswith("vlm") or backend.startswith("hybrid")
+def is_image_analysis_option_visible(backend, effort=DEFAULT_HYBRID_EFFORT):
+    """判断 Gradio 图片分析开关是否应展示；Hybrid medium 会强制关闭图片分析。"""
+    if not isinstance(backend, str):
+        return False
+    if backend.startswith("vlm"):
+        return True
+    if backend.startswith("hybrid"):
+        return effort == "high"
+    return False
+
+
+def is_effort_option_visible(backend):
+    """判断 Gradio effort 选项是否应展示；只有 Hybrid 后端消费该参数。"""
+    return isinstance(backend, str) and backend.startswith("hybrid")
+
+
+def is_ocr_language_option_visible(backend: object) -> bool:
+    """判断 OCR 语言选项是否展示；lang 参数只对 pipeline 后端生效。"""
+    return backend == "pipeline"
+
+
+def is_force_ocr_option_visible(backend: object) -> bool:
+    """判断强制 OCR 开关是否展示；Hybrid 不需要 lang，但仍支持强制 OCR。"""
+    if not isinstance(backend, str):
+        return False
+    return backend == "pipeline" or backend.startswith("hybrid")
 
 
 def should_use_client_side_output_generation(client_side_output_generation):
@@ -961,6 +1009,7 @@ async def _run_to_markdown_job(
     formula_enable=True,
     table_enable=True,
     image_analysis=True,
+    effort=DEFAULT_HYBRID_EFFORT,
     language="ch",
     backend="pipeline",
     url=None,
@@ -992,6 +1041,7 @@ async def _run_to_markdown_job(
         formula_enable=formula_enable,
         table_enable=table_enable,
         image_analysis=image_analysis,
+        effort=effort,
         server_url=url,
         start_page_id=0,
         end_page_id=end_pages - 1,
@@ -1117,6 +1167,7 @@ async def stream_to_markdown(
     formula_enable=True,
     table_enable=True,
     image_analysis=True,
+    effort=DEFAULT_HYBRID_EFFORT,
     language="ch",
     backend="pipeline",
     url=None,
@@ -1147,6 +1198,7 @@ async def stream_to_markdown(
                 formula_enable=formula_enable,
                 table_enable=table_enable,
                 image_analysis=image_analysis,
+                effort=effort,
                 language=language,
                 backend=backend,
                 url=url,
@@ -1562,6 +1614,8 @@ def main(ctx,
             "table_info": "If disabled, tables will be shown as images.",
             "image_analysis_enable": "Enable image analysis",
             "image_analysis_info": "If disabled, image/chart blocks will keep layout positions but skip VLM image/chart analysis.",
+            "effort": "Hybrid effort",
+            "effort_info": "Medium is faster. High is more accurate and may take longer.",
             "formula_label_vlm": "Enable display formula recognition",
             "formula_label_pipeline": "Enable formula recognition",
             "formula_label_hybrid": "Enable inline formula recognition",
@@ -1572,6 +1626,7 @@ def main(ctx,
             "ocr_language_info": "Select the OCR language for image-based PDFs and images.",
             "force_ocr": "Force enable OCR",
             "force_ocr_info": "Enable only if the result is extremely poor. Requires correct OCR language.",
+            "force_ocr_info_hybrid": "Enable only if the result is extremely poor.",
             "convert": "Convert",
             "clear": "Clear",
             "doc_preview": "Document preview",
@@ -1630,6 +1685,8 @@ def main(ctx,
             "table_info": "禁用后，表格将显示为图片。",
             "image_analysis_enable": "启用图片分析",
             "image_analysis_info": "禁用后，图片/图表块仍保留版面位置，但跳过 VLM 图片/图表分析。",
+            "effort": "解析强度",
+            "effort_info": "Medium 速度更快；High 精度更高，耗时可能更长。",
             "formula_label_vlm": "启用行间公式识别",
             "formula_label_pipeline": "启用公式识别",
             "formula_label_hybrid": "启用行内公式识别",
@@ -1640,6 +1697,7 @@ def main(ctx,
             "ocr_language_info": "为扫描版 PDF 和图片选择 OCR 语言。",
             "force_ocr": "强制启用 OCR",
             "force_ocr_info": "仅在识别效果极差时启用，需选择正确的 OCR 语言。",
+            "force_ocr_info_hybrid": "仅在识别效果极差时启用。",
             "convert": "转换",
             "clear": "清除",
             "doc_preview": "文档预览",
@@ -1696,27 +1754,32 @@ def main(ctx,
             return ""
 
     def get_backend_info(backend_choice):
-        if backend_choice.startswith("vlm"):
-            return i18n("backend_info_vlm")
-        elif backend_choice == "pipeline":
-            return i18n("backend_info_pipeline")
-        elif backend_choice.startswith("hybrid"):
-            return i18n("backend_info_hybrid")
-        else:
-            return i18n("backend_info_default")
+        return i18n(select_backend_info_key(backend_choice))
+
+    def get_force_ocr_info(backend_choice):
+        """根据后端返回强制 OCR 控件说明，避免 Hybrid 显示 pipeline 的语言提示。"""
+        return i18n(select_force_ocr_info_key(backend_choice))
 
     # 更新界面函数
-    def update_interface(backend_choice):
+    def update_interface(backend_choice, effort_choice):
+        """根据后端和解析强度更新 Gradio 联动控件，保持前端显隐规则集中。"""
         formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
         backend_info_update = gr.update(info=get_backend_info(backend_choice))
-        image_analysis_update = gr.update(visible=is_image_analysis_option_visible(backend_choice))
+        force_ocr_update = gr.update(info=get_force_ocr_info(backend_choice))
+        image_analysis_update = gr.update(visible=is_image_analysis_option_visible(backend_choice, effort_choice))
+        effort_update = gr.update(visible=is_effort_option_visible(backend_choice))
         client_options_update = gr.update(visible=is_http_client_backend(backend_choice))
-        if "vlm" in backend_choice:
-            ocr_options_update = gr.update(visible=False)
-        else:
-            ocr_options_update = gr.update(visible=True)
+        ocr_options_update = gr.update(visible=is_force_ocr_option_visible(backend_choice))
 
-        return client_options_update, ocr_options_update, formula_label_update, backend_info_update, image_analysis_update
+        return (
+            client_options_update,
+            ocr_options_update,
+            force_ocr_update,
+            formula_label_update,
+            backend_info_update,
+            image_analysis_update,
+            effort_update,
+        )
 
     del kwargs
     _gradio_local_api_server.configure(
@@ -1744,6 +1807,7 @@ def main(ctx,
         formula_enable=True,
         table_enable=True,
         image_analysis=True,
+        effort=DEFAULT_HYBRID_EFFORT,
         language="ch",
         backend="pipeline",
         url=None,
@@ -1757,6 +1821,7 @@ def main(ctx,
             formula_enable=formula_enable,
             table_enable=table_enable,
             image_analysis=image_analysis,
+            effort=effort,
             language=language,
             backend=backend,
             url=url,
@@ -1782,14 +1847,18 @@ def main(ctx,
                     file_types=suffixes,
                     elem_classes=["mineru-upload-file"],
                 )
-                preferred_option = "hybrid-auto-engine"
+                preferred_option = DEFAULT_BACKEND
                 backend = gr.Dropdown(
                     build_backend_choices(http_client_enable, i18n),
                     label=i18n("backend"),
                     value=preferred_option,
                     info=get_backend_info(preferred_option),
+                    elem_classes=["mineru-backend-select"],
                 )
-                with gr.Row(visible=is_http_client_backend(preferred_option)) as client_options:
+                with gr.Row(
+                    visible=frontend_managed_initial_visibility(is_http_client_backend(preferred_option)),
+                    elem_classes=["mineru-client-options"],
+                ) as client_options:
                     url = gr.Textbox(
                         label=i18n("server_url"),
                         value='http://localhost:30000',
@@ -1895,17 +1964,38 @@ def main(ctx,
                     image_analysis = gr.Checkbox(
                         label=i18n("image_analysis_enable"),
                         value=True,
-                        visible=is_image_analysis_option_visible(preferred_option),
+                        visible=frontend_managed_initial_visibility(
+                            is_image_analysis_option_visible(preferred_option, DEFAULT_HYBRID_EFFORT)
+                        ),
                         info=i18n("image_analysis_info"),
+                        elem_classes=["mineru-image-analysis-option"],
                     )
-                with gr.Group() as ocr_options:
-                    language = gr.Dropdown(
-                        all_lang,
-                        label=i18n("ocr_language"),
-                        value='ch (Chinese, English, Chinese Traditional)',
-                        info=i18n("ocr_language_info"),
-                    )
-                    is_ocr = gr.Checkbox(label=i18n("force_ocr"), value=False, info=i18n("force_ocr_info"))
+                    with gr.Column(elem_classes=["mineru-hybrid-effort-option"]):
+                        effort = gr.Radio(
+                            list(HYBRID_EFFORT_CHOICES),
+                            label=i18n("effort"),
+                            value=DEFAULT_HYBRID_EFFORT,
+                            visible=is_effort_option_visible(preferred_option),
+                            info=i18n("effort_info"),
+                            elem_classes=["mineru-hybrid-effort"],
+                        )
+                with gr.Column(elem_classes=["mineru-force-ocr-option"]) as ocr_options:
+                    with gr.Group():
+                        with gr.Column(elem_classes=["mineru-ocr-language-options"]):
+                            language = gr.Dropdown(
+                                all_lang,
+                                label=i18n("ocr_language"),
+                                value='ch (Chinese, English, Chinese Traditional)',
+                                info=i18n("ocr_language_info"),
+                                visible=frontend_managed_initial_visibility(
+                                    is_ocr_language_option_visible(preferred_option)
+                                ),
+                            )
+                        is_ocr = gr.Checkbox(
+                            label=i18n("force_ocr"),
+                            value=False,
+                            info=i18n(select_force_ocr_info_key(preferred_option)),
+                        )
 
         # 添加事件处理
         _private_api_kwargs = (
@@ -1915,15 +2005,21 @@ def main(ctx,
         )
         backend.change(
             fn=update_interface,
-            inputs=[backend],
-            outputs=[client_options, ocr_options, formula_enable, backend, image_analysis],
+            inputs=[backend, effort],
+            outputs=[client_options, ocr_options, is_ocr, formula_enable, backend, image_analysis, effort],
+            **_private_api_kwargs
+        )
+        effort.change(
+            fn=update_interface,
+            inputs=[backend, effort],
+            outputs=[client_options, ocr_options, is_ocr, formula_enable, backend, image_analysis, effort],
             **_private_api_kwargs
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
-            inputs=[backend],
-            outputs=[client_options, ocr_options, formula_enable, backend, image_analysis],
+            inputs=[backend, effort],
+            outputs=[client_options, ocr_options, is_ocr, formula_enable, backend, image_analysis, effort],
             **_private_api_kwargs
         )
         clear_bu.add([input_file, md, doc_show, md_text, content_list_json, output_file, is_ocr, office_html, status_panel])
@@ -1979,7 +2075,7 @@ def main(ctx,
         )
         change_bu.click(
             fn=convert_to_markdown_stream,
-            inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, language, backend, url],
+            inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, effort, language, backend, url],
             outputs=[status_panel, output_file, md, md_text, content_list_json, doc_show],
             **_to_md_api_kwargs
         )
