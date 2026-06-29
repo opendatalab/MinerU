@@ -280,6 +280,7 @@ class MineruTableOrientationClsModel:
         resolution_groups: Dict[tuple[int, int], list[Dict]],
         det_batch_size: int,
         resolution_group_stride: int,
+        tqdm_progress_bar=None,
     ) -> list[Dict]:
         """对竖版表格批量做 OCR det，并筛选需要进入多角度评分的候选。"""
         rotated_imgs = []
@@ -293,6 +294,8 @@ class MineruTableOrientationClsModel:
             for img_info, (dt_boxes, _elapse) in zip(group_imgs, batch_results):
                 if self._is_rotation_candidate_by_det_boxes(dt_boxes):
                     rotated_imgs.append(img_info)
+            if tqdm_progress_bar is not None:
+                tqdm_progress_bar.update(len(batch_images))
         return rotated_imgs
 
     def _build_score_tasks_for_candidates(
@@ -313,7 +316,12 @@ class MineruTableOrientationClsModel:
             img_score_tasks.append((img_info, tasks))
         return img_score_tasks, all_crop_imgs
 
-    def _recognize_orientation_crops(self, all_crop_imgs: list[np.ndarray]) -> list:
+    def _recognize_orientation_crops(
+        self,
+        all_crop_imgs: list[np.ndarray],
+        tqdm_enable: bool = False,
+        tqdm_progress_bar=None,
+    ) -> list:
         """对所有候选角度 crop 合并执行 OCR rec，返回可按 slice 回填的结果。"""
         if not all_crop_imgs:
             return []
@@ -322,10 +330,18 @@ class MineruTableOrientationClsModel:
             all_crop_imgs,
             det=False,
             rec=True,
+            tqdm_enable=tqdm_enable,
+            tqdm_desc="Table orientation OCR-rec",
+            tqdm_progress_bar=tqdm_progress_bar,
         )
         return rec_ocr_res[0] if rec_ocr_res else []
 
-    def _score_rotation_candidates(self, rotated_imgs: list[Dict]) -> Dict[int, str]:
+    def _score_rotation_candidates(
+        self,
+        rotated_imgs: list[Dict],
+        tqdm_enable: bool = False,
+        tqdm_progress_bar=None,
+    ) -> Dict[int, str]:
         """批量评分旋转候选，并返回原始表格下标到最终角度标签的映射。"""
         if not rotated_imgs:
             return {}
@@ -334,7 +350,11 @@ class MineruTableOrientationClsModel:
         img_score_tasks, all_crop_imgs = self._build_score_tasks_for_candidates(
             rotated_imgs
         )
-        rec_res = self._recognize_orientation_crops(all_crop_imgs)
+        rec_res = self._recognize_orientation_crops(
+            all_crop_imgs,
+            tqdm_enable=tqdm_enable,
+            tqdm_progress_bar=tqdm_progress_bar,
+        )
 
         for img_info, tasks in img_score_tasks:
             score_by_label = self._score_orientation_tasks_with_rec(tasks, rec_res)
@@ -347,6 +367,8 @@ class MineruTableOrientationClsModel:
         self,
         imgs: List[Dict],
         det_batch_size: int,
+        tqdm_enable: bool = False,
+        tqdm_progress_bar=None,
     ) -> List[str]:
         """
         批量预测传入表格图片的旋转角度，只返回角度，不修改输入图片。
@@ -361,8 +383,13 @@ class MineruTableOrientationClsModel:
             resolution_groups,
             det_batch_size,
             RESOLUTION_GROUP_STRIDE,
+            tqdm_progress_bar=tqdm_progress_bar,
         )
-        label_by_index = self._score_rotation_candidates(rotated_imgs)
+        label_by_index = self._score_rotation_candidates(
+            rotated_imgs,
+            tqdm_enable=tqdm_enable,
+            tqdm_progress_bar=tqdm_progress_bar,
+        )
         for index, label in label_by_index.items():
             rotate_labels[index] = label
 
