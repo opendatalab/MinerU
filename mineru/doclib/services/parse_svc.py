@@ -430,6 +430,10 @@ class ParseService:
         status = "succeeded"
         try:
             return await self._ingest_file(path, watch_id=watch_id)
+        except PermissionError as exc:
+            status = "failed"
+            await self._mark_file_error(path, "file_permission_denied", str(exc))
+            raise InvalidRequestError("file_permission_denied", str(exc), "path") from None
         except Exception:
             status = "failed"
             raise
@@ -437,6 +441,13 @@ class ParseService:
             dimensions = {"status": status, "trigger": trigger}
             await self._record_count("ingest.finished.count", dimensions=dimensions)
             await self._record_duration("ingest.duration_bucket.count", start_ms, dimensions=dimensions)
+
+    async def _mark_file_error(self, path: str, error_code: str, error_msg: str) -> None:
+        now = _now_ms()
+        await self.db.execute(
+            "UPDATE files SET sha256=NULL, locked_at=NULL, error_code=?, error_msg=?, updated_at=? WHERE path=?",
+            (error_code, error_msg[:500], now, path),
+        )
 
     async def _ingest_file(self, path: str, watch_id: int | None = None) -> FileRow | None:
         """Ingest implementation without telemetry wrapper."""

@@ -1016,6 +1016,36 @@ def test_refresh_file_marks_missing_known_path_deleted(tmp_path: Path) -> None:
     asyncio.run(_run())
 
 
+def test_ensure_ingested_maps_read_permission_error_to_file_permission_denied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        source = tmp_path / "locked.pdf"
+        source.write_bytes(b"%PDF-1.7\n")
+
+        async def _permission_denied(path: str) -> str:
+            raise PermissionError("permission denied")
+
+        monkeypatch.setattr(parse_svc_module, "compute_sha256", _permission_denied)
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.ensure_ingested(str(source))
+
+        row = await db.fetchone("SELECT sha256, error_code, error_msg FROM files WHERE path=?", (str(source),))
+
+        assert exc_info.value.code == "file_permission_denied"
+        assert exc_info.value.param == "path"
+        assert row is not None
+        assert row["sha256"] is None
+        assert row["error_code"] == "file_permission_denied"
+        assert row["error_msg"] == "permission denied"
+
+    asyncio.run(_run())
+
+
 def test_refresh_file_records_stat_error_without_marking_deleted(tmp_path: Path, monkeypatch) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
