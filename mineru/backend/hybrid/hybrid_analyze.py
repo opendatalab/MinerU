@@ -36,8 +36,7 @@ from ..pipeline.model_init import (
     MineruHybridModel,
     run_layout_inference,
     run_mfr_inference,
-    run_ocr_det_inference,
-    run_ocr_rec_inference,
+    run_ocr_inference,
 )
 from ..utils.boxbase import calculate_overlap_area_2_minbox_area_ratio
 from ..utils.middle_json_utils import append_pages
@@ -123,7 +122,7 @@ def _ocr_det(
                     _restore_normalized_bbox(res)
                 adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(page_mfd_res, useful_list)
                 bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)  # type: ignore
-                ocr_res = run_ocr_det_inference(
+                ocr_res = run_ocr_inference(
                     hybrid_pipeline_model.ocr_model.ocr,
                     bgr_image,
                     mfd_res=adjusted_mfdetrec_res,
@@ -192,7 +191,7 @@ def _ocr_det(
 
             # 批处理检测
             det_batch_size = min(len(batch_images), batch_ratio * OCR_DET_BASE_BATCH_SIZE)
-            batch_results = run_ocr_det_inference(
+            batch_results = run_ocr_inference(
                 hybrid_pipeline_model.ocr_model.text_detector.batch_predict,
                 batch_images,
                 det_batch_size,
@@ -470,7 +469,7 @@ def _process_ocr_and_formulas(
                     img_crop_list.append(ocr_res.pop("np_img"))
         if len(img_crop_list) > 0:
             # Process OCR
-            ocr_result_list = run_ocr_rec_inference(
+            ocr_result_list = run_ocr_inference(
                 hybrid_pipeline_model.ocr_model.ocr,
                 img_crop_list,
                 det=False,

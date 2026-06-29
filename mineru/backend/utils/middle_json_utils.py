@@ -15,7 +15,8 @@ from ...utils.image_payload import ImagePayloadCache
 from ...utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from ...utils.page_index import resolve_output_page_idx
 from ...utils.pdf_document import PDFDocument, PDFPage
-from ..pipeline.model_init import run_ocr_rec_inference
+from .span_pre_proc import _clear_post_ocr_fallback, _restore_post_ocr_fallback
+from ..pipeline.model_init import run_ocr_inference
 
 T = TypeVar("T")
 
@@ -96,13 +97,16 @@ def apply_post_ocr(pages: list[PageInfo], ocr_model: Any) -> None:
     if not img_crop_list:
         return
 
-    ocr_res_list = run_ocr_rec_inference(ocr_model.ocr, img_crop_list, det=False, tqdm_enable=True)[0]
+    ocr_res_list = run_ocr_inference(ocr_model.ocr, img_crop_list, det=False, tqdm_enable=True)[0]
     assert len(ocr_res_list) == len(need_ocr_list), f"ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}"
     for index, span in enumerate(need_ocr_list):
         ocr_text, ocr_score = ocr_res_list[index]
         if ocr_score > OcrConfidence.min_confidence:
             span.content = ocr_text
             span.score = float(f"{ocr_score:.3f}")
+            _clear_post_ocr_fallback(span)
+        elif _restore_post_ocr_fallback(span):
+            continue
         else:
             span.content = ""
             span.score = 0.0

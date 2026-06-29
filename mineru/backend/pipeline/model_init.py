@@ -26,8 +26,7 @@ PIPELINE_MODEL_INIT_LOCK = threading.RLock()
 # 这些锁保护 pipeline 与 hybrid 共享的 atom model/native 模型推理调用，避免多线程同时进入同一个模型对象。
 PIPELINE_LAYOUT_INFERENCE_LOCK = threading.RLock()
 PIPELINE_MFR_INFERENCE_LOCK = threading.RLock()
-PIPELINE_OCR_DET_INFERENCE_LOCK = threading.RLock()
-PIPELINE_OCR_REC_INFERENCE_LOCK = threading.RLock()
+PIPELINE_OCR_INFERENCE_LOCK = threading.RLock()
 # 临时关闭 pipeline/hybrid 共享推理阶段锁；需要回滚实验时可通过环境变量重新打开。
 PIPELINE_INFERENCE_LOCKS_ENABLED = os.getenv("MINERU_ENABLE_PIPELINE_INFERENCE_LOCKS", "False").lower() in ["true", "1", "yes"]
 
@@ -53,14 +52,9 @@ def run_mfr_inference(inference_callable: Callable[..., Any], *args: Any, **kwar
     return _run_with_inference_lock(PIPELINE_MFR_INFERENCE_LOCK, inference_callable, *args, **kwargs)
 
 
-def run_ocr_det_inference(inference_callable: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    """按实验开关执行共享 OCR det 模型调用。"""
-    return _run_with_inference_lock(PIPELINE_OCR_DET_INFERENCE_LOCK, inference_callable, *args, **kwargs)
-
-
-def run_ocr_rec_inference(inference_callable: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    """按实验开关执行共享 OCR rec 模型调用。"""
-    return _run_with_inference_lock(PIPELINE_OCR_REC_INFERENCE_LOCK, inference_callable, *args, **kwargs)
+def run_ocr_inference(inference_callable: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    """按实验开关执行共享 OCR native 模型调用。"""
+    return _run_with_inference_lock(PIPELINE_OCR_INFERENCE_LOCK, inference_callable, *args, **kwargs)
 
 
 MFR_MODEL = os.getenv("MINERU_FORMULA_CH_SUPPORT", "False")
