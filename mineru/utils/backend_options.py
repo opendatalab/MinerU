@@ -21,6 +21,8 @@ HTTP_CLIENT_BACKEND_CHOICES: Final[tuple[str, ...]] = (
 )
 PUBLIC_BACKEND_CHOICES: Final[tuple[str, ...]] = LOCAL_BACKEND_CHOICES + HTTP_CLIENT_BACKEND_CHOICES
 HYBRID_EFFORT_CHOICES: Final[tuple[str, ...]] = ("medium", "high")
+BACKEND_SCHEMA_EXTRA: Final[dict[str, list[str]]] = {"enum": list(PUBLIC_BACKEND_CHOICES)}
+HYBRID_EFFORT_SCHEMA_EXTRA: Final[dict[str, list[str]]] = {"enum": list(HYBRID_EFFORT_CHOICES)}
 
 BACKEND_ALIASES: Final[dict[str, str]] = {
     "vlm-auto-engine": CANONICAL_VLM_ENGINE,
