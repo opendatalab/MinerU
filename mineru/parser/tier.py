@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from ..types import Tier
+from ..utils.backend_options import SUPPORTED_BACKENDS, is_hybrid_backend, is_vlm_backend, normalize_backend
 
 __all__ = [
     "PARSER_BACKENDS",
@@ -10,24 +11,7 @@ __all__ = [
     "tier_for_backend",
 ]
 
-PARSER_BACKENDS = (
-    "pipeline",
-    "flash",
-    "vlm-auto-engine",
-    "vlm-http-client",
-    "vlm-transformers",
-    "vlm-vllm-engine",
-    "vlm-vllm-async-engine",
-    "vlm-lmdeploy-engine",
-    "vlm-mlx-engine",
-    "hybrid-auto-engine",
-    "hybrid-http-client",
-    "hybrid-transformers",
-    "hybrid-vllm-engine",
-    "hybrid-vllm-async-engine",
-    "hybrid-lmdeploy-engine",
-    "hybrid-mlx-engine",
-)
+PARSER_BACKENDS = SUPPORTED_BACKENDS
 
 
 def backend_for_tier(tier: Tier) -> str:
@@ -35,30 +19,30 @@ def backend_for_tier(tier: Tier) -> str:
     mapping = {
         "flash": "flash",
         "standard": "pipeline",
-        "pro": "hybrid-auto-engine",
+        "pro": "hybrid-engine",
     }
     return mapping.get(tier, "pipeline")
 
 
 def tier_for_backend(backend: str) -> Tier:
-    if backend == "flash":
+    normalized_backend = normalize_backend(backend)
+    if normalized_backend == "flash":
         return "flash"
-    if backend == "pipeline":
+    if normalized_backend == "pipeline":
         return "standard"
-    if backend.startswith("vlm-") or backend.startswith("hybrid-"):
+    if is_vlm_backend(normalized_backend) or is_hybrid_backend(normalized_backend):
         return "pro"
     raise ValueError(f"Unsupported backend '{backend}'. Supported backends: {', '.join(PARSER_BACKENDS)}")
 
 
 def _backend_supports_tier(backend: str, tier: Tier) -> bool:
-    if backend not in PARSER_BACKENDS:
-        raise ValueError(f"Unsupported backend '{backend}'. Supported backends: {', '.join(PARSER_BACKENDS)}")
+    normalized_backend = normalize_backend(backend)
     if tier == "flash":
-        return backend == "flash"
+        return normalized_backend == "flash"
     if tier == "standard":
-        return backend == "pipeline"
+        return normalized_backend == "pipeline"
     if tier == "pro":
-        return backend.startswith("vlm-") or backend.startswith("hybrid-")
+        return is_vlm_backend(normalized_backend) or is_hybrid_backend(normalized_backend)
     return False
 
 
@@ -66,9 +50,10 @@ def resolve_tier_and_backend(tier: Tier | None = None, backend: str | None = Non
     """Resolve public tier and optional expert backend into an executable parser backend."""
     resolved_tier: Tier = tier or "pro"
     if backend:
+        normalized_backend = normalize_backend(backend)
         if tier is None:
-            return tier_for_backend(backend), backend
-        if not _backend_supports_tier(backend, resolved_tier):
+            return tier_for_backend(normalized_backend), normalized_backend
+        if not _backend_supports_tier(normalized_backend, resolved_tier):
             raise ValueError(f"tier '{resolved_tier}' is incompatible with backend '{backend}'")
-        return tier_for_backend(backend), backend
+        return tier_for_backend(normalized_backend), normalized_backend
     return resolved_tier, backend_for_tier(resolved_tier)
