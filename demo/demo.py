@@ -6,8 +6,8 @@ from pathlib import Path
 
 import httpx
 
-from mineru.cli import api_client as _api_client
-from mineru.cli.common import image_suffixes, office_suffixes, pdf_suffixes
+from mineru.cli_old import api_client as _api_client
+from mineru.cli_old.common import image_suffixes, office_suffixes, pdf_suffixes
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
 
 SUPPORTED_INPUT_SUFFIXES = set(pdf_suffixes + image_suffixes + office_suffixes)
@@ -51,10 +51,12 @@ def build_form_data(
     start_page_id: int,
     end_page_id: int | None,
     image_analysis: bool = True,
+    effort: str = "medium",
 ) -> dict[str, str | list[str]]:
     return _api_client.build_parse_request_form_data(
         lang_list=[language],
         backend=backend,
+        effort=effort,
         parse_method=parse_method,
         formula_enable=formula_enable,
         table_enable=table_enable,
@@ -95,12 +97,13 @@ async def run_demo(
     output_dir: str | Path,
     *,
     api_url: str | None = None,
-    backend: str = "hybrid-auto-engine",
+    backend: str = "hybrid-engine",
     parse_method: str = "auto",
     language: str = "ch",
     formula_enable: bool = True,
     table_enable: bool = True,
     image_analysis: bool = True,
+    effort: str = "medium",
     server_url: str | None = None,
     start_page_id: int = 0,
     end_page_id: int | None = None,
@@ -121,6 +124,7 @@ async def run_demo(
         formula_enable=formula_enable,
         table_enable=table_enable,
         image_analysis=image_analysis,
+        effort=effort,
         server_url=server_url,
         start_page_id=start_page_id,
         end_page_id=end_page_id,
@@ -212,18 +216,20 @@ def main() -> None:
     api_url = None
 
     # Available examples:
-    # "hybrid-auto-engine"   -> local hybrid parsing, recommended default
+    # "hybrid-engine"        -> local hybrid parsing, recommended default
     # "pipeline"             -> more general OCR/text pipeline
-    # "vlm-auto-engine"      -> local VLM parsing
+    # "vlm-engine"           -> local VLM parsing
     # "vlm-http-client"      -> remote OpenAI-compatible VLM server
     # "hybrid-http-client"   -> remote OpenAI-compatible hybrid server
-    backend = "hybrid-auto-engine"
+    backend = "hybrid-engine"
+    # Hybrid parsing effort. "medium" is faster; "high" keeps the high-effort hybrid behavior.
+    effort = "medium"
     # Available options:
     # "auto" -> let MinerU choose between text extraction and OCR
     # "txt"  -> force text extraction
     # "ocr"  -> force OCR
     parse_method = "auto"
-    # OCR language hint. This is mainly used by pipeline and hybrid backends.
+    # Pipeline OCR language hint; hybrid and VLM backends ignore this value.
     language = "ch"
     # Enable formula parsing in the output.
     formula_enable = True
@@ -247,6 +253,7 @@ def main() -> None:
             output_dir=output_dir,
             api_url=api_url,
             backend=backend,
+            effort=effort,
             parse_method=parse_method,
             language=language,
             formula_enable=formula_enable,
