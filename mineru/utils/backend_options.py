@@ -25,26 +25,7 @@ BACKEND_ALIASES: Final[dict[str, str]] = {
     "hybrid-auto-engine": CANONICAL_HYBRID_ENGINE,
 }
 
-SUPPORTED_BACKENDS: Final[tuple[str, ...]] = (
-    "pipeline",
-    "flash",
-    CANONICAL_VLM_ENGINE,
-    "vlm-auto-engine",
-    "vlm-http-client",
-    "vlm-transformers",
-    "vlm-vllm-engine",
-    "vlm-vllm-async-engine",
-    "vlm-lmdeploy-engine",
-    "vlm-mlx-engine",
-    CANONICAL_HYBRID_ENGINE,
-    "hybrid-auto-engine",
-    "hybrid-http-client",
-    "hybrid-transformers",
-    "hybrid-vllm-engine",
-    "hybrid-vllm-async-engine",
-    "hybrid-lmdeploy-engine",
-    "hybrid-mlx-engine",
-)
+SUPPORTED_BACKENDS: Final[tuple[str, ...]] = LOCAL_BACKEND_CHOICES + HTTP_CLIENT_BACKEND_CHOICES + ("flash",)
 
 SUPPORTED_EFFORTS: Final[tuple[str, ...]] = HYBRID_EFFORT_CHOICES
 
