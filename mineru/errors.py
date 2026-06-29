@@ -118,6 +118,9 @@ class MineruError(Exception):
         self.param = param
         self.type = error_type_for(code)
 
+    def __str__(self) -> str:
+        return self.message or self.code
+
 
 class InvalidRequestError(MineruError):
     def __init__(self, code: str = "invalid_request", message: str = "", param: str | None = None) -> None:

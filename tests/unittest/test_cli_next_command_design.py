@@ -915,6 +915,30 @@ def test_parse_content_read_failure_exits_nonzero(monkeypatch: Any, tmp_path: Pa
     assert "Error:" not in result.output
 
 
+def test_parse_content_read_failure_non_json_prints_message_not_error_tuple(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.txt"
+    source.write_text("hello", encoding="utf-8")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 90
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            assert request.path == str(source.resolve())
+            return ParseResponse(sha256="a" * 64, tier="flash", page_range="all", status="done", cache_hit=True)
+
+        def get_doc_content(self, *args: Any, **kwargs: Any) -> None:
+            raise RuntimeError("('not_cached', 'Requested parsed content is not cached.', 'page_range')")
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["parse", str(source), "--tier", "flash"])
+
+    assert result.exit_code == 1
+    assert "Requested parsed content is not cached." in result.output
+    assert "('not_cached'" not in result.output
+
+
 def test_read_passes_locator_parameters_to_doclib_client(monkeypatch: Any) -> None:
     calls: list[tuple[str, dict[str, Any]]] = []
 

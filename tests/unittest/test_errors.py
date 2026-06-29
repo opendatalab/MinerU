@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mineru.errors import http_status_for, error_type_for, registered_error_codes
+from mineru.errors import MineruError, http_status_for, error_type_for, registered_error_codes
 
 
 DOCLIB_PERSISTED_ERROR_CODES = {
@@ -69,3 +69,10 @@ def test_http_status_for_error_codes_is_stable() -> None:
     assert http_status_for("engine_unavailable") == 503
     assert http_status_for("parse_server_unavailable") == 500
     assert http_status_for("internal_error") == 500
+
+
+def test_mineru_error_string_is_human_readable() -> None:
+    assert str(MineruError("not_cached", "Requested parsed content is not cached.", "page_range")) == (
+        "Requested parsed content is not cached."
+    )
+    assert str(MineruError("not_cached")) == "not_cached"

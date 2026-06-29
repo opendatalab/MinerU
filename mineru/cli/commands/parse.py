@@ -274,10 +274,7 @@ def _output_parse_result(
     except typer.Exit:
         raise
     except Exception as exc:
-        if json_mode:
-            exit_with_error(exc, json_mode=True)
-        print_error(f"Failed to read content: {exc}")
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
 
 def _fetch_doc_content(
