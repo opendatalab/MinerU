@@ -134,6 +134,7 @@ class MagicModel:
 
             if block_type in [
                 "text",
+                "index",
                 "title",
                 "doc_title",
                 "paragraph_title",
@@ -147,6 +148,8 @@ class MagicModel:
                 "list",
             ]:
                 span_type = ContentType.TEXT
+                if block_type == BlockType.INDEX:
+                    block_type = BlockType.TEXT
             elif block_type in ["image_caption", "table_caption", "code_caption"]:
                 block_type = BlockType.CAPTION
                 span_type = ContentType.TEXT
