@@ -35,6 +35,14 @@ from mineru.cli_old.visualization import (
 from mineru.utils.config_reader import (
     get_max_concurrent_requests as read_max_concurrent_requests,
 )
+from mineru.utils.backend_options import (
+    DEFAULT_BACKEND,
+    DEFAULT_HYBRID_EFFORT,
+    HYBRID_EFFORT_CHOICES,
+    PUBLIC_BACKEND_CHOICES,
+    normalize_public_backend,
+    validate_effort,
+)
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
 from mineru.utils.pdf_document import PDFDocument
 from mineru.utils.pdf_page_id import get_end_page_id
@@ -78,6 +86,30 @@ class VisualizationContext:
 ServerHealth = _api_client.ServerHealth
 SubmitResponse = _api_client.SubmitResponse
 LocalAPIServer = _api_client.LocalAPIServer
+
+
+def normalize_backend_option(
+    ctx: Optional[click.Context],
+    param: Optional[click.Parameter],
+    value: str,
+) -> str:
+    """将 CLI 输入的旧 backend 别名规范为当前公开 backend 名称。"""
+    try:
+        return normalize_public_backend(value)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), ctx=ctx, param=param) from exc
+
+
+def normalize_effort_option(
+    ctx: Optional[click.Context],
+    param: Optional[click.Parameter],
+    value: str,
+) -> str:
+    """将 CLI 输入的 hybrid effort 参数规范为当前公开 effort 名称。"""
+    try:
+        return validate_effort(value)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), ctx=ctx, param=param) from exc
 
 
 @dataclass(frozen=True)
@@ -602,6 +634,7 @@ def build_request_form_data(
     start_page_id: int,
     end_page_id: Optional[int],
     image_analysis: bool = True,
+    effort: str = DEFAULT_HYBRID_EFFORT,
     client_side_output_generation: bool = False,
 ) -> dict[str, str | list[str]]:
     # 开启客户端输出生成时，只关闭客户端会重建的最终产物。
@@ -614,6 +647,7 @@ def build_request_form_data(
         formula_enable=formula_enable,
         table_enable=table_enable,
         image_analysis=image_analysis,
+        effort=effort,
         server_url=server_url,
         start_page_id=start_page_id,
         end_page_id=end_page_id,
@@ -845,6 +879,7 @@ async def run_orchestrated_cli(
     formula_enable: bool,
     table_enable: bool,
     image_analysis: bool = True,
+    effort: str = DEFAULT_HYBRID_EFFORT,
     client_side_output_generation: bool = False,
     extra_cli_args: tuple[str, ...] = (),
 ) -> None:
@@ -907,6 +942,7 @@ async def run_orchestrated_cli(
                 formula_enable=formula_enable,
                 table_enable=table_enable,
                 image_analysis=image_analysis,
+                effort=effort,
                 server_url=server_url,
                 start_page_id=start_page_id,
                 end_page_id=end_page_id,
@@ -993,24 +1029,32 @@ async def run_orchestrated_cli(
     "-b",
     "--backend",
     "backend",
-    type=click.Choice(
-        [
-            "pipeline",
-            "vlm-http-client",
-            "hybrid-http-client",
-            "vlm-auto-engine",
-            "hybrid-auto-engine",
-        ]
-    ),
-    default="hybrid-auto-engine",
+    type=str,
+    default=DEFAULT_BACKEND,
+    callback=normalize_backend_option,
+    metavar="[" + "|".join(PUBLIC_BACKEND_CHOICES) + "]",
     help="""\b
     the backend for parsing pdf:
       pipeline: More general.
-      vlm-auto-engine: High accuracy via local computing power.
+      vlm-engine: High accuracy via local computing power.
       vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers).
-      hybrid-auto-engine: Next-generation high accuracy solution via local computing power.
+      hybrid-engine: Next-generation high accuracy solution via local computing power.
       hybrid-http-client: High accuracy but requires a little local computing power(client suitable for openai-compatible servers).
-    Without method specified, hybrid-auto-engine will be used by default.""",
+    Without backend specified, hybrid-engine will be used by default.""",
+)
+@click.option(
+    "--effort",
+    "effort",
+    type=str,
+    default=DEFAULT_HYBRID_EFFORT,
+    callback=normalize_effort_option,
+    metavar="[" + "|".join(HYBRID_EFFORT_CHOICES) + "]",
+    help="""\b
+    Hybrid parsing effort:
+      medium: Faster parsing for most documents, balancing accuracy and efficiency. Image/chart analysis is disabled.
+      high: Higher-accuracy parsing with image/chart analysis support, which may take longer.
+    Without effort specified, medium will be used by default.
+    Adapted only for the case where the backend is set to 'hybrid-*'.""",
 )
 @click.option(
     "-l",
@@ -1107,6 +1151,7 @@ def main(
     api_url: Optional[str],
     method: str,
     backend: str,
+    effort: str,
     lang: str,
     server_url: Optional[str],
     start_page_id: int,
@@ -1122,6 +1167,7 @@ def main(
             output_dir=output_dir,
             method=method,
             backend=backend,
+            effort=effort,
             lang=lang,
             server_url=server_url,
             api_url=api_url,
