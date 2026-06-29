@@ -154,6 +154,8 @@ def parse_cmd(
             _print_parse_json_response(result, None)
         else:
             format_parse_result(result, json_mode=False)
+        if status == "failed":
+            raise typer.Exit(1)
         return
 
     # poll until done or timeout

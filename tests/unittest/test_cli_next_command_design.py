@@ -516,6 +516,33 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
     assert payload["content"]["content"] == "parsed"
 
 
+def test_parse_failed_response_exits_nonzero(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.unsupported"
+    source.write_bytes(b"unsupported")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 90
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            return ParseResponse(
+                sha256="",
+                tier="flash",
+                page_range="",
+                status="failed",
+                tip="File could not be ingested.",
+            )
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["parse", str(source), "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["parse"]["status"] == "failed"
+    assert payload["parse"]["tip"] == "File could not be ingested."
+
+
 def test_parse_next_marker_quotes_windows_path() -> None:
     path = r"C:\Users\jinzhenj\Downloads\2606.20787v1.pdf"
     marker = parse._parse_next_marker(path, ContentNextRequest(page_range="7~10"))
