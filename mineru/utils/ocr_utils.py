@@ -102,6 +102,31 @@ def preprocess_image(_image: np.ndarray) -> np.ndarray:
     return _image
 
 
+def mask_formula_regions_for_ocr_det(
+    bgr_image: np.ndarray,
+    mask_boxes: list[dict[str, Any]] | None,
+) -> np.ndarray:
+    """将公式区域涂白后再做 OCR det，避免公式框干扰文本检测。"""
+    if not mask_boxes:
+        return bgr_image
+
+    masked_image = bgr_image.copy()
+    image_h, image_w = masked_image.shape[:2]
+    for mask_box in mask_boxes:
+        bbox = mask_box.get("bbox")
+        if bbox is None:
+            continue
+
+        int_bbox = normalize_to_int_bbox(bbox, image_size=(image_h, image_w))
+        if int_bbox is None:
+            continue
+
+        x0, y0, x1, y1 = int_bbox
+        masked_image[y0:y1, x0:x1] = 255
+
+    return masked_image
+
+
 def sorted_boxes(dt_boxes: list[Any]) -> list[Any]:
     """
     Sort text boxes in order from top to bottom, left to right
