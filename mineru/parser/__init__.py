@@ -10,6 +10,7 @@ from .html import HtmlParser
 from .office import DocxParser, PptxParser, XlsxParser
 from .pdf import PdfFlashParser, PdfHybridParser, PdfPipelineParser, PdfVlmParser
 from .tier import PARSER_BACKENDS, backend_for_tier, resolve_tier_and_backend
+from ..utils.backend_options import validate_effort
 
 __all__ = [
     "backend_for_tier",
@@ -53,6 +54,7 @@ def _build_parser(
     backend: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
+    effort: str = "medium",
     disable_table: bool = False,
     disable_formula: bool = False,
     disable_image_analysis: bool = False,
@@ -66,6 +68,7 @@ def _build_parser(
     path = Path(path)
     suffix = _resolve_input_suffix(path)
     _, resolved_backend = resolve_tier_and_backend(tier=tier, backend=backend)
+    resolved_effort = validate_effort(effort)
     resolved_ocr_mode = method or ocr_mode
     resolved_language = lang or language
     resolved_table_enable = (not disable_table) if table_enable is None else table_enable
@@ -100,6 +103,7 @@ def _build_parser(
             table_enable=resolved_table_enable,
             server_url=server_url,
             image_analysis=resolved_image_analysis,
+            effort=resolved_effort,
         )
     elif resolved_backend.startswith("hybrid-"):
         return PdfHybridParser(
@@ -124,6 +128,7 @@ def parse(
     backend: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
+    effort: str = "medium",
     disable_table: bool = False,
     disable_formula: bool = False,
     disable_image_analysis: bool = False,
@@ -141,6 +146,7 @@ def parse(
         backend=backend,
         language=language,
         ocr_mode=ocr_mode,
+        effort=effort,
         disable_table=disable_table,
         disable_formula=disable_formula,
         disable_image_analysis=disable_image_analysis,
@@ -161,6 +167,7 @@ async def parse_async(
     backend: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
+    effort: str = "medium",
     disable_table: bool = False,
     disable_formula: bool = False,
     disable_image_analysis: bool = False,
@@ -178,6 +185,7 @@ async def parse_async(
         backend=backend,
         language=language,
         ocr_mode=ocr_mode,
+        effort=effort,
         disable_table=disable_table,
         disable_formula=disable_formula,
         disable_image_analysis=disable_image_analysis,
