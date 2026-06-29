@@ -21,6 +21,8 @@ def test_flash_parser_preserves_page_indices_for_empty_pages(monkeypatch) -> Non
 def test_flash_pdf_extractor_serializes_pdfium_calls(monkeypatch) -> None:
     from mineru.backend.flash import pdf_extractor
 
+    assert not hasattr(pdf_extractor, "open_pdfium_document")
+
     state = {"guard_depth": 0, "closed_children": 0, "closed_doc": False}
 
     @contextmanager
@@ -58,7 +60,7 @@ def test_flash_pdf_extractor_serializes_pdfium_calls(monkeypatch) -> None:
             return _FakePage()
 
     monkeypatch.setattr(pdf_extractor, "pdfium_guard", _fake_guard)
-    monkeypatch.setattr(pdf_extractor, "open_pdfium_document", lambda opener, filepath: _FakePdf())
+    monkeypatch.setattr(pdf_extractor.pypdfium2, "PdfDocument", lambda filepath: _FakePdf())
     monkeypatch.setattr(pdf_extractor, "close_pdfium_child", lambda obj: obj.close())
     monkeypatch.setattr(pdf_extractor, "close_pdfium_document", lambda pdf: state.__setitem__("closed_doc", True))
 

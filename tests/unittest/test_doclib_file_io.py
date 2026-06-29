@@ -7,6 +7,8 @@ from mineru.doclib.core import file_io
 
 
 def test_extract_pdf_meta_serializes_pdfium_calls(monkeypatch) -> None:
+    assert not hasattr(file_io, "open_pdfium_document")
+
     state = {"guard_depth": 0, "closed_doc": False}
 
     @contextmanager
@@ -32,7 +34,7 @@ def test_extract_pdf_meta_serializes_pdfium_calls(monkeypatch) -> None:
             }
 
     monkeypatch.setattr(file_io, "pdfium_guard", _fake_guard)
-    monkeypatch.setattr(file_io, "open_pdfium_document", lambda opener, filepath: _FakePdf())
+    monkeypatch.setattr(file_io.pypdfium2, "PdfDocument", lambda filepath: _FakePdf())
     monkeypatch.setattr(file_io, "close_pdfium_document", lambda pdf: state.__setitem__("closed_doc", True))
 
     result = {
@@ -54,10 +56,10 @@ def test_extract_pdf_meta_serializes_pdfium_calls(monkeypatch) -> None:
 
 
 def test_extract_pdf_metadata_open_failure_uses_open_failed(monkeypatch) -> None:
-    def _fail_open(opener, filepath):
+    def _fail_open(filepath):
         raise RuntimeError("cannot open pdf")
 
-    monkeypatch.setattr(file_io, "open_pdfium_document", _fail_open)
+    monkeypatch.setattr(file_io.pypdfium2, "PdfDocument", _fail_open)
 
     try:
         asyncio.run(file_io.extract_metadata("dummy.pdf"))
@@ -83,7 +85,7 @@ def test_extract_pdf_metadata_read_failure_uses_read_metadata_failed(monkeypatch
             raise RuntimeError("cannot read title")
 
     monkeypatch.setattr(file_io, "pdfium_guard", _fake_guard)
-    monkeypatch.setattr(file_io, "open_pdfium_document", lambda opener, filepath: _FakePdf())
+    monkeypatch.setattr(file_io.pypdfium2, "PdfDocument", lambda filepath: _FakePdf())
     monkeypatch.setattr(file_io, "close_pdfium_document", lambda pdf: state.__setitem__("closed_doc", True))
 
     try:

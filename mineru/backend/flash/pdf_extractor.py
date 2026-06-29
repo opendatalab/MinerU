@@ -11,11 +11,6 @@ from ...utils.pdfium_guard import (
 )
 
 
-def open_pdfium_document(opener, filepath: str):
-    """在 Flash extractor 中保留可 monkeypatch 的 PDFium 打开入口。"""
-    return opener(filepath)
-
-
 def extract_pages_text(filepath: str, start_page: int = 0, end_page: int | None = None) -> list[str]:
     """Extract plain text from each PDF page, preserving empty pages."""
 
@@ -23,7 +18,7 @@ def extract_pages_text(filepath: str, start_page: int = 0, end_page: int | None 
     pdf_doc = None
     try:
         with pdfium_guard():
-            pdf_doc = open_pdfium_document(pypdfium2.PdfDocument, filepath)
+            pdf_doc = pypdfium2.PdfDocument(filepath)
             try:
                 page_count = pdf_doc.page_count
             except AttributeError:
