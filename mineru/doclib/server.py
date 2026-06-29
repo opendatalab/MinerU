@@ -1641,6 +1641,7 @@ def _render_progressive_markdown(
         page_start_cursor = page_ref(short_id, tier, page_no)
         page_end_cursor = page_ref(short_id, tier, page_no)
         page_started = False
+        empty_page_selected = False
 
         for block_index, block_text in page_blocks:
             block_no = block_index + 1
@@ -1697,11 +1698,22 @@ def _render_progressive_markdown(
             cut_inside_page = True
             break
 
-        if not started or not page_output:
+        if not page_output and after and page_no == after.page_no:
+            continue
+        if not page_output and (target is None or target.block_no is None):
+            started = True
+            empty_page_selected = True
+            if add_markers:
+                page_output.append(f"<!-- page {page_no} -->")
+
+        if not started or (not page_output and not empty_page_selected):
             continue
         if add_markers:
-            page_output.insert(0, f"<!-- page {page_no} -->")
-        output.extend(page_output)
+            marker = f"<!-- page {page_no} -->"
+            if not page_output or page_output[0] != marker:
+                page_output.insert(0, marker)
+        if page_output:
+            output.extend(page_output)
         last_page_no = page_no
         ranges.append(ContentRange(page_range=str(page_no), start=page_start_cursor, end=page_end_cursor))
         if cut_inside_page:

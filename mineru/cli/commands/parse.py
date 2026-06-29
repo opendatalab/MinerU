@@ -284,7 +284,7 @@ def _output_parse_result(
             format=format,
             no_marker=no_marker,
         )
-        if not content.content and content.format == "markdown":
+        if not content.content and content.format == "markdown" and not content.content_ranges:
             print_error("No content returned from parse.")
             raise typer.Exit(1)
         if json_mode:
@@ -387,6 +387,25 @@ def output_doc_content_response(
     if output_path and output_path != "-":
         Path(output_path).write_text(content.content, encoding="utf-8")
         print_success(f"Written to {output_path}")
+        return
+    if not content.content and content.content_ranges:
+        message = "No renderable content in requested pages."
+        if content.next_request and not no_marker:
+            marker = (
+                _read_next_marker(content.next_request)
+                if read_mode
+                else _parse_next_marker(
+                    source_path,
+                    content.next_request,
+                    tier=next_marker_tier,
+                    limit=next_marker_limit,
+                    remote=next_marker_remote,
+                )
+            )
+            if marker:
+                print(_append_next_marker(message, marker))
+                return
+        typer.echo(message, err=True)
         return
     if content.next_request and not no_marker:
         marker = (

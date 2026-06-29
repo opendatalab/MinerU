@@ -21,6 +21,7 @@ from mineru.doclib.telemetry import TelemetryContext
 from mineru.doclib.types import (
     ContentAsset,
     ContentNextRequest,
+    ContentRange,
     ContentRequestScope,
     ConfigSetResponse,
     DocInfo,
@@ -1049,6 +1050,40 @@ def test_parse_content_read_failure_non_json_prints_message_not_error_tuple(monk
     assert result.exit_code == 1
     assert "Requested parsed content is not cached." in result.output
     assert "('not_cached'" not in result.output
+
+
+def test_parse_empty_cached_content_non_json_reports_no_renderable_content(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 90
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            assert request.path == str(source.resolve())
+            return ParseResponse(sha256="a" * 64, tier="flash", page_range="1", status="done", cache_hit=True)
+
+        def get_doc_content(self, *args: Any, **kwargs: Any) -> DocContentResponse:
+            return DocContentResponse(
+                sha256="a" * 64,
+                short_id="ab12cd3",
+                tier="flash",
+                format="markdown",
+                content="",
+                request_scope=ContentRequestScope(page_range="1", limit=30000),
+                content_ranges=[
+                    ContentRange(page_range="1", start="doc:ab12cd3/tier:flash/page:1", end="doc:ab12cd3/tier:flash/page:1")
+                ],
+            )
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["parse", str(source), "--tier", "flash"])
+
+    assert result.exit_code == 0
+    assert result.stdout == ""
+    assert "No renderable content in requested pages." in result.stderr
 
 
 def test_read_passes_locator_parameters_to_doclib_client(monkeypatch: Any) -> None:

@@ -174,6 +174,23 @@ def test_paginated_next_request_is_never_after_only() -> None:
     assert next_request.after is not None
 
 
+def test_paginated_empty_page_renders_page_marker_and_content_range() -> None:
+    rendered = _render_progressive_markdown(
+        [PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[], _backend="flash")],
+        short_id="ab12cd3",
+        tier="flash",
+        after=None,
+        limit=30000,
+        add_markers=True,
+    )
+
+    assert rendered.content == "<!-- page 1 -->"
+    assert rendered.content_ranges == [
+        ContentRange(page_range="1", start="doc:ab12cd3/tier:flash/page:1", end="doc:ab12cd3/tier:flash/page:1")
+    ]
+    assert rendered.truncated is False
+
+
 def test_page_markdown_blocks_prefers_markdown_table_in_doclib() -> None:
     html = """
     <table>
