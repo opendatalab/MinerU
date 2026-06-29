@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from html import unescape
+from html import escape, unescape
 from typing import Any
 
 from ..types import Block, BlockType, ContentType
@@ -131,6 +131,24 @@ def _build_visual_body_segments(
     return segments
 
 
+def _render_algorithm_code_html(block: Block) -> str:
+    """将 algorithm code body 渲染为 HTML pre，保留缩进并支持行内公式。"""
+    rendered_lines: list[str] = []
+    for line in block.lines:
+        line_parts: list[str] = []
+        for span in line.spans:
+            if span.type == ContentType.TEXT:
+                line_parts.append(escape(span.content or ""))
+            elif span.type == ContentType.INLINE_EQUATION and span.content:
+                line_parts.append(f"{inline_left}{escape(span.content)}{inline_right}")
+        rendered_lines.append("".join(line_parts).rstrip())
+
+    content = "\n".join(rendered_lines).strip("\n")
+    if not content.strip():
+        return ""
+    return f'<pre class="mineru-algorithm-code"><code style="white-space: pre-wrap;">{content}</code></pre>'
+
+
 # -- Per-block-type segment rendering ----------------------------------------
 
 
@@ -140,6 +158,12 @@ def _render_visual_block_segments(block: Block, para_block: Block, img_bucket_pa
     # table 的 html 输出为 html_block，供后续决定是否需要空行隔开。
 
     block_type = block.type
+
+    if block_type == BlockType.CODE_BODY and block.sub_type == BlockType.ALGORITHM:
+        text = _render_algorithm_code_html(block)
+        if text:
+            return [(text, "html_block")]
+        return []
 
     # text-like sub-blocks  (caption / footnote / code body)
     if block_type in (
