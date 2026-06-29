@@ -7,10 +7,39 @@ import pytest
 from mineru.parser.base import ParseResult
 from mineru.schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
 from mineru.types import Block, ContentType, Line, PageInfo, Span
+from mineru.utils.image_payload import ImagePayloadCache
 
 
 def _data_uri(payload: bytes, image_type: str = "png") -> str:
     return f"data:image/{image_type};base64,{base64.b64encode(payload).decode('ascii')}"
+
+
+def _table_page_with_cached_inline_image(img_bytes: bytes) -> tuple[PageInfo, ImagePayloadCache, str]:
+    """构造已完成图片外置化的表格页，验证 ParseResult 只承载顶层图片缓存。"""
+    image_cache = ImagePayloadCache()
+    inline_image = _data_uri(img_bytes)
+    html = image_cache.replace_html_data_uri_sources(
+        f'<table><tr><td><img src="{inline_image}"/></td></tr></table>'
+    )
+    page = PageInfo(
+        page_idx=0,
+        page_size=(100, 100),
+        para_blocks=[
+            Block(
+                index=0,
+                type="table",
+                bbox=(0.0, 0.0, 10.0, 10.0),
+                lines=[
+                    Line(
+                        bbox=(0.0, 0.0, 10.0, 10.0),
+                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
+                    )
+                ],
+            )
+        ],
+        _backend="pipeline",
+    )
+    return page, image_cache, inline_image
 
 
 def test_parse_result_does_not_expose_backend_version_or_file_name() -> None:
@@ -250,7 +279,8 @@ def test_parse_result_render_methods_use_export_pages_without_mutating_source(
 ) -> None:
     img_bytes = b"render-inline-image"
     inline_image = _data_uri(img_bytes)
-    html = f'<table><tr><td><img src="{inline_image}"/></td></tr></table>'
+    image_cache = ImagePayloadCache()
+    html = image_cache.replace_html_data_uri_sources(f'<table><tr><td><img src="{inline_image}"/></td></tr></table>')
     page = PageInfo(
         page_idx=0,
         page_size=(100, 100),
@@ -269,11 +299,11 @@ def test_parse_result_render_methods_use_export_pages_without_mutating_source(
         ],
         _backend="pipeline",
     )
-    result = ParseResult(pages=[page])
+    result = ParseResult(pages=[page], _image_cache=image_cache)
     captured: list[list[PageInfo]] = []
 
     def _assert_clean_export_pages(pages: list[PageInfo]) -> None:
-        """确认 public 渲染入口收到的是清理后的导出页副本，而不是带 staged 载荷的原始页。"""
+        """确认 public 渲染入口直接收到生成阶段清理后的 page tree。"""
         captured.append(pages)
         content = pages[0].para_blocks[0].lines[0].spans[0].content
         assert inline_image not in content
@@ -302,12 +332,14 @@ def test_parse_result_render_methods_use_export_pages_without_mutating_source(
     assert result.content_list() == [{"type": "table"}]
     assert result.structured_content() == [[{"type": "table"}]]
     assert len(captured) == 3
-    assert all(pages is not result.pages for pages in captured)
-    assert inline_image in page.para_blocks[0].lines[0].spans[0].content
+    assert all(pages is result.pages for pages in captured)
+    assert inline_image not in page.para_blocks[0].lines[0].spans[0].content
 
 
-def test_parse_result_save_writes_base64_images_and_exports_clean_middle_json() -> None:
+def test_parse_result_save_writes_cached_images_and_exports_clean_middle_json() -> None:
     img_bytes = b"image-bytes"
+    image_cache = ImagePayloadCache()
+    image_path = image_cache.register_bytes(img_bytes, "jpeg", image_path="figure.png")
     page = PageInfo(
         page_idx=0,
         page_size=(100, 100),
@@ -323,8 +355,7 @@ def test_parse_result_save_writes_base64_images_and_exports_clean_middle_json() 
                             Span(
                                 type=ContentType.IMAGE,
                                 bbox=(0.0, 0.0, 10.0, 10.0),
-                                image_path="figure.png",
-                                image_base64=_data_uri(img_bytes),
+                                image_path=image_path,
                             )
                         ],
                     )
@@ -333,7 +364,7 @@ def test_parse_result_save_writes_base64_images_and_exports_clean_middle_json() 
         ],
         _backend="pipeline",
     )
-    result = ParseResult(pages=[page])
+    result = ParseResult(pages=[page], _image_cache=image_cache)
     writes: dict[str, bytes | str] = {}
 
     class MemoryWriter:
@@ -349,7 +380,6 @@ def test_parse_result_save_writes_base64_images_and_exports_clean_middle_json() 
     exported = json.loads(writes["middle_json.json"])  # type: ignore[arg-type]
     exported_span = exported["pages"][0]["para_blocks"][0]["lines"][0]["spans"][0]
 
-    assert result.to_dict()["pages"][0]["para_blocks"][0]["lines"][0]["spans"][0]["image_base64"]
     assert exported_span["image_path"] == "figure.png"
     assert "image_base64" not in exported_span
     assert writes["figure.png"] == img_bytes
@@ -357,27 +387,8 @@ def test_parse_result_save_writes_base64_images_and_exports_clean_middle_json() 
 
 def test_parse_result_save_renders_structured_content_from_clean_export_pages() -> None:
     img_bytes = b"table-image"
-    inline_image = _data_uri(img_bytes)
-    html = f'<table><tr><td><img src="{inline_image}"/></td></tr></table>'
-    page = PageInfo(
-        page_idx=0,
-        page_size=(100, 100),
-        para_blocks=[
-            Block(
-                index=0,
-                type="table",
-                bbox=(0.0, 0.0, 10.0, 10.0),
-                lines=[
-                    Line(
-                        bbox=(0.0, 0.0, 10.0, 10.0),
-                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
-                    )
-                ],
-            )
-        ],
-        _backend="pipeline",
-    )
-    result = ParseResult(pages=[page])
+    page, image_cache, inline_image = _table_page_with_cached_inline_image(img_bytes)
+    result = ParseResult(pages=[page], _image_cache=image_cache)
     writes: dict[str, bytes | str] = {}
 
     class MemoryWriter:
@@ -397,89 +408,40 @@ def test_parse_result_save_renders_structured_content_from_clean_export_pages() 
     assert inline_image not in structured_content
     assert image_path in structured_content
     assert writes[image_path] == img_bytes
-    assert inline_image in page.para_blocks[0].lines[0].spans[0].content
+    assert inline_image not in page.para_blocks[0].lines[0].spans[0].content
 
 
-def test_parse_result_public_outputs_reuse_export_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_parse_result_public_outputs_use_top_level_image_cache() -> None:
     img_bytes = b"cached-table-image"
-    inline_image = _data_uri(img_bytes)
-    html = f'<table><tr><td><img src="{inline_image}"/></td></tr></table>'
-    page = PageInfo(
-        page_idx=0,
-        page_size=(100, 100),
-        para_blocks=[
-            Block(
-                index=0,
-                type="table",
-                bbox=(0.0, 0.0, 10.0, 10.0),
-                lines=[
-                    Line(
-                        bbox=(0.0, 0.0, 10.0, 10.0),
-                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
-                    )
-                ],
-            )
-        ],
-        _backend="pipeline",
-    )
-    result = ParseResult(pages=[page])
-    original_export = result._export_pages_and_images
-    export_call_count = 0
-
-    def counted_export_pages_and_images():
-        """统计导出视图构造次数，确保多 public 输出复用同一份缓存。"""
-        nonlocal export_call_count
-        export_call_count += 1
-        return original_export()
-
-    monkeypatch.setattr(result, "_export_pages_and_images", counted_export_pages_and_images)
+    page, image_cache, inline_image = _table_page_with_cached_inline_image(img_bytes)
+    result = ParseResult(pages=[page], _image_cache=image_cache)
 
     output_text = json.dumps(
         {
             "markdown": result.markdown(),
             "content_list": result.content_list(),
             "structured_content": result.structured_content(),
-            "middle_json": result.to_export_dict(),
+            "middle_json": result.to_dict(),
             "images": sorted(result.images()),
         },
         ensure_ascii=False,
     )
 
-    assert export_call_count == 1
     assert inline_image not in output_text
     assert next(iter(result.images())) in output_text
-    assert inline_image in page.para_blocks[0].lines[0].spans[0].content
+    assert inline_image not in page.para_blocks[0].lines[0].spans[0].content
 
 
 def test_parse_result_export_pages_returns_defensive_copy_from_cache() -> None:
     img_bytes = b"defensive-table-image"
-    inline_image = _data_uri(img_bytes)
-    html = f'<table><tr><td><img src="{inline_image}"/></td></tr></table>'
-    page = PageInfo(
-        page_idx=0,
-        page_size=(100, 100),
-        para_blocks=[
-            Block(
-                index=0,
-                type="table",
-                bbox=(0.0, 0.0, 10.0, 10.0),
-                lines=[
-                    Line(
-                        bbox=(0.0, 0.0, 10.0, 10.0),
-                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
-                    )
-                ],
-            )
-        ],
-        _backend="pipeline",
-    )
-    result = ParseResult(pages=[page])
+    page, image_cache, inline_image = _table_page_with_cached_inline_image(img_bytes)
+    result = ParseResult(pages=[page], _image_cache=image_cache)
     first_export = result.export_pages()
     first_export[0].para_blocks[0].lines[0].spans[0].content = "mutated by caller"
 
     second_export = result.export_pages()
     second_content = second_export[0].para_blocks[0].lines[0].spans[0].content
-    exported_json = json.dumps(result.to_export_dict(), ensure_ascii=False)
+    exported_json = json.dumps(result.to_dict(), ensure_ascii=False)
 
     assert "mutated by caller" not in second_content
     assert "mutated by caller" not in exported_json
@@ -490,32 +452,13 @@ def test_parse_result_export_pages_returns_defensive_copy_from_cache() -> None:
 
 def test_parse_result_export_rewrites_inline_table_base64_images() -> None:
     img_bytes = b"table-image"
-    inline_image = _data_uri(img_bytes)
-    html = f'<table><tr><td><img src="{inline_image}"/></td></tr></table>'
-    page = PageInfo(
-        page_idx=0,
-        page_size=(100, 100),
-        para_blocks=[
-            Block(
-                index=0,
-                type="table",
-                bbox=(0.0, 0.0, 10.0, 10.0),
-                lines=[
-                    Line(
-                        bbox=(0.0, 0.0, 10.0, 10.0),
-                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
-                    )
-                ],
-            )
-        ],
-        _backend="pipeline",
-    )
+    page, image_cache, inline_image = _table_page_with_cached_inline_image(img_bytes)
 
-    result = ParseResult(pages=[page])
+    result = ParseResult(pages=[page], _image_cache=image_cache)
     images = result.images()
     exported_page = result.export_pages()[0]
     exported_span = exported_page.para_blocks[0].lines[0].spans[0]
-    exported_json = json.dumps(result.to_export_dict(), ensure_ascii=False)
+    exported_json = json.dumps(result.to_dict(), ensure_ascii=False)
 
     assert list(images.values()) == [img_bytes]
     assert inline_image not in exported_json

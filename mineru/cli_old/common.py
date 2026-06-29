@@ -25,6 +25,7 @@ from mineru.render import render_content_list, render_markdown, render_structure
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
+from mineru.utils.image_payload import ImagePayloadCache
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.utils.pdfium_guard import safe_rewrite_pdf_bytes_with_pdfium, safe_rewrite_pdf_bytes_with_pdfium_result
 
@@ -262,6 +263,7 @@ def _process_output(
     backend: str,
     retained_page_indices: list[int] | None = None,
     broken_page_indices: list[int] | None = None,
+    image_cache: ImagePayloadCache | None = None,
 ) -> None:
     """处理输出文件"""
     visualization_pages = select_pages_for_pdf_visualization(middle_json, retained_page_indices)
@@ -292,6 +294,7 @@ def _process_output(
     image_dir = str(os.path.basename(local_image_dir))
     export_result = ParseResult(
         pages=middle_json,
+        _image_cache=image_cache,
         _retained_page_indices=retained_page_indices,
         _broken_page_indices=broken_page_indices,
     )
@@ -332,7 +335,7 @@ def _process_output(
         )
 
     if f_dump_middle_json:
-        dump_dict = export_result.to_export_dict()
+        dump_dict = export_result.to_dict()
         dump_dict["_backend"] = backend
         dump_dict["_version_name"] = __version__
         md_writer.write_string(
@@ -374,6 +377,7 @@ def _process_pipeline(
 
     md_writer_list = []
     local_output_info = []
+    image_cache_list = [ImagePayloadCache() for _ in pdf_bytes_list]
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
@@ -411,6 +415,7 @@ def _process_pipeline(
                 backend="pipeline",
                 retained_page_indices=retained_page_indices,
                 broken_page_indices=broken_page_indices,
+                image_cache=image_cache_list[doc_index],
             )
             logger.debug(f"Pipeline output complete: doc{doc_index}")
         except Exception:
@@ -433,6 +438,7 @@ def _process_pipeline(
             table_enable=p_table_enable,
             client_side_output_generation=client_side_output_generation,
             page_index_map_list=page_index_map_list,
+            image_cache_list=image_cache_list,
         )
 
         for future in output_futures:
@@ -468,12 +474,14 @@ async def _async_process_vlm(
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
         md_writer = FileBasedDataWriter(local_md_dir)
+        image_cache = ImagePayloadCache()
 
         middle_json, infer_result = await aio_vlm_doc_analyze(
             pdf_bytes,
             backend=backend,
             server_url=server_url,
             page_index_map=page_index_map_list[idx] if page_index_map_list is not None else None,
+            image_cache=image_cache,
             **kwargs,
         )
 
@@ -497,6 +505,7 @@ async def _async_process_vlm(
             backend="vlm",
             retained_page_indices=page_index_map_list[idx] if page_index_map_list is not None else None,
             broken_page_indices=broken_page_indices_list[idx] if broken_page_indices_list is not None else None,
+            image_cache=image_cache,
         )
 
 
@@ -528,12 +537,14 @@ def _process_vlm(
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
         md_writer = FileBasedDataWriter(local_md_dir)
+        image_cache = ImagePayloadCache()
 
         middle_json, infer_result = vlm_doc_analyze(
             pdf_bytes,
             backend=backend,
             server_url=server_url,
             page_index_map=page_index_map_list[idx] if page_index_map_list is not None else None,
+            image_cache=image_cache,
             **kwargs,
         )
 
@@ -557,6 +568,7 @@ def _process_vlm(
             backend="vlm",
             retained_page_indices=page_index_map_list[idx] if page_index_map_list is not None else None,
             broken_page_indices=broken_page_indices_list[idx] if broken_page_indices_list is not None else None,
+            image_cache=image_cache,
         )
 
 
@@ -593,6 +605,7 @@ def _process_hybrid(
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
         md_writer = FileBasedDataWriter(local_md_dir)
+        image_cache = ImagePayloadCache()
 
         middle_json, infer_result, _vlm_ocr_enable = hybrid_doc_analyze(
             pdf_bytes,
@@ -602,6 +615,7 @@ def _process_hybrid(
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
             page_index_map=page_index_map_list[idx] if page_index_map_list is not None else None,
+            image_cache=image_cache,
             **kwargs,
         )
 
@@ -628,6 +642,7 @@ def _process_hybrid(
             backend="bybrid",
             retained_page_indices=page_index_map_list[idx] if page_index_map_list is not None else None,
             broken_page_indices=broken_page_indices_list[idx] if broken_page_indices_list is not None else None,
+            image_cache=image_cache,
         )
 
 
@@ -664,6 +679,7 @@ async def _async_process_hybrid(
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
         md_writer = FileBasedDataWriter(local_md_dir)
+        image_cache = ImagePayloadCache()
 
         middle_json, infer_result, _vlm_ocr_enable = await aio_hybrid_doc_analyze(
             pdf_bytes,
@@ -673,6 +689,7 @@ async def _async_process_hybrid(
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
             page_index_map=page_index_map_list[idx] if page_index_map_list is not None else None,
+            image_cache=image_cache,
             **kwargs,
         )
 
@@ -699,6 +716,7 @@ async def _async_process_hybrid(
             backend="bybrid",
             retained_page_indices=page_index_map_list[idx] if page_index_map_list is not None else None,
             broken_page_indices=broken_page_indices_list[idx] if broken_page_indices_list is not None else None,
+            image_cache=image_cache,
         )
 
 
@@ -732,7 +750,8 @@ def _process_office_doc(
             else:
                 raise ValueError(f"Unsupported office suffix: {file_suffix}")
 
-            middle_json, infer_result = office_analyze(file_bytes)
+            image_cache = ImagePayloadCache()
+            middle_json, infer_result = office_analyze(file_bytes, image_cache=image_cache)
 
             f_draw_layout_bbox = False
             f_draw_span_bbox = False
@@ -755,6 +774,7 @@ def _process_office_doc(
                 infer_result,
                 process_mode=file_suffix,
                 backend="office",
+                image_cache=image_cache,
             )
 
     return need_remove_index

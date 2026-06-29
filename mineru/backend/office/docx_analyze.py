@@ -7,10 +7,11 @@ from loguru import logger
 
 from ...model.docx.main import convert_binary
 from ...types import PageInfo
+from ...utils.image_payload import ImagePayloadCache
 from .model_output_to_middle_json import result_to_middle_json
 
 
-def office_docx_analyze(file_bytes: bytes) -> tuple[list[PageInfo], list[Any]]:
+def office_docx_analyze(file_bytes: bytes, image_cache: ImagePayloadCache | None = None) -> tuple[list[PageInfo], list[Any]]:
     infer_start = time.time()
 
     file_stream = BytesIO(file_bytes)
@@ -20,7 +21,7 @@ def office_docx_analyze(file_bytes: bytes) -> tuple[list[PageInfo], list[Any]]:
     safe_time = max(infer_time, 0.01)
     logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(results) / safe_time, 3)} page/s")
 
-    middle_json = result_to_middle_json(results)
+    middle_json = result_to_middle_json(results, image_cache=image_cache)
     return middle_json, results
 
 

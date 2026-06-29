@@ -165,6 +165,8 @@ class PDFDocument:
     def render_page(self, page_idx: int, *, scale: float | None = None) -> PDFPageImage:
         if scale is None:
             scale = self.render_scale
+        if scale <= 0:
+            raise ValueError("scale must be greater than 0")
         with self._open_page(page_idx) as page:
             return _page_to_image(page, scale, self.render_max_edge)
 
@@ -173,6 +175,8 @@ class PDFDocument:
             end = self.page_count - 1
         if scale is None:
             scale = self.render_scale
+        if scale <= 0:
+            raise ValueError("scale must be greater than 0")
         results = load_images_from_pdf_bytes_range(
             pdf_bytes=self.bytes,
             dpi=max(1, int(round(scale * POINTS_PER_INCH))),

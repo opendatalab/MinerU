@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import os
 import re
 import signal
@@ -1238,8 +1237,10 @@ class DoclibServer(AsyncDoclibInterface):
             raise InvalidRequestError(
                 "format_not_supported", "Office image output is only supported for image blocks.", "format"
             )
-        image_bytes, ext, mime_type = _span_image_bytes(image_span)
-        if image_bytes is None and image_span.image_path:
+        image_bytes = None
+        ext = "png"
+        mime_type = "image/png"
+        if image_span.image_path:
             image_dir = parse_image_sidecar_dir(self.state.data_dir, plan.sha256, plan.tier)
             candidate = resolve_image_sidecar_path(image_dir, image_span.image_path)
             if candidate is not None and candidate.is_file():
@@ -1551,19 +1552,6 @@ def _iter_block_spans(block: Block) -> Iterator[Span]:
         yield from line.spans
     for child in block.blocks:
         yield from _iter_block_spans(child)
-
-
-def _span_image_bytes(span: Span) -> tuple[bytes | None, str, str]:
-    if not span.image_base64:
-        return None, "png", "image/png"
-    match = re.match(r"^data:image/(?P<ext>[^;]+);base64,(?P<data>.+)$", span.image_base64, re.DOTALL)
-    if match is None:
-        return None, "png", "image/png"
-    ext = match.group("ext").lower()
-    try:
-        return base64.b64decode(match.group("data")), ext, _mime_type_for_ext(ext)
-    except Exception:
-        return None, ext, _mime_type_for_ext(ext)
 
 
 def _pil_image_to_bytes(image: Image.Image) -> bytes:

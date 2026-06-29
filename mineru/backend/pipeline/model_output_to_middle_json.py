@@ -3,6 +3,7 @@ from typing import Any
 
 from ...types import Block, BlockType, ContentType, PageInfo, Span
 from ...utils.hash_utils import bytes_md5
+from ...utils.image_payload import ImagePayloadCache
 from ...utils.page_index import resolve_output_page_idx
 from ...utils.pdf_document import PDFDocument, PDFPage
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
@@ -21,6 +22,7 @@ def blocks_to_page_info(
     pdf_page: PDFPage,
     page_index: int,
     ocr_enable: bool = False,
+    image_cache: ImagePayloadCache | None = None,
 ) -> PageInfo:
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
@@ -39,6 +41,7 @@ def blocks_to_page_info(
         page_img_md5,
         page_index,
         scale=scale,
+        image_cache=image_cache,
     )
 
     return PageInfo(
@@ -65,6 +68,7 @@ def append_batch_results_to_middle_json(
     model_list: list[dict[str, Any]] | None = None,
     page_index_map: list[int] | None = None,
     progress_bar: Any = None,
+    image_cache: ImagePayloadCache | None = None,
 ) -> None:
     page_model_infos = []
     for offset, (image_dict, page_layout_dets) in enumerate(zip(images_list, batch_results)):
@@ -86,6 +90,7 @@ def append_batch_results_to_middle_json(
         page_index_map=page_index_map,
         ocr_enable=ocr_enable,
         progress_bar=progress_bar,
+        image_cache=image_cache,
     )
 
 

@@ -7,12 +7,14 @@ from typing import Any, Literal
 from urllib.parse import urlparse
 
 from ...types import EMPTY_BBOX, Block, BlockType, ContentType, Line, Span
+from ...utils.image_payload import ImagePayloadCache
 from ..utils.magic_model_utils import tie_up_category_by_index
 
 
 class MagicModel:
-    def __init__(self, page_blocks: list[dict[str, Any]]) -> None:
+    def __init__(self, page_blocks: list[dict[str, Any]], image_cache: ImagePayloadCache | None = None) -> None:
         blocks: list[Block] = []
+        image_cache = image_cache or ImagePayloadCache()
 
         # 对caption块进行分类，将其分类为image_caption, table_caption, chart_caption
         page_blocks = classify_caption_blocks(page_blocks)
@@ -38,15 +40,27 @@ class MagicModel:
 
             elif block_type in ["image"]:
                 block_type = BlockType.IMAGE_BODY
-                span = Span(type=ContentType.IMAGE, bbox=EMPTY_BBOX, image_base64=block_content)
+                span = Span(
+                    type=ContentType.IMAGE,
+                    bbox=EMPTY_BBOX,
+                    image_path=image_cache.register_data_uri(block_content),
+                )
             elif block_type in ["table"]:
                 block_type = BlockType.TABLE_BODY
-                span = Span(type=ContentType.TABLE, bbox=EMPTY_BBOX, content=clean_table_html(block_content))
+                span = Span(
+                    type=ContentType.TABLE,
+                    bbox=EMPTY_BBOX,
+                    content=image_cache.replace_html_data_uri_sources(clean_table_html(block_content)),
+                )
             elif block_type in ["chart"]:
                 block_type = BlockType.CHART_BODY
-                span = Span(type=ContentType.CHART, bbox=EMPTY_BBOX, content=block_content)
+                span = Span(
+                    type=ContentType.CHART,
+                    bbox=EMPTY_BBOX,
+                    content=image_cache.replace_html_data_uri_sources(block_content),
+                )
                 if block_info.get("image_base64"):
-                    span.image_base64 = block_info["image_base64"]
+                    span.image_path = image_cache.register_data_uri(block_info["image_base64"])
             elif block_type in ["equation"]:
                 block_type = BlockType.INTERLINE_EQUATION
                 span = Span(type=ContentType.INTERLINE_EQUATION, bbox=EMPTY_BBOX, content=block_content)

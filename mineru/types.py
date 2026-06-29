@@ -403,12 +403,9 @@ class Span(_DocElement):
     bbox: BBox
     content: str = ""
     score: float = 0.0
-    image_path: InitVar[str] = ""
-    image_base64: InitVar[str] = ""
+    image_path: str = ""
 
     # Internal
-    _image_path: str = ""
-    _image_base64: str = ""
     _cross_page: bool = False
     _np_img: Any = None
 
@@ -417,48 +414,6 @@ class Span(_DocElement):
     _children: list[Span] = field(default_factory=list)
 
     _extra: dict = field(default_factory=dict)
-
-    def __post_init__(self, image_path: str, image_base64: str) -> None:
-        """接收图片类 span 的路径字段，但仅在有值时序列化到 middle_json。"""
-        self._image_path = _initvar_default(image_path, "")
-        self._image_base64 = _initvar_default(image_base64, "")
-
-    @property
-    def image_path(self) -> str:
-        """图片类/表格类/公式类 span 的外部图片产物路径。"""
-        return self._image_path
-
-    @image_path.setter
-    def image_path(self, value: str) -> None:
-        self._image_path = value
-
-    @property
-    def image_base64(self) -> str:
-        """Office 等输入中的内联图片，仅在写出图片前临时保留。"""
-        return self._image_base64
-
-    @image_base64.setter
-    def image_base64(self, value: str) -> None:
-        self._image_base64 = value
-
-    def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
-        """按 span 类型输出实际载荷字段，避免文本 span 带空图片字段。"""
-        result = super().to_dict(skip_defaults=skip_defaults)
-        for name, value in (
-            ("image_path", self.image_path),
-            ("image_base64", self.image_base64),
-        ):
-            if value:
-                result[name] = value
-        return result
-
-    @classmethod
-    def from_dict(cls, d: dict) -> Span:
-        """读取当前 middle_json 中图片类 span 的非 content 载荷字段。"""
-        span = _DocElement.from_dict.__func__(cls, d)
-        span.image_path = d.get("image_path", "")
-        span.image_base64 = d.get("image_base64", "")
-        return span
 
 
 @dataclass

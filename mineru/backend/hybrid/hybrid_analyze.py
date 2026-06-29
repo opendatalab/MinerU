@@ -19,6 +19,7 @@ from ...types import NOT_EXTRACT_TYPES, BBox, PageInfo
 from ...types import BlockType as MineruBlockType
 from ...utils.config_reader import get_device, get_processing_window_size
 from ...utils.enum_class import ImageType
+from ...utils.image_payload import ImagePayloadCache
 from ...utils.model_utils import clean_memory, crop_img, get_vram
 from ...utils.ocr_utils import (
     OcrConfidence,
@@ -739,6 +740,7 @@ def doc_analyze(
     server_url: str | None = None,
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
+    image_cache: ImagePayloadCache | None = None,
     **kwargs: object,
 ) -> tuple[list[PageInfo], list[list[dict[str, Any]]], bool]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
@@ -835,6 +837,7 @@ def doc_analyze(
                         _ocr_enable=_ocr_enable,
                         _vlm_ocr_enable=_vlm_ocr_enable,
                         progress_bar=progress_bar,
+                        image_cache=image_cache,
                     )
                     last_append_end_time = time.time()
                 finally:
@@ -890,6 +893,7 @@ async def aio_doc_analyze(
     server_url: str | None = None,
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
+    image_cache: ImagePayloadCache | None = None,
     **kwargs: object,
 ) -> tuple[list[PageInfo], list[list[dict[str, Any]]], bool]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
@@ -988,6 +992,7 @@ async def aio_doc_analyze(
                         _ocr_enable=_ocr_enable,
                         _vlm_ocr_enable=_vlm_ocr_enable,
                         progress_bar=progress_bar,
+                        image_cache=image_cache,
                     )
                     last_append_end_time = time.time()
                 finally:

@@ -9,6 +9,7 @@ from mineru_vl_utils.structs import ExtractResult
 from ...types import PageInfo
 from ...utils.config_reader import get_table_enable
 from ...utils.hash_utils import bytes_md5
+from ...utils.image_payload import ImagePayloadCache
 from ...utils.pdf_document import PDFPage
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from ..utils.para_block_utils import (
@@ -26,6 +27,7 @@ def blocks_to_page_info(
     image_dict: dict[str, Any],
     pdf_page: PDFPage,
     page_index: int,
+    image_cache: ImagePayloadCache | None = None,
 ) -> PageInfo:
     """将blocks转换为页面信息"""
 
@@ -70,6 +72,7 @@ def blocks_to_page_info(
         page_img_md5,
         page_index,
         scale=scale,
+        image_cache=image_cache,
     )
 
     page_info = PageInfo(

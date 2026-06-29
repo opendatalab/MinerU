@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..types import PageInfo
+from ..utils.image_payload import ImagePayloadCache
 from .base import DocumentParser, ParseResult
 
 _IMAGE_SUFFIXES = frozenset({"png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"})
@@ -75,9 +76,11 @@ class PdfBaseParser(DocumentParser):
             raise FileNotFoundError(path)
 
         prepared = self._prepare_input(path, page_range)
+        image_cache = ImagePayloadCache()
         middle_json = self._run_analysis(
             prepared.pdf_bytes,
             page_index_map=prepared.retained_page_indices,
+            image_cache=image_cache,
         )
         self._insert_broken_pages(
             middle_json,
@@ -90,6 +93,7 @@ class PdfBaseParser(DocumentParser):
             prepared.file_name,
             retained_page_indices=prepared.retained_page_indices,
             broken_page_indices=prepared.broken_page_indices,
+            image_cache=image_cache,
         )
 
     async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:
@@ -98,9 +102,11 @@ class PdfBaseParser(DocumentParser):
             raise FileNotFoundError(path)
 
         prepared = await asyncio.to_thread(self._prepare_input, path, page_range)
+        image_cache = ImagePayloadCache()
         middle_json = await self._arun_analysis(
             prepared.pdf_bytes,
             page_index_map=prepared.retained_page_indices,
+            image_cache=image_cache,
         )
         self._insert_broken_pages(
             middle_json,
@@ -113,6 +119,7 @@ class PdfBaseParser(DocumentParser):
             prepared.file_name,
             retained_page_indices=prepared.retained_page_indices,
             broken_page_indices=prepared.broken_page_indices,
+            image_cache=image_cache,
         )
 
     @abstractmethod
@@ -120,6 +127,7 @@ class PdfBaseParser(DocumentParser):
         self,
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
+        image_cache: ImagePayloadCache | None = None,
     ) -> list[PageInfo]:
         """Execute backend-specific analysis. Returns (middle_json, model_output)."""
 
@@ -127,8 +135,14 @@ class PdfBaseParser(DocumentParser):
         self,
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
+        image_cache: ImagePayloadCache | None = None,
     ) -> list[PageInfo]:
-        return await asyncio.to_thread(self._run_analysis, pdf_bytes, page_index_map)
+        return await asyncio.to_thread(
+            self._run_analysis,
+            pdf_bytes,
+            page_index_map,
+            image_cache,
+        )
 
     def _prepare_input(self, path: Path, page_range: str = "") -> _PreparedPdfInput:
         from ..utils.guess_suffix_or_lang import guess_suffix_by_path
@@ -207,11 +221,13 @@ class PdfBaseParser(DocumentParser):
         *,
         retained_page_indices: list[int] | None = None,
         broken_page_indices: list[int] | None = None,
+        image_cache: ImagePayloadCache | None = None,
     ) -> ParseResult:
         return ParseResult(
             pages=middle_json,
             _retained_page_indices=retained_page_indices,
             _broken_page_indices=broken_page_indices,
+            _image_cache=image_cache,
         )
 
 
@@ -225,6 +241,7 @@ class PdfVlmParser(PdfBaseParser):
         self,
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
+        image_cache: ImagePayloadCache | None = None,
     ) -> list[PageInfo]:
         from ..backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 
@@ -238,12 +255,14 @@ class PdfVlmParser(PdfBaseParser):
             server_url=self.server_url,
             image_analysis=self.image_analysis,
             page_index_map=page_index_map,
+            image_cache=image_cache,
         )[0]
 
     async def _arun_analysis(
         self,
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
+        image_cache: ImagePayloadCache | None = None,
     ) -> list[PageInfo]:
         from ..backend.vlm.vlm_analyze import aio_doc_analyze as vlm_aio_doc_analyze
 
@@ -257,6 +276,7 @@ class PdfVlmParser(PdfBaseParser):
             server_url=self.server_url,
             image_analysis=self.image_analysis,
             page_index_map=page_index_map,
+            image_cache=image_cache,
         )
         return middle_json
 
@@ -282,10 +302,12 @@ class PdfPipelineParser(PdfBaseParser):
 
         prepared_inputs: list[_PreparedPdfInput] = []
         pdf_bytes_list: list[bytes] = []
+        image_caches: list[ImagePayloadCache] = []
         for p in paths:
             prepared = self._prepare_input(Path(p), page_range)
             prepared_inputs.append(prepared)
             pdf_bytes_list.append(prepared.pdf_bytes)
+            image_caches.append(ImagePayloadCache())
 
         results_by_index: dict[int, list[PageInfo]] = {}
 
@@ -300,6 +322,7 @@ class PdfPipelineParser(PdfBaseParser):
             formula_enable=self.formula_enable,
             table_enable=self.table_enable,
             page_index_map_list=[prepared.retained_page_indices for prepared in prepared_inputs],
+            image_cache_list=image_caches,
         )
 
         parse_results: list[ParseResult] = []
@@ -317,6 +340,7 @@ class PdfPipelineParser(PdfBaseParser):
                 prepared.file_name,
                 retained_page_indices=prepared.retained_page_indices,
                 broken_page_indices=prepared.broken_page_indices,
+                image_cache=image_caches[idx],
             )
             parse_results.append(result)
 
@@ -331,6 +355,7 @@ class PdfPipelineParser(PdfBaseParser):
         self,
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
+        image_cache: ImagePayloadCache | None = None,
     ) -> list[PageInfo]:
         from ..backend.pipeline.pipeline_analyze import doc_analyze_streaming
 
@@ -347,6 +372,7 @@ class PdfPipelineParser(PdfBaseParser):
             formula_enable=self.formula_enable,
             table_enable=self.table_enable,
             page_index_map_list=[page_index_map],
+            image_cache_list=[image_cache or ImagePayloadCache()],
         )
 
         return result_holder["middle_json"]
@@ -370,6 +396,7 @@ class PdfHybridParser(PdfBaseParser):
         self,
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
+        image_cache: ImagePayloadCache | None = None,
     ) -> list[PageInfo]:
         from ..backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
 
@@ -387,6 +414,7 @@ class PdfHybridParser(PdfBaseParser):
             server_url=server_url,
             image_analysis=self.image_analysis,
             page_index_map=page_index_map,
+            image_cache=image_cache,
         )
 
         return middle_json
@@ -395,6 +423,7 @@ class PdfHybridParser(PdfBaseParser):
         self,
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
+        image_cache: ImagePayloadCache | None = None,
     ) -> list[PageInfo]:
         from ..backend.hybrid.hybrid_analyze import aio_doc_analyze as hybrid_aio_doc_analyze
 
@@ -412,6 +441,7 @@ class PdfHybridParser(PdfBaseParser):
             server_url=server_url,
             image_analysis=self.image_analysis,
             page_index_map=page_index_map,
+            image_cache=image_cache,
         )
 
         return middle_json
