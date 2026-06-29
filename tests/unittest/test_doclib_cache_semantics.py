@@ -27,6 +27,7 @@ from mineru.doclib.services.parse_svc import (
     ParseFailure,
     ParseService,
     _resolve_default_tier,
+    expand_page_range,
     filter_pages_by_user_range,
     load_pages_from_done_batches,
     parse_batch_json_path,
@@ -625,6 +626,17 @@ def test_filter_pages_by_user_range_uses_one_based_page_numbers() -> None:
     selected = filter_pages_by_user_range(pages, "1")
 
     assert [page.page_idx for page in selected] == [0]
+
+
+def test_expand_page_range_uses_available_subset_and_merges_ranges() -> None:
+    assert expand_page_range("1~10,3,4~5", 5) == "1~5"
+
+
+def test_expand_page_range_rejects_empty_available_subset() -> None:
+    with pytest.raises(InvalidRequestError) as exc_info:
+        expand_page_range("6~10", 5)
+
+    assert exc_info.value.code == "page_range_invalid"
 
 
 def test_remap_api_result_pages_to_non_contiguous_page_range() -> None:

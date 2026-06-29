@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..errors import InvalidRequestError
 from ..types import PageInfo
 from ..utils.backend_options import validate_effort
 from ..utils.image_payload import ImagePayloadCache
@@ -184,6 +185,8 @@ class PdfBaseParser(DocumentParser):
 
         doc = PDFDocument(pdf_bytes)
         page_indices = parse_page_range(page_range, doc.page_count)
+        if page_range.strip() and not page_indices:
+            raise InvalidRequestError("page_range_invalid", f"Page range does not select any pages: {page_range}", "page_range")
 
         if page_indices == list(range(doc.page_count)):
             return pdf_bytes, None, None

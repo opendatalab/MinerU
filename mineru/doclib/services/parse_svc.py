@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 from typing import Literal, cast
 from urllib.parse import urlparse
 
-from ...errors import MineruError
+from ...errors import InvalidRequestError, MineruError
 from ...parser.base import ParseResult
 from ...types import TIER_ORDER, PageInfo, Tier
 from ..constants import ALLOWED_EXTENSIONS, TEXT_EXTENSIONS, is_office_temp_lock_file
@@ -143,30 +143,36 @@ def _page_numbers_to_range_str(page_numbers: set[int]) -> str:
 def expand_page_range(page_range: str | None, page_count: int) -> str:
     """Expand shorthand page_range like 'all' or negative ranges like '-5~-1'
     into positive page ranges.  Returns '1~{page_count}' for None/empty."""
+    available_page_numbers = set(range(1, page_count + 1))
     if not page_range or page_range.strip() == "all":
-        return f"1~{page_count}"
-    result: list[str] = []
-    for part in page_range.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        if "~" in part:
-            a, b = part.split("~", 1)
-            a, b = a.strip(), b.strip()
-            start = int(a)
-            end = int(b)
-            # negative index: -5 means page_count-5+1
-            if start < 0:
-                start = page_count + start + 1
-            if end < 0:
-                end = page_count + end + 1
-            result.append(f"{start}~{end}")
-        else:
-            p = int(part.strip())
-            if p < 0:
-                p = page_count + p + 1
-            result.append(str(p))
-    return ",".join(result)
+        page_numbers = available_page_numbers
+    else:
+        page_numbers: set[int] = set()
+        for part in page_range.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if "~" in part:
+                a, b = part.split("~", 1)
+                a, b = a.strip(), b.strip()
+                start = int(a)
+                end = int(b)
+                # negative index: -5 means page_count-5+1
+                if start < 0:
+                    start = page_count + start + 1
+                if end < 0:
+                    end = page_count + end + 1
+                if start <= end:
+                    page_numbers.update(range(start, end + 1))
+            else:
+                page_no = int(part.strip())
+                if page_no < 0:
+                    page_no = page_count + page_no + 1
+                page_numbers.add(page_no)
+        page_numbers &= available_page_numbers
+    if not page_numbers:
+        raise InvalidRequestError("page_range_invalid", f"Page range does not select any pages: {page_range}", "page_range")
+    return _page_numbers_to_range_str(page_numbers)
 
 
 def default_parse_range(page_count: int | None) -> str:

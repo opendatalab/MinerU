@@ -1445,32 +1445,38 @@ def _normalize_content_page_range(page_range: str | None, after: str | None, doc
 
 
 def _normalize_page_range(page_range: str, page_count: int) -> str:
-    return _page_numbers_to_range_str(parse_page_range_set(_expand_page_range(page_range, page_count)))
+    return _expand_page_range(page_range, page_count)
 
 
 def _expand_page_range(page_range: str, page_count: int) -> str:
+    available_page_numbers = set(range(1, page_count + 1))
     if not page_range or page_range.strip() == "all":
-        return f"1~{page_count}"
-    result: list[str] = []
-    for part in page_range.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        if "~" in part:
-            raw_start, raw_end = part.split("~", 1)
-            start = int(raw_start.strip())
-            end = int(raw_end.strip())
-            if start < 0:
-                start = page_count + start + 1
-            if end < 0:
-                end = page_count + end + 1
-            result.append(f"{start}~{end}" if start != end else str(start))
-        else:
-            page_no = int(part)
-            if page_no < 0:
-                page_no = page_count + page_no + 1
-            result.append(str(page_no))
-    return ",".join(result)
+        page_numbers = available_page_numbers
+    else:
+        page_numbers: set[int] = set()
+        for part in page_range.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if "~" in part:
+                raw_start, raw_end = part.split("~", 1)
+                start = int(raw_start.strip())
+                end = int(raw_end.strip())
+                if start < 0:
+                    start = page_count + start + 1
+                if end < 0:
+                    end = page_count + end + 1
+                if start <= end:
+                    page_numbers.update(range(start, end + 1))
+            else:
+                page_no = int(part)
+                if page_no < 0:
+                    page_no = page_count + page_no + 1
+                page_numbers.add(page_no)
+        page_numbers &= available_page_numbers
+    if not page_numbers:
+        raise InvalidRequestError("page_range_invalid", f"Page range does not select any pages: {page_range}", "page_range")
+    return _page_numbers_to_range_str(page_numbers)
 
 
 def _page_numbers_to_range_str(page_numbers: set[int]) -> str:
