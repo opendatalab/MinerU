@@ -146,6 +146,7 @@ class AsyncParseTask:
     created_at: str
     output_dir: str
     parse_method: str
+    effort: str
     lang_list: list[str]
     formula_enable: bool
     table_enable: bool
@@ -834,6 +835,7 @@ async def run_parse_job(
         p_lang_list=list(actual_lang_list),
         backend=request_options.backend,
         parse_method=request_options.parse_method,
+        effort=request_options.effort,
         formula_enable=request_options.formula_enable,
         table_enable=request_options.table_enable,
         image_analysis=request_options.image_analysis,
@@ -891,6 +893,7 @@ async def create_async_parse_task(
             created_at=utc_now_iso(),
             output_dir=task_output_dir,
             parse_method=request_options.parse_method,
+            effort=request_options.effort,
             lang_list=request_options.lang_list,
             formula_enable=request_options.formula_enable,
             table_enable=request_options.table_enable,
