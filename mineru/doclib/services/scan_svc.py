@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ...errors import InvalidRequestError, NotFoundError
-from ..constants import ALLOWED_EXTENSIONS, is_office_temp_lock_file
+from ..constants import DISCOVERABLE_EXTENSIONS, is_office_temp_lock_file
 from ..core.file_io import get_file_stat
 from ..rows import PathRow, ScanRow, WatchTargetRow
 from ..types import (
@@ -298,7 +298,7 @@ class ScanService:
                 filepath = os.path.join(root, fname)
                 counters.files_seen += 1
                 ext = Path(filepath).suffix.lstrip(".").lower()
-                if ext not in ALLOWED_EXTENSIONS or is_office_temp_lock_file(filepath):
+                if ext not in DISCOVERABLE_EXTENSIONS or is_office_temp_lock_file(filepath):
                     counters.files_unsupported += 1
                     continue
                 if apply_excludes and await self.config_svc.is_path_excluded(filepath):

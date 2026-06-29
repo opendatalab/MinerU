@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from ...errors import InvalidRequestError, MineruError
 from ...parser.base import ParseResult
 from ...types import TIER_ORDER, PageInfo, Tier
-from ..constants import ALLOWED_EXTENSIONS, TEXT_EXTENSIONS, is_office_temp_lock_file
+from ..constants import IMAGE_EXTENSIONS, PARSEABLE_EXTENSIONS, TEXT_EXTENSIONS, is_office_temp_lock_file
 from ..core.db import DatabaseManager
 from ..core.file_io import FileStat, MetadataExtractionError, compute_sha256, extract_metadata, get_file_stat
 from ..core.fts import FTSManager
@@ -60,7 +60,10 @@ DOC_TYPE_BY_EXT = {
     "markdown": "markdown",
     "htm": "html",
     "html": "html",
+    **dict.fromkeys(IMAGE_EXTENSIONS, "image"),
 }
+
+QUALITY_TIER_EXTENSIONS: set[str] = {"pdf", *IMAGE_EXTENSIONS}
 
 
 FileRefreshStatus = Literal["known", "new", "changed", "missing", "deleted", "unreachable", "unsupported", "error"]
@@ -193,6 +196,7 @@ async def ensure_doc_record(
     author: str | None,
     subject: str | None,
     keywords: str | None,
+    is_image_based: int = 0,
     error_code: str | None,
     error_msg: str | None,
     first_seen_at: int,
@@ -206,8 +210,8 @@ async def ensure_doc_record(
         short_id = sha256[:length]
         await db.execute(
             "INSERT OR IGNORE INTO docs (sha256, short_id, size_bytes, file_type, page_count, "
-            "title, author, subject, keywords, error_code, error_msg, first_seen_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "title, author, subject, keywords, is_image_based, error_code, error_msg, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 sha256,
                 short_id,
@@ -218,6 +222,7 @@ async def ensure_doc_record(
                 author,
                 subject,
                 keywords,
+                is_image_based,
                 error_code,
                 error_msg,
                 first_seen_at,
@@ -273,6 +278,7 @@ class ParseService:
         watch_id: int | None = None,
         *,
         ensure_ingested: bool = False,
+        allow_images: bool = False,
     ) -> FileRefreshResult:
         """Refresh one source path against the files table.
 
@@ -281,7 +287,7 @@ class ParseService:
         """
         ext = Path(path).suffix.lower().lstrip(".")
         existing = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
-        if ext not in ALLOWED_EXTENSIONS or is_office_temp_lock_file(path):
+        if ext not in PARSEABLE_EXTENSIONS or (ext in IMAGE_EXTENSIONS and not allow_images) or is_office_temp_lock_file(path):
             return FileRefreshResult(file=_file_info(existing), status="unsupported")
 
         try:
@@ -295,7 +301,7 @@ class ParseService:
 
         result = await self._refresh_existing_file_with_stat(path, ext, stat, existing, watch_id)
         if ensure_ingested and result.needs_ingest:
-            row = await self.ingest_file(path, watch_id=watch_id)
+            row = await self.ingest_file(path, watch_id=watch_id, allow_images=allow_images)
             return FileRefreshResult(file=_file_info(row), status=result.status)
         return result
 
@@ -417,19 +423,26 @@ class ParseService:
         row = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],)))
         return FileRefreshResult(file=_file_info(row), status="error")
 
-    async def ensure_ingested(self, path: str, watch_id: int | None = None) -> FileRow | None:
+    async def ensure_ingested(self, path: str, watch_id: int | None = None, *, allow_images: bool = False) -> FileRow | None:
         """Synchronously discover and ingest a source path when needed."""
-        refreshed = await self.refresh_file(path, watch_id=watch_id, ensure_ingested=True)
+        refreshed = await self.refresh_file(path, watch_id=watch_id, ensure_ingested=True, allow_images=allow_images)
         if refreshed.file is None or refreshed.status == "unsupported":
             return None
         return cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
 
-    async def ingest_file(self, path: str, watch_id: int | None = None, *, trigger: str = "parse") -> FileRow | None:
+    async def ingest_file(
+        self,
+        path: str,
+        watch_id: int | None = None,
+        *,
+        trigger: str = "parse",
+        allow_images: bool = False,
+    ) -> FileRow | None:
         """Ingest a discovered file: SHA-256 + metadata + trigger default parse."""
         start_ms = _now_ms()
         status = "succeeded"
         try:
-            return await self._ingest_file(path, watch_id=watch_id)
+            return await self._ingest_file(path, watch_id=watch_id, allow_images=allow_images)
         except PermissionError as exc:
             status = "failed"
             await self._mark_file_error(path, "file_permission_denied", str(exc))
@@ -449,10 +462,10 @@ class ParseService:
             (error_code, error_msg[:500], now, path),
         )
 
-    async def _ingest_file(self, path: str, watch_id: int | None = None) -> FileRow | None:
+    async def _ingest_file(self, path: str, watch_id: int | None = None, *, allow_images: bool = False) -> FileRow | None:
         """Ingest implementation without telemetry wrapper."""
         ext = Path(path).suffix.lower().lstrip(".")
-        if ext not in ALLOWED_EXTENSIONS or is_office_temp_lock_file(path):
+        if ext not in PARSEABLE_EXTENSIONS or (ext in IMAGE_EXTENSIONS and not allow_images) or is_office_temp_lock_file(path):
             return None
 
         stat = await get_file_stat(path)
@@ -573,6 +586,7 @@ class ParseService:
             author=metadata["author"],
             subject=metadata["subject"],
             keywords=metadata["keywords"],
+            is_image_based=int(metadata.get("is_image_based") or 0),
             error_code=metadata_error_code,
             error_msg=metadata_error_msg,
             first_seen_at=now,
@@ -644,7 +658,7 @@ class ParseService:
     ) -> ParseResponse:
         """Handle a parse request from CLI.  Returns info for status polling."""
         # ensure the path is current before trusting files.sha256
-        file_row = await self.ensure_ingested(path)
+        file_row = await self.ensure_ingested(path, allow_images=True)
         if file_row is None:
             return _failed_response(tier or "flash", page_range or "", "File could not be ingested.")
 
@@ -654,13 +668,32 @@ class ParseService:
         doc = cast(PageCountRow | None, await self.db.fetchone("SELECT page_count FROM docs WHERE sha256=?", (sha256,)))
         page_count = doc["page_count"] if doc else 1
         privacy = "remote" if remote else "local"
+        ext = file_row["ext"]
 
         # ── resolve tier (before cache check) ──
-        requested_tier = tier or _resolve_default_tier(remote)
-        ext = file_row["ext"]
+        if remote and ext not in QUALITY_TIER_EXTENSIONS:
+            raise InvalidRequestError(
+                "remote_unsupported_for_file_type",
+                f"Remote parsing is only supported for PDF and image files; '{ext}' files use local flash parsing.",
+                "remote",
+            )
+        if remote and tier == "flash":
+            raise InvalidRequestError(
+                "tier_unsupported_for_remote",
+                "--remote does not support tier 'flash'; use --tier standard or --tier pro.",
+                "tier",
+            )
+        if tier in ("standard", "pro") and ext not in QUALITY_TIER_EXTENSIONS:
+            raise InvalidRequestError(
+                "tier_unsupported_for_file_type",
+                f"Tier '{tier}' is only supported for PDF and image files; '{ext}' files use --tier flash.",
+                "tier",
+            )
         if ext in TEXT_EXTENSIONS:
             return _text_response(sha256)
-        if ext in ("docx", "pptx", "xlsx"):
+        if ext in QUALITY_TIER_EXTENSIONS:
+            requested_tier = tier or _resolve_default_tier(remote)
+        else:
             requested_tier = "flash"
 
         # ── expand page range ──

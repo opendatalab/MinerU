@@ -49,6 +49,7 @@
 | [ADR-0019](0019-mineru-kit-models-command.md) | Accepted | MinerU Kit Models Command |
 | [ADR-0020](0020-doclib-schema-stability-boundary.md) | Accepted | Doclib Schema Stability Boundary |
 | [ADR-0021](0021-doclib-local-transport-discovery.md) | Accepted | Doclib 本地 Transport 与 Endpoint Discovery |
+| [ADR-0022](0022-doclib-file-type-tier-remote-semantics.md) | Accepted | Doclib 文件类型、Tier 与 Remote 语义 |
 
 ## 模板
 

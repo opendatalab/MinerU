@@ -38,7 +38,10 @@ _ERROR_TYPE_MAP: dict[str, ErrorType] = {
     "rule_not_found": "invalid_request_error",
     "scan_not_found": "invalid_request_error",
     "stat_failed": "invalid_request_error",
+    "remote_unsupported_for_file_type": "invalid_request_error",
     "tier_mismatch": "invalid_request_error",
+    "tier_unsupported_for_file_type": "invalid_request_error",
+    "tier_unsupported_for_remote": "invalid_request_error",
     "watch_not_found": "invalid_request_error",
     # authentication_error
     "invalid_api_key": "authentication_error",

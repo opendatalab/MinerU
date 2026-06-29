@@ -10,7 +10,7 @@ from pathlib import Path
 from watchfiles import awatch
 
 from ..core.db import DatabaseManager
-from ..constants import ALLOWED_EXTENSIONS, is_office_temp_lock_file
+from ..constants import DISCOVERABLE_EXTENSIONS, is_office_temp_lock_file
 from ..services.config_svc import ConfigService
 from ..services.parse_svc import ParseService
 from ..services.scan_svc import ScanService
@@ -97,7 +97,7 @@ class WatchLoop:
                 for fname in files:
                     filepath = os.path.join(root, fname)
                     ext = Path(filepath).suffix.lstrip(".").lower()
-                    if ext not in ALLOWED_EXTENSIONS or is_office_temp_lock_file(filepath):
+                    if ext not in DISCOVERABLE_EXTENSIONS or is_office_temp_lock_file(filepath):
                         continue
                     if await self.config_svc.is_path_excluded(filepath):
                         continue
@@ -131,7 +131,7 @@ class WatchLoop:
 
     async def _handle_event(self, filepath: str, watch_id: int) -> None:
         ext = Path(filepath).suffix.lstrip(".").lower()
-        if ext not in ALLOWED_EXTENSIONS or is_office_temp_lock_file(filepath):
+        if ext not in DISCOVERABLE_EXTENSIONS or is_office_temp_lock_file(filepath):
             return
         if await self.config_svc.is_path_excluded(filepath):
             return

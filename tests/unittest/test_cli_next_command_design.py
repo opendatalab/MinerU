@@ -111,11 +111,33 @@ def test_search_and_find_help_list_filter_values() -> None:
 
     assert search_result.exit_code == 0
     assert find_result.exit_code == 0
-    assert "File type filter: pdf, docx, pptx," in search_result.output
-    assert "xlsx, html, markdown, csv, rst," in search_result.output
-    assert "tex, txt" in search_result.output
-    assert "File extension filter: pdf, docx, pptx, xlsx," in find_result.output
-    assert "html, htm, md, markdown, csv, rst, tex, txt" in find_result.output
+    assert "File type filter:" in search_result.output
+    for token in ("pdf", "image", "docx", "pptx", "xlsx", "html", "markdown", "csv", "rst", "tex", "txt"):
+        assert token in search_result.output
+    assert "File extension filter:" in find_result.output
+    for token in (
+        "pdf",
+        "png",
+        "jpg",
+        "jpeg",
+        "jp2",
+        "webp",
+        "gif",
+        "bmp",
+        "tiff",
+        "docx",
+        "pptx",
+        "xlsx",
+        "html",
+        "htm",
+        "md",
+        "markdown",
+        "csv",
+        "rst",
+        "tex",
+        "txt",
+    ):
+        assert token in find_result.output
 
 
 def test_print_error_uses_single_rich_render(monkeypatch: Any) -> None:

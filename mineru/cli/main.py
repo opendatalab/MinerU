@@ -141,7 +141,7 @@ def search(
     file_type: str | None = typer.Option(
         None,
         "--type",
-        help="File type filter: pdf, docx, pptx, xlsx, html, markdown, csv, rst, tex, txt",
+        help="File type filter: pdf, image, docx, pptx, xlsx, html, markdown, csv, rst, tex, txt",
     ),
     tier: Tier | None = typer.Option(None, "--tier", help="Exact search index tier: flash, standard, pro"),
     min_tier: Tier | None = typer.Option(None, "--min-tier", help="Minimum search index tier: flash, standard, pro"),
@@ -161,7 +161,7 @@ def find(
     ext: str | None = typer.Option(
         None,
         "--ext",
-        help="File extension filter: pdf, docx, pptx, xlsx, html, htm, md, markdown, csv, rst, tex, txt",
+        help="File extension filter: pdf, png, jpg, jpeg, jp2, webp, gif, bmp, tiff, docx, pptx, xlsx, html, htm, md, markdown, csv, rst, tex, txt",
     ),
     limit: int = typer.Option(50, "--limit", "-n", help="Max results"),
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),

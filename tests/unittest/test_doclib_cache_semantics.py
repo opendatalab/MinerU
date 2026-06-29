@@ -775,6 +775,192 @@ def test_ingest_binds_file_sha_before_creating_parse_task(tmp_path: Path, monkey
     asyncio.run(_run())
 
 
+def test_request_parse_explicit_image_ingests_and_queues_parse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class _NoRulesConfig:
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            return []
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_NoRulesConfig(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / "scan.png"
+        source.write_bytes(b"png-bytes")
+
+        async def _metadata(path: str) -> dict[str, Any]:
+            return {
+                "page_count": 1,
+                "title": None,
+                "author": None,
+                "subject": None,
+                "keywords": None,
+                "is_image_based": 1,
+            }
+
+        monkeypatch.setattr(parse_svc_module, "extract_metadata", _metadata)
+
+        result = await service.request_parse(str(source), tier="flash")
+        file_row = await db.fetchone("SELECT path, ext, sha256, status FROM files WHERE path=?", (str(source),))
+        doc_row = await db.fetchone("SELECT file_type, page_count, is_image_based FROM docs WHERE sha256=?", (result.sha256,))
+        parse_rows = await db.fetchall("SELECT tier, page_range, status FROM parses WHERE sha256=?", (result.sha256,))
+
+        assert result.status == "pending"
+        assert result.tier == "flash"
+        assert file_row is not None
+        assert file_row["ext"] == "png"
+        assert file_row["sha256"] == result.sha256
+        assert file_row["status"] == "active"
+        assert doc_row == {"file_type": "image", "page_count": 1, "is_image_based": 1}
+        assert parse_rows == [{"tier": "flash", "page_range": "1", "status": "pending"}]
+
+    asyncio.run(_run())
+
+
+@pytest.mark.parametrize("ext", ["txt", "html", "docx", "pptx", "xlsx"])
+@pytest.mark.parametrize("tier", ["standard", "pro"])
+def test_request_parse_rejects_quality_tiers_for_non_pdf_image_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ext: str,
+    tier: Tier,
+) -> None:
+    class _NoRulesConfig:
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            return []
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_NoRulesConfig(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / f"sample.{ext}"
+        source.write_text("content", encoding="utf-8")
+
+        async def _metadata(path: str) -> dict[str, Any]:
+            return {
+                "page_count": 1,
+                "title": None,
+                "author": None,
+                "subject": None,
+                "keywords": None,
+                "is_image_based": 0,
+            }
+
+        monkeypatch.setattr(parse_svc_module, "extract_metadata", _metadata)
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.request_parse(str(source), tier=tier)
+
+        assert exc_info.value.code == "tier_unsupported_for_file_type"
+        assert exc_info.value.param == "tier"
+        assert tier in exc_info.value.message
+        assert ext in exc_info.value.message
+
+    asyncio.run(_run())
+
+
+@pytest.mark.parametrize("ext", ["txt", "html", "docx", "pptx", "xlsx"])
+def test_request_parse_rejects_remote_for_non_pdf_image_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ext: str,
+) -> None:
+    class _NoRulesConfig:
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            return []
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_NoRulesConfig(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / f"sample.{ext}"
+        source.write_text("content", encoding="utf-8")
+
+        async def _metadata(path: str) -> dict[str, Any]:
+            return {
+                "page_count": 1,
+                "title": None,
+                "author": None,
+                "subject": None,
+                "keywords": None,
+                "is_image_based": 0,
+            }
+
+        monkeypatch.setattr(parse_svc_module, "extract_metadata", _metadata)
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.request_parse(str(source), remote=True)
+
+        assert exc_info.value.code == "remote_unsupported_for_file_type"
+        assert exc_info.value.param == "remote"
+        assert ext in exc_info.value.message
+
+    asyncio.run(_run())
+
+
+@pytest.mark.parametrize("ext", ["pdf", "png"])
+def test_request_parse_rejects_flash_tier_for_remote_quality_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ext: str,
+) -> None:
+    class _NoRulesConfig:
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            return []
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_NoRulesConfig(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / f"sample.{ext}"
+        source.write_bytes(b"%PDF-1.4\n" if ext == "pdf" else b"png-bytes")
+
+        async def _metadata(path: str) -> dict[str, Any]:
+            return {
+                "page_count": 1,
+                "title": None,
+                "author": None,
+                "subject": None,
+                "keywords": None,
+                "is_image_based": int(ext != "pdf"),
+            }
+
+        monkeypatch.setattr(parse_svc_module, "extract_metadata", _metadata)
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.request_parse(str(source), tier="flash", remote=True)
+
+        assert exc_info.value.code == "tier_unsupported_for_remote"
+        assert exc_info.value.param == "tier"
+        assert "flash" in exc_info.value.message
+        assert "remote" in exc_info.value.message
+
+    asyncio.run(_run())
+
+
 def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: Path) -> None:
     sha256 = "e" * 64
     source = tmp_path / "doc.pdf"
@@ -1620,6 +1806,36 @@ def test_watch_event_ignores_office_temp_lock_files(tmp_path: Path) -> None:
         lock_file.write_bytes(b"\x15Microsoft Office lock")
 
         await watch_loop._handle_event(str(lock_file), watch_id=1)
+
+        assert parse_svc.refreshed == []
+
+    asyncio.run(_run())
+
+
+def test_watch_event_ignores_image_files(tmp_path: Path) -> None:
+    async def _run() -> None:
+        class _ConfigService:
+            async def is_path_excluded(self, path: str) -> bool:
+                return False
+
+        class _ParseService:
+            def __init__(self) -> None:
+                self.refreshed: list[str] = []
+
+            async def refresh_file(self, filepath: str, watch_id: int) -> None:
+                self.refreshed.append(filepath)
+
+        parse_svc = _ParseService()
+        watch_loop = WatchLoop(
+            db=SimpleNamespace(),
+            config_svc=_ConfigService(),
+            parse_svc=parse_svc,
+            scan_interval_sec=300,
+        )
+        image_file = tmp_path / "scan.png"
+        image_file.write_bytes(b"png-bytes")
+
+        await watch_loop._handle_event(str(image_file), watch_id=1)
 
         assert parse_svc.refreshed == []
 
