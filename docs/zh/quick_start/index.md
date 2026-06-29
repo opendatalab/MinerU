@@ -33,7 +33,7 @@
     <tr>
       <th rowspan="2" style="text-align:center; vertical-align:middle;">解析后端</th>
       <th rowspan="2" style="text-align:center; vertical-align:middle;">pipeline</th>
-      <th colspan="2" style="text-align:center;">*-auto-engine</th>
+      <th colspan="2" style="text-align:center;">*-engine</th>
       <th colspan="2" style="text-align:center;">*-http-client</th>
     </tr>
     <tr>
@@ -52,8 +52,11 @@
     </tr> 
     <tr>
       <th>精度指标<sup>1</sup></th>
-      <td style="text-align:center;">85+</td>
-      <td colspan="4" style="text-align:center;">95+</td>
+      <td style="text-align:center;">85.75</td>
+      <td style="text-align:center;">95.39（high）<br>95.26（medium）</td>
+      <td style="text-align:center;">95.30</td>
+      <td style="text-align:center;">95.39（high）<br>95.26（medium）</td>
+      <td style="text-align:center;">95.30</td>
     </tr>
     <tr>
       <th>操作系统</th>
@@ -73,8 +76,7 @@
     <tr>
       <th>显存最低要求</th>
       <td style="text-align:center;">4GB</td>
-      <td style="text-align:center;">8GB</td>
-      <td style="text-align:center;">8GB</td>
+      <td colspan="2" style="text-align:center;">8GB</td>
       <td style="text-align:center;">2GB</td>
     </tr>
     <tr>
