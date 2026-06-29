@@ -183,6 +183,37 @@ def test_search_results_render_as_list_without_table(monkeypatch: Any) -> None:
     assert not hasattr(printed[0], "columns")
 
 
+def test_search_result_snippet_preserves_fts_match_after_long_prefix(monkeypatch: Any) -> None:
+    printed: list[Any] = []
+
+    class _Console:
+        def print(self, item: Any, *args: Any, **kwargs: Any) -> None:
+            printed.append(item)
+
+    monkeypatch.setattr(output_mod, "console", _Console())
+
+    output_mod.format_search_results(
+        {
+            "total": 1,
+            "results": [
+                {
+                    "filename": "deepseek.pdf",
+                    "tier": "flash",
+                    "snippet": (
+                        "...on each node. Under this constraint, our MoE training framework can nearly "
+                        "achieve full computation-communication overlap. <mark>Token</mark> <mark>Dropping</mark>"
+                    ),
+                    "paths": ["/tmp/deepseek.pdf"],
+                }
+            ],
+        }
+    )
+
+    rendered = str(printed[0])
+    assert "<mark>Token</mark>" in rendered
+    assert "<mark>Dropping</mark>" in rendered
+
+
 def test_server_status_renders_separate_recent_log_panels(monkeypatch: Any) -> None:
     printed: list[Any] = []
     panels: list[dict[str, Any]] = []

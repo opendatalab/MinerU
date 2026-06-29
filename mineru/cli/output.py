@@ -67,7 +67,7 @@ def _format_result_path(paths: Any) -> str:
 
 
 def _format_snippet(snippet: Any) -> str:
-    return str(snippet or "").replace("\r\n", "\n").replace("\r", "\n").replace("\n", "  ")[:80]
+    return str(snippet or "").replace("\r\n", "\n").replace("\r", "\n").replace("\n", "  ")
 
 
 # ── parse ──────────────────────────────────────────────────────
