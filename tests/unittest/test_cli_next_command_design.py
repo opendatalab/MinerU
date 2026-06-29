@@ -465,6 +465,87 @@ def test_parse_next_marker_escapes_double_quotes_in_path() -> None:
     assert shlex.split(command) == ["mineru", "parse", path, "--pages", "7~10"]
 
 
+def test_parse_next_marker_preserves_explicit_parse_context(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 90
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            assert request.tier == "flash"
+            assert request.remote is True
+            return ParseResponse(sha256="a" * 64, tier="flash", page_range="1~10", status="done", cache_hit=True)
+
+        def get_doc_content(self, *args: Any, **kwargs: Any) -> DocContentResponse:
+            assert kwargs["limit"] == 30000
+            return DocContentResponse(
+                sha256="a" * 64,
+                short_id="aaaaaaa",
+                tier="flash",
+                format="markdown",
+                content="parsed",
+                request_scope=ContentRequestScope(page_range="1~10", limit=30000),
+                next_request=ContentNextRequest(page_range="11~20"),
+            )
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["parse", str(source), "--tier", "flash", "--remote", "--limit", "30000"])
+
+    assert result.exit_code == 0
+    marker = result.output.strip().splitlines()[-1]
+    command = marker.removeprefix("<!-- Next: ").removesuffix(" -->")
+    assert shlex.split(command) == [
+        "mineru",
+        "parse",
+        str(source.resolve()),
+        "--tier",
+        "flash",
+        "--remote",
+        "--limit",
+        "30000",
+        "--pages",
+        "11~20",
+    ]
+
+
+def test_parse_next_marker_omits_default_parse_context(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 90
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            assert request.tier is None
+            assert request.remote is False
+            return ParseResponse(sha256="a" * 64, tier="standard", page_range="1~10", status="done", cache_hit=True)
+
+        def get_doc_content(self, *args: Any, **kwargs: Any) -> DocContentResponse:
+            assert kwargs["limit"] == 30000
+            return DocContentResponse(
+                sha256="a" * 64,
+                short_id="aaaaaaa",
+                tier="standard",
+                format="markdown",
+                content="parsed",
+                request_scope=ContentRequestScope(page_range="1~10", limit=30000),
+                next_request=ContentNextRequest(page_range="11~20"),
+            )
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["parse", str(source)])
+
+    assert result.exit_code == 0
+    marker = result.output.strip().splitlines()[-1]
+    command = marker.removeprefix("<!-- Next: ").removesuffix(" -->")
+    assert shlex.split(command) == ["mineru", "parse", str(source.resolve()), "--pages", "11~20"]
+
+
 def test_parse_json_no_wait_wraps_parse_and_null_content(monkeypatch: Any, tmp_path: Path) -> None:
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")

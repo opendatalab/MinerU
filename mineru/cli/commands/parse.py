@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from typing import Literal
 
+import click
 import typer
 
 from ...errors import MineruError
@@ -66,6 +67,13 @@ def _validate_page_range_input(page_range: str | None) -> None:
         raise MineruError("page_range_invalid", f"Invalid page range: {page_range}", "pages") from None
 
 
+def _option_was_explicit(option_name: str) -> bool:
+    ctx = click.get_current_context(silent=True)
+    if ctx is None:
+        return False
+    return ctx.get_parameter_source(option_name) == click.core.ParameterSource.COMMANDLINE
+
+
 def parse_cmd(
     path: str = typer.Argument(..., help="Path to the document file"),
     tier: Tier | None = typer.Option(None, "--tier", help="Parse tier: flash, standard, pro (default: server decides)"),
@@ -116,6 +124,9 @@ def parse_cmd(
     req_tier = result.tier
     status = result.status
     wait_parse_ids = result.wait_parse_ids
+    next_marker_tier = tier if _option_was_explicit("tier") else None
+    next_marker_limit = limit if _option_was_explicit("limit") else None
+    next_marker_remote = remote if _option_was_explicit("remote") else False
 
     # cached
     if status == "done":
@@ -131,6 +142,9 @@ def parse_cmd(
             format=format,
             no_marker=no_marker,
             source_path=file_path,
+            next_marker_tier=next_marker_tier,
+            next_marker_limit=next_marker_limit,
+            next_marker_remote=next_marker_remote,
         )
         return
 
@@ -177,6 +191,9 @@ def parse_cmd(
                 format=format,
                 no_marker=no_marker,
                 source_path=file_path,
+                next_marker_tier=next_marker_tier,
+                next_marker_limit=next_marker_limit,
+                next_marker_remote=next_marker_remote,
             )
             return
         if st == "failed":
@@ -230,6 +247,9 @@ def _output_parse_result(
     format: str = "markdown",
     no_marker: bool = False,
     source_path: str | None = None,
+    next_marker_tier: Tier | None = None,
+    next_marker_limit: int | None = None,
+    next_marker_remote: bool = False,
 ) -> None:
     """Fetch and output parsed content for a parse command."""
     sha256 = parse_result.sha256
@@ -270,7 +290,17 @@ def _output_parse_result(
         if json_mode:
             _print_parse_json_response(parse_result, content)
             return
-        output_doc_content_response(content, json_mode=json_mode, output=None, source_path=source_path, read_mode=False, no_marker=no_marker)
+        output_doc_content_response(
+            content,
+            json_mode=json_mode,
+            output=None,
+            source_path=source_path,
+            read_mode=False,
+            no_marker=no_marker,
+            next_marker_tier=next_marker_tier,
+            next_marker_limit=next_marker_limit,
+            next_marker_remote=next_marker_remote,
+        )
     except typer.Exit:
         raise
     except Exception as exc:
@@ -322,6 +352,9 @@ def output_doc_content_response(
     source_path: str | None,
     read_mode: bool,
     no_marker: bool,
+    next_marker_tier: Tier | None = None,
+    next_marker_limit: int | None = None,
+    next_marker_remote: bool = False,
 ) -> None:
     output_path = _ensure_output_parent(output)
     if json_mode and output_path and output_path != "-":
@@ -356,7 +389,17 @@ def output_doc_content_response(
         print_success(f"Written to {output_path}")
         return
     if content.next_request and not no_marker:
-        marker = _read_next_marker(content.next_request) if read_mode else _parse_next_marker(source_path, content.next_request)
+        marker = (
+            _read_next_marker(content.next_request)
+            if read_mode
+            else _parse_next_marker(
+                source_path,
+                content.next_request,
+                tier=next_marker_tier,
+                limit=next_marker_limit,
+                remote=next_marker_remote,
+            )
+        )
         if marker:
             print(_append_next_marker(content.content, marker))
             return
@@ -382,10 +425,23 @@ def _append_next_marker(content: str, marker: str) -> str:
     return f"{content}{separator}{marker}"
 
 
-def _parse_next_marker(path: str | None, next_request: ContentNextRequest) -> str | None:
+def _parse_next_marker(
+    path: str | None,
+    next_request: ContentNextRequest,
+    *,
+    tier: Tier | None = None,
+    limit: int | None = None,
+    remote: bool = False,
+) -> str | None:
     if not path:
         return None
     parts = ["mineru", "parse", path]
+    if tier:
+        parts.extend(["--tier", tier])
+    if remote:
+        parts.append("--remote")
+    if limit is not None:
+        parts.extend(["--limit", str(limit)])
     if next_request.page_range:
         parts.extend(["--pages", next_request.page_range])
     if next_request.after:
