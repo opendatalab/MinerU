@@ -645,7 +645,7 @@ def test_remap_api_result_pages_refreshes_attached_export_cache() -> None:
 
     _remap_api_result_pages_to_page_range(result, "5")
 
-    assert result.to_export_dict()["pages"][0]["page_idx"] == 4
+    assert result.to_dict()["pages"][0]["page_idx"] == 4
     assert result.images() == {"images/figure.png": b"figure-bytes"}
 
 

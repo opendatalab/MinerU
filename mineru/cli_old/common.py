@@ -335,7 +335,7 @@ def _process_output(
         )
 
     if f_dump_middle_json:
-        dump_dict = export_result.to_export_dict()
+        dump_dict = export_result.to_dict()
         dump_dict["_backend"] = backend
         dump_dict["_version_name"] = __version__
         md_writer.write_string(

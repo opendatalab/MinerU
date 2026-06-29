@@ -95,10 +95,6 @@ class ParseResult:
         self._append_private_pdf_page_mapping(payload)
         return payload
 
-    def to_export_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
-        """兼容旧调用名；当前 pages 已经是 public clean middle_json。"""
-        return self.to_dict(skip_defaults=skip_defaults)
-
     @staticmethod
     def _append_root_backend(payload: dict[str, Any], pages: list[PageInfo]) -> None:
         """在 envelope 级别保存统一 backend，避免 public page 字段暴露私有属性。"""
@@ -125,10 +121,6 @@ class ParseResult:
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=4)
 
-    def to_export_json(self) -> str:
-        """兼容旧调用名；当前与 to_json 输出一致。"""
-        return self.to_json()
-
     def _public_render_pages(self) -> list[PageInfo]:
         """返回 public 渲染页；图片载荷已在 middle_json 生成阶段外置。"""
         return self.pages
@@ -144,7 +136,7 @@ class ParseResult:
 
     def save(self, writer: Any) -> None:
         writer.write_string("markdown.md", self.markdown())
-        writer.write_string("middle_json.json", self.to_export_json())
+        writer.write_string("middle_json.json", self.to_json())
 
         writer.write_string(
             "content_list.json",

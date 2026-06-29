@@ -845,7 +845,7 @@ class ParseService:
             return False
         await self._record_execute(execute_start_ms, tier=tier, server=server_dim, status="succeeded")
 
-        export_payload = result.to_export_dict(skip_defaults=True)
+        export_payload = result.to_dict(skip_defaults=True)
         new_pages = export_payload["pages"]
         if not new_pages:
             await self._fail_task(task["id"], "parse_empty", "Parse completed but returned no pages")

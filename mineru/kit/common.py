@@ -147,7 +147,7 @@ def save_parse_result(result: ParseResult, dest: Path, format: KitFormat) -> Non
         _write_image_sidecars(dest.parent, result.images())
         return
     if format == "middle_json":
-        _write_utf8_text(dest, result.to_export_json())
+        _write_utf8_text(dest, result.to_json())
         _write_image_sidecars(dest.parent, result.images())
         return
     if format == "zip":

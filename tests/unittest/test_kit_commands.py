@@ -355,7 +355,7 @@ def test_parse_single_file_middle_json_writes_image_sidecars(
     source.write_bytes(b"%PDF-1.7\n")
 
     class _Result:
-        def to_export_json(self) -> str:
+        def to_json(self) -> str:
             """返回带图片引用的 public middle_json。"""
             return '{"pages":[{"para_blocks":[{"lines":[{"spans":[{"image_path":"figure.png"}]}]}]}]}'
 
@@ -388,7 +388,7 @@ def test_parse_single_file_middle_json_rejects_parent_sidecar_paths(
     source.write_bytes(b"%PDF-1.7\n")
 
     class _Result:
-        def to_export_json(self) -> str:
+        def to_json(self) -> str:
             """返回引用逃逸路径的 public middle_json。"""
             return '{"pages":[]}'
 
@@ -419,7 +419,7 @@ def test_parse_single_file_middle_json_rejects_absolute_sidecar_paths(
     source.write_bytes(b"%PDF-1.7\n")
 
     class _Result:
-        def to_export_json(self) -> str:
+        def to_json(self) -> str:
             """返回普通 public middle_json 内容，重点验证 sidecar 路径。"""
             return '{"pages":[]}'
 
@@ -449,7 +449,7 @@ def test_parse_single_file_middle_json_rejects_windows_rooted_sidecar_paths(
     source.write_bytes(b"%PDF-1.7\n")
 
     class _Result:
-        def to_export_json(self) -> str:
+        def to_json(self) -> str:
             """返回普通 public middle_json 内容，重点验证 Windows 路径。"""
             return '{"pages":[]}'
 

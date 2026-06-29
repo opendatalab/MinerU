@@ -421,7 +421,7 @@ def test_parse_result_public_outputs_use_top_level_image_cache() -> None:
             "markdown": result.markdown(),
             "content_list": result.content_list(),
             "structured_content": result.structured_content(),
-            "middle_json": result.to_export_dict(),
+            "middle_json": result.to_dict(),
             "images": sorted(result.images()),
         },
         ensure_ascii=False,
@@ -441,7 +441,7 @@ def test_parse_result_export_pages_returns_defensive_copy_from_cache() -> None:
 
     second_export = result.export_pages()
     second_content = second_export[0].para_blocks[0].lines[0].spans[0].content
-    exported_json = json.dumps(result.to_export_dict(), ensure_ascii=False)
+    exported_json = json.dumps(result.to_dict(), ensure_ascii=False)
 
     assert "mutated by caller" not in second_content
     assert "mutated by caller" not in exported_json
@@ -458,7 +458,7 @@ def test_parse_result_export_rewrites_inline_table_base64_images() -> None:
     images = result.images()
     exported_page = result.export_pages()[0]
     exported_span = exported_page.para_blocks[0].lines[0].spans[0]
-    exported_json = json.dumps(result.to_export_dict(), ensure_ascii=False)
+    exported_json = json.dumps(result.to_dict(), ensure_ascii=False)
 
     assert list(images.values()) == [img_bytes]
     assert inline_image not in exported_json
