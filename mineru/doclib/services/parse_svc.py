@@ -16,7 +16,6 @@ from urllib.parse import urlparse
 from ...errors import MineruError
 from ...parser.base import ParseResult
 from ...types import TIER_ORDER, PageInfo, Tier
-from ...utils.image_payload import parse_image_data_uri
 from ..constants import ALLOWED_EXTENSIONS, TEXT_EXTENSIONS, is_office_temp_lock_file
 from ..core.db import DatabaseManager
 from ..core.file_io import FileStat, MetadataExtractionError, compute_sha256, extract_metadata, get_file_stat
@@ -1322,28 +1321,9 @@ def _write_cached_image_sidecars(image_dir: str, images: dict[str, bytes]) -> No
         sidecar_path.write_bytes(image_bytes)
 
 
-def _restore_missing_image_sidecars(page: PageInfo, image_dir: str) -> None:
-    """读取历史缓存时先找 image_path 文件，缺失时再从 image_base64 补写同名 sidecar。"""
-    for block_list in (page.preproc_blocks, page.para_blocks, page.discarded_blocks):
-        for block in block_list:
-            for span in block.all_spans():
-                sidecar_path = resolve_image_sidecar_path(image_dir, span.image_path)
-                if sidecar_path is None or sidecar_path.is_file() or not span.image_base64:
-                    continue
-                parsed = parse_image_data_uri(span.image_base64)
-                if parsed is None:
-                    continue
-                try:
-                    sidecar_path.parent.mkdir(parents=True, exist_ok=True)
-                    sidecar_path.write_bytes(parsed[0])
-                except OSError:
-                    continue
-
-
 def load_pages_from_done_batches(data_dir: str, sha256: str, tier: Tier, done_rows: Sequence[ParseBatchRow]) -> list[PageInfo]:
     """Load valid done JSON batches and keep the newest page for duplicate page_idx values."""
     pages_by_page_idx: dict[int, PageInfo] = {}
-    image_dir = parse_image_sidecar_dir(data_dir, sha256, tier)
     for row in reversed(done_rows):
         fpath = parse_batch_json_path(data_dir, sha256, tier, row["page_range"], row["done_at"])
         if not os.path.isfile(fpath):
@@ -1353,7 +1333,6 @@ def load_pages_from_done_batches(data_dir: str, sha256: str, tier: Tier, done_ro
                 data = json.load(f)
             parse_result = ParseResult.from_dict(data)
             for page in parse_result.pages:
-                _restore_missing_image_sidecars(page, image_dir)
                 pages_by_page_idx[page.page_idx] = page
         except Exception:
             pass

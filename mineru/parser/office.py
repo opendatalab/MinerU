@@ -7,6 +7,7 @@ from typing import Any
 
 from .base import DocumentParser, ParseResult
 from ..types import PageInfo
+from ..utils.image_payload import ImagePayloadCache
 
 
 class OfficeBaseParser(DocumentParser, ABC):
@@ -28,18 +29,21 @@ class OfficeBaseParser(DocumentParser, ABC):
 
         file_name = path.stem
         file_bytes = path.read_bytes()
-        middle_json, model_output = self._analyze_fn(file_bytes)
-        return self._build_result(middle_json, file_name, model_output)
+        image_cache = ImagePayloadCache()
+        middle_json, model_output = self._analyze_fn(file_bytes, image_cache=image_cache)
+        return self._build_result(middle_json, file_name, model_output, image_cache)
 
     def _build_result(
         self,
         middle_json: list[PageInfo],
         file_name: str,
         model_output: Any = None,
+        image_cache: ImagePayloadCache | None = None,
     ) -> ParseResult:
         return ParseResult(
             pages=middle_json,
             _model_output=model_output if self.return_model_output else None,
+            _image_cache=image_cache,
         )
 
 

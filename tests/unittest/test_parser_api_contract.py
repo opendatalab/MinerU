@@ -27,6 +27,7 @@ from mineru.parser.api_server import (
     main,
 )
 from mineru.types import Block, Line, PageInfo, Span
+from mineru.utils.image_payload import ImagePayloadCache
 
 runner = CliRunner()
 
@@ -396,8 +397,9 @@ def test_api_server_rendered_outputs_store_image_sidecars(
     output_attr: str,
 ) -> None:
     img_bytes = b"rendered-image-bytes"
-    image_base64 = "data:image/png;base64,cmVuZGVyZWQtaW1hZ2UtYnl0ZXM="
-    span = Span(type="image", bbox=(0, 0, 10, 10), image_base64=image_base64)
+    image_cache = ImagePayloadCache()
+    image_path = image_cache.register_bytes(img_bytes, "png", image_path="rendered.png")
+    span = Span(type="image", bbox=(0, 0, 10, 10), image_path=image_path)
     line = Line(bbox=(0, 0, 10, 10), spans=[span])
     block = Block(index=0, type="image", bbox=(0, 0, 10, 10), lines=[line])
     parse_result = ParseResult(
@@ -408,7 +410,8 @@ def test_api_server_rendered_outputs_store_image_sidecars(
                 para_blocks=[block],
                 _backend="pipeline",
             )
-        ]
+        ],
+        _image_cache=image_cache,
     )
 
     async def fake_parse_async(*args, **kwargs) -> ParseResult:

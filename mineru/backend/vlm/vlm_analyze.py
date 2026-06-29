@@ -21,6 +21,7 @@ from ...types import PageInfo
 from ...utils.check_sys_env import is_mac_os_version_supported
 from ...utils.config_reader import get_device, get_processing_window_size
 from ...utils.enum_class import ImageType
+from ...utils.image_payload import ImagePayloadCache
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
 from ...utils.pdf_document import PDFDocument
 from ...utils.pdf_image_tools import aio_load_images_from_pdf_bytes_range, load_images_from_pdf_bytes_range
@@ -453,6 +454,7 @@ def doc_analyze(
     server_url: str | None = None,
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
+    image_cache: ImagePayloadCache | None = None,
     **kwargs: Any,
 ) -> tuple[list[PageInfo], list[ExtractResult]]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
@@ -516,6 +518,7 @@ def doc_analyze(
                         page_start_index=window_start,
                         page_index_map=page_index_map,
                         progress_bar=progress_bar,
+                        image_cache=image_cache,
                     )
                     last_append_end_time = time.time()
                 finally:
@@ -553,6 +556,7 @@ async def aio_doc_analyze(
     server_url: str | None = None,
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
+    image_cache: ImagePayloadCache | None = None,
     **kwargs: Any,
 ) -> tuple[list[PageInfo], list[ExtractResult]]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
@@ -616,6 +620,7 @@ async def aio_doc_analyze(
                         page_start_index=window_start,
                         page_index_map=page_index_map,
                         progress_bar=progress_bar,
+                        image_cache=image_cache,
                     )
                     last_append_end_time = time.time()
                 finally:

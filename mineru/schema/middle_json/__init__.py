@@ -305,13 +305,13 @@ def _validate_span_content(span: Span, path: str, issues: list[ValidationIssue])
                 message="text span should provide content.",
             )
         )
-    elif span.type in IMAGE_SPAN_TYPES and not (span.image_path or span.image_base64):
+    elif span.type in IMAGE_SPAN_TYPES and not span.image_path:
         issues.append(
             ValidationIssue(
                 severity="warning",
                 code="span_image_missing",
                 path=path,
-                message="image span should provide image_path or image_base64.",
+                message="image span should provide image_path.",
             )
         )
     elif span.type in TABLE_SPAN_TYPES and not span.content:

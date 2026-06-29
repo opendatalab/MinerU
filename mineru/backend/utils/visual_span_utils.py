@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...types import Block, ContentType
+from ...utils.image_payload import ImagePayloadCache
 from ...utils.cut_image import cut_image_and_table
 from .para_block_utils import iter_block_spans
 
@@ -21,6 +22,7 @@ def cut_visual_spans_in_blocks(
     page_img_md5: str,
     page_index: int,
     scale: float = 2,
+    image_cache: ImagePayloadCache | None = None,
 ) -> None:
     """在最终 block tree 中裁剪视觉 span，避免 regroup/deepcopy 后 image_path 写回旧对象。"""
     for block in blocks:
@@ -32,4 +34,5 @@ def cut_visual_spans_in_blocks(
                     page_img_md5,
                     page_index,
                     scale=scale,
+                    image_cache=image_cache,
                 )

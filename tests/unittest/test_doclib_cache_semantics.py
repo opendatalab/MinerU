@@ -41,7 +41,7 @@ from mineru.parser import backend_for_tier, resolve_tier_and_backend
 from mineru.parser.base import ParseResult
 from mineru.schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
 from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span, Tier
-from mineru.utils.image_payload import image_bytes_to_data_uri
+from mineru.utils.image_payload import ImagePayloadCache
 
 
 class _Cursor:
@@ -219,12 +219,11 @@ def _write_batch(data_dir: Path, sha256: str, tier: Tier, page_range: str, done_
     path.write_text(json.dumps({"pages": json_pages}), encoding="utf-8")
 
 
-def _image_page(image_path: str, image_bytes: bytes = b"image-bytes") -> PageInfo:
+def _image_page(image_path: str) -> PageInfo:
     image_span = Span(
         type=ContentType.IMAGE,
         bbox=(1, 1, 20, 20),
         image_path=image_path,
-        image_base64=image_bytes_to_data_uri(image_bytes, "jpeg"),
     )
     body = Block(
         index=0,
@@ -234,6 +233,13 @@ def _image_page(image_path: str, image_bytes: bytes = b"image-bytes") -> PageInf
     )
     image_block = Block(index=0, type=BlockType.IMAGE, bbox=(1, 1, 20, 20), blocks=[body])
     return PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="vlm")
+
+
+def _image_result(image_path: str, image_bytes: bytes = b"image-bytes") -> ParseResult:
+    """构造带顶层图片缓存的 ParseResult，避免在 span 中保留 base64。"""
+    image_cache = ImagePayloadCache()
+    image_cache.register_bytes(image_bytes, "jpeg", image_path=image_path)
+    return ParseResult(pages=[_image_page(image_path)], _image_cache=image_cache)
 
 
 def test_load_pages_from_done_batches_keeps_newest_page_idx(tmp_path: Path) -> None:
@@ -2154,7 +2160,7 @@ def test_process_doc_writes_cached_image_sidecars(tmp_path: Path) -> None:
     service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
 
     async def _parse(file_row: dict, tier: Tier, page_range: str) -> ParseResult:
-        return ParseResult(pages=[_image_page("figures/cache-hit.jpg", b"fresh-image")])
+        return _image_result("figures/cache-hit.jpg", b"fresh-image")
 
     async def _skip_fts(*args: object, **kwargs: object) -> None:
         return None
@@ -2178,23 +2184,10 @@ def test_process_doc_writes_cached_image_sidecars(tmp_path: Path) -> None:
     assert "image_base64" not in image_span
 
 
-def test_load_pages_from_done_batches_restores_missing_image_sidecars_from_base64(tmp_path: Path) -> None:
-    sha256 = "d" * 64
-    tier = "standard"
-    page = _image_page("figures/recovered.jpg", b"legacy-image")
-    _write_batch(tmp_path, sha256, tier, "1", 1000, ParseResult([page]).to_dict(skip_defaults=True)["pages"])
-
-    loaded_pages = load_pages_from_done_batches(str(tmp_path), sha256, tier, [{"page_range": "1", "done_at": 1000}])
-
-    sidecar = tmp_path / "parsed" / sha256[:2] / sha256 / tier / "images" / "figures" / "recovered.jpg"
-    assert sidecar.read_bytes() == b"legacy-image"
-    assert loaded_pages[0].para_blocks[0].blocks[0].lines[0].spans[0].image_base64
-
-
 def test_load_pages_from_done_batches_keeps_existing_image_sidecar(tmp_path: Path) -> None:
     sha256 = "e" * 64
     tier = "standard"
-    page = _image_page("figures/existing.jpg", b"base64-image")
+    page = _image_page("figures/existing.jpg")
     _write_batch(tmp_path, sha256, tier, "1", 1000, ParseResult([page]).to_dict(skip_defaults=True)["pages"])
     sidecar = tmp_path / "parsed" / sha256[:2] / sha256 / tier / "images" / "figures" / "existing.jpg"
     sidecar.parent.mkdir(parents=True, exist_ok=True)
@@ -2208,7 +2201,7 @@ def test_load_pages_from_done_batches_keeps_existing_image_sidecar(tmp_path: Pat
 def test_progressive_markdown_uses_public_image_sidecar_prefix(tmp_path: Path) -> None:
     sha256 = "e" * 64
     tier = "standard"
-    page = _image_page("figures/rendered.jpg", b"image")
+    page = _image_page("figures/rendered.jpg")
     _write_batch(tmp_path, sha256, tier, "1", 1000, ParseResult([page]).to_dict(skip_defaults=True)["pages"])
     image_dir = tmp_path / "parsed" / sha256[:2] / sha256 / tier / "images"
     db = _FakeDB(

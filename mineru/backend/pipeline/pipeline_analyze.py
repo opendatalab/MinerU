@@ -12,6 +12,7 @@ from tqdm import tqdm
 
 from ...utils.config_reader import get_device, get_processing_window_size
 from ...utils.enum_class import ImageType
+from ...utils.image_payload import ImagePayloadCache
 from ...utils.model_utils import clean_memory, get_vram
 from ...utils.pdf_document import PDFDocument
 from ...utils.pdf_image_tools import load_images_from_pdf_bytes_range
@@ -148,11 +149,14 @@ def doc_analyze_streaming(
     table_enable: bool = True,
     client_side_output_generation: bool = False,
     page_index_map_list: list[list[int] | None] | None = None,
+    image_cache_list: list[ImagePayloadCache] | None = None,
 ) -> None:
     if len(pdf_bytes_list) != len(lang_list):
         raise ValueError("pdf_bytes_list and lang_list must have the same length")
     if page_index_map_list is not None and len(page_index_map_list) != len(pdf_bytes_list):
         raise ValueError("page_index_map_list must have the same length as pdf_bytes_list")
+    if image_cache_list is not None and len(image_cache_list) != len(pdf_bytes_list):
+        raise ValueError("image_cache_list must have the same length as pdf_bytes_list")
 
     doc_contexts = []
     try:
@@ -173,6 +177,7 @@ def doc_analyze_streaming(
                     "lang": lang,
                     "ocr_enable": _ocr_enable,
                     "page_index_map": page_index_map_list[doc_index] if page_index_map_list is not None else None,
+                    "image_cache": image_cache_list[doc_index] if image_cache_list is not None else None,
                     "closed": False,
                 }
             except Exception:
@@ -278,6 +283,7 @@ def doc_analyze_streaming(
                             model_list=context["model_list"],
                             page_index_map=context["page_index_map"],
                             progress_bar=progress_bar,
+                            image_cache=context["image_cache"],
                         )
                         result_offset += take_count
 

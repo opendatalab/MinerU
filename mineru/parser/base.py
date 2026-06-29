@@ -11,11 +11,7 @@ from typing import Any
 from ..render import render_content_list, render_markdown, render_structured_content
 from ..schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
 from ..types import PageInfo
-from ..utils.image_payload import (
-    image_path_from_data_uri,
-    parse_image_data_uri,
-    replace_inline_data_uri_sources,
-)
+from ..utils.image_payload import ImagePayloadCache
 from ..utils.pdf_document import PDFDocument
 
 _PDF_RETAINED_PAGE_INDICES_KEY = "_pdf_retained_page_indices"
@@ -45,10 +41,16 @@ class ParseResult:
     pages: list[PageInfo]
     _pdf_doc: PDFDocument | None = None
     _model_output: Any = None
-    _export_pages_cache: list[PageInfo] | None = None
-    _images_cache: dict[str, bytes] | None = None
+    _image_cache: ImagePayloadCache | dict[str, bytes] | None = None
     _retained_page_indices: list[int] | None = None
     _broken_page_indices: list[int] | None = None
+
+    def __post_init__(self) -> None:
+        """规范化顶层图片缓存，确保 public middle_json 不再从 span 携带图片字节。"""
+        if self._image_cache is None:
+            self._image_cache = ImagePayloadCache()
+        elif isinstance(self._image_cache, dict):
+            self._image_cache = ImagePayloadCache(self._image_cache)
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> ParseResult:
@@ -94,15 +96,8 @@ class ParseResult:
         return payload
 
     def to_export_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
-        """生成 public middle_json 视图：图片已落盘引用，base64 临时载荷不再输出。"""
-        export_pages = self._public_render_pages()
-        payload = {
-            "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
-            "pages": [page.to_dict(skip_defaults=skip_defaults) for page in export_pages],
-        }
-        self._append_root_backend(payload, export_pages)
-        self._append_private_pdf_page_mapping(payload)
-        return payload
+        """兼容旧调用名；当前 pages 已经是 public clean middle_json。"""
+        return self.to_dict(skip_defaults=skip_defaults)
 
     @staticmethod
     def _append_root_backend(payload: dict[str, Any], pages: list[PageInfo]) -> None:
@@ -131,13 +126,12 @@ class ParseResult:
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=4)
 
     def to_export_json(self) -> str:
-        """序列化导出 middle_json，供本地文件和 API 返回使用。"""
-        return json.dumps(self.to_export_dict(), ensure_ascii=False, indent=4)
+        """兼容旧调用名；当前与 to_json 输出一致。"""
+        return self.to_json()
 
     def _public_render_pages(self) -> list[PageInfo]:
-        """返回 public 渲染使用的导出页副本，避免 staged base64 载荷进入用户产物。"""
-        export_pages, _ = self._ensure_export_cache()
-        return export_pages
+        """返回 public 渲染页；图片载荷已在 middle_json 生成阶段外置。"""
+        return self.pages
 
     def markdown(self, *, add_markers: bool = False) -> str:
         return render_markdown(self._public_render_pages(), add_markers=add_markers)
@@ -171,66 +165,22 @@ class ParseResult:
             writer.write(img_path, img_bytes)
 
     def images(self) -> dict[str, bytes]:
-        _, images = self._ensure_export_cache()
-        return images
+        assert isinstance(self._image_cache, ImagePayloadCache)
+        return self._image_cache.images()
 
     def attach_export_images(self, images: dict[str, bytes]) -> None:
         """绑定 API sidecar 下载到的图片字节，供后续 images/save 统一写出。"""
-        self._export_pages_cache = deepcopy(self.pages)
-        self._images_cache = dict(images)
+        assert isinstance(self._image_cache, ImagePayloadCache)
+        self._image_cache.update(images)
 
     def refresh_export_cache(self, *, preserve_images: bool = False) -> None:
-        """调用方原地修改 pages 后刷新导出缓存；必要时保留已绑定的 sidecar 字节。"""
-        if preserve_images and self._images_cache is not None:
-            self._export_pages_cache = deepcopy(self.pages)
-            return
-        self._export_pages_cache = None
-        self._images_cache = None
+        """保留历史方法名；当前仅按需清空顶层图片缓存。"""
+        if not preserve_images:
+            self._image_cache = ImagePayloadCache()
 
     def export_pages(self) -> list[PageInfo]:
-        """返回可导出的页面副本：清理 base64，并把内联图片替换为本地路径。"""
-        export_pages, _ = self._ensure_export_cache()
-        return deepcopy(export_pages)
-
-    def _ensure_export_cache(self) -> tuple[list[PageInfo], dict[str, bytes]]:
-        """缓存 public 导出视图，避免多格式输出重复深拷贝和 base64 解码。"""
-        if self._export_pages_cache is None or self._images_cache is None:
-            export_pages, images = self._export_pages_and_images()
-            self._export_pages_cache = export_pages
-            self._images_cache = images
-        return self._export_pages_cache, self._images_cache
-
-    def _export_pages_and_images(self) -> tuple[list[PageInfo], dict[str, bytes]]:
-        """构造导出页面和图片字节映射，避免 ParseResult.save 再渲染 PDF 页面。"""
-        export_pages = deepcopy(self.pages)
-        images: dict[str, bytes] = {}
-        for page_info in export_pages:
-            for block_list in (page_info.preproc_blocks, page_info.para_blocks, page_info.discarded_blocks):
-                for block in block_list:
-                    self._prepare_block_images_for_export(block, images)
-        return export_pages, images
-
-    @staticmethod
-    def _prepare_block_images_for_export(block: Any, images: dict[str, bytes]) -> None:
-        """递归处理 block 内所有 span，将 base64 图片转为 image_path 引用。"""
-        for line in block.lines:
-            for span in line.spans:
-                ParseResult._prepare_span_images_for_export(span, images)
-        for child in block.blocks:
-            ParseResult._prepare_block_images_for_export(child, images)
-
-    @staticmethod
-    def _prepare_span_images_for_export(span: Any, images: dict[str, bytes]) -> None:
-        """处理单个 span 的图片载荷，保留路径字段并清理 base64 临时字段。"""
-        if span.image_base64:
-            parsed = parse_image_data_uri(span.image_base64)
-            img_path = span.image_path or image_path_from_data_uri(span.image_base64)
-            if parsed is not None and img_path:
-                images[img_path] = parsed[0]
-                span.image_path = img_path
-            span.image_base64 = ""
-        if span.content:
-            span.content = replace_inline_data_uri_sources(span.content, images)
+        """返回页面树副本，避免调用方修改污染 ParseResult.pages。"""
+        return deepcopy(self.pages)
 
 
 class DocumentParser(ABC):

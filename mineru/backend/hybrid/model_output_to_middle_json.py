@@ -8,6 +8,7 @@ from typing import Any
 from ...types import Block, BlockType, PageInfo
 from ...utils.config_reader import get_table_enable
 from ...utils.hash_utils import bytes_md5
+from ...utils.image_payload import ImagePayloadCache
 from ...utils.pdf_document import PDFPage
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from ..pipeline.model_init import MineruHybridModel
@@ -45,6 +46,7 @@ def blocks_to_page_info(
     page_index: int,
     _ocr_enable: bool,
     _vlm_ocr_enable: bool,
+    image_cache: ImagePayloadCache | None = None,
 ) -> PageInfo:
     """将blocks转换为页面信息"""
 
@@ -104,6 +106,7 @@ def blocks_to_page_info(
         page_img_md5,
         page_index,
         scale=scale,
+        image_cache=image_cache,
     )
 
     page_info = PageInfo(

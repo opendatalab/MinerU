@@ -6,14 +6,18 @@ from collections import defaultdict
 from typing import Any
 
 from ...types import Block, BlockType, PageInfo
-from ...utils.image_payload import image_path_from_data_uri
+from ...utils.image_payload import ImagePayloadCache
 from .office_magic_model import MagicModel
 
 
-def blocks_to_page_info(page_blocks: list[dict[str, Any]], page_index: int) -> PageInfo:
+def blocks_to_page_info(
+    page_blocks: list[dict[str, Any]],
+    page_index: int,
+    image_cache: ImagePayloadCache | None = None,
+) -> PageInfo:
     """将blocks转换为页面信息"""
 
-    magic_model = MagicModel(page_blocks)
+    magic_model = MagicModel(page_blocks, image_cache)
     image_blocks = magic_model.get_image_blocks()
     table_blocks = magic_model.get_table_blocks()
     chart_blocks = magic_model.get_chart_blocks()
@@ -45,20 +49,7 @@ def blocks_to_page_info(page_blocks: list[dict[str, Any]], page_index: int) -> P
         page_idx=page_index,
         _backend="office",
     )
-    _populate_image_paths_from_base64(page_info)
     return page_info
-
-
-def _populate_image_paths_from_base64(page_info: PageInfo) -> None:
-    """为 Office 内联 base64 图片生成稳定 image_path，保留图片字节给后续统一写出。"""
-    for block_list in (page_info.para_blocks, page_info.discarded_blocks):
-        for block in block_list:
-            for span in block.all_spans():
-                if span.image_path or not span.image_base64:
-                    continue
-                image_path = image_path_from_data_uri(span.image_base64)
-                if image_path is not None:
-                    span.image_path = image_path
 
 
 def _extract_section_parts_from_content(content: str, level: int) -> list[int] | None:
@@ -118,10 +109,13 @@ def _link_index_entries_by_anchor(middle_json: list[PageInfo]) -> None:
                 text_block.anchor = anchor
 
 
-def result_to_middle_json(model_output_blocks_list: list[list[dict[str, Any]]]) -> list[PageInfo]:
+def result_to_middle_json(
+    model_output_blocks_list: list[list[dict[str, Any]]],
+    image_cache: ImagePayloadCache | None = None,
+) -> list[PageInfo]:
     middle_json: list[PageInfo] = []
     for index, page_blocks in enumerate(model_output_blocks_list):
-        page_info = blocks_to_page_info(page_blocks, index)
+        page_info = blocks_to_page_info(page_blocks, index, image_cache=image_cache)
         middle_json.append(page_info)
 
     section_counters: dict[int, int] = defaultdict(int)

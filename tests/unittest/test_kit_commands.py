@@ -312,7 +312,7 @@ def test_parse_rejects_file_output_for_directory_input(tmp_path: Path) -> None:
     result = runner.invoke(app, ["parse", str(source_dir), "-o", str(tmp_path / "out.md")])
 
     assert result.exit_code == 1
-    assert "directory path" in result.output
+    assert "directory path" in " ".join(result.output.split())
 
 
 def test_parse_single_file_markdown(monkeypatch: Any, tmp_path: Path) -> None:

@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup, Tag
 
 from .base import DocumentParser, ParseResult
 from ..types import EMPTY_BBOX, Block, Line, PageInfo, Span
+from ..utils.image_payload import ImagePayloadCache
 
 
 class HtmlParser(DocumentParser):
@@ -25,11 +26,13 @@ class HtmlParser(DocumentParser):
 
         body = soup.body or soup
         blocks: list[Block] = []
-        _walk_elements(body, blocks)
+        image_cache = ImagePayloadCache()
+        _walk_elements(body, blocks, image_cache)
         _assign_block_indexes(blocks)
 
         return ParseResult(
             pages=[PageInfo(page_idx=0, para_blocks=blocks)],
+            _image_cache=image_cache,
         )
 
 
@@ -66,13 +69,13 @@ def _line_with_spans(spans: list[Span]) -> Line:
     return Line(bbox=EMPTY_BBOX, spans=spans)
 
 
-def _build_span(element: Tag) -> Span:
+def _build_span(element: Tag, image_cache: ImagePayloadCache) -> Span:
     content = _extract_text(element)
     img = _find_image_element(element)
     if img is not None:
         src: str = img.get("src", "") or ""
         if src.startswith("data:image"):
-            return Span(type="image", bbox=EMPTY_BBOX, image_base64=src, content=content)
+            return Span(type="image", bbox=EMPTY_BBOX, image_path=image_cache.register_data_uri(src), content=content)
         return Span(type="image", bbox=EMPTY_BBOX, image_path=src, content=content)
     return Span(type="text", bbox=EMPTY_BBOX, content=content)
 
@@ -82,7 +85,7 @@ def _append_block(blocks: list[Block], block: Block) -> None:
     blocks.append(block)
 
 
-def _walk_elements(parent: Tag, blocks: list[Block]) -> None:  # type: ignore[type-arg]
+def _walk_elements(parent: Tag, blocks: list[Block], image_cache: ImagePayloadCache) -> None:  # type: ignore[type-arg]
     for child in parent.children:
         if not isinstance(child, Tag):
             text = str(child).strip()
@@ -98,50 +101,50 @@ def _walk_elements(parent: Tag, blocks: list[Block]) -> None:  # type: ignore[ty
         tag_name = child.name
 
         if tag_name in _HEADING_TAGS:
-            _append_block(blocks, _build_heading(child))
+            _append_block(blocks, _build_heading(child, image_cache))
         elif tag_name in ("p", "span"):
-            _append_block(blocks, _build_text_block(child))
+            _append_block(blocks, _build_text_block(child, image_cache))
         elif tag_name in _BLOCK_CONTAINER_TAGS:
-            _walk_elements(child, blocks)
+            _walk_elements(child, blocks, image_cache)
         elif tag_name in ("ul", "ol"):
-            _append_block(blocks, _build_list(child))
+            _append_block(blocks, _build_list(child, image_cache))
         elif tag_name == "table":
-            _append_block(blocks, _build_table(child))
+            _append_block(blocks, _build_table(child, image_cache))
         elif tag_name == "pre":
             _append_block(blocks, _build_code(child))
         elif tag_name in ("img",):
-            _append_block(blocks, _build_image_block(child))
+            _append_block(blocks, _build_image_block(child, image_cache))
         elif tag_name in ("br",):
             pass
         else:
             # fallback: treat unknown inline tags as text
             if child.get_text(strip=True):
-                _append_block(blocks, _build_text_block(child))
+                _append_block(blocks, _build_text_block(child, image_cache))
 
 
-def _build_heading(element: Tag) -> Block:
+def _build_heading(element: Tag, image_cache: ImagePayloadCache) -> Block:
     level = _heading_level(element.name)
     return Block(
         index=0,
         type="title",
         bbox=EMPTY_BBOX,
         level=level,
-        lines=[_line_with_spans([_build_span(element)])],
+        lines=[_line_with_spans([_build_span(element, image_cache)])],
     )
 
 
-def _build_text_block(element: Tag) -> Block:
+def _build_text_block(element: Tag, image_cache: ImagePayloadCache) -> Block:
     # Collapse nested inline children into a single span.
     return Block(
         index=0,
         type="text",
         bbox=EMPTY_BBOX,
-        lines=[_line_with_spans([_build_span(element)])],
+        lines=[_line_with_spans([_build_span(element, image_cache)])],
     )
 
 
-def _build_image_block(element: Tag) -> Block:
-    span = _build_span(element)
+def _build_image_block(element: Tag, image_cache: ImagePayloadCache) -> Block:
+    span = _build_span(element, image_cache)
     return Block(
         index=0,
         type="image",
@@ -150,11 +153,11 @@ def _build_image_block(element: Tag) -> Block:
     )
 
 
-def _build_list(element: Tag) -> Block:
+def _build_list(element: Tag, image_cache: ImagePayloadCache) -> Block:
     items: list[Block] = []
     for li in element.find_all("li", recursive=False):
         nested_blocks: list[Block] = []
-        _walk_elements(li, nested_blocks)
+        _walk_elements(li, nested_blocks, image_cache)
         items.append(Block(
             index=len(items),
             type="list_item",
@@ -165,12 +168,16 @@ def _build_list(element: Tag) -> Block:
     return Block(index=0, type="list", bbox=EMPTY_BBOX, blocks=items)
 
 
-def _build_table(element: Tag) -> Block:
+def _build_table(element: Tag, image_cache: ImagePayloadCache) -> Block:
     return Block(
         index=0,
         type="table",
         bbox=EMPTY_BBOX,
-        lines=[_line_with_spans([Span(type="table", bbox=EMPTY_BBOX, content=str(element))])],
+        lines=[
+            _line_with_spans(
+                [Span(type="table", bbox=EMPTY_BBOX, content=image_cache.replace_html_data_uri_sources(str(element)))]
+            )
+        ],
     )
 
 

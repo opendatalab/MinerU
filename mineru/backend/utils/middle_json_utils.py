@@ -11,6 +11,7 @@ import copy
 from typing import Any, Callable, Iterator, TypeVar, Union
 
 from ...types import Block, PageInfo, Span
+from ...utils.image_payload import ImagePayloadCache
 from ...utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from ...utils.page_index import resolve_output_page_idx
 from ...utils.pdf_document import PDFDocument, PDFPage
@@ -33,6 +34,7 @@ def append_pages(
     page_start_index: int = 0,
     page_index_map: list[int] | None = None,
     progress_bar: Any = None,
+    image_cache: ImagePayloadCache | None = None,
     **kwargs: Any,
 ) -> None:
     """Append per-page results to `middle_json` list.
@@ -46,7 +48,16 @@ def append_pages(
         output_page_idx = resolve_output_page_idx(physical_page_idx, page_index_map)
 
         pdf_page = pdf_doc[physical_page_idx]
-        page_info = page_cvt_fn(copy.deepcopy(page_data), image_dict, pdf_page, output_page_idx, **kwargs)
+        converter_kwargs = dict(kwargs)
+        if image_cache is not None:
+            converter_kwargs["image_cache"] = image_cache
+        page_info = page_cvt_fn(
+            copy.deepcopy(page_data),
+            image_dict,
+            pdf_page,
+            output_page_idx,
+            **converter_kwargs,
+        )
 
         if page_info is None:
             page_w, page_h = map(int, pdf_page.size)

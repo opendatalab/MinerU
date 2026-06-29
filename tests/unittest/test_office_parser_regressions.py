@@ -48,7 +48,7 @@ def test_office_two_layer_blocks_accept_block_dataclasses() -> None:
             Line(
                 bbox=EMPTY_BBOX,
                 spans=[
-                    Span(type=ContentType.IMAGE, bbox=EMPTY_BBOX, image_base64="data")
+                    Span(type=ContentType.IMAGE, bbox=EMPTY_BBOX, image_path="figure.png")
                 ],
             )
         ],
