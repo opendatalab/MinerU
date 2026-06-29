@@ -109,9 +109,10 @@ class CleanupService:
             raise InvalidRequestError("invalid_request", "Path is required.", "path")
 
         watches = cast(list[WatchTargetRow], await self.db.fetchall("SELECT * FROM watches WHERE enabled=1"))
-        _raise_if_watch_root(normalized, watches)
 
         file_ids = await self._forget_file_ids(normalized)
+        if _is_watch_root(normalized, watches) and file_ids:
+            raise InvalidRequestError("invalid_request", "Path is a configured watch root.", "path")
         matched_as = await self._forget_matched_as(normalized, file_ids)
         warnings = _forget_warnings(normalized, watches)
 
@@ -212,11 +213,12 @@ def _active_watch_warning(path: str, watches: list[WatchTargetRow]) -> str | Non
     return None
 
 
-def _raise_if_watch_root(path: str, watches: list[WatchTargetRow]) -> None:
-    """拒绝直接 forget 已配置的 watch root，避免用户误删持续扫描入口。"""
+def _is_watch_root(path: str, watches: list[WatchTargetRow]) -> bool:
+    """判断路径是否为 watch root，用于有实际匹配文件时保护扫描入口。"""
     for watch in watches:
         if _normalize_path(watch["path"]) == path:
-            raise InvalidRequestError("invalid_request", "Path is a configured watch root.", "path")
+            return True
+    return False
 
 
 def _forget_warnings(path: str, watches: list[WatchTargetRow]) -> list[str]:
