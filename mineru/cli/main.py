@@ -47,6 +47,7 @@ app = typer.Typer(
     cls=OrderedRootGroup,
     help="MinerU — your personal document center, built for agents",
     no_args_is_help=True,
+    add_completion=False,
 )
 
 

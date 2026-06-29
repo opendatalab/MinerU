@@ -28,6 +28,7 @@ app = typer.Typer(
     cls=OrderedRootGroup,
     help="MinerU Kit — parsing and service tools",
     no_args_is_help=True,
+    add_completion=False,
 )
 
 app.add_typer(models.app, name="models")

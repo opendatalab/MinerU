@@ -34,6 +34,21 @@ def test_kit_root_and_models_help() -> None:
     assert "router" in result.output
 
 
+def test_kit_root_help_hides_typer_completion_options() -> None:
+    result = runner.invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "--install-completion" not in result.output
+    assert "--show-completion" not in result.output
+
+
+def test_kit_root_show_completion_is_not_a_supported_option() -> None:
+    result = runner.invoke(app, ["--show-completion"])
+
+    assert result.exit_code != 0
+    assert "No such option" in result.output
+
+
 def test_kit_main_import_does_not_import_legacy_router() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     code = """

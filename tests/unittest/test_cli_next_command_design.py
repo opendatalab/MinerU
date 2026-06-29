@@ -90,6 +90,21 @@ def test_version_command_is_last_in_root_help() -> None:
     assert result.output.rfind("version") > result.output.rfind("cleanup")
 
 
+def test_root_help_hides_typer_completion_options() -> None:
+    result = runner.invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "--install-completion" not in result.output
+    assert "--show-completion" not in result.output
+
+
+def test_root_show_completion_is_not_a_supported_option() -> None:
+    result = runner.invoke(app, ["--show-completion"])
+
+    assert result.exit_code != 0
+    assert "No such option" in result.output
+
+
 def test_search_and_find_help_list_filter_values() -> None:
     search_result = runner.invoke(app, ["search", "--help"])
     find_result = runner.invoke(app, ["find", "--help"])
