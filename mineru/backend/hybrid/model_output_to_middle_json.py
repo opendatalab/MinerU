@@ -12,6 +12,7 @@ from ...utils.image_payload import ImagePayloadCache
 from ...utils.pdf_document import PDFPage
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from ..pipeline.model_init import MineruHybridModel
+from ..utils.formula_number import optimize_hybrid_formula_number_blocks
 from ..utils.middle_json_utils import apply_post_ocr
 from ..utils.para_block_utils import (
     build_para_blocks_from_preproc,
@@ -50,10 +51,14 @@ def blocks_to_page_info(
 ) -> PageInfo:
     """将blocks转换为页面信息"""
 
+    page_model_list = optimize_hybrid_formula_number_blocks(page_model_list)
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
     page_img_md5 = bytes_md5(page_pil_img.tobytes())
-    width, height = map(int, pdf_page.size)
+    page_size = getattr(pdf_page, "size", None)
+    if page_size is None and hasattr(pdf_page, "get_size"):
+        page_size = pdf_page.get_size()
+    width, height = map(int, page_size)
 
     magic_model = MagicModel(
         page_model_list,

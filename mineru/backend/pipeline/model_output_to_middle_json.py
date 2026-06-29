@@ -1,13 +1,13 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from typing import Any
 
-from ...types import Block, BlockType, ContentType, PageInfo, Span
+from ...types import BlockType, PageInfo
 from ...utils.hash_utils import bytes_md5
 from ...utils.image_payload import ImagePayloadCache
 from ...utils.page_index import resolve_output_page_idx
 from ...utils.pdf_document import PDFDocument, PDFPage
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from ..utils.char_utils import full_to_half
+from ..utils.formula_number import optimize_pipeline_formula_number_blocks
 from ..utils.middle_json_utils import append_pages, apply_post_ocr
 from ..utils.runtime_utils import cross_page_table_merge
 from ..utils.visual_span_utils import cut_visual_spans_in_blocks
@@ -94,69 +94,6 @@ def append_batch_results_to_middle_json(
     )
 
 
-def _extract_text_from_block(block: Block) -> str:
-    text_parts = []
-    for line in block.lines:
-        for span in line.spans:
-            if span.type == ContentType.TEXT:
-                text_parts.append(span.content)
-    return "".join(text_parts).strip()
-
-
-def _normalize_formula_tag_content(tag_content: str) -> str:
-    tag_content = full_to_half(tag_content.strip())
-    if tag_content.startswith("("):
-        tag_content = tag_content[1:].strip()
-    if tag_content.endswith(")"):
-        tag_content = tag_content[:-1].strip()
-    return tag_content
-
-
-def _get_interline_equation_span(block: Block) -> Span | None:
-    for line in block.lines:
-        for span in line.spans:
-            if span.type == ContentType.INTERLINE_EQUATION:
-                return span
-    return None
-
-
-def _append_formula_number_tag(equation_block: Block, formula_number_block: Block) -> None:
-    equation_span = _get_interline_equation_span(equation_block)
-    tag_content = _normalize_formula_tag_content(_extract_text_from_block(formula_number_block))
-    if equation_span is not None:
-        formula = equation_span.content
-        equation_span.content = f"{formula}\\tag{{{tag_content}}}"
-
-
-def _optimize_formula_number_blocks(pages: list[PageInfo]) -> None:
-    for page_info in pages:
-        optimized_blocks = []
-        blocks = page_info.preproc_blocks
-        for index, block in enumerate(blocks):
-            if block.type != BlockType.FORMULA_NUMBER:
-                optimized_blocks.append(block)
-                continue
-
-            prev_block = blocks[index - 1] if index > 0 else None
-            if prev_block and prev_block.type == BlockType.INTERLINE_EQUATION:
-                _append_formula_number_tag(prev_block, block)
-                continue
-
-            next_block = blocks[index + 1] if index + 1 < len(blocks) else None
-            next_next_block = blocks[index + 2] if index + 2 < len(blocks) else None
-            if (
-                next_block
-                and next_block.type == BlockType.INTERLINE_EQUATION
-                and (next_next_block is None or next_next_block.type != BlockType.FORMULA_NUMBER)
-            ):
-                _append_formula_number_tag(next_block, block)
-                continue
-
-            block.type = BlockType.TEXT
-            optimized_blocks.append(block)
-        page_info.preproc_blocks = optimized_blocks
-
-
 def _apply_post_ocr(pages: list[PageInfo], lang: str | None = None) -> None:
     atom_model_manager = AtomModelSingleton()
     ocr_model = atom_model_manager.get_atom_model(
@@ -189,7 +126,7 @@ def apply_server_side_postprocess(pages: list[PageInfo], lang: str | None = None
 
 def finalize_middle_json_from_preproc(pages: list[PageInfo]) -> None:
     """从 preproc_blocks 执行确定性 finalize，供服务端完整路径和客户端复用。"""
-    _optimize_formula_number_blocks(pages)
+    optimize_pipeline_formula_number_blocks(pages)
     para_split(pages)
     cross_page_table_merge(pages)
     apply_title_leveling_to_pdf_info(pages)
