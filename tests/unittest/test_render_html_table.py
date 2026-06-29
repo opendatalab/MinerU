@@ -4,6 +4,23 @@ from mineru.render.markdown_table import to_markdown_table
 from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span
 
 
+def test_table_span_ignores_legacy_html_payload_alias() -> None:
+    """表格 span 只接受 content 承载 HTML，不再兼容旧 html 别名。"""
+    span = Span.from_dict(
+        {
+            "type": ContentType.TABLE,
+            "bbox": [0.0, 0.0, 10.0, 10.0],
+            "html": "<table><tr><td>A</td></tr></table>",
+        }
+    )
+
+    assert span.content == ""
+    assert span.to_dict() == {
+        "type": ContentType.TABLE,
+        "bbox": (0.0, 0.0, 10.0, 10.0),
+    }
+
+
 def test_to_markdown_table_renders_simple_table() -> None:
     html = """
     <table>
@@ -120,7 +137,7 @@ def test_blocks_to_markdown_prefers_markdown_table_when_enabled() -> None:
                 lines=[
                     Line(
                         bbox=(0.0, 0.0, 10.0, 10.0),
-                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), html=html)],
+                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
                     )
                 ],
             )
@@ -158,7 +175,7 @@ def test_render_markdown_prefers_markdown_table_when_enabled() -> None:
                 lines=[
                     Line(
                         bbox=(0.0, 0.0, 10.0, 10.0),
-                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), html=html)],
+                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
                     )
                 ],
             )

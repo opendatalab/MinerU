@@ -604,8 +604,9 @@ def test_api_server_rejects_bare_vlm_backend(tmp_path: Path) -> None:
 
 
 def test_api_server_accepts_parser_backend_values(tmp_path: Path) -> None:
-    from mineru.utils.backend_options import normalize_backend
+    from mineru.utils.backend_options import HTTP_CLIENT_BACKEND_CHOICES, LOCAL_BACKEND_CHOICES, normalize_backend
 
+    assert _API_SERVER_BACKENDS == LOCAL_BACKEND_CHOICES + HTTP_CLIENT_BACKEND_CHOICES
     assert "vlm" not in _API_SERVER_BACKENDS
     assert "hybrid" not in _API_SERVER_BACKENDS
 
