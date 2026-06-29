@@ -13,7 +13,7 @@
 
 - `mineru parse` 面向用户和 Agent，强调 doclib、缓存和渐进式阅读。
 - `mineru-kit parse` 面向批处理和解析内核开发者，强调无状态、显式参数和文件产物。
-- `mineru-kit api-server` 已经确定了 tier、backend、`language`、`ocr-mode` 和 `disable-*` 参数体系，`mineru-kit parse` 应尽量与之对齐。
+- `mineru-kit api-server` 已经确定了 tier、backend、`language`、`ocr-mode`、`effort` 和 `disable-*` 参数体系，`mineru-kit parse` 应尽量与之对齐。
 
 在此基础上，需要明确 `mineru-kit parse` 的输入范围、local/remote 规则、tier/backend 语义和输出命名规则。
 
@@ -116,6 +116,7 @@ mineru-kit parse <input...> -o <output> [flags]
 
 - `--language`
 - `--ocr-mode`
+- `--effort`
 - `--disable-table`
 - `--disable-formula`
 - `--disable-image-analysis`
