@@ -8,6 +8,7 @@ CANONICAL_HYBRID_ENGINE: Final = "hybrid-engine"
 DEFAULT_BACKEND: Final = CANONICAL_HYBRID_ENGINE
 DEFAULT_HYBRID_EFFORT: Final = "medium"
 DEFAULT_EFFORT: Final = DEFAULT_HYBRID_EFFORT
+HYBRID_EFFORT_HELP: Final = "Medium is faster. High is more accurate and may take longer."
 
 LOCAL_BACKEND_CHOICES: Final[tuple[str, ...]] = (
     "pipeline",
@@ -18,6 +19,7 @@ HTTP_CLIENT_BACKEND_CHOICES: Final[tuple[str, ...]] = (
     "vlm-http-client",
     "hybrid-http-client",
 )
+PUBLIC_BACKEND_CHOICES: Final[tuple[str, ...]] = LOCAL_BACKEND_CHOICES + HTTP_CLIENT_BACKEND_CHOICES
 HYBRID_EFFORT_CHOICES: Final[tuple[str, ...]] = ("medium", "high")
 
 BACKEND_ALIASES: Final[dict[str, str]] = {
@@ -25,7 +27,7 @@ BACKEND_ALIASES: Final[dict[str, str]] = {
     "hybrid-auto-engine": CANONICAL_HYBRID_ENGINE,
 }
 
-SUPPORTED_BACKENDS: Final[tuple[str, ...]] = LOCAL_BACKEND_CHOICES + HTTP_CLIENT_BACKEND_CHOICES + ("flash",)
+SUPPORTED_BACKENDS: Final[tuple[str, ...]] = PUBLIC_BACKEND_CHOICES + ("flash",)
 
 SUPPORTED_EFFORTS: Final[tuple[str, ...]] = HYBRID_EFFORT_CHOICES
 
@@ -38,6 +40,16 @@ def normalize_backend(backend: str | None) -> str:
     if normalized in SUPPORTED_BACKENDS:
         return normalized
     raise ValueError(f"Unsupported backend '{backend}'. Supported backends: {', '.join(SUPPORTED_BACKENDS)}")
+
+
+def normalize_public_backend(backend: str | None) -> str:
+    """规范化公开 CLI/API backend 名称，但不暴露 parser 内部 flash 后端。"""
+    normalized = (backend or "").strip()
+    if normalized in BACKEND_ALIASES:
+        return BACKEND_ALIASES[normalized]
+    if normalized in PUBLIC_BACKEND_CHOICES:
+        return normalized
+    raise ValueError(f"Unsupported backend '{backend}'. Supported backends: {', '.join(PUBLIC_BACKEND_CHOICES)}")
 
 
 def validate_effort(effort: str | None) -> str:

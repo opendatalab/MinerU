@@ -47,6 +47,7 @@ from mineru.utils.backend_options import (
     DEFAULT_HYBRID_EFFORT,
     HTTP_CLIENT_BACKEND_CHOICES,
     HYBRID_EFFORT_CHOICES,
+    HYBRID_EFFORT_HELP,
     LOCAL_BACKEND_CHOICES,
 )
 
@@ -1615,7 +1616,7 @@ def main(ctx,
             "image_analysis_enable": "Enable image analysis",
             "image_analysis_info": "If disabled, image/chart blocks will keep layout positions but skip VLM image/chart analysis.",
             "effort": "Hybrid effort",
-            "effort_info": "Medium is faster. High is more accurate and may take longer.",
+            "effort_info": HYBRID_EFFORT_HELP,
             "formula_label_vlm": "Enable display formula recognition",
             "formula_label_pipeline": "Enable formula recognition",
             "formula_label_hybrid": "Enable inline formula recognition",

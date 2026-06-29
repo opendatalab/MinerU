@@ -647,3 +647,10 @@ def test_api_server_cli_exposes_parser_runtime_options() -> None:
     assert "--disable-table" in option_names
     assert "--disable-formula" in option_names
     assert "--disable-image-analysis" in option_names
+
+
+def test_api_server_cli_effort_help_matches_gradio_copy() -> None:
+    """校验 api server 的 effort 帮助文案与 Gradio 英文提示保持一致。"""
+    effort_option = next(param for param in main.params if "--effort" in param.opts)
+
+    assert effort_option.help == "Medium is faster. High is more accurate and may take longer."
