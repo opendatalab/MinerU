@@ -59,13 +59,14 @@ mineru-kit models download <pipeline|vlm|all> [flags]
 参数：
 
 - `bundle` 使用位置参数表达，取值为 `pipeline`、`vlm`、`all`
-- `--source/-s`: `huggingface | modelscope`
+- `--source/-s`: `auto | huggingface | modelscope`
 - `--verbose/-v`
 
 规则：
 
 - 不再支持交互式 prompt，必须显式给出 `bundle`
-- `--source` 默认值为 `huggingface`
+- `--source` 默认值为 `auto`
+- `--source auto` 会解析为本次下载实际使用的 `huggingface` 或 `modelscope`，并把实际来源写回 `mineru.json`
 - `bundle` 没有默认值，必须显式给出
 - 下载完成后默认更新 `mineru.json`
 - 不支持 `--no-config`
@@ -81,6 +82,7 @@ mineru-kit models download <pipeline|vlm|all> [flags]
 建议输出：
 
 - 当前实际使用的配置文件路径
+- `model-source`
 - `models-dir.pipeline`
 - `models-dir.vlm`
 - 当前 `MINERU_MODEL_SOURCE` 环境值

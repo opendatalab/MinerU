@@ -171,6 +171,36 @@ def test_models_download_pipeline(monkeypatch: Any) -> None:
     assert "Downloaded pipeline models" in result.output
 
 
+def test_models_download_auto_source_resolves_before_download(monkeypatch: Any) -> None:
+    captured: dict[str, str] = {}
+
+    def fake_resolve_model_source(model_source: str | None = None, allow_auto: bool = False) -> str:
+        assert model_source == "auto"
+        assert allow_auto is True
+        return "modelscope"
+
+    def fake_update_models_dir(bundle: str, model_dir: str) -> Path:
+        captured["bundle"] = bundle
+        captured["model_dir"] = model_dir
+        captured["effective_source"] = models.os.getenv(models.MODEL_SOURCE_ENV_VAR, "")
+        return Path(f"/tmp/{bundle}.json")
+
+    monkeypatch.delenv(models.MODEL_SOURCE_ENV_VAR, raising=False)
+    monkeypatch.setattr(models, "resolve_model_source", fake_resolve_model_source, raising=False)
+    monkeypatch.setattr(models, "_download_pipeline_models", lambda: "/tmp/pipeline")
+    monkeypatch.setattr(models, "_update_models_dir", fake_update_models_dir)
+
+    result = runner.invoke(app, ["models", "download", "pipeline", "--source", "auto"])
+
+    assert result.exit_code == 0
+    assert captured == {
+        "bundle": "pipeline",
+        "model_dir": "/tmp/pipeline",
+        "effective_source": "modelscope",
+    }
+    assert "Downloaded pipeline models from modelscope" in result.output
+
+
 def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
     config = tmp_path / "mineru.json"
     pipeline_root = tmp_path / "pipeline"

@@ -46,12 +46,13 @@ mineru-kit models download <pipeline|vlm|all> [flags]
 
 | Flag | 简写 | 类型 | 默认 | 说明 |
 |------|------|------|------|------|
-| `--source` | `-s` | `huggingface \| modelscope` | `huggingface` | 下载源 |
+| `--source` | `-s` | `auto \| huggingface \| modelscope` | `auto` | 下载源 |
 | `--verbose` | `-v` | bool | false | 输出详细日志 |
 
 规则：
 
 - `bundle` 使用位置参数，必须显式给出
+- `--source auto` 会先探测 Hugging Face 是否可访问，并在本次下载中使用解析出的真实远端源
 - 不支持交互式 prompt
 - 下载完成后默认更新配置文件
 - 不支持 `--no-config`
@@ -70,6 +71,7 @@ mineru-kit models download <pipeline|vlm|all> [flags]
 ```bash
 mineru-kit models download pipeline
 mineru-kit models download vlm --source modelscope
+mineru-kit models download all --source auto
 mineru-kit models download all
 ```
 
@@ -84,6 +86,7 @@ mineru-kit models show
 建议输出内容：
 
 - 当前实际使用的配置文件路径
+- `model-source`
 - `models-dir.pipeline`
 - `models-dir.vlm`
 - 当前 `MINERU_MODEL_SOURCE` 环境值
