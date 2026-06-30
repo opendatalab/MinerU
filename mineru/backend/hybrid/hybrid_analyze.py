@@ -1036,6 +1036,7 @@ def doc_analyze(
                 hybrid_pipeline_model,
                 _ocr_enable,
                 _vlm_ocr_enable,
+                effort=effort,
             )
         pdf_doc.close()
         doc_closed = True
@@ -1206,6 +1207,7 @@ async def aio_doc_analyze(
                 hybrid_pipeline_model,
                 _ocr_enable,
                 _vlm_ocr_enable,
+                effort=effort,
             )
         pdf_doc.close()
         doc_closed = True

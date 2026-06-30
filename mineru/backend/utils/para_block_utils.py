@@ -3,6 +3,7 @@ import copy
 from collections.abc import Generator
 
 from ...types import BBox, Block, BlockType, Line, PageInfo, Span
+from .span_block_fix import is_vertical_text_block_by_spans
 
 LINE_STOP_FLAG = (".", "!", "?", "。", "！", "？", ")", "）", '"', "”", ":", "：", ";", "；")
 SECTION_MERGE_BARRIER_TYPES = {
@@ -38,7 +39,11 @@ def build_para_blocks_from_preproc(pages: list[PageInfo]) -> None:
         page_info.para_blocks = copy.deepcopy(page_info.preproc_blocks)
 
 
-def merge_para_text_blocks(pages: list[PageInfo], auto_merge_by_det: bool = False) -> None:
+def merge_para_text_blocks(
+    pages: list[PageInfo],
+    auto_merge_by_det: bool = False,
+    auto_merge_vertical_by_det: bool = False,
+) -> None:
     ordered_blocks: list[tuple[int, int, Block]] = []
     for page_info in pages:
         page_idx = page_info.page_idx
@@ -57,6 +62,7 @@ def merge_para_text_blocks(pages: list[PageInfo], auto_merge_by_det: bool = Fals
                 current_page_idx,
                 current_block,
                 auto_merge_by_det,
+                auto_merge_vertical_by_det,
             )
         elif current_type == BlockType.LIST:
             if not current_block.blocks:
@@ -74,6 +80,7 @@ def _merge_current_text_block(
     current_page_idx: int,
     current_block: Block,
     auto_merge_by_det: bool,
+    auto_merge_vertical_by_det: bool,
 ) -> None:
     """处理当前 text block 的 merge_prev 候选合并和 Hybrid det 自动合并。"""
     previous_block = None
@@ -102,6 +109,7 @@ def _merge_current_text_block(
             if not can_auto_merge_text_blocks(
                 current_block,
                 previous_text_block,
+                allow_vertical_blocks=auto_merge_vertical_by_det,
             ):
                 previous_block = None
 
@@ -143,6 +151,7 @@ def can_auto_merge_text_blocks(
     current_block: Block,
     previous_block: Block,
     allow_single_line_blocks: bool = False,
+    allow_vertical_blocks: bool = False,
 ) -> bool:
     """按段落首尾文本和行几何规则判断 text 是否可合并。"""
     current_lines = current_block.lines
@@ -151,6 +160,20 @@ def can_auto_merge_text_blocks(
     previous_metric_lines = _resolve_local_metric_lines(previous_block)
     if not current_lines or not previous_lines or not current_metric_lines or not previous_metric_lines:
         return False
+
+    if (
+        allow_vertical_blocks
+        and _is_vertical_text_block_by_lines(current_metric_lines)
+        and _is_vertical_text_block_by_lines(previous_metric_lines)
+    ):
+        return _can_auto_merge_vertical_text_blocks(
+            current_block,
+            previous_block,
+            current_lines,
+            previous_lines,
+            current_metric_lines,
+            previous_metric_lines,
+        )
 
     first_metric_line = current_metric_lines[0]
     last_metric_line = previous_metric_lines[-1]
@@ -322,6 +345,14 @@ def _line_height(line: Line) -> float:
     return bbox[3] - bbox[1]
 
 
+def _line_width(line: Line) -> float:
+    """计算行或纵排列的宽度，供纵排几何规则使用。"""
+    bbox = line.bbox
+    if not bbox:
+        return 0
+    return bbox[2] - bbox[0]
+
+
 def _build_bbox_fs(block: Block, lines: list[Line]) -> BBox:
     if lines:
         return (
@@ -360,6 +391,63 @@ def _last_non_empty_content(lines: list[Line]) -> str:
 def _has_mergeable_block_bbox_relation(current_block: Block, previous_block: Block) -> bool:
     """复刻 pipeline text 合并的核心几何条件：当前块上边界进入前块范围。"""
     return current_block.bbox[1] < previous_block.bbox[3]
+
+
+def _is_vertical_text_block_by_lines(lines: list[Line]) -> bool:
+    """使用当前几何行中的 spans 判断文本块是否为纵排。"""
+    spans = [
+        span
+        for line in lines
+        for span in line.spans
+    ]
+    return is_vertical_text_block_by_spans(spans)
+
+
+def _can_auto_merge_vertical_text_blocks(
+    current_block: Block,
+    previous_block: Block,
+    current_lines: list[Line],
+    previous_lines: list[Line],
+    current_metric_lines: list[Line],
+    previous_metric_lines: list[Line],
+) -> bool:
+    """复刻 pipeline 纵排文本块合并规则，几何优先使用 OCR det 行。"""
+    first_metric_line = current_metric_lines[0]
+    last_metric_line = previous_metric_lines[-1]
+    first_line_width = _line_width(first_metric_line)
+    last_line_width = _line_width(last_metric_line)
+    if first_line_width <= 0 or last_line_width <= 0:
+        return False
+
+    current_bbox_fs = _build_bbox_fs(current_block, current_metric_lines)
+    previous_bbox_fs = _build_bbox_fs(previous_block, previous_metric_lines)
+    if abs(current_bbox_fs[1] - first_metric_line.bbox[1]) >= first_line_width / 2:
+        return False
+    if abs(previous_bbox_fs[3] - last_metric_line.bbox[3]) >= last_line_width:
+        return False
+
+    first_content = _first_non_empty_content(current_lines)
+    last_content = _last_non_empty_content(previous_lines)
+    if not first_content or not last_content:
+        return False
+    if last_content.endswith(LINE_STOP_FLAG):
+        return False
+    if first_content[0].isdigit() or first_content[0].isupper():
+        return False
+
+    current_metric_height = current_bbox_fs[3] - current_bbox_fs[1]
+    previous_metric_height = previous_bbox_fs[3] - previous_bbox_fs[1]
+    min_metric_height = min(current_metric_height, previous_metric_height)
+    if min_metric_height <= 0:
+        return False
+    if abs(current_metric_height - previous_metric_height) >= min_metric_height:
+        return False
+    return _has_mergeable_vertical_block_bbox_relation(current_block, previous_block)
+
+
+def _has_mergeable_vertical_block_bbox_relation(current_block: Block, previous_block: Block) -> bool:
+    """复刻横排同构关系：当前纵排块右边界需要进入前块左边界右侧。"""
+    return current_block.bbox[2] > previous_block.bbox[0]
 
 
 def _cleanup_block_internal_metadata(block: Block) -> None:

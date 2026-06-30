@@ -152,10 +152,14 @@ def apply_server_side_postprocess(
         _apply_post_ocr(pages, hybrid_pipeline_model)
 
 
-def finalize_middle_json_from_preproc(pages: list[PageInfo]) -> None:
+def finalize_middle_json_from_preproc(pages: list[PageInfo], effort: str = "medium") -> None:
     """从 Hybrid preproc_blocks 执行完整 finalize，供服务端完整路径和客户端复用。"""
     build_para_blocks_from_preproc(pages)
-    merge_para_text_blocks(pages, auto_merge_by_det=True)
+    merge_para_text_blocks(
+        pages,
+        auto_merge_by_det=True,
+        auto_merge_vertical_by_det=effort == "medium",
+    )
 
     table_enable = get_table_enable(os.getenv("MINERU_VLM_TABLE_ENABLE", "True").lower() == "true")
     if table_enable:
@@ -167,8 +171,12 @@ def finalize_middle_json_from_preproc(pages: list[PageInfo]) -> None:
 
 
 def finalize_middle_json(
-    pages: list[PageInfo], hybrid_pipeline_model: MineruHybridModel, _ocr_enable: bool, _vlm_ocr_enable: bool
+    pages: list[PageInfo],
+    hybrid_pipeline_model: MineruHybridModel,
+    _ocr_enable: bool,
+    _vlm_ocr_enable: bool,
+    effort: str = "medium",
 ) -> None:
     """保持旧入口语义：服务端先做必要 post-OCR，再执行完整 finalize。"""
     apply_server_side_postprocess(pages, hybrid_pipeline_model, _ocr_enable, _vlm_ocr_enable)
-    finalize_middle_json_from_preproc(pages)
+    finalize_middle_json_from_preproc(pages, effort=effort)
