@@ -50,6 +50,7 @@ from mineru.utils.backend_options import (
     HYBRID_EFFORT_HELP,
     LOCAL_BACKEND_CHOICES,
 )
+from mineru.utils.ocr_language import PUBLIC_OCR_LANGUAGE_CHOICES, validate_public_ocr_lang
 
 _gradio_local_api_server = _api_client.ReusableLocalAPIServer()
 
@@ -836,8 +837,8 @@ def prepare_markdown_for_gradio_preview(markdown_text, latex_delimiters):
 
 def normalize_language(language):
     if '(' in language and ')' in language:
-        return language.split('(')[0].strip()
-    return language
+        language = language.split('(')[0].strip()
+    return validate_public_ocr_lang(language)
 
 
 def resolve_parse_method(file_path, is_ocr, backend):
@@ -1341,28 +1342,7 @@ def render_header_html(i18n):
     )
     return rendered_header
 
-other_lang = [
-    'ch (Chinese, English, Chinese Traditional)',
-    'ch_lite (Chinese, English, Chinese Traditional, Japanese)',
-    'ch_server (Chinese, English, Chinese Traditional, Japanese)',
-    'en (English)',
-    'korean (Korean, English)',
-    'japan (Chinese, English, Chinese Traditional, Japanese)',
-    'chinese_cht (Chinese, English, Chinese Traditional, Japanese)',
-    'ta (Tamil, English)',
-    'te (Telugu, English)',
-    'ka (Kannada)',
-    'el (Greek, English)',
-    'th (Thai, English)'
-]
-add_lang = [
-    'latin (French, German, Afrikaans, Italian, Spanish, Bosnian, Portuguese, Czech, Welsh, Danish, Estonian, Irish, Croatian, Uzbek, Hungarian, Serbian (Latin), Indonesian, Occitan, Icelandic, Lithuanian, Maori, Malay, Dutch, Norwegian, Polish, Slovak, Slovenian, Albanian, Swedish, Swahili, Tagalog, Turkish, Latin, Azerbaijani, Kurdish, Latvian, Maltese, Pali, Romanian, Vietnamese, Finnish, Basque, Galician, Luxembourgish, Romansh, Catalan, Quechua)',
-    'arabic (Arabic, Persian, Uyghur, Urdu, Pashto, Kurdish, Sindhi, Balochi, English)',
-    'east_slavic (Russian, Belarusian, Ukrainian, English)',
-    'cyrillic (Russian, Belarusian, Ukrainian, Serbian (Cyrillic), Bulgarian, Mongolian, Abkhazian, Adyghe, Kabardian, Avar, Dargin, Ingush, Chechen, Lak, Lezgin, Tabasaran, Kazakh, Kyrgyz, Tajik, Macedonian, Tatar, Chuvash, Bashkir, Malian, Moldovan, Udmurt, Komi, Ossetian, Buryat, Kalmyk, Tuvan, Sakha, Karakalpak, English)',
-    'devanagari (Hindi, Marathi, Nepali, Bihari, Maithili, Angika, Bhojpuri, Magahi, Santali, Newari, Konkani, Sanskrit, Haryanvi, English)'
-]
-all_lang = [*other_lang, *add_lang]
+all_lang = list(PUBLIC_OCR_LANGUAGE_CHOICES)
 
 
 def safe_stem(file_path):
@@ -1986,7 +1966,7 @@ def main(ctx,
                             language = gr.Dropdown(
                                 all_lang,
                                 label=i18n("ocr_language"),
-                                value='ch (Chinese, English, Chinese Traditional)',
+                                value=all_lang[0],
                                 info=i18n("ocr_language_info"),
                                 visible=frontend_managed_initial_visibility(
                                     is_ocr_language_option_visible(preferred_option)

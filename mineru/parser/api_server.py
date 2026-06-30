@@ -32,9 +32,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..types import Tier
 from ..utils.backend_options import HYBRID_EFFORT_HELP, validate_effort
+from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from .tier import PARSER_BACKENDS, resolve_tier_and_backend
 
 _API_SERVER_BACKENDS = tuple(backend for backend in PARSER_BACKENDS if backend != "flash")
+_API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
 
 # ── literal type aliases ────────────────────────────────────────────
 
@@ -1900,26 +1902,6 @@ def _build_v1_router() -> APIRouter:
     return _router
 
 
-_API_SERVER_LANGUAGES = (
-    "ch",
-    "ch_server",
-    "ch_lite",
-    "en",
-    "korean",
-    "japan",
-    "chinese_cht",
-    "ta",
-    "te",
-    "ka",
-    "th",
-    "el",
-    "latin",
-    "arabic",
-    "east_slavic",
-    "cyrillic",
-    "devanagari",
-)
-
 _OCR_MODES = ("auto", "txt", "ocr")
 
 
@@ -2011,6 +1993,7 @@ def create_app(
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
     _upload_dir.mkdir(parents=True, exist_ok=True)
+    language = validate_public_ocr_lang(language)
 
     _model_ids, _tiers = _model_ids_and_tiers_for_server_tier(tier)
 
@@ -2141,7 +2124,8 @@ def create_app(
 @click.option(
     "--language",
     default="ch",
-    type=click.Choice(_API_SERVER_LANGUAGES),
+    type=str,
+    metavar="[" + "|".join(_API_SERVER_LANGUAGES) + "]",
     help="Parser language hint.",
 )
 @click.option(

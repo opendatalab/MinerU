@@ -73,7 +73,7 @@ def table_orientation_cls_model_init() -> MineruTableOrientationClsModel:
         atom_model_name=AtomicModel.OCR,
         det_db_box_thresh=0.5,
         det_db_unclip_ratio=1.6,
-        lang="ch_lite",
+        lang="ch",
         enable_merge_det_boxes=False,
     )
     cls_model = MineruTableOrientationClsModel(ocr_engine)

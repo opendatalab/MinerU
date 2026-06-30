@@ -7,6 +7,7 @@ from typing import Literal
 from ...parser import MinerUApiParser
 from ...parser import parse as local_parse
 from ...utils.backend_options import normalize_backend
+from ...utils.ocr_language import validate_public_ocr_lang
 from ..common import (
     build_remote_api_url,
     effective_local_tier_and_backend,
@@ -60,6 +61,7 @@ def parse_cmd(
     try:
         ensure_supported_inputs(paths)
         destinations = resolve_batch_output_paths(paths, Path(output).expanduser(), format)
+        normalized_language = validate_public_ocr_lang(language)
     except Exception as exc:
         exit_with_message("invalid_request", str(exc))
 
@@ -76,7 +78,7 @@ def parse_cmd(
             local_parse,
             tier=resolved_tier,
             backend=resolved_backend,
-            language=language,
+            language=normalized_language,
             ocr_mode=ocr_mode,
             effort=effort,
             disable_table=disable_table,

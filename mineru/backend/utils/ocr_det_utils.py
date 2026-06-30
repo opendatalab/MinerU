@@ -12,7 +12,8 @@ from ...utils.pdf_image_tools import get_crop_img
 OCR_DET_PADDING = 50
 
 
-def _get_ch_lite_ocr_det_model() -> Any:
+def _get_ch_ocr_det_model() -> Any:
+    """获取默认中文 OCR 检测模型，当前 ch 已对应轻量 PP-OCRv6 配置。"""
     try:
         from ..pipeline.model_init import AtomModelSingleton
     except Exception as e:
@@ -28,7 +29,7 @@ def _get_ch_lite_ocr_det_model() -> Any:
         atom_model_name="ocr",
         ocr_show_log=False,
         det_db_box_thresh=0.3,
-        lang="ch_lite",
+        lang="ch",
     )
 
 
@@ -54,7 +55,7 @@ def _detect_ocr_boxes_from_padded_crop(
 
     crop_img = cv2.cvtColor(crop_np_img, cv2.COLOR_RGB2BGR)
     if ocr_model is None:
-        ocr_model = _get_ch_lite_ocr_det_model()
+        ocr_model = _get_ch_ocr_det_model()
 
     ocr_det_res = ocr_model.ocr(crop_img, rec=False)[0]
     return ocr_det_res or [], padding

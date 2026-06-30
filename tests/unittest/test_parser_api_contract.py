@@ -18,6 +18,7 @@ from mineru.parser import _build_parser, parse, parse_async
 from mineru.parser.base import ParseResult
 from mineru.parser.api_server import (
     _API_SERVER_BACKENDS,
+    _API_SERVER_LANGUAGES,
     CreateJobRequest,
     FileStore,
     FileParseInfo,
@@ -742,12 +743,17 @@ def test_api_server_stores_parser_runtime_options(tmp_path: Path) -> None:
         image_analysis=False,
     )
 
-    assert app.state.language == "en"
+    assert app.state.language == "ch"
     assert app.state.ocr_mode == "ocr"
     assert app.state.effort == "high"
     assert app.state.table_enable is False
     assert app.state.formula_enable is False
     assert app.state.image_analysis is False
+
+
+def test_api_server_rejects_removed_ch_lite_language(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="Language ch_lite not supported"):
+        create_app(upload_dir=str(tmp_path), language="ch_lite")
 
 
 def test_api_server_cli_exposes_parser_runtime_options() -> None:
@@ -759,6 +765,20 @@ def test_api_server_cli_exposes_parser_runtime_options() -> None:
     assert "--disable-table" in option_names
     assert "--disable-formula" in option_names
     assert "--disable-image-analysis" in option_names
+    assert _API_SERVER_LANGUAGES == (
+        "ch",
+        "ch_server",
+        "korean",
+        "ta",
+        "te",
+        "ka",
+        "th",
+        "el",
+        "arabic",
+        "east_slavic",
+        "cyrillic",
+        "devanagari",
+    )
 
 
 def test_api_server_cli_accepts_backend_alias(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -776,6 +796,28 @@ def test_api_server_cli_accepts_backend_alias(monkeypatch: pytest.MonkeyPatch) -
 
     assert result.exit_code == 0
     assert seen == {"backend": "hybrid-engine", "host": "0.0.0.0", "port": "15981"}
+
+
+def test_api_server_cli_normalizes_hidden_language_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, str] = {}
+
+    def _fake_run(app, *, host: str, port: int) -> None:
+        """记录 Click CLI 创建出的应用语言配置，避免测试启动真实服务。"""
+        seen["language"] = app.state.language
+
+    monkeypatch.setattr("uvicorn.run", _fake_run)
+
+    result = runner.invoke(main, ["--language", "latin", "--host", "0.0.0.0", "--port", "15982"])
+
+    assert result.exit_code == 0
+    assert seen == {"language": "ch"}
+
+
+def test_api_server_cli_rejects_removed_ch_lite_language() -> None:
+    result = runner.invoke(main, ["--language", "ch_lite"])
+
+    assert result.exit_code != 0
+    assert "Language ch_lite not supported" in result.output
 
 
 def test_api_server_cli_rejects_unknown_backend() -> None:

@@ -14,6 +14,7 @@ from mineru.model.ocr.seal_crop import CropByPolys, SortPolyBoxes
 from mineru.utils.config_reader import get_device
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
+from mineru.utils.ocr_language import normalize_ocr_model_lang
 from mineru.utils.ocr_utils import (
     check_img,
     preprocess_image,
@@ -25,111 +26,6 @@ from mineru.utils.ocr_utils import (
 from mineru.model.utils.tools.infer.predict_system import TextSystem
 from mineru.model.utils.tools.infer import pytorchocr_utility as utility
 import argparse
-
-
-latin_lang = [
-        "af",
-        "az",
-        "bs",
-        "cs",
-        "cy",
-        "da",
-        "de",
-        "es",
-        "et",
-        "fr",
-        "ga",
-        "hr",
-        "hu",
-        "id",
-        "is",
-        "it",
-        "ku",
-        "la",
-        "lt",
-        "lv",
-        "mi",
-        "ms",
-        "mt",
-        "nl",
-        "no",
-        "oc",
-        "pi",
-        "pl",
-        "pt",
-        "ro",
-        "rs_latin",
-        "sk",
-        "sl",
-        "sq",
-        "sv",
-        "sw",
-        "tl",
-        "tr",
-        "uz",
-        "vi",
-        "french",
-        "german",
-        "fi",
-        "eu",
-        "gl",
-        "lb",
-        "rm",
-        "ca",
-        "qu",
-]
-arabic_lang = ["ar", "fa", "ug", "ur", "ps", "ku", "sd", "bal"]
-cyrillic_lang = [
-        "ru",
-        "rs_cyrillic",
-        "be",
-        "bg",
-        "uk",
-        "mn",
-        "abq",
-        "ady",
-        "kbd",
-        "ava",
-        "dar",
-        "inh",
-        "che",
-        "lbe",
-        "lez",
-        "tab",
-        "kk",
-        "ky",
-        "tg",
-        "mk",
-        "tt",
-        "cv",
-        "ba",
-        "mhr",
-        "mo",
-        "udm",
-        "kv",
-        "os",
-        "bua",
-        "xal",
-        "tyv",
-        "sah",
-        "kaa",
-]
-east_slavic_lang = ["ru", "be", "uk"]
-devanagari_lang = [
-        "hi",
-        "mr",
-        "ne",
-        "bh",
-        "mai",
-        "ang",
-        "bho",
-        "mah",
-        "sck",
-        "new",
-        "gom",
-        "sa",
-        "bgc",
-]
 
 
 def get_model_params(lang, config):
@@ -156,35 +52,20 @@ class PytorchPaddleOCR(TextSystem):
         parser = utility.init_args()
         args = parser.parse_args(args)
 
-        self.lang = kwargs.get('lang', 'ch')
-        self.is_seal = self.lang in ['seal', 'seal_lite']
+        requested_lang = kwargs.get('lang', 'ch')
+        self.lang = requested_lang
+        self.is_seal = requested_lang in ['seal', 'seal_lite']
         self.enable_merge_det_boxes = kwargs.get("enable_merge_det_boxes", True)
 
         device = get_device()
-        if device == 'cpu':
-            # 显式指定 ch_server 时保留服务模型配置，避免 v6 medium rec 在 CPU 环境被静默降级。
-            if self.lang in ['ch', 'japan', 'chinese_cht']:
-                # logger.warning("CPU device switches this language to ch_lite for parsing speed.")
-                self.lang = 'ch_lite'
-            elif self.lang in ['seal']:
-                self.lang = 'seal_lite'
-
-        if self.lang in latin_lang:
-            self.lang = 'latin'
-        elif self.lang in east_slavic_lang:
-            self.lang = 'east_slavic'
-        elif self.lang in arabic_lang:
-            self.lang = 'arabic'
-        elif self.lang in cyrillic_lang:
-            self.lang = 'cyrillic'
-        elif self.lang in devanagari_lang:
-            self.lang = 'devanagari'
-        else:
-            pass
-
         models_config_path = os.path.join(root_dir, 'pytorchocr', 'utils', 'resources', 'models_config.yml')
-        with open(models_config_path) as file:
+        with open(models_config_path, encoding='utf-8') as file:
             config = yaml.safe_load(file)
+            self.lang = normalize_ocr_model_lang(
+                requested_lang,
+                device=device,
+                supported_langs=config['lang'],
+            )
             det, rec, dict_file = get_model_params(self.lang, config)
         ocr_models_dir = ModelPath.pytorch_paddle
 
