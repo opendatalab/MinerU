@@ -79,6 +79,20 @@ MCP Server · LangChain / Dify / FastGPT 原生集成 · 10+ 国产算力适配 
 
 # 更新记录
 
+- 2026/06/11 3.3 发布
+
+  本次版本更新聚焦于 **Hybrid 解析性能优化** 与 **VLM 模型能力升级**。主要更新内容包括：
+
+  - Hybrid 后端新增 `effort` 解析强度参数
+    - 新增 `medium` 与 `high` 两档解析强度，用户可根据解析速度、解析精度和功能需求灵活选择。
+    - 在 OmniDocBench v1.6 评测中，`medium` 相比 `high` 综合精度仅降低 `0.13`，但在不同设备和场景下可获得 `35%` ~ `220%` 的解析速度提升。
+    - 默认 Hybrid 后端将使用 `effort=medium`，在保持高解析精度的同时显著提升整体解析效率。
+    - `medium` 档不支持 `image analysis`（图片/图表分析）功能；如需极致解析精度或启用 `image analysis`，可通过 `effort=high` 切换至高强度解析模式。
+
+  - VLM 模型升级至 `MinerU2.5-Pro-2605-1.2B`
+    - 修复 `2604` 版本中存在的多处模型问题，进一步提升复杂文档场景下的解析稳定性。
+    - 原生支持多语言 OCR，降低多语言文档解析时对额外语言参数配置的依赖。
+
 - 2026/04/18 3.1.0 发布
 
   本次版本更新聚焦于**许可协议开放性、解析精度提升与全格式原生支持**。主要更新内容包括：
@@ -183,7 +197,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     <tr>
       <th rowspan="2">解析后端</th>
       <th rowspan="2">pipeline</th>
-      <th colspan="2">*-auto-engine</th>
+      <th colspan="2">*-engine</th>
       <th colspan="2">*-http-client</th>
     </tr>
     <tr>
@@ -202,8 +216,11 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr> 
     <tr>
       <th>精度指标<sup>1</sup></th>
-      <td style="text-align:center;">85+</td>
-      <td colspan="4" style="text-align:center;">95+</td>
+      <td style="text-align:center;">85.75</td>
+      <td style="text-align:center;">95.39（high）<br>95.26（medium）</td>
+      <td style="text-align:center;">95.30</td>
+      <td style="text-align:center;">95.39（high）<br>95.26（medium）</td>
+      <td style="text-align:center;">95.30</td>
     </tr>
     <tr>
       <th>操作系统</th>
@@ -223,8 +240,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     <tr>
       <th>显存最低要求</th>
       <td style="text-align:center;">4GB</td>
-      <td style="text-align:center;">8GB</td>
-      <td style="text-align:center;">8GB</td>
+      <td colspan="2" style="text-align:center;">8GB</td>
       <td style="text-align:center;">2GB</td>
     </tr>
     <tr>

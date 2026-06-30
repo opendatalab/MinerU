@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..types import PageInfo
+from ..utils.backend_options import validate_effort
 from ..utils.image_payload import ImagePayloadCache
 from .base import DocumentParser, ParseResult
 
@@ -25,25 +26,25 @@ class _PreparedPdfInput:
     broken_page_indices: list[int] | None = None
 
 
-def _resolve_vlm_backend(backend: str) -> str:
-    """Strip the ``vlm-`` prefix and resolve ``auto-engine`` to the concrete engine."""
+def _resolve_vlm_backend(backend: str, *, is_async: bool = False) -> str:
+    """根据同步/异步调用形态解析公开 VLM backend 到具体执行 engine。"""
     if not backend.startswith("vlm-"):
         return backend
     resolved = backend[4:]
-    if resolved == "auto-engine":
+    if resolved in {"engine", "auto-engine"}:
         from ..utils.engine_utils import get_vlm_engine
 
-        resolved = get_vlm_engine(inference_engine="auto", is_async=False)
+        resolved = get_vlm_engine(inference_engine="auto", is_async=is_async)
     return resolved
 
 
-def _resolve_hybrid_backend(backend: str) -> str:
-    """Strip the ``hybrid-`` prefix and resolve ``auto-engine`` to the concrete engine."""
+def _resolve_hybrid_backend(backend: str, *, is_async: bool = False) -> str:
+    """根据同步/异步调用形态解析公开 Hybrid backend 到具体执行 engine。"""
     resolved = backend[7:] if backend.startswith("hybrid-") else backend
-    if resolved == "auto-engine":
+    if resolved in {"engine", "auto-engine"}:
         from ..utils.engine_utils import get_vlm_engine
 
-        resolved = get_vlm_engine(inference_engine="auto", is_async=False)
+        resolved = get_vlm_engine(inference_engine="auto", is_async=is_async)
     return resolved
 
 
@@ -54,9 +55,10 @@ class PdfBaseParser(DocumentParser):
     def __init__(
         self,
         *,
-        backend: str = "hybrid-auto-engine",
+        backend: str = "hybrid-engine",
         method: str = "auto",
         lang: str = "ch",
+        effort: str = "medium",
         formula_enable: bool = True,
         table_enable: bool = True,
         image_analysis: bool = True,
@@ -65,6 +67,7 @@ class PdfBaseParser(DocumentParser):
         self.backend = backend
         self.method = method
         self.lang = lang
+        self.effort = validate_effort(effort)
         self.formula_enable = formula_enable
         self.table_enable = table_enable
         self.image_analysis = image_analysis
@@ -140,8 +143,8 @@ class PdfBaseParser(DocumentParser):
         return await asyncio.to_thread(
             self._run_analysis,
             pdf_bytes,
-            page_index_map,
-            image_cache,
+            page_index_map=page_index_map,
+            image_cache=image_cache,
         )
 
     def _prepare_input(self, path: Path, page_range: str = "") -> _PreparedPdfInput:
@@ -245,7 +248,7 @@ class PdfVlmParser(PdfBaseParser):
     ) -> list[PageInfo]:
         from ..backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 
-        backend = _resolve_vlm_backend(self.backend)
+        backend = _resolve_vlm_backend(self.backend, is_async=False)
         os.environ["MINERU_VLM_FORMULA_ENABLE"] = str(self.formula_enable).lower()
         os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()
 
@@ -266,7 +269,7 @@ class PdfVlmParser(PdfBaseParser):
     ) -> list[PageInfo]:
         from ..backend.vlm.vlm_analyze import aio_doc_analyze as vlm_aio_doc_analyze
 
-        backend = _resolve_vlm_backend(self.backend)
+        backend = _resolve_vlm_backend(self.backend, is_async=True)
         os.environ["MINERU_VLM_FORMULA_ENABLE"] = str(self.formula_enable).lower()
         os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()
 
@@ -400,7 +403,7 @@ class PdfHybridParser(PdfBaseParser):
     ) -> list[PageInfo]:
         from ..backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
 
-        backend = _resolve_hybrid_backend(self.backend)
+        backend = _resolve_hybrid_backend(self.backend, is_async=False)
         server_url = self.server_url if backend.endswith("client") else None
         os.environ["MINERU_VLM_FORMULA_ENABLE"] = "true"
         os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()
@@ -410,6 +413,7 @@ class PdfHybridParser(PdfBaseParser):
             backend=backend,
             parse_method=self.method,
             language=self.lang,
+            effort=self.effort,
             inline_formula_enable=self.formula_enable,
             server_url=server_url,
             image_analysis=self.image_analysis,
@@ -427,7 +431,7 @@ class PdfHybridParser(PdfBaseParser):
     ) -> list[PageInfo]:
         from ..backend.hybrid.hybrid_analyze import aio_doc_analyze as hybrid_aio_doc_analyze
 
-        backend = _resolve_hybrid_backend(self.backend)
+        backend = _resolve_hybrid_backend(self.backend, is_async=True)
         server_url = self.server_url if backend.endswith("client") else None
         os.environ["MINERU_VLM_FORMULA_ENABLE"] = "true"
         os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()
@@ -437,6 +441,7 @@ class PdfHybridParser(PdfBaseParser):
             backend=backend,
             parse_method=self.method,
             language=self.lang,
+            effort=self.effort,
             inline_formula_enable=self.formula_enable,
             server_url=server_url,
             image_analysis=self.image_analysis,
@@ -456,6 +461,7 @@ class PdfFlashParser(PdfBaseParser):
         self,
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
+        image_cache: ImagePayloadCache | None = None,
     ) -> list[PageInfo]:
         from ..backend.flash.pdf_extractor import extract_pages_text
         from ..types import Block, Line, PageInfo, Span

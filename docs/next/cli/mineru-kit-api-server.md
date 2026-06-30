@@ -68,7 +68,7 @@ api-server 启动时应优先使用 `--tier`：
 ```bash
 mineru-kit api-server --tier standard --port 15981
 mineru-kit api-server --tier pro --port 15982
-mineru-kit api-server --tier standard --language en --ocr-mode ocr --disable-table
+mineru-kit api-server --tier pro --effort high --language en --ocr-mode ocr --disable-table
 ```
 
 `--tier` 会选择该 tier 的默认 backend。高级部署者可以同时传 `--tier` 和 `--backend`，用于选择具体实现；如果二者不兼容，启动应报错。
@@ -93,6 +93,7 @@ mineru-kit api-server --tier standard --language en --ocr-mode ocr --disable-tab
 
 - language
 - ocr-mode
+- effort
 - disable-table / disable-formula / disable-image-analysis
 - concurrency
 - upload-dir

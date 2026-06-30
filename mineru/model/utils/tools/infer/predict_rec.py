@@ -288,7 +288,7 @@ class TextRecognizer(BaseOCRV20):
 
         return img
 
-    def __call__(self, img_list, tqdm_enable=False, tqdm_desc="OCR-rec Predict"):
+    def __call__(self, img_list, tqdm_enable=False, tqdm_desc="OCR-rec Predict", tqdm_progress_bar=None):
         img_num = len(img_list)
         # Calculate the aspect ratio of all text bars
         width_list = []
@@ -428,6 +428,8 @@ class TextRecognizer(BaseOCRV20):
                 current_batch_size = min(batch_num, img_num - index * batch_num)
                 index += 1
                 pbar.update(current_batch_size)
+                if tqdm_progress_bar is not None:
+                    tqdm_progress_bar.update(current_batch_size)
 
         # Fix NaN values in recognition results
         for i in range(len(rec_res)):

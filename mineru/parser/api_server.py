@@ -31,6 +31,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..types import Tier
+from ..utils.backend_options import HYBRID_EFFORT_HELP, validate_effort
 from .tier import PARSER_BACKENDS, resolve_tier_and_backend
 
 _API_SERVER_BACKENDS = tuple(backend for backend in PARSER_BACKENDS if backend != "flash")
@@ -1194,6 +1195,7 @@ async def _run_job(
     table_enable: bool,
     formula_enable: bool,
     image_analysis: bool,
+    effort: str = "medium",
     url_timeout: int = 60,
 ) -> None:
     rec.status = "running"
@@ -1226,6 +1228,7 @@ async def _run_job(
                     backend=server_backend,
                     language=language,
                     ocr_mode=ocr_mode,
+                    effort=effort,
                     disable_table=not table_enable,
                     disable_formula=not formula_enable,
                     disable_image_analysis=not image_analysis,
@@ -1694,6 +1697,7 @@ async def create_job(
     url_timeout_val: int = request.app.state.url_timeout
     language_val: str = request.app.state.language
     ocr_mode_val: str = request.app.state.ocr_mode
+    effort_val: str = request.app.state.effort
     table_enable_val: bool = request.app.state.table_enable
     formula_enable_val: bool = request.app.state.formula_enable
     image_analysis_val: bool = request.app.state.image_analysis
@@ -1708,6 +1712,7 @@ async def create_job(
                     server_backend=backend,
                     language=language_val,
                     ocr_mode=ocr_mode_val,
+                    effort=effort_val,
                     table_enable=table_enable_val,
                     formula_enable=formula_enable_val,
                     image_analysis=image_analysis_val,
@@ -1738,6 +1743,7 @@ async def create_job(
                 server_backend=backend,
                 language=language_val,
                 ocr_mode=ocr_mode_val,
+                effort=effort_val,
                 table_enable=table_enable_val,
                 formula_enable=formula_enable_val,
                 image_analysis=image_analysis_val,
@@ -1958,6 +1964,7 @@ def create_app(
     api_key: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
+    effort: str = "medium",
     table_enable: bool = True,
     formula_enable: bool = True,
     image_analysis: bool = True,
@@ -1988,6 +1995,9 @@ def create_app(
         Parser language hint.
     ocr_mode:
         PDF OCR/text extraction mode for pipeline and hybrid backends.
+    effort:
+        Hybrid backend effort level. Medium is faster. High is more accurate
+        and may take longer.
     table_enable:
         Whether table recognition is enabled.
     formula_enable:
@@ -1997,6 +2007,7 @@ def create_app(
     """
     upload_dir = upload_dir or ""
     tier, backend = _resolve_server_tier_and_backend(tier=tier, backend=backend)
+    effort = validate_effort(effort)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
     _upload_dir.mkdir(parents=True, exist_ok=True)
@@ -2016,6 +2027,7 @@ def create_app(
         application.state.api_key = _api_key
         application.state.language = language
         application.state.ocr_mode = ocr_mode
+        application.state.effort = effort
         application.state.table_enable = table_enable
         application.state.formula_enable = formula_enable
         application.state.image_analysis = image_analysis
@@ -2044,6 +2056,7 @@ def create_app(
     application.state.api_key = _api_key
     application.state.language = language
     application.state.ocr_mode = ocr_mode
+    application.state.effort = effort
     application.state.table_enable = table_enable
     application.state.formula_enable = formula_enable
     application.state.image_analysis = image_analysis
@@ -2094,8 +2107,12 @@ def create_app(
 @click.option(
     "--backend",
     default=None,
-    type=click.Choice(_API_SERVER_BACKENDS),
-    help="Advanced parser backend. Defaults from --tier: standard -> pipeline, pro -> hybrid-auto-engine.",
+    type=str,
+    help=(
+        "Advanced parser backend "
+        f"({', '.join(_API_SERVER_BACKENDS)}). "
+        "Defaults from --tier: standard -> pipeline, pro -> hybrid-engine."
+    ),
 )
 @click.option(
     "--tier",
@@ -2133,6 +2150,12 @@ def create_app(
     type=click.Choice(_OCR_MODES),
     help="PDF OCR/text extraction mode. Applies to pipeline and hybrid-* backends.",
 )
+@click.option(
+    "--effort",
+    default="medium",
+    type=click.Choice(("medium", "high")),
+    help=HYBRID_EFFORT_HELP,
+)
 @click.option("--disable-table", is_flag=True, help="Disable table recognition.")
 @click.option("--disable-formula", is_flag=True, help="Disable formula recognition.")
 @click.option("--disable-image-analysis", is_flag=True, help="Disable image analysis for VLM/hybrid backends.")
@@ -2153,6 +2176,7 @@ def main(
     max_wait: int,
     language: str,
     ocr_mode: str,
+    effort: str,
     disable_table: bool,
     disable_formula: bool,
     disable_image_analysis: bool,
@@ -2161,8 +2185,8 @@ def main(
     """Start the MinerU v1 REST API server."""
     import uvicorn
 
-    uvicorn.run(
-        create_app(
+    try:
+        application = create_app(
             upload_dir=upload_dir,
             tier=tier,
             backend=backend,
@@ -2172,10 +2196,16 @@ def main(
             api_key=api_key,
             language=language,
             ocr_mode=ocr_mode,
+            effort=effort,
             table_enable=not disable_table,
             formula_enable=not disable_formula,
             image_analysis=not disable_image_analysis,
-        ),
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    uvicorn.run(
+        application,
         host=host,
         port=port,
     )

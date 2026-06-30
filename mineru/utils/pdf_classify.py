@@ -32,6 +32,12 @@ ASCII_PUNCT_RUN_MIN_LENGTH = 4
 SUSPICIOUS_ASCII_PUNCT_MIN_TEXT_CHARS = 100
 SUSPICIOUS_ASCII_PUNCT_RATIO_THRESHOLD = 0.25
 SUSPICIOUS_ASCII_PUNCT_RUN_RATIO_THRESHOLD = 0.10
+SUSPICIOUS_CROSS_SCRIPT_MIN_TEXT_CHARS = 300
+SUSPICIOUS_CROSS_SCRIPT_MIN_CJK_CHARS = 100
+SUSPICIOUS_CROSS_SCRIPT_MIN_OTHER_SCRIPT_CHARS = 120
+SUSPICIOUS_CROSS_SCRIPT_OTHER_SCRIPT_RATIO = 0.18
+SUSPICIOUS_CROSS_SCRIPT_MIN_DENSE_SCRIPTS = 3
+SUSPICIOUS_CROSS_SCRIPT_DENSE_SCRIPT_CHARS = 5
 
 _ALLOWED_CONTROL_CODES = {9, 10, 13}
 _PRIVATE_USE_AREA_START = 0xE000
@@ -121,6 +127,10 @@ def classify(pdf_doc: pdfium.PdfDocument, pdf_bytes: bytes) -> str:
                     f"count={u72xx_signal['u72xx_count']}, "
                     f"cjk_ratio={u72xx_signal['u72xx_cjk_ratio']:.4f}"
                 )
+                return "ocr"
+
+            if _get_cross_script_text_signal_from_samples(text_samples):
+                logger.debug("Classify PDF as OCR due to suspicious cross-script text layer.")
                 return "ocr"
 
             ascii_punct_signal = _get_sampled_ascii_punct_signal_from_samples(text_samples)
@@ -459,21 +469,83 @@ def get_u72xx_text_signal_pdfium(pdf_doc: pdfium.PdfDocument, page_indices: list
     return _get_u72xx_text_signal_from_samples(text_samples)
 
 
+def _get_sample_cleaned_text(text_sample: Any) -> str:
+    """兼容 dict 和测试替身对象，读取抽样页的 cleaned_text 字段。"""
+    if isinstance(text_sample, dict):
+        return str(text_sample.get("cleaned_text", ""))
+    return str(getattr(text_sample, "cleaned_text", ""))
+
+
+def _classify_script(char: str) -> str:
+    """将字符粗略归入脚本类别，用于识别 ToUnicode 映射错乱后的混杂脚本。"""
+    code = ord(char)
+    if 0x4E00 <= code <= 0x9FFF:
+        return "cjk"
+    if 0x0400 <= code <= 0x052F:
+        return "cyrillic"
+    if 0x0600 <= code <= 0x06FF:
+        return "arabic"
+    if 0x0900 <= code <= 0x097F:
+        return "devanagari"
+    if 0x0370 <= code <= 0x03FF:
+        return "greek"
+    if 0x0E00 <= code <= 0x0E7F:
+        return "thai"
+    return ""
+
+
+def _get_cross_script_text_signal_from_samples(text_samples: list[Any]) -> bool:
+    """检测 CJK 文本层中混入多种非预期脚本的乱码信号。"""
+    total_chars = 0
+    cjk_chars = 0
+    other_script_chars = 0
+    script_counts: dict[str, int] = {}
+
+    for text_sample in text_samples:
+        for char in _get_sample_cleaned_text(text_sample):
+            total_chars += 1
+            script_name = _classify_script(char)
+            if script_name == "cjk":
+                cjk_chars += 1
+            elif script_name:
+                other_script_chars += 1
+                script_counts[script_name] = script_counts.get(script_name, 0) + 1
+
+    if total_chars < SUSPICIOUS_CROSS_SCRIPT_MIN_TEXT_CHARS:
+        return False
+    if cjk_chars < SUSPICIOUS_CROSS_SCRIPT_MIN_CJK_CHARS:
+        return False
+    if other_script_chars < SUSPICIOUS_CROSS_SCRIPT_MIN_OTHER_SCRIPT_CHARS:
+        return False
+
+    other_script_ratio = other_script_chars / total_chars
+    dense_script_count = sum(
+        1 for count in script_counts.values() if count >= SUSPICIOUS_CROSS_SCRIPT_DENSE_SCRIPT_CHARS
+    )
+    return (
+        other_script_ratio >= SUSPICIOUS_CROSS_SCRIPT_OTHER_SCRIPT_RATIO
+        and dense_script_count >= SUSPICIOUS_CROSS_SCRIPT_MIN_DENSE_SCRIPTS
+    )
+
+
 def _count_ascii_punct_run_chars(text: str) -> int:
     """统计连续 ASCII 标点字符数，仅累计长度达到阈值的 run。"""
     run_chars = 0
     current_run = 0
+    current_run_types: set[str] = set()
 
     for char in text:
         if char in ASCII_PUNCT_CHARS:
             current_run += 1
+            current_run_types.add(char)
             continue
 
-        if current_run >= ASCII_PUNCT_RUN_MIN_LENGTH:
+        if current_run >= ASCII_PUNCT_RUN_MIN_LENGTH and len(current_run_types) >= 2:
             run_chars += current_run
         current_run = 0
+        current_run_types.clear()
 
-    if current_run >= ASCII_PUNCT_RUN_MIN_LENGTH:
+    if current_run >= ASCII_PUNCT_RUN_MIN_LENGTH and len(current_run_types) >= 2:
         run_chars += current_run
 
     return run_chars

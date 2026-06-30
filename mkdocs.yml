@@ -71,6 +71,9 @@ extra:
 
 copyright: © 2024 - 2025 MinerU. All Rights Reserved.
 
+extra_css:
+  - stylesheets/extra.css
+
 nav:
   - Home:
     - "MinerU": index.md

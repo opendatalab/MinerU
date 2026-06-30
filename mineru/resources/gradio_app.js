@@ -6,6 +6,11 @@
     window.__mineruAdvancedPopoverInstalled = POPOVER_SCRIPT_VERSION;
 
     const POPOVER_OPEN_CLASS = "mineru-advanced-popover-open";
+    const CLIENT_OPTIONS_VISIBLE_CLASS = "mineru-show-client-options";
+    const IMAGE_ANALYSIS_VISIBLE_CLASS = "mineru-show-image-analysis";
+    const OCR_LANGUAGE_VISIBLE_CLASS = "mineru-show-ocr-language";
+    const FORCE_OCR_HIDDEN_CLASS = "mineru-hide-force-ocr";
+    const HYBRID_EFFORT_HIDDEN_CLASS = "mineru-hide-hybrid-effort";
     const OFFICE_PREVIEW_NOTICE_STORAGE_KEY = "mineru.officePreviewNoticeIgnored";
     const OPEN_DELAY_MS = 120;
     const CLOSE_DELAY_MS = 280;
@@ -91,6 +96,7 @@
     const refreshMineruCustomHtml = () => {
         localizeMineruCustomText();
         applyOfficePreviewNoticePreference();
+        refreshMineruOptionVisibility();
     };
 
     // 兼容 Gradio 将 elem_classes 挂到按钮自身或按钮外层容器的两种 DOM 结构。
@@ -98,10 +104,58 @@
         "button.mineru-advanced-open, .mineru-advanced-open button, .mineru-advanced-open"
     );
     const findPopover = () => document.querySelector(".mineru-advanced-popover");
+    const findBackendRoot = () => document.querySelector(".mineru-backend-select");
+    const findEffortRoot = () => document.querySelector(".mineru-hybrid-effort");
     let openTimer = null;
     let closeTimer = null;
     let visibilityTimer = null;
     let hoverHandlersInstalled = false;
+
+    // 读取 Gradio Dropdown 当前值；value 属性比可见文本更稳定，避免中英文文案影响判断。
+    const getBackendValue = () => {
+        const backendRoot = findBackendRoot();
+        const backendControl = backendRoot?.querySelector('[role="listbox"]');
+        return (backendControl?.value || backendControl?.textContent || "").trim();
+    };
+
+    // 读取 Hybrid effort 当前值；控件在非 hybrid 后端会被 Gradio 隐藏，缺失时按空值处理。
+    const getEffortValue = () => {
+        const effortRoot = findEffortRoot();
+        const checkedRadio = effortRoot?.querySelector(
+            'input[type="radio"]:checked, input[type="radio"][aria-checked="true"]'
+        );
+        return (checkedRadio?.value || "").trim();
+    };
+
+    // 根据当前 backend/effort 刷新前端状态类，避免依赖 Gradio 重新挂载隐藏组件。
+    const refreshMineruOptionVisibility = () => {
+        const backend = getBackendValue();
+        const effort = getEffortValue();
+        const showClientOptions = backend.endsWith("http-client");
+        const showImageAnalysis = backend.startsWith("vlm")
+            || (backend.startsWith("hybrid") && effort === "high");
+        const showOcrLanguage = backend === "pipeline";
+        const hideForceOcr = backend !== "pipeline" && !backend.startsWith("hybrid");
+        const hideHybridEffort = !backend.startsWith("hybrid");
+
+        document.body.classList.toggle(CLIENT_OPTIONS_VISIBLE_CLASS, showClientOptions);
+        document.body.classList.toggle(IMAGE_ANALYSIS_VISIBLE_CLASS, showImageAnalysis);
+        document.body.classList.toggle(OCR_LANGUAGE_VISIBLE_CLASS, showOcrLanguage);
+        document.body.classList.toggle(FORCE_OCR_HIDDEN_CLASS, hideForceOcr);
+        document.body.classList.toggle(HYBRID_EFFORT_HIDDEN_CLASS, hideHybridEffort);
+        if (document.body.classList.contains(POPOVER_OPEN_CLASS)) {
+            positionPopover();
+        }
+    };
+
+    // Gradio 控件会异步写回 value，延后一帧再读可以覆盖 Dropdown option 点击和 Radio 切换。
+    const queueMineruOptionVisibilityRefresh = () => {
+        requestAnimationFrame(() => {
+            refreshMineruOptionVisibility();
+            requestAnimationFrame(refreshMineruOptionVisibility);
+        });
+    };
+
     const findUploadFileInput = () => {
         const uploadRoot = document.querySelector(".mineru-upload-file");
         if (!uploadRoot) {
@@ -450,6 +504,7 @@
         if (!(target instanceof Element)) {
             return;
         }
+        queueMineruOptionVisibilityRefresh();
         if (target.closest(".office-preview-ignore-forever")) {
             const notice = target.closest(".office-preview-notice");
             if (setOfficePreviewNoticeIgnored()) {
@@ -488,9 +543,14 @@
 
     document.addEventListener("input", (event) => {
         const target = event.target;
+        queueMineruOptionVisibilityRefresh();
         if (target instanceof Element && target.closest(".mineru-advanced-popover")) {
             queueDropdownPosition();
         }
+    });
+
+    document.addEventListener("change", () => {
+        queueMineruOptionVisibilityRefresh();
     });
 
     document.addEventListener("keydown", (event) => {

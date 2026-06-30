@@ -494,4 +494,3 @@ Optimized dependency conflict issues and installation documentation
 ### Initial Open-Source Release (2024/07/05)
 
 MinerU project's first open-source release
-

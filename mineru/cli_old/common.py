@@ -22,6 +22,7 @@ from mineru.cli_old.visualization import select_pages_for_pdf_visualization
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.parser.base import ParseResult
 from mineru.render import render_content_list, render_markdown, render_structured_content
+from mineru.utils.backend_options import DEFAULT_HYBRID_EFFORT, normalize_backend, validate_effort
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
@@ -639,7 +640,7 @@ def _process_hybrid(
             f_make_md_mode,
             infer_result,
             process_mode="vlm",
-            backend="bybrid",
+            backend="hybrid",
             retained_page_indices=page_index_map_list[idx] if page_index_map_list is not None else None,
             broken_page_indices=broken_page_indices_list[idx] if broken_page_indices_list is not None else None,
             image_cache=image_cache,
@@ -713,7 +714,7 @@ async def _async_process_hybrid(
             f_make_md_mode,
             infer_result,
             process_mode="vlm",
-            backend="bybrid",
+            backend="hybrid",
             retained_page_indices=page_index_map_list[idx] if page_index_map_list is not None else None,
             broken_page_indices=broken_page_indices_list[idx] if broken_page_indices_list is not None else None,
             image_cache=image_cache,
@@ -801,9 +802,12 @@ def do_parse(
     start_page_id: int = 0,
     end_page_id: int | None = None,
     image_analysis: bool = True,
+    effort: str = DEFAULT_HYBRID_EFFORT,
     client_side_output_generation: bool = False,
     **kwargs: Any,
 ) -> None:
+    backend = normalize_backend(backend)
+    effort = validate_effort(effort)
     need_remove_index = _process_office_doc(
         output_dir,
         pdf_file_names=pdf_file_names,
@@ -854,12 +858,7 @@ def do_parse(
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
-            if backend == "vllm-async-engine":
-                raise Exception(
-                    "vlm-vllm-async-engine backend is not supported in sync mode, please use vlm-vllm-engine backend"
-                )
-
-            if backend == "auto-engine":
+            if backend == "engine":
                 backend = get_vlm_engine(inference_engine="auto", is_async=False)
 
             os.environ["MINERU_VLM_FORMULA_ENABLE"] = str(formula_enable)
@@ -889,12 +888,7 @@ def do_parse(
             ensure_backend_dependencies(backend)
             backend = backend[7:]
 
-            if backend == "vllm-async-engine":
-                raise Exception(
-                    "hybrid-vllm-async-engine backend is not supported in sync mode, please use hybrid-vllm-engine backend"
-                )
-
-            if backend == "auto-engine":
+            if backend == "engine":
                 backend = get_vlm_engine(inference_engine="auto", is_async=False)
 
             os.environ["MINERU_VLM_TABLE_ENABLE"] = str(table_enable)
@@ -920,6 +914,7 @@ def do_parse(
                 page_index_map_list=page_index_map_list,
                 broken_page_indices_list=broken_page_indices_list,
                 image_analysis=image_analysis,
+                effort=effort,
                 client_side_output_generation=client_side_output_generation,
                 **kwargs,
             )
@@ -946,9 +941,12 @@ async def aio_do_parse(
     start_page_id: int = 0,
     end_page_id: int | None = None,
     image_analysis: bool = True,
+    effort: str = DEFAULT_HYBRID_EFFORT,
     client_side_output_generation: bool = False,
     **kwargs: Any,
 ) -> None:
+    backend = normalize_backend(backend)
+    effort = validate_effort(effort)
     # Office 解析是同步且可能耗时的操作，异步入口需要放到线程中避免阻塞事件循环。
     need_remove_index = await asyncio.to_thread(
         _process_office_doc,
@@ -1002,12 +1000,7 @@ async def aio_do_parse(
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
-            if backend == "vllm-engine":
-                raise Exception(
-                    "vlm-vllm-engine backend is not supported in async mode, please use vlm-vllm-async-engine backend"
-                )
-
-            if backend == "auto-engine":
+            if backend == "engine":
                 backend = get_vlm_engine(inference_engine="auto", is_async=True)
 
             os.environ["MINERU_VLM_FORMULA_ENABLE"] = str(formula_enable)
@@ -1037,12 +1030,7 @@ async def aio_do_parse(
             ensure_backend_dependencies(backend)
             backend = backend[7:]
 
-            if backend == "vllm-engine":
-                raise Exception(
-                    "hybrid-vllm-engine backend is not supported in async mode, please use hybrid-vllm-async-engine backend"
-                )
-
-            if backend == "auto-engine":
+            if backend == "engine":
                 backend = get_vlm_engine(inference_engine="auto", is_async=True)
 
             os.environ["MINERU_VLM_TABLE_ENABLE"] = str(table_enable)
@@ -1068,6 +1056,7 @@ async def aio_do_parse(
                 page_index_map_list=page_index_map_list,
                 broken_page_indices_list=broken_page_indices_list,
                 image_analysis=image_analysis,
+                effort=effort,
                 client_side_output_generation=client_side_output_generation,
                 **kwargs,
             )

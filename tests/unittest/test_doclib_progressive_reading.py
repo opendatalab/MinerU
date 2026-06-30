@@ -179,7 +179,7 @@ def test_page_markdown_blocks_prefers_markdown_table_in_doclib() -> None:
                         lines=[
                             Line(
                                 bbox=(0, 0, 10, 10),
-                                spans=[Span(type=ContentType.TABLE, bbox=(0, 0, 10, 10), html=html)],
+                                spans=[Span(type=ContentType.TABLE, bbox=(0, 0, 10, 10), content=html)],
                             )
                         ],
                     )

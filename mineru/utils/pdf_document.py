@@ -20,12 +20,11 @@ from .pdf_image_tools import get_crop_img, load_images_from_pdf_bytes_range
 from .pdf_reader import image_to_bytes
 from .pdfium_guard import _pdfium_lock, safe_rewrite_pdf_bytes_with_pdfium
 
-# from .pdf_image_tools import images_bytes_to_pdf_bytes, pdf_page_to_image
-
 POINTS_PER_INCH: int = 72
 DEFAULT_RENDER_DPI: int = 200
 DEFAULT_RENDER_SCALE: float = DEFAULT_RENDER_DPI / POINTS_PER_INCH
 DEFAULT_RENDER_MAX_EDGE: int = 3500
+NEAR_DUPLICATE_CHAR_BBOX_TOLERANCE = 0.5
 
 # See: pdfium.PdfDocument.METADATA_KEYS
 PDFMetadataKey: TypeAlias = Literal[
@@ -233,7 +232,7 @@ class PDFDocument:
                 chars = get_chars(textpage, page_bbox, page_rotation)
             finally:
                 _try_close(textpage)
-        return deduplicate_chars(chars)
+        return _deduplicate_near_identical_chars(deduplicate_chars(chars))
 
     def get_page_lines(self, page_idx: int) -> list[Line]:
         chars = self.get_page_chars(page_idx)
@@ -330,6 +329,50 @@ def _try_close(obj: object) -> None:
             close()
         except Exception:
             pass
+
+
+def _deduplicate_near_identical_chars(chars: list[Char]) -> list[Char]:
+    """移除坐标近乎重合的重复可见字符，降低 PDF 叠印文本造成的重复抽取。"""
+    unique_chars: list[Char] = []
+    seen_keys: set[tuple[str, int, int, int, int, str, str]] = set()
+    for char in chars:
+        text = str(char.get("char", ""))
+        if not text or text.isspace():
+            unique_chars.append(char)
+            continue
+
+        bbox_values = _char_bbox_values(char.get("bbox"))
+        if bbox_values is None:
+            unique_chars.append(char)
+            continue
+
+        rounded_bbox = tuple(
+            int(round(float(value) / NEAR_DUPLICATE_CHAR_BBOX_TOLERANCE)) for value in bbox_values
+        )
+        key = (
+            text,
+            *rounded_bbox,
+            str(char.get("font", "")),
+            str(char.get("rotation", "")),
+        )
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        unique_chars.append(char)
+    return unique_chars
+
+
+def _char_bbox_values(bbox: object) -> tuple[float, float, float, float] | None:
+    """将 tuple/list 或 pdftext Bbox 对象统一转换为四元组坐标。"""
+    if bbox is None:
+        return None
+    if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+        return tuple(float(value) for value in bbox)  # type: ignore[return-value]
+
+    attrs = ("x_start", "y_start", "x_end", "y_end")
+    if all(hasattr(bbox, attr) for attr in attrs):
+        return tuple(float(getattr(bbox, attr)) for attr in attrs)  # type: ignore[return-value]
+    return None
 
 
 def get_lines_from_chars(

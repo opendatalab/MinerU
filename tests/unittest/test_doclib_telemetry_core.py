@@ -325,6 +325,10 @@ def test_parse_service_process_doc_records_task_metrics(tmp_path) -> None:
         def markdown(self, *, add_markers: bool = False) -> str:
             return "content"
 
+        def images(self) -> dict[str, bytes]:
+            """测试替身补齐 ParseResult 图片接口，保持成功路径契约完整。"""
+            return {}
+
     class _ParseService(ParseService):
         async def _parse_via_local(self, file_row, tier, page_range):
             return _Result()
@@ -372,6 +376,69 @@ def test_parse_service_process_doc_records_task_metrics(tmp_path) -> None:
         assert "parse_task.pages.count" in names
         finished = next(metric for metric in body["metrics"] if metric["name"] == "parse_task.finished.count")
         assert finished["dimensions"] == {"status": "succeeded", "tier": "flash"}
+
+    asyncio.run(_run())
+
+
+def test_parse_service_requires_result_images_method(tmp_path) -> None:
+    """验证 doclib 不再兼容缺少 images() 的解析结果替身。"""
+
+    class _Fts:
+        async def get_tier(self, sha256: str) -> str | None:
+            return None
+
+        async def replace(self, **kwargs) -> None:
+            return None
+
+        async def upsert_filename(self, *args, **kwargs) -> None:
+            return None
+
+    class _ResultWithoutImages:
+        def to_dict(self, *, skip_defaults: bool = True) -> dict:
+            return {"pages": [{"page_idx": 0, "blocks": []}]}
+
+        def markdown(self, *, add_markers: bool = False) -> str:
+            return "content"
+
+    class _ParseService(ParseService):
+        async def _parse_via_local(self, file_row, tier, page_range):
+            return _ResultWithoutImages()
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        store = TelemetryStore(db)
+        telemetry = TelemetryService(store)
+        await telemetry.initialize()
+        parse_svc = _ParseService(
+            db,
+            _Fts(),
+            ConfigService(db),
+            str(tmp_path),
+            parse_lock_timeout_sec=30,
+            telemetry_svc=telemetry,
+        )
+        now = 1_700_000_000_000
+        await db.execute(
+            "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("sha", "sha", 1, "pdf", 1, now, now),
+        )
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(tmp_path / "a.pdf"), "a.pdf", "pdf", 1, now, "sha", now, now),
+        )
+        await db.execute(
+            "INSERT INTO parses (sha256, tier, page_range, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            ("sha", "flash", "1", "parsing", now, now),
+        )
+        task = await db.fetchone("SELECT * FROM parses WHERE sha256=?", ("sha",))
+
+        assert await parse_svc.process_doc(task) is False
+        updated = await db.fetchone("SELECT status, error_code FROM parses WHERE sha256=?", ("sha",))
+        assert updated["status"] == "failed"
+        assert updated["error_code"] == "parse_json_write_failed"
 
     asyncio.run(_run())
 

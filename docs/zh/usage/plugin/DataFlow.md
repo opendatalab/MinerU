@@ -5,7 +5,7 @@
 目前，MinerU 已深度集成于元枢智汇 ADP 智能数据平台的 DataFlow 模块中，其数据解析服务由文档语料提取引擎 MinerU 提供支持。
 
 ![](../../../assets/images/DataFLow_01.png)
-![](../../../assets/images/DataFLow_02.png)
+![](../../../assets/images/DataFlow_02.png)
 
 - 官网地址：https://adp.originhub.tech/agent
 - Miner fastGPT 插件下载地址：https://cloud.fastgpt.io/dashboard/systemPlugin?type=productivity

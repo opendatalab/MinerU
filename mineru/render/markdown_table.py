@@ -74,6 +74,8 @@ def to_markdown_table(
         return raw_html
     if _has_nested_table(table):
         return raw_html
+    if _has_merged_table_cells(table):
+        return raw_html
 
     rows = table.find_all("tr")
     if not rows:
@@ -159,6 +161,14 @@ def to_markdown_table(
 
 def _has_nested_table(table: Tag) -> bool:
     return table.find("table") is not None
+
+
+def _has_merged_table_cells(table: Tag) -> bool:
+    """检测合并单元格，Markdown 表格无法无损表达 rowspan/colspan。"""
+    for cell in table.find_all(("th", "td")):
+        if cell.has_attr("rowspan") or cell.has_attr("colspan"):
+            return True
+    return False
 
 
 def _parse_cell(cell: Tag) -> _CellPlacement | None:

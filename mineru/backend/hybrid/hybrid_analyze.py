@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 from loguru import logger
 from mineru_vl_utils import MinerUClient
+from mineru_vl_utils.structs import ContentBlock
 from mineru_vl_utils.structs import BlockType
 from PIL import Image
 from tqdm import tqdm
@@ -19,12 +20,14 @@ from ...types import NOT_EXTRACT_TYPES, BBox, PageInfo
 from ...types import BlockType as MineruBlockType
 from ...utils.config_reader import get_device, get_processing_window_size
 from ...utils.enum_class import ImageType
+from ...utils.backend_options import validate_effort
 from ...utils.image_payload import ImagePayloadCache
 from ...utils.model_utils import clean_memory, crop_img, get_vram
 from ...utils.ocr_utils import (
     OcrConfidence,
     get_adjusted_mfdetrec_res,
     get_ocr_result_list,
+    mask_formula_regions_for_ocr_det,
     merge_det_boxes,
     sorted_boxes,
     update_det_boxes,
@@ -36,8 +39,7 @@ from ..pipeline.model_init import (
     MineruHybridModel,
     run_layout_inference,
     run_mfr_inference,
-    run_ocr_det_inference,
-    run_ocr_rec_inference,
+    run_ocr_inference,
 )
 from ..utils.boxbase import calculate_overlap_area_2_minbox_area_ratio
 from ..utils.middle_json_utils import append_pages
@@ -61,6 +63,30 @@ LAYOUT_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 8
 LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD = 0.8
+HYBRID_MEDIUM_LAYOUT_LABEL_MAP = {
+    "abstract": BlockType.TEXT,
+    "algorithm": BlockType.ALGORITHM,
+    "aside_text": BlockType.ASIDE_TEXT,
+    "chart": BlockType.CHART,
+    "content": BlockType.INDEX,
+    "display_formula": BlockType.EQUATION,
+    "doc_title": BlockType.TITLE,
+    "figure_title": BlockType.IMAGE_CAPTION,
+    "footer": BlockType.FOOTER,
+    "footer_image": BlockType.FOOTER,
+    "footnote": BlockType.PAGE_FOOTNOTE,
+    "formula_number": BlockType.FORMULA_NUMBER,
+    "header": BlockType.HEADER,
+    "header_image": BlockType.HEADER,
+    "image": BlockType.IMAGE,
+    "number": BlockType.PAGE_NUMBER,
+    "paragraph_title": BlockType.TITLE,
+    "reference_content": BlockType.REF_TEXT,
+    "seal": BlockType.IMAGE,
+    "table": BlockType.TABLE,
+    "text": BlockType.TEXT,
+    "vertical_text": BlockType.TEXT,
+}
 
 
 def _is_hybrid_ocr_det_candidate(block: dict[str, Any]) -> bool:
@@ -123,7 +149,8 @@ def _ocr_det(
                     _restore_normalized_bbox(res)
                 adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(page_mfd_res, useful_list)
                 bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)  # type: ignore
-                ocr_res = run_ocr_det_inference(
+                bgr_image = mask_formula_regions_for_ocr_det(bgr_image, adjusted_mfdetrec_res)
+                ocr_res = run_ocr_inference(
                     hybrid_pipeline_model.ocr_model.ocr,
                     bgr_image,
                     mfd_res=adjusted_mfdetrec_res,
@@ -163,6 +190,7 @@ def _ocr_det(
                     _restore_normalized_bbox(res)
                 adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(page_mfd_res, useful_list)
                 bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)  # type: ignore
+                bgr_image = mask_formula_regions_for_ocr_det(bgr_image, adjusted_mfdetrec_res)
                 all_cropped_images_info.append((bgr_image, useful_list, adjusted_mfdetrec_res, ocr_res_list[-1]))
 
         # 按分辨率分组并同时完成padding
@@ -192,7 +220,7 @@ def _ocr_det(
 
             # 批处理检测
             det_batch_size = min(len(batch_images), batch_ratio * OCR_DET_BASE_BATCH_SIZE)
-            batch_results = run_ocr_det_inference(
+            batch_results = run_ocr_inference(
                 hybrid_pipeline_model.ocr_model.text_detector.batch_predict,
                 batch_images,
                 det_batch_size,
@@ -398,6 +426,63 @@ def _predict_layout_for_title_split(
     )
 
 
+def _normalize_layout_bbox_to_unit(bbox: BBox | None, page_size: tuple[int, int]) -> list[float] | None:
+    """将 layout 像素 bbox 归一化为 VLM ContentBlock 需要的 0-1 坐标。"""
+    pixel_bbox = _bbox_to_pixel_bbox(bbox, page_size)
+    if pixel_bbox is None:
+        return None
+
+    page_width, page_height = page_size
+    if page_width <= 0 or page_height <= 0:
+        return None
+
+    x0, y0, x1, y1 = pixel_bbox
+    unit_bbox = [
+        max(0.0, min(1.0, float(x0) / page_width)),
+        max(0.0, min(1.0, float(y0) / page_height)),
+        max(0.0, min(1.0, float(x1) / page_width)),
+        max(0.0, min(1.0, float(y1) / page_height)),
+    ]
+    if unit_bbox[2] <= unit_bbox[0] or unit_bbox[3] <= unit_bbox[1]:
+        return None
+    return unit_bbox
+
+
+def _layout_item_to_content_block(layout_item: dict[str, Any], page_size: tuple[int, int]) -> ContentBlock | None:
+    """将 Pipeline layout 检测项转换为 mineru-vl-utils 的 ContentBlock。"""
+    label = layout_item.get("label") or layout_item.get("type")
+    block_type = HYBRID_MEDIUM_LAYOUT_LABEL_MAP.get(str(label))
+    if block_type is None:
+        return None
+
+    bbox = _normalize_layout_bbox_to_unit(layout_item.get("bbox"), page_size)
+    if bbox is None:
+        return None
+
+    try:
+        return ContentBlock(type=block_type, bbox=bbox, angle=layout_item.get("angle", 0) or 0)
+    except AssertionError:
+        logger.debug(f"Skip invalid Hybrid medium layout block: {layout_item}")
+        return None
+
+
+def _build_medium_layout_blocks(
+    images_layout_res: list[list[dict[str, Any]]],
+    images_pil_list: list[Image.Image],
+) -> list[list[ContentBlock]]:
+    """按页构造 Hybrid medium 模式传给 VLM 的外部 layout blocks。"""
+    blocks_list: list[list[ContentBlock]] = []
+    for layout_res, image in zip(images_layout_res, images_pil_list):
+        page_size = _normalize_page_size(image)
+        page_blocks = []
+        for layout_item in layout_res:
+            content_block = _layout_item_to_content_block(layout_item, page_size)
+            if content_block is not None:
+                page_blocks.append(content_block)
+        blocks_list.append(page_blocks)
+    return blocks_list
+
+
 def _process_ocr_and_formulas(
     images_pil_list: list[Image.Image],
     model_list: list[list[dict[str, Any]]],
@@ -470,7 +555,7 @@ def _process_ocr_and_formulas(
                     img_crop_list.append(ocr_res.pop("np_img"))
         if len(img_crop_list) > 0:
             # Process OCR
-            ocr_result_list = run_ocr_rec_inference(
+            ocr_result_list = run_ocr_inference(
                 hybrid_pipeline_model.ocr_model.ocr,
                 img_crop_list,
                 det=False,
@@ -555,6 +640,80 @@ def _process_ocr_and_formulas(
         ocr_res_list,
     )
     return merged_model_list, hybrid_pipeline_model
+
+
+def _extract_with_pipeline_layout(
+    predictor: MinerUClient,
+    images_pil_list: list[Image.Image],
+    language: str | None,
+    inline_formula_enable: bool,
+    _ocr_enable: bool,
+    batch_ratio: int,
+) -> tuple[list[list[dict[str, Any]]], MineruHybridModel]:
+    """Hybrid medium 路径：用 Pipeline layout 约束 VLM 抽取，再补 OCR/formula sidecar。"""
+    hybrid_model_singleton = HybridModelSingleton()
+    hybrid_pipeline_model = hybrid_model_singleton.get_model(
+        lang=language,
+        formula_enable=inline_formula_enable,
+    )
+    np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
+    images_layout_res = _predict_layout_for_title_split(hybrid_pipeline_model, np_images, batch_ratio)
+    layout_blocks = _build_medium_layout_blocks(images_layout_res, images_pil_list)
+    window_model_list = predictor.batch_extract_with_layout(
+        images=images_pil_list,
+        blocks_list=layout_blocks,
+        not_extract_list=list(NOT_EXTRACT_TYPES),
+        image_analysis=False,
+    )
+    window_model_list, hybrid_pipeline_model = _process_ocr_and_formulas(
+        images_pil_list,
+        window_model_list,
+        language,
+        inline_formula_enable,
+        _ocr_enable,
+        batch_ratio=batch_ratio,
+    )
+    return window_model_list, hybrid_pipeline_model
+
+
+async def _aio_extract_with_pipeline_layout(
+    predictor: MinerUClient,
+    images_pil_list: list[Image.Image],
+    language: str | None,
+    inline_formula_enable: bool,
+    _ocr_enable: bool,
+    batch_ratio: int,
+) -> tuple[list[list[dict[str, Any]]], MineruHybridModel]:
+    """Hybrid medium 异步路径：异步调用 VLM layout-aware extract，其余本地步骤放线程执行。"""
+    hybrid_model_singleton = HybridModelSingleton()
+    hybrid_pipeline_model = hybrid_model_singleton.get_model(
+        lang=language,
+        formula_enable=inline_formula_enable,
+    )
+    np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
+    images_layout_res = await asyncio.to_thread(
+        _predict_layout_for_title_split,
+        hybrid_pipeline_model,
+        np_images,
+        batch_ratio,
+    )
+    layout_blocks = _build_medium_layout_blocks(images_layout_res, images_pil_list)
+    window_model_list = await predictor.aio_batch_extract_with_layout(
+        images=images_pil_list,
+        blocks_list=layout_blocks,
+        not_extract_list=list(NOT_EXTRACT_TYPES),
+        image_analysis=False,
+    )
+    window_model_list, hybrid_pipeline_model = await asyncio.to_thread(
+        _process_ocr_and_formulas,
+        images_pil_list,
+        window_model_list,
+        language,
+        inline_formula_enable,
+        _ocr_enable,
+        batch_ratio,
+    )
+    return window_model_list, hybrid_pipeline_model
 
 
 def _apply_layout_title_split_for_window(
@@ -703,13 +862,12 @@ def get_batch_ratio(device: str) -> int:
 
 
 def _should_enable_vlm_ocr(ocr_enable: bool, language: str, inline_formula_enable: bool) -> bool:
-    """判断是否启用VLM OCR"""
+    """判断 high effort 是否启用 VLM OCR 两阶段抽取。"""
     force_enable = os.getenv("MINERU_FORCE_VLM_OCR_ENABLE", "0").lower() in ("1", "true", "yes")
     if force_enable:
         return True
 
-    force_pipeline = os.getenv("MINERU_HYBRID_FORCE_PIPELINE_ENABLE", "0").lower() in ("1", "true", "yes")
-    return ocr_enable and language in ["ch", "en"] and inline_formula_enable and not force_pipeline
+    return ocr_enable and language in ["ch", "en"] and inline_formula_enable
 
 
 def _close_images(images_list: list[dict[str, Any]]) -> None:
@@ -738,12 +896,15 @@ def doc_analyze(
     inline_formula_enable: bool = True,
     model_path: str | None = None,
     server_url: str | None = None,
+    effort: Literal["medium", "high"] = "medium",
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
     image_cache: ImagePayloadCache | None = None,
     **kwargs: object,
 ) -> tuple[list[PageInfo], list[list[dict[str, Any]]], bool]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
+    effort = validate_effort(effort)
+    image_analysis = image_analysis if effort == "high" else False
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
@@ -752,7 +913,7 @@ def doc_analyze(
 
     pdf_doc = PDFDocument(pdf_bytes)
     _ocr_enable = ocr_classify(pdf_doc, parse_method=parse_method)
-    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
+    _vlm_ocr_enable = effort == "high" and _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
 
     middle_json: list[PageInfo] = []
     model_list: list[list[dict[str, Any]]] = []
@@ -789,7 +950,17 @@ def doc_analyze(
                         f"pages {window_start + 1}-{window_end + 1}/{page_count} "
                         f"({len(images_pil_list)} pages)"
                     )
-                    if _vlm_ocr_enable:
+                    if effort == "medium":
+                        with predictor_execution_guard(predictor):
+                            window_model_list, hybrid_pipeline_model = _extract_with_pipeline_layout(
+                                predictor,
+                                images_pil_list,
+                                language,
+                                inline_formula_enable,
+                                _ocr_enable,
+                                batch_ratio,
+                            )
+                    elif _vlm_ocr_enable:
                         with predictor_execution_guard(predictor):
                             window_model_list = predictor.batch_two_step_extract(
                                 images=images_pil_list,
@@ -891,12 +1062,15 @@ async def aio_doc_analyze(
     inline_formula_enable: bool = True,
     model_path: str | None = None,
     server_url: str | None = None,
+    effort: Literal["medium", "high"] = "medium",
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
     image_cache: ImagePayloadCache | None = None,
     **kwargs: object,
 ) -> tuple[list[PageInfo], list[list[dict[str, Any]]], bool]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
+    effort = validate_effort(effort)
+    image_analysis = image_analysis if effort == "high" else False
     if predictor is None:
         predictor = await _get_model_async(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
@@ -905,7 +1079,7 @@ async def aio_doc_analyze(
 
     pdf_doc = PDFDocument(pdf_bytes)
     _ocr_enable = ocr_classify(pdf_doc, parse_method=parse_method)
-    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
+    _vlm_ocr_enable = effort == "high" and _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
 
     middle_json: list[PageInfo] = []
     model_list = []
@@ -942,7 +1116,17 @@ async def aio_doc_analyze(
                         f"pages {window_start + 1}-{window_end + 1}/{page_count} "
                         f"({len(images_pil_list)} pages)"
                     )
-                    if _vlm_ocr_enable:
+                    if effort == "medium":
+                        async with aio_predictor_execution_guard(predictor):
+                            window_model_list, hybrid_pipeline_model = await _aio_extract_with_pipeline_layout(
+                                predictor,
+                                images_pil_list,
+                                language,
+                                inline_formula_enable,
+                                _ocr_enable,
+                                batch_ratio,
+                            )
+                    elif _vlm_ocr_enable:
                         async with aio_predictor_execution_guard(predictor):
                             window_model_list = await predictor.aio_batch_two_step_extract(
                                 images=images_pil_list,

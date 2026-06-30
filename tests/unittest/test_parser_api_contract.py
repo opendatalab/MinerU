@@ -2,6 +2,8 @@ from pathlib import Path
 import asyncio
 import inspect
 import json
+import sys
+import types
 
 import pytest
 from click.testing import CliRunner
@@ -10,8 +12,9 @@ from pydantic import ValidationError
 
 import mineru.parser.api_client as api_client
 import mineru.parser.api_server as api_server
+import mineru.parser.pdf as parser_pdf
 from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job, should_trust_env_for_url
-from mineru.parser import parse, parse_async
+from mineru.parser import _build_parser, parse, parse_async
 from mineru.parser.base import ParseResult
 from mineru.parser.api_server import (
     _API_SERVER_BACKENDS,
@@ -215,6 +218,7 @@ def test_parser_entrypoints_expose_api_server_style_options() -> None:
         assert "backend" in parameters
         assert "language" in parameters
         assert "ocr_mode" in parameters
+        assert "effort" in parameters
         assert "disable_table" in parameters
         assert "disable_formula" in parameters
         assert "disable_image_analysis" in parameters
@@ -329,6 +333,7 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     monkeypatch.setenv("MINERU_MAX_WAIT", "999")
     monkeypatch.setenv("MINERU_LANGUAGE", "en")
     monkeypatch.setenv("MINERU_OCR_MODE", "ocr")
+    monkeypatch.setenv("MINERU_EFFORT", "high")
     monkeypatch.setenv("MINERU_TABLE_ENABLE", "false")
     monkeypatch.setenv("MINERU_FORMULA_ENABLE", "false")
     monkeypatch.setenv("MINERU_IMAGE_ANALYSIS", "false")
@@ -342,6 +347,7 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     assert app.state.max_wait == 600
     assert app.state.language == "ch"
     assert app.state.ocr_mode == "auto"
+    assert app.state.effort == "medium"
     assert app.state.table_enable is True
     assert app.state.formula_enable is True
     assert app.state.image_analysis is True
@@ -559,7 +565,7 @@ def test_api_server_tier_selects_compatible_backend(tmp_path: Path) -> None:
     standard_app = create_app(upload_dir=str(tmp_path / "standard"), tier="standard")
 
     assert pro_app.state.tier == "pro"
-    assert pro_app.state.backend == "hybrid-auto-engine"
+    assert pro_app.state.backend == "hybrid-engine"
     assert [tier["id"] for tier in pro_app.state.tiers] == ["pro"]
     assert standard_app.state.tier == "standard"
     assert standard_app.state.backend == "pipeline"
@@ -583,7 +589,7 @@ def test_api_server_allows_compatible_tier_and_explicit_backend(tmp_path: Path) 
     app = create_app(upload_dir=str(tmp_path), tier="pro", backend="vlm-auto-engine")
 
     assert app.state.tier == "pro"
-    assert app.state.backend == "vlm-auto-engine"
+    assert app.state.backend == "vlm-engine"
     assert [tier["id"] for tier in app.state.tiers] == ["pro"]
 
 
@@ -591,7 +597,7 @@ def test_api_server_explicit_backend_infers_tier(tmp_path: Path) -> None:
     app = create_app(upload_dir=str(tmp_path), backend="hybrid-auto-engine")
 
     assert app.state.tier == "pro"
-    assert app.state.backend == "hybrid-auto-engine"
+    assert app.state.backend == "hybrid-engine"
     assert [tier["id"] for tier in app.state.tiers] == ["pro"]
 
 
@@ -600,15 +606,128 @@ def test_api_server_rejects_bare_vlm_backend(tmp_path: Path) -> None:
         create_app(upload_dir=str(tmp_path), backend="vlm")
 
 
+def test_build_parser_forwards_effort_to_hybrid_parser(tmp_path: Path) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+
+    parser = _build_parser(pdf, backend="hybrid-engine", effort="high")
+
+    assert parser.__class__.__name__ == "PdfHybridParser"
+    assert parser.effort == "high"
+
+
+@pytest.mark.parametrize(
+    ("resolver", "backend"),
+    [
+        (parser_pdf._resolve_vlm_backend, "vlm-engine"),
+        (parser_pdf._resolve_hybrid_backend, "hybrid-engine"),
+    ],
+)
+def test_pdf_engine_resolvers_use_sync_or_async_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    resolver,
+    backend: str,
+) -> None:
+    calls: list[tuple[str, bool]] = []
+
+    def fake_get_vlm_engine(inference_engine: str, is_async: bool = False) -> str:
+        """记录自动 engine 选择是否收到当前解析调用形态。"""
+        calls.append((inference_engine, is_async))
+        return "vllm-async-engine" if is_async else "vllm-engine"
+
+    monkeypatch.setattr("mineru.utils.engine_utils.get_vlm_engine", fake_get_vlm_engine)
+
+    assert resolver(backend, is_async=False) == "vllm-engine"
+    assert resolver(backend, is_async=True) == "vllm-async-engine"
+    assert calls == [("auto", False), ("auto", True)]
+
+
+def test_pdf_engine_resolvers_keep_http_client_backend() -> None:
+    assert parser_pdf._resolve_vlm_backend("vlm-http-client", is_async=False) == "http-client"
+    assert parser_pdf._resolve_vlm_backend("vlm-http-client", is_async=True) == "http-client"
+    assert parser_pdf._resolve_hybrid_backend("hybrid-http-client", is_async=False) == "http-client"
+    assert parser_pdf._resolve_hybrid_backend("hybrid-http-client", is_async=True) == "http-client"
+
+
+def test_pdf_vlm_parser_passes_call_mode_to_backend_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, bool]] = []
+    backends: list[str] = []
+    fake_module = types.ModuleType("mineru.backend.vlm.vlm_analyze")
+
+    def fake_resolve_backend(backend: str, is_async: bool = False) -> str:
+        """记录 VLM parser 同步/异步路径传入 resolver 的调用形态。"""
+        calls.append((backend, is_async))
+        return "async-backend" if is_async else "sync-backend"
+
+    def fake_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], object]:
+        """同步 VLM 分析桩只记录最终 backend，不加载真实模型。"""
+        backends.append(str(kwargs["backend"]))
+        return [], object()
+
+    async def fake_aio_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], object]:
+        """异步 VLM 分析桩只记录最终 backend，不加载真实模型。"""
+        backends.append(str(kwargs["backend"]))
+        return [], object()
+
+    fake_module.doc_analyze = fake_doc_analyze
+    fake_module.aio_doc_analyze = fake_aio_doc_analyze
+    monkeypatch.setitem(sys.modules, "mineru.backend.vlm.vlm_analyze", fake_module)
+    monkeypatch.setattr(parser_pdf, "_resolve_vlm_backend", fake_resolve_backend)
+
+    parser = parser_pdf.PdfVlmParser(backend="vlm-engine")
+
+    assert parser._run_analysis(b"%PDF") == []
+    assert asyncio.run(parser._arun_analysis(b"%PDF")) == []
+    assert calls == [("vlm-engine", False), ("vlm-engine", True)]
+    assert backends == ["sync-backend", "async-backend"]
+
+
+def test_pdf_hybrid_parser_passes_call_mode_to_backend_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, bool]] = []
+    backends: list[str] = []
+    fake_module = types.ModuleType("mineru.backend.hybrid.hybrid_analyze")
+
+    def fake_resolve_backend(backend: str, is_async: bool = False) -> str:
+        """记录 Hybrid parser 同步/异步路径传入 resolver 的调用形态。"""
+        calls.append((backend, is_async))
+        return "async-backend" if is_async else "sync-backend"
+
+    def fake_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], list[object], bool]:
+        """同步 Hybrid 分析桩只记录最终 backend，不加载真实模型。"""
+        backends.append(str(kwargs["backend"]))
+        return [], [], False
+
+    async def fake_aio_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], list[object], bool]:
+        """异步 Hybrid 分析桩只记录最终 backend，不加载真实模型。"""
+        backends.append(str(kwargs["backend"]))
+        return [], [], False
+
+    fake_module.doc_analyze = fake_doc_analyze
+    fake_module.aio_doc_analyze = fake_aio_doc_analyze
+    monkeypatch.setitem(sys.modules, "mineru.backend.hybrid.hybrid_analyze", fake_module)
+    monkeypatch.setattr(parser_pdf, "_resolve_hybrid_backend", fake_resolve_backend)
+
+    parser = parser_pdf.PdfHybridParser(backend="hybrid-engine")
+
+    assert parser._run_analysis(b"%PDF") == []
+    assert asyncio.run(parser._arun_analysis(b"%PDF")) == []
+    assert calls == [("hybrid-engine", False), ("hybrid-engine", True)]
+    assert backends == ["sync-backend", "async-backend"]
+
+
 def test_api_server_accepts_parser_backend_values(tmp_path: Path) -> None:
+    from mineru.utils.backend_options import HTTP_CLIENT_BACKEND_CHOICES, LOCAL_BACKEND_CHOICES, normalize_backend
+
+    assert _API_SERVER_BACKENDS == LOCAL_BACKEND_CHOICES + HTTP_CLIENT_BACKEND_CHOICES
     assert "vlm" not in _API_SERVER_BACKENDS
     assert "hybrid" not in _API_SERVER_BACKENDS
 
     for backend in _API_SERVER_BACKENDS:
         app = create_app(upload_dir=str(tmp_path / backend), backend=backend)
-        expected_tier = "standard" if backend == "pipeline" else "pro"
+        expected_backend = normalize_backend(backend)
+        expected_tier = "standard" if expected_backend == "pipeline" else "pro"
 
-        assert app.state.backend == backend
+        assert app.state.backend == expected_backend
         assert app.state.tier == expected_tier
 
 
@@ -617,6 +736,7 @@ def test_api_server_stores_parser_runtime_options(tmp_path: Path) -> None:
         upload_dir=str(tmp_path),
         language="en",
         ocr_mode="ocr",
+        effort="high",
         table_enable=False,
         formula_enable=False,
         image_analysis=False,
@@ -624,6 +744,7 @@ def test_api_server_stores_parser_runtime_options(tmp_path: Path) -> None:
 
     assert app.state.language == "en"
     assert app.state.ocr_mode == "ocr"
+    assert app.state.effort == "high"
     assert app.state.table_enable is False
     assert app.state.formula_enable is False
     assert app.state.image_analysis is False
@@ -634,6 +755,48 @@ def test_api_server_cli_exposes_parser_runtime_options() -> None:
 
     assert "--language" in option_names
     assert "--ocr-mode" in option_names
+    assert "--effort" in option_names
     assert "--disable-table" in option_names
     assert "--disable-formula" in option_names
     assert "--disable-image-analysis" in option_names
+
+
+def test_api_server_cli_accepts_backend_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, str] = {}
+
+    def _fake_run(app, *, host: str, port: int) -> None:
+        """记录 Click CLI 创建出的应用配置，避免测试启动真实 uvicorn 服务。"""
+        seen["backend"] = app.state.backend
+        seen["host"] = host
+        seen["port"] = str(port)
+
+    monkeypatch.setattr("uvicorn.run", _fake_run)
+
+    result = runner.invoke(main, ["--backend", "hybrid-auto-engine", "--host", "0.0.0.0", "--port", "15981"])
+
+    assert result.exit_code == 0
+    assert seen == {"backend": "hybrid-engine", "host": "0.0.0.0", "port": "15981"}
+
+
+def test_api_server_cli_rejects_unknown_backend() -> None:
+    result = runner.invoke(main, ["--backend", "vlm"])
+
+    assert result.exit_code != 0
+    assert "Unsupported backend" in result.output
+
+
+def test_api_server_cli_help_hides_backend_aliases() -> None:
+    result = runner.invoke(main, ["--help"])
+
+    assert result.exit_code == 0
+    assert "hybrid-engine" in result.output
+    assert "vlm-engine" in result.output
+    assert "hybrid-auto-engine" not in result.output
+    assert "vlm-auto-engine" not in result.output
+
+
+def test_api_server_cli_effort_help_matches_gradio_copy() -> None:
+    """校验 api server 的 effort 帮助文案与 Gradio 英文提示保持一致。"""
+    effort_option = next(param for param in main.params if "--effort" in param.opts)
+
+    assert effort_option.help == "Medium is faster. High is more accurate and may take longer."

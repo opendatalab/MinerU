@@ -79,7 +79,7 @@ docker run --privileged=true \
       <td>🟢</td>
     </tr>
     <tr>
-      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
+      <td>&lt;vlm/hybrid&gt;-engine</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
@@ -95,7 +95,7 @@ docker run --privileged=true \
       <td>🟢</td>
     </tr>
     <tr>
-      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
+      <td>&lt;vlm/hybrid&gt;-engine</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
@@ -111,7 +111,7 @@ docker run --privileged=true \
       <td>🟢</td>
     </tr>
     <tr>
-      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
+      <td>&lt;vlm/hybrid&gt;-engine</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>

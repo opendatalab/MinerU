@@ -4,6 +4,23 @@ from mineru.render.markdown_table import to_markdown_table
 from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span
 
 
+def test_table_span_ignores_legacy_html_payload_alias() -> None:
+    """表格 span 只接受 content 承载 HTML，不再兼容旧 html 别名。"""
+    span = Span.from_dict(
+        {
+            "type": ContentType.TABLE,
+            "bbox": [0.0, 0.0, 10.0, 10.0],
+            "html": "<table><tr><td>A</td></tr></table>",
+        }
+    )
+
+    assert span.content == ""
+    assert span.to_dict() == {
+        "type": ContentType.TABLE,
+        "bbox": (0.0, 0.0, 10.0, 10.0),
+    }
+
+
 def test_to_markdown_table_renders_simple_table() -> None:
     html = """
     <table>
@@ -23,7 +40,7 @@ def test_to_markdown_table_renders_simple_table() -> None:
     )
 
 
-def test_to_markdown_table_expands_colspan_cells() -> None:
+def test_to_markdown_table_falls_back_for_colspan_cells() -> None:
     html = """
     <table>
       <tr><th colspan="2">User</th><th>Score</th></tr>
@@ -31,16 +48,10 @@ def test_to_markdown_table_expands_colspan_cells() -> None:
     </table>
     """
 
-    assert to_markdown_table(html) == "\n".join(
-        [
-            "| User |  | Score |",
-            "| --- | --- | --- |",
-            "| Alice | Math | 90 |",
-        ]
-    )
+    assert to_markdown_table(html) == html.strip()
 
 
-def test_to_markdown_table_expands_rowspan_cells() -> None:
+def test_to_markdown_table_falls_back_for_rowspan_cells() -> None:
     html = """
     <table>
       <tr><th>Name</th><th>Subject</th><th>Score</th></tr>
@@ -49,14 +60,7 @@ def test_to_markdown_table_expands_rowspan_cells() -> None:
     </table>
     """
 
-    assert to_markdown_table(html) == "\n".join(
-        [
-            "| Name | Subject | Score |",
-            "| --- | --- | --- |",
-            "| Alice | Math | 90 |",
-            "|  | English | 95 |",
-        ]
-    )
+    assert to_markdown_table(html) == html.strip()
 
 
 def test_to_markdown_table_preserves_simple_inline_markup() -> None:
@@ -120,7 +124,7 @@ def test_blocks_to_markdown_prefers_markdown_table_when_enabled() -> None:
                 lines=[
                     Line(
                         bbox=(0.0, 0.0, 10.0, 10.0),
-                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), html=html)],
+                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
                     )
                 ],
             )
@@ -137,6 +141,35 @@ def test_blocks_to_markdown_prefers_markdown_table_when_enabled() -> None:
             ]
         )
     ]
+
+
+def test_blocks_to_markdown_keeps_merged_cell_tables_as_html() -> None:
+    html = """
+    <table>
+      <tr><th colspan="2">User</th><th>Score</th></tr>
+      <tr><td>Alice</td><td>Math</td><td>90</td></tr>
+    </table>
+    """.strip()
+    table_block = Block(
+        index=0,
+        type=BlockType.TABLE,
+        bbox=(0.0, 0.0, 10.0, 10.0),
+        blocks=[
+            Block(
+                index=0,
+                type=BlockType.TABLE_BODY,
+                bbox=(0.0, 0.0, 10.0, 10.0),
+                lines=[
+                    Line(
+                        bbox=(0.0, 0.0, 10.0, 10.0),
+                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
+                    )
+                ],
+            )
+        ],
+    )
+
+    assert blocks_to_markdown([table_block], prefer_markdown_table=True) == [html]
 
 
 def test_render_markdown_prefers_markdown_table_when_enabled() -> None:
@@ -158,7 +191,7 @@ def test_render_markdown_prefers_markdown_table_when_enabled() -> None:
                 lines=[
                     Line(
                         bbox=(0.0, 0.0, 10.0, 10.0),
-                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), html=html)],
+                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
                     )
                 ],
             )
