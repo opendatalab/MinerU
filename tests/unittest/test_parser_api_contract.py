@@ -2,6 +2,8 @@ from pathlib import Path
 import asyncio
 import inspect
 import json
+import sys
+import types
 
 import pytest
 from click.testing import CliRunner
@@ -10,6 +12,7 @@ from pydantic import ValidationError
 
 import mineru.parser.api_client as api_client
 import mineru.parser.api_server as api_server
+import mineru.parser.pdf as parser_pdf
 from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job, should_trust_env_for_url
 from mineru.parser import _build_parser, parse, parse_async
 from mineru.parser.base import ParseResult
@@ -611,6 +614,105 @@ def test_build_parser_forwards_effort_to_hybrid_parser(tmp_path: Path) -> None:
 
     assert parser.__class__.__name__ == "PdfHybridParser"
     assert parser.effort == "high"
+
+
+@pytest.mark.parametrize(
+    ("resolver", "backend"),
+    [
+        (parser_pdf._resolve_vlm_backend, "vlm-engine"),
+        (parser_pdf._resolve_hybrid_backend, "hybrid-engine"),
+    ],
+)
+def test_pdf_engine_resolvers_use_sync_or_async_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    resolver,
+    backend: str,
+) -> None:
+    calls: list[tuple[str, bool]] = []
+
+    def fake_get_vlm_engine(inference_engine: str, is_async: bool = False) -> str:
+        """记录自动 engine 选择是否收到当前解析调用形态。"""
+        calls.append((inference_engine, is_async))
+        return "vllm-async-engine" if is_async else "vllm-engine"
+
+    monkeypatch.setattr("mineru.utils.engine_utils.get_vlm_engine", fake_get_vlm_engine)
+
+    assert resolver(backend, is_async=False) == "vllm-engine"
+    assert resolver(backend, is_async=True) == "vllm-async-engine"
+    assert calls == [("auto", False), ("auto", True)]
+
+
+def test_pdf_engine_resolvers_keep_http_client_backend() -> None:
+    assert parser_pdf._resolve_vlm_backend("vlm-http-client", is_async=False) == "http-client"
+    assert parser_pdf._resolve_vlm_backend("vlm-http-client", is_async=True) == "http-client"
+    assert parser_pdf._resolve_hybrid_backend("hybrid-http-client", is_async=False) == "http-client"
+    assert parser_pdf._resolve_hybrid_backend("hybrid-http-client", is_async=True) == "http-client"
+
+
+def test_pdf_vlm_parser_passes_call_mode_to_backend_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, bool]] = []
+    backends: list[str] = []
+    fake_module = types.ModuleType("mineru.backend.vlm.vlm_analyze")
+
+    def fake_resolve_backend(backend: str, is_async: bool = False) -> str:
+        """记录 VLM parser 同步/异步路径传入 resolver 的调用形态。"""
+        calls.append((backend, is_async))
+        return "async-backend" if is_async else "sync-backend"
+
+    def fake_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], object]:
+        """同步 VLM 分析桩只记录最终 backend，不加载真实模型。"""
+        backends.append(str(kwargs["backend"]))
+        return [], object()
+
+    async def fake_aio_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], object]:
+        """异步 VLM 分析桩只记录最终 backend，不加载真实模型。"""
+        backends.append(str(kwargs["backend"]))
+        return [], object()
+
+    fake_module.doc_analyze = fake_doc_analyze
+    fake_module.aio_doc_analyze = fake_aio_doc_analyze
+    monkeypatch.setitem(sys.modules, "mineru.backend.vlm.vlm_analyze", fake_module)
+    monkeypatch.setattr(parser_pdf, "_resolve_vlm_backend", fake_resolve_backend)
+
+    parser = parser_pdf.PdfVlmParser(backend="vlm-engine")
+
+    assert parser._run_analysis(b"%PDF") == []
+    assert asyncio.run(parser._arun_analysis(b"%PDF")) == []
+    assert calls == [("vlm-engine", False), ("vlm-engine", True)]
+    assert backends == ["sync-backend", "async-backend"]
+
+
+def test_pdf_hybrid_parser_passes_call_mode_to_backend_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, bool]] = []
+    backends: list[str] = []
+    fake_module = types.ModuleType("mineru.backend.hybrid.hybrid_analyze")
+
+    def fake_resolve_backend(backend: str, is_async: bool = False) -> str:
+        """记录 Hybrid parser 同步/异步路径传入 resolver 的调用形态。"""
+        calls.append((backend, is_async))
+        return "async-backend" if is_async else "sync-backend"
+
+    def fake_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], list[object], bool]:
+        """同步 Hybrid 分析桩只记录最终 backend，不加载真实模型。"""
+        backends.append(str(kwargs["backend"]))
+        return [], [], False
+
+    async def fake_aio_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], list[object], bool]:
+        """异步 Hybrid 分析桩只记录最终 backend，不加载真实模型。"""
+        backends.append(str(kwargs["backend"]))
+        return [], [], False
+
+    fake_module.doc_analyze = fake_doc_analyze
+    fake_module.aio_doc_analyze = fake_aio_doc_analyze
+    monkeypatch.setitem(sys.modules, "mineru.backend.hybrid.hybrid_analyze", fake_module)
+    monkeypatch.setattr(parser_pdf, "_resolve_hybrid_backend", fake_resolve_backend)
+
+    parser = parser_pdf.PdfHybridParser(backend="hybrid-engine")
+
+    assert parser._run_analysis(b"%PDF") == []
+    assert asyncio.run(parser._arun_analysis(b"%PDF")) == []
+    assert calls == [("hybrid-engine", False), ("hybrid-engine", True)]
+    assert backends == ["sync-backend", "async-backend"]
 
 
 def test_api_server_accepts_parser_backend_values(tmp_path: Path) -> None:
