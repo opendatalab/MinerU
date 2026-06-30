@@ -237,7 +237,7 @@ class PytorchPaddleOCR(TextSystem):
             logger.debug("no valid image provided")
             return None, None
 
-        ori_im = img.copy()
+        ori_im = img
         dt_boxes, elapse = self.text_detector(img)
 
         if dt_boxes is None:

@@ -657,69 +657,48 @@ class BatchAnalyze:
                 # 获取OCR模型
                 ocr_model = atom_model_manager.get_atom_model(atom_model_name=AtomicModel.OCR, lang=lang)
 
-                # 按分辨率分组并同时完成padding
-                # RESOLUTION_GROUP_STRIDE = 32
-                RESOLUTION_GROUP_STRIDE = 64
+                batch_images = [crop_info[1] for crop_info in lang_crop_list]
+                det_batch_size = min(len(batch_images), self.batch_ratio * OCR_DET_BASE_BATCH_SIZE)
+                batch_results = run_ocr_inference(
+                    ocr_model.text_detector.batch_predict,
+                    batch_images,
+                    det_batch_size,
+                    tqdm_enable=True,
+                    tqdm_desc=f"OCR-det {lang}",
+                )
 
-                resolution_groups = defaultdict(list)
-                for crop_info in lang_crop_list:
-                    cropped_img = crop_info[1]
-                    h, w = cropped_img.shape[:2]
-                    # 直接计算目标尺寸并用作分组键
-                    target_h = ((h + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
-                    target_w = ((w + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
-                    group_key = (target_h, target_w)
-                    resolution_groups[group_key].append(crop_info)
+                for crop_info, (dt_boxes, _) in zip(lang_crop_list, batch_results):
+                    (
+                        bgr_image,
+                        _det_image,
+                        useful_list,
+                        ocr_res_list_dict,
+                        adjusted_mfdetrec_res,
+                        _lang,
+                    ) = crop_info
 
-                # 对每个分辨率组进行批处理
-                for (target_h, target_w), group_crops in tqdm(resolution_groups.items(), desc=f"OCR-det {lang}"):
-                    # 对所有图像进行padding到统一尺寸
-                    batch_images = []
-                    for crop_info in group_crops:
-                        img = crop_info[1]
-                        h, w = img.shape[:2]
-                        # 创建目标尺寸的白色背景
-                        padded_img = np.ones((target_h, target_w, 3), dtype=np.uint8) * 255
-                        padded_img[:h, :w] = img
-                        batch_images.append(padded_img)
+                    if dt_boxes is not None and len(dt_boxes) > 0:
+                        # 处理检测框
+                        dt_boxes_sorted = sorted_boxes(dt_boxes)
+                        dt_boxes_merged = merge_det_boxes(dt_boxes_sorted) if dt_boxes_sorted else []
 
-                    # 批处理检测
-                    det_batch_size = min(len(batch_images), self.batch_ratio * OCR_DET_BASE_BATCH_SIZE)
-                    batch_results = run_ocr_inference(ocr_model.text_detector.batch_predict, batch_images, det_batch_size)
+                        # 根据公式位置更新检测框
+                        dt_boxes_final = (
+                            update_det_boxes(dt_boxes_merged, adjusted_mfdetrec_res)
+                            if dt_boxes_merged and adjusted_mfdetrec_res
+                            else dt_boxes_merged
+                        )
 
-                    # 处理批处理结果
-                    for crop_info, (dt_boxes, _) in zip(group_crops, batch_results):
-                        (
-                            bgr_image,
-                            _det_image,
-                            useful_list,
-                            ocr_res_list_dict,
-                            adjusted_mfdetrec_res,
-                            _lang,
-                        ) = crop_info
-
-                        if dt_boxes is not None and len(dt_boxes) > 0:
-                            # 处理检测框
-                            dt_boxes_sorted = sorted_boxes(dt_boxes)
-                            dt_boxes_merged = merge_det_boxes(dt_boxes_sorted) if dt_boxes_sorted else []
-
-                            # 根据公式位置更新检测框
-                            dt_boxes_final = (
-                                update_det_boxes(dt_boxes_merged, adjusted_mfdetrec_res)
-                                if dt_boxes_merged and adjusted_mfdetrec_res
-                                else dt_boxes_merged
+                        if dt_boxes_final:
+                            ocr_res = [box.tolist() if hasattr(box, "tolist") else box for box in dt_boxes_final]
+                            ocr_result_list = get_ocr_result_list(
+                                ocr_res,
+                                useful_list,
+                                ocr_res_list_dict["ocr_enable"],
+                                bgr_image,
+                                _lang,
                             )
-
-                            if dt_boxes_final:
-                                ocr_res = [box.tolist() if hasattr(box, "tolist") else box for box in dt_boxes_final]
-                                ocr_result_list = get_ocr_result_list(
-                                    ocr_res,
-                                    useful_list,
-                                    ocr_res_list_dict["ocr_enable"],
-                                    bgr_image,
-                                    _lang,
-                                )
-                                ocr_res_list_dict["layout_res"].extend(ocr_result_list)
+                            ocr_res_list_dict["layout_res"].extend(ocr_result_list)
 
             # 清理显存
             clean_vram(self.model.device, vram_threshold=8)
