@@ -881,7 +881,6 @@ def do_parse(
                 page_index_map_list=page_index_map_list,
                 broken_page_indices_list=broken_page_indices_list,
                 image_analysis=image_analysis,
-                effort=effort,
                 client_side_output_generation=client_side_output_generation,
                 **kwargs,
             )
@@ -1024,7 +1023,6 @@ async def aio_do_parse(
                 page_index_map_list=page_index_map_list,
                 broken_page_indices_list=broken_page_indices_list,
                 image_analysis=image_analysis,
-                effort=effort,
                 client_side_output_generation=client_side_output_generation,
                 **kwargs,
             )

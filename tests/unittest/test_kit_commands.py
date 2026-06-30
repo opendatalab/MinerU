@@ -225,6 +225,26 @@ def test_api_server_omits_tier_when_backend_only(monkeypatch: Any) -> None:
     assert "--tier" not in seen["args"]
 
 
+def test_api_server_normalizes_backend_alias(monkeypatch: Any) -> None:
+    seen: dict[str, Any] = {}
+
+    def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
+        """记录 mineru-kit api-server 转发给底层 Click 命令的参数。"""
+        seen["args"] = args
+        seen["prog_name"] = prog_name
+        seen["standalone_mode"] = standalone_mode
+
+    monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
+
+    result = runner.invoke(app, ["api-server", "--backend", "hybrid-auto-engine"])
+
+    assert result.exit_code == 0
+    assert "--backend" in seen["args"]
+    assert "hybrid-engine" in seen["args"]
+    assert "hybrid-auto-engine" not in seen["args"]
+    assert "--tier" not in seen["args"]
+
+
 def test_vlm_server_rejects_unimplemented_engine() -> None:
     result = runner.invoke(app, ["vlm-server", "--engine", "sglang"])
 
@@ -387,6 +407,154 @@ def test_parse_forwards_backend_alias_and_effort(monkeypatch: Any, tmp_path: Pat
     assert result.exit_code == 0
     assert seen["backend"] == "hybrid-engine"
     assert seen["effort"] == "high"
+
+
+def test_cli_old_vlm_branch_does_not_forward_effort(monkeypatch: Any, tmp_path: Path) -> None:
+    from mineru.cli_old import common
+
+    seen: dict[str, Any] = {}
+
+    monkeypatch.setattr(common, "_process_office_doc", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        common,
+        "_prepare_pdf_inputs",
+        lambda pdfs, start, end: [
+            SimpleNamespace(pdf_bytes=pdf, retained_page_indices=None, broken_page_indices=None) for pdf in pdfs
+        ],
+    )
+    monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=False: "vllm-engine")
+
+    def _fake_process_vlm(*args: Any, **kwargs: Any) -> None:
+        """记录 VLM 分支收到的 kwargs，确认 hybrid effort 不会泄漏进模型初始化。"""
+        seen["backend"] = args[3]
+        seen["kwargs"] = kwargs
+
+    monkeypatch.setattr(common, "_process_vlm", _fake_process_vlm)
+
+    common.do_parse(
+        output_dir=str(tmp_path),
+        pdf_file_names=["demo.pdf"],
+        pdf_bytes_list=[b"%PDF-1.7\n"],
+        p_lang_list=["ch"],
+        backend="vlm-engine",
+        effort="high",
+    )
+
+    assert seen["backend"] == "vllm-engine"
+    assert "effort" not in seen["kwargs"]
+    assert seen["kwargs"]["image_analysis"] is True
+
+
+def test_cli_old_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Path) -> None:
+    from mineru.cli_old import common
+
+    seen: dict[str, Any] = {}
+
+    monkeypatch.setattr(common, "_process_office_doc", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        common,
+        "_prepare_pdf_inputs",
+        lambda pdfs, start, end: [
+            SimpleNamespace(pdf_bytes=pdf, retained_page_indices=None, broken_page_indices=None) for pdf in pdfs
+        ],
+    )
+    monkeypatch.setattr(common, "ensure_backend_dependencies", lambda backend: None)
+    monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=False: "vllm-engine")
+
+    def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
+        """记录 Hybrid 分支收到的 kwargs，确认 effort 仍传给 hybrid analyzer。"""
+        seen["backend"] = args[6]
+        seen["kwargs"] = kwargs
+
+    monkeypatch.setattr(common, "_process_hybrid", _fake_process_hybrid)
+
+    common.do_parse(
+        output_dir=str(tmp_path),
+        pdf_file_names=["demo.pdf"],
+        pdf_bytes_list=[b"%PDF-1.7\n"],
+        p_lang_list=["ch"],
+        backend="hybrid-engine",
+        effort="high",
+    )
+
+    assert seen["backend"] == "vllm-engine"
+    assert seen["kwargs"]["effort"] == "high"
+
+
+def test_cli_old_async_vlm_branch_does_not_forward_effort(monkeypatch: Any, tmp_path: Path) -> None:
+    from mineru.cli_old import common
+
+    seen: dict[str, Any] = {}
+
+    monkeypatch.setattr(common, "_process_office_doc", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        common,
+        "_prepare_pdf_inputs",
+        lambda pdfs, start, end: [
+            SimpleNamespace(pdf_bytes=pdf, retained_page_indices=None, broken_page_indices=None) for pdf in pdfs
+        ],
+    )
+    monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=True: "vllm-async-engine")
+
+    async def _fake_async_process_vlm(*args: Any, **kwargs: Any) -> None:
+        """记录异步 VLM 分支收到的 kwargs，确认 effort 不会进入异步模型初始化。"""
+        seen["backend"] = args[3]
+        seen["kwargs"] = kwargs
+
+    monkeypatch.setattr(common, "_async_process_vlm", _fake_async_process_vlm)
+
+    asyncio.run(
+        common.aio_do_parse(
+            output_dir=str(tmp_path),
+            pdf_file_names=["demo.pdf"],
+            pdf_bytes_list=[b"%PDF-1.7\n"],
+            p_lang_list=["ch"],
+            backend="vlm-engine",
+            effort="high",
+        )
+    )
+
+    assert seen["backend"] == "vllm-async-engine"
+    assert "effort" not in seen["kwargs"]
+    assert seen["kwargs"]["image_analysis"] is True
+
+
+def test_cli_old_async_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Path) -> None:
+    from mineru.cli_old import common
+
+    seen: dict[str, Any] = {}
+
+    monkeypatch.setattr(common, "_process_office_doc", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        common,
+        "_prepare_pdf_inputs",
+        lambda pdfs, start, end: [
+            SimpleNamespace(pdf_bytes=pdf, retained_page_indices=None, broken_page_indices=None) for pdf in pdfs
+        ],
+    )
+    monkeypatch.setattr(common, "ensure_backend_dependencies", lambda backend: None)
+    monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=True: "vllm-async-engine")
+
+    async def _fake_async_process_hybrid(*args: Any, **kwargs: Any) -> None:
+        """记录异步 Hybrid 分支收到的 kwargs，确认 effort 仍传给 hybrid analyzer。"""
+        seen["backend"] = args[6]
+        seen["kwargs"] = kwargs
+
+    monkeypatch.setattr(common, "_async_process_hybrid", _fake_async_process_hybrid)
+
+    asyncio.run(
+        common.aio_do_parse(
+            output_dir=str(tmp_path),
+            pdf_file_names=["demo.pdf"],
+            pdf_bytes_list=[b"%PDF-1.7\n"],
+            p_lang_list=["ch"],
+            backend="hybrid-engine",
+            effort="high",
+        )
+    )
+
+    assert seen["backend"] == "vllm-async-engine"
+    assert seen["kwargs"]["effort"] == "high"
 
 
 def test_parse_single_file_middle_json_writes_image_sidecars(

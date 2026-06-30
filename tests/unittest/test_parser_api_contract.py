@@ -11,7 +11,7 @@ from pydantic import ValidationError
 import mineru.parser.api_client as api_client
 import mineru.parser.api_server as api_server
 from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job, should_trust_env_for_url
-from mineru.parser import parse, parse_async
+from mineru.parser import _build_parser, parse, parse_async
 from mineru.parser.base import ParseResult
 from mineru.parser.api_server import (
     _API_SERVER_BACKENDS,
@@ -603,6 +603,16 @@ def test_api_server_rejects_bare_vlm_backend(tmp_path: Path) -> None:
         create_app(upload_dir=str(tmp_path), backend="vlm")
 
 
+def test_build_parser_forwards_effort_to_hybrid_parser(tmp_path: Path) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+
+    parser = _build_parser(pdf, backend="hybrid-engine", effort="high")
+
+    assert parser.__class__.__name__ == "PdfHybridParser"
+    assert parser.effort == "high"
+
+
 def test_api_server_accepts_parser_backend_values(tmp_path: Path) -> None:
     from mineru.utils.backend_options import HTTP_CLIENT_BACKEND_CHOICES, LOCAL_BACKEND_CHOICES, normalize_backend
 
@@ -647,6 +657,40 @@ def test_api_server_cli_exposes_parser_runtime_options() -> None:
     assert "--disable-table" in option_names
     assert "--disable-formula" in option_names
     assert "--disable-image-analysis" in option_names
+
+
+def test_api_server_cli_accepts_backend_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, str] = {}
+
+    def _fake_run(app, *, host: str, port: int) -> None:
+        """记录 Click CLI 创建出的应用配置，避免测试启动真实 uvicorn 服务。"""
+        seen["backend"] = app.state.backend
+        seen["host"] = host
+        seen["port"] = str(port)
+
+    monkeypatch.setattr("uvicorn.run", _fake_run)
+
+    result = runner.invoke(main, ["--backend", "hybrid-auto-engine", "--host", "0.0.0.0", "--port", "15981"])
+
+    assert result.exit_code == 0
+    assert seen == {"backend": "hybrid-engine", "host": "0.0.0.0", "port": "15981"}
+
+
+def test_api_server_cli_rejects_unknown_backend() -> None:
+    result = runner.invoke(main, ["--backend", "vlm"])
+
+    assert result.exit_code != 0
+    assert "Unsupported backend" in result.output
+
+
+def test_api_server_cli_help_hides_backend_aliases() -> None:
+    result = runner.invoke(main, ["--help"])
+
+    assert result.exit_code == 0
+    assert "hybrid-engine" in result.output
+    assert "vlm-engine" in result.output
+    assert "hybrid-auto-engine" not in result.output
+    assert "vlm-auto-engine" not in result.output
 
 
 def test_api_server_cli_effort_help_matches_gradio_copy() -> None:

@@ -2107,8 +2107,12 @@ def create_app(
 @click.option(
     "--backend",
     default=None,
-    type=click.Choice(_API_SERVER_BACKENDS),
-    help="Advanced parser backend. Defaults from --tier: standard -> pipeline, pro -> hybrid-engine.",
+    type=str,
+    help=(
+        "Advanced parser backend "
+        f"({', '.join(_API_SERVER_BACKENDS)}). "
+        "Defaults from --tier: standard -> pipeline, pro -> hybrid-engine."
+    ),
 )
 @click.option(
     "--tier",
@@ -2181,8 +2185,8 @@ def main(
     """Start the MinerU v1 REST API server."""
     import uvicorn
 
-    uvicorn.run(
-        create_app(
+    try:
+        application = create_app(
             upload_dir=upload_dir,
             tier=tier,
             backend=backend,
@@ -2196,7 +2200,12 @@ def main(
             table_enable=not disable_table,
             formula_enable=not disable_formula,
             image_analysis=not disable_image_analysis,
-        ),
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    uvicorn.run(
+        application,
         host=host,
         port=port,
     )

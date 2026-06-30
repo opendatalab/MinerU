@@ -4,8 +4,9 @@ from functools import partial
 from pathlib import Path
 from typing import Literal
 
-from ...parser import PARSER_BACKENDS, MinerUApiParser
+from ...parser import MinerUApiParser
 from ...parser import parse as local_parse
+from ...utils.backend_options import normalize_public_backend
 from ..common import (
     build_remote_api_url,
     effective_local_tier_and_backend,
@@ -66,9 +67,11 @@ def parse_cmd(
         parser = MinerUApiParser(api_url=api_url, api_key=api_key, tier=tier)
         parse_one = partial(parser.parse, page_range=pages or "")
     else:
-        if backend is not None and backend not in PARSER_BACKENDS:
-            exit_with_message("invalid_request", f"Unsupported backend '{backend}'.", "backend")
-        resolved_tier, resolved_backend = effective_local_tier_and_backend(tier, backend)
+        try:
+            normalized_backend = normalize_public_backend(backend) if backend is not None else None
+        except ValueError as exc:
+            exit_with_message("invalid_request", str(exc), "backend")
+        resolved_tier, resolved_backend = effective_local_tier_and_backend(tier, normalized_backend)
         parse_one = partial(
             local_parse,
             tier=resolved_tier,

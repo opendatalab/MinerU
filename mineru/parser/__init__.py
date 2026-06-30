@@ -114,6 +114,7 @@ def _build_parser(
             table_enable=resolved_table_enable,
             server_url=server_url,
             image_analysis=resolved_image_analysis,
+            effort=resolved_effort,
         )
     elif resolved_backend == "flash":
         return PdfFlashParser()
