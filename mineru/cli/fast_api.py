@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import asyncio
+import json
 import mimetypes
 import multiprocessing
 import os
@@ -59,6 +60,7 @@ from mineru.cli.vlm_preload import (
     maybe_preload_vlm_model,
     split_service_and_model_config,
 )
+from mineru.cli.vllm_cancellation import VllmCancellationRegistry, print_cancel_event
 from mineru.backend.vlm.vlm_analyze import shutdown_cached_models
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.check_sys_env import is_mac_environment
@@ -79,7 +81,16 @@ TASK_PENDING = "pending"
 TASK_PROCESSING = "processing"
 TASK_COMPLETED = "completed"
 TASK_FAILED = "failed"
-TASK_TERMINAL_STATES = {TASK_COMPLETED, TASK_FAILED}
+TASK_CANCELLED = "cancelled"
+TASK_PAUSE_REQUESTED = "pause_requested"
+TASK_PAUSED = "paused"
+TASK_TERMINAL_STATES = {TASK_COMPLETED, TASK_FAILED, TASK_CANCELLED}
+TASK_NOT_READY_STATES = {
+    TASK_PENDING,
+    TASK_PROCESSING,
+    TASK_PAUSE_REQUESTED,
+    TASK_PAUSED,
+}
 SUPPORTED_UPLOAD_SUFFIXES = pdf_suffixes + image_suffixes + office_suffixes
 RESULT_IMAGE_SUFFIXES = set(image_suffixes) | {"svg"}
 DEFAULT_TASK_RETENTION_SECONDS = 24 * 60 * 60
@@ -169,6 +180,14 @@ class AsyncParseTask:
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     error: Optional[str] = None
+    cancel_requested: bool = False
+    cancel_requested_at: Optional[str] = None
+    cancelled_at: Optional[str] = None
+    cancel_reason: Optional[str] = None
+    pause_requested_at: Optional[str] = None
+    paused_at: Optional[str] = None
+    resumed_at: Optional[str] = None
+    checkpoint: Optional[dict[str, Any]] = None
 
     def to_status_payload(
         self,
@@ -184,6 +203,14 @@ class AsyncParseTask:
             "started_at": self.started_at,
             "completed_at": self.completed_at,
             "error": self.error,
+            "cancel_requested": self.cancel_requested,
+            "cancel_requested_at": self.cancel_requested_at,
+            "cancelled_at": self.cancelled_at,
+            "cancel_reason": self.cancel_reason,
+            "pause_requested_at": self.pause_requested_at,
+            "paused_at": self.paused_at,
+            "resumed_at": self.resumed_at,
+            "checkpoint": self.checkpoint,
             "status_url": str(
                 request.url_for("get_async_task_status", task_id=self.task_id)
             ),
@@ -198,6 +225,193 @@ class AsyncParseTask:
 
 class TaskWaitAbortedError(RuntimeError):
     """Raised when a synchronous file_parse request cannot keep waiting safely."""
+
+
+class PauseRegistry:
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self._pause_requested: set[str] = set()
+        self._resume_events: dict[str, asyncio.Event] = {}
+        self._tasks: dict[str, AsyncParseTask] = {}
+        self._signal_callbacks: dict[str, Any] = {}
+
+    def track_task(self, task: AsyncParseTask, signal_callback: Any | None = None) -> None:
+        with self._lock:
+            self._tasks[task.task_id] = task
+            if signal_callback is not None:
+                self._signal_callbacks[task.task_id] = signal_callback
+            self._resume_events.setdefault(task.task_id, asyncio.Event()).set()
+
+    def request_pause(self, task_id: str) -> None:
+        with self._lock:
+            self._pause_requested.add(task_id)
+            self._resume_events.setdefault(task_id, asyncio.Event()).clear()
+        logger.info(f"[MINERU_PAUSE] request_pause task_id={task_id}")
+
+    def is_pause_requested(self, task_id: str) -> bool:
+        with self._lock:
+            return task_id in self._pause_requested
+
+    def mark_paused(
+        self,
+        task_id: str,
+        checkpoint: dict[str, Any] | None = None,
+    ) -> None:
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task is not None and not is_task_terminal(task.status):
+                now = utc_now_iso()
+                task.status = TASK_PAUSED
+                task.paused_at = task.paused_at or now
+                task.checkpoint = checkpoint
+            callback = self._signal_callbacks.get(task_id)
+        if callback is not None:
+            callback(task_id)
+        logger.info(f"[MINERU_PAUSE] paused task_id={task_id}")
+
+    async def wait_until_resumed(self, task_id: str) -> None:
+        with self._lock:
+            event = self._resume_events.setdefault(task_id, asyncio.Event())
+        await event.wait()
+
+    def resume(self, task_id: str) -> None:
+        with self._lock:
+            self._pause_requested.discard(task_id)
+            event = self._resume_events.setdefault(task_id, asyncio.Event())
+            event.set()
+            task = self._tasks.get(task_id)
+            if task is not None and task.status == TASK_PAUSED:
+                task.status = TASK_PROCESSING
+                task.resumed_at = utc_now_iso()
+            callback = self._signal_callbacks.get(task_id)
+        if callback is not None:
+            callback(task_id)
+        logger.info(f"[MINERU_PAUSE] resume task_id={task_id}")
+
+    def cleanup_task(self, task_id: str) -> None:
+        with self._lock:
+            self._pause_requested.discard(task_id)
+            self._resume_events.pop(task_id, None)
+            self._tasks.pop(task_id, None)
+            self._signal_callbacks.pop(task_id, None)
+
+
+class CheckpointStore:
+    checkpoint_dir_name = "pause_resume"
+    checkpoint_file_name = "checkpoint.json"
+
+    def write_window_result(
+        self,
+        task_output_dir: str,
+        window_index: int,
+        data: Any,
+    ) -> str:
+        relative_path = f"{self.checkpoint_dir_name}/windows/window-{window_index:04d}.json"
+        self._write_json_atomic(Path(task_output_dir) / relative_path, data)
+        return relative_path
+
+    def write_partial_state(
+        self,
+        task_output_dir: str,
+        middle_json: dict[str, Any],
+        model_output: Any,
+    ) -> dict[str, str]:
+        middle_path = f"{self.checkpoint_dir_name}/middle_json_partial.json"
+        model_path = f"{self.checkpoint_dir_name}/model_output_partial.json"
+        self._write_json_atomic(Path(task_output_dir) / middle_path, middle_json)
+        self._write_json_atomic(Path(task_output_dir) / model_path, model_output)
+        return {
+            "middle_json_partial": middle_path,
+            "model_output_partial": model_path,
+        }
+
+    def write_checkpoint_atomic(
+        self,
+        task_output_dir: str,
+        checkpoint: dict[str, Any],
+    ) -> dict[str, Any]:
+        path = Path(task_output_dir) / self.checkpoint_dir_name / self.checkpoint_file_name
+        self._write_json_atomic(path, checkpoint)
+        return checkpoint
+
+    def load_checkpoint(self, task_output_dir: str) -> dict[str, Any] | None:
+        path = Path(task_output_dir) / self.checkpoint_dir_name / self.checkpoint_file_name
+        if not path.exists():
+            return None
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def clear_checkpoint(self, task_output_dir: str) -> None:
+        path = Path(task_output_dir) / self.checkpoint_dir_name
+        if path.exists():
+            shutil.rmtree(path)
+
+    def write_processing_checkpoint(
+        self,
+        task_output_dir: str,
+        task_id: str,
+        file_name: str,
+        backend: str,
+        parse_method: str,
+        status: str,
+        page_count: int,
+        window_size: int,
+        window_index: int,
+        window_start: int,
+        window_end: int,
+        middle_json: dict[str, Any],
+        model_output: Any,
+        window_result: Any,
+    ) -> dict[str, Any]:
+        latest_window_path = self.write_window_result(
+            task_output_dir,
+            window_index,
+            window_result,
+        )
+        artifacts = self.write_partial_state(task_output_dir, middle_json, model_output)
+        artifacts["latest_window"] = latest_window_path
+        checkpoint = {
+            "version": 1,
+            "task_id": task_id,
+            "file_name": file_name,
+            "backend": backend,
+            "parse_method": parse_method,
+            "status": status,
+            "phase": "after_window_completed",
+            "page_count": page_count,
+            "window_size": window_size,
+            "completed_windows": window_index + 1,
+            "completed_until_page": window_end + 1,
+            "next_start_page": min(window_end + 2, page_count + 1),
+            "updated_at": utc_now_iso(),
+            "artifacts": artifacts,
+        }
+        logger.info(
+            "[MINERU_PAUSE] checkpoint_written "
+            f"task_id={task_id} file={file_name} window={window_index} "
+            f"completed_until_page={checkpoint['completed_until_page']} "
+            f"next_start_page={checkpoint['next_start_page']}"
+        )
+        return self.write_checkpoint_atomic(task_output_dir, checkpoint)
+
+    def _write_json_atomic(self, path: Path, data: Any) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            with temp_path.open("w", encoding="utf-8") as handle:
+                json.dump(data, handle, ensure_ascii=False, indent=2, default=str)
+            os.replace(temp_path, path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
+
+
+@dataclass(frozen=True)
+class CancelTaskResult:
+    task: AsyncParseTask
+    abort_count: int
+    aborted_request_ids: list[str]
+    file_name: str | None = None
 
 
 @asynccontextmanager
@@ -824,6 +1038,7 @@ async def run_parse_job(
     uploads: list[StoredUpload],
     request_options: ParseRequestOptions | AsyncParseTask,
     config: dict[str, Any],
+    cancellation_registry: VllmCancellationRegistry | None = None,
 ) -> list[str]:
     pdf_file_names, pdf_bytes_list = await asyncio.to_thread(load_parse_inputs, uploads)
     actual_lang_list = normalize_lang_list(request_options.lang_list, len(pdf_file_names))
@@ -857,6 +1072,15 @@ async def run_parse_job(
             "client_side_output_generation",
             False,
         ),
+        mineru_task_id=getattr(request_options, "task_id", None),
+        mineru_cancellation_registry=(
+            cancellation_registry
+            or getattr(request_options, "mineru_cancellation_registry", None)
+        ),
+        mineru_pause_registry=getattr(request_options, "mineru_pause_registry", None),
+        mineru_checkpoint_store=getattr(request_options, "mineru_checkpoint_store", None),
+        mineru_task_output_dir=output_dir,
+        mineru_parse_method=request_options.parse_method,
         **config,
     )
 
@@ -932,6 +1156,10 @@ class AsyncTaskManager:
         self.dispatcher_task: Optional[asyncio.Task[Any]] = None
         self.cleanup_task: Optional[asyncio.Task[Any]] = None
         self.active_tasks: set[asyncio.Task[Any]] = set()
+        self.active_processors_by_task_id: dict[str, asyncio.Task[Any]] = {}
+        self.cancellation_registry = VllmCancellationRegistry()
+        self.pause_registry = PauseRegistry()
+        self.checkpoint_store = CheckpointStore()
         self.last_worker_error: Optional[str] = None
         self.is_shutting_down = False
         self.task_retention_seconds = get_task_retention_seconds()
@@ -975,12 +1203,14 @@ class AsyncTaskManager:
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
         self.active_tasks.clear()
+        self.active_processors_by_task_id.clear()
 
     async def submit(self, task: AsyncParseTask) -> None:
         task.submit_order = self._next_submit_order
         self._next_submit_order += 1
         self.tasks[task.task_id] = task
         self.task_events[task.task_id] = asyncio.Event()
+        self.pause_registry.track_task(task, self._signal_task_event)
         await self.queue.put(task.task_id)
 
     def get(self, task_id: str) -> Optional[AsyncParseTask]:
@@ -1008,9 +1238,119 @@ class AsyncTaskManager:
         task: AsyncParseTask,
         request: Request,
     ) -> dict[str, Any]:
-        return task.to_status_payload(
+        payload = task.to_status_payload(
             request,
             queued_ahead=self.get_queued_ahead(task.task_id),
+        )
+        file_status = self.cancellation_registry.build_file_status(
+            task.task_id,
+            task.file_names,
+        )
+        payload["files"] = file_status
+        payload["active_vllm_request_ids"] = sorted(
+            request_id
+            for status in file_status.values()
+            for request_id in status["active_vllm_request_ids"]
+        )
+        if task.checkpoint is None:
+            task.checkpoint = self.checkpoint_store.load_checkpoint(task.output_dir)
+            payload["checkpoint"] = task.checkpoint
+        return payload
+
+    async def pause_task(self, task_id: str) -> AsyncParseTask:
+        task = self.tasks.get(task_id)
+        if task is None:
+            raise KeyError(task_id)
+        if task.backend == "pipeline":
+            raise ValueError("Pipeline backend does not support pause/resume yet")
+        if is_task_terminal(task.status):
+            raise ValueError("Terminal task cannot be paused")
+        if task.status == TASK_PAUSED:
+            return task
+        if task.status not in (TASK_PENDING, TASK_PROCESSING, TASK_PAUSE_REQUESTED):
+            raise ValueError(f"Task cannot be paused from status: {task.status}")
+
+        now = utc_now_iso()
+        task.pause_requested_at = task.pause_requested_at or now
+        task.status = TASK_PAUSE_REQUESTED
+        self.pause_registry.track_task(task, self._signal_task_event)
+        self.pause_registry.request_pause(task_id)
+        self._signal_task_event(task_id)
+        return task
+
+    async def resume_task(self, task_id: str) -> AsyncParseTask:
+        task = self.tasks.get(task_id)
+        if task is None:
+            raise KeyError(task_id)
+        if is_task_terminal(task.status):
+            raise ValueError("Terminal task cannot be resumed")
+        if task.status != TASK_PAUSED:
+            raise ValueError(f"Task cannot be resumed from status: {task.status}")
+        self.pause_registry.track_task(task, self._signal_task_event)
+        self.pause_registry.resume(task_id)
+        self._signal_task_event(task_id)
+        return task
+
+    def _clear_task_checkpoint(self, task: AsyncParseTask) -> None:
+        task.checkpoint = None
+        self.checkpoint_store.clear_checkpoint(task.output_dir)
+
+    async def cancel_task(
+        self,
+        task_id: str,
+        file_name: str | None = None,
+        reason: str = "Task cancellation requested",
+    ) -> CancelTaskResult:
+        task = self.tasks.get(task_id)
+        if task is None:
+            raise KeyError(task_id)
+        if file_name is not None and file_name not in task.file_names:
+            raise ValueError(f"File not found in task: {file_name}")
+
+        if file_name is None:
+            self.cancellation_registry.mark_task_cancel_requested(task_id)
+        else:
+            self.cancellation_registry.mark_file_cancel_requested(task_id, file_name)
+
+        aborted_request_ids = await self.cancellation_registry.abort_requests(
+            task_id,
+            file_name,
+        )
+        abort_count = len(aborted_request_ids)
+
+        if not is_task_terminal(task.status):
+            now = utc_now_iso()
+            task.cancel_requested = True
+            task.cancel_requested_at = task.cancel_requested_at or now
+            task.cancel_reason = reason
+            task.status = TASK_CANCELLED
+            task.cancelled_at = now
+            task.completed_at = now
+            task.error = reason
+            self._clear_task_checkpoint(task)
+            processor = self.active_processors_by_task_id.get(task_id)
+            if processor is not None and not processor.done():
+                processor.cancel()
+            self._signal_task_event(task_id)
+
+        logger.info(
+            "Parse task cancellation requested: "
+            f"task_id={task_id}, file={file_name or '*'}, "
+            f"abort_count={abort_count}, vllm_request_ids={aborted_request_ids}"
+        )
+        print_cancel_event(
+            "cancel_summary",
+            task_id=task_id,
+            file=file_name or "*",
+            status=task.status,
+            abort_count=abort_count,
+            active_after=0,
+        )
+        return CancelTaskResult(
+            task=task,
+            abort_count=abort_count,
+            aborted_request_ids=aborted_request_ids,
+            file_name=file_name,
         )
 
     async def wait_for_terminal_state(self, task_id: str) -> AsyncParseTask:
@@ -1059,8 +1399,11 @@ class AsyncTaskManager:
         stats = {
             TASK_PENDING: 0,
             TASK_PROCESSING: 0,
+            TASK_PAUSE_REQUESTED: 0,
+            TASK_PAUSED: 0,
             TASK_COMPLETED: 0,
             TASK_FAILED: 0,
+            TASK_CANCELLED: 0,
         }
         for task in self.tasks.values():
             if task.status in stats:
@@ -1102,6 +1445,7 @@ class AsyncTaskManager:
                     name=f"mineru-fastapi-task-{task_id}",
                 )
                 self.active_tasks.add(processor)
+                self.active_processors_by_task_id[task_id] = processor
                 processor.add_done_callback(self._on_processor_done)
                 self.queue.task_done()
         except asyncio.CancelledError:
@@ -1126,6 +1470,9 @@ class AsyncTaskManager:
 
     def _on_processor_done(self, processor: asyncio.Task[Any]) -> None:
         self.active_tasks.discard(processor)
+        for task_id, active_processor in list(self.active_processors_by_task_id.items()):
+            if active_processor is processor:
+                self.active_processors_by_task_id.pop(task_id, None)
         if processor.cancelled():
             return
         exception = processor.exception()
@@ -1137,6 +1484,13 @@ class AsyncTaskManager:
         task = self.tasks.get(task_id)
         if task is None:
             return
+        if task.cancel_requested or task.status == TASK_CANCELLED:
+            task.status = TASK_CANCELLED
+            now = utc_now_iso()
+            task.cancelled_at = task.cancelled_at or now
+            task.completed_at = task.completed_at or now
+            self._signal_task_event(task_id)
+            return
 
         try:
             if _request_semaphore is not None:
@@ -1145,8 +1499,38 @@ class AsyncTaskManager:
             else:
                 await self._run_task(task)
         except asyncio.CancelledError:
+            if task.cancel_requested or task.status == TASK_CANCELLED:
+                now = utc_now_iso()
+                task.status = TASK_CANCELLED
+                task.cancelled_at = task.cancelled_at or now
+                task.completed_at = task.completed_at or now
+                task.error = task.cancel_reason or "Task cancellation requested"
+                self._signal_task_event(task_id)
+                logger.info(f"Async task cancelled: {task_id}")
+                print_cancel_event(
+                    "task_cancelled",
+                    task_id=task_id,
+                    status=task.status,
+                    error=task.error,
+                )
+                return
             raise
         except Exception as exc:
+            if task.cancel_requested or task.status == TASK_CANCELLED:
+                now = utc_now_iso()
+                task.status = TASK_CANCELLED
+                task.cancelled_at = task.cancelled_at or now
+                task.completed_at = task.completed_at or now
+                task.error = task.cancel_reason or "Task cancellation requested"
+                self._signal_task_event(task_id)
+                logger.info(f"Async task cancelled after worker error: {task_id}")
+                print_cancel_event(
+                    "task_cancelled_after_worker_error",
+                    task_id=task_id,
+                    status=task.status,
+                    error=task.error,
+                )
+                return
             task.status = TASK_FAILED
             task.error = str(exc)
             task.completed_at = utc_now_iso()
@@ -1154,8 +1538,14 @@ class AsyncTaskManager:
             logger.exception(f"Async task failed: {task_id}")
 
     async def _run_task(self, task: AsyncParseTask) -> None:
-        task.status = TASK_PROCESSING
-        task.started_at = utc_now_iso()
+        if task.cancel_requested or task.status == TASK_CANCELLED:
+            task.status = TASK_CANCELLED
+            task.completed_at = task.completed_at or utc_now_iso()
+            self._signal_task_event(task.task_id)
+            return
+        if task.status != TASK_PAUSE_REQUESTED:
+            task.status = TASK_PROCESSING
+        task.started_at = task.started_at or utc_now_iso()
         task.error = None
 
         uploads = [
@@ -1171,12 +1561,24 @@ class AsyncTaskManager:
             )
         ]
         config = getattr(self.app.state, "config", {})
+        task.mineru_cancellation_registry = self.cancellation_registry
+        task.mineru_pause_registry = self.pause_registry
+        task.mineru_checkpoint_store = self.checkpoint_store
+        self.pause_registry.track_task(task, self._signal_task_event)
         await run_parse_job(
             output_dir=task.output_dir,
             uploads=uploads,
             request_options=task,
             config=config,
         )
+        if task.cancel_requested or task.status == TASK_CANCELLED:
+            now = utc_now_iso()
+            task.status = TASK_CANCELLED
+            task.cancelled_at = task.cancelled_at or now
+            task.completed_at = task.completed_at or now
+            task.error = task.cancel_reason or "Task cancellation requested"
+            self._signal_task_event(task.task_id)
+            return
         task.status = TASK_COMPLETED
         task.completed_at = utc_now_iso()
         self._signal_task_event(task.task_id)
@@ -1200,11 +1602,13 @@ class AsyncTaskManager:
             if task_event is not None:
                 task_event.set()
             cleanup_file(task.output_dir)
+            self.pause_registry.cleanup_task(task_id)
+            self.cancellation_registry.cleanup_task(task_id)
             logger.info(f"Cleaned expired async task: {task_id}")
         return len(expired_task_ids)
 
     def _is_task_expired(self, task: AsyncParseTask, now: datetime) -> bool:
-        if task.status not in (TASK_COMPLETED, TASK_FAILED):
+        if task.status not in TASK_TERMINAL_STATES:
             return False
         if not task.completed_at:
             return False
@@ -1261,8 +1665,16 @@ async def parse_pdf(
         return JSONResponse(
             status_code=409,
             content={
-                **task.to_status_payload(http_request),
+                **task_manager.build_status_payload(task, http_request),
                 "message": "Task execution failed",
+            },
+        )
+    if task.status == TASK_CANCELLED:
+        return JSONResponse(
+            status_code=409,
+            content={
+                **task_manager.build_status_payload(task, http_request),
+                "message": "Task execution cancelled",
             },
         )
 
@@ -1302,6 +1714,77 @@ async def get_async_task_status(task_id: str, request: Request):
     return task_manager.build_status_payload(task, request)
 
 
+def build_cancel_response(
+    cancel_result: CancelTaskResult,
+    request: Request,
+    task_manager: AsyncTaskManager,
+) -> JSONResponse:
+    payload = task_manager.build_status_payload(cancel_result.task, request)
+    payload.update(
+        {
+            "message": "Task cancellation requested",
+            "abort_count": cancel_result.abort_count,
+            "aborted_vllm_request_ids": cancel_result.aborted_request_ids,
+        }
+    )
+    if cancel_result.file_name is not None:
+        payload["cancelled_file_name"] = cancel_result.file_name
+    return JSONResponse(status_code=202, content=payload)
+
+
+@app.post(path="/tasks/{task_id}/cancel", name="cancel_async_task")
+async def cancel_async_task(task_id: str, request: Request):
+    task_manager = get_task_manager()
+    try:
+        cancel_result = await task_manager.cancel_task(task_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return build_cancel_response(cancel_result, request, task_manager)
+
+
+@app.post(path="/tasks/{task_id}/pause", name="pause_async_task")
+async def pause_async_task(task_id: str, request: Request):
+    task_manager = get_task_manager()
+    try:
+        task = await task_manager.pause_task(task_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Task not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    payload = task_manager.build_status_payload(task, request)
+    payload["message"] = "Pause requested, task will pause after current processing window"
+    return JSONResponse(status_code=202, content=payload)
+
+
+@app.post(path="/tasks/{task_id}/resume", name="resume_async_task")
+async def resume_async_task(task_id: str, request: Request):
+    task_manager = get_task_manager()
+    try:
+        task = await task_manager.resume_task(task_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Task not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    payload = task_manager.build_status_payload(task, request)
+    checkpoint = payload.get("checkpoint") or {}
+    payload["message"] = "Task resumed"
+    if "next_start_page" in checkpoint:
+        payload["resume_from_page"] = checkpoint["next_start_page"]
+    return JSONResponse(status_code=202, content=payload)
+
+
+@app.post(path="/tasks/{task_id}/files/{file_name}/cancel", name="cancel_async_task_file")
+async def cancel_async_task_file(task_id: str, file_name: str, request: Request):
+    task_manager = get_task_manager()
+    try:
+        cancel_result = await task_manager.cancel_task(task_id, file_name=file_name)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Task not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return build_cancel_response(cancel_result, request, task_manager)
+
+
 @app.get(path="/tasks/{task_id}/result", name="get_async_task_result")
 async def get_async_task_result(
     task_id: str,
@@ -1313,11 +1796,11 @@ async def get_async_task_result(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    if task.status in (TASK_PENDING, TASK_PROCESSING):
+    if task.status in TASK_NOT_READY_STATES:
         return JSONResponse(
             status_code=202,
             content={
-                **task.to_status_payload(request),
+                **task_manager.build_status_payload(task, request),
                 "message": "Task result is not ready yet",
             },
         )
@@ -1326,8 +1809,16 @@ async def get_async_task_result(
         return JSONResponse(
             status_code=409,
             content={
-                **task.to_status_payload(request),
+                **task_manager.build_status_payload(task, request),
                 "message": "Task execution failed",
+            },
+        )
+    if task.status == TASK_CANCELLED:
+        return JSONResponse(
+            status_code=409,
+            content={
+                **task_manager.build_status_payload(task, request),
+                "message": "Task execution cancelled",
             },
         )
 

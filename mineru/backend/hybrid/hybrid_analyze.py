@@ -107,6 +107,53 @@ MEDIUM_EFFORT_LAYOUT_LABEL_TO_VLM_TYPE = {
 }
 
 
+async def _checkpoint_window_and_maybe_pause(
+    *,
+    checkpoint_store,
+    pause_registry,
+    task_output_dir,
+    task_id,
+    file_name,
+    backend,
+    parse_method,
+    page_count,
+    window_size,
+    window_index,
+    window_start,
+    window_end,
+    middle_json,
+    model_output,
+    window_result,
+):
+    if task_id is None:
+        return
+    checkpoint = None
+    pause_requested = (
+        pause_registry is not None and pause_registry.is_pause_requested(task_id)
+    )
+    if checkpoint_store is not None and task_output_dir is not None and file_name is not None:
+        checkpoint = await asyncio.to_thread(
+            checkpoint_store.write_processing_checkpoint,
+            task_output_dir=task_output_dir,
+            task_id=task_id,
+            file_name=file_name,
+            backend=f"hybrid-{backend}",
+            parse_method=parse_method,
+            status="paused" if pause_requested else "processing",
+            page_count=page_count,
+            window_size=window_size,
+            window_index=window_index,
+            window_start=window_start,
+            window_end=window_end,
+            middle_json=middle_json,
+            model_output=model_output,
+            window_result=window_result,
+        )
+    if pause_requested:
+        pause_registry.mark_paused(task_id, checkpoint)
+        await pause_registry.wait_until_resumed(task_id)
+
+
 def _validate_parse_effort(effort: str = "medium") -> str:
     """校验 Hybrid effort，避免静默走错解析强度分支。"""
     if effort not in HYBRID_ANALYZE_EFFORTS:
@@ -901,6 +948,13 @@ def doc_analyze(
 ):
     effort = _validate_parse_effort(effort)
     effective_image_analysis = _resolve_effective_image_analysis(effort, image_analysis)
+    kwargs.pop("mineru_task_id", None)
+    kwargs.pop("mineru_file_name", None)
+    kwargs.pop("mineru_cancellation_registry", None)
+    kwargs.pop("mineru_pause_registry", None)
+    kwargs.pop("mineru_checkpoint_store", None)
+    kwargs.pop("mineru_task_output_dir", None)
+    kwargs.pop("mineru_parse_method", None)
     client_side_output_generation = bool(
         kwargs.pop("client_side_output_generation", False)
     )
@@ -1109,6 +1163,13 @@ async def aio_doc_analyze(
 ):
     effort = _validate_parse_effort(effort)
     effective_image_analysis = _resolve_effective_image_analysis(effort, image_analysis)
+    mineru_task_id = kwargs.pop("mineru_task_id", None)
+    mineru_file_name = kwargs.pop("mineru_file_name", None)
+    kwargs.pop("mineru_cancellation_registry", None)
+    mineru_pause_registry = kwargs.pop("mineru_pause_registry", None)
+    mineru_checkpoint_store = kwargs.pop("mineru_checkpoint_store", None)
+    mineru_task_output_dir = kwargs.pop("mineru_task_output_dir", None)
+    mineru_parse_method = kwargs.pop("mineru_parse_method", parse_method)
     client_side_output_generation = bool(
         kwargs.pop("client_side_output_generation", False)
     )
@@ -1273,6 +1334,23 @@ async def aio_doc_analyze(
                         progress_bar=progress_bar,
                     )
                     last_append_end_time = time.time()
+                    await _checkpoint_window_and_maybe_pause(
+                        checkpoint_store=mineru_checkpoint_store,
+                        pause_registry=mineru_pause_registry,
+                        task_output_dir=mineru_task_output_dir,
+                        task_id=mineru_task_id,
+                        file_name=mineru_file_name,
+                        backend=backend,
+                        parse_method=mineru_parse_method,
+                        page_count=page_count,
+                        window_size=configured_window_size,
+                        window_index=window_index,
+                        window_start=window_start,
+                        window_end=window_end,
+                        middle_json=middle_json,
+                        model_output=model_list,
+                        window_result=window_model_list,
+                    )
                 finally:
                     _close_images(images_list)
         finally:
