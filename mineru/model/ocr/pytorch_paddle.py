@@ -162,8 +162,9 @@ class PytorchPaddleOCR(TextSystem):
 
         device = get_device()
         if device == 'cpu':
-            if self.lang in ['ch', 'ch_server', 'japan', 'chinese_cht']:
-                # logger.warning("The current device in use is CPU. To ensure the speed of parsing, the language is automatically switched to ch_lite.")
+            # 显式指定 ch_server 时保留服务模型配置，避免 v6 medium rec 在 CPU 环境被静默降级。
+            if self.lang in ['ch', 'japan', 'chinese_cht']:
+                # logger.warning("CPU device switches this language to ch_lite for parsing speed.")
                 self.lang = 'ch_lite'
             elif self.lang in ['seal']:
                 self.lang = 'seal_lite'
@@ -292,7 +293,7 @@ class PytorchPaddleOCR(TextSystem):
             tqdm_progress_bar=None,
             ):
         assert isinstance(img, (np.ndarray, list, str, bytes))
-        if isinstance(img, list) and det == True:
+        if isinstance(img, list) and det:
             logger.error('When input a list of images, det must be false')
             exit(0)
         img = check_img(img)
