@@ -25,7 +25,7 @@ from ...doclib.types import (
 )
 from ...types import Tier
 from ..json_errors import exit_with_error
-from ..output import format_parse_result, print_error, print_info, print_json, print_success
+from ..output import format_parse_result, print_error, print_json, print_notice, print_success
 from ..path_utils import normalize_cli_path
 
 
@@ -103,9 +103,8 @@ def parse_cmd(
 
     try:
         client = DoclibClient(timeout=wait + 30)
-    except Exception:
-        print_error("Cannot connect to mineru server. Run 'mineru server start' first.")
-        raise typer.Exit(1) from None
+    except Exception as exc:
+        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot connect to mineru server. Run 'mineru server start' first.")
 
     # send parse request
     try:
@@ -131,7 +130,7 @@ def parse_cmd(
     # cached
     if status == "done":
         if verbose:
-            print_info("Cache hit — returning cached result.")
+            print_notice("Cache hit — returning cached result.")
         _output_parse_result(
             client,
             result,
@@ -160,7 +159,7 @@ def parse_cmd(
 
     # poll until done or timeout
     if verbose:
-        print_info(f"Parse queued (tier={req_tier}). Waiting up to {wait}s...")
+        print_notice(f"Parse queued (tier={req_tier}). Waiting up to {wait}s...")
 
     wait_started_at = time.time()
     deadline = time.time() + wait
@@ -178,7 +177,7 @@ def parse_cmd(
         statuses = {row.status for row in parse_rows}
         st = "done" if parse_rows and statuses == {"done"} else ("failed" if "failed" in statuses else "parsing")
         if verbose and not json_mode:
-            print_info(f"  Parse status: {st}")
+            print_notice(f"  Parse status: {st}")
 
         if st == "done":
             _record_parse_wait(client, wait_parse_ids, "succeeded", wait_started_at)
@@ -211,7 +210,7 @@ def parse_cmd(
         timeout_result = result.model_copy(update={"status": "parsing", "tip": "Re-run the same command to continue waiting."})
         _print_parse_json_response(timeout_result, None)
     else:
-        print_info(f"Parse still in progress (tier={req_tier}). Check status with: mineru show file {file_path}")
+        print_notice(f"Parse still in progress (tier={req_tier}). Check status with: mineru show file {file_path}")
 
 
 def _record_parse_wait(client: DoclibClient, parse_ids: list[int], status: str, started_at: float) -> None:

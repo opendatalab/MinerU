@@ -59,7 +59,7 @@ def config_set(
     try:
         data = _client().set_config(key, ConfigSetRequest(value=value))
     except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode)
+        exit_with_error(exc, json_mode=False)
 
     print_success(f"{data.key} = {data.value}  [{data.source}]")
 
@@ -70,7 +70,7 @@ def config_unset(key: str = typer.Argument(..., help="Configuration key")) -> No
     try:
         data = _client().unset_config(key)
     except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode)
+        exit_with_error(exc, json_mode=False)
 
     action = "removed" if data.removed else "unchanged"
     print_success(f"{data.key} = {data.value}  [{data.source}] ({action})")
@@ -139,8 +139,7 @@ def parsing_rules_add(
             ParsingRuleRequest(pattern=pattern, tier=tier, page_range=pages, remote=remote, name=name)
         )
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     if json_mode:
         print_json(data)
@@ -154,8 +153,7 @@ def parsing_rules_list(json_mode: bool = typer.Option(False, "--json", help="JSO
     try:
         data = _client().list_parsing_rules()
     except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
+        exit_with_error(exc, json_mode=json_mode)
 
     if json_mode:
         print_json(data)

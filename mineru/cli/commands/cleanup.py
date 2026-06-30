@@ -7,7 +7,7 @@ import typer
 from ...doclib.client import DoclibClient
 from ...doclib.types import CleanupDeletedRequest, CleanupOrphansRequest, CleanupTempRequest
 from ..json_errors import exit_with_error
-from ..output import print_error, print_info, print_json, print_success
+from ..output import print_info, print_json, print_success
 
 app = typer.Typer(
     name="cleanup",
@@ -22,7 +22,10 @@ def cleanup_deleted_files(
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Remove all file rows already marked as deleted."""
-    client = _client()
+    try:
+        client = _client()
+    except Exception as exc:
+        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot connect to mineru server. Run 'mineru server start' first.")
     try:
         data = client.cleanup_deleted_files(CleanupDeletedRequest(dry_run=dry_run))
     except Exception as exc:
@@ -45,7 +48,10 @@ def cleanup_orphan_docs(
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Remove docs that are no longer referenced by any file row."""
-    client = _client()
+    try:
+        client = _client()
+    except Exception as exc:
+        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot connect to mineru server. Run 'mineru server start' first.")
     try:
         data = client.cleanup_orphan_docs(CleanupOrphansRequest(dry_run=dry_run))
     except Exception as exc:
@@ -68,7 +74,10 @@ def cleanup_temp_files(
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Remove old process temp files."""
-    client = _client()
+    try:
+        client = _client()
+    except Exception as exc:
+        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot connect to mineru server. Run 'mineru server start' first.")
     try:
         data = client.cleanup_temp_files(CleanupTempRequest(older_than_days=older_than))
     except Exception as exc:
@@ -82,7 +91,4 @@ def cleanup_temp_files(
 
 
 def _client() -> DoclibClient:
-    try:
-        return DoclibClient(timeout=30)
-    except Exception as exc:
-        exit_with_error(exc, json_mode=False, fallback_message="Cannot connect to mineru server. Run 'mineru server start' first.")
+    return DoclibClient(timeout=30)

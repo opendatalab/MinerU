@@ -13,6 +13,7 @@ from pydantic_core import to_json
 Table: Any
 Panel: Any
 Text: Any
+stderr_console: Any
 
 try:
     from rich.console import Console
@@ -20,15 +21,17 @@ try:
     from rich.panel import Panel
     from rich.text import Text
     console = Console()
+    stderr_console = Console(stderr=True)
 except ImportError:
     console = None
+    stderr_console = None
 
 
 def print_error(msg: str) -> None:
-    if console:
+    if stderr_console:
         text = Text("Error:", style="red")
         text.append(f" {msg}")
-        console.print(text)
+        stderr_console.print(text)
     else:
         print(f"Error: {msg}", file=sys.stderr)
 
@@ -45,6 +48,13 @@ def print_info(msg: str) -> None:
         console.print(msg, style="dim")
     else:
         print(msg)
+
+
+def print_notice(msg: str) -> None:
+    if stderr_console:
+        stderr_console.print(msg, style="dim")
+    else:
+        print(msg, file=sys.stderr)
 
 
 def print_json(data: Any) -> None:

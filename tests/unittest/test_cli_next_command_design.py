@@ -147,7 +147,7 @@ def test_print_error_uses_single_rich_render(monkeypatch: Any) -> None:
         def print(self, *args: Any, **kwargs: Any) -> None:
             calls.append((args, kwargs))
 
-    monkeypatch.setattr(output_mod, "console", _Console())
+    monkeypatch.setattr(output_mod, "stderr_console", _Console())
 
     output_mod.print_error(
         "No standard or pro engine available. You can start a local parse-server, use --remote, or explicitly pass "
@@ -514,6 +514,149 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
     assert payload["parse"]["status"] == "done"
     assert payload["parse"]["wait_parse_ids"] == [3]
     assert payload["content"]["content"] == "parsed"
+
+
+def test_parse_verbose_json_writes_cache_hit_notice_to_stderr(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 90
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            return ParseResponse(sha256="a" * 64, tier="flash", page_range="1~1", status="done", cache_hit=True)
+
+        def get_doc_content(self, *args: Any, **kwargs: Any) -> DocContentResponse:
+            return DocContentResponse(
+                sha256="a" * 64,
+                short_id="aaaaaaa",
+                tier="flash",
+                format="markdown",
+                content="parsed",
+                request_scope=ContentRequestScope(page_range="1~1", limit=30000),
+            )
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["parse", str(source), "--tier", "flash", "--verbose", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["parse"]["cache_hit"] is True
+    assert payload["content"]["content"] == "parsed"
+    assert "Cache hit" not in result.stdout
+    assert "Cache hit" in result.stderr
+
+
+def test_parse_verbose_json_writes_queue_notice_to_stderr(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    done = ParseInfo(
+        id=3,
+        sha256="a" * 64,
+        tier="flash",
+        page_range="1~1",
+        status="done",
+        privacy="local",
+        created_at=3,
+        updated_at=4,
+        done_at=4,
+    )
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 31
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            return ParseResponse(
+                sha256="a" * 64,
+                tier="flash",
+                page_range="1~1",
+                status="pending",
+                wait_parse_ids=[3],
+                created_parse_ids=[3],
+            )
+
+        def list_parses(self, **kwargs: Any) -> ListParsesResponse:
+            return ListParsesResponse(parses=[done], total=1, limit=50, offset=0)
+
+        def get_doc_content(self, *args: Any, **kwargs: Any) -> DocContentResponse:
+            return DocContentResponse(
+                sha256="a" * 64,
+                short_id="aaaaaaa",
+                tier="flash",
+                format="markdown",
+                content="parsed",
+                request_scope=ContentRequestScope(page_range="1~1", limit=30000),
+            )
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+    monkeypatch.setattr(parse.time, "sleep", lambda seconds: None)
+
+    result = runner.invoke(app, ["parse", str(source), "--tier", "flash", "--verbose", "--wait", "1", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["parse"]["status"] == "done"
+    assert payload["content"]["content"] == "parsed"
+    assert "Parse queued" not in result.stdout
+    assert "Parse queued" in result.stderr
+
+
+def test_parse_json_connection_error_is_machine_readable(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            raise RuntimeError("cannot connect")
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["parse", str(source), "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["error"]["code"] == "api_error"
+    assert "Cannot connect to mineru server" in payload["error"]["message"]
+    assert "Error:" not in result.stdout
+
+
+def test_cleanup_json_connection_error_is_machine_readable(monkeypatch: Any) -> None:
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            raise RuntimeError("cannot connect")
+
+    monkeypatch.setattr(cleanup_cmd, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["cleanup", "temp", "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["error"]["code"] == "api_error"
+    assert "Cannot connect to mineru server" in payload["error"]["message"]
+    assert "Error:" not in result.stdout
+
+
+def test_config_parsing_rules_list_json_error_is_machine_readable(monkeypatch: Any) -> None:
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 30
+
+        def list_parsing_rules(self) -> Any:
+            raise RuntimeError("('rule_not_found', 'No parsing rules backend.', 'rule_id')")
+
+    monkeypatch.setattr(config, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["config", "parsing-rules", "list", "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["error"]["code"] == "rule_not_found"
+    assert payload["error"]["param"] == "rule_id"
+    assert "Error:" not in result.stdout
 
 
 def test_parse_failed_response_exits_nonzero(monkeypatch: Any, tmp_path: Path) -> None:
