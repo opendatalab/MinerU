@@ -5,9 +5,16 @@ from __future__ import annotations
 import typer
 
 from ...doclib.client import DoclibClient
-from ...doclib.types import CleanupDeletedRequest, CleanupOrphansRequest, CleanupTempRequest
-from ..json_errors import exit_with_error
-from ..output import print_info, print_json, print_success
+from ...doclib.types import (
+    CleanupDeletedRequest,
+    CleanupDeletedResponse,
+    CleanupOrphansRequest,
+    CleanupOrphansResponse,
+    CleanupTempRequest,
+    CleanupTempResponse,
+)
+from ..contracts import CliContext
+from ..runtime import run_cli
 
 app = typer.Typer(
     name="cleanup",
@@ -22,24 +29,11 @@ def cleanup_deleted_files(
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Remove all file rows already marked as deleted."""
-    try:
-        client = _client()
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot connect to mineru server. Run 'mineru server start' first.")
-    try:
-        data = client.cleanup_deleted_files(CleanupDeletedRequest(dry_run=dry_run))
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode)
-
-    if json_mode:
-        print_json(data)
-        return
-
-    count = data.deleted_files
-    if dry_run:
-        print_info(f"Would remove {count} deleted file record(s). Use --no-dry-run to proceed.")
-    else:
-        print_success(f"Removed {count} deleted file record(s).")
+    run_cli(
+        CliContext(json_mode=json_mode),
+        lambda: _client().cleanup_deleted_files(CleanupDeletedRequest(dry_run=dry_run)),
+        render=_render_cleanup_deleted,
+    )
 
 
 @app.command("orphan-docs")
@@ -48,24 +42,11 @@ def cleanup_orphan_docs(
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Remove docs that are no longer referenced by any file row."""
-    try:
-        client = _client()
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot connect to mineru server. Run 'mineru server start' first.")
-    try:
-        data = client.cleanup_orphan_docs(CleanupOrphansRequest(dry_run=dry_run))
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode)
-
-    if json_mode:
-        print_json(data)
-        return
-
-    count = data.orphan_docs
-    if dry_run:
-        print_info(f"Would remove {count} orphan doc(s). Use --no-dry-run to proceed.")
-    else:
-        print_success(f"Removed {count} orphan doc(s).")
+    run_cli(
+        CliContext(json_mode=json_mode),
+        lambda: _client().cleanup_orphan_docs(CleanupOrphansRequest(dry_run=dry_run)),
+        render=_render_cleanup_orphans,
+    )
 
 
 @app.command("temp")
@@ -74,21 +55,28 @@ def cleanup_temp_files(
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Remove old process temp files."""
-    try:
-        client = _client()
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot connect to mineru server. Run 'mineru server start' first.")
-    try:
-        data = client.cleanup_temp_files(CleanupTempRequest(older_than_days=older_than))
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode)
-
-    if json_mode:
-        print_json(data)
-        return
-
-    print_success(f"Removed {data.temp_files_removed} temp file(s).")
+    run_cli(
+        CliContext(json_mode=json_mode),
+        lambda: _client().cleanup_temp_files(CleanupTempRequest(older_than_days=older_than)),
+        render=_render_cleanup_temp,
+    )
 
 
 def _client() -> DoclibClient:
     return DoclibClient(timeout=30)
+
+
+def _render_cleanup_deleted(data: CleanupDeletedResponse) -> str:
+    if data.dry_run:
+        return f"Would remove {data.deleted_files} deleted file record(s). Use --no-dry-run to proceed."
+    return f"Removed {data.deleted_files} deleted file record(s)."
+
+
+def _render_cleanup_orphans(data: CleanupOrphansResponse) -> str:
+    if data.dry_run:
+        return f"Would remove {data.orphan_docs} orphan doc(s). Use --no-dry-run to proceed."
+    return f"Removed {data.orphan_docs} orphan doc(s)."
+
+
+def _render_cleanup_temp(data: CleanupTempResponse) -> str:
+    return f"Removed {data.temp_files_removed} temp file(s)."

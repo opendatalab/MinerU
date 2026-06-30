@@ -21,18 +21,19 @@ from mineru.doclib.background.parse_server_health import (
     ParseServerHealthCheck,
     api_server_args_for_tier,
     select_available_managed_port,
-    stop_managed_parse_server,
     start_managed_parse_server,
+    stop_managed_parse_server,
 )
 from mineru.doclib.background.watch import WatchLoop
+from mineru.doclib.config_defaults import CONFIG_DEFAULTS
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.file_io import FileStat, get_file_stat
 from mineru.doclib.core.fts import FTSManager
-from mineru.doclib.config_defaults import CONFIG_DEFAULTS
-from mineru.errors import InvalidRequestError
+from mineru.doclib.locators import ContentCursor
+from mineru.doclib.server import DoclibServer, _ReadPlan
+from mineru.doclib.services import parse_svc as parse_svc_module
 from mineru.doclib.services.cleanup_svc import CleanupService
 from mineru.doclib.services.config_svc import ConfigService
-from mineru.doclib.services import parse_svc as parse_svc_module
 from mineru.doclib.services.parse_svc import (
     ParseFailure,
     ParseService,
@@ -46,9 +47,8 @@ from mineru.doclib.services.parse_svc import (
 )
 from mineru.doclib.services.scan_svc import ScanService
 from mineru.doclib.services.search_svc import SearchService
-from mineru.doclib.locators import ContentCursor
-from mineru.doclib.server import DoclibServer, _ReadPlan
-from mineru.doclib.types import ParseResponse, WatchRequest
+from mineru.doclib.types import DocContentExportRequest, InvalidateRequest, ParseResponse, WatchRequest
+from mineru.errors import InvalidRequestError, NotFoundError
 from mineru.parser import backend_for_tier, resolve_tier_and_backend
 from mineru.parser.base import ParseResult
 from mineru.schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
@@ -143,7 +143,7 @@ class _FakeDB:
             path = params[0]
             if self.file_row and self.file_row["path"] == path and self.file_row["status"] == "active":
                 return self.file_row
-        if sql.startswith("SELECT page_count FROM docs WHERE sha256="):
+        if sql.startswith("SELECT page_count FROM docs WHERE sha256=") or sql.startswith("SELECT * FROM docs WHERE sha256="):
             sha256 = params[0]
             if self.doc_row and self.doc_row["sha256"] == sha256:
                 return self.doc_row
@@ -164,11 +164,7 @@ class _FakeDB:
             return [row for row in self.parses if row["id"] in ids]
         if sql.startswith("SELECT * FROM parses WHERE sha256=? AND tier=? AND status=?"):
             sha256, tier, status = params
-            rows = [
-                row
-                for row in self.parses
-                if row["sha256"] == sha256 and row["tier"] == tier and row["status"] == status
-            ]
+            rows = [row for row in self.parses if row["sha256"] == sha256 and row["tier"] == tier and row["status"] == status]
             return sorted(rows, key=lambda row: row["done_at"] or 0, reverse=True)
         if sql.startswith("SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=? AND status=?"):
             sha256, tier, status = params
@@ -180,11 +176,7 @@ class _FakeDB:
             return sorted(rows, key=lambda row: row["done_at"] or 0, reverse=True)
         if sql.startswith("SELECT * FROM parses WHERE sha256=? AND tier=? AND status IN (?, ?)"):
             sha256, tier, *statuses = params
-            return [
-                row
-                for row in self.parses
-                if row["sha256"] == sha256 and row["tier"] == tier and row["status"] in statuses
-            ]
+            return [row for row in self.parses if row["sha256"] == sha256 and row["tier"] == tier and row["status"] in statuses]
         if sql.startswith("SELECT * FROM parses WHERE sha256=? AND status=?"):
             sha256, status = params
             rows = [row for row in self.parses if row["sha256"] == sha256 and row["status"] == status]
@@ -252,6 +244,13 @@ def _image_result(image_path: str, image_bytes: bytes = b"image-bytes") -> Parse
     image_cache = ImagePayloadCache()
     image_cache.register_bytes(image_bytes, "jpeg", image_path=image_path)
     return ParseResult(pages=[_image_page(image_path)], _image_cache=image_cache)
+
+
+def _text_page(text: str) -> PageInfo:
+    span = Span(type=ContentType.TEXT, bbox=(1, 1, 20, 10), content=text)
+    line = Line(bbox=(1, 1, 20, 10), spans=[span])
+    block = Block(index=0, type=BlockType.TEXT, bbox=(1, 1, 20, 10), lines=[line])
+    return PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[block], _backend="vlm")
 
 
 def test_load_pages_from_done_batches_keeps_newest_page_idx(tmp_path: Path) -> None:
@@ -436,7 +435,9 @@ def test_start_managed_parse_server_selects_port_and_writes_logs(monkeypatch: py
         kwargs["stderr"].flush()
         return _Proc()
 
-    monkeypatch.setattr("mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582)
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582
+    )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
 
     proc, url = start_managed_parse_server(
@@ -526,7 +527,9 @@ def test_managed_parse_server_restart_writes_stdout_and_stderr_logs(monkeypatch:
     monkeypatch.setattr(
         "mineru.doclib.background.parse_server_health.get_parse_server_stderr_log_path", lambda: str(parse_stderr_log_path)
     )
-    monkeypatch.setattr("mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582)
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582
+    )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
 
     checker = ParseServerHealthCheck(
@@ -570,7 +573,9 @@ def test_managed_parse_server_restart_stops_recorded_proc_before_start(monkeypat
         return _Proc()
 
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.stop_managed_parse_server", _stop)
-    monkeypatch.setattr("mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582)
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582
+    )
     monkeypatch.setattr(
         "mineru.doclib.background.parse_server_health.open_managed_parse_server_logs",
         lambda *args, **kwargs: nullcontext((None, None)),
@@ -659,11 +664,7 @@ def test_data_dir_is_not_runtime_kv_config(tmp_path: Path) -> None:
 def test_remote_parse_server_default_url_is_declared_once() -> None:
     default_url = CONFIG_DEFAULTS["parse_server.remote.url"]
     doclib_dir = Path(__file__).parents[2] / "mineru" / "doclib"
-    occurrences = [
-        path
-        for path in doclib_dir.rglob("*.py")
-        if default_url in path.read_text(encoding="utf-8")
-    ]
+    occurrences = [path for path in doclib_dir.rglob("*.py") if default_url in path.read_text(encoding="utf-8")]
 
     assert occurrences == [doclib_dir / "config_defaults.py"]
 
@@ -763,9 +764,7 @@ def test_ingest_binds_file_sha_before_creating_parse_task(tmp_path: Path, monkey
 
         row = await service.ingest_file(str(source))
         dangling_parses = await db.fetchall(
-            "SELECT p.id FROM parses p "
-            "LEFT JOIN files f ON f.sha256=p.sha256 AND f.status='active' "
-            "WHERE f.id IS NULL",
+            "SELECT p.id FROM parses p LEFT JOIN files f ON f.sha256=p.sha256 AND f.status='active' WHERE f.id IS NULL",
         )
 
         assert row is not None
@@ -807,16 +806,21 @@ def test_request_parse_explicit_image_ingests_and_queues_parse(tmp_path: Path, m
 
         result = await service.request_parse(str(source), tier="flash")
         file_row = await db.fetchone("SELECT path, ext, sha256, status FROM files WHERE path=?", (str(source),))
-        doc_row = await db.fetchone("SELECT file_type, page_count, is_image_based FROM docs WHERE sha256=?", (result.sha256,))
+        doc_row = await db.fetchone(
+            "SELECT short_id, file_type, page_count, is_image_based FROM docs WHERE sha256=?",
+            (result.sha256,),
+        )
         parse_rows = await db.fetchall("SELECT tier, page_range, status FROM parses WHERE sha256=?", (result.sha256,))
 
         assert result.status == "pending"
         assert result.tier == "flash"
+        assert doc_row is not None
+        assert result.short_id == doc_row["short_id"]
         assert file_row is not None
         assert file_row["ext"] == "png"
         assert file_row["sha256"] == result.sha256
         assert file_row["status"] == "active"
-        assert doc_row == {"file_type": "image", "page_count": 1, "is_image_based": 1}
+        assert doc_row == {"short_id": result.short_id, "file_type": "image", "page_count": 1, "is_image_based": 1}
         assert parse_rows == [{"tier": "flash", "page_range": "1", "status": "pending"}]
 
     asyncio.run(_run())
@@ -1002,7 +1006,7 @@ def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: 
             "first_seen_at": 100,
             "updated_at": 100,
         },
-        doc_row={"sha256": sha256, "page_count": 10},
+        doc_row={"sha256": sha256, "short_id": "eeeeeee", "page_count": 10},
     )
     service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
 
@@ -1013,6 +1017,7 @@ def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: 
     assert result.reused_parse_ids == [11]
     assert result.created_parse_ids == [12]
     assert result.page_range == "1~10"
+    assert result.short_id == "eeeeeee"
     assert result.status == "pending"
     assert result.cache_hit is False
     assert db.updated_priorities == [11]
@@ -1022,7 +1027,15 @@ def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: 
 def test_list_parse_records_by_ids_returns_precise_status(tmp_path: Path) -> None:
     parses = [
         {"id": 1, "sha256": "f" * 64, "tier": "standard", "page_range": "1~5", "status": "done", "done_at": 1000},
-        {"id": 2, "sha256": "f" * 64, "tier": "standard", "page_range": "6~10", "status": "failed", "error_code": "parse_failed", "error_msg": "boom"},
+        {
+            "id": 2,
+            "sha256": "f" * 64,
+            "tier": "standard",
+            "page_range": "6~10",
+            "status": "failed",
+            "error_code": "parse_failed",
+            "error_msg": "boom",
+        },
     ]
     db = _FakeDB(parses=parses, file_row=None)
     service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
@@ -1144,7 +1157,9 @@ def test_ensure_ingested_rebinds_changed_text_file_to_new_sha(tmp_path: Path) ->
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         source = tmp_path / "note.txt"
 
         source.write_text("old", encoding="utf-8")
@@ -1178,7 +1193,9 @@ def test_refresh_file_marks_missing_known_path_deleted(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         source = tmp_path / "note.txt"
 
         source.write_text("content", encoding="utf-8")
@@ -1208,7 +1225,9 @@ def test_ensure_ingested_maps_read_permission_error_to_file_permission_denied(
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         source = tmp_path / "locked.pdf"
         source.write_bytes(b"%PDF-1.7\n")
 
@@ -1236,7 +1255,9 @@ def test_refresh_file_records_stat_error_without_marking_deleted(tmp_path: Path,
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         source = tmp_path / "note.txt"
 
         source.write_text("content", encoding="utf-8")
@@ -1268,7 +1289,9 @@ def test_ingest_worker_skips_files_with_blocking_stat_errors(tmp_path: Path, mon
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         source = tmp_path / "note.txt"
 
         source.write_text("content", encoding="utf-8")
@@ -1297,7 +1320,9 @@ def test_ingest_worker_preserves_precise_file_access_errors(tmp_path: Path) -> N
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         source = tmp_path / "note.txt"
         now = 1000
         file_id = await db.execute_insert(
@@ -1326,7 +1351,9 @@ def test_ingest_worker_skips_any_file_with_existing_error(tmp_path: Path) -> Non
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         source = tmp_path / "note.txt"
         now = 1000
         await db.execute_insert(
@@ -1376,11 +1403,13 @@ def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
 
         assert exact_total == 1
         assert [row["tier"] for row in exact_results] == ["standard"]
+        assert [row["short_id"] for row in exact_results] == ["2" * 7]
         assert [row["page_count"] for row in exact_results] == [12]
         assert min_total == 2
         assert {row["tier"] for row in min_results} == {"standard", "pro"}
         assert type_total == 1
         assert [row["filename"] for row in type_results] == ["pro.docx"]
+        assert [row["short_id"] for row in type_results] == ["3" * 7]
         assert [row["page_count"] for row in type_results] == [23]
 
     asyncio.run(_run())
@@ -1402,7 +1431,9 @@ def test_search_prefers_active_paths_and_falls_back_to_non_active_paths(tmp_path
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (sha256, sha256[:7], 10, "pdf", 7 if sha256 == sha_active else 9, now, now),
             )
-            await fts.replace(sha256=sha256, tier="standard", text="fallback needle", title="", author="", filename=f"{sha256[0]}.pdf")
+            await fts.replace(
+                sha256=sha256, tier="standard", text="fallback needle", title="", author="", filename=f"{sha256[0]}.pdf"
+            )
 
         await db.execute(
             "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
@@ -1468,7 +1499,9 @@ def test_refresh_file_marks_only_current_file_unreachable_when_watch_root_is_mis
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         root = tmp_path / "removable"
         root.mkdir()
         watch = await config_svc.add_watch(str(root), removable=True)
@@ -1485,7 +1518,9 @@ def test_refresh_file_marks_only_current_file_unreachable_when_watch_root_is_mis
         root.rmdir()
         refreshed = await service.refresh_file(str(source), watch_id=watch["id"])
 
-        source_row = await db.fetchone("SELECT status, error_code, error_msg, deleted_at FROM files WHERE path=?", (str(source),))
+        source_row = await db.fetchone(
+            "SELECT status, error_code, error_msg, deleted_at FROM files WHERE path=?", (str(source),)
+        )
         other_row = await db.fetchone("SELECT status FROM files WHERE path=?", (str(other),))
         watch_row = await db.fetchone("SELECT status, unreachable_at FROM watches WHERE id=?", (watch["id"],))
 
@@ -1508,7 +1543,9 @@ def test_remove_watch_converts_unreachable_files_to_deleted_and_unbinds_watch(tm
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         root = tmp_path / "removable"
         root.mkdir()
         watch = await config_svc.add_watch(str(root), removable=True)
@@ -1544,7 +1581,9 @@ def test_watch_scan_refreshes_known_active_paths_before_walk(tmp_path: Path) -> 
         await db.initialize()
         config_svc = ConfigService(db)
         fts = FTSManager(db)
-        service = ParseService(db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         watch_loop = WatchLoop(db=db, config_svc=config_svc, parse_svc=service, scan_interval_sec=300)
         root = tmp_path / "watched"
         root.mkdir()
@@ -1572,7 +1611,9 @@ def test_watch_scan_marks_root_unreachable_without_refreshing_all_files(tmp_path
         await db.initialize()
         config_svc = ConfigService(db)
         fts = FTSManager(db)
-        service = ParseService(db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         watch_loop = WatchLoop(db=db, config_svc=config_svc, parse_svc=service, scan_interval_sec=300)
         root = tmp_path / "removable"
         root.mkdir()
@@ -1603,7 +1644,9 @@ def test_device_monitor_queues_watch_scan_when_removable_watch_recovers(tmp_path
         await db.initialize()
         config_svc = ConfigService(db)
         fts = FTSManager(db)
-        parse_svc = ParseService(db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
         monitor = DeviceMonitor(db=db, config_svc=config_svc, interval_sec=5, scan_svc=scan_svc)
         root = tmp_path / "removable"
@@ -1651,7 +1694,9 @@ def test_scan_service_creates_and_processes_manual_file_scan(tmp_path: Path) -> 
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
         source = tmp_path / "note.txt"
         source.write_text("content", encoding="utf-8")
@@ -1682,7 +1727,9 @@ def test_scan_service_directory_scan_applies_excludes_and_counts_unsupported(tmp
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
         root = tmp_path / "docs"
         root.mkdir()
@@ -1716,7 +1763,13 @@ def test_refresh_file_ignores_office_temp_lock_files(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=ConfigService(db), data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=ConfigService(db),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
         source = tmp_path / "~$package-size.xlsx"
         source.write_bytes(b"\x15Microsoft Office lock")
 
@@ -1734,7 +1787,13 @@ def test_ensure_ingested_ignores_existing_office_temp_lock_file_row(tmp_path: Pa
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=ConfigService(db), data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=ConfigService(db),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
         source = tmp_path / "~$package-size.xlsx"
         source.write_bytes(b"\x15Microsoft Office lock")
         now = 1000
@@ -1756,7 +1815,9 @@ def test_scan_service_directory_scan_ignores_office_temp_lock_files(tmp_path: Pa
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
         root = tmp_path / "docs"
         root.mkdir()
@@ -1847,7 +1908,9 @@ def test_scan_service_reuses_pending_scan_for_same_kind_and_path(tmp_path: Path)
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
         root = tmp_path / "docs"
         root.mkdir()
@@ -1867,7 +1930,9 @@ def test_scan_service_does_not_reuse_stale_running_scan_for_same_kind_and_path(t
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1)
         root = tmp_path / "docs"
         root.mkdir()
@@ -1910,9 +1975,7 @@ def test_watch_ids_are_stable_standard_library_hashes(tmp_path: Path) -> None:
         root.mkdir()
 
         watch = await config_svc.add_watch(str(root))
-        expected = int.from_bytes(hashlib.blake2b(str(root).encode("utf-8"), digest_size=8).digest(), "big") & (
-            (1 << 63) - 1
-        )
+        expected = int.from_bytes(hashlib.blake2b(str(root).encode("utf-8"), digest_size=8).digest(), "big") & ((1 << 63) - 1)
 
         assert watch["id"] == expected
 
@@ -1920,13 +1983,19 @@ def test_watch_ids_are_stable_standard_library_hashes(tmp_path: Path) -> None:
 
 
 def test_doclib_server_list_responses_include_pagination_metadata(tmp_path: Path) -> None:
+    class _NoopParseService:
+        async def ensure_ingested(self, path: str) -> None:
+            return None
+
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
-        server = DoclibServer(SimpleNamespace(db=db, scan_svc=scan_svc))
+        server = DoclibServer(SimpleNamespace(db=db, scan_svc=scan_svc, parse_svc=_NoopParseService()))
 
         for index in range(3):
             sha256 = str(index + 1) * 64
@@ -1950,6 +2019,7 @@ def test_doclib_server_list_responses_include_pagination_metadata(tmp_path: Path
             )
 
         parses = await server.list_parses(limit=1, offset=1)
+        files = await server.list_files(limit=1, offset=1)
         scans = await server.list_scans(limit=1, offset=1)
         docs = await server.list_docs(file_type="pdf", limit=1, offset=1)
 
@@ -1957,6 +2027,18 @@ def test_doclib_server_list_responses_include_pagination_metadata(tmp_path: Path
         assert parses.limit == 1
         assert parses.offset == 1
         assert len(parses.parses) == 1
+        assert parses.parses[0].short_id == "2" * 7
+
+        assert files.total == 3
+        assert files.limit == 1
+        assert files.offset == 1
+        assert len(files.files) == 1
+        assert files.files[0].short_id == "2" * 7
+
+        file_detail = await server.get_file_by_path(str(tmp_path / "doc-1.pdf"))
+        assert file_detail.file.short_id == "2" * 7
+        assert len(file_detail.active_parses) == 1
+        assert file_detail.active_parses[0].short_id == "2" * 7
 
         assert scans.total == 3
         assert scans.limit == 1
@@ -1971,12 +2053,116 @@ def test_doclib_server_list_responses_include_pagination_metadata(tmp_path: Path
     asyncio.run(_run())
 
 
+def test_doclib_server_accepts_short_id_for_sha256_doc_inputs(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        fts = FTSManager(db)
+        parse_svc = ParseService(
+            db=db,
+            fts=fts,
+            config_svc=config_svc,
+            data_dir=str(tmp_path),
+            parse_lock_timeout_sec=1800,
+        )
+        server = DoclibServer(SimpleNamespace(db=db, data_dir=str(tmp_path), parse_svc=parse_svc))
+        now = 1000
+        sha256 = "a" * 64
+        short_id = "aaaaaaa"
+        await db.execute(
+            "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (sha256, short_id, 12, "pdf", 1, now, now),
+        )
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(tmp_path / "doc.pdf"), "doc.pdf", "pdf", 12, now, sha256, "active", now, now),
+        )
+        await db.execute(
+            "INSERT INTO parses (sha256, tier, page_range, status, privacy, done_at, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (sha256, "standard", "1", "done", "local", now, now, now),
+        )
+        _write_batch(
+            tmp_path,
+            sha256,
+            "standard",
+            "1",
+            now,
+            ParseResult([_text_page("hello short id")]).to_dict(skip_defaults=True)["pages"],
+        )
+
+        doc_by_short_id = await server.get_doc(short_id, expand_files=True)
+        doc_by_sha256 = await server.get_doc(sha256, expand_files=True)
+        parses_by_short_id = await server.list_parses(doc_ref=short_id)
+        parses_by_sha256 = await server.list_parses(doc_ref=sha256)
+        missing_parses = await server.list_parses(doc_ref="ccccccc")
+        content = await server.get_doc_content(short_id, tier="standard", page_range="1")
+        export_path = tmp_path / "out.md"
+        exported = await server.export_doc_content(
+            short_id,
+            DocContentExportRequest(tier="standard", page_range="1", output=str(export_path)),
+        )
+        invalidated = await server.invalidate(InvalidateRequest(doc_ref=short_id, tier="standard"))
+
+        assert doc_by_short_id.sha256 == sha256
+        assert doc_by_short_id.short_id == short_id
+        assert doc_by_short_id.files is not None
+        assert doc_by_short_id.files[0].short_id == short_id
+        assert doc_by_sha256.short_id == short_id
+        assert parses_by_short_id.total == 1
+        assert parses_by_short_id.parses[0].sha256 == sha256
+        assert parses_by_sha256.total == 1
+        assert parses_by_sha256.parses[0].short_id == short_id
+        assert missing_parses.total == 0
+        assert content.sha256 == sha256
+        assert content.short_id == short_id
+        assert "hello short id" in content.content
+        assert exported.sha256 == sha256
+        assert exported.short_id == short_id
+        assert export_path.read_text(encoding="utf-8")
+        assert invalidated.sha256 == sha256
+        assert invalidated.short_id == short_id
+        assert invalidated.invalidated_count == 1
+
+        with pytest.raises(NotFoundError) as missing_doc_exc:
+            await server.get_doc("ccccccc")
+        assert missing_doc_exc.value.code == "doc_not_found"
+        assert missing_doc_exc.value.param == "doc_ref"
+
+    asyncio.run(_run())
+
+
+def test_get_file_by_path_missing_doclib_record_message_is_not_disk_file_not_found(tmp_path: Path) -> None:
+    class _ParseSvc:
+        async def ensure_ingested(self, path: str) -> None:
+            return None
+
+    async def _run() -> None:
+        db = _FakeDB(parses=[], file_row=None)
+        server = DoclibServer(SimpleNamespace(db=db, parse_svc=_ParseSvc()))
+
+        with pytest.raises(NotFoundError) as exc_info:
+            await server.get_file_by_path(str(tmp_path / "sample.png"))
+
+        assert exc_info.value.code == "file_not_found"
+        assert exc_info.value.param == "path"
+        assert "File record" in exc_info.value.message
+        assert "doclib" in exc_info.value.message
+
+    asyncio.run(_run())
+
+
 def test_scan_service_cleanup_keeps_latest_terminal_scans_and_active_tasks(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
 
         for index in range(1002):
@@ -2012,7 +2198,9 @@ def test_watch_loop_queues_watch_scan_when_scan_service_is_available(tmp_path: P
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
         watch_loop = WatchLoop(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_interval_sec=300, scan_svc=scan_svc)
         root = tmp_path / "watched"
@@ -2259,7 +2447,18 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
         await db.execute(
             "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, watch_id, status, error_code, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (str(tmp_path / "watched" / "blocked-ingest.pdf"), "blocked-ingest.pdf", "pdf", 7, now, watch["id"], "active", "ingest_failed", now, now),
+            (
+                str(tmp_path / "watched" / "blocked-ingest.pdf"),
+                "blocked-ingest.pdf",
+                "pdf",
+                7,
+                now,
+                watch["id"],
+                "active",
+                "ingest_failed",
+                now,
+                now,
+            ),
         )
         await db.execute(
             "INSERT INTO parses (sha256, tier, page_range, status, privacy, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -2331,7 +2530,10 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
         assert status.recent_scans[1].error_msg == "hidden message"
         assert status.last_scan_at == now + 5
         assert status.error_summary is not None
-        assert [(bucket.code, bucket.count) for bucket in status.error_summary.file_errors] == [("ingest_failed", 1), ("stat_failed", 1)]
+        assert [(bucket.code, bucket.count) for bucket in status.error_summary.file_errors] == [
+            ("ingest_failed", 1),
+            ("stat_failed", 1),
+        ]
         assert [(bucket.code, bucket.count) for bucket in status.error_summary.doc_errors] == [("open_failed", 1)]
         assert [(bucket.code, bucket.count) for bucket in status.error_summary.parse_errors] == [("parse_failed", 1)]
 
@@ -2471,7 +2673,9 @@ def test_ingest_records_doc_error_when_metadata_extraction_fails(tmp_path: Path,
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=_NoRulesConfig(), data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=_NoRulesConfig(), data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         source = tmp_path / "broken.pdf"
         source.write_bytes(b"%PDF-1.4\nnot actually a valid pdf")
 
@@ -2751,9 +2955,7 @@ def test_doclib_office_image_asset_reads_cached_sidecar(tmp_path: Path) -> None:
     sidecar = image_dir / image_path
     sidecar.parent.mkdir(parents=True)
     sidecar.write_bytes(
-        base64.b64decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
-        )
+        base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC")
     )
 
     image_span = Span(type=ContentType.IMAGE, bbox=(1, 1, 20, 20), image_path=image_path)

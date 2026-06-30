@@ -16,6 +16,7 @@ class FileRow(TypedDict):
     size_bytes: int
     mtime_ms: int
     sha256: str | None
+    short_id: NotRequired[str | None]
     watch_id: int | None
     status: FileStatus
     locked_at: int | None
@@ -48,6 +49,7 @@ class DocRow(TypedDict):
 class ParseRow(TypedDict):
     id: int
     sha256: str
+    short_id: NotRequired[str]
     tier: Tier
     page_range: str
     status: ParseStatus
@@ -210,6 +212,7 @@ class FilenameSearchFileRow(FileRow):
 
 class ContentSearchResultRow(TypedDict):
     sha256: str
+    short_id: str
     title: str | None
     author: str | None
     filename: str | None

@@ -99,6 +99,7 @@ class ParseRequest(DoclibModel):
 
 class ParseResponse(DoclibModel):
     sha256: str
+    short_id: str | None = None
     tier: Tier
     page_range: str
     status: ParseStatus
@@ -118,6 +119,7 @@ class ParseCoverage(DoclibModel):
 class ParseInfo(DoclibModel):
     id: int
     sha256: str
+    short_id: str
     tier: Tier
     page_range: str
     status: ParseStatus
@@ -143,13 +145,14 @@ class ListParsesResponse(DoclibModel):
 class InvalidateRequest(DoclibModel):
     target: InvalidateTarget = "parses"
     path: str | None = None
-    sha256: str | None = None
+    doc_ref: str | None = None
     tier: Tier | None = None
 
 
 class InvalidateResponse(DoclibModel):
     target: str
     sha256: str
+    short_id: str
     tier: Tier | None = None
     invalidated_count: int
 
@@ -212,6 +215,7 @@ class FileInfo(DoclibModel):
     size_bytes: int
     mtime_ms: int
     sha256: str | None = None
+    short_id: str | None = None
     watch_id: int | None = None
     status: FileStatus
     error_code: str | None = None
@@ -306,12 +310,14 @@ class DocContentExportRequest(DoclibModel):
 
 class DocContentExportResponse(DoclibModel):
     sha256: str
+    short_id: str
     tier: Tier
     output: str
 
 
 class SearchResult(DoclibModel):
     sha256: str
+    short_id: str
     title: str | None = None
     author: str | None = None
     filename: str | None = None

@@ -42,6 +42,7 @@ from .rows import (
     ParsingRuleRow,
     RecentScanRow,
     Sha256Row,
+    ShortIdRow,
     WatchParseCountRow,
     WatchStatsFileRow,
     WatchTargetRow,
@@ -171,6 +172,7 @@ class _ReadPlan:
 
 
 _PUBLIC_IMAGE_BUCKET_PATH = "images"
+_NO_MATCHING_DOC_SHA256 = "__mineru_no_matching_doc__"
 
 
 @dataclass(frozen=True)
@@ -343,7 +345,7 @@ class DoclibServer(AsyncDoclibInterface):
         self,
         *,
         ids: list[int] | None = None,
-        sha256: str | None = None,
+        doc_ref: str | None = None,
         tier: Tier | None = None,
         status: ParseStatus | None = None,
         page_range: str | None = None,
@@ -351,16 +353,17 @@ class DoclibServer(AsyncDoclibInterface):
         limit: int = 50,
         offset: int = 0,
     ) -> ListParsesResponse:
+        resolved_sha256 = await self._resolve_doc_filter_sha256(doc_ref)
         rows, total, limit, offset = await self._select_parse_rows(
             ids=ids,
-            sha256=sha256,
+            sha256=resolved_sha256,
             tier=tier,
             status=status,
             include_superseded=include_superseded,
             limit=limit,
             offset=offset,
         )
-        coverage = _parse_coverage(page_range, rows) if sha256 and tier and page_range else None
+        coverage = _parse_coverage(page_range, rows) if resolved_sha256 and tier and page_range else None
         return ListParsesResponse(
             parses=[_parse_info(row, coverage=coverage) for row in rows],
             coverage=coverage,
@@ -371,7 +374,10 @@ class DoclibServer(AsyncDoclibInterface):
 
     @route("GET", "/parses/{parse_id}", tags=("parse",))
     async def get_parse(self, parse_id: int) -> ParseInfo:
-        row = await self.state.db.fetchone("SELECT * FROM parses WHERE id=?", (parse_id,))
+        row = await self.state.db.fetchone(
+            "SELECT p.*, d.short_id AS short_id FROM parses p JOIN docs d ON d.sha256=p.sha256 WHERE p.id=?",
+            (parse_id,),
+        )
         if row is None:
             raise NotFoundError("job_not_found", f"Parse {parse_id} not found.", "parse_id")
         return _parse_info(row)
@@ -380,15 +386,17 @@ class DoclibServer(AsyncDoclibInterface):
     async def invalidate(self, request: InvalidateRequest) -> InvalidateResponse:
         if request.target != "parses":
             raise InvalidRequestError("invalid_request", f"Unsupported invalidate target: {request.target}", "target")
-        sha256 = request.sha256
+        doc_row = await self._doc_for_ref(request.doc_ref, param="doc_ref") if request.doc_ref else None
+        sha256 = doc_row["sha256"] if doc_row else None
         if sha256 is None and request.path:
             file_row = await self.state.parse_svc.ensure_ingested(request.path)
             sha256 = file_row["sha256"] if file_row and file_row.get("sha256") else None
         if sha256 is None:
             raise NotFoundError("file_not_found", "Document not found.", "path")
 
+        short_id = doc_row["short_id"] if doc_row else await self._short_id_for_sha256(sha256)
         count = await self.state.parse_svc.invalidate(sha256, request.tier)
-        return InvalidateResponse(target=request.target, sha256=sha256, tier=request.tier, invalidated_count=count)
+        return InvalidateResponse(target=request.target, sha256=sha256, short_id=short_id, tier=request.tier, invalidated_count=count)
 
     @route("POST", "/forget", tags=("files",))
     async def forget_path(self, request: ForgetPathRequest) -> ForgetPathResponse:
@@ -444,20 +452,26 @@ class DoclibServer(AsyncDoclibInterface):
         limit = max(1, min(limit, 200))
         offset = max(0, offset)
         file_status = status or FILE_STATUS_ACTIVE
-        clauses = ["status=?"]
+        clauses = ["f.status=?"]
         params: list[Any] = [file_status]
         if ext:
-            clauses.append("ext=?")
+            clauses.append("f.ext=?")
             params.append(ext.lstrip(".").lower())
         if watch_id is not None:
-            clauses.append("watch_id=?")
+            clauses.append("f.watch_id=?")
             params.append(watch_id)
         where = " AND ".join(clauses)
-        total_row = await self.state.db.fetchone(f"SELECT COUNT(*) AS cnt FROM files WHERE {where}", tuple(params))
+        total_row = await self.state.db.fetchone(f"SELECT COUNT(*) AS cnt FROM files f WHERE {where}", tuple(params))
         rows = cast(
             list[FileRow],
             await self.state.db.fetchall(
-                f"SELECT * FROM files WHERE {where} ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+                f"""
+                SELECT f.*, d.short_id AS short_id
+                FROM files f
+                LEFT JOIN docs d ON d.sha256=f.sha256
+                WHERE {where}
+                ORDER BY f.updated_at DESC LIMIT ? OFFSET ?
+                """,
                 (*params, limit, offset),
             ),
         )
@@ -501,18 +515,16 @@ class DoclibServer(AsyncDoclibInterface):
             raise NotFoundError("doc_not_found", f"Document for file {path} not found.", "path")
         return _doc_info(row)
 
-    @route("GET", "/docs/{sha256}", tags=("docs",))
-    async def get_doc(self, sha256: str, *, expand_files: bool = False) -> DocInfo:
-        row = await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,))
-        if row is None:
-            raise NotFoundError("file_not_found", f"Document {sha256} not found.", "sha256")
-        files = await self._files_for_sha256(sha256) if expand_files else None
+    @route("GET", "/docs/{doc_ref}", tags=("docs",))
+    async def get_doc(self, doc_ref: str, *, expand_files: bool = False) -> DocInfo:
+        row = await self._doc_for_ref(doc_ref, param="doc_ref")
+        files = await self._files_for_sha256(row["sha256"]) if expand_files else None
         return _doc_info(row, files=files)
 
-    @route("GET", "/docs/{sha256}/content", tags=("docs",))
+    @route("GET", "/docs/{doc_ref}/content", tags=("docs",))
     async def get_doc_content(
         self,
-        sha256: str,
+        doc_ref: str,
         *,
         tier: Tier,
         page_range: str | None = None,
@@ -527,7 +539,7 @@ class DoclibServer(AsyncDoclibInterface):
         try:
             response = await self._execute_read_plan(
                 await self._build_read_plan_from_parse(
-                    sha256,
+                    doc_ref,
                     tier=tier,
                     page_range=page_range,
                     after=after,
@@ -581,7 +593,7 @@ class DoclibServer(AsyncDoclibInterface):
 
     async def _build_read_plan_from_parse(
         self,
-        sha256: str,
+        doc_ref: str,
         *,
         tier: Tier,
         page_range: str | None,
@@ -593,16 +605,14 @@ class DoclibServer(AsyncDoclibInterface):
         if format != "markdown":
             raise InvalidRequestError("invalid_request", "Only markdown is currently implemented for parse content.", "format")
         limit = max(1, limit)
-        doc = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,)))
-        if doc is None:
-            raise NotFoundError("doc_not_found", f"Document {sha256} not found.", "sha256")
+        doc = await self._doc_for_ref(doc_ref, param="doc_ref")
 
         normalized_page_range = _normalize_content_page_range(page_range, after, doc)
         after_cursor = parse_content_cursor(after) if after else None
         if after_cursor:
             _validate_cursor_for_doc(after_cursor, doc, tier, normalized_page_range)
         return _ReadPlan(
-            sha256=sha256,
+            sha256=doc["sha256"],
             tier=tier,
             short_id=doc["short_id"],
             page_range=normalized_page_range,
@@ -664,14 +674,15 @@ class DoclibServer(AsyncDoclibInterface):
             next_mode="read",
         )
 
-    @route("POST", "/docs/{sha256}/exports", tags=("docs",))
-    async def export_doc_content(self, sha256: str, request: DocContentExportRequest) -> DocContentExportResponse:
+    @route("POST", "/docs/{doc_ref}/exports", tags=("docs",))
+    async def export_doc_content(self, doc_ref: str, request: DocContentExportRequest) -> DocContentExportResponse:
         start_ms = _now_ms()
         dims = {"content_mode": "export", "output_format": _telemetry_output_format(request.format), "tier": request.tier}
         await _record_telemetry_count(self.state, "content.request.count", dimensions=dims)
         try:
+            doc = await self._doc_for_ref(doc_ref, param="doc_ref")
             content = await self._render_doc_content(
-                sha256,
+                doc["sha256"],
                 tier=request.tier,
                 page_range=request.page_range,
                 format=request.format,
@@ -684,7 +695,7 @@ class DoclibServer(AsyncDoclibInterface):
             finished_dims = dims | {"status": "succeeded"}
             await _record_telemetry_count(self.state, "content.finished.count", dimensions=finished_dims)
             await _record_telemetry_duration(self.state, "content.duration_bucket.count", start_ms, dimensions=finished_dims)
-            return DocContentExportResponse(sha256=sha256, tier=request.tier, output=output_path)
+            return DocContentExportResponse(sha256=doc["sha256"], short_id=doc["short_id"], tier=request.tier, output=output_path)
         except Exception:
             finished_dims = dims | {"status": "failed"}
             await _record_telemetry_count(self.state, "content.finished.count", dimensions=finished_dims)
@@ -750,13 +761,30 @@ class DoclibServer(AsyncDoclibInterface):
     @route("GET", "/files/by-path", tags=("files",))
     async def get_file_by_path(self, path: str) -> FileInfoResponse:
         await self.state.parse_svc.ensure_ingested(path)
-        file_row = await self.state.db.fetchone("SELECT * FROM files WHERE path=? AND status=?", (path, FILE_STATUS_ACTIVE))
+        file_row = await self.state.db.fetchone(
+            """
+            SELECT f.*, d.short_id AS short_id
+            FROM files f
+            LEFT JOIN docs d ON d.sha256=f.sha256
+            WHERE f.path=? AND f.status=?
+            """,
+            (path, FILE_STATUS_ACTIVE),
+        )
         if file_row is None:
-            raise NotFoundError("file_not_found", f"File {path} not found.", "path")
+            raise NotFoundError("file_not_found", f"File record {path} not found in doclib.", "path")
         sha256 = file_row["sha256"]
         doc_row = await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,)) if sha256 else None
         parse_rows = (
-            await self.state.db.fetchall("SELECT * FROM parses WHERE sha256=? ORDER BY tier, created_at DESC", (sha256,))
+            await self.state.db.fetchall(
+                """
+                SELECT p.*, d.short_id AS short_id
+                FROM parses p
+                JOIN docs d ON d.sha256=p.sha256
+                WHERE p.sha256=?
+                ORDER BY p.tier, p.created_at DESC
+                """,
+                (sha256,),
+            )
             if sha256
             else []
         )
@@ -1010,32 +1038,41 @@ class DoclibServer(AsyncDoclibInterface):
         if ids:
             placeholders = ",".join("?" * len(ids))
             rows = cast(
-                list[ParseRow], await self.state.db.fetchall(f"SELECT * FROM parses WHERE id IN ({placeholders})", tuple(ids))
+                list[ParseRow],
+                await self.state.db.fetchall(
+                    f"""
+                    SELECT p.*, d.short_id AS short_id
+                    FROM parses p
+                    JOIN docs d ON d.sha256=p.sha256
+                    WHERE p.id IN ({placeholders})
+                    """,
+                    tuple(ids),
+                ),
             )
             by_id = {row["id"]: row for row in rows}
             ordered = [by_id[parse_id] for parse_id in ids if parse_id in by_id]
             return ordered[offset : offset + limit], len(ordered), limit, offset
         if sha256:
-            clauses.append("sha256=?")
+            clauses.append("p.sha256=?")
             params.append(sha256)
         if tier:
-            clauses.append("tier=?")
+            clauses.append("p.tier=?")
             params.append(tier)
         if status:
-            clauses.append("status=?")
+            clauses.append("p.status=?")
             params.append(status)
         elif not include_superseded:
-            clauses.append("status!=?")
+            clauses.append("p.status!=?")
             params.append(PARSE_STATUS_SUPERSEDED)
 
-        sql = "SELECT * FROM parses"
+        sql = "SELECT p.*, d.short_id AS short_id FROM parses p JOIN docs d ON d.sha256=p.sha256"
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
-        count_sql = "SELECT COUNT(*) AS cnt FROM parses"
+        count_sql = "SELECT COUNT(*) AS cnt FROM parses p JOIN docs d ON d.sha256=p.sha256"
         if clauses:
             count_sql += " WHERE " + " AND ".join(clauses)
         total_row = await self.state.db.fetchone(count_sql, tuple(params))
-        sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        sql += " ORDER BY p.created_at DESC LIMIT ? OFFSET ?"
         rows = cast(list[ParseRow], await self.state.db.fetchall(sql, (*params, limit, offset)))
         total = total_row["cnt"] if total_row else 0
         return rows, total, limit, offset
@@ -1171,10 +1208,44 @@ class DoclibServer(AsyncDoclibInterface):
         )
         return row["sha256"] if row and row["sha256"] else None
 
+    async def _doc_for_ref(self, doc_ref: str, *, param: str) -> DocRow:
+        row = await self._maybe_doc_for_ref(doc_ref)
+        if row is None:
+            raise NotFoundError("doc_not_found", f"Document {doc_ref} not found.", param)
+        return row
+
+    async def _maybe_doc_for_ref(self, doc_ref: str) -> DocRow | None:
+        row = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (doc_ref,)))
+        if row is not None:
+            return row
+        return cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE short_id=?", (doc_ref,)))
+
+    async def _resolve_doc_filter_sha256(self, doc_ref: str | None) -> str | None:
+        if doc_ref is None:
+            return None
+        doc = await self._maybe_doc_for_ref(doc_ref)
+        if doc is None:
+            return _NO_MATCHING_DOC_SHA256
+        return doc["sha256"]
+
+    async def _short_id_for_sha256(self, sha256: str) -> str:
+        row = cast(ShortIdRow | None, await self.state.db.fetchone("SELECT short_id FROM docs WHERE sha256=?", (sha256,)))
+        if row is None or not row["short_id"]:
+            raise NotFoundError("doc_not_found", f"Document {sha256} not found.", "sha256")
+        return row["short_id"]
+
     async def _files_for_sha256(self, sha256: str) -> list[FileInfo]:
         rows = cast(
             list[FileRow],
-            await self.state.db.fetchall("SELECT * FROM files WHERE sha256=? AND status=?", (sha256, FILE_STATUS_ACTIVE)),
+            await self.state.db.fetchall(
+                """
+                SELECT f.*, d.short_id AS short_id
+                FROM files f
+                JOIN docs d ON d.sha256=f.sha256
+                WHERE f.sha256=? AND f.status=?
+                """,
+                (sha256, FILE_STATUS_ACTIVE),
+            ),
         )
         return [_file_info(row) for row in rows]
 

@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import typer
+from rich.table import Table
 
 from ...doclib.client import DoclibClient
-from ...doclib.types import ScanRequest, WatchInfo, WatchRequest
-from ..json_errors import exit_with_error
-from ..output import print_info, print_json, print_success
+from ...doclib.types import RemoveWatchResponse, ScanInfo, ScanRequest, WatchInfo, WatchListResponse, WatchRequest
+from ...errors import MineruError
+from ..contracts import CliContext, CliTaskResult
 from ..path_utils import normalize_cli_path
-from .scan import _print_scan, _wait_for_scan
+from ..runtime import cli_task, run_cli
+from .scan import _render_scan, _wait_for_scan
 
 app = typer.Typer(help="Watch target management", no_args_is_help=True)
 
@@ -22,37 +24,21 @@ def watch_add(
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Add a directory to watch."""
-    watch_path = normalize_cli_path(path)
-    try:
-        data = _client().add_watch(WatchRequest(path=watch_path, removable=removable, label=label))
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot add watch target.")
-
-    if json_mode:
-        print_json(data)
-        return
-    print_success(f"Watch added: {data.path} (id={data.id})")
+    ctx = CliContext(json_mode=json_mode)
+    run_cli(
+        ctx,
+        lambda: _client().add_watch(
+            WatchRequest(path=normalize_cli_path(path), removable=removable, label=label)
+        ),
+        render=_render_watch_added,
+    )
 
 
 @app.command("list")
 def watch_list(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
     """List watched directories."""
-    try:
-        data = _client().list_watches()
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot list watch targets.")
-
-    if json_mode:
-        print_json(data)
-        return
-
-    if not data.watches:
-        print_info("No watches configured.")
-        return
-    for watch in data.watches:
-        status = watch.status
-        extra = " [removable]" if watch.removable else ""
-        print(f"  [{watch.id}] {watch.path}{extra}  [{status}]")
+    ctx = CliContext(json_mode=json_mode)
+    run_cli(ctx, lambda: _client().list_watches(), render=_render_watch_list)
 
 
 @app.command("remove")
@@ -61,17 +47,14 @@ def watch_remove(
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Remove a watched directory."""
-    try:
+    ctx = CliContext(json_mode=json_mode)
+
+    def remove_watch() -> RemoveWatchResponse:
         client = _client()
         watch = _resolve_watch(client, target)
-        result = client.remove_watch(watch.id)
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot remove watch target.")
+        return client.remove_watch(watch.id)
 
-    if json_mode:
-        print_json(result)
-        return
-    print_success(f"Watch removed: {watch.path}")
+    run_cli(ctx, remove_watch, render=_render_watch_removed)
 
 
 @app.command("rescan")
@@ -82,20 +65,50 @@ def watch_rescan(
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Create a watch scan task for an existing watch target."""
-    try:
-        client = _client()
-        watch = _resolve_watch(client, target)
-        scan_info = client.create_scan(ScanRequest(path=watch.path, kind="watch", source="cli", watch_id=watch.id))
-        if not no_wait and wait > 0:
-            scan_info = _wait_for_scan(client, scan_info.id, wait)
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot rescan watch target.")
+    ctx = CliContext(json_mode=json_mode)
+    run_cli(ctx, lambda: _rescan_watch(target, wait=wait, no_wait=no_wait), render=_render_scan)
 
-    _print_scan(scan_info, json_mode=json_mode)
+
+def _rescan_watch(target: str, *, wait: int, no_wait: bool) -> CliTaskResult[ScanInfo]:
+    client = _client()
+    watch = _resolve_watch(client, target)
+    scan_info = client.create_scan(ScanRequest(path=watch.path, kind="watch", source="cli", watch_id=watch.id))
+    if not no_wait and wait > 0:
+        scan_info = _wait_for_scan(client, scan_info.id, wait)
+    return cli_task(scan_info, status=scan_info.status, render=_render_scan, fail_if_final_failed=not no_wait)
 
 
 def _client() -> DoclibClient:
     return DoclibClient(timeout=30)
+
+
+def _render_watch_added(data: WatchInfo) -> str:
+    return f"Watch added: {data.path} (id={data.id})"
+
+
+def _render_watch_list(data: WatchListResponse) -> Table | str:
+    if not data.watches:
+        return "No watches configured."
+    table = Table(title="Watches")
+    table.add_column("ID", justify="right")
+    table.add_column("Path", style="cyan")
+    table.add_column("Status", style="green")
+    table.add_column("Removable")
+    table.add_column("Label")
+    for watch in data.watches:
+        table.add_row(
+            str(watch.id),
+            watch.path,
+            watch.status,
+            "yes" if watch.removable else "no",
+            watch.label or "-",
+        )
+    return table
+
+
+def _render_watch_removed(data: RemoveWatchResponse) -> str:
+    action = "removed" if data.removed else "unchanged"
+    return f"Watch {data.watch_id} {action}."
 
 
 def _resolve_watch(client: DoclibClient, target: str) -> WatchInfo:
@@ -105,10 +118,10 @@ def _resolve_watch(client: DoclibClient, target: str) -> WatchInfo:
         for watch in watches:
             if watch.id == watch_id:
                 return watch
-        raise ValueError(f"watch_not_found: watch id {watch_id} not found")
+        raise MineruError("watch_not_found", f"Watch id {watch_id} not found.", "watch_id")
 
     normalized = normalize_cli_path(target)
     for watch in watches:
         if normalize_cli_path(watch.path) == normalized:
             return watch
-    raise ValueError(f"watch_not_found: watch path {normalized} not found")
+    raise MineruError("watch_not_found", f"Watch path {normalized} not found.", "path")

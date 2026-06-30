@@ -132,7 +132,7 @@ class DoclibClient(DoclibInterface):
         self,
         *,
         ids: list[int] | None = None,
-        sha256: str | None = None,
+        doc_ref: str | None = None,
         tier: Tier | None = None,
         status: ParseStatus | None = None,
         page_range: str | None = None,
@@ -144,7 +144,7 @@ class DoclibClient(DoclibInterface):
             ListParsesResponse,
             params={
                 "ids": ids,
-                "sha256": sha256,
+                "doc_ref": doc_ref,
                 "tier": tier,
                 "status": status,
                 "page_range": page_range,
@@ -218,14 +218,14 @@ class DoclibClient(DoclibInterface):
     def get_doc_by_path(self, path: str) -> DocInfo:
         return self._request_model(DocInfo, params={"path": path})
 
-    @route("GET", "/docs/{sha256}", tags=("docs",))
-    def get_doc(self, sha256: str, *, expand_files: bool = False) -> DocInfo:
-        return self._request_model(DocInfo, path_params={"sha256": sha256}, params={"expand_files": expand_files})
+    @route("GET", "/docs/{doc_ref}", tags=("docs",))
+    def get_doc(self, doc_ref: str, *, expand_files: bool = False) -> DocInfo:
+        return self._request_model(DocInfo, path_params={"doc_ref": doc_ref}, params={"expand_files": expand_files})
 
-    @route("GET", "/docs/{sha256}/content", tags=("docs",))
+    @route("GET", "/docs/{doc_ref}/content", tags=("docs",))
     def get_doc_content(
         self,
-        sha256: str,
+        doc_ref: str,
         *,
         tier: Tier,
         page_range: str | None = None,
@@ -236,7 +236,7 @@ class DoclibClient(DoclibInterface):
     ) -> DocContentResponse:
         return self._request_model(
             DocContentResponse,
-            path_params={"sha256": sha256},
+            path_params={"doc_ref": doc_ref},
             params={
                 "tier": tier,
                 "page_range": page_range,
@@ -268,9 +268,9 @@ class DoclibClient(DoclibInterface):
             },
         )
 
-    @route("POST", "/docs/{sha256}/exports", tags=("docs",))
-    def export_doc_content(self, sha256: str, request: DocContentExportRequest) -> DocContentExportResponse:
-        return self._request_model(DocContentExportResponse, path_params={"sha256": sha256}, body=request)
+    @route("POST", "/docs/{doc_ref}/exports", tags=("docs",))
+    def export_doc_content(self, doc_ref: str, request: DocContentExportRequest) -> DocContentExportResponse:
+        return self._request_model(DocContentExportResponse, path_params={"doc_ref": doc_ref}, body=request)
 
     @route("GET", "/search", tags=("search",))
     def search(

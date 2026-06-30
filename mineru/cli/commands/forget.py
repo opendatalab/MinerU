@@ -2,42 +2,33 @@
 
 from __future__ import annotations
 
+import typer
+
 from ...doclib.client import DoclibClient
-from ...doclib.types import ForgetPathRequest
-from ..json_errors import exit_with_error
-from ..output import print_info, print_json, print_success
+from ...doclib.types import ForgetPathRequest, ForgetPathResponse
+from ..contracts import CliContext
 from ..path_utils import normalize_cli_path
+from ..runtime import run_cli
 
 
 def forget_cmd(
-    path: str,
-    *,
-    dry_run: bool = True,
-    json_mode: bool = False,
+    path: str = typer.Argument(..., help="File or directory path to forget from doclib"),
+    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run", help="Preview only"),
+    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
-    try:
-        client = DoclibClient(timeout=30)
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot connect to mineru server. Run 'mineru server start' first.")
+    run_cli(
+        CliContext(json_mode=json_mode),
+        lambda: DoclibClient(timeout=30).forget_path(
+            ForgetPathRequest(path=normalize_cli_path(path), dry_run=dry_run),
+        ),
+        render=_render_forget_result,
+        warnings=lambda result: result.warnings,
+    )
 
-    file_path = normalize_cli_path(path)
-    try:
-        result = client.forget_path(ForgetPathRequest(path=file_path, dry_run=dry_run))
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode)
 
-    if json_mode:
-        print_json(result)
-        return
-
-    for warning in result.warnings:
-        print_info(warning)
-
-    if dry_run:
-        print_info(
-            f"Would forget {result.forgotten_files} file record(s) "
-            f"(matched_as={result.matched_as}). Use --no-dry-run to proceed."
+def _render_forget_result(data: ForgetPathResponse) -> str:
+    if data.dry_run:
+        return (
+            f"Would forget {data.forgotten_files} file record(s) (matched_as={data.matched_as}). Use --no-dry-run to proceed."
         )
-        return
-
-    print_success(f"Forgot {result.forgotten_files} file record(s) (matched_as={result.matched_as}).")
+    return f"Forgot {data.forgotten_files} file record(s) (matched_as={data.matched_as})."

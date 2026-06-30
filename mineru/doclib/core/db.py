@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import TypeVar
 
 import aiosqlite
 
@@ -12,6 +14,7 @@ from ..config_defaults import CONFIG_DEFAULTS
 SCHEMA_VERSION = 1
 _MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
 
+_T = TypeVar("_T")
 _CREATE_TABLES_SQL: list[str] = []  # filled by _load_init_sql()
 
 
@@ -57,60 +60,65 @@ class DatabaseManager:
         """Create tables, apply migrations, seed default data.  Idempotent."""
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         conn = await aiosqlite.connect(self.db_path)
-        await conn.execute("PRAGMA journal_mode=WAL")
-        await conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            await conn.execute("PRAGMA journal_mode=WAL")
+            await conn.execute("PRAGMA foreign_keys=ON")
 
-        if self.sqlite_cfg:
-            await conn.execute(f"PRAGMA synchronous={self.sqlite_cfg.synchronous}")
-            await conn.execute(f"PRAGMA mmap_size={self.sqlite_cfg.mmap_size}")
-            await conn.execute(f"PRAGMA cache_size={self.sqlite_cfg.cache_size}")
-            await conn.execute(f"PRAGMA temp_store={self.sqlite_cfg.temp_store}")
-            await conn.execute(
-                f"PRAGMA wal_autocheckpoint={self.sqlite_cfg.wal_autocheckpoint}"
-            )
-            await conn.execute(
-                f"PRAGMA journal_size_limit={self.sqlite_cfg.journal_size_limit}"
-            )
-        else:
-            await conn.execute("PRAGMA synchronous=NORMAL")
-            await conn.execute("PRAGMA mmap_size=268435456")
-            await conn.execute("PRAGMA cache_size=-20000")
-            await conn.execute("PRAGMA temp_store=MEMORY")
-            await conn.execute("PRAGMA wal_autocheckpoint=1000")
-            await conn.execute("PRAGMA journal_size_limit=33554432")
-
-        for sql in _CREATE_TABLES_SQL:
-            await conn.execute(sql)
-
-        # ── migrations ──────────────────────────────────────────
-        for version in range(1, SCHEMA_VERSION + 1):
-            cursor = await conn.execute(
-                "SELECT 1 FROM _migrations WHERE version=?", (version,)
-            )
-            if await cursor.fetchone() is None:
-                await _apply_migration(conn, version)
+            if self.sqlite_cfg:
+                await conn.execute(f"PRAGMA synchronous={self.sqlite_cfg.synchronous}")
+                await conn.execute(f"PRAGMA mmap_size={self.sqlite_cfg.mmap_size}")
+                await conn.execute(f"PRAGMA cache_size={self.sqlite_cfg.cache_size}")
+                await conn.execute(f"PRAGMA temp_store={self.sqlite_cfg.temp_store}")
                 await conn.execute(
-                    "INSERT INTO _migrations (version, applied_at) VALUES (?, ?)",
-                    (version, _now_ms()),
+                    f"PRAGMA wal_autocheckpoint={self.sqlite_cfg.wal_autocheckpoint}"
+                )
+                await conn.execute(
+                    f"PRAGMA journal_size_limit={self.sqlite_cfg.journal_size_limit}"
+                )
+            else:
+                await conn.execute("PRAGMA synchronous=NORMAL")
+                await conn.execute("PRAGMA mmap_size=268435456")
+                await conn.execute("PRAGMA cache_size=-20000")
+                await conn.execute("PRAGMA temp_store=MEMORY")
+                await conn.execute("PRAGMA wal_autocheckpoint=1000")
+                await conn.execute("PRAGMA journal_size_limit=33554432")
+
+            for sql in _CREATE_TABLES_SQL:
+                await conn.execute(sql)
+
+            # ── migrations ──────────────────────────────────────────
+            for version in range(1, SCHEMA_VERSION + 1):
+                cursor = await conn.execute(
+                    "SELECT 1 FROM _migrations WHERE version=?", (version,)
+                )
+                if await cursor.fetchone() is None:
+                    await _apply_migration(conn, version)
+                    await conn.execute(
+                        "INSERT INTO _migrations (version, applied_at) VALUES (?, ?)",
+                        (version, _now_ms()),
+                    )
+
+            # ── seed data ───────────────────────────────────────────
+            # Config defaults are code-backed; the DB config table stores overrides only.
+            # Clean legacy seeded rows whose values exactly match current defaults.
+            for key, value in CONFIG_DEFAULTS.items():
+                await conn.execute("DELETE FROM config WHERE key=? AND value=?", (key, value))
+
+            now = _now_ms()
+            for name, pattern in DEFAULT_EXCLUDE_RULES:
+                await conn.execute(
+                    "INSERT INTO exclude_rules (name, pattern, priority, created_at, updated_at) "
+                    "SELECT ?, ?, 0, ?, ? "
+                    "WHERE NOT EXISTS (SELECT 1 FROM exclude_rules WHERE pattern=?)",
+                    (name, pattern, now, now, pattern),
                 )
 
-        # ── seed data ───────────────────────────────────────────
-        # Config defaults are code-backed; the DB config table stores overrides only.
-        # Clean legacy seeded rows whose values exactly match current defaults.
-        for key, value in CONFIG_DEFAULTS.items():
-            await conn.execute("DELETE FROM config WHERE key=? AND value=?", (key, value))
-
-        now = _now_ms()
-        for name, pattern in DEFAULT_EXCLUDE_RULES:
-            await conn.execute(
-                "INSERT INTO exclude_rules (name, pattern, priority, created_at, updated_at) "
-                "SELECT ?, ?, 0, ?, ? "
-                "WHERE NOT EXISTS (SELECT 1 FROM exclude_rules WHERE pattern=?)",
-                (name, pattern, now, now, pattern),
-            )
-
-        await conn.commit()
-        await conn.close()
+            await conn.commit()
+        except Exception:
+            await self._rollback_quietly(conn)
+            raise
+        finally:
+            await conn.close()
 
     async def _connect(self) -> aiosqlite.Connection:
         conn = await aiosqlite.connect(self.db_path)
@@ -124,57 +132,68 @@ class DatabaseManager:
 
     # ── query helpers ──────────────────────────────────────────────
 
-    async def execute(self, sql: str, params: tuple | None = None) -> aiosqlite.Cursor:
+    async def _with_connection(self, operation: Callable[[aiosqlite.Connection], Awaitable[_T]]) -> _T:
         conn = await self._connect()
-        cursor = await conn.execute(sql, params or ())
-        await conn.commit()
-        await conn.close()
-        return cursor
+        try:
+            result = await operation(conn)
+            await conn.commit()
+            return result
+        except Exception:
+            await self._rollback_quietly(conn)
+            raise
+        finally:
+            await conn.close()
+
+    @staticmethod
+    async def _rollback_quietly(conn: aiosqlite.Connection) -> None:
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+    async def execute(self, sql: str, params: tuple | None = None) -> aiosqlite.Cursor:
+        async def _operation(conn: aiosqlite.Connection) -> aiosqlite.Cursor:
+            return await conn.execute(sql, params or ())
+
+        return await self._with_connection(_operation)
 
     async def execute_insert(self, sql: str, params: tuple | None = None) -> int:
-        conn = await self._connect()
-        cursor = await conn.execute(sql, params or ())
-        await conn.commit()
-        lastid = cursor.lastrowid
-        await conn.close()
-        if lastid is None:
-            raise RuntimeError("SQLite insert did not return a row id.")
-        return lastid
+        async def _operation(conn: aiosqlite.Connection) -> int:
+            cursor = await conn.execute(sql, params or ())
+            lastid = cursor.lastrowid
+            if lastid is None:
+                raise RuntimeError("SQLite insert did not return a row id.")
+            return lastid
+
+        return await self._with_connection(_operation)
 
     async def fetchone(self, sql: str, params: tuple | None = None) -> dict | None:
-        conn = await self._connect()
-        cursor = await conn.execute(sql, params or ())
-        row = await cursor.fetchone()
-        result = dict(row) if row else None
-        await conn.commit()
-        await conn.close()
-        return result
+        async def _operation(conn: aiosqlite.Connection) -> dict | None:
+            cursor = await conn.execute(sql, params or ())
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+        return await self._with_connection(_operation)
 
     async def fetchall(self, sql: str, params: tuple | None = None) -> list[dict]:
-        conn = await self._connect()
-        cursor = await conn.execute(sql, params or ())
-        rows = await cursor.fetchall()
-        result = [dict(row) for row in rows]
-        await conn.commit()
-        await conn.close()
-        return result
+        async def _operation(conn: aiosqlite.Connection) -> list[dict]:
+            cursor = await conn.execute(sql, params or ())
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+        return await self._with_connection(_operation)
 
     async def commit(self) -> None:
         pass
 
     async def execute_atomic(self, statements: list[tuple[str, tuple]]) -> int:
         """Execute multiple statements in a single transaction."""
-        conn = await self._connect()
-        try:
+        async def _operation(conn: aiosqlite.Connection) -> int:
             for sql, params in statements:
                 await conn.execute(sql, params)
-            await conn.commit()
-        except Exception:
-            await conn.rollback()
-            raise
-        finally:
-            await conn.close()
-        return len(statements)
+            return len(statements)
+
+        return await self._with_connection(_operation)
 
 
 # ── helpers ────────────────────────────────────────────────────────

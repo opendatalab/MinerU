@@ -3,16 +3,32 @@
 from __future__ import annotations
 
 import sys
-from typing import Literal
+from dataclasses import dataclass
 
 import typer
 from click.core import Context
 from typer.core import TyperGroup
 
-from ..types import Tier
 from .commands import cleanup, config, list_resources, server, show, telemetry, watch
+from .commands.forget import forget_cmd
+from .commands.invalidate import invalidate_cmd
+from .commands.parse import parse_cmd
+from .commands.read import read_cmd
+from .commands.scan import scan_cmd
+from .commands.search import find_cmd, search_cmd
+from .contracts import CliContext
+from .runtime import run_cli
 from .telemetry import prepare_cli_telemetry
 
+
+@dataclass(frozen=True)
+class VersionInfo:
+    mineru_version: str
+    python_version: str
+
+# Typer stores commands and command groups separately before building the Click
+# command tree, so source registration order alone does not preserve the mixed
+# top-level help order.
 TOP_LEVEL_COMMAND_ORDER = [
     "parse",
     "read",
@@ -56,162 +72,42 @@ def root(ctx: typer.Context) -> None:
     prepare_cli_telemetry(ctx)
 
 
-# top-level commands
-@app.command()
-def parse(
-    path: str = typer.Argument(..., help="Path to the document file"),
-    tier: Tier | None = typer.Option(None, "--tier", help="Parse tier: flash, standard, pro (default: server decides)"),
-    pages: str = typer.Option(None, "-p", "--pages", help="Page range, e.g. '1~5' or 'all'"),
-    after: str = typer.Option(None, "--after", help="Continue reading after a content cursor"),
-    limit: int = typer.Option(30000, "--limit", help="Soft character limit for STDOUT content"),
-    format: Literal["markdown"] = typer.Option("markdown", "-f", "--format", help="Output format: markdown"),
-    force: bool = typer.Option(False, "--force", help="Force re-parse, ignore cache"),
-    remote: bool = typer.Option(False, "--remote", help="Use remote parse-server"),
-    wait: int = typer.Option(60, "--wait", help="Max seconds to wait for parse to complete"),
-    no_wait: bool = typer.Option(False, "--no-wait", help="Don't wait — return immediately"),
-    output: str = typer.Option(None, "-o", "--output", help="Output path; creates parent directories"),
-    no_marker: bool = typer.Option(False, "--no-marker", help="Omit document structure markers from output"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
-    verbose: bool = typer.Option(False, "-v", "--verbose", help="Verbose output"),
-) -> None:
-    """Parse a document file."""
-    from .commands.parse import parse_cmd
-
-    parse_cmd(
-        path=path,
-        tier=tier,
-        pages=pages,
-        after=after,
-        limit=limit,
-        format=format,
-        force=force,
-        remote=remote,
-        wait=wait,
-        no_wait=no_wait,
-        output=output,
-        no_marker=no_marker,
-        json_mode=json_mode,
-        verbose=verbose,
-    )
-
-
-@app.command()
-def read(
-    locator: str = typer.Argument(..., help="Doclib locator, e.g. doc:ab12cd3/tier:standard/page:4"),
-    context: int = typer.Option(0, "--context", help="Read N pages/blocks before and after the locator"),
-    limit: int = typer.Option(30000, "--limit", help="Soft character limit for STDOUT content"),
-    format: Literal["markdown", "image"] = typer.Option("markdown", "-f", "--format", help="Output format: markdown, image"),
-    output: str = typer.Option(None, "-o", "--output", help="Output path; creates parent directories"),
-    no_marker: bool = typer.Option(False, "--no-marker", help="Omit continuation marker from output"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
-) -> None:
-    """Read parsed doclib content by locator."""
-    from .commands.read import read_cmd
-
-    read_cmd(
-        locator=locator,
-        context=context,
-        limit=limit,
-        format=format,
-        output=output,
-        no_marker=no_marker,
-        json_mode=json_mode,
-    )
-
-
-@app.command()
-def scan(
-    path: str = typer.Argument(..., help="File or directory path to scan"),
-    wait: int = typer.Option(30, "--wait", help="Max seconds to wait for scan completion"),
-    no_wait: bool = typer.Option(False, "--no-wait", help="Return immediately after creating the scan"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
-) -> None:
-    """Create a one-off scan task."""
-    from .commands.scan import scan_cmd
-
-    scan_cmd(path=path, wait=wait, no_wait=no_wait, json_mode=json_mode)
-
-
+app.command("parse")(parse_cmd)
+app.command("read")(read_cmd)
+app.command("scan")(scan_cmd)
 app.add_typer(watch.app, name="watch")
-
-
-@app.command()
-def search(
-    query: str = typer.Argument(..., help="Search query"),
-    file_type: str | None = typer.Option(
-        None,
-        "--type",
-        help="File type filter: pdf, image, docx, pptx, xlsx, html, markdown, csv, rst, tex, txt",
-    ),
-    tier: Tier | None = typer.Option(None, "--tier", help="Exact search index tier: flash, standard, pro"),
-    min_tier: Tier | None = typer.Option(None, "--min-tier", help="Minimum search index tier: flash, standard, pro"),
-    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
-    offset: int = typer.Option(0, "--offset", help="Result offset"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
-) -> None:
-    """Search parsed document content."""
-    from .commands.search import search_cmd
-
-    search_cmd(query=query, file_type=file_type, tier=tier, min_tier=min_tier, limit=limit, offset=offset, json_mode=json_mode)
-
-
-@app.command()
-def find(
-    query: str = typer.Argument(..., help="Filename search query"),
-    ext: str | None = typer.Option(
-        None,
-        "--ext",
-        help="File extension filter: pdf, png, jpg, jpeg, jp2, webp, gif, bmp, tiff, docx, pptx, xlsx, html, htm, md, markdown, csv, rst, tex, txt",
-    ),
-    limit: int = typer.Option(50, "--limit", "-n", help="Max results"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
-) -> None:
-    """Search filenames only (not document content)."""
-    from .commands.search import find_cmd
-
-    find_cmd(query=query, ext=ext, limit=limit, json_mode=json_mode)
-
-
+app.command("search")(search_cmd)
+app.command("find")(find_cmd)
 app.add_typer(list_resources.app, name="list")
 app.add_typer(show.app, name="show")
 app.add_typer(telemetry.app, name="telemetry")
 app.add_typer(server.app, name="server")
 app.add_typer(config.app, name="config")
-
-
-@app.command()
-def invalidate(
-    path: str = typer.Argument(..., help="Path to the document file"),
-    tier: Tier | None = typer.Option(None, "--tier", help="Parse tier to invalidate (omit = all tiers)"),
-) -> None:
-    """Mark done parse results as superseded so the next parse re-runs."""
-    from .commands.invalidate import invalidate_cmd
-
-    invalidate_cmd(path=path, tier=tier)
-
-
-@app.command()
-def forget(
-    path: str = typer.Argument(..., help="File or directory path to forget from doclib"),
-    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run", help="Preview only"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
-) -> None:
-    """Forget doclib records for a path without deleting source files."""
-    from .commands.forget import forget_cmd
-
-    forget_cmd(path=path, dry_run=dry_run, json_mode=json_mode)
-
-
+app.command("invalidate")(invalidate_cmd)
+app.command("forget")(forget_cmd)
 app.add_typer(cleanup.app, name="cleanup")
 
 
 @app.command()
-def version() -> None:
+def version(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
     """Print MinerU and Python versions."""
+    ctx = CliContext(json_mode=json_mode)
+    run_cli(ctx, _version_info, render=_render_version)
+
+
+def _version_info() -> VersionInfo:
     from ..version import __version__
 
-    typer.echo(f"MinerU version: {__version__}")
-    typer.echo(f"Python version: {sys.version.split()[0]}")
+    return VersionInfo(mineru_version=__version__, python_version=sys.version.split()[0])
+
+
+def _render_version(data: VersionInfo) -> str:
+    return "\n".join(
+        [
+            f"MinerU version: {data.mineru_version}",
+            f"Python version: {data.python_version}",
+        ]
+    )
 
 
 def main() -> None:

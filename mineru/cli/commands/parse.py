@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 import shlex
-import shutil
 import time
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-from typing import Literal
+from typing import Any, Literal
 
 import click
 import typer
 
-from ...errors import MineruError
 from ...doclib.client import DoclibClient
 from ...doclib.types import (
     ContentNextRequest,
@@ -23,10 +21,21 @@ from ...doclib.types import (
     TelemetryObservation,
     TelemetryObservationsRequest,
 )
+from ...errors import MineruError
 from ...types import Tier
-from ..json_errors import exit_with_error
-from ..output import format_parse_result, print_error, print_json, print_notice, print_success
+from ..contracts import CliContext, CliResult
 from ..path_utils import normalize_cli_path
+from ..runtime import cli_ok, emit_result, run_cli
+
+
+@dataclass(frozen=True)
+class ParseTextOutput:
+    text: str
+
+
+@dataclass(frozen=True)
+class ParseSummaryOutput:
+    text: str
 
 
 def _normalize_output_path(output: str | None) -> str | None:
@@ -45,6 +54,10 @@ def _ensure_output_parent(output: str | None) -> str | None:
 
 def _output_info(path: str) -> dict[str, str]:
     return {"status": "written", "path": path}
+
+
+def _emit_notice(message: str, *, json_mode: bool) -> None:
+    emit_result(CliContext(json_mode=json_mode), cli_ok(notices=[message]))
 
 
 def _validate_page_range_input(page_range: str | None) -> None:
@@ -91,34 +104,64 @@ def parse_cmd(
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Verbose output"),
 ) -> None:
     """Parse a document file."""
+    ctx = CliContext(json_mode=json_mode, verbose=verbose)
+    run_cli(
+        ctx,
+        lambda: _parse(
+            path,
+            tier=tier,
+            pages=pages,
+            after=after,
+            limit=limit,
+            format=format,
+            force=force,
+            remote=remote,
+            wait=wait,
+            no_wait=no_wait,
+            output=output,
+            no_marker=no_marker,
+            json_mode=json_mode,
+            verbose=verbose,
+        ),
+    )
+
+
+def _parse(
+    path: str,
+    *,
+    tier: Tier | None,
+    pages: str | None,
+    after: str | None,
+    limit: int,
+    format: Literal["markdown"],
+    force: bool,
+    remote: bool,
+    wait: int,
+    no_wait: bool,
+    output: str | None,
+    no_marker: bool,
+    json_mode: bool,
+    verbose: bool,
+) -> None:
     file_path = normalize_cli_path(path)
 
     if not Path(file_path).exists():
-        exit_with_error(MineruError("file_not_found", f"File not found: {file_path}", "path"), json_mode=json_mode)
+        raise MineruError("file_not_found", f"File not found: {file_path}", "path")
 
-    try:
-        _validate_page_range_input(pages)
-    except MineruError as exc:
-        exit_with_error(exc, json_mode=json_mode)
+    _validate_page_range_input(pages)
 
-    try:
-        client = DoclibClient(timeout=wait + 30)
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot connect to mineru server. Run 'mineru server start' first.")
+    client = DoclibClient(timeout=wait + 30)
 
     # send parse request
-    try:
-        result = client.ensure_parse(
-            ParseRequest(
-                path=file_path,
-                tier=tier,
-                page_range=pages,
-                force=force,
-                remote=remote,
-            )
+    result = client.ensure_parse(
+        ParseRequest(
+            path=file_path,
+            tier=tier,
+            page_range=pages,
+            force=force,
+            remote=remote,
         )
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode)
+    )
 
     req_tier = result.tier
     status = result.status
@@ -130,7 +173,7 @@ def parse_cmd(
     # cached
     if status == "done":
         if verbose:
-            print_notice("Cache hit — returning cached result.")
+            _emit_notice("Cache hit — returning cached result.", json_mode=json_mode)
         _output_parse_result(
             client,
             result,
@@ -150,16 +193,16 @@ def parse_cmd(
     # no-wait
     if no_wait or status not in ("pending", "parsing") or not wait_parse_ids:
         if json_mode:
-            _print_parse_json_response(result, None)
+            _emit_parse_json_response(result, None)
         else:
-            format_parse_result(result, json_mode=False)
+            emit_result(CliContext(json_mode=False), _prepare_parse_summary_output(result))
         if status == "failed":
-            raise typer.Exit(1)
+            emit_result(CliContext(json_mode=json_mode), cli_ok(exit_code=1))
         return
 
     # poll until done or timeout
     if verbose:
-        print_notice(f"Parse queued (tier={req_tier}). Waiting up to {wait}s...")
+        _emit_notice(f"Parse queued (tier={req_tier}). Waiting up to {wait}s...", json_mode=json_mode)
 
     wait_started_at = time.time()
     deadline = time.time() + wait
@@ -177,7 +220,7 @@ def parse_cmd(
         statuses = {row.status for row in parse_rows}
         st = "done" if parse_rows and statuses == {"done"} else ("failed" if "failed" in statuses else "parsing")
         if verbose and not json_mode:
-            print_notice(f"  Parse status: {st}")
+            _emit_notice(f"  Parse status: {st}", json_mode=json_mode)
 
         if st == "done":
             _record_parse_wait(client, wait_parse_ids, "succeeded", wait_started_at)
@@ -200,17 +243,16 @@ def parse_cmd(
         if st == "failed":
             failed = next((row for row in parse_rows if row.status == "failed"), None)
             _record_parse_wait(client, wait_parse_ids, "failed", wait_started_at)
-            exit_with_error(
-                MineruError(failed.error_code if failed else "parse_failed", failed.error_msg if failed else "", None),
-                json_mode=json_mode,
-            )
+            raise MineruError(failed.error_code if failed else "parse_failed", failed.error_msg if failed else "", None)
 
     _record_parse_wait(client, wait_parse_ids, "timeout", wait_started_at)
     if json_mode:
         timeout_result = result.model_copy(update={"status": "parsing", "tip": "Re-run the same command to continue waiting."})
-        _print_parse_json_response(timeout_result, None)
+        _emit_parse_json_response(timeout_result, None)
     else:
-        print_notice(f"Parse still in progress (tier={req_tier}). Check status with: mineru show file {file_path}")
+        _emit_notice(
+            f"Parse still in progress (tier={req_tier}). Check status with: mineru show file {file_path}", json_mode=json_mode
+        )
 
 
 def _record_parse_wait(client: DoclibClient, parse_ids: list[int], status: str, started_at: float) -> None:
@@ -232,12 +274,6 @@ def _record_parse_wait(client: DoclibClient, parse_ids: list[int], status: str, 
         pass
 
 
-if __name__ != "__main__":
-
-    def _register(app: typer.Typer) -> None:
-        app.command()(parse_cmd)
-
-
 def _output_parse_result(
     client: DoclibClient,
     parse_result: ParseResponse,
@@ -257,55 +293,51 @@ def _output_parse_result(
     tier = parse_result.tier
     page_range = parse_result.page_range
     output_path = _ensure_output_parent(output)
-    try:
-        if output_path and output_path != "-":
-            exported = client.export_doc_content(
-                sha256,
-                DocContentExportRequest(
-                    tier=tier,
-                    page_range=page_range,
-                    format=format,
-                    output=output_path,
-                    no_marker=no_marker,
-                ),
-            )
-            if json_mode:
-                _print_parse_json_response(parse_result, None, output=exported.output)
-                return
-            print_success(f"Written to {exported.output}")
-            return
-
-        content = _fetch_doc_content(
-            client,
+    if output_path and output_path != "-":
+        exported = client.export_doc_content(
             sha256,
-            tier=tier,
-            page_range=page_range,
-            after=after,
-            limit=limit,
-            format=format,
-            no_marker=no_marker,
+            DocContentExportRequest(
+                tier=tier,
+                page_range=page_range,
+                format=format,
+                output=output_path,
+                no_marker=no_marker,
+            ),
         )
-        if not content.content and content.format == "markdown" and not content.content_ranges:
-            print_error("No content returned from parse.")
-            raise typer.Exit(1)
         if json_mode:
-            _print_parse_json_response(parse_result, content)
+            _emit_parse_json_response(parse_result, None, output=exported.output)
             return
-        output_doc_content_response(
+        emit_result(
+            CliContext(json_mode=False), cli_ok(ParseTextOutput(f"Written to {exported.output}"), render=_render_parse_text)
+        )
+        return
+
+    content = _fetch_doc_content(
+        client,
+        sha256,
+        tier=tier,
+        page_range=page_range,
+        after=after,
+        limit=limit,
+        format=format,
+        no_marker=no_marker,
+    )
+    if not content.content and content.format == "markdown" and not content.content_ranges:
+        raise MineruError("parse_empty", "No content returned from parse.")
+    if json_mode:
+        _emit_parse_json_response(parse_result, content)
+        return
+    emit_result(
+        CliContext(json_mode=False),
+        _prepare_parse_content_output(
             content,
-            json_mode=json_mode,
-            output=None,
             source_path=source_path,
-            read_mode=False,
             no_marker=no_marker,
             next_marker_tier=next_marker_tier,
             next_marker_limit=next_marker_limit,
             next_marker_remote=next_marker_remote,
-        )
-    except typer.Exit:
-        raise
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode)
+        ),
+    )
 
 
 def _fetch_doc_content(
@@ -330,113 +362,81 @@ def _fetch_doc_content(
     )
 
 
-def _print_parse_json_response(
+def _emit_parse_json_response(
     parse_result: ParseResponse,
     content: DocContentResponse | None,
     *,
     output: str | None = None,
 ) -> None:
+    emit_result(CliContext(json_mode=True), cli_ok(_parse_json_payload(parse_result, content, output=output)))
+
+
+def _parse_json_payload(
+    parse_result: ParseResponse,
+    content: DocContentResponse | None,
+    *,
+    output: str | None = None,
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "parse": parse_result.model_dump(mode="json"),
         "content": content.model_dump(mode="json") if content is not None else None,
     }
     if output is not None:
         payload["output"] = _output_info(output)
-    print_json(payload)
+    return payload
 
 
-def output_doc_content_response(
+def _prepare_parse_summary_output(parse_result: ParseResponse) -> CliResult[ParseSummaryOutput] | CliResult[None]:
+    status = parse_result.status
+    tip = parse_result.tip or ""
+    if status in ("pending", "parsing"):
+        return cli_ok(ParseSummaryOutput(f"Parse {status}... {tip}"), render=_render_parse_summary)
+    if status == "failed":
+        return cli_ok(None, notices=["Parse failed: ? — "])
+    return cli_ok(ParseSummaryOutput(f"Parse complete (tier={parse_result.tier}) {tip}"), render=_render_parse_summary)
+
+
+def _render_parse_summary(data: ParseSummaryOutput) -> str:
+    return data.text
+
+
+def _prepare_parse_content_output(
     content: DocContentResponse,
     *,
-    json_mode: bool,
-    output: str | None,
     source_path: str | None,
-    read_mode: bool,
     no_marker: bool,
     next_marker_tier: Tier | None = None,
     next_marker_limit: int | None = None,
     next_marker_remote: bool = False,
-) -> None:
-    output_path = _ensure_output_parent(output)
-    if json_mode and output_path and output_path != "-":
-        payload = content.model_dump(mode="json")
-        if content.format == "image":
-            if content.asset is None:
-                print_error("No image asset returned.")
-                raise typer.Exit(1)
-            shutil.copyfile(content.asset.path, output_path)
-        else:
-            Path(output_path).write_text(content.content, encoding="utf-8")
-        payload["content"] = None
-        payload["output"] = _output_info(output_path)
-        print_json(payload)
-        return
-    if json_mode:
-        print_json(content)
-        return
-    if content.format == "image":
-        if content.asset is None:
-            print_error("No image asset returned.")
-            raise typer.Exit(1)
-        asset_path = content.asset.path
-        if output_path and output_path != "-":
-            shutil.copyfile(asset_path, output_path)
-            print_success(f"Written to {output_path}")
-            return
-        print(asset_path)
-        return
-    if output_path and output_path != "-":
-        Path(output_path).write_text(content.content, encoding="utf-8")
-        print_success(f"Written to {output_path}")
-        return
+) -> CliResult[ParseTextOutput] | CliResult[None]:
     if not content.content and content.content_ranges:
         message = "No renderable content in requested pages."
         if content.next_request and not no_marker:
-            marker = (
-                _read_next_marker(content.next_request)
-                if read_mode
-                else _parse_next_marker(
-                    source_path,
-                    content.next_request,
-                    tier=next_marker_tier,
-                    limit=next_marker_limit,
-                    remote=next_marker_remote,
-                )
-            )
-            if marker:
-                print(_append_next_marker(message, marker))
-                return
-        typer.echo(message, err=True)
-        return
-    if content.next_request and not no_marker:
-        marker = (
-            _read_next_marker(content.next_request)
-            if read_mode
-            else _parse_next_marker(
+            marker = _parse_next_marker(
                 source_path,
                 content.next_request,
                 tier=next_marker_tier,
                 limit=next_marker_limit,
                 remote=next_marker_remote,
             )
+            if marker:
+                return cli_ok(ParseTextOutput(_append_next_marker(message, marker)), render=_render_parse_text)
+        return cli_ok(None, notices=[message])
+    if content.next_request and not no_marker:
+        marker = _parse_next_marker(
+            source_path,
+            content.next_request,
+            tier=next_marker_tier,
+            limit=next_marker_limit,
+            remote=next_marker_remote,
         )
         if marker:
-            print(_append_next_marker(content.content, marker))
-            return
-    print(content.content)
+            return cli_ok(ParseTextOutput(_append_next_marker(content.content, marker)), render=_render_parse_text)
+    return cli_ok(ParseTextOutput(content.content), render=_render_parse_text)
 
 
-def _next_request_dict(next_request: ContentNextRequest | None) -> dict[str, str] | None:
-    if next_request is None:
-        return None
-    result: dict[str, str] = {}
-    if next_request.page_range:
-        result["page_range"] = next_request.page_range
-    if next_request.after:
-        result["after"] = next_request.after
-    if next_request.locator:
-        result["locator"] = next_request.locator
-    return result
+def _render_parse_text(data: ParseTextOutput) -> str:
+    return data.text
 
 
 def _append_next_marker(content: str, marker: str) -> str:
@@ -467,9 +467,3 @@ def _parse_next_marker(
     if next_request.after:
         parts.extend(["--after", next_request.after])
     return f"<!-- Next: {shlex.join(parts)} -->"
-
-
-def _read_next_marker(next_request: ContentNextRequest) -> str | None:
-    if not next_request.locator:
-        return None
-    return f"<!-- Next: mineru read {next_request.locator} -->"

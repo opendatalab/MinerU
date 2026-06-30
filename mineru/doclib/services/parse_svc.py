@@ -20,7 +20,7 @@ from ..constants import IMAGE_EXTENSIONS, PARSEABLE_EXTENSIONS, TEXT_EXTENSIONS,
 from ..core.db import DatabaseManager
 from ..core.file_io import FileStat, MetadataExtractionError, compute_sha256, extract_metadata, get_file_stat
 from ..core.fts import FTSManager
-from ..rows import FileRow, PageCountRow, ParseBatchRow, ParseRow, Sha256Row, ShortIdRow, WatchTargetRow
+from ..rows import DocRow, FileRow, ParseBatchRow, ParseRow, Sha256Row, ShortIdRow, WatchTargetRow
 from ..types import (
     FILE_STATUS_ACTIVE,
     FILE_STATUS_DELETED,
@@ -665,8 +665,9 @@ class ParseService:
         sha256 = file_row["sha256"]
         if sha256 is None:
             return _failed_response(tier or "flash", page_range or "", "File could not be ingested.")
-        doc = cast(PageCountRow | None, await self.db.fetchone("SELECT page_count FROM docs WHERE sha256=?", (sha256,)))
+        doc = cast(DocRow | None, await self.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,)))
         page_count = doc["page_count"] if doc else 1
+        short_id = doc["short_id"] if doc else None
         privacy = "remote" if remote else "local"
         ext = file_row["ext"]
 
@@ -690,7 +691,7 @@ class ParseService:
                 "tier",
             )
         if ext in TEXT_EXTENSIONS:
-            return _text_response(sha256)
+            return _text_response(sha256, short_id)
         if ext in QUALITY_TIER_EXTENSIONS:
             requested_tier = tier or _resolve_default_tier(remote)
         else:
@@ -718,7 +719,7 @@ class ParseService:
                 needed_page_numbers -= covered_page_numbers
 
             if not needed_page_numbers:
-                return _done_response(sha256, requested_tier, request_page_range)
+                return _done_response(sha256, short_id, requested_tier, request_page_range)
 
         # ── step 2: remove page numbers covered by pending/parsing batches ──
         reused_parse_ids: list[int] = []
@@ -750,6 +751,7 @@ class ParseService:
             if not needed_page_numbers:
                 return ParseResponse(
                     sha256=sha256,
+                    short_id=short_id,
                     tier=requested_tier,
                     page_range=request_page_range,
                     status=PARSE_STATUS_PENDING,
@@ -772,6 +774,7 @@ class ParseService:
         created_parse_ids = [parse_id]
         return ParseResponse(
             sha256=sha256,
+            short_id=short_id,
             tier=requested_tier,
             page_range=request_page_range,
             status=PARSE_STATUS_PENDING,
@@ -902,7 +905,7 @@ class ParseService:
             await self._record_parse_task_finished(task_start_ms, tier=tier, status="failed", error_code="parse_failed")
             return False
 
-        # save per-batch JSON (markdown is generated on read from /docs/{sha256}/content)
+        # save per-batch JSON (markdown is generated on read from /docs/{doc_ref}/content)
         done_at_ms = _now_ms()
         json_path = os.path.join(output_dir, _safe_filename(page_range, done_at_ms))
         write_start_ms = _now_ms()
@@ -1389,9 +1392,10 @@ def load_pages_from_done_batches(data_dir: str, sha256: str, tier: Tier, done_ro
     return [pages_by_page_idx[page_idx] for page_idx in sorted(pages_by_page_idx)]
 
 
-def _done_response(sha256: str, tier: Tier, page_range: str) -> ParseResponse:
+def _done_response(sha256: str, short_id: str | None, tier: Tier, page_range: str) -> ParseResponse:
     return ParseResponse(
         sha256=sha256,
+        short_id=short_id,
         tier=tier,
         page_range=page_range,
         status=PARSE_STATUS_DONE,
@@ -1403,9 +1407,10 @@ def _done_response(sha256: str, tier: Tier, page_range: str) -> ParseResponse:
     )
 
 
-def _text_response(sha256: str) -> ParseResponse:
+def _text_response(sha256: str, short_id: str | None) -> ParseResponse:
     return ParseResponse(
         sha256=sha256,
+        short_id=short_id,
         tier="flash",
         page_range="1",
         status=PARSE_STATUS_DONE,

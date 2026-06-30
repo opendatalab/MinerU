@@ -7,10 +7,12 @@ from pathlib import Path
 import typer
 
 from ...doclib.client import DoclibClient
-from ...doclib.types import InvalidateRequest
+from ...doclib.types import InvalidateRequest, InvalidateResponse
+from ...errors import MineruError
 from ...types import Tier
-from ..output import print_error, print_success
 from ..path_utils import normalize_cli_path
+from ..contracts import CliContext
+from ..runtime import run_cli
 
 
 def invalidate_cmd(
@@ -18,28 +20,22 @@ def invalidate_cmd(
     tier: Tier | None = typer.Option(None, "--tier", help="Parse tier to invalidate (omit = all tiers)"),
 ) -> None:
     """Mark done parse results as superseded."""
+    ctx = CliContext(json_mode=False)
+    run_cli(ctx, lambda: _invalidate(path, tier=tier), render=_render_invalidate)
+
+
+def _invalidate(path: str, *, tier: Tier | None) -> InvalidateResponse:
     file_path = normalize_cli_path(path)
 
     if not Path(file_path).exists():
-        print_error(f"File not found: {file_path}")
-        raise typer.Exit(1)
+        raise MineruError("file_not_found", f"File not found: {file_path}", "path")
+    return DoclibClient(timeout=10).invalidate(InvalidateRequest(path=file_path, tier=tier))
 
-    try:
-        client = DoclibClient(timeout=10)
-    except Exception:
-        print_error("Cannot connect to mineru server. Run 'mineru server start' first.")
-        raise typer.Exit(1) from None
 
-    try:
-        result = client.invalidate(InvalidateRequest(path=file_path, tier=tier))
-    except Exception as exc:
-        print_error(str(exc))
-        raise typer.Exit(1) from None
-
-    count = result.invalidated_count
-    sha256 = result.sha256[:12]
-    tier_label = f" (tier={tier})" if tier else ""
+def _render_invalidate(data: InvalidateResponse) -> str:
+    count = data.invalidated_count
+    doc_id = data.short_id
+    tier_label = f" (tier={data.tier})" if data.tier else ""
     if count:
-        print_success(f"Invalidated {count} batch(es) for {sha256}...{tier_label}. Use 'mineru parse' to re-parse.")
-    else:
-        print(f"No done batches found for {sha256}...{tier_label}.")
+        return f"Invalidated {count} batch(es) for {doc_id}{tier_label}. Use 'mineru parse' to re-parse."
+    return f"No done batches found for {doc_id}{tier_label}."

@@ -8,10 +8,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from typer.main import get_command
 from typer.testing import CliRunner
 
 from mineru.cli.commands import config, invalidate, list_resources, parse, read, server, show, telemetry
 from mineru.cli.commands import cleanup as cleanup_cmd
+from mineru.cli.commands import scan as scan_mod
 from mineru.cli.commands import search as search_mod
 from mineru.cli.commands import watch as watch_cmd
 from mineru.cli import output as output_mod
@@ -23,23 +25,51 @@ from mineru.doclib.types import (
     ContentNextRequest,
     ContentRange,
     ContentRequestScope,
+    ConfigResponse,
     ConfigSetResponse,
     DocInfo,
     DocContentResponse,
+    ExcludeRuleInfo,
+    ExcludeRuleListResponse,
     FileInfo,
     FileInfoResponse,
+    FindResponse,
+    FindResult,
     InvalidateResponse,
+    ListDocsResponse,
+    ListFilesResponse,
     ListParsesResponse,
+    ParsingRuleInfo,
+    ParsingRuleListResponse,
     ParseInfo,
     ParseResponse,
+    ScanListResponse,
+    ScanInfo,
+    SearchResponse,
+    SearchResult,
+    ServerStatusResponse,
     TelemetryActionResponse,
     TelemetryStatusResponse,
     WatchInfo,
+    WatchListResponse,
 )
+from mineru.errors import ServerNotRunningError
 from mineru.version import __version__
 
 
 runner = CliRunner()
+
+
+class _FakeTable:
+    def __init__(self, *, title: str) -> None:
+        self.title = title
+        self.rows: list[tuple[str, ...]] = []
+
+    def add_column(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def add_row(self, *values: str) -> None:
+        self.rows.append(tuple(values))
 
 
 def test_cli_next_exposes_list_and_show_resource_trees() -> None:
@@ -83,11 +113,35 @@ def test_version_command_prints_mineru_and_python_versions() -> None:
     assert f"Python version: {sys.version.split()[0]}" in result.output
 
 
-def test_version_command_is_last_in_root_help() -> None:
-    result = runner.invoke(app, ["--help"])
+def test_version_json_writes_single_json_object() -> None:
+    result = runner.invoke(app, ["version", "--json"])
 
     assert result.exit_code == 0
-    assert result.output.rfind("version") > result.output.rfind("cleanup")
+    payload = json.loads(result.output)
+    assert payload == {"mineru_version": __version__, "python_version": sys.version.split()[0]}
+    assert "MinerU version:" not in result.output
+
+
+def test_root_commands_keep_product_order() -> None:
+    command = get_command(app)
+
+    assert command.list_commands(None) == [
+        "parse",
+        "read",
+        "scan",
+        "watch",
+        "search",
+        "find",
+        "list",
+        "show",
+        "telemetry",
+        "server",
+        "config",
+        "invalidate",
+        "forget",
+        "cleanup",
+        "version",
+    ]
 
 
 def test_root_help_hides_typer_completion_options() -> None:
@@ -160,27 +214,18 @@ def test_print_error_uses_single_rich_render(monkeypatch: Any) -> None:
     assert "--tier flash" in rendered
 
 
-def test_find_results_render_as_list_without_empty_search_columns(monkeypatch: Any) -> None:
-    printed: list[Any] = []
-
-    class _Console:
-        def print(self, item: Any, *args: Any, **kwargs: Any) -> None:
-            printed.append(item)
-
-    monkeypatch.setattr(output_mod, "console", _Console())
-
-    output_mod.format_find_results(
-        {
-            "total": 2,
-            "results": [
-                {"filename": "resume.pdf", "paths": ["/tmp/resume.pdf"]},
-                {"filename": "cv.docx", "paths": ["/tmp/cv.docx"]},
+def test_find_results_render_as_list_without_empty_search_columns() -> None:
+    rendered = search_mod._render_find_results(
+        FindResponse(
+            total=2,
+            query="resume",
+            results=[
+                FindResult(filename="resume.pdf", paths=["/tmp/resume.pdf"]),
+                FindResult(filename="cv.docx", paths=["/tmp/cv.docx"]),
             ],
-        }
+        )
     )
 
-    assert len(printed) == 1
-    rendered = str(printed[0])
     assert "Search results (2 total)" in rendered
     assert "1. resume.pdf (/tmp/resume.pdf)" in rendered
     assert "\n\n2. cv.docx (/tmp/cv.docx)" in rendered
@@ -189,76 +234,204 @@ def test_find_results_render_as_list_without_empty_search_columns(monkeypatch: A
     assert "Paths" not in rendered
 
 
-def test_search_results_render_as_list_without_table(monkeypatch: Any) -> None:
-    printed: list[Any] = []
-
-    class _Console:
-        def print(self, item: Any, *args: Any, **kwargs: Any) -> None:
-            printed.append(item)
-
-    monkeypatch.setattr(output_mod, "console", _Console())
-
-    output_mod.format_search_results(
-        {
-            "total": 1,
-            "results": [
-                {
-                    "filename": "resume.pdf",
-                    "tier": "standard",
-                    "snippet": "Python\nengineer",
-                    "paths": ["/tmp/resume.pdf"],
-                }
+def test_search_results_render_as_list_without_table() -> None:
+    rendered = search_mod._render_search_results(
+        SearchResponse(
+            total=1,
+            query="python",
+            results=[
+                SearchResult(
+                    sha256="a" * 64,
+                    short_id="aaaaaaa",
+                    filename="resume.pdf",
+                    tier="standard",
+                    snippet="Python\nengineer",
+                    paths=["/tmp/resume.pdf"],
+                )
             ],
-        }
+        )
     )
 
-    assert len(printed) == 1
-    rendered = str(printed[0])
     assert "Search results (1 total)" in rendered
     assert "1. resume.pdf (/tmp/resume.pdf) Tier: standard" in rendered
     assert "   Python  engineer" in rendered
     assert "Snippet:" not in rendered
-    assert not hasattr(printed[0], "columns")
 
 
-def test_search_result_snippet_preserves_fts_match_after_long_prefix(monkeypatch: Any) -> None:
-    printed: list[Any] = []
-
-    class _Console:
-        def print(self, item: Any, *args: Any, **kwargs: Any) -> None:
-            printed.append(item)
-
-    monkeypatch.setattr(output_mod, "console", _Console())
-
-    output_mod.format_search_results(
-        {
-            "total": 1,
-            "results": [
-                {
-                    "filename": "deepseek.pdf",
-                    "tier": "flash",
-                    "snippet": (
+def test_search_result_snippet_preserves_fts_match_after_long_prefix() -> None:
+    rendered = search_mod._render_search_results(
+        SearchResponse(
+            total=1,
+            query="token dropping",
+            results=[
+                SearchResult(
+                    sha256="a" * 64,
+                    short_id="aaaaaaa",
+                    filename="deepseek.pdf",
+                    tier="flash",
+                    snippet=(
                         "...on each node. Under this constraint, our MoE training framework can nearly "
                         "achieve full computation-communication overlap. <mark>Token</mark> <mark>Dropping</mark>"
                     ),
-                    "paths": ["/tmp/deepseek.pdf"],
-                }
+                    paths=["/tmp/deepseek.pdf"],
+                )
             ],
-        }
+        )
     )
 
-    rendered = str(printed[0])
     assert "<mark>Token</mark>" in rendered
     assert "<mark>Dropping</mark>" in rendered
 
 
-def test_server_status_renders_separate_recent_log_panels(monkeypatch: Any) -> None:
-    printed: list[Any] = []
-    panels: list[dict[str, Any]] = []
+def test_list_renderers_return_tables(monkeypatch: Any) -> None:
+    monkeypatch.setattr(list_resources, "Table", _FakeTable)
+    parse = ParseInfo(
+        id=7,
+        sha256="a" * 64,
+        short_id="aaaaaaa",
+        tier="standard",
+        page_range="1~2",
+        status="done",
+        privacy="local",
+        created_at=1,
+        updated_at=2,
+    )
+    scan = ScanInfo(
+        id=8,
+        path="/tmp/docs",
+        kind="manual",
+        source="cli",
+        status="done",
+        files_seen=3,
+        files_refreshed=2,
+        files_error=1,
+        created_at=1,
+        updated_at=2,
+    )
+    file_info = FileInfo(
+        filename="demo.pdf",
+        path="/tmp/demo.pdf",
+        ext="pdf",
+        size_bytes=7,
+        mtime_ms=1,
+        sha256="b" * 64,
+        short_id="bbbbbbb",
+        status="active",
+        first_seen_at=1,
+        updated_at=2,
+    )
+    doc = DocInfo(
+        sha256="c" * 64,
+        short_id="ccccccc",
+        size_bytes=7,
+        file_type="pdf",
+        title="Demo",
+        page_count=5,
+        first_seen_at=1,
+        updated_at=2,
+    )
 
-    class _Console:
-        def print(self, item: Any, *args: Any, **kwargs: Any) -> None:
-            printed.append(item)
+    parses_table = list_resources._render_list_parses(ListParsesResponse(parses=[parse], total=1, limit=50))
+    scans_table = list_resources._render_list_scans(ScanListResponse(scans=[scan], total=1, limit=50))
+    files_table = list_resources._render_list_files(ListFilesResponse(files=[file_info], total=1, limit=50))
+    docs_table = list_resources._render_list_docs(ListDocsResponse(docs=[doc], total=1, limit=50))
+
+    assert parses_table.title == "Parses (1 total)"
+    assert ("7", "done", "standard", "1~2", "aaaaaaa") in parses_table.rows
+    assert scans_table.title == "Scans (1 total)"
+    assert ("8", "done", "manual", "/tmp/docs", "3", "2", "1") in scans_table.rows
+    assert files_table.title == "Files (1 total)"
+    assert ("active", "/tmp/demo.pdf", "pdf", "bbbbbbb") in files_table.rows
+    assert docs_table.title == "Docs (1 total)"
+    assert ("ccccccc", "pdf", "5", "Demo") in docs_table.rows
+
+
+def test_config_and_rule_renderers_return_tables(monkeypatch: Any) -> None:
+    monkeypatch.setattr(config, "Table", _FakeTable)
+
+    config_table = config._render_config(
+        ConfigResponse(config={"parse.default_tier": "standard"}, sources={"parse.default_tier": "override"})
+    )
+    exclude_table = config._render_exclude_rules(
+        ExcludeRuleListResponse(rules=[ExcludeRuleInfo(id=3, pattern="*.tmp", priority=10)])
+    )
+    parsing_table = config._render_parsing_rules(
+        ParsingRuleListResponse(
+            rules=[
+                ParsingRuleInfo(id=4, pattern="*.pdf", tier="standard", page_range="1~2", remote=True, name="pdfs")
+            ]
+        )
+    )
+
+    assert config_table.title == "Config"
+    assert ("parse.default_tier", "standard", "override") in config_table.rows
+    assert exclude_table.title == "Exclude Rules"
+    assert ("3", "*.tmp", "10") in exclude_table.rows
+    assert parsing_table.title == "Parsing Rules"
+    assert ("4", "*.pdf", "standard", "1~2", "yes", "pdfs") in parsing_table.rows
+
+
+def test_watch_list_renderer_returns_table(monkeypatch: Any) -> None:
+    monkeypatch.setattr(watch_cmd, "Table", _FakeTable)
+
+    table = watch_cmd._render_watch_list(
+        WatchListResponse(watches=[WatchInfo(id=2, path="/tmp/docs", label="Docs", removable=True, status="active")])
+    )
+
+    assert table.title == "Watches"
+    assert ("2", "/tmp/docs", "active", "yes", "Docs") in table.rows
+
+
+def test_show_detail_renderers_return_tables(monkeypatch: Any) -> None:
+    monkeypatch.setattr(show, "Table", _FakeTable)
+    parse_info = ParseInfo(
+        id=9,
+        sha256="a" * 64,
+        short_id="aaaaaaa",
+        tier="pro",
+        page_range="1",
+        status="done",
+        privacy="local",
+        created_at=1,
+        updated_at=2,
+    )
+    scan_info = ScanInfo(
+        id=10,
+        path="/tmp/docs",
+        kind="manual",
+        source="cli",
+        status="done",
+        files_seen=4,
+        files_refreshed=3,
+        files_unsupported=1,
+        created_at=1,
+        updated_at=2,
+    )
+    doc = DocInfo(
+        sha256="d" * 64,
+        short_id="ddddddd",
+        size_bytes=7,
+        file_type="pdf",
+        title="Doc",
+        page_count=6,
+        first_seen_at=1,
+        updated_at=2,
+    )
+
+    parse_table = show._render_parse_info(parse_info)
+    scan_table = show._render_scan(scan_info)
+    doc_table = show._render_doc_info(doc)
+
+    assert parse_table.title == "Parse 9: done"
+    assert ("Tier", "pro") in parse_table.rows
+    assert scan_table.title == "Scan 10: done"
+    assert ("Seen", "4") in scan_table.rows
+    assert doc_table.title == "Doc ddddddd"
+    assert ("Title", "Doc") in doc_table.rows
+
+
+def test_server_status_renders_separate_recent_log_panels(monkeypatch: Any) -> None:
+    panels: list[dict[str, Any]] = []
 
     class _Panel:
         def __init__(self, renderable: Any, *, title: str, border_style: str) -> None:
@@ -267,22 +440,25 @@ def test_server_status_renders_separate_recent_log_panels(monkeypatch: Any) -> N
             self.border_style = border_style
             panels.append({"title": title, "renderable": renderable, "border_style": border_style})
 
-    monkeypatch.setattr(output_mod, "console", _Console())
-    monkeypatch.setattr(output_mod, "Panel", _Panel)
+    monkeypatch.setattr(server, "Panel", _Panel)
 
-    output_mod.format_server_status(
-        {
-            "running": True,
-            "pid": 123,
-            "uptime_seconds": 1,
-            "tcp": {"enabled": False},
-            "workers": {},
-            "app_logs": ["app\n"],
-            "access_logs": ["access\n"],
-            "stderr_logs": ["stderr\n"],
-            "stdout_logs": ["stdout\n"],
-            "recent_logs": ["legacy\n"],
-        }
+    rendered = list(
+        server._render_server_status(
+            ServerStatusResponse(
+                running=True,
+                pid=123,
+                uptime_seconds=1,
+                socket_path="/tmp/doclib.sock",
+                data_dir="/tmp/mineru",
+                sqlite_path="/tmp/doclib.db",
+                log_path="/tmp/doclib.log",
+                app_logs=["app\n"],
+                access_logs=["access\n"],
+                stderr_logs=["stderr\n"],
+                stdout_logs=["stdout\n"],
+                recent_logs=["legacy\n"],
+            )
+        )
     )
 
     assert [panel["title"] for panel in panels] == [
@@ -293,7 +469,7 @@ def test_server_status_renders_separate_recent_log_panels(monkeypatch: Any) -> N
     ]
     assert [panel["renderable"] for panel in panels] == ["app", "access", "stderr", "stdout"]
     assert all(panel["border_style"] == "dim" for panel in panels)
-    assert not any(getattr(item, "title", None) == "Recent Logs" for item in printed)
+    assert not any(getattr(item, "title", None) == "Recent Logs" for item in rendered)
 
 
 def test_telemetry_status_command_prints_installation_id(monkeypatch: Any) -> None:
@@ -345,9 +521,11 @@ def test_interactive_unset_prompt_enables_telemetry(monkeypatch: Any) -> None:
     assert actions == ["enable"]
     prompt_text = "\n".join(echoed)
     assert "Help improve MinerU by sending anonymous, locally aggregated usage and diagnostic data." in prompt_text
-    assert "Collected: command names, MinerU version, OS, architecture, Python version" in prompt_text
+    assert "Collected:" in prompt_text
+    assert "command names, MinerU version, OS, architecture, Python version" in prompt_text
     assert "coarse CPU/GPU categories" in prompt_text
-    assert "Not collected: document contents, extracted text/images, file names, file paths" in prompt_text
+    assert "NOT collected:" in prompt_text
+    assert "document contents, extracted text/images, file names, file paths" in prompt_text
     assert "search queries, prompts, snippets, tracebacks, exception messages" in prompt_text
     assert "API keys, or exact CPU/GPU models" in prompt_text
     assert "Press Enter or type Y to enable, or type N to disable." in prompt_text
@@ -452,6 +630,7 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
     old_failed = ParseInfo(
         id=2,
         sha256="a" * 64,
+        short_id="aaaaaaa",
         tier="pro",
         page_range="1~10",
         status="failed",
@@ -464,6 +643,7 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
     new_done = ParseInfo(
         id=3,
         sha256="a" * 64,
+        short_id="aaaaaaa",
         tier="pro",
         page_range="1~10",
         status="done",
@@ -556,6 +736,7 @@ def test_parse_verbose_json_writes_queue_notice_to_stderr(monkeypatch: Any, tmp_
     done = ParseInfo(
         id=3,
         sha256="a" * 64,
+        short_id="aaaaaaa",
         tier="flash",
         page_range="1~1",
         status="done",
@@ -611,7 +792,7 @@ def test_parse_json_connection_error_is_machine_readable(monkeypatch: Any, tmp_p
 
     class _Client:
         def __init__(self, *, timeout: int) -> None:
-            raise RuntimeError("cannot connect")
+            raise ServerNotRunningError()
 
     monkeypatch.setattr(parse, "DoclibClient", _Client)
 
@@ -619,15 +800,15 @@ def test_parse_json_connection_error_is_machine_readable(monkeypatch: Any, tmp_p
 
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
-    assert payload["error"]["code"] == "api_error"
-    assert "Cannot connect to mineru server" in payload["error"]["message"]
+    assert payload["error"]["code"] == "server_not_running"
+    assert "Local mineru server is not running" in payload["error"]["message"]
     assert "Error:" not in result.stdout
 
 
 def test_cleanup_json_connection_error_is_machine_readable(monkeypatch: Any) -> None:
     class _Client:
         def __init__(self, *, timeout: int) -> None:
-            raise RuntimeError("cannot connect")
+            raise ServerNotRunningError()
 
     monkeypatch.setattr(cleanup_cmd, "DoclibClient", _Client)
 
@@ -635,8 +816,8 @@ def test_cleanup_json_connection_error_is_machine_readable(monkeypatch: Any) -> 
 
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
-    assert payload["error"]["code"] == "api_error"
-    assert "Cannot connect to mineru server" in payload["error"]["message"]
+    assert payload["error"]["code"] == "server_not_running"
+    assert "Local mineru server is not running" in payload["error"]["message"]
     assert "Error:" not in result.stdout
 
 
@@ -657,6 +838,42 @@ def test_config_parsing_rules_list_json_error_is_machine_readable(monkeypatch: A
     assert payload["error"]["code"] == "rule_not_found"
     assert payload["error"]["param"] == "rule_id"
     assert "Error:" not in result.stdout
+
+
+def test_config_exclude_rules_remove_non_json_prints_message_not_error_tuple(monkeypatch: Any) -> None:
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 30
+
+        def remove_exclude_rule(self, rule_id: int) -> None:
+            assert rule_id == 123
+            raise RuntimeError("('rule_not_found', 'Exclude rule missing.', 'rule_id')")
+
+    monkeypatch.setattr(config, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["config", "exclude-rules", "remove", "123"])
+
+    assert result.exit_code == 1
+    assert "Exclude rule missing." in result.output
+    assert "('rule_not_found'" not in result.output
+
+
+def test_config_parsing_rules_remove_non_json_prints_message_not_error_tuple(monkeypatch: Any) -> None:
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 30
+
+        def remove_parsing_rule(self, rule_id: int) -> None:
+            assert rule_id == 456
+            raise RuntimeError("('rule_not_found', 'Parsing rule missing.', 'rule_id')")
+
+    monkeypatch.setattr(config, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["config", "parsing-rules", "remove", "456"])
+
+    assert result.exit_code == 1
+    assert "Parsing rule missing." in result.output
+    assert "('rule_not_found'" not in result.output
 
 
 def test_parse_failed_response_exits_nonzero(monkeypatch: Any, tmp_path: Path) -> None:
@@ -868,6 +1085,25 @@ def test_watch_add_normalizes_user_path_before_request(monkeypatch: Any, tmp_pat
     assert seen_paths == [os.path.normpath(os.path.abspath(os.path.expanduser("~/Documents/../Documents")))]
 
 
+def test_watch_remove_missing_id_preserves_watch_not_found_json_error(monkeypatch: Any) -> None:
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 30
+
+        def list_watches(self) -> Any:
+            return type("WatchList", (), {"watches": []})()
+
+    monkeypatch.setattr(watch_cmd, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["watch", "remove", "123", "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "watch_not_found"
+    assert payload["error"]["param"] == "watch_id"
+    assert "Error:" not in result.output
+
+
 def test_parse_json_output_writes_file_and_returns_output_object(monkeypatch: Any, tmp_path: Path) -> None:
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
@@ -880,7 +1116,7 @@ def test_parse_json_output_writes_file_and_returns_output_object(monkeypatch: An
         def ensure_parse(self, request: Any) -> ParseResponse:
             return ParseResponse(sha256="a" * 64, tier="flash", page_range="1~1", status="done", cache_hit=True)
 
-        def export_doc_content(self, sha256: str, request: Any) -> Any:
+        def export_doc_content(self, doc_ref: str, request: Any) -> Any:
             Path(request.output).write_text("exported", encoding="utf-8")
             return type("Exported", (), {"output": request.output})()
 
@@ -904,6 +1140,7 @@ def test_parse_wait_status_line_is_verbose_only(monkeypatch: Any, tmp_path: Path
     done = ParseInfo(
         id=3,
         sha256="a" * 64,
+        short_id="aaaaaaa",
         tier="flash",
         page_range="1~1",
         status="done",
@@ -1021,6 +1258,121 @@ def test_scan_missing_path_json_error_is_machine_readable(tmp_path: Path) -> Non
     assert "Error:" not in result.output
 
 
+def test_scan_wait_failed_status_exits_nonzero_after_json_output(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "docs"
+    source.mkdir()
+    failed_scan = ScanInfo(
+        id=7,
+        path=str(source.resolve()),
+        kind="manual",
+        source="cli",
+        status="failed",
+        files_seen=1,
+        files_error=1,
+        error_code="scan_failed",
+        error_msg="scan boom",
+        created_at=1,
+        updated_at=2,
+    )
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 30
+
+        def create_scan(self, request: Any) -> ScanInfo:
+            assert request.path == str(source.resolve())
+            return failed_scan.model_copy(update={"status": "pending"})
+
+        def get_scan(self, scan_id: int) -> ScanInfo:
+            assert scan_id == 7
+            return failed_scan
+
+    monkeypatch.setattr(scan_mod, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["scan", str(source), "--wait", "1", "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["status"] == "failed"
+    assert payload["error_code"] == "scan_failed"
+
+
+def test_watch_rescan_wait_failed_status_exits_nonzero_after_json_output(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "watched"
+    source.mkdir()
+    watch = WatchInfo(id=3, path=str(source.resolve()), status="active")
+    failed_scan = ScanInfo(
+        id=9,
+        path=str(source.resolve()),
+        kind="watch",
+        source="cli",
+        watch_id=3,
+        status="failed",
+        files_seen=1,
+        files_error=1,
+        error_code="scan_failed",
+        error_msg="watch scan boom",
+        created_at=1,
+        updated_at=2,
+    )
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 30
+
+        def list_watches(self) -> WatchListResponse:
+            return WatchListResponse(watches=[watch])
+
+        def create_scan(self, request: Any) -> ScanInfo:
+            assert request.watch_id == 3
+            return failed_scan.model_copy(update={"status": "pending"})
+
+        def get_scan(self, scan_id: int) -> ScanInfo:
+            assert scan_id == 9
+            return failed_scan
+
+    monkeypatch.setattr(watch_cmd, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["watch", "rescan", "3", "--wait", "1", "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["status"] == "failed"
+    assert payload["error_code"] == "scan_failed"
+
+
+def test_show_scan_failed_status_remains_successful_query(monkeypatch: Any, tmp_path: Path) -> None:
+    failed_scan = ScanInfo(
+        id=9,
+        path=str(tmp_path / "watched"),
+        kind="watch",
+        source="cli",
+        status="failed",
+        files_seen=1,
+        files_error=1,
+        error_code="scan_failed",
+        error_msg="watch scan boom",
+        created_at=1,
+        updated_at=2,
+    )
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 30
+
+        def get_scan(self, scan_id: int) -> ScanInfo:
+            assert scan_id == 9
+            return failed_scan
+
+    monkeypatch.setattr(show, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["show", "scan", "9", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["status"] == "failed"
+
+
 def test_show_file_uses_get_file_by_path(monkeypatch: Any, tmp_path: Path) -> None:
     calls: list[str] = []
     source = tmp_path / "demo.pdf"
@@ -1087,6 +1439,59 @@ def test_show_file_normalizes_user_path_before_request(monkeypatch: Any, tmp_pat
     assert calls == [os.path.normpath(os.path.abspath(os.path.expanduser("~/docs/../docs/demo.pdf")))]
 
 
+def test_show_file_renderer_uses_file_info_table(monkeypatch: Any) -> None:
+    tables: list[Any] = []
+
+    class _Table:
+        def __init__(self, *, title: str) -> None:
+            self.title = title
+            self.rows: list[tuple[str, str]] = []
+            tables.append(self)
+
+        def add_column(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def add_row(self, key: str, value: str) -> None:
+            self.rows.append((key, value))
+
+    monkeypatch.setattr(show, "Table", _Table)
+
+    rendered = show._render_file_info(
+        FileInfoResponse(
+            file=FileInfo(
+                filename="demo.pdf",
+                path="/tmp/demo.pdf",
+                ext="pdf",
+                size_bytes=2048,
+                mtime_ms=1,
+                sha256="a" * 64,
+                short_id="abcdef1",
+                status="active",
+                first_seen_at=1,
+                updated_at=1,
+            ),
+            doc=DocInfo(
+                sha256="a" * 64,
+                short_id="abcdef1",
+                size_bytes=2048,
+                title="Demo",
+                author="Alice",
+                page_count=3,
+                first_seen_at=1,
+                updated_at=1,
+            ),
+        )
+    )
+
+    assert rendered == tables[0]
+    assert tables[0].title == "File Info: demo.pdf"
+    assert ("Path", "/tmp/demo.pdf") in tables[0].rows
+    assert ("Size", "2 KB") in tables[0].rows
+    assert ("Doc ID", "abcdef1") in tables[0].rows
+    assert ("Title", "Demo") in tables[0].rows
+    assert ("Author", "Alice") in tables[0].rows
+
+
 def test_invalidate_normalizes_user_path_before_request(monkeypatch: Any, tmp_path: Path) -> None:
     home = tmp_path / "home"
     source = home / "docs" / "demo.pdf"
@@ -1100,7 +1505,13 @@ def test_invalidate_normalizes_user_path_before_request(monkeypatch: Any, tmp_pa
 
         def invalidate(self, request: Any) -> InvalidateResponse:
             calls.append(request.path)
-            return InvalidateResponse(target="parses", sha256="a" * 64, tier=request.tier, invalidated_count=1)
+            return InvalidateResponse(
+                target="parses",
+                sha256="a" * 64,
+                short_id="aaaaaaa",
+                tier=request.tier,
+                invalidated_count=1,
+            )
 
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setattr(invalidate, "DoclibClient", _Client)
@@ -1111,6 +1522,27 @@ def test_invalidate_normalizes_user_path_before_request(monkeypatch: Any, tmp_pa
     assert calls == [os.path.normpath(os.path.abspath(os.path.expanduser("~/docs/../docs/demo.pdf")))]
 
 
+def test_invalidate_non_json_prints_message_not_error_tuple(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 10
+
+        def invalidate(self, request: Any) -> None:
+            assert request.path == str(source.resolve())
+            raise RuntimeError("('not_cached', 'Requested parsed content is not cached.', 'path')")
+
+    monkeypatch.setattr(invalidate, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["invalidate", str(source)])
+
+    assert result.exit_code == 1
+    assert "Requested parsed content is not cached." in result.output
+    assert "('not_cached'" not in result.output
+
+
 def test_show_doc_expands_files(monkeypatch: Any) -> None:
     calls: list[tuple[str, bool]] = []
 
@@ -1118,9 +1550,9 @@ def test_show_doc_expands_files(monkeypatch: Any) -> None:
         def __init__(self, *, timeout: int) -> None:
             assert timeout == 30
 
-        def get_doc(self, sha256: str, *, expand_files: bool = False) -> DocInfo:
-            calls.append((sha256, expand_files))
-            return DocInfo(sha256=sha256, short_id=sha256[:7], size_bytes=7, first_seen_at=1, updated_at=1, files=[])
+        def get_doc(self, doc_ref: str, *, expand_files: bool = False) -> DocInfo:
+            calls.append((doc_ref, expand_files))
+            return DocInfo(sha256=doc_ref, short_id=doc_ref[:7], size_bytes=7, first_seen_at=1, updated_at=1, files=[])
 
     monkeypatch.setattr(show, "DoclibClient", _Client)
 
@@ -1257,6 +1689,40 @@ def test_parse_content_read_failure_non_json_prints_message_not_error_tuple(monk
     assert result.exit_code == 1
     assert "Requested parsed content is not cached." in result.output
     assert "('not_cached'" not in result.output
+
+
+def test_parse_empty_cached_content_json_reports_error_envelope(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 90
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            assert request.path == str(source.resolve())
+            return ParseResponse(sha256="a" * 64, tier="flash", page_range="1", status="done", cache_hit=True)
+
+        def get_doc_content(self, *args: Any, **kwargs: Any) -> DocContentResponse:
+            return DocContentResponse(
+                sha256="a" * 64,
+                short_id="ab12cd3",
+                tier="flash",
+                format="markdown",
+                content="",
+                request_scope=ContentRequestScope(page_range="1", limit=30000),
+                content_ranges=[],
+            )
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["parse", str(source), "--tier", "flash", "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "parse_empty"
+    assert payload["error"]["message"] == "No content returned from parse."
+    assert "Error:" not in result.output
 
 
 def test_parse_empty_cached_content_non_json_reports_no_renderable_content(monkeypatch: Any, tmp_path: Path) -> None:
@@ -1454,6 +1920,36 @@ def test_read_json_output_writes_image_file_and_returns_output_object(monkeypatc
     assert payload["output"] == {"status": "written", "path": str(output.resolve())}
     assert output.read_bytes() == b"png-bytes"
     assert "Written to" not in result.output
+
+
+def test_read_json_image_output_missing_asset_reports_error_envelope(monkeypatch: Any, tmp_path: Path) -> None:
+    output = tmp_path / "nested" / "local.png"
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 60
+
+        def read_content(self, locator: str, **kwargs: Any) -> DocContentResponse:
+            return DocContentResponse(
+                sha256="a" * 64,
+                short_id="ab12cd3",
+                tier="standard",
+                format="image",
+                content="",
+                request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
+                asset=None,
+            )
+
+    monkeypatch.setattr(read, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:standard/page:4", "--format", "image", "--output", str(output), "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "asset_not_available"
+    assert payload["error"]["message"] == "No image asset returned."
+    assert not output.exists()
+    assert "Error:" not in result.output
 
 
 def test_read_image_output_copies_server_asset_locally(monkeypatch: Any, tmp_path: Path) -> None:

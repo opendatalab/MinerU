@@ -87,9 +87,9 @@ class ConfigService:
         self, path: str, removable: bool = False, label: str | None = None
     ) -> WatchTargetRow:
         if not os.path.isabs(path):
-            raise ValueError(f"Path must be absolute: {path}")
+            raise InvalidRequestError("invalid_request", f"Watch path must be absolute: {path}", "path")
         if os.path.normpath(path) != path:
-            raise ValueError(f"Path must be normalized: {path}")
+            raise InvalidRequestError("invalid_request", f"Watch path must be normalized: {path}", "path")
         if not os.path.isdir(path):
             raise InvalidRequestError("invalid_request", f"Watch path does not exist or is not a directory: {path}", "path")
 
@@ -191,7 +191,7 @@ class ConfigService:
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (name, pattern, tier, page_range, int(remote), priority, now, now),
             )
-        raise ValueError(f"Unsupported rule type: {rule_type}")
+        raise _unsupported_rule_type_error(rule_type)
 
     async def list_rules(self, rule_type: RuleType | None = None) -> list[RuleRow]:
         if rule_type == RULE_TYPE_EXCLUDE:
@@ -215,7 +215,7 @@ class ConfigService:
                 ),
             )
         if rule_type is not None:
-            raise ValueError(f"Unsupported rule type: {rule_type}")
+            raise _unsupported_rule_type_error(rule_type)
         return cast(
             list[RuleRow],
             await self.db.fetchall(
@@ -239,7 +239,7 @@ class ConfigService:
             await self.db.execute("DELETE FROM parsing_rules WHERE id=?", (rule_id,))
             return
         if rule_type is not None:
-            raise ValueError(f"Unsupported rule type: {rule_type}")
+            raise _unsupported_rule_type_error(rule_type)
         await self.db.execute("DELETE FROM exclude_rules WHERE id=?", (rule_id,))
         await self.db.execute("DELETE FROM parsing_rules WHERE id=?", (rule_id,))
 
@@ -268,4 +268,8 @@ def _rule_table(rule_type: RuleType) -> str:
         return "exclude_rules"
     if rule_type == RULE_TYPE_PARSING_RULE:
         return "parsing_rules"
-    raise ValueError(f"Unsupported rule type: {rule_type}")
+    raise _unsupported_rule_type_error(rule_type)
+
+
+def _unsupported_rule_type_error(rule_type: RuleType) -> InvalidRequestError:
+    return InvalidRequestError("invalid_request", f"Unsupported rule type: {rule_type}", "rule_type")

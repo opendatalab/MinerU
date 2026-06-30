@@ -50,6 +50,7 @@
 | [ADR-0020](0020-doclib-schema-stability-boundary.md) | Accepted | Doclib Schema Stability Boundary |
 | [ADR-0021](0021-doclib-local-transport-discovery.md) | Accepted | Doclib 本地 Transport 与 Endpoint Discovery |
 | [ADR-0022](0022-doclib-file-type-tier-remote-semantics.md) | Accepted | Doclib 文件类型、Tier 与 Remote 语义 |
+| [ADR-0023](0023-cli-runtime-contract.md) | Accepted | CLI Runtime 输出、错误与退出码集中契约 |
 
 ## 模板
 

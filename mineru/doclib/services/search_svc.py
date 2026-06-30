@@ -42,7 +42,7 @@ class SearchService:
         # join with docs + files
         placeholders = ",".join("?" * len(sha256s))
         sql = (
-            "SELECT f.*, d.title, d.author, d.page_count, d.file_type "
+            "SELECT f.*, d.short_id, d.title, d.author, d.page_count, d.file_type "
             "FROM files f JOIN docs d ON f.sha256 = d.sha256 "
             f"WHERE f.sha256 IN ({placeholders})"
         )
@@ -81,6 +81,7 @@ class SearchService:
             results.append(
                 {
                     "sha256": sha,
+                    "short_id": fts_file["short_id"],
                     "title": row.get("title") or fts_file.get("title"),
                     "author": row.get("author") or fts_file.get("author"),
                     "filename": row.get("filename") or fts_file.get("filename"),

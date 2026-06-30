@@ -27,9 +27,7 @@ class CleanupService:
         return cast(
             list[DocRow],
             await self.db.fetchall(
-                "SELECT d.* FROM docs d WHERE NOT EXISTS ("
-                "  SELECT 1 FROM files f WHERE f.sha256 = d.sha256"
-                ")"
+                "SELECT d.* FROM docs d WHERE NOT EXISTS (  SELECT 1 FROM files f WHERE f.sha256 = d.sha256)"
             ),
         )
 
@@ -111,8 +109,13 @@ class CleanupService:
         watches = cast(list[WatchTargetRow], await self.db.fetchall("SELECT * FROM watches WHERE enabled=1"))
 
         file_ids = await self._forget_file_ids(normalized)
-        if _is_watch_root(normalized, watches) and file_ids:
-            raise InvalidRequestError("invalid_request", "Path is a configured watch root.", "path")
+        if file_ids and _is_watch_root(normalized, watches):
+            raise InvalidRequestError(
+                "invalid_request",
+                "Cannot forget a configured watch root while it contains tracked files."
+                " Remove the watch first or forget a child path.",
+                "path",
+            )
         matched_as = await self._forget_matched_as(normalized, file_ids)
         warnings = _forget_warnings(normalized, watches)
 
@@ -201,6 +204,10 @@ def _normalize_path(path: str) -> str:
 
 def _path_prefix(path: str) -> str:
     return path if path.endswith(os.sep) else path + os.sep
+
+
+def _is_watch_root(path: str, watches: list[WatchTargetRow]) -> bool:
+    return any(watch["path"] == path for watch in watches)
 
 
 def _active_watch_warning(path: str, watches: list[WatchTargetRow]) -> str | None:

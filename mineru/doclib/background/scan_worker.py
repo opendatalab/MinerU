@@ -27,9 +27,20 @@ class ScanWorkerPool:
         logger.info("Scan worker %s started", worker_id)
         processed = 0
         while self.running:
-            task = await self.scan_svc.acquire_task()
-            if task is None:
-                await asyncio.sleep(0.5)
+            try:
+                task = await self.scan_svc.acquire_task()
+                if task is None:
+                    await asyncio.sleep(0.5)
+                    continue
+            except Exception as exc:
+                logger.error(
+                    "Scan worker %s loop error: %s",
+                    worker_id,
+                    exc,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+                if self.running:
+                    await asyncio.sleep(0.5)
                 continue
             try:
                 success = await self.scan_svc.process_scan(task)

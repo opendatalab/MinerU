@@ -2,13 +2,24 @@
 
 from __future__ import annotations
 
+import shutil
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 import typer
 
 from ...doclib.client import DoclibClient
-from ..json_errors import exit_with_error
-from .parse import output_doc_content_response
+from ...doclib.types import ContentNextRequest, DocContentResponse
+from ...errors import MineruError
+from ..contracts import CliContext, CliResult
+from ..runtime import cli_ok, run_cli
+from .parse import _append_next_marker, _ensure_output_parent, _output_info
+
+
+@dataclass(frozen=True)
+class ReadTextOutput:
+    text: str
 
 
 def read_cmd(
@@ -21,34 +32,98 @@ def read_cmd(
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Read parsed doclib content by locator."""
-    try:
-        client = DoclibClient(timeout=60)
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode, fallback_message="Cannot connect to mineru server. Run 'mineru server start' first.")
-
-    try:
-        content = client.read_content(
+    ctx = CliContext(json_mode=json_mode)
+    run_cli(
+        ctx,
+        lambda: _read(
             locator,
             context=context,
             limit=limit,
             format=format,
-            no_marker=no_marker,
-        )
-        output_doc_content_response(
-            content,
-            json_mode=json_mode,
             output=output,
-            source_path=None,
-            read_mode=True,
             no_marker=no_marker,
-        )
-    except typer.Exit:
-        raise
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode)
+            json_mode=json_mode,
+        ),
+    )
 
 
-if __name__ != "__main__":
+def _read(
+    locator: str,
+    *,
+    context: int,
+    limit: int,
+    format: Literal["markdown", "image"],
+    output: str | None,
+    no_marker: bool,
+    json_mode: bool,
+) -> DocContentResponse | dict[str, object] | CliResult[ReadTextOutput] | CliResult[None]:
+    content = DoclibClient(timeout=60).read_content(
+        locator,
+        context=context,
+        limit=limit,
+        format=format,
+        no_marker=no_marker,
+    )
+    return _prepare_read_output(content, json_mode=json_mode, output=output, no_marker=no_marker)
 
-    def _register(app: typer.Typer) -> None:
-        app.command()(read_cmd)
+
+def _prepare_read_output(
+    content: DocContentResponse,
+    *,
+    json_mode: bool,
+    output: str | None,
+    no_marker: bool,
+) -> DocContentResponse | dict[str, object] | CliResult[ReadTextOutput] | CliResult[None]:
+    output_path = _ensure_output_parent(output)
+    if json_mode and output_path and output_path != "-":
+        payload: dict[str, object] = content.model_dump(mode="json")
+        if content.format == "image":
+            if content.asset is None:
+                raise MineruError("asset_not_available", "No image asset returned.", "format")
+            shutil.copyfile(content.asset.path, output_path)
+        else:
+            Path(output_path).write_text(content.content, encoding="utf-8")
+        payload["content"] = None
+        payload["output"] = _output_info(output_path)
+        return payload
+
+    if json_mode:
+        return content
+
+    if content.format == "image":
+        if content.asset is None:
+            raise MineruError("asset_not_available", "No image asset returned.", "format")
+        asset_path = content.asset.path
+        if output_path and output_path != "-":
+            shutil.copyfile(asset_path, output_path)
+            return cli_ok(ReadTextOutput(f"Written to {output_path}"), render=_render_read_text)
+        return cli_ok(ReadTextOutput(asset_path), render=_render_read_text)
+
+    if output_path and output_path != "-":
+        Path(output_path).write_text(content.content, encoding="utf-8")
+        return cli_ok(ReadTextOutput(f"Written to {output_path}"), render=_render_read_text)
+
+    if not content.content and content.content_ranges:
+        message = "No renderable content in requested pages."
+        if content.next_request and not no_marker:
+            marker = _read_next_marker(content.next_request)
+            if marker:
+                return cli_ok(ReadTextOutput(_append_next_marker(message, marker)), render=_render_read_text)
+        return cli_ok(None, notices=[message])
+
+    if content.next_request and not no_marker:
+        marker = _read_next_marker(content.next_request)
+        if marker:
+            return cli_ok(ReadTextOutput(_append_next_marker(content.content, marker)), render=_render_read_text)
+
+    return cli_ok(ReadTextOutput(content.content), render=_render_read_text)
+
+
+def _render_read_text(data: ReadTextOutput) -> str:
+    return data.text
+
+
+def _read_next_marker(next_request: ContentNextRequest) -> str | None:
+    if not next_request.locator:
+        return None
+    return f"<!-- Next: mineru read {next_request.locator} -->"
