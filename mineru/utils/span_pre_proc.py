@@ -24,6 +24,7 @@ POST_OCR_FALLBACK_CONTENT_KEY = '_post_ocr_fallback_content'
 POST_OCR_FALLBACK_SCORE_KEY = '_post_ocr_fallback_score'
 POST_OCR_REASON_KEY = '_post_ocr_reason'
 POST_OCR_REASON_PRIVATE_USE_TEXT = 'private_use_text'
+MAX_NATIVE_TEXT_SKEW_DEGREES = 30
 
 
 def __replace_ligatures(text: str):
@@ -137,7 +138,15 @@ def txt_spans_extract(pdf_page, spans, pil_img, scale, all_bboxes, all_discarded
 def _is_supported_rotation(rotation) -> bool:
     """判断 pdftext 旋转角是否属于当前可回填的四个标准方向。"""
     rotation_degrees = math.degrees(rotation)
-    return any(abs(rotation_degrees - angle) < 0.1 for angle in [0, 90, 180, 270])
+    normalized_degrees = rotation_degrees % 360
+    # ponytail: PDF italic/skewed glyphs can report a non-zero horizontal
+    # rotation; widen only the horizontal bands, keep vertical text strict.
+    return (
+        normalized_degrees <= MAX_NATIVE_TEXT_SKEW_DEGREES
+        or normalized_degrees >= 360 - MAX_NATIVE_TEXT_SKEW_DEGREES
+        or abs(normalized_degrees - 180) <= MAX_NATIVE_TEXT_SKEW_DEGREES
+        or any(abs(normalized_degrees - angle) < 0.1 for angle in [90, 270])
+    )
 
 
 def _prepare_post_ocr_spans(need_ocr_spans, spans, pil_img, scale):
