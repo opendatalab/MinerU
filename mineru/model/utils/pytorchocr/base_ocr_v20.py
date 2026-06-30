@@ -6,15 +6,49 @@ import torch
 
 from .modeling.architectures.base_model import BaseModel
 
+
+# OCR 推理精度开关：auto 表示 CPU 使用 fp32，非 CPU 自动使用 fp16。
+OCR_INFERENCE_PRECISION = "auto"
+
+
 class BaseOCRV20:
     def __init__(self, config, **kwargs):
         self.config = config
         self.build_net(**kwargs)
+        self.ocr_inference_dtype = torch.float32
         self.net.eval()
 
 
     def build_net(self, **kwargs):
         self.net = BaseModel(self.config, **kwargs)
+
+    def _resolve_inference_dtype(self, device):
+        """根据常量和设备类型解析 OCR 网络推理使用的浮点精度。"""
+        precision = OCR_INFERENCE_PRECISION.lower()
+        device_name = str(device).lower()
+        is_cpu = device_name.startswith("cpu")
+
+        if precision not in {"auto", "fp32", "fp16"}:
+            raise ValueError(
+                "OCR_INFERENCE_PRECISION must be one of: auto, fp32, fp16"
+            )
+        if precision == "fp32" or is_cpu:
+            return torch.float32
+        return torch.float16
+
+    def _apply_inference_precision(self, device):
+        """将 OCR 网络移动到目标设备，并在非 CPU 半精度场景下切到 fp16。"""
+        self.net.to(device)
+        self.ocr_inference_dtype = self._resolve_inference_dtype(device)
+        if self.ocr_inference_dtype == torch.float16:
+            self.net.to(dtype=torch.float16)
+
+    def _to_inference_dtype(self, tensor):
+        """将浮点输入 tensor 转为 OCR 推理精度，整型/布尔辅助输入保持原 dtype。"""
+        if torch.is_tensor(tensor) and torch.is_floating_point(tensor):
+            inference_dtype = getattr(self, "ocr_inference_dtype", torch.float32)
+            return tensor.to(dtype=inference_dtype)
+        return tensor
 
     @staticmethod
     def _is_safetensors_path(weights_path):

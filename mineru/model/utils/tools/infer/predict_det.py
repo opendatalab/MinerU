@@ -119,7 +119,7 @@ class TextDetector(BaseOCRV20):
         super(TextDetector, self).__init__(network_config, **kwargs)
         self.load_pytorch_weights(self.weights_path)
         self.net.eval()
-        self.net.to(self.device)
+        self._apply_inference_precision(self.device)
         for module in self.net.modules():
             if hasattr(module, 'rep'):
                 module.rep()
@@ -135,6 +135,26 @@ class TextDetector(BaseOCRV20):
         if self._should_only_clip_det_res():
             return self.filter_tag_det_res_only_clip(dt_boxes, image_shape)
         return self.filter_tag_det_res(dt_boxes, image_shape)
+
+    def _build_det_preds(self, outputs):
+        """将 OCR-det 模型输出统一转换为后处理需要的 float32 numpy 结构。"""
+        preds = {}
+        if self.det_algorithm == "EAST":
+            preds['f_geo'] = outputs['f_geo'].float().cpu().numpy()
+            preds['f_score'] = outputs['f_score'].float().cpu().numpy()
+        elif self.det_algorithm == 'SAST':
+            preds['f_border'] = outputs['f_border'].float().cpu().numpy()
+            preds['f_score'] = outputs['f_score'].float().cpu().numpy()
+            preds['f_tco'] = outputs['f_tco'].float().cpu().numpy()
+            preds['f_tvo'] = outputs['f_tvo'].float().cpu().numpy()
+        elif self.det_algorithm in ['DB', 'PSE', 'DB++']:
+            preds['maps'] = outputs['maps'].float().cpu().numpy()
+        elif self.det_algorithm == 'FCE':
+            for i, (_k, output) in enumerate(outputs.items()):
+                preds['level_{}'.format(i)] = output.float().cpu().numpy()
+        else:
+            raise NotImplementedError
+        return preds
 
     def _batch_process_same_size(self, img_list):
         """
@@ -184,25 +204,11 @@ class TextDetector(BaseOCRV20):
         with torch.no_grad():
             inp = torch.from_numpy(batch_tensor)
             inp = inp.to(self.device)
+            inp = self._to_inference_dtype(inp)
             outputs = self.net(inp)
 
         # 处理输出
-        preds = {}
-        if self.det_algorithm == "EAST":
-            preds['f_geo'] = outputs['f_geo'].cpu().numpy()
-            preds['f_score'] = outputs['f_score'].cpu().numpy()
-        elif self.det_algorithm == 'SAST':
-            preds['f_border'] = outputs['f_border'].cpu().numpy()
-            preds['f_score'] = outputs['f_score'].cpu().numpy()
-            preds['f_tco'] = outputs['f_tco'].cpu().numpy()
-            preds['f_tvo'] = outputs['f_tvo'].cpu().numpy()
-        elif self.det_algorithm in ['DB', 'PSE', 'DB++']:
-            preds['maps'] = outputs['maps'].cpu().numpy()
-        elif self.det_algorithm == 'FCE':
-            for i, (k, output) in enumerate(outputs.items()):
-                preds['level_{}'.format(i)] = output.cpu().numpy()
-        else:
-            raise NotImplementedError
+        preds = self._build_det_preds(outputs)
 
         # 后处理每个图像的结果
         batch_results = []
@@ -323,24 +329,10 @@ class TextDetector(BaseOCRV20):
         with torch.no_grad():
             inp = torch.from_numpy(img)
             inp = inp.to(self.device)
+            inp = self._to_inference_dtype(inp)
             outputs = self.net(inp)
 
-        preds = {}
-        if self.det_algorithm == "EAST":
-            preds['f_geo'] = outputs['f_geo'].cpu().numpy()
-            preds['f_score'] = outputs['f_score'].cpu().numpy()
-        elif self.det_algorithm == 'SAST':
-            preds['f_border'] = outputs['f_border'].cpu().numpy()
-            preds['f_score'] = outputs['f_score'].cpu().numpy()
-            preds['f_tco'] = outputs['f_tco'].cpu().numpy()
-            preds['f_tvo'] = outputs['f_tvo'].cpu().numpy()
-        elif self.det_algorithm in ['DB', 'PSE', 'DB++']:
-            preds['maps'] = outputs['maps'].cpu().numpy()
-        elif self.det_algorithm == 'FCE':
-            for i, (k, output) in enumerate(outputs.items()):
-                preds['level_{}'.format(i)] = output
-        else:
-            raise NotImplementedError
+        preds = self._build_det_preds(outputs)
 
         post_result = self.postprocess_op(preds, shape_list)
         dt_boxes = post_result[0]['points']
