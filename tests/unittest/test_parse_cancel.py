@@ -280,6 +280,98 @@ class ParseCancelPayloadTests(unittest.TestCase):
         self.assertEqual(response.abort_count, 2)
         self.assertEqual(response.aborted_vllm_request_ids, ("req-1", "req-2"))
 
+    def test_api_client_parses_task_action_response_payload(self):
+        response = api_client.parse_task_action_response_payload(
+            {
+                "task_id": "task-1",
+                "status": "paused",
+                "checkpoint": {"next_start_page": 10},
+            }
+        )
+
+        self.assertEqual(response.task_id, "task-1")
+        self.assertEqual(response.status, "paused")
+        self.assertEqual(response.payload["checkpoint"], {"next_start_page": 10})
+
+    def test_api_client_posts_pause_and_resume_task_actions(self):
+        calls: list[str] = []
+
+        class RecordingClient:
+            def __init__(self, **_kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def post(self, url):
+                calls.append(url)
+                return api_client.httpx.Response(
+                    202,
+                    json={"task_id": "task-1", "status": "processing"},
+                    request=api_client.httpx.Request("POST", url),
+                )
+
+        original_client = api_client.httpx.Client
+        api_client.httpx.Client = RecordingClient
+        try:
+            pause = api_client.pause_parse_task_sync("http://mineru.local", "task-1")
+            resume = api_client.resume_parse_task_sync("http://mineru.local", "task-1")
+        finally:
+            api_client.httpx.Client = original_client
+
+        self.assertEqual(
+            calls,
+            [
+                "http://mineru.local/tasks/task-1/pause",
+                "http://mineru.local/tasks/task-1/resume",
+            ],
+        )
+        self.assertEqual(pause.task_id, "task-1")
+        self.assertEqual(resume.task_id, "task-1")
+
+
+class ParseTaskActionClientTests(unittest.IsolatedAsyncioTestCase):
+    async def test_wait_for_task_result_treats_pause_states_as_not_ready(self):
+        statuses = ["pause_requested", "paused", "processing", "completed"]
+
+        class PollingClient:
+            async def get(self, url):
+                status = statuses.pop(0)
+                return api_client.httpx.Response(
+                    200,
+                    json={"status": status},
+                    request=api_client.httpx.Request("GET", url),
+                )
+
+        seen_statuses: list[str] = []
+        snapshots: list[api_client.TaskStatusSnapshot] = []
+        original_interval = api_client.TASK_STATUS_POLL_INTERVAL_SECONDS
+        api_client.TASK_STATUS_POLL_INTERVAL_SECONDS = 0
+        try:
+            await api_client.wait_for_task_result(
+                PollingClient(),
+                api_client.SubmitResponse(
+                    task_id="task-1",
+                    status_url="http://mineru.local/tasks/task-1",
+                    result_url="http://mineru.local/tasks/task-1/result",
+                ),
+                "sample",
+                status_callback=seen_statuses.append,
+                status_snapshot_callback=snapshots.append,
+                timeout_seconds=5,
+            )
+        finally:
+            api_client.TASK_STATUS_POLL_INTERVAL_SECONDS = original_interval
+
+        self.assertEqual(seen_statuses, ["pause_requested", "paused", "processing"])
+        self.assertEqual(
+            [snapshot.status for snapshot in snapshots],
+            ["pause_requested", "paused", "processing"],
+        )
+
 
 class ParsePauseRegistryTests(unittest.IsolatedAsyncioTestCase):
     async def test_pause_registry_blocks_until_resume_and_cleans_up(self):

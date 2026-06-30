@@ -36,6 +36,7 @@ from mineru.utils.check_sys_env import is_linux_environment
 HEALTH_ENDPOINT = "/health"
 TASKS_ENDPOINT = "/tasks"
 TASK_STATUS_POLL_INTERVAL_SECONDS = 1.0
+TASK_NOT_READY_STATUSES = {"pending", "processing", "pause_requested", "paused"}
 LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS = 10
 LOCAL_API_CLEANUP_RETRIES = 8
 LOCAL_API_CLEANUP_RETRY_INTERVAL_SECONDS = 0.25
@@ -465,6 +466,13 @@ class CancelResponse:
     status: str
     abort_count: int
     aborted_vllm_request_ids: tuple[str, ...]
+    payload: dict[str, object]
+
+
+@dataclass(frozen=True)
+class TaskActionResponse:
+    task_id: str
+    status: str
     payload: dict[str, object]
 
 
@@ -978,6 +986,20 @@ def parse_cancel_response_payload(payload: object) -> CancelResponse:
     )
 
 
+def parse_task_action_response_payload(payload: object) -> TaskActionResponse:
+    if not isinstance(payload, dict):
+        raise click.ClickException("MinerU API returned an invalid task action payload")
+    task_id = payload.get("task_id")
+    status = payload.get("status")
+    if not isinstance(task_id, str) or not isinstance(status, str):
+        raise click.ClickException("MinerU API returned an invalid task action payload")
+    return TaskActionResponse(
+        task_id=task_id,
+        status=status,
+        payload=dict(payload),
+    )
+
+
 async def cancel_parse_task(
     base_url: str,
     task_id: str,
@@ -1020,6 +1042,56 @@ def cancel_parse_task_sync(
     return parse_cancel_response_payload(response.json())
 
 
+async def pause_parse_task(base_url: str, task_id: str) -> TaskActionResponse:
+    return await asyncio.to_thread(
+        pause_parse_task_sync,
+        base_url,
+        task_id,
+    )
+
+
+def pause_parse_task_sync(base_url: str, task_id: str) -> TaskActionResponse:
+    return _post_task_action_sync(base_url, task_id, "pause")
+
+
+async def resume_parse_task(base_url: str, task_id: str) -> TaskActionResponse:
+    return await asyncio.to_thread(
+        resume_parse_task_sync,
+        base_url,
+        task_id,
+    )
+
+
+def resume_parse_task_sync(base_url: str, task_id: str) -> TaskActionResponse:
+    return _post_task_action_sync(base_url, task_id, "resume")
+
+
+def _post_task_action_sync(
+    base_url: str,
+    task_id: str,
+    action: str,
+) -> TaskActionResponse:
+    action_url = f"{base_url}{TASKS_ENDPOINT}/{task_id}/{action}"
+    try:
+        with httpx.Client(timeout=build_http_timeout(), follow_redirects=True) as sync_client:
+            response = sync_client.post(action_url)
+    except httpx.TimeoutException as exc:
+        raise click.ClickException(
+            f"Timed out sending {action} request for parsing task at {action_url}."
+        ) from exc
+    except httpx.RequestError as exc:
+        raise click.ClickException(
+            f"Failed to send {action} request for parsing task at {action_url}: {exc}"
+        ) from exc
+
+    if response.status_code not in {200, 202}:
+        raise click.ClickException(
+            f"Failed to {action} parsing task: "
+            f"{response.status_code} {response_detail(response)}"
+        )
+    return parse_task_action_response_payload(response.json())
+
+
 async def wait_for_task_result(
     client: httpx.AsyncClient,
     submit_response: SubmitResponse,
@@ -1050,7 +1122,7 @@ async def wait_for_task_result(
 
         payload = response.json()
         status = payload.get("status")
-        if status in {"pending", "processing"}:
+        if status in TASK_NOT_READY_STATUSES:
             queued_ahead = payload.get("queued_ahead")
             if not isinstance(queued_ahead, int):
                 queued_ahead = None
