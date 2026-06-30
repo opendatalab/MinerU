@@ -20,6 +20,7 @@ from ...model.table.rec.unet_table.main import UnetTableModel
 from ...utils.config_reader import get_device
 from ...utils.enum_class import ModelPath
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
+from ...utils.ocr_language import normalize_ocr_model_lang
 from .model_list import AtomicModel
 
 PIPELINE_MODEL_INIT_LOCK = threading.RLock()
@@ -126,28 +127,13 @@ def ocr_model_init(
     det_db_unclip_ratio: float = 1.5,
     enable_merge_det_boxes: bool = True,
 ) -> PytorchPaddleOCR:
-    if lang in [None, "ch"]:
-        use_dilation = True
-        det_db_unclip_ratio = 1.8
-    else:
-        use_dilation = False
-
-    if lang is not None and lang != "":
-        model = PytorchPaddleOCR(
-            det_db_box_thresh=det_db_box_thresh,
-            lang=lang,
-            use_dilation=use_dilation,
-            det_db_unclip_ratio=det_db_unclip_ratio,
-            enable_merge_det_boxes=enable_merge_det_boxes,
-        )
-    else:
-        model = PytorchPaddleOCR(
-            det_db_box_thresh=det_db_box_thresh,
-            use_dilation=use_dilation,
-            det_db_unclip_ratio=det_db_unclip_ratio,
-            enable_merge_det_boxes=enable_merge_det_boxes,
-        )
-    return model
+    ocr_kwargs = {
+        "lang": normalize_ocr_model_lang(lang),
+        "det_db_box_thresh": det_db_box_thresh,
+        "det_db_unclip_ratio": det_db_unclip_ratio,
+        "enable_merge_det_boxes": enable_merge_det_boxes,
+    }
+    return PytorchPaddleOCR(**ocr_kwargs)
 
 
 class AtomModelSingleton:
@@ -163,14 +149,15 @@ class AtomModelSingleton:
 
     def get_atom_model(self, atom_model_name: str, **kwargs: Any) -> Any:
         lang = kwargs.get("lang", None)
+        ocr_singleton_lang = normalize_ocr_model_lang(lang)
 
         if atom_model_name in [AtomicModel.WiredTable, AtomicModel.WirelessTable]:
-            key = (atom_model_name, lang)
+            key = (atom_model_name, ocr_singleton_lang)
         elif atom_model_name in [AtomicModel.OCR]:
             key = (
                 atom_model_name,
                 kwargs.get("det_db_box_thresh", 0.5),
-                lang,
+                ocr_singleton_lang,
                 kwargs.get("det_db_unclip_ratio", 1.5),
                 kwargs.get("enable_merge_det_boxes", True),
             )
