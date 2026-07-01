@@ -5,6 +5,7 @@ from typing import Any
 
 from ...types import Block, BlockType, ContentType, PageInfo, Span
 from .char_utils import full_to_half
+from .visual_magic_model_utils import isolated_formula_clean
 
 
 def extract_text_from_block(block: Block) -> str:
@@ -27,6 +28,20 @@ def normalize_formula_tag_content(tag_content: str) -> str:
     return tag_content
 
 
+def normalize_formula_content_for_tag(formula_content: str) -> str:
+    """归一化待合并编号的公式正文，去掉 VLM/Hybrid 可能携带的展示公式分隔符。"""
+    return isolated_formula_clean(str(formula_content or ""))
+
+
+def build_tagged_formula_content(formula_content: str, tag_content: str) -> str | None:
+    """将公式正文和编号文本合成为带 LaTeX tag 的纯公式内容。"""
+    formula_content = normalize_formula_content_for_tag(formula_content)
+    tag_content = normalize_formula_tag_content(tag_content)
+    if not formula_content or not tag_content:
+        return None
+    return f"{formula_content}\\tag{{{tag_content}}}"
+
+
 def get_interline_equation_span(block: Block) -> Span | None:
     """查找 typed 公式块中的行间公式 span。"""
     for line in block.lines:
@@ -39,9 +54,11 @@ def get_interline_equation_span(block: Block) -> Span | None:
 def append_formula_number_tag(equation_block: Block, formula_number_block: Block) -> None:
     """把 typed 公式编号合并进相邻行间公式的 LaTeX 内容。"""
     equation_span = get_interline_equation_span(equation_block)
-    tag_content = normalize_formula_tag_content(extract_text_from_block(formula_number_block))
-    if equation_span is not None and tag_content:
-        equation_span.content = f"{equation_span.content}\\tag{{{tag_content}}}"
+    if equation_span is None:
+        return
+    tagged_content = build_tagged_formula_content(equation_span.content, extract_text_from_block(formula_number_block))
+    if tagged_content:
+        equation_span.content = tagged_content
 
 
 def optimize_pipeline_formula_number_blocks(pages: list[PageInfo]) -> None:
@@ -86,12 +103,13 @@ def _is_hybrid_formula_number_block(block: dict[str, Any]) -> bool:
 
 def _append_hybrid_formula_number_tag(equation_block: dict[str, Any], number_block: dict[str, Any]) -> None:
     """把 raw Hybrid/VLM 公式编号合并到相邻公式 block 的 content/latex 字段。"""
-    tag_content = normalize_formula_tag_content(str(number_block.get("content") or number_block.get("text") or ""))
-    if not tag_content:
-        return
     target_key = "latex" if equation_block.get("latex") else "content"
-    formula = str(equation_block.get(target_key) or "")
-    equation_block[target_key] = f"{formula}\\tag{{{tag_content}}}"
+    tagged_content = build_tagged_formula_content(
+        str(equation_block.get(target_key) or ""),
+        str(number_block.get("content") or number_block.get("text") or ""),
+    )
+    if tagged_content:
+        equation_block[target_key] = tagged_content
 
 
 def optimize_hybrid_formula_number_blocks(page_model_list: list[dict[str, Any]]) -> list[dict[str, Any]]:
