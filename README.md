@@ -80,6 +80,22 @@ Domestic AI chips: Ascend · Cambricon · Enflame · MetaX · Moore Threads · K
 
 # Changelog
 
+- 2026/06/18 3.4 Released
+
+  This release focuses on **OCR capability upgrades for the pipeline backend**, **OCR processing pipeline optimization**, and **model download experience improvements**. The main updates include:
+
+  - OCR model upgrade and processing acceleration
+    - The OCR model for the `pipeline` backend has been upgraded to `PP-OCRv6`, improving OCR accuracy by about `11%` on OmniDocBench v1.6.
+    - Removed Japanese, Traditional Chinese, English, and Latin options from OCR language selection. These scenarios are now routed to the `ch` OCR model, simplifying model configuration and language selection.
+    - Optimized the OCR inference and processing pipeline, increasing OCR processing speed by about `100%` and significantly improving parsing efficiency for batch documents and OCR-intensive documents.
+
+  - Model download logic optimization
+    - Added automatic model source selection, allowing first-time installations to choose a better model source based on the current network environment.
+    - Before downloading models, MinerU now prioritizes checking locally downloaded model cache files. Cache hits can be reused directly, reducing repeated downloads and unnecessary remote requests.
+    - For more details about model source configuration, automatic source selection, and local model usage, see the [Model Source Documentation](https://opendatalab.github.io/MinerU/en/usage/model_source/).
+
+  With the 3.4 release, MinerU further improves the parsing accuracy and processing efficiency of the `pipeline` backend in OCR scenarios. It also optimizes model downloads, cache reuse, and local configuration write-back, making first-time installation, model updates, and multi-environment deployment more stable and automated.
+
 - 2026/06/11 3.3 Released
 
   This release focuses on **Hybrid parsing performance optimization** and **VLM model capability upgrades**. The main updates include:
@@ -218,7 +234,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     </tr> 
     <tr>
       <th>Accuracy<sup>1</sup></th>
-      <td style="text-align:center;">85.75</td>
+      <td style="text-align:center;">86.47</td>
       <td style="text-align:center;">95.39 (high)<br>95.26 (medium)</td>
       <td style="text-align:center;">95.30</td>
       <td style="text-align:center;">95.39 (high)<br>95.26 (medium)</td>
