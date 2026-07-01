@@ -186,8 +186,8 @@ mineru forget ~/Documents/project --no-dry-run
 mineru scan ~/Documents/a.pdf
 mineru scan ~/Documents/project
 mineru scan ~/Documents/project --no-wait
-mineru scan status 123
-mineru scan list
+mineru show scan 123
+mineru list scans
 ```
 
 关键语义:
