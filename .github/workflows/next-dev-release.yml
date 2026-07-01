@@ -4,9 +4,19 @@ on:
   schedule:
     - cron: "20 2 * * *"
   workflow_dispatch:
+    inputs:
+      force_publish:
+        description: "Publish a new build even when the current next commit was already published."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
+
+concurrency:
+  group: mineru-next-dev-release
+  cancel-in-progress: false
 
 jobs:
   publish-next-dev:
@@ -34,10 +44,11 @@ jobs:
         id: release_meta
         run: |
           echo "current_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "version=$(python .github/scripts/next_dev_release.py version --base-version "$BASE_VERSION")" >> "$GITHUB_OUTPUT"
 
       - name: Prepare release-state worktree
         id: release_state
+        env:
+          FORCE_PUBLISH: ${{ inputs.force_publish || false }}
         run: |
           state_dir="$RUNNER_TEMP/release-state"
           git fetch origin "$STATE_BRANCH" || true
@@ -52,19 +63,20 @@ jobs:
           fi
 
           previous_commit="$(python .github/scripts/next_dev_release.py state-commit --state-file "$state_dir/$STATE_FILE")"
-          should_publish=true
-          if [ -n "$previous_commit" ] && [ "$previous_commit" = "${{ steps.release_meta.outputs.current_commit }}" ]; then
-            should_publish=false
-          fi
+          python .github/scripts/next_dev_release.py plan-github-output \
+            --state-file "$state_dir/$STATE_FILE" \
+            --base-version "$BASE_VERSION" \
+            --source-commit "${{ steps.release_meta.outputs.current_commit }}" \
+            --trigger "${{ github.event_name }}" \
+            --force-publish "$FORCE_PUBLISH" >> "$GITHUB_OUTPUT"
 
           echo "state_dir=$state_dir" >> "$GITHUB_OUTPUT"
           echo "previous_commit=$previous_commit" >> "$GITHUB_OUTPUT"
-          echo "should_publish=$should_publish" >> "$GITHUB_OUTPUT"
 
-      - name: Stop when next has no changes since last publish
+      - name: Stop when release plan skips publish
         if: steps.release_state.outputs.should_publish != 'true'
         run: |
-          echo "Skip publish because $SOURCE_BRANCH commit ${GITHUB_SHA} matches the last successful release state."
+          echo "Skip publish: ${{ steps.release_state.outputs.skip_reason }}."
 
       - name: Install build tooling
         if: steps.release_state.outputs.should_publish == 'true'
@@ -79,7 +91,7 @@ jobs:
             --pyproject pyproject.toml \
             --version-file mineru/version.py \
             --package-name "$PACKAGE_NAME" \
-            --version "${{ steps.release_meta.outputs.version }}"
+            --version "${{ steps.release_state.outputs.version }}"
 
       - name: Build distribution
         if: steps.release_state.outputs.should_publish == 'true'
@@ -101,9 +113,12 @@ jobs:
           python .github/scripts/next_dev_release.py write-state \
             --state-file "$state_dir/$STATE_FILE" \
             --package "$PACKAGE_NAME" \
-            --version "${{ steps.release_meta.outputs.version }}" \
+            --version "${{ steps.release_state.outputs.version }}" \
             --source-branch "$SOURCE_BRANCH" \
-            --source-commit "${{ steps.release_meta.outputs.current_commit }}"
+            --source-commit "${{ steps.release_meta.outputs.current_commit }}" \
+            --trigger "${{ github.event_name }}" \
+            --release-date "${{ steps.release_state.outputs.release_date }}" \
+            --sequence "${{ steps.release_state.outputs.sequence }}"
 
           git -C "$state_dir" config user.name "github-actions[bot]"
           git -C "$state_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -112,7 +127,7 @@ jobs:
           if git -C "$state_dir" diff --cached --quiet; then
             echo "No release-state changes to commit."
           else
-            git -C "$state_dir" commit -m "Update mineru-next-dev release state for ${{ steps.release_meta.outputs.version }}"
+            git -C "$state_dir" commit -m "Update mineru-next-dev release state for ${{ steps.release_state.outputs.version }}"
             git -C "$state_dir" push origin HEAD:"$STATE_BRANCH"
           fi
 
