@@ -3,7 +3,7 @@ import copy
 from collections.abc import Generator
 
 from ...types import BBox, Block, BlockType, Line, PageInfo, Span
-from .span_block_fix import is_vertical_text_block_by_spans
+from .span_orientation import is_vertical_text_block_by_spans
 
 LINE_STOP_FLAG = (".", "!", "?", "。", "！", "？", ")", "）", '"', "”", ":", "：", ";", "；")
 SECTION_MERGE_BARRIER_TYPES = {
