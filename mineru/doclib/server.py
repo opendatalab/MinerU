@@ -20,6 +20,7 @@ from PIL import Image
 
 from ..config import config
 from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
+from ..parser.tier import TierDependencyError, ensure_tier_runtime_dependencies
 from ..render import render_markdown
 from ..render.markdown import blocks_to_markdown
 from ..render.office.output import blocks_to_markdown as office_blocks_to_markdown
@@ -831,10 +832,31 @@ class DoclibServer(AsyncDoclibInterface):
 
     @route("PUT", "/configs/{key}", tags=("config",))
     async def set_config(self, key: str, request: ConfigSetRequest) -> ConfigSetResponse:
+        await self._validate_config_set(key, request.value)
         await self.state.config_svc.set(key, request.value)
         value = await self.state.config_svc.get(key)
         source = await self.state.config_svc.get_source(key)
         return ConfigSetResponse(key=key, value=_mask_config_value(key, value or ""), source=source)
+
+    async def _validate_config_set(self, key: str, value: str) -> None:
+        if key == "parse_server.local.mode":
+            if value not in ("disabled", "managed", "self_hosted"):
+                raise InvalidRequestError(
+                    "invalid_config_value",
+                    "parse_server.local.mode must be one of: disabled, managed, self_hosted.",
+                    key,
+                )
+            if value == "managed":
+                tier = _validate_managed_parse_server_tier(
+                    (await self.state.config_svc.get("parse_server.local.managed_tier")) or "standard",
+                    "parse_server.local.managed_tier",
+                )
+                _ensure_managed_parse_server_tier_available(tier, key)
+            return
+
+        if key == "parse_server.local.managed_tier":
+            tier = _validate_managed_parse_server_tier(value, key)
+            _ensure_managed_parse_server_tier_available(tier, key)
 
     @route("DELETE", "/configs/{key}", tags=("config",))
     async def unset_config(self, key: str) -> ConfigUnsetResponse:
@@ -1498,6 +1520,23 @@ def _parse_server_status(
             supported_tiers=health.remote_supported_tiers,
         ),
     )
+
+
+def _ensure_managed_parse_server_tier_available(tier: Tier, param: str) -> None:
+    try:
+        ensure_tier_runtime_dependencies(tier)
+    except TierDependencyError as exc:
+        raise InvalidRequestError("parse_server_dependency_missing", str(exc), param) from exc
+
+
+def _validate_managed_parse_server_tier(value: str, param: str) -> Tier:
+    if value not in ("standard", "pro"):
+        raise InvalidRequestError(
+            "invalid_config_value",
+            "parse_server.local.managed_tier must be one of: standard, pro.",
+            param,
+        )
+    return cast(Tier, value)
 
 
 def _port_from_url(url: str | None) -> int | None:

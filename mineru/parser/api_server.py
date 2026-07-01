@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
-import importlib
 import io
 import json
 import os
@@ -27,7 +26,6 @@ import zipfile
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from importlib import metadata as importlib_metadata
 from typing import Annotated, Any, AsyncIterator, Callable, Literal
 
 import click
@@ -43,30 +41,11 @@ from ..utils.backend_options import HYBRID_EFFORT_HELP, validate_effort
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..version import __version__
 from . import parse_async
-from .tier import PARSER_BACKENDS, resolve_tier_and_backend
+from .tier import PARSER_BACKENDS, TierDependencyError, ensure_tier_runtime_dependencies, resolve_tier_and_backend
 
 _API_SERVER_BACKENDS = tuple(backend for backend in PARSER_BACKENDS if backend != "flash")
 _API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
 _MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
-
-_STANDARD_REQUIRED_MODULES = [
-    "ftfy",
-    "shapely",
-    "pyclipper",
-    "torch",
-    "torchvision",
-    "transformers",
-]
-_PRO_REQUIRED_MODULES_COMMON = [
-    *_STANDARD_REQUIRED_MODULES,
-    "accelerate",
-]
-_PRO_REQUIRED_MODULES_BY_PLATFORM = {
-    "linux": ["vllm"],
-    "win32": ["lmdeploy", "qwen_vl_utils"],
-    "darwin": ["mlx", "mlx_vlm"],
-}
-
 
 class ParseServerStartupError(RuntimeError):
     """Raised when the parse server cannot start because of local setup."""
@@ -1984,51 +1963,11 @@ def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[di
     ]
 
 
-def _required_modules_for_tier(tier: Tier) -> list[str]:
-    if tier == "standard":
-        return list(_STANDARD_REQUIRED_MODULES)
-    if tier == "pro":
-        return [
-            *_PRO_REQUIRED_MODULES_COMMON,
-            *_PRO_REQUIRED_MODULES_BY_PLATFORM.get(sys.platform, []),
-        ]
-    return []
-
-
-def _installed_distribution_name(import_package: str) -> str:
-    try:
-        distributions = importlib_metadata.packages_distributions().get(import_package, [])
-    except Exception:
-        return import_package
-    return distributions[0] if distributions else import_package
-
-
-def _tier_dependency_install_hint(tier: Tier) -> str:
-    package_name = _installed_distribution_name("mineru")
-    return (
-        f"Install optional dependencies for this tier in the same Python environment as MinerU, "
-        f"for example: pip install '{package_name}[{tier}]'."
-    )
-
-
 def _preflight_tier_dependencies(tier: Tier) -> None:
-    missing_modules = []
-    for module_name in _required_modules_for_tier(tier):
-        try:
-            importlib.import_module(module_name)
-        except ModuleNotFoundError as exc:
-            if exc.name not in (None, module_name):
-                raise
-            missing_modules.append(module_name)
-
-    if not missing_modules:
-        return
-
-    missing = ", ".join(missing_modules)
-    raise ParseServerStartupError(
-        f"Parse server cannot start for tier '{tier}'; missing runtime dependencies: {missing}. "
-        f"{_tier_dependency_install_hint(tier)}"
-    )
+    try:
+        ensure_tier_runtime_dependencies(tier)
+    except TierDependencyError as exc:
+        raise ParseServerStartupError(str(exc)) from exc
 
 
 def create_app(
