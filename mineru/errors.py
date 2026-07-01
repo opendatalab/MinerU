@@ -26,6 +26,7 @@ _ERROR_TYPE_MAP: dict[str, ErrorType] = {
     "file_not_found": "invalid_request_error",
     "file_permission_denied": "invalid_request_error",
     "file_hash_mismatch": "invalid_request_error",
+    "image_output_extension_unsupported": "invalid_request_error",
     "bytes_mismatch": "invalid_request_error",
     "upload_not_found": "invalid_request_error",
     "upload_not_ready": "invalid_request_error",

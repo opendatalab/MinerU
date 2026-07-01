@@ -34,6 +34,7 @@ from .types import (
     ConfigUnsetResponse,
     ConfigValueResponse,
     ContentFormat,
+    ImageFormat,
     DocContentExportRequest,
     DocContentExportResponse,
     DocContentResponse,
@@ -255,6 +256,7 @@ class DoclibClient(DoclibInterface):
         context: int = 0,
         limit: int = 30000,
         format: ContentFormat = "markdown",
+        image_format: ImageFormat = "jpeg",
         no_marker: bool = False,
     ) -> DocContentResponse:
         return self._request_model(
@@ -264,6 +266,7 @@ class DoclibClient(DoclibInterface):
                 "context": context,
                 "limit": limit,
                 "format": format,
+                "image_format": image_format,
                 "no_marker": no_marker,
             },
         )

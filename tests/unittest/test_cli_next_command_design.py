@@ -1931,6 +1931,7 @@ def test_read_json_output_writes_image_file_and_returns_output_object(monkeypatc
             assert timeout == 60
 
         def read_content(self, locator: str, **kwargs: Any) -> DocContentResponse:
+            assert kwargs["image_format"] == "png"
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
@@ -1953,6 +1954,67 @@ def test_read_json_output_writes_image_file_and_returns_output_object(monkeypatc
     assert "Written to" not in result.output
 
 
+@pytest.mark.parametrize(
+    ("suffix", "expected_image_format"),
+    [
+        (".png", "png"),
+        (".jpg", "jpeg"),
+        (".jpeg", "jpeg"),
+        (".webp", "webp"),
+    ],
+)
+def test_read_image_output_extension_selects_server_image_format(
+    monkeypatch: Any, tmp_path: Path, suffix: str, expected_image_format: str
+) -> None:
+    asset = tmp_path / f"server{suffix}"
+    asset.write_bytes(b"image-bytes")
+    output = tmp_path / "nested" / f"local{suffix}"
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 60
+
+        def read_content(self, locator: str, **kwargs: Any) -> DocContentResponse:
+            assert kwargs["image_format"] == expected_image_format
+            return DocContentResponse(
+                sha256="a" * 64,
+                short_id="ab12cd3",
+                tier="standard",
+                format="image",
+                content="",
+                request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
+                asset=ContentAsset(path=str(asset), mime_type=f"image/{expected_image_format}"),
+            )
+
+    monkeypatch.setattr(read, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:standard/page:4", "--format", "image", "--output", str(output)])
+
+    assert result.exit_code == 0
+    assert output.read_bytes() == b"image-bytes"
+
+
+@pytest.mark.parametrize("output_arg", ["-", "page", "page.gif", "page.md"])
+def test_read_image_output_rejects_unsupported_output_extension_before_client_call(
+    monkeypatch: Any, tmp_path: Path, output_arg: str
+) -> None:
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            raise AssertionError("DoclibClient should not be called for invalid image output paths")
+
+    monkeypatch.setattr(read, "DoclibClient", _Client)
+    output = output_arg if output_arg == "-" else str(tmp_path / output_arg)
+
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:standard/page:4", "--format", "image", "--output", output, "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "image_output_extension_unsupported"
+    assert payload["error"]["param"] == "output"
+    if output != "-":
+        assert not Path(output).exists()
+
+
 def test_read_json_image_output_missing_asset_reports_error_envelope(monkeypatch: Any, tmp_path: Path) -> None:
     output = tmp_path / "nested" / "local.png"
 
@@ -1961,6 +2023,7 @@ def test_read_json_image_output_missing_asset_reports_error_envelope(monkeypatch
             assert timeout == 60
 
         def read_content(self, locator: str, **kwargs: Any) -> DocContentResponse:
+            assert kwargs["image_format"] == "png"
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
@@ -1993,6 +2056,7 @@ def test_read_image_output_copies_server_asset_locally(monkeypatch: Any, tmp_pat
             assert timeout == 60
 
         def read_content(self, locator: str, **kwargs: Any) -> DocContentResponse:
+            assert kwargs["image_format"] == "png"
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",

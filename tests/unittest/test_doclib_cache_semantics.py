@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from PIL import Image
 
 from mineru.config import LogConfig, ManagedParseServerConfig
 from mineru.doclib.background.compaction import Compaction
@@ -3005,10 +3006,59 @@ def test_doclib_office_image_asset_reads_cached_sidecar(tmp_path: Path) -> None:
         limit=30000,
         format="image",
         no_marker=False,
+        image_format="png",
         target=ContentCursor(short_id="fffffff", tier=tier, page_no=1, block_no=1),
     )
 
     asset = asyncio.run(server._render_office_image_asset(plan, page))
 
-    assert Path(asset.path).read_bytes() == sidecar.read_bytes()
     assert asset.mime_type == "image/png"
+    assert Path(asset.path).suffix == ".png"
+    with Image.open(asset.path) as image:
+        assert image.format == "PNG"
+
+
+def test_doclib_office_image_asset_transcodes_to_requested_format(tmp_path: Path) -> None:
+    sha256 = "f" * 64
+    tier = "standard"
+    image_dir = Path(parse_image_sidecar_dir(str(tmp_path), sha256, tier))
+    image_path = "figures/office.png"
+    sidecar = image_dir / image_path
+    sidecar.parent.mkdir(parents=True)
+    sidecar.write_bytes(
+        base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+        )
+    )
+
+    image_span = Span(type=ContentType.IMAGE, bbox=(1, 1, 20, 20), image_path=image_path)
+    body = Block(
+        index=0,
+        type=BlockType.IMAGE_BODY,
+        bbox=(1, 1, 20, 20),
+        lines=[Line(bbox=(1, 1, 20, 20), spans=[image_span])],
+    )
+    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(1, 1, 20, 20), blocks=[body])
+    page = PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="office")
+    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=None))
+    plan = _ReadPlan(
+        sha256=sha256,
+        short_id="fffffff",
+        tier=tier,
+        page_range=None,
+        after=None,
+        locator="doc:fffffff/tier:standard/page:1/block:1",
+        context=0,
+        limit=30000,
+        format="image",
+        no_marker=False,
+        image_format="jpeg",
+        target=ContentCursor(short_id="fffffff", tier=tier, page_no=1, block_no=1),
+    )
+
+    asset = asyncio.run(server._render_office_image_asset(plan, page))
+
+    assert asset.mime_type == "image/jpeg"
+    assert Path(asset.path).suffix == ".jpg"
+    with Image.open(asset.path) as image:
+        assert image.format == "JPEG"

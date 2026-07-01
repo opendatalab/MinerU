@@ -1581,6 +1581,8 @@ mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_
   - exit code = 0
   - 输出包含 `Written to` 或等价成功信息
   - 输出路径为命令指定路径
+  - 输出文件后缀只允许 `.png`、`.jpg`、`.jpeg`、`.webp`
+  - 输出文件真实编码必须与后缀匹配
 - 如果该 locator 不支持 image 输出:
   - exit code != 0
   - 输出包含 unsupported、not available、no image 或等价错误
@@ -2818,18 +2820,39 @@ mineru read "doc:<short_id>/tier:flash/page:1" --output - --json
 - 不创建名为 `-` 的文件
 - stdout 不包含 `Written to`、Rich 表格、Markdown 正文或其它人类提示文本
 
+补充分支:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --format image --output - --json
+```
+
+预期:
+
+- exit code != 0
+- stdout 为 JSON error envelope
+- `error.code` = `image_output_extension_unsupported`
+- `error.param` = `output`
+- 不创建名为 `-` 的文件
+
 ### OUTPUT-002 read image output 后缀边界
 
 命令模板:
 
 ```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_E2E_FIXTURE_DIR/output-dir/page.png"
+mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_E2E_FIXTURE_DIR/output-dir/page.jpg"
+mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_E2E_FIXTURE_DIR/output-dir/page.jpeg"
+mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_E2E_FIXTURE_DIR/output-dir/page.webp"
+mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_E2E_FIXTURE_DIR/output-dir/page"
 mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_E2E_FIXTURE_DIR/output-dir/page-as-md.md"
 ```
 
 预期:
 
-- 如果 image 输出支持任意后缀，exit code = 0，输出文件内容应为图片资产字节
-- 如果要求后缀匹配，exit code != 0，输出包含 invalid extension、mime、image 或等价错误
+- `.png`、`.jpg`、`.jpeg`、`.webp` 均 exit code = 0
+- 输出文件真实编码必须分别匹配 PNG、JPEG、JPEG、WebP
+- 无后缀和 `.md` 均 exit code != 0
+- JSON 模式下错误为 JSON error envelope，`error.code` = `image_output_extension_unsupported`
 - 不包含 Python traceback
 
 ### CONCURRENCY-001 并发 parse force

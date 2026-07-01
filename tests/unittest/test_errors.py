@@ -27,6 +27,7 @@ DOCLIB_CONTRACT_ERROR_CODES = {
     "doc_not_found",
     "engine_unavailable",
     "format_not_supported",
+    "image_output_extension_unsupported",
     "invalid_config_key",
     "invalid_locator",
     "multi_page_image_not_supported",
@@ -58,6 +59,7 @@ def test_doclib_error_code_types_are_stable() -> None:
     assert error_type_for("bbox_not_available") == "invalid_request_error"
     assert error_type_for("context_not_applicable") == "invalid_request_error"
     assert error_type_for("format_not_supported") == "invalid_request_error"
+    assert error_type_for("image_output_extension_unsupported") == "invalid_request_error"
     assert error_type_for("invalid_config_key") == "invalid_request_error"
     assert error_type_for("invalid_locator") == "invalid_request_error"
     assert error_type_for("multi_page_image_not_supported") == "invalid_request_error"

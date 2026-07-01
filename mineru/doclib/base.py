@@ -21,6 +21,7 @@ from .types import (
     DocContentExportResponse,
     DocContentResponse,
     ContentFormat,
+    ImageFormat,
     DocInfo,
     ExcludeRuleInfo,
     ExcludeRuleListResponse,
@@ -287,6 +288,7 @@ class DoclibInterface(ABC):
         context: int = 0,
         limit: int = 30000,
         format: ContentFormat = "markdown",
+        image_format: ImageFormat = "jpeg",
         no_marker: bool = False,
     ) -> DocContentResponse:
         """Render stored doc content from a stable content locator.
@@ -667,6 +669,7 @@ class AsyncDoclibInterface(ABC):
         context: int = 0,
         limit: int = 30000,
         format: ContentFormat = "markdown",
+        image_format: ImageFormat = "jpeg",
         no_marker: bool = False,
     ) -> DocContentResponse:
         """Async version of ``DoclibInterface.read_content``."""

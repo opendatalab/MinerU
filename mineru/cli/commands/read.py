@@ -10,7 +10,7 @@ from typing import Literal
 import typer
 
 from ...doclib.client import DoclibClient
-from ...doclib.types import ContentNextRequest, DocContentResponse
+from ...doclib.types import ContentNextRequest, DocContentResponse, ImageFormat
 from ...errors import MineruError
 from ..contracts import CliContext, CliResult
 from ..runtime import cli_ok, run_cli
@@ -57,13 +57,25 @@ def _read(
     no_marker: bool,
     json_mode: bool,
 ) -> DocContentResponse | dict[str, object] | CliResult[ReadTextOutput] | CliResult[None]:
-    content = DoclibClient(timeout=60).read_content(
-        locator,
-        context=context,
-        limit=limit,
-        format=format,
-        no_marker=no_marker,
-    )
+    image_format = _image_format_for_output(format=format, output=output) if format == "image" else "jpeg"
+    client = DoclibClient(timeout=60)
+    if format == "image":
+        content = client.read_content(
+            locator,
+            context=context,
+            limit=limit,
+            format=format,
+            image_format=image_format,
+            no_marker=no_marker,
+        )
+    else:
+        content = client.read_content(
+            locator,
+            context=context,
+            limit=limit,
+            format=format,
+            no_marker=no_marker,
+        )
     return _prepare_read_output(content, json_mode=json_mode, output=output, no_marker=no_marker)
 
 
@@ -121,6 +133,29 @@ def _prepare_read_output(
 
 def _render_read_text(data: ReadTextOutput) -> str:
     return data.text
+
+
+def _image_format_for_output(*, format: Literal["markdown", "image"], output: str | None) -> ImageFormat:
+    if format != "image" or output is None:
+        return "jpeg"
+    if output == "-":
+        raise MineruError(
+            "image_output_extension_unsupported",
+            "Image output requires a file path ending with .png, .jpg, .jpeg, or .webp; stdout is not supported.",
+            "output",
+        )
+    suffix = Path(output).suffix.lower()
+    if suffix == ".png":
+        return "png"
+    if suffix in {".jpg", ".jpeg"}:
+        return "jpeg"
+    if suffix == ".webp":
+        return "webp"
+    raise MineruError(
+        "image_output_extension_unsupported",
+        "Image output path must end with .png, .jpg, .jpeg, or .webp.",
+        "output",
+    )
 
 
 def _read_next_marker(next_request: ContentNextRequest) -> str | None:

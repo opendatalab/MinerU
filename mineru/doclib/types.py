@@ -21,6 +21,7 @@ InvalidateTarget = Literal["parses"]
 ForgetMatchedAs = Literal["file", "directory", "none"]
 ConfigSource = Literal["default", "override"]
 ContentFormat = Literal["markdown", "image"]
+ImageFormat = Literal["jpeg", "png", "webp"]
 
 PARSE_STATUS_PENDING: ParseStatus = "pending"
 PARSE_STATUS_PARSING: ParseStatus = "parsing"
@@ -278,6 +279,7 @@ class ContentRequestScope(DoclibModel):
     limit: int = 30000
     locator: str | None = None
     context: int = 0
+    image_format: ImageFormat | None = None
 
 
 class ContentRange(DoclibModel):
