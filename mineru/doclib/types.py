@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field
 
 from ..types import Tier
 
-ParseStatus = Literal["pending", "parsing", "done", "failed", "superseded"]
 ParseSubmitStatus = Literal["pending", "done"]
+ParseStatus = ParseSubmitStatus | Literal["parsing", "failed", "superseded"]
 FileStatus = Literal["active", "deleted", "unreachable"]
 ScanStatus = Literal["pending", "running", "done", "failed"]
 ScanKind = Literal["manual", "watch"]
@@ -24,9 +24,9 @@ ConfigSource = Literal["default", "override"]
 ContentFormat = Literal["markdown", "image"]
 ImageFormat = Literal["jpeg", "png", "webp"]
 
-PARSE_STATUS_PENDING: ParseStatus | ParseSubmitStatus = "pending"
+PARSE_STATUS_PENDING: ParseSubmitStatus = "pending"
+PARSE_STATUS_DONE: ParseSubmitStatus = "done"
 PARSE_STATUS_PARSING: ParseStatus = "parsing"
-PARSE_STATUS_DONE: ParseStatus | ParseSubmitStatus = "done"
 PARSE_STATUS_FAILED: ParseStatus = "failed"
 PARSE_STATUS_SUPERSEDED: ParseStatus = "superseded"
 
