@@ -775,7 +775,8 @@ def test_api_server_cli_reports_dependency_preflight_without_traceback(monkeypat
     assert result.exit_code == 1
     assert result.output == (
         "Error: Parse server cannot start for tier 'pro'; missing runtime dependencies: mlx. "
-        "Install the required extra, for example: mineru[pro].\n"
+        "Install optional dependencies for this tier in the same Python environment as MinerU, "
+        "for example: pip install 'mineru[pro]'.\n"
     )
     assert "Traceback" not in result.output
 

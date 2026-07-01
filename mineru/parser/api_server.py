@@ -1994,6 +1994,13 @@ def _required_modules_for_tier(tier: Tier) -> list[str]:
     return []
 
 
+def _tier_dependency_install_hint(tier: Tier) -> str:
+    return (
+        f"Install optional dependencies for this tier in the same Python environment as MinerU, "
+        f"for example: pip install 'mineru[{tier}]'."
+    )
+
+
 def _preflight_tier_dependencies(tier: Tier) -> None:
     missing_modules = []
     for module_name in _required_modules_for_tier(tier):
@@ -2010,7 +2017,7 @@ def _preflight_tier_dependencies(tier: Tier) -> None:
     missing = ", ".join(missing_modules)
     raise ParseServerStartupError(
         f"Parse server cannot start for tier '{tier}'; missing runtime dependencies: {missing}. "
-        f"Install the required extra, for example: mineru[{tier}]."
+        f"{_tier_dependency_install_hint(tier)}"
     )
 
 
