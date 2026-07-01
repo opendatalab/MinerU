@@ -148,8 +148,6 @@ class MagicModel:
                 "list",
             ]:
                 span_type = ContentType.TEXT
-                if block_type == BlockType.INDEX:
-                    block_type = BlockType.TEXT
             elif block_type in ["image_caption", "table_caption", "code_caption"]:
                 block_type = BlockType.CAPTION
                 span_type = ContentType.TEXT
@@ -298,6 +296,10 @@ class MagicModel:
                 block._fix_spans = block_spans
                 block = fix_text_block(block)
                 _copy_raw_text_block_metadata(draft, block)
+
+            if block.type == BlockType.INDEX:
+                # Hybrid medium 使用 INDEX 作为 VLM content 内部哨兵；内容构造完成后再对齐 3.4 输出为 text。
+                block.type = BlockType.TEXT
 
             blocks.append(block)
 
