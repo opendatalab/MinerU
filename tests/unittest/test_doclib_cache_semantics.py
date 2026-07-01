@@ -600,6 +600,97 @@ def test_managed_parse_server_restart_stops_recorded_proc_before_start(monkeypat
     assert health.managed_proc.pid == 67890
 
 
+def test_managed_parse_server_tier_change_detection_triggers_restart(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, str, bool]] = []
+
+    class _ConfigSvc:
+        async def get(self, key: str) -> str:
+            raise AssertionError(f"unexpected config read: {key}")
+
+    checker = ParseServerHealthCheck(
+        _ConfigSvc(),
+        interval_sec=1,
+        probe_timeout_sec=2,
+        startup_grace_sec=3,
+        stop_timeout_sec=4,
+        managed_parse_server=ManagedParseServerConfig(host="127.0.0.2", port=16580, port_probe_count=3),
+    )
+
+    async def _restart(
+        health_arg: ParseServerHealth,
+        *,
+        reason: str,
+        marker: str | None,
+        count_restart: bool,
+    ) -> None:
+        assert health_arg is health
+        calls.append((reason, marker or "", count_restart))
+
+    monkeypatch.setattr(checker, "_try_restart_managed", _restart)
+    health = ParseServerHealth(running_managed_tier="standard")
+
+    restarted = asyncio.run(checker._try_restart_managed_for_tier_change(health, "pro"))
+    unchanged = asyncio.run(checker._try_restart_managed_for_tier_change(health, "standard"))
+
+    assert restarted is True
+    assert unchanged is False
+    assert calls == [("tier-change", "tier change standard->pro", False)]
+
+
+def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[str] = []
+    old_proc = object()
+
+    class _ConfigSvc:
+        async def get(self, key: str) -> str:
+            assert key == "parse_server.local.managed_tier"
+            return "pro"
+
+    class _Proc:
+        pid = 24680
+
+    def _stop(proc: object, *, timeout_sec: int, reason: str) -> None:
+        assert proc is old_proc
+        assert timeout_sec == 4
+        assert reason == "tier-change"
+        events.append("stop")
+
+    def _start(*, tier: Tier, managed_cfg: ManagedParseServerConfig, log_cfg: LogConfig | None, marker: str) -> tuple[_Proc, str]:
+        assert tier == "pro"
+        assert managed_cfg.host == "127.0.0.2"
+        assert log_cfg is None
+        assert marker == "tier change standard->pro"
+        events.append("start")
+        return _Proc(), "http://127.0.0.2:16582"
+
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.stop_managed_parse_server", _stop)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.start_managed_parse_server", _start)
+
+    checker = ParseServerHealthCheck(
+        _ConfigSvc(),
+        interval_sec=1,
+        probe_timeout_sec=2,
+        startup_grace_sec=3,
+        stop_timeout_sec=4,
+        managed_parse_server=ManagedParseServerConfig(host="127.0.0.2", port=16580, port_probe_count=3),
+    )
+    health = ParseServerHealth(managed_proc=old_proc, running_managed_tier="standard", restart_count=2)
+
+    asyncio.run(
+        checker._try_restart_managed(
+            health,
+            reason="tier-change",
+            marker="tier change standard->pro",
+            count_restart=False,
+        )
+    )
+
+    assert events == ["stop", "start"]
+    assert health.managed_proc.pid == 24680
+    assert health.running_managed_tier == "pro"
+    assert health.restart_count == 2
+
+
 def test_get_file_stat_returns_typed_file_stat(tmp_path: Path) -> None:
     source = tmp_path / "note.txt"
     source.write_text("content", encoding="utf-8")

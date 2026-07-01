@@ -37,6 +37,7 @@ class ParseServerHealth:
     self_hosted_url: str | None = None
     managed_url: str = DEFAULT_MANAGED_URL
     managed_tier: Tier | None = None
+    running_managed_tier: Tier | None = None
     local_last_probe_at: int | None = None
     local_last_success_at: int | None = None
     local_last_failure_at: int | None = None
@@ -234,7 +235,8 @@ class ParseServerHealthCheck:
             mode = (await self.config_svc.get("parse_server.local.mode")) or "disabled"
             health.local_mode = mode
             managed_tier = (await self.config_svc.get("parse_server.local.managed_tier")) or "standard"
-            health.managed_tier = cast(Tier, managed_tier)
+            desired_managed_tier = cast(Tier, managed_tier)
+            health.managed_tier = desired_managed_tier
             self_hosted_url = await self.config_svc.get("parse_server.local.self_hosted_url")
             health.self_hosted_url = self_hosted_url if self_hosted_url else None
 
@@ -274,31 +276,63 @@ class ParseServerHealthCheck:
                         continue  # still loading models, don't restart
                 logger.warning("Managed parse-server is unhealthy, attempting restart")
                 await self._try_restart_managed(health)
+            elif health.local_mode == "managed" and health.local_healthy:
+                await self._try_restart_managed_for_tier_change(health, desired_managed_tier)
 
             await asyncio.sleep(self.interval_sec)
 
-    async def _try_restart_managed(self, health: ParseServerHealth) -> None:
-        if health.restart_count >= MAX_RESTART_ATTEMPTS:
+    async def _try_restart_managed_for_tier_change(
+        self, health: ParseServerHealth, desired_managed_tier: Tier
+    ) -> bool:
+        running_managed_tier = health.running_managed_tier
+        if running_managed_tier is None or running_managed_tier == desired_managed_tier:
+            return False
+
+        logger.info(
+            "Managed parse-server tier changed from %s to %s, restarting",
+            running_managed_tier,
+            desired_managed_tier,
+        )
+        await self._try_restart_managed(
+            health,
+            reason="tier-change",
+            marker=f"tier change {running_managed_tier}->{desired_managed_tier}",
+            count_restart=False,
+        )
+        return True
+
+    async def _try_restart_managed(
+        self,
+        health: ParseServerHealth,
+        *,
+        reason: str = "restart",
+        marker: str | None = None,
+        count_restart: bool = True,
+    ) -> None:
+        if count_restart and health.restart_count >= MAX_RESTART_ATTEMPTS:
             logger.error(
                 "Managed parse-server failed %d restarts, disabling", MAX_RESTART_ATTEMPTS
             )
             health.local_mode = "disabled"
             return
 
-        health.restart_count += 1
+        if count_restart:
+            health.restart_count += 1
         managed_tier = (await self.config_svc.get("parse_server.local.managed_tier")) or "standard"
-        stop_managed_parse_server(health.managed_proc, timeout_sec=self.stop_timeout_sec, reason="restart")
+        stop_managed_parse_server(health.managed_proc, timeout_sec=self.stop_timeout_sec, reason=reason)
         health.managed_proc = None
+        health.running_managed_tier = None
         try:
             proc, managed_url = start_managed_parse_server(
                 tier=cast(Tier, managed_tier),
                 managed_cfg=self.managed_parse_server,
                 log_cfg=self.log_cfg,
-                marker=f"restart attempt {health.restart_count}",
+                marker=marker or f"restart attempt {health.restart_count}",
             )
             health.managed_url = managed_url
             logger.info("Managed parse-server restarted (PID %d, tier=%s)", proc.pid, managed_tier)
             health.managed_proc = proc
+            health.running_managed_tier = cast(Tier, managed_tier)
             health.local_starting = True
             health.local_started_at = asyncio.get_event_loop().time()
         except Exception as exc:

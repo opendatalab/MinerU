@@ -132,6 +132,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                 health.managed_url = managed_url
                 logging.info("Managed parse-server started (PID %d, tier=%s)", proc.pid, managed_tier)
                 health.managed_proc = proc
+                health.running_managed_tier = managed_tier
                 health.local_starting = True
                 health.local_started_at = asyncio.get_event_loop().time()
             except Exception as exc:
