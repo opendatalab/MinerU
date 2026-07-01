@@ -10,6 +10,7 @@ ErrorType = Literal[
     "permission_error",
     "rate_limit_error",
     "engine_error",
+    "timeout_error",
     "api_error",
 ]
 
@@ -71,6 +72,8 @@ _ERROR_TYPE_MAP: dict[str, ErrorType] = {
     "parse_page_remap_failed": "engine_error",
     "parse_timeout": "engine_error",
     "quality_tier_unavailable": "engine_error",
+    # timeout_error
+    "parse_wait_timeout": "timeout_error",
     # api_error
     "ingest_failed": "api_error",
     "internal_error": "api_error",
@@ -93,6 +96,7 @@ _ERROR_STATUS_MAP: dict[ErrorType, int] = {
     "permission_error": 403,
     "rate_limit_error": 429,
     "engine_error": 503,
+    "timeout_error": 408,
     "api_error": 500,
 }
 

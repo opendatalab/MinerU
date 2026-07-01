@@ -21,7 +21,7 @@ from ...doclib.types import (
     TelemetryObservation,
     TelemetryObservationsRequest,
 )
-from ...errors import MineruError
+from ...errors import MineruError, error_response
 from ...types import Tier
 from ..contracts import CliContext, CliResult
 from ..path_utils import normalize_cli_path
@@ -246,13 +246,15 @@ def _parse(
             raise MineruError(failed.error_code if failed else "parse_failed", failed.error_msg if failed else "", None)
 
     _record_parse_wait(client, wait_parse_ids, "timeout", wait_started_at)
+    timeout_error = MineruError("parse_wait_timeout", f"Parse did not finish within {wait} seconds.", "wait")
     if json_mode:
         timeout_result = result.model_copy(update={"status": "parsing", "tip": "Re-run the same command to continue waiting."})
-        _emit_parse_json_response(timeout_result, None)
+        _emit_parse_json_response(timeout_result, None, error=timeout_error, exit_code=1)
     else:
         _emit_notice(
             f"Parse still in progress (tier={req_tier}). Check status with: mineru show file {file_path}", json_mode=json_mode
         )
+        emit_result(CliContext(json_mode=False), cli_ok(exit_code=1))
 
 
 def _record_parse_wait(client: DoclibClient, parse_ids: list[int], status: str, started_at: float) -> None:
@@ -367,8 +369,13 @@ def _emit_parse_json_response(
     content: DocContentResponse | None,
     *,
     output: str | None = None,
+    error: MineruError | None = None,
+    exit_code: int = 0,
 ) -> None:
-    emit_result(CliContext(json_mode=True), cli_ok(_parse_json_payload(parse_result, content, output=output)))
+    emit_result(
+        CliContext(json_mode=True),
+        cli_ok(_parse_json_payload(parse_result, content, output=output, error=error), exit_code=exit_code),
+    )
 
 
 def _parse_json_payload(
@@ -376,6 +383,7 @@ def _parse_json_payload(
     content: DocContentResponse | None,
     *,
     output: str | None = None,
+    error: MineruError | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "parse": parse_result.model_dump(mode="json"),
@@ -383,6 +391,8 @@ def _parse_json_payload(
     }
     if output is not None:
         payload["output"] = _output_info(output)
+    if error is not None:
+        payload["error"] = error_response(error)["error"]
     return payload
 
 

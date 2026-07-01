@@ -69,6 +69,8 @@ def test_doclib_error_code_types_are_stable() -> None:
     assert error_type_for("parse_page_remap_failed") == "engine_error"
     assert error_type_for("quality_tier_unavailable") == "engine_error"
 
+    assert error_type_for("parse_wait_timeout") == "timeout_error"
+
     assert error_type_for("ingest_failed") == "api_error"
     assert error_type_for("open_failed") == "api_error"
     assert error_type_for("parse_json_write_failed") == "api_error"
@@ -96,6 +98,7 @@ def test_http_status_for_error_codes_is_stable() -> None:
 
     assert http_status_for("parse_failed") == 503
     assert http_status_for("engine_unavailable") == 503
+    assert http_status_for("parse_wait_timeout") == 408
     assert http_status_for("parse_server_unavailable") == 500
     assert http_status_for("internal_error") == 500
 

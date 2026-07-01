@@ -61,6 +61,7 @@
 | `permission_error` | 权限、配额或隐私策略不允许 | 403 |
 | `rate_limit_error` | 限流 | 429 |
 | `engine_error` | 解析引擎、tier、parse-server 或解析执行错误 | 500 / 503 / 504 |
+| `timeout_error` | 客户端或请求等待窗口到期，但后台任务不一定失败 | 408 |
 | `api_error` | 服务端内部错误或通信不可用 | 500 / 503 |
 
 ## 5. Tier 与引擎错误
@@ -76,6 +77,7 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`standard`、`pr
 | `engine_error` | `tier_mismatch` | 400 | 否 | `tier` | parse-server 不支持请求 tier | `choose_supported_tier` |
 | `engine_error` | `parse_failed` | 500 | 否 | null | 引擎明确返回解析失败，如损坏、加密、模型无法处理 | `inspect_file_or_try_different_tier` |
 | `engine_error` | `parse_timeout` | 504 | 是 | null | 解析超时 | `retry_or_use_lower_tier` |
+| `timeout_error` | `parse_wait_timeout` | 408 | 是 | `wait` | CLI `parse --wait` 等待窗口到期，解析任务仍在运行 | `poll_parse_or_rerun_with_longer_wait` |
 | `engine_error` | `parse_oom` | 500 | 是 | null | 本地显存或内存不足 | `use_lower_tier_or_remote` |
 
 关键约束：
