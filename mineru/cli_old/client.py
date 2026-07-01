@@ -44,6 +44,7 @@ from mineru.utils.backend_options import (
     validate_effort,
 )
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
+from mineru.utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from mineru.utils.pdf_document import PDFDocument
 from mineru.utils.pdf_page_id import get_end_page_id
 from mineru.version import __version__
@@ -108,6 +109,18 @@ def normalize_effort_option(
     """将 CLI 输入的 hybrid effort 参数规范为当前公开 effort 名称。"""
     try:
         return validate_effort(value)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), ctx=ctx, param=param) from exc
+
+
+def normalize_ocr_lang_option(
+    ctx: Optional[click.Context],
+    param: Optional[click.Parameter],
+    value: str,
+) -> str:
+    """将 CLI OCR 语言参数归一为公开下游可消费的语言 key。"""
+    try:
+        return validate_public_ocr_lang(value)
     except ValueError as exc:
         raise click.BadParameter(str(exc), ctx=ctx, param=param) from exc
 
@@ -787,6 +800,7 @@ async def run_planned_task(
     form_data: dict[str, str],
     output_dir: Path,
     live_renderer: Optional[LiveTaskStatusRenderer] = None,
+    effort: str = DEFAULT_HYBRID_EFFORT,
     client_side_output_generation: bool = False,
 ) -> None:
     logger.info(format_task_submission_message(planned_task, progress))
@@ -836,6 +850,7 @@ async def run_planned_task(
                 parse_dir,
                 document.stem,
                 "office" if document.suffix in office_suffixes else backend,
+                effort=effort,
             )
     completed_tasks, completed_pages = await mark_task_completed(
         progress,
@@ -963,6 +978,7 @@ async def run_orchestrated_cli(
                     form_data=form_data,
                     output_dir=output_dir,
                     live_renderer=live_renderer,
+                    effort=effort,
                     client_side_output_generation=client_side_output_generation,
                 ),
             )
@@ -1060,28 +1076,10 @@ async def run_orchestrated_cli(
     "-l",
     "--lang",
     "lang",
-    type=click.Choice(
-        [
-            "ch",
-            "ch_server",
-            "ch_lite",
-            "en",
-            "korean",
-            "japan",
-            "chinese_cht",
-            "ta",
-            "te",
-            "ka",
-            "th",
-            "el",
-            "latin",
-            "arabic",
-            "east_slavic",
-            "cyrillic",
-            "devanagari",
-        ]
-    ),
+    type=str,
     default="ch",
+    callback=normalize_ocr_lang_option,
+    metavar="[" + "|".join(PUBLIC_OCR_LANGUAGES) + "]",
     help="""
     Input the languages in the pdf (if known) to improve OCR accuracy.
     Without languages specified, 'ch' will be used by default.

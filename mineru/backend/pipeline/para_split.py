@@ -320,6 +320,8 @@ def __merge_2_vertical_text_blocks(block1: Block, block2: Block) -> tuple[Block,
                             and abs(block1_height - block2_height) < min_block_height
                             and not span_start_with_num
                             and not span_start_with_big_char
+                            # 下一个纵排块的右边界要进入上一个纵排块左边界右侧
+                            and block1.bbox[2] > block2.bbox[0]
                         ):
                             if block1._page_num != block2._page_num:
                                 for line in block1.lines:

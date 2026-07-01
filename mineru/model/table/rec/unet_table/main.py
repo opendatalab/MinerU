@@ -28,6 +28,21 @@ from .utils_table_recover import (
     sorted_ocr_boxes,
 )
 
+BLANK_CELL_REC_DROP_TEXTS = {
+    "1",
+    "一",
+    "—",
+    "口",
+    "■",
+    "（204号",
+    "（20",
+    "（2",
+    "（2号",
+    "（20号",
+    "号",
+    "（204",
+}
+
 
 @dataclass
 class WiredTableInput:
@@ -142,20 +157,18 @@ class WiredTableRecognition:
             dict_res["t_ocr_res"] = gather_ocr_list_by_row(dict_res["t_ocr_res"], threhold=0.3)
         return res
 
-    # def fill_blank_rec(
-    #     self,
-    #     img: np.ndarray,
-    #     sorted_polygons: np.ndarray,
-    #     cell_box_map: Dict[int, List[str]],
-    # ) -> Dict[int, List[Any]]:
-    #     """找到poly对应为空的框，尝试将直接将poly框直接送到识别中"""
-    #     for i in range(sorted_polygons.shape[0]):
-    #         if cell_box_map.get(i):
-    #             continue
-    #         box = sorted_polygons[i]
-    #         cell_box_map[i] = [[box, "", 1]]
-    #         continue
-    #     return cell_box_map
+    @staticmethod
+    def _should_drop_blank_cell_rec_result(text: str, score) -> bool:
+        """判断空单元格二次 OCR-rec 结果是否应作为噪声过滤。"""
+        try:
+            if float(score) < 0.6:
+                return True
+        except (TypeError, ValueError):
+            return True
+
+        normalized_text = "" if text is None else str(text).strip()
+        return not normalized_text or normalized_text in BLANK_CELL_REC_DROP_TEXTS
+
     def fill_blank_rec(
         self,
         img: np.ndarray,
@@ -218,7 +231,7 @@ class WiredTableRecognition:
                 # 处理ocr结果
                 ocr_text, ocr_score = ocr_res
                 # logger.debug(f"OCR result for box {i}: {ocr_text} with score {ocr_score}")
-                if ocr_score < 0.6 or ocr_text in ["1", "口", "■", "（204号", "（20", "（2", "（2号", "（20号", "号", "（204"]:
+                if self._should_drop_blank_cell_rec_result(ocr_text, ocr_score):
                     # logger.warning(f"Low confidence OCR result for box {i}: {ocr_text} with score {ocr_score}")
                     box = sorted_polygons[i]
                     cell_box_map[i] = [[box, "", 0.1]]

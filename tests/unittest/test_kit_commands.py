@@ -171,6 +171,36 @@ def test_models_download_pipeline(monkeypatch: Any) -> None:
     assert "Downloaded pipeline models" in result.output
 
 
+def test_models_download_auto_source_resolves_before_download(monkeypatch: Any) -> None:
+    captured: dict[str, str] = {}
+
+    def fake_resolve_model_source(model_source: str | None = None, allow_auto: bool = False) -> str:
+        assert model_source == "auto"
+        assert allow_auto is True
+        return "modelscope"
+
+    def fake_update_models_dir(bundle: str, model_dir: str) -> Path:
+        captured["bundle"] = bundle
+        captured["model_dir"] = model_dir
+        captured["effective_source"] = models.os.getenv(models.MODEL_SOURCE_ENV_VAR, "")
+        return Path(f"/tmp/{bundle}.json")
+
+    monkeypatch.delenv(models.MODEL_SOURCE_ENV_VAR, raising=False)
+    monkeypatch.setattr(models, "resolve_model_source", fake_resolve_model_source, raising=False)
+    monkeypatch.setattr(models, "_download_pipeline_models", lambda: "/tmp/pipeline")
+    monkeypatch.setattr(models, "_update_models_dir", fake_update_models_dir)
+
+    result = runner.invoke(app, ["models", "download", "pipeline", "--source", "auto"])
+
+    assert result.exit_code == 0
+    assert captured == {
+        "bundle": "pipeline",
+        "model_dir": "/tmp/pipeline",
+        "effective_source": "modelscope",
+    }
+    assert "Downloaded pipeline models from modelscope" in result.output
+
+
 def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
     config = tmp_path / "mineru.json"
     pipeline_root = tmp_path / "pipeline"
@@ -243,6 +273,29 @@ def test_api_server_normalizes_backend_alias(monkeypatch: Any) -> None:
     assert "hybrid-engine" in seen["args"]
     assert "hybrid-auto-engine" not in seen["args"]
     assert "--tier" not in seen["args"]
+
+
+def test_api_server_normalizes_hidden_language_alias(monkeypatch: Any) -> None:
+    seen: dict[str, Any] = {}
+
+    def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
+        """记录 api-server 转发参数，确认隐藏语言别名不会继续下传。"""
+        seen["args"] = args
+
+    monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
+
+    result = runner.invoke(app, ["api-server", "--language", "en"])
+
+    assert result.exit_code == 0
+    language_index = seen["args"].index("--language")
+    assert seen["args"][language_index + 1] == "ch"
+
+
+def test_api_server_rejects_removed_ch_lite_language() -> None:
+    result = runner.invoke(app, ["api-server", "--language", "ch_lite"])
+
+    assert result.exit_code == 1
+    assert "Language ch_lite not supported" in result.output
 
 
 def test_vlm_server_rejects_unimplemented_engine() -> None:
@@ -407,6 +460,53 @@ def test_parse_forwards_backend_alias_and_effort(monkeypatch: Any, tmp_path: Pat
     assert result.exit_code == 0
     assert seen["backend"] == "hybrid-engine"
     assert seen["effort"] == "high"
+
+
+def test_parse_normalizes_hidden_language_alias(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    output = tmp_path / "out.md"
+    source.write_bytes(b"%PDF-1.7\n")
+    seen: dict[str, Any] = {}
+
+    class _Result:
+        def markdown(self) -> str:
+            """返回用于验证 language 归一化的测试内容。"""
+            return "# demo\n"
+
+        def to_json(self) -> str:
+            """保留 zip 输出所需接口。"""
+            return '{"pages":[]}'
+
+        def images(self) -> dict[str, bytes]:
+            """本用例不关注图片 sidecar。"""
+            return {}
+
+        def save(self, writer: Any) -> None:
+            """模拟 zip 输出所需的完整保存接口。"""
+            writer.write_string("markdown.md", self.markdown())
+            writer.write_string("middle_json.json", self.to_json())
+
+    def _fake_local_parse(*args: Any, **kwargs: Any) -> _Result:
+        """记录 mineru-kit parse 透传给 parser 的语言参数。"""
+        seen.update(kwargs)
+        return _Result()
+
+    monkeypatch.setattr(parse, "local_parse", _fake_local_parse)
+
+    result = runner.invoke(app, ["parse", str(source), "-o", str(output), "--language", "japan"])
+
+    assert result.exit_code == 0
+    assert seen["language"] == "ch"
+
+
+def test_parse_rejects_removed_ch_lite_language(tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    result = runner.invoke(app, ["parse", str(source), "-o", str(tmp_path / "out.md"), "--language", "ch_lite"])
+
+    assert result.exit_code == 1
+    assert "Language ch_lite not supported" in result.output
 
 
 def test_parse_forwards_flash_backend(monkeypatch: Any, tmp_path: Path) -> None:

@@ -34,7 +34,7 @@ class TextClassifier(BaseOCRV20):
 
         self.load_pytorch_weights(self.weights_path)
         self.net.eval()
-        self.net.to(self.device)
+        self._apply_inference_precision(self.device)
 
     def resize_norm_img(self, img):
         imgC, imgH, imgW = self.cls_image_shape
@@ -86,15 +86,15 @@ class TextClassifier(BaseOCRV20):
                 norm_img = self.resize_norm_img(img_list[indices[ino]])
                 norm_img = norm_img[np.newaxis, :]
                 norm_img_batch.append(norm_img)
-            norm_img_batch = np.concatenate(norm_img_batch)
-            norm_img_batch = norm_img_batch.copy()
+            norm_img_batch = np.ascontiguousarray(np.concatenate(norm_img_batch))
             starttime = time.time()
 
-            with torch.no_grad():
+            with torch.inference_mode():
                 inp = torch.from_numpy(norm_img_batch)
                 inp = inp.to(self.device)
+                inp = self._to_inference_dtype(inp)
                 prob_out = self.net(inp)
-            prob_out = prob_out.cpu().numpy()
+            prob_out = prob_out.float().cpu().numpy()
 
             cls_result = self.postprocess_op(prob_out)
             elapse += time.time() - starttime

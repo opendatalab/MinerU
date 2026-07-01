@@ -7,28 +7,11 @@ import typer
 from ...parser import api_server as parser_api_server
 from ...parser.tier import PARSER_BACKENDS
 from ...utils.backend_options import normalize_public_backend
+from ...utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..errors import exit_with_message
 
 API_SERVER_BACKENDS = tuple(backend for backend in PARSER_BACKENDS if backend != "flash")
-API_SERVER_LANGUAGES = (
-    "ch",
-    "ch_server",
-    "ch_lite",
-    "en",
-    "korean",
-    "japan",
-    "chinese_cht",
-    "ta",
-    "te",
-    "ka",
-    "th",
-    "el",
-    "latin",
-    "arabic",
-    "east_slavic",
-    "cyrillic",
-    "devanagari",
-)
+API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
 
 
 def api_server_cmd(
@@ -52,8 +35,10 @@ def api_server_cmd(
         normalized_backend = normalize_public_backend(backend) if backend is not None else None
     except ValueError as exc:
         exit_with_message("invalid_request", str(exc), "backend")
-    if language not in API_SERVER_LANGUAGES:
-        exit_with_message("invalid_request", f"Unsupported language '{language}'.", "language")
+    try:
+        normalized_language = validate_public_ocr_lang(language)
+    except ValueError as exc:
+        exit_with_message("invalid_request", str(exc), "language")
     effective_tier = "standard" if tier is None and normalized_backend is None else tier
     try:
         parser_api_server.main.main(
@@ -69,7 +54,7 @@ def api_server_cmd(
                 "--max-wait",
                 str(max_wait),
                 "--language",
-                language,
+                normalized_language,
                 "--ocr-mode",
                 ocr_mode,
                 "--effort",

@@ -7,7 +7,13 @@ import typer
 from loguru import logger
 
 from ...utils.enum_class import ModelPath
-from ...utils.models_download_utils import auto_download_and_get_model_root_path
+from ...utils.models_download_utils import (
+    MINERU_CONFIG_VERSION,
+    auto_download_and_get_model_root_path,
+    is_config_version_outdated,
+    merge_config_dict,
+    resolve_model_source,
+)
 from ..common import PIPELINE_MODEL_PATHS, VLM_MODEL_MARKERS, read_json_file, resolve_models_config_path, write_json_file
 from ..errors import exit_with_message
 from ..output import print_info, print_success
@@ -15,17 +21,19 @@ from ..output import print_info, print_success
 app = typer.Typer(help="Download, inspect, and verify local MinerU models.", no_args_is_help=True)
 
 MODEL_SOURCE_ENV_VAR = "MINERU_MODEL_SOURCE"
-REMOTE_MODEL_SOURCES = ("huggingface", "modelscope")
+REMOTE_MODEL_SOURCES = ("auto", "huggingface", "modelscope")
 
 
 def _load_or_template_config() -> dict:
     config_path = resolve_models_config_path()
     payload = read_json_file(config_path)
-    if payload is not None:
-        if payload.get("config_version", "0.0.0") >= "1.3.1":
-            return payload
     template_path = Path(__file__).resolve().parents[3] / "mineru.template.json"
-    return read_json_file(template_path) or {"models-dir": {}, "config_version": "1.3.1"}
+    template_payload = read_json_file(template_path) or {"models-dir": {}, "config_version": MINERU_CONFIG_VERSION}
+    if payload is not None:
+        if not is_config_version_outdated(payload.get("config_version", "0.0.0")):
+            return payload
+        return merge_config_dict(template_payload, payload, skip_keys={"config_version"})
+    return template_payload
 
 
 def _update_models_dir(bundle: str, model_dir: str) -> Path:
@@ -36,6 +44,9 @@ def _update_models_dir(bundle: str, model_dir: str) -> Path:
         models_dir = {}
         payload["models-dir"] = models_dir
     models_dir[bundle] = model_dir
+    model_source = os.getenv(MODEL_SOURCE_ENV_VAR)
+    if model_source in {"huggingface", "modelscope"}:
+        payload["model-source"] = model_source
     write_json_file(config_path, payload)
     return config_path
 
@@ -47,10 +58,10 @@ def _get_effective_download_model_source(requested_model_source: str) -> str:
             f"{MODEL_SOURCE_ENV_VAR}=local means using pre-downloaded local models. "
             f"`mineru-kit models download` will temporarily use '{requested_model_source}' to perform a real download."
         )
-        return requested_model_source
+        return resolve_model_source(requested_model_source, allow_auto=True)
     if current_model_source is None:
-        return requested_model_source
-    return current_model_source
+        return resolve_model_source(requested_model_source, allow_auto=True)
+    return resolve_model_source(current_model_source)
 
 
 def _download_pipeline_models() -> str:
@@ -83,7 +94,7 @@ def _with_temporary_model_source(model_source: str):
 @app.command("download")
 def download_cmd(
     bundle: str = typer.Argument(..., help="Model bundle: pipeline, vlm, all"),
-    source: str = typer.Option("huggingface", "--source", "-s", help="Model source: huggingface or modelscope"),
+    source: str = typer.Option("auto", "--source", "-s", help="Model source: auto, huggingface, or modelscope"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ) -> None:
     """Download a model bundle and update mineru.json."""
@@ -123,6 +134,7 @@ def show_cmd() -> None:
     lines = [
         f"Config: {config_path}",
         f"MINERU_MODEL_SOURCE={os.getenv(MODEL_SOURCE_ENV_VAR, '') or '(unset)'}",
+        f"model-source: {payload.get('model-source', '') or '(unset)'}",
         f"pipeline: {pipeline or '(unset)'}",
         f"pipeline.exists: {Path(pipeline).exists() if pipeline else False}",
         f"vlm: {vlm or '(unset)'}",

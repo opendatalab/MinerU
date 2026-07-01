@@ -79,6 +79,22 @@ MCP Server · LangChain / Dify / FastGPT 原生集成 · 10+ 国产算力适配 
 
 # 更新记录
 
+- 2026/06/18 3.4 发布
+
+  本次版本更新聚焦于 **pipeline 后端 OCR 能力升级**、**OCR 处理链路优化** 与 **模型下载体验改进**。主要更新内容包括：
+
+  - OCR 模型升级与处理加速
+    - `pipeline` 后端 OCR 模型更新至 `PP-OCRv6`，在 OmniDocBench v1.6 评测中，OCR 相关指标提升约 `11%`。
+    - 移除 OCR 语言选择中的日语、繁体中文、英语、拉丁文选项，相关场景统一路由到 `ch` OCR 模型，简化模型配置与语言选择逻辑。
+    - 优化 OCR 推理与处理链路，OCR 处理速度提升约 `100%`，显著改善批量文档和 OCR 密集型文档的解析效率。
+
+  - 模型下载逻辑优化
+    - 新增模型源自动选择能力，首次安装时可根据当前网络环境自动选择更合适的模型源。
+    - 下载模型前会优先检查本地已下载的模型缓存文件，命中缓存时可直接复用，减少重复下载和不必要的远端请求。
+    - 更多模型源配置、自动选择策略与本地模型使用说明，请参考 [模型源说明](https://opendatalab.github.io/MinerU/zh/usage/model_source/)。
+
+  在 3.4 版本，MinerU 进一步提升了 `pipeline` 后端在 OCR 场景下的解析精度与处理效率，同时优化了模型下载、缓存复用和本地配置写入流程，让首次安装、模型更新和多环境部署更加稳定、自动化。
+
 - 2026/06/11 3.3 发布
 
   本次版本更新聚焦于 **Hybrid 解析性能优化** 与 **VLM 模型能力升级**。主要更新内容包括：
@@ -216,7 +232,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr> 
     <tr>
       <th>精度指标<sup>1</sup></th>
-      <td style="text-align:center;">85.75</td>
+      <td style="text-align:center;">86.47</td>
       <td style="text-align:center;">95.39（high）<br>95.26（medium）</td>
       <td style="text-align:center;">95.30</td>
       <td style="text-align:center;">95.39（high）<br>95.26（medium）</td>

@@ -9,6 +9,7 @@ import argparse
 
 root_dir = Path(__file__).resolve().parent.parent.parent
 DEFAULT_CFG_PATH = root_dir / "pytorchocr" / "utils" / "resources" / "arch_config.yaml"
+DEFAULT_REC_CHAR_DICT_PATH = root_dir / "pytorchocr" / "utils" / "resources" / "dict" / "ppocrv6_dict.txt"
 
 
 def init_args():
@@ -88,8 +89,7 @@ def init_args():
     parser.add_argument(
         "--rec_char_dict_path",
         type=str,
-        default=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                             'pytorchocr/utils/ppocr_keys_v1.txt'))
+        default=str(DEFAULT_REC_CHAR_DICT_PATH))
 
     # params for text classifier
     parser.add_argument("--use_angle_cls", type=str2bool, default=False)

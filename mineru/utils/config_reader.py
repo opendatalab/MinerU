@@ -5,16 +5,20 @@ from typing import Any
 
 from loguru import logger
 
-# 定义配置文件名常量
+# 定义配置文件名常量，保留给旧日志文案使用；实际读取路径通过函数动态解析环境变量。
 CONFIG_FILE_NAME = os.getenv("MINERU_TOOLS_CONFIG_JSON", "mineru.json")
 
 
+def get_tools_config_file_path() -> str:
+    """获取 MinerU 工具配置文件路径，支持环境变量指定绝对或相对路径。"""
+    config_file_name = os.getenv("MINERU_TOOLS_CONFIG_JSON", "mineru.json")
+    if os.path.isabs(config_file_name):
+        return config_file_name
+    return os.path.join(os.path.expanduser("~"), config_file_name)
+
+
 def read_config() -> dict[str, Any] | None:
-    if os.path.isabs(CONFIG_FILE_NAME):
-        config_file = CONFIG_FILE_NAME
-    else:
-        home_dir = os.path.expanduser("~")
-        config_file = os.path.join(home_dir, CONFIG_FILE_NAME)
+    config_file = get_tools_config_file_path()
 
     if not os.path.exists(config_file):
         # logger.warning(f'{config_file} not found, using default configuration')
@@ -23,6 +27,34 @@ def read_config() -> dict[str, Any] | None:
         with open(config_file, "r", encoding="utf-8") as f:
             config = json.load(f)
         return config
+
+
+def get_configured_model_source(default: str | None = None) -> str | None:
+    """读取配置文件中的固定模型来源配置，auto 或缺失时返回默认值。"""
+    supported_sources = {"huggingface", "modelscope"}
+    config = read_config()
+    if config is None:
+        return default
+
+    model_source = config.get("model-source")
+    if model_source is None:
+        return default
+    if not isinstance(model_source, str):
+        logger.warning(f"'model-source' in {get_tools_config_file_path()} must be a string, use {default} as default")
+        return default
+
+    normalized_model_source = model_source.strip().lower()
+    if not normalized_model_source:
+        return default
+    if normalized_model_source == "auto":
+        return default
+    if normalized_model_source in supported_sources:
+        return normalized_model_source
+
+    logger.warning(
+        f"Unsupported 'model-source' in {get_tools_config_file_path()}: {model_source}, use {default} as default"
+    )
+    return default
 
 
 def get_s3_config(bucket_name: str) -> tuple[str, str, str]:
