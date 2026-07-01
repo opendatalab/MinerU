@@ -12,6 +12,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import importlib
+import io
 import json
 import os
 import pathlib
@@ -21,12 +23,15 @@ import sys
 import tempfile
 import threading
 import time
+import zipfile
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Annotated, Any, AsyncIterator, Callable, Literal
 
 import click
+import httpx
+import uvicorn
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -35,11 +40,36 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..types import Tier
 from ..utils.backend_options import HYBRID_EFFORT_HELP, validate_effort
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
+from ..version import __version__
+from . import parse_async
 from .tier import PARSER_BACKENDS, resolve_tier_and_backend
 
 _API_SERVER_BACKENDS = tuple(backend for backend in PARSER_BACKENDS if backend != "flash")
 _API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
 _MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
+
+_STANDARD_REQUIRED_MODULES = [
+    "ftfy",
+    "shapely",
+    "pyclipper",
+    "torch",
+    "torchvision",
+    "transformers",
+]
+_PRO_REQUIRED_MODULES_COMMON = [
+    *_STANDARD_REQUIRED_MODULES,
+    "accelerate",
+]
+_PRO_REQUIRED_MODULES_BY_PLATFORM = {
+    "linux": ["vllm"],
+    "win32": ["lmdeploy", "qwen_vl_utils"],
+    "darwin": ["mlx", "mlx_vlm"],
+}
+
+
+class ParseServerStartupError(RuntimeError):
+    """Raised when the parse server cannot start because of local setup."""
+
 
 # ── literal type aliases ────────────────────────────────────────────
 
@@ -1194,8 +1224,6 @@ async def _extract_bytes(source: FileSource, file_store: FileStore, *, url_timeo
             raise ValueError("File has no content")
         return file_store.read_blob(rec.sha256sum)
     if isinstance(source, UrlSource):
-        import httpx
-
         async with httpx.AsyncClient(timeout=url_timeout) as cli:
             r = await cli.get(source.url)
             r.raise_for_status()
@@ -1247,8 +1275,6 @@ async def _run_job(
                 tmp_path.write_bytes(data)
 
                 page_range = entry.page_range or ""
-
-                from . import parse_async
 
                 result = await parse_async(
                     str(tmp_path),
@@ -1311,11 +1337,8 @@ async def _run_job(
 
                 # zip
                 if "zip" in out_formats:
-                    import io as _io
-                    import zipfile as _zipfile
-
-                    buf = _io.BytesIO()
-                    with _zipfile.ZipFile(buf, "w", _zipfile.ZIP_DEFLATED) as zf:
+                    buf = io.BytesIO()
+                    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
                         for fmt_name, attr in [
                             ("markdown", "markdown"),
                             ("middle_json", "middle_json"),
@@ -1346,7 +1369,6 @@ async def _run_job(
                 fr.status = "completed"
                 fr.page_range = _page_range_from_result_pages(result.pages)
                 fr.output_files = output_files
-                from ..version import __version__
 
                 fr.parse = FileParseInfo(
                     model_used=None,
@@ -1399,9 +1421,11 @@ _ERR_429: dict[int | str, dict[str, Any]] = {429: {"model": ErrorResponse}}
 )
 async def get_health() -> HealthResponse:
     """Health check endpoint."""
-    from ..version import __version__
-
-    return HealthResponse(version=__version__, parser_version=__version__, models=ModelHealthStatus())
+    return HealthResponse(
+        version=__version__,
+        parser_version=__version__,
+        models=ModelHealthStatus(),
+    )
 
 
 # ── Models ───────────────────────────────────────────────────────────
@@ -1959,6 +1983,37 @@ def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[di
     ]
 
 
+def _required_modules_for_tier(tier: Tier) -> list[str]:
+    if tier == "standard":
+        return list(_STANDARD_REQUIRED_MODULES)
+    if tier == "pro":
+        return [
+            *_PRO_REQUIRED_MODULES_COMMON,
+            *_PRO_REQUIRED_MODULES_BY_PLATFORM.get(sys.platform, []),
+        ]
+    return []
+
+
+def _preflight_tier_dependencies(tier: Tier) -> None:
+    missing_modules = []
+    for module_name in _required_modules_for_tier(tier):
+        try:
+            importlib.import_module(module_name)
+        except ModuleNotFoundError as exc:
+            if exc.name not in (None, module_name):
+                raise
+            missing_modules.append(module_name)
+
+    if not missing_modules:
+        return
+
+    missing = ", ".join(missing_modules)
+    raise ParseServerStartupError(
+        f"Parse server cannot start for tier '{tier}'; missing runtime dependencies: {missing}. "
+        f"Install the required extra, for example: mineru[{tier}]."
+    )
+
+
 def create_app(
     *,
     upload_dir: str = "",
@@ -2014,6 +2069,7 @@ def create_app(
     upload_dir = upload_dir or ""
     tier, backend = _resolve_server_tier_and_backend(tier=tier, backend=backend)
     effort = validate_effort(effort)
+    _preflight_tier_dependencies(tier)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
     _upload_dir.mkdir(parents=True, exist_ok=True)
@@ -2192,8 +2248,6 @@ def main(
     api_key: str | None,
 ) -> None:
     """Start the MinerU v1 REST API server."""
-    import uvicorn
-
     try:
         application = create_app(
             upload_dir=upload_dir,
@@ -2210,6 +2264,8 @@ def main(
             formula_enable=not disable_formula,
             image_analysis=not disable_image_analysis,
         )
+    except ParseServerStartupError as exc:
+        raise click.ClickException(str(exc)) from None
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -2226,56 +2282,5 @@ def main(
 if __name__ == "__main__":
     main()
 
-__all__ = [
-    "create_app",
-    # enums (Literal aliases)
-    "JobStatus",
-    "FileStatus",
-    "UploadStatus",
-    "Tier",
-    "AccessLevel",
-    "OutputFormat",
-    "SourceType",
-    "FilePurpose",
-    "SSEEventType",
-    # request models
-    "CreateUploadRequest",
-    "CompleteUploadRequest",
-    "CreateJobRequest",
-    "JobFileEntry",
-    "CallbackConfig",
-    # source models
-    "FileIdSource",
-    "UrlSource",
-    "InlineSource",
-    "LocalSource",
-    "FileSource",
-    # response models
-    "ErrorDetail",
-    "ErrorResponse",
-    "HealthFeatures",
-    "HealthResponse",
-    "ModelInfo",
-    "ModelListResponse",
-    "TierInfo",
-    "TierListResponse",
-    "UploadResponse",
-    "FileObjectModel",
-    "FileDeletionResponse",
-    "FileListResponse",
-    "JobAsyncResponse",
-    "JobLinks",
-    "JobProgress",
-    "FileParseInfo",
-    "OutputFileRef",
-    "ImageOutputRef",
-    "OutputFiles",
-    "JobFileResult",
-    "JobListItem",
-    "JobListResponse",
-    "JobCancelResponse",
-    "UsageBillingPeriod",
-    "UsageCurrent",
-    "UsageLimits",
-    "UsageResponse",
-]
+
+__all__ = ["create_app", "main"]

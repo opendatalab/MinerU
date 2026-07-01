@@ -82,6 +82,24 @@ test = [
     "fuzzywuzzy",
     "tomli; python_version < '3.11'",
 ]
+standard = [
+    "ftfy>=6.3.1,<7",
+    "shapely>=2.0.7,<3",
+    "pyclipper>=1.3.0,<2",
+    "torch>=2.6.0,<3",
+    "torchvision",
+    "transformers>=4.57.3,<5.0.0",
+]
+pro = [
+    "mineru[standard]",
+    "accelerate>=1.5.1",
+    "vllm>=0.10.1.1,<0.22.0 ; sys_platform == 'linux'",
+    "lmdeploy>=0.10.2,<0.12 ; sys_platform == 'win32'",
+    "qwen-vl-utils>=0.0.14,<1 ; sys_platform == 'win32'",
+    "mlx<=0.31.1 ; sys_platform == 'darwin'",
+    "mlx-vlm>=0.3.3,<0.4 ; sys_platform == 'darwin'",
+]
+
 vlm = [
     "torch>=2.6.0,<3",
     "transformers>=4.57.3,<5.0.0",

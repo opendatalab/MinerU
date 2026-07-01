@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 import inspect
 import io
 import json
@@ -36,6 +37,10 @@ from mineru.types import Block, Line, PageInfo, Span
 from mineru.utils.image_payload import ImagePayloadCache
 
 runner = CliRunner()
+
+
+def _stub_api_server_dependency_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(importlib, "import_module", lambda _module_name: object())
 
 
 def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> None:
@@ -335,7 +340,8 @@ def test_create_job_request_accepts_new_format_names_and_rejects_options() -> No
         )
 
 
-def test_local_parse_server_rejects_callback(tmp_path: Path) -> None:
+def test_local_parse_server_rejects_callback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
     app = create_app(upload_dir=str(tmp_path))
     client = TestClient(app)
 
@@ -355,6 +361,7 @@ def test_local_parse_server_rejects_callback(tmp_path: Path) -> None:
 
 
 def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
     monkeypatch.setenv("MINERU_TIER", "pro")
     monkeypatch.setenv("MINERU_BACKEND", "hybrid-auto-engine")
     monkeypatch.setenv("MINERU_CONCURRENCY", "9")
@@ -470,7 +477,7 @@ def test_api_server_rendered_outputs_store_image_sidecars(
     async def fake_parse_async(*args, **kwargs) -> ParseResult:
         return parse_result
 
-    monkeypatch.setattr("mineru.parser.parse_async", fake_parse_async)
+    monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
     file_store = FileStore(tmp_path / "api-files")
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
@@ -534,7 +541,7 @@ def test_api_server_middle_json_preserves_backend_for_client_rendering(
     async def fake_parse_async(*args, **kwargs) -> ParseResult:
         return parse_result
 
-    monkeypatch.setattr("mineru.parser.parse_async", fake_parse_async)
+    monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
     file_store = FileStore(tmp_path / "api-files")
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
@@ -605,7 +612,8 @@ def test_api_contract_uses_parser_version_not_backend_version() -> None:
         HealthResponse.model_validate({"status": "ok", "version": "3.2.1", "backend_version": "3.2.1"})
 
 
-def test_api_server_tier_selects_compatible_backend(tmp_path: Path) -> None:
+def test_api_server_tier_selects_compatible_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
     pro_app = create_app(upload_dir=str(tmp_path / "pro"), tier="pro")
     standard_app = create_app(upload_dir=str(tmp_path / "standard"), tier="standard")
 
@@ -617,7 +625,8 @@ def test_api_server_tier_selects_compatible_backend(tmp_path: Path) -> None:
     assert [tier["id"] for tier in standard_app.state.tiers] == ["standard"]
 
 
-def test_api_server_defaults_to_standard_tier(tmp_path: Path) -> None:
+def test_api_server_defaults_to_standard_tier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
     app = create_app(upload_dir=str(tmp_path))
 
     assert app.state.tier == "standard"
@@ -625,12 +634,90 @@ def test_api_server_defaults_to_standard_tier(tmp_path: Path) -> None:
     assert [tier["id"] for tier in app.state.tiers] == ["standard"]
 
 
+def test_api_server_preflights_standard_tier_dependencies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    imported_modules: list[str] = []
+
+    def fake_import_module(module_name: str):
+        imported_modules.append(module_name)
+        return object()
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+    create_app(upload_dir=str(tmp_path), tier="standard")
+
+    assert imported_modules == [
+        "ftfy",
+        "shapely",
+        "pyclipper",
+        "torch",
+        "torchvision",
+        "transformers",
+    ]
+
+
+def test_api_server_preflights_pro_tier_dependencies_for_platform(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    imported_modules: list[str] = []
+
+    def fake_import_module(module_name: str):
+        imported_modules.append(module_name)
+        return object()
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+    monkeypatch.setattr(api_server.sys, "platform", "darwin")
+
+    create_app(upload_dir=str(tmp_path), tier="pro")
+
+    assert imported_modules == [
+        "ftfy",
+        "shapely",
+        "pyclipper",
+        "torch",
+        "torchvision",
+        "transformers",
+        "accelerate",
+        "mlx",
+        "mlx_vlm",
+    ]
+
+
+def test_api_server_preflight_rejects_missing_tier_dependency(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def fake_import_module(module_name: str):
+        if module_name == "torch":
+            raise ModuleNotFoundError("No module named 'torch'")
+        return object()
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+    with pytest.raises(api_server.ParseServerStartupError, match="tier 'standard'.*torch.*mineru\\[standard\\]"):
+        create_app(upload_dir=str(tmp_path), tier="standard")
+
+
+def test_api_server_cli_reports_dependency_preflight_without_traceback(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_import_module(module_name: str):
+        if module_name == "mlx":
+            raise ModuleNotFoundError("No module named 'mlx'")
+        return object()
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+    monkeypatch.setattr(api_server.sys, "platform", "darwin")
+
+    result = runner.invoke(main, ["--tier", "pro"])
+
+    assert result.exit_code == 1
+    assert result.output == (
+        "Error: Parse server cannot start for tier 'pro'; missing runtime dependencies: mlx. "
+        "Install the required extra, for example: mineru[pro].\n"
+    )
+    assert "Traceback" not in result.output
+
+
 def test_api_server_rejects_incompatible_tier_and_backend(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="incompatible"):
         create_app(upload_dir=str(tmp_path), tier="pro", backend="pipeline")
 
 
-def test_api_server_allows_compatible_tier_and_explicit_backend(tmp_path: Path) -> None:
+def test_api_server_allows_compatible_tier_and_explicit_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
     app = create_app(upload_dir=str(tmp_path), tier="pro", backend="vlm-auto-engine")
 
     assert app.state.tier == "pro"
@@ -638,7 +725,8 @@ def test_api_server_allows_compatible_tier_and_explicit_backend(tmp_path: Path) 
     assert [tier["id"] for tier in app.state.tiers] == ["pro"]
 
 
-def test_api_server_explicit_backend_infers_tier(tmp_path: Path) -> None:
+def test_api_server_explicit_backend_infers_tier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
     app = create_app(upload_dir=str(tmp_path), backend="hybrid-auto-engine")
 
     assert app.state.tier == "pro"
@@ -760,10 +848,12 @@ def test_pdf_hybrid_parser_passes_call_mode_to_backend_resolver(monkeypatch: pyt
     assert backends == ["sync-backend", "async-backend"]
 
 
-def test_api_server_accepts_parser_backend_values(tmp_path: Path) -> None:
+def test_api_server_accepts_parser_backend_values(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from mineru.utils.backend_options import HTTP_CLIENT_BACKEND_CHOICES, LOCAL_BACKEND_CHOICES, normalize_backend
 
     assert _API_SERVER_BACKENDS == LOCAL_BACKEND_CHOICES + HTTP_CLIENT_BACKEND_CHOICES
+
+    _stub_api_server_dependency_preflight(monkeypatch)
     assert "vlm" not in _API_SERVER_BACKENDS
     assert "hybrid" not in _API_SERVER_BACKENDS
 
@@ -776,7 +866,8 @@ def test_api_server_accepts_parser_backend_values(tmp_path: Path) -> None:
         assert app.state.tier == expected_tier
 
 
-def test_api_server_stores_parser_runtime_options(tmp_path: Path) -> None:
+def test_api_server_stores_parser_runtime_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
     app = create_app(
         upload_dir=str(tmp_path),
         language="en",
@@ -886,3 +977,7 @@ def test_api_server_cli_effort_help_matches_gradio_copy() -> None:
     effort_option = next(param for param in main.params if "--effort" in param.opts)
 
     assert effort_option.help == "Medium is faster. High is more accurate and may take longer."
+
+
+def test_api_server_public_exports_are_runtime_entrypoints_only() -> None:
+    assert set(api_server.__all__) == {"create_app", "main"}
