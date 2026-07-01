@@ -207,3 +207,37 @@ def test_render_markdown_prefers_markdown_table_when_enabled() -> None:
             "| Alice | 90 |",
         ]
     )
+
+
+def test_blocks_to_markdown_prefers_table_content_without_html_attribute() -> None:
+    html = """
+    <table>
+      <tr><th>Page</th><th>Status</th></tr>
+      <tr><td>10</td><td>ready</td></tr>
+    </table>
+    """.strip()
+    table_span = Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)
+    table_block = Block(
+        index=0,
+        type=BlockType.TABLE,
+        bbox=(0.0, 0.0, 10.0, 10.0),
+        blocks=[
+            Block(
+                index=0,
+                type=BlockType.TABLE_BODY,
+                bbox=(0.0, 0.0, 10.0, 10.0),
+                lines=[Line(bbox=(0.0, 0.0, 10.0, 10.0), spans=[table_span])],
+            )
+        ],
+    )
+
+    assert not hasattr(table_span, "html")
+    assert blocks_to_markdown([table_block], prefer_markdown_table=True) == [
+        "\n".join(
+            [
+                "| Page | Status |",
+                "| --- | --- |",
+                "| 10 | ready |",
+            ]
+        )
+    ]
