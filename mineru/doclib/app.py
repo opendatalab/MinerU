@@ -187,6 +187,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.access_log_path = os.path.expanduser(cfg.doclib.log.resolved_access_path)
         state.stdout_log_path = os.path.expanduser(cfg.doclib.log.resolved_stdout_path)
         state.stderr_log_path = os.path.expanduser(cfg.doclib.log.resolved_stderr_path)
+        state.parse_server_stdout_log_path = os.path.expanduser(cfg.doclib.log.resolved_parse_server_stdout_path)
+        state.parse_server_stderr_log_path = os.path.expanduser(cfg.doclib.log.resolved_parse_server_stderr_path)
         state.socket_path = os.path.expanduser(cfg.doclib.uds.path)
         state.tcp_enabled = cfg.doclib.resolved_tcp_enabled
         state.tcp_host = cfg.doclib.tcp.host
@@ -303,6 +305,8 @@ class AppState:
         self.access_log_path: str = ""
         self.stdout_log_path: str = ""
         self.stderr_log_path: str = ""
+        self.parse_server_stdout_log_path: str = ""
+        self.parse_server_stderr_log_path: str = ""
         self.tcp_enabled: bool = False
         self.tcp_host: str = ""
         self.tcp_port: int | None = None

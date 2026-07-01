@@ -456,6 +456,8 @@ def test_server_status_renders_separate_recent_log_panels(monkeypatch: Any) -> N
                 access_logs=["access\n"],
                 stderr_logs=["stderr\n"],
                 stdout_logs=["stdout\n"],
+                parse_server_stderr_logs=["parse stderr\n"],
+                parse_server_stdout_logs=["parse stdout\n"],
                 recent_logs=["legacy\n"],
             )
         )
@@ -466,8 +468,17 @@ def test_server_status_renders_separate_recent_log_panels(monkeypatch: Any) -> N
         "Recent Access Logs",
         "Recent Stderr Logs",
         "Recent Stdout Logs",
+        "Recent Parse Server Stderr Logs",
+        "Recent Parse Server Stdout Logs",
     ]
-    assert [panel["renderable"] for panel in panels] == ["app", "access", "stderr", "stdout"]
+    assert [panel["renderable"] for panel in panels] == [
+        "app",
+        "access",
+        "stderr",
+        "stdout",
+        "parse stderr",
+        "parse stdout",
+    ]
     assert all(panel["border_style"] == "dim" for panel in panels)
     assert not any(getattr(item, "title", None) == "Recent Logs" for item in rendered)
 

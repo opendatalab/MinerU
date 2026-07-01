@@ -587,6 +587,8 @@ class ServerStatusResponse(DoclibModel):
     access_logs: list[str] = Field(default_factory=list)
     stdout_logs: list[str] = Field(default_factory=list)
     stderr_logs: list[str] = Field(default_factory=list)
+    parse_server_stdout_logs: list[str] = Field(default_factory=list)
+    parse_server_stderr_logs: list[str] = Field(default_factory=list)
 
 
 class CleanupDeletedRequest(DoclibModel):

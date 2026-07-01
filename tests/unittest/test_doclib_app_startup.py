@@ -210,11 +210,15 @@ def test_server_status_reports_configured_socket_path(monkeypatch, tmp_path) -> 
     access_log_path = tmp_path / "doclib.access.log"
     stdout_log_path = tmp_path / "doclib.stdout.log"
     stderr_log_path = tmp_path / "doclib.stderr.log"
+    parse_server_stdout_log_path = tmp_path / "doclib.parse-server.stdout.log"
+    parse_server_stderr_log_path = tmp_path / "doclib.parse-server.stderr.log"
     for prefix, path, count in (
         ("app", app_log_path, 30),
         ("access", access_log_path, 12),
         ("stdout", stdout_log_path, 12),
         ("stderr", stderr_log_path, 12),
+        ("parse-stdout", parse_server_stdout_log_path, 12),
+        ("parse-stderr", parse_server_stderr_log_path, 12),
     ):
         path.write_text("".join(f"{prefix}-{idx}\n" for idx in range(count)), encoding="utf-8")
 
@@ -227,6 +231,8 @@ def test_server_status_reports_configured_socket_path(monkeypatch, tmp_path) -> 
                 "access_path": str(access_log_path),
                 "stdout_path": str(stdout_log_path),
                 "stderr_path": str(stderr_log_path),
+                "parse_server_stdout_path": str(parse_server_stdout_log_path),
+                "parse_server_stderr_path": str(parse_server_stderr_log_path),
             },
             "uds": {"path": str(tmp_path / "doclib.sock")},
         }
@@ -256,6 +262,8 @@ def test_server_status_reports_configured_socket_path(monkeypatch, tmp_path) -> 
     assert payload["access_logs"] == [f"access-{idx}\n" for idx in range(2, 12)]
     assert payload["stdout_logs"] == [f"stdout-{idx}\n" for idx in range(2, 12)]
     assert payload["stderr_logs"] == [f"stderr-{idx}\n" for idx in range(2, 12)]
+    assert payload["parse_server_stdout_logs"] == [f"parse-stdout-{idx}\n" for idx in range(2, 12)]
+    assert payload["parse_server_stderr_logs"] == [f"parse-stderr-{idx}\n" for idx in range(2, 12)]
 
 
 def test_doclib_app_uses_lifespan_instead_of_deprecated_event_handlers(monkeypatch, tmp_path) -> None:

@@ -246,6 +246,8 @@ class DoclibServer(AsyncDoclibInterface):
         access_log_path = getattr(self.state, "access_log_path", "")
         stdout_log_path = getattr(self.state, "stdout_log_path", "")
         stderr_log_path = getattr(self.state, "stderr_log_path", "")
+        parse_server_stdout_log_path = getattr(self.state, "parse_server_stdout_log_path", "")
+        parse_server_stderr_log_path = getattr(self.state, "parse_server_stderr_log_path", "")
         sqlite_journal_mode = await _sqlite_journal_mode(self.state.db)
         health = get_health()
 
@@ -306,6 +308,8 @@ class DoclibServer(AsyncDoclibInterface):
             access_logs=_tail_log(access_log_path, lines=10),
             stdout_logs=_tail_log(stdout_log_path, lines=10),
             stderr_logs=_tail_log(stderr_log_path, lines=10),
+            parse_server_stdout_logs=_tail_log(parse_server_stdout_log_path, lines=10),
+            parse_server_stderr_logs=_tail_log(parse_server_stderr_log_path, lines=10),
         )
 
     @route("POST", "/server/shutdown", tags=("server",))

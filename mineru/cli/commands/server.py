@@ -491,6 +491,8 @@ def _render_server_status(data: ServerStatusResponse) -> Iterator[RenderableObje
         ("Recent Access Logs", "access_logs"),
         ("Recent Stderr Logs", "stderr_logs"),
         ("Recent Stdout Logs", "stdout_logs"),
+        ("Recent Parse Server Stderr Logs", "parse_server_stderr_logs"),
+        ("Recent Parse Server Stdout Logs", "parse_server_stdout_logs"),
     ):
         logs = _get(data, key, [])
         if logs:
