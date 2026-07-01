@@ -93,6 +93,104 @@ def persist_resolved_model_source(model_source: str) -> None:
         logger.warning(f"Failed to persist resolved model source '{model_source}': {exc}")
 
 
+def normalize_download_relative_path(relative_path: str, repo_mode: str) -> str:
+    """按仓库模式规范化下载相对路径，保持 pipeline 与 VLM 根路径语义。"""
+    if repo_mode == "pipeline":
+        return relative_path.strip("/")
+    if repo_mode == "vlm":
+        if relative_path == "/":
+            return relative_path
+        return relative_path.strip("/")
+    raise ValueError(f"Unsupported repo_mode: {repo_mode}, must be 'pipeline' or 'vlm'")
+
+
+def read_existing_tools_config() -> dict | None:
+    """读取已存在的工具配置文件；缺失、读取失败或格式异常时返回 None。"""
+    config_file = get_tools_config_file_path()
+    if not os.path.exists(config_file):
+        return None
+    try:
+        with open(config_file, encoding="utf-8") as f:
+            config = json.load(f)
+    except Exception as exc:
+        logger.warning(f"Failed to read model config from {config_file}: {exc}")
+        return None
+    if not isinstance(config, dict):
+        logger.warning(f"Model config in {config_file} must be a JSON object.")
+        return None
+    return config
+
+
+def get_configured_repo_model_root(config: dict, repo_mode: str) -> str | None:
+    """从配置中读取指定仓库模式的模型根目录，缺失或类型错误时返回 None。"""
+    models_dir = config.get("models-dir")
+    if not isinstance(models_dir, dict):
+        return None
+    model_root = models_dir.get(repo_mode)
+    if not isinstance(model_root, str):
+        return None
+    model_root = model_root.strip()
+    if not model_root:
+        return None
+    return os.path.expanduser(model_root)
+
+
+def build_configured_model_path(model_root: str, relative_path: str) -> str:
+    """根据模型根目录和下载相对路径拼出本地校验路径。"""
+    if relative_path in ("", "/"):
+        return model_root
+    return os.path.join(model_root, relative_path)
+
+
+def is_existing_model_path_usable(model_path: str) -> bool:
+    """判断本地模型路径是否可复用：文件可直接用，目录必须包含实际文件。"""
+    if os.path.isfile(model_path):
+        return True
+    if not os.path.isdir(model_path):
+        return False
+    for _root, _dirs, files in os.walk(model_path):
+        if files:
+            return True
+    return False
+
+
+def get_existing_configured_model_root(repo_mode: str, relative_path: str) -> str | None:
+    """如果配置中的模型根目录已包含本次所需模型，则返回该根目录以跳过远端下载。"""
+    config = read_existing_tools_config()
+    if config is None:
+        return None
+
+    model_root = get_configured_repo_model_root(config, repo_mode)
+    if model_root is None:
+        return None
+
+    local_model_path = build_configured_model_path(model_root, relative_path)
+    if is_existing_model_path_usable(local_model_path):
+        logger.debug(f"Use configured local {repo_mode} model path: {local_model_path}")
+        return model_root
+    return None
+
+
+def persist_downloaded_model_config(model_source: str, repo_mode: str, model_root: str) -> None:
+    """远端模型下载成功后，创建或更新配置文件中的模型根目录和实际模型来源。"""
+    if model_source not in REMOTE_MODEL_SOURCES:
+        return
+    config_file = get_tools_config_file_path()
+    try:
+        download_and_modify_json(
+            CONFIG_TEMPLATE_URL,
+            config_file,
+            {
+                "models-dir": {
+                    repo_mode: model_root,
+                },
+                "model-source": model_source,
+            },
+        )
+    except Exception as exc:
+        logger.warning(f"Failed to persist downloaded {repo_mode} model config to {config_file}: {exc}")
+
+
 @lru_cache(maxsize=1)
 def resolve_auto_model_source() -> str:
     """通过 Hugging Face 模型列表页探测 auto 应该使用的实际模型来源。"""
@@ -215,17 +313,16 @@ def auto_download_and_get_model_root_path(relative_path: str, repo_mode: str = "
     # model_source 已解析为实际远端来源后，再选择对应仓库。
     repo = repo_mapping[repo_mode][model_source]
 
-    if repo_mode == "pipeline":
-        relative_path = relative_path.strip("/")
-    elif repo_mode == "vlm":
-        # VLM 模式下，根据 relative_path 的不同处理方式
-        if relative_path != "/":
-            relative_path = relative_path.strip("/")
+    relative_path = normalize_download_relative_path(relative_path, repo_mode)
+    configured_model_root = get_existing_configured_model_root(repo_mode, relative_path)
+    if configured_model_root is not None:
+        return configured_model_root
 
     cache_dir = _snapshot_download_cached(model_source, repo_mode, repo, relative_path)
 
     if not cache_dir:
         raise FileNotFoundError(f"Failed to download model: {relative_path} from {repo}")
+    persist_downloaded_model_config(model_source, repo_mode, cache_dir)
     return cache_dir
 
 
