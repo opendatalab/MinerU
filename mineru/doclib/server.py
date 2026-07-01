@@ -608,7 +608,7 @@ class DoclibServer(AsyncDoclibInterface):
         doc = await self._doc_for_ref(doc_ref, param="doc_ref")
 
         normalized_page_range = _normalize_content_page_range(page_range, after, doc)
-        after_cursor = parse_content_cursor(after) if after else None
+        after_cursor = _parse_after_cursor(after)
         if after_cursor:
             _validate_cursor_for_doc(after_cursor, doc, tier, normalized_page_range)
         return _ReadPlan(
@@ -1125,7 +1125,7 @@ class DoclibServer(AsyncDoclibInterface):
             pages_for_render,
             short_id=plan.short_id,
             tier=plan.tier,
-            after=parse_content_cursor(plan.after) if plan.after else None,
+            after=_parse_after_cursor(plan.after),
             limit=plan.limit,
             add_markers=not plan.no_marker,
             target=plan.target,
@@ -1379,6 +1379,15 @@ def _locator_page_range(locator: _LocatorParts, doc: DocRow, context: int) -> st
     return _range_str(start, end)
 
 
+def _parse_after_cursor(after: str | None) -> ContentCursor | None:
+    if not after:
+        return None
+    try:
+        return parse_content_cursor(after)
+    except ValueError as exc:
+        raise InvalidRequestError("invalid_locator", str(exc), "after") from None
+
+
 def _validate_cursor_for_doc(cursor: ContentCursor, doc: DocRow, tier: Tier, page_range: str | None) -> None:
     if cursor.short_id != doc["short_id"]:
         raise InvalidRequestError("invalid_request", "after cursor does not belong to this document.", "after")
@@ -1505,7 +1514,8 @@ def _normalize_content_page_range(page_range: str | None, after: str | None, doc
         if page_range:
             return _normalize_page_range(page_range, page_count)
         if after:
-            cursor = parse_content_cursor(after)
+            cursor = _parse_after_cursor(after)
+            assert cursor is not None
             end = min(page_count, cursor.page_no + 9)
             return f"{cursor.page_no}~{end}" if cursor.page_no != end else str(cursor.page_no)
         end = min(page_count, 10)

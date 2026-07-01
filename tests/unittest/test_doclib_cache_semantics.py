@@ -2135,6 +2135,32 @@ def test_doclib_server_accepts_short_id_for_sha256_doc_inputs(tmp_path: Path) ->
     asyncio.run(_run())
 
 
+def test_doc_content_invalid_after_cursor_returns_invalid_locator(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.sqlite"))
+        await db.initialize()
+        server = DoclibServer(SimpleNamespace(db=db, data_dir=str(tmp_path)))
+        now = 1000
+        sha256 = "a" * 64
+        short_id = "aaaaaaa"
+        await db.execute(
+            "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (sha256, short_id, 12, "pdf", 1, now, now),
+        )
+        try:
+            with pytest.raises(InvalidRequestError) as exc_info:
+                await server.get_doc_content(short_id, tier="standard", after="invalid-cursor-for-param-test")
+
+            assert exc_info.value.code == "invalid_locator"
+            assert exc_info.value.param == "after"
+            assert "Invalid doclib content cursor" in exc_info.value.message
+        finally:
+            await db.close()
+
+    asyncio.run(_run())
+
+
 def test_get_file_by_path_missing_doclib_record_message_is_not_disk_file_not_found(tmp_path: Path) -> None:
     class _ParseSvc:
         async def ensure_ingested(self, path: str) -> None:

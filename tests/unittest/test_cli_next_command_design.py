@@ -1215,6 +1215,37 @@ def test_parse_json_error_output_is_machine_readable(monkeypatch: Any, tmp_path:
     assert "No standard or pro engine available" in payload["error"]["message"]
 
 
+def test_parse_invalid_after_cursor_json_error_is_validation_error(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 31
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            return ParseResponse(sha256="a" * 64, tier="standard", page_range="1", status="done")
+
+        def get_doc_content(self, *args: Any, **kwargs: Any) -> DocContentResponse:
+            raise RuntimeError(
+                "('invalid_locator', 'Invalid doclib content cursor: invalid-cursor-for-param-test', 'after')"
+            )
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+
+    result = runner.invoke(
+        app,
+        ["parse", str(source), "--after", "invalid-cursor-for-param-test", "--wait", "1", "--json"],
+    )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error"]["type"] == "invalid_request_error"
+    assert payload["error"]["code"] == "invalid_locator"
+    assert payload["error"]["param"] == "after"
+    assert "Invalid doclib content cursor" in payload["error"]["message"]
+
+
 def test_parse_missing_file_json_error_is_machine_readable(tmp_path: Path) -> None:
     missing = tmp_path / "missing.pdf"
 
