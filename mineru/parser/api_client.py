@@ -479,9 +479,31 @@ def _raise_for_terminal_job_error(job: dict[str, Any]) -> None:
         code = str(error.get("code") or job.get("status"))
         message = str(error.get("message") or error)
         raise _V1APIError(code, message)
+
+    file_error = _first_failed_file_error(job)
+    if file_error is not None:
+        code = str(file_error.get("code") or job.get("status"))
+        message = str(file_error.get("message") or file_error)
+        raise _V1APIError(code, message)
+
     raise _V1APIError(
         str(job.get("status")), f"Parse job {job.get('job_id', '<unknown>')} ended with status {job.get('status')}"
     )
+
+
+def _first_failed_file_error(job: dict[str, Any]) -> dict[str, Any] | None:
+    files = job.get("files")
+    if not isinstance(files, list):
+        return None
+    for file_result in files:
+        if not isinstance(file_result, dict):
+            continue
+        if file_result.get("status") != "failed":
+            continue
+        error = file_result.get("error")
+        if isinstance(error, dict):
+            return error
+    return None
 
 
 class _V1APIError(Exception):

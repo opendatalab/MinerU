@@ -250,6 +250,34 @@ def test_api_client_surfaces_failed_job_error() -> None:
         )
 
 
+def test_api_client_surfaces_failed_file_error_when_job_has_no_top_level_error() -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        _parse_result_from_job(
+            {
+                "job_id": "job_1",
+                "status": "failed",
+                "files": [
+                    {
+                        "name": "demo.pdf",
+                        "status": "failed",
+                        "error": {
+                            "type": "engine_error",
+                            "code": "parse_failed",
+                            "message": "No module named 'torch'",
+                        },
+                    }
+                ],
+            },
+            "demo.pdf",
+            parser,
+        )
+
+    assert exc_info.value.code == "parse_failed"
+    assert exc_info.value.message == "No module named 'torch'"
+
+
 def test_api_client_rejects_missing_middle_json_output() -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
 
