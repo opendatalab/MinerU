@@ -755,7 +755,12 @@ class DoclibServer(AsyncDoclibInterface):
         start_ms = _now_ms()
         await _record_telemetry_count(self.state, "find.request.count")
         try:
-            results, total = await self.state.search_svc.search_filenames(query=query, ext=ext, limit=limit)
+            results, total = await self.state.search_svc.search_filenames(
+                query=query,
+                ext=ext,
+                limit=limit,
+                refresh_file=self.state.parse_svc.refresh_file,
+            )
             response = FindResponse(results=[_find_result(row) for row in results], total=total, query=query)
             dims = {"status": "succeeded"}
             await _record_telemetry_count(self.state, "find.finished.count", dimensions=dims)
