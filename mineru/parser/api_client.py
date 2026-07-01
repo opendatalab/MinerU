@@ -301,7 +301,7 @@ def _parse_result_from_job(job: dict[str, Any], file_name: str, parser: MinerUAp
         outputs = files[0]["output_files"]
 
     mid_json = _download_json(parser, outputs)
-    result = ParseResult.from_dict(mid_json)
+    result = _parse_result_from_middle_json(mid_json)
     images = _download_image_sidecars(parser, outputs)
     if images or "images" in outputs:
         result.attach_export_images(images)
@@ -316,7 +316,7 @@ async def _async_parse_result_from_job(job: dict[str, Any], file_name: str, pars
         outputs = files[0]["output_files"]
 
     mid_json = await _async_download_json(parser, outputs)
-    result = ParseResult.from_dict(mid_json)
+    result = _parse_result_from_middle_json(mid_json)
     images = await _async_download_image_sidecars(parser, outputs)
     if images or "images" in outputs:
         result.attach_export_images(images)
@@ -371,7 +371,7 @@ def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str
     except json.JSONDecodeError as exc:
         raise _V1APIError("invalid_middle_json_output", f"middle_json output is not valid JSON: {exc}") from exc
     if not isinstance(loaded, dict):
-        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object with pages")
+        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object with pages or pdf_info")
     return loaded
 
 
@@ -389,7 +389,7 @@ async def _async_download_json(parser: MinerUApiParser, outputs: dict[str, Any])
     except json.JSONDecodeError as exc:
         raise _V1APIError("invalid_middle_json_output", f"middle_json output is not valid JSON: {exc}") from exc
     if not isinstance(loaded, dict):
-        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object with pages")
+        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object with pages or pdf_info")
     return loaded
 
 
@@ -464,11 +464,21 @@ def _check_download_response(r: httpx.Response) -> None:
 def _pages_from_middle_json(mid_json: dict[str, Any] | None) -> list[PageInfo]:
     if mid_json is None:
         return []
+    return _parse_result_from_middle_json(mid_json).pages
+
+
+def _parse_result_from_middle_json(mid_json: dict[str, Any]) -> ParseResult:
     if isinstance(mid_json, dict):
         pages = mid_json.get("pages")
-        if isinstance(pages, list):
-            return [PageInfo.from_dict(raw) for raw in pages if isinstance(raw, dict)]
-    raise _V1APIError("invalid_middle_json_output", "middle_json output must contain a list field named pages")
+        if pages is not None:
+            return ParseResult.from_dict(mid_json)
+
+        pdf_info = mid_json.get("pdf_info")
+        if isinstance(pdf_info, list):
+            compat_payload = dict(mid_json)
+            compat_payload["pages"] = pdf_info
+            return ParseResult.from_dict(compat_payload)
+    raise _V1APIError("invalid_middle_json_output", "middle_json output must contain a list field named pages or pdf_info")
 
 
 def _raise_for_terminal_job_error(job: dict[str, Any]) -> None:

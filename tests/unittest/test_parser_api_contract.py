@@ -100,6 +100,67 @@ def test_api_client_downloads_image_sidecars_and_preserves_pdf_mapping(monkeypat
     assert result.images() == {"images/chart.png": b"chart-bytes"}
 
 
+def test_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="standard")
+    middle_json = {
+        "_backend": "pipeline",
+        "_version_name": "remote",
+        "pdf_info": [{"page_idx": 0, "page_size": [100, 200]}],
+    }
+
+    monkeypatch.setattr(api_client, "_download_json", lambda _parser, _outputs: middle_json)
+    monkeypatch.setattr(api_client, "_download_image_sidecars", lambda _parser, _outputs: {})
+
+    result = _parse_result_from_job(
+        {
+            "job_id": "job_1",
+            "status": "completed",
+            "files": [{"output_files": {"json": {"file_id": "file-json", "bytes": 10}}}],
+        },
+        "demo.pdf",
+        parser,
+    )
+
+    assert len(result.pages) == 1
+    assert result.pages[0].page_idx == 0
+    assert result.pages[0].page_size == (100, 200)
+    assert result.pages[0]._backend == "pipeline"
+
+
+def test_async_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="standard")
+    middle_json = {
+        "_backend": "pipeline",
+        "pdf_info": [{"page_idx": 0, "page_size": [100, 200]}],
+    }
+
+    async def _download_json(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return middle_json
+
+    async def _download_image_sidecars(*_args: object, **_kwargs: object) -> dict[str, bytes]:
+        return {}
+
+    monkeypatch.setattr(api_client, "_async_download_json", _download_json)
+    monkeypatch.setattr(api_client, "_async_download_image_sidecars", _download_image_sidecars)
+
+    result = asyncio.run(
+        api_client._async_parse_result_from_job(
+            {
+                "job_id": "job_1",
+                "status": "completed",
+                "files": [{"output_files": {"json": {"file_id": "file-json", "bytes": 10}}}],
+            },
+            "demo.pdf",
+            parser,
+        )
+    )
+
+    assert len(result.pages) == 1
+    assert result.pages[0].page_idx == 0
+    assert result.pages[0].page_size == (100, 200)
+    assert result.pages[0]._backend == "pipeline"
+
+
 @pytest.mark.parametrize("image_path", ["../escape.png", "/tmp/escape.png", "\\escape.png", "C:\\escape.png"])
 def test_api_client_rejects_unsafe_image_sidecar_paths(
     monkeypatch: pytest.MonkeyPatch,
@@ -306,7 +367,15 @@ def test_api_client_accepts_pages_middle_json_only() -> None:
     assert pages[0].page_size == (100, 200)
 
 
-@pytest.mark.parametrize("payload", [[{"page_idx": 0}], {"pdf_info": [{"page_idx": 0}]}])
+def test_api_client_accepts_legacy_pdf_info_middle_json() -> None:
+    pages = _pages_from_middle_json({"pdf_info": [{"page_idx": 2, "page_size": [100, 200]}]})
+
+    assert len(pages) == 1
+    assert pages[0].page_idx == 2
+    assert pages[0].page_size == (100, 200)
+
+
+@pytest.mark.parametrize("payload", [[{"page_idx": 0}], {"pdf_info": {"preproc_blocks": []}}])
 def test_api_client_rejects_legacy_middle_json_shapes(payload: object) -> None:
     with pytest.raises(Exception, match="pages"):
         _pages_from_middle_json(payload)  # type: ignore[arg-type]
