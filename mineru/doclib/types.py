@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from ..types import Tier
 
 ParseSubmitStatus = Literal["pending", "done"]
-ParseStatus = ParseSubmitStatus | Literal["parsing", "failed", "superseded"]
+ParseStatus = Literal["pending", "done", "parsing", "failed", "superseded"]
 FileStatus = Literal["active", "deleted", "unreachable"]
 ScanStatus = Literal["pending", "running", "done", "failed"]
 ScanKind = Literal["manual", "watch"]
