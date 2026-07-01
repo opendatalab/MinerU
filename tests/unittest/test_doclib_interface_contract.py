@@ -38,6 +38,7 @@ from mineru.doclib.types import (
     ParseCoverage,
     ParseInfo,
     ParseRequest,
+    ParseResponse,
     ParseStatus,
     ParseServerStatus,
     ParsingRuleInfo,
@@ -493,6 +494,15 @@ def test_core_doclib_schemas_are_instantiable() -> None:
 def test_parse_request_rejects_auto_tier() -> None:
     with pytest.raises(ValidationError):
         ParseRequest(path="/tmp/a.pdf", tier="auto", page_range="1~5")
+
+
+def test_parse_response_status_is_submit_state_only() -> None:
+    with pytest.raises(ValidationError):
+        ParseResponse(sha256="a" * 64, tier="flash", page_range="1", status="parsing")
+
+    response = ParseResponse(sha256="a" * 64, tier="flash", page_range="1", status="pending")
+
+    assert response.status == "pending"
 
 
 def test_route_info_exports_from_route_utils() -> None:

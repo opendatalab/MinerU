@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from ..types import Tier
 
 ParseStatus = Literal["pending", "parsing", "done", "failed", "superseded"]
+ParseSubmitStatus = Literal["pending", "done"]
 FileStatus = Literal["active", "deleted", "unreachable"]
 ScanStatus = Literal["pending", "running", "done", "failed"]
 ScanKind = Literal["manual", "watch"]
@@ -23,9 +24,9 @@ ConfigSource = Literal["default", "override"]
 ContentFormat = Literal["markdown", "image"]
 ImageFormat = Literal["jpeg", "png", "webp"]
 
-PARSE_STATUS_PENDING: ParseStatus = "pending"
+PARSE_STATUS_PENDING: ParseStatus | ParseSubmitStatus = "pending"
 PARSE_STATUS_PARSING: ParseStatus = "parsing"
-PARSE_STATUS_DONE: ParseStatus = "done"
+PARSE_STATUS_DONE: ParseStatus | ParseSubmitStatus = "done"
 PARSE_STATUS_FAILED: ParseStatus = "failed"
 PARSE_STATUS_SUPERSEDED: ParseStatus = "superseded"
 
@@ -103,7 +104,7 @@ class ParseResponse(DoclibModel):
     short_id: str | None = None
     tier: Tier
     page_range: str
-    status: ParseStatus
+    status: ParseSubmitStatus
     cache_hit: bool = False
     wait_parse_ids: list[int] = Field(default_factory=list)
     created_parse_ids: list[int] = Field(default_factory=list)

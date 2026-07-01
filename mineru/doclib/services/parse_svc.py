@@ -658,13 +658,25 @@ class ParseService:
     ) -> ParseResponse:
         """Handle a parse request from CLI.  Returns info for status polling."""
         # ensure the path is current before trusting files.sha256
-        file_row = await self.ensure_ingested(path, allow_images=True)
-        if file_row is None:
-            return _failed_response(tier or "flash", page_range or "", "File could not be ingested.")
+        refreshed = await self.refresh_file(path, ensure_ingested=True, allow_images=True)
+        if refreshed.status == "unsupported":
+            ext = Path(path).suffix.lower() or Path(path).name
+            raise InvalidRequestError("file_type_unsupported", f"File type is not supported for parsing: {ext}", "path")
+        if refreshed.status in {"missing", "deleted", "unreachable"}:
+            raise InvalidRequestError("file_not_found", f"File {path} not found.", "path")
+        if refreshed.status == "error":
+            code = refreshed.file.error_code if refreshed.file and refreshed.file.error_code else "ingest_failed"
+            message = refreshed.file.error_msg if refreshed.file and refreshed.file.error_msg else "File could not be ingested."
+            raise MineruError(code, message, "path")
+        if refreshed.file is None:
+            raise MineruError("ingest_failed", "File could not be ingested.", "path")
 
+        file_row = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
+        if file_row is None:
+            raise MineruError("ingest_failed", "File could not be ingested.", "path")
         sha256 = file_row["sha256"]
         if sha256 is None:
-            return _failed_response(tier or "flash", page_range or "", "File could not be ingested.")
+            raise MineruError(file_row.get("error_code") or "ingest_failed", file_row.get("error_msg") or "File could not be ingested.", "path")
         doc = cast(DocRow | None, await self.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,)))
         page_count = doc["page_count"] if doc else 1
         short_id = doc["short_id"] if doc else None
@@ -1419,20 +1431,6 @@ def _text_response(sha256: str, short_id: str | None) -> ParseResponse:
         created_parse_ids=[],
         reused_parse_ids=[],
         tip="Plain text files do not require parsing.",
-    )
-
-
-def _failed_response(tier: Tier, page_range: str, tip: str) -> ParseResponse:
-    return ParseResponse(
-        sha256="",
-        tier=tier,
-        page_range=page_range,
-        status=PARSE_STATUS_FAILED,
-        cache_hit=False,
-        wait_parse_ids=[],
-        created_parse_ids=[],
-        reused_parse_ids=[],
-        tip=tip,
     )
 
 

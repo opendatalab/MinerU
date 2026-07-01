@@ -876,7 +876,7 @@ def test_config_parsing_rules_remove_non_json_prints_message_not_error_tuple(mon
     assert "('rule_not_found'" not in result.output
 
 
-def test_parse_failed_response_exits_nonzero(monkeypatch: Any, tmp_path: Path) -> None:
+def test_parse_ingest_error_json_is_machine_readable(monkeypatch: Any, tmp_path: Path) -> None:
     source = tmp_path / "demo.unsupported"
     source.write_bytes(b"unsupported")
 
@@ -884,14 +884,8 @@ def test_parse_failed_response_exits_nonzero(monkeypatch: Any, tmp_path: Path) -
         def __init__(self, *, timeout: int) -> None:
             assert timeout == 90
 
-        def ensure_parse(self, request: Any) -> ParseResponse:
-            return ParseResponse(
-                sha256="",
-                tier="flash",
-                page_range="",
-                status="failed",
-                tip="File could not be ingested.",
-            )
+        def ensure_parse(self, request: Any) -> None:
+            raise RuntimeError("('ingest_failed', 'File could not be ingested.', 'path')")
 
     monkeypatch.setattr(parse, "DoclibClient", _Client)
 
@@ -899,8 +893,11 @@ def test_parse_failed_response_exits_nonzero(monkeypatch: Any, tmp_path: Path) -
 
     assert result.exit_code == 1
     payload = json.loads(result.output)
-    assert payload["parse"]["status"] == "failed"
-    assert payload["parse"]["tip"] == "File could not be ingested."
+    assert payload["error"]["type"] == "api_error"
+    assert payload["error"]["code"] == "ingest_failed"
+    assert payload["error"]["message"] == "File could not be ingested."
+    assert payload["error"]["param"] == "path"
+    assert "parse" not in payload
 
 
 def test_parse_next_marker_quotes_windows_path() -> None:
@@ -1195,6 +1192,18 @@ def test_parse_wait_status_line_is_verbose_only(monkeypatch: Any, tmp_path: Path
 def test_parse_wait_timeout_json_returns_timeout_error(monkeypatch: Any, tmp_path: Path) -> None:
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
+    pending = ParseInfo(
+        id=3,
+        sha256="a" * 64,
+        short_id="aaaaaaa",
+        tier="flash",
+        page_range="1~1",
+        status="pending",
+        privacy="local",
+        via="local",
+        created_at=3,
+        updated_at=4,
+    )
 
     class _Client:
         def __init__(self, *, timeout: int) -> None:
@@ -1210,10 +1219,13 @@ def test_parse_wait_timeout_json_returns_timeout_error(monkeypatch: Any, tmp_pat
                 created_parse_ids=[3],
             )
 
+        def list_parses(self, **kwargs: Any) -> ListParsesResponse:
+            return ListParsesResponse(parses=[pending], total=1, limit=50, offset=0)
+
         def record_observations(self, request: Any) -> Any:
             return None
 
-    times = iter([0.0, 0.0, 2.0, 2.0])
+    times = iter([0.0, 0.0, 0.2, 2.0, 2.0])
     monkeypatch.setattr(parse, "DoclibClient", _Client)
     monkeypatch.setattr(parse.time, "time", lambda: next(times, 2.0))
 
@@ -1224,7 +1236,7 @@ def test_parse_wait_timeout_json_returns_timeout_error(monkeypatch: Any, tmp_pat
     assert payload["error"]["type"] == "timeout_error"
     assert payload["error"]["code"] == "parse_wait_timeout"
     assert payload["error"]["param"] == "wait"
-    assert payload["parse"]["status"] == "parsing"
+    assert payload["parse"]["status"] == "pending"
     assert payload["parse"]["wait_parse_ids"] == [3]
     assert payload["content"] is None
 
@@ -1258,6 +1270,54 @@ def test_parse_wait_timeout_text_returns_nonzero_exit(monkeypatch: Any, tmp_path
 
     assert result.exit_code == 1
     assert "Parse still in progress" in result.output
+
+
+def test_parse_wait_timeout_json_uses_latest_parsing_status(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    parsing = ParseInfo(
+        id=3,
+        sha256="a" * 64,
+        short_id="aaaaaaa",
+        tier="flash",
+        page_range="1~1",
+        status="parsing",
+        privacy="local",
+        via="local",
+        created_at=3,
+        updated_at=4,
+    )
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 31
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            return ParseResponse(
+                sha256="a" * 64,
+                tier="flash",
+                page_range="1~1",
+                status="pending",
+                wait_parse_ids=[3],
+                created_parse_ids=[3],
+            )
+
+        def list_parses(self, **kwargs: Any) -> ListParsesResponse:
+            return ListParsesResponse(parses=[parsing], total=1, limit=50, offset=0)
+
+        def record_observations(self, request: Any) -> Any:
+            return None
+
+    times = iter([0.0, 0.0, 0.2, 2.0, 2.0])
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+    monkeypatch.setattr(parse.time, "time", lambda: next(times, 2.0))
+
+    result = runner.invoke(app, ["parse", str(source), "--tier", "flash", "--wait", "1", "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "parse_wait_timeout"
+    assert payload["parse"]["status"] == "parsing"
 
 
 def test_parse_json_error_output_is_machine_readable(monkeypatch: Any, tmp_path: Path) -> None:

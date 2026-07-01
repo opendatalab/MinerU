@@ -36,6 +36,7 @@ from mineru.doclib.services import parse_svc as parse_svc_module
 from mineru.doclib.services.cleanup_svc import CleanupService
 from mineru.doclib.services.config_svc import ConfigService
 from mineru.doclib.services.parse_svc import (
+    FileRefreshResult,
     ParseFailure,
     ParseService,
     _local_parse_server_url,
@@ -48,8 +49,8 @@ from mineru.doclib.services.parse_svc import (
 )
 from mineru.doclib.services.scan_svc import ScanService
 from mineru.doclib.services.search_svc import SearchService
-from mineru.doclib.types import DocContentExportRequest, InvalidateRequest, ParseResponse, WatchRequest
-from mineru.errors import InvalidRequestError, NotFoundError
+from mineru.doclib.types import DocContentExportRequest, FileInfo, InvalidateRequest, ParseResponse, WatchRequest
+from mineru.errors import InvalidRequestError, MineruError, NotFoundError
 from mineru.parser import backend_for_tier, resolve_tier_and_backend
 from mineru.parser.base import ParseResult
 from mineru.schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
@@ -962,6 +963,77 @@ def test_request_parse_rejects_flash_tier_for_remote_quality_inputs(
         assert exc_info.value.param == "tier"
         assert "flash" in exc_info.value.message
         assert "remote" in exc_info.value.message
+
+    asyncio.run(_run())
+
+
+def test_request_parse_rejects_unsupported_file_type_before_parse_response(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=None,
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / "sample.unsupported"
+        source.write_text("content", encoding="utf-8")
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.request_parse(str(source), tier="flash")
+
+        assert exc_info.value.code == "file_type_unsupported"
+        assert exc_info.value.param == "path"
+
+    asyncio.run(_run())
+
+
+def test_request_parse_raises_ingest_failed_when_file_row_has_no_sha(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=None,
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / "sample.pdf"
+        source.write_bytes(b"%PDF-1.4\n")
+        stat = source.stat()
+        now = 1000
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)",
+            (str(source), source.name, "pdf", stat.st_size, int(stat.st_mtime * 1000), "active", now, now),
+        )
+
+        async def _refresh_file(*args: Any, **kwargs: Any) -> FileRefreshResult:
+            return FileRefreshResult(
+                file=FileInfo(
+                    path=str(source),
+                    filename=source.name,
+                    ext="pdf",
+                    size_bytes=stat.st_size,
+                    mtime_ms=int(stat.st_mtime * 1000),
+                    sha256=None,
+                    status="active",
+                    first_seen_at=now,
+                    updated_at=now,
+                ),
+                status="known",
+            )
+
+        service.refresh_file = _refresh_file  # type: ignore[method-assign]
+
+        with pytest.raises(MineruError) as exc_info:
+            await service.request_parse(str(source), tier="flash")
+
+        assert exc_info.value.code == "ingest_failed"
+        assert exc_info.value.param == "path"
 
     asyncio.run(_run())
 
@@ -3026,9 +3098,7 @@ def test_doclib_office_image_asset_transcodes_to_requested_format(tmp_path: Path
     sidecar = image_dir / image_path
     sidecar.parent.mkdir(parents=True)
     sidecar.write_bytes(
-        base64.b64decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
-        )
+        base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC")
     )
 
     image_span = Span(type=ContentType.IMAGE, bbox=(1, 1, 20, 20), image_path=image_path)

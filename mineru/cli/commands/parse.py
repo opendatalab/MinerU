@@ -191,13 +191,11 @@ def _parse(
         return
 
     # no-wait
-    if no_wait or status not in ("pending", "parsing") or not wait_parse_ids:
+    if no_wait or not wait_parse_ids:
         if json_mode:
             _emit_parse_json_response(result, None)
         else:
             emit_result(CliContext(json_mode=False), _prepare_parse_summary_output(result))
-        if status == "failed":
-            emit_result(CliContext(json_mode=json_mode), cli_ok(exit_code=1))
         return
 
     # poll until done or timeout
@@ -207,6 +205,7 @@ def _parse(
     wait_started_at = time.time()
     deadline = time.time() + wait
     interval = 0.5
+    latest_wait_status = status
     while time.time() < deadline:
         time.sleep(interval)
         interval = min(interval * 1.2, 3.0)
@@ -218,7 +217,16 @@ def _parse(
         wait_id_set = set(wait_parse_ids)
         parse_rows = [row for row in s.parses if row.id in wait_id_set]
         statuses = {row.status for row in parse_rows}
-        st = "done" if parse_rows and statuses == {"done"} else ("failed" if "failed" in statuses else "parsing")
+        if parse_rows and statuses == {"done"}:
+            st = "done"
+        elif "failed" in statuses:
+            st = "failed"
+        elif "parsing" in statuses:
+            st = "parsing"
+        else:
+            st = "pending"
+        if st in ("pending", "parsing"):
+            latest_wait_status = st
         if verbose and not json_mode:
             _emit_notice(f"  Parse status: {st}", json_mode=json_mode)
 
@@ -248,8 +256,13 @@ def _parse(
     _record_parse_wait(client, wait_parse_ids, "timeout", wait_started_at)
     timeout_error = MineruError("parse_wait_timeout", f"Parse did not finish within {wait} seconds.", "wait")
     if json_mode:
-        timeout_result = result.model_copy(update={"status": "parsing", "tip": "Re-run the same command to continue waiting."})
-        _emit_parse_json_response(timeout_result, None, error=timeout_error, exit_code=1)
+        _emit_parse_json_response(
+            result,
+            None,
+            error=timeout_error,
+            exit_code=1,
+            parse_overrides={"status": latest_wait_status, "tip": "Re-run the same command to continue waiting."},
+        )
     else:
         _emit_notice(
             f"Parse still in progress (tier={req_tier}). Check status with: mineru show file {file_path}", json_mode=json_mode
@@ -371,10 +384,14 @@ def _emit_parse_json_response(
     output: str | None = None,
     error: MineruError | None = None,
     exit_code: int = 0,
+    parse_overrides: dict[str, str | None] | None = None,
 ) -> None:
     emit_result(
         CliContext(json_mode=True),
-        cli_ok(_parse_json_payload(parse_result, content, output=output, error=error), exit_code=exit_code),
+        cli_ok(
+            _parse_json_payload(parse_result, content, output=output, error=error, parse_overrides=parse_overrides),
+            exit_code=exit_code,
+        ),
     )
 
 
@@ -384,9 +401,13 @@ def _parse_json_payload(
     *,
     output: str | None = None,
     error: MineruError | None = None,
+    parse_overrides: dict[str, str | None] | None = None,
 ) -> dict[str, Any]:
+    parse_payload = parse_result.model_dump(mode="json")
+    if parse_overrides:
+        parse_payload.update(parse_overrides)
     payload: dict[str, Any] = {
-        "parse": parse_result.model_dump(mode="json"),
+        "parse": parse_payload,
         "content": content.model_dump(mode="json") if content is not None else None,
     }
     if output is not None:
@@ -399,10 +420,8 @@ def _parse_json_payload(
 def _prepare_parse_summary_output(parse_result: ParseResponse) -> CliResult[ParseSummaryOutput] | CliResult[None]:
     status = parse_result.status
     tip = parse_result.tip or ""
-    if status in ("pending", "parsing"):
+    if status == "pending":
         return cli_ok(ParseSummaryOutput(f"Parse {status}... {tip}"), render=_render_parse_summary)
-    if status == "failed":
-        return cli_ok(None, notices=["Parse failed: ? — "])
     return cli_ok(ParseSummaryOutput(f"Parse complete (tier={parse_result.tier}) {tip}"), render=_render_parse_summary)
 
 

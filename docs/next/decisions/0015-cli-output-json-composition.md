@@ -78,6 +78,7 @@ mineru read <locator> --output out.md --json
 - `parse`: 使用 `mineru parse --json` 已定义的稳定解析摘要结构。
 - `content`: 当 `--output` 成功写出文件时可以为 `null`；CLI 不要求在写文件成功的同时再把全文内容重复放回 stdout JSON。
 - `output`: 顶层对象，至少包含 `status` 和 `path` 两个字段。
+- `error`: 当命令需要同时返回 parse 状态和结构化失败原因时，可以作为顶层对象出现。
 - `output.status`: 当前固定为 `written`。
 - `output.path`: 实际写入路径，建议为绝对路径或规范化绝对路径。
 
