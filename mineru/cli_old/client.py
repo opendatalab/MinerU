@@ -800,6 +800,7 @@ async def run_planned_task(
     form_data: dict[str, str],
     output_dir: Path,
     live_renderer: Optional[LiveTaskStatusRenderer] = None,
+    effort: str = DEFAULT_HYBRID_EFFORT,
     client_side_output_generation: bool = False,
 ) -> None:
     logger.info(format_task_submission_message(planned_task, progress))
@@ -849,6 +850,7 @@ async def run_planned_task(
                 parse_dir,
                 document.stem,
                 "office" if document.suffix in office_suffixes else backend,
+                effort=effort,
             )
     completed_tasks, completed_pages = await mark_task_completed(
         progress,
@@ -976,6 +978,7 @@ async def run_orchestrated_cli(
                     form_data=form_data,
                     output_dir=output_dir,
                     live_renderer=live_renderer,
+                    effort=effort,
                     client_side_output_generation=client_side_output_generation,
                 ),
             )

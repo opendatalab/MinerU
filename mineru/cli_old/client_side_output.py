@@ -8,6 +8,7 @@ from typing import Any
 from mineru.parser.base import ParseResult
 from mineru.render import render_content_list, render_markdown, render_structured_content
 from mineru.types import PageInfo
+from mineru.utils.backend_options import DEFAULT_HYBRID_EFFORT
 from mineru.utils.title_level_postprocess import finalize_client_side_pages
 from mineru.version import __version__
 
@@ -45,6 +46,7 @@ def regenerate_client_side_outputs(
     parse_dir: str | Path,
     doc_stem: str,
     backend: str,
+    effort: str = DEFAULT_HYBRID_EFFORT,
 ) -> tuple[Path, ...]:
     """读取服务端 staged/finalized middle json，并在客户端覆盖生成最终输出产物。"""
     parse_dir = Path(parse_dir)
@@ -65,7 +67,7 @@ def regenerate_client_side_outputs(
     _stamp_client_side_backend(pages, normalized_backend)
 
     if normalized_backend in PDF_BACKENDS:
-        finalize_client_side_pages(pages, normalized_backend)
+        finalize_client_side_pages(pages, normalized_backend, effort=effort)
 
     image_dir = "images"
 

@@ -1133,6 +1133,7 @@ async def _run_to_markdown_job(
             local_md_dir,
             file_name,
             output_backend,
+            effort=effort,
         )
 
     preview_pdf_path = maybe_generate_local_preview(
