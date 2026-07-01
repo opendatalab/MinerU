@@ -756,6 +756,7 @@ def test_api_server_preflight_rejects_missing_tier_dependency(monkeypatch: pytes
         return object()
 
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
+    monkeypatch.setattr(api_server.importlib_metadata, "packages_distributions", lambda: {"mineru": ["mineru"]})
 
     with pytest.raises(api_server.ParseServerStartupError, match="tier 'standard'.*torch.*mineru\\[standard\\]"):
         create_app(upload_dir=str(tmp_path), tier="standard")
@@ -768,6 +769,7 @@ def test_api_server_cli_reports_dependency_preflight_without_traceback(monkeypat
         return object()
 
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
+    monkeypatch.setattr(api_server.importlib_metadata, "packages_distributions", lambda: {"mineru": ["mineru-next-dev"]})
     monkeypatch.setattr(api_server.sys, "platform", "darwin")
 
     result = runner.invoke(main, ["--tier", "pro"])
@@ -776,7 +778,7 @@ def test_api_server_cli_reports_dependency_preflight_without_traceback(monkeypat
     assert result.output == (
         "Error: Parse server cannot start for tier 'pro'; missing runtime dependencies: mlx. "
         "Install optional dependencies for this tier in the same Python environment as MinerU, "
-        "for example: pip install 'mineru[pro]'.\n"
+        "for example: pip install 'mineru-next-dev[pro]'.\n"
     )
     assert "Traceback" not in result.output
 

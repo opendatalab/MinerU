@@ -27,6 +27,7 @@ import zipfile
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from importlib import metadata as importlib_metadata
 from typing import Annotated, Any, AsyncIterator, Callable, Literal
 
 import click
@@ -1994,10 +1995,19 @@ def _required_modules_for_tier(tier: Tier) -> list[str]:
     return []
 
 
+def _installed_distribution_name(import_package: str) -> str:
+    try:
+        distributions = importlib_metadata.packages_distributions().get(import_package, [])
+    except Exception:
+        return import_package
+    return distributions[0] if distributions else import_package
+
+
 def _tier_dependency_install_hint(tier: Tier) -> str:
+    package_name = _installed_distribution_name("mineru")
     return (
         f"Install optional dependencies for this tier in the same Python environment as MinerU, "
-        f"for example: pip install 'mineru[{tier}]'."
+        f"for example: pip install '{package_name}[{tier}]'."
     )
 
 
