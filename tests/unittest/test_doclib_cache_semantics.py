@@ -1126,6 +1126,39 @@ def test_request_parse_rejects_unsupported_file_type_before_parse_response(tmp_p
     asyncio.run(_run())
 
 
+@pytest.mark.parametrize(
+    ("ext", "target_ext"),
+    [
+        ("doc", "docx"),
+        ("ppt", "pptx"),
+        ("xls", "xlsx"),
+    ],
+)
+def test_request_parse_rejects_legacy_office_with_conversion_hint(tmp_path: Path, ext: str, target_ext: str) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=None,
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / f"sample.{ext}"
+        source.write_bytes(b"office")
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.request_parse(str(source), tier="flash")
+
+        assert exc_info.value.code == "file_type_unsupported"
+        assert exc_info.value.param == "path"
+        assert f".{ext} files are not supported" in exc_info.value.message
+        assert f".{target_ext}" in exc_info.value.message
+
+    asyncio.run(_run())
+
+
 def test_request_parse_raises_ingest_failed_when_file_row_has_no_sha(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))

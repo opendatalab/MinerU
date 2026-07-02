@@ -17,7 +17,13 @@ from ...errors import InvalidRequestError, MineruError
 from ...parser.api_client import _V1APIError
 from ...parser.base import ParseResult
 from ...types import TIER_ORDER, PageInfo, Tier
-from ..constants import IMAGE_EXTENSIONS, PARSEABLE_EXTENSIONS, TEXT_EXTENSIONS, is_office_temp_lock_file
+from ..constants import (
+    IMAGE_EXTENSIONS,
+    LEGACY_OFFICE_EXTENSION_UPGRADES,
+    PARSEABLE_EXTENSIONS,
+    TEXT_EXTENSIONS,
+    is_office_temp_lock_file,
+)
 from ..core.db import DatabaseManager
 from ..core.file_io import FileStat, MetadataExtractionError, compute_sha256, extract_metadata, get_file_stat
 from ..core.fts import FTSManager
@@ -662,7 +668,7 @@ class ParseService:
         refreshed = await self.refresh_file(path, ensure_ingested=True, allow_images=True)
         if refreshed.status == "unsupported":
             ext = Path(path).suffix.lower() or Path(path).name
-            raise InvalidRequestError("file_type_unsupported", f"File type is not supported for parsing: {ext}", "path")
+            raise InvalidRequestError("file_type_unsupported", _unsupported_file_type_message(ext), "path")
         if refreshed.status in {"missing", "deleted", "unreachable"}:
             raise InvalidRequestError("file_not_found", f"File {path} not found.", "path")
         if refreshed.status == "error":
@@ -1526,3 +1532,12 @@ def _safe_filename(page_range: str, done_at: int) -> str:
 
 def _file_type_from_ext(ext: str) -> str:
     return DOC_TYPE_BY_EXT.get(ext, ext or "unknown")
+
+
+def _unsupported_file_type_message(ext_or_name: str) -> str:
+    ext = ext_or_name.lower().lstrip(".")
+    upgrade_ext = LEGACY_OFFICE_EXTENSION_UPGRADES.get(ext)
+    if upgrade_ext:
+        return f".{ext} files are not supported; please convert to .{upgrade_ext}."
+    display = ext_or_name if ext_or_name.startswith(".") else Path(ext_or_name).name
+    return f"File type is not supported for parsing: {display}"
