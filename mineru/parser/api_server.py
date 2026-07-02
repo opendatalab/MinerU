@@ -27,12 +27,13 @@ import zipfile
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Annotated, Any, AsyncIterator, Callable, Literal
+from typing import Annotated, Any, AsyncIterator, Callable, Literal, NoReturn
 
 import click
 import httpx
 import uvicorn
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -177,6 +178,91 @@ class ErrorDetail(BaseModel):
 class ErrorResponse(BaseModel):
     model_config = _PYDANTIC_CONFIG
     error: ErrorDetail
+
+
+class ApiServerError(Exception):
+    """Structured API error raised by parser API business logic."""
+
+    def __init__(self, status_code: int, error: ErrorDetail) -> None:
+        super().__init__(error.message)
+        self.status_code = status_code
+        self.error = error
+
+
+def _raise_api_error(
+    status_code: int,
+    *,
+    error_type: str,
+    code: str | None,
+    message: str,
+    param: str | None = None,
+) -> NoReturn:
+    raise ApiServerError(
+        status_code,
+        ErrorDetail(
+            type=error_type,
+            code=code,
+            message=message,
+            param=param,
+        ),
+    )
+
+
+def _error_response(status_code: int, error: ErrorDetail) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content=ErrorResponse(error=error).model_dump(by_alias=True),
+    )
+
+
+def _error_type_for_status(status_code: int) -> str:
+    if status_code == 401:
+        return "authentication_error"
+    if status_code == 403:
+        return "permission_error"
+    if 400 <= status_code < 500:
+        return "invalid_request_error"
+    return "api_error"
+
+
+def _validation_error_param(exc: RequestValidationError) -> str | None:
+    for err in exc.errors():
+        loc = err.get("loc", ())
+        parts = [str(part) for part in loc if part not in ("body", "query", "path")]
+        if parts:
+            return ".".join(parts)
+    return None
+
+
+def _validation_error_message(exc: RequestValidationError) -> str:
+    errors = exc.errors()
+    if not errors:
+        return "Invalid request."
+    first = errors[0]
+    loc = first.get("loc", ())
+    parts = [str(part) for part in loc if part not in ("body", "query", "path")]
+    field = ".".join(parts)
+    msg = str(first.get("msg", "Invalid value"))
+    if field:
+        return f"Invalid request: {field}: {msg}"
+    return f"Invalid request: {msg}"
+
+
+def _http_exception_error(exc: HTTPException) -> ErrorDetail:
+    detail = exc.detail
+    if isinstance(detail, dict):
+        candidate = detail.get("error")
+        if isinstance(candidate, dict):
+            return ErrorDetail.model_validate(candidate)
+        nested = detail.get("detail")
+        if isinstance(nested, dict) and isinstance(nested.get("error"), dict):
+            return ErrorDetail.model_validate(nested["error"])
+    message = str(detail) if detail else "HTTP error"
+    return ErrorDetail(
+        type=_error_type_for_status(exc.status_code),
+        code="api_error" if exc.status_code >= 500 else "invalid_request",
+        message=message,
+    )
 
 
 # ── Health ───────────────────────────────────────────────────────────
@@ -628,56 +714,40 @@ class FileStore:
     def get_upload(self, upload_id: str) -> _UploadRecord:
         rec = self._uploads.get(upload_id)
         if rec is None:
-            raise HTTPException(
-                status_code=404,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="upload_not_found",
-                        message=f"Upload {upload_id} not found",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                404,
+                error_type="invalid_request_error",
+                code="upload_not_found",
+                message=f"Upload {upload_id} not found",
             )
         return rec
 
     def _read_upload_data(self, upload_id: str) -> bytes:
         p = self._blobs / "_uploads" / upload_id
         if not p.is_file():
-            raise HTTPException(
-                status_code=409,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="upload_not_ready",
-                        message="Upload bytes not yet received",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                409,
+                error_type="invalid_request_error",
+                code="upload_not_ready",
+                message="Upload bytes not yet received",
             )
         return p.read_bytes()
 
     def complete_upload(self, upload_id: str, sha256hex: str | None) -> UploadResponse:
         rec = self.get_upload(upload_id)
         if rec.status == "completed":
-            raise HTTPException(
-                status_code=409,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="upload_already_terminal",
-                        message="Upload is already completed",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                409,
+                error_type="invalid_request_error",
+                code="upload_already_terminal",
+                message="Upload is already completed",
             )
         if rec.status in ("cancelled", "expired"):
-            raise HTTPException(
-                status_code=409,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="upload_already_terminal",
-                        message=f"Upload is {rec.status}",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                409,
+                error_type="invalid_request_error",
+                code="upload_already_terminal",
+                message=f"Upload is {rec.status}",
             )
 
         # compute sha256 from uploaded data if not provided
@@ -685,26 +755,18 @@ class FileStore:
         actual_sha = hashlib.sha256(data).hexdigest()
 
         if sha256hex and sha256hex != actual_sha:
-            raise HTTPException(
-                status_code=400,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="file_hash_mismatch",
-                        message="SHA-256 mismatch",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                400,
+                error_type="invalid_request_error",
+                code="file_hash_mismatch",
+                message="SHA-256 mismatch",
             )
         if rec.sha256sum and rec.sha256sum != actual_sha:
-            raise HTTPException(
-                status_code=400,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="file_hash_mismatch",
-                        message="SHA-256 mismatch",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                400,
+                error_type="invalid_request_error",
+                code="file_hash_mismatch",
+                message="SHA-256 mismatch",
             )
 
         # move from upload blob to content-addressed blob
@@ -734,15 +796,11 @@ class FileStore:
     def cancel_upload(self, upload_id: str) -> UploadResponse:
         rec = self.get_upload(upload_id)
         if rec.status in ("completed", "cancelled", "expired"):
-            raise HTTPException(
-                status_code=409,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="upload_already_terminal",
-                        message=f"Upload is {rec.status}",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                409,
+                error_type="invalid_request_error",
+                code="upload_already_terminal",
+                message=f"Upload is {rec.status}",
             )
         rec.status = "cancelled"
         return self._make_upload_response(rec)
@@ -751,15 +809,11 @@ class FileStore:
         """Store raw bytes for an upload (before complete)."""
         rec = self.get_upload(upload_id)
         if rec.status != "pending":
-            raise HTTPException(
-                status_code=409,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="upload_already_terminal",
-                        message=f"Upload is {rec.status}",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                409,
+                error_type="invalid_request_error",
+                code="upload_already_terminal",
+                message=f"Upload is {rec.status}",
             )
         # store temporarily under upload_id in blobs dir
         p = self._blobs / "_uploads" / upload_id
@@ -809,15 +863,11 @@ class FileStore:
     def get_file(self, file_id: str) -> _FileRecord:
         rec = self._files.get(file_id)
         if rec is None:
-            raise HTTPException(
-                status_code=404,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="file_not_found",
-                        message=f"File {file_id} not found",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                404,
+                error_type="invalid_request_error",
+                code="file_not_found",
+                message=f"File {file_id} not found",
             )
         return rec
 
@@ -836,40 +886,28 @@ class FileStore:
     def read_file_data(self, file_id: str) -> bytes:
         rec = self.get_file(file_id)
         if rec.purpose != "parse_output":
-            raise HTTPException(
-                status_code=403,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="permission_error",
-                        code="feature_requires_api_key",
-                        message="Source files cannot be downloaded",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                403,
+                error_type="permission_error",
+                code="feature_requires_api_key",
+                message="Source files cannot be downloaded",
             )
         if rec.sha256sum is None:
-            raise HTTPException(
-                status_code=500,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="api_error",
-                        code="internal_error",
-                        message="File has no sha256sum",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                500,
+                error_type="api_error",
+                code="internal_error",
+                message="File has no sha256sum",
             )
         return self.read_blob(rec.sha256sum)
 
     def delete_file(self, file_id: str) -> None:
         if file_id not in self._files:
-            raise HTTPException(
-                status_code=404,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="file_not_found",
-                        message=f"File {file_id} not found",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                404,
+                error_type="invalid_request_error",
+                code="file_not_found",
+                message=f"File {file_id} not found",
             )
         del self._files[file_id]
 
@@ -1056,30 +1094,22 @@ class JobStore:
     def get(self, job_id: str) -> _JobRecord:
         rec = self._jobs.get(job_id)
         if rec is None:
-            raise HTTPException(
-                status_code=404,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="job_not_found",
-                        message=f"Job {job_id} not found",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                404,
+                error_type="invalid_request_error",
+                code="job_not_found",
+                message=f"Job {job_id} not found",
             )
         return rec
 
     def cancel(self, job_id: str) -> _JobRecord:
         rec = self.get(job_id)
         if rec.status in ("completed", "partial", "failed", "canceled"):
-            raise HTTPException(
-                status_code=409,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="job_already_terminal",
-                        message=f"Job is {rec.status}",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                409,
+                error_type="invalid_request_error",
+                code="job_already_terminal",
+                message=f"Job is {rec.status}",
             )
         rec.status = "canceled"
         return rec
@@ -1474,15 +1504,11 @@ async def get_model(
     """Retrieve a single model by ID."""
     model_ids: list[str] = request.app.state.model_ids
     if model not in model_ids:
-        raise HTTPException(
-            status_code=404,
-            detail=ErrorResponse(
-                error=ErrorDetail(
-                    type="invalid_request_error",
-                    code="model_not_found",
-                    message=f"Model '{model}' not found",
-                ),
-            ).model_dump(by_alias=True),
+        _raise_api_error(
+            404,
+            error_type="invalid_request_error",
+            code="model_not_found",
+            message=f"Model '{model}' not found",
         )
     now = int(time.time())
     return ModelInfo(id=model, created=now)
@@ -1688,72 +1714,52 @@ async def create_job(
 ) -> Response:
     """Create a parse job."""
     if body.callback is not None:
-        raise HTTPException(
-            status_code=400,
-            detail=ErrorResponse(
-                error=ErrorDetail(
-                    type="invalid_request_error",
-                    code="invalid_request",
-                    message=(
-                        "Webhook callback is not supported by this Local Parse Server. "
-                        "Use polling via GET /v1/parse/jobs/{job_id}."
-                    ),
-                ),
-            ).model_dump(by_alias=True),
+        _raise_api_error(
+            400,
+            error_type="invalid_request_error",
+            code="invalid_request",
+            message=(
+                "Webhook callback is not supported by this Local Parse Server. "
+                "Use polling via GET /v1/parse/jobs/{job_id}."
+            ),
         )
 
     # validate output formats — advanced formats require API key
     for fmt in body.output_formats:
         if fmt in ("html", "latex", "docx") and access_level == "anonymous":
-            raise HTTPException(
-                status_code=403,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="permission_error",
-                        code="feature_requires_api_key",
-                        message=f"Output format '{fmt}' requires an API key",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                403,
+                error_type="permission_error",
+                code="feature_requires_api_key",
+                message=f"Output format '{fmt}' requires an API key",
             )
         if fmt not in _OUTPUT_FORMATS_LOCAL:
-            raise HTTPException(
-                status_code=400,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="invalid_request",
-                        message=f"Unknown output format: {fmt}",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                400,
+                error_type="invalid_request_error",
+                code="invalid_request",
+                message=f"Unknown output format: {fmt}",
             )
 
     # validate wait vs server limit
     max_wait: int = request.app.state.max_wait
     if body.wait != 0 and (body.wait < 5 or body.wait > max_wait):
-        raise HTTPException(
-            status_code=400,
-            detail=ErrorResponse(
-                error=ErrorDetail(
-                    type="invalid_request_error",
-                    code="invalid_request",
-                    message=f"wait must be 0 or [5, {max_wait}]",
-                ),
-            ).model_dump(by_alias=True),
+        _raise_api_error(
+            400,
+            error_type="invalid_request_error",
+            code="invalid_request",
+            message=f"wait must be 0 or [5, {max_wait}]",
         )
 
     # Resolve omitted tier to this server's concrete tier, then validate it.
     body.tier = body.tier or request.app.state.tier
     supported_tiers = {tier["id"] for tier in request.app.state.tiers}
     if body.tier not in supported_tiers:
-        raise HTTPException(
-            status_code=400,
-            detail=ErrorResponse(
-                error=ErrorDetail(
-                    type="invalid_request_error",
-                    code="invalid_request",
-                    message=f"Tier '{body.tier}' not available in this server",
-                ),
-            ).model_dump(by_alias=True),
+        _raise_api_error(
+            400,
+            error_type="invalid_request_error",
+            code="invalid_request",
+            message=f"Tier '{body.tier}' not available in this server",
         )
 
     rec = job_store.create(body, file_store)
@@ -2117,6 +2123,38 @@ def create_app(
     JobStore(concurrency=concurrency).install(application.state)
     application.add_middleware(GZipMiddleware, minimum_size=1000)
 
+    @application.exception_handler(ApiServerError)
+    async def _api_server_error_handler(request: Request, exc: ApiServerError) -> JSONResponse:
+        return _error_response(exc.status_code, exc.error)
+
+    @application.exception_handler(RequestValidationError)
+    async def _request_validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        return _error_response(
+            400,
+            ErrorDetail(
+                type="invalid_request_error",
+                code="invalid_request",
+                message=_validation_error_message(exc),
+                param=_validation_error_param(exc),
+            ),
+        )
+
+    @application.exception_handler(HTTPException)
+    async def _http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+        return _error_response(exc.status_code, _http_exception_error(exc))
+
+    @application.exception_handler(Exception)
+    async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        logger.error("Unhandled parse API error", exc_info=(type(exc), exc, exc.__traceback__))
+        return _error_response(
+            500,
+            ErrorDetail(
+                type="api_error",
+                code="internal_error",
+                message="Internal server error",
+            ),
+        )
+
     _PUBLIC_PATHS = frozenset({"/v1/health", "/v1/models", "/v1/tiers"})
     _PUBLIC_PREFIXES = ("/openapi", "/docs", "/redoc")
 
@@ -2129,15 +2167,13 @@ def create_app(
             return await call_next(request)
         auth = request.headers.get("Authorization", "")
         if not auth.startswith("Bearer ") or auth[7:] != api_key:
-            return JSONResponse(
-                status_code=401,
-                content=ErrorResponse(
-                    error=ErrorDetail(
-                        type="authentication_error",
-                        code="invalid_api_key",
-                        message="Invalid or missing API key",
-                    ),
-                ).model_dump(by_alias=True),
+            return _error_response(
+                401,
+                ErrorDetail(
+                    type="authentication_error",
+                    code="invalid_api_key",
+                    message="Invalid or missing API key",
+                ),
             )
         return await call_next(request)
 

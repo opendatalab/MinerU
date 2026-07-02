@@ -479,10 +479,49 @@ def test_local_parse_server_rejects_callback(tmp_path: Path, monkeypatch: pytest
     )
 
     assert response.status_code == 400
-    body = response.json()["detail"]
+    body = response.json()
+    assert "detail" not in body
     assert body["error"]["code"] == "invalid_request"
     assert "Webhook callback is not supported" in body["error"]["message"]
     assert app.state.job_store._jobs == {}
+
+
+def test_api_server_validation_errors_use_error_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path))
+    client = TestClient(app)
+
+    response = client.post("/v1/parse/jobs", json={"files": []})
+
+    assert response.status_code == 400
+    body = response.json()
+    assert "detail" not in body
+    assert body["error"]["type"] == "invalid_request_error"
+    assert body["error"]["code"] == "invalid_request"
+    assert "Invalid request" in body["error"]["message"]
+
+
+def test_api_server_unhandled_exceptions_use_error_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path))
+
+    @app.get("/boom")
+    async def _boom() -> None:
+        raise RuntimeError("boom")
+
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.get("/boom")
+
+    assert response.status_code == 500
+    body = response.json()
+    assert "detail" not in body
+    assert body["error"] == {
+        "type": "api_error",
+        "code": "internal_error",
+        "message": "Internal server error",
+        "param": None,
+    }
 
 
 def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
