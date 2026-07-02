@@ -402,17 +402,9 @@ async def _async_download_json(parser: MinerUApiParser, outputs: dict[str, Any])
 
 
 def _download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) -> bytes:
-    # TEMP(2026-06-12): staging server may return {"url": "..."} instead of
-    # {"file_id": "...", "bytes": ...}. Keep this branch until staging aligns.
-    if ref.get("url"):
-        with httpx.Client(timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env) as cli:
-            r = cli.get(ref["url"])
-            _check_download_response(r)
-            return r.content
-
     file_id = ref.get("file_id")
     if not file_id:
-        raise _V1APIError("invalid_response", "No file_id or url in output reference")
+        raise _V1APIError("invalid_response", "No file_id in output reference")
 
     with httpx.Client(timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env) as cli:
         r = cli.get(f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers())
@@ -421,19 +413,9 @@ def _download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) -> bytes:
 
 
 async def _async_download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) -> bytes:
-    # TEMP(2026-06-12): staging server may return {"url": "..."} instead of
-    # {"file_id": "...", "bytes": ...}. Keep this branch until staging aligns.
-    if ref.get("url"):
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env
-        ) as cli:
-            r = await cli.get(ref["url"])
-            _check_download_response(r)
-            return r.content
-
     file_id = ref.get("file_id")
     if not file_id:
-        raise _V1APIError("invalid_response", "No file_id or url in output reference")
+        raise _V1APIError("invalid_response", "No file_id in output reference")
 
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env

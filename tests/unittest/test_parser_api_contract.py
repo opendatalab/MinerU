@@ -239,6 +239,29 @@ def test_async_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.Monke
     assert result.pages[0]._backend == "pipeline"
 
 
+def test_api_client_rejects_output_reference_without_file_id() -> None:
+    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="standard")
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        api_client._download_bytes(parser, {"url": "https://example.invalid/output.json", "bytes": 10})
+
+    assert exc_info.value.code == "invalid_response"
+    assert exc_info.value.message == "No file_id in output reference"
+
+
+def test_async_api_client_rejects_output_reference_without_file_id() -> None:
+    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="standard")
+
+    async def _run() -> None:
+        await api_client._async_download_bytes(parser, {"url": "https://example.invalid/output.json", "bytes": 10})
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        asyncio.run(_run())
+
+    assert exc_info.value.code == "invalid_response"
+    assert exc_info.value.message == "No file_id in output reference"
+
+
 @pytest.mark.parametrize("image_path", ["../escape.png", "/tmp/escape.png", "\\escape.png", "C:\\escape.png"])
 def test_api_client_rejects_unsafe_image_sidecar_paths(
     monkeypatch: pytest.MonkeyPatch,
