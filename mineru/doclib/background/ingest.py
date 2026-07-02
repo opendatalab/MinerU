@@ -7,6 +7,7 @@ import logging
 import time
 from typing import cast
 
+from ...errors import MineruError
 from ..rows import CountRow, FileRow, IngestTaskRow
 from ..services.parse_svc import ParseService
 from ..types import FILE_STATUS_ACTIVE
@@ -107,7 +108,11 @@ class IngestWorkerPool:
                 return
 
             error_code = "ingest_failed"
-            if isinstance(exc, PermissionError):
+            error_msg = str(exc)[:500]
+            if isinstance(exc, MineruError):
+                error_code = exc.code
+                error_msg = (exc.message or str(exc))[:500]
+            elif isinstance(exc, PermissionError):
                 error_code = "file_permission_denied"
             elif isinstance(exc, OSError):
                 error_code = "stat_failed"
@@ -115,7 +120,7 @@ class IngestWorkerPool:
             now = int(time.time() * 1000)
             await self.parse_svc.db.execute(
                 "UPDATE files SET sha256=NULL, locked_at=NULL, error_code=?, error_msg=?, updated_at=? WHERE id=?",
-                (error_code, str(exc)[:500], now, task["id"]),
+                (error_code, error_msg, now, task["id"]),
             )
         except Exception:
             pass

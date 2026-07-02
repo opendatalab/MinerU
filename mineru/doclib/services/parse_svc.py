@@ -80,6 +80,8 @@ FileRefreshStatus = Literal["known", "new", "changed", "missing", "deleted", "un
 class FileRefreshResult:
     file: FileInfo | None
     status: FileRefreshStatus
+    error_code: str | None = None
+    error_msg: str | None = None
 
     @property
     def needs_ingest(self) -> bool:
@@ -420,7 +422,7 @@ class ParseService:
 
     async def _refresh_stat_error(self, existing: FileRow | None, error_code: str, error_msg: str) -> FileRefreshResult:
         if existing is None:
-            return FileRefreshResult(file=None, status="error")
+            return FileRefreshResult(file=None, status="error", error_code=error_code, error_msg=error_msg)
 
         now = _now_ms()
         await self.db.execute(
@@ -428,7 +430,7 @@ class ParseService:
             (error_code, error_msg[:500], now, existing["id"]),
         )
         row = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],)))
-        return FileRefreshResult(file=_file_info(row), status="error")
+        return FileRefreshResult(file=_file_info(row), status="error", error_code=error_code, error_msg=error_msg)
 
     async def ensure_ingested(self, path: str, watch_id: int | None = None, *, allow_images: bool = False) -> FileRow | None:
         """Synchronously discover and ingest a source path when needed."""
@@ -672,8 +674,18 @@ class ParseService:
         if refreshed.status in {"missing", "deleted", "unreachable"}:
             raise InvalidRequestError("file_not_found", f"File {path} not found.", "path")
         if refreshed.status == "error":
-            code = refreshed.file.error_code if refreshed.file and refreshed.file.error_code else "ingest_failed"
-            message = refreshed.file.error_msg if refreshed.file and refreshed.file.error_msg else "File could not be ingested."
+            code = (
+                (refreshed.file.error_code if refreshed.file and refreshed.file.error_code else None)
+                or refreshed.error_code
+                or "ingest_failed"
+            )
+            message = (
+                (refreshed.file.error_msg if refreshed.file and refreshed.file.error_msg else None)
+                or refreshed.error_msg
+                or "File could not be ingested."
+            )
+            if code == "file_permission_denied":
+                raise InvalidRequestError(code, message, "path")
             raise MineruError(code, message, "path")
         if refreshed.file is None:
             raise MineruError("ingest_failed", "File could not be ingested.", "path")
