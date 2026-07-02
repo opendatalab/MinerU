@@ -385,9 +385,9 @@ parse-server 配置：
 | `parse_server.remote.url` | `https://mineru.net/api` | 远端地址 |
 | `parse_server.remote.api_key` | 无 | 远端 API Key |
 
-API Key 优先级：环境变量 `MINERU_API_KEY` 高于 config 表中的 API Key。
+API Key 优先级：config 表中的 API Key 高于环境变量 `MINERU_API_KEY`；环境变量仅作为未配置 API Key 时的默认值。
 
-配置优先级统一为：CLI 参数 > 环境变量 > 文件配置 / SQLite 配置 > 内置默认值。启动前文件配置和 SQLite 配置不应定义同一配置项；需要在 doclib server 启动前确定的配置使用文件配置，运行时可变配置使用 SQLite。
+除 API Key 等运行时凭证另有说明外，配置优先级统一为：CLI 参数 > 环境变量 > 文件配置 / SQLite 配置 > 内置默认值。启动前文件配置和 SQLite 配置不应定义同一配置项；需要在 doclib server 启动前确定的配置使用文件配置，运行时可变配置使用 SQLite。
 
 Watch、parsing-rules 和 exclude 规则也由 CLI 写入 SQLite。Parsing-rules 不得导致静默上传：只有规则显式允许 remote 时，才可以走远端解析。
 

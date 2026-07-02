@@ -778,7 +778,7 @@ config 表中的 parse-server 配置前缀为 `parse_server.*`：
 | `parse_server.local.self_hosted_url` | — | self_hosted 模式下 parse-server 的 HTTP 地址 |
 | `parse_server.local.self_hosted_api_key` | — | self_hosted 模式下的 API Key（可选） |
 | `parse_server.remote.url` | `https://mineru.net/api` | 远程 parse-server 地址 |
-| `parse_server.remote.api_key` | — | 远程 API Key（从环境变量 `MINERU_API_KEY` 也可读取） |
+| `parse_server.remote.api_key` | — | 远程 API Key。未配置时可回退读取环境变量 `MINERU_API_KEY` |
 
 **`local.mode` 行为**：
 
@@ -788,7 +788,7 @@ config 表中的 parse-server 配置前缀为 `parse_server.*`：
 | `managed` | doclib 启动时自动拉起 parse-server 进程，停止时一并关闭。生命周期由 doclib 管理 |
 | `self_hosted` | 用户自行启动和管理 parse-server。doclib 启动时不自动拉起，仅通过配置的 URL 连接探活 |
 
-**API Key 读取优先级**：环境变量 `MINERU_API_KEY` > config 中的 `remote.api_key` / `self_hosted_api_key`。
+**API Key 读取优先级**：config 中的 `remote.api_key` / `self_hosted_api_key` > 环境变量 `MINERU_API_KEY`。环境变量仅作为未配置 API Key 时的默认值。
 
 CLI 命令：
 

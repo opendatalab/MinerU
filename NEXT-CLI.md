@@ -85,7 +85,7 @@ mineru parse <file> [flags]
 
 | Flag | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `--remote` | bool | false | 切换为远端模式。远端地址和 API Key 来自 config 或环境变量 |
+| `--remote` | bool | false | 切换为远端模式。远端地址来自 config；API Key 优先来自 config，未配置时使用环境变量 |
 
 ### 解析配置
 
@@ -611,7 +611,7 @@ mineru config parse-server remote.api-key <key>  # 远程 API Key
 | `parse_server.local.self_hosted_url` | — | self_hosted 模式的 parse-server HTTP 地址 |
 | `parse_server.local.self_hosted_api_key` | — | self_hosted 模式的 API Key（可选） |
 | `parse_server.remote.url` | `https://mineru.net/api` | 远程 parse-server 地址 |
-| `parse_server.remote.api_key` | — | 远程 API Key（环境变量 `MINERU_API_KEY` 也可设置）|
+| `parse_server.remote.api_key` | — | 远程 API Key。未配置时可回退读取环境变量 `MINERU_API_KEY` |
 
 
 # mineru 数据库设计概要

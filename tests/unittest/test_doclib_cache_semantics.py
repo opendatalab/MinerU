@@ -777,6 +777,41 @@ def test_config_service_accepts_valid_url_config_values(tmp_path: Path) -> None:
     asyncio.run(_run())
 
 
+def test_remote_api_target_prefers_config_api_key_over_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    class _ConfigService:
+        async def get(self, key: str) -> str:
+            values = {
+                "parse_server.remote.url": "https://mineru.net/api",
+                "parse_server.remote.api_key": "config-key",
+            }
+            return values[key]
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_ConfigService(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+
+        base_url, api_key, via = await service._resolve_api_target("remote", "pro")
+
+        assert base_url == "https://mineru.net/api"
+        assert api_key == "config-key"
+        assert via == "remote"
+
+    monkeypatch.setenv("MINERU_API_KEY", "env-key")
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.get_health",
+        lambda: SimpleNamespace(remote_healthy=True),
+    )
+
+    asyncio.run(_run())
+
+
 def test_data_dir_is_not_runtime_kv_config(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))

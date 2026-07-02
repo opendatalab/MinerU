@@ -48,6 +48,8 @@ class MinerUApiParser(DocumentParser):
     - ``page_range`` → per-file v1 ``page_range``
     """
 
+    DEFAULT_API_URL = "https://mineru.net/api"
+
     def __init__(
         self,
         *,
@@ -55,11 +57,10 @@ class MinerUApiParser(DocumentParser):
         api_key: str | None = None,
         tier: Tier | None = None,
     ) -> None:
-        api_url = api_url or os.environ.get("MINERU_API_URL", "https://mineru.net/api")
-        self._base = api_url.rstrip("/")
-        self._api_key = api_key
-        self._local = _is_local_network_url(self._base)
-        self._trust_env = should_trust_env_for_url(self._base)
+        self._base_url = (api_url or os.environ.get("MINERU_API_URL") or self.DEFAULT_API_URL).rstrip("/")
+        self._api_key = (api_key if api_key is not None else os.environ.get("MINERU_API_KEY")) or None
+        self._local = _is_local_network_url(self._base_url)
+        self._trust_env = should_trust_env_for_url(self._base_url)
         self.tier = tier
 
     # ── DocumentParser interface ─────────────────────────────────────
@@ -106,7 +107,7 @@ class MinerUApiParser(DocumentParser):
         return payload
 
     def _output_formats(self) -> list[str]:
-        if "staging" in self._base:
+        if "staging" in self._base_url:
             # Staging still exposes the non-standard "json" output instead of middle_json/images.
             return ["json"]
         return ["middle_json", "images"]
@@ -155,7 +156,7 @@ class MinerUApiParser(DocumentParser):
 
         with httpx.Client(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
             r = cli.post(
-                f"{self._base}/v1/uploads",
+                f"{self._base_url}/v1/uploads",
                 headers=self._headers(),
                 json={
                     "filename": file_path.name,
@@ -172,13 +173,13 @@ class MinerUApiParser(DocumentParser):
             upload_url = resp["upload_url"]
             upload_headers = resp.get("upload_headers", {})
             if upload_url.startswith("/"):
-                upload_url = f"{self._base}{upload_url}"
+                upload_url = f"{self._base_url}{upload_url}"
             with file_path.open("rb") as fh:
                 r2 = cli.put(upload_url, content=fh.read(), headers=upload_headers)
             self._check(r2)
 
             r3 = cli.post(
-                f"{self._base}/v1/uploads/{resp['id']}/complete",
+                f"{self._base_url}/v1/uploads/{resp['id']}/complete",
                 headers=self._headers(),
             )
             resp3 = self._check(r3)
@@ -190,7 +191,7 @@ class MinerUApiParser(DocumentParser):
 
         async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
             r = await cli.post(
-                f"{self._base}/v1/uploads",
+                f"{self._base_url}/v1/uploads",
                 headers=self._headers(),
                 json={
                     "filename": file_path.name,
@@ -207,13 +208,13 @@ class MinerUApiParser(DocumentParser):
             upload_url = resp["upload_url"]
             upload_headers = resp.get("upload_headers", {})
             if upload_url.startswith("/"):
-                upload_url = f"{self._base}{upload_url}"
+                upload_url = f"{self._base_url}{upload_url}"
             data = file_path.read_bytes()
             r2 = await cli.put(upload_url, content=data, headers=upload_headers)
             self._check(r2)
 
             r3 = await cli.post(
-                f"{self._base}/v1/uploads/{resp['id']}/complete",
+                f"{self._base_url}/v1/uploads/{resp['id']}/complete",
                 headers=self._headers(),
             )
             resp3 = self._check(r3)
@@ -223,7 +224,7 @@ class MinerUApiParser(DocumentParser):
 
     def _do_parse(self, payload: dict[str, Any]) -> dict[str, Any]:
         with httpx.Client(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
-            r = cli.post(f"{self._base}/v1/parse/jobs", headers=self._headers(), json=payload)
+            r = cli.post(f"{self._base_url}/v1/parse/jobs", headers=self._headers(), json=payload)
             job = self._check(r)
             if job.get("status") not in ("completed", "partial", "failed", "canceled"):
                 # poll if wait timed out
@@ -232,7 +233,7 @@ class MinerUApiParser(DocumentParser):
 
     async def _async_do_parse(self, payload: dict[str, Any]) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
-            r = await cli.post(f"{self._base}/v1/parse/jobs", headers=self._headers(), json=payload)
+            r = await cli.post(f"{self._base_url}/v1/parse/jobs", headers=self._headers(), json=payload)
             job = self._check(r)
             if job.get("status") not in ("completed", "partial", "failed", "canceled"):
                 job = await self._async_poll(cli, job["job_id"])
@@ -242,7 +243,7 @@ class MinerUApiParser(DocumentParser):
         delay = 2
         for _ in range(150):  # max 5 min
             time.sleep(delay)
-            r = cli.get(f"{self._base}/v1/parse/jobs/{job_id}", headers=self._headers())
+            r = cli.get(f"{self._base_url}/v1/parse/jobs/{job_id}", headers=self._headers())
             job = self._check(r)
             if job.get("status") in ("completed", "partial", "failed", "canceled"):
                 return job
@@ -253,7 +254,7 @@ class MinerUApiParser(DocumentParser):
         delay = 2
         for _ in range(150):
             await asyncio.sleep(delay)
-            r = await cli.get(f"{self._base}/v1/parse/jobs/{job_id}", headers=self._headers())
+            r = await cli.get(f"{self._base_url}/v1/parse/jobs/{job_id}", headers=self._headers())
             job = self._check(r)
             if job.get("status") in ("completed", "partial", "failed", "canceled"):
                 return job
@@ -410,7 +411,7 @@ def _download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) -> bytes:
         raise _V1APIError("invalid_response", "No file_id in output reference")
 
     with httpx.Client(timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env) as cli:
-        r = cli.get(f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers())
+        r = cli.get(f"{parser._base_url}/v1/files/{file_id}/content", headers=parser._headers())
         _check_download_response(r)
         return r.content
 
@@ -423,7 +424,7 @@ async def _async_download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) ->
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env
     ) as cli:
-        r = await cli.get(f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers())
+        r = await cli.get(f"{parser._base_url}/v1/files/{file_id}/content", headers=parser._headers())
         _check_download_response(r)
         return r.content
 

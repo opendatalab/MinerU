@@ -82,7 +82,7 @@ def parse(
 | `page_range` | 页码范围。 |
 | `format` | 返回格式，当前主要是 `markdown`。 |
 | `force` | 跳过已有 done 缓存并重新解析；可复用 active parse，只为未覆盖页创建新 parse。 |
-| `remote` | 是否允许调用远端 parse-server。默认 `False`。远端 URL 和 API Key 来自 doclib config 或环境变量。 |
+| `remote` | 是否允许调用远端 parse-server。默认 `False`。远端 URL 来自 doclib config；API Key 优先来自 doclib config，未配置时使用环境变量。 |
 
 返回值当前是 dict，目标应稳定为 `ParseResponse`:
 
