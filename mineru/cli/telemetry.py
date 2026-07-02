@@ -24,14 +24,23 @@ PROMPT_COMMANDS = {
     "cleanup",
 }
 
-TELEMETRY_CONSENT_MESSAGE = """Help improve MinerU by sending anonymous, locally aggregated usage and diagnostic data.
+TELEMETRY_CONSENT_MESSAGE = """
+Help improve MinerU by sending anonymous, locally aggregated usage and diagnostic data.
 
-Collected: command names, MinerU version, OS, architecture, Python version, install channel, coarse CPU/GPU categories, success/failure status, error categories, tiers, and performance timing buckets.
-Not collected: document contents, extracted text/images, file names, file paths, raw URLs, search queries, prompts, snippets, tracebacks, exception messages, hostnames, usernames, account IDs, API keys, or exact CPU/GPU models.
+Collected:
+    command names, MinerU version, OS, architecture, Python version, install channel,
+    coarse CPU/GPU categories, success/failure status, error categories, tiers,
+    and performance timing buckets.
+
+NOT collected:
+    document contents, extracted text/images, file names, file paths, raw URLs,
+    search queries, prompts, snippets, tracebacks, exception messages, hostnames,
+    usernames, account IDs, API keys, or exact CPU/GPU models.
 
 Press Enter or type Y to enable, or type N to disable.
 You can change this later with `mineru telemetry enable` or `mineru telemetry disable`.
-Preview what would be sent with `mineru telemetry preview`."""
+Preview what would be sent with `mineru telemetry preview`.
+""".strip()
 
 
 def prepare_cli_telemetry(ctx: typer.Context) -> None:

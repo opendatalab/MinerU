@@ -13,14 +13,14 @@ from pathlib import Path, PurePosixPath
 from typing import Literal, cast
 from urllib.parse import urlparse
 
-from ...errors import MineruError
+from ...errors import InvalidRequestError, MineruError
 from ...parser.base import ParseResult
 from ...types import TIER_ORDER, PageInfo, Tier
-from ..constants import ALLOWED_EXTENSIONS, TEXT_EXTENSIONS, is_office_temp_lock_file
+from ..constants import IMAGE_EXTENSIONS, PARSEABLE_EXTENSIONS, TEXT_EXTENSIONS, is_office_temp_lock_file
 from ..core.db import DatabaseManager
 from ..core.file_io import FileStat, MetadataExtractionError, compute_sha256, extract_metadata, get_file_stat
 from ..core.fts import FTSManager
-from ..rows import FileRow, PageCountRow, ParseBatchRow, ParseRow, Sha256Row, ShortIdRow, WatchTargetRow
+from ..rows import DocRow, FileRow, ParseBatchRow, ParseRow, Sha256Row, ShortIdRow, WatchTargetRow
 from ..types import (
     FILE_STATUS_ACTIVE,
     FILE_STATUS_DELETED,
@@ -60,7 +60,10 @@ DOC_TYPE_BY_EXT = {
     "markdown": "markdown",
     "htm": "html",
     "html": "html",
+    **dict.fromkeys(IMAGE_EXTENSIONS, "image"),
 }
+
+QUALITY_TIER_EXTENSIONS: set[str] = {"pdf", *IMAGE_EXTENSIONS}
 
 
 FileRefreshStatus = Literal["known", "new", "changed", "missing", "deleted", "unreachable", "unsupported", "error"]
@@ -143,30 +146,36 @@ def _page_numbers_to_range_str(page_numbers: set[int]) -> str:
 def expand_page_range(page_range: str | None, page_count: int) -> str:
     """Expand shorthand page_range like 'all' or negative ranges like '-5~-1'
     into positive page ranges.  Returns '1~{page_count}' for None/empty."""
+    available_page_numbers = set(range(1, page_count + 1))
     if not page_range or page_range.strip() == "all":
-        return f"1~{page_count}"
-    result: list[str] = []
-    for part in page_range.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        if "~" in part:
-            a, b = part.split("~", 1)
-            a, b = a.strip(), b.strip()
-            start = int(a)
-            end = int(b)
-            # negative index: -5 means page_count-5+1
-            if start < 0:
-                start = page_count + start + 1
-            if end < 0:
-                end = page_count + end + 1
-            result.append(f"{start}~{end}")
-        else:
-            p = int(part.strip())
-            if p < 0:
-                p = page_count + p + 1
-            result.append(str(p))
-    return ",".join(result)
+        page_numbers = available_page_numbers
+    else:
+        page_numbers: set[int] = set()
+        for part in page_range.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if "~" in part:
+                a, b = part.split("~", 1)
+                a, b = a.strip(), b.strip()
+                start = int(a)
+                end = int(b)
+                # negative index: -5 means page_count-5+1
+                if start < 0:
+                    start = page_count + start + 1
+                if end < 0:
+                    end = page_count + end + 1
+                if start <= end:
+                    page_numbers.update(range(start, end + 1))
+            else:
+                page_no = int(part.strip())
+                if page_no < 0:
+                    page_no = page_count + page_no + 1
+                page_numbers.add(page_no)
+        page_numbers &= available_page_numbers
+    if not page_numbers:
+        raise InvalidRequestError("page_range_invalid", f"Page range does not select any pages: {page_range}", "page_range")
+    return _page_numbers_to_range_str(page_numbers)
 
 
 def default_parse_range(page_count: int | None) -> str:
@@ -187,6 +196,7 @@ async def ensure_doc_record(
     author: str | None,
     subject: str | None,
     keywords: str | None,
+    is_image_based: int = 0,
     error_code: str | None,
     error_msg: str | None,
     first_seen_at: int,
@@ -200,8 +210,8 @@ async def ensure_doc_record(
         short_id = sha256[:length]
         await db.execute(
             "INSERT OR IGNORE INTO docs (sha256, short_id, size_bytes, file_type, page_count, "
-            "title, author, subject, keywords, error_code, error_msg, first_seen_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "title, author, subject, keywords, is_image_based, error_code, error_msg, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 sha256,
                 short_id,
@@ -212,6 +222,7 @@ async def ensure_doc_record(
                 author,
                 subject,
                 keywords,
+                is_image_based,
                 error_code,
                 error_msg,
                 first_seen_at,
@@ -267,6 +278,7 @@ class ParseService:
         watch_id: int | None = None,
         *,
         ensure_ingested: bool = False,
+        allow_images: bool = False,
     ) -> FileRefreshResult:
         """Refresh one source path against the files table.
 
@@ -275,7 +287,7 @@ class ParseService:
         """
         ext = Path(path).suffix.lower().lstrip(".")
         existing = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
-        if ext not in ALLOWED_EXTENSIONS or is_office_temp_lock_file(path):
+        if ext not in PARSEABLE_EXTENSIONS or (ext in IMAGE_EXTENSIONS and not allow_images) or is_office_temp_lock_file(path):
             return FileRefreshResult(file=_file_info(existing), status="unsupported")
 
         try:
@@ -289,7 +301,7 @@ class ParseService:
 
         result = await self._refresh_existing_file_with_stat(path, ext, stat, existing, watch_id)
         if ensure_ingested and result.needs_ingest:
-            row = await self.ingest_file(path, watch_id=watch_id)
+            row = await self.ingest_file(path, watch_id=watch_id, allow_images=allow_images)
             return FileRefreshResult(file=_file_info(row), status=result.status)
         return result
 
@@ -411,19 +423,30 @@ class ParseService:
         row = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],)))
         return FileRefreshResult(file=_file_info(row), status="error")
 
-    async def ensure_ingested(self, path: str, watch_id: int | None = None) -> FileRow | None:
+    async def ensure_ingested(self, path: str, watch_id: int | None = None, *, allow_images: bool = False) -> FileRow | None:
         """Synchronously discover and ingest a source path when needed."""
-        refreshed = await self.refresh_file(path, watch_id=watch_id, ensure_ingested=True)
+        refreshed = await self.refresh_file(path, watch_id=watch_id, ensure_ingested=True, allow_images=allow_images)
         if refreshed.file is None or refreshed.status == "unsupported":
             return None
         return cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
 
-    async def ingest_file(self, path: str, watch_id: int | None = None, *, trigger: str = "parse") -> FileRow | None:
+    async def ingest_file(
+        self,
+        path: str,
+        watch_id: int | None = None,
+        *,
+        trigger: str = "parse",
+        allow_images: bool = False,
+    ) -> FileRow | None:
         """Ingest a discovered file: SHA-256 + metadata + trigger default parse."""
         start_ms = _now_ms()
         status = "succeeded"
         try:
-            return await self._ingest_file(path, watch_id=watch_id)
+            return await self._ingest_file(path, watch_id=watch_id, allow_images=allow_images)
+        except PermissionError as exc:
+            status = "failed"
+            await self._mark_file_error(path, "file_permission_denied", str(exc))
+            raise InvalidRequestError("file_permission_denied", str(exc), "path") from None
         except Exception:
             status = "failed"
             raise
@@ -432,10 +455,17 @@ class ParseService:
             await self._record_count("ingest.finished.count", dimensions=dimensions)
             await self._record_duration("ingest.duration_bucket.count", start_ms, dimensions=dimensions)
 
-    async def _ingest_file(self, path: str, watch_id: int | None = None) -> FileRow | None:
+    async def _mark_file_error(self, path: str, error_code: str, error_msg: str) -> None:
+        now = _now_ms()
+        await self.db.execute(
+            "UPDATE files SET sha256=NULL, locked_at=NULL, error_code=?, error_msg=?, updated_at=? WHERE path=?",
+            (error_code, error_msg[:500], now, path),
+        )
+
+    async def _ingest_file(self, path: str, watch_id: int | None = None, *, allow_images: bool = False) -> FileRow | None:
         """Ingest implementation without telemetry wrapper."""
         ext = Path(path).suffix.lower().lstrip(".")
-        if ext not in ALLOWED_EXTENSIONS or is_office_temp_lock_file(path):
+        if ext not in PARSEABLE_EXTENSIONS or (ext in IMAGE_EXTENSIONS and not allow_images) or is_office_temp_lock_file(path):
             return None
 
         stat = await get_file_stat(path)
@@ -556,6 +586,7 @@ class ParseService:
             author=metadata["author"],
             subject=metadata["subject"],
             keywords=metadata["keywords"],
+            is_image_based=int(metadata.get("is_image_based") or 0),
             error_code=metadata_error_code,
             error_msg=metadata_error_msg,
             first_seen_at=now,
@@ -627,23 +658,55 @@ class ParseService:
     ) -> ParseResponse:
         """Handle a parse request from CLI.  Returns info for status polling."""
         # ensure the path is current before trusting files.sha256
-        file_row = await self.ensure_ingested(path)
-        if file_row is None:
-            return _failed_response(tier or "flash", page_range or "", "File could not be ingested.")
+        refreshed = await self.refresh_file(path, ensure_ingested=True, allow_images=True)
+        if refreshed.status == "unsupported":
+            ext = Path(path).suffix.lower() or Path(path).name
+            raise InvalidRequestError("file_type_unsupported", f"File type is not supported for parsing: {ext}", "path")
+        if refreshed.status in {"missing", "deleted", "unreachable"}:
+            raise InvalidRequestError("file_not_found", f"File {path} not found.", "path")
+        if refreshed.status == "error":
+            code = refreshed.file.error_code if refreshed.file and refreshed.file.error_code else "ingest_failed"
+            message = refreshed.file.error_msg if refreshed.file and refreshed.file.error_msg else "File could not be ingested."
+            raise MineruError(code, message, "path")
+        if refreshed.file is None:
+            raise MineruError("ingest_failed", "File could not be ingested.", "path")
 
+        file_row = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
+        if file_row is None:
+            raise MineruError("ingest_failed", "File could not be ingested.", "path")
         sha256 = file_row["sha256"]
         if sha256 is None:
-            return _failed_response(tier or "flash", page_range or "", "File could not be ingested.")
-        doc = cast(PageCountRow | None, await self.db.fetchone("SELECT page_count FROM docs WHERE sha256=?", (sha256,)))
+            raise MineruError(file_row.get("error_code") or "ingest_failed", file_row.get("error_msg") or "File could not be ingested.", "path")
+        doc = cast(DocRow | None, await self.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,)))
         page_count = doc["page_count"] if doc else 1
+        short_id = doc["short_id"] if doc else None
         privacy = "remote" if remote else "local"
+        ext = file_row["ext"]
 
         # ── resolve tier (before cache check) ──
-        requested_tier = tier or _resolve_default_tier(remote)
-        ext = file_row["ext"]
+        if remote and ext not in QUALITY_TIER_EXTENSIONS:
+            raise InvalidRequestError(
+                "remote_unsupported_for_file_type",
+                f"Remote parsing is only supported for PDF and image files; '{ext}' files use local flash parsing.",
+                "remote",
+            )
+        if remote and tier == "flash":
+            raise InvalidRequestError(
+                "tier_unsupported_for_remote",
+                "--remote does not support tier 'flash'; use --tier standard or --tier pro.",
+                "tier",
+            )
+        if tier in ("standard", "pro") and ext not in QUALITY_TIER_EXTENSIONS:
+            raise InvalidRequestError(
+                "tier_unsupported_for_file_type",
+                f"Tier '{tier}' is only supported for PDF and image files; '{ext}' files use --tier flash.",
+                "tier",
+            )
         if ext in TEXT_EXTENSIONS:
-            return _text_response(sha256)
-        if ext in ("docx", "pptx", "xlsx"):
+            return _text_response(sha256, short_id)
+        if ext in QUALITY_TIER_EXTENSIONS:
+            requested_tier = tier or _resolve_default_tier(remote)
+        else:
             requested_tier = "flash"
 
         # ── expand page range ──
@@ -668,7 +731,7 @@ class ParseService:
                 needed_page_numbers -= covered_page_numbers
 
             if not needed_page_numbers:
-                return _done_response(sha256, requested_tier, request_page_range)
+                return _done_response(sha256, short_id, requested_tier, request_page_range)
 
         # ── step 2: remove page numbers covered by pending/parsing batches ──
         reused_parse_ids: list[int] = []
@@ -700,6 +763,7 @@ class ParseService:
             if not needed_page_numbers:
                 return ParseResponse(
                     sha256=sha256,
+                    short_id=short_id,
                     tier=requested_tier,
                     page_range=request_page_range,
                     status=PARSE_STATUS_PENDING,
@@ -722,6 +786,7 @@ class ParseService:
         created_parse_ids = [parse_id]
         return ParseResponse(
             sha256=sha256,
+            short_id=short_id,
             tier=requested_tier,
             page_range=request_page_range,
             status=PARSE_STATUS_PENDING,
@@ -852,7 +917,7 @@ class ParseService:
             await self._record_parse_task_finished(task_start_ms, tier=tier, status="failed", error_code="parse_failed")
             return False
 
-        # save per-batch JSON (markdown is generated on read from /docs/{sha256}/content)
+        # save per-batch JSON (markdown is generated on read from /docs/{doc_ref}/content)
         done_at_ms = _now_ms()
         json_path = os.path.join(output_dir, _safe_filename(page_range, done_at_ms))
         write_start_ms = _now_ms()
@@ -1339,9 +1404,10 @@ def load_pages_from_done_batches(data_dir: str, sha256: str, tier: Tier, done_ro
     return [pages_by_page_idx[page_idx] for page_idx in sorted(pages_by_page_idx)]
 
 
-def _done_response(sha256: str, tier: Tier, page_range: str) -> ParseResponse:
+def _done_response(sha256: str, short_id: str | None, tier: Tier, page_range: str) -> ParseResponse:
     return ParseResponse(
         sha256=sha256,
+        short_id=short_id,
         tier=tier,
         page_range=page_range,
         status=PARSE_STATUS_DONE,
@@ -1353,9 +1419,10 @@ def _done_response(sha256: str, tier: Tier, page_range: str) -> ParseResponse:
     )
 
 
-def _text_response(sha256: str) -> ParseResponse:
+def _text_response(sha256: str, short_id: str | None) -> ParseResponse:
     return ParseResponse(
         sha256=sha256,
+        short_id=short_id,
         tier="flash",
         page_range="1",
         status=PARSE_STATUS_DONE,
@@ -1364,20 +1431,6 @@ def _text_response(sha256: str) -> ParseResponse:
         created_parse_ids=[],
         reused_parse_ids=[],
         tip="Plain text files do not require parsing.",
-    )
-
-
-def _failed_response(tier: Tier, page_range: str, tip: str) -> ParseResponse:
-    return ParseResponse(
-        sha256="",
-        tier=tier,
-        page_range=page_range,
-        status=PARSE_STATUS_FAILED,
-        cache_hit=False,
-        wait_parse_ids=[],
-        created_parse_ids=[],
-        reused_parse_ids=[],
-        tip=tip,
     )
 
 
@@ -1438,7 +1491,7 @@ def _parse_coverage(request_page_range: str, rows: list[ParseRow]) -> dict:
 def _local_parse_server_url(mode: str, health: object) -> str | None:
     """Resolve local parse-server URL from mode and health state."""
     if mode == "managed":
-        return "http://127.0.0.1:15981"
+        return getattr(health, "managed_url", None)
     if mode == "self_hosted":
         return getattr(health, "self_hosted_url", None)
     return None

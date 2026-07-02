@@ -12,6 +12,17 @@ OFFICE_EXTENSIONS: set[str] = {
     "xlsx",
 }
 
+IMAGE_EXTENSIONS: set[str] = {
+    "bmp",
+    "gif",
+    "jp2",
+    "jpeg",
+    "jpg",
+    "png",
+    "tiff",
+    "webp",
+}
+
 TEXT_EXTENSIONS: set[str] = {
     "csv",
     "md",
@@ -21,7 +32,7 @@ TEXT_EXTENSIONS: set[str] = {
     "txt",
 }
 
-ALLOWED_EXTENSIONS: set[str] = {
+DISCOVERABLE_EXTENSIONS: set[str] = {
     "pdf",
     *OFFICE_EXTENSIONS,
     "html",
@@ -43,6 +54,11 @@ ALLOWED_EXTENSIONS: set[str] = {
     # Unsupported mail formats:
     # "eml",
     # "mbox",
+}
+
+PARSEABLE_EXTENSIONS: set[str] = {
+    *DISCOVERABLE_EXTENSIONS,
+    *IMAGE_EXTENSIONS,
 }
 
 

@@ -20,6 +20,7 @@ from PIL import Image
 
 from ..config import config
 from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
+from ..parser.tier import TierDependencyError, ensure_tier_runtime_dependencies
 from ..render import render_markdown
 from ..render.markdown import blocks_to_markdown
 from ..render.office.output import blocks_to_markdown as office_blocks_to_markdown
@@ -42,6 +43,7 @@ from .rows import (
     ParsingRuleRow,
     RecentScanRow,
     Sha256Row,
+    ShortIdRow,
     WatchParseCountRow,
     WatchStatsFileRow,
     WatchTargetRow,
@@ -97,6 +99,7 @@ from .types import (
     FindResult,
     ForgetPathRequest,
     ForgetPathResponse,
+    ImageFormat,
     InvalidateRequest,
     InvalidateResponse,
     ListDocsResponse,
@@ -166,11 +169,13 @@ class _ReadPlan:
     limit: int
     format: ContentFormat
     no_marker: bool
+    image_format: ImageFormat = "jpeg"
     target: ContentCursor | None = None
     next_mode: str = "parse"
 
 
 _PUBLIC_IMAGE_BUCKET_PATH = "images"
+_NO_MATCHING_DOC_SHA256 = "__mineru_no_matching_doc__"
 
 
 @dataclass(frozen=True)
@@ -242,6 +247,8 @@ class DoclibServer(AsyncDoclibInterface):
         access_log_path = getattr(self.state, "access_log_path", "")
         stdout_log_path = getattr(self.state, "stdout_log_path", "")
         stderr_log_path = getattr(self.state, "stderr_log_path", "")
+        parse_server_stdout_log_path = getattr(self.state, "parse_server_stdout_log_path", "")
+        parse_server_stderr_log_path = getattr(self.state, "parse_server_stderr_log_path", "")
         sqlite_journal_mode = await _sqlite_journal_mode(self.state.db)
         health = get_health()
 
@@ -302,6 +309,8 @@ class DoclibServer(AsyncDoclibInterface):
             access_logs=_tail_log(access_log_path, lines=10),
             stdout_logs=_tail_log(stdout_log_path, lines=10),
             stderr_logs=_tail_log(stderr_log_path, lines=10),
+            parse_server_stdout_logs=_tail_log(parse_server_stdout_log_path, lines=10),
+            parse_server_stderr_logs=_tail_log(parse_server_stderr_log_path, lines=10),
         )
 
     @route("POST", "/server/shutdown", tags=("server",))
@@ -343,7 +352,7 @@ class DoclibServer(AsyncDoclibInterface):
         self,
         *,
         ids: list[int] | None = None,
-        sha256: str | None = None,
+        doc_ref: str | None = None,
         tier: Tier | None = None,
         status: ParseStatus | None = None,
         page_range: str | None = None,
@@ -351,16 +360,17 @@ class DoclibServer(AsyncDoclibInterface):
         limit: int = 50,
         offset: int = 0,
     ) -> ListParsesResponse:
+        resolved_sha256 = await self._resolve_doc_filter_sha256(doc_ref)
         rows, total, limit, offset = await self._select_parse_rows(
             ids=ids,
-            sha256=sha256,
+            sha256=resolved_sha256,
             tier=tier,
             status=status,
             include_superseded=include_superseded,
             limit=limit,
             offset=offset,
         )
-        coverage = _parse_coverage(page_range, rows) if sha256 and tier and page_range else None
+        coverage = _parse_coverage(page_range, rows) if resolved_sha256 and tier and page_range else None
         return ListParsesResponse(
             parses=[_parse_info(row, coverage=coverage) for row in rows],
             coverage=coverage,
@@ -371,7 +381,10 @@ class DoclibServer(AsyncDoclibInterface):
 
     @route("GET", "/parses/{parse_id}", tags=("parse",))
     async def get_parse(self, parse_id: int) -> ParseInfo:
-        row = await self.state.db.fetchone("SELECT * FROM parses WHERE id=?", (parse_id,))
+        row = await self.state.db.fetchone(
+            "SELECT p.*, d.short_id AS short_id FROM parses p JOIN docs d ON d.sha256=p.sha256 WHERE p.id=?",
+            (parse_id,),
+        )
         if row is None:
             raise NotFoundError("job_not_found", f"Parse {parse_id} not found.", "parse_id")
         return _parse_info(row)
@@ -380,15 +393,19 @@ class DoclibServer(AsyncDoclibInterface):
     async def invalidate(self, request: InvalidateRequest) -> InvalidateResponse:
         if request.target != "parses":
             raise InvalidRequestError("invalid_request", f"Unsupported invalidate target: {request.target}", "target")
-        sha256 = request.sha256
+        doc_row = await self._doc_for_ref(request.doc_ref, param="doc_ref") if request.doc_ref else None
+        sha256 = doc_row["sha256"] if doc_row else None
         if sha256 is None and request.path:
             file_row = await self.state.parse_svc.ensure_ingested(request.path)
             sha256 = file_row["sha256"] if file_row and file_row.get("sha256") else None
         if sha256 is None:
             raise NotFoundError("file_not_found", "Document not found.", "path")
 
+        short_id = doc_row["short_id"] if doc_row else await self._short_id_for_sha256(sha256)
         count = await self.state.parse_svc.invalidate(sha256, request.tier)
-        return InvalidateResponse(target=request.target, sha256=sha256, tier=request.tier, invalidated_count=count)
+        return InvalidateResponse(
+            target=request.target, sha256=sha256, short_id=short_id, tier=request.tier, invalidated_count=count
+        )
 
     @route("POST", "/forget", tags=("files",))
     async def forget_path(self, request: ForgetPathRequest) -> ForgetPathResponse:
@@ -444,20 +461,26 @@ class DoclibServer(AsyncDoclibInterface):
         limit = max(1, min(limit, 200))
         offset = max(0, offset)
         file_status = status or FILE_STATUS_ACTIVE
-        clauses = ["status=?"]
+        clauses = ["f.status=?"]
         params: list[Any] = [file_status]
         if ext:
-            clauses.append("ext=?")
+            clauses.append("f.ext=?")
             params.append(ext.lstrip(".").lower())
         if watch_id is not None:
-            clauses.append("watch_id=?")
+            clauses.append("f.watch_id=?")
             params.append(watch_id)
         where = " AND ".join(clauses)
-        total_row = await self.state.db.fetchone(f"SELECT COUNT(*) AS cnt FROM files WHERE {where}", tuple(params))
+        total_row = await self.state.db.fetchone(f"SELECT COUNT(*) AS cnt FROM files f WHERE {where}", tuple(params))
         rows = cast(
             list[FileRow],
             await self.state.db.fetchall(
-                f"SELECT * FROM files WHERE {where} ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+                f"""
+                SELECT f.*, d.short_id AS short_id
+                FROM files f
+                LEFT JOIN docs d ON d.sha256=f.sha256
+                WHERE {where}
+                ORDER BY f.updated_at DESC LIMIT ? OFFSET ?
+                """,
                 (*params, limit, offset),
             ),
         )
@@ -501,18 +524,16 @@ class DoclibServer(AsyncDoclibInterface):
             raise NotFoundError("doc_not_found", f"Document for file {path} not found.", "path")
         return _doc_info(row)
 
-    @route("GET", "/docs/{sha256}", tags=("docs",))
-    async def get_doc(self, sha256: str, *, expand_files: bool = False) -> DocInfo:
-        row = await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,))
-        if row is None:
-            raise NotFoundError("file_not_found", f"Document {sha256} not found.", "sha256")
-        files = await self._files_for_sha256(sha256) if expand_files else None
+    @route("GET", "/docs/{doc_ref}", tags=("docs",))
+    async def get_doc(self, doc_ref: str, *, expand_files: bool = False) -> DocInfo:
+        row = await self._doc_for_ref(doc_ref, param="doc_ref")
+        files = await self._files_for_sha256(row["sha256"]) if expand_files else None
         return _doc_info(row, files=files)
 
-    @route("GET", "/docs/{sha256}/content", tags=("docs",))
+    @route("GET", "/docs/{doc_ref}/content", tags=("docs",))
     async def get_doc_content(
         self,
-        sha256: str,
+        doc_ref: str,
         *,
         tier: Tier,
         page_range: str | None = None,
@@ -527,7 +548,7 @@ class DoclibServer(AsyncDoclibInterface):
         try:
             response = await self._execute_read_plan(
                 await self._build_read_plan_from_parse(
-                    sha256,
+                    doc_ref,
                     tier=tier,
                     page_range=page_range,
                     after=after,
@@ -554,6 +575,7 @@ class DoclibServer(AsyncDoclibInterface):
         context: int = 0,
         limit: int = 30000,
         format: ContentFormat = "markdown",
+        image_format: ImageFormat = "jpeg",
         no_marker: bool = False,
     ) -> DocContentResponse:
         start_ms = _now_ms()
@@ -566,6 +588,7 @@ class DoclibServer(AsyncDoclibInterface):
                     context=context,
                     limit=limit,
                     format=format,
+                    image_format=image_format,
                     no_marker=no_marker,
                 )
             )
@@ -581,7 +604,7 @@ class DoclibServer(AsyncDoclibInterface):
 
     async def _build_read_plan_from_parse(
         self,
-        sha256: str,
+        doc_ref: str,
         *,
         tier: Tier,
         page_range: str | None,
@@ -593,16 +616,14 @@ class DoclibServer(AsyncDoclibInterface):
         if format != "markdown":
             raise InvalidRequestError("invalid_request", "Only markdown is currently implemented for parse content.", "format")
         limit = max(1, limit)
-        doc = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,)))
-        if doc is None:
-            raise NotFoundError("doc_not_found", f"Document {sha256} not found.", "sha256")
+        doc = await self._doc_for_ref(doc_ref, param="doc_ref")
 
         normalized_page_range = _normalize_content_page_range(page_range, after, doc)
-        after_cursor = parse_content_cursor(after) if after else None
+        after_cursor = _parse_after_cursor(after)
         if after_cursor:
             _validate_cursor_for_doc(after_cursor, doc, tier, normalized_page_range)
         return _ReadPlan(
-            sha256=sha256,
+            sha256=doc["sha256"],
             tier=tier,
             short_id=doc["short_id"],
             page_range=normalized_page_range,
@@ -623,6 +644,7 @@ class DoclibServer(AsyncDoclibInterface):
         context: int,
         limit: int,
         format: ContentFormat,
+        image_format: ImageFormat,
         no_marker: bool,
     ) -> _ReadPlan:
         limit = max(1, limit)
@@ -651,6 +673,7 @@ class DoclibServer(AsyncDoclibInterface):
             context=context,
             limit=limit,
             format=format,
+            image_format=image_format,
             no_marker=no_marker,
             target=ContentCursor(
                 short_id=doc["short_id"],
@@ -664,14 +687,15 @@ class DoclibServer(AsyncDoclibInterface):
             next_mode="read",
         )
 
-    @route("POST", "/docs/{sha256}/exports", tags=("docs",))
-    async def export_doc_content(self, sha256: str, request: DocContentExportRequest) -> DocContentExportResponse:
+    @route("POST", "/docs/{doc_ref}/exports", tags=("docs",))
+    async def export_doc_content(self, doc_ref: str, request: DocContentExportRequest) -> DocContentExportResponse:
         start_ms = _now_ms()
         dims = {"content_mode": "export", "output_format": _telemetry_output_format(request.format), "tier": request.tier}
         await _record_telemetry_count(self.state, "content.request.count", dimensions=dims)
         try:
+            doc = await self._doc_for_ref(doc_ref, param="doc_ref")
             content = await self._render_doc_content(
-                sha256,
+                doc["sha256"],
                 tier=request.tier,
                 page_range=request.page_range,
                 format=request.format,
@@ -684,7 +708,9 @@ class DoclibServer(AsyncDoclibInterface):
             finished_dims = dims | {"status": "succeeded"}
             await _record_telemetry_count(self.state, "content.finished.count", dimensions=finished_dims)
             await _record_telemetry_duration(self.state, "content.duration_bucket.count", start_ms, dimensions=finished_dims)
-            return DocContentExportResponse(sha256=sha256, tier=request.tier, output=output_path)
+            return DocContentExportResponse(
+                sha256=doc["sha256"], short_id=doc["short_id"], tier=request.tier, output=output_path
+            )
         except Exception:
             finished_dims = dims | {"status": "failed"}
             await _record_telemetry_count(self.state, "content.finished.count", dimensions=finished_dims)
@@ -734,7 +760,12 @@ class DoclibServer(AsyncDoclibInterface):
         start_ms = _now_ms()
         await _record_telemetry_count(self.state, "find.request.count")
         try:
-            results, total = await self.state.search_svc.search_filenames(query=query, ext=ext, limit=limit)
+            results, total = await self.state.search_svc.search_filenames(
+                query=query,
+                ext=ext,
+                limit=limit,
+                refresh_file=self.state.parse_svc.refresh_file,
+            )
             response = FindResponse(results=[_find_result(row) for row in results], total=total, query=query)
             dims = {"status": "succeeded"}
             await _record_telemetry_count(self.state, "find.finished.count", dimensions=dims)
@@ -750,13 +781,30 @@ class DoclibServer(AsyncDoclibInterface):
     @route("GET", "/files/by-path", tags=("files",))
     async def get_file_by_path(self, path: str) -> FileInfoResponse:
         await self.state.parse_svc.ensure_ingested(path)
-        file_row = await self.state.db.fetchone("SELECT * FROM files WHERE path=? AND status=?", (path, FILE_STATUS_ACTIVE))
+        file_row = await self.state.db.fetchone(
+            """
+            SELECT f.*, d.short_id AS short_id
+            FROM files f
+            LEFT JOIN docs d ON d.sha256=f.sha256
+            WHERE f.path=? AND f.status=?
+            """,
+            (path, FILE_STATUS_ACTIVE),
+        )
         if file_row is None:
-            raise NotFoundError("file_not_found", f"File {path} not found.", "path")
+            raise NotFoundError("file_not_found", f"File record {path} not found in doclib.", "path")
         sha256 = file_row["sha256"]
         doc_row = await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,)) if sha256 else None
         parse_rows = (
-            await self.state.db.fetchall("SELECT * FROM parses WHERE sha256=? ORDER BY tier, created_at DESC", (sha256,))
+            await self.state.db.fetchall(
+                """
+                SELECT p.*, d.short_id AS short_id
+                FROM parses p
+                JOIN docs d ON d.sha256=p.sha256
+                WHERE p.sha256=?
+                ORDER BY p.tier, p.created_at DESC
+                """,
+                (sha256,),
+            )
             if sha256
             else []
         )
@@ -784,10 +832,31 @@ class DoclibServer(AsyncDoclibInterface):
 
     @route("PUT", "/configs/{key}", tags=("config",))
     async def set_config(self, key: str, request: ConfigSetRequest) -> ConfigSetResponse:
+        await self._validate_config_set(key, request.value)
         await self.state.config_svc.set(key, request.value)
         value = await self.state.config_svc.get(key)
         source = await self.state.config_svc.get_source(key)
         return ConfigSetResponse(key=key, value=_mask_config_value(key, value or ""), source=source)
+
+    async def _validate_config_set(self, key: str, value: str) -> None:
+        if key == "parse_server.local.mode":
+            if value not in ("disabled", "managed", "self_hosted"):
+                raise InvalidRequestError(
+                    "invalid_config_value",
+                    "parse_server.local.mode must be one of: disabled, managed, self_hosted.",
+                    key,
+                )
+            if value == "managed":
+                tier = _validate_managed_parse_server_tier(
+                    (await self.state.config_svc.get("parse_server.local.managed_tier")) or "standard",
+                    "parse_server.local.managed_tier",
+                )
+                _ensure_managed_parse_server_tier_available(tier, key)
+            return
+
+        if key == "parse_server.local.managed_tier":
+            tier = _validate_managed_parse_server_tier(value, key)
+            _ensure_managed_parse_server_tier_available(tier, key)
 
     @route("DELETE", "/configs/{key}", tags=("config",))
     async def unset_config(self, key: str) -> ConfigUnsetResponse:
@@ -1010,32 +1079,41 @@ class DoclibServer(AsyncDoclibInterface):
         if ids:
             placeholders = ",".join("?" * len(ids))
             rows = cast(
-                list[ParseRow], await self.state.db.fetchall(f"SELECT * FROM parses WHERE id IN ({placeholders})", tuple(ids))
+                list[ParseRow],
+                await self.state.db.fetchall(
+                    f"""
+                    SELECT p.*, d.short_id AS short_id
+                    FROM parses p
+                    JOIN docs d ON d.sha256=p.sha256
+                    WHERE p.id IN ({placeholders})
+                    """,
+                    tuple(ids),
+                ),
             )
             by_id = {row["id"]: row for row in rows}
             ordered = [by_id[parse_id] for parse_id in ids if parse_id in by_id]
             return ordered[offset : offset + limit], len(ordered), limit, offset
         if sha256:
-            clauses.append("sha256=?")
+            clauses.append("p.sha256=?")
             params.append(sha256)
         if tier:
-            clauses.append("tier=?")
+            clauses.append("p.tier=?")
             params.append(tier)
         if status:
-            clauses.append("status=?")
+            clauses.append("p.status=?")
             params.append(status)
         elif not include_superseded:
-            clauses.append("status!=?")
+            clauses.append("p.status!=?")
             params.append(PARSE_STATUS_SUPERSEDED)
 
-        sql = "SELECT * FROM parses"
+        sql = "SELECT p.*, d.short_id AS short_id FROM parses p JOIN docs d ON d.sha256=p.sha256"
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
-        count_sql = "SELECT COUNT(*) AS cnt FROM parses"
+        count_sql = "SELECT COUNT(*) AS cnt FROM parses p JOIN docs d ON d.sha256=p.sha256"
         if clauses:
             count_sql += " WHERE " + " AND ".join(clauses)
         total_row = await self.state.db.fetchone(count_sql, tuple(params))
-        sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        sql += " ORDER BY p.created_at DESC LIMIT ? OFFSET ?"
         rows = cast(list[ParseRow], await self.state.db.fetchall(sql, (*params, limit, offset)))
         total = total_row["cnt"] if total_row else 0
         return rows, total, limit, offset
@@ -1088,7 +1166,7 @@ class DoclibServer(AsyncDoclibInterface):
             pages_for_render,
             short_id=plan.short_id,
             tier=plan.tier,
-            after=parse_content_cursor(plan.after) if plan.after else None,
+            after=_parse_after_cursor(plan.after),
             limit=plan.limit,
             add_markers=not plan.no_marker,
             target=plan.target,
@@ -1157,6 +1235,7 @@ class DoclibServer(AsyncDoclibInterface):
                 limit=plan.limit,
                 locator=plan.locator,
                 context=plan.context,
+                image_format=plan.image_format,
             ),
             content_ranges=[ContentRange(page_range=str(plan.target.page_no), start=target_ref, end=target_ref)],
             truncated=False,
@@ -1171,10 +1250,44 @@ class DoclibServer(AsyncDoclibInterface):
         )
         return row["sha256"] if row and row["sha256"] else None
 
+    async def _doc_for_ref(self, doc_ref: str, *, param: str) -> DocRow:
+        row = await self._maybe_doc_for_ref(doc_ref)
+        if row is None:
+            raise NotFoundError("doc_not_found", f"Document {doc_ref} not found.", param)
+        return row
+
+    async def _maybe_doc_for_ref(self, doc_ref: str) -> DocRow | None:
+        row = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (doc_ref,)))
+        if row is not None:
+            return row
+        return cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE short_id=?", (doc_ref,)))
+
+    async def _resolve_doc_filter_sha256(self, doc_ref: str | None) -> str | None:
+        if doc_ref is None:
+            return None
+        doc = await self._maybe_doc_for_ref(doc_ref)
+        if doc is None:
+            return _NO_MATCHING_DOC_SHA256
+        return doc["sha256"]
+
+    async def _short_id_for_sha256(self, sha256: str) -> str:
+        row = cast(ShortIdRow | None, await self.state.db.fetchone("SELECT short_id FROM docs WHERE sha256=?", (sha256,)))
+        if row is None or not row["short_id"]:
+            raise NotFoundError("doc_not_found", f"Document {sha256} not found.", "sha256")
+        return row["short_id"]
+
     async def _files_for_sha256(self, sha256: str) -> list[FileInfo]:
         rows = cast(
             list[FileRow],
-            await self.state.db.fetchall("SELECT * FROM files WHERE sha256=? AND status=?", (sha256, FILE_STATUS_ACTIVE)),
+            await self.state.db.fetchall(
+                """
+                SELECT f.*, d.short_id AS short_id
+                FROM files f
+                JOIN docs d ON d.sha256=f.sha256
+                WHERE f.sha256=? AND f.status=?
+                """,
+                (sha256, FILE_STATUS_ACTIVE),
+            ),
         )
         return [_file_info(row) for row in rows]
 
@@ -1212,7 +1325,7 @@ class DoclibServer(AsyncDoclibInterface):
         with PDFDocument(pdf_bytes) as doc:
             if plan.target.block_no is None:
                 image = doc.render_page(plan.target.page_no - 1, scale=2).pil_image
-                image_bytes = _pil_image_to_bytes(image)
+                image_bytes = _pil_image_to_bytes(image, plan.image_format)
                 width, height = image.size
             else:
                 block = _find_block_by_no(page, plan.target.block_no)
@@ -1220,10 +1333,18 @@ class DoclibServer(AsyncDoclibInterface):
                     raise NotFoundError("block_not_found", f"Block {plan.target.block_no} not found.", "locator")
                 if _is_empty_bbox(block.bbox):
                     raise InvalidRequestError("bbox_not_available", "Block bbox is not available for image output.", "locator")
-                image_bytes = doc.crop_image(block.bbox, plan.target.page_no - 1, scale=2)
+                image_bytes = _transcode_image_bytes(
+                    doc.crop_image(block.bbox, plan.target.page_no - 1, scale=2), plan.image_format
+                )
                 width, height = _image_size_from_bytes(image_bytes)
         return _write_temp_asset(
-            self.state.data_dir, plan.short_id, "jpg", image_bytes, mime_type="image/jpeg", width=width, height=height
+            self.state.data_dir,
+            plan.short_id,
+            _image_format_ext(plan.image_format),
+            image_bytes,
+            mime_type=_mime_type_for_image_format(plan.image_format),
+            width=width,
+            height=height,
         )
 
     async def _render_office_image_asset(self, plan: _ReadPlan, page: PageInfo) -> ContentAsset:
@@ -1237,21 +1358,24 @@ class DoclibServer(AsyncDoclibInterface):
             raise InvalidRequestError(
                 "format_not_supported", "Office image output is only supported for image blocks.", "format"
             )
-        image_bytes = None
-        ext = "png"
-        mime_type = "image/png"
-        if image_span.image_path:
+        image_bytes, _, _ = _span_image_bytes(image_span)
+        if image_bytes is None and image_span.image_path:
             image_dir = parse_image_sidecar_dir(self.state.data_dir, plan.sha256, plan.tier)
             candidate = resolve_image_sidecar_path(image_dir, image_span.image_path)
             if candidate is not None and candidate.is_file():
                 image_bytes = candidate.read_bytes()
-                ext = candidate.suffix.lstrip(".") or "png"
-                mime_type = _mime_type_for_ext(ext)
         if image_bytes is None:
             raise NotFoundError("asset_not_available", "Office image asset is not available.", "locator")
+        image_bytes = _transcode_image_bytes(image_bytes, plan.image_format)
         width, height = _image_size_from_bytes(image_bytes)
         return _write_temp_asset(
-            self.state.data_dir, plan.short_id, ext or "png", image_bytes, mime_type=mime_type, width=width, height=height
+            self.state.data_dir,
+            plan.short_id,
+            _image_format_ext(plan.image_format),
+            image_bytes,
+            mime_type=_mime_type_for_image_format(plan.image_format),
+            width=width,
+            height=height,
         )
 
 
@@ -1306,6 +1430,15 @@ def _locator_page_range(locator: _LocatorParts, doc: DocRow, context: int) -> st
     start = max(1, locator.page_no - context)
     end = min(page_count, locator.page_no + context)
     return _range_str(start, end)
+
+
+def _parse_after_cursor(after: str | None) -> ContentCursor | None:
+    if not after:
+        return None
+    try:
+        return parse_content_cursor(after)
+    except ValueError as exc:
+        raise InvalidRequestError("invalid_locator", str(exc), "after") from None
 
 
 def _validate_cursor_for_doc(cursor: ContentCursor, doc: DocRow, tier: Tier, page_range: str | None) -> None:
@@ -1389,6 +1522,23 @@ def _parse_server_status(
     )
 
 
+def _ensure_managed_parse_server_tier_available(tier: Tier, param: str) -> None:
+    try:
+        ensure_tier_runtime_dependencies(tier)
+    except TierDependencyError as exc:
+        raise InvalidRequestError("parse_server_dependency_missing", str(exc), param) from exc
+
+
+def _validate_managed_parse_server_tier(value: str, param: str) -> Tier:
+    if value not in ("standard", "pro"):
+        raise InvalidRequestError(
+            "invalid_config_value",
+            "parse_server.local.managed_tier must be one of: standard, pro.",
+            param,
+        )
+    return cast(Tier, value)
+
+
 def _port_from_url(url: str | None) -> int | None:
     if not url:
         return None
@@ -1434,7 +1584,8 @@ def _normalize_content_page_range(page_range: str | None, after: str | None, doc
         if page_range:
             return _normalize_page_range(page_range, page_count)
         if after:
-            cursor = parse_content_cursor(after)
+            cursor = _parse_after_cursor(after)
+            assert cursor is not None
             end = min(page_count, cursor.page_no + 9)
             return f"{cursor.page_no}~{end}" if cursor.page_no != end else str(cursor.page_no)
         end = min(page_count, 10)
@@ -1445,32 +1596,38 @@ def _normalize_content_page_range(page_range: str | None, after: str | None, doc
 
 
 def _normalize_page_range(page_range: str, page_count: int) -> str:
-    return _page_numbers_to_range_str(parse_page_range_set(_expand_page_range(page_range, page_count)))
+    return _expand_page_range(page_range, page_count)
 
 
 def _expand_page_range(page_range: str, page_count: int) -> str:
+    available_page_numbers = set(range(1, page_count + 1))
     if not page_range or page_range.strip() == "all":
-        return f"1~{page_count}"
-    result: list[str] = []
-    for part in page_range.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        if "~" in part:
-            raw_start, raw_end = part.split("~", 1)
-            start = int(raw_start.strip())
-            end = int(raw_end.strip())
-            if start < 0:
-                start = page_count + start + 1
-            if end < 0:
-                end = page_count + end + 1
-            result.append(f"{start}~{end}" if start != end else str(start))
-        else:
-            page_no = int(part)
-            if page_no < 0:
-                page_no = page_count + page_no + 1
-            result.append(str(page_no))
-    return ",".join(result)
+        page_numbers = available_page_numbers
+    else:
+        page_numbers: set[int] = set()
+        for part in page_range.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if "~" in part:
+                raw_start, raw_end = part.split("~", 1)
+                start = int(raw_start.strip())
+                end = int(raw_end.strip())
+                if start < 0:
+                    start = page_count + start + 1
+                if end < 0:
+                    end = page_count + end + 1
+                if start <= end:
+                    page_numbers.update(range(start, end + 1))
+            else:
+                page_no = int(part)
+                if page_no < 0:
+                    page_no = page_count + page_no + 1
+                page_numbers.add(page_no)
+        page_numbers &= available_page_numbers
+    if not page_numbers:
+        raise InvalidRequestError("page_range_invalid", f"Page range does not select any pages: {page_range}", "page_range")
+    return _page_numbers_to_range_str(page_numbers)
 
 
 def _page_numbers_to_range_str(page_numbers: set[int]) -> str:
@@ -1554,10 +1711,59 @@ def _iter_block_spans(block: Block) -> Iterator[Span]:
         yield from _iter_block_spans(child)
 
 
-def _pil_image_to_bytes(image: Image.Image) -> bytes:
+def _span_image_bytes(span: Span) -> tuple[bytes | None, str, str]:
+    # TODO: how to get image from office span?
+    if not span.image_base64:
+        return None, "png", "image/png"
+    match = re.match(r"^data:image/(?P<ext>[^;]+);base64,(?P<data>.+)$", span.image_base64, re.DOTALL)
+    if match is None:
+        return None, "png", "image/png"
+    ext = match.group("ext").lower()
+    try:
+        return base64.b64decode(match.group("data")), ext, _mime_type_for_ext(ext)
+    except Exception:
+        return None, ext, _mime_type_for_ext(ext)
+
+
+_PIL_IMAGE_FORMATS: dict[ImageFormat, str] = {
+    "jpeg": "JPEG",
+    "png": "PNG",
+    "webp": "WEBP",
+}
+
+_IMAGE_FORMAT_EXTENSIONS: dict[ImageFormat, str] = {
+    "jpeg": "jpg",
+    "png": "png",
+    "webp": "webp",
+}
+
+_IMAGE_FORMAT_MIME_TYPES: dict[ImageFormat, str] = {
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "webp": "image/webp",
+}
+
+
+def _pil_image_to_bytes(image: Image.Image, image_format: ImageFormat) -> bytes:
+    output_image = image
+    if image_format == "jpeg" and image.mode != "RGB":
+        output_image = image.convert("RGB")
     with BytesIO() as buffer:
-        image.save(buffer, format="JPEG")
+        output_image.save(buffer, format=_PIL_IMAGE_FORMATS[image_format])
         return buffer.getvalue()
+
+
+def _transcode_image_bytes(image_bytes: bytes, image_format: ImageFormat) -> bytes:
+    with Image.open(BytesIO(image_bytes)) as image:
+        return _pil_image_to_bytes(image, image_format)
+
+
+def _image_format_ext(image_format: ImageFormat) -> str:
+    return _IMAGE_FORMAT_EXTENSIONS[image_format]
+
+
+def _mime_type_for_image_format(image_format: ImageFormat) -> str:
+    return _IMAGE_FORMAT_MIME_TYPES[image_format]
 
 
 def _image_size_from_bytes(image_bytes: bytes) -> tuple[int | None, int | None]:
@@ -1635,6 +1841,7 @@ def _render_progressive_markdown(
         page_start_cursor = page_ref(short_id, tier, page_no)
         page_end_cursor = page_ref(short_id, tier, page_no)
         page_started = False
+        empty_page_selected = False
 
         for block_index, block_text in page_blocks:
             block_no = block_index + 1
@@ -1691,11 +1898,22 @@ def _render_progressive_markdown(
             cut_inside_page = True
             break
 
-        if not started or not page_output:
+        if not page_output and after and page_no == after.page_no:
+            continue
+        if not page_output and (target is None or target.block_no is None):
+            started = True
+            empty_page_selected = True
+            if add_markers:
+                page_output.append(f"<!-- page {page_no} -->")
+
+        if not started or (not page_output and not empty_page_selected):
             continue
         if add_markers:
-            page_output.insert(0, f"<!-- page {page_no} -->")
-        output.extend(page_output)
+            marker = f"<!-- page {page_no} -->"
+            if not page_output or page_output[0] != marker:
+                page_output.insert(0, marker)
+        if page_output:
+            output.extend(page_output)
         last_page_no = page_no
         ranges.append(ContentRange(page_range=str(page_no), start=page_start_cursor, end=page_end_cursor))
         if cut_inside_page:

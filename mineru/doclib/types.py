@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field
 
 from ..types import Tier
 
-ParseStatus = Literal["pending", "parsing", "done", "failed", "superseded"]
+ParseSubmitStatus = Literal["pending", "done"]
+ParseStatus = Literal["pending", "done", "parsing", "failed", "superseded"]
 FileStatus = Literal["active", "deleted", "unreachable"]
 ScanStatus = Literal["pending", "running", "done", "failed"]
 ScanKind = Literal["manual", "watch"]
@@ -21,10 +22,11 @@ InvalidateTarget = Literal["parses"]
 ForgetMatchedAs = Literal["file", "directory", "none"]
 ConfigSource = Literal["default", "override"]
 ContentFormat = Literal["markdown", "image"]
+ImageFormat = Literal["jpeg", "png", "webp"]
 
-PARSE_STATUS_PENDING: ParseStatus = "pending"
+PARSE_STATUS_PENDING: ParseSubmitStatus = "pending"
+PARSE_STATUS_DONE: ParseSubmitStatus = "done"
 PARSE_STATUS_PARSING: ParseStatus = "parsing"
-PARSE_STATUS_DONE: ParseStatus = "done"
 PARSE_STATUS_FAILED: ParseStatus = "failed"
 PARSE_STATUS_SUPERSEDED: ParseStatus = "superseded"
 
@@ -99,9 +101,10 @@ class ParseRequest(DoclibModel):
 
 class ParseResponse(DoclibModel):
     sha256: str
+    short_id: str | None = None
     tier: Tier
     page_range: str
-    status: ParseStatus
+    status: ParseSubmitStatus
     cache_hit: bool = False
     wait_parse_ids: list[int] = Field(default_factory=list)
     created_parse_ids: list[int] = Field(default_factory=list)
@@ -118,6 +121,7 @@ class ParseCoverage(DoclibModel):
 class ParseInfo(DoclibModel):
     id: int
     sha256: str
+    short_id: str
     tier: Tier
     page_range: str
     status: ParseStatus
@@ -143,13 +147,14 @@ class ListParsesResponse(DoclibModel):
 class InvalidateRequest(DoclibModel):
     target: InvalidateTarget = "parses"
     path: str | None = None
-    sha256: str | None = None
+    doc_ref: str | None = None
     tier: Tier | None = None
 
 
 class InvalidateResponse(DoclibModel):
     target: str
     sha256: str
+    short_id: str
     tier: Tier | None = None
     invalidated_count: int
 
@@ -212,6 +217,7 @@ class FileInfo(DoclibModel):
     size_bytes: int
     mtime_ms: int
     sha256: str | None = None
+    short_id: str | None = None
     watch_id: int | None = None
     status: FileStatus
     error_code: str | None = None
@@ -274,6 +280,7 @@ class ContentRequestScope(DoclibModel):
     limit: int = 30000
     locator: str | None = None
     context: int = 0
+    image_format: ImageFormat | None = None
 
 
 class ContentRange(DoclibModel):
@@ -306,12 +313,14 @@ class DocContentExportRequest(DoclibModel):
 
 class DocContentExportResponse(DoclibModel):
     sha256: str
+    short_id: str
     tier: Tier
     output: str
 
 
 class SearchResult(DoclibModel):
     sha256: str
+    short_id: str
     title: str | None = None
     author: str | None = None
     filename: str | None = None
@@ -578,6 +587,8 @@ class ServerStatusResponse(DoclibModel):
     access_logs: list[str] = Field(default_factory=list)
     stdout_logs: list[str] = Field(default_factory=list)
     stderr_logs: list[str] = Field(default_factory=list)
+    parse_server_stdout_logs: list[str] = Field(default_factory=list)
+    parse_server_stderr_logs: list[str] = Field(default_factory=list)
 
 
 class CleanupDeletedRequest(DoclibModel):

@@ -58,7 +58,7 @@ mineru parse <file> [flags]
 |------|------|------|------|
 | `-o, --output` | path | `-` | 输出路径；`-` 或省略表示 STDOUT |
 | `-f, --format` | markdown | markdown | 输出格式。当前仅支持 `markdown`。 |
-| `--json` | bool | false | 输出命令级 JSON；顶层固定为 `{ "parse": ..., "content": ... }` |
+| `--json` | bool | false | 输出命令级 JSON；顶层包含 `{ "parse": ..., "content": ... }`，失败或超时时可包含 `error` |
 | `--no-marker` | bool | false | 不输出结构 marker |
 
 ### 同步控制
@@ -116,12 +116,13 @@ marker 是 Agent 的控制协议，不应依赖自然语言猜测。
 
 默认输出到 STDOUT，便于 Agent 直接消费。指定 `--output` 时写入文件。
 
-`--json` 时，`mineru parse` 的顶层返回固定为命令级 envelope：
+`--json` 时，`mineru parse` 的顶层返回命令级 envelope：
 
 ```json
 {
   "parse": { "... parse summary ..." },
-  "content": { "... DocContentResponse ..." } | null
+  "content": { "... DocContentResponse ..." } | null,
+  "error": { "... ErrorInfo ..." } | null
 }
 ```
 
@@ -129,7 +130,9 @@ marker 是 Agent 的控制协议，不应依赖自然语言猜测。
 
 - 当解析结果已可读取时，`content` 为 `DocContentResponse`。
 - 当使用 `--no-wait` 或等待超时、解析尚未完成时，`content` 为 `null`。
-- 错误仍返回 [错误码体系](../errors.md) 定义的结构化错误 JSON。
+- 当命令需要保留 parse 状态供调用方继续轮询或诊断时，失败或等待超时可以在同一 envelope 顶层包含 `error`。
+- `parse.status=parsing` 是 CLI 等待超时时的命令级状态；服务端 `ParseResponse.status` 只使用 `pending` 或 `done`。
+- 直接请求错误仍返回 [错误码体系](../errors.md) 定义的结构化错误 JSON。
 
 结构化或可机器消费格式应尽量保持稳定：
 

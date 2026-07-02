@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-from typing import cast
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, cast
 
 from ...types import TIER_ORDER, Tier
 from ..core.db import DatabaseManager
 from ..core.fts import FTSManager, strip_sep
 from ..rows import ContentSearchResultRow, FilenameSearchFileRow, FilenameSearchResultRow, SearchFileRow
 from ..types import FILE_STATUS_ACTIVE
+
+if TYPE_CHECKING:
+    from .parse_svc import FileRefreshResult
+
+FilenamePathProbe = Callable[[str], Awaitable["FileRefreshResult"]]
 
 
 class SearchService:
@@ -42,7 +48,7 @@ class SearchService:
         # join with docs + files
         placeholders = ",".join("?" * len(sha256s))
         sql = (
-            "SELECT f.*, d.title, d.author, d.page_count, d.file_type "
+            "SELECT f.*, d.short_id, d.title, d.author, d.page_count, d.file_type "
             "FROM files f JOIN docs d ON f.sha256 = d.sha256 "
             f"WHERE f.sha256 IN ({placeholders})"
         )
@@ -81,6 +87,7 @@ class SearchService:
             results.append(
                 {
                     "sha256": sha,
+                    "short_id": fts_file["short_id"],
                     "title": row.get("title") or fts_file.get("title"),
                     "author": row.get("author") or fts_file.get("author"),
                     "filename": row.get("filename") or fts_file.get("filename"),
@@ -99,7 +106,7 @@ class SearchService:
     # ── filename search ─────────────────────────────────────────
 
     async def search_filenames(
-        self, query: str, ext: str | None = None, limit: int = 50
+        self, query: str, ext: str | None = None, limit: int = 50, *, refresh_file: FilenamePathProbe | None = None
     ) -> tuple[list[FilenameSearchResultRow], int]:
         """Search filenames only. Returns (results, total_count)."""
         rows = await self.fts.search_filenames(query, limit=limit)
@@ -118,6 +125,8 @@ class SearchService:
             sql += " AND f.ext = ?"
             params.append(ext.lower().lstrip("."))
         file_rows = cast(list[FilenameSearchFileRow], await self.db.fetchall(sql, tuple(params)))
+        if refresh_file is not None:
+            file_rows = await self._filter_probe_stale_filename_rows(file_rows, refresh_file)
 
         files_by_id = {fr["id"]: fr for fr in file_rows}
 
@@ -142,6 +151,21 @@ class SearchService:
 
         total = len(results)
         return results, total
+
+    async def _filter_probe_stale_filename_rows(
+        self,
+        file_rows: list[FilenameSearchFileRow],
+        refresh_file: FilenamePathProbe,
+    ) -> list[FilenameSearchFileRow]:
+        current_rows: list[FilenameSearchFileRow] = []
+        for file_row in file_rows:
+            refreshed = await refresh_file(file_row["path"])
+            if refreshed.status in {"missing", "deleted", "unreachable"}:
+                continue
+            if refreshed.file is not None and refreshed.file.status != FILE_STATUS_ACTIVE:
+                continue
+            current_rows.append(file_row)
+        return current_rows
 
 
 def _matches_tier(value: object, *, tier: Tier | None, min_tier: Tier | None) -> bool:

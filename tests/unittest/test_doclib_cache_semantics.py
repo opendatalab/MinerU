@@ -4,29 +4,44 @@ import asyncio
 import base64
 import hashlib
 import json
+import subprocess
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from PIL import Image
 
+from mineru.config import LogConfig, ManagedParseServerConfig
 from mineru.doclib.background.compaction import Compaction
 from mineru.doclib.background.device_monitor import DeviceMonitor
 from mineru.doclib.background.ingest import IngestWorkerPool
-from mineru.doclib.background.parse_server_health import ParseServerHealth, ParseServerHealthCheck, api_server_args_for_tier
+from mineru.doclib.background.parse_server_health import (
+    ParseServerHealth,
+    ParseServerHealthCheck,
+    api_server_args_for_tier,
+    select_available_managed_port,
+    start_managed_parse_server,
+    stop_managed_parse_server,
+)
 from mineru.doclib.background.watch import WatchLoop
+from mineru.doclib.config_defaults import CONFIG_DEFAULTS
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.file_io import FileStat, get_file_stat
 from mineru.doclib.core.fts import FTSManager
-from mineru.doclib.config_defaults import CONFIG_DEFAULTS
-from mineru.errors import InvalidRequestError
+from mineru.doclib.locators import ContentCursor
+from mineru.doclib.server import DoclibServer, _ReadPlan
+from mineru.doclib.services import parse_svc as parse_svc_module
 from mineru.doclib.services.cleanup_svc import CleanupService
 from mineru.doclib.services.config_svc import ConfigService
-from mineru.doclib.services import parse_svc as parse_svc_module
 from mineru.doclib.services.parse_svc import (
+    FileRefreshResult,
     ParseFailure,
     ParseService,
+    _local_parse_server_url,
     _resolve_default_tier,
+    expand_page_range,
     filter_pages_by_user_range,
     load_pages_from_done_batches,
     parse_batch_json_path,
@@ -34,9 +49,8 @@ from mineru.doclib.services.parse_svc import (
 )
 from mineru.doclib.services.scan_svc import ScanService
 from mineru.doclib.services.search_svc import SearchService
-from mineru.doclib.locators import ContentCursor
-from mineru.doclib.server import DoclibServer, _ReadPlan, _render_progressive_markdown
-from mineru.doclib.types import ParseResponse, WatchRequest
+from mineru.doclib.types import DocContentExportRequest, FileInfo, InvalidateRequest, ParseResponse, WatchRequest
+from mineru.errors import InvalidRequestError, MineruError, NotFoundError
 from mineru.parser import backend_for_tier, resolve_tier_and_backend
 from mineru.parser.base import ParseResult
 from mineru.schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
@@ -131,7 +145,7 @@ class _FakeDB:
             path = params[0]
             if self.file_row and self.file_row["path"] == path and self.file_row["status"] == "active":
                 return self.file_row
-        if sql.startswith("SELECT page_count FROM docs WHERE sha256="):
+        if sql.startswith("SELECT page_count FROM docs WHERE sha256=") or sql.startswith("SELECT * FROM docs WHERE sha256="):
             sha256 = params[0]
             if self.doc_row and self.doc_row["sha256"] == sha256:
                 return self.doc_row
@@ -152,11 +166,7 @@ class _FakeDB:
             return [row for row in self.parses if row["id"] in ids]
         if sql.startswith("SELECT * FROM parses WHERE sha256=? AND tier=? AND status=?"):
             sha256, tier, status = params
-            rows = [
-                row
-                for row in self.parses
-                if row["sha256"] == sha256 and row["tier"] == tier and row["status"] == status
-            ]
+            rows = [row for row in self.parses if row["sha256"] == sha256 and row["tier"] == tier and row["status"] == status]
             return sorted(rows, key=lambda row: row["done_at"] or 0, reverse=True)
         if sql.startswith("SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=? AND status=?"):
             sha256, tier, status = params
@@ -168,11 +178,7 @@ class _FakeDB:
             return sorted(rows, key=lambda row: row["done_at"] or 0, reverse=True)
         if sql.startswith("SELECT * FROM parses WHERE sha256=? AND tier=? AND status IN (?, ?)"):
             sha256, tier, *statuses = params
-            return [
-                row
-                for row in self.parses
-                if row["sha256"] == sha256 and row["tier"] == tier and row["status"] in statuses
-            ]
+            return [row for row in self.parses if row["sha256"] == sha256 and row["tier"] == tier and row["status"] in statuses]
         if sql.startswith("SELECT * FROM parses WHERE sha256=? AND status=?"):
             sha256, status = params
             rows = [row for row in self.parses if row["sha256"] == sha256 and row["status"] == status]
@@ -242,6 +248,13 @@ def _image_result(image_path: str, image_bytes: bytes = b"image-bytes") -> Parse
     return ParseResult(pages=[_image_page(image_path)], _image_cache=image_cache)
 
 
+def _text_page(text: str) -> PageInfo:
+    span = Span(type=ContentType.TEXT, bbox=(1, 1, 20, 10), content=text)
+    line = Line(bbox=(1, 1, 20, 10), spans=[span])
+    block = Block(index=0, type=BlockType.TEXT, bbox=(1, 1, 20, 10), lines=[line])
+    return PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[block], _backend="vlm")
+
+
 def test_load_pages_from_done_batches_keeps_newest_page_idx(tmp_path: Path) -> None:
     sha256 = "a" * 64
     tier = "standard"
@@ -272,9 +285,56 @@ def test_parser_tier_backend_mapping_is_parser_layer_only() -> None:
     assert resolve_tier_and_backend(tier="pro", backend="vlm-auto-engine") == ("pro", "vlm-engine")
 
 
-def test_managed_api_server_args_use_tier_for_process_start() -> None:
-    assert api_server_args_for_tier("standard") == ["--tier", "standard", "--port", "15981"]
-    assert api_server_args_for_tier("pro") == ["--tier", "pro", "--port", "15981"]
+def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() -> None:
+    assert api_server_args_for_tier("standard", host="127.0.0.1", port=16580) == [
+        "--tier",
+        "standard",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "16580",
+    ]
+    assert api_server_args_for_tier("pro", host="127.0.0.2", port=16581) == [
+        "--tier",
+        "pro",
+        "--host",
+        "127.0.0.2",
+        "--port",
+        "16581",
+    ]
+
+
+def test_managed_parse_server_port_selection_tries_configured_range(monkeypatch: pytest.MonkeyPatch) -> None:
+    bind_calls: list[tuple[str, int]] = []
+
+    class _Socket:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self.bound_port: int | None = None
+
+        def setsockopt(self, *args: object) -> None:
+            return None
+
+        def bind(self, address: tuple[str, int]) -> None:
+            bind_calls.append(address)
+            _host, port = address
+            if port in (16580, 16581):
+                raise OSError(98, "in use")
+            self.bound_port = port
+
+        def getsockname(self) -> tuple[str, int]:
+            assert self.bound_port is not None
+            return ("127.0.0.1", self.bound_port)
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.socket.socket", _Socket)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.errno.EADDRINUSE", 98)
+
+    port = select_available_managed_port("127.0.0.1", 16580, strict_port=False, port_probe_count=3)
+
+    assert port == 16582
+    assert bind_calls == [("127.0.0.1", 16580), ("127.0.0.1", 16581), ("127.0.0.1", 16582)]
 
 
 def test_default_tier_error_mentions_remote_when_remote_is_healthy(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -313,6 +373,12 @@ def test_default_tier_error_omits_remote_when_remote_is_unhealthy(monkeypatch: p
     assert "--tier flash" in exc_info.value.message
 
 
+def test_managed_local_parse_server_url_uses_health_managed_url() -> None:
+    health = ParseServerHealth(managed_url="http://127.0.0.1:16582")
+
+    assert _local_parse_server_url("managed", health) == "http://127.0.0.1:16582"
+
+
 def test_parse_server_health_probe_disables_env_proxy_for_local_urls(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[bool] = []
 
@@ -338,9 +404,291 @@ def test_parse_server_health_probe_disables_env_proxy_for_local_urls(monkeypatch
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.httpx.AsyncClient", _AsyncClient)
     checker = ParseServerHealthCheck(None, interval_sec=1, probe_timeout_sec=2, startup_grace_sec=3, stop_timeout_sec=4)
 
-    assert asyncio.run(checker._probe("http://127.0.0.1:15981")) == (True, ["standard"])
+    assert asyncio.run(checker._probe("http://127.0.0.1:16580")) == (True, ["standard"])
     assert asyncio.run(checker._probe("https://staging.mineru.org.cn/api")) == (True, ["standard"])
     assert calls == [False, True]
+
+
+def test_start_managed_parse_server_selects_port_and_writes_logs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    parse_stdout_log_path = tmp_path / "doclib.parse-server.stdout.log"
+    parse_stderr_log_path = tmp_path / "doclib.parse-server.stderr.log"
+    popen_calls: list[dict[str, Any]] = []
+
+    class _Proc:
+        pid = 12345
+
+    def _popen(*args: Any, **kwargs: Any) -> _Proc:
+        popen_calls.append({"args": args, "kwargs": kwargs})
+        cmd = args[0]
+        assert "--tier" in cmd
+        assert cmd[cmd.index("--tier") + 1] == "standard"
+        assert "--host" in cmd
+        assert cmd[cmd.index("--host") + 1] == "127.0.0.2"
+        assert "--port" in cmd
+        assert cmd[cmd.index("--port") + 1] == "16582"
+        assert kwargs["stdout"] is not subprocess.DEVNULL
+        assert kwargs["stderr"] is not subprocess.DEVNULL
+        assert kwargs["stdout"] is not kwargs["stderr"]
+        assert kwargs["stdin"] is subprocess.PIPE
+        assert kwargs["env"]["MINERU_MANAGED_PARSE_SERVER"] == "1"
+        kwargs["stdout"].write("parse helper stdout\n")
+        kwargs["stdout"].flush()
+        kwargs["stderr"].write("parse helper stderr\n")
+        kwargs["stderr"].flush()
+        return _Proc()
+
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582
+    )
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
+
+    proc, url = start_managed_parse_server(
+        tier="standard",
+        managed_cfg=ManagedParseServerConfig(host="127.0.0.2", port=16580, port_probe_count=3),
+        log_cfg=LogConfig(
+            parse_server_stdout_path=str(parse_stdout_log_path),
+            parse_server_stderr_path=str(parse_stderr_log_path),
+        ),
+        marker="test",
+    )
+
+    assert proc.pid == 12345
+    assert url == "http://127.0.0.2:16582"
+    assert popen_calls
+    assert parse_stdout_log_path.read_text(encoding="utf-8").endswith("parse helper stdout\n")
+    assert parse_stderr_log_path.read_text(encoding="utf-8").endswith("parse helper stderr\n")
+
+
+def test_stop_managed_parse_server_closes_stdin_then_terminates_then_kills() -> None:
+    events: list[str] = []
+
+    class _Stdin:
+        closed = False
+
+        def close(self) -> None:
+            events.append("stdin.close")
+            self.closed = True
+
+    class _Proc:
+        pid = 12345
+        stdin = _Stdin()
+        waits = 0
+
+        def poll(self) -> None:
+            return None
+
+        def wait(self, timeout: int) -> None:
+            self.waits += 1
+            events.append(f"wait:{timeout}")
+            if self.waits < 3:
+                raise subprocess.TimeoutExpired(cmd=["parse-server"], timeout=timeout)
+
+        def terminate(self) -> None:
+            events.append("terminate")
+
+        def kill(self) -> None:
+            events.append("kill")
+
+    stop_managed_parse_server(_Proc(), timeout_sec=4, reason="test")
+
+    assert events == ["stdin.close", "wait:4", "terminate", "wait:4", "kill", "wait:4"]
+
+
+def test_managed_parse_server_restart_writes_stdout_and_stderr_logs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    parse_stdout_log_path = tmp_path / "doclib.parse-server.stdout.log"
+    parse_stderr_log_path = tmp_path / "doclib.parse-server.stderr.log"
+
+    class _ConfigSvc:
+        async def get(self, key: str) -> str:
+            assert key == "parse_server.local.managed_tier"
+            return "standard"
+
+    class _Proc:
+        pid = 12345
+
+    def _popen(*args: Any, **kwargs: Any) -> _Proc:
+        cmd = args[0]
+        assert "--host" in cmd
+        assert cmd[cmd.index("--host") + 1] == "127.0.0.2"
+        assert "--port" in cmd
+        assert cmd[cmd.index("--port") + 1] == "16582"
+        assert kwargs["stdout"] is not None
+        assert kwargs["stderr"] is not None
+        assert kwargs["stdout"] is not subprocess.DEVNULL
+        assert kwargs["stderr"] is not subprocess.DEVNULL
+        assert kwargs["stdout"] is not kwargs["stderr"]
+        kwargs["stdout"].write("parse restart stdout\n")
+        kwargs["stdout"].flush()
+        kwargs["stderr"].write("parse restart stderr\n")
+        kwargs["stderr"].flush()
+        return _Proc()
+
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.get_parse_server_stdout_log_path", lambda: str(parse_stdout_log_path)
+    )
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.get_parse_server_stderr_log_path", lambda: str(parse_stderr_log_path)
+    )
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582
+    )
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
+
+    checker = ParseServerHealthCheck(
+        _ConfigSvc(),
+        interval_sec=1,
+        probe_timeout_sec=2,
+        startup_grace_sec=3,
+        stop_timeout_sec=4,
+        managed_parse_server=ManagedParseServerConfig(host="127.0.0.2", port=16580, port_probe_count=3),
+    )
+    health = ParseServerHealth()
+
+    asyncio.run(checker._try_restart_managed(health))
+
+    assert health.managed_url == "http://127.0.0.2:16582"
+    assert parse_stdout_log_path.read_text(encoding="utf-8").endswith("parse restart stdout\n")
+    assert parse_stderr_log_path.read_text(encoding="utf-8").endswith("parse restart stderr\n")
+
+
+def test_managed_parse_server_restart_stops_recorded_proc_before_start(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[str] = []
+    old_proc = object()
+
+    class _ConfigSvc:
+        async def get(self, key: str) -> str:
+            assert key == "parse_server.local.managed_tier"
+            return "standard"
+
+    class _Proc:
+        pid = 67890
+
+    def _stop(proc: object, *, timeout_sec: int, reason: str) -> None:
+        assert proc is old_proc
+        assert timeout_sec == 4
+        assert reason == "restart"
+        events.append("stop")
+
+    def _popen(*args: Any, **kwargs: Any) -> _Proc:
+        assert events == ["stop"]
+        events.append("start")
+        return _Proc()
+
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.stop_managed_parse_server", _stop)
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582
+    )
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.open_managed_parse_server_logs",
+        lambda *args, **kwargs: nullcontext((None, None)),
+    )
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
+
+    checker = ParseServerHealthCheck(
+        _ConfigSvc(),
+        interval_sec=1,
+        probe_timeout_sec=2,
+        startup_grace_sec=3,
+        stop_timeout_sec=4,
+        managed_parse_server=ManagedParseServerConfig(host="127.0.0.2", port=16580, port_probe_count=3),
+    )
+    health = ParseServerHealth(managed_proc=old_proc)
+
+    asyncio.run(checker._try_restart_managed(health))
+
+    assert events == ["stop", "start"]
+    assert health.managed_proc.pid == 67890
+
+
+def test_managed_parse_server_tier_change_detection_triggers_restart(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, str, bool]] = []
+
+    class _ConfigSvc:
+        async def get(self, key: str) -> str:
+            raise AssertionError(f"unexpected config read: {key}")
+
+    checker = ParseServerHealthCheck(
+        _ConfigSvc(),
+        interval_sec=1,
+        probe_timeout_sec=2,
+        startup_grace_sec=3,
+        stop_timeout_sec=4,
+        managed_parse_server=ManagedParseServerConfig(host="127.0.0.2", port=16580, port_probe_count=3),
+    )
+
+    async def _restart(
+        health_arg: ParseServerHealth,
+        *,
+        reason: str,
+        marker: str | None,
+        count_restart: bool,
+    ) -> None:
+        assert health_arg is health
+        calls.append((reason, marker or "", count_restart))
+
+    monkeypatch.setattr(checker, "_try_restart_managed", _restart)
+    health = ParseServerHealth(running_managed_tier="standard")
+
+    restarted = asyncio.run(checker._try_restart_managed_for_tier_change(health, "pro"))
+    unchanged = asyncio.run(checker._try_restart_managed_for_tier_change(health, "standard"))
+
+    assert restarted is True
+    assert unchanged is False
+    assert calls == [("tier-change", "tier change standard->pro", False)]
+
+
+def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[str] = []
+    old_proc = object()
+
+    class _ConfigSvc:
+        async def get(self, key: str) -> str:
+            assert key == "parse_server.local.managed_tier"
+            return "pro"
+
+    class _Proc:
+        pid = 24680
+
+    def _stop(proc: object, *, timeout_sec: int, reason: str) -> None:
+        assert proc is old_proc
+        assert timeout_sec == 4
+        assert reason == "tier-change"
+        events.append("stop")
+
+    def _start(*, tier: Tier, managed_cfg: ManagedParseServerConfig, log_cfg: LogConfig | None, marker: str) -> tuple[_Proc, str]:
+        assert tier == "pro"
+        assert managed_cfg.host == "127.0.0.2"
+        assert log_cfg is None
+        assert marker == "tier change standard->pro"
+        events.append("start")
+        return _Proc(), "http://127.0.0.2:16582"
+
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.stop_managed_parse_server", _stop)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.start_managed_parse_server", _start)
+
+    checker = ParseServerHealthCheck(
+        _ConfigSvc(),
+        interval_sec=1,
+        probe_timeout_sec=2,
+        startup_grace_sec=3,
+        stop_timeout_sec=4,
+        managed_parse_server=ManagedParseServerConfig(host="127.0.0.2", port=16580, port_probe_count=3),
+    )
+    health = ParseServerHealth(managed_proc=old_proc, running_managed_tier="standard", restart_count=2)
+
+    asyncio.run(
+        checker._try_restart_managed(
+            health,
+            reason="tier-change",
+            marker="tier change standard->pro",
+            count_restart=False,
+        )
+    )
+
+    assert events == ["stop", "start"]
+    assert health.managed_proc.pid == 24680
+    assert health.running_managed_tier == "pro"
+    assert health.restart_count == 2
 
 
 def test_get_file_stat_returns_typed_file_stat(tmp_path: Path) -> None:
@@ -409,11 +757,7 @@ def test_data_dir_is_not_runtime_kv_config(tmp_path: Path) -> None:
 def test_remote_parse_server_default_url_is_declared_once() -> None:
     default_url = CONFIG_DEFAULTS["parse_server.remote.url"]
     doclib_dir = Path(__file__).parents[2] / "mineru" / "doclib"
-    occurrences = [
-        path
-        for path in doclib_dir.rglob("*.py")
-        if default_url in path.read_text(encoding="utf-8")
-    ]
+    occurrences = [path for path in doclib_dir.rglob("*.py") if default_url in path.read_text(encoding="utf-8")]
 
     assert occurrences == [doclib_dir / "config_defaults.py"]
 
@@ -513,14 +857,274 @@ def test_ingest_binds_file_sha_before_creating_parse_task(tmp_path: Path, monkey
 
         row = await service.ingest_file(str(source))
         dangling_parses = await db.fetchall(
-            "SELECT p.id FROM parses p "
-            "LEFT JOIN files f ON f.sha256=p.sha256 AND f.status='active' "
-            "WHERE f.id IS NULL",
+            "SELECT p.id FROM parses p LEFT JOIN files f ON f.sha256=p.sha256 AND f.status='active' WHERE f.id IS NULL",
         )
 
         assert row is not None
         assert recording_db.events.index("update_file_sha") < recording_db.events.index("insert_parse")
         assert dangling_parses == []
+
+    asyncio.run(_run())
+
+
+def test_request_parse_explicit_image_ingests_and_queues_parse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class _NoRulesConfig:
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            return []
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_NoRulesConfig(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / "scan.png"
+        source.write_bytes(b"png-bytes")
+
+        async def _metadata(path: str) -> dict[str, Any]:
+            return {
+                "page_count": 1,
+                "title": None,
+                "author": None,
+                "subject": None,
+                "keywords": None,
+                "is_image_based": 1,
+            }
+
+        monkeypatch.setattr(parse_svc_module, "extract_metadata", _metadata)
+
+        result = await service.request_parse(str(source), tier="flash")
+        file_row = await db.fetchone("SELECT path, ext, sha256, status FROM files WHERE path=?", (str(source),))
+        doc_row = await db.fetchone(
+            "SELECT short_id, file_type, page_count, is_image_based FROM docs WHERE sha256=?",
+            (result.sha256,),
+        )
+        parse_rows = await db.fetchall("SELECT tier, page_range, status FROM parses WHERE sha256=?", (result.sha256,))
+
+        assert result.status == "pending"
+        assert result.tier == "flash"
+        assert doc_row is not None
+        assert result.short_id == doc_row["short_id"]
+        assert file_row is not None
+        assert file_row["ext"] == "png"
+        assert file_row["sha256"] == result.sha256
+        assert file_row["status"] == "active"
+        assert doc_row == {"short_id": result.short_id, "file_type": "image", "page_count": 1, "is_image_based": 1}
+        assert parse_rows == [{"tier": "flash", "page_range": "1", "status": "pending"}]
+
+    asyncio.run(_run())
+
+
+@pytest.mark.parametrize("ext", ["txt", "html", "docx", "pptx", "xlsx"])
+@pytest.mark.parametrize("tier", ["standard", "pro"])
+def test_request_parse_rejects_quality_tiers_for_non_pdf_image_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ext: str,
+    tier: Tier,
+) -> None:
+    class _NoRulesConfig:
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            return []
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_NoRulesConfig(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / f"sample.{ext}"
+        source.write_text("content", encoding="utf-8")
+
+        async def _metadata(path: str) -> dict[str, Any]:
+            return {
+                "page_count": 1,
+                "title": None,
+                "author": None,
+                "subject": None,
+                "keywords": None,
+                "is_image_based": 0,
+            }
+
+        monkeypatch.setattr(parse_svc_module, "extract_metadata", _metadata)
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.request_parse(str(source), tier=tier)
+
+        assert exc_info.value.code == "tier_unsupported_for_file_type"
+        assert exc_info.value.param == "tier"
+        assert tier in exc_info.value.message
+        assert ext in exc_info.value.message
+
+    asyncio.run(_run())
+
+
+@pytest.mark.parametrize("ext", ["txt", "html", "docx", "pptx", "xlsx"])
+def test_request_parse_rejects_remote_for_non_pdf_image_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ext: str,
+) -> None:
+    class _NoRulesConfig:
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            return []
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_NoRulesConfig(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / f"sample.{ext}"
+        source.write_text("content", encoding="utf-8")
+
+        async def _metadata(path: str) -> dict[str, Any]:
+            return {
+                "page_count": 1,
+                "title": None,
+                "author": None,
+                "subject": None,
+                "keywords": None,
+                "is_image_based": 0,
+            }
+
+        monkeypatch.setattr(parse_svc_module, "extract_metadata", _metadata)
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.request_parse(str(source), remote=True)
+
+        assert exc_info.value.code == "remote_unsupported_for_file_type"
+        assert exc_info.value.param == "remote"
+        assert ext in exc_info.value.message
+
+    asyncio.run(_run())
+
+
+@pytest.mark.parametrize("ext", ["pdf", "png"])
+def test_request_parse_rejects_flash_tier_for_remote_quality_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ext: str,
+) -> None:
+    class _NoRulesConfig:
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            return []
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_NoRulesConfig(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / f"sample.{ext}"
+        source.write_bytes(b"%PDF-1.4\n" if ext == "pdf" else b"png-bytes")
+
+        async def _metadata(path: str) -> dict[str, Any]:
+            return {
+                "page_count": 1,
+                "title": None,
+                "author": None,
+                "subject": None,
+                "keywords": None,
+                "is_image_based": int(ext != "pdf"),
+            }
+
+        monkeypatch.setattr(parse_svc_module, "extract_metadata", _metadata)
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.request_parse(str(source), tier="flash", remote=True)
+
+        assert exc_info.value.code == "tier_unsupported_for_remote"
+        assert exc_info.value.param == "tier"
+        assert "flash" in exc_info.value.message
+        assert "remote" in exc_info.value.message
+
+    asyncio.run(_run())
+
+
+def test_request_parse_rejects_unsupported_file_type_before_parse_response(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=None,
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / "sample.unsupported"
+        source.write_text("content", encoding="utf-8")
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.request_parse(str(source), tier="flash")
+
+        assert exc_info.value.code == "file_type_unsupported"
+        assert exc_info.value.param == "path"
+
+    asyncio.run(_run())
+
+
+def test_request_parse_raises_ingest_failed_when_file_row_has_no_sha(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=None,
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / "sample.pdf"
+        source.write_bytes(b"%PDF-1.4\n")
+        stat = source.stat()
+        now = 1000
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)",
+            (str(source), source.name, "pdf", stat.st_size, int(stat.st_mtime * 1000), "active", now, now),
+        )
+
+        async def _refresh_file(*args: Any, **kwargs: Any) -> FileRefreshResult:
+            return FileRefreshResult(
+                file=FileInfo(
+                    path=str(source),
+                    filename=source.name,
+                    ext="pdf",
+                    size_bytes=stat.st_size,
+                    mtime_ms=int(stat.st_mtime * 1000),
+                    sha256=None,
+                    status="active",
+                    first_seen_at=now,
+                    updated_at=now,
+                ),
+                status="known",
+            )
+
+        service.refresh_file = _refresh_file  # type: ignore[method-assign]
+
+        with pytest.raises(MineruError) as exc_info:
+            await service.request_parse(str(source), tier="flash")
+
+        assert exc_info.value.code == "ingest_failed"
+        assert exc_info.value.param == "path"
 
     asyncio.run(_run())
 
@@ -566,7 +1170,7 @@ def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: 
             "first_seen_at": 100,
             "updated_at": 100,
         },
-        doc_row={"sha256": sha256, "page_count": 10},
+        doc_row={"sha256": sha256, "short_id": "eeeeeee", "page_count": 10},
     )
     service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
 
@@ -577,6 +1181,7 @@ def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: 
     assert result.reused_parse_ids == [11]
     assert result.created_parse_ids == [12]
     assert result.page_range == "1~10"
+    assert result.short_id == "eeeeeee"
     assert result.status == "pending"
     assert result.cache_hit is False
     assert db.updated_priorities == [11]
@@ -586,7 +1191,15 @@ def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: 
 def test_list_parse_records_by_ids_returns_precise_status(tmp_path: Path) -> None:
     parses = [
         {"id": 1, "sha256": "f" * 64, "tier": "standard", "page_range": "1~5", "status": "done", "done_at": 1000},
-        {"id": 2, "sha256": "f" * 64, "tier": "standard", "page_range": "6~10", "status": "failed", "error_code": "parse_failed", "error_msg": "boom"},
+        {
+            "id": 2,
+            "sha256": "f" * 64,
+            "tier": "standard",
+            "page_range": "6~10",
+            "status": "failed",
+            "error_code": "parse_failed",
+            "error_msg": "boom",
+        },
     ]
     db = _FakeDB(parses=parses, file_row=None)
     service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
@@ -625,6 +1238,17 @@ def test_filter_pages_by_user_range_uses_one_based_page_numbers() -> None:
     selected = filter_pages_by_user_range(pages, "1")
 
     assert [page.page_idx for page in selected] == [0]
+
+
+def test_expand_page_range_uses_available_subset_and_merges_ranges() -> None:
+    assert expand_page_range("1~10,3,4~5", 5) == "1~5"
+
+
+def test_expand_page_range_rejects_empty_available_subset() -> None:
+    with pytest.raises(InvalidRequestError) as exc_info:
+        expand_page_range("6~10", 5)
+
+    assert exc_info.value.code == "page_range_invalid"
 
 
 def test_remap_api_result_pages_to_non_contiguous_page_range() -> None:
@@ -697,7 +1321,9 @@ def test_ensure_ingested_rebinds_changed_text_file_to_new_sha(tmp_path: Path) ->
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         source = tmp_path / "note.txt"
 
         source.write_text("old", encoding="utf-8")
@@ -731,7 +1357,9 @@ def test_refresh_file_marks_missing_known_path_deleted(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         source = tmp_path / "note.txt"
 
         source.write_text("content", encoding="utf-8")
@@ -755,11 +1383,45 @@ def test_refresh_file_marks_missing_known_path_deleted(tmp_path: Path) -> None:
     asyncio.run(_run())
 
 
+def test_ensure_ingested_maps_read_permission_error_to_file_permission_denied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
+        source = tmp_path / "locked.pdf"
+        source.write_bytes(b"%PDF-1.7\n")
+
+        async def _permission_denied(path: str) -> str:
+            raise PermissionError("permission denied")
+
+        monkeypatch.setattr(parse_svc_module, "compute_sha256", _permission_denied)
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.ensure_ingested(str(source))
+
+        row = await db.fetchone("SELECT sha256, error_code, error_msg FROM files WHERE path=?", (str(source),))
+
+        assert exc_info.value.code == "file_permission_denied"
+        assert exc_info.value.param == "path"
+        assert row is not None
+        assert row["sha256"] is None
+        assert row["error_code"] == "file_permission_denied"
+        assert row["error_msg"] == "permission denied"
+
+    asyncio.run(_run())
+
+
 def test_refresh_file_records_stat_error_without_marking_deleted(tmp_path: Path, monkeypatch) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         source = tmp_path / "note.txt"
 
         source.write_text("content", encoding="utf-8")
@@ -791,7 +1453,9 @@ def test_ingest_worker_skips_files_with_blocking_stat_errors(tmp_path: Path, mon
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         source = tmp_path / "note.txt"
 
         source.write_text("content", encoding="utf-8")
@@ -820,7 +1484,9 @@ def test_ingest_worker_preserves_precise_file_access_errors(tmp_path: Path) -> N
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         source = tmp_path / "note.txt"
         now = 1000
         file_id = await db.execute_insert(
@@ -849,7 +1515,9 @@ def test_ingest_worker_skips_any_file_with_existing_error(tmp_path: Path) -> Non
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         source = tmp_path / "note.txt"
         now = 1000
         await db.execute_insert(
@@ -899,11 +1567,13 @@ def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
 
         assert exact_total == 1
         assert [row["tier"] for row in exact_results] == ["standard"]
+        assert [row["short_id"] for row in exact_results] == ["2" * 7]
         assert [row["page_count"] for row in exact_results] == [12]
         assert min_total == 2
         assert {row["tier"] for row in min_results} == {"standard", "pro"}
         assert type_total == 1
         assert [row["filename"] for row in type_results] == ["pro.docx"]
+        assert [row["short_id"] for row in type_results] == ["3" * 7]
         assert [row["page_count"] for row in type_results] == [23]
 
     asyncio.run(_run())
@@ -925,7 +1595,9 @@ def test_search_prefers_active_paths_and_falls_back_to_non_active_paths(tmp_path
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (sha256, sha256[:7], 10, "pdf", 7 if sha256 == sha_active else 9, now, now),
             )
-            await fts.replace(sha256=sha256, tier="standard", text="fallback needle", title="", author="", filename=f"{sha256[0]}.pdf")
+            await fts.replace(
+                sha256=sha256, tier="standard", text="fallback needle", title="", author="", filename=f"{sha256[0]}.pdf"
+            )
 
         await db.execute(
             "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
@@ -986,12 +1658,53 @@ def test_find_filters_by_ext(tmp_path: Path) -> None:
     asyncio.run(_run())
 
 
+def test_find_probes_and_filters_deleted_paths_without_rescan(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        fts = FTSManager(db)
+        config_svc = ConfigService(db)
+        parse_svc = ParseService(
+            db=db,
+            fts=fts,
+            config_svc=config_svc,
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        server = DoclibServer(
+            SimpleNamespace(
+                db=db,
+                fts=fts,
+                parse_svc=parse_svc,
+                search_svc=SearchService(db, fts),
+                telemetry_svc=None,
+            )
+        )
+        source = tmp_path / "bench1.txt"
+        source.write_text("hello", encoding="utf-8")
+        assert await parse_svc.ensure_ingested(str(source)) is not None
+
+        source.unlink()
+        result = await server.find("bench1")
+        row = await db.fetchone("SELECT status, deleted_at FROM files WHERE path=?", (str(source),))
+
+        assert result.total == 0
+        assert result.results == []
+        assert row is not None
+        assert row["status"] == "deleted"
+        assert row["deleted_at"] is not None
+
+    asyncio.run(_run())
+
+
 def test_refresh_file_marks_only_current_file_unreachable_when_watch_root_is_missing(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         root = tmp_path / "removable"
         root.mkdir()
         watch = await config_svc.add_watch(str(root), removable=True)
@@ -1008,7 +1721,9 @@ def test_refresh_file_marks_only_current_file_unreachable_when_watch_root_is_mis
         root.rmdir()
         refreshed = await service.refresh_file(str(source), watch_id=watch["id"])
 
-        source_row = await db.fetchone("SELECT status, error_code, error_msg, deleted_at FROM files WHERE path=?", (str(source),))
+        source_row = await db.fetchone(
+            "SELECT status, error_code, error_msg, deleted_at FROM files WHERE path=?", (str(source),)
+        )
         other_row = await db.fetchone("SELECT status FROM files WHERE path=?", (str(other),))
         watch_row = await db.fetchone("SELECT status, unreachable_at FROM watches WHERE id=?", (watch["id"],))
 
@@ -1031,7 +1746,9 @@ def test_remove_watch_converts_unreachable_files_to_deleted_and_unbinds_watch(tm
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         root = tmp_path / "removable"
         root.mkdir()
         watch = await config_svc.add_watch(str(root), removable=True)
@@ -1067,7 +1784,9 @@ def test_watch_scan_refreshes_known_active_paths_before_walk(tmp_path: Path) -> 
         await db.initialize()
         config_svc = ConfigService(db)
         fts = FTSManager(db)
-        service = ParseService(db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         watch_loop = WatchLoop(db=db, config_svc=config_svc, parse_svc=service, scan_interval_sec=300)
         root = tmp_path / "watched"
         root.mkdir()
@@ -1095,7 +1814,9 @@ def test_watch_scan_marks_root_unreachable_without_refreshing_all_files(tmp_path
         await db.initialize()
         config_svc = ConfigService(db)
         fts = FTSManager(db)
-        service = ParseService(db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         watch_loop = WatchLoop(db=db, config_svc=config_svc, parse_svc=service, scan_interval_sec=300)
         root = tmp_path / "removable"
         root.mkdir()
@@ -1126,7 +1847,9 @@ def test_device_monitor_queues_watch_scan_when_removable_watch_recovers(tmp_path
         await db.initialize()
         config_svc = ConfigService(db)
         fts = FTSManager(db)
-        parse_svc = ParseService(db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
         monitor = DeviceMonitor(db=db, config_svc=config_svc, interval_sec=5, scan_svc=scan_svc)
         root = tmp_path / "removable"
@@ -1174,7 +1897,9 @@ def test_scan_service_creates_and_processes_manual_file_scan(tmp_path: Path) -> 
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
         source = tmp_path / "note.txt"
         source.write_text("content", encoding="utf-8")
@@ -1205,7 +1930,9 @@ def test_scan_service_directory_scan_applies_excludes_and_counts_unsupported(tmp
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
         root = tmp_path / "docs"
         root.mkdir()
@@ -1239,7 +1966,13 @@ def test_refresh_file_ignores_office_temp_lock_files(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=ConfigService(db), data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=ConfigService(db),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
         source = tmp_path / "~$package-size.xlsx"
         source.write_bytes(b"\x15Microsoft Office lock")
 
@@ -1257,7 +1990,13 @@ def test_ensure_ingested_ignores_existing_office_temp_lock_file_row(tmp_path: Pa
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=ConfigService(db), data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=ConfigService(db),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
         source = tmp_path / "~$package-size.xlsx"
         source.write_bytes(b"\x15Microsoft Office lock")
         now = 1000
@@ -1279,7 +2018,9 @@ def test_scan_service_directory_scan_ignores_office_temp_lock_files(tmp_path: Pa
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
         root = tmp_path / "docs"
         root.mkdir()
@@ -1335,12 +2076,44 @@ def test_watch_event_ignores_office_temp_lock_files(tmp_path: Path) -> None:
     asyncio.run(_run())
 
 
+def test_watch_event_ignores_image_files(tmp_path: Path) -> None:
+    async def _run() -> None:
+        class _ConfigService:
+            async def is_path_excluded(self, path: str) -> bool:
+                return False
+
+        class _ParseService:
+            def __init__(self) -> None:
+                self.refreshed: list[str] = []
+
+            async def refresh_file(self, filepath: str, watch_id: int) -> None:
+                self.refreshed.append(filepath)
+
+        parse_svc = _ParseService()
+        watch_loop = WatchLoop(
+            db=SimpleNamespace(),
+            config_svc=_ConfigService(),
+            parse_svc=parse_svc,
+            scan_interval_sec=300,
+        )
+        image_file = tmp_path / "scan.png"
+        image_file.write_bytes(b"png-bytes")
+
+        await watch_loop._handle_event(str(image_file), watch_id=1)
+
+        assert parse_svc.refreshed == []
+
+    asyncio.run(_run())
+
+
 def test_scan_service_reuses_pending_scan_for_same_kind_and_path(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
         root = tmp_path / "docs"
         root.mkdir()
@@ -1360,7 +2133,9 @@ def test_scan_service_does_not_reuse_stale_running_scan_for_same_kind_and_path(t
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1)
         root = tmp_path / "docs"
         root.mkdir()
@@ -1403,9 +2178,7 @@ def test_watch_ids_are_stable_standard_library_hashes(tmp_path: Path) -> None:
         root.mkdir()
 
         watch = await config_svc.add_watch(str(root))
-        expected = int.from_bytes(hashlib.blake2b(str(root).encode("utf-8"), digest_size=8).digest(), "big") & (
-            (1 << 63) - 1
-        )
+        expected = int.from_bytes(hashlib.blake2b(str(root).encode("utf-8"), digest_size=8).digest(), "big") & ((1 << 63) - 1)
 
         assert watch["id"] == expected
 
@@ -1413,13 +2186,19 @@ def test_watch_ids_are_stable_standard_library_hashes(tmp_path: Path) -> None:
 
 
 def test_doclib_server_list_responses_include_pagination_metadata(tmp_path: Path) -> None:
+    class _NoopParseService:
+        async def ensure_ingested(self, path: str) -> None:
+            return None
+
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
-        server = DoclibServer(SimpleNamespace(db=db, scan_svc=scan_svc))
+        server = DoclibServer(SimpleNamespace(db=db, scan_svc=scan_svc, parse_svc=_NoopParseService()))
 
         for index in range(3):
             sha256 = str(index + 1) * 64
@@ -1443,6 +2222,7 @@ def test_doclib_server_list_responses_include_pagination_metadata(tmp_path: Path
             )
 
         parses = await server.list_parses(limit=1, offset=1)
+        files = await server.list_files(limit=1, offset=1)
         scans = await server.list_scans(limit=1, offset=1)
         docs = await server.list_docs(file_type="pdf", limit=1, offset=1)
 
@@ -1450,6 +2230,18 @@ def test_doclib_server_list_responses_include_pagination_metadata(tmp_path: Path
         assert parses.limit == 1
         assert parses.offset == 1
         assert len(parses.parses) == 1
+        assert parses.parses[0].short_id == "2" * 7
+
+        assert files.total == 3
+        assert files.limit == 1
+        assert files.offset == 1
+        assert len(files.files) == 1
+        assert files.files[0].short_id == "2" * 7
+
+        file_detail = await server.get_file_by_path(str(tmp_path / "doc-1.pdf"))
+        assert file_detail.file.short_id == "2" * 7
+        assert len(file_detail.active_parses) == 1
+        assert file_detail.active_parses[0].short_id == "2" * 7
 
         assert scans.total == 3
         assert scans.limit == 1
@@ -1464,12 +2256,142 @@ def test_doclib_server_list_responses_include_pagination_metadata(tmp_path: Path
     asyncio.run(_run())
 
 
+def test_doclib_server_accepts_short_id_for_sha256_doc_inputs(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        fts = FTSManager(db)
+        parse_svc = ParseService(
+            db=db,
+            fts=fts,
+            config_svc=config_svc,
+            data_dir=str(tmp_path),
+            parse_lock_timeout_sec=1800,
+        )
+        server = DoclibServer(SimpleNamespace(db=db, data_dir=str(tmp_path), parse_svc=parse_svc))
+        now = 1000
+        sha256 = "a" * 64
+        short_id = "aaaaaaa"
+        await db.execute(
+            "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (sha256, short_id, 12, "pdf", 1, now, now),
+        )
+        await db.execute(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(tmp_path / "doc.pdf"), "doc.pdf", "pdf", 12, now, sha256, "active", now, now),
+        )
+        await db.execute(
+            "INSERT INTO parses (sha256, tier, page_range, status, privacy, done_at, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (sha256, "standard", "1", "done", "local", now, now, now),
+        )
+        _write_batch(
+            tmp_path,
+            sha256,
+            "standard",
+            "1",
+            now,
+            ParseResult([_text_page("hello short id")]).to_dict(skip_defaults=True)["pages"],
+        )
+
+        doc_by_short_id = await server.get_doc(short_id, expand_files=True)
+        doc_by_sha256 = await server.get_doc(sha256, expand_files=True)
+        parses_by_short_id = await server.list_parses(doc_ref=short_id)
+        parses_by_sha256 = await server.list_parses(doc_ref=sha256)
+        missing_parses = await server.list_parses(doc_ref="ccccccc")
+        content = await server.get_doc_content(short_id, tier="standard", page_range="1")
+        export_path = tmp_path / "out.md"
+        exported = await server.export_doc_content(
+            short_id,
+            DocContentExportRequest(tier="standard", page_range="1", output=str(export_path)),
+        )
+        invalidated = await server.invalidate(InvalidateRequest(doc_ref=short_id, tier="standard"))
+
+        assert doc_by_short_id.sha256 == sha256
+        assert doc_by_short_id.short_id == short_id
+        assert doc_by_short_id.files is not None
+        assert doc_by_short_id.files[0].short_id == short_id
+        assert doc_by_sha256.short_id == short_id
+        assert parses_by_short_id.total == 1
+        assert parses_by_short_id.parses[0].sha256 == sha256
+        assert parses_by_sha256.total == 1
+        assert parses_by_sha256.parses[0].short_id == short_id
+        assert missing_parses.total == 0
+        assert content.sha256 == sha256
+        assert content.short_id == short_id
+        assert "hello short id" in content.content
+        assert exported.sha256 == sha256
+        assert exported.short_id == short_id
+        assert export_path.read_text(encoding="utf-8")
+        assert invalidated.sha256 == sha256
+        assert invalidated.short_id == short_id
+        assert invalidated.invalidated_count == 1
+
+        with pytest.raises(NotFoundError) as missing_doc_exc:
+            await server.get_doc("ccccccc")
+        assert missing_doc_exc.value.code == "doc_not_found"
+        assert missing_doc_exc.value.param == "doc_ref"
+
+    asyncio.run(_run())
+
+
+def test_doc_content_invalid_after_cursor_returns_invalid_locator(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.sqlite"))
+        await db.initialize()
+        server = DoclibServer(SimpleNamespace(db=db, data_dir=str(tmp_path)))
+        now = 1000
+        sha256 = "a" * 64
+        short_id = "aaaaaaa"
+        await db.execute(
+            "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (sha256, short_id, 12, "pdf", 1, now, now),
+        )
+        try:
+            with pytest.raises(InvalidRequestError) as exc_info:
+                await server.get_doc_content(short_id, tier="standard", after="invalid-cursor-for-param-test")
+
+            assert exc_info.value.code == "invalid_locator"
+            assert exc_info.value.param == "after"
+            assert "Invalid doclib content cursor" in exc_info.value.message
+        finally:
+            await db.close()
+
+    asyncio.run(_run())
+
+
+def test_get_file_by_path_missing_doclib_record_message_is_not_disk_file_not_found(tmp_path: Path) -> None:
+    class _ParseSvc:
+        async def ensure_ingested(self, path: str) -> None:
+            return None
+
+    async def _run() -> None:
+        db = _FakeDB(parses=[], file_row=None)
+        server = DoclibServer(SimpleNamespace(db=db, parse_svc=_ParseSvc()))
+
+        with pytest.raises(NotFoundError) as exc_info:
+            await server.get_file_by_path(str(tmp_path / "sample.png"))
+
+        assert exc_info.value.code == "file_not_found"
+        assert exc_info.value.param == "path"
+        assert "File record" in exc_info.value.message
+        assert "doclib" in exc_info.value.message
+
+    asyncio.run(_run())
+
+
 def test_scan_service_cleanup_keeps_latest_terminal_scans_and_active_tasks(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
 
         for index in range(1002):
@@ -1505,7 +2427,9 @@ def test_watch_loop_queues_watch_scan_when_scan_service_is_available(tmp_path: P
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         config_svc = ConfigService(db)
-        parse_svc = ParseService(db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
         watch_loop = WatchLoop(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_interval_sec=300, scan_svc=scan_svc)
         root = tmp_path / "watched"
@@ -1752,7 +2676,18 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
         await db.execute(
             "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, watch_id, status, error_code, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (str(tmp_path / "watched" / "blocked-ingest.pdf"), "blocked-ingest.pdf", "pdf", 7, now, watch["id"], "active", "ingest_failed", now, now),
+            (
+                str(tmp_path / "watched" / "blocked-ingest.pdf"),
+                "blocked-ingest.pdf",
+                "pdf",
+                7,
+                now,
+                watch["id"],
+                "active",
+                "ingest_failed",
+                now,
+                now,
+            ),
         )
         await db.execute(
             "INSERT INTO parses (sha256, tier, page_range, status, privacy, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -1824,7 +2759,10 @@ def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) ->
         assert status.recent_scans[1].error_msg == "hidden message"
         assert status.last_scan_at == now + 5
         assert status.error_summary is not None
-        assert [(bucket.code, bucket.count) for bucket in status.error_summary.file_errors] == [("ingest_failed", 1), ("stat_failed", 1)]
+        assert [(bucket.code, bucket.count) for bucket in status.error_summary.file_errors] == [
+            ("ingest_failed", 1),
+            ("stat_failed", 1),
+        ]
         assert [(bucket.code, bucket.count) for bucket in status.error_summary.doc_errors] == [("open_failed", 1)]
         assert [(bucket.code, bucket.count) for bucket in status.error_summary.parse_errors] == [("parse_failed", 1)]
 
@@ -1964,7 +2902,9 @@ def test_ingest_records_doc_error_when_metadata_extraction_fails(tmp_path: Path,
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
-        service = ParseService(db=db, fts=FTSManager(db), config_svc=_NoRulesConfig(), data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800)
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=_NoRulesConfig(), data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
         source = tmp_path / "broken.pdf"
         source.write_bytes(b"%PDF-1.4\nnot actually a valid pdf")
 
@@ -2244,9 +3184,7 @@ def test_doclib_office_image_asset_reads_cached_sidecar(tmp_path: Path) -> None:
     sidecar = image_dir / image_path
     sidecar.parent.mkdir(parents=True)
     sidecar.write_bytes(
-        base64.b64decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
-        )
+        base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC")
     )
 
     image_span = Span(type=ContentType.IMAGE, bbox=(1, 1, 20, 20), image_path=image_path)
@@ -2270,10 +3208,57 @@ def test_doclib_office_image_asset_reads_cached_sidecar(tmp_path: Path) -> None:
         limit=30000,
         format="image",
         no_marker=False,
+        image_format="png",
         target=ContentCursor(short_id="fffffff", tier=tier, page_no=1, block_no=1),
     )
 
     asset = asyncio.run(server._render_office_image_asset(plan, page))
 
-    assert Path(asset.path).read_bytes() == sidecar.read_bytes()
     assert asset.mime_type == "image/png"
+    assert Path(asset.path).suffix == ".png"
+    with Image.open(asset.path) as image:
+        assert image.format == "PNG"
+
+
+def test_doclib_office_image_asset_transcodes_to_requested_format(tmp_path: Path) -> None:
+    sha256 = "f" * 64
+    tier = "standard"
+    image_dir = Path(parse_image_sidecar_dir(str(tmp_path), sha256, tier))
+    image_path = "figures/office.png"
+    sidecar = image_dir / image_path
+    sidecar.parent.mkdir(parents=True)
+    sidecar.write_bytes(
+        base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC")
+    )
+
+    image_span = Span(type=ContentType.IMAGE, bbox=(1, 1, 20, 20), image_path=image_path)
+    body = Block(
+        index=0,
+        type=BlockType.IMAGE_BODY,
+        bbox=(1, 1, 20, 20),
+        lines=[Line(bbox=(1, 1, 20, 20), spans=[image_span])],
+    )
+    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(1, 1, 20, 20), blocks=[body])
+    page = PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="office")
+    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=None))
+    plan = _ReadPlan(
+        sha256=sha256,
+        short_id="fffffff",
+        tier=tier,
+        page_range=None,
+        after=None,
+        locator="doc:fffffff/tier:standard/page:1/block:1",
+        context=0,
+        limit=30000,
+        format="image",
+        no_marker=False,
+        image_format="jpeg",
+        target=ContentCursor(short_id="fffffff", tier=tier, page_no=1, block_no=1),
+    )
+
+    asset = asyncio.run(server._render_office_image_asset(plan, page))
+
+    assert asset.mime_type == "image/jpeg"
+    assert Path(asset.path).suffix == ".jpg"
+    with Image.open(asset.path) as image:
+        assert image.format == "JPEG"

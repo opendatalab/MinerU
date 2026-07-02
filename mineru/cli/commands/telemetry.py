@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from typing import Literal
 
 import typer
 
 from ...doclib.client import DoclibClient
-from ..json_errors import exit_with_error
-from ..output import print_json, print_success
+from ...doclib.types import TelemetryActionResponse, TelemetryPayload, TelemetryStatusResponse
+from ..contracts import CliContext
+from ..runtime import run_cli
 
 app = typer.Typer(help="Telemetry management", no_args_is_help=True)
 
@@ -16,29 +18,15 @@ app = typer.Typer(help="Telemetry management", no_args_is_help=True)
 @app.command("status")
 def telemetry_status(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
     """Show telemetry status."""
-    try:
-        data = _client().get_telemetry_status()
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode)
-    if json_mode:
-        print_json(data)
-        return
-    last_flush = data.last_flush_at if data.last_flush_at is not None else "never"
-    print(f"state: {data.state}")
-    print(f"installation_id: {data.installation_id}")
-    print(f"pending_periods: {data.pending_periods}")
-    print(f"pending_metrics: {data.pending_metrics}")
-    print(f"last_flush_at: {last_flush}")
+    ctx = CliContext(json_mode=json_mode)
+    run_cli(ctx, lambda: _client().get_telemetry_status(), render=_render_telemetry_status)
 
 
 @app.command("preview")
-def telemetry_preview() -> None:
+def telemetry_preview(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
     """Print the next telemetry request body without sending it."""
-    try:
-        data = _client().get_telemetry_preview()
-    except Exception as exc:
-        exit_with_error(exc, json_mode=False)
-    print(json.dumps(data.body.model_dump(mode="json"), ensure_ascii=False, indent=2, sort_keys=True))
+    ctx = CliContext(json_mode=json_mode)
+    run_cli(ctx, lambda: _client().get_telemetry_preview().body, render=_render_telemetry_preview)
 
 
 @app.command("enable")
@@ -59,22 +47,36 @@ def telemetry_flush(json_mode: bool = typer.Option(False, "--json", help="JSON o
     _run_action("flush", json_mode=json_mode)
 
 
-def _run_action(action: str, *, json_mode: bool) -> None:
-    try:
-        data = _client().telemetry_action(action)
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode)
-    if json_mode:
-        print_json(data)
-        return
-    if action == "flush":
-        print_success(f"telemetry flush: {data.reason or 'success'}")
-        return
-    print_success(f"telemetry {data.state}")
+def _run_action(action: Literal["enable", "disable", "flush"], *, json_mode: bool) -> None:
+    ctx = CliContext(json_mode=json_mode)
+    run_cli(ctx, lambda: _client().telemetry_action(action), render=_render_telemetry_action)
 
 
 def _client() -> DoclibClient:
     return DoclibClient(timeout=30)
+
+
+def _render_telemetry_status(data: TelemetryStatusResponse) -> str:
+    last_flush = data.last_flush_at if data.last_flush_at is not None else "never"
+    return "\n".join(
+        [
+            f"state: {data.state}",
+            f"installation_id: {data.installation_id}",
+            f"pending_periods: {data.pending_periods}",
+            f"pending_metrics: {data.pending_metrics}",
+            f"last_flush_at: {last_flush}",
+        ]
+    )
+
+
+def _render_telemetry_action(data: TelemetryActionResponse) -> str:
+    if data.action == "flush":
+        return f"telemetry flush: {data.reason or 'success'}"
+    return f"telemetry {data.state}"
+
+
+def _render_telemetry_preview(data: TelemetryPayload) -> str:
+    return json.dumps(data.model_dump(mode="json"), ensure_ascii=False, indent=2, sort_keys=True)
 
 
 __all__ = ["app"]

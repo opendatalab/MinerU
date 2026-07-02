@@ -60,7 +60,7 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 | `--json` | bool | false | 将整个 CLI 响应包装为 JSON |
 | `--limit` | int | `30000` | 文本输出软字符上限 |
 | `--context` | int | `0` | 按 locator 周围扩展上下文 |
-| `--output`, `-o` | path | 不传 | 将返回内容或 image asset 写入本地路径 |
+| `--output`, `-o` | path | 不传 | 将返回内容或 image asset 写入本地路径；image 只支持 `.png`、`.jpg`、`.jpeg`、`.webp` |
 | `--no-marker` | bool | false | 关闭 continuation marker |
 
 语义区分：
@@ -114,6 +114,16 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 - `read --output` 是 CLI 本地写文件行为，不是 doclib HTTP API 写文件行为。
 
 如果不带 `--output`，image 模式默认输出 server 返回的临时 asset path。
+
+如果带 `--output`，CLI 根据输出路径后缀决定请求的图片编码：
+
+| 后缀 | server `image_format` |
+|------|------------------------|
+| `.png` | `png` |
+| `.jpg`, `.jpeg` | `jpeg` |
+| `.webp` | `webp` |
+
+image 输出路径必须带上述后缀。无后缀、其它后缀以及 `--output -` 都返回 `image_output_extension_unsupported`。CLI 不做图片转码；server 按 `image_format` 生成临时 asset，CLI 只把该 asset copy 到用户指定路径。
 
 ## 7. JSON 输出
 

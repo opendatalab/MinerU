@@ -12,19 +12,26 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import io
 import json
+import logging
 import os
 import pathlib
 import secrets
 import shutil
+import sys
 import tempfile
+import threading
 import time
+import zipfile
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Annotated, Any, AsyncIterator, Callable, Literal
 
 import click
+import httpx
+import uvicorn
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -33,10 +40,43 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..types import Tier
 from ..utils.backend_options import HYBRID_EFFORT_HELP, resolve_backend_and_effort
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
-from .tier import PARSER_BACKENDS, resolve_tier_and_backend
+from ..version import __version__
+from . import parse_async
+from .tier import PARSER_BACKENDS, TierDependencyError, ensure_tier_runtime_dependencies, resolve_tier_and_backend
 
 _API_SERVER_BACKENDS = tuple(backend for backend in PARSER_BACKENDS if backend != "flash")
 _API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
+_MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
+logger = logging.getLogger("mineru.parser.api_server")
+
+
+def _sanitize_surrogates(value: str) -> str:
+    return "".join("\ufffd" if 0xD800 <= ord(ch) <= 0xDFFF else ch for ch in value)
+
+
+def _sanitize_json_for_utf8(value: object) -> object:
+    if isinstance(value, str):
+        return _sanitize_surrogates(value)
+    if isinstance(value, list):
+        return [_sanitize_json_for_utf8(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_json_for_utf8(item) for item in value]
+    if isinstance(value, dict):
+        return {_sanitize_json_for_utf8(key): _sanitize_json_for_utf8(item) for key, item in value.items()}
+    return value
+
+
+def _text_utf8_bytes(value: str) -> bytes:
+    return _sanitize_surrogates(value).encode("utf-8")
+
+
+def _json_utf8_bytes(value: object) -> bytes:
+    return json.dumps(_sanitize_json_for_utf8(value), ensure_ascii=False).encode("utf-8")
+
+
+class ParseServerStartupError(RuntimeError):
+    """Raised when the parse server cannot start because of local setup."""
+
 
 # ── literal type aliases ────────────────────────────────────────────
 
@@ -93,6 +133,27 @@ def _env_flag(name: str, default: bool = True) -> bool:
     if val is None:
         return default
     return val.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _install_managed_parse_server_stdin_watcher(server: Any) -> threading.Thread | None:
+    if not _env_flag(_MANAGED_PARSE_SERVER_ENV, default=False):
+        return None
+
+    def _watch_stdin_for_eof() -> None:
+        stdin_stream = getattr(sys.stdin, "buffer", sys.stdin)
+        try:
+            stdin_stream.read()
+        except Exception:
+            return
+        server.should_exit = True
+
+    watcher = threading.Thread(
+        target=_watch_stdin_for_eof,
+        name="mineru-managed-parse-server-stdin-sentinel",
+        daemon=True,
+    )
+    watcher.start()
+    return watcher
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -909,13 +970,15 @@ _OUTPUT_FORMATS_LOCAL = {
     "zip",
 }
 
-_IMAGE_SIDECAR_FORMATS = frozenset({
-    "markdown",
-    "middle_json",
-    "content_list",
-    "structured_content",
-    "images",
-})
+_IMAGE_SIDECAR_FORMATS = frozenset(
+    {
+        "markdown",
+        "middle_json",
+        "content_list",
+        "structured_content",
+        "images",
+    }
+)
 
 
 def _needs_image_outputs(out_formats: set[OutputFormat] | set[str]) -> bool:
@@ -1168,8 +1231,6 @@ async def _extract_bytes(source: FileSource, file_store: FileStore, *, url_timeo
             raise ValueError("File has no content")
         return file_store.read_blob(rec.sha256sum)
     if isinstance(source, UrlSource):
-        import httpx
-
         async with httpx.AsyncClient(timeout=url_timeout) as cli:
             r = await cli.get(source.url)
             r.raise_for_status()
@@ -1222,8 +1283,6 @@ async def _run_job(
 
                 page_range = entry.page_range or ""
 
-                from . import parse_async
-
                 result = await parse_async(
                     str(tmp_path),
                     tier=rec.tier,
@@ -1241,9 +1300,7 @@ async def _run_job(
                 out_formats = set(rec.output_formats)
                 output_files = OutputFiles()
                 image_output_refs = (
-                    _store_image_outputs(file_store, result.images())
-                    if _needs_image_outputs(out_formats)
-                    else None
+                    _store_image_outputs(file_store, result.images()) if _needs_image_outputs(out_formats) else None
                 )
                 if image_output_refs is not None:
                     output_files.images = image_output_refs
@@ -1259,25 +1316,25 @@ async def _run_job(
                         continue
                     if fmt == "markdown":
                         md = result.markdown()
-                        content_bytes = (md or "").encode("utf-8")
+                        content_bytes = _text_utf8_bytes(md or "")
                         sha = hashlib.sha256(content_bytes).hexdigest()
                         file_store.store_blob(content_bytes, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.md", content_bytes, sha256hex=sha)
                         output_files.markdown = OutputFileRef(file_id=fid, bytes=len(content_bytes))
                     elif fmt == "middle_json":
-                        mj = json.dumps(result.to_dict(skip_defaults=True), ensure_ascii=False).encode("utf-8")
+                        mj = _json_utf8_bytes(result.to_dict(skip_defaults=True))
                         sha = hashlib.sha256(mj).hexdigest()
                         file_store.store_blob(mj, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.middle.json", mj, sha256hex=sha)
                         output_files.middle_json = OutputFileRef(file_id=fid, bytes=len(mj))
                     elif fmt == "content_list":
-                        cl = json.dumps(result.content_list(), ensure_ascii=False).encode("utf-8")
+                        cl = _json_utf8_bytes(result.content_list())
                         sha = hashlib.sha256(cl).hexdigest()
                         file_store.store_blob(cl, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.content_list.json", cl, sha256hex=sha)
                         output_files.content_list = OutputFileRef(file_id=fid, bytes=len(cl))
                     elif fmt == "structured_content":
-                        cl2 = json.dumps(result.structured_content(), ensure_ascii=False).encode("utf-8")
+                        cl2 = _json_utf8_bytes(result.structured_content())
                         sha = hashlib.sha256(cl2).hexdigest()
                         file_store.store_blob(cl2, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.structured_content.json", cl2, sha256hex=sha)
@@ -1287,11 +1344,8 @@ async def _run_job(
 
                 # zip
                 if "zip" in out_formats:
-                    import io as _io
-                    import zipfile as _zipfile
-
-                    buf = _io.BytesIO()
-                    with _zipfile.ZipFile(buf, "w", _zipfile.ZIP_DEFLATED) as zf:
+                    buf = io.BytesIO()
+                    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
                         for fmt_name, attr in [
                             ("markdown", "markdown"),
                             ("middle_json", "middle_json"),
@@ -1322,7 +1376,6 @@ async def _run_job(
                 fr.status = "completed"
                 fr.page_range = _page_range_from_result_pages(result.pages)
                 fr.output_files = output_files
-                from ..version import __version__
 
                 fr.parse = FileParseInfo(
                     model_used=None,
@@ -1333,6 +1386,13 @@ async def _run_job(
                 rec.progress.completed += 1
 
             except Exception as exc:
+                logger.exception(
+                    "Parse-server job file failed: job_id=%s file=%r tier=%s page_range=%r",
+                    rec.id,
+                    fr.name,
+                    rec.tier,
+                    fr.page_range,
+                )
                 fr.status = "failed"
                 fr.error = ErrorDetail(type="engine_error", code="parse_failed", message=str(exc))
                 rec.progress.failed += 1
@@ -1375,9 +1435,11 @@ _ERR_429: dict[int | str, dict[str, Any]] = {429: {"model": ErrorResponse}}
 )
 async def get_health() -> HealthResponse:
     """Health check endpoint."""
-    from ..version import __version__
-
-    return HealthResponse(version=__version__, parser_version=__version__, models=ModelHealthStatus())
+    return HealthResponse(
+        version=__version__,
+        parser_version=__version__,
+        models=ModelHealthStatus(),
+    )
 
 
 # ── Models ───────────────────────────────────────────────────────────
@@ -1935,6 +1997,13 @@ def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[di
     ]
 
 
+def _preflight_tier_dependencies(tier: Tier) -> None:
+    try:
+        ensure_tier_runtime_dependencies(tier)
+    except TierDependencyError as exc:
+        raise ParseServerStartupError(str(exc)) from exc
+
+
 def create_app(
     *,
     upload_dir: str = "",
@@ -1991,6 +2060,7 @@ def create_app(
     raw_backend = backend
     tier, backend = _resolve_server_tier_and_backend(tier=tier, backend=backend)
     backend, effort = resolve_backend_and_effort(raw_backend or backend, effort)
+    _preflight_tier_dependencies(tier)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
     _upload_dir.mkdir(parents=True, exist_ok=True)
@@ -2075,6 +2145,7 @@ def create_app(
     application.middleware("http")(_auth_middleware)
     application.include_router(_build_v1_router())
     return application
+
 
 # ── CLI ──────────────────────────────────────────────────────────────
 
@@ -2168,8 +2239,6 @@ def main(
     api_key: str | None,
 ) -> None:
     """Start the MinerU v1 REST API server."""
-    import uvicorn
-
     try:
         application = create_app(
             upload_dir=upload_dir,
@@ -2186,69 +2255,23 @@ def main(
             formula_enable=not disable_formula,
             image_analysis=not disable_image_analysis,
         )
+    except ParseServerStartupError as exc:
+        raise click.ClickException(str(exc)) from None
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    uvicorn.run(
+    config = uvicorn.Config(
         application,
         host=host,
         port=port,
     )
+    server = uvicorn.Server(config)
+    _install_managed_parse_server_stdin_watcher(server)
+    server.run()
 
 
 if __name__ == "__main__":
     main()
 
-__all__ = [
-    "create_app",
-    # enums (Literal aliases)
-    "JobStatus",
-    "FileStatus",
-    "UploadStatus",
-    "Tier",
-    "AccessLevel",
-    "OutputFormat",
-    "SourceType",
-    "FilePurpose",
-    "SSEEventType",
-    # request models
-    "CreateUploadRequest",
-    "CompleteUploadRequest",
-    "CreateJobRequest",
-    "JobFileEntry",
-    "CallbackConfig",
-    # source models
-    "FileIdSource",
-    "UrlSource",
-    "InlineSource",
-    "LocalSource",
-    "FileSource",
-    # response models
-    "ErrorDetail",
-    "ErrorResponse",
-    "HealthFeatures",
-    "HealthResponse",
-    "ModelInfo",
-    "ModelListResponse",
-    "TierInfo",
-    "TierListResponse",
-    "UploadResponse",
-    "FileObjectModel",
-    "FileDeletionResponse",
-    "FileListResponse",
-    "JobAsyncResponse",
-    "JobLinks",
-    "JobProgress",
-    "FileParseInfo",
-    "OutputFileRef",
-    "ImageOutputRef",
-    "OutputFiles",
-    "JobFileResult",
-    "JobListItem",
-    "JobListResponse",
-    "JobCancelResponse",
-    "UsageBillingPeriod",
-    "UsageCurrent",
-    "UsageLimits",
-    "UsageResponse",
-]
+
+__all__ = ["create_app", "main"]

@@ -1,5 +1,8 @@
+import pytest
+
 from mineru.doclib.server import _next_content_request, _normalize_content_page_range, _page_markdown_blocks, _render_progressive_markdown
 from mineru.doclib.types import ContentRange
+from mineru.errors import InvalidRequestError
 from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span
 
 
@@ -22,6 +25,21 @@ def test_paginated_default_content_pages_are_first_ten() -> None:
     assert _normalize_content_page_range(None, None, doc) == "1~10"
     assert _normalize_content_page_range("all", None, doc) == "1~38"
     assert _normalize_content_page_range("1~5,-5~-1", None, doc) == "1~5,34~38"
+
+
+def test_content_page_range_uses_available_subset_and_merges_ranges() -> None:
+    doc = {"page_count": 5}
+
+    assert _normalize_content_page_range("1~10,3,4~5", None, doc) == "1~5"
+
+
+def test_content_page_range_rejects_empty_available_subset() -> None:
+    doc = {"page_count": 5}
+
+    with pytest.raises(InvalidRequestError) as exc_info:
+        _normalize_content_page_range("6~10", None, doc)
+
+    assert exc_info.value.code == "page_range_invalid"
 
 
 def test_paginated_page_boundary_truncation_suggests_pages_only() -> None:
@@ -154,6 +172,23 @@ def test_paginated_next_request_is_never_after_only() -> None:
     assert next_request is not None
     assert next_request.page_range == "7~10"
     assert next_request.after is not None
+
+
+def test_paginated_empty_page_renders_page_marker_and_content_range() -> None:
+    rendered = _render_progressive_markdown(
+        [PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[], _backend="flash")],
+        short_id="ab12cd3",
+        tier="flash",
+        after=None,
+        limit=30000,
+        add_markers=True,
+    )
+
+    assert rendered.content == "<!-- page 1 -->"
+    assert rendered.content_ranges == [
+        ContentRange(page_range="1", start="doc:ab12cd3/tier:flash/page:1", end="doc:ab12cd3/tier:flash/page:1")
+    ]
+    assert rendered.truncated is False
 
 
 def test_page_markdown_blocks_prefers_markdown_table_in_doclib() -> None:

@@ -91,7 +91,7 @@ class ParseResponse:
     sha256: str
     tier: str
     page_range: str
-    status: str
+    status: Literal["pending", "done"]
     cache_hit: bool
     wait_parse_ids: list[int]
     created_parse_ids: list[int]

@@ -3,12 +3,22 @@
 from __future__ import annotations
 
 import typer
+from rich.table import Table
 
 from ...doclib.client import DoclibClient
-from ...doclib.types import FileStatus, ParseStatus, ScanKind, ScanStatus
+from ...doclib.types import (
+    FileStatus,
+    ListDocsResponse,
+    ListFilesResponse,
+    ListParsesResponse,
+    ParseStatus,
+    ScanKind,
+    ScanListResponse,
+    ScanStatus,
+)
 from ...types import Tier
-from ..json_errors import exit_with_error
-from ..output import print_error, print_info, print_json
+from ..contracts import CliContext
+from ..runtime import run_cli
 
 app = typer.Typer(help="List doclib resources", no_args_is_help=True)
 
@@ -22,20 +32,11 @@ def list_parses(
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """List parse tasks."""
-    try:
-        result = _client().list_parses(status=status, tier=tier, limit=limit, offset=offset)
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode)
-
-    if json_mode:
-        print_json(result)
-        return
-    if not result.parses:
-        print_info("No parses found.")
-        return
-    print(f"Parses ({result.total} total)")
-    for item in result.parses:
-        print(f"  [{item.id}] {item.status} {item.tier} pages={item.page_range} sha256={item.sha256[:12]}")
+    run_cli(
+        CliContext(json_mode=json_mode),
+        lambda: _client().list_parses(status=status, tier=tier, limit=limit, offset=offset),
+        render=_render_list_parses,
+    )
 
 
 @app.command("scans")
@@ -48,23 +49,11 @@ def list_scans(
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """List scan tasks."""
-    try:
-        result = _client().list_scans(status=status, kind=kind, watch_id=watch_id, limit=limit, offset=offset)
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode)
-
-    if json_mode:
-        print_json(result)
-        return
-    if not result.scans:
-        print_info("No scans found.")
-        return
-    print(f"Scans ({result.total} total)")
-    for item in result.scans:
-        print(
-            f"  [{item.id}] {item.status} {item.kind} {item.path} "
-            f"seen={item.files_seen} refreshed={item.files_refreshed} errors={item.files_error}"
-        )
+    run_cli(
+        CliContext(json_mode=json_mode),
+        lambda: _client().list_scans(status=status, kind=kind, watch_id=watch_id, limit=limit, offset=offset),
+        render=_render_list_scans,
+    )
 
 
 @app.command("files")
@@ -77,21 +66,11 @@ def list_files(
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """List file path records."""
-    try:
-        result = _client().list_files(status=status, ext=ext, watch_id=watch_id, limit=limit, offset=offset)
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode)
-
-    if json_mode:
-        print_json(result)
-        return
-    if not result.files:
-        print_info("No files found.")
-        return
-    print(f"Files ({result.total} total)")
-    for item in result.files:
-        sha = item.sha256[:12] if item.sha256 else "-"
-        print(f"  [{item.status}] {item.path} ext={item.ext} sha256={sha}")
+    run_cli(
+        CliContext(json_mode=json_mode),
+        lambda: _client().list_files(status=status, ext=ext, watch_id=watch_id, limit=limit, offset=offset),
+        render=_render_list_files,
+    )
 
 
 @app.command("docs")
@@ -102,22 +81,77 @@ def list_docs(
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """List active docs."""
-    try:
-        result = _client().list_docs(file_type=file_type, limit=limit, offset=offset)
-    except Exception as exc:
-        exit_with_error(exc, json_mode=json_mode)
-
-    if json_mode:
-        print_json(result)
-        return
-    if not result.docs:
-        print_info("No docs found.")
-        return
-    print(f"Docs ({result.total} total)")
-    for item in result.docs:
-        title = item.title or "-"
-        print(f"  {item.sha256[:12]} type={item.file_type or '-'} pages={item.page_count or '-'} title={title}")
+    run_cli(
+        CliContext(json_mode=json_mode),
+        lambda: _client().list_docs(file_type=file_type, limit=limit, offset=offset),
+        render=_render_list_docs,
+    )
 
 
 def _client() -> DoclibClient:
     return DoclibClient(timeout=30)
+
+
+def _render_list_parses(data: ListParsesResponse) -> Table | str:
+    if not data.parses:
+        return "No parses found."
+    table = Table(title=f"Parses ({data.total} total)")
+    table.add_column("ID", justify="right")
+    table.add_column("Status", style="green")
+    table.add_column("Tier", style="cyan")
+    table.add_column("Pages")
+    table.add_column("Doc ID")
+    for item in data.parses:
+        table.add_row(str(item.id), item.status, item.tier, item.page_range, item.short_id)
+    return table
+
+
+def _render_list_scans(data: ScanListResponse) -> Table | str:
+    if not data.scans:
+        return "No scans found."
+    table = Table(title=f"Scans ({data.total} total)")
+    table.add_column("ID", justify="right")
+    table.add_column("Status", style="green")
+    table.add_column("Kind", style="cyan")
+    table.add_column("Path")
+    table.add_column("Seen", justify="right")
+    table.add_column("Refreshed", justify="right")
+    table.add_column("Errors", justify="right")
+    for item in data.scans:
+        table.add_row(
+            str(item.id),
+            item.status,
+            item.kind,
+            item.path,
+            str(item.files_seen),
+            str(item.files_refreshed),
+            str(item.files_error),
+        )
+    return table
+
+
+def _render_list_files(data: ListFilesResponse) -> Table | str:
+    if not data.files:
+        return "No files found."
+    table = Table(title=f"Files ({data.total} total)")
+    table.add_column("Status", style="green")
+    table.add_column("Path")
+    table.add_column("Ext", style="cyan")
+    table.add_column("Doc ID")
+    for item in data.files:
+        table.add_row(item.status, item.path, item.ext, item.short_id or "-")
+    return table
+
+
+def _render_list_docs(data: ListDocsResponse) -> Table | str:
+    if not data.docs:
+        return "No docs found."
+    table = Table(title=f"Docs ({data.total} total)")
+    table.add_column("Doc ID")
+    table.add_column("Type", style="cyan")
+    table.add_column("Pages", justify="right")
+    table.add_column("Title")
+    for item in data.docs:
+        title = item.title or "-"
+        table.add_row(item.short_id, item.file_type or "-", str(item.page_count or "-"), title)
+    return table

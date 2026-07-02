@@ -44,14 +44,16 @@
   - `$MINERU_E2E_FIXTURE_DIR/中文样例.pdf`，文件名包含中文，内容可与 `sample.pdf` 相同。
   - `$MINERU_E2E_FIXTURE_DIR/corrupted.pdf`，损坏 PDF。
   - `$MINERU_E2E_FIXTURE_DIR/empty.pdf`，空文件或无法解析出页面的 PDF。
-  - `$MINERU_E2E_FIXTURE_DIR/sample.docx`、`sample.pptx`、`sample.xlsx`，Office 样例文件；若当前安装不支持 Office，可按预期失败分支判定。
-  - `$MINERU_E2E_FIXTURE_DIR/sample.png`，图片样例文件；若当前安装不支持图片输入，可按预期失败分支判定。
+  - `$MINERU_E2E_FIXTURE_DIR/sample.docx`、`sample.pptx`、`sample.xlsx`，Office 样例文件；当前全量 E2E 必须覆盖。
+  - `$MINERU_E2E_FIXTURE_DIR/sample.md`、`sample.txt`、`sample.csv`，文本类样例文件；当前全量 E2E 必须覆盖。
+  - `$MINERU_E2E_FIXTURE_DIR/sample.jpeg`，图片样例文件；若当前安装不支持图片输入，可按预期失败分支判定。
   - `$MINERU_E2E_FIXTURE_DIR/symlink-sample.pdf`，指向 `sample.pdf` 的符号链接；若平台不支持 symlink，可标记相关用例 BLOCKED。
   - `$MINERU_E2E_FIXTURE_DIR/no-read.pdf`，权限不可读文件；若平台无法稳定制造权限场景，可标记相关用例 BLOCKED。
   - `$MINERU_E2E_FIXTURE_DIR/output-dir/`，用于输出文件测试的目录。
 - 测试环境允许启动本地 doclib server。
-- 若本地没有 standard/pro parse-server，默认 tier 相关用例按预期失败分支判定。
-- 若 remote parse-server 不可用，`--remote` 相关用例按预期失败分支判定；若可用，必须验证 remote/via/privacy 等字段。
+- 测试环境必须安装 `pro` extra，以覆盖本地 standard/pro parse-server；默认 tier 相关用例应验证本地 quality tier 可用，不再按缺少本地 quality tier 的预期失败分支判定。
+- 除 PARSE-013A1 外，若 remote parse-server 不可用，`--remote` 相关用例按预期失败分支判定；若可用，必须验证 remote/via/privacy 等字段。
+- PARSE-013A1 是 remote pro 硬性测试，remote parse-server 不可用或不支持 pro 均记录为失败。
 
 ### 2.1 测试 HOME 与隔离配置
 
@@ -77,7 +79,9 @@ cd ~/mineru-e2e-test
 rm -rf .venv
 uv venv .venv
 source .venv/bin/activate
-uv pip install ~/MinerU-Repo
+cd ~/MinerU-Repo
+uv pip install ".[pro]"
+cd ~/mineru-e2e-test
 mineru --help
 mineru-kit --help
 ```
@@ -85,6 +89,65 @@ mineru-kit --help
 安装完成后，`mineru` 和 `mineru-kit` 都应由 `pyproject.toml` 的脚本入口直接提供，不需要配置 shell alias。
 
 执行 Agent 后续仍只调用 `mineru ...` 命令，不测试 `mineru-kit`，也不直接调用 Python 模块、内部 API 或数据库。
+
+### 2.3 Fixture 生成方法
+
+fixture 准备阶段允许使用 shell 文件操作创建隔离测试数据。`mineru` 命令限制只适用于正式 case 执行阶段。
+
+PDF 样例使用仓库内覆盖元素更完整的 demo 文件:
+
+```bash
+demo/pdfs/all_elements.pdf
+```
+
+图片样例使用仓库内 demo 文件:
+
+```bash
+demo/images/photo_20250417_111916.jpeg
+```
+
+推荐生成步骤:
+
+```bash
+cd ~/mineru-e2e-test
+export MINERU_HOME=`pwd`
+export MINERU_E2E_FIXTURE_DIR="$MINERU_HOME/fixtures"
+rm -rf "$MINERU_E2E_FIXTURE_DIR"
+mkdir -p "$MINERU_E2E_FIXTURE_DIR/watch-dir" "$MINERU_E2E_FIXTURE_DIR/empty-dir" "$MINERU_E2E_FIXTURE_DIR/output-dir" "$MINERU_HOME/removable-watch"
+
+PDF_SOURCE="$HOME/MinerU-Repo/demo/pdfs/all_elements.pdf"
+
+cp "$PDF_SOURCE" "$MINERU_E2E_FIXTURE_DIR/sample.pdf"
+cp "$MINERU_E2E_FIXTURE_DIR/sample.pdf" "$MINERU_HOME/sample.pdf"
+cp "$MINERU_E2E_FIXTURE_DIR/sample.pdf" "$MINERU_E2E_FIXTURE_DIR/sample-copy.pdf"
+cp "$MINERU_E2E_FIXTURE_DIR/sample.pdf" "$MINERU_E2E_FIXTURE_DIR/watch-dir/watch-doc.pdf"
+cp "$MINERU_E2E_FIXTURE_DIR/sample.pdf" "$MINERU_E2E_FIXTURE_DIR/sample doc.pdf"
+cp "$MINERU_E2E_FIXTURE_DIR/sample.pdf" "$MINERU_E2E_FIXTURE_DIR/中文样例.pdf"
+
+cp "$HOME/MinerU-Repo/demo/office_docs/docx_01.docx" "$MINERU_E2E_FIXTURE_DIR/sample.docx"
+cp "$HOME/MinerU-Repo/demo/office_docs/pptx_01.pptx" "$MINERU_E2E_FIXTURE_DIR/sample.pptx"
+cp "$HOME/MinerU-Repo/demo/office_docs/xlsx_01.xlsx" "$MINERU_E2E_FIXTURE_DIR/sample.xlsx"
+
+printf '# MinerU E2E Markdown\n\nThis file verifies markdown input.\n' > "$MINERU_E2E_FIXTURE_DIR/sample.md"
+printf 'MinerU E2E text fixture\nsecond line\n' > "$MINERU_E2E_FIXTURE_DIR/sample.txt"
+printf 'name,value\nalpha,1\nbeta,2\n' > "$MINERU_E2E_FIXTURE_DIR/sample.csv"
+
+printf 'not a supported document' > "$MINERU_E2E_FIXTURE_DIR/unsupported.bin"
+printf 'not a real pdf' > "$MINERU_E2E_FIXTURE_DIR/corrupted.pdf"
+: > "$MINERU_E2E_FIXTURE_DIR/empty.pdf"
+cp "$MINERU_E2E_FIXTURE_DIR/sample.pdf" "$MINERU_E2E_FIXTURE_DIR/no-read.pdf"
+chmod 000 "$MINERU_E2E_FIXTURE_DIR/no-read.pdf"
+ln -sf "$MINERU_E2E_FIXTURE_DIR/sample.pdf" "$MINERU_E2E_FIXTURE_DIR/symlink-sample.pdf"
+
+IMAGE_SOURCE="$HOME/MinerU-Repo/demo/images/photo_20250417_111916.jpeg"
+cp "$IMAGE_SOURCE" "$MINERU_E2E_FIXTURE_DIR/sample.jpeg"
+```
+
+执行结束后应恢复不可读文件权限，避免清理失败:
+
+```bash
+chmod 644 "$MINERU_E2E_FIXTURE_DIR/no-read.pdf" 2>/dev/null || true
+```
 
 ## 3. 顶层命令与帮助
 
@@ -1165,19 +1228,65 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --for
 命令:
 
 ```bash
+mineru config set parse_server.local.mode managed
+mineru config set parse_server.local.managed_tier pro
+mineru server status --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --pages 1~1 --wait 20 --json
 ```
 
-预期分支:
+预期:
 
-- 如果本地 standard/pro parse-server 可用:
-  - exit code = 0
-  - 实际 tier 为 standard 或 pro
-  - 实际 tier 不为 flash
-- 如果只有 flash 或没有 quality tier:
-  - exit code != 0
-  - 输出包含 `quality_tier_unavailable`、`no_engine`、`parse_server_unavailable`、start parse-server 或 use remote 等可操作错误
-  - 不允许静默返回 flash 内容
+- 三条命令均 exit code = 0
+- parse 前 `server status --json` 最终应体现 `parse_server.local.healthy=true`，`supported_tiers` 包含 `pro`
+- stdout 为可直接解析的 JSON
+- 实际 tier 为 standard 或 pro
+- 实际 tier 不为 flash
+- 不允许静默返回 flash 内容
+- 不包含 Python traceback
+
+### PARSE-007A PDF local standard tier
+
+命令:
+
+```bash
+mineru config set parse_server.local.mode managed
+mineru config set parse_server.local.managed_tier standard
+mineru server status --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --pages 1~1 --force --wait 120 --json
+```
+
+预期:
+
+- 四条命令均 exit code = 0
+- parse 前 `server status --json` 最终应体现 `parse_server.local.healthy=true`，`supported_tiers` 包含 `standard`
+- stdout 为可直接解析的 JSON
+- `parse.tier = standard`
+- `parse.status = done`
+- `content` 不为 null
+- JSON 不体现 remote/via remote，或明确体现 local transport
+- 不包含 Python traceback
+
+### PARSE-007B PDF local pro tier
+
+命令:
+
+```bash
+mineru config set parse_server.local.mode managed
+mineru config set parse_server.local.managed_tier pro
+mineru server status --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier pro --pages 1~1 --force --wait 180 --json
+```
+
+预期:
+
+- 四条命令均 exit code = 0
+- parse 前 `server status --json` 最终应体现 `parse_server.local.healthy=true`，`supported_tiers` 包含 `pro`
+- stdout 为可直接解析的 JSON
+- `parse.tier = pro`
+- `parse.status = done`
+- `content` 不为 null
+- JSON 不体现 remote/via remote，或明确体现 local transport
+- 不包含 Python traceback
 
 ### PARSE-008 输出到文件
 
@@ -1306,6 +1415,23 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --remote --pages 1~1 --wait 60
   - `--json` 输出必须为可直接解析的 JSON error
   - error code/message 包含 remote、parse-server、unavailable、no_engine、quality_tier_unavailable 或等价可操作信息
   - 不包含 Python traceback
+
+### PARSE-013A1 PDF remote pro tier
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier pro --remote --pages 1~1 --force --wait 180 --json
+```
+
+预期:
+
+- exit code = 0
+- stdout 为可直接解析的 JSON
+- `parse.tier = pro`
+- JSON 体现 remote/via/privacy 中的部分字段
+- 不允许静默 fallback 到 local flash、local standard、local pro 或 remote standard
+- 不包含 Python traceback
 
 ### PARSE-013B remote no-wait
 
@@ -1581,6 +1707,8 @@ mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_
   - exit code = 0
   - 输出包含 `Written to` 或等价成功信息
   - 输出路径为命令指定路径
+  - 输出文件后缀只允许 `.png`、`.jpg`、`.jpeg`、`.webp`
+  - 输出文件真实编码必须与后缀匹配
 - 如果该 locator 不支持 image 输出:
   - exit code != 0
   - 输出包含 unsupported、not available、no image 或等价错误
@@ -2709,7 +2837,7 @@ mineru read "doc:<short_id>/tier:flash/page:1" --context 2 --limit 30000 --json
 - request_scope.context = 2 或等价字段体现 context 生效
 - 如果文档页数不足，命令应优雅返回可用范围，不报 traceback
 
-### FILETYPE-001 Office 和图片输入
+### FILETYPE-001 文档类输入文件
 
 命令:
 
@@ -2717,7 +2845,24 @@ mineru read "doc:<short_id>/tier:flash/page:1" --context 2 --limit 30000 --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.docx" --tier flash --wait 60 --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pptx" --tier flash --wait 60 --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.xlsx" --tier flash --wait 60 --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.png" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.md" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.txt" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.csv" --tier flash --wait 60 --json
+```
+
+预期:
+
+- 六条命令均 exit code = 0
+- stdout 均为可直接解析的 JSON
+- JSON 中 content 或 doc metadata 合理存在
+- 不包含 Python traceback
+
+### FILETYPE-001A 图片输入
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.jpeg" --tier flash --wait 60 --json
 ```
 
 预期分支:
@@ -2818,18 +2963,39 @@ mineru read "doc:<short_id>/tier:flash/page:1" --output - --json
 - 不创建名为 `-` 的文件
 - stdout 不包含 `Written to`、Rich 表格、Markdown 正文或其它人类提示文本
 
+补充分支:
+
+```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --format image --output - --json
+```
+
+预期:
+
+- exit code != 0
+- stdout 为 JSON error envelope
+- `error.code` = `image_output_extension_unsupported`
+- `error.param` = `output`
+- 不创建名为 `-` 的文件
+
 ### OUTPUT-002 read image output 后缀边界
 
 命令模板:
 
 ```bash
+mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_E2E_FIXTURE_DIR/output-dir/page.png"
+mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_E2E_FIXTURE_DIR/output-dir/page.jpg"
+mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_E2E_FIXTURE_DIR/output-dir/page.jpeg"
+mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_E2E_FIXTURE_DIR/output-dir/page.webp"
+mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_E2E_FIXTURE_DIR/output-dir/page"
 mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_E2E_FIXTURE_DIR/output-dir/page-as-md.md"
 ```
 
 预期:
 
-- 如果 image 输出支持任意后缀，exit code = 0，输出文件内容应为图片资产字节
-- 如果要求后缀匹配，exit code != 0，输出包含 invalid extension、mime、image 或等价错误
+- `.png`、`.jpg`、`.jpeg`、`.webp` 均 exit code = 0
+- 输出文件真实编码必须分别匹配 PNG、JPEG、JPEG、WebP
+- 无后缀和 `.md` 均 exit code != 0
+- JSON 模式下错误为 JSON error envelope，`error.code` = `image_output_extension_unsupported`
 - 不包含 Python traceback
 
 ### CONCURRENCY-001 并发 parse force
@@ -3147,11 +3313,15 @@ mineru server start
 - PARSE-006A force 默认输出不打印过程 status
 - PARSE-006B verbose 输出允许过程 status
 - PARSE-007 默认 tier 行为
+- PARSE-007A PDF local standard tier
+- PARSE-007B PDF local pro tier
 - PARSE-008 输出到文件
 - PARSE-010 limit 截断与 next_request
 - PARSE-011 after 续读
 - PARSE-012 no-marker
 - PARSE-013 remote parse 分支
+- PARSE-013A remote 默认 tier
+- PARSE-013A1 PDF remote pro tier
 - PARSE-013B remote no-wait
 - PARSE-013C remote force
 - PARSE-013D remote output
@@ -3164,6 +3334,7 @@ mineru server start
 
 - remote 不可用时，相关命令必须返回 JSON error 或普通可读错误，不能 traceback。
 - remote 可用时，必须验证 remote/via/privacy/tier 中至少部分字段。
+- PARSE-013A1 是 remote pro 硬性测试；remote 不可用或不支持 pro 均记录为失败，不能静默 fallback 到 local 或其它 tier。
 - force/cache/no-wait 用例必须记录 parse id/status 是否符合预期。
 
 ### COVERAGE-007 read 边界、续读、image 与 context 补充
@@ -3265,7 +3436,8 @@ mineru server start
 
 必跑 case:
 
-- FILETYPE-001 Office 和图片输入
+- FILETYPE-001 文档类输入文件
+- FILETYPE-001A 图片输入
 - FILETYPE-002 损坏、空、不可读文件中尚未执行的 empty/no-read 子项
 - PATH-001 路径字符边界
 - PATH-002 相对路径和 home 路径中相对路径、show file 同源子项
@@ -3273,7 +3445,8 @@ mineru server start
 
 执行要求:
 
-- Office/image 输入如果当前安装不支持，按预期失败分支判定。
+- docx/pptx/xlsx/md/txt/csv 输入为全量 E2E 必测项，不支持时记录为失败。
+- image 输入如果当前安装不支持，按预期失败分支判定。
 - symlink 或 no-read 权限场景无法稳定制造时，相关子项可 BLOCKED，但必须说明平台限制。
 
 ### COVERAGE-012 并发补充
@@ -3350,5 +3523,7 @@ Blocked:
 Environment:
 - mineru version: <如果 help/status 输出能看到则填写，否则 unknown>
 - fixture dir: ...
-- quality tier available: standard/pro available | flash only | unknown
+- quality tier available: standard/pro available
+- remote pro available: yes
+- pdf fixture source: ...
 ```

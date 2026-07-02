@@ -114,7 +114,9 @@ Office 的 image 输出规则:
 - 如果 Middle JSON 中只有 `span.image_path`，仅在该 path 可访问时作为 fallback。
 - 当前 doclib parsed 目录只持久化 JSON，不保证已额外持久化 Office image 文件；因此不能依赖 `ParseResult.save()` 产物存在。
 
-默认情况下，image 输出打印 asset path。传入 `--output` 时，由 CLI 在 client 侧把 server 返回的 asset copy 到指定路径。传入 `--json` 时输出完整 `DocContentResponse`。
+默认情况下，image 输出打印 asset path。传入 `--output` 时，CLI 先根据输出路径后缀选择 `image_format`，由 server 生成匹配编码的临时 asset，再由 CLI 在 client 侧 copy 到指定路径。传入 `--json` 时输出完整 `DocContentResponse`。
+
+image 输出只接受 `.png`、`.jpg`、`.jpeg`、`.webp` 输出路径。无后缀、其它后缀以及 `--output -` 都在 CLI 参数校验阶段返回 `image_output_extension_unsupported`。CLI 不负责图片转码。
 
 ## 响应模型扩展
 
@@ -411,6 +413,7 @@ def read_content(
     context: int = 0,
     limit: int = 30000,
     format: Literal["markdown", "image"] = "markdown",
+    image_format: Literal["jpeg", "png", "webp"] = "jpeg",
     no_marker: bool = False,
 ) -> DocContentResponse: ...
 ```
@@ -419,10 +422,10 @@ HTTP 路由:
 
 ```http
 GET /api/v1/content?locator=doc:ab12cd3/tier:standard/page:4&format=markdown&limit=30000
-GET /api/v1/content?locator=doc:ab12cd3/tier:standard/page:4/block:12&format=image
+GET /api/v1/content?locator=doc:ab12cd3/tier:standard/page:4/block:12&format=image&image_format=png
 ```
 
-P0 不为 locator-first content API 提供 POST export。`GET /api/v1/content` 可以在 server 内部生成临时 image asset，但不接受 client 指定的 output path。CLI `read --output` 是 client 侧文件写入/copy 行为，不是 doclib HTTP API 行为。
+P0 不为 locator-first content API 提供 POST export。`GET /api/v1/content` 可以在 server 内部生成临时 image asset，并接受 `image_format=jpeg|png|webp` 控制 asset 编码，但不接受 client 指定的 output path。CLI `read --output` 是 client 侧文件写入/copy 行为，不是 doclib HTTP API 行为。
 
 实现时在 Interface 中定义同步和异步方法，再由 client/server 使用相同签名实现。
 

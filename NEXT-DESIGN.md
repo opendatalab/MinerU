@@ -55,10 +55,10 @@
 | 通道 | 路径 / 地址 | 权限 | 用途 |
 |------|-----------|------|------|
 | UDS | `$MINERU_HOME/doclib.sock` | `0600` | CLI / MCP / 桌面端与 doclib 通信 |
-| TCP (parse-server) | `127.0.0.1:15981` | loopback only | doclib ParseWorker 调用 local parse-server API |
+| TCP (parse-server) | `127.0.0.1:16580` | loopback only | doclib ParseWorker 调用 local parse-server API |
 | TCP (doclib Web UI) | `127.0.0.1:<随机端口>` | loopback only | 可选，供浏览器访问 Web UI (P1) |
 
-doclib 启动后 UDS sock 文件默认位于 `$MINERU_HOME/doclib.sock`，权限 0600。CLI 通过 sock 连接检测 server 状态。TCP 端口按 config 中 `http.enabled` 决定是否启动。parse-server 端口固定为 `127.0.0.1:15981`，仅环回地址可访问。managed 模式下 parse-server 由 doclib 自动拉起，self-hosted 模式下用户自行管理。
+doclib 启动后 UDS sock 文件默认位于 `$MINERU_HOME/doclib.sock`，权限 0600。CLI 通过 sock 连接检测 server 状态。TCP 端口按 config 中 `http.enabled` 决定是否启动。parse-server 端口固定为 `127.0.0.1:16580`，仅环回地址可访问。managed 模式下 parse-server 由 doclib 自动拉起，self-hosted 模式下用户自行管理。
 
 ---
 
@@ -694,7 +694,7 @@ async def startup():
         subprocess.Popen([
             sys.executable, "-m", "mineru.parser.api_server",
             "--tier", config.parse_server.local.managed_tier,
-            "--port", "15981",
+            "--port", "16580",
         ])
 
     # 6. 启动后台任务

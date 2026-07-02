@@ -1,7 +1,7 @@
 from ..types import Block, BlockType, ContentType
+from .markdown_table import to_markdown_table
 from .merge import merge_para_text
 from .merge_visual import _build_media_path, merge_visual_para_text
-from .markdown_table import to_markdown_table
 
 
 def blocks_to_markdown(
@@ -97,11 +97,8 @@ def _build_image_link(block: Block, target_span_type: str, img_bucket_path: str)
 
 
 def _render_table_block_as_markdown_table(para_block: Block, img_bucket_path: str) -> str:
-    rendered = merge_visual_para_text(para_block, img_bucket_path)
     for span in para_block.all_spans():
         if span.type != ContentType.TABLE or not span.content:
             continue
-        candidate = to_markdown_table(span.content)
-        if candidate != span.content.strip():
-            return candidate
-    return rendered
+        return to_markdown_table(span.content)
+    return merge_visual_para_text(para_block, img_bucket_path)

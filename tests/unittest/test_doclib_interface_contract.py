@@ -1,6 +1,6 @@
-import inspect
 import asyncio
-from typing import get_type_hints
+import inspect
+from typing import Any, cast, get_type_hints
 
 import pytest
 from pydantic import ValidationError
@@ -38,6 +38,7 @@ from mineru.doclib.types import (
     ParseCoverage,
     ParseInfo,
     ParseRequest,
+    ParseResponse,
     ParseStatus,
     ParseServerStatus,
     ParsingRuleInfo,
@@ -202,8 +203,9 @@ def test_interface_app_uses_doclib_server_routes(tmp_path) -> None:
     assert "/api/v1/parsing-rules/{rule_id}" in route_paths
     assert "/api/v1/files" in route_paths
     assert "/api/v1/docs" in route_paths
+    assert "/api/v1/docs/{doc_ref}" in route_paths
     assert "/api/v1/content" in route_paths
-    assert "/api/v1/docs/{sha256}/exports" in route_paths
+    assert "/api/v1/docs/{doc_ref}/exports" in route_paths
     assert "/api/docs" in route_paths
     assert "/docs" not in route_paths
     assert "/api/v1/config" not in route_paths
@@ -224,6 +226,44 @@ def test_add_watch_rejects_missing_directory(tmp_path) -> None:
 
         with pytest.raises(InvalidRequestError, match="Watch path does not exist"):
             await service.add_watch(str(tmp_path / "not-exist"))
+
+    asyncio.run(_run())
+
+
+def test_add_watch_rejects_non_absolute_or_unnormalized_path_with_structured_error(tmp_path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ConfigService(db)
+
+        with pytest.raises(InvalidRequestError) as relative_exc:
+            await service.add_watch("relative/path")
+        assert relative_exc.value.code == "invalid_request"
+        assert relative_exc.value.param == "path"
+
+        root = tmp_path / "root"
+        root.mkdir()
+        unnormalized = str(root / ".." / root.name)
+
+        with pytest.raises(InvalidRequestError) as normalized_exc:
+            await service.add_watch(unnormalized)
+        assert normalized_exc.value.code == "invalid_request"
+        assert normalized_exc.value.param == "path"
+
+    asyncio.run(_run())
+
+
+def test_config_service_rejects_unsupported_rule_type_with_structured_error(tmp_path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ConfigService(db)
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.list_rules(cast(Any, "bad-rule-type"))
+
+        assert exc_info.value.code == "invalid_request"
+        assert exc_info.value.param == "rule_type"
 
     asyncio.run(_run())
 
@@ -303,6 +343,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
         size_bytes=123,
         mtime_ms=11,
         sha256="abc",
+        short_id="abc",
         watch_id=1,
         status="active",
         error_code="scan_failed",
@@ -330,6 +371,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     parse_info = ParseInfo(
         id=1,
         sha256="abc",
+        short_id="abc",
         tier="standard",
         page_range="1~2",
         status="pending",
@@ -359,8 +401,8 @@ def test_core_doclib_schemas_are_instantiable() -> None:
         local=LocalParseServerStatus(
             mode="managed",
             healthy=True,
-            url="http://127.0.0.1:15981",
-            port=15981,
+            url="http://127.0.0.1:16580",
+            port=16580,
             managed_pid=1234,
             last_probe_at=1000,
             last_success_at=900,
@@ -378,6 +420,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     )
     search_result = SearchResult(
         sha256="abc",
+        short_id="abc",
         filename="a.pdf",
         tier="standard",
         snippet="matched text",
@@ -453,6 +496,15 @@ def test_parse_request_rejects_auto_tier() -> None:
         ParseRequest(path="/tmp/a.pdf", tier="auto", page_range="1~5")
 
 
+def test_parse_response_status_is_submit_state_only() -> None:
+    with pytest.raises(ValidationError):
+        ParseResponse(sha256="a" * 64, tier="flash", page_range="1", status="parsing")
+
+    response = ParseResponse(sha256="a" * 64, tier="flash", page_range="1", status="pending")
+
+    assert response.status == "pending"
+
+
 def test_route_info_exports_from_route_utils() -> None:
     route_info = RouteInfo(method="GET", path="/server/status")
     assert route_info.method == "GET"
@@ -496,9 +548,10 @@ def test_next_cli_doclib_route_shapes_are_declared() -> None:
         "get_file_by_path": ("GET", "/files/by-path"),
         "list_docs": ("GET", "/docs"),
         "get_doc_by_path": ("GET", "/docs/by-path"),
-        "get_doc_content": ("GET", "/docs/{sha256}/content"),
+        "get_doc": ("GET", "/docs/{doc_ref}"),
+        "get_doc_content": ("GET", "/docs/{doc_ref}/content"),
         "read_content": ("GET", "/content"),
-        "export_doc_content": ("POST", "/docs/{sha256}/exports"),
+        "export_doc_content": ("POST", "/docs/{doc_ref}/exports"),
         "get_config": ("GET", "/configs"),
         "get_config_key": ("GET", "/configs/{key}"),
         "set_config": ("PUT", "/configs/{key}"),

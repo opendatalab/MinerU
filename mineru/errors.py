@@ -10,6 +10,7 @@ ErrorType = Literal[
     "permission_error",
     "rate_limit_error",
     "engine_error",
+    "timeout_error",
     "api_error",
 ]
 
@@ -26,6 +27,7 @@ _ERROR_TYPE_MAP: dict[str, ErrorType] = {
     "file_not_found": "invalid_request_error",
     "file_permission_denied": "invalid_request_error",
     "file_hash_mismatch": "invalid_request_error",
+    "image_output_extension_unsupported": "invalid_request_error",
     "bytes_mismatch": "invalid_request_error",
     "upload_not_found": "invalid_request_error",
     "upload_not_ready": "invalid_request_error",
@@ -35,10 +37,26 @@ _ERROR_TYPE_MAP: dict[str, ErrorType] = {
     "model_not_found": "invalid_request_error",
     "not_cached": "invalid_request_error",
     "no_accessible_file": "invalid_request_error",
+    "asset_not_available": "invalid_request_error",
+    "block_not_found": "invalid_request_error",
+    "doc_not_found": "invalid_request_error",
+    "page_not_cached": "invalid_request_error",
+    "parse_server_dependency_missing": "invalid_request_error",
+    "tier_not_cached": "invalid_request_error",
+    "bbox_not_available": "invalid_request_error",
+    "context_not_applicable": "invalid_request_error",
+    "format_not_supported": "invalid_request_error",
+    "invalid_config_key": "invalid_request_error",
+    "invalid_config_value": "invalid_request_error",
+    "invalid_locator": "invalid_request_error",
+    "multi_page_image_not_supported": "invalid_request_error",
     "rule_not_found": "invalid_request_error",
     "scan_not_found": "invalid_request_error",
     "stat_failed": "invalid_request_error",
+    "remote_unsupported_for_file_type": "invalid_request_error",
     "tier_mismatch": "invalid_request_error",
+    "tier_unsupported_for_file_type": "invalid_request_error",
+    "tier_unsupported_for_remote": "invalid_request_error",
     "watch_not_found": "invalid_request_error",
     # authentication_error
     "invalid_api_key": "authentication_error",
@@ -53,8 +71,11 @@ _ERROR_TYPE_MAP: dict[str, ErrorType] = {
     "engine_unavailable": "engine_error",
     "parse_empty": "engine_error",
     "parse_failed": "engine_error",
+    "parse_page_remap_failed": "engine_error",
     "parse_timeout": "engine_error",
     "quality_tier_unavailable": "engine_error",
+    # timeout_error
+    "parse_wait_timeout": "timeout_error",
     # api_error
     "ingest_failed": "api_error",
     "internal_error": "api_error",
@@ -77,16 +98,22 @@ _ERROR_STATUS_MAP: dict[ErrorType, int] = {
     "permission_error": 403,
     "rate_limit_error": 429,
     "engine_error": 503,
+    "timeout_error": 408,
     "api_error": 500,
 }
 
 _ERROR_CODE_STATUS_MAP: dict[str, int] = {
     "file_not_found": 404,
+    "asset_not_available": 404,
+    "block_not_found": 404,
+    "doc_not_found": 404,
     "job_not_found": 404,
     "model_not_found": 404,
     "not_cached": 404,
+    "page_not_cached": 404,
     "rule_not_found": 404,
     "scan_not_found": 404,
+    "tier_not_cached": 404,
     "upload_not_found": 404,
     "watch_not_found": 404,
 }
@@ -117,6 +144,9 @@ class MineruError(Exception):
         self.message = message
         self.param = param
         self.type = error_type_for(code)
+
+    def __str__(self) -> str:
+        return self.message or self.code
 
 
 class InvalidRequestError(MineruError):

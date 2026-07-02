@@ -57,7 +57,7 @@ class MinerUApiParser(DocumentParser):
 
 | 参数 | 说明 |
 |------|------|
-| `api_url` | v1 API base URL，如 `https://mineru.net/api` 或 `http://127.0.0.1:15981/api`。 |
+| `api_url` | v1 API base URL，如 `https://mineru.net/api` 或 `http://127.0.0.1:16580/api`。 |
 | `api_key` | Bearer token。Local Parse Server 未启用鉴权时可为空。 |
 | `tier` | `standard`、`pro` 或 `None`。`None` 表示 SDK 在 HTTP 请求中省略 `tier` 或发送 JSON `null`，让 v1 API 使用默认选择策略。不得传 `flash`，因为 v1 parse API 的质量解析不接受 flash 作为默认结果。 |
 | `wait` | 创建 job 时的同步等待秒数。 |

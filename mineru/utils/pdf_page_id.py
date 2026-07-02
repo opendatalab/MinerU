@@ -27,7 +27,7 @@ def parse_page_range(raw: str, page_count: int) -> list[int]:
     Negative values are resolved against *page_count* (e.g. ``-1`` = last page).
     Returns an empty list when every resolved segment is outside ``[0, page_count)``.
     """
-    if not raw:
+    if not raw or not raw.strip():
         return list(range(page_count))
 
     result: list[int] = []
@@ -40,7 +40,7 @@ def parse_page_range(raw: str, page_count: int) -> list[int]:
 
         def _resolve(token: str) -> int:
             n = int(token.strip())
-            return n + page_count if n < 0 else n
+            return page_count + n + 1 if n < 0 else n
 
         start_1b = _resolve(parts[0])
         end_1b = _resolve(parts[1]) if len(parts) > 1 and parts[1].strip() else start_1b
@@ -53,6 +53,4 @@ def parse_page_range(raw: str, page_count: int) -> list[int]:
         if lo <= hi:
             result.extend(range(lo, hi + 1))
 
-    if not result:
-        return list(range(page_count))
     return sorted(set(result))

@@ -7,13 +7,11 @@ import errno
 import logging
 import os
 import socket
-import subprocess
-import sys
 import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
-from typing import TYPE_CHECKING, Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator, cast
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -47,7 +45,11 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         from .background.compaction import Compaction
         from .background.device_monitor import DeviceMonitor
         from .background.ingest import IngestWorkerPool
-        from .background.parse_server_health import ParseServerHealthCheck, api_server_args_for_tier, get_health
+        from .background.parse_server_health import (
+            ParseServerHealthCheck,
+            get_health,
+            start_managed_parse_server,
+        )
         from .background.parse_worker import ParseWorkerPool
         from .background.scan_worker import ScanWorkerPool
         from .background.telemetry_flush import TelemetryFlushLoop
@@ -114,7 +116,6 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             ),
         )
 
-        state.parse_server_proc = None
         local_mode = (await state.config_svc.get("parse_server.local.mode")) or "disabled"
         health = get_health()
         health.local_mode = local_mode
@@ -122,16 +123,16 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             managed_tier = (await state.config_svc.get("parse_server.local.managed_tier")) or "standard"
             health.managed_tier = managed_tier
             try:
-                cmd = [sys.executable, "-m", "mineru.parser.api_server", *api_server_args_for_tier(managed_tier)]
-                logging.info("Starting managed parse-server: %s", " ".join(cmd))
-                proc = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                proc, managed_url = start_managed_parse_server(
+                    tier=managed_tier,
+                    managed_cfg=cfg.doclib.managed_parse_server,
+                    log_cfg=cfg.doclib.log,
+                    marker="start",
                 )
+                health.managed_url = managed_url
                 logging.info("Managed parse-server started (PID %d, tier=%s)", proc.pid, managed_tier)
-                state.parse_server_proc = proc
                 health.managed_proc = proc
+                health.running_managed_tier = managed_tier
                 health.local_starting = True
                 health.local_started_at = asyncio.get_event_loop().time()
             except Exception as exc:
@@ -164,6 +165,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             probe_timeout_sec=cfg.doclib.parse_server_probe_timeout_sec,
             startup_grace_sec=cfg.doclib.parse_server_startup_grace_sec,
             stop_timeout_sec=cfg.doclib.parse_server_stop_timeout_sec,
+            managed_parse_server=cfg.doclib.managed_parse_server,
+            log_cfg=cfg.doclib.log,
         )
         state.telemetry_flush = TelemetryFlushLoop(state.telemetry_svc)
 
@@ -185,24 +188,24 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         state.access_log_path = os.path.expanduser(cfg.doclib.log.resolved_access_path)
         state.stdout_log_path = os.path.expanduser(cfg.doclib.log.resolved_stdout_path)
         state.stderr_log_path = os.path.expanduser(cfg.doclib.log.resolved_stderr_path)
+        state.parse_server_stdout_log_path = os.path.expanduser(cfg.doclib.log.resolved_parse_server_stdout_path)
+        state.parse_server_stderr_log_path = os.path.expanduser(cfg.doclib.log.resolved_parse_server_stderr_path)
         state.socket_path = os.path.expanduser(cfg.doclib.uds.path)
         state.tcp_enabled = cfg.doclib.resolved_tcp_enabled
         state.tcp_host = cfg.doclib.tcp.host
         state.config = cfg
 
     async def shutdown() -> None:
-        if state.parse_server_proc:
-            try:
-                pid = state.parse_server_proc.pid
-                logging.info("Stopping managed parse-server (PID %d)", pid)
-                state.parse_server_proc.terminate()
-                state.parse_server_proc.wait(timeout=cfg.doclib.parse_server_stop_timeout_sec)
-                logging.info("Managed parse-server stopped (PID %d)", pid)
-            except subprocess.TimeoutExpired:
-                logging.warning("Managed parse-server did not stop within configured timeout, killing")
-                state.parse_server_proc.kill()
-            except Exception as exc:
-                logging.error("Error stopping managed parse-server: %s", exc)
+        from .background.parse_server_health import get_health, stop_managed_parse_server
+
+        health = get_health()
+        if health.managed_proc:
+            stop_managed_parse_server(
+                health.managed_proc,
+                timeout_sec=cfg.doclib.parse_server_stop_timeout_sec,
+                reason="doclib shutdown",
+            )
+            health.managed_proc = None
 
         for comp in [
             "watch",
@@ -236,6 +239,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.middleware("http")
     async def attach_state(request: Request, call_next: Callable) -> Any:
         request.state.app = state
+        from .telemetry.constants import TelemetryCaller, TelemetrySource
         from .telemetry import TelemetryContext, reset_telemetry_context, set_telemetry_context
 
         source = request.headers.get("X-MinerU-Telemetry-Source") or "http_api"
@@ -244,7 +248,9 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             source = "unknown"
         if caller not in {"agent", "user", "sdk", "http_client", "system", "unknown"}:
             caller = "unknown"
-        token = set_telemetry_context(TelemetryContext(source=source, caller=caller))
+        token = set_telemetry_context(
+            TelemetryContext(source=cast(TelemetrySource, source), caller=cast(TelemetryCaller, caller))
+        )
         try:
             return await call_next(request)
         finally:
@@ -281,7 +287,6 @@ class AppState:
         self.cleanup_svc: Any = None
         self.telemetry_svc: Any = None
         self.db_ready: asyncio.Event | None = None
-        self.parse_server_proc: Any = None
         self.watch: Any = None
         self.scan_workers: Any = None
         self.ingest_workers: Any = None
@@ -301,6 +306,8 @@ class AppState:
         self.access_log_path: str = ""
         self.stdout_log_path: str = ""
         self.stderr_log_path: str = ""
+        self.parse_server_stdout_log_path: str = ""
+        self.parse_server_stderr_log_path: str = ""
         self.tcp_enabled: bool = False
         self.tcp_host: str = ""
         self.tcp_port: int | None = None
@@ -394,6 +401,28 @@ def _format_transport(transport: EndpointTransport) -> str:
     return f"TCP {transport.base_url}"
 
 
+def _bind_tcp_socket(host: str, port: int, *, strict_port: bool, port_probe_count: int) -> tuple[socket.socket, int]:
+    tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    tcp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    if strict_port:
+        tcp_sock.bind((host, port))
+        return tcp_sock, tcp_sock.getsockname()[1]
+
+    last_exc: OSError | None = None
+    for candidate_port in range(port, port + port_probe_count):
+        try:
+            tcp_sock.bind((host, candidate_port))
+        except OSError as exc:
+            if exc.errno != errno.EADDRINUSE:
+                raise
+            last_exc = exc
+            continue
+        return tcp_sock, tcp_sock.getsockname()[1]
+
+    raise RuntimeError(f"No available TCP port in range {port}-{port + port_probe_count - 1}.") from last_exc
+
+
 def main() -> None:
     """Entry point: python -m mineru.doclib.app"""
     cfg = config
@@ -434,19 +463,14 @@ def main() -> None:
         transports.append(EndpointTransport(type="uds", path=uds_path))
 
     if tcp_enabled:
-        tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        tcp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            tcp_sock.bind((cfg.doclib.tcp.host, cfg.doclib.tcp.port))
-        except OSError as exc:
-            if exc.errno == errno.EADDRINUSE and not cfg.doclib.tcp.strict_port:
-                tcp_sock.bind((cfg.doclib.tcp.host, 0))
-                port = tcp_sock.getsockname()[1]
-                print(f"Port {cfg.doclib.tcp.port} in use, using {port}")
-            else:
-                raise
-        else:
-            port = tcp_sock.getsockname()[1]
+        tcp_sock, port = _bind_tcp_socket(
+            cfg.doclib.tcp.host,
+            cfg.doclib.tcp.port,
+            strict_port=cfg.doclib.tcp.strict_port,
+            port_probe_count=cfg.doclib.tcp.port_probe_count,
+        )
+        if cfg.doclib.tcp.port != 0 and port != cfg.doclib.tcp.port:
+            print(f"Port {cfg.doclib.tcp.port} in use, using {port}")
         tcp_sock.listen(cfg.doclib.tcp.backlog)
         sockets.append(tcp_sock)
         app.state.doclib_state.tcp_port = port

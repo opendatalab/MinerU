@@ -8,6 +8,13 @@ from .parse_server_health import (
     ParseServerHealthCheck,
     api_server_args_for_tier,
     get_health,
+    get_parse_server_stderr_log_path,
+    get_parse_server_stdout_log_path,
+    managed_parse_server_url,
+    open_managed_parse_server_logs,
+    select_available_managed_port,
+    start_managed_parse_server,
+    stop_managed_parse_server,
 )
 from .parse_worker import ParseWorkerPool
 from .scan_worker import ScanWorkerPool
@@ -24,4 +31,11 @@ __all__ = [
     "WatchLoop",
     "api_server_args_for_tier",
     "get_health",
+    "get_parse_server_stderr_log_path",
+    "get_parse_server_stdout_log_path",
+    "managed_parse_server_url",
+    "open_managed_parse_server_logs",
+    "select_available_managed_port",
+    "start_managed_parse_server",
+    "stop_managed_parse_server",
 ]

@@ -21,6 +21,7 @@ from .types import (
     DocContentExportResponse,
     DocContentResponse,
     ContentFormat,
+    ImageFormat,
     DocInfo,
     ExcludeRuleInfo,
     ExcludeRuleListResponse,
@@ -111,7 +112,7 @@ class DoclibInterface(ABC):
         self,
         *,
         ids: list[int] | None = None,
-        sha256: str | None = None,
+        doc_ref: str | None = None,
         tier: Tier | None = None,
         status: ParseStatus | None = None,
         page_range: str | None = None,
@@ -121,8 +122,10 @@ class DoclibInterface(ABC):
     ) -> ListParsesResponse:
         """List parse records and optional coverage information.
 
+        ``doc_ref`` accepts either a full content hash or a short id.
+
         Raises:
-            InvalidRequestError: for malformed ids, status filters, page ranges, or tier filters.
+            InvalidRequestError: for malformed document references, ids, status filters, page ranges, or tier filters.
             MineruError: for server-side failures.
         """
         raise NotImplementedError()
@@ -244,12 +247,12 @@ class DoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def get_doc(self, sha256: str, *, expand_files: bool = False) -> DocInfo:
-        """Return one doc by content hash.
+    def get_doc(self, doc_ref: str, *, expand_files: bool = False) -> DocInfo:
+        """Return one doc by content hash or short id.
 
         Raises:
-            NotFoundError: when ``sha256`` does not exist in doclib.
-            InvalidRequestError: when ``sha256`` is malformed.
+            NotFoundError: when the document reference does not exist in doclib.
+            InvalidRequestError: when the document reference is malformed.
             MineruError: for server-side failures.
         """
         raise NotImplementedError()
@@ -257,7 +260,7 @@ class DoclibInterface(ABC):
     @abstractmethod
     def get_doc_content(
         self,
-        sha256: str,
+        doc_ref: str,
         *,
         tier: Tier,
         page_range: str | None = None,
@@ -267,6 +270,8 @@ class DoclibInterface(ABC):
         no_marker: bool = False,
     ) -> DocContentResponse:
         """Render stored doc content from parsed JSON artifacts.
+
+        ``doc_ref`` accepts either a full content hash or a short id.
 
         Raises:
             NotFoundError: when the document or requested parsed content is not cached.
@@ -283,6 +288,7 @@ class DoclibInterface(ABC):
         context: int = 0,
         limit: int = 30000,
         format: ContentFormat = "markdown",
+        image_format: ImageFormat = "jpeg",
         no_marker: bool = False,
     ) -> DocContentResponse:
         """Render stored doc content from a stable content locator.
@@ -295,8 +301,10 @@ class DoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def export_doc_content(self, sha256: str, request: DocContentExportRequest) -> DocContentExportResponse:
+    def export_doc_content(self, doc_ref: str, request: DocContentExportRequest) -> DocContentExportResponse:
         """Render stored doc content and write it to a server-visible output path.
+
+        ``doc_ref`` accepts either a full content hash or a short id.
 
         Raises:
             NotFoundError: when the document or requested parsed content is not cached.
@@ -555,7 +563,7 @@ class AsyncDoclibInterface(ABC):
         self,
         *,
         ids: list[int] | None = None,
-        sha256: str | None = None,
+        doc_ref: str | None = None,
         tier: Tier | None = None,
         status: ParseStatus | None = None,
         page_range: str | None = None,
@@ -634,14 +642,14 @@ class AsyncDoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    async def get_doc(self, sha256: str, *, expand_files: bool = False) -> DocInfo:
+    async def get_doc(self, doc_ref: str, *, expand_files: bool = False) -> DocInfo:
         """Async version of ``DoclibInterface.get_doc``."""
         raise NotImplementedError()
 
     @abstractmethod
     async def get_doc_content(
         self,
-        sha256: str,
+        doc_ref: str,
         *,
         tier: Tier,
         page_range: str | None = None,
@@ -661,13 +669,14 @@ class AsyncDoclibInterface(ABC):
         context: int = 0,
         limit: int = 30000,
         format: ContentFormat = "markdown",
+        image_format: ImageFormat = "jpeg",
         no_marker: bool = False,
     ) -> DocContentResponse:
         """Async version of ``DoclibInterface.read_content``."""
         raise NotImplementedError()
 
     @abstractmethod
-    async def export_doc_content(self, sha256: str, request: DocContentExportRequest) -> DocContentExportResponse:
+    async def export_doc_content(self, doc_ref: str, request: DocContentExportRequest) -> DocContentExportResponse:
         """Async version of ``DoclibInterface.export_doc_content``."""
         raise NotImplementedError()
 

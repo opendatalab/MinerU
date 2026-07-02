@@ -33,13 +33,24 @@ class ParseWorkerPool:
         no_task_count = 0
 
         while self.running:
-            task = await self.parse_svc.acquire_task()
-            if task is None:
-                no_task_count += 1
-                if no_task_count == 1 or no_task_count % 20 == 0:
-                    q = await self.parse_svc.get_queue_length()
-                    logger.debug(f"Parse worker {worker_id}: queue={q}")
-                await asyncio.sleep(0.5)
+            try:
+                task = await self.parse_svc.acquire_task()
+                if task is None:
+                    no_task_count += 1
+                    if no_task_count == 1 or no_task_count % 20 == 0:
+                        q = await self.parse_svc.get_queue_length()
+                        logger.debug(f"Parse worker {worker_id}: queue={q}")
+                    await asyncio.sleep(0.5)
+                    continue
+            except Exception as exc:
+                logger.error(
+                    "Parse worker %s loop error: %s",
+                    worker_id,
+                    exc,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+                if self.running:
+                    await asyncio.sleep(0.5)
                 continue
 
             no_task_count = 0

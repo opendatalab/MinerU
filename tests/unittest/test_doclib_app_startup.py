@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import subprocess
 import tomllib
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -13,6 +14,7 @@ from mineru.doclib import app as doclib_app
 from mineru.doclib.app import _assert_required_schema
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.server import _tail_log, _write_temp_asset
+from mineru.parser import tier as parser_tier
 from mineru.version import __version__
 
 
@@ -49,6 +51,61 @@ def test_doclib_runtime_dependencies_are_in_base_install() -> None:
 
     assert "aiosqlite" in dependency_names
     assert "watchfiles" in dependency_names
+
+
+def test_config_set_managed_mode_preflights_managed_tier_dependencies(monkeypatch, tmp_path) -> None:
+    def _skip_background_task(*args, **kwargs):
+        return None
+
+    def _import_module(module_name: str):
+        if module_name == "torch":
+            raise ModuleNotFoundError("No module named 'torch'")
+        return object()
+
+    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
+    monkeypatch.setattr(parser_tier.importlib, "import_module", _import_module)
+    monkeypatch.setattr(parser_tier.importlib_metadata, "packages_distributions", lambda: {"mineru": ["mineru-next-dev"]})
+
+    cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
+    with TestClient(doclib_app.create_app(cfg)) as client:
+        response = client.put("/api/v1/configs/parse_server.local.mode", json={"value": "managed"})
+        config_response = client.get("/api/v1/configs/parse_server.local.mode")
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "parse_server_dependency_missing"
+    assert payload["error"]["param"] == "parse_server.local.mode"
+    assert "torch" in payload["error"]["message"]
+    assert "pip install 'mineru-next-dev[standard]'" in payload["error"]["message"]
+    assert config_response.json()["value"] == "disabled"
+
+
+def test_config_set_managed_tier_preflights_even_when_mode_is_disabled(monkeypatch, tmp_path) -> None:
+    def _skip_background_task(*args, **kwargs):
+        return None
+
+    def _import_module(module_name: str):
+        if module_name == "mlx":
+            raise ModuleNotFoundError("No module named 'mlx'")
+        return object()
+
+    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
+    monkeypatch.setattr(parser_tier.importlib, "import_module", _import_module)
+    monkeypatch.setattr(parser_tier.importlib_metadata, "packages_distributions", lambda: {"mineru": ["mineru-next-dev"]})
+    monkeypatch.setattr(parser_tier.sys, "platform", "darwin")
+
+    cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
+    with TestClient(doclib_app.create_app(cfg)) as client:
+        response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "pro"})
+        config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "parse_server_dependency_missing"
+    assert payload["error"]["param"] == "parse_server.local.managed_tier"
+    assert "mlx" in payload["error"]["message"]
+    assert "pip install 'mineru-next-dev[pro]'" in payload["error"]["message"]
+    assert config_response.json()["value"] == "standard"
 
 
 def test_background_task_crash_is_logged(caplog: pytest.LogCaptureFixture) -> None:
@@ -97,6 +154,55 @@ def test_pending_loop_tasks_are_cancelled_before_loop_close() -> None:
         assert task.done()
     finally:
         loop.close()
+
+
+def test_bind_tcp_socket_tries_configured_port_range(monkeypatch: pytest.MonkeyPatch) -> None:
+    bind_calls: list[tuple[str, int]] = []
+
+    class _Socket:
+        def __init__(self) -> None:
+            self.bound_port: int | None = None
+
+        def setsockopt(self, *args: object) -> None:
+            return None
+
+        def bind(self, address: tuple[str, int]) -> None:
+            bind_calls.append(address)
+            host, port = address
+            if port in (15980, 15981):
+                raise OSError(doclib_app.errno.EADDRINUSE, "in use")
+            self.bound_port = port
+
+        def getsockname(self) -> tuple[str, int]:
+            assert self.bound_port is not None
+            return ("127.0.0.1", self.bound_port)
+
+    monkeypatch.setattr(doclib_app.socket, "socket", lambda *args, **kwargs: _Socket())
+
+    tcp_sock, port = doclib_app._bind_tcp_socket("127.0.0.1", 15980, strict_port=False, port_probe_count=3)
+
+    assert isinstance(tcp_sock, _Socket)
+    assert port == 15982
+    assert bind_calls == [("127.0.0.1", 15980), ("127.0.0.1", 15981), ("127.0.0.1", 15982)]
+
+
+def test_bind_tcp_socket_strict_port_does_not_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    bind_calls: list[tuple[str, int]] = []
+
+    class _Socket:
+        def setsockopt(self, *args: object) -> None:
+            return None
+
+        def bind(self, address: tuple[str, int]) -> None:
+            bind_calls.append(address)
+            raise OSError(doclib_app.errno.EADDRINUSE, "in use")
+
+    monkeypatch.setattr(doclib_app.socket, "socket", lambda *args, **kwargs: _Socket())
+
+    with pytest.raises(OSError):
+        doclib_app._bind_tcp_socket("127.0.0.1", 15980, strict_port=True, port_probe_count=3)
+
+    assert bind_calls == [("127.0.0.1", 15980)]
 
 
 def test_setup_logging_routes_application_logs_to_rotating_file_without_stderr_duplication(tmp_path: Path) -> None:
@@ -160,11 +266,15 @@ def test_server_status_reports_configured_socket_path(monkeypatch, tmp_path) -> 
     access_log_path = tmp_path / "doclib.access.log"
     stdout_log_path = tmp_path / "doclib.stdout.log"
     stderr_log_path = tmp_path / "doclib.stderr.log"
+    parse_server_stdout_log_path = tmp_path / "doclib.parse-server.stdout.log"
+    parse_server_stderr_log_path = tmp_path / "doclib.parse-server.stderr.log"
     for prefix, path, count in (
         ("app", app_log_path, 30),
         ("access", access_log_path, 12),
         ("stdout", stdout_log_path, 12),
         ("stderr", stderr_log_path, 12),
+        ("parse-stdout", parse_server_stdout_log_path, 12),
+        ("parse-stderr", parse_server_stderr_log_path, 12),
     ):
         path.write_text("".join(f"{prefix}-{idx}\n" for idx in range(count)), encoding="utf-8")
 
@@ -177,6 +287,8 @@ def test_server_status_reports_configured_socket_path(monkeypatch, tmp_path) -> 
                 "access_path": str(access_log_path),
                 "stdout_path": str(stdout_log_path),
                 "stderr_path": str(stderr_log_path),
+                "parse_server_stdout_path": str(parse_server_stdout_log_path),
+                "parse_server_stderr_path": str(parse_server_stderr_log_path),
             },
             "uds": {"path": str(tmp_path / "doclib.sock")},
         }
@@ -206,6 +318,8 @@ def test_server_status_reports_configured_socket_path(monkeypatch, tmp_path) -> 
     assert payload["access_logs"] == [f"access-{idx}\n" for idx in range(2, 12)]
     assert payload["stdout_logs"] == [f"stdout-{idx}\n" for idx in range(2, 12)]
     assert payload["stderr_logs"] == [f"stderr-{idx}\n" for idx in range(2, 12)]
+    assert payload["parse_server_stdout_logs"] == [f"parse-stdout-{idx}\n" for idx in range(2, 12)]
+    assert payload["parse_server_stderr_logs"] == [f"parse-stderr-{idx}\n" for idx in range(2, 12)]
 
 
 def test_doclib_app_uses_lifespan_instead_of_deprecated_event_handlers(monkeypatch, tmp_path) -> None:
@@ -234,6 +348,143 @@ def test_doclib_app_uses_lifespan_instead_of_deprecated_event_handlers(monkeypat
         response = client.get("/api/v1/server/status")
 
     assert response.status_code == 200
+
+
+def test_managed_parse_server_startup_writes_stdout_and_stderr_logs(monkeypatch, tmp_path) -> None:
+    db = DatabaseManager(str(tmp_path / "doclib.db"))
+    asyncio.run(db.initialize())
+    asyncio.run(db.execute("INSERT INTO config (key, value) VALUES (?, ?)", ("parse_server.local.mode", "managed")))
+
+    parse_stdout_log_path = tmp_path / "doclib.parse-server.stdout.log"
+    parse_stderr_log_path = tmp_path / "doclib.parse-server.stderr.log"
+    popen_calls: list[dict[str, object]] = []
+
+    class _Proc:
+        pid = 12345
+
+        def poll(self) -> None:
+            return None
+
+        def terminate(self) -> None:
+            return None
+
+        def wait(self, timeout: int) -> None:
+            return None
+
+    def _popen(*args: object, **kwargs: object) -> _Proc:
+        popen_calls.append({"args": args, "kwargs": kwargs})
+        cmd = args[0]
+        assert "--host" in cmd
+        assert cmd[cmd.index("--host") + 1] == "127.0.0.2"
+        assert "--port" in cmd
+        assert cmd[cmd.index("--port") + 1] == "16582"
+        assert kwargs["stdout"] is not subprocess.DEVNULL
+        assert kwargs["stderr"] is not subprocess.DEVNULL
+        assert kwargs["stdout"] is not kwargs["stderr"]
+        assert kwargs["stdin"] is subprocess.PIPE
+        assert kwargs["env"]["MINERU_MANAGED_PARSE_SERVER"] == "1"
+        kwargs["stdout"].write("parse stdout\n")
+        kwargs["stdout"].flush()
+        kwargs["stderr"].write("parse stderr\n")
+        kwargs["stderr"].flush()
+        return _Proc()
+
+    cfg = PatchedConfig(
+        doclib={
+            "data_dir": str(tmp_path),
+            "sqlite": {"path": str(tmp_path / "doclib.db")},
+            "log": {
+                "app_path": str(tmp_path / "doclib.log"),
+                "access_path": str(tmp_path / "doclib.access.log"),
+                "parse_server_stdout_path": str(parse_stdout_log_path),
+                "parse_server_stderr_path": str(parse_stderr_log_path),
+            },
+            "managed_parse_server": {
+                "host": "127.0.0.2",
+                "port": 16580,
+                "port_probe_count": 3,
+            },
+            "uds": {"path": str(tmp_path / "doclib.sock")},
+        }
+    )
+
+    def _skip_background_task(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
+
+    with TestClient(doclib_app.create_app(cfg)) as client:
+        response = client.get("/api/v1/server/status")
+
+    assert response.status_code == 200
+    assert popen_calls
+    assert parse_stdout_log_path.read_text(encoding="utf-8").endswith("parse stdout\n")
+    assert parse_stderr_log_path.read_text(encoding="utf-8").endswith("parse stderr\n")
+
+
+def test_managed_parse_server_shutdown_uses_health_proc(monkeypatch, tmp_path) -> None:
+    db = DatabaseManager(str(tmp_path / "doclib.db"))
+    asyncio.run(db.initialize())
+    asyncio.run(db.execute("INSERT INTO config (key, value) VALUES (?, ?)", ("parse_server.local.mode", "managed")))
+
+    events: list[str] = []
+
+    class _Stdin:
+        closed = False
+
+        def close(self) -> None:
+            events.append("stdin.close")
+            self.closed = True
+
+    class _Proc:
+        pid = 12345
+        stdin = _Stdin()
+
+        def poll(self) -> None:
+            return None
+
+        def wait(self, timeout: int) -> None:
+            events.append(f"wait:{timeout}")
+
+        def terminate(self) -> None:
+            events.append("terminate")
+
+        def kill(self) -> None:
+            events.append("kill")
+
+    def _popen(*args: object, **kwargs: object) -> _Proc:
+        return _Proc()
+
+    cfg = PatchedConfig(
+        doclib={
+            "data_dir": str(tmp_path),
+            "sqlite": {"path": str(tmp_path / "doclib.db")},
+            "log": {
+                "app_path": str(tmp_path / "doclib.log"),
+                "access_path": str(tmp_path / "doclib.access.log"),
+                "parse_server_stdout_path": str(tmp_path / "parse.stdout.log"),
+                "parse_server_stderr_path": str(tmp_path / "parse.stderr.log"),
+            },
+            "managed_parse_server": {"port": 16580},
+            "uds": {"path": str(tmp_path / "doclib.sock")},
+        }
+    )
+
+    def _skip_background_task(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
+
+    with TestClient(doclib_app.create_app(cfg)) as client:
+        state = client.app.state.doclib_state
+        assert not hasattr(state, "parse_server_proc")
+        assert client.get("/api/v1/server/status").status_code == 200
+
+    assert events == ["stdin.close", "wait:10"]
 
 
 def test_startup_resets_running_scans_to_failed(monkeypatch, tmp_path) -> None:
