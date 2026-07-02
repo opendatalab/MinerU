@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import os
 import re
 import signal
@@ -29,6 +30,7 @@ from ..utils.pdf_document import PDFDocument
 from ..version import __version__
 from .background.parse_server_health import get_health
 from .base import AsyncDoclibInterface
+from .config_schema import validate_config_value
 from .core.db import DatabaseManager
 from .locators import ContentCursor, block_char_ref, block_ref, page_ref, parse_content_cursor
 from .rows import (
@@ -839,13 +841,8 @@ class DoclibServer(AsyncDoclibInterface):
         return ConfigSetResponse(key=key, value=_mask_config_value(key, value or ""), source=source)
 
     async def _validate_config_set(self, key: str, value: str) -> None:
+        validate_config_value(key, value)
         if key == "parse_server.local.mode":
-            if value not in ("disabled", "managed", "self_hosted"):
-                raise InvalidRequestError(
-                    "invalid_config_value",
-                    "parse_server.local.mode must be one of: disabled, managed, self_hosted.",
-                    key,
-                )
             if value == "managed":
                 tier = _validate_managed_parse_server_tier(
                     (await self.state.config_svc.get("parse_server.local.managed_tier")) or "standard",

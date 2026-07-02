@@ -732,6 +732,50 @@ def test_config_defaults_are_code_backed_and_unset_removes_override(tmp_path: Pa
     asyncio.run(_run())
 
 
+def test_config_service_rejects_invalid_known_config_values(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ConfigService(db)
+
+        invalid_values = [
+            ("parse_server.local.mode", "totally-invalid-mode"),
+            ("parse_server.local.managed_tier", "ultra"),
+            ("parse_server.remote.url", "not-a-url"),
+            ("parse_server.remote.url", "ftp://example.com/api"),
+            ("parse_server.local.self_hosted_url", "not-a-url"),
+        ]
+        for key, value in invalid_values:
+            with pytest.raises(InvalidRequestError) as exc_info:
+                await service.set(key, value)
+            assert exc_info.value.code == "invalid_config_value"
+            assert exc_info.value.param == "value"
+
+        assert await service.get("parse_server.local.mode") == CONFIG_DEFAULTS["parse_server.local.mode"]
+        assert await service.get("parse_server.local.managed_tier") == CONFIG_DEFAULTS["parse_server.local.managed_tier"]
+        assert await service.get("parse_server.remote.url") == CONFIG_DEFAULTS["parse_server.remote.url"]
+        assert await service.get("parse_server.local.self_hosted_url") == CONFIG_DEFAULTS["parse_server.local.self_hosted_url"]
+        assert await db.fetchall("SELECT key, value FROM config ORDER BY key") == []
+
+    asyncio.run(_run())
+
+
+def test_config_service_accepts_valid_url_config_values(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ConfigService(db)
+
+        await service.set("parse_server.remote.url", "https://example.com/api")
+        await service.set("parse_server.local.self_hosted_url", "http://127.0.0.1:16580")
+        await service.set("parse_server.local.self_hosted_url", "")
+
+        assert await service.get("parse_server.remote.url") == "https://example.com/api"
+        assert await service.get("parse_server.local.self_hosted_url") == ""
+
+    asyncio.run(_run())
+
+
 def test_data_dir_is_not_runtime_kv_config(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
