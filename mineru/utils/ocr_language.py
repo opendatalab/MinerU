@@ -107,8 +107,9 @@ def format_public_ocr_lang_description() -> str:
         for lang in PUBLIC_OCR_LANGUAGES
     ]
     return (
-        "(Adapted for local Hybrid OCR) Input the languages in the pdf "
-        "to improve OCR accuracy. Options:\n"
+        "(Mainly for Hybrid low local OCR and table OCR; accepted by other "
+        "Hybrid efforts for compatibility.) Input the languages in the pdf "
+        "to improve OCR accuracy when language-aware OCR is used. Options:\n"
         + "\n".join(option_lines)
     )
 

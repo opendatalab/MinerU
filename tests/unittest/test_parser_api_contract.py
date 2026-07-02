@@ -1050,12 +1050,13 @@ def test_pdf_hybrid_low_parser_skips_vlm_backend_resolution(monkeypatch: pytest.
 
     monkeypatch.setattr(parser_pdf, "_resolve_hybrid_backend", fail_resolve_backend)
 
-    parser = parser_pdf.PdfHybridParser(backend="hybrid-engine", effort="low")
+    parser = parser_pdf.PdfHybridParser(backend="hybrid-engine", effort="low", lang="en")
     pages = parser._run_analysis(b"%PDF-1.7\n")
 
     assert pages[0]._backend == "hybrid"
     assert seen["backend"] == "hybrid-engine"
     assert seen["effort"] == "low"
+    assert seen["language"] == "en"
 
 
 @pytest.mark.parametrize(

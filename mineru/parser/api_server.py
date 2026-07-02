@@ -2042,7 +2042,7 @@ def create_app(
         Optional API key.  When set, clients must pass ``Authorization: Bearer <key>``
         to access list endpoints and advanced output formats.
     language:
-        Parser language hint.
+        Hybrid low OCR language hint; accepted by other efforts for compatibility.
     ocr_mode:
         PDF OCR/text extraction mode for Hybrid backends.
     effort:
@@ -2200,7 +2200,7 @@ def create_app(
     default="ch",
     type=str,
     metavar="[" + "|".join(_API_SERVER_LANGUAGES) + "]",
-    help="Parser language hint.",
+    help="Hybrid low OCR language hint; accepted by other efforts for compatibility.",
 )
 @click.option(
     "--ocr-mode",

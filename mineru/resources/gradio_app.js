@@ -1,5 +1,5 @@
 () => {
-    const POPOVER_SCRIPT_VERSION = "office-preview-dismiss-v1";
+    const POPOVER_SCRIPT_VERSION = "office-preview-dismiss-v2";
     if (window.__mineruAdvancedPopoverInstalled === POPOVER_SCRIPT_VERSION) {
         return;
     }
@@ -134,7 +134,7 @@
         const showClientOptions = backend.endsWith("http-client");
         const showImageAnalysis = backend.startsWith("vlm")
             || (backend.startsWith("hybrid") && effort === "high");
-        const showOcrLanguage = false;
+        const showOcrLanguage = backend.startsWith("hybrid") && effort === "low";
         const hideForceOcr = !backend.startsWith("hybrid");
         const hideHybridEffort = !backend.startsWith("hybrid");
 

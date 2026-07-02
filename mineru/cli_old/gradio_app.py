@@ -871,9 +871,15 @@ def is_effort_option_visible(backend):
     return isinstance(backend, str) and backend.startswith("hybrid")
 
 
-def is_ocr_language_option_visible(backend: object) -> bool:
-    """判断 OCR 语言选项是否展示；当前公开 Hybrid 后端不展示独立语言控件。"""
-    return False
+def is_ocr_language_option_visible(backend: object, effort: object = DEFAULT_HYBRID_EFFORT) -> bool:
+    """判断 OCR 语言选项是否展示；只有 Hybrid low 对用户暴露语言输入。"""
+    if not isinstance(backend, str):
+        return False
+    try:
+        backend = normalize_backend(backend)
+    except ValueError:
+        pass
+    return backend.startswith("hybrid") and effort == "low"
 
 
 def is_force_ocr_option_visible(backend: object) -> bool:
@@ -1607,9 +1613,9 @@ def main(ctx,
             "formula_info_vlm": "If disabled, display formulas will be shown as images.",
             "formula_info_hybrid": "If disabled, inline formulas will not be detected or parsed.",
             "ocr_language": "OCR Language",
-            "ocr_language_info": "Select the OCR language for image-based PDFs and images.",
+            "ocr_language_info": "Select the OCR language for Hybrid low local OCR and table OCR.",
             "force_ocr": "Force enable OCR",
-            "force_ocr_info": "Enable only if the result is extremely poor. Requires correct OCR language.",
+            "force_ocr_info": "Enable only if the result is extremely poor. Hybrid low requires correct OCR language.",
             "force_ocr_info_hybrid": "Enable only if the result is extremely poor.",
             "convert": "Convert",
             "clear": "Clear",
@@ -1674,9 +1680,9 @@ def main(ctx,
             "formula_info_vlm": "禁用后，行间公式将显示为图片。",
             "formula_info_hybrid": "禁用后，行内公式将不会被检测或解析。",
             "ocr_language": "OCR 语言",
-            "ocr_language_info": "为扫描版 PDF 和图片选择 OCR 语言。",
+            "ocr_language_info": "为 Hybrid low 的本地 OCR 和表格 OCR 选择语言。",
             "force_ocr": "强制启用 OCR",
-            "force_ocr_info": "仅在识别效果极差时启用，需选择正确的 OCR 语言。",
+            "force_ocr_info": "仅在识别效果极差时启用；Hybrid low 需选择正确的 OCR 语言。",
             "force_ocr_info_hybrid": "仅在识别效果极差时启用。",
             "convert": "转换",
             "clear": "清除",
@@ -1747,6 +1753,7 @@ def main(ctx,
         force_ocr_update = gr.update(info=get_force_ocr_info(backend_choice))
         image_analysis_update = gr.update(visible=is_image_analysis_option_visible(backend_choice, effort_choice))
         effort_update = gr.update(visible=is_effort_option_visible(backend_choice))
+        language_update = gr.update(visible=is_ocr_language_option_visible(backend_choice, effort_choice))
         client_options_update = gr.update(visible=is_http_client_backend(backend_choice))
         ocr_options_update = gr.update(visible=is_force_ocr_option_visible(backend_choice))
 
@@ -1758,6 +1765,7 @@ def main(ctx,
             backend_info_update,
             image_analysis_update,
             effort_update,
+            language_update,
         )
 
     del kwargs
@@ -1967,7 +1975,7 @@ def main(ctx,
                                 value=all_lang[0],
                                 info=i18n("ocr_language_info"),
                                 visible=frontend_managed_initial_visibility(
-                                    is_ocr_language_option_visible(preferred_option)
+                                    is_ocr_language_option_visible(preferred_option, DEFAULT_HYBRID_EFFORT)
                                 ),
                             )
                         is_ocr = gr.Checkbox(
@@ -1985,20 +1993,20 @@ def main(ctx,
         backend.change(
             fn=update_interface,
             inputs=[backend, effort],
-            outputs=[client_options, ocr_options, is_ocr, formula_enable, backend, image_analysis, effort],
+            outputs=[client_options, ocr_options, is_ocr, formula_enable, backend, image_analysis, effort, language],
             **_private_api_kwargs
         )
         effort.change(
             fn=update_interface,
             inputs=[backend, effort],
-            outputs=[client_options, ocr_options, is_ocr, formula_enable, backend, image_analysis, effort],
+            outputs=[client_options, ocr_options, is_ocr, formula_enable, backend, image_analysis, effort, language],
             **_private_api_kwargs
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
             inputs=[backend, effort],
-            outputs=[client_options, ocr_options, is_ocr, formula_enable, backend, image_analysis, effort],
+            outputs=[client_options, ocr_options, is_ocr, formula_enable, backend, image_analysis, effort, language],
             **_private_api_kwargs
         )
         clear_bu.add([input_file, md, doc_show, md_text, content_list_json, output_file, is_ocr, office_html, status_panel])

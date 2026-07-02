@@ -525,6 +525,21 @@ def test_parse_rejects_removed_ch_lite_language(tmp_path: Path) -> None:
     assert "Language ch_lite not supported" in result.output
 
 
+def test_gradio_language_option_only_visible_for_hybrid_low() -> None:
+    from mineru.cli_old import gradio_app
+
+    assert gradio_app.is_ocr_language_option_visible("hybrid-engine", "low") is True
+    assert gradio_app.is_ocr_language_option_visible("hybrid-engine", "medium") is False
+    assert gradio_app.is_ocr_language_option_visible("hybrid-engine", "high") is False
+    assert gradio_app.is_ocr_language_option_visible("flash", "low") is False
+
+
+def test_gradio_frontend_shows_ocr_language_for_hybrid_low() -> None:
+    js_text = Path("mineru/resources/gradio_app.js").read_text(encoding="utf-8")
+
+    assert 'const showOcrLanguage = backend.startsWith("hybrid") && effort === "low";' in js_text
+
+
 def test_parse_forwards_flash_backend(monkeypatch: Any, tmp_path: Path) -> None:
     source = tmp_path / "demo.pdf"
     output = tmp_path / "out.md"
@@ -661,6 +676,7 @@ def test_cli_old_hybrid_low_skips_vlm_engine_resolution(monkeypatch: Any, tmp_pa
     def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
         """记录 Hybrid low 仍进入 Hybrid 处理分支。"""
         seen["backend"] = args[6]
+        seen["langs"] = list(args[3])
         seen["pdf_count"] = len(args[2])
         seen["kwargs"] = kwargs
 
@@ -671,12 +687,13 @@ def test_cli_old_hybrid_low_skips_vlm_engine_resolution(monkeypatch: Any, tmp_pa
         output_dir=str(tmp_path),
         pdf_file_names=["a.pdf", "b.pdf"],
         pdf_bytes_list=[b"%PDF-1.7\n", b"%PDF-1.7\n"],
-        p_lang_list=["ch", "ch"],
+        p_lang_list=["en", "en"],
         backend="hybrid-engine",
         effort="low",
     )
 
     assert seen["backend"] == "engine"
+    assert seen["langs"] == ["en", "en"]
     assert seen["pdf_count"] == 2
     assert seen["kwargs"]["effort"] == "low"
 
@@ -685,11 +702,13 @@ def test_process_hybrid_low_calls_analyzer_per_file(monkeypatch: Any, tmp_path: 
     from mineru.cli_old import common
 
     calls: list[bytes] = []
+    languages: list[str] = []
     outputs: list[tuple[str, str, str]] = []
 
-    def fake_doc_analyze(pdf_bytes: bytes, **_kwargs: Any) -> tuple[list[PageInfo], list[object], bool]:
+    def fake_doc_analyze(pdf_bytes: bytes, **kwargs: Any) -> tuple[list[PageInfo], list[object], bool]:
         """记录每个文件独立进入 Hybrid low analyzer。"""
         calls.append(pdf_bytes)
+        languages.append(kwargs["language"])
         return [PageInfo(page_idx=0, _backend="hybrid")], [], False
 
     monkeypatch.setattr(common, "_load_hybrid_analyze_entrypoint", lambda *_args, **_kwargs: fake_doc_analyze)
@@ -711,7 +730,7 @@ def test_process_hybrid_low_calls_analyzer_per_file(monkeypatch: Any, tmp_path: 
         output_dir=str(tmp_path),
         pdf_file_names=["a.pdf", "b.pdf"],
         pdf_bytes_list=[b"a", b"b"],
-        h_lang_list=["ch", "ch"],
+        h_lang_list=["en", "en"],
         parse_method="auto",
         inline_formula_enable=True,
         backend="engine",
@@ -727,6 +746,7 @@ def test_process_hybrid_low_calls_analyzer_per_file(monkeypatch: Any, tmp_path: 
     )
 
     assert calls == [b"a", b"b"]
+    assert languages == ["en", "en"]
     assert [item[0] for item in outputs] == ["a.pdf", "b.pdf"]
 
 
