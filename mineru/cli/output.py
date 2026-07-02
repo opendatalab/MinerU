@@ -16,8 +16,23 @@ from .contracts import RenderableObject
 console = Console()
 stderr_console = Console(stderr=True)
 
+
 def print_rich(*objects: RenderableObject) -> None:
     console.print(*objects)
+
+
+def print_success(msg: str) -> None:
+    if console:
+        console.print(msg, style="green")
+    else:
+        print(msg)
+
+
+def print_info(msg: str) -> None:
+    if console:
+        console.print(msg, style="dim")
+    else:
+        print(msg)
 
 
 def print_notice(msg: str) -> None:
