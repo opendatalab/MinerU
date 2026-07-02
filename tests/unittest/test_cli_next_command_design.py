@@ -707,6 +707,52 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
     assert payload["content"]["content"] == "parsed"
 
 
+def test_parse_wait_json_maps_invalid_api_key_param(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    failed = ParseInfo(
+        id=3,
+        sha256="a" * 64,
+        short_id="aaaaaaa",
+        tier="pro",
+        page_range="1~1",
+        status="failed",
+        privacy="remote",
+        created_at=3,
+        updated_at=4,
+        error_code="invalid_api_key",
+        error_msg="Remote authentication failed: user authenticate failed",
+    )
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 31
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            return ParseResponse(
+                sha256="a" * 64,
+                tier="pro",
+                page_range="1~1",
+                status="pending",
+                wait_parse_ids=[3],
+                created_parse_ids=[3],
+            )
+
+        def list_parses(self, **kwargs: Any) -> ListParsesResponse:
+            return ListParsesResponse(parses=[failed], total=1, limit=50, offset=0)
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+    monkeypatch.setattr(parse.time, "sleep", lambda seconds: None)
+
+    result = runner.invoke(app, ["parse", str(source), "--remote", "--wait", "1", "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error"]["type"] == "authentication_error"
+    assert payload["error"]["code"] == "invalid_api_key"
+    assert payload["error"]["param"] == "parse_server.remote.api_key"
+
+
 def test_parse_verbose_json_writes_cache_hit_notice_to_stderr(monkeypatch: Any, tmp_path: Path) -> None:
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")

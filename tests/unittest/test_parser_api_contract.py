@@ -74,6 +74,60 @@ def test_api_client_uses_json_format_for_staging_compat() -> None:
     assert parser._output_formats() == ["json"]
 
 
+class _FakeResponse:
+    def __init__(self, status_code: int, payload: dict[str, object], text: str = "") -> None:
+        self.status_code = status_code
+        self._payload = payload
+        self.text = text
+
+    def json(self) -> dict[str, object]:
+        return self._payload
+
+
+def test_api_client_maps_remote_401_to_invalid_api_key() -> None:
+    response = _FakeResponse(
+        401,
+        {
+            "traceId": "trace-1",
+            "msgCode": "A0202",
+            "msg": "user authenticate failed",
+            "data": None,
+            "success": False,
+            "total": 0,
+        },
+        text='{"msgCode":"A0202","msg":"user authenticate failed"}',
+    )
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        MinerUApiParser._check(response)
+
+    assert exc_info.value.code == "invalid_api_key"
+    assert exc_info.value.message == "Remote authentication failed: user authenticate failed"
+    assert exc_info.value.param == "parse_server.remote.api_key"
+
+
+def test_api_client_preserves_structured_error_body_on_http_error() -> None:
+    response = _FakeResponse(
+        401,
+        {
+            "error": {
+                "type": "authentication_error",
+                "code": "invalid_api_key",
+                "message": "Invalid or missing API key",
+                "param": "api_key",
+            }
+        },
+        text='{"error":{"code":"invalid_api_key"}}',
+    )
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        MinerUApiParser._check(response)
+
+    assert exc_info.value.code == "invalid_api_key"
+    assert exc_info.value.message == "Invalid or missing API key"
+    assert exc_info.value.param == "api_key"
+
+
 def test_api_client_downloads_image_sidecars_and_preserves_pdf_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
     middle_json = {

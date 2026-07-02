@@ -251,7 +251,9 @@ def _parse(
         if st == "failed":
             failed = next((row for row in parse_rows if row.status == "failed"), None)
             _record_parse_wait(client, wait_parse_ids, "failed", wait_started_at)
-            raise MineruError(failed.error_code if failed else "parse_failed", failed.error_msg if failed else "", None)
+            error_code = failed.error_code if failed else "parse_failed"
+            error_param = "parse_server.remote.api_key" if error_code == "invalid_api_key" else None
+            raise MineruError(error_code, failed.error_msg if failed else "", error_param)
 
     _record_parse_wait(client, wait_parse_ids, "timeout", wait_started_at)
     timeout_error = MineruError("parse_wait_timeout", f"Parse did not finish within {wait} seconds.", "wait")

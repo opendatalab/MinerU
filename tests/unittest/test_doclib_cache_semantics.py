@@ -52,6 +52,7 @@ from mineru.doclib.services.search_svc import SearchService
 from mineru.doclib.types import DocContentExportRequest, FileInfo, InvalidateRequest, ParseResponse, WatchRequest
 from mineru.errors import InvalidRequestError, MineruError, NotFoundError
 from mineru.parser import backend_for_tier, resolve_tier_and_backend
+from mineru.parser.api_client import _V1APIError
 from mineru.parser.base import ParseResult
 from mineru.schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
 from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span, Tier
@@ -3013,6 +3014,61 @@ def test_process_doc_marks_empty_page_result_failed(tmp_path: Path) -> None:
     assert parses[0]["status"] == "failed"
     assert parses[0]["error_code"] == "parse_empty"
     assert list(tmp_path.rglob("*.json")) == []
+
+
+def test_process_doc_preserves_remote_api_error_code(tmp_path: Path) -> None:
+    sha256 = "b" * 64
+    task = {
+        "id": 1,
+        "sha256": sha256,
+        "tier": "pro",
+        "page_range": "1",
+        "status": "parsing",
+        "privacy": "remote",
+    }
+    parses = [
+        {
+            **task,
+            "error_code": None,
+            "error_msg": None,
+            "done_at": None,
+            "locked_at": 123,
+            "updated_at": 123,
+        }
+    ]
+    db = _FakeDB(
+        parses=parses,
+        file_row={
+            "path": "/tmp/doc.pdf",
+            "sha256": sha256,
+            "status": "active",
+            "filename": "doc.pdf",
+            "title": "",
+            "author": "",
+        },
+    )
+    service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
+
+    async def _parse_via_api(
+        file_row: dict[str, object],
+        tier: Tier,
+        page_range: str,
+        privacy: str,
+    ) -> tuple[ParseResult, str]:
+        raise _V1APIError(
+            "invalid_api_key",
+            "Remote authentication failed: user authenticate failed",
+            param="parse_server.remote.api_key",
+        )
+
+    service._parse_via_api = _parse_via_api  # type: ignore[method-assign]
+
+    success = asyncio.run(service.process_doc(task))
+
+    assert success is False
+    assert parses[0]["status"] == "failed"
+    assert parses[0]["error_code"] == "invalid_api_key"
+    assert parses[0]["error_msg"] == "Remote authentication failed: user authenticate failed"
 
 
 def test_process_doc_fails_when_batch_json_cannot_be_written(tmp_path: Path) -> None:

@@ -124,18 +124,35 @@ class MinerUApiParser(DocumentParser):
 
     @staticmethod
     def _check(r: Any) -> dict[str, Any]:
-        if r.status_code >= 400:
-            raise _V1APIError("http_error", f"HTTP {r.status_code}: {r.text[:500]}")
+        data: dict[str, Any] = {}
         try:
-            data = r.json()
+            loaded = r.json()
+            if isinstance(loaded, dict):
+                data = loaded
         except Exception:
+            data = {}
+        if r.status_code >= 400:
+            _raise_for_http_error(r.status_code, data, str(getattr(r, "text", "")))
+        if not data:
             return {}  # e.g. OSS PUT returns 200 with empty body
         if "error" in data:
             err = data["error"]
-            raise _V1APIError(err.get("code", "unknown"), err.get("message", str(err)))
+            if isinstance(err, dict):
+                raise _V1APIError(
+                    str(err.get("code") or "unknown"),
+                    str(err.get("message") or err),
+                    param=str(err["param"]) if err.get("param") is not None else None,
+                )
+            raise _V1APIError("unknown", str(err))
         if "detail" in data and isinstance(data["detail"], dict) and "error" in data["detail"]:
             err = data["detail"]["error"]
-            raise _V1APIError(err.get("code", "unknown"), err.get("message", str(err)))
+            if isinstance(err, dict):
+                raise _V1APIError(
+                    str(err.get("code") or "unknown"),
+                    str(err.get("message") or err),
+                    param=str(err["param"]) if err.get("param") is not None else None,
+                )
+            raise _V1APIError("unknown", str(err))
         return data
 
     # ── upload ───────────────────────────────────────────────────────
@@ -488,17 +505,62 @@ def _raise_for_terminal_job_error(job: dict[str, Any]) -> None:
     if isinstance(error, dict):
         code = str(error.get("code") or job.get("status"))
         message = str(error.get("message") or error)
-        raise _V1APIError(code, message)
+        param = str(error["param"]) if error.get("param") is not None else None
+        raise _V1APIError(code, message, param=param)
 
     file_error = _first_failed_file_error(job)
     if file_error is not None:
         code = str(file_error.get("code") or job.get("status"))
         message = str(file_error.get("message") or file_error)
-        raise _V1APIError(code, message)
+        param = str(file_error["param"]) if file_error.get("param") is not None else None
+        raise _V1APIError(code, message, param=param)
 
     raise _V1APIError(
         str(job.get("status")), f"Parse job {job.get('job_id', '<unknown>')} ended with status {job.get('status')}"
     )
+
+
+def _raise_for_http_error(status_code: int, data: dict[str, Any], text: str) -> None:
+    err = _structured_error(data)
+    if err is not None:
+        raise _V1APIError(
+            str(err.get("code") or "unknown"),
+            str(err.get("message") or err),
+            param=str(err["param"]) if err.get("param") is not None else None,
+        )
+
+    remote_message = _remote_auth_message(data)
+    if status_code == 401 or remote_message is not None:
+        message = remote_message or "API key invalid or remote authentication failed."
+        raise _V1APIError(
+            "invalid_api_key",
+            f"Remote authentication failed: {message}",
+            param="parse_server.remote.api_key",
+        )
+
+    raise _V1APIError("http_error", f"HTTP {status_code}: {text[:500]}")
+
+
+def _structured_error(data: dict[str, Any]) -> dict[str, Any] | None:
+    error = data.get("error")
+    if isinstance(error, dict):
+        return error
+    detail = data.get("detail")
+    if isinstance(detail, dict):
+        detail_error = detail.get("error")
+        if isinstance(detail_error, dict):
+            return detail_error
+    return None
+
+
+def _remote_auth_message(data: dict[str, Any]) -> str | None:
+    msg_code = data.get("msgCode")
+    msg = data.get("msg")
+    if msg_code == "A0202":
+        return str(msg or "user authenticate failed")
+    if isinstance(msg, str) and "authenticate failed" in msg.lower():
+        return msg
+    return None
 
 
 def _first_failed_file_error(job: dict[str, Any]) -> dict[str, Any] | None:
@@ -517,7 +579,8 @@ def _first_failed_file_error(job: dict[str, Any]) -> dict[str, Any] | None:
 
 
 class _V1APIError(Exception):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, param: str | None = None) -> None:
         self.code = code
         self.message = message
+        self.param = param
         super().__init__(f"[{code}] {message}")

@@ -14,6 +14,7 @@ from typing import Literal, cast
 from urllib.parse import urlparse
 
 from ...errors import InvalidRequestError, MineruError
+from ...parser.api_client import _V1APIError
 from ...parser.base import ParseResult
 from ...types import TIER_ORDER, PageInfo, Tier
 from ..constants import IMAGE_EXTENSIONS, PARSEABLE_EXTENSIONS, TEXT_EXTENSIONS, is_office_temp_lock_file
@@ -886,6 +887,17 @@ class ParseService:
                 error_code=exc.code,
             )
             await self._fail_task(task["id"], exc.code, exc.message)
+            await self._record_parse_task_finished(task_start_ms, tier=tier, status="failed", error_code=exc.code)
+            return False
+        except _V1APIError as exc:
+            await self._record_execute(
+                execute_start_ms,
+                tier=tier,
+                server=server_dim,
+                status="failed",
+                error_code=exc.code,
+            )
+            await self._fail_task(task["id"], exc.code, exc.message[:500])
             await self._record_parse_task_finished(task_start_ms, tier=tier, status="failed", error_code=exc.code)
             return False
         except Exception as exc:
