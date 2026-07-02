@@ -144,15 +144,6 @@ class MinerUApiParser(DocumentParser):
                     param=str(err["param"]) if err.get("param") is not None else None,
                 )
             raise _V1APIError("unknown", str(err))
-        if "detail" in data and isinstance(data["detail"], dict) and "error" in data["detail"]:
-            err = data["detail"]["error"]
-            if isinstance(err, dict):
-                raise _V1APIError(
-                    str(err.get("code") or "unknown"),
-                    str(err.get("message") or err),
-                    param=str(err["param"]) if err.get("param") is not None else None,
-                )
-            raise _V1APIError("unknown", str(err))
         return data
 
     # ── upload ───────────────────────────────────────────────────────
@@ -545,11 +536,6 @@ def _structured_error(data: dict[str, Any]) -> dict[str, Any] | None:
     error = data.get("error")
     if isinstance(error, dict):
         return error
-    detail = data.get("detail")
-    if isinstance(detail, dict):
-        detail_error = detail.get("error")
-        if isinstance(detail_error, dict):
-            return detail_error
     return None
 
 

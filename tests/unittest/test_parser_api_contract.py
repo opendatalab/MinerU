@@ -128,6 +128,28 @@ def test_api_client_preserves_structured_error_body_on_http_error() -> None:
     assert exc_info.value.param == "api_key"
 
 
+def test_api_client_ignores_legacy_detail_error_envelope() -> None:
+    response = _FakeResponse(
+        400,
+        {
+            "detail": {
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "invalid_request",
+                    "message": "legacy detail envelope",
+                }
+            }
+        },
+        text='{"detail":{"error":{"code":"invalid_request"}}}',
+    )
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        MinerUApiParser._check(response)
+
+    assert exc_info.value.code == "http_error"
+    assert exc_info.value.message.startswith("HTTP 400:")
+
+
 def test_api_client_downloads_image_sidecars_and_preserves_pdf_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
     middle_json = {
