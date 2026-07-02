@@ -41,7 +41,7 @@ mineru parse <file> [flags]
 
 | Flag | 类型 | 说明 |
 |------|------|------|
-| `--remote` | bool | 显式启用远端解析；远端地址和 API Key 来自 config 或环境变量 |
+| `--remote` | bool | 显式启用远端解析；远端地址来自 config，API Key 优先来自 config，未配置时使用环境变量 |
 
 ### 解析配置
 

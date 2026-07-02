@@ -1096,7 +1096,7 @@ class ParseService:
 
         if privacy == "remote":
             url = cast(str, await self.config_svc.get("parse_server.remote.url"))
-            api_key = os.environ.get("MINERU_API_KEY") or (await self.config_svc.get("parse_server.remote.api_key"))
+            api_key = (await self.config_svc.get("parse_server.remote.api_key")) or None
             if not health.remote_healthy:
                 # try fallback to local
                 local_mode = (await self.config_svc.get("parse_server.local.mode")) or "disabled"
@@ -1119,7 +1119,7 @@ class ParseService:
         if not health.local_healthy:
             raise ParseFailure("engine_unavailable", "Local parse-server is not ready. Please wait or check server status.")
 
-        api_key = os.environ.get("MINERU_API_KEY") or (await self.config_svc.get("parse_server.local.self_hosted_api_key"))
+        api_key = (await self.config_svc.get("parse_server.local.self_hosted_api_key")) or None
         return local_url, api_key, "local"
 
     async def _fail_task(self, task_id: int, code: str, message: str) -> None:

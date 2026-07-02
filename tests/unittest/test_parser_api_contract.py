@@ -74,6 +74,14 @@ def test_api_client_uses_json_format_for_staging_compat() -> None:
     assert parser._output_formats() == ["json"]
 
 
+def test_api_client_uses_env_api_key_when_no_api_key_argument(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MINERU_API_KEY", "env-key")
+
+    parser = MinerUApiParser(api_url="https://mineru.net/api", tier="pro")
+
+    assert parser._headers()["Authorization"] == "Bearer env-key"
+
+
 class _FakeResponse:
     def __init__(self, status_code: int, payload: dict[str, object], text: str = "") -> None:
         self.status_code = status_code
