@@ -1527,6 +1527,32 @@ def test_refresh_file_records_stat_error_without_marking_deleted(tmp_path: Path,
     asyncio.run(_run())
 
 
+def test_request_parse_maps_stat_permission_error_without_existing_file_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
+        source = tmp_path / "no_exec_dir" / "inside.pdf"
+
+        async def _permission_denied(path: str) -> dict[str, Any]:
+            raise PermissionError(f"permission denied: {path}")
+
+        monkeypatch.setattr(parse_svc_module, "get_file_stat", _permission_denied)
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.request_parse(str(source), tier="flash")
+
+        assert exc_info.value.code == "file_permission_denied"
+        assert exc_info.value.param == "path"
+        assert str(source) in exc_info.value.message
+
+    asyncio.run(_run())
+
+
 def test_ingest_worker_skips_files_with_blocking_stat_errors(tmp_path: Path, monkeypatch) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
@@ -1554,6 +1580,37 @@ def test_ingest_worker_skips_files_with_blocking_stat_errors(tmp_path: Path, mon
         assert row["error_code"] == "file_permission_denied"
         assert row["error_msg"] == "permission denied"
         assert row["locked_at"] is None
+
+    asyncio.run(_run())
+
+
+def test_ingest_worker_preserves_mineru_permission_errors(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
+        source = tmp_path / "note.txt"
+        now = 1000
+        file_id = await db.execute_insert(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (str(source), source.name, "txt", 10, now, now, now),
+        )
+
+        worker = IngestWorkerPool(service, num_workers=1, lock_timeout_sec=60)
+        await worker._handle_ingest_error(
+            {"id": file_id, "path": str(source), "watch_id": None},
+            InvalidRequestError("file_permission_denied", "permission denied", "path"),
+        )
+
+        row = await db.fetchone("SELECT error_code, error_msg, locked_at FROM files WHERE id=?", (file_id,))
+        assert row is not None
+        assert row["error_code"] == "file_permission_denied"
+        assert row["error_msg"] == "permission denied"
+        assert row["locked_at"] is None
+        assert await worker._acquire_task() is None
 
     asyncio.run(_run())
 
