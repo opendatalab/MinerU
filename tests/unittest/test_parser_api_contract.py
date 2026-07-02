@@ -460,6 +460,16 @@ def test_api_client_rejects_missing_middle_json_output() -> None:
         )
 
 
+def test_api_client_rejects_json_underscore_output_alias() -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        api_client._download_json(parser, {"json_": {"file_id": "file-json", "bytes": 10}})
+
+    assert exc_info.value.code == "missing_middle_json_output"
+    assert "available outputs: json_" in exc_info.value.message
+
+
 def test_api_client_accepts_pages_middle_json_only() -> None:
     pages = _pages_from_middle_json({"pages": [{"page_idx": 2, "page_size": [100, 200]}]})
 

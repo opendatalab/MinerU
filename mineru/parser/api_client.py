@@ -107,6 +107,7 @@ class MinerUApiParser(DocumentParser):
 
     def _output_formats(self) -> list[str]:
         if "staging" in self._base:
+            # Staging still exposes the non-standard "json" output instead of middle_json/images.
             return ["json"]
         return ["middle_json", "images"]
 
@@ -366,7 +367,8 @@ async def _async_download_image_sidecars(parser: MinerUApiParser, outputs: dict[
 
 
 def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any]:
-    ref = outputs.get("middle_json") or outputs.get("json") or outputs.get("json_")
+    # Staging returns output_files.json; the standard local v1 API returns output_files.middle_json.
+    ref = outputs.get("middle_json") or outputs.get("json")
     if not ref:
         available = ", ".join(sorted(outputs)) or "none"
         raise _V1APIError(
@@ -384,7 +386,8 @@ def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str
 
 
 async def _async_download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any]:
-    ref = outputs.get("middle_json") or outputs.get("json") or outputs.get("json_")
+    # Staging returns output_files.json; the standard local v1 API returns output_files.middle_json.
+    ref = outputs.get("middle_json") or outputs.get("json")
     if not ref:
         available = ", ".join(sorted(outputs)) or "none"
         raise _V1APIError(
@@ -465,6 +468,7 @@ def _parse_result_from_middle_json(mid_json: dict[str, Any]) -> ParseResult:
 
         pdf_info = mid_json.get("pdf_info")
         if isinstance(pdf_info, list):
+            # Staging JSON output may use the older pdf_info field instead of ParseResult pages.
             compat_payload = dict(mid_json)
             compat_payload["pages"] = pdf_info
             return ParseResult.from_dict(compat_payload)
@@ -524,6 +528,7 @@ def _structured_error(data: dict[str, Any]) -> dict[str, Any] | None:
 def _remote_auth_message(data: dict[str, Any]) -> str | None:
     msg_code = data.get("msgCode")
     msg = data.get("msg")
+    # Staging auth failures still use the legacy msgCode/msg payload instead of {"error": ...}.
     if msg_code == "A0202":
         return str(msg or "user authenticate failed")
     if isinstance(msg, str) and "authenticate failed" in msg.lower():
