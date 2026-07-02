@@ -10,7 +10,7 @@ from .html import HtmlParser
 from .office import DocxParser, PptxParser, XlsxParser
 from .pdf import PdfFlashParser, PdfHybridParser, PdfPipelineParser, PdfVlmParser
 from .tier import PARSER_BACKENDS, backend_for_tier, resolve_tier_and_backend
-from ..utils.backend_options import validate_effort
+from ..utils.backend_options import resolve_backend_and_effort
 
 __all__ = [
     "backend_for_tier",
@@ -68,7 +68,7 @@ def _build_parser(
     path = Path(path)
     suffix = _resolve_input_suffix(path)
     _, resolved_backend = resolve_tier_and_backend(tier=tier, backend=backend)
-    resolved_effort = validate_effort(effort)
+    resolved_backend, resolved_effort = resolve_backend_and_effort(backend or resolved_backend, effort)
     resolved_ocr_mode = method or ocr_mode
     resolved_language = lang or language
     resolved_table_enable = (not disable_table) if table_enable is None else table_enable
@@ -95,15 +95,6 @@ def _build_parser(
             lang=resolved_language,
             formula_enable=resolved_formula_enable,
             table_enable=resolved_table_enable,
-        )
-    elif resolved_backend.startswith("vlm-"):
-        return PdfVlmParser(
-            backend=resolved_backend,
-            formula_enable=resolved_formula_enable,
-            table_enable=resolved_table_enable,
-            server_url=server_url,
-            image_analysis=resolved_image_analysis,
-            effort=resolved_effort,
         )
     elif resolved_backend.startswith("hybrid-"):
         return PdfHybridParser(

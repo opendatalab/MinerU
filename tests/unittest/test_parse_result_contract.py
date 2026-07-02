@@ -166,6 +166,11 @@ def test_parse_result_from_dict_keeps_page_backend_over_root_backend() -> None:
     assert restored.pages[0]._backend == "pipeline"
 
 
+def test_parse_result_from_dict_rejects_legacy_vlm_backend() -> None:
+    with pytest.raises(ValueError, match="Unsupported middle json backend 'vlm'"):
+        ParseResult.from_dict({"_backend": "vlm", "pages": [{"page_idx": 0}]})
+
+
 def test_parse_result_preserves_true_merge_prev_in_staged_middle_json() -> None:
     block = Block(index=0, type="text", bbox=(0.0, 0.0, 10.0, 10.0), merge_prev=True)
     result = ParseResult(pages=[PageInfo(page_idx=0, preproc_blocks=[block])])

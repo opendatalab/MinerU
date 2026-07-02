@@ -6,7 +6,7 @@ from typing import Literal
 
 from ...parser import MinerUApiParser
 from ...parser import parse as local_parse
-from ...utils.backend_options import normalize_backend
+from ...utils.backend_options import resolve_backend_and_effort
 from ...utils.ocr_language import validate_public_ocr_lang
 from ..common import (
     build_remote_api_url,
@@ -70,7 +70,9 @@ def parse_cmd(
         parse_one = partial(parser.parse, page_range=pages or "")
     else:
         try:
-            normalized_backend = normalize_backend(backend) if backend is not None else None
+            normalized_backend, normalized_effort = (
+                resolve_backend_and_effort(backend, effort) if backend is not None else (None, effort)
+            )
         except ValueError as exc:
             exit_with_message("invalid_request", str(exc), "backend")
         resolved_tier, resolved_backend = effective_local_tier_and_backend(tier, normalized_backend)
@@ -80,7 +82,7 @@ def parse_cmd(
             backend=resolved_backend,
             language=normalized_language,
             ocr_mode=ocr_mode,
-            effort=effort,
+            effort=normalized_effort,
             disable_table=disable_table,
             disable_formula=disable_formula,
             disable_image_analysis=disable_image_analysis,

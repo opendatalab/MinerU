@@ -39,8 +39,10 @@ from mineru.utils.backend_options import (
     DEFAULT_BACKEND,
     DEFAULT_HYBRID_EFFORT,
     HYBRID_EFFORT_CHOICES,
+    LEGACY_VLM_BACKEND_ALIASES,
     PUBLIC_BACKEND_CHOICES,
     normalize_public_backend,
+    resolve_backend_and_effort,
     validate_effort,
 )
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
@@ -94,11 +96,15 @@ def normalize_backend_option(
     param: Optional[click.Parameter],
     value: str,
 ) -> str:
-    """将 CLI 输入的旧 backend 别名规范为当前公开 backend 名称。"""
+    """校验 CLI backend，legacy VLM 值保留到后续 backend+effort 联合解析。"""
+    normalized_value = (value or "").strip()
     try:
-        return normalize_public_backend(value)
+        normalized_backend = normalize_public_backend(normalized_value)
     except ValueError as exc:
         raise click.BadParameter(str(exc), ctx=ctx, param=param) from exc
+    if normalized_value in LEGACY_VLM_BACKEND_ALIASES:
+        return normalized_value
+    return normalized_backend
 
 
 def normalize_effort_option(
@@ -650,6 +656,7 @@ def build_request_form_data(
     effort: str = DEFAULT_HYBRID_EFFORT,
     client_side_output_generation: bool = False,
 ) -> dict[str, str | list[str]]:
+    backend, effort = resolve_backend_and_effort(backend, effort)
     # 开启客户端输出生成时，只关闭客户端会重建的最终产物。
     return_md = not client_side_output_generation
     return_content_list = not client_side_output_generation
@@ -898,6 +905,7 @@ async def run_orchestrated_cli(
     client_side_output_generation: bool = False,
     extra_cli_args: tuple[str, ...] = (),
 ) -> None:
+    backend, effort = resolve_backend_and_effort(backend, effort)
     if start_page_id < 0:
         raise click.ClickException("--start must be greater than or equal to 0")
     if end_page_id is not None and end_page_id < 0:
@@ -1052,8 +1060,6 @@ async def run_orchestrated_cli(
     help="""\b
     the backend for parsing pdf:
       pipeline: More general.
-      vlm-engine: High accuracy via local computing power.
-      vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers).
       hybrid-engine: Next-generation high accuracy solution via local computing power.
       hybrid-http-client: High accuracy but requires a little local computing power(client suitable for openai-compatible servers).
     Without backend specified, hybrid-engine will be used by default.""",
@@ -1093,7 +1099,7 @@ async def run_orchestrated_cli(
     type=str,
     default=None,
     help="""
-    When the backend is `<vlm/hybrid>-http-client`, you need to specify the server_url, for example:`http://127.0.0.1:30000`
+    When the backend is `hybrid-http-client`, you need to specify the server_url, for example:`http://127.0.0.1:30000`
     """,
 )
 @click.option(
@@ -1133,7 +1139,7 @@ async def run_orchestrated_cli(
     "image_analysis",
     type=bool,
     default=True,
-    help="Enable image/chart analysis for VLM and hybrid backends. Default is True. ",
+    help="Enable image/chart analysis for hybrid backends. Default is True. ",
 )
 @click.option(
     "--client-side-output-generation",

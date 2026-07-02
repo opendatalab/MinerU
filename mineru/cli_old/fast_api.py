@@ -58,7 +58,7 @@ from mineru.cli_old.vlm_preload import (
     maybe_preload_vlm_model,
     split_service_and_model_config,
 )
-from mineru.backend.vlm.vlm_analyze import shutdown_cached_models
+from mineru.model.vlm.runtime import shutdown_cached_models
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.check_sys_env import is_mac_environment
 from mineru.utils.config_reader import (

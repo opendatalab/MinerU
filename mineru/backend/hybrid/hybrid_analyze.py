@@ -43,7 +43,7 @@ from ..pipeline.model_init import (
 from ..utils.boxbase import calculate_overlap_area_2_minbox_area_ratio
 from ..utils.middle_json_utils import append_pages
 from ..utils.runtime_utils import exclude_progress_bar_idle_time
-from ..vlm.vlm_analyze import (
+from ...model.vlm.runtime import (
     ModelSingleton,
     _get_model_async,
     _maybe_enable_serial_execution,

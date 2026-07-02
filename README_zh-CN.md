@@ -70,8 +70,7 @@ MCP Server · LangChain / Dify / FastGPT 原生集成 · 10+ 国产算力适配 
 | 推理后端         | 适用场景                        |
 |--------------|-----------------------------|
 | pipeline     | 快速稳定，无幻觉，CPU / GPU 均可运行     |
-| vlm-engine   | 高精度，支持 vLLM / LMdeploy / mlx 生态 |
-| hybrid-engine| 高精度，原生文本提取，低幻觉              |
+| hybrid-engine| 高精度，原生文本提取，低幻觉，支持 VLM 加速生态 |
 
 国产算力：昇腾 · 寒武纪 · 燧原 · 沐曦 · 摩尔线程 · 昆仑芯 · 天数智芯 · 瀚博 · 太初元碁 · 海光 · 平头哥
 

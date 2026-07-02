@@ -8,11 +8,11 @@ from typing import Any
 from mineru.parser.base import ParseResult
 from mineru.render import render_content_list, render_markdown, render_structured_content
 from mineru.types import PageInfo
-from mineru.utils.backend_options import DEFAULT_HYBRID_EFFORT
+from mineru.utils.backend_options import DEFAULT_HYBRID_EFFORT, normalize_backend
 from mineru.utils.title_level_postprocess import finalize_client_side_pages
 from mineru.version import __version__
 
-PDF_BACKENDS = {"pipeline", "vlm", "hybrid"}
+PDF_BACKENDS = {"pipeline", "hybrid"}
 
 
 def _write_json(path: Path, payload: Any) -> None:
@@ -27,10 +27,12 @@ def _normalize_client_side_backend(backend: str) -> str:
     """将旧 CLI 传入的后端选项归一化为客户端重渲染使用的后端族。"""
     if backend == "office":
         return "office"
+    try:
+        backend = normalize_backend(backend)
+    except ValueError:
+        pass
     if backend == "pipeline" or backend.startswith("pipeline"):
         return "pipeline"
-    if backend.startswith("vlm"):
-        return "vlm"
     if backend.startswith("hybrid"):
         return "hybrid"
     raise ValueError(f"Unsupported middle json backend for client-side output generation: {backend}")

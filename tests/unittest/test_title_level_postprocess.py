@@ -53,7 +53,8 @@ def test_finalize_client_side_pages_uses_explicit_backend(monkeypatch) -> None:
     assert calls == [pages]
 
 
-def test_finalize_client_side_pages_uses_round_tripped_merge_prev_then_cleans_it() -> None:
+def test_finalize_client_side_hybrid_pages_uses_round_tripped_merge_prev_then_cleans_it() -> None:
+    """校验客户端 Hybrid finalize 会消费并清理 round-trip 后的 merge_prev 元数据。"""
     previous_block = Block(
         index=0,
         type="text",
@@ -82,7 +83,7 @@ def test_finalize_client_side_pages_uses_round_tripped_merge_prev_then_cleans_it
     ).to_dict()
     round_tripped_pages = ParseResult.from_dict(staged_payload).pages
 
-    title_level_postprocess.finalize_client_side_pages(round_tripped_pages, "vlm")
+    title_level_postprocess.finalize_client_side_pages(round_tripped_pages, "hybrid", effort="high")
 
     para_blocks = round_tripped_pages[0].para_blocks
     merged_text = [span.content for line in para_blocks[0].lines for span in line.spans]

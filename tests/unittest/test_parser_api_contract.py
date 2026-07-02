@@ -914,7 +914,8 @@ def test_api_server_allows_compatible_tier_and_explicit_backend(tmp_path: Path, 
     app = create_app(upload_dir=str(tmp_path), tier="pro", backend="vlm-auto-engine")
 
     assert app.state.tier == "pro"
-    assert app.state.backend == "vlm-engine"
+    assert app.state.backend == "hybrid-engine"
+    assert app.state.effort == "high"
     assert [tier["id"] for tier in app.state.tiers] == ["pro"]
 
 
@@ -942,10 +943,20 @@ def test_build_parser_forwards_effort_to_hybrid_parser(tmp_path: Path) -> None:
     assert parser.effort == "high"
 
 
+def test_build_parser_maps_legacy_vlm_backend_to_hybrid_high(tmp_path: Path) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+
+    parser = _build_parser(pdf, backend="vlm-engine", effort="medium")
+
+    assert parser.__class__.__name__ == "PdfHybridParser"
+    assert parser.backend == "hybrid-engine"
+    assert parser.effort == "high"
+
+
 @pytest.mark.parametrize(
     ("resolver", "backend"),
     [
-        (parser_pdf._resolve_vlm_backend, "vlm-engine"),
         (parser_pdf._resolve_hybrid_backend, "hybrid-engine"),
     ],
 )
@@ -969,43 +980,45 @@ def test_pdf_engine_resolvers_use_sync_or_async_mode(
 
 
 def test_pdf_engine_resolvers_keep_http_client_backend() -> None:
-    assert parser_pdf._resolve_vlm_backend("vlm-http-client", is_async=False) == "http-client"
-    assert parser_pdf._resolve_vlm_backend("vlm-http-client", is_async=True) == "http-client"
     assert parser_pdf._resolve_hybrid_backend("hybrid-http-client", is_async=False) == "http-client"
     assert parser_pdf._resolve_hybrid_backend("hybrid-http-client", is_async=True) == "http-client"
 
 
-def test_pdf_vlm_parser_passes_call_mode_to_backend_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_pdf_vlm_parser_compat_delegates_to_hybrid_high(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, bool]] = []
     backends: list[str] = []
-    fake_module = types.ModuleType("mineru.backend.vlm.vlm_analyze")
+    efforts: list[str] = []
+    fake_module = types.ModuleType("mineru.backend.hybrid.hybrid_analyze")
 
     def fake_resolve_backend(backend: str, is_async: bool = False) -> str:
-        """记录 VLM parser 同步/异步路径传入 resolver 的调用形态。"""
+        """记录兼容 VLM parser 委托 Hybrid resolver 的调用形态。"""
         calls.append((backend, is_async))
         return "async-backend" if is_async else "sync-backend"
 
-    def fake_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], object]:
-        """同步 VLM 分析桩只记录最终 backend，不加载真实模型。"""
+    def fake_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], list[object], bool]:
+        """同步 Hybrid 分析桩只记录最终 backend/effort，不加载真实模型。"""
         backends.append(str(kwargs["backend"]))
-        return [], object()
+        efforts.append(str(kwargs["effort"]))
+        return [], [], False
 
-    async def fake_aio_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], object]:
-        """异步 VLM 分析桩只记录最终 backend，不加载真实模型。"""
+    async def fake_aio_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], list[object], bool]:
+        """异步 Hybrid 分析桩只记录最终 backend/effort，不加载真实模型。"""
         backends.append(str(kwargs["backend"]))
-        return [], object()
+        efforts.append(str(kwargs["effort"]))
+        return [], [], False
 
     fake_module.doc_analyze = fake_doc_analyze
     fake_module.aio_doc_analyze = fake_aio_doc_analyze
-    monkeypatch.setitem(sys.modules, "mineru.backend.vlm.vlm_analyze", fake_module)
-    monkeypatch.setattr(parser_pdf, "_resolve_vlm_backend", fake_resolve_backend)
+    monkeypatch.setitem(sys.modules, "mineru.backend.hybrid.hybrid_analyze", fake_module)
+    monkeypatch.setattr(parser_pdf, "_resolve_hybrid_backend", fake_resolve_backend)
 
-    parser = parser_pdf.PdfVlmParser(backend="vlm-engine")
+    parser = parser_pdf.PdfVlmParser(backend="vlm-engine", effort="medium")
 
     assert parser._run_analysis(b"%PDF") == []
     assert asyncio.run(parser._arun_analysis(b"%PDF")) == []
-    assert calls == [("vlm-engine", False), ("vlm-engine", True)]
+    assert calls == [("hybrid-engine", False), ("hybrid-engine", True)]
     assert backends == ["sync-backend", "async-backend"]
+    assert efforts == ["high", "high"]
 
 
 def test_pdf_hybrid_parser_passes_call_mode_to_backend_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1048,6 +1061,8 @@ def test_api_server_accepts_parser_backend_values(tmp_path: Path, monkeypatch: p
 
     _stub_api_server_dependency_preflight(monkeypatch)
     assert "vlm" not in _API_SERVER_BACKENDS
+    assert "vlm-engine" not in _API_SERVER_BACKENDS
+    assert "vlm-http-client" not in _API_SERVER_BACKENDS
     assert "hybrid" not in _API_SERVER_BACKENDS
 
     for backend in _API_SERVER_BACKENDS:
@@ -1126,6 +1141,22 @@ def test_api_server_cli_accepts_backend_alias(monkeypatch: pytest.MonkeyPatch) -
     assert seen == {"backend": "hybrid-engine", "host": "0.0.0.0", "port": "15981"}
 
 
+def test_api_server_cli_maps_legacy_vlm_backend_to_hybrid_high(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, str] = {}
+
+    def _fake_run(app, *, host: str, port: int) -> None:
+        """记录 legacy VLM backend 进入 CLI 后的实际 parser 配置。"""
+        seen["backend"] = app.state.backend
+        seen["effort"] = app.state.effort
+
+    monkeypatch.setattr("uvicorn.run", _fake_run)
+
+    result = runner.invoke(main, ["--backend", "vlm-http-client", "--host", "0.0.0.0", "--port", "15983"])
+
+    assert result.exit_code == 0
+    assert seen == {"backend": "hybrid-http-client", "effort": "high"}
+
+
 def test_api_server_cli_normalizes_hidden_language_alias(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, str] = {}
 
@@ -1157,12 +1188,14 @@ def test_api_server_cli_rejects_unknown_backend() -> None:
 
 def test_api_server_cli_help_hides_backend_aliases() -> None:
     result = runner.invoke(main, ["--help"])
+    normalized_output = result.output.replace("-\n                                  ", "-")
 
     assert result.exit_code == 0
-    assert "hybrid-engine" in result.output
-    assert "vlm-engine" in result.output
-    assert "hybrid-auto-engine" not in result.output
-    assert "vlm-auto-engine" not in result.output
+    assert "hybrid-engine" in normalized_output
+    assert "vlm-engine" not in normalized_output
+    assert "vlm-http-client" not in normalized_output
+    assert "hybrid-auto-engine" not in normalized_output
+    assert "vlm-auto-engine" not in normalized_output
 
 
 def test_api_server_cli_effort_help_matches_gradio_copy() -> None:

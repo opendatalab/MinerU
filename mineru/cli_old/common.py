@@ -16,13 +16,11 @@ from loguru import logger
 from mineru.backend.office.docx_analyze import office_docx_analyze
 from mineru.backend.office.pptx_analyze import office_pptx_analyze
 from mineru.backend.office.xlsx_analyze import office_xlsx_analyze
-from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
-from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.cli_old.visualization import select_pages_for_pdf_visualization
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.parser.base import ParseResult
 from mineru.render import render_content_list, render_markdown, render_structured_content
-from mineru.utils.backend_options import DEFAULT_HYBRID_EFFORT, normalize_backend, validate_effort
+from mineru.utils.backend_options import DEFAULT_HYBRID_EFFORT, resolve_backend_and_effort
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
@@ -71,8 +69,8 @@ def build_hybrid_dependency_error_message(backend: str) -> str:
     return (
         f"`{backend}` requires local pipeline dependencies (`mineru[pipeline]`, "
         "including `torch`). Install `mineru[pipeline]` or `mineru[core]`. "
-        "If you need a lightweight remote client without local `torch`, "
-        "use `vlm-http-client` instead."
+        "The legacy `vlm-http-client` option is now mapped to `hybrid-http-client` "
+        "and needs the same local dependencies."
     )
 
 
@@ -447,132 +445,6 @@ def _process_pipeline(
     return
 
 
-async def _async_process_vlm(
-    output_dir: str,
-    pdf_file_names: list[str],
-    pdf_bytes_list: list[bytes],
-    backend: str,
-    f_draw_layout_bbox: bool,
-    f_draw_span_bbox: bool,
-    f_dump_md: bool,
-    f_dump_middle_json: bool,
-    f_dump_model_output: bool,
-    f_dump_orig_pdf: bool,
-    f_dump_content_list: bool,
-    f_make_md_mode: str,
-    server_url: str | None = None,
-    page_index_map_list: list[list[int] | None] | None = None,
-    broken_page_indices_list: list[list[int] | None] | None = None,
-    **kwargs: Any,
-) -> None:
-    """异步处理VLM后端逻辑"""
-    parse_method = "vlm"
-    f_draw_span_bbox = False
-    if not backend.endswith("client"):
-        server_url = None
-
-    for idx, pdf_bytes in enumerate(pdf_bytes_list):
-        pdf_file_name = pdf_file_names[idx]
-        local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-        md_writer = FileBasedDataWriter(local_md_dir)
-        image_cache = ImagePayloadCache()
-
-        middle_json, infer_result = await aio_vlm_doc_analyze(
-            pdf_bytes,
-            backend=backend,
-            server_url=server_url,
-            page_index_map=page_index_map_list[idx] if page_index_map_list is not None else None,
-            image_cache=image_cache,
-            **kwargs,
-        )
-
-        _process_output(
-            middle_json,
-            pdf_bytes,
-            pdf_file_name,
-            local_md_dir,
-            local_image_dir,
-            md_writer,
-            f_draw_layout_bbox,
-            f_draw_span_bbox,
-            f_dump_orig_pdf,
-            f_dump_md,
-            f_dump_content_list,
-            f_dump_middle_json,
-            f_dump_model_output,
-            f_make_md_mode,
-            infer_result,
-            process_mode="vlm",
-            backend="vlm",
-            retained_page_indices=page_index_map_list[idx] if page_index_map_list is not None else None,
-            broken_page_indices=broken_page_indices_list[idx] if broken_page_indices_list is not None else None,
-            image_cache=image_cache,
-        )
-
-
-def _process_vlm(
-    output_dir: str,
-    pdf_file_names: list[str],
-    pdf_bytes_list: list[bytes],
-    backend: str,
-    f_draw_layout_bbox: bool,
-    f_draw_span_bbox: bool,
-    f_dump_md: bool,
-    f_dump_middle_json: bool,
-    f_dump_model_output: bool,
-    f_dump_orig_pdf: bool,
-    f_dump_content_list: bool,
-    f_make_md_mode: str,
-    server_url: str | None = None,
-    page_index_map_list: list[list[int] | None] | None = None,
-    broken_page_indices_list: list[list[int] | None] | None = None,
-    **kwargs: Any,
-) -> None:
-    """同步处理VLM后端逻辑"""
-    parse_method = "vlm"
-    f_draw_span_bbox = False
-    if not backend.endswith("client"):
-        server_url = None
-
-    for idx, pdf_bytes in enumerate(pdf_bytes_list):
-        pdf_file_name = pdf_file_names[idx]
-        local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-        md_writer = FileBasedDataWriter(local_md_dir)
-        image_cache = ImagePayloadCache()
-
-        middle_json, infer_result = vlm_doc_analyze(
-            pdf_bytes,
-            backend=backend,
-            server_url=server_url,
-            page_index_map=page_index_map_list[idx] if page_index_map_list is not None else None,
-            image_cache=image_cache,
-            **kwargs,
-        )
-
-        _process_output(
-            middle_json,
-            pdf_bytes,
-            pdf_file_name,
-            local_md_dir,
-            local_image_dir,
-            md_writer,
-            f_draw_layout_bbox,
-            f_draw_span_bbox,
-            f_dump_orig_pdf,
-            f_dump_md,
-            f_dump_content_list,
-            f_dump_middle_json,
-            f_dump_model_output,
-            f_make_md_mode,
-            infer_result,
-            process_mode="vlm",
-            backend="vlm",
-            retained_page_indices=page_index_map_list[idx] if page_index_map_list is not None else None,
-            broken_page_indices=broken_page_indices_list[idx] if broken_page_indices_list is not None else None,
-            image_cache=image_cache,
-        )
-
-
 def _process_hybrid(
     output_dir: str,
     pdf_file_names: list[str],
@@ -806,8 +678,7 @@ def do_parse(
     client_side_output_generation: bool = False,
     **kwargs: Any,
 ) -> None:
-    backend = normalize_backend(backend)
-    effort = validate_effort(effort)
+    backend, effort = resolve_backend_and_effort(backend, effort)
     need_remove_index = _process_office_doc(
         output_dir,
         pdf_file_names=pdf_file_names,
@@ -855,36 +726,7 @@ def do_parse(
             broken_page_indices_list=broken_page_indices_list,
         )
     else:
-        if backend.startswith("vlm-"):
-            backend = backend[4:]
-
-            if backend == "engine":
-                backend = get_vlm_engine(inference_engine="auto", is_async=False)
-
-            os.environ["MINERU_VLM_FORMULA_ENABLE"] = str(formula_enable)
-            os.environ["MINERU_VLM_TABLE_ENABLE"] = str(table_enable)
-
-            _process_vlm(
-                output_dir,
-                pdf_file_names,
-                pdf_bytes_list,
-                backend,
-                f_draw_layout_bbox,
-                f_draw_span_bbox,
-                f_dump_md,
-                f_dump_middle_json,
-                f_dump_model_output,
-                f_dump_orig_pdf,
-                f_dump_content_list,
-                f_make_md_mode,
-                server_url,
-                page_index_map_list=page_index_map_list,
-                broken_page_indices_list=broken_page_indices_list,
-                image_analysis=image_analysis,
-                client_side_output_generation=client_side_output_generation,
-                **kwargs,
-            )
-        elif backend.startswith("hybrid-"):
+        if backend.startswith("hybrid-"):
             ensure_backend_dependencies(backend)
             backend = backend[7:]
 
@@ -918,6 +760,8 @@ def do_parse(
                 client_side_output_generation=client_side_output_generation,
                 **kwargs,
             )
+        else:
+            raise ValueError(f"Unsupported backend '{backend}'")
 
 
 async def aio_do_parse(
@@ -945,8 +789,7 @@ async def aio_do_parse(
     client_side_output_generation: bool = False,
     **kwargs: Any,
 ) -> None:
-    backend = normalize_backend(backend)
-    effort = validate_effort(effort)
+    backend, effort = resolve_backend_and_effort(backend, effort)
     # Office 解析是同步且可能耗时的操作，异步入口需要放到线程中避免阻塞事件循环。
     need_remove_index = await asyncio.to_thread(
         _process_office_doc,
@@ -997,36 +840,7 @@ async def aio_do_parse(
             broken_page_indices_list=broken_page_indices_list,
         )
     else:
-        if backend.startswith("vlm-"):
-            backend = backend[4:]
-
-            if backend == "engine":
-                backend = get_vlm_engine(inference_engine="auto", is_async=True)
-
-            os.environ["MINERU_VLM_FORMULA_ENABLE"] = str(formula_enable)
-            os.environ["MINERU_VLM_TABLE_ENABLE"] = str(table_enable)
-
-            await _async_process_vlm(
-                output_dir,
-                pdf_file_names,
-                pdf_bytes_list,
-                backend,
-                f_draw_layout_bbox,
-                f_draw_span_bbox,
-                f_dump_md,
-                f_dump_middle_json,
-                f_dump_model_output,
-                f_dump_orig_pdf,
-                f_dump_content_list,
-                f_make_md_mode,
-                server_url,
-                page_index_map_list=page_index_map_list,
-                broken_page_indices_list=broken_page_indices_list,
-                image_analysis=image_analysis,
-                client_side_output_generation=client_side_output_generation,
-                **kwargs,
-            )
-        elif backend.startswith("hybrid-"):
+        if backend.startswith("hybrid-"):
             ensure_backend_dependencies(backend)
             backend = backend[7:]
 
@@ -1060,6 +874,8 @@ async def aio_do_parse(
                 client_side_output_generation=client_side_output_generation,
                 **kwargs,
             )
+        else:
+            raise ValueError(f"Unsupported backend '{backend}'")
 
 
 if __name__ == "__main__":
@@ -1073,7 +889,7 @@ if __name__ == "__main__":
             [read_fn(Path(pdf_path))],
             ["ch"],
             end_page_id=10,
-            backend="vlm-huggingface",
+            backend="hybrid-engine",
             # backend = 'pipeline'
         )
     except Exception as e:

@@ -12,7 +12,7 @@ Options:
   -o, --output PATH               Output directory (required)
   --api-url TEXT                  MinerU FastAPI base URL; if omitted, `mineru` starts a temporary local `mineru-api`
   -m, --method [auto|txt|ocr]     Parsing method: auto (default), txt, ocr (pipeline and hybrid* backend only)
-  -b, --backend [pipeline|vlm-engine|hybrid-engine|vlm-http-client|hybrid-http-client]
+  -b, --backend [pipeline|hybrid-engine|hybrid-http-client]
                                   Parsing backend (default: hybrid-engine)
   --effort [medium|high]          Hybrid parsing effort (default: medium)
   -l, --lang [ch|ch_server|korean|ta|te|ka|th|el|arabic|east_slavic|cyrillic|devanagari]
@@ -22,8 +22,8 @@ Options:
   -e, --end INTEGER               Ending page number for parsing (0-based)
   -f, --formula BOOLEAN           Enable formula parsing (default: enabled)
   -t, --table BOOLEAN             Enable table parsing (default: enabled)
-  --image-analysis BOOLEAN        Enable image/chart analysis for VLM and hybrid
-                                  backends. Hybrid medium effort automatically
+  --image-analysis BOOLEAN        Enable image/chart analysis for hybrid
+                                  backend. Hybrid medium effort automatically
                                   disables image/chart analysis (default: enabled)
   --client-side-output-generation BOOLEAN
                                   Generate Markdown and content lists locally

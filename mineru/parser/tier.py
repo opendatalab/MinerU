@@ -6,7 +6,7 @@ import sys
 from importlib import metadata as importlib_metadata
 
 from ..types import Tier
-from ..utils.backend_options import SUPPORTED_BACKENDS, is_hybrid_backend, is_vlm_backend, normalize_backend
+from ..utils.backend_options import SUPPORTED_BACKENDS, is_hybrid_backend, normalize_backend
 
 __all__ = [
     "PARSER_BACKENDS",
@@ -70,7 +70,7 @@ def tier_for_backend(backend: str) -> Tier:
         return "flash"
     if normalized_backend == "pipeline":
         return "standard"
-    if is_vlm_backend(normalized_backend) or is_hybrid_backend(normalized_backend):
+    if is_hybrid_backend(normalized_backend):
         return "pro"
     raise ValueError(f"Unsupported backend '{backend}'. Supported backends: {', '.join(PARSER_BACKENDS)}")
 
@@ -82,7 +82,7 @@ def _backend_supports_tier(backend: str, tier: Tier) -> bool:
     if tier == "standard":
         return normalized_backend == "pipeline"
     if tier == "pro":
-        return is_vlm_backend(normalized_backend) or is_hybrid_backend(normalized_backend)
+        return is_hybrid_backend(normalized_backend)
     return False
 
 

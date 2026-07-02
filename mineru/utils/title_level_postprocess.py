@@ -12,8 +12,6 @@ from .backend_options import DEFAULT_HYBRID_EFFORT, validate_effort
 from .config_reader import get_llm_aided_config
 from .llm_aided import llm_aided_title
 
-SUPPORTED_PDF_BACKENDS = {"pipeline", "vlm", "hybrid"}
-
 
 def _resolve_title_aided_config() -> dict[str, Any] | None:
     """从本地配置解析标题分级开关。"""
@@ -46,10 +44,6 @@ def finalize_client_side_pages(pages: list[PageInfo], backend: str, effort: str 
         from mineru.backend.pipeline.model_output_to_middle_json import finalize_middle_json_from_preproc
 
         finalize_middle_json_from_preproc(pages)
-    elif backend == "vlm":
-        from mineru.backend.vlm.model_output_to_middle_json import finalize_middle_json
-
-        finalize_middle_json(pages)
     elif backend == "hybrid":
         from mineru.backend.hybrid.model_output_to_middle_json import finalize_middle_json_from_preproc
 
