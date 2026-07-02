@@ -39,6 +39,7 @@ from mineru.utils.backend_options import (
     DEFAULT_BACKEND,
     DEFAULT_HYBRID_EFFORT,
     HYBRID_EFFORT_CHOICES,
+    LEGACY_PIPELINE_BACKEND_ALIASES,
     LEGACY_VLM_BACKEND_ALIASES,
     PUBLIC_BACKEND_CHOICES,
     normalize_public_backend,
@@ -96,13 +97,13 @@ def normalize_backend_option(
     param: Optional[click.Parameter],
     value: str,
 ) -> str:
-    """校验 CLI backend，legacy VLM 值保留到后续 backend+effort 联合解析。"""
+    """校验 CLI backend，legacy pipeline/VLM 值保留到后续 backend+effort 联合解析。"""
     normalized_value = (value or "").strip()
     try:
         normalized_backend = normalize_public_backend(normalized_value)
     except ValueError as exc:
         raise click.BadParameter(str(exc), ctx=ctx, param=param) from exc
-    if normalized_value in LEGACY_VLM_BACKEND_ALIASES:
+    if normalized_value in LEGACY_PIPELINE_BACKEND_ALIASES or normalized_value in LEGACY_VLM_BACKEND_ALIASES:
         return normalized_value
     return normalized_backend
 
@@ -405,7 +406,6 @@ def build_visualization_jobs(
     backend: str,
     parse_method: str,
 ) -> list[VisualizationJob]:
-    draw_span = backend.startswith("pipeline")
     return [
         VisualizationJob(
             document_stem=document.stem,
@@ -418,7 +418,7 @@ def build_visualization_jobs(
                 parse_method,
                 is_office=document.suffix in office_suffixes,
             ),
-            draw_span=draw_span,
+            draw_span=False,
         )
         for document in planned_task.documents
     ]
@@ -589,54 +589,11 @@ def collect_input_documents(
     return collected
 
 
-def plan_pipeline_tasks(
-    documents: list[InputDocument],
-    processing_window_size: int,
-) -> list[PlannedTask]:
-    bins: list[PlannedTask] = []
-    sorted_docs = sorted(
-        documents,
-        key=lambda doc: (-doc.effective_pages, doc.order),
-    )
-
-    for document in sorted_docs:
-        if document.effective_pages > processing_window_size:
-            bins.append(
-                PlannedTask(
-                    index=len(bins) + 1,
-                    documents=[document],
-                    total_pages=document.effective_pages,
-                )
-            )
-            continue
-
-        candidates = [task for task in bins if task.total_pages + document.effective_pages <= processing_window_size]
-        if candidates:
-            selected = min(candidates, key=lambda task: (task.total_pages, task.index))
-            selected.documents.append(document)
-            selected.total_pages += document.effective_pages
-            continue
-
-        bins.append(
-            PlannedTask(
-                index=len(bins) + 1,
-                documents=[document],
-                total_pages=document.effective_pages,
-            )
-        )
-
-    for index, task in enumerate(bins, start=1):
-        task.index = index
-    return bins
-
-
 def plan_tasks(
     documents: list[InputDocument],
     backend: str,
     processing_window_size: int,
 ) -> list[PlannedTask]:
-    if backend == "pipeline":
-        return plan_pipeline_tasks(documents, processing_window_size)
     return [
         PlannedTask(index=index, documents=[document], total_pages=document.effective_pages)
         for index, document in enumerate(documents, start=1)
@@ -949,9 +906,7 @@ async def run_orchestrated_cli(
             planned_tasks = plan_tasks(
                 documents=documents,
                 backend=backend,
-                processing_window_size=server_health.processing_window_size
-                if backend == "pipeline"
-                else DEFAULT_PROCESSING_WINDOW_SIZE,
+                processing_window_size=DEFAULT_PROCESSING_WINDOW_SIZE,
             )
             progress = build_task_execution_progress(planned_tasks)
             concurrency = resolve_submit_concurrency(
@@ -1047,7 +1002,7 @@ async def run_orchestrated_cli(
       txt: Use text extraction method.
       ocr: Use OCR method for image-based PDFs.
     Without method specified, 'auto' will be used by default.
-    Adapted only for the case where the backend is set to 'pipeline' and 'hybrid-*'.""",
+    Adapted only for the case where the backend is set to 'hybrid-*'.""",
 )
 @click.option(
     "-b",
@@ -1059,7 +1014,6 @@ async def run_orchestrated_cli(
     metavar="[" + "|".join(PUBLIC_BACKEND_CHOICES) + "]",
     help="""\b
     the backend for parsing pdf:
-      pipeline: More general.
       hybrid-engine: Next-generation high accuracy solution via local computing power.
       hybrid-http-client: High accuracy but requires a little local computing power(client suitable for openai-compatible servers).
     Without backend specified, hybrid-engine will be used by default.""",
@@ -1090,7 +1044,7 @@ async def run_orchestrated_cli(
     help="""
     Input the languages in the pdf (if known) to improve OCR accuracy.
     Without languages specified, 'ch' will be used by default.
-    Adapted only for the case where the backend is set to 'pipeline' and 'hybrid-*'.
+    Adapted only for the case where the backend is set to 'hybrid-*'.
     """,
 )
 @click.option(

@@ -11,12 +11,12 @@ Options:
   -p, --path PATH                 Input file path or directory (required)
   -o, --output PATH               Output directory (required)
   --api-url TEXT                  MinerU FastAPI base URL; if omitted, `mineru` starts a temporary local `mineru-api`
-  -m, --method [auto|txt|ocr]     Parsing method: auto (default), txt, ocr (pipeline and hybrid* backend only)
-  -b, --backend [pipeline|hybrid-engine|hybrid-http-client]
+  -m, --method [auto|txt|ocr]     Parsing method: auto (default), txt, ocr (hybrid* backend only)
+  -b, --backend [hybrid-engine|hybrid-http-client]
                                   Parsing backend (default: hybrid-engine)
   --effort [low|medium|high]      Hybrid parsing effort (default: medium)
   -l, --lang [ch|ch_server|korean|ta|te|ka|th|el|arabic|east_slavic|cyrillic|devanagari]
-                                  Specify document language (improves OCR accuracy, pipeline and hybrid* backend only)
+                                  Specify document language (improves OCR accuracy, hybrid* backend only)
   -u, --url TEXT                  OpenAI-compatible backend URL passed through to the server when using http-client
   -s, --start INTEGER             Starting page number for parsing (0-based)
   -e, --end INTEGER               Ending page number for parsing (0-based)
@@ -118,7 +118,7 @@ Here are the environment variables and their descriptions:
 - `MINERU_FORMULA_CH_SUPPORT`:
     * Used to enable Chinese formula parsing optimization (experimental feature)
     * Default is `false`, can be set to `true` via environment variable to enable Chinese formula parsing optimization.
-    * Only effective for `pipeline` backend.
+    * Only effective for local Hybrid model execution.
   
 - `MINERU_TABLE_ENABLE`:
     * Used to enable table parsing

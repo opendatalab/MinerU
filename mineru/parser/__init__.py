@@ -67,8 +67,10 @@ def _build_parser(
 ) -> DocumentParser:
     path = Path(path)
     suffix = _resolve_input_suffix(path)
-    _, resolved_backend = resolve_tier_and_backend(tier=tier, backend=backend)
+    resolved_tier, resolved_backend = resolve_tier_and_backend(tier=tier, backend=backend)
     resolved_backend, resolved_effort = resolve_backend_and_effort(backend or resolved_backend, effort)
+    if resolved_tier == "standard":
+        resolved_effort = "low"
     resolved_ocr_mode = method or ocr_mode
     resolved_language = lang or language
     resolved_table_enable = (not disable_table) if table_enable is None else table_enable
@@ -88,15 +90,7 @@ def _build_parser(
     if suffix not in _PDF_INPUT_SUFFIXES:
         raise ValueError(f"Unsupported file type: {suffix or path.suffix or 'unknown'}")
 
-    if resolved_backend == "pipeline":
-        return PdfPipelineParser(
-            backend=resolved_backend,
-            method=resolved_ocr_mode,
-            lang=resolved_language,
-            formula_enable=resolved_formula_enable,
-            table_enable=resolved_table_enable,
-        )
-    elif resolved_backend.startswith("hybrid-"):
+    if resolved_backend.startswith("hybrid-"):
         return PdfHybridParser(
             backend=resolved_backend,
             method=resolved_ocr_mode,

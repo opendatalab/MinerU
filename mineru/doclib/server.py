@@ -1712,10 +1712,11 @@ def _iter_block_spans(block: Block) -> Iterator[Span]:
 
 
 def _span_image_bytes(span: Span) -> tuple[bytes | None, str, str]:
-    # TODO: how to get image from office span?
-    if not span.image_base64:
+    # 兼容 typed Span 不再携带 image_base64 的场景，后续仍可走 image_path sidecar。
+    image_base64 = getattr(span, "image_base64", None)
+    if not image_base64:
         return None, "png", "image/png"
-    match = re.match(r"^data:image/(?P<ext>[^;]+);base64,(?P<data>.+)$", span.image_base64, re.DOTALL)
+    match = re.match(r"^data:image/(?P<ext>[^;]+);base64,(?P<data>.+)$", image_base64, re.DOTALL)
     if match is None:
         return None, "png", "image/png"
     ext = match.group("ext").lower()

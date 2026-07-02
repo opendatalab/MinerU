@@ -6,7 +6,6 @@ import importlib
 import importlib.util
 import json
 import os
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Sequence
@@ -20,7 +19,7 @@ from mineru.cli_old.visualization import select_pages_for_pdf_visualization
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.parser.base import ParseResult
 from mineru.render import render_content_list, render_markdown, render_structured_content
-from mineru.utils.backend_options import DEFAULT_HYBRID_EFFORT, resolve_backend_and_effort
+from mineru.utils.backend_options import DEFAULT_BACKEND, DEFAULT_HYBRID_EFFORT, resolve_backend_and_effort
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
@@ -279,7 +278,7 @@ def _process_output(
             logger.warning(f"Skipping span bbox visualization for {pdf_file_name}: {exc}")
 
     if f_dump_orig_pdf:
-        if process_mode in ["pipeline", "vlm"]:
+        if process_mode in ["hybrid", "vlm"]:
             md_writer.write(
                 f"{pdf_file_name}_origin.pdf",
                 pdf_bytes,
@@ -351,100 +350,6 @@ def _process_output(
     logger.debug(f"local output dir is {local_md_dir}")
 
 
-def _process_pipeline(
-    output_dir: str,
-    pdf_file_names: list[str],
-    pdf_bytes_list: list[bytes],
-    p_lang_list: list[str],
-    parse_method: str,
-    p_formula_enable: bool,
-    p_table_enable: bool,
-    f_draw_layout_bbox: bool,
-    f_draw_span_bbox: bool,
-    f_dump_md: bool,
-    f_dump_middle_json: bool,
-    f_dump_model_output: bool,
-    f_dump_orig_pdf: bool,
-    f_dump_content_list: bool,
-    f_make_md_mode: str,
-    client_side_output_generation: bool = False,
-    page_index_map_list: list[list[int] | None] | None = None,
-    broken_page_indices_list: list[list[int] | None] | None = None,
-) -> None:
-    """处理pipeline后端逻辑"""
-    from mineru.backend.pipeline.pipeline_analyze import doc_analyze_streaming as pipeline_doc_analyze_streaming
-
-    md_writer_list = []
-    local_output_info = []
-    image_cache_list = [ImagePayloadCache() for _ in pdf_bytes_list]
-    for idx, pdf_bytes in enumerate(pdf_bytes_list):
-        pdf_file_name = pdf_file_names[idx]
-        local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-        md_writer = FileBasedDataWriter(local_md_dir)
-        md_writer_list.append(md_writer)
-        local_output_info.append((pdf_file_name, local_image_dir, local_md_dir))
-
-    output_futures = []
-
-    def run_output_task(doc_index, middle_json, model_list):
-        pdf_file_name, local_image_dir, local_md_dir = local_output_info[doc_index]
-        md_writer = md_writer_list[doc_index]
-        pdf_bytes = pdf_bytes_list[doc_index]
-        retained_page_indices = page_index_map_list[doc_index] if page_index_map_list is not None else None
-        broken_page_indices = broken_page_indices_list[doc_index] if broken_page_indices_list is not None else None
-        logger.debug(f"Pipeline output start: doc{doc_index}")
-        try:
-            _process_output(
-                middle_json,
-                pdf_bytes,
-                pdf_file_name,
-                local_md_dir,
-                local_image_dir,
-                md_writer,
-                f_draw_layout_bbox,
-                f_draw_span_bbox,
-                f_dump_orig_pdf,
-                f_dump_md,
-                f_dump_content_list,
-                f_dump_middle_json,
-                f_dump_model_output,
-                f_make_md_mode,
-                model_list,
-                process_mode="pipeline",
-                backend="pipeline",
-                retained_page_indices=retained_page_indices,
-                broken_page_indices=broken_page_indices,
-                image_cache=image_cache_list[doc_index],
-            )
-            logger.debug(f"Pipeline output complete: doc{doc_index}")
-        except Exception:
-            logger.exception(f"Pipeline output failed: doc{doc_index}")
-            raise
-
-    with ThreadPoolExecutor(max_workers=1) as output_executor:
-
-        def on_doc_ready(doc_index, model_list, middle_json: list, ocr_enable):
-            logger.debug(f"Pipeline doc ready: doc{doc_index} pages={len(middle_json)} output_submitted=1")
-            future = output_executor.submit(run_output_task, doc_index, middle_json, model_list)
-            output_futures.append(future)
-
-        pipeline_doc_analyze_streaming(
-            pdf_bytes_list,
-            p_lang_list,
-            on_doc_ready,
-            parse_method=parse_method,
-            formula_enable=p_formula_enable,
-            table_enable=p_table_enable,
-            client_side_output_generation=client_side_output_generation,
-            page_index_map_list=page_index_map_list,
-            image_cache_list=image_cache_list,
-        )
-
-        for future in output_futures:
-            future.result()
-    return
-
-
 def _process_hybrid(
     output_dir: str,
     pdf_file_names: list[str],
@@ -511,7 +416,7 @@ def _process_hybrid(
             f_dump_model_output,
             f_make_md_mode,
             infer_result,
-            process_mode="vlm",
+            process_mode="hybrid",
             backend="hybrid",
             retained_page_indices=page_index_map_list[idx] if page_index_map_list is not None else None,
             broken_page_indices=broken_page_indices_list[idx] if broken_page_indices_list is not None else None,
@@ -585,7 +490,7 @@ async def _async_process_hybrid(
             f_dump_model_output,
             f_make_md_mode,
             infer_result,
-            process_mode="vlm",
+            process_mode="hybrid",
             backend="hybrid",
             retained_page_indices=page_index_map_list[idx] if page_index_map_list is not None else None,
             broken_page_indices=broken_page_indices_list[idx] if broken_page_indices_list is not None else None,
@@ -658,7 +563,7 @@ def do_parse(
     pdf_file_names: list[str],
     pdf_bytes_list: list[bytes],
     p_lang_list: list[str],
-    backend: str = "pipeline",
+    backend: str = DEFAULT_BACKEND,
     parse_method: str = "auto",
     formula_enable: bool = True,
     table_enable: bool = True,
@@ -704,15 +609,24 @@ def do_parse(
     page_index_map_list = [prepared.retained_page_indices for prepared in prepared_pdf_inputs]
     broken_page_indices_list = [prepared.broken_page_indices for prepared in prepared_pdf_inputs]
 
-    if backend == "pipeline":
-        _process_pipeline(
+    if backend.startswith("hybrid-"):
+        ensure_backend_dependencies(backend)
+        backend = backend[7:]
+
+        if backend == "engine" and effort != "low":
+            backend = get_vlm_engine(inference_engine="auto", is_async=False)
+
+        os.environ["MINERU_VLM_TABLE_ENABLE"] = str(table_enable)
+        os.environ["MINERU_VLM_FORMULA_ENABLE"] = "true"
+
+        _process_hybrid(
             output_dir,
             pdf_file_names,
             pdf_bytes_list,
             p_lang_list,
             parse_method,
             formula_enable,
-            table_enable,
+            backend,
             f_draw_layout_bbox,
             f_draw_span_bbox,
             f_dump_md,
@@ -721,47 +635,16 @@ def do_parse(
             f_dump_orig_pdf,
             f_dump_content_list,
             f_make_md_mode,
-            client_side_output_generation=client_side_output_generation,
+            server_url,
             page_index_map_list=page_index_map_list,
             broken_page_indices_list=broken_page_indices_list,
+            image_analysis=image_analysis,
+            effort=effort,
+            client_side_output_generation=client_side_output_generation,
+            **kwargs,
         )
     else:
-        if backend.startswith("hybrid-"):
-            ensure_backend_dependencies(backend)
-            backend = backend[7:]
-
-            if backend == "engine" and effort != "low":
-                backend = get_vlm_engine(inference_engine="auto", is_async=False)
-
-            os.environ["MINERU_VLM_TABLE_ENABLE"] = str(table_enable)
-            os.environ["MINERU_VLM_FORMULA_ENABLE"] = "true"
-
-            _process_hybrid(
-                output_dir,
-                pdf_file_names,
-                pdf_bytes_list,
-                p_lang_list,
-                parse_method,
-                formula_enable,
-                backend,
-                f_draw_layout_bbox,
-                f_draw_span_bbox,
-                f_dump_md,
-                f_dump_middle_json,
-                f_dump_model_output,
-                f_dump_orig_pdf,
-                f_dump_content_list,
-                f_make_md_mode,
-                server_url,
-                page_index_map_list=page_index_map_list,
-                broken_page_indices_list=broken_page_indices_list,
-                image_analysis=image_analysis,
-                effort=effort,
-                client_side_output_generation=client_side_output_generation,
-                **kwargs,
-            )
-        else:
-            raise ValueError(f"Unsupported backend '{backend}'")
+        raise ValueError(f"Unsupported backend '{backend}'")
 
 
 async def aio_do_parse(
@@ -769,7 +652,7 @@ async def aio_do_parse(
     pdf_file_names: list[str],
     pdf_bytes_list: list[bytes],
     p_lang_list: list[str],
-    backend: str = "pipeline",
+    backend: str = DEFAULT_BACKEND,
     parse_method: str = "auto",
     formula_enable: bool = True,
     table_enable: bool = True,
@@ -817,16 +700,24 @@ async def aio_do_parse(
     page_index_map_list = [prepared.retained_page_indices for prepared in prepared_pdf_inputs]
     broken_page_indices_list = [prepared.broken_page_indices for prepared in prepared_pdf_inputs]
 
-    if backend == "pipeline":
-        # pipeline模式暂不支持异步，使用同步处理方式
-        _process_pipeline(
+    if backend.startswith("hybrid-"):
+        ensure_backend_dependencies(backend)
+        backend = backend[7:]
+
+        if backend == "engine" and effort != "low":
+            backend = get_vlm_engine(inference_engine="auto", is_async=True)
+
+        os.environ["MINERU_VLM_TABLE_ENABLE"] = str(table_enable)
+        os.environ["MINERU_VLM_FORMULA_ENABLE"] = "true"
+
+        await _async_process_hybrid(
             output_dir,
             pdf_file_names,
             pdf_bytes_list,
             p_lang_list,
             parse_method,
             formula_enable,
-            table_enable,
+            backend,
             f_draw_layout_bbox,
             f_draw_span_bbox,
             f_dump_md,
@@ -835,47 +726,16 @@ async def aio_do_parse(
             f_dump_orig_pdf,
             f_dump_content_list,
             f_make_md_mode,
-            client_side_output_generation=client_side_output_generation,
+            server_url,
             page_index_map_list=page_index_map_list,
             broken_page_indices_list=broken_page_indices_list,
+            image_analysis=image_analysis,
+            effort=effort,
+            client_side_output_generation=client_side_output_generation,
+            **kwargs,
         )
     else:
-        if backend.startswith("hybrid-"):
-            ensure_backend_dependencies(backend)
-            backend = backend[7:]
-
-            if backend == "engine" and effort != "low":
-                backend = get_vlm_engine(inference_engine="auto", is_async=True)
-
-            os.environ["MINERU_VLM_TABLE_ENABLE"] = str(table_enable)
-            os.environ["MINERU_VLM_FORMULA_ENABLE"] = "true"
-
-            await _async_process_hybrid(
-                output_dir,
-                pdf_file_names,
-                pdf_bytes_list,
-                p_lang_list,
-                parse_method,
-                formula_enable,
-                backend,
-                f_draw_layout_bbox,
-                f_draw_span_bbox,
-                f_dump_md,
-                f_dump_middle_json,
-                f_dump_model_output,
-                f_dump_orig_pdf,
-                f_dump_content_list,
-                f_make_md_mode,
-                server_url,
-                page_index_map_list=page_index_map_list,
-                broken_page_indices_list=broken_page_indices_list,
-                image_analysis=image_analysis,
-                effort=effort,
-                client_side_output_generation=client_side_output_generation,
-                **kwargs,
-            )
-        else:
-            raise ValueError(f"Unsupported backend '{backend}'")
+        raise ValueError(f"Unsupported backend '{backend}'")
 
 
 if __name__ == "__main__":
@@ -890,7 +750,6 @@ if __name__ == "__main__":
             ["ch"],
             end_page_id=10,
             backend="hybrid-engine",
-            # backend = 'pipeline'
         )
     except Exception as e:
         logger.exception(e)

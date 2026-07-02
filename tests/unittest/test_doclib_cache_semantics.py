@@ -279,10 +279,10 @@ def test_load_pages_from_done_batches_keeps_newest_page_idx(tmp_path: Path) -> N
 
 def test_parser_tier_backend_mapping_is_parser_layer_only() -> None:
     assert backend_for_tier("flash") == "flash"
-    assert backend_for_tier("standard") == "pipeline"
+    assert backend_for_tier("standard") == "hybrid-engine"
     assert backend_for_tier("pro") == "hybrid-engine"
     assert resolve_tier_and_backend(tier=None) == ("pro", "hybrid-engine")
-    assert resolve_tier_and_backend(tier="pro", backend="vlm-auto-engine") == ("pro", "vlm-engine")
+    assert resolve_tier_and_backend(tier="pro", backend="vlm-auto-engine") == ("pro", "hybrid-engine")
 
 
 def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() -> None:

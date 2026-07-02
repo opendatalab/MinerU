@@ -33,7 +33,6 @@ from base64 import b64encode
 
 from mineru.cli_old.common import (
     aio_do_parse,
-    do_parse,
     image_suffixes,
     office_suffixes,
     pdf_suffixes,
@@ -859,10 +858,7 @@ async def run_parse_job(
         **config,
     )
 
-    if request_options.backend == "pipeline":
-        await asyncio.to_thread(do_parse, **parse_kwargs)
-    else:
-        await aio_do_parse(**parse_kwargs)
+    await aio_do_parse(**parse_kwargs)
     return response_file_names
 
 

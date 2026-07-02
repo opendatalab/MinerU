@@ -1,3 +1,5 @@
+"""Hybrid 与本地小模型共享的运行时初始化模块。"""
+
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
@@ -9,34 +11,46 @@ from typing import Any
 import torch
 from loguru import logger
 
-from ...model.layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
-from ...model.mfr.pp_formulanet_plus_m.predict_formula import FormulaRecognizer
-from ...model.mfr.unimernet.Unimernet import UnimernetModel
-from ...model.ocr.pytorch_paddle import PytorchPaddleOCR
-from ...model.table.cls.mineru_table_ori_cls import MineruTableOrientationClsModel
-from ...model.table.cls.paddle_table_cls import PaddleTableClsModel
-from ...model.table.rec.slanet_plus.main import PaddleTableModel
-from ...model.table.rec.unet_table.main import UnetTableModel
-from ...utils.config_reader import get_device
-from ...utils.enum_class import ModelPath
-from ...utils.models_download_utils import auto_download_and_get_model_root_path
-from ...utils.ocr_language import normalize_ocr_model_lang
-from .model_list import AtomicModel
+from ..model.layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
+from ..model.mfr.pp_formulanet_plus_m.predict_formula import FormulaRecognizer
+from ..model.mfr.unimernet.Unimernet import UnimernetModel
+from ..model.ocr.pytorch_paddle import PytorchPaddleOCR
+from ..model.table.cls.mineru_table_ori_cls import MineruTableOrientationClsModel
+from ..model.table.cls.paddle_table_cls import PaddleTableClsModel
+from ..model.table.rec.slanet_plus.main import PaddleTableModel
+from ..model.table.rec.unet_table.main import UnetTableModel
+from ..utils.config_reader import get_device
+from ..utils.enum_class import ModelPath
+from ..utils.models_download_utils import auto_download_and_get_model_root_path
+from ..utils.ocr_language import normalize_ocr_model_lang
 
-PIPELINE_MODEL_INIT_LOCK = threading.RLock()
-# 这些锁保护 pipeline 与 hybrid 共享的 atom model/native 模型推理调用，避免多线程同时进入同一个模型对象。
-PIPELINE_LAYOUT_INFERENCE_LOCK = threading.RLock()
-PIPELINE_MFR_INFERENCE_LOCK = threading.RLock()
-PIPELINE_OCR_INFERENCE_LOCK = threading.RLock()
-# 临时关闭 pipeline/hybrid 共享推理阶段锁；需要回滚实验时可通过环境变量重新打开。
-PIPELINE_INFERENCE_LOCKS_ENABLED = os.getenv("MINERU_ENABLE_PIPELINE_INFERENCE_LOCKS", "False").lower() in ["true", "1", "yes"]
+
+class AtomicModel:
+    """本地原子模型名称集合，供 Hybrid low 和共享模型单例统一索引。"""
+
+    Layout = "layout"
+    MFD = "mfd"
+    MFR = "mfr"
+    OCR = "ocr"
+    WirelessTable = "wireless_table"
+    WiredTable = "wired_table"
+    TableCls = "table_cls"
+    TableOrientationCls = "table_ori_cls"
+
+LOCAL_MODEL_INIT_LOCK = threading.RLock()
+# 这些锁保护 Hybrid low/medium/high 共享的 atom model/native 模型推理调用，避免多线程同时进入同一个模型对象。
+LOCAL_MODEL_LAYOUT_INFERENCE_LOCK = threading.RLock()
+LOCAL_MODEL_MFR_INFERENCE_LOCK = threading.RLock()
+LOCAL_MODEL_OCR_INFERENCE_LOCK = threading.RLock()
+# 临时关闭共享推理阶段锁；保留旧环境变量名，避免已有部署配置失效。
+LOCAL_MODEL_INFERENCE_LOCKS_ENABLED = os.getenv("MINERU_ENABLE_PIPELINE_INFERENCE_LOCKS", "False").lower() in ["true", "1", "yes"]
 
 
 def _run_with_inference_lock(
     inference_lock: threading.RLock, inference_callable: Callable[..., Any], *args: Any, **kwargs: Any
 ) -> object:
     """按实验开关决定是否在指定推理锁内执行真实 native 模型调用。"""
-    if not PIPELINE_INFERENCE_LOCKS_ENABLED:
+    if not LOCAL_MODEL_INFERENCE_LOCKS_ENABLED:
         return inference_callable(*args, **kwargs)
 
     with inference_lock:
@@ -45,17 +59,17 @@ def _run_with_inference_lock(
 
 def run_layout_inference(inference_callable: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """按实验开关执行共享 Layout 模型调用。"""
-    return _run_with_inference_lock(PIPELINE_LAYOUT_INFERENCE_LOCK, inference_callable, *args, **kwargs)
+    return _run_with_inference_lock(LOCAL_MODEL_LAYOUT_INFERENCE_LOCK, inference_callable, *args, **kwargs)
 
 
 def run_mfr_inference(inference_callable: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """按实验开关执行共享 MFR 模型调用。"""
-    return _run_with_inference_lock(PIPELINE_MFR_INFERENCE_LOCK, inference_callable, *args, **kwargs)
+    return _run_with_inference_lock(LOCAL_MODEL_MFR_INFERENCE_LOCK, inference_callable, *args, **kwargs)
 
 
 def run_ocr_inference(inference_callable: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """按实验开关执行共享 OCR native 模型调用。"""
-    return _run_with_inference_lock(PIPELINE_OCR_INFERENCE_LOCK, inference_callable, *args, **kwargs)
+    return _run_with_inference_lock(LOCAL_MODEL_OCR_INFERENCE_LOCK, inference_callable, *args, **kwargs)
 
 
 MFR_MODEL = os.getenv("MINERU_FORMULA_CH_SUPPORT", "False")
@@ -139,7 +153,7 @@ def ocr_model_init(
 class AtomModelSingleton:
     _instance: AtomModelSingleton | None = None
     _models: dict[object, object] = {}
-    _lock: threading.RLock = PIPELINE_MODEL_INIT_LOCK
+    _lock: threading.RLock = LOCAL_MODEL_INIT_LOCK
 
     def __new__(cls, *args: Any, **kwargs: Any) -> AtomModelSingleton:
         with cls._lock:
@@ -272,7 +286,7 @@ class MineruPipelineModel:
 class HybridModelSingleton:
     _instance: HybridModelSingleton | None = None
     _models: dict[object, object] = {}
-    _lock: threading.RLock = PIPELINE_MODEL_INIT_LOCK
+    _lock: threading.RLock = LOCAL_MODEL_INIT_LOCK
 
     def __new__(cls, *args: Any, **kwargs: Any) -> HybridModelSingleton:
         with cls._lock:

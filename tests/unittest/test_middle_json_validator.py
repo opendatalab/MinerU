@@ -159,7 +159,7 @@ def test_validate_pages_reports_span_content_contracts() -> None:
 
 def test_validate_pages_warns_legacy_page_backend() -> None:
     page = _valid_page()
-    page._backend = "pipeline"
+    page._backend = "hybrid"
 
     issues = validate_pages([page])
 

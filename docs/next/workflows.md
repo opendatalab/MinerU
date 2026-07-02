@@ -439,9 +439,9 @@ result = parse("report.pdf", tier="standard")
 或使用具体 parser:
 
 ```python
-from mineru.parser import PdfPipelineParser
+from mineru.parser import PdfHybridParser
 
-with PdfPipelineParser() as parser:
+with PdfHybridParser(effort="low") as parser:
     result = parser.parse("report.pdf")
 ```
 

@@ -24,7 +24,7 @@
   "pages": [],
   "_meta": {
     "mineru_version": "2.x",
-    "backend": "pipeline",
+    "backend": "hybrid",
     "tier": "standard",
     "file": {
       "sha256": "...",
@@ -63,7 +63,7 @@
 | 字段 | 类型 | 必带 | 说明 |
 |------|------|:--:|------|
 | `mineru_version` | string | 是 | 生成该结果的 MinerU 版本。 |
-| `backend` | string | 是 | `pipeline`、`vlm`、`hybrid`、`office`、`html`、`flash`。 |
+| `backend` | string | 是 | `hybrid`、`office`、`html`、`flash`。 |
 | `tier` | string 或 null | 是 | `flash`、`standard`、`pro` 的解析结果语义；未经过 tier 解析的工具层结果可为 `null`。 |
 | `file` | object | 是 | 文件级信息。 |
 | `features` | object | 是 | 本次解析启用的能力。 |
@@ -143,10 +143,12 @@ models 也是开放字典。字段粒度可以随 backend 增加。
 ```json
 {
   "pdf_info": [],
-  "_backend": "pipeline",
+  "_backend": "hybrid",
   "_version_name": "2.x"
 }
 ```
+
+旧产物中的 `_backend: "pipeline"` 不再属于当前兼容输入。
 
 历史文件的离线 migration 可转换为:
 

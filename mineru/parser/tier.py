@@ -6,7 +6,13 @@ import sys
 from importlib import metadata as importlib_metadata
 
 from ..types import Tier
-from ..utils.backend_options import SUPPORTED_BACKENDS, is_hybrid_backend, normalize_backend
+from ..utils.backend_options import (
+    CANONICAL_HYBRID_ENGINE,
+    LEGACY_PIPELINE_BACKEND_ALIASES,
+    SUPPORTED_BACKENDS,
+    is_hybrid_backend,
+    normalize_backend,
+)
 
 __all__ = [
     "PARSER_BACKENDS",
@@ -58,31 +64,33 @@ def backend_for_tier(tier: Tier) -> str:
     """Return the local parser backend used for a parser-layer tier fallback."""
     mapping = {
         "flash": "flash",
-        "standard": "pipeline",
-        "pro": "hybrid-engine",
+        "standard": CANONICAL_HYBRID_ENGINE,
+        "pro": CANONICAL_HYBRID_ENGINE,
     }
-    return mapping.get(tier, "pipeline")
+    return mapping.get(tier, CANONICAL_HYBRID_ENGINE)
 
 
 def tier_for_backend(backend: str) -> Tier:
+    raw_backend = (backend or "").strip()
+    if raw_backend in LEGACY_PIPELINE_BACKEND_ALIASES:
+        return "standard"
     normalized_backend = normalize_backend(backend)
     if normalized_backend == "flash":
         return "flash"
-    if normalized_backend == "pipeline":
-        return "standard"
     if is_hybrid_backend(normalized_backend):
         return "pro"
     raise ValueError(f"Unsupported backend '{backend}'. Supported backends: {', '.join(PARSER_BACKENDS)}")
 
 
 def _backend_supports_tier(backend: str, tier: Tier) -> bool:
+    raw_backend = (backend or "").strip()
     normalized_backend = normalize_backend(backend)
     if tier == "flash":
         return normalized_backend == "flash"
     if tier == "standard":
-        return normalized_backend == "pipeline"
+        return raw_backend in LEGACY_PIPELINE_BACKEND_ALIASES or normalized_backend == CANONICAL_HYBRID_ENGINE
     if tier == "pro":
-        return is_hybrid_backend(normalized_backend)
+        return is_hybrid_backend(normalized_backend) and raw_backend not in LEGACY_PIPELINE_BACKEND_ALIASES
     return False
 
 
@@ -92,10 +100,10 @@ def resolve_tier_and_backend(tier: Tier | None = None, backend: str | None = Non
     if backend:
         normalized_backend = normalize_backend(backend)
         if tier is None:
-            return tier_for_backend(normalized_backend), normalized_backend
-        if not _backend_supports_tier(normalized_backend, resolved_tier):
+            return tier_for_backend(backend), normalized_backend
+        if not _backend_supports_tier(backend, resolved_tier):
             raise ValueError(f"tier '{resolved_tier}' is incompatible with backend '{backend}'")
-        return tier_for_backend(normalized_backend), normalized_backend
+        return resolved_tier, normalized_backend
     return resolved_tier, backend_for_tier(resolved_tier)
 
 

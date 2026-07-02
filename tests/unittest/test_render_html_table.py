@@ -197,7 +197,7 @@ def test_render_markdown_prefers_markdown_table_when_enabled() -> None:
             )
         ],
     )
-    page = PageInfo(page_idx=0, para_blocks=[table_block], _backend="pipeline")
+    page = PageInfo(page_idx=0, para_blocks=[table_block], _backend="hybrid")
 
     assert render_markdown([page], prefer_markdown_table=False) == html
     assert render_markdown([page], prefer_markdown_table=True) == "\n".join(

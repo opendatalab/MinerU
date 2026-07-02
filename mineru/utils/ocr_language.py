@@ -107,7 +107,7 @@ def format_public_ocr_lang_description() -> str:
         for lang in PUBLIC_OCR_LANGUAGES
     ]
     return (
-        "(Adapted for pipeline backend only) Input the languages in the pdf "
+        "(Adapted for local Hybrid OCR) Input the languages in the pdf "
         "to improve OCR accuracy. Options:\n"
         + "\n".join(option_lines)
     )

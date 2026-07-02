@@ -44,7 +44,7 @@ SDK 中未指定 tier，或 Python 调用传 `tier=None` 时，必须遵循:
 | Tier | Backend |
 |------|---------|
 | `flash` | `flash` |
-| `standard` | `pipeline` |
+| `standard` | `hybrid-engine` + `effort="low"` |
 | `pro` | hybrid 默认高质量 backend |
 
 `tier=None` 使用默认选择策略，结果为 `pro` 或 `standard`。

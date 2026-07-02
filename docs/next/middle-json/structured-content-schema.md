@@ -71,7 +71,7 @@ Structured Content 是从 Middle JSON render 得到的结构化内容 JSON。它
 ```json
 {
   "tier": "standard",
-  "backend": "pipeline",
+  "backend": "hybrid",
   "version": "3.1.14"
 }
 ```

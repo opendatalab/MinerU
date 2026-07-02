@@ -10,7 +10,7 @@ from typing import Any
 
 from ..errors import InvalidRequestError
 from ..types import PageInfo
-from ..utils.backend_options import resolve_backend_and_effort, validate_effort
+from ..utils.backend_options import CANONICAL_HYBRID_ENGINE, resolve_backend_and_effort, validate_effort
 from ..utils.image_payload import ImagePayloadCache
 from .base import DocumentParser, ParseResult
 
@@ -225,105 +225,8 @@ class PdfBaseParser(DocumentParser):
         )
 
 
-class PdfPipelineParser(PdfBaseParser):
-    """PDF / image parser using the pipeline (CV+OCR) backend."""
-
-    _parse_method: str = ""
-    _backend = "pipeline"
-
-    def parse(self, path: str | Path, *, page_range: str = "") -> ParseResult:
-        self._parse_method = self.method
-        return super().parse(path, page_range=page_range)
-
-    async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:
-        self._parse_method = self.method
-        return await super().parse_async(path, page_range=page_range)
-
-    def parse_batch(self, paths: list[str | Path], *, page_range: str = "") -> list[ParseResult]:
-        self._parse_method = self.method
-
-        from ..backend.pipeline.pipeline_analyze import doc_analyze_streaming
-
-        prepared_inputs: list[_PreparedPdfInput] = []
-        pdf_bytes_list: list[bytes] = []
-        image_caches: list[ImagePayloadCache] = []
-        for p in paths:
-            prepared = self._prepare_input(Path(p), page_range)
-            prepared_inputs.append(prepared)
-            pdf_bytes_list.append(prepared.pdf_bytes)
-            image_caches.append(ImagePayloadCache())
-
-        results_by_index: dict[int, list[PageInfo]] = {}
-
-        def on_doc_ready(doc_index: int, model_list: Any, middle_json: list[PageInfo], _ocr_enable: bool) -> None:
-            results_by_index[doc_index] = middle_json
-
-        doc_analyze_streaming(
-            pdf_bytes_list,
-            [self.lang] * len(paths),
-            on_doc_ready,
-            parse_method=self.method,
-            formula_enable=self.formula_enable,
-            table_enable=self.table_enable,
-            page_index_map_list=[prepared.retained_page_indices for prepared in prepared_inputs],
-            image_cache_list=image_caches,
-        )
-
-        parse_results: list[ParseResult] = []
-        for idx in range(len(paths)):
-            middle_json = results_by_index[idx]
-            prepared = prepared_inputs[idx]
-            self._insert_broken_pages(
-                middle_json,
-                prepared.retained_page_indices,
-                prepared.broken_page_indices,
-            )
-            result = self._build_result(
-                middle_json,
-                prepared.pdf_bytes,
-                prepared.file_name,
-                retained_page_indices=prepared.retained_page_indices,
-                broken_page_indices=prepared.broken_page_indices,
-                image_cache=image_caches[idx],
-            )
-            parse_results.append(result)
-
-        return parse_results
-
-    async def parse_batch_async(self, paths: list[str | Path], *, page_range: str = "") -> list[ParseResult]:
-        import asyncio
-
-        return await asyncio.to_thread(self.parse_batch, paths, page_range=page_range)
-
-    def _run_analysis(
-        self,
-        pdf_bytes: bytes,
-        page_index_map: list[int] | None = None,
-        image_cache: ImagePayloadCache | None = None,
-    ) -> list[PageInfo]:
-        from ..backend.pipeline.pipeline_analyze import doc_analyze_streaming
-
-        result_holder: dict = {}
-
-        def on_doc_ready(_doc_index, model_list, middle_json, _ocr_enable):
-            result_holder["middle_json"] = middle_json
-
-        doc_analyze_streaming(
-            [pdf_bytes],
-            [self.lang],
-            on_doc_ready,
-            parse_method=self.method,
-            formula_enable=self.formula_enable,
-            table_enable=self.table_enable,
-            page_index_map_list=[page_index_map],
-            image_cache_list=[image_cache or ImagePayloadCache()],
-        )
-
-        return result_holder["middle_json"]
-
-
 class PdfHybridParser(PdfBaseParser):
-    """PDF / image parser using the hybrid (pipeline + VLM) backend."""
+    """PDF / image parser using the Hybrid local/VLM backend."""
 
     _parse_method: str = ""
     _backend = "hybrid"
@@ -391,6 +294,16 @@ class PdfHybridParser(PdfBaseParser):
         )
 
         return middle_json
+
+
+class PdfPipelineParser(PdfHybridParser):
+    """保留旧 SDK 类名，内部统一委托 Hybrid low 解析。"""
+
+    def __init__(self, **kwargs: Any) -> None:
+        """将旧 PdfPipelineParser 构造参数归一到 Hybrid low，避免继续加载旧 backend。"""
+        kwargs.pop("backend", None)
+        kwargs.pop("effort", None)
+        super().__init__(backend=CANONICAL_HYBRID_ENGINE, effort="low", **kwargs)
 
 
 class PdfVlmParser(PdfHybridParser):

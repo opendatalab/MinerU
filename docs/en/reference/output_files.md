@@ -35,7 +35,7 @@ The following sections provide detailed descriptions of each file's purpose and 
 ### Text Spans File (span.pdf)
 
 > [!NOTE]
-> Only applicable to pipeline backend
+> Only generated when span visualization is explicitly enabled.
 
 **File naming format**: `{original_filename}_span.pdf`
 
@@ -55,9 +55,9 @@ The following sections provide detailed descriptions of each file's purpose and 
 ## Structured Data Files
 
 > [!IMPORTANT]
-> The VLM backend output has significant changes in version 2.5 and is not backward-compatible with the pipeline backend. If you plan to build secondary development on structured outputs, please read this document carefully.
+> The current structured output contract uses `hybrid` and `office` backends. Legacy middle-json files marked with `_backend: "pipeline"` are no longer accepted by current readers.
 
-### Pipeline Backend Output Results
+### Hybrid Local Model Output Results
 
 #### Model Inference Results (model.json)
 
@@ -115,7 +115,7 @@ The following sections provide detailed descriptions of each file's purpose and 
 | Field Name | Type | Description |
 |------------|------|-------------|
 | `pdf_info` | `list[dict]` | Array of parsing results for each page |
-| `_backend` | `string` | Parsing mode: `pipeline`, `vlm`, or `office` |
+| `_backend` | `string` | Parsing mode: `hybrid` or `office` |
 | `_version_name` | `string` | MinerU version number |
 
 ##### Page Information Structure (pdf_info)
@@ -284,7 +284,7 @@ Level 1 blocks (table | image | chart)
             ]
         }
     ],
-    "_backend": "pipeline",
+    "_backend": "hybrid",
     "_version_name": "0.6.1"
 }
 ```
@@ -469,7 +469,7 @@ exact styles are represented by the child `text` spans.
 ]
 ```
 
-### VLM Backend Output Results
+### Hybrid Multimodal Output Results
 
 #### Model Inference Results (model.json)
 
@@ -543,7 +543,7 @@ exact styles are represented by the child `text` spans.
 
 **File naming format**: `{original_filename}_middle.json`
 
-Structure is broadly similar to the pipeline backend, but with these differences:
+Hybrid multimodal `middle.json` includes these extensions over the base block structure:
 
 - `list` becomes a second‑level block, a new field `sub_type` distinguishes list categories:
     * `text`: ordinary list
@@ -661,7 +661,7 @@ Structure is broadly similar to the pipeline backend, but with these differences
 
 **File naming format**: `{original_filename}_content_list.json`
 
-Based on the pipeline format, with these VLM-specific extensions:
+Hybrid multimodal `content_list.json` includes these extensions:
 
 - New `code` type with `sub_type` (`code` | `algorithm`):
     * Fields: `code_body` (string), optional `code_caption` (list of strings)
@@ -672,7 +672,7 @@ Based on the pipeline format, with these VLM-specific extensions:
 - All `discarded_blocks` entries are also output (e.g., headers, footers, page numbers, margin notes, page footnotes).
 - Existing types (`image`, `table`, `text`, `equation`) remain unchanged.
 - `bbox` still uses the 0–1000 normalized coordinate mapping.
-- Starting with 3.0, the VLM backend also emits `*_structured_content.json`; see the Structured Content section above for the shared structure.
+- Starting with 3.0, Hybrid multimodal output also emits `*_structured_content.json`; see the Structured Content section above for the shared structure.
 
 
 ##### Examples

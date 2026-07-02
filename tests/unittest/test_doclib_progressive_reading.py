@@ -16,7 +16,7 @@ def _page(page_idx: int, *texts: str) -> PageInfo:
         )
         for index, text in enumerate(texts)
     ]
-    return PageInfo(page_idx=page_idx, page_size=(100, 100), para_blocks=blocks, _backend="pipeline")
+    return PageInfo(page_idx=page_idx, page_size=(100, 100), para_blocks=blocks, _backend="hybrid")
 
 
 def test_paginated_default_content_pages_are_first_ten() -> None:
@@ -221,7 +221,7 @@ def test_page_markdown_blocks_prefers_markdown_table_in_doclib() -> None:
                 ],
             )
         ],
-        _backend="pipeline",
+        _backend="hybrid",
     )
 
     assert _page_markdown_blocks(page) == [

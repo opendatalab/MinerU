@@ -10,7 +10,6 @@ DEFAULT_EFFORT: Final = DEFAULT_HYBRID_EFFORT
 HYBRID_EFFORT_HELP: Final = "Low uses local Hybrid processing. Medium is faster. High is more accurate and may take longer."
 
 LOCAL_BACKEND_CHOICES: Final[tuple[str, ...]] = (
-    "pipeline",
     CANONICAL_HYBRID_ENGINE,
 )
 HTTP_CLIENT_BACKEND_CHOICES: Final[tuple[str, ...]] = (
@@ -23,10 +22,12 @@ HYBRID_EFFORT_SCHEMA_EXTRA: Final[dict[str, list[str]]] = {"enum": list(HYBRID_E
 
 BACKEND_ALIASES: Final[dict[str, str]] = {
     "hybrid-auto-engine": CANONICAL_HYBRID_ENGINE,
+    "pipeline": CANONICAL_HYBRID_ENGINE,
     "vlm-engine": CANONICAL_HYBRID_ENGINE,
     "vlm-auto-engine": CANONICAL_HYBRID_ENGINE,
     "vlm-http-client": "hybrid-http-client",
 }
+LEGACY_PIPELINE_BACKEND_ALIASES: Final[frozenset[str]] = frozenset({"pipeline"})
 LEGACY_VLM_BACKEND_ALIASES: Final[frozenset[str]] = frozenset(
     {
         "vlm-engine",
@@ -69,11 +70,13 @@ def validate_effort(effort: str | None) -> str:
 
 
 def resolve_backend_and_effort(backend: str | None, effort: str | None = None) -> tuple[str, str]:
-    """同时解析 backend 与 effort，旧 VLM backend 统一转为 Hybrid high。"""
+    """同时解析 backend 与 effort，旧 pipeline/VLM backend 分别统一转为 Hybrid low/high。"""
     raw_backend = (backend or "").strip()
     resolved_backend = normalize_backend(raw_backend)
     resolved_effort = validate_effort(effort)
-    if raw_backend in LEGACY_VLM_BACKEND_ALIASES:
+    if raw_backend in LEGACY_PIPELINE_BACKEND_ALIASES:
+        resolved_effort = "low"
+    elif raw_backend in LEGACY_VLM_BACKEND_ALIASES:
         resolved_effort = "high"
     return resolved_backend, resolved_effort
 

@@ -12,7 +12,7 @@ from ...utils.image_payload import ImagePayloadCache
 from ...utils.pdf_document import PDFPage
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from ...utils.backend_options import validate_effort
-from ..pipeline.model_init import MineruHybridModel
+from ..local_model_runtime import MineruHybridModel
 from ..utils.formula_number import optimize_hybrid_formula_number_blocks
 from ..utils.middle_json_utils import apply_post_ocr
 from ..utils.para_block_utils import (
@@ -148,7 +148,7 @@ def _normalize_split_title_blocks(pages: list[PageInfo]) -> None:
 def apply_server_side_postprocess(
     pages: list[PageInfo], hybrid_pipeline_model: MineruHybridModel, _ocr_enable: bool, _vlm_ocr_enable: bool
 ) -> None:
-    """执行 Hybrid 只能在服务端完成的 post-OCR，避免客户端依赖 pipeline OCR 模型。"""
+    """执行 Hybrid 只能在服务端完成的 post-OCR，避免客户端依赖本地 OCR 模型。"""
     if not (_vlm_ocr_enable or _ocr_enable):
         _apply_post_ocr(pages, hybrid_pipeline_model)
 

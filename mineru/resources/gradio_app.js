@@ -134,8 +134,8 @@
         const showClientOptions = backend.endsWith("http-client");
         const showImageAnalysis = backend.startsWith("vlm")
             || (backend.startsWith("hybrid") && effort === "high");
-        const showOcrLanguage = backend === "pipeline";
-        const hideForceOcr = backend !== "pipeline" && !backend.startsWith("hybrid");
+        const showOcrLanguage = false;
+        const hideForceOcr = !backend.startsWith("hybrid");
         const hideHybridEffort = !backend.startsWith("hybrid");
 
         document.body.classList.toggle(CLIENT_OPTIONS_VISIBLE_CLASS, showClientOptions);

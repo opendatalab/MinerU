@@ -76,6 +76,8 @@ def parse_cmd(
         except ValueError as exc:
             exit_with_message("invalid_request", str(exc), "backend")
         resolved_tier, resolved_backend = effective_local_tier_and_backend(tier, normalized_backend)
+        if resolved_tier == "standard":
+            normalized_effort = "low"
         parse_one = partial(
             local_parse,
             tier=resolved_tier,

@@ -44,7 +44,7 @@ def _blocks_in_index_order(blocks: list[Block]) -> list[Block]:
 
 
 def _inherit_parent_code_render_metadata(block: Block, parent_block: Block) -> Block:
-    # pipeline_magic_model 会把 code_body 的 sub_type/guess_lang 提升到父 code block。
+    # 本地 Hybrid 模型会把 code_body 的 sub_type/guess_lang 提升到父 code block。
     # markdown 渲染 code_body 时需要把这两个字段临时透传回来，但不能修改原始输入。
     if block.type != BlockType.CODE_BODY:
         return block

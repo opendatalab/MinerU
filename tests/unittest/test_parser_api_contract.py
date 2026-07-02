@@ -79,13 +79,14 @@ print("ok")
     assert result.stdout.strip() == "ok"
 
 
-def test_validate_effort_accepts_low_and_keeps_legacy_vlm_high() -> None:
-    """校验 low 成为公开 Hybrid effort，旧 VLM backend 仍强制 high。"""
+def test_validate_effort_accepts_low_and_maps_legacy_backends() -> None:
+    """校验 legacy backend 输入统一映射到当前 Hybrid effort 合约。"""
     from mineru.utils.backend_options import HYBRID_EFFORT_CHOICES, resolve_backend_and_effort, validate_effort
 
     assert validate_effort("low") == "low"
     assert "low" in HYBRID_EFFORT_CHOICES
     assert resolve_backend_and_effort("vlm-engine", "low") == ("hybrid-engine", "high")
+    assert resolve_backend_and_effort("pipeline", "high") == ("hybrid-engine", "low")
 
 
 def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> None:
@@ -148,7 +149,7 @@ def test_api_client_downloads_image_sidecars_and_preserves_pdf_mapping(monkeypat
 def test_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="standard")
     middle_json = {
-        "_backend": "pipeline",
+        "_backend": "hybrid",
         "_version_name": "remote",
         "pdf_info": [{"page_idx": 0, "page_size": [100, 200]}],
     }
@@ -169,13 +170,13 @@ def test_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.MonkeyPatch
     assert len(result.pages) == 1
     assert result.pages[0].page_idx == 0
     assert result.pages[0].page_size == (100, 200)
-    assert result.pages[0]._backend == "pipeline"
+    assert result.pages[0]._backend == "hybrid"
 
 
 def test_async_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="standard")
     middle_json = {
-        "_backend": "pipeline",
+        "_backend": "hybrid",
         "pdf_info": [{"page_idx": 0, "page_size": [100, 200]}],
     }
 
@@ -203,7 +204,7 @@ def test_async_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.Monke
     assert len(result.pages) == 1
     assert result.pages[0].page_idx == 0
     assert result.pages[0].page_size == (100, 200)
-    assert result.pages[0]._backend == "pipeline"
+    assert result.pages[0]._backend == "hybrid"
 
 
 @pytest.mark.parametrize("image_path", ["../escape.png", "/tmp/escape.png", "\\escape.png", "C:\\escape.png"])
@@ -491,13 +492,13 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     app = create_app(upload_dir=str(tmp_path))
 
     assert app.state.tier == "standard"
-    assert app.state.backend == "pipeline"
+    assert app.state.backend == "hybrid-engine"
     assert app.state.concurrency == 1
     assert app.state.url_timeout == 60
     assert app.state.max_wait == 600
     assert app.state.language == "ch"
     assert app.state.ocr_mode == "auto"
-    assert app.state.effort == "medium"
+    assert app.state.effort == "low"
     assert app.state.table_enable is True
     assert app.state.formula_enable is True
     assert app.state.image_analysis is True
@@ -582,7 +583,7 @@ def test_api_server_rendered_outputs_store_image_sidecars(
                 page_idx=0,
                 page_size=(100, 100),
                 para_blocks=[block],
-                _backend="pipeline",
+                _backend="hybrid",
             )
         ],
         _image_cache=image_cache,
@@ -610,12 +611,13 @@ def test_api_server_rendered_outputs_store_image_sidecars(
             rec,
             request,
             file_store,
-            server_backend="pipeline",
+            server_backend="hybrid-engine",
             language="ch",
             ocr_mode="auto",
             table_enable=True,
             formula_enable=True,
             image_analysis=True,
+            effort="low",
         )
     )
 
@@ -647,7 +649,7 @@ def test_api_server_middle_json_preserves_backend_for_client_rendering(
                 page_idx=0,
                 page_size=(100, 100),
                 para_blocks=[block],
-                _backend="pipeline",
+                _backend="hybrid",
             )
         ]
     )
@@ -674,12 +676,13 @@ def test_api_server_middle_json_preserves_backend_for_client_rendering(
             rec,
             request,
             file_store,
-            server_backend="pipeline",
+            server_backend="hybrid-engine",
             language="ch",
             ocr_mode="auto",
             table_enable=True,
             formula_enable=True,
             image_analysis=True,
+            effort="low",
         )
     )
 
@@ -687,7 +690,7 @@ def test_api_server_middle_json_preserves_backend_for_client_rendering(
     payload = json.loads(file_store.read_file_data(output_ref.file_id).decode("utf-8"))
     roundtrip = ParseResult.from_dict(payload)
 
-    assert payload["_backend"] == "pipeline"
+    assert payload["_backend"] == "hybrid"
     assert roundtrip.content_list()
     assert roundtrip.structured_content()
 
@@ -713,7 +716,7 @@ def test_api_server_sanitizes_surrogates_in_text_outputs(
                 page_idx=0,
                 page_size=(100, 100),
                 para_blocks=[block],
-                _backend="pipeline",
+                _backend="hybrid",
             )
         ]
     )
@@ -740,12 +743,13 @@ def test_api_server_sanitizes_surrogates_in_text_outputs(
             rec,
             request,
             file_store,
-            server_backend="pipeline",
+            server_backend="hybrid-engine",
             language="ch",
             ocr_mode="auto",
             table_enable=True,
             formula_enable=True,
             image_analysis=True,
+            effort="low",
         )
     )
 
@@ -794,12 +798,13 @@ def test_api_server_logs_traceback_when_job_file_fails(
                 rec,
                 request,
                 file_store,
-                server_backend="pipeline",
+                server_backend="hybrid-engine",
                 language="ch",
                 ocr_mode="auto",
                 table_enable=True,
                 formula_enable=True,
                 image_analysis=True,
+                effort="low",
             )
         )
 
@@ -854,7 +859,8 @@ def test_api_server_tier_selects_compatible_backend(tmp_path: Path, monkeypatch:
     assert pro_app.state.backend == "hybrid-engine"
     assert [tier["id"] for tier in pro_app.state.tiers] == ["pro"]
     assert standard_app.state.tier == "standard"
-    assert standard_app.state.backend == "pipeline"
+    assert standard_app.state.backend == "hybrid-engine"
+    assert standard_app.state.effort == "low"
     assert [tier["id"] for tier in standard_app.state.tiers] == ["standard"]
 
 
@@ -863,7 +869,8 @@ def test_api_server_defaults_to_standard_tier(tmp_path: Path, monkeypatch: pytes
     app = create_app(upload_dir=str(tmp_path))
 
     assert app.state.tier == "standard"
-    assert app.state.backend == "pipeline"
+    assert app.state.backend == "hybrid-engine"
+    assert app.state.effort == "low"
     assert [tier["id"] for tier in app.state.tiers] == ["standard"]
 
 
@@ -947,9 +954,15 @@ def test_api_server_cli_reports_dependency_preflight_without_traceback(monkeypat
     assert "Traceback" not in result.output
 
 
-def test_api_server_rejects_incompatible_tier_and_backend(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="incompatible"):
-        create_app(upload_dir=str(tmp_path), tier="pro", backend="pipeline")
+def test_api_server_maps_legacy_pipeline_backend_to_standard_hybrid_low(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path), backend="pipeline")
+
+    assert app.state.tier == "standard"
+    assert app.state.backend == "hybrid-engine"
+    assert app.state.effort == "low"
 
 
 def test_api_server_allows_compatible_tier_and_explicit_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -995,6 +1008,27 @@ def test_build_parser_maps_legacy_vlm_backend_to_hybrid_high(tmp_path: Path) -> 
     assert parser.__class__.__name__ == "PdfHybridParser"
     assert parser.backend == "hybrid-engine"
     assert parser.effort == "high"
+
+
+def test_build_parser_maps_legacy_pipeline_backend_to_hybrid_low(tmp_path: Path) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+
+    parser = _build_parser(pdf, backend="pipeline", effort="high")
+
+    assert parser.__class__.__name__ == "PdfHybridParser"
+    assert parser.backend == "hybrid-engine"
+    assert parser.effort == "low"
+
+
+def test_pdf_pipeline_parser_compat_delegates_to_hybrid_low() -> None:
+    parser = parser_pdf.PdfPipelineParser(method="ocr", lang="en", effort="high")
+
+    assert isinstance(parser, parser_pdf.PdfHybridParser)
+    assert parser.backend == "hybrid-engine"
+    assert parser.method == "ocr"
+    assert parser.lang == "en"
+    assert parser.effort == "low"
 
 
 def test_pdf_hybrid_low_parser_skips_vlm_backend_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1124,12 +1158,13 @@ def test_pdf_hybrid_parser_passes_call_mode_to_backend_resolver(monkeypatch: pyt
     assert backends == ["sync-backend", "async-backend"]
 
 
-def test_api_server_accepts_parser_backend_values(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_server_accepts_public_parser_backend_values(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from mineru.utils.backend_options import HTTP_CLIENT_BACKEND_CHOICES, LOCAL_BACKEND_CHOICES, normalize_backend
 
     assert _API_SERVER_BACKENDS == LOCAL_BACKEND_CHOICES + HTTP_CLIENT_BACKEND_CHOICES
 
     _stub_api_server_dependency_preflight(monkeypatch)
+    assert "pipeline" not in _API_SERVER_BACKENDS
     assert "vlm" not in _API_SERVER_BACKENDS
     assert "vlm-engine" not in _API_SERVER_BACKENDS
     assert "vlm-http-client" not in _API_SERVER_BACKENDS
@@ -1138,10 +1173,9 @@ def test_api_server_accepts_parser_backend_values(tmp_path: Path, monkeypatch: p
     for backend in _API_SERVER_BACKENDS:
         app = create_app(upload_dir=str(tmp_path / backend), backend=backend)
         expected_backend = normalize_backend(backend)
-        expected_tier = "standard" if expected_backend == "pipeline" else "pro"
 
         assert app.state.backend == expected_backend
-        assert app.state.tier == expected_tier
+        assert app.state.tier == "pro"
 
 
 def test_api_server_stores_parser_runtime_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1158,7 +1192,7 @@ def test_api_server_stores_parser_runtime_options(tmp_path: Path, monkeypatch: p
 
     assert app.state.language == "ch"
     assert app.state.ocr_mode == "ocr"
-    assert app.state.effort == "high"
+    assert app.state.effort == "low"
     assert app.state.table_enable is False
     assert app.state.formula_enable is False
     assert app.state.image_analysis is False
@@ -1262,6 +1296,7 @@ def test_api_server_cli_help_hides_backend_aliases() -> None:
 
     assert result.exit_code == 0
     assert "hybrid-engine" in normalized_output
+    assert "pipeline" not in normalized_output
     assert "vlm-engine" not in normalized_output
     assert "vlm-http-client" not in normalized_output
     assert "hybrid-auto-engine" not in normalized_output

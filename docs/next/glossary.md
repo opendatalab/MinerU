@@ -82,7 +82,7 @@
 - 对普通用户显示 `tier`，不要把 `backend` 作为主选择项。
 - `backend` 只应暴露在 kit 或核心开发层，例如 `mineru-kit parse --backend`。
 - Tool SDK 的直接 parser 可以接受专家 `backend` 参数；API-backed parser、Doclib SDK、doclib server API 和 v1 API 不应要求用户理解或选择 `backend`。
-- `mineru-kit api-server` 启动参数应优先使用 `--tier`；也可以暴露高级 `--backend` 覆盖，用于选择该进程内部加载的 parser backend。`--backend` 使用 `pipeline`、`vlm-*` 或 `hybrid-*`，不使用裸 `vlm` / `hybrid`。启动后的 HTTP API 只暴露 `tier`。
+- `mineru-kit api-server` 启动参数应优先使用 `--tier`；也可以暴露高级 `--backend` 覆盖，用于选择该进程内部加载的 parser backend。`--backend` 公开使用 `hybrid-*`，旧 `pipeline` / `vlm-*` 仅作为隐藏兼容输入。启动后的 HTTP API 只暴露 `tier`。
 - Middle JSON 中 `_meta.backend` 表示产物来源实现，不表示用户请求的 `tier`。
 - `backend` 不应承担隐私语义；隐私由 `privacy` / `remote` / `via` 描述。
 
@@ -108,7 +108,7 @@
 |--------|------|
 | `parse()` | Tool SDK 的便捷函数 |
 | `DocumentParser` | Parser 抽象接口 |
-| `PdfPipelineParser` | 调用 pipeline backend 的 parser |
+| `PdfPipelineParser` | 旧 SDK 兼容类，内部委托 Hybrid low |
 | `PdfVlmParser` | 调用 VLM backend 的 parser |
 | `PdfHybridParser` | 调用 hybrid backend 的 parser |
 | `DocxParser` / `PptxParser` / `XlsxParser` | Office parser |

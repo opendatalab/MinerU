@@ -1988,11 +1988,11 @@ def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[di
             },
         ]
 
-    return ["pipeline", "MinerU-HTML"], [
+    return ["Hybrid-Low", "MinerU-HTML"], [
         {
             "id": "standard",
-            "description": "Pipeline-based parsing, balanced speed and quality.",
-            "current_model": "pipeline",
+            "description": "Hybrid low parsing with local lightweight models.",
+            "current_model": "hybrid-low",
         },
     ]
 
@@ -2027,12 +2027,11 @@ def create_app(
     upload_dir:
         Directory for uploaded files and parse artifacts.
     tier:
-        Server parsing tier.  ``"standard"`` selects the pipeline backend;
-        ``"pro"`` selects the Hybrid backend.  If ``backend`` is also provided,
+        Server parsing tier.  ``"standard"`` selects Hybrid low;
+        ``"pro"`` selects the default Hybrid backend.  If ``backend`` is also provided,
         both values must be compatible.
     backend:
-        Advanced server backend mode. ``"pipeline"`` exposes the traditional
-        CV+OCR pipeline; ``"hybrid-engine"`` exposes Hybrid parsing.
+        Advanced server backend mode. ``"hybrid-engine"`` exposes local Hybrid parsing.
     concurrency:
         Maximum concurrent parse jobs (default 1).
     url_timeout:
@@ -2045,7 +2044,7 @@ def create_app(
     language:
         Parser language hint.
     ocr_mode:
-        PDF OCR/text extraction mode for pipeline and hybrid backends.
+        PDF OCR/text extraction mode for Hybrid backends.
     effort:
         Hybrid backend effort level. Low uses local Hybrid processing. Medium is
         faster. High is more accurate and may take longer.
@@ -2060,6 +2059,8 @@ def create_app(
     raw_backend = backend
     tier, backend = _resolve_server_tier_and_backend(tier=tier, backend=backend)
     backend, effort = resolve_backend_and_effort(raw_backend or backend, effort)
+    if tier == "standard":
+        effort = "low"
     dependency_tier = "standard" if backend.startswith("hybrid-") and effort == "low" else tier
     _preflight_tier_dependencies(dependency_tier)
     _api_key: str | None = api_key or None
@@ -2167,7 +2168,7 @@ def create_app(
     help=(
         "Advanced parser backend "
         f"({', '.join(_API_SERVER_BACKENDS)}). "
-        "Defaults from --tier: standard -> pipeline, pro -> hybrid-engine."
+        "Defaults from --tier: standard -> hybrid-engine --effort low, pro -> hybrid-engine."
     ),
 )
 @click.option(
@@ -2205,7 +2206,7 @@ def create_app(
     "--ocr-mode",
     default="auto",
     type=click.Choice(_OCR_MODES),
-    help="PDF OCR/text extraction mode. Applies to pipeline and hybrid-* backends.",
+    help="PDF OCR/text extraction mode. Applies to hybrid-* backends.",
 )
 @click.option(
     "--effort",

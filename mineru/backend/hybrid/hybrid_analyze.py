@@ -35,14 +35,14 @@ from ...utils.pdf_document import PDFDocument
 from ...utils.pdf_image_tools import aio_load_images_from_pdf_bytes_range, load_images_from_pdf_bytes_range
 from ...utils.bbox_utils import normalize_to_int_bbox
 from ...utils.pdf_image_tools import get_crop_np_img
-from ..pipeline.model_init import (
+from ..local_model_runtime import (
+    AtomicModel,
     HybridModelSingleton,
     MineruHybridModel,
     run_layout_inference,
     run_mfr_inference,
     run_ocr_inference,
 )
-from ..pipeline.model_list import AtomicModel
 from ..utils.boxbase import calculate_overlap_area_2_minbox_area_ratio
 from ..utils.middle_json_utils import append_pages
 from ..utils.runtime_utils import exclude_progress_bar_idle_time

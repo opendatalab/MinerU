@@ -351,15 +351,13 @@ def select_backend_info_key(backend_choice):
         backend_choice = normalize_backend(backend_choice)
     except ValueError:
         pass
-    if backend_choice == "pipeline":
-        return "backend_info_pipeline"
     if backend_choice.startswith("hybrid"):
         return "backend_info_hybrid"
     return "backend_info_default"
 
 
 def select_force_ocr_info_key(backend_choice: object) -> str:
-    """根据解析后端选择强制 OCR 说明；只有 pipeline 需要提示 OCR 语言要求。"""
+    """根据解析后端选择强制 OCR 说明；当前公开解析后端统一走 Hybrid 文案。"""
     if isinstance(backend_choice, str) and backend_choice.startswith("hybrid"):
         return "force_ocr_info_hybrid"
     return "force_ocr_info"
@@ -874,15 +872,15 @@ def is_effort_option_visible(backend):
 
 
 def is_ocr_language_option_visible(backend: object) -> bool:
-    """判断 OCR 语言选项是否展示；lang 参数只对 pipeline 后端生效。"""
-    return backend == "pipeline"
+    """判断 OCR 语言选项是否展示；当前公开 Hybrid 后端不展示独立语言控件。"""
+    return False
 
 
 def is_force_ocr_option_visible(backend: object) -> bool:
     """判断强制 OCR 开关是否展示；Hybrid 不需要 lang，但仍支持强制 OCR。"""
     if not isinstance(backend, str):
         return False
-    return backend == "pipeline" or backend.startswith("hybrid")
+    return backend.startswith("hybrid")
 
 
 def should_use_client_side_output_generation(client_side_output_generation):
@@ -1001,7 +999,7 @@ def maybe_generate_local_preview(extract_root, file_name, file_suffix, backend, 
         backend=backend,
         parse_method=parse_method,
         parse_dir=parse_dir,
-        draw_span=backend.startswith("pipeline"),
+        draw_span=False,
     )
     result = run_visualization_job(visualization_job)
     if result.status != "finished":
@@ -1020,7 +1018,7 @@ async def _run_to_markdown_job(
     image_analysis=True,
     effort=DEFAULT_HYBRID_EFFORT,
     language="ch",
-    backend="pipeline",
+    backend=DEFAULT_BACKEND,
     url=None,
     api_url=None,
     client_side_output_generation=False,
@@ -1179,7 +1177,7 @@ async def stream_to_markdown(
     image_analysis=True,
     effort=DEFAULT_HYBRID_EFFORT,
     language="ch",
-    backend="pipeline",
+    backend=DEFAULT_BACKEND,
     url=None,
     api_url=None,
     client_side_output_generation=False,
@@ -1591,7 +1589,6 @@ def main(ctx,
             "max_pages": "Max convert pages",
             "backend": "Backend",
             "backend_label_hybrid": "Hybrid (Recommended)",
-            "backend_label_pipeline": "Pipeline (Stable multilingual)",
             "backend_label_vlm": "VLM (High-precision Chinese/English)",
             "backend_label_remote_vlm": "Remote VLM",
             "backend_label_remote_hybrid": "Remote Hybrid",
@@ -1606,10 +1603,8 @@ def main(ctx,
             "effort": "Hybrid effort",
             "effort_info": HYBRID_EFFORT_HELP,
             "formula_label_vlm": "Enable display formula recognition",
-            "formula_label_pipeline": "Enable formula recognition",
             "formula_label_hybrid": "Enable inline formula recognition",
             "formula_info_vlm": "If disabled, display formulas will be shown as images.",
-            "formula_info_pipeline": "If disabled, display formulas will be shown as images, and inline formulas will not be detected or parsed.",
             "formula_info_hybrid": "If disabled, inline formulas will not be detected or parsed.",
             "ocr_language": "OCR Language",
             "ocr_language_info": "Select the OCR language for image-based PDFs and images.",
@@ -1644,7 +1639,6 @@ def main(ctx,
             "office_preview_ignore_once": "Dismiss",
             "office_preview_ignore_forever": "Always dismiss",
             "backend_info_vlm": "High-precision parsing via VLM, supports Chinese and English documents only.",
-            "backend_info_pipeline": "Traditional Multi-model pipeline parsing, supports multiple languages, hallucination-free.",
             "backend_info_hybrid": "High-precision hybrid parsing, supports multiple languages.",
             "backend_info_default": "Select the backend engine for document parsing.",
         },
@@ -1662,7 +1656,6 @@ def main(ctx,
             "max_pages": "最大转换页数",
             "backend": "解析后端",
             "backend_label_hybrid": "Hybrid 推荐",
-            "backend_label_pipeline": "Pipeline 稳定多语言",
             "backend_label_vlm": "VLM 高精度中英文",
             "backend_label_remote_vlm": "Remote VLM",
             "backend_label_remote_hybrid": "Remote Hybrid",
@@ -1677,10 +1670,8 @@ def main(ctx,
             "effort": "解析强度",
             "effort_info": "Low 使用本地 Hybrid 处理；Medium 速度更快；High 精度更高，耗时可能更长。",
             "formula_label_vlm": "启用行间公式识别",
-            "formula_label_pipeline": "启用公式识别",
             "formula_label_hybrid": "启用行内公式识别",
             "formula_info_vlm": "禁用后，行间公式将显示为图片。",
-            "formula_info_pipeline": "禁用后，行间公式将显示为图片，行内公式将不会被检测或解析。",
             "formula_info_hybrid": "禁用后，行内公式将不会被检测或解析。",
             "ocr_language": "OCR 语言",
             "ocr_language_info": "为扫描版 PDF 和图片选择 OCR 语言。",
@@ -1715,7 +1706,6 @@ def main(ctx,
             "office_preview_ignore_once": "忽略",
             "office_preview_ignore_forever": "不再提示",
             "backend_info_vlm": "多模态大模型高精度解析，仅支持中英文文档。",
-            "backend_info_pipeline": "传统多模型管道解析，支持多语言，无幻觉。",
             "backend_info_hybrid": "高精度混合解析，支持多语言。",
             "backend_info_default": "选择文档解析的后端引擎。",
         },
@@ -1727,21 +1717,17 @@ def main(ctx,
             backend_choice = normalize_backend(backend_choice)
         except ValueError:
             pass
-        if backend_choice == "pipeline":
-            return i18n("formula_label_pipeline")
-        elif backend_choice.startswith("hybrid"):
+        if backend_choice.startswith("hybrid"):
             return i18n("formula_label_hybrid")
         else:
-            return i18n("formula_label_pipeline")
+            return i18n("formula_label_hybrid")
 
     def get_formula_info(backend_choice):
         try:
             backend_choice = normalize_backend(backend_choice)
         except ValueError:
             pass
-        if backend_choice == "pipeline":
-            return i18n("formula_info_pipeline")
-        elif backend_choice.startswith("hybrid"):
+        if backend_choice.startswith("hybrid"):
             return i18n("formula_info_hybrid")
         else:
             return ""
@@ -1750,7 +1736,7 @@ def main(ctx,
         return i18n(select_backend_info_key(backend_choice))
 
     def get_force_ocr_info(backend_choice):
-        """根据后端返回强制 OCR 控件说明，避免 Hybrid 显示 pipeline 的语言提示。"""
+        """根据后端返回强制 OCR 控件说明，当前公开解析后端统一使用 Hybrid 文案。"""
         return i18n(select_force_ocr_info_key(backend_choice))
 
     # 更新界面函数
@@ -1802,7 +1788,7 @@ def main(ctx,
         image_analysis=True,
         effort=DEFAULT_HYBRID_EFFORT,
         language="ch",
-        backend="pipeline",
+            backend=DEFAULT_BACKEND,
         url=None,
         request: gr.Request = None,
     ):
