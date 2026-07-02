@@ -3,6 +3,7 @@ import importlib
 import inspect
 import io
 import json
+import logging
 import sys
 import types
 from pathlib import Path
@@ -646,6 +647,125 @@ def test_api_server_middle_json_preserves_backend_for_client_rendering(
     assert payload["_backend"] == "pipeline"
     assert roundtrip.content_list()
     assert roundtrip.structured_content()
+
+
+def test_api_server_sanitizes_surrogates_in_text_outputs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    block = Block(
+        index=0,
+        type="text",
+        bbox=(0, 0, 10, 10),
+        lines=[
+            Line(
+                bbox=(0, 0, 10, 10),
+                spans=[Span(type="text", bbox=(0, 0, 10, 10), content="bad \ud800 text")],
+            )
+        ],
+    )
+    parse_result = ParseResult(
+        pages=[
+            PageInfo(
+                page_idx=0,
+                page_size=(100, 100),
+                para_blocks=[block],
+                _backend="pipeline",
+            )
+        ]
+    )
+
+    async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
+        return parse_result
+
+    monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
+    file_store = FileStore(tmp_path / "api-files")
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "tier": "standard",
+            "output_formats": ["markdown", "middle_json", "content_list", "structured_content"],
+        }
+    )
+    job_store = api_server.JobStore()
+    rec = job_store.create(request, file_store)
+
+    asyncio.run(
+        api_server._run_job(
+            rec,
+            request,
+            file_store,
+            server_backend="pipeline",
+            language="ch",
+            ocr_mode="auto",
+            table_enable=True,
+            formula_enable=True,
+            image_analysis=True,
+        )
+    )
+
+    output_files = rec.files[0].output_files
+    refs = [
+        output_files.markdown,
+        output_files.middle_json,
+        output_files.content_list,
+        output_files.structured_content,
+    ]
+
+    assert rec.status == "completed"
+    assert all(ref is not None for ref in refs)
+    for ref in refs:
+        assert ref is not None
+        decoded = file_store.read_file_data(ref.file_id).decode("utf-8")
+        assert "\ud800" not in decoded
+        assert "\ufffd" in decoded
+
+
+def test_api_server_logs_traceback_when_job_file_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
+    file_store = FileStore(tmp_path / "api-files")
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "tier": "standard",
+            "output_formats": ["middle_json"],
+        }
+    )
+    job_store = api_server.JobStore()
+    rec = job_store.create(request, file_store)
+
+    with caplog.at_level(logging.ERROR, logger="mineru.parser.api_server"):
+        asyncio.run(
+            api_server._run_job(
+                rec,
+                request,
+                file_store,
+                server_backend="pipeline",
+                language="ch",
+                ocr_mode="auto",
+                table_enable=True,
+                formula_enable=True,
+                image_analysis=True,
+            )
+        )
+
+    assert rec.status == "failed"
+    assert rec.files[0].error is not None
+    assert rec.files[0].error.message == "boom"
+    assert "Parse-server job file failed" in caplog.text
+    assert f"job_id={rec.id}" in caplog.text
+    assert "RuntimeError: boom" in caplog.text
 
 
 def test_job_list_item_uses_file_count() -> None:

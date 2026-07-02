@@ -14,6 +14,7 @@ import base64
 import hashlib
 import io
 import json
+import logging
 import os
 import pathlib
 import secrets
@@ -46,6 +47,32 @@ from .tier import PARSER_BACKENDS, TierDependencyError, ensure_tier_runtime_depe
 _API_SERVER_BACKENDS = tuple(backend for backend in PARSER_BACKENDS if backend != "flash")
 _API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
 _MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
+logger = logging.getLogger("mineru.parser.api_server")
+
+
+def _sanitize_surrogates(value: str) -> str:
+    return "".join("\ufffd" if 0xD800 <= ord(ch) <= 0xDFFF else ch for ch in value)
+
+
+def _sanitize_json_for_utf8(value: object) -> object:
+    if isinstance(value, str):
+        return _sanitize_surrogates(value)
+    if isinstance(value, list):
+        return [_sanitize_json_for_utf8(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_json_for_utf8(item) for item in value]
+    if isinstance(value, dict):
+        return {_sanitize_json_for_utf8(key): _sanitize_json_for_utf8(item) for key, item in value.items()}
+    return value
+
+
+def _text_utf8_bytes(value: str) -> bytes:
+    return _sanitize_surrogates(value).encode("utf-8")
+
+
+def _json_utf8_bytes(value: object) -> bytes:
+    return json.dumps(_sanitize_json_for_utf8(value), ensure_ascii=False).encode("utf-8")
+
 
 class ParseServerStartupError(RuntimeError):
     """Raised when the parse server cannot start because of local setup."""
@@ -1289,25 +1316,25 @@ async def _run_job(
                         continue
                     if fmt == "markdown":
                         md = result.markdown()
-                        content_bytes = (md or "").encode("utf-8")
+                        content_bytes = _text_utf8_bytes(md or "")
                         sha = hashlib.sha256(content_bytes).hexdigest()
                         file_store.store_blob(content_bytes, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.md", content_bytes, sha256hex=sha)
                         output_files.markdown = OutputFileRef(file_id=fid, bytes=len(content_bytes))
                     elif fmt == "middle_json":
-                        mj = json.dumps(result.to_dict(skip_defaults=True), ensure_ascii=False).encode("utf-8")
+                        mj = _json_utf8_bytes(result.to_dict(skip_defaults=True))
                         sha = hashlib.sha256(mj).hexdigest()
                         file_store.store_blob(mj, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.middle.json", mj, sha256hex=sha)
                         output_files.middle_json = OutputFileRef(file_id=fid, bytes=len(mj))
                     elif fmt == "content_list":
-                        cl = json.dumps(result.content_list(), ensure_ascii=False).encode("utf-8")
+                        cl = _json_utf8_bytes(result.content_list())
                         sha = hashlib.sha256(cl).hexdigest()
                         file_store.store_blob(cl, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.content_list.json", cl, sha256hex=sha)
                         output_files.content_list = OutputFileRef(file_id=fid, bytes=len(cl))
                     elif fmt == "structured_content":
-                        cl2 = json.dumps(result.structured_content(), ensure_ascii=False).encode("utf-8")
+                        cl2 = _json_utf8_bytes(result.structured_content())
                         sha = hashlib.sha256(cl2).hexdigest()
                         file_store.store_blob(cl2, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.structured_content.json", cl2, sha256hex=sha)
@@ -1359,6 +1386,13 @@ async def _run_job(
                 rec.progress.completed += 1
 
             except Exception as exc:
+                logger.exception(
+                    "Parse-server job file failed: job_id=%s file=%r tier=%s page_range=%r",
+                    rec.id,
+                    fr.name,
+                    rec.tier,
+                    fr.page_range,
+                )
                 fr.status = "failed"
                 fr.error = ErrorDetail(type="engine_error", code="parse_failed", message=str(exc))
                 rec.progress.failed += 1
