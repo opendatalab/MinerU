@@ -1073,6 +1073,7 @@ async def run_orchestrated_cli(
     metavar="[" + "|".join(HYBRID_EFFORT_CHOICES) + "]",
     help="""\b
     Hybrid parsing effort:
+      low: Local Hybrid processing without VLM calls. Image/chart analysis is disabled.
       medium: Faster parsing for most documents, balancing accuracy and efficiency. Image/chart analysis is disabled.
       high: Higher-accuracy parsing with image/chart analysis support, which may take longer.
     Without effort specified, medium will be used by default.

@@ -7,7 +7,7 @@ CANONICAL_HYBRID_ENGINE: Final = "hybrid-engine"
 DEFAULT_BACKEND: Final = CANONICAL_HYBRID_ENGINE
 DEFAULT_HYBRID_EFFORT: Final = "medium"
 DEFAULT_EFFORT: Final = DEFAULT_HYBRID_EFFORT
-HYBRID_EFFORT_HELP: Final = "Medium is faster. High is more accurate and may take longer."
+HYBRID_EFFORT_HELP: Final = "Low uses local Hybrid processing. Medium is faster. High is more accurate and may take longer."
 
 LOCAL_BACKEND_CHOICES: Final[tuple[str, ...]] = (
     "pipeline",
@@ -17,7 +17,7 @@ HTTP_CLIENT_BACKEND_CHOICES: Final[tuple[str, ...]] = (
     "hybrid-http-client",
 )
 PUBLIC_BACKEND_CHOICES: Final[tuple[str, ...]] = LOCAL_BACKEND_CHOICES + HTTP_CLIENT_BACKEND_CHOICES
-HYBRID_EFFORT_CHOICES: Final[tuple[str, ...]] = ("medium", "high")
+HYBRID_EFFORT_CHOICES: Final[tuple[str, ...]] = ("low", "medium", "high")
 BACKEND_SCHEMA_EXTRA: Final[dict[str, list[str]]] = {"enum": list(PUBLIC_BACKEND_CHOICES)}
 HYBRID_EFFORT_SCHEMA_EXTRA: Final[dict[str, list[str]]] = {"enum": list(HYBRID_EFFORT_CHOICES)}
 

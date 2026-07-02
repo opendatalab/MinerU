@@ -730,7 +730,7 @@ def do_parse(
             ensure_backend_dependencies(backend)
             backend = backend[7:]
 
-            if backend == "engine":
+            if backend == "engine" and effort != "low":
                 backend = get_vlm_engine(inference_engine="auto", is_async=False)
 
             os.environ["MINERU_VLM_TABLE_ENABLE"] = str(table_enable)
@@ -844,7 +844,7 @@ async def aio_do_parse(
             ensure_backend_dependencies(backend)
             backend = backend[7:]
 
-            if backend == "engine":
+            if backend == "engine" and effort != "low":
                 backend = get_vlm_engine(inference_engine="auto", is_async=True)
 
             os.environ["MINERU_VLM_TABLE_ENABLE"] = str(table_enable)

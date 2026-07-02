@@ -19,6 +19,20 @@ def test_finalize_client_side_pages_passes_hybrid_effort(monkeypatch) -> None:
     assert calls == ["high"]
 
 
+def test_finalize_client_side_pages_accepts_hybrid_low(monkeypatch) -> None:
+    """校验客户端 Hybrid finalize 支持 low effort，并仍走 Hybrid 分支。"""
+    calls: list[str] = []
+    pages = [PageInfo(page_idx=0, _backend="hybrid")]
+    monkeypatch.setattr(
+        "mineru.backend.hybrid.model_output_to_middle_json.finalize_middle_json_from_preproc",
+        lambda parsed_pages, effort="medium": calls.append(effort),
+    )
+
+    title_level_postprocess.finalize_client_side_pages(pages, "hybrid", effort="low")
+
+    assert calls == ["low"]
+
+
 def test_regenerate_client_side_outputs_forwards_hybrid_effort(monkeypatch, tmp_path) -> None:
     """校验客户端重建输出时继续把 Hybrid effort 传到 finalize 阶段。"""
     from mineru.cli_old import client_side_output

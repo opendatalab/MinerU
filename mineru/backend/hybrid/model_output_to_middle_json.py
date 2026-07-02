@@ -11,6 +11,7 @@ from ...utils.hash_utils import bytes_md5
 from ...utils.image_payload import ImagePayloadCache
 from ...utils.pdf_document import PDFPage
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
+from ...utils.backend_options import validate_effort
 from ..pipeline.model_init import MineruHybridModel
 from ..utils.formula_number import optimize_hybrid_formula_number_blocks
 from ..utils.middle_json_utils import apply_post_ocr
@@ -154,11 +155,12 @@ def apply_server_side_postprocess(
 
 def finalize_middle_json_from_preproc(pages: list[PageInfo], effort: str = "medium") -> None:
     """从 Hybrid preproc_blocks 执行完整 finalize，供服务端完整路径和客户端复用。"""
+    effort = validate_effort(effort)
     build_para_blocks_from_preproc(pages)
     merge_para_text_blocks(
         pages,
         auto_merge_by_det=True,
-        auto_merge_vertical_by_det=effort == "medium",
+        auto_merge_vertical_by_det=effort in {"low", "medium"},
     )
 
     table_enable = get_table_enable(os.getenv("MINERU_VLM_TABLE_ENABLE", "True").lower() == "true")

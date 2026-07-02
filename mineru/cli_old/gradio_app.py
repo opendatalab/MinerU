@@ -856,7 +856,7 @@ def resolve_parse_method(file_path, is_ocr, backend):
 
 
 def is_image_analysis_option_visible(backend, effort=DEFAULT_HYBRID_EFFORT):
-    """判断 Gradio 图片分析开关是否应展示；Hybrid medium 会强制关闭图片分析。"""
+    """判断 Gradio 图片分析开关是否应展示；只有 Hybrid high 支持图片分析。"""
     if not isinstance(backend, str):
         return False
     try:
@@ -1675,7 +1675,7 @@ def main(ctx,
             "image_analysis_enable": "启用图片分析",
             "image_analysis_info": "禁用后，图片/图表块仍保留版面位置，但跳过 VLM 图片/图表分析。",
             "effort": "解析强度",
-            "effort_info": "Medium 速度更快；High 精度更高，耗时可能更长。",
+            "effort_info": "Low 使用本地 Hybrid 处理；Medium 速度更快；High 精度更高，耗时可能更长。",
             "formula_label_vlm": "启用行间公式识别",
             "formula_label_pipeline": "启用公式识别",
             "formula_label_hybrid": "启用行内公式识别",

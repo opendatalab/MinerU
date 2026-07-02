@@ -14,7 +14,7 @@ Options:
   -m, --method [auto|txt|ocr]     Parsing method: auto (default), txt, ocr (pipeline and hybrid* backend only)
   -b, --backend [pipeline|hybrid-engine|hybrid-http-client]
                                   Parsing backend (default: hybrid-engine)
-  --effort [medium|high]          Hybrid parsing effort (default: medium)
+  --effort [low|medium|high]      Hybrid parsing effort (default: medium)
   -l, --lang [ch|ch_server|korean|ta|te|ka|th|el|arabic|east_slavic|cyrillic|devanagari]
                                   Specify document language (improves OCR accuracy, pipeline and hybrid* backend only)
   -u, --url TEXT                  OpenAI-compatible backend URL passed through to the server when using http-client
@@ -23,8 +23,9 @@ Options:
   -f, --formula BOOLEAN           Enable formula parsing (default: enabled)
   -t, --table BOOLEAN             Enable table parsing (default: enabled)
   --image-analysis BOOLEAN        Enable image/chart analysis for hybrid
-                                  backend. Hybrid medium effort automatically
-                                  disables image/chart analysis (default: enabled)
+                                  backend. Hybrid low and medium efforts
+                                  automatically disable image/chart analysis
+                                  (default: enabled)
   --client-side-output-generation BOOLEAN
                                   Generate Markdown and content lists locally
                                   from server-returned middle JSON, images, and

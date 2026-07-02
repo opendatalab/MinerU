@@ -14,7 +14,7 @@ Options:
   -m, --method [auto|txt|ocr]     解析方法：auto（默认）、txt、ocr（仅用于 pipeline 与 hybrid* 后端）
   -b, --backend [pipeline|hybrid-engine|hybrid-http-client]
                                   解析后端（默认为 hybrid-engine）
-  --effort [medium|high]          Hybrid 解析强度（默认：medium）
+  --effort [low|medium|high]      Hybrid 解析强度（默认：medium）
   -l, --lang [ch|ch_server|korean|ta|te|ka|th|el|arabic|east_slavic|cyrillic|devanagari]
                                   指定文档语言（可提升 OCR 准确率，仅用于 pipeline 与 hybrid* 后端）
   -u, --url TEXT                  当使用 http-client 时，传给服务端后端的 OpenAI 兼容地址
@@ -23,7 +23,7 @@ Options:
   -f, --formula BOOLEAN           是否启用公式解析（默认开启）
   -t, --table BOOLEAN             是否启用表格解析（默认开启）
   --image-analysis BOOLEAN        是否启用 hybrid 的图片/图表分析；Hybrid
-                                  medium 强度会自动关闭图片/图表分析（默认开启）
+                                  low 和 medium 强度会自动关闭图片/图表分析（默认开启）
   --client-side-output-generation BOOLEAN
                                   在客户端基于服务端返回的 middle JSON、图片与原文件
                                   生成 Markdown 和 content list（默认关闭）

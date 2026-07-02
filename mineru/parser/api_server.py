@@ -2047,8 +2047,8 @@ def create_app(
     ocr_mode:
         PDF OCR/text extraction mode for pipeline and hybrid backends.
     effort:
-        Hybrid backend effort level. Medium is faster. High is more accurate
-        and may take longer.
+        Hybrid backend effort level. Low uses local Hybrid processing. Medium is
+        faster. High is more accurate and may take longer.
     table_enable:
         Whether table recognition is enabled.
     formula_enable:
@@ -2060,7 +2060,8 @@ def create_app(
     raw_backend = backend
     tier, backend = _resolve_server_tier_and_backend(tier=tier, backend=backend)
     backend, effort = resolve_backend_and_effort(raw_backend or backend, effort)
-    _preflight_tier_dependencies(tier)
+    dependency_tier = "standard" if backend.startswith("hybrid-") and effort == "low" else tier
+    _preflight_tier_dependencies(dependency_tier)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
     _upload_dir.mkdir(parents=True, exist_ok=True)
@@ -2209,7 +2210,7 @@ def create_app(
 @click.option(
     "--effort",
     default="medium",
-    type=click.Choice(("medium", "high")),
+    type=click.Choice(("low", "medium", "high")),
     help=HYBRID_EFFORT_HELP,
 )
 @click.option("--disable-table", is_flag=True, help="Disable table recognition.")

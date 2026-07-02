@@ -344,7 +344,7 @@ class PdfHybridParser(PdfBaseParser):
     ) -> list[PageInfo]:
         from ..backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
 
-        backend = _resolve_hybrid_backend(self.backend, is_async=False)
+        backend = self.backend if self.effort == "low" else _resolve_hybrid_backend(self.backend, is_async=False)
         server_url = self.server_url if backend.endswith("client") else None
         os.environ["MINERU_VLM_FORMULA_ENABLE"] = "true"
         os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()
@@ -372,7 +372,7 @@ class PdfHybridParser(PdfBaseParser):
     ) -> list[PageInfo]:
         from ..backend.hybrid.hybrid_analyze import aio_doc_analyze as hybrid_aio_doc_analyze
 
-        backend = _resolve_hybrid_backend(self.backend, is_async=True)
+        backend = self.backend if self.effort == "low" else _resolve_hybrid_backend(self.backend, is_async=True)
         server_url = self.server_url if backend.endswith("client") else None
         os.environ["MINERU_VLM_FORMULA_ENABLE"] = "true"
         os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()

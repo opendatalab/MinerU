@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 
 from mineru.kit.commands import api_server, models, parse, router, vlm_server
 from mineru.kit.main import app
+from mineru.types import PageInfo
 
 runner = CliRunner()
 
@@ -636,6 +637,97 @@ def test_cli_old_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Path) ->
 
     assert seen["backend"] == "vllm-engine"
     assert seen["kwargs"]["effort"] == "high"
+
+
+def test_cli_old_hybrid_low_skips_vlm_engine_resolution(monkeypatch: Any, tmp_path: Path) -> None:
+    from mineru.cli_old import common
+
+    seen: dict[str, Any] = {}
+
+    monkeypatch.setattr(common, "_process_office_doc", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        common,
+        "_prepare_pdf_inputs",
+        lambda pdfs, start, end: [
+            SimpleNamespace(pdf_bytes=pdf, retained_page_indices=None, broken_page_indices=None) for pdf in pdfs
+        ],
+    )
+    monkeypatch.setattr(common, "ensure_backend_dependencies", lambda backend: None)
+
+    def fail_get_vlm_engine(*_args: Any, **_kwargs: Any) -> str:
+        """Hybrid low 不应触发 VLM engine 解析。"""
+        raise AssertionError("low effort should not resolve VLM engine")
+
+    def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
+        """记录 Hybrid low 仍进入 Hybrid 处理分支。"""
+        seen["backend"] = args[6]
+        seen["pdf_count"] = len(args[2])
+        seen["kwargs"] = kwargs
+
+    monkeypatch.setattr(common, "get_vlm_engine", fail_get_vlm_engine)
+    monkeypatch.setattr(common, "_process_hybrid", _fake_process_hybrid)
+
+    common.do_parse(
+        output_dir=str(tmp_path),
+        pdf_file_names=["a.pdf", "b.pdf"],
+        pdf_bytes_list=[b"%PDF-1.7\n", b"%PDF-1.7\n"],
+        p_lang_list=["ch", "ch"],
+        backend="hybrid-engine",
+        effort="low",
+    )
+
+    assert seen["backend"] == "engine"
+    assert seen["pdf_count"] == 2
+    assert seen["kwargs"]["effort"] == "low"
+
+
+def test_process_hybrid_low_calls_analyzer_per_file(monkeypatch: Any, tmp_path: Path) -> None:
+    from mineru.cli_old import common
+
+    calls: list[bytes] = []
+    outputs: list[tuple[str, str, str]] = []
+
+    def fake_doc_analyze(pdf_bytes: bytes, **_kwargs: Any) -> tuple[list[PageInfo], list[object], bool]:
+        """记录每个文件独立进入 Hybrid low analyzer。"""
+        calls.append(pdf_bytes)
+        return [PageInfo(page_idx=0, _backend="hybrid")], [], False
+
+    monkeypatch.setattr(common, "_load_hybrid_analyze_entrypoint", lambda *_args, **_kwargs: fake_doc_analyze)
+    monkeypatch.setattr(
+        common,
+        "prepare_env",
+        lambda output_dir, pdf_file_name, method: (str(tmp_path / pdf_file_name / "images"), str(tmp_path / pdf_file_name)),
+    )
+    monkeypatch.setattr(common, "FileBasedDataWriter", lambda _path: object())
+    monkeypatch.setattr(
+        common,
+        "_process_output",
+        lambda middle_json, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir, *_args, **_kwargs: outputs.append(
+            (pdf_file_name, local_md_dir, local_image_dir)
+        ),
+    )
+
+    common._process_hybrid(
+        output_dir=str(tmp_path),
+        pdf_file_names=["a.pdf", "b.pdf"],
+        pdf_bytes_list=[b"a", b"b"],
+        h_lang_list=["ch", "ch"],
+        parse_method="auto",
+        inline_formula_enable=True,
+        backend="engine",
+        f_draw_layout_bbox=False,
+        f_draw_span_bbox=False,
+        f_dump_md=True,
+        f_dump_middle_json=True,
+        f_dump_model_output=True,
+        f_dump_orig_pdf=True,
+        f_dump_content_list=True,
+        f_make_md_mode="mm_markdown",
+        effort="low",
+    )
+
+    assert calls == [b"a", b"b"]
+    assert [item[0] for item in outputs] == ["a.pdf", "b.pdf"]
 
 
 def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_high(monkeypatch: Any, tmp_path: Path) -> None:

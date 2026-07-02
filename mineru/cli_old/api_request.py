@@ -119,8 +119,8 @@ async def parse_request_form(
         Form(
             description="""The backend for parsing:
 - pipeline: More general, supports multiple languages, hallucination-free.
-- hybrid-engine: Hybrid parsing via local computing power, supports multiple languages. Use effort to switch medium/high behavior.
-- hybrid-http-client: Hybrid parsing via remote computing power but requires a little local computing power(client suitable for openai-compatible servers), supports multiple languages. Use effort to switch medium/high behavior.""",
+- hybrid-engine: Hybrid parsing via local computing power, supports multiple languages. Use effort to switch low/medium/high behavior.
+- hybrid-http-client: Hybrid parsing via remote computing power but requires a little local computing power(client suitable for openai-compatible servers), supports multiple languages. Use effort to switch low/medium/high behavior.""",
             json_schema_extra=BACKEND_SCHEMA_EXTRA,
         ),
     ] = DEFAULT_BACKEND,
@@ -129,6 +129,7 @@ async def parse_request_form(
         Form(
             description="""(Adapted only for hybrid backend) Hybrid parsing effort:
 - medium: Faster parsing for most documents, balancing accuracy and efficiency. Image/chart analysis is disabled.
+- low: Local Hybrid processing without VLM calls. Image/chart analysis is disabled.
 - high: Higher-accuracy parsing with image/chart analysis support, which may take longer.""",
             json_schema_extra=HYBRID_EFFORT_SCHEMA_EXTRA,
         ),
@@ -156,7 +157,7 @@ async def parse_request_form(
         Form(
             description=(
                 "Enable image/chart analysis for hybrid backends. "
-                "Hybrid medium effort automatically disables image/chart analysis."
+                "Hybrid low and medium efforts automatically disable image/chart analysis."
             ),
         ),
     ] = True,

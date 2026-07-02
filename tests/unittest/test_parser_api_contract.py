@@ -4,6 +4,7 @@ import inspect
 import io
 import json
 import logging
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -43,6 +44,48 @@ runner = CliRunner()
 
 def _stub_api_server_dependency_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(importlib, "import_module", lambda _module_name: object())
+
+
+def test_hybrid_analyze_import_does_not_require_vlm_utils() -> None:
+    """校验 Hybrid low 所需模块导入阶段不再强依赖 VLM 工具包。"""
+    repo_root = Path(__file__).resolve().parents[2]
+    code = """
+import importlib.abc
+import sys
+
+
+class BlockVlmUtilsFinder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        # 阻断 mineru_vl_utils 导入，用来验证 Hybrid low 的 lazy import 边界。
+        if fullname == "mineru_vl_utils" or fullname.startswith("mineru_vl_utils."):
+            raise ModuleNotFoundError(f"blocked VLM utility import: {fullname}")
+        return None
+
+
+sys.meta_path.insert(0, BlockVlmUtilsFinder())
+import mineru.backend.hybrid.hybrid_analyze
+print("ok")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
+def test_validate_effort_accepts_low_and_keeps_legacy_vlm_high() -> None:
+    """校验 low 成为公开 Hybrid effort，旧 VLM backend 仍强制 high。"""
+    from mineru.utils.backend_options import HYBRID_EFFORT_CHOICES, resolve_backend_and_effort, validate_effort
+
+    assert validate_effort("low") == "low"
+    assert "low" in HYBRID_EFFORT_CHOICES
+    assert resolve_backend_and_effort("vlm-engine", "low") == ("hybrid-engine", "high")
 
 
 def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> None:
@@ -954,6 +997,33 @@ def test_build_parser_maps_legacy_vlm_backend_to_hybrid_high(tmp_path: Path) -> 
     assert parser.effort == "high"
 
 
+def test_pdf_hybrid_low_parser_skips_vlm_backend_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
+    """校验 Hybrid low 直接进入本地分支，不解析 VLM engine。"""
+    seen: dict[str, object] = {}
+    fake_module = types.ModuleType("mineru.backend.hybrid.hybrid_analyze")
+
+    def fake_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], list[object], bool]:
+        """记录 low 分支收到的参数，并返回 Hybrid middle-json 形态。"""
+        seen.update(kwargs)
+        return [PageInfo(page_idx=0, _backend="hybrid")], [], False
+
+    fake_module.doc_analyze = fake_doc_analyze
+    monkeypatch.setitem(sys.modules, "mineru.backend.hybrid.hybrid_analyze", fake_module)
+
+    def fail_resolve_backend(*_args: object, **_kwargs: object) -> str:
+        """low 不应触发 VLM backend resolver。"""
+        raise AssertionError("low effort should not resolve VLM backend")
+
+    monkeypatch.setattr(parser_pdf, "_resolve_hybrid_backend", fail_resolve_backend)
+
+    parser = parser_pdf.PdfHybridParser(backend="hybrid-engine", effort="low")
+    pages = parser._run_analysis(b"%PDF-1.7\n")
+
+    assert pages[0]._backend == "hybrid"
+    assert seen["backend"] == "hybrid-engine"
+    assert seen["effort"] == "low"
+
+
 @pytest.mark.parametrize(
     ("resolver", "backend"),
     [
@@ -1127,13 +1197,13 @@ def test_api_server_cli_exposes_parser_runtime_options() -> None:
 def test_api_server_cli_accepts_backend_alias(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, str] = {}
 
-    def _fake_run(app, *, host: str, port: int) -> None:
+    def _fake_run(server) -> None:
         """记录 Click CLI 创建出的应用配置，避免测试启动真实 uvicorn 服务。"""
-        seen["backend"] = app.state.backend
-        seen["host"] = host
-        seen["port"] = str(port)
+        seen["backend"] = server.config.app.state.backend
+        seen["host"] = server.config.host
+        seen["port"] = str(server.config.port)
 
-    monkeypatch.setattr("uvicorn.run", _fake_run)
+    monkeypatch.setattr("uvicorn.Server.run", _fake_run)
 
     result = runner.invoke(main, ["--backend", "hybrid-auto-engine", "--host", "0.0.0.0", "--port", "15981"])
 
@@ -1144,12 +1214,12 @@ def test_api_server_cli_accepts_backend_alias(monkeypatch: pytest.MonkeyPatch) -
 def test_api_server_cli_maps_legacy_vlm_backend_to_hybrid_high(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, str] = {}
 
-    def _fake_run(app, *, host: str, port: int) -> None:
+    def _fake_run(server) -> None:
         """记录 legacy VLM backend 进入 CLI 后的实际 parser 配置。"""
-        seen["backend"] = app.state.backend
-        seen["effort"] = app.state.effort
+        seen["backend"] = server.config.app.state.backend
+        seen["effort"] = server.config.app.state.effort
 
-    monkeypatch.setattr("uvicorn.run", _fake_run)
+    monkeypatch.setattr("uvicorn.Server.run", _fake_run)
 
     result = runner.invoke(main, ["--backend", "vlm-http-client", "--host", "0.0.0.0", "--port", "15983"])
 
@@ -1160,11 +1230,11 @@ def test_api_server_cli_maps_legacy_vlm_backend_to_hybrid_high(monkeypatch: pyte
 def test_api_server_cli_normalizes_hidden_language_alias(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, str] = {}
 
-    def _fake_run(app, *, host: str, port: int) -> None:
+    def _fake_run(server) -> None:
         """记录 Click CLI 创建出的应用语言配置，避免测试启动真实服务。"""
-        seen["language"] = app.state.language
+        seen["language"] = server.config.app.state.language
 
-    monkeypatch.setattr("uvicorn.run", _fake_run)
+    monkeypatch.setattr("uvicorn.Server.run", _fake_run)
 
     result = runner.invoke(main, ["--language", "latin", "--host", "0.0.0.0", "--port", "15982"])
 
@@ -1202,7 +1272,9 @@ def test_api_server_cli_effort_help_matches_gradio_copy() -> None:
     """校验 api server 的 effort 帮助文案与 Gradio 英文提示保持一致。"""
     effort_option = next(param for param in main.params if "--effort" in param.opts)
 
-    assert effort_option.help == "Medium is faster. High is more accurate and may take longer."
+    assert effort_option.help == (
+        "Low uses local Hybrid processing. Medium is faster. High is more accurate and may take longer."
+    )
 
 
 def test_api_server_public_exports_are_runtime_entrypoints_only() -> None:

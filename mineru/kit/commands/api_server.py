@@ -25,7 +25,7 @@ def api_server_cmd(
     max_wait: int = 600,
     language: str = "ch",
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
-    effort: Literal["medium", "high"] = "medium",
+    effort: Literal["low", "medium", "high"] = "medium",
     disable_table: bool = False,
     disable_formula: bool = False,
     disable_image_analysis: bool = False,
