@@ -49,6 +49,7 @@ from mineru.utils.backend_options import (
     HYBRID_EFFORT_CHOICES,
     HYBRID_EFFORT_HELP,
     LOCAL_BACKEND_CHOICES,
+    normalize_backend,
 )
 from mineru.utils.ocr_language import PUBLIC_OCR_LANGUAGE_CHOICES, validate_public_ocr_lang
 
@@ -346,8 +347,10 @@ def select_backend_info_key(backend_choice):
     """根据解析后端选择说明文案的 i18n key。"""
     if not isinstance(backend_choice, str):
         return "backend_info_default"
-    if backend_choice.startswith("vlm"):
-        return "backend_info_vlm"
+    try:
+        backend_choice = normalize_backend(backend_choice)
+    except ValueError:
+        pass
     if backend_choice == "pipeline":
         return "backend_info_pipeline"
     if backend_choice.startswith("hybrid"):
@@ -845,8 +848,10 @@ def resolve_parse_method(file_path, is_ocr, backend):
     file_suffix = Path(file_path).suffix.lower().lstrip('.')
     if file_suffix in office_suffixes:
         return "auto"
-    if backend.startswith("vlm"):
-        return "auto"
+    try:
+        backend = normalize_backend(backend)
+    except ValueError:
+        pass
     return "ocr" if is_ocr else "auto"
 
 
@@ -854,8 +859,10 @@ def is_image_analysis_option_visible(backend, effort=DEFAULT_HYBRID_EFFORT):
     """判断 Gradio 图片分析开关是否应展示；Hybrid medium 会强制关闭图片分析。"""
     if not isinstance(backend, str):
         return False
-    if backend.startswith("vlm"):
-        return True
+    try:
+        backend = normalize_backend(backend)
+    except ValueError:
+        pass
     if backend.startswith("hybrid"):
         return effort == "high"
     return False
@@ -1716,9 +1723,11 @@ def main(ctx,
 
     # 根据后端类型获取公式识别标签（闭包函数以支持 i18n）
     def get_formula_label(backend_choice):
-        if backend_choice.startswith("vlm"):
-            return i18n("formula_label_vlm")
-        elif backend_choice == "pipeline":
+        try:
+            backend_choice = normalize_backend(backend_choice)
+        except ValueError:
+            pass
+        if backend_choice == "pipeline":
             return i18n("formula_label_pipeline")
         elif backend_choice.startswith("hybrid"):
             return i18n("formula_label_hybrid")
@@ -1726,9 +1735,11 @@ def main(ctx,
             return i18n("formula_label_pipeline")
 
     def get_formula_info(backend_choice):
-        if backend_choice.startswith("vlm"):
-            return i18n("formula_info_vlm")
-        elif backend_choice == "pipeline":
+        try:
+            backend_choice = normalize_backend(backend_choice)
+        except ValueError:
+            pass
+        if backend_choice == "pipeline":
             return i18n("formula_info_pipeline")
         elif backend_choice.startswith("hybrid"):
             return i18n("formula_info_hybrid")

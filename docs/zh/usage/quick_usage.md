@@ -107,8 +107,8 @@ mineru -p <input_path> -o <output_path>
   > ```bash
   > mineru -p <input_path> -o <output_path> -b hybrid-http-client -u http://127.0.0.1:30000
   > ```
-  >`vlm-http-client` 是轻量远程 client，用法上不要求本地安装 `torch`。
   >`hybrid-http-client` 需要本地具备 `mineru[pipeline]` 及 `torch` 等 pipeline 依赖。
+  >兼容旧输入 `vlm-http-client`，但会映射为 `hybrid-http-client` 且使用 `--effort high`。
 
 > [!NOTE]
 > 所有`vllm/lmdeploy`官方支持的参数都可用通过命令行参数传递给 MinerU，包括以下命令:`mineru`、`mineru-openai-server`、`mineru-gradio`、`mineru-api`、`mineru-router`，

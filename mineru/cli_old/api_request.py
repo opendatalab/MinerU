@@ -11,6 +11,7 @@ from mineru.utils.backend_options import (
     DEFAULT_HYBRID_EFFORT,
     HYBRID_EFFORT_SCHEMA_EXTRA,
     normalize_public_backend,
+    resolve_backend_and_effort,
     validate_effort,
 )
 from mineru.utils.ocr_language import (
@@ -81,6 +82,14 @@ def validate_parse_effort(effort: str) -> str:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def resolve_parse_backend_and_effort(backend: str, effort: str) -> tuple[str, str]:
+    """联合校验公开解析后端和 effort，确保旧 VLM 值统一落到 Hybrid high。"""
+    try:
+        return resolve_backend_and_effort(backend, effort)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def validate_parse_lang_list(lang_list: list[str]) -> list[str]:
     """校验公开 API 允许的 OCR 语言列表，并归一隐藏兼容别名。"""
     try:
@@ -110,8 +119,6 @@ async def parse_request_form(
         Form(
             description="""The backend for parsing:
 - pipeline: More general, supports multiple languages, hallucination-free.
-- vlm-engine: High accuracy via local computing power, supports Chinese and English documents only.
-- vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers), supports Chinese and English documents only.
 - hybrid-engine: Hybrid parsing via local computing power, supports multiple languages. Use effort to switch medium/high behavior.
 - hybrid-http-client: Hybrid parsing via remote computing power but requires a little local computing power(client suitable for openai-compatible servers), supports multiple languages. Use effort to switch medium/high behavior.""",
             json_schema_extra=BACKEND_SCHEMA_EXTRA,
@@ -148,7 +155,7 @@ async def parse_request_form(
         bool,
         Form(
             description=(
-                "Enable image/chart analysis for VLM and hybrid backends. "
+                "Enable image/chart analysis for hybrid backends. "
                 "Hybrid medium effort automatically disables image/chart analysis."
             ),
         ),
@@ -156,7 +163,7 @@ async def parse_request_form(
     server_url: Annotated[
         Optional[str],
         Form(
-            description="(Adapted only for <vlm/hybrid>-http-client backend)openai compatible server url, e.g., http://127.0.0.1:30000",
+            description="(Adapted only for hybrid-http-client backend)openai compatible server url, e.g., http://127.0.0.1:30000",
         ),
     ] = None,
     return_md: Annotated[
@@ -211,8 +218,7 @@ async def parse_request_form(
     ] = 99999,
 ) -> ParseRequestOptions:
     """解析 API/Router 共用的 multipart 表单，并保持 Swagger 参数同源。"""
-    backend = validate_parse_backend(backend)
-    effort = validate_parse_effort(effort)
+    backend, effort = resolve_parse_backend_and_effort(backend, effort)
     validate_public_http_client_request(
         public_bind_exposed=bool(
             getattr(request.app.state, "public_bind_exposed", False)

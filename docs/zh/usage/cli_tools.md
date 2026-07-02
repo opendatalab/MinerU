@@ -12,7 +12,7 @@ Options:
   -o, --output PATH               输出目录（必填）
   --api-url TEXT                  MinerU FastAPI 服务地址；不传时自动拉起本地临时 mineru-api
   -m, --method [auto|txt|ocr]     解析方法：auto（默认）、txt、ocr（仅用于 pipeline 与 hybrid* 后端）
-  -b, --backend [pipeline|vlm-engine|hybrid-engine|vlm-http-client|hybrid-http-client]
+  -b, --backend [pipeline|hybrid-engine|hybrid-http-client]
                                   解析后端（默认为 hybrid-engine）
   --effort [medium|high]          Hybrid 解析强度（默认：medium）
   -l, --lang [ch|ch_server|korean|ta|te|ka|th|el|arabic|east_slavic|cyrillic|devanagari]
@@ -22,7 +22,7 @@ Options:
   -e, --end INTEGER               结束解析的页码（从 0 开始）
   -f, --formula BOOLEAN           是否启用公式解析（默认开启）
   -t, --table BOOLEAN             是否启用表格解析（默认开启）
-  --image-analysis BOOLEAN        是否启用 VLM 与 hybrid 的图片/图表分析；Hybrid
+  --image-analysis BOOLEAN        是否启用 hybrid 的图片/图表分析；Hybrid
                                   medium 强度会自动关闭图片/图表分析（默认开启）
   --client-side-output-generation BOOLEAN
                                   在客户端基于服务端返回的 middle JSON、图片与原文件

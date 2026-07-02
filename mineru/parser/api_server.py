@@ -31,7 +31,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..types import Tier
-from ..utils.backend_options import HYBRID_EFFORT_HELP, validate_effort
+from ..utils.backend_options import HYBRID_EFFORT_HELP, resolve_backend_and_effort
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from .tier import PARSER_BACKENDS, resolve_tier_and_backend
 
@@ -1921,7 +1921,7 @@ def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[di
         return ["MinerU2.5-Pro-2604-1.2B", "MinerU-HTML"], [
             {
                 "id": "pro",
-                "description": "VLM-based high-accuracy parsing.",
+                "description": "Hybrid high-accuracy parsing.",
                 "current_model": "MinerU2.5-Pro-2604-1.2B",
             },
         ]
@@ -1959,11 +1959,11 @@ def create_app(
         Directory for uploaded files and parse artifacts.
     tier:
         Server parsing tier.  ``"standard"`` selects the pipeline backend;
-        ``"pro"`` selects the VLM backend.  If ``backend`` is also provided,
+        ``"pro"`` selects the Hybrid backend.  If ``backend`` is also provided,
         both values must be compatible.
     backend:
         Advanced server backend mode. ``"pipeline"`` exposes the traditional
-        CV+OCR pipeline; ``"vlm"`` exposes ``MinerU2.5-Pro-2604-1.2B``.
+        CV+OCR pipeline; ``"hybrid-engine"`` exposes Hybrid parsing.
     concurrency:
         Maximum concurrent parse jobs (default 1).
     url_timeout:
@@ -1985,11 +1985,12 @@ def create_app(
     formula_enable:
         Whether formula recognition is enabled.
     image_analysis:
-        Whether image analysis is enabled for VLM/hybrid backends.
+        Whether image analysis is enabled for Hybrid backends.
     """
     upload_dir = upload_dir or ""
+    raw_backend = backend
     tier, backend = _resolve_server_tier_and_backend(tier=tier, backend=backend)
-    effort = validate_effort(effort)
+    backend, effort = resolve_backend_and_effort(raw_backend or backend, effort)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
     _upload_dir.mkdir(parents=True, exist_ok=True)
@@ -2142,7 +2143,7 @@ def create_app(
 )
 @click.option("--disable-table", is_flag=True, help="Disable table recognition.")
 @click.option("--disable-formula", is_flag=True, help="Disable formula recognition.")
-@click.option("--disable-image-analysis", is_flag=True, help="Disable image analysis for VLM/hybrid backends.")
+@click.option("--disable-image-analysis", is_flag=True, help="Disable image analysis for Hybrid backends.")
 @click.option(
     "--api-key",
     default=None,

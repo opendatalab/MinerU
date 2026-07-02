@@ -548,7 +548,7 @@ def test_parse_forwards_flash_backend(monkeypatch: Any, tmp_path: Path) -> None:
     assert output.read_text(encoding="utf-8") == "# demo\n"
 
 
-def test_cli_old_vlm_branch_does_not_forward_effort(monkeypatch: Any, tmp_path: Path) -> None:
+def test_cli_old_legacy_vlm_branch_maps_to_hybrid_high(monkeypatch: Any, tmp_path: Path) -> None:
     from mineru.cli_old import common
 
     seen: dict[str, Any] = {}
@@ -561,14 +561,16 @@ def test_cli_old_vlm_branch_does_not_forward_effort(monkeypatch: Any, tmp_path: 
             SimpleNamespace(pdf_bytes=pdf, retained_page_indices=None, broken_page_indices=None) for pdf in pdfs
         ],
     )
+    monkeypatch.setattr(common, "ensure_backend_dependencies", lambda backend: None)
     monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=False: "vllm-engine")
 
-    def _fake_process_vlm(*args: Any, **kwargs: Any) -> None:
-        """记录 VLM 分支收到的 kwargs，确认 hybrid effort 不会泄漏进模型初始化。"""
+    def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
+        """记录 legacy VLM 输入最终进入 Hybrid high 分支。"""
         seen["backend"] = args[3]
+        seen["hybrid_backend"] = args[6]
         seen["kwargs"] = kwargs
 
-    monkeypatch.setattr(common, "_process_vlm", _fake_process_vlm)
+    monkeypatch.setattr(common, "_process_hybrid", _fake_process_hybrid)
 
     common.do_parse(
         output_dir=str(tmp_path),
@@ -579,9 +581,10 @@ def test_cli_old_vlm_branch_does_not_forward_effort(monkeypatch: Any, tmp_path: 
         effort="high",
     )
 
-    assert seen["backend"] == "vllm-engine"
-    assert "effort" not in seen["kwargs"]
+    assert seen["hybrid_backend"] == "vllm-engine"
+    assert seen["kwargs"]["effort"] == "high"
     assert seen["kwargs"]["image_analysis"] is True
+    assert not hasattr(common, "_process_vlm")
 
 
 def test_cli_old_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Path) -> None:
@@ -620,7 +623,7 @@ def test_cli_old_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Path) ->
     assert seen["kwargs"]["effort"] == "high"
 
 
-def test_cli_old_async_vlm_branch_does_not_forward_effort(monkeypatch: Any, tmp_path: Path) -> None:
+def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_high(monkeypatch: Any, tmp_path: Path) -> None:
     from mineru.cli_old import common
 
     seen: dict[str, Any] = {}
@@ -633,14 +636,16 @@ def test_cli_old_async_vlm_branch_does_not_forward_effort(monkeypatch: Any, tmp_
             SimpleNamespace(pdf_bytes=pdf, retained_page_indices=None, broken_page_indices=None) for pdf in pdfs
         ],
     )
+    monkeypatch.setattr(common, "ensure_backend_dependencies", lambda backend: None)
     monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=True: "vllm-async-engine")
 
-    async def _fake_async_process_vlm(*args: Any, **kwargs: Any) -> None:
-        """记录异步 VLM 分支收到的 kwargs，确认 effort 不会进入异步模型初始化。"""
+    async def _fake_async_process_hybrid(*args: Any, **kwargs: Any) -> None:
+        """记录异步 legacy VLM 输入最终进入 Hybrid high 分支。"""
         seen["backend"] = args[3]
+        seen["hybrid_backend"] = args[6]
         seen["kwargs"] = kwargs
 
-    monkeypatch.setattr(common, "_async_process_vlm", _fake_async_process_vlm)
+    monkeypatch.setattr(common, "_async_process_hybrid", _fake_async_process_hybrid)
 
     asyncio.run(
         common.aio_do_parse(
@@ -653,9 +658,10 @@ def test_cli_old_async_vlm_branch_does_not_forward_effort(monkeypatch: Any, tmp_
         )
     )
 
-    assert seen["backend"] == "vllm-async-engine"
-    assert "effort" not in seen["kwargs"]
+    assert seen["hybrid_backend"] == "vllm-async-engine"
+    assert seen["kwargs"]["effort"] == "high"
     assert seen["kwargs"]["image_analysis"] is True
+    assert not hasattr(common, "_async_process_vlm")
 
 
 def test_cli_old_async_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Path) -> None:

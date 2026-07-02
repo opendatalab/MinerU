@@ -62,7 +62,7 @@ def preload_vlm_model(*, model_kwargs: Mapping[str, Any] | None = None) -> str:
     vlm_engine = get_vlm_engine("auto", is_async=True)
     logger.info(f"Start init {vlm_engine}...")
 
-    from mineru.backend.vlm.vlm_analyze import ModelSingleton
+    from mineru.model.vlm.runtime import ModelSingleton
 
     model_singleton = ModelSingleton()
     model_singleton.get_model(

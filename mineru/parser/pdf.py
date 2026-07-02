@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..types import PageInfo
-from ..utils.backend_options import validate_effort
+from ..utils.backend_options import resolve_backend_and_effort, validate_effort
 from ..utils.image_payload import ImagePayloadCache
 from .base import DocumentParser, ParseResult
 
@@ -24,18 +24,6 @@ class _PreparedPdfInput:
     pdf_bytes: bytes
     retained_page_indices: list[int] | None = None
     broken_page_indices: list[int] | None = None
-
-
-def _resolve_vlm_backend(backend: str, *, is_async: bool = False) -> str:
-    """根据同步/异步调用形态解析公开 VLM backend 到具体执行 engine。"""
-    if not backend.startswith("vlm-"):
-        return backend
-    resolved = backend[4:]
-    if resolved in {"engine", "auto-engine"}:
-        from ..utils.engine_utils import get_vlm_engine
-
-        resolved = get_vlm_engine(inference_engine="auto", is_async=is_async)
-    return resolved
 
 
 def _resolve_hybrid_backend(backend: str, *, is_async: bool = False) -> str:
@@ -234,56 +222,6 @@ class PdfBaseParser(DocumentParser):
         )
 
 
-class PdfVlmParser(PdfBaseParser):
-    """PDF / image parser using the VLM (Vision Language Model) backend."""
-
-    _parse_method = "vlm"
-    _backend = "vlm"
-
-    def _run_analysis(
-        self,
-        pdf_bytes: bytes,
-        page_index_map: list[int] | None = None,
-        image_cache: ImagePayloadCache | None = None,
-    ) -> list[PageInfo]:
-        from ..backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
-
-        backend = _resolve_vlm_backend(self.backend, is_async=False)
-        os.environ["MINERU_VLM_FORMULA_ENABLE"] = str(self.formula_enable).lower()
-        os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()
-
-        return vlm_doc_analyze(
-            pdf_bytes,
-            backend=backend,
-            server_url=self.server_url,
-            image_analysis=self.image_analysis,
-            page_index_map=page_index_map,
-            image_cache=image_cache,
-        )[0]
-
-    async def _arun_analysis(
-        self,
-        pdf_bytes: bytes,
-        page_index_map: list[int] | None = None,
-        image_cache: ImagePayloadCache | None = None,
-    ) -> list[PageInfo]:
-        from ..backend.vlm.vlm_analyze import aio_doc_analyze as vlm_aio_doc_analyze
-
-        backend = _resolve_vlm_backend(self.backend, is_async=True)
-        os.environ["MINERU_VLM_FORMULA_ENABLE"] = str(self.formula_enable).lower()
-        os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()
-
-        middle_json, _ = await vlm_aio_doc_analyze(
-            pdf_bytes,
-            backend=backend,
-            server_url=self.server_url,
-            image_analysis=self.image_analysis,
-            page_index_map=page_index_map,
-            image_cache=image_cache,
-        )
-        return middle_json
-
-
 class PdfPipelineParser(PdfBaseParser):
     """PDF / image parser using the pipeline (CV+OCR) backend."""
 
@@ -450,6 +388,17 @@ class PdfHybridParser(PdfBaseParser):
         )
 
         return middle_json
+
+
+class PdfVlmParser(PdfHybridParser):
+    """保留旧 SDK 类名，内部统一委托 Hybrid high 解析。"""
+
+    def __init__(self, **kwargs: Any) -> None:
+        """将旧 PdfVlmParser 构造参数归一到 Hybrid high，避免继续暴露独立 VLM backend。"""
+        backend = kwargs.pop("backend", "vlm-engine")
+        kwargs.pop("effort", None)
+        resolved_backend, resolved_effort = resolve_backend_and_effort(backend, "high")
+        super().__init__(backend=resolved_backend, effort=resolved_effort, **kwargs)
 
 
 class PdfFlashParser(PdfBaseParser):

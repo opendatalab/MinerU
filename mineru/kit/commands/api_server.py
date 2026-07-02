@@ -6,7 +6,7 @@ import typer
 
 from ...parser import api_server as parser_api_server
 from ...parser.tier import PARSER_BACKENDS
-from ...utils.backend_options import normalize_public_backend
+from ...utils.backend_options import resolve_backend_and_effort
 from ...utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..errors import exit_with_message
 
@@ -32,7 +32,9 @@ def api_server_cmd(
     api_key: str | None = None,
 ) -> None:
     try:
-        normalized_backend = normalize_public_backend(backend) if backend is not None else None
+        normalized_backend, normalized_effort = (
+            resolve_backend_and_effort(backend, effort) if backend is not None else (None, effort)
+        )
     except ValueError as exc:
         exit_with_message("invalid_request", str(exc), "backend")
     try:
@@ -58,7 +60,7 @@ def api_server_cmd(
                 "--ocr-mode",
                 ocr_mode,
                 "--effort",
-                effort,
+                normalized_effort,
                 *(["--tier", effective_tier] if effective_tier else []),
                 *(["--upload-dir", upload_dir] if upload_dir else []),
                 *(["--backend", normalized_backend] if normalized_backend else []),
