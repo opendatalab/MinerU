@@ -2499,6 +2499,32 @@ def test_doc_content_invalid_after_cursor_returns_invalid_locator(tmp_path: Path
     asyncio.run(_run())
 
 
+def test_read_locator_out_of_range_page_returns_page_range_invalid(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.sqlite"))
+        await db.initialize()
+        server = DoclibServer(SimpleNamespace(db=db, data_dir=str(tmp_path)))
+        now = 1000
+        sha256 = "a" * 64
+        short_id = "aaaaaaa"
+        await db.execute(
+            "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (sha256, short_id, 12, "pdf", 4, now, now),
+        )
+        try:
+            with pytest.raises(InvalidRequestError) as exc_info:
+                await server.read_content(f"doc:{short_id}/tier:flash/page:500")
+
+            assert exc_info.value.code == "page_range_invalid"
+            assert exc_info.value.param == "page_range"
+            assert exc_info.value.message == "Page range does not select any pages: 500"
+        finally:
+            await db.close()
+
+    asyncio.run(_run())
+
+
 def test_get_file_by_path_missing_doclib_record_message_is_not_disk_file_not_found(tmp_path: Path) -> None:
     class _ParseSvc:
         async def ensure_ingested(self, path: str) -> None:
