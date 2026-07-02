@@ -1424,6 +1424,8 @@ def _locator_page_range(locator: _LocatorParts, doc: DocRow, context: int) -> st
     page_count = doc.get("page_count") or 1
     if locator.page_no is None:
         return _normalize_content_page_range(None, None, doc)
+    if locator.page_no > page_count:
+        return _normalize_page_range(str(locator.page_no), page_count)
     start = max(1, locator.page_no - context)
     end = min(page_count, locator.page_no + context)
     return _range_str(start, end)
