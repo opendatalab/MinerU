@@ -12,7 +12,7 @@ from mineru.utils.backend_options import DEFAULT_HYBRID_EFFORT, normalize_backen
 from mineru.utils.title_level_postprocess import finalize_client_side_pages
 from mineru.version import __version__
 
-PDF_BACKENDS = {"pipeline", "vlm", "hybrid"}
+PDF_BACKENDS = {"pipeline", "hybrid"}
 
 
 def _write_json(path: Path, payload: Any) -> None:
@@ -27,8 +27,6 @@ def _normalize_client_side_backend(backend: str) -> str:
     """将旧 CLI 传入的后端选项归一化为客户端重渲染使用的后端族。"""
     if backend == "office":
         return "office"
-    if backend == "vlm":
-        return "vlm"
     try:
         backend = normalize_backend(backend)
     except ValueError:

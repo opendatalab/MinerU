@@ -232,7 +232,7 @@ def _image_page(image_path: str) -> PageInfo:
         lines=[Line(bbox=(1, 1, 20, 20), spans=[image_span])],
     )
     image_block = Block(index=0, type=BlockType.IMAGE, bbox=(1, 1, 20, 20), blocks=[body])
-    return PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="vlm")
+    return PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="hybrid")
 
 
 def _image_result(image_path: str, image_bytes: bytes = b"image-bytes") -> ParseResult:

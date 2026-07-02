@@ -560,7 +560,7 @@ class PageInfo(_DocElement):
     discarded_blocks: list[Block] = field(default_factory=list)
 
     # Temporary — will be removed once the render layer converges.
-    _backend: Literal["pipeline", "vlm", "hybrid", "office"] | None = None
+    _backend: Literal["pipeline", "hybrid", "office"] | None = None
 
 
 @dataclass

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import time
-import os
 from copy import deepcopy
 from typing import Any
 
@@ -12,8 +11,6 @@ from ..types import PageInfo
 from .backend_options import DEFAULT_HYBRID_EFFORT, validate_effort
 from .config_reader import get_llm_aided_config
 from .llm_aided import llm_aided_title
-
-SUPPORTED_PDF_BACKENDS = {"pipeline", "vlm", "hybrid"}
 
 
 def _resolve_title_aided_config() -> dict[str, Any] | None:
@@ -47,23 +44,6 @@ def finalize_client_side_pages(pages: list[PageInfo], backend: str, effort: str 
         from mineru.backend.pipeline.model_output_to_middle_json import finalize_middle_json_from_preproc
 
         finalize_middle_json_from_preproc(pages)
-    elif backend == "vlm":
-        from mineru.backend.utils.para_block_utils import (
-            build_para_blocks_from_preproc,
-            cleanup_internal_para_block_metadata,
-            merge_para_text_blocks,
-        )
-        from mineru.backend.utils.runtime_utils import cross_page_table_merge
-        from mineru.utils.config_reader import get_table_enable
-
-        # 旧 VLM middle_json 只作为读取兼容：复用纯后处理链，不再依赖独立 VLM backend。
-        build_para_blocks_from_preproc(pages)
-        merge_para_text_blocks(pages)
-        table_enable = get_table_enable(os.getenv("MINERU_VLM_TABLE_ENABLE", "True").lower() == "true")
-        if table_enable:
-            cross_page_table_merge(pages)
-        apply_title_leveling_to_pdf_info(pages)
-        cleanup_internal_para_block_metadata(pages)
     elif backend == "hybrid":
         from mineru.backend.hybrid.model_output_to_middle_json import finalize_middle_json_from_preproc
 

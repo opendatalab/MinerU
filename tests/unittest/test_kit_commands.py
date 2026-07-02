@@ -75,7 +75,7 @@ class BlockLocalPipelineFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
         if fullname in {"mineru.cli_old.common", "mineru.cli_old.vlm_preload"}:
             raise ModuleNotFoundError(f"blocked local dependency import: {fullname}")
-        if fullname == "mineru.backend.vlm.vlm_analyze" or fullname.startswith("mineru.backend.office."):
+        if fullname.startswith("mineru.backend.office."):
             raise ModuleNotFoundError(f"blocked local dependency import: {fullname}")
         return None
 

@@ -78,11 +78,6 @@ def resolve_backend_and_effort(backend: str | None, effort: str | None = None) -
     return resolved_backend, resolved_effort
 
 
-def is_vlm_backend(backend: str) -> bool:
-    """判断规范化后的 backend 是否属于 VLM 后端族；新解析入口不再产生该族。"""
-    return normalize_backend(backend).startswith("vlm-")
-
-
 def is_hybrid_backend(backend: str) -> bool:
     """判断规范化后的 backend 是否属于 Hybrid 后端族。"""
     return normalize_backend(backend).startswith("hybrid-")

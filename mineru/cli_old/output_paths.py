@@ -5,7 +5,6 @@ from mineru.utils.backend_options import normalize_backend
 
 
 OFFICE_PARSE_DIR_NAME = "office"
-VLM_PARSE_DIR_NAME = "vlm"
 
 
 def build_parse_dir(

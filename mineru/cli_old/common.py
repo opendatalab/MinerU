@@ -889,7 +889,7 @@ if __name__ == "__main__":
             [read_fn(Path(pdf_path))],
             ["ch"],
             end_page_id=10,
-            backend="vlm-huggingface",
+            backend="hybrid-engine",
             # backend = 'pipeline'
         )
     except Exception as e:
