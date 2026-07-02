@@ -7,7 +7,9 @@ CANONICAL_HYBRID_ENGINE: Final = "hybrid-engine"
 DEFAULT_BACKEND: Final = CANONICAL_HYBRID_ENGINE
 DEFAULT_HYBRID_EFFORT: Final = "medium"
 DEFAULT_EFFORT: Final = DEFAULT_HYBRID_EFFORT
-HYBRID_EFFORT_HELP: Final = "Low uses local Hybrid processing. Medium is faster. High is more accurate and may take longer."
+HYBRID_EFFORT_HELP: Final = (
+    "Higher effort improves parsing quality but may be slower; lower effort is faster but may reduce quality."
+)
 
 LOCAL_BACKEND_CHOICES: Final[tuple[str, ...]] = (
     CANONICAL_HYBRID_ENGINE,

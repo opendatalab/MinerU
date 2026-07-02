@@ -537,7 +537,26 @@ def test_gradio_language_option_only_visible_for_hybrid_low() -> None:
 def test_gradio_frontend_shows_ocr_language_for_hybrid_low() -> None:
     js_text = Path("mineru/resources/gradio_app.js").read_text(encoding="utf-8")
 
+    assert 'const effortControl = effortRoot?.querySelector(\'[role="listbox"]\');' in js_text
+    assert 'input[type="radio"]' not in js_text
     assert 'const showOcrLanguage = backend.startsWith("hybrid") && effort === "low";' in js_text
+
+
+def test_gradio_effort_option_is_below_backend_selector() -> None:
+    """校验解析后端、服务器地址、解析强度归在同一个配置块内。"""
+    gradio_text = Path("mineru/cli_old/gradio_app.py").read_text(encoding="utf-8")
+
+    backend_block_idx = gradio_text.index('elem_classes=["mineru-backend-options-block"]')
+    backend_idx = gradio_text.index("backend = gr.Dropdown(")
+    client_options_idx = gradio_text.index('elem_classes=["mineru-client-options"]')
+    effort_idx = gradio_text.index("effort = gr.Dropdown(")
+    max_pages_idx = gradio_text.index("max_pages = gr.Slider(")
+    advanced_popover_idx = gradio_text.index('elem_classes=["mineru-advanced-popover"]')
+
+    assert "effort = gr.Radio(" not in gradio_text
+    assert "解析强度越高，解析质量越好但速度越慢；解析强度越低，速度更快但质量可能下降。" in gradio_text
+    assert "Low 使用本地 Hybrid 处理；Medium 速度更快；High 精度更高，耗时可能更长。" not in gradio_text
+    assert backend_block_idx < backend_idx < client_options_idx < effort_idx < max_pages_idx < advanced_popover_idx
 
 
 def test_parse_forwards_flash_backend(monkeypatch: Any, tmp_path: Path) -> None:

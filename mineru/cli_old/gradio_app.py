@@ -1674,7 +1674,7 @@ def main(ctx,
             "image_analysis_enable": "启用图片分析",
             "image_analysis_info": "禁用后，图片/图表块仍保留版面位置，但跳过 VLM 图片/图表分析。",
             "effort": "解析强度",
-            "effort_info": "Low 使用本地 Hybrid 处理；Medium 速度更快；High 精度更高，耗时可能更长。",
+            "effort_info": "解析强度越高，解析质量越好但速度越慢；解析强度越低，速度更快但质量可能下降。",
             "formula_label_vlm": "启用行间公式识别",
             "formula_label_hybrid": "启用行内公式识别",
             "formula_info_vlm": "禁用后，行间公式将显示为图片。",
@@ -1835,23 +1835,33 @@ def main(ctx,
                     elem_classes=["mineru-upload-file"],
                 )
                 preferred_option = DEFAULT_BACKEND
-                backend = gr.Dropdown(
-                    build_backend_choices(http_client_enable, i18n),
-                    label=i18n("backend"),
-                    value=preferred_option,
-                    info=get_backend_info(preferred_option),
-                    elem_classes=["mineru-backend-select"],
-                )
-                with gr.Row(
-                    visible=frontend_managed_initial_visibility(is_http_client_backend(preferred_option)),
-                    elem_classes=["mineru-client-options"],
-                ) as client_options:
-                    url = gr.Textbox(
-                        label=i18n("server_url"),
-                        value='http://localhost:30000',
-                        placeholder='http://localhost:30000',
-                        info=i18n("server_url_info"),
+                with gr.Group(elem_classes=["mineru-backend-options-block"]):
+                    backend = gr.Dropdown(
+                        build_backend_choices(http_client_enable, i18n),
+                        label=i18n("backend"),
+                        value=preferred_option,
+                        info=get_backend_info(preferred_option),
+                        elem_classes=["mineru-backend-select"],
                     )
+                    with gr.Row(
+                        visible=frontend_managed_initial_visibility(is_http_client_backend(preferred_option)),
+                        elem_classes=["mineru-client-options"],
+                    ) as client_options:
+                        url = gr.Textbox(
+                            label=i18n("server_url"),
+                            value='http://localhost:30000',
+                            placeholder='http://localhost:30000',
+                            info=i18n("server_url_info"),
+                        )
+                    with gr.Column(elem_classes=["mineru-hybrid-effort-option"]):
+                        effort = gr.Dropdown(
+                            list(HYBRID_EFFORT_CHOICES),
+                            label=i18n("effort"),
+                            value=DEFAULT_HYBRID_EFFORT,
+                            visible=is_effort_option_visible(preferred_option),
+                            info=i18n("effort_info"),
+                            elem_classes=["mineru-hybrid-effort"],
+                        )
                 # 下面这些选项在上传 office 文件时会被自动隐藏
                 with gr.Group() as options_group:
                     max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
@@ -1957,15 +1967,6 @@ def main(ctx,
                         info=i18n("image_analysis_info"),
                         elem_classes=["mineru-image-analysis-option"],
                     )
-                    with gr.Column(elem_classes=["mineru-hybrid-effort-option"]):
-                        effort = gr.Radio(
-                            list(HYBRID_EFFORT_CHOICES),
-                            label=i18n("effort"),
-                            value=DEFAULT_HYBRID_EFFORT,
-                            visible=is_effort_option_visible(preferred_option),
-                            info=i18n("effort_info"),
-                            elem_classes=["mineru-hybrid-effort"],
-                        )
                 with gr.Column(elem_classes=["mineru-force-ocr-option"]) as ocr_options:
                     with gr.Group():
                         with gr.Column(elem_classes=["mineru-ocr-language-options"]):

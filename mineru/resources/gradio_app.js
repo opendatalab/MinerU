@@ -118,13 +118,11 @@
         return (backendControl?.value || backendControl?.textContent || "").trim();
     };
 
-    // 读取 Hybrid effort 当前值；控件在非 hybrid 后端会被 Gradio 隐藏，缺失时按空值处理。
+    // 读取 Hybrid effort 下拉框当前值；控件在非 hybrid 后端会被 Gradio 隐藏，缺失时按空值处理。
     const getEffortValue = () => {
         const effortRoot = findEffortRoot();
-        const checkedRadio = effortRoot?.querySelector(
-            'input[type="radio"]:checked, input[type="radio"][aria-checked="true"]'
-        );
-        return (checkedRadio?.value || "").trim();
+        const effortControl = effortRoot?.querySelector('[role="listbox"]');
+        return (effortControl?.value || effortControl?.textContent || "").trim();
     };
 
     // 根据当前 backend/effort 刷新前端状态类，避免依赖 Gradio 重新挂载隐藏组件。
@@ -148,7 +146,7 @@
         }
     };
 
-    // Gradio 控件会异步写回 value，延后一帧再读可以覆盖 Dropdown option 点击和 Radio 切换。
+    // Gradio 控件会异步写回 value，延后一帧再读可以覆盖 Dropdown option 点击和控件切换。
     const queueMineruOptionVisibilityRefresh = () => {
         requestAnimationFrame(() => {
             refreshMineruOptionVisibility();

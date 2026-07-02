@@ -1309,7 +1309,7 @@ def test_api_server_cli_effort_help_matches_gradio_copy() -> None:
     effort_option = next(param for param in main.params if "--effort" in param.opts)
 
     assert effort_option.help == (
-        "Low uses local Hybrid processing. Medium is faster. High is more accurate and may take longer."
+        "Higher effort improves parsing quality but may be slower; lower effort is faster but may reduce quality."
     )
 
 
