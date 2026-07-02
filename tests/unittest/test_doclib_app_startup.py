@@ -53,6 +53,33 @@ def test_doclib_runtime_dependencies_are_in_base_install() -> None:
     assert "watchfiles" in dependency_names
 
 
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("parse_server.local.mode", "totally-invalid-mode"),
+        ("parse_server.local.managed_tier", "ultra"),
+        ("parse_server.remote.url", "ftp://example.com/api"),
+        ("parse_server.local.self_hosted_url", "not-a-url"),
+    ],
+)
+def test_config_set_rejects_invalid_known_config_values(key: str, value: str, monkeypatch, tmp_path) -> None:
+    def _skip_background_task(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
+
+    cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
+    with TestClient(doclib_app.create_app(cfg)) as client:
+        response = client.put(f"/api/v1/configs/{key}", json={"value": value})
+        config_response = client.get(f"/api/v1/configs/{key}")
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "invalid_config_value"
+    assert payload["error"]["param"] == "value"
+    assert config_response.json()["source"] == "default"
+
+
 def test_config_set_managed_mode_preflights_managed_tier_dependencies(monkeypatch, tmp_path) -> None:
     def _skip_background_task(*args, **kwargs):
         return None

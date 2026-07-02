@@ -11,6 +11,7 @@ from typing import cast
 from ...errors import InvalidRequestError
 from ...types import Tier
 from ..config_defaults import CONFIG_DEFAULTS, CONFIG_SOURCE_DEFAULT, CONFIG_SOURCE_OVERRIDE, ConfigSource
+from ..config_schema import validate_config_key, validate_config_value
 from ..core.db import DatabaseManager
 from ..rows import ConfigRow, RuleRow, WatchTargetRow
 from ..types import (
@@ -39,7 +40,7 @@ class ConfigService:
         return row["value"] if row else default
 
     async def set(self, key: str, value: str) -> None:
-        self._validate_config_key(key)
+        validate_config_value(key, value)
         if CONFIG_DEFAULTS[key] == value:
             await self.unset(key)
             return
@@ -66,15 +67,14 @@ class ConfigService:
         overrides = {r["key"]: r["value"] for r in rows}
         config = dict(CONFIG_DEFAULTS)
         config.update(overrides)
-        sources: dict[str, ConfigSource] = {key: CONFIG_SOURCE_DEFAULT for key in CONFIG_DEFAULTS}
+        sources: dict[str, ConfigSource] = dict.fromkeys(CONFIG_DEFAULTS, CONFIG_SOURCE_DEFAULT)
         for key in overrides:
             if key in CONFIG_DEFAULTS:
                 sources[key] = CONFIG_SOURCE_OVERRIDE
         return config, sources
 
     def _validate_config_key(self, key: str) -> None:
-        if key not in CONFIG_DEFAULTS:
-            raise InvalidRequestError("invalid_config_key", f"Unknown config key: {key}", "key")
+        validate_config_key(key)
 
     # ── watch targets ───────────────────────────────────────────
 
