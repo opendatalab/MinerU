@@ -74,6 +74,82 @@ def test_api_client_uses_json_format_for_staging_compat() -> None:
     assert parser._output_formats() == ["json"]
 
 
+class _FakeResponse:
+    def __init__(self, status_code: int, payload: dict[str, object], text: str = "") -> None:
+        self.status_code = status_code
+        self._payload = payload
+        self.text = text
+
+    def json(self) -> dict[str, object]:
+        return self._payload
+
+
+def test_api_client_maps_remote_401_to_invalid_api_key() -> None:
+    response = _FakeResponse(
+        401,
+        {
+            "traceId": "trace-1",
+            "msgCode": "A0202",
+            "msg": "user authenticate failed",
+            "data": None,
+            "success": False,
+            "total": 0,
+        },
+        text='{"msgCode":"A0202","msg":"user authenticate failed"}',
+    )
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        MinerUApiParser._check(response)
+
+    assert exc_info.value.code == "invalid_api_key"
+    assert exc_info.value.message == "Remote authentication failed: user authenticate failed"
+    assert exc_info.value.param == "parse_server.remote.api_key"
+
+
+def test_api_client_preserves_structured_error_body_on_http_error() -> None:
+    response = _FakeResponse(
+        401,
+        {
+            "error": {
+                "type": "authentication_error",
+                "code": "invalid_api_key",
+                "message": "Invalid or missing API key",
+                "param": "api_key",
+            }
+        },
+        text='{"error":{"code":"invalid_api_key"}}',
+    )
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        MinerUApiParser._check(response)
+
+    assert exc_info.value.code == "invalid_api_key"
+    assert exc_info.value.message == "Invalid or missing API key"
+    assert exc_info.value.param == "api_key"
+
+
+def test_api_client_ignores_legacy_detail_error_envelope() -> None:
+    response = _FakeResponse(
+        400,
+        {
+            "detail": {
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "invalid_request",
+                    "message": "legacy detail envelope",
+                }
+            }
+        },
+        text='{"detail":{"error":{"code":"invalid_request"}}}',
+    )
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        MinerUApiParser._check(response)
+
+    assert exc_info.value.code == "http_error"
+    assert exc_info.value.message.startswith("HTTP 400:")
+
+
 def test_api_client_downloads_image_sidecars_and_preserves_pdf_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
     middle_json = {
@@ -161,6 +237,29 @@ def test_async_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.Monke
     assert result.pages[0].page_idx == 0
     assert result.pages[0].page_size == (100, 200)
     assert result.pages[0]._backend == "pipeline"
+
+
+def test_api_client_rejects_output_reference_without_file_id() -> None:
+    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="standard")
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        api_client._download_bytes(parser, {"url": "https://example.invalid/output.json", "bytes": 10})
+
+    assert exc_info.value.code == "invalid_response"
+    assert exc_info.value.message == "No file_id in output reference"
+
+
+def test_async_api_client_rejects_output_reference_without_file_id() -> None:
+    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="standard")
+
+    async def _run() -> None:
+        await api_client._async_download_bytes(parser, {"url": "https://example.invalid/output.json", "bytes": 10})
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        asyncio.run(_run())
+
+    assert exc_info.value.code == "invalid_response"
+    assert exc_info.value.message == "No file_id in output reference"
 
 
 @pytest.mark.parametrize("image_path", ["../escape.png", "/tmp/escape.png", "\\escape.png", "C:\\escape.png"])
@@ -361,6 +460,16 @@ def test_api_client_rejects_missing_middle_json_output() -> None:
         )
 
 
+def test_api_client_rejects_json_underscore_output_alias() -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        api_client._download_json(parser, {"json_": {"file_id": "file-json", "bytes": 10}})
+
+    assert exc_info.value.code == "missing_middle_json_output"
+    assert "available outputs: json_" in exc_info.value.message
+
+
 def test_api_client_accepts_pages_middle_json_only() -> None:
     pages = _pages_from_middle_json({"pages": [{"page_idx": 2, "page_size": [100, 200]}]})
 
@@ -425,10 +534,49 @@ def test_local_parse_server_rejects_callback(tmp_path: Path, monkeypatch: pytest
     )
 
     assert response.status_code == 400
-    body = response.json()["detail"]
+    body = response.json()
+    assert "detail" not in body
     assert body["error"]["code"] == "invalid_request"
     assert "Webhook callback is not supported" in body["error"]["message"]
     assert app.state.job_store._jobs == {}
+
+
+def test_api_server_validation_errors_use_error_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path))
+    client = TestClient(app)
+
+    response = client.post("/v1/parse/jobs", json={"files": []})
+
+    assert response.status_code == 400
+    body = response.json()
+    assert "detail" not in body
+    assert body["error"]["type"] == "invalid_request_error"
+    assert body["error"]["code"] == "invalid_request"
+    assert "Invalid request" in body["error"]["message"]
+
+
+def test_api_server_unhandled_exceptions_use_error_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path))
+
+    @app.get("/boom")
+    async def _boom() -> None:
+        raise RuntimeError("boom")
+
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.get("/boom")
+
+    assert response.status_code == 500
+    body = response.json()
+    assert "detail" not in body
+    assert body["error"] == {
+        "type": "api_error",
+        "code": "internal_error",
+        "message": "Internal server error",
+        "param": None,
+    }
 
 
 def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
