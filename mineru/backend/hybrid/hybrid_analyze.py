@@ -26,7 +26,7 @@ from ...utils.backend_options import (
 from ...utils.config_reader import get_device, get_processing_window_size, get_table_enable
 from ...utils.enum_class import ImageType
 from ...utils.image_payload import ImagePayloadCache
-from ...utils.model_utils import clean_memory, crop_img, get_vram
+from ...utils.model_utils import clean_memory, clean_vram, crop_img, get_vram
 from ...utils.ocr_utils import (
     OcrConfidence,
     get_adjusted_mfdetrec_res,
@@ -890,6 +890,7 @@ def _extract_with_local_layout(
         images_pil_list,
         batch_size=min(8, batch_ratio * LAYOUT_BASE_BATCH_SIZE),
     )
+    clean_vram(hybrid_pipeline_model.device, vram_threshold=8)
     mfd_res = _run_medium_formula_recognition(
         hybrid_pipeline_model,
         images_layout_res,
@@ -897,6 +898,7 @@ def _extract_with_local_layout(
         inline_formula_enable,
         batch_ratio,
     )
+    clean_vram(hybrid_pipeline_model.device, vram_threshold=8)
     _apply_medium_table_recognition(
         hybrid_pipeline_model,
         images_layout_res,
