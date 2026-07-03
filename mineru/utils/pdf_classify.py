@@ -773,6 +773,21 @@ def _resolve_pdf_object(obj):
     return obj
 
 
+def _get_pdfium_page_object_bounds(page_object):
+    """兼容 pypdfium2 4.x/5.x，统一获取页面对象的边界坐标。"""
+    get_bounds = getattr(page_object, "get_bounds", None)
+    if callable(get_bounds):
+        return get_bounds()
+
+    get_pos = getattr(page_object, "get_pos", None)
+    if callable(get_pos):
+        return get_pos()
+
+    raise AttributeError(
+        "PDFium page object has neither get_bounds() nor get_pos()"
+    )
+
+
 def get_high_image_coverage_ratio_pdfium(pdf_doc, page_indices):
     high_image_coverage_pages = 0
 
@@ -791,7 +806,9 @@ def get_high_image_coverage_ratio_pdfium(pdf_doc, page_indices):
                     filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE], max_depth=3
                 ):
                     try:
-                        left, bottom, right, top = page_object.get_pos()
+                        left, bottom, right, top = _get_pdfium_page_object_bounds(
+                            page_object
+                        )
                         image_area += max(0.0, right - left) * max(0.0, top - bottom)
                     finally:
                         close_pdfium_child(page_object)
