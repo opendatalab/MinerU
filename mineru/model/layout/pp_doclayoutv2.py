@@ -886,6 +886,17 @@ class PPDocLayoutV2ForObjectDetection(RTDetrForObjectDetection):
 
 
 class PPDocLayoutV2LayoutModel:
+    HEADER_FOOTER_BOUNDARY_EXEMPT_LABELS = {"aside_text", "footnote", "number"}
+    PAGE_REGION_LABELS = {
+        "header",
+        "header_image",
+        "footer",
+        "footer_image",
+        "footnote",
+        "number",
+        "aside_text",
+    }
+
     def __init__(
         self,
         weight: str,
@@ -1061,6 +1072,85 @@ class PPDocLayoutV2LayoutModel:
         return cls._calculate_intersection_area(box1, box2) / box1_area
 
     @staticmethod
+    def _calculate_x_overlap_ratio(box1: Sequence[float], box2: Sequence[float]) -> float:
+        """计算两个 bbox 在横向上的重叠比例，用于判断是否属于同一栏。"""
+        box1_xmin, _, box1_xmax, _ = [float(v) for v in box1]
+        box2_xmin, _, box2_xmax, _ = [float(v) for v in box2]
+        box1_width = max(0.0, box1_xmax - box1_xmin)
+        box2_width = max(0.0, box2_xmax - box2_xmin)
+        ref_width = min(box1_width, box2_width)
+        if ref_width <= 0.0:
+            return 0.0
+        overlap_width = max(0.0, min(box1_xmax, box2_xmax) - max(box1_xmin, box2_xmin))
+        return overlap_width / ref_width
+
+    @staticmethod
+    def _calculate_x_cover_ratio(anchor_box: Sequence[float], candidate_box: Sequence[float]) -> float:
+        """计算 anchor 在横向上覆盖 candidate 的比例。"""
+        anchor_xmin, _, anchor_xmax, _ = [float(v) for v in anchor_box]
+        candidate_xmin, _, candidate_xmax, _ = [float(v) for v in candidate_box]
+        candidate_width = max(0.0, candidate_xmax - candidate_xmin)
+        if candidate_width <= 0.0:
+            return 0.0
+        overlap_width = max(
+            0.0,
+            min(anchor_xmax, candidate_xmax) - max(anchor_xmin, candidate_xmin),
+        )
+        return overlap_width / candidate_width
+
+    @classmethod
+    def _is_footer_x_scope(
+        cls,
+        anchor_box: Dict,
+        candidate_box: Dict,
+        image_size: Optional[Tuple[int, int]],
+        full_width_threshold: float = 0.7,
+        x_overlap_threshold: float = 0.3,
+    ) -> bool:
+        """判断候选块是否在页脚文本锚点的横向作用范围内。"""
+        anchor_bbox = anchor_box.get("bbox")
+        candidate_bbox = candidate_box.get("bbox")
+        if not anchor_bbox or not candidate_bbox:
+            return False
+
+        if image_size is not None and len(image_size) >= 2:
+            page_width = float(image_size[1])
+            anchor_width = max(0.0, float(anchor_bbox[2]) - float(anchor_bbox[0]))
+            if page_width > 0.0 and anchor_width / page_width >= full_width_threshold:
+                return True
+
+        return cls._calculate_x_overlap_ratio(anchor_bbox, candidate_bbox) >= x_overlap_threshold
+
+    @classmethod
+    def _is_covered_by_footnote(
+        cls,
+        footnote_box: Dict,
+        candidate_box: Dict,
+        x_cover_threshold: float = 0.7,
+    ) -> bool:
+        """判断候选块是否位于 footnote 区域内或其下方，并被其横向覆盖。"""
+        footnote_bbox = footnote_box.get("bbox")
+        candidate_bbox = candidate_box.get("bbox")
+        if not footnote_bbox or not candidate_bbox:
+            return False
+        if candidate_bbox[1] < footnote_bbox[1]:
+            return False
+        return cls._calculate_x_cover_ratio(footnote_bbox, candidate_bbox) >= x_cover_threshold
+
+    @classmethod
+    def _is_header_footer_boundary_candidate(cls, box: Dict, anchor_labels: set[str]) -> bool:
+        """判断普通块是否可被页眉/页脚/页码边界规则改标。"""
+        label = box.get("label")
+        if label in cls.HEADER_FOOTER_BOUNDARY_EXEMPT_LABELS:
+            return False
+        return label not in anchor_labels
+
+    @classmethod
+    def _is_footnote_relabel_candidate(cls, box: Dict) -> bool:
+        """排除页眉、页脚、页码、页边注等非正文区域块，保留正文内容块。"""
+        return box.get("label") not in cls.PAGE_REGION_LABELS
+
+    @staticmethod
     def _is_reference_box(box: Dict) -> bool:
         return box.get("label") == "reference" or int(box.get("cls_id", -1)) == 18
 
@@ -1107,6 +1197,12 @@ class PPDocLayoutV2LayoutModel:
             raise ValueError(f"Unsupported header/footer label: {label}")
         box["label"] = label
         box["cls_id"] = label_cls_ids[label]
+
+    @staticmethod
+    def _set_footnote_label(box: Dict) -> None:
+        """同步设置 page footnote 标签及其类别编号。"""
+        box["label"] = "footnote"
+        box["cls_id"] = 10
 
     @classmethod
     def _reclassify_header_footer_by_page_half(
@@ -1280,7 +1376,6 @@ class PPDocLayoutV2LayoutModel:
 
         header_labels = {"header", "header_image"}
         footer_labels = {"footer", "footer_image"}
-        exempt_labels = {"aside_text", "footnote", "number"}
         ordered_boxes = sorted(boxes, key=lambda box: box["index"])
         ordered_boxes = cls._reclassify_header_footer_by_page_half(
             ordered_boxes,
@@ -1307,20 +1402,31 @@ class PPDocLayoutV2LayoutModel:
         if header_anchor is not None:
             header_boundary = header_anchor["bbox"][3]
             for box in ordered_boxes:
-                label = box.get("label")
-                if label in exempt_labels or label in header_labels:
+                if not cls._is_header_footer_boundary_candidate(box, header_labels):
                     continue
                 if box["bbox"][3] <= header_boundary:
                     box["label"] = "header"
                     box["cls_id"] = 12
 
+        footnote_anchors = [box for box in ordered_boxes if box.get("label") == "footnote"]
+        if footnote_anchors:
+            for box in ordered_boxes:
+                if not cls._is_footnote_relabel_candidate(box):
+                    continue
+                for footnote_anchor in footnote_anchors:
+                    if cls._is_covered_by_footnote(footnote_anchor, box):
+                        cls._set_footnote_label(box)
+                        break
+
         if footer_anchor is not None:
             footer_boundary = footer_anchor["bbox"][1]
             for box in ordered_boxes:
-                label = box.get("label")
-                if label in exempt_labels or label in footer_labels:
+                if not cls._is_header_footer_boundary_candidate(box, footer_labels):
                     continue
-                if box["bbox"][1] >= footer_boundary:
+                if (
+                    box["bbox"][1] >= footer_boundary
+                    and cls._is_footer_x_scope(footer_anchor, box, image_size)
+                ):
                     box["label"] = "footer"
                     box["cls_id"] = 8
 
@@ -1359,7 +1465,10 @@ class PPDocLayoutV2LayoutModel:
         if top_number_anchor is not None:
             header_boundary = top_number_anchor["bbox"][1]
             for box in ordered_boxes:
-                if id(box) in boundary_anchor_ids or box.get("label") in exempt_labels:
+                if (
+                    id(box) in boundary_anchor_ids
+                    or not cls._is_header_footer_boundary_candidate(box, set())
+                ):
                     continue
                 if box["bbox"][3] <= header_boundary:
                     box["label"] = "header"
@@ -1368,7 +1477,10 @@ class PPDocLayoutV2LayoutModel:
         if bottom_number_anchor is not None:
             footer_boundary = bottom_number_anchor["bbox"][3]
             for box in ordered_boxes:
-                if id(box) in boundary_anchor_ids or box.get("label") in exempt_labels:
+                if (
+                    id(box) in boundary_anchor_ids
+                    or not cls._is_header_footer_boundary_candidate(box, set())
+                ):
                     continue
                 if box["bbox"][1] >= footer_boundary:
                     box["label"] = "footer"
