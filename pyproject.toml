@@ -38,7 +38,7 @@ dependencies = [
     "requests",
     "httpx",
     "pillow>=11.0.0",
-    "pypdfium2>=4.30.0",
+    "pypdfium2>=4.30.0,<6.0.0",
     "pypdf>=5.6.0",
     "PyYAML>=6.0.1,<7",
     "reportlab",
