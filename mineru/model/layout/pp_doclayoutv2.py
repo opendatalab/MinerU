@@ -58,6 +58,8 @@ PP_DOCLAYOUT_V2_LABELS = [
     "vision_footnote",    # 24 image/chart/table的footnote
 ]
 
+PP_DOCLAYOUT_V2_LABEL_TO_ID = {label: index for index, label in enumerate(PP_DOCLAYOUT_V2_LABELS)}
+
 # Per-class confidence threshold used before reading-order decoding.
 DEFAULT_CLASS_THRESHOLDS = [
     0.5,   # 0  abstract
@@ -797,6 +799,16 @@ class PPDocLayoutV2ForObjectDetection(RTDetrForObjectDetection):
         self.reading_order = PPDocLayoutV2ReadingOrder(config.reading_order_config)
         self.num_queries = config.num_queries
         self.config = config
+        self.register_buffer(
+            "_class_thresholds_tensor",
+            torch.tensor(config.class_thresholds, dtype=torch.float32),
+            persistent=False,
+        )
+        self.register_buffer(
+            "_class_order_tensor",
+            torch.tensor(config.class_order, dtype=torch.long),
+            persistent=False,
+        )
         self.post_init()
 
     def forward(
@@ -837,8 +849,7 @@ class PPDocLayoutV2ForObjectDetection(RTDetrForObjectDetection):
 
         max_logits, class_ids = logits.max(dim=-1)
         max_probs = max_logits.sigmoid()
-        class_thresholds = torch.tensor(self.config.class_thresholds, dtype=torch.float32, device=logits.device)
-        thresholds = class_thresholds[class_ids]
+        thresholds = self._class_thresholds_tensor[class_ids]
         mask = max_probs >= thresholds
         indices = torch.argsort(mask.to(torch.int8), dim=1, descending=True)
 
@@ -850,8 +861,7 @@ class PPDocLayoutV2ForObjectDetection(RTDetrForObjectDetection):
 
         pad_boxes = torch.where(sorted_mask[..., None], sorted_boxes, torch.zeros_like(sorted_boxes))
         pad_class_ids = torch.where(sorted_mask, sorted_class_ids, torch.zeros_like(sorted_class_ids))
-        class_order = torch.tensor(self.config.class_order, dtype=torch.long, device=logits.device)
-        pad_class_ids = class_order[pad_class_ids]
+        pad_class_ids = self._class_order_tensor[pad_class_ids]
 
         order_logits = self.reading_order(
             boxes=pad_boxes,
@@ -979,7 +989,7 @@ class PPDocLayoutV2LayoutModel:
         scores, index = torch.topk(scores.flatten(1), num_top_queries, dim=-1)
         labels = index % num_classes
         index = index // num_classes
-        boxes = boxes.gather(dim=1, index=index.unsqueeze(-1).repeat(1, 1, boxes.shape[-1]))
+        boxes = boxes.gather(dim=1, index=index.unsqueeze(-1).expand(-1, -1, boxes.shape[-1]))
         order_seqs = order_seqs.gather(dim=1, index=index)
 
         results = []
@@ -1174,35 +1184,30 @@ class PPDocLayoutV2LayoutModel:
         return box.get("label") == "formula_number" or int(box.get("cls_id", -1)) == 11
 
     @staticmethod
-    def _set_formula_label(box: Dict, label: str) -> None:
-        if label == "inline_formula":
-            cls_id = 15
-        elif label == "display_formula":
-            cls_id = 5
-        else:
-            raise ValueError(f"Unsupported formula label: {label}")
+    def _set_box_label(box: Dict, label: str) -> None:
+        """统一同步设置 layout 检测框的标签名和类别编号。"""
+        if label not in PP_DOCLAYOUT_V2_LABEL_TO_ID:
+            raise ValueError(f"Unsupported PP-DocLayoutV2 label: {label}")
         box["label"] = label
-        box["cls_id"] = cls_id
+        box["cls_id"] = PP_DOCLAYOUT_V2_LABEL_TO_ID[label]
+
+    @staticmethod
+    def _set_formula_label(box: Dict, label: str) -> None:
+        if label not in {"inline_formula", "display_formula"}:
+            raise ValueError(f"Unsupported formula label: {label}")
+        PPDocLayoutV2LayoutModel._set_box_label(box, label)
 
     @staticmethod
     def _set_header_footer_label(box: Dict, label: str) -> None:
         """同步设置页眉/页脚相关标签及其类别编号。"""
-        label_cls_ids = {
-            "footer": 8,
-            "footer_image": 9,
-            "header": 12,
-            "header_image": 13,
-        }
-        if label not in label_cls_ids:
+        if label not in {"footer", "footer_image", "header", "header_image"}:
             raise ValueError(f"Unsupported header/footer label: {label}")
-        box["label"] = label
-        box["cls_id"] = label_cls_ids[label]
+        PPDocLayoutV2LayoutModel._set_box_label(box, label)
 
     @staticmethod
     def _set_footnote_label(box: Dict) -> None:
         """同步设置 page footnote 标签及其类别编号。"""
-        box["label"] = "footnote"
-        box["cls_id"] = 10
+        PPDocLayoutV2LayoutModel._set_box_label(box, "footnote")
 
     @classmethod
     def _reclassify_header_footer_by_page_half(
@@ -1405,8 +1410,7 @@ class PPDocLayoutV2LayoutModel:
                 if not cls._is_header_footer_boundary_candidate(box, header_labels):
                     continue
                 if box["bbox"][3] <= header_boundary:
-                    box["label"] = "header"
-                    box["cls_id"] = 12
+                    cls._set_box_label(box, "header")
 
         footnote_anchors = [box for box in ordered_boxes if box.get("label") == "footnote"]
         if footnote_anchors:
@@ -1427,8 +1431,7 @@ class PPDocLayoutV2LayoutModel:
                     box["bbox"][1] >= footer_boundary
                     and cls._is_footer_x_scope(footer_anchor, box, image_size)
                 ):
-                    box["label"] = "footer"
-                    box["cls_id"] = 8
+                    cls._set_box_label(box, "footer")
 
         if image_size is None:
             return ordered_boxes
@@ -1471,8 +1474,7 @@ class PPDocLayoutV2LayoutModel:
                 ):
                     continue
                 if box["bbox"][3] <= header_boundary:
-                    box["label"] = "header"
-                    box["cls_id"] = 12
+                    cls._set_box_label(box, "header")
 
         if bottom_number_anchor is not None:
             footer_boundary = bottom_number_anchor["bbox"][3]
@@ -1483,8 +1485,7 @@ class PPDocLayoutV2LayoutModel:
                 ):
                     continue
                 if box["bbox"][1] >= footer_boundary:
-                    box["label"] = "footer"
-                    box["cls_id"] = 8
+                    cls._set_box_label(box, "footer")
 
         return ordered_boxes
 
@@ -1694,8 +1695,6 @@ if __name__ == "__main__":
         args.model = str(
                 os.path.join(auto_download_and_get_model_root_path(ModelPath.pp_doclayout_v2), ModelPath.pp_doclayout_v2)
             )
-
-    args.image = "/Users/myhloli/pdf/png/index.png"
 
     model = PPDocLayoutV2LayoutModel(
         weight=args.model,
