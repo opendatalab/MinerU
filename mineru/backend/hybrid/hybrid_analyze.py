@@ -43,8 +43,8 @@ from ...utils.bbox_utils import normalize_to_int_bbox
 from ...utils.pdf_image_tools import get_crop_np_img
 from ..local_model_runtime import (
     AtomicModel,
-    HybridModelSingleton,
-    MineruHybridModel,
+    HybridLocalModelContextSingleton,
+    HybridLocalModelContext,
     run_layout_inference,
     run_mfr_inference,
     run_ocr_inference,
@@ -159,7 +159,7 @@ def ocr_classify(pdf_doc: PDFDocument, parse_method: str = "auto") -> bool:
 
 
 def _ocr_det(
-    hybrid_pipeline_model: Any,
+    local_context: Any,
     np_images: list[Any],
     model_list: list[list[dict[str, Any]]],
     mfd_res: list[Any],
@@ -182,7 +182,7 @@ def _ocr_det(
 
     ocr_res_list: list[list[dict[str, Any]]] = []
 
-    if not hybrid_pipeline_model.enable_ocr_det_batch:
+    if not local_context.enable_ocr_det_batch:
         # 非批处理模式 - 逐页处理
         for np_image, page_mfd_res, page_results in tqdm(
             zip(np_images, mfd_res, model_list), total=len(np_images), desc="OCR-det"
@@ -207,7 +207,7 @@ def _ocr_det(
                 bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)  # type: ignore
                 bgr_image = mask_formula_regions_for_ocr_det(bgr_image, adjusted_mfdetrec_res)
                 ocr_res = run_ocr_inference(
-                    hybrid_pipeline_model.ocr_model.ocr,
+                    local_context.ocr_model.ocr,
                     bgr_image,
                     mfd_res=adjusted_mfdetrec_res,
                     rec=False,
@@ -218,7 +218,7 @@ def _ocr_det(
                         useful_list,
                         _ocr_enable if fill_text else False,
                         bgr_image,
-                        hybrid_pipeline_model.lang,
+                        local_context.lang,
                     )
 
                     ocr_res_list[-1].extend(ocr_result_list)
@@ -252,7 +252,7 @@ def _ocr_det(
         batch_images = [crop_info[0] for crop_info in all_cropped_images_info]
         det_batch_size = min(len(batch_images), batch_ratio * OCR_DET_BASE_BATCH_SIZE)
         batch_results = run_ocr_inference(
-            hybrid_pipeline_model.ocr_model.text_detector.batch_predict,
+            local_context.ocr_model.text_detector.batch_predict,
             batch_images,
             det_batch_size,
             tqdm_enable=True,
@@ -281,7 +281,7 @@ def _ocr_det(
                         useful_list,
                         _ocr_enable if fill_text else False,
                         bgr_image,
-                        hybrid_pipeline_model.lang,
+                        local_context.lang,
                     )
                     ocr_page_res_list.extend(ocr_result_list)
     return ocr_res_list
@@ -446,13 +446,13 @@ def _apply_layout_title_split(
 
 
 def _predict_layout_for_title_split(
-    hybrid_pipeline_model: MineruHybridModel,
+    local_context: HybridLocalModelContext,
     np_images: list[np.ndarray] | list[Image.Image],
     batch_ratio: int,
 ) -> list[list[dict[str, Any]]]:
     """执行layout小模型检测，专门为Hybrid标题拆分提供页面layout结果。"""
     return run_layout_inference(
-        hybrid_pipeline_model.layout_model.batch_predict,
+        local_context.layout_model.batch_predict,
         np_images,
         batch_size=min(8, batch_ratio * LAYOUT_BASE_BATCH_SIZE),
     )
@@ -481,7 +481,7 @@ def _normalize_layout_bbox_to_unit(bbox: BBox | None, page_size: tuple[int, int]
 
 
 def _layout_item_to_content_block(layout_item: dict[str, Any], page_size: tuple[int, int]) -> Any | None:
-    """将 Pipeline layout 检测项转换为 mineru-vl-utils 的 ContentBlock。"""
+    """将本地 layout 小模型检测项转换为 mineru-vl-utils 的 ContentBlock。"""
     label = layout_item.get("label") or layout_item.get("type")
     block_type = HYBRID_VLM_LAYOUT_LABEL_MAP.get(str(label))
     if block_type is None:
@@ -596,7 +596,7 @@ def _build_medium_hybrid_model_list(
 
 
 def _run_medium_formula_recognition(
-    hybrid_pipeline_model: MineruHybridModel,
+    local_context: HybridLocalModelContext,
     images_layout_res: list[list[dict[str, Any]]],
     np_images: list[np.ndarray],
     formula_enable: bool,
@@ -619,7 +619,7 @@ def _run_medium_formula_recognition(
 
     if any(images_mfd_res):
         images_formula_list = run_mfr_inference(
-            hybrid_pipeline_model.mfr_model.batch_predict,
+            local_context.mfr_model.batch_predict,
             images_mfd_res,
             np_images,
             batch_size=batch_ratio * MFR_BASE_BATCH_SIZE,
@@ -733,7 +733,7 @@ def _collect_medium_table_ocr_rec_inputs(
 
 
 def _apply_medium_table_recognition(
-    hybrid_pipeline_model: MineruHybridModel,
+    local_context: HybridLocalModelContext,
     images_layout_res: list[list[dict[str, Any]]],
     np_images: list[np.ndarray],
     lang_list: list[str | None],
@@ -747,7 +747,7 @@ def _apply_medium_table_recognition(
     if not table_items:
         return
 
-    atom_model_manager = hybrid_pipeline_model.atom_model_manager
+    atom_model_manager = local_context.atom_model_manager
     table_orientation_cls_model = atom_model_manager.get_atom_model(atom_model_name=AtomicModel.TableOrientationCls)
     try:
         rotate_labels = table_orientation_cls_model.batch_predict(
@@ -824,7 +824,7 @@ def _apply_medium_table_recognition(
 
 
 def _apply_medium_seal_ocr(
-    hybrid_pipeline_model: MineruHybridModel,
+    local_context: HybridLocalModelContext,
     images_layout_res: list[list[dict[str, Any]]],
     np_images: list[np.ndarray],
 ) -> None:
@@ -843,7 +843,7 @@ def _apply_medium_seal_ocr(
             if seal_crop_rgb.size == 0:
                 continue
             if seal_ocr_model is None:
-                seal_ocr_model = hybrid_pipeline_model.atom_model_manager.get_atom_model(
+                seal_ocr_model = local_context.atom_model_manager.get_atom_model(
                     atom_model_name=AtomicModel.OCR,
                     lang="seal",
                 )
@@ -877,40 +877,40 @@ def _extract_with_local_layout(
     inline_formula_enable: bool,
     _ocr_enable: bool,
     batch_ratio: int,
-) -> tuple[list[list[dict[str, Any]]], MineruHybridModel]:
+) -> tuple[list[list[dict[str, Any]]], HybridLocalModelContext]:
     """Hybrid medium 路径：单文件窗口内执行本地 layout/OCR/table/formula，不跨文件 batch。"""
-    hybrid_model_singleton = HybridModelSingleton()
-    hybrid_pipeline_model = hybrid_model_singleton.get_model(
+    local_context_singleton = HybridLocalModelContextSingleton()
+    local_context = local_context_singleton.get_model(
         lang=language,
         formula_enable=inline_formula_enable,
     )
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
     images_layout_res = run_layout_inference(
-        hybrid_pipeline_model.layout_model.batch_predict,
+        local_context.layout_model.batch_predict,
         images_pil_list,
         batch_size=min(8, batch_ratio * LAYOUT_BASE_BATCH_SIZE),
     )
-    clean_vram(hybrid_pipeline_model.device, vram_threshold=8)
+    clean_vram(local_context.device, vram_threshold=8)
     mfd_res = _run_medium_formula_recognition(
-        hybrid_pipeline_model,
+        local_context,
         images_layout_res,
         np_images,
         inline_formula_enable,
         batch_ratio,
     )
-    clean_vram(hybrid_pipeline_model.device, vram_threshold=8)
+    clean_vram(local_context.device, vram_threshold=8)
     _apply_medium_table_recognition(
-        hybrid_pipeline_model,
+        local_context,
         images_layout_res,
         np_images,
         [language for _ in images_pil_list],
         batch_ratio,
     )
-    _apply_medium_seal_ocr(hybrid_pipeline_model, images_layout_res, np_images)
+    _apply_medium_seal_ocr(local_context, images_layout_res, np_images)
     _prune_medium_empty_ocr_text_blocks(images_layout_res, _ocr_enable)
     medium_model_list = _build_medium_hybrid_model_list(images_layout_res, images_pil_list)
     ocr_res_list = _ocr_det(
-        hybrid_pipeline_model,
+        local_context,
         np_images,
         medium_model_list,
         mfd_res,
@@ -924,7 +924,7 @@ def _extract_with_local_layout(
         [[] for _ in images_pil_list],
         ocr_res_list,
     )
-    return merged_model_list, hybrid_pipeline_model
+    return merged_model_list, local_context
 
 
 def _process_ocr_and_formulas(
@@ -934,7 +934,7 @@ def _process_ocr_and_formulas(
     inline_formula_enable: bool,
     _ocr_enable: bool,
     batch_ratio: int = 1,
-) -> tuple[list[list[dict[str, Any]]], MineruHybridModel]:
+) -> tuple[list[list[dict[str, Any]]], HybridLocalModelContext]:
     """处理OCR和公式识别"""
 
     # 遍历model_list,对文本块截图交由OCR识别
@@ -945,21 +945,21 @@ def _process_ocr_and_formulas(
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
 
     # 获取混合模型实例
-    hybrid_model_singleton = HybridModelSingleton()
-    hybrid_pipeline_model = hybrid_model_singleton.get_model(
+    local_context_singleton = HybridLocalModelContextSingleton()
+    local_context = local_context_singleton.get_model(
         lang=language,
         formula_enable=inline_formula_enable,
     )
 
     # 在进行`行内`公式检测和识别前，先将图像中的图片、表格、`行间`公式区域mask掉
     layout_images = _mask_image_regions(np_images, model_list) if inline_formula_enable else np_images
-    images_layout_res = _predict_layout_for_title_split(hybrid_pipeline_model, layout_images, batch_ratio)
+    images_layout_res = _predict_layout_for_title_split(local_context, layout_images, batch_ratio)
 
     if inline_formula_enable:
         images_mfd_res = _build_inline_formula_inputs(images_layout_res)
         # 公式识别
         inline_formula_list = run_mfr_inference(
-            hybrid_pipeline_model.mfr_model.batch_predict,
+            local_context.mfr_model.batch_predict,
             images_mfd_res,
             np_images,
             batch_size=batch_ratio * MFR_BASE_BATCH_SIZE,
@@ -980,7 +980,7 @@ def _process_ocr_and_formulas(
 
     # vlm没有执行ocr，需要ocr_det
     ocr_res_list = _ocr_det(
-        hybrid_pipeline_model,
+        local_context,
         np_images,
         model_list,
         mfd_res,
@@ -1000,7 +1000,7 @@ def _process_ocr_and_formulas(
         if len(img_crop_list) > 0:
             # Process OCR
             ocr_result_list = run_ocr_inference(
-                hybrid_pipeline_model.ocr_model.ocr,
+                local_context.ocr_model.ocr,
                 img_crop_list,
                 det=False,
                 tqdm_enable=True,
@@ -1083,25 +1083,25 @@ def _process_ocr_and_formulas(
         inline_formula_list,
         ocr_res_list,
     )
-    return merged_model_list, hybrid_pipeline_model
+    return merged_model_list, local_context
 
 
-def _extract_with_pipeline_layout(
+def _extract_high_with_local_layout(
     predictor: Any,
     images_pil_list: list[Image.Image],
     language: str | None,
     inline_formula_enable: bool,
     _ocr_enable: bool,
     batch_ratio: int,
-) -> tuple[list[list[dict[str, Any]]], MineruHybridModel]:
-    """Hybrid high 路径：用 Pipeline layout 约束 VLM 抽取，再补 OCR/formula sidecar。"""
-    hybrid_model_singleton = HybridModelSingleton()
-    hybrid_pipeline_model = hybrid_model_singleton.get_model(
+) -> tuple[list[list[dict[str, Any]]], HybridLocalModelContext]:
+    """Hybrid high 路径：用本地 layout 小模型约束 VLM 抽取，再补 OCR/formula sidecar。"""
+    local_context_singleton = HybridLocalModelContextSingleton()
+    local_context = local_context_singleton.get_model(
         lang=language,
         formula_enable=inline_formula_enable,
     )
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
-    images_layout_res = _predict_layout_for_title_split(hybrid_pipeline_model, np_images, batch_ratio)
+    images_layout_res = _predict_layout_for_title_split(local_context, np_images, batch_ratio)
     layout_blocks = _build_high_layout_blocks(images_layout_res, images_pil_list)
     window_model_list = predictor.batch_extract_with_layout(
         images=images_pil_list,
@@ -1109,7 +1109,7 @@ def _extract_with_pipeline_layout(
         not_extract_list=list(NOT_EXTRACT_TYPES),
         image_analysis=False,
     )
-    window_model_list, hybrid_pipeline_model = _process_ocr_and_formulas(
+    window_model_list, local_context = _process_ocr_and_formulas(
         images_pil_list,
         window_model_list,
         language,
@@ -1117,27 +1117,27 @@ def _extract_with_pipeline_layout(
         _ocr_enable,
         batch_ratio=batch_ratio,
     )
-    return window_model_list, hybrid_pipeline_model
+    return window_model_list, local_context
 
 
-async def _aio_extract_with_pipeline_layout(
+async def _aio_extract_high_with_local_layout(
     predictor: Any,
     images_pil_list: list[Image.Image],
     language: str | None,
     inline_formula_enable: bool,
     _ocr_enable: bool,
     batch_ratio: int,
-) -> tuple[list[list[dict[str, Any]]], MineruHybridModel]:
-    """Hybrid high 异步路径：异步调用 VLM layout-aware extract，其余本地步骤放线程执行。"""
-    hybrid_model_singleton = HybridModelSingleton()
-    hybrid_pipeline_model = hybrid_model_singleton.get_model(
+) -> tuple[list[list[dict[str, Any]]], HybridLocalModelContext]:
+    """Hybrid high 异步路径：异步调用 VLM 的本地 layout 约束抽取，其余本地步骤放线程执行。"""
+    local_context_singleton = HybridLocalModelContextSingleton()
+    local_context = local_context_singleton.get_model(
         lang=language,
         formula_enable=inline_formula_enable,
     )
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
     images_layout_res = await asyncio.to_thread(
         _predict_layout_for_title_split,
-        hybrid_pipeline_model,
+        local_context,
         np_images,
         batch_ratio,
     )
@@ -1148,7 +1148,7 @@ async def _aio_extract_with_pipeline_layout(
         not_extract_list=list(NOT_EXTRACT_TYPES),
         image_analysis=False,
     )
-    window_model_list, hybrid_pipeline_model = await asyncio.to_thread(
+    window_model_list, local_context = await asyncio.to_thread(
         _process_ocr_and_formulas,
         images_pil_list,
         window_model_list,
@@ -1157,7 +1157,7 @@ async def _aio_extract_with_pipeline_layout(
         _ocr_enable,
         batch_ratio,
     )
-    return window_model_list, hybrid_pipeline_model
+    return window_model_list, local_context
 
 
 def _apply_layout_title_split_for_window(
@@ -1165,21 +1165,21 @@ def _apply_layout_title_split_for_window(
     model_list: list[list[dict[str, Any]]],
     language: str | None,
     batch_ratio: int,
-) -> MineruHybridModel:
+) -> HybridLocalModelContext:
     """为VLM-OCR路径补跑layout小模型，先基于VLM原始title做OCR det，再拆分标题。"""
-    hybrid_model_singleton = HybridModelSingleton()
-    hybrid_pipeline_model = hybrid_model_singleton.get_model(
+    local_context_singleton = HybridLocalModelContextSingleton()
+    local_context = local_context_singleton.get_model(
         lang=language,
         formula_enable=False,
     )
     images_layout_res = _predict_layout_for_title_split(
-        hybrid_pipeline_model,
+        local_context,
         images_pil_list,
         batch_ratio,
     )
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
     ocr_res_list = _ocr_det(
-        hybrid_pipeline_model,
+        local_context,
         np_images,
         model_list,
         _build_formula_mask_inputs(images_layout_res),
@@ -1199,7 +1199,7 @@ def _apply_layout_title_split_for_window(
         images_layout_res,
         [_normalize_page_size(image) for image in images_pil_list],
     )
-    return hybrid_pipeline_model
+    return local_context
 
 
 def _normalize_bbox(
@@ -1370,7 +1370,7 @@ def doc_analyze(
     middle_json: list[PageInfo] = []
     model_list: list[list[dict[str, Any]]] = []
     doc_closed = False
-    hybrid_pipeline_model = None
+    local_context = None
     try:
         page_count = pdf_doc.page_count
         configured_window_size = get_processing_window_size(default=64)
@@ -1403,7 +1403,7 @@ def doc_analyze(
                         f"({len(images_pil_list)} pages)"
                     )
                     if effort == LOCAL_HYBRID_EFFORT:
-                        window_model_list, hybrid_pipeline_model = _extract_with_local_layout(
+                        window_model_list, local_context = _extract_with_local_layout(
                             images_pil_list,
                             language,
                             inline_formula_enable,
@@ -1412,7 +1412,7 @@ def doc_analyze(
                         )
                     elif effort == LAYOUT_HYBRID_EFFORT:
                         with vlm_runtime["predictor_execution_guard"](predictor):
-                            window_model_list, hybrid_pipeline_model = _extract_with_pipeline_layout(
+                            window_model_list, local_context = _extract_high_with_local_layout(
                                 predictor,
                                 images_pil_list,
                                 language,
@@ -1426,7 +1426,7 @@ def doc_analyze(
                                 images=images_pil_list,
                                 image_analysis=image_analysis,
                             )
-                        hybrid_pipeline_model = _apply_layout_title_split_for_window(
+                        local_context = _apply_layout_title_split_for_window(
                             images_pil_list,
                             window_model_list,
                             language,
@@ -1439,7 +1439,7 @@ def doc_analyze(
                                 not_extract_list=list(NOT_EXTRACT_TYPES),
                                 image_analysis=image_analysis,
                             )
-                        window_model_list, hybrid_pipeline_model = _process_ocr_and_formulas(
+                        window_model_list, local_context = _process_ocr_and_formulas(
                             images_pil_list,
                             window_model_list,
                             language,
@@ -1486,14 +1486,14 @@ def doc_analyze(
         if client_side_output_generation:
             apply_server_side_postprocess(
                 middle_json,
-                hybrid_pipeline_model,
+                local_context,
                 _ocr_enable,
                 _vlm_ocr_enable,
             )
         else:
             finalize_middle_json(
                 middle_json,
-                hybrid_pipeline_model,
+                local_context,
                 _ocr_enable,
                 _vlm_ocr_enable,
                 effort=effort,
@@ -1553,7 +1553,7 @@ async def aio_doc_analyze(
     middle_json: list[PageInfo] = []
     model_list = []
     doc_closed = False
-    hybrid_pipeline_model = None
+    local_context = None
     try:
         page_count = pdf_doc.page_count
         configured_window_size = get_processing_window_size(default=64)
@@ -1586,7 +1586,7 @@ async def aio_doc_analyze(
                         f"({len(images_pil_list)} pages)"
                     )
                     if effort == LOCAL_HYBRID_EFFORT:
-                        window_model_list, hybrid_pipeline_model = await asyncio.to_thread(
+                        window_model_list, local_context = await asyncio.to_thread(
                             _extract_with_local_layout,
                             images_pil_list,
                             language,
@@ -1596,7 +1596,7 @@ async def aio_doc_analyze(
                         )
                     elif effort == LAYOUT_HYBRID_EFFORT:
                         async with vlm_runtime["aio_predictor_execution_guard"](predictor):
-                            window_model_list, hybrid_pipeline_model = await _aio_extract_with_pipeline_layout(
+                            window_model_list, local_context = await _aio_extract_high_with_local_layout(
                                 predictor,
                                 images_pil_list,
                                 language,
@@ -1610,7 +1610,7 @@ async def aio_doc_analyze(
                                 images=images_pil_list,
                                 image_analysis=image_analysis,
                             )
-                        hybrid_pipeline_model = await asyncio.to_thread(
+                        local_context = await asyncio.to_thread(
                             _apply_layout_title_split_for_window,
                             images_pil_list,
                             window_model_list,
@@ -1624,7 +1624,7 @@ async def aio_doc_analyze(
                                 not_extract_list=list(NOT_EXTRACT_TYPES),
                                 image_analysis=image_analysis,
                             )
-                        window_model_list, hybrid_pipeline_model = await asyncio.to_thread(
+                        window_model_list, local_context = await asyncio.to_thread(
                             _process_ocr_and_formulas,
                             images_pil_list,
                             window_model_list,
@@ -1673,7 +1673,7 @@ async def aio_doc_analyze(
             await asyncio.to_thread(
                 apply_server_side_postprocess,
                 middle_json,
-                hybrid_pipeline_model,
+                local_context,
                 _ocr_enable,
                 _vlm_ocr_enable,
             )
@@ -1681,7 +1681,7 @@ async def aio_doc_analyze(
             await asyncio.to_thread(
                 finalize_middle_json,
                 middle_json,
-                hybrid_pipeline_model,
+                local_context,
                 _ocr_enable,
                 _vlm_ocr_enable,
                 effort=effort,

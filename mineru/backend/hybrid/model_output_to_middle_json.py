@@ -12,7 +12,7 @@ from ...utils.image_payload import ImagePayloadCache
 from ...utils.pdf_document import PDFPage
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from ...utils.backend_options import DEFAULT_HYBRID_EFFORT, LAYOUT_HYBRID_EFFORT, LOCAL_HYBRID_EFFORT, validate_effort
-from ..local_model_runtime import MineruHybridModel
+from ..local_model_runtime import HybridLocalModelContext
 from ..utils.formula_number import optimize_hybrid_formula_number_blocks
 from ..utils.middle_json_utils import apply_post_ocr
 from ..utils.para_block_utils import (
@@ -125,8 +125,8 @@ def blocks_to_page_info(
     return page_info
 
 
-def _apply_post_ocr(pages: list[PageInfo], hybrid_pipeline_model: MineruHybridModel) -> None:
-    apply_post_ocr(pages, hybrid_pipeline_model.ocr_model)
+def _apply_post_ocr(pages: list[PageInfo], local_context: HybridLocalModelContext) -> None:
+    apply_post_ocr(pages, local_context.ocr_model)
 
 
 def _normalize_split_title_blocks(pages: list[PageInfo]) -> None:
@@ -146,11 +146,11 @@ def _normalize_split_title_blocks(pages: list[PageInfo]) -> None:
 
 
 def apply_server_side_postprocess(
-    pages: list[PageInfo], hybrid_pipeline_model: MineruHybridModel, _ocr_enable: bool, _vlm_ocr_enable: bool
+    pages: list[PageInfo], local_context: HybridLocalModelContext, _ocr_enable: bool, _vlm_ocr_enable: bool
 ) -> None:
     """执行 Hybrid 只能在服务端完成的 post-OCR，避免客户端依赖本地 OCR 模型。"""
     if not (_vlm_ocr_enable or _ocr_enable):
-        _apply_post_ocr(pages, hybrid_pipeline_model)
+        _apply_post_ocr(pages, local_context)
 
 
 def finalize_middle_json_from_preproc(pages: list[PageInfo], effort: str = DEFAULT_HYBRID_EFFORT) -> None:
@@ -174,11 +174,11 @@ def finalize_middle_json_from_preproc(pages: list[PageInfo], effort: str = DEFAU
 
 def finalize_middle_json(
     pages: list[PageInfo],
-    hybrid_pipeline_model: MineruHybridModel,
+    local_context: HybridLocalModelContext,
     _ocr_enable: bool,
     _vlm_ocr_enable: bool,
     effort: str = DEFAULT_HYBRID_EFFORT,
 ) -> None:
     """保持旧入口语义：服务端先做必要 post-OCR，再执行完整 finalize。"""
-    apply_server_side_postprocess(pages, hybrid_pipeline_model, _ocr_enable, _vlm_ocr_enable)
+    apply_server_side_postprocess(pages, local_context, _ocr_enable, _vlm_ocr_enable)
     finalize_middle_json_from_preproc(pages, effort=effort)

@@ -79,6 +79,41 @@ print("ok")
     assert result.stdout.strip() == "ok"
 
 
+def test_hybrid_local_runtime_uses_context_names_and_local_lock_env() -> None:
+    """校验 Hybrid 本地模型运行时只暴露 context 命名，并优先读取新的本地锁环境变量。"""
+    repo_root = Path(__file__).resolve().parents[2]
+    code = """
+import os
+
+os.environ["MINERU_ENABLE_LOCAL_MODEL_INFERENCE_LOCKS"] = "true"
+os.environ["MINERU_ENABLE_PIPELINE_INFERENCE_LOCKS"] = "false"
+
+from mineru.backend import local_model_runtime
+
+assert hasattr(local_model_runtime, "HybridLocalModelContext")
+assert hasattr(local_model_runtime, "HybridLocalModelContextSingleton")
+for removed_name in [
+    "Mineru" + "PipelineModel",
+    "Mineru" + "HybridModel",
+    "Hybrid" + "ModelSingleton",
+]:
+    assert not hasattr(local_model_runtime, removed_name)
+assert local_model_runtime.LOCAL_MODEL_INFERENCE_LOCKS_ENABLED is True
+print("ok")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
 def test_validate_effort_rejects_low_and_maps_legacy_backends() -> None:
     """校验 Hybrid effort 只接受 medium/high/extra_high 三档。"""
     from mineru.utils.backend_options import HYBRID_EFFORT_CHOICES, resolve_backend_and_effort, validate_effort
