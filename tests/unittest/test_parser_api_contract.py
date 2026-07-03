@@ -47,7 +47,7 @@ def _stub_api_server_dependency_preflight(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_hybrid_analyze_import_does_not_require_vlm_utils() -> None:
-    """校验 Hybrid low 所需模块导入阶段不再强依赖 VLM 工具包。"""
+    """校验 Hybrid medium 所需模块导入阶段不再强依赖 VLM 工具包。"""
     repo_root = Path(__file__).resolve().parents[2]
     code = """
 import importlib.abc
@@ -56,7 +56,7 @@ import sys
 
 class BlockVlmUtilsFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        # 阻断 mineru_vl_utils 导入，用来验证 Hybrid low 的 lazy import 边界。
+        # 阻断 mineru_vl_utils 导入，用来验证 Hybrid medium 的 lazy import 边界。
         if fullname == "mineru_vl_utils" or fullname.startswith("mineru_vl_utils."):
             raise ModuleNotFoundError(f"blocked VLM utility import: {fullname}")
         return None
@@ -79,14 +79,15 @@ print("ok")
     assert result.stdout.strip() == "ok"
 
 
-def test_validate_effort_accepts_low_and_maps_legacy_backends() -> None:
-    """校验 legacy backend 输入统一映射到当前 Hybrid effort 合约。"""
+def test_validate_effort_rejects_low_and_maps_legacy_backends() -> None:
+    """校验 Hybrid effort 只接受 medium/high/extra_high 三档。"""
     from mineru.utils.backend_options import HYBRID_EFFORT_CHOICES, resolve_backend_and_effort, validate_effort
 
-    assert validate_effort("low") == "low"
-    assert "low" in HYBRID_EFFORT_CHOICES
-    assert resolve_backend_and_effort("vlm-engine", "low") == ("hybrid-engine", "high")
-    assert resolve_backend_and_effort("pipeline", "high") == ("hybrid-engine", "low")
+    assert HYBRID_EFFORT_CHOICES == ("medium", "high", "extra_high")
+    with pytest.raises(ValueError, match="Unsupported effort 'low'"):
+        validate_effort("low")
+    assert resolve_backend_and_effort("vlm-engine", "medium") == ("hybrid-engine", "extra_high")
+    assert resolve_backend_and_effort("pipeline", "extra_high") == ("hybrid-engine", "medium")
 
 
 def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> None:
@@ -498,7 +499,7 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     assert app.state.max_wait == 600
     assert app.state.language == "ch"
     assert app.state.ocr_mode == "auto"
-    assert app.state.effort == "low"
+    assert app.state.effort == "medium"
     assert app.state.table_enable is True
     assert app.state.formula_enable is True
     assert app.state.image_analysis is True
@@ -617,7 +618,7 @@ def test_api_server_rendered_outputs_store_image_sidecars(
             table_enable=True,
             formula_enable=True,
             image_analysis=True,
-            effort="low",
+            effort="medium",
         )
     )
 
@@ -682,7 +683,7 @@ def test_api_server_middle_json_preserves_backend_for_client_rendering(
             table_enable=True,
             formula_enable=True,
             image_analysis=True,
-            effort="low",
+            effort="medium",
         )
     )
 
@@ -749,7 +750,7 @@ def test_api_server_sanitizes_surrogates_in_text_outputs(
             table_enable=True,
             formula_enable=True,
             image_analysis=True,
-            effort="low",
+            effort="medium",
         )
     )
 
@@ -804,7 +805,7 @@ def test_api_server_logs_traceback_when_job_file_fails(
                 table_enable=True,
                 formula_enable=True,
                 image_analysis=True,
-                effort="low",
+                effort="medium",
             )
         )
 
@@ -860,7 +861,7 @@ def test_api_server_tier_selects_compatible_backend(tmp_path: Path, monkeypatch:
     assert [tier["id"] for tier in pro_app.state.tiers] == ["pro"]
     assert standard_app.state.tier == "standard"
     assert standard_app.state.backend == "hybrid-engine"
-    assert standard_app.state.effort == "low"
+    assert standard_app.state.effort == "medium"
     assert [tier["id"] for tier in standard_app.state.tiers] == ["standard"]
 
 
@@ -870,7 +871,7 @@ def test_api_server_defaults_to_standard_tier(tmp_path: Path, monkeypatch: pytes
 
     assert app.state.tier == "standard"
     assert app.state.backend == "hybrid-engine"
-    assert app.state.effort == "low"
+    assert app.state.effort == "medium"
     assert [tier["id"] for tier in app.state.tiers] == ["standard"]
 
 
@@ -954,7 +955,7 @@ def test_api_server_cli_reports_dependency_preflight_without_traceback(monkeypat
     assert "Traceback" not in result.output
 
 
-def test_api_server_maps_legacy_pipeline_backend_to_standard_hybrid_low(
+def test_api_server_maps_legacy_pipeline_backend_to_standard_hybrid_medium(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _stub_api_server_dependency_preflight(monkeypatch)
@@ -962,7 +963,7 @@ def test_api_server_maps_legacy_pipeline_backend_to_standard_hybrid_low(
 
     assert app.state.tier == "standard"
     assert app.state.backend == "hybrid-engine"
-    assert app.state.effort == "low"
+    assert app.state.effort == "medium"
 
 
 def test_api_server_allows_compatible_tier_and_explicit_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -971,7 +972,7 @@ def test_api_server_allows_compatible_tier_and_explicit_backend(tmp_path: Path, 
 
     assert app.state.tier == "pro"
     assert app.state.backend == "hybrid-engine"
-    assert app.state.effort == "high"
+    assert app.state.effort == "extra_high"
     assert [tier["id"] for tier in app.state.tiers] == ["pro"]
 
 
@@ -999,7 +1000,7 @@ def test_build_parser_forwards_effort_to_hybrid_parser(tmp_path: Path) -> None:
     assert parser.effort == "high"
 
 
-def test_build_parser_maps_legacy_vlm_backend_to_hybrid_high(tmp_path: Path) -> None:
+def test_build_parser_maps_legacy_vlm_backend_to_hybrid_extra_high(tmp_path: Path) -> None:
     pdf = tmp_path / "demo.pdf"
     pdf.write_bytes(b"%PDF-1.7\n")
 
@@ -1007,10 +1008,10 @@ def test_build_parser_maps_legacy_vlm_backend_to_hybrid_high(tmp_path: Path) -> 
 
     assert parser.__class__.__name__ == "PdfHybridParser"
     assert parser.backend == "hybrid-engine"
-    assert parser.effort == "high"
+    assert parser.effort == "extra_high"
 
 
-def test_build_parser_maps_legacy_pipeline_backend_to_hybrid_low(tmp_path: Path) -> None:
+def test_build_parser_maps_legacy_pipeline_backend_to_hybrid_medium(tmp_path: Path) -> None:
     pdf = tmp_path / "demo.pdf"
     pdf.write_bytes(b"%PDF-1.7\n")
 
@@ -1018,26 +1019,26 @@ def test_build_parser_maps_legacy_pipeline_backend_to_hybrid_low(tmp_path: Path)
 
     assert parser.__class__.__name__ == "PdfHybridParser"
     assert parser.backend == "hybrid-engine"
-    assert parser.effort == "low"
+    assert parser.effort == "medium"
 
 
-def test_pdf_pipeline_parser_compat_delegates_to_hybrid_low() -> None:
+def test_pdf_pipeline_parser_compat_delegates_to_hybrid_medium() -> None:
     parser = parser_pdf.PdfPipelineParser(method="ocr", lang="en", effort="high")
 
     assert isinstance(parser, parser_pdf.PdfHybridParser)
     assert parser.backend == "hybrid-engine"
     assert parser.method == "ocr"
     assert parser.lang == "en"
-    assert parser.effort == "low"
+    assert parser.effort == "medium"
 
 
-def test_pdf_hybrid_low_parser_skips_vlm_backend_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
-    """校验 Hybrid low 直接进入本地分支，不解析 VLM engine。"""
+def test_pdf_hybrid_medium_parser_skips_vlm_backend_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
+    """校验 Hybrid medium 直接进入本地分支，不解析 VLM engine。"""
     seen: dict[str, object] = {}
     fake_module = types.ModuleType("mineru.backend.hybrid.hybrid_analyze")
 
     def fake_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], list[object], bool]:
-        """记录 low 分支收到的参数，并返回 Hybrid middle-json 形态。"""
+        """记录 medium 分支收到的参数，并返回 Hybrid middle-json 形态。"""
         seen.update(kwargs)
         return [PageInfo(page_idx=0, _backend="hybrid")], [], False
 
@@ -1045,17 +1046,17 @@ def test_pdf_hybrid_low_parser_skips_vlm_backend_resolution(monkeypatch: pytest.
     monkeypatch.setitem(sys.modules, "mineru.backend.hybrid.hybrid_analyze", fake_module)
 
     def fail_resolve_backend(*_args: object, **_kwargs: object) -> str:
-        """low 不应触发 VLM backend resolver。"""
-        raise AssertionError("low effort should not resolve VLM backend")
+        """medium 不应触发 VLM backend resolver。"""
+        raise AssertionError("medium effort should not resolve VLM backend")
 
     monkeypatch.setattr(parser_pdf, "_resolve_hybrid_backend", fail_resolve_backend)
 
-    parser = parser_pdf.PdfHybridParser(backend="hybrid-engine", effort="low", lang="en")
+    parser = parser_pdf.PdfHybridParser(backend="hybrid-engine", effort="medium", lang="en")
     pages = parser._run_analysis(b"%PDF-1.7\n")
 
     assert pages[0]._backend == "hybrid"
     assert seen["backend"] == "hybrid-engine"
-    assert seen["effort"] == "low"
+    assert seen["effort"] == "medium"
     assert seen["language"] == "en"
 
 
@@ -1089,7 +1090,7 @@ def test_pdf_engine_resolvers_keep_http_client_backend() -> None:
     assert parser_pdf._resolve_hybrid_backend("hybrid-http-client", is_async=True) == "http-client"
 
 
-def test_pdf_vlm_parser_compat_delegates_to_hybrid_high(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_pdf_vlm_parser_compat_delegates_to_hybrid_extra_high(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, bool]] = []
     backends: list[str] = []
     efforts: list[str] = []
@@ -1123,7 +1124,7 @@ def test_pdf_vlm_parser_compat_delegates_to_hybrid_high(monkeypatch: pytest.Monk
     assert asyncio.run(parser._arun_analysis(b"%PDF")) == []
     assert calls == [("hybrid-engine", False), ("hybrid-engine", True)]
     assert backends == ["sync-backend", "async-backend"]
-    assert efforts == ["high", "high"]
+    assert efforts == ["extra_high", "extra_high"]
 
 
 def test_pdf_hybrid_parser_passes_call_mode_to_backend_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1193,7 +1194,7 @@ def test_api_server_stores_parser_runtime_options(tmp_path: Path, monkeypatch: p
 
     assert app.state.language == "ch"
     assert app.state.ocr_mode == "ocr"
-    assert app.state.effort == "low"
+    assert app.state.effort == "medium"
     assert app.state.table_enable is False
     assert app.state.formula_enable is False
     assert app.state.image_analysis is False
@@ -1246,7 +1247,7 @@ def test_api_server_cli_accepts_backend_alias(monkeypatch: pytest.MonkeyPatch) -
     assert seen == {"backend": "hybrid-engine", "host": "0.0.0.0", "port": "15981"}
 
 
-def test_api_server_cli_maps_legacy_vlm_backend_to_hybrid_high(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_server_cli_maps_legacy_vlm_backend_to_hybrid_extra_high(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, str] = {}
 
     def _fake_run(server) -> None:
@@ -1259,7 +1260,7 @@ def test_api_server_cli_maps_legacy_vlm_backend_to_hybrid_high(monkeypatch: pyte
     result = runner.invoke(main, ["--backend", "vlm-http-client", "--host", "0.0.0.0", "--port", "15983"])
 
     assert result.exit_code == 0
-    assert seen == {"backend": "hybrid-http-client", "effort": "high"}
+    assert seen == {"backend": "hybrid-http-client", "effort": "extra_high"}
 
 
 def test_api_server_cli_normalizes_hidden_language_alias(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1309,7 +1310,7 @@ def test_api_server_cli_effort_help_matches_gradio_copy() -> None:
     effort_option = next(param for param in main.params if "--effort" in param.opts)
 
     assert effort_option.help == (
-        "Higher effort improves parsing quality but may be slower; lower effort is faster but may reduce quality."
+        "Higher effort improves parsing quality but may be slower; medium is the fastest local Hybrid mode."
     )
 
 

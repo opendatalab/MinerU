@@ -21,8 +21,8 @@ def test_finalize_client_side_pages_passes_hybrid_effort(monkeypatch) -> None:
     assert calls == ["high"]
 
 
-def test_finalize_client_side_pages_accepts_hybrid_low(monkeypatch) -> None:
-    """校验客户端 Hybrid finalize 支持 low effort，并仍走 Hybrid 分支。"""
+def test_finalize_client_side_pages_rejects_low_effort(monkeypatch) -> None:
+    """校验客户端 Hybrid finalize 不再接受 low effort。"""
     calls: list[str] = []
     pages = [PageInfo(page_idx=0, _backend="hybrid")]
     monkeypatch.setattr(
@@ -30,9 +30,10 @@ def test_finalize_client_side_pages_accepts_hybrid_low(monkeypatch) -> None:
         lambda parsed_pages, effort="medium": calls.append(effort),
     )
 
-    title_level_postprocess.finalize_client_side_pages(pages, "hybrid", effort="low")
+    with pytest.raises(ValueError, match="Unsupported effort 'low'"):
+        title_level_postprocess.finalize_client_side_pages(pages, "hybrid", effort="low")
 
-    assert calls == ["low"]
+    assert calls == []
 
 
 def test_regenerate_client_side_outputs_forwards_hybrid_effort(monkeypatch, tmp_path) -> None:

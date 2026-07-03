@@ -131,8 +131,8 @@
         const effort = getEffortValue();
         const showClientOptions = backend.endsWith("http-client");
         const showImageAnalysis = backend.startsWith("vlm")
-            || (backend.startsWith("hybrid") && effort === "high");
-        const showOcrLanguage = backend.startsWith("hybrid") && effort === "low";
+            || (backend.startsWith("hybrid") && effort === "extra_high");
+        const showOcrLanguage = backend.startsWith("hybrid") && effort === "medium";
         const hideForceOcr = !backend.startsWith("hybrid");
         const hideHybridEffort = !backend.startsWith("hybrid");
 

@@ -298,7 +298,7 @@ class MagicModel:
                 _copy_raw_text_block_metadata(draft, block)
 
             if block.type == BlockType.INDEX:
-                # Hybrid medium 使用 INDEX 作为 VLM content 内部哨兵；内容构造完成后再对齐 3.4 输出为 text。
+                # Hybrid VLM 路径使用 INDEX 作为 content 内部哨兵；内容构造完成后再对齐 3.4 输出为 text。
                 block.type = BlockType.TEXT
 
             blocks.append(block)

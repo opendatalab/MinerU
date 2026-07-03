@@ -10,7 +10,7 @@ from .html import HtmlParser
 from .office import DocxParser, PptxParser, XlsxParser
 from .pdf import PdfFlashParser, PdfHybridParser, PdfPipelineParser, PdfVlmParser
 from .tier import PARSER_BACKENDS, backend_for_tier, resolve_tier_and_backend
-from ..utils.backend_options import resolve_backend_and_effort
+from ..utils.backend_options import DEFAULT_HYBRID_EFFORT, LOCAL_HYBRID_EFFORT, resolve_backend_and_effort
 
 __all__ = [
     "backend_for_tier",
@@ -54,7 +54,7 @@ def _build_parser(
     backend: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
-    effort: str = "medium",
+    effort: str = DEFAULT_HYBRID_EFFORT,
     disable_table: bool = False,
     disable_formula: bool = False,
     disable_image_analysis: bool = False,
@@ -70,7 +70,7 @@ def _build_parser(
     resolved_tier, resolved_backend = resolve_tier_and_backend(tier=tier, backend=backend)
     resolved_backend, resolved_effort = resolve_backend_and_effort(backend or resolved_backend, effort)
     if resolved_tier == "standard":
-        resolved_effort = "low"
+        resolved_effort = LOCAL_HYBRID_EFFORT
     resolved_ocr_mode = method or ocr_mode
     resolved_language = lang or language
     resolved_table_enable = (not disable_table) if table_enable is None else table_enable
@@ -114,7 +114,7 @@ def parse(
     backend: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
-    effort: str = "medium",
+    effort: str = DEFAULT_HYBRID_EFFORT,
     disable_table: bool = False,
     disable_formula: bool = False,
     disable_image_analysis: bool = False,
@@ -153,7 +153,7 @@ async def parse_async(
     backend: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
-    effort: str = "medium",
+    effort: str = DEFAULT_HYBRID_EFFORT,
     disable_table: bool = False,
     disable_formula: bool = False,
     disable_image_analysis: bool = False,

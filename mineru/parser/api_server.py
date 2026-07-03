@@ -38,7 +38,13 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..types import Tier
-from ..utils.backend_options import HYBRID_EFFORT_HELP, resolve_backend_and_effort
+from ..utils.backend_options import (
+    DEFAULT_HYBRID_EFFORT,
+    HYBRID_EFFORT_CHOICES,
+    HYBRID_EFFORT_HELP,
+    LOCAL_HYBRID_EFFORT,
+    resolve_backend_and_effort,
+)
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..version import __version__
 from . import parse_async
@@ -1258,7 +1264,7 @@ async def _run_job(
     table_enable: bool,
     formula_enable: bool,
     image_analysis: bool,
-    effort: str = "medium",
+    effort: str = DEFAULT_HYBRID_EFFORT,
     url_timeout: int = 60,
 ) -> None:
     rec.status = "running"
@@ -1991,8 +1997,8 @@ def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[di
     return ["Hybrid-Low", "MinerU-HTML"], [
         {
             "id": "standard",
-            "description": "Hybrid low parsing with local lightweight models.",
-            "current_model": "hybrid-low",
+            "description": "Hybrid medium parsing with local lightweight models.",
+            "current_model": "hybrid-medium",
         },
     ]
 
@@ -2015,7 +2021,7 @@ def create_app(
     api_key: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
-    effort: str = "medium",
+    effort: str = DEFAULT_HYBRID_EFFORT,
     table_enable: bool = True,
     formula_enable: bool = True,
     image_analysis: bool = True,
@@ -2027,7 +2033,7 @@ def create_app(
     upload_dir:
         Directory for uploaded files and parse artifacts.
     tier:
-        Server parsing tier.  ``"standard"`` selects Hybrid low;
+        Server parsing tier.  ``"standard"`` selects Hybrid medium;
         ``"pro"`` selects the default Hybrid backend.  If ``backend`` is also provided,
         both values must be compatible.
     backend:
@@ -2042,12 +2048,12 @@ def create_app(
         Optional API key.  When set, clients must pass ``Authorization: Bearer <key>``
         to access list endpoints and advanced output formats.
     language:
-        Hybrid low OCR language hint; accepted by other efforts for compatibility.
+        Hybrid medium OCR language hint; accepted by other efforts for compatibility.
     ocr_mode:
         PDF OCR/text extraction mode for Hybrid backends.
     effort:
-        Hybrid backend effort level. Low uses local Hybrid processing. Medium is
-        faster. High is more accurate and may take longer.
+        Hybrid backend effort level. Medium uses local Hybrid processing. High and
+        extra_high use progressively stronger VLM-assisted parsing.
     table_enable:
         Whether table recognition is enabled.
     formula_enable:
@@ -2060,8 +2066,8 @@ def create_app(
     tier, backend = _resolve_server_tier_and_backend(tier=tier, backend=backend)
     backend, effort = resolve_backend_and_effort(raw_backend or backend, effort)
     if tier == "standard":
-        effort = "low"
-    dependency_tier = "standard" if backend.startswith("hybrid-") and effort == "low" else tier
+        effort = LOCAL_HYBRID_EFFORT
+    dependency_tier = "standard" if backend.startswith("hybrid-") and effort == LOCAL_HYBRID_EFFORT else tier
     _preflight_tier_dependencies(dependency_tier)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
@@ -2168,7 +2174,7 @@ def create_app(
     help=(
         "Advanced parser backend "
         f"({', '.join(_API_SERVER_BACKENDS)}). "
-        "Defaults from --tier: standard -> hybrid-engine --effort low, pro -> hybrid-engine."
+        f"Defaults from --tier: standard -> hybrid-engine --effort {LOCAL_HYBRID_EFFORT}, pro -> hybrid-engine."
     ),
 )
 @click.option(
@@ -2200,7 +2206,7 @@ def create_app(
     default="ch",
     type=str,
     metavar="[" + "|".join(_API_SERVER_LANGUAGES) + "]",
-    help="Hybrid low OCR language hint; accepted by other efforts for compatibility.",
+    help="Hybrid medium OCR language hint; accepted by other efforts for compatibility.",
 )
 @click.option(
     "--ocr-mode",
@@ -2210,8 +2216,9 @@ def create_app(
 )
 @click.option(
     "--effort",
-    default="medium",
-    type=click.Choice(("low", "medium", "high")),
+    default=DEFAULT_HYBRID_EFFORT,
+    type=str,
+    metavar="[" + "|".join(HYBRID_EFFORT_CHOICES) + "]",
     help=HYBRID_EFFORT_HELP,
 )
 @click.option("--disable-table", is_flag=True, help="Disable table recognition.")

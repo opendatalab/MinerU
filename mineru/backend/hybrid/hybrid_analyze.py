@@ -16,7 +16,13 @@ from tqdm import tqdm
 
 from ...types import NOT_EXTRACT_TYPES, BBox, PageInfo
 from ...types import BlockType as MineruBlockType
-from ...utils.backend_options import validate_effort
+from ...utils.backend_options import (
+    DEFAULT_HYBRID_EFFORT,
+    LAYOUT_HYBRID_EFFORT,
+    LOCAL_HYBRID_EFFORT,
+    MAX_HYBRID_EFFORT,
+    validate_effort,
+)
 from ...utils.config_reader import get_device, get_processing_window_size, get_table_enable
 from ...utils.enum_class import ImageType
 from ...utils.image_payload import ImagePayloadCache
@@ -58,7 +64,7 @@ LAYOUT_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 8
 LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD = 0.8
-HYBRID_MEDIUM_LAYOUT_LABEL_MAP = {
+HYBRID_VLM_LAYOUT_LABEL_MAP = {
     "abstract": MineruBlockType.TEXT,
     "algorithm": MineruBlockType.ALGORITHM,
     "aside_text": MineruBlockType.ASIDE_TEXT,
@@ -83,8 +89,8 @@ HYBRID_MEDIUM_LAYOUT_LABEL_MAP = {
     "vertical_text": MineruBlockType.TEXT,
 }
 
-HYBRID_LOW_LAYOUT_LABEL_MAP = {
-    **HYBRID_MEDIUM_LAYOUT_LABEL_MAP,
+HYBRID_MEDIUM_LAYOUT_LABEL_MAP = {
+    **HYBRID_VLM_LAYOUT_LABEL_MAP,
     "doc_title": MineruBlockType.DOC_TITLE,
     "paragraph_title": MineruBlockType.PARAGRAPH_TITLE,
     "figure_title": MineruBlockType.IMAGE_CAPTION,
@@ -93,14 +99,14 @@ HYBRID_LOW_LAYOUT_LABEL_MAP = {
 
 
 def _load_vlm_content_block() -> Any:
-    """按需加载 VLM ContentBlock，避免 Hybrid low 导入阶段依赖 mineru_vl_utils。"""
+    """按需加载 VLM ContentBlock，避免 Hybrid medium 导入阶段依赖 mineru_vl_utils。"""
     from mineru_vl_utils.structs import ContentBlock
 
     return ContentBlock
 
 
 def _load_vlm_runtime() -> dict[str, Any]:
-    """按需加载 VLM runtime 组件，确保只有 medium/high 路径触发 VLM 依赖。"""
+    """按需加载 VLM runtime 组件，确保只有 high/extra_high 路径触发 VLM 依赖。"""
     from ...model.vlm.runtime import (
         ModelSingleton,
         _get_model_async,
@@ -123,8 +129,8 @@ def _is_hybrid_ocr_det_candidate(block: dict[str, Any]) -> bool:
     return (block.get("type") or block.get("label")) in NOT_EXTRACT_TYPES
 
 
-def _is_hybrid_low_ocr_det_candidate(block: dict[str, Any]) -> bool:
-    """判断 Hybrid low 本地 layout 块是否需要 OCR det，覆盖 doc/index/list 等 layout 标签。"""
+def _is_hybrid_medium_ocr_det_candidate(block: dict[str, Any]) -> bool:
+    """判断 Hybrid medium 本地 layout 块是否需要 OCR det，覆盖 doc/index/list 等 layout 标签。"""
     item_type = block.get("type") or block.get("label")
     return item_type in {
         *NOT_EXTRACT_TYPES,
@@ -477,7 +483,7 @@ def _normalize_layout_bbox_to_unit(bbox: BBox | None, page_size: tuple[int, int]
 def _layout_item_to_content_block(layout_item: dict[str, Any], page_size: tuple[int, int]) -> Any | None:
     """将 Pipeline layout 检测项转换为 mineru-vl-utils 的 ContentBlock。"""
     label = layout_item.get("label") or layout_item.get("type")
-    block_type = HYBRID_MEDIUM_LAYOUT_LABEL_MAP.get(str(label))
+    block_type = HYBRID_VLM_LAYOUT_LABEL_MAP.get(str(label))
     if block_type is None:
         return None
 
@@ -489,15 +495,15 @@ def _layout_item_to_content_block(layout_item: dict[str, Any], page_size: tuple[
     try:
         return ContentBlock(type=block_type, bbox=bbox, angle=layout_item.get("angle", 0) or 0)
     except AssertionError:
-        logger.debug(f"Skip invalid Hybrid medium layout block: {layout_item}")
+        logger.debug(f"Skip invalid Hybrid high layout block: {layout_item}")
         return None
 
 
-def _build_medium_layout_blocks(
+def _build_high_layout_blocks(
     images_layout_res: list[list[dict[str, Any]]],
     images_pil_list: list[Image.Image],
 ) -> list[list[Any]]:
-    """按页构造 Hybrid medium 模式传给 VLM 的外部 layout blocks。"""
+    """按页构造 Hybrid high 模式传给 VLM 的外部 layout blocks。"""
     blocks_list: list[list[Any]] = []
     for layout_res, image in zip(images_layout_res, images_pil_list):
         page_size = _normalize_page_size(image)
@@ -510,13 +516,13 @@ def _build_medium_layout_blocks(
     return blocks_list
 
 
-def _is_low_table_enabled() -> bool:
-    """读取 Hybrid low 的表格开关，复用 Hybrid 当前通过环境变量传入的表格配置。"""
+def _is_medium_table_enabled() -> bool:
+    """读取 Hybrid medium 的表格开关，复用 Hybrid 当前通过环境变量传入的表格配置。"""
     return get_table_enable(os.getenv("MINERU_VLM_TABLE_ENABLE", "True").lower() == "true")
 
 
-def _normalize_low_content(value: Any) -> str:
-    """将 low 本地模型输出的文本字段规范成 Hybrid block 可消费的字符串。"""
+def _normalize_medium_content(value: Any) -> str:
+    """将 medium 本地模型输出的文本字段规范成 Hybrid block 可消费的字符串。"""
     if isinstance(value, list):
         return "\n".join(str(item) for item in value if str(item).strip())
     if isinstance(value, str):
@@ -524,7 +530,7 @@ def _normalize_low_content(value: Any) -> str:
     return ""
 
 
-def _low_layout_item_to_hybrid_item(
+def _medium_layout_item_to_hybrid_item(
     layout_item: dict[str, Any],
     page_size: tuple[int, int],
 ) -> dict[str, Any] | None:
@@ -536,7 +542,7 @@ def _low_layout_item_to_hybrid_item(
 
     score = float(layout_item.get("score", 0.0) or 0.0)
     if label == "inline_formula":
-        latex = _normalize_low_content(layout_item.get("latex", ""))
+        latex = _normalize_medium_content(layout_item.get("latex", ""))
         if not latex:
             return None
         return {"type": "inline_formula", "bbox": bbox, "latex": latex, "score": score}
@@ -544,11 +550,11 @@ def _low_layout_item_to_hybrid_item(
         return {
             "type": "ocr_text",
             "bbox": bbox,
-            "text": _normalize_low_content(layout_item.get("text", "")),
+            "text": _normalize_medium_content(layout_item.get("text", "")),
             "score": score,
         }
 
-    block_type = HYBRID_LOW_LAYOUT_LABEL_MAP.get(label)
+    block_type = HYBRID_MEDIUM_LAYOUT_LABEL_MAP.get(label)
     if block_type is None:
         return None
 
@@ -561,42 +567,42 @@ def _low_layout_item_to_hybrid_item(
         hybrid_item["sub_type"] = "seal"
 
     if block_type == MineruBlockType.TABLE:
-        hybrid_item["content"] = _normalize_low_content(layout_item.get("html", ""))
+        hybrid_item["content"] = _normalize_medium_content(layout_item.get("html", ""))
     elif block_type == MineruBlockType.EQUATION:
-        hybrid_item["content"] = _normalize_low_content(layout_item.get("latex", ""))
+        hybrid_item["content"] = _normalize_medium_content(layout_item.get("latex", ""))
     else:
-        content = _normalize_low_content(layout_item.get("text", ""))
+        content = _normalize_medium_content(layout_item.get("text", ""))
         if content:
             hybrid_item["content"] = content
 
     return hybrid_item
 
 
-def _build_low_hybrid_model_list(
+def _build_medium_hybrid_model_list(
     images_layout_res: list[list[dict[str, Any]]],
     images_pil_list: list[Image.Image],
 ) -> list[list[dict[str, Any]]]:
-    """按页构造 Hybrid low 的模型输出，保持最终 middle-json 为 Hybrid 形态。"""
+    """按页构造 Hybrid medium 的模型输出，保持最终 middle-json 为 Hybrid 形态。"""
     model_list: list[list[dict[str, Any]]] = []
     for layout_res, image in zip(images_layout_res, images_pil_list):
         page_size = _normalize_page_size(image)
         page_items = []
         for layout_item in layout_res:
-            hybrid_item = _low_layout_item_to_hybrid_item(layout_item, page_size)
+            hybrid_item = _medium_layout_item_to_hybrid_item(layout_item, page_size)
             if hybrid_item is not None:
                 page_items.append(hybrid_item)
         model_list.append(page_items)
     return model_list
 
 
-def _run_low_formula_recognition(
+def _run_medium_formula_recognition(
     hybrid_pipeline_model: MineruHybridModel,
     images_layout_res: list[list[dict[str, Any]]],
     np_images: list[np.ndarray],
     formula_enable: bool,
     batch_ratio: int,
 ) -> list[list[dict[str, Any]]]:
-    """执行 Hybrid low 的本地公式识别，并返回供 OCR det 遮罩使用的公式框。"""
+    """执行 Hybrid medium 的本地公式识别，并返回供 OCR det 遮罩使用的公式框。"""
     if not formula_enable:
         for layout_res in images_layout_res:
             layout_res[:] = [item for item in layout_res if item.get("label") != "inline_formula"]
@@ -635,7 +641,7 @@ def _run_low_formula_recognition(
     return mfd_res
 
 
-def _apply_low_table_rotate_label(table_res_dict: dict[str, Any], rotate_label: str) -> None:
+def _apply_medium_table_rotate_label(table_res_dict: dict[str, Any], rotate_label: str) -> None:
     """写回表格方向预测结果，并同步旋转无线和有线表格裁剪图。"""
     rotate_label = str(rotate_label or "0")
     table_res_dict["rotate_label"] = rotate_label
@@ -649,12 +655,12 @@ def _apply_low_table_rotate_label(table_res_dict: dict[str, Any], rotate_label: 
     table_res_dict["wired_table_img"] = cv2.rotate(np.asarray(table_res_dict["wired_table_img"]), rotate_code)
 
 
-def _collect_low_table_items(
+def _collect_medium_table_items(
     images_layout_res: list[list[dict[str, Any]]],
     np_images: list[np.ndarray],
     lang_list: list[str | None],
 ) -> list[dict[str, Any]]:
-    """收集 Hybrid low 单文件窗口中的表格裁剪项，不跨文件聚合。"""
+    """收集 Hybrid medium 单文件窗口中的表格裁剪项，不跨文件聚合。"""
     table_items = []
     for layout_res, np_img, lang in zip(images_layout_res, np_images, lang_list):
         for table_res in layout_res:
@@ -662,7 +668,7 @@ def _collect_low_table_items(
                 continue
 
             def get_crop_table_img(scale: float) -> np.ndarray:
-                """按指定缩放裁剪表格图，保持 low 表格处理只使用当前文件窗口图像。"""
+                """按指定缩放裁剪表格图，保持 medium 表格处理只使用当前文件窗口图像。"""
                 bbox = normalize_to_int_bbox([float(v) / float(scale) for v in table_res["bbox"]])
                 if bbox is None:
                     return np_img[0:0, 0:0]
@@ -683,7 +689,7 @@ def _collect_low_table_items(
     return table_items
 
 
-def _collect_low_table_ocr_rec_inputs(
+def _collect_medium_table_ocr_rec_inputs(
     atom_model_manager: Any,
     table_items: list[dict[str, Any]],
     batch_ratio: int,
@@ -706,10 +712,10 @@ def _collect_low_table_ocr_rec_inputs(
         det_images,
         det_batch_size,
         tqdm_enable=True,
-        tqdm_desc="Hybrid-low table OCR-det",
+        tqdm_desc="Hybrid-medium table OCR-det",
     )
     if len(batch_results) != len(table_items):
-        raise ValueError("Hybrid low table OCR det batch result count mismatch")
+        raise ValueError("Hybrid medium table OCR det batch result count mismatch")
 
     for table_id, (table_item, bgr_image, (dt_boxes, _)) in enumerate(zip(table_items, det_images, batch_results)):
         if dt_boxes is None or len(dt_boxes) == 0:
@@ -726,18 +732,18 @@ def _collect_low_table_ocr_rec_inputs(
     return rec_img_lang_group
 
 
-def _apply_low_table_recognition(
+def _apply_medium_table_recognition(
     hybrid_pipeline_model: MineruHybridModel,
     images_layout_res: list[list[dict[str, Any]]],
     np_images: list[np.ndarray],
     lang_list: list[str | None],
     batch_ratio: int,
 ) -> None:
-    """执行 Hybrid low 的本地表格识别，结果写回 layout table 项的 html 字段。"""
-    if not _is_low_table_enabled():
+    """执行 Hybrid medium 的本地表格识别，结果写回 layout table 项的 html 字段。"""
+    if not _is_medium_table_enabled():
         return
 
-    table_items = _collect_low_table_items(images_layout_res, np_images, lang_list)
+    table_items = _collect_medium_table_items(images_layout_res, np_images, lang_list)
     if not table_items:
         return
 
@@ -749,19 +755,19 @@ def _apply_low_table_recognition(
             det_batch_size=batch_ratio * OCR_DET_BASE_BATCH_SIZE,
         )
         if len(rotate_labels) != len(table_items):
-            raise ValueError("Hybrid low table orientation result count mismatch")
+            raise ValueError("Hybrid medium table orientation result count mismatch")
         for table_item, rotate_label in zip(table_items, rotate_labels):
-            _apply_low_table_rotate_label(table_item, rotate_label)
+            _apply_medium_table_rotate_label(table_item, rotate_label)
     except Exception as exc:
-        logger.warning(f"Hybrid low table orientation classification failed: {exc}, using original image")
+        logger.warning(f"Hybrid medium table orientation classification failed: {exc}, using original image")
 
     table_cls_model = atom_model_manager.get_atom_model(atom_model_name=AtomicModel.TableCls)
     try:
         table_cls_model.batch_predict(table_items)
     except Exception as exc:
-        logger.warning(f"Hybrid low table classification failed: {exc}, using default model")
+        logger.warning(f"Hybrid medium table classification failed: {exc}, using default model")
 
-    rec_img_lang_group = _collect_low_table_ocr_rec_inputs(atom_model_manager, table_items, batch_ratio)
+    rec_img_lang_group = _collect_medium_table_ocr_rec_inputs(atom_model_manager, table_items, batch_ratio)
     for lang, rec_img_list in rec_img_lang_group.items():
         if not rec_img_list:
             continue
@@ -777,7 +783,7 @@ def _apply_low_table_recognition(
             [item["cropped_img"] for item in rec_img_list],
             det=False,
             tqdm_enable=True,
-            tqdm_desc=f"Hybrid-low table OCR-rec {lang}",
+            tqdm_desc=f"Hybrid-medium table OCR-rec {lang}",
         )[0]
         for img_dict, ocr_res in zip(rec_img_list, ocr_res_list):
             table_item = table_items[img_dict["table_id"]]
@@ -796,7 +802,7 @@ def _apply_low_table_recognition(
         table_item["table_res"].pop("cls_label", None)
         table_item["table_res"].pop("cls_score", None)
 
-    for table_item in tqdm(wired_table_items, desc="Hybrid-low table-wired predict"):
+    for table_item in tqdm(wired_table_items, desc="Hybrid-medium table-wired predict"):
         if not table_item.get("ocr_result"):
             continue
         wired_table_model = atom_model_manager.get_atom_model(
@@ -817,12 +823,12 @@ def _apply_low_table_recognition(
             table_item["table_res"]["html"] = html_code[start_index:end_index]
 
 
-def _apply_low_seal_ocr(
+def _apply_medium_seal_ocr(
     hybrid_pipeline_model: MineruHybridModel,
     images_layout_res: list[list[dict[str, Any]]],
     np_images: list[np.ndarray],
 ) -> None:
-    """执行 Hybrid low 的印章 OCR，并将识别文本写回 seal layout 项。"""
+    """执行 Hybrid medium 的印章 OCR，并将识别文本写回 seal layout 项。"""
     seal_ocr_model = None
     for layout_res, np_img in zip(images_layout_res, np_images):
         for layout_item in layout_res:
@@ -853,7 +859,7 @@ def _apply_low_seal_ocr(
             layout_item["text"] = seal_texts
 
 
-def _prune_low_empty_ocr_text_blocks(images_layout_res: list[list[dict[str, Any]]], ocr_enable: bool) -> None:
+def _prune_medium_empty_ocr_text_blocks(images_layout_res: list[list[dict[str, Any]]], ocr_enable: bool) -> None:
     """清理低置信 OCR 后留下的空 ocr_text，避免空块进入 Hybrid MagicModel。"""
     if not ocr_enable:
         return
@@ -861,7 +867,7 @@ def _prune_low_empty_ocr_text_blocks(images_layout_res: list[list[dict[str, Any]
         layout_res[:] = [
             item
             for item in layout_res
-            if item.get("label") != "ocr_text" or bool(_normalize_low_content(item.get("text", "")))
+            if item.get("label") != "ocr_text" or bool(_normalize_medium_content(item.get("text", "")))
         ]
 
 
@@ -872,7 +878,7 @@ def _extract_with_local_layout(
     _ocr_enable: bool,
     batch_ratio: int,
 ) -> tuple[list[list[dict[str, Any]]], MineruHybridModel]:
-    """Hybrid low 路径：单文件窗口内执行本地 layout/OCR/table/formula，不跨文件 batch。"""
+    """Hybrid medium 路径：单文件窗口内执行本地 layout/OCR/table/formula，不跨文件 batch。"""
     hybrid_model_singleton = HybridModelSingleton()
     hybrid_pipeline_model = hybrid_model_singleton.get_model(
         lang=language,
@@ -884,35 +890,35 @@ def _extract_with_local_layout(
         images_pil_list,
         batch_size=min(8, batch_ratio * LAYOUT_BASE_BATCH_SIZE),
     )
-    mfd_res = _run_low_formula_recognition(
+    mfd_res = _run_medium_formula_recognition(
         hybrid_pipeline_model,
         images_layout_res,
         np_images,
         inline_formula_enable,
         batch_ratio,
     )
-    _apply_low_table_recognition(
+    _apply_medium_table_recognition(
         hybrid_pipeline_model,
         images_layout_res,
         np_images,
         [language for _ in images_pil_list],
         batch_ratio,
     )
-    _apply_low_seal_ocr(hybrid_pipeline_model, images_layout_res, np_images)
-    _prune_low_empty_ocr_text_blocks(images_layout_res, _ocr_enable)
-    low_model_list = _build_low_hybrid_model_list(images_layout_res, images_pil_list)
+    _apply_medium_seal_ocr(hybrid_pipeline_model, images_layout_res, np_images)
+    _prune_medium_empty_ocr_text_blocks(images_layout_res, _ocr_enable)
+    medium_model_list = _build_medium_hybrid_model_list(images_layout_res, images_pil_list)
     ocr_res_list = _ocr_det(
         hybrid_pipeline_model,
         np_images,
-        low_model_list,
+        medium_model_list,
         mfd_res,
         _ocr_enable,
         batch_ratio=batch_ratio,
-        candidate_fn=_is_hybrid_low_ocr_det_candidate,
+        candidate_fn=_is_hybrid_medium_ocr_det_candidate,
     )
     _normalize_bbox([[] for _ in images_pil_list], ocr_res_list, images_pil_list)
     merged_model_list = _merge_page_sidecar_items(
-        low_model_list,
+        medium_model_list,
         [[] for _ in images_pil_list],
         ocr_res_list,
     )
@@ -1086,7 +1092,7 @@ def _extract_with_pipeline_layout(
     _ocr_enable: bool,
     batch_ratio: int,
 ) -> tuple[list[list[dict[str, Any]]], MineruHybridModel]:
-    """Hybrid medium 路径：用 Pipeline layout 约束 VLM 抽取，再补 OCR/formula sidecar。"""
+    """Hybrid high 路径：用 Pipeline layout 约束 VLM 抽取，再补 OCR/formula sidecar。"""
     hybrid_model_singleton = HybridModelSingleton()
     hybrid_pipeline_model = hybrid_model_singleton.get_model(
         lang=language,
@@ -1094,7 +1100,7 @@ def _extract_with_pipeline_layout(
     )
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
     images_layout_res = _predict_layout_for_title_split(hybrid_pipeline_model, np_images, batch_ratio)
-    layout_blocks = _build_medium_layout_blocks(images_layout_res, images_pil_list)
+    layout_blocks = _build_high_layout_blocks(images_layout_res, images_pil_list)
     window_model_list = predictor.batch_extract_with_layout(
         images=images_pil_list,
         blocks_list=layout_blocks,
@@ -1120,7 +1126,7 @@ async def _aio_extract_with_pipeline_layout(
     _ocr_enable: bool,
     batch_ratio: int,
 ) -> tuple[list[list[dict[str, Any]]], MineruHybridModel]:
-    """Hybrid medium 异步路径：异步调用 VLM layout-aware extract，其余本地步骤放线程执行。"""
+    """Hybrid high 异步路径：异步调用 VLM layout-aware extract，其余本地步骤放线程执行。"""
     hybrid_model_singleton = HybridModelSingleton()
     hybrid_pipeline_model = hybrid_model_singleton.get_model(
         lang=language,
@@ -1133,7 +1139,7 @@ async def _aio_extract_with_pipeline_layout(
         np_images,
         batch_ratio,
     )
-    layout_blocks = _build_medium_layout_blocks(images_layout_res, images_pil_list)
+    layout_blocks = _build_high_layout_blocks(images_layout_res, images_pil_list)
     window_model_list = await predictor.aio_batch_extract_with_layout(
         images=images_pil_list,
         blocks_list=layout_blocks,
@@ -1298,7 +1304,7 @@ def get_batch_ratio(device: str) -> int:
 
 
 def _should_enable_vlm_ocr(ocr_enable: bool, language: str, inline_formula_enable: bool) -> bool:
-    """判断 high effort 是否启用 VLM OCR 两阶段抽取。"""
+    """判断 extra_high effort 是否启用 VLM OCR 两阶段抽取。"""
     force_enable = os.getenv("MINERU_FORCE_VLM_OCR_ENABLE", "0").lower() in ("1", "true", "yes")
     if force_enable:
         return True
@@ -1332,7 +1338,7 @@ def doc_analyze(
     inline_formula_enable: bool = True,
     model_path: str | None = None,
     server_url: str | None = None,
-    effort: Literal["low", "medium", "high"] = "medium",
+    effort: Literal["medium", "high", "extra_high"] = DEFAULT_HYBRID_EFFORT,
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
     image_cache: ImagePayloadCache | None = None,
@@ -1340,8 +1346,8 @@ def doc_analyze(
 ) -> tuple[list[PageInfo], list[list[dict[str, Any]]], bool]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
     effort = validate_effort(effort)
-    image_analysis = image_analysis if effort == "high" else False
-    if effort == "low":
+    image_analysis = image_analysis if effort == MAX_HYBRID_EFFORT else False
+    if effort == LOCAL_HYBRID_EFFORT:
         predictor = None
     else:
         vlm_runtime = _load_vlm_runtime()
@@ -1353,7 +1359,11 @@ def doc_analyze(
 
     pdf_doc = PDFDocument(pdf_bytes)
     _ocr_enable = ocr_classify(pdf_doc, parse_method=parse_method)
-    _vlm_ocr_enable = effort == "high" and _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
+    _vlm_ocr_enable = effort == MAX_HYBRID_EFFORT and _should_enable_vlm_ocr(
+        _ocr_enable,
+        language,
+        inline_formula_enable,
+    )
 
     middle_json: list[PageInfo] = []
     model_list: list[list[dict[str, Any]]] = []
@@ -1390,7 +1400,7 @@ def doc_analyze(
                         f"pages {window_start + 1}-{window_end + 1}/{page_count} "
                         f"({len(images_pil_list)} pages)"
                     )
-                    if effort == "low":
+                    if effort == LOCAL_HYBRID_EFFORT:
                         window_model_list, hybrid_pipeline_model = _extract_with_local_layout(
                             images_pil_list,
                             language,
@@ -1398,7 +1408,7 @@ def doc_analyze(
                             _ocr_enable,
                             batch_ratio,
                         )
-                    elif effort == "medium":
+                    elif effort == LAYOUT_HYBRID_EFFORT:
                         with vlm_runtime["predictor_execution_guard"](predictor):
                             window_model_list, hybrid_pipeline_model = _extract_with_pipeline_layout(
                                 predictor,
@@ -1511,7 +1521,7 @@ async def aio_doc_analyze(
     inline_formula_enable: bool = True,
     model_path: str | None = None,
     server_url: str | None = None,
-    effort: Literal["low", "medium", "high"] = "medium",
+    effort: Literal["medium", "high", "extra_high"] = DEFAULT_HYBRID_EFFORT,
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
     image_cache: ImagePayloadCache | None = None,
@@ -1519,8 +1529,8 @@ async def aio_doc_analyze(
 ) -> tuple[list[PageInfo], list[list[dict[str, Any]]], bool]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
     effort = validate_effort(effort)
-    image_analysis = image_analysis if effort == "high" else False
-    if effort == "low":
+    image_analysis = image_analysis if effort == MAX_HYBRID_EFFORT else False
+    if effort == LOCAL_HYBRID_EFFORT:
         predictor = None
     else:
         vlm_runtime = _load_vlm_runtime()
@@ -1532,7 +1542,11 @@ async def aio_doc_analyze(
 
     pdf_doc = PDFDocument(pdf_bytes)
     _ocr_enable = ocr_classify(pdf_doc, parse_method=parse_method)
-    _vlm_ocr_enable = effort == "high" and _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
+    _vlm_ocr_enable = effort == MAX_HYBRID_EFFORT and _should_enable_vlm_ocr(
+        _ocr_enable,
+        language,
+        inline_formula_enable,
+    )
 
     middle_json: list[PageInfo] = []
     model_list = []
@@ -1569,7 +1583,7 @@ async def aio_doc_analyze(
                         f"pages {window_start + 1}-{window_end + 1}/{page_count} "
                         f"({len(images_pil_list)} pages)"
                     )
-                    if effort == "low":
+                    if effort == LOCAL_HYBRID_EFFORT:
                         window_model_list, hybrid_pipeline_model = await asyncio.to_thread(
                             _extract_with_local_layout,
                             images_pil_list,
@@ -1578,7 +1592,7 @@ async def aio_doc_analyze(
                             _ocr_enable,
                             batch_ratio,
                         )
-                    elif effort == "medium":
+                    elif effort == LAYOUT_HYBRID_EFFORT:
                         async with vlm_runtime["aio_predictor_execution_guard"](predictor):
                             window_model_list, hybrid_pipeline_model = await _aio_extract_with_pipeline_layout(
                                 predictor,

@@ -525,21 +525,23 @@ def test_parse_rejects_removed_ch_lite_language(tmp_path: Path) -> None:
     assert "Language ch_lite not supported" in result.output
 
 
-def test_gradio_language_option_only_visible_for_hybrid_low() -> None:
+def test_gradio_language_option_only_visible_for_hybrid_medium() -> None:
     from mineru.cli_old import gradio_app
 
-    assert gradio_app.is_ocr_language_option_visible("hybrid-engine", "low") is True
-    assert gradio_app.is_ocr_language_option_visible("hybrid-engine", "medium") is False
+    assert gradio_app.is_ocr_language_option_visible("hybrid-engine", "medium") is True
     assert gradio_app.is_ocr_language_option_visible("hybrid-engine", "high") is False
-    assert gradio_app.is_ocr_language_option_visible("flash", "low") is False
+    assert gradio_app.is_ocr_language_option_visible("hybrid-engine", "extra_high") is False
+    assert gradio_app.is_ocr_language_option_visible("flash", "medium") is False
 
 
-def test_gradio_frontend_shows_ocr_language_for_hybrid_low() -> None:
+def test_gradio_frontend_shows_ocr_language_for_hybrid_medium() -> None:
     js_text = Path("mineru/resources/gradio_app.js").read_text(encoding="utf-8")
 
     assert 'const effortControl = effortRoot?.querySelector(\'[role="listbox"]\');' in js_text
     assert 'input[type="radio"]' not in js_text
-    assert 'const showOcrLanguage = backend.startsWith("hybrid") && effort === "low";' in js_text
+    assert 'const showImageAnalysis = backend.startsWith("vlm")' in js_text
+    assert '|| (backend.startsWith("hybrid") && effort === "extra_high");' in js_text
+    assert 'const showOcrLanguage = backend.startsWith("hybrid") && effort === "medium";' in js_text
 
 
 def test_gradio_effort_option_is_below_backend_selector() -> None:
@@ -554,7 +556,7 @@ def test_gradio_effort_option_is_below_backend_selector() -> None:
     advanced_popover_idx = gradio_text.index('elem_classes=["mineru-advanced-popover"]')
 
     assert "effort = gr.Radio(" not in gradio_text
-    assert "解析强度越高，解析质量越好但速度越慢；解析强度越低，速度更快但质量可能下降。" in gradio_text
+    assert "解析强度越高，解析质量越好但速度越慢；medium 为最快的本地 Hybrid 模式。" in gradio_text
     assert "Low 使用本地 Hybrid 处理；Medium 速度更快；High 精度更高，耗时可能更长。" not in gradio_text
     assert backend_block_idx < backend_idx < client_options_idx < effort_idx < max_pages_idx < advanced_popover_idx
 
@@ -598,7 +600,7 @@ def test_parse_forwards_flash_backend(monkeypatch: Any, tmp_path: Path) -> None:
     assert output.read_text(encoding="utf-8") == "# demo\n"
 
 
-def test_cli_old_legacy_vlm_branch_maps_to_hybrid_high(monkeypatch: Any, tmp_path: Path) -> None:
+def test_cli_old_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: Any, tmp_path: Path) -> None:
     from mineru.cli_old import common
 
     seen: dict[str, Any] = {}
@@ -615,7 +617,7 @@ def test_cli_old_legacy_vlm_branch_maps_to_hybrid_high(monkeypatch: Any, tmp_pat
     monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=False: "vllm-engine")
 
     def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
-        """记录 legacy VLM 输入最终进入 Hybrid high 分支。"""
+        """记录 legacy VLM 输入最终进入 Hybrid extra_high 分支。"""
         seen["backend"] = args[3]
         seen["hybrid_backend"] = args[6]
         seen["kwargs"] = kwargs
@@ -632,7 +634,7 @@ def test_cli_old_legacy_vlm_branch_maps_to_hybrid_high(monkeypatch: Any, tmp_pat
     )
 
     assert seen["hybrid_backend"] == "vllm-engine"
-    assert seen["kwargs"]["effort"] == "high"
+    assert seen["kwargs"]["effort"] == "extra_high"
     assert seen["kwargs"]["image_analysis"] is True
     assert not hasattr(common, "_process_vlm")
 
@@ -673,7 +675,7 @@ def test_cli_old_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Path) ->
     assert seen["kwargs"]["effort"] == "high"
 
 
-def test_cli_old_hybrid_low_skips_vlm_engine_resolution(monkeypatch: Any, tmp_path: Path) -> None:
+def test_cli_old_hybrid_medium_skips_vlm_engine_resolution(monkeypatch: Any, tmp_path: Path) -> None:
     from mineru.cli_old import common
 
     seen: dict[str, Any] = {}
@@ -689,11 +691,11 @@ def test_cli_old_hybrid_low_skips_vlm_engine_resolution(monkeypatch: Any, tmp_pa
     monkeypatch.setattr(common, "ensure_backend_dependencies", lambda backend: None)
 
     def fail_get_vlm_engine(*_args: Any, **_kwargs: Any) -> str:
-        """Hybrid low 不应触发 VLM engine 解析。"""
-        raise AssertionError("low effort should not resolve VLM engine")
+        """Hybrid medium 不应触发 VLM engine 解析。"""
+        raise AssertionError("medium effort should not resolve VLM engine")
 
     def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
-        """记录 Hybrid low 仍进入 Hybrid 处理分支。"""
+        """记录 Hybrid medium 仍进入 Hybrid 处理分支。"""
         seen["backend"] = args[6]
         seen["langs"] = list(args[3])
         seen["pdf_count"] = len(args[2])
@@ -708,16 +710,16 @@ def test_cli_old_hybrid_low_skips_vlm_engine_resolution(monkeypatch: Any, tmp_pa
         pdf_bytes_list=[b"%PDF-1.7\n", b"%PDF-1.7\n"],
         p_lang_list=["en", "en"],
         backend="hybrid-engine",
-        effort="low",
+        effort="medium",
     )
 
     assert seen["backend"] == "engine"
     assert seen["langs"] == ["en", "en"]
     assert seen["pdf_count"] == 2
-    assert seen["kwargs"]["effort"] == "low"
+    assert seen["kwargs"]["effort"] == "medium"
 
 
-def test_process_hybrid_low_calls_analyzer_per_file(monkeypatch: Any, tmp_path: Path) -> None:
+def test_process_hybrid_medium_calls_analyzer_per_file(monkeypatch: Any, tmp_path: Path) -> None:
     from mineru.cli_old import common
 
     calls: list[bytes] = []
@@ -725,7 +727,7 @@ def test_process_hybrid_low_calls_analyzer_per_file(monkeypatch: Any, tmp_path: 
     outputs: list[tuple[str, str, str]] = []
 
     def fake_doc_analyze(pdf_bytes: bytes, **kwargs: Any) -> tuple[list[PageInfo], list[object], bool]:
-        """记录每个文件独立进入 Hybrid low analyzer。"""
+        """记录每个文件独立进入 Hybrid medium analyzer。"""
         calls.append(pdf_bytes)
         languages.append(kwargs["language"])
         return [PageInfo(page_idx=0, _backend="hybrid")], [], False
@@ -761,7 +763,7 @@ def test_process_hybrid_low_calls_analyzer_per_file(monkeypatch: Any, tmp_path: 
         f_dump_orig_pdf=True,
         f_dump_content_list=True,
         f_make_md_mode="mm_markdown",
-        effort="low",
+        effort="medium",
     )
 
     assert calls == [b"a", b"b"]
@@ -769,7 +771,7 @@ def test_process_hybrid_low_calls_analyzer_per_file(monkeypatch: Any, tmp_path: 
     assert [item[0] for item in outputs] == ["a.pdf", "b.pdf"]
 
 
-def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_high(monkeypatch: Any, tmp_path: Path) -> None:
+def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: Any, tmp_path: Path) -> None:
     from mineru.cli_old import common
 
     seen: dict[str, Any] = {}
@@ -786,7 +788,7 @@ def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_high(monkeypatch: Any, t
     monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=True: "vllm-async-engine")
 
     async def _fake_async_process_hybrid(*args: Any, **kwargs: Any) -> None:
-        """记录异步 legacy VLM 输入最终进入 Hybrid high 分支。"""
+        """记录异步 legacy VLM 输入最终进入 Hybrid extra_high 分支。"""
         seen["backend"] = args[3]
         seen["hybrid_backend"] = args[6]
         seen["kwargs"] = kwargs
@@ -805,7 +807,7 @@ def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_high(monkeypatch: Any, t
     )
 
     assert seen["hybrid_backend"] == "vllm-async-engine"
-    assert seen["kwargs"]["effort"] == "high"
+    assert seen["kwargs"]["effort"] == "extra_high"
     assert seen["kwargs"]["image_analysis"] is True
     assert not hasattr(common, "_async_process_vlm")
 

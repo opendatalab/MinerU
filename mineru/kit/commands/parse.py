@@ -6,7 +6,7 @@ from typing import Literal
 
 from ...parser import MinerUApiParser
 from ...parser import parse as local_parse
-from ...utils.backend_options import resolve_backend_and_effort
+from ...utils.backend_options import DEFAULT_HYBRID_EFFORT, LOCAL_HYBRID_EFFORT, resolve_backend_and_effort
 from ...utils.ocr_language import validate_public_ocr_lang
 from ..common import (
     build_remote_api_url,
@@ -34,7 +34,7 @@ def parse_cmd(
     api_key: str | None = None,
     language: str = "ch",
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
-    effort: Literal["low", "medium", "high"] = "medium",
+    effort: Literal["medium", "high", "extra_high"] = DEFAULT_HYBRID_EFFORT,
     disable_table: bool = False,
     disable_formula: bool = False,
     disable_image_analysis: bool = False,
@@ -77,7 +77,7 @@ def parse_cmd(
             exit_with_message("invalid_request", str(exc), "backend")
         resolved_tier, resolved_backend = effective_local_tier_and_backend(tier, normalized_backend)
         if resolved_tier == "standard":
-            normalized_effort = "low"
+            normalized_effort = LOCAL_HYBRID_EFFORT
         parse_one = partial(
             local_parse,
             tier=resolved_tier,

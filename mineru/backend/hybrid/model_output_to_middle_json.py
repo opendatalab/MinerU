@@ -11,7 +11,7 @@ from ...utils.hash_utils import bytes_md5
 from ...utils.image_payload import ImagePayloadCache
 from ...utils.pdf_document import PDFPage
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from ...utils.backend_options import validate_effort
+from ...utils.backend_options import DEFAULT_HYBRID_EFFORT, LAYOUT_HYBRID_EFFORT, LOCAL_HYBRID_EFFORT, validate_effort
 from ..local_model_runtime import MineruHybridModel
 from ..utils.formula_number import optimize_hybrid_formula_number_blocks
 from ..utils.middle_json_utils import apply_post_ocr
@@ -153,14 +153,14 @@ def apply_server_side_postprocess(
         _apply_post_ocr(pages, hybrid_pipeline_model)
 
 
-def finalize_middle_json_from_preproc(pages: list[PageInfo], effort: str = "medium") -> None:
+def finalize_middle_json_from_preproc(pages: list[PageInfo], effort: str = DEFAULT_HYBRID_EFFORT) -> None:
     """从 Hybrid preproc_blocks 执行完整 finalize，供服务端完整路径和客户端复用。"""
     effort = validate_effort(effort)
     build_para_blocks_from_preproc(pages)
     merge_para_text_blocks(
         pages,
         auto_merge_by_det=True,
-        auto_merge_vertical_by_det=effort in {"low", "medium"},
+        auto_merge_vertical_by_det=effort in {LOCAL_HYBRID_EFFORT, LAYOUT_HYBRID_EFFORT},
     )
 
     table_enable = get_table_enable(os.getenv("MINERU_VLM_TABLE_ENABLE", "True").lower() == "true")
@@ -177,7 +177,7 @@ def finalize_middle_json(
     hybrid_pipeline_model: MineruHybridModel,
     _ocr_enable: bool,
     _vlm_ocr_enable: bool,
-    effort: str = "medium",
+    effort: str = DEFAULT_HYBRID_EFFORT,
 ) -> None:
     """保持旧入口语义：服务端先做必要 post-OCR，再执行完整 finalize。"""
     apply_server_side_postprocess(pages, hybrid_pipeline_model, _ocr_enable, _vlm_ocr_enable)

@@ -6,7 +6,7 @@ import typer
 
 from ...parser import api_server as parser_api_server
 from ...parser.tier import PARSER_BACKENDS
-from ...utils.backend_options import resolve_backend_and_effort
+from ...utils.backend_options import DEFAULT_HYBRID_EFFORT, resolve_backend_and_effort
 from ...utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..errors import exit_with_message
 
@@ -25,7 +25,7 @@ def api_server_cmd(
     max_wait: int = 600,
     language: str = "ch",
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
-    effort: Literal["low", "medium", "high"] = "medium",
+    effort: Literal["medium", "high", "extra_high"] = DEFAULT_HYBRID_EFFORT,
     disable_table: bool = False,
     disable_formula: bool = False,
     disable_image_analysis: bool = False,

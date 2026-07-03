@@ -19,7 +19,12 @@ from mineru.cli_old.visualization import select_pages_for_pdf_visualization
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.parser.base import ParseResult
 from mineru.render import render_content_list, render_markdown, render_structured_content
-from mineru.utils.backend_options import DEFAULT_BACKEND, DEFAULT_HYBRID_EFFORT, resolve_backend_and_effort
+from mineru.utils.backend_options import (
+    DEFAULT_BACKEND,
+    DEFAULT_HYBRID_EFFORT,
+    LOCAL_HYBRID_EFFORT,
+    resolve_backend_and_effort,
+)
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
@@ -613,7 +618,7 @@ def do_parse(
         ensure_backend_dependencies(backend)
         backend = backend[7:]
 
-        if backend == "engine" and effort != "low":
+        if backend == "engine" and effort != LOCAL_HYBRID_EFFORT:
             backend = get_vlm_engine(inference_engine="auto", is_async=False)
 
         os.environ["MINERU_VLM_TABLE_ENABLE"] = str(table_enable)
@@ -704,7 +709,7 @@ async def aio_do_parse(
         ensure_backend_dependencies(backend)
         backend = backend[7:]
 
-        if backend == "engine" and effort != "low":
+        if backend == "engine" and effort != LOCAL_HYBRID_EFFORT:
             backend = get_vlm_engine(inference_engine="auto", is_async=True)
 
         os.environ["MINERU_VLM_TABLE_ENABLE"] = str(table_enable)

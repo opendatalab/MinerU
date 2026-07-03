@@ -26,7 +26,7 @@ from ..utils.ocr_language import normalize_ocr_model_lang
 
 
 class AtomicModel:
-    """本地原子模型名称集合，供 Hybrid low 和共享模型单例统一索引。"""
+    """本地原子模型名称集合，供 Hybrid medium 和共享模型单例统一索引。"""
 
     Layout = "layout"
     MFD = "mfd"
@@ -38,7 +38,7 @@ class AtomicModel:
     TableOrientationCls = "table_ori_cls"
 
 LOCAL_MODEL_INIT_LOCK = threading.RLock()
-# 这些锁保护 Hybrid low/medium/high 共享的 atom model/native 模型推理调用，避免多线程同时进入同一个模型对象。
+# 这些锁保护 Hybrid medium/high/extra_high 共享的 atom model/native 模型推理调用，避免多线程同时进入同一个模型对象。
 LOCAL_MODEL_LAYOUT_INFERENCE_LOCK = threading.RLock()
 LOCAL_MODEL_MFR_INFERENCE_LOCK = threading.RLock()
 LOCAL_MODEL_OCR_INFERENCE_LOCK = threading.RLock()

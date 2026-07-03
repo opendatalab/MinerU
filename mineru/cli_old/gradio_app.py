@@ -49,6 +49,8 @@ from mineru.utils.backend_options import (
     HYBRID_EFFORT_CHOICES,
     HYBRID_EFFORT_HELP,
     LOCAL_BACKEND_CHOICES,
+    LOCAL_HYBRID_EFFORT,
+    MAX_HYBRID_EFFORT,
     normalize_backend,
 )
 from mineru.utils.ocr_language import PUBLIC_OCR_LANGUAGE_CHOICES, validate_public_ocr_lang
@@ -854,7 +856,7 @@ def resolve_parse_method(file_path, is_ocr, backend):
 
 
 def is_image_analysis_option_visible(backend, effort=DEFAULT_HYBRID_EFFORT):
-    """判断 Gradio 图片分析开关是否应展示；只有 Hybrid high 支持图片分析。"""
+    """判断 Gradio 图片分析开关是否应展示；只有 Hybrid extra_high 支持图片分析。"""
     if not isinstance(backend, str):
         return False
     try:
@@ -862,7 +864,7 @@ def is_image_analysis_option_visible(backend, effort=DEFAULT_HYBRID_EFFORT):
     except ValueError:
         pass
     if backend.startswith("hybrid"):
-        return effort == "high"
+        return effort == MAX_HYBRID_EFFORT
     return False
 
 
@@ -872,14 +874,14 @@ def is_effort_option_visible(backend):
 
 
 def is_ocr_language_option_visible(backend: object, effort: object = DEFAULT_HYBRID_EFFORT) -> bool:
-    """判断 OCR 语言选项是否展示；只有 Hybrid low 对用户暴露语言输入。"""
+    """判断 OCR 语言选项是否展示；只有 Hybrid medium 对用户暴露语言输入。"""
     if not isinstance(backend, str):
         return False
     try:
         backend = normalize_backend(backend)
     except ValueError:
         pass
-    return backend.startswith("hybrid") and effort == "low"
+    return backend.startswith("hybrid") and effort == LOCAL_HYBRID_EFFORT
 
 
 def is_force_ocr_option_visible(backend: object) -> bool:
@@ -1613,9 +1615,9 @@ def main(ctx,
             "formula_info_vlm": "If disabled, display formulas will be shown as images.",
             "formula_info_hybrid": "If disabled, inline formulas will not be detected or parsed.",
             "ocr_language": "OCR Language",
-            "ocr_language_info": "Select the OCR language for Hybrid low local OCR and table OCR.",
+            "ocr_language_info": "Select the OCR language for Hybrid medium local OCR and table OCR.",
             "force_ocr": "Force enable OCR",
-            "force_ocr_info": "Enable only if the result is extremely poor. Hybrid low requires correct OCR language.",
+            "force_ocr_info": "Enable only if the result is extremely poor. Hybrid medium requires correct OCR language.",
             "force_ocr_info_hybrid": "Enable only if the result is extremely poor.",
             "convert": "Convert",
             "clear": "Clear",
@@ -1674,15 +1676,15 @@ def main(ctx,
             "image_analysis_enable": "启用图片分析",
             "image_analysis_info": "禁用后，图片/图表块仍保留版面位置，但跳过 VLM 图片/图表分析。",
             "effort": "解析强度",
-            "effort_info": "解析强度越高，解析质量越好但速度越慢；解析强度越低，速度更快但质量可能下降。",
+            "effort_info": "解析强度越高，解析质量越好但速度越慢；medium 为最快的本地 Hybrid 模式。",
             "formula_label_vlm": "启用行间公式识别",
             "formula_label_hybrid": "启用行内公式识别",
             "formula_info_vlm": "禁用后，行间公式将显示为图片。",
             "formula_info_hybrid": "禁用后，行内公式将不会被检测或解析。",
             "ocr_language": "OCR 语言",
-            "ocr_language_info": "为 Hybrid low 的本地 OCR 和表格 OCR 选择语言。",
+            "ocr_language_info": "为 Hybrid medium 的本地 OCR 和表格 OCR 选择语言。",
             "force_ocr": "强制启用 OCR",
-            "force_ocr_info": "仅在识别效果极差时启用；Hybrid low 需选择正确的 OCR 语言。",
+            "force_ocr_info": "仅在识别效果极差时启用；Hybrid medium 需选择正确的 OCR 语言。",
             "force_ocr_info_hybrid": "仅在识别效果极差时启用。",
             "convert": "转换",
             "clear": "清除",

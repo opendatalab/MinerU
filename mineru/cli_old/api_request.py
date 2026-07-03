@@ -124,8 +124,8 @@ async def parse_request_form(
         str,
         Form(
             description="""The backend for parsing:
-- hybrid-engine: Hybrid parsing via local computing power. Hybrid low supports language-aware local OCR; use effort to switch low/medium/high behavior.
-- hybrid-http-client: Hybrid parsing via remote computing power but requires a little local computing power(client suitable for openai-compatible servers). Hybrid low supports language-aware local OCR; use effort to switch low/medium/high behavior.""",
+- hybrid-engine: Hybrid parsing via local computing power. Hybrid medium supports language-aware local OCR; use effort to switch medium/high/extra_high behavior.
+- hybrid-http-client: Hybrid parsing via remote computing power but requires a little local computing power(client suitable for openai-compatible servers). Hybrid medium supports language-aware local OCR; use effort to switch medium/high/extra_high behavior.""",
             json_schema_extra=BACKEND_SCHEMA_EXTRA,
         ),
     ] = DEFAULT_BACKEND,
@@ -133,9 +133,9 @@ async def parse_request_form(
         str,
         Form(
             description="""(Adapted only for hybrid backend) Hybrid parsing effort:
-- medium: Faster parsing for most documents, balancing accuracy and efficiency. Image/chart analysis is disabled.
-- low: Local Hybrid processing without VLM calls. Supports language-aware local OCR and table OCR. Image/chart analysis is disabled.
-- high: Higher-accuracy parsing with image/chart analysis support, which may take longer.""",
+- medium: Local Hybrid processing without VLM calls. Supports language-aware local OCR and table OCR. Image/chart analysis is disabled.
+- high: Faster VLM parsing for most documents, balancing accuracy and efficiency. Image/chart analysis is disabled.
+- extra_high: Higher-accuracy parsing with image/chart analysis support, which may take longer.""",
             json_schema_extra=HYBRID_EFFORT_SCHEMA_EXTRA,
         ),
     ] = DEFAULT_HYBRID_EFFORT,
@@ -162,7 +162,7 @@ async def parse_request_form(
         Form(
             description=(
                 "Enable image/chart analysis for hybrid backends. "
-                "Hybrid low and medium efforts automatically disable image/chart analysis."
+                "Hybrid medium and high efforts automatically disable image/chart analysis."
             ),
         ),
     ] = True,

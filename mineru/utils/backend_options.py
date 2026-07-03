@@ -4,11 +4,14 @@ from __future__ import annotations
 from typing import Final
 
 CANONICAL_HYBRID_ENGINE: Final = "hybrid-engine"
+LOCAL_HYBRID_EFFORT: Final = "medium"
+LAYOUT_HYBRID_EFFORT: Final = "high"
+MAX_HYBRID_EFFORT: Final = "extra_high"
 DEFAULT_BACKEND: Final = CANONICAL_HYBRID_ENGINE
-DEFAULT_HYBRID_EFFORT: Final = "medium"
+DEFAULT_HYBRID_EFFORT: Final = LAYOUT_HYBRID_EFFORT
 DEFAULT_EFFORT: Final = DEFAULT_HYBRID_EFFORT
 HYBRID_EFFORT_HELP: Final = (
-    "Higher effort improves parsing quality but may be slower; lower effort is faster but may reduce quality."
+    "Higher effort improves parsing quality but may be slower; medium is the fastest local Hybrid mode."
 )
 
 LOCAL_BACKEND_CHOICES: Final[tuple[str, ...]] = (
@@ -18,7 +21,11 @@ HTTP_CLIENT_BACKEND_CHOICES: Final[tuple[str, ...]] = (
     "hybrid-http-client",
 )
 PUBLIC_BACKEND_CHOICES: Final[tuple[str, ...]] = LOCAL_BACKEND_CHOICES + HTTP_CLIENT_BACKEND_CHOICES
-HYBRID_EFFORT_CHOICES: Final[tuple[str, ...]] = ("low", "medium", "high")
+HYBRID_EFFORT_CHOICES: Final[tuple[str, ...]] = (
+    LOCAL_HYBRID_EFFORT,
+    LAYOUT_HYBRID_EFFORT,
+    MAX_HYBRID_EFFORT,
+)
 BACKEND_SCHEMA_EXTRA: Final[dict[str, list[str]]] = {"enum": list(PUBLIC_BACKEND_CHOICES)}
 HYBRID_EFFORT_SCHEMA_EXTRA: Final[dict[str, list[str]]] = {"enum": list(HYBRID_EFFORT_CHOICES)}
 
@@ -64,22 +71,22 @@ def normalize_public_backend(backend: str | None) -> str:
 
 
 def validate_effort(effort: str | None) -> str:
-    """校验 Hybrid effort 级别，入口层统一使用 medium 作为默认值。"""
+    """校验 Hybrid effort 级别，只允许 medium/high/extra_high 三档。"""
     normalized = (effort or DEFAULT_EFFORT).strip().lower()
-    if normalized in SUPPORTED_EFFORTS:
+    if normalized in HYBRID_EFFORT_CHOICES:
         return normalized
-    raise ValueError(f"Unsupported effort '{effort}'. Supported efforts: {', '.join(SUPPORTED_EFFORTS)}")
+    raise ValueError(f"Unsupported effort '{effort}'. Supported efforts: {', '.join(HYBRID_EFFORT_CHOICES)}")
 
 
 def resolve_backend_and_effort(backend: str | None, effort: str | None = None) -> tuple[str, str]:
-    """同时解析 backend 与 effort，旧 pipeline/VLM backend 分别统一转为 Hybrid low/high。"""
+    """同时解析 backend 与 effort，旧 pipeline/VLM backend 分别统一转为 Hybrid medium/extra_high。"""
     raw_backend = (backend or "").strip()
     resolved_backend = normalize_backend(raw_backend)
     resolved_effort = validate_effort(effort)
     if raw_backend in LEGACY_PIPELINE_BACKEND_ALIASES:
-        resolved_effort = "low"
+        resolved_effort = LOCAL_HYBRID_EFFORT
     elif raw_backend in LEGACY_VLM_BACKEND_ALIASES:
-        resolved_effort = "high"
+        resolved_effort = MAX_HYBRID_EFFORT
     return resolved_backend, resolved_effort
 
 

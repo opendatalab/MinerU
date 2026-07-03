@@ -10,7 +10,14 @@ from typing import Any
 
 from ..errors import InvalidRequestError
 from ..types import PageInfo
-from ..utils.backend_options import CANONICAL_HYBRID_ENGINE, resolve_backend_and_effort, validate_effort
+from ..utils.backend_options import (
+    CANONICAL_HYBRID_ENGINE,
+    DEFAULT_HYBRID_EFFORT,
+    LOCAL_HYBRID_EFFORT,
+    MAX_HYBRID_EFFORT,
+    resolve_backend_and_effort,
+    validate_effort,
+)
 from ..utils.image_payload import ImagePayloadCache
 from .base import DocumentParser, ParseResult
 
@@ -47,7 +54,7 @@ class PdfBaseParser(DocumentParser):
         backend: str = "hybrid-engine",
         method: str = "auto",
         lang: str = "ch",
-        effort: str = "medium",
+        effort: str = DEFAULT_HYBRID_EFFORT,
         formula_enable: bool = True,
         table_enable: bool = True,
         image_analysis: bool = True,
@@ -247,7 +254,11 @@ class PdfHybridParser(PdfBaseParser):
     ) -> list[PageInfo]:
         from ..backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
 
-        backend = self.backend if self.effort == "low" else _resolve_hybrid_backend(self.backend, is_async=False)
+        backend = (
+            self.backend
+            if self.effort == LOCAL_HYBRID_EFFORT
+            else _resolve_hybrid_backend(self.backend, is_async=False)
+        )
         server_url = self.server_url if backend.endswith("client") else None
         os.environ["MINERU_VLM_FORMULA_ENABLE"] = "true"
         os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()
@@ -275,7 +286,9 @@ class PdfHybridParser(PdfBaseParser):
     ) -> list[PageInfo]:
         from ..backend.hybrid.hybrid_analyze import aio_doc_analyze as hybrid_aio_doc_analyze
 
-        backend = self.backend if self.effort == "low" else _resolve_hybrid_backend(self.backend, is_async=True)
+        backend = (
+            self.backend if self.effort == LOCAL_HYBRID_EFFORT else _resolve_hybrid_backend(self.backend, is_async=True)
+        )
         server_url = self.server_url if backend.endswith("client") else None
         os.environ["MINERU_VLM_FORMULA_ENABLE"] = "true"
         os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()
@@ -297,23 +310,23 @@ class PdfHybridParser(PdfBaseParser):
 
 
 class PdfPipelineParser(PdfHybridParser):
-    """保留旧 SDK 类名，内部统一委托 Hybrid low 解析。"""
+    """保留旧 SDK 类名，内部统一委托 Hybrid medium 解析。"""
 
     def __init__(self, **kwargs: Any) -> None:
-        """将旧 PdfPipelineParser 构造参数归一到 Hybrid low，避免继续加载旧 backend。"""
+        """将旧 PdfPipelineParser 构造参数归一到 Hybrid medium，避免继续加载旧 backend。"""
         kwargs.pop("backend", None)
         kwargs.pop("effort", None)
-        super().__init__(backend=CANONICAL_HYBRID_ENGINE, effort="low", **kwargs)
+        super().__init__(backend=CANONICAL_HYBRID_ENGINE, effort=LOCAL_HYBRID_EFFORT, **kwargs)
 
 
 class PdfVlmParser(PdfHybridParser):
-    """保留旧 SDK 类名，内部统一委托 Hybrid high 解析。"""
+    """保留旧 SDK 类名，内部统一委托 Hybrid extra_high 解析。"""
 
     def __init__(self, **kwargs: Any) -> None:
-        """将旧 PdfVlmParser 构造参数归一到 Hybrid high，避免继续暴露独立 VLM backend。"""
+        """将旧 PdfVlmParser 构造参数归一到 Hybrid extra_high，避免继续暴露独立 VLM backend。"""
         backend = kwargs.pop("backend", "vlm-engine")
         kwargs.pop("effort", None)
-        resolved_backend, resolved_effort = resolve_backend_and_effort(backend, "high")
+        resolved_backend, resolved_effort = resolve_backend_and_effort(backend, MAX_HYBRID_EFFORT)
         super().__init__(backend=resolved_backend, effort=resolved_effort, **kwargs)
 
 
