@@ -6,11 +6,13 @@ import asyncio
 import errno
 import logging
 import os
+import shutil
 import socket
 import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncIterator, cast
 
 import uvicorn
@@ -28,6 +30,8 @@ if TYPE_CHECKING:
     from loguru import Message as LoguruMessage
 else:
     LoguruMessage = Any
+
+_LEGACY_TIER_DIR_MAP = {"standard": "medium", "pro": "high"}
 
 
 def create_app(cfg: Config | None = None) -> FastAPI:
@@ -66,6 +70,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
         data_dir = os.path.expanduser(cfg.doclib.data_dir)
         os.makedirs(data_dir, exist_ok=True)
+        migrate_legacy_tier_cache_dirs(data_dir)
 
         db_path = os.path.expanduser(cfg.doclib.sqlite.path)
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
@@ -275,6 +280,63 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         )
 
     return app
+
+
+def migrate_legacy_tier_cache_dirs(data_dir: str) -> None:
+    """将 doclib 历史 standard/pro 缓存目录合并到 medium/high，保留已有目标文件。"""
+    parsed_dir = Path(os.path.expanduser(data_dir)) / "parsed"
+    if not parsed_dir.is_dir():
+        return
+    for prefix_dir in parsed_dir.iterdir():
+        if not prefix_dir.is_dir():
+            continue
+        for doc_dir in prefix_dir.iterdir():
+            if not doc_dir.is_dir():
+                continue
+            for legacy_tier, current_tier in _LEGACY_TIER_DIR_MAP.items():
+                _merge_legacy_tier_cache_dir(doc_dir / legacy_tier, doc_dir / current_tier)
+
+
+def _merge_legacy_tier_cache_dir(source_dir: Path, target_dir: Path) -> None:
+    """把一个旧 tier 目录迁移到目标目录；同名文件以目标目录为准，避免覆盖新结果。"""
+    if not source_dir.is_dir():
+        return
+    if target_dir.exists() and not target_dir.is_dir():
+        return
+    if not target_dir.exists():
+        try:
+            source_dir.rename(target_dir)
+            return
+        except OSError:
+            target_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+    for source_path in sorted(source_dir.rglob("*")):
+        relative_path = source_path.relative_to(source_dir)
+        target_path = target_dir / relative_path
+        if source_path.is_dir():
+            if not target_path.exists():
+                target_path.mkdir(parents=True, exist_ok=True)
+            continue
+        if not source_path.is_file() or target_path.exists():
+            continue
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source_path), str(target_path))
+    _remove_empty_cache_dirs(source_dir)
+
+
+def _remove_empty_cache_dirs(source_dir: Path) -> None:
+    """清理迁移后已经为空的旧缓存目录；存在冲突残留时保留原目录。"""
+    for child_dir in sorted((path for path in source_dir.rglob("*") if path.is_dir()), reverse=True):
+        try:
+            child_dir.rmdir()
+        except OSError:
+            pass
+    try:
+        source_dir.rmdir()
+    except OSError:
+        pass
 
 
 class AppState:

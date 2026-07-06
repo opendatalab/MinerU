@@ -346,7 +346,13 @@ class PdfFlashParser(PdfBaseParser):
         from ..utils.page_index import resolve_output_page_idx
 
         filepath = self._pdf_bytes_to_tempfile(pdf_bytes)
-        pages_text = extract_pages_text(filepath)
+        try:
+            pages_text = extract_pages_text(filepath)
+        finally:
+            try:
+                os.unlink(filepath)
+            except OSError:
+                pass
 
         pages: list[PageInfo] = []
         block_idx = 0
