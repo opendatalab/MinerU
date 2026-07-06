@@ -325,37 +325,57 @@ Use a local parse server when the user wants `standard` or `pro` quality without
 
 Hardware guidance:
 
-| Tier | Local hardware guidance |
-|---|---|
-| `standard` | macOS with Apple Silicon and about 4 GB unified memory, or Windows/Linux with an NVIDIA GPU and at least 4 GB VRAM |
-| `pro` | High-end GPU or accelerator hardware with the matching model environment; otherwise prefer remote parsing if the user allows it |
+Local managed `standard` and `pro` both require at least 16 GB total system memory.
+
+Use `standard` when:
+
+- The user wants local high-quality parsing without sending files to remote.
+- GPU is optional. CPU-only machines can use `standard`, but parsing may be slower.
+
+Use `pro` when the machine also has one of the following supported local accelerators:
+
+- Volta-or-newer NVIDIA GPU with at least 8 GB VRAM available for MinerU.
+- Apple Silicon with at least 16 GB unified memory.
+- A MinerU-supported AI accelerator such as `npu`, `gcu`, `musa`, `mlu`, or `sdaa`.
+
+If local `pro` hardware readiness is unclear, use local `standard` or ask before using remote `pro`.
 
 Change local parse-server config or restart the server only when the user asks for or approves local high-quality parsing.
 
-Start managed local parsing for `standard`:
+Managed local parsing requires optional runtime dependencies. Install the required extra with the same installation tool and environment that installed the current `mineru` command.
+
+The following examples assume the current install tool is `uv tool`. If `mineru` was installed with another tool or environment, use the equivalent command for that actual tool/environment.
+
+Installing extras with `uv tool install --force` can reinstall or upgrade the `mineru` package. Restart the MinerU server after installing extras so the CLI client, doclib server, and managed parse server use the same installed version.
+
+Enable managed local parsing for `standard`:
 
 ```bash
-mineru server start
-mineru config set parse_server.local.mode managed
-mineru config set parse_server.local.managed_tier standard
+uv tool install --force "mineru-next-dev[standard]"
 mineru server restart
-mineru server status
+mineru config set parse_server.local.managed_tier standard
+mineru config set parse_server.local.mode managed
+mineru server status --json
 ```
 
-Start managed local parsing for `pro`:
+Enable managed local parsing for `pro`:
 
 ```bash
-mineru server start
-mineru config set parse_server.local.mode managed
-mineru config set parse_server.local.managed_tier pro
+uv tool install --force "mineru-next-dev[pro]"
 mineru server restart
-mineru server status
+mineru config set parse_server.local.managed_tier pro
+mineru config set parse_server.local.mode managed
+mineru server status --json
 ```
 
 Rules:
 
-- Use `standard` as the practical local default when supported by the user's machine.
-- Use local `pro` only when the user has suitable high-end hardware and model setup.
+- Determine how the current `mineru` command was installed, then install the extra through that same tool/environment.
+- After installing extras, restart the MinerU server to avoid CLI/server version mismatch.
+- Set `parse_server.local.managed_tier` before `parse_server.local.mode=managed`.
+- Poll `mineru server status --json` and use managed parsing only after the target tier is healthy.
+- Use `standard` as the practical local default when the machine has at least 16 GB total memory.
+- Use local `pro` only when the machine satisfies the local `pro` hardware guidance above.
 - If local `standard` or `pro` cannot start, do not add `--remote` automatically; ask the user first.
 
 ## First Read From A File

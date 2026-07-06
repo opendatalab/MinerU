@@ -68,7 +68,7 @@
 | doclib schema 稳定边界 | 稳定的是 doclib public models，不是 SQLite 表结构；稳定性分为 `core stable`、`operational stable` 和 `diagnostic / internal`，详见 [ADR-0020](decisions/0020-doclib-schema-stability-boundary.md)。 |
 | `mineru-kit` 对外暴露 | `mineru-kit` 保留为专家工具入口；Agent 默认入口是 `mineru`，skill 不主动暴露 `mineru-kit`。 |
 | Office/HTML unknown bbox | 公共 schema 允许 unknown bbox；不要求 Office/HTML 在 P0 估算真实 bbox，validator 应区分 unknown 与非法 bbox。 |
-| `standard` 硬件基线 | `standard` 当前使用 pipeline 后端；Apple Silicon macOS 约使用 4GB 统一内存，Windows / Linux 需要 NVIDIA GPU 且至少 4GB 显存。详见 [解析 Tier](tiers.md#5-standard)。 |
+| 本地 managed tier 硬件基线 | 本地 managed `standard` / `pro` 都要求至少 16GB 总内存；`standard` 不要求 GPU，纯 CPU 可用但可能较慢；`pro` 需要满足 NVIDIA / Apple Silicon / MinerU 支持的 AI 加速器条件。详见 [解析 Tier](tiers.md#5-standard)。 |
 | watch tier 升级 | P0 不做基于启发式的自动提示或自动排队升级。watch 默认使用 `flash`；后台自动升级只由用户显式配置的 parsing-rules 触发；用户或 Agent 主动读取时再按默认选择策略解析到 `standard` / `pro`。 |
 | Middle JSON `schema_version` | 采用 `pages` 的 Middle JSON 顶层结构必须写 `schema_version`；旧 CLI 落盘 middle_json 也统一为 `schema_version + pages`，不再写入或读取 `pdf_info`，但保留顶层 `_backend` / `_version_name` 作为旧 CLI metadata。当前暂不增加 `_meta`；代码常量定义为 `mineru.schema.middle_json.MIDDLE_JSON_SCHEMA_VERSION`。 |
 
