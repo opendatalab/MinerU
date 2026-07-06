@@ -19,9 +19,9 @@ from mineru.backend.office.xlsx_analyze import office_xlsx_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.cli_old.visualization import select_pages_for_pdf_visualization
-from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.parser.base import ParseResult
 from mineru.render import render_content_list, render_markdown, render_structured_content
+from mineru.render.writer import FileBasedDataWriter
 from mineru.utils.backend_options import DEFAULT_HYBRID_EFFORT, normalize_backend, validate_effort
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
@@ -237,10 +237,7 @@ def _prepare_pdf_inputs(
     end_page_id: int | None,
 ) -> list[PreparedPdfBytes]:
     """批量准备 PDF 输入，并为 backend 保留逐文档页号映射。"""
-    return [
-        prepare_pdf_bytes_with_page_map(pdf_bytes, start_page_id, end_page_id)
-        for pdf_bytes in pdf_bytes_list
-    ]
+    return [prepare_pdf_bytes_with_page_map(pdf_bytes, start_page_id, end_page_id) for pdf_bytes in pdf_bytes_list]
 
 
 def _process_output(

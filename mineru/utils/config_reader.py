@@ -51,52 +51,8 @@ def get_configured_model_source(default: str | None = None) -> str | None:
     if normalized_model_source in supported_sources:
         return normalized_model_source
 
-    logger.warning(
-        f"Unsupported 'model-source' in {get_tools_config_file_path()}: {model_source}, use {default} as default"
-    )
+    logger.warning(f"Unsupported 'model-source' in {get_tools_config_file_path()}: {model_source}, use {default} as default")
     return default
-
-
-def get_s3_config(bucket_name: str) -> tuple[str, str, str]:
-    """~/magic-pdf.json 读出来."""
-    config = read_config()
-
-    bucket_info = config.get("bucket_info")
-    if bucket_name not in bucket_info:
-        access_key, secret_key, storage_endpoint = bucket_info["[default]"]
-    else:
-        access_key, secret_key, storage_endpoint = bucket_info[bucket_name]
-
-    if access_key is None or secret_key is None or storage_endpoint is None:
-        raise Exception(f"ak, sk or endpoint not found in {CONFIG_FILE_NAME}")
-
-    # logger.info(f"get_s3_config: ak={access_key}, sk={secret_key}, endpoint={storage_endpoint}")
-
-    return access_key, secret_key, storage_endpoint
-
-
-def get_s3_config_dict(path: str) -> dict[str, str]:
-    access_key, secret_key, storage_endpoint = get_s3_config(get_bucket_name(path))
-    return {"ak": access_key, "sk": secret_key, "endpoint": storage_endpoint}
-
-
-def get_bucket_name(path: str) -> str:
-    bucket, key = parse_bucket_key(path)
-    return bucket
-
-
-def parse_bucket_key(s3_full_path: str) -> tuple[str, str]:
-    """
-    输入 s3://bucket/path/to/my/file.txt
-    输出 bucket, path/to/my/file.txt
-    """
-    s3_full_path = s3_full_path.strip()
-    if s3_full_path.startswith("s3://"):
-        s3_full_path = s3_full_path[5:]
-    if s3_full_path.startswith("/"):
-        s3_full_path = s3_full_path[1:]
-    bucket, key = s3_full_path.split("/", 1)
-    return bucket, key
 
 
 def get_device() -> str:

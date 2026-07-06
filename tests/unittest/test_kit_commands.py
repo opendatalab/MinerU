@@ -5,14 +5,17 @@ import asyncio
 from pathlib import Path
 import subprocess
 import sys
+from types import ModuleType
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
 from mineru.kit.commands import api_server, models, parse, router, vlm_server
 from mineru.kit.main import app
+from mineru.kit.vlm_server import mlx_vlm_server
 
 runner = CliRunner()
 
@@ -20,6 +23,10 @@ runner = CliRunner()
 def _assert_unsafe_sidecar_error(output: str) -> None:
     """归一化 Typer/Click 自动换行后的错误输出，再匹配 sidecar 安全错误。"""
     assert "Unsafe image sidecar path" in " ".join(output.split())
+
+
+def _fake_apply_chat_template(_processor: Any, _config: Any, _prompt: Any, *_args: Any, **_kwargs: Any) -> str:
+    return "formatted"
 
 
 def test_kit_root_and_models_help() -> None:
@@ -65,6 +72,37 @@ class BlockLegacyRouterFinder(importlib.abc.MetaPathFinder):
 
 sys.meta_path.insert(0, BlockLegacyRouterFinder())
 import mineru.kit.main
+print("ok")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
+def test_kit_vlm_server_import_does_not_import_legacy_vlm_server() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    code = """
+import importlib.abc
+import sys
+
+
+class BlockLegacyVlmServerFinder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "mineru.cli_old.vlm_server":
+            raise ModuleNotFoundError("blocked legacy vlm server import")
+        return None
+
+
+sys.meta_path.insert(0, BlockLegacyVlmServerFinder())
+import mineru.kit.commands.vlm_server
 print("ok")
 """
 
@@ -313,14 +351,14 @@ def test_api_server_rejects_removed_ch_lite_language() -> None:
     assert "Language ch_lite not supported" in result.output
 
 
-def test_vlm_server_rejects_unimplemented_engine() -> None:
+def test_vlm_server_rejects_removed_sglang_engine() -> None:
     result = runner.invoke(app, ["vlm-server", "--engine", "sglang"])
 
     assert result.exit_code == 1
-    assert "not implemented yet" in result.output
+    assert "Unsupported engine 'sglang'" in result.output
 
 
-def test_vlm_server_forwards_extra_args(monkeypatch: Any) -> None:
+def test_vlm_server_forwards_mlx_to_mlx_server(monkeypatch: Any) -> None:
     seen: dict[str, Any] = {}
 
     def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
@@ -328,16 +366,208 @@ def test_vlm_server_forwards_extra_args(monkeypatch: Any) -> None:
         seen["prog_name"] = prog_name
         seen["standalone_mode"] = standalone_mode
 
-    monkeypatch.setattr(vlm_server.old_vlm_server.openai_server, "main", _fake_main)
+    monkeypatch.setattr(vlm_server, "_mlx_server_available", lambda: True)
+    monkeypatch.setattr(mlx_vlm_server, "main", _fake_main)
+
+    result = runner.invoke(
+        app,
+        ["vlm-server", "--engine", "mlx", "--model", "test-model", "--host", "127.0.0.1", "--port", "18080"],
+    )
+
+    assert result.exit_code == 0
+    assert seen == {
+        "args": ["--model", "test-model", "--host", "127.0.0.1", "--port", "18080"],
+        "prog_name": "mineru-kit vlm-server",
+        "standalone_mode": False,
+    }
+
+
+def test_vlm_server_auto_falls_back_to_mlx_when_non_mlx_engines_are_unavailable(monkeypatch: Any) -> None:
+    seen: dict[str, Any] = {}
+
+    def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
+        seen["args"] = args
+        seen["prog_name"] = prog_name
+        seen["standalone_mode"] = standalone_mode
+
+    monkeypatch.setattr(vlm_server, "_mlx_server_available", lambda: True)
+    monkeypatch.setattr(vlm_server, "_module_available", lambda _module_name: False)
+    monkeypatch.setattr(mlx_vlm_server, "main", _fake_main)
+
+    result = runner.invoke(app, ["vlm-server", "--host", "127.0.0.1", "--port", "18080"])
+
+    assert result.exit_code == 0
+    assert seen == {
+        "args": ["--host", "127.0.0.1", "--port", "18080"],
+        "prog_name": "mineru-kit vlm-server",
+        "standalone_mode": False,
+    }
+
+
+def test_vlm_server_auto_treats_missing_mlx_as_unavailable(monkeypatch: Any) -> None:
+    def _missing_spec(_module_name: str) -> None:
+        raise ModuleNotFoundError("No module named 'mlx_vlm'")
+
+    monkeypatch.setattr(vlm_server, "is_mac_os_version_supported", lambda: True)
+    monkeypatch.setattr(vlm_server.importlib.util, "find_spec", _missing_spec)
+
+    assert vlm_server._mlx_server_available() is False
+
+
+def test_vlm_server_forwards_extra_args(monkeypatch: Any) -> None:
+    seen: dict[str, Any] = {}
+
+    def _fake_vllm_main() -> None:
+        seen["args"] = sys.argv[1:]
+
+    fake_vllm_server = ModuleType("mineru.kit.vlm_server.vllm_server")
+    fake_vllm_server.main = _fake_vllm_main
+    monkeypatch.setattr(vlm_server, "_mlx_server_available", lambda: False)
+    monkeypatch.setattr(vlm_server, "_module_available", lambda module_name: module_name == "vllm")
+    monkeypatch.setitem(sys.modules, "mineru.kit.vlm_server.vllm_server", fake_vllm_server)
 
     result = runner.invoke(app, ["vlm-server", "--host", "0.0.0.0", "--port", "30000"])
 
     assert result.exit_code == 0
+    assert seen == {"args": ["--host", "0.0.0.0", "--port", "30000"]}
+
+
+def test_mlx_vlm_server_adapter_exposes_v1_chat_completions(monkeypatch: Any) -> None:
+    seen: dict[str, Any] = {}
+
+    class FakeChatRequest:
+        def __init__(self, **payload: Any) -> None:
+            self.payload = payload
+            self.model = payload.get("model")
+
+        @classmethod
+        def model_validate(cls, payload: dict[str, Any]) -> "FakeChatRequest":
+            return cls(**payload)
+
+    async def _fake_chat_completions_endpoint(request: FakeChatRequest) -> dict[str, Any]:
+        seen["model"] = request.model
+        return {"model": request.model}
+
+    fake_mlx_server = SimpleNamespace(
+        ChatRequest=FakeChatRequest,
+        apply_chat_template=_fake_apply_chat_template,
+        chat_completions_endpoint=_fake_chat_completions_endpoint,
+    )
+    monkeypatch.setitem(sys.modules, "mlx_vlm", SimpleNamespace(server=fake_mlx_server))
+    monkeypatch.setitem(sys.modules, "mlx_vlm.server", fake_mlx_server)
+
+    client = TestClient(mlx_vlm_server.create_app(default_model="test-model"))
+    response = client.post("/v1/chat/completions", json={"messages": [{"role": "user", "content": "hello"}]})
+
+    assert response.status_code == 200
+    assert response.json() == {"model": "test-model"}
+    assert seen == {"model": "test-model"}
+
+
+def test_mlx_vlm_server_adapter_exposes_single_v1_model(monkeypatch: Any) -> None:
+    fake_mlx_server = SimpleNamespace(apply_chat_template=_fake_apply_chat_template)
+    monkeypatch.setitem(sys.modules, "mlx_vlm", SimpleNamespace(server=fake_mlx_server))
+    monkeypatch.setitem(sys.modules, "mlx_vlm.server", fake_mlx_server)
+
+    client = TestClient(mlx_vlm_server.create_app(default_model="test-model"))
+    response = client.get("/v1/models")
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["object"] == "list"
+    assert body["data"][0]["id"] == "test-model"
+    assert body["data"][0]["object"] == "model"
+    assert isinstance(body["data"][0]["created"], int)
+
+
+def test_mlx_vlm_server_adapter_defaults_to_mineru_vlm_model(monkeypatch: Any) -> None:
+    fake_mlx_server = SimpleNamespace(
+        DEFAULT_MODEL_PATH="mlx-community/nanoLLaVA-1.5-8bit",
+        apply_chat_template=_fake_apply_chat_template,
+    )
+    monkeypatch.setitem(sys.modules, "mlx_vlm", SimpleNamespace(server=fake_mlx_server))
+    monkeypatch.setitem(sys.modules, "mlx_vlm.server", fake_mlx_server)
+    monkeypatch.setattr(mlx_vlm_server, "auto_download_and_get_model_root_path", lambda path, repo_mode: "/models/mineru-vlm")
+
+    client = TestClient(mlx_vlm_server.create_app())
+    response = client.get("/v1/models")
+
+    assert response.status_code == 200
+    assert response.json()["data"][0]["id"] == "/models/mineru-vlm"
+
+
+def test_mlx_vlm_server_adapter_uses_mineru_mlx_compat_loader(monkeypatch: Any) -> None:
+    seen: dict[str, Any] = {}
+
+    def _raw_load() -> None:
+        raise AssertionError("raw mlx-vlm load should be replaced")
+
+    def _compat_load(path_or_hf_repo: str, **kwargs: Any) -> tuple[str, dict[str, Any]]:
+        seen["path_or_hf_repo"] = path_or_hf_repo
+        seen["kwargs"] = kwargs
+        return path_or_hf_repo, kwargs
+
+    fake_mlx_server = SimpleNamespace(load=_raw_load, apply_chat_template=_fake_apply_chat_template)
+    monkeypatch.setitem(sys.modules, "mlx_vlm", SimpleNamespace(server=fake_mlx_server))
+    monkeypatch.setitem(sys.modules, "mlx_vlm.server", fake_mlx_server)
+    monkeypatch.setattr(mlx_vlm_server, "load_mlx_model", _compat_load)
+
+    mlx_vlm_server.create_app(default_model="test-model")
+    result = fake_mlx_server.load("model-path", "adapter-path", trust_remote_code=True)
+
+    assert result == ("model-path", {"adapter_path": "adapter-path", "trust_remote_code": True})
     assert seen == {
-        "args": ["--engine", "auto", "--host", "0.0.0.0", "--port", "30000"],
-        "prog_name": "mineru-kit vlm-server",
-        "standalone_mode": False,
+        "path_or_hf_repo": "model-path",
+        "kwargs": {"adapter_path": "adapter-path", "trust_remote_code": True},
     }
+
+
+def test_mlx_vlm_server_adapter_strips_data_urls_before_chat_template() -> None:
+    prompt = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+                {"type": "text", "text": "Read this page."},
+            ],
+        }
+    ]
+
+    sanitized = mlx_vlm_server._sanitize_chat_template_prompt(prompt)
+
+    assert sanitized == [{"role": "user", "content": "Read this page."}]
+
+
+def test_mlx_vlm_server_adapter_patches_chat_template_sanitizer(monkeypatch: Any) -> None:
+    seen: dict[str, Any] = {}
+
+    def _apply_chat_template(_processor: Any, _config: Any, prompt: Any, *_args: Any, **_kwargs: Any) -> Any:
+        seen["prompt"] = prompt
+        return "formatted"
+
+    fake_mlx_server = SimpleNamespace(
+        apply_chat_template=_apply_chat_template,
+    )
+    monkeypatch.setitem(sys.modules, "mlx_vlm", SimpleNamespace(server=fake_mlx_server))
+    monkeypatch.setitem(sys.modules, "mlx_vlm.server", fake_mlx_server)
+
+    mlx_vlm_server.create_app(default_model="test-model")
+    result = fake_mlx_server.apply_chat_template(
+        object(),
+        {"model_type": "qwen2_5_vl"},
+        [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+                    {"type": "text", "text": "Read this page."},
+                ],
+            }
+        ],
+    )
+
+    assert result == "formatted"
+    assert seen["prompt"] == [{"role": "user", "content": "Read this page."}]
 
 
 def test_router_forwards_known_and_extra_args(monkeypatch: Any) -> None:

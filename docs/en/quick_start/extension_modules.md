@@ -4,17 +4,9 @@ MinerU supports installing extension modules on demand based on different needs 
 ## Common Scenarios
 
 ### Core Functionality Installation
-The `core` module is the core dependency of MinerU, containing common parsing features but not optional modules such as `vllm`/`lmdeploy`/`s3`. Installing this module ensures the basic functionality of MinerU works properly.
+The `core` module is the core dependency of MinerU, containing common parsing features but not optional modules such as `vllm`/`lmdeploy`. Installing this module ensures the basic functionality of MinerU works properly.
 ```bash
 uv pip install "mineru[core]"
-```
-
----
-
-### Using S3 Input and Output
-If you need to read from or write to S3, install the `s3` extension module.
-```bash
-uv pip install "mineru[s3]"
 ```
 
 ---

@@ -118,7 +118,7 @@ def api_server_command(
 )
 def vlm_server_command(
     ctx: typer.Context,
-    engine: str = typer.Option("auto", "--engine", help="VLM serving engine: auto, vllm, lmdeploy, sglang, mlx"),
+    engine: str = typer.Option("auto", "--engine", help="VLM serving engine: auto, vllm, lmdeploy, mlx"),
 ) -> None:
     """Start the local VLM server with OpenAI-compatible chat completions."""
     vlm_server.vlm_server_cmd(engine=engine, ctx=ctx)
