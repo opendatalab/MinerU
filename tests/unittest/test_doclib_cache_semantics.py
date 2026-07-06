@@ -1916,6 +1916,48 @@ def test_find_probes_and_filters_deleted_paths_without_rescan(tmp_path: Path) ->
     asyncio.run(_run())
 
 
+def test_find_reactivates_restored_deleted_path_without_rescan(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        fts = FTSManager(db)
+        config_svc = ConfigService(db)
+        parse_svc = ParseService(
+            db=db,
+            fts=fts,
+            config_svc=config_svc,
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        server = DoclibServer(
+            SimpleNamespace(
+                db=db,
+                fts=fts,
+                parse_svc=parse_svc,
+                search_svc=SearchService(db, fts),
+                telemetry_svc=None,
+            )
+        )
+        source = tmp_path / "stale_restore.txt"
+        source.write_text("hello", encoding="utf-8")
+        assert await parse_svc.ensure_ingested(str(source)) is not None
+
+        source.unlink()
+        deleted = await server.find("stale_restore")
+        source.write_text("hello again", encoding="utf-8")
+        restored = await server.find("stale_restore")
+        row = await db.fetchone("SELECT status, deleted_at FROM files WHERE path=?", (str(source),))
+
+        assert deleted.total == 0
+        assert restored.total == 1
+        assert [result.filename for result in restored.results] == ["stale_restore.txt"]
+        assert row is not None
+        assert row["status"] == "active"
+        assert row["deleted_at"] is None
+
+    asyncio.run(_run())
+
+
 def test_refresh_file_marks_only_current_file_unreachable_when_watch_root_is_missing(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
