@@ -6,6 +6,7 @@ import html
 import os
 import time
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import cv2
@@ -64,6 +65,26 @@ LAYOUT_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 8
 LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD = 0.8
+
+
+@dataclass(frozen=True)
+class _ProcessingWindow:
+    """记录单个 Hybrid 处理窗口的页码范围，统一同步和异步入口的窗口计算。"""
+
+    index: int
+    total: int
+    start: int
+    end: int
+
+
+@dataclass
+class _OcrDetCrop:
+    """保存一次 OCR det 裁剪的中间数据，避免用裸 tuple 传递阶段状态。"""
+
+    bgr_image: Any
+    useful_list: list[Any]
+    adjusted_mfdetrec_res: list[Any]
+    page_ocr_res_list: list[dict[str, Any]]
 HYBRID_VLM_LAYOUT_LABEL_MAP = {
     "abstract": MineruBlockType.TEXT,
     "algorithm": MineruBlockType.ALGORITHM,
@@ -158,6 +179,161 @@ def ocr_classify(pdf_doc: PDFDocument, parse_method: str = "auto") -> bool:
     return _ocr_enable
 
 
+def _build_processing_windows(page_count: int, configured_window_size: int) -> list[_ProcessingWindow]:
+    """根据页数和配置窗口大小生成稳定的 Hybrid 分段处理计划。"""
+    effective_window_size = min(page_count, configured_window_size) if page_count else 0
+    if effective_window_size <= 0:
+        return []
+
+    total_windows = (page_count + effective_window_size - 1) // effective_window_size
+    return [
+        _ProcessingWindow(
+            index=window_index,
+            total=total_windows,
+            start=window_start,
+            end=min(page_count - 1, window_start + effective_window_size - 1),
+        )
+        for window_index, window_start in enumerate(range(0, page_count, effective_window_size))
+    ]
+
+
+def _log_processing_window_plan(page_count: int, configured_window_size: int, total_windows: int) -> None:
+    """输出 Hybrid 分段处理计划日志，避免同步和异步入口文案漂移。"""
+    logger.info(
+        f"Hybrid processing-window run. page_count={page_count}, "
+        f"window_size={configured_window_size}, total_windows={total_windows}"
+    )
+
+
+def _log_processing_window(window: _ProcessingWindow, page_count: int, image_count: int) -> None:
+    """输出单个 Hybrid 处理窗口的页码范围日志。"""
+    logger.info(
+        f"Hybrid processing window {window.index + 1}/{window.total}: "
+        f"pages {window.start + 1}-{window.end + 1}/{page_count} "
+        f"({image_count} pages)"
+    )
+
+
+def _finalize_hybrid_middle_json(
+    middle_json: list[PageInfo],
+    local_context: HybridLocalModelContext | None,
+    _ocr_enable: bool,
+    _vlm_ocr_enable: bool,
+    *,
+    effort: str,
+    client_side_output_generation: bool,
+) -> None:
+    """统一 Hybrid finalize 入口，并在缺少本地上下文时给出明确错误。"""
+    if local_context is None:
+        if middle_json:
+            raise ValueError("Hybrid local context was not initialized")
+        return
+
+    if client_side_output_generation:
+        apply_server_side_postprocess(
+            middle_json,
+            local_context,
+            _ocr_enable,
+            _vlm_ocr_enable,
+        )
+    else:
+        finalize_middle_json(
+            middle_json,
+            local_context,
+            _ocr_enable,
+            _vlm_ocr_enable,
+            effort=effort,
+        )
+
+
+def _set_temp_pixel_bbox(res: dict[str, Any], pixel_bbox: list[int]) -> None:
+    """临时切换为像素 bbox，便于复用已有裁剪逻辑。"""
+    res["_normalized_bbox"] = list(res["bbox"])
+    res["bbox"] = pixel_bbox
+
+
+def _restore_normalized_bbox(res: dict[str, Any]) -> None:
+    """恢复归一化 bbox，避免 OCR det 过程污染 Hybrid 输出。"""
+    normalized_bbox = res.pop("_normalized_bbox", None)
+    if normalized_bbox is not None:
+        res["bbox"] = normalized_bbox
+
+
+def _collect_ocr_det_crops(
+    np_images: list[Any],
+    model_list: list[list[dict[str, Any]]],
+    mfd_res: list[Any],
+    candidate_fn: Any,
+) -> tuple[list[list[dict[str, Any]]], list[_OcrDetCrop]]:
+    """收集 OCR det 需要处理的裁剪图，并为每页预建 sidecar 结果列表。"""
+    ocr_res_list: list[list[dict[str, Any]]] = []
+    crops: list[_OcrDetCrop] = []
+
+    for np_image, page_mfd_res, page_results in zip(np_images, mfd_res, model_list):
+        page_ocr_res_list: list[dict[str, Any]] = []
+        ocr_res_list.append(page_ocr_res_list)
+        img_height, img_width = np_image.shape[:2]
+        for res in page_results:
+            if not candidate_fn(res):
+                continue
+            x0 = max(0, int(res["bbox"][0] * img_width))
+            y0 = max(0, int(res["bbox"][1] * img_height))
+            x1 = min(img_width, int(res["bbox"][2] * img_width))
+            y1 = min(img_height, int(res["bbox"][3] * img_height))
+            if x1 <= x0 or y1 <= y0:
+                continue
+            _set_temp_pixel_bbox(res, [x0, y0, x1, y1])
+            try:
+                new_image, useful_list = crop_img(res, np_image, crop_paste_x=50, crop_paste_y=50)
+            finally:
+                _restore_normalized_bbox(res)
+            adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(page_mfd_res, useful_list)
+            bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)  # type: ignore
+            bgr_image = mask_formula_regions_for_ocr_det(bgr_image, adjusted_mfdetrec_res)
+            crops.append(
+                _OcrDetCrop(
+                    bgr_image=bgr_image,
+                    useful_list=useful_list,
+                    adjusted_mfdetrec_res=adjusted_mfdetrec_res,
+                    page_ocr_res_list=page_ocr_res_list,
+                )
+            )
+
+    return ocr_res_list, crops
+
+
+def _append_ocr_det_result(
+    local_context: Any,
+    crop: _OcrDetCrop,
+    ocr_res: Any,
+    _ocr_enable: bool,
+    fill_text: bool,
+) -> None:
+    """将 OCR det 原始框转换为 Hybrid ocr_text sidecar 并写回对应页。"""
+    if not ocr_res:
+        return
+    ocr_result_list = get_ocr_result_list(
+        ocr_res,
+        crop.useful_list,
+        _ocr_enable if fill_text else False,
+        crop.bgr_image,
+        local_context.lang,
+    )
+    crop.page_ocr_res_list.extend(ocr_result_list)
+
+
+def _normalize_batch_ocr_det_boxes(dt_boxes: Any, adjusted_mfdetrec_res: list[Any]) -> list[Any]:
+    """对 batch OCR det 的检测框排序、合并，并按公式位置修正。"""
+    if dt_boxes is None or len(dt_boxes) == 0:
+        return []
+
+    dt_boxes_sorted = sorted_boxes(dt_boxes)
+    dt_boxes_merged = merge_det_boxes(dt_boxes_sorted) if dt_boxes_sorted else []
+    if dt_boxes_merged and adjusted_mfdetrec_res:
+        return update_det_boxes(dt_boxes_merged, adjusted_mfdetrec_res)
+    return dt_boxes_merged
+
+
 def _ocr_det(
     local_context: Any,
     np_images: list[Any],
@@ -169,87 +345,22 @@ def _ocr_det(
     fill_text: bool = True,
     candidate_fn: Any = _is_hybrid_ocr_det_candidate,
 ) -> list[list[dict[str, Any]]]:
-    def _set_temp_pixel_bbox(res: dict[str, Any], pixel_bbox: list[int]) -> None:
-        """临时切换为像素 bbox，便于复用已有裁剪逻辑。"""
-        res["_normalized_bbox"] = list(res["bbox"])
-        res["bbox"] = pixel_bbox
-
-    def _restore_normalized_bbox(res: dict[str, Any]) -> None:
-        """恢复归一化 bbox，避免 OCR det 过程污染 Hybrid 输出。"""
-        normalized_bbox = res.pop("_normalized_bbox", None)
-        if normalized_bbox is not None:
-            res["bbox"] = normalized_bbox
-
-    ocr_res_list: list[list[dict[str, Any]]] = []
+    """执行 Hybrid OCR det sidecar 生成，按运行时配置选择单图或 batch 模式。"""
+    ocr_res_list, crops = _collect_ocr_det_crops(np_images, model_list, mfd_res, candidate_fn)
 
     if not local_context.enable_ocr_det_batch:
-        # 非批处理模式 - 逐页处理
-        for np_image, page_mfd_res, page_results in tqdm(
-            zip(np_images, mfd_res, model_list), total=len(np_images), desc="OCR-det"
-        ):
-            ocr_res_list.append([])
-            img_height, img_width = np_image.shape[:2]
-            for res in page_results:
-                if not candidate_fn(res):
-                    continue
-                x0 = max(0, int(res["bbox"][0] * img_width))
-                y0 = max(0, int(res["bbox"][1] * img_height))
-                x1 = min(img_width, int(res["bbox"][2] * img_width))
-                y1 = min(img_height, int(res["bbox"][3] * img_height))
-                if x1 <= x0 or y1 <= y0:
-                    continue
-                _set_temp_pixel_bbox(res, [x0, y0, x1, y1])
-                try:
-                    new_image, useful_list = crop_img(res, np_image, crop_paste_x=50, crop_paste_y=50)
-                finally:
-                    _restore_normalized_bbox(res)
-                adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(page_mfd_res, useful_list)
-                bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)  # type: ignore
-                bgr_image = mask_formula_regions_for_ocr_det(bgr_image, adjusted_mfdetrec_res)
-                ocr_res = run_ocr_inference(
-                    local_context.ocr_model.ocr,
-                    bgr_image,
-                    mfd_res=adjusted_mfdetrec_res,
-                    rec=False,
-                )[0]
-                if ocr_res:
-                    ocr_result_list = get_ocr_result_list(
-                        ocr_res,
-                        useful_list,
-                        _ocr_enable if fill_text else False,
-                        bgr_image,
-                        local_context.lang,
-                    )
+        for crop in tqdm(crops, total=len(crops), desc="OCR-det"):
+            ocr_res = run_ocr_inference(
+                local_context.ocr_model.ocr,
+                crop.bgr_image,
+                mfd_res=crop.adjusted_mfdetrec_res,
+                rec=False,
+            )[0]
+            _append_ocr_det_result(local_context, crop, ocr_res, _ocr_enable, fill_text)
+        return ocr_res_list
 
-                    ocr_res_list[-1].extend(ocr_result_list)
-    else:
-        # 批处理模式 - 按语言和分辨率分组
-        # 收集所有需要OCR检测的裁剪图像
-        all_cropped_images_info = []
-
-        for np_image, page_mfd_res, page_results in zip(np_images, mfd_res, model_list):
-            ocr_res_list.append([])
-            img_height, img_width = np_image.shape[:2]
-            for res in page_results:
-                if not candidate_fn(res):
-                    continue
-                x0 = max(0, int(res["bbox"][0] * img_width))
-                y0 = max(0, int(res["bbox"][1] * img_height))
-                x1 = min(img_width, int(res["bbox"][2] * img_width))
-                y1 = min(img_height, int(res["bbox"][3] * img_height))
-                if x1 <= x0 or y1 <= y0:
-                    continue
-                _set_temp_pixel_bbox(res, [x0, y0, x1, y1])
-                try:
-                    new_image, useful_list = crop_img(res, np_image, crop_paste_x=50, crop_paste_y=50)
-                finally:
-                    _restore_normalized_bbox(res)
-                adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(page_mfd_res, useful_list)
-                bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)  # type: ignore
-                bgr_image = mask_formula_regions_for_ocr_det(bgr_image, adjusted_mfdetrec_res)
-                all_cropped_images_info.append((bgr_image, useful_list, adjusted_mfdetrec_res, ocr_res_list[-1]))
-
-        batch_images = [crop_info[0] for crop_info in all_cropped_images_info]
+    if crops:
+        batch_images = [crop.bgr_image for crop in crops]
         det_batch_size = min(len(batch_images), batch_ratio * OCR_DET_BASE_BATCH_SIZE)
         batch_results = run_ocr_inference(
             local_context.ocr_model.text_detector.batch_predict,
@@ -259,31 +370,11 @@ def _ocr_det(
             tqdm_desc="OCR-det",
         )
 
-        for crop_info, (dt_boxes, _) in zip(all_cropped_images_info, batch_results):
-            bgr_image, useful_list, adjusted_mfdetrec_res, ocr_page_res_list = crop_info
-
-            if dt_boxes is not None and len(dt_boxes) > 0:
-                # 处理检测框
-                dt_boxes_sorted = sorted_boxes(dt_boxes)
-                dt_boxes_merged = merge_det_boxes(dt_boxes_sorted) if dt_boxes_sorted else []
-
-                # 根据公式位置更新检测框
-                dt_boxes_final = (
-                    update_det_boxes(dt_boxes_merged, adjusted_mfdetrec_res)
-                    if dt_boxes_merged and adjusted_mfdetrec_res
-                    else dt_boxes_merged
-                )
-
-                if dt_boxes_final:
-                    ocr_res = [box.tolist() if hasattr(box, "tolist") else box for box in dt_boxes_final]
-                    ocr_result_list = get_ocr_result_list(
-                        ocr_res,
-                        useful_list,
-                        _ocr_enable if fill_text else False,
-                        bgr_image,
-                        local_context.lang,
-                    )
-                    ocr_page_res_list.extend(ocr_result_list)
+        for crop, (dt_boxes, _) in zip(crops, batch_results):
+            dt_boxes_final = _normalize_batch_ocr_det_boxes(dt_boxes, crop.adjusted_mfdetrec_res)
+            if dt_boxes_final:
+                ocr_res = [box.tolist() if hasattr(box, "tolist") else box for box in dt_boxes_final]
+                _append_ocr_det_result(local_context, crop, ocr_res, _ocr_enable, fill_text)
     return ocr_res_list
 
 
@@ -732,22 +823,8 @@ def _collect_medium_table_ocr_rec_inputs(
     return rec_img_lang_group
 
 
-def _apply_medium_table_recognition(
-    local_context: HybridLocalModelContext,
-    images_layout_res: list[list[dict[str, Any]]],
-    np_images: list[np.ndarray],
-    lang_list: list[str | None],
-    batch_ratio: int,
-) -> None:
-    """执行 Hybrid medium 的本地表格识别，结果写回 layout table 项的 html 字段。"""
-    if not _is_medium_table_enabled():
-        return
-
-    table_items = _collect_medium_table_items(images_layout_res, np_images, lang_list)
-    if not table_items:
-        return
-
-    atom_model_manager = local_context.atom_model_manager
+def _apply_medium_table_orientation(atom_model_manager: Any, table_items: list[dict[str, Any]], batch_ratio: int) -> None:
+    """执行 medium 表格方向分类，失败时保留原始裁剪图继续后续识别。"""
     table_orientation_cls_model = atom_model_manager.get_atom_model(atom_model_name=AtomicModel.TableOrientationCls)
     try:
         rotate_labels = table_orientation_cls_model.batch_predict(
@@ -761,12 +838,22 @@ def _apply_medium_table_recognition(
     except Exception as exc:
         logger.warning(f"Hybrid medium table orientation classification failed: {exc}, using original image")
 
+
+def _apply_medium_table_classification(atom_model_manager: Any, table_items: list[dict[str, Any]]) -> None:
+    """执行 medium 表格有线/无线分类，失败时走默认模型选择。"""
     table_cls_model = atom_model_manager.get_atom_model(atom_model_name=AtomicModel.TableCls)
     try:
         table_cls_model.batch_predict(table_items)
     except Exception as exc:
         logger.warning(f"Hybrid medium table classification failed: {exc}, using default model")
 
+
+def _apply_medium_table_ocr_rec(
+    atom_model_manager: Any,
+    table_items: list[dict[str, Any]],
+    batch_ratio: int,
+) -> None:
+    """执行 medium 表格 OCR det/rec，并把识别结果按 table_id 写回 table_items。"""
     rec_img_lang_group = _collect_medium_table_ocr_rec_inputs(atom_model_manager, table_items, batch_ratio)
     for lang, rec_img_list in rec_img_lang_group.items():
         if not rec_img_list:
@@ -790,9 +877,15 @@ def _apply_medium_table_recognition(
             ocr_result_item = [img_dict["dt_box"], html.escape(str(ocr_res[0])), ocr_res[1]]
             table_item.setdefault("ocr_result", []).append(ocr_result_item)
 
+
+def _apply_medium_wireless_table_recognition(atom_model_manager: Any, table_items: list[dict[str, Any]]) -> None:
+    """先执行无线表格识别，为后续有线表格回退提供初始 html。"""
     wireless_table_model = atom_model_manager.get_atom_model(atom_model_name=AtomicModel.WirelessTable)
     wireless_table_model.batch_predict(table_items)
 
+
+def _select_medium_wired_table_items(table_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """根据表格分类结果挑选需要有线模型二次识别的表格项。"""
     wired_table_items = []
     for table_item in table_items:
         cls_label = table_item["table_res"].get("cls_label")
@@ -801,7 +894,11 @@ def _apply_medium_table_recognition(
             wired_table_items.append(table_item)
         table_item["table_res"].pop("cls_label", None)
         table_item["table_res"].pop("cls_score", None)
+    return wired_table_items
 
+
+def _apply_medium_wired_table_recognition(atom_model_manager: Any, wired_table_items: list[dict[str, Any]]) -> None:
+    """对筛选出的有线表格执行二次识别，并覆盖对应 table html。"""
     for table_item in tqdm(wired_table_items, desc="Hybrid-medium table-wired predict"):
         if not table_item.get("ocr_result"):
             continue
@@ -815,12 +912,40 @@ def _apply_medium_table_recognition(
             table_item["table_res"].get("html", None),
         )
 
+
+def _trim_medium_table_html(table_items: list[dict[str, Any]]) -> None:
+    """保留表格识别结果中的核心 table 片段，去掉模型可能返回的外围文本。"""
     for table_item in table_items:
         html_code = table_item["table_res"].get("html", "") or ""
         if "<table>" in html_code and "</table>" in html_code:
             start_index = html_code.find("<table>")
             end_index = html_code.rfind("</table>") + len("</table>")
             table_item["table_res"]["html"] = html_code[start_index:end_index]
+
+
+def _apply_medium_table_recognition(
+    local_context: HybridLocalModelContext,
+    images_layout_res: list[list[dict[str, Any]]],
+    np_images: list[np.ndarray],
+    lang_list: list[str | None],
+    batch_ratio: int,
+) -> None:
+    """执行 Hybrid medium 的本地表格识别，结果写回 layout table 项的 html 字段。"""
+    if not _is_medium_table_enabled():
+        return
+
+    table_items = _collect_medium_table_items(images_layout_res, np_images, lang_list)
+    if not table_items:
+        return
+
+    atom_model_manager = local_context.atom_model_manager
+    _apply_medium_table_orientation(atom_model_manager, table_items, batch_ratio)
+    _apply_medium_table_classification(atom_model_manager, table_items)
+    _apply_medium_table_ocr_rec(atom_model_manager, table_items, batch_ratio)
+    _apply_medium_wireless_table_recognition(atom_model_manager, table_items)
+    wired_table_items = _select_medium_wired_table_items(table_items)
+    _apply_medium_wired_table_recognition(atom_model_manager, wired_table_items)
+    _trim_medium_table_html(table_items)
 
 
 def _apply_medium_seal_ocr(
@@ -927,6 +1052,103 @@ def _extract_with_local_layout(
     return merged_model_list, local_context
 
 
+def _collect_ocr_rec_inputs(
+    ocr_res_list: list[list[dict[str, Any]]],
+) -> tuple[list[tuple[list[dict[str, Any]], dict[str, Any]]], list[Any]]:
+    """收集需要 OCR rec 的裁剪图，同时从 sidecar 中移除临时图像对象。"""
+    need_ocr_list = []
+    img_crop_list = []
+    for page_ocr_res_list in ocr_res_list:
+        for ocr_res in page_ocr_res_list:
+            if "np_img" in ocr_res:
+                need_ocr_list.append((page_ocr_res_list, ocr_res))
+                img_crop_list.append(ocr_res.pop("np_img"))
+    return need_ocr_list, img_crop_list
+
+
+def _should_remove_low_confidence_ocr_text(ocr_text: str, ocr_score: float, ocr_res: dict[str, Any]) -> bool:
+    """判断 OCR rec 结果是否应因低置信或竖排噪声被丢弃。"""
+    if ocr_score < OcrConfidence.min_confidence:
+        return True
+
+    layout_res_bbox = ocr_res.get("bbox")
+    if layout_res_bbox is None and ocr_res.get("poly") is not None:
+        layout_res_bbox = [
+            ocr_res["poly"][0],
+            ocr_res["poly"][1],
+            ocr_res["poly"][4],
+            ocr_res["poly"][5],
+        ]
+    if layout_res_bbox is None:
+        return True
+
+    layout_res_width = layout_res_bbox[2] - layout_res_bbox[0]
+    layout_res_height = layout_res_bbox[3] - layout_res_bbox[1]
+    return (
+        ocr_text
+        in [
+            "（204号",
+            "（20",
+            "（2",
+            "（2号",
+            "（20号",
+            "号",
+            "（204",
+            "(cid:)",
+            "(ci:)",
+            "(cd:1)",
+            "cd:)",
+            "c)",
+            "(cd:)",
+            "c",
+            "id:)",
+            ":)",
+            "√:)",
+            "√i:)",
+            "−i:)",
+            "−:",
+            "i:)",
+        ]
+        and ocr_score < 0.8
+        and layout_res_width < layout_res_height
+    )
+
+
+def _apply_ocr_rec_results(
+    local_context: HybridLocalModelContext,
+    ocr_res_list: list[list[dict[str, Any]]],
+) -> None:
+    """执行 OCR rec 并把文本写回 sidecar，结果数量异常时显式报错。"""
+    need_ocr_list, img_crop_list = _collect_ocr_rec_inputs(ocr_res_list)
+    if not img_crop_list:
+        return
+
+    ocr_result_list = run_ocr_inference(
+        local_context.ocr_model.ocr,
+        img_crop_list,
+        det=False,
+        tqdm_enable=True,
+    )[0]
+
+    if len(ocr_result_list) != len(need_ocr_list):
+        raise ValueError(
+            "Hybrid OCR rec result count mismatch: "
+            f"ocr_result_list={len(ocr_result_list)}, need_ocr_list={len(need_ocr_list)}"
+        )
+
+    items_to_remove = []
+    for index, (page_ocr_res_list, need_ocr_res) in enumerate(need_ocr_list):
+        ocr_text, ocr_score = ocr_result_list[index]
+        need_ocr_res["text"] = ocr_text
+        need_ocr_res["score"] = float(f"{ocr_score:.3f}")
+        if _should_remove_low_confidence_ocr_text(ocr_text, ocr_score, need_ocr_res):
+            items_to_remove.append((page_ocr_res_list, need_ocr_res))
+
+    for page_ocr_res_list, need_ocr_res in items_to_remove:
+        if need_ocr_res in page_ocr_res_list:
+            page_ocr_res_list.remove(need_ocr_res)
+
+
 def _process_ocr_and_formulas(
     images_pil_list: list[Image.Image],
     model_list: list[list[dict[str, Any]]],
@@ -990,86 +1212,7 @@ def _process_ocr_and_formulas(
 
     # 如果需要ocr则做ocr_rec
     if _ocr_enable:
-        need_ocr_list = []
-        img_crop_list = []
-        for page_ocr_res_list in ocr_res_list:
-            for ocr_res in page_ocr_res_list:
-                if "np_img" in ocr_res:
-                    need_ocr_list.append((page_ocr_res_list, ocr_res))
-                    img_crop_list.append(ocr_res.pop("np_img"))
-        if len(img_crop_list) > 0:
-            # Process OCR
-            ocr_result_list = run_ocr_inference(
-                local_context.ocr_model.ocr,
-                img_crop_list,
-                det=False,
-                tqdm_enable=True,
-            )[0]
-
-            # Verify we have matching counts
-            assert len(ocr_result_list) == len(need_ocr_list), (
-                f"ocr_result_list: {len(ocr_result_list)}, need_ocr_list: {len(need_ocr_list)}"
-            )
-
-            items_to_remove = []
-            # Process OCR results for this language
-            for index, (page_ocr_res_list, need_ocr_res) in enumerate(need_ocr_list):
-                ocr_text, ocr_score = ocr_result_list[index]
-                need_ocr_res["text"] = ocr_text
-                need_ocr_res["score"] = float(f"{ocr_score:.3f}")
-                should_remove = False
-                if ocr_score < OcrConfidence.min_confidence:
-                    should_remove = True
-                else:
-                    layout_res_bbox = need_ocr_res.get("bbox")
-                    if layout_res_bbox is None and need_ocr_res.get("poly") is not None:
-                        layout_res_bbox = [
-                            need_ocr_res["poly"][0],
-                            need_ocr_res["poly"][1],
-                            need_ocr_res["poly"][4],
-                            need_ocr_res["poly"][5],
-                        ]
-                    if layout_res_bbox is None:
-                        should_remove = True
-                        continue
-                    layout_res_width = layout_res_bbox[2] - layout_res_bbox[0]
-                    layout_res_height = layout_res_bbox[3] - layout_res_bbox[1]
-                    if (
-                        ocr_text
-                        in [
-                            "（204号",
-                            "（20",
-                            "（2",
-                            "（2号",
-                            "（20号",
-                            "号",
-                            "（204",
-                            "(cid:)",
-                            "(ci:)",
-                            "(cd:1)",
-                            "cd:)",
-                            "c)",
-                            "(cd:)",
-                            "c",
-                            "id:)",
-                            ":)",
-                            "√:)",
-                            "√i:)",
-                            "−i:)",
-                            "−:",
-                            "i:)",
-                        ]
-                        and ocr_score < 0.8
-                        and layout_res_width < layout_res_height
-                    ):
-                        should_remove = True
-
-                if should_remove:
-                    items_to_remove.append((page_ocr_res_list, need_ocr_res))
-
-            for page_ocr_res_list, need_ocr_res in items_to_remove:
-                if need_ocr_res in page_ocr_res_list:
-                    page_ocr_res_list.remove(need_ocr_res)
+        _apply_ocr_rec_results(local_context, ocr_res_list)
 
     _apply_layout_title_split(
         model_list,
@@ -1374,12 +1517,8 @@ def doc_analyze(
     try:
         page_count = pdf_doc.page_count
         configured_window_size = get_processing_window_size(default=64)
-        effective_window_size = min(page_count, configured_window_size) if page_count else 0
-        total_windows = (page_count + effective_window_size - 1) // effective_window_size if effective_window_size else 0
-        logger.info(
-            f"Hybrid processing-window run. page_count={page_count}, "
-            f"window_size={configured_window_size}, total_windows={total_windows}"
-        )
+        windows = _build_processing_windows(page_count, configured_window_size)
+        _log_processing_window_plan(page_count, configured_window_size, len(windows))
 
         batch_ratio = get_batch_ratio(device) if not _vlm_ocr_enable else 1
 
@@ -1387,21 +1526,16 @@ def doc_analyze(
         progress_bar = None
         last_append_end_time = None
         try:
-            for window_index, window_start in enumerate(range(0, page_count, effective_window_size or 1)):
-                window_end = min(page_count - 1, window_start + effective_window_size - 1)
+            for window in windows:
                 images_list = load_images_from_pdf_bytes_range(
                     pdf_bytes=pdf_bytes,
-                    start_page_id=window_start,
-                    end_page_id=window_end,
+                    start_page_id=window.start,
+                    end_page_id=window.end,
                     image_type=ImageType.PIL,
                 )
                 try:
                     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
-                    logger.info(
-                        f"Hybrid processing window {window_index + 1}/{total_windows}: "
-                        f"pages {window_start + 1}-{window_end + 1}/{page_count} "
-                        f"({len(images_pil_list)} pages)"
-                    )
+                    _log_processing_window(window, page_count, len(images_pil_list))
                     if effort == LOCAL_HYBRID_EFFORT:
                         window_model_list, local_context = _extract_with_local_layout(
                             images_pil_list,
@@ -1463,7 +1597,7 @@ def doc_analyze(
                         images_list,
                         pdf_doc,
                         page_cvt_fn=blocks_to_page_info,
-                        page_start_index=window_start,
+                        page_start_index=window.start,
                         page_index_map=page_index_map,
                         _ocr_enable=_ocr_enable,
                         _vlm_ocr_enable=_vlm_ocr_enable,
@@ -1483,21 +1617,14 @@ def doc_analyze(
                 f"processing-window infer finished, cost: {infer_time}, speed: {round(len(model_list) / infer_time, 3)} page/s"
             )
 
-        if client_side_output_generation:
-            apply_server_side_postprocess(
-                middle_json,
-                local_context,
-                _ocr_enable,
-                _vlm_ocr_enable,
-            )
-        else:
-            finalize_middle_json(
-                middle_json,
-                local_context,
-                _ocr_enable,
-                _vlm_ocr_enable,
-                effort=effort,
-            )
+        _finalize_hybrid_middle_json(
+            middle_json,
+            local_context,
+            _ocr_enable,
+            _vlm_ocr_enable,
+            effort=effort,
+            client_side_output_generation=client_side_output_generation,
+        )
         pdf_doc.close()
         doc_closed = True
         clean_memory(device)
@@ -1557,12 +1684,8 @@ async def aio_doc_analyze(
     try:
         page_count = pdf_doc.page_count
         configured_window_size = get_processing_window_size(default=64)
-        effective_window_size = min(page_count, configured_window_size) if page_count else 0
-        total_windows = (page_count + effective_window_size - 1) // effective_window_size if effective_window_size else 0
-        logger.info(
-            f"Hybrid processing-window run. page_count={page_count}, "
-            f"window_size={configured_window_size}, total_windows={total_windows}"
-        )
+        windows = _build_processing_windows(page_count, configured_window_size)
+        _log_processing_window_plan(page_count, configured_window_size, len(windows))
 
         batch_ratio = get_batch_ratio(device) if not _vlm_ocr_enable else 1
 
@@ -1570,21 +1693,16 @@ async def aio_doc_analyze(
         progress_bar = None
         last_append_end_time = None
         try:
-            for window_index, window_start in enumerate(range(0, page_count, effective_window_size or 1)):
-                window_end = min(page_count - 1, window_start + effective_window_size - 1)
+            for window in windows:
                 images_list = await aio_load_images_from_pdf_bytes_range(
                     pdf_bytes,
-                    start_page_id=window_start,
-                    end_page_id=window_end,
+                    start_page_id=window.start,
+                    end_page_id=window.end,
                     image_type=ImageType.PIL,
                 )
                 try:
                     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
-                    logger.info(
-                        f"Hybrid processing window {window_index + 1}/{total_windows}: "
-                        f"pages {window_start + 1}-{window_end + 1}/{page_count} "
-                        f"({len(images_pil_list)} pages)"
-                    )
+                    _log_processing_window(window, page_count, len(images_pil_list))
                     if effort == LOCAL_HYBRID_EFFORT:
                         window_model_list, local_context = await asyncio.to_thread(
                             _extract_with_local_layout,
@@ -1649,7 +1767,7 @@ async def aio_doc_analyze(
                         images_list,
                         pdf_doc,
                         page_cvt_fn=blocks_to_page_info,
-                        page_start_index=window_start,
+                        page_start_index=window.start,
                         page_index_map=page_index_map,
                         _ocr_enable=_ocr_enable,
                         _vlm_ocr_enable=_vlm_ocr_enable,
@@ -1669,23 +1787,15 @@ async def aio_doc_analyze(
                 f"processing-window infer finished, cost: {infer_time}, speed: {round(len(model_list) / infer_time, 3)} page/s"
             )
 
-        if client_side_output_generation:
-            await asyncio.to_thread(
-                apply_server_side_postprocess,
-                middle_json,
-                local_context,
-                _ocr_enable,
-                _vlm_ocr_enable,
-            )
-        else:
-            await asyncio.to_thread(
-                finalize_middle_json,
-                middle_json,
-                local_context,
-                _ocr_enable,
-                _vlm_ocr_enable,
-                effort=effort,
-            )
+        await asyncio.to_thread(
+            _finalize_hybrid_middle_json,
+            middle_json,
+            local_context,
+            _ocr_enable,
+            _vlm_ocr_enable,
+            effort=effort,
+            client_side_output_generation=client_side_output_generation,
+        )
         pdf_doc.close()
         doc_closed = True
         clean_memory(device)
