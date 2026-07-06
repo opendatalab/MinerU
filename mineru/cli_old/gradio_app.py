@@ -42,16 +42,11 @@ from mineru.cli_old.client_side_output import regenerate_client_side_outputs
 from mineru.cli_old.output_paths import resolve_parse_dir
 from mineru.cli_old.vlm_preload import resolve_gradio_local_api_cli_args
 from mineru.cli_old.visualization import VisualizationJob, run_visualization_job
+from mineru.parser.tier import ParserRuntimeOptions, runtime_options_for_tier
 from mineru.utils.backend_options import (
-    DEFAULT_BACKEND,
-    DEFAULT_HYBRID_EFFORT,
-    HTTP_CLIENT_BACKEND_CHOICES,
-    HYBRID_EFFORT_CHOICES,
-    HYBRID_EFFORT_HELP,
-    LOCAL_BACKEND_CHOICES,
+    CANONICAL_HYBRID_ENGINE,
     LOCAL_HYBRID_EFFORT,
     MAX_HYBRID_EFFORT,
-    normalize_backend,
 )
 from mineru.utils.ocr_language import PUBLIC_OCR_LANGUAGE_CHOICES, validate_public_ocr_lang
 
@@ -236,8 +231,9 @@ STATUS_QUEUED_ON_SERVER = "Queued on server"
 STATUS_PROCESSING_ON_SERVER = "Processing on server"
 STATUS_QUEUED_LOCALLY_PREFIX = "Queued locally:"
 
-BACKEND_CHOICE_DEFINITIONS = list(LOCAL_BACKEND_CHOICES)
-HTTP_CLIENT_BACKEND_CHOICE_DEFINITIONS = list(HTTP_CLIENT_BACKEND_CHOICES)
+DEFAULT_GRADIO_TIER = "pro"
+GRADIO_TIER_CHOICES = ("standard", "pro")
+GRADIO_REMOTE_BACKEND = "hybrid-http-client"
 STATUS_STEP_DEFINITIONS = [
     ("status_step_prepare", STATUS_PREPARING_REQUEST),
     ("status_step_check", STATUS_CHECKING_SERVER),
@@ -332,35 +328,24 @@ def render_client_i18n_text(i18n, key, locale=None):
     )
 
 
-def build_backend_choices(http_client_enable, i18n):
-    """构建后端选项列表，展示文案与提交给后端的 backend 值保持完全一致。"""
-    choices = list(BACKEND_CHOICE_DEFINITIONS)
-    if http_client_enable:
-        choices.extend(HTTP_CLIENT_BACKEND_CHOICE_DEFINITIONS)
-    return choices
+def resolve_gradio_runtime_options(tier: str | None, use_remote_server: bool = False) -> ParserRuntimeOptions:
+    """根据 Gradio 公开 tier 与远端开关派生内部 backend/effort，保持旧提交链路兼容。"""
+    backend = GRADIO_REMOTE_BACKEND if use_remote_server else CANONICAL_HYBRID_ENGINE
+    return runtime_options_for_tier(tier or DEFAULT_GRADIO_TIER, backend=backend)
 
 
-def is_http_client_backend(backend_choice):
-    """判断当前后端是否为 http-client 类型，用于控制服务器地址配置显隐。"""
-    return isinstance(backend_choice, str) and backend_choice.endswith("-http-client")
+def select_tier_info_key(tier_choice: object) -> str:
+    """根据 Gradio tier 选择说明文案的 i18n key。"""
+    if tier_choice == "standard":
+        return "tier_info_standard"
+    if tier_choice == "pro":
+        return "tier_info_pro"
+    return "tier_info_default"
 
 
-def select_backend_info_key(backend_choice):
-    """根据解析后端选择说明文案的 i18n key。"""
-    if not isinstance(backend_choice, str):
-        return "backend_info_default"
-    try:
-        backend_choice = normalize_backend(backend_choice)
-    except ValueError:
-        pass
-    if backend_choice.startswith("hybrid"):
-        return "backend_info_hybrid"
-    return "backend_info_default"
-
-
-def select_force_ocr_info_key(backend_choice: object) -> str:
-    """根据解析后端选择强制 OCR 说明；当前公开解析后端统一走 Hybrid 文案。"""
-    if isinstance(backend_choice, str) and backend_choice.startswith("hybrid"):
+def select_force_ocr_info_key(tier_choice: object) -> str:
+    """根据 Gradio tier 选择强制 OCR 说明；当前公开 tier 均走 Hybrid 文案。"""
+    if tier_choice in GRADIO_TIER_CHOICES:
         return "force_ocr_info_hybrid"
     return "force_ocr_info"
 
@@ -844,51 +829,39 @@ def normalize_language(language):
     return validate_public_ocr_lang(language)
 
 
-def resolve_parse_method(file_path, is_ocr, backend):
+def resolve_parse_method(file_path, is_ocr, tier=DEFAULT_GRADIO_TIER):
+    """根据文件类型和 OCR 开关解析旧 multipart parse_method，tier 只保留签名语义。"""
     file_suffix = Path(file_path).suffix.lower().lstrip('.')
     if file_suffix in office_suffixes:
         return "auto"
-    try:
-        backend = normalize_backend(backend)
-    except ValueError:
-        pass
     return "ocr" if is_ocr else "auto"
 
 
-def is_image_analysis_option_visible(backend, effort=DEFAULT_HYBRID_EFFORT):
-    """判断 Gradio 图片分析开关是否应展示；只有 Hybrid extra_high 支持图片分析。"""
-    if not isinstance(backend, str):
+def is_image_analysis_option_visible(tier: object) -> bool:
+    """判断 Gradio 图片分析开关是否应展示；当前公开 tier 不暴露 extra_high。"""
+    if tier not in GRADIO_TIER_CHOICES:
         return False
     try:
-        backend = normalize_backend(backend)
+        runtime = resolve_gradio_runtime_options(str(tier), use_remote_server=False)
     except ValueError:
-        pass
-    if backend.startswith("hybrid"):
-        return effort == MAX_HYBRID_EFFORT
-    return False
+        return False
+    return runtime.effort == MAX_HYBRID_EFFORT
 
 
-def is_effort_option_visible(backend):
-    """判断 Gradio effort 选项是否应展示；只有 Hybrid 后端消费该参数。"""
-    return isinstance(backend, str) and backend.startswith("hybrid")
-
-
-def is_ocr_language_option_visible(backend: object, effort: object = DEFAULT_HYBRID_EFFORT) -> bool:
-    """判断 OCR 语言选项是否展示；只有 Hybrid medium 对用户暴露语言输入。"""
-    if not isinstance(backend, str):
+def is_ocr_language_option_visible(tier: object) -> bool:
+    """判断 OCR 语言选项是否展示；只有 standard 对应的 Hybrid medium 暴露语言输入。"""
+    if tier not in GRADIO_TIER_CHOICES:
         return False
     try:
-        backend = normalize_backend(backend)
+        runtime = resolve_gradio_runtime_options(str(tier), use_remote_server=False)
     except ValueError:
-        pass
-    return backend.startswith("hybrid") and effort == LOCAL_HYBRID_EFFORT
-
-
-def is_force_ocr_option_visible(backend: object) -> bool:
-    """判断强制 OCR 开关是否展示；Hybrid 不需要 lang，但仍支持强制 OCR。"""
-    if not isinstance(backend, str):
         return False
-    return backend.startswith("hybrid")
+    return runtime.effort == LOCAL_HYBRID_EFFORT
+
+
+def is_force_ocr_option_visible(tier: object) -> bool:
+    """判断强制 OCR 开关是否展示；公开 tier 均基于 Hybrid，保留强制 OCR。"""
+    return tier in GRADIO_TIER_CHOICES
 
 
 def should_use_client_side_output_generation(client_side_output_generation):
@@ -1024,9 +997,9 @@ async def _run_to_markdown_job(
     formula_enable=True,
     table_enable=True,
     image_analysis=True,
-    effort=DEFAULT_HYBRID_EFFORT,
+    tier=DEFAULT_GRADIO_TIER,
     language="ch",
-    backend=DEFAULT_BACKEND,
+    use_remote_server=False,
     url=None,
     api_url=None,
     client_side_output_generation=False,
@@ -1042,10 +1015,14 @@ async def _run_to_markdown_job(
     normalized_language = normalize_language(language)
     file_path = str(file_path)
     file_suffix = Path(file_path).suffix.lower().lstrip('.')
+    runtime = resolve_gradio_runtime_options(tier, use_remote_server=use_remote_server)
+    backend = runtime.backend
+    effort = runtime.effort
+    server_url = url if use_remote_server else None
     use_client_side_output_generation = should_use_client_side_output_generation(
         client_side_output_generation
     )
-    parse_method = resolve_parse_method(file_path, is_ocr, backend)
+    parse_method = resolve_parse_method(file_path, is_ocr, tier)
     run_root, extract_root, archive_zip_path = create_gradio_run_paths(file_path)
     run_root.mkdir(parents=True, exist_ok=True)
 
@@ -1057,7 +1034,7 @@ async def _run_to_markdown_job(
         table_enable=table_enable,
         image_analysis=image_analysis,
         effort=effort,
-        server_url=url,
+        server_url=server_url,
         start_page_id=0,
         end_page_id=end_pages - 1,
         return_md=not use_client_side_output_generation,
@@ -1183,9 +1160,9 @@ async def stream_to_markdown(
     formula_enable=True,
     table_enable=True,
     image_analysis=True,
-    effort=DEFAULT_HYBRID_EFFORT,
+    tier=DEFAULT_GRADIO_TIER,
     language="ch",
-    backend=DEFAULT_BACKEND,
+    use_remote_server=False,
     url=None,
     api_url=None,
     client_side_output_generation=False,
@@ -1214,9 +1191,9 @@ async def stream_to_markdown(
                 formula_enable=formula_enable,
                 table_enable=table_enable,
                 image_analysis=image_analysis,
-                effort=effort,
+                tier=tier,
                 language=language,
-                backend=backend,
+                use_remote_server=use_remote_server,
                 url=url,
                 api_url=api_url,
                 client_side_output_generation=client_side_output_generation,
@@ -1595,21 +1572,20 @@ def main(ctx,
             "header_homepage_link": "Homepage",
             "header_download_link": "Download",
             "max_pages": "Max convert pages",
-            "backend": "Backend",
-            "backend_label_hybrid": "Hybrid (Recommended)",
-            "backend_label_vlm": "VLM (High-precision Chinese/English)",
-            "backend_label_remote_vlm": "Remote VLM",
-            "backend_label_remote_hybrid": "Remote Hybrid",
+            "tier": "Tier",
+            "tier_info_default": "Select the parsing tier.",
+            "tier_info_standard": "Standard tier uses fast local Hybrid parsing.",
+            "tier_info_pro": "Pro tier uses higher quality Hybrid parsing.",
+            "use_remote_server": "Use remote server",
+            "use_remote_server_info": "Send parsing requests to an OpenAI-compatible server.",
             "server_url": "Server URL",
-            "server_url_info": "OpenAI-compatible server URL for http-client backend.",
+            "server_url_info": "OpenAI-compatible server URL.",
             "recognition_options": "**Recognition Options:**",
             "advanced_options": "Advanced options",
             "table_enable": "Enable table recognition",
             "table_info": "If disabled, tables will be shown as images.",
             "image_analysis_enable": "Enable image analysis",
             "image_analysis_info": "If disabled, image/chart blocks will keep layout positions but skip VLM image/chart analysis.",
-            "effort": "Hybrid effort",
-            "effort_info": HYBRID_EFFORT_HELP,
             "formula_label_vlm": "Enable display formula recognition",
             "formula_label_hybrid": "Enable inline formula recognition",
             "formula_info_vlm": "If disabled, display formulas will be shown as images.",
@@ -1646,9 +1622,6 @@ def main(ctx,
             "office_preview_source_link": "File url",
             "office_preview_ignore_once": "Dismiss",
             "office_preview_ignore_forever": "Always dismiss",
-            "backend_info_vlm": "High-precision parsing via VLM, supports Chinese and English documents only.",
-            "backend_info_hybrid": "High-precision hybrid parsing, supports multiple languages.",
-            "backend_info_default": "Select the backend engine for document parsing.",
         },
         zh={
             "upload_file": "请选择或粘贴要上传的文件\nPDF、图片、DOCX、PPTX 或 XLSX",
@@ -1662,21 +1635,20 @@ def main(ctx,
             "header_homepage_link": "主页",
             "header_download_link": "下载",
             "max_pages": "最大转换页数",
-            "backend": "解析后端",
-            "backend_label_hybrid": "Hybrid 推荐",
-            "backend_label_vlm": "VLM 高精度中英文",
-            "backend_label_remote_vlm": "Remote VLM",
-            "backend_label_remote_hybrid": "Remote Hybrid",
+            "tier": "解析 tier",
+            "tier_info_default": "选择文档解析 tier。",
+            "tier_info_standard": "standard 使用快速本地 Hybrid 解析。",
+            "tier_info_pro": "pro 使用更高质量的 Hybrid 解析。",
+            "use_remote_server": "使用远端服务",
+            "use_remote_server_info": "将解析请求发送到 OpenAI 兼容服务。",
             "server_url": "服务器地址",
-            "server_url_info": "http-client 后端的 OpenAI 兼容服务器地址。",
+            "server_url_info": "OpenAI 兼容服务器地址。",
             "recognition_options": "**识别选项：**",
             "advanced_options": "高级选项",
             "table_enable": "启用表格识别",
             "table_info": "禁用后，表格将显示为图片。",
             "image_analysis_enable": "启用图片分析",
             "image_analysis_info": "禁用后，图片/图表块仍保留版面位置，但跳过 VLM 图片/图表分析。",
-            "effort": "解析强度",
-            "effort_info": "解析强度越高，解析质量越好但速度越慢；medium 为最快的本地 Hybrid 模式。",
             "formula_label_vlm": "启用行间公式识别",
             "formula_label_hybrid": "启用行内公式识别",
             "formula_info_vlm": "禁用后，行间公式将显示为图片。",
@@ -1713,60 +1685,42 @@ def main(ctx,
             "office_preview_source_link": "文件链接",
             "office_preview_ignore_once": "忽略",
             "office_preview_ignore_forever": "不再提示",
-            "backend_info_vlm": "多模态大模型高精度解析，仅支持中英文文档。",
-            "backend_info_hybrid": "高精度混合解析，支持多语言。",
-            "backend_info_default": "选择文档解析的后端引擎。",
         },
     )
 
-    # 根据后端类型获取公式识别标签（闭包函数以支持 i18n）
-    def get_formula_label(backend_choice):
-        try:
-            backend_choice = normalize_backend(backend_choice)
-        except ValueError:
-            pass
-        if backend_choice.startswith("hybrid"):
-            return i18n("formula_label_hybrid")
-        else:
-            return i18n("formula_label_hybrid")
+    # 根据 tier 获取公式识别标签（闭包函数以支持 i18n）
+    def get_formula_label(tier_choice):
+        return i18n("formula_label_hybrid")
 
-    def get_formula_info(backend_choice):
-        try:
-            backend_choice = normalize_backend(backend_choice)
-        except ValueError:
-            pass
-        if backend_choice.startswith("hybrid"):
-            return i18n("formula_info_hybrid")
-        else:
-            return ""
+    def get_formula_info(tier_choice):
+        return i18n("formula_info_hybrid") if tier_choice in GRADIO_TIER_CHOICES else ""
 
-    def get_backend_info(backend_choice):
-        return i18n(select_backend_info_key(backend_choice))
+    def get_tier_info(tier_choice):
+        return i18n(select_tier_info_key(tier_choice))
 
-    def get_force_ocr_info(backend_choice):
-        """根据后端返回强制 OCR 控件说明，当前公开解析后端统一使用 Hybrid 文案。"""
-        return i18n(select_force_ocr_info_key(backend_choice))
+    def get_force_ocr_info(tier_choice):
+        """根据 tier 返回强制 OCR 控件说明，当前公开 tier 统一使用 Hybrid 文案。"""
+        return i18n(select_force_ocr_info_key(tier_choice))
 
     # 更新界面函数
-    def update_interface(backend_choice, effort_choice):
-        """根据后端和解析强度更新 Gradio 联动控件，保持前端显隐规则集中。"""
-        formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
-        backend_info_update = gr.update(info=get_backend_info(backend_choice))
-        force_ocr_update = gr.update(info=get_force_ocr_info(backend_choice))
-        image_analysis_update = gr.update(visible=is_image_analysis_option_visible(backend_choice, effort_choice))
-        effort_update = gr.update(visible=is_effort_option_visible(backend_choice))
-        language_update = gr.update(visible=is_ocr_language_option_visible(backend_choice, effort_choice))
-        client_options_update = gr.update(visible=is_http_client_backend(backend_choice))
-        ocr_options_update = gr.update(visible=is_force_ocr_option_visible(backend_choice))
+    def update_interface(tier_choice, use_remote_server):
+        """根据 tier 和远端开关更新 Gradio 联动控件，保持前端显隐规则集中。"""
+        use_remote_server = bool(use_remote_server)
+        formula_label_update = gr.update(label=get_formula_label(tier_choice), info=get_formula_info(tier_choice))
+        tier_info_update = gr.update(info=get_tier_info(tier_choice))
+        force_ocr_update = gr.update(info=get_force_ocr_info(tier_choice))
+        image_analysis_update = gr.update(visible=is_image_analysis_option_visible(tier_choice))
+        language_update = gr.update(visible=is_ocr_language_option_visible(tier_choice))
+        client_options_update = gr.update(visible=use_remote_server)
+        ocr_options_update = gr.update(visible=is_force_ocr_option_visible(tier_choice))
 
         return (
             client_options_update,
             ocr_options_update,
             force_ocr_update,
             formula_label_update,
-            backend_info_update,
+            tier_info_update,
             image_analysis_update,
-            effort_update,
             language_update,
         )
 
@@ -1796,9 +1750,9 @@ def main(ctx,
         formula_enable=True,
         table_enable=True,
         image_analysis=True,
-        effort=DEFAULT_HYBRID_EFFORT,
+        tier=DEFAULT_GRADIO_TIER,
         language="ch",
-            backend=DEFAULT_BACKEND,
+        use_remote_server=False,
         url=None,
         request: gr.Request = None,
     ):
@@ -1810,9 +1764,9 @@ def main(ctx,
             formula_enable=formula_enable,
             table_enable=table_enable,
             image_analysis=image_analysis,
-            effort=effort,
+            tier=tier,
             language=language,
-            backend=backend,
+            use_remote_server=use_remote_server,
             url=url,
             api_url=api_url,
             client_side_output_generation=client_side_output_generation,
@@ -1836,17 +1790,24 @@ def main(ctx,
                     file_types=suffixes,
                     elem_classes=["mineru-upload-file"],
                 )
-                preferred_option = DEFAULT_BACKEND
+                preferred_tier = DEFAULT_GRADIO_TIER
                 with gr.Group(elem_classes=["mineru-backend-options-block"]):
-                    backend = gr.Dropdown(
-                        build_backend_choices(http_client_enable, i18n),
-                        label=i18n("backend"),
-                        value=preferred_option,
-                        info=get_backend_info(preferred_option),
-                        elem_classes=["mineru-backend-select"],
+                    tier = gr.Dropdown(
+                        list(GRADIO_TIER_CHOICES),
+                        label=i18n("tier"),
+                        value=preferred_tier,
+                        info=get_tier_info(preferred_tier),
+                        elem_classes=["mineru-tier-select"],
+                    )
+                    use_remote_server = gr.Checkbox(
+                        label=i18n("use_remote_server"),
+                        value=False,
+                        visible=http_client_enable,
+                        info=i18n("use_remote_server_info"),
+                        elem_classes=["mineru-remote-server-toggle"],
                     )
                     with gr.Row(
-                        visible=frontend_managed_initial_visibility(is_http_client_backend(preferred_option)),
+                        visible=frontend_managed_initial_visibility(False),
                         elem_classes=["mineru-client-options"],
                     ) as client_options:
                         url = gr.Textbox(
@@ -1854,15 +1815,6 @@ def main(ctx,
                             value='http://localhost:30000',
                             placeholder='http://localhost:30000',
                             info=i18n("server_url_info"),
-                        )
-                    with gr.Column(elem_classes=["mineru-hybrid-effort-option"]):
-                        effort = gr.Dropdown(
-                            list(HYBRID_EFFORT_CHOICES),
-                            label=i18n("effort"),
-                            value=DEFAULT_HYBRID_EFFORT,
-                            visible=is_effort_option_visible(preferred_option),
-                            info=i18n("effort_info"),
-                            elem_classes=["mineru-hybrid-effort"],
                         )
                 # 下面这些选项在上传 office 文件时会被自动隐藏
                 with gr.Group() as options_group:
@@ -1959,12 +1911,12 @@ def main(ctx,
             with gr.Column(elem_classes=["mineru-advanced-card"]):
                 with gr.Group():
                     table_enable = gr.Checkbox(label=i18n("table_enable"), value=True, info=i18n("table_info"))
-                    formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))
+                    formula_enable = gr.Checkbox(label=get_formula_label(preferred_tier), value=True, info=get_formula_info(preferred_tier))
                     image_analysis = gr.Checkbox(
                         label=i18n("image_analysis_enable"),
                         value=True,
                         visible=frontend_managed_initial_visibility(
-                            is_image_analysis_option_visible(preferred_option, DEFAULT_HYBRID_EFFORT)
+                            is_image_analysis_option_visible(preferred_tier)
                         ),
                         info=i18n("image_analysis_info"),
                         elem_classes=["mineru-image-analysis-option"],
@@ -1978,13 +1930,13 @@ def main(ctx,
                                 value=all_lang[0],
                                 info=i18n("ocr_language_info"),
                                 visible=frontend_managed_initial_visibility(
-                                    is_ocr_language_option_visible(preferred_option, DEFAULT_HYBRID_EFFORT)
+                                    is_ocr_language_option_visible(preferred_tier)
                                 ),
                             )
                         is_ocr = gr.Checkbox(
                             label=i18n("force_ocr"),
                             value=False,
-                            info=i18n(select_force_ocr_info_key(preferred_option)),
+                            info=i18n(select_force_ocr_info_key(preferred_tier)),
                         )
 
         # 添加事件处理
@@ -1993,23 +1945,23 @@ def main(ctx,
             if IS_GRADIO_6
             else {"api_name": False, "queue": False}
         )
-        backend.change(
+        tier.change(
             fn=update_interface,
-            inputs=[backend, effort],
-            outputs=[client_options, ocr_options, is_ocr, formula_enable, backend, image_analysis, effort, language],
+            inputs=[tier, use_remote_server],
+            outputs=[client_options, ocr_options, is_ocr, formula_enable, tier, image_analysis, language],
             **_private_api_kwargs
         )
-        effort.change(
+        use_remote_server.change(
             fn=update_interface,
-            inputs=[backend, effort],
-            outputs=[client_options, ocr_options, is_ocr, formula_enable, backend, image_analysis, effort, language],
+            inputs=[tier, use_remote_server],
+            outputs=[client_options, ocr_options, is_ocr, formula_enable, tier, image_analysis, language],
             **_private_api_kwargs
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
-            inputs=[backend, effort],
-            outputs=[client_options, ocr_options, is_ocr, formula_enable, backend, image_analysis, effort, language],
+            inputs=[tier, use_remote_server],
+            outputs=[client_options, ocr_options, is_ocr, formula_enable, tier, image_analysis, language],
             **_private_api_kwargs
         )
         clear_bu.add([input_file, md, doc_show, md_text, content_list_json, output_file, is_ocr, office_html, status_panel])
@@ -2065,7 +2017,7 @@ def main(ctx,
         )
         change_bu.click(
             fn=convert_to_markdown_stream,
-            inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, effort, language, backend, url],
+            inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, tier, language, use_remote_server, url],
             outputs=[status_panel, output_file, md, md_text, content_list_json, doc_show],
             **_to_md_api_kwargs
         )

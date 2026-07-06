@@ -48,9 +48,17 @@ from ..utils.backend_options import (
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..version import __version__
 from . import parse_async
-from .tier import PARSER_BACKENDS, TierDependencyError, ensure_tier_runtime_dependencies, resolve_tier_and_backend
+from .tier import (
+    PARSER_BACKENDS,
+    ParserRuntimeOptions,
+    TierDependencyError,
+    ensure_tier_runtime_dependencies,
+    resolve_tier_and_backend,
+    runtime_options_for_tier,
+)
 
 _API_SERVER_BACKENDS = tuple(backend for backend in PARSER_BACKENDS if backend != "flash")
+_API_SERVER_TIERS: tuple[Tier, ...] = ("standard", "pro")
 _API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
 _MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
 logger = logging.getLogger("mineru.parser.api_server")
@@ -1747,10 +1755,11 @@ async def create_job(
             ).model_dump(by_alias=True),
         )
 
-    # Resolve omitted tier to this server's concrete tier, then validate it.
-    body.tier = body.tier or request.app.state.tier
-    supported_tiers = {tier["id"] for tier in request.app.state.tiers}
-    if body.tier not in supported_tiers:
+    # 按请求 tier 选择启动时预先解析好的 runtime，避免所有 job 共享默认 effort。
+    body.tier = body.tier or request.app.state.default_tier
+    runtime_options: dict[Tier, ParserRuntimeOptions] = request.app.state.tier_runtime_options
+    runtime = runtime_options.get(body.tier)
+    if runtime is None:
         raise HTTPException(
             status_code=400,
             detail=ErrorResponse(
@@ -1763,11 +1772,11 @@ async def create_job(
         )
 
     rec = job_store.create(body, file_store)
-    backend: str = request.app.state.backend
+    backend = runtime.backend
     url_timeout_val: int = request.app.state.url_timeout
     language_val: str = request.app.state.language
     ocr_mode_val: str = request.app.state.ocr_mode
-    effort_val: str = request.app.state.effort
+    effort_val = runtime.effort
     table_enable_val: bool = request.app.state.table_enable
     formula_enable_val: bool = request.app.state.formula_enable
     image_analysis_val: bool = request.app.state.image_analysis
@@ -1984,6 +1993,49 @@ def _resolve_server_tier_and_backend(*, tier: Tier | None, backend: str | None) 
     return resolved_tier, resolved_backend
 
 
+def _normalize_server_tiers(tier: Tier | list[Tier] | tuple[Tier, ...] | None) -> list[Tier]:
+    """规范化 API server 启动 tier 列表，保留用户顺序并拒绝 flash 等未开放 tier。"""
+    raw_tiers: list[Tier]
+    if tier is None:
+        raw_tiers = ["standard"]
+    elif isinstance(tier, str):
+        raw_tiers = [tier]
+    else:
+        raw_tiers = list(tier) or ["standard"]
+
+    tiers: list[Tier] = []
+    for item in raw_tiers:
+        if item not in _API_SERVER_TIERS:
+            raise ValueError(f"Unsupported tier '{item}'. Supported tiers: {', '.join(_API_SERVER_TIERS)}")
+        if item not in tiers:
+            tiers.append(item)
+    return tiers
+
+
+def _runtime_options_for_server_tiers(
+    *,
+    tiers: list[Tier],
+    backend: str | None,
+    effort: str,
+) -> dict[Tier, ParserRuntimeOptions]:
+    """为每个启动 tier 生成独立 runtime，避免不同 tier job 共享同一个 effort。"""
+    if backend is not None and len(tiers) > 1:
+        raise ValueError("--backend cannot be combined with multiple --tier values")
+    if backend is not None:
+        tier = tiers[0]
+        resolved_tier, resolved_backend = _resolve_server_tier_and_backend(tier=tier, backend=backend)
+        if resolved_tier != tier:
+            tiers[0] = resolved_tier
+        resolved_backend, resolved_effort = resolve_backend_and_effort(backend, effort)
+        if resolved_tier == "standard":
+            resolved_effort = LOCAL_HYBRID_EFFORT
+        return {
+            resolved_tier: ParserRuntimeOptions(tier=resolved_tier, backend=resolved_backend, effort=resolved_effort)
+        }
+
+    return {tier: runtime_options_for_tier(tier) for tier in tiers}
+
+
 def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[dict[str, Any]]]:
     if tier == "pro":
         return ["MinerU2.5-Pro-2604-1.2B", "MinerU-HTML"], [
@@ -2003,6 +2055,19 @@ def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[di
     ]
 
 
+def _model_ids_and_tiers_for_server_tiers(tiers: list[Tier]) -> tuple[list[str], list[dict[str, Any]]]:
+    """聚合多个启动 tier 的模型和 tier metadata，并对重复 model id 保序去重。"""
+    model_ids: list[str] = []
+    tier_infos: list[dict[str, Any]] = []
+    for tier in tiers:
+        tier_model_ids, single_tier_infos = _model_ids_and_tiers_for_server_tier(tier)
+        for model_id in tier_model_ids:
+            if model_id not in model_ids:
+                model_ids.append(model_id)
+        tier_infos.extend(single_tier_infos)
+    return model_ids, tier_infos
+
+
 def _preflight_tier_dependencies(tier: Tier) -> None:
     try:
         ensure_tier_runtime_dependencies(tier)
@@ -2010,10 +2075,28 @@ def _preflight_tier_dependencies(tier: Tier) -> None:
         raise ParseServerStartupError(str(exc)) from exc
 
 
+def _dependency_tier_for_runtime(runtime: ParserRuntimeOptions) -> Tier:
+    """根据实际 runtime 判断依赖预检 tier，Hybrid medium 只需要 standard 依赖。"""
+    if runtime.backend.startswith("hybrid-") and runtime.effort == LOCAL_HYBRID_EFFORT:
+        return "standard"
+    return runtime.tier
+
+
+def _preflight_runtime_dependencies(runtime_options: dict[Tier, ParserRuntimeOptions]) -> None:
+    """对多 tier server 的 runtime 依赖做去重预检，避免重复导入检查。"""
+    checked_tiers: set[Tier] = set()
+    for runtime in runtime_options.values():
+        dependency_tier = _dependency_tier_for_runtime(runtime)
+        if dependency_tier in checked_tiers:
+            continue
+        checked_tiers.add(dependency_tier)
+        _preflight_tier_dependencies(dependency_tier)
+
+
 def create_app(
     *,
     upload_dir: str = "",
-    tier: Tier | None = None,
+    tier: Tier | list[Tier] | tuple[Tier, ...] | None = None,
     backend: str | None = None,
     concurrency: int = 1,
     url_timeout: int = 60,
@@ -2062,25 +2145,34 @@ def create_app(
         Whether image analysis is enabled for Hybrid backends.
     """
     upload_dir = upload_dir or ""
-    raw_backend = backend
-    tier, backend = _resolve_server_tier_and_backend(tier=tier, backend=backend)
-    backend, effort = resolve_backend_and_effort(raw_backend or backend, effort)
-    if tier == "standard":
-        effort = LOCAL_HYBRID_EFFORT
-    dependency_tier = "standard" if backend.startswith("hybrid-") and effort == LOCAL_HYBRID_EFFORT else tier
-    _preflight_tier_dependencies(dependency_tier)
+    tier_input = None if tier in ((), []) else tier
+    if backend is not None and tier_input is None:
+        inferred_tier, _resolved_backend = _resolve_server_tier_and_backend(tier=None, backend=backend)
+        server_tiers = [inferred_tier]
+    else:
+        server_tiers = _normalize_server_tiers(tier_input)
+    tier_runtime_options = _runtime_options_for_server_tiers(tiers=server_tiers, backend=backend, effort=effort)
+    server_tiers = list(tier_runtime_options)
+    default_tier = server_tiers[0]
+    default_runtime = tier_runtime_options[default_tier]
+    tier = default_tier
+    backend = default_runtime.backend
+    effort = default_runtime.effort
+    _preflight_runtime_dependencies(tier_runtime_options)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
     _upload_dir.mkdir(parents=True, exist_ok=True)
     language = validate_public_ocr_lang(language)
 
-    _model_ids, _tiers = _model_ids_and_tiers_for_server_tier(tier)
+    _model_ids, _tiers = _model_ids_and_tiers_for_server_tiers(server_tiers)
 
     @asynccontextmanager
     async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
         application.state.upload_dir = _upload_dir
         application.state.tier = tier
+        application.state.default_tier = default_tier
         application.state.backend = backend
+        application.state.tier_runtime_options = tier_runtime_options
         application.state.model_ids = _model_ids
         application.state.tiers = _tiers
         application.state.concurrency = concurrency
@@ -2109,7 +2201,9 @@ def create_app(
     )
     application.state.upload_dir = _upload_dir
     application.state.tier = tier
+    application.state.default_tier = default_tier
     application.state.backend = backend
+    application.state.tier_runtime_options = tier_runtime_options
     application.state.model_ids = _model_ids
     application.state.tiers = _tiers
     application.state.concurrency = concurrency
@@ -2179,9 +2273,12 @@ def create_app(
 )
 @click.option(
     "--tier",
-    default=None,
+    multiple=True,
     type=click.Choice(["standard", "pro"]),
-    help="Server parsing tier. Defaults to 'standard' when neither --tier nor --backend is provided.",
+    help=(
+        "Server parsing tier; repeat to expose multiple tiers. "
+        "Defaults to 'standard' when neither --tier nor --backend is provided."
+    ),
 )
 @click.option(
     "--concurrency",
@@ -2235,7 +2332,7 @@ def main(
     port: int,
     upload_dir: str,
     backend: str | None,
-    tier: Tier | None,
+    tier: tuple[Tier, ...],
     concurrency: int,
     url_timeout: int,
     max_wait: int,
@@ -2251,7 +2348,7 @@ def main(
     try:
         application = create_app(
             upload_dir=upload_dir,
-            tier=tier,
+            tier=tier or None,
             backend=backend,
             concurrency=concurrency,
             url_timeout=url_timeout,

@@ -1,5 +1,5 @@
 () => {
-    const POPOVER_SCRIPT_VERSION = "office-preview-dismiss-v2";
+    const POPOVER_SCRIPT_VERSION = "tier-remote-options-v1";
     if (window.__mineruAdvancedPopoverInstalled === POPOVER_SCRIPT_VERSION) {
         return;
     }
@@ -10,7 +10,6 @@
     const IMAGE_ANALYSIS_VISIBLE_CLASS = "mineru-show-image-analysis";
     const OCR_LANGUAGE_VISIBLE_CLASS = "mineru-show-ocr-language";
     const FORCE_OCR_HIDDEN_CLASS = "mineru-hide-force-ocr";
-    const HYBRID_EFFORT_HIDDEN_CLASS = "mineru-hide-hybrid-effort";
     const OFFICE_PREVIEW_NOTICE_STORAGE_KEY = "mineru.officePreviewNoticeIgnored";
     const OPEN_DELAY_MS = 120;
     const CLOSE_DELAY_MS = 280;
@@ -104,43 +103,40 @@
         "button.mineru-advanced-open, .mineru-advanced-open button, .mineru-advanced-open"
     );
     const findPopover = () => document.querySelector(".mineru-advanced-popover");
-    const findBackendRoot = () => document.querySelector(".mineru-backend-select");
-    const findEffortRoot = () => document.querySelector(".mineru-hybrid-effort");
+    const findTierRoot = () => document.querySelector(".mineru-tier-select");
+    const findRemoteServerRoot = () => document.querySelector(".mineru-remote-server-toggle");
     let openTimer = null;
     let closeTimer = null;
     let visibilityTimer = null;
     let hoverHandlersInstalled = false;
 
-    // 读取 Gradio Dropdown 当前值；value 属性比可见文本更稳定，避免中英文文案影响判断。
-    const getBackendValue = () => {
-        const backendRoot = findBackendRoot();
-        const backendControl = backendRoot?.querySelector('[role="listbox"]');
-        return (backendControl?.value || backendControl?.textContent || "").trim();
+    // 读取 Gradio tier 下拉框当前值；value 属性比可见文本更稳定。
+    const getTierValue = () => {
+        const tierRoot = findTierRoot();
+        const tierControl = tierRoot?.querySelector('[role="listbox"]');
+        return (tierControl?.value || tierControl?.textContent || "").trim();
     };
 
-    // 读取 Hybrid effort 下拉框当前值；控件在非 hybrid 后端会被 Gradio 隐藏，缺失时按空值处理。
-    const getEffortValue = () => {
-        const effortRoot = findEffortRoot();
-        const effortControl = effortRoot?.querySelector('[role="listbox"]');
-        return (effortControl?.value || effortControl?.textContent || "").trim();
+    // 读取远端服务开关状态，缺失时按关闭处理以保持本地默认路径。
+    const getUseRemoteServer = () => {
+        const remoteServerRoot = findRemoteServerRoot();
+        const remoteServerControl = remoteServerRoot?.querySelector('input[type="checkbox"]');
+        return Boolean(remoteServerControl?.checked);
     };
 
-    // 根据当前 backend/effort 刷新前端状态类，避免依赖 Gradio 重新挂载隐藏组件。
+    // 根据当前 tier/远端开关刷新前端状态类，避免依赖 Gradio 重新挂载隐藏组件。
     const refreshMineruOptionVisibility = () => {
-        const backend = getBackendValue();
-        const effort = getEffortValue();
-        const showClientOptions = backend.endsWith("http-client");
-        const showImageAnalysis = backend.startsWith("vlm")
-            || (backend.startsWith("hybrid") && effort === "extra_high");
-        const showOcrLanguage = backend.startsWith("hybrid") && effort === "medium";
-        const hideForceOcr = !backend.startsWith("hybrid");
-        const hideHybridEffort = !backend.startsWith("hybrid");
+        const tier = getTierValue();
+        const useRemoteServer = getUseRemoteServer();
+        const showClientOptions = useRemoteServer;
+        const showImageAnalysis = false;
+        const showOcrLanguage = tier === "standard";
+        const hideForceOcr = !["standard", "pro"].includes(tier);
 
         document.body.classList.toggle(CLIENT_OPTIONS_VISIBLE_CLASS, showClientOptions);
         document.body.classList.toggle(IMAGE_ANALYSIS_VISIBLE_CLASS, showImageAnalysis);
         document.body.classList.toggle(OCR_LANGUAGE_VISIBLE_CLASS, showOcrLanguage);
         document.body.classList.toggle(FORCE_OCR_HIDDEN_CLASS, hideForceOcr);
-        document.body.classList.toggle(HYBRID_EFFORT_HIDDEN_CLASS, hideHybridEffort);
         if (document.body.classList.contains(POPOVER_OPEN_CLASS)) {
             positionPopover();
         }

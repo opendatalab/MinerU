@@ -116,13 +116,36 @@ print("ok")
 
 def test_validate_effort_rejects_low_and_maps_legacy_backends() -> None:
     """校验 Hybrid effort 只接受 medium/high/extra_high 三档。"""
-    from mineru.utils.backend_options import HYBRID_EFFORT_CHOICES, resolve_backend_and_effort, validate_effort
+    from mineru.utils.backend_options import (
+        HYBRID_EFFORT_CHOICES,
+        effort_for_tier,
+        resolve_backend_and_effort,
+        validate_effort,
+    )
 
     assert HYBRID_EFFORT_CHOICES == ("medium", "high", "extra_high")
+    assert effort_for_tier("standard") == "medium"
+    assert effort_for_tier("pro") == "high"
     with pytest.raises(ValueError, match="Unsupported effort 'low'"):
         validate_effort("low")
     assert resolve_backend_and_effort("vlm-engine", "medium") == ("hybrid-engine", "extra_high")
     assert resolve_backend_and_effort("pipeline", "extra_high") == ("hybrid-engine", "medium")
+
+
+def test_tier_runtime_options_map_hybrid_effort() -> None:
+    """校验 tier 到 Hybrid runtime 参数的共享映射，避免 API/Gradio 分叉维护。"""
+    from mineru.parser.tier import runtime_options_for_tier
+
+    assert runtime_options_for_tier("standard").as_kwargs() == {
+        "tier": "standard",
+        "backend": "hybrid-engine",
+        "effort": "medium",
+    }
+    assert runtime_options_for_tier("pro").as_kwargs() == {
+        "tier": "pro",
+        "backend": "hybrid-engine",
+        "effort": "high",
+    }
 
 
 def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> None:
@@ -905,9 +928,121 @@ def test_api_server_defaults_to_standard_tier(tmp_path: Path, monkeypatch: pytes
     app = create_app(upload_dir=str(tmp_path))
 
     assert app.state.tier == "standard"
+    assert app.state.default_tier == "standard"
     assert app.state.backend == "hybrid-engine"
     assert app.state.effort == "medium"
     assert [tier["id"] for tier in app.state.tiers] == ["standard"]
+
+
+def test_api_server_multi_tier_state_and_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """校验同一个 API server 可发布多个 tier，并保留 standard 作为默认 tier。"""
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path), tier=["standard", "pro"])
+
+    assert app.state.tier == "standard"
+    assert app.state.default_tier == "standard"
+    assert app.state.backend == "hybrid-engine"
+    assert app.state.effort == "medium"
+    assert [tier["id"] for tier in app.state.tiers] == ["standard", "pro"]
+    assert app.state.model_ids == ["Hybrid-Low", "MinerU-HTML", "MinerU2.5-Pro-2604-1.2B"]
+    assert app.state.tier_runtime_options["standard"].as_kwargs() == {
+        "tier": "standard",
+        "backend": "hybrid-engine",
+        "effort": "medium",
+    }
+    assert app.state.tier_runtime_options["pro"].as_kwargs() == {
+        "tier": "pro",
+        "backend": "hybrid-engine",
+        "effort": "high",
+    }
+
+
+def test_api_server_multi_tier_http_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """校验 /v1/tiers 与 /v1/models 返回启动时声明的全部 tier 能力。"""
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path), tier=["standard", "pro"])
+
+    with TestClient(app) as client:
+        tiers_response = client.get("/v1/tiers")
+        models_response = client.get("/v1/models")
+
+    assert tiers_response.status_code == 200
+    assert [tier["id"] for tier in tiers_response.json()["data"]] == ["standard", "pro"]
+    assert models_response.status_code == 200
+    assert [model["id"] for model in models_response.json()["data"]] == [
+        "Hybrid-Low",
+        "MinerU-HTML",
+        "MinerU2.5-Pro-2604-1.2B",
+    ]
+
+
+def test_api_server_multi_tier_jobs_use_requested_tier_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """校验多 tier server 按每个 job 的 tier 选择 backend/effort，而不是复用全局默认值。"""
+    _stub_api_server_dependency_preflight(monkeypatch)
+    calls: list[dict[str, object]] = []
+
+    async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
+        """记录 API server 传给 parser 的 runtime 参数，并返回最小解析结果。"""
+        calls.append(dict(kwargs))
+        return ParseResult(pages=[PageInfo(page_idx=0, _backend="hybrid")])
+
+    monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    app = create_app(upload_dir=str(tmp_path / "api"), tier=["standard", "pro"])
+
+    with TestClient(app) as client:
+        default_response = client.post(
+            "/v1/parse/jobs",
+            json={
+                "files": [{"source": {"type": "local", "path": str(source)}}],
+                "output_formats": ["middle_json"],
+                "wait": 5,
+            },
+        )
+        pro_response = client.post(
+            "/v1/parse/jobs",
+            json={
+                "files": [{"source": {"type": "local", "path": str(source)}}],
+                "tier": "pro",
+                "output_formats": ["middle_json"],
+                "wait": 5,
+            },
+        )
+
+    assert default_response.status_code == 200
+    assert default_response.json()["tier"] == "standard"
+    assert pro_response.status_code == 200
+    assert pro_response.json()["tier"] == "pro"
+    assert [(call["tier"], call["backend"], call["effort"]) for call in calls] == [
+        ("standard", "hybrid-engine", "medium"),
+        ("pro", "hybrid-engine", "high"),
+    ]
+
+
+def test_api_server_single_tier_rejects_unavailable_tier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """校验单 tier server 不接受未启动的 tier，避免请求绕过启动能力边界。"""
+    _stub_api_server_dependency_preflight(monkeypatch)
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    app = create_app(upload_dir=str(tmp_path / "api"), tier="standard")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/parse/jobs",
+            json={
+                "files": [{"source": {"type": "local", "path": str(source)}}],
+                "tier": "pro",
+                "wait": 0,
+            },
+        )
+
+    assert response.status_code == 400
+    assert "Tier 'pro' not available in this server" in response.text
 
 
 def test_api_server_preflights_standard_tier_dependencies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -1296,6 +1431,36 @@ def test_api_server_cli_maps_legacy_vlm_backend_to_hybrid_extra_high(monkeypatch
 
     assert result.exit_code == 0
     assert seen == {"backend": "hybrid-http-client", "effort": "extra_high"}
+
+
+def test_api_server_cli_accepts_repeated_tier_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def _fake_run(server) -> None:
+        """记录重复 --tier 启动后的 API server 能力列表，避免测试启动真实服务。"""
+        seen["tiers"] = [tier["id"] for tier in server.config.app.state.tiers]
+        seen["default_tier"] = server.config.app.state.default_tier
+        seen["effort_by_tier"] = {
+            tier: runtime.effort for tier, runtime in server.config.app.state.tier_runtime_options.items()
+        }
+
+    monkeypatch.setattr("uvicorn.Server.run", _fake_run)
+
+    result = runner.invoke(main, ["--tier", "standard", "--tier", "pro", "--host", "0.0.0.0", "--port", "15984"])
+
+    assert result.exit_code == 0
+    assert seen == {
+        "tiers": ["standard", "pro"],
+        "default_tier": "standard",
+        "effort_by_tier": {"standard": "medium", "pro": "high"},
+    }
+
+
+def test_api_server_cli_rejects_flash_in_tier_list() -> None:
+    result = runner.invoke(main, ["--tier", "standard", "--tier", "flash"])
+
+    assert result.exit_code != 0
+    assert "Invalid value for '--tier'" in result.output
 
 
 def test_api_server_cli_normalizes_hidden_language_alias(monkeypatch: pytest.MonkeyPatch) -> None:

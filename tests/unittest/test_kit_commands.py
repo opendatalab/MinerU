@@ -291,6 +291,28 @@ def test_api_server_normalizes_backend_alias(monkeypatch: Any) -> None:
     assert "--tier" not in seen["args"]
 
 
+def test_api_server_forwards_repeated_tiers(monkeypatch: Any) -> None:
+    seen: dict[str, Any] = {}
+
+    def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
+        """记录 mineru-kit api-server 对多 tier 启动参数的原样转发。"""
+        seen["args"] = args
+        seen["prog_name"] = prog_name
+        seen["standalone_mode"] = standalone_mode
+
+    monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
+
+    result = runner.invoke(app, ["api-server", "--tier", "standard", "--tier", "pro"])
+
+    assert result.exit_code == 0
+    assert seen["prog_name"] == "mineru-kit api-server"
+    assert seen["standalone_mode"] is False
+    assert [seen["args"][index + 1] for index, item in enumerate(seen["args"]) if item == "--tier"] == [
+        "standard",
+        "pro",
+    ]
+
+
 def test_api_server_normalizes_hidden_language_alias(monkeypatch: Any) -> None:
     seen: dict[str, Any] = {}
 
@@ -525,40 +547,71 @@ def test_parse_rejects_removed_ch_lite_language(tmp_path: Path) -> None:
     assert "Language ch_lite not supported" in result.output
 
 
-def test_gradio_language_option_only_visible_for_hybrid_medium() -> None:
+def test_gradio_language_option_only_visible_for_standard_tier() -> None:
     from mineru.cli_old import gradio_app
 
-    assert gradio_app.is_ocr_language_option_visible("hybrid-engine", "medium") is True
-    assert gradio_app.is_ocr_language_option_visible("hybrid-engine", "high") is False
-    assert gradio_app.is_ocr_language_option_visible("hybrid-engine", "extra_high") is False
-    assert gradio_app.is_ocr_language_option_visible("flash", "medium") is False
+    assert gradio_app.is_ocr_language_option_visible("standard") is True
+    assert gradio_app.is_ocr_language_option_visible("pro") is False
+    assert gradio_app.is_ocr_language_option_visible("flash") is False
 
 
-def test_gradio_frontend_shows_ocr_language_for_hybrid_medium() -> None:
+def test_gradio_tier_remote_selection_derives_backend_and_effort() -> None:
+    from mineru.cli_old import gradio_app
+
+    assert gradio_app.resolve_gradio_runtime_options("standard", False).as_kwargs() == {
+        "tier": "standard",
+        "backend": "hybrid-engine",
+        "effort": "medium",
+    }
+    assert gradio_app.resolve_gradio_runtime_options("pro", False).as_kwargs() == {
+        "tier": "pro",
+        "backend": "hybrid-engine",
+        "effort": "high",
+    }
+    assert gradio_app.resolve_gradio_runtime_options("pro", True).as_kwargs() == {
+        "tier": "pro",
+        "backend": "hybrid-http-client",
+        "effort": "high",
+    }
+
+
+def test_gradio_frontend_uses_tier_and_remote_server_visibility() -> None:
     js_text = Path("mineru/resources/gradio_app.js").read_text(encoding="utf-8")
 
-    assert 'const effortControl = effortRoot?.querySelector(\'[role="listbox"]\');' in js_text
+    assert ".mineru-tier-select" in js_text
+    assert ".mineru-remote-server-toggle" in js_text
+    assert "getBackendValue" not in js_text
+    assert "getEffortValue" not in js_text
+    assert ".mineru-backend-select" not in js_text
+    assert ".mineru-hybrid-effort" not in js_text
     assert 'input[type="radio"]' not in js_text
-    assert 'const showImageAnalysis = backend.startsWith("vlm")' in js_text
-    assert '|| (backend.startsWith("hybrid") && effort === "extra_high");' in js_text
-    assert 'const showOcrLanguage = backend.startsWith("hybrid") && effort === "medium";' in js_text
+    assert "const showClientOptions = useRemoteServer;" in js_text
+    assert 'const showOcrLanguage = tier === "standard";' in js_text
 
 
-def test_gradio_effort_option_is_below_backend_selector() -> None:
-    """校验解析后端、服务器地址、解析强度归在同一个配置块内。"""
+def test_gradio_tier_and_remote_server_options_replace_backend_effort_controls() -> None:
+    """校验 Gradio 公开控制面只暴露 tier 和是否使用远端 server。"""
     gradio_text = Path("mineru/cli_old/gradio_app.py").read_text(encoding="utf-8")
 
     backend_block_idx = gradio_text.index('elem_classes=["mineru-backend-options-block"]')
-    backend_idx = gradio_text.index("backend = gr.Dropdown(")
+    tier_idx = gradio_text.index("tier = gr.Dropdown(")
+    remote_idx = gradio_text.index("use_remote_server = gr.Checkbox(")
     client_options_idx = gradio_text.index('elem_classes=["mineru-client-options"]')
-    effort_idx = gradio_text.index("effort = gr.Dropdown(")
     max_pages_idx = gradio_text.index("max_pages = gr.Slider(")
     advanced_popover_idx = gradio_text.index('elem_classes=["mineru-advanced-popover"]')
 
+    assert "backend = gr.Dropdown(" not in gradio_text
+    assert "effort = gr.Dropdown(" not in gradio_text
     assert "effort = gr.Radio(" not in gradio_text
-    assert "解析强度越高，解析质量越好但速度越慢；medium 为最快的本地 Hybrid 模式。" in gradio_text
-    assert "Low 使用本地 Hybrid 处理；Medium 速度更快；High 精度更高，耗时可能更长。" not in gradio_text
-    assert backend_block_idx < backend_idx < client_options_idx < effort_idx < max_pages_idx < advanced_popover_idx
+    assert "Hybrid effort" not in gradio_text
+    assert "解析强度" not in gradio_text
+    assert "use_remote_server=use_remote_server" in gradio_text
+    assert "tier=tier" in gradio_text
+    assert (
+        "inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, "
+        "tier, language, use_remote_server, url]"
+    ) in gradio_text
+    assert backend_block_idx < tier_idx < remote_idx < client_options_idx < max_pages_idx < advanced_popover_idx
 
 
 def test_parse_forwards_flash_backend(monkeypatch: Any, tmp_path: Path) -> None:

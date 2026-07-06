@@ -9,8 +9,8 @@ from .base import DocumentParser, ParseResult
 from .html import HtmlParser
 from .office import DocxParser, PptxParser, XlsxParser
 from .pdf import PdfFlashParser, PdfHybridParser, PdfPipelineParser, PdfVlmParser
-from .tier import PARSER_BACKENDS, backend_for_tier, resolve_tier_and_backend
-from ..utils.backend_options import DEFAULT_HYBRID_EFFORT, LOCAL_HYBRID_EFFORT, resolve_backend_and_effort
+from .tier import PARSER_BACKENDS, backend_for_tier, resolve_runtime_options, resolve_tier_and_backend
+from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
 
 __all__ = [
     "backend_for_tier",
@@ -67,10 +67,7 @@ def _build_parser(
 ) -> DocumentParser:
     path = Path(path)
     suffix = _resolve_input_suffix(path)
-    resolved_tier, resolved_backend = resolve_tier_and_backend(tier=tier, backend=backend)
-    resolved_backend, resolved_effort = resolve_backend_and_effort(backend or resolved_backend, effort)
-    if resolved_tier == "standard":
-        resolved_effort = LOCAL_HYBRID_EFFORT
+    runtime = resolve_runtime_options(tier=tier, backend=backend, effort=effort)
     resolved_ocr_mode = method or ocr_mode
     resolved_language = lang or language
     resolved_table_enable = (not disable_table) if table_enable is None else table_enable
@@ -90,21 +87,21 @@ def _build_parser(
     if suffix not in _PDF_INPUT_SUFFIXES:
         raise ValueError(f"Unsupported file type: {suffix or path.suffix or 'unknown'}")
 
-    if resolved_backend.startswith("hybrid-"):
+    if runtime.backend.startswith("hybrid-"):
         return PdfHybridParser(
-            backend=resolved_backend,
+            backend=runtime.backend,
             method=resolved_ocr_mode,
             lang=resolved_language,
             formula_enable=resolved_formula_enable,
             table_enable=resolved_table_enable,
             server_url=server_url,
             image_analysis=resolved_image_analysis,
-            effort=resolved_effort,
+            effort=runtime.effort,
         )
-    elif resolved_backend == "flash":
+    elif runtime.backend == "flash":
         return PdfFlashParser()
     else:
-        raise ValueError(f"Unknown backend: {resolved_backend}")
+        raise ValueError(f"Unknown backend: {runtime.backend}")
 
 
 def parse(

@@ -26,6 +26,10 @@ HYBRID_EFFORT_CHOICES: Final[tuple[str, ...]] = (
     LAYOUT_HYBRID_EFFORT,
     MAX_HYBRID_EFFORT,
 )
+HYBRID_EFFORT_BY_TIER: Final[dict[str, str]] = {
+    "standard": LOCAL_HYBRID_EFFORT,
+    "pro": LAYOUT_HYBRID_EFFORT,
+}
 BACKEND_SCHEMA_EXTRA: Final[dict[str, list[str]]] = {"enum": list(PUBLIC_BACKEND_CHOICES)}
 HYBRID_EFFORT_SCHEMA_EXTRA: Final[dict[str, list[str]]] = {"enum": list(HYBRID_EFFORT_CHOICES)}
 
@@ -76,6 +80,15 @@ def validate_effort(effort: str | None) -> str:
     if normalized in HYBRID_EFFORT_CHOICES:
         return normalized
     raise ValueError(f"Unsupported effort '{effort}'. Supported efforts: {', '.join(HYBRID_EFFORT_CHOICES)}")
+
+
+def effort_for_tier(tier: str | None) -> str:
+    """将公开 tier 映射为 Hybrid 默认 effort，保证 API、Gradio 与 parser 使用同一规则。"""
+    normalized = (tier or "").strip().lower()
+    if normalized in HYBRID_EFFORT_BY_TIER:
+        return HYBRID_EFFORT_BY_TIER[normalized]
+    supported_tiers = ", ".join(HYBRID_EFFORT_BY_TIER)
+    raise ValueError(f"Unsupported tier '{tier}'. Supported hybrid tiers: {supported_tiers}")
 
 
 def resolve_backend_and_effort(backend: str | None, effort: str | None = None) -> tuple[str, str]:

@@ -81,7 +81,11 @@ def api_server_command(
     port: int = typer.Option(8000, "--port", help="Server port"),
     upload_dir: str = typer.Option("", "--upload-dir", help="Upload directory"),
     backend: str | None = typer.Option(None, "--backend", help="Expert backend override"),
-    tier: str | None = typer.Option(None, "--tier", help="Server tier: standard or pro (default: standard)"),
+    tier: list[str] | None = typer.Option(
+        None,
+        "--tier",
+        help="Server tier: standard or pro; repeat to expose multiple tiers (default: standard)",
+    ),
     concurrency: int = typer.Option(1, "--concurrency", help="Maximum concurrent parse jobs"),
     url_timeout: int = typer.Option(60, "--url-timeout", help="Timeout for URL source downloads"),
     max_wait: int = typer.Option(600, "--max-wait", help="Maximum seconds for wait parameter"),
