@@ -53,6 +53,15 @@ def test_doclib_runtime_dependencies_are_in_base_install() -> None:
     assert "watchfiles" in dependency_names
 
 
+def test_pdftext_dependency_is_capped_below_pagechars_api() -> None:
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    dependencies = pyproject["project"]["dependencies"]
+    pdftext_dependencies = [dependency for dependency in dependencies if dependency.lower().startswith("pdftext")]
+
+    assert pdftext_dependencies == ["pdftext>=0.6.3,<0.7.0"]
+
+
 @pytest.mark.parametrize(
     ("key", "value"),
     [
