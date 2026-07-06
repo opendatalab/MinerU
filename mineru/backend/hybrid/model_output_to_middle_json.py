@@ -47,10 +47,13 @@ def blocks_to_page_info(
     pdf_page: PDFPage,
     page_index: int,
     _ocr_enable: bool,
-    _vlm_ocr_enable: bool,
+    use_vlm_text_content: bool | None = None,
     image_cache: ImagePayloadCache | None = None,
+    _vlm_ocr_enable: bool | None = None,
 ) -> PageInfo:
     """将blocks转换为页面信息"""
+    if use_vlm_text_content is None:
+        use_vlm_text_content = bool(_vlm_ocr_enable)
 
     page_model_list = optimize_hybrid_formula_number_blocks(page_model_list)
     scale = image_dict["scale"]
@@ -69,7 +72,7 @@ def blocks_to_page_info(
         width,
         height,
         _ocr_enable,
-        _vlm_ocr_enable,
+        use_vlm_text_content,
     )
     image_blocks = magic_model.get_image_blocks()
     table_blocks = magic_model.get_table_blocks()
@@ -146,10 +149,17 @@ def _normalize_split_title_blocks(pages: list[PageInfo]) -> None:
 
 
 def apply_server_side_postprocess(
-    pages: list[PageInfo], local_context: HybridLocalModelContext, _ocr_enable: bool, _vlm_ocr_enable: bool
+    pages: list[PageInfo],
+    local_context: HybridLocalModelContext,
+    _ocr_enable: bool,
+    use_vlm_text_content: bool | None = None,
+    *,
+    _vlm_ocr_enable: bool | None = None,
 ) -> None:
     """执行 Hybrid 只能在服务端完成的 post-OCR，避免客户端依赖本地 OCR 模型。"""
-    if not (_vlm_ocr_enable or _ocr_enable):
+    if use_vlm_text_content is None:
+        use_vlm_text_content = bool(_vlm_ocr_enable)
+    if not (use_vlm_text_content or _ocr_enable):
         _apply_post_ocr(pages, local_context)
 
 
@@ -176,9 +186,13 @@ def finalize_middle_json(
     pages: list[PageInfo],
     local_context: HybridLocalModelContext,
     _ocr_enable: bool,
-    _vlm_ocr_enable: bool,
+    use_vlm_text_content: bool | None = None,
     effort: str = DEFAULT_HYBRID_EFFORT,
+    *,
+    _vlm_ocr_enable: bool | None = None,
 ) -> None:
     """保持旧入口语义：服务端先做必要 post-OCR，再执行完整 finalize。"""
-    apply_server_side_postprocess(pages, local_context, _ocr_enable, _vlm_ocr_enable)
+    if use_vlm_text_content is None:
+        use_vlm_text_content = bool(_vlm_ocr_enable)
+    apply_server_side_postprocess(pages, local_context, _ocr_enable, use_vlm_text_content)
     finalize_middle_json_from_preproc(pages, effort=effort)
