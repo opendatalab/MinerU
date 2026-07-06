@@ -38,7 +38,7 @@ MinerU 当前定义三个公开 tier：
 | 底层原理 | 纯 CPU 实现 | 基于模型 | 基于更强模型 |
 | 质量 | 低 | 中 | 高 |
 | 速度 | 最快 | 中等 | 最慢，取决于硬件和远端服务 |
-| 本地硬件要求 | 无 GPU / 加速器也可用 | 使用 pipeline 后端；Apple Silicon macOS 约 4GB 统一内存，Windows / Linux 需要 NVIDIA GPU 且至少 4GB 显存 | 需要高端 GPU / 加速器，或使用远端 |
+| 本地硬件要求 | 无 GPU / 加速器也可用 | 需要至少 16GB 总内存；GPU 可选，纯 CPU 可用但可能较慢 | 需要至少 16GB 总内存，并具备符合条件的本地加速器，或使用远端 |
 | 是否适合 watch 自动处理 | 是 | 一般不默认使用 | 否 |
 | 是否适合用户主动阅读 | 仅在用户明确选择时 | 是，默认最低阅读质量 | 是，质量优先场景 |
 | 典型场景 | 文件发现、快速预览、搜索索引 | 本地隐私解析、普通文档阅读 | 复杂版面、学术论文、高价值文档 |
@@ -78,25 +78,23 @@ P0 不做基于启发式的自动提示或自动排队升级。watch 使用 `fla
 
 `standard` 是本地主力解析 tier，当前使用 `pipeline` 后端。`pipeline` 是一系列小模型串联的解析方案，不加载大的 VLM 模型。
 
-这类用户可能拥有 GPU 或加速器，但显存和算力有限。它们不一定完全跑不动 `pro`，但运行 `pro` 通常会很慢。因此 `standard` 是一个算力消耗较低、质量中等、仍然基于模型的解析方案。
+`standard` 可以运行在纯 CPU、GPU、Apple Silicon 或 MinerU 支持的 AI 加速器环境上。GPU 和显存不是启用 `standard` 的硬门槛，但会影响速度、吞吐和稳定性。因此 `standard` 是一个算力消耗较低、质量中等、仍然基于模型的解析方案。
 
 `standard` 的核心价值是本地隐私解析：当用户不接受把文档发送到远端解析，同时硬件又不是特别高端时，`standard` 应成为本地可用的最佳默认方案。
 
-`standard` 的最低硬件基线按 `pipeline` 后端定义:
-
-| 平台 | 最低硬件基线 |
-|------|--------------|
-| macOS | 使用 Apple Silicon / M 系列芯片，约使用 4GB 统一内存。 |
-| Windows | 需要 NVIDIA GPU，至少 4GB 显存。 |
-| Linux | 需要 NVIDIA GPU，至少 4GB 显存。 |
-
-更完整的本地部署要求以项目 README 中的 pipeline 硬件说明为准。
+本地 managed `standard` 和 `pro` parse server 都要求至少 16GB 总内存。低于该基线时，不建议启用本地 managed `standard` / `pro`；应考虑远端解析，或在用户明确接受低质量时显式使用 `flash`。
 
 ## 6. Pro
 
 `pro` 是 MinerU 当前最高质量 tier，也是 `mineru.net/api` 提供的解析层级。
 
-`pro` 默认代表最高质量解析能力。它既可以由 `mineru.net/api` 提供，也可以由本地高端硬件运行。拥有高端 NVIDIA 数据中心或工作站级计算卡的用户，应能通过本地 parse-server 正式运行这个 tier。
+`pro` 默认代表最高质量解析能力。它既可以由 `mineru.net/api` 提供，也可以由本地高端硬件运行。
+
+本地 managed `pro` 需要至少 16GB 总内存，并满足以下本地加速器条件之一:
+
+- Volta 或更新架构的 NVIDIA GPU，且可供 MinerU 使用的 VRAM 至少 8GB。
+- Apple Silicon，且统一内存至少 16GB。
+- MinerU 支持的特殊 AI 加速器，例如 `npu`、`gcu`、`musa`、`mlu` 或 `sdaa`。
 
 `pro` 适合复杂版面、学术论文、高价值文档和用户明确追求最高质量的场景。它的代价是更高的算力、显存、等待时间或远端调用成本。
 

@@ -325,10 +325,20 @@ Use a local parse server when the user wants `standard` or `pro` quality without
 
 Hardware guidance:
 
-| Tier | Local hardware guidance |
-|---|---|
-| `standard` | macOS with Apple Silicon and about 4 GB unified memory, or Windows/Linux with an NVIDIA GPU and at least 4 GB VRAM |
-| `pro` | High-end GPU or accelerator hardware with the matching model environment; otherwise prefer remote parsing if the user allows it |
+Local managed `standard` and `pro` both require at least 16 GB total system memory.
+
+Use `standard` when:
+
+- The user wants local high-quality parsing without sending files to remote.
+- GPU is optional. CPU-only machines can use `standard`, but parsing may be slower.
+
+Use `pro` when the machine also has one of the following supported local accelerators:
+
+- Volta-or-newer NVIDIA GPU with at least 8 GB VRAM available for MinerU.
+- Apple Silicon with at least 16 GB unified memory.
+- A MinerU-supported AI accelerator such as `npu`, `gcu`, `musa`, `mlu`, or `sdaa`.
+
+If local `pro` hardware readiness is unclear, use local `standard` or ask before using remote `pro`.
 
 Change local parse-server config or restart the server only when the user asks for or approves local high-quality parsing.
 
@@ -364,8 +374,8 @@ Rules:
 - After installing extras, restart the MinerU server to avoid CLI/server version mismatch.
 - Set `parse_server.local.managed_tier` before `parse_server.local.mode=managed`.
 - Poll `mineru server status --json` and use managed parsing only after the target tier is healthy.
-- Use `standard` as the practical local default when supported by the user's machine.
-- Use local `pro` only when the user has suitable high-end hardware and model setup.
+- Use `standard` as the practical local default when the machine has at least 16 GB total memory.
+- Use local `pro` only when the machine satisfies the local `pro` hardware guidance above.
 - If local `standard` or `pro` cannot start, do not add `--remote` automatically; ask the user first.
 
 ## First Read From A File
