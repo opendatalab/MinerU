@@ -73,6 +73,7 @@ def blocks_to_page_info(
         height,
         _ocr_enable,
         use_vlm_text_content,
+        image_cache=image_cache,
     )
     image_blocks = magic_model.get_image_blocks()
     table_blocks = magic_model.get_table_blocks()

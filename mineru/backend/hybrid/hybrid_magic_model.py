@@ -10,6 +10,7 @@ from PIL import Image
 
 from ...types import EMPTY_BBOX, NOT_EXTRACT_TYPES, BBox, Block, BlockType, ContentType, IntBBox, Line, Span
 from ...utils.guess_suffix_or_lang import guess_language_by_text
+from ...utils.image_payload import ImagePayloadCache
 from ...utils.pdf_document import PDFPage
 from ..utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from ..utils.content_block_draft import VlmContentBlockDraft
@@ -66,9 +67,12 @@ class MagicModel:
         _ocr_enable: bool,
         use_vlm_text_content: bool | None = None,
         _vlm_ocr_enable: bool | None = None,
+        image_cache: ImagePayloadCache | None = None,
     ) -> None:
         if use_vlm_text_content is None:
             use_vlm_text_content = bool(_vlm_ocr_enable)
+        # 表格 HTML 内联图片在 middle_json 公开输出前统一外置到图片缓存。
+        self.image_cache = image_cache or ImagePayloadCache()
         (
             page_blocks,
             self.page_inline_formula,
@@ -190,7 +194,7 @@ class MagicModel:
             if span_type in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART]:
                 span = Span(type=span_type, bbox=block_bbox)
                 if span_type == ContentType.TABLE and block_content is not None:
-                    span.content = block_content
+                    span.content = self.image_cache.replace_html_data_uri_sources(block_content)
                 elif raw_block_type in ["image", "chart"] and block_content is not None:
                     span.content = block_content
             elif span_type == ContentType.INTERLINE_EQUATION:
