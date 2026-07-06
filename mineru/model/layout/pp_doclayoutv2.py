@@ -58,6 +58,8 @@ PP_DOCLAYOUT_V2_LABELS = [
     "vision_footnote",    # 24 image/chart/table的footnote
 ]
 
+PP_DOCLAYOUT_V2_LABEL_TO_ID = {label: index for index, label in enumerate(PP_DOCLAYOUT_V2_LABELS)}
+
 # Per-class confidence threshold used before reading-order decoding.
 DEFAULT_CLASS_THRESHOLDS = [
     0.5,   # 0  abstract
@@ -797,6 +799,16 @@ class PPDocLayoutV2ForObjectDetection(RTDetrForObjectDetection):
         self.reading_order = PPDocLayoutV2ReadingOrder(config.reading_order_config)
         self.num_queries = config.num_queries
         self.config = config
+        self.register_buffer(
+            "_class_thresholds_tensor",
+            torch.tensor(config.class_thresholds, dtype=torch.float32),
+            persistent=False,
+        )
+        self.register_buffer(
+            "_class_order_tensor",
+            torch.tensor(config.class_order, dtype=torch.long),
+            persistent=False,
+        )
         self.post_init()
 
     def forward(
@@ -837,8 +849,7 @@ class PPDocLayoutV2ForObjectDetection(RTDetrForObjectDetection):
 
         max_logits, class_ids = logits.max(dim=-1)
         max_probs = max_logits.sigmoid()
-        class_thresholds = torch.tensor(self.config.class_thresholds, dtype=torch.float32, device=logits.device)
-        thresholds = class_thresholds[class_ids]
+        thresholds = self._class_thresholds_tensor[class_ids]
         mask = max_probs >= thresholds
         indices = torch.argsort(mask.to(torch.int8), dim=1, descending=True)
 
@@ -850,8 +861,7 @@ class PPDocLayoutV2ForObjectDetection(RTDetrForObjectDetection):
 
         pad_boxes = torch.where(sorted_mask[..., None], sorted_boxes, torch.zeros_like(sorted_boxes))
         pad_class_ids = torch.where(sorted_mask, sorted_class_ids, torch.zeros_like(sorted_class_ids))
-        class_order = torch.tensor(self.config.class_order, dtype=torch.long, device=logits.device)
-        pad_class_ids = class_order[pad_class_ids]
+        pad_class_ids = self._class_order_tensor[pad_class_ids]
 
         order_logits = self.reading_order(
             boxes=pad_boxes,
@@ -886,6 +896,17 @@ class PPDocLayoutV2ForObjectDetection(RTDetrForObjectDetection):
 
 
 class PPDocLayoutV2LayoutModel:
+    HEADER_FOOTER_BOUNDARY_EXEMPT_LABELS = {"aside_text", "footnote", "number"}
+    PAGE_REGION_LABELS = {
+        "header",
+        "header_image",
+        "footer",
+        "footer_image",
+        "footnote",
+        "number",
+        "aside_text",
+    }
+
     def __init__(
         self,
         weight: str,
@@ -968,7 +989,7 @@ class PPDocLayoutV2LayoutModel:
         scores, index = torch.topk(scores.flatten(1), num_top_queries, dim=-1)
         labels = index % num_classes
         index = index // num_classes
-        boxes = boxes.gather(dim=1, index=index.unsqueeze(-1).repeat(1, 1, boxes.shape[-1]))
+        boxes = boxes.gather(dim=1, index=index.unsqueeze(-1).expand(-1, -1, boxes.shape[-1]))
         order_seqs = order_seqs.gather(dim=1, index=index)
 
         results = []
@@ -1061,6 +1082,85 @@ class PPDocLayoutV2LayoutModel:
         return cls._calculate_intersection_area(box1, box2) / box1_area
 
     @staticmethod
+    def _calculate_x_overlap_ratio(box1: Sequence[float], box2: Sequence[float]) -> float:
+        """计算两个 bbox 在横向上的重叠比例，用于判断是否属于同一栏。"""
+        box1_xmin, _, box1_xmax, _ = [float(v) for v in box1]
+        box2_xmin, _, box2_xmax, _ = [float(v) for v in box2]
+        box1_width = max(0.0, box1_xmax - box1_xmin)
+        box2_width = max(0.0, box2_xmax - box2_xmin)
+        ref_width = min(box1_width, box2_width)
+        if ref_width <= 0.0:
+            return 0.0
+        overlap_width = max(0.0, min(box1_xmax, box2_xmax) - max(box1_xmin, box2_xmin))
+        return overlap_width / ref_width
+
+    @staticmethod
+    def _calculate_x_cover_ratio(anchor_box: Sequence[float], candidate_box: Sequence[float]) -> float:
+        """计算 anchor 在横向上覆盖 candidate 的比例。"""
+        anchor_xmin, _, anchor_xmax, _ = [float(v) for v in anchor_box]
+        candidate_xmin, _, candidate_xmax, _ = [float(v) for v in candidate_box]
+        candidate_width = max(0.0, candidate_xmax - candidate_xmin)
+        if candidate_width <= 0.0:
+            return 0.0
+        overlap_width = max(
+            0.0,
+            min(anchor_xmax, candidate_xmax) - max(anchor_xmin, candidate_xmin),
+        )
+        return overlap_width / candidate_width
+
+    @classmethod
+    def _is_footer_x_scope(
+        cls,
+        anchor_box: Dict,
+        candidate_box: Dict,
+        image_size: Optional[Tuple[int, int]],
+        full_width_threshold: float = 0.7,
+        x_overlap_threshold: float = 0.3,
+    ) -> bool:
+        """判断候选块是否在页脚文本锚点的横向作用范围内。"""
+        anchor_bbox = anchor_box.get("bbox")
+        candidate_bbox = candidate_box.get("bbox")
+        if not anchor_bbox or not candidate_bbox:
+            return False
+
+        if image_size is not None and len(image_size) >= 2:
+            page_width = float(image_size[1])
+            anchor_width = max(0.0, float(anchor_bbox[2]) - float(anchor_bbox[0]))
+            if page_width > 0.0 and anchor_width / page_width >= full_width_threshold:
+                return True
+
+        return cls._calculate_x_overlap_ratio(anchor_bbox, candidate_bbox) >= x_overlap_threshold
+
+    @classmethod
+    def _is_covered_by_footnote(
+        cls,
+        footnote_box: Dict,
+        candidate_box: Dict,
+        x_cover_threshold: float = 0.7,
+    ) -> bool:
+        """判断候选块是否位于 footnote 区域内或其下方，并被其横向覆盖。"""
+        footnote_bbox = footnote_box.get("bbox")
+        candidate_bbox = candidate_box.get("bbox")
+        if not footnote_bbox or not candidate_bbox:
+            return False
+        if candidate_bbox[1] < footnote_bbox[1]:
+            return False
+        return cls._calculate_x_cover_ratio(footnote_bbox, candidate_bbox) >= x_cover_threshold
+
+    @classmethod
+    def _is_header_footer_boundary_candidate(cls, box: Dict, anchor_labels: set[str]) -> bool:
+        """判断普通块是否可被页眉/页脚/页码边界规则改标。"""
+        label = box.get("label")
+        if label in cls.HEADER_FOOTER_BOUNDARY_EXEMPT_LABELS:
+            return False
+        return label not in anchor_labels
+
+    @classmethod
+    def _is_footnote_relabel_candidate(cls, box: Dict) -> bool:
+        """排除页眉、页脚、页码、页边注等非正文区域块，保留正文内容块。"""
+        return box.get("label") not in cls.PAGE_REGION_LABELS
+
+    @staticmethod
     def _is_reference_box(box: Dict) -> bool:
         return box.get("label") == "reference" or int(box.get("cls_id", -1)) == 18
 
@@ -1084,29 +1184,30 @@ class PPDocLayoutV2LayoutModel:
         return box.get("label") == "formula_number" or int(box.get("cls_id", -1)) == 11
 
     @staticmethod
-    def _set_formula_label(box: Dict, label: str) -> None:
-        if label == "inline_formula":
-            cls_id = 15
-        elif label == "display_formula":
-            cls_id = 5
-        else:
-            raise ValueError(f"Unsupported formula label: {label}")
+    def _set_box_label(box: Dict, label: str) -> None:
+        """统一同步设置 layout 检测框的标签名和类别编号。"""
+        if label not in PP_DOCLAYOUT_V2_LABEL_TO_ID:
+            raise ValueError(f"Unsupported PP-DocLayoutV2 label: {label}")
         box["label"] = label
-        box["cls_id"] = cls_id
+        box["cls_id"] = PP_DOCLAYOUT_V2_LABEL_TO_ID[label]
+
+    @staticmethod
+    def _set_formula_label(box: Dict, label: str) -> None:
+        if label not in {"inline_formula", "display_formula"}:
+            raise ValueError(f"Unsupported formula label: {label}")
+        PPDocLayoutV2LayoutModel._set_box_label(box, label)
 
     @staticmethod
     def _set_header_footer_label(box: Dict, label: str) -> None:
         """同步设置页眉/页脚相关标签及其类别编号。"""
-        label_cls_ids = {
-            "footer": 8,
-            "footer_image": 9,
-            "header": 12,
-            "header_image": 13,
-        }
-        if label not in label_cls_ids:
+        if label not in {"footer", "footer_image", "header", "header_image"}:
             raise ValueError(f"Unsupported header/footer label: {label}")
-        box["label"] = label
-        box["cls_id"] = label_cls_ids[label]
+        PPDocLayoutV2LayoutModel._set_box_label(box, label)
+
+    @staticmethod
+    def _set_footnote_label(box: Dict) -> None:
+        """同步设置 page footnote 标签及其类别编号。"""
+        PPDocLayoutV2LayoutModel._set_box_label(box, "footnote")
 
     @classmethod
     def _reclassify_header_footer_by_page_half(
@@ -1280,7 +1381,6 @@ class PPDocLayoutV2LayoutModel:
 
         header_labels = {"header", "header_image"}
         footer_labels = {"footer", "footer_image"}
-        exempt_labels = {"aside_text", "footnote", "number"}
         ordered_boxes = sorted(boxes, key=lambda box: box["index"])
         ordered_boxes = cls._reclassify_header_footer_by_page_half(
             ordered_boxes,
@@ -1307,22 +1407,31 @@ class PPDocLayoutV2LayoutModel:
         if header_anchor is not None:
             header_boundary = header_anchor["bbox"][3]
             for box in ordered_boxes:
-                label = box.get("label")
-                if label in exempt_labels or label in header_labels:
+                if not cls._is_header_footer_boundary_candidate(box, header_labels):
                     continue
                 if box["bbox"][3] <= header_boundary:
-                    box["label"] = "header"
-                    box["cls_id"] = 12
+                    cls._set_box_label(box, "header")
+
+        footnote_anchors = [box for box in ordered_boxes if box.get("label") == "footnote"]
+        if footnote_anchors:
+            for box in ordered_boxes:
+                if not cls._is_footnote_relabel_candidate(box):
+                    continue
+                for footnote_anchor in footnote_anchors:
+                    if cls._is_covered_by_footnote(footnote_anchor, box):
+                        cls._set_footnote_label(box)
+                        break
 
         if footer_anchor is not None:
             footer_boundary = footer_anchor["bbox"][1]
             for box in ordered_boxes:
-                label = box.get("label")
-                if label in exempt_labels or label in footer_labels:
+                if not cls._is_header_footer_boundary_candidate(box, footer_labels):
                     continue
-                if box["bbox"][1] >= footer_boundary:
-                    box["label"] = "footer"
-                    box["cls_id"] = 8
+                if (
+                    box["bbox"][1] >= footer_boundary
+                    and cls._is_footer_x_scope(footer_anchor, box, image_size)
+                ):
+                    cls._set_box_label(box, "footer")
 
         if image_size is None:
             return ordered_boxes
@@ -1359,20 +1468,24 @@ class PPDocLayoutV2LayoutModel:
         if top_number_anchor is not None:
             header_boundary = top_number_anchor["bbox"][1]
             for box in ordered_boxes:
-                if id(box) in boundary_anchor_ids or box.get("label") in exempt_labels:
+                if (
+                    id(box) in boundary_anchor_ids
+                    or not cls._is_header_footer_boundary_candidate(box, set())
+                ):
                     continue
                 if box["bbox"][3] <= header_boundary:
-                    box["label"] = "header"
-                    box["cls_id"] = 12
+                    cls._set_box_label(box, "header")
 
         if bottom_number_anchor is not None:
             footer_boundary = bottom_number_anchor["bbox"][3]
             for box in ordered_boxes:
-                if id(box) in boundary_anchor_ids or box.get("label") in exempt_labels:
+                if (
+                    id(box) in boundary_anchor_ids
+                    or not cls._is_header_footer_boundary_candidate(box, set())
+                ):
                     continue
                 if box["bbox"][1] >= footer_boundary:
-                    box["label"] = "footer"
-                    box["cls_id"] = 8
+                    cls._set_box_label(box, "footer")
 
         return ordered_boxes
 
@@ -1582,8 +1695,6 @@ if __name__ == "__main__":
         args.model = str(
                 os.path.join(auto_download_and_get_model_root_path(ModelPath.pp_doclayout_v2), ModelPath.pp_doclayout_v2)
             )
-
-    args.image = "/Users/myhloli/pdf/png/index.png"
 
     model = PPDocLayoutV2LayoutModel(
         weight=args.model,
