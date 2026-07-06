@@ -69,6 +69,8 @@ from .types import (
     PARSE_STATUS_SUPERSEDED,
     RULE_TYPE_EXCLUDE,
     RULE_TYPE_PARSING_RULE,
+    SCAN_KIND_WATCH,
+    SCAN_SOURCE_WATCH,
     CleanupDeletedRequest,
     CleanupDeletedResponse,
     CleanupOrphansRequest,
@@ -867,6 +869,9 @@ class DoclibServer(AsyncDoclibInterface):
         await _record_telemetry_count(self.state, "watch.add.count")
         try:
             row = await self.state.config_svc.add_watch(request.path, removable=request.removable, label=request.label)
+            scan_svc = getattr(self.state, "scan_svc", None)
+            if scan_svc is not None:
+                await scan_svc.create_scan(row["path"], kind=SCAN_KIND_WATCH, source=SCAN_SOURCE_WATCH, watch_id=row["id"])
             watch_loop = getattr(self.state, "watch", None)
             if watch_loop is not None:
                 watch_loop.wakeup()
@@ -888,6 +893,9 @@ class DoclibServer(AsyncDoclibInterface):
             if existing is None:
                 raise NotFoundError("watch_not_found", f"Watch target {watch_id} not found.", "watch_id")
             await self.state.config_svc.remove_watch_by_id(watch_id)
+            watch_loop = getattr(self.state, "watch", None)
+            if watch_loop is not None:
+                watch_loop.wakeup()
             await _record_telemetry_count(self.state, "watch.remove.finished.count", dimensions={"status": "succeeded"})
             return RemoveWatchResponse(watch_id=watch_id, removed=True)
         except Exception:

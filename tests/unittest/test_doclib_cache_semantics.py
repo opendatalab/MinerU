@@ -2818,6 +2818,75 @@ def test_add_watch_wakes_background_watch_loop() -> None:
     asyncio.run(_run())
 
 
+def test_add_watch_queues_initial_watch_scan() -> None:
+    async def _run() -> None:
+        class _ConfigService:
+            async def add_watch(self, path: str, removable: bool, label: str | None) -> dict[str, Any]:
+                return {
+                    "id": 1,
+                    "path": path,
+                    "label": label,
+                    "removable": int(removable),
+                    "enabled": 1,
+                    "recursive": 1,
+                    "status": "active",
+                }
+
+        class _ScanService:
+            def __init__(self) -> None:
+                self.created_scans: list[dict[str, Any]] = []
+
+            async def create_scan(self, path: str, *, kind: str, source: str, watch_id: int) -> object:
+                self.created_scans.append({"path": path, "kind": kind, "source": source, "watch_id": watch_id})
+                return object()
+
+        scan_svc = _ScanService()
+        state = SimpleNamespace(config_svc=_ConfigService(), telemetry_svc=None, watch=None, scan_svc=scan_svc)
+        server = DoclibServer(state)
+
+        await server.add_watch(WatchRequest(path="/watched", removable=True, label="Docs"))
+
+        assert scan_svc.created_scans == [
+            {"path": "/watched", "kind": "watch", "source": "watch", "watch_id": 1}
+        ]
+
+    asyncio.run(_run())
+
+
+def test_remove_watch_wakes_background_watch_loop() -> None:
+    async def _run() -> None:
+        class _DB:
+            async def fetchone(self, sql: str, params: tuple[Any, ...]) -> dict[str, Any] | None:
+                return {"id": params[0]}
+
+        class _ConfigService:
+            def __init__(self) -> None:
+                self.removed_watch_ids: list[int] = []
+
+            async def remove_watch_by_id(self, watch_id: int) -> None:
+                self.removed_watch_ids.append(watch_id)
+
+        class _WatchLoop:
+            def __init__(self) -> None:
+                self.wakeup_count = 0
+
+            def wakeup(self) -> None:
+                self.wakeup_count += 1
+
+        config_svc = _ConfigService()
+        watch = _WatchLoop()
+        state = SimpleNamespace(db=_DB(), config_svc=config_svc, telemetry_svc=None, watch=watch)
+        server = DoclibServer(state)
+
+        response = await server.remove_watch(42)
+
+        assert response.removed is True
+        assert config_svc.removed_watch_ids == [42]
+        assert watch.wakeup_count == 1
+
+    asyncio.run(_run())
+
+
 def test_server_status_includes_watch_stats_and_error_summary(tmp_path: Path) -> None:
     class _ParseQueue:
         async def get_queue_length(self) -> int:
