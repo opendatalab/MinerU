@@ -38,11 +38,11 @@ dependencies = [
     "requests",
     "httpx",
     "pillow>=11.0.0",
-    "pypdfium2>=4.30.0",
+    "pypdfium2>=4.30.0,<6.0.0",
     "pypdf>=5.6.0",
     "PyYAML>=6.0.1,<7",
     "reportlab",
-    "pdftext>=0.6.3",
+    "pdftext>=0.6.3,<0.8.0",
     "modelscope>=1.26.0",
     "huggingface-hub>=0.32.4",
     "json-repair>=0.46.2",
@@ -90,6 +90,9 @@ standard = [
     "torchvision",
     "transformers>=4.57.3,<5.0.0",
 ]
+medium = [
+    "mineru[standard]",
+]
 pro = [
     "mineru[standard]",
     "accelerate>=1.5.1",
@@ -98,6 +101,12 @@ pro = [
     "qwen-vl-utils>=0.0.14,<1 ; sys_platform == 'win32'",
     "mlx<=0.31.1 ; sys_platform == 'darwin'",
     "mlx-vlm>=0.3.3,<0.4 ; sys_platform == 'darwin'",
+]
+high = [
+    "mineru[pro]",
+]
+extra_high = [
+    "mineru[pro]",
 ]
 
 vlm = [

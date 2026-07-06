@@ -10,6 +10,7 @@ from PIL import Image
 
 from ...types import EMPTY_BBOX, NOT_EXTRACT_TYPES, BBox, Block, BlockType, ContentType, IntBBox, Line, Span
 from ...utils.guess_suffix_or_lang import guess_language_by_text
+from ...utils.image_payload import ImagePayloadCache
 from ...utils.pdf_document import PDFPage
 from ..utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from ..utils.content_block_draft import VlmContentBlockDraft
@@ -64,8 +65,14 @@ class MagicModel:
         width: int,
         height: int,
         _ocr_enable: bool,
-        _vlm_ocr_enable: bool,
+        use_vlm_text_content: bool | None = None,
+        _vlm_ocr_enable: bool | None = None,
+        image_cache: ImagePayloadCache | None = None,
     ) -> None:
+        if use_vlm_text_content is None:
+            use_vlm_text_content = bool(_vlm_ocr_enable)
+        # 表格 HTML 内联图片在 middle_json 公开输出前统一外置到图片缓存。
+        self.image_cache = image_cache or ImagePayloadCache()
         (
             page_blocks,
             self.page_inline_formula,
@@ -100,7 +107,7 @@ class MagicModel:
                     score=ocr_res["score"],
                 )
             )
-        if not _vlm_ocr_enable and not _ocr_enable:
+        if not use_vlm_text_content and not _ocr_enable:
             # Bad code
             virtual_block = (0, 0, width, height, None, None, None, "text")
             page_text_inline_formula_spans = txt_spans_extract(
@@ -187,7 +194,7 @@ class MagicModel:
             if span_type in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART]:
                 span = Span(type=span_type, bbox=block_bbox)
                 if span_type == ContentType.TABLE and block_content is not None:
-                    span.content = block_content
+                    span.content = self.image_cache.replace_html_data_uri_sources(block_content)
                 elif raw_block_type in ["image", "chart"] and block_content is not None:
                     span.content = block_content
             elif span_type == ContentType.INTERLINE_EQUATION:
@@ -196,9 +203,9 @@ class MagicModel:
                     bbox=block_bbox,
                     content=isolated_formula_clean(block_content or ""),
                 )
-            elif _vlm_ocr_enable or block_type not in not_extract_list:
-                # vlm_ocr_enable 模式下，所有文本块都直接使用 block 的内容
-                # 非 vlm_ocr_enable 模式下，非提取块仍沿用直接内容模式
+            elif use_vlm_text_content or block_type not in not_extract_list:
+                # 使用 VLM 文本内容时，所有文本块都直接消费 block content。
+                # 非 VLM 文本路径下，非提取块仍沿用直接内容模式。
                 if block_content:
                     block_content = clean_content(block_content)
 
@@ -263,7 +270,7 @@ class MagicModel:
                 ContentType.TABLE,
                 ContentType.CHART,
                 ContentType.INTERLINE_EQUATION,
-            ] or (_vlm_ocr_enable or block_type not in not_extract_list):
+            ] or (use_vlm_text_content or block_type not in not_extract_list):
                 if span is None:
                     continue
                 if isinstance(span, Span):
@@ -285,7 +292,7 @@ class MagicModel:
                     block.sub_type = block_sub_type
                 if raw_block_type == "table" and draft.cell_merge:
                     block._cell_merge = draft.cell_merge
-                if _vlm_ocr_enable and self._supports_ocr_det_lines(block_type):
+                if use_vlm_text_content and self._supports_ocr_det_lines(block_type):
                     ocr_det_lines = self._build_ocr_det_lines(span_matcher.collect_for_block(block_bbox))
                     if ocr_det_lines:
                         block._ocr_det_lines = ocr_det_lines
@@ -298,7 +305,7 @@ class MagicModel:
                 _copy_raw_text_block_metadata(draft, block)
 
             if block.type == BlockType.INDEX:
-                # Hybrid medium 使用 INDEX 作为 VLM content 内部哨兵；内容构造完成后再对齐 3.4 输出为 text。
+                # Hybrid VLM 路径使用 INDEX 作为 content 内部哨兵；内容构造完成后再对齐 3.4 输出为 text。
                 block.type = BlockType.TEXT
 
             blocks.append(block)

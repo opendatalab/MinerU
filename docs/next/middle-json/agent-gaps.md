@@ -46,7 +46,7 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}
 示例:
 
 ```text
-doc:ab12cd3/tier:standard/page:1/block:3
+doc:ab12cd3/tier:medium/page:1/block:3
 ```
 
 规则:
@@ -88,7 +88,7 @@ Agent 对外返回引用时，建议使用 citation record，而不是直接暴�
 
 ```json
 {
-  "block_ref": "doc:ab12cd3/tier:standard/page:4/block:12",
+  "block_ref": "doc:ab12cd3/tier:medium/page:4/block:12",
   "locator": "page:4/block:12",
   "page": 4,
   "bbox": [10.0, 20.0, 300.0, 160.0],

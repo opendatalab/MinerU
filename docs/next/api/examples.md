@@ -42,7 +42,7 @@ RESP=$(curl -s -X POST https://mineru.net/api/v1/parse/jobs \
     \"files\": [{
       \"source\": {\"type\":\"file_id\",\"file_id\":\"$FILE_ID\"}
     }],
-    \"tier\": \"pro\",
+    \"tier\": \"high\",
     \"output_formats\": [\"markdown\",\"middle_json\",\"images\"]
   }")
 ```
@@ -148,7 +148,7 @@ curl -X POST http://localhost:8000/api/v1/parse/jobs \
   }'
 ```
 
-省略 `tier` 或传 `null` 时，本地 server 只会选择当前可发现的 `standard` 或 `pro`。如果两者都不可用，请求应失败，而不是使用 `flash` 返回解析结果。
+省略 `tier` 或传 `null` 时，本地 server 只会选择当前可发现的 `medium` 或 `high`。如果两者都不可用，请求应失败，而不是使用 `flash` 返回解析结果。
 
 ## 本地 Server: 复用上传流程
 

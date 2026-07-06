@@ -47,7 +47,7 @@ mineru parse <file> [flags]
 
 | Flag | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `--tier` | `flash` / `standard` / `pro` | 不传 | 解析 tier；省略时使用默认选择策略；语义见 [解析 Tier](../tiers.md) |
+| `--tier` | `flash` / `medium` / `high` | 不传 | 解析 tier；省略时使用默认选择策略；语义见 [解析 Tier](../tiers.md) |
 | `-p, --pages` | range | `1~10` | 分页文档的页码范围；`all` 表示全部页 |
 | `--language` | string | 自动 | 文档语言提示，逐步弱化为高级选项 |
 | `--force` | bool | false | 跳过 done 缓存；复用 active parse 或为未覆盖页创建新 parse；不删除或作废旧缓存 |
@@ -72,7 +72,7 @@ mineru parse <file> [flags]
 
 `mineru parse` 未指定 `--tier` 时使用默认选择策略。
 
-默认选择策略通过当前目标 parse-server 的能力发现，选择最高可用的非 `flash` tier。如果只发现 `standard`，则使用 `standard`；如果发现 `pro`，则使用 `pro`。如果 doclib 通过多个 parse-server 发现 `standard` 和 `pro`，也选择 `pro`。如果找不到 `standard` 或 `pro`，返回可解释错误。
+默认选择策略通过当前目标 parse-server 的能力发现，选择最高可用的非 `flash` tier。如果只发现 `medium`，则使用 `medium`；如果发现 `high`，则使用 `high`。如果 doclib 通过多个 parse-server 发现 `medium` 和 `high`，也选择 `high`。如果找不到 `medium` 或 `high`，返回可解释错误。
 
 `flash` 只有在用户显式指定 `--tier flash` 时才作为最终解析结果返回。
 
@@ -103,7 +103,7 @@ mineru parse <file> [flags]
 非分页文档当前也使用 `--after` cursor 继续读取：
 
 ```text
-<!-- next content available. Use: mineru parse long.docx --after doc:ab12cd3/tier:standard/page:1/block:12/char:520 -->
+<!-- next content available. Use: mineru parse long.docx --after doc:ab12cd3/tier:medium/page:1/block:12/char:520 -->
 ```
 
 marker 是 Agent 的控制协议，不应依赖自然语言猜测。
@@ -159,7 +159,7 @@ marker 是 Agent 的控制协议，不应依赖自然语言猜测。
 - `--no-wait`：立即返回任务状态。
 - 超过等待时间：返回可继续查询的状态，而不是丢失任务。
 
-缓存实体应落到解析后的实体 tier，例如 `standard` 或 `pro`。
+缓存实体应落到解析后的实体 tier，例如 `medium` 或 `high`。
 
 ## 未决问题
 

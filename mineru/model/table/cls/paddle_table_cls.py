@@ -8,13 +8,14 @@ import onnxruntime
 from loguru import logger
 from tqdm import tqdm
 
-from mineru.backend.pipeline.model_list import AtomicModel
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 
 
 class PaddleTableClsModel:
     def __init__(self):
+        from mineru.backend.local_model_runtime import AtomicModel
+
         self.sess = onnxruntime.InferenceSession(
             os.path.join(auto_download_and_get_model_root_path(ModelPath.paddle_table_cls), ModelPath.paddle_table_cls)
         )

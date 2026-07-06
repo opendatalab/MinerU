@@ -4,6 +4,7 @@ import inspect
 import io
 import json
 import logging
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -20,7 +21,6 @@ import mineru.parser.tier as parser_tier
 from mineru.parser import _build_parser, parse, parse_async
 from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job, should_trust_env_for_url
 from mineru.parser.api_server import (
-    _API_SERVER_BACKENDS,
     _API_SERVER_LANGUAGES,
     CreateJobRequest,
     FileParseInfo,
@@ -45,11 +45,128 @@ def _stub_api_server_dependency_preflight(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(importlib, "import_module", lambda _module_name: object())
 
 
+def test_hybrid_analyze_import_does_not_require_vlm_utils() -> None:
+    """校验 Hybrid medium 所需模块导入阶段不再强依赖 VLM 工具包。"""
+    repo_root = Path(__file__).resolve().parents[2]
+    code = """
+import importlib.abc
+import sys
+
+
+class BlockVlmUtilsFinder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        # 阻断 mineru_vl_utils 导入，用来验证 Hybrid medium 的 lazy import 边界。
+        if fullname == "mineru_vl_utils" or fullname.startswith("mineru_vl_utils."):
+            raise ModuleNotFoundError(f"blocked VLM utility import: {fullname}")
+        return None
+
+
+sys.meta_path.insert(0, BlockVlmUtilsFinder())
+import mineru.backend.hybrid.hybrid_analyze
+print("ok")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
+def test_hybrid_local_runtime_uses_context_names_and_local_lock_env() -> None:
+    """校验 Hybrid 本地模型运行时只暴露 context 命名，并优先读取新的本地锁环境变量。"""
+    repo_root = Path(__file__).resolve().parents[2]
+    code = """
+import os
+
+os.environ["MINERU_ENABLE_LOCAL_MODEL_INFERENCE_LOCKS"] = "true"
+os.environ["MINERU_ENABLE_PIPELINE_INFERENCE_LOCKS"] = "false"
+
+from mineru.backend import local_model_runtime
+
+assert hasattr(local_model_runtime, "HybridLocalModelContext")
+assert hasattr(local_model_runtime, "HybridLocalModelContextSingleton")
+for removed_name in [
+    "Mineru" + "PipelineModel",
+    "Mineru" + "HybridModel",
+    "Hybrid" + "ModelSingleton",
+]:
+    assert not hasattr(local_model_runtime, removed_name)
+assert local_model_runtime.LOCAL_MODEL_INFERENCE_LOCKS_ENABLED is True
+print("ok")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
+def test_validate_effort_rejects_low_and_maps_legacy_backends() -> None:
+    """校验 Hybrid effort 只接受 medium/high/extra_high 三档。"""
+    from mineru.utils.backend_options import (
+        HYBRID_EFFORT_CHOICES,
+        effort_for_tier,
+        resolve_backend_and_effort,
+        validate_effort,
+    )
+
+    assert HYBRID_EFFORT_CHOICES == ("medium", "high", "extra_high")
+    assert effort_for_tier("medium") == "medium"
+    assert effort_for_tier("high") == "high"
+    assert effort_for_tier("extra_high") == "extra_high"
+    with pytest.raises(ValueError, match="Unsupported effort 'low'"):
+        validate_effort("low")
+    with pytest.raises(ValueError, match="Unsupported tier 'standard'"):
+        effort_for_tier("standard")
+    assert resolve_backend_and_effort("vlm-engine", "medium") == ("hybrid-engine", "extra_high")
+    assert resolve_backend_and_effort("pipeline", "extra_high") == ("hybrid-engine", "medium")
+
+
+def test_tier_runtime_options_map_hybrid_effort() -> None:
+    """校验 tier 到 Hybrid runtime 参数的共享映射，避免 API/Gradio 分叉维护。"""
+    from mineru.parser.tier import runtime_options_for_tier
+
+    assert runtime_options_for_tier("flash").as_kwargs() == {
+        "tier": "flash",
+        "backend": "flash",
+        "effort": "medium",
+    }
+    assert runtime_options_for_tier("medium").as_kwargs() == {
+        "tier": "medium",
+        "backend": "hybrid-engine",
+        "effort": "medium",
+    }
+    assert runtime_options_for_tier("high").as_kwargs() == {
+        "tier": "high",
+        "backend": "hybrid-engine",
+        "effort": "high",
+    }
+    assert runtime_options_for_tier("extra_high").as_kwargs() == {
+        "tier": "extra_high",
+        "backend": "hybrid-engine",
+        "effort": "extra_high",
+    }
+    with pytest.raises(ValueError, match="Unsupported tier 'standard'"):
+        runtime_options_for_tier("standard")
+
+
 def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> None:
     pdf = tmp_path / "demo.pdf"
     pdf.write_bytes(b"%PDF-1.7\n")
 
-    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
     payload = parser._build_payload(pdf, "1,3~5")
 
     assert payload["output_formats"] == ["middle_json", "images"]
@@ -61,21 +178,27 @@ def test_api_client_uses_tier_without_backend_semantics(tmp_path: Path) -> None:
     pdf = tmp_path / "demo.pdf"
     pdf.write_bytes(b"%PDF-1.7\n")
 
-    parser = MinerUApiParser(api_url="http://localhost:8000", tier="pro")
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="extra_high")
     payload = parser._build_payload(pdf, "")
 
-    assert payload["tier"] == "pro"
+    assert payload["tier"] == "extra_high"
     assert not hasattr(parser, "backend")
 
 
+@pytest.mark.parametrize("tier", ["standard", "pro"])
+def test_api_client_rejects_old_tier_names(tier: str) -> None:
+    with pytest.raises(ValueError, match=f"Unsupported tier '{tier}'"):
+        MinerUApiParser(api_url="http://localhost:8000", tier=tier)  # type: ignore[arg-type]
+
+
 def test_api_client_uses_json_format_for_staging_compat() -> None:
-    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="pro")
+    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="extra_high")
 
     assert parser._output_formats() == ["json"]
 
 
 def test_api_client_downloads_image_sidecars_and_preserves_pdf_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
-    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
     middle_json = {
         "schema_version": "1.0.0",
         "_pdf_retained_page_indices": [0, 2],
@@ -103,9 +226,9 @@ def test_api_client_downloads_image_sidecars_and_preserves_pdf_mapping(monkeypat
 
 
 def test_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="standard")
+    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="high")
     middle_json = {
-        "_backend": "pipeline",
+        "_backend": "hybrid",
         "_version_name": "remote",
         "pdf_info": [{"page_idx": 0, "page_size": [100, 200]}],
     }
@@ -126,13 +249,13 @@ def test_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.MonkeyPatch
     assert len(result.pages) == 1
     assert result.pages[0].page_idx == 0
     assert result.pages[0].page_size == (100, 200)
-    assert result.pages[0]._backend == "pipeline"
+    assert result.pages[0]._backend == "hybrid"
 
 
 def test_async_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="standard")
+    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="high")
     middle_json = {
-        "_backend": "pipeline",
+        "_backend": "hybrid",
         "pdf_info": [{"page_idx": 0, "page_size": [100, 200]}],
     }
 
@@ -160,7 +283,7 @@ def test_async_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.Monke
     assert len(result.pages) == 1
     assert result.pages[0].page_idx == 0
     assert result.pages[0].page_size == (100, 200)
-    assert result.pages[0]._backend == "pipeline"
+    assert result.pages[0]._backend == "hybrid"
 
 
 @pytest.mark.parametrize("image_path", ["../escape.png", "/tmp/escape.png", "\\escape.png", "C:\\escape.png"])
@@ -168,7 +291,7 @@ def test_api_client_rejects_unsafe_image_sidecar_paths(
     monkeypatch: pytest.MonkeyPatch,
     image_path: str,
 ) -> None:
-    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
     middle_json = {"schema_version": "1.0.0", "pages": [{"page_idx": 0}]}
     image_ref = {"path": image_path, "file_id": "file-image", "bytes": 11}
 
@@ -193,7 +316,7 @@ def test_api_client_rejects_unsafe_image_sidecar_paths(
 
 
 def test_async_api_client_rejects_unsafe_image_sidecar_paths(monkeypatch: pytest.MonkeyPatch) -> None:
-    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
     middle_json = {"schema_version": "1.0.0", "pages": [{"page_idx": 0}]}
     image_ref = {"path": "../escape.png", "file_id": "file-image", "bytes": 11}
 
@@ -297,14 +420,14 @@ def test_api_client_omits_page_range_when_unspecified(tmp_path: Path) -> None:
     pdf = tmp_path / "demo.pdf"
     pdf.write_bytes(b"%PDF-1.7\n")
 
-    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
     payload = parser._build_payload(pdf, "")
 
     assert payload["files"] == [{"source": {"type": "local", "path": str(pdf)}}]
 
 
 def test_api_client_surfaces_failed_job_error() -> None:
-    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
 
     with pytest.raises(Exception, match="upstream failed"):
         _parse_result_from_job(
@@ -319,7 +442,7 @@ def test_api_client_surfaces_failed_job_error() -> None:
 
 
 def test_api_client_surfaces_failed_file_error_when_job_has_no_top_level_error() -> None:
-    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
 
     with pytest.raises(api_client._V1APIError) as exc_info:
         _parse_result_from_job(
@@ -347,7 +470,7 @@ def test_api_client_surfaces_failed_file_error_when_job_has_no_top_level_error()
 
 
 def test_api_client_rejects_missing_middle_json_output() -> None:
-    parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
 
     with pytest.raises(Exception, match="did not return middle_json output"):
         _parse_result_from_job(
@@ -433,7 +556,7 @@ def test_local_parse_server_rejects_callback(tmp_path: Path, monkeypatch: pytest
 
 def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_api_server_dependency_preflight(monkeypatch)
-    monkeypatch.setenv("MINERU_TIER", "pro")
+    monkeypatch.setenv("MINERU_TIER", "extra_high")
     monkeypatch.setenv("MINERU_BACKEND", "hybrid-auto-engine")
     monkeypatch.setenv("MINERU_CONCURRENCY", "9")
     monkeypatch.setenv("MINERU_URL_TIMEOUT", "99")
@@ -447,14 +570,14 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
 
     app = create_app(upload_dir=str(tmp_path))
 
-    assert app.state.tier == "standard"
-    assert app.state.backend == "pipeline"
+    assert app.state.tier == "high"
+    assert app.state.backend == "hybrid-engine"
     assert app.state.concurrency == 1
     assert app.state.url_timeout == 60
     assert app.state.max_wait == 600
     assert app.state.language == "ch"
     assert app.state.ocr_mode == "auto"
-    assert app.state.effort == "medium"
+    assert app.state.effort == "high"
     assert app.state.table_enable is True
     assert app.state.formula_enable is True
     assert app.state.image_analysis is True
@@ -539,7 +662,7 @@ def test_api_server_rendered_outputs_store_image_sidecars(
                 page_idx=0,
                 page_size=(100, 100),
                 para_blocks=[block],
-                _backend="pipeline",
+                _backend="hybrid",
             )
         ],
         _image_cache=image_cache,
@@ -555,7 +678,7 @@ def test_api_server_rendered_outputs_store_image_sidecars(
     request = CreateJobRequest.model_validate(
         {
             "files": [{"source": {"type": "local", "path": str(source)}}],
-            "tier": "standard",
+            "tier": "high",
             "output_formats": [output_format],
         }
     )
@@ -567,12 +690,13 @@ def test_api_server_rendered_outputs_store_image_sidecars(
             rec,
             request,
             file_store,
-            server_backend="pipeline",
+            server_backend="hybrid-engine",
             language="ch",
             ocr_mode="auto",
             table_enable=True,
             formula_enable=True,
             image_analysis=True,
+            effort="medium",
         )
     )
 
@@ -604,7 +728,7 @@ def test_api_server_middle_json_preserves_backend_for_client_rendering(
                 page_idx=0,
                 page_size=(100, 100),
                 para_blocks=[block],
-                _backend="pipeline",
+                _backend="hybrid",
             )
         ]
     )
@@ -619,7 +743,7 @@ def test_api_server_middle_json_preserves_backend_for_client_rendering(
     request = CreateJobRequest.model_validate(
         {
             "files": [{"source": {"type": "local", "path": str(source)}}],
-            "tier": "standard",
+            "tier": "high",
             "output_formats": ["middle_json"],
         }
     )
@@ -631,12 +755,13 @@ def test_api_server_middle_json_preserves_backend_for_client_rendering(
             rec,
             request,
             file_store,
-            server_backend="pipeline",
+            server_backend="hybrid-engine",
             language="ch",
             ocr_mode="auto",
             table_enable=True,
             formula_enable=True,
             image_analysis=True,
+            effort="medium",
         )
     )
 
@@ -644,7 +769,7 @@ def test_api_server_middle_json_preserves_backend_for_client_rendering(
     payload = json.loads(file_store.read_file_data(output_ref.file_id).decode("utf-8"))
     roundtrip = ParseResult.from_dict(payload)
 
-    assert payload["_backend"] == "pipeline"
+    assert payload["_backend"] == "hybrid"
     assert roundtrip.content_list()
     assert roundtrip.structured_content()
 
@@ -670,7 +795,7 @@ def test_api_server_sanitizes_surrogates_in_text_outputs(
                 page_idx=0,
                 page_size=(100, 100),
                 para_blocks=[block],
-                _backend="pipeline",
+                _backend="hybrid",
             )
         ]
     )
@@ -685,7 +810,7 @@ def test_api_server_sanitizes_surrogates_in_text_outputs(
     request = CreateJobRequest.model_validate(
         {
             "files": [{"source": {"type": "local", "path": str(source)}}],
-            "tier": "standard",
+            "tier": "high",
             "output_formats": ["markdown", "middle_json", "content_list", "structured_content"],
         }
     )
@@ -697,12 +822,13 @@ def test_api_server_sanitizes_surrogates_in_text_outputs(
             rec,
             request,
             file_store,
-            server_backend="pipeline",
+            server_backend="hybrid-engine",
             language="ch",
             ocr_mode="auto",
             table_enable=True,
             formula_enable=True,
             image_analysis=True,
+            effort="medium",
         )
     )
 
@@ -738,7 +864,7 @@ def test_api_server_logs_traceback_when_job_file_fails(
     request = CreateJobRequest.model_validate(
         {
             "files": [{"source": {"type": "local", "path": str(source)}}],
-            "tier": "standard",
+            "tier": "high",
             "output_formats": ["middle_json"],
         }
     )
@@ -751,12 +877,13 @@ def test_api_server_logs_traceback_when_job_file_fails(
                 rec,
                 request,
                 file_store,
-                server_backend="pipeline",
+                server_backend="hybrid-engine",
                 language="ch",
                 ocr_mode="auto",
                 table_enable=True,
                 formula_enable=True,
                 image_analysis=True,
+                effort="medium",
             )
         )
 
@@ -804,27 +931,177 @@ def test_api_contract_uses_parser_version_not_backend_version() -> None:
 
 def test_api_server_tier_selects_compatible_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_api_server_dependency_preflight(monkeypatch)
-    pro_app = create_app(upload_dir=str(tmp_path / "pro"), tier="pro")
-    standard_app = create_app(upload_dir=str(tmp_path / "standard"), tier="standard")
+    flash_app = create_app(upload_dir=str(tmp_path / "flash"), tier="flash")
+    medium_app = create_app(upload_dir=str(tmp_path / "medium"), tier="medium")
+    high_app = create_app(upload_dir=str(tmp_path / "high"), tier="high")
+    extra_high_app = create_app(upload_dir=str(tmp_path / "extra_high"), tier="extra_high")
 
-    assert pro_app.state.tier == "pro"
-    assert pro_app.state.backend == "hybrid-engine"
-    assert [tier["id"] for tier in pro_app.state.tiers] == ["pro"]
-    assert standard_app.state.tier == "standard"
-    assert standard_app.state.backend == "pipeline"
-    assert [tier["id"] for tier in standard_app.state.tiers] == ["standard"]
+    assert flash_app.state.tier == "flash"
+    assert flash_app.state.backend == "flash"
+    assert [tier["id"] for tier in flash_app.state.tiers] == ["flash"]
+    assert medium_app.state.tier == "medium"
+    assert medium_app.state.backend == "hybrid-engine"
+    assert medium_app.state.effort == "medium"
+    assert [tier["id"] for tier in medium_app.state.tiers] == ["medium"]
+    assert high_app.state.tier == "high"
+    assert high_app.state.backend == "hybrid-engine"
+    assert high_app.state.effort == "high"
+    assert [tier["id"] for tier in high_app.state.tiers] == ["high"]
+    assert extra_high_app.state.tier == "extra_high"
+    assert extra_high_app.state.backend == "hybrid-engine"
+    assert extra_high_app.state.effort == "extra_high"
+    assert [tier["id"] for tier in extra_high_app.state.tiers] == ["extra_high"]
 
 
-def test_api_server_defaults_to_standard_tier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_server_defaults_to_all_quality_tiers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_api_server_dependency_preflight(monkeypatch)
     app = create_app(upload_dir=str(tmp_path))
 
-    assert app.state.tier == "standard"
-    assert app.state.backend == "pipeline"
-    assert [tier["id"] for tier in app.state.tiers] == ["standard"]
+    assert app.state.tier == "high"
+    assert app.state.default_tier == "high"
+    assert app.state.backend == "hybrid-engine"
+    assert app.state.effort == "high"
+    assert [tier["id"] for tier in app.state.tiers] == ["flash", "medium", "high", "extra_high"]
+    assert app.state.tier_runtime_options["flash"].as_kwargs() == {
+        "tier": "flash",
+        "backend": "flash",
+        "effort": "medium",
+    }
+    assert app.state.tier_runtime_options["medium"].as_kwargs() == {
+        "tier": "medium",
+        "backend": "hybrid-engine",
+        "effort": "medium",
+    }
+    assert app.state.tier_runtime_options["high"].as_kwargs() == {
+        "tier": "high",
+        "backend": "hybrid-engine",
+        "effort": "high",
+    }
+    assert app.state.tier_runtime_options["extra_high"].as_kwargs() == {
+        "tier": "extra_high",
+        "backend": "hybrid-engine",
+        "effort": "extra_high",
+    }
 
 
-def test_api_server_preflights_standard_tier_dependencies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_api_server_multi_tier_state_and_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """校验同一个 API server 可发布多个 tier，并在包含 high 时以 high 作为默认 tier。"""
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path), tier=["medium", "high", "extra_high"])
+
+    assert app.state.tier == "high"
+    assert app.state.default_tier == "high"
+    assert app.state.backend == "hybrid-engine"
+    assert app.state.effort == "high"
+    assert [tier["id"] for tier in app.state.tiers] == ["medium", "high", "extra_high"]
+    assert app.state.model_ids == ["Hybrid-Medium", "MinerU-HTML", "MinerU2.5-Pro-2604-1.2B"]
+    assert app.state.tier_runtime_options["medium"].as_kwargs() == {
+        "tier": "medium",
+        "backend": "hybrid-engine",
+        "effort": "medium",
+    }
+    assert app.state.tier_runtime_options["high"].as_kwargs() == {
+        "tier": "high",
+        "backend": "hybrid-engine",
+        "effort": "high",
+    }
+    assert app.state.tier_runtime_options["extra_high"].as_kwargs() == {
+        "tier": "extra_high",
+        "backend": "hybrid-engine",
+        "effort": "extra_high",
+    }
+
+
+def test_api_server_multi_tier_http_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """校验 /v1/tiers 与 /v1/models 返回启动时声明的全部 tier 能力。"""
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path), tier=["flash", "medium", "high", "extra_high"])
+
+    with TestClient(app) as client:
+        tiers_response = client.get("/v1/tiers")
+        models_response = client.get("/v1/models")
+
+    assert tiers_response.status_code == 200
+    assert [tier["id"] for tier in tiers_response.json()["data"]] == ["flash", "medium", "high", "extra_high"]
+    assert models_response.status_code == 200
+    assert [model["id"] for model in models_response.json()["data"]] == [
+        "MinerU-Flash",
+        "Hybrid-Medium",
+        "MinerU-HTML",
+        "MinerU2.5-Pro-2604-1.2B",
+    ]
+
+
+def test_api_server_multi_tier_jobs_use_requested_tier_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """校验多 tier server 按每个 job 的 tier 选择 backend/effort，而不是复用全局默认值。"""
+    _stub_api_server_dependency_preflight(monkeypatch)
+    calls: list[dict[str, object]] = []
+
+    async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
+        """记录 API server 传给 parser 的 runtime 参数，并返回最小解析结果。"""
+        calls.append(dict(kwargs))
+        return ParseResult(pages=[PageInfo(page_idx=0, _backend="hybrid")])
+
+    monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    app = create_app(upload_dir=str(tmp_path / "api"), tier=["medium", "high"])
+
+    with TestClient(app) as client:
+        default_response = client.post(
+            "/v1/parse/jobs",
+            json={
+                "files": [{"source": {"type": "local", "path": str(source)}}],
+                "output_formats": ["middle_json"],
+                "wait": 5,
+            },
+        )
+        medium_response = client.post(
+            "/v1/parse/jobs",
+            json={
+                "files": [{"source": {"type": "local", "path": str(source)}}],
+                "tier": "medium",
+                "output_formats": ["middle_json"],
+                "wait": 5,
+            },
+        )
+
+    assert default_response.status_code == 200
+    assert default_response.json()["tier"] == "high"
+    assert medium_response.status_code == 200
+    assert medium_response.json()["tier"] == "medium"
+    assert [(call["tier"], call["backend"], call["effort"]) for call in calls] == [
+        ("high", "hybrid-engine", "high"),
+        ("medium", "hybrid-engine", "medium"),
+    ]
+
+
+def test_api_server_single_tier_rejects_unavailable_tier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """校验单 tier server 不接受未启动的 tier，避免请求绕过启动能力边界。"""
+    _stub_api_server_dependency_preflight(monkeypatch)
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    app = create_app(upload_dir=str(tmp_path / "api"), tier="high")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/parse/jobs",
+            json={
+                "files": [{"source": {"type": "local", "path": str(source)}}],
+                "tier": "extra_high",
+                "wait": 0,
+            },
+        )
+
+    assert response.status_code == 400
+    assert "Tier 'extra_high' not available in this server" in response.text
+
+
+def test_api_server_preflights_medium_tier_dependencies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     imported_modules: list[str] = []
 
     def fake_import_module(module_name: str):
@@ -833,7 +1110,7 @@ def test_api_server_preflights_standard_tier_dependencies(monkeypatch: pytest.Mo
 
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
 
-    create_app(upload_dir=str(tmp_path), tier="standard")
+    create_app(upload_dir=str(tmp_path), tier="medium")
 
     assert imported_modules == [
         "ftfy",
@@ -845,7 +1122,9 @@ def test_api_server_preflights_standard_tier_dependencies(monkeypatch: pytest.Mo
     ]
 
 
-def test_api_server_preflights_pro_tier_dependencies_for_platform(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_api_server_preflights_extra_high_tier_dependencies_for_platform(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     imported_modules: list[str] = []
 
     def fake_import_module(module_name: str):
@@ -855,7 +1134,7 @@ def test_api_server_preflights_pro_tier_dependencies_for_platform(monkeypatch: p
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
     monkeypatch.setattr(parser_tier.sys, "platform", "darwin")
 
-    create_app(upload_dir=str(tmp_path), tier="pro")
+    create_app(upload_dir=str(tmp_path), tier="extra_high")
 
     assert imported_modules == [
         "ftfy",
@@ -879,8 +1158,8 @@ def test_api_server_preflight_rejects_missing_tier_dependency(monkeypatch: pytes
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
     monkeypatch.setattr(parser_tier.importlib_metadata, "packages_distributions", lambda: {"mineru": ["mineru"]})
 
-    with pytest.raises(api_server.ParseServerStartupError, match="tier 'standard'.*torch.*mineru\\[standard\\]"):
-        create_app(upload_dir=str(tmp_path), tier="standard")
+    with pytest.raises(api_server.ParseServerStartupError, match="tier 'medium'.*torch.*mineru\\[medium\\]"):
+        create_app(upload_dir=str(tmp_path), tier="medium")
 
 
 def test_api_server_cli_reports_dependency_preflight_without_traceback(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -893,44 +1172,23 @@ def test_api_server_cli_reports_dependency_preflight_without_traceback(monkeypat
     monkeypatch.setattr(parser_tier.importlib_metadata, "packages_distributions", lambda: {"mineru": ["mineru-next-dev"]})
     monkeypatch.setattr(parser_tier.sys, "platform", "darwin")
 
-    result = runner.invoke(main, ["--tier", "pro"])
+    result = runner.invoke(main, ["--tier", "extra_high"])
 
     assert result.exit_code == 1
     assert result.output == (
-        "Error: Parse server cannot start for tier 'pro'; missing runtime dependencies: mlx. "
+        "Error: Parse server cannot start for tier 'extra_high'; missing runtime dependencies: mlx. "
         "Install optional dependencies for this tier in the same Python environment as MinerU, "
-        "for example: pip install 'mineru-next-dev[pro]'.\n"
+        "for example: pip install 'mineru-next-dev[extra_high]'.\n"
     )
     assert "Traceback" not in result.output
 
 
-def test_api_server_rejects_incompatible_tier_and_backend(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="incompatible"):
-        create_app(upload_dir=str(tmp_path), tier="pro", backend="pipeline")
+def test_api_server_create_app_rejects_backend_and_effort_parameters(tmp_path: Path) -> None:
+    with pytest.raises(TypeError, match="backend"):
+        create_app(upload_dir=str(tmp_path / "backend"), backend="pipeline")  # type: ignore[call-arg]
 
-
-def test_api_server_allows_compatible_tier_and_explicit_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub_api_server_dependency_preflight(monkeypatch)
-    app = create_app(upload_dir=str(tmp_path), tier="pro", backend="vlm-auto-engine")
-
-    assert app.state.tier == "pro"
-    assert app.state.backend == "hybrid-engine"
-    assert app.state.effort == "high"
-    assert [tier["id"] for tier in app.state.tiers] == ["pro"]
-
-
-def test_api_server_explicit_backend_infers_tier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub_api_server_dependency_preflight(monkeypatch)
-    app = create_app(upload_dir=str(tmp_path), backend="hybrid-auto-engine")
-
-    assert app.state.tier == "pro"
-    assert app.state.backend == "hybrid-engine"
-    assert [tier["id"] for tier in app.state.tiers] == ["pro"]
-
-
-def test_api_server_rejects_bare_vlm_backend(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="Unsupported backend"):
-        create_app(upload_dir=str(tmp_path), backend="vlm")
+    with pytest.raises(TypeError, match="effort"):
+        create_app(upload_dir=str(tmp_path / "effort"), effort="high")  # type: ignore[call-arg]
 
 
 def test_build_parser_forwards_effort_to_hybrid_parser(tmp_path: Path) -> None:
@@ -943,7 +1201,7 @@ def test_build_parser_forwards_effort_to_hybrid_parser(tmp_path: Path) -> None:
     assert parser.effort == "high"
 
 
-def test_build_parser_maps_legacy_vlm_backend_to_hybrid_high(tmp_path: Path) -> None:
+def test_build_parser_maps_legacy_vlm_backend_to_hybrid_extra_high(tmp_path: Path) -> None:
     pdf = tmp_path / "demo.pdf"
     pdf.write_bytes(b"%PDF-1.7\n")
 
@@ -951,7 +1209,56 @@ def test_build_parser_maps_legacy_vlm_backend_to_hybrid_high(tmp_path: Path) -> 
 
     assert parser.__class__.__name__ == "PdfHybridParser"
     assert parser.backend == "hybrid-engine"
-    assert parser.effort == "high"
+    assert parser.effort == "extra_high"
+
+
+def test_build_parser_maps_legacy_pipeline_backend_to_hybrid_medium(tmp_path: Path) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+
+    parser = _build_parser(pdf, backend="pipeline", effort="high")
+
+    assert parser.__class__.__name__ == "PdfHybridParser"
+    assert parser.backend == "hybrid-engine"
+    assert parser.effort == "medium"
+
+
+def test_pdf_pipeline_parser_compat_delegates_to_hybrid_medium() -> None:
+    parser = parser_pdf.PdfPipelineParser(method="ocr", lang="en", effort="high")
+
+    assert isinstance(parser, parser_pdf.PdfHybridParser)
+    assert parser.backend == "hybrid-engine"
+    assert parser.method == "ocr"
+    assert parser.lang == "en"
+    assert parser.effort == "medium"
+
+
+def test_pdf_hybrid_medium_parser_skips_vlm_backend_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
+    """校验 Hybrid medium 直接进入本地分支，不解析 VLM engine。"""
+    seen: dict[str, object] = {}
+    fake_module = types.ModuleType("mineru.backend.hybrid.hybrid_analyze")
+
+    def fake_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], list[object], bool]:
+        """记录 medium 分支收到的参数，并返回 Hybrid middle-json 形态。"""
+        seen.update(kwargs)
+        return [PageInfo(page_idx=0, _backend="hybrid")], [], False
+
+    fake_module.doc_analyze = fake_doc_analyze
+    monkeypatch.setitem(sys.modules, "mineru.backend.hybrid.hybrid_analyze", fake_module)
+
+    def fail_resolve_backend(*_args: object, **_kwargs: object) -> str:
+        """medium 不应触发 VLM backend resolver。"""
+        raise AssertionError("medium effort should not resolve VLM backend")
+
+    monkeypatch.setattr(parser_pdf, "_resolve_hybrid_backend", fail_resolve_backend)
+
+    parser = parser_pdf.PdfHybridParser(backend="hybrid-engine", effort="medium", lang="en")
+    pages = parser._run_analysis(b"%PDF-1.7\n")
+
+    assert pages[0]._backend == "hybrid"
+    assert seen["backend"] == "hybrid-engine"
+    assert seen["effort"] == "medium"
+    assert seen["language"] == "en"
 
 
 @pytest.mark.parametrize(
@@ -984,7 +1291,7 @@ def test_pdf_engine_resolvers_keep_http_client_backend() -> None:
     assert parser_pdf._resolve_hybrid_backend("hybrid-http-client", is_async=True) == "http-client"
 
 
-def test_pdf_vlm_parser_compat_delegates_to_hybrid_high(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_pdf_vlm_parser_compat_delegates_to_hybrid_extra_high(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, bool]] = []
     backends: list[str] = []
     efforts: list[str] = []
@@ -1018,7 +1325,7 @@ def test_pdf_vlm_parser_compat_delegates_to_hybrid_high(monkeypatch: pytest.Monk
     assert asyncio.run(parser._arun_analysis(b"%PDF")) == []
     assert calls == [("hybrid-engine", False), ("hybrid-engine", True)]
     assert backends == ["sync-backend", "async-backend"]
-    assert efforts == ["high", "high"]
+    assert efforts == ["extra_high", "extra_high"]
 
 
 def test_pdf_hybrid_parser_passes_call_mode_to_backend_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1054,33 +1361,13 @@ def test_pdf_hybrid_parser_passes_call_mode_to_backend_resolver(monkeypatch: pyt
     assert backends == ["sync-backend", "async-backend"]
 
 
-def test_api_server_accepts_parser_backend_values(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from mineru.utils.backend_options import HTTP_CLIENT_BACKEND_CHOICES, LOCAL_BACKEND_CHOICES, normalize_backend
-
-    assert _API_SERVER_BACKENDS == LOCAL_BACKEND_CHOICES + HTTP_CLIENT_BACKEND_CHOICES
-
-    _stub_api_server_dependency_preflight(monkeypatch)
-    assert "vlm" not in _API_SERVER_BACKENDS
-    assert "vlm-engine" not in _API_SERVER_BACKENDS
-    assert "vlm-http-client" not in _API_SERVER_BACKENDS
-    assert "hybrid" not in _API_SERVER_BACKENDS
-
-    for backend in _API_SERVER_BACKENDS:
-        app = create_app(upload_dir=str(tmp_path / backend), backend=backend)
-        expected_backend = normalize_backend(backend)
-        expected_tier = "standard" if expected_backend == "pipeline" else "pro"
-
-        assert app.state.backend == expected_backend
-        assert app.state.tier == expected_tier
-
-
 def test_api_server_stores_parser_runtime_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_api_server_dependency_preflight(monkeypatch)
     app = create_app(
         upload_dir=str(tmp_path),
+        tier="medium",
         language="en",
         ocr_mode="ocr",
-        effort="high",
         table_enable=False,
         formula_enable=False,
         image_analysis=False,
@@ -1088,7 +1375,7 @@ def test_api_server_stores_parser_runtime_options(tmp_path: Path, monkeypatch: p
 
     assert app.state.language == "ch"
     assert app.state.ocr_mode == "ocr"
-    assert app.state.effort == "high"
+    assert app.state.effort == "medium"
     assert app.state.table_enable is False
     assert app.state.formula_enable is False
     assert app.state.image_analysis is False
@@ -1102,9 +1389,11 @@ def test_api_server_rejects_removed_ch_lite_language(tmp_path: Path) -> None:
 def test_api_server_cli_exposes_parser_runtime_options() -> None:
     option_names = {name for param in main.params for name in param.opts}
 
+    assert "--tier" in option_names
+    assert "--backend" not in option_names
     assert "--language" in option_names
     assert "--ocr-mode" in option_names
-    assert "--effort" in option_names
+    assert "--effort" not in option_names
     assert "--disable-table" in option_names
     assert "--disable-formula" in option_names
     assert "--disable-image-analysis" in option_names
@@ -1124,47 +1413,79 @@ def test_api_server_cli_exposes_parser_runtime_options() -> None:
     )
 
 
-def test_api_server_cli_accepts_backend_alias(monkeypatch: pytest.MonkeyPatch) -> None:
-    seen: dict[str, str] = {}
+def test_api_server_cli_rejects_backend_and_effort_options() -> None:
+    backend_result = runner.invoke(main, ["--backend", "hybrid-engine"])
+    effort_result = runner.invoke(main, ["--effort", "high"])
 
-    def _fake_run(app, *, host: str, port: int) -> None:
-        """记录 Click CLI 创建出的应用配置，避免测试启动真实 uvicorn 服务。"""
-        seen["backend"] = app.state.backend
-        seen["host"] = host
-        seen["port"] = str(port)
-
-    monkeypatch.setattr("uvicorn.run", _fake_run)
-
-    result = runner.invoke(main, ["--backend", "hybrid-auto-engine", "--host", "0.0.0.0", "--port", "15981"])
-
-    assert result.exit_code == 0
-    assert seen == {"backend": "hybrid-engine", "host": "0.0.0.0", "port": "15981"}
+    assert backend_result.exit_code != 0
+    assert "No such option" in backend_result.output
+    assert "--backend" in backend_result.output
+    assert effort_result.exit_code != 0
+    assert "No such option" in effort_result.output
+    assert "--effort" in effort_result.output
 
 
-def test_api_server_cli_maps_legacy_vlm_backend_to_hybrid_high(monkeypatch: pytest.MonkeyPatch) -> None:
-    seen: dict[str, str] = {}
+def test_api_server_cli_defaults_to_all_quality_tiers(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
 
-    def _fake_run(app, *, host: str, port: int) -> None:
-        """记录 legacy VLM backend 进入 CLI 后的实际 parser 配置。"""
-        seen["backend"] = app.state.backend
-        seen["effort"] = app.state.effort
+    def _fake_run(server) -> None:
+        """记录无 --tier 启动后的默认 API server 能力，不启动真实服务。"""
+        seen["tiers"] = [tier["id"] for tier in server.config.app.state.tiers]
+        seen["default_tier"] = server.config.app.state.default_tier
+        seen["effort_by_tier"] = {
+            tier: runtime.effort for tier, runtime in server.config.app.state.tier_runtime_options.items()
+        }
 
-    monkeypatch.setattr("uvicorn.run", _fake_run)
+    monkeypatch.setattr("uvicorn.Server.run", _fake_run)
 
-    result = runner.invoke(main, ["--backend", "vlm-http-client", "--host", "0.0.0.0", "--port", "15983"])
+    result = runner.invoke(main, ["--host", "0.0.0.0", "--port", "15984"])
 
     assert result.exit_code == 0
-    assert seen == {"backend": "hybrid-http-client", "effort": "high"}
+    assert seen == {
+        "tiers": ["flash", "medium", "high", "extra_high"],
+        "default_tier": "high",
+        "effort_by_tier": {"flash": "medium", "medium": "medium", "high": "high", "extra_high": "extra_high"},
+    }
+
+
+def test_api_server_cli_accepts_repeated_tier_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def _fake_run(server) -> None:
+        """记录重复 --tier 启动后的 API server 能力列表，避免测试启动真实服务。"""
+        seen["tiers"] = [tier["id"] for tier in server.config.app.state.tiers]
+        seen["default_tier"] = server.config.app.state.default_tier
+        seen["effort_by_tier"] = {
+            tier: runtime.effort for tier, runtime in server.config.app.state.tier_runtime_options.items()
+        }
+
+    monkeypatch.setattr("uvicorn.Server.run", _fake_run)
+
+    result = runner.invoke(main, ["--tier", "medium", "--tier", "extra_high", "--host", "0.0.0.0", "--port", "15984"])
+
+    assert result.exit_code == 0
+    assert seen == {
+        "tiers": ["medium", "extra_high"],
+        "default_tier": "medium",
+        "effort_by_tier": {"medium": "medium", "extra_high": "extra_high"},
+    }
+
+
+def test_api_server_cli_rejects_old_tier_names() -> None:
+    result = runner.invoke(main, ["--tier", "standard"])
+
+    assert result.exit_code != 0
+    assert "Invalid value for '--tier'" in result.output
 
 
 def test_api_server_cli_normalizes_hidden_language_alias(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, str] = {}
 
-    def _fake_run(app, *, host: str, port: int) -> None:
+    def _fake_run(server) -> None:
         """记录 Click CLI 创建出的应用语言配置，避免测试启动真实服务。"""
-        seen["language"] = app.state.language
+        seen["language"] = server.config.app.state.language
 
-    monkeypatch.setattr("uvicorn.run", _fake_run)
+    monkeypatch.setattr("uvicorn.Server.run", _fake_run)
 
     result = runner.invoke(main, ["--language", "latin", "--host", "0.0.0.0", "--port", "15982"])
 
@@ -1179,30 +1500,24 @@ def test_api_server_cli_rejects_removed_ch_lite_language() -> None:
     assert "Language ch_lite not supported" in result.output
 
 
-def test_api_server_cli_rejects_unknown_backend() -> None:
-    result = runner.invoke(main, ["--backend", "vlm"])
-
-    assert result.exit_code != 0
-    assert "Unsupported backend" in result.output
-
-
-def test_api_server_cli_help_hides_backend_aliases() -> None:
+def test_api_server_cli_help_exposes_tier_only_runtime_selection() -> None:
     result = runner.invoke(main, ["--help"])
     normalized_output = result.output.replace("-\n                                  ", "-")
 
     assert result.exit_code == 0
-    assert "hybrid-engine" in normalized_output
+    assert "--tier" in normalized_output
+    assert "flash" in normalized_output
+    assert "medium" in normalized_output
+    assert "high" in normalized_output
+    assert "extra_high" in normalized_output
+    assert "--backend" not in normalized_output
+    assert "--effort" not in normalized_output
+    assert "hybrid-engine" not in normalized_output
+    assert "pipeline" not in normalized_output
     assert "vlm-engine" not in normalized_output
     assert "vlm-http-client" not in normalized_output
     assert "hybrid-auto-engine" not in normalized_output
     assert "vlm-auto-engine" not in normalized_output
-
-
-def test_api_server_cli_effort_help_matches_gradio_copy() -> None:
-    """校验 api server 的 effort 帮助文案与 Gradio 英文提示保持一致。"""
-    effort_option = next(param for param in main.params if "--effort" in param.opts)
-
-    assert effort_option.help == "Medium is faster. High is more accurate and may take longer."
 
 
 def test_api_server_public_exports_are_runtime_entrypoints_only() -> None:

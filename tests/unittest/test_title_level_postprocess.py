@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from mineru.parser.base import ParseResult
 from mineru.types import Block, ContentType, Line, PageInfo, Span
 from mineru.utils import title_level_postprocess
@@ -17,6 +19,21 @@ def test_finalize_client_side_pages_passes_hybrid_effort(monkeypatch) -> None:
     title_level_postprocess.finalize_client_side_pages(pages, "hybrid", effort="high")
 
     assert calls == ["high"]
+
+
+def test_finalize_client_side_pages_rejects_low_effort(monkeypatch) -> None:
+    """校验客户端 Hybrid finalize 不再接受 low effort。"""
+    calls: list[str] = []
+    pages = [PageInfo(page_idx=0, _backend="hybrid")]
+    monkeypatch.setattr(
+        "mineru.backend.hybrid.model_output_to_middle_json.finalize_middle_json_from_preproc",
+        lambda parsed_pages, effort="medium": calls.append(effort),
+    )
+
+    with pytest.raises(ValueError, match="Unsupported effort 'low'"):
+        title_level_postprocess.finalize_client_side_pages(pages, "hybrid", effort="low")
+
+    assert calls == []
 
 
 def test_regenerate_client_side_outputs_forwards_hybrid_effort(monkeypatch, tmp_path) -> None:
@@ -41,16 +58,11 @@ def test_regenerate_client_side_outputs_forwards_hybrid_effort(monkeypatch, tmp_
 
 
 def test_finalize_client_side_pages_uses_explicit_backend(monkeypatch) -> None:
-    calls: list[list[PageInfo]] = []
-    pages = [PageInfo(page_idx=0, _backend="pipeline")]
-    monkeypatch.setattr(
-        "mineru.backend.pipeline.model_output_to_middle_json.finalize_middle_json_from_preproc",
-        lambda parsed_pages: calls.append(parsed_pages),
-    )
+    legacy_backend = "pipeline"
+    pages = [PageInfo(page_idx=0, _backend=legacy_backend)]
 
-    title_level_postprocess.finalize_client_side_pages(pages, "pipeline")
-
-    assert calls == [pages]
+    with pytest.raises(ValueError, match="Unsupported client-side finalize backend 'pipeline'"):
+        title_level_postprocess.finalize_client_side_pages(pages, legacy_backend)
 
 
 def test_finalize_client_side_hybrid_pages_uses_round_tripped_merge_prev_then_cleans_it() -> None:

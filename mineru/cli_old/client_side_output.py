@@ -8,11 +8,11 @@ from typing import Any
 from mineru.parser.base import ParseResult
 from mineru.render import render_content_list, render_markdown, render_structured_content
 from mineru.types import PageInfo
-from mineru.utils.backend_options import DEFAULT_HYBRID_EFFORT, normalize_backend
+from mineru.utils.backend_options import DEFAULT_HYBRID_EFFORT, normalize_backend, resolve_backend_and_effort
 from mineru.utils.title_level_postprocess import finalize_client_side_pages
 from mineru.version import __version__
 
-PDF_BACKENDS = {"pipeline", "hybrid"}
+PDF_BACKENDS = {"hybrid"}
 
 
 def _write_json(path: Path, payload: Any) -> None:
@@ -31,8 +31,6 @@ def _normalize_client_side_backend(backend: str) -> str:
         backend = normalize_backend(backend)
     except ValueError:
         pass
-    if backend == "pipeline" or backend.startswith("pipeline"):
-        return "pipeline"
     if backend.startswith("hybrid"):
         return "hybrid"
     raise ValueError(f"Unsupported middle json backend for client-side output generation: {backend}")
@@ -63,6 +61,7 @@ def regenerate_client_side_outputs(
     middle_json = json.loads(middle_json_path.read_text(encoding="utf-8"))
     if not isinstance(middle_json, dict):
         raise ValueError("middle_json must be a dict.")
+    backend, effort = resolve_backend_and_effort(backend, effort)
     normalized_backend = _normalize_client_side_backend(backend)
     result = ParseResult.from_dict(middle_json)
     pages = result.pages

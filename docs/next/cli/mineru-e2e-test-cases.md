@@ -51,9 +51,9 @@
   - `$MINERU_E2E_FIXTURE_DIR/no-read.pdf`，权限不可读文件；若平台无法稳定制造权限场景，可标记相关用例 BLOCKED。
   - `$MINERU_E2E_FIXTURE_DIR/output-dir/`，用于输出文件测试的目录。
 - 测试环境允许启动本地 doclib server。
-- 测试环境必须安装 `pro` extra，以覆盖本地 standard/pro parse-server；默认 tier 相关用例应验证本地 quality tier 可用，不再按缺少本地 quality tier 的预期失败分支判定。
+- 测试环境必须安装 `pro` extra，以覆盖本地 medium/high parse-server；默认 tier 相关用例应验证本地 quality tier 可用，不再按缺少本地 quality tier 的预期失败分支判定。
 - 除 PARSE-013A1 外，若 remote parse-server 不可用，`--remote` 相关用例按预期失败分支判定；若可用，必须验证 remote/via/privacy 等字段。
-- PARSE-013A1 是 remote pro 硬性测试，remote parse-server 不可用或不支持 pro 均记录为失败。
+- PARSE-013A1 是 remote high 硬性测试，remote parse-server 不可用或不支持 high 均记录为失败。
 
 ### 2.1 测试 HOME 与隔离配置
 
@@ -715,7 +715,7 @@ mineru config show --json
 命令:
 
 ```bash
-mineru config set parse_server.local.managed_tier pro
+mineru config set parse_server.local.managed_tier high
 mineru config get parse_server.local.managed_tier
 ```
 
@@ -723,14 +723,14 @@ mineru config get parse_server.local.managed_tier
 
 - 两条 exit code = 0
 - get 输出包含 `parse_server.local.managed_tier`
-- get 输出包含 `pro`
+- get 输出包含 `high`
 
 ### CONFIG-003A JSON 读取配置
 
 命令:
 
 ```bash
-mineru config set parse_server.local.managed_tier pro
+mineru config set parse_server.local.managed_tier high
 mineru config get parse_server.local.managed_tier --json
 ```
 
@@ -740,7 +740,7 @@ mineru config get parse_server.local.managed_tier --json
 - set 使用普通文本输出；本用例不要求 `config set` 支持 `--json`
 - get stdout 为可直接解析的 JSON
 - get JSON 包含 `parse_server.local.managed_tier`
-- get JSON 中 value 为 `pro`，并且 source 应体现 override 或等价覆盖来源
+- get JSON 中 value 为 `high`，并且 source 应体现 override 或等价覆盖来源
 
 ### CONFIG-004 unset 配置
 
@@ -755,14 +755,14 @@ mineru config get parse_server.local.managed_tier
 
 - 两条 exit code = 0
 - unset 输出包含 `removed` 或 `unchanged`
-- get 仍能返回有效配置值，默认值应为 `standard` 或等价默认 tier
+- get 仍能返回有效配置值，默认值应为 `high` 或等价默认 tier
 
 ### CONFIG-004A unset 后 JSON 读取配置
 
 命令:
 
 ```bash
-mineru config set parse_server.local.managed_tier pro
+mineru config set parse_server.local.managed_tier high
 mineru config unset parse_server.local.managed_tier
 mineru config get parse_server.local.managed_tier --json
 ```
@@ -772,7 +772,7 @@ mineru config get parse_server.local.managed_tier --json
 - 三条 exit code = 0
 - unset 使用普通文本输出；本用例不要求 `config unset` 支持 `--json`
 - get 输出为可直接解析的 JSON
-- unset 后 get 仍能返回有效配置值，默认值应为 `standard` 或等价默认 tier
+- unset 后 get 仍能返回有效配置值，默认值应为 `high` 或等价默认 tier
 
 ### CONFIG-005 exclude-rules
 
@@ -1229,7 +1229,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --for
 
 ```bash
 mineru config set parse_server.local.mode managed
-mineru config set parse_server.local.managed_tier pro
+mineru config set parse_server.local.managed_tier high
 mineru server status --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --pages 1~1 --wait 20 --json
 ```
@@ -1237,52 +1237,52 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --pages 1~1 --wait 20 --json
 预期:
 
 - 三条命令均 exit code = 0
-- parse 前 `server status --json` 最终应体现 `parse_server.local.healthy=true`，`supported_tiers` 包含 `pro`
+- parse 前 `server status --json` 最终应体现 `parse_server.local.healthy=true`，`supported_tiers` 包含 `high`
 - stdout 为可直接解析的 JSON
-- 实际 tier 为 standard 或 pro
+- 实际 tier 为 medium 或 high
 - 实际 tier 不为 flash
 - 不允许静默返回 flash 内容
 - 不包含 Python traceback
 
-### PARSE-007A PDF local standard tier
+### PARSE-007A PDF local medium tier
 
 命令:
 
 ```bash
 mineru config set parse_server.local.mode managed
-mineru config set parse_server.local.managed_tier standard
+mineru config set parse_server.local.managed_tier medium
 mineru server status --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --pages 1~1 --force --wait 120 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier medium --pages 1~1 --force --wait 120 --json
 ```
 
 预期:
 
 - 四条命令均 exit code = 0
-- parse 前 `server status --json` 最终应体现 `parse_server.local.healthy=true`，`supported_tiers` 包含 `standard`
+- parse 前 `server status --json` 最终应体现 `parse_server.local.healthy=true`，`supported_tiers` 包含 `medium`
 - stdout 为可直接解析的 JSON
-- `parse.tier = standard`
+- `parse.tier = medium`
 - `parse.status = done`
 - `content` 不为 null
 - JSON 不体现 remote/via remote，或明确体现 local transport
 - 不包含 Python traceback
 
-### PARSE-007B PDF local pro tier
+### PARSE-007B PDF local high tier
 
 命令:
 
 ```bash
 mineru config set parse_server.local.mode managed
-mineru config set parse_server.local.managed_tier pro
+mineru config set parse_server.local.managed_tier high
 mineru server status --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier pro --pages 1~1 --force --wait 180 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier high --pages 1~1 --force --wait 180 --json
 ```
 
 预期:
 
 - 四条命令均 exit code = 0
-- parse 前 `server status --json` 最终应体现 `parse_server.local.healthy=true`，`supported_tiers` 包含 `pro`
+- parse 前 `server status --json` 最终应体现 `parse_server.local.healthy=true`，`supported_tiers` 包含 `high`
 - stdout 为可直接解析的 JSON
-- `parse.tier = pro`
+- `parse.tier = high`
 - `parse.status = done`
 - `content` 不为 null
 - JSON 不体现 remote/via remote，或明确体现 local transport
@@ -1407,7 +1407,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --remote --pages 1~1 --wait 60
 - 如果 remote parse-server 可用:
   - exit code = 0
   - 输出为可直接解析的 JSON
-  - tier 应为 remote 支持的 quality tier，例如 standard 或 pro
+  - tier 应为 remote 支持的 quality tier，例如 medium 或 high
   - JSON 体现 remote/via/privacy 中的部分字段
   - 不允许在未声明 fallback 的情况下静默返回本地 flash 内容
 - 如果 remote parse-server 不可用:
@@ -1416,21 +1416,21 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --remote --pages 1~1 --wait 60
   - error code/message 包含 remote、parse-server、unavailable、no_engine、quality_tier_unavailable 或等价可操作信息
   - 不包含 Python traceback
 
-### PARSE-013A1 PDF remote pro tier
+### PARSE-013A1 PDF remote high tier
 
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier pro --remote --pages 1~1 --force --wait 180 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier high --remote --pages 1~1 --force --wait 180 --json
 ```
 
 预期:
 
 - exit code = 0
 - stdout 为可直接解析的 JSON
-- `parse.tier = pro`
+- `parse.tier = high`
 - JSON 体现 remote/via/privacy 中的部分字段
-- 不允许静默 fallback 到 local flash、local standard、local pro 或 remote standard
+- 不允许静默 fallback 到 local flash、local medium、local high 或 remote medium
 - 不包含 Python traceback
 
 ### PARSE-013B remote no-wait
@@ -3063,7 +3063,7 @@ mineru server start
 命令:
 
 ```bash
-mineru config set parse_server.local.managed_tier pro
+mineru config set parse_server.local.managed_tier high
 mineru server restart
 mineru config get parse_server.local.managed_tier --json
 mineru config unset parse_server.local.managed_tier
@@ -3072,7 +3072,7 @@ mineru config unset parse_server.local.managed_tier
 预期:
 
 - 四条 exit code = 0
-- restart 后 get JSON 仍体现 `pro`，并且 source 应体现 override 或等价覆盖来源
+- restart 后 get JSON 仍体现 `high`，并且 source 应体现 override 或等价覆盖来源
 - unset 后恢复默认配置来源
 - 不包含 Python traceback
 
@@ -3313,15 +3313,15 @@ mineru server start
 - PARSE-006A force 默认输出不打印过程 status
 - PARSE-006B verbose 输出允许过程 status
 - PARSE-007 默认 tier 行为
-- PARSE-007A PDF local standard tier
-- PARSE-007B PDF local pro tier
+- PARSE-007A PDF local medium tier
+- PARSE-007B PDF local high tier
 - PARSE-008 输出到文件
 - PARSE-010 limit 截断与 next_request
 - PARSE-011 after 续读
 - PARSE-012 no-marker
 - PARSE-013 remote parse 分支
 - PARSE-013A remote 默认 tier
-- PARSE-013A1 PDF remote pro tier
+- PARSE-013A1 PDF remote high tier
 - PARSE-013B remote no-wait
 - PARSE-013C remote force
 - PARSE-013D remote output
@@ -3334,7 +3334,7 @@ mineru server start
 
 - remote 不可用时，相关命令必须返回 JSON error 或普通可读错误，不能 traceback。
 - remote 可用时，必须验证 remote/via/privacy/tier 中至少部分字段。
-- PARSE-013A1 是 remote pro 硬性测试；remote 不可用或不支持 pro 均记录为失败，不能静默 fallback 到 local 或其它 tier。
+- PARSE-013A1 是 remote high 硬性测试；remote 不可用或不支持 high 均记录为失败，不能静默 fallback 到 local 或其它 tier。
 - force/cache/no-wait 用例必须记录 parse id/status 是否符合预期。
 
 ### COVERAGE-007 read 边界、续读、image 与 context 补充
@@ -3523,7 +3523,7 @@ Blocked:
 Environment:
 - mineru version: <如果 help/status 输出能看到则填写，否则 unknown>
 - fixture dir: ...
-- quality tier available: standard/pro available
-- remote pro available: yes
+- quality tier available: medium/high available
+- remote high available: yes
 - pdf fixture source: ...
 ```

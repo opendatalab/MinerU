@@ -27,7 +27,7 @@ from ..render.office.output import blocks_to_markdown as office_blocks_to_markdo
 from ..types import EMPTY_BBOX, TIER_ORDER, TIERS, Block, PageInfo, Span, Tier
 from ..utils.pdf_document import PDFDocument
 from ..version import __version__
-from .background.parse_server_health import get_health
+from .background.parse_server_health import get_health, get_managed_parse_server_tier
 from .base import AsyncDoclibInterface
 from .core.db import DatabaseManager
 from .locators import ContentCursor, block_char_ref, block_ref, page_ref, parse_content_cursor
@@ -237,7 +237,7 @@ class DoclibServer(AsyncDoclibInterface):
             (FILE_STATUS_ACTIVE,),
         )
         local_mode = (await self.state.config_svc.get("parse_server.local.mode")) or "disabled"
-        managed_tier = (await self.state.config_svc.get("parse_server.local.managed_tier")) or "standard"
+        managed_tier = await get_managed_parse_server_tier(self.state.config_svc)
         self_hosted_url = await self.state.config_svc.get("parse_server.local.self_hosted_url")
         remote_url = await self.state.config_svc.get("parse_server.remote.url")
         watches = await self.state.config_svc.list_watches()
@@ -847,10 +847,7 @@ class DoclibServer(AsyncDoclibInterface):
                     key,
                 )
             if value == "managed":
-                tier = _validate_managed_parse_server_tier(
-                    (await self.state.config_svc.get("parse_server.local.managed_tier")) or "standard",
-                    "parse_server.local.managed_tier",
-                )
+                tier = await get_managed_parse_server_tier(self.state.config_svc)
                 _ensure_managed_parse_server_tier_available(tier, key)
             return
 
@@ -1381,7 +1378,7 @@ class DoclibServer(AsyncDoclibInterface):
 
 _READ_LOCATOR_RE = re.compile(
     r"^doc:(?P<short_id>[0-9a-fA-F]+)"
-    r"(?:/tier:(?P<tier>flash|standard|pro)"
+    r"(?:/tier:(?P<tier>flash|medium|high|extra_high)"
     r"(?:/page:(?P<page_no>[1-9][0-9]*)"
     r"(?:/block:(?P<block_no>[1-9][0-9]*)(?:/char:(?P<char_offset>0|[1-9][0-9]*))?)?)?)?$"
 )
@@ -1419,7 +1416,7 @@ def _locator_after(locator: _LocatorParts) -> str | None:
     if locator.block_no is None:
         return None
     return (
-        _canonical_locator(locator.short_id, locator.tier or "standard", locator) if locator.char_offset is not None else None
+        _canonical_locator(locator.short_id, locator.tier or "high", locator) if locator.char_offset is not None else None
     )
 
 
@@ -1530,10 +1527,10 @@ def _ensure_managed_parse_server_tier_available(tier: Tier, param: str) -> None:
 
 
 def _validate_managed_parse_server_tier(value: str, param: str) -> Tier:
-    if value not in ("standard", "pro"):
+    if value not in ("flash", "medium", "high", "extra_high"):
         raise InvalidRequestError(
             "invalid_config_value",
-            "parse_server.local.managed_tier must be one of: standard, pro.",
+            "parse_server.local.managed_tier must be one of: flash, medium, high, extra_high.",
             param,
         )
     return cast(Tier, value)
@@ -1712,10 +1709,11 @@ def _iter_block_spans(block: Block) -> Iterator[Span]:
 
 
 def _span_image_bytes(span: Span) -> tuple[bytes | None, str, str]:
-    # TODO: how to get image from office span?
-    if not span.image_base64:
+    # 兼容 typed Span 不再携带 image_base64 的场景，后续仍可走 image_path sidecar。
+    image_base64 = getattr(span, "image_base64", None)
+    if not image_base64:
         return None, "png", "image/png"
-    match = re.match(r"^data:image/(?P<ext>[^;]+);base64,(?P<data>.+)$", span.image_base64, re.DOTALL)
+    match = re.match(r"^data:image/(?P<ext>[^;]+);base64,(?P<data>.+)$", image_base64, re.DOTALL)
     if match is None:
         return None, "png", "image/png"
     ext = match.group("ext").lower()

@@ -8,11 +8,11 @@
 
 `mineru parse` 支持多种输入格式，但不同格式背后的解析路径并不相同：
 
-- PDF 和 image 可以进入质量 tier 路径，支持 `flash`、`standard` 和 `pro`。
+- PDF 和 image 可以进入质量 tier 路径，支持 `flash`、`medium` 和 `high`。
 - Office 文件走专门的 Office parser，实际只支持 `flash`。
 - text / html 类输入不走 PDF 质量后端，也只具备 `flash` 语义。
 
-此前 Office 文件显式传入 `--tier standard` 或 `--tier pro` 时，会在服务层静默覆盖为 `flash`。CLI 和 JSON 输出只显示最终 tier，无法表达“用户请求被忽略”。这会让自动化脚本、测试和用户判断误以为 standard/pro 已被执行。
+此前 Office 文件显式传入 `--tier medium` 或 `--tier high` 时，会在服务层静默覆盖为 `flash`。CLI 和 JSON 输出只显示最终 tier，无法表达“用户请求被忽略”。这会让自动化脚本、测试和用户判断误以为 medium/high 已被执行。
 
 同时，image 文件需要支持显式 `parse` 并进入 doclib，但 watch / scan 不应把目录中发现的图片自动当作文档纳入库。`--remote` 也需要明确边界：remote 后端只用于质量解析，不支持 `flash`，也不支持非 PDF / image 输入。
 
@@ -39,14 +39,14 @@ image 扩展名只进入 `PARSEABLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTENS
 
 质量 tier 只对 PDF 和 image 有意义。
 
-| 文件类型 | `flash` | `standard` | `pro` |
+| 文件类型 | `flash` | `medium` | `high` |
 |----------|---------|------------|-------|
 | PDF | 支持 | 支持 | 支持 |
 | image | 支持 | 支持 | 支持 |
 | Office (`docx` / `pptx` / `xlsx`) | 支持 | 不支持 | 不支持 |
 | text / html (`txt` / `md` / `csv` / `rst` / `tex` / `html` / `htm`) | 支持 | 不支持 | 不支持 |
 
-当非 PDF / image 文件显式请求 `standard` 或 `pro` 时，doclib 不再自动降级为 `flash`，而是返回 `InvalidRequestError`：
+当非 PDF / image 文件显式请求 `medium` 或 `high` 时，doclib 不再自动降级为 `flash`，而是返回 `InvalidRequestError`：
 
 - `code`: `tier_unsupported_for_file_type`
 - `param`: `tier`
@@ -59,8 +59,8 @@ image 扩展名只进入 `PARSEABLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTENS
 
 | 文件类型 | `--remote` |
 |----------|------------|
-| PDF | 支持 `standard` / `pro`，不支持 `flash` |
-| image | 支持 `standard` / `pro`，不支持 `flash` |
+| PDF | 支持 `medium` / `high`，不支持 `flash` |
+| image | 支持 `medium` / `high`，不支持 `flash` |
 | Office | 不支持 |
 | text / html | 不支持 |
 
@@ -82,7 +82,7 @@ image 扩展名只进入 `PARSEABLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTENS
 
 1. `--remote` 与非 PDF / image 文件冲突时，返回 `remote_unsupported_for_file_type`。
 2. PDF / image 的 `--remote --tier flash` 冲突时，返回 `tier_unsupported_for_remote`。
-3. 非 PDF / image 的 `--tier standard/pro` 冲突时，返回 `tier_unsupported_for_file_type`。
+3. 非 PDF / image 的 `--tier medium/high` 冲突时，返回 `tier_unsupported_for_file_type`。
 
 例如 `sample.docx --remote --tier flash` 优先报告 remote 不支持该文件类型，而不是报告 remote 不支持 flash。
 
@@ -95,10 +95,10 @@ image 扩展名只进入 `PARSEABLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTENS
 原因：
 
 - 自动化脚本可能只检查退出码和 `status=done`，warning / tip 容易被忽略。
-- 用户显式指定 `standard/pro` 表示质量预期，静默或半静默降级会制造错误判断。
+- 用户显式指定 `medium/high` 表示质量预期，静默或半静默降级会制造错误判断。
 - 当前响应模型只有 `tip`，没有稳定的 warnings 列表；把冲突语义塞进提示字段不够可靠。
 
-### 方案 B：为所有格式保留 `standard/pro` 名义兼容
+### 方案 B：为所有格式保留 `medium/high` 名义兼容
 
 未采用。
 
@@ -134,9 +134,9 @@ image 扩展名只进入 `PARSEABLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTENS
 
 ### 对兼容性
 
-- 这是有意的行为收紧。依赖 `docx --tier standard/pro` 或非 PDF / image `--remote` 成功退出的脚本需要调整。
+- 这是有意的行为收紧。依赖 `docx --tier medium/high` 或非 PDF / image `--remote` 成功退出的脚本需要调整。
 - 未显式指定质量 tier 的 Office、text、html 解析仍保持 `flash` 语义。
-- PDF / image 的本地 `flash` 和本地 / remote `standard/pro` 路径保持可用。
+- PDF / image 的本地 `flash` 和本地 / remote `medium/high` 路径保持可用。
 
 ### 对测试
 
@@ -144,7 +144,7 @@ image 扩展名只进入 `PARSEABLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTENS
 
 - 显式 parse image 能入库并创建 parse 任务。
 - watch / scan 不自动发现 image。
-- 非 PDF / image 请求 `standard/pro` 报 `tier_unsupported_for_file_type`。
+- 非 PDF / image 请求 `medium/high` 报 `tier_unsupported_for_file_type`。
 - 非 PDF / image 请求 `--remote` 报 `remote_unsupported_for_file_type`。
 - PDF / image 请求 `--remote --tier flash` 报 `tier_unsupported_for_remote`。
 

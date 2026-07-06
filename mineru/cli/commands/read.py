@@ -23,7 +23,7 @@ class ReadTextOutput:
 
 
 def read_cmd(
-    locator: str = typer.Argument(..., help="Doclib locator, e.g. doc:ab12cd3/tier:standard/page:4"),
+    locator: str = typer.Argument(..., help="Doclib locator, e.g. doc:ab12cd3/tier:medium/page:4"),
     context: int = typer.Option(0, "--context", help="Read N pages/blocks before and after the locator"),
     limit: int = typer.Option(30000, "--limit", help="Soft character limit for STDOUT content"),
     format: Literal["markdown", "image"] = typer.Option("markdown", "-f", "--format", help="Output format: markdown, image"),

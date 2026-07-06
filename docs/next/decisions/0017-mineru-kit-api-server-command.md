@@ -48,8 +48,8 @@ managed 是生命周期管理方式，不是用户直接操作的独立命令产
 
 支持的公开 tier：
 
-- `standard`
-- `pro`
+- `medium`
+- `high`
 
 规则：
 
@@ -57,7 +57,7 @@ managed 是生命周期管理方式，不是用户直接操作的独立命令产
 2. `--backend` 是高级覆盖参数
 3. 可以同时传 `--tier` 和 `--backend`
 4. 如果二者不兼容，启动直接报错
-5. `--tier` 默认值为 `standard`
+5. 未传 `--tier` 时暴露 `flash`、`medium`、`high`、`extra_high`；请求未指定 tier 时默认 `high`
 
 ### 4. backend 的公开边界
 

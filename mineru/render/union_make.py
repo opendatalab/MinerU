@@ -8,7 +8,7 @@ from .markdown import blocks_to_markdown
 from .office.output import blocks_to_markdown as office_blocks_to_markdown
 from .structured_content import block_to_structured_content, merge_adjacent_ref_text_blocks_for_content
 
-Backend = Literal["pipeline", "hybrid", "office"]
+Backend = Literal["hybrid", "office"]
 
 
 def _backend_from_pages(pages: list[PageInfo]) -> Backend | None:

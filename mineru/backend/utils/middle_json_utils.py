@@ -1,4 +1,4 @@
-"""Shared middle_json build template for PDF backends (pipeline / vlm / hybrid).
+"""Shared middle_json build template for current PDF backends.
 
 Each backend still owns its ``init``, ``append``, and ``finalize`` helpers;
 this module also provides shared post-processing helpers that were duplicated
@@ -16,7 +16,7 @@ from ...utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from ...utils.page_index import resolve_output_page_idx
 from ...utils.pdf_document import PDFDocument, PDFPage
 from .span_pre_proc import _clear_post_ocr_fallback, _restore_post_ocr_fallback
-from ..pipeline.model_init import run_ocr_inference
+from ..local_model_runtime import run_ocr_inference
 
 T = TypeVar("T")
 

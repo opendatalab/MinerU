@@ -1,11 +1,15 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
+import atexit
 import asyncio
 import html as html_lib
 import httpx
+import json
 import os
 import re
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -37,23 +41,24 @@ from mineru.cli_old.common import (
     pdf_suffixes,
     read_fn,
 )
-from mineru.cli_old import api_client as _api_client
-from mineru.cli_old.client_side_output import regenerate_client_side_outputs
-from mineru.cli_old.output_paths import resolve_parse_dir
-from mineru.cli_old.vlm_preload import resolve_gradio_local_api_cli_args
-from mineru.cli_old.visualization import VisualizationJob, run_visualization_job
-from mineru.utils.backend_options import (
-    DEFAULT_BACKEND,
-    DEFAULT_HYBRID_EFFORT,
-    HTTP_CLIENT_BACKEND_CHOICES,
-    HYBRID_EFFORT_CHOICES,
-    HYBRID_EFFORT_HELP,
-    LOCAL_BACKEND_CHOICES,
-    normalize_backend,
+from mineru.cli_old.visualization import (
+    VISUALIZATION_FINISHED,
+    VisualizationJob,
+    run_visualization_job,
 )
-from mineru.utils.ocr_language import PUBLIC_OCR_LANGUAGE_CHOICES, validate_public_ocr_lang
+from mineru.cli_old import api_client as _api_client
+from mineru.data.data_reader_writer.filebase import FileBasedDataWriter
+from mineru.parser.api_client import MinerUApiParser
+from mineru.parser.base import ParseResult
+from mineru.parser.tier import ParserRuntimeOptions, runtime_options_for_tier
+from mineru.render import render_content_list, render_markdown, render_structured_content
+from mineru.utils.image_payload import validate_image_sidecar_path
+from mineru.utils.pdf_document import PDFDocument
+from mineru.utils.pdf_page_id import parse_page_range
+from mineru.utils.pdfium_guard import safe_rewrite_pdf_bytes_with_pdfium_result
+from mineru.version import __version__
 
-_gradio_local_api_server = _api_client.ReusableLocalAPIServer()
+_gradio_local_api_server: "ReusableGradioV1APIServer"
 
 
 @dataclass(frozen=True)
@@ -234,8 +239,8 @@ STATUS_QUEUED_ON_SERVER = "Queued on server"
 STATUS_PROCESSING_ON_SERVER = "Processing on server"
 STATUS_QUEUED_LOCALLY_PREFIX = "Queued locally:"
 
-BACKEND_CHOICE_DEFINITIONS = list(LOCAL_BACKEND_CHOICES)
-HTTP_CLIENT_BACKEND_CHOICE_DEFINITIONS = list(HTTP_CLIENT_BACKEND_CHOICES)
+DEFAULT_GRADIO_TIER = "high"
+GRADIO_TIER_CHOICES = ("flash", "medium", "high", "extra_high")
 STATUS_STEP_DEFINITIONS = [
     ("status_step_prepare", STATUS_PREPARING_REQUEST),
     ("status_step_check", STATUS_CHECKING_SERVER),
@@ -246,6 +251,259 @@ STATUS_STEP_DEFINITIONS = [
     ("status_step_outputs", STATUS_PROCESSING_OUTPUT),
     ("status_step_done", STATUS_COMPLETED),
 ]
+
+
+@dataclass(frozen=True)
+class GradioV1ServerHealth:
+    """记录 Gradio 当前绑定的 v1 API server 地址和可用 tier。"""
+
+    base_url: str
+    tier_choices: tuple[str, ...]
+    max_concurrent_requests: int = 1
+
+
+@dataclass(frozen=True)
+class GradioV1PersistedOutput:
+    """记录 v1 解析结果落盘后供 Gradio UI 继续消费的路径。"""
+
+    file_name: str
+    local_md_dir: Path
+    archive_zip_path: Path
+    preview_pdf_path: Path | None
+
+
+class GradioV1LocalAPIServer:
+    """管理 Gradio 内置启动的 v1 parser API server 子进程。"""
+
+    def __init__(self, extra_cli_args=()):
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="mineru-v1-api-client-")
+        self.temp_root = Path(self.temp_dir.name)
+        self.upload_dir = self.temp_root / "uploads"
+        self.base_url: str | None = None
+        self.process: subprocess.Popen[bytes] | None = None
+        self.extra_cli_args = tuple(extra_cli_args)
+        self._managed_process_group_id: int | None = None
+        self._atexit_registered = False
+
+    def start(self) -> str:
+        """启动本地 v1 parser API server，并返回可探测的 base URL。"""
+        if self.process is not None:
+            raise RuntimeError("Local v1 API server is already running")
+
+        resolved_port = _api_client.find_free_port()
+        self.base_url = f"http://127.0.0.1:{resolved_port}"
+        self.upload_dir.mkdir(parents=True, exist_ok=True)
+        cli_args = (
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(resolved_port),
+            "--upload-dir",
+            str(self.upload_dir),
+            *_api_client.strip_local_api_network_args(self.extra_cli_args),
+        )
+        command = [
+            sys.executable,
+            "-m",
+            "mineru.parser.api_server",
+            *cli_args,
+        ]
+        self.process = subprocess.Popen(
+            command,
+            cwd=os.getcwd(),
+            env=os.environ.copy(),
+            stdin=subprocess.PIPE,
+            **_api_client.build_managed_process_popen_kwargs(),
+        )
+        self._managed_process_group_id = self.process.pid
+        if not self._atexit_registered:
+            atexit.register(self.stop)
+            self._atexit_registered = True
+        return self.base_url
+
+    def stop(self) -> None:
+        """停止本地 v1 parser API server，并清理临时目录。"""
+        process = self.process
+        process_group_id = self._managed_process_group_id
+        self.process = None
+        self._managed_process_group_id = None
+        try:
+            _api_client.stop_managed_process(
+                process,
+                process_group_id=process_group_id,
+                shutdown_timeout_seconds=_api_client.LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
+                use_stdin_shutdown_watcher=True,
+            )
+        finally:
+            if self._atexit_registered:
+                try:
+                    atexit.unregister(self.stop)
+                except Exception:
+                    pass
+                self._atexit_registered = False
+            self.temp_dir.cleanup()
+
+
+class ReusableGradioV1APIServer:
+    """复用 Gradio 本地 v1 API server，避免每次请求重复冷启动。"""
+
+    def __init__(self, extra_cli_args=()):
+        self._lock = threading.Lock()
+        self._server: GradioV1LocalAPIServer | None = None
+        self._extra_cli_args = tuple(extra_cli_args)
+
+    def configure(self, extra_cli_args) -> None:
+        """记录启动参数；若现有进程已退出，则下次请求会按新参数重启。"""
+        with self._lock:
+            self._extra_cli_args = tuple(extra_cli_args)
+            server = self._server
+            if server is None:
+                return
+            if server.process is not None and server.process.poll() is None:
+                return
+            server.stop()
+            self._server = None
+
+    def ensure_started(self) -> tuple[GradioV1LocalAPIServer, bool]:
+        """确保本地 v1 API server 存活，返回 server 实例和是否刚启动。"""
+        with self._lock:
+            server = self._server
+            if server is not None and server.process is not None and server.process.poll() is None:
+                return server, False
+            if server is not None:
+                server.stop()
+            server = GradioV1LocalAPIServer(extra_cli_args=self._extra_cli_args)
+            server.start()
+            self._server = server
+            return server, True
+
+    def stop(self) -> None:
+        """停止当前复用的本地 v1 API server。"""
+        with self._lock:
+            server = self._server
+            self._server = None
+        if server is not None:
+            server.stop()
+
+
+_gradio_local_api_server = ReusableGradioV1APIServer()
+
+
+def extract_v1_tier_choices(payload) -> tuple[str, ...]:
+    """从 /v1/tiers 响应中提取 Gradio 支持的 tier，保留服务端顺序并去重。"""
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        raise click.ClickException("MinerU v1 API /v1/tiers returned an invalid payload.")
+
+    choices: list[str] = []
+    for item in data:
+        tier_id = item.get("id") if isinstance(item, dict) else None
+        if tier_id in GRADIO_TIER_CHOICES and tier_id not in choices:
+            choices.append(tier_id)
+    if not choices:
+        supported = ", ".join(GRADIO_TIER_CHOICES)
+        raise click.ClickException(
+            f"MinerU v1 API did not advertise any supported tier. Supported Gradio tiers: {supported}."
+        )
+    return tuple(choices)
+
+
+def default_v1_gradio_tier(tier_choices: tuple[str, ...]) -> str:
+    """选择 Gradio 默认 tier；优先 high，与 API server 的无 tier 请求默认值保持一致。"""
+    if not tier_choices:
+        raise click.ClickException("MinerU v1 API did not advertise any supported tier.")
+    if DEFAULT_GRADIO_TIER in tier_choices:
+        return DEFAULT_GRADIO_TIER
+    return tier_choices[0]
+
+
+async def fetch_v1_tier_choices(http_client, base_url: str) -> tuple[str, ...]:
+    """调用 v1 /tiers 接口并转换成 Gradio Dropdown choices。"""
+    try:
+        response = await http_client.get(f"{base_url}/v1/tiers")
+    except httpx.HTTPError as exc:
+        raise click.ClickException(
+            f"Failed to query MinerU v1 API tiers from {base_url}: {exc}"
+        ) from exc
+    if response.status_code != 200:
+        raise click.ClickException(
+            f"Failed to query MinerU v1 API tiers from {base_url}: "
+            f"{response.status_code} {_api_client.response_detail(response)}"
+        )
+    try:
+        payload = response.json()
+    except json.JSONDecodeError as exc:
+        raise click.ClickException(
+            f"MinerU v1 API /v1/tiers from {base_url} did not return JSON."
+        ) from exc
+    return extract_v1_tier_choices(payload)
+
+
+async def wait_for_v1_api_ready(
+    http_client,
+    local_server: GradioV1LocalAPIServer,
+    timeout_seconds: float = _api_client.LOCAL_API_STARTUP_TIMEOUT_SECONDS,
+) -> GradioV1ServerHealth:
+    """等待本地 v1 API server 返回 /v1/tiers，避免 Gradio 页面先于服务可用。"""
+    assert local_server.base_url is not None
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    last_error: str | None = None
+    while asyncio.get_running_loop().time() < deadline:
+        process = local_server.process
+        if process is not None and process.poll() is not None:
+            raise click.ClickException("Local MinerU v1 API exited before becoming ready.")
+        try:
+            choices = await fetch_v1_tier_choices(http_client, local_server.base_url)
+            return GradioV1ServerHealth(base_url=local_server.base_url, tier_choices=choices)
+        except click.ClickException as exc:
+            last_error = str(exc)
+        except httpx.HTTPError as exc:
+            last_error = str(exc)
+        await asyncio.sleep(_api_client.TASK_STATUS_POLL_INTERVAL_SECONDS)
+
+    message = "Timed out waiting for local MinerU v1 API to become ready."
+    if last_error:
+        message = f"{message} {last_error}"
+    raise click.ClickException(message)
+
+
+async def resolve_v1_server_health(http_client, api_url: str | None) -> GradioV1ServerHealth:
+    """解析 Gradio 当前应使用的 v1 API server，并返回该 server 的 tier 能力。"""
+    if api_url:
+        base_url = _api_client.normalize_base_url(api_url)
+        return GradioV1ServerHealth(
+            base_url=base_url,
+            tier_choices=await fetch_v1_tier_choices(http_client, base_url),
+        )
+
+    local_server, started_now = _gradio_local_api_server.ensure_started()
+    if started_now:
+        logger.info(f"Started local MinerU v1 API at {local_server.base_url}")
+    return await wait_for_v1_api_ready(http_client, local_server)
+
+
+def resolve_gradio_v1_startup_health(api_url: str | None) -> GradioV1ServerHealth:
+    """同步探测 v1 API server tier 能力，供 Gradio 构建 Dropdown 前使用。"""
+
+    async def _resolve() -> GradioV1ServerHealth:
+        async with httpx.AsyncClient(
+            timeout=_api_client.build_http_timeout(),
+            follow_redirects=True,
+        ) as http_client:
+            return await resolve_v1_server_health(http_client, api_url)
+
+    return asyncio.run(_resolve())
+
+
+def build_v1_gradio_page_range(end_pages: int | float | None) -> str:
+    """将 Gradio 旧 max_pages 控件转换成 v1 API 使用的 1-based page_range。"""
+    try:
+        page_limit = int(end_pages) if end_pages is not None else 0
+    except (TypeError, ValueError):
+        page_limit = 0
+    if page_limit <= 0:
+        return ""
+    return f"1~{page_limit}"
 
 
 def normalize_mineru_locale(locale):
@@ -330,44 +588,22 @@ def render_client_i18n_text(i18n, key, locale=None):
     )
 
 
-def build_backend_choices(http_client_enable, i18n):
-    """构建后端选项列表，展示文案与提交给后端的 backend 值保持完全一致。"""
-    choices = list(BACKEND_CHOICE_DEFINITIONS)
-    if http_client_enable:
-        choices.extend(HTTP_CLIENT_BACKEND_CHOICE_DEFINITIONS)
-    return choices
+def resolve_gradio_runtime_options(tier: str | None) -> ParserRuntimeOptions:
+    """根据 Gradio 公开 tier 派生 v1 API 任务使用的运行配置。"""
+    return runtime_options_for_tier(tier or DEFAULT_GRADIO_TIER)
 
 
-def is_http_client_backend(backend_choice):
-    """判断当前后端是否为 http-client 类型，用于控制服务器地址配置显隐。"""
-    return isinstance(backend_choice, str) and backend_choice.endswith("-http-client")
-
-
-def select_backend_info_key(backend_choice):
-    """根据解析后端选择说明文案的 i18n key。"""
-    if not isinstance(backend_choice, str):
-        return "backend_info_default"
-    try:
-        backend_choice = normalize_backend(backend_choice)
-    except ValueError:
-        pass
-    if backend_choice == "pipeline":
-        return "backend_info_pipeline"
-    if backend_choice.startswith("hybrid"):
-        return "backend_info_hybrid"
-    return "backend_info_default"
-
-
-def select_force_ocr_info_key(backend_choice: object) -> str:
-    """根据解析后端选择强制 OCR 说明；只有 pipeline 需要提示 OCR 语言要求。"""
-    if isinstance(backend_choice, str) and backend_choice.startswith("hybrid"):
-        return "force_ocr_info_hybrid"
-    return "force_ocr_info"
-
-
-def frontend_managed_initial_visibility(is_visible: bool):
-    """转换前端托管显隐控件的初始状态；hidden 会保留 DOM 挂载避免状态丢失。"""
-    return True if is_visible else "hidden"
+def select_tier_info_key(tier_choice: object) -> str:
+    """根据 Gradio tier 选择说明文案的 i18n key。"""
+    if tier_choice == "flash":
+        return "tier_info_flash"
+    if tier_choice == "medium":
+        return "tier_info_medium"
+    if tier_choice == "high":
+        return "tier_info_high"
+    if tier_choice == "extra_high":
+        return "tier_info_extra_high"
+    return "tier_info_default"
 
 
 def resolve_status_step_index(status_lines):
@@ -777,6 +1013,147 @@ def read_gradio_content_list_json(local_md_dir, file_name):
         return ""
 
 
+def _middle_json_backend_for_gradio(parse_result: ParseResult, backend: str) -> str:
+    """推断 Gradio 落盘 middle_json 的 backend 标识，优先使用解析结果自身标记。"""
+    for page in parse_result.pages:
+        if page._backend:
+            return page._backend
+    return "hybrid" if str(backend).startswith("hybrid") else backend
+
+
+def _write_v1_gradio_images(parse_result: ParseResult, local_image_dir: Path) -> None:
+    """将 v1 API 返回的图片 sidecar 写入 Gradio legacy images 目录。"""
+    writer = FileBasedDataWriter(str(local_image_dir))
+    for image_path, image_bytes in parse_result.images().items():
+        writer.write(validate_image_sidecar_path(image_path), image_bytes)
+
+
+def _build_v1_gradio_origin_file_bytes(source_path: Path, page_range: str) -> bytes:
+    """按 v1 解析范围生成 Gradio 本地 origin 文件字节；非 PDF 保持原样。"""
+    source_bytes = source_path.read_bytes()
+    if source_path.suffix.lower().lstrip(".") != "pdf" or not page_range.strip():
+        return source_bytes
+
+    try:
+        with PDFDocument(source_bytes) as pdf_doc:
+            page_count = pdf_doc.page_count
+            page_indices = parse_page_range(page_range, page_count)
+        if not page_indices:
+            logger.warning(f"Gradio origin PDF page_range selects no pages: {page_range}")
+            return source_bytes
+        if page_indices == list(range(page_count)):
+            return source_bytes
+
+        rewrite_result = safe_rewrite_pdf_bytes_with_pdfium_result(
+            source_bytes,
+            page_indices=page_indices,
+        )
+        if rewrite_result.used_original:
+            logger.warning(
+                f"Gradio origin PDF rewrite fell back to original PDF for page_range: {page_range}"
+            )
+        return rewrite_result.pdf_bytes or source_bytes
+    except Exception as exc:
+        logger.warning(
+            f"Failed to build Gradio page-ranged origin PDF for {source_path}: {exc}; using original PDF."
+        )
+        return source_bytes
+
+
+def _generate_v1_gradio_layout_preview(
+    *,
+    file_suffix: str,
+    file_name: str,
+    local_md_dir: Path,
+    backend: str,
+) -> None:
+    """为 v1 Gradio 本地结果同步生成 layout 可视化 PDF，失败时保留 origin fallback。"""
+    if file_suffix != "pdf":
+        return
+
+    result = run_visualization_job(
+        VisualizationJob(
+            document_stem=file_name,
+            backend=backend,
+            parse_method="auto",
+            parse_dir=local_md_dir,
+            draw_span=False,
+        )
+    )
+    if result.status != VISUALIZATION_FINISHED:
+        logger.warning(f"Skipping Gradio layout preview for {file_name}: {result.message}")
+
+
+def persist_v1_gradio_result(
+    *,
+    parse_result: ParseResult,
+    file_path: str,
+    extract_root: Path,
+    archive_zip_path: Path,
+    backend: str,
+    effort: str,
+    page_range: str,
+) -> GradioV1PersistedOutput:
+    """把 v1 ParseResult 保存成旧 Gradio UI 预览、JSON 面板和 ZIP 下载所需文件。"""
+    source_path = Path(file_path)
+    file_name = normalize_task_stem(source_path.stem)
+    file_suffix = source_path.suffix.lower().lstrip(".")
+    local_md_dir = extract_root / file_name
+    local_image_dir = local_md_dir / "images"
+    local_md_dir.mkdir(parents=True, exist_ok=True)
+    local_image_dir.mkdir(parents=True, exist_ok=True)
+
+    image_dir = local_image_dir.name
+    render_pages = parse_result.export_pages()
+    _write_v1_gradio_images(parse_result, local_image_dir)
+
+    (local_md_dir / f"{file_name}.md").write_text(
+        render_markdown(render_pages, image_dir),
+        encoding="utf-8",
+    )
+    (local_md_dir / f"{file_name}_content_list.json").write_text(
+        json.dumps(render_content_list(render_pages, image_dir), ensure_ascii=False, indent=4),
+        encoding="utf-8",
+    )
+    (local_md_dir / f"{file_name}_structured_content.json").write_text(
+        json.dumps(render_structured_content(render_pages, image_dir), ensure_ascii=False, indent=4),
+        encoding="utf-8",
+    )
+
+    middle_json = parse_result.to_dict()
+    middle_json["_backend"] = _middle_json_backend_for_gradio(parse_result, backend)
+    middle_json["_version_name"] = __version__
+    (local_md_dir / f"{file_name}_middle.json").write_text(
+        json.dumps(middle_json, ensure_ascii=False, indent=4),
+        encoding="utf-8",
+    )
+
+    origin_suffix = file_suffix if file_suffix in office_suffixes else "pdf"
+    origin_bytes = _build_v1_gradio_origin_file_bytes(source_path, page_range)
+    (local_md_dir / f"{file_name}_origin.{origin_suffix}").write_bytes(origin_bytes)
+
+    _generate_v1_gradio_layout_preview(
+        file_suffix=file_suffix,
+        file_name=file_name,
+        local_md_dir=local_md_dir,
+        backend=backend,
+    )
+
+    zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
+    if zip_archive_success == 0:
+        logger.info("Compression successful")
+    else:
+        logger.error("Compression failed")
+
+    preview_pdf_path = None if file_suffix in office_suffixes else resolve_preview_pdf_path(str(local_md_dir), file_name)
+    return GradioV1PersistedOutput(
+        file_name=file_name,
+        local_md_dir=local_md_dir,
+        archive_zip_path=archive_zip_path,
+        preview_pdf_path=Path(preview_pdf_path).resolve() if preview_pdf_path else None,
+    )
+
+
 def _escape_latex_html_chars_for_gradio(content):
     """转义公式内部会被 Gradio HTML 解析链路误判的尖括号，保留 LaTeX 对齐用 &。"""
     return content.replace("<", "&lt;").replace(">", "&gt;")
@@ -838,61 +1215,11 @@ def prepare_markdown_for_gradio_preview(markdown_text, latex_delimiters):
     return escape_latex_blocks_for_gradio_preview(markdown_text, latex_delimiters)
 
 
-def normalize_language(language):
-    if '(' in language and ')' in language:
-        language = language.split('(')[0].strip()
-    return validate_public_ocr_lang(language)
-
-
-def resolve_parse_method(file_path, is_ocr, backend):
-    file_suffix = Path(file_path).suffix.lower().lstrip('.')
-    if file_suffix in office_suffixes:
-        return "auto"
-    try:
-        backend = normalize_backend(backend)
-    except ValueError:
-        pass
-    return "ocr" if is_ocr else "auto"
-
-
-def is_image_analysis_option_visible(backend, effort=DEFAULT_HYBRID_EFFORT):
-    """判断 Gradio 图片分析开关是否应展示；Hybrid medium 会强制关闭图片分析。"""
-    if not isinstance(backend, str):
-        return False
-    try:
-        backend = normalize_backend(backend)
-    except ValueError:
-        pass
-    if backend.startswith("hybrid"):
-        return effort == "high"
-    return False
-
-
-def is_effort_option_visible(backend):
-    """判断 Gradio effort 选项是否应展示；只有 Hybrid 后端消费该参数。"""
-    return isinstance(backend, str) and backend.startswith("hybrid")
-
-
-def is_ocr_language_option_visible(backend: object) -> bool:
-    """判断 OCR 语言选项是否展示；lang 参数只对 pipeline 后端生效。"""
-    return backend == "pipeline"
-
-
-def is_force_ocr_option_visible(backend: object) -> bool:
-    """判断强制 OCR 开关是否展示；Hybrid 不需要 lang，但仍支持强制 OCR。"""
-    if not isinstance(backend, str):
-        return False
-    return backend == "pipeline" or backend.startswith("hybrid")
-
-
-def should_use_client_side_output_generation(client_side_output_generation):
-    """判断当前 Gradio 任务是否需要在客户端生成最终输出。"""
-    return client_side_output_generation
-
-
 def create_gradio_run_paths(file_path, output_root="./output"):
+    """生成 Gradio 单次任务目录，统一返回绝对路径以便文件预览组件访问。"""
     run_id = f"{time.strftime('%y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}_{safe_stem(Path(file_path).stem)}"
-    run_root = Path(output_root) / "gradio" / run_id
+    output_root_path = Path(output_root).expanduser().resolve()
+    run_root = output_root_path / "gradio" / run_id
     extract_root = run_root / "result"
     archive_zip_path = run_root / f"{safe_stem(Path(file_path).stem)}.zip"
     return run_root, extract_root, archive_zip_path
@@ -912,67 +1239,6 @@ def build_gradio_allowed_paths(output_root="./output"):
     return allowed_paths
 
 
-def build_gradio_upload_name(file_path):
-    path = Path(file_path)
-    return f"{normalize_task_stem(path.stem)}{path.suffix}"
-
-
-def resolve_result_file_name(submit_response, extract_root, file_path):
-    if submit_response.file_names:
-        return submit_response.file_names[0]
-
-    candidate_dirs = sorted(path.name for path in Path(extract_root).iterdir() if path.is_dir())
-    if len(candidate_dirs) == 1:
-        return candidate_dirs[0]
-    return normalize_task_stem(Path(file_path).stem)
-
-
-async def resolve_server_health(http_client, api_url):
-    if api_url:
-        return await _api_client.fetch_server_health(
-            http_client,
-            _api_client.normalize_base_url(api_url),
-        )
-
-    local_server, started_now = _gradio_local_api_server.ensure_started()
-    if started_now:
-        logger.info(f"Started local mineru-api at {local_server.base_url}")
-    return await _api_client.wait_for_local_api_ready(http_client, local_server)
-
-
-async def ensure_local_api_ready_for_gradio_startup(
-    timeout_seconds: float = _api_client.LOCAL_API_STARTUP_TIMEOUT_SECONDS,
-):
-    local_server, started_now = _gradio_local_api_server.ensure_started()
-    if started_now:
-        logger.info(f"Started local mineru-api at {local_server.base_url}")
-
-    async with httpx.AsyncClient(
-        timeout=_api_client.build_http_timeout(),
-        follow_redirects=True,
-    ) as http_client:
-        return await _api_client.wait_for_local_api_ready(
-            http_client,
-            local_server,
-            timeout_seconds=timeout_seconds,
-        )
-
-
-def maybe_prepare_local_api_for_gradio_startup(
-    *,
-    api_url: str | None,
-    enable_vlm_preload: bool,
-):
-    if api_url is not None or not enable_vlm_preload:
-        return None
-
-    try:
-        return asyncio.run(ensure_local_api_ready_for_gradio_startup())
-    except Exception:
-        _gradio_local_api_server.stop()
-        raise
-
-
 def resolve_gradio_max_concurrent_requests(api_url, server_health):
     if api_url is None:
         return server_health.max_concurrent_requests
@@ -985,45 +1251,11 @@ def resolve_gradio_max_concurrent_requests(api_url, server_health):
     )
 
 
-def maybe_generate_local_preview(extract_root, file_name, file_suffix, backend, parse_method):
-    if file_suffix in office_suffixes:
-        return None
-
-    parse_dir = resolve_parse_dir(
-        extract_root,
-        file_name,
-        backend,
-        parse_method,
-        allow_office_fallback=True,
-    )
-    visualization_job = VisualizationJob(
-        document_stem=file_name,
-        backend=backend,
-        parse_method=parse_method,
-        parse_dir=parse_dir,
-        draw_span=backend.startswith("pipeline"),
-    )
-    result = run_visualization_job(visualization_job)
-    if result.status != "finished":
-        logger.warning(
-            f"Skipping visualization for {visualization_job.document_stem}: {result.message}"
-        )
-    return resolve_preview_pdf_path(parse_dir, file_name)
-
-
 async def _run_to_markdown_job(
     file_path,
     end_pages=10,
-    is_ocr=False,
-    formula_enable=True,
-    table_enable=True,
-    image_analysis=True,
-    effort=DEFAULT_HYBRID_EFFORT,
-    language="ch",
-    backend="pipeline",
-    url=None,
+    tier=DEFAULT_GRADIO_TIER,
     api_url=None,
-    client_side_output_generation=False,
     status_callback: Callable[[str], None] | None = None,
 ):
     if file_path is None:
@@ -1033,42 +1265,14 @@ async def _run_to_markdown_job(
         if status_callback is not None:
             status_callback(message)
 
-    normalized_language = normalize_language(language)
     file_path = str(file_path)
     file_suffix = Path(file_path).suffix.lower().lstrip('.')
-    use_client_side_output_generation = should_use_client_side_output_generation(
-        client_side_output_generation
-    )
-    parse_method = resolve_parse_method(file_path, is_ocr, backend)
+    runtime = resolve_gradio_runtime_options(tier)
+    backend = runtime.backend
+    effort = runtime.effort
+    page_range = build_v1_gradio_page_range(end_pages)
     run_root, extract_root, archive_zip_path = create_gradio_run_paths(file_path)
     run_root.mkdir(parents=True, exist_ok=True)
-
-    form_data = _api_client.build_parse_request_form_data(
-        lang_list=[normalized_language],
-        backend=backend,
-        parse_method=parse_method,
-        formula_enable=formula_enable,
-        table_enable=table_enable,
-        image_analysis=image_analysis,
-        effort=effort,
-        server_url=url,
-        start_page_id=0,
-        end_page_id=end_pages - 1,
-        return_md=not use_client_side_output_generation,
-        return_middle_json=True,
-        return_model_output=True,
-        return_content_list=not use_client_side_output_generation,
-        return_images=True,
-        response_format_zip=True,
-        return_original_file=True,
-        client_side_output_generation=use_client_side_output_generation,
-    )
-    upload_assets = [
-        _api_client.UploadAsset(
-            path=Path(file_path),
-            upload_name=build_gradio_upload_name(file_path),
-        )
-    ]
 
     async with httpx.AsyncClient(
         timeout=_api_client.build_http_timeout(),
@@ -1076,7 +1280,7 @@ async def _run_to_markdown_job(
     ) as http_client:
         emit_status(STATUS_PREPARING_REQUEST)
         emit_status(STATUS_CHECKING_SERVER)
-        server_health = await resolve_server_health(http_client, api_url)
+        server_health = await resolve_v1_server_health(http_client, api_url)
         effective_max_concurrent_requests = resolve_gradio_max_concurrent_requests(
             api_url=api_url,
             server_health=server_health,
@@ -1088,78 +1292,30 @@ async def _run_to_markdown_job(
             ),
         ):
             emit_status(STATUS_SUBMITTING_TASK)
-            submit_response = await _api_client.submit_parse_task(
-                base_url=server_health.base_url,
-                upload_assets=upload_assets,
-                form_data=form_data,
-            )
-            emit_status(f"Task submitted：task_id={submit_response.task_id}")
-
-            last_task_snapshot = None
-
-            def handle_task_status(
-                status_snapshot: _api_client.TaskStatusSnapshot,
-            ) -> None:
-                nonlocal last_task_snapshot
-                if status_snapshot == last_task_snapshot:
-                    return
-                last_task_snapshot = status_snapshot
-                emit_status(format_remote_status_message(status_snapshot))
-
-            await _api_client.wait_for_task_result(
-                client=http_client,
-                submit_response=submit_response,
-                task_label=Path(file_path).name,
-                status_snapshot_callback=handle_task_status,
+            parser = MinerUApiParser(api_url=server_health.base_url, tier=runtime.tier)
+            parse_result = await parser.parse_async(
+                file_path,
+                page_range=page_range,
             )
             emit_status(STATUS_DOWNLOADING_RESULT)
-            result_zip_path = await _api_client.download_result_zip(
-                client=http_client,
-                submit_response=submit_response,
-                task_label=Path(file_path).name,
+            emit_status(STATUS_PROCESSING_OUTPUT)
+            persisted_output = await asyncio.to_thread(
+                persist_v1_gradio_result,
+                parse_result=parse_result,
+                file_path=file_path,
+                extract_root=extract_root,
+                archive_zip_path=archive_zip_path,
+                backend=backend,
+                effort=effort,
+                page_range=page_range,
             )
 
-    try:
-        _api_client.safe_extract_zip(result_zip_path, extract_root)
-    finally:
-        result_zip_path.unlink(missing_ok=True)
+    file_name = persisted_output.file_name
+    local_md_dir = persisted_output.local_md_dir
+    preview_pdf_path = persisted_output.preview_pdf_path
 
-    file_name = resolve_result_file_name(submit_response, extract_root, file_path)
-    local_md_dir = resolve_parse_dir(
-        extract_root,
-        file_name,
-        backend,
-        parse_method,
-        allow_office_fallback=True,
-    )
-    emit_status(STATUS_PROCESSING_OUTPUT)
-    if use_client_side_output_generation:
-        output_backend = "office" if file_suffix in office_suffixes else backend
-        await asyncio.to_thread(
-            regenerate_client_side_outputs,
-            local_md_dir,
-            file_name,
-            output_backend,
-            effort=effort,
-        )
-
-    preview_pdf_path = maybe_generate_local_preview(
-        extract_root=extract_root,
-        file_name=file_name,
-        file_suffix=file_suffix,
-        backend=backend,
-        parse_method=parse_method,
-    )
-
-    zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
-    if zip_archive_success == 0:
-        logger.info('Compression successful')
-    else:
-        logger.error('Compression failed')
-
-    md_path = Path(local_md_dir) / f"{file_name}.md"
-    with open(md_path, 'r', encoding='utf-8') as f:
-        txt_content = f.read()
+    md_path = local_md_dir / f"{file_name}.md"
+    txt_content = md_path.read_text(encoding="utf-8")
     md_content = replace_image_with_gradio_file_urls(txt_content, local_md_dir)
     content_list_json = read_gradio_content_list_json(local_md_dir, file_name)
 
@@ -1167,22 +1323,14 @@ async def _run_to_markdown_job(
         preview_pdf_path = None
 
     emit_status(STATUS_COMPLETED)
-    return md_content, txt_content, content_list_json, str(archive_zip_path), preview_pdf_path
+    return md_content, txt_content, content_list_json, str(archive_zip_path), str(preview_pdf_path) if preview_pdf_path else None
 
 
 async def stream_to_markdown(
     file_path,
     end_pages=10,
-    is_ocr=False,
-    formula_enable=True,
-    table_enable=True,
-    image_analysis=True,
-    effort=DEFAULT_HYBRID_EFFORT,
-    language="ch",
-    backend="pipeline",
-    url=None,
+    tier=DEFAULT_GRADIO_TIER,
     api_url=None,
-    client_side_output_generation=False,
 ):
     status_state = StatusPanelState()
     job_task: asyncio.Task | None = None
@@ -1204,16 +1352,8 @@ async def stream_to_markdown(
             _run_to_markdown_job(
                 file_path=file_path,
                 end_pages=end_pages,
-                is_ocr=is_ocr,
-                formula_enable=formula_enable,
-                table_enable=table_enable,
-                image_analysis=image_analysis,
-                effort=effort,
-                language=language,
-                backend=backend,
-                url=url,
+                tier=tier,
                 api_url=api_url,
-                client_side_output_generation=client_side_output_generation,
                 status_callback=enqueue_status,
             )
         )
@@ -1349,9 +1489,6 @@ def render_header_html(i18n):
         " mineru-gradio6-header" if IS_GRADIO_6 else "",
     )
     return rendered_header
-
-all_lang = list(PUBLIC_OCR_LANGUAGE_CHOICES)
-
 
 def safe_stem(file_path):
     stem = Path(file_path).stem
@@ -1507,7 +1644,7 @@ def update_doc_show(file_path):
     '--enable-http-client',
     'http_client_enable',
     type=bool,
-    help="Enable http-client backend to link openai-compatible servers.",
+    help="Deprecated no-op; use --api-url to bind Gradio to an external v1 API server.",
     default=False,
 )
 @click.option(
@@ -1549,14 +1686,14 @@ def update_doc_show(file_path):
     '--enable-vlm-preload',
     'enable_vlm_preload',
     type=bool,
-    help="Preload the local VLM model when gradio starts a local mineru-api service.",
+    help="Deprecated no-op; Gradio v1 starts or connects to a parser API server.",
     default=False,
 )
 @click.option(
     '--client-side-output-generation',
     'client_side_output_generation',
     type=bool,
-    help="Generate markdown and content lists locally from server-returned middle json.",
+    help="Deprecated no-op; Gradio v1 persists outputs from ParseResult locally.",
     default=False,
 )
 @click.option(
@@ -1589,33 +1726,12 @@ def main(ctx,
             "header_homepage_link": "Homepage",
             "header_download_link": "Download",
             "max_pages": "Max convert pages",
-            "backend": "Backend",
-            "backend_label_hybrid": "Hybrid (Recommended)",
-            "backend_label_pipeline": "Pipeline (Stable multilingual)",
-            "backend_label_vlm": "VLM (High-precision Chinese/English)",
-            "backend_label_remote_vlm": "Remote VLM",
-            "backend_label_remote_hybrid": "Remote Hybrid",
-            "server_url": "Server URL",
-            "server_url_info": "OpenAI-compatible server URL for http-client backend.",
-            "recognition_options": "**Recognition Options:**",
-            "advanced_options": "Advanced options",
-            "table_enable": "Enable table recognition",
-            "table_info": "If disabled, tables will be shown as images.",
-            "image_analysis_enable": "Enable image analysis",
-            "image_analysis_info": "If disabled, image/chart blocks will keep layout positions but skip VLM image/chart analysis.",
-            "effort": "Hybrid effort",
-            "effort_info": HYBRID_EFFORT_HELP,
-            "formula_label_vlm": "Enable display formula recognition",
-            "formula_label_pipeline": "Enable formula recognition",
-            "formula_label_hybrid": "Enable inline formula recognition",
-            "formula_info_vlm": "If disabled, display formulas will be shown as images.",
-            "formula_info_pipeline": "If disabled, display formulas will be shown as images, and inline formulas will not be detected or parsed.",
-            "formula_info_hybrid": "If disabled, inline formulas will not be detected or parsed.",
-            "ocr_language": "OCR Language",
-            "ocr_language_info": "Select the OCR language for image-based PDFs and images.",
-            "force_ocr": "Force enable OCR",
-            "force_ocr_info": "Enable only if the result is extremely poor. Requires correct OCR language.",
-            "force_ocr_info_hybrid": "Enable only if the result is extremely poor.",
+            "tier": "Tier",
+            "tier_info_default": "Select the parsing tier.",
+            "tier_info_flash": "Flash tier uses fast local text extraction.",
+            "tier_info_medium": "Medium tier uses local Hybrid parsing.",
+            "tier_info_high": "High tier uses higher quality Hybrid parsing.",
+            "tier_info_extra_high": "Extra high tier uses maximum-quality Hybrid parsing.",
             "convert": "Convert",
             "clear": "Clear",
             "doc_preview": "Document preview",
@@ -1643,10 +1759,6 @@ def main(ctx,
             "office_preview_source_link": "File url",
             "office_preview_ignore_once": "Dismiss",
             "office_preview_ignore_forever": "Always dismiss",
-            "backend_info_vlm": "High-precision parsing via VLM, supports Chinese and English documents only.",
-            "backend_info_pipeline": "Traditional Multi-model pipeline parsing, supports multiple languages, hallucination-free.",
-            "backend_info_hybrid": "High-precision hybrid parsing, supports multiple languages.",
-            "backend_info_default": "Select the backend engine for document parsing.",
         },
         zh={
             "upload_file": "请选择或粘贴要上传的文件\nPDF、图片、DOCX、PPTX 或 XLSX",
@@ -1660,33 +1772,12 @@ def main(ctx,
             "header_homepage_link": "主页",
             "header_download_link": "下载",
             "max_pages": "最大转换页数",
-            "backend": "解析后端",
-            "backend_label_hybrid": "Hybrid 推荐",
-            "backend_label_pipeline": "Pipeline 稳定多语言",
-            "backend_label_vlm": "VLM 高精度中英文",
-            "backend_label_remote_vlm": "Remote VLM",
-            "backend_label_remote_hybrid": "Remote Hybrid",
-            "server_url": "服务器地址",
-            "server_url_info": "http-client 后端的 OpenAI 兼容服务器地址。",
-            "recognition_options": "**识别选项：**",
-            "advanced_options": "高级选项",
-            "table_enable": "启用表格识别",
-            "table_info": "禁用后，表格将显示为图片。",
-            "image_analysis_enable": "启用图片分析",
-            "image_analysis_info": "禁用后，图片/图表块仍保留版面位置，但跳过 VLM 图片/图表分析。",
-            "effort": "解析强度",
-            "effort_info": "Medium 速度更快；High 精度更高，耗时可能更长。",
-            "formula_label_vlm": "启用行间公式识别",
-            "formula_label_pipeline": "启用公式识别",
-            "formula_label_hybrid": "启用行内公式识别",
-            "formula_info_vlm": "禁用后，行间公式将显示为图片。",
-            "formula_info_pipeline": "禁用后，行间公式将显示为图片，行内公式将不会被检测或解析。",
-            "formula_info_hybrid": "禁用后，行内公式将不会被检测或解析。",
-            "ocr_language": "OCR 语言",
-            "ocr_language_info": "为扫描版 PDF 和图片选择 OCR 语言。",
-            "force_ocr": "强制启用 OCR",
-            "force_ocr_info": "仅在识别效果极差时启用，需选择正确的 OCR 语言。",
-            "force_ocr_info_hybrid": "仅在识别效果极差时启用。",
+            "tier": "解析 tier",
+            "tier_info_default": "选择文档解析 tier。",
+            "tier_info_flash": "flash 使用快速本地文本提取。",
+            "tier_info_medium": "medium 使用本地 Hybrid 解析。",
+            "tier_info_high": "high 使用更高质量的 Hybrid 解析。",
+            "tier_info_extra_high": "extra_high 使用最高质量的 Hybrid 解析。",
             "convert": "转换",
             "clear": "清除",
             "doc_preview": "文档预览",
@@ -1714,74 +1805,28 @@ def main(ctx,
             "office_preview_source_link": "文件链接",
             "office_preview_ignore_once": "忽略",
             "office_preview_ignore_forever": "不再提示",
-            "backend_info_vlm": "多模态大模型高精度解析，仅支持中英文文档。",
-            "backend_info_pipeline": "传统多模型管道解析，支持多语言，无幻觉。",
-            "backend_info_hybrid": "高精度混合解析，支持多语言。",
-            "backend_info_default": "选择文档解析的后端引擎。",
         },
     )
 
-    # 根据后端类型获取公式识别标签（闭包函数以支持 i18n）
-    def get_formula_label(backend_choice):
-        try:
-            backend_choice = normalize_backend(backend_choice)
-        except ValueError:
-            pass
-        if backend_choice == "pipeline":
-            return i18n("formula_label_pipeline")
-        elif backend_choice.startswith("hybrid"):
-            return i18n("formula_label_hybrid")
-        else:
-            return i18n("formula_label_pipeline")
-
-    def get_formula_info(backend_choice):
-        try:
-            backend_choice = normalize_backend(backend_choice)
-        except ValueError:
-            pass
-        if backend_choice == "pipeline":
-            return i18n("formula_info_pipeline")
-        elif backend_choice.startswith("hybrid"):
-            return i18n("formula_info_hybrid")
-        else:
-            return ""
-
-    def get_backend_info(backend_choice):
-        return i18n(select_backend_info_key(backend_choice))
-
-    def get_force_ocr_info(backend_choice):
-        """根据后端返回强制 OCR 控件说明，避免 Hybrid 显示 pipeline 的语言提示。"""
-        return i18n(select_force_ocr_info_key(backend_choice))
-
-    # 更新界面函数
-    def update_interface(backend_choice, effort_choice):
-        """根据后端和解析强度更新 Gradio 联动控件，保持前端显隐规则集中。"""
-        formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
-        backend_info_update = gr.update(info=get_backend_info(backend_choice))
-        force_ocr_update = gr.update(info=get_force_ocr_info(backend_choice))
-        image_analysis_update = gr.update(visible=is_image_analysis_option_visible(backend_choice, effort_choice))
-        effort_update = gr.update(visible=is_effort_option_visible(backend_choice))
-        client_options_update = gr.update(visible=is_http_client_backend(backend_choice))
-        ocr_options_update = gr.update(visible=is_force_ocr_option_visible(backend_choice))
-
-        return (
-            client_options_update,
-            ocr_options_update,
-            force_ocr_update,
-            formula_label_update,
-            backend_info_update,
-            image_analysis_update,
-            effort_update,
-        )
+    def get_tier_info(tier_choice):
+        return i18n(select_tier_info_key(tier_choice))
 
     del kwargs
-    _gradio_local_api_server.configure(
-        resolve_gradio_local_api_cli_args(
-            ctx.args,
-            api_url=api_url,
-            enable_vlm_preload=enable_vlm_preload,
+    if http_client_enable:
+        logger.warning(
+            "Ignoring --enable-http-client because Gradio v1 selects external parser services with --api-url."
         )
-    )
+    if enable_vlm_preload:
+        logger.warning(
+            "Ignoring --enable-vlm-preload because Gradio now launches the v1 parser API server."
+        )
+    if client_side_output_generation:
+        logger.warning(
+            "Ignoring --client-side-output-generation because Gradio v1 persists outputs from ParseResult locally."
+        )
+    _gradio_local_api_server.configure(ctx.args)
+    startup_health = resolve_gradio_v1_startup_health(api_url=api_url)
+    tier_choices = startup_health.tier_choices
 
     if latex_delimiters_type == 'a':
         latex_delimiters = latex_delimiters_type_a
@@ -1796,30 +1841,15 @@ def main(ctx,
     async def convert_to_markdown_stream(
         file_path,
         end_pages=10,
-        is_ocr=False,
-        formula_enable=True,
-        table_enable=True,
-        image_analysis=True,
-        effort=DEFAULT_HYBRID_EFFORT,
-        language="ch",
-        backend="pipeline",
-        url=None,
+        tier=DEFAULT_GRADIO_TIER,
         request: gr.Request = None,
     ):
         request_locale = resolve_request_locale(request)
         async for update in stream_to_markdown(
             file_path=file_path,
             end_pages=end_pages,
-            is_ocr=is_ocr,
-            formula_enable=formula_enable,
-            table_enable=table_enable,
-            image_analysis=image_analysis,
-            effort=effort,
-            language=language,
-            backend=backend,
-            url=url,
+            tier=tier,
             api_url=api_url,
-            client_side_output_generation=client_side_output_generation,
         ):
             update = (
                 render_status_steps_html(update[0], i18n, locale=request_locale),
@@ -1840,32 +1870,18 @@ def main(ctx,
                     file_types=suffixes,
                     elem_classes=["mineru-upload-file"],
                 )
-                preferred_option = DEFAULT_BACKEND
-                backend = gr.Dropdown(
-                    build_backend_choices(http_client_enable, i18n),
-                    label=i18n("backend"),
-                    value=preferred_option,
-                    info=get_backend_info(preferred_option),
-                    elem_classes=["mineru-backend-select"],
-                )
-                with gr.Row(
-                    visible=frontend_managed_initial_visibility(is_http_client_backend(preferred_option)),
-                    elem_classes=["mineru-client-options"],
-                ) as client_options:
-                    url = gr.Textbox(
-                        label=i18n("server_url"),
-                        value='http://localhost:30000',
-                        placeholder='http://localhost:30000',
-                        info=i18n("server_url_info"),
+                preferred_tier = default_v1_gradio_tier(tier_choices)
+                with gr.Group(elem_classes=["mineru-backend-options-block"]):
+                    tier = gr.Dropdown(
+                        list(tier_choices),
+                        label=i18n("tier"),
+                        value=preferred_tier,
+                        info=get_tier_info(preferred_tier),
+                        elem_classes=["mineru-tier-select"],
                     )
-                # 下面这些选项在上传 office 文件时会被自动隐藏
+                # 页数控件在上传 Office 文件时会被自动隐藏。
                 with gr.Group() as options_group:
                     max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
-                    advanced_bu = gr.Button(
-                        i18n("advanced_options"),
-                        size="sm",
-                        elem_classes=["mineru-advanced-open"],
-                    )
                 with gr.Row(elem_classes=["mineru-actions"]):
                     change_bu = gr.Button(i18n("convert"), variant="primary", scale=1, min_width=0)
                     clear_bu = gr.ClearButton(value=i18n("clear"), scale=1, min_width=0)
@@ -1949,76 +1965,16 @@ def main(ctx,
                             label=None,
                         )
 
-        with gr.Column(elem_classes=["mineru-advanced-popover"]):
-            with gr.Column(elem_classes=["mineru-advanced-card"]):
-                with gr.Group():
-                    table_enable = gr.Checkbox(label=i18n("table_enable"), value=True, info=i18n("table_info"))
-                    formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))
-                    image_analysis = gr.Checkbox(
-                        label=i18n("image_analysis_enable"),
-                        value=True,
-                        visible=frontend_managed_initial_visibility(
-                            is_image_analysis_option_visible(preferred_option, DEFAULT_HYBRID_EFFORT)
-                        ),
-                        info=i18n("image_analysis_info"),
-                        elem_classes=["mineru-image-analysis-option"],
-                    )
-                    with gr.Column(elem_classes=["mineru-hybrid-effort-option"]):
-                        effort = gr.Radio(
-                            list(HYBRID_EFFORT_CHOICES),
-                            label=i18n("effort"),
-                            value=DEFAULT_HYBRID_EFFORT,
-                            visible=is_effort_option_visible(preferred_option),
-                            info=i18n("effort_info"),
-                            elem_classes=["mineru-hybrid-effort"],
-                        )
-                with gr.Column(elem_classes=["mineru-force-ocr-option"]) as ocr_options:
-                    with gr.Group():
-                        with gr.Column(elem_classes=["mineru-ocr-language-options"]):
-                            language = gr.Dropdown(
-                                all_lang,
-                                label=i18n("ocr_language"),
-                                value=all_lang[0],
-                                info=i18n("ocr_language_info"),
-                                visible=frontend_managed_initial_visibility(
-                                    is_ocr_language_option_visible(preferred_option)
-                                ),
-                            )
-                        is_ocr = gr.Checkbox(
-                            label=i18n("force_ocr"),
-                            value=False,
-                            info=i18n(select_force_ocr_info_key(preferred_option)),
-                        )
-
         # 添加事件处理
         _private_api_kwargs = (
             {"api_visibility": "private", "queue": False}
             if IS_GRADIO_6
             else {"api_name": False, "queue": False}
         )
-        backend.change(
-            fn=update_interface,
-            inputs=[backend, effort],
-            outputs=[client_options, ocr_options, is_ocr, formula_enable, backend, image_analysis, effort],
-            **_private_api_kwargs
-        )
-        effort.change(
-            fn=update_interface,
-            inputs=[backend, effort],
-            outputs=[client_options, ocr_options, is_ocr, formula_enable, backend, image_analysis, effort],
-            **_private_api_kwargs
-        )
-        # 添加demo.load事件，在页面加载时触发一次界面更新
-        demo.load(
-            fn=update_interface,
-            inputs=[backend, effort],
-            outputs=[client_options, ocr_options, is_ocr, formula_enable, backend, image_analysis, effort],
-            **_private_api_kwargs
-        )
-        clear_bu.add([input_file, md, doc_show, md_text, content_list_json, output_file, is_ocr, office_html, status_panel])
+        clear_bu.add([input_file, md, doc_show, md_text, content_list_json, output_file, office_html, status_panel])
 
         def reset_primary_ui():
-            """清除主界面状态。高级气泡由前端点击外部逻辑自动收起。"""
+            """清除主界面状态，并恢复文件预览与状态面板。"""
             return (
                 gr.update(visible=True),
                 gr.update(value=None, visible=True),
@@ -2068,7 +2024,7 @@ def main(ctx,
         )
         change_bu.click(
             fn=convert_to_markdown_stream,
-            inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, effort, language, backend, url],
+            inputs=[input_file, max_pages, tier],
             outputs=[status_panel, output_file, md, md_text, content_list_json, doc_show],
             **_to_md_api_kwargs
         )
@@ -2082,10 +2038,6 @@ def main(ctx,
         _launch_kwargs = {"footer_links": footer_links, "css": APP_CSS, "head": APP_HEAD}
     else:
         _launch_kwargs = {"show_api": api_enable}
-    maybe_prepare_local_api_for_gradio_startup(
-        api_url=api_url,
-        enable_vlm_preload=enable_vlm_preload,
-    )
     demo.launch(
         server_name=server_name,
         server_port=server_port,

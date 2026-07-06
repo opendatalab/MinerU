@@ -1,95 +1,14 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import json
 import os
-from pathlib import Path
 
 from bs4 import BeautifulSoup
 from fuzzywuzzy import fuzz
 from loguru import logger
 
-from mineru.backend.pipeline.pipeline_analyze import doc_analyze_streaming as pipeline_doc_analyze_streaming
-from mineru.cli_old.common import convert_pdf_bytes_to_bytes, prepare_env, read_fn
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.parser.base import ParseResult
 from mineru.render import render_content_list, render_markdown
-
-
-def test_pipeline_with_two_config():
-    __dir__ = os.path.dirname(os.path.abspath(__file__))
-    pdf_files_dir = os.path.join(__dir__, "pdfs")
-    output_dir = os.path.join(__dir__, "output")
-    pdf_suffixes = [".pdf"]
-    image_suffixes = [".png", ".jpeg", ".jpg"]
-
-    doc_path_list = []
-    for doc_path in Path(pdf_files_dir).glob("*"):
-        if doc_path.suffix in pdf_suffixes + image_suffixes:
-            doc_path_list.append(doc_path)
-
-    # os.environ["MINERU_MODEL_SOURCE"] = "modelscope"
-
-    pdf_file_names = []
-    pdf_bytes_list = []
-    p_lang_list = []
-    for path in doc_path_list:
-        file_name = str(Path(path).stem)
-        pdf_bytes = read_fn(path)
-        pdf_file_names.append(file_name)
-        pdf_bytes_list.append(pdf_bytes)
-        p_lang_list.append("en")
-    for idx, pdf_bytes in enumerate(pdf_bytes_list):
-        new_pdf_bytes = convert_pdf_bytes_to_bytes(pdf_bytes)
-        pdf_bytes_list[idx] = new_pdf_bytes
-
-    run_pipeline_parse(
-        pdf_file_names,
-        pdf_bytes_list,
-        p_lang_list,
-        output_dir,
-        parse_method="txt",
-    )
-    res_json_path = (Path(__file__).parent / "output" / "test" / "txt" / "test_content_list.json").as_posix()
-    assert_content(res_json_path, parse_method="txt")
-    run_pipeline_parse(
-        pdf_file_names,
-        pdf_bytes_list,
-        p_lang_list,
-        output_dir,
-        parse_method="ocr",
-    )
-    res_json_path = (Path(__file__).parent / "output" / "test" / "ocr" / "test_content_list.json").as_posix()
-    assert_content(res_json_path, parse_method="ocr")
-
-
-def run_pipeline_parse(
-    pdf_file_names,
-    pdf_bytes_list,
-    p_lang_list,
-    output_dir,
-    parse_method,
-):
-    output_info = []
-    for pdf_file_name in pdf_file_names:
-        local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-        output_info.append((pdf_file_name, local_image_dir, local_md_dir))
-
-    def on_doc_ready(doc_index, model_list, middle_json, ocr_enable):
-        del ocr_enable
-        pdf_file_name, local_image_dir, local_md_dir = output_info[doc_index]
-        write_infer_result(
-            pdf_file_name,
-            local_image_dir,
-            local_md_dir,
-            middle_json,
-            model_list,
-        )
-
-    pipeline_doc_analyze_streaming(
-        pdf_bytes_list,
-        p_lang_list,
-        on_doc_ready,
-        parse_method=parse_method,
-    )
 
 
 def write_infer_result(

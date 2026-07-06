@@ -16,7 +16,7 @@ from ..utils.pdf_document import PDFDocument
 
 _PDF_RETAINED_PAGE_INDICES_KEY = "_pdf_retained_page_indices"
 _PDF_BROKEN_PAGE_INDICES_KEY = "_pdf_broken_page_indices"
-_SUPPORTED_MIDDLE_JSON_BACKENDS = {"pipeline", "hybrid", "office"}
+_SUPPORTED_MIDDLE_JSON_BACKENDS = {"hybrid", "office"}
 
 
 def _parse_optional_int_list(value: Any) -> list[int] | None:

@@ -15,7 +15,7 @@ OCR_DET_PADDING = 50
 def _get_ch_ocr_det_model() -> Any:
     """获取默认中文 OCR 检测模型，当前 ch 已对应轻量 PP-OCRv6 配置。"""
     try:
-        from ..pipeline.model_init import AtomModelSingleton
+        from ..local_model_runtime import AtomModelSingleton
     except Exception as e:
         logger.error(
             "Failed to import AtomModelSingleton, OCR detection will not work. If you want to use OCR features, "

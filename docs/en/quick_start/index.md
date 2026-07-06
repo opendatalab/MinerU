@@ -32,7 +32,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
   <thead>
     <tr>
       <th rowspan="2" style="text-align:center; vertical-align:middle;">Parsing Backend</th>
-      <th rowspan="2" style="text-align:center; vertical-align:middle;">pipeline</th>
+      <th rowspan="2" style="text-align:center; vertical-align:middle;">hybrid low</th>
       <th colspan="2" style="text-align:center;">*-engine</th>
       <th colspan="2" style="text-align:center;">*-http-client</th>
     </tr>
@@ -143,9 +143,9 @@ If your device meets the GPU acceleration requirements in the table above, you c
 ```bash
 mineru -p <input_path> -o <output_path>
 ```
-If your device does not meet the GPU acceleration requirements, you can specify the backend as `pipeline` to run in a pure CPU environment:
+If your device does not meet the GPU acceleration requirements, you can use Hybrid low to run without VLM calls:
 ```bash
-mineru -p <input_path> -o <output_path> -b pipeline
+mineru -p <input_path> -o <output_path> -b hybrid-engine --effort low
 ```
 
 `mineru` currently supports local `PDF`, image, `DOCX`, `PPTX`, and `XLSX` file or directory inputs.

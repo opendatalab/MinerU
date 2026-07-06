@@ -133,7 +133,7 @@ GET /v1/tiers HTTP/1.1
   "object": "list",
   "data": [
     {
-      "id": "pro",
+      "id": "high",
       "description": "High-accuracy VLM-based parsing.",
       "current_model": "MinerU2.5-Pro-2605-1.2B"
     }
@@ -145,22 +145,22 @@ Tier 对象字段:
 
 | 字段 | 类型 | 必带 | 说明 |
 |------|------|:--:|------|
-| `id` | string | 是 | `standard` 或 `pro`。 |
+| `id` | string | 是 | `medium` 或 `high`。 |
 | `description` | string | 是 | 档位说明。 |
 | `current_model` | string 或 null | 是 | 当前 tier 背后的模型 ID。 |
 
 ## Tier 选择语义
 
-`standard` 和 `pro` 是 v1 协议中面向用户读取文档的真实质量档位。具体服务当前支持哪些 tier，以 `/v1/tiers` 返回为准。
+`medium` 和 `high` 是 v1 协议中面向用户读取文档的真实质量档位。具体服务当前支持哪些 tier，以 `/v1/tiers` 返回为准。
 
 请求创建 parse job 时，客户端可以省略 `tier` 或传 `null`，表示使用默认选择策略:
 
 | 可发现能力 | 默认选择结果 |
 |------------|---------------|
-| 只有 `standard` | `standard` |
-| 只有 `pro` | `pro` |
-| 同时有 `standard` 和 `pro` | `pro` |
-| 没有 `standard` 和 `pro` | 报错 |
+| 只有 `medium` | `medium` |
+| 只有 `high` | `high` |
+| 同时有 `medium` 和 `high` | `high` |
+| 没有 `medium` 和 `high` | 报错 |
 
 默认选择策略在任何语境下都不能等价于 `flash`。`flash` 是 watch、发现、索引阶段使用的快速 CPU 引擎，不是用户读取文档时的默认质量档位。
 
@@ -186,7 +186,7 @@ Local Parse Server 的 `health` 通常返回:
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `parser_version` | string | 本地解析器版本。 |
-| `models` | object | 各后端健康状态，例如 `{"standard":"ok","pro":"missing"}`。 |
+| `models` | object | 各后端健康状态，例如 `{"medium":"ok","high":"missing"}`。 |
 
 这些额外字段只供运维和调试使用，通用客户端不能依赖。
 
@@ -194,12 +194,12 @@ Local Parse Server 的 `health` 通常返回:
 
 | 本地 api-server 进程能力 | `/v1/tiers` 应返回 |
 |-------------------------|-------------------|
-| Standard | `standard` |
-| Pro | `pro` |
+| Medium | `medium` |
+| High | `high` |
 | 只有 Flash | 不应把 `flash` 作为用户质量解析 tier；默认选择请求应失败。 |
 
-一个 `mineru-kit api-server` 进程只服务一个 tier。如果用户需要同时提供 `standard` 和 `pro`，应启动多个 api-server 进程，并由 doclib 或上层配置分别发现和路由。
+一个 `mineru-kit api-server` 进程只服务一个 tier。如果用户需要同时提供 `medium` 和 `high`，应启动多个 api-server 进程，并由 doclib 或上层配置分别发现和路由。
 
 如果本地 server 支持 `flash`，它可以在内部 watch 或索引机制中使用，但不应出现在面向用户质量解析的默认选择候选中。
 
-`mineru.net/api` 在相当长时间内只提供 `pro`。远端 `/v1/tiers` 因此应返回 `pro`；省略 `tier` 或传 `null` 等价于使用 `pro`。
+`mineru.net/api` 在相当长时间内只提供 `high`。远端 `/v1/tiers` 因此应返回 `high`；省略 `tier` 或传 `null` 等价于使用 `high`。

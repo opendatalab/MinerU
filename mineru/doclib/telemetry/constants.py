@@ -50,7 +50,19 @@ DIM_STATUS_VALUES = frozenset(
         "unsupported",
     }
 )
-DIM_TIER_VALUES = frozenset({"default", "flash", "standard", "pro", "standard(default)", "pro(default)", "unknown"})
+DIM_TIER_VALUES = frozenset(
+    {
+        "default",
+        "flash",
+        "medium",
+        "high",
+        "extra_high",
+        "medium(default)",
+        "high(default)",
+        "extra_high(default)",
+        "unknown",
+    }
+)
 DIM_SERVER_VALUES = frozenset(
     {"local(flash)", "local(managed)", "local(self-hosted)", "remote(official)", "remote(custom)", "none", "unknown"}
 )

@@ -9,8 +9,8 @@ from .base import DocumentParser, ParseResult
 from .html import HtmlParser
 from .office import DocxParser, PptxParser, XlsxParser
 from .pdf import PdfFlashParser, PdfHybridParser, PdfPipelineParser, PdfVlmParser
-from .tier import PARSER_BACKENDS, backend_for_tier, resolve_tier_and_backend
-from ..utils.backend_options import resolve_backend_and_effort
+from .tier import PARSER_BACKENDS, backend_for_tier, resolve_runtime_options, resolve_tier_and_backend
+from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
 
 __all__ = [
     "backend_for_tier",
@@ -54,7 +54,7 @@ def _build_parser(
     backend: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
-    effort: str = "medium",
+    effort: str = DEFAULT_HYBRID_EFFORT,
     disable_table: bool = False,
     disable_formula: bool = False,
     disable_image_analysis: bool = False,
@@ -67,8 +67,7 @@ def _build_parser(
 ) -> DocumentParser:
     path = Path(path)
     suffix = _resolve_input_suffix(path)
-    _, resolved_backend = resolve_tier_and_backend(tier=tier, backend=backend)
-    resolved_backend, resolved_effort = resolve_backend_and_effort(backend or resolved_backend, effort)
+    runtime = resolve_runtime_options(tier=tier, backend=backend, effort=effort)
     resolved_ocr_mode = method or ocr_mode
     resolved_language = lang or language
     resolved_table_enable = (not disable_table) if table_enable is None else table_enable
@@ -88,29 +87,21 @@ def _build_parser(
     if suffix not in _PDF_INPUT_SUFFIXES:
         raise ValueError(f"Unsupported file type: {suffix or path.suffix or 'unknown'}")
 
-    if resolved_backend == "pipeline":
-        return PdfPipelineParser(
-            backend=resolved_backend,
-            method=resolved_ocr_mode,
-            lang=resolved_language,
-            formula_enable=resolved_formula_enable,
-            table_enable=resolved_table_enable,
-        )
-    elif resolved_backend.startswith("hybrid-"):
+    if runtime.backend.startswith("hybrid-"):
         return PdfHybridParser(
-            backend=resolved_backend,
+            backend=runtime.backend,
             method=resolved_ocr_mode,
             lang=resolved_language,
             formula_enable=resolved_formula_enable,
             table_enable=resolved_table_enable,
             server_url=server_url,
             image_analysis=resolved_image_analysis,
-            effort=resolved_effort,
+            effort=runtime.effort,
         )
-    elif resolved_backend == "flash":
+    elif runtime.backend == "flash":
         return PdfFlashParser()
     else:
-        raise ValueError(f"Unknown backend: {resolved_backend}")
+        raise ValueError(f"Unknown backend: {runtime.backend}")
 
 
 def parse(
@@ -120,7 +111,7 @@ def parse(
     backend: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
-    effort: str = "medium",
+    effort: str = DEFAULT_HYBRID_EFFORT,
     disable_table: bool = False,
     disable_formula: bool = False,
     disable_image_analysis: bool = False,
@@ -159,7 +150,7 @@ async def parse_async(
     backend: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
-    effort: str = "medium",
+    effort: str = DEFAULT_HYBRID_EFFORT,
     disable_table: bool = False,
     disable_formula: bool = False,
     disable_image_analysis: bool = False,

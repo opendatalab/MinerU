@@ -17,7 +17,7 @@ from mineru.parser import MinerUApiParser
 parser = MinerUApiParser(
     api_url="https://mineru.net/api",
     api_key="...",
-    tier="pro",
+    tier="high",
 )
 
 result = parser.parse("report.pdf")
@@ -59,7 +59,7 @@ class MinerUApiParser(DocumentParser):
 |------|------|
 | `api_url` | v1 API base URL，如 `https://mineru.net/api` 或 `http://127.0.0.1:16580/api`。 |
 | `api_key` | Bearer token。Local Parse Server 未启用鉴权时可为空。 |
-| `tier` | `standard`、`pro` 或 `None`。`None` 表示 SDK 在 HTTP 请求中省略 `tier` 或发送 JSON `null`，让 v1 API 使用默认选择策略。不得传 `flash`，因为 v1 parse API 的质量解析不接受 flash 作为默认结果。 |
+| `tier` | `medium`、`high` 或 `None`。`None` 表示 SDK 在 HTTP 请求中省略 `tier` 或发送 JSON `null`，让 v1 API 使用默认选择策略。不得传 `flash`，因为 v1 parse API 的质量解析不接受 flash 作为默认结果。 |
 | `wait` | 创建 job 时的同步等待秒数。 |
 | `timeout` | HTTP 请求超时。 |
 
@@ -105,8 +105,8 @@ class MinerUApiParser(DocumentParser):
 | SDK tier | API tier |
 |----------|----------|
 | `None` | 省略或 `null` |
-| `standard` | `standard` |
-| `pro` | `pro` |
+| `medium` | `medium` |
+| `high` | `high` |
 
 它不接受也不保存 backend 参数。backend 是本地 parser 层的高级实现概念，不应出现在 API-backed parser 的公开构造参数、实例属性或请求 payload 中。
 

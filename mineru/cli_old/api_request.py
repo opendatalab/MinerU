@@ -10,6 +10,8 @@ from mineru.utils.backend_options import (
     DEFAULT_BACKEND,
     DEFAULT_HYBRID_EFFORT,
     HYBRID_EFFORT_SCHEMA_EXTRA,
+    LEGACY_PIPELINE_BACKEND_ALIASES,
+    LEGACY_VLM_BACKEND_ALIASES,
     normalize_public_backend,
     resolve_backend_and_effort,
     validate_effort,
@@ -67,11 +69,15 @@ def validate_parse_method(parse_method: str) -> str:
 
 
 def validate_parse_backend(backend: str) -> str:
-    """校验公开 API 允许的解析后端，避免旧入口名进入下游执行链路。"""
+    """校验公开 API 允许的解析后端，保留 hidden alias 供联合解析决定 effort。"""
     try:
-        return normalize_public_backend(backend)
+        normalized_backend = normalize_public_backend(backend)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    raw_backend = (backend or "").strip()
+    if raw_backend in LEGACY_PIPELINE_BACKEND_ALIASES or raw_backend in LEGACY_VLM_BACKEND_ALIASES:
+        return raw_backend
+    return normalized_backend
 
 
 def validate_parse_effort(effort: str) -> str:
@@ -83,7 +89,7 @@ def validate_parse_effort(effort: str) -> str:
 
 
 def resolve_parse_backend_and_effort(backend: str, effort: str) -> tuple[str, str]:
-    """联合校验公开解析后端和 effort，确保旧 VLM 值统一落到 Hybrid high。"""
+    """联合校验公开解析后端和 effort，确保旧 pipeline/VLM 值落到对应 Hybrid effort。"""
     try:
         return resolve_backend_and_effort(backend, effort)
     except ValueError as exc:
@@ -118,9 +124,8 @@ async def parse_request_form(
         str,
         Form(
             description="""The backend for parsing:
-- pipeline: More general, supports multiple languages, hallucination-free.
-- hybrid-engine: Hybrid parsing via local computing power, supports multiple languages. Use effort to switch medium/high behavior.
-- hybrid-http-client: Hybrid parsing via remote computing power but requires a little local computing power(client suitable for openai-compatible servers), supports multiple languages. Use effort to switch medium/high behavior.""",
+- hybrid-engine: Hybrid parsing via local computing power. Hybrid medium supports language-aware local OCR; use effort to switch medium/high/extra_high behavior.
+- hybrid-http-client: Hybrid parsing via remote computing power but requires a little local computing power(client suitable for openai-compatible servers). Hybrid medium supports language-aware local OCR; use effort to switch medium/high/extra_high behavior.""",
             json_schema_extra=BACKEND_SCHEMA_EXTRA,
         ),
     ] = DEFAULT_BACKEND,
@@ -128,15 +133,16 @@ async def parse_request_form(
         str,
         Form(
             description="""(Adapted only for hybrid backend) Hybrid parsing effort:
-- medium: Faster parsing for most documents, balancing accuracy and efficiency. Image/chart analysis is disabled.
-- high: Higher-accuracy parsing with image/chart analysis support, which may take longer.""",
+- medium: Local Hybrid processing without VLM calls. Supports language-aware local OCR and table OCR. Image/chart analysis is disabled.
+- high: Faster VLM parsing for most documents, balancing accuracy and efficiency. Image/chart analysis is disabled.
+- extra_high: Higher-accuracy parsing with image/chart analysis support, which may take longer.""",
             json_schema_extra=HYBRID_EFFORT_SCHEMA_EXTRA,
         ),
     ] = DEFAULT_HYBRID_EFFORT,
     parse_method: Annotated[
         str,
         Form(
-            description="""(Adapted only for pipeline and hybrid backend)The method for parsing PDF:
+            description="""(Adapted only for hybrid backend)The method for parsing PDF:
 - auto: Automatically determine the method based on the file type
 - txt: Use text extraction method
 - ocr: Use OCR method for image-based PDFs
@@ -156,7 +162,7 @@ async def parse_request_form(
         Form(
             description=(
                 "Enable image/chart analysis for hybrid backends. "
-                "Hybrid medium effort automatically disables image/chart analysis."
+                "Hybrid medium and high efforts automatically disable image/chart analysis."
             ),
         ),
     ] = True,

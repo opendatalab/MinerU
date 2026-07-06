@@ -154,5 +154,5 @@ Here are some available configuration options:
   
 - `models-dir`: 
     * Used to specify local model storage directory
-    * Please specify model directories for `pipeline` and `vlm` backends separately.
+    * Please specify model directories for the local lightweight model bundle (`models-dir.pipeline`) and the VLM bundle (`models-dir.vlm`) separately.
     * After specifying the directory, you can use local models by configuring the environment variable `export MINERU_MODEL_SOURCE=local`.

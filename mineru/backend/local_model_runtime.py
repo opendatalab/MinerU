@@ -1,3 +1,5 @@
+"""Hybrid 与本地小模型共享的运行时初始化模块。"""
+
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
@@ -9,34 +11,62 @@ from typing import Any
 import torch
 from loguru import logger
 
-from ...model.layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
-from ...model.mfr.pp_formulanet_plus_m.predict_formula import FormulaRecognizer
-from ...model.mfr.unimernet.Unimernet import UnimernetModel
-from ...model.ocr.pytorch_paddle import PytorchPaddleOCR
-from ...model.table.cls.mineru_table_ori_cls import MineruTableOrientationClsModel
-from ...model.table.cls.paddle_table_cls import PaddleTableClsModel
-from ...model.table.rec.slanet_plus.main import PaddleTableModel
-from ...model.table.rec.unet_table.main import UnetTableModel
-from ...utils.config_reader import get_device
-from ...utils.enum_class import ModelPath
-from ...utils.models_download_utils import auto_download_and_get_model_root_path
-from ...utils.ocr_language import normalize_ocr_model_lang
-from .model_list import AtomicModel
+from ..model.layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
+from ..model.mfr.pp_formulanet_plus_m.predict_formula import FormulaRecognizer
+from ..model.mfr.unimernet.Unimernet import UnimernetModel
+from ..model.ocr.pytorch_paddle import PytorchPaddleOCR
+from ..model.table.cls.mineru_table_ori_cls import MineruTableOrientationClsModel
+from ..model.table.cls.paddle_table_cls import PaddleTableClsModel
+from ..model.table.rec.slanet_plus.main import PaddleTableModel
+from ..model.table.rec.unet_table.main import UnetTableModel
+from ..utils.config_reader import get_device
+from ..utils.enum_class import ModelPath
+from ..utils.models_download_utils import auto_download_and_get_model_root_path
+from ..utils.ocr_language import normalize_ocr_model_lang
 
-PIPELINE_MODEL_INIT_LOCK = threading.RLock()
-# 这些锁保护 pipeline 与 hybrid 共享的 atom model/native 模型推理调用，避免多线程同时进入同一个模型对象。
-PIPELINE_LAYOUT_INFERENCE_LOCK = threading.RLock()
-PIPELINE_MFR_INFERENCE_LOCK = threading.RLock()
-PIPELINE_OCR_INFERENCE_LOCK = threading.RLock()
-# 临时关闭 pipeline/hybrid 共享推理阶段锁；需要回滚实验时可通过环境变量重新打开。
-PIPELINE_INFERENCE_LOCKS_ENABLED = os.getenv("MINERU_ENABLE_PIPELINE_INFERENCE_LOCKS", "False").lower() in ["true", "1", "yes"]
+
+class AtomicModel:
+    """本地原子模型名称集合，供 Hybrid medium 和共享模型单例统一索引。"""
+
+    Layout = "layout"
+    MFD = "mfd"
+    MFR = "mfr"
+    OCR = "ocr"
+    WirelessTable = "wireless_table"
+    WiredTable = "wired_table"
+    TableCls = "table_cls"
+    TableOrientationCls = "table_ori_cls"
+
+LOCAL_MODEL_INIT_LOCK = threading.RLock()
+# 这些锁保护 Hybrid medium/high/extra_high 共享的 atom model/native 模型推理调用，避免多线程同时进入同一个模型对象。
+LOCAL_MODEL_LAYOUT_INFERENCE_LOCK = threading.RLock()
+LOCAL_MODEL_MFR_INFERENCE_LOCK = threading.RLock()
+LOCAL_MODEL_OCR_INFERENCE_LOCK = threading.RLock()
+
+
+def _read_bool_env(primary_name: str, fallback_name: str | None = None, default: bool = False) -> bool:
+    """读取布尔环境变量；新变量未配置时回退到旧变量，保持已有部署兼容。"""
+    raw_value = os.getenv(primary_name)
+    if raw_value is None and fallback_name is not None:
+        raw_value = os.getenv(fallback_name)
+    if raw_value is None:
+        return default
+    return raw_value.lower() in ["true", "1", "yes"]
+
+
+# 临时关闭共享推理阶段锁；旧 PIPELINE 变量仅作兼容回退，新的 Hybrid 本地变量优先生效。
+LOCAL_MODEL_INFERENCE_LOCKS_ENABLED = _read_bool_env(
+    "MINERU_ENABLE_LOCAL_MODEL_INFERENCE_LOCKS",
+    fallback_name="MINERU_ENABLE_PIPELINE_INFERENCE_LOCKS",
+    default=False,
+)
 
 
 def _run_with_inference_lock(
     inference_lock: threading.RLock, inference_callable: Callable[..., Any], *args: Any, **kwargs: Any
 ) -> object:
     """按实验开关决定是否在指定推理锁内执行真实 native 模型调用。"""
-    if not PIPELINE_INFERENCE_LOCKS_ENABLED:
+    if not LOCAL_MODEL_INFERENCE_LOCKS_ENABLED:
         return inference_callable(*args, **kwargs)
 
     with inference_lock:
@@ -45,17 +75,17 @@ def _run_with_inference_lock(
 
 def run_layout_inference(inference_callable: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """按实验开关执行共享 Layout 模型调用。"""
-    return _run_with_inference_lock(PIPELINE_LAYOUT_INFERENCE_LOCK, inference_callable, *args, **kwargs)
+    return _run_with_inference_lock(LOCAL_MODEL_LAYOUT_INFERENCE_LOCK, inference_callable, *args, **kwargs)
 
 
 def run_mfr_inference(inference_callable: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """按实验开关执行共享 MFR 模型调用。"""
-    return _run_with_inference_lock(PIPELINE_MFR_INFERENCE_LOCK, inference_callable, *args, **kwargs)
+    return _run_with_inference_lock(LOCAL_MODEL_MFR_INFERENCE_LOCK, inference_callable, *args, **kwargs)
 
 
 def run_ocr_inference(inference_callable: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """按实验开关执行共享 OCR native 模型调用。"""
-    return _run_with_inference_lock(PIPELINE_OCR_INFERENCE_LOCK, inference_callable, *args, **kwargs)
+    return _run_with_inference_lock(LOCAL_MODEL_OCR_INFERENCE_LOCK, inference_callable, *args, **kwargs)
 
 
 MFR_MODEL = os.getenv("MINERU_FORMULA_CH_SUPPORT", "False")
@@ -66,6 +96,16 @@ elif MFR_MODEL.lower() in ["false", "0", "no"]:
 else:
     logger.warning(f"Invalid MINERU_FORMULA_CH_SUPPORT value: {MFR_MODEL}, set to default 'False'")
     MFR_MODEL = "unimernet_small"
+
+
+def _resolve_mfr_model_path() -> str:
+    """解析当前公式识别模型路径，集中维护 MFR_MODEL 到模型目录枚举的映射关系。"""
+    if MFR_MODEL == "unimernet_small":
+        return ModelPath.unimernet_small
+    if MFR_MODEL == "pp_formulanet_plus_m":
+        return ModelPath.pp_formulanet_plus_m
+    logger.error("MFR model name not allow")
+    exit(1)
 
 
 def table_orientation_cls_model_init() -> MineruTableOrientationClsModel:
@@ -139,7 +179,7 @@ def ocr_model_init(
 class AtomModelSingleton:
     _instance: AtomModelSingleton | None = None
     _models: dict[object, object] = {}
-    _lock: threading.RLock = PIPELINE_MODEL_INIT_LOCK
+    _lock: threading.RLock = LOCAL_MODEL_INIT_LOCK
 
     def __new__(cls, *args: Any, **kwargs: Any) -> AtomModelSingleton:
         with cls._lock:
@@ -211,70 +251,12 @@ def atom_model_init(model_name: str, **kwargs: Any) -> Any:
         return atom_model
 
 
-class MineruPipelineModel:
-    def __init__(self, **kwargs: Any) -> None:
-        self.formula_config: dict[str, Any] = kwargs.get("formula_config", {})
-        self.apply_formula: bool = self.formula_config.get("enable", True)
-        self.table_config: dict[str, Any] = kwargs.get("table_config", {})
-        self.apply_table: bool = self.table_config.get("enable", True)
-        self.lang: str | None = kwargs.get("lang", None)
-        self.device: str = kwargs.get("device", "cpu")
-        logger.info("DocAnalysis init, this may take some times......")
-        atom_model_manager = AtomModelSingleton()
-
-        if self.apply_formula:
-            # 初始化公式解析模型
-            if MFR_MODEL == "unimernet_small":
-                mfr_model_path: str = ModelPath.unimernet_small
-            elif MFR_MODEL == "pp_formulanet_plus_m":
-                mfr_model_path: str = ModelPath.pp_formulanet_plus_m
-            else:
-                logger.error("MFR model name not allow")
-                exit(1)
-
-            self.mfr_model = atom_model_manager.get_atom_model(
-                atom_model_name=AtomicModel.MFR,
-                mfr_weight_dir=str(os.path.join(auto_download_and_get_model_root_path(mfr_model_path), mfr_model_path)),
-                device=self.device,
-            )
-
-        # 初始化layout模型
-        self.layout_model = atom_model_manager.get_atom_model(
-            atom_model_name=AtomicModel.Layout,
-            pp_doclayout_v2_weights=str(
-                os.path.join(auto_download_and_get_model_root_path(ModelPath.pp_doclayout_v2), ModelPath.pp_doclayout_v2)
-            ),
-            device=self.device,
-        )
-        # 初始化ocr
-        self.ocr_model = atom_model_manager.get_atom_model(atom_model_name=AtomicModel.OCR, lang=self.lang)
-        # init table model
-        if self.apply_table:
-            self.wired_table_model = atom_model_manager.get_atom_model(
-                atom_model_name=AtomicModel.WiredTable,
-                lang=self.lang,
-            )
-            self.wireless_table_model = atom_model_manager.get_atom_model(
-                atom_model_name=AtomicModel.WirelessTable,
-                lang=self.lang,
-            )
-            self.table_cls_model = atom_model_manager.get_atom_model(
-                atom_model_name=AtomicModel.TableCls,
-            )
-            self.img_orientation_cls_model = atom_model_manager.get_atom_model(
-                atom_model_name=AtomicModel.TableOrientationCls,
-                lang=self.lang,
-            )
-
-        logger.info("DocAnalysis init done!")
-
-
-class HybridModelSingleton:
-    _instance: HybridModelSingleton | None = None
+class HybridLocalModelContextSingleton:
+    _instance: HybridLocalModelContextSingleton | None = None
     _models: dict[object, object] = {}
-    _lock: threading.RLock = PIPELINE_MODEL_INIT_LOCK
+    _lock: threading.RLock = LOCAL_MODEL_INIT_LOCK
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> HybridModelSingleton:
+    def __new__(cls, *args: Any, **kwargs: Any) -> HybridLocalModelContextSingleton:
         with cls._lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
@@ -284,11 +266,11 @@ class HybridModelSingleton:
         self,
         lang: str | None = None,
         formula_enable: bool | None = None,
-    ) -> MineruHybridModel:
+    ) -> HybridLocalModelContext:
         key = (lang, formula_enable)
         with self._lock:
             if key not in self._models:
-                self._models[key] = MineruHybridModel(
+                self._models[key] = HybridLocalModelContext(
                     lang=lang,
                     formula_enable=formula_enable,
                 )
@@ -310,7 +292,7 @@ def ocr_det_batch_setting() -> bool:
     return enable_ocr_det_batch
 
 
-class MineruHybridModel:
+class HybridLocalModelContext:
     def __init__(
         self,
         device: str | None = None,
@@ -341,10 +323,35 @@ class MineruHybridModel:
         self.atom_model_manager = AtomModelSingleton()
 
         # 初始化OCR模型
-        self.ocr_model = self.atom_model_manager.get_atom_model(atom_model_name=AtomicModel.OCR, lang=self.lang)
+        self.ocr_model = self.get_ocr_model()
 
         # 初始化layout模型，用于提供行内公式检测框和Hybrid标题拆分
-        self.layout_model = self.atom_model_manager.get_atom_model(
+        self.layout_model = self.get_layout_model()
+
+        if formula_enable:
+            # 初始化公式解析模型
+            self.mfr_model = self.get_mfr_model()
+
+    def get_ocr_model(
+        self,
+        *,
+        lang: str | None = None,
+        det_db_box_thresh: float = 0.5,
+        det_db_unclip_ratio: float = 1.5,
+        enable_merge_det_boxes: bool = True,
+    ) -> PytorchPaddleOCR:
+        """获取 OCR 原子模型，默认使用当前 Hybrid 本地上下文语言并复用 singleton 缓存。"""
+        return self.atom_model_manager.get_atom_model(
+            atom_model_name=AtomicModel.OCR,
+            det_db_box_thresh=det_db_box_thresh,
+            lang=self.lang if lang is None else lang,
+            det_db_unclip_ratio=det_db_unclip_ratio,
+            enable_merge_det_boxes=enable_merge_det_boxes,
+        )
+
+    def get_layout_model(self) -> PPDocLayoutV2LayoutModel:
+        """获取 Layout 原子模型，供 Hybrid 本地 layout、标题拆分和公式框检测复用。"""
+        return self.atom_model_manager.get_atom_model(
             atom_model_name=AtomicModel.Layout,
             pp_doclayout_v2_weights=str(
                 os.path.join(
@@ -355,18 +362,11 @@ class MineruHybridModel:
             device=self.device,
         )
 
-        if formula_enable:
-            # 初始化公式解析模型
-            if MFR_MODEL == "unimernet_small":
-                mfr_model_path: str = ModelPath.unimernet_small
-            elif MFR_MODEL == "pp_formulanet_plus_m":
-                mfr_model_path: str = ModelPath.pp_formulanet_plus_m
-            else:
-                logger.error("MFR model name not allow")
-                exit(1)
-
-            self.mfr_model = self.atom_model_manager.get_atom_model(
-                atom_model_name=AtomicModel.MFR,
-                mfr_weight_dir=str(os.path.join(auto_download_and_get_model_root_path(mfr_model_path), mfr_model_path)),
-                device=self.device,
-            )
+    def get_mfr_model(self) -> UnimernetModel | FormulaRecognizer:
+        """获取公式识别原子模型，统一复用当前公式模型配置和设备。"""
+        mfr_model_path = _resolve_mfr_model_path()
+        return self.atom_model_manager.get_atom_model(
+            atom_model_name=AtomicModel.MFR,
+            mfr_weight_dir=str(os.path.join(auto_download_and_get_model_root_path(mfr_model_path), mfr_model_path)),
+            device=self.device,
+        )

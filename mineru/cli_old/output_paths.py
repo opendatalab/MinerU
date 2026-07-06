@@ -22,8 +22,6 @@ def build_parse_dir(
         pass
     if is_office:
         return output_root / pdf_name / OFFICE_PARSE_DIR_NAME
-    if backend.startswith("pipeline"):
-        return output_root / pdf_name / parse_method
     if backend.startswith("hybrid"):
         return output_root / pdf_name / f"hybrid_{parse_method}"
     raise ValueError(f"Unknown backend type: {backend}")

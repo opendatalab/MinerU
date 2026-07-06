@@ -23,6 +23,8 @@ import click
 import httpx
 from loguru import logger
 
+from mineru.utils.backend_options import DEFAULT_HYBRID_EFFORT
+
 from mineru.cli_old.api_protocol import (
     API_PROTOCOL_VERSION,
     DEFAULT_MAX_CONCURRENT_REQUESTS,
@@ -793,7 +795,7 @@ def build_parse_request_form_data(
     end_page_id: Optional[int],
     *,
     image_analysis: bool = True,
-    effort: str = "medium",
+    effort: str = DEFAULT_HYBRID_EFFORT,
     return_md: bool,
     return_middle_json: bool,
     return_model_output: bool,

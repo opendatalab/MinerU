@@ -19,7 +19,7 @@
 - 错误格式兼容 OpenAI API。
 - `message` 面向人类，`code`、`param`、`retryable` 和 `user_action` 面向程序。
 - 不显式 `--remote` 时，不用错误恢复逻辑静默上传文档。
-- 默认选择策略永远不能降级为 `flash`；找不到 `standard/pro` 时必须报错。
+- 默认选择策略永远不能降级为 `flash`；找不到 `medium/high` 时必须报错。
 - 未来新增 `code` 只能追加，不改变既有语义。
 
 ## 3. 错误响应格式
@@ -31,7 +31,7 @@
   "error": {
     "type": "engine_error",
     "code": "quality_tier_unavailable",
-    "message": "Default tier selection requires standard or pro, but only flash is available. Start a parse-server, use --remote, or explicitly pass --tier flash.",
+    "message": "Default tier selection requires medium or high, but only flash is available. Start a parse-server, use --remote, or explicitly pass --tier flash.",
     "param": "tier",
     "retryable": false,
     "user_action": "start_parse_server_or_use_remote_or_explicit_flash",
@@ -66,11 +66,11 @@
 
 ## 5. Tier 与引擎错误
 
-Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`standard`、`pro` 和默认选择策略相关错误。
+Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`medium`、`high` 和默认选择策略相关错误。
 
 | type | code | HTTP | retryable | param | 触发场景 | user_action |
 |------|------|------|:--:|-------|----------|-------------|
-| `engine_error` | `quality_tier_unavailable` | 503 | 否 | `tier` | 主动阅读场景需要 `standard/pro`，但只有 `flash` 可用 | `start_parse_server_or_use_remote_or_explicit_flash` |
+| `engine_error` | `quality_tier_unavailable` | 503 | 否 | `tier` | 主动阅读场景需要 `medium/high`，但只有 `flash` 可用 | `start_parse_server_or_use_remote_or_explicit_flash` |
 | `engine_error` | `no_engine` | 503 | 否 | `tier` | 本地无匹配实体 tier 的引擎 | `enable_parse_server_or_change_tier` |
 | `engine_error` | `engine_unavailable` | 503 | 是 | null | 引擎进程未启动、崩溃或暂不可用 | `wait_or_restart_parse_server` |
 | `engine_error` | `parse_server_unavailable` | 503 | 是 | null | local 或 remote parse-server 不可达 | `wait_or_check_parse_server` |
@@ -83,7 +83,7 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`standard`、`pr
 关键约束：
 
 - `quality_tier_unavailable` 不能自动 fallback 到 `flash`。
-- `tier_mismatch` 不自动降级。例如用户请求 `pro`，server 只支持 `standard`，必须报错。
+- `tier_mismatch` 不自动降级。例如用户请求 `high`，server 只支持 `medium`，必须报错。
 - `parse_failed` 不做 remote/local fallback；文件级解析失败应直接暴露。
 - `engine_unavailable` 和 `parse_server_unavailable` 可重试，但重试不得改变 `privacy`。
 
@@ -167,7 +167,7 @@ CLI 在 TTY 中可以用表格或 rich 文本展示，但非 TTY、`--json` 或 
   "error": {
     "type": "engine_error",
     "code": "quality_tier_unavailable",
-    "message": "Default tier selection requires standard or pro, but only flash is available. Start a local parse-server, use --remote, or explicitly pass --tier flash.",
+    "message": "Default tier selection requires medium or high, but only flash is available. Start a local parse-server, use --remote, or explicitly pass --tier flash.",
     "param": "tier",
     "retryable": false,
     "user_action": "start_parse_server_or_use_remote_or_explicit_flash",

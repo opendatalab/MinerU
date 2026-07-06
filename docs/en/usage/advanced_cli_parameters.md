@@ -17,7 +17,7 @@
 >   ```bash
 >   CUDA_VISIBLE_DEVICES=1 mineru -p <input_path> -o <output_path>
 >   ```
-> - This method works for all command-line invocations, including `mineru`, `mineru-openai-server`, `mineru-gradio`, `mineru-api`, and `mineru-router`, and it applies to both the `pipeline` and `vlm` backends.
+> - This method works for all command-line invocations, including `mineru`, `mineru-openai-server`, `mineru-gradio`, `mineru-api`, and `mineru-router`, and it applies to local Hybrid execution.
 
 ### Common Device Configuration Examples
 > [!TIP]

@@ -6,7 +6,7 @@ from typing import Literal
 
 from ...parser import MinerUApiParser
 from ...parser import parse as local_parse
-from ...utils.backend_options import resolve_backend_and_effort
+from ...utils.backend_options import DEFAULT_HYBRID_EFFORT, resolve_backend_and_effort
 from ...utils.ocr_language import validate_public_ocr_lang
 from ..common import (
     build_remote_api_url,
@@ -27,14 +27,14 @@ def parse_cmd(
     pages: str | None = None,
     format: Literal["markdown", "middle_json", "zip"] = "markdown",
     verbose: bool = False,
-    tier: Literal["flash", "standard", "pro"] | None = None,
+    tier: Literal["flash", "medium", "high", "extra_high"] | None = None,
     backend: str | None = None,
     remote: bool = False,
     remote_url: str | None = None,
     api_key: str | None = None,
     language: str = "ch",
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
-    effort: Literal["medium", "high"] = "medium",
+    effort: Literal["medium", "high", "extra_high"] = DEFAULT_HYBRID_EFFORT,
     disable_table: bool = False,
     disable_formula: bool = False,
     disable_image_analysis: bool = False,
@@ -76,6 +76,8 @@ def parse_cmd(
         except ValueError as exc:
             exit_with_message("invalid_request", str(exc), "backend")
         resolved_tier, resolved_backend = effective_local_tier_and_backend(tier, normalized_backend)
+        if resolved_tier in {"medium", "high", "extra_high"}:
+            normalized_effort = resolved_tier
         parse_one = partial(
             local_parse,
             tier=resolved_tier,

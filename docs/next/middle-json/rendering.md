@@ -124,7 +124,7 @@ P2:
 为了 Agent 引用，Markdown 可以支持可选 locator marker:
 
 ```markdown
-<!-- mineru:locator doc:ab12cd3/tier:standard/page:3/block:12 -->
+<!-- mineru:locator doc:ab12cd3/tier:medium/page:3/block:12 -->
 正文内容
 ```
 
