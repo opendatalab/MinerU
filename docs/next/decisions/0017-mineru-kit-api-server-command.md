@@ -86,8 +86,6 @@ backend 不是普通 API 协议层字段。
 - `--language`
 - `--ocr-mode`
 - `--effort`
-- `--disable-table`
-- `--disable-formula`
 - `--disable-image-analysis`
 - `--concurrency`
 - `--upload-dir`

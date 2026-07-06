@@ -24,7 +24,7 @@ from ...utils.backend_options import (
     MAX_HYBRID_EFFORT,
     validate_effort,
 )
-from ...utils.config_reader import get_device, get_processing_window_size, get_table_enable
+from ...utils.config_reader import get_device, get_processing_window_size
 from ...utils.enum_class import ImageType
 from ...utils.image_payload import ImagePayloadCache
 from ...utils.model_utils import clean_memory, clean_vram, crop_img, get_vram
@@ -150,6 +150,12 @@ def _load_vlm_runtime() -> dict[str, Any]:
         "aio_predictor_execution_guard": aio_predictor_execution_guard,
         "predictor_execution_guard": predictor_execution_guard,
     }
+
+
+def _discard_legacy_formula_table_kwargs(kwargs: dict[str, object]) -> None:
+    """丢弃旧公式/表格开关，避免兼容参数继续影响 Hybrid analyzer 行为。"""
+    for key in ("inline_formula_enable", "formula_enable", "table_enable"):
+        kwargs.pop(key, None)
 
 
 def _is_hybrid_ocr_det_candidate(block: dict[str, Any]) -> bool:
@@ -641,11 +647,6 @@ def _build_high_layout_blocks(
     return blocks_list
 
 
-def _is_medium_table_enabled() -> bool:
-    """读取 Hybrid medium 的表格开关，复用 Hybrid 当前通过环境变量传入的表格配置。"""
-    return get_table_enable(os.getenv("MINERU_VLM_TABLE_ENABLE", "True").lower() == "true")
-
-
 def _normalize_medium_content(value: Any) -> str:
     """将 medium 本地模型输出的文本字段规范成 Hybrid block 可消费的字符串。"""
     if isinstance(value, list):
@@ -724,15 +725,9 @@ def _run_medium_formula_recognition(
     local_context: HybridLocalModelContext,
     images_layout_res: list[list[dict[str, Any]]],
     np_images: list[np.ndarray],
-    formula_enable: bool,
     batch_ratio: int,
 ) -> list[list[dict[str, Any]]]:
     """执行 Hybrid medium 的本地公式识别，并返回供 OCR det 遮罩使用的公式框。"""
-    if not formula_enable:
-        for layout_res in images_layout_res:
-            layout_res[:] = [item for item in layout_res if item.get("label") != "inline_formula"]
-        return [[] for _ in images_layout_res]
-
     images_mfd_res = []
     for layout_res in images_layout_res:
         page_formula_res = []
@@ -965,9 +960,6 @@ def _apply_medium_table_recognition(
     batch_ratio: int,
 ) -> None:
     """执行 Hybrid medium 的本地表格识别，结果写回 layout table 项的 html 字段。"""
-    if not _is_medium_table_enabled():
-        return
-
     table_items = _collect_medium_table_items(images_layout_res, np_images, lang_list)
     if not table_items:
         return
@@ -1033,7 +1025,6 @@ def _prune_medium_empty_ocr_text_blocks(images_layout_res: list[list[dict[str, A
 def _extract_with_local_layout(
     images_pil_list: list[Image.Image],
     language: str | None,
-    inline_formula_enable: bool,
     _ocr_enable: bool,
     batch_ratio: int,
 ) -> tuple[list[list[dict[str, Any]]], HybridLocalModelContext]:
@@ -1042,7 +1033,7 @@ def _extract_with_local_layout(
     local_context = local_context_singleton.get_model(
         lang=language,
         # medium 本地路径会直接执行公式识别；OCR 扫描件也需要加载 MFR。
-        formula_enable=inline_formula_enable,
+        formula_enable=True,
     )
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
     images_layout_res = run_layout_inference(
@@ -1055,7 +1046,6 @@ def _extract_with_local_layout(
         local_context,
         images_layout_res,
         np_images,
-        inline_formula_enable,
         batch_ratio,
     )
     clean_vram(local_context.device, vram_threshold=8)
@@ -1191,7 +1181,6 @@ def _process_ocr_and_formulas(
     images_pil_list: list[Image.Image],
     model_list: list[list[dict[str, Any]]],
     language: str | None,
-    inline_formula_enable: bool,
     _ocr_enable: bool,
     batch_ratio: int = 1,
     *,
@@ -1202,7 +1191,6 @@ def _process_ocr_and_formulas(
 
     # 遍历model_list,对文本块截图交由OCR识别
     # 根据_ocr_enable决定ocr只开det还是det+rec
-    # 根据inline_formula_enable决定是使用mfd和ocr结合的方式,还是纯ocr方式
 
     # 将PIL图片转换为numpy数组
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
@@ -1212,26 +1200,23 @@ def _process_ocr_and_formulas(
         local_context_singleton = HybridLocalModelContextSingleton()
         local_context = local_context_singleton.get_model(
             lang=language,
-            formula_enable=inline_formula_enable,
+            formula_enable=True,
         )
 
     if images_layout_res is None:
         # 没有外部复用的 layout 时，按旧逻辑为公式和标题拆分补跑一次本地 layout。
-        layout_images = _mask_image_regions(np_images, model_list) if inline_formula_enable else np_images
+        layout_images = _mask_image_regions(np_images, model_list)
         images_layout_res = _predict_layout_for_title_split(local_context, layout_images, batch_ratio)
 
-    if inline_formula_enable:
-        images_mfd_res = _build_inline_formula_inputs(images_layout_res)
-        # 公式识别
-        inline_formula_list = run_mfr_inference(
-            local_context.mfr_model.batch_predict,
-            images_mfd_res,
-            np_images,
-            batch_size=batch_ratio * MFR_BASE_BATCH_SIZE,
-            interline_enable=True,
-        )
-    else:
-        inline_formula_list = [[] for _ in range(len(images_pil_list))]
+    images_mfd_res = _build_inline_formula_inputs(images_layout_res)
+    # 公式识别
+    inline_formula_list = run_mfr_inference(
+        local_context.mfr_model.batch_predict,
+        images_mfd_res,
+        np_images,
+        batch_size=batch_ratio * MFR_BASE_BATCH_SIZE,
+        interline_enable=True,
+    )
 
     mfd_res = []
     for page_inline_formula_list in inline_formula_list:
@@ -1276,7 +1261,6 @@ def _extract_high_with_local_layout(
     predictor: Any,
     images_pil_list: list[Image.Image],
     language: str | None,
-    inline_formula_enable: bool,
     _ocr_enable: bool,
     batch_ratio: int,
 ) -> tuple[list[list[dict[str, Any]]], HybridLocalModelContext]:
@@ -1285,7 +1269,7 @@ def _extract_high_with_local_layout(
     local_context = local_context_singleton.get_model(
         lang=language,
         # VLM 文本路径只需要本地 layout 与 OCR det，不需要加载 MFR。
-        formula_enable=inline_formula_enable and not _ocr_enable,
+        formula_enable=not _ocr_enable,
     )
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
     images_layout_res = _predict_layout_for_title_split(local_context, np_images, batch_ratio)
@@ -1310,7 +1294,6 @@ def _extract_high_with_local_layout(
             images_pil_list,
             window_model_list,
             language,
-            inline_formula_enable,
             False,
             batch_ratio=batch_ratio,
             local_context=local_context,
@@ -1323,7 +1306,6 @@ async def _aio_extract_high_with_local_layout(
     predictor: Any,
     images_pil_list: list[Image.Image],
     language: str | None,
-    inline_formula_enable: bool,
     _ocr_enable: bool,
     batch_ratio: int,
 ) -> tuple[list[list[dict[str, Any]]], HybridLocalModelContext]:
@@ -1331,7 +1313,7 @@ async def _aio_extract_high_with_local_layout(
     local_context_singleton = HybridLocalModelContextSingleton()
     local_context = local_context_singleton.get_model(
         lang=language,
-        formula_enable=inline_formula_enable,
+        formula_enable=not _ocr_enable,
     )
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
     images_layout_res = await asyncio.to_thread(
@@ -1363,7 +1345,6 @@ async def _aio_extract_high_with_local_layout(
             images_pil_list,
             window_model_list,
             language,
-            inline_formula_enable,
             False,
             batch_ratio,
             local_context=local_context,
@@ -1562,7 +1543,6 @@ def doc_analyze(
     ] = "transformers",
     parse_method: str = "auto",
     language: str = "ch",
-    inline_formula_enable: bool = True,
     model_path: str | None = None,
     server_url: str | None = None,
     effort: Literal["medium", "high", "extra_high"] = DEFAULT_HYBRID_EFFORT,
@@ -1572,6 +1552,7 @@ def doc_analyze(
     **kwargs: object,
 ) -> tuple[list[PageInfo], list[list[dict[str, Any]]], bool]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
+    _discard_legacy_formula_table_kwargs(kwargs)
     effort = validate_effort(effort)
     image_analysis = image_analysis if effort == MAX_HYBRID_EFFORT else False
     if effort == LOCAL_HYBRID_EFFORT:
@@ -1618,7 +1599,6 @@ def doc_analyze(
                         window_model_list, local_context = _extract_with_local_layout(
                             images_pil_list,
                             language,
-                            inline_formula_enable,
                             _ocr_enable,
                             batch_ratio,
                         )
@@ -1628,7 +1608,6 @@ def doc_analyze(
                                 predictor,
                                 images_pil_list,
                                 language,
-                                inline_formula_enable,
                                 _ocr_enable,
                                 batch_ratio,
                             )
@@ -1656,7 +1635,6 @@ def doc_analyze(
                                 images_pil_list,
                                 window_model_list,
                                 language,
-                                inline_formula_enable,
                                 False,
                                 batch_ratio=batch_ratio,
                             )
@@ -1728,7 +1706,6 @@ async def aio_doc_analyze(
     ] = "transformers",
     parse_method: str = "auto",
     language: str = "ch",
-    inline_formula_enable: bool = True,
     model_path: str | None = None,
     server_url: str | None = None,
     effort: Literal["medium", "high", "extra_high"] = DEFAULT_HYBRID_EFFORT,
@@ -1738,6 +1715,7 @@ async def aio_doc_analyze(
     **kwargs: object,
 ) -> tuple[list[PageInfo], list[list[dict[str, Any]]], bool]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
+    _discard_legacy_formula_table_kwargs(kwargs)
     effort = validate_effort(effort)
     image_analysis = image_analysis if effort == MAX_HYBRID_EFFORT else False
     if effort == LOCAL_HYBRID_EFFORT:
@@ -1785,7 +1763,6 @@ async def aio_doc_analyze(
                             _extract_with_local_layout,
                             images_pil_list,
                             language,
-                            inline_formula_enable,
                             _ocr_enable,
                             batch_ratio,
                         )
@@ -1795,7 +1772,6 @@ async def aio_doc_analyze(
                                 predictor,
                                 images_pil_list,
                                 language,
-                                inline_formula_enable,
                                 _ocr_enable,
                                 batch_ratio,
                             )
@@ -1825,7 +1801,6 @@ async def aio_doc_analyze(
                                 images_pil_list,
                                 window_model_list,
                                 language,
-                                inline_formula_enable,
                                 False,
                                 batch_ratio=batch_ratio,
                             )

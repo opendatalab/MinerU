@@ -4,6 +4,7 @@ import inspect
 import io
 import json
 import logging
+import os
 import subprocess
 import sys
 import types
@@ -39,6 +40,16 @@ from mineru.types import Block, Line, PageInfo, Span
 from mineru.utils.image_payload import ImagePayloadCache
 
 runner = CliRunner()
+
+_REMOVED_DISABLE_TABLE_PARAM = "disable" + "_table"
+_REMOVED_DISABLE_FORMULA_PARAM = "disable" + "_formula"
+_REMOVED_TABLE_ENABLE_PARAM = "table" + "_enable"
+_REMOVED_FORMULA_ENABLE_PARAM = "formula" + "_enable"
+_REMOVED_INLINE_FORMULA_PARAM = "inline_" + _REMOVED_FORMULA_ENABLE_PARAM
+_REMOVED_DISABLE_TABLE_OPTION = "--disable-" + "table"
+_REMOVED_DISABLE_FORMULA_OPTION = "--disable-" + "formula"
+_REMOVED_TABLE_ENABLE_ENV = "MINERU_" + "TABLE" + "_ENABLE"
+_REMOVED_FORMULA_ENABLE_ENV = "MINERU_" + "FORMULA" + "_ENABLE"
 
 
 def _stub_api_server_dependency_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -403,7 +414,7 @@ def test_api_client_constructor_does_not_expose_ocr_or_image_options() -> None:
 
 
 def test_parser_entrypoints_expose_api_server_style_options() -> None:
-    for entrypoint in (parse, parse_async):
+    for entrypoint in (parse, parse_async, _build_parser):
         parameters = inspect.signature(entrypoint).parameters
 
         assert "tier" in parameters
@@ -411,9 +422,19 @@ def test_parser_entrypoints_expose_api_server_style_options() -> None:
         assert "language" in parameters
         assert "ocr_mode" in parameters
         assert "effort" in parameters
-        assert "disable_table" in parameters
-        assert "disable_formula" in parameters
         assert "disable_image_analysis" in parameters
+        assert _REMOVED_DISABLE_TABLE_PARAM not in parameters
+        assert _REMOVED_DISABLE_FORMULA_PARAM not in parameters
+        assert _REMOVED_TABLE_ENABLE_PARAM not in parameters
+        assert _REMOVED_FORMULA_ENABLE_PARAM not in parameters
+
+
+def test_pdf_hybrid_parser_constructor_removes_formula_table_switches() -> None:
+    """校验 PDF parser 构造链不再公开无效的公式/表格开关。"""
+    parameters = inspect.signature(parser_pdf.PdfHybridParser).parameters
+
+    assert _REMOVED_FORMULA_ENABLE_PARAM not in parameters
+    assert _REMOVED_TABLE_ENABLE_PARAM not in parameters
 
 
 def test_api_client_omits_page_range_when_unspecified(tmp_path: Path) -> None:
@@ -564,8 +585,8 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     monkeypatch.setenv("MINERU_LANGUAGE", "en")
     monkeypatch.setenv("MINERU_OCR_MODE", "ocr")
     monkeypatch.setenv("MINERU_EFFORT", "high")
-    monkeypatch.setenv("MINERU_TABLE_ENABLE", "false")
-    monkeypatch.setenv("MINERU_FORMULA_ENABLE", "false")
+    monkeypatch.setenv(_REMOVED_TABLE_ENABLE_ENV, "false")
+    monkeypatch.setenv(_REMOVED_FORMULA_ENABLE_ENV, "false")
     monkeypatch.setenv("MINERU_IMAGE_ANALYSIS", "false")
 
     app = create_app(upload_dir=str(tmp_path))
@@ -578,9 +599,9 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     assert app.state.language == "ch"
     assert app.state.ocr_mode == "auto"
     assert app.state.effort == "high"
-    assert app.state.table_enable is True
-    assert app.state.formula_enable is True
     assert app.state.image_analysis is True
+    assert not hasattr(app.state, _REMOVED_TABLE_ENABLE_PARAM)
+    assert not hasattr(app.state, _REMOVED_FORMULA_ENABLE_PARAM)
 
 
 def test_api_server_cli_no_longer_exposes_reload() -> None:
@@ -693,8 +714,6 @@ def test_api_server_rendered_outputs_store_image_sidecars(
             server_backend="hybrid-engine",
             language="ch",
             ocr_mode="auto",
-            table_enable=True,
-            formula_enable=True,
             image_analysis=True,
             effort="medium",
         )
@@ -758,8 +777,6 @@ def test_api_server_middle_json_preserves_backend_for_client_rendering(
             server_backend="hybrid-engine",
             language="ch",
             ocr_mode="auto",
-            table_enable=True,
-            formula_enable=True,
             image_analysis=True,
             effort="medium",
         )
@@ -825,8 +842,6 @@ def test_api_server_sanitizes_surrogates_in_text_outputs(
             server_backend="hybrid-engine",
             language="ch",
             ocr_mode="auto",
-            table_enable=True,
-            formula_enable=True,
             image_analysis=True,
             effort="medium",
         )
@@ -880,8 +895,6 @@ def test_api_server_logs_traceback_when_job_file_fails(
                 server_backend="hybrid-engine",
                 language="ch",
                 ocr_mode="auto",
-                table_enable=True,
-                formula_enable=True,
                 image_analysis=True,
                 effort="medium",
             )
@@ -1251,14 +1264,23 @@ def test_pdf_hybrid_medium_parser_skips_vlm_backend_resolution(monkeypatch: pyte
         raise AssertionError("medium effort should not resolve VLM backend")
 
     monkeypatch.setattr(parser_pdf, "_resolve_hybrid_backend", fail_resolve_backend)
+    monkeypatch.setenv("MINERU_VLM_FORMULA_ENABLE", "sentinel-formula")
+    monkeypatch.setenv("MINERU_VLM_TABLE_ENABLE", "sentinel-table")
 
-    parser = parser_pdf.PdfHybridParser(backend="hybrid-engine", effort="medium", lang="en")
+    parser = parser_pdf.PdfHybridParser(
+        backend="hybrid-engine",
+        effort="medium",
+        lang="en",
+    )
     pages = parser._run_analysis(b"%PDF-1.7\n")
 
     assert pages[0]._backend == "hybrid"
     assert seen["backend"] == "hybrid-engine"
     assert seen["effort"] == "medium"
     assert seen["language"] == "en"
+    assert _REMOVED_INLINE_FORMULA_PARAM not in seen
+    assert os.environ["MINERU_VLM_FORMULA_ENABLE"] == "sentinel-formula"
+    assert os.environ["MINERU_VLM_TABLE_ENABLE"] == "sentinel-table"
 
 
 @pytest.mark.parametrize(
@@ -1368,17 +1390,15 @@ def test_api_server_stores_parser_runtime_options(tmp_path: Path, monkeypatch: p
         tier="medium",
         language="en",
         ocr_mode="ocr",
-        table_enable=False,
-        formula_enable=False,
         image_analysis=False,
     )
 
     assert app.state.language == "ch"
     assert app.state.ocr_mode == "ocr"
     assert app.state.effort == "medium"
-    assert app.state.table_enable is False
-    assert app.state.formula_enable is False
     assert app.state.image_analysis is False
+    assert not hasattr(app.state, _REMOVED_TABLE_ENABLE_PARAM)
+    assert not hasattr(app.state, _REMOVED_FORMULA_ENABLE_PARAM)
 
 
 def test_api_server_rejects_removed_ch_lite_language(tmp_path: Path) -> None:
@@ -1394,9 +1414,9 @@ def test_api_server_cli_exposes_parser_runtime_options() -> None:
     assert "--language" in option_names
     assert "--ocr-mode" in option_names
     assert "--effort" not in option_names
-    assert "--disable-table" in option_names
-    assert "--disable-formula" in option_names
     assert "--disable-image-analysis" in option_names
+    assert _REMOVED_DISABLE_TABLE_OPTION not in option_names
+    assert _REMOVED_DISABLE_FORMULA_OPTION not in option_names
     assert _API_SERVER_LANGUAGES == (
         "ch",
         "ch_server",

@@ -117,11 +117,9 @@ mineru-kit parse <input...> -o <output> [flags]
 - `--language`
 - `--ocr-mode`
 - `--effort`
-- `--disable-table`
-- `--disable-formula`
 - `--disable-image-analysis`
 
-不再以新设计暴露旧式命名，如 `--lang`、`--method`、`--table`、`--formula`、`--image-analysis`。
+不再以新设计暴露旧式命名，如 `--lang`、`--method`、`--image-analysis`。
 
 ### 7. 输出规则
 

@@ -35,8 +35,6 @@ def parse_cmd(
     language: str = "ch",
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
     effort: Literal["medium", "high", "extra_high"] = DEFAULT_HYBRID_EFFORT,
-    disable_table: bool = False,
-    disable_formula: bool = False,
     disable_image_analysis: bool = False,
 ) -> None:
     if not inputs:
@@ -85,8 +83,6 @@ def parse_cmd(
             language=normalized_language,
             ocr_mode=ocr_mode,
             effort=normalized_effort,
-            disable_table=disable_table,
-            disable_formula=disable_formula,
             disable_image_analysis=disable_image_analysis,
             page_range=pages or "",
         )

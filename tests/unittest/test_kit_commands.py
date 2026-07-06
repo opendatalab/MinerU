@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import inspect
 import json
+import os
 import zipfile
 from io import BytesIO
 from pathlib import Path
@@ -22,6 +24,12 @@ from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span
 from mineru.utils.image_payload import ImagePayloadCache
 
 runner = CliRunner()
+
+_REMOVED_DISABLE_TABLE_OPTION = "--disable-" + "table"
+_REMOVED_DISABLE_FORMULA_OPTION = "--disable-" + "formula"
+_REMOVED_TABLE_ENABLE_PARAM = "table" + "_enable"
+_REMOVED_FORMULA_ENABLE_PARAM = "formula" + "_enable"
+_REMOVED_INLINE_FORMULA_PARAM = "inline_" + _REMOVED_FORMULA_ENABLE_PARAM
 
 
 def _assert_unsafe_sidecar_error(output: str) -> None:
@@ -265,6 +273,61 @@ def test_api_server_rejects_backend_and_effort_options() -> None:
     assert "--backend" in backend_result.output
     assert effort_result.exit_code != 0
     assert "--effort" in effort_result.output
+
+
+def test_kit_commands_do_not_expose_formula_table_switches() -> None:
+    """校验 mineru-kit 公开命令不再暴露公式/表格识别开关。"""
+    parse_help = runner.invoke(app, ["parse", "--help"])
+    api_server_help = runner.invoke(app, ["api-server", "--help"])
+
+    assert parse_help.exit_code == 0
+    assert api_server_help.exit_code == 0
+    for output in (parse_help.output, api_server_help.output):
+        assert _REMOVED_DISABLE_TABLE_OPTION not in output
+        assert _REMOVED_DISABLE_FORMULA_OPTION not in output
+
+
+def test_cli_old_api_form_builders_remove_formula_table_fields() -> None:
+    """校验旧 API client 表单构造不再声明或发送公式/表格开关。"""
+    from mineru.cli_old import api_client as old_api_client
+    from mineru.cli_old import client as old_client
+
+    for target in (old_api_client.build_parse_request_form_data, old_client.build_request_form_data):
+        parameters = inspect.signature(target).parameters
+        assert _REMOVED_FORMULA_ENABLE_PARAM not in parameters
+        assert _REMOVED_TABLE_ENABLE_PARAM not in parameters
+
+    data = old_api_client.build_parse_request_form_data(
+        lang_list=["ch"],
+        backend="hybrid-engine",
+        parse_method="auto",
+        server_url=None,
+        start_page_id=0,
+        end_page_id=None,
+        image_analysis=True,
+        effort="medium",
+        return_md=True,
+        return_middle_json=True,
+        return_model_output=True,
+        return_content_list=True,
+        return_images=True,
+        response_format_zip=False,
+        return_original_file=False,
+    )
+
+    assert _REMOVED_FORMULA_ENABLE_PARAM not in data
+    assert _REMOVED_TABLE_ENABLE_PARAM not in data
+
+
+def test_cli_old_api_request_models_remove_formula_table_fields() -> None:
+    """校验旧 FastAPI 表单参数对象不再保存公式/表格开关。"""
+    from mineru.cli_old import api_request as old_api_request
+    from mineru.cli_old import fast_api as old_fast_api
+
+    for model in (old_api_request.ParseRequestOptions, old_fast_api.ParseRequestOptions, old_fast_api.AsyncParseTask):
+        annotations = getattr(model, "__annotations__", {})
+        assert _REMOVED_FORMULA_ENABLE_PARAM not in annotations
+        assert _REMOVED_TABLE_ENABLE_PARAM not in annotations
 
 
 def test_api_server_forwards_repeated_tiers(monkeypatch: Any) -> None:
@@ -811,8 +874,8 @@ def test_gradio_submit_inputs_are_v1_only() -> None:
     assert 'elem_classes=["mineru-client-options"]' not in gradio_text
     assert 'elem_classes=["mineru-advanced-popover"]' not in gradio_text
     assert "is_ocr = gr.Checkbox(" not in gradio_text
-    assert "formula_enable = gr.Checkbox(" not in gradio_text
-    assert "table_enable = gr.Checkbox(" not in gradio_text
+    assert _REMOVED_FORMULA_ENABLE_PARAM + " = gr.Checkbox(" not in gradio_text
+    assert _REMOVED_TABLE_ENABLE_PARAM + " = gr.Checkbox(" not in gradio_text
     assert "image_analysis = gr.Checkbox(" not in gradio_text
     assert "language = gr.Dropdown(" not in gradio_text
     assert "use_remote_server=use_remote_server" not in gradio_text
@@ -879,7 +942,7 @@ def test_cli_old_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: Any, t
     def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
         """记录 legacy VLM 输入最终进入 Hybrid extra_high 分支。"""
         seen["backend"] = args[3]
-        seen["hybrid_backend"] = args[6]
+        seen["hybrid_backend"] = args[5]
         seen["kwargs"] = kwargs
 
     monkeypatch.setattr(common, "_process_hybrid", _fake_process_hybrid)
@@ -917,10 +980,12 @@ def test_cli_old_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Path) ->
 
     def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
         """记录 Hybrid 分支收到的 kwargs，确认 effort 仍传给 hybrid analyzer。"""
-        seen["backend"] = args[6]
+        seen["backend"] = args[5]
         seen["kwargs"] = kwargs
 
     monkeypatch.setattr(common, "_process_hybrid", _fake_process_hybrid)
+    monkeypatch.setenv("MINERU_VLM_FORMULA_ENABLE", "sentinel-formula")
+    monkeypatch.setenv("MINERU_VLM_TABLE_ENABLE", "sentinel-table")
 
     common.do_parse(
         output_dir=str(tmp_path),
@@ -933,6 +998,8 @@ def test_cli_old_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Path) ->
 
     assert seen["backend"] == "vllm-engine"
     assert seen["kwargs"]["effort"] == "high"
+    assert os.environ["MINERU_VLM_FORMULA_ENABLE"] == "sentinel-formula"
+    assert os.environ["MINERU_VLM_TABLE_ENABLE"] == "sentinel-table"
 
 
 def test_cli_old_hybrid_medium_skips_vlm_engine_resolution(monkeypatch: Any, tmp_path: Path) -> None:
@@ -956,7 +1023,7 @@ def test_cli_old_hybrid_medium_skips_vlm_engine_resolution(monkeypatch: Any, tmp
 
     def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
         """记录 Hybrid medium 仍进入 Hybrid 处理分支。"""
-        seen["backend"] = args[6]
+        seen["backend"] = args[5]
         seen["langs"] = list(args[3])
         seen["pdf_count"] = len(args[2])
         seen["kwargs"] = kwargs
@@ -984,12 +1051,14 @@ def test_process_hybrid_medium_calls_analyzer_per_file(monkeypatch: Any, tmp_pat
 
     calls: list[bytes] = []
     languages: list[str] = []
+    analyzer_kwargs: list[dict[str, Any]] = []
     outputs: list[tuple[str, str, str]] = []
 
     def fake_doc_analyze(pdf_bytes: bytes, **kwargs: Any) -> tuple[list[PageInfo], list[object], bool]:
         """记录每个文件独立进入 Hybrid medium analyzer。"""
         calls.append(pdf_bytes)
         languages.append(kwargs["language"])
+        analyzer_kwargs.append(kwargs)
         return [PageInfo(page_idx=0, _backend="hybrid")], [], False
 
     monkeypatch.setattr(common, "_load_hybrid_analyze_entrypoint", lambda *_args, **_kwargs: fake_doc_analyze)
@@ -1013,7 +1082,6 @@ def test_process_hybrid_medium_calls_analyzer_per_file(monkeypatch: Any, tmp_pat
         pdf_bytes_list=[b"a", b"b"],
         h_lang_list=["en", "en"],
         parse_method="auto",
-        inline_formula_enable=True,
         backend="engine",
         f_draw_layout_bbox=False,
         f_draw_span_bbox=False,
@@ -1028,6 +1096,7 @@ def test_process_hybrid_medium_calls_analyzer_per_file(monkeypatch: Any, tmp_pat
 
     assert calls == [b"a", b"b"]
     assert languages == ["en", "en"]
+    assert all(_REMOVED_INLINE_FORMULA_PARAM not in kwargs for kwargs in analyzer_kwargs)
     assert [item[0] for item in outputs] == ["a.pdf", "b.pdf"]
 
 
@@ -1050,7 +1119,7 @@ def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: 
     async def _fake_async_process_hybrid(*args: Any, **kwargs: Any) -> None:
         """记录异步 legacy VLM 输入最终进入 Hybrid extra_high 分支。"""
         seen["backend"] = args[3]
-        seen["hybrid_backend"] = args[6]
+        seen["hybrid_backend"] = args[5]
         seen["kwargs"] = kwargs
 
     monkeypatch.setattr(common, "_async_process_hybrid", _fake_async_process_hybrid)
@@ -1090,10 +1159,12 @@ def test_cli_old_async_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Pa
 
     async def _fake_async_process_hybrid(*args: Any, **kwargs: Any) -> None:
         """记录异步 Hybrid 分支收到的 kwargs，确认 effort 仍传给 hybrid analyzer。"""
-        seen["backend"] = args[6]
+        seen["backend"] = args[5]
         seen["kwargs"] = kwargs
 
     monkeypatch.setattr(common, "_async_process_hybrid", _fake_async_process_hybrid)
+    monkeypatch.setenv("MINERU_VLM_FORMULA_ENABLE", "sentinel-formula")
+    monkeypatch.setenv("MINERU_VLM_TABLE_ENABLE", "sentinel-table")
 
     asyncio.run(
         common.aio_do_parse(
@@ -1108,6 +1179,8 @@ def test_cli_old_async_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Pa
 
     assert seen["backend"] == "vllm-async-engine"
     assert seen["kwargs"]["effort"] == "high"
+    assert os.environ["MINERU_VLM_FORMULA_ENABLE"] == "sentinel-formula"
+    assert os.environ["MINERU_VLM_TABLE_ENABLE"] == "sentinel-table"
 
 
 def test_parse_single_file_middle_json_writes_image_sidecars(

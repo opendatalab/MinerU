@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from ...types import Block, BlockType, PageInfo
-from ...utils.config_reader import get_table_enable
 from ...utils.hash_utils import bytes_md5
 from ...utils.image_payload import ImagePayloadCache
 from ...utils.pdf_document import PDFPage
@@ -174,9 +172,7 @@ def finalize_middle_json_from_preproc(pages: list[PageInfo], effort: str = DEFAU
         auto_merge_vertical_by_det=effort in {LOCAL_HYBRID_EFFORT, LAYOUT_HYBRID_EFFORT},
     )
 
-    table_enable = get_table_enable(os.getenv("MINERU_VLM_TABLE_ENABLE", "True").lower() == "true")
-    if table_enable:
-        cross_page_table_merge(pages)
+    cross_page_table_merge(pages)
 
     apply_title_leveling_to_pdf_info(pages)
     _normalize_split_title_blocks(pages)

@@ -42,8 +42,6 @@ def api_server_cmd(
     max_wait: int = 600,
     language: str = "ch",
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
-    disable_table: bool = False,
-    disable_formula: bool = False,
     disable_image_analysis: bool = False,
     api_key: str | None = None,
 ) -> None:
@@ -72,8 +70,6 @@ def api_server_cmd(
                 ocr_mode,
                 *tier_args,
                 *(["--upload-dir", upload_dir] if upload_dir else []),
-                *(["--disable-table"] if disable_table else []),
-                *(["--disable-formula"] if disable_formula else []),
                 *(["--disable-image-analysis"] if disable_image_analysis else []),
                 *(["--api-key", api_key] if api_key else []),
             ],

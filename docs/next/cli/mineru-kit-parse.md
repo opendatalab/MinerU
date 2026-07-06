@@ -142,10 +142,10 @@ remote 模式通过以下参数进入：
 | 分组 | 示例 |
 |------|------|
 | 文档参数 | pages、language、ocr-mode |
-| local 模式 | tier、backend、effort、disable-* |
+| local 模式 | tier、backend、effort、disable-image-analysis |
 | remote 模式 | remote、remote-url、api-key |
 | 输出控制 | format、output |
 
-local 模式的 `language`、`ocr-mode`、`effort`、`disable-table`、`disable-formula`、`disable-image-analysis` 与 `mineru-kit api-server` 保持一致。
+local 模式的 `language`、`ocr-mode`、`effort`、`disable-image-analysis` 与 `mineru-kit api-server` 保持一致。
 
 完整决策背景见 [ADR-0016](../decisions/0016-mineru-kit-parse-command.md)。

@@ -55,8 +55,6 @@ class PdfBaseParser(DocumentParser):
         method: str = "auto",
         lang: str = "ch",
         effort: str = DEFAULT_HYBRID_EFFORT,
-        formula_enable: bool = True,
-        table_enable: bool = True,
         image_analysis: bool = True,
         server_url: str | None = None,
     ):
@@ -64,8 +62,6 @@ class PdfBaseParser(DocumentParser):
         self.method = method
         self.lang = lang
         self.effort = validate_effort(effort)
-        self.formula_enable = formula_enable
-        self.table_enable = table_enable
         self.image_analysis = image_analysis
         self.server_url = server_url
 
@@ -260,16 +256,12 @@ class PdfHybridParser(PdfBaseParser):
             else _resolve_hybrid_backend(self.backend, is_async=False)
         )
         server_url = self.server_url if backend.endswith("client") else None
-        os.environ["MINERU_VLM_FORMULA_ENABLE"] = "true"
-        os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()
-
         middle_json, model_list, _vlm_ocr_enable = hybrid_doc_analyze(
             pdf_bytes,
             backend=backend,
             parse_method=self.method,
             language=self.lang,
             effort=self.effort,
-            inline_formula_enable=self.formula_enable,
             server_url=server_url,
             image_analysis=self.image_analysis,
             page_index_map=page_index_map,
@@ -290,16 +282,12 @@ class PdfHybridParser(PdfBaseParser):
             self.backend if self.effort == LOCAL_HYBRID_EFFORT else _resolve_hybrid_backend(self.backend, is_async=True)
         )
         server_url = self.server_url if backend.endswith("client") else None
-        os.environ["MINERU_VLM_FORMULA_ENABLE"] = "true"
-        os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()
-
         middle_json, model_list, _vlm_ocr_enable = await hybrid_aio_doc_analyze(
             pdf_bytes,
             backend=backend,
             parse_method=self.method,
             language=self.lang,
             effort=self.effort,
-            inline_formula_enable=self.formula_enable,
             server_url=server_url,
             image_analysis=self.image_analysis,
             page_index_map=page_index_map,

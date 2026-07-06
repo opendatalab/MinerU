@@ -20,8 +20,6 @@ Options:
   -u, --url TEXT                  OpenAI-compatible backend URL passed through to the server when using http-client
   -s, --start INTEGER             Starting page number for parsing (0-based)
   -e, --end INTEGER               Ending page number for parsing (0-based)
-  -f, --formula BOOLEAN           Enable formula parsing (default: enabled)
-  -t, --table BOOLEAN             Enable table parsing (default: enabled)
   --image-analysis BOOLEAN        Enable image/chart analysis for hybrid
                                   backend. Hybrid low and medium efforts
                                   automatically disable image/chart analysis
@@ -111,19 +109,11 @@ Here are the environment variables and their descriptions:
     * Used to specify configuration file path
     * defaults to `mineru.json` in user directory, can specify other configuration file paths through environment variables.
   
-- `MINERU_FORMULA_ENABLE`:
-    * Used to enable formula parsing
-    * defaults to `true`, can be set to `false` through environment variables to disable formula parsing.
-  
 - `MINERU_FORMULA_CH_SUPPORT`:
     * Used to enable Chinese formula parsing optimization (experimental feature)
     * Default is `false`, can be set to `true` via environment variable to enable Chinese formula parsing optimization.
     * Only effective for local Hybrid model execution.
   
-- `MINERU_TABLE_ENABLE`:
-    * Used to enable table parsing
-    * Default is `true`, can be set to `false` via environment variable to disable table parsing.
-
 - `MINERU_TABLE_MERGE_ENABLE`:
     * Used to enable table merging functionality
     * Default is `true`, can be set to `false` via environment variable to disable table merging functionality.

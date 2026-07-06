@@ -57,8 +57,6 @@ def parse(
     backend: str | None = None,
     language: str = "ch",
     ocr_mode: str | None = None,
-    disable_table: bool = False,
-    disable_formula: bool = False,
     disable_image_analysis: bool = False,
     server_url: str | None = None,
     page_range: str = "",
@@ -71,12 +69,12 @@ async def parse_async(...) -> ParseResult: ...
 
 - `tier` 是面向用户的质量档位。
 - `backend` 是高级参数；显式传入时覆盖 `tier`。
-- `language`、`ocr_mode`、`disable_table`、`disable_formula`、`disable_image_analysis` 与 `mineru-kit api-server` 启动参数保持一致。
+- `language`、`ocr_mode`、`disable_image_analysis` 与 `mineru-kit api-server` 启动参数保持一致。
 - `page_range` 使用与 CLI/API 一致的页码表达。
 - `server_url` 只用于需要委托 VLM/remote backend 的情况，不能触发隐式远端上传。
 - 返回值始终是 `ParseResult`。
 
-`method`、`lang`、`table_enable`、`formula_enable`、`image_analysis` 仅作为兼容参数保留；新增实现和文档应使用 `ocr_mode`、`language` 和 `disable_*`。
+`method`、`lang`、`image_analysis` 仅作为兼容参数保留；新增实现和文档应使用 `ocr_mode`、`language` 和 `disable_image_analysis`。
 
 `mineru-kit api-server` 内部应复用 `parse_async()`，避免在 server 层重复维护 parser dispatch 和 tier/backend 兼容规则。
 

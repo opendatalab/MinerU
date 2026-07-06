@@ -1261,8 +1261,6 @@ async def _run_job(
     server_backend: str,
     language: str,
     ocr_mode: str,
-    table_enable: bool,
-    formula_enable: bool,
     image_analysis: bool,
     effort: str = DEFAULT_HYBRID_EFFORT,
     url_timeout: int = 60,
@@ -1296,8 +1294,6 @@ async def _run_job(
                     language=language,
                     ocr_mode=ocr_mode,
                     effort=effort,
-                    disable_table=not table_enable,
-                    disable_formula=not formula_enable,
                     disable_image_analysis=not image_analysis,
                     page_range=page_range,
                 )
@@ -1769,8 +1765,6 @@ async def create_job(
     language_val: str = request.app.state.language
     ocr_mode_val: str = request.app.state.ocr_mode
     effort_val = runtime.effort
-    table_enable_val: bool = request.app.state.table_enable
-    formula_enable_val: bool = request.app.state.formula_enable
     image_analysis_val: bool = request.app.state.image_analysis
 
     if body.wait > 0:
@@ -1784,8 +1778,6 @@ async def create_job(
                     language=language_val,
                     ocr_mode=ocr_mode_val,
                     effort=effort_val,
-                    table_enable=table_enable_val,
-                    formula_enable=formula_enable_val,
                     image_analysis=image_analysis_val,
                     url_timeout=url_timeout_val,
                 )
@@ -1815,8 +1807,6 @@ async def create_job(
                 language=language_val,
                 ocr_mode=ocr_mode_val,
                 effort=effort_val,
-                table_enable=table_enable_val,
-                formula_enable=formula_enable_val,
                 image_analysis=image_analysis_val,
                 url_timeout=url_timeout_val,
             )
@@ -2077,8 +2067,6 @@ def create_app(
     api_key: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
-    table_enable: bool = True,
-    formula_enable: bool = True,
     image_analysis: bool = True,
 ) -> FastAPI:
     """Create a FastAPI application implementing the MinerU v1 REST API.
@@ -2103,10 +2091,6 @@ def create_app(
         Hybrid medium OCR language hint; accepted by other efforts for compatibility.
     ocr_mode:
         PDF OCR/text extraction mode for Hybrid backends.
-    table_enable:
-        Whether table recognition is enabled.
-    formula_enable:
-        Whether formula recognition is enabled.
     image_analysis:
         Whether image analysis is enabled for Hybrid backends.
     """
@@ -2144,8 +2128,6 @@ def create_app(
         application.state.language = language
         application.state.ocr_mode = ocr_mode
         application.state.effort = effort
-        application.state.table_enable = table_enable
-        application.state.formula_enable = formula_enable
         application.state.image_analysis = image_analysis
         yield
         if not upload_dir and _upload_dir.exists():
@@ -2175,8 +2157,6 @@ def create_app(
     application.state.language = language
     application.state.ocr_mode = ocr_mode
     application.state.effort = effort
-    application.state.table_enable = table_enable
-    application.state.formula_enable = formula_enable
     application.state.image_analysis = image_analysis
     FileStore(_upload_dir).install(application.state)
     JobStore(concurrency=concurrency).install(application.state)
@@ -2263,8 +2243,6 @@ def create_app(
     type=click.Choice(_OCR_MODES),
     help="PDF OCR/text extraction mode. Applies to hybrid-* backends.",
 )
-@click.option("--disable-table", is_flag=True, help="Disable table recognition.")
-@click.option("--disable-formula", is_flag=True, help="Disable formula recognition.")
 @click.option("--disable-image-analysis", is_flag=True, help="Disable image analysis for Hybrid backends.")
 @click.option(
     "--api-key",
@@ -2282,8 +2260,6 @@ def main(
     max_wait: int,
     language: str,
     ocr_mode: str,
-    disable_table: bool,
-    disable_formula: bool,
     disable_image_analysis: bool,
     api_key: str | None,
 ) -> None:
@@ -2298,8 +2274,6 @@ def main(
             api_key=api_key,
             language=language,
             ocr_mode=ocr_mode,
-            table_enable=not disable_table,
-            formula_enable=not disable_formula,
             image_analysis=not disable_image_analysis,
         )
     except ParseServerStartupError as exc:

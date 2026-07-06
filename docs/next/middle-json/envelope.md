@@ -88,8 +88,6 @@
 |------|------|------|
 | `ocr_enabled` | bool | 是否启用 OCR。 |
 | `vlm_ocr_enabled` | bool | Hybrid 中 VLM OCR 是否启用。 |
-| `formula_enabled` | bool | 是否启用公式识别。 |
-| `table_enabled` | bool | 是否启用表格识别。 |
 | `image_analysis` | bool | 是否启用图片分析。 |
 
 features 是开放字典。新增字段不破坏 schema。

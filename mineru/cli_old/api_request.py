@@ -39,8 +39,6 @@ class ParseRequestOptions:
     backend: str
     effort: str
     parse_method: str
-    formula_enable: bool
-    table_enable: bool
     image_analysis: bool
     server_url: Optional[str]
     return_md: bool
@@ -149,14 +147,6 @@ async def parse_request_form(
 """,
         ),
     ] = "auto",
-    formula_enable: Annotated[
-        bool,
-        Form(description="Enable formula parsing."),
-    ] = True,
-    table_enable: Annotated[
-        bool,
-        Form(description="Enable table parsing."),
-    ] = True,
     image_analysis: Annotated[
         bool,
         Form(
@@ -249,8 +239,6 @@ async def parse_request_form(
         backend=backend,
         effort=effort,
         parse_method=validate_parse_method(parse_method),
-        formula_enable=formula_enable,
-        table_enable=table_enable,
         image_analysis=image_analysis,
         server_url=server_url,
         return_md=return_md,

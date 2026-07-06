@@ -55,14 +55,10 @@ def _build_parser(
     language: str = "ch",
     ocr_mode: str = "auto",
     effort: str = DEFAULT_HYBRID_EFFORT,
-    disable_table: bool = False,
-    disable_formula: bool = False,
     disable_image_analysis: bool = False,
     server_url: str | None = None,
     method: str | None = None,
     lang: str | None = None,
-    table_enable: bool | None = None,
-    formula_enable: bool | None = None,
     image_analysis: bool | None = None,
 ) -> DocumentParser:
     path = Path(path)
@@ -70,8 +66,6 @@ def _build_parser(
     runtime = resolve_runtime_options(tier=tier, backend=backend, effort=effort)
     resolved_ocr_mode = method or ocr_mode
     resolved_language = lang or language
-    resolved_table_enable = (not disable_table) if table_enable is None else table_enable
-    resolved_formula_enable = (not disable_formula) if formula_enable is None else formula_enable
     resolved_image_analysis = (not disable_image_analysis) if image_analysis is None else image_analysis
 
     if suffix in _OFFICE_SUFFIXES:
@@ -92,8 +86,6 @@ def _build_parser(
             backend=runtime.backend,
             method=resolved_ocr_mode,
             lang=resolved_language,
-            formula_enable=resolved_formula_enable,
-            table_enable=resolved_table_enable,
             server_url=server_url,
             image_analysis=resolved_image_analysis,
             effort=runtime.effort,
@@ -112,15 +104,11 @@ def parse(
     language: str = "ch",
     ocr_mode: str = "auto",
     effort: str = DEFAULT_HYBRID_EFFORT,
-    disable_table: bool = False,
-    disable_formula: bool = False,
     disable_image_analysis: bool = False,
     server_url: str | None = None,
     page_range: str = "",
     method: str | None = None,
     lang: str | None = None,
-    table_enable: bool | None = None,
-    formula_enable: bool | None = None,
     image_analysis: bool | None = None,
 ) -> ParseResult:
     parser = _build_parser(
@@ -130,14 +118,10 @@ def parse(
         language=language,
         ocr_mode=ocr_mode,
         effort=effort,
-        disable_table=disable_table,
-        disable_formula=disable_formula,
         disable_image_analysis=disable_image_analysis,
         server_url=server_url,
         method=method,
         lang=lang,
-        table_enable=table_enable,
-        formula_enable=formula_enable,
         image_analysis=image_analysis,
     )
     return parser.parse(path, page_range=page_range)
@@ -151,15 +135,11 @@ async def parse_async(
     language: str = "ch",
     ocr_mode: str = "auto",
     effort: str = DEFAULT_HYBRID_EFFORT,
-    disable_table: bool = False,
-    disable_formula: bool = False,
     disable_image_analysis: bool = False,
     server_url: str | None = None,
     page_range: str = "",
     method: str | None = None,
     lang: str | None = None,
-    table_enable: bool | None = None,
-    formula_enable: bool | None = None,
     image_analysis: bool | None = None,
 ) -> ParseResult:
     parser = _build_parser(
@@ -169,14 +149,10 @@ async def parse_async(
         language=language,
         ocr_mode=ocr_mode,
         effort=effort,
-        disable_table=disable_table,
-        disable_formula=disable_formula,
         disable_image_analysis=disable_image_analysis,
         server_url=server_url,
         method=method,
         lang=lang,
-        table_enable=table_enable,
-        formula_enable=formula_enable,
         image_analysis=image_analysis,
     )
     return await parser.parse_async(path, page_range=page_range)
