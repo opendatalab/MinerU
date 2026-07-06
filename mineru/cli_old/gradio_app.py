@@ -52,13 +52,7 @@ from mineru.parser.api_client import MinerUApiParser
 from mineru.parser.base import ParseResult
 from mineru.parser.tier import ParserRuntimeOptions, runtime_options_for_tier
 from mineru.render import render_content_list, render_markdown, render_structured_content
-from mineru.utils.backend_options import (
-    CANONICAL_HYBRID_ENGINE,
-    LOCAL_HYBRID_EFFORT,
-    MAX_HYBRID_EFFORT,
-)
 from mineru.utils.image_payload import validate_image_sidecar_path
-from mineru.utils.ocr_language import PUBLIC_OCR_LANGUAGE_CHOICES, validate_public_ocr_lang
 from mineru.utils.pdf_document import PDFDocument
 from mineru.utils.pdf_page_id import parse_page_range
 from mineru.utils.pdfium_guard import safe_rewrite_pdf_bytes_with_pdfium_result
@@ -247,7 +241,6 @@ STATUS_QUEUED_LOCALLY_PREFIX = "Queued locally:"
 
 DEFAULT_GRADIO_TIER = "pro"
 GRADIO_TIER_CHOICES = ("standard", "pro")
-GRADIO_REMOTE_BACKEND = "hybrid-http-client"
 STATUS_STEP_DEFINITIONS = [
     ("status_step_prepare", STATUS_PREPARING_REQUEST),
     ("status_step_check", STATUS_CHECKING_SERVER),
@@ -593,10 +586,9 @@ def render_client_i18n_text(i18n, key, locale=None):
     )
 
 
-def resolve_gradio_runtime_options(tier: str | None, use_remote_server: bool = False) -> ParserRuntimeOptions:
-    """根据 Gradio 公开 tier 与远端开关派生内部 backend/effort，保持旧提交链路兼容。"""
-    backend = GRADIO_REMOTE_BACKEND if use_remote_server else CANONICAL_HYBRID_ENGINE
-    return runtime_options_for_tier(tier or DEFAULT_GRADIO_TIER, backend=backend)
+def resolve_gradio_runtime_options(tier: str | None) -> ParserRuntimeOptions:
+    """根据 Gradio 公开 tier 派生 v1 API 任务使用的运行配置。"""
+    return runtime_options_for_tier(tier or DEFAULT_GRADIO_TIER)
 
 
 def select_tier_info_key(tier_choice: object) -> str:
@@ -606,18 +598,6 @@ def select_tier_info_key(tier_choice: object) -> str:
     if tier_choice == "pro":
         return "tier_info_pro"
     return "tier_info_default"
-
-
-def select_force_ocr_info_key(tier_choice: object) -> str:
-    """根据 Gradio tier 选择强制 OCR 说明；当前公开 tier 均走 Hybrid 文案。"""
-    if tier_choice in GRADIO_TIER_CHOICES:
-        return "force_ocr_info_hybrid"
-    return "force_ocr_info"
-
-
-def frontend_managed_initial_visibility(is_visible: bool):
-    """转换前端托管显隐控件的初始状态；hidden 会保留 DOM 挂载避免状态丢失。"""
-    return True if is_visible else "hidden"
 
 
 def resolve_status_step_index(status_lines):
@@ -1229,52 +1209,6 @@ def prepare_markdown_for_gradio_preview(markdown_text, latex_delimiters):
     return escape_latex_blocks_for_gradio_preview(markdown_text, latex_delimiters)
 
 
-def normalize_language(language):
-    if '(' in language and ')' in language:
-        language = language.split('(')[0].strip()
-    return validate_public_ocr_lang(language)
-
-
-def resolve_parse_method(file_path, is_ocr, tier=DEFAULT_GRADIO_TIER):
-    """根据文件类型和 OCR 开关解析旧 multipart parse_method，tier 只保留签名语义。"""
-    file_suffix = Path(file_path).suffix.lower().lstrip('.')
-    if file_suffix in office_suffixes:
-        return "auto"
-    return "ocr" if is_ocr else "auto"
-
-
-def is_image_analysis_option_visible(tier: object) -> bool:
-    """判断 Gradio 图片分析开关是否应展示；当前公开 tier 不暴露 extra_high。"""
-    if tier not in GRADIO_TIER_CHOICES:
-        return False
-    try:
-        runtime = resolve_gradio_runtime_options(str(tier), use_remote_server=False)
-    except ValueError:
-        return False
-    return runtime.effort == MAX_HYBRID_EFFORT
-
-
-def is_ocr_language_option_visible(tier: object) -> bool:
-    """判断 OCR 语言选项是否展示；只有 standard 对应的 Hybrid medium 暴露语言输入。"""
-    if tier not in GRADIO_TIER_CHOICES:
-        return False
-    try:
-        runtime = resolve_gradio_runtime_options(str(tier), use_remote_server=False)
-    except ValueError:
-        return False
-    return runtime.effort == LOCAL_HYBRID_EFFORT
-
-
-def is_force_ocr_option_visible(tier: object) -> bool:
-    """判断强制 OCR 开关是否展示；公开 tier 均基于 Hybrid，保留强制 OCR。"""
-    return tier in GRADIO_TIER_CHOICES
-
-
-def should_use_client_side_output_generation(client_side_output_generation):
-    """判断当前 Gradio 任务是否需要在客户端生成最终输出。"""
-    return client_side_output_generation
-
-
 def create_gradio_run_paths(file_path, output_root="./output"):
     """生成 Gradio 单次任务目录，统一返回绝对路径以便文件预览组件访问。"""
     run_id = f"{time.strftime('%y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}_{safe_stem(Path(file_path).stem)}"
@@ -1299,39 +1233,6 @@ def build_gradio_allowed_paths(output_root="./output"):
     return allowed_paths
 
 
-async def resolve_server_health(http_client, api_url):
-    """兼容旧调用名：当前 Gradio 健康检查统一走 v1 /tiers 探测。"""
-    return await resolve_v1_server_health(http_client, api_url)
-
-
-async def ensure_local_api_ready_for_gradio_startup(
-    timeout_seconds: float = _api_client.LOCAL_API_STARTUP_TIMEOUT_SECONDS,
-):
-    """兼容旧调用名：等待本地 v1 API server 就绪。"""
-    local_server, started_now = _gradio_local_api_server.ensure_started()
-    if started_now:
-        logger.info(f"Started local MinerU v1 API at {local_server.base_url}")
-
-    async with httpx.AsyncClient(
-        timeout=_api_client.build_http_timeout(),
-        follow_redirects=True,
-    ) as http_client:
-        return await wait_for_v1_api_ready(
-            http_client,
-            local_server,
-            timeout_seconds=timeout_seconds,
-        )
-
-
-def maybe_prepare_local_api_for_gradio_startup(
-    *,
-    api_url: str | None,
-    enable_vlm_preload: bool,
-):
-    """保留旧函数入口；v1 server 已在构建 Dropdown 前完成探测。"""
-    return None
-
-
 def resolve_gradio_max_concurrent_requests(api_url, server_health):
     if api_url is None:
         return server_health.max_concurrent_requests
@@ -1347,23 +1248,12 @@ def resolve_gradio_max_concurrent_requests(api_url, server_health):
 async def _run_to_markdown_job(
     file_path,
     end_pages=10,
-    is_ocr=False,
-    formula_enable=True,
-    table_enable=True,
-    image_analysis=True,
     tier=DEFAULT_GRADIO_TIER,
-    language="ch",
-    use_remote_server=False,
-    url=None,
     api_url=None,
-    client_side_output_generation=False,
     status_callback: Callable[[str], None] | None = None,
 ):
     if file_path is None:
         return "", "", "", None, None
-
-    # v1 API 当前只公开 tier 和 page_range；旧 UI 参数保留用于前端兼容，不写入未公开 payload。
-    del is_ocr, formula_enable, table_enable, image_analysis, language, url, client_side_output_generation
 
     def emit_status(message: str) -> None:
         if status_callback is not None:
@@ -1371,7 +1261,7 @@ async def _run_to_markdown_job(
 
     file_path = str(file_path)
     file_suffix = Path(file_path).suffix.lower().lstrip('.')
-    runtime = resolve_gradio_runtime_options(tier, use_remote_server=use_remote_server)
+    runtime = resolve_gradio_runtime_options(tier)
     backend = runtime.backend
     effort = runtime.effort
     page_range = build_v1_gradio_page_range(end_pages)
@@ -1433,16 +1323,8 @@ async def _run_to_markdown_job(
 async def stream_to_markdown(
     file_path,
     end_pages=10,
-    is_ocr=False,
-    formula_enable=True,
-    table_enable=True,
-    image_analysis=True,
     tier=DEFAULT_GRADIO_TIER,
-    language="ch",
-    use_remote_server=False,
-    url=None,
     api_url=None,
-    client_side_output_generation=False,
 ):
     status_state = StatusPanelState()
     job_task: asyncio.Task | None = None
@@ -1464,16 +1346,8 @@ async def stream_to_markdown(
             _run_to_markdown_job(
                 file_path=file_path,
                 end_pages=end_pages,
-                is_ocr=is_ocr,
-                formula_enable=formula_enable,
-                table_enable=table_enable,
-                image_analysis=image_analysis,
                 tier=tier,
-                language=language,
-                use_remote_server=use_remote_server,
-                url=url,
                 api_url=api_url,
-                client_side_output_generation=client_side_output_generation,
                 status_callback=enqueue_status,
             )
         )
@@ -1609,9 +1483,6 @@ def render_header_html(i18n):
         " mineru-gradio6-header" if IS_GRADIO_6 else "",
     )
     return rendered_header
-
-all_lang = list(PUBLIC_OCR_LANGUAGE_CHOICES)
-
 
 def safe_stem(file_path):
     stem = Path(file_path).stem
@@ -1767,7 +1638,7 @@ def update_doc_show(file_path):
     '--enable-http-client',
     'http_client_enable',
     type=bool,
-    help="Enable http-client backend to link openai-compatible servers.",
+    help="Deprecated no-op; use --api-url to bind Gradio to an external v1 API server.",
     default=False,
 )
 @click.option(
@@ -1809,14 +1680,14 @@ def update_doc_show(file_path):
     '--enable-vlm-preload',
     'enable_vlm_preload',
     type=bool,
-    help="Preload the local VLM model when gradio starts a local mineru-api service.",
+    help="Deprecated no-op; Gradio v1 starts or connects to a parser API server.",
     default=False,
 )
 @click.option(
     '--client-side-output-generation',
     'client_side_output_generation',
     type=bool,
-    help="Generate markdown and content lists locally from server-returned middle json.",
+    help="Deprecated no-op; Gradio v1 persists outputs from ParseResult locally.",
     default=False,
 )
 @click.option(
@@ -1853,25 +1724,6 @@ def main(ctx,
             "tier_info_default": "Select the parsing tier.",
             "tier_info_standard": "Standard tier uses fast local Hybrid parsing.",
             "tier_info_pro": "Pro tier uses higher quality Hybrid parsing.",
-            "use_remote_server": "Use remote server",
-            "use_remote_server_info": "Send parsing requests to an OpenAI-compatible server.",
-            "server_url": "Server URL",
-            "server_url_info": "OpenAI-compatible server URL.",
-            "recognition_options": "**Recognition Options:**",
-            "advanced_options": "Advanced options",
-            "table_enable": "Enable table recognition",
-            "table_info": "If disabled, tables will be shown as images.",
-            "image_analysis_enable": "Enable image analysis",
-            "image_analysis_info": "If disabled, image/chart blocks will keep layout positions but skip VLM image/chart analysis.",
-            "formula_label_vlm": "Enable display formula recognition",
-            "formula_label_hybrid": "Enable inline formula recognition",
-            "formula_info_vlm": "If disabled, display formulas will be shown as images.",
-            "formula_info_hybrid": "If disabled, inline formulas will not be detected or parsed.",
-            "ocr_language": "OCR Language",
-            "ocr_language_info": "Select the OCR language for Hybrid medium local OCR and table OCR.",
-            "force_ocr": "Force enable OCR",
-            "force_ocr_info": "Enable only if the result is extremely poor. Hybrid medium requires correct OCR language.",
-            "force_ocr_info_hybrid": "Enable only if the result is extremely poor.",
             "convert": "Convert",
             "clear": "Clear",
             "doc_preview": "Document preview",
@@ -1916,25 +1768,6 @@ def main(ctx,
             "tier_info_default": "选择文档解析 tier。",
             "tier_info_standard": "standard 使用快速本地 Hybrid 解析。",
             "tier_info_pro": "pro 使用更高质量的 Hybrid 解析。",
-            "use_remote_server": "使用远端服务",
-            "use_remote_server_info": "将解析请求发送到 OpenAI 兼容服务。",
-            "server_url": "服务器地址",
-            "server_url_info": "OpenAI 兼容服务器地址。",
-            "recognition_options": "**识别选项：**",
-            "advanced_options": "高级选项",
-            "table_enable": "启用表格识别",
-            "table_info": "禁用后，表格将显示为图片。",
-            "image_analysis_enable": "启用图片分析",
-            "image_analysis_info": "禁用后，图片/图表块仍保留版面位置，但跳过 VLM 图片/图表分析。",
-            "formula_label_vlm": "启用行间公式识别",
-            "formula_label_hybrid": "启用行内公式识别",
-            "formula_info_vlm": "禁用后，行间公式将显示为图片。",
-            "formula_info_hybrid": "禁用后，行内公式将不会被检测或解析。",
-            "ocr_language": "OCR 语言",
-            "ocr_language_info": "为 Hybrid medium 的本地 OCR 和表格 OCR 选择语言。",
-            "force_ocr": "强制启用 OCR",
-            "force_ocr_info": "仅在识别效果极差时启用；Hybrid medium 需选择正确的 OCR 语言。",
-            "force_ocr_info_hybrid": "仅在识别效果极差时启用。",
             "convert": "转换",
             "clear": "清除",
             "doc_preview": "文档预览",
@@ -1965,46 +1798,21 @@ def main(ctx,
         },
     )
 
-    # 根据 tier 获取公式识别标签（闭包函数以支持 i18n）
-    def get_formula_label(tier_choice):
-        return i18n("formula_label_hybrid")
-
-    def get_formula_info(tier_choice):
-        return i18n("formula_info_hybrid") if tier_choice in GRADIO_TIER_CHOICES else ""
-
     def get_tier_info(tier_choice):
         return i18n(select_tier_info_key(tier_choice))
 
-    def get_force_ocr_info(tier_choice):
-        """根据 tier 返回强制 OCR 控件说明，当前公开 tier 统一使用 Hybrid 文案。"""
-        return i18n(select_force_ocr_info_key(tier_choice))
-
-    # 更新界面函数
-    def update_interface(tier_choice, use_remote_server):
-        """根据 tier 和远端开关更新 Gradio 联动控件，保持前端显隐规则集中。"""
-        use_remote_server = bool(use_remote_server)
-        formula_label_update = gr.update(label=get_formula_label(tier_choice), info=get_formula_info(tier_choice))
-        tier_info_update = gr.update(info=get_tier_info(tier_choice))
-        force_ocr_update = gr.update(info=get_force_ocr_info(tier_choice))
-        image_analysis_update = gr.update(visible=is_image_analysis_option_visible(tier_choice))
-        language_update = gr.update(visible=is_ocr_language_option_visible(tier_choice))
-        client_options_update = gr.update(visible=use_remote_server)
-        ocr_options_update = gr.update(visible=is_force_ocr_option_visible(tier_choice))
-
-        return (
-            client_options_update,
-            ocr_options_update,
-            force_ocr_update,
-            formula_label_update,
-            tier_info_update,
-            image_analysis_update,
-            language_update,
-        )
-
     del kwargs
+    if http_client_enable:
+        logger.warning(
+            "Ignoring --enable-http-client because Gradio v1 selects external parser services with --api-url."
+        )
     if enable_vlm_preload:
         logger.warning(
             "Ignoring --enable-vlm-preload because Gradio now launches the v1 parser API server."
+        )
+    if client_side_output_generation:
+        logger.warning(
+            "Ignoring --client-side-output-generation because Gradio v1 persists outputs from ParseResult locally."
         )
     _gradio_local_api_server.configure(ctx.args)
     startup_health = resolve_gradio_v1_startup_health(api_url=api_url)
@@ -2023,30 +1831,15 @@ def main(ctx,
     async def convert_to_markdown_stream(
         file_path,
         end_pages=10,
-        is_ocr=False,
-        formula_enable=True,
-        table_enable=True,
-        image_analysis=True,
         tier=DEFAULT_GRADIO_TIER,
-        language="ch",
-        use_remote_server=False,
-        url=None,
         request: gr.Request = None,
     ):
         request_locale = resolve_request_locale(request)
         async for update in stream_to_markdown(
             file_path=file_path,
             end_pages=end_pages,
-            is_ocr=is_ocr,
-            formula_enable=formula_enable,
-            table_enable=table_enable,
-            image_analysis=image_analysis,
             tier=tier,
-            language=language,
-            use_remote_server=use_remote_server,
-            url=url,
             api_url=api_url,
-            client_side_output_generation=client_side_output_generation,
         ):
             update = (
                 render_status_steps_html(update[0], i18n, locale=request_locale),
@@ -2076,31 +1869,9 @@ def main(ctx,
                         info=get_tier_info(preferred_tier),
                         elem_classes=["mineru-tier-select"],
                     )
-                    use_remote_server = gr.Checkbox(
-                        label=i18n("use_remote_server"),
-                        value=False,
-                        visible=http_client_enable,
-                        info=i18n("use_remote_server_info"),
-                        elem_classes=["mineru-remote-server-toggle"],
-                    )
-                    with gr.Row(
-                        visible=frontend_managed_initial_visibility(False),
-                        elem_classes=["mineru-client-options"],
-                    ) as client_options:
-                        url = gr.Textbox(
-                            label=i18n("server_url"),
-                            value='http://localhost:30000',
-                            placeholder='http://localhost:30000',
-                            info=i18n("server_url_info"),
-                        )
-                # 下面这些选项在上传 office 文件时会被自动隐藏
+                # 页数控件在上传 Office 文件时会被自动隐藏。
                 with gr.Group() as options_group:
                     max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
-                    advanced_bu = gr.Button(
-                        i18n("advanced_options"),
-                        size="sm",
-                        elem_classes=["mineru-advanced-open"],
-                    )
                 with gr.Row(elem_classes=["mineru-actions"]):
                     change_bu = gr.Button(i18n("convert"), variant="primary", scale=1, min_width=0)
                     clear_bu = gr.ClearButton(value=i18n("clear"), scale=1, min_width=0)
@@ -2184,67 +1955,16 @@ def main(ctx,
                             label=None,
                         )
 
-        with gr.Column(elem_classes=["mineru-advanced-popover"]):
-            with gr.Column(elem_classes=["mineru-advanced-card"]):
-                with gr.Group():
-                    table_enable = gr.Checkbox(label=i18n("table_enable"), value=True, info=i18n("table_info"))
-                    formula_enable = gr.Checkbox(label=get_formula_label(preferred_tier), value=True, info=get_formula_info(preferred_tier))
-                    image_analysis = gr.Checkbox(
-                        label=i18n("image_analysis_enable"),
-                        value=True,
-                        visible=frontend_managed_initial_visibility(
-                            is_image_analysis_option_visible(preferred_tier)
-                        ),
-                        info=i18n("image_analysis_info"),
-                        elem_classes=["mineru-image-analysis-option"],
-                    )
-                with gr.Column(elem_classes=["mineru-force-ocr-option"]) as ocr_options:
-                    with gr.Group():
-                        with gr.Column(elem_classes=["mineru-ocr-language-options"]):
-                            language = gr.Dropdown(
-                                all_lang,
-                                label=i18n("ocr_language"),
-                                value=all_lang[0],
-                                info=i18n("ocr_language_info"),
-                                visible=frontend_managed_initial_visibility(
-                                    is_ocr_language_option_visible(preferred_tier)
-                                ),
-                            )
-                        is_ocr = gr.Checkbox(
-                            label=i18n("force_ocr"),
-                            value=False,
-                            info=i18n(select_force_ocr_info_key(preferred_tier)),
-                        )
-
         # 添加事件处理
         _private_api_kwargs = (
             {"api_visibility": "private", "queue": False}
             if IS_GRADIO_6
             else {"api_name": False, "queue": False}
         )
-        tier.change(
-            fn=update_interface,
-            inputs=[tier, use_remote_server],
-            outputs=[client_options, ocr_options, is_ocr, formula_enable, tier, image_analysis, language],
-            **_private_api_kwargs
-        )
-        use_remote_server.change(
-            fn=update_interface,
-            inputs=[tier, use_remote_server],
-            outputs=[client_options, ocr_options, is_ocr, formula_enable, tier, image_analysis, language],
-            **_private_api_kwargs
-        )
-        # 添加demo.load事件，在页面加载时触发一次界面更新
-        demo.load(
-            fn=update_interface,
-            inputs=[tier, use_remote_server],
-            outputs=[client_options, ocr_options, is_ocr, formula_enable, tier, image_analysis, language],
-            **_private_api_kwargs
-        )
-        clear_bu.add([input_file, md, doc_show, md_text, content_list_json, output_file, is_ocr, office_html, status_panel])
+        clear_bu.add([input_file, md, doc_show, md_text, content_list_json, output_file, office_html, status_panel])
 
         def reset_primary_ui():
-            """清除主界面状态。高级气泡由前端点击外部逻辑自动收起。"""
+            """清除主界面状态，并恢复文件预览与状态面板。"""
             return (
                 gr.update(visible=True),
                 gr.update(value=None, visible=True),
@@ -2294,7 +2014,7 @@ def main(ctx,
         )
         change_bu.click(
             fn=convert_to_markdown_stream,
-            inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, tier, language, use_remote_server, url],
+            inputs=[input_file, max_pages, tier],
             outputs=[status_panel, output_file, md, md_text, content_list_json, doc_show],
             **_to_md_api_kwargs
         )
@@ -2308,10 +2028,6 @@ def main(ctx,
         _launch_kwargs = {"footer_links": footer_links, "css": APP_CSS, "head": APP_HEAD}
     else:
         _launch_kwargs = {"show_api": api_enable}
-    maybe_prepare_local_api_for_gradio_startup(
-        api_url=api_url,
-        enable_vlm_preload=enable_vlm_preload,
-    )
     demo.launch(
         server_name=server_name,
         server_port=server_port,

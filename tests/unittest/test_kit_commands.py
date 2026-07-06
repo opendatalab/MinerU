@@ -572,30 +572,17 @@ def test_parse_rejects_removed_ch_lite_language(tmp_path: Path) -> None:
     assert "Language ch_lite not supported" in result.output
 
 
-def test_gradio_language_option_only_visible_for_standard_tier() -> None:
+def test_gradio_tier_selection_derives_v1_runtime() -> None:
     from mineru.cli_old import gradio_app
 
-    assert gradio_app.is_ocr_language_option_visible("standard") is True
-    assert gradio_app.is_ocr_language_option_visible("pro") is False
-    assert gradio_app.is_ocr_language_option_visible("flash") is False
-
-
-def test_gradio_tier_remote_selection_derives_backend_and_effort() -> None:
-    from mineru.cli_old import gradio_app
-
-    assert gradio_app.resolve_gradio_runtime_options("standard", False).as_kwargs() == {
+    assert gradio_app.resolve_gradio_runtime_options("standard").as_kwargs() == {
         "tier": "standard",
         "backend": "hybrid-engine",
         "effort": "medium",
     }
-    assert gradio_app.resolve_gradio_runtime_options("pro", False).as_kwargs() == {
+    assert gradio_app.resolve_gradio_runtime_options("pro").as_kwargs() == {
         "tier": "pro",
         "backend": "hybrid-engine",
-        "effort": "high",
-    }
-    assert gradio_app.resolve_gradio_runtime_options("pro", True).as_kwargs() == {
-        "tier": "pro",
-        "backend": "hybrid-http-client",
         "effort": "high",
     }
 
@@ -812,43 +799,49 @@ def test_gradio_run_paths_are_absolute(tmp_path: Path) -> None:
     assert archive_zip_path.parent == run_root
 
 
-def test_gradio_frontend_uses_tier_and_remote_server_visibility() -> None:
+def test_gradio_frontend_uses_v1_only_tier_visibility() -> None:
     js_text = Path("mineru/resources/gradio_app.js").read_text(encoding="utf-8")
 
-    assert ".mineru-tier-select" in js_text
-    assert ".mineru-remote-server-toggle" in js_text
+    assert ".mineru-remote-server-toggle" not in js_text
+    assert ".mineru-advanced-popover" not in js_text
+    assert "getUseRemoteServer" not in js_text
     assert "getBackendValue" not in js_text
     assert "getEffortValue" not in js_text
     assert ".mineru-backend-select" not in js_text
     assert ".mineru-hybrid-effort" not in js_text
     assert 'input[type="radio"]' not in js_text
-    assert "const showClientOptions = useRemoteServer;" in js_text
-    assert 'const showOcrLanguage = tier === "standard";' in js_text
+    assert "mineru-show-client-options" not in js_text
+    assert "mineru-show-image-analysis" not in js_text
+    assert "mineru-show-ocr-language" not in js_text
+    assert "mineru-hide-force-ocr" not in js_text
 
 
-def test_gradio_tier_and_remote_server_options_replace_backend_effort_controls() -> None:
-    """校验 Gradio 公开控制面只暴露 tier 和是否使用远端 server。"""
+def test_gradio_submit_inputs_are_v1_only() -> None:
+    """校验 Gradio 公开控制面只保留 v1 API 支持的单次任务输入。"""
     gradio_text = Path("mineru/cli_old/gradio_app.py").read_text(encoding="utf-8")
 
     backend_block_idx = gradio_text.index('elem_classes=["mineru-backend-options-block"]')
     tier_idx = gradio_text.index("tier = gr.Dropdown(")
-    remote_idx = gradio_text.index("use_remote_server = gr.Checkbox(")
-    client_options_idx = gradio_text.index('elem_classes=["mineru-client-options"]')
     max_pages_idx = gradio_text.index("max_pages = gr.Slider(")
-    advanced_popover_idx = gradio_text.index('elem_classes=["mineru-advanced-popover"]')
 
     assert "backend = gr.Dropdown(" not in gradio_text
     assert "effort = gr.Dropdown(" not in gradio_text
     assert "effort = gr.Radio(" not in gradio_text
     assert "Hybrid effort" not in gradio_text
     assert "解析强度" not in gradio_text
-    assert "use_remote_server=use_remote_server" in gradio_text
+    assert "use_remote_server = gr.Checkbox(" not in gradio_text
+    assert "url = gr.Textbox(" not in gradio_text
+    assert 'elem_classes=["mineru-client-options"]' not in gradio_text
+    assert 'elem_classes=["mineru-advanced-popover"]' not in gradio_text
+    assert "is_ocr = gr.Checkbox(" not in gradio_text
+    assert "formula_enable = gr.Checkbox(" not in gradio_text
+    assert "table_enable = gr.Checkbox(" not in gradio_text
+    assert "image_analysis = gr.Checkbox(" not in gradio_text
+    assert "language = gr.Dropdown(" not in gradio_text
+    assert "use_remote_server=use_remote_server" not in gradio_text
     assert "tier=tier" in gradio_text
-    assert (
-        "inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, "
-        "tier, language, use_remote_server, url]"
-    ) in gradio_text
-    assert backend_block_idx < tier_idx < remote_idx < client_options_idx < max_pages_idx < advanced_popover_idx
+    assert "inputs=[input_file, max_pages, tier]" in gradio_text
+    assert backend_block_idx < tier_idx < max_pages_idx
 
 
 def test_parse_forwards_flash_backend(monkeypatch: Any, tmp_path: Path) -> None:
