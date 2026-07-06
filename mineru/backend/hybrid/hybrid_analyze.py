@@ -1043,6 +1043,9 @@ def _extract_with_local_layout(
         batch_ratio=batch_ratio,
         candidate_fn=_is_hybrid_medium_ocr_det_candidate,
     )
+    if _ocr_enable:
+        # medium 路径也需要在合并 sidecar 前完成 OCR rec，否则 ocr_text 只保留空文本裁剪。
+        _apply_ocr_rec_results(local_context, ocr_res_list)
     _normalize_bbox([[] for _ in images_pil_list], ocr_res_list, images_pil_list)
     merged_model_list = _merge_page_sidecar_items(
         medium_model_list,
