@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import html
 import os
+import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -65,6 +67,14 @@ LAYOUT_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 8
 LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD = 0.8
+TABLE_OCR_REC_SINGLE_CHAR_REPLACEMENTS = {
+    "香": "否",
+    "哦樂": "哦",
+}
+TABLE_OCR_REC_REGEX_REPLACEMENTS = (
+    # 仅规范化完整的“单个数字 + 號”，避免影响“10號”“第6號”等普通文本。
+    (re.compile(r"^([0-9])號$"), r"\1"),
+)
 
 
 @dataclass(frozen=True)
@@ -761,6 +771,224 @@ def _run_medium_formula_recognition(
     return mfd_res
 
 
+def _medium_bbox_center(bbox: list[float] | tuple[float, ...]) -> tuple[float, float]:
+    """计算 bbox 中心点，供表格内联对象匹配所属表格。"""
+    return (float(bbox[0]) + float(bbox[2])) / 2.0, (float(bbox[1]) + float(bbox[3])) / 2.0
+
+
+def _medium_is_point_in_bbox(point: tuple[float, float], bbox: list[float] | tuple[float, ...]) -> bool:
+    """判断点是否落在 bbox 内部，使用闭区间兼容边界贴合的 layout 框。"""
+    x, y = point
+    return float(bbox[0]) <= x <= float(bbox[2]) and float(bbox[1]) <= y <= float(bbox[3])
+
+
+def _medium_bbox_intersection(
+    bbox1: list[float] | tuple[float, ...],
+    bbox2: list[float] | tuple[float, ...],
+) -> list[float] | None:
+    """计算两个 bbox 的交集；无有效重叠时返回 None。"""
+    x0 = max(float(bbox1[0]), float(bbox2[0]))
+    y0 = max(float(bbox1[1]), float(bbox2[1]))
+    x1 = min(float(bbox1[2]), float(bbox2[2]))
+    y1 = min(float(bbox1[3]), float(bbox2[3]))
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return [x0, y0, x1, y1]
+
+
+def _medium_bbox_intersection_area(
+    bbox1: list[float] | tuple[float, ...],
+    bbox2: list[float] | tuple[float, ...],
+) -> float:
+    """计算 bbox 交集面积，用于多个候选表格时选重叠最大的表格。"""
+    overlap_bbox = _medium_bbox_intersection(bbox1, bbox2)
+    if overlap_bbox is None:
+        return 0.0
+    return float(overlap_bbox[2] - overlap_bbox[0]) * float(overlap_bbox[3] - overlap_bbox[1])
+
+
+def _medium_bbox_to_relative_bbox(
+    bbox: list[float] | tuple[float, ...],
+    base_bbox: list[float] | tuple[float, ...],
+) -> list[float]:
+    """将页面坐标 bbox 转成表格裁剪图内的相对坐标。"""
+    return [
+        float(bbox[0]) - float(base_bbox[0]),
+        float(bbox[1]) - float(base_bbox[1]),
+        float(bbox[2]) - float(base_bbox[0]),
+        float(bbox[3]) - float(base_bbox[1]),
+    ]
+
+
+def _medium_bbox_to_quad(bbox: list[float] | tuple[float, ...]) -> np.ndarray:
+    """将普通 bbox 转为表格模型 OCR token 使用的四点框。"""
+    x0, y0, x1, y1 = [float(v) for v in bbox]
+    return np.asarray([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], dtype=np.float32)
+
+
+def _encode_medium_table_inline_image(np_img: np.ndarray, bbox: list[float] | tuple[float, ...]) -> str:
+    """裁剪并编码表格内联图片，返回供后续 image_cache 外置化的 data URI。"""
+    image_h, image_w = np_img.shape[:2]
+    image_bbox = normalize_to_int_bbox(bbox, image_size=(image_h, image_w))
+    if image_bbox is None:
+        return ""
+
+    x0, y0, x1, y1 = image_bbox
+    if x1 <= x0 or y1 <= y0:
+        return ""
+
+    crop_rgb = np_img[y0:y1, x0:x1]
+    if crop_rgb.size == 0:
+        return ""
+
+    crop_bgr = cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2BGR)
+    success, encoded = cv2.imencode(".jpg", crop_bgr)
+    if not success:
+        return ""
+
+    b64_str = base64.b64encode(encoded.tobytes()).decode("ascii")
+    return f"data:image/jpeg;base64,{b64_str}"
+
+
+def _get_medium_virtual_image_bbox(bbox: list[float] | tuple[float, ...], box_size: float = 10.0) -> list[float]:
+    """为表格内图片构造虚拟 OCR token 小框，避免图片占据整块区域干扰表格结构。"""
+    center_x, center_y = _medium_bbox_center(bbox)
+    half_size = box_size / 2.0
+    return [
+        center_x - half_size,
+        center_y - half_size,
+        center_x + half_size,
+        center_y + half_size,
+    ]
+
+
+def _medium_table_supports_inline_objects(table_item: dict[str, Any]) -> bool:
+    """判断当前表格方向是否支持直接注入内联对象；旋转表格仅清理不注入。"""
+    return str(table_item.get("rotate_label", "0")) == "0"
+
+
+def _normalize_medium_table_ocr_rec_text(text: Any) -> Any:
+    """规范化表格 OCR rec 的已知误识别，保持与 dev pipeline 表格输入一致。"""
+    if not isinstance(text, str):
+        return text
+    if text in TABLE_OCR_REC_SINGLE_CHAR_REPLACEMENTS:
+        return TABLE_OCR_REC_SINGLE_CHAR_REPLACEMENTS[text]
+    for pattern, replacement in TABLE_OCR_REC_REGEX_REPLACEMENTS:
+        match = pattern.fullmatch(text)
+        if match:
+            return match.expand(replacement)
+    return text
+
+
+def _sort_medium_table_ocr_result(ocr_result: list[list[Any]]) -> None:
+    """按表格模型期望的从上到下、同行从左到右顺序整理 OCR token。"""
+    if not ocr_result:
+        return
+
+    sorted_result = sorted(
+        ocr_result,
+        key=lambda item: (float(np.asarray(item[0])[0][1]), float(np.asarray(item[0])[0][0])),
+    )
+
+    for i in range(len(sorted_result) - 1):
+        for j in range(i, -1, -1):
+            cur_box = np.asarray(sorted_result[j][0], dtype=np.float32)
+            next_box = np.asarray(sorted_result[j + 1][0], dtype=np.float32)
+            if (
+                abs(float(next_box[0][1]) - float(cur_box[0][1])) < 10
+                and float(next_box[0][0]) < float(cur_box[0][0])
+            ):
+                sorted_result[j], sorted_result[j + 1] = sorted_result[j + 1], sorted_result[j]
+            else:
+                break
+
+    ocr_result[:] = sorted_result
+
+
+def _extract_medium_table_inline_objects(
+    layout_res: list[dict[str, Any]],
+    np_img: np.ndarray,
+    *,
+    formula_enable: bool = True,
+) -> dict[int, list[dict[str, Any]]]:
+    """从同页 layout 结果中收集落在表格内部的图片和公式候选对象。"""
+    image_h, image_w = np_img.shape[:2]
+    image_size = (image_h, image_w)
+
+    tables: list[tuple[dict[str, Any], list[int]]] = []
+    for res in layout_res:
+        if res.get("label") != "table":
+            continue
+        table_bbox = normalize_to_int_bbox(res.get("bbox"), image_size=image_size)
+        if table_bbox is not None:
+            tables.append((res, table_bbox))
+
+    if not tables:
+        return {}
+
+    table_inline_objects: dict[int, list[dict[str, Any]]] = {id(table_res): [] for table_res, _ in tables}
+    candidate_labels = {"image"}
+    if formula_enable:
+        candidate_labels.update({"inline_formula", "display_formula"})
+
+    for layout_item in layout_res:
+        label = layout_item.get("label")
+        if label not in candidate_labels:
+            continue
+
+        item_bbox = normalize_to_int_bbox(layout_item.get("bbox"), image_size=image_size)
+        if item_bbox is None:
+            continue
+
+        item_center = _medium_bbox_center(item_bbox)
+        matched_tables = []
+        for table_res, table_bbox in tables:
+            if not _medium_is_point_in_bbox(item_center, table_bbox):
+                continue
+            overlap_area = _medium_bbox_intersection_area(item_bbox, table_bbox)
+            matched_tables.append((overlap_area, table_res, table_bbox))
+
+        if not matched_tables:
+            continue
+
+        matched_tables.sort(key=lambda item: item[0], reverse=True)
+        _, table_res, table_bbox = matched_tables[0]
+        overlap_bbox = _medium_bbox_intersection(item_bbox, table_bbox)
+        if overlap_bbox is None:
+            continue
+
+        rel_overlap_bbox = _medium_bbox_to_relative_bbox(overlap_bbox, table_bbox)
+        score = float(layout_item.get("score", 1.0) or 0.0)
+        if label == "image":
+            image_src = _encode_medium_table_inline_image(np_img, item_bbox)
+            if not image_src:
+                continue
+            content = f'<img src="{image_src}"/>'
+            token_bbox = _get_medium_virtual_image_bbox(rel_overlap_bbox)
+            kind = "image"
+        else:
+            latex = _normalize_medium_content(layout_item.get("latex", ""))
+            if not latex:
+                continue
+            content = f"<eq>{html.escape(latex)}</eq>"
+            token_bbox = rel_overlap_bbox
+            kind = "formula"
+
+        table_inline_objects[id(table_res)].append(
+            {
+                "kind": kind,
+                "source_layout_id": id(layout_item),
+                "page_bbox": item_bbox,
+                "table_rel_mask_bbox": rel_overlap_bbox,
+                "table_token_bbox": token_bbox,
+                "content": content,
+                "score": score,
+            }
+        )
+
+    return table_inline_objects
+
+
 def _apply_medium_table_rotate_label(table_res_dict: dict[str, Any], rotate_label: str) -> None:
     """写回表格方向预测结果，并同步旋转无线和有线表格裁剪图。"""
     rotate_label = str(rotate_label or "0")
@@ -783,6 +1011,11 @@ def _collect_medium_table_items(
     """收集 Hybrid medium 单文件窗口中的表格裁剪项，不跨文件聚合。"""
     table_items = []
     for layout_res, np_img, lang in zip(images_layout_res, np_images, lang_list):
+        table_inline_objects = _extract_medium_table_inline_objects(
+            layout_res,
+            np_img,
+            formula_enable=True,
+        )
         for table_res in layout_res:
             if table_res.get("label") != "table":
                 continue
@@ -801,9 +1034,11 @@ def _collect_medium_table_items(
             table_items.append(
                 {
                     "table_res": table_res,
+                    "layout_res": layout_res,
                     "lang": lang,
                     "table_img": table_img,
                     "wired_table_img": wired_table_img,
+                    "table_inline_objects": table_inline_objects.get(id(table_res), []),
                 }
             )
     return table_items
@@ -822,7 +1057,8 @@ def _collect_medium_table_ocr_rec_inputs(
         det_db_unclip_ratio=1.6,
         enable_merge_det_boxes=False,
     )
-    det_images = [cv2.cvtColor(item["table_img"], cv2.COLOR_RGB2BGR) for item in table_items]
+    table_det_items = _build_medium_table_ocr_det_items(table_items)
+    det_images = [item["det_image"] for item in table_det_items]
     if not det_images:
         return rec_img_lang_group
 
@@ -834,22 +1070,75 @@ def _collect_medium_table_ocr_rec_inputs(
         tqdm_enable=True,
         tqdm_desc="Hybrid-medium table OCR-det",
     )
-    if len(batch_results) != len(table_items):
+    if len(batch_results) != len(table_det_items):
         raise ValueError("Hybrid medium table OCR det batch result count mismatch")
 
-    for table_id, (table_item, bgr_image, (dt_boxes, _)) in enumerate(zip(table_items, det_images, batch_results)):
-        if dt_boxes is None or len(dt_boxes) == 0:
-            continue
-        for dt_box in sorted_boxes(dt_boxes):
-            dt_box_array = np.asarray(dt_box, dtype=np.float32)
-            rec_img_lang_group[table_item["lang"]].append(
-                {
-                    "cropped_img": get_rotate_crop_image_for_text_rec(bgr_image, dt_box_array.copy()),
-                    "dt_box": dt_box_array.copy(),
-                    "table_id": table_id,
-                }
-            )
+    for table_det_item, (dt_boxes, _) in zip(table_det_items, batch_results):
+        _append_medium_table_ocr_det_result(
+            table_det_item,
+            dt_boxes,
+            rec_img_lang_group,
+        )
     return rec_img_lang_group
+
+
+def _build_medium_table_ocr_det_items(table_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """构造表格 OCR-det 输入项，保留原图、遮罩图和公式修正框。"""
+    table_det_items = []
+    for table_id, table_item in enumerate(table_items):
+        bgr_image = cv2.cvtColor(table_item["table_img"], cv2.COLOR_RGB2BGR)
+        inline_objects = (
+            table_item.get("table_inline_objects", [])
+            if _medium_table_supports_inline_objects(table_item)
+            else []
+        )
+        inline_mask_boxes = [{"bbox": inline_object["table_rel_mask_bbox"]} for inline_object in inline_objects]
+        formula_mask_boxes = [
+            {"bbox": inline_object["table_rel_mask_bbox"]}
+            for inline_object in inline_objects
+            if inline_object["kind"] == "formula"
+        ]
+        det_image = mask_formula_regions_for_ocr_det(bgr_image.copy(), inline_mask_boxes) if inline_mask_boxes else bgr_image
+        table_det_items.append(
+            {
+                "bgr_image": bgr_image,
+                "det_image": det_image,
+                "formula_mask_boxes": formula_mask_boxes,
+                "lang": table_item["lang"],
+                "table_id": table_id,
+            }
+        )
+    return table_det_items
+
+
+def _append_medium_table_ocr_det_result(
+    table_det_item: dict[str, Any],
+    dt_boxes: Any,
+    rec_img_lang_group: dict[str | None, list[dict[str, Any]]],
+) -> None:
+    """整理单表 OCR-det 结果，跳过公式框并按语言归集 OCR-rec 输入。"""
+    if dt_boxes is None or len(dt_boxes) == 0:
+        return
+
+    ocr_result = dt_boxes
+    formula_mask_boxes = table_det_item["formula_mask_boxes"]
+    if formula_mask_boxes:
+        ocr_result = update_det_boxes(ocr_result, formula_mask_boxes)
+        if ocr_result is None or len(ocr_result) == 0:
+            return
+
+    for dt_box in sorted_boxes(ocr_result):
+        dt_box_array = np.asarray(dt_box, dtype=np.float32)
+        rec_img_lang_group[table_det_item["lang"]].append(
+            {
+                "cropped_img": get_rotate_crop_image_for_text_rec(
+                    table_det_item["bgr_image"],
+                    dt_box_array.copy(),
+                ),
+                "dt_box": dt_box_array.copy(),
+                "table_id": table_det_item["table_id"],
+            }
+        )
 
 
 def _apply_medium_table_orientation(atom_model_manager: Any, table_items: list[dict[str, Any]], batch_ratio: int) -> None:
@@ -903,8 +1192,48 @@ def _apply_medium_table_ocr_rec(
         )[0]
         for img_dict, ocr_res in zip(rec_img_list, ocr_res_list):
             table_item = table_items[img_dict["table_id"]]
-            ocr_result_item = [img_dict["dt_box"], html.escape(str(ocr_res[0])), ocr_res[1]]
+            ocr_text = _normalize_medium_table_ocr_rec_text(ocr_res[0])
+            ocr_result_item = [img_dict["dt_box"], html.escape(str(ocr_text)), ocr_res[1]]
             table_item.setdefault("ocr_result", []).append(ocr_result_item)
+    for table_item in table_items:
+        _sort_medium_table_ocr_result(table_item.get("ocr_result", []))
+
+
+def _append_medium_table_inline_objects_to_ocr_result(table_items: list[dict[str, Any]]) -> None:
+    """删除表格内图片/公式原始 layout 项，非旋转表额外注入虚拟 OCR token。"""
+    remove_ids_by_layout: dict[int, tuple[list[dict[str, Any]], set[int]]] = {}
+    for table_item in table_items:
+        table_inline_objects = table_item.get("table_inline_objects", [])
+        if not table_inline_objects:
+            continue
+
+        layout_res = table_item.get("layout_res")
+        consumed_layout_ids = None
+        if layout_res is not None:
+            consumed_layout_ids = remove_ids_by_layout.setdefault(
+                id(layout_res),
+                (layout_res, set()),
+            )[1]
+
+        supports_inline_injection = _medium_table_supports_inline_objects(table_item)
+        table_ocr_result = table_item.setdefault("ocr_result", []) if supports_inline_injection else None
+        for inline_object in table_inline_objects:
+            if consumed_layout_ids is not None:
+                consumed_layout_ids.add(inline_object["source_layout_id"])
+            if table_ocr_result is not None:
+                table_ocr_result.append(
+                    [
+                        _medium_bbox_to_quad(inline_object["table_token_bbox"]),
+                        inline_object["content"],
+                        inline_object["score"],
+                    ]
+                )
+
+        if table_ocr_result is not None:
+            _sort_medium_table_ocr_result(table_ocr_result)
+
+    for layout_res, remove_ids in remove_ids_by_layout.values():
+        layout_res[:] = [item for item in layout_res if id(item) not in remove_ids]
 
 
 def _apply_medium_wireless_table_recognition(atom_model_manager: Any, table_items: list[dict[str, Any]]) -> None:
@@ -968,6 +1297,7 @@ def _apply_medium_table_recognition(
     _apply_medium_table_orientation(atom_model_manager, table_items, batch_ratio)
     _apply_medium_table_classification(atom_model_manager, table_items)
     _apply_medium_table_ocr_rec(atom_model_manager, table_items, batch_ratio)
+    _append_medium_table_inline_objects_to_ocr_result(table_items)
     _apply_medium_wireless_table_recognition(atom_model_manager, table_items)
     wired_table_items = _select_medium_wired_table_items(table_items)
     _apply_medium_wired_table_recognition(atom_model_manager, wired_table_items)
