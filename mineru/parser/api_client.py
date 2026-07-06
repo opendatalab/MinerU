@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from ..types import PageInfo, Tier
+from ..types import PageInfo, Tier, validate_tier
 from ..utils.image_payload import validate_image_sidecar_path
 from .base import DocumentParser, ParseResult
 
@@ -31,12 +31,12 @@ class MinerUApiParser(DocumentParser):
     Works with local-server, LAN, and cloud (mineru.net) deployments::
 
         # local deployment — uses ``local`` source, no upload needed
-        parser = MinerUApiParser(api_url="http://localhost:8000/api", tier="standard")
+        parser = MinerUApiParser(api_url="http://localhost:8000/api", tier="medium")
 
         # cloud (remote)
         parser = MinerUApiParser(
             api_url="https://mineru.net/api", api_key="sk_...",
-            tier="pro",
+            tier="high",
         )
 
         result = parser.parse("report.pdf")
@@ -44,7 +44,7 @@ class MinerUApiParser(DocumentParser):
 
     Constructor parameters:
 
-    - ``tier`` → v1 ``tier`` (``"standard"`` / ``"pro"``); ``None`` omits the field
+    - ``tier`` → v1 ``tier`` (``"flash"`` / ``"medium"`` / ``"high"`` / ``"extra_high"``); ``None`` omits the field
     - ``page_range`` → per-file v1 ``page_range``
     """
 
@@ -60,7 +60,7 @@ class MinerUApiParser(DocumentParser):
         self._api_key = api_key
         self._local = _is_local_network_url(self._base)
         self._trust_env = should_trust_env_for_url(self._base)
-        self.tier = tier
+        self.tier = validate_tier(tier) if tier is not None else None
 
     # ── DocumentParser interface ─────────────────────────────────────
 

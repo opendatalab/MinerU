@@ -234,7 +234,7 @@ class ParseServerHealthCheck:
             # refresh config on each cycle (hot-reload)
             mode = (await self.config_svc.get("parse_server.local.mode")) or "disabled"
             health.local_mode = mode
-            managed_tier = (await self.config_svc.get("parse_server.local.managed_tier")) or "standard"
+            managed_tier = (await self.config_svc.get("parse_server.local.managed_tier")) or "high"
             desired_managed_tier = cast(Tier, managed_tier)
             health.managed_tier = desired_managed_tier
             self_hosted_url = await self.config_svc.get("parse_server.local.self_hosted_url")
@@ -318,7 +318,7 @@ class ParseServerHealthCheck:
 
         if count_restart:
             health.restart_count += 1
-        managed_tier = (await self.config_svc.get("parse_server.local.managed_tier")) or "standard"
+        managed_tier = (await self.config_svc.get("parse_server.local.managed_tier")) or "high"
         stop_managed_parse_server(health.managed_proc, timeout_sec=self.stop_timeout_sec, reason=reason)
         health.managed_proc = None
         health.running_managed_tier = None

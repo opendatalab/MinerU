@@ -120,7 +120,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         health = get_health()
         health.local_mode = local_mode
         if local_mode == "managed":
-            managed_tier = (await state.config_svc.get("parse_server.local.managed_tier")) or "standard"
+            managed_tier = (await state.config_svc.get("parse_server.local.managed_tier")) or "high"
             health.managed_tier = managed_tier
             try:
                 proc, managed_url = start_managed_parse_server(

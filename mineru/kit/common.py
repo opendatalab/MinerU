@@ -15,7 +15,7 @@ from ..utils.image_payload import validate_image_sidecar_path
 
 SupportedBundle = Literal["pipeline", "vlm", "all"]
 KitFormat = Literal["markdown", "middle_json", "zip"]
-LocalTier = Literal["flash", "standard", "pro"]
+LocalTier = Literal["flash", "medium", "high", "extra_high"]
 
 SUPPORTED_SUFFIXES = {
     ".pdf",
@@ -123,10 +123,10 @@ def effective_local_tier_and_backend(tier: Tier | None, backend: str | None) -> 
     from ..parser.tier import backend_for_tier, resolve_tier_and_backend
 
     if tier is None and backend is None:
-        return "standard", backend_for_tier("standard")
+        return "high", backend_for_tier("high")
     resolved_tier, resolved_backend = resolve_tier_and_backend(tier=tier, backend=backend)
     if tier is None and backend is None:
-        resolved_backend = backend_for_tier("standard")
+        resolved_backend = backend_for_tier("high")
     return resolved_tier, resolved_backend
 
 

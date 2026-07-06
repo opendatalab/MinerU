@@ -9,21 +9,32 @@ T = TypeVar("T", bound="_DocElement")
 
 Tier = Literal[
     "flash",
-    "standard",
-    "pro",
+    "medium",
+    "high",
+    "extra_high",
 ]
 
 TIERS: set[Tier] = {
     "flash",
-    "standard",
-    "pro",
+    "medium",
+    "high",
+    "extra_high",
 }
 
 TIER_ORDER: dict[Tier, int] = {
     "flash": 0,
-    "standard": 1,
-    "pro": 2,
+    "medium": 1,
+    "high": 2,
+    "extra_high": 3,
 }
+
+
+def validate_tier(tier: str | None) -> Tier:
+    """校验公开 tier 取值，保证入口只接受 flash/medium/high/extra_high。"""
+    normalized = (tier or "").strip().lower()
+    if normalized in TIERS:
+        return normalized  # type: ignore[return-value]
+    raise ValueError(f"Unsupported tier '{tier}'. Supported tiers: {', '.join(TIERS)}")
 
 
 class BlockType:

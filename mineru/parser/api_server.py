@@ -37,28 +37,20 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..types import Tier
-from ..utils.backend_options import (
-    DEFAULT_HYBRID_EFFORT,
-    HYBRID_EFFORT_CHOICES,
-    HYBRID_EFFORT_HELP,
-    LOCAL_HYBRID_EFFORT,
-    resolve_backend_and_effort,
-)
+from ..types import Tier, validate_tier
+from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..version import __version__
 from . import parse_async
 from .tier import (
-    PARSER_BACKENDS,
     ParserRuntimeOptions,
     TierDependencyError,
     ensure_tier_runtime_dependencies,
-    resolve_tier_and_backend,
     runtime_options_for_tier,
 )
 
-_API_SERVER_BACKENDS = tuple(backend for backend in PARSER_BACKENDS if backend != "flash")
-_API_SERVER_TIERS: tuple[Tier, ...] = ("standard", "pro")
+_API_SERVER_TIERS: tuple[Tier, ...] = ("flash", "medium", "high", "extra_high")
+_DEFAULT_API_SERVER_TIER: Tier = "high"
 _API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
 _MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
 logger = logging.getLogger("mineru.parser.api_server")
@@ -1007,7 +999,7 @@ class _JobRecord:
     created_at: str = ""
     started_at: str | None = None
     finished_at: str | None = None
-    tier: Tier = "standard"
+    tier: Tier = _DEFAULT_API_SERVER_TIER
     output_formats: list[OutputFormat] = None  # type: ignore[assignment]
     progress: JobProgress | None = None
     files: list[JobFileResult] = None  # type: ignore[assignment]
@@ -1982,75 +1974,59 @@ def _build_v1_router() -> APIRouter:
 _OCR_MODES = ("auto", "txt", "ocr")
 
 
-def _resolve_server_tier_and_backend(*, tier: Tier | None, backend: str | None) -> tuple[Tier, str]:
-    resolved_tier = tier
-    resolved_backend = backend
-    if resolved_tier is None and resolved_backend is None:
-        resolved_tier = "standard"
-    resolved_tier, resolved_backend = resolve_tier_and_backend(tier=resolved_tier, backend=resolved_backend)
-    if resolved_backend not in _API_SERVER_BACKENDS:
-        raise ValueError(f"Unsupported backend '{resolved_backend}'. Supported backends: {', '.join(_API_SERVER_BACKENDS)}")
-    return resolved_tier, resolved_backend
-
-
 def _normalize_server_tiers(tier: Tier | list[Tier] | tuple[Tier, ...] | None) -> list[Tier]:
-    """规范化 API server 启动 tier 列表，保留用户顺序并拒绝 flash 等未开放 tier。"""
+    """规范化 API server 启动 tier 列表，保留用户顺序并拒绝旧 standard/pro tier。"""
     raw_tiers: list[Tier]
     if tier is None:
-        raw_tiers = ["standard", "pro"]
+        raw_tiers = list(_API_SERVER_TIERS)
     elif isinstance(tier, str):
-        raw_tiers = [tier]
+        raw_tiers = [validate_tier(tier)]
     else:
-        raw_tiers = list(tier) or ["standard", "pro"]
+        raw_tiers = [validate_tier(item) for item in list(tier)] or list(_API_SERVER_TIERS)
 
     tiers: list[Tier] = []
     for item in raw_tiers:
-        if item not in _API_SERVER_TIERS:
-            raise ValueError(f"Unsupported tier '{item}'. Supported tiers: {', '.join(_API_SERVER_TIERS)}")
         if item not in tiers:
             tiers.append(item)
     return tiers
 
 
-def _runtime_options_for_server_tiers(
-    *,
-    tiers: list[Tier],
-    backend: str | None,
-    effort: str,
-) -> dict[Tier, ParserRuntimeOptions]:
-    """为每个启动 tier 生成独立 runtime，避免不同 tier job 共享同一个 effort。"""
-    if backend is not None and len(tiers) > 1:
-        raise ValueError("--backend cannot be combined with multiple --tier values")
-    if backend is not None:
-        tier = tiers[0]
-        resolved_tier, resolved_backend = _resolve_server_tier_and_backend(tier=tier, backend=backend)
-        if resolved_tier != tier:
-            tiers[0] = resolved_tier
-        resolved_backend, resolved_effort = resolve_backend_and_effort(backend, effort)
-        if resolved_tier == "standard":
-            resolved_effort = LOCAL_HYBRID_EFFORT
-        return {
-            resolved_tier: ParserRuntimeOptions(tier=resolved_tier, backend=resolved_backend, effort=resolved_effort)
-        }
-
+def _runtime_options_for_server_tiers(tiers: list[Tier]) -> dict[Tier, ParserRuntimeOptions]:
+    """为每个启动 tier 生成独立 runtime，API server 只允许 tier 决定 backend/effort。"""
     return {tier: runtime_options_for_tier(tier) for tier in tiers}
 
 
 def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[dict[str, Any]]]:
-    if tier == "pro":
+    if tier == "flash":
+        return ["MinerU-Flash"], [
+            {
+                "id": "flash",
+                "description": "Fast local text extraction.",
+                "current_model": "flash",
+            },
+        ]
+    if tier == "medium":
+        return ["Hybrid-Medium", "MinerU-HTML"], [
+            {
+                "id": "medium",
+                "description": "Hybrid medium parsing with local lightweight models.",
+                "current_model": "hybrid-medium",
+            },
+        ]
+    if tier == "extra_high":
         return ["MinerU2.5-Pro-2604-1.2B", "MinerU-HTML"], [
             {
-                "id": "pro",
-                "description": "Hybrid high-accuracy parsing.",
+                "id": "extra_high",
+                "description": "Hybrid maximum-accuracy parsing.",
                 "current_model": "MinerU2.5-Pro-2604-1.2B",
             },
         ]
 
-    return ["Hybrid-Low", "MinerU-HTML"], [
+    return ["MinerU2.5-Pro-2604-1.2B", "MinerU-HTML"], [
         {
-            "id": "standard",
-            "description": "Hybrid medium parsing with local lightweight models.",
-            "current_model": "hybrid-medium",
+            "id": "high",
+            "description": "Hybrid high-accuracy parsing.",
+            "current_model": "MinerU2.5-Pro-2604-1.2B",
         },
     ]
 
@@ -2076,9 +2052,7 @@ def _preflight_tier_dependencies(tier: Tier) -> None:
 
 
 def _dependency_tier_for_runtime(runtime: ParserRuntimeOptions) -> Tier:
-    """根据实际 runtime 判断依赖预检 tier，Hybrid medium 只需要 standard 依赖。"""
-    if runtime.backend.startswith("hybrid-") and runtime.effort == LOCAL_HYBRID_EFFORT:
-        return "standard"
+    """根据实际 runtime 判断依赖预检 tier。"""
     return runtime.tier
 
 
@@ -2097,14 +2071,12 @@ def create_app(
     *,
     upload_dir: str = "",
     tier: Tier | list[Tier] | tuple[Tier, ...] | None = None,
-    backend: str | None = None,
     concurrency: int = 1,
     url_timeout: int = 60,
     max_wait: int = 600,
     api_key: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
-    effort: str = DEFAULT_HYBRID_EFFORT,
     table_enable: bool = True,
     formula_enable: bool = True,
     image_analysis: bool = True,
@@ -2116,11 +2088,8 @@ def create_app(
     upload_dir:
         Directory for uploaded files and parse artifacts.
     tier:
-        Server parsing tier.  ``"standard"`` selects Hybrid medium;
-        ``"pro"`` selects the default Hybrid backend.  If ``backend`` is also provided,
-        both values must be compatible.
-    backend:
-        Advanced server backend mode. ``"hybrid-engine"`` exposes local Hybrid parsing.
+        Server parsing tier. ``"flash"`` selects flash parsing; ``"medium"``,
+        ``"high"`` and ``"extra_high"`` map to same-name Hybrid efforts.
     concurrency:
         Maximum concurrent parse jobs (default 1).
     url_timeout:
@@ -2134,9 +2103,6 @@ def create_app(
         Hybrid medium OCR language hint; accepted by other efforts for compatibility.
     ocr_mode:
         PDF OCR/text extraction mode for Hybrid backends.
-    effort:
-        Hybrid backend effort level. Medium uses local Hybrid processing. High and
-        extra_high use progressively stronger VLM-assisted parsing.
     table_enable:
         Whether table recognition is enabled.
     formula_enable:
@@ -2146,14 +2112,10 @@ def create_app(
     """
     upload_dir = upload_dir or ""
     tier_input = None if tier in ((), []) else tier
-    if backend is not None and tier_input is None:
-        inferred_tier, _resolved_backend = _resolve_server_tier_and_backend(tier=None, backend=backend)
-        server_tiers = [inferred_tier]
-    else:
-        server_tiers = _normalize_server_tiers(tier_input)
-    tier_runtime_options = _runtime_options_for_server_tiers(tiers=server_tiers, backend=backend, effort=effort)
+    server_tiers = _normalize_server_tiers(tier_input)
+    tier_runtime_options = _runtime_options_for_server_tiers(server_tiers)
     server_tiers = list(tier_runtime_options)
-    default_tier = server_tiers[0]
+    default_tier = _DEFAULT_API_SERVER_TIER if _DEFAULT_API_SERVER_TIER in tier_runtime_options else server_tiers[0]
     default_runtime = tier_runtime_options[default_tier]
     tier = default_tier
     backend = default_runtime.backend
@@ -2262,22 +2224,12 @@ def create_app(
     type=click.Path(file_okay=False, writable=True, resolve_path=True),
 )
 @click.option(
-    "--backend",
-    default=None,
-    type=str,
-    help=(
-        "Advanced parser backend "
-        f"({', '.join(_API_SERVER_BACKENDS)}). "
-        f"Defaults from --tier: standard -> hybrid-engine --effort {LOCAL_HYBRID_EFFORT}, pro -> hybrid-engine."
-    ),
-)
-@click.option(
     "--tier",
     multiple=True,
-    type=click.Choice(["standard", "pro"]),
+    type=click.Choice(list(_API_SERVER_TIERS)),
     help=(
         "Server parsing tier; repeat to expose multiple tiers. "
-        "Defaults to 'standard' and 'pro' when neither --tier nor --backend is provided."
+        "Defaults to flash, medium, high, and extra_high; requests without tier default to high."
     ),
 )
 @click.option(
@@ -2311,13 +2263,6 @@ def create_app(
     type=click.Choice(_OCR_MODES),
     help="PDF OCR/text extraction mode. Applies to hybrid-* backends.",
 )
-@click.option(
-    "--effort",
-    default=DEFAULT_HYBRID_EFFORT,
-    type=str,
-    metavar="[" + "|".join(HYBRID_EFFORT_CHOICES) + "]",
-    help=HYBRID_EFFORT_HELP,
-)
 @click.option("--disable-table", is_flag=True, help="Disable table recognition.")
 @click.option("--disable-formula", is_flag=True, help="Disable formula recognition.")
 @click.option("--disable-image-analysis", is_flag=True, help="Disable image analysis for Hybrid backends.")
@@ -2331,14 +2276,12 @@ def main(
     host: str,
     port: int,
     upload_dir: str,
-    backend: str | None,
     tier: tuple[Tier, ...],
     concurrency: int,
     url_timeout: int,
     max_wait: int,
     language: str,
     ocr_mode: str,
-    effort: str,
     disable_table: bool,
     disable_formula: bool,
     disable_image_analysis: bool,
@@ -2349,14 +2292,12 @@ def main(
         application = create_app(
             upload_dir=upload_dir,
             tier=tier or None,
-            backend=backend,
             concurrency=concurrency,
             url_timeout=url_timeout,
             max_wait=max_wait,
             api_key=api_key,
             language=language,
             ocr_mode=ocr_mode,
-            effort=effort,
             table_enable=not disable_table,
             formula_enable=not disable_formula,
             image_analysis=not disable_image_analysis,

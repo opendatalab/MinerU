@@ -239,8 +239,8 @@ STATUS_QUEUED_ON_SERVER = "Queued on server"
 STATUS_PROCESSING_ON_SERVER = "Processing on server"
 STATUS_QUEUED_LOCALLY_PREFIX = "Queued locally:"
 
-DEFAULT_GRADIO_TIER = "pro"
-GRADIO_TIER_CHOICES = ("standard", "pro")
+DEFAULT_GRADIO_TIER = "high"
+GRADIO_TIER_CHOICES = ("flash", "medium", "high", "extra_high")
 STATUS_STEP_DEFINITIONS = [
     ("status_step_prepare", STATUS_PREPARING_REQUEST),
     ("status_step_check", STATUS_CHECKING_SERVER),
@@ -409,9 +409,11 @@ def extract_v1_tier_choices(payload) -> tuple[str, ...]:
 
 
 def default_v1_gradio_tier(tier_choices: tuple[str, ...]) -> str:
-    """选择 Gradio 默认 tier；v1 server 返回顺序即默认优先级。"""
+    """选择 Gradio 默认 tier；优先 high，与 API server 的无 tier 请求默认值保持一致。"""
     if not tier_choices:
         raise click.ClickException("MinerU v1 API did not advertise any supported tier.")
+    if DEFAULT_GRADIO_TIER in tier_choices:
+        return DEFAULT_GRADIO_TIER
     return tier_choices[0]
 
 
@@ -593,10 +595,14 @@ def resolve_gradio_runtime_options(tier: str | None) -> ParserRuntimeOptions:
 
 def select_tier_info_key(tier_choice: object) -> str:
     """根据 Gradio tier 选择说明文案的 i18n key。"""
-    if tier_choice == "standard":
-        return "tier_info_standard"
-    if tier_choice == "pro":
-        return "tier_info_pro"
+    if tier_choice == "flash":
+        return "tier_info_flash"
+    if tier_choice == "medium":
+        return "tier_info_medium"
+    if tier_choice == "high":
+        return "tier_info_high"
+    if tier_choice == "extra_high":
+        return "tier_info_extra_high"
     return "tier_info_default"
 
 
@@ -1722,8 +1728,10 @@ def main(ctx,
             "max_pages": "Max convert pages",
             "tier": "Tier",
             "tier_info_default": "Select the parsing tier.",
-            "tier_info_standard": "Standard tier uses fast local Hybrid parsing.",
-            "tier_info_pro": "Pro tier uses higher quality Hybrid parsing.",
+            "tier_info_flash": "Flash tier uses fast local text extraction.",
+            "tier_info_medium": "Medium tier uses local Hybrid parsing.",
+            "tier_info_high": "High tier uses higher quality Hybrid parsing.",
+            "tier_info_extra_high": "Extra high tier uses maximum-quality Hybrid parsing.",
             "convert": "Convert",
             "clear": "Clear",
             "doc_preview": "Document preview",
@@ -1766,8 +1774,10 @@ def main(ctx,
             "max_pages": "最大转换页数",
             "tier": "解析 tier",
             "tier_info_default": "选择文档解析 tier。",
-            "tier_info_standard": "standard 使用快速本地 Hybrid 解析。",
-            "tier_info_pro": "pro 使用更高质量的 Hybrid 解析。",
+            "tier_info_flash": "flash 使用快速本地文本提取。",
+            "tier_info_medium": "medium 使用本地 Hybrid 解析。",
+            "tier_info_high": "high 使用更高质量的 Hybrid 解析。",
+            "tier_info_extra_high": "extra_high 使用最高质量的 Hybrid 解析。",
             "convert": "转换",
             "clear": "清除",
             "doc_preview": "文档预览",

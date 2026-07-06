@@ -1041,8 +1041,8 @@ def _extract_with_local_layout(
     local_context_singleton = HybridLocalModelContextSingleton()
     local_context = local_context_singleton.get_model(
         lang=language,
-        # VLM 文本路径只需要本地 layout 与 OCR det，不需要加载 MFR。
-        formula_enable=inline_formula_enable and not _ocr_enable,
+        # medium 本地路径会直接执行公式识别；OCR 扫描件也需要加载 MFR。
+        formula_enable=inline_formula_enable,
     )
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
     images_layout_res = run_layout_inference(

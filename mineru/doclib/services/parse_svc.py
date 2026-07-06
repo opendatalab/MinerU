@@ -693,10 +693,10 @@ class ParseService:
         if remote and tier == "flash":
             raise InvalidRequestError(
                 "tier_unsupported_for_remote",
-                "--remote does not support tier 'flash'; use --tier standard or --tier pro.",
+                "--remote does not support tier 'flash'; use --tier medium, --tier high, or --tier extra_high.",
                 "tier",
             )
-        if tier in ("standard", "pro") and ext not in QUALITY_TIER_EXTENSIONS:
+        if tier in ("medium", "high", "extra_high") and ext not in QUALITY_TIER_EXTENSIONS:
             raise InvalidRequestError(
                 "tier_unsupported_for_file_type",
                 f"Tier '{tier}' is only supported for PDF and image files; '{ext}' files use --tier flash.",
@@ -1323,21 +1323,23 @@ class ParseService:
 
 
 def _resolve_default_tier(remote: bool = False) -> Tier:
-    """Pick the best available tier from health check.  ``pro`` > ``standard`` > ``flash``."""
+    """从健康检查中选择最高可用质量 tier，顺序为 extra_high > high > medium。"""
     from ..background.parse_server_health import get_health
 
     health = get_health()
     supported = health.remote_supported_tiers if remote else health.local_supported_tiers
-    for candidate in ("pro", "standard"):
+    for candidate in ("extra_high", "high", "medium"):
         if candidate in supported:
             return candidate
     actions = ["start a local parse-server"]
-    if not remote and health.remote_healthy and any(tier in health.remote_supported_tiers for tier in ("pro", "standard")):
+    if not remote and health.remote_healthy and any(
+        tier in health.remote_supported_tiers for tier in ("extra_high", "high", "medium")
+    ):
         actions.append("use --remote")
     actions.append("explicitly pass --tier flash for text-only preview")
     raise ParseFailure(
         "quality_tier_unavailable",
-        f"No standard or pro engine available. You can {_format_action_list(actions)}.",
+        f"No medium, high, or extra_high engine available. You can {_format_action_list(actions)}.",
     )
 
 

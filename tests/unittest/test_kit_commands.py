@@ -257,44 +257,14 @@ def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
     assert "vlm: ok" in verify_result.output
 
 
-def test_api_server_omits_tier_when_backend_only(monkeypatch: Any) -> None:
-    seen: dict[str, Any] = {}
+def test_api_server_rejects_backend_and_effort_options() -> None:
+    backend_result = runner.invoke(app, ["api-server", "--backend", "hybrid-engine"])
+    effort_result = runner.invoke(app, ["api-server", "--effort", "high"])
 
-    def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
-        seen["args"] = args
-        seen["prog_name"] = prog_name
-        seen["standalone_mode"] = standalone_mode
-
-    monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
-
-    result = runner.invoke(app, ["api-server", "--backend", "hybrid-engine", "--effort", "high"])
-
-    assert result.exit_code == 0
-    assert "--backend" in seen["args"]
-    assert "hybrid-engine" in seen["args"]
-    assert "--effort" in seen["args"]
-    assert "high" in seen["args"]
-    assert "--tier" not in seen["args"]
-
-
-def test_api_server_normalizes_backend_alias(monkeypatch: Any) -> None:
-    seen: dict[str, Any] = {}
-
-    def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
-        """记录 mineru-kit api-server 转发给底层 Click 命令的参数。"""
-        seen["args"] = args
-        seen["prog_name"] = prog_name
-        seen["standalone_mode"] = standalone_mode
-
-    monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
-
-    result = runner.invoke(app, ["api-server", "--backend", "hybrid-auto-engine"])
-
-    assert result.exit_code == 0
-    assert "--backend" in seen["args"]
-    assert "hybrid-engine" in seen["args"]
-    assert "hybrid-auto-engine" not in seen["args"]
-    assert "--tier" not in seen["args"]
+    assert backend_result.exit_code != 0
+    assert "--backend" in backend_result.output
+    assert effort_result.exit_code != 0
+    assert "--effort" in effort_result.output
 
 
 def test_api_server_forwards_repeated_tiers(monkeypatch: Any) -> None:
@@ -308,14 +278,14 @@ def test_api_server_forwards_repeated_tiers(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
 
-    result = runner.invoke(app, ["api-server", "--tier", "standard", "--tier", "pro"])
+    result = runner.invoke(app, ["api-server", "--tier", "medium", "--tier", "extra_high"])
 
     assert result.exit_code == 0
     assert seen["prog_name"] == "mineru-kit api-server"
     assert seen["standalone_mode"] is False
     assert [seen["args"][index + 1] for index, item in enumerate(seen["args"]) if item == "--tier"] == [
-        "standard",
-        "pro",
+        "medium",
+        "extra_high",
     ]
 
 
@@ -323,7 +293,7 @@ def test_api_server_without_tier_lets_parser_api_apply_all_tier_default(monkeypa
     seen: dict[str, Any] = {}
 
     def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
-        """记录 mineru-kit api-server 默认参数，确认不再强制单 standard tier。"""
+        """记录 mineru-kit api-server 默认参数，确认不再强制单 high tier。"""
         seen["args"] = args
         seen["prog_name"] = prog_name
         seen["standalone_mode"] = standalone_mode
@@ -575,15 +545,20 @@ def test_parse_rejects_removed_ch_lite_language(tmp_path: Path) -> None:
 def test_gradio_tier_selection_derives_v1_runtime() -> None:
     from mineru.cli_old import gradio_app
 
-    assert gradio_app.resolve_gradio_runtime_options("standard").as_kwargs() == {
-        "tier": "standard",
+    assert gradio_app.resolve_gradio_runtime_options("medium").as_kwargs() == {
+        "tier": "medium",
         "backend": "hybrid-engine",
         "effort": "medium",
     }
-    assert gradio_app.resolve_gradio_runtime_options("pro").as_kwargs() == {
-        "tier": "pro",
+    assert gradio_app.resolve_gradio_runtime_options("high").as_kwargs() == {
+        "tier": "high",
         "backend": "hybrid-engine",
         "effort": "high",
+    }
+    assert gradio_app.resolve_gradio_runtime_options("extra_high").as_kwargs() == {
+        "tier": "extra_high",
+        "backend": "hybrid-engine",
+        "effort": "extra_high",
     }
 
 
@@ -592,22 +567,24 @@ def test_gradio_extracts_supported_tiers_from_v1_tiers_payload() -> None:
 
     payload = {
         "data": [
-            {"id": "pro"},
+            {"id": "flash"},
+            {"id": "extra_high"},
             {"id": "experimental"},
-            {"id": "standard"},
-            {"id": "pro"},
+            {"id": "medium"},
+            {"id": "high"},
+            {"id": "extra_high"},
         ]
     }
 
-    assert gradio_app.extract_v1_tier_choices(payload) == ("pro", "standard")
-    assert gradio_app.default_v1_gradio_tier(("pro", "standard")) == "pro"
+    assert gradio_app.extract_v1_tier_choices(payload) == ("flash", "extra_high", "medium", "high")
+    assert gradio_app.default_v1_gradio_tier(("flash", "extra_high", "medium", "high")) == "high"
 
 
 def test_gradio_rejects_v1_tiers_payload_without_supported_tiers() -> None:
     from mineru.cli_old import gradio_app
 
     with pytest.raises(click.ClickException, match="did not advertise any supported tier"):
-        gradio_app.extract_v1_tier_choices({"data": [{"id": "flash"}, {"id": "experimental"}]})
+        gradio_app.extract_v1_tier_choices({"data": [{"id": "experimental"}]})
 
 
 def test_gradio_persists_v1_parse_result_for_preview_and_download(

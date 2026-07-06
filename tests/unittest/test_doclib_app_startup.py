@@ -76,7 +76,7 @@ def test_config_set_managed_mode_preflights_managed_tier_dependencies(monkeypatc
     assert payload["error"]["code"] == "parse_server_dependency_missing"
     assert payload["error"]["param"] == "parse_server.local.mode"
     assert "torch" in payload["error"]["message"]
-    assert "pip install 'mineru-next-dev[standard]'" in payload["error"]["message"]
+    assert "pip install 'mineru-next-dev[high]'" in payload["error"]["message"]
     assert config_response.json()["value"] == "disabled"
 
 
@@ -96,7 +96,7 @@ def test_config_set_managed_tier_preflights_even_when_mode_is_disabled(monkeypat
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
     with TestClient(doclib_app.create_app(cfg)) as client:
-        response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "pro"})
+        response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "extra_high"})
         config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
 
     assert response.status_code == 400
@@ -104,8 +104,8 @@ def test_config_set_managed_tier_preflights_even_when_mode_is_disabled(monkeypat
     assert payload["error"]["code"] == "parse_server_dependency_missing"
     assert payload["error"]["param"] == "parse_server.local.managed_tier"
     assert "mlx" in payload["error"]["message"]
-    assert "pip install 'mineru-next-dev[pro]'" in payload["error"]["message"]
-    assert config_response.json()["value"] == "standard"
+    assert "pip install 'mineru-next-dev[extra_high]'" in payload["error"]["message"]
+    assert config_response.json()["value"] == "high"
 
 
 def test_background_task_crash_is_logged(caplog: pytest.LogCaptureFixture) -> None:

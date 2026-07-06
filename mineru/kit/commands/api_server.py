@@ -5,14 +5,11 @@ from typing import Literal, Sequence
 import typer
 
 from ...parser import api_server as parser_api_server
-from ...parser.tier import PARSER_BACKENDS
-from ...utils.backend_options import DEFAULT_HYBRID_EFFORT, resolve_backend_and_effort
 from ...utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..errors import exit_with_message
 
-API_SERVER_BACKENDS = tuple(backend for backend in PARSER_BACKENDS if backend != "flash")
 API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
-API_SERVER_TIERS = ("standard", "pro")
+API_SERVER_TIERS = ("flash", "medium", "high", "extra_high")
 
 
 def _normalize_tier_options(tier: Sequence[str] | str | None) -> list[str]:
@@ -37,25 +34,19 @@ def api_server_cmd(
     host: str = "127.0.0.1",
     port: int = 8000,
     upload_dir: str = "",
-    backend: str | None = None,
-    tier: Sequence[Literal["standard", "pro"]] | Literal["standard", "pro"] | None = None,
+    tier: Sequence[Literal["flash", "medium", "high", "extra_high"]]
+    | Literal["flash", "medium", "high", "extra_high"]
+    | None = None,
     concurrency: int = 1,
     url_timeout: int = 60,
     max_wait: int = 600,
     language: str = "ch",
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
-    effort: Literal["medium", "high", "extra_high"] = DEFAULT_HYBRID_EFFORT,
     disable_table: bool = False,
     disable_formula: bool = False,
     disable_image_analysis: bool = False,
     api_key: str | None = None,
 ) -> None:
-    try:
-        normalized_backend, normalized_effort = (
-            resolve_backend_and_effort(backend, effort) if backend is not None else (None, effort)
-        )
-    except ValueError as exc:
-        exit_with_message("invalid_request", str(exc), "backend")
     try:
         normalized_language = validate_public_ocr_lang(language)
     except ValueError as exc:
@@ -79,11 +70,8 @@ def api_server_cmd(
                 normalized_language,
                 "--ocr-mode",
                 ocr_mode,
-                "--effort",
-                normalized_effort,
                 *tier_args,
                 *(["--upload-dir", upload_dir] if upload_dir else []),
-                *(["--backend", normalized_backend] if normalized_backend else []),
                 *(["--disable-table"] if disable_table else []),
                 *(["--disable-formula"] if disable_formula else []),
                 *(["--disable-image-analysis"] if disable_image_analysis else []),
