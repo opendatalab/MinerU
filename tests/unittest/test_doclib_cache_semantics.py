@@ -1466,6 +1466,55 @@ def test_ensure_ingested_rebinds_changed_text_file_to_new_sha(tmp_path: Path) ->
     asyncio.run(_run())
 
 
+def test_refresh_file_normalizes_lexical_path_aliases(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
+        root = tmp_path / "docs"
+        root.mkdir()
+        source = root / "note.txt"
+        source.write_text("content", encoding="utf-8")
+        alias = root / "." / "nested" / ".." / "note.txt"
+
+        first = await service.refresh_file(str(alias))
+        second = await service.refresh_file(str(source))
+        rows = await db.fetchall("SELECT path FROM files ORDER BY id")
+
+        assert first.status == "new"
+        assert second.status == "known"
+        assert rows == [{"path": str(source)}]
+
+    asyncio.run(_run())
+
+
+def test_refresh_file_keeps_symlink_and_real_paths_as_distinct_file_entries(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
+        real_root = tmp_path / "real-root"
+        real_root.mkdir()
+        alias_root = tmp_path / "alias-root"
+        alias_root.symlink_to(real_root, target_is_directory=True)
+        source = real_root / "note.txt"
+        source.write_text("content", encoding="utf-8")
+
+        alias_result = await service.refresh_file(str(alias_root / "note.txt"))
+        real_result = await service.refresh_file(str(source))
+        rows = await db.fetchall("SELECT path FROM files ORDER BY path")
+
+        assert alias_result.status == "new"
+        assert real_result.status == "new"
+        assert rows == [{"path": str(alias_root / "note.txt")}, {"path": str(source)}]
+
+    asyncio.run(_run())
+
+
 def test_refresh_file_marks_missing_known_path_deleted(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
@@ -2272,6 +2321,43 @@ def test_watch_event_ignores_image_files(tmp_path: Path) -> None:
         await watch_loop._handle_event(str(image_file), watch_id=1)
 
         assert parse_svc.refreshed == []
+
+    asyncio.run(_run())
+
+
+def test_watch_event_rebases_realpath_alias_to_watch_root_namespace(tmp_path: Path) -> None:
+    async def _run() -> None:
+        class _ConfigService:
+            async def is_path_excluded(self, path: str) -> bool:
+                return False
+
+        class _ParseService:
+            def __init__(self) -> None:
+                self.refreshed: list[str] = []
+
+            async def refresh_file(self, filepath: str, watch_id: int) -> None:
+                self.refreshed.append(filepath)
+
+        real_root = tmp_path / "real-root"
+        real_root.mkdir()
+        alias_parent = tmp_path / "aliases"
+        alias_parent.mkdir()
+        alias_root = alias_parent / "watched"
+        alias_root.symlink_to(real_root, target_is_directory=True)
+        event_path = real_root / "a.txt"
+        event_path.write_text("content", encoding="utf-8")
+
+        parse_svc = _ParseService()
+        watch_loop = WatchLoop(
+            db=SimpleNamespace(),
+            config_svc=_ConfigService(),
+            parse_svc=parse_svc,
+            scan_interval_sec=300,
+        )
+
+        await watch_loop._handle_event(str(event_path), watch_id=1, watch_root=str(alias_root))
+
+        assert parse_svc.refreshed == [str(alias_root / "a.txt")]
 
     asyncio.run(_run())
 

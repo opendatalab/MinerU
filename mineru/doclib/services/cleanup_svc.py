@@ -11,6 +11,7 @@ from ...errors import InvalidRequestError
 from ..core.db import DatabaseManager
 from ..rows import CountRow, DocRow, IdRow, WatchTargetRow
 from ..types import FILE_STATUS_DELETED
+from ..utils.path_utils import normalize_doclib_path
 
 FORGET_WATCH_ROOT_WARNING = "Path is a configured watch root and may be rediscovered on the next scan."
 FORGET_UNDER_ACTIVE_WATCH_WARNING = "Path is under an active watch and may be rediscovered on the next scan."
@@ -199,7 +200,7 @@ def _days_ago_ms(days: int) -> int:
 
 
 def _normalize_path(path: str) -> str:
-    return os.path.normpath(os.path.abspath(os.path.expanduser(path.strip()))) if path.strip() else ""
+    return normalize_doclib_path(path)
 
 
 def _path_prefix(path: str) -> str:

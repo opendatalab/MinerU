@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import os
+from ..doclib.utils.path_utils import normalize_doclib_path
 
 
 def normalize_cli_path(path: str) -> str:
     """Normalize a local filesystem path provided to the CLI."""
-    return os.path.normpath(os.path.abspath(os.path.expanduser(path)))
+    return normalize_doclib_path(path)

@@ -230,25 +230,19 @@ def test_add_watch_rejects_missing_directory(tmp_path) -> None:
     asyncio.run(_run())
 
 
-def test_add_watch_rejects_non_absolute_or_unnormalized_path_with_structured_error(tmp_path) -> None:
+def test_add_watch_normalizes_user_path_before_storing(tmp_path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         service = ConfigService(db)
 
-        with pytest.raises(InvalidRequestError) as relative_exc:
-            await service.add_watch("relative/path")
-        assert relative_exc.value.code == "invalid_request"
-        assert relative_exc.value.param == "path"
-
         root = tmp_path / "root"
         root.mkdir()
         unnormalized = str(root / ".." / root.name)
 
-        with pytest.raises(InvalidRequestError) as normalized_exc:
-            await service.add_watch(unnormalized)
-        assert normalized_exc.value.code == "invalid_request"
-        assert normalized_exc.value.param == "path"
+        watch = await service.add_watch(unnormalized)
+
+        assert watch["path"] == str(root)
 
     asyncio.run(_run())
 
