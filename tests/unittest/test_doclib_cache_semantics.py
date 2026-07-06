@@ -552,6 +552,62 @@ def test_managed_parse_server_restart_writes_stdout_and_stderr_logs(monkeypatch:
     assert parse_stderr_log_path.read_text(encoding="utf-8").endswith("parse restart stderr\n")
 
 
+def test_managed_parse_server_restart_clears_invalid_tier_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[str] = []
+
+    class _ConfigSvc:
+        def __init__(self) -> None:
+            self.value = "pro"
+            self.unset_keys: list[str] = []
+
+        async def get(self, key: str) -> str:
+            assert key == "parse_server.local.managed_tier"
+            return self.value
+
+        async def unset(self, key: str) -> bool:
+            assert key == "parse_server.local.managed_tier"
+            self.unset_keys.append(key)
+            self.value = CONFIG_DEFAULTS[key]
+            return True
+
+    class _Proc:
+        pid = 67890
+
+    config_svc = _ConfigSvc()
+
+    def _popen(*args: Any, **kwargs: Any) -> _Proc:
+        cmd = args[0]
+        assert "--tier" in cmd
+        assert cmd[cmd.index("--tier") + 1] == "high"
+        events.append("start")
+        return _Proc()
+
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582
+    )
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.open_managed_parse_server_logs",
+        lambda *args, **kwargs: nullcontext((None, None)),
+    )
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
+
+    checker = ParseServerHealthCheck(
+        config_svc,
+        interval_sec=1,
+        probe_timeout_sec=2,
+        startup_grace_sec=3,
+        stop_timeout_sec=4,
+        managed_parse_server=ManagedParseServerConfig(host="127.0.0.2", port=16580, port_probe_count=3),
+    )
+    health = ParseServerHealth()
+
+    asyncio.run(checker._try_restart_managed(health))
+
+    assert events == ["start"]
+    assert config_svc.unset_keys == ["parse_server.local.managed_tier"]
+    assert health.running_managed_tier == "high"
+
+
 def test_managed_parse_server_restart_stops_recorded_proc_before_start(monkeypatch: pytest.MonkeyPatch) -> None:
     events: list[str] = []
     old_proc = object()

@@ -47,6 +47,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         from .background.ingest import IngestWorkerPool
         from .background.parse_server_health import (
             ParseServerHealthCheck,
+            get_managed_parse_server_tier,
             get_health,
             start_managed_parse_server,
         )
@@ -120,7 +121,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         health = get_health()
         health.local_mode = local_mode
         if local_mode == "managed":
-            managed_tier = (await state.config_svc.get("parse_server.local.managed_tier")) or "high"
+            managed_tier = await get_managed_parse_server_tier(state.config_svc)
             health.managed_tier = managed_tier
             try:
                 proc, managed_url = start_managed_parse_server(

@@ -82,9 +82,9 @@ def get_doc_content(
 HTTP API 使用 GET query，不使用 request body:
 
 ```http
-GET /api/v1/docs/{sha256}/content?tier=standard&page_range=1~10&limit=30000
-GET /api/v1/docs/{sha256}/content?tier=standard&page_range=7~10&after=doc:ab12cd3/tier:standard/page:7/block:4&limit=30000
-GET /api/v1/docs/{sha256}/content?tier=standard&after=doc:ab12cd3/tier:standard/page:1/block:42&limit=30000
+GET /api/v1/docs/{sha256}/content?tier=medium&page_range=1~10&limit=30000
+GET /api/v1/docs/{sha256}/content?tier=medium&page_range=7~10&after=doc:ab12cd3/tier:medium/page:7/block:4&limit=30000
+GET /api/v1/docs/{sha256}/content?tier=medium&after=doc:ab12cd3/tier:medium/page:1/block:42&limit=30000
 ```
 
 ## 默认值
@@ -139,7 +139,7 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 示例:
 
 ```http
-GET /api/v1/docs/{sha}/content?tier=standard&after=doc:ab12cd3/tier:standard/page:21
+GET /api/v1/docs/{sha}/content?tier=medium&after=doc:ab12cd3/tier:medium/page:21
 ```
 
 若文档至少有 30 页，规范化为:
@@ -148,7 +148,7 @@ GET /api/v1/docs/{sha}/content?tier=standard&after=doc:ab12cd3/tier:standard/pag
 {
   "request_scope": {
     "page_range": "21~30",
-    "after": "doc:ab12cd3/tier:standard/page:21",
+    "after": "doc:ab12cd3/tier:medium/page:21",
     "limit": 30000
   }
 }
@@ -172,8 +172,8 @@ GET /api/v1/docs/{sha}/content?tier=standard&after=doc:ab12cd3/tier:standard/pag
   "content_ranges": [
     {
       "page_range": "1~10",
-      "start": "doc:ab12cd3/tier:standard/page:1",
-      "end": "doc:ab12cd3/tier:standard/page:10"
+      "start": "doc:ab12cd3/tier:medium/page:1",
+      "end": "doc:ab12cd3/tier:medium/page:10"
     }
   ]
 }
@@ -191,13 +191,13 @@ GET /api/v1/docs/{sha}/content?tier=standard&after=doc:ab12cd3/tier:standard/pag
   "content_ranges": [
     {
       "page_range": "1~5",
-      "start": "doc:ab12cd3/tier:standard/page:1",
-      "end": "doc:ab12cd3/tier:standard/page:5"
+      "start": "doc:ab12cd3/tier:medium/page:1",
+      "end": "doc:ab12cd3/tier:medium/page:5"
     },
     {
       "page_range": "20~25",
-      "start": "doc:ab12cd3/tier:standard/page:20",
-      "end": "doc:ab12cd3/tier:standard/page:25"
+      "start": "doc:ab12cd3/tier:medium/page:20",
+      "end": "doc:ab12cd3/tier:medium/page:25"
     }
   ]
 }
@@ -240,7 +240,7 @@ truncated=false => next_request may be null or non-null
 请求:
 
 ```http
-GET /api/v1/docs/{sha}/content?tier=standard&page_range=1~10&limit=30000
+GET /api/v1/docs/{sha}/content?tier=medium&page_range=1~10&limit=30000
 ```
 
 响应:
@@ -255,8 +255,8 @@ GET /api/v1/docs/{sha}/content?tier=standard&page_range=1~10&limit=30000
   "content_ranges": [
     {
       "page_range": "1~10",
-      "start": "doc:ab12cd3/tier:standard/page:1",
-      "end": "doc:ab12cd3/tier:standard/page:10"
+      "start": "doc:ab12cd3/tier:medium/page:1",
+      "end": "doc:ab12cd3/tier:medium/page:10"
     }
   ],
   "truncated": false,
@@ -292,7 +292,7 @@ GET /api/v1/docs/{sha}/content?tier=standard&page_range=1~10&limit=30000
 请求:
 
 ```http
-GET /api/v1/docs/{sha}/content?tier=standard&page_range=1~10&limit=30000
+GET /api/v1/docs/{sha}/content?tier=medium&page_range=1~10&limit=30000
 ```
 
 如果 Server 只输出到第 6 页，并在页边缘停止:
@@ -302,8 +302,8 @@ GET /api/v1/docs/{sha}/content?tier=standard&page_range=1~10&limit=30000
   "content_ranges": [
     {
       "page_range": "1~6",
-      "start": "doc:ab12cd3/tier:standard/page:1",
-      "end": "doc:ab12cd3/tier:standard/page:6"
+      "start": "doc:ab12cd3/tier:medium/page:1",
+      "end": "doc:ab12cd3/tier:medium/page:6"
     }
   ],
   "truncated": true,
@@ -322,7 +322,7 @@ GET /api/v1/docs/{sha}/content?tier=standard&page_range=1~10&limit=30000
 请求:
 
 ```http
-GET /api/v1/docs/{sha}/content?tier=standard&page_range=7~10&limit=30000
+GET /api/v1/docs/{sha}/content?tier=medium&page_range=7~10&limit=30000
 ```
 
 响应:
@@ -332,14 +332,14 @@ GET /api/v1/docs/{sha}/content?tier=standard&page_range=7~10&limit=30000
   "content_ranges": [
     {
       "page_range": "7",
-      "start": "doc:ab12cd3/tier:standard/page:7",
-      "end": "doc:ab12cd3/tier:standard/page:7/block:4"
+      "start": "doc:ab12cd3/tier:medium/page:7",
+      "end": "doc:ab12cd3/tier:medium/page:7/block:4"
     }
   ],
   "truncated": true,
   "next_request": {
     "page_range": "7~10",
-    "after": "doc:ab12cd3/tier:standard/page:7/block:4"
+    "after": "doc:ab12cd3/tier:medium/page:7/block:4"
   }
 }
 ```
@@ -351,14 +351,14 @@ GET /api/v1/docs/{sha}/content?tier=standard&page_range=7~10&limit=30000
   "content_ranges": [
     {
       "page_range": "7",
-      "start": "doc:ab12cd3/tier:standard/page:7/block:4/char:0",
-      "end": "doc:ab12cd3/tier:standard/page:7/block:4/char:32784"
+      "start": "doc:ab12cd3/tier:medium/page:7/block:4/char:0",
+      "end": "doc:ab12cd3/tier:medium/page:7/block:4/char:32784"
     }
   ],
   "truncated": true,
   "next_request": {
     "page_range": "7~10",
-    "after": "doc:ab12cd3/tier:standard/page:7/block:4/char:32784"
+    "after": "doc:ab12cd3/tier:medium/page:7/block:4/char:32784"
   }
 }
 ```
@@ -372,7 +372,7 @@ GET /api/v1/docs/{sha}/content?tier=standard&page_range=7~10&limit=30000
 示例:
 
 ```http
-GET /api/v1/docs/{sha}/content?tier=standard&page_range=1~5,20~25
+GET /api/v1/docs/{sha}/content?tier=medium&page_range=1~5,20~25
 ```
 
 若文档还有第 26 页之后的内容:
@@ -416,13 +416,13 @@ GET /api/v1/docs/{sha}/content?tier=standard&page_range=1~5,20~25
   "content_ranges": [
     {
       "page_range": null,
-      "start": "doc:ab12cd3/tier:standard/page:1/block:1",
-      "end": "doc:ab12cd3/tier:standard/page:1/block:42"
+      "start": "doc:ab12cd3/tier:medium/page:1/block:1",
+      "end": "doc:ab12cd3/tier:medium/page:1/block:42"
     }
   ],
   "truncated": true,
   "next_request": {
-    "after": "doc:ab12cd3/tier:standard/page:1/block:42"
+    "after": "doc:ab12cd3/tier:medium/page:1/block:42"
   }
 }
 ```
@@ -434,13 +434,13 @@ GET /api/v1/docs/{sha}/content?tier=standard&page_range=1~5,20~25
   "content_ranges": [
     {
       "page_range": null,
-      "start": "doc:ab12cd3/tier:standard/page:1/block:1/char:0",
-      "end": "doc:ab12cd3/tier:standard/page:1/block:1/char:32784"
+      "start": "doc:ab12cd3/tier:medium/page:1/block:1/char:0",
+      "end": "doc:ab12cd3/tier:medium/page:1/block:1/char:32784"
     }
   ],
   "truncated": true,
   "next_request": {
-    "after": "doc:ab12cd3/tier:standard/page:1/block:1/char:32784"
+    "after": "doc:ab12cd3/tier:medium/page:1/block:1/char:32784"
   }
 }
 ```
@@ -458,13 +458,13 @@ CLI marker 是展示层，不是协议源头。Server 返回 `next_request`，CL
 分页文档页内 continuation:
 
 ```html
-<!-- Next: mineru parse report.pdf --pages 7~10 --after doc:ab12cd3/tier:standard/page:7/block:4 -->
+<!-- Next: mineru parse report.pdf --pages 7~10 --after doc:ab12cd3/tier:medium/page:7/block:4 -->
 ```
 
 非分页文档:
 
 ```html
-<!-- Next: mineru parse long.docx --after doc:ab12cd3/tier:standard/page:1/block:42 -->
+<!-- Next: mineru parse long.docx --after doc:ab12cd3/tier:medium/page:1/block:42 -->
 ```
 
 机器可读协议以 `DocContentResponse.next_request` 为准。CLI marker 不应被 SDK 或 Server 反解析。

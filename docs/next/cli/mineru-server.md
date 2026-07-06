@@ -129,11 +129,11 @@ local parse-server 是独立进程，由 `mineru-kit api-server` 提供。doclib
 
 | 模式 | 行为 |
 |------|------|
-| `disabled` | 不启用本地 standard/pro 解析 |
+| `disabled` | 不启用本地 medium/high 解析 |
 | `managed` | doclib 启停时自动管理 parse-server |
 | `self_hosted` | 用户自己启动 parse-server，doclib 只连接 URL |
 
-默认选择策略需要通过 local 或 remote parse-server 的能力发现解析为 `standard` 或 `pro`。
+默认选择策略需要通过 local 或 remote parse-server 的能力发现解析为 `medium` 或 `high`。
 
 ## 6. 崩溃恢复
 

@@ -18,7 +18,7 @@
 3. [端到端工作流](workflows.md): 串起 watch、ingest、parse、cache、search、API、SDK 和 Agent 读取流程。
 4. [实现计划](implementation-plan.md): 面向编程 Agent 的细粒度任务拆分、边界和验收。
 5. [系统架构](architecture.md): 再理解本地文档库、服务、任务和存储模型。
-6. [解析 Tier](tiers.md): 理解默认选择、`flash`、`standard`、`pro` 的质量、速度、硬件和隐私边界。
+6. [解析 Tier](tiers.md): 理解默认选择、`flash`、`medium`、`high` 的质量、速度、硬件和隐私边界。
 7. [CLI 规格](cli.md): 理解本地入口和批处理体验。
 8. [Unified API](api.md): 理解云端和自部署 API 的统一模型。
 9. [SDK 设计](sdk.md): 理解 Tool SDK 与 Product SDK 的分层。

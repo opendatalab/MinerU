@@ -12,15 +12,19 @@ import sys
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import IO, Iterator, cast
+from typing import IO, TYPE_CHECKING, Iterator, cast
 
 import httpx
 
 from ...config import LogConfig, ManagedParseServerConfig, config
 from ...parser.api_client import should_trust_env_for_url
-from ...types import TIERS, Tier
+from ...types import TIERS, Tier, validate_tier
+from ..config_defaults import CONFIG_DEFAULTS
 
 logger = logging.getLogger("mineru.health_check")
+
+if TYPE_CHECKING:
+    from ..services.config_svc import ConfigService
 
 MAX_RESTART_ATTEMPTS = 3
 DEFAULT_MANAGED_URL = "http://127.0.0.1:16580"
@@ -56,6 +60,22 @@ _parse_server_health = ParseServerHealth()
 
 def get_health() -> ParseServerHealth:
     return _parse_server_health
+
+
+async def get_managed_parse_server_tier(config_svc: "ConfigService") -> Tier:
+    """读取 managed parse-server tier；发现旧非法 override 时清理并回退到默认合法值。"""
+    key = "parse_server.local.managed_tier"
+    raw_tier = await config_svc.get(key) or CONFIG_DEFAULTS[key]
+    try:
+        return validate_tier(raw_tier)
+    except ValueError:
+        logger.warning(
+            "Invalid managed parse-server tier override %r; clearing override and using default %r",
+            raw_tier,
+            CONFIG_DEFAULTS[key],
+        )
+        await config_svc.unset(key)
+        return validate_tier(CONFIG_DEFAULTS[key])
 
 
 def api_server_args_for_tier(tier: Tier, *, host: str, port: int) -> list[str]:
@@ -234,8 +254,7 @@ class ParseServerHealthCheck:
             # refresh config on each cycle (hot-reload)
             mode = (await self.config_svc.get("parse_server.local.mode")) or "disabled"
             health.local_mode = mode
-            managed_tier = (await self.config_svc.get("parse_server.local.managed_tier")) or "high"
-            desired_managed_tier = cast(Tier, managed_tier)
+            desired_managed_tier = await get_managed_parse_server_tier(self.config_svc)
             health.managed_tier = desired_managed_tier
             self_hosted_url = await self.config_svc.get("parse_server.local.self_hosted_url")
             health.self_hosted_url = self_hosted_url if self_hosted_url else None
@@ -318,13 +337,13 @@ class ParseServerHealthCheck:
 
         if count_restart:
             health.restart_count += 1
-        managed_tier = (await self.config_svc.get("parse_server.local.managed_tier")) or "high"
+        managed_tier = await get_managed_parse_server_tier(self.config_svc)
         stop_managed_parse_server(health.managed_proc, timeout_sec=self.stop_timeout_sec, reason=reason)
         health.managed_proc = None
         health.running_managed_tier = None
         try:
             proc, managed_url = start_managed_parse_server(
-                tier=cast(Tier, managed_tier),
+                tier=managed_tier,
                 managed_cfg=self.managed_parse_server,
                 log_cfg=self.log_cfg,
                 marker=marker or f"restart attempt {health.restart_count}",
@@ -332,7 +351,7 @@ class ParseServerHealthCheck:
             health.managed_url = managed_url
             logger.info("Managed parse-server restarted (PID %d, tier=%s)", proc.pid, managed_tier)
             health.managed_proc = proc
-            health.running_managed_tier = cast(Tier, managed_tier)
+            health.running_managed_tier = managed_tier
             health.local_starting = True
             health.local_started_at = asyncio.get_event_loop().time()
         except Exception as exc:

@@ -36,7 +36,7 @@ ID 使用 OpenAI 风格的前缀加随机串。官方 API 使用 24 字符 base6
 
 所有 endpoint 都带 `/v1` 版本前缀，例如 `GET https://mineru.net/api/v1/health`。
 
-官方远程 API 在相当长时间内只提供 `pro` 解析。Local Parse Server 默认监听 loopback；如需对局域网或公网暴露，必须由部署者显式配置 host、防火墙和认证。
+官方远程 API 在相当长时间内只提供 `high` 解析。Local Parse Server 默认监听 loopback；如需对局域网或公网暴露，必须由部署者显式配置 host、防火墙和认证。
 
 ## Endpoint 地图
 

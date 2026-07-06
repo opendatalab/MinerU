@@ -120,8 +120,8 @@ class DocumentParser:
 | Tier | 默认 backend | 说明 |
 |------|--------------|------|
 | `flash` | `flash` | 快速 CPU-only。 |
-| `standard` | `hybrid-engine` + `effort="low"` | 消费级硬件可用的本地小模型组合。 |
-| `pro` | hybrid 默认高质量 backend | 最高质量。 |
+| `medium` | `hybrid-engine` + `effort="low"` | 消费级硬件可用的本地小模型组合。 |
+| `high` | hybrid 默认高质量 backend | 最高质量。 |
 
 `tier=None` 表示使用默认选择策略，选择可用的最高非 `flash` tier。只有用户显式请求 `tier="flash"` 或 `backend="flash"` 时，才返回 flash 结果。
 
@@ -141,7 +141,7 @@ class DocumentParser:
 ```python
 from mineru.parser import parse
 
-result = parse("report.pdf", tier="standard", page_range="1~5")
+result = parse("report.pdf", tier="medium", page_range="1~5")
 print(result.markdown())
 ```
 

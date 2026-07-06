@@ -424,6 +424,59 @@ def test_managed_parse_server_startup_writes_stdout_and_stderr_logs(monkeypatch,
     assert parse_stderr_log_path.read_text(encoding="utf-8").endswith("parse stderr\n")
 
 
+def test_managed_parse_server_startup_clears_invalid_tier_override(monkeypatch, tmp_path) -> None:
+    db = DatabaseManager(str(tmp_path / "doclib.db"))
+    asyncio.run(db.initialize())
+    asyncio.run(db.execute("INSERT INTO config (key, value) VALUES (?, ?)", ("parse_server.local.mode", "managed")))
+    asyncio.run(
+        db.execute("INSERT INTO config (key, value) VALUES (?, ?)", ("parse_server.local.managed_tier", "standard"))
+    )
+
+    class _Proc:
+        pid = 12345
+
+        def poll(self) -> None:
+            return None
+
+        def wait(self, timeout: int) -> None:
+            return None
+
+    def _popen(*args: object, **kwargs: object) -> _Proc:
+        cmd = args[0]
+        assert "--tier" in cmd
+        assert cmd[cmd.index("--tier") + 1] == "high"
+        return _Proc()
+
+    def _skip_background_task(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
+
+    cfg = PatchedConfig(
+        doclib={
+            "data_dir": str(tmp_path),
+            "sqlite": {"path": str(tmp_path / "doclib.db")},
+            "log": {
+                "app_path": str(tmp_path / "doclib.log"),
+                "access_path": str(tmp_path / "doclib.access.log"),
+                "parse_server_stdout_path": str(tmp_path / "parse.stdout.log"),
+                "parse_server_stderr_path": str(tmp_path / "parse.stderr.log"),
+            },
+            "managed_parse_server": {"port": 16580},
+            "uds": {"path": str(tmp_path / "doclib.sock")},
+        }
+    )
+
+    with TestClient(doclib_app.create_app(cfg)) as client:
+        config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
+        status_response = client.get("/api/v1/server/status")
+
+    assert config_response.json()["value"] == "high"
+    assert status_response.json()["parse_server"]["local"]["managed_tier"] == "high"
+
+
 def test_managed_parse_server_shutdown_uses_health_proc(monkeypatch, tmp_path) -> None:
     db = DatabaseManager(str(tmp_path / "doclib.db"))
     asyncio.run(db.initialize())

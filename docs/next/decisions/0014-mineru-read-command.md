@@ -179,7 +179,7 @@ parse read 返回示例:
 {
   "sha256": "...",
   "short_id": "ab12cd3",
-  "tier": "standard",
+  "tier": "medium",
   "format": "markdown",
   "content": "...",
   "request_scope": {
@@ -192,8 +192,8 @@ parse read 返回示例:
   "content_ranges": [
     {
       "page_range": "1~10",
-      "start": "doc:ab12cd3/tier:standard/page:1",
-      "end": "doc:ab12cd3/tier:standard/page:10/block:18"
+      "start": "doc:ab12cd3/tier:medium/page:1",
+      "end": "doc:ab12cd3/tier:medium/page:10/block:18"
     }
   ],
   "truncated": false,
@@ -212,21 +212,21 @@ locator read 返回示例:
 {
   "sha256": "...",
   "short_id": "ab12cd3",
-  "tier": "standard",
+  "tier": "medium",
   "format": "markdown",
   "content": "...",
   "request_scope": {
     "page_range": "4",
     "after": null,
     "limit": 30000,
-    "locator": "doc:ab12cd3/tier:standard/page:4/block:12",
+    "locator": "doc:ab12cd3/tier:medium/page:4/block:12",
     "context": 2
   },
   "content_ranges": [
     {
       "page_range": "4",
-      "start": "doc:ab12cd3/tier:standard/page:4/block:10",
-      "end": "doc:ab12cd3/tier:standard/page:4/block:14"
+      "start": "doc:ab12cd3/tier:medium/page:4/block:10",
+      "end": "doc:ab12cd3/tier:medium/page:4/block:14"
     }
   ],
   "truncated": false,
@@ -241,21 +241,21 @@ image read 返回示例:
 {
   "sha256": "...",
   "short_id": "ab12cd3",
-  "tier": "standard",
+  "tier": "medium",
   "format": "image",
   "content": "",
   "request_scope": {
     "page_range": "4",
     "after": null,
     "limit": 30000,
-    "locator": "doc:ab12cd3/tier:standard/page:4/block:12",
+    "locator": "doc:ab12cd3/tier:medium/page:4/block:12",
     "context": 0
   },
   "content_ranges": [
     {
       "page_range": "4",
-      "start": "doc:ab12cd3/tier:standard/page:4/block:12",
-      "end": "doc:ab12cd3/tier:standard/page:4/block:12"
+      "start": "doc:ab12cd3/tier:medium/page:4/block:12",
+      "end": "doc:ab12cd3/tier:medium/page:4/block:12"
     }
   ],
   "truncated": false,
@@ -283,7 +283,7 @@ read 使用 locator continuation:
 - CLI continuation marker 渲染为:
 
 ```markdown
-<!-- Next: mineru read doc:ab12cd3/tier:standard/page:5 -->
+<!-- Next: mineru read doc:ab12cd3/tier:medium/page:5 -->
 ```
 
 P0 暂不实现 block locator marker，即不在每个 block 前默认输出:
@@ -421,8 +421,8 @@ def read_content(
 HTTP 路由:
 
 ```http
-GET /api/v1/content?locator=doc:ab12cd3/tier:standard/page:4&format=markdown&limit=30000
-GET /api/v1/content?locator=doc:ab12cd3/tier:standard/page:4/block:12&format=image&image_format=png
+GET /api/v1/content?locator=doc:ab12cd3/tier:medium/page:4&format=markdown&limit=30000
+GET /api/v1/content?locator=doc:ab12cd3/tier:medium/page:4/block:12&format=image&image_format=png
 ```
 
 P0 不为 locator-first content API 提供 POST export。`GET /api/v1/content` 可以在 server 内部生成临时 image asset，并接受 `image_format=jpeg|png|webp` 控制 asset 编码，但不接受 client 指定的 output path。CLI `read --output` 是 client 侧文件写入/copy 行为，不是 doclib HTTP API 行为。

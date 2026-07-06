@@ -26,7 +26,7 @@ parse 请求返回本次请求需要等待的 batch 集合，而不是单个 `pa
 ```json
 {
   "sha256": "...",
-  "tier": "standard",
+  "tier": "medium",
   "page_range": "1~10",
   "status": "pending",
   "wait_parse_ids": [12, 13],
@@ -69,8 +69,8 @@ GET /parses?ids=12,13
 ```json
 {
   "parses": [
-    {"id": 12, "sha256": "...", "tier": "standard", "page_range": "1~5", "status": "done"},
-    {"id": 13, "sha256": "...", "tier": "standard", "page_range": "6~10", "status": "parsing"}
+    {"id": 12, "sha256": "...", "tier": "medium", "page_range": "1~5", "status": "done"},
+    {"id": 13, "sha256": "...", "tier": "medium", "page_range": "6~10", "status": "parsing"}
   ]
 }
 ```
@@ -90,7 +90,7 @@ CLI wait 必须使用 id 级状态查询。
 
 ### 方案 B: force 严格总是创建新 batch
 
-拒绝。语义简单，但会在已有同页 active batch 时重复消耗算力，尤其对 `standard` / `pro` 和 remote 解析成本较高。
+拒绝。语义简单，但会在已有同页 active batch 时重复消耗算力，尤其对 `medium` / `high` 和 remote 解析成本较高。
 
 ### 方案 C: CLI 继续轮询聚合状态
 

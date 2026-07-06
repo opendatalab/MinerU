@@ -36,7 +36,7 @@ P0 定义两级定位:
 
 ```text
 page:1/block:3
-doc:ab12cd3/tier:standard/page:1/block:3
+doc:ab12cd3/tier:medium/page:1/block:3
 ```
 
 字段规则:
@@ -44,7 +44,7 @@ doc:ab12cd3/tier:standard/page:1/block:3
 | 字段 | 说明 |
 |------|------|
 | `short_id` | `docs.short_id`，见 [ADR-0011](0011-doclib-doc-short-id.md)。 |
-| `tier` | 实际解析档位: `flash` / `standard` / `pro`。 |
+| `tier` | 实际解析档位: `flash` / `medium` / `high`。 |
 | `page_no` | 1-based 页号。 |
 | `block_no` | 1-based block 号。 |
 
@@ -116,7 +116,7 @@ Structured Content item 可包含:
 ```json
 {
   "locator": "page:1/block:3",
-  "block_ref": "doc:ab12cd3/tier:standard/page:1/block:3",
+  "block_ref": "doc:ab12cd3/tier:medium/page:1/block:3",
   "page": 1,
   "block": 3,
   "type": "paragraph"
@@ -128,7 +128,7 @@ Structured Content item 可包含:
 Markdown 可选 locator marker 可包含:
 
 ```html
-<!-- mineru:block {"ref":"doc:ab12cd3/tier:standard/page:1/block:3","locator":"page:1/block:3","type":"paragraph"} -->
+<!-- mineru:block {"ref":"doc:ab12cd3/tier:medium/page:1/block:3","locator":"page:1/block:3","type":"paragraph"} -->
 ```
 
 规则:
@@ -143,7 +143,7 @@ Agent citation record 可包含:
 
 ```json
 {
-  "block_ref": "doc:ab12cd3/tier:standard/page:4/block:12",
+  "block_ref": "doc:ab12cd3/tier:medium/page:4/block:12",
   "locator": "page:4/block:12",
   "page": 4,
   "block": 12,

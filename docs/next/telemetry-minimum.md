@@ -499,7 +499,7 @@ lock 存储规则:
       "dimensions": {
         "source": "cli",
         "caller": "agent",
-        "tier": "standard(default)",
+        "tier": "medium(default)",
         "status": "queued"
       }
     }
@@ -690,7 +690,7 @@ status = <metric-specific low-cardinality status>
 按需补充:
 
 ```text
-tier = default | flash | standard | pro | standard(default) | pro(default) | unknown
+tier = default | flash | medium | high | medium(default) | high(default) | unknown
 server = local(flash) | local(managed) | local(self-hosted) | remote(official) | remote(custom) | none | unknown
 error_code = <telemetry_error_code>
 bucket = <metric bucket value>
@@ -747,8 +747,8 @@ scan_failed
 
 `tier` 归一化规则:
 
-- `flash` / `standard` / `pro` 表示用户显式指定，或后台任务的实体 tier。
-- `standard(default)` / `pro(default)` 只用于入口请求层指标，表示请求未显式指定 tier，但默认选择策略最终解析到了 `standard` 或 `pro`。
+- `flash` / `medium` / `high` 表示用户显式指定，或后台任务的实体 tier。
+- `medium(default)` / `high(default)` 只用于入口请求层指标，表示请求未显式指定 tier，但默认选择策略最终解析到了 `medium` 或 `high`。
 - `default` 只用于入口请求在默认 tier 解析完成前就失败，且调用方未显式指定 tier 的场景。
 - `unknown` 表示无法安全判断。
 
@@ -1142,7 +1142,7 @@ parse.invalidate.count:
 - `parse.finished.count {status=failed}` 的 `tier` 规则:
   - 调用方显式指定 tier 且请求失败时，使用该显式 tier。
   - 调用方未显式指定 tier，且在默认 tier 解析完成前就失败时，使用 `default`。
-  - 调用方未显式指定 tier，但默认选择策略已明确解析到了实体 tier 后才失败时，使用 `standard(default)` 或 `pro(default)`。
+  - 调用方未显式指定 tier，但默认选择策略已明确解析到了实体 tier 后才失败时，使用 `medium(default)` 或 `high(default)`。
 
 采集点位:
 

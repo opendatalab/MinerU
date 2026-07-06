@@ -27,7 +27,7 @@ from ..render.office.output import blocks_to_markdown as office_blocks_to_markdo
 from ..types import EMPTY_BBOX, TIER_ORDER, TIERS, Block, PageInfo, Span, Tier
 from ..utils.pdf_document import PDFDocument
 from ..version import __version__
-from .background.parse_server_health import get_health
+from .background.parse_server_health import get_health, get_managed_parse_server_tier
 from .base import AsyncDoclibInterface
 from .core.db import DatabaseManager
 from .locators import ContentCursor, block_char_ref, block_ref, page_ref, parse_content_cursor
@@ -237,7 +237,7 @@ class DoclibServer(AsyncDoclibInterface):
             (FILE_STATUS_ACTIVE,),
         )
         local_mode = (await self.state.config_svc.get("parse_server.local.mode")) or "disabled"
-        managed_tier = (await self.state.config_svc.get("parse_server.local.managed_tier")) or "high"
+        managed_tier = await get_managed_parse_server_tier(self.state.config_svc)
         self_hosted_url = await self.state.config_svc.get("parse_server.local.self_hosted_url")
         remote_url = await self.state.config_svc.get("parse_server.remote.url")
         watches = await self.state.config_svc.list_watches()
@@ -847,10 +847,7 @@ class DoclibServer(AsyncDoclibInterface):
                     key,
                 )
             if value == "managed":
-                tier = _validate_managed_parse_server_tier(
-                    (await self.state.config_svc.get("parse_server.local.managed_tier")) or "high",
-                    "parse_server.local.managed_tier",
-                )
+                tier = await get_managed_parse_server_tier(self.state.config_svc)
                 _ensure_managed_parse_server_tier_available(tier, key)
             return
 
