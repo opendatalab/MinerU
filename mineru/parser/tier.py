@@ -26,6 +26,7 @@ _STANDARD_REQUIRED_MODULES = [
     "ftfy",
     "shapely",
     "pyclipper",
+    "six",
     "torch",
     "torchvision",
     "transformers",

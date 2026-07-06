@@ -50,6 +50,7 @@ def test_doclib_runtime_dependencies_are_in_base_install() -> None:
     dependency_names = {dependency.split(">", 1)[0].split("=", 1)[0].lower() for dependency in dependencies}
 
     assert "aiosqlite" in dependency_names
+    assert "packaging" in dependency_names
     assert "watchfiles" in dependency_names
 
 
@@ -60,6 +61,30 @@ def test_pdftext_dependency_is_capped_below_pagechars_api() -> None:
     pdftext_dependencies = [dependency for dependency in dependencies if dependency.lower().startswith("pdftext")]
 
     assert pdftext_dependencies == ["pdftext>=0.6.3,<0.7.0"]
+
+
+def test_standard_extra_includes_preflight_runtime_dependencies() -> None:
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    standard_dependencies = pyproject["project"]["optional-dependencies"]["standard"]
+    dependency_names = {dependency.split(">", 1)[0].split("=", 1)[0].lower() for dependency in standard_dependencies}
+    module_to_distribution = {
+        "ftfy": "ftfy",
+        "pyclipper": "pyclipper",
+        "shapely": "shapely",
+        "six": "six",
+        "torch": "torch",
+        "torchvision": "torchvision",
+        "transformers": "transformers",
+    }
+
+    missing = [
+        module_name
+        for module_name in parser_tier.required_modules_for_tier("standard")
+        if module_to_distribution[module_name] not in dependency_names
+    ]
+
+    assert missing == []
 
 
 @pytest.mark.parametrize(

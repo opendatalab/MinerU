@@ -41,6 +41,7 @@ dependencies = [
     "pypdfium2>=4.30.0",
     "pypdf>=5.6.0",
     "PyYAML>=6.0.1,<7",
+    "packaging",
     "reportlab",
     # pdftext 0.7.x returns PageChars from get_chars/deduplicate_chars; MinerU still consumes list[Char].
     "pdftext>=0.6.3,<0.7.0",
@@ -87,6 +88,7 @@ standard = [
     "ftfy>=6.3.1,<7",
     "shapely>=2.0.7,<3",
     "pyclipper>=1.3.0,<2",
+    "six>=1.17.0,<2",
     "torch>=2.6.0,<3",
     "torchvision",
     "transformers>=4.57.3,<5.0.0",
