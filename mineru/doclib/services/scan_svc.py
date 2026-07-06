@@ -29,6 +29,7 @@ from ..types import (
     ScanStatus,
 )
 from ..core.db import DatabaseManager
+from ..utils.path_utils import normalize_doclib_path
 from .config_svc import ConfigService
 from .parse_svc import FileRefreshResult, ParseService
 
@@ -87,7 +88,7 @@ class ScanService:
         source: ScanSource = SCAN_SOURCE_UNKNOWN,
         watch_id: int | None = None,
     ) -> ScanInfo:
-        normalized_path = os.path.abspath(os.path.expanduser(path))
+        normalized_path = normalize_doclib_path(path)
         if kind == SCAN_KIND_WATCH:
             watch = await self._resolve_watch(normalized_path, watch_id)
             normalized_path = watch["path"]
@@ -254,7 +255,7 @@ class ScanService:
             logger.warning("Failed to cleanup terminal scan logs: %s", exc)
 
     async def _run_scan(self, task: ScanRow) -> "_ScanCounters":
-        path = task["path"]
+        path = normalize_doclib_path(task["path"])
         kind = task["kind"]
         watch_id = task.get("watch_id")
         counters = _ScanCounters()

@@ -24,6 +24,7 @@ from ..types import (
     RuleType,
     WatchStatus,
 )
+from ..utils.path_utils import normalize_doclib_path
 
 
 class ConfigService:
@@ -86,6 +87,7 @@ class ConfigService:
     async def add_watch(
         self, path: str, removable: bool = False, label: str | None = None
     ) -> WatchTargetRow:
+        path = normalize_doclib_path(path)
         if not os.path.isabs(path):
             raise InvalidRequestError("invalid_request", f"Watch path must be absolute: {path}", "path")
         if os.path.normpath(path) != path:
@@ -115,6 +117,7 @@ class ConfigService:
         )
 
     async def remove_watch(self, path: str) -> None:
+        path = normalize_doclib_path(path)
         watch = cast(WatchTargetRow | None, await self.db.fetchone("SELECT * FROM watches WHERE path=?", (path,)))
         if watch is None:
             return
@@ -244,6 +247,7 @@ class ConfigService:
         await self.db.execute("DELETE FROM parsing_rules WHERE id=?", (rule_id,))
 
     async def match_rules(self, file_path: str, rule_type: RuleType) -> list[RuleRow]:
+        file_path = normalize_doclib_path(file_path)
         rules = await self.list_rules(rule_type)
         table = _rule_table(rule_type)
         matched: list[RuleRow] = []

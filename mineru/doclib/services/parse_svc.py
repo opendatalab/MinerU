@@ -42,6 +42,7 @@ from ..types import (
     FileInfo,
     ParseResponse,
 )
+from ..utils.path_utils import normalize_doclib_path
 from .config_svc import ConfigService
 
 logger = logging.getLogger("mineru.parse")
@@ -294,6 +295,7 @@ class ParseService:
         This method owns file stat, DB row lookup, new/changed/known/missing/deleted
         classification, and optional synchronous ingest.
         """
+        path = normalize_doclib_path(path)
         ext = Path(path).suffix.lower().lstrip(".")
         existing = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
         if ext not in PARSEABLE_EXTENSIONS or (ext in IMAGE_EXTENSIONS and not allow_images) or is_office_temp_lock_file(path):
@@ -434,6 +436,7 @@ class ParseService:
 
     async def ensure_ingested(self, path: str, watch_id: int | None = None, *, allow_images: bool = False) -> FileRow | None:
         """Synchronously discover and ingest a source path when needed."""
+        path = normalize_doclib_path(path)
         refreshed = await self.refresh_file(path, watch_id=watch_id, ensure_ingested=True, allow_images=allow_images)
         if refreshed.file is None or refreshed.status == "unsupported":
             return None
@@ -448,6 +451,7 @@ class ParseService:
         allow_images: bool = False,
     ) -> FileRow | None:
         """Ingest a discovered file: SHA-256 + metadata + trigger default parse."""
+        path = normalize_doclib_path(path)
         start_ms = _now_ms()
         status = "succeeded"
         try:
@@ -465,6 +469,7 @@ class ParseService:
             await self._record_duration("ingest.duration_bucket.count", start_ms, dimensions=dimensions)
 
     async def _mark_file_error(self, path: str, error_code: str, error_msg: str) -> None:
+        path = normalize_doclib_path(path)
         now = _now_ms()
         await self.db.execute(
             "UPDATE files SET sha256=NULL, locked_at=NULL, error_code=?, error_msg=?, updated_at=? WHERE path=?",

@@ -15,6 +15,7 @@ from ..services.config_svc import ConfigService
 from ..services.parse_svc import ParseService
 from ..services.scan_svc import ScanService
 from ..types import FILE_STATUS_ACTIVE, WATCH_STATUS_ACTIVE, WATCH_STATUS_UNREACHABLE
+from ..utils.path_utils import normalize_doclib_path, rebase_watch_event_path
 
 logger = logging.getLogger("mineru.watch")
 
@@ -119,7 +120,7 @@ class WatchLoop:
                 if not self.running:
                     break
                 for _change_type, filepath in changes:
-                    await self._handle_event(filepath, watch_id)
+                    await self._handle_event(filepath, watch_id, watch_root=path)
         except Exception as exc:
             logger.error(
                 "Watch loop failed for watch_id=%s path=%s: %s",
@@ -129,7 +130,12 @@ class WatchLoop:
                 exc_info=(type(exc), exc, exc.__traceback__),
             )
 
-    async def _handle_event(self, filepath: str, watch_id: int) -> None:
+    async def _handle_event(self, filepath: str, watch_id: int, *, watch_root: str | None = None) -> None:
+        filepath = (
+            rebase_watch_event_path(filepath, watch_root)
+            if watch_root is not None
+            else normalize_doclib_path(filepath)
+        )
         ext = Path(filepath).suffix.lstrip(".").lower()
         if ext not in DISCOVERABLE_EXTENSIONS or is_office_temp_lock_file(filepath):
             return
