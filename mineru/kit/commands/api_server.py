@@ -61,8 +61,7 @@ def api_server_cmd(
     except ValueError as exc:
         exit_with_message("invalid_request", str(exc), "language")
     tier_values = _normalize_tier_options(tier)
-    effective_tiers = ["standard"] if not tier_values and normalized_backend is None else tier_values
-    tier_args = [arg for tier_value in effective_tiers for arg in ("--tier", tier_value)]
+    tier_args = [arg for tier_value in tier_values for arg in ("--tier", tier_value)]
     try:
         parser_api_server.main.main(
             args=[

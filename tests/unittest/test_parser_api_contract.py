@@ -923,7 +923,7 @@ def test_api_server_tier_selects_compatible_backend(tmp_path: Path, monkeypatch:
     assert [tier["id"] for tier in standard_app.state.tiers] == ["standard"]
 
 
-def test_api_server_defaults_to_standard_tier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_server_defaults_to_all_quality_tiers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_api_server_dependency_preflight(monkeypatch)
     app = create_app(upload_dir=str(tmp_path))
 
@@ -931,7 +931,17 @@ def test_api_server_defaults_to_standard_tier(tmp_path: Path, monkeypatch: pytes
     assert app.state.default_tier == "standard"
     assert app.state.backend == "hybrid-engine"
     assert app.state.effort == "medium"
-    assert [tier["id"] for tier in app.state.tiers] == ["standard"]
+    assert [tier["id"] for tier in app.state.tiers] == ["standard", "pro"]
+    assert app.state.tier_runtime_options["standard"].as_kwargs() == {
+        "tier": "standard",
+        "backend": "hybrid-engine",
+        "effort": "medium",
+    }
+    assert app.state.tier_runtime_options["pro"].as_kwargs() == {
+        "tier": "pro",
+        "backend": "hybrid-engine",
+        "effort": "high",
+    }
 
 
 def test_api_server_multi_tier_state_and_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1431,6 +1441,29 @@ def test_api_server_cli_maps_legacy_vlm_backend_to_hybrid_extra_high(monkeypatch
 
     assert result.exit_code == 0
     assert seen == {"backend": "hybrid-http-client", "effort": "extra_high"}
+
+
+def test_api_server_cli_defaults_to_all_quality_tiers(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def _fake_run(server) -> None:
+        """记录无 --tier 启动后的默认 API server 能力，不启动真实服务。"""
+        seen["tiers"] = [tier["id"] for tier in server.config.app.state.tiers]
+        seen["default_tier"] = server.config.app.state.default_tier
+        seen["effort_by_tier"] = {
+            tier: runtime.effort for tier, runtime in server.config.app.state.tier_runtime_options.items()
+        }
+
+    monkeypatch.setattr("uvicorn.Server.run", _fake_run)
+
+    result = runner.invoke(main, ["--host", "0.0.0.0", "--port", "15984"])
+
+    assert result.exit_code == 0
+    assert seen == {
+        "tiers": ["standard", "pro"],
+        "default_tier": "standard",
+        "effort_by_tier": {"standard": "medium", "pro": "high"},
+    }
 
 
 def test_api_server_cli_accepts_repeated_tier_list(monkeypatch: pytest.MonkeyPatch) -> None:

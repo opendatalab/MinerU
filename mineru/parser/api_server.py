@@ -1997,11 +1997,11 @@ def _normalize_server_tiers(tier: Tier | list[Tier] | tuple[Tier, ...] | None) -
     """规范化 API server 启动 tier 列表，保留用户顺序并拒绝 flash 等未开放 tier。"""
     raw_tiers: list[Tier]
     if tier is None:
-        raw_tiers = ["standard"]
+        raw_tiers = ["standard", "pro"]
     elif isinstance(tier, str):
         raw_tiers = [tier]
     else:
-        raw_tiers = list(tier) or ["standard"]
+        raw_tiers = list(tier) or ["standard", "pro"]
 
     tiers: list[Tier] = []
     for item in raw_tiers:
@@ -2277,7 +2277,7 @@ def create_app(
     type=click.Choice(["standard", "pro"]),
     help=(
         "Server parsing tier; repeat to expose multiple tiers. "
-        "Defaults to 'standard' when neither --tier nor --backend is provided."
+        "Defaults to 'standard' and 'pro' when neither --tier nor --backend is provided."
     ),
 )
 @click.option(

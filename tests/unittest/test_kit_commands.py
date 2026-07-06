@@ -2,18 +2,22 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import json
 from pathlib import Path
 import subprocess
 import sys
 from types import SimpleNamespace
 from typing import Any
 
+import click
 import pytest
 from typer.testing import CliRunner
 
 from mineru.kit.commands import api_server, models, parse, router, vlm_server
 from mineru.kit.main import app
-from mineru.types import PageInfo
+from mineru.parser.base import ParseResult
+from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span
+from mineru.utils.image_payload import ImagePayloadCache
 
 runner = CliRunner()
 
@@ -313,6 +317,25 @@ def test_api_server_forwards_repeated_tiers(monkeypatch: Any) -> None:
     ]
 
 
+def test_api_server_without_tier_lets_parser_api_apply_all_tier_default(monkeypatch: Any) -> None:
+    seen: dict[str, Any] = {}
+
+    def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
+        """记录 mineru-kit api-server 默认参数，确认不再强制单 standard tier。"""
+        seen["args"] = args
+        seen["prog_name"] = prog_name
+        seen["standalone_mode"] = standalone_mode
+
+    monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
+
+    result = runner.invoke(app, ["api-server", "--host", "0.0.0.0", "--port", "15985"])
+
+    assert result.exit_code == 0
+    assert seen["prog_name"] == "mineru-kit api-server"
+    assert seen["standalone_mode"] is False
+    assert "--tier" not in seen["args"]
+
+
 def test_api_server_normalizes_hidden_language_alias(monkeypatch: Any) -> None:
     seen: dict[str, Any] = {}
 
@@ -573,6 +596,74 @@ def test_gradio_tier_remote_selection_derives_backend_and_effort() -> None:
         "backend": "hybrid-http-client",
         "effort": "high",
     }
+
+
+def test_gradio_extracts_supported_tiers_from_v1_tiers_payload() -> None:
+    from mineru.cli_old import gradio_app
+
+    payload = {
+        "data": [
+            {"id": "pro"},
+            {"id": "experimental"},
+            {"id": "standard"},
+            {"id": "pro"},
+        ]
+    }
+
+    assert gradio_app.extract_v1_tier_choices(payload) == ("pro", "standard")
+    assert gradio_app.default_v1_gradio_tier(("pro", "standard")) == "pro"
+
+
+def test_gradio_rejects_v1_tiers_payload_without_supported_tiers() -> None:
+    from mineru.cli_old import gradio_app
+
+    with pytest.raises(click.ClickException, match="did not advertise any supported tier"):
+        gradio_app.extract_v1_tier_choices({"data": [{"id": "flash"}, {"id": "experimental"}]})
+
+
+def test_gradio_persists_v1_parse_result_for_preview_and_download(tmp_path: Path) -> None:
+    from mineru.cli_old import gradio_app
+
+    image_cache = ImagePayloadCache()
+    image_path = image_cache.register_bytes(b"figure-bytes", "png", image_path="figures/figure.png")
+    image_body = Block(
+        index=1,
+        type=BlockType.IMAGE_BODY,
+        bbox=(0, 0, 20, 20),
+        lines=[Line(bbox=(0, 0, 20, 20), spans=[Span(type=ContentType.IMAGE, bbox=(0, 0, 20, 20), image_path=image_path)])],
+    )
+    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(0, 0, 20, 20), blocks=[image_body])
+    parse_result = ParseResult(
+        pages=[PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="hybrid")],
+        _image_cache=image_cache,
+    )
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    extract_root = tmp_path / "extract"
+    archive_zip_path = tmp_path / "archive.zip"
+
+    output = gradio_app.persist_v1_gradio_result(
+        parse_result=parse_result,
+        file_path=str(source),
+        extract_root=extract_root,
+        archive_zip_path=archive_zip_path,
+        backend="hybrid-engine",
+        effort="medium",
+    )
+
+    local_md_dir = extract_root / "demo"
+    assert output.file_name == "demo"
+    assert output.local_md_dir == local_md_dir
+    assert output.preview_pdf_path == local_md_dir / "demo_origin.pdf"
+    assert (local_md_dir / "demo.md").read_text(encoding="utf-8") == "![](images/figures/figure.png)"
+    content_list = json.loads((local_md_dir / "demo_content_list.json").read_text(encoding="utf-8"))
+    assert content_list[0]["img_path"] == "images/figures/figure.png"
+    middle_json = json.loads((local_md_dir / "demo_middle.json").read_text(encoding="utf-8"))
+    assert middle_json["_backend"] == "hybrid"
+    assert middle_json["_version_name"]
+    assert (local_md_dir / "images" / "figures" / "figure.png").read_bytes() == b"figure-bytes"
+    assert (local_md_dir / "demo_origin.pdf").read_bytes() == b"%PDF-1.7\n"
+    assert archive_zip_path.is_file()
 
 
 def test_gradio_frontend_uses_tier_and_remote_server_visibility() -> None:

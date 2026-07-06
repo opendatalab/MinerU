@@ -1,11 +1,15 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
+import atexit
 import asyncio
 import html as html_lib
 import httpx
+import json
 import os
 import re
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -38,19 +42,21 @@ from mineru.cli_old.common import (
     read_fn,
 )
 from mineru.cli_old import api_client as _api_client
-from mineru.cli_old.client_side_output import regenerate_client_side_outputs
-from mineru.cli_old.output_paths import resolve_parse_dir
-from mineru.cli_old.vlm_preload import resolve_gradio_local_api_cli_args
-from mineru.cli_old.visualization import VisualizationJob, run_visualization_job
+from mineru.data.data_reader_writer.filebase import FileBasedDataWriter
+from mineru.parser.api_client import MinerUApiParser
+from mineru.parser.base import ParseResult
 from mineru.parser.tier import ParserRuntimeOptions, runtime_options_for_tier
+from mineru.render import render_content_list, render_markdown, render_structured_content
 from mineru.utils.backend_options import (
     CANONICAL_HYBRID_ENGINE,
     LOCAL_HYBRID_EFFORT,
     MAX_HYBRID_EFFORT,
 )
+from mineru.utils.image_payload import validate_image_sidecar_path
 from mineru.utils.ocr_language import PUBLIC_OCR_LANGUAGE_CHOICES, validate_public_ocr_lang
+from mineru.version import __version__
 
-_gradio_local_api_server = _api_client.ReusableLocalAPIServer()
+_gradio_local_api_server: "ReusableGradioV1APIServer"
 
 
 @dataclass(frozen=True)
@@ -244,6 +250,257 @@ STATUS_STEP_DEFINITIONS = [
     ("status_step_outputs", STATUS_PROCESSING_OUTPUT),
     ("status_step_done", STATUS_COMPLETED),
 ]
+
+
+@dataclass(frozen=True)
+class GradioV1ServerHealth:
+    """记录 Gradio 当前绑定的 v1 API server 地址和可用 tier。"""
+
+    base_url: str
+    tier_choices: tuple[str, ...]
+    max_concurrent_requests: int = 1
+
+
+@dataclass(frozen=True)
+class GradioV1PersistedOutput:
+    """记录 v1 解析结果落盘后供 Gradio UI 继续消费的路径。"""
+
+    file_name: str
+    local_md_dir: Path
+    archive_zip_path: Path
+    preview_pdf_path: Path | None
+
+
+class GradioV1LocalAPIServer:
+    """管理 Gradio 内置启动的 v1 parser API server 子进程。"""
+
+    def __init__(self, extra_cli_args=()):
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="mineru-v1-api-client-")
+        self.temp_root = Path(self.temp_dir.name)
+        self.upload_dir = self.temp_root / "uploads"
+        self.base_url: str | None = None
+        self.process: subprocess.Popen[bytes] | None = None
+        self.extra_cli_args = tuple(extra_cli_args)
+        self._managed_process_group_id: int | None = None
+        self._atexit_registered = False
+
+    def start(self) -> str:
+        """启动本地 v1 parser API server，并返回可探测的 base URL。"""
+        if self.process is not None:
+            raise RuntimeError("Local v1 API server is already running")
+
+        resolved_port = _api_client.find_free_port()
+        self.base_url = f"http://127.0.0.1:{resolved_port}"
+        self.upload_dir.mkdir(parents=True, exist_ok=True)
+        cli_args = (
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(resolved_port),
+            "--upload-dir",
+            str(self.upload_dir),
+            *_api_client.strip_local_api_network_args(self.extra_cli_args),
+        )
+        command = [
+            sys.executable,
+            "-m",
+            "mineru.parser.api_server",
+            *cli_args,
+        ]
+        self.process = subprocess.Popen(
+            command,
+            cwd=os.getcwd(),
+            env=os.environ.copy(),
+            stdin=subprocess.PIPE,
+            **_api_client.build_managed_process_popen_kwargs(),
+        )
+        self._managed_process_group_id = self.process.pid
+        if not self._atexit_registered:
+            atexit.register(self.stop)
+            self._atexit_registered = True
+        return self.base_url
+
+    def stop(self) -> None:
+        """停止本地 v1 parser API server，并清理临时目录。"""
+        process = self.process
+        process_group_id = self._managed_process_group_id
+        self.process = None
+        self._managed_process_group_id = None
+        try:
+            _api_client.stop_managed_process(
+                process,
+                process_group_id=process_group_id,
+                shutdown_timeout_seconds=_api_client.LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
+                use_stdin_shutdown_watcher=True,
+            )
+        finally:
+            if self._atexit_registered:
+                try:
+                    atexit.unregister(self.stop)
+                except Exception:
+                    pass
+                self._atexit_registered = False
+            self.temp_dir.cleanup()
+
+
+class ReusableGradioV1APIServer:
+    """复用 Gradio 本地 v1 API server，避免每次请求重复冷启动。"""
+
+    def __init__(self, extra_cli_args=()):
+        self._lock = threading.Lock()
+        self._server: GradioV1LocalAPIServer | None = None
+        self._extra_cli_args = tuple(extra_cli_args)
+
+    def configure(self, extra_cli_args) -> None:
+        """记录启动参数；若现有进程已退出，则下次请求会按新参数重启。"""
+        with self._lock:
+            self._extra_cli_args = tuple(extra_cli_args)
+            server = self._server
+            if server is None:
+                return
+            if server.process is not None and server.process.poll() is None:
+                return
+            server.stop()
+            self._server = None
+
+    def ensure_started(self) -> tuple[GradioV1LocalAPIServer, bool]:
+        """确保本地 v1 API server 存活，返回 server 实例和是否刚启动。"""
+        with self._lock:
+            server = self._server
+            if server is not None and server.process is not None and server.process.poll() is None:
+                return server, False
+            if server is not None:
+                server.stop()
+            server = GradioV1LocalAPIServer(extra_cli_args=self._extra_cli_args)
+            server.start()
+            self._server = server
+            return server, True
+
+    def stop(self) -> None:
+        """停止当前复用的本地 v1 API server。"""
+        with self._lock:
+            server = self._server
+            self._server = None
+        if server is not None:
+            server.stop()
+
+
+_gradio_local_api_server = ReusableGradioV1APIServer()
+
+
+def extract_v1_tier_choices(payload) -> tuple[str, ...]:
+    """从 /v1/tiers 响应中提取 Gradio 支持的 tier，保留服务端顺序并去重。"""
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        raise click.ClickException("MinerU v1 API /v1/tiers returned an invalid payload.")
+
+    choices: list[str] = []
+    for item in data:
+        tier_id = item.get("id") if isinstance(item, dict) else None
+        if tier_id in GRADIO_TIER_CHOICES and tier_id not in choices:
+            choices.append(tier_id)
+    if not choices:
+        supported = ", ".join(GRADIO_TIER_CHOICES)
+        raise click.ClickException(
+            f"MinerU v1 API did not advertise any supported tier. Supported Gradio tiers: {supported}."
+        )
+    return tuple(choices)
+
+
+def default_v1_gradio_tier(tier_choices: tuple[str, ...]) -> str:
+    """选择 Gradio 默认 tier；v1 server 返回顺序即默认优先级。"""
+    if not tier_choices:
+        raise click.ClickException("MinerU v1 API did not advertise any supported tier.")
+    return tier_choices[0]
+
+
+async def fetch_v1_tier_choices(http_client, base_url: str) -> tuple[str, ...]:
+    """调用 v1 /tiers 接口并转换成 Gradio Dropdown choices。"""
+    try:
+        response = await http_client.get(f"{base_url}/v1/tiers")
+    except httpx.HTTPError as exc:
+        raise click.ClickException(
+            f"Failed to query MinerU v1 API tiers from {base_url}: {exc}"
+        ) from exc
+    if response.status_code != 200:
+        raise click.ClickException(
+            f"Failed to query MinerU v1 API tiers from {base_url}: "
+            f"{response.status_code} {_api_client.response_detail(response)}"
+        )
+    try:
+        payload = response.json()
+    except json.JSONDecodeError as exc:
+        raise click.ClickException(
+            f"MinerU v1 API /v1/tiers from {base_url} did not return JSON."
+        ) from exc
+    return extract_v1_tier_choices(payload)
+
+
+async def wait_for_v1_api_ready(
+    http_client,
+    local_server: GradioV1LocalAPIServer,
+    timeout_seconds: float = _api_client.LOCAL_API_STARTUP_TIMEOUT_SECONDS,
+) -> GradioV1ServerHealth:
+    """等待本地 v1 API server 返回 /v1/tiers，避免 Gradio 页面先于服务可用。"""
+    assert local_server.base_url is not None
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    last_error: str | None = None
+    while asyncio.get_running_loop().time() < deadline:
+        process = local_server.process
+        if process is not None and process.poll() is not None:
+            raise click.ClickException("Local MinerU v1 API exited before becoming ready.")
+        try:
+            choices = await fetch_v1_tier_choices(http_client, local_server.base_url)
+            return GradioV1ServerHealth(base_url=local_server.base_url, tier_choices=choices)
+        except click.ClickException as exc:
+            last_error = str(exc)
+        except httpx.HTTPError as exc:
+            last_error = str(exc)
+        await asyncio.sleep(_api_client.TASK_STATUS_POLL_INTERVAL_SECONDS)
+
+    message = "Timed out waiting for local MinerU v1 API to become ready."
+    if last_error:
+        message = f"{message} {last_error}"
+    raise click.ClickException(message)
+
+
+async def resolve_v1_server_health(http_client, api_url: str | None) -> GradioV1ServerHealth:
+    """解析 Gradio 当前应使用的 v1 API server，并返回该 server 的 tier 能力。"""
+    if api_url:
+        base_url = _api_client.normalize_base_url(api_url)
+        return GradioV1ServerHealth(
+            base_url=base_url,
+            tier_choices=await fetch_v1_tier_choices(http_client, base_url),
+        )
+
+    local_server, started_now = _gradio_local_api_server.ensure_started()
+    if started_now:
+        logger.info(f"Started local MinerU v1 API at {local_server.base_url}")
+    return await wait_for_v1_api_ready(http_client, local_server)
+
+
+def resolve_gradio_v1_startup_health(api_url: str | None) -> GradioV1ServerHealth:
+    """同步探测 v1 API server tier 能力，供 Gradio 构建 Dropdown 前使用。"""
+
+    async def _resolve() -> GradioV1ServerHealth:
+        async with httpx.AsyncClient(
+            timeout=_api_client.build_http_timeout(),
+            follow_redirects=True,
+        ) as http_client:
+            return await resolve_v1_server_health(http_client, api_url)
+
+    return asyncio.run(_resolve())
+
+
+def build_v1_gradio_page_range(end_pages: int | float | None) -> str:
+    """将 Gradio 旧 max_pages 控件转换成 v1 API 使用的 1-based page_range。"""
+    try:
+        page_limit = int(end_pages) if end_pages is not None else 0
+    except (TypeError, ValueError):
+        page_limit = 0
+    if page_limit <= 0:
+        return ""
+    return f"1~{page_limit}"
 
 
 def normalize_mineru_locale(locale):
@@ -762,6 +1019,82 @@ def read_gradio_content_list_json(local_md_dir, file_name):
         return ""
 
 
+def _middle_json_backend_for_gradio(parse_result: ParseResult, backend: str) -> str:
+    """推断 Gradio 落盘 middle_json 的 backend 标识，优先使用解析结果自身标记。"""
+    for page in parse_result.pages:
+        if page._backend:
+            return page._backend
+    return "hybrid" if str(backend).startswith("hybrid") else backend
+
+
+def _write_v1_gradio_images(parse_result: ParseResult, local_image_dir: Path) -> None:
+    """将 v1 API 返回的图片 sidecar 写入 Gradio legacy images 目录。"""
+    writer = FileBasedDataWriter(str(local_image_dir))
+    for image_path, image_bytes in parse_result.images().items():
+        writer.write(validate_image_sidecar_path(image_path), image_bytes)
+
+
+def persist_v1_gradio_result(
+    *,
+    parse_result: ParseResult,
+    file_path: str,
+    extract_root: Path,
+    archive_zip_path: Path,
+    backend: str,
+    effort: str,
+) -> GradioV1PersistedOutput:
+    """把 v1 ParseResult 保存成旧 Gradio UI 预览、JSON 面板和 ZIP 下载所需文件。"""
+    source_path = Path(file_path)
+    file_name = normalize_task_stem(source_path.stem)
+    file_suffix = source_path.suffix.lower().lstrip(".")
+    local_md_dir = extract_root / file_name
+    local_image_dir = local_md_dir / "images"
+    local_md_dir.mkdir(parents=True, exist_ok=True)
+    local_image_dir.mkdir(parents=True, exist_ok=True)
+
+    image_dir = local_image_dir.name
+    render_pages = parse_result.export_pages()
+    _write_v1_gradio_images(parse_result, local_image_dir)
+
+    (local_md_dir / f"{file_name}.md").write_text(
+        render_markdown(render_pages, image_dir),
+        encoding="utf-8",
+    )
+    (local_md_dir / f"{file_name}_content_list.json").write_text(
+        json.dumps(render_content_list(render_pages, image_dir), ensure_ascii=False, indent=4),
+        encoding="utf-8",
+    )
+    (local_md_dir / f"{file_name}_structured_content.json").write_text(
+        json.dumps(render_structured_content(render_pages, image_dir), ensure_ascii=False, indent=4),
+        encoding="utf-8",
+    )
+
+    middle_json = parse_result.to_dict()
+    middle_json["_backend"] = _middle_json_backend_for_gradio(parse_result, backend)
+    middle_json["_version_name"] = __version__
+    (local_md_dir / f"{file_name}_middle.json").write_text(
+        json.dumps(middle_json, ensure_ascii=False, indent=4),
+        encoding="utf-8",
+    )
+
+    origin_suffix = file_suffix if file_suffix in office_suffixes else "pdf"
+    (local_md_dir / f"{file_name}_origin.{origin_suffix}").write_bytes(source_path.read_bytes())
+
+    zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
+    if zip_archive_success == 0:
+        logger.info("Compression successful")
+    else:
+        logger.error("Compression failed")
+
+    preview_pdf_path = None if file_suffix in office_suffixes else resolve_preview_pdf_path(str(local_md_dir), file_name)
+    return GradioV1PersistedOutput(
+        file_name=file_name,
+        local_md_dir=local_md_dir,
+        archive_zip_path=archive_zip_path,
+        preview_pdf_path=Path(preview_pdf_path) if preview_pdf_path else None,
+    )
+
+
 def _escape_latex_html_chars_for_gradio(content):
     """转义公式内部会被 Gradio HTML 解析链路误判的尖括号，保留 LaTeX 对齐用 &。"""
     return content.replace("<", "&lt;").replace(">", "&gt;")
@@ -891,46 +1224,24 @@ def build_gradio_allowed_paths(output_root="./output"):
     return allowed_paths
 
 
-def build_gradio_upload_name(file_path):
-    path = Path(file_path)
-    return f"{normalize_task_stem(path.stem)}{path.suffix}"
-
-
-def resolve_result_file_name(submit_response, extract_root, file_path):
-    if submit_response.file_names:
-        return submit_response.file_names[0]
-
-    candidate_dirs = sorted(path.name for path in Path(extract_root).iterdir() if path.is_dir())
-    if len(candidate_dirs) == 1:
-        return candidate_dirs[0]
-    return normalize_task_stem(Path(file_path).stem)
-
-
 async def resolve_server_health(http_client, api_url):
-    if api_url:
-        return await _api_client.fetch_server_health(
-            http_client,
-            _api_client.normalize_base_url(api_url),
-        )
-
-    local_server, started_now = _gradio_local_api_server.ensure_started()
-    if started_now:
-        logger.info(f"Started local mineru-api at {local_server.base_url}")
-    return await _api_client.wait_for_local_api_ready(http_client, local_server)
+    """兼容旧调用名：当前 Gradio 健康检查统一走 v1 /tiers 探测。"""
+    return await resolve_v1_server_health(http_client, api_url)
 
 
 async def ensure_local_api_ready_for_gradio_startup(
     timeout_seconds: float = _api_client.LOCAL_API_STARTUP_TIMEOUT_SECONDS,
 ):
+    """兼容旧调用名：等待本地 v1 API server 就绪。"""
     local_server, started_now = _gradio_local_api_server.ensure_started()
     if started_now:
-        logger.info(f"Started local mineru-api at {local_server.base_url}")
+        logger.info(f"Started local MinerU v1 API at {local_server.base_url}")
 
     async with httpx.AsyncClient(
         timeout=_api_client.build_http_timeout(),
         follow_redirects=True,
     ) as http_client:
-        return await _api_client.wait_for_local_api_ready(
+        return await wait_for_v1_api_ready(
             http_client,
             local_server,
             timeout_seconds=timeout_seconds,
@@ -942,14 +1253,8 @@ def maybe_prepare_local_api_for_gradio_startup(
     api_url: str | None,
     enable_vlm_preload: bool,
 ):
-    if api_url is not None or not enable_vlm_preload:
-        return None
-
-    try:
-        return asyncio.run(ensure_local_api_ready_for_gradio_startup())
-    except Exception:
-        _gradio_local_api_server.stop()
-        raise
+    """保留旧函数入口；v1 server 已在构建 Dropdown 前完成探测。"""
+    return None
 
 
 def resolve_gradio_max_concurrent_requests(api_url, server_health):
@@ -962,32 +1267,6 @@ def resolve_gradio_max_concurrent_requests(api_url, server_health):
         ),
         server_max=server_health.max_concurrent_requests,
     )
-
-
-def maybe_generate_local_preview(extract_root, file_name, file_suffix, backend, parse_method):
-    if file_suffix in office_suffixes:
-        return None
-
-    parse_dir = resolve_parse_dir(
-        extract_root,
-        file_name,
-        backend,
-        parse_method,
-        allow_office_fallback=True,
-    )
-    visualization_job = VisualizationJob(
-        document_stem=file_name,
-        backend=backend,
-        parse_method=parse_method,
-        parse_dir=parse_dir,
-        draw_span=False,
-    )
-    result = run_visualization_job(visualization_job)
-    if result.status != "finished":
-        logger.warning(
-            f"Skipping visualization for {visualization_job.document_stem}: {result.message}"
-        )
-    return resolve_preview_pdf_path(parse_dir, file_name)
 
 
 async def _run_to_markdown_job(
@@ -1008,50 +1287,20 @@ async def _run_to_markdown_job(
     if file_path is None:
         return "", "", "", None, None
 
+    # v1 API 当前只公开 tier 和 page_range；旧 UI 参数保留用于前端兼容，不写入未公开 payload。
+    del is_ocr, formula_enable, table_enable, image_analysis, language, url, client_side_output_generation
+
     def emit_status(message: str) -> None:
         if status_callback is not None:
             status_callback(message)
 
-    normalized_language = normalize_language(language)
     file_path = str(file_path)
     file_suffix = Path(file_path).suffix.lower().lstrip('.')
     runtime = resolve_gradio_runtime_options(tier, use_remote_server=use_remote_server)
     backend = runtime.backend
     effort = runtime.effort
-    server_url = url if use_remote_server else None
-    use_client_side_output_generation = should_use_client_side_output_generation(
-        client_side_output_generation
-    )
-    parse_method = resolve_parse_method(file_path, is_ocr, tier)
     run_root, extract_root, archive_zip_path = create_gradio_run_paths(file_path)
     run_root.mkdir(parents=True, exist_ok=True)
-
-    form_data = _api_client.build_parse_request_form_data(
-        lang_list=[normalized_language],
-        backend=backend,
-        parse_method=parse_method,
-        formula_enable=formula_enable,
-        table_enable=table_enable,
-        image_analysis=image_analysis,
-        effort=effort,
-        server_url=server_url,
-        start_page_id=0,
-        end_page_id=end_pages - 1,
-        return_md=not use_client_side_output_generation,
-        return_middle_json=True,
-        return_model_output=True,
-        return_content_list=not use_client_side_output_generation,
-        return_images=True,
-        response_format_zip=True,
-        return_original_file=True,
-        client_side_output_generation=use_client_side_output_generation,
-    )
-    upload_assets = [
-        _api_client.UploadAsset(
-            path=Path(file_path),
-            upload_name=build_gradio_upload_name(file_path),
-        )
-    ]
 
     async with httpx.AsyncClient(
         timeout=_api_client.build_http_timeout(),
@@ -1059,7 +1308,7 @@ async def _run_to_markdown_job(
     ) as http_client:
         emit_status(STATUS_PREPARING_REQUEST)
         emit_status(STATUS_CHECKING_SERVER)
-        server_health = await resolve_server_health(http_client, api_url)
+        server_health = await resolve_v1_server_health(http_client, api_url)
         effective_max_concurrent_requests = resolve_gradio_max_concurrent_requests(
             api_url=api_url,
             server_health=server_health,
@@ -1071,78 +1320,29 @@ async def _run_to_markdown_job(
             ),
         ):
             emit_status(STATUS_SUBMITTING_TASK)
-            submit_response = await _api_client.submit_parse_task(
-                base_url=server_health.base_url,
-                upload_assets=upload_assets,
-                form_data=form_data,
-            )
-            emit_status(f"Task submitted：task_id={submit_response.task_id}")
-
-            last_task_snapshot = None
-
-            def handle_task_status(
-                status_snapshot: _api_client.TaskStatusSnapshot,
-            ) -> None:
-                nonlocal last_task_snapshot
-                if status_snapshot == last_task_snapshot:
-                    return
-                last_task_snapshot = status_snapshot
-                emit_status(format_remote_status_message(status_snapshot))
-
-            await _api_client.wait_for_task_result(
-                client=http_client,
-                submit_response=submit_response,
-                task_label=Path(file_path).name,
-                status_snapshot_callback=handle_task_status,
+            parser = MinerUApiParser(api_url=server_health.base_url, tier=runtime.tier)
+            parse_result = await parser.parse_async(
+                file_path,
+                page_range=build_v1_gradio_page_range(end_pages),
             )
             emit_status(STATUS_DOWNLOADING_RESULT)
-            result_zip_path = await _api_client.download_result_zip(
-                client=http_client,
-                submit_response=submit_response,
-                task_label=Path(file_path).name,
+            emit_status(STATUS_PROCESSING_OUTPUT)
+            persisted_output = await asyncio.to_thread(
+                persist_v1_gradio_result,
+                parse_result=parse_result,
+                file_path=file_path,
+                extract_root=extract_root,
+                archive_zip_path=archive_zip_path,
+                backend=backend,
+                effort=effort,
             )
 
-    try:
-        _api_client.safe_extract_zip(result_zip_path, extract_root)
-    finally:
-        result_zip_path.unlink(missing_ok=True)
+    file_name = persisted_output.file_name
+    local_md_dir = persisted_output.local_md_dir
+    preview_pdf_path = persisted_output.preview_pdf_path
 
-    file_name = resolve_result_file_name(submit_response, extract_root, file_path)
-    local_md_dir = resolve_parse_dir(
-        extract_root,
-        file_name,
-        backend,
-        parse_method,
-        allow_office_fallback=True,
-    )
-    emit_status(STATUS_PROCESSING_OUTPUT)
-    if use_client_side_output_generation:
-        output_backend = "office" if file_suffix in office_suffixes else backend
-        await asyncio.to_thread(
-            regenerate_client_side_outputs,
-            local_md_dir,
-            file_name,
-            output_backend,
-            effort=effort,
-        )
-
-    preview_pdf_path = maybe_generate_local_preview(
-        extract_root=extract_root,
-        file_name=file_name,
-        file_suffix=file_suffix,
-        backend=backend,
-        parse_method=parse_method,
-    )
-
-    zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
-    if zip_archive_success == 0:
-        logger.info('Compression successful')
-    else:
-        logger.error('Compression failed')
-
-    md_path = Path(local_md_dir) / f"{file_name}.md"
-    with open(md_path, 'r', encoding='utf-8') as f:
-        txt_content = f.read()
+    md_path = local_md_dir / f"{file_name}.md"
+    txt_content = md_path.read_text(encoding="utf-8")
     md_content = replace_image_with_gradio_file_urls(txt_content, local_md_dir)
     content_list_json = read_gradio_content_list_json(local_md_dir, file_name)
 
@@ -1150,7 +1350,7 @@ async def _run_to_markdown_job(
         preview_pdf_path = None
 
     emit_status(STATUS_COMPLETED)
-    return md_content, txt_content, content_list_json, str(archive_zip_path), preview_pdf_path
+    return md_content, txt_content, content_list_json, str(archive_zip_path), str(preview_pdf_path) if preview_pdf_path else None
 
 
 async def stream_to_markdown(
@@ -1725,13 +1925,13 @@ def main(ctx,
         )
 
     del kwargs
-    _gradio_local_api_server.configure(
-        resolve_gradio_local_api_cli_args(
-            ctx.args,
-            api_url=api_url,
-            enable_vlm_preload=enable_vlm_preload,
+    if enable_vlm_preload:
+        logger.warning(
+            "Ignoring --enable-vlm-preload because Gradio now launches the v1 parser API server."
         )
-    )
+    _gradio_local_api_server.configure(ctx.args)
+    startup_health = resolve_gradio_v1_startup_health(api_url=api_url)
+    tier_choices = startup_health.tier_choices
 
     if latex_delimiters_type == 'a':
         latex_delimiters = latex_delimiters_type_a
@@ -1790,10 +1990,10 @@ def main(ctx,
                     file_types=suffixes,
                     elem_classes=["mineru-upload-file"],
                 )
-                preferred_tier = DEFAULT_GRADIO_TIER
+                preferred_tier = default_v1_gradio_tier(tier_choices)
                 with gr.Group(elem_classes=["mineru-backend-options-block"]):
                     tier = gr.Dropdown(
-                        list(GRADIO_TIER_CHOICES),
+                        list(tier_choices),
                         label=i18n("tier"),
                         value=preferred_tier,
                         info=get_tier_info(preferred_tier),
