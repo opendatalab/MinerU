@@ -3,6 +3,8 @@ from __future__ import annotations
 import ast
 import asyncio
 import json
+import zipfile
+from io import BytesIO
 from pathlib import Path
 import subprocess
 import sys
@@ -621,7 +623,10 @@ def test_gradio_rejects_v1_tiers_payload_without_supported_tiers() -> None:
         gradio_app.extract_v1_tier_choices({"data": [{"id": "flash"}, {"id": "experimental"}]})
 
 
-def test_gradio_persists_v1_parse_result_for_preview_and_download(tmp_path: Path) -> None:
+def test_gradio_persists_v1_parse_result_for_preview_and_download(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     from mineru.cli_old import gradio_app
 
     image_cache = ImagePayloadCache()
@@ -641,6 +646,16 @@ def test_gradio_persists_v1_parse_result_for_preview_and_download(tmp_path: Path
     source.write_bytes(b"%PDF-1.7\n")
     extract_root = tmp_path / "extract"
     archive_zip_path = tmp_path / "archive.zip"
+    visualization_calls: list[Any] = []
+
+    def fake_run_visualization_job(job: Any) -> Any:
+        """模拟 layout 可视化生成，避免本用例依赖真实 PDF 绘制。"""
+        visualization_calls.append(job)
+        layout_path = job.parse_dir / f"{job.document_stem}_layout.pdf"
+        layout_path.write_bytes(b"%PDF-1.7\n%layout\n")
+        return SimpleNamespace(status="finished", message="generated", generated_files=(layout_path.name,))
+
+    monkeypatch.setattr(gradio_app, "run_visualization_job", fake_run_visualization_job)
 
     output = gradio_app.persist_v1_gradio_result(
         parse_result=parse_result,
@@ -649,12 +664,16 @@ def test_gradio_persists_v1_parse_result_for_preview_and_download(tmp_path: Path
         archive_zip_path=archive_zip_path,
         backend="hybrid-engine",
         effort="medium",
+        page_range="",
     )
 
     local_md_dir = extract_root / "demo"
     assert output.file_name == "demo"
     assert output.local_md_dir == local_md_dir
-    assert output.preview_pdf_path == local_md_dir / "demo_origin.pdf"
+    assert output.preview_pdf_path == local_md_dir / "demo_layout.pdf"
+    assert visualization_calls[0].document_stem == "demo"
+    assert visualization_calls[0].parse_dir == local_md_dir
+    assert visualization_calls[0].draw_span is False
     assert (local_md_dir / "demo.md").read_text(encoding="utf-8") == "![](images/figures/figure.png)"
     content_list = json.loads((local_md_dir / "demo_content_list.json").read_text(encoding="utf-8"))
     assert content_list[0]["img_path"] == "images/figures/figure.png"
@@ -663,7 +682,134 @@ def test_gradio_persists_v1_parse_result_for_preview_and_download(tmp_path: Path
     assert middle_json["_version_name"]
     assert (local_md_dir / "images" / "figures" / "figure.png").read_bytes() == b"figure-bytes"
     assert (local_md_dir / "demo_origin.pdf").read_bytes() == b"%PDF-1.7\n"
+    assert (local_md_dir / "demo_layout.pdf").read_bytes() == b"%PDF-1.7\n%layout\n"
     assert archive_zip_path.is_file()
+    with zipfile.ZipFile(archive_zip_path) as archive:
+        assert "demo_layout.pdf" in archive.namelist()
+
+
+def test_gradio_persists_page_ranged_origin_pdf_for_v1_preview(tmp_path: Path) -> None:
+    from pypdf import PdfReader, PdfWriter
+
+    from mineru.cli_old import gradio_app
+
+    pdf_writer = PdfWriter()
+    pdf_writer.add_blank_page(width=100, height=100)
+    pdf_writer.add_blank_page(width=200, height=200)
+    pdf_writer.add_blank_page(width=300, height=300)
+    source_pdf = BytesIO()
+    pdf_writer.write(source_pdf)
+
+    parse_result = ParseResult(
+        pages=[
+            PageInfo(page_idx=0, page_size=(100, 100), _backend="hybrid"),
+            PageInfo(page_idx=1, page_size=(200, 200), _backend="hybrid"),
+        ],
+    )
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(source_pdf.getvalue())
+    extract_root = tmp_path / "extract"
+    archive_zip_path = tmp_path / "archive.zip"
+
+    output = gradio_app.persist_v1_gradio_result(
+        parse_result=parse_result,
+        file_path=str(source),
+        extract_root=extract_root,
+        archive_zip_path=archive_zip_path,
+        backend="hybrid-engine",
+        effort="medium",
+        page_range="1~2",
+    )
+
+    origin_pdf_path = output.local_md_dir / "demo_origin.pdf"
+    origin_reader = PdfReader(str(origin_pdf_path))
+    assert len(origin_reader.pages) == 2
+    assert [float(page.cropbox[2]) for page in origin_reader.pages] == [100.0, 200.0]
+
+    layout_pdf_path = output.local_md_dir / "demo_layout.pdf"
+    layout_reader = PdfReader(str(layout_pdf_path))
+    assert output.preview_pdf_path == layout_pdf_path
+    assert len(layout_reader.pages) == 2
+
+    with zipfile.ZipFile(archive_zip_path) as archive:
+        assert "demo_layout.pdf" in archive.namelist()
+        zipped_origin_reader = PdfReader(BytesIO(archive.read("demo_origin.pdf")))
+        zipped_layout_reader = PdfReader(BytesIO(archive.read("demo_layout.pdf")))
+    assert len(zipped_origin_reader.pages) == 2
+    assert len(zipped_layout_reader.pages) == 2
+    assert [float(page.cropbox[2]) for page in zipped_origin_reader.pages] == [100.0, 200.0]
+
+
+def test_gradio_v1_job_reuses_page_range_for_api_and_origin_pdf(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from mineru.cli_old import gradio_app
+
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    calls: dict[str, Any] = {}
+
+    class _FakeParser:
+        def __init__(self, *, api_url: str, tier: str) -> None:
+            calls["parser_api_url"] = api_url
+            calls["parser_tier"] = tier
+
+        async def parse_async(self, file_path: str, *, page_range: str) -> ParseResult:
+            calls["api_page_range"] = page_range
+            return ParseResult(pages=[PageInfo(page_idx=0, page_size=(100, 100), _backend="hybrid")])
+
+    async def _fake_server_health(_http_client: Any, api_url: str | None) -> Any:
+        """模拟 v1 server 健康检查，只保留 Gradio 任务需要的字段。"""
+        return SimpleNamespace(base_url=api_url or "http://127.0.0.1:30000/api", max_concurrent_requests=1)
+
+    def _fake_persist(**kwargs: Any) -> Any:
+        """记录本地持久化收到的 page_range，避免联动测试访问真实 PDFium。"""
+        calls["persist_page_range"] = kwargs["page_range"]
+        local_md_dir = tmp_path / "persisted"
+        local_md_dir.mkdir()
+        (local_md_dir / "demo.md").write_text("markdown", encoding="utf-8")
+        (local_md_dir / "demo_content_list.json").write_text("[]", encoding="utf-8")
+        archive_zip_path = tmp_path / "demo.zip"
+        archive_zip_path.write_bytes(b"zip")
+        return SimpleNamespace(
+            file_name="demo",
+            local_md_dir=local_md_dir,
+            archive_zip_path=archive_zip_path,
+            preview_pdf_path=local_md_dir / "demo_origin.pdf",
+        )
+
+    monkeypatch.setattr(gradio_app, "MinerUApiParser", _FakeParser)
+    monkeypatch.setattr(gradio_app, "resolve_v1_server_health", _fake_server_health)
+    monkeypatch.setattr(gradio_app, "persist_v1_gradio_result", _fake_persist)
+
+    asyncio.run(gradio_app._run_to_markdown_job(str(source), end_pages=2, api_url="http://example.test/api"))
+
+    assert calls["api_page_range"] == "1~2"
+    assert calls["persist_page_range"] == "1~2"
+
+
+def test_gradio_run_paths_are_absolute(tmp_path: Path) -> None:
+    from mineru.cli_old import gradio_app
+
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    default_run_root, default_extract_root, default_archive_zip_path = gradio_app.create_gradio_run_paths(str(source))
+    assert default_run_root.is_absolute()
+    assert default_extract_root.is_absolute()
+    assert default_archive_zip_path.is_absolute()
+
+    run_root, extract_root, archive_zip_path = gradio_app.create_gradio_run_paths(
+        str(source),
+        output_root=str(tmp_path / "output"),
+    )
+
+    assert run_root.is_absolute()
+    assert extract_root.is_absolute()
+    assert archive_zip_path.is_absolute()
+    assert extract_root.parent == run_root
+    assert archive_zip_path.parent == run_root
 
 
 def test_gradio_frontend_uses_tier_and_remote_server_visibility() -> None:

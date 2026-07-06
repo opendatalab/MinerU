@@ -41,6 +41,11 @@ from mineru.cli_old.common import (
     pdf_suffixes,
     read_fn,
 )
+from mineru.cli_old.visualization import (
+    VISUALIZATION_FINISHED,
+    VisualizationJob,
+    run_visualization_job,
+)
 from mineru.cli_old import api_client as _api_client
 from mineru.data.data_reader_writer.filebase import FileBasedDataWriter
 from mineru.parser.api_client import MinerUApiParser
@@ -54,6 +59,9 @@ from mineru.utils.backend_options import (
 )
 from mineru.utils.image_payload import validate_image_sidecar_path
 from mineru.utils.ocr_language import PUBLIC_OCR_LANGUAGE_CHOICES, validate_public_ocr_lang
+from mineru.utils.pdf_document import PDFDocument
+from mineru.utils.pdf_page_id import parse_page_range
+from mineru.utils.pdfium_guard import safe_rewrite_pdf_bytes_with_pdfium_result
 from mineru.version import __version__
 
 _gradio_local_api_server: "ReusableGradioV1APIServer"
@@ -1034,6 +1042,62 @@ def _write_v1_gradio_images(parse_result: ParseResult, local_image_dir: Path) ->
         writer.write(validate_image_sidecar_path(image_path), image_bytes)
 
 
+def _build_v1_gradio_origin_file_bytes(source_path: Path, page_range: str) -> bytes:
+    """按 v1 解析范围生成 Gradio 本地 origin 文件字节；非 PDF 保持原样。"""
+    source_bytes = source_path.read_bytes()
+    if source_path.suffix.lower().lstrip(".") != "pdf" or not page_range.strip():
+        return source_bytes
+
+    try:
+        with PDFDocument(source_bytes) as pdf_doc:
+            page_count = pdf_doc.page_count
+            page_indices = parse_page_range(page_range, page_count)
+        if not page_indices:
+            logger.warning(f"Gradio origin PDF page_range selects no pages: {page_range}")
+            return source_bytes
+        if page_indices == list(range(page_count)):
+            return source_bytes
+
+        rewrite_result = safe_rewrite_pdf_bytes_with_pdfium_result(
+            source_bytes,
+            page_indices=page_indices,
+        )
+        if rewrite_result.used_original:
+            logger.warning(
+                f"Gradio origin PDF rewrite fell back to original PDF for page_range: {page_range}"
+            )
+        return rewrite_result.pdf_bytes or source_bytes
+    except Exception as exc:
+        logger.warning(
+            f"Failed to build Gradio page-ranged origin PDF for {source_path}: {exc}; using original PDF."
+        )
+        return source_bytes
+
+
+def _generate_v1_gradio_layout_preview(
+    *,
+    file_suffix: str,
+    file_name: str,
+    local_md_dir: Path,
+    backend: str,
+) -> None:
+    """为 v1 Gradio 本地结果同步生成 layout 可视化 PDF，失败时保留 origin fallback。"""
+    if file_suffix != "pdf":
+        return
+
+    result = run_visualization_job(
+        VisualizationJob(
+            document_stem=file_name,
+            backend=backend,
+            parse_method="auto",
+            parse_dir=local_md_dir,
+            draw_span=False,
+        )
+    )
+    if result.status != VISUALIZATION_FINISHED:
+        logger.warning(f"Skipping Gradio layout preview for {file_name}: {result.message}")
+
+
 def persist_v1_gradio_result(
     *,
     parse_result: ParseResult,
@@ -1042,6 +1106,7 @@ def persist_v1_gradio_result(
     archive_zip_path: Path,
     backend: str,
     effort: str,
+    page_range: str,
 ) -> GradioV1PersistedOutput:
     """把 v1 ParseResult 保存成旧 Gradio UI 预览、JSON 面板和 ZIP 下载所需文件。"""
     source_path = Path(file_path)
@@ -1078,7 +1143,15 @@ def persist_v1_gradio_result(
     )
 
     origin_suffix = file_suffix if file_suffix in office_suffixes else "pdf"
-    (local_md_dir / f"{file_name}_origin.{origin_suffix}").write_bytes(source_path.read_bytes())
+    origin_bytes = _build_v1_gradio_origin_file_bytes(source_path, page_range)
+    (local_md_dir / f"{file_name}_origin.{origin_suffix}").write_bytes(origin_bytes)
+
+    _generate_v1_gradio_layout_preview(
+        file_suffix=file_suffix,
+        file_name=file_name,
+        local_md_dir=local_md_dir,
+        backend=backend,
+    )
 
     zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
     if zip_archive_success == 0:
@@ -1091,7 +1164,7 @@ def persist_v1_gradio_result(
         file_name=file_name,
         local_md_dir=local_md_dir,
         archive_zip_path=archive_zip_path,
-        preview_pdf_path=Path(preview_pdf_path) if preview_pdf_path else None,
+        preview_pdf_path=Path(preview_pdf_path).resolve() if preview_pdf_path else None,
     )
 
 
@@ -1203,8 +1276,10 @@ def should_use_client_side_output_generation(client_side_output_generation):
 
 
 def create_gradio_run_paths(file_path, output_root="./output"):
+    """生成 Gradio 单次任务目录，统一返回绝对路径以便文件预览组件访问。"""
     run_id = f"{time.strftime('%y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}_{safe_stem(Path(file_path).stem)}"
-    run_root = Path(output_root) / "gradio" / run_id
+    output_root_path = Path(output_root).expanduser().resolve()
+    run_root = output_root_path / "gradio" / run_id
     extract_root = run_root / "result"
     archive_zip_path = run_root / f"{safe_stem(Path(file_path).stem)}.zip"
     return run_root, extract_root, archive_zip_path
@@ -1299,6 +1374,7 @@ async def _run_to_markdown_job(
     runtime = resolve_gradio_runtime_options(tier, use_remote_server=use_remote_server)
     backend = runtime.backend
     effort = runtime.effort
+    page_range = build_v1_gradio_page_range(end_pages)
     run_root, extract_root, archive_zip_path = create_gradio_run_paths(file_path)
     run_root.mkdir(parents=True, exist_ok=True)
 
@@ -1323,7 +1399,7 @@ async def _run_to_markdown_job(
             parser = MinerUApiParser(api_url=server_health.base_url, tier=runtime.tier)
             parse_result = await parser.parse_async(
                 file_path,
-                page_range=build_v1_gradio_page_range(end_pages),
+                page_range=page_range,
             )
             emit_status(STATUS_DOWNLOADING_RESULT)
             emit_status(STATUS_PROCESSING_OUTPUT)
@@ -1335,6 +1411,7 @@ async def _run_to_markdown_job(
                 archive_zip_path=archive_zip_path,
                 backend=backend,
                 effort=effort,
+                page_range=page_range,
             )
 
     file_name = persisted_output.file_name
