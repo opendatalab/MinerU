@@ -489,6 +489,69 @@ def test_api_client_passes_trust_env_from_api_url(monkeypatch: pytest.MonkeyPatc
     assert calls == [False, True]
 
 
+def test_api_client_poll_uses_fixed_one_second_interval(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证同步 v1 job 轮询使用固定 1 秒间隔，避免指数退避放大本地等待。"""
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
+    statuses = iter(["pending", "processing", "completed"])
+    sleep_delays: list[int] = []
+
+    def fake_sleep(delay: int) -> None:
+        """记录同步轮询 sleep 参数，避免测试真的等待。"""
+        sleep_delays.append(delay)
+
+    def fake_get(url: str, headers: dict[str, str]) -> object:
+        """按顺序返回 job 状态，模拟第三次轮询完成。"""
+        assert url == "http://localhost:8000/v1/parse/jobs/job_1"
+        assert headers == {}
+        status = next(statuses)
+        return types.SimpleNamespace(
+            status_code=200,
+            text="",
+            json=lambda: {"job_id": "job_1", "status": status},
+        )
+
+    monkeypatch.setattr(api_client.time, "sleep", fake_sleep)
+
+    job = parser._poll(types.SimpleNamespace(get=fake_get), "job_1")
+
+    assert job["status"] == "completed"
+    assert sleep_delays == [1, 1, 1]
+
+
+def test_async_api_client_poll_uses_fixed_one_second_interval(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证异步 v1 job 轮询也使用固定 1 秒间隔，保持 Gradio 路径一致。"""
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
+    statuses = iter(["pending", "processing", "completed"])
+    sleep_delays: list[int] = []
+
+    async def fake_sleep(delay: int) -> None:
+        """记录异步轮询 sleep 参数，避免测试真的等待。"""
+        sleep_delays.append(delay)
+
+    async def fake_get(url: str, headers: dict[str, str]) -> object:
+        """按顺序返回 job 状态，模拟第三次异步轮询完成。"""
+        assert url == "http://localhost:8000/v1/parse/jobs/job_1"
+        assert headers == {}
+        status = next(statuses)
+        return types.SimpleNamespace(
+            status_code=200,
+            text="",
+            json=lambda: {"job_id": "job_1", "status": status},
+        )
+
+    monkeypatch.setattr(api_client.asyncio, "sleep", fake_sleep)
+
+    job = asyncio.run(parser._async_poll(types.SimpleNamespace(get=fake_get), "job_1"))
+
+    assert job["status"] == "completed"
+    assert sleep_delays == [1, 1, 1]
+
+
+def test_api_client_poll_timeout_budget_is_one_hour() -> None:
+    """验证 v1 job 轮询最大等待预算为 1 小时。"""
+    assert api_client._POLL_INTERVAL_SECONDS * api_client._POLL_MAX_ATTEMPTS == 60 * 60
+
+
 def test_api_client_omits_tier_when_unspecified(tmp_path: Path) -> None:
     pdf = tmp_path / "demo.pdf"
     pdf.write_bytes(b"%PDF-1.7\n")

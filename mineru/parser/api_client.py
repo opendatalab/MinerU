@@ -26,6 +26,10 @@ from ..types import PageInfo, Tier, validate_tier
 from ..utils.image_payload import validate_image_sidecar_path
 from .base import DocumentParser, ParseResult
 
+_POLL_INTERVAL_SECONDS = 1
+_POLL_MAX_ATTEMPTS = 3600
+_TERMINAL_JOB_STATUSES = {"completed", "partial", "failed", "canceled"}
+
 
 class MinerUApiParser(DocumentParser):
     """Parser that delegates to a MinerU v1 API server.
@@ -223,7 +227,7 @@ class MinerUApiParser(DocumentParser):
         with httpx.Client(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
             r = cli.post(f"{self._base}/v1/parse/jobs", headers=self._headers(), json=payload)
             job = self._check(r)
-            if job.get("status") not in ("completed", "partial", "failed", "canceled"):
+            if job.get("status") not in _TERMINAL_JOB_STATUSES:
                 # poll if wait timed out
                 job = self._poll(cli, job["job_id"])
         return job
@@ -232,30 +236,26 @@ class MinerUApiParser(DocumentParser):
         async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
             r = await cli.post(f"{self._base}/v1/parse/jobs", headers=self._headers(), json=payload)
             job = self._check(r)
-            if job.get("status") not in ("completed", "partial", "failed", "canceled"):
+            if job.get("status") not in _TERMINAL_JOB_STATUSES:
                 job = await self._async_poll(cli, job["job_id"])
         return job
 
     def _poll(self, cli: Any, job_id: str) -> dict[str, Any]:
-        delay = 2
-        for _ in range(150):  # max 5 min
-            time.sleep(delay)
+        for _ in range(_POLL_MAX_ATTEMPTS):  # max 1 hour
+            time.sleep(_POLL_INTERVAL_SECONDS)
             r = cli.get(f"{self._base}/v1/parse/jobs/{job_id}", headers=self._headers())
             job = self._check(r)
-            if job.get("status") in ("completed", "partial", "failed", "canceled"):
+            if job.get("status") in _TERMINAL_JOB_STATUSES:
                 return job
-            delay = min(delay * 2, 30)
         raise _V1APIError("timeout", f"Job {job_id} did not complete within timeout")
 
     async def _async_poll(self, cli: Any, job_id: str) -> dict[str, Any]:
-        delay = 2
-        for _ in range(150):
-            await asyncio.sleep(delay)
+        for _ in range(_POLL_MAX_ATTEMPTS):
+            await asyncio.sleep(_POLL_INTERVAL_SECONDS)
             r = await cli.get(f"{self._base}/v1/parse/jobs/{job_id}", headers=self._headers())
             job = self._check(r)
-            if job.get("status") in ("completed", "partial", "failed", "canceled"):
+            if job.get("status") in _TERMINAL_JOB_STATUSES:
                 return job
-            delay = min(delay * 2, 30)
         raise _V1APIError("timeout", f"Job {job_id} did not complete within timeout")
 
     # ── build ParseResult ────────────────────────────────────────────
