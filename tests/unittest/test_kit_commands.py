@@ -822,10 +822,11 @@ def test_gradio_v1_job_reuses_page_range_for_api_and_origin_pdf(
     calls: dict[str, Any] = {}
 
     class _FakeParser:
-        def __init__(self, *, api_url: str, tier: str, include_model_output: bool) -> None:
+        def __init__(self, *, api_url: str, tier: str, include_model_output: bool, zip_output_only: bool) -> None:
             calls["parser_api_url"] = api_url
             calls["parser_tier"] = tier
             calls["include_model_output"] = include_model_output
+            calls["zip_output_only"] = zip_output_only
 
         async def parse_async(self, file_path: str, *, page_range: str) -> ParseResult:
             calls["api_page_range"] = page_range
@@ -859,6 +860,7 @@ def test_gradio_v1_job_reuses_page_range_for_api_and_origin_pdf(
 
     assert calls["api_page_range"] == "1~2"
     assert calls["include_model_output"] is True
+    assert calls["zip_output_only"] is True
     assert calls["persist_page_range"] == "1~2"
 
 

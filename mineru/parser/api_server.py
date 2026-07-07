@@ -39,6 +39,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..types import Tier, validate_tier
 from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
+from ..utils.image_payload import validate_image_sidecar_path
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..version import __version__
 from . import parse_async
@@ -926,6 +927,34 @@ def _store_image_outputs(file_store: FileStore, images: dict[str, bytes]) -> lis
     return img_refs
 
 
+def _build_self_contained_zip_output(result: Any, output_stem: str) -> bytes:
+    """构建自包含解析 zip，确保只请求 zip 时也能恢复 middle_json、图片和 model_output。"""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"{output_stem}.markdown", _text_utf8_bytes(result.markdown() or ""))
+        zf.writestr(f"{output_stem}.middle_json", _json_utf8_bytes(result.to_dict(skip_defaults=True)))
+        zf.writestr(f"{output_stem}.content_list", _json_utf8_bytes(result.content_list()))
+        zf.writestr(f"{output_stem}.structured_content", _json_utf8_bytes(result.structured_content()))
+
+        for img_path, img_bytes in sorted(result.images().items()):
+            safe_img_path = validate_image_sidecar_path(img_path)
+            zf.writestr(safe_img_path, img_bytes)
+
+        model_output = getattr(result, "_model_output", None)
+        if model_output is not None:
+            zf.writestr(
+                f"{output_stem}_model_output.json",
+                _text_utf8_bytes(
+                    json.dumps(
+                        _sanitize_json_for_utf8(model_output),
+                        ensure_ascii=False,
+                        indent=4,
+                    )
+                ),
+            )
+    return buf.getvalue()
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  DEPENDENCIES
 # ═══════════════════════════════════════════════════════════════════════
@@ -1346,42 +1375,7 @@ async def _run_job(
 
                 # zip
                 if "zip" in out_formats:
-                    buf = io.BytesIO()
-                    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                        for fmt_name, attr in [
-                            ("markdown", "markdown"),
-                            ("middle_json", "middle_json"),
-                            ("content_list", "content_list"),
-                            ("structured_content", "structured_content"),
-                        ]:
-                            ref = getattr(output_files, attr)
-                            if ref and ref.file_id:
-                                try:
-                                    zf.writestr(
-                                        f"{pathlib.Path(fr.name).stem}.{fmt_name}",
-                                        file_store.read_file_data(ref.file_id),
-                                    )
-                                except Exception:
-                                    pass
-                        if output_files.images:
-                            for ir in output_files.images:
-                                try:
-                                    zf.writestr(ir.path, file_store.read_file_data(ir.file_id))
-                                except Exception:
-                                    pass
-                        model_output = getattr(result, "_model_output", None)
-                        if model_output is not None:
-                            zf.writestr(
-                                f"{pathlib.Path(fr.name).stem}_model_output.json",
-                                _text_utf8_bytes(
-                                    json.dumps(
-                                        _sanitize_json_for_utf8(model_output),
-                                        ensure_ascii=False,
-                                        indent=4,
-                                    )
-                                ),
-                            )
-                    zip_bytes = buf.getvalue()
+                    zip_bytes = _build_self_contained_zip_output(result, pathlib.Path(fr.name).stem)
                     zip_sha = hashlib.sha256(zip_bytes).hexdigest()
                     file_store.store_blob(zip_bytes, sha256hex=zip_sha)
                     zip_fid = file_store.create_file_for_output(f"{fr.name}.zip", zip_bytes, sha256hex=zip_sha)
