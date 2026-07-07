@@ -1029,9 +1029,10 @@ def _write_v1_gradio_images(parse_result: ParseResult, local_image_dir: Path) ->
 
 
 def _build_v1_gradio_origin_file_bytes(source_path: Path, page_range: str) -> bytes:
-    """按 v1 解析范围生成 Gradio 本地 origin 文件字节；非 PDF 保持原样。"""
-    source_bytes = source_path.read_bytes()
-    if source_path.suffix.lower().lstrip(".") != "pdf" or not page_range.strip():
+    """按 v1 解析范围生成 Gradio 本地 origin 文件；图片会先转成 PDF 供预览使用。"""
+    file_suffix = source_path.suffix.lower().lstrip(".")
+    source_bytes = read_fn(source_path, file_suffix)
+    if file_suffix != "pdf" or not page_range.strip():
         return source_bytes
 
     try:
@@ -1062,13 +1063,13 @@ def _build_v1_gradio_origin_file_bytes(source_path: Path, page_range: str) -> by
 
 def _generate_v1_gradio_layout_preview(
     *,
-    file_suffix: str,
     file_name: str,
     local_md_dir: Path,
     backend: str,
 ) -> None:
-    """为 v1 Gradio 本地结果同步生成 layout 可视化 PDF，失败时保留 origin fallback。"""
-    if file_suffix != "pdf":
+    """为 v1 Gradio 本地 PDF origin 生成 layout 预览；图片 origin 已提前转换为 PDF。"""
+    origin_pdf_path = local_md_dir / f"{file_name}_origin.pdf"
+    if not origin_pdf_path.exists():
         return
 
     result = run_visualization_job(
@@ -1140,7 +1141,6 @@ def persist_v1_gradio_result(
     (local_md_dir / f"{file_name}_origin.{origin_suffix}").write_bytes(origin_bytes)
 
     _generate_v1_gradio_layout_preview(
-        file_suffix=file_suffix,
         file_name=file_name,
         local_md_dir=local_md_dir,
         backend=backend,

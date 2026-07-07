@@ -772,6 +772,45 @@ def test_gradio_persists_page_ranged_origin_pdf_for_v1_preview(tmp_path: Path) -
     assert [float(page.cropbox[2]) for page in zipped_origin_reader.pages] == [100.0, 200.0]
 
 
+def test_gradio_persists_image_origin_as_pdf_for_v1_preview(tmp_path: Path) -> None:
+    from PIL import Image
+    from pypdf import PdfReader
+
+    from mineru.cli_old import gradio_app
+
+    source = tmp_path / "ref-merge.png"
+    Image.new("RGB", (64, 48), "white").save(source)
+    parse_result = ParseResult(
+        pages=[PageInfo(page_idx=0, page_size=(64, 48), _backend="hybrid")],
+    )
+    extract_root = tmp_path / "extract"
+    archive_zip_path = tmp_path / "archive.zip"
+
+    output = gradio_app.persist_v1_gradio_result(
+        parse_result=parse_result,
+        file_path=str(source),
+        extract_root=extract_root,
+        archive_zip_path=archive_zip_path,
+        backend="hybrid-engine",
+        effort="medium",
+        page_range="",
+    )
+
+    origin_pdf_path = output.local_md_dir / "ref-merge_origin.pdf"
+    layout_pdf_path = output.local_md_dir / "ref-merge_layout.pdf"
+    assert origin_pdf_path.read_bytes().startswith(b"%PDF")
+    assert len(PdfReader(str(origin_pdf_path)).pages) == 1
+    assert layout_pdf_path.is_file()
+    assert output.preview_pdf_path == layout_pdf_path
+    assert len(PdfReader(str(layout_pdf_path)).pages) == 1
+
+    with zipfile.ZipFile(archive_zip_path) as archive:
+        assert archive.read("ref-merge_origin.pdf").startswith(b"%PDF")
+        assert "ref-merge_layout.pdf" in archive.namelist()
+        assert len(PdfReader(BytesIO(archive.read("ref-merge_origin.pdf"))).pages) == 1
+        assert len(PdfReader(BytesIO(archive.read("ref-merge_layout.pdf"))).pages) == 1
+
+
 def test_gradio_v1_job_reuses_page_range_for_api_and_origin_pdf(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
