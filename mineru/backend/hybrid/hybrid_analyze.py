@@ -124,8 +124,7 @@ HYBRID_MEDIUM_LAYOUT_LABEL_MAP = {
     **HYBRID_VLM_LAYOUT_LABEL_MAP,
     "doc_title": MineruBlockType.DOC_TITLE,
     "paragraph_title": MineruBlockType.PARAGRAPH_TITLE,
-    "figure_title": MineruBlockType.IMAGE_CAPTION,
-    "vision_footnote": MineruBlockType.PAGE_FOOTNOTE,
+    "vision_footnote": MineruBlockType.FOOTNOTE,
 }
 
 HYBRID_VLM_OCR_DET_TEXT_TYPES = {
@@ -181,13 +180,8 @@ def _is_hybrid_medium_ocr_det_candidate(block: dict[str, Any]) -> bool:
         MineruBlockType.DOC_TITLE,
         MineruBlockType.PARAGRAPH_TITLE,
         MineruBlockType.INDEX,
-        MineruBlockType.ABSTRACT,
         MineruBlockType.ASIDE_TEXT,
-        MineruBlockType.PHONETIC,
-        MineruBlockType.LIST,
-        MineruBlockType.CHART_CAPTION,
-        MineruBlockType.CHART_FOOTNOTE,
-        MineruBlockType.CODE_FOOTNOTE,
+        MineruBlockType.FOOTNOTE,
     }
 
 
@@ -707,7 +701,9 @@ def _medium_layout_item_to_hybrid_item(
     elif block_type == MineruBlockType.EQUATION:
         hybrid_item["content"] = _normalize_medium_content(layout_item.get("latex", ""))
     else:
-        content = _normalize_medium_content(layout_item.get("text", ""))
+        content = _normalize_medium_content(layout_item.get("text", "")) or _normalize_medium_content(
+            layout_item.get("content", "")
+        )
         if content:
             hybrid_item["content"] = content
 
@@ -769,6 +765,65 @@ def _run_medium_formula_recognition(
                 page_mfd_res.append({"bbox": bbox})
         mfd_res.append(page_mfd_res)
     return mfd_res
+
+
+def _apply_medium_formula_number_ocr(
+    local_context: HybridLocalModelContext,
+    images_layout_res: list[list[dict[str, Any]]],
+    np_images: list[np.ndarray],
+) -> None:
+    """对 medium formula_number 裁剪图执行 OCR-rec，并把编号文本回填到原始 layout 项。"""
+    need_rec_items: list[dict[str, Any]] = []
+    formula_number_crops: list[np.ndarray] = []
+    for layout_res, np_img in zip(images_layout_res, np_images):
+        image_h, image_w = np_img.shape[:2]
+        bgr_image = cv2.cvtColor(np_img, cv2.COLOR_RGB2BGR)
+        for layout_item in layout_res:
+            if layout_item.get("label") != "formula_number":
+                continue
+
+            formula_number_bbox = normalize_to_int_bbox(layout_item.get("bbox"), image_size=(image_h, image_w))
+            if formula_number_bbox is None:
+                continue
+
+            x0, y0, x1, y1 = formula_number_bbox
+            if x1 <= x0 or y1 <= y0:
+                continue
+
+            # 使用 OCR rec 的标准旋转裁剪逻辑，保证 medium 编号裁图与正文 OCR-rec 输入一致。
+            formula_number_crops.append(
+                get_rotate_crop_image_for_text_rec(
+                    bgr_image,
+                    _medium_bbox_to_quad(formula_number_bbox).copy(),
+                )
+            )
+            need_rec_items.append(layout_item)
+
+    if not formula_number_crops:
+        return
+
+    ocr_result_list = run_ocr_inference(
+        local_context.ocr_model.ocr,
+        formula_number_crops,
+        det=False,
+        tqdm_enable=True,
+        tqdm_desc="Hybrid-medium formula-number OCR-rec",
+    )[0]
+    if len(ocr_result_list) != len(need_rec_items):
+        raise ValueError(
+            "Hybrid medium formula number OCR rec result count mismatch: "
+            f"ocr_result_list={len(ocr_result_list)}, need_rec_items={len(need_rec_items)}"
+        )
+
+    for layout_item, ocr_result in zip(need_rec_items, ocr_result_list):
+        if not ocr_result or len(ocr_result) < 2:
+            continue
+        ocr_text, ocr_score = ocr_result
+        normalized_text = _normalize_medium_content(ocr_text)
+        layout_item["score"] = float(f"{float(ocr_score or 0.0):.3f}")
+        if normalized_text:
+            layout_item["text"] = normalized_text
+            layout_item["content"] = normalized_text
 
 
 def _medium_bbox_center(bbox: list[float] | tuple[float, ...]) -> tuple[float, float]:
@@ -1048,6 +1103,7 @@ def _collect_medium_table_ocr_rec_inputs(
     atom_model_manager: Any,
     table_items: list[dict[str, Any]],
     batch_ratio: int,
+    enable_ocr_det_batch: bool,
 ) -> dict[str | None, list[dict[str, Any]]]:
     """对表格裁剪图执行 OCR det，并按语言收集 OCR rec 输入。"""
     rec_img_lang_group: dict[str | None, list[dict[str, Any]]] = defaultdict(list)
@@ -1060,6 +1116,24 @@ def _collect_medium_table_ocr_rec_inputs(
     table_det_items = _build_medium_table_ocr_det_items(table_items)
     det_images = [item["det_image"] for item in table_det_items]
     if not det_images:
+        return rec_img_lang_group
+
+    if not enable_ocr_det_batch:
+        for table_det_item in tqdm(
+            table_det_items,
+            total=len(table_det_items),
+            desc="Hybrid-medium table OCR-det",
+        ):
+            dt_boxes = run_ocr_inference(
+                det_ocr_engine.ocr,
+                table_det_item["det_image"],
+                rec=False,
+            )[0]
+            _append_medium_table_ocr_det_result(
+                table_det_item,
+                dt_boxes,
+                rec_img_lang_group,
+            )
         return rec_img_lang_group
 
     det_batch_size = max(1, min(len(det_images), batch_ratio * OCR_DET_BASE_BATCH_SIZE))
@@ -1170,9 +1244,15 @@ def _apply_medium_table_ocr_rec(
     atom_model_manager: Any,
     table_items: list[dict[str, Any]],
     batch_ratio: int,
+    enable_ocr_det_batch: bool,
 ) -> None:
     """执行 medium 表格 OCR det/rec，并把识别结果按 table_id 写回 table_items。"""
-    rec_img_lang_group = _collect_medium_table_ocr_rec_inputs(atom_model_manager, table_items, batch_ratio)
+    rec_img_lang_group = _collect_medium_table_ocr_rec_inputs(
+        atom_model_manager,
+        table_items,
+        batch_ratio,
+        enable_ocr_det_batch,
+    )
     for lang, rec_img_list in rec_img_lang_group.items():
         if not rec_img_list:
             continue
@@ -1296,7 +1376,12 @@ def _apply_medium_table_recognition(
     atom_model_manager = local_context.atom_model_manager
     _apply_medium_table_orientation(atom_model_manager, table_items, batch_ratio)
     _apply_medium_table_classification(atom_model_manager, table_items)
-    _apply_medium_table_ocr_rec(atom_model_manager, table_items, batch_ratio)
+    _apply_medium_table_ocr_rec(
+        atom_model_manager,
+        table_items,
+        batch_ratio,
+        local_context.enable_ocr_det_batch,
+    )
     _append_medium_table_inline_objects_to_ocr_result(table_items)
     _apply_medium_wireless_table_recognition(atom_model_manager, table_items)
     wired_table_items = _select_medium_wired_table_items(table_items)
@@ -1387,6 +1472,7 @@ def _extract_with_local_layout(
         batch_ratio,
     )
     _apply_medium_seal_ocr(local_context, images_layout_res, np_images)
+    _apply_medium_formula_number_ocr(local_context, images_layout_res, np_images)
     _prune_medium_empty_ocr_text_blocks(images_layout_res, _ocr_enable)
     medium_model_list = _build_medium_hybrid_model_list(images_layout_res, images_pil_list)
     ocr_res_list = _ocr_det(
