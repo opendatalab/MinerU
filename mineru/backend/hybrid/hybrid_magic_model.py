@@ -49,6 +49,37 @@ OCR_DET_LINE_BLOCK_TYPES = {
 }
 
 
+def _should_fill_empty_index_from_spans(block_type: str, block_content: str | None, use_vlm_text_content: bool) -> bool:
+    """判断空目录块是否应复用 OCR/PDF span 回填，避免生成空文本目录项。"""
+    return block_type == BlockType.INDEX and not use_vlm_text_content and not (block_content or "").strip()
+
+
+def _collapse_index_lines_to_single_content_span(block: Block) -> None:
+    """将回填出的目录多行折叠为单个文本 span，避免后续逐行拼接时丢失换行。"""
+    line_texts = []
+    for line in block.lines:
+        line_text = "".join(span.content or "" for span in line.spans).strip()
+        if line_text:
+            line_texts.append(line_text)
+    if not line_texts:
+        block.lines = []
+        return
+
+    content = "\n".join(line_texts)
+    block.lines = [
+        Line(
+            bbox=block.bbox,
+            spans=[
+                Span(
+                    type=ContentType.TEXT,
+                    bbox=block.bbox,
+                    content=content,
+                )
+            ],
+        )
+    ]
+
+
 def _copy_raw_text_block_metadata(draft: VlmContentBlockDraft, block: Block) -> None:
     if draft.raw_type != BlockType.TEXT:
         return
@@ -186,6 +217,11 @@ class MagicModel:
             if span_type == ContentType.TEXT and block_content is None:
                 # 文本类块缺失 content 时按空文本处理，避免 VLM 渲染阶段遇到 None。
                 block_content = ""
+            fill_empty_index_from_spans = _should_fill_empty_index_from_spans(
+                block_type,
+                block_content,
+                use_vlm_text_content,
+            )
 
             # code 和 algorithm 类型的块，如果内容中包含行内公式，则需要将块类型切换为 algorithm
             switch_code_to_algorithm = False
@@ -203,7 +239,7 @@ class MagicModel:
                     bbox=block_bbox,
                     content=isolated_formula_clean(block_content or ""),
                 )
-            elif use_vlm_text_content or block_type not in not_extract_list:
+            elif not fill_empty_index_from_spans and (use_vlm_text_content or block_type not in not_extract_list):
                 # 使用 VLM 文本内容时，所有文本块都直接消费 block content。
                 # 非 VLM 文本路径下，非提取块仍沿用直接内容模式。
                 if block_content:
@@ -270,7 +306,7 @@ class MagicModel:
                 ContentType.TABLE,
                 ContentType.CHART,
                 ContentType.INTERLINE_EQUATION,
-            ] or (use_vlm_text_content or block_type not in not_extract_list):
+            ] or (not fill_empty_index_from_spans and (use_vlm_text_content or block_type not in not_extract_list)):
                 if span is None:
                     continue
                 if isinstance(span, Span):
@@ -302,6 +338,8 @@ class MagicModel:
                 block = Block(index=index, type=block_type, bbox=block_bbox, angle=block_angle)
                 block._fix_spans = block_spans
                 block = fix_text_block(block)
+                if fill_empty_index_from_spans:
+                    _collapse_index_lines_to_single_content_span(block)
                 _copy_raw_text_block_metadata(draft, block)
 
             if block.type == BlockType.INDEX:
