@@ -1476,7 +1476,12 @@ HEADER_I18N_PLACEHOLDERS = {
     "{{HEADER_STARS_ALT}}": "header_stars_alt",
     "{{HEADER_CODE_LINK}}": "header_code_link",
     "{{HEADER_MODEL_LINK}}": "header_model_link",
+    "{{HEADER_MODEL_HUGGINGFACE_LINK}}": "header_model_huggingface_link",
+    "{{HEADER_MODEL_MODELSCOPE_LINK}}": "header_model_modelscope_link",
     "{{HEADER_PAPER_LINK}}": "header_paper_link",
+    "{{HEADER_PAPER_MINERU_REPORT}}": "header_paper_mineru_report",
+    "{{HEADER_PAPER_MINERU25_REPORT}}": "header_paper_mineru25_report",
+    "{{HEADER_PAPER_MINERU25PRO_REPORT}}": "header_paper_mineru25pro_report",
     "{{HEADER_HOMEPAGE_LINK}}": "header_homepage_link",
     "{{HEADER_DOWNLOAD_LINK}}": "header_download_link",
 }
@@ -1733,7 +1738,12 @@ def main(ctx,
             "header_stars_alt": "stars",
             "header_code_link": "Code",
             "header_model_link": "Model",
+            "header_model_huggingface_link": "Hugging Face",
+            "header_model_modelscope_link": "ModelScope",
             "header_paper_link": "Paper",
+            "header_paper_mineru_report": "MinerU · arXiv: 2409.18839",
+            "header_paper_mineru25_report": "MinerU 2.5 · arXiv: 2509.22186",
+            "header_paper_mineru25pro_report": "MinerU 2.5 Pro · arXiv: 2604.04771",
             "header_homepage_link": "Homepage",
             "header_download_link": "Download",
             "max_pages": "Max convert pages",
@@ -1779,7 +1789,12 @@ def main(ctx,
             "header_stars_alt": "GitHub 星标",
             "header_code_link": "代码",
             "header_model_link": "模型",
+            "header_model_huggingface_link": "Hugging Face",
+            "header_model_modelscope_link": "ModelScope",
             "header_paper_link": "论文",
+            "header_paper_mineru_report": "MinerU · arXiv: 2409.18839",
+            "header_paper_mineru25_report": "MinerU 2.5 · arXiv: 2509.22186",
+            "header_paper_mineru25pro_report": "MinerU 2.5 Pro · arXiv: 2604.04771",
             "header_homepage_link": "主页",
             "header_download_link": "下载",
             "max_pages": "最大转换页数",
@@ -1873,7 +1888,7 @@ def main(ctx,
     suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + office_suffixes]
     _blocks_kwargs = {} if IS_GRADIO_6 else {"css": APP_CSS, "js": APP_JS}
     with gr.Blocks(**_blocks_kwargs) as demo:
-        gr.HTML(render_header_html(i18n))
+        gr.HTML(render_header_html(i18n), elem_classes=["mineru-header-html"])
         with gr.Row(elem_classes=["mineru-workspace-row"]):
             with gr.Column(variant='panel', scale=2, min_width=280, elem_classes=["mineru-control-column"]):
                 input_file = gr.File(

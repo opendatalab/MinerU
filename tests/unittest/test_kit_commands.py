@@ -863,6 +863,36 @@ def test_gradio_frontend_uses_v1_only_tier_visibility() -> None:
     assert "mineru-hide-force-ocr" not in js_text
 
 
+def test_gradio_header_model_and_paper_links_use_popovers() -> None:
+    """校验 Gradio header 的模型和论文入口使用可悬浮展开的多链接菜单。"""
+    header_text = Path("mineru/resources/gradio_header.html").read_text(encoding="utf-8")
+    gradio_text = Path("mineru/cli_old/gradio_app.py").read_text(encoding="utf-8")
+
+    assert 'class="link-block mineru-header-menu mineru-model-menu"' in header_text
+    assert 'class="link-block mineru-header-menu mineru-paper-menu"' in header_text
+    assert "mineru-header-popover mineru-model-popover" in header_text
+    assert "mineru-header-popover mineru-paper-popover" in header_text
+    assert "https://huggingface.co/opendatalab/MinerU2.5-Pro-2605-1.2B" in header_text
+    assert "https://modelscope.cn/models/OpenDataLab/MinerU2.5-Pro-2605-1.2B" in header_text
+    assert "https://arxiv.org/abs/2409.18839" in header_text
+    assert "https://arxiv.org/abs/2509.22186" in header_text
+    assert "https://arxiv.org/abs/2604.04771" in header_text
+    assert ".block.mineru-header-html" in header_text
+    assert ".mineru-demo-header .external-link {\n    font-size: 14px !important;" in header_text
+    assert 'gr.HTML(render_header_html(i18n), elem_classes=["mineru-header-html"])' in gradio_text
+
+    for placeholder, translation_key in {
+        "{{HEADER_MODEL_HUGGINGFACE_LINK}}": "header_model_huggingface_link",
+        "{{HEADER_MODEL_MODELSCOPE_LINK}}": "header_model_modelscope_link",
+        "{{HEADER_PAPER_MINERU_REPORT}}": "header_paper_mineru_report",
+        "{{HEADER_PAPER_MINERU25_REPORT}}": "header_paper_mineru25_report",
+        "{{HEADER_PAPER_MINERU25PRO_REPORT}}": "header_paper_mineru25pro_report",
+    }.items():
+        assert placeholder in header_text
+        assert f'"{placeholder}": "{translation_key}"' in gradio_text
+        assert f'"{translation_key}"' in gradio_text
+
+
 def test_gradio_submit_inputs_are_v1_only() -> None:
     """校验 Gradio 公开控制面只保留 v1 API 支持的单次任务输入。"""
     gradio_text = Path("mineru/cli_old/gradio_app.py").read_text(encoding="utf-8")
