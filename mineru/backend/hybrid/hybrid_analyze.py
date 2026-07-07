@@ -97,7 +97,7 @@ class _OcrDetCrop:
     page_ocr_res_list: list[dict[str, Any]]
 HYBRID_VLM_LAYOUT_LABEL_MAP = {
     "abstract": MineruBlockType.TEXT,
-    "algorithm": MineruBlockType.ALGORITHM,
+    "algorithm": MineruBlockType.CODE,
     "aside_text": MineruBlockType.ASIDE_TEXT,
     "chart": MineruBlockType.CHART,
     "content": MineruBlockType.INDEX,

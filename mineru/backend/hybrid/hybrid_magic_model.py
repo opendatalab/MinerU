@@ -133,6 +133,11 @@ def _collapse_lines_to_inline_content_spans(block: Block) -> None:
     ]
 
 
+def _code_body_has_inline_formula(block: Block) -> bool:
+    """判断代码块回填后的 span 是否包含行内公式，用于决定是否升级为 algorithm。"""
+    return any(span.type == ContentType.INLINE_EQUATION for line in block.lines for span in line.spans)
+
+
 def _ensure_code_body_metadata_line(block: Block, code_type: str | None, guess_lang: str | None) -> None:
     """为空代码块补一行元数据，确保父 code block 能保留 code/algorithm 子类型。"""
     if not block.lines:
@@ -360,6 +365,8 @@ class MagicModel:
                 if fill_empty_content_from_spans:
                     _collapse_lines_to_inline_content_spans(block)
                 if block_type == BlockType.CODE_BODY:
+                    if code_block_sub_type == BlockType.CODE and _code_body_has_inline_formula(block):
+                        code_block_sub_type = BlockType.ALGORITHM
                     _ensure_code_body_metadata_line(block, code_block_sub_type, guess_lang)
                 _copy_raw_text_block_metadata(draft, block)
 
