@@ -1369,6 +1369,18 @@ async def _run_job(
                                     zf.writestr(ir.path, file_store.read_file_data(ir.file_id))
                                 except Exception:
                                     pass
+                        model_output = getattr(result, "_model_output", None)
+                        if model_output is not None:
+                            zf.writestr(
+                                f"{pathlib.Path(fr.name).stem}_model_output.json",
+                                _text_utf8_bytes(
+                                    json.dumps(
+                                        _sanitize_json_for_utf8(model_output),
+                                        ensure_ascii=False,
+                                        indent=4,
+                                    )
+                                ),
+                            )
                     zip_bytes = buf.getvalue()
                     zip_sha = hashlib.sha256(zip_bytes).hexdigest()
                     file_store.store_blob(zip_bytes, sha256hex=zip_sha)

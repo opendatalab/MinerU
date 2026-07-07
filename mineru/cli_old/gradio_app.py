@@ -1128,6 +1128,13 @@ def persist_v1_gradio_result(
         encoding="utf-8",
     )
 
+    model_output = getattr(parse_result, "_model_output", None)
+    if model_output is not None:
+        (local_md_dir / f"{file_name}_model_output.json").write_text(
+            json.dumps(model_output, ensure_ascii=False, indent=4),
+            encoding="utf-8",
+        )
+
     origin_suffix = file_suffix if file_suffix in office_suffixes else "pdf"
     origin_bytes = _build_v1_gradio_origin_file_bytes(source_path, page_range)
     (local_md_dir / f"{file_name}_origin.{origin_suffix}").write_bytes(origin_bytes)
@@ -1292,7 +1299,11 @@ async def _run_to_markdown_job(
             ),
         ):
             emit_status(STATUS_SUBMITTING_TASK)
-            parser = MinerUApiParser(api_url=server_health.base_url, tier=runtime.tier)
+            parser = MinerUApiParser(
+                api_url=server_health.base_url,
+                tier=runtime.tier,
+                include_model_output=True,
+            )
             parse_result = await parser.parse_async(
                 file_path,
                 page_range=page_range,

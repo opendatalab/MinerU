@@ -72,7 +72,7 @@ class PdfBaseParser(DocumentParser):
 
         prepared = self._prepare_input(path, page_range)
         image_cache = ImagePayloadCache()
-        middle_json = self._run_analysis(
+        middle_json, model_output = self._run_analysis(
             prepared.pdf_bytes,
             page_index_map=prepared.retained_page_indices,
             image_cache=image_cache,
@@ -89,6 +89,7 @@ class PdfBaseParser(DocumentParser):
             retained_page_indices=prepared.retained_page_indices,
             broken_page_indices=prepared.broken_page_indices,
             image_cache=image_cache,
+            model_output=model_output,
         )
 
     async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:
@@ -98,7 +99,7 @@ class PdfBaseParser(DocumentParser):
 
         prepared = await asyncio.to_thread(self._prepare_input, path, page_range)
         image_cache = ImagePayloadCache()
-        middle_json = await self._arun_analysis(
+        middle_json, model_output = await self._arun_analysis(
             prepared.pdf_bytes,
             page_index_map=prepared.retained_page_indices,
             image_cache=image_cache,
@@ -115,6 +116,7 @@ class PdfBaseParser(DocumentParser):
             retained_page_indices=prepared.retained_page_indices,
             broken_page_indices=prepared.broken_page_indices,
             image_cache=image_cache,
+            model_output=model_output,
         )
 
     @abstractmethod
@@ -123,15 +125,15 @@ class PdfBaseParser(DocumentParser):
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
         image_cache: ImagePayloadCache | None = None,
-    ) -> list[PageInfo]:
-        """Execute backend-specific analysis. Returns (middle_json, model_output)."""
+    ) -> tuple[list[PageInfo], Any]:
+        """执行后端 PDF 分析，返回 middle_json 页面和原始 model_output。"""
 
     async def _arun_analysis(
         self,
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
         image_cache: ImagePayloadCache | None = None,
-    ) -> list[PageInfo]:
+    ) -> tuple[list[PageInfo], Any]:
         return await asyncio.to_thread(
             self._run_analysis,
             pdf_bytes,
@@ -219,12 +221,14 @@ class PdfBaseParser(DocumentParser):
         retained_page_indices: list[int] | None = None,
         broken_page_indices: list[int] | None = None,
         image_cache: ImagePayloadCache | None = None,
+        model_output: Any = None,
     ) -> ParseResult:
         return ParseResult(
             pages=middle_json,
             _retained_page_indices=retained_page_indices,
             _broken_page_indices=broken_page_indices,
             _image_cache=image_cache,
+            _model_output=model_output,
         )
 
 
@@ -247,7 +251,7 @@ class PdfHybridParser(PdfBaseParser):
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
         image_cache: ImagePayloadCache | None = None,
-    ) -> list[PageInfo]:
+    ) -> tuple[list[PageInfo], Any]:
         from ..backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
 
         backend = (
@@ -268,14 +272,14 @@ class PdfHybridParser(PdfBaseParser):
             image_cache=image_cache,
         )
 
-        return middle_json
+        return middle_json, model_list
 
     async def _arun_analysis(
         self,
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
         image_cache: ImagePayloadCache | None = None,
-    ) -> list[PageInfo]:
+    ) -> tuple[list[PageInfo], Any]:
         from ..backend.hybrid.hybrid_analyze import aio_doc_analyze as hybrid_aio_doc_analyze
 
         backend = (
@@ -294,7 +298,7 @@ class PdfHybridParser(PdfBaseParser):
             image_cache=image_cache,
         )
 
-        return middle_json
+        return middle_json, model_list
 
 
 class PdfPipelineParser(PdfHybridParser):
@@ -328,7 +332,7 @@ class PdfFlashParser(PdfBaseParser):
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
         image_cache: ImagePayloadCache | None = None,
-    ) -> list[PageInfo]:
+    ) -> tuple[list[PageInfo], Any]:
         from ..backend.flash.pdf_extractor import extract_pages_text
         from ..types import Block, Line, PageInfo, Span
         from ..utils.page_index import resolve_output_page_idx
@@ -359,7 +363,7 @@ class PdfFlashParser(PdfBaseParser):
             )
             pages.append(page)
 
-        return pages
+        return pages, None
 
     @staticmethod
     def _pdf_bytes_to_tempfile(pdf_bytes: bytes) -> str:

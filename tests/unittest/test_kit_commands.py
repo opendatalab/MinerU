@@ -668,6 +668,7 @@ def test_gradio_persists_v1_parse_result_for_preview_and_download(
     parse_result = ParseResult(
         pages=[PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="hybrid")],
         _image_cache=image_cache,
+        _model_output=[[{"raw": "model"}]],
     )
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
@@ -707,12 +708,15 @@ def test_gradio_persists_v1_parse_result_for_preview_and_download(
     middle_json = json.loads((local_md_dir / "demo_middle.json").read_text(encoding="utf-8"))
     assert middle_json["_backend"] == "hybrid"
     assert middle_json["_version_name"]
+    assert json.loads((local_md_dir / "demo_model_output.json").read_text(encoding="utf-8")) == [[{"raw": "model"}]]
     assert (local_md_dir / "images" / "figures" / "figure.png").read_bytes() == b"figure-bytes"
     assert (local_md_dir / "demo_origin.pdf").read_bytes() == b"%PDF-1.7\n"
     assert (local_md_dir / "demo_layout.pdf").read_bytes() == b"%PDF-1.7\n%layout\n"
     assert archive_zip_path.is_file()
     with zipfile.ZipFile(archive_zip_path) as archive:
         assert "demo_layout.pdf" in archive.namelist()
+        assert "demo_model_output.json" in archive.namelist()
+        assert json.loads(archive.read("demo_model_output.json").decode("utf-8")) == [[{"raw": "model"}]]
 
 
 def test_gradio_persists_page_ranged_origin_pdf_for_v1_preview(tmp_path: Path) -> None:
@@ -760,6 +764,7 @@ def test_gradio_persists_page_ranged_origin_pdf_for_v1_preview(tmp_path: Path) -
 
     with zipfile.ZipFile(archive_zip_path) as archive:
         assert "demo_layout.pdf" in archive.namelist()
+        assert "demo_model_output.json" not in archive.namelist()
         zipped_origin_reader = PdfReader(BytesIO(archive.read("demo_origin.pdf")))
         zipped_layout_reader = PdfReader(BytesIO(archive.read("demo_layout.pdf")))
     assert len(zipped_origin_reader.pages) == 2
@@ -778,9 +783,10 @@ def test_gradio_v1_job_reuses_page_range_for_api_and_origin_pdf(
     calls: dict[str, Any] = {}
 
     class _FakeParser:
-        def __init__(self, *, api_url: str, tier: str) -> None:
+        def __init__(self, *, api_url: str, tier: str, include_model_output: bool) -> None:
             calls["parser_api_url"] = api_url
             calls["parser_tier"] = tier
+            calls["include_model_output"] = include_model_output
 
         async def parse_async(self, file_path: str, *, page_range: str) -> ParseResult:
             calls["api_page_range"] = page_range
@@ -813,6 +819,7 @@ def test_gradio_v1_job_reuses_page_range_for_api_and_origin_pdf(
     asyncio.run(gradio_app._run_to_markdown_job(str(source), end_pages=2, api_url="http://example.test/api"))
 
     assert calls["api_page_range"] == "1~2"
+    assert calls["include_model_output"] is True
     assert calls["persist_page_range"] == "1~2"
 
 
