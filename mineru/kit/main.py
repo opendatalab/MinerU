@@ -50,8 +50,6 @@ def parse_command(
     language: str = typer.Option("ch", "--language", help="Hybrid medium OCR language hint; accepted by other efforts for compatibility"),
     ocr_mode: str = typer.Option("auto", "--ocr-mode", help="OCR mode: auto, txt, ocr"),
     effort: str = typer.Option(DEFAULT_HYBRID_EFFORT, "--effort", help=HYBRID_EFFORT_HELP),
-    disable_table: bool = typer.Option(False, "--disable-table", help="Disable table recognition"),
-    disable_formula: bool = typer.Option(False, "--disable-formula", help="Disable formula recognition"),
     disable_image_analysis: bool = typer.Option(False, "--disable-image-analysis", help="Disable image analysis"),
 ) -> None:
     """Parse files or directories into markdown, middle JSON, or zip outputs."""
@@ -69,8 +67,6 @@ def parse_command(
         language=language,
         ocr_mode=ocr_mode,  # type: ignore[arg-type]
         effort=effort,  # type: ignore[arg-type]
-        disable_table=disable_table,
-        disable_formula=disable_formula,
         disable_image_analysis=disable_image_analysis,
     )
 
@@ -90,8 +86,6 @@ def api_server_command(
     max_wait: int = typer.Option(600, "--max-wait", help="Maximum seconds for wait parameter"),
     language: str = typer.Option("ch", "--language", help="Hybrid medium OCR language hint; accepted by other efforts for compatibility"),
     ocr_mode: str = typer.Option("auto", "--ocr-mode", help="OCR mode: auto, txt, ocr"),
-    disable_table: bool = typer.Option(False, "--disable-table", help="Disable table recognition"),
-    disable_formula: bool = typer.Option(False, "--disable-formula", help="Disable formula recognition"),
     disable_image_analysis: bool = typer.Option(False, "--disable-image-analysis", help="Disable image analysis"),
     api_key: str | None = typer.Option(None, "--api-key", help="Optional fixed API key"),
 ) -> None:
@@ -106,8 +100,6 @@ def api_server_command(
         max_wait=max_wait,
         language=language,
         ocr_mode=ocr_mode,  # type: ignore[arg-type]
-        disable_table=disable_table,
-        disable_formula=disable_formula,
         disable_image_analysis=disable_image_analysis,
         api_key=api_key,
     )

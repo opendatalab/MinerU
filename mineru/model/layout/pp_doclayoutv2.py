@@ -897,6 +897,7 @@ class PPDocLayoutV2ForObjectDetection(RTDetrForObjectDetection):
 
 class PPDocLayoutV2LayoutModel:
     HEADER_FOOTER_BOUNDARY_EXEMPT_LABELS = {"aside_text", "footnote", "number"}
+    VISUAL_BODY_LABELS = {"image", "chart", "table", "seal"}
     PAGE_REGION_LABELS = {
         "header",
         "header_image",
@@ -1210,6 +1211,55 @@ class PPDocLayoutV2LayoutModel:
         PPDocLayoutV2LayoutModel._set_box_label(box, "footnote")
 
     @classmethod
+    def _filter_internal_visual_caption_boxes(
+        cls,
+        boxes: List[Dict],
+        cover_threshold: float = 0.8,
+    ) -> List[Dict]:
+        """过滤落在图、表、印章等视觉主体内部的 figure_title。
+
+        这类块通常是图内的 (a)/(b) 标号，不应作为外部 caption 参与后续视觉分组。
+        """
+        visual_boxes = [box for box in boxes if box.get("label") in cls.VISUAL_BODY_LABELS]
+        if not visual_boxes:
+            return boxes
+
+        filtered_boxes = []
+        for box in boxes:
+            if box.get("label") != "figure_title":
+                filtered_boxes.append(box)
+                continue
+
+            caption_bbox = box.get("bbox")
+            if not caption_bbox or len(caption_bbox) < 4:
+                filtered_boxes.append(box)
+                continue
+
+            caption_center_x = (float(caption_bbox[0]) + float(caption_bbox[2])) / 2
+            caption_center_y = (float(caption_bbox[1]) + float(caption_bbox[3])) / 2
+            is_internal_caption = False
+            for visual_box in visual_boxes:
+                visual_bbox = visual_box.get("bbox")
+                if not visual_bbox or len(visual_bbox) < 4:
+                    continue
+
+                visual_xmin, visual_ymin, visual_xmax, visual_ymax = [float(v) for v in visual_bbox]
+                if not (
+                    visual_xmin <= caption_center_x <= visual_xmax
+                    and visual_ymin <= caption_center_y <= visual_ymax
+                ):
+                    continue
+
+                if cls._calculate_cover_ratio(caption_bbox, visual_bbox) >= cover_threshold:
+                    is_internal_caption = True
+                    break
+
+            if not is_internal_caption:
+                filtered_boxes.append(box)
+
+        return filtered_boxes
+
+    @classmethod
     def _reclassify_header_footer_by_page_half(
         cls,
         boxes: List[Dict],
@@ -1502,6 +1552,10 @@ class PPDocLayoutV2LayoutModel:
         processed_boxes = cls._relabel_header_footer_boundary_blocks(
             processed_boxes,
             image_size=image_size,
+        )
+        processed_boxes = cls._filter_internal_visual_caption_boxes(
+            processed_boxes,
+            cover_threshold=0.8,
         )
         return cls._renumber_indices(processed_boxes)
 

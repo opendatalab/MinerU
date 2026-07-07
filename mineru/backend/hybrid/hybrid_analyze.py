@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import html
 import os
+import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -24,7 +26,7 @@ from ...utils.backend_options import (
     MAX_HYBRID_EFFORT,
     validate_effort,
 )
-from ...utils.config_reader import get_device, get_processing_window_size, get_table_enable
+from ...utils.config_reader import get_device, get_processing_window_size
 from ...utils.enum_class import ImageType
 from ...utils.image_payload import ImagePayloadCache
 from ...utils.model_utils import clean_memory, clean_vram, crop_img, get_vram
@@ -65,6 +67,14 @@ LAYOUT_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 8
 LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD = 0.8
+TABLE_OCR_REC_SINGLE_CHAR_REPLACEMENTS = {
+    "香": "否",
+    "哦樂": "哦",
+}
+TABLE_OCR_REC_REGEX_REPLACEMENTS = (
+    # 仅规范化完整的“单个数字 + 號”，避免影响“10號”“第6號”等普通文本。
+    (re.compile(r"^([0-9])號$"), r"\1"),
+)
 
 
 @dataclass(frozen=True)
@@ -87,7 +97,7 @@ class _OcrDetCrop:
     page_ocr_res_list: list[dict[str, Any]]
 HYBRID_VLM_LAYOUT_LABEL_MAP = {
     "abstract": MineruBlockType.TEXT,
-    "algorithm": MineruBlockType.ALGORITHM,
+    "algorithm": MineruBlockType.CODE,
     "aside_text": MineruBlockType.ASIDE_TEXT,
     "chart": MineruBlockType.CHART,
     "content": MineruBlockType.INDEX,
@@ -114,8 +124,7 @@ HYBRID_MEDIUM_LAYOUT_LABEL_MAP = {
     **HYBRID_VLM_LAYOUT_LABEL_MAP,
     "doc_title": MineruBlockType.DOC_TITLE,
     "paragraph_title": MineruBlockType.PARAGRAPH_TITLE,
-    "figure_title": MineruBlockType.IMAGE_CAPTION,
-    "vision_footnote": MineruBlockType.PAGE_FOOTNOTE,
+    "vision_footnote": MineruBlockType.FOOTNOTE,
 }
 
 HYBRID_VLM_OCR_DET_TEXT_TYPES = {
@@ -152,6 +161,12 @@ def _load_vlm_runtime() -> dict[str, Any]:
     }
 
 
+def _discard_legacy_formula_table_kwargs(kwargs: dict[str, object]) -> None:
+    """丢弃旧公式/表格开关，避免兼容参数继续影响 Hybrid analyzer 行为。"""
+    for key in ("inline_formula_enable", "formula_enable", "table_enable"):
+        kwargs.pop(key, None)
+
+
 def _is_hybrid_ocr_det_candidate(block: dict[str, Any]) -> bool:
     """判断 Hybrid 文本类块是否需要 OCR det 生成行级视觉信息。"""
     return (block.get("type") or block.get("label")) in NOT_EXTRACT_TYPES
@@ -162,16 +177,13 @@ def _is_hybrid_medium_ocr_det_candidate(block: dict[str, Any]) -> bool:
     item_type = block.get("type") or block.get("label")
     return item_type in {
         *NOT_EXTRACT_TYPES,
+        MineruBlockType.ALGORITHM,
+        MineruBlockType.CODE,
         MineruBlockType.DOC_TITLE,
         MineruBlockType.PARAGRAPH_TITLE,
         MineruBlockType.INDEX,
-        MineruBlockType.ABSTRACT,
         MineruBlockType.ASIDE_TEXT,
-        MineruBlockType.PHONETIC,
-        MineruBlockType.LIST,
-        MineruBlockType.CHART_CAPTION,
-        MineruBlockType.CHART_FOOTNOTE,
-        MineruBlockType.CODE_FOOTNOTE,
+        MineruBlockType.FOOTNOTE,
     }
 
 
@@ -641,11 +653,6 @@ def _build_high_layout_blocks(
     return blocks_list
 
 
-def _is_medium_table_enabled() -> bool:
-    """读取 Hybrid medium 的表格开关，复用 Hybrid 当前通过环境变量传入的表格配置。"""
-    return get_table_enable(os.getenv("MINERU_VLM_TABLE_ENABLE", "True").lower() == "true")
-
-
 def _normalize_medium_content(value: Any) -> str:
     """将 medium 本地模型输出的文本字段规范成 Hybrid block 可消费的字符串。"""
     if isinstance(value, list):
@@ -696,7 +703,9 @@ def _medium_layout_item_to_hybrid_item(
     elif block_type == MineruBlockType.EQUATION:
         hybrid_item["content"] = _normalize_medium_content(layout_item.get("latex", ""))
     else:
-        content = _normalize_medium_content(layout_item.get("text", ""))
+        content = _normalize_medium_content(layout_item.get("text", "")) or _normalize_medium_content(
+            layout_item.get("content", "")
+        )
         if content:
             hybrid_item["content"] = content
 
@@ -724,15 +733,9 @@ def _run_medium_formula_recognition(
     local_context: HybridLocalModelContext,
     images_layout_res: list[list[dict[str, Any]]],
     np_images: list[np.ndarray],
-    formula_enable: bool,
     batch_ratio: int,
 ) -> list[list[dict[str, Any]]]:
     """执行 Hybrid medium 的本地公式识别，并返回供 OCR det 遮罩使用的公式框。"""
-    if not formula_enable:
-        for layout_res in images_layout_res:
-            layout_res[:] = [item for item in layout_res if item.get("label") != "inline_formula"]
-        return [[] for _ in images_layout_res]
-
     images_mfd_res = []
     for layout_res in images_layout_res:
         page_formula_res = []
@@ -766,6 +769,283 @@ def _run_medium_formula_recognition(
     return mfd_res
 
 
+def _apply_medium_formula_number_ocr(
+    local_context: HybridLocalModelContext,
+    images_layout_res: list[list[dict[str, Any]]],
+    np_images: list[np.ndarray],
+) -> None:
+    """对 medium formula_number 裁剪图执行 OCR-rec，并把编号文本回填到原始 layout 项。"""
+    need_rec_items: list[dict[str, Any]] = []
+    formula_number_crops: list[np.ndarray] = []
+    for layout_res, np_img in zip(images_layout_res, np_images):
+        image_h, image_w = np_img.shape[:2]
+        bgr_image = cv2.cvtColor(np_img, cv2.COLOR_RGB2BGR)
+        for layout_item in layout_res:
+            if layout_item.get("label") != "formula_number":
+                continue
+
+            formula_number_bbox = normalize_to_int_bbox(layout_item.get("bbox"), image_size=(image_h, image_w))
+            if formula_number_bbox is None:
+                continue
+
+            x0, y0, x1, y1 = formula_number_bbox
+            if x1 <= x0 or y1 <= y0:
+                continue
+
+            # 使用 OCR rec 的标准旋转裁剪逻辑，保证 medium 编号裁图与正文 OCR-rec 输入一致。
+            formula_number_crops.append(
+                get_rotate_crop_image_for_text_rec(
+                    bgr_image,
+                    _medium_bbox_to_quad(formula_number_bbox).copy(),
+                )
+            )
+            need_rec_items.append(layout_item)
+
+    if not formula_number_crops:
+        return
+
+    ocr_result_list = run_ocr_inference(
+        local_context.ocr_model.ocr,
+        formula_number_crops,
+        det=False,
+        tqdm_enable=True,
+        tqdm_desc="Hybrid-medium formula-number OCR-rec",
+    )[0]
+    if len(ocr_result_list) != len(need_rec_items):
+        raise ValueError(
+            "Hybrid medium formula number OCR rec result count mismatch: "
+            f"ocr_result_list={len(ocr_result_list)}, need_rec_items={len(need_rec_items)}"
+        )
+
+    for layout_item, ocr_result in zip(need_rec_items, ocr_result_list):
+        if not ocr_result or len(ocr_result) < 2:
+            continue
+        ocr_text, ocr_score = ocr_result
+        normalized_text = _normalize_medium_content(ocr_text)
+        layout_item["score"] = float(f"{float(ocr_score or 0.0):.3f}")
+        if normalized_text:
+            layout_item["text"] = normalized_text
+            layout_item["content"] = normalized_text
+
+
+def _medium_bbox_center(bbox: list[float] | tuple[float, ...]) -> tuple[float, float]:
+    """计算 bbox 中心点，供表格内联对象匹配所属表格。"""
+    return (float(bbox[0]) + float(bbox[2])) / 2.0, (float(bbox[1]) + float(bbox[3])) / 2.0
+
+
+def _medium_is_point_in_bbox(point: tuple[float, float], bbox: list[float] | tuple[float, ...]) -> bool:
+    """判断点是否落在 bbox 内部，使用闭区间兼容边界贴合的 layout 框。"""
+    x, y = point
+    return float(bbox[0]) <= x <= float(bbox[2]) and float(bbox[1]) <= y <= float(bbox[3])
+
+
+def _medium_bbox_intersection(
+    bbox1: list[float] | tuple[float, ...],
+    bbox2: list[float] | tuple[float, ...],
+) -> list[float] | None:
+    """计算两个 bbox 的交集；无有效重叠时返回 None。"""
+    x0 = max(float(bbox1[0]), float(bbox2[0]))
+    y0 = max(float(bbox1[1]), float(bbox2[1]))
+    x1 = min(float(bbox1[2]), float(bbox2[2]))
+    y1 = min(float(bbox1[3]), float(bbox2[3]))
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return [x0, y0, x1, y1]
+
+
+def _medium_bbox_intersection_area(
+    bbox1: list[float] | tuple[float, ...],
+    bbox2: list[float] | tuple[float, ...],
+) -> float:
+    """计算 bbox 交集面积，用于多个候选表格时选重叠最大的表格。"""
+    overlap_bbox = _medium_bbox_intersection(bbox1, bbox2)
+    if overlap_bbox is None:
+        return 0.0
+    return float(overlap_bbox[2] - overlap_bbox[0]) * float(overlap_bbox[3] - overlap_bbox[1])
+
+
+def _medium_bbox_to_relative_bbox(
+    bbox: list[float] | tuple[float, ...],
+    base_bbox: list[float] | tuple[float, ...],
+) -> list[float]:
+    """将页面坐标 bbox 转成表格裁剪图内的相对坐标。"""
+    return [
+        float(bbox[0]) - float(base_bbox[0]),
+        float(bbox[1]) - float(base_bbox[1]),
+        float(bbox[2]) - float(base_bbox[0]),
+        float(bbox[3]) - float(base_bbox[1]),
+    ]
+
+
+def _medium_bbox_to_quad(bbox: list[float] | tuple[float, ...]) -> np.ndarray:
+    """将普通 bbox 转为表格模型 OCR token 使用的四点框。"""
+    x0, y0, x1, y1 = [float(v) for v in bbox]
+    return np.asarray([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], dtype=np.float32)
+
+
+def _encode_medium_table_inline_image(np_img: np.ndarray, bbox: list[float] | tuple[float, ...]) -> str:
+    """裁剪并编码表格内联图片，返回供后续 image_cache 外置化的 data URI。"""
+    image_h, image_w = np_img.shape[:2]
+    image_bbox = normalize_to_int_bbox(bbox, image_size=(image_h, image_w))
+    if image_bbox is None:
+        return ""
+
+    x0, y0, x1, y1 = image_bbox
+    if x1 <= x0 or y1 <= y0:
+        return ""
+
+    crop_rgb = np_img[y0:y1, x0:x1]
+    if crop_rgb.size == 0:
+        return ""
+
+    crop_bgr = cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2BGR)
+    success, encoded = cv2.imencode(".jpg", crop_bgr)
+    if not success:
+        return ""
+
+    b64_str = base64.b64encode(encoded.tobytes()).decode("ascii")
+    return f"data:image/jpeg;base64,{b64_str}"
+
+
+def _get_medium_virtual_image_bbox(bbox: list[float] | tuple[float, ...], box_size: float = 10.0) -> list[float]:
+    """为表格内图片构造虚拟 OCR token 小框，避免图片占据整块区域干扰表格结构。"""
+    center_x, center_y = _medium_bbox_center(bbox)
+    half_size = box_size / 2.0
+    return [
+        center_x - half_size,
+        center_y - half_size,
+        center_x + half_size,
+        center_y + half_size,
+    ]
+
+
+def _medium_table_supports_inline_objects(table_item: dict[str, Any]) -> bool:
+    """判断当前表格方向是否支持直接注入内联对象；旋转表格仅清理不注入。"""
+    return str(table_item.get("rotate_label", "0")) == "0"
+
+
+def _normalize_medium_table_ocr_rec_text(text: Any) -> Any:
+    """规范化表格 OCR rec 的已知误识别，保持与 dev pipeline 表格输入一致。"""
+    if not isinstance(text, str):
+        return text
+    if text in TABLE_OCR_REC_SINGLE_CHAR_REPLACEMENTS:
+        return TABLE_OCR_REC_SINGLE_CHAR_REPLACEMENTS[text]
+    for pattern, replacement in TABLE_OCR_REC_REGEX_REPLACEMENTS:
+        match = pattern.fullmatch(text)
+        if match:
+            return match.expand(replacement)
+    return text
+
+
+def _sort_medium_table_ocr_result(ocr_result: list[list[Any]]) -> None:
+    """按表格模型期望的从上到下、同行从左到右顺序整理 OCR token。"""
+    if not ocr_result:
+        return
+
+    sorted_result = sorted(
+        ocr_result,
+        key=lambda item: (float(np.asarray(item[0])[0][1]), float(np.asarray(item[0])[0][0])),
+    )
+
+    for i in range(len(sorted_result) - 1):
+        for j in range(i, -1, -1):
+            cur_box = np.asarray(sorted_result[j][0], dtype=np.float32)
+            next_box = np.asarray(sorted_result[j + 1][0], dtype=np.float32)
+            if (
+                abs(float(next_box[0][1]) - float(cur_box[0][1])) < 10
+                and float(next_box[0][0]) < float(cur_box[0][0])
+            ):
+                sorted_result[j], sorted_result[j + 1] = sorted_result[j + 1], sorted_result[j]
+            else:
+                break
+
+    ocr_result[:] = sorted_result
+
+
+def _extract_medium_table_inline_objects(
+    layout_res: list[dict[str, Any]],
+    np_img: np.ndarray,
+    *,
+    formula_enable: bool = True,
+) -> dict[int, list[dict[str, Any]]]:
+    """从同页 layout 结果中收集落在表格内部的图片和公式候选对象。"""
+    image_h, image_w = np_img.shape[:2]
+    image_size = (image_h, image_w)
+
+    tables: list[tuple[dict[str, Any], list[int]]] = []
+    for res in layout_res:
+        if res.get("label") != "table":
+            continue
+        table_bbox = normalize_to_int_bbox(res.get("bbox"), image_size=image_size)
+        if table_bbox is not None:
+            tables.append((res, table_bbox))
+
+    if not tables:
+        return {}
+
+    table_inline_objects: dict[int, list[dict[str, Any]]] = {id(table_res): [] for table_res, _ in tables}
+    candidate_labels = {"image"}
+    if formula_enable:
+        candidate_labels.update({"inline_formula", "display_formula"})
+
+    for layout_item in layout_res:
+        label = layout_item.get("label")
+        if label not in candidate_labels:
+            continue
+
+        item_bbox = normalize_to_int_bbox(layout_item.get("bbox"), image_size=image_size)
+        if item_bbox is None:
+            continue
+
+        item_center = _medium_bbox_center(item_bbox)
+        matched_tables = []
+        for table_res, table_bbox in tables:
+            if not _medium_is_point_in_bbox(item_center, table_bbox):
+                continue
+            overlap_area = _medium_bbox_intersection_area(item_bbox, table_bbox)
+            matched_tables.append((overlap_area, table_res, table_bbox))
+
+        if not matched_tables:
+            continue
+
+        matched_tables.sort(key=lambda item: item[0], reverse=True)
+        _, table_res, table_bbox = matched_tables[0]
+        overlap_bbox = _medium_bbox_intersection(item_bbox, table_bbox)
+        if overlap_bbox is None:
+            continue
+
+        rel_overlap_bbox = _medium_bbox_to_relative_bbox(overlap_bbox, table_bbox)
+        score = float(layout_item.get("score", 1.0) or 0.0)
+        if label == "image":
+            image_src = _encode_medium_table_inline_image(np_img, item_bbox)
+            if not image_src:
+                continue
+            content = f'<img src="{image_src}"/>'
+            token_bbox = _get_medium_virtual_image_bbox(rel_overlap_bbox)
+            kind = "image"
+        else:
+            latex = _normalize_medium_content(layout_item.get("latex", ""))
+            if not latex:
+                continue
+            content = f"<eq>{html.escape(latex)}</eq>"
+            token_bbox = rel_overlap_bbox
+            kind = "formula"
+
+        table_inline_objects[id(table_res)].append(
+            {
+                "kind": kind,
+                "source_layout_id": id(layout_item),
+                "page_bbox": item_bbox,
+                "table_rel_mask_bbox": rel_overlap_bbox,
+                "table_token_bbox": token_bbox,
+                "content": content,
+                "score": score,
+            }
+        )
+
+    return table_inline_objects
+
+
 def _apply_medium_table_rotate_label(table_res_dict: dict[str, Any], rotate_label: str) -> None:
     """写回表格方向预测结果，并同步旋转无线和有线表格裁剪图。"""
     rotate_label = str(rotate_label or "0")
@@ -788,6 +1068,11 @@ def _collect_medium_table_items(
     """收集 Hybrid medium 单文件窗口中的表格裁剪项，不跨文件聚合。"""
     table_items = []
     for layout_res, np_img, lang in zip(images_layout_res, np_images, lang_list):
+        table_inline_objects = _extract_medium_table_inline_objects(
+            layout_res,
+            np_img,
+            formula_enable=True,
+        )
         for table_res in layout_res:
             if table_res.get("label") != "table":
                 continue
@@ -806,9 +1091,11 @@ def _collect_medium_table_items(
             table_items.append(
                 {
                     "table_res": table_res,
+                    "layout_res": layout_res,
                     "lang": lang,
                     "table_img": table_img,
                     "wired_table_img": wired_table_img,
+                    "table_inline_objects": table_inline_objects.get(id(table_res), []),
                 }
             )
     return table_items
@@ -818,6 +1105,7 @@ def _collect_medium_table_ocr_rec_inputs(
     atom_model_manager: Any,
     table_items: list[dict[str, Any]],
     batch_ratio: int,
+    enable_ocr_det_batch: bool,
 ) -> dict[str | None, list[dict[str, Any]]]:
     """对表格裁剪图执行 OCR det，并按语言收集 OCR rec 输入。"""
     rec_img_lang_group: dict[str | None, list[dict[str, Any]]] = defaultdict(list)
@@ -827,8 +1115,27 @@ def _collect_medium_table_ocr_rec_inputs(
         det_db_unclip_ratio=1.6,
         enable_merge_det_boxes=False,
     )
-    det_images = [cv2.cvtColor(item["table_img"], cv2.COLOR_RGB2BGR) for item in table_items]
+    table_det_items = _build_medium_table_ocr_det_items(table_items)
+    det_images = [item["det_image"] for item in table_det_items]
     if not det_images:
+        return rec_img_lang_group
+
+    if not enable_ocr_det_batch:
+        for table_det_item in tqdm(
+            table_det_items,
+            total=len(table_det_items),
+            desc="Hybrid-medium table OCR-det",
+        ):
+            dt_boxes = run_ocr_inference(
+                det_ocr_engine.ocr,
+                table_det_item["det_image"],
+                rec=False,
+            )[0]
+            _append_medium_table_ocr_det_result(
+                table_det_item,
+                dt_boxes,
+                rec_img_lang_group,
+            )
         return rec_img_lang_group
 
     det_batch_size = max(1, min(len(det_images), batch_ratio * OCR_DET_BASE_BATCH_SIZE))
@@ -839,22 +1146,75 @@ def _collect_medium_table_ocr_rec_inputs(
         tqdm_enable=True,
         tqdm_desc="Hybrid-medium table OCR-det",
     )
-    if len(batch_results) != len(table_items):
+    if len(batch_results) != len(table_det_items):
         raise ValueError("Hybrid medium table OCR det batch result count mismatch")
 
-    for table_id, (table_item, bgr_image, (dt_boxes, _)) in enumerate(zip(table_items, det_images, batch_results)):
-        if dt_boxes is None or len(dt_boxes) == 0:
-            continue
-        for dt_box in sorted_boxes(dt_boxes):
-            dt_box_array = np.asarray(dt_box, dtype=np.float32)
-            rec_img_lang_group[table_item["lang"]].append(
-                {
-                    "cropped_img": get_rotate_crop_image_for_text_rec(bgr_image, dt_box_array.copy()),
-                    "dt_box": dt_box_array.copy(),
-                    "table_id": table_id,
-                }
-            )
+    for table_det_item, (dt_boxes, _) in zip(table_det_items, batch_results):
+        _append_medium_table_ocr_det_result(
+            table_det_item,
+            dt_boxes,
+            rec_img_lang_group,
+        )
     return rec_img_lang_group
+
+
+def _build_medium_table_ocr_det_items(table_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """构造表格 OCR-det 输入项，保留原图、遮罩图和公式修正框。"""
+    table_det_items = []
+    for table_id, table_item in enumerate(table_items):
+        bgr_image = cv2.cvtColor(table_item["table_img"], cv2.COLOR_RGB2BGR)
+        inline_objects = (
+            table_item.get("table_inline_objects", [])
+            if _medium_table_supports_inline_objects(table_item)
+            else []
+        )
+        inline_mask_boxes = [{"bbox": inline_object["table_rel_mask_bbox"]} for inline_object in inline_objects]
+        formula_mask_boxes = [
+            {"bbox": inline_object["table_rel_mask_bbox"]}
+            for inline_object in inline_objects
+            if inline_object["kind"] == "formula"
+        ]
+        det_image = mask_formula_regions_for_ocr_det(bgr_image.copy(), inline_mask_boxes) if inline_mask_boxes else bgr_image
+        table_det_items.append(
+            {
+                "bgr_image": bgr_image,
+                "det_image": det_image,
+                "formula_mask_boxes": formula_mask_boxes,
+                "lang": table_item["lang"],
+                "table_id": table_id,
+            }
+        )
+    return table_det_items
+
+
+def _append_medium_table_ocr_det_result(
+    table_det_item: dict[str, Any],
+    dt_boxes: Any,
+    rec_img_lang_group: dict[str | None, list[dict[str, Any]]],
+) -> None:
+    """整理单表 OCR-det 结果，跳过公式框并按语言归集 OCR-rec 输入。"""
+    if dt_boxes is None or len(dt_boxes) == 0:
+        return
+
+    ocr_result = dt_boxes
+    formula_mask_boxes = table_det_item["formula_mask_boxes"]
+    if formula_mask_boxes:
+        ocr_result = update_det_boxes(ocr_result, formula_mask_boxes)
+        if ocr_result is None or len(ocr_result) == 0:
+            return
+
+    for dt_box in sorted_boxes(ocr_result):
+        dt_box_array = np.asarray(dt_box, dtype=np.float32)
+        rec_img_lang_group[table_det_item["lang"]].append(
+            {
+                "cropped_img": get_rotate_crop_image_for_text_rec(
+                    table_det_item["bgr_image"],
+                    dt_box_array.copy(),
+                ),
+                "dt_box": dt_box_array.copy(),
+                "table_id": table_det_item["table_id"],
+            }
+        )
 
 
 def _apply_medium_table_orientation(atom_model_manager: Any, table_items: list[dict[str, Any]], batch_ratio: int) -> None:
@@ -886,9 +1246,15 @@ def _apply_medium_table_ocr_rec(
     atom_model_manager: Any,
     table_items: list[dict[str, Any]],
     batch_ratio: int,
+    enable_ocr_det_batch: bool,
 ) -> None:
     """执行 medium 表格 OCR det/rec，并把识别结果按 table_id 写回 table_items。"""
-    rec_img_lang_group = _collect_medium_table_ocr_rec_inputs(atom_model_manager, table_items, batch_ratio)
+    rec_img_lang_group = _collect_medium_table_ocr_rec_inputs(
+        atom_model_manager,
+        table_items,
+        batch_ratio,
+        enable_ocr_det_batch,
+    )
     for lang, rec_img_list in rec_img_lang_group.items():
         if not rec_img_list:
             continue
@@ -908,8 +1274,48 @@ def _apply_medium_table_ocr_rec(
         )[0]
         for img_dict, ocr_res in zip(rec_img_list, ocr_res_list):
             table_item = table_items[img_dict["table_id"]]
-            ocr_result_item = [img_dict["dt_box"], html.escape(str(ocr_res[0])), ocr_res[1]]
+            ocr_text = _normalize_medium_table_ocr_rec_text(ocr_res[0])
+            ocr_result_item = [img_dict["dt_box"], html.escape(str(ocr_text)), ocr_res[1]]
             table_item.setdefault("ocr_result", []).append(ocr_result_item)
+    for table_item in table_items:
+        _sort_medium_table_ocr_result(table_item.get("ocr_result", []))
+
+
+def _append_medium_table_inline_objects_to_ocr_result(table_items: list[dict[str, Any]]) -> None:
+    """删除表格内图片/公式原始 layout 项，非旋转表额外注入虚拟 OCR token。"""
+    remove_ids_by_layout: dict[int, tuple[list[dict[str, Any]], set[int]]] = {}
+    for table_item in table_items:
+        table_inline_objects = table_item.get("table_inline_objects", [])
+        if not table_inline_objects:
+            continue
+
+        layout_res = table_item.get("layout_res")
+        consumed_layout_ids = None
+        if layout_res is not None:
+            consumed_layout_ids = remove_ids_by_layout.setdefault(
+                id(layout_res),
+                (layout_res, set()),
+            )[1]
+
+        supports_inline_injection = _medium_table_supports_inline_objects(table_item)
+        table_ocr_result = table_item.setdefault("ocr_result", []) if supports_inline_injection else None
+        for inline_object in table_inline_objects:
+            if consumed_layout_ids is not None:
+                consumed_layout_ids.add(inline_object["source_layout_id"])
+            if table_ocr_result is not None:
+                table_ocr_result.append(
+                    [
+                        _medium_bbox_to_quad(inline_object["table_token_bbox"]),
+                        inline_object["content"],
+                        inline_object["score"],
+                    ]
+                )
+
+        if table_ocr_result is not None:
+            _sort_medium_table_ocr_result(table_ocr_result)
+
+    for layout_res, remove_ids in remove_ids_by_layout.values():
+        layout_res[:] = [item for item in layout_res if id(item) not in remove_ids]
 
 
 def _apply_medium_wireless_table_recognition(atom_model_manager: Any, table_items: list[dict[str, Any]]) -> None:
@@ -965,9 +1371,6 @@ def _apply_medium_table_recognition(
     batch_ratio: int,
 ) -> None:
     """执行 Hybrid medium 的本地表格识别，结果写回 layout table 项的 html 字段。"""
-    if not _is_medium_table_enabled():
-        return
-
     table_items = _collect_medium_table_items(images_layout_res, np_images, lang_list)
     if not table_items:
         return
@@ -975,7 +1378,13 @@ def _apply_medium_table_recognition(
     atom_model_manager = local_context.atom_model_manager
     _apply_medium_table_orientation(atom_model_manager, table_items, batch_ratio)
     _apply_medium_table_classification(atom_model_manager, table_items)
-    _apply_medium_table_ocr_rec(atom_model_manager, table_items, batch_ratio)
+    _apply_medium_table_ocr_rec(
+        atom_model_manager,
+        table_items,
+        batch_ratio,
+        local_context.enable_ocr_det_batch,
+    )
+    _append_medium_table_inline_objects_to_ocr_result(table_items)
     _apply_medium_wireless_table_recognition(atom_model_manager, table_items)
     wired_table_items = _select_medium_wired_table_items(table_items)
     _apply_medium_wired_table_recognition(atom_model_manager, wired_table_items)
@@ -1033,7 +1442,6 @@ def _prune_medium_empty_ocr_text_blocks(images_layout_res: list[list[dict[str, A
 def _extract_with_local_layout(
     images_pil_list: list[Image.Image],
     language: str | None,
-    inline_formula_enable: bool,
     _ocr_enable: bool,
     batch_ratio: int,
 ) -> tuple[list[list[dict[str, Any]]], HybridLocalModelContext]:
@@ -1042,7 +1450,7 @@ def _extract_with_local_layout(
     local_context = local_context_singleton.get_model(
         lang=language,
         # medium 本地路径会直接执行公式识别；OCR 扫描件也需要加载 MFR。
-        formula_enable=inline_formula_enable,
+        formula_enable=True,
     )
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
     images_layout_res = run_layout_inference(
@@ -1055,7 +1463,6 @@ def _extract_with_local_layout(
         local_context,
         images_layout_res,
         np_images,
-        inline_formula_enable,
         batch_ratio,
     )
     clean_vram(local_context.device, vram_threshold=8)
@@ -1067,6 +1474,7 @@ def _extract_with_local_layout(
         batch_ratio,
     )
     _apply_medium_seal_ocr(local_context, images_layout_res, np_images)
+    _apply_medium_formula_number_ocr(local_context, images_layout_res, np_images)
     _prune_medium_empty_ocr_text_blocks(images_layout_res, _ocr_enable)
     medium_model_list = _build_medium_hybrid_model_list(images_layout_res, images_pil_list)
     ocr_res_list = _ocr_det(
@@ -1191,7 +1599,6 @@ def _process_ocr_and_formulas(
     images_pil_list: list[Image.Image],
     model_list: list[list[dict[str, Any]]],
     language: str | None,
-    inline_formula_enable: bool,
     _ocr_enable: bool,
     batch_ratio: int = 1,
     *,
@@ -1202,7 +1609,6 @@ def _process_ocr_and_formulas(
 
     # 遍历model_list,对文本块截图交由OCR识别
     # 根据_ocr_enable决定ocr只开det还是det+rec
-    # 根据inline_formula_enable决定是使用mfd和ocr结合的方式,还是纯ocr方式
 
     # 将PIL图片转换为numpy数组
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
@@ -1212,26 +1618,23 @@ def _process_ocr_and_formulas(
         local_context_singleton = HybridLocalModelContextSingleton()
         local_context = local_context_singleton.get_model(
             lang=language,
-            formula_enable=inline_formula_enable,
+            formula_enable=True,
         )
 
     if images_layout_res is None:
         # 没有外部复用的 layout 时，按旧逻辑为公式和标题拆分补跑一次本地 layout。
-        layout_images = _mask_image_regions(np_images, model_list) if inline_formula_enable else np_images
+        layout_images = _mask_image_regions(np_images, model_list)
         images_layout_res = _predict_layout_for_title_split(local_context, layout_images, batch_ratio)
 
-    if inline_formula_enable:
-        images_mfd_res = _build_inline_formula_inputs(images_layout_res)
-        # 公式识别
-        inline_formula_list = run_mfr_inference(
-            local_context.mfr_model.batch_predict,
-            images_mfd_res,
-            np_images,
-            batch_size=batch_ratio * MFR_BASE_BATCH_SIZE,
-            interline_enable=True,
-        )
-    else:
-        inline_formula_list = [[] for _ in range(len(images_pil_list))]
+    images_mfd_res = _build_inline_formula_inputs(images_layout_res)
+    # 公式识别
+    inline_formula_list = run_mfr_inference(
+        local_context.mfr_model.batch_predict,
+        images_mfd_res,
+        np_images,
+        batch_size=batch_ratio * MFR_BASE_BATCH_SIZE,
+        interline_enable=True,
+    )
 
     mfd_res = []
     for page_inline_formula_list in inline_formula_list:
@@ -1276,7 +1679,6 @@ def _extract_high_with_local_layout(
     predictor: Any,
     images_pil_list: list[Image.Image],
     language: str | None,
-    inline_formula_enable: bool,
     _ocr_enable: bool,
     batch_ratio: int,
 ) -> tuple[list[list[dict[str, Any]]], HybridLocalModelContext]:
@@ -1285,7 +1687,7 @@ def _extract_high_with_local_layout(
     local_context = local_context_singleton.get_model(
         lang=language,
         # VLM 文本路径只需要本地 layout 与 OCR det，不需要加载 MFR。
-        formula_enable=inline_formula_enable and not _ocr_enable,
+        formula_enable=not _ocr_enable,
     )
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
     images_layout_res = _predict_layout_for_title_split(local_context, np_images, batch_ratio)
@@ -1310,7 +1712,6 @@ def _extract_high_with_local_layout(
             images_pil_list,
             window_model_list,
             language,
-            inline_formula_enable,
             False,
             batch_ratio=batch_ratio,
             local_context=local_context,
@@ -1323,7 +1724,6 @@ async def _aio_extract_high_with_local_layout(
     predictor: Any,
     images_pil_list: list[Image.Image],
     language: str | None,
-    inline_formula_enable: bool,
     _ocr_enable: bool,
     batch_ratio: int,
 ) -> tuple[list[list[dict[str, Any]]], HybridLocalModelContext]:
@@ -1331,7 +1731,7 @@ async def _aio_extract_high_with_local_layout(
     local_context_singleton = HybridLocalModelContextSingleton()
     local_context = local_context_singleton.get_model(
         lang=language,
-        formula_enable=inline_formula_enable,
+        formula_enable=not _ocr_enable,
     )
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
     images_layout_res = await asyncio.to_thread(
@@ -1363,7 +1763,6 @@ async def _aio_extract_high_with_local_layout(
             images_pil_list,
             window_model_list,
             language,
-            inline_formula_enable,
             False,
             batch_ratio,
             local_context=local_context,
@@ -1562,7 +1961,6 @@ def doc_analyze(
     ] = "transformers",
     parse_method: str = "auto",
     language: str = "ch",
-    inline_formula_enable: bool = True,
     model_path: str | None = None,
     server_url: str | None = None,
     effort: Literal["medium", "high", "extra_high"] = DEFAULT_HYBRID_EFFORT,
@@ -1572,6 +1970,7 @@ def doc_analyze(
     **kwargs: object,
 ) -> tuple[list[PageInfo], list[list[dict[str, Any]]], bool]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
+    _discard_legacy_formula_table_kwargs(kwargs)
     effort = validate_effort(effort)
     image_analysis = image_analysis if effort == MAX_HYBRID_EFFORT else False
     if effort == LOCAL_HYBRID_EFFORT:
@@ -1618,7 +2017,6 @@ def doc_analyze(
                         window_model_list, local_context = _extract_with_local_layout(
                             images_pil_list,
                             language,
-                            inline_formula_enable,
                             _ocr_enable,
                             batch_ratio,
                         )
@@ -1628,7 +2026,6 @@ def doc_analyze(
                                 predictor,
                                 images_pil_list,
                                 language,
-                                inline_formula_enable,
                                 _ocr_enable,
                                 batch_ratio,
                             )
@@ -1656,7 +2053,6 @@ def doc_analyze(
                                 images_pil_list,
                                 window_model_list,
                                 language,
-                                inline_formula_enable,
                                 False,
                                 batch_ratio=batch_ratio,
                             )
@@ -1728,7 +2124,6 @@ async def aio_doc_analyze(
     ] = "transformers",
     parse_method: str = "auto",
     language: str = "ch",
-    inline_formula_enable: bool = True,
     model_path: str | None = None,
     server_url: str | None = None,
     effort: Literal["medium", "high", "extra_high"] = DEFAULT_HYBRID_EFFORT,
@@ -1738,6 +2133,7 @@ async def aio_doc_analyze(
     **kwargs: object,
 ) -> tuple[list[PageInfo], list[list[dict[str, Any]]], bool]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
+    _discard_legacy_formula_table_kwargs(kwargs)
     effort = validate_effort(effort)
     image_analysis = image_analysis if effort == MAX_HYBRID_EFFORT else False
     if effort == LOCAL_HYBRID_EFFORT:
@@ -1785,7 +2181,6 @@ async def aio_doc_analyze(
                             _extract_with_local_layout,
                             images_pil_list,
                             language,
-                            inline_formula_enable,
                             _ocr_enable,
                             batch_ratio,
                         )
@@ -1795,7 +2190,6 @@ async def aio_doc_analyze(
                                 predictor,
                                 images_pil_list,
                                 language,
-                                inline_formula_enable,
                                 _ocr_enable,
                                 batch_ratio,
                             )
@@ -1825,7 +2219,6 @@ async def aio_doc_analyze(
                                 images_pil_list,
                                 window_model_list,
                                 language,
-                                inline_formula_enable,
                                 False,
                                 batch_ratio=batch_ratio,
                             )

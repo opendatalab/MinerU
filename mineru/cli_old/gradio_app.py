@@ -1029,9 +1029,10 @@ def _write_v1_gradio_images(parse_result: ParseResult, local_image_dir: Path) ->
 
 
 def _build_v1_gradio_origin_file_bytes(source_path: Path, page_range: str) -> bytes:
-    """按 v1 解析范围生成 Gradio 本地 origin 文件字节；非 PDF 保持原样。"""
-    source_bytes = source_path.read_bytes()
-    if source_path.suffix.lower().lstrip(".") != "pdf" or not page_range.strip():
+    """按 v1 解析范围生成 Gradio 本地 origin 文件；图片会先转成 PDF 供预览使用。"""
+    file_suffix = source_path.suffix.lower().lstrip(".")
+    source_bytes = read_fn(source_path, file_suffix)
+    if file_suffix != "pdf" or not page_range.strip():
         return source_bytes
 
     try:
@@ -1062,13 +1063,13 @@ def _build_v1_gradio_origin_file_bytes(source_path: Path, page_range: str) -> by
 
 def _generate_v1_gradio_layout_preview(
     *,
-    file_suffix: str,
     file_name: str,
     local_md_dir: Path,
     backend: str,
 ) -> None:
-    """为 v1 Gradio 本地结果同步生成 layout 可视化 PDF，失败时保留 origin fallback。"""
-    if file_suffix != "pdf":
+    """为 v1 Gradio 本地 PDF origin 生成 layout 预览；图片 origin 已提前转换为 PDF。"""
+    origin_pdf_path = local_md_dir / f"{file_name}_origin.pdf"
+    if not origin_pdf_path.exists():
         return
 
     result = run_visualization_job(
@@ -1128,12 +1129,18 @@ def persist_v1_gradio_result(
         encoding="utf-8",
     )
 
+    model_output = getattr(parse_result, "_model_output", None)
+    if model_output is not None:
+        (local_md_dir / f"{file_name}_model_output.json").write_text(
+            json.dumps(model_output, ensure_ascii=False, indent=4),
+            encoding="utf-8",
+        )
+
     origin_suffix = file_suffix if file_suffix in office_suffixes else "pdf"
     origin_bytes = _build_v1_gradio_origin_file_bytes(source_path, page_range)
     (local_md_dir / f"{file_name}_origin.{origin_suffix}").write_bytes(origin_bytes)
 
     _generate_v1_gradio_layout_preview(
-        file_suffix=file_suffix,
         file_name=file_name,
         local_md_dir=local_md_dir,
         backend=backend,
@@ -1292,7 +1299,12 @@ async def _run_to_markdown_job(
             ),
         ):
             emit_status(STATUS_SUBMITTING_TASK)
-            parser = MinerUApiParser(api_url=server_health.base_url, tier=runtime.tier)
+            parser = MinerUApiParser(
+                api_url=server_health.base_url,
+                tier=runtime.tier,
+                include_model_output=True,
+                zip_output_only=True,
+            )
             parse_result = await parser.parse_async(
                 file_path,
                 page_range=page_range,
@@ -1465,7 +1477,12 @@ HEADER_I18N_PLACEHOLDERS = {
     "{{HEADER_STARS_ALT}}": "header_stars_alt",
     "{{HEADER_CODE_LINK}}": "header_code_link",
     "{{HEADER_MODEL_LINK}}": "header_model_link",
+    "{{HEADER_MODEL_HUGGINGFACE_LINK}}": "header_model_huggingface_link",
+    "{{HEADER_MODEL_MODELSCOPE_LINK}}": "header_model_modelscope_link",
     "{{HEADER_PAPER_LINK}}": "header_paper_link",
+    "{{HEADER_PAPER_MINERU_REPORT}}": "header_paper_mineru_report",
+    "{{HEADER_PAPER_MINERU25_REPORT}}": "header_paper_mineru25_report",
+    "{{HEADER_PAPER_MINERU25PRO_REPORT}}": "header_paper_mineru25pro_report",
     "{{HEADER_HOMEPAGE_LINK}}": "header_homepage_link",
     "{{HEADER_DOWNLOAD_LINK}}": "header_download_link",
 }
@@ -1722,7 +1739,12 @@ def main(ctx,
             "header_stars_alt": "stars",
             "header_code_link": "Code",
             "header_model_link": "Model",
+            "header_model_huggingface_link": "Hugging Face",
+            "header_model_modelscope_link": "ModelScope",
             "header_paper_link": "Paper",
+            "header_paper_mineru_report": "MinerU · arXiv: 2409.18839",
+            "header_paper_mineru25_report": "MinerU 2.5 · arXiv: 2509.22186",
+            "header_paper_mineru25pro_report": "MinerU 2.5 Pro · arXiv: 2604.04771",
             "header_homepage_link": "Homepage",
             "header_download_link": "Download",
             "max_pages": "Max convert pages",
@@ -1768,7 +1790,12 @@ def main(ctx,
             "header_stars_alt": "GitHub 星标",
             "header_code_link": "代码",
             "header_model_link": "模型",
+            "header_model_huggingface_link": "Hugging Face",
+            "header_model_modelscope_link": "ModelScope",
             "header_paper_link": "论文",
+            "header_paper_mineru_report": "MinerU · arXiv: 2409.18839",
+            "header_paper_mineru25_report": "MinerU 2.5 · arXiv: 2509.22186",
+            "header_paper_mineru25pro_report": "MinerU 2.5 Pro · arXiv: 2604.04771",
             "header_homepage_link": "主页",
             "header_download_link": "下载",
             "max_pages": "最大转换页数",
@@ -1862,7 +1889,7 @@ def main(ctx,
     suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + office_suffixes]
     _blocks_kwargs = {} if IS_GRADIO_6 else {"css": APP_CSS, "js": APP_JS}
     with gr.Blocks(**_blocks_kwargs) as demo:
-        gr.HTML(render_header_html(i18n))
+        gr.HTML(render_header_html(i18n), elem_classes=["mineru-header-html"])
         with gr.Row(elem_classes=["mineru-workspace-row"]):
             with gr.Column(variant='panel', scale=2, min_width=280, elem_classes=["mineru-control-column"]):
                 input_file = gr.File(

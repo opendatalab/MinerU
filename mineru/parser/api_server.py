@@ -39,6 +39,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..types import Tier, validate_tier
 from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
+from ..utils.image_payload import validate_image_sidecar_path
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..version import __version__
 from . import parse_async
@@ -926,6 +927,34 @@ def _store_image_outputs(file_store: FileStore, images: dict[str, bytes]) -> lis
     return img_refs
 
 
+def _build_self_contained_zip_output(result: Any, output_stem: str) -> bytes:
+    """构建自包含解析 zip，确保只请求 zip 时也能恢复 middle_json、图片和 model_output。"""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"{output_stem}.markdown", _text_utf8_bytes(result.markdown() or ""))
+        zf.writestr(f"{output_stem}.middle_json", _json_utf8_bytes(result.to_dict(skip_defaults=True)))
+        zf.writestr(f"{output_stem}.content_list", _json_utf8_bytes(result.content_list()))
+        zf.writestr(f"{output_stem}.structured_content", _json_utf8_bytes(result.structured_content()))
+
+        for img_path, img_bytes in sorted(result.images().items()):
+            safe_img_path = validate_image_sidecar_path(img_path)
+            zf.writestr(safe_img_path, img_bytes)
+
+        model_output = getattr(result, "_model_output", None)
+        if model_output is not None:
+            zf.writestr(
+                f"{output_stem}_model_output.json",
+                _text_utf8_bytes(
+                    json.dumps(
+                        _sanitize_json_for_utf8(model_output),
+                        ensure_ascii=False,
+                        indent=4,
+                    )
+                ),
+            )
+    return buf.getvalue()
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  DEPENDENCIES
 # ═══════════════════════════════════════════════════════════════════════
@@ -1261,8 +1290,6 @@ async def _run_job(
     server_backend: str,
     language: str,
     ocr_mode: str,
-    table_enable: bool,
-    formula_enable: bool,
     image_analysis: bool,
     effort: str = DEFAULT_HYBRID_EFFORT,
     url_timeout: int = 60,
@@ -1296,8 +1323,6 @@ async def _run_job(
                     language=language,
                     ocr_mode=ocr_mode,
                     effort=effort,
-                    disable_table=not table_enable,
-                    disable_formula=not formula_enable,
                     disable_image_analysis=not image_analysis,
                     page_range=page_range,
                 )
@@ -1350,30 +1375,7 @@ async def _run_job(
 
                 # zip
                 if "zip" in out_formats:
-                    buf = io.BytesIO()
-                    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                        for fmt_name, attr in [
-                            ("markdown", "markdown"),
-                            ("middle_json", "middle_json"),
-                            ("content_list", "content_list"),
-                            ("structured_content", "structured_content"),
-                        ]:
-                            ref = getattr(output_files, attr)
-                            if ref and ref.file_id:
-                                try:
-                                    zf.writestr(
-                                        f"{pathlib.Path(fr.name).stem}.{fmt_name}",
-                                        file_store.read_file_data(ref.file_id),
-                                    )
-                                except Exception:
-                                    pass
-                        if output_files.images:
-                            for ir in output_files.images:
-                                try:
-                                    zf.writestr(ir.path, file_store.read_file_data(ir.file_id))
-                                except Exception:
-                                    pass
-                    zip_bytes = buf.getvalue()
+                    zip_bytes = _build_self_contained_zip_output(result, pathlib.Path(fr.name).stem)
                     zip_sha = hashlib.sha256(zip_bytes).hexdigest()
                     file_store.store_blob(zip_bytes, sha256hex=zip_sha)
                     zip_fid = file_store.create_file_for_output(f"{fr.name}.zip", zip_bytes, sha256hex=zip_sha)
@@ -1769,8 +1771,6 @@ async def create_job(
     language_val: str = request.app.state.language
     ocr_mode_val: str = request.app.state.ocr_mode
     effort_val = runtime.effort
-    table_enable_val: bool = request.app.state.table_enable
-    formula_enable_val: bool = request.app.state.formula_enable
     image_analysis_val: bool = request.app.state.image_analysis
 
     if body.wait > 0:
@@ -1784,8 +1784,6 @@ async def create_job(
                     language=language_val,
                     ocr_mode=ocr_mode_val,
                     effort=effort_val,
-                    table_enable=table_enable_val,
-                    formula_enable=formula_enable_val,
                     image_analysis=image_analysis_val,
                     url_timeout=url_timeout_val,
                 )
@@ -1815,8 +1813,6 @@ async def create_job(
                 language=language_val,
                 ocr_mode=ocr_mode_val,
                 effort=effort_val,
-                table_enable=table_enable_val,
-                formula_enable=formula_enable_val,
                 image_analysis=image_analysis_val,
                 url_timeout=url_timeout_val,
             )
@@ -2077,8 +2073,6 @@ def create_app(
     api_key: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
-    table_enable: bool = True,
-    formula_enable: bool = True,
     image_analysis: bool = True,
 ) -> FastAPI:
     """Create a FastAPI application implementing the MinerU v1 REST API.
@@ -2103,10 +2097,6 @@ def create_app(
         Hybrid medium OCR language hint; accepted by other efforts for compatibility.
     ocr_mode:
         PDF OCR/text extraction mode for Hybrid backends.
-    table_enable:
-        Whether table recognition is enabled.
-    formula_enable:
-        Whether formula recognition is enabled.
     image_analysis:
         Whether image analysis is enabled for Hybrid backends.
     """
@@ -2144,8 +2134,6 @@ def create_app(
         application.state.language = language
         application.state.ocr_mode = ocr_mode
         application.state.effort = effort
-        application.state.table_enable = table_enable
-        application.state.formula_enable = formula_enable
         application.state.image_analysis = image_analysis
         yield
         if not upload_dir and _upload_dir.exists():
@@ -2175,8 +2163,6 @@ def create_app(
     application.state.language = language
     application.state.ocr_mode = ocr_mode
     application.state.effort = effort
-    application.state.table_enable = table_enable
-    application.state.formula_enable = formula_enable
     application.state.image_analysis = image_analysis
     FileStore(_upload_dir).install(application.state)
     JobStore(concurrency=concurrency).install(application.state)
@@ -2263,8 +2249,6 @@ def create_app(
     type=click.Choice(_OCR_MODES),
     help="PDF OCR/text extraction mode. Applies to hybrid-* backends.",
 )
-@click.option("--disable-table", is_flag=True, help="Disable table recognition.")
-@click.option("--disable-formula", is_flag=True, help="Disable formula recognition.")
 @click.option("--disable-image-analysis", is_flag=True, help="Disable image analysis for Hybrid backends.")
 @click.option(
     "--api-key",
@@ -2282,8 +2266,6 @@ def main(
     max_wait: int,
     language: str,
     ocr_mode: str,
-    disable_table: bool,
-    disable_formula: bool,
     disable_image_analysis: bool,
     api_key: str | None,
 ) -> None:
@@ -2298,8 +2280,6 @@ def main(
             api_key=api_key,
             language=language,
             ocr_mode=ocr_mode,
-            table_enable=not disable_table,
-            formula_enable=not disable_formula,
             image_analysis=not disable_image_analysis,
         )
     except ParseServerStartupError as exc:

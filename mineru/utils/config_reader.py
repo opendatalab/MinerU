@@ -147,18 +147,6 @@ def get_device() -> str:
     return "cpu"
 
 
-def get_formula_enable(formula_enable: bool) -> bool:
-    formula_enable_env = os.getenv("MINERU_FORMULA_ENABLE")
-    formula_enable = formula_enable if formula_enable_env is None else formula_enable_env.lower() == "true"
-    return formula_enable
-
-
-def get_table_enable(table_enable: bool) -> bool:
-    table_enable_env = os.getenv("MINERU_TABLE_ENABLE")
-    table_enable = table_enable if table_enable_env is None else table_enable_env.lower() == "true"
-    return table_enable
-
-
 def get_ocr_det_mask_inline_formula_enable(enable: bool) -> bool:
     enable_env = os.getenv("MINERU_OCR_DET_MASK_INLINE_FORMULA_ENABLE")
     enable = enable if enable_env is None else enable_env.lower() == "true"

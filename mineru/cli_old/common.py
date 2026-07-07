@@ -361,7 +361,6 @@ def _process_hybrid(
     pdf_bytes_list: list[bytes],
     h_lang_list: list[str],
     parse_method: str,
-    inline_formula_enable: bool,
     backend: str,
     f_draw_layout_bbox: bool,
     f_draw_span_bbox: bool,
@@ -395,7 +394,6 @@ def _process_hybrid(
             backend=backend,
             parse_method=parse_method,
             language=lang,
-            inline_formula_enable=inline_formula_enable,
             server_url=server_url,
             page_index_map=page_index_map_list[idx] if page_index_map_list is not None else None,
             image_cache=image_cache,
@@ -435,7 +433,6 @@ async def _async_process_hybrid(
     pdf_bytes_list: list[bytes],
     h_lang_list: list[str],
     parse_method: str,
-    inline_formula_enable: bool,
     backend: str,
     f_draw_layout_bbox: bool,
     f_draw_span_bbox: bool,
@@ -469,7 +466,6 @@ async def _async_process_hybrid(
             backend=backend,
             parse_method=parse_method,
             language=lang,
-            inline_formula_enable=inline_formula_enable,
             server_url=server_url,
             page_index_map=page_index_map_list[idx] if page_index_map_list is not None else None,
             image_cache=image_cache,
@@ -570,8 +566,6 @@ def do_parse(
     p_lang_list: list[str],
     backend: str = DEFAULT_BACKEND,
     parse_method: str = "auto",
-    formula_enable: bool = True,
-    table_enable: bool = True,
     server_url: str | None = None,
     f_draw_layout_bbox: bool = True,
     f_draw_span_bbox: bool = True,
@@ -621,16 +615,12 @@ def do_parse(
         if backend == "engine" and effort != LOCAL_HYBRID_EFFORT:
             backend = get_vlm_engine(inference_engine="auto", is_async=False)
 
-        os.environ["MINERU_VLM_TABLE_ENABLE"] = str(table_enable)
-        os.environ["MINERU_VLM_FORMULA_ENABLE"] = "true"
-
         _process_hybrid(
             output_dir,
             pdf_file_names,
             pdf_bytes_list,
             p_lang_list,
             parse_method,
-            formula_enable,
             backend,
             f_draw_layout_bbox,
             f_draw_span_bbox,
@@ -659,8 +649,6 @@ async def aio_do_parse(
     p_lang_list: list[str],
     backend: str = DEFAULT_BACKEND,
     parse_method: str = "auto",
-    formula_enable: bool = True,
-    table_enable: bool = True,
     server_url: str | None = None,
     f_draw_layout_bbox: bool = True,
     f_draw_span_bbox: bool = True,
@@ -712,16 +700,12 @@ async def aio_do_parse(
         if backend == "engine" and effort != LOCAL_HYBRID_EFFORT:
             backend = get_vlm_engine(inference_engine="auto", is_async=True)
 
-        os.environ["MINERU_VLM_TABLE_ENABLE"] = str(table_enable)
-        os.environ["MINERU_VLM_FORMULA_ENABLE"] = "true"
-
         await _async_process_hybrid(
             output_dir,
             pdf_file_names,
             pdf_bytes_list,
             p_lang_list,
             parse_method,
-            formula_enable,
             backend,
             f_draw_layout_bbox,
             f_draw_span_bbox,

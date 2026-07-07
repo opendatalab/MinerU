@@ -4,9 +4,11 @@ import inspect
 import io
 import json
 import logging
+import os
 import subprocess
 import sys
 import types
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -39,6 +41,16 @@ from mineru.types import Block, Line, PageInfo, Span
 from mineru.utils.image_payload import ImagePayloadCache
 
 runner = CliRunner()
+
+_REMOVED_DISABLE_TABLE_PARAM = "disable" + "_table"
+_REMOVED_DISABLE_FORMULA_PARAM = "disable" + "_formula"
+_REMOVED_TABLE_ENABLE_PARAM = "table" + "_enable"
+_REMOVED_FORMULA_ENABLE_PARAM = "formula" + "_enable"
+_REMOVED_INLINE_FORMULA_PARAM = "inline_" + _REMOVED_FORMULA_ENABLE_PARAM
+_REMOVED_DISABLE_TABLE_OPTION = "--disable-" + "table"
+_REMOVED_DISABLE_FORMULA_OPTION = "--disable-" + "formula"
+_REMOVED_TABLE_ENABLE_ENV = "MINERU_" + "TABLE" + "_ENABLE"
+_REMOVED_FORMULA_ENABLE_ENV = "MINERU_" + "FORMULA" + "_ENABLE"
 
 
 def _stub_api_server_dependency_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -174,6 +186,52 @@ def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> No
     assert "options" not in payload["files"][0]
 
 
+def test_api_client_can_request_zip_for_model_output(tmp_path: Path) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high", include_model_output=True)
+    payload = parser._build_payload(pdf, "")
+
+    assert payload["output_formats"] == ["middle_json", "images", "zip"]
+
+
+def test_api_client_can_request_zip_output_only(tmp_path: Path) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+
+    parser = MinerUApiParser(
+        api_url="http://localhost:8000",
+        tier="high",
+        include_model_output=True,
+        zip_output_only=True,
+    )
+    payload = parser._build_payload(pdf, "")
+
+    assert payload["output_formats"] == ["zip"]
+
+
+def test_api_client_keeps_staging_json_format_when_model_output_requested() -> None:
+    parser = MinerUApiParser(
+        api_url="https://staging.mineru.org.cn/api",
+        tier="extra_high",
+        include_model_output=True,
+    )
+
+    assert parser._output_formats() == ["json"]
+
+
+def test_api_client_keeps_staging_json_format_when_zip_output_only_requested() -> None:
+    parser = MinerUApiParser(
+        api_url="https://staging.mineru.org.cn/api",
+        tier="extra_high",
+        include_model_output=True,
+        zip_output_only=True,
+    )
+
+    assert parser._output_formats() == ["json"]
+
+
 def test_api_client_uses_tier_without_backend_semantics(tmp_path: Path) -> None:
     pdf = tmp_path / "demo.pdf"
     pdf.write_bytes(b"%PDF-1.7\n")
@@ -223,6 +281,210 @@ def test_api_client_downloads_image_sidecars_and_preserves_pdf_mapping(monkeypat
     assert result._retained_page_indices == [0, 2]
     assert result._broken_page_indices == [1]
     assert result.images() == {"images/chart.png": b"chart-bytes"}
+
+
+def test_api_client_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high", include_model_output=True)
+    middle_json = {
+        "schema_version": "1.0.0",
+        "pages": [{"page_idx": 0, "page_size": [100, 200]}],
+    }
+    zip_ref = {"file_id": "file-zip", "bytes": 10}
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "demo_model_output.json",
+            json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4),
+        )
+
+    monkeypatch.setattr(api_client, "_download_json", lambda _parser, _outputs: middle_json)
+    monkeypatch.setattr(
+        api_client,
+        "_download_bytes",
+        lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"",
+    )
+
+    result = _parse_result_from_job(
+        {
+            "job_id": "job_1",
+            "status": "completed",
+            "files": [{"output_files": {"middle_json": {"file_id": "file-middle", "bytes": 10}, "zip": zip_ref}}],
+        },
+        "demo.pdf",
+        parser,
+    )
+
+    assert result._model_output == [[{"raw": "model"}]]
+
+
+def test_api_client_async_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high", include_model_output=True)
+    middle_json = {
+        "schema_version": "1.0.0",
+        "pages": [{"page_idx": 0, "page_size": [100, 200]}],
+    }
+    zip_ref = {"file_id": "file-zip", "bytes": 10}
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "demo_model_output.json",
+            json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4),
+        )
+
+    async def fake_download_json(_parser: object, _outputs: object) -> dict[str, object]:
+        return middle_json
+
+    async def fake_download_bytes(_parser: object, ref: dict[str, object]) -> bytes:
+        return zip_buffer.getvalue() if ref is zip_ref else b""
+
+    monkeypatch.setattr(api_client, "_async_download_json", fake_download_json)
+    monkeypatch.setattr(api_client, "_async_download_bytes", fake_download_bytes)
+
+    result = asyncio.run(
+        api_client._async_parse_result_from_job(
+            {
+                "job_id": "job_1",
+                "status": "completed",
+                "files": [{"output_files": {"middle_json": {"file_id": "file-middle", "bytes": 10}, "zip": zip_ref}}],
+            },
+            "demo.pdf",
+            parser,
+        )
+    )
+
+    assert result._model_output == [[{"raw": "model"}]]
+
+
+def test_api_client_zip_output_only_downloads_single_zip(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(
+        api_url="http://localhost:8000",
+        tier="high",
+        include_model_output=True,
+        zip_output_only=True,
+    )
+    zip_ref = {"file_id": "file-zip", "bytes": 10}
+    image_cache = ImagePayloadCache()
+    image_path = image_cache.register_bytes(b"chart-bytes", "png", image_path="images/chart.png")
+    span = Span(type="image", bbox=(0, 0, 10, 10), image_path=image_path)
+    page = PageInfo(
+        page_idx=0,
+        page_size=(100, 200),
+        para_blocks=[Block(index=0, type="image", bbox=(0, 0, 10, 10), lines=[Line(bbox=(0, 0, 10, 10), spans=[span])])],
+        _backend="hybrid",
+    )
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("demo.middle_json", json.dumps(ParseResult(pages=[page]).to_dict(), ensure_ascii=False))
+        archive.writestr("images/chart.png", b"chart-bytes")
+        archive.writestr("demo_model_output.json", json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4))
+    download_calls: list[dict[str, object]] = []
+
+    def fake_download_bytes(_parser: object, ref: dict[str, object]) -> bytes:
+        download_calls.append(ref)
+        return zip_buffer.getvalue() if ref is zip_ref else b""
+
+    monkeypatch.setattr(api_client, "_download_bytes", fake_download_bytes)
+    monkeypatch.setattr(
+        api_client,
+        "_download_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("zip-only must not download middle_json separately")),
+    )
+
+    result = _parse_result_from_job(
+        {
+            "job_id": "job_1",
+            "status": "completed",
+            "files": [{"output_files": {"zip": zip_ref}}],
+        },
+        "demo.pdf",
+        parser,
+    )
+
+    assert download_calls == [zip_ref]
+    assert result.pages[0].page_idx == 0
+    assert result.images() == {"images/chart.png": b"chart-bytes"}
+    assert result._model_output == [[{"raw": "model"}]]
+
+
+def test_api_client_async_zip_output_only_downloads_single_zip(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(
+        api_url="http://localhost:8000",
+        tier="high",
+        include_model_output=True,
+        zip_output_only=True,
+    )
+    zip_ref = {"file_id": "file-zip", "bytes": 10}
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "demo.middle_json",
+            json.dumps({"schema_version": "1.0.0", "pages": [{"page_idx": 2, "page_size": [100, 200]}]}),
+        )
+        archive.writestr("demo_model_output.json", json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4))
+    download_calls: list[dict[str, object]] = []
+
+    async def fake_download_bytes(_parser: object, ref: dict[str, object]) -> bytes:
+        download_calls.append(ref)
+        return zip_buffer.getvalue() if ref is zip_ref else b""
+
+    async def fail_download_json(*_args: object, **_kwargs: object) -> dict[str, object]:
+        raise AssertionError("zip-only must not download middle_json separately")
+
+    monkeypatch.setattr(api_client, "_async_download_bytes", fake_download_bytes)
+    monkeypatch.setattr(api_client, "_async_download_json", fail_download_json)
+
+    result = asyncio.run(
+        api_client._async_parse_result_from_job(
+            {
+                "job_id": "job_1",
+                "status": "completed",
+                "files": [{"output_files": {"zip": zip_ref}}],
+            },
+            "demo.pdf",
+            parser,
+        )
+    )
+
+    assert download_calls == [zip_ref]
+    assert result.pages[0].page_idx == 2
+    assert result._model_output == [[{"raw": "model"}]]
+
+
+def test_api_client_zip_output_only_rejects_unsafe_image_entries(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high", zip_output_only=True)
+    zip_ref = {"file_id": "file-zip", "bytes": 10}
+    middle_json = {
+        "schema_version": "1.0.0",
+        "pages": [
+            {
+                "page_idx": 0,
+                "para_blocks": [
+                    {
+                        "index": 0,
+                        "type": "image",
+                        "bbox": [0, 0, 10, 10],
+                        "lines": [{"bbox": [0, 0, 10, 10], "spans": [{"type": "image", "bbox": [0, 0, 10, 10], "image_path": "../escape.png"}]}],
+                    }
+                ],
+            }
+        ],
+    }
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("demo.middle_json", json.dumps(middle_json, ensure_ascii=False))
+
+    monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"")
+
+    with pytest.raises(ValueError, match="Unsafe image sidecar path"):
+        _parse_result_from_job(
+            {
+                "job_id": "job_1",
+                "status": "completed",
+                "files": [{"output_files": {"zip": zip_ref}}],
+            },
+            "demo.pdf",
+            parser,
+        )
 
 
 def test_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -385,6 +647,69 @@ def test_api_client_passes_trust_env_from_api_url(monkeypatch: pytest.MonkeyPatc
     assert calls == [False, True]
 
 
+def test_api_client_poll_uses_fixed_one_second_interval(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证同步 v1 job 轮询使用固定 1 秒间隔，避免指数退避放大本地等待。"""
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
+    statuses = iter(["pending", "processing", "completed"])
+    sleep_delays: list[int] = []
+
+    def fake_sleep(delay: int) -> None:
+        """记录同步轮询 sleep 参数，避免测试真的等待。"""
+        sleep_delays.append(delay)
+
+    def fake_get(url: str, headers: dict[str, str]) -> object:
+        """按顺序返回 job 状态，模拟第三次轮询完成。"""
+        assert url == "http://localhost:8000/v1/parse/jobs/job_1"
+        assert headers == {}
+        status = next(statuses)
+        return types.SimpleNamespace(
+            status_code=200,
+            text="",
+            json=lambda: {"job_id": "job_1", "status": status},
+        )
+
+    monkeypatch.setattr(api_client.time, "sleep", fake_sleep)
+
+    job = parser._poll(types.SimpleNamespace(get=fake_get), "job_1")
+
+    assert job["status"] == "completed"
+    assert sleep_delays == [1, 1, 1]
+
+
+def test_async_api_client_poll_uses_fixed_one_second_interval(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证异步 v1 job 轮询也使用固定 1 秒间隔，保持 Gradio 路径一致。"""
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
+    statuses = iter(["pending", "processing", "completed"])
+    sleep_delays: list[int] = []
+
+    async def fake_sleep(delay: int) -> None:
+        """记录异步轮询 sleep 参数，避免测试真的等待。"""
+        sleep_delays.append(delay)
+
+    async def fake_get(url: str, headers: dict[str, str]) -> object:
+        """按顺序返回 job 状态，模拟第三次异步轮询完成。"""
+        assert url == "http://localhost:8000/v1/parse/jobs/job_1"
+        assert headers == {}
+        status = next(statuses)
+        return types.SimpleNamespace(
+            status_code=200,
+            text="",
+            json=lambda: {"job_id": "job_1", "status": status},
+        )
+
+    monkeypatch.setattr(api_client.asyncio, "sleep", fake_sleep)
+
+    job = asyncio.run(parser._async_poll(types.SimpleNamespace(get=fake_get), "job_1"))
+
+    assert job["status"] == "completed"
+    assert sleep_delays == [1, 1, 1]
+
+
+def test_api_client_poll_timeout_budget_is_one_hour() -> None:
+    """验证 v1 job 轮询最大等待预算为 1 小时。"""
+    assert api_client._POLL_INTERVAL_SECONDS * api_client._POLL_MAX_ATTEMPTS == 60 * 60
+
+
 def test_api_client_omits_tier_when_unspecified(tmp_path: Path) -> None:
     pdf = tmp_path / "demo.pdf"
     pdf.write_bytes(b"%PDF-1.7\n")
@@ -403,7 +728,7 @@ def test_api_client_constructor_does_not_expose_ocr_or_image_options() -> None:
 
 
 def test_parser_entrypoints_expose_api_server_style_options() -> None:
-    for entrypoint in (parse, parse_async):
+    for entrypoint in (parse, parse_async, _build_parser):
         parameters = inspect.signature(entrypoint).parameters
 
         assert "tier" in parameters
@@ -411,9 +736,19 @@ def test_parser_entrypoints_expose_api_server_style_options() -> None:
         assert "language" in parameters
         assert "ocr_mode" in parameters
         assert "effort" in parameters
-        assert "disable_table" in parameters
-        assert "disable_formula" in parameters
         assert "disable_image_analysis" in parameters
+        assert _REMOVED_DISABLE_TABLE_PARAM not in parameters
+        assert _REMOVED_DISABLE_FORMULA_PARAM not in parameters
+        assert _REMOVED_TABLE_ENABLE_PARAM not in parameters
+        assert _REMOVED_FORMULA_ENABLE_PARAM not in parameters
+
+
+def test_pdf_hybrid_parser_constructor_removes_formula_table_switches() -> None:
+    """校验 PDF parser 构造链不再公开无效的公式/表格开关。"""
+    parameters = inspect.signature(parser_pdf.PdfHybridParser).parameters
+
+    assert _REMOVED_FORMULA_ENABLE_PARAM not in parameters
+    assert _REMOVED_TABLE_ENABLE_PARAM not in parameters
 
 
 def test_api_client_omits_page_range_when_unspecified(tmp_path: Path) -> None:
@@ -564,8 +899,8 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     monkeypatch.setenv("MINERU_LANGUAGE", "en")
     monkeypatch.setenv("MINERU_OCR_MODE", "ocr")
     monkeypatch.setenv("MINERU_EFFORT", "high")
-    monkeypatch.setenv("MINERU_TABLE_ENABLE", "false")
-    monkeypatch.setenv("MINERU_FORMULA_ENABLE", "false")
+    monkeypatch.setenv(_REMOVED_TABLE_ENABLE_ENV, "false")
+    monkeypatch.setenv(_REMOVED_FORMULA_ENABLE_ENV, "false")
     monkeypatch.setenv("MINERU_IMAGE_ANALYSIS", "false")
 
     app = create_app(upload_dir=str(tmp_path))
@@ -578,9 +913,9 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     assert app.state.language == "ch"
     assert app.state.ocr_mode == "auto"
     assert app.state.effort == "high"
-    assert app.state.table_enable is True
-    assert app.state.formula_enable is True
     assert app.state.image_analysis is True
+    assert not hasattr(app.state, _REMOVED_TABLE_ENABLE_PARAM)
+    assert not hasattr(app.state, _REMOVED_FORMULA_ENABLE_PARAM)
 
 
 def test_api_server_cli_no_longer_exposes_reload() -> None:
@@ -693,8 +1028,6 @@ def test_api_server_rendered_outputs_store_image_sidecars(
             server_backend="hybrid-engine",
             language="ch",
             ocr_mode="auto",
-            table_enable=True,
-            formula_enable=True,
             image_analysis=True,
             effort="medium",
         )
@@ -758,8 +1091,6 @@ def test_api_server_middle_json_preserves_backend_for_client_rendering(
             server_backend="hybrid-engine",
             language="ch",
             ocr_mode="auto",
-            table_enable=True,
-            formula_enable=True,
             image_analysis=True,
             effort="medium",
         )
@@ -772,6 +1103,216 @@ def test_api_server_middle_json_preserves_backend_for_client_rendering(
     assert payload["_backend"] == "hybrid"
     assert roundtrip.content_list()
     assert roundtrip.structured_content()
+
+
+@pytest.mark.parametrize("model_output", [[{"raw": "model"}], []])
+def test_api_server_zip_includes_model_output_when_parse_result_has_it(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    model_output: list[object],
+) -> None:
+    parse_result = ParseResult(
+        pages=[PageInfo(page_idx=0, page_size=(100, 100), _backend="hybrid")],
+        _model_output=model_output,
+    )
+
+    async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
+        return parse_result
+
+    monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
+    file_store = FileStore(tmp_path / "api-files")
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "tier": "high",
+            "output_formats": ["zip"],
+        }
+    )
+    job_store = api_server.JobStore()
+    rec = job_store.create(request, file_store)
+
+    asyncio.run(
+        api_server._run_job(
+            rec,
+            request,
+            file_store,
+            server_backend="hybrid-engine",
+            language="ch",
+            ocr_mode="auto",
+            image_analysis=True,
+            effort="medium",
+        )
+    )
+
+    zip_ref = rec.files[0].output_files.zip
+    assert zip_ref is not None
+    with zipfile.ZipFile(io.BytesIO(file_store.read_file_data(zip_ref.file_id))) as archive:
+        assert "demo_model_output.json" in archive.namelist()
+        model_output_text = archive.read("demo_model_output.json").decode("utf-8")
+        payload = json.loads(model_output_text)
+    assert payload == model_output
+    if model_output:
+        assert "\n    " in model_output_text
+
+
+def test_api_server_zip_is_self_contained_when_only_zip_requested(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    img_bytes = b"chart-bytes"
+    image_cache = ImagePayloadCache()
+    image_path = image_cache.register_bytes(img_bytes, "png", image_path="images/chart.png")
+    span = Span(type="image", bbox=(0, 0, 10, 10), image_path=image_path)
+    block = Block(index=0, type="image", bbox=(0, 0, 10, 10), lines=[Line(bbox=(0, 0, 10, 10), spans=[span])])
+    parse_result = ParseResult(
+        pages=[
+            PageInfo(
+                page_idx=0,
+                page_size=(100, 100),
+                para_blocks=[block],
+                _backend="hybrid",
+            )
+        ],
+        _image_cache=image_cache,
+        _model_output=[[{"raw": "model"}]],
+    )
+
+    async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
+        return parse_result
+
+    monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
+    file_store = FileStore(tmp_path / "api-files")
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "tier": "high",
+            "output_formats": ["zip"],
+        }
+    )
+    rec = api_server.JobStore().create(request, file_store)
+
+    asyncio.run(
+        api_server._run_job(
+            rec,
+            request,
+            file_store,
+            server_backend="hybrid-engine",
+            language="ch",
+            ocr_mode="auto",
+            image_analysis=True,
+            effort="medium",
+        )
+    )
+
+    output_files = rec.files[0].output_files
+    assert output_files.middle_json is None
+    assert output_files.images is None
+    assert output_files.zip is not None
+    with zipfile.ZipFile(io.BytesIO(file_store.read_file_data(output_files.zip.file_id))) as archive:
+        names = set(archive.namelist())
+        assert {
+            "demo.markdown",
+            "demo.middle_json",
+            "demo.content_list",
+            "demo.structured_content",
+            "demo_model_output.json",
+            "images/chart.png",
+        }.issubset(names)
+        assert json.loads(archive.read("demo.middle_json").decode("utf-8"))["_backend"] == "hybrid"
+        assert json.loads(archive.read("demo_model_output.json").decode("utf-8")) == [[{"raw": "model"}]]
+        assert archive.read("images/chart.png") == img_bytes
+
+
+def test_api_server_zip_rejects_unsafe_image_sidecar_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    parse_result = ParseResult(
+        pages=[PageInfo(page_idx=0, page_size=(100, 100), _backend="hybrid")],
+        _image_cache={"../escape.png": b"bad-image"},
+    )
+
+    async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
+        return parse_result
+
+    monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
+    file_store = FileStore(tmp_path / "api-files")
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "tier": "high",
+            "output_formats": ["zip"],
+        }
+    )
+    rec = api_server.JobStore().create(request, file_store)
+
+    asyncio.run(
+        api_server._run_job(
+            rec,
+            request,
+            file_store,
+            server_backend="hybrid-engine",
+            language="ch",
+            ocr_mode="auto",
+            image_analysis=True,
+            effort="medium",
+        )
+    )
+
+    assert rec.files[0].status == "failed"
+    assert rec.files[0].error is not None
+    assert "Unsafe image sidecar path" in rec.files[0].error.message
+
+
+def test_api_server_zip_skips_model_output_when_parse_result_has_none(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    parse_result = ParseResult(
+        pages=[PageInfo(page_idx=0, page_size=(100, 100), _backend="hybrid")],
+        _model_output=None,
+    )
+
+    async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
+        return parse_result
+
+    monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
+    file_store = FileStore(tmp_path / "api-files")
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "tier": "high",
+            "output_formats": ["zip"],
+        }
+    )
+    job_store = api_server.JobStore()
+    rec = job_store.create(request, file_store)
+
+    asyncio.run(
+        api_server._run_job(
+            rec,
+            request,
+            file_store,
+            server_backend="hybrid-engine",
+            language="ch",
+            ocr_mode="auto",
+            image_analysis=True,
+            effort="medium",
+        )
+    )
+
+    zip_ref = rec.files[0].output_files.zip
+    assert zip_ref is not None
+    with zipfile.ZipFile(io.BytesIO(file_store.read_file_data(zip_ref.file_id))) as archive:
+        assert "demo_model_output.json" not in archive.namelist()
 
 
 def test_api_server_sanitizes_surrogates_in_text_outputs(
@@ -825,8 +1366,6 @@ def test_api_server_sanitizes_surrogates_in_text_outputs(
             server_backend="hybrid-engine",
             language="ch",
             ocr_mode="auto",
-            table_enable=True,
-            formula_enable=True,
             image_analysis=True,
             effort="medium",
         )
@@ -880,8 +1419,6 @@ def test_api_server_logs_traceback_when_job_file_fails(
                 server_backend="hybrid-engine",
                 language="ch",
                 ocr_mode="auto",
-                table_enable=True,
-                formula_enable=True,
                 image_analysis=True,
                 effort="medium",
             )
@@ -1251,14 +1788,53 @@ def test_pdf_hybrid_medium_parser_skips_vlm_backend_resolution(monkeypatch: pyte
         raise AssertionError("medium effort should not resolve VLM backend")
 
     monkeypatch.setattr(parser_pdf, "_resolve_hybrid_backend", fail_resolve_backend)
+    monkeypatch.setenv("MINERU_VLM_FORMULA_ENABLE", "sentinel-formula")
+    monkeypatch.setenv("MINERU_VLM_TABLE_ENABLE", "sentinel-table")
 
-    parser = parser_pdf.PdfHybridParser(backend="hybrid-engine", effort="medium", lang="en")
-    pages = parser._run_analysis(b"%PDF-1.7\n")
+    parser = parser_pdf.PdfHybridParser(
+        backend="hybrid-engine",
+        effort="medium",
+        lang="en",
+    )
+    pages, model_output = parser._run_analysis(b"%PDF-1.7\n")
 
     assert pages[0]._backend == "hybrid"
+    assert model_output == []
     assert seen["backend"] == "hybrid-engine"
     assert seen["effort"] == "medium"
     assert seen["language"] == "en"
+    assert _REMOVED_INLINE_FORMULA_PARAM not in seen
+    assert os.environ["MINERU_VLM_FORMULA_ENABLE"] == "sentinel-formula"
+    assert os.environ["MINERU_VLM_TABLE_ENABLE"] == "sentinel-table"
+
+
+def test_pdf_hybrid_async_parser_preserves_model_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """校验 v1 server 使用的异步 PDF parser 会把 Hybrid model_list 传入 ParseResult。"""
+    model_output = [[{"raw": "model"}]]
+    fake_module = types.ModuleType("mineru.backend.hybrid.hybrid_analyze")
+
+    async def fake_aio_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], list[object], bool]:
+        """返回带原始模型输出的 Hybrid 分析结果，避免加载真实模型。"""
+        return [PageInfo(page_idx=0, _backend="hybrid")], model_output, False
+
+    fake_module.aio_doc_analyze = fake_aio_doc_analyze
+    monkeypatch.setitem(sys.modules, "mineru.backend.hybrid.hybrid_analyze", fake_module)
+    monkeypatch.setattr(
+        parser_pdf.PdfHybridParser,
+        "_prepare_input",
+        lambda self, path, page_range="": parser_pdf._PreparedPdfInput(file_name="demo", pdf_bytes=b"%PDF-1.7\n"),
+    )
+
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    parser = parser_pdf.PdfHybridParser(backend="hybrid-engine", effort="medium")
+
+    result = asyncio.run(parser.parse_async(source))
+
+    assert result._model_output == model_output
 
 
 @pytest.mark.parametrize(
@@ -1321,8 +1897,12 @@ def test_pdf_vlm_parser_compat_delegates_to_hybrid_extra_high(monkeypatch: pytes
 
     parser = parser_pdf.PdfVlmParser(backend="vlm-engine", effort="medium")
 
-    assert parser._run_analysis(b"%PDF") == []
-    assert asyncio.run(parser._arun_analysis(b"%PDF")) == []
+    pages, model_output = parser._run_analysis(b"%PDF")
+    async_pages, async_model_output = asyncio.run(parser._arun_analysis(b"%PDF"))
+    assert pages == []
+    assert model_output == []
+    assert async_pages == []
+    assert async_model_output == []
     assert calls == [("hybrid-engine", False), ("hybrid-engine", True)]
     assert backends == ["sync-backend", "async-backend"]
     assert efforts == ["extra_high", "extra_high"]
@@ -1355,8 +1935,12 @@ def test_pdf_hybrid_parser_passes_call_mode_to_backend_resolver(monkeypatch: pyt
 
     parser = parser_pdf.PdfHybridParser(backend="hybrid-engine")
 
-    assert parser._run_analysis(b"%PDF") == []
-    assert asyncio.run(parser._arun_analysis(b"%PDF")) == []
+    pages, model_output = parser._run_analysis(b"%PDF")
+    async_pages, async_model_output = asyncio.run(parser._arun_analysis(b"%PDF"))
+    assert pages == []
+    assert model_output == []
+    assert async_pages == []
+    assert async_model_output == []
     assert calls == [("hybrid-engine", False), ("hybrid-engine", True)]
     assert backends == ["sync-backend", "async-backend"]
 
@@ -1368,17 +1952,15 @@ def test_api_server_stores_parser_runtime_options(tmp_path: Path, monkeypatch: p
         tier="medium",
         language="en",
         ocr_mode="ocr",
-        table_enable=False,
-        formula_enable=False,
         image_analysis=False,
     )
 
     assert app.state.language == "ch"
     assert app.state.ocr_mode == "ocr"
     assert app.state.effort == "medium"
-    assert app.state.table_enable is False
-    assert app.state.formula_enable is False
     assert app.state.image_analysis is False
+    assert not hasattr(app.state, _REMOVED_TABLE_ENABLE_PARAM)
+    assert not hasattr(app.state, _REMOVED_FORMULA_ENABLE_PARAM)
 
 
 def test_api_server_rejects_removed_ch_lite_language(tmp_path: Path) -> None:
@@ -1394,9 +1976,9 @@ def test_api_server_cli_exposes_parser_runtime_options() -> None:
     assert "--language" in option_names
     assert "--ocr-mode" in option_names
     assert "--effort" not in option_names
-    assert "--disable-table" in option_names
-    assert "--disable-formula" in option_names
     assert "--disable-image-analysis" in option_names
+    assert _REMOVED_DISABLE_TABLE_OPTION not in option_names
+    assert _REMOVED_DISABLE_FORMULA_OPTION not in option_names
     assert _API_SERVER_LANGUAGES == (
         "ch",
         "ch_server",
