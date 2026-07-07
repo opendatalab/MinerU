@@ -177,6 +177,8 @@ def _is_hybrid_medium_ocr_det_candidate(block: dict[str, Any]) -> bool:
     item_type = block.get("type") or block.get("label")
     return item_type in {
         *NOT_EXTRACT_TYPES,
+        MineruBlockType.ALGORITHM,
+        MineruBlockType.CODE,
         MineruBlockType.DOC_TITLE,
         MineruBlockType.PARAGRAPH_TITLE,
         MineruBlockType.INDEX,
