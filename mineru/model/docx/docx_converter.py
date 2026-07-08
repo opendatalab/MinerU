@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import re
+from html import escape
 from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO, Optional, Union, Any, Final, Iterator
@@ -1081,16 +1082,73 @@ class DocxConverter:
         )
 
     @staticmethod
+    def _html_direct_table_rows(html_table) -> list:
+        """返回当前 HTML 表格层级的行，排除嵌套表格中的 tr。"""
+        rows = []
+        for child in html_table.find_all(
+            ['tr', 'thead', 'tbody', 'tfoot'],
+            recursive=False,
+        ):
+            if child.name == 'tr':
+                rows.append(child)
+            else:
+                rows.extend(child.find_all('tr', recursive=False))
+        return rows
+
+    @staticmethod
+    def _html_direct_row_cells(html_row) -> list:
+        """返回当前 HTML 行的直接单元格，排除嵌套表格中的 td/th。"""
+        return html_row.find_all(['td', 'th'], recursive=False)
+
+    @staticmethod
+    def _xml_direct_table_rows(xml_table) -> list:
+        """返回当前 DOCX XML 表格层级的 w:tr，排除嵌套表格中的行。"""
+        return [
+            child
+            for child in xml_table
+            if DocxConverter._local_name(child) == 'tr'
+        ]
+
+    @staticmethod
+    def _xml_direct_row_cells(xml_row) -> list:
+        """返回当前 DOCX XML 行的直接 w:tc，排除嵌套表格中的单元格。"""
+        return [
+            child
+            for child in xml_row
+            if DocxConverter._local_name(child) == 'tc'
+        ]
+
+    @staticmethod
+    def _xml_direct_cell_tables(xml_cell) -> list:
+        """返回当前 DOCX XML 单元格中的直接嵌套表格。"""
+        return [
+            child
+            for child in xml_cell
+            if DocxConverter._local_name(child) == 'tbl'
+        ]
+
+    @staticmethod
+    def _html_direct_cell_tables(html_cell) -> list:
+        """返回当前 HTML 单元格中的直接嵌套表格。"""
+        return html_cell.find_all('table', recursive=False)
+
+    @staticmethod
     def _xml_table_signature(xml_table) -> dict:
         """提取 XML 表格的轻量签名，用于与 Mammoth HTML 表格对齐。"""
         text = "".join(
             node.text or ""
-            for node in xml_table.xpath('.//*[local-name()="t"]')
+            for node in xml_table.xpath(
+                './/*[local-name()="t" and '
+                'namespace-uri()="http://schemas.openxmlformats.org/wordprocessingml/2006/main"]'
+            )
             if node.text
         )
         return {
-            "row_count": len(xml_table.xpath('./*[local-name()="tr"]')),
-            "cell_count": len(xml_table.xpath('.//*[local-name()="tc"]')),
+            "row_count": len(DocxConverter._xml_direct_table_rows(xml_table)),
+            "cell_count": sum(
+                len(DocxConverter._xml_direct_row_cells(row))
+                for row in DocxConverter._xml_direct_table_rows(xml_table)
+            ),
             "image_count": len(xml_table.xpath('.//*[local-name()="blip"]')),
             "text": DocxConverter._normalize_table_match_text(text),
         }
@@ -1098,9 +1156,13 @@ class DocxConverter:
     @staticmethod
     def _html_table_signature(html_table) -> dict:
         """提取 HTML 表格的轻量签名，用于过滤 Mammoth 额外生成的表格。"""
+        rows = DocxConverter._html_direct_table_rows(html_table)
         return {
-            "row_count": len(html_table.find_all("tr")),
-            "cell_count": len(html_table.find_all(["td", "th"])),
+            "row_count": len(rows),
+            "cell_count": sum(
+                len(DocxConverter._html_direct_row_cells(row))
+                for row in rows
+            ),
             "image_count": len(html_table.find_all("img")),
             "text": DocxConverter._normalize_table_match_text(
                 html_table.get_text("", strip=True)
@@ -1138,7 +1200,6 @@ class DocxConverter:
             BeautifulSoup Tag: 注入公式后的 <table> 元素（原地修改并返回）
         """
         OMML_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
-        W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
         # 快速检查：该表格是否含有任何公式
         if not xml_table.findall(f".//{{{OMML_NS}}}oMath"):
@@ -1146,8 +1207,8 @@ class DocxConverter:
 
         from bs4 import BeautifulSoup
 
-        html_rows = html_table.find_all('tr')
-        xml_rows = xml_table.findall(f"{{{W_NS}}}tr")
+        html_rows = self._html_direct_table_rows(html_table)
+        xml_rows = self._xml_direct_table_rows(xml_table)
 
         if len(html_rows) != len(xml_rows):
             logger.debug(
@@ -1157,25 +1218,53 @@ class DocxConverter:
             return html_table
 
         for html_row, xml_row in zip(html_rows, xml_rows):
-            html_cells = html_row.find_all(['td', 'th'])
-            xml_cells = xml_row.findall(f"{{{W_NS}}}tc")
+            html_cells = self._html_direct_row_cells(html_row)
+            xml_cells = self._xml_direct_row_cells(xml_row)
 
             if len(html_cells) != len(xml_cells):
                 continue
 
             for html_cell, xml_cell in zip(html_cells, xml_cells):
+                for child_html_table, child_xml_table in zip(
+                    self._html_direct_cell_tables(html_cell),
+                    self._xml_direct_cell_tables(xml_cell),
+                ):
+                    self._inject_equations_into_table(
+                        child_html_table,
+                        child_xml_table,
+                    )
+
                 if not xml_cell.findall(f".//{{{OMML_NS}}}oMath"):
                     continue
 
-                # 该单元格含公式，重建其 HTML 内容以保留公式
-                new_content = self._build_cell_html_with_equations(xml_cell)
-                if new_content:
-                    html_cell.clear()
-                    new_soup = BeautifulSoup(new_content, 'html.parser')
-                    for child in list(new_soup.children):
+                new_content = self._build_cell_formula_html(xml_cell)
+                if not new_content:
+                    continue
+
+                new_soup = BeautifulSoup(new_content, 'html.parser')
+                nested_html_tables = self._html_direct_cell_tables(html_cell)
+                insert_before = nested_html_tables[0] if nested_html_tables else None
+                for child in list(new_soup.children):
+                    if insert_before is not None:
+                        insert_before.insert_before(child)
+                    else:
                         html_cell.append(child)
 
         return html_table
+
+    def _build_cell_formula_html(self, xml_cell) -> str:
+        """只构建当前单元格中含公式段落的 HTML，避免覆盖列表和嵌套表格。"""
+        OMML_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
+        parts = []
+        for child in xml_cell:
+            if self._local_name(child) != 'p':
+                continue
+            if not child.findall(f".//{{{OMML_NS}}}oMath"):
+                continue
+            para_html = self._build_paragraph_html_with_equations(child)
+            if para_html is not None:
+                parts.append(para_html)
+        return ''.join(parts)
 
     def _build_cell_html_with_equations(self, xml_cell) -> str:
         """
@@ -1270,16 +1359,121 @@ class DocxConverter:
                 return
 
         # 回退：孤立 XML 解析模式（原始方案，不含文档上下文）
-        table = read_str(element.xml)
-        body_reader = body_xml.reader()
-        t = body_reader.read_all([table])
-        res = convert_document_element_to_html(t.value[0])
-        html = self._normalize_table_colspans(res.value)
+        try:
+            table = read_str(element.xml)
+            body_reader = body_xml.reader()
+            t = body_reader.read_all([table])
+            res = convert_document_element_to_html(t.value[0])
+            html = res.value
+        except Exception as e:
+            logger.debug(f"Could not parse isolated DOCX table with mammoth: {e}")
+            html = self._build_table_html_from_xml(element)
+        html = self._normalize_table_colspans(html)
         table_block = {
             "type": BlockType.TABLE,
             "content": html,
         }
         self.cur_page.append(table_block)
+
+    def _build_table_html_from_xml(self, xml_table) -> str:
+        """用 DOCX XML 递归构建保底表格 HTML，避免复杂表格被整体丢弃。"""
+        rows_html = []
+        for row in self._xml_direct_table_rows(xml_table):
+            cells_html = []
+            for cell in self._xml_direct_row_cells(row):
+                attrs = self._xml_cell_html_attrs(cell)
+                content = self._build_cell_html_from_xml(cell)
+                cells_html.append(f"<td{attrs}>{content}</td>")
+            rows_html.append(f"<tr>{''.join(cells_html)}</tr>")
+
+        if not rows_html:
+            text = self._xml_element_visible_text(xml_table)
+            return f"<table><tr><td>{escape(text)}</td></tr></table>"
+        return f"<table>{''.join(rows_html)}</table>"
+
+    def _build_cell_html_from_xml(self, xml_cell) -> str:
+        parts = []
+        for child in xml_cell:
+            child_tag = self._local_name(child)
+            if child_tag == 'p':
+                para_html = self._build_paragraph_html_with_equations(child)
+                if para_html is not None:
+                    parts.append(para_html)
+            elif child_tag == 'tbl':
+                parts.append(self._build_table_html_from_xml(child))
+        return ''.join(parts)
+
+    def _xml_cell_html_attrs(self, xml_cell) -> str:
+        attrs = []
+        grid_span = xml_cell.find(
+            'w:tcPr/w:gridSpan',
+            namespaces=DocxConverter._BLIP_NAMESPACES,
+        )
+        if grid_span is not None:
+            span = grid_span.get(self.XML_KEY)
+            if span and span.isdigit() and int(span) > 1:
+                attrs.append(f'colspan="{int(span)}"')
+
+        v_merge = xml_cell.find(
+            'w:tcPr/w:vMerge',
+            namespaces=DocxConverter._BLIP_NAMESPACES,
+        )
+        if v_merge is not None:
+            merge_val = v_merge.get(self.XML_KEY)
+            if merge_val == 'restart':
+                rowspan = self._estimate_xml_cell_rowspan(xml_cell)
+                if rowspan > 1:
+                    attrs.append(f'rowspan="{rowspan}"')
+
+        return f" {' '.join(attrs)}" if attrs else ""
+
+    def _estimate_xml_cell_rowspan(self, xml_cell) -> int:
+        """估算简单 vMerge rowspan；无法可靠定位时保守返回 1。"""
+        parent_row = xml_cell.getparent()
+        if parent_row is None:
+            return 1
+        table = parent_row.getparent()
+        if table is None:
+            return 1
+
+        row_cells = self._xml_direct_row_cells(parent_row)
+        try:
+            cell_index = row_cells.index(xml_cell)
+        except ValueError:
+            return 1
+
+        rows = self._xml_direct_table_rows(table)
+        try:
+            row_index = rows.index(parent_row)
+        except ValueError:
+            return 1
+
+        rowspan = 1
+        for next_row in rows[row_index + 1:]:
+            next_cells = self._xml_direct_row_cells(next_row)
+            if cell_index >= len(next_cells):
+                break
+            v_merge = next_cells[cell_index].find(
+                'w:tcPr/w:vMerge',
+                namespaces=DocxConverter._BLIP_NAMESPACES,
+            )
+            if v_merge is None:
+                break
+            merge_val = v_merge.get(self.XML_KEY)
+            if merge_val == 'restart':
+                break
+            rowspan += 1
+        return rowspan
+
+    def _xml_element_visible_text(self, xml_element) -> str:
+        return ''.join(
+            node.text or ''
+            for node in xml_element.xpath(
+                './/*[local-name()="t" and '
+                'namespace-uri()="http://schemas.openxmlformats.org/wordprocessingml/2006/main"]'
+            )
+            if node.text
+        )
 
     def _normalize_table_colspans(self, html: str) -> str:
         """
@@ -1313,7 +1507,7 @@ class DocxConverter:
             modified = False
 
             for table in tables:
-                rows = table.find_all('tr')
+                rows = self._html_direct_table_rows(table)
                 if not rows:
                     continue
 
@@ -1321,14 +1515,18 @@ class DocxConverter:
                 # 无法反映真实网格宽度（被 rowspan 占据的列不出现在后续行的 td
                 # 列表中），此时算法的假设不成立，跳过该表格以避免误修改合法的
                 # colspan。
-                all_cells = table.find_all(['td', 'th'])
+                all_cells = [
+                    cell
+                    for row in rows
+                    for cell in self._html_direct_row_cells(row)
+                ]
                 if any(int(c.get('rowspan', 1)) > 1 for c in all_cells):
                     continue
 
                 # 计算每行的有效列数（所有单元格的 colspan 之和）
                 row_col_counts = []
                 for row in rows:
-                    cells = row.find_all(['td', 'th'])
+                    cells = self._html_direct_row_cells(row)
                     total = sum(int(c.get('colspan', 1)) for c in cells)
                     row_col_counts.append(total)
 
@@ -1348,7 +1546,7 @@ class DocxConverter:
                         continue
 
                     excess = col_count - target
-                    cells = row.find_all(['td', 'th'])
+                    cells = self._html_direct_row_cells(row)
 
                     for cell in cells:
                         if excess <= 0:
