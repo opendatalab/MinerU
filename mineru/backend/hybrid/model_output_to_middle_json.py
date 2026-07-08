@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from ...types import Block, BlockType, PageInfo
-from ...utils.config_reader import get_table_enable
 from ...utils.hash_utils import bytes_md5
 from ...utils.image_payload import ImagePayloadCache
 from ...utils.pdf_document import PDFPage
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from ..pipeline.model_init import MineruHybridModel
+from ...utils.backend_options import DEFAULT_HYBRID_EFFORT, LAYOUT_HYBRID_EFFORT, LOCAL_HYBRID_EFFORT, validate_effort
+from ..local_model_runtime import HybridLocalModelContext
 from ..utils.formula_number import optimize_hybrid_formula_number_blocks
 from ..utils.middle_json_utils import apply_post_ocr
 from ..utils.para_block_utils import (
@@ -46,10 +45,13 @@ def blocks_to_page_info(
     pdf_page: PDFPage,
     page_index: int,
     _ocr_enable: bool,
-    _vlm_ocr_enable: bool,
+    use_vlm_text_content: bool | None = None,
     image_cache: ImagePayloadCache | None = None,
+    _vlm_ocr_enable: bool | None = None,
 ) -> PageInfo:
     """将blocks转换为页面信息"""
+    if use_vlm_text_content is None:
+        use_vlm_text_content = bool(_vlm_ocr_enable)
 
     page_model_list = optimize_hybrid_formula_number_blocks(page_model_list)
     scale = image_dict["scale"]
@@ -68,7 +70,8 @@ def blocks_to_page_info(
         width,
         height,
         _ocr_enable,
-        _vlm_ocr_enable,
+        use_vlm_text_content,
+        image_cache=image_cache,
     )
     image_blocks = magic_model.get_image_blocks()
     table_blocks = magic_model.get_table_blocks()
@@ -124,8 +127,8 @@ def blocks_to_page_info(
     return page_info
 
 
-def _apply_post_ocr(pages: list[PageInfo], hybrid_pipeline_model: MineruHybridModel) -> None:
-    apply_post_ocr(pages, hybrid_pipeline_model.ocr_model)
+def _apply_post_ocr(pages: list[PageInfo], local_context: HybridLocalModelContext) -> None:
+    apply_post_ocr(pages, local_context.ocr_model)
 
 
 def _normalize_split_title_blocks(pages: list[PageInfo]) -> None:
@@ -145,25 +148,31 @@ def _normalize_split_title_blocks(pages: list[PageInfo]) -> None:
 
 
 def apply_server_side_postprocess(
-    pages: list[PageInfo], hybrid_pipeline_model: MineruHybridModel, _ocr_enable: bool, _vlm_ocr_enable: bool
+    pages: list[PageInfo],
+    local_context: HybridLocalModelContext,
+    _ocr_enable: bool,
+    use_vlm_text_content: bool | None = None,
+    *,
+    _vlm_ocr_enable: bool | None = None,
 ) -> None:
-    """执行 Hybrid 只能在服务端完成的 post-OCR，避免客户端依赖 pipeline OCR 模型。"""
-    if not (_vlm_ocr_enable or _ocr_enable):
-        _apply_post_ocr(pages, hybrid_pipeline_model)
+    """执行 Hybrid 只能在服务端完成的 post-OCR，避免客户端依赖本地 OCR 模型。"""
+    if use_vlm_text_content is None:
+        use_vlm_text_content = bool(_vlm_ocr_enable)
+    if not (use_vlm_text_content or _ocr_enable):
+        _apply_post_ocr(pages, local_context)
 
 
-def finalize_middle_json_from_preproc(pages: list[PageInfo], effort: str = "medium") -> None:
+def finalize_middle_json_from_preproc(pages: list[PageInfo], effort: str = DEFAULT_HYBRID_EFFORT) -> None:
     """从 Hybrid preproc_blocks 执行完整 finalize，供服务端完整路径和客户端复用。"""
+    effort = validate_effort(effort)
     build_para_blocks_from_preproc(pages)
     merge_para_text_blocks(
         pages,
         auto_merge_by_det=True,
-        auto_merge_vertical_by_det=effort == "medium",
+        auto_merge_vertical_by_det=effort in {LOCAL_HYBRID_EFFORT, LAYOUT_HYBRID_EFFORT},
     )
 
-    table_enable = get_table_enable(os.getenv("MINERU_VLM_TABLE_ENABLE", "True").lower() == "true")
-    if table_enable:
-        cross_page_table_merge(pages)
+    cross_page_table_merge(pages)
 
     apply_title_leveling_to_pdf_info(pages)
     _normalize_split_title_blocks(pages)
@@ -172,11 +181,15 @@ def finalize_middle_json_from_preproc(pages: list[PageInfo], effort: str = "medi
 
 def finalize_middle_json(
     pages: list[PageInfo],
-    hybrid_pipeline_model: MineruHybridModel,
+    local_context: HybridLocalModelContext,
     _ocr_enable: bool,
-    _vlm_ocr_enable: bool,
-    effort: str = "medium",
+    use_vlm_text_content: bool | None = None,
+    effort: str = DEFAULT_HYBRID_EFFORT,
+    *,
+    _vlm_ocr_enable: bool | None = None,
 ) -> None:
     """保持旧入口语义：服务端先做必要 post-OCR，再执行完整 finalize。"""
-    apply_server_side_postprocess(pages, hybrid_pipeline_model, _ocr_enable, _vlm_ocr_enable)
+    if use_vlm_text_content is None:
+        use_vlm_text_content = bool(_vlm_ocr_enable)
+    apply_server_side_postprocess(pages, local_context, _ocr_enable, use_vlm_text_content)
     finalize_middle_json_from_preproc(pages, effort=effort)

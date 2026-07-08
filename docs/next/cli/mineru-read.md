@@ -46,11 +46,11 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 规则：
 
 - `short_id` 是 doclib 为文档生成的稳定短 ID。
-- `tier` 取值为 `flash`、`standard`、`pro`。
+- `tier` 取值为 `flash`、`medium`、`high`。
 - `page_no` 和 `block_no` 使用 1-based 编号。
 - `char:{offset}` 使用 block 渲染文本内的 0-based 字符 offset。
 
-当只给出 `doc:{short_id}` 时，系统会选择当前已缓存的最高可用非 `flash` tier；如果不存在 `standard` 或 `pro` 结果，则返回错误，不静默降级到 `flash`。
+当只给出 `doc:{short_id}` 时，系统会选择当前已缓存的最高可用非 `flash` tier；如果不存在 `medium` 或 `high` 结果，则返回错误，不静默降级到 `flash`。
 
 ## 4. 核心参数
 
@@ -142,7 +142,7 @@ locator-first 读取时：
 普通 markdown 输出中，如果还有下一段可读内容，CLI 会输出：
 
 ```text
-<!-- Next: mineru read doc:ab12cd3/tier:standard/page:5 -->
+<!-- Next: mineru read doc:ab12cd3/tier:medium/page:5 -->
 ```
 
 `--json` 时，通过 `next_request.locator` 表示下一次建议读取的位置。

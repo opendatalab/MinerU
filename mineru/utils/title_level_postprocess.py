@@ -12,8 +12,6 @@ from .backend_options import DEFAULT_HYBRID_EFFORT, validate_effort
 from .config_reader import get_llm_aided_config
 from .llm_aided import llm_aided_title
 
-SUPPORTED_PDF_BACKENDS = {"pipeline", "vlm", "hybrid"}
-
 
 def _resolve_title_aided_config() -> dict[str, Any] | None:
     """从本地配置解析标题分级开关。"""
@@ -42,15 +40,9 @@ def apply_title_leveling_to_pdf_info(pdf_info: list[PageInfo]) -> None:
 
 def finalize_client_side_pages(pages: list[PageInfo], backend: str, effort: str = DEFAULT_HYBRID_EFFORT) -> None:
     """按调用方传入的后端类型，对 pages 原地执行客户端可完成的 finalize。"""
-    if backend == "pipeline":
-        from mineru.backend.pipeline.model_output_to_middle_json import finalize_middle_json_from_preproc
-
-        finalize_middle_json_from_preproc(pages)
-    elif backend == "vlm":
-        from mineru.backend.vlm.model_output_to_middle_json import finalize_middle_json
-
-        finalize_middle_json(pages)
-    elif backend == "hybrid":
+    if backend == "hybrid":
         from mineru.backend.hybrid.model_output_to_middle_json import finalize_middle_json_from_preproc
 
         finalize_middle_json_from_preproc(pages, effort=validate_effort(effort))
+        return
+    raise ValueError(f"Unsupported client-side finalize backend '{backend}'")

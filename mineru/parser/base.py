@@ -16,6 +16,7 @@ from ..utils.pdf_document import PDFDocument
 
 _PDF_RETAINED_PAGE_INDICES_KEY = "_pdf_retained_page_indices"
 _PDF_BROKEN_PAGE_INDICES_KEY = "_pdf_broken_page_indices"
+_SUPPORTED_MIDDLE_JSON_BACKENDS = {"hybrid", "office"}
 
 
 def _parse_optional_int_list(value: Any) -> list[int] | None:
@@ -67,6 +68,8 @@ class ParseResult:
         root_backend = d.get("_backend")
         if not isinstance(root_backend, str):
             root_backend = None
+        elif root_backend not in _SUPPORTED_MIDDLE_JSON_BACKENDS:
+            raise ValueError(f"Unsupported middle json backend '{root_backend}'.")
         pages: list[PageInfo] = []
         for raw_page in raw_pages:
             if not isinstance(raw_page, dict):
@@ -75,6 +78,8 @@ class ParseResult:
             backend = raw_page.get("_backend")
             if not isinstance(backend, str):
                 backend = root_backend
+            elif backend not in _SUPPORTED_MIDDLE_JSON_BACKENDS:
+                raise ValueError(f"Unsupported middle json backend '{backend}'.")
             if backend is not None:
                 page._backend = backend
             pages.append(page)

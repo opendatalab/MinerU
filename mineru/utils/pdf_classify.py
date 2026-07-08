@@ -38,6 +38,37 @@ SUSPICIOUS_CROSS_SCRIPT_MIN_OTHER_SCRIPT_CHARS = 120
 SUSPICIOUS_CROSS_SCRIPT_OTHER_SCRIPT_RATIO = 0.18
 SUSPICIOUS_CROSS_SCRIPT_MIN_DENSE_SCRIPTS = 3
 SUSPICIOUS_CROSS_SCRIPT_DENSE_SCRIPT_CHARS = 5
+SUSPICIOUS_CROSS_SCRIPT_RANGES = (
+    (0x0370, 0x03FF, "Greek"),
+    (0x0400, 0x052F, "Cyrillic"),
+    (0x0600, 0x06FF, "Arabic"),
+    (0x0700, 0x074F, "Syriac"),
+    (0x0750, 0x077F, "Arabic Supplement"),
+    (0x0780, 0x07BF, "Thaana"),
+    (0x07C0, 0x07FF, "NKo"),
+    (0x0800, 0x083F, "Samaritan"),
+    (0x0840, 0x085F, "Mandaic"),
+    (0x0860, 0x086F, "Syriac Supplement"),
+    (0x0870, 0x089F, "Arabic Extended-B"),
+    (0x0900, 0x097F, "Devanagari"),
+    (0x0C80, 0x0CFF, "Kannada"),
+    (0x0E00, 0x0E7F, "Thai"),
+    (0x1000, 0x109F, "Myanmar"),
+    (0x1100, 0x11FF, "Hangul Jamo"),
+    (0x1200, 0x137F, "Ethiopic"),
+    (0x13A0, 0x13FF, "Cherokee"),
+    (0x1400, 0x167F, "Canadian Syllabics"),
+    (0x1800, 0x18AF, "Mongolian"),
+    (0x1A20, 0x1AAF, "Tai Tham"),
+    (0x2C00, 0x2C5F, "Glagolitic"),
+    (0xA000, 0xA48F, "Yi"),
+)
+CJK_TEXT_RANGES = (
+    (0x3400, 0x4DBF),
+    (0x4E00, 0x9FFF),
+    (0xF900, 0xFAFF),
+    (0x20000, 0x2EBEF),
+)
 
 _ALLOWED_CONTROL_CODES = {9, 10, 13}
 _PRIVATE_USE_AREA_START = 0xE000
@@ -129,8 +160,16 @@ def classify(pdf_doc: pdfium.PdfDocument, pdf_bytes: bytes) -> str:
                 )
                 return "ocr"
 
-            if _get_cross_script_text_signal_from_samples(text_samples):
-                logger.debug("Classify PDF as OCR due to suspicious cross-script text layer.")
+            cross_script_signal = _get_cross_script_text_signal_from_samples(text_samples)
+            if cross_script_signal["triggered"]:
+                logger.debug(
+                    "Classify PDF as OCR due to suspicious cross-script text: "
+                    f"chars={cross_script_signal['total_chars']}, "
+                    f"cjk={cross_script_signal['cjk_chars']}, "
+                    f"suspicious={cross_script_signal['suspicious_chars']}, "
+                    f"ratio={cross_script_signal['suspicious_ratio']:.4f}, "
+                    f"scripts={cross_script_signal['top_scripts']}"
+                )
                 return "ocr"
 
             ascii_punct_signal = _get_sampled_ascii_punct_signal_from_samples(text_samples)
@@ -476,56 +515,69 @@ def _get_sample_cleaned_text(text_sample: Any) -> str:
     return str(getattr(text_sample, "cleaned_text", ""))
 
 
-def _classify_script(char: str) -> str:
-    """将字符粗略归入脚本类别，用于识别 ToUnicode 映射错乱后的混杂脚本。"""
-    code = ord(char)
-    if 0x4E00 <= code <= 0x9FFF:
-        return "cjk"
-    if 0x0400 <= code <= 0x052F:
-        return "cyrillic"
-    if 0x0600 <= code <= 0x06FF:
-        return "arabic"
-    if 0x0900 <= code <= 0x097F:
-        return "devanagari"
-    if 0x0370 <= code <= 0x03FF:
-        return "greek"
-    if 0x0E00 <= code <= 0x0E7F:
-        return "thai"
-    return ""
+def _is_cjk_text_char(char: str) -> bool:
+    """判断字符是否属于中文文档中可接受的 CJK 文字范围。"""
+    unicode_code = ord(char)
+    return any(start <= unicode_code <= end for start, end in CJK_TEXT_RANGES)
 
 
-def _get_cross_script_text_signal_from_samples(text_samples: list[Any]) -> bool:
-    """检测 CJK 文本层中混入多种非预期脚本的乱码信号。"""
+def _get_cross_script_name(char: str) -> str | None:
+    """识别中文文档乱码中常见的跨脚本字符块名称。"""
+    unicode_code = ord(char)
+    for start, end, script_name in SUSPICIOUS_CROSS_SCRIPT_RANGES:
+        if start <= unicode_code <= end:
+            return script_name
+    return None
+
+
+def _get_cross_script_text_signal_from_samples(text_samples: list[Any]) -> dict[str, Any]:
+    """统计中文文档文本层中大比例跨脚本混入信号，用于识别合法 Unicode 错码。"""
     total_chars = 0
     cjk_chars = 0
-    other_script_chars = 0
+    suspicious_chars = 0
     script_counts: dict[str, int] = {}
 
     for text_sample in text_samples:
         for char in _get_sample_cleaned_text(text_sample):
             total_chars += 1
-            script_name = _classify_script(char)
-            if script_name == "cjk":
+            if _is_cjk_text_char(char):
                 cjk_chars += 1
-            elif script_name:
-                other_script_chars += 1
-                script_counts[script_name] = script_counts.get(script_name, 0) + 1
 
-    if total_chars < SUSPICIOUS_CROSS_SCRIPT_MIN_TEXT_CHARS:
-        return False
-    if cjk_chars < SUSPICIOUS_CROSS_SCRIPT_MIN_CJK_CHARS:
-        return False
-    if other_script_chars < SUSPICIOUS_CROSS_SCRIPT_MIN_OTHER_SCRIPT_CHARS:
-        return False
+            script_name = _get_cross_script_name(char)
+            if script_name is None:
+                continue
 
-    other_script_ratio = other_script_chars / total_chars
+            suspicious_chars += 1
+            script_counts[script_name] = script_counts.get(script_name, 0) + 1
+
+    suspicious_ratio = 0.0
+    if total_chars > 0:
+        suspicious_ratio = suspicious_chars / total_chars
     dense_script_count = sum(
         1 for count in script_counts.values() if count >= SUSPICIOUS_CROSS_SCRIPT_DENSE_SCRIPT_CHARS
     )
-    return (
-        other_script_ratio >= SUSPICIOUS_CROSS_SCRIPT_OTHER_SCRIPT_RATIO
+    top_scripts = sorted(
+        script_counts.items(),
+        key=lambda item: (-item[1], item[0]),
+    )[:5]
+    triggered = (
+        total_chars >= SUSPICIOUS_CROSS_SCRIPT_MIN_TEXT_CHARS
+        and cjk_chars >= SUSPICIOUS_CROSS_SCRIPT_MIN_CJK_CHARS
+        and suspicious_chars >= SUSPICIOUS_CROSS_SCRIPT_MIN_OTHER_SCRIPT_CHARS
+        and suspicious_ratio >= SUSPICIOUS_CROSS_SCRIPT_OTHER_SCRIPT_RATIO
         and dense_script_count >= SUSPICIOUS_CROSS_SCRIPT_MIN_DENSE_SCRIPTS
     )
+
+    return {
+        "triggered": triggered,
+        "total_chars": total_chars,
+        "cjk_chars": cjk_chars,
+        "suspicious_chars": suspicious_chars,
+        "suspicious_ratio": suspicious_ratio,
+        "script_counts": script_counts,
+        "top_scripts": top_scripts,
+        "dense_script_count": dense_script_count,
+    }
 
 
 def _count_ascii_punct_run_chars(text: str) -> int:
@@ -659,6 +711,19 @@ def _resolve_pdf_object(obj: Any) -> Any:
     return obj
 
 
+def _get_pdfium_page_object_bounds(page_object: Any) -> tuple[float, float, float, float]:
+    """兼容 pypdfium2 4.x/5.x，统一获取页面对象的边界坐标。"""
+    get_bounds = getattr(page_object, "get_bounds", None)
+    if callable(get_bounds):
+        return get_bounds()
+
+    get_pos = getattr(page_object, "get_pos", None)
+    if callable(get_pos):
+        return get_pos()
+
+    raise AttributeError("PDFium page object has neither get_bounds() nor get_pos()")
+
+
 def get_high_image_coverage_ratio_pdfium(pdf_doc: pdfium.PdfDocument, page_indices: list[int]) -> float:
     high_image_coverage_pages = 0
 
@@ -673,7 +738,7 @@ def get_high_image_coverage_ratio_pdfium(pdf_doc: pdfium.PdfDocument, page_indic
 
                 for page_object in page.get_objects(filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE], max_depth=3):
                     try:
-                        left, bottom, right, top = page_object.get_pos()
+                        left, bottom, right, top = _get_pdfium_page_object_bounds(page_object)
                         image_area += max(0.0, right - left) * max(0.0, top - bottom)
                     finally:
                         close_pdfium_child(page_object)

@@ -37,7 +37,7 @@ def _table_page_with_cached_inline_image(img_bytes: bytes) -> tuple[PageInfo, Im
                 ],
             )
         ],
-        _backend="pipeline",
+        _backend="hybrid",
     )
     return page, image_cache, inline_image
 
@@ -103,7 +103,7 @@ def test_parse_result_from_dict_accepts_pages_and_preserves_page_backend() -> No
                 {
                     "page_idx": 0,
                     "page_size": [100, 200],
-                    "_backend": "pipeline",
+                                            "_backend": "hybrid",
                     "preproc_blocks": [
                         {
                             "index": 0,
@@ -130,7 +130,7 @@ def test_parse_result_from_dict_accepts_pages_and_preserves_page_backend() -> No
     )
 
     assert len(restored.pages) == 1
-    assert restored.pages[0]._backend == "pipeline"
+    assert restored.pages[0]._backend == "hybrid"
     assert restored.pages[0].page_size == (100, 200)
     assert restored.pages[0].preproc_blocks[0].level == 1
 
@@ -157,13 +157,24 @@ def test_parse_result_from_dict_keeps_page_backend_over_root_backend() -> None:
             "pages": [
                 {
                     "page_idx": 0,
-                    "_backend": "pipeline",
+                    "_backend": "hybrid",
                 }
             ],
         }
     )
 
-    assert restored.pages[0]._backend == "pipeline"
+    assert restored.pages[0]._backend == "hybrid"
+
+
+def test_parse_result_from_dict_rejects_legacy_vlm_backend() -> None:
+    with pytest.raises(ValueError, match="Unsupported middle json backend 'vlm'"):
+        ParseResult.from_dict({"_backend": "vlm", "pages": [{"page_idx": 0}]})
+
+
+def test_parse_result_from_dict_rejects_legacy_pipeline_backend() -> None:
+    legacy_backend = "pipeline"
+    with pytest.raises(ValueError, match="Unsupported middle json backend 'pipeline'"):
+        ParseResult.from_dict({"_backend": legacy_backend, "pages": [{"page_idx": 0}]})
 
 
 def test_parse_result_preserves_true_merge_prev_in_staged_middle_json() -> None:
@@ -252,7 +263,7 @@ def test_parse_result_structured_content_method_and_save_name() -> None:
                 ],
             )
         ],
-        _backend="pipeline",
+        _backend="hybrid",
     )
     result = ParseResult(pages=[page])
     writes: dict[str, str] = {}
@@ -297,7 +308,7 @@ def test_parse_result_render_methods_use_export_pages_without_mutating_source(
                 ],
             )
         ],
-        _backend="pipeline",
+        _backend="hybrid",
     )
     result = ParseResult(pages=[page], _image_cache=image_cache)
     captured: list[list[PageInfo]] = []
@@ -362,7 +373,7 @@ def test_parse_result_save_writes_cached_images_and_exports_clean_middle_json() 
                 ],
             )
         ],
-        _backend="pipeline",
+        _backend="hybrid",
     )
     result = ParseResult(pages=[page], _image_cache=image_cache)
     writes: dict[str, bytes | str] = {}

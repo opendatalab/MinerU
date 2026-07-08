@@ -23,7 +23,7 @@
 | 规则 | 当前结论 |
 |------|----------|
 | `parse-server` | 最终术语，中文为“解析服务”；此前误写的相关术语不作为项目概念使用。 |
-| 默认选择策略 | 只会解析为 `standard` 或 `pro`，永远不会等价于 `flash`。 |
+| 默认选择策略 | 只会解析为 `medium` 或 `high`，永远不会等价于 `flash`。 |
 | 实际 tier 记录 | 任务、缓存、产物和 metadata 只记录实际使用的实体 tier，不记录 `requested_tier` / `resolved_tier`。 |
 | `flash` | 长期存在，既是一个解析档位，也是 PDF 快速解析 backend 名称。 |
 | doclib 产物 | `parsed/` 目录只持久化按页组织的 Middle JSON 批次文件；Markdown、Content List、HTML 读取时转换。 |
@@ -35,8 +35,8 @@
 | JSON 输出格式 | 不把 `json` 作为正式产物名；正式格式为 `middle_json`、`content_list`、`structured_content`，详见 [ADR-0001](decisions/0001-json-output-formats.md)。 |
 | Force 与 invalidate | `--force` 跳过 done cache，可复用 active parse，只为未覆盖页创建新 parse；invalidate 才改变旧缓存可用性，详见 [ADR-0002](decisions/0002-force-vs-invalidate.md)。 |
 | doclib HTTP API | 本地 doclib HTTP API 使用 `/docs`、`/parses`、`/search` 和 `POST /invalidate`，详见 [ADR-0004](decisions/0004-doclib-http-api-resources.md)。 |
-| 本地 `pro` | `pro` 本地运行是正式支持能力，不是实验能力；当前代码基本 ready。 |
-| mineru.net tier | `mineru.net/api` 在相当长时间内只提供最高等级的 `pro` 解析。 |
+| 本地 `high` | `high` 本地运行是正式支持能力，不是实验能力；当前代码基本 ready。 |
+| mineru.net tier | `mineru.net/api` 在相当长时间内只提供最高等级的 `high` 解析。 |
 | api-server tier | 一个 `mineru-kit api-server` 进程只服务一个 tier。 |
 | managed 生命周期 | managed 模式下，模型下载、预热、重试和退避由 `mineru-kit api-server` 负责。 |
 | 本地 api-server 安全 | 本地 api-server 默认监听 loopback；可通过 `--api-key` 设置固定 API Key，默认不设置。 |
@@ -68,8 +68,8 @@
 | doclib schema 稳定边界 | 稳定的是 doclib public models，不是 SQLite 表结构；稳定性分为 `core stable`、`operational stable` 和 `diagnostic / internal`，详见 [ADR-0020](decisions/0020-doclib-schema-stability-boundary.md)。 |
 | `mineru-kit` 对外暴露 | `mineru-kit` 保留为专家工具入口；Agent 默认入口是 `mineru`，skill 不主动暴露 `mineru-kit`。 |
 | Office/HTML unknown bbox | 公共 schema 允许 unknown bbox；不要求 Office/HTML 在 P0 估算真实 bbox，validator 应区分 unknown 与非法 bbox。 |
-| 本地 managed tier 硬件基线 | 本地 managed `standard` / `pro` 都要求至少 16GB 总内存；`standard` 不要求 GPU，纯 CPU 可用但可能较慢；`pro` 需要满足 NVIDIA / Apple Silicon / MinerU 支持的 AI 加速器条件。详见 [解析 Tier](tiers.md#5-standard)。 |
-| watch tier 升级 | P0 不做基于启发式的自动提示或自动排队升级。watch 默认使用 `flash`；后台自动升级只由用户显式配置的 parsing-rules 触发；用户或 Agent 主动读取时再按默认选择策略解析到 `standard` / `pro`。 |
+| 本地 managed tier 硬件基线 | 本地 managed `medium` / `high` 都要求至少 16GB 总内存；`medium` 不要求 GPU，纯 CPU 可用但可能较慢；`high` 需要满足 NVIDIA / Apple Silicon / MinerU 支持的 AI 加速器条件。详见 [解析 Tier](tiers.md#5-medium)。 |
+| watch tier 升级 | P0 不做基于启发式的自动提示或自动排队升级。watch 默认使用 `flash`；后台自动升级只由用户显式配置的 parsing-rules 触发；用户或 Agent 主动读取时再按默认选择策略解析到 `medium` / `high`。 |
 | Middle JSON `schema_version` | 采用 `pages` 的 Middle JSON 顶层结构必须写 `schema_version`；旧 CLI 落盘 middle_json 也统一为 `schema_version + pages`，不再写入或读取 `pdf_info`，但保留顶层 `_backend` / `_version_name` 作为旧 CLI metadata。当前暂不增加 `_meta`；代码常量定义为 `mineru.schema.middle_json.MIDDLE_JSON_SCHEMA_VERSION`。 |
 
 ## 3. Blocker

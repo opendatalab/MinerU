@@ -1,9 +1,10 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from pathlib import Path
 
+from mineru.utils.backend_options import normalize_backend
+
 
 OFFICE_PARSE_DIR_NAME = "office"
-VLM_PARSE_DIR_NAME = "vlm"
 
 
 def build_parse_dir(
@@ -15,12 +16,12 @@ def build_parse_dir(
     is_office: bool = False,
 ) -> Path:
     output_root = Path(output_dir)
+    try:
+        backend = normalize_backend(backend)
+    except ValueError:
+        pass
     if is_office:
         return output_root / pdf_name / OFFICE_PARSE_DIR_NAME
-    if backend.startswith("pipeline"):
-        return output_root / pdf_name / parse_method
-    if backend.startswith("vlm"):
-        return output_root / pdf_name / VLM_PARSE_DIR_NAME
     if backend.startswith("hybrid"):
         return output_root / pdf_name / f"hybrid_{parse_method}"
     raise ValueError(f"Unknown backend type: {backend}")

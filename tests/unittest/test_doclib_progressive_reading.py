@@ -16,7 +16,7 @@ def _page(page_idx: int, *texts: str) -> PageInfo:
         )
         for index, text in enumerate(texts)
     ]
-    return PageInfo(page_idx=page_idx, page_size=(100, 100), para_blocks=blocks, _backend="pipeline")
+    return PageInfo(page_idx=page_idx, page_size=(100, 100), para_blocks=blocks, _backend="hybrid")
 
 
 def test_paginated_default_content_pages_are_first_ten() -> None:
@@ -44,7 +44,7 @@ def test_content_page_range_rejects_empty_available_subset() -> None:
 
 def test_paginated_page_boundary_truncation_suggests_pages_only() -> None:
     pages = [_page(index, f"page {index + 1}") for index in range(10)]
-    rendered = _render_progressive_markdown(pages, short_id="ab12cd3", tier="standard", after=None, limit=40, add_markers=False)
+    rendered = _render_progressive_markdown(pages, short_id="ab12cd3", tier="high", after=None, limit=40, add_markers=False)
     next_request = _next_content_request(
         rendered=rendered,
         request_page_range="1~10",
@@ -62,7 +62,7 @@ def test_paginated_page_boundary_truncation_suggests_pages_only() -> None:
 
 def test_paginated_long_single_page_truncation_keeps_pages_with_after() -> None:
     pages = [_page(6, "word " * 100)]
-    rendered = _render_progressive_markdown(pages, short_id="ab12cd3", tier="standard", after=None, limit=40, add_markers=False)
+    rendered = _render_progressive_markdown(pages, short_id="ab12cd3", tier="high", after=None, limit=40, add_markers=False)
     next_request = _next_content_request(
         rendered=rendered,
         request_page_range="7~10",
@@ -72,7 +72,7 @@ def test_paginated_long_single_page_truncation_keeps_pages_with_after() -> None:
     )
 
     assert rendered.truncated is True
-    assert rendered.content_ranges[-1].end.startswith("doc:ab12cd3/tier:standard/page:7/block:1/char:")
+    assert rendered.content_ranges[-1].end.startswith("doc:ab12cd3/tier:high/page:7/block:1/char:")
     assert next_request is not None
     assert next_request.page_range == "7~10"
     assert next_request.after == rendered.content_ranges[-1].end
@@ -82,7 +82,7 @@ def test_non_paginated_truncation_can_use_after_only() -> None:
     rendered = _render_progressive_markdown(
         [_page(0, "block 1", "block 2", "block 3")],
         short_id="ab12cd3",
-        tier="standard",
+        tier="high",
         after=None,
         limit=15,
         add_markers=False,
@@ -105,7 +105,7 @@ def test_non_contiguous_pages_suggest_after_last_requested_page() -> None:
     rendered = _render_progressive_markdown(
         [_page(0, "page 1"), _page(4, "page 5"), _page(19, "page 20"), _page(24, "page 25")],
         short_id="ab12cd3",
-        tier="standard",
+        tier="high",
         after=None,
         limit=30000,
         add_markers=False,
@@ -126,7 +126,7 @@ def test_truncated_false_can_still_have_next_request() -> None:
     rendered = _render_progressive_markdown(
         [_page(index, f"page {index + 1}") for index in range(10)],
         short_id="ab12cd3",
-        tier="standard",
+        tier="high",
         after=None,
         limit=30000,
         add_markers=False,
@@ -153,8 +153,8 @@ def test_paginated_next_request_is_never_after_only() -> None:
                 "content_ranges": [
                     ContentRange(
                         page_range="7",
-                        start="doc:ab12cd3/tier:standard/page:7/block:1/char:0",
-                        end="doc:ab12cd3/tier:standard/page:7/block:1/char:40",
+                        start="doc:ab12cd3/tier:high/page:7/block:1/char:0",
+                        end="doc:ab12cd3/tier:high/page:7/block:1/char:40",
                     )
                 ],
                 "truncated": True,
@@ -221,7 +221,7 @@ def test_page_markdown_blocks_prefers_markdown_table_in_doclib() -> None:
                 ],
             )
         ],
-        _backend="pipeline",
+        _backend="hybrid",
     )
 
     assert _page_markdown_blocks(page) == [

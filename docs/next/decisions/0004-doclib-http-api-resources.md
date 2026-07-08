@@ -50,7 +50,7 @@ POST /invalidate
 ```json
 {
   "sha256": "...",
-  "tier": "standard",
+  "tier": "medium",
   "page_range": "1~10",
   "status": "pending",
   "cache_hit": false,
@@ -64,9 +64,9 @@ POST /invalidate
 
 ```http
 GET /parses?ids=12,13
-GET /parses?sha256=...&tier=standard
-GET /parses?sha256=...&tier=standard&status=pending
-GET /parses?sha256=...&tier=standard&page_range=1~10
+GET /parses?sha256=...&tier=medium
+GET /parses?sha256=...&tier=medium&status=pending
+GET /parses?sha256=...&tier=medium&page_range=1~10
 ```
 
 `ids` 查询用于 CLI wait 等精确请求状态判断。`sha256 + tier + page_range` 查询用于计算页覆盖状态。
@@ -93,7 +93,7 @@ GET /docs/{sha256}
 `GET /docs/{sha256}/content` 从有效 done parse record 的 Middle JSON 中读取并转换内容:
 
 ```http
-GET /docs/{sha256}/content?tier=standard&page_range=1~10&format=markdown
+GET /docs/{sha256}/content?tier=medium&page_range=1~10&format=markdown
 ```
 
 读取内容不触发解析。缺页时应返回明确错误或 pending 状态，由调用方再决定是否 `POST /parses`。
@@ -108,7 +108,7 @@ GET /docs/{sha256}/content?tier=standard&page_range=1~10&format=markdown
 {
   "target": "parses",
   "path": "/a/b/report.pdf",
-  "tier": "standard"
+  "tier": "medium"
 }
 ```
 
@@ -118,7 +118,7 @@ GET /docs/{sha256}/content?tier=standard&page_range=1~10&format=markdown
 {
   "target": "parses",
   "sha256": "...",
-  "tier": "standard",
+  "tier": "medium",
   "invalidated_count": 2
 }
 ```

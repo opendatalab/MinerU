@@ -10,6 +10,7 @@ from PIL import Image
 
 from ...types import EMPTY_BBOX, NOT_EXTRACT_TYPES, BBox, Block, BlockType, ContentType, IntBBox, Line, Span
 from ...utils.guess_suffix_or_lang import guess_language_by_text
+from ...utils.image_payload import ImagePayloadCache
 from ...utils.pdf_document import PDFPage
 from ..utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from ..utils.content_block_draft import VlmContentBlockDraft
@@ -48,6 +49,103 @@ OCR_DET_LINE_BLOCK_TYPES = {
 }
 
 
+EMPTY_CONTENT_INLINE_FILL_BLOCK_TYPES = {
+    BlockType.INDEX,
+    BlockType.CODE_BODY,
+}
+
+
+def _has_inline_formula_content(content: str | None) -> bool:
+    """判断 content 是否包含可安全拆分的成对行内公式标记。"""
+    return bool(content) and content.count("\\(") == content.count("\\)") and content.count("\\(") > 0
+
+
+def _split_inline_formula_content_to_spans(content: str | None, bbox: BBox) -> list[Span]:
+    """按 \\(...\\) 将文本拆成普通文本 span 和行内公式 span。"""
+    if not content:
+        return []
+
+    spans: list[Span] = []
+    last_end = 0
+    for match in re.finditer(r"\\\((.+?)\\\)", content):
+        start, end = match.span()
+        if start > last_end:
+            text_before = content[last_end:start]
+            if text_before.strip():
+                spans.append(Span(type=ContentType.TEXT, bbox=bbox, content=text_before))
+
+        formula = match.group(1).strip()
+        if formula:
+            spans.append(Span(type=ContentType.INLINE_EQUATION, bbox=bbox, content=formula))
+
+        last_end = end
+
+    if last_end < len(content):
+        text_after = content[last_end:]
+        if text_after.strip():
+            spans.append(Span(type=ContentType.TEXT, bbox=bbox, content=text_after))
+
+    return spans
+
+
+def _should_fill_empty_content_from_spans(
+    block_type: str,
+    block_content: str | None,
+    use_vlm_text_content: bool,
+) -> bool:
+    """判断空内容块是否需要复用 OCR/PDF span 回填，避免生成空目录或空代码块。"""
+    return (
+        block_type in EMPTY_CONTENT_INLINE_FILL_BLOCK_TYPES
+        and not use_vlm_text_content
+        and not (block_content or "").strip()
+    )
+
+
+def _line_to_inline_formula_content(line: Line) -> str:
+    """将一行中的文本和行内公式 span 拼回统一 content 字符串。"""
+    parts: list[str] = []
+    for span in line.spans:
+        if span.type == ContentType.TEXT:
+            parts.append(span.content or "")
+        elif span.type == ContentType.INLINE_EQUATION and span.content:
+            parts.append(f"\\({span.content}\\)")
+    return "".join(parts)
+
+
+def _collapse_lines_to_inline_content_spans(block: Block) -> None:
+    """将多行回填结果折叠为一个 line，并复用统一规则拆分文本和行内公式 span。"""
+    line_texts: list[str] = []
+    for line in block.lines:
+        line_text = _line_to_inline_formula_content(line)
+        if line_text.strip():
+            line_texts.append(line_text)
+    if not line_texts:
+        block.lines = []
+        return
+
+    content = "\n".join(line_texts)
+    spans = _split_inline_formula_content_to_spans(content, block.bbox)
+    block.lines = [
+        Line(
+            bbox=block.bbox,
+            spans=spans,
+        )
+    ]
+
+
+def _code_body_has_inline_formula(block: Block) -> bool:
+    """判断代码块回填后的 span 是否包含行内公式，用于决定是否升级为 algorithm。"""
+    return any(span.type == ContentType.INLINE_EQUATION for line in block.lines for span in line.spans)
+
+
+def _ensure_code_body_metadata_line(block: Block, code_type: str | None, guess_lang: str | None) -> None:
+    """为空代码块补一行元数据，确保父 code block 能保留 code/algorithm 子类型。"""
+    if not block.lines:
+        block.lines = [Line(spans=[Span(type=ContentType.TEXT, bbox=block.bbox, content="")], bbox=block.bbox)]
+    block.lines[0]._code_type = code_type
+    block.lines[0]._code_guess_lang = guess_lang
+
+
 def _copy_raw_text_block_metadata(draft: VlmContentBlockDraft, block: Block) -> None:
     if draft.raw_type != BlockType.TEXT:
         return
@@ -64,8 +162,14 @@ class MagicModel:
         width: int,
         height: int,
         _ocr_enable: bool,
-        _vlm_ocr_enable: bool,
+        use_vlm_text_content: bool | None = None,
+        _vlm_ocr_enable: bool | None = None,
+        image_cache: ImagePayloadCache | None = None,
     ) -> None:
+        if use_vlm_text_content is None:
+            use_vlm_text_content = bool(_vlm_ocr_enable)
+        # 表格 HTML 内联图片在 middle_json 公开输出前统一外置到图片缓存。
+        self.image_cache = image_cache or ImagePayloadCache()
         (
             page_blocks,
             self.page_inline_formula,
@@ -100,7 +204,7 @@ class MagicModel:
                     score=ocr_res["score"],
                 )
             )
-        if not _vlm_ocr_enable and not _ocr_enable:
+        if not use_vlm_text_content and not _ocr_enable:
             # Bad code
             virtual_block = (0, 0, width, height, None, None, None, "text")
             page_text_inline_formula_spans = txt_spans_extract(
@@ -179,6 +283,11 @@ class MagicModel:
             if span_type == ContentType.TEXT and block_content is None:
                 # 文本类块缺失 content 时按空文本处理，避免 VLM 渲染阶段遇到 None。
                 block_content = ""
+            fill_empty_content_from_spans = _should_fill_empty_content_from_spans(
+                block_type,
+                block_content,
+                use_vlm_text_content,
+            )
 
             # code 和 algorithm 类型的块，如果内容中包含行内公式，则需要将块类型切换为 algorithm
             switch_code_to_algorithm = False
@@ -187,7 +296,7 @@ class MagicModel:
             if span_type in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART]:
                 span = Span(type=span_type, bbox=block_bbox)
                 if span_type == ContentType.TABLE and block_content is not None:
-                    span.content = block_content
+                    span.content = self.image_cache.replace_html_data_uri_sources(block_content)
                 elif raw_block_type in ["image", "chart"] and block_content is not None:
                     span.content = block_content
             elif span_type == ContentType.INTERLINE_EQUATION:
@@ -196,61 +305,19 @@ class MagicModel:
                     bbox=block_bbox,
                     content=isolated_formula_clean(block_content or ""),
                 )
-            elif _vlm_ocr_enable or block_type not in not_extract_list:
-                # vlm_ocr_enable 模式下，所有文本块都直接使用 block 的内容
-                # 非 vlm_ocr_enable 模式下，非提取块仍沿用直接内容模式
+            elif not fill_empty_content_from_spans and (use_vlm_text_content or block_type not in not_extract_list):
+                # 使用 VLM 文本内容时，所有文本块都直接消费 block content。
+                # 非 VLM 文本路径下，非提取块仍沿用直接内容模式。
                 if block_content:
                     block_content = clean_content(block_content)
 
                 if block_type in [BlockType.TITLE, BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE] and block_content:
                     block_content = re.sub(r"\n\s*", " ", block_content).strip()
 
-                if (
-                    block_content
-                    and block_content.count("\\(") == block_content.count("\\)")
-                    and block_content.count("\\(") > 0
-                ):
-                    switch_code_to_algorithm = True
-
-                    spans = []
-                    last_end = 0
-                    for match in re.finditer(r"\\\((.+?)\\\)", block_content):
-                        start, end = match.span()
-
-                        if start > last_end:
-                            text_before = block_content[last_end:start]
-                            if text_before.strip():
-                                spans.append(
-                                    Span(
-                                        type=ContentType.TEXT,
-                                        bbox=block_bbox,
-                                        content=text_before,
-                                    )
-                                )
-
-                        formula = match.group(1)
-                        spans.append(
-                            Span(
-                                type=ContentType.INLINE_EQUATION,
-                                bbox=block_bbox,
-                                content=formula.strip(),
-                            )
-                        )
-
-                        last_end = end
-
-                    if last_end < len(block_content):
-                        text_after = block_content[last_end:]
-                        if text_after.strip():
-                            spans.append(
-                                Span(
-                                    type=ContentType.TEXT,
-                                    bbox=block_bbox,
-                                    content=text_after,
-                                )
-                            )
-
-                    span = spans
+                if _has_inline_formula_content(block_content):
+                    if block_type == BlockType.CODE_BODY and code_block_sub_type == "code":
+                        switch_code_to_algorithm = True
+                    span = _split_inline_formula_content_to_spans(block_content, block_bbox)
                 else:
                     span = Span(
                         type=span_type,
@@ -263,7 +330,7 @@ class MagicModel:
                 ContentType.TABLE,
                 ContentType.CHART,
                 ContentType.INTERLINE_EQUATION,
-            ] or (_vlm_ocr_enable or block_type not in not_extract_list):
+            ] or (not fill_empty_content_from_spans and (use_vlm_text_content or block_type not in not_extract_list)):
                 if span is None:
                     continue
                 if isinstance(span, Span):
@@ -285,7 +352,7 @@ class MagicModel:
                     block.sub_type = block_sub_type
                 if raw_block_type == "table" and draft.cell_merge:
                     block._cell_merge = draft.cell_merge
-                if _vlm_ocr_enable and self._supports_ocr_det_lines(block_type):
+                if use_vlm_text_content and self._supports_ocr_det_lines(block_type):
                     ocr_det_lines = self._build_ocr_det_lines(span_matcher.collect_for_block(block_bbox))
                     if ocr_det_lines:
                         block._ocr_det_lines = ocr_det_lines
@@ -295,10 +362,16 @@ class MagicModel:
                 block = Block(index=index, type=block_type, bbox=block_bbox, angle=block_angle)
                 block._fix_spans = block_spans
                 block = fix_text_block(block)
+                if fill_empty_content_from_spans:
+                    _collapse_lines_to_inline_content_spans(block)
+                if block_type == BlockType.CODE_BODY:
+                    if code_block_sub_type == BlockType.CODE and _code_body_has_inline_formula(block):
+                        code_block_sub_type = BlockType.ALGORITHM
+                    _ensure_code_body_metadata_line(block, code_block_sub_type, guess_lang)
                 _copy_raw_text_block_metadata(draft, block)
 
             if block.type == BlockType.INDEX:
-                # Hybrid medium 使用 INDEX 作为 VLM content 内部哨兵；内容构造完成后再对齐 3.4 输出为 text。
+                # Hybrid VLM 路径使用 INDEX 作为 content 内部哨兵；内容构造完成后再对齐 3.4 输出为 text。
                 block.type = BlockType.TEXT
 
             blocks.append(block)

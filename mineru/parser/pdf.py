@@ -10,7 +10,14 @@ from typing import Any
 
 from ..errors import InvalidRequestError
 from ..types import PageInfo
-from ..utils.backend_options import validate_effort
+from ..utils.backend_options import (
+    CANONICAL_HYBRID_ENGINE,
+    DEFAULT_HYBRID_EFFORT,
+    LOCAL_HYBRID_EFFORT,
+    MAX_HYBRID_EFFORT,
+    resolve_backend_and_effort,
+    validate_effort,
+)
 from ..utils.image_payload import ImagePayloadCache
 from .base import DocumentParser, ParseResult
 
@@ -25,18 +32,6 @@ class _PreparedPdfInput:
     pdf_bytes: bytes
     retained_page_indices: list[int] | None = None
     broken_page_indices: list[int] | None = None
-
-
-def _resolve_vlm_backend(backend: str, *, is_async: bool = False) -> str:
-    """根据同步/异步调用形态解析公开 VLM backend 到具体执行 engine。"""
-    if not backend.startswith("vlm-"):
-        return backend
-    resolved = backend[4:]
-    if resolved in {"engine", "auto-engine"}:
-        from ..utils.engine_utils import get_vlm_engine
-
-        resolved = get_vlm_engine(inference_engine="auto", is_async=is_async)
-    return resolved
 
 
 def _resolve_hybrid_backend(backend: str, *, is_async: bool = False) -> str:
@@ -59,9 +54,7 @@ class PdfBaseParser(DocumentParser):
         backend: str = "hybrid-engine",
         method: str = "auto",
         lang: str = "ch",
-        effort: str = "medium",
-        formula_enable: bool = True,
-        table_enable: bool = True,
+        effort: str = DEFAULT_HYBRID_EFFORT,
         image_analysis: bool = True,
         server_url: str | None = None,
     ):
@@ -69,8 +62,6 @@ class PdfBaseParser(DocumentParser):
         self.method = method
         self.lang = lang
         self.effort = validate_effort(effort)
-        self.formula_enable = formula_enable
-        self.table_enable = table_enable
         self.image_analysis = image_analysis
         self.server_url = server_url
 
@@ -81,7 +72,7 @@ class PdfBaseParser(DocumentParser):
 
         prepared = self._prepare_input(path, page_range)
         image_cache = ImagePayloadCache()
-        middle_json = self._run_analysis(
+        middle_json, model_output = self._run_analysis(
             prepared.pdf_bytes,
             page_index_map=prepared.retained_page_indices,
             image_cache=image_cache,
@@ -98,6 +89,7 @@ class PdfBaseParser(DocumentParser):
             retained_page_indices=prepared.retained_page_indices,
             broken_page_indices=prepared.broken_page_indices,
             image_cache=image_cache,
+            model_output=model_output,
         )
 
     async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:
@@ -107,7 +99,7 @@ class PdfBaseParser(DocumentParser):
 
         prepared = await asyncio.to_thread(self._prepare_input, path, page_range)
         image_cache = ImagePayloadCache()
-        middle_json = await self._arun_analysis(
+        middle_json, model_output = await self._arun_analysis(
             prepared.pdf_bytes,
             page_index_map=prepared.retained_page_indices,
             image_cache=image_cache,
@@ -124,6 +116,7 @@ class PdfBaseParser(DocumentParser):
             retained_page_indices=prepared.retained_page_indices,
             broken_page_indices=prepared.broken_page_indices,
             image_cache=image_cache,
+            model_output=model_output,
         )
 
     @abstractmethod
@@ -132,15 +125,15 @@ class PdfBaseParser(DocumentParser):
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
         image_cache: ImagePayloadCache | None = None,
-    ) -> list[PageInfo]:
-        """Execute backend-specific analysis. Returns (middle_json, model_output)."""
+    ) -> tuple[list[PageInfo], Any]:
+        """执行后端 PDF 分析，返回 middle_json 页面和原始 model_output。"""
 
     async def _arun_analysis(
         self,
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
         image_cache: ImagePayloadCache | None = None,
-    ) -> list[PageInfo]:
+    ) -> tuple[list[PageInfo], Any]:
         return await asyncio.to_thread(
             self._run_analysis,
             pdf_bytes,
@@ -228,164 +221,19 @@ class PdfBaseParser(DocumentParser):
         retained_page_indices: list[int] | None = None,
         broken_page_indices: list[int] | None = None,
         image_cache: ImagePayloadCache | None = None,
+        model_output: Any = None,
     ) -> ParseResult:
         return ParseResult(
             pages=middle_json,
             _retained_page_indices=retained_page_indices,
             _broken_page_indices=broken_page_indices,
             _image_cache=image_cache,
+            _model_output=model_output,
         )
-
-
-class PdfVlmParser(PdfBaseParser):
-    """PDF / image parser using the VLM (Vision Language Model) backend."""
-
-    _parse_method = "vlm"
-    _backend = "vlm"
-
-    def _run_analysis(
-        self,
-        pdf_bytes: bytes,
-        page_index_map: list[int] | None = None,
-        image_cache: ImagePayloadCache | None = None,
-    ) -> list[PageInfo]:
-        from ..backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
-
-        backend = _resolve_vlm_backend(self.backend, is_async=False)
-        os.environ["MINERU_VLM_FORMULA_ENABLE"] = str(self.formula_enable).lower()
-        os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()
-
-        return vlm_doc_analyze(
-            pdf_bytes,
-            backend=backend,
-            server_url=self.server_url,
-            image_analysis=self.image_analysis,
-            page_index_map=page_index_map,
-            image_cache=image_cache,
-        )[0]
-
-    async def _arun_analysis(
-        self,
-        pdf_bytes: bytes,
-        page_index_map: list[int] | None = None,
-        image_cache: ImagePayloadCache | None = None,
-    ) -> list[PageInfo]:
-        from ..backend.vlm.vlm_analyze import aio_doc_analyze as vlm_aio_doc_analyze
-
-        backend = _resolve_vlm_backend(self.backend, is_async=True)
-        os.environ["MINERU_VLM_FORMULA_ENABLE"] = str(self.formula_enable).lower()
-        os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()
-
-        middle_json, _ = await vlm_aio_doc_analyze(
-            pdf_bytes,
-            backend=backend,
-            server_url=self.server_url,
-            image_analysis=self.image_analysis,
-            page_index_map=page_index_map,
-            image_cache=image_cache,
-        )
-        return middle_json
-
-
-class PdfPipelineParser(PdfBaseParser):
-    """PDF / image parser using the pipeline (CV+OCR) backend."""
-
-    _parse_method: str = ""
-    _backend = "pipeline"
-
-    def parse(self, path: str | Path, *, page_range: str = "") -> ParseResult:
-        self._parse_method = self.method
-        return super().parse(path, page_range=page_range)
-
-    async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:
-        self._parse_method = self.method
-        return await super().parse_async(path, page_range=page_range)
-
-    def parse_batch(self, paths: list[str | Path], *, page_range: str = "") -> list[ParseResult]:
-        self._parse_method = self.method
-
-        from ..backend.pipeline.pipeline_analyze import doc_analyze_streaming
-
-        prepared_inputs: list[_PreparedPdfInput] = []
-        pdf_bytes_list: list[bytes] = []
-        image_caches: list[ImagePayloadCache] = []
-        for p in paths:
-            prepared = self._prepare_input(Path(p), page_range)
-            prepared_inputs.append(prepared)
-            pdf_bytes_list.append(prepared.pdf_bytes)
-            image_caches.append(ImagePayloadCache())
-
-        results_by_index: dict[int, list[PageInfo]] = {}
-
-        def on_doc_ready(doc_index: int, model_list: Any, middle_json: list[PageInfo], _ocr_enable: bool) -> None:
-            results_by_index[doc_index] = middle_json
-
-        doc_analyze_streaming(
-            pdf_bytes_list,
-            [self.lang] * len(paths),
-            on_doc_ready,
-            parse_method=self.method,
-            formula_enable=self.formula_enable,
-            table_enable=self.table_enable,
-            page_index_map_list=[prepared.retained_page_indices for prepared in prepared_inputs],
-            image_cache_list=image_caches,
-        )
-
-        parse_results: list[ParseResult] = []
-        for idx in range(len(paths)):
-            middle_json = results_by_index[idx]
-            prepared = prepared_inputs[idx]
-            self._insert_broken_pages(
-                middle_json,
-                prepared.retained_page_indices,
-                prepared.broken_page_indices,
-            )
-            result = self._build_result(
-                middle_json,
-                prepared.pdf_bytes,
-                prepared.file_name,
-                retained_page_indices=prepared.retained_page_indices,
-                broken_page_indices=prepared.broken_page_indices,
-                image_cache=image_caches[idx],
-            )
-            parse_results.append(result)
-
-        return parse_results
-
-    async def parse_batch_async(self, paths: list[str | Path], *, page_range: str = "") -> list[ParseResult]:
-        import asyncio
-
-        return await asyncio.to_thread(self.parse_batch, paths, page_range=page_range)
-
-    def _run_analysis(
-        self,
-        pdf_bytes: bytes,
-        page_index_map: list[int] | None = None,
-        image_cache: ImagePayloadCache | None = None,
-    ) -> list[PageInfo]:
-        from ..backend.pipeline.pipeline_analyze import doc_analyze_streaming
-
-        result_holder: dict = {}
-
-        def on_doc_ready(_doc_index, model_list, middle_json, _ocr_enable):
-            result_holder["middle_json"] = middle_json
-
-        doc_analyze_streaming(
-            [pdf_bytes],
-            [self.lang],
-            on_doc_ready,
-            parse_method=self.method,
-            formula_enable=self.formula_enable,
-            table_enable=self.table_enable,
-            page_index_map_list=[page_index_map],
-            image_cache_list=[image_cache or ImagePayloadCache()],
-        )
-
-        return result_holder["middle_json"]
 
 
 class PdfHybridParser(PdfBaseParser):
-    """PDF / image parser using the hybrid (pipeline + VLM) backend."""
+    """PDF / image parser using the Hybrid local/VLM backend."""
 
     _parse_method: str = ""
     _backend = "hybrid"
@@ -403,56 +251,75 @@ class PdfHybridParser(PdfBaseParser):
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
         image_cache: ImagePayloadCache | None = None,
-    ) -> list[PageInfo]:
+    ) -> tuple[list[PageInfo], Any]:
         from ..backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
 
-        backend = _resolve_hybrid_backend(self.backend, is_async=False)
+        backend = (
+            self.backend
+            if self.effort == LOCAL_HYBRID_EFFORT
+            else _resolve_hybrid_backend(self.backend, is_async=False)
+        )
         server_url = self.server_url if backend.endswith("client") else None
-        os.environ["MINERU_VLM_FORMULA_ENABLE"] = "true"
-        os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()
-
         middle_json, model_list, _vlm_ocr_enable = hybrid_doc_analyze(
             pdf_bytes,
             backend=backend,
             parse_method=self.method,
             language=self.lang,
             effort=self.effort,
-            inline_formula_enable=self.formula_enable,
             server_url=server_url,
             image_analysis=self.image_analysis,
             page_index_map=page_index_map,
             image_cache=image_cache,
         )
 
-        return middle_json
+        return middle_json, model_list
 
     async def _arun_analysis(
         self,
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
         image_cache: ImagePayloadCache | None = None,
-    ) -> list[PageInfo]:
+    ) -> tuple[list[PageInfo], Any]:
         from ..backend.hybrid.hybrid_analyze import aio_doc_analyze as hybrid_aio_doc_analyze
 
-        backend = _resolve_hybrid_backend(self.backend, is_async=True)
+        backend = (
+            self.backend if self.effort == LOCAL_HYBRID_EFFORT else _resolve_hybrid_backend(self.backend, is_async=True)
+        )
         server_url = self.server_url if backend.endswith("client") else None
-        os.environ["MINERU_VLM_FORMULA_ENABLE"] = "true"
-        os.environ["MINERU_VLM_TABLE_ENABLE"] = str(self.table_enable).lower()
-
         middle_json, model_list, _vlm_ocr_enable = await hybrid_aio_doc_analyze(
             pdf_bytes,
             backend=backend,
             parse_method=self.method,
             language=self.lang,
             effort=self.effort,
-            inline_formula_enable=self.formula_enable,
             server_url=server_url,
             image_analysis=self.image_analysis,
             page_index_map=page_index_map,
             image_cache=image_cache,
         )
 
-        return middle_json
+        return middle_json, model_list
+
+
+class PdfPipelineParser(PdfHybridParser):
+    """保留旧 SDK 类名，内部统一委托 Hybrid medium 解析。"""
+
+    def __init__(self, **kwargs: Any) -> None:
+        """将旧 PdfPipelineParser 构造参数归一到 Hybrid medium，避免继续加载旧 backend。"""
+        kwargs.pop("backend", None)
+        kwargs.pop("effort", None)
+        super().__init__(backend=CANONICAL_HYBRID_ENGINE, effort=LOCAL_HYBRID_EFFORT, **kwargs)
+
+
+class PdfVlmParser(PdfHybridParser):
+    """保留旧 SDK 类名，内部统一委托 Hybrid extra_high 解析。"""
+
+    def __init__(self, **kwargs: Any) -> None:
+        """将旧 PdfVlmParser 构造参数归一到 Hybrid extra_high，避免继续暴露独立 VLM backend。"""
+        backend = kwargs.pop("backend", "vlm-engine")
+        kwargs.pop("effort", None)
+        resolved_backend, resolved_effort = resolve_backend_and_effort(backend, MAX_HYBRID_EFFORT)
+        super().__init__(backend=resolved_backend, effort=resolved_effort, **kwargs)
 
 
 class PdfFlashParser(PdfBaseParser):
@@ -465,13 +332,19 @@ class PdfFlashParser(PdfBaseParser):
         pdf_bytes: bytes,
         page_index_map: list[int] | None = None,
         image_cache: ImagePayloadCache | None = None,
-    ) -> list[PageInfo]:
+    ) -> tuple[list[PageInfo], Any]:
         from ..backend.flash.pdf_extractor import extract_pages_text
         from ..types import Block, Line, PageInfo, Span
         from ..utils.page_index import resolve_output_page_idx
 
         filepath = self._pdf_bytes_to_tempfile(pdf_bytes)
-        pages_text = extract_pages_text(filepath)
+        try:
+            pages_text = extract_pages_text(filepath)
+        finally:
+            try:
+                os.unlink(filepath)
+            except OSError:
+                pass
 
         pages: list[PageInfo] = []
         block_idx = 0
@@ -490,7 +363,7 @@ class PdfFlashParser(PdfBaseParser):
             )
             pages.append(page)
 
-        return pages
+        return pages, None
 
     @staticmethod
     def _pdf_bytes_to_tempfile(pdf_bytes: bytes) -> str:

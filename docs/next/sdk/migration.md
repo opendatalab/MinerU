@@ -67,8 +67,8 @@ SDK 迁移的目标不是重写现有 parser，而是稳定已经成形的边界
 
 验收:
 
-- `parse(path, tier="standard")` 可用。
-- `parse(path, tier="pro")` 可用或给出明确 engine error。
+- `parse(path, tier="medium")` 可用。
+- `parse(path, tier="high")` 可用或给出明确 engine error。
 - `parse(path)` 或 `parse(path, tier=None)` 不会静默使用 flash。
 - `parse(path, tier="flash")` 只有显式请求时使用 flash。
 

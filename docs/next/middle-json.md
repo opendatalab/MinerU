@@ -13,7 +13,7 @@ Middle JSON 已经有一个事实标准: `mineru/types.py` 中的 `PageInfo`、`
 ## 目录
 
 1. [总览](middle-json/README.md): 当前事实、目标和工作分层。
-2. [当前事实标准](middle-json/current-standard.md): `PageInfo` / `Block` / `Line` / `Span` 的现状。
+2. [当前事实标准](middle-json/current-medium.md): `PageInfo` / `Block` / `Line` / `Span` 的现状。
 3. [Backend 差异](middle-json/backend-gaps.md): Pipeline / VLM / Hybrid / Office / HTML 的已解决和未解决问题。
 4. [Agent-native Gap](middle-json/agent-gaps.md): 引用、定位、稳定性和隐私边界。
 5. [Canonical Envelope](middle-json/envelope.md): 顶层结构、`_meta`、版本和兼容输入。

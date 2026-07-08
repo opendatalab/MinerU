@@ -9,8 +9,8 @@ from .base import DocumentParser, ParseResult
 from .html import HtmlParser
 from .office import DocxParser, PptxParser, XlsxParser
 from .pdf import PdfFlashParser, PdfHybridParser, PdfPipelineParser, PdfVlmParser
-from .tier import PARSER_BACKENDS, backend_for_tier, resolve_tier_and_backend
-from ..utils.backend_options import validate_effort
+from .tier import PARSER_BACKENDS, backend_for_tier, resolve_runtime_options, resolve_tier_and_backend
+from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
 
 __all__ = [
     "backend_for_tier",
@@ -54,25 +54,18 @@ def _build_parser(
     backend: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
-    effort: str = "medium",
-    disable_table: bool = False,
-    disable_formula: bool = False,
+    effort: str = DEFAULT_HYBRID_EFFORT,
     disable_image_analysis: bool = False,
     server_url: str | None = None,
     method: str | None = None,
     lang: str | None = None,
-    table_enable: bool | None = None,
-    formula_enable: bool | None = None,
     image_analysis: bool | None = None,
 ) -> DocumentParser:
     path = Path(path)
     suffix = _resolve_input_suffix(path)
-    _, resolved_backend = resolve_tier_and_backend(tier=tier, backend=backend)
-    resolved_effort = validate_effort(effort)
+    runtime = resolve_runtime_options(tier=tier, backend=backend, effort=effort)
     resolved_ocr_mode = method or ocr_mode
     resolved_language = lang or language
-    resolved_table_enable = (not disable_table) if table_enable is None else table_enable
-    resolved_formula_enable = (not disable_formula) if formula_enable is None else formula_enable
     resolved_image_analysis = (not disable_image_analysis) if image_analysis is None else image_analysis
 
     if suffix in _OFFICE_SUFFIXES:
@@ -88,38 +81,19 @@ def _build_parser(
     if suffix not in _PDF_INPUT_SUFFIXES:
         raise ValueError(f"Unsupported file type: {suffix or path.suffix or 'unknown'}")
 
-    if resolved_backend == "pipeline":
-        return PdfPipelineParser(
-            backend=resolved_backend,
-            method=resolved_ocr_mode,
-            lang=resolved_language,
-            formula_enable=resolved_formula_enable,
-            table_enable=resolved_table_enable,
-        )
-    elif resolved_backend.startswith("vlm-"):
-        return PdfVlmParser(
-            backend=resolved_backend,
-            formula_enable=resolved_formula_enable,
-            table_enable=resolved_table_enable,
-            server_url=server_url,
-            image_analysis=resolved_image_analysis,
-            effort=resolved_effort,
-        )
-    elif resolved_backend.startswith("hybrid-"):
+    if runtime.backend.startswith("hybrid-"):
         return PdfHybridParser(
-            backend=resolved_backend,
+            backend=runtime.backend,
             method=resolved_ocr_mode,
             lang=resolved_language,
-            formula_enable=resolved_formula_enable,
-            table_enable=resolved_table_enable,
             server_url=server_url,
             image_analysis=resolved_image_analysis,
-            effort=resolved_effort,
+            effort=runtime.effort,
         )
-    elif resolved_backend == "flash":
+    elif runtime.backend == "flash":
         return PdfFlashParser()
     else:
-        raise ValueError(f"Unknown backend: {resolved_backend}")
+        raise ValueError(f"Unknown backend: {runtime.backend}")
 
 
 def parse(
@@ -129,16 +103,12 @@ def parse(
     backend: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
-    effort: str = "medium",
-    disable_table: bool = False,
-    disable_formula: bool = False,
+    effort: str = DEFAULT_HYBRID_EFFORT,
     disable_image_analysis: bool = False,
     server_url: str | None = None,
     page_range: str = "",
     method: str | None = None,
     lang: str | None = None,
-    table_enable: bool | None = None,
-    formula_enable: bool | None = None,
     image_analysis: bool | None = None,
 ) -> ParseResult:
     parser = _build_parser(
@@ -148,14 +118,10 @@ def parse(
         language=language,
         ocr_mode=ocr_mode,
         effort=effort,
-        disable_table=disable_table,
-        disable_formula=disable_formula,
         disable_image_analysis=disable_image_analysis,
         server_url=server_url,
         method=method,
         lang=lang,
-        table_enable=table_enable,
-        formula_enable=formula_enable,
         image_analysis=image_analysis,
     )
     return parser.parse(path, page_range=page_range)
@@ -168,16 +134,12 @@ async def parse_async(
     backend: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
-    effort: str = "medium",
-    disable_table: bool = False,
-    disable_formula: bool = False,
+    effort: str = DEFAULT_HYBRID_EFFORT,
     disable_image_analysis: bool = False,
     server_url: str | None = None,
     page_range: str = "",
     method: str | None = None,
     lang: str | None = None,
-    table_enable: bool | None = None,
-    formula_enable: bool | None = None,
     image_analysis: bool | None = None,
 ) -> ParseResult:
     parser = _build_parser(
@@ -187,14 +149,10 @@ async def parse_async(
         language=language,
         ocr_mode=ocr_mode,
         effort=effort,
-        disable_table=disable_table,
-        disable_formula=disable_formula,
         disable_image_analysis=disable_image_analysis,
         server_url=server_url,
         method=method,
         lang=lang,
-        table_enable=table_enable,
-        formula_enable=formula_enable,
         image_analysis=image_analysis,
     )
     return await parser.parse_async(path, page_range=page_range)

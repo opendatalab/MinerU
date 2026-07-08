@@ -137,7 +137,7 @@ def test_config_set_managed_mode_preflights_managed_tier_dependencies(monkeypatc
     assert payload["error"]["code"] == "parse_server_dependency_missing"
     assert payload["error"]["param"] == "parse_server.local.mode"
     assert "torch" in payload["error"]["message"]
-    assert "pip install 'mineru-next-dev[standard]'" in payload["error"]["message"]
+    assert "pip install 'mineru-next-dev[high]'" in payload["error"]["message"]
     assert config_response.json()["value"] == "disabled"
 
 
@@ -157,7 +157,7 @@ def test_config_set_managed_tier_preflights_even_when_mode_is_disabled(monkeypat
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
     with TestClient(doclib_app.create_app(cfg)) as client:
-        response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "pro"})
+        response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "extra_high"})
         config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
 
     assert response.status_code == 400
@@ -165,8 +165,8 @@ def test_config_set_managed_tier_preflights_even_when_mode_is_disabled(monkeypat
     assert payload["error"]["code"] == "parse_server_dependency_missing"
     assert payload["error"]["param"] == "parse_server.local.managed_tier"
     assert "mlx" in payload["error"]["message"]
-    assert "pip install 'mineru-next-dev[pro]'" in payload["error"]["message"]
-    assert config_response.json()["value"] == "standard"
+    assert "pip install 'mineru-next-dev[extra_high]'" in payload["error"]["message"]
+    assert config_response.json()["value"] == "high"
 
 
 def test_background_task_crash_is_logged(caplog: pytest.LogCaptureFixture) -> None:
@@ -483,6 +483,59 @@ def test_managed_parse_server_startup_writes_stdout_and_stderr_logs(monkeypatch,
     assert popen_calls
     assert parse_stdout_log_path.read_text(encoding="utf-8").endswith("parse stdout\n")
     assert parse_stderr_log_path.read_text(encoding="utf-8").endswith("parse stderr\n")
+
+
+def test_managed_parse_server_startup_clears_invalid_tier_override(monkeypatch, tmp_path) -> None:
+    db = DatabaseManager(str(tmp_path / "doclib.db"))
+    asyncio.run(db.initialize())
+    asyncio.run(db.execute("INSERT INTO config (key, value) VALUES (?, ?)", ("parse_server.local.mode", "managed")))
+    asyncio.run(
+        db.execute("INSERT INTO config (key, value) VALUES (?, ?)", ("parse_server.local.managed_tier", "standard"))
+    )
+
+    class _Proc:
+        pid = 12345
+
+        def poll(self) -> None:
+            return None
+
+        def wait(self, timeout: int) -> None:
+            return None
+
+    def _popen(*args: object, **kwargs: object) -> _Proc:
+        cmd = args[0]
+        assert "--tier" in cmd
+        assert cmd[cmd.index("--tier") + 1] == "high"
+        return _Proc()
+
+    def _skip_background_task(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
+
+    cfg = PatchedConfig(
+        doclib={
+            "data_dir": str(tmp_path),
+            "sqlite": {"path": str(tmp_path / "doclib.db")},
+            "log": {
+                "app_path": str(tmp_path / "doclib.log"),
+                "access_path": str(tmp_path / "doclib.access.log"),
+                "parse_server_stdout_path": str(tmp_path / "parse.stdout.log"),
+                "parse_server_stderr_path": str(tmp_path / "parse.stderr.log"),
+            },
+            "managed_parse_server": {"port": 16580},
+            "uds": {"path": str(tmp_path / "doclib.sock")},
+        }
+    )
+
+    with TestClient(doclib_app.create_app(cfg)) as client:
+        config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
+        status_response = client.get("/api/v1/server/status")
+
+    assert config_response.json()["value"] == "high"
+    assert status_response.json()["parse_server"]["local"]["managed_tier"] == "high"
 
 
 def test_managed_parse_server_shutdown_uses_health_proc(monkeypatch, tmp_path) -> None:

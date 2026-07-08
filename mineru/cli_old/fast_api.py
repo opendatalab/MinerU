@@ -33,7 +33,6 @@ from base64 import b64encode
 
 from mineru.cli_old.common import (
     aio_do_parse,
-    do_parse,
     image_suffixes,
     office_suffixes,
     pdf_suffixes,
@@ -58,7 +57,7 @@ from mineru.cli_old.vlm_preload import (
     maybe_preload_vlm_model,
     split_service_and_model_config,
 )
-from mineru.backend.vlm.vlm_analyze import shutdown_cached_models
+from mineru.model.vlm.runtime import shutdown_cached_models
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.check_sys_env import is_mac_environment
 from mineru.utils.config_reader import (
@@ -148,8 +147,6 @@ class AsyncParseTask:
     parse_method: str
     effort: str
     lang_list: list[str]
-    formula_enable: bool
-    table_enable: bool
     image_analysis: bool
     server_url: Optional[str]
     return_md: bool
@@ -836,8 +833,6 @@ async def run_parse_job(
         backend=request_options.backend,
         parse_method=request_options.parse_method,
         effort=request_options.effort,
-        formula_enable=request_options.formula_enable,
-        table_enable=request_options.table_enable,
         image_analysis=request_options.image_analysis,
         server_url=request_options.server_url,
         f_draw_layout_bbox=False,
@@ -859,10 +854,7 @@ async def run_parse_job(
         **config,
     )
 
-    if request_options.backend == "pipeline":
-        await asyncio.to_thread(do_parse, **parse_kwargs)
-    else:
-        await aio_do_parse(**parse_kwargs)
+    await aio_do_parse(**parse_kwargs)
     return response_file_names
 
 
@@ -895,8 +887,6 @@ async def create_async_parse_task(
             parse_method=request_options.parse_method,
             effort=request_options.effort,
             lang_list=request_options.lang_list,
-            formula_enable=request_options.formula_enable,
-            table_enable=request_options.table_enable,
             image_analysis=request_options.image_analysis,
             server_url=request_options.server_url,
             return_md=request_options.return_md,

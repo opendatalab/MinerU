@@ -362,6 +362,7 @@ def finalize_mfr_batch_groups(
     total_count: int,
     requested_batch_size: int,
 ) -> list[list[int]]:
+    """整理 MFR batch 分组，避免尾部大面积公式被重新合并成超大 batch。"""
     if not batch_groups:
         return []
 
@@ -380,10 +381,15 @@ def finalize_mfr_batch_groups(
             return batch_groups
         return [first_group, second_group]
 
-    while (
-        len(batch_groups) >= 3
-        and len(batch_groups[-1]) < len(batch_groups[-2])
-    ):
+    min_dynamic_batch_size = get_mfr_min_dynamic_batch_size(requested_batch_size)
+    while len(batch_groups) >= 3 and len(batch_groups[-1]) < len(batch_groups[-2]):
+        tail_merge_limit = min(
+            requested_batch_size,
+            max(len(batch_groups[-2]), min_dynamic_batch_size),
+        )
+        # 尾部通常聚集最大面积公式，合并后超过安全上限会造成最后 batch 显存峰值过高。
+        if len(batch_groups[-2]) + len(batch_groups[-1]) > tail_merge_limit:
+            break
         tail_group = batch_groups.pop()
         batch_groups[-1].extend(tail_group)
 

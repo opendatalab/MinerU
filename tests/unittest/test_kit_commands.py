@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import ast
 import asyncio
-from pathlib import Path
+import inspect
+import json
+import os
 import subprocess
 import sys
-from types import ModuleType
-from types import SimpleNamespace
+import zipfile
+from io import BytesIO
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
 from typing import Any
 
+import click
 import pytest
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
@@ -16,8 +21,17 @@ from typer.testing import CliRunner
 from mineru.kit.commands import api_server, models, parse, router, vlm_server
 from mineru.kit.main import app
 from mineru.kit.vlm_server import mlx_vlm_server
+from mineru.parser.base import ParseResult
+from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span
+from mineru.utils.image_payload import ImagePayloadCache
 
 runner = CliRunner()
+
+_REMOVED_DISABLE_TABLE_OPTION = "--disable-" + "table"
+_REMOVED_DISABLE_FORMULA_OPTION = "--disable-" + "formula"
+_REMOVED_TABLE_ENABLE_PARAM = "table" + "_enable"
+_REMOVED_FORMULA_ENABLE_PARAM = "formula" + "_enable"
+_REMOVED_INLINE_FORMULA_PARAM = "inline_" + _REMOVED_FORMULA_ENABLE_PARAM
 
 
 def _assert_unsafe_sidecar_error(output: str) -> None:
@@ -128,7 +142,7 @@ class BlockLocalPipelineFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
         if fullname in {"mineru.cli_old.common", "mineru.cli_old.vlm_preload"}:
             raise ModuleNotFoundError(f"blocked local dependency import: {fullname}")
-        if fullname == "mineru.backend.vlm.vlm_analyze" or fullname.startswith("mineru.backend.office."):
+        if fullname.startswith("mineru.backend.office."):
             raise ModuleNotFoundError(f"blocked local dependency import: {fullname}")
         return None
 
@@ -267,12 +281,7 @@ def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("x", encoding="utf-8")
     config.write_text(
-        (
-            "{\n"
-            f'  "models-dir": {{"pipeline": "{pipeline_root}", "vlm": "{vlm_root}"}},\n'
-            '  "config_version": "1.3.1"\n'
-            "}\n"
-        ),
+        (f'{{\n  "models-dir": {{"pipeline": "{pipeline_root}", "vlm": "{vlm_root}"}},\n  "config_version": "1.3.1"\n}}\n'),
         encoding="utf-8",
     )
     monkeypatch.setenv("MINERU_TOOLS_CONFIG_JSON", str(config))
@@ -288,43 +297,109 @@ def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
     assert "vlm: ok" in verify_result.output
 
 
-def test_api_server_omits_tier_when_backend_only(monkeypatch: Any) -> None:
+def test_api_server_rejects_backend_and_effort_options() -> None:
+    backend_result = runner.invoke(app, ["api-server", "--backend", "hybrid-engine"])
+    effort_result = runner.invoke(app, ["api-server", "--effort", "high"])
+
+    assert backend_result.exit_code != 0
+    assert "--backend" in backend_result.output
+    assert effort_result.exit_code != 0
+    assert "--effort" in effort_result.output
+
+
+def test_kit_commands_do_not_expose_formula_table_switches() -> None:
+    """校验 mineru-kit 公开命令不再暴露公式/表格识别开关。"""
+    parse_help = runner.invoke(app, ["parse", "--help"])
+    api_server_help = runner.invoke(app, ["api-server", "--help"])
+
+    assert parse_help.exit_code == 0
+    assert api_server_help.exit_code == 0
+    for output in (parse_help.output, api_server_help.output):
+        assert _REMOVED_DISABLE_TABLE_OPTION not in output
+        assert _REMOVED_DISABLE_FORMULA_OPTION not in output
+
+
+def test_cli_old_api_form_builders_remove_formula_table_fields() -> None:
+    """校验旧 API client 表单构造不再声明或发送公式/表格开关。"""
+    from mineru.cli_old import api_client as old_api_client
+    from mineru.cli_old import client as old_client
+
+    for target in (old_api_client.build_parse_request_form_data, old_client.build_request_form_data):
+        parameters = inspect.signature(target).parameters
+        assert _REMOVED_FORMULA_ENABLE_PARAM not in parameters
+        assert _REMOVED_TABLE_ENABLE_PARAM not in parameters
+
+    data = old_api_client.build_parse_request_form_data(
+        lang_list=["ch"],
+        backend="hybrid-engine",
+        parse_method="auto",
+        server_url=None,
+        start_page_id=0,
+        end_page_id=None,
+        image_analysis=True,
+        effort="medium",
+        return_md=True,
+        return_middle_json=True,
+        return_model_output=True,
+        return_content_list=True,
+        return_images=True,
+        response_format_zip=False,
+        return_original_file=False,
+    )
+
+    assert _REMOVED_FORMULA_ENABLE_PARAM not in data
+    assert _REMOVED_TABLE_ENABLE_PARAM not in data
+
+
+def test_cli_old_api_request_models_remove_formula_table_fields() -> None:
+    """校验旧 FastAPI 表单参数对象不再保存公式/表格开关。"""
+    from mineru.cli_old import api_request as old_api_request
+    from mineru.cli_old import fast_api as old_fast_api
+
+    for model in (old_api_request.ParseRequestOptions, old_fast_api.ParseRequestOptions, old_fast_api.AsyncParseTask):
+        annotations = getattr(model, "__annotations__", {})
+        assert _REMOVED_FORMULA_ENABLE_PARAM not in annotations
+        assert _REMOVED_TABLE_ENABLE_PARAM not in annotations
+
+
+def test_api_server_forwards_repeated_tiers(monkeypatch: Any) -> None:
     seen: dict[str, Any] = {}
 
     def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
+        """记录 mineru-kit api-server 对多 tier 启动参数的原样转发。"""
         seen["args"] = args
         seen["prog_name"] = prog_name
         seen["standalone_mode"] = standalone_mode
 
     monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
 
-    result = runner.invoke(app, ["api-server", "--backend", "hybrid-engine", "--effort", "high"])
+    result = runner.invoke(app, ["api-server", "--tier", "medium", "--tier", "extra_high"])
 
     assert result.exit_code == 0
-    assert "--backend" in seen["args"]
-    assert "hybrid-engine" in seen["args"]
-    assert "--effort" in seen["args"]
-    assert "high" in seen["args"]
-    assert "--tier" not in seen["args"]
+    assert seen["prog_name"] == "mineru-kit api-server"
+    assert seen["standalone_mode"] is False
+    assert [seen["args"][index + 1] for index, item in enumerate(seen["args"]) if item == "--tier"] == [
+        "medium",
+        "extra_high",
+    ]
 
 
-def test_api_server_normalizes_backend_alias(monkeypatch: Any) -> None:
+def test_api_server_without_tier_lets_parser_api_apply_all_tier_default(monkeypatch: Any) -> None:
     seen: dict[str, Any] = {}
 
     def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
-        """记录 mineru-kit api-server 转发给底层 Click 命令的参数。"""
+        """记录 mineru-kit api-server 默认参数，确认不再强制单 high tier。"""
         seen["args"] = args
         seen["prog_name"] = prog_name
         seen["standalone_mode"] = standalone_mode
 
     monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
 
-    result = runner.invoke(app, ["api-server", "--backend", "hybrid-auto-engine"])
+    result = runner.invoke(app, ["api-server", "--host", "0.0.0.0", "--port", "15985"])
 
     assert result.exit_code == 0
-    assert "--backend" in seen["args"]
-    assert "hybrid-engine" in seen["args"]
-    assert "hybrid-auto-engine" not in seen["args"]
+    assert seen["prog_name"] == "mineru-kit api-server"
+    assert seen["standalone_mode"] is False
     assert "--tier" not in seen["args"]
 
 
@@ -754,6 +829,363 @@ def test_parse_rejects_removed_ch_lite_language(tmp_path: Path) -> None:
     assert "Language ch_lite not supported" in result.output
 
 
+def test_gradio_tier_selection_derives_v1_runtime() -> None:
+    from mineru.cli_old import gradio_app
+
+    assert gradio_app.resolve_gradio_runtime_options("medium").as_kwargs() == {
+        "tier": "medium",
+        "backend": "hybrid-engine",
+        "effort": "medium",
+    }
+    assert gradio_app.resolve_gradio_runtime_options("high").as_kwargs() == {
+        "tier": "high",
+        "backend": "hybrid-engine",
+        "effort": "high",
+    }
+    assert gradio_app.resolve_gradio_runtime_options("extra_high").as_kwargs() == {
+        "tier": "extra_high",
+        "backend": "hybrid-engine",
+        "effort": "extra_high",
+    }
+
+
+def test_gradio_extracts_supported_tiers_from_v1_tiers_payload() -> None:
+    from mineru.cli_old import gradio_app
+
+    payload = {
+        "data": [
+            {"id": "flash"},
+            {"id": "extra_high"},
+            {"id": "experimental"},
+            {"id": "medium"},
+            {"id": "high"},
+            {"id": "extra_high"},
+        ]
+    }
+
+    assert gradio_app.extract_v1_tier_choices(payload) == ("flash", "extra_high", "medium", "high")
+    assert gradio_app.default_v1_gradio_tier(("flash", "extra_high", "medium", "high")) == "high"
+
+
+def test_gradio_rejects_v1_tiers_payload_without_supported_tiers() -> None:
+    from mineru.cli_old import gradio_app
+
+    with pytest.raises(click.ClickException, match="did not advertise any supported tier"):
+        gradio_app.extract_v1_tier_choices({"data": [{"id": "experimental"}]})
+
+
+def test_gradio_persists_v1_parse_result_for_preview_and_download(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from mineru.cli_old import gradio_app
+
+    image_cache = ImagePayloadCache()
+    image_path = image_cache.register_bytes(b"figure-bytes", "png", image_path="figures/figure.png")
+    image_body = Block(
+        index=1,
+        type=BlockType.IMAGE_BODY,
+        bbox=(0, 0, 20, 20),
+        lines=[Line(bbox=(0, 0, 20, 20), spans=[Span(type=ContentType.IMAGE, bbox=(0, 0, 20, 20), image_path=image_path)])],
+    )
+    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(0, 0, 20, 20), blocks=[image_body])
+    parse_result = ParseResult(
+        pages=[PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="hybrid")],
+        _image_cache=image_cache,
+        _model_output=[[{"raw": "model"}]],
+    )
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    extract_root = tmp_path / "extract"
+    archive_zip_path = tmp_path / "archive.zip"
+    visualization_calls: list[Any] = []
+
+    def fake_run_visualization_job(job: Any) -> Any:
+        """模拟 layout 可视化生成，避免本用例依赖真实 PDF 绘制。"""
+        visualization_calls.append(job)
+        layout_path = job.parse_dir / f"{job.document_stem}_layout.pdf"
+        layout_path.write_bytes(b"%PDF-1.7\n%layout\n")
+        return SimpleNamespace(status="finished", message="generated", generated_files=(layout_path.name,))
+
+    monkeypatch.setattr(gradio_app, "run_visualization_job", fake_run_visualization_job)
+
+    output = gradio_app.persist_v1_gradio_result(
+        parse_result=parse_result,
+        file_path=str(source),
+        extract_root=extract_root,
+        archive_zip_path=archive_zip_path,
+        backend="hybrid-engine",
+        effort="medium",
+        page_range="",
+    )
+
+    local_md_dir = extract_root / "demo"
+    assert output.file_name == "demo"
+    assert output.local_md_dir == local_md_dir
+    assert output.preview_pdf_path == local_md_dir / "demo_layout.pdf"
+    assert visualization_calls[0].document_stem == "demo"
+    assert visualization_calls[0].parse_dir == local_md_dir
+    assert visualization_calls[0].draw_span is False
+    assert (local_md_dir / "demo.md").read_text(encoding="utf-8") == "![](images/figures/figure.png)"
+    content_list = json.loads((local_md_dir / "demo_content_list.json").read_text(encoding="utf-8"))
+    assert content_list[0]["img_path"] == "images/figures/figure.png"
+    middle_json = json.loads((local_md_dir / "demo_middle.json").read_text(encoding="utf-8"))
+    assert middle_json["_backend"] == "hybrid"
+    assert middle_json["_version_name"]
+    assert json.loads((local_md_dir / "demo_model_output.json").read_text(encoding="utf-8")) == [[{"raw": "model"}]]
+    assert (local_md_dir / "images" / "figures" / "figure.png").read_bytes() == b"figure-bytes"
+    assert (local_md_dir / "demo_origin.pdf").read_bytes() == b"%PDF-1.7\n"
+    assert (local_md_dir / "demo_layout.pdf").read_bytes() == b"%PDF-1.7\n%layout\n"
+    assert archive_zip_path.is_file()
+    with zipfile.ZipFile(archive_zip_path) as archive:
+        assert "demo_layout.pdf" in archive.namelist()
+        assert "demo_model_output.json" in archive.namelist()
+        assert json.loads(archive.read("demo_model_output.json").decode("utf-8")) == [[{"raw": "model"}]]
+
+
+def test_gradio_persists_page_ranged_origin_pdf_for_v1_preview(tmp_path: Path) -> None:
+    from pypdf import PdfReader, PdfWriter
+
+    from mineru.cli_old import gradio_app
+
+    pdf_writer = PdfWriter()
+    pdf_writer.add_blank_page(width=100, height=100)
+    pdf_writer.add_blank_page(width=200, height=200)
+    pdf_writer.add_blank_page(width=300, height=300)
+    source_pdf = BytesIO()
+    pdf_writer.write(source_pdf)
+
+    parse_result = ParseResult(
+        pages=[
+            PageInfo(page_idx=0, page_size=(100, 100), _backend="hybrid"),
+            PageInfo(page_idx=1, page_size=(200, 200), _backend="hybrid"),
+        ],
+    )
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(source_pdf.getvalue())
+    extract_root = tmp_path / "extract"
+    archive_zip_path = tmp_path / "archive.zip"
+
+    output = gradio_app.persist_v1_gradio_result(
+        parse_result=parse_result,
+        file_path=str(source),
+        extract_root=extract_root,
+        archive_zip_path=archive_zip_path,
+        backend="hybrid-engine",
+        effort="medium",
+        page_range="1~2",
+    )
+
+    origin_pdf_path = output.local_md_dir / "demo_origin.pdf"
+    origin_reader = PdfReader(str(origin_pdf_path))
+    assert len(origin_reader.pages) == 2
+    assert [float(page.cropbox[2]) for page in origin_reader.pages] == [100.0, 200.0]
+
+    layout_pdf_path = output.local_md_dir / "demo_layout.pdf"
+    layout_reader = PdfReader(str(layout_pdf_path))
+    assert output.preview_pdf_path == layout_pdf_path
+    assert len(layout_reader.pages) == 2
+
+    with zipfile.ZipFile(archive_zip_path) as archive:
+        assert "demo_layout.pdf" in archive.namelist()
+        assert "demo_model_output.json" not in archive.namelist()
+        zipped_origin_reader = PdfReader(BytesIO(archive.read("demo_origin.pdf")))
+        zipped_layout_reader = PdfReader(BytesIO(archive.read("demo_layout.pdf")))
+    assert len(zipped_origin_reader.pages) == 2
+    assert len(zipped_layout_reader.pages) == 2
+    assert [float(page.cropbox[2]) for page in zipped_origin_reader.pages] == [100.0, 200.0]
+
+
+def test_gradio_persists_image_origin_as_pdf_for_v1_preview(tmp_path: Path) -> None:
+    from PIL import Image
+    from pypdf import PdfReader
+
+    from mineru.cli_old import gradio_app
+
+    source = tmp_path / "ref-merge.png"
+    Image.new("RGB", (64, 48), "white").save(source)
+    parse_result = ParseResult(
+        pages=[PageInfo(page_idx=0, page_size=(64, 48), _backend="hybrid")],
+    )
+    extract_root = tmp_path / "extract"
+    archive_zip_path = tmp_path / "archive.zip"
+
+    output = gradio_app.persist_v1_gradio_result(
+        parse_result=parse_result,
+        file_path=str(source),
+        extract_root=extract_root,
+        archive_zip_path=archive_zip_path,
+        backend="hybrid-engine",
+        effort="medium",
+        page_range="",
+    )
+
+    origin_pdf_path = output.local_md_dir / "ref-merge_origin.pdf"
+    layout_pdf_path = output.local_md_dir / "ref-merge_layout.pdf"
+    assert origin_pdf_path.read_bytes().startswith(b"%PDF")
+    assert len(PdfReader(str(origin_pdf_path)).pages) == 1
+    assert layout_pdf_path.is_file()
+    assert output.preview_pdf_path == layout_pdf_path
+    assert len(PdfReader(str(layout_pdf_path)).pages) == 1
+
+    with zipfile.ZipFile(archive_zip_path) as archive:
+        assert archive.read("ref-merge_origin.pdf").startswith(b"%PDF")
+        assert "ref-merge_layout.pdf" in archive.namelist()
+        assert len(PdfReader(BytesIO(archive.read("ref-merge_origin.pdf"))).pages) == 1
+        assert len(PdfReader(BytesIO(archive.read("ref-merge_layout.pdf"))).pages) == 1
+
+
+def test_gradio_v1_job_reuses_page_range_for_api_and_origin_pdf(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from mineru.cli_old import gradio_app
+
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    calls: dict[str, Any] = {}
+
+    class _FakeParser:
+        def __init__(self, *, api_url: str, tier: str, include_model_output: bool, zip_output_only: bool) -> None:
+            calls["parser_api_url"] = api_url
+            calls["parser_tier"] = tier
+            calls["include_model_output"] = include_model_output
+            calls["zip_output_only"] = zip_output_only
+
+        async def parse_async(self, file_path: str, *, page_range: str) -> ParseResult:
+            calls["api_page_range"] = page_range
+            return ParseResult(pages=[PageInfo(page_idx=0, page_size=(100, 100), _backend="hybrid")])
+
+    async def _fake_server_health(_http_client: Any, api_url: str | None) -> Any:
+        """模拟 v1 server 健康检查，只保留 Gradio 任务需要的字段。"""
+        return SimpleNamespace(base_url=api_url or "http://127.0.0.1:30000/api", max_concurrent_requests=1)
+
+    def _fake_persist(**kwargs: Any) -> Any:
+        """记录本地持久化收到的 page_range，避免联动测试访问真实 PDFium。"""
+        calls["persist_page_range"] = kwargs["page_range"]
+        local_md_dir = tmp_path / "persisted"
+        local_md_dir.mkdir()
+        (local_md_dir / "demo.md").write_text("markdown", encoding="utf-8")
+        (local_md_dir / "demo_content_list.json").write_text("[]", encoding="utf-8")
+        archive_zip_path = tmp_path / "demo.zip"
+        archive_zip_path.write_bytes(b"zip")
+        return SimpleNamespace(
+            file_name="demo",
+            local_md_dir=local_md_dir,
+            archive_zip_path=archive_zip_path,
+            preview_pdf_path=local_md_dir / "demo_origin.pdf",
+        )
+
+    monkeypatch.setattr(gradio_app, "MinerUApiParser", _FakeParser)
+    monkeypatch.setattr(gradio_app, "resolve_v1_server_health", _fake_server_health)
+    monkeypatch.setattr(gradio_app, "persist_v1_gradio_result", _fake_persist)
+
+    asyncio.run(gradio_app._run_to_markdown_job(str(source), end_pages=2, api_url="http://example.test/api"))
+
+    assert calls["api_page_range"] == "1~2"
+    assert calls["include_model_output"] is True
+    assert calls["zip_output_only"] is True
+    assert calls["persist_page_range"] == "1~2"
+
+
+def test_gradio_run_paths_are_absolute(tmp_path: Path) -> None:
+    from mineru.cli_old import gradio_app
+
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    default_run_root, default_extract_root, default_archive_zip_path = gradio_app.create_gradio_run_paths(str(source))
+    assert default_run_root.is_absolute()
+    assert default_extract_root.is_absolute()
+    assert default_archive_zip_path.is_absolute()
+
+    run_root, extract_root, archive_zip_path = gradio_app.create_gradio_run_paths(
+        str(source),
+        output_root=str(tmp_path / "output"),
+    )
+
+    assert run_root.is_absolute()
+    assert extract_root.is_absolute()
+    assert archive_zip_path.is_absolute()
+    assert extract_root.parent == run_root
+    assert archive_zip_path.parent == run_root
+
+
+def test_gradio_frontend_uses_v1_only_tier_visibility() -> None:
+    js_text = Path("mineru/resources/gradio_app.js").read_text(encoding="utf-8")
+
+    assert ".mineru-remote-server-toggle" not in js_text
+    assert ".mineru-advanced-popover" not in js_text
+    assert "getUseRemoteServer" not in js_text
+    assert "getBackendValue" not in js_text
+    assert "getEffortValue" not in js_text
+    assert ".mineru-backend-select" not in js_text
+    assert ".mineru-hybrid-effort" not in js_text
+    assert 'input[type="radio"]' not in js_text
+    assert "mineru-show-client-options" not in js_text
+    assert "mineru-show-image-analysis" not in js_text
+    assert "mineru-show-ocr-language" not in js_text
+    assert "mineru-hide-force-ocr" not in js_text
+
+
+def test_gradio_header_model_and_paper_links_use_popovers() -> None:
+    """校验 Gradio header 的模型和论文入口使用可悬浮展开的多链接菜单。"""
+    header_text = Path("mineru/resources/gradio_header.html").read_text(encoding="utf-8")
+    gradio_text = Path("mineru/cli_old/gradio_app.py").read_text(encoding="utf-8")
+
+    assert 'class="link-block mineru-header-menu mineru-model-menu"' in header_text
+    assert 'class="link-block mineru-header-menu mineru-paper-menu"' in header_text
+    assert "mineru-header-popover mineru-model-popover" in header_text
+    assert "mineru-header-popover mineru-paper-popover" in header_text
+    assert "https://huggingface.co/opendatalab/MinerU2.5-Pro-2605-1.2B" in header_text
+    assert "https://modelscope.cn/models/OpenDataLab/MinerU2.5-Pro-2605-1.2B" in header_text
+    assert "https://arxiv.org/abs/2409.18839" in header_text
+    assert "https://arxiv.org/abs/2509.22186" in header_text
+    assert "https://arxiv.org/abs/2604.04771" in header_text
+    assert ".block.mineru-header-html" in header_text
+    assert ".mineru-demo-header .external-link {\n    font-size: 14px !important;" in header_text
+    assert 'gr.HTML(render_header_html(i18n), elem_classes=["mineru-header-html"])' in gradio_text
+
+    for placeholder, translation_key in {
+        "{{HEADER_MODEL_HUGGINGFACE_LINK}}": "header_model_huggingface_link",
+        "{{HEADER_MODEL_MODELSCOPE_LINK}}": "header_model_modelscope_link",
+        "{{HEADER_PAPER_MINERU_REPORT}}": "header_paper_mineru_report",
+        "{{HEADER_PAPER_MINERU25_REPORT}}": "header_paper_mineru25_report",
+        "{{HEADER_PAPER_MINERU25PRO_REPORT}}": "header_paper_mineru25pro_report",
+    }.items():
+        assert placeholder in header_text
+        assert f'"{placeholder}": "{translation_key}"' in gradio_text
+        assert f'"{translation_key}"' in gradio_text
+
+
+def test_gradio_submit_inputs_are_v1_only() -> None:
+    """校验 Gradio 公开控制面只保留 v1 API 支持的单次任务输入。"""
+    gradio_text = Path("mineru/cli_old/gradio_app.py").read_text(encoding="utf-8")
+
+    backend_block_idx = gradio_text.index('elem_classes=["mineru-backend-options-block"]')
+    tier_idx = gradio_text.index("tier = gr.Dropdown(")
+    max_pages_idx = gradio_text.index("max_pages = gr.Slider(")
+
+    assert "backend = gr.Dropdown(" not in gradio_text
+    assert "effort = gr.Dropdown(" not in gradio_text
+    assert "effort = gr.Radio(" not in gradio_text
+    assert "Hybrid effort" not in gradio_text
+    assert "解析强度" not in gradio_text
+    assert "use_remote_server = gr.Checkbox(" not in gradio_text
+    assert "url = gr.Textbox(" not in gradio_text
+    assert 'elem_classes=["mineru-client-options"]' not in gradio_text
+    assert 'elem_classes=["mineru-advanced-popover"]' not in gradio_text
+    assert "is_ocr = gr.Checkbox(" not in gradio_text
+    assert _REMOVED_FORMULA_ENABLE_PARAM + " = gr.Checkbox(" not in gradio_text
+    assert _REMOVED_TABLE_ENABLE_PARAM + " = gr.Checkbox(" not in gradio_text
+    assert "image_analysis = gr.Checkbox(" not in gradio_text
+    assert "language = gr.Dropdown(" not in gradio_text
+    assert "use_remote_server=use_remote_server" not in gradio_text
+    assert "tier=tier" in gradio_text
+    assert "inputs=[input_file, max_pages, tier]" in gradio_text
+    assert backend_block_idx < tier_idx < max_pages_idx
+
+
 def test_parse_forwards_flash_backend(monkeypatch: Any, tmp_path: Path) -> None:
     source = tmp_path / "demo.pdf"
     output = tmp_path / "out.md"
@@ -793,7 +1225,7 @@ def test_parse_forwards_flash_backend(monkeypatch: Any, tmp_path: Path) -> None:
     assert output.read_text(encoding="utf-8") == "# demo\n"
 
 
-def test_cli_old_vlm_branch_does_not_forward_effort(monkeypatch: Any, tmp_path: Path) -> None:
+def test_cli_old_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: Any, tmp_path: Path) -> None:
     from mineru.cli_old import common
 
     seen: dict[str, Any] = {}
@@ -806,14 +1238,16 @@ def test_cli_old_vlm_branch_does_not_forward_effort(monkeypatch: Any, tmp_path: 
             SimpleNamespace(pdf_bytes=pdf, retained_page_indices=None, broken_page_indices=None) for pdf in pdfs
         ],
     )
+    monkeypatch.setattr(common, "ensure_backend_dependencies", lambda backend: None)
     monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=False: "vllm-engine")
 
-    def _fake_process_vlm(*args: Any, **kwargs: Any) -> None:
-        """记录 VLM 分支收到的 kwargs，确认 hybrid effort 不会泄漏进模型初始化。"""
+    def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
+        """记录 legacy VLM 输入最终进入 Hybrid extra_high 分支。"""
         seen["backend"] = args[3]
+        seen["hybrid_backend"] = args[5]
         seen["kwargs"] = kwargs
 
-    monkeypatch.setattr(common, "_process_vlm", _fake_process_vlm)
+    monkeypatch.setattr(common, "_process_hybrid", _fake_process_hybrid)
 
     common.do_parse(
         output_dir=str(tmp_path),
@@ -824,9 +1258,10 @@ def test_cli_old_vlm_branch_does_not_forward_effort(monkeypatch: Any, tmp_path: 
         effort="high",
     )
 
-    assert seen["backend"] == "vllm-engine"
-    assert "effort" not in seen["kwargs"]
+    assert seen["hybrid_backend"] == "vllm-engine"
+    assert seen["kwargs"]["effort"] == "extra_high"
     assert seen["kwargs"]["image_analysis"] is True
+    assert not hasattr(common, "_process_vlm")
 
 
 def test_cli_old_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Path) -> None:
@@ -847,10 +1282,12 @@ def test_cli_old_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Path) ->
 
     def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
         """记录 Hybrid 分支收到的 kwargs，确认 effort 仍传给 hybrid analyzer。"""
-        seen["backend"] = args[6]
+        seen["backend"] = args[5]
         seen["kwargs"] = kwargs
 
     monkeypatch.setattr(common, "_process_hybrid", _fake_process_hybrid)
+    monkeypatch.setenv("MINERU_VLM_FORMULA_ENABLE", "sentinel-formula")
+    monkeypatch.setenv("MINERU_VLM_TABLE_ENABLE", "sentinel-table")
 
     common.do_parse(
         output_dir=str(tmp_path),
@@ -863,9 +1300,11 @@ def test_cli_old_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Path) ->
 
     assert seen["backend"] == "vllm-engine"
     assert seen["kwargs"]["effort"] == "high"
+    assert os.environ["MINERU_VLM_FORMULA_ENABLE"] == "sentinel-formula"
+    assert os.environ["MINERU_VLM_TABLE_ENABLE"] == "sentinel-table"
 
 
-def test_cli_old_async_vlm_branch_does_not_forward_effort(monkeypatch: Any, tmp_path: Path) -> None:
+def test_cli_old_hybrid_medium_skips_vlm_engine_resolution(monkeypatch: Any, tmp_path: Path) -> None:
     from mineru.cli_old import common
 
     seen: dict[str, Any] = {}
@@ -878,14 +1317,114 @@ def test_cli_old_async_vlm_branch_does_not_forward_effort(monkeypatch: Any, tmp_
             SimpleNamespace(pdf_bytes=pdf, retained_page_indices=None, broken_page_indices=None) for pdf in pdfs
         ],
     )
-    monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=True: "vllm-async-engine")
+    monkeypatch.setattr(common, "ensure_backend_dependencies", lambda backend: None)
 
-    async def _fake_async_process_vlm(*args: Any, **kwargs: Any) -> None:
-        """记录异步 VLM 分支收到的 kwargs，确认 effort 不会进入异步模型初始化。"""
-        seen["backend"] = args[3]
+    def fail_get_vlm_engine(*_args: Any, **_kwargs: Any) -> str:
+        """Hybrid medium 不应触发 VLM engine 解析。"""
+        raise AssertionError("medium effort should not resolve VLM engine")
+
+    def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
+        """记录 Hybrid medium 仍进入 Hybrid 处理分支。"""
+        seen["backend"] = args[5]
+        seen["langs"] = list(args[3])
+        seen["pdf_count"] = len(args[2])
         seen["kwargs"] = kwargs
 
-    monkeypatch.setattr(common, "_async_process_vlm", _fake_async_process_vlm)
+    monkeypatch.setattr(common, "get_vlm_engine", fail_get_vlm_engine)
+    monkeypatch.setattr(common, "_process_hybrid", _fake_process_hybrid)
+
+    common.do_parse(
+        output_dir=str(tmp_path),
+        pdf_file_names=["a.pdf", "b.pdf"],
+        pdf_bytes_list=[b"%PDF-1.7\n", b"%PDF-1.7\n"],
+        p_lang_list=["en", "en"],
+        backend="hybrid-engine",
+        effort="medium",
+    )
+
+    assert seen["backend"] == "engine"
+    assert seen["langs"] == ["en", "en"]
+    assert seen["pdf_count"] == 2
+    assert seen["kwargs"]["effort"] == "medium"
+
+
+def test_process_hybrid_medium_calls_analyzer_per_file(monkeypatch: Any, tmp_path: Path) -> None:
+    from mineru.cli_old import common
+
+    calls: list[bytes] = []
+    languages: list[str] = []
+    analyzer_kwargs: list[dict[str, Any]] = []
+    outputs: list[tuple[str, str, str]] = []
+
+    def fake_doc_analyze(pdf_bytes: bytes, **kwargs: Any) -> tuple[list[PageInfo], list[object], bool]:
+        """记录每个文件独立进入 Hybrid medium analyzer。"""
+        calls.append(pdf_bytes)
+        languages.append(kwargs["language"])
+        analyzer_kwargs.append(kwargs)
+        return [PageInfo(page_idx=0, _backend="hybrid")], [], False
+
+    monkeypatch.setattr(common, "_load_hybrid_analyze_entrypoint", lambda *_args, **_kwargs: fake_doc_analyze)
+    monkeypatch.setattr(
+        common,
+        "prepare_env",
+        lambda output_dir, pdf_file_name, method: (str(tmp_path / pdf_file_name / "images"), str(tmp_path / pdf_file_name)),
+    )
+    monkeypatch.setattr(common, "FileBasedDataWriter", lambda _path: object())
+    monkeypatch.setattr(
+        common,
+        "_process_output",
+        lambda middle_json, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir, *_args, **_kwargs: outputs.append(
+            (pdf_file_name, local_md_dir, local_image_dir)
+        ),
+    )
+
+    common._process_hybrid(
+        output_dir=str(tmp_path),
+        pdf_file_names=["a.pdf", "b.pdf"],
+        pdf_bytes_list=[b"a", b"b"],
+        h_lang_list=["en", "en"],
+        parse_method="auto",
+        backend="engine",
+        f_draw_layout_bbox=False,
+        f_draw_span_bbox=False,
+        f_dump_md=True,
+        f_dump_middle_json=True,
+        f_dump_model_output=True,
+        f_dump_orig_pdf=True,
+        f_dump_content_list=True,
+        f_make_md_mode="mm_markdown",
+        effort="medium",
+    )
+
+    assert calls == [b"a", b"b"]
+    assert languages == ["en", "en"]
+    assert all(_REMOVED_INLINE_FORMULA_PARAM not in kwargs for kwargs in analyzer_kwargs)
+    assert [item[0] for item in outputs] == ["a.pdf", "b.pdf"]
+
+
+def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: Any, tmp_path: Path) -> None:
+    from mineru.cli_old import common
+
+    seen: dict[str, Any] = {}
+
+    monkeypatch.setattr(common, "_process_office_doc", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        common,
+        "_prepare_pdf_inputs",
+        lambda pdfs, start, end: [
+            SimpleNamespace(pdf_bytes=pdf, retained_page_indices=None, broken_page_indices=None) for pdf in pdfs
+        ],
+    )
+    monkeypatch.setattr(common, "ensure_backend_dependencies", lambda backend: None)
+    monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=True: "vllm-async-engine")
+
+    async def _fake_async_process_hybrid(*args: Any, **kwargs: Any) -> None:
+        """记录异步 legacy VLM 输入最终进入 Hybrid extra_high 分支。"""
+        seen["backend"] = args[3]
+        seen["hybrid_backend"] = args[5]
+        seen["kwargs"] = kwargs
+
+    monkeypatch.setattr(common, "_async_process_hybrid", _fake_async_process_hybrid)
 
     asyncio.run(
         common.aio_do_parse(
@@ -898,9 +1437,10 @@ def test_cli_old_async_vlm_branch_does_not_forward_effort(monkeypatch: Any, tmp_
         )
     )
 
-    assert seen["backend"] == "vllm-async-engine"
-    assert "effort" not in seen["kwargs"]
+    assert seen["hybrid_backend"] == "vllm-async-engine"
+    assert seen["kwargs"]["effort"] == "extra_high"
     assert seen["kwargs"]["image_analysis"] is True
+    assert not hasattr(common, "_async_process_vlm")
 
 
 def test_cli_old_async_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Path) -> None:
@@ -921,10 +1461,12 @@ def test_cli_old_async_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Pa
 
     async def _fake_async_process_hybrid(*args: Any, **kwargs: Any) -> None:
         """记录异步 Hybrid 分支收到的 kwargs，确认 effort 仍传给 hybrid analyzer。"""
-        seen["backend"] = args[6]
+        seen["backend"] = args[5]
         seen["kwargs"] = kwargs
 
     monkeypatch.setattr(common, "_async_process_hybrid", _fake_async_process_hybrid)
+    monkeypatch.setenv("MINERU_VLM_FORMULA_ENABLE", "sentinel-formula")
+    monkeypatch.setenv("MINERU_VLM_TABLE_ENABLE", "sentinel-table")
 
     asyncio.run(
         common.aio_do_parse(
@@ -939,6 +1481,8 @@ def test_cli_old_async_hybrid_branch_keeps_effort(monkeypatch: Any, tmp_path: Pa
 
     assert seen["backend"] == "vllm-async-engine"
     assert seen["kwargs"]["effort"] == "high"
+    assert os.environ["MINERU_VLM_FORMULA_ENABLE"] == "sentinel-formula"
+    assert os.environ["MINERU_VLM_TABLE_ENABLE"] == "sentinel-table"
 
 
 def test_parse_single_file_middle_json_writes_image_sidecars(

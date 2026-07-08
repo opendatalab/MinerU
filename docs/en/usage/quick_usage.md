@@ -107,8 +107,8 @@ If you need to adjust parsing options through custom parameters, you can also ch
   > ```bash
   > mineru -p <input_path> -o <output_path> -b hybrid-http-client -u http://127.0.0.1:30000
   > ```
-  >`vlm-http-client` is the lightweight remote client option and does not require local `torch`.
   >`hybrid-http-client` requires local pipeline dependencies such as `mineru[pipeline]` and `torch`.
+  >Legacy `vlm-http-client` input is accepted for compatibility and maps to `hybrid-http-client` with `--effort high`.
 
 > [!NOTE]
 > All officially supported `vllm/lmdeploy` parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-openai-server`, `mineru-gradio`, `mineru-api`, `mineru-router`.
@@ -154,5 +154,5 @@ Here are some available configuration options:
   
 - `models-dir`: 
     * Used to specify local model storage directory
-    * Please specify model directories for `pipeline` and `vlm` backends separately.
+    * Please specify model directories for the local lightweight model bundle (`models-dir.pipeline`) and the VLM bundle (`models-dir.vlm`) separately.
     * After specifying the directory, you can use local models by configuring the environment variable `export MINERU_MODEL_SOURCE=local`.

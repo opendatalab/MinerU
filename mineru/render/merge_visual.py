@@ -44,7 +44,7 @@ def _blocks_in_index_order(blocks: list[Block]) -> list[Block]:
 
 
 def _inherit_parent_code_render_metadata(block: Block, parent_block: Block) -> Block:
-    # pipeline_magic_model 会把 code_body 的 sub_type/guess_lang 提升到父 code block。
+    # 本地 Hybrid 模型会把 code_body 的 sub_type/guess_lang 提升到父 code block。
     # markdown 渲染 code_body 时需要把这两个字段临时透传回来，但不能修改原始输入。
     if block.type != BlockType.CODE_BODY:
         return block
@@ -132,21 +132,35 @@ def _build_visual_body_segments(
 
 
 def _render_algorithm_code_html(block: Block) -> str:
-    """将 algorithm code body 渲染为 HTML pre，保留缩进并支持行内公式。"""
+    """将 algorithm code body 渲染为 HTML div，保留缩进并支持行内公式。"""
     rendered_lines: list[str] = []
     for line in block.lines:
         line_parts: list[str] = []
+        previous_span_type: str | None = None
         for span in line.spans:
             if span.type == ContentType.TEXT:
-                line_parts.append(escape(span.content or ""))
+                line_parts.append(escape(span.content or "", quote=False))
+                if span.content:
+                    previous_span_type = span.type
             elif span.type == ContentType.INLINE_EQUATION and span.content:
-                line_parts.append(f"{inline_left}{escape(span.content)}{inline_right}")
+                if (
+                    previous_span_type == ContentType.INLINE_EQUATION
+                    and line_parts
+                    and not line_parts[-1].endswith((" ", "\n", "\t"))
+                ):
+                    line_parts.append(" ")
+                line_parts.append(f"{inline_left}{escape(span.content, quote=False)}{inline_right}")
+                previous_span_type = span.type
         rendered_lines.append("".join(line_parts).rstrip())
 
     content = "\n".join(rendered_lines).strip("\n")
     if not content.strip():
         return ""
-    return f'<pre class="mineru-algorithm-code"><code style="white-space: pre-wrap;">{content}</code></pre>'
+    return (
+        '<div class="mineru-algorithm" style="white-space: pre-wrap; font-family:monospace;">\n'
+        f"{content}\n"
+        "</div>"
+    )
 
 
 # -- Per-block-type segment rendering ----------------------------------------

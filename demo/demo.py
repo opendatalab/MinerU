@@ -218,8 +218,6 @@ def main() -> None:
     # Available examples:
     # "hybrid-engine"        -> local hybrid parsing, recommended default
     # "pipeline"             -> more general OCR/text pipeline
-    # "vlm-engine"           -> local VLM parsing
-    # "vlm-http-client"      -> remote OpenAI-compatible VLM server
     # "hybrid-http-client"   -> remote OpenAI-compatible hybrid server
     backend = "hybrid-engine"
     # Hybrid parsing effort. "medium" is faster; "high" keeps the high-effort hybrid behavior.
@@ -229,13 +227,13 @@ def main() -> None:
     # "txt"  -> force text extraction
     # "ocr"  -> force OCR
     parse_method = "auto"
-    # Pipeline OCR language hint; hybrid and VLM backends ignore this value.
+    # Pipeline OCR language hint; hybrid backends ignore this value.
     language = "ch"
     # Enable formula parsing in the output.
     formula_enable = True
     # Enable table parsing in the output.
     table_enable = True
-    # Enable image/chart analysis for VLM and hybrid backends.
+    # Enable image/chart analysis for hybrid backends.
     image_analysis = True
     # Required only for "*-http-client" backends, for example:
     # "http://127.0.0.1:30000"

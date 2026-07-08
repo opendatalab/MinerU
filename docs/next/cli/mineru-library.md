@@ -18,8 +18,8 @@
 
 ```bash
 mineru search "keyword"
-mineru search "keyword" --tier standard
-mineru search "keyword" --min-tier standard --type pdf
+mineru search "keyword" --tier medium
+mineru search "keyword" --min-tier medium --type pdf
 ```
 
 行为：
@@ -90,7 +90,7 @@ JSON 输出至少包含:
 ```json
 [
   {"tier": "flash", "page_range": "1~20"},
-  {"tier": "standard", "page_range": "1~5,18~20"}
+  {"tier": "medium", "page_range": "1~5,18~20"}
 ]
 ```
 
@@ -98,7 +98,7 @@ JSON 输出至少包含:
 
 ```json
 [
-  {"id": 123, "tier": "pro", "page_range": "6~17", "status": "parsing"}
+  {"id": 123, "tier": "high", "page_range": "6~17", "status": "parsing"}
 ]
 ```
 
@@ -235,8 +235,8 @@ parsing-rules 用于按路径规则指定自动解析策略。
 示例：
 
 ```bash
-mineru config parsing-rules add "*/论文/*" --tier standard --pages all
-mineru config parsing-rules add "*/合同/*" --tier pro --remote
+mineru config parsing-rules add "*/论文/*" --tier medium --pages all
+mineru config parsing-rules add "*/合同/*" --tier high --remote
 ```
 
 规则命中时，系统必须检查本地或远端能力是否支持对应 tier。不满足时应记录错误或提示用户，不静默降级到 `flash`。

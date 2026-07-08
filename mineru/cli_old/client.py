@@ -39,8 +39,11 @@ from mineru.utils.backend_options import (
     DEFAULT_BACKEND,
     DEFAULT_HYBRID_EFFORT,
     HYBRID_EFFORT_CHOICES,
+    LEGACY_PIPELINE_BACKEND_ALIASES,
+    LEGACY_VLM_BACKEND_ALIASES,
     PUBLIC_BACKEND_CHOICES,
     normalize_public_backend,
+    resolve_backend_and_effort,
     validate_effort,
 )
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
@@ -94,11 +97,15 @@ def normalize_backend_option(
     param: Optional[click.Parameter],
     value: str,
 ) -> str:
-    """将 CLI 输入的旧 backend 别名规范为当前公开 backend 名称。"""
+    """校验 CLI backend，legacy pipeline/VLM 值保留到后续 backend+effort 联合解析。"""
+    normalized_value = (value or "").strip()
     try:
-        return normalize_public_backend(value)
+        normalized_backend = normalize_public_backend(normalized_value)
     except ValueError as exc:
         raise click.BadParameter(str(exc), ctx=ctx, param=param) from exc
+    if normalized_value in LEGACY_PIPELINE_BACKEND_ALIASES or normalized_value in LEGACY_VLM_BACKEND_ALIASES:
+        return normalized_value
+    return normalized_backend
 
 
 def normalize_effort_option(
@@ -399,7 +406,6 @@ def build_visualization_jobs(
     backend: str,
     parse_method: str,
 ) -> list[VisualizationJob]:
-    draw_span = backend.startswith("pipeline")
     return [
         VisualizationJob(
             document_stem=document.stem,
@@ -412,7 +418,7 @@ def build_visualization_jobs(
                 parse_method,
                 is_office=document.suffix in office_suffixes,
             ),
-            draw_span=draw_span,
+            draw_span=False,
         )
         for document in planned_task.documents
     ]
@@ -583,54 +589,11 @@ def collect_input_documents(
     return collected
 
 
-def plan_pipeline_tasks(
-    documents: list[InputDocument],
-    processing_window_size: int,
-) -> list[PlannedTask]:
-    bins: list[PlannedTask] = []
-    sorted_docs = sorted(
-        documents,
-        key=lambda doc: (-doc.effective_pages, doc.order),
-    )
-
-    for document in sorted_docs:
-        if document.effective_pages > processing_window_size:
-            bins.append(
-                PlannedTask(
-                    index=len(bins) + 1,
-                    documents=[document],
-                    total_pages=document.effective_pages,
-                )
-            )
-            continue
-
-        candidates = [task for task in bins if task.total_pages + document.effective_pages <= processing_window_size]
-        if candidates:
-            selected = min(candidates, key=lambda task: (task.total_pages, task.index))
-            selected.documents.append(document)
-            selected.total_pages += document.effective_pages
-            continue
-
-        bins.append(
-            PlannedTask(
-                index=len(bins) + 1,
-                documents=[document],
-                total_pages=document.effective_pages,
-            )
-        )
-
-    for index, task in enumerate(bins, start=1):
-        task.index = index
-    return bins
-
-
 def plan_tasks(
     documents: list[InputDocument],
     backend: str,
     processing_window_size: int,
 ) -> list[PlannedTask]:
-    if backend == "pipeline":
-        return plan_pipeline_tasks(documents, processing_window_size)
     return [
         PlannedTask(index=index, documents=[document], total_pages=document.effective_pages)
         for index, document in enumerate(documents, start=1)
@@ -641,8 +604,6 @@ def build_request_form_data(
     lang: str,
     backend: str,
     method: str,
-    formula_enable: bool,
-    table_enable: bool,
     server_url: Optional[str],
     start_page_id: int,
     end_page_id: Optional[int],
@@ -650,6 +611,7 @@ def build_request_form_data(
     effort: str = DEFAULT_HYBRID_EFFORT,
     client_side_output_generation: bool = False,
 ) -> dict[str, str | list[str]]:
+    backend, effort = resolve_backend_and_effort(backend, effort)
     # 开启客户端输出生成时，只关闭客户端会重建的最终产物。
     return_md = not client_side_output_generation
     return_content_list = not client_side_output_generation
@@ -657,8 +619,6 @@ def build_request_form_data(
         lang_list=[lang],
         backend=backend,
         parse_method=method,
-        formula_enable=formula_enable,
-        table_enable=table_enable,
         image_analysis=image_analysis,
         effort=effort,
         server_url=server_url,
@@ -891,13 +851,12 @@ async def run_orchestrated_cli(
     api_url: Optional[str],
     start_page_id: int,
     end_page_id: Optional[int],
-    formula_enable: bool,
-    table_enable: bool,
     image_analysis: bool = True,
     effort: str = DEFAULT_HYBRID_EFFORT,
     client_side_output_generation: bool = False,
     extra_cli_args: tuple[str, ...] = (),
 ) -> None:
+    backend, effort = resolve_backend_and_effort(backend, effort)
     if start_page_id < 0:
         raise click.ClickException("--start must be greater than or equal to 0")
     if end_page_id is not None and end_page_id < 0:
@@ -941,9 +900,7 @@ async def run_orchestrated_cli(
             planned_tasks = plan_tasks(
                 documents=documents,
                 backend=backend,
-                processing_window_size=server_health.processing_window_size
-                if backend == "pipeline"
-                else DEFAULT_PROCESSING_WINDOW_SIZE,
+                processing_window_size=DEFAULT_PROCESSING_WINDOW_SIZE,
             )
             progress = build_task_execution_progress(planned_tasks)
             concurrency = resolve_submit_concurrency(
@@ -954,8 +911,6 @@ async def run_orchestrated_cli(
                 lang=lang,
                 backend=backend,
                 method=method,
-                formula_enable=formula_enable,
-                table_enable=table_enable,
                 image_analysis=image_analysis,
                 effort=effort,
                 server_url=server_url,
@@ -1039,7 +994,7 @@ async def run_orchestrated_cli(
       txt: Use text extraction method.
       ocr: Use OCR method for image-based PDFs.
     Without method specified, 'auto' will be used by default.
-    Adapted only for the case where the backend is set to 'pipeline' and 'hybrid-*'.""",
+    Adapted only for the case where the backend is set to 'hybrid-*'.""",
 )
 @click.option(
     "-b",
@@ -1051,9 +1006,6 @@ async def run_orchestrated_cli(
     metavar="[" + "|".join(PUBLIC_BACKEND_CHOICES) + "]",
     help="""\b
     the backend for parsing pdf:
-      pipeline: More general.
-      vlm-engine: High accuracy via local computing power.
-      vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers).
       hybrid-engine: Next-generation high accuracy solution via local computing power.
       hybrid-http-client: High accuracy but requires a little local computing power(client suitable for openai-compatible servers).
     Without backend specified, hybrid-engine will be used by default.""",
@@ -1067,9 +1019,10 @@ async def run_orchestrated_cli(
     metavar="[" + "|".join(HYBRID_EFFORT_CHOICES) + "]",
     help="""\b
     Hybrid parsing effort:
-      medium: Faster parsing for most documents, balancing accuracy and efficiency. Image/chart analysis is disabled.
-      high: Higher-accuracy parsing with image/chart analysis support, which may take longer.
-    Without effort specified, medium will be used by default.
+      medium: Local Hybrid processing without VLM calls. Image/chart analysis is disabled.
+      high: Faster VLM parsing for most documents, balancing accuracy and efficiency. Image/chart analysis is disabled.
+      extra_high: Higher-accuracy parsing with image/chart analysis support, which may take longer.
+    Without effort specified, high will be used by default.
     Adapted only for the case where the backend is set to 'hybrid-*'.""",
 )
 @click.option(
@@ -1083,7 +1036,7 @@ async def run_orchestrated_cli(
     help="""
     Input the languages in the pdf (if known) to improve OCR accuracy.
     Without languages specified, 'ch' will be used by default.
-    Adapted only for the case where the backend is set to 'pipeline' and 'hybrid-*'.
+    Adapted only for the case where the backend is set to 'hybrid-*'.
     """,
 )
 @click.option(
@@ -1093,7 +1046,7 @@ async def run_orchestrated_cli(
     type=str,
     default=None,
     help="""
-    When the backend is `<vlm/hybrid>-http-client`, you need to specify the server_url, for example:`http://127.0.0.1:30000`
+    When the backend is `hybrid-http-client`, you need to specify the server_url, for example:`http://127.0.0.1:30000`
     """,
 )
 @click.option(
@@ -1113,27 +1066,11 @@ async def run_orchestrated_cli(
     help="The ending page for PDF parsing, beginning from 0.",
 )
 @click.option(
-    "-f",
-    "--formula",
-    "formula_enable",
-    type=bool,
-    default=True,
-    help="Enable formula parsing. Default is True. ",
-)
-@click.option(
-    "-t",
-    "--table",
-    "table_enable",
-    type=bool,
-    default=True,
-    help="Enable table parsing. Default is True. ",
-)
-@click.option(
     "--image-analysis",
     "image_analysis",
     type=bool,
     default=True,
-    help="Enable image/chart analysis for VLM and hybrid backends. Default is True. ",
+    help="Enable image/chart analysis for hybrid backends. Default is True. ",
 )
 @click.option(
     "--client-side-output-generation",
@@ -1154,8 +1091,6 @@ def main(
     server_url: Optional[str],
     start_page_id: int,
     end_page_id: Optional[int],
-    formula_enable: bool,
-    table_enable: bool,
     image_analysis: bool,
     client_side_output_generation: bool,
 ) -> None:
@@ -1171,8 +1106,6 @@ def main(
             api_url=api_url,
             start_page_id=start_page_id,
             end_page_id=end_page_id,
-            formula_enable=formula_enable,
-            table_enable=table_enable,
             image_analysis=image_analysis,
             client_side_output_generation=client_side_output_generation,
             extra_cli_args=tuple(ctx.args),

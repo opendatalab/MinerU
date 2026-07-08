@@ -4,7 +4,7 @@ import sys
 
 from loguru import logger
 
-from mineru.backend.vlm.utils import set_lmdeploy_backend
+from mineru.model.vlm.engine_utils import set_lmdeploy_backend
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 
 

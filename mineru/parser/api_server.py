@@ -38,14 +38,21 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..types import Tier
-from ..utils.backend_options import HYBRID_EFFORT_HELP, validate_effort
+from ..types import Tier, validate_tier
+from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
+from ..utils.image_payload import validate_image_sidecar_path
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..version import __version__
 from . import parse_async
-from .tier import PARSER_BACKENDS, TierDependencyError, ensure_tier_runtime_dependencies, resolve_tier_and_backend
+from .tier import (
+    ParserRuntimeOptions,
+    TierDependencyError,
+    ensure_tier_runtime_dependencies,
+    runtime_options_for_tier,
+)
 
-_API_SERVER_BACKENDS = tuple(backend for backend in PARSER_BACKENDS if backend != "flash")
+_API_SERVER_TIERS: tuple[Tier, ...] = ("flash", "medium", "high", "extra_high")
+_DEFAULT_API_SERVER_TIER: Tier = "high"
 _API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
 _MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
 logger = logging.getLogger("mineru.parser.api_server")
@@ -958,6 +965,34 @@ def _store_image_outputs(file_store: FileStore, images: dict[str, bytes]) -> lis
     return img_refs
 
 
+def _build_self_contained_zip_output(result: Any, output_stem: str) -> bytes:
+    """构建自包含解析 zip，确保只请求 zip 时也能恢复 middle_json、图片和 model_output。"""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"{output_stem}.markdown", _text_utf8_bytes(result.markdown() or ""))
+        zf.writestr(f"{output_stem}.middle_json", _json_utf8_bytes(result.to_dict(skip_defaults=True)))
+        zf.writestr(f"{output_stem}.content_list", _json_utf8_bytes(result.content_list()))
+        zf.writestr(f"{output_stem}.structured_content", _json_utf8_bytes(result.structured_content()))
+
+        for img_path, img_bytes in sorted(result.images().items()):
+            safe_img_path = validate_image_sidecar_path(img_path)
+            zf.writestr(safe_img_path, img_bytes)
+
+        model_output = getattr(result, "_model_output", None)
+        if model_output is not None:
+            zf.writestr(
+                f"{output_stem}_model_output.json",
+                _text_utf8_bytes(
+                    json.dumps(
+                        _sanitize_json_for_utf8(model_output),
+                        ensure_ascii=False,
+                        indent=4,
+                    )
+                ),
+            )
+    return buf.getvalue()
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  DEPENDENCIES
 # ═══════════════════════════════════════════════════════════════════════
@@ -1031,7 +1066,7 @@ class _JobRecord:
     created_at: str = ""
     started_at: str | None = None
     finished_at: str | None = None
-    tier: Tier = "standard"
+    tier: Tier = _DEFAULT_API_SERVER_TIER
     output_formats: list[OutputFormat] = None  # type: ignore[assignment]
     progress: JobProgress | None = None
     files: list[JobFileResult] = None  # type: ignore[assignment]
@@ -1285,10 +1320,8 @@ async def _run_job(
     server_backend: str,
     language: str,
     ocr_mode: str,
-    table_enable: bool,
-    formula_enable: bool,
     image_analysis: bool,
-    effort: str = "medium",
+    effort: str = DEFAULT_HYBRID_EFFORT,
     url_timeout: int = 60,
 ) -> None:
     rec.status = "running"
@@ -1320,8 +1353,6 @@ async def _run_job(
                     language=language,
                     ocr_mode=ocr_mode,
                     effort=effort,
-                    disable_table=not table_enable,
-                    disable_formula=not formula_enable,
                     disable_image_analysis=not image_analysis,
                     page_range=page_range,
                 )
@@ -1374,30 +1405,7 @@ async def _run_job(
 
                 # zip
                 if "zip" in out_formats:
-                    buf = io.BytesIO()
-                    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                        for fmt_name, attr in [
-                            ("markdown", "markdown"),
-                            ("middle_json", "middle_json"),
-                            ("content_list", "content_list"),
-                            ("structured_content", "structured_content"),
-                        ]:
-                            ref = getattr(output_files, attr)
-                            if ref and ref.file_id:
-                                try:
-                                    zf.writestr(
-                                        f"{pathlib.Path(fr.name).stem}.{fmt_name}",
-                                        file_store.read_file_data(ref.file_id),
-                                    )
-                                except Exception:
-                                    pass
-                        if output_files.images:
-                            for ir in output_files.images:
-                                try:
-                                    zf.writestr(ir.path, file_store.read_file_data(ir.file_id))
-                                except Exception:
-                                    pass
-                    zip_bytes = buf.getvalue()
+                    zip_bytes = _build_self_contained_zip_output(result, pathlib.Path(fr.name).stem)
                     zip_sha = hashlib.sha256(zip_bytes).hexdigest()
                     file_store.store_blob(zip_bytes, sha256hex=zip_sha)
                     zip_fid = file_store.create_file_for_output(f"{fr.name}.zip", zip_bytes, sha256hex=zip_sha)
@@ -1719,8 +1727,7 @@ async def create_job(
             error_type="invalid_request_error",
             code="invalid_request",
             message=(
-                "Webhook callback is not supported by this Local Parse Server. "
-                "Use polling via GET /v1/parse/jobs/{job_id}."
+                "Webhook callback is not supported by this Local Parse Server. Use polling via GET /v1/parse/jobs/{job_id}."
             ),
         )
 
@@ -1751,10 +1758,11 @@ async def create_job(
             message=f"wait must be 0 or [5, {max_wait}]",
         )
 
-    # Resolve omitted tier to this server's concrete tier, then validate it.
-    body.tier = body.tier or request.app.state.tier
-    supported_tiers = {tier["id"] for tier in request.app.state.tiers}
-    if body.tier not in supported_tiers:
+    # 按请求 tier 选择启动时预先解析好的 runtime，避免所有 job 共享默认 effort。
+    body.tier = body.tier or request.app.state.default_tier
+    runtime_options: dict[Tier, ParserRuntimeOptions] = request.app.state.tier_runtime_options
+    runtime = runtime_options.get(body.tier)
+    if runtime is None:
         _raise_api_error(
             400,
             error_type="invalid_request_error",
@@ -1763,13 +1771,11 @@ async def create_job(
         )
 
     rec = job_store.create(body, file_store)
-    backend: str = request.app.state.backend
+    backend = runtime.backend
     url_timeout_val: int = request.app.state.url_timeout
     language_val: str = request.app.state.language
     ocr_mode_val: str = request.app.state.ocr_mode
-    effort_val: str = request.app.state.effort
-    table_enable_val: bool = request.app.state.table_enable
-    formula_enable_val: bool = request.app.state.formula_enable
+    effort_val = runtime.effort
     image_analysis_val: bool = request.app.state.image_analysis
 
     if body.wait > 0:
@@ -1783,8 +1789,6 @@ async def create_job(
                     language=language_val,
                     ocr_mode=ocr_mode_val,
                     effort=effort_val,
-                    table_enable=table_enable_val,
-                    formula_enable=formula_enable_val,
                     image_analysis=image_analysis_val,
                     url_timeout=url_timeout_val,
                 )
@@ -1814,8 +1818,6 @@ async def create_job(
                 language=language_val,
                 ocr_mode=ocr_mode_val,
                 effort=effort_val,
-                table_enable=table_enable_val,
-                formula_enable=formula_enable_val,
                 image_analysis=image_analysis_val,
                 url_timeout=url_timeout_val,
             )
@@ -1973,34 +1975,74 @@ def _build_v1_router() -> APIRouter:
 _OCR_MODES = ("auto", "txt", "ocr")
 
 
-def _resolve_server_tier_and_backend(*, tier: Tier | None, backend: str | None) -> tuple[Tier, str]:
-    resolved_tier = tier
-    resolved_backend = backend
-    if resolved_tier is None and resolved_backend is None:
-        resolved_tier = "standard"
-    resolved_tier, resolved_backend = resolve_tier_and_backend(tier=resolved_tier, backend=resolved_backend)
-    if resolved_backend not in _API_SERVER_BACKENDS:
-        raise ValueError(f"Unsupported backend '{resolved_backend}'. Supported backends: {', '.join(_API_SERVER_BACKENDS)}")
-    return resolved_tier, resolved_backend
+def _normalize_server_tiers(tier: Tier | list[Tier] | tuple[Tier, ...] | None) -> list[Tier]:
+    """规范化 API server 启动 tier 列表，保留用户顺序并拒绝旧 standard/pro tier。"""
+    raw_tiers: list[Tier]
+    if tier is None:
+        raw_tiers = list(_API_SERVER_TIERS)
+    elif isinstance(tier, str):
+        raw_tiers = [validate_tier(tier)]
+    else:
+        raw_tiers = [validate_tier(item) for item in list(tier)] or list(_API_SERVER_TIERS)
+
+    tiers: list[Tier] = []
+    for item in raw_tiers:
+        if item not in tiers:
+            tiers.append(item)
+    return tiers
+
+
+def _runtime_options_for_server_tiers(tiers: list[Tier]) -> dict[Tier, ParserRuntimeOptions]:
+    """为每个启动 tier 生成独立 runtime，API server 只允许 tier 决定 backend/effort。"""
+    return {tier: runtime_options_for_tier(tier) for tier in tiers}
 
 
 def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[dict[str, Any]]]:
-    if tier == "pro":
+    if tier == "flash":
+        return ["MinerU-Flash"], [
+            {
+                "id": "flash",
+                "description": "Fast local text extraction.",
+                "current_model": "flash",
+            },
+        ]
+    if tier == "medium":
+        return ["Hybrid-Medium", "MinerU-HTML"], [
+            {
+                "id": "medium",
+                "description": "Hybrid medium parsing with local lightweight models.",
+                "current_model": "hybrid-medium",
+            },
+        ]
+    if tier == "extra_high":
         return ["MinerU2.5-Pro-2604-1.2B", "MinerU-HTML"], [
             {
-                "id": "pro",
-                "description": "VLM-based high-accuracy parsing.",
+                "id": "extra_high",
+                "description": "Hybrid maximum-accuracy parsing.",
                 "current_model": "MinerU2.5-Pro-2604-1.2B",
             },
         ]
 
-    return ["pipeline", "MinerU-HTML"], [
+    return ["MinerU2.5-Pro-2604-1.2B", "MinerU-HTML"], [
         {
-            "id": "standard",
-            "description": "Pipeline-based parsing, balanced speed and quality.",
-            "current_model": "pipeline",
+            "id": "high",
+            "description": "Hybrid high-accuracy parsing.",
+            "current_model": "MinerU2.5-Pro-2604-1.2B",
         },
     ]
+
+
+def _model_ids_and_tiers_for_server_tiers(tiers: list[Tier]) -> tuple[list[str], list[dict[str, Any]]]:
+    """聚合多个启动 tier 的模型和 tier metadata，并对重复 model id 保序去重。"""
+    model_ids: list[str] = []
+    tier_infos: list[dict[str, Any]] = []
+    for tier in tiers:
+        tier_model_ids, single_tier_infos = _model_ids_and_tiers_for_server_tier(tier)
+        for model_id in tier_model_ids:
+            if model_id not in model_ids:
+                model_ids.append(model_id)
+        tier_infos.extend(single_tier_infos)
+    return model_ids, tier_infos
 
 
 def _preflight_tier_dependencies(tier: Tier) -> None:
@@ -2010,20 +2052,32 @@ def _preflight_tier_dependencies(tier: Tier) -> None:
         raise ParseServerStartupError(str(exc)) from exc
 
 
+def _dependency_tier_for_runtime(runtime: ParserRuntimeOptions) -> Tier:
+    """根据实际 runtime 判断依赖预检 tier。"""
+    return runtime.tier
+
+
+def _preflight_runtime_dependencies(runtime_options: dict[Tier, ParserRuntimeOptions]) -> None:
+    """对多 tier server 的 runtime 依赖做去重预检，避免重复导入检查。"""
+    checked_tiers: set[Tier] = set()
+    for runtime in runtime_options.values():
+        dependency_tier = _dependency_tier_for_runtime(runtime)
+        if dependency_tier in checked_tiers:
+            continue
+        checked_tiers.add(dependency_tier)
+        _preflight_tier_dependencies(dependency_tier)
+
+
 def create_app(
     *,
     upload_dir: str = "",
-    tier: Tier | None = None,
-    backend: str | None = None,
+    tier: Tier | list[Tier] | tuple[Tier, ...] | None = None,
     concurrency: int = 1,
     url_timeout: int = 60,
     max_wait: int = 600,
     api_key: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
-    effort: str = "medium",
-    table_enable: bool = True,
-    formula_enable: bool = True,
     image_analysis: bool = True,
 ) -> FastAPI:
     """Create a FastAPI application implementing the MinerU v1 REST API.
@@ -2033,12 +2087,8 @@ def create_app(
     upload_dir:
         Directory for uploaded files and parse artifacts.
     tier:
-        Server parsing tier.  ``"standard"`` selects the pipeline backend;
-        ``"pro"`` selects the VLM backend.  If ``backend`` is also provided,
-        both values must be compatible.
-    backend:
-        Advanced server backend mode. ``"pipeline"`` exposes the traditional
-        CV+OCR pipeline; ``"vlm"`` exposes ``MinerU2.5-Pro-2604-1.2B``.
+        Server parsing tier. ``"flash"`` selects flash parsing; ``"medium"``,
+        ``"high"`` and ``"extra_high"`` map to same-name Hybrid efforts.
     concurrency:
         Maximum concurrent parse jobs (default 1).
     url_timeout:
@@ -2049,35 +2099,37 @@ def create_app(
         Optional API key.  When set, clients must pass ``Authorization: Bearer <key>``
         to access list endpoints and advanced output formats.
     language:
-        Parser language hint.
+        Hybrid medium OCR language hint; accepted by other efforts for compatibility.
     ocr_mode:
-        PDF OCR/text extraction mode for pipeline and hybrid backends.
-    effort:
-        Hybrid backend effort level. Medium is faster. High is more accurate
-        and may take longer.
-    table_enable:
-        Whether table recognition is enabled.
-    formula_enable:
-        Whether formula recognition is enabled.
+        PDF OCR/text extraction mode for Hybrid backends.
     image_analysis:
-        Whether image analysis is enabled for VLM/hybrid backends.
+        Whether image analysis is enabled for Hybrid backends.
     """
     upload_dir = upload_dir or ""
-    tier, backend = _resolve_server_tier_and_backend(tier=tier, backend=backend)
-    effort = validate_effort(effort)
-    _preflight_tier_dependencies(tier)
+    tier_input = None if tier in ((), []) else tier
+    server_tiers = _normalize_server_tiers(tier_input)
+    tier_runtime_options = _runtime_options_for_server_tiers(server_tiers)
+    server_tiers = list(tier_runtime_options)
+    default_tier = _DEFAULT_API_SERVER_TIER if _DEFAULT_API_SERVER_TIER in tier_runtime_options else server_tiers[0]
+    default_runtime = tier_runtime_options[default_tier]
+    tier = default_tier
+    backend = default_runtime.backend
+    effort = default_runtime.effort
+    _preflight_runtime_dependencies(tier_runtime_options)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
     _upload_dir.mkdir(parents=True, exist_ok=True)
     language = validate_public_ocr_lang(language)
 
-    _model_ids, _tiers = _model_ids_and_tiers_for_server_tier(tier)
+    _model_ids, _tiers = _model_ids_and_tiers_for_server_tiers(server_tiers)
 
     @asynccontextmanager
     async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
         application.state.upload_dir = _upload_dir
         application.state.tier = tier
+        application.state.default_tier = default_tier
         application.state.backend = backend
+        application.state.tier_runtime_options = tier_runtime_options
         application.state.model_ids = _model_ids
         application.state.tiers = _tiers
         application.state.concurrency = concurrency
@@ -2087,8 +2139,6 @@ def create_app(
         application.state.language = language
         application.state.ocr_mode = ocr_mode
         application.state.effort = effort
-        application.state.table_enable = table_enable
-        application.state.formula_enable = formula_enable
         application.state.image_analysis = image_analysis
         yield
         if not upload_dir and _upload_dir.exists():
@@ -2106,7 +2156,9 @@ def create_app(
     )
     application.state.upload_dir = _upload_dir
     application.state.tier = tier
+    application.state.default_tier = default_tier
     application.state.backend = backend
+    application.state.tier_runtime_options = tier_runtime_options
     application.state.model_ids = _model_ids
     application.state.tiers = _tiers
     application.state.concurrency = concurrency
@@ -2116,8 +2168,6 @@ def create_app(
     application.state.language = language
     application.state.ocr_mode = ocr_mode
     application.state.effort = effort
-    application.state.table_enable = table_enable
-    application.state.formula_enable = formula_enable
     application.state.image_analysis = image_analysis
     FileStore(_upload_dir).install(application.state)
     JobStore(concurrency=concurrency).install(application.state)
@@ -2195,20 +2245,13 @@ def create_app(
     type=click.Path(file_okay=False, writable=True, resolve_path=True),
 )
 @click.option(
-    "--backend",
-    default=None,
-    type=str,
-    help=(
-        "Advanced parser backend "
-        f"({', '.join(_API_SERVER_BACKENDS)}). "
-        "Defaults from --tier: standard -> pipeline, pro -> hybrid-engine."
-    ),
-)
-@click.option(
     "--tier",
-    default=None,
-    type=click.Choice(["standard", "pro"]),
-    help="Server parsing tier. Defaults to 'standard' when neither --tier nor --backend is provided.",
+    multiple=True,
+    type=click.Choice(list(_API_SERVER_TIERS)),
+    help=(
+        "Server parsing tier; repeat to expose multiple tiers. "
+        "Defaults to flash, medium, high, and extra_high; requests without tier default to high."
+    ),
 )
 @click.option(
     "--concurrency",
@@ -2233,23 +2276,15 @@ def create_app(
     default="ch",
     type=str,
     metavar="[" + "|".join(_API_SERVER_LANGUAGES) + "]",
-    help="Parser language hint.",
+    help="Hybrid medium OCR language hint; accepted by other efforts for compatibility.",
 )
 @click.option(
     "--ocr-mode",
     default="auto",
     type=click.Choice(_OCR_MODES),
-    help="PDF OCR/text extraction mode. Applies to pipeline and hybrid-* backends.",
+    help="PDF OCR/text extraction mode. Applies to hybrid-* backends.",
 )
-@click.option(
-    "--effort",
-    default="medium",
-    type=click.Choice(("medium", "high")),
-    help=HYBRID_EFFORT_HELP,
-)
-@click.option("--disable-table", is_flag=True, help="Disable table recognition.")
-@click.option("--disable-formula", is_flag=True, help="Disable formula recognition.")
-@click.option("--disable-image-analysis", is_flag=True, help="Disable image analysis for VLM/hybrid backends.")
+@click.option("--disable-image-analysis", is_flag=True, help="Disable image analysis for Hybrid backends.")
 @click.option(
     "--api-key",
     default=None,
@@ -2260,16 +2295,12 @@ def main(
     host: str,
     port: int,
     upload_dir: str,
-    backend: str | None,
-    tier: Tier | None,
+    tier: tuple[Tier, ...],
     concurrency: int,
     url_timeout: int,
     max_wait: int,
     language: str,
     ocr_mode: str,
-    effort: str,
-    disable_table: bool,
-    disable_formula: bool,
     disable_image_analysis: bool,
     api_key: str | None,
 ) -> None:
@@ -2277,17 +2308,13 @@ def main(
     try:
         application = create_app(
             upload_dir=upload_dir,
-            tier=tier,
-            backend=backend,
+            tier=tier or None,
             concurrency=concurrency,
             url_timeout=url_timeout,
             max_wait=max_wait,
             api_key=api_key,
             language=language,
             ocr_mode=ocr_mode,
-            effort=effort,
-            table_enable=not disable_table,
-            formula_enable=not disable_formula,
             image_analysis=not disable_image_analysis,
         )
     except ParseServerStartupError as exc:

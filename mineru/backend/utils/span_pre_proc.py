@@ -66,7 +66,7 @@ def txt_spans_extract(
         return _prepare_post_ocr_spans(need_ocr_spans, spans, pil_img, scale)
 
     page_chars = pdf_page.get_chars()
-    page_all_chars = [char for char in page_chars if _is_supported_rotation(char["rotation"])]
+    page_all_chars = _get_chars_for_span_fill(page_chars)
 
     # 计算所有span的高度的中位数
     span_height_list = []
@@ -130,6 +130,84 @@ def _is_supported_rotation(rotation: float) -> bool:
     """判断 pdftext 旋转角是否属于当前可回填的四个标准方向。"""
     rotation_degrees = math.degrees(rotation)
     return any(abs(rotation_degrees - angle) < 0.1 for angle in [0, 90, 180, 270])
+
+
+def _get_char_fill_key(char: Char) -> tuple[str, Any]:
+    """生成字符回填判定 key，优先使用 pdftext 提供的页内 char_idx。"""
+    char_idx = char.get("char_idx")
+    if char_idx is not None:
+        return ("char_idx", char_idx)
+    return ("object_id", id(char))
+
+
+def _iter_line_chars(line: dict[str, Any]) -> list[Char]:
+    """按 pdftext line/span 结构展开字符，兼容缺少 chars 字段的异常 span。"""
+    return [
+        char
+        for span in line.get("spans", [])
+        for char in span.get("chars", [])
+    ]
+
+
+def _is_visible_standard_rotation_char(char: Char) -> bool:
+    """判断字符是否是可见的标准方向正文字符，避免换行控制符误放行水印。"""
+    text = str(char.get("char", ""))
+    if not text or text.isspace() or text in {"\r", "\n"}:
+        return False
+
+    bbox = char.get("bbox")
+    if bbox is None:
+        return False
+
+    x0, y0, x1, y1 = [float(v) for v in bbox]
+    return (
+        x1 > x0
+        and y1 > y0
+        and _is_supported_rotation(float(char.get("rotation", 0)))
+    )
+
+
+def _get_chars_for_span_fill(page_chars: list[Char] | dict[str, list[Char]]) -> list[Char]:
+    """选择允许参与 span 回填的字符，保留正文内仿斜体并过滤整行斜向水印。"""
+    if isinstance(page_chars, dict):
+        all_chars = page_chars["chars"]
+    else:
+        all_chars = page_chars
+
+    fill_char_keys = {
+        _get_char_fill_key(char)
+        for char in all_chars
+        if _is_supported_rotation(float(char.get("rotation", 0)))
+    }
+
+    rotated_chars = [
+        char
+        for char in all_chars
+        if not _is_supported_rotation(float(char.get("rotation", 0)))
+    ]
+    if not rotated_chars:
+        return [
+            char for char in all_chars
+            if _get_char_fill_key(char) in fill_char_keys
+        ]
+
+    for line in get_lines_from_chars(all_chars):
+        if not _is_supported_rotation(float(line.get("rotation", 0))):
+            continue
+
+        line_chars = _iter_line_chars(line)
+        if not any(_is_visible_standard_rotation_char(char) for char in line_chars):
+            continue
+
+        # 标准方向正文行内的局部旋转字符通常是仿斜体强调，需要允许回填。
+        for char in line_chars:
+            if not _is_supported_rotation(float(char.get("rotation", 0))):
+                fill_char_keys.add(_get_char_fill_key(char))
+
+    return [
+        char for char in all_chars
+        if _get_char_fill_key(char) in fill_char_keys
+    ]
 
 
 def _prepare_post_ocr_spans(
