@@ -22,7 +22,6 @@ GET /v1/health HTTP/1.1
   "status": "ok",
   "version": "1.0.0",
   "features": {
-    "sse": true,
     "webhook": true
   }
 }
@@ -35,7 +34,6 @@ GET /v1/health HTTP/1.1
 | `status` | string | 是 | 固定为 `"ok"`。如果服务不可用，应由 HTTP 状态码表达，而不是返回其他 status。 |
 | `version` | string | 是 | API 服务版本。 |
 | `features` | object | 是 | 当前部署支持的外围能力。 |
-| `features.sse` | bool | 是 | 是否支持 Parse Job SSE 事件流。 |
 | `features.webhook` | bool | 是 | 是否支持 Webhook 回调。 |
 
 错误:
@@ -175,7 +173,6 @@ Local Parse Server 的 `health` 通常返回:
   "status": "ok",
   "version": "1.0.0",
   "features": {
-    "sse": false,
     "webhook": false
   }
 }

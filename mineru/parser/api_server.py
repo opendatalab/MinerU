@@ -35,7 +35,7 @@ import uvicorn
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..types import Tier, validate_tier
@@ -120,17 +120,6 @@ AccessLevel = Literal["anonymous", "registered"]
 
 FilePurpose = Literal["parse", "parse_output", "input_image"]
 """File purpose: source files, parse artifacts, or chat/response input images."""
-
-SSEEventType = Literal[
-    "status",
-    "file_started",
-    "file_completed",
-    "file_failed",
-    "done",
-    "error",
-]
-"""SSE event types."""
-
 
 # ── helper ───────────────────────────────────────────────────────────
 
@@ -283,7 +272,6 @@ class ModelHealthStatus(BaseModel):
 
 class HealthFeatures(BaseModel):
     model_config = _PYDANTIC_CONFIG
-    sse: bool = False
     webhook: bool = False
 
 
@@ -293,7 +281,7 @@ class HealthResponse(BaseModel):
     version: str
     parser_version: str | None = None
     models: ModelHealthStatus | None = None
-    features: HealthFeatures = Field(default_factory=lambda: HealthFeatures(sse=False, webhook=False))
+    features: HealthFeatures = Field(default_factory=HealthFeatures)
 
 
 # ── Models API ───────────────────────────────────────────────────────
@@ -465,7 +453,6 @@ class CreateJobRequest(BaseModel):
 class JobLinks(BaseModel):
     model_config = _PYDANTIC_CONFIG
     self: str
-    events: str
     cancel: str
 
 
@@ -1070,7 +1057,6 @@ class JobStore:
             output_formats=req.output_formats,
             links=JobLinks(
                 self=f"/v1/parse/jobs/{job_id}",
-                events=f"/v1/parse/jobs/{job_id}/events",
                 cancel=f"/v1/parse/jobs/{job_id}",
             ),
         )
@@ -1162,7 +1148,7 @@ class JobStore:
             access_level=access_level,
             progress=rec.progress,
             files=rec.files,
-            links=rec.links or JobLinks(self="", events="", cancel=""),
+            links=rec.links or JobLinks(self="", cancel=""),
         )
 
     def usage(self, access_level: AccessLevel) -> UsageResponse:
@@ -1753,69 +1739,6 @@ async def get_job(
 ) -> JobAsyncResponse:
     """Retrieve a job's current status and results."""
     return job_store.build_response(job_store.get(job_id))
-
-
-@_router.get(
-    "/parse/jobs/{job_id}/events",
-    response_model=None,
-    status_code=status.HTTP_200_OK,
-    responses={**_ERR_404},
-    tags=["Jobs"],
-)
-async def get_job_events(
-    job_id: str = Path(description="Job ID"),
-    job_store: JobStore = Depends(_get_job_store),
-) -> StreamingResponse:
-    """SSE stream of job status events."""
-    rec = job_store.get(job_id)
-
-    async def _event_stream() -> Any:
-        last_status = rec.status
-        yielded: set[str] = set()  # file names already yielded per-file events
-
-        def _yield_event(event: str, data: str) -> str:
-            return f"event: {event}\ndata: {data}\n\n"
-
-        yield _yield_event(
-            "status",
-            f'{{"status":"{rec.status}","progress":{{"completed":{rec.progress.completed},"failed":{rec.progress.failed},"total":{rec.progress.total}}}}}',
-        )
-
-        while rec.status in ("queued", "running"):
-            if rec.status != last_status:
-                yield _yield_event(
-                    "status",
-                    f'{{"status":"{rec.status}","progress":{{"completed":{rec.progress.completed},"failed":{rec.progress.failed},"total":{rec.progress.total}}}}}',
-                )
-                last_status = rec.status
-
-            for fr in rec.files:
-                name = fr.name or fr.file_id
-                if fr.status == "running" and name not in yielded:
-                    yield _yield_event(
-                        "file_started",
-                        f'{{"file_id":"{fr.file_id}","status":"running"}}',
-                    )
-                    yielded.add(name)
-                elif fr.status == "completed" and (f"done_{name}" not in yielded):
-                    yield _yield_event(
-                        "file_completed",
-                        f'{{"file_id":"{fr.file_id}","status":"completed"}}',
-                    )
-                    yielded.add(f"done_{name}")
-                elif fr.status == "failed" and (f"done_{name}" not in yielded):
-                    err_msg = fr.error.message.replace('"', '\\"') if fr.error else ""
-                    yield _yield_event(
-                        "file_failed",
-                        f'{{"file_id":"{fr.file_id}","status":"failed","error":{{"code":"{fr.error.code}","message":"{err_msg}"}}}}',
-                    )
-                    yielded.add(f"done_{name}")
-
-            await asyncio.sleep(1)
-
-        yield _yield_event("done", f'{{"job_id":"{rec.id}","status":"{rec.status}"}}')
-
-    return StreamingResponse(_event_stream(), media_type="text/event-stream")
 
 
 @_router.get(

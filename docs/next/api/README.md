@@ -56,7 +56,6 @@ ID 使用 OpenAI 风格的前缀加随机串。官方 API 使用 24 字符 base6
 | `DELETE` | `/v1/files/{file_id}` | 删除文件 |
 | `POST` | `/v1/parse/jobs` | 创建解析任务 |
 | `GET` | `/v1/parse/jobs/{job_id}` | 查询任务 |
-| `GET` | `/v1/parse/jobs/{job_id}/events` | SSE 任务事件 |
 | `GET` | `/v1/parse/jobs` | 列出任务 |
 | `DELETE` | `/v1/parse/jobs/{job_id}` | 取消任务 |
 | `POST` | `/v1/chat/completions` | Chat Completions 文档对话 |
@@ -92,7 +91,6 @@ Local Parse Server 默认监听 loopback 且不启用鉴权。启用 `--api-key`
 Local Parse Server 的目标是复用客户端协议，而不是完整模拟公网平台。它可以简化以下能力:
 
 - 不支持 Webhook。
-- 不支持 Parse Job SSE 事件流时，客户端使用轮询。
 - 上传 URL 可以指向本地 server 的临时上传 endpoint，而不是 OSS。
 - 文件产物下载可以直接返回 `200 + body`，不必返回 CDN 重定向。
 - 支持 `local` source，由 server 直接读取 allowlist 内的本地路径。

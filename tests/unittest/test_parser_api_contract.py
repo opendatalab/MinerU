@@ -28,6 +28,7 @@ from mineru.parser.api_server import (
     FileParseInfo,
     FileStore,
     HealthResponse,
+    JobLinks,
     JobListItem,
     OutputFileRef,
     OutputFiles,
@@ -1231,6 +1232,24 @@ def test_output_files_expose_new_names_without_inline_content() -> None:
         OutputFileRef.model_validate({"file_id": "file-1", "bytes": 12, "content": "inline"})
 
 
+def test_job_links_do_not_expose_sse_events() -> None:
+    links = JobLinks(self="/v1/parse/jobs/job_1", cancel="/v1/parse/jobs/job_1")
+
+    assert links.model_dump() == {
+        "self": "/v1/parse/jobs/job_1",
+        "cancel": "/v1/parse/jobs/job_1",
+    }
+
+    with pytest.raises(ValidationError):
+        JobLinks.model_validate(
+            {
+                "self": "/v1/parse/jobs/job_1",
+                "events": "/v1/parse/jobs/job_1/events",
+                "cancel": "/v1/parse/jobs/job_1",
+            }
+        )
+
+
 @pytest.mark.parametrize(
     ("output_format", "output_attr"),
     [
@@ -1708,7 +1727,7 @@ def test_api_contract_uses_parser_version_not_backend_version() -> None:
         "status": "ok",
         "version": "3.2.1",
         "parser_version": "3.2.1",
-        "features": {"sse": False, "webhook": False},
+        "features": {"webhook": False},
     }
 
     with pytest.raises(ValidationError):

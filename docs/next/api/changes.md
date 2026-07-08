@@ -2,6 +2,12 @@
 
 范围: NEXT v1 API 标准的破坏性或需要迁移的行为变化。
 
+## 2026-07-08: 删除 parse job SSE events
+
+NEXT v1 API 不再定义 `GET /v1/parse/jobs/{job_id}/events`，parse job 响应中也不再返回 `links.events`。客户端统一通过 `GET /v1/parse/jobs/{job_id}` 查询任务状态和结果。
+
+线上 API Server 不支持长连接；本地 SSE 实现也只是服务端每秒检查 job 状态后通过长连接转发，相比客户端轮询没有实质效率收益。删除这一路径可以避免线上/本地协议分叉，并让 parse job 保持单一轮询模型。
+
 ## 2026-07-08: 删除 parse job `wait` 参数
 
 `POST /v1/parse/jobs` 不再支持 `wait`。创建 parse job 始终返回 `202` 和 job 引用，客户端通过 `GET /v1/parse/jobs/{job_id}` 查询状态和结果。
