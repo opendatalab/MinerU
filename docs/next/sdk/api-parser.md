@@ -57,7 +57,7 @@ class MinerUApiParser(DocumentParser):
 
 | 参数 | 说明 |
 |------|------|
-| `api_url` | v1 API base URL，如 `https://mineru.net/api` 或 `http://127.0.0.1:16580/api`。省略时读取 `MINERU_API_URL`，再退回默认官方 API。 |
+| `api_url` | v1 API base URL，如 `https://mineru.net/api` 或 `http://127.0.0.1:16580`。省略时读取 `MINERU_API_URL`，再退回默认官方 API。 |
 | `api_key` | Bearer token。省略时读取 `MINERU_API_KEY`；Local Parse Server 未启用鉴权时可为空。 |
 | `tier` | `flash`、`medium`、`high`、`extra_high` 或 `None`。`None` 表示 SDK 在 HTTP 请求中省略 `tier`，让 v1 API 使用默认选择策略。 |
 | `include_images` | 是否从 zip 产物读取图片 sidecar，并挂载到 `ParseResult` 图片缓存。 |
@@ -69,8 +69,8 @@ class MinerUApiParser(DocumentParser):
 
 1. 检查文件存在。
 2. 判断 `api_url` 是否是本地地址。
-3. 本地地址优先使用 `local` source。
-4. 非本地地址使用 Uploads API: create upload -> PUT upload_url -> complete upload。
+3. 本地地址先读取 `GET /v1/health`；只有 `features.sources` 包含 `local` 时才使用 `local` source。
+4. 非本地地址，或本地 server 未允许 `local` source 时，使用 Uploads API: create upload -> PUT upload_url -> complete upload，再以 `file_id` source 创建解析任务。
 5. 调用 `POST /v1/parse/jobs`；默认请求 `output_formats:["middle_json"]`，需要模型输出或图片缓存时请求 `["zip"]`。
 6. 如果 job 未完成，则轮询 `GET /v1/parse/jobs/{job_id}`。
 7. 普通模式下载 `middle_json` output file；zip 模式下载 `zip` output file。
@@ -78,6 +78,8 @@ class MinerUApiParser(DocumentParser):
 9. 将 middle JSON 转为 `ParseResult`。
 
 本地 source:
+
+Local Parse Server 必须通过 `--allow-local-source` 开启，并在 `features.sources` 返回 `local`，SDK 才会使用该形式。
 
 ```json
 {

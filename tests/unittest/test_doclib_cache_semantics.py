@@ -295,6 +295,7 @@ def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() 
         "127.0.0.1",
         "--port",
         "16580",
+        "--allow-local-source",
     ]
     assert api_server_args_for_tier("extra_high", host="127.0.0.2", port=16581) == [
         "--tier",
@@ -303,6 +304,7 @@ def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() 
         "127.0.0.2",
         "--port",
         "16581",
+        "--allow-local-source",
     ]
 
 

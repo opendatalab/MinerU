@@ -28,6 +28,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Annotated, Any, AsyncIterator, Callable, Literal, NoReturn
+from urllib.parse import urlparse
 
 import click
 import httpx
@@ -55,6 +56,15 @@ _API_SERVER_TIERS: tuple[Tier, ...] = ("flash", "medium", "high", "extra_high")
 _DEFAULT_API_SERVER_TIER: Tier = "high"
 _API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
 _MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
+_MAX_INLINE_BYTES_DEFAULT = 1024 * 1024
+_LOCAL_PARSE_OUTPUT_FORMATS: tuple[OutputFormat, ...] = (
+    "markdown",
+    "middle_json",
+    "content_list",
+    "structured_content",
+    "zip",
+)
+_BASE_PARSE_SOURCES: tuple[SourceType, ...] = ("file_id", "url", "inline")
 logger = logging.getLogger("mineru.parser.api_server")
 
 
@@ -273,6 +283,8 @@ class ModelHealthStatus(BaseModel):
 class HealthFeatures(BaseModel):
     model_config = _PYDANTIC_CONFIG
     webhook: bool = False
+    output_formats: list[OutputFormat] = Field(default_factory=lambda: list(_LOCAL_PARSE_OUTPUT_FORMATS))
+    sources: list[SourceType] = Field(default_factory=lambda: list(_BASE_PARSE_SOURCES))
 
 
 class HealthResponse(BaseModel):
@@ -1000,13 +1012,73 @@ _SUPPORTED_SUFFIXES: dict[str, str] = {
     ".htm": "html",
 }
 
-_OUTPUT_FORMATS_LOCAL = {
-    "markdown",
-    "middle_json",
-    "content_list",
-    "structured_content",
-    "zip",
-}
+_OUTPUT_FORMATS_LOCAL = set(_LOCAL_PARSE_OUTPUT_FORMATS)
+
+
+def _parse_sources_for_server(*, allow_local_source: bool) -> list[SourceType]:
+    sources = list(_BASE_PARSE_SOURCES)
+    if allow_local_source:
+        sources.append("local")
+    return sources
+
+
+def _decode_inline_data(data: str) -> bytes:
+    try:
+        return base64.b64decode(data, validate=True)
+    except Exception as exc:
+        raise ValueError("inline source data must be valid base64") from exc
+
+
+def _validate_source_policy(
+    source: FileSource,
+    *,
+    allow_local_source: bool,
+    max_inline_bytes: int,
+    allow_http_source: bool,
+) -> None:
+    if isinstance(source, UrlSource):
+        scheme = urlparse(source.url).scheme.lower()
+        if scheme == "https":
+            return
+        if scheme == "http" and allow_http_source:
+            return
+        if scheme == "http":
+            raise ValueError("url source must use https unless --allow-http-source is enabled")
+        raise ValueError("url source must use http or https")
+    if isinstance(source, InlineSource):
+        data = _decode_inline_data(source.data)
+        if len(data) > max_inline_bytes:
+            raise ValueError(f"inline source exceeds max_inline_bytes ({max_inline_bytes})")
+        return
+    if isinstance(source, LocalSource):
+        if not allow_local_source:
+            raise ValueError("local source is disabled; enable --allow-local-source")
+        return
+
+
+def _validate_job_source_policy(
+    req: CreateJobRequest,
+    *,
+    allow_local_source: bool,
+    max_inline_bytes: int,
+    allow_http_source: bool,
+) -> None:
+    for index, entry in enumerate(req.files):
+        try:
+            _validate_source_policy(
+                entry.source,
+                allow_local_source=allow_local_source,
+                max_inline_bytes=max_inline_bytes,
+                allow_http_source=allow_http_source,
+            )
+        except ValueError as exc:
+            _raise_api_error(
+                400,
+                error_type="invalid_request_error",
+                code="invalid_request",
+                message=str(exc),
+                param=f"files.{index}.source",
+            )
 
 @dataclass
 class _JobRecord:
@@ -1237,7 +1309,21 @@ def _count_pages_in_range(page_range: str) -> int:
     return total
 
 
-async def _extract_bytes(source: FileSource, file_store: FileStore, *, url_timeout: int = 60) -> bytes:
+async def _extract_bytes(
+    source: FileSource,
+    file_store: FileStore,
+    *,
+    url_timeout: int = 60,
+    allow_local_source: bool = False,
+    max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
+    allow_http_source: bool = False,
+) -> bytes:
+    _validate_source_policy(
+        source,
+        allow_local_source=allow_local_source,
+        max_inline_bytes=max_inline_bytes,
+        allow_http_source=allow_http_source,
+    )
     if isinstance(source, FileIdSource):
         rec = file_store.get_file(source.file_id)
         if rec.sha256sum is None:
@@ -1249,9 +1335,9 @@ async def _extract_bytes(source: FileSource, file_store: FileStore, *, url_timeo
             r.raise_for_status()
             return r.content
     if isinstance(source, InlineSource):
-        return base64.b64decode(source.data)
+        return _decode_inline_data(source.data)
     if isinstance(source, LocalSource):
-        return pathlib.Path(source.path).read_bytes()
+        return pathlib.Path(source.path).expanduser().resolve(strict=False).read_bytes()
     raise ValueError(f"Unknown source type: {type(source)}")
 
 
@@ -1271,6 +1357,9 @@ async def _run_job(
     image_analysis: bool,
     effort: str = DEFAULT_HYBRID_EFFORT,
     url_timeout: int = 60,
+    allow_local_source: bool = False,
+    max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
+    allow_http_source: bool = False,
 ) -> None:
     rec.status = "running"
     rec.started_at = JobStore._now()
@@ -1282,7 +1371,14 @@ async def _run_job(
             fr = rec.files[i]
             try:
                 file_started = time.monotonic()
-                data = await _extract_bytes(entry.source, file_store, url_timeout=url_timeout)
+                data = await _extract_bytes(
+                    entry.source,
+                    file_store,
+                    url_timeout=url_timeout,
+                    allow_local_source=allow_local_source,
+                    max_inline_bytes=max_inline_bytes,
+                    allow_http_source=allow_http_source,
+                )
                 stype = _suffix_type(fr.name)
                 if not stype:
                     raise ValueError(f"Unsupported file type: {fr.name}")
@@ -1411,12 +1507,13 @@ _ERR_429: dict[int | str, dict[str, Any]] = {429: {"model": ErrorResponse}}
     responses={503: {"model": ErrorResponse}},
     tags=["Health"],
 )
-async def get_health() -> HealthResponse:
+async def get_health(request: Request) -> HealthResponse:
     """Health check endpoint."""
     return HealthResponse(
         version=__version__,
         parser_version=__version__,
         models=ModelHealthStatus(),
+        features=HealthFeatures(sources=_parse_sources_for_server(allow_local_source=request.app.state.allow_local_source)),
     )
 
 
@@ -1699,9 +1796,19 @@ async def create_job(
             message=f"Tier '{body.tier}' not available in this server",
         )
 
+    _validate_job_source_policy(
+        body,
+        allow_local_source=request.app.state.allow_local_source,
+        max_inline_bytes=request.app.state.max_inline_bytes,
+        allow_http_source=request.app.state.allow_http_source,
+    )
+
     rec = job_store.create(body, file_store)
     backend = runtime.backend
     url_timeout_val: int = request.app.state.url_timeout
+    allow_local_source_val: bool = request.app.state.allow_local_source
+    max_inline_bytes_val: int = request.app.state.max_inline_bytes
+    allow_http_source_val: bool = request.app.state.allow_http_source
     language_val: str = request.app.state.language
     ocr_mode_val: str = request.app.state.ocr_mode
     effort_val = runtime.effort
@@ -1720,6 +1827,9 @@ async def create_job(
                 effort=effort_val,
                 image_analysis=image_analysis_val,
                 url_timeout=url_timeout_val,
+                allow_local_source=allow_local_source_val,
+                max_inline_bytes=max_inline_bytes_val,
+                allow_http_source=allow_http_source_val,
             )
 
     asyncio.create_task(_bg_run())
@@ -1911,6 +2021,9 @@ def create_app(
     tier: Tier | list[Tier] | tuple[Tier, ...] | None = None,
     concurrency: int = 1,
     url_timeout: int = 60,
+    allow_local_source: bool = False,
+    max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
+    allow_http_source: bool = False,
     api_key: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
@@ -1929,6 +2042,12 @@ def create_app(
         Maximum concurrent parse jobs (default 1).
     url_timeout:
         Timeout in seconds for downloading url sources (default 60).
+    allow_local_source:
+        Whether ``local`` sources may read paths visible to the server process.
+    max_inline_bytes:
+        Maximum decoded bytes accepted for ``inline`` sources.
+    allow_http_source:
+        Whether ``url`` sources may use plain HTTP. HTTPS is always allowed.
     api_key:
         Optional API key.  When set, clients must pass ``Authorization: Bearer <key>``
         to access list endpoints and advanced output formats.
@@ -1953,6 +2072,8 @@ def create_app(
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
     _upload_dir.mkdir(parents=True, exist_ok=True)
+    if max_inline_bytes < 0:
+        raise ValueError("max_inline_bytes must be non-negative")
     language = validate_public_ocr_lang(language)
 
     _model_ids, _tiers = _model_ids_and_tiers_for_server_tiers(server_tiers)
@@ -1968,6 +2089,9 @@ def create_app(
         application.state.tiers = _tiers
         application.state.concurrency = concurrency
         application.state.url_timeout = url_timeout
+        application.state.allow_local_source = allow_local_source
+        application.state.max_inline_bytes = max_inline_bytes
+        application.state.allow_http_source = allow_http_source
         application.state.api_key = _api_key
         application.state.language = language
         application.state.ocr_mode = ocr_mode
@@ -1996,6 +2120,9 @@ def create_app(
     application.state.tiers = _tiers
     application.state.concurrency = concurrency
     application.state.url_timeout = url_timeout
+    application.state.allow_local_source = allow_local_source
+    application.state.max_inline_bytes = max_inline_bytes
+    application.state.allow_http_source = allow_http_source
     application.state.api_key = _api_key
     application.state.language = language
     application.state.ocr_mode = ocr_mode
@@ -2098,6 +2225,22 @@ def create_app(
     help="Timeout in seconds for url source downloads (default: 60)",
 )
 @click.option(
+    "--allow-local-source",
+    is_flag=True,
+    help="Allow local sources to read any path visible to the server process.",
+)
+@click.option(
+    "--max-inline-bytes",
+    default=_MAX_INLINE_BYTES_DEFAULT,
+    type=int,
+    help=f"Maximum decoded bytes for inline sources (default: {_MAX_INLINE_BYTES_DEFAULT})",
+)
+@click.option(
+    "--allow-http-source",
+    is_flag=True,
+    help="Allow url sources to use plain HTTP. HTTPS is always allowed.",
+)
+@click.option(
     "--language",
     default="ch",
     type=str,
@@ -2124,6 +2267,9 @@ def main(
     tier: tuple[Tier, ...],
     concurrency: int,
     url_timeout: int,
+    allow_local_source: bool,
+    max_inline_bytes: int,
+    allow_http_source: bool,
     language: str,
     ocr_mode: str,
     disable_image_analysis: bool,
@@ -2136,6 +2282,9 @@ def main(
             tier=tier or None,
             concurrency=concurrency,
             url_timeout=url_timeout,
+            allow_local_source=allow_local_source,
+            max_inline_bytes=max_inline_bytes,
+            allow_http_source=allow_http_source,
             api_key=api_key,
             language=language,
             ocr_mode=ocr_mode,

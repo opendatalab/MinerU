@@ -87,6 +87,9 @@ def api_server_command(
     ),
     concurrency: int = typer.Option(1, "--concurrency", help="Maximum concurrent parse jobs"),
     url_timeout: int = typer.Option(60, "--url-timeout", help="Timeout for URL source downloads"),
+    allow_local_source: bool = typer.Option(False, "--allow-local-source", help="Allow local source paths"),
+    max_inline_bytes: int = typer.Option(1024 * 1024, "--max-inline-bytes", help="Maximum decoded bytes for inline sources"),
+    allow_http_source: bool = typer.Option(False, "--allow-http-source", help="Allow URL sources to use plain HTTP"),
     language: str = typer.Option(
         "ch",
         "--language",
@@ -104,6 +107,9 @@ def api_server_command(
         tier=tier,  # type: ignore[arg-type]
         concurrency=concurrency,
         url_timeout=url_timeout,
+        allow_local_source=allow_local_source,
+        max_inline_bytes=max_inline_bytes,
+        allow_http_source=allow_http_source,
         language=language,
         ocr_mode=ocr_mode,  # type: ignore[arg-type]
         disable_image_analysis=disable_image_analysis,

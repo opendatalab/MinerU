@@ -85,7 +85,15 @@ def api_server_args_for_tier(tier: Tier, *, host: str, port: int) -> list[str]:
     backend. Backend remains an api-server implementation detail and must not
     leak into runtime doclib parse requests.
     """
-    return ["--tier", tier, "--host", host, "--port", str(port)]
+    return [
+        "--tier",
+        tier,
+        "--host",
+        host,
+        "--port",
+        str(port),
+        "--allow-local-source",
+    ]
 
 
 def managed_parse_server_url(host: str, port: int) -> str:
@@ -228,7 +236,7 @@ class ParseServerHealthCheck:
 
     def __init__(
         self,
-        config_svc,
+        config_svc: "ConfigService",
         *,
         interval_sec: int,
         probe_timeout_sec: int,

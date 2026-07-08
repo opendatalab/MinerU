@@ -22,7 +22,9 @@ GET /v1/health HTTP/1.1
   "status": "ok",
   "version": "1.0.0",
   "features": {
-    "webhook": true
+    "webhook": true,
+    "output_formats": ["markdown", "middle_json", "content_list", "structured_content", "html", "latex", "docx", "zip"],
+    "sources": ["file_id", "url", "inline"]
   }
 }
 ```
@@ -35,6 +37,8 @@ GET /v1/health HTTP/1.1
 | `version` | string | 是 | API 服务版本。 |
 | `features` | object | 是 | 当前部署支持的外围能力。 |
 | `features.webhook` | bool | 是 | 是否支持 Webhook 回调。 |
+| `features.output_formats` | array | 是 | 当前部署支持的 parse job `output_formats` 值。 |
+| `features.sources` | array | 是 | 当前部署允许的 parse job source 类型。 |
 
 错误:
 
@@ -173,10 +177,14 @@ Local Parse Server 的 `health` 通常返回:
   "status": "ok",
   "version": "1.0.0",
   "features": {
-    "webhook": false
+    "webhook": false,
+    "output_formats": ["markdown", "middle_json", "content_list", "structured_content", "zip"],
+    "sources": ["file_id", "url", "inline"]
   }
 }
 ```
+
+如果 Local Parse Server 启动时开启 `--allow-local-source`，`features.sources` 额外包含 `local`。
 
 本地实现可以额外返回运维字段，例如:
 

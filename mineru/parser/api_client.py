@@ -36,8 +36,9 @@ class MinerUApiParser(DocumentParser):
 
     Works with local-server, LAN, and cloud (mineru.net) deployments::
 
-        # local deployment — uses ``local`` source, no upload needed
-        parser = MinerUApiParser(api_url="http://localhost:8000/api", tier="medium")
+        # local deployment — uses ``local`` source only when the server advertises it.
+        # Start the local server with --allow-local-source to skip upload.
+        parser = MinerUApiParser(api_url="http://localhost:8000", tier="medium")
 
         # cloud (remote)
         parser = MinerUApiParser(
@@ -69,6 +70,7 @@ class MinerUApiParser(DocumentParser):
         self._api_key = (api_key if api_key is not None else os.environ.get("MINERU_API_KEY")) or None
         self._local = _is_local_network_url(self._base_url)
         self._trust_env = should_trust_env_for_url(self._base_url)
+        self._source_features: set[str] | None = None
         self.tier = validate_tier(tier) if tier is not None else None
         self.include_images = include_images
         self.include_model_output = include_model_output
@@ -80,7 +82,7 @@ class MinerUApiParser(DocumentParser):
         if not file_path.exists():
             raise FileNotFoundError(file_path)
 
-        payload = self._build_payload(file_path, page_range)
+        payload = self._build_payload(self._build_source(file_path), page_range)
         job = self._do_parse(payload)
         return self._build_result(job, file_path.name)
 
@@ -89,21 +91,30 @@ class MinerUApiParser(DocumentParser):
         if not file_path.exists():
             raise FileNotFoundError(file_path)
 
-        payload = self._build_payload(file_path, page_range)
+        payload = self._build_payload(await self._async_build_source(file_path), page_range)
         job = await self._async_do_parse(payload)
         return await self._async_build_result(job, file_path.name)
 
     # ── payload construction ─────────────────────────────────────────
 
-    def _build_payload(self, file_path: Path, page_range: str) -> dict[str, Any]:
-        source: dict[str, Any]
-        if self._local:
+    def _build_source(self, file_path: Path) -> dict[str, Any]:
+        if self._supports_local_source():
             source = {"type": "local", "path": str(file_path)}
         else:
             # upload flow: create → PUT → complete → file_id
             file_id = self._upload(file_path)
             source = {"type": "file_id", "file_id": file_id}
+        return source
 
+    async def _async_build_source(self, file_path: Path) -> dict[str, Any]:
+        if await self._async_supports_local_source():
+            source = {"type": "local", "path": str(file_path)}
+        else:
+            file_id = await self._async_upload(file_path)
+            source = {"type": "file_id", "file_id": file_id}
+        return source
+
+    def _build_payload(self, source: dict[str, Any], page_range: str) -> dict[str, Any]:
         file_entry: dict[str, Any] = {"source": source}
         if page_range:
             file_entry["page_range"] = page_range
@@ -115,6 +126,34 @@ class MinerUApiParser(DocumentParser):
         if self.tier is not None:
             payload["tier"] = self.tier
         return payload
+
+    def _supports_local_source(self) -> bool:
+        if not self._local:
+            return False
+        return "local" in self._get_source_features()
+
+    async def _async_supports_local_source(self) -> bool:
+        if not self._local:
+            return False
+        return "local" in await self._async_get_source_features()
+
+    def _get_source_features(self) -> set[str]:
+        if self._source_features is not None:
+            return self._source_features
+        with httpx.Client(timeout=httpx.Timeout(30, connect=10), trust_env=self._trust_env) as cli:
+            r = cli.get(f"{self._base_url}/v1/health", headers=self._headers())
+            health = self._check(r)
+        self._source_features = _extract_feature_list(health, "sources")
+        return self._source_features
+
+    async def _async_get_source_features(self) -> set[str]:
+        if self._source_features is not None:
+            return self._source_features
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30, connect=10), trust_env=self._trust_env) as cli:
+            r = await cli.get(f"{self._base_url}/v1/health", headers=self._headers())
+            health = self._check(r)
+        self._source_features = _extract_feature_list(health, "sources")
+        return self._source_features
 
     def _output_formats(self) -> list[str]:
         if self.include_model_output or self.include_images:
@@ -285,6 +324,16 @@ def _sha256_file(path: Path) -> str:
         while chunk := fh.read(65536):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _extract_feature_list(health: dict[str, Any], name: str) -> set[str]:
+    features = health.get("features")
+    if not isinstance(features, dict):
+        return set()
+    values = features.get(name)
+    if not isinstance(values, list):
+        return set()
+    return {item for item in values if isinstance(item, str)}
 
 
 def _mime_type(path: Path) -> str:

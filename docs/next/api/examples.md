@@ -111,14 +111,16 @@ curl -L "https://mineru.net/api/v1/files/$MD_FILE_ID/content" \
 先发现本地能力:
 
 ```bash
-curl http://localhost:8000/api/v1/health
-curl http://localhost:8000/api/v1/tiers
+curl http://localhost:8000/v1/health
+curl http://localhost:8000/v1/tiers
 ```
 
 本地 server 可以直接使用 `local` source:
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/parse/jobs \
+mineru-kit api-server --allow-local-source
+
+curl -X POST http://localhost:8000/v1/parse/jobs \
   -H "Content-Type: application/json" \
   -d '{
     "files": [{
@@ -138,7 +140,7 @@ curl -X POST http://localhost:8000/api/v1/parse/jobs \
 ```bash
 SIZE=$(stat -f%z report.pdf)
 
-RESP=$(curl -s -X POST http://localhost:8000/api/v1/uploads \
+RESP=$(curl -s -X POST http://localhost:8000/v1/uploads \
   -H "Content-Type: application/json" \
   -d "{\"filename\":\"report.pdf\",\"bytes\":$SIZE,\"mime_type\":\"application/pdf\",\"purpose\":\"parse\"}")
 
@@ -150,7 +152,7 @@ curl -X "$METHOD" "$URL" \
   -H "Content-Type: application/pdf" \
   --data-binary @report.pdf
 
-RESP=$(curl -s -X POST "http://localhost:8000/api/v1/uploads/$UPLOAD_ID/complete")
+RESP=$(curl -s -X POST "http://localhost:8000/v1/uploads/$UPLOAD_ID/complete")
 FILE_ID=$(echo "$RESP" | jq -r '.file.id')
 ```
 

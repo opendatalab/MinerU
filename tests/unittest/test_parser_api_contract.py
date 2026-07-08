@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import importlib
 import inspect
 import io
@@ -179,11 +180,124 @@ def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> No
     pdf.write_bytes(b"%PDF-1.7\n")
 
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
-    payload = parser._build_payload(pdf, "1,3~5")
+    payload = parser._build_payload({"type": "local", "path": str(pdf)}, "1,3~5")
 
     assert payload["output_formats"] == ["middle_json"]
     assert payload["files"] == [{"source": {"type": "local", "path": str(pdf)}, "page_range": "1,3~5"}]
     assert "options" not in payload["files"][0]
+
+
+def test_api_client_uses_file_id_when_local_server_does_not_advertise_local_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
+    monkeypatch.setattr(parser, "_upload", lambda _path: "file_1")
+
+    class _Response:
+        status_code = 200
+        text = ""
+
+        def json(self) -> dict[str, object]:
+            return {"features": {"sources": ["file_id", "url", "inline"]}}
+
+    class _Client:
+        def __init__(self, *, timeout: object, trust_env: bool, **_: object) -> None:
+            assert trust_env is False
+
+        def __enter__(self) -> "_Client":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def get(self, url: str, headers: dict[str, str]) -> _Response:
+            assert url == "http://localhost:8000/v1/health"
+            assert headers == {}
+            return _Response()
+
+    monkeypatch.setattr("mineru.parser.api_client.httpx.Client", _Client)
+
+    source = parser._build_source(pdf)
+
+    assert source == {"type": "file_id", "file_id": "file_1"}
+
+
+def test_api_client_uses_local_source_when_health_advertises_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
+    monkeypatch.setattr(parser, "_upload", lambda _path: pytest.fail("local source should not upload"))
+
+    class _Response:
+        status_code = 200
+        text = ""
+
+        def json(self) -> dict[str, object]:
+            return {"features": {"sources": ["file_id", "url", "inline", "local"]}}
+
+    class _Client:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def __enter__(self) -> "_Client":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def get(self, url: str, headers: dict[str, str]) -> _Response:
+            return _Response()
+
+    monkeypatch.setattr("mineru.parser.api_client.httpx.Client", _Client)
+
+    source = parser._build_source(pdf)
+
+    assert source == {"type": "local", "path": str(pdf)}
+
+
+def test_async_api_client_uses_file_id_when_local_server_does_not_advertise_local_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
+
+    async def _async_upload(_path: Path) -> str:
+        return "file_1"
+
+    monkeypatch.setattr(parser, "_async_upload", _async_upload)
+
+    class _Response:
+        status_code = 200
+        text = ""
+
+        def json(self) -> dict[str, object]:
+            return {"features": {"sources": ["file_id", "url", "inline"]}}
+
+    class _AsyncClient:
+        def __init__(self, *, timeout: object, trust_env: bool, **_: object) -> None:
+            assert trust_env is False
+
+        async def __aenter__(self) -> "_AsyncClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def get(self, url: str, headers: dict[str, str]) -> _Response:
+            assert url == "http://localhost:8000/v1/health"
+            assert headers == {}
+            return _Response()
+
+    monkeypatch.setattr("mineru.parser.api_client.httpx.AsyncClient", _AsyncClient)
+
+    source = asyncio.run(parser._async_build_source(pdf))
+
+    assert source == {"type": "file_id", "file_id": "file_1"}
 
 
 def test_api_client_can_request_zip_for_model_output(tmp_path: Path) -> None:
@@ -191,7 +305,7 @@ def test_api_client_can_request_zip_for_model_output(tmp_path: Path) -> None:
     pdf.write_bytes(b"%PDF-1.7\n")
 
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="high", include_model_output=True)
-    payload = parser._build_payload(pdf, "")
+    payload = parser._build_payload({"type": "local", "path": str(pdf)}, "")
 
     assert payload["output_formats"] == ["zip"]
 
@@ -205,7 +319,7 @@ def test_api_client_can_request_zip_for_image_cache(tmp_path: Path) -> None:
         tier="high",
         include_images=True,
     )
-    payload = parser._build_payload(pdf, "")
+    payload = parser._build_payload({"type": "local", "path": str(pdf)}, "")
 
     assert payload["output_formats"] == ["zip"]
 
@@ -235,7 +349,7 @@ def test_api_client_uses_tier_without_backend_semantics(tmp_path: Path) -> None:
     pdf.write_bytes(b"%PDF-1.7\n")
 
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="extra_high")
-    payload = parser._build_payload(pdf, "")
+    payload = parser._build_payload({"type": "local", "path": str(pdf)}, "")
 
     assert payload["tier"] == "extra_high"
     assert not hasattr(parser, "backend")
@@ -818,8 +932,8 @@ def test_async_api_client_include_images_rejects_unsafe_zip_image_sidecar_paths(
 
 
 def test_api_client_disables_env_proxy_for_local_network_urls() -> None:
-    assert should_trust_env_for_url("http://localhost:8000/api") is False
-    assert should_trust_env_for_url("http://127.0.0.1:8000/api") is False
+    assert should_trust_env_for_url("http://localhost:8000") is False
+    assert should_trust_env_for_url("http://127.0.0.1:8000") is False
     assert should_trust_env_for_url("http://192.168.1.20:8000/api") is False
     assert should_trust_env_for_url("https://staging.mineru.org.cn/api") is True
 
@@ -849,7 +963,7 @@ def test_api_client_passes_trust_env_from_api_url(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr("mineru.parser.api_client.httpx.Client", _Client)
 
-    MinerUApiParser(api_url="http://127.0.0.1:8000/api")._do_parse({"files": []})
+    MinerUApiParser(api_url="http://127.0.0.1:8000")._do_parse({"files": []})
     MinerUApiParser(api_url="https://mineru.net/api")._do_parse({"files": []})
 
     assert calls == [False, True]
@@ -923,7 +1037,7 @@ def test_api_client_omits_tier_when_unspecified(tmp_path: Path) -> None:
     pdf.write_bytes(b"%PDF-1.7\n")
 
     parser = MinerUApiParser(api_url="http://localhost:8000")
-    payload = parser._build_payload(pdf, "")
+    payload = parser._build_payload({"type": "local", "path": str(pdf)}, "")
 
     assert "tier" not in payload
 
@@ -964,7 +1078,7 @@ def test_api_client_omits_page_range_when_unspecified(tmp_path: Path) -> None:
     pdf.write_bytes(b"%PDF-1.7\n")
 
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
-    payload = parser._build_payload(pdf, "")
+    payload = parser._build_payload({"type": "local", "path": str(pdf)}, "")
 
     assert payload["files"] == [{"source": {"type": "local", "path": str(pdf)}}]
 
@@ -1103,6 +1217,83 @@ def test_create_job_request_accepts_new_format_names_and_rejects_options() -> No
         )
 
 
+def test_api_server_rejects_local_source_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    app = create_app(upload_dir=str(tmp_path / "api"), tier="flash")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/parse/jobs",
+            json={"files": [{"source": {"type": "local", "path": str(source)}}]},
+        )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["code"] == "invalid_request"
+    assert body["error"]["param"] == "files.0.source"
+    assert "--allow-local-source" in body["error"]["message"]
+
+
+def test_api_server_health_sources_reflect_local_source_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    default_app = create_app(upload_dir=str(tmp_path / "default"), tier="flash")
+    local_app = create_app(upload_dir=str(tmp_path / "local"), tier="flash", allow_local_source=True)
+
+    with TestClient(default_app) as client:
+        default_sources = client.get("/v1/health").json()["features"]["sources"]
+    with TestClient(local_app) as client:
+        local_sources = client.get("/v1/health").json()["features"]["sources"]
+
+    assert default_sources == ["file_id", "url", "inline"]
+    assert local_sources == ["file_id", "url", "inline", "local"]
+
+
+def test_api_server_rejects_inline_source_over_configured_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path), tier="flash", max_inline_bytes=3)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/parse/jobs",
+            json={
+                "files": [
+                    {
+                        "source": {
+                            "type": "inline",
+                            "name": "demo.pdf",
+                            "data": base64.b64encode(b"1234").decode("ascii"),
+                        }
+                    }
+                ]
+            },
+        )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["code"] == "invalid_request"
+    assert body["error"]["param"] == "files.0.source"
+    assert "max_inline_bytes" in body["error"]["message"]
+
+
+def test_api_server_rejects_plain_http_url_source_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path), tier="flash")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/parse/jobs",
+            json={"files": [{"source": {"type": "url", "url": "http://example.test/demo.pdf"}}]},
+        )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["code"] == "invalid_request"
+    assert body["error"]["param"] == "files.0.source"
+    assert "https" in body["error"]["message"]
+
+
 def test_local_parse_server_rejects_callback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_api_server_dependency_preflight(monkeypatch)
     app = create_app(upload_dir=str(tmp_path))
@@ -1181,6 +1372,9 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     assert app.state.backend == "hybrid-engine"
     assert app.state.concurrency == 1
     assert app.state.url_timeout == 60
+    assert app.state.allow_local_source is False
+    assert app.state.max_inline_bytes == 1024 * 1024
+    assert app.state.allow_http_source is False
     assert app.state.language == "ch"
     assert app.state.ocr_mode == "auto"
     assert app.state.effort == "high"
@@ -1309,6 +1503,7 @@ def test_api_server_rendered_outputs_do_not_return_image_sidecars(
             ocr_mode="auto",
             image_analysis=True,
             effort="medium",
+            allow_local_source=True,
         )
     )
 
@@ -1365,6 +1560,7 @@ def test_api_server_middle_json_preserves_backend_for_client_rendering(
             ocr_mode="auto",
             image_analysis=True,
             effort="medium",
+            allow_local_source=True,
         )
     )
 
@@ -1415,6 +1611,7 @@ def test_api_server_zip_includes_model_output_when_parse_result_has_it(
             ocr_mode="auto",
             image_analysis=True,
             effort="medium",
+            allow_local_source=True,
         )
     )
 
@@ -1477,6 +1674,7 @@ def test_api_server_zip_is_self_contained_when_only_zip_requested(
             ocr_mode="auto",
             image_analysis=True,
             effort="medium",
+            allow_local_source=True,
         )
     )
 
@@ -1533,6 +1731,7 @@ def test_api_server_zip_rejects_unsafe_image_sidecar_path(
             ocr_mode="auto",
             image_analysis=True,
             effort="medium",
+            allow_local_source=True,
         )
     )
 
@@ -1577,6 +1776,7 @@ def test_api_server_zip_skips_model_output_when_parse_result_has_none(
             ocr_mode="auto",
             image_analysis=True,
             effort="medium",
+            allow_local_source=True,
         )
     )
 
@@ -1639,6 +1839,7 @@ def test_api_server_sanitizes_surrogates_in_text_outputs(
             ocr_mode="auto",
             image_analysis=True,
             effort="medium",
+            allow_local_source=True,
         )
     )
 
@@ -1692,6 +1893,7 @@ def test_api_server_logs_traceback_when_job_file_fails(
                 ocr_mode="auto",
                 image_analysis=True,
                 effort="medium",
+                allow_local_source=True,
             )
         )
 
@@ -1727,7 +1929,11 @@ def test_api_contract_uses_parser_version_not_backend_version() -> None:
         "status": "ok",
         "version": "3.2.1",
         "parser_version": "3.2.1",
-        "features": {"webhook": False},
+        "features": {
+            "webhook": False,
+            "output_formats": ["markdown", "middle_json", "content_list", "structured_content", "zip"],
+            "sources": ["file_id", "url", "inline"],
+        },
     }
 
     with pytest.raises(ValidationError):
@@ -1853,7 +2059,7 @@ def test_api_server_multi_tier_jobs_use_requested_tier_runtime(tmp_path: Path, m
     monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
-    app = create_app(upload_dir=str(tmp_path / "api"), tier=["medium", "high"])
+    app = create_app(upload_dir=str(tmp_path / "api"), tier=["medium", "high"], allow_local_source=True)
     file_store = FileStore(tmp_path / "api-files")
     job_store = api_server.JobStore()
 
@@ -1871,6 +2077,9 @@ def test_api_server_multi_tier_jobs_use_requested_tier_runtime(tmp_path: Path, m
             ocr_mode=app.state.ocr_mode,
             effort=runtime.effort,
             image_analysis=app.state.image_analysis,
+            allow_local_source=app.state.allow_local_source,
+            max_inline_bytes=app.state.max_inline_bytes,
+            allow_http_source=app.state.allow_http_source,
         )
         return job_store.build_response(rec).model_dump(by_alias=True)
 
@@ -2259,6 +2468,9 @@ def test_api_server_cli_exposes_parser_runtime_options() -> None:
     assert "--backend" not in option_names
     assert "--language" in option_names
     assert "--ocr-mode" in option_names
+    assert "--allow-local-source" in option_names
+    assert "--max-inline-bytes" in option_names
+    assert "--allow-http-source" in option_names
     assert "--effort" not in option_names
     assert "--disable-image-analysis" in option_names
     assert _REMOVED_DISABLE_TABLE_OPTION not in option_names
