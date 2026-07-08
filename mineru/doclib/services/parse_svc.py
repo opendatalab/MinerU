@@ -14,9 +14,17 @@ from typing import Literal, cast
 from urllib.parse import urlparse
 
 from ...errors import InvalidRequestError, MineruError
+from ...parser.api_client import _V1APIError
 from ...parser.base import ParseResult
 from ...types import TIER_ORDER, PageInfo, Tier
-from ..constants import IMAGE_EXTENSIONS, PARSEABLE_EXTENSIONS, TEXT_EXTENSIONS, is_office_temp_lock_file
+from ..constants import (
+    IMAGE_EXTENSIONS,
+    LEGACY_OFFICE_EXTENSION_UPGRADES,
+    OFFICE_EXTENSIONS,
+    PARSEABLE_EXTENSIONS,
+    TEXT_EXTENSIONS,
+    is_office_temp_lock_file,
+)
 from ..core.db import DatabaseManager
 from ..core.file_io import FileStat, MetadataExtractionError, compute_sha256, extract_metadata, get_file_stat
 from ..core.fts import FTSManager
@@ -35,6 +43,7 @@ from ..types import (
     FileInfo,
     ParseResponse,
 )
+from ..utils.path_utils import normalize_doclib_path
 from .config_svc import ConfigService
 
 logger = logging.getLogger("mineru.parse")
@@ -73,6 +82,8 @@ FileRefreshStatus = Literal["known", "new", "changed", "missing", "deleted", "un
 class FileRefreshResult:
     file: FileInfo | None
     status: FileRefreshStatus
+    error_code: str | None = None
+    error_msg: str | None = None
 
     @property
     def needs_ingest(self) -> bool:
@@ -285,6 +296,7 @@ class ParseService:
         This method owns file stat, DB row lookup, new/changed/known/missing/deleted
         classification, and optional synchronous ingest.
         """
+        path = normalize_doclib_path(path)
         ext = Path(path).suffix.lower().lstrip(".")
         existing = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
         if ext not in PARSEABLE_EXTENSIONS or (ext in IMAGE_EXTENSIONS and not allow_images) or is_office_temp_lock_file(path):
@@ -413,7 +425,7 @@ class ParseService:
 
     async def _refresh_stat_error(self, existing: FileRow | None, error_code: str, error_msg: str) -> FileRefreshResult:
         if existing is None:
-            return FileRefreshResult(file=None, status="error")
+            return FileRefreshResult(file=None, status="error", error_code=error_code, error_msg=error_msg)
 
         now = _now_ms()
         await self.db.execute(
@@ -421,10 +433,11 @@ class ParseService:
             (error_code, error_msg[:500], now, existing["id"]),
         )
         row = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],)))
-        return FileRefreshResult(file=_file_info(row), status="error")
+        return FileRefreshResult(file=_file_info(row), status="error", error_code=error_code, error_msg=error_msg)
 
     async def ensure_ingested(self, path: str, watch_id: int | None = None, *, allow_images: bool = False) -> FileRow | None:
         """Synchronously discover and ingest a source path when needed."""
+        path = normalize_doclib_path(path)
         refreshed = await self.refresh_file(path, watch_id=watch_id, ensure_ingested=True, allow_images=allow_images)
         if refreshed.file is None or refreshed.status == "unsupported":
             return None
@@ -439,6 +452,7 @@ class ParseService:
         allow_images: bool = False,
     ) -> FileRow | None:
         """Ingest a discovered file: SHA-256 + metadata + trigger default parse."""
+        path = normalize_doclib_path(path)
         start_ms = _now_ms()
         status = "succeeded"
         try:
@@ -456,6 +470,7 @@ class ParseService:
             await self._record_duration("ingest.duration_bucket.count", start_ms, dimensions=dimensions)
 
     async def _mark_file_error(self, path: str, error_code: str, error_msg: str) -> None:
+        path = normalize_doclib_path(path)
         now = _now_ms()
         await self.db.execute(
             "UPDATE files SET sha256=NULL, locked_at=NULL, error_code=?, error_msg=?, updated_at=? WHERE path=?",
@@ -661,12 +676,22 @@ class ParseService:
         refreshed = await self.refresh_file(path, ensure_ingested=True, allow_images=True)
         if refreshed.status == "unsupported":
             ext = Path(path).suffix.lower() or Path(path).name
-            raise InvalidRequestError("file_type_unsupported", f"File type is not supported for parsing: {ext}", "path")
+            raise InvalidRequestError("file_type_unsupported", _unsupported_file_type_message(ext), "path")
         if refreshed.status in {"missing", "deleted", "unreachable"}:
             raise InvalidRequestError("file_not_found", f"File {path} not found.", "path")
         if refreshed.status == "error":
-            code = refreshed.file.error_code if refreshed.file and refreshed.file.error_code else "ingest_failed"
-            message = refreshed.file.error_msg if refreshed.file and refreshed.file.error_msg else "File could not be ingested."
+            code = (
+                (refreshed.file.error_code if refreshed.file and refreshed.file.error_code else None)
+                or refreshed.error_code
+                or "ingest_failed"
+            )
+            message = (
+                (refreshed.file.error_msg if refreshed.file and refreshed.file.error_msg else None)
+                or refreshed.error_msg
+                or "File could not be ingested."
+            )
+            if code == "file_permission_denied":
+                raise InvalidRequestError(code, message, "path")
             raise MineruError(code, message, "path")
         if refreshed.file is None:
             raise MineruError("ingest_failed", "File could not be ingested.", "path")
@@ -888,6 +913,17 @@ class ParseService:
             await self._fail_task(task["id"], exc.code, exc.message)
             await self._record_parse_task_finished(task_start_ms, tier=tier, status="failed", error_code=exc.code)
             return False
+        except _V1APIError as exc:
+            await self._record_execute(
+                execute_start_ms,
+                tier=tier,
+                server=server_dim,
+                status="failed",
+                error_code=exc.code,
+            )
+            await self._fail_task(task["id"], exc.code, exc.message[:500])
+            await self._record_parse_task_finished(task_start_ms, tier=tier, status="failed", error_code=exc.code)
+            return False
         except Exception as exc:
             logger.error(
                 "Parse execution failed for task_id=%s path=%s tier=%s page_range=%s: %s",
@@ -1028,6 +1064,7 @@ class ParseService:
             api_url=base_url,
             api_key=api_key,
             tier=resolved_tier,
+            include_images=Path(file_row["path"]).suffix.lower().lstrip(".") in OFFICE_EXTENSIONS,
         )
         result = await parser.parse_async(file_row["path"], page_range=page_range)
         _remap_api_result_pages_to_page_range(result, page_range)
@@ -1066,7 +1103,7 @@ class ParseService:
 
         if privacy == "remote":
             url = cast(str, await self.config_svc.get("parse_server.remote.url"))
-            api_key = os.environ.get("MINERU_API_KEY") or (await self.config_svc.get("parse_server.remote.api_key"))
+            api_key = (await self.config_svc.get("parse_server.remote.api_key")) or None
             if not health.remote_healthy:
                 # try fallback to local
                 local_mode = (await self.config_svc.get("parse_server.local.mode")) or "disabled"
@@ -1089,7 +1126,7 @@ class ParseService:
         if not health.local_healthy:
             raise ParseFailure("engine_unavailable", "Local parse-server is not ready. Please wait or check server status.")
 
-        api_key = os.environ.get("MINERU_API_KEY") or (await self.config_svc.get("parse_server.local.self_hosted_api_key"))
+        api_key = (await self.config_svc.get("parse_server.local.self_hosted_api_key")) or None
         return local_url, api_key, "local"
 
     async def _fail_task(self, task_id: int, code: str, message: str) -> None:
@@ -1516,3 +1553,12 @@ def _safe_filename(page_range: str, done_at: int) -> str:
 
 def _file_type_from_ext(ext: str) -> str:
     return DOC_TYPE_BY_EXT.get(ext, ext or "unknown")
+
+
+def _unsupported_file_type_message(ext_or_name: str) -> str:
+    ext = ext_or_name.lower().lstrip(".")
+    upgrade_ext = LEGACY_OFFICE_EXTENSION_UPGRADES.get(ext)
+    if upgrade_ext:
+        return f".{ext} files are not supported; please convert to .{upgrade_ext}."
+    display = ext_or_name if ext_or_name.startswith(".") else Path(ext_or_name).name
+    return f"File type is not supported for parsing: {display}"

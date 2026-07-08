@@ -50,7 +50,68 @@ def test_doclib_runtime_dependencies_are_in_base_install() -> None:
     dependency_names = {dependency.split(">", 1)[0].split("=", 1)[0].lower() for dependency in dependencies}
 
     assert "aiosqlite" in dependency_names
+    assert "packaging" in dependency_names
     assert "watchfiles" in dependency_names
+
+
+def test_pdftext_dependency_is_capped_below_pagechars_api() -> None:
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    dependencies = pyproject["project"]["dependencies"]
+    pdftext_dependencies = [dependency for dependency in dependencies if dependency.lower().startswith("pdftext")]
+
+    assert pdftext_dependencies == ["pdftext>=0.6.3,<0.7.0"]
+
+
+def test_standard_extra_includes_preflight_runtime_dependencies() -> None:
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    standard_dependencies = pyproject["project"]["optional-dependencies"]["standard"]
+    dependency_names = {dependency.split(">", 1)[0].split("=", 1)[0].lower() for dependency in standard_dependencies}
+    module_to_distribution = {
+        "ftfy": "ftfy",
+        "pyclipper": "pyclipper",
+        "shapely": "shapely",
+        "six": "six",
+        "torch": "torch",
+        "torchvision": "torchvision",
+        "transformers": "transformers",
+    }
+
+    missing = [
+        module_name
+        for module_name in parser_tier.required_modules_for_tier("standard")
+        if module_to_distribution[module_name] not in dependency_names
+    ]
+
+    assert missing == []
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("parse_server.local.mode", "totally-invalid-mode"),
+        ("parse_server.local.managed_tier", "ultra"),
+        ("parse_server.remote.url", "ftp://example.com/api"),
+        ("parse_server.local.self_hosted_url", "not-a-url"),
+    ],
+)
+def test_config_set_rejects_invalid_known_config_values(key: str, value: str, monkeypatch, tmp_path) -> None:
+    def _skip_background_task(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
+
+    cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
+    with TestClient(doclib_app.create_app(cfg)) as client:
+        response = client.put(f"/api/v1/configs/{key}", json={"value": value})
+        config_response = client.get(f"/api/v1/configs/{key}")
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "invalid_config_value"
+    assert payload["error"]["param"] == "value"
+    assert config_response.json()["source"] == "default"
 
 
 def test_config_set_managed_mode_preflights_managed_tier_dependencies(monkeypatch, tmp_path) -> None:

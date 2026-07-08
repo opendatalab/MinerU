@@ -64,7 +64,7 @@ def parse_cmd(
         exit_with_message("invalid_request", str(exc))
 
     if api_url:
-        parser = MinerUApiParser(api_url=api_url, api_key=api_key, tier=tier)
+        parser = MinerUApiParser(api_url=api_url, api_key=api_key, tier=tier, include_images=True)
         parse_one = partial(parser.parse, page_range=pages or "")
     else:
         try:

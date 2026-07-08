@@ -3,7 +3,7 @@
 状态: Draft
 读者: 核心开发者、SDK 开发者
 范围: 从当前 SDK 代码走向目标公开契约的步骤
-底稿: `../../../NEXT-SDK.md`
+来源: 由旧 SDK 底稿迁移整理而来；旧底稿已归档删除
 
 ## 目标
 
@@ -11,7 +11,7 @@ SDK 迁移的目标不是重写现有 parser，而是稳定已经成形的边界
 
 - `mineru.parser` 成为 Tool SDK 主入口。
 - `MinerUApiParser` 成为 v1 API-backed parser。
-- `MineruClient` 成为本地 doclib SDK。
+- `DoclibClient` 成为本地 doclib SDK。
 - `ParseResult` 成为跨 backend 和 API 的统一结果对象。
 
 ## 当前状态
@@ -20,12 +20,12 @@ SDK 迁移的目标不是重写现有 parser，而是稳定已经成形的边界
 |------|----------|
 | Tool SDK 导出 | 已有 `mineru.parser.__all__`。 |
 | `DocumentParser` | 已有 sync/async/batch/context manager 接口。 |
-| `ParseResult` | 已有输出方法，但 `from_dict()` / `from_json()` 未实现。 |
+| `ParseResult` | 已有输出方法，`from_dict()` / `from_json()` 已实现；仍需稳定 envelope 兼容边界。 |
 | Tier 参数 | `parse()` 当前主要使用 `backend`，tier 语义分散在 doclib/service 中。 |
 | API-backed parser | 已有 `MinerUApiParser`，使用 v1 uploads/jobs/files。 |
 | parse-server runtime | 已有 `mineru.parser.api_server`。 |
-| Doclib SDK | 已有 `MineruClient`，但多数返回 dict。 |
-| 错误模型 | 已有 `mineru.errors`，但部分新 API/tier 错误码未覆盖。 |
+| Doclib SDK | 已有 `DoclibClient`，继承 `DoclibInterface` 并返回 typed Pydantic response。 |
+| 错误模型 | 已有 `mineru.errors`；仍需确认 SDK exception 是否暴露 `user_action` 等扩展字段。 |
 
 ## Phase 1: 文档和命名稳定
 
@@ -33,9 +33,9 @@ SDK 迁移的目标不是重写现有 parser，而是稳定已经成形的边界
 2. 确认 public import path:
    - `from mineru.parser import parse, ParseResult`
    - `from mineru.parser import MinerUApiParser`
-   - `from mineru.doclib.client import MineruClient`
+   - `from mineru.doclib.client import DoclibClient`
 3. 决定是否增加:
-   - `from mineru.client import MineruClient`
+   - `from mineru.client import DoclibClient`
 
 不新增 `from mineru.parser.remote import MinerUApiParser`；API-backed parser 保持现有入口。
 
@@ -46,11 +46,10 @@ SDK 迁移的目标不是重写现有 parser，而是稳定已经成形的边界
 
 ## Phase 2: `ParseResult` 补完
 
-1. 实现 `ParseResult.from_dict()`。
-2. 实现 `ParseResult.from_json()`。
-3. 稳定 `to_dict()` 输出 envelope。
-4. 定义 writer protocol。
-5. 统一 `save()` 的文件命名。
+1. 锁定 `ParseResult.from_dict()` / `from_json()` 对历史 payload 的兼容范围。
+2. 稳定 `to_dict()` 输出 envelope。
+3. 定义 writer protocol。
+4. 统一 `save()` 的文件命名。
 
 验收:
 
@@ -89,17 +88,17 @@ SDK 迁移的目标不是重写现有 parser，而是稳定已经成形的边界
 
 ## Phase 5: Doclib Client 类型化
 
-1. 将 `mineru.doclib.types` 作为 client 返回类型来源。
-2. 让 `MineruClient` 方法返回 typed model 或提供 `raw=True` 兼容 dict。
+1. 保持 `mineru.doclib.types` 作为 client 返回类型来源。
+2. 评估是否为 `DoclibClient` 提供高层 `parse(...)` convenience wrapper；当前稳定入口是 `ensure_parse(ParseRequest)`。
 3. 增加 context manager。
-4. 评估 `AsyncMineruClient`。
+4. 评估 `AsyncDoclibClient`。
 
 验收:
 
-- `client.parse()` 返回稳定 `ParseResponse`。
+- `client.ensure_parse(ParseRequest(...))` 返回稳定 `ParseResponse`。
 - `client.search()` 返回稳定 `SearchResponse`。
-- `client.info()` 返回稳定 `FileInfo`。
-- 现有 CLI dict 调用不破坏。
+- `client.get_file_by_path()` 返回稳定 `FileInfoResponse`。
+- 现有 CLI typed model 调用不破坏。
 
 ## Phase 6: 测试约束
 
@@ -109,7 +108,7 @@ SDK 迁移的目标不是重写现有 parser，而是稳定已经成形的边界
 - `parse()` 后缀分派。
 - `ParseResult` round-trip。
 - `MinerUApiParser` upload/job/files mock。
-- `MineruClient` UDS error 映射。
+- `DoclibClient` UDS error 映射。
 - 默认选择不回退 `flash`。
 
 ## 未决问题

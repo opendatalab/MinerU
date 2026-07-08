@@ -118,9 +118,12 @@ class SearchService:
         sql = (
             f"SELECT f.*, d.title, d.page_count "
             f"FROM files f LEFT JOIN docs d ON f.sha256 = d.sha256 "
-            f"WHERE f.id IN ({placeholders}) AND f.status = ?"
+            f"WHERE f.id IN ({placeholders})"
         )
-        params = [*file_ids, FILE_STATUS_ACTIVE]
+        params = [*file_ids]
+        if refresh_file is None:
+            sql += " AND f.status = ?"
+            params.append(FILE_STATUS_ACTIVE)
         if ext:
             sql += " AND f.ext = ?"
             params.append(ext.lower().lstrip("."))
@@ -164,7 +167,17 @@ class SearchService:
                 continue
             if refreshed.file is not None and refreshed.file.status != FILE_STATUS_ACTIVE:
                 continue
-            current_rows.append(file_row)
+            current_row = cast(
+                FilenameSearchFileRow | None,
+                await self.db.fetchone(
+                    "SELECT f.*, d.title, d.page_count "
+                    "FROM files f LEFT JOIN docs d ON f.sha256 = d.sha256 "
+                    "WHERE f.id = ? AND f.status = ?",
+                    (file_row["id"], FILE_STATUS_ACTIVE),
+                ),
+            )
+            if current_row is not None:
+                current_rows.append(current_row)
         return current_rows
 
 

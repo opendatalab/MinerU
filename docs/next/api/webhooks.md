@@ -3,7 +3,7 @@
 状态: Draft
 读者: API 使用者、服务端开发者、SDK 开发者
 范围: Parse Job 异步回调协议
-底稿: `../../../NEXT-API.md`
+来源: 由根目录旧 Unified API 底稿迁移整理而来
 
 ## 可用性
 

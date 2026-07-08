@@ -3,7 +3,7 @@
 状态: Draft
 读者: backend 开发者、输出开发者、SDK 开发者、Agent 能力开发者
 范围: Middle JSON 的目标、当前事实和工作分层
-底稿: `../../../NEXT-JSON.md`
+来源: 由根目录旧 Middle JSON 底稿迁移整理而来
 
 ## 当前事实
 
@@ -31,7 +31,7 @@ Line
 
 | 类别 | 现状 |
 |------|------|
-| 顶层 envelope | 旧 CLI 与 SDK 均使用 `schema_version + pages`；旧 CLI 额外保留 `_backend` / `_version_name` metadata；底稿希望有 `_meta`。 |
+| 顶层 envelope | 当前 `ParseResult` 使用 `schema_version + pages`；顶层 `_backend` 是临时兼容 metadata；历史 `_version_name` 仅作为离线迁移输入处理；底稿希望有 `_meta`。 |
 | backend 细节 | Pipeline/VLM/Hybrid/Office/HTML 对 bbox、index、page_size、preproc_blocks 的质量不同。 |
 | render 消费 | 已有统一 render facade，但内部仍按 backend dispatch。 |
 | Agent 能力 | 引用定位、稳定 page/block 地址和隐私边界还没有落地。 |

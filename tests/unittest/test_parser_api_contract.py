@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import importlib
 import inspect
 import io
@@ -28,7 +29,7 @@ from mineru.parser.api_server import (
     FileParseInfo,
     FileStore,
     HealthResponse,
-    ImageOutputRef,
+    JobLinks,
     JobListItem,
     OutputFileRef,
     OutputFiles,
@@ -179,11 +180,124 @@ def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> No
     pdf.write_bytes(b"%PDF-1.7\n")
 
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
-    payload = parser._build_payload(pdf, "1,3~5")
+    payload = parser._build_payload({"type": "local", "path": str(pdf)}, "1,3~5")
 
-    assert payload["output_formats"] == ["middle_json", "images"]
+    assert payload["output_formats"] == ["middle_json"]
     assert payload["files"] == [{"source": {"type": "local", "path": str(pdf)}, "page_range": "1,3~5"}]
     assert "options" not in payload["files"][0]
+
+
+def test_api_client_uses_file_id_when_local_server_does_not_advertise_local_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
+    monkeypatch.setattr(parser, "_upload", lambda _path: "file_1")
+
+    class _Response:
+        status_code = 200
+        text = ""
+
+        def json(self) -> dict[str, object]:
+            return {"features": {"sources": ["file_id", "url", "inline"]}}
+
+    class _Client:
+        def __init__(self, *, timeout: object, trust_env: bool, **_: object) -> None:
+            assert trust_env is False
+
+        def __enter__(self) -> "_Client":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def get(self, url: str, headers: dict[str, str]) -> _Response:
+            assert url == "http://localhost:8000/v1/health"
+            assert headers == {}
+            return _Response()
+
+    monkeypatch.setattr("mineru.parser.api_client.httpx.Client", _Client)
+
+    source = parser._build_source(pdf)
+
+    assert source == {"type": "file_id", "file_id": "file_1"}
+
+
+def test_api_client_uses_local_source_when_health_advertises_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
+    monkeypatch.setattr(parser, "_upload", lambda _path: pytest.fail("local source should not upload"))
+
+    class _Response:
+        status_code = 200
+        text = ""
+
+        def json(self) -> dict[str, object]:
+            return {"features": {"sources": ["file_id", "url", "inline", "local"]}}
+
+    class _Client:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def __enter__(self) -> "_Client":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def get(self, url: str, headers: dict[str, str]) -> _Response:
+            return _Response()
+
+    monkeypatch.setattr("mineru.parser.api_client.httpx.Client", _Client)
+
+    source = parser._build_source(pdf)
+
+    assert source == {"type": "local", "path": str(pdf)}
+
+
+def test_async_api_client_uses_file_id_when_local_server_does_not_advertise_local_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pdf = tmp_path / "demo.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
+
+    async def _async_upload(_path: Path) -> str:
+        return "file_1"
+
+    monkeypatch.setattr(parser, "_async_upload", _async_upload)
+
+    class _Response:
+        status_code = 200
+        text = ""
+
+        def json(self) -> dict[str, object]:
+            return {"features": {"sources": ["file_id", "url", "inline"]}}
+
+    class _AsyncClient:
+        def __init__(self, *, timeout: object, trust_env: bool, **_: object) -> None:
+            assert trust_env is False
+
+        async def __aenter__(self) -> "_AsyncClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def get(self, url: str, headers: dict[str, str]) -> _Response:
+            assert url == "http://localhost:8000/v1/health"
+            assert headers == {}
+            return _Response()
+
+    monkeypatch.setattr("mineru.parser.api_client.httpx.AsyncClient", _AsyncClient)
+
+    source = asyncio.run(parser._async_build_source(pdf))
+
+    assert source == {"type": "file_id", "file_id": "file_1"}
 
 
 def test_api_client_can_request_zip_for_model_output(tmp_path: Path) -> None:
@@ -191,45 +305,43 @@ def test_api_client_can_request_zip_for_model_output(tmp_path: Path) -> None:
     pdf.write_bytes(b"%PDF-1.7\n")
 
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="high", include_model_output=True)
-    payload = parser._build_payload(pdf, "")
+    payload = parser._build_payload({"type": "local", "path": str(pdf)}, "")
 
-    assert payload["output_formats"] == ["middle_json", "images", "zip"]
+    assert payload["output_formats"] == ["zip"]
 
 
-def test_api_client_can_request_zip_output_only(tmp_path: Path) -> None:
+def test_api_client_can_request_zip_for_image_cache(tmp_path: Path) -> None:
     pdf = tmp_path / "demo.pdf"
     pdf.write_bytes(b"%PDF-1.7\n")
 
     parser = MinerUApiParser(
         api_url="http://localhost:8000",
         tier="high",
-        include_model_output=True,
-        zip_output_only=True,
+        include_images=True,
     )
-    payload = parser._build_payload(pdf, "")
+    payload = parser._build_payload({"type": "local", "path": str(pdf)}, "")
 
     assert payload["output_formats"] == ["zip"]
 
 
-def test_api_client_keeps_staging_json_format_when_model_output_requested() -> None:
+def test_api_client_uses_zip_for_staging_when_model_output_requested() -> None:
     parser = MinerUApiParser(
         api_url="https://staging.mineru.org.cn/api",
         tier="extra_high",
         include_model_output=True,
     )
 
-    assert parser._output_formats() == ["json"]
+    assert parser._output_formats() == ["zip"]
 
 
-def test_api_client_keeps_staging_json_format_when_zip_output_only_requested() -> None:
+def test_api_client_uses_zip_for_staging_when_image_cache_requested() -> None:
     parser = MinerUApiParser(
         api_url="https://staging.mineru.org.cn/api",
         tier="extra_high",
-        include_model_output=True,
-        zip_output_only=True,
+        include_images=True,
     )
 
-    assert parser._output_formats() == ["json"]
+    assert parser._output_formats() == ["zip"]
 
 
 def test_api_client_uses_tier_without_backend_semantics(tmp_path: Path) -> None:
@@ -237,7 +349,7 @@ def test_api_client_uses_tier_without_backend_semantics(tmp_path: Path) -> None:
     pdf.write_bytes(b"%PDF-1.7\n")
 
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="extra_high")
-    payload = parser._build_payload(pdf, "")
+    payload = parser._build_payload({"type": "local", "path": str(pdf)}, "")
 
     assert payload["tier"] == "extra_high"
     assert not hasattr(parser, "backend")
@@ -249,30 +361,141 @@ def test_api_client_rejects_old_tier_names(tier: str) -> None:
         MinerUApiParser(api_url="http://localhost:8000", tier=tier)  # type: ignore[arg-type]
 
 
-def test_api_client_uses_json_format_for_staging_compat() -> None:
+def test_api_client_uses_middle_json_format_for_staging() -> None:
     parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="extra_high")
 
-    assert parser._output_formats() == ["json"]
+    assert parser._output_formats() == ["middle_json"]
 
 
-def test_api_client_downloads_image_sidecars_and_preserves_pdf_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
-    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
+def test_api_client_uses_env_api_key_when_no_api_key_argument(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MINERU_API_KEY", "env-key")
+
+    parser = MinerUApiParser(api_url="https://mineru.net/api", tier="high")
+
+    assert parser._headers()["Authorization"] == "Bearer env-key"
+
+
+class _FakeResponse:
+    def __init__(self, status_code: int, payload: dict[str, object], text: str = "") -> None:
+        self.status_code = status_code
+        self._payload = payload
+        self.text = text
+
+    def json(self) -> dict[str, object]:
+        return self._payload
+
+
+def test_api_client_maps_remote_401_to_invalid_api_key() -> None:
+    response = _FakeResponse(
+        401,
+        {
+            "traceId": "trace-1",
+            "msgCode": "A0202",
+            "msg": "user authenticate failed",
+            "data": None,
+            "success": False,
+            "total": 0,
+        },
+        text='{"msgCode":"A0202","msg":"user authenticate failed"}',
+    )
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        MinerUApiParser._check(response)
+
+    assert exc_info.value.code == "invalid_api_key"
+    assert exc_info.value.message == "Remote authentication failed: user authenticate failed"
+    assert exc_info.value.param == "parse_server.remote.api_key"
+
+
+def test_api_client_preserves_structured_error_body_on_http_error() -> None:
+    response = _FakeResponse(
+        401,
+        {
+            "error": {
+                "type": "authentication_error",
+                "code": "invalid_api_key",
+                "message": "Invalid or missing API key",
+                "param": "api_key",
+            }
+        },
+        text='{"error":{"code":"invalid_api_key"}}',
+    )
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        MinerUApiParser._check(response)
+
+    assert exc_info.value.code == "invalid_api_key"
+    assert exc_info.value.message == "Invalid or missing API key"
+    assert exc_info.value.param == "api_key"
+
+
+def test_api_client_ignores_legacy_detail_error_envelope() -> None:
+    response = _FakeResponse(
+        400,
+        {
+            "detail": {
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "invalid_request",
+                    "message": "legacy detail envelope",
+                }
+            }
+        },
+        text='{"detail":{"error":{"code":"invalid_request"}}}',
+    )
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        MinerUApiParser._check(response)
+
+    assert exc_info.value.code == "http_error"
+    assert exc_info.value.message.startswith("HTTP 400:")
+
+
+def test_api_client_reads_image_cache_from_zip_and_preserves_pdf_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high", include_images=True)
     middle_json = {
         "schema_version": "1.0.0",
         "_pdf_retained_page_indices": [0, 2],
         "_pdf_broken_page_indices": [1],
-        "pages": [{"page_idx": 0, "page_size": [100, 200]}],
+        "pages": [
+            {
+                "page_idx": 0,
+                "page_size": [100, 200],
+                "para_blocks": [
+                    {
+                        "index": 0,
+                        "type": "image",
+                        "bbox": [0, 0, 10, 10],
+                        "lines": [
+                            {
+                                "bbox": [0, 0, 10, 10],
+                                "spans": [
+                                    {
+                                        "type": "image",
+                                        "bbox": [0, 0, 10, 10],
+                                        "image_path": "images/chart.png",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
     }
-    image_ref = {"path": "images/chart.png", "file_id": "file-image", "bytes": 11}
+    zip_ref = {"file_id": "file-zip", "bytes": 10}
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("demo.middle_json", json.dumps(middle_json, ensure_ascii=False))
+        archive.writestr("images/chart.png", b"chart-bytes")
 
-    monkeypatch.setattr(api_client, "_download_json", lambda _parser, _outputs: middle_json)
-    monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: b"chart-bytes" if ref is image_ref else b"")
+    monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"")
 
     result = _parse_result_from_job(
         {
             "job_id": "job_1",
             "status": "completed",
-            "files": [{"output_files": {"middle_json": {"file_id": "file-middle", "bytes": 10}, "images": [image_ref]}}],
+            "files": [{"output_files": {"zip": zip_ref}}],
         },
         "demo.pdf",
         parser,
@@ -292,12 +515,12 @@ def test_api_client_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPa
     zip_ref = {"file_id": "file-zip", "bytes": 10}
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("demo.middle_json", json.dumps(middle_json, ensure_ascii=False))
         archive.writestr(
             "demo_model_output.json",
             json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4),
         )
 
-    monkeypatch.setattr(api_client, "_download_json", lambda _parser, _outputs: middle_json)
     monkeypatch.setattr(
         api_client,
         "_download_bytes",
@@ -308,7 +531,7 @@ def test_api_client_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPa
         {
             "job_id": "job_1",
             "status": "completed",
-            "files": [{"output_files": {"middle_json": {"file_id": "file-middle", "bytes": 10}, "zip": zip_ref}}],
+            "files": [{"output_files": {"zip": zip_ref}}],
         },
         "demo.pdf",
         parser,
@@ -326,18 +549,15 @@ def test_api_client_async_downloads_model_output_from_zip(monkeypatch: pytest.Mo
     zip_ref = {"file_id": "file-zip", "bytes": 10}
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("demo.middle_json", json.dumps(middle_json, ensure_ascii=False))
         archive.writestr(
             "demo_model_output.json",
             json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4),
         )
 
-    async def fake_download_json(_parser: object, _outputs: object) -> dict[str, object]:
-        return middle_json
-
     async def fake_download_bytes(_parser: object, ref: dict[str, object]) -> bytes:
         return zip_buffer.getvalue() if ref is zip_ref else b""
 
-    monkeypatch.setattr(api_client, "_async_download_json", fake_download_json)
     monkeypatch.setattr(api_client, "_async_download_bytes", fake_download_bytes)
 
     result = asyncio.run(
@@ -345,7 +565,7 @@ def test_api_client_async_downloads_model_output_from_zip(monkeypatch: pytest.Mo
             {
                 "job_id": "job_1",
                 "status": "completed",
-                "files": [{"output_files": {"middle_json": {"file_id": "file-middle", "bytes": 10}, "zip": zip_ref}}],
+                "files": [{"output_files": {"zip": zip_ref}}],
             },
             "demo.pdf",
             parser,
@@ -355,12 +575,12 @@ def test_api_client_async_downloads_model_output_from_zip(monkeypatch: pytest.Mo
     assert result._model_output == [[{"raw": "model"}]]
 
 
-def test_api_client_zip_output_only_downloads_single_zip(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_client_include_images_downloads_single_zip(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(
         api_url="http://localhost:8000",
         tier="high",
+        include_images=True,
         include_model_output=True,
-        zip_output_only=True,
     )
     zip_ref = {"file_id": "file-zip", "bytes": 10}
     image_cache = ImagePayloadCache()
@@ -387,7 +607,7 @@ def test_api_client_zip_output_only_downloads_single_zip(monkeypatch: pytest.Mon
     monkeypatch.setattr(
         api_client,
         "_download_json",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("zip-only must not download middle_json separately")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("zip result must not download middle_json separately")),
     )
 
     result = _parse_result_from_job(
@@ -406,12 +626,59 @@ def test_api_client_zip_output_only_downloads_single_zip(monkeypatch: pytest.Mon
     assert result._model_output == [[{"raw": "model"}]]
 
 
-def test_api_client_async_zip_output_only_downloads_single_zip(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_client_does_not_read_image_cache_from_zip_unless_requested(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high", include_model_output=True)
+    zip_ref = {"file_id": "file-zip", "bytes": 10}
+    middle_json = {
+        "schema_version": "1.0.0",
+        "pages": [
+            {
+                "page_idx": 0,
+                "page_size": [100, 200],
+                "para_blocks": [
+                    {
+                        "index": 0,
+                        "type": "image",
+                        "bbox": [0, 0, 10, 10],
+                        "lines": [
+                            {
+                                "bbox": [0, 0, 10, 10],
+                                "spans": [{"type": "image", "bbox": [0, 0, 10, 10], "image_path": "images/chart.png"}],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("demo.middle_json", json.dumps(middle_json, ensure_ascii=False))
+        archive.writestr("images/chart.png", b"chart-bytes")
+        archive.writestr("demo_model_output.json", json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4))
+
+    monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"")
+
+    result = _parse_result_from_job(
+        {
+            "job_id": "job_1",
+            "status": "completed",
+            "files": [{"output_files": {"zip": zip_ref}}],
+        },
+        "demo.pdf",
+        parser,
+    )
+
+    assert result.images() == {}
+    assert result._model_output == [[{"raw": "model"}]]
+
+
+def test_api_client_async_include_images_downloads_single_zip(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(
         api_url="http://localhost:8000",
         tier="high",
+        include_images=True,
         include_model_output=True,
-        zip_output_only=True,
     )
     zip_ref = {"file_id": "file-zip", "bytes": 10}
     zip_buffer = io.BytesIO()
@@ -428,7 +695,7 @@ def test_api_client_async_zip_output_only_downloads_single_zip(monkeypatch: pyte
         return zip_buffer.getvalue() if ref is zip_ref else b""
 
     async def fail_download_json(*_args: object, **_kwargs: object) -> dict[str, object]:
-        raise AssertionError("zip-only must not download middle_json separately")
+        raise AssertionError("zip result must not download middle_json separately")
 
     monkeypatch.setattr(api_client, "_async_download_bytes", fake_download_bytes)
     monkeypatch.setattr(api_client, "_async_download_json", fail_download_json)
@@ -450,8 +717,8 @@ def test_api_client_async_zip_output_only_downloads_single_zip(monkeypatch: pyte
     assert result._model_output == [[{"raw": "model"}]]
 
 
-def test_api_client_zip_output_only_rejects_unsafe_image_entries(monkeypatch: pytest.MonkeyPatch) -> None:
-    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high", zip_output_only=True)
+def test_api_client_include_images_rejects_unsafe_image_entries(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high", include_images=True)
     zip_ref = {"file_id": "file-zip", "bytes": 10}
     middle_json = {
         "schema_version": "1.0.0",
@@ -463,7 +730,12 @@ def test_api_client_zip_output_only_rejects_unsafe_image_entries(monkeypatch: py
                         "index": 0,
                         "type": "image",
                         "bbox": [0, 0, 10, 10],
-                        "lines": [{"bbox": [0, 0, 10, 10], "spans": [{"type": "image", "bbox": [0, 0, 10, 10], "image_path": "../escape.png"}]}],
+                        "lines": [
+                            {
+                                "bbox": [0, 0, 10, 10],
+                                "spans": [{"type": "image", "bbox": [0, 0, 10, 10], "image_path": "../escape.png"}],
+                            }
+                        ],
                     }
                 ],
             }
@@ -496,7 +768,6 @@ def test_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.MonkeyPatch
     }
 
     monkeypatch.setattr(api_client, "_download_json", lambda _parser, _outputs: middle_json)
-    monkeypatch.setattr(api_client, "_download_image_sidecars", lambda _parser, _outputs: {})
 
     result = _parse_result_from_job(
         {
@@ -524,11 +795,7 @@ def test_async_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.Monke
     async def _download_json(*_args: object, **_kwargs: object) -> dict[str, object]:
         return middle_json
 
-    async def _download_image_sidecars(*_args: object, **_kwargs: object) -> dict[str, bytes]:
-        return {}
-
     monkeypatch.setattr(api_client, "_async_download_json", _download_json)
-    monkeypatch.setattr(api_client, "_async_download_image_sidecars", _download_image_sidecars)
 
     result = asyncio.run(
         api_client._async_parse_result_from_job(
@@ -548,50 +815,107 @@ def test_async_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.Monke
     assert result.pages[0]._backend == "hybrid"
 
 
+def test_api_client_rejects_output_reference_without_file_id() -> None:
+    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="high")
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        api_client._download_bytes(parser, {"url": "https://example.invalid/output.json", "bytes": 10})
+
+    assert exc_info.value.code == "invalid_response"
+    assert exc_info.value.message == "No file_id in output reference"
+
+
+def test_async_api_client_rejects_output_reference_without_file_id() -> None:
+    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="high")
+
+    async def _run() -> None:
+        await api_client._async_download_bytes(parser, {"url": "https://example.invalid/output.json", "bytes": 10})
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        asyncio.run(_run())
+
+    assert exc_info.value.code == "invalid_response"
+    assert exc_info.value.message == "No file_id in output reference"
+
+
 @pytest.mark.parametrize("image_path", ["../escape.png", "/tmp/escape.png", "\\escape.png", "C:\\escape.png"])
-def test_api_client_rejects_unsafe_image_sidecar_paths(
+def test_api_client_include_images_rejects_unsafe_zip_image_sidecar_paths(
     monkeypatch: pytest.MonkeyPatch,
     image_path: str,
 ) -> None:
-    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
-    middle_json = {"schema_version": "1.0.0", "pages": [{"page_idx": 0}]}
-    image_ref = {"path": image_path, "file_id": "file-image", "bytes": 11}
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high", include_images=True)
+    zip_ref = {"file_id": "file-zip", "bytes": 10}
+    middle_json = {
+        "schema_version": "1.0.0",
+        "pages": [
+            {
+                "page_idx": 0,
+                "para_blocks": [
+                    {
+                        "index": 0,
+                        "type": "image",
+                        "bbox": [0, 0, 10, 10],
+                        "lines": [
+                            {
+                                "bbox": [0, 0, 10, 10],
+                                "spans": [{"type": "image", "bbox": [0, 0, 10, 10], "image_path": image_path}],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("demo.middle_json", json.dumps(middle_json, ensure_ascii=False))
 
-    monkeypatch.setattr(api_client, "_download_json", lambda _parser, _outputs: middle_json)
-
-    def _fail_download(*_args: object, **_kwargs: object) -> bytes:
-        """危险 sidecar 路径必须在下载图片字节前被拒绝。"""
-        raise AssertionError("unsafe sidecar path should be rejected before download")
-
-    monkeypatch.setattr(api_client, "_download_bytes", _fail_download)
+    monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"")
 
     with pytest.raises(ValueError, match="Unsafe image sidecar path"):
         _parse_result_from_job(
             {
                 "job_id": "job_1",
                 "status": "completed",
-                "files": [{"output_files": {"middle_json": {"file_id": "file-middle", "bytes": 10}, "images": [image_ref]}}],
+                "files": [{"output_files": {"zip": zip_ref}}],
             },
             "demo.pdf",
             parser,
         )
 
 
-def test_async_api_client_rejects_unsafe_image_sidecar_paths(monkeypatch: pytest.MonkeyPatch) -> None:
-    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
-    middle_json = {"schema_version": "1.0.0", "pages": [{"page_idx": 0}]}
-    image_ref = {"path": "../escape.png", "file_id": "file-image", "bytes": 11}
+def test_async_api_client_include_images_rejects_unsafe_zip_image_sidecar_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high", include_images=True)
+    zip_ref = {"file_id": "file-zip", "bytes": 10}
+    middle_json = {
+        "schema_version": "1.0.0",
+        "pages": [
+            {
+                "page_idx": 0,
+                "para_blocks": [
+                    {
+                        "index": 0,
+                        "type": "image",
+                        "bbox": [0, 0, 10, 10],
+                        "lines": [
+                            {
+                                "bbox": [0, 0, 10, 10],
+                                "spans": [{"type": "image", "bbox": [0, 0, 10, 10], "image_path": "../escape.png"}],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("demo.middle_json", json.dumps(middle_json, ensure_ascii=False))
 
-    async def _download_json(*_args: object, **_kwargs: object) -> dict[str, object]:
-        """返回最小 middle_json，聚焦验证 sidecar 路径校验。"""
-        return middle_json
+    async def _download_bytes(_parser: object, ref: dict[str, object]) -> bytes:
+        return zip_buffer.getvalue() if ref is zip_ref else b""
 
-    async def _fail_download(*_args: object, **_kwargs: object) -> bytes:
-        """异步路径同样必须在下载图片字节前拒绝危险 sidecar。"""
-        raise AssertionError("unsafe sidecar path should be rejected before download")
-
-    monkeypatch.setattr(api_client, "_async_download_json", _download_json)
-    monkeypatch.setattr(api_client, "_async_download_bytes", _fail_download)
+    monkeypatch.setattr(api_client, "_async_download_bytes", _download_bytes)
 
     with pytest.raises(ValueError, match="Unsafe image sidecar path"):
         asyncio.run(
@@ -599,9 +923,7 @@ def test_async_api_client_rejects_unsafe_image_sidecar_paths(monkeypatch: pytest
                 {
                     "job_id": "job_1",
                     "status": "completed",
-                    "files": [
-                        {"output_files": {"middle_json": {"file_id": "file-middle", "bytes": 10}, "images": [image_ref]}}
-                    ],
+                    "files": [{"output_files": {"zip": zip_ref}}],
                 },
                 "demo.pdf",
                 parser,
@@ -610,8 +932,8 @@ def test_async_api_client_rejects_unsafe_image_sidecar_paths(monkeypatch: pytest
 
 
 def test_api_client_disables_env_proxy_for_local_network_urls() -> None:
-    assert should_trust_env_for_url("http://localhost:8000/api") is False
-    assert should_trust_env_for_url("http://127.0.0.1:8000/api") is False
+    assert should_trust_env_for_url("http://localhost:8000") is False
+    assert should_trust_env_for_url("http://127.0.0.1:8000") is False
     assert should_trust_env_for_url("http://192.168.1.20:8000/api") is False
     assert should_trust_env_for_url("https://staging.mineru.org.cn/api") is True
 
@@ -641,7 +963,7 @@ def test_api_client_passes_trust_env_from_api_url(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr("mineru.parser.api_client.httpx.Client", _Client)
 
-    MinerUApiParser(api_url="http://127.0.0.1:8000/api")._do_parse({"files": []})
+    MinerUApiParser(api_url="http://127.0.0.1:8000")._do_parse({"files": []})
     MinerUApiParser(api_url="https://mineru.net/api")._do_parse({"files": []})
 
     assert calls == [False, True]
@@ -715,7 +1037,7 @@ def test_api_client_omits_tier_when_unspecified(tmp_path: Path) -> None:
     pdf.write_bytes(b"%PDF-1.7\n")
 
     parser = MinerUApiParser(api_url="http://localhost:8000")
-    payload = parser._build_payload(pdf, "")
+    payload = parser._build_payload({"type": "local", "path": str(pdf)}, "")
 
     assert "tier" not in payload
 
@@ -756,7 +1078,7 @@ def test_api_client_omits_page_range_when_unspecified(tmp_path: Path) -> None:
     pdf.write_bytes(b"%PDF-1.7\n")
 
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
-    payload = parser._build_payload(pdf, "")
+    payload = parser._build_payload({"type": "local", "path": str(pdf)}, "")
 
     assert payload["files"] == [{"source": {"type": "local", "path": str(pdf)}}]
 
@@ -819,6 +1141,16 @@ def test_api_client_rejects_missing_middle_json_output() -> None:
         )
 
 
+def test_api_client_rejects_json_underscore_output_alias() -> None:
+    parser = MinerUApiParser(api_url="http://localhost:8000", tier="high")
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        api_client._download_json(parser, {"json_": {"file_id": "file-json", "bytes": 10}})
+
+    assert exc_info.value.code == "missing_middle_json_output"
+    assert "available outputs: json_" in exc_info.value.message
+
+
 def test_api_client_accepts_pages_middle_json_only() -> None:
     pages = _pages_from_middle_json({"pages": [{"page_idx": 2, "page_size": [100, 200]}]})
 
@@ -859,6 +1191,22 @@ def test_create_job_request_accepts_new_format_names_and_rejects_options() -> No
     with pytest.raises(ValidationError):
         CreateJobRequest.model_validate(
             {
+                "files": [{"source": {"type": "local", "path": "/tmp/demo.pdf"}}],
+                "output_formats": ["images"],
+            }
+        )
+
+    with pytest.raises(ValidationError):
+        CreateJobRequest.model_validate(
+            {
+                "files": [{"source": {"type": "local", "path": "/tmp/demo.pdf"}}],
+                "wait": 5,
+            }
+        )
+
+    with pytest.raises(ValidationError):
+        CreateJobRequest.model_validate(
+            {
                 "files": [
                     {
                         "source": {"type": "local", "path": "/tmp/demo.pdf"},
@@ -867,6 +1215,83 @@ def test_create_job_request_accepts_new_format_names_and_rejects_options() -> No
                 ],
             }
         )
+
+
+def test_api_server_rejects_local_source_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    app = create_app(upload_dir=str(tmp_path / "api"), tier="flash")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/parse/jobs",
+            json={"files": [{"source": {"type": "local", "path": str(source)}}]},
+        )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["code"] == "invalid_request"
+    assert body["error"]["param"] == "files.0.source"
+    assert "--allow-local-source" in body["error"]["message"]
+
+
+def test_api_server_health_sources_reflect_local_source_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    default_app = create_app(upload_dir=str(tmp_path / "default"), tier="flash")
+    local_app = create_app(upload_dir=str(tmp_path / "local"), tier="flash", allow_local_source=True)
+
+    with TestClient(default_app) as client:
+        default_sources = client.get("/v1/health").json()["features"]["sources"]
+    with TestClient(local_app) as client:
+        local_sources = client.get("/v1/health").json()["features"]["sources"]
+
+    assert default_sources == ["file_id", "url", "inline"]
+    assert local_sources == ["file_id", "url", "inline", "local"]
+
+
+def test_api_server_rejects_inline_source_over_configured_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path), tier="flash", max_inline_bytes=3)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/parse/jobs",
+            json={
+                "files": [
+                    {
+                        "source": {
+                            "type": "inline",
+                            "name": "demo.pdf",
+                            "data": base64.b64encode(b"1234").decode("ascii"),
+                        }
+                    }
+                ]
+            },
+        )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["code"] == "invalid_request"
+    assert body["error"]["param"] == "files.0.source"
+    assert "max_inline_bytes" in body["error"]["message"]
+
+
+def test_api_server_rejects_plain_http_url_source_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path), tier="flash")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/parse/jobs",
+            json={"files": [{"source": {"type": "url", "url": "http://example.test/demo.pdf"}}]},
+        )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["code"] == "invalid_request"
+    assert body["error"]["param"] == "files.0.source"
+    assert "https" in body["error"]["message"]
 
 
 def test_local_parse_server_rejects_callback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -883,10 +1308,49 @@ def test_local_parse_server_rejects_callback(tmp_path: Path, monkeypatch: pytest
     )
 
     assert response.status_code == 400
-    body = response.json()["detail"]
+    body = response.json()
+    assert "detail" not in body
     assert body["error"]["code"] == "invalid_request"
     assert "Webhook callback is not supported" in body["error"]["message"]
     assert app.state.job_store._jobs == {}
+
+
+def test_api_server_validation_errors_use_error_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path))
+    client = TestClient(app)
+
+    response = client.post("/v1/parse/jobs", json={"files": []})
+
+    assert response.status_code == 400
+    body = response.json()
+    assert "detail" not in body
+    assert body["error"]["type"] == "invalid_request_error"
+    assert body["error"]["code"] == "invalid_request"
+    assert "Invalid request" in body["error"]["message"]
+
+
+def test_api_server_unhandled_exceptions_use_error_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path))
+
+    @app.get("/boom")
+    async def _boom() -> None:
+        raise RuntimeError("boom")
+
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.get("/boom")
+
+    assert response.status_code == 500
+    body = response.json()
+    assert "detail" not in body
+    assert body["error"] == {
+        "type": "api_error",
+        "code": "internal_error",
+        "message": "Internal server error",
+        "param": None,
+    }
 
 
 def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -895,7 +1359,6 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     monkeypatch.setenv("MINERU_BACKEND", "hybrid-auto-engine")
     monkeypatch.setenv("MINERU_CONCURRENCY", "9")
     monkeypatch.setenv("MINERU_URL_TIMEOUT", "99")
-    monkeypatch.setenv("MINERU_MAX_WAIT", "999")
     monkeypatch.setenv("MINERU_LANGUAGE", "en")
     monkeypatch.setenv("MINERU_OCR_MODE", "ocr")
     monkeypatch.setenv("MINERU_EFFORT", "high")
@@ -909,7 +1372,9 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     assert app.state.backend == "hybrid-engine"
     assert app.state.concurrency == 1
     assert app.state.url_timeout == 60
-    assert app.state.max_wait == 600
+    assert app.state.allow_local_source is False
+    assert app.state.max_inline_bytes == 1024 * 1024
+    assert app.state.allow_http_source is False
     assert app.state.language == "ch"
     assert app.state.ocr_mode == "auto"
     assert app.state.effort == "high"
@@ -961,14 +1426,22 @@ def test_output_files_expose_new_names_without_inline_content() -> None:
         OutputFileRef.model_validate({"file_id": "file-1", "bytes": 12, "content": "inline"})
 
 
-def test_store_image_outputs_creates_downloadable_image_refs(tmp_path: Path) -> None:
-    file_store = FileStore(tmp_path / "api-files")
+def test_job_links_do_not_expose_sse_events() -> None:
+    links = JobLinks(self="/v1/parse/jobs/job_1", cancel="/v1/parse/jobs/job_1")
 
-    assert hasattr(api_server, "_store_image_outputs")
-    refs = api_server._store_image_outputs(file_store, {"images/chart.png": b"chart-bytes"})
+    assert links.model_dump() == {
+        "self": "/v1/parse/jobs/job_1",
+        "cancel": "/v1/parse/jobs/job_1",
+    }
 
-    assert refs == [ImageOutputRef(path="images/chart.png", file_id=refs[0].file_id, bytes=len(b"chart-bytes"))]
-    assert file_store.read_file_data(refs[0].file_id) == b"chart-bytes"
+    with pytest.raises(ValidationError):
+        JobLinks.model_validate(
+            {
+                "self": "/v1/parse/jobs/job_1",
+                "events": "/v1/parse/jobs/job_1/events",
+                "cancel": "/v1/parse/jobs/job_1",
+            }
+        )
 
 
 @pytest.mark.parametrize(
@@ -979,7 +1452,7 @@ def test_store_image_outputs_creates_downloadable_image_refs(tmp_path: Path) -> 
         ("structured_content", "structured_content"),
     ],
 )
-def test_api_server_rendered_outputs_store_image_sidecars(
+def test_api_server_rendered_outputs_do_not_return_image_sidecars(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     output_format: str,
@@ -1030,19 +1503,13 @@ def test_api_server_rendered_outputs_store_image_sidecars(
             ocr_mode="auto",
             image_analysis=True,
             effort="medium",
+            allow_local_source=True,
         )
     )
 
     output_files = rec.files[0].output_files
     assert getattr(output_files, output_attr) is not None
-    assert output_files.images == [
-        ImageOutputRef(
-            path=output_files.images[0].path,
-            file_id=output_files.images[0].file_id,
-            bytes=len(img_bytes),
-        )
-    ]
-    assert file_store.read_file_data(output_files.images[0].file_id) == img_bytes
+    assert "images" not in output_files.model_dump(by_alias=True, exclude_none=True)
 
 
 def test_api_server_middle_json_preserves_backend_for_client_rendering(
@@ -1093,6 +1560,7 @@ def test_api_server_middle_json_preserves_backend_for_client_rendering(
             ocr_mode="auto",
             image_analysis=True,
             effort="medium",
+            allow_local_source=True,
         )
     )
 
@@ -1143,6 +1611,7 @@ def test_api_server_zip_includes_model_output_when_parse_result_has_it(
             ocr_mode="auto",
             image_analysis=True,
             effort="medium",
+            allow_local_source=True,
         )
     )
 
@@ -1205,12 +1674,12 @@ def test_api_server_zip_is_self_contained_when_only_zip_requested(
             ocr_mode="auto",
             image_analysis=True,
             effort="medium",
+            allow_local_source=True,
         )
     )
 
     output_files = rec.files[0].output_files
     assert output_files.middle_json is None
-    assert output_files.images is None
     assert output_files.zip is not None
     with zipfile.ZipFile(io.BytesIO(file_store.read_file_data(output_files.zip.file_id))) as archive:
         names = set(archive.namelist())
@@ -1262,6 +1731,7 @@ def test_api_server_zip_rejects_unsafe_image_sidecar_path(
             ocr_mode="auto",
             image_analysis=True,
             effort="medium",
+            allow_local_source=True,
         )
     )
 
@@ -1306,6 +1776,7 @@ def test_api_server_zip_skips_model_output_when_parse_result_has_none(
             ocr_mode="auto",
             image_analysis=True,
             effort="medium",
+            allow_local_source=True,
         )
     )
 
@@ -1368,6 +1839,7 @@ def test_api_server_sanitizes_surrogates_in_text_outputs(
             ocr_mode="auto",
             image_analysis=True,
             effort="medium",
+            allow_local_source=True,
         )
     )
 
@@ -1421,6 +1893,7 @@ def test_api_server_logs_traceback_when_job_file_fails(
                 ocr_mode="auto",
                 image_analysis=True,
                 effort="medium",
+                allow_local_source=True,
             )
         )
 
@@ -1456,7 +1929,11 @@ def test_api_contract_uses_parser_version_not_backend_version() -> None:
         "status": "ok",
         "version": "3.2.1",
         "parser_version": "3.2.1",
-        "features": {"sse": False, "webhook": False},
+        "features": {
+            "webhook": False,
+            "output_formats": ["markdown", "middle_json", "content_list", "structured_content", "zip"],
+            "sources": ["file_id", "url", "inline"],
+        },
     }
 
     with pytest.raises(ValidationError):
@@ -1569,9 +2046,7 @@ def test_api_server_multi_tier_http_metadata(tmp_path: Path, monkeypatch: pytest
     ]
 
 
-def test_api_server_multi_tier_jobs_use_requested_tier_runtime(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_api_server_multi_tier_jobs_use_requested_tier_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """校验多 tier server 按每个 job 的 tier 选择 backend/effort，而不是复用全局默认值。"""
     _stub_api_server_dependency_preflight(monkeypatch)
     calls: list[dict[str, object]] = []
@@ -1584,40 +2059,57 @@ def test_api_server_multi_tier_jobs_use_requested_tier_runtime(
     monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
-    app = create_app(upload_dir=str(tmp_path / "api"), tier=["medium", "high"])
+    app = create_app(upload_dir=str(tmp_path / "api"), tier=["medium", "high"], allow_local_source=True)
+    file_store = FileStore(tmp_path / "api-files")
+    job_store = api_server.JobStore()
 
-    with TestClient(app) as client:
-        default_response = client.post(
-            "/v1/parse/jobs",
-            json={
+    async def run_request(payload: dict[str, object]) -> dict[str, object]:
+        request = CreateJobRequest.model_validate(payload)
+        request.tier = request.tier or app.state.default_tier
+        runtime = app.state.tier_runtime_options[request.tier]
+        rec = job_store.create(request, file_store)
+        await api_server._run_job(
+            rec,
+            request,
+            file_store,
+            server_backend=runtime.backend,
+            language=app.state.language,
+            ocr_mode=app.state.ocr_mode,
+            effort=runtime.effort,
+            image_analysis=app.state.image_analysis,
+            allow_local_source=app.state.allow_local_source,
+            max_inline_bytes=app.state.max_inline_bytes,
+            allow_http_source=app.state.allow_http_source,
+        )
+        return job_store.build_response(rec).model_dump(by_alias=True)
+
+    default_response = asyncio.run(
+        run_request(
+            {
                 "files": [{"source": {"type": "local", "path": str(source)}}],
                 "output_formats": ["middle_json"],
-                "wait": 5,
-            },
+            }
         )
-        medium_response = client.post(
-            "/v1/parse/jobs",
-            json={
+    )
+    medium_response = asyncio.run(
+        run_request(
+            {
                 "files": [{"source": {"type": "local", "path": str(source)}}],
                 "tier": "medium",
                 "output_formats": ["middle_json"],
-                "wait": 5,
-            },
+            }
         )
+    )
 
-    assert default_response.status_code == 200
-    assert default_response.json()["tier"] == "high"
-    assert medium_response.status_code == 200
-    assert medium_response.json()["tier"] == "medium"
+    assert default_response["tier"] == "high"
+    assert medium_response["tier"] == "medium"
     assert [(call["tier"], call["backend"], call["effort"]) for call in calls] == [
         ("high", "hybrid-engine", "high"),
         ("medium", "hybrid-engine", "medium"),
     ]
 
 
-def test_api_server_single_tier_rejects_unavailable_tier(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_api_server_single_tier_rejects_unavailable_tier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """校验单 tier server 不接受未启动的 tier，避免请求绕过启动能力边界。"""
     _stub_api_server_dependency_preflight(monkeypatch)
     source = tmp_path / "demo.pdf"
@@ -1630,7 +2122,6 @@ def test_api_server_single_tier_rejects_unavailable_tier(
             json={
                 "files": [{"source": {"type": "local", "path": str(source)}}],
                 "tier": "extra_high",
-                "wait": 0,
             },
         )
 
@@ -1653,6 +2144,7 @@ def test_api_server_preflights_medium_tier_dependencies(monkeypatch: pytest.Monk
         "ftfy",
         "shapely",
         "pyclipper",
+        "six",
         "torch",
         "torchvision",
         "transformers",
@@ -1677,6 +2169,7 @@ def test_api_server_preflights_extra_high_tier_dependencies_for_platform(
         "ftfy",
         "shapely",
         "pyclipper",
+        "six",
         "torch",
         "torchvision",
         "transformers",
@@ -1975,6 +2468,9 @@ def test_api_server_cli_exposes_parser_runtime_options() -> None:
     assert "--backend" not in option_names
     assert "--language" in option_names
     assert "--ocr-mode" in option_names
+    assert "--allow-local-source" in option_names
+    assert "--max-inline-bytes" in option_names
+    assert "--allow-http-source" in option_names
     assert "--effort" not in option_names
     assert "--disable-image-analysis" in option_names
     assert _REMOVED_DISABLE_TABLE_OPTION not in option_names

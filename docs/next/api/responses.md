@@ -3,7 +3,7 @@
 状态: Draft
 读者: API 使用者、服务端开发者、SDK 开发者
 范围: 成功响应、错误 envelope、请求追踪和幂等
-底稿: `../../../NEXT-API.md`
+来源: 由根目录旧 Unified API 底稿迁移整理而来
 
 ## 成功响应
 
@@ -93,7 +93,6 @@ Idempotency-Key: 7f5b7f7c-5c5a-4b2f-bb89-0c901c9a2d6a
 | `permission_error` | 权限不足、配额耗尽或功能需要更高 access level。 |
 | `rate_limit_error` | 请求触发限流。 |
 | `engine_error` | 解析引擎不可用、崩溃或解析失败。 |
-| `timeout_error` | 请求等待窗口到期，但底层任务不一定失败。 |
 | `api_error` | 服务端内部错误。 |
 
 ## 常用错误码
@@ -112,7 +111,6 @@ Idempotency-Key: 7f5b7f7c-5c5a-4b2f-bb89-0c901c9a2d6a
 | 403 | `permission_error` | `feature_requires_api_key` |
 | 403 | `permission_error` | `list_requires_api_key` |
 | 404 | `invalid_request_error` | `job_not_found`、`file_not_found`、`upload_not_found`、`model_not_found` |
-| 408 | `timeout_error` | `parse_wait_timeout` |
 | 409 | `invalid_request_error` | `job_already_terminal`、`upload_not_ready`、`upload_already_terminal` |
 | 413 | `invalid_request_error` | `file_too_large`、`content_too_large` |
 | 429 | `rate_limit_error` | `rate_limit_exceeded` |

@@ -16,7 +16,7 @@ def get_end_page_id(end_page_id: int | None, pdf_page_num: int) -> int:
 def parse_page_range(raw: str, page_count: int) -> list[int]:
     """Parse a 1-based page-range string into a 0-based flattened list of page indices.
 
-    Format (aligned with NEXT-API ``page_range``):
+    Format (aligned with Unified API ``page_range``):
         ``"1~5"``       → pages 1 through 5
         ``"1,3,5~7"``   → pages 1, 3, 5, 6, 7
         ``"-5~-1"``     → last 5 pages  (page_count=100 → [95, 96, 97, 98, 99])

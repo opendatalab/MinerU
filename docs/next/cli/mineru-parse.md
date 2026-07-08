@@ -4,7 +4,7 @@
 读者: Agent skill 作者、CLI 使用者、核心开发者
 范围: `mineru parse` 的默认行为、参数、隐私、tier、输出、等待和缓存
 非目标: 批量目录解析；解析 backend 专家参数
-底稿: `../../../NEXT-CLI.md`
+来源: 由根目录旧 CLI 底稿迁移整理而来
 
 ## 1. 定位
 
@@ -41,15 +41,16 @@ mineru parse <file> [flags]
 
 | Flag | 类型 | 说明 |
 |------|------|------|
-| `--remote` | bool | 显式启用远端解析；远端地址和 API Key 来自 config 或环境变量 |
+| `--remote` | bool | 显式启用远端解析；远端地址来自 config，API Key 优先来自 config，未配置时使用环境变量 |
 
 ### 解析配置
 
 | Flag | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `--tier` | `flash` / `medium` / `high` | 不传 | 解析 tier；省略时使用默认选择策略；语义见 [解析 Tier](../tiers.md) |
-| `-p, --pages` | range | `1~10` | 分页文档的页码范围；`all` 表示全部页 |
-| `--language` | string | 自动 | 文档语言提示，逐步弱化为高级选项 |
+| `--tier` | `flash` / `medium` / `high` / `extra_high` | 不传 | 解析 tier；省略时由服务端决定；语义见 [解析 Tier](../tiers.md) |
+| `-p, --pages` | range | 不传 | 分页文档的页码范围；`all` 表示全部页 |
+| `--after` | cursor | 不传 | 从服务端返回的 cursor 继续读取 |
+| `--limit` | int | `30000` | STDOUT 内容软字符上限 |
 | `--force` | bool | false | 跳过 done 缓存；复用 active parse 或为未覆盖页创建新 parse；不删除或作废旧缓存 |
 
 ### 输出配置
@@ -72,7 +73,7 @@ mineru parse <file> [flags]
 
 `mineru parse` 未指定 `--tier` 时使用默认选择策略。
 
-默认选择策略通过当前目标 parse-server 的能力发现，选择最高可用的非 `flash` tier。如果只发现 `medium`，则使用 `medium`；如果发现 `high`，则使用 `high`。如果 doclib 通过多个 parse-server 发现 `medium` 和 `high`，也选择 `high`。如果找不到 `medium` 或 `high`，返回可解释错误。
+默认选择策略通过当前目标 parse-server 的能力发现，按 `extra_high`、`high`、`medium` 的顺序选择最高可用的非 `flash` tier。如果找不到这些质量 tier，返回可解释错误。
 
 `flash` 只有在用户显式指定 `--tier flash` 时才作为最终解析结果返回。
 
@@ -92,7 +93,7 @@ mineru parse <file> [flags]
 
 默认 STDOUT 输出应适合 Agent context。长文档不一次性输出全文，而是输出有限范围，并通过 marker 指示如何继续。
 
-分页文档默认读取范围固定为 `1~10`。这个默认值用于让 Agent 以线性、可预测的方式渐进阅读文档，避免默认读取尾页后在后续续读中重复返回相同页面。用户可以通过 `--pages all` 读取全文，或通过显式页码范围读取任意页段。
+当前 CLI 不在命令层硬编码默认页码范围；不传 `--pages` 时由 doclib 的内容读取计划决定首次返回范围。用户可以通过 `--pages all` 读取全文，或通过显式页码范围读取任意页段。
 
 分页文档使用物理页码：
 
@@ -134,18 +135,7 @@ marker 是 Agent 的控制协议，不应依赖自然语言猜测。
 - `parse.status=parsing` 是 CLI 等待超时时的命令级状态；服务端 `ParseResponse.status` 只使用 `pending` 或 `done`。
 - 直接请求错误仍返回 [错误码体系](../errors.md) 定义的结构化错误 JSON。
 
-结构化或可机器消费格式应尽量保持稳定：
-
-| 格式 | 用途 |
-|------|------|
-| markdown | 默认阅读输出 |
-| text | 纯文本阅读 |
-| middle-json | 完整 Middle JSON，中间结构和高级调试 |
-| content-list | 扁平内容列表 |
-| structured-content | 面向 Agent 和新客户端的结构化内容 JSON |
-| html | 人类浏览或调试 |
-
-`json`、`content-list-v2` 不是 NEXT 版正式格式名，不进入公开格式集合。命名决策见 [ADR-0001](../decisions/0001-json-output-formats.md)。
+当前 `mineru parse -f/--format` 只接受 `markdown`。其它结构化或可机器消费产物仍属于设计方向，命名决策见 [ADR-0001](../decisions/0001-json-output-formats.md)。
 
 结构化输出或 marker 中如果暴露 tier，应暴露实际使用的实体 tier。
 

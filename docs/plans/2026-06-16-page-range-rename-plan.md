@@ -120,7 +120,7 @@ Update docs under `docs/next` that describe doclib/interface fields:
 - keep CLI examples using `--pages`
 - explain that CLI `--pages` maps to the request field `page_range`
 
-`NEXT-API.md` already uses `page_range` for v1 parse jobs. Only adjust it if doclib-specific `pages` range fields appear there.
+Unified API docs under `docs/next/api/` already use `page_range` for v1 parse jobs. Only adjust them if doclib-specific `pages` range fields appear there.
 
 ## Execution Order
 
@@ -167,7 +167,7 @@ Run at minimum:
 Then run a targeted global check:
 
 ```bash
-rg -n "\\bpages\\b" mineru/doclib mineru/cli_next tests docs/next NEXT-API.md
+rg -n "\\bpages\\b" mineru/doclib mineru/cli_next tests docs/next
 ```
 
 Every remaining range-string usage of `pages` should either be intentionally user-facing CLI wording or be renamed.

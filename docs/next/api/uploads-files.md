@@ -3,7 +3,7 @@
 状态: Draft
 读者: API 使用者、服务端开发者、SDK 开发者
 范围: 上传生命周期、文件对象、文件列表、产物下载
-底稿: `../../../NEXT-API.md`
+来源: 由根目录旧 Unified API 底稿迁移整理而来
 
 ## 上传模型
 
@@ -58,7 +58,7 @@ Upload 状态机:
 | `purpose` | string | 是 | `"parse"`、`"input_image"` 或 `"parse_output"`。 |
 | `sha256sum` | string 或 null | 是 | 64 位小写 hex；未知时为 `null`。 |
 
-`purpose:"parse"` 表示待解析源文件。`purpose:"input_image"` 表示 Chat/Responses 输入图片。`purpose:"parse_output"` 表示解析产物，如 markdown、json、content list、images、docx、zip。
+`purpose:"parse"` 表示待解析源文件。`purpose:"input_image"` 表示 Chat/Responses 输入图片。`purpose:"parse_output"` 表示解析产物，如 markdown、middle_json、content_list、structured_content、docx、zip。解析图片 sidecar 不作为独立 parse output；需要图片时从 zip 中读取。
 
 ## POST `/v1/uploads`
 

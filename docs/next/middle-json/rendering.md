@@ -3,7 +3,7 @@
 状态: Draft
 读者: render 开发者、backend 开发者、SDK 开发者
 范围: Markdown / Content List / Structured Content 对 Middle JSON 的消费约束和收敛计划
-底稿: `../../../NEXT-JSON.md`
+来源: 由根目录旧 Middle JSON 底稿迁移整理而来
 
 ## 当前状态
 

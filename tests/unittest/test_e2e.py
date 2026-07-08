@@ -6,9 +6,9 @@ from bs4 import BeautifulSoup
 from fuzzywuzzy import fuzz
 from loguru import logger
 
-from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.parser.base import ParseResult
 from mineru.render import render_content_list, render_markdown
+from mineru.render.writer import FileBasedDataWriter
 
 
 def write_infer_result(

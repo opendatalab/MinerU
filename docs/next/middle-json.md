@@ -4,7 +4,7 @@
 读者: backend 开发者、Markdown/Content List 输出开发者、SDK 开发者、Agent 能力开发者
 范围: Middle JSON 的当前事实标准、Agent-native gap、统一 envelope、迁移策略和验收清单
 非目标: 具体 OCR 或模型算法实现
-底稿: `../../NEXT-JSON.md`
+来源: 由根目录旧 Middle JSON 底稿迁移整理而来
 
 ## 当前定位
 

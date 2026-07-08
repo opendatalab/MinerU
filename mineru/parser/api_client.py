@@ -36,8 +36,9 @@ class MinerUApiParser(DocumentParser):
 
     Works with local-server, LAN, and cloud (mineru.net) deployments::
 
-        # local deployment — uses ``local`` source, no upload needed
-        parser = MinerUApiParser(api_url="http://localhost:8000/api", tier="medium")
+        # local deployment — uses ``local`` source only when the server advertises it.
+        # Start the local server with --allow-local-source to skip upload.
+        parser = MinerUApiParser(api_url="http://localhost:8000", tier="medium")
 
         # cloud (remote)
         parser = MinerUApiParser(
@@ -54,23 +55,25 @@ class MinerUApiParser(DocumentParser):
     - ``page_range`` → per-file v1 ``page_range``
     """
 
+    DEFAULT_API_URL = "https://mineru.net/api"
+
     def __init__(
         self,
         *,
         api_url: str | None = None,
         api_key: str | None = None,
         tier: Tier | None = None,
+        include_images: bool = False,
         include_model_output: bool = False,
-        zip_output_only: bool = False,
     ) -> None:
-        api_url = api_url or os.environ.get("MINERU_API_URL", "https://mineru.net/api")
-        self._base = api_url.rstrip("/")
-        self._api_key = api_key
-        self._local = _is_local_network_url(self._base)
-        self._trust_env = should_trust_env_for_url(self._base)
+        self._base_url = (api_url or os.environ.get("MINERU_API_URL") or self.DEFAULT_API_URL).rstrip("/")
+        self._api_key = (api_key if api_key is not None else os.environ.get("MINERU_API_KEY")) or None
+        self._local = _is_local_network_url(self._base_url)
+        self._trust_env = should_trust_env_for_url(self._base_url)
+        self._source_features: set[str] | None = None
         self.tier = validate_tier(tier) if tier is not None else None
+        self.include_images = include_images
         self.include_model_output = include_model_output
-        self.zip_output_only = zip_output_only
 
     # ── DocumentParser interface ─────────────────────────────────────
 
@@ -79,7 +82,7 @@ class MinerUApiParser(DocumentParser):
         if not file_path.exists():
             raise FileNotFoundError(file_path)
 
-        payload = self._build_payload(file_path, page_range)
+        payload = self._build_payload(self._build_source(file_path), page_range)
         job = self._do_parse(payload)
         return self._build_result(job, file_path.name)
 
@@ -88,21 +91,30 @@ class MinerUApiParser(DocumentParser):
         if not file_path.exists():
             raise FileNotFoundError(file_path)
 
-        payload = self._build_payload(file_path, page_range)
+        payload = self._build_payload(await self._async_build_source(file_path), page_range)
         job = await self._async_do_parse(payload)
         return await self._async_build_result(job, file_path.name)
 
     # ── payload construction ─────────────────────────────────────────
 
-    def _build_payload(self, file_path: Path, page_range: str) -> dict[str, Any]:
-        source: dict[str, Any]
-        if self._local:
+    def _build_source(self, file_path: Path) -> dict[str, Any]:
+        if self._supports_local_source():
             source = {"type": "local", "path": str(file_path)}
         else:
             # upload flow: create → PUT → complete → file_id
             file_id = self._upload(file_path)
             source = {"type": "file_id", "file_id": file_id}
+        return source
 
+    async def _async_build_source(self, file_path: Path) -> dict[str, Any]:
+        if await self._async_supports_local_source():
+            source = {"type": "local", "path": str(file_path)}
+        else:
+            file_id = await self._async_upload(file_path)
+            source = {"type": "file_id", "file_id": file_id}
+        return source
+
+    def _build_payload(self, source: dict[str, Any], page_range: str) -> dict[str, Any]:
         file_entry: dict[str, Any] = {"source": source}
         if page_range:
             file_entry["page_range"] = page_range
@@ -115,15 +127,38 @@ class MinerUApiParser(DocumentParser):
             payload["tier"] = self.tier
         return payload
 
+    def _supports_local_source(self) -> bool:
+        if not self._local:
+            return False
+        return "local" in self._get_source_features()
+
+    async def _async_supports_local_source(self) -> bool:
+        if not self._local:
+            return False
+        return "local" in await self._async_get_source_features()
+
+    def _get_source_features(self) -> set[str]:
+        if self._source_features is not None:
+            return self._source_features
+        with httpx.Client(timeout=httpx.Timeout(30, connect=10), trust_env=self._trust_env) as cli:
+            r = cli.get(f"{self._base_url}/v1/health", headers=self._headers())
+            health = self._check(r)
+        self._source_features = _extract_feature_list(health, "sources")
+        return self._source_features
+
+    async def _async_get_source_features(self) -> set[str]:
+        if self._source_features is not None:
+            return self._source_features
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30, connect=10), trust_env=self._trust_env) as cli:
+            r = await cli.get(f"{self._base_url}/v1/health", headers=self._headers())
+            health = self._check(r)
+        self._source_features = _extract_feature_list(health, "sources")
+        return self._source_features
+
     def _output_formats(self) -> list[str]:
-        if "staging" in self._base:
-            return ["json"]
-        if self.zip_output_only:
+        if self.include_model_output or self.include_images:
             return ["zip"]
-        formats = ["middle_json", "images"]
-        if self.include_model_output:
-            formats.append("zip")
-        return formats
+        return ["middle_json"]
 
     # ── HTTP helpers ─────────────────────────────────────────────────
 
@@ -139,18 +174,26 @@ class MinerUApiParser(DocumentParser):
 
     @staticmethod
     def _check(r: Any) -> dict[str, Any]:
-        if r.status_code >= 400:
-            raise _V1APIError("http_error", f"HTTP {r.status_code}: {r.text[:500]}")
+        data: dict[str, Any] = {}
         try:
-            data = r.json()
+            loaded = r.json()
+            if isinstance(loaded, dict):
+                data = loaded
         except Exception:
+            data = {}
+        if r.status_code >= 400:
+            _raise_for_http_error(r.status_code, data, str(getattr(r, "text", "")))
+        if not data:
             return {}  # e.g. OSS PUT returns 200 with empty body
         if "error" in data:
             err = data["error"]
-            raise _V1APIError(err.get("code", "unknown"), err.get("message", str(err)))
-        if "detail" in data and isinstance(data["detail"], dict) and "error" in data["detail"]:
-            err = data["detail"]["error"]
-            raise _V1APIError(err.get("code", "unknown"), err.get("message", str(err)))
+            if isinstance(err, dict):
+                raise _V1APIError(
+                    str(err.get("code") or "unknown"),
+                    str(err.get("message") or err),
+                    param=str(err["param"]) if err.get("param") is not None else None,
+                )
+            raise _V1APIError("unknown", str(err))
         return data
 
     # ── upload ───────────────────────────────────────────────────────
@@ -161,7 +204,7 @@ class MinerUApiParser(DocumentParser):
 
         with httpx.Client(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
             r = cli.post(
-                f"{self._base}/v1/uploads",
+                f"{self._base_url}/v1/uploads",
                 headers=self._headers(),
                 json={
                     "filename": file_path.name,
@@ -178,13 +221,13 @@ class MinerUApiParser(DocumentParser):
             upload_url = resp["upload_url"]
             upload_headers = resp.get("upload_headers", {})
             if upload_url.startswith("/"):
-                upload_url = f"{self._base}{upload_url}"
+                upload_url = f"{self._base_url}{upload_url}"
             with file_path.open("rb") as fh:
                 r2 = cli.put(upload_url, content=fh.read(), headers=upload_headers)
             self._check(r2)
 
             r3 = cli.post(
-                f"{self._base}/v1/uploads/{resp['id']}/complete",
+                f"{self._base_url}/v1/uploads/{resp['id']}/complete",
                 headers=self._headers(),
             )
             resp3 = self._check(r3)
@@ -196,7 +239,7 @@ class MinerUApiParser(DocumentParser):
 
         async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
             r = await cli.post(
-                f"{self._base}/v1/uploads",
+                f"{self._base_url}/v1/uploads",
                 headers=self._headers(),
                 json={
                     "filename": file_path.name,
@@ -213,13 +256,13 @@ class MinerUApiParser(DocumentParser):
             upload_url = resp["upload_url"]
             upload_headers = resp.get("upload_headers", {})
             if upload_url.startswith("/"):
-                upload_url = f"{self._base}{upload_url}"
+                upload_url = f"{self._base_url}{upload_url}"
             data = file_path.read_bytes()
             r2 = await cli.put(upload_url, content=data, headers=upload_headers)
             self._check(r2)
 
             r3 = await cli.post(
-                f"{self._base}/v1/uploads/{resp['id']}/complete",
+                f"{self._base_url}/v1/uploads/{resp['id']}/complete",
                 headers=self._headers(),
             )
             resp3 = self._check(r3)
@@ -229,16 +272,15 @@ class MinerUApiParser(DocumentParser):
 
     def _do_parse(self, payload: dict[str, Any]) -> dict[str, Any]:
         with httpx.Client(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
-            r = cli.post(f"{self._base}/v1/parse/jobs", headers=self._headers(), json=payload)
+            r = cli.post(f"{self._base_url}/v1/parse/jobs", headers=self._headers(), json=payload)
             job = self._check(r)
             if job.get("status") not in _TERMINAL_JOB_STATUSES:
-                # poll if wait timed out
                 job = self._poll(cli, job["job_id"])
         return job
 
     async def _async_do_parse(self, payload: dict[str, Any]) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
-            r = await cli.post(f"{self._base}/v1/parse/jobs", headers=self._headers(), json=payload)
+            r = await cli.post(f"{self._base_url}/v1/parse/jobs", headers=self._headers(), json=payload)
             job = self._check(r)
             if job.get("status") not in _TERMINAL_JOB_STATUSES:
                 job = await self._async_poll(cli, job["job_id"])
@@ -247,7 +289,7 @@ class MinerUApiParser(DocumentParser):
     def _poll(self, cli: Any, job_id: str) -> dict[str, Any]:
         for _ in range(_POLL_MAX_ATTEMPTS):  # max 1 hour
             time.sleep(_POLL_INTERVAL_SECONDS)
-            r = cli.get(f"{self._base}/v1/parse/jobs/{job_id}", headers=self._headers())
+            r = cli.get(f"{self._base_url}/v1/parse/jobs/{job_id}", headers=self._headers())
             job = self._check(r)
             if job.get("status") in _TERMINAL_JOB_STATUSES:
                 return job
@@ -256,7 +298,7 @@ class MinerUApiParser(DocumentParser):
     async def _async_poll(self, cli: Any, job_id: str) -> dict[str, Any]:
         for _ in range(_POLL_MAX_ATTEMPTS):
             await asyncio.sleep(_POLL_INTERVAL_SECONDS)
-            r = await cli.get(f"{self._base}/v1/parse/jobs/{job_id}", headers=self._headers())
+            r = await cli.get(f"{self._base_url}/v1/parse/jobs/{job_id}", headers=self._headers())
             job = self._check(r)
             if job.get("status") in _TERMINAL_JOB_STATUSES:
                 return job
@@ -282,6 +324,16 @@ def _sha256_file(path: Path) -> str:
         while chunk := fh.read(65536):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _extract_feature_list(health: dict[str, Any], name: str) -> set[str]:
+    features = health.get("features")
+    if not isinstance(features, dict):
+        return set()
+    values = features.get(name)
+    if not isinstance(values, list):
+        return set()
+    return {item for item in values if isinstance(item, str)}
 
 
 def _mime_type(path: Path) -> str:
@@ -311,17 +363,11 @@ def _parse_result_from_job(job: dict[str, Any], file_name: str, parser: MinerUAp
     if files and files[0].get("output_files"):
         outputs = files[0]["output_files"]
 
-    if parser.zip_output_only and "staging" not in parser._base:
+    if _uses_zip_output(parser):
         return _parse_result_from_zip_output(parser, outputs, file_name)
 
     mid_json = _download_json(parser, outputs)
     result = _parse_result_from_middle_json(mid_json)
-    images = _download_image_sidecars(parser, outputs)
-    if images or "images" in outputs:
-        result.attach_export_images(images)
-    model_output = _download_model_output_from_zip(parser, outputs, file_name)
-    if model_output is not None:
-        result._model_output = model_output
     return result
 
 
@@ -332,55 +378,21 @@ async def _async_parse_result_from_job(job: dict[str, Any], file_name: str, pars
     if files and files[0].get("output_files"):
         outputs = files[0]["output_files"]
 
-    if parser.zip_output_only and "staging" not in parser._base:
+    if _uses_zip_output(parser):
         return _parse_result_from_zip_bytes(
             await _async_download_zip_output(parser, outputs),
             file_name,
+            include_images=parser.include_images,
             include_model_output=parser.include_model_output,
         )
 
     mid_json = await _async_download_json(parser, outputs)
     result = _parse_result_from_middle_json(mid_json)
-    images = await _async_download_image_sidecars(parser, outputs)
-    if images or "images" in outputs:
-        result.attach_export_images(images)
-    model_output = await _async_download_model_output_from_zip(parser, outputs, file_name)
-    if model_output is not None:
-        result._model_output = model_output
     return result
 
 
-def _download_model_output_from_zip(parser: MinerUApiParser, outputs: dict[str, Any], file_name: str) -> Any | None:
-    """按需从 v1 zip 输出中提取原始模型输出；缺少目标文件时保持兼容返回 None。"""
-    if not parser.include_model_output:
-        return None
-    zip_ref = outputs.get("zip")
-    if not isinstance(zip_ref, dict):
-        return None
-    return _extract_model_output_from_zip(_download_bytes(parser, zip_ref), file_name)
-
-
-async def _async_download_model_output_from_zip(
-    parser: MinerUApiParser,
-    outputs: dict[str, Any],
-    file_name: str,
-) -> Any | None:
-    """异步按需下载 v1 zip 并提取原始模型输出；缺少目标文件时保持兼容返回 None。"""
-    if not parser.include_model_output:
-        return None
-    zip_ref = outputs.get("zip")
-    if not isinstance(zip_ref, dict):
-        return None
-    return _extract_model_output_from_zip(await _async_download_bytes(parser, zip_ref), file_name)
-
-
-def _extract_model_output_from_zip(zip_bytes: bytes, file_name: str) -> Any | None:
-    """从 API server zip 中读取 `{stem}_model_output.json`，没有该文件则不影响普通解析。"""
-    try:
-        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
-            return _extract_model_output_from_archive(archive, file_name)
-    except zipfile.BadZipFile as exc:
-        raise _V1APIError("invalid_model_output", "model output zip is not a valid ZIP archive") from exc
+def _uses_zip_output(parser: MinerUApiParser) -> bool:
+    return parser.include_model_output or parser.include_images
 
 
 def _extract_model_output_from_archive(archive: zipfile.ZipFile, file_name: str) -> Any | None:
@@ -418,19 +430,27 @@ def _parse_result_from_zip_output(parser: MinerUApiParser, outputs: dict[str, An
     return _parse_result_from_zip_bytes(
         _download_zip_output(parser, outputs),
         file_name,
+        include_images=parser.include_images,
         include_model_output=parser.include_model_output,
     )
 
 
-def _parse_result_from_zip_bytes(zip_bytes: bytes, file_name: str, *, include_model_output: bool) -> ParseResult:
+def _parse_result_from_zip_bytes(
+    zip_bytes: bytes,
+    file_name: str,
+    *,
+    include_images: bool,
+    include_model_output: bool,
+) -> ParseResult:
     """解析自包含 zip 包：读取 middle_json、图片 sidecar 和可选 model_output。"""
     try:
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
             mid_json = _read_middle_json_from_zip(archive, file_name)
             result = _parse_result_from_middle_json(mid_json)
-            images = _read_image_sidecars_from_zip(archive, mid_json)
-            if images:
-                result.attach_export_images(images)
+            if include_images:
+                images = _read_image_sidecars_from_zip(archive, mid_json)
+                if images:
+                    result.attach_export_images(images)
             if include_model_output:
                 model_output = _extract_model_output_from_archive(archive, file_name)
                 if model_output is not None:
@@ -498,42 +518,9 @@ def _read_image_sidecars_from_zip(archive: zipfile.ZipFile, mid_json: dict[str, 
     return images
 
 
-def _download_image_sidecars(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, bytes]:
-    """下载 API 返回的图片 sidecar，并按 middle_json 中的 image_path 建立字节映射。"""
-    images: dict[str, bytes] = {}
-    image_refs = outputs.get("images")
-    if not isinstance(image_refs, list):
-        return images
-    for ref in image_refs:
-        if not isinstance(ref, dict):
-            continue
-        img_path = ref.get("path")
-        if not isinstance(img_path, str) or not img_path:
-            continue
-        safe_img_path = validate_image_sidecar_path(img_path)
-        images[safe_img_path] = _download_bytes(parser, ref)
-    return images
-
-
-async def _async_download_image_sidecars(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, bytes]:
-    """异步下载 API 返回的图片 sidecar，并按 image_path 建立字节映射。"""
-    images: dict[str, bytes] = {}
-    image_refs = outputs.get("images")
-    if not isinstance(image_refs, list):
-        return images
-    for ref in image_refs:
-        if not isinstance(ref, dict):
-            continue
-        img_path = ref.get("path")
-        if not isinstance(img_path, str) or not img_path:
-            continue
-        safe_img_path = validate_image_sidecar_path(img_path)
-        images[safe_img_path] = await _async_download_bytes(parser, ref)
-    return images
-
-
 def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any]:
-    ref = outputs.get("middle_json") or outputs.get("json") or outputs.get("json_")
+    # Staging returns output_files.json; official v1 API returns output_files.middle_json.
+    ref = outputs.get("middle_json") or outputs.get("json")
     if not ref:
         available = ", ".join(sorted(outputs)) or "none"
         raise _V1APIError(
@@ -551,7 +538,8 @@ def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str
 
 
 async def _async_download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any]:
-    ref = outputs.get("middle_json") or outputs.get("json") or outputs.get("json_")
+    # Staging returns output_files.json; official v1 API returns output_files.middle_json.
+    ref = outputs.get("middle_json") or outputs.get("json")
     if not ref:
         available = ", ".join(sorted(outputs)) or "none"
         raise _V1APIError(
@@ -569,43 +557,25 @@ async def _async_download_json(parser: MinerUApiParser, outputs: dict[str, Any])
 
 
 def _download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) -> bytes:
-    # TEMP(2026-06-12): staging server may return {"url": "..."} instead of
-    # {"file_id": "...", "bytes": ...}. Keep this branch until staging aligns.
-    if ref.get("url"):
-        with httpx.Client(timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env) as cli:
-            r = cli.get(ref["url"])
-            _check_download_response(r)
-            return r.content
-
     file_id = ref.get("file_id")
     if not file_id:
-        raise _V1APIError("invalid_response", "No file_id or url in output reference")
+        raise _V1APIError("invalid_response", "No file_id in output reference")
 
     with httpx.Client(timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env) as cli:
-        r = cli.get(f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers())
+        r = cli.get(f"{parser._base_url}/v1/files/{file_id}/content", headers=parser._headers())
         _check_download_response(r)
         return r.content
 
 
 async def _async_download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) -> bytes:
-    # TEMP(2026-06-12): staging server may return {"url": "..."} instead of
-    # {"file_id": "...", "bytes": ...}. Keep this branch until staging aligns.
-    if ref.get("url"):
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env
-        ) as cli:
-            r = await cli.get(ref["url"])
-            _check_download_response(r)
-            return r.content
-
     file_id = ref.get("file_id")
     if not file_id:
-        raise _V1APIError("invalid_response", "No file_id or url in output reference")
+        raise _V1APIError("invalid_response", "No file_id in output reference")
 
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env
     ) as cli:
-        r = await cli.get(f"{parser._base}/v1/files/{file_id}/content", headers=parser._headers())
+        r = await cli.get(f"{parser._base_url}/v1/files/{file_id}/content", headers=parser._headers())
         _check_download_response(r)
         return r.content
 
@@ -650,6 +620,7 @@ def _parse_result_from_middle_json(mid_json: dict[str, Any]) -> ParseResult:
 
         pdf_info = mid_json.get("pdf_info")
         if isinstance(pdf_info, list):
+            # Staging JSON output may use the older pdf_info field instead of ParseResult pages.
             compat_payload = dict(mid_json)
             compat_payload["pages"] = pdf_info
             return ParseResult.from_dict(compat_payload)
@@ -663,17 +634,58 @@ def _raise_for_terminal_job_error(job: dict[str, Any]) -> None:
     if isinstance(error, dict):
         code = str(error.get("code") or job.get("status"))
         message = str(error.get("message") or error)
-        raise _V1APIError(code, message)
+        param = str(error["param"]) if error.get("param") is not None else None
+        raise _V1APIError(code, message, param=param)
 
     file_error = _first_failed_file_error(job)
     if file_error is not None:
         code = str(file_error.get("code") or job.get("status"))
         message = str(file_error.get("message") or file_error)
-        raise _V1APIError(code, message)
+        param = str(file_error["param"]) if file_error.get("param") is not None else None
+        raise _V1APIError(code, message, param=param)
 
     raise _V1APIError(
         str(job.get("status")), f"Parse job {job.get('job_id', '<unknown>')} ended with status {job.get('status')}"
     )
+
+
+def _raise_for_http_error(status_code: int, data: dict[str, Any], text: str) -> None:
+    err = _structured_error(data)
+    if err is not None:
+        raise _V1APIError(
+            str(err.get("code") or "unknown"),
+            str(err.get("message") or err),
+            param=str(err["param"]) if err.get("param") is not None else None,
+        )
+
+    remote_message = _remote_auth_message(data)
+    if status_code == 401 or remote_message is not None:
+        message = remote_message or "API key invalid or remote authentication failed."
+        raise _V1APIError(
+            "invalid_api_key",
+            f"Remote authentication failed: {message}",
+            param="parse_server.remote.api_key",
+        )
+
+    raise _V1APIError("http_error", f"HTTP {status_code}: {text[:500]}")
+
+
+def _structured_error(data: dict[str, Any]) -> dict[str, Any] | None:
+    error = data.get("error")
+    if isinstance(error, dict):
+        return error
+    return None
+
+
+def _remote_auth_message(data: dict[str, Any]) -> str | None:
+    msg_code = data.get("msgCode")
+    msg = data.get("msg")
+    # Staging auth failures still use the legacy msgCode/msg payload instead of {"error": ...}.
+    if msg_code == "A0202":
+        return str(msg or "user authenticate failed")
+    if isinstance(msg, str) and "authenticate failed" in msg.lower():
+        return msg
+    return None
 
 
 def _first_failed_file_error(job: dict[str, Any]) -> dict[str, Any] | None:
@@ -692,7 +704,8 @@ def _first_failed_file_error(job: dict[str, Any]) -> dict[str, Any] | None:
 
 
 class _V1APIError(Exception):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, param: str | None = None) -> None:
         self.code = code
         self.message = message
+        self.param = param
         super().__init__(f"[{code}] {message}")

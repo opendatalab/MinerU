@@ -180,7 +180,7 @@ mineru-kit = "mineru.kit.main:app"
 
 重点事项：
 
-- `--tier` 默认 `standard`
+- `--tier` 默认 `high`
 - `--tier` / `--backend` 冲突时提前报错
 - 不暴露 `--reload`
 - 保留：

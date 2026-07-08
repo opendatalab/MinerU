@@ -5,7 +5,7 @@
 相关文档:
 - ../cli/mineru-kit.md
 - ../cli/mineru-kit-models.md
-- ../../../NEXT-CLI.md
+- ../cli/README.md
 
 ## 背景
 
@@ -200,5 +200,5 @@ mineru-kit models verify
 ## 后续动作
 
 1. 为 `mineru-kit models` 增加正式 CLI 文档。
-2. 在 `mineru-kit` 总览与 `NEXT-CLI.md` 中补充该命令组。
+2. 在 `mineru-kit` 总览与 `docs/next/cli/` 中补充该命令组。
 3. 后续如需要支持离线部署目录登记，再单独讨论是否引入 `models set-dir`。

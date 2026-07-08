@@ -90,7 +90,6 @@ backend 不是普通 API 协议层字段。
 - `--concurrency`
 - `--upload-dir`
 - `--url-timeout`
-- `--max-wait`
 
 #### 专家参数
 
@@ -178,6 +177,6 @@ api-server 不负责 doclib 的文档库资源语义。
 ## 后续动作
 
 - 更新 `docs/next/cli/mineru-kit-api-server.md`
-- 更新 `NEXT-CLI.md`
+- 更新 `docs/next/cli/`
 - 更新 `docs/next/decisions/README.md`
 - 后续实现 `mineru-kit api-server` 顶层脚本与参数解析

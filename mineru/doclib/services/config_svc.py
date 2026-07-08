@@ -11,6 +11,7 @@ from typing import cast
 from ...errors import InvalidRequestError
 from ...types import Tier
 from ..config_defaults import CONFIG_DEFAULTS, CONFIG_SOURCE_DEFAULT, CONFIG_SOURCE_OVERRIDE, ConfigSource
+from ..config_schema import validate_config_key, validate_config_value
 from ..core.db import DatabaseManager
 from ..rows import ConfigRow, RuleRow, WatchTargetRow
 from ..types import (
@@ -23,6 +24,7 @@ from ..types import (
     RuleType,
     WatchStatus,
 )
+from ..utils.path_utils import normalize_doclib_path
 
 
 class ConfigService:
@@ -39,7 +41,7 @@ class ConfigService:
         return row["value"] if row else default
 
     async def set(self, key: str, value: str) -> None:
-        self._validate_config_key(key)
+        validate_config_value(key, value)
         if CONFIG_DEFAULTS[key] == value:
             await self.unset(key)
             return
@@ -66,15 +68,14 @@ class ConfigService:
         overrides = {r["key"]: r["value"] for r in rows}
         config = dict(CONFIG_DEFAULTS)
         config.update(overrides)
-        sources: dict[str, ConfigSource] = {key: CONFIG_SOURCE_DEFAULT for key in CONFIG_DEFAULTS}
+        sources: dict[str, ConfigSource] = dict.fromkeys(CONFIG_DEFAULTS, CONFIG_SOURCE_DEFAULT)
         for key in overrides:
             if key in CONFIG_DEFAULTS:
                 sources[key] = CONFIG_SOURCE_OVERRIDE
         return config, sources
 
     def _validate_config_key(self, key: str) -> None:
-        if key not in CONFIG_DEFAULTS:
-            raise InvalidRequestError("invalid_config_key", f"Unknown config key: {key}", "key")
+        validate_config_key(key)
 
     # ── watch targets ───────────────────────────────────────────
 
@@ -86,6 +87,7 @@ class ConfigService:
     async def add_watch(
         self, path: str, removable: bool = False, label: str | None = None
     ) -> WatchTargetRow:
+        path = normalize_doclib_path(path)
         if not os.path.isabs(path):
             raise InvalidRequestError("invalid_request", f"Watch path must be absolute: {path}", "path")
         if os.path.normpath(path) != path:
@@ -115,6 +117,7 @@ class ConfigService:
         )
 
     async def remove_watch(self, path: str) -> None:
+        path = normalize_doclib_path(path)
         watch = cast(WatchTargetRow | None, await self.db.fetchone("SELECT * FROM watches WHERE path=?", (path,)))
         if watch is None:
             return
@@ -244,6 +247,7 @@ class ConfigService:
         await self.db.execute("DELETE FROM parsing_rules WHERE id=?", (rule_id,))
 
     async def match_rules(self, file_path: str, rule_type: RuleType) -> list[RuleRow]:
+        file_path = normalize_doclib_path(file_path)
         rules = await self.list_rules(rule_type)
         table = _rule_table(rule_type)
         matched: list[RuleRow] = []

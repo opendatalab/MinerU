@@ -3,7 +3,7 @@
 状态: Draft
 读者: API 使用者、SDK 开发者
 范围: 官方 API 与本地 server 的常见调用流程
-底稿: `../../../NEXT-API.md`
+来源: 由根目录旧 Unified API 底稿迁移整理而来
 
 ## 官方 API: 上传并解析 PDF
 
@@ -43,7 +43,7 @@ RESP=$(curl -s -X POST https://mineru.net/api/v1/parse/jobs \
       \"source\": {\"type\":\"file_id\",\"file_id\":\"$FILE_ID\"}
     }],
     \"tier\": \"high\",
-    \"output_formats\": [\"markdown\",\"middle_json\",\"images\"]
+    \"output_formats\": [\"markdown\",\"middle_json\",\"zip\"]
   }")
 ```
 
@@ -80,24 +80,6 @@ curl -L "https://mineru.net/api/v1/files/$MD_FILE_ID/content" \
 
 实际客户端应使用指数退避轮询，最大间隔建议 30 秒。
 
-## 官方 API: 同步等待 Markdown
-
-```bash
-curl -X POST https://mineru.net/api/v1/parse/jobs \
-  -H "Authorization: Bearer $MINERU_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"files\": [{
-      \"source\": {\"type\":\"file_id\",\"file_id\":\"$FILE_ID\"}
-    }],
-    \"tier\": null,
-    \"output_formats\": [\"markdown\",\"middle_json\"],
-    \"wait\": 30
-  }"
-```
-
-30 秒内完成时返回 `200`，响应中包含 `output_files` 产物引用。客户端仍通过 `GET /v1/files/{file_id}/content` 获取内容。超时则返回 `202`，客户端继续轮询 `GET /v1/parse/jobs/{job_id}`。
-
 ## 官方 API: URL 来源
 
 ```bash
@@ -129,22 +111,23 @@ curl -L "https://mineru.net/api/v1/files/$MD_FILE_ID/content" \
 先发现本地能力:
 
 ```bash
-curl http://localhost:8000/api/v1/health
-curl http://localhost:8000/api/v1/tiers
+curl http://localhost:8000/v1/health
+curl http://localhost:8000/v1/tiers
 ```
 
 本地 server 可以直接使用 `local` source:
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/parse/jobs \
+mineru-kit api-server --allow-local-source
+
+curl -X POST http://localhost:8000/v1/parse/jobs \
   -H "Content-Type: application/json" \
   -d '{
     "files": [{
       "source": {"type":"local","path":"/data/docs/report.pdf"}
     }],
     "tier": null,
-    "output_formats": ["markdown"],
-    "wait": 120
+    "output_formats": ["markdown"]
   }'
 ```
 
@@ -157,7 +140,7 @@ curl -X POST http://localhost:8000/api/v1/parse/jobs \
 ```bash
 SIZE=$(stat -f%z report.pdf)
 
-RESP=$(curl -s -X POST http://localhost:8000/api/v1/uploads \
+RESP=$(curl -s -X POST http://localhost:8000/v1/uploads \
   -H "Content-Type: application/json" \
   -d "{\"filename\":\"report.pdf\",\"bytes\":$SIZE,\"mime_type\":\"application/pdf\",\"purpose\":\"parse\"}")
 
@@ -169,7 +152,7 @@ curl -X "$METHOD" "$URL" \
   -H "Content-Type: application/pdf" \
   --data-binary @report.pdf
 
-RESP=$(curl -s -X POST "http://localhost:8000/api/v1/uploads/$UPLOAD_ID/complete")
+RESP=$(curl -s -X POST "http://localhost:8000/v1/uploads/$UPLOAD_ID/complete")
 FILE_ID=$(echo "$RESP" | jq -r '.file.id')
 ```
 

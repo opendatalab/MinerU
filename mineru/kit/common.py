@@ -8,8 +8,8 @@ import zipfile
 from pathlib import Path
 from typing import Literal
 
-from ..data.data_reader_writer.filebase import FileBasedDataWriter
 from ..parser.base import ParseResult
+from ..render.writer import FileBasedDataWriter
 from ..types import Tier
 from ..utils.image_payload import validate_image_sidecar_path
 
@@ -189,8 +189,7 @@ def _write_image_sidecars(output_dir: Path, images: dict[str, bytes]) -> None:
     """将 public middle_json 引用的图片 sidecar 写到输出目录，避免 image_path 悬空。"""
     writer = FileBasedDataWriter(str(output_dir))
     safe_images = [
-        (_resolve_safe_sidecar_path(output_dir, image_path), image_bytes)
-        for image_path, image_bytes in images.items()
+        (_resolve_safe_sidecar_path(output_dir, image_path), image_bytes) for image_path, image_bytes in images.items()
     ]
     for image_path, image_bytes in safe_images:
         writer.write(image_path, image_bytes)

@@ -12,6 +12,12 @@ OFFICE_EXTENSIONS: set[str] = {
     "xlsx",
 }
 
+LEGACY_OFFICE_EXTENSION_UPGRADES: dict[str, str] = {
+    "doc": "docx",
+    "ppt": "pptx",
+    "xls": "xlsx",
+}
+
 IMAGE_EXTENSIONS: set[str] = {
     "bmp",
     "gif",

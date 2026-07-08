@@ -1302,8 +1302,8 @@ async def _run_to_markdown_job(
             parser = MinerUApiParser(
                 api_url=server_health.base_url,
                 tier=runtime.tier,
+                include_images=True,
                 include_model_output=True,
-                zip_output_only=True,
             )
             parse_result = await parser.parse_async(
                 file_path,

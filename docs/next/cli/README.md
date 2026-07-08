@@ -4,7 +4,7 @@
 读者: CLI 使用者、Agent skill 作者、核心开发者、SDK/API 设计参与者
 范围: `mineru` 与 `mineru-kit` 两款命令行工具的定位、分工和阅读路径
 非目标: 重新定义解析 tier；展开 REST API 字段级规格
-底稿: `../../../NEXT-CLI.md`
+来源: 由根目录旧 CLI 底稿迁移整理而来
 
 ## 1. 两款工具
 
@@ -38,7 +38,7 @@ MinerU 仓库提供两款命令行工具：
 2. [mineru parse](mineru-parse.md): 理解主动解析、默认 tier 选择、隐私、缓存、STDOUT 和 marker。
 3. [mineru read](mineru-read.md): 理解 locator-first 读取、page/block 定位、image 输出和 continuation。
 4. [mineru server](mineru-server.md): 理解 doclib 生命周期和 parse-server 协作。
-5. [mineru library](mineru-library.md): 理解 search、find、info、config、watch 和 parsing-rules。
+5. [mineru library](mineru-library.md): 理解 search、find、list、show、config、watch、scan、invalidate、forget 和 cleanup。
 6. [mineru-kit](mineru-kit.md): 理解无状态工具定位。
 7. [mineru-kit models](mineru-kit-models.md): 理解模型下载、当前模型配置查看和轻量校验。
 8. [mineru-kit parse](mineru-kit-parse.md): 理解批处理解析、目录输入、local/remote 规则和输出命名。

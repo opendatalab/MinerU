@@ -129,5 +129,5 @@ mineru-kit vlm-server
 - 更新 `docs/next/cli/mineru-kit.md`
 - 更新 `docs/next/cli/README.md`
 - 更新 `docs/next/cli.md`
-- 更新 `NEXT-CLI.md`
+- 更新 `docs/next/cli/`
 - 更新 `docs/next/decisions/README.md`

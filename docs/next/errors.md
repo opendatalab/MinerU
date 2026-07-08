@@ -4,11 +4,13 @@
 读者: API/CLI/SDK 开发者、服务端开发者
 范围: 解析 API 错误码、本地 CLI 错误码、错误响应格式和兼容性说明
 非目标: 每个 endpoint 的完整业务规则
-底稿: `../../NEXT-ERROR.md`
+来源: 由旧错误码底稿迁移整理而来；旧底稿已归档删除
 
 ## 1. 定位
 
 错误码体系负责统一 API、CLI 和 SDK 对错误的表达。调用方应该能稳定地区分请求校验、文件上传、认证配额、解析执行、任务生命周期、服务端异常和本地运行错误。
+
+解析 API 层的错误码由本地 parse-server 和 `mineru.net/api` 共用。CLI 透传 server 返回的错误；只有在连接建立前或通信层失败时，才产生 CLI 本地错误。CLI 本地错误仍使用同一套 `error` envelope，不另起一套错误码体系。
 
 错误码也是 Agent 的控制协议。Agent 看到错误后，应能判断下一步是重试、启动 server、显式加 `--remote`、选择 `--tier flash`，还是停止并把问题交给用户。
 
@@ -94,6 +96,7 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`medium`、`high
 | `permission_error` | `remote_not_allowed` | 403 | 否 | `remote` | 请求需要远端才能满足，但用户未显式允许 remote | `rerun_with_remote_if_acceptable` |
 | `authentication_error` | `invalid_api_key` | 401 | 否 | null | API Key 无效或过期 | `set_valid_api_key` |
 | `permission_error` | `feature_requires_api_key` | 403 | 否 | null | 匿名用户请求需认证功能 | `login_or_set_api_key` |
+| `permission_error` | `list_requires_api_key` | 403 | 否 | null | 匿名用户请求列表类接口，例如文件列表或任务列表 | `login_or_set_api_key` |
 | `permission_error` | `quota_exceeded` | 403 | 否 | null | 配额耗尽 | `wait_or_use_local` |
 | `rate_limit_error` | `rate_limit_exceeded` | 429 | 是 | null | 触发限流 | `retry_later` |
 | `api_error` | `remote_timeout` | 503 | 是 | null | 远端 API 超时 | `retry_or_use_local` |
@@ -144,7 +147,15 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`medium`、`high
 | `invalid_request_error` | `not_cached` | 409 | 否 | null | `--no-wait` 且请求内容不在缓存 | `rerun_with_wait_or_submit_job` |
 | `invalid_request_error` | `cache_miss` | 409 | 否 | null | 请求强依赖缓存但缓存不存在 | `parse_document` |
 
-## 9. CLI 本地错误
+## 9. 通用 API 与服务错误
+
+| type | code | HTTP | retryable | param | 触发场景 | user_action |
+|------|------|------|:--:|-------|----------|-------------|
+| `invalid_request_error` | `model_not_found` | 404 | 否 | `model` | 请求的模型不存在 | `check_model_id` |
+| `api_error` | `internal_error` | 500 | 否 | null | 服务端未预期错误 | `report_with_request_id` |
+| `api_error` | `service_unavailable` | 503 | 是 | null | 服务暂不可用或依赖暂不可用 | `retry_later` |
+
+## 10. CLI 本地错误
 
 CLI 在调用 server 前或通信层面产生本地错误。它们使用同一 `error` 结构，但没有 HTTP 状态码。
 
@@ -158,7 +169,7 @@ CLI 在调用 server 前或通信层面产生本地错误。它们使用同一 `
 
 CLI 在 TTY 中可以用表格或 rich 文本展示，但非 TTY、`--json` 或 Agent 调用场景应输出结构化错误。
 
-## 10. 示例
+## 11. 示例
 
 ### 默认选择无可用质量 tier
 
@@ -171,6 +182,22 @@ CLI 在 TTY 中可以用表格或 rich 文本展示，但非 TTY、`--json` 或 
     "param": "tier",
     "retryable": false,
     "user_action": "start_parse_server_or_use_remote_or_explicit_flash",
+    "docs_url": null
+  }
+}
+```
+
+### API Key 无效
+
+```json
+{
+  "error": {
+    "type": "authentication_error",
+    "code": "invalid_api_key",
+    "message": "Invalid API key provided. Check that your API key is correct.",
+    "param": null,
+    "retryable": false,
+    "user_action": "set_valid_api_key",
     "docs_url": null
   }
 }
@@ -192,6 +219,22 @@ CLI 在 TTY 中可以用表格或 rich 文本展示，但非 TTY、`--json` 或 
 }
 ```
 
+### 本地无匹配 tier 的引擎
+
+```json
+{
+  "error": {
+    "type": "engine_error",
+    "code": "no_engine",
+    "message": "No local engine available for tier 'medium'. Available tiers: flash. Use --remote or --tier flash.",
+    "param": "tier",
+    "retryable": false,
+    "user_action": "enable_parse_server_or_change_tier",
+    "docs_url": null
+  }
+}
+```
+
 ### 本地 server 未启动
 
 ```json
@@ -208,7 +251,7 @@ CLI 在 TTY 中可以用表格或 rich 文本展示，但非 TTY、`--json` 或 
 }
 ```
 
-## 11. SDK 映射
+## 12. SDK 映射
 
 SDK 应暴露结构化异常，而不是只抛出字符串。
 
@@ -226,7 +269,7 @@ class MinerUError(Exception):
 
 SDK 可以按 `type` 提供子类，例如 `MinerUEngineError`、`MinerUInvalidRequestError`，但必须保留原始 `code`。
 
-## 12. OpenAI 兼容性
+## 13. OpenAI 兼容性
 
 | 维度 | OpenAI | MinerU |
 |------|--------|--------|
@@ -236,6 +279,11 @@ SDK 可以按 `type` 提供子类，例如 `MinerUEngineError`、`MinerUInvalidR
 | `message` | 必带 | 相同，包含修复建议 |
 | `param` | 可选 | 相同 |
 | 扩展字段 | 不保证 | MinerU 可增加 `retryable`、`user_action`、`docs_url` |
+
+新增的 MinerU `type`:
+
+- `permission_error`: OpenAI 通常把 403 归入 `invalid_request_error`；MinerU 单独区分权限、配额和 access level。
+- `engine_error`: OpenAI 没有解析引擎、tier 和 parse-server 的对应概念；MinerU 用它表达解析执行层错误。
 
 ## 与其他文档的关系
 
@@ -247,4 +295,4 @@ SDK 可以按 `type` 提供子类，例如 `MinerUEngineError`、`MinerUInvalidR
 
 ## 未决问题
 
-错误码版本策略、trace/request id、`parse_failed` 拆分、CLI exit code 映射和 `user_action` 枚举，集中维护在 [开放问题清单](open-questions.md)。
+错误码版本策略、trace/request id、`parse_failed` 是否继续拆分为 `parse_oom`、`parse_gpu_error` 等更细粒度错误、CLI exit code 映射和 `user_action` 枚举，集中维护在 [开放问题清单](open-questions.md)。

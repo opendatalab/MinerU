@@ -29,6 +29,7 @@ from ..utils.pdf_document import PDFDocument
 from ..version import __version__
 from .background.parse_server_health import get_health, get_managed_parse_server_tier
 from .base import AsyncDoclibInterface
+from .config_schema import validate_config_value
 from .core.db import DatabaseManager
 from .locators import ContentCursor, block_char_ref, block_ref, page_ref, parse_content_cursor
 from .rows import (
@@ -67,6 +68,8 @@ from .types import (
     PARSE_STATUS_SUPERSEDED,
     RULE_TYPE_EXCLUDE,
     RULE_TYPE_PARSING_RULE,
+    SCAN_KIND_WATCH,
+    SCAN_SOURCE_WATCH,
     CleanupDeletedRequest,
     CleanupDeletedResponse,
     CleanupOrphansRequest,
@@ -839,13 +842,8 @@ class DoclibServer(AsyncDoclibInterface):
         return ConfigSetResponse(key=key, value=_mask_config_value(key, value or ""), source=source)
 
     async def _validate_config_set(self, key: str, value: str) -> None:
+        validate_config_value(key, value)
         if key == "parse_server.local.mode":
-            if value not in ("disabled", "managed", "self_hosted"):
-                raise InvalidRequestError(
-                    "invalid_config_value",
-                    "parse_server.local.mode must be one of: disabled, managed, self_hosted.",
-                    key,
-                )
             if value == "managed":
                 tier = await get_managed_parse_server_tier(self.state.config_svc)
                 _ensure_managed_parse_server_tier_available(tier, key)
@@ -867,6 +865,9 @@ class DoclibServer(AsyncDoclibInterface):
         await _record_telemetry_count(self.state, "watch.add.count")
         try:
             row = await self.state.config_svc.add_watch(request.path, removable=request.removable, label=request.label)
+            scan_svc = getattr(self.state, "scan_svc", None)
+            if scan_svc is not None:
+                await scan_svc.create_scan(row["path"], kind=SCAN_KIND_WATCH, source=SCAN_SOURCE_WATCH, watch_id=row["id"])
             watch_loop = getattr(self.state, "watch", None)
             if watch_loop is not None:
                 watch_loop.wakeup()
@@ -888,6 +889,9 @@ class DoclibServer(AsyncDoclibInterface):
             if existing is None:
                 raise NotFoundError("watch_not_found", f"Watch target {watch_id} not found.", "watch_id")
             await self.state.config_svc.remove_watch_by_id(watch_id)
+            watch_loop = getattr(self.state, "watch", None)
+            if watch_loop is not None:
+                watch_loop.wakeup()
             await _record_telemetry_count(self.state, "watch.remove.finished.count", dimensions={"status": "succeeded"})
             return RemoveWatchResponse(watch_id=watch_id, removed=True)
         except Exception:
@@ -1355,8 +1359,8 @@ class DoclibServer(AsyncDoclibInterface):
             raise InvalidRequestError(
                 "format_not_supported", "Office image output is only supported for image blocks.", "format"
             )
-        image_bytes, _, _ = _span_image_bytes(image_span)
-        if image_bytes is None and image_span.image_path:
+        image_bytes = None
+        if image_span.image_path:
             image_dir = parse_image_sidecar_dir(self.state.data_dir, plan.sha256, plan.tier)
             candidate = resolve_image_sidecar_path(image_dir, image_span.image_path)
             if candidate is not None and candidate.is_file():
@@ -1415,15 +1419,15 @@ def _locator_after(locator: _LocatorParts) -> str | None:
         return None
     if locator.block_no is None:
         return None
-    return (
-        _canonical_locator(locator.short_id, locator.tier or "high", locator) if locator.char_offset is not None else None
-    )
+    return _canonical_locator(locator.short_id, locator.tier or "high", locator) if locator.char_offset is not None else None
 
 
 def _locator_page_range(locator: _LocatorParts, doc: DocRow, context: int) -> str | None:
     page_count = doc.get("page_count") or 1
     if locator.page_no is None:
         return _normalize_content_page_range(None, None, doc)
+    if locator.page_no > page_count:
+        return _normalize_page_range(str(locator.page_no), page_count)
     start = max(1, locator.page_no - context)
     end = min(page_count, locator.page_no + context)
     return _range_str(start, end)
@@ -1708,21 +1712,6 @@ def _iter_block_spans(block: Block) -> Iterator[Span]:
         yield from _iter_block_spans(child)
 
 
-def _span_image_bytes(span: Span) -> tuple[bytes | None, str, str]:
-    # 兼容 typed Span 不再携带 image_base64 的场景，后续仍可走 image_path sidecar。
-    image_base64 = getattr(span, "image_base64", None)
-    if not image_base64:
-        return None, "png", "image/png"
-    match = re.match(r"^data:image/(?P<ext>[^;]+);base64,(?P<data>.+)$", image_base64, re.DOTALL)
-    if match is None:
-        return None, "png", "image/png"
-    ext = match.group("ext").lower()
-    try:
-        return base64.b64decode(match.group("data")), ext, _mime_type_for_ext(ext)
-    except Exception:
-        return None, ext, _mime_type_for_ext(ext)
-
-
 _PIL_IMAGE_FORMATS: dict[ImageFormat, str] = {
     "jpeg": "JPEG",
     "png": "PNG",
@@ -1794,17 +1783,6 @@ def _write_temp_asset(
         width=width,
         height=height,
     )
-
-
-def _mime_type_for_ext(ext: str) -> str:
-    normalized = ext.lower().lstrip(".")
-    if normalized in {"jpg", "jpeg"}:
-        return "image/jpeg"
-    if normalized == "webp":
-        return "image/webp"
-    if normalized == "gif":
-        return "image/gif"
-    return "image/png"
 
 
 def _render_progressive_markdown(

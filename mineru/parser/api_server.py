@@ -27,14 +27,16 @@ import zipfile
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Annotated, Any, AsyncIterator, Callable, Literal
+from typing import Annotated, Any, AsyncIterator, Callable, Literal, NoReturn
+from urllib.parse import urlparse
 
 import click
 import httpx
 import uvicorn
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..types import Tier, validate_tier
@@ -54,6 +56,15 @@ _API_SERVER_TIERS: tuple[Tier, ...] = ("flash", "medium", "high", "extra_high")
 _DEFAULT_API_SERVER_TIER: Tier = "high"
 _API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
 _MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
+_MAX_INLINE_BYTES_DEFAULT = 1024 * 1024
+_LOCAL_PARSE_OUTPUT_FORMATS: tuple[OutputFormat, ...] = (
+    "markdown",
+    "middle_json",
+    "content_list",
+    "structured_content",
+    "zip",
+)
+_BASE_PARSE_SOURCES: tuple[SourceType, ...] = ("file_id", "url", "inline")
 logger = logging.getLogger("mineru.parser.api_server")
 
 
@@ -101,7 +112,6 @@ OutputFormat = Literal[
     "middle_json",
     "content_list",
     "structured_content",
-    "images",
     "html",
     "latex",
     "docx",
@@ -120,17 +130,6 @@ AccessLevel = Literal["anonymous", "registered"]
 
 FilePurpose = Literal["parse", "parse_output", "input_image"]
 """File purpose: source files, parse artifacts, or chat/response input images."""
-
-SSEEventType = Literal[
-    "status",
-    "file_started",
-    "file_completed",
-    "file_failed",
-    "done",
-    "error",
-]
-"""SSE event types."""
-
 
 # ── helper ───────────────────────────────────────────────────────────
 
@@ -186,6 +185,91 @@ class ErrorResponse(BaseModel):
     error: ErrorDetail
 
 
+class ApiServerError(Exception):
+    """Structured API error raised by parser API business logic."""
+
+    def __init__(self, status_code: int, error: ErrorDetail) -> None:
+        super().__init__(error.message)
+        self.status_code = status_code
+        self.error = error
+
+
+def _raise_api_error(
+    status_code: int,
+    *,
+    error_type: str,
+    code: str | None,
+    message: str,
+    param: str | None = None,
+) -> NoReturn:
+    raise ApiServerError(
+        status_code,
+        ErrorDetail(
+            type=error_type,
+            code=code,
+            message=message,
+            param=param,
+        ),
+    )
+
+
+def _error_response(status_code: int, error: ErrorDetail) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content=ErrorResponse(error=error).model_dump(by_alias=True),
+    )
+
+
+def _error_type_for_status(status_code: int) -> str:
+    if status_code == 401:
+        return "authentication_error"
+    if status_code == 403:
+        return "permission_error"
+    if 400 <= status_code < 500:
+        return "invalid_request_error"
+    return "api_error"
+
+
+def _validation_error_param(exc: RequestValidationError) -> str | None:
+    for err in exc.errors():
+        loc = err.get("loc", ())
+        parts = [str(part) for part in loc if part not in ("body", "query", "path")]
+        if parts:
+            return ".".join(parts)
+    return None
+
+
+def _validation_error_message(exc: RequestValidationError) -> str:
+    errors = exc.errors()
+    if not errors:
+        return "Invalid request."
+    first = errors[0]
+    loc = first.get("loc", ())
+    parts = [str(part) for part in loc if part not in ("body", "query", "path")]
+    field = ".".join(parts)
+    msg = str(first.get("msg", "Invalid value"))
+    if field:
+        return f"Invalid request: {field}: {msg}"
+    return f"Invalid request: {msg}"
+
+
+def _http_exception_error(exc: HTTPException) -> ErrorDetail:
+    detail = exc.detail
+    if isinstance(detail, dict):
+        candidate = detail.get("error")
+        if isinstance(candidate, dict):
+            return ErrorDetail.model_validate(candidate)
+        nested = detail.get("detail")
+        if isinstance(nested, dict) and isinstance(nested.get("error"), dict):
+            return ErrorDetail.model_validate(nested["error"])
+    message = str(detail) if detail else "HTTP error"
+    return ErrorDetail(
+        type=_error_type_for_status(exc.status_code),
+        code="api_error" if exc.status_code >= 500 else "invalid_request",
+        message=message,
+    )
+
+
 # ── Health ───────────────────────────────────────────────────────────
 
 
@@ -198,8 +282,9 @@ class ModelHealthStatus(BaseModel):
 
 class HealthFeatures(BaseModel):
     model_config = _PYDANTIC_CONFIG
-    sse: bool = False
     webhook: bool = False
+    output_formats: list[OutputFormat] = Field(default_factory=lambda: list(_LOCAL_PARSE_OUTPUT_FORMATS))
+    sources: list[SourceType] = Field(default_factory=lambda: list(_BASE_PARSE_SOURCES))
 
 
 class HealthResponse(BaseModel):
@@ -208,7 +293,7 @@ class HealthResponse(BaseModel):
     version: str
     parser_version: str | None = None
     models: ModelHealthStatus | None = None
-    features: HealthFeatures = Field(default_factory=lambda: HealthFeatures(sse=False, webhook=False))
+    features: HealthFeatures = Field(default_factory=HealthFeatures)
 
 
 # ── Models API ───────────────────────────────────────────────────────
@@ -371,7 +456,6 @@ class CreateJobRequest(BaseModel):
     files: list[JobFileEntry] = Field(min_length=1)
     tier: Tier | None = None
     output_formats: list[OutputFormat] = ["markdown"]
-    wait: int = Field(default=0, ge=0)
     callback: CallbackConfig | None = None
 
 
@@ -381,7 +465,6 @@ class CreateJobRequest(BaseModel):
 class JobLinks(BaseModel):
     model_config = _PYDANTIC_CONFIG
     self: str
-    events: str
     cancel: str
 
 
@@ -405,13 +488,6 @@ class OutputFileRef(BaseModel):
     bytes: int
 
 
-class ImageOutputRef(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    path: str
-    file_id: str
-    bytes: int
-
-
 class OutputFiles(BaseModel):
     """Per-file output artifacts. Content is downloaded via the Files API."""
 
@@ -424,7 +500,6 @@ class OutputFiles(BaseModel):
     latex: OutputFileRef | None = None
     docx: OutputFileRef | None = None
     zip: OutputFileRef | None = None
-    images: list[ImageOutputRef] | None = None
 
 
 class JobFileResult(BaseModel):
@@ -635,56 +710,40 @@ class FileStore:
     def get_upload(self, upload_id: str) -> _UploadRecord:
         rec = self._uploads.get(upload_id)
         if rec is None:
-            raise HTTPException(
-                status_code=404,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="upload_not_found",
-                        message=f"Upload {upload_id} not found",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                404,
+                error_type="invalid_request_error",
+                code="upload_not_found",
+                message=f"Upload {upload_id} not found",
             )
         return rec
 
     def _read_upload_data(self, upload_id: str) -> bytes:
         p = self._blobs / "_uploads" / upload_id
         if not p.is_file():
-            raise HTTPException(
-                status_code=409,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="upload_not_ready",
-                        message="Upload bytes not yet received",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                409,
+                error_type="invalid_request_error",
+                code="upload_not_ready",
+                message="Upload bytes not yet received",
             )
         return p.read_bytes()
 
     def complete_upload(self, upload_id: str, sha256hex: str | None) -> UploadResponse:
         rec = self.get_upload(upload_id)
         if rec.status == "completed":
-            raise HTTPException(
-                status_code=409,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="upload_already_terminal",
-                        message="Upload is already completed",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                409,
+                error_type="invalid_request_error",
+                code="upload_already_terminal",
+                message="Upload is already completed",
             )
         if rec.status in ("cancelled", "expired"):
-            raise HTTPException(
-                status_code=409,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="upload_already_terminal",
-                        message=f"Upload is {rec.status}",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                409,
+                error_type="invalid_request_error",
+                code="upload_already_terminal",
+                message=f"Upload is {rec.status}",
             )
 
         # compute sha256 from uploaded data if not provided
@@ -692,26 +751,18 @@ class FileStore:
         actual_sha = hashlib.sha256(data).hexdigest()
 
         if sha256hex and sha256hex != actual_sha:
-            raise HTTPException(
-                status_code=400,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="file_hash_mismatch",
-                        message="SHA-256 mismatch",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                400,
+                error_type="invalid_request_error",
+                code="file_hash_mismatch",
+                message="SHA-256 mismatch",
             )
         if rec.sha256sum and rec.sha256sum != actual_sha:
-            raise HTTPException(
-                status_code=400,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="file_hash_mismatch",
-                        message="SHA-256 mismatch",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                400,
+                error_type="invalid_request_error",
+                code="file_hash_mismatch",
+                message="SHA-256 mismatch",
             )
 
         # move from upload blob to content-addressed blob
@@ -741,15 +792,11 @@ class FileStore:
     def cancel_upload(self, upload_id: str) -> UploadResponse:
         rec = self.get_upload(upload_id)
         if rec.status in ("completed", "cancelled", "expired"):
-            raise HTTPException(
-                status_code=409,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="upload_already_terminal",
-                        message=f"Upload is {rec.status}",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                409,
+                error_type="invalid_request_error",
+                code="upload_already_terminal",
+                message=f"Upload is {rec.status}",
             )
         rec.status = "cancelled"
         return self._make_upload_response(rec)
@@ -758,15 +805,11 @@ class FileStore:
         """Store raw bytes for an upload (before complete)."""
         rec = self.get_upload(upload_id)
         if rec.status != "pending":
-            raise HTTPException(
-                status_code=409,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="upload_already_terminal",
-                        message=f"Upload is {rec.status}",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                409,
+                error_type="invalid_request_error",
+                code="upload_already_terminal",
+                message=f"Upload is {rec.status}",
             )
         # store temporarily under upload_id in blobs dir
         p = self._blobs / "_uploads" / upload_id
@@ -816,15 +859,11 @@ class FileStore:
     def get_file(self, file_id: str) -> _FileRecord:
         rec = self._files.get(file_id)
         if rec is None:
-            raise HTTPException(
-                status_code=404,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="file_not_found",
-                        message=f"File {file_id} not found",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                404,
+                error_type="invalid_request_error",
+                code="file_not_found",
+                message=f"File {file_id} not found",
             )
         return rec
 
@@ -843,40 +882,28 @@ class FileStore:
     def read_file_data(self, file_id: str) -> bytes:
         rec = self.get_file(file_id)
         if rec.purpose != "parse_output":
-            raise HTTPException(
-                status_code=403,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="permission_error",
-                        code="feature_requires_api_key",
-                        message="Source files cannot be downloaded",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                403,
+                error_type="permission_error",
+                code="feature_requires_api_key",
+                message="Source files cannot be downloaded",
             )
         if rec.sha256sum is None:
-            raise HTTPException(
-                status_code=500,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="api_error",
-                        code="internal_error",
-                        message="File has no sha256sum",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                500,
+                error_type="api_error",
+                code="internal_error",
+                message="File has no sha256sum",
             )
         return self.read_blob(rec.sha256sum)
 
     def delete_file(self, file_id: str) -> None:
         if file_id not in self._files:
-            raise HTTPException(
-                status_code=404,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="file_not_found",
-                        message=f"File {file_id} not found",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                404,
+                error_type="invalid_request_error",
+                code="file_not_found",
+                message=f"File {file_id} not found",
             )
         del self._files[file_id]
 
@@ -914,17 +941,6 @@ class FileStore:
 
     def install(self, app_state: Any) -> None:
         app_state.file_store = self
-
-
-def _store_image_outputs(file_store: FileStore, images: dict[str, bytes]) -> list[ImageOutputRef]:
-    """将最终导出的图片字节写入 FileStore，并返回可下载的图片引用。"""
-    img_refs: list[ImageOutputRef] = []
-    for img_path, img_bytes in images.items():
-        sha = hashlib.sha256(img_bytes).hexdigest()
-        file_store.store_blob(img_bytes, sha256hex=sha)
-        img_fid = file_store.create_file_for_output(pathlib.Path(img_path).name, img_bytes, sha256hex=sha)
-        img_refs.append(ImageOutputRef(path=img_path, file_id=img_fid, bytes=len(img_bytes)))
-    return img_refs
 
 
 def _build_self_contained_zip_output(result: Any, output_stem: str) -> bytes:
@@ -996,30 +1012,73 @@ _SUPPORTED_SUFFIXES: dict[str, str] = {
     ".htm": "html",
 }
 
-_OUTPUT_FORMATS_LOCAL = {
-    "markdown",
-    "middle_json",
-    "content_list",
-    "structured_content",
-    "images",
-    "zip",
-}
-
-_IMAGE_SIDECAR_FORMATS = frozenset(
-    {
-        "markdown",
-        "middle_json",
-        "content_list",
-        "structured_content",
-        "images",
-    }
-)
+_OUTPUT_FORMATS_LOCAL = set(_LOCAL_PARSE_OUTPUT_FORMATS)
 
 
-def _needs_image_outputs(out_formats: set[OutputFormat] | set[str]) -> bool:
-    """判断请求的输出格式是否会暴露 image_path，从而需要返回图片 sidecar。"""
-    return bool(out_formats.intersection(_IMAGE_SIDECAR_FORMATS))
+def _parse_sources_for_server(*, allow_local_source: bool) -> list[SourceType]:
+    sources = list(_BASE_PARSE_SOURCES)
+    if allow_local_source:
+        sources.append("local")
+    return sources
 
+
+def _decode_inline_data(data: str) -> bytes:
+    try:
+        return base64.b64decode(data, validate=True)
+    except Exception as exc:
+        raise ValueError("inline source data must be valid base64") from exc
+
+
+def _validate_source_policy(
+    source: FileSource,
+    *,
+    allow_local_source: bool,
+    max_inline_bytes: int,
+    allow_http_source: bool,
+) -> None:
+    if isinstance(source, UrlSource):
+        scheme = urlparse(source.url).scheme.lower()
+        if scheme == "https":
+            return
+        if scheme == "http" and allow_http_source:
+            return
+        if scheme == "http":
+            raise ValueError("url source must use https unless --allow-http-source is enabled")
+        raise ValueError("url source must use http or https")
+    if isinstance(source, InlineSource):
+        data = _decode_inline_data(source.data)
+        if len(data) > max_inline_bytes:
+            raise ValueError(f"inline source exceeds max_inline_bytes ({max_inline_bytes})")
+        return
+    if isinstance(source, LocalSource):
+        if not allow_local_source:
+            raise ValueError("local source is disabled; enable --allow-local-source")
+        return
+
+
+def _validate_job_source_policy(
+    req: CreateJobRequest,
+    *,
+    allow_local_source: bool,
+    max_inline_bytes: int,
+    allow_http_source: bool,
+) -> None:
+    for index, entry in enumerate(req.files):
+        try:
+            _validate_source_policy(
+                entry.source,
+                allow_local_source=allow_local_source,
+                max_inline_bytes=max_inline_bytes,
+                allow_http_source=allow_http_source,
+            )
+        except ValueError as exc:
+            _raise_api_error(
+                400,
+                error_type="invalid_request_error",
+                code="invalid_request",
+                message=str(exc),
+                param=f"files.{index}.source",
+            )
 
 @dataclass
 class _JobRecord:
@@ -1070,7 +1129,6 @@ class JobStore:
             output_formats=req.output_formats,
             links=JobLinks(
                 self=f"/v1/parse/jobs/{job_id}",
-                events=f"/v1/parse/jobs/{job_id}/events",
                 cancel=f"/v1/parse/jobs/{job_id}",
             ),
         )
@@ -1091,30 +1149,22 @@ class JobStore:
     def get(self, job_id: str) -> _JobRecord:
         rec = self._jobs.get(job_id)
         if rec is None:
-            raise HTTPException(
-                status_code=404,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="job_not_found",
-                        message=f"Job {job_id} not found",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                404,
+                error_type="invalid_request_error",
+                code="job_not_found",
+                message=f"Job {job_id} not found",
             )
         return rec
 
     def cancel(self, job_id: str) -> _JobRecord:
         rec = self.get(job_id)
         if rec.status in ("completed", "partial", "failed", "canceled"):
-            raise HTTPException(
-                status_code=409,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="job_already_terminal",
-                        message=f"Job is {rec.status}",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                409,
+                error_type="invalid_request_error",
+                code="job_already_terminal",
+                message=f"Job is {rec.status}",
             )
         rec.status = "canceled"
         return rec
@@ -1170,7 +1220,7 @@ class JobStore:
             access_level=access_level,
             progress=rec.progress,
             files=rec.files,
-            links=rec.links or JobLinks(self="", events="", cancel=""),
+            links=rec.links or JobLinks(self="", cancel=""),
         )
 
     def usage(self, access_level: AccessLevel) -> UsageResponse:
@@ -1259,7 +1309,21 @@ def _count_pages_in_range(page_range: str) -> int:
     return total
 
 
-async def _extract_bytes(source: FileSource, file_store: FileStore, *, url_timeout: int = 60) -> bytes:
+async def _extract_bytes(
+    source: FileSource,
+    file_store: FileStore,
+    *,
+    url_timeout: int = 60,
+    allow_local_source: bool = False,
+    max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
+    allow_http_source: bool = False,
+) -> bytes:
+    _validate_source_policy(
+        source,
+        allow_local_source=allow_local_source,
+        max_inline_bytes=max_inline_bytes,
+        allow_http_source=allow_http_source,
+    )
     if isinstance(source, FileIdSource):
         rec = file_store.get_file(source.file_id)
         if rec.sha256sum is None:
@@ -1271,9 +1335,9 @@ async def _extract_bytes(source: FileSource, file_store: FileStore, *, url_timeo
             r.raise_for_status()
             return r.content
     if isinstance(source, InlineSource):
-        return base64.b64decode(source.data)
+        return _decode_inline_data(source.data)
     if isinstance(source, LocalSource):
-        return pathlib.Path(source.path).read_bytes()
+        return pathlib.Path(source.path).expanduser().resolve(strict=False).read_bytes()
     raise ValueError(f"Unknown source type: {type(source)}")
 
 
@@ -1293,6 +1357,9 @@ async def _run_job(
     image_analysis: bool,
     effort: str = DEFAULT_HYBRID_EFFORT,
     url_timeout: int = 60,
+    allow_local_source: bool = False,
+    max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
+    allow_http_source: bool = False,
 ) -> None:
     rec.status = "running"
     rec.started_at = JobStore._now()
@@ -1304,7 +1371,14 @@ async def _run_job(
             fr = rec.files[i]
             try:
                 file_started = time.monotonic()
-                data = await _extract_bytes(entry.source, file_store, url_timeout=url_timeout)
+                data = await _extract_bytes(
+                    entry.source,
+                    file_store,
+                    url_timeout=url_timeout,
+                    allow_local_source=allow_local_source,
+                    max_inline_bytes=max_inline_bytes,
+                    allow_http_source=allow_http_source,
+                )
                 stype = _suffix_type(fr.name)
                 if not stype:
                     raise ValueError(f"Unsupported file type: {fr.name}")
@@ -1330,18 +1404,12 @@ async def _run_job(
                 # collect outputs
                 out_formats = set(rec.output_formats)
                 output_files = OutputFiles()
-                image_output_refs = (
-                    _store_image_outputs(file_store, result.images()) if _needs_image_outputs(out_formats) else None
-                )
-                if image_output_refs is not None:
-                    output_files.images = image_output_refs
 
                 for fmt in (
                     "markdown",
                     "middle_json",
                     "content_list",
                     "structured_content",
-                    "images",
                 ):
                     if fmt not in out_formats:
                         continue
@@ -1370,8 +1438,6 @@ async def _run_job(
                         file_store.store_blob(cl2, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.structured_content.json", cl2, sha256hex=sha)
                         output_files.structured_content = OutputFileRef(file_id=fid, bytes=len(cl2))
-                    elif fmt == "images":
-                        continue
 
                 # zip
                 if "zip" in out_formats:
@@ -1441,12 +1507,13 @@ _ERR_429: dict[int | str, dict[str, Any]] = {429: {"model": ErrorResponse}}
     responses={503: {"model": ErrorResponse}},
     tags=["Health"],
 )
-async def get_health() -> HealthResponse:
+async def get_health(request: Request) -> HealthResponse:
     """Health check endpoint."""
     return HealthResponse(
         version=__version__,
         parser_version=__version__,
         models=ModelHealthStatus(),
+        features=HealthFeatures(sources=_parse_sources_for_server(allow_local_source=request.app.state.allow_local_source)),
     )
 
 
@@ -1482,15 +1549,11 @@ async def get_model(
     """Retrieve a single model by ID."""
     model_ids: list[str] = request.app.state.model_ids
     if model not in model_ids:
-        raise HTTPException(
-            status_code=404,
-            detail=ErrorResponse(
-                error=ErrorDetail(
-                    type="invalid_request_error",
-                    code="model_not_found",
-                    message=f"Model '{model}' not found",
-                ),
-            ).model_dump(by_alias=True),
+        _raise_api_error(
+            404,
+            error_type="invalid_request_error",
+            code="model_not_found",
+            message=f"Model '{model}' not found",
         )
     now = int(time.time())
     return ModelInfo(id=model, created=now)
@@ -1679,7 +1742,6 @@ async def delete_file(
     response_model=None,
     status_code=status.HTTP_202_ACCEPTED,
     responses={
-        200: {"model": JobAsyncResponse},
         202: {"model": JobAsyncResponse},
         **_ERR_400,
         **_ERR_403,
@@ -1696,111 +1758,61 @@ async def create_job(
 ) -> Response:
     """Create a parse job."""
     if body.callback is not None:
-        raise HTTPException(
-            status_code=400,
-            detail=ErrorResponse(
-                error=ErrorDetail(
-                    type="invalid_request_error",
-                    code="invalid_request",
-                    message=(
-                        "Webhook callback is not supported by this Local Parse Server. "
-                        "Use polling via GET /v1/parse/jobs/{job_id}."
-                    ),
-                ),
-            ).model_dump(by_alias=True),
+        _raise_api_error(
+            400,
+            error_type="invalid_request_error",
+            code="invalid_request",
+            message=(
+                "Webhook callback is not supported by this Local Parse Server. Use polling via GET /v1/parse/jobs/{job_id}."
+            ),
         )
 
     # validate output formats — advanced formats require API key
     for fmt in body.output_formats:
         if fmt in ("html", "latex", "docx") and access_level == "anonymous":
-            raise HTTPException(
-                status_code=403,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="permission_error",
-                        code="feature_requires_api_key",
-                        message=f"Output format '{fmt}' requires an API key",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                403,
+                error_type="permission_error",
+                code="feature_requires_api_key",
+                message=f"Output format '{fmt}' requires an API key",
             )
         if fmt not in _OUTPUT_FORMATS_LOCAL:
-            raise HTTPException(
-                status_code=400,
-                detail=ErrorResponse(
-                    error=ErrorDetail(
-                        type="invalid_request_error",
-                        code="invalid_request",
-                        message=f"Unknown output format: {fmt}",
-                    ),
-                ).model_dump(by_alias=True),
+            _raise_api_error(
+                400,
+                error_type="invalid_request_error",
+                code="invalid_request",
+                message=f"Unknown output format: {fmt}",
             )
-
-    # validate wait vs server limit
-    max_wait: int = request.app.state.max_wait
-    if body.wait != 0 and (body.wait < 5 or body.wait > max_wait):
-        raise HTTPException(
-            status_code=400,
-            detail=ErrorResponse(
-                error=ErrorDetail(
-                    type="invalid_request_error",
-                    code="invalid_request",
-                    message=f"wait must be 0 or [5, {max_wait}]",
-                ),
-            ).model_dump(by_alias=True),
-        )
 
     # 按请求 tier 选择启动时预先解析好的 runtime，避免所有 job 共享默认 effort。
     body.tier = body.tier or request.app.state.default_tier
     runtime_options: dict[Tier, ParserRuntimeOptions] = request.app.state.tier_runtime_options
     runtime = runtime_options.get(body.tier)
     if runtime is None:
-        raise HTTPException(
-            status_code=400,
-            detail=ErrorResponse(
-                error=ErrorDetail(
-                    type="invalid_request_error",
-                    code="invalid_request",
-                    message=f"Tier '{body.tier}' not available in this server",
-                ),
-            ).model_dump(by_alias=True),
+        _raise_api_error(
+            400,
+            error_type="invalid_request_error",
+            code="invalid_request",
+            message=f"Tier '{body.tier}' not available in this server",
         )
+
+    _validate_job_source_policy(
+        body,
+        allow_local_source=request.app.state.allow_local_source,
+        max_inline_bytes=request.app.state.max_inline_bytes,
+        allow_http_source=request.app.state.allow_http_source,
+    )
 
     rec = job_store.create(body, file_store)
     backend = runtime.backend
     url_timeout_val: int = request.app.state.url_timeout
+    allow_local_source_val: bool = request.app.state.allow_local_source
+    max_inline_bytes_val: int = request.app.state.max_inline_bytes
+    allow_http_source_val: bool = request.app.state.allow_http_source
     language_val: str = request.app.state.language
     ocr_mode_val: str = request.app.state.ocr_mode
     effort_val = runtime.effort
     image_analysis_val: bool = request.app.state.image_analysis
-
-    if body.wait > 0:
-        async with job_store._semaphore:
-            task = asyncio.create_task(
-                _run_job(
-                    rec,
-                    body,
-                    file_store,
-                    server_backend=backend,
-                    language=language_val,
-                    ocr_mode=ocr_mode_val,
-                    effort=effort_val,
-                    image_analysis=image_analysis_val,
-                    url_timeout=url_timeout_val,
-                )
-            )
-            try:
-                await asyncio.wait_for(task, timeout=body.wait)
-            except asyncio.TimeoutError:
-                pass
-        if rec.status in ("completed", "partial"):
-            return JSONResponse(
-                content=job_store.build_response(rec).model_dump(by_alias=True),
-                status_code=200,
-            )
-        return JSONResponse(
-            content=job_store.build_response(rec).model_dump(by_alias=True),
-            status_code=202,
-        )
 
     # async — fire and forget
     async def _bg_run() -> None:
@@ -1815,6 +1827,9 @@ async def create_job(
                 effort=effort_val,
                 image_analysis=image_analysis_val,
                 url_timeout=url_timeout_val,
+                allow_local_source=allow_local_source_val,
+                max_inline_bytes=max_inline_bytes_val,
+                allow_http_source=allow_http_source_val,
             )
 
     asyncio.create_task(_bg_run())
@@ -1834,69 +1849,6 @@ async def get_job(
 ) -> JobAsyncResponse:
     """Retrieve a job's current status and results."""
     return job_store.build_response(job_store.get(job_id))
-
-
-@_router.get(
-    "/parse/jobs/{job_id}/events",
-    response_model=None,
-    status_code=status.HTTP_200_OK,
-    responses={**_ERR_404},
-    tags=["Jobs"],
-)
-async def get_job_events(
-    job_id: str = Path(description="Job ID"),
-    job_store: JobStore = Depends(_get_job_store),
-) -> StreamingResponse:
-    """SSE stream of job status events."""
-    rec = job_store.get(job_id)
-
-    async def _event_stream() -> Any:
-        last_status = rec.status
-        yielded: set[str] = set()  # file names already yielded per-file events
-
-        def _yield_event(event: str, data: str) -> str:
-            return f"event: {event}\ndata: {data}\n\n"
-
-        yield _yield_event(
-            "status",
-            f'{{"status":"{rec.status}","progress":{{"completed":{rec.progress.completed},"failed":{rec.progress.failed},"total":{rec.progress.total}}}}}',
-        )
-
-        while rec.status in ("queued", "running"):
-            if rec.status != last_status:
-                yield _yield_event(
-                    "status",
-                    f'{{"status":"{rec.status}","progress":{{"completed":{rec.progress.completed},"failed":{rec.progress.failed},"total":{rec.progress.total}}}}}',
-                )
-                last_status = rec.status
-
-            for fr in rec.files:
-                name = fr.name or fr.file_id
-                if fr.status == "running" and name not in yielded:
-                    yield _yield_event(
-                        "file_started",
-                        f'{{"file_id":"{fr.file_id}","status":"running"}}',
-                    )
-                    yielded.add(name)
-                elif fr.status == "completed" and (f"done_{name}" not in yielded):
-                    yield _yield_event(
-                        "file_completed",
-                        f'{{"file_id":"{fr.file_id}","status":"completed"}}',
-                    )
-                    yielded.add(f"done_{name}")
-                elif fr.status == "failed" and (f"done_{name}" not in yielded):
-                    err_msg = fr.error.message.replace('"', '\\"') if fr.error else ""
-                    yield _yield_event(
-                        "file_failed",
-                        f'{{"file_id":"{fr.file_id}","status":"failed","error":{{"code":"{fr.error.code}","message":"{err_msg}"}}}}',
-                    )
-                    yielded.add(f"done_{name}")
-
-            await asyncio.sleep(1)
-
-        yield _yield_event("done", f'{{"job_id":"{rec.id}","status":"{rec.status}"}}')
-
-    return StreamingResponse(_event_stream(), media_type="text/event-stream")
 
 
 @_router.get(
@@ -2069,7 +2021,9 @@ def create_app(
     tier: Tier | list[Tier] | tuple[Tier, ...] | None = None,
     concurrency: int = 1,
     url_timeout: int = 60,
-    max_wait: int = 600,
+    allow_local_source: bool = False,
+    max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
+    allow_http_source: bool = False,
     api_key: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
@@ -2088,8 +2042,12 @@ def create_app(
         Maximum concurrent parse jobs (default 1).
     url_timeout:
         Timeout in seconds for downloading url sources (default 60).
-    max_wait:
-        Maximum seconds for the ``wait`` parameter (default 300).
+    allow_local_source:
+        Whether ``local`` sources may read paths visible to the server process.
+    max_inline_bytes:
+        Maximum decoded bytes accepted for ``inline`` sources.
+    allow_http_source:
+        Whether ``url`` sources may use plain HTTP. HTTPS is always allowed.
     api_key:
         Optional API key.  When set, clients must pass ``Authorization: Bearer <key>``
         to access list endpoints and advanced output formats.
@@ -2114,6 +2072,8 @@ def create_app(
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
     _upload_dir.mkdir(parents=True, exist_ok=True)
+    if max_inline_bytes < 0:
+        raise ValueError("max_inline_bytes must be non-negative")
     language = validate_public_ocr_lang(language)
 
     _model_ids, _tiers = _model_ids_and_tiers_for_server_tiers(server_tiers)
@@ -2129,7 +2089,9 @@ def create_app(
         application.state.tiers = _tiers
         application.state.concurrency = concurrency
         application.state.url_timeout = url_timeout
-        application.state.max_wait = max_wait
+        application.state.allow_local_source = allow_local_source
+        application.state.max_inline_bytes = max_inline_bytes
+        application.state.allow_http_source = allow_http_source
         application.state.api_key = _api_key
         application.state.language = language
         application.state.ocr_mode = ocr_mode
@@ -2158,7 +2120,9 @@ def create_app(
     application.state.tiers = _tiers
     application.state.concurrency = concurrency
     application.state.url_timeout = url_timeout
-    application.state.max_wait = max_wait
+    application.state.allow_local_source = allow_local_source
+    application.state.max_inline_bytes = max_inline_bytes
+    application.state.allow_http_source = allow_http_source
     application.state.api_key = _api_key
     application.state.language = language
     application.state.ocr_mode = ocr_mode
@@ -2167,6 +2131,38 @@ def create_app(
     FileStore(_upload_dir).install(application.state)
     JobStore(concurrency=concurrency).install(application.state)
     application.add_middleware(GZipMiddleware, minimum_size=1000)
+
+    @application.exception_handler(ApiServerError)
+    async def _api_server_error_handler(request: Request, exc: ApiServerError) -> JSONResponse:
+        return _error_response(exc.status_code, exc.error)
+
+    @application.exception_handler(RequestValidationError)
+    async def _request_validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        return _error_response(
+            400,
+            ErrorDetail(
+                type="invalid_request_error",
+                code="invalid_request",
+                message=_validation_error_message(exc),
+                param=_validation_error_param(exc),
+            ),
+        )
+
+    @application.exception_handler(HTTPException)
+    async def _http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+        return _error_response(exc.status_code, _http_exception_error(exc))
+
+    @application.exception_handler(Exception)
+    async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        logger.error("Unhandled parse API error", exc_info=(type(exc), exc, exc.__traceback__))
+        return _error_response(
+            500,
+            ErrorDetail(
+                type="api_error",
+                code="internal_error",
+                message="Internal server error",
+            ),
+        )
 
     _PUBLIC_PATHS = frozenset({"/v1/health", "/v1/models", "/v1/tiers"})
     _PUBLIC_PREFIXES = ("/openapi", "/docs", "/redoc")
@@ -2180,15 +2176,13 @@ def create_app(
             return await call_next(request)
         auth = request.headers.get("Authorization", "")
         if not auth.startswith("Bearer ") or auth[7:] != api_key:
-            return JSONResponse(
-                status_code=401,
-                content=ErrorResponse(
-                    error=ErrorDetail(
-                        type="authentication_error",
-                        code="invalid_api_key",
-                        message="Invalid or missing API key",
-                    ),
-                ).model_dump(by_alias=True),
+            return _error_response(
+                401,
+                ErrorDetail(
+                    type="authentication_error",
+                    code="invalid_api_key",
+                    message="Invalid or missing API key",
+                ),
             )
         return await call_next(request)
 
@@ -2231,10 +2225,20 @@ def create_app(
     help="Timeout in seconds for url source downloads (default: 60)",
 )
 @click.option(
-    "--max-wait",
-    default=600,
+    "--allow-local-source",
+    is_flag=True,
+    help="Allow local sources to read any path visible to the server process.",
+)
+@click.option(
+    "--max-inline-bytes",
+    default=_MAX_INLINE_BYTES_DEFAULT,
     type=int,
-    help="Maximum seconds for the wait parameter (default: 600)",
+    help=f"Maximum decoded bytes for inline sources (default: {_MAX_INLINE_BYTES_DEFAULT})",
+)
+@click.option(
+    "--allow-http-source",
+    is_flag=True,
+    help="Allow url sources to use plain HTTP. HTTPS is always allowed.",
 )
 @click.option(
     "--language",
@@ -2263,7 +2267,9 @@ def main(
     tier: tuple[Tier, ...],
     concurrency: int,
     url_timeout: int,
-    max_wait: int,
+    allow_local_source: bool,
+    max_inline_bytes: int,
+    allow_http_source: bool,
     language: str,
     ocr_mode: str,
     disable_image_analysis: bool,
@@ -2276,7 +2282,9 @@ def main(
             tier=tier or None,
             concurrency=concurrency,
             url_timeout=url_timeout,
-            max_wait=max_wait,
+            allow_local_source=allow_local_source,
+            max_inline_bytes=max_inline_bytes,
+            allow_http_source=allow_http_source,
             api_key=api_key,
             language=language,
             ocr_mode=ocr_mode,

@@ -3,7 +3,7 @@
 状态: Draft
 读者: SDK 开发者、parse-server 开发者、集成方
 范围: 通过 v1 API 委托解析的 `DocumentParser` 实现
-底稿: `../../../NEXT-SDK.md`
+来源: 由旧 SDK 底稿迁移整理而来；旧底稿已归档删除
 
 ## 定位
 
@@ -34,7 +34,7 @@ print(result.markdown())
 
 - 不提供 doclib 搜索、watch、配置能力。
 - 不维护本地缓存。
-- 不隐式决定是否可上传远端；调用方必须显式传入 `api_url`。
+- 不隐式决定是否可上传远端；调用方传入远端 `api_url`，或通过环境变量配置远端 API，即表示调用方已经允许上传到该 API。
 
 ## 构造参数
 
@@ -45,11 +45,11 @@ class MinerUApiParser(DocumentParser):
     def __init__(
         self,
         *,
-        api_url: str,
+        api_url: str | None = None,
         api_key: str | None = None,
         tier: str | None = None,
-        wait: int = 600,
-        timeout: int = 660,
+        include_images: bool = False,
+        include_model_output: bool = False,
     ) -> None: ...
 ```
 
@@ -57,11 +57,11 @@ class MinerUApiParser(DocumentParser):
 
 | 参数 | 说明 |
 |------|------|
-| `api_url` | v1 API base URL，如 `https://mineru.net/api` 或 `http://127.0.0.1:16580/api`。 |
-| `api_key` | Bearer token。Local Parse Server 未启用鉴权时可为空。 |
-| `tier` | `medium`、`high` 或 `None`。`None` 表示 SDK 在 HTTP 请求中省略 `tier` 或发送 JSON `null`，让 v1 API 使用默认选择策略。不得传 `flash`，因为 v1 parse API 的质量解析不接受 flash 作为默认结果。 |
-| `wait` | 创建 job 时的同步等待秒数。 |
-| `timeout` | HTTP 请求超时。 |
+| `api_url` | v1 API base URL，如 `https://mineru.net/api` 或 `http://127.0.0.1:16580`。省略时读取 `MINERU_API_URL`，再退回默认官方 API。 |
+| `api_key` | Bearer token。省略时读取 `MINERU_API_KEY`；Local Parse Server 未启用鉴权时可为空。 |
+| `tier` | `flash`、`medium`、`high`、`extra_high` 或 `None`。`None` 表示 SDK 在 HTTP 请求中省略 `tier`，让 v1 API 使用默认选择策略。 |
+| `include_images` | 是否从 zip 产物读取图片 sidecar，并挂载到 `ParseResult` 图片缓存。 |
+| `include_model_output` | 是否请求并保留模型原始输出；开启时通过 zip 产物读取。 |
 
 ## 行为流程
 
@@ -69,14 +69,17 @@ class MinerUApiParser(DocumentParser):
 
 1. 检查文件存在。
 2. 判断 `api_url` 是否是本地地址。
-3. 本地地址优先使用 `local` source。
-4. 非本地地址使用 Uploads API: create upload -> PUT upload_url -> complete upload。
-5. 调用 `POST /v1/parse/jobs`，请求 `output_formats:["middle_json"]`。
+3. 本地地址先读取 `GET /v1/health`；只有 `features.sources` 包含 `local` 时才使用 `local` source。
+4. 非本地地址，或本地 server 未允许 `local` source 时，使用 Uploads API: create upload -> PUT upload_url -> complete upload，再以 `file_id` source 创建解析任务。
+5. 调用 `POST /v1/parse/jobs`；默认请求 `output_formats:["middle_json"]`，需要模型输出或图片缓存时请求 `["zip"]`。
 6. 如果 job 未完成，则轮询 `GET /v1/parse/jobs/{job_id}`。
-7. 下载 `middle_json` output file。
-8. 将返回的 middle JSON 转为 `ParseResult`。
+7. 普通模式下载 `middle_json` output file；zip 模式下载 `zip` output file。
+8. zip 模式从 zip 中读取 middle JSON，并在 `include_images=True` 时读取 middle JSON 引用的图片 sidecar。
+9. 将 middle JSON 转为 `ParseResult`。
 
 本地 source:
+
+Local Parse Server 必须通过 `--allow-local-source` 开启，并在 `features.sources` 返回 `local`，SDK 才会使用该形式。
 
 ```json
 {
@@ -104,22 +107,24 @@ class MinerUApiParser(DocumentParser):
 
 | SDK tier | API tier |
 |----------|----------|
-| `None` | 省略或 `null` |
+| `None` | 省略 |
+| `flash` | `flash` |
 | `medium` | `medium` |
 | `high` | `high` |
+| `extra_high` | `extra_high` |
 
 它不接受也不保存 backend 参数。backend 是本地 parser 层的高级实现概念，不应出现在 API-backed parser 的公开构造参数、实例属性或请求 payload 中。
 
 ## 输出格式
 
-默认只请求 `middle_json`，因为 `ParseResult` 可以基于 pages 渲染 markdown、content list 和 images。
+默认只请求 `middle_json`。如果 `include_images=True` 或 `include_model_output=True`，则请求 `zip`，并从 zip 中恢复 `ParseResult` 所需的 middle JSON。API 不支持把 `images` 作为独立 `output_formats` 请求值。
 
 目标可选参数:
 
 | 参数 | 说明 |
 |------|------|
-| `output_formats` | 高级用户可指定 API 产物。默认 `["middle_json"]`。 |
-| `download_outputs` | 是否把 API 产物引用下载进本地对象。默认只下载构造 `ParseResult` 需要的 `middle_json`。 |
+| `include_images` | 请求 `zip` 并从其中读取图片 sidecar 到 `ParseResult` 图片缓存。 |
+| `include_model_output` | 请求 `zip` 并尝试保留模型输出。 |
 
 ## 错误映射
 

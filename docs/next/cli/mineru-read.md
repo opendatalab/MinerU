@@ -4,7 +4,7 @@
 读者: Agent skill 作者、CLI 使用者、核心开发者
 范围: `mineru read` 的定位、locator 输入、markdown/image 输出、context 和 continuation
 非目标: 从文件 path 触发解析；批量目录扫描；解析 backend 专家参数
-底稿: `../../../NEXT-CLI.md`，相关 ADR: [0014-mineru-read-command](../decisions/0014-mineru-read-command.md)
+来源: 由根目录旧 CLI 底稿迁移整理而来，相关 ADR: [0014-mineru-read-command](../decisions/0014-mineru-read-command.md)
 
 ## 1. 定位
 

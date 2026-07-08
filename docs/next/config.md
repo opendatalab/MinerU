@@ -4,7 +4,7 @@
 读者: 想了解 doclib / mineru 配置的用户、实现配置能力的核心开发者
 范围: 本地配置、远端配置、解析参数、环境变量和优先级规则
 非目标: 替代 CLI 参数手册；替代部署文档
-底稿: `../../NEXT-CFG.md`
+来源: 配置专题文档仍待继续核对
 
 ## 1. 定位
 
@@ -94,7 +94,7 @@ MinerU 有两类配置：
 
 ## 3. 优先级
 
-运行时行为的优先级从高到低：
+运行时行为的优先级从高到低。API Key 等运行时凭证的优先级见“API Key 与环境变量”。
 
 1. 当前命令显式参数。
 2. 当前进程环境变量。
@@ -117,11 +117,11 @@ SDK client 显式参数属于当前调用方传入的请求上下文；当它最
 |-----|--------|------|
 | `parse_server.local.mode` | `disabled` | 本地 parse-server 模式 |
 | `parse_server.local.managed_tier` | `high` | managed 模式启动 tier |
-| `parse_server.remote.url` | `https://mineru.net/api` | 默认远端 API 地址 |
+| `parse_server.remote.url` | 当前代码默认 `https://staging.mineru.org.cn/api` | 默认远端 API 地址；产品正式目标是 `https://mineru.net/api` |
 
 ## 5. Parse-server 配置
 
-parse-server 是 medium/high 解析能力的来源。它可以是本地独立进程，也可以是远端 `mineru.net/api`。
+parse-server 是 `medium` / `high` / `extra_high` 等质量 tier 的解析能力来源。它可以是本地独立进程，也可以是远端 `mineru.net/api` 或当前代码配置的 staging endpoint。
 
 ### 5.1 Local parse-server
 
@@ -136,7 +136,7 @@ parse-server 是 medium/high 解析能力的来源。它可以是本地独立进
 
 | mode | 行为 |
 |------|------|
-| `disabled` | 不使用本地 parse-server；本地 medium/high 请求返回 `no_engine` 或相关错误 |
+| `disabled` | 不使用本地 parse-server；本地质量 tier 请求返回 `no_engine` 或相关错误 |
 | `managed` | doclib 启动和停止时自动管理 parse-server |
 | `self_hosted` | 用户自行启动 parse-server，doclib 只负责连接和探活 |
 
@@ -144,7 +144,7 @@ parse-server 是 medium/high 解析能力的来源。它可以是本地独立进
 
 | key | 默认值 | 说明 |
 |-----|--------|------|
-| `parse_server.remote.url` | `https://mineru.net/api` | 默认远端 API 地址 |
+| `parse_server.remote.url` | 当前代码默认 `https://staging.mineru.org.cn/api` | 默认远端 API 地址；产品正式目标是 `https://mineru.net/api` |
 | `parse_server.remote.api_key` | 无 | 远端 API Key |
 
 远端配置存在不等于允许上传。只有当前请求显式 `--remote`，或 parsing-rule 显式带 remote 语义时，才可以上传文档。
@@ -153,10 +153,11 @@ parse-server 是 medium/high 解析能力的来源。它可以是本地独立进
 
 API Key 读取优先级：
 
-1. 环境变量 `MINERU_API_KEY`。
-2. SQLite config 中的 `parse_server.remote.api_key` 或 `parse_server.local.self_hosted_api_key`。
+1. SQLite config 中的 `parse_server.remote.api_key` 或 `parse_server.local.self_hosted_api_key`。
+2. 环境变量 `MINERU_API_KEY`，仅在对应 config API Key 未配置时作为默认值。
 
-环境变量适合无 tty 场景和 CI，但不应改变是否允许 remote 上传的判断。
+环境变量适合无 tty 场景和 CI 的默认凭证，但运行中的 doclib server 会优先使用 `mineru config set`
+写入的运行时配置。环境变量不应改变是否允许 remote 上传的判断。
 
 建议保留的环境变量：
 
@@ -173,7 +174,7 @@ API Key 读取优先级：
 | CLI 参数 | 配置关系 |
 |----------|----------|
 | `--tier` | 覆盖当前请求 tier；未指定时使用默认选择策略 |
-| `--remote` | 显式允许当前请求上传远端；远端 URL 和 API Key 来自 config 或环境变量 |
+| `--remote` | 显式允许当前请求上传远端；远端 URL 来自 config，API Key 优先来自 config，未配置时使用环境变量 |
 | `--pages` | 当前请求页码范围 |
 | `--force` | 当前请求跳过 done 缓存；复用 active parse 或为未覆盖页创建新 parse；不删除或作废旧缓存 |
 | `--wait` / `--no-wait` | 当前请求等待策略 |
@@ -284,7 +285,7 @@ SDK client 的配置不应在 import 时读取重依赖或启动服务。
 
 - 不包含文档内容、文件名和路径。
 - doclib server 是 P0 唯一 telemetry 上报主体。
-- 首次启动应要求用户选择，默认勾选开启，用户可关闭。
+- 首次启动应要求用户选择，不预选开启或关闭，用户可关闭。
 - parser SDK、`mineru-kit parse`、`mineru-kit api-server` 等纯工具无 telemetry 能力。
 - telemetry 配置存储在 SQLite 中，不使用启动前文件配置。
 - telemetry 聚合数据也存储在 SQLite 中，flush 成功后删除已确认上报的数据。
