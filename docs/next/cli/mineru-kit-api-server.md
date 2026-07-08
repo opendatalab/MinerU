@@ -4,11 +4,11 @@
 读者: 服务部署者、核心开发者、`mineru server` 集成开发者
 范围: `mineru-kit api-server` 的定位、self-hosted 边界、与 doclib 的协作和参数契约
 非目标: 统一 REST API 的字段级定义；模型服务内部实现
-底稿: `../../../NEXT-CLI.md`
+来源: 由根目录旧 CLI 底稿迁移整理而来
 
 ## 1. 定位
 
-`mineru-kit api-server` 是未来唯一正式的 parse-server 启动入口。它启动一个 self-hosted parse server。一个进程只服务一个 tier，可以是 `medium` 或 `high`。
+`mineru-kit api-server` 是正式的 self-hosted parse-server 启动入口。当前一个进程可以通过重复 `--tier` 暴露一个或多个 tier；不传 `--tier` 时暴露 `flash`、`medium`、`high`、`extra_high`。
 
 `mineru doclib` 可以通过 HTTP 调用它执行解析任务。
 
@@ -41,16 +41,17 @@ api-server 负责：
 
 api-server 必须提供能力发现接口，让 doclib 或客户端知道当前服务支持哪个 tier。
 
-默认选择策略依赖该能力发现：
+裸 api-server 的请求默认 tier 由启动配置决定：
 
-| api-server 支持 | 默认选择结果 |
-|----------------|-------------|
-| `medium` | `medium` |
-| `high` | `high` |
+| api-server 启动 tier | 请求未指定 tier 时 |
+|---------------------|--------------------|
+| 包含 `high` | `high` |
+| 不包含 `high` | 使用启动 tier 列表中的第一个 tier |
+| 未传 `--tier` | 暴露 `flash`、`medium`、`high`、`extra_high`，默认 `high` |
 
-api-server 不应把默认选择解析为 `flash`。
+因此，如果只以 `--tier flash` 启动裸 api-server，请求未指定 tier 时会使用 `flash`。doclib 的主动阅读默认选择策略应在调用 api-server 前解析为具体质量 tier，避免把用户主动阅读静默降级为 `flash`。
 
-如果用户需要同时提供 `medium` 和 `high`，应启动两个 api-server 进程，由 doclib 或上层配置分别管理地址和 tier。
+如果用户需要在同一端口提供多个 tier，可以重复 `--tier`；如果不同 tier 需要不同硬件、并发或生命周期策略，则启动多个 api-server 进程并由 doclib 或上层配置分别管理 URL。
 
 ## 4. self-hosted 与 managed
 
@@ -63,21 +64,18 @@ managed 是生命周期管理方式，不是用户直接执行的命令模式。
 
 ## 5. Usage
 
-api-server 启动时应优先使用 `--tier`：
+api-server 启动时可使用 `--tier` 限定暴露档位；该选项可重复：
 
 ```bash
 mineru-kit api-server --tier medium --port 16580
 mineru-kit api-server --tier high --port 15982
+mineru-kit api-server --tier medium --tier high --port 8000
 mineru-kit api-server --tier high --language en --ocr-mode ocr --disable-image-analysis
 ```
-
-`--tier` 会选择该 tier 的默认 backend。高级部署者可以同时传 `--tier` 和 `--backend`，用于选择具体实现；如果二者不兼容，启动应报错。
 
 未传 `--tier` 时暴露 `flash`、`medium`、`high`、`extra_high`；请求未指定 tier 时默认 `high`。
 
 启动完成后，HTTP API 不暴露 backend。`GET /v1/tiers` 也不新增 backend 字段；调用方如需推断实现，只能从 `current_model` 做弱推断。
-
-`--backend` 可选值应使用 parser backend 名称，具体集合以 parser backend 常量为准。
 
 裸 `vlm` / `hybrid` 不是合法的 api-server 启动 backend；它们只可作为 Middle JSON 来源标记或内部分类概念。
 
@@ -86,14 +84,13 @@ mineru-kit api-server --tier high --language en --ocr-mode ocr --disable-image-a
 ### 稳定公开参数
 
 - host / port
-- tier
+- tier，可重复
 - API key
 
 ### 稳定解析参数
 
 - language
 - ocr-mode
-- effort
 - disable-image-analysis
 - concurrency
 - upload-dir
@@ -102,7 +99,7 @@ mineru-kit api-server --tier high --language en --ocr-mode ocr --disable-image-a
 
 ### 专家参数
 
-- backend
+- 当前 `mineru-kit api-server` 命令层不暴露 `--backend`
 
 `--reload` 不进入正式命令设计。
 

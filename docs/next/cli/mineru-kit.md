@@ -4,7 +4,7 @@
 读者: 批处理开发者、解析内核开发者、服务部署者
 范围: `mineru-kit` 的定位、子命令和与 `mineru` 的边界
 非目标: 本地文档库、搜索、watch、Agent 默认体验
-底稿: `../../../NEXT-CLI.md`
+来源: 由根目录旧 CLI 底稿迁移整理而来
 
 ## 1. 定位
 
@@ -25,6 +25,7 @@
 | `mineru-kit parse` | 无状态文件/目录批处理解析 | [mineru-kit parse](mineru-kit-parse.md) |
 | `mineru-kit api-server` | 启动兼容统一 API 的本地解析服务 | [mineru-kit api-server](mineru-kit-api-server.md) |
 | `mineru-kit vlm-server` | 本地 VLM 服务，兼容 OpenAI Chat Completions 协议 | [mineru-kit vlm-server](mineru-kit-vlm-server.md) |
+| `mineru-kit router` | 启动路由服务，转发到已有 upstream 或管理本地 worker | 当前继承旧 router 实现 |
 
 ## 3. 与 mineru 的边界
 
@@ -48,7 +49,7 @@
 
 - 只支持文件和目录输入，不支持 stdin、路径列表、URL 输入和递归目录。
 - `--output` 必填。
-- local 模式支持 `tier` 与 `backend`，并使用与 `mineru-kit api-server` 一致的默认 tier 选择策略，但默认不会落到 `flash`。
+- local 模式支持 `tier` 与 `backend`；二者都不传时当前默认使用 `high` 对应 backend。
 - remote 模式支持 `--remote` / `--remote-url` / `--api-key`，允许传 `--tier`，但禁止传 `--backend`。
 
 详细命令契约见 [ADR-0016](../decisions/0016-mineru-kit-parse-command.md)。
@@ -61,3 +62,10 @@
 - 下载完成后默认更新配置文件，不支持 `--no-config` 或自定义配置文件路径。
 
 详细命令契约见 [ADR-0019](../decisions/0019-mineru-kit-models-command.md)。
+
+当前 `mineru-kit router` 已确定：
+
+- 入口参数包括 `--host`、`--port`、`--reload`、`--allow-public-http-client`、`--upstream-url`、`--local-gpus`、`--worker-host`、`--enable-vlm-preload`。
+- `--upstream-url` 可重复，用于接入已有 MinerU FastAPI base URL。
+- `--local-gpus` 支持 `auto`、`none` 或 GPU CSV，例如 `0,1,2`。
+- 当前实现懒加载并转发到旧 router，未知额外参数继续透传到底层实现。

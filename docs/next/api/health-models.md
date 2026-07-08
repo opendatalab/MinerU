@@ -3,7 +3,7 @@
 状态: Draft
 读者: API 使用者、服务端开发者、SDK 开发者
 范围: 服务健康检查、模型发现、解析档位发现
-底稿: `../../../NEXT-API.md`
+来源: 由根目录旧 Unified API 底稿迁移整理而来
 
 ## GET `/v1/health`
 
@@ -145,7 +145,7 @@ Tier 对象字段:
 
 | 字段 | 类型 | 必带 | 说明 |
 |------|------|:--:|------|
-| `id` | string | 是 | `medium` 或 `high`。 |
+| `id` | string | 是 | 当前服务提供的真实质量 tier，例如 `medium` 或 `high`。 |
 | `description` | string | 是 | 档位说明。 |
 | `current_model` | string 或 null | 是 | 当前 tier 背后的模型 ID。 |
 
@@ -198,7 +198,7 @@ Local Parse Server 的 `health` 通常返回:
 | High | `high` |
 | 只有 Flash | 不应把 `flash` 作为用户质量解析 tier；默认选择请求应失败。 |
 
-一个 `mineru-kit api-server` 进程只服务一个 tier。如果用户需要同时提供 `medium` 和 `high`，应启动多个 api-server 进程，并由 doclib 或上层配置分别发现和路由。
+本地或兼容服务应以 `/v1/tiers` 返回值作为能力发现事实。它可以只暴露一个 tier，也可以暴露多个 tier；客户端不应假设具体进程模型。
 
 如果本地 server 支持 `flash`，它可以在内部 watch 或索引机制中使用，但不应出现在面向用户质量解析的默认选择候选中。
 

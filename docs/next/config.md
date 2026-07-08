@@ -4,7 +4,7 @@
 读者: 想了解 doclib / mineru 配置的用户、实现配置能力的核心开发者
 范围: 本地配置、远端配置、解析参数、环境变量和优先级规则
 非目标: 替代 CLI 参数手册；替代部署文档
-底稿: `../../NEXT-CFG.md`
+来源: 配置专题文档仍待继续核对
 
 ## 1. 定位
 
@@ -117,11 +117,11 @@ SDK client 显式参数属于当前调用方传入的请求上下文；当它最
 |-----|--------|------|
 | `parse_server.local.mode` | `disabled` | 本地 parse-server 模式 |
 | `parse_server.local.managed_tier` | `high` | managed 模式启动 tier |
-| `parse_server.remote.url` | `https://mineru.net/api` | 默认远端 API 地址 |
+| `parse_server.remote.url` | 当前代码默认 `https://staging.mineru.org.cn/api` | 默认远端 API 地址；产品正式目标是 `https://mineru.net/api` |
 
 ## 5. Parse-server 配置
 
-parse-server 是 medium/high 解析能力的来源。它可以是本地独立进程，也可以是远端 `mineru.net/api`。
+parse-server 是 `medium` / `high` / `extra_high` 等质量 tier 的解析能力来源。它可以是本地独立进程，也可以是远端 `mineru.net/api` 或当前代码配置的 staging endpoint。
 
 ### 5.1 Local parse-server
 
@@ -136,7 +136,7 @@ parse-server 是 medium/high 解析能力的来源。它可以是本地独立进
 
 | mode | 行为 |
 |------|------|
-| `disabled` | 不使用本地 parse-server；本地 medium/high 请求返回 `no_engine` 或相关错误 |
+| `disabled` | 不使用本地 parse-server；本地质量 tier 请求返回 `no_engine` 或相关错误 |
 | `managed` | doclib 启动和停止时自动管理 parse-server |
 | `self_hosted` | 用户自行启动 parse-server，doclib 只负责连接和探活 |
 
@@ -144,7 +144,7 @@ parse-server 是 medium/high 解析能力的来源。它可以是本地独立进
 
 | key | 默认值 | 说明 |
 |-----|--------|------|
-| `parse_server.remote.url` | `https://mineru.net/api` | 默认远端 API 地址 |
+| `parse_server.remote.url` | 当前代码默认 `https://staging.mineru.org.cn/api` | 默认远端 API 地址；产品正式目标是 `https://mineru.net/api` |
 | `parse_server.remote.api_key` | 无 | 远端 API Key |
 
 远端配置存在不等于允许上传。只有当前请求显式 `--remote`，或 parsing-rule 显式带 remote 语义时，才可以上传文档。
@@ -285,7 +285,7 @@ SDK client 的配置不应在 import 时读取重依赖或启动服务。
 
 - 不包含文档内容、文件名和路径。
 - doclib server 是 P0 唯一 telemetry 上报主体。
-- 首次启动应要求用户选择，默认勾选开启，用户可关闭。
+- 首次启动应要求用户选择，不预选开启或关闭，用户可关闭。
 - parser SDK、`mineru-kit parse`、`mineru-kit api-server` 等纯工具无 telemetry 能力。
 - telemetry 配置存储在 SQLite 中，不使用启动前文件配置。
 - telemetry 聚合数据也存储在 SQLite 中，flush 成功后删除已确认上报的数据。

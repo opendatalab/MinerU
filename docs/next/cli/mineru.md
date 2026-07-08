@@ -4,7 +4,7 @@
 读者: 普通用户、Agent skill 作者、核心开发者
 范围: `mineru` 命令的定位、子命令和本地文档库边界
 非目标: 批处理专家参数；无状态解析工具参数
-底稿: `../../../NEXT-CLI.md`
+来源: 由根目录旧 CLI 底稿迁移整理而来
 
 ## 1. 定位
 
@@ -23,11 +23,19 @@
 |--------|------|------|
 | `mineru parse` | 主动解析单个文档 | [mineru parse](mineru-parse.md) |
 | `mineru read` | 按 locator 继续读取已有解析结果 | [mineru read](mineru-read.md) |
+| `mineru scan` | 一次性扫描文件或目录并刷新 doclib 状态 | [mineru library](mineru-library.md) |
+| `mineru watch` | 管理持续监控目录和 watch rescan | [mineru library](mineru-library.md) |
 | `mineru server` | 管理本地 doclib 服务 | [mineru server](mineru-server.md) |
 | `mineru search` | 搜索本地文档库内容 | [mineru library](mineru-library.md) |
 | `mineru find` | 搜索或定位文件 | [mineru library](mineru-library.md) |
+| `mineru list` | 列出 parses、scans、files、docs | [mineru library](mineru-library.md) |
 | `mineru show` | 查看 file、doc、parse、scan 等资源详情 | [mineru library](mineru-library.md) |
 | `mineru config` | 管理本地配置、watch、rules | [mineru library](mineru-library.md) |
+| `mineru invalidate` | 标记已完成解析结果为 superseded | [mineru library](mineru-library.md) |
+| `mineru forget` | 忘记本地 path 记录，不删除源文件 | [mineru library](mineru-library.md) |
+| `mineru cleanup` | 清理 deleted file、orphan doc 和临时文件 | [mineru library](mineru-library.md) |
+| `mineru telemetry` | 查看、预览、启停和 flush doclib telemetry | [Telemetry 设计](../telemetry.md) |
+| `mineru version` | 输出 MinerU 与 Python 版本 | 本页 |
 
 ## 3. 本地文档库
 

@@ -4,7 +4,7 @@
 读者: 批处理开发者、解析内核开发者
 范围: `mineru-kit parse` 的输入、输出、local/remote 规则和命名约定
 非目标: 本地文档库缓存；Agent 默认渐进式阅读体验；stdin 和路径列表输入
-底稿: `../../../NEXT-CLI.md`
+来源: 由根目录旧 CLI 底稿迁移整理而来
 
 ## 1. 定位
 
@@ -30,6 +30,8 @@ mineru-kit parse <input...> -o <output> [flags]
 | 多文件 | 一次提交多个文件 |
 | 目录 | 展开目录中的可解析文件 |
 
+当前支持的扩展名包括 PDF、常见图片、DOCX、PPTX、XLSX、HTML/HTM。目录输入只展开一层，不递归。
+
 当前不支持：
 
 - `--recursive`
@@ -37,8 +39,6 @@ mineru-kit parse <input...> -o <output> [flags]
 - stdin 文件内容
 - stdin 路径列表
 - 文件列表输入
-
-目录输入只展开一层，不递归。
 
 ## 4. 输出
 
@@ -113,7 +113,7 @@ local 模式支持：
 2. 可以只传 `--backend`
 3. 可以同时传 `--tier` 和 `--backend`
 4. 如果二者不兼容，直接报错
-5. 默认 tier 选择与 `mineru-kit api-server` 一致
+5. `--tier` 与 `--backend` 都不传时，当前默认为 `high`
 6. 默认不会落到 `flash`
 7. `flash` 只能显式指定：
    - `--tier flash`

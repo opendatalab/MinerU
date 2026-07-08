@@ -3,7 +3,7 @@
 状态: Draft
 读者: backend 开发者、render 开发者、SDK 开发者
 范围: Pipeline / VLM / Hybrid / Office / HTML 与当前事实标准的差异、影响和工作项
-底稿: `../../../NEXT-JSON.md`
+来源: 由根目录旧 Middle JSON 底稿迁移整理而来
 
 ## 状态分级
 
@@ -18,7 +18,7 @@
 | 问题 | 当前状态 | 影响 | 下一步 |
 |------|----------|------|--------|
 | typed schema | 已解决 | `PageInfo/Block/Line/Span` 已是事实标准。 | 文档化并增加 validation。 |
-| 顶层 envelope | 未解决 | `pdf_info/_backend`、`pages`、`ParseResult.pages` 并存。 | 定义 canonical envelope。 |
+| 顶层 envelope | 部分解决 | 当前运行时使用 `schema_version + pages`；历史 `pdf_info/_backend` 仍是离线迁移对象。 | 补 canonical `_meta` 与 envelope validator。 |
 | bbox 缺失 | 部分解决 | Office/HTML 使用 `EMPTY_BBOX`，Agent 定位不足。 | 标准化 unknown bbox 语义和补齐策略。 |
 | page_size 缺失 | 部分解决 | Office/HTML 可能为空，structured_content bbox 归一化受影响。 | Office/HTML 明确 page_size 策略。 |
 | index 稳定性 | 部分解决 | reading order 可用，但 Agent locator 不够稳定。 | normalization 阶段重编号。 |
@@ -169,7 +169,7 @@ P0:
 
 1. 定义 canonical envelope。
 2. 实现 validator。
-3. 实现 migration: `pdf_info/_backend` -> envelope。
+3. 设计历史 migration: `pdf_info/_backend` -> envelope。
 4. 实现并锁定 locator。
 5. 修正 `ParseResult.from_dict()` / `from_json()`。
 

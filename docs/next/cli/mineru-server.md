@@ -4,7 +4,7 @@
 读者: 核心开发者、Agent skill 作者、高级 CLI 用户
 范围: `mineru server` 的职责、生命周期、状态和 parse-server 协作
 非目标: parse-server API 字段级定义；Web UI 交互设计
-底稿: `../../../NEXT-CLI.md`
+来源: 由根目录旧 CLI 底稿迁移整理而来
 
 ## 1. 定位
 
@@ -133,7 +133,7 @@ local parse-server 是独立进程，由 `mineru-kit api-server` 提供。doclib
 | `managed` | doclib 启停时自动管理 parse-server |
 | `self_hosted` | 用户自己启动 parse-server，doclib 只连接 URL |
 
-默认选择策略需要通过 local 或 remote parse-server 的能力发现解析为 `medium` 或 `high`。
+默认选择策略需要通过 local 或 remote parse-server 的能力发现解析为可用的非 `flash` tier，例如 `medium`、`high` 或 `extra_high`。
 
 ## 6. 崩溃恢复
 

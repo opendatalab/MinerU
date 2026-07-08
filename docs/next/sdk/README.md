@@ -3,7 +3,7 @@
 状态: Draft
 读者: SDK 开发者、集成方、核心开发者
 范围: SDK 层次、职责、消费者和依赖方向
-底稿: `../../../NEXT-SDK.md`
+来源: 由旧 SDK 底稿迁移整理而来；旧底稿已归档删除
 
 ## 三层模型
 
@@ -13,7 +13,7 @@
 |----|----------|------|------------|
 | Tool SDK | `mineru.parser` | 无状态解析文件，返回 `ParseResult`。 | `mineru-kit parse`、parse-server worker、需要直接嵌入解析能力的开发者 |
 | API-backed Parser | `mineru.parser.MinerUApiParser` | 仍实现 `DocumentParser`，但通过 v1 API 委托解析。 | 需要用同一 parser 接口连接 local parse-server 或 mineru.net 的开发者 |
-| Doclib SDK | `mineru.doclib.client.MineruClient` | 连接本地 doclib，使用缓存、搜索、watch、配置和服务状态能力。 | `mineru` CLI、MCP Server、桌面端、本地自动化 |
+| Doclib SDK | `mineru.doclib.client.DoclibClient` | 连接本地 doclib，使用缓存、搜索、watch、配置和服务状态能力。 | `mineru` CLI、MCP Server、桌面端、本地自动化 |
 
 这三层返回的数据可以共享中间结构和错误模型，但生命周期不同:
 
@@ -69,7 +69,7 @@ mineru doclib
 
 - **Tool SDK**: `mineru.parser`。
 - **API-backed parser**: `MinerUApiParser`。
-- **Doclib SDK**: `MineruClient`。
+- **Doclib SDK**: `DoclibClient`。
 - **parse-server**: 实现 v1 Unified API 的无状态解析服务。
 - **doclib server**: 本地文档库服务，通过 UDS 或 TCP loopback 暴露本地产品能力。
 

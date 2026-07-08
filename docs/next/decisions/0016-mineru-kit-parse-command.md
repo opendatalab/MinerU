@@ -177,6 +177,6 @@ mineru-kit parse <input...> -o <output> [flags]
 
 - 更新 `docs/next/cli/mineru-kit.md`
 - 更新 `docs/next/cli/mineru-kit-parse.md`
-- 更新 `NEXT-CLI.md`
+- 更新 `docs/next/cli/`
 - 更新 `docs/next/open-questions.md`
 - 后续实现 `mineru-kit` 顶层脚本与 `mineru-kit parse` 参数解析

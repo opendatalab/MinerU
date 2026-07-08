@@ -3,7 +3,7 @@
 状态: Draft
 读者: API 使用者、SDK 开发者
 范围: 官方 API 与本地 server 的常见调用流程
-底稿: `../../../NEXT-API.md`
+来源: 由根目录旧 Unified API 底稿迁移整理而来
 
 ## 官方 API: 上传并解析 PDF
 

@@ -4,7 +4,7 @@
 读者: 服务部署者、核心开发者、VLM backend 集成开发者
 范围: `mineru-kit vlm-server` 的定位、协议范围、与 `api-server` 的边界和命令参数
 非目标: 完整 Parse API；通用聊天能力说明；底层 engine 私有参数表
-底稿: `../../../NEXT-CLI.md`
+来源: 由根目录旧 CLI 底稿迁移整理而来
 
 ## 1. 定位
 
@@ -73,11 +73,10 @@
 mineru-kit vlm-server --engine auto
 mineru-kit vlm-server --engine vllm
 mineru-kit vlm-server --engine lmdeploy
-mineru-kit vlm-server --engine sglang
 mineru-kit vlm-server --engine mlx
 ```
 
-`--engine` 决定使用哪类底层 serving engine。
+`--engine` 决定使用哪类底层 serving engine。当前合法值为 `auto`、`vllm`、`lmdeploy`、`mlx`；`auto` 按 vLLM、LMDeploy、MLX-VLM 的顺序选择已安装且可用的 engine。
 
 除统一参数外，其余参数原样透传到底层 engine server。
 

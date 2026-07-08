@@ -3,7 +3,7 @@
 状态: Draft
 读者: SDK 开发者、内容输出开发者、集成方
 范围: `ParseResult` 的职责、输出格式、保存行为和类型稳定性
-底稿: `../../../NEXT-SDK.md`
+来源: 由旧 SDK 底稿迁移整理而来；旧底稿已归档删除
 
 ## 定位
 
@@ -55,8 +55,8 @@ class ParseResult:
 |------|----------|------|
 | `to_dict()` | 已有 | 保持，输出稳定 pages envelope。 |
 | `to_json()` | 已有 | 保持。 |
-| `from_dict()` | TODO | 必须实现，用于 API JSON / 缓存恢复。 |
-| `from_json()` | TODO | 必须实现。 |
+| `from_dict()` | 已有 | 保持，用于 API JSON / 缓存恢复；继续收紧兼容边界。 |
+| `from_json()` | 已有 | 保持。 |
 | `markdown()` | 已有 | 保持，参数名稳定。 |
 | `content_list()` | 已有 | 保持。 |
 | `structured_content()` | 已有 | 保持。 |

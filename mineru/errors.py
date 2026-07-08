@@ -1,4 +1,4 @@
-"""Error definitions for MinerU server and CLI.  Aligned with NEXT-ERROR.md."""
+"""Error definitions for MinerU server and CLI.  Aligned with docs/next/errors.md."""
 
 from __future__ import annotations
 

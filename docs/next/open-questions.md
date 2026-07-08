@@ -23,10 +23,10 @@
 | 规则 | 当前结论 |
 |------|----------|
 | `parse-server` | 最终术语，中文为“解析服务”；此前误写的相关术语不作为项目概念使用。 |
-| 默认选择策略 | 只会解析为 `medium` 或 `high`，永远不会等价于 `flash`。 |
+| 默认选择策略 | 只会解析为可用的非 `flash` 质量 tier；当前顺序为 `extra_high` > `high` > `medium`。 |
 | 实际 tier 记录 | 任务、缓存、产物和 metadata 只记录实际使用的实体 tier，不记录 `requested_tier` / `resolved_tier`。 |
 | `flash` | 长期存在，既是一个解析档位，也是 PDF 快速解析 backend 名称。 |
-| doclib 产物 | `parsed/` 目录只持久化按页组织的 Middle JSON 批次文件；Markdown、Content List、HTML 读取时转换。 |
+| doclib 产物 | `parsed/` 目录持久化按页组织的 Middle JSON 批次文件和必要图片 sidecar；Markdown、Content List、HTML 读取时转换。 |
 | 能力发现 | parse-server 的解析档位发现 endpoint 统一为 `GET /v1/tiers`。 |
 | 搜索结果 tier | search result 应以机器可读字段显式返回索引来源 tier。 |
 | remote fallback | 用户显式允许 remote 后，remote 失败可以 fallback 到 local；local 失败不能自动扩大到 remote。 |
@@ -37,7 +37,7 @@
 | doclib HTTP API | 本地 doclib HTTP API 使用 `/docs`、`/parses`、`/search` 和 `POST /invalidate`，详见 [ADR-0004](decisions/0004-doclib-http-api-resources.md)。 |
 | 本地 `high` | `high` 本地运行是正式支持能力，不是实验能力；当前代码基本 ready。 |
 | mineru.net tier | `mineru.net/api` 在相当长时间内只提供最高等级的 `high` 解析。 |
-| api-server tier | 一个 `mineru-kit api-server` 进程只服务一个 tier。 |
+| api-server tier | `mineru-kit api-server --tier` 可重复；未传时当前暴露 `flash`、`medium`、`high`、`extra_high`。 |
 | managed 生命周期 | managed 模式下，模型下载、预热、重试和退避由 `mineru-kit api-server` 负责。 |
 | 本地 api-server 安全 | 本地 api-server 默认监听 loopback；可通过 `--api-key` 设置固定 API Key，默认不设置。 |
 | P0 主链路 | P0 包含完整 watch、rules、search，不再把它们标为可选主链路。 |
@@ -50,10 +50,10 @@
 | `mineru-kit` 参数稳定性 | 暂不划分 `stable` / `experimental` 等稳定性等级，先保持简单。 |
 | `mineru-kit parse` 输入 | 当前只支持文件和目录输入；不支持 stdin、路径列表、URL 输入和递归目录。 |
 | `mineru-kit parse` 输出 | `--output` 必填；单文件可输出到文件路径或目录路径；多文件只能输出到目录路径；同名冲突直接报错并终止整个批次。 |
-| `mineru-kit parse` local/remote | local 支持 `tier/backend` 并校验兼容；remote 支持 `--remote`/`--remote-url`/`--api-key`，允许传 `tier`，禁止传 `backend`。 |
+| `mineru-kit parse` local/remote | local 支持 `tier/backend` 并校验兼容，二者都不传时默认 `high`；remote 支持 `--remote`/`--remote-url`/`--api-key`，允许传 `tier`，禁止传 `backend`。 |
 | parsing-rules 默认 tier | parsing-rules 允许不指定 tier；执行时必须解析为实体 tier，并只记录实际 tier；默认选择不能解析为 `flash`。 |
 | Telemetry P0 | P0 必须实现 doclib server telemetry 状态、聚合、flush 和 CLI 管理入口；纯工具无 telemetry 能力。 |
-| `mineru parse` 默认页码范围 | 分页文档默认读取 `1~10`。 |
+| `mineru parse` 默认页码范围 | 分页文档默认解析和读取 `1~min(page_count,10)`；该默认由 doclib 读取/解析计划负责，CLI 参数层不硬编码默认 `--pages`。 |
 | 渐进式阅读协议 | Server 返回结构化 `next_request`；CLI marker 只由 `next_request` 渲染，不作为协议源头，详见 [ADR-0013](decisions/0013-doc-content-progressive-reading.md)。 |
 | 非分页文档增量读取 | 非分页长文档通过 `after` cursor 继续读取；当前不为 `mineru parse` 暴露单独的 `--offset` 参数。 |
 | Doc short id | `docs.short_id` 按 SHA256 7 位前缀起步、冲突递增长度、写入后保持稳定，详见 [ADR-0011](decisions/0011-doclib-doc-short-id.md)。 |
@@ -68,15 +68,23 @@
 | doclib schema 稳定边界 | 稳定的是 doclib public models，不是 SQLite 表结构；稳定性分为 `core stable`、`operational stable` 和 `diagnostic / internal`，详见 [ADR-0020](decisions/0020-doclib-schema-stability-boundary.md)。 |
 | `mineru-kit` 对外暴露 | `mineru-kit` 保留为专家工具入口；Agent 默认入口是 `mineru`，skill 不主动暴露 `mineru-kit`。 |
 | Office/HTML unknown bbox | 公共 schema 允许 unknown bbox；不要求 Office/HTML 在 P0 估算真实 bbox，validator 应区分 unknown 与非法 bbox。 |
-| 本地 managed tier 硬件基线 | 本地 managed `medium` / `high` 都要求至少 16GB 总内存；`medium` 不要求 GPU，纯 CPU 可用但可能较慢；`high` 需要满足 NVIDIA / Apple Silicon / MinerU 支持的 AI 加速器条件。详见 [解析 Tier](tiers.md#5-medium)。 |
-| watch tier 升级 | P0 不做基于启发式的自动提示或自动排队升级。watch 默认使用 `flash`；后台自动升级只由用户显式配置的 parsing-rules 触发；用户或 Agent 主动读取时再按默认选择策略解析到 `medium` / `high`。 |
-| Middle JSON `schema_version` | 采用 `pages` 的 Middle JSON 顶层结构必须写 `schema_version`；旧 CLI 落盘 middle_json 也统一为 `schema_version + pages`，不再写入或读取 `pdf_info`，但保留顶层 `_backend` / `_version_name` 作为旧 CLI metadata。当前暂不增加 `_meta`；代码常量定义为 `mineru.schema.middle_json.MIDDLE_JSON_SCHEMA_VERSION`。 |
+| 本地 managed tier 硬件基线 | 本地 managed `medium` / `high` / `extra_high` 都要求至少 16GB 总内存；`medium` 不要求 GPU，纯 CPU 可用但可能较慢；`high` / `extra_high` 需要满足 NVIDIA / Apple Silicon / MinerU 支持的 AI 加速器条件。详见 [解析 Tier](tiers.md#5-medium)。 |
+| watch tier 升级 | P0 不做基于启发式的自动提示或自动排队升级。watch 默认使用 `flash`；后台自动升级只由用户显式配置的 parsing-rules 触发；用户或 Agent 主动读取时再按默认选择策略解析到可用的非 `flash` 质量 tier。 |
+| Middle JSON `schema_version` | 采用 `pages` 的 Middle JSON 顶层结构必须写 `schema_version`；当前运行时不读取 `pdf_info`；历史 `pdf_info` 只作为离线 migration 或重新生成对象。当前暂不增加 `_meta`；`ParseResult.to_dict()` 可能保留顶层 `_backend` 临时 metadata；代码常量定义为 `mineru.schema.middle_json.MIDDLE_JSON_SCHEMA_VERSION`。 |
 
 ## 3. Blocker
 
 | ID | 问题 | 决策产物 | 影响范围 |
 |----|------|----------|----------|
-| OQ-B-004 | CLI exit code、`error.code`、`retryable`、`user_action` 和 trace/request id 的稳定契约。 | 错误码补充规格 | CLI、API、SDK |
+| OQ-B-004 | CLI exit code、`error.code`、`retryable`、`user_action`、trace/request id，以及 `parse_failed` 是否继续拆分为 `parse_oom`、`parse_gpu_error` 等细粒度错误的稳定契约。 | 错误码补充规格 | CLI、API、SDK |
+
+## 4. API
+
+| ID | 问题 | 建议归属 |
+|----|------|----------|
+| OQ-A-001 | `content_list` 与 `structured_content` 在 v1 API 中并存多久，是否需要下线计划，或改由 `schema_version` 表达结构版本。 | Unified API / structured content |
+| OQ-A-002 | 官方 API 计量与计费规则如何定义，是按页、按 token、按文件，还是组合计量。 | Unified API / billing |
+| OQ-A-003 | v1 API 时间字段是否保持当前混合策略：Job/Webhook 使用 ISO-8601，File/Model/Chat 使用 Unix 秒级时间戳；是否需要统一。 | Unified API |
 
 ## 5. CLI 与 Agent 协议
 
@@ -86,15 +94,17 @@
 | OQ-C-002 | `mineru` 与 `mineru-kit` 是否共享同一组选项命名。 | CLI |
 | OQ-C-012 | `mineru server status` 的 JSON schema 是否作为稳定 doclib SDK/API schema 发布。 | CLI / API |
 | OQ-C-013 | 多用户或多项目场景下 UDS 路径是否需要命名空间。 | server 生命周期 |
+| OQ-C-014 | `mineru-kit` 是否增加 `version` 子命令，并与 `mineru version` 的输出字段、`--json` 行为保持一致。 | CLI |
+| OQ-C-015 | `mineru parse -o/--output` 是否改为 CLI 端写文件 fallback，避免 Docker 或远程 server 场景要求 server 访问客户端文件路径。 | CLI / doclib content |
 
 ## 6. SDK
 
 | ID | 问题 | 建议归属 |
 |----|------|----------|
-| OQ-S-001 | 是否将 `MineruClient` 作为 Python Product SDK 的唯一入口。 | Doclib SDK |
-| OQ-S-002 | 是否提供顶层 `mineru.client` 作为 `mineru.doclib.client.MineruClient` 的稳定别名。 | SDK |
-| OQ-S-003 | 是否需要 `AsyncMineruClient`。 | Doclib SDK |
-| OQ-S-004 | `MineruClient.parse(format=...)` 是否改为 `output_format` 并与 v1 API 对齐。 | Doclib SDK |
+| OQ-S-001 | 是否将 `DoclibClient` 作为 Python Product SDK 的唯一入口，还是再提供面向用户的 `MineruClient` 别名。 | Doclib SDK |
+| OQ-S-002 | 是否提供顶层 `mineru.client` 作为 `mineru.doclib.client.DoclibClient` 的稳定别名。 | SDK |
+| OQ-S-003 | 是否需要 `AsyncDoclibClient`。 | Doclib SDK |
+| OQ-S-004 | 是否为 `DoclibClient` 增加高层 `parse(...)` convenience wrapper，以及参数名是否使用 `output_format`。 | Doclib SDK |
 | OQ-S-006 | 是否公开低层 `V1ApiClient`，让开发者直接操作 uploads/jobs/files。 | API SDK |
 | OQ-S-007 | Product SDK 是否只面向 doclib，还是同时提供 cloud API client。 | SDK 分层 |
 | OQ-S-010 | `parse_batch()` 是否需要统一进度回调接口。 | Tool SDK |
@@ -110,6 +120,14 @@
 | OQ-M-002 | `filename` 是否默认写入 Middle JSON envelope。 | Middle JSON envelope |
 | OQ-M-003 | `parsed_at` 是否默认写入；写入会降低跨机器 diff 稳定性。 | Middle JSON envelope |
 | OQ-M-005 | backend-specific block type 的公开枚举、兼容策略和降级策略如何定稿。 | Middle JSON schema |
+| OQ-M-006 | `equation` 与 `interline_equation` 是否合并为同一公开语义，还是保留 span/block 粒度差异。 | Middle JSON schema |
+| OQ-M-007 | `algorithm_caption` 是否应由后端补生产，还是从公开 schema 中删除或降级为普通 caption。 | Middle JSON schema / structured content |
+| OQ-M-008 | `DISCARDED` 是否从 `BlockType` enum 拆出，改为 page-level `discarded_blocks` 或 metadata 状态。 | Middle JSON schema |
+| OQ-M-009 | `index` 目录类型是否作为独立公开 block type，还是收敛到 list/tree item 结构。 | Middle JSON schema / structured content |
+| OQ-M-010 | `_meta.models` 字段粒度如何定义，是按 layout/OCR/formula/table/VLM 细分，还是仅保留 backend/model 汇总。 | Middle JSON envelope |
+| OQ-M-011 | `merge_prev` 与跨页合并状态是否合并为同一公开机制，或继续作为内部 staged metadata。 | Middle JSON schema |
+| OQ-M-012 | 是否发布 canonical JSON Schema 文件 `mineru/schema/middle_json/v1.json`，以及它与 Python dataclass validator 的权威关系。 | Middle JSON schema |
+| OQ-M-013 | 是否实现 `validate_middle_json(data)` 作为 envelope 级校验入口，并规定其 error/warning 稳定格式。 | Middle JSON validator |
 
 ## 8. Roadmap 与评测
 
@@ -120,8 +138,20 @@
 | OQ-R-003 | 解析质量回归框架采用 OmniDocBench，还是另建内部评测集。 | Roadmap / eval |
 | OQ-R-006 | VLM “第一梯队”如何定义 benchmark 和 gap 阈值。 | Roadmap / eval |
 | OQ-R-007 | 对外公开路线图和内部执行路线图是否拆分。 | Roadmap |
+| OQ-R-008 | 非功能性需求如何设定基线，包括 P95 解析时延、并发上限和可靠性 SLO。 | Roadmap / server / eval |
+| OQ-R-009 | 中英文之外的语言支持优先级和排期如何确定。 | Roadmap / model |
+| OQ-R-010 | “文档入口”定位下，用户文档、教程和示例需要投入到什么质量标准。 | Roadmap / docs |
+| OQ-R-011 | AGPL、模型 license 兼容性、Docling / Marker / unstructured 等竞品风险如何持续评估。 | Roadmap / legal / strategy |
+| OQ-R-012 | 与 Docling / Marker / unstructured / PyMuPDF4LLM 的差异化定位是否需要形成公开材料。 | Roadmap / strategy |
 
-## 9. ADR 候选
+## 9. 文档维护
+
+| ID | 问题 | 建议归属 |
+|----|------|----------|
+| OQ-D-001 | `docs/next/middle-json/` 中团队讨论项全部决议后，哪些文档应从 Draft 更新为定稿，以及定稿验收标准是什么。 | Middle JSON docs |
+| OQ-D-002 | `docs/next/architecture.md` 与 `docs/next/config.md` 如何持续同步 doclib 代码变更，包括 SQLite pragmas、config 分层、transport 和产物目录。 | Architecture / config docs |
+
+## 10. ADR 候选
 
 | ID | 主题 | 触发条件 |
 |----|------|----------|

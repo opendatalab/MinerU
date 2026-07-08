@@ -3,7 +3,7 @@
 状态: Draft
 读者: 核心开发者、backend 开发者、SDK 开发者
 范围: Middle JSON 统一工作的阶段、任务、验收和风险
-底稿: `../../../NEXT-JSON.md`
+来源: 由根目录旧 Middle JSON 底稿迁移整理而来
 
 ## 目标
 
@@ -27,33 +27,37 @@
 任务:
 
 1. 定义 canonical envelope。
-2. 实现 `normalize_middle_json()`。
-3. 实现 `ParseResult.from_dict()`。
-4. 实现 `ParseResult.from_json()`。
-5. 兼容三类输入:
-   - `{"schema_version", "pages", "_meta"}`
+2. 已实现 `ParseResult.from_dict()`。
+3. 已实现 `ParseResult.from_json()`。
+4. 已实现 `ParseResult.to_dict()` 输出 `schema_version + pages`。
+5. 待实现 `normalize_middle_json()`。
+6. 当前运行时兼容两类输入:
+   - `{"schema_version", "pages", ...}`
    - `{"pages": [...]}`
-   - `{"pdf_info": [...], "_backend": ...}`
+7. 历史 `{"pdf_info": [...], "_backend": ...}` 只进入离线 migration，不作为当前运行时兼容分支。
 
 验收:
 
-- 旧 CLI middle_json 可以恢复为 `ParseResult`。
 - API `middle_json` output 可以恢复为 `ParseResult`。
-- doclib 缓存 JSON 可以恢复为 `ParseResult`。
+- doclib 当前缓存 JSON 可以恢复为 `ParseResult`。
+- 历史旧 CLI `pdf_info` 产物需要迁移工具或重新生成后再恢复。
 
 ## Phase 2: Validator
 
 任务:
 
-1. 增加 validator。
-2. 增加 ValidationIssue 类型。
-3. 覆盖 P0 校验:
+1. 已增加 `validate_pages()`。
+2. 已增加 `ValidationIssue` 类型。
+3. 已覆盖 P0 页面树校验:
    - page_idx
    - block index/type/bbox
    - line bbox/spans
    - span type/bbox
+4. 待补 envelope-level 校验:
+   - schema_version
+   - pages list
    - page_count
-4. 增加 fixtures。
+5. 增加 fixtures。
 
 验收:
 
@@ -114,7 +118,7 @@
 任务:
 
 1. 为 doclib 缓存结果提供 lazy migration。
-2. 为 CLI 输出提供 migration 命令或自动兼容。
+2. 为历史 `pdf_info` CLI 输出提供 migration 命令或重新生成说明。
 3. 对缺少 sha256 的历史数据给出明确错误或要求调用方提供文件 hash。
 
 验收:
@@ -128,7 +132,7 @@
 | 风险 | 缓解 |
 |------|------|
 | 强行要求 Office bbox 导致大量无效框 | 使用 `bbox_known=false`，先承认 unknown。 |
-| 改 envelope 破坏旧 CLI | `normalize_middle_json()` 兼容旧 `pdf_info`。 |
+| 改 envelope 破坏旧 CLI | 当前运行时只读 `pages`；历史 `pdf_info` 走离线 migration 或重新生成。 |
 | locator 因 index 不稳定而漂移 | 先做 normalization，再生成 locator。 |
 | render 收敛过大 | 分阶段，先 facade，后 type-specific helper。 |
 | filename 泄露隐私 | `_meta.file.filename` 默认可为空。 |
@@ -136,11 +140,10 @@
 ## 首批可执行任务
 
 1. 实现 `normalize_middle_json()`。
-2. 实现 `ParseResult.from_dict()` / `from_json()`。
-3. 增加 validator P0。
-4. 修正 `HtmlParser` 必填字段。
-5. 定义 `bbox_known()` helper。
-6. 定义 `locator_for_block()`。
-7. 给 Pipeline/VLM/Office 各加一个 fixture。
+2. 增加 envelope-level validator。
+3. 修正 `HtmlParser` 必填字段。
+4. 定义 `locator_for_block()`。
+5. 给 Pipeline/VLM/Office 各加一个 fixture。
+6. 设计历史 `pdf_info` 离线 migration。
 
-完成这 7 项后，Middle JSON 就可以支撑 API/SDK 的 `middle_json` output、doclib 缓存恢复和 Agent citation 的第一版闭环。
+完成这些任务后，Middle JSON 就可以支撑 API/SDK 的 `middle_json` output、doclib 缓存恢复和 Agent citation 的第一版闭环。

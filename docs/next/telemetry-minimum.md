@@ -137,7 +137,7 @@ consent_state = unset | enabled | disabled
 
 默认策略:
 
-- 首次选择界面默认勾选开启 telemetry。
+- 首次选择界面不预选开启或关闭。
 - 用户可以关闭。
 - 用户选择结果记录为 `consent_state`。
 - `consent_state=unset` 时，可以写入本地 telemetry 聚合数据，但不能上报。

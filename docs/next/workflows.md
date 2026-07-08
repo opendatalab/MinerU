@@ -12,7 +12,7 @@
 它串联以下专题:
 
 - 术语以 [术语表](glossary.md) 为准。
-- 默认选择 / `flash` / `medium` / `high` 的语义以 [解析 Tier](tiers.md) 为准。
+- 默认选择 / `flash` / `medium` / `high` / `extra_high` 的语义以 [解析 Tier](tiers.md) 为准。
 - doclib、worker、SQLite 和 parse-server 的内部结构以 [系统架构](architecture.md) 为准。
 - CLI 行为以 [CLI 规格](cli.md) 为准。
 - v1 API 行为以 [Unified API](api.md) 为准。
@@ -36,7 +36,7 @@
 | Doclib SDK | 本地文档库 SDK | 连接 doclib server，使用 parse/search/watch/config 能力。 |
 | Tool SDK | 工具 SDK | 进程内直接解析文件，返回 `ParseResult`。 |
 | doclib server | 本地文档库服务 | 入库、缓存、搜索、watch、配置、任务调度。 |
-| parse-server | 解析服务 | 无状态解析服务，提供 v1 Unified API，执行 `medium` / `high`。 |
+| parse-server | 解析服务 | 无状态解析服务，提供 v1 Unified API，执行 `medium` / `high` / `extra_high` 等质量 tier。 |
 | Local Parse Server | 本地解析服务 | 用户可信环境内的 parse-server。 |
 | Remote Parse Server | 远端解析服务 | `mineru.net/api` 或显式配置的远端兼容服务。 |
 | Backend | 解析后端 | 实际解析实现，例如 `flash`、`pipeline`、`vlm`、`hybrid`。 |
@@ -54,7 +54,7 @@
 6. **缓存按内容和 tier 隔离**: 同一 `sha256 + tier` 的解析结果可以复用；不同 tier 的结果不能互相覆盖。
 7. **fallback 不扩大隐私边界**: local 失败不能自动改成 remote；remote 失败可以 fallback 到 local。
 8. **Flash 可长期作为 backend 名称**: `flash` 同时是解析档位，也是快速 CPU PDF 解析 backend。
-9. **doclib 只持久化 JSON**: doclib 的 `parsed/` 目录只保存按页组织的 Middle JSON 批次文件；Markdown、Content List、HTML 等格式读取时从 JSON 快速转换。
+9. **doclib 只持久化基础产物**: doclib 的 `parsed/` 目录保存按页组织的 Middle JSON 批次文件和必要图片 sidecar；Markdown、Content List、HTML 等格式读取时从 JSON 快速转换。
 
 ## 4. 总览流程
 
@@ -68,7 +68,7 @@
   ├─ mineru parse / Agent 主动读取
   │   -> doclib ParseService
   │   -> 查缓存
-  │   -> 默认选择/medium/high/flash 路由
+  │   -> 默认选择/flash/medium/high/extra_high 路由
   │   -> ParseWorker
   │   -> Tool SDK 或 parse-server
   │   -> Middle JSON batch JSON
@@ -186,7 +186,7 @@ watch 默认输出面向系统内部:
 
 - watch 自动产出的 `flash` 结果可以用于搜索和预览；P0 不基于启发式自动提示或自动排队升级。
 - watch 自动产出的 `flash` 结果不能在用户主动阅读时被静默当作最终解析内容返回。
-- 后台自动升级只由用户显式配置的 parsing-rules 触发；如果 parsing-rule 指定 `medium` 或 `high`，必须经过能力检查和隐私检查。
+- 后台自动升级只由用户显式配置的 parsing-rules 触发；如果 parsing-rule 指定质量 tier，必须经过能力检查和隐私检查。
 - parsing-rule 只有显式允许 remote，才可以上传远端。
 
 ### 5.8 Cleanup 边界
@@ -309,6 +309,7 @@ client.parse("report.pdf")
 | `tier=flash` | 显式使用本地 `flash` backend |
 | `tier=medium` | 使用本地或自部署 parse-server 的 `medium` 能力 |
 | `tier=high` | 使用本地 `high` 或 `mineru.net/api` 的 `high` 能力 |
+| `tier=extra_high` | 使用本地或自部署 parse-server 的 `extra_high` 能力 |
 
 结果只需要记录实际使用的 `tier`。如果默认选择最终选择 `high`，产物、缓存和 metadata 使用 `high`。
 
@@ -336,7 +337,7 @@ doclib 不持久化 Markdown、Content List 或 HTML。它们都是 CPU-only 的
 ### 6.7 约束
 
 - 如果只有 `flash` 可用，默认选择应失败，不静默返回 `flash`。
-- 如果本地没有 `medium` / `high` 且未允许 remote，应返回可操作错误。
+- 如果本地没有可用质量 tier 且未允许 remote，应返回可操作错误。
 - 如果缓存中只有 `flash`，主动读取未指定 tier 不能直接命中该缓存。
 - 如果用户显式 `tier=flash`，可以返回 `flash` 缓存或重新解析。
 
@@ -360,7 +361,7 @@ watch -> flash index -> search result -> Agent chooses document -> mineru parse
 4. Agent 选择具体文档。
 5. Agent 发起主动 parse 请求。
 6. 请求未指定 tier 时使用默认选择策略。
-7. doclib 检查是否已有 `medium` 或 `high` 缓存。
+7. doclib 检查是否已有可用质量 tier 缓存。
 8. 如果没有，则创建高优先级 parse 任务。
 9. 解析完成后返回可阅读输出，并写入更高质量索引。
 
@@ -374,7 +375,7 @@ watch -> flash index -> search result -> Agent chooses document -> mineru parse
 | 搜索召回 | `flash` |
 | 搜索 snippet | `flash`，但应可标记来源 tier |
 | Agent 主动阅读 | `medium`，除非显式选择 `flash` |
-| Agent 引用/citation | 应优先来自 `medium` 或 `high` |
+| Agent 引用/citation | 应优先来自质量 tier |
 
 ### 7.4 Agent marker
 
@@ -470,7 +471,7 @@ Tool SDK 是无状态解析工具层:
 
 ### 10.1 产物目录
 
-doclib 解析产物按内容和实际使用的 tier 隔离。`parsed/` 目录下只保存 JSON:
+doclib 解析产物按内容和实际使用的 tier 隔离。`parsed/` 目录下保存 JSON 批次文件和必要图片 sidecar:
 
 ```text
 ~/.mineru/
@@ -486,6 +487,9 @@ doclib 解析产物按内容和实际使用的 tier 隔离。`parsed/` 目录下
             11~20_1710002234000.json
           high/
             1~20_1710003234000.json
+          extra_high/
+            1~20_1710004234000.json
+            images/
 ```
 
 单个 JSON 文件表示一次解析批次，基本形态:
@@ -570,20 +574,21 @@ compaction 不生成 Markdown 或 Content List。
 建议优先级:
 
 ```text
-flash < medium < high
+flash < medium < high < extra_high
 ```
 
 约束:
 
-- `flash` 不应覆盖来自 `medium` 或 `high` 的 metadata。
+- `flash` 不应覆盖来自质量 tier 的 metadata。
 - `medium` 可以覆盖 `flash`。
 - `high` 可以覆盖 `medium` 和 `flash`。
+- `extra_high` 可以覆盖 `high`、`medium` 和 `flash`。
 
 ### 10.6 搜索索引
 
 搜索索引应尽量保留最高可用 tier 的文本。
 
-如果文档先由 `flash` 建索引，后续 `medium` 或 `high` 完成后，应刷新内容索引。
+如果文档先由 `flash` 建索引，后续质量 tier 完成后，应刷新内容索引。
 
 FTS 更新可以在解析完成后临时从 ParseResult 或 Middle JSON 渲染 Markdown 文本；这份 Markdown 只进入搜索索引，不作为 doclib 产物文件保存。
 
@@ -616,7 +621,7 @@ FTS 更新可以在解析完成后临时从 ParseResult 或 Middle JSON 渲染 M
 3. ingest 能写入 `files` / `docs` / 文件名索引。
 4. `flash` backend 能产生基础 Middle JSON pages。
 5. `mineru parse` 能同步入库文件并查缓存。
-6. 默认选择能通过 parse-server 能力发现选择 `medium` 或 `high`。
+6. 默认选择能通过 parse-server 能力发现选择可用质量 tier。
 7. ParseWorker 能按 tier 和 privacy 路由。
 8. 解析产物按 `sha256 + tier + page_range + done_at` 写入 JSON。
 9. 主动阅读不会静默命中 `flash`。
@@ -625,7 +630,7 @@ FTS 更新可以在解析完成后临时从 ParseResult 或 Middle JSON 渲染 M
 ### P0: Agent-native 阅读
 
 1. 搜索结果返回来源 tier。
-2. Agent 主动读取时提升到 `medium` 或 `high`。
+2. Agent 主动读取时提升到可用质量 tier。
 3. 输出支持截断 marker 和下一步 page hint。
 4. Middle JSON 支持稳定 page/block locator。
 5. Markdown 输出可携带可选 locator marker。

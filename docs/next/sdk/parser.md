@@ -3,7 +3,7 @@
 状态: Draft
 读者: SDK 开发者、`mineru-kit` 开发者、核心开发者
 范围: 无状态解析工具层的公开入口、parser 类和目标契约
-底稿: `../../../NEXT-SDK.md`
+来源: 由旧 SDK 底稿迁移整理而来；旧底稿已归档删除
 
 ## 定位
 
@@ -56,7 +56,8 @@ def parse(
     tier: str | None = None,
     backend: str | None = None,
     language: str = "ch",
-    ocr_mode: str | None = None,
+    ocr_mode: str = "auto",
+    effort: str = "high",
     disable_image_analysis: bool = False,
     server_url: str | None = None,
     page_range: str = "",
@@ -69,7 +70,7 @@ async def parse_async(...) -> ParseResult: ...
 
 - `tier` 是面向用户的质量档位。
 - `backend` 是高级参数；显式传入时覆盖 `tier`。
-- `language`、`ocr_mode`、`disable_image_analysis` 与 `mineru-kit api-server` 启动参数保持一致。
+- `language`、`ocr_mode`、`effort`、`disable_image_analysis` 与 `mineru-kit api-server` 启动参数保持一致。
 - `page_range` 使用与 CLI/API 一致的页码表达。
 - `server_url` 只用于需要委托 VLM/remote backend 的情况，不能触发隐式远端上传。
 - 返回值始终是 `ParseResult`。
@@ -120,8 +121,9 @@ class DocumentParser:
 | `flash` | `flash` | 快速 CPU-only。 |
 | `medium` | `hybrid-engine` + `effort="low"` | 消费级硬件可用的本地小模型组合。 |
 | `high` | hybrid 默认高质量 backend | 最高质量。 |
+| `extra_high` | hybrid backend + 更高 effort | 当前代码支持的专家档位，需显式请求。 |
 
-`tier=None` 表示使用默认选择策略，选择可用的最高非 `flash` tier。只有用户显式请求 `tier="flash"` 或 `backend="flash"` 时，才返回 flash 结果。
+`tier=None` 表示使用默认选择策略，选择可用的最高非 `flash` tier。当前默认选择不自动升级到 `extra_high`；只有用户显式请求 `tier="flash"` / `tier="extra_high"` 或对应 backend 时，才返回这些非默认档位结果。
 
 ## 重依赖边界
 

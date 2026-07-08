@@ -3,7 +3,7 @@
 状态: Draft
 读者: SDK 开发者、CLI 开发者、核心开发者
 范围: SDK 层 tier 语义、隐私策略、错误映射和重试建议
-底稿: `../../../NEXT-SDK.md`
+来源: 由旧 SDK 底稿迁移整理而来；旧底稿已归档删除
 
 ## Tier 语义
 
@@ -14,6 +14,7 @@ SDK 层必须使用与产品一致的 tier 语义:
 | `flash` | 用户显式请求快速 CPU-only 解析。不能作为默认选择的回退。 |
 | `medium` | 本地或自部署 parse-server 可用的标准质量解析能力。 |
 | `high` | 当前最高质量解析能力；`mineru.net/api` 长期只提供该 tier。 |
+| `extra_high` | 当前代码支持的更高质量实验/专家档位，映射到 hybrid backend；产品默认选择策略暂不依赖它。 |
 
 完整产品语义见 [解析 Tier](../tiers.md)。
 
@@ -26,6 +27,7 @@ SDK 中未指定 tier，或 Python 调用传 `tier=None` 时，必须遵循:
 | 只有 `medium` | `medium` |
 | 只有 `high` | `high` |
 | 同时发现 `medium` 和 `high` | `high` |
+| 发现 `extra_high` | 只有调用方显式请求时使用，默认选择策略暂不自动升级到它 |
 | 都没有 | 报错 |
 
 默认选择不能变成 `flash`。如果用户想使用 `flash`，必须显式传入 `tier="flash"` 或 `backend="flash"`。
@@ -46,12 +48,13 @@ SDK 中未指定 tier，或 Python 调用传 `tier=None` 时，必须遵循:
 | `flash` | `flash` |
 | `medium` | `hybrid-engine` + `effort="low"` |
 | `high` | hybrid 默认高质量 backend |
+| `extra_high` | hybrid backend + 更高 effort |
 
-`tier=None` 使用默认选择策略，结果为 `high` 或 `medium`。
+`tier=None` 使用默认选择策略，结果为 `high` 或 `medium`；`extra_high` 需要显式请求。
 
 ## Doclib SDK 的 tier 处理
 
-`MineruClient.parse(tier=None)` 表示由 doclib 规则决定:
+`DoclibClient.ensure_parse(ParseRequest(tier=None, ...))` 表示由 doclib 规则决定:
 
 1. 先匹配 parsing rules。
 2. 再使用默认 tier。
@@ -72,7 +75,7 @@ SDK 默认隐私优先:
 |-----|----------|
 | `mineru.parser` | 只解析本地文件，不上传远端。 |
 | `MinerUApiParser` | 调用方显式传入 `api_url`，由调用方承担远端许可语义。 |
-| `MineruClient` | `remote=False`，不得上传到 remote parse-server 或 mineru.net。 |
+| `DoclibClient` | `ParseRequest.remote=False`，不得上传到 remote parse-server 或 mineru.net。 |
 
 只有显式 remote 许可才可以上传用户文件到远端。
 
