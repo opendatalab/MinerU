@@ -91,7 +91,7 @@ mineru parse <file> [flags]
 
 | Flag | 简写 | 类型 | 默认 | 说明 |
 |------|------|------|------|------|
-| `--tier` | — | string | (见下文) | 解析档位: `flash`, `standard`, `pro` |
+| `--tier` | — | string | (见下文) | 解析档位: `flash`, `medium`, `high` |
 | `-p, --pages` | `-p` | string | `1~10` | 页码范围。推荐用 `~` 分隔（如 `1~5,-5~-1`），也支持 `-`（如 `1-5,-5--1`）。`all` 表示全部页 |
 | `--language` | — | string | — | 文档语言提示。部分 tier 设置此参数可改善输出质量。[PDF Only]（逐渐不再推荐使用） |
 | `--force` | — | bool | false | 忽略数据库缓存，强制重新解析 |
@@ -123,25 +123,25 @@ mineru parse <file> [flags]
 | 档位 | 定位 | 对应引擎 | 运行环境 |
 |------|------|---------|---------|
 | `flash` | 极速预览 | 轻量解析引擎（开发中） | 仅本地，仅 CPU |
-| `standard` | 日常使用 | Pipeline（PP-DocLayoutV2 + PaddleOCR + 表格/公式模型） | 本地 / 远端 |
-| `pro` | 高质量 | VLM（MinerU2.5 端到端） | 本地 / 远端 |
+| `medium` | 日常使用 | Pipeline（PP-DocLayoutV2 + PaddleOCR + 表格/公式模型） | 本地 / 远端 |
+| `high` | 高质量 | VLM（MinerU2.5 端到端） | 本地 / 远端 |
 
-> **注意**：更高档位不保证在所有场景下效果更好，但通常 flash 的质量上限低于 standard/pro。
+> **注意**：更高档位不保证在所有场景下效果更好，但通常 flash 的质量上限低于 medium/high。
 
 **默认值规则**：本地模式下，用户启动了哪个 tier 的引擎配置，就默认使用该 tier。远端模式下，不指定 `--tier` 时 CLI 不发送 `tier` 字段，由服务端使用默认选择策略。
 
 **设计约束**：
-- CLI 只暴露三个值：`flash` / `standard` / `pro`。省略 `--tier` 表示使用默认选择策略
+- CLI 只暴露三个值：`flash` / `medium` / `high`。省略 `--tier` 表示使用默认选择策略
 - 档位含义固定，不可通过配置修改映射关系
-- 本地 pro 与远端 pro 效果目标相同
+- 本地 high 与远端 high 效果目标相同
 - 引擎名称不在 `mineru parse` 接口中暴露，用户只需选择档位
 
 **CLI ↔ API 对齐**：
-- `--remote` 模式下，`--tier` 参数直接映射到 API 的 `tier` 字段（值相同：`standard` / `pro`）
+- `--remote` 模式下，`--tier` 参数直接映射到 API 的 `tier` 字段（值相同：`medium` / `high`）
 - 远端模式下，CLI 统一请求 JSON 格式产物，markdown/text/html 由 CLI 本地从 JSON 生成
 - local parse-server 提供与 mineru.net 完全相同的 API（Files/Uploads/Jobs），ParseWorker 根据 `--remote` 选择 base URL
 
-> **团队讨论项**：是否为 `standard` 提供 `core` 作为短别名。
+> **团队讨论项**：是否为 `medium` 提供 `core` 作为短别名。
 
 ## 隐私优先：默认行为决策链
 
@@ -164,7 +164,7 @@ mineru 是一款强调用户隐私的工具。显式调用 `mineru parse` 时，
 **报错输出示例**：
 
 ```
-Error: 本地未检测到 standard/pro 解析引擎。
+Error: 本地未检测到 medium/high 解析引擎。
 
 可选方案：
   1. mineru parse doc.pdf --remote          使用远端解析（文件将上传至 mineru.net）
@@ -238,9 +238,9 @@ $ mineru parse report.pdf --pages 11~20
 $ mineru parse long.docx
 # → 输出第一段内容
 # → marker: <!-- next content available.
-#            Use: mineru parse long.docx --after doc:ab12cd3/tier:standard/page:1/block:12/char:520 -->
+#            Use: mineru parse long.docx --after doc:ab12cd3/tier:medium/page:1/block:12/char:520 -->
 
-$ mineru parse long.docx --after doc:ab12cd3/tier:standard/page:1/block:12/char:520
+$ mineru parse long.docx --after doc:ab12cd3/tier:medium/page:1/block:12/char:520
 # → 输出后续内容
 ```
 
@@ -299,8 +299,8 @@ mineru parse doc.pdf --pages 10~20
 # 使用 flash 档快速预览
 mineru parse doc.pdf --tier flash
 
-# 使用 pro 档高质量解析
-mineru parse doc.pdf --tier pro --pages all -o doc.md
+# 使用 high 档高质量解析
+mineru parse doc.pdf --tier high --pages all -o doc.md
 
 # 远端模式（使用默认 mineru.net）
 mineru parse doc.pdf --remote
@@ -383,23 +383,23 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 `read` 的 continuation 使用 locator：
 
 ```text
-<!-- Next: mineru read doc:ab12cd3/tier:standard/page:5 -->
+<!-- Next: mineru read doc:ab12cd3/tier:medium/page:5 -->
 ```
 
 ## 示例
 
 ```bash
 # 读取某页
-mineru read doc:ab12cd3/tier:standard/page:4
+mineru read doc:ab12cd3/tier:medium/page:4
 
 # 读取某个 block 及其上下文
-mineru read doc:ab12cd3/tier:standard/page:4/block:12 --context 2
+mineru read doc:ab12cd3/tier:medium/page:4/block:12 --context 2
 
 # 导出 page image
-mineru read doc:ab12cd3/tier:standard/page:4 --format image --output page4.jpg
+mineru read doc:ab12cd3/tier:medium/page:4 --format image --output page4.jpg
 
 # JSON 输出
-mineru read doc:ab12cd3/tier:standard/page:4 --json
+mineru read doc:ab12cd3/tier:medium/page:4 --json
 ```
 
 
@@ -517,8 +517,8 @@ mineru watch add /Volumes/SSD --removable
 Parsing-rules 决定**哪些文件在 watch 自动触发时升级到更高 tier 或解析更多页数**：
 
 ```bash
-mineru config parsing-rules add "*/论文/*" --tier standard --pages all
-mineru config parsing-rules add "*/合同/*" --tier pro --remote
+mineru config parsing-rules add "*/论文/*" --tier medium --pages all
+mineru config parsing-rules add "*/合同/*" --tier high --remote
 mineru config parsing-rules list
 mineru config parsing-rules rm <id>
 ```
@@ -529,10 +529,10 @@ mineru config parsing-rules rm <id>
 
 | 规则要求 | 前提条件 | 不满足时 |
 |---------|---------|---------|
-| `--tier standard` | 本地 standard 服务已配置 | 规则不生效，保持 flash |
-| `--tier pro` | 本地 pro 服务已配置 | 规则不生效，保持 flash |
-| `--tier standard --remote` | 允许远端解析 | 使用远端 standard |
-| `--tier pro --remote` | 允许远端解析 | 使用远端 pro |
+| `--tier medium` | 本地 medium 服务已配置 | 规则不生效，保持 flash |
+| `--tier high` | 本地 high 服务已配置 | 规则不生效，保持 flash |
+| `--tier medium --remote` | 允许远端解析 | 使用远端 medium |
+| `--tier high --remote` | 允许远端解析 | 使用远端 high |
 
 **核心原则**：不会因为规则配置而静默上传文件到远端。规则中必须显式包含 `--remote` 才会使用远端解析。
 
@@ -554,15 +554,15 @@ mineru config parsing-rules rm <id>
 ```bash
 mineru search "关键词"                   # 搜索文档内容
 mineru search "关键词" --type pdf         # 限定文件类型
-mineru search "关键词" --tier standard    # 限定索引来源 tier
-mineru search "关键词" --min-tier standard # 限定最低索引来源 tier
+mineru search "关键词" --tier medium    # 限定索引来源 tier
+mineru search "关键词" --min-tier medium # 限定最低索引来源 tier
 mineru search "关键词" --limit 10         # 限制结果数
 mineru search "关键词" --json             # JSON 输出（给 agent）
 ```
 
 搜索结果标注 snippet 来源 tier（agent 可据此判断可信度）：
 - flash 解析：仅搜索到首尾页内容
-- standard/pro 解析：搜索全文内容
+- medium/high 解析：搜索全文内容
 
 搜索结果默认优先返回 active file paths。如果某个已索引 doc 没有任何 active file，则 fallback 返回非 active file paths，避免历史文档完全不可定位。
 
@@ -595,7 +595,7 @@ mineru watch add/list/remove/rescan            # Watch 目录管理
 mineru config exclude add/list/rm              # 排除规则（glob pattern）
 mineru config parsing-rules add/list/rm        # 解析规则
 mineru config parse-server local.mode <mode>   # 本地 parse-server 模式: disabled | managed | self_hosted
-mineru config parse-server local.managed-tier <tier>  # managed 模式 tier: standard | pro
+mineru config parse-server local.managed-tier <tier>  # managed 模式 tier: medium | high
 mineru config parse-server local.self_hosted_url <url>  # self_hosted 模式的 parse-server 地址
 mineru config parse-server local.self-hosted-api-key <key>  # self_hosted 模式的 API Key（可选）
 mineru config parse-server remote.url <url>    # 远程 parse-server 地址（默认 mineru.net）
@@ -607,7 +607,7 @@ mineru config parse-server remote.api-key <key>  # 远程 API Key
 | 配置项 | 默认值 | 说明 |
 |------|------|------|
 | `parse_server.local.mode` | `disabled` | `disabled` — 无本地 parse-server；`managed` — doclib 自动拉起；`self_hosted` — 用户管理 |
-| `parse_server.local.managed_tier` | `standard` | managed 模式启动的 tier |
+| `parse_server.local.managed_tier` | `medium` | managed 模式启动的 tier |
 | `parse_server.local.self_hosted_url` | — | self_hosted 模式的 parse-server HTTP 地址 |
 | `parse_server.local.self_hosted_api_key` | — | self_hosted 模式的 API Key（可选） |
 | `parse_server.remote.url` | `https://mineru.net/api` | 远程 parse-server 地址 |
@@ -633,7 +633,7 @@ config             KV 全局配置
 
 - **File/Doc 分离**：多个路径（备份副本）可指向同一个 doc（SHA-256 去重）
 - **增量解析**：每个 tier 独立追踪已完成 parse batch 的 `page_range` 覆盖范围，互不影响。同一 tier 内只解析未覆盖的页（增量），不同 tier 之间不存在覆盖关系。`--force` 忽略 done cache，但仍可复用 active parse batch
-- **多 tier 结果共存**：同一文件用 flash 解析过，再用 pro 解析，两份结果共存（不覆盖）。搜索索引保留当前最高 tier 的内容，用户可用 `--tier` / `--min-tier` 过滤搜索结果
+- **多 tier 结果共存**：同一文件用 flash 解析过，再用 high 解析，两份结果共存（不覆盖）。搜索索引保留当前最高 tier 的内容，用户可用 `--tier` / `--min-tier` 过滤搜索结果
 - **任务队列**：无实体队列，靠 DB 查询 `WHERE status='pending' AND lock_expired`
 - **锁机制**：时间戳锁，超时自动释放（parse 锁 30 分钟，registration 锁 60 秒）
 - **错误分类**：File 级（路径/权限）、Doc 级（内容损坏/加密）、Parse 级（API 超时/引擎失败）
@@ -650,7 +650,7 @@ config             KV 全局配置
 子命令：
 - mineru-kit models（模型下载、配置查看与校验）
 - mineru-kit parse（单个文件、文件夹的解析）
-- mineru-kit api-server（本地启动的端到端解析服务，实现 NEXT-API.md 规范，提供 standard / pro tier 的解析能力）
+- mineru-kit api-server（本地启动的端到端解析服务，实现 NEXT-API.md 规范，提供 medium / high tier 的解析能力）
 
 mineru-kit parse 替换：
 - mineru -p xxx.pdf -o xxx.md
@@ -737,7 +737,7 @@ mineru doclib（纯 CPU 进程）
   │
   ├─ flash tier → 直接调用 mineru.parser.parse()
   │
-  └─ standard / pro tier → HTTP 调用
+  └─ medium / high tier → HTTP 调用
        ├─ 未指定 --remote → mineru-kit api-server (127.0.0.1:16580)
        └─ 指定 --remote    → config 指定远端或 mineru.net/api
 ```
@@ -749,15 +749,15 @@ mineru doclib（纯 CPU 进程）
 ### Usage
 
 ```bash
-mineru-kit api-server --tier standard --port 16580
-mineru-kit api-server --tier pro --port 15982
-mineru-kit api-server --tier standard --language en --ocr-mode ocr --disable-table
+mineru-kit api-server --tier medium --port 16580
+mineru-kit api-server --tier high --port 15982
+mineru-kit api-server --tier medium --language en --ocr-mode ocr --disable-table
 ```
 
 规则：
 
 - 一个进程只服务一个 tier
-- `--tier` 默认值为 `standard`
+- `--tier` 默认值为 `medium`
 - `--backend` 是高级覆盖参数
 - `--tier` 与 `--backend` 同时出现且不兼容时，启动直接报错
 - 启动后的 HTTP API 不公开 backend；`GET /v1/tiers` 也不新增 backend 字段
@@ -873,7 +873,7 @@ mineru-kit parse a/report.pdf b/report.pdf -o out/
 
 | Flag | 简写 | 类型 | 默认 | 说明 |
 |------|------|------|------|------|
-| `--tier` | — | string | — | 解析档位: `flash`, `standard`, `pro`；默认选择与 `api-server` 一致，但不会默认落到 `flash` |
+| `--tier` | — | string | — | 解析档位: `flash`, `medium`, `high`；默认选择与 `api-server` 一致，但不会默认落到 `flash` |
 | `--backend` | `-b` | string | — | 本地后端；允许与 `--tier` 同时出现，但不兼容时应报错 |
 | `--ocr-mode` | — | string | `auto` | OCR / text extraction mode: `auto`, `txt`, `ocr` |
 | `--disable-image-analysis` | — | bool | false | 禁用图片/图表分析（VLM/hybrid 生效） |
@@ -915,11 +915,11 @@ mineru-kit parse ./invoices/ -o out/
 # 官方远端
 mineru-kit parse doc.pdf -o out/ --remote
 
-# 官方远端，显式要求 pro
-mineru-kit parse doc.pdf -o out/ --remote --tier pro --api-key xxx
+# 官方远端，显式要求 high
+mineru-kit parse doc.pdf -o out/ --remote --tier high --api-key xxx
 
 # 自定义远端
-mineru-kit parse doc.pdf -o out/ --remote-url https://example.com/api --tier standard --api-key xxx
+mineru-kit parse doc.pdf -o out/ --remote-url https://example.com/api --tier medium --api-key xxx
 ```
 
 ### 输出冲突处理

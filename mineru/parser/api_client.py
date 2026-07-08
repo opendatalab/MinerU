@@ -118,7 +118,7 @@ class MinerUApiParser(DocumentParser):
 
     def _output_formats(self) -> list[str]:
         if "staging" in self._base_url:
-            # Staging still exposes the non-standard "json" output instead of middle_json/images.
+            # Staging still exposes the non-official "json" output instead of middle_json/images.
             return ["json"]
         if self.zip_output_only:
             return ["zip"]
@@ -543,7 +543,7 @@ async def _async_download_image_sidecars(parser: MinerUApiParser, outputs: dict[
 
 
 def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any]:
-    # Staging returns output_files.json; the standard local v1 API returns output_files.middle_json.
+    # Staging returns output_files.json; official v1 API returns output_files.middle_json.
     ref = outputs.get("middle_json") or outputs.get("json")
     if not ref:
         available = ", ".join(sorted(outputs)) or "none"
@@ -562,7 +562,7 @@ def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str
 
 
 async def _async_download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any]:
-    # Staging returns output_files.json; the standard local v1 API returns output_files.middle_json.
+    # Staging returns output_files.json; official v1 API returns output_files.middle_json.
     ref = outputs.get("middle_json") or outputs.get("json")
     if not ref:
         available = ", ".join(sorted(outputs)) or "none"

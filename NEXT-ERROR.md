@@ -88,7 +88,7 @@ Server（本地 / 远端）在处理请求时返回的错误。本地 Server 和
 
 | type | code | HTTP | 触发场景 | param |
 |------|------|------|---------|-------|
-| `engine_error` | `quality_tier_unavailable` | 503 | 默认选择或主动阅读场景需要 `standard` / `pro`，但当前只有 `flash` 或没有可用质量 tier | `tier` |
+| `engine_error` | `quality_tier_unavailable` | 503 | 默认选择或主动阅读场景需要 `medium` / `high`，但当前只有 `flash` 或没有可用质量 tier | `tier` |
 | `engine_error` | `no_engine` | 503 | 本地无匹配 tier 的引擎 | `tier` |
 | `engine_error` | `engine_unavailable` | 503 | 引擎进程未启动或崩溃 | — |
 | `engine_error` | `parse_failed` | 500 | 引擎返回的解析错误 | — |
@@ -137,7 +137,7 @@ Server（本地 / 远端）在处理请求时返回的错误。本地 Server 和
   "error": {
     "type": "engine_error",
     "code": "quality_tier_unavailable",
-    "message": "Default tier selection requires standard or pro, but only flash is available. Start a local parse-server, use --remote, or explicitly pass --tier flash.",
+    "message": "Default tier selection requires medium or high, but only flash is available. Start a local parse-server, use --remote, or explicitly pass --tier flash.",
     "param": "tier"
   }
 }
@@ -147,7 +147,7 @@ Server（本地 / 远端）在处理请求时返回的错误。本地 Server 和
   "error": {
     "type": "engine_error",
     "code": "no_engine",
-    "message": "No local engine available for tier 'standard'. Available tiers: flash. Use --remote or --tier flash.",
+    "message": "No local engine available for tier 'medium'. Available tiers: flash. Use --remote or --tier flash.",
     "param": "tier"
   }
 }

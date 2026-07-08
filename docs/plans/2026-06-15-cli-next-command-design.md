@@ -38,8 +38,8 @@ MVP 还在开发阶段，因此本设计不保留旧命令兼容入口。
    - parse-server 相关配置使用 `parse_server.*` key，不再提供 `config parse-server` 快捷命令。
 
 5. **暂不增加内容读取子命令**
-   - 暂不加入 `mineru content <sha256> --tier standard --pages 1~5`。
-   - 暂不加入 `mineru show doc <sha256> --content --tier standard --pages 1~5`。
+   - 暂不加入 `mineru content <sha256> --tier medium --pages 1~5`。
+   - 暂不加入 `mineru show doc <sha256> --content --tier medium --pages 1~5`。
    - 解析内容读取继续由 `mineru parse <file>` 的输出行为承担。
 
 ## 3. 推荐命令树
@@ -66,7 +66,7 @@ MVP 还在开发阶段，因此本设计不保留旧命令兼容入口。
 ### 4.1 发起解析
 
 ```bash
-mineru parse <file> [--tier flash|standard|pro] [--pages <range>] [--format markdown] [--force] [--remote] [--wait <sec>] [--no-wait] [-o <path>] [--json] [-v]
+mineru parse <file> [--tier flash|medium|high] [--pages <range>] [--format markdown] [--force] [--remote] [--wait <sec>] [--no-wait] [-o <path>] [--json] [-v]
 ```
 
 语义：
@@ -81,7 +81,7 @@ mineru parse <file> [--tier flash|standard|pro] [--pages <range>] [--format mark
 ### 4.2 列出解析任务
 
 ```bash
-mineru list parses [--status pending|parsing|done|failed|superseded] [--tier flash|standard|pro] [--limit 50] [--offset 0] [--json]
+mineru list parses [--status pending|parsing|done|failed|superseded] [--tier flash|medium|high] [--limit 50] [--offset 0] [--json]
 ```
 
 说明：
@@ -279,7 +279,7 @@ mineru config parse-server remote.url https://...
 
 ```bash
 mineru config set parse_server.local.mode managed
-mineru config set parse_server.local.managed_tier standard
+mineru config set parse_server.local.managed_tier medium
 mineru config set parse_server.local.self_hosted_url http://127.0.0.1:8000
 mineru config set parse_server.local.self_hosted_api_key <key>
 mineru config set parse_server.remote.url https://mineru.net/api
@@ -350,7 +350,7 @@ MVP 阶段不保留旧 HTTP path 兼容入口，直接把配置子资源从 `/co
 
 ```json
 {
-  "tier": "standard",
+  "tier": "medium",
   "page_range": "1~5",
   "format": "markdown",
   "output": "/absolute/or/server-visible/path.md",
@@ -363,7 +363,7 @@ MVP 阶段不保留旧 HTTP path 兼容入口，直接把配置子资源从 `/co
 ```json
 {
   "sha256": "<sha256>",
-  "tier": "standard",
+  "tier": "medium",
   "output": "/absolute/or/server-visible/path.md"
 }
 ```
@@ -417,8 +417,8 @@ mineru server status [--json]
 暂不设计：
 
 ```bash
-mineru content <sha256> --tier standard --pages 1~5
-mineru show doc <sha256> --content --tier standard --pages 1~5
+mineru content <sha256> --tier medium --pages 1~5
+mineru show doc <sha256> --content --tier medium --pages 1~5
 mineru parse list
 mineru parses ...
 mineru scan list

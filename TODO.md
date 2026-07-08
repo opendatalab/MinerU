@@ -7,7 +7,6 @@
   - 等 middle_json 对齐后，Generate markdown from middle_json 时顺便插入 marker
   - CLI `--no-marker` 开关
 - [ ] **`-o` 文件输出 CLI 端支持** — 当前 server 端写文件，未来需 CLI 端 fallback（Docker/远程场景）
-- [ ] **standard/pro 引擎实际接入** — 当前仅 flash 引擎可用
 - [ ] **`parse()` pages range 字符串重构** — 当前用临时 `_split_ranges` 方案，需改为原生支持 `"1~5,10~15"` 格式
 - [ ] **`--remote` + `--api-key`** — 与 mineru.net/api 集成
 - [ ] **隐私优先决策链** — 根据 NEXT-CLI.md §隐私优先 实现

@@ -247,7 +247,7 @@ mineru
 
 | 能力 | 优先级 | 说明 |
 |------|--------|------|
-| 解析引擎 | P0 | 三档 tier：`flash`（轻量 CPU）/ `standard`（Pipeline）/ `pro`（VLM）。用户通过 `--tier` 选择档位，引擎名不暴露 |
+| 解析引擎 | P0 | 三档 tier：`flash`（轻量 CPU）/ `medium`（Pipeline）/ `high`（VLM）。用户通过 `--tier` 选择档位，引擎名不暴露 |
 | 远程切换 | P0 | `--remote` 一键访问 mineru.net/api |
 | 文档库 | P0 | SQLite + SHA256 去重，Agent-native 缓存的底层依赖 |
 | Server | P0(基础) / P1(完整) | 本地后台进程，提供 Watch / 解析队列 / 搜索索引。P1 阶段扩展 Web UI 和 MCP Server |

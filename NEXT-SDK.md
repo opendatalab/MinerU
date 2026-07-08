@@ -92,7 +92,7 @@ mineru/
 cli_next/mineru_cmd  →  client       →  doclib/  →  parser/  →  backend/
                                                      │
                                                      ├── flash tier: 直接调用
-                                                     └── standard/pro tier: HTTP 调用
+                                                     └── medium/high tier: HTTP 调用
                                                            ├─ mineru-kit api-server (本地)
                                                            └─ mineru.net/api (远程)
 cli_next/kit_cmd     →  parser/      →  backend/
@@ -100,7 +100,7 @@ mineru-kit api-server → parser/api_server.py     →  parser/  →  backend/
 ```
 
 - `mineru-kit` 只依赖 `parser/`，不碰 `client` 和 `doclib/`
-- `mineru` 通过 `client` 与 doclib 通信，doclib 内部调用 `parser/` 做 flash 解析，或通过 HTTP 调用 parse-server 做 standard/pro 解析
+- `mineru` 通过 `client` 与 doclib 通信，doclib 内部调用 `parser/` 做 flash 解析，或通过 HTTP 调用 parse-server 做 medium/high 解析
 - `parser/api_server.py` 是无状态 HTTP 解析服务（`mineru-kit api-server`），与 `doclib/` 完全独立。它实现 NEXT-API.md 的 Files/Uploads/Jobs 端点，被 doclib 的 ParseWorker 通过 HTTP 调用
 - `errors.py`、`constants.py`、`types.py` 是共享基础模块，被各层引用
 
@@ -130,7 +130,7 @@ from mineru.parser import parse, ParseResult, PageInfo, Block, Line, Span
 def parse(
     path: str | Path,
     *,
-    tier: str | None = None,      # flash / standard / pro; None means default selection
+    tier: str | None = None,      # flash / medium / high; None means default selection
     page_range: str | None = None,     # 页码范围，如 "1~5" / "all"
     lang: str = "ch",
     formula: bool = True,
@@ -149,8 +149,8 @@ def parse(
 ```python
 TIER_MAP = {
     "flash": "cpu-extract",
-    "standard": "pipeline",
-    "pro": "hybrid-auto-engine",
+    "medium": "pipeline",
+    "high": "hybrid-auto-engine",
 }
 
 def resolve_engine(tier: str, backend: str | None = None) -> str:

@@ -32,7 +32,7 @@
                                                  └─────────┘
 
 ┌──────────────────────────┐
-│  local parse-server      │  ← 独立进程（可选，仅供 standard / pro tier）
+│  local parse-server      │  ← 独立进程（可选，仅供 medium / high tier）
 │  (mineru-kit api-server) │    实现 NEXT-API.md 的 Files/Uploads/Jobs 端点
 │  FastAPI + GPU 模型      │    由 doclib 探活，ParseWorker 通过 HTTP 调用
 └──────────────────────────┘
@@ -101,11 +101,11 @@ Core（数据层：DB、FTS、文件 IO）
     "local": {
       "mode": "managed",
       "healthy": true,
-      "supported_tiers": ["standard"]
+      "supported_tiers": ["medium"]
     },
     "remote": {
       "healthy": true,
-      "supported_tiers": ["standard", "pro"]
+      "supported_tiers": ["medium", "high"]
     }
   }
 }
@@ -195,7 +195,7 @@ CREATE TABLE docs (
 CREATE TABLE parses (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     sha256      TEXT    NOT NULL REFERENCES docs(sha256),
-    tier        TEXT    NOT NULL,         -- flash / standard / pro
+    tier        TEXT    NOT NULL,         -- flash / medium / high
     page_range  TEXT    NOT NULL,         -- 页码范围，正值已展开，e.g. "1~5,46~50"
     status      TEXT    NOT NULL DEFAULT 'pending',  -- pending / parsing / done / failed
     priority    INTEGER NOT NULL DEFAULT 0,
@@ -302,7 +302,7 @@ CREATE VIRTUAL TABLE fts_contents USING fts5(
 **FTS 更新策略**：保留最高 tier 的内容。
 
 ```python
-TIER_ORDER = {"flash": 0, "standard": 1, "pro": 2}
+TIER_ORDER = {"flash": 0, "medium": 1, "high": 2}
 MAX_FTS_CHARS = 30_000   # 超出则 head+tail 截断（前 15K + 后 15K）
 
 async def update_fts(sha256, text, title, author, filename, tier):
@@ -318,8 +318,8 @@ async def update_fts(sha256, text, title, author, filename, tier):
         (sha256, text, title or "", author or "", filename, tier))
 ```
 
-- flash 先完成 → 写入；standard 后完成 → 覆盖；pro 后完成 → 再覆盖
-- pro 先完成 → 写入；flash 后完成 → 跳过（pro > flash）
+- flash 先完成 → 写入；medium 后完成 → 覆盖；high 后完成 → 再覆盖
+- high 先完成 → 写入；flash 后完成 → 跳过（high > flash）
 - 搜索只查这一张表，完整内容从解析产物文件读取
 
 #### fts_filenames — 文件名搜索
@@ -358,7 +358,7 @@ CREATE TABLE rules (
     name            TEXT,
     rule_type       TEXT    NOT NULL,  -- exclude / parsing_rule
     pattern         TEXT    NOT NULL,  -- fnmatch glob pattern
-    tier            TEXT,              -- parsing_rule: flash / standard / pro
+    tier            TEXT,              -- parsing_rule: flash / medium / high
     page_range      TEXT,              -- parsing_rule: page range, e.g. "all"
     remote          INTEGER NOT NULL DEFAULT 0,  -- parsing_rule: 是否允许远端
     enabled         INTEGER NOT NULL DEFAULT 1,
@@ -419,7 +419,7 @@ INSERT INTO config (key, value) VALUES
 |------|------|--------|
 | WatchLoop | 文件系统事件监控（watchfiles），发现文件变更 | 1 |
 | IngestWorker | 计算 SHA-256、提取 metadata、写入 files/docs、FTS 索引文件名、触发默认 flash 解析 | 2 |
-| ParseWorker | 执行解析任务。按 tier 路由：flash → 直接调用 `mineru.parser`；standard/pro → HTTP 调用 parse-server（本地或 remote，取决于 `privacy`） | 2 |
+| ParseWorker | 执行解析任务。按 tier 路由：flash → 直接调用 `mineru.parser`；medium/high → HTTP 调用 parse-server（本地或 remote，取决于 `privacy`） | 2 |
 | ParseServerHealthCheck | 定期探查 parse-server 健康状态（`GET /tiers`，60s 间隔），结果存内存供 ParseWorker 消费 | 1 |
 | DeviceMonitor | 定期检测 removable watch 路径的可达性 | 1 |
 | Compaction | 合并同一 (sha256, tier) 的 done 批次，减少 parses 表记录数 | 1 |
@@ -478,7 +478,7 @@ RETURNING *;
 
 阶段 2: 解析（ParseWorker）
   - flash tier：提取首尾各 5 页文本，写入 fts_contents
-  - standard/pro tier：按 tier 路由选择执行路径（见 §5.3），完整解析，写入 fts_contents（覆盖 flash 的）
+  - medium/high tier：按 tier 路由选择执行路径（见 §5.3），完整解析，写入 fts_contents（覆盖 flash 的）
 ```
 
 > **设计简化**：everydoc 的 L1 Index（入库 + 预览文本提取）在 MinerU 中被拆为：入库（仅 SHA-256 + metadata）+ flash 解析（首尾页文本）。用户无需理解"索引"和"解析"两个概念——所有内容提取都是 parse，只是 tier 不同。
@@ -505,7 +505,7 @@ Watch 检测到文件事件
 #### 5.3.1 解析请求入队
 
 ```
-用户请求: mineru parse doc.pdf --tier standard --pages 1~10 [--remote]
+用户请求: mineru parse doc.pdf --tier medium --pages 1~10 [--remote]
   → CLI → Product SDK (client.py) → Server POST /parse
   → ParseService.request_parse():
        1. 查 files 表获取 sha256（如果文件未入库，先同步 ingest）
@@ -530,7 +530,7 @@ ParseWorker.acquire_task()
   │   → via = 'local'                                         │
   └────────────────────────────────────────────────────────────┘
 
-  ┌─ standard / pro tier ─────────────────────────────────────┐
+  ┌─ medium / high tier ─────────────────────────────────────┐
   │                                                            │
   │   privacy = 'remote' ?                                     │
   │   ├─ 是 → 目标: config 中的远端地址（默认 mineru.net）     │
@@ -565,7 +565,7 @@ ParseWorker.acquire_task()
 - **`--remote` 优先**：用户一旦指定 `--remote`，即优先使用远程，节省本地算力。远程不可用时 fallback 到本地
 - **privacy 不可变**：解析失败后 re-enqueue，保持原始 `privacy` 值不变。用户选择 remote 意味着接受文档上传，不会因重试改变立场
 - **默认选择不可用时报错**：不静默降级，让用户做决定选择 flash 或 --remote
-- **tier 不匹配时报错**：parse-server 只支持 standard，用户请求 pro → 直接报错，不自动降级
+- **tier 不匹配时报错**：parse-server 只支持 medium，用户请求 high → 直接报错，不自动降级
 - **`parse_failed` 不 fallback**：remote 返回解析失败（非网络错误，如文件损坏、加密）→ 不 fallback 到本地，直接标 failed
 - **缓存键**：`(sha256, tier)`，与 privacy/via 无关——同一 tier 不同来源产出解析结果一致
 - **remote 产物同样入库**：remote 解析完成后，middle_json 和 markdown 和本地解析一样写入 `~/.mineru/doclib/parsed/` 并更新 fts_contents
@@ -624,11 +624,11 @@ managed 模式崩溃恢复：
           flash/
             output.md
             middle.json
-          standard/
+          medium/
             output.md
             middle.json
             images/
-          pro/
+          high/
             output.md
             middle.json
             images/
@@ -646,7 +646,7 @@ managed 模式崩溃恢复：
        4. JOIN files/docs 获取元数据，并按 file_type 过滤
        5. 按 sha256 去重（同一文档可能有多个路径）
        6. paths 优先返回 active files；无 active file 时 fallback 返回非 active files
-       7. 结果标注 snippet 来源 tier（flash / standard / pro）
+       7. 结果标注 snippet 来源 tier（flash / medium / high）
 ```
 
 ### 5.8 可插拔设备
@@ -767,14 +767,14 @@ Server 启动时执行以下恢复操作：
 
 ### 7.3 parse-server 配置
 
-parse-server 是独立的 HTTP 服务进程（`mineru-kit api-server`），提供 standard / pro tier 的解析能力。doclib 通过 HTTP 调用 parse-server 执行解析。
+parse-server 是独立的 HTTP 服务进程（`mineru-kit api-server`），提供 medium / high tier 的解析能力。doclib 通过 HTTP 调用 parse-server 执行解析。
 
 config 表中的 parse-server 配置前缀为 `parse_server.*`：
 
 | key | 默认值 | 说明 |
 |-----|--------|------|
 | `parse_server.local.mode` | `disabled` | 本地 parse-server 模式：`disabled` / `managed` / `self_hosted` |
-| `parse_server.local.managed_tier` | `standard` | managed 模式下启动的 tier：`standard` / `pro` |
+| `parse_server.local.managed_tier` | `medium` | managed 模式下启动的 tier：`medium` / `high` |
 | `parse_server.local.self_hosted_url` | — | self_hosted 模式下 parse-server 的 HTTP 地址 |
 | `parse_server.local.self_hosted_api_key` | — | self_hosted 模式下的 API Key（可选） |
 | `parse_server.remote.url` | `https://mineru.net/api` | 远程 parse-server 地址 |
@@ -784,7 +784,7 @@ config 表中的 parse-server 配置前缀为 `parse_server.*`：
 
 | mode | 行为 |
 |------|------|
-| `disabled` | 不使用本地 parse-server。`privacy=local` + standard/pro tier 请求直接报错 `no_engine` |
+| `disabled` | 不使用本地 parse-server。`privacy=local` + medium/high tier 请求直接报错 `no_engine` |
 | `managed` | doclib 启动时自动拉起 parse-server 进程，停止时一并关闭。生命周期由 doclib 管理 |
 | `self_hosted` | 用户自行启动和管理 parse-server。doclib 启动时不自动拉起，仅通过配置的 URL 连接探活 |
 
@@ -794,7 +794,7 @@ CLI 命令：
 
 ```bash
 mineru config parse-server local.mode managed
-mineru config parse-server local.managed-tier pro
+mineru config parse-server local.managed-tier high
 mineru config parse-server local.self_hosted_url http://10.0.1.5:8080
 mineru config parse-server remote.api-key sk-xxx
 ```
@@ -818,8 +818,8 @@ mineru watch rescan ~/Documents
 通过 `rules` 表管理，使用 `fnmatch` glob 匹配：
 
 ```bash
-mineru config parsing-rules add "*/论文/*" --tier standard --pages all
-mineru config parsing-rules add "*/合同/*" --tier pro --remote
+mineru config parsing-rules add "*/论文/*" --tier medium --pages all
+mineru config parsing-rules add "*/合同/*" --tier high --remote
 mineru config parsing-rules list
 mineru config parsing-rules rm <id>
 ```
@@ -873,7 +873,7 @@ Watch 自动发现以下类型的文件：
                           │         xlsx, html)          │
                           ▼             │                ▼
                      直接读取           ▼           按 tier 解析
-                     (无需解析)    本地全量解析      flash / standard / pro
+                     (无需解析)    本地全量解析      flash / medium / high
                                   (成本低，CPU)
 ```
 
@@ -895,7 +895,7 @@ Watch 自动发现以下类型的文件：
 |---|---------|---------|
 | `fts_contents` | 解析产出的文本 | ≤30K 字符存全文；>30K 取前 15K + 后 15K（对齐段落边界） |
 
-flash 的首尾各 5 页文本通常在 30K 限制内，不会触发截断。standard/pro 的完整解析文档若超出限制，用 head+tail 保留首尾搜索能力。
+flash 的首尾各 5 页文本通常在 30K 限制内，不会触发截断。medium/high 的完整解析文档若超出限制，用 head+tail 保留首尾搜索能力。
 
 同一文档永远只有一行 FTS 记录，无需跨表合并。完整内容从解析产物 markdown 文件中读取。
 
@@ -919,7 +919,7 @@ flash 的首尾各 5 页文本通常在 30K 限制内，不会触发截断。sta
 | `no_engine` | `privacy=local` + parse-server `disabled` + tier 非 flash | 否 |
 | `engine_unavailable` | parse-server 已配置但探活不可用 | 是 |
 | `parse_server_unavailable` | `privacy=remote` 远程不可用，且 local fallback 也不可用 | 是 |
-| `tier_mismatch` | 请求的 tier（如 pro）不被当前 parse-server 支持 | 否 |
+| `tier_mismatch` | 请求的 tier（如 high）不被当前 parse-server 支持 | 否 |
 | `parse_failed` | parse-server 返回解析失败（文档损坏、加密等非网络错误） | 否 |
 | `internal_error` | parse-server 返回 500 内部错误 | 否 |
 
