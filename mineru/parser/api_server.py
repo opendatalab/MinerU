@@ -102,7 +102,6 @@ OutputFormat = Literal[
     "middle_json",
     "content_list",
     "structured_content",
-    "images",
     "html",
     "latex",
     "docx",
@@ -491,13 +490,6 @@ class OutputFileRef(BaseModel):
     bytes: int
 
 
-class ImageOutputRef(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    path: str
-    file_id: str
-    bytes: int
-
-
 class OutputFiles(BaseModel):
     """Per-file output artifacts. Content is downloaded via the Files API."""
 
@@ -510,7 +502,6 @@ class OutputFiles(BaseModel):
     latex: OutputFileRef | None = None
     docx: OutputFileRef | None = None
     zip: OutputFileRef | None = None
-    images: list[ImageOutputRef] | None = None
 
 
 class JobFileResult(BaseModel):
@@ -954,17 +945,6 @@ class FileStore:
         app_state.file_store = self
 
 
-def _store_image_outputs(file_store: FileStore, images: dict[str, bytes]) -> list[ImageOutputRef]:
-    """将最终导出的图片字节写入 FileStore，并返回可下载的图片引用。"""
-    img_refs: list[ImageOutputRef] = []
-    for img_path, img_bytes in images.items():
-        sha = hashlib.sha256(img_bytes).hexdigest()
-        file_store.store_blob(img_bytes, sha256hex=sha)
-        img_fid = file_store.create_file_for_output(pathlib.Path(img_path).name, img_bytes, sha256hex=sha)
-        img_refs.append(ImageOutputRef(path=img_path, file_id=img_fid, bytes=len(img_bytes)))
-    return img_refs
-
-
 def _build_self_contained_zip_output(result: Any, output_stem: str) -> bytes:
     """构建自包含解析 zip，确保只请求 zip 时也能恢复 middle_json、图片和 model_output。"""
     buf = io.BytesIO()
@@ -1039,25 +1019,8 @@ _OUTPUT_FORMATS_LOCAL = {
     "middle_json",
     "content_list",
     "structured_content",
-    "images",
     "zip",
 }
-
-_IMAGE_SIDECAR_FORMATS = frozenset(
-    {
-        "markdown",
-        "middle_json",
-        "content_list",
-        "structured_content",
-        "images",
-    }
-)
-
-
-def _needs_image_outputs(out_formats: set[OutputFormat] | set[str]) -> bool:
-    """判断请求的输出格式是否会暴露 image_path，从而需要返回图片 sidecar。"""
-    return bool(out_formats.intersection(_IMAGE_SIDECAR_FORMATS))
-
 
 @dataclass
 class _JobRecord:
@@ -1360,18 +1323,12 @@ async def _run_job(
                 # collect outputs
                 out_formats = set(rec.output_formats)
                 output_files = OutputFiles()
-                image_output_refs = (
-                    _store_image_outputs(file_store, result.images()) if _needs_image_outputs(out_formats) else None
-                )
-                if image_output_refs is not None:
-                    output_files.images = image_output_refs
 
                 for fmt in (
                     "markdown",
                     "middle_json",
                     "content_list",
                     "structured_content",
-                    "images",
                 ):
                     if fmt not in out_formats:
                         continue
@@ -1400,8 +1357,6 @@ async def _run_job(
                         file_store.store_blob(cl2, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.structured_content.json", cl2, sha256hex=sha)
                         output_files.structured_content = OutputFileRef(file_id=fid, bytes=len(cl2))
-                    elif fmt == "images":
-                        continue
 
                 # zip
                 if "zip" in out_formats:

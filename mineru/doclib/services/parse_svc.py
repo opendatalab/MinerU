@@ -20,6 +20,7 @@ from ...types import TIER_ORDER, PageInfo, Tier
 from ..constants import (
     IMAGE_EXTENSIONS,
     LEGACY_OFFICE_EXTENSION_UPGRADES,
+    OFFICE_EXTENSIONS,
     PARSEABLE_EXTENSIONS,
     TEXT_EXTENSIONS,
     is_office_temp_lock_file,
@@ -1063,6 +1064,7 @@ class ParseService:
             api_url=base_url,
             api_key=api_key,
             tier=resolved_tier,
+            include_images=Path(file_row["path"]).suffix.lower().lstrip(".") in OFFICE_EXTENSIONS,
         )
         result = await parser.parse_async(file_row["path"], page_range=page_range)
         _remap_api_result_pages_to_page_range(result, page_range)

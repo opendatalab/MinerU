@@ -62,16 +62,16 @@ class MinerUApiParser(DocumentParser):
         api_url: str | None = None,
         api_key: str | None = None,
         tier: Tier | None = None,
+        include_images: bool = False,
         include_model_output: bool = False,
-        zip_output_only: bool = False,
     ) -> None:
         self._base_url = (api_url or os.environ.get("MINERU_API_URL") or self.DEFAULT_API_URL).rstrip("/")
         self._api_key = (api_key if api_key is not None else os.environ.get("MINERU_API_KEY")) or None
         self._local = _is_local_network_url(self._base_url)
         self._trust_env = should_trust_env_for_url(self._base_url)
         self.tier = validate_tier(tier) if tier is not None else None
+        self.include_images = include_images
         self.include_model_output = include_model_output
-        self.zip_output_only = zip_output_only
 
     # ── DocumentParser interface ─────────────────────────────────────
 
@@ -117,15 +117,9 @@ class MinerUApiParser(DocumentParser):
         return payload
 
     def _output_formats(self) -> list[str]:
-        if "staging" in self._base_url:
-            # Staging still exposes the non-official "json" output instead of middle_json/images.
-            return ["json"]
-        if self.zip_output_only:
+        if self.include_model_output or self.include_images:
             return ["zip"]
-        formats = ["middle_json", "images"]
-        if self.include_model_output:
-            formats.append("zip")
-        return formats
+        return ["middle_json"]
 
     # ── HTTP helpers ─────────────────────────────────────────────────
 
@@ -321,17 +315,11 @@ def _parse_result_from_job(job: dict[str, Any], file_name: str, parser: MinerUAp
     if files and files[0].get("output_files"):
         outputs = files[0]["output_files"]
 
-    if parser.zip_output_only and "staging" not in parser._base_url:
+    if _uses_zip_output(parser):
         return _parse_result_from_zip_output(parser, outputs, file_name)
 
     mid_json = _download_json(parser, outputs)
     result = _parse_result_from_middle_json(mid_json)
-    images = _download_image_sidecars(parser, outputs)
-    if images or "images" in outputs:
-        result.attach_export_images(images)
-    model_output = _download_model_output_from_zip(parser, outputs, file_name)
-    if model_output is not None:
-        result._model_output = model_output
     return result
 
 
@@ -342,55 +330,21 @@ async def _async_parse_result_from_job(job: dict[str, Any], file_name: str, pars
     if files and files[0].get("output_files"):
         outputs = files[0]["output_files"]
 
-    if parser.zip_output_only and "staging" not in parser._base_url:
+    if _uses_zip_output(parser):
         return _parse_result_from_zip_bytes(
             await _async_download_zip_output(parser, outputs),
             file_name,
+            include_images=parser.include_images,
             include_model_output=parser.include_model_output,
         )
 
     mid_json = await _async_download_json(parser, outputs)
     result = _parse_result_from_middle_json(mid_json)
-    images = await _async_download_image_sidecars(parser, outputs)
-    if images or "images" in outputs:
-        result.attach_export_images(images)
-    model_output = await _async_download_model_output_from_zip(parser, outputs, file_name)
-    if model_output is not None:
-        result._model_output = model_output
     return result
 
 
-def _download_model_output_from_zip(parser: MinerUApiParser, outputs: dict[str, Any], file_name: str) -> Any | None:
-    """按需从 v1 zip 输出中提取原始模型输出；缺少目标文件时保持兼容返回 None。"""
-    if not parser.include_model_output:
-        return None
-    zip_ref = outputs.get("zip")
-    if not isinstance(zip_ref, dict):
-        return None
-    return _extract_model_output_from_zip(_download_bytes(parser, zip_ref), file_name)
-
-
-async def _async_download_model_output_from_zip(
-    parser: MinerUApiParser,
-    outputs: dict[str, Any],
-    file_name: str,
-) -> Any | None:
-    """异步按需下载 v1 zip 并提取原始模型输出；缺少目标文件时保持兼容返回 None。"""
-    if not parser.include_model_output:
-        return None
-    zip_ref = outputs.get("zip")
-    if not isinstance(zip_ref, dict):
-        return None
-    return _extract_model_output_from_zip(await _async_download_bytes(parser, zip_ref), file_name)
-
-
-def _extract_model_output_from_zip(zip_bytes: bytes, file_name: str) -> Any | None:
-    """从 API server zip 中读取 `{stem}_model_output.json`，没有该文件则不影响普通解析。"""
-    try:
-        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
-            return _extract_model_output_from_archive(archive, file_name)
-    except zipfile.BadZipFile as exc:
-        raise _V1APIError("invalid_model_output", "model output zip is not a valid ZIP archive") from exc
+def _uses_zip_output(parser: MinerUApiParser) -> bool:
+    return parser.include_model_output or parser.include_images
 
 
 def _extract_model_output_from_archive(archive: zipfile.ZipFile, file_name: str) -> Any | None:
@@ -428,19 +382,27 @@ def _parse_result_from_zip_output(parser: MinerUApiParser, outputs: dict[str, An
     return _parse_result_from_zip_bytes(
         _download_zip_output(parser, outputs),
         file_name,
+        include_images=parser.include_images,
         include_model_output=parser.include_model_output,
     )
 
 
-def _parse_result_from_zip_bytes(zip_bytes: bytes, file_name: str, *, include_model_output: bool) -> ParseResult:
+def _parse_result_from_zip_bytes(
+    zip_bytes: bytes,
+    file_name: str,
+    *,
+    include_images: bool,
+    include_model_output: bool,
+) -> ParseResult:
     """解析自包含 zip 包：读取 middle_json、图片 sidecar 和可选 model_output。"""
     try:
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
             mid_json = _read_middle_json_from_zip(archive, file_name)
             result = _parse_result_from_middle_json(mid_json)
-            images = _read_image_sidecars_from_zip(archive, mid_json)
-            if images:
-                result.attach_export_images(images)
+            if include_images:
+                images = _read_image_sidecars_from_zip(archive, mid_json)
+                if images:
+                    result.attach_export_images(images)
             if include_model_output:
                 model_output = _extract_model_output_from_archive(archive, file_name)
                 if model_output is not None:
@@ -505,40 +467,6 @@ def _read_image_sidecars_from_zip(archive: zipfile.ZipFile, mid_json: dict[str, 
         safe_image_path = validate_image_sidecar_path(image_path)
         if safe_image_path in archive_names:
             images[safe_image_path] = archive.read(safe_image_path)
-    return images
-
-
-def _download_image_sidecars(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, bytes]:
-    """下载 API 返回的图片 sidecar，并按 middle_json 中的 image_path 建立字节映射。"""
-    images: dict[str, bytes] = {}
-    image_refs = outputs.get("images")
-    if not isinstance(image_refs, list):
-        return images
-    for ref in image_refs:
-        if not isinstance(ref, dict):
-            continue
-        img_path = ref.get("path")
-        if not isinstance(img_path, str) or not img_path:
-            continue
-        safe_img_path = validate_image_sidecar_path(img_path)
-        images[safe_img_path] = _download_bytes(parser, ref)
-    return images
-
-
-async def _async_download_image_sidecars(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, bytes]:
-    """异步下载 API 返回的图片 sidecar，并按 image_path 建立字节映射。"""
-    images: dict[str, bytes] = {}
-    image_refs = outputs.get("images")
-    if not isinstance(image_refs, list):
-        return images
-    for ref in image_refs:
-        if not isinstance(ref, dict):
-            continue
-        img_path = ref.get("path")
-        if not isinstance(img_path, str) or not img_path:
-            continue
-        safe_img_path = validate_image_sidecar_path(img_path)
-        images[safe_img_path] = await _async_download_bytes(parser, ref)
     return images
 
 

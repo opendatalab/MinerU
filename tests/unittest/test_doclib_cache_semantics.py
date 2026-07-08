@@ -3520,6 +3520,68 @@ def test_process_doc_preserves_remote_api_error_code(tmp_path: Path) -> None:
     assert parses[0]["error_msg"] == "Remote authentication failed: user authenticate failed"
 
 
+@pytest.mark.parametrize(
+    ("path", "expected_include_images"),
+    [
+        ("/tmp/doc.docx", True),
+        ("/tmp/doc.pdf", False),
+    ],
+)
+def test_parse_via_api_requests_image_cache_only_for_office(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    path: str,
+    expected_include_images: bool,
+) -> None:
+    calls: list[bool] = []
+    service = ParseService(
+        db=_FakeDB(parses=[], file_row=None),
+        fts=_FakeFTS(),
+        config_svc=None,
+        data_dir=str(tmp_path),
+        parse_lock_timeout_sec=1800,
+    )
+
+    async def _resolve_api_target(_privacy: str, _tier: Tier) -> tuple[str, str | None, str]:
+        return "http://localhost:8000/api", "test-key", "local"
+
+    class _FakeApiParser:
+        def __init__(
+            self,
+            *,
+            api_url: str,
+            api_key: str | None,
+            tier: Tier,
+            include_images: bool = False,
+        ) -> None:
+            assert api_url == "http://localhost:8000/api"
+            assert api_key == "test-key"
+            assert tier == "high"
+            calls.append(include_images)
+
+        async def parse_async(self, _path: str, *, page_range: str = "") -> ParseResult:
+            assert _path == path
+            assert page_range == "1"
+            return ParseResult(pages=[])
+
+    service._resolve_api_target = _resolve_api_target  # type: ignore[method-assign]
+    service._resolve_tier = lambda tier, _via: tier  # type: ignore[method-assign]
+    monkeypatch.setattr("mineru.parser.api_client.MinerUApiParser", _FakeApiParser)
+
+    result, via = asyncio.run(
+        service._parse_via_api(
+            {"path": path},
+            "high",
+            "1",
+            "local",
+        )
+    )
+
+    assert result.pages == []
+    assert via == "local"
+    assert calls == [expected_include_images]
+
+
 def test_process_doc_fails_when_batch_json_cannot_be_written(tmp_path: Path) -> None:
     sha256 = "b" * 64
     task = {

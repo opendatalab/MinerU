@@ -782,6 +782,70 @@ def test_parse_forwards_backend_alias_and_effort(monkeypatch: Any, tmp_path: Pat
     assert seen["effort"] == "high"
 
 
+def test_parse_remote_requests_image_cache(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    output = tmp_path / "out.md"
+    source.write_bytes(b"%PDF-1.7\n")
+    seen: dict[str, Any] = {}
+
+    class _Result:
+        def markdown(self) -> str:
+            return "# demo\n"
+
+        def images(self) -> dict[str, bytes]:
+            return {}
+
+    class _FakeApiParser:
+        def __init__(
+            self,
+            *,
+            api_url: str,
+            api_key: str | None,
+            tier: str | None,
+            include_images: bool,
+        ) -> None:
+            seen["api_url"] = api_url
+            seen["api_key"] = api_key
+            seen["tier"] = tier
+            seen["include_images"] = include_images
+
+        def parse(self, path: Path, *, page_range: str) -> _Result:
+            seen["path"] = path
+            seen["page_range"] = page_range
+            return _Result()
+
+    monkeypatch.setattr(parse, "MinerUApiParser", _FakeApiParser)
+
+    result = runner.invoke(
+        app,
+        [
+            "parse",
+            str(source),
+            "-o",
+            str(output),
+            "--remote-url",
+            "http://localhost:8000/api",
+            "--api-key",
+            "test-key",
+            "--tier",
+            "high",
+            "--pages",
+            "1",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert output.read_text(encoding="utf-8") == "# demo\n"
+    assert seen == {
+        "api_url": "http://localhost:8000/api",
+        "api_key": "test-key",
+        "tier": "high",
+        "include_images": True,
+        "path": source,
+        "page_range": "1",
+    }
+
+
 def test_parse_normalizes_hidden_language_alias(monkeypatch: Any, tmp_path: Path) -> None:
     source = tmp_path / "demo.pdf"
     output = tmp_path / "out.md"
@@ -1046,11 +1110,11 @@ def test_gradio_v1_job_reuses_page_range_for_api_and_origin_pdf(
     calls: dict[str, Any] = {}
 
     class _FakeParser:
-        def __init__(self, *, api_url: str, tier: str, include_model_output: bool, zip_output_only: bool) -> None:
+        def __init__(self, *, api_url: str, tier: str, include_images: bool, include_model_output: bool) -> None:
             calls["parser_api_url"] = api_url
             calls["parser_tier"] = tier
+            calls["include_images"] = include_images
             calls["include_model_output"] = include_model_output
-            calls["zip_output_only"] = zip_output_only
 
         async def parse_async(self, file_path: str, *, page_range: str) -> ParseResult:
             calls["api_page_range"] = page_range
@@ -1084,7 +1148,7 @@ def test_gradio_v1_job_reuses_page_range_for_api_and_origin_pdf(
 
     assert calls["api_page_range"] == "1~2"
     assert calls["include_model_output"] is True
-    assert calls["zip_output_only"] is True
+    assert calls["include_images"] is True
     assert calls["persist_page_range"] == "1~2"
 
 

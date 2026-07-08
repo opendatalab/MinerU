@@ -48,8 +48,8 @@ class MinerUApiParser(DocumentParser):
         api_url: str | None = None,
         api_key: str | None = None,
         tier: str | None = None,
+        include_images: bool = False,
         include_model_output: bool = False,
-        zip_output_only: bool = False,
     ) -> None: ...
 ```
 
@@ -60,8 +60,8 @@ class MinerUApiParser(DocumentParser):
 | `api_url` | v1 API base URL，如 `https://mineru.net/api` 或 `http://127.0.0.1:16580/api`。省略时读取 `MINERU_API_URL`，再退回默认官方 API。 |
 | `api_key` | Bearer token。省略时读取 `MINERU_API_KEY`；Local Parse Server 未启用鉴权时可为空。 |
 | `tier` | `flash`、`medium`、`high`、`extra_high` 或 `None`。`None` 表示 SDK 在 HTTP 请求中省略 `tier`，让 v1 API 使用默认选择策略。 |
-| `include_model_output` | 是否额外请求模型输出 zip。 |
-| `zip_output_only` | 是否只请求 zip 产物。 |
+| `include_images` | 是否从 zip 产物读取图片 sidecar，并挂载到 `ParseResult` 图片缓存。 |
+| `include_model_output` | 是否请求并保留模型原始输出；开启时通过 zip 产物读取。 |
 
 ## 行为流程
 
@@ -71,10 +71,11 @@ class MinerUApiParser(DocumentParser):
 2. 判断 `api_url` 是否是本地地址。
 3. 本地地址优先使用 `local` source。
 4. 非本地地址使用 Uploads API: create upload -> PUT upload_url -> complete upload。
-5. 调用 `POST /v1/parse/jobs`，默认请求 `output_formats:["middle_json","images"]`。
+5. 调用 `POST /v1/parse/jobs`；默认请求 `output_formats:["middle_json"]`，需要模型输出或图片缓存时请求 `["zip"]`。
 6. 如果 job 未完成，则轮询 `GET /v1/parse/jobs/{job_id}`。
-7. 下载 `middle_json` output file。
-8. 将返回的 middle JSON 转为 `ParseResult`。
+7. 普通模式下载 `middle_json` output file；zip 模式下载 `zip` output file。
+8. zip 模式从 zip 中读取 middle JSON，并在 `include_images=True` 时读取 middle JSON 引用的图片 sidecar。
+9. 将 middle JSON 转为 `ParseResult`。
 
 本地 source:
 
@@ -114,14 +115,14 @@ class MinerUApiParser(DocumentParser):
 
 ## 输出格式
 
-默认请求 `middle_json` 和 `images`，因为 `ParseResult` 需要 pages 构造结构化结果，并需要 sidecar 图片供 `images()` / `save()` 使用。
+默认只请求 `middle_json`。如果 `include_images=True` 或 `include_model_output=True`，则请求 `zip`，并从 zip 中恢复 `ParseResult` 所需的 middle JSON。API 不支持把 `images` 作为独立 `output_formats` 请求值。
 
 目标可选参数:
 
 | 参数 | 说明 |
 |------|------|
+| `include_images` | 请求 `zip` 并从其中读取图片 sidecar 到 `ParseResult` 图片缓存。 |
 | `include_model_output` | 请求 `zip` 并尝试保留模型输出。 |
-| `zip_output_only` | 只请求 `zip`。 |
 
 ## 错误映射
 

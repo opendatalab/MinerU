@@ -43,7 +43,7 @@ RESP=$(curl -s -X POST https://mineru.net/api/v1/parse/jobs \
       \"source\": {\"type\":\"file_id\",\"file_id\":\"$FILE_ID\"}
     }],
     \"tier\": \"high\",
-    \"output_formats\": [\"markdown\",\"middle_json\",\"images\"]
+    \"output_formats\": [\"markdown\",\"middle_json\",\"zip\"]
   }")
 ```
 
