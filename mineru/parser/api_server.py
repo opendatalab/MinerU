@@ -456,7 +456,6 @@ class CreateJobRequest(BaseModel):
     files: list[JobFileEntry] = Field(min_length=1)
     tier: Tier | None = None
     output_formats: list[OutputFormat] = ["markdown"]
-    wait: int = Field(default=0, ge=0)
     callback: CallbackConfig | None = None
 
 
@@ -1660,7 +1659,6 @@ async def delete_file(
     response_model=None,
     status_code=status.HTTP_202_ACCEPTED,
     responses={
-        200: {"model": JobAsyncResponse},
         202: {"model": JobAsyncResponse},
         **_ERR_400,
         **_ERR_403,
@@ -1703,16 +1701,6 @@ async def create_job(
                 message=f"Unknown output format: {fmt}",
             )
 
-    # validate wait vs server limit
-    max_wait: int = request.app.state.max_wait
-    if body.wait != 0 and (body.wait < 5 or body.wait > max_wait):
-        _raise_api_error(
-            400,
-            error_type="invalid_request_error",
-            code="invalid_request",
-            message=f"wait must be 0 or [5, {max_wait}]",
-        )
-
     # 按请求 tier 选择启动时预先解析好的 runtime，避免所有 job 共享默认 effort。
     body.tier = body.tier or request.app.state.default_tier
     runtime_options: dict[Tier, ParserRuntimeOptions] = request.app.state.tier_runtime_options
@@ -1732,35 +1720,6 @@ async def create_job(
     ocr_mode_val: str = request.app.state.ocr_mode
     effort_val = runtime.effort
     image_analysis_val: bool = request.app.state.image_analysis
-
-    if body.wait > 0:
-        async with job_store._semaphore:
-            task = asyncio.create_task(
-                _run_job(
-                    rec,
-                    body,
-                    file_store,
-                    server_backend=backend,
-                    language=language_val,
-                    ocr_mode=ocr_mode_val,
-                    effort=effort_val,
-                    image_analysis=image_analysis_val,
-                    url_timeout=url_timeout_val,
-                )
-            )
-            try:
-                await asyncio.wait_for(task, timeout=body.wait)
-            except asyncio.TimeoutError:
-                pass
-        if rec.status in ("completed", "partial"):
-            return JSONResponse(
-                content=job_store.build_response(rec).model_dump(by_alias=True),
-                status_code=200,
-            )
-        return JSONResponse(
-            content=job_store.build_response(rec).model_dump(by_alias=True),
-            status_code=202,
-        )
 
     # async — fire and forget
     async def _bg_run() -> None:
@@ -2029,7 +1988,6 @@ def create_app(
     tier: Tier | list[Tier] | tuple[Tier, ...] | None = None,
     concurrency: int = 1,
     url_timeout: int = 60,
-    max_wait: int = 600,
     api_key: str | None = None,
     language: str = "ch",
     ocr_mode: str = "auto",
@@ -2048,8 +2006,6 @@ def create_app(
         Maximum concurrent parse jobs (default 1).
     url_timeout:
         Timeout in seconds for downloading url sources (default 60).
-    max_wait:
-        Maximum seconds for the ``wait`` parameter (default 300).
     api_key:
         Optional API key.  When set, clients must pass ``Authorization: Bearer <key>``
         to access list endpoints and advanced output formats.
@@ -2089,7 +2045,6 @@ def create_app(
         application.state.tiers = _tiers
         application.state.concurrency = concurrency
         application.state.url_timeout = url_timeout
-        application.state.max_wait = max_wait
         application.state.api_key = _api_key
         application.state.language = language
         application.state.ocr_mode = ocr_mode
@@ -2118,7 +2073,6 @@ def create_app(
     application.state.tiers = _tiers
     application.state.concurrency = concurrency
     application.state.url_timeout = url_timeout
-    application.state.max_wait = max_wait
     application.state.api_key = _api_key
     application.state.language = language
     application.state.ocr_mode = ocr_mode
@@ -2221,12 +2175,6 @@ def create_app(
     help="Timeout in seconds for url source downloads (default: 60)",
 )
 @click.option(
-    "--max-wait",
-    default=600,
-    type=int,
-    help="Maximum seconds for the wait parameter (default: 600)",
-)
-@click.option(
     "--language",
     default="ch",
     type=str,
@@ -2253,7 +2201,6 @@ def main(
     tier: tuple[Tier, ...],
     concurrency: int,
     url_timeout: int,
-    max_wait: int,
     language: str,
     ocr_mode: str,
     disable_image_analysis: bool,
@@ -2266,7 +2213,6 @@ def main(
             tier=tier or None,
             concurrency=concurrency,
             url_timeout=url_timeout,
-            max_wait=max_wait,
             api_key=api_key,
             language=language,
             ocr_mode=ocr_mode,

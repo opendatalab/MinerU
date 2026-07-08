@@ -47,7 +47,11 @@ def parse_command(
     remote: bool = typer.Option(False, "--remote", help="Use mineru.net official remote parse service"),
     remote_url: str | None = typer.Option(None, "--remote-url", help="Use a custom remote parse service URL"),
     api_key: str | None = typer.Option(None, "--api-key", help="API key for remote parse service"),
-    language: str = typer.Option("ch", "--language", help="Hybrid medium OCR language hint; accepted by other efforts for compatibility"),
+    language: str = typer.Option(
+        "ch",
+        "--language",
+        help="Hybrid medium OCR language hint; accepted by other efforts for compatibility",
+    ),
     ocr_mode: str = typer.Option("auto", "--ocr-mode", help="OCR mode: auto, txt, ocr"),
     effort: str = typer.Option(DEFAULT_HYBRID_EFFORT, "--effort", help=HYBRID_EFFORT_HELP),
     disable_image_analysis: bool = typer.Option(False, "--disable-image-analysis", help="Disable image analysis"),
@@ -83,8 +87,11 @@ def api_server_command(
     ),
     concurrency: int = typer.Option(1, "--concurrency", help="Maximum concurrent parse jobs"),
     url_timeout: int = typer.Option(60, "--url-timeout", help="Timeout for URL source downloads"),
-    max_wait: int = typer.Option(600, "--max-wait", help="Maximum seconds for wait parameter"),
-    language: str = typer.Option("ch", "--language", help="Hybrid medium OCR language hint; accepted by other efforts for compatibility"),
+    language: str = typer.Option(
+        "ch",
+        "--language",
+        help="Hybrid medium OCR language hint; accepted by other efforts for compatibility",
+    ),
     ocr_mode: str = typer.Option("auto", "--ocr-mode", help="OCR mode: auto, txt, ocr"),
     disable_image_analysis: bool = typer.Option(False, "--disable-image-analysis", help="Disable image analysis"),
     api_key: str | None = typer.Option(None, "--api-key", help="Optional fixed API key"),
@@ -97,7 +104,6 @@ def api_server_command(
         tier=tier,  # type: ignore[arg-type]
         concurrency=concurrency,
         url_timeout=url_timeout,
-        max_wait=max_wait,
         language=language,
         ocr_mode=ocr_mode,  # type: ignore[arg-type]
         disable_image_analysis=disable_image_analysis,

@@ -236,7 +236,6 @@ class MinerUApiParser(DocumentParser):
             r = cli.post(f"{self._base_url}/v1/parse/jobs", headers=self._headers(), json=payload)
             job = self._check(r)
             if job.get("status") not in _TERMINAL_JOB_STATUSES:
-                # poll if wait timed out
                 job = self._poll(cli, job["job_id"])
         return job
 

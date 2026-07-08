@@ -90,7 +90,6 @@ backend 不是普通 API 协议层字段。
 - `--concurrency`
 - `--upload-dir`
 - `--url-timeout`
-- `--max-wait`
 
 #### 专家参数
 

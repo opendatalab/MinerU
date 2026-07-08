@@ -80,24 +80,6 @@ curl -L "https://mineru.net/api/v1/files/$MD_FILE_ID/content" \
 
 实际客户端应使用指数退避轮询，最大间隔建议 30 秒。
 
-## 官方 API: 同步等待 Markdown
-
-```bash
-curl -X POST https://mineru.net/api/v1/parse/jobs \
-  -H "Authorization: Bearer $MINERU_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"files\": [{
-      \"source\": {\"type\":\"file_id\",\"file_id\":\"$FILE_ID\"}
-    }],
-    \"tier\": null,
-    \"output_formats\": [\"markdown\",\"middle_json\"],
-    \"wait\": 30
-  }"
-```
-
-30 秒内完成时返回 `200`，响应中包含 `output_files` 产物引用。客户端仍通过 `GET /v1/files/{file_id}/content` 获取内容。超时则返回 `202`，客户端继续轮询 `GET /v1/parse/jobs/{job_id}`。
-
 ## 官方 API: URL 来源
 
 ```bash
@@ -143,8 +125,7 @@ curl -X POST http://localhost:8000/api/v1/parse/jobs \
       "source": {"type":"local","path":"/data/docs/report.pdf"}
     }],
     "tier": null,
-    "output_formats": ["markdown"],
-    "wait": 120
+    "output_formats": ["markdown"]
   }'
 ```
 

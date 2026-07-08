@@ -1084,6 +1084,14 @@ def test_create_job_request_accepts_new_format_names_and_rejects_options() -> No
     with pytest.raises(ValidationError):
         CreateJobRequest.model_validate(
             {
+                "files": [{"source": {"type": "local", "path": "/tmp/demo.pdf"}}],
+                "wait": 5,
+            }
+        )
+
+    with pytest.raises(ValidationError):
+        CreateJobRequest.model_validate(
+            {
                 "files": [
                     {
                         "source": {"type": "local", "path": "/tmp/demo.pdf"},
@@ -1159,7 +1167,6 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     monkeypatch.setenv("MINERU_BACKEND", "hybrid-auto-engine")
     monkeypatch.setenv("MINERU_CONCURRENCY", "9")
     monkeypatch.setenv("MINERU_URL_TIMEOUT", "99")
-    monkeypatch.setenv("MINERU_MAX_WAIT", "999")
     monkeypatch.setenv("MINERU_LANGUAGE", "en")
     monkeypatch.setenv("MINERU_OCR_MODE", "ocr")
     monkeypatch.setenv("MINERU_EFFORT", "high")
@@ -1173,7 +1180,6 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     assert app.state.backend == "hybrid-engine"
     assert app.state.concurrency == 1
     assert app.state.url_timeout == 60
-    assert app.state.max_wait == 600
     assert app.state.language == "ch"
     assert app.state.ocr_mode == "auto"
     assert app.state.effort == "high"
@@ -1829,30 +1835,46 @@ def test_api_server_multi_tier_jobs_use_requested_tier_runtime(tmp_path: Path, m
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
     app = create_app(upload_dir=str(tmp_path / "api"), tier=["medium", "high"])
+    file_store = FileStore(tmp_path / "api-files")
+    job_store = api_server.JobStore()
 
-    with TestClient(app) as client:
-        default_response = client.post(
-            "/v1/parse/jobs",
-            json={
+    async def run_request(payload: dict[str, object]) -> dict[str, object]:
+        request = CreateJobRequest.model_validate(payload)
+        request.tier = request.tier or app.state.default_tier
+        runtime = app.state.tier_runtime_options[request.tier]
+        rec = job_store.create(request, file_store)
+        await api_server._run_job(
+            rec,
+            request,
+            file_store,
+            server_backend=runtime.backend,
+            language=app.state.language,
+            ocr_mode=app.state.ocr_mode,
+            effort=runtime.effort,
+            image_analysis=app.state.image_analysis,
+        )
+        return job_store.build_response(rec).model_dump(by_alias=True)
+
+    default_response = asyncio.run(
+        run_request(
+            {
                 "files": [{"source": {"type": "local", "path": str(source)}}],
                 "output_formats": ["middle_json"],
-                "wait": 5,
-            },
+            }
         )
-        medium_response = client.post(
-            "/v1/parse/jobs",
-            json={
+    )
+    medium_response = asyncio.run(
+        run_request(
+            {
                 "files": [{"source": {"type": "local", "path": str(source)}}],
                 "tier": "medium",
                 "output_formats": ["middle_json"],
-                "wait": 5,
-            },
+            }
         )
+    )
 
-    assert default_response.status_code == 200
-    assert default_response.json()["tier"] == "high"
-    assert medium_response.status_code == 200
-    assert medium_response.json()["tier"] == "medium"
+    assert default_response["tier"] == "high"
+    assert medium_response["tier"] == "medium"
     assert [(call["tier"], call["backend"], call["effort"]) for call in calls] == [
         ("high", "hybrid-engine", "high"),
         ("medium", "hybrid-engine", "medium"),
@@ -1872,7 +1894,6 @@ def test_api_server_single_tier_rejects_unavailable_tier(tmp_path: Path, monkeyp
             json={
                 "files": [{"source": {"type": "local", "path": str(source)}}],
                 "tier": "extra_high",
-                "wait": 0,
             },
         )
 
