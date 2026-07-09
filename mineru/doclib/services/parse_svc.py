@@ -331,6 +331,12 @@ class ParseService:
         if existing and existing["status"] == FILE_STATUS_ACTIVE:
             unchanged = existing["mtime_ms"] == stat.mtime_ms and existing["size_bytes"] == stat.size_bytes
             if unchanged:
+                if watch_id is not None and existing["watch_id"] is None:
+                    await self.db.execute(
+                        "UPDATE files SET watch_id=?, updated_at=? WHERE id=? AND watch_id IS NULL",
+                        (watch_id, now, existing["id"]),
+                    )
+                    existing = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE id=?", (existing["id"],)))
                 return FileRefreshResult(file=_file_info(existing), status="known")
 
             await self.db.execute(

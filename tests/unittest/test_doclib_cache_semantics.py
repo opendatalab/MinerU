@@ -2128,6 +2128,41 @@ def test_watch_scan_refreshes_known_active_paths_before_walk(tmp_path: Path) -> 
     asyncio.run(_run())
 
 
+def test_watch_scan_binds_unchanged_existing_file_to_watch(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        config_svc = ConfigService(db)
+        fts = FTSManager(db)
+        parse_svc = ParseService(
+            db=db, fts=fts, config_svc=config_svc, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
+        scan_svc = ScanService(db=db, config_svc=config_svc, parse_svc=parse_svc, scan_lock_timeout_sec=1800)
+        root = tmp_path / "watched"
+        root.mkdir()
+        source = root / "note.txt"
+        source.write_text("content", encoding="utf-8")
+
+        initial = await parse_svc.refresh_file(str(source))
+        watch = await config_svc.add_watch(str(root), removable=False)
+        scan = await scan_svc.create_scan(str(root), kind="watch", source="cli", watch_id=watch["id"])
+        task = await scan_svc.acquire_task()
+
+        assert initial.status == "new"
+        assert task is not None
+        assert task["id"] == scan.id
+        assert await scan_svc.process_scan(task) is True
+
+        row = await db.fetchone("SELECT watch_id, status FROM files WHERE path=?", (str(source),))
+        done = await scan_svc.get_scan(scan.id)
+
+        assert row == {"watch_id": watch["id"], "status": "active"}
+        assert done.files_seen == 1
+        assert done.files_refreshed == 1
+
+    asyncio.run(_run())
+
+
 def test_watch_scan_marks_root_unreachable_without_refreshing_all_files(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
