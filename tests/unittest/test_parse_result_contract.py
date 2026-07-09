@@ -5,7 +5,7 @@ import json
 import pytest
 
 from mineru.parser.base import ParseResult
-from mineru.schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
+from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
 from mineru.types import Block, ContentType, Line, PageInfo, Span
 from mineru.utils.image_payload import ImagePayloadCache
 

@@ -9,11 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from ..render import render_content_list, render_markdown, render_structured_content
-from ..schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
 from ..types import PageInfo
 from ..utils.image_payload import ImagePayloadCache
 from ..utils.pdf_document import PDFDocument
 
+MIDDLE_JSON_SCHEMA_VERSION: str = "1.0"
 _PDF_RETAINED_PAGE_INDICES_KEY = "_pdf_retained_page_indices"
 _PDF_BROKEN_PAGE_INDICES_KEY = "_pdf_broken_page_indices"
 _SUPPORTED_MIDDLE_JSON_BACKENDS = {"hybrid", "office"}

@@ -54,7 +54,7 @@ from mineru.errors import InvalidRequestError, MineruError, NotFoundError
 from mineru.parser import backend_for_tier, resolve_tier_and_backend
 from mineru.parser.api_client import _V1APIError
 from mineru.parser.base import ParseResult
-from mineru.schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
+from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
 from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span, Tier
 from mineru.utils.image_payload import ImagePayloadCache
 

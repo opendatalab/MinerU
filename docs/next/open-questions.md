@@ -70,7 +70,7 @@
 | Office/HTML unknown bbox | 公共 schema 允许 unknown bbox；不要求 Office/HTML 在 P0 估算真实 bbox，validator 应区分 unknown 与非法 bbox。 |
 | 本地 managed tier 硬件基线 | 本地 managed `medium` / `high` / `extra_high` 都要求至少 16GB 总内存；`medium` 不要求 GPU，纯 CPU 可用但可能较慢；`high` / `extra_high` 需要满足 NVIDIA / Apple Silicon / MinerU 支持的 AI 加速器条件。详见 [解析 Tier](tiers.md#5-medium)。 |
 | watch tier 升级 | P0 不做基于启发式的自动提示或自动排队升级。watch 默认使用 `flash`；后台自动升级只由用户显式配置的 parsing-rules 触发；用户或 Agent 主动读取时再按默认选择策略解析到可用的非 `flash` 质量 tier。 |
-| Middle JSON `schema_version` | 采用 `pages` 的 Middle JSON 顶层结构必须写 `schema_version`；当前运行时不读取 `pdf_info`；历史 `pdf_info` 只作为离线 migration 或重新生成对象。当前暂不增加 `_meta`；`ParseResult.to_dict()` 可能保留顶层 `_backend` 临时 metadata；代码常量定义为 `mineru.schema.middle_json.MIDDLE_JSON_SCHEMA_VERSION`。 |
+| Middle JSON `schema_version` | 采用 `pages` 的 Middle JSON 顶层结构必须写 `schema_version`；当前运行时不读取 `pdf_info`；历史 `pdf_info` 只作为离线 migration 或重新生成对象。当前暂不增加 `_meta`；`ParseResult.to_dict()` 可能保留顶层 `_backend` 临时 metadata；代码常量定义为 `mineru.parser.MIDDLE_JSON_SCHEMA_VERSION`。 |
 
 ## 3. Blocker
 
@@ -126,7 +126,7 @@
 | OQ-M-009 | `index` 目录类型是否作为独立公开 block type，还是收敛到 list/tree item 结构。 | Middle JSON schema / structured content |
 | OQ-M-010 | `_meta.models` 字段粒度如何定义，是按 layout/OCR/formula/table/VLM 细分，还是仅保留 backend/model 汇总。 | Middle JSON envelope |
 | OQ-M-011 | `merge_prev` 与跨页合并状态是否合并为同一公开机制，或继续作为内部 staged metadata。 | Middle JSON schema |
-| OQ-M-012 | 是否发布 canonical JSON Schema 文件 `mineru/schema/middle_json/v1.json`，以及它与 Python dataclass validator 的权威关系。 | Middle JSON schema |
+| OQ-M-012 | 是否发布 canonical JSON Schema 文件，以及它与未来 Python dataclass validator 的权威关系和存放路径。 | Middle JSON schema |
 | OQ-M-013 | 是否实现 `validate_middle_json(data)` 作为 envelope 级校验入口，并规定其 error/warning 稳定格式。 | Middle JSON validator |
 
 ## 8. Roadmap 与评测

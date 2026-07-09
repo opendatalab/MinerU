@@ -46,9 +46,9 @@
 
 任务:
 
-1. 已增加 `validate_pages()`。
-2. 已增加 `ValidationIssue` 类型。
-3. 已覆盖 P0 页面树校验:
+1. 生产代码暂不提供 validator API。
+2. 单测中保留 `validate_pages()` 与 `ValidationIssue` 作为 test-local helper。
+3. 单测已覆盖 P0 页面树校验:
    - page_idx
    - block index/type/bbox
    - line bbox/spans

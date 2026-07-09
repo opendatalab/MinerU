@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ..types import Tier
 from .api_client import MinerUApiParser
-from .base import DocumentParser, ParseResult
+from .base import MIDDLE_JSON_SCHEMA_VERSION, DocumentParser, ParseResult
 from .html import HtmlParser
 from .office import DocxParser, PptxParser, XlsxParser
 from .pdf import PdfFlashParser, PdfHybridParser, PdfPipelineParser, PdfVlmParser
@@ -19,6 +19,7 @@ __all__ = [
     "DocxParser",
     "HtmlParser",
     "MinerUApiParser",
+    "MIDDLE_JSON_SCHEMA_VERSION",
     "ParseResult",
     "PdfFlashParser",
     "PdfHybridParser",

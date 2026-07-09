@@ -10,7 +10,7 @@ import time
 from collections.abc import Sequence
 from typing import cast
 
-from ...schema.middle_json import MIDDLE_JSON_SCHEMA_VERSION
+from ...parser import MIDDLE_JSON_SCHEMA_VERSION
 from ...types import Tier
 from ..core.db import DatabaseManager
 from ..rows import ParseBatchRow, ParseGroupRow, ParseRow
@@ -167,6 +167,7 @@ class Compaction:
             json_path = parse_batch_json_path(self.data_dir, sha256, tier, page_range, max_done_at)
             try:
                 with open(json_path, "w", encoding="utf-8") as f:
-                    json.dump({"schema_version": MIDDLE_JSON_SCHEMA_VERSION, "pages": json_pages}, f, ensure_ascii=False, indent=4)
+                    payload = {"schema_version": MIDDLE_JSON_SCHEMA_VERSION, "pages": json_pages}
+                    json.dump(payload, f, ensure_ascii=False, indent=4)
             except Exception:
                 pass

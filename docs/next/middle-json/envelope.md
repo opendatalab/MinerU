@@ -47,7 +47,7 @@
 - 当前 `ParseResult.to_dict()` 保留 `schema_version` 和 `pages`；当所有 page backend 一致时保留顶层 `_backend` 作为临时兼容 metadata。
 - `_meta.backend` 取代长期依赖 `PageInfo._backend`。
 - `schema_version` 放在顶层，便于快速判断 migration。
-- 代码常量定义为 `mineru.schema.middle_json.MIDDLE_JSON_SCHEMA_VERSION`，由 normalize、validate、writer 和 exporter 统一引用。
+- 代码常量定义为 `mineru.parser.MIDDLE_JSON_SCHEMA_VERSION`，由 normalize、validate、writer 和 exporter 统一引用。
 - 当前 P0 写出路径只增加 `schema_version`，不新增 `_meta`；`_meta` 由后续 canonical envelope migration / writer 引入。
 
 ## 字段
@@ -179,10 +179,10 @@ def normalize_middle_json(
 
 ## Validator
 
-当前已实现 API:
+当前生产代码不提供 envelope validator API；页面树校验逻辑仅保留在单测中作为 test-local helper。
 
 ```python
-from mineru.schema.middle_json import validate_pages
+from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
 ```
 
 目标 envelope API:

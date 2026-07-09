@@ -349,13 +349,12 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 建议修改范围:
 
-- `mineru/schema/`
 - `mineru/parser/base.py`
 - `tests/...`
 
 具体步骤:
 
-1. 在 `mineru/schema/middle_json/` 中复用 `MIDDLE_JSON_SCHEMA_VERSION`，并定义 `normalize_middle_json(payload, *, backend=None, tier=None, sha256=None)`。
+1. 在 parser 层复用 `mineru.parser.MIDDLE_JSON_SCHEMA_VERSION`，并定义 `normalize_middle_json(payload, *, backend=None, tier=None, sha256=None)`。
 2. 如果 payload 已有 `schema_version` 和 `pages`，直接接受；`_meta` 在当前 P0 写出结构中可缺省。
 3. 如果 payload 是 `{"pages": [...]}`，包装成 canonical envelope。
 4. 如果 payload 是 `{"pdf_info": [...]}`，迁移为 `pages`。
@@ -400,7 +399,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 建议修改范围:
 
-- `mineru/schema/`
+- validator 生产入口位置待定
 - `tests/...`
 
 具体步骤:
@@ -498,7 +497,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 建议修改范围:
 
-- `mineru/types.py` 或 `mineru/schema/`
+- `mineru/types.py` 或未来 validator 模块
 - `tests/...`
 
 具体步骤:
