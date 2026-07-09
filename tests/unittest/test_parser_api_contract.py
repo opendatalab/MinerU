@@ -486,7 +486,7 @@ def test_api_client_reads_image_cache_from_zip_and_preserves_pdf_mapping(monkeyp
     zip_ref = {"file_id": "file-zip", "bytes": 10}
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("demo.middle_json", json.dumps(middle_json, ensure_ascii=False))
+        archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
         archive.writestr("images/chart.png", b"chart-bytes")
 
     monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"")
@@ -515,9 +515,9 @@ def test_api_client_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPa
     zip_ref = {"file_id": "file-zip", "bytes": 10}
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("demo.middle_json", json.dumps(middle_json, ensure_ascii=False))
+        archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
         archive.writestr(
-            "demo_model_output.json",
+            "model_output.json",
             json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4),
         )
 
@@ -540,6 +540,60 @@ def test_api_client_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPa
     assert result._model_output == [[{"raw": "model"}]]
 
 
+def test_api_client_reads_staging_layout_json_and_model_output_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(
+        api_url="https://staging.mineru.org.cn/api",
+        tier="high",
+        include_images=True,
+        include_model_output=True,
+    )
+    zip_ref = {"file_id": "file-zip", "bytes": 10}
+    middle_json = {
+        "_backend": "hybrid",
+        "pdf_info": [
+            {
+                "page_idx": 0,
+                "page_size": [100, 200],
+                "para_blocks": [
+                    {
+                        "index": 0,
+                        "type": "image",
+                        "bbox": [0, 0, 10, 10],
+                        "lines": [
+                            {
+                                "bbox": [0, 0, 10, 10],
+                                "spans": [{"type": "image", "bbox": [0, 0, 10, 10], "image_path": "chart.png"}],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("layout.json", json.dumps(middle_json, ensure_ascii=False))
+        archive.writestr("images/chart.png", b"chart-bytes")
+        archive.writestr("ab3a55b0-2017-4e35-8507-ab8e2c012160_model.json", json.dumps([[{"raw": "model"}]]))
+
+    monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"")
+
+    result = _parse_result_from_job(
+        {
+            "job_id": "job_1",
+            "status": "completed",
+            "files": [{"output_files": {"zip": zip_ref}}],
+        },
+        "demo.pdf",
+        parser,
+    )
+
+    assert len(result.pages) == 1
+    assert result.pages[0]._backend == "hybrid"
+    assert result.images() == {"chart.png": b"chart-bytes"}
+    assert result._model_output == [[{"raw": "model"}]]
+
+
 def test_api_client_async_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="high", include_model_output=True)
     middle_json = {
@@ -549,9 +603,9 @@ def test_api_client_async_downloads_model_output_from_zip(monkeypatch: pytest.Mo
     zip_ref = {"file_id": "file-zip", "bytes": 10}
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("demo.middle_json", json.dumps(middle_json, ensure_ascii=False))
+        archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
         archive.writestr(
-            "demo_model_output.json",
+            "model_output.json",
             json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4),
         )
 
@@ -594,9 +648,9 @@ def test_api_client_include_images_downloads_single_zip(monkeypatch: pytest.Monk
     )
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("demo.middle_json", json.dumps(ParseResult(pages=[page]).to_dict(), ensure_ascii=False))
+        archive.writestr("middle_json.json", json.dumps(ParseResult(pages=[page]).to_dict(), ensure_ascii=False))
         archive.writestr("images/chart.png", b"chart-bytes")
-        archive.writestr("demo_model_output.json", json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4))
+        archive.writestr("model_output.json", json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4))
     download_calls: list[dict[str, object]] = []
 
     def fake_download_bytes(_parser: object, ref: dict[str, object]) -> bytes:
@@ -653,9 +707,9 @@ def test_api_client_does_not_read_image_cache_from_zip_unless_requested(monkeypa
     }
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("demo.middle_json", json.dumps(middle_json, ensure_ascii=False))
+        archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
         archive.writestr("images/chart.png", b"chart-bytes")
-        archive.writestr("demo_model_output.json", json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4))
+        archive.writestr("model_output.json", json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4))
 
     monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"")
 
@@ -684,10 +738,10 @@ def test_api_client_async_include_images_downloads_single_zip(monkeypatch: pytes
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(
-            "demo.middle_json",
+            "middle_json.json",
             json.dumps({"schema_version": "1.0.0", "pages": [{"page_idx": 2, "page_size": [100, 200]}]}),
         )
-        archive.writestr("demo_model_output.json", json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4))
+        archive.writestr("model_output.json", json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4))
     download_calls: list[dict[str, object]] = []
 
     async def fake_download_bytes(_parser: object, ref: dict[str, object]) -> bytes:
@@ -743,7 +797,7 @@ def test_api_client_include_images_rejects_unsafe_image_entries(monkeypatch: pyt
     }
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("demo.middle_json", json.dumps(middle_json, ensure_ascii=False))
+        archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
 
     monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"")
 
@@ -759,7 +813,7 @@ def test_api_client_include_images_rejects_unsafe_image_entries(monkeypatch: pyt
         )
 
 
-def test_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="high")
     middle_json = {
         "_backend": "hybrid",
@@ -773,7 +827,7 @@ def test_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.MonkeyPatch
         {
             "job_id": "job_1",
             "status": "completed",
-            "files": [{"output_files": {"json": {"file_id": "file-json", "bytes": 10}}}],
+            "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
         },
         "demo.pdf",
         parser,
@@ -785,7 +839,7 @@ def test_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.MonkeyPatch
     assert result.pages[0]._backend == "hybrid"
 
 
-def test_async_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_async_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="high")
     middle_json = {
         "_backend": "hybrid",
@@ -802,7 +856,7 @@ def test_async_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.Monke
             {
                 "job_id": "job_1",
                 "status": "completed",
-                "files": [{"output_files": {"json": {"file_id": "file-json", "bytes": 10}}}],
+                "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
             },
             "demo.pdf",
             parser,
@@ -813,6 +867,24 @@ def test_async_api_client_accepts_remote_pdf_info_json(monkeypatch: pytest.Monke
     assert result.pages[0].page_idx == 0
     assert result.pages[0].page_size == (100, 200)
     assert result.pages[0]._backend == "hybrid"
+
+
+def test_api_client_rejects_legacy_json_output_file_key() -> None:
+    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="high")
+
+    with pytest.raises(api_client._V1APIError) as exc_info:
+        _parse_result_from_job(
+            {
+                "job_id": "job_1",
+                "status": "completed",
+                "files": [{"output_files": {"json": {"file_id": "file-json", "bytes": 10}}}],
+            },
+            "demo.pdf",
+            parser,
+        )
+
+    assert exc_info.value.code == "missing_middle_json_output"
+    assert "available outputs: json" in exc_info.value.message
 
 
 def test_api_client_rejects_output_reference_without_file_id() -> None:
@@ -868,7 +940,7 @@ def test_api_client_include_images_rejects_unsafe_zip_image_sidecar_paths(
     }
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("demo.middle_json", json.dumps(middle_json, ensure_ascii=False))
+        archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
 
     monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"")
 
@@ -910,7 +982,7 @@ def test_async_api_client_include_images_rejects_unsafe_zip_image_sidecar_paths(
     }
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("demo.middle_json", json.dumps(middle_json, ensure_ascii=False))
+        archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
 
     async def _download_bytes(_parser: object, ref: dict[str, object]) -> bytes:
         return zip_buffer.getvalue() if ref is zip_ref else b""
@@ -1618,8 +1690,8 @@ def test_api_server_zip_includes_model_output_when_parse_result_has_it(
     zip_ref = rec.files[0].output_files.zip
     assert zip_ref is not None
     with zipfile.ZipFile(io.BytesIO(file_store.read_file_data(zip_ref.file_id))) as archive:
-        assert "demo_model_output.json" in archive.namelist()
-        model_output_text = archive.read("demo_model_output.json").decode("utf-8")
+        assert "model_output.json" in archive.namelist()
+        model_output_text = archive.read("model_output.json").decode("utf-8")
         payload = json.loads(model_output_text)
     assert payload == model_output
     if model_output:
@@ -1684,15 +1756,15 @@ def test_api_server_zip_is_self_contained_when_only_zip_requested(
     with zipfile.ZipFile(io.BytesIO(file_store.read_file_data(output_files.zip.file_id))) as archive:
         names = set(archive.namelist())
         assert {
-            "demo.markdown",
-            "demo.middle_json",
-            "demo.content_list",
-            "demo.structured_content",
-            "demo_model_output.json",
+            "markdown.md",
+            "middle_json.json",
+            "content_list.json",
+            "structured_content.json",
+            "model_output.json",
             "images/chart.png",
         }.issubset(names)
-        assert json.loads(archive.read("demo.middle_json").decode("utf-8"))["_backend"] == "hybrid"
-        assert json.loads(archive.read("demo_model_output.json").decode("utf-8")) == [[{"raw": "model"}]]
+        assert json.loads(archive.read("middle_json.json").decode("utf-8"))["_backend"] == "hybrid"
+        assert json.loads(archive.read("model_output.json").decode("utf-8")) == [[{"raw": "model"}]]
         assert archive.read("images/chart.png") == img_bytes
 
 
@@ -1783,7 +1855,7 @@ def test_api_server_zip_skips_model_output_when_parse_result_has_none(
     zip_ref = rec.files[0].output_files.zip
     assert zip_ref is not None
     with zipfile.ZipFile(io.BytesIO(file_store.read_file_data(zip_ref.file_id))) as archive:
-        assert "demo_model_output.json" not in archive.namelist()
+        assert "model_output.json" not in archive.namelist()
 
 
 def test_api_server_sanitizes_surrogates_in_text_outputs(

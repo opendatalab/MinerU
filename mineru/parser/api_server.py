@@ -27,7 +27,7 @@ import zipfile
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Annotated, Any, AsyncIterator, Callable, Literal, NoReturn
+from typing import Annotated, AsyncIterator, Awaitable, Callable, Literal, NoReturn, TypedDict
 from urllib.parse import urlparse
 
 import click
@@ -38,13 +38,16 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.datastructures import State
 
-from ..types import Tier, validate_tier
+from ..render.writer import DataWriter
+from ..types import PageInfo, Tier, validate_tier
 from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
 from ..utils.image_payload import validate_image_sidecar_path
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..version import __version__
 from . import parse_async
+from .base import ParseResult
 from .tier import (
     ParserRuntimeOptions,
     TierDependencyError,
@@ -90,6 +93,18 @@ def _text_utf8_bytes(value: str) -> bytes:
 
 def _json_utf8_bytes(value: object) -> bytes:
     return json.dumps(_sanitize_json_for_utf8(value), ensure_ascii=False).encode("utf-8")
+
+
+class _ZipDataWriter(DataWriter):
+    def __init__(self, archive: zipfile.ZipFile) -> None:
+        self._archive = archive
+
+    def write(self, path: str, data: bytes) -> None:
+        safe_path = validate_image_sidecar_path(path)
+        self._archive.writestr(safe_path, data)
+
+    def write_string(self, path: str, data: str) -> None:
+        self.write(path, _text_utf8_bytes(data))
 
 
 class ParseServerStartupError(RuntimeError):
@@ -141,7 +156,7 @@ def _env_flag(name: str, default: bool = True) -> bool:
     return val.strip().lower() in ("1", "true", "yes", "on")
 
 
-def _install_managed_parse_server_stdin_watcher(server: Any) -> threading.Thread | None:
+def _install_managed_parse_server_stdin_watcher(server: uvicorn.Server) -> threading.Thread | None:
     if not _env_flag(_MANAGED_PARSE_SERVER_ENV, default=False):
         return None
 
@@ -328,6 +343,12 @@ class TierListResponse(BaseModel):
     model_config = _PYDANTIC_CONFIG
     object: Literal["list"] = "list"
     data: list[TierInfo]
+
+
+class TierInfoData(TypedDict):
+    id: Tier
+    description: str
+    current_model: str
 
 
 # ── Upload ───────────────────────────────────────────────────────────
@@ -939,35 +960,15 @@ class FileStore:
 
     # ── defaults → app state ─────────────────────────────────────────
 
-    def install(self, app_state: Any) -> None:
+    def install(self, app_state: State) -> None:
         app_state.file_store = self
 
 
-def _build_self_contained_zip_output(result: Any, output_stem: str) -> bytes:
+def _build_self_contained_zip_output(result: ParseResult) -> bytes:
     """构建自包含解析 zip，确保只请求 zip 时也能恢复 middle_json、图片和 model_output。"""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr(f"{output_stem}.markdown", _text_utf8_bytes(result.markdown() or ""))
-        zf.writestr(f"{output_stem}.middle_json", _json_utf8_bytes(result.to_dict(skip_defaults=True)))
-        zf.writestr(f"{output_stem}.content_list", _json_utf8_bytes(result.content_list()))
-        zf.writestr(f"{output_stem}.structured_content", _json_utf8_bytes(result.structured_content()))
-
-        for img_path, img_bytes in sorted(result.images().items()):
-            safe_img_path = validate_image_sidecar_path(img_path)
-            zf.writestr(safe_img_path, img_bytes)
-
-        model_output = getattr(result, "_model_output", None)
-        if model_output is not None:
-            zf.writestr(
-                f"{output_stem}_model_output.json",
-                _text_utf8_bytes(
-                    json.dumps(
-                        _sanitize_json_for_utf8(model_output),
-                        ensure_ascii=False,
-                        indent=4,
-                    )
-                ),
-            )
+        result.save(_ZipDataWriter(zf))
     return buf.getvalue()
 
 
@@ -1079,6 +1080,7 @@ def _validate_job_source_policy(
                 message=str(exc),
                 param=f"files.{index}.source",
             )
+
 
 @dataclass
 class _JobRecord:
@@ -1241,7 +1243,7 @@ class JobStore:
             ),
         )
 
-    def install(self, app_state: Any) -> None:
+    def install(self, app_state: State) -> None:
         app_state.job_store = self
 
 
@@ -1280,10 +1282,10 @@ def _compact_page_numbers(page_numbers: list[int]) -> str:
     return ",".join(ranges)
 
 
-def _page_range_from_result_pages(pages: list[Any]) -> str:
+def _page_range_from_result_pages(pages: list[PageInfo]) -> str:
     page_numbers: list[int] = []
     for i, page in enumerate(pages):
-        page_idx = getattr(page, "page_idx", i)
+        page_idx = page.page_idx if page.page_idx is not None else i
         if isinstance(page_idx, int):
             page_numbers.append(page_idx + 1)
     return _compact_page_numbers(page_numbers)
@@ -1441,7 +1443,7 @@ async def _run_job(
 
                 # zip
                 if "zip" in out_formats:
-                    zip_bytes = _build_self_contained_zip_output(result, pathlib.Path(fr.name).stem)
+                    zip_bytes = _build_self_contained_zip_output(result)
                     zip_sha = hashlib.sha256(zip_bytes).hexdigest()
                     file_store.store_blob(zip_bytes, sha256hex=zip_sha)
                     zip_fid = file_store.create_file_for_output(f"{fr.name}.zip", zip_bytes, sha256hex=zip_sha)
@@ -1488,13 +1490,14 @@ async def _run_job(
 _router = APIRouter(prefix="/v1")
 
 # Reusable error response maps
-_ERR_400: dict[int | str, dict[str, Any]] = {400: {"model": ErrorResponse}}
-_ERR_401: dict[int | str, dict[str, Any]] = {401: {"model": ErrorResponse}}
-_ERR_403: dict[int | str, dict[str, Any]] = {403: {"model": ErrorResponse}}
-_ERR_404: dict[int | str, dict[str, Any]] = {404: {"model": ErrorResponse}}
-_ERR_409: dict[int | str, dict[str, Any]] = {409: {"model": ErrorResponse}}
-_ERR_413: dict[int | str, dict[str, Any]] = {413: {"model": ErrorResponse}}
-_ERR_429: dict[int | str, dict[str, Any]] = {429: {"model": ErrorResponse}}
+_ErrorResponseMap = dict[int | str, dict[str, type[BaseModel]]]
+_ERR_400: _ErrorResponseMap = {400: {"model": ErrorResponse}}
+_ERR_401: _ErrorResponseMap = {401: {"model": ErrorResponse}}
+_ERR_403: _ErrorResponseMap = {403: {"model": ErrorResponse}}
+_ERR_404: _ErrorResponseMap = {404: {"model": ErrorResponse}}
+_ERR_409: _ErrorResponseMap = {409: {"model": ErrorResponse}}
+_ERR_413: _ErrorResponseMap = {413: {"model": ErrorResponse}}
+_ERR_429: _ErrorResponseMap = {429: {"model": ErrorResponse}}
 
 
 # ── Health ───────────────────────────────────────────────────────────
@@ -1570,7 +1573,7 @@ async def get_model(
 )
 async def list_tiers(request: Request) -> TierListResponse:
     """List all available parser tiers."""
-    tiers: list[dict[str, Any]] = request.app.state.tiers
+    tiers: list[TierInfoData] = request.app.state.tiers
     return TierListResponse(
         data=[TierInfo(**p) for p in tiers],
     )
@@ -1944,7 +1947,7 @@ def _runtime_options_for_server_tiers(tiers: list[Tier]) -> dict[Tier, ParserRun
     return {tier: runtime_options_for_tier(tier) for tier in tiers}
 
 
-def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[dict[str, Any]]]:
+def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[TierInfoData]]:
     if tier == "flash":
         return ["MinerU-Flash"], [
             {
@@ -1979,10 +1982,10 @@ def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[di
     ]
 
 
-def _model_ids_and_tiers_for_server_tiers(tiers: list[Tier]) -> tuple[list[str], list[dict[str, Any]]]:
+def _model_ids_and_tiers_for_server_tiers(tiers: list[Tier]) -> tuple[list[str], list[TierInfoData]]:
     """聚合多个启动 tier 的模型和 tier metadata，并对重复 model id 保序去重。"""
     model_ids: list[str] = []
-    tier_infos: list[dict[str, Any]] = []
+    tier_infos: list[TierInfoData] = []
     for tier in tiers:
         tier_model_ids, single_tier_infos = _model_ids_and_tiers_for_server_tier(tier)
         for model_id in tier_model_ids:
@@ -2167,7 +2170,7 @@ def create_app(
     _PUBLIC_PATHS = frozenset({"/v1/health", "/v1/models", "/v1/tiers"})
     _PUBLIC_PREFIXES = ("/openapi", "/docs", "/redoc")
 
-    async def _auth_middleware(request: Request, call_next: Callable[[Request], Any]) -> Any:
+    async def _auth_middleware(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         path = request.url.path
         if path in _PUBLIC_PATHS or any(path.startswith(p) for p in _PUBLIC_PREFIXES) or path.startswith("/v1/models/"):
             return await call_next(request)

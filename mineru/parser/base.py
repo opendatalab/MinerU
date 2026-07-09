@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..render import render_content_list, render_markdown, render_structured_content
+from ..render.writer import DataWriter
 from ..types import PageInfo
 from ..utils.image_payload import ImagePayloadCache
 from ..utils.pdf_document import PDFDocument
@@ -139,7 +140,7 @@ class ParseResult:
     def structured_content(self) -> list[list[dict[str, Any]]]:
         return render_structured_content(self._public_render_pages())
 
-    def save(self, writer: Any) -> None:
+    def save(self, writer: DataWriter) -> None:
         writer.write_string("markdown.md", self.markdown())
         writer.write_string("middle_json.json", self.to_json())
 
