@@ -1798,7 +1798,21 @@ class DocxConverter:
 
         style = style_obj
         result = None
+        visited_styles = set()
         while style is not None:
+            style_element = getattr(style, "_element", None)
+            style_id = getattr(style, "style_id", None)
+            style_type = getattr(style, "type", None)
+            # DOCX 可能存在 basedOn 自引用或环形引用，记录已访问样式避免继承链死循环。
+            style_marker = (
+                id(style_element) if style_element is not None else id(style),
+                style_type,
+                style_id,
+            )
+            if style_marker in visited_styles:
+                break
+            visited_styles.add(style_marker)
+
             font = getattr(style, "font", None)
             if font is not None:
                 if attr_name == "underline":
