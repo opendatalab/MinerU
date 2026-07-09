@@ -24,7 +24,7 @@ from ..parser.tier import TierDependencyError, ensure_tier_runtime_dependencies
 from ..render import render_markdown
 from ..render.markdown import blocks_to_markdown
 from ..render.office.output import blocks_to_markdown as office_blocks_to_markdown
-from ..types import EMPTY_BBOX, TIER_ORDER, TIERS, Block, PageInfo, Span, Tier
+from ..types import EMPTY_BBOX, TIERS, Block, PageInfo, Span, Tier, select_highest_cached_tier
 from ..utils.pdf_document import PDFDocument
 from ..version import __version__
 from .background.parse_server_health import get_health, get_managed_parse_server_tier
@@ -671,7 +671,7 @@ class DoclibServer(AsyncDoclibInterface):
             short_id=doc["short_id"],
             tier=tier,
             page_range=page_range,
-            after=_locator_after(cursor),
+            after=_locator_after(cursor, tier),
             locator=_canonical_locator(doc["short_id"], tier, cursor),
             context=context,
             limit=limit,
@@ -1303,7 +1303,7 @@ class DoclibServer(AsyncDoclibInterface):
         tiers: set[Tier] = {row["tier"] for row in rows if row["tier"] in TIERS and row["tier"] != "flash"}
         if not tiers:
             return None
-        return max(tiers, key=lambda t: TIER_ORDER[t])
+        return select_highest_cached_tier(tiers)
 
     async def _render_pdf_image_asset(self, plan: _ReadPlan, page: PageInfo) -> ContentAsset:
         if plan.target is None:
@@ -1382,7 +1382,7 @@ class DoclibServer(AsyncDoclibInterface):
 
 _READ_LOCATOR_RE = re.compile(
     r"^doc:(?P<short_id>[0-9a-fA-F]+)"
-    r"(?:/tier:(?P<tier>flash|medium|high|extra_high)"
+    r"(?:/tier:(?P<tier>flash|medium|high|xhigh)"
     r"(?:/page:(?P<page_no>[1-9][0-9]*)"
     r"(?:/block:(?P<block_no>[1-9][0-9]*)(?:/char:(?P<char_offset>0|[1-9][0-9]*))?)?)?)?$"
 )
@@ -1414,12 +1414,12 @@ def _canonical_locator(short_id: str, tier: Tier, locator: _LocatorParts) -> str
     return block_char_ref(short_id, tier, locator.page_no, locator.block_no, locator.char_offset)
 
 
-def _locator_after(locator: _LocatorParts) -> str | None:
+def _locator_after(locator: _LocatorParts, tier: Tier) -> str | None:
     if locator.page_no is None:
         return None
     if locator.block_no is None:
         return None
-    return _canonical_locator(locator.short_id, locator.tier or "high", locator) if locator.char_offset is not None else None
+    return _canonical_locator(locator.short_id, tier, locator) if locator.char_offset is not None else None
 
 
 def _locator_page_range(locator: _LocatorParts, doc: DocRow, context: int) -> str | None:
@@ -1531,10 +1531,10 @@ def _ensure_managed_parse_server_tier_available(tier: Tier, param: str) -> None:
 
 
 def _validate_managed_parse_server_tier(value: str, param: str) -> Tier:
-    if value not in ("flash", "medium", "high", "extra_high"):
+    if value not in ("medium", "high", "xhigh"):
         raise InvalidRequestError(
             "invalid_config_value",
-            "parse_server.local.managed_tier must be one of: flash, medium, high, extra_high.",
+            "parse_server.local.managed_tier must be one of: medium, high, xhigh.",
             param,
         )
     return cast(Tier, value)

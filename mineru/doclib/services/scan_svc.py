@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ...errors import InvalidRequestError, NotFoundError
-from ..constants import DISCOVERABLE_EXTENSIONS, is_office_temp_lock_file
+from ...filetypes import DISCOVERABLE_EXTENSIONS, is_office_temp_lock_file
 from ..core.file_io import get_file_stat
 from ..rows import PathRow, ScanRow, WatchTargetRow
 from ..types import (

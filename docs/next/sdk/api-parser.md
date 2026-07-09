@@ -59,7 +59,7 @@ class MinerUApiParser(DocumentParser):
 |------|------|
 | `api_url` | v1 API base URL，如 `https://mineru.net/api` 或 `http://127.0.0.1:16580`。省略时读取 `MINERU_API_URL`，再退回默认官方 API。 |
 | `api_key` | Bearer token。省略时读取 `MINERU_API_KEY`；Local Parse Server 未启用鉴权时可为空。 |
-| `tier` | `flash`、`medium`、`high`、`extra_high` 或 `None`。`None` 表示 SDK 在 HTTP 请求中省略 `tier`，让 v1 API 使用默认选择策略。 |
+| `tier` | `flash`、`medium`、`high`、`xhigh` 或 `None`。`None` 表示 SDK 在 HTTP 请求中省略 `tier`，让 v1 API 使用默认选择策略；非 PDF/image 文件按 API Server 批量规则归一，见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。 |
 | `include_images` | 是否从 zip 产物读取图片 sidecar，并挂载到 `ParseResult` 图片缓存。 |
 | `include_model_output` | 是否请求并保留模型原始输出；开启时通过 zip 产物读取。 |
 
@@ -111,7 +111,7 @@ Local Parse Server 必须通过 `--allow-local-source` 开启，并在 `features
 | `flash` | `flash` |
 | `medium` | `medium` |
 | `high` | `high` |
-| `extra_high` | `extra_high` |
+| `xhigh` | `xhigh` |
 
 它不接受也不保存 backend 参数。backend 是本地 parser 层的高级实现概念，不应出现在 API-backed parser 的公开构造参数、实例属性或请求 payload 中。
 

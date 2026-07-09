@@ -31,7 +31,7 @@ from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.file_io import FileStat, get_file_stat
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.locators import ContentCursor
-from mineru.doclib.server import DoclibServer, _ReadPlan
+from mineru.doclib.server import DoclibServer, _LocatorParts, _ReadPlan, _locator_after
 from mineru.doclib.services import parse_svc as parse_svc_module
 from mineru.doclib.services.cleanup_svc import CleanupService
 from mineru.doclib.services.config_svc import ConfigService
@@ -41,6 +41,7 @@ from mineru.doclib.services.parse_svc import (
     ParseService,
     _local_parse_server_url,
     _resolve_default_tier,
+    _resolve_parsing_rule_default_tier,
     expand_page_range,
     filter_pages_by_user_range,
     load_pages_from_done_batches,
@@ -282,9 +283,9 @@ def test_parser_tier_backend_mapping_is_parser_layer_only() -> None:
     assert backend_for_tier("flash") == "flash"
     assert backend_for_tier("medium") == "hybrid-engine"
     assert backend_for_tier("high") == "hybrid-engine"
-    assert backend_for_tier("extra_high") == "hybrid-engine"
+    assert backend_for_tier("xhigh") == "hybrid-engine"
     assert resolve_tier_and_backend(tier=None) == ("high", "hybrid-engine")
-    assert resolve_tier_and_backend(tier="extra_high", backend="vlm-auto-engine") == ("extra_high", "hybrid-engine")
+    assert resolve_tier_and_backend(tier="xhigh", backend="vlm-auto-engine") == ("xhigh", "hybrid-engine")
 
 
 def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() -> None:
@@ -297,9 +298,9 @@ def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() 
         "16580",
         "--allow-local-source",
     ]
-    assert api_server_args_for_tier("extra_high", host="127.0.0.2", port=16581) == [
+    assert api_server_args_for_tier("xhigh", host="127.0.0.2", port=16581) == [
         "--tier",
-        "extra_high",
+        "xhigh",
         "--host",
         "127.0.0.2",
         "--port",
@@ -346,7 +347,7 @@ def test_default_tier_error_mentions_remote_when_remote_is_healthy(monkeypatch: 
         local_healthy=False,
         local_supported_tiers=["flash"],
         remote_healthy=True,
-        remote_supported_tiers=["high", "extra_high"],
+        remote_supported_tiers=["high", "xhigh"],
     )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
 
@@ -375,6 +376,31 @@ def test_default_tier_error_omits_remote_when_remote_is_unhealthy(monkeypatch: p
     assert "--remote" not in exc_info.value.message
     assert "local parse-server" in exc_info.value.message
     assert "--tier flash" in exc_info.value.message
+
+
+def test_parsing_rule_default_tier_allows_flash_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    health = ParseServerHealth(local_supported_tiers=["medium", "xhigh"])
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
+
+    assert _resolve_parsing_rule_default_tier() == "xhigh"
+
+    health.local_supported_tiers = ["medium", "high", "xhigh"]
+    assert _resolve_parsing_rule_default_tier() == "high"
+
+    health.local_supported_tiers = ["flash"]
+    assert _resolve_parsing_rule_default_tier() == "flash"
+
+
+def test_read_without_tier_uses_highest_cached_tier() -> None:
+    class _DB:
+        async def fetchall(self, sql: str, params: tuple[Any, ...]) -> list[dict[str, str]]:
+            assert sql == "SELECT tier FROM parses WHERE sha256=? AND status=? GROUP BY tier"
+            assert params == ("a" * 64, "done")
+            return [{"tier": "flash"}, {"tier": "medium"}, {"tier": "high"}, {"tier": "xhigh"}]
+
+    server = DoclibServer(SimpleNamespace(db=_DB()))
+
+    assert asyncio.run(server._default_read_tier("a" * 64)) == "xhigh"
 
 
 def test_managed_local_parse_server_url_uses_health_managed_url() -> None:
@@ -560,7 +586,7 @@ def test_managed_parse_server_restart_clears_invalid_tier_override(monkeypatch: 
 
     class _ConfigSvc:
         def __init__(self) -> None:
-            self.value = "pro"
+            self.value = "ultra"
             self.unset_keys: list[str] = []
 
         async def get(self, key: str) -> str:
@@ -689,12 +715,12 @@ def test_managed_parse_server_tier_change_detection_triggers_restart(monkeypatch
     monkeypatch.setattr(checker, "_try_restart_managed", _restart)
     health = ParseServerHealth(running_managed_tier="high")
 
-    restarted = asyncio.run(checker._try_restart_managed_for_tier_change(health, "extra_high"))
+    restarted = asyncio.run(checker._try_restart_managed_for_tier_change(health, "xhigh"))
     unchanged = asyncio.run(checker._try_restart_managed_for_tier_change(health, "high"))
 
     assert restarted is True
     assert unchanged is False
-    assert calls == [("tier-change", "tier change high->extra_high", False)]
+    assert calls == [("tier-change", "tier change high->xhigh", False)]
 
 
 def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -704,7 +730,7 @@ def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch:
     class _ConfigSvc:
         async def get(self, key: str) -> str:
             assert key == "parse_server.local.managed_tier"
-            return "extra_high"
+            return "xhigh"
 
     class _Proc:
         pid = 24680
@@ -716,10 +742,10 @@ def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch:
         events.append("stop")
 
     def _start(*, tier: Tier, managed_cfg: ManagedParseServerConfig, log_cfg: LogConfig | None, marker: str) -> tuple[_Proc, str]:
-        assert tier == "extra_high"
+        assert tier == "xhigh"
         assert managed_cfg.host == "127.0.0.2"
         assert log_cfg is None
-        assert marker == "tier change high->extra_high"
+        assert marker == "tier change high->xhigh"
         events.append("start")
         return _Proc(), "http://127.0.0.2:16582"
 
@@ -740,14 +766,14 @@ def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch:
         checker._try_restart_managed(
             health,
             reason="tier-change",
-            marker="tier change high->extra_high",
+            marker="tier change high->xhigh",
             count_restart=False,
         )
     )
 
     assert events == ["stop", "start"]
     assert health.managed_proc.pid == 24680
-    assert health.running_managed_tier == "extra_high"
+    assert health.running_managed_tier == "xhigh"
     assert health.restart_count == 2
 
 
@@ -856,7 +882,7 @@ def test_remote_api_target_prefers_config_api_key_over_env(monkeypatch: pytest.M
             parse_lock_timeout_sec=1800,
         )
 
-        base_url, api_key, via = await service._resolve_api_target("remote", "pro")
+        base_url, api_key, via = await service._resolve_api_target("remote", "high")
 
         assert base_url == "https://mineru.net/api"
         assert api_key == "config-key"
@@ -1059,7 +1085,7 @@ def test_request_parse_explicit_image_ingests_and_queues_parse(tmp_path: Path, m
 
 
 @pytest.mark.parametrize("ext", ["txt", "html", "docx", "pptx", "xlsx"])
-@pytest.mark.parametrize("tier", ["high", "extra_high"])
+@pytest.mark.parametrize("tier", ["high", "xhigh"])
 def test_request_parse_rejects_quality_tiers_for_non_pdf_image_inputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1102,6 +1128,58 @@ def test_request_parse_rejects_quality_tiers_for_non_pdf_image_inputs(
         assert exc_info.value.param == "tier"
         assert tier in exc_info.value.message
         assert ext in exc_info.value.message
+
+    asyncio.run(_run())
+
+
+@pytest.mark.parametrize(
+    ("ext", "expected_tier", "expected_privacy"),
+    [
+        ("pdf", "high", "remote"),
+        ("html", "flash", "local"),
+    ],
+)
+def test_refresh_file_applies_parsing_rule_effective_tier_and_privacy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ext: str,
+    expected_tier: Tier,
+    expected_privacy: str,
+) -> None:
+    class _RuleConfig:
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            return [{"tier": "high", "page_range": "1", "remote": True}]
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_RuleConfig(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / f"sample.{ext}"
+        source.write_text("%PDF-1.7\n" if ext == "pdf" else "<p>content</p>", encoding="utf-8")
+
+        async def _metadata(path: str) -> dict[str, Any]:
+            return {
+                "page_count": 1,
+                "title": None,
+                "author": None,
+                "subject": None,
+                "keywords": None,
+                "is_image_based": 0,
+            }
+
+        monkeypatch.setattr(parse_svc_module, "extract_metadata", _metadata)
+
+        refreshed = await service.refresh_file(str(source), ensure_ingested=True)
+        assert refreshed.file is not None
+        parse_rows = await db.fetchall("SELECT tier, privacy, page_range FROM parses")
+
+        assert parse_rows == [{"tier": expected_tier, "privacy": expected_privacy, "page_range": "1"}]
 
     asyncio.run(_run())
 
@@ -1822,8 +1900,8 @@ def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
         now = 1000
         docs = [
             ("1" * 64, "flash", "pdf", "flash.pdf", 2),
-            ("2" * 64, "high", "pdf", "standard.pdf", 12),
-            ("3" * 64, "extra_high", "docx", "pro.docx", 23),
+            ("2" * 64, "high", "pdf", "high.pdf", 12),
+            ("3" * 64, "xhigh", "docx", "xhigh.docx", 23),
         ]
 
         for sha256, tier, file_type, filename, page_count in docs:
@@ -1848,9 +1926,9 @@ def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
         assert [row["short_id"] for row in exact_results] == ["2" * 7]
         assert [row["page_count"] for row in exact_results] == [12]
         assert min_total == 2
-        assert {row["tier"] for row in min_results} == {"high", "extra_high"}
+        assert {row["tier"] for row in min_results} == {"high", "xhigh"}
         assert type_total == 1
-        assert [row["filename"] for row in type_results] == ["pro.docx"]
+        assert [row["filename"] for row in type_results] == ["xhigh.docx"]
         assert [row["short_id"] for row in type_results] == ["3" * 7]
         assert [row["page_count"] for row in type_results] == [23]
 
@@ -3507,7 +3585,7 @@ def test_process_doc_preserves_remote_api_error_code(tmp_path: Path) -> None:
     task = {
         "id": 1,
         "sha256": sha256,
-        "tier": "pro",
+        "tier": "high",
         "page_range": "1",
         "status": "parsing",
         "privacy": "remote",
@@ -3742,6 +3820,12 @@ def test_load_pages_from_done_batches_keeps_existing_image_sidecar(tmp_path: Pat
     assert sidecar.read_bytes() == b"existing-sidecar"
 
 
+def test_locator_after_uses_resolved_tier_when_locator_tier_is_absent() -> None:
+    locator = _LocatorParts(short_id="eeeeeee", tier=None, page_no=1, block_no=2, char_offset=8)
+
+    assert _locator_after(locator, "xhigh") == "doc:eeeeeee/tier:xhigh/page:1/block:2/char:8"
+
+
 def test_progressive_markdown_uses_public_image_sidecar_prefix(tmp_path: Path) -> None:
     sha256 = "e" * 64
     tier = "high"
@@ -3870,7 +3954,7 @@ def test_doclib_office_image_asset_transcodes_to_requested_format(tmp_path: Path
 
 def test_doclib_office_image_asset_missing_sidecar_reports_asset_not_available(tmp_path: Path) -> None:
     sha256 = "f" * 64
-    tier = "standard"
+    tier = "medium"
     image_path = "figures/missing.png"
     image_span = Span(type=ContentType.IMAGE, bbox=(1, 1, 20, 20), image_path=image_path)
     body = Block(
@@ -3888,7 +3972,7 @@ def test_doclib_office_image_asset_missing_sidecar_reports_asset_not_available(t
         tier=tier,
         page_range=None,
         after=None,
-        locator="doc:fffffff/tier:standard/page:1/block:1",
+        locator="doc:fffffff/tier:medium/page:1/block:1",
         context=0,
         limit=30000,
         format="image",

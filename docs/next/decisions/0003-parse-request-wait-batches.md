@@ -90,7 +90,7 @@ CLI wait 必须使用 id 级状态查询。
 
 ### 方案 B: force 严格总是创建新 batch
 
-拒绝。语义简单，但会在已有同页 active batch 时重复消耗算力，尤其对 `medium` / `high` 和 remote 解析成本较高。
+拒绝。语义简单，但会在已有同页 active batch 时重复消耗算力，尤其对质量 tier 和 remote 解析成本较高。
 
 ### 方案 C: CLI 继续轮询聚合状态
 

@@ -54,20 +54,11 @@ def test_doclib_runtime_dependencies_are_in_base_install() -> None:
     assert "watchfiles" in dependency_names
 
 
-def test_pdftext_dependency_is_capped_below_pagechars_api() -> None:
+def test_medium_extra_includes_preflight_runtime_dependencies() -> None:
     pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
     pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-    dependencies = pyproject["project"]["dependencies"]
-    pdftext_dependencies = [dependency for dependency in dependencies if dependency.lower().startswith("pdftext")]
-
-    assert pdftext_dependencies == ["pdftext>=0.6.3,<0.7.0"]
-
-
-def test_standard_extra_includes_preflight_runtime_dependencies() -> None:
-    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
-    pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-    standard_dependencies = pyproject["project"]["optional-dependencies"]["standard"]
-    dependency_names = {dependency.split(">", 1)[0].split("=", 1)[0].lower() for dependency in standard_dependencies}
+    medium_dependencies = pyproject["project"]["optional-dependencies"]["medium"]
+    dependency_names = {dependency.split(">", 1)[0].split("=", 1)[0].lower() for dependency in medium_dependencies}
     module_to_distribution = {
         "ftfy": "ftfy",
         "pyclipper": "pyclipper",
@@ -80,7 +71,7 @@ def test_standard_extra_includes_preflight_runtime_dependencies() -> None:
 
     missing = [
         module_name
-        for module_name in parser_tier.required_modules_for_tier("standard")
+        for module_name in parser_tier.required_modules_for_tier("medium")
         if module_to_distribution[module_name] not in dependency_names
     ]
 
@@ -157,7 +148,7 @@ def test_config_set_managed_tier_preflights_even_when_mode_is_disabled(monkeypat
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
     with TestClient(doclib_app.create_app(cfg)) as client:
-        response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "extra_high"})
+        response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "xhigh"})
         config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
 
     assert response.status_code == 400
@@ -165,7 +156,7 @@ def test_config_set_managed_tier_preflights_even_when_mode_is_disabled(monkeypat
     assert payload["error"]["code"] == "parse_server_dependency_missing"
     assert payload["error"]["param"] == "parse_server.local.managed_tier"
     assert "mlx" in payload["error"]["message"]
-    assert "pip install 'mineru-next-dev[extra_high]'" in payload["error"]["message"]
+    assert "pip install 'mineru-next-dev[xhigh]'" in payload["error"]["message"]
     assert config_response.json()["value"] == "high"
 
 
@@ -489,9 +480,7 @@ def test_managed_parse_server_startup_clears_invalid_tier_override(monkeypatch, 
     db = DatabaseManager(str(tmp_path / "doclib.db"))
     asyncio.run(db.initialize())
     asyncio.run(db.execute("INSERT INTO config (key, value) VALUES (?, ?)", ("parse_server.local.mode", "managed")))
-    asyncio.run(
-        db.execute("INSERT INTO config (key, value) VALUES (?, ?)", ("parse_server.local.managed_tier", "standard"))
-    )
+    asyncio.run(db.execute("INSERT INTO config (key, value) VALUES (?, ?)", ("parse_server.local.managed_tier", "ultra")))
 
     class _Proc:
         pid = 12345

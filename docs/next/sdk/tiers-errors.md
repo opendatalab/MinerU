@@ -7,30 +7,13 @@
 
 ## Tier 语义
 
-SDK 层必须使用与产品一致的 tier 语义:
-
-| Tier | SDK 含义 |
-|------|----------|
-| `flash` | 用户显式请求快速 CPU-only 解析。不能作为默认选择的回退。 |
-| `medium` | 本地或自部署 parse-server 可用的标准质量解析能力。 |
-| `high` | 当前最高质量解析能力；`mineru.net/api` 长期只提供该 tier。 |
-| `extra_high` | 当前代码支持的更高质量实验/专家档位，映射到 hybrid backend；产品默认选择策略暂不依赖它。 |
-
-完整产品语义见 [解析 Tier](../tiers.md)。
+SDK 层必须使用与产品一致的 tier 语义。完整产品语义见 [解析 Tier](../tiers.md)。
 
 ## 默认选择规则
 
-SDK 中未指定 tier，或 Python 调用传 `tier=None` 时，必须遵循:
+SDK 中未指定 tier，或 Python 调用传 `tier=None` 时，必须遵循 [解析 Tier](../tiers.md) 和 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 中的默认选择策略。
 
-| 可用能力 | 默认选择结果 |
-|----------|-------------|
-| 只有 `medium` | `medium` |
-| 只有 `high` | `high` |
-| 同时发现 `medium` 和 `high` | `high` |
-| 发现 `extra_high` | 只有调用方显式请求时使用，默认选择策略暂不自动升级到它 |
-| 都没有 | 报错 |
-
-默认选择不能变成 `flash`。如果用户想使用 `flash`，必须显式传入 `tier="flash"` 或 `backend="flash"`。
+对 PDF/image，默认选择不能变成 `flash`。Office/text/HTML 没有质量 tier；单文件解析未指定 tier 时归一为 `flash`，显式传入 `medium`、`high` 或 `xhigh` 应报错。
 
 ## Tool SDK 的 tier 处理
 
@@ -48,9 +31,9 @@ SDK 中未指定 tier，或 Python 调用传 `tier=None` 时，必须遵循:
 | `flash` | `flash` |
 | `medium` | `hybrid-engine` + `effort="low"` |
 | `high` | hybrid 默认高质量 backend |
-| `extra_high` | hybrid backend + 更高 effort |
+| `xhigh` | hybrid backend + 更高 effort |
 
-`tier=None` 使用默认选择策略，结果为 `high` 或 `medium`；`extra_high` 需要显式请求。
+`tier=None` 使用默认选择策略。PDF/image 直接本地解析且没有能力列表时默认 `high`；有能力发现上下文时按 `high` -> `xhigh` -> `medium` 选择。Office/text/HTML 单文件解析未指定 tier 时归一为 `flash`。结果记录实际 tier，不能为仅支持 flash tier 的输入记录伪质量 tier。
 
 ## Doclib SDK 的 tier 处理
 
@@ -63,8 +46,8 @@ SDK 中未指定 tier，或 Python 调用传 `tier=None` 时，必须遵循:
 
 doclib 的质量优先规则:
 
-- 用户读取文档时默认最低接受 `medium`。
-- 找不到 `medium` / `high` 且不允许 remote 时，应报错。
+- 用户读取文档时默认使用非 `flash` 质量 tier。
+- 找不到可用的非 `flash` 质量 tier 且不允许 remote 时，应报错。
 - 不应擅自返回 `flash` 结果作为读取结果。
 
 ## 隐私策略

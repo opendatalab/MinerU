@@ -17,11 +17,11 @@ FILE_EXTS = "pdf, png, jpg, jpeg, jp2, webp, gif, bmp, tiff, docx, pptx, xlsx, h
 def search_cmd(
     query: str = typer.Argument(..., help="Search query"),
     file_type: str | None = typer.Option(None, "--type", help=f"File type filter: {FILE_TYPES}"),
-    tier: Tier | None = typer.Option(None, "--tier", help="Exact search index tier: flash, medium, high, extra_high"),
+    tier: Tier | None = typer.Option(None, "--tier", help="Exact search index tier: flash, medium, high, xhigh"),
     min_tier: Tier | None = typer.Option(
         None,
         "--min-tier",
-        help="Minimum search index tier: flash, medium, high, extra_high",
+        help="Minimum search index tier: flash, medium, high, xhigh",
     ),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
     offset: int = typer.Option(0, "--offset", help="Result offset"),

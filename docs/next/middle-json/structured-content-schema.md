@@ -78,7 +78,7 @@ Structured Content 是从 Middle JSON render 得到的结构化内容 JSON。它
 
 约束:
 
-- `tier` 只记录实际使用的实体 tier: `flash` / `medium` / `high`。
+- `tier` 只记录实际使用的实体 tier: `flash` / `medium` / `high` / `xhigh`。
 - 不记录 `requested_tier` / `resolved_tier`。
 - `backend` 是实现信息，普通客户端不应依赖它做产品逻辑。
 

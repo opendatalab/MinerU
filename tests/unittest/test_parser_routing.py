@@ -22,6 +22,21 @@ def test_build_parser_prefers_html_extension_when_content_guess_is_plain_text(
     assert isinstance(parser, HtmlParser)
 
 
+@pytest.mark.parametrize("tier", ["medium", "high", "xhigh"])
+def test_build_parser_rejects_quality_tier_for_html_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tier: str,
+) -> None:
+    html_file = tmp_path / "sample.html"
+    html_file.write_text("<div>hello</div>", encoding="utf-8")
+
+    monkeypatch.setattr("mineru.utils.guess_suffix_or_lang.guess_suffix_by_path", lambda path: "txt")
+
+    with pytest.raises(ValueError, match=f"Tier '{tier}' is only supported for PDF and image files"):
+        _build_parser(html_file, tier=tier)  # type: ignore[arg-type]
+
+
 def test_build_parser_prefers_xlsx_extension_when_content_guess_is_legacy_doc(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -63,7 +63,7 @@ def get_health() -> ParseServerHealth:
 
 
 async def get_managed_parse_server_tier(config_svc: "ConfigService") -> Tier:
-    """读取 managed parse-server tier；发现旧非法 override 时清理并回退到默认合法值。"""
+    """读取 managed parse-server tier；发现非法 override 时清理并回退到默认合法值。"""
     key = "parse_server.local.managed_tier"
     raw_tier = await config_svc.get(key) or CONFIG_DEFAULTS[key]
     try:

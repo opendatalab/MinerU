@@ -51,7 +51,7 @@ class MinerUApiParser(DocumentParser):
 
     Constructor parameters:
 
-    - ``tier`` → v1 ``tier`` (``"flash"`` / ``"medium"`` / ``"high"`` / ``"extra_high"``); ``None`` omits the field
+    - ``tier`` → v1 ``tier`` (``"flash"`` / ``"medium"`` / ``"high"`` / ``"xhigh"``); ``None`` omits the field
     - ``page_range`` → per-file v1 ``page_range``
     """
 

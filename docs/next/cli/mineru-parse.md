@@ -22,7 +22,7 @@ read(locator) = read existing parsed content by stable locator
 设计原则：
 
 - 隐私优先：不显式 `--remote` 就不上传文档。
-- 质量优先：未指定 tier 时使用默认选择策略，不会解析为 `flash`。
+- 质量优先：PDF/image 未指定 tier 时使用默认选择策略，不会解析为 `flash`；Office/text/HTML 未指定 tier 时归一为 `flash`。
 - Agent-native：默认适合 STDOUT、有限上下文和渐进式阅读。
 - 先入库后输出：解析结果先写入本地文档库，再输出。
 - 去重缓存：相同 SHA256 和实体 tier 可复用 done 缓存；`--force` 跳过 done 缓存，但可复用 active parse，不作废旧缓存。
@@ -47,7 +47,7 @@ mineru parse <file> [flags]
 
 | Flag | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `--tier` | `flash` / `medium` / `high` / `extra_high` | 不传 | 解析 tier；省略时由服务端决定；语义见 [解析 Tier](../tiers.md) |
+| `--tier` | `flash` / `medium` / `high` / `xhigh` | 不传 | 解析 tier；省略时由服务端决定；语义见 [解析 Tier](../tiers.md) |
 | `-p, --pages` | range | 不传 | 分页文档的页码范围；`all` 表示全部页 |
 | `--after` | cursor | 不传 | 从服务端返回的 cursor 继续读取 |
 | `--limit` | int | `30000` | STDOUT 内容软字符上限 |
@@ -73,7 +73,7 @@ mineru parse <file> [flags]
 
 `mineru parse` 未指定 `--tier` 时使用默认选择策略。
 
-默认选择策略通过当前目标 parse-server 的能力发现，按 `extra_high`、`high`、`medium` 的顺序选择最高可用的非 `flash` tier。如果找不到这些质量 tier，返回可解释错误。
+PDF/image 的默认选择策略通过当前目标 parse-server 的能力发现，按 [解析 Tier](../tiers.md) 定义的 `high` -> `xhigh` -> `medium` 顺序选择。如果找不到可用质量 tier，返回可解释错误。Office/text/HTML 归一为 `flash` 语义，详见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。
 
 `flash` 只有在用户显式指定 `--tier flash` 时才作为最终解析结果返回。
 
@@ -85,7 +85,7 @@ mineru parse <file> [flags]
 2. 带 `--remote`：允许上传文档到 config 指定远端或默认 `mineru.net/api`。
 3. 本地能力不足：返回错误和修复建议，不静默上传。
 4. 用户显式选择 `--tier flash`：允许返回 `flash` 结果。
-5. 未指定 tier：使用默认选择策略，不可降级到 `flash`。
+5. 未指定 tier：PDF/image 使用默认选择策略，不可降级到 `flash`；Office/text/HTML 归一为 `flash`。
 
 当本地能力不足、默认选择无法解析、远端未显式允许或 parse-server 不支持请求 tier 时，错误码见 [错误码体系](../errors.md)。
 
@@ -149,7 +149,7 @@ marker 是 Agent 的控制协议，不应依赖自然语言猜测。
 - `--no-wait`：立即返回任务状态。
 - 超过等待时间：返回可继续查询的状态，而不是丢失任务。
 
-缓存实体应落到解析后的实体 tier，例如 `medium` 或 `high`。
+缓存实体应落到解析后的实体 tier，例如 `medium`、`high` 或 `xhigh`。
 
 ## 未决问题
 

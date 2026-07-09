@@ -1,6 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import MISSING, Field, InitVar, dataclass, field, fields
 from typing import Any, Iterator, Literal, TypeAlias, TypeVar, get_type_hints
 
@@ -11,30 +12,58 @@ Tier = Literal[
     "flash",
     "medium",
     "high",
-    "extra_high",
+    "xhigh",
 ]
 
 TIERS: set[Tier] = {
     "flash",
     "medium",
     "high",
-    "extra_high",
+    "xhigh",
 }
 
 TIER_ORDER: dict[Tier, int] = {
     "flash": 0,
     "medium": 1,
     "high": 2,
-    "extra_high": 3,
+    "xhigh": 3,
 }
+
+QUALITY_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("high", "xhigh", "medium")
+QUALITY_TIERS: frozenset[Tier] = frozenset(QUALITY_TIER_SELECTION_ORDER)
+CACHED_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("xhigh", "high", "medium", "flash")
 
 
 def validate_tier(tier: str | None) -> Tier:
-    """校验公开 tier 取值，保证入口只接受 flash/medium/high/extra_high。"""
+    """校验公开 tier 取值，保证入口只接受 flash/medium/high/xhigh。"""
     normalized = (tier or "").strip().lower()
     if normalized in TIERS:
         return normalized  # type: ignore[return-value]
     raise ValueError(f"Unsupported tier '{tier}'. Supported tiers: {', '.join(TIERS)}")
+
+
+def _validated_tier_set(available_tiers: Iterable[object] | str) -> set[Tier]:
+    if isinstance(available_tiers, str):
+        return {validate_tier(available_tiers)}
+    return {validate_tier(str(item)) for item in available_tiers}
+
+
+def select_default_quality_tier(available_tiers: Iterable[object] | str) -> Tier | None:
+    """Select the default quality tier from discovered parse-server capabilities."""
+    available = _validated_tier_set(available_tiers)
+    for candidate in QUALITY_TIER_SELECTION_ORDER:
+        if candidate in available:
+            return candidate
+    return None
+
+
+def select_highest_cached_tier(available_tiers: Iterable[object] | str) -> Tier | None:
+    """Select the highest already-cached tier without creating a new parse."""
+    available = _validated_tier_set(available_tiers)
+    for candidate in CACHED_TIER_SELECTION_ORDER:
+        if candidate in available:
+            return candidate
+    return None
 
 
 class BlockType:

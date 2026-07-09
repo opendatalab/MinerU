@@ -9,7 +9,7 @@ from ..types import Tier
 
 _CURSOR_RE = re.compile(
     r"^doc:(?P<short_id>[0-9a-fA-F]+)"
-    r"/tier:(?P<tier>flash|medium|high|extra_high)"
+    r"/tier:(?P<tier>flash|medium|high|xhigh)"
     r"/page:(?P<page_no>[1-9][0-9]*)"
     r"(?:/block:(?P<block_no>[1-9][0-9]*)(?:/char:(?P<char_offset>0|[1-9][0-9]*))?)?$"
 )

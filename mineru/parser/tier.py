@@ -94,7 +94,7 @@ def backend_for_tier(tier: Tier) -> str:
         "flash": "flash",
         "medium": CANONICAL_HYBRID_ENGINE,
         "high": CANONICAL_HYBRID_ENGINE,
-        "extra_high": CANONICAL_HYBRID_ENGINE,
+        "xhigh": CANONICAL_HYBRID_ENGINE,
     }
     return mapping[tier]
 
@@ -105,7 +105,7 @@ def tier_for_backend(backend: str) -> Tier:
     if raw_backend in LEGACY_PIPELINE_BACKEND_ALIASES:
         return "medium"
     if raw_backend in LEGACY_VLM_BACKEND_ALIASES:
-        return "extra_high"
+        return "xhigh"
     normalized_backend = normalize_backend(backend)
     if normalized_backend == "flash":
         return "flash"
@@ -129,9 +129,13 @@ def _backend_supports_tier(backend: str, tier: Tier) -> bool:
             and raw_backend not in LEGACY_PIPELINE_BACKEND_ALIASES
             and raw_backend not in LEGACY_VLM_BACKEND_ALIASES
         )
-    if tier == "extra_high":
+    if tier == "xhigh":
         return is_hybrid_backend(normalized_backend) and raw_backend not in LEGACY_PIPELINE_BACKEND_ALIASES
     return False
+
+
+def _tier_for_effort(effort: str) -> Tier:
+    return validate_tier(effort)
 
 
 def resolve_tier_and_backend(tier: Tier | None = None, backend: str | None = None) -> tuple[Tier, str]:
@@ -185,7 +189,7 @@ def resolve_runtime_options(
         explicit_tier=explicit_tier,
     )
     if not explicit_tier and resolved_backend != "flash":
-        resolved_tier = validate_tier(resolved_effort)
+        resolved_tier = _tier_for_effort(resolved_effort)
     return ParserRuntimeOptions(tier=resolved_tier, backend=resolved_backend, effort=resolved_effort)
 
 
@@ -203,7 +207,7 @@ def required_modules_for_tier(tier: Tier) -> list[str]:
     tier = validate_tier(tier)
     if tier == "medium":
         return list(_STANDARD_REQUIRED_MODULES)
-    if tier in {"high", "extra_high"}:
+    if tier in {"high", "xhigh"}:
         return [
             *_PRO_REQUIRED_MODULES_COMMON,
             *_PRO_REQUIRED_MODULES_BY_PLATFORM.get(sys.platform, []),

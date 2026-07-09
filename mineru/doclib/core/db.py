@@ -11,7 +11,7 @@ import aiosqlite
 from ...config import SQLiteConfig
 from ..config_defaults import CONFIG_DEFAULTS
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 1
 _MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
 
 _T = TypeVar("_T")

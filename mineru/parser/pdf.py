@@ -312,10 +312,10 @@ class PdfPipelineParser(PdfHybridParser):
 
 
 class PdfVlmParser(PdfHybridParser):
-    """保留旧 SDK 类名，内部统一委托 Hybrid extra_high 解析。"""
+    """保留旧 SDK 类名，内部统一委托 Hybrid xhigh 解析。"""
 
     def __init__(self, **kwargs: Any) -> None:
-        """将旧 PdfVlmParser 构造参数归一到 Hybrid extra_high，避免继续暴露独立 VLM backend。"""
+        """将旧 PdfVlmParser 构造参数归一到 Hybrid xhigh，避免继续暴露独立 VLM backend。"""
         backend = kwargs.pop("backend", "vlm-engine")
         kwargs.pop("effort", None)
         resolved_backend, resolved_effort = resolve_backend_and_effort(backend, MAX_HYBRID_EFFORT)

@@ -62,13 +62,13 @@ SDK 迁移的目标不是重写现有 parser，而是稳定已经成形的边界
 1. 在 `parse()` 增加 `tier` 参数。
 2. 保留 `backend` 作为高级兼容参数。
 3. 明确 `backend` 覆盖 `tier`。
-4. 增加 `tier=None` 默认选择逻辑，且永不回退到 `flash`。
+4. 增加 `tier=None` 默认选择逻辑：PDF/image 永不回退到 `flash`，Office/HTML 这类仅支持 flash tier 的输入按实际能力归一为 `flash`。
 
 验收:
 
 - `parse(path, tier="medium")` 可用。
 - `parse(path, tier="high")` 可用或给出明确 engine error。
-- `parse(path)` 或 `parse(path, tier=None)` 不会静默使用 flash。
+- PDF/image 的 `parse(path)` 或 `parse(path, tier=None)` 不会静默使用 flash；Office/HTML 这类仅支持 flash tier 的输入未指定 tier 时返回实际 `flash` 语义。
 - `parse(path, tier="flash")` 只有显式请求时使用 flash。
 
 ## Phase 4: 错误模型统一

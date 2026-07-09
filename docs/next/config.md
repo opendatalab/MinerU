@@ -25,7 +25,7 @@ MinerU 有两类配置：
 配置必须服务两个产品原则：
 
 - 隐私优先：任何配置都不能导致静默上传文档。
-- 质量优先：主动阅读未指定 tier 时使用默认选择策略，不能静默降级到 `flash`。
+- 质量优先：PDF/image 主动阅读未指定 tier 时使用默认选择策略，不能静默降级到 `flash`；Office/text/HTML 按实际能力归一为 `flash`。
 
 ## 2. 两阶段配置模型
 
@@ -121,7 +121,7 @@ SDK client 显式参数属于当前调用方传入的请求上下文；当它最
 
 ## 5. Parse-server 配置
 
-parse-server 是 `medium` / `high` / `extra_high` 等质量 tier 的解析能力来源。它可以是本地独立进程，也可以是远端 `mineru.net/api` 或当前代码配置的 staging endpoint。
+parse-server 是 `medium` / `high` / `xhigh` 等质量 tier 的解析能力来源。它可以是本地独立进程，也可以是远端 `mineru.net/api` 或当前代码配置的 staging endpoint。
 
 ### 5.1 Local parse-server
 
@@ -229,11 +229,11 @@ mineru config parsing-rules add "*/合同/*" --tier high --remote
 
 约束：
 
-- 规则必须显式指定 remote，才允许上传远端。
-- 规则命中的 tier 必须经过能力检查。
-- 能力不足时记录结构化错误，不静默降级到 `flash`。
-- 允许不指定 tier。执行时必须通过能力发现解析为实体 tier，并只记录实际使用的实体 tier。
-- 默认选择策略不能解析为 `flash`。
+- 对 PDF/image，规则必须显式指定 remote，才允许上传远端。
+- 对 PDF/image，规则命中的 tier 必须经过能力检查。
+- 对 PDF/image，规则未指定 tier 时按 `high` -> `xhigh` -> `medium` -> `flash` 选择，并只记录实际使用的实体 tier。
+- 对 Office/text/HTML，parsing-rule 的 tier 和 remote 不生效，实际按 `flash` 记录。
+- 完整归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)。
 
 ### 8.3 Exclude
 

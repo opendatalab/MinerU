@@ -46,11 +46,11 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 规则：
 
 - `short_id` 是 doclib 为文档生成的稳定短 ID。
-- `tier` 取值为 `flash`、`medium`、`high`。
+- `tier` 取值为 `flash`、`medium`、`high`、`xhigh`。
 - `page_no` 和 `block_no` 使用 1-based 编号。
 - `char:{offset}` 使用 block 渲染文本内的 0-based 字符 offset。
 
-当只给出 `doc:{short_id}` 时，系统会选择当前已缓存的最高可用非 `flash` tier；如果不存在 `medium` 或 `high` 结果，则返回错误，不静默降级到 `flash`。
+当只给出 `doc:{short_id}` 时，系统不会创建新解析，而是在当前已缓存的非 `flash` 质量 tier 中选择最高质量结果，顺序为 `xhigh` -> `high` -> `medium`。如果不存在非 `flash` 质量 tier 结果，则返回错误，不静默降级到 `flash`。
 
 ## 4. 核心参数
 

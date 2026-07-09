@@ -12,7 +12,7 @@
 
 - 去掉 everydoc 中显式暴露给用户的 `index` 概念。
 - 在 doclib 中用“入库 + flash parse”替代 everydoc 的 lightweight index。
-- 将解析能力统一到 `flash` / `medium` / `high` 解析档位。
+- 将解析能力统一到 `flash` / `medium` / `high` / `xhigh` 解析档位。
 - 将解析结果存储收敛为 Middle JSON，Markdown / Content List 等格式读取时即时转换。
 
 尽管如此，everydoc 仍有一些已经设计清楚、甚至已经实现的 doclib 类能力。最近补齐文件变化检测时发现，MinerU doclib 曾遗漏 everydoc 中命名清晰的 `discover_file` / change detection 机制，因此有必要系统性回看 everydoc 中还有哪些设计值得回收。
@@ -276,7 +276,7 @@ MinerU 当前状态:
 风险:
 
 - Agent 很难按解析档位和文件类型控制搜索范围。
-- 用户无法快速判断结果来自低成本 flash、medium 还是 high 的充分解析。
+- 用户无法快速判断结果来自低成本 flash，还是 medium / high / xhigh 的质量解析。
 
 P0 结论:
 

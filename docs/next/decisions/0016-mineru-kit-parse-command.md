@@ -105,7 +105,7 @@ mineru-kit parse <input...> -o <output> [flags]
 3. `--remote` 与 `--remote-url` 互斥
 4. remote 模式下允许传 `--tier`
 5. remote 模式下禁止传 `--backend`
-6. remote 模式未传 `--tier` 时，使用目标服务提供的最高 tier
+6. remote 模式未传 `--tier` 时，PDF/image 使用目标服务的默认选择策略，按 `high` -> `xhigh` -> `medium` 选择
 7. remote 模式传了 `--tier` 时：
    - 服务提供该 tier，则按该 tier 解析
    - 服务不提供该 tier，则报错

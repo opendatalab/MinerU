@@ -42,7 +42,7 @@ def parse_command(
     pages: str | None = typer.Option(None, "-p", "--pages", help="Page range, e.g. '1~5' or 'all'"),
     format: str = typer.Option("markdown", "-f", "--format", help="Output format: markdown, middle_json, zip"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Verbose output"),
-    tier: str | None = typer.Option(None, "--tier", help="Parse tier: flash, medium, high, extra_high"),
+    tier: str | None = typer.Option(None, "--tier", help="Parse tier: flash, medium, high, xhigh"),
     backend: str | None = typer.Option(None, "--backend", help="Expert backend override"),
     remote: bool = typer.Option(False, "--remote", help="Use mineru.net official remote parse service"),
     remote_url: str | None = typer.Option(None, "--remote-url", help="Use a custom remote parse service URL"),
@@ -83,7 +83,7 @@ def api_server_command(
     tier: list[str] | None = typer.Option(
         None,
         "--tier",
-        help="Server tier: flash, medium, high, extra_high; repeat to expose multiple tiers",
+        help="Server tier: flash, medium, high, xhigh; repeat to expose multiple tiers",
     ),
     concurrency: int = typer.Option(1, "--concurrency", help="Maximum concurrent parse jobs"),
     url_timeout: int = typer.Option(60, "--url-timeout", help="Timeout for URL source downloads"),

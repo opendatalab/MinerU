@@ -14,17 +14,19 @@ from typing import Literal, cast
 from urllib.parse import urlparse
 
 from ...errors import InvalidRequestError, MineruError
-from ...parser.api_client import _V1APIError
-from ...parser.base import ParseResult
-from ...types import TIER_ORDER, PageInfo, Tier
-from ..constants import (
+from ...filetypes import (
     IMAGE_EXTENSIONS,
     LEGACY_OFFICE_EXTENSION_UPGRADES,
     OFFICE_EXTENSIONS,
     PARSEABLE_EXTENSIONS,
     TEXT_EXTENSIONS,
+    TIERED_PARSE_EXTENSIONS,
     is_office_temp_lock_file,
+    select_parsing_rule_tier,
 )
+from ...parser.api_client import _V1APIError
+from ...parser.base import ParseResult
+from ...types import QUALITY_TIERS, TIER_ORDER, PageInfo, Tier, select_default_quality_tier
 from ..core.db import DatabaseManager
 from ..core.file_io import FileStat, MetadataExtractionError, compute_sha256, extract_metadata, get_file_stat
 from ..core.fts import FTSManager
@@ -71,9 +73,6 @@ DOC_TYPE_BY_EXT = {
     "html": "html",
     **dict.fromkeys(IMAGE_EXTENSIONS, "image"),
 }
-
-QUALITY_TIER_EXTENSIONS: set[str] = {"pdf", *IMAGE_EXTENSIONS}
-
 
 FileRefreshStatus = Literal["known", "new", "changed", "missing", "deleted", "unreachable", "unsupported", "error"]
 
@@ -641,13 +640,21 @@ class ParseService:
 
         # determine tier and page_range for initial parse
         tier: Tier = "flash"
+        privacy = "local"
         initial_page_range = default_parse_range(page_count)
 
         # check parsing-rules
         matched = await self.config_svc.match_rules(path, RULE_TYPE_PARSING_RULE)
         if matched:
             rule = matched[0]
-            tier = rule.get("tier") or tier
+            rule_tier = cast(Tier | None, rule.get("tier"))
+            rule_remote = bool(rule.get("remote", False))
+            if ext in TIERED_PARSE_EXTENSIONS:
+                tier = rule_tier or _resolve_parsing_rule_default_tier(remote=rule_remote)
+                privacy = "remote" if rule_remote and tier != "flash" else "local"
+            else:
+                tier = "flash"
+                privacy = "local"
             rule_page_range = rule.get("page_range")
             if rule_page_range:
                 initial_page_range = expand_page_range(rule_page_range, page_count or 1)
@@ -659,8 +666,9 @@ class ParseService:
             (sha256, now, path),
         )
         await self.db.execute(
-            "INSERT INTO parses (sha256, tier, page_range, status, priority, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)",
-            (sha256, tier, parse_page_range, PARSE_STATUS_PENDING, now, now),
+            "INSERT INTO parses (sha256, tier, page_range, status, privacy, priority, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
+            (sha256, tier, parse_page_range, PARSE_STATUS_PENDING, privacy, now, now),
         )
         await self._record_count("parse_task.created.count", dimensions={"tier": tier})
 
@@ -707,7 +715,11 @@ class ParseService:
             raise MineruError("ingest_failed", "File could not be ingested.", "path")
         sha256 = file_row["sha256"]
         if sha256 is None:
-            raise MineruError(file_row.get("error_code") or "ingest_failed", file_row.get("error_msg") or "File could not be ingested.", "path")
+            raise MineruError(
+                file_row.get("error_code") or "ingest_failed",
+                file_row.get("error_msg") or "File could not be ingested.",
+                "path",
+            )
         doc = cast(DocRow | None, await self.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,)))
         page_count = doc["page_count"] if doc else 1
         short_id = doc["short_id"] if doc else None
@@ -715,7 +727,7 @@ class ParseService:
         ext = file_row["ext"]
 
         # ── resolve tier (before cache check) ──
-        if remote and ext not in QUALITY_TIER_EXTENSIONS:
+        if remote and ext not in TIERED_PARSE_EXTENSIONS:
             raise InvalidRequestError(
                 "remote_unsupported_for_file_type",
                 f"Remote parsing is only supported for PDF and image files; '{ext}' files use local flash parsing.",
@@ -724,10 +736,10 @@ class ParseService:
         if remote and tier == "flash":
             raise InvalidRequestError(
                 "tier_unsupported_for_remote",
-                "--remote does not support tier 'flash'; use --tier medium, --tier high, or --tier extra_high.",
+                "--remote does not support tier 'flash'; use --tier medium, --tier high, or --tier xhigh.",
                 "tier",
             )
-        if tier in ("medium", "high", "extra_high") and ext not in QUALITY_TIER_EXTENSIONS:
+        if tier in QUALITY_TIERS and ext not in TIERED_PARSE_EXTENSIONS:
             raise InvalidRequestError(
                 "tier_unsupported_for_file_type",
                 f"Tier '{tier}' is only supported for PDF and image files; '{ext}' files use --tier flash.",
@@ -735,7 +747,7 @@ class ParseService:
             )
         if ext in TEXT_EXTENSIONS:
             return _text_response(sha256, short_id)
-        if ext in QUALITY_TIER_EXTENSIONS:
+        if ext in TIERED_PARSE_EXTENSIONS:
             requested_tier = tier or _resolve_default_tier(remote)
         else:
             requested_tier = "flash"
@@ -1366,24 +1378,31 @@ class ParseService:
 
 
 def _resolve_default_tier(remote: bool = False) -> Tier:
-    """从健康检查中选择最高可用质量 tier，顺序为 extra_high > high > medium。"""
+    """从健康检查中选择默认质量 tier，顺序为 high > xhigh > medium。"""
     from ..background.parse_server_health import get_health
 
     health = get_health()
     supported = health.remote_supported_tiers if remote else health.local_supported_tiers
-    for candidate in ("extra_high", "high", "medium"):
-        if candidate in supported:
-            return candidate
+    selected = select_default_quality_tier(supported)
+    if selected is not None:
+        return selected
     actions = ["start a local parse-server"]
-    if not remote and health.remote_healthy and any(
-        tier in health.remote_supported_tiers for tier in ("extra_high", "high", "medium")
-    ):
+    if not remote and health.remote_healthy and select_default_quality_tier(health.remote_supported_tiers) is not None:
         actions.append("use --remote")
     actions.append("explicitly pass --tier flash for text-only preview")
     raise ParseFailure(
         "quality_tier_unavailable",
-        f"No medium, high, or extra_high engine available. You can {_format_action_list(actions)}.",
+        f"No medium, high, or xhigh engine available. You can {_format_action_list(actions)}.",
     )
+
+
+def _resolve_parsing_rule_default_tier(remote: bool = False) -> Tier:
+    """Parsing-rule 是后台批量策略，允许 high -> xhigh -> medium -> flash。"""
+    from ..background.parse_server_health import get_health
+
+    health = get_health()
+    supported = health.remote_supported_tiers if remote else health.local_supported_tiers
+    return select_parsing_rule_tier(supported)
 
 
 def _format_action_list(actions: list[str]) -> str:
@@ -1507,7 +1526,10 @@ def _remap_api_result_pages_to_page_range(result: ParseResult, page_range: str) 
     if len(requested_page_numbers) != len(result.pages):
         raise ParseFailure(
             "parse_page_remap_failed",
-            f"Parse result page count does not match requested page_range: requested={page_range}, returned={actual_page_numbers}",
+            (
+                "Parse result page count does not match requested page_range: "
+                f"requested={page_range}, returned={actual_page_numbers}"
+            ),
         )
     for page, page_no in zip(result.pages, requested_page_numbers, strict=True):
         page.page_idx = page_no - 1

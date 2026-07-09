@@ -147,24 +147,15 @@ Tier 对象字段:
 
 | 字段 | 类型 | 必带 | 说明 |
 |------|------|:--:|------|
-| `id` | string | 是 | 当前服务提供的真实质量 tier，例如 `medium` 或 `high`。 |
+| `id` | string | 是 | 当前服务提供的真实质量 tier，例如 `medium`、`high` 或 `xhigh`。 |
 | `description` | string | 是 | 档位说明。 |
 | `current_model` | string 或 null | 是 | 当前 tier 背后的模型 ID。 |
 
 ## Tier 选择语义
 
-`medium` 和 `high` 是 v1 协议中面向用户读取文档的真实质量档位。具体服务当前支持哪些 tier，以 `/v1/tiers` 返回为准。
+v1 协议中面向用户读取文档的质量档位以 [解析 Tier](../tiers.md) 为准。具体服务当前支持哪些 tier，以 `/v1/tiers` 返回为准。
 
-请求创建 parse job 时，客户端可以省略 `tier` 或传 `null`，表示使用默认选择策略:
-
-| 可发现能力 | 默认选择结果 |
-|------------|---------------|
-| 只有 `medium` | `medium` |
-| 只有 `high` | `high` |
-| 同时有 `medium` 和 `high` | `high` |
-| 没有 `medium` 和 `high` | 报错 |
-
-默认选择策略在任何语境下都不能等价于 `flash`。`flash` 是 watch、发现、索引阶段使用的快速 CPU 引擎，不是用户读取文档时的默认质量档位。
+请求创建 parse job 时，客户端可以省略 `tier` 或传 `null`，表示使用 [解析 Tier](../tiers.md) 中定义的默认选择策略。对 PDF/image 这类支持多 tier 的输入，默认选择不能等价于 `flash`；Office/text/HTML 按 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 的批量规则归一为 `flash`。
 
 更完整产品语义见 [解析 Tier](../tiers.md)。
 
@@ -191,7 +182,7 @@ Local Parse Server 的 `health` 通常返回:
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `parser_version` | string | 本地解析器版本。 |
-| `models` | object | 各后端健康状态，例如 `{"medium":"ok","high":"missing"}`。 |
+| `models` | object | 各后端健康状态，例如 `{"medium":"ok","high":"ok","xhigh":"missing"}`。 |
 
 这些额外字段只供运维和调试使用，通用客户端不能依赖。
 
@@ -201,10 +192,11 @@ Local Parse Server 的 `health` 通常返回:
 |-------------------------|-------------------|
 | Medium | `medium` |
 | High | `high` |
+| Extra High | `xhigh` |
 | 只有 Flash | 不应把 `flash` 作为用户质量解析 tier；默认选择请求应失败。 |
 
 本地或兼容服务应以 `/v1/tiers` 返回值作为能力发现事实。它可以只暴露一个 tier，也可以暴露多个 tier；客户端不应假设具体进程模型。
 
-如果本地 server 支持 `flash`，它可以在内部 watch 或索引机制中使用，但不应出现在面向用户质量解析的默认选择候选中。
+如果本地 server 支持 `flash`，它可以用于显式 `flash`、仅支持 flash tier 的输入归一化、watch 或索引机制，但不应出现在 PDF/image 面向用户质量解析的默认选择候选中。
 
 `mineru.net/api` 在相当长时间内只提供 `high`。远端 `/v1/tiers` 因此应返回 `high`；省略 `tier` 或传 `null` 等价于使用 `high`。

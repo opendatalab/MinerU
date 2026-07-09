@@ -44,12 +44,14 @@ managed 是生命周期管理方式，不是用户直接操作的独立命令产
 
 ### 3. 单进程 tier 规则
 
-一个 `mineru-kit api-server` 进程只服务一个 tier。
+一个 `mineru-kit api-server` 进程可以通过重复 `--tier` 暴露一个或多个 tier。
 
 支持的公开 tier：
 
+- `flash`
 - `medium`
 - `high`
+- `xhigh`
 
 规则：
 
@@ -57,7 +59,7 @@ managed 是生命周期管理方式，不是用户直接操作的独立命令产
 2. `--backend` 是高级覆盖参数
 3. 可以同时传 `--tier` 和 `--backend`
 4. 如果二者不兼容，启动直接报错
-5. 未传 `--tier` 时暴露 `flash`、`medium`、`high`、`extra_high`；请求未指定 tier 时默认 `high`
+5. 未传 `--tier` 时暴露 `flash`、`medium`、`high`、`xhigh`；请求未指定 tier 时默认 `high`
 
 ### 4. backend 的公开边界
 

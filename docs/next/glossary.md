@@ -51,14 +51,17 @@
 |------|------|------|
 | `flash` | 实体 tier | CPU-only、快速、低质量，用于 watch、发现和索引 |
 | `medium` | 实体 tier | 面向普通本地硬件的模型解析能力 |
-| `high` | 实体 tier | 当前最高质量解析能力，可来自 `mineru.net/api` 或高端本地硬件 |
+| `high` | 实体 tier | 绝大多数场景足够好的高质量解析能力，可来自 `mineru.net/api` 或高端本地硬件 |
+| `xhigh` | 实体 tier | 最高质量解析能力，比 `high` 消耗更多算力和时间 |
 
 规范:
 
 - CLI/API/SDK 的用户可见参数应使用 `tier`。
 - CLI 不传 `--tier`、HTTP API 省略 `tier` 或传 JSON `null`、Python SDK 传 `None` 表示使用默认选择策略。
-- 任务入队、缓存目录、产物 metadata 应记录实际使用的实体 tier，即 `flash`、`medium` 或 `high`。
-- 默认选择策略永远不能解析为 `flash`。
+- 任务入队、缓存目录、产物 metadata 应记录实际使用的实体 tier，即 `flash`、`medium`、`high` 或 `xhigh`。
+- PDF/image 的默认选择策略不能解析为 `flash`；Office/text/HTML 这类仅支持 flash tier 的输入归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)。
+
+完整产品语义见 [解析 Tier](tiers.md)。
 
 ### 3.2 Backend
 
@@ -156,7 +159,7 @@
 
 `parse-server` 是最终术语，中文统一为“解析服务”。它是无状态解析服务，提供 v1 Unified API，并且已经作为配置命名的一部分使用。
 
-它接收文件或本地路径，执行 `medium` / `high` 等解析能力，并返回解析任务与产物。它不管理长期文档库、watch、搜索索引或用户本地配置。
+它接收文件或本地路径，执行 `medium` / `high` / `xhigh` 等解析能力，并返回解析任务与产物。它不管理长期文档库、watch、搜索索引或用户本地配置。
 
 文档中推荐写法:
 
@@ -356,7 +359,7 @@ Ingest 不等于 parse。Ingest 可以不产生完整 Middle JSON。
 - 生成 Middle JSON 和 render output。
 - 更新 parse 状态、缓存和内容索引。
 
-主动阅读场景下，未指定 tier 应使用默认选择策略，并至少解析到 `medium`。
+主动阅读场景下，未指定 tier 应使用默认选择策略，并解析到可用的非 `flash` 质量 tier。
 
 ## 8. 隐私与执行路径
 
@@ -501,7 +504,7 @@ Local Parse Server 默认不按公网 access level 做售卖或配额区分。
 |----------|------|
 | `tier` | 字段名、参数名、泛指解析档位 |
 | Tier | 章节标题或概念名 |
-| `flash` / `medium` / `high` | tier 枚举值 |
+| `flash` / `medium` / `high` / `xhigh` | tier 枚举值 |
 | parse-server | 最终术语，泛指解析服务 |
 | Local Parse Server | 本地解析服务 |
 | Remote Parse Server | 远端解析服务 |

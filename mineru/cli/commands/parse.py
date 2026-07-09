@@ -92,7 +92,7 @@ def parse_cmd(
     tier: Tier | None = typer.Option(
         None,
         "--tier",
-        help="Parse tier: flash, medium, high, extra_high (default: server decides)",
+        help="Parse tier: flash, medium, high, xhigh (default: server decides)",
     ),
     pages: str = typer.Option(None, "-p", "--pages", help="Page range, e.g. '1~5' or 'all'"),
     after: str = typer.Option(None, "--after", help="Continue reading after a content cursor"),

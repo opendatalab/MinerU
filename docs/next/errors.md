@@ -21,7 +21,7 @@
 - 错误格式兼容 OpenAI API。
 - `message` 面向人类，`code`、`param`、`retryable` 和 `user_action` 面向程序。
 - 不显式 `--remote` 时，不用错误恢复逻辑静默上传文档。
-- 默认选择策略永远不能降级为 `flash`；找不到 `medium/high` 时必须报错。
+- PDF/image 的默认选择策略不能降级为 `flash`；找不到非 `flash` 质量 tier 时必须报错。Office/text/HTML 这类仅支持 flash tier 的输入归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)。
 - 未来新增 `code` 只能追加，不改变既有语义。
 
 ## 3. 错误响应格式
@@ -72,7 +72,7 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`medium`、`high
 
 | type | code | HTTP | retryable | param | 触发场景 | user_action |
 |------|------|------|:--:|-------|----------|-------------|
-| `engine_error` | `quality_tier_unavailable` | 503 | 否 | `tier` | 主动阅读场景需要 `medium/high`，但只有 `flash` 可用 | `start_parse_server_or_use_remote_or_explicit_flash` |
+| `engine_error` | `quality_tier_unavailable` | 503 | 否 | `tier` | PDF/image 主动阅读场景需要非 `flash` 质量 tier，但只有 `flash` 可用 | `start_parse_server_or_use_remote_or_explicit_flash` |
 | `engine_error` | `no_engine` | 503 | 否 | `tier` | 本地无匹配实体 tier 的引擎 | `enable_parse_server_or_change_tier` |
 | `engine_error` | `engine_unavailable` | 503 | 是 | null | 引擎进程未启动、崩溃或暂不可用 | `wait_or_restart_parse_server` |
 | `engine_error` | `parse_server_unavailable` | 503 | 是 | null | local 或 remote parse-server 不可达 | `wait_or_check_parse_server` |

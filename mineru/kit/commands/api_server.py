@@ -5,11 +5,12 @@ from typing import Literal, Sequence
 import typer
 
 from ...parser import api_server as parser_api_server
+from ...types import Tier
 from ...utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..errors import exit_with_message
 
 API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
-API_SERVER_TIERS = ("flash", "medium", "high", "extra_high")
+API_SERVER_TIERS = ("flash", "medium", "high", "xhigh")
 
 
 def _normalize_tier_options(tier: Sequence[str] | str | None) -> list[str]:
@@ -34,9 +35,7 @@ def api_server_cmd(
     host: str = "127.0.0.1",
     port: int = 8000,
     upload_dir: str = "",
-    tier: Sequence[Literal["flash", "medium", "high", "extra_high"]]
-    | Literal["flash", "medium", "high", "extra_high"]
-    | None = None,
+    tier: Sequence[Tier] | Tier | None = None,
     concurrency: int = 1,
     url_timeout: int = 60,
     allow_local_source: bool = False,

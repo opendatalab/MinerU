@@ -47,11 +47,11 @@ from mineru.cli_old.visualization import (
     run_visualization_job,
 )
 from mineru.cli_old import api_client as _api_client
-from mineru.data.data_reader_writer.filebase import FileBasedDataWriter
 from mineru.parser.api_client import MinerUApiParser
 from mineru.parser.base import ParseResult
 from mineru.parser.tier import ParserRuntimeOptions, runtime_options_for_tier
 from mineru.render import render_content_list, render_markdown, render_structured_content
+from mineru.render.writer import FileBasedDataWriter
 from mineru.utils.image_payload import validate_image_sidecar_path
 from mineru.utils.pdf_document import PDFDocument
 from mineru.utils.pdf_page_id import parse_page_range
@@ -240,7 +240,7 @@ STATUS_PROCESSING_ON_SERVER = "Processing on server"
 STATUS_QUEUED_LOCALLY_PREFIX = "Queued locally:"
 
 DEFAULT_GRADIO_TIER = "high"
-GRADIO_TIER_CHOICES = ("flash", "medium", "high", "extra_high")
+GRADIO_TIER_CHOICES = ("flash", "medium", "high", "xhigh")
 STATUS_STEP_DEFINITIONS = [
     ("status_step_prepare", STATUS_PREPARING_REQUEST),
     ("status_step_check", STATUS_CHECKING_SERVER),
@@ -414,7 +414,9 @@ def default_v1_gradio_tier(tier_choices: tuple[str, ...]) -> str:
         raise click.ClickException("MinerU v1 API did not advertise any supported tier.")
     if DEFAULT_GRADIO_TIER in tier_choices:
         return DEFAULT_GRADIO_TIER
-    return tier_choices[0]
+    from ..types import select_default_quality_tier
+
+    return select_default_quality_tier(tier_choices) or tier_choices[0]
 
 
 async def fetch_v1_tier_choices(http_client, base_url: str) -> tuple[str, ...]:
@@ -601,8 +603,8 @@ def select_tier_info_key(tier_choice: object) -> str:
         return "tier_info_medium"
     if tier_choice == "high":
         return "tier_info_high"
-    if tier_choice == "extra_high":
-        return "tier_info_extra_high"
+    if tier_choice == "xhigh":
+        return "tier_info_xhigh"
     return "tier_info_default"
 
 
@@ -1753,7 +1755,7 @@ def main(ctx,
             "tier_info_flash": "Flash tier uses fast local text extraction.",
             "tier_info_medium": "Medium tier uses local Hybrid parsing.",
             "tier_info_high": "High tier uses higher quality Hybrid parsing.",
-            "tier_info_extra_high": "Extra high tier uses maximum-quality Hybrid parsing.",
+            "tier_info_xhigh": "Extra High tier uses maximum-quality Hybrid parsing.",
             "convert": "Convert",
             "clear": "Clear",
             "doc_preview": "Document preview",
@@ -1804,7 +1806,7 @@ def main(ctx,
             "tier_info_flash": "flash 使用快速本地文本提取。",
             "tier_info_medium": "medium 使用本地 Hybrid 解析。",
             "tier_info_high": "high 使用更高质量的 Hybrid 解析。",
-            "tier_info_extra_high": "extra_high 使用最高质量的 Hybrid 解析。",
+            "tier_info_xhigh": "xhigh 使用最高质量的 Hybrid 解析。",
             "convert": "转换",
             "clear": "清除",
             "doc_preview": "文档预览",

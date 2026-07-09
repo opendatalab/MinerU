@@ -75,7 +75,7 @@ def ensure_parse(self, request: ParseRequest) -> ParseResponse: ...
 | 参数 | 说明 |
 |------|------|
 | `path` | 本地文件路径。 |
-| `tier` | `flash`、`medium`、`high`、`extra_high` 或 `None`。`None` 表示使用 doclib 规则和默认策略。 |
+| `tier` | `flash`、`medium`、`high`、`xhigh` 或 `None`。`None` 表示使用 doclib 规则和默认策略；非 PDF/image 单文件未指定 tier 时归一为 `flash`，显式质量 tier 报错。 |
 | `page_range` | 页码范围。 |
 | `force` | 跳过已有 done 缓存并重新解析；可复用 active parse，只为未覆盖页创建新 parse。 |
 | `remote` | 是否允许调用远端 parse-server。默认 `False`。远端 URL 来自 doclib config；API Key 优先来自 doclib config，未配置时使用环境变量。 |

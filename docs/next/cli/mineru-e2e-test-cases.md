@@ -51,7 +51,7 @@
   - `$MINERU_E2E_FIXTURE_DIR/no-read.pdf`，权限不可读文件；若平台无法稳定制造权限场景，可标记相关用例 BLOCKED。
   - `$MINERU_E2E_FIXTURE_DIR/output-dir/`，用于输出文件测试的目录。
 - 测试环境允许启动本地 doclib server。
-- 测试环境必须安装 `pro` extra，以覆盖本地 medium/high parse-server；默认 tier 相关用例应验证本地 quality tier 可用，不再按缺少本地 quality tier 的预期失败分支判定。
+- 测试环境必须安装当前质量解析依赖 extra，以覆盖本地 quality parse-server；默认 tier 相关用例应验证本地 quality tier 可用，不再按缺少本地 quality tier 的预期失败分支判定。
 - 除 PARSE-013A1 外，若 remote parse-server 不可用，`--remote` 相关用例按预期失败分支判定；若可用，必须验证 remote/via/privacy 等字段。
 - PARSE-013A1 是 remote high 硬性测试，remote parse-server 不可用或不支持 high 均记录为失败。
 
@@ -80,7 +80,7 @@ rm -rf .venv
 uv venv .venv
 source .venv/bin/activate
 cd ~/MinerU-Repo
-uv pip install ".[pro]"
+uv pip install ".[high]"
 cd ~/mineru-e2e-test
 mineru --help
 mineru-kit --help
@@ -1239,7 +1239,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --pages 1~1 --wait 20 --json
 - 三条命令均 exit code = 0
 - parse 前 `server status --json` 最终应体现 `parse_server.local.healthy=true`，`supported_tiers` 包含 `high`
 - stdout 为可直接解析的 JSON
-- 实际 tier 为 medium 或 high
+- 实际 tier 为 high
 - 实际 tier 不为 flash
 - 不允许静默返回 flash 内容
 - 不包含 Python traceback
@@ -1407,7 +1407,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --remote --pages 1~1 --wait 60
 - 如果 remote parse-server 可用:
   - exit code = 0
   - 输出为可直接解析的 JSON
-  - tier 应为 remote 支持的 quality tier，例如 medium 或 high
+  - tier 应为 remote 支持的 quality tier；如果 remote 暴露 `high`，默认应为 `high`
   - JSON 体现 remote/via/privacy 中的部分字段
   - 不允许在未声明 fallback 的情况下静默返回本地 flash 内容
 - 如果 remote parse-server 不可用:
@@ -3523,7 +3523,7 @@ Blocked:
 Environment:
 - mineru version: <如果 help/status 输出能看到则填写，否则 unknown>
 - fixture dir: ...
-- quality tier available: medium/high available
+- quality tier available: <available quality tiers>
 - remote high available: yes
 - pdf fixture source: ...
 ```

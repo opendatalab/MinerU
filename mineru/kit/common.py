@@ -6,7 +6,7 @@ import json
 import os
 import zipfile
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypeAlias
 
 from ..parser.base import ParseResult
 from ..render.writer import FileBasedDataWriter
@@ -15,7 +15,7 @@ from ..utils.image_payload import validate_image_sidecar_path
 
 SupportedBundle = Literal["pipeline", "vlm", "all"]
 KitFormat = Literal["markdown", "middle_json", "zip"]
-LocalTier = Literal["flash", "medium", "high", "extra_high"]
+LocalTier: TypeAlias = Tier
 
 SUPPORTED_SUFFIXES = {
     ".pdf",

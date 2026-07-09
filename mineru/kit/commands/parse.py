@@ -6,7 +6,9 @@ from typing import Literal
 
 from ...parser import MinerUApiParser
 from ...parser import parse as local_parse
-from ...utils.backend_options import DEFAULT_HYBRID_EFFORT, resolve_backend_and_effort
+from ...filetypes import ensure_tier_supported_for_parse_extension, is_flash_only_parse_extension
+from ...types import Tier
+from ...utils.backend_options import DEFAULT_HYBRID_EFFORT, effort_for_tier, resolve_backend_and_effort
 from ...utils.ocr_language import validate_public_ocr_lang
 from ..common import (
     build_remote_api_url,
@@ -27,14 +29,14 @@ def parse_cmd(
     pages: str | None = None,
     format: Literal["markdown", "middle_json", "zip"] = "markdown",
     verbose: bool = False,
-    tier: Literal["flash", "medium", "high", "extra_high"] | None = None,
+    tier: Tier | None = None,
     backend: str | None = None,
     remote: bool = False,
     remote_url: str | None = None,
     api_key: str | None = None,
     language: str = "ch",
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
-    effort: Literal["medium", "high", "extra_high"] = DEFAULT_HYBRID_EFFORT,
+    effort: Literal["medium", "high", "xhigh"] = DEFAULT_HYBRID_EFFORT,
     disable_image_analysis: bool = False,
 ) -> None:
     if not inputs:
@@ -49,6 +51,7 @@ def parse_cmd(
             "When input is multiple files or directories, --output must be a directory path.",
             "output",
         )
+    has_directory_input = any(path.is_dir() for path in raw_paths)
     if len(raw_paths) > 1 and Path(output).expanduser().suffix:
         exit_with_message(
             "invalid_request",
@@ -73,19 +76,33 @@ def parse_cmd(
             )
         except ValueError as exc:
             exit_with_message("invalid_request", str(exc), "backend")
-        resolved_tier, resolved_backend = effective_local_tier_and_backend(tier, normalized_backend)
-        if resolved_tier in {"medium", "high", "extra_high"}:
-            normalized_effort = resolved_tier
-        parse_one = partial(
-            local_parse,
-            tier=resolved_tier,
-            backend=resolved_backend,
-            language=normalized_language,
-            ocr_mode=ocr_mode,
-            effort=normalized_effort,
-            disable_image_analysis=disable_image_analysis,
-            page_range=pages or "",
-        )
+        is_batch = has_directory_input or len(paths) > 1
+
+        def parse_one(path: Path) -> object:
+            path_tier: Tier
+            path_backend: str
+            path_effort = normalized_effort
+            if is_flash_only_parse_extension(path):
+                if not is_batch and (tier is not None or normalized_backend is not None):
+                    resolved_tier, _resolved_backend = effective_local_tier_and_backend(tier, normalized_backend)
+                    ensure_tier_supported_for_parse_extension(resolved_tier, path)
+                path_tier = "flash"
+                path_backend = "flash"
+                path_effort = DEFAULT_HYBRID_EFFORT
+            else:
+                path_tier, path_backend = effective_local_tier_and_backend(tier, normalized_backend)
+                if path_tier in {"medium", "high", "xhigh"}:
+                    path_effort = effort_for_tier(path_tier)
+            return local_parse(
+                path,
+                tier=path_tier,
+                backend=path_backend,
+                language=normalized_language,
+                ocr_mode=ocr_mode,
+                effort=path_effort,
+                disable_image_analysis=disable_image_analysis,
+                page_range=pages or "",
+            )
 
     for path in paths:
         try:

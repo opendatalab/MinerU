@@ -714,7 +714,7 @@ def test_parse_wait_json_maps_invalid_api_key_param(monkeypatch: Any, tmp_path: 
         id=3,
         sha256="a" * 64,
         short_id="aaaaaaa",
-        tier="pro",
+        tier="high",
         page_range="1~1",
         status="failed",
         privacy="remote",
@@ -731,7 +731,7 @@ def test_parse_wait_json_maps_invalid_api_key_param(monkeypatch: Any, tmp_path: 
         def ensure_parse(self, request: Any) -> ParseResponse:
             return ParseResponse(
                 sha256="a" * 64,
-                tier="pro",
+                tier="high",
                 page_range="1~1",
                 status="pending",
                 wait_parse_ids=[3],

@@ -143,7 +143,7 @@ def _load_vlm_content_block() -> Any:
 
 
 def _load_vlm_runtime() -> dict[str, Any]:
-    """按需加载 VLM runtime 组件，确保只有 high/extra_high 路径触发 VLM 依赖。"""
+    """按需加载 VLM runtime 组件，确保只有 high/xhigh 路径触发 VLM 依赖。"""
     from ...model.vlm.runtime import (
         ModelSingleton,
         _get_model_async,
@@ -1963,7 +1963,7 @@ def doc_analyze(
     language: str = "ch",
     model_path: str | None = None,
     server_url: str | None = None,
-    effort: Literal["medium", "high", "extra_high"] = DEFAULT_HYBRID_EFFORT,
+    effort: Literal["medium", "high", "xhigh"] = DEFAULT_HYBRID_EFFORT,
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
     image_cache: ImagePayloadCache | None = None,
@@ -2126,7 +2126,7 @@ async def aio_doc_analyze(
     language: str = "ch",
     model_path: str | None = None,
     server_url: str | None = None,
-    effort: Literal["medium", "high", "extra_high"] = DEFAULT_HYBRID_EFFORT,
+    effort: Literal["medium", "high", "xhigh"] = DEFAULT_HYBRID_EFFORT,
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
     image_cache: ImagePayloadCache | None = None,

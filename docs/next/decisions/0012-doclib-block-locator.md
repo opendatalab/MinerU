@@ -44,7 +44,7 @@ doc:ab12cd3/tier:medium/page:1/block:3
 | 字段 | 说明 |
 |------|------|
 | `short_id` | `docs.short_id`，见 [ADR-0011](0011-doclib-doc-short-id.md)。 |
-| `tier` | 实际解析档位: `flash` / `medium` / `high`。 |
+| `tier` | 实际解析档位: `flash` / `medium` / `high` / `xhigh`。 |
 | `page_no` | 1-based 页号。 |
 | `block_no` | 1-based block 号。 |
 

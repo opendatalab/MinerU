@@ -38,7 +38,7 @@ class AtomicModel:
     TableOrientationCls = "table_ori_cls"
 
 LOCAL_MODEL_INIT_LOCK = threading.RLock()
-# 这些锁保护 Hybrid medium/high/extra_high 共享的 atom model/native 模型推理调用，避免多线程同时进入同一个模型对象。
+# 这些锁保护 Hybrid medium/high/xhigh 共享的 atom model/native 模型推理调用，避免多线程同时进入同一个模型对象。
 LOCAL_MODEL_LAYOUT_INFERENCE_LOCK = threading.RLock()
 LOCAL_MODEL_MFR_INFERENCE_LOCK = threading.RLock()
 LOCAL_MODEL_OCR_INFERENCE_LOCK = threading.RLock()

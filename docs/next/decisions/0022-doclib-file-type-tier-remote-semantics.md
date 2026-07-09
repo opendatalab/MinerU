@@ -1,20 +1,20 @@
 # ADR-0022: Doclib 文件类型、Tier 与 Remote 语义
 
-状态: Accepted
+状态: Accepted，已由 ADR-0024 补充
 日期: 2026-06-29
-相关文档: ../cli/mineru-parse.md, ../tiers.md, ../errors.md
+相关文档: ../cli/mineru-parse.md, ../tiers.md, ../errors.md, 0024-file-type-tier-normalization.md
 
 ## 背景
 
 `mineru parse` 支持多种输入格式，但不同格式背后的解析路径并不相同：
 
-- PDF 和 image 可以进入质量 tier 路径，支持 `flash`、`medium` 和 `high`。
+- PDF 和 image 可以进入质量 tier 路径，支持 `flash`、`medium`、`high` 和 `xhigh`。
 - Office 文件走专门的 Office parser，实际只支持 `flash`。
 - text / html 类输入不走 PDF 质量后端，也只具备 `flash` 语义。
 
-此前 Office 文件显式传入 `--tier medium` 或 `--tier high` 时，会在服务层静默覆盖为 `flash`。CLI 和 JSON 输出只显示最终 tier，无法表达“用户请求被忽略”。这会让自动化脚本、测试和用户判断误以为 medium/high 已被执行。
+此前 Office 文件显式传入质量 tier 时，会在服务层静默覆盖为 `flash`。CLI 和 JSON 输出只显示最终 tier，无法表达“用户请求被忽略”。这会让自动化脚本、测试和用户判断误以为质量 tier 已被执行。
 
-同时，image 文件需要支持显式 `parse` 并进入 doclib，但 watch / scan 不应把目录中发现的图片自动当作文档纳入库。`--remote` 也需要明确边界：remote 后端只用于质量解析，不支持 `flash`，也不支持非 PDF / image 输入。
+同时，image 文件需要支持显式 `parse` 并进入 doclib，但 watch / scan 不应把目录中发现的图片自动当作文档纳入库。doclib 单对象主动解析的 `--remote` 也需要明确边界：remote 后端只用于质量解析，不支持 `flash`，也不支持非 PDF / image 输入。
 
 因此需要把文件类型、tier、remote 的组合语义显式化，避免静默降级。
 
@@ -39,14 +39,14 @@ image 扩展名只进入 `PARSEABLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTENS
 
 质量 tier 只对 PDF 和 image 有意义。
 
-| 文件类型 | `flash` | `medium` | `high` |
-|----------|---------|------------|-------|
-| PDF | 支持 | 支持 | 支持 |
-| image | 支持 | 支持 | 支持 |
-| Office (`docx` / `pptx` / `xlsx`) | 支持 | 不支持 | 不支持 |
-| text / html (`txt` / `md` / `csv` / `rst` / `tex` / `html` / `htm`) | 支持 | 不支持 | 不支持 |
+| 文件类型 | `flash` | `medium` | `high` | `xhigh` |
+|----------|---------|----------|--------|---------|
+| PDF | 支持 | 支持 | 支持 | 支持 |
+| image | 支持 | 支持 | 支持 | 支持 |
+| Office (`docx` / `pptx` / `xlsx`) | 支持 | 不支持 | 不支持 | 不支持 |
+| text / html (`txt` / `md` / `csv` / `rst` / `tex` / `html` / `htm`) | 支持 | 不支持 | 不支持 | 不支持 |
 
-当非 PDF / image 文件显式请求 `medium` 或 `high` 时，doclib 不再自动降级为 `flash`，而是返回 `InvalidRequestError`：
+当非 PDF / image 文件在 doclib 单对象主动解析中显式请求质量 tier 时，doclib 不再自动降级为 `flash`，而是返回 `InvalidRequestError`。批量、parsing-rule、API Server 和 mineru-kit 的归一化例外见 [ADR-0024](0024-file-type-tier-normalization.md)。
 
 - `code`: `tier_unsupported_for_file_type`
 - `param`: `tier`
@@ -55,16 +55,16 @@ image 扩展名只进入 `PARSEABLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTENS
 
 ### Remote 能力矩阵
 
-`--remote` 只支持 PDF 和 image，并且不支持 `flash` tier。
+doclib 单对象主动解析中的 `--remote` 只支持 PDF 和 image，并且不支持 `flash` tier。
 
 | 文件类型 | `--remote` |
 |----------|------------|
-| PDF | 支持 `medium` / `high`，不支持 `flash` |
-| image | 支持 `medium` / `high`，不支持 `flash` |
+| PDF | 支持非 `flash` 质量 tier，不支持 `flash` |
+| image | 支持非 `flash` 质量 tier，不支持 `flash` |
 | Office | 不支持 |
 | text / html | 不支持 |
 
-当非 PDF / image 文件请求 `--remote` 时，doclib 返回 `InvalidRequestError`：
+当非 PDF / image 文件在 doclib 单对象主动解析中请求 `--remote` 时，doclib 返回 `InvalidRequestError`：
 
 - `code`: `remote_unsupported_for_file_type`
 - `param`: `remote`
@@ -74,15 +74,15 @@ image 扩展名只进入 `PARSEABLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTENS
 - `code`: `tier_unsupported_for_remote`
 - `param`: `tier`
 
-当 PDF / image 请求 `--remote` 且未显式传入 tier 时，继续使用现有默认 tier 解析逻辑：根据 remote parse server health 选择可用的最高质量 tier。
+当 PDF / image 请求 `--remote` 且未显式传入 tier 时，继续使用 [解析 Tier](../tiers.md) 中定义的默认选择策略。
 
 ### 错误优先级
 
 当多个参数同时冲突时，优先返回更贴近显式冲突参数的错误：
 
-1. `--remote` 与非 PDF / image 文件冲突时，返回 `remote_unsupported_for_file_type`。
+1. doclib 单对象主动解析中，`--remote` 与非 PDF / image 文件冲突时，返回 `remote_unsupported_for_file_type`。
 2. PDF / image 的 `--remote --tier flash` 冲突时，返回 `tier_unsupported_for_remote`。
-3. 非 PDF / image 的 `--tier medium/high` 冲突时，返回 `tier_unsupported_for_file_type`。
+3. doclib 单对象主动解析中，非 PDF / image 的质量 tier 冲突时，返回 `tier_unsupported_for_file_type`。
 
 例如 `sample.docx --remote --tier flash` 优先报告 remote 不支持该文件类型，而不是报告 remote 不支持 flash。
 
@@ -95,10 +95,10 @@ image 扩展名只进入 `PARSEABLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTENS
 原因：
 
 - 自动化脚本可能只检查退出码和 `status=done`，warning / tip 容易被忽略。
-- 用户显式指定 `medium/high` 表示质量预期，静默或半静默降级会制造错误判断。
+- 用户显式指定质量 tier 表示质量预期，静默或半静默降级会制造错误判断。
 - 当前响应模型只有 `tip`，没有稳定的 warnings 列表；把冲突语义塞进提示字段不够可靠。
 
-### 方案 B：为所有格式保留 `medium/high` 名义兼容
+### 方案 B：为所有格式保留质量 tier 名义兼容
 
 未采用。
 
@@ -134,9 +134,9 @@ image 扩展名只进入 `PARSEABLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTENS
 
 ### 对兼容性
 
-- 这是有意的行为收紧。依赖 `docx --tier medium/high` 或非 PDF / image `--remote` 成功退出的脚本需要调整。
+- 这是有意的 doclib 单对象主动解析行为收紧。依赖非 PDF / image 显式请求质量 tier 或 `--remote` 成功退出的脚本需要调整。
 - 未显式指定质量 tier 的 Office、text、html 解析仍保持 `flash` 语义。
-- PDF / image 的本地 `flash` 和本地 / remote `medium/high` 路径保持可用。
+- PDF / image 的本地 `flash` 和本地 / remote 质量 tier 路径保持可用。
 
 ### 对测试
 
@@ -144,8 +144,8 @@ image 扩展名只进入 `PARSEABLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTENS
 
 - 显式 parse image 能入库并创建 parse 任务。
 - watch / scan 不自动发现 image。
-- 非 PDF / image 请求 `medium/high` 报 `tier_unsupported_for_file_type`。
-- 非 PDF / image 请求 `--remote` 报 `remote_unsupported_for_file_type`。
+- doclib 单对象主动解析中，非 PDF / image 请求质量 tier 报 `tier_unsupported_for_file_type`。
+- doclib 单对象主动解析中，非 PDF / image 请求 `--remote` 报 `remote_unsupported_for_file_type`。
 - PDF / image 请求 `--remote --tier flash` 报 `tier_unsupported_for_remote`。
 
 ## 后续动作

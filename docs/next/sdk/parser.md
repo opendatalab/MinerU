@@ -120,10 +120,10 @@ class DocumentParser:
 |------|--------------|------|
 | `flash` | `flash` | 快速 CPU-only。 |
 | `medium` | `hybrid-engine` + `effort="low"` | 消费级硬件可用的本地小模型组合。 |
-| `high` | hybrid 默认高质量 backend | 最高质量。 |
-| `extra_high` | hybrid backend + 更高 effort | 当前代码支持的专家档位，需显式请求。 |
+| `high` | hybrid 默认高质量 backend | 绝大多数场景足够好的高质量档位。 |
+| `xhigh` | hybrid backend + 更高 effort | 最高质量档位，用更多算力和时间换取小幅质量提升。 |
 
-`tier=None` 表示使用默认选择策略，选择可用的最高非 `flash` tier。当前默认选择不自动升级到 `extra_high`；只有用户显式请求 `tier="flash"` / `tier="extra_high"` 或对应 backend 时，才返回这些非默认档位结果。
+`tier=None` 表示使用默认选择策略。PDF/image 直接本地解析且没有能力列表时默认 `high`，有能力发现上下文时按 `high` -> `xhigh` -> `medium` 选择；Office/HTML 这类仅支持 flash tier 的输入未指定 tier 时归一为 `flash`，显式质量 tier 应报错。完整 tier 语义见 [解析 Tier](../tiers.md) 和 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。
 
 ## 重依赖边界
 

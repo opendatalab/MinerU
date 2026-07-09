@@ -41,7 +41,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.datastructures import State
 
 from ..render.writer import DataWriter
-from ..types import PageInfo, Tier, validate_tier
+from ..filetypes import batch_effective_parse_tier, is_flash_only_parse_extension
+from ..types import PageInfo, Tier, select_default_quality_tier, validate_tier
 from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
 from ..utils.image_payload import validate_image_sidecar_path
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
@@ -55,7 +56,7 @@ from .tier import (
     runtime_options_for_tier,
 )
 
-_API_SERVER_TIERS: tuple[Tier, ...] = ("flash", "medium", "high", "extra_high")
+_API_SERVER_TIERS: tuple[Tier, ...] = ("flash", "medium", "high", "xhigh")
 _DEFAULT_API_SERVER_TIER: Tier = "high"
 _API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
 _MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
@@ -1266,6 +1267,10 @@ def _source_name(source: FileSource, file_store: FileStore | None = None) -> str
     return "unknown"
 
 
+def _job_has_only_flash_only_inputs(req: CreateJobRequest, file_store: FileStore) -> bool:
+    return all(is_flash_only_parse_extension(_source_name(entry.source, file_store)) for entry in req.files)
+
+
 def _compact_page_numbers(page_numbers: list[int]) -> str:
     if not page_numbers:
         return ""
@@ -1391,14 +1396,18 @@ async def _run_job(
                 tmp_path.write_bytes(data)
 
                 page_range = entry.page_range or ""
+                effective_tier = batch_effective_parse_tier(rec.tier, fr.name)
+                effective_runtime = runtime_options_for_tier(effective_tier) if effective_tier != rec.tier else None
+                file_backend = effective_runtime.backend if effective_runtime is not None else server_backend
+                file_effort = effective_runtime.effort if effective_runtime is not None else effort
 
                 result = await parse_async(
                     str(tmp_path),
-                    tier=rec.tier,
-                    backend=server_backend,
+                    tier=effective_tier,
+                    backend=file_backend,
                     language=language,
                     ocr_mode=ocr_mode,
-                    effort=effort,
+                    effort=file_effort,
                     disable_image_analysis=not image_analysis,
                     page_range=page_range,
                 )
@@ -1787,10 +1796,28 @@ async def create_job(
                 message=f"Unknown output format: {fmt}",
             )
 
-    # 按请求 tier 选择启动时预先解析好的 runtime，避免所有 job 共享默认 effort。
-    body.tier = body.tier or request.app.state.default_tier
+    # 按请求 tier 选择启动时预先解析好的 runtime；全轻量输入可按 ADR-0024 直接归一到 flash 执行。
+    default_tier: Tier | None = request.app.state.default_tier
+    only_flash_only_inputs = _job_has_only_flash_only_inputs(body, file_store)
+    if body.tier is None and default_tier is None:
+        if only_flash_only_inputs:
+            body.tier = "flash"
+        else:
+            _raise_api_error(
+                503,
+                error_type="engine_error",
+                code="quality_tier_unavailable",
+                message=(
+                    "No medium, high, or xhigh tier available in this server. "
+                    "Pass tier='flash' explicitly for flash parsing."
+                ),
+            )
+    else:
+        body.tier = body.tier or default_tier
     runtime_options: dict[Tier, ParserRuntimeOptions] = request.app.state.tier_runtime_options
     runtime = runtime_options.get(body.tier)
+    if runtime is None and only_flash_only_inputs:
+        runtime = runtime_options.get("flash") or runtime_options_for_tier("flash")
     if runtime is None:
         _raise_api_error(
             400,
@@ -1926,7 +1953,7 @@ _OCR_MODES = ("auto", "txt", "ocr")
 
 
 def _normalize_server_tiers(tier: Tier | list[Tier] | tuple[Tier, ...] | None) -> list[Tier]:
-    """规范化 API server 启动 tier 列表，保留用户顺序并拒绝旧 standard/pro tier。"""
+    """规范化 API server 启动 tier 列表，保留用户顺序并拒绝非法 tier。"""
     raw_tiers: list[Tier]
     if tier is None:
         raw_tiers = list(_API_SERVER_TIERS)
@@ -1964,10 +1991,10 @@ def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[Ti
                 "current_model": "hybrid-medium",
             },
         ]
-    if tier == "extra_high":
+    if tier == "xhigh":
         return ["MinerU2.5-Pro-2604-1.2B", "MinerU-HTML"], [
             {
-                "id": "extra_high",
+                "id": "xhigh",
                 "description": "Hybrid maximum-accuracy parsing.",
                 "current_model": "MinerU2.5-Pro-2604-1.2B",
             },
@@ -2040,7 +2067,7 @@ def create_app(
         Directory for uploaded files and parse artifacts.
     tier:
         Server parsing tier. ``"flash"`` selects flash parsing; ``"medium"``,
-        ``"high"`` and ``"extra_high"`` map to same-name Hybrid efforts.
+        ``"high"`` and ``"xhigh"`` map to Hybrid efforts.
     concurrency:
         Maximum concurrent parse jobs (default 1).
     url_timeout:
@@ -2066,9 +2093,9 @@ def create_app(
     server_tiers = _normalize_server_tiers(tier_input)
     tier_runtime_options = _runtime_options_for_server_tiers(server_tiers)
     server_tiers = list(tier_runtime_options)
-    default_tier = _DEFAULT_API_SERVER_TIER if _DEFAULT_API_SERVER_TIER in tier_runtime_options else server_tiers[0]
-    default_runtime = tier_runtime_options[default_tier]
-    tier = default_tier
+    default_tier = select_default_quality_tier(tier_runtime_options)
+    default_runtime = tier_runtime_options[default_tier] if default_tier is not None else tier_runtime_options[server_tiers[0]]
+    tier = default_tier or server_tiers[0]
     backend = default_runtime.backend
     effort = default_runtime.effort
     _preflight_runtime_dependencies(tier_runtime_options)
@@ -2212,7 +2239,7 @@ def create_app(
     type=click.Choice(list(_API_SERVER_TIERS)),
     help=(
         "Server parsing tier; repeat to expose multiple tiers. "
-        "Defaults to flash, medium, high, and extra_high; requests without tier default to high."
+        "Defaults to flash, medium, high, and xhigh; requests without tier default to high."
     ),
 )
 @click.option(

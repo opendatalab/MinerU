@@ -56,10 +56,10 @@ DIM_TIER_VALUES = frozenset(
         "flash",
         "medium",
         "high",
-        "extra_high",
+        "xhigh",
         "medium(default)",
         "high(default)",
-        "extra_high(default)",
+        "xhigh(default)",
         "unknown",
     }
 )

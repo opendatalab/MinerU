@@ -23,7 +23,7 @@
 | 规则 | 当前结论 |
 |------|----------|
 | `parse-server` | 最终术语，中文为“解析服务”；此前误写的相关术语不作为项目概念使用。 |
-| 默认选择策略 | 只会解析为可用的非 `flash` 质量 tier；当前顺序为 `extra_high` > `high` > `medium`。 |
+| 默认选择策略 | 以 [解析 Tier](tiers.md) 为准；PDF/image 默认读取不会解析为 `flash`，Office/text/HTML 归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)。 |
 | 实际 tier 记录 | 任务、缓存、产物和 metadata 只记录实际使用的实体 tier，不记录 `requested_tier` / `resolved_tier`。 |
 | `flash` | 长期存在，既是一个解析档位，也是 PDF 快速解析 backend 名称。 |
 | doclib 产物 | `parsed/` 目录持久化按页组织的 Middle JSON 批次文件和必要图片 sidecar；Markdown、Content List、HTML 读取时转换。 |
@@ -36,8 +36,8 @@
 | Force 与 invalidate | `--force` 跳过 done cache，可复用 active parse，只为未覆盖页创建新 parse；invalidate 才改变旧缓存可用性，详见 [ADR-0002](decisions/0002-force-vs-invalidate.md)。 |
 | doclib HTTP API | 本地 doclib HTTP API 使用 `/docs`、`/parses`、`/search` 和 `POST /invalidate`，详见 [ADR-0004](decisions/0004-doclib-http-api-resources.md)。 |
 | 本地 `high` | `high` 本地运行是正式支持能力，不是实验能力；当前代码基本 ready。 |
-| mineru.net tier | `mineru.net/api` 在相当长时间内只提供最高等级的 `high` 解析。 |
-| api-server tier | `mineru-kit api-server --tier` 可重复；未传时当前暴露 `flash`、`medium`、`high`、`extra_high`。 |
+| mineru.net tier | `mineru.net/api` 在相当长时间内默认提供 `high` 解析；`high` 是绝大多数场景足够好的高质量档位，但不是最高档。 |
+| api-server tier | `mineru-kit api-server --tier` 可重复；未传时当前暴露 `flash`、`medium`、`high`、`xhigh`。 |
 | managed 生命周期 | managed 模式下，模型下载、预热、重试和退避由 `mineru-kit api-server` 负责。 |
 | 本地 api-server 安全 | 本地 api-server 默认监听 loopback；可通过 `--api-key` 设置固定 API Key，默认不设置。 |
 | P0 主链路 | P0 包含完整 watch、rules、search，不再把它们标为可选主链路。 |
@@ -50,8 +50,8 @@
 | `mineru-kit` 参数稳定性 | 暂不划分 `stable` / `experimental` 等稳定性等级，先保持简单。 |
 | `mineru-kit parse` 输入 | 当前只支持文件和目录输入；不支持 stdin、路径列表、URL 输入和递归目录。 |
 | `mineru-kit parse` 输出 | `--output` 必填；单文件可输出到文件路径或目录路径；多文件只能输出到目录路径；同名冲突直接报错并终止整个批次。 |
-| `mineru-kit parse` local/remote | local 支持 `tier/backend` 并校验兼容，二者都不传时默认 `high`；remote 支持 `--remote`/`--remote-url`/`--api-key`，允许传 `tier`，禁止传 `backend`。 |
-| parsing-rules 默认 tier | parsing-rules 允许不指定 tier；执行时必须解析为实体 tier，并只记录实际 tier；默认选择不能解析为 `flash`。 |
+| `mineru-kit parse` local/remote | local 支持 `tier/backend` 并校验兼容，PDF/image 二者都不传时默认 `high`，Office/text/HTML 按 ADR-0024 归一；remote 支持 `--remote`/`--remote-url`/`--api-key`，允许传 `tier`，禁止传 `backend`。 |
+| parsing-rules 默认 tier | parsing-rules 允许不指定 tier；PDF/image 按 `high` -> `xhigh` -> `medium` -> `flash` 选择，Office/text/HTML 归一为 `flash`；只记录实际 tier。 |
 | Telemetry P0 | P0 必须实现 doclib server telemetry 状态、聚合、flush 和 CLI 管理入口；纯工具无 telemetry 能力。 |
 | `mineru parse` 默认页码范围 | 分页文档默认解析和读取 `1~min(page_count,10)`；该默认由 doclib 读取/解析计划负责，CLI 参数层不硬编码默认 `--pages`。 |
 | 渐进式阅读协议 | Server 返回结构化 `next_request`；CLI marker 只由 `next_request` 渲染，不作为协议源头，详见 [ADR-0013](decisions/0013-doc-content-progressive-reading.md)。 |
@@ -68,8 +68,8 @@
 | doclib schema 稳定边界 | 稳定的是 doclib public models，不是 SQLite 表结构；稳定性分为 `core stable`、`operational stable` 和 `diagnostic / internal`，详见 [ADR-0020](decisions/0020-doclib-schema-stability-boundary.md)。 |
 | `mineru-kit` 对外暴露 | `mineru-kit` 保留为专家工具入口；Agent 默认入口是 `mineru`，skill 不主动暴露 `mineru-kit`。 |
 | Office/HTML unknown bbox | 公共 schema 允许 unknown bbox；不要求 Office/HTML 在 P0 估算真实 bbox，validator 应区分 unknown 与非法 bbox。 |
-| 本地 managed tier 硬件基线 | 本地 managed `medium` / `high` / `extra_high` 都要求至少 16GB 总内存；`medium` 不要求 GPU，纯 CPU 可用但可能较慢；`high` / `extra_high` 需要满足 NVIDIA / Apple Silicon / MinerU 支持的 AI 加速器条件。详见 [解析 Tier](tiers.md#5-medium)。 |
-| watch tier 升级 | P0 不做基于启发式的自动提示或自动排队升级。watch 默认使用 `flash`；后台自动升级只由用户显式配置的 parsing-rules 触发；用户或 Agent 主动读取时再按默认选择策略解析到可用的非 `flash` 质量 tier。 |
+| 本地 managed tier 硬件基线 | 本地 managed tier 的硬件边界以 [解析 Tier](tiers.md) 为准。 |
+| watch tier 升级 | P0 不做基于启发式的自动提示或自动排队升级。watch 默认使用 `flash`；后台自动升级只由用户显式配置的 parsing-rules 触发；用户或 Agent 主动读取 PDF/image 时再按默认选择策略解析到可用的非 `flash` 质量 tier。 |
 | Middle JSON `schema_version` | 采用 `pages` 的 Middle JSON 顶层结构必须写 `schema_version`；当前运行时不读取 `pdf_info`；历史 `pdf_info` 只作为离线 migration 或重新生成对象。当前暂不增加 `_meta`；`ParseResult.to_dict()` 可能保留顶层 `_backend` 临时 metadata；代码常量定义为 `mineru.parser.MIDDLE_JSON_SCHEMA_VERSION`。 |
 
 ## 3. Blocker

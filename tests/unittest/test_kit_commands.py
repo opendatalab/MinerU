@@ -373,14 +373,14 @@ def test_api_server_forwards_repeated_tiers(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
 
-    result = runner.invoke(app, ["api-server", "--tier", "medium", "--tier", "extra_high"])
+    result = runner.invoke(app, ["api-server", "--tier", "medium", "--tier", "xhigh"])
 
     assert result.exit_code == 0
     assert seen["prog_name"] == "mineru-kit api-server"
     assert seen["standalone_mode"] is False
     assert [seen["args"][index + 1] for index, item in enumerate(seen["args"]) if item == "--tier"] == [
         "medium",
-        "extra_high",
+        "xhigh",
     ]
 
 
@@ -782,6 +782,59 @@ def test_parse_forwards_backend_alias_and_effort(monkeypatch: Any, tmp_path: Pat
     assert seen["effort"] == "high"
 
 
+def test_parse_rejects_single_office_input_with_quality_tier(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.docx"
+    output = tmp_path / "out.md"
+    source.write_bytes(b"docx")
+
+    def _fake_local_parse(*args: Any, **kwargs: Any) -> ParseResult:
+        pytest.fail("single lightweight input with quality tier should fail before parsing")
+
+    monkeypatch.setattr(parse, "local_parse", _fake_local_parse)
+
+    result = runner.invoke(app, ["parse", str(source), "-o", str(output), "--tier", "high"])
+
+    assert result.exit_code == 1
+    assert "Tier 'high' is only supported for PDF and image files" in " ".join(result.output.split())
+
+
+def test_parse_batch_normalizes_office_quality_tier_to_flash(monkeypatch: Any, tmp_path: Path) -> None:
+    pdf = tmp_path / "demo.pdf"
+    html = tmp_path / "page.html"
+    output = tmp_path / "out"
+    pdf.write_bytes(b"%PDF-1.7\n")
+    html.write_text("<p>content</p>", encoding="utf-8")
+    calls: list[dict[str, Any]] = []
+
+    class _Result:
+        def markdown(self) -> str:
+            return "# demo\n"
+
+        def images(self) -> dict[str, bytes]:
+            return {}
+
+        def to_json(self) -> str:
+            return '{"pages":[]}'
+
+        def save(self, writer: Any) -> None:
+            writer.write_string("markdown.md", self.markdown())
+            writer.write_string("middle_json.json", self.to_json())
+
+    def _fake_local_parse(path: Path, **kwargs: Any) -> _Result:
+        calls.append({"path": path, **kwargs})
+        return _Result()
+
+    monkeypatch.setattr(parse, "local_parse", _fake_local_parse)
+
+    result = runner.invoke(app, ["parse", str(pdf), str(html), "-o", str(output), "--tier", "high"])
+
+    assert result.exit_code == 0
+    assert [(call["path"].name, call["tier"], call["backend"]) for call in calls] == [
+        ("demo.pdf", "high", "hybrid-engine"),
+        ("page.html", "flash", "flash"),
+    ]
+
+
 def test_parse_remote_requests_image_cache(monkeypatch: Any, tmp_path: Path) -> None:
     source = tmp_path / "demo.pdf"
     output = tmp_path / "out.md"
@@ -906,10 +959,10 @@ def test_gradio_tier_selection_derives_v1_runtime() -> None:
         "backend": "hybrid-engine",
         "effort": "high",
     }
-    assert gradio_app.resolve_gradio_runtime_options("extra_high").as_kwargs() == {
-        "tier": "extra_high",
+    assert gradio_app.resolve_gradio_runtime_options("xhigh").as_kwargs() == {
+        "tier": "xhigh",
         "backend": "hybrid-engine",
-        "effort": "extra_high",
+        "effort": "xhigh",
     }
 
 
@@ -919,16 +972,16 @@ def test_gradio_extracts_supported_tiers_from_v1_tiers_payload() -> None:
     payload = {
         "data": [
             {"id": "flash"},
-            {"id": "extra_high"},
+            {"id": "xhigh"},
             {"id": "experimental"},
             {"id": "medium"},
             {"id": "high"},
-            {"id": "extra_high"},
+            {"id": "xhigh"},
         ]
     }
 
-    assert gradio_app.extract_v1_tier_choices(payload) == ("flash", "extra_high", "medium", "high")
-    assert gradio_app.default_v1_gradio_tier(("flash", "extra_high", "medium", "high")) == "high"
+    assert gradio_app.extract_v1_tier_choices(payload) == ("flash", "xhigh", "medium", "high")
+    assert gradio_app.default_v1_gradio_tier(("flash", "xhigh", "medium", "high")) == "high"
 
 
 def test_gradio_rejects_v1_tiers_payload_without_supported_tiers() -> None:
@@ -1289,7 +1342,7 @@ def test_parse_forwards_flash_backend(monkeypatch: Any, tmp_path: Path) -> None:
     assert output.read_text(encoding="utf-8") == "# demo\n"
 
 
-def test_cli_old_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: Any, tmp_path: Path) -> None:
+def test_cli_old_legacy_vlm_branch_maps_to_hybrid_xhigh(monkeypatch: Any, tmp_path: Path) -> None:
     from mineru.cli_old import common
 
     seen: dict[str, Any] = {}
@@ -1306,7 +1359,7 @@ def test_cli_old_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: Any, t
     monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=False: "vllm-engine")
 
     def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
-        """记录 legacy VLM 输入最终进入 Hybrid extra_high 分支。"""
+        """记录 legacy VLM 输入最终进入 Hybrid xhigh 分支。"""
         seen["backend"] = args[3]
         seen["hybrid_backend"] = args[5]
         seen["kwargs"] = kwargs
@@ -1323,7 +1376,7 @@ def test_cli_old_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: Any, t
     )
 
     assert seen["hybrid_backend"] == "vllm-engine"
-    assert seen["kwargs"]["effort"] == "extra_high"
+    assert seen["kwargs"]["effort"] == "xhigh"
     assert seen["kwargs"]["image_analysis"] is True
     assert not hasattr(common, "_process_vlm")
 
@@ -1466,7 +1519,7 @@ def test_process_hybrid_medium_calls_analyzer_per_file(monkeypatch: Any, tmp_pat
     assert [item[0] for item in outputs] == ["a.pdf", "b.pdf"]
 
 
-def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: Any, tmp_path: Path) -> None:
+def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_xhigh(monkeypatch: Any, tmp_path: Path) -> None:
     from mineru.cli_old import common
 
     seen: dict[str, Any] = {}
@@ -1483,7 +1536,7 @@ def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: 
     monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=True: "vllm-async-engine")
 
     async def _fake_async_process_hybrid(*args: Any, **kwargs: Any) -> None:
-        """记录异步 legacy VLM 输入最终进入 Hybrid extra_high 分支。"""
+        """记录异步 legacy VLM 输入最终进入 Hybrid xhigh 分支。"""
         seen["backend"] = args[3]
         seen["hybrid_backend"] = args[5]
         seen["kwargs"] = kwargs
@@ -1502,7 +1555,7 @@ def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: 
     )
 
     assert seen["hybrid_backend"] == "vllm-async-engine"
-    assert seen["kwargs"]["effort"] == "extra_high"
+    assert seen["kwargs"]["effort"] == "xhigh"
     assert seen["kwargs"]["image_analysis"] is True
     assert not hasattr(common, "_async_process_vlm")
 

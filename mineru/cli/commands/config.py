@@ -100,7 +100,7 @@ def exclude_rules_remove(rule_id: int = typer.Argument(..., help="Rule id to rem
 @parsing_rules_app.command("add")
 def parsing_rules_add(
     pattern: str = typer.Argument(..., help="Glob pattern to match"),
-    tier: Tier | None = typer.Option(None, "--tier", help="Parse tier: flash, medium, high, extra_high"),
+    tier: Tier | None = typer.Option(None, "--tier", help="Parse tier: flash, medium, high, xhigh"),
     pages: str | None = typer.Option(None, "--pages", help="Page range, e.g. all or 1~10"),
     remote: bool = typer.Option(False, "--remote", help="Allow remote parsing"),
     name: str | None = typer.Option(None, "--name", help="Rule name"),

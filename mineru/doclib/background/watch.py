@@ -10,7 +10,7 @@ from pathlib import Path
 from watchfiles import awatch
 
 from ..core.db import DatabaseManager
-from ..constants import DISCOVERABLE_EXTENSIONS, is_office_temp_lock_file
+from ...filetypes import DISCOVERABLE_EXTENSIONS, is_office_temp_lock_file
 from ..services.config_svc import ConfigService
 from ..services.parse_svc import ParseService
 from ..services.scan_svc import ScanService
