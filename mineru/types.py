@@ -32,6 +32,7 @@ TIER_ORDER: dict[Tier, int] = {
 QUALITY_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("high", "xhigh", "medium")
 QUALITY_TIERS: frozenset[Tier] = frozenset(QUALITY_TIER_SELECTION_ORDER)
 CACHED_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("xhigh", "high", "medium", "flash")
+PARSING_RULE_TIER_SELECTION_ORDER: tuple[Tier, ...] = (*QUALITY_TIER_SELECTION_ORDER, "flash")
 
 
 def validate_tier(tier: str | None) -> Tier:
@@ -64,6 +65,15 @@ def select_highest_cached_tier(available_tiers: Iterable[object] | str) -> Tier 
         if candidate in available:
             return candidate
     return None
+
+
+def select_parsing_rule_tier(available_tiers: Iterable[object] | str | None = None) -> Tier:
+    """Select parsing-rule default tier, allowing flash as a final fallback."""
+    available = _validated_tier_set(available_tiers or PARSING_RULE_TIER_SELECTION_ORDER)
+    for candidate in PARSING_RULE_TIER_SELECTION_ORDER:
+        if candidate in available:
+            return candidate
+    return "flash"
 
 
 class BlockType:

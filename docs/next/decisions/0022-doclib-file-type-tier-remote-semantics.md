@@ -25,15 +25,15 @@
 doclib 区分两个文件集合：
 
 - `DISCOVERABLE_EXTENSIONS`：watch / scan 自动发现的文档格式。
-- `PARSEABLE_EXTENSIONS`：显式 `mineru parse` 可接受的格式。
+- `INGESTIBLE_EXTENSIONS`：显式 `mineru parse` 可接受的格式。
 
-image 扩展名只进入 `PARSEABLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTENSIONS`。因此：
+image 扩展名只进入 `INGESTIBLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTENSIONS`。因此：
 
 - 用户显式执行 `mineru parse image.png` 时，图片会入库、生成 `files` / `docs` 记录，并创建 parse 任务。
 - watch / scan 遇到图片文件时忽略，不自动把图片当作文档发现。
 - 显式 parse 后，image 与其它文档一样可出现在 show / list / search / find 等 doclib 查询面。
 
-`ALLOWED_EXTENSIONS` 不再保留。调用方应根据语义选择 `DISCOVERABLE_EXTENSIONS` 或 `PARSEABLE_EXTENSIONS`。
+`ALLOWED_EXTENSIONS` 不再保留。调用方应根据语义选择 `DISCOVERABLE_EXTENSIONS` 或 `INGESTIBLE_EXTENSIONS`。
 
 ### Tier 能力矩阵
 

@@ -6,12 +6,13 @@ import typer
 
 from ...doclib.client import DoclibClient
 from ...doclib.types import FindResponse, SearchResponse
+from ...filetypes import FILE_TYPE_BY_EXTENSION
 from ...types import Tier
 from ..contracts import CliContext
 from ..runtime import run_cli
 
-FILE_TYPES = "pdf, image, docx, pptx, xlsx, html, markdown, csv, rst, tex, txt"
-FILE_EXTS = "pdf, png, jpg, jpeg, jp2, webp, gif, bmp, tiff, docx, pptx, xlsx, html, htm, md, markdown, csv, rst, tex, txt"
+FILE_TYPES = ", ".join(dict.fromkeys(FILE_TYPE_BY_EXTENSION.values()))
+FILE_EXTS = ", ".join(FILE_TYPE_BY_EXTENSION)
 
 
 def search_cmd(

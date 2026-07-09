@@ -22,6 +22,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from ..filetypes import mime_type_for_extension
 from ..types import PageInfo, Tier, validate_tier
 from ..utils.image_payload import validate_image_sidecar_path
 from .base import DocumentParser, ParseResult
@@ -209,7 +210,7 @@ class MinerUApiParser(DocumentParser):
                 json={
                     "filename": file_path.name,
                     "bytes": size,
-                    "mime_type": _mime_type(file_path),
+                    "mime_type": mime_type_for_extension(file_path),
                     "purpose": "parse",
                     "sha256sum": sha,
                 },
@@ -244,7 +245,7 @@ class MinerUApiParser(DocumentParser):
                 json={
                     "filename": file_path.name,
                     "bytes": size,
-                    "mime_type": _mime_type(file_path),
+                    "mime_type": mime_type_for_extension(file_path),
                     "purpose": "parse",
                     "sha256sum": sha,
                 },
@@ -334,26 +335,6 @@ def _extract_feature_list(health: dict[str, Any], name: str) -> set[str]:
     if not isinstance(values, list):
         return set()
     return {item for item in values if isinstance(item, str)}
-
-
-def _mime_type(path: Path) -> str:
-    ext = path.suffix.lower()
-    return {
-        ".pdf": "application/pdf",
-        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ".html": "text/html",
-        ".htm": "text/html",
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".jp2": "image/jp2",
-        ".webp": "image/webp",
-        ".gif": "image/gif",
-        ".bmp": "image/bmp",
-        ".tiff": "image/tiff",
-    }.get(ext, "application/octet-stream")
 
 
 def _parse_result_from_job(job: dict[str, Any], file_name: str, parser: MinerUApiParser) -> ParseResult:

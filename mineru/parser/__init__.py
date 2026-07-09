@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..filetypes import ensure_tier_supported_for_parse_extension
+from ..filetypes import HTML_EXTENSIONS, OFFICE_EXTENSIONS, TIERED_PARSE_EXTENSIONS, ensure_tier_supported_for_parse_extension
 from ..types import Tier
 from .api_client import MinerUApiParser
 from .base import MIDDLE_JSON_SCHEMA_VERSION, DocumentParser, ParseResult
@@ -33,10 +33,7 @@ __all__ = [
     "resolve_tier_and_backend",
 ]
 
-_OFFICE_SUFFIXES = frozenset({"docx", "pptx", "xlsx"})
-_HTML_SUFFIXES = frozenset({"html", "htm"})
-_PDF_INPUT_SUFFIXES = frozenset({"pdf", "png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"})
-_PATH_PRIORITY_SUFFIXES = _OFFICE_SUFFIXES | _HTML_SUFFIXES | _PDF_INPUT_SUFFIXES
+_PATH_PRIORITY_SUFFIXES = OFFICE_EXTENSIONS | HTML_EXTENSIONS | TIERED_PARSE_EXTENSIONS
 
 
 def _resolve_input_suffix(path: Path) -> str:
@@ -69,7 +66,7 @@ def _build_parser(
     resolved_language = lang or language
     resolved_image_analysis = (not disable_image_analysis) if image_analysis is None else image_analysis
 
-    if suffix in _OFFICE_SUFFIXES:
+    if suffix in OFFICE_EXTENSIONS:
         if tier is not None or backend is not None:
             runtime = resolve_runtime_options(tier=tier, backend=backend, effort=effort)
             ensure_tier_supported_for_parse_extension(runtime.tier, suffix)
@@ -79,13 +76,13 @@ def _build_parser(
             "xlsx": XlsxParser,
         }[suffix]
         return parser_cls()
-    elif suffix in _HTML_SUFFIXES:
+    elif suffix in HTML_EXTENSIONS:
         if tier is not None or backend is not None:
             runtime = resolve_runtime_options(tier=tier, backend=backend, effort=effort)
             ensure_tier_supported_for_parse_extension(runtime.tier, suffix)
         return HtmlParser()
 
-    if suffix not in _PDF_INPUT_SUFFIXES:
+    if suffix not in TIERED_PARSE_EXTENSIONS:
         raise ValueError(f"Unsupported file type: {suffix or path.suffix or 'unknown'}")
 
     runtime = resolve_runtime_options(tier=tier, backend=backend, effort=effort)

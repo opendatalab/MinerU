@@ -8,6 +8,7 @@ import zipfile
 from pathlib import Path
 from typing import Literal, TypeAlias
 
+from ..filetypes import PARSEABLE_EXTENSIONS
 from ..parser.base import ParseResult
 from ..render.writer import FileBasedDataWriter
 from ..types import Tier
@@ -17,22 +18,7 @@ SupportedBundle = Literal["pipeline", "vlm", "all"]
 KitFormat = Literal["markdown", "middle_json", "zip"]
 LocalTier: TypeAlias = Tier
 
-SUPPORTED_SUFFIXES = {
-    ".pdf",
-    ".png",
-    ".jpeg",
-    ".jp2",
-    ".webp",
-    ".gif",
-    ".bmp",
-    ".jpg",
-    ".tiff",
-    ".docx",
-    ".pptx",
-    ".xlsx",
-    ".html",
-    ".htm",
-}
+PARSEABLE_SUFFIXES = frozenset(f".{ext}" for ext in PARSEABLE_EXTENSIONS)
 OUTPUT_FILE_SUFFIXES = {
     "markdown": ".md",
     "middle_json": ".json",
@@ -57,7 +43,7 @@ def expand_input_paths(inputs: list[str]) -> list[Path]:
     for path in paths:
         if path.is_dir():
             for child in sorted(path.iterdir()):
-                if child.is_file() and child.suffix.lower() in SUPPORTED_SUFFIXES:
+                if child.is_file() and child.suffix.lower() in PARSEABLE_SUFFIXES:
                     expanded.append(child)
         else:
             expanded.append(path)
@@ -72,7 +58,7 @@ def ensure_supported_inputs(paths: list[Path]) -> None:
             raise FileNotFoundError(path)
         if path.is_dir():
             raise ValueError(f"Directory input must be expanded before validation: {path}")
-        if path.suffix.lower() not in SUPPORTED_SUFFIXES:
+        if path.suffix.lower() not in PARSEABLE_SUFFIXES:
             raise ValueError(f"Unsupported file type: {path}")
 
 

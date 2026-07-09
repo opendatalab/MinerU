@@ -18,15 +18,15 @@ from ...filetypes import (
     IMAGE_EXTENSIONS,
     LEGACY_OFFICE_EXTENSION_UPGRADES,
     OFFICE_EXTENSIONS,
-    PARSEABLE_EXTENSIONS,
+    INGESTIBLE_EXTENSIONS,
     TEXT_EXTENSIONS,
     TIERED_PARSE_EXTENSIONS,
+    file_type_for_extension,
     is_office_temp_lock_file,
-    select_parsing_rule_tier,
 )
 from ...parser.api_client import _V1APIError
 from ...parser.base import ParseResult
-from ...types import QUALITY_TIERS, TIER_ORDER, PageInfo, Tier, select_default_quality_tier
+from ...types import QUALITY_TIERS, TIER_ORDER, PageInfo, Tier, select_default_quality_tier, select_parsing_rule_tier
 from ..core.db import DatabaseManager
 from ..core.file_io import FileStat, MetadataExtractionError, compute_sha256, extract_metadata, get_file_stat
 from ..core.fts import FTSManager
@@ -65,14 +65,6 @@ class ParseFailure(MineruError):
 
 MAX_FTS_CHARS = 30_000
 FTS_HEAD_HALF = 15_000
-
-DOC_TYPE_BY_EXT = {
-    "md": "markdown",
-    "markdown": "markdown",
-    "htm": "html",
-    "html": "html",
-    **dict.fromkeys(IMAGE_EXTENSIONS, "image"),
-}
 
 FileRefreshStatus = Literal["known", "new", "changed", "missing", "deleted", "unreachable", "unsupported", "error"]
 
@@ -298,7 +290,7 @@ class ParseService:
         path = normalize_doclib_path(path)
         ext = Path(path).suffix.lower().lstrip(".")
         existing = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
-        if ext not in PARSEABLE_EXTENSIONS or (ext in IMAGE_EXTENSIONS and not allow_images) or is_office_temp_lock_file(path):
+        if ext not in INGESTIBLE_EXTENSIONS or (ext in IMAGE_EXTENSIONS and not allow_images) or is_office_temp_lock_file(path):
             return FileRefreshResult(file=_file_info(existing), status="unsupported")
 
         try:
@@ -485,7 +477,7 @@ class ParseService:
     async def _ingest_file(self, path: str, watch_id: int | None = None, *, allow_images: bool = False) -> FileRow | None:
         """Ingest implementation without telemetry wrapper."""
         ext = Path(path).suffix.lower().lstrip(".")
-        if ext not in PARSEABLE_EXTENSIONS or (ext in IMAGE_EXTENSIONS and not allow_images) or is_office_temp_lock_file(path):
+        if ext not in INGESTIBLE_EXTENSIONS or (ext in IMAGE_EXTENSIONS and not allow_images) or is_office_temp_lock_file(path):
             return None
 
         stat = await get_file_stat(path)
@@ -600,7 +592,7 @@ class ParseService:
             self.db,
             sha256=sha256,
             size_bytes=stat.size_bytes,
-            file_type=_file_type_from_ext(ext),
+            file_type=file_type_for_extension(ext),
             page_count=page_count,
             title=metadata["title"],
             author=metadata["author"],
@@ -1577,10 +1569,6 @@ def _file_info(row: FileRow | None) -> FileInfo | None:
 def _safe_filename(page_range: str, done_at: int) -> str:
     """Convert a page_range string + done_at to a filename."""
     return f"{page_range}_{done_at}.json" if done_at else page_range
-
-
-def _file_type_from_ext(ext: str) -> str:
-    return DOC_TYPE_BY_EXT.get(ext, ext or "unknown")
 
 
 def _unsupported_file_type_message(ext_or_name: str) -> str:

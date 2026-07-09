@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..errors import InvalidRequestError
+from ..filetypes import IMAGE_EXTENSIONS
 from ..types import PageInfo
 from ..utils.backend_options import (
     CANONICAL_HYBRID_ENGINE,
@@ -20,8 +21,6 @@ from ..utils.backend_options import (
 )
 from ..utils.image_payload import ImagePayloadCache
 from .base import DocumentParser, ParseResult
-
-_IMAGE_SUFFIXES = frozenset({"png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"})
 
 
 @dataclass
@@ -149,7 +148,7 @@ class PdfBaseParser(DocumentParser):
         pdf_bytes = path.read_bytes()
 
         suffix = guess_suffix_by_path(path)
-        if suffix in _IMAGE_SUFFIXES:
+        if suffix in IMAGE_EXTENSIONS:
             pdf_bytes = PDFDocument.from_image(pdf_bytes).bytes
 
         pdf_bytes, retained_page_indices, broken_page_indices = self._maybe_adjust_pdf_bytes(

@@ -41,7 +41,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.datastructures import State
 
 from ..render.writer import DataWriter
-from ..filetypes import batch_effective_parse_tier, is_flash_only_parse_extension
+from ..filetypes import (
+    PARSEABLE_EXTENSIONS,
+    batch_effective_parse_tier,
+    file_type_for_extension,
+    is_flash_only_parse_extension,
+)
 from ..types import PageInfo, Tier, select_default_quality_tier, validate_tier
 from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
 from ..utils.image_payload import validate_image_sidecar_path
@@ -997,23 +1002,6 @@ def _resolve_access_level(request: Request) -> AccessLevel:
 #  JOB STORE
 # ═══════════════════════════════════════════════════════════════════════
 
-_SUPPORTED_SUFFIXES: dict[str, str] = {
-    ".pdf": "pdf",
-    ".png": "image",
-    ".jpg": "image",
-    ".jpeg": "image",
-    ".jp2": "image",
-    ".webp": "image",
-    ".gif": "image",
-    ".bmp": "image",
-    ".tiff": "image",
-    ".docx": "docx",
-    ".pptx": "pptx",
-    ".xlsx": "xlsx",
-    ".html": "html",
-    ".htm": "html",
-}
-
 _OUTPUT_FORMATS_LOCAL = set(_LOCAL_PARSE_OUTPUT_FORMATS)
 
 
@@ -1349,8 +1337,11 @@ async def _extract_bytes(
 
 
 def _suffix_type(filename: str) -> str:
-    ext = pathlib.Path(filename).suffix.lower()
-    return _SUPPORTED_SUFFIXES.get(ext, "")
+    ext = pathlib.Path(filename).suffix.lower().lstrip(".")
+    if ext not in PARSEABLE_EXTENSIONS:
+        return ""
+    file_type = file_type_for_extension(ext)
+    return "" if file_type == "unknown" else file_type
 
 
 async def _run_job(

@@ -54,6 +54,7 @@ from mineru.doclib.types import (
     WatchListResponse,
 )
 from mineru.errors import ServerNotRunningError
+from mineru.filetypes import FILE_TYPE_BY_EXTENSION
 from mineru.version import __version__
 
 
@@ -166,31 +167,10 @@ def test_search_and_find_help_list_filter_values() -> None:
     assert search_result.exit_code == 0
     assert find_result.exit_code == 0
     assert "File type filter:" in search_result.output
-    for token in ("pdf", "image", "docx", "pptx", "xlsx", "html", "markdown", "csv", "rst", "tex", "txt"):
+    for token in dict.fromkeys(FILE_TYPE_BY_EXTENSION.values()):
         assert token in search_result.output
     assert "File extension filter:" in find_result.output
-    for token in (
-        "pdf",
-        "png",
-        "jpg",
-        "jpeg",
-        "jp2",
-        "webp",
-        "gif",
-        "bmp",
-        "tiff",
-        "docx",
-        "pptx",
-        "xlsx",
-        "html",
-        "htm",
-        "md",
-        "markdown",
-        "csv",
-        "rst",
-        "tex",
-        "txt",
-    ):
+    for token in FILE_TYPE_BY_EXTENSION:
         assert token in find_result.output
 
 
