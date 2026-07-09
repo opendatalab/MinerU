@@ -84,6 +84,16 @@ class ConfigService:
         digest = hashlib.blake2b(path.encode("utf-8"), digest_size=8).digest()
         return int.from_bytes(digest, "big") & ((1 << 63) - 1)
 
+    @staticmethod
+    def _watch_paths_are_nested(first: str, second: str) -> bool:
+        if first == second:
+            return False
+        try:
+            common = os.path.commonpath([first, second])
+        except ValueError:
+            return False
+        return common == first or common == second
+
     async def add_watch(
         self, path: str, removable: bool = False, label: str | None = None
     ) -> WatchTargetRow:
@@ -94,6 +104,15 @@ class ConfigService:
             raise InvalidRequestError("invalid_request", f"Watch path must be normalized: {path}", "path")
         if not os.path.isdir(path):
             raise InvalidRequestError("invalid_request", f"Watch path does not exist or is not a directory: {path}", "path")
+
+        watches = cast(list[WatchTargetRow], await self.db.fetchall("SELECT * FROM watches WHERE enabled=1"))
+        for watch in watches:
+            if self._watch_paths_are_nested(path, watch["path"]):
+                raise InvalidRequestError(
+                    "invalid_request",
+                    f"Watch path overlaps existing watch target id={watch['id']} path={watch['path']}: {path}",
+                    "path",
+                )
 
         wid = self._watch_id_for_path(path)
 

@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+from pathlib import Path
 from typing import Any, cast, get_type_hints
 
 import pytest
@@ -243,6 +244,71 @@ def test_add_watch_normalizes_user_path_before_storing(tmp_path) -> None:
         watch = await service.add_watch(unnormalized)
 
         assert watch["path"] == str(root)
+
+    asyncio.run(_run())
+
+
+def test_add_watch_rejects_child_of_existing_watch(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ConfigService(db)
+
+        root = tmp_path / "root"
+        child = root / "child"
+        child.mkdir(parents=True)
+
+        existing = await service.add_watch(str(root))
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.add_watch(str(child))
+
+        assert exc_info.value.code == "invalid_request"
+        assert exc_info.value.param == "path"
+        assert str(existing["id"]) in exc_info.value.message
+        assert str(root) in exc_info.value.message
+
+    asyncio.run(_run())
+
+
+def test_add_watch_rejects_parent_of_existing_watch(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ConfigService(db)
+
+        root = tmp_path / "root"
+        child = root / "child"
+        child.mkdir(parents=True)
+
+        existing = await service.add_watch(str(child))
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.add_watch(str(root))
+
+        assert exc_info.value.code == "invalid_request"
+        assert exc_info.value.param == "path"
+        assert str(existing["id"]) in exc_info.value.message
+        assert str(child) in exc_info.value.message
+
+    asyncio.run(_run())
+
+
+def test_add_watch_allows_same_path_upsert(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ConfigService(db)
+
+        root = tmp_path / "root"
+        root.mkdir()
+
+        first = await service.add_watch(str(root), label="First")
+        second = await service.add_watch(str(root), label="Second")
+
+        assert second["id"] == first["id"]
+        assert second["path"] == first["path"]
+        assert second["label"] == "Second"
 
     asyncio.run(_run())
 
