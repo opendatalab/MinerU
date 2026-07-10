@@ -118,6 +118,8 @@ _ERROR_CODE_STATUS_MAP: dict[str, int] = {
     "tier_not_cached": 404,
     "upload_not_found": 404,
     "watch_not_found": 404,
+    "remote_timeout": 503,
+    "remote_unreachable": 503,
     "server_busy": 503,
 }
 

@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
 from PIL import Image
 
@@ -53,7 +54,7 @@ from mineru.doclib.services.search_svc import SearchService
 from mineru.doclib.types import DocContentExportRequest, FileInfo, InvalidateRequest, ParseResponse, WatchRequest
 from mineru.errors import InvalidRequestError, MineruError, NotFoundError
 from mineru.parser import backend_for_tier, resolve_tier_and_backend
-from mineru.parser.api_client import _V1APIError
+from mineru.parser.api_client import _APITransportError, _V1APIError
 from mineru.parser.base import ParseResult
 from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
 from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span, Tier
@@ -3634,6 +3635,49 @@ def test_process_doc_preserves_remote_api_error_code(tmp_path: Path) -> None:
     assert parses[0]["status"] == "failed"
     assert parses[0]["error_code"] == "invalid_api_key"
     assert parses[0]["error_msg"] == "Remote authentication failed: user authenticate failed"
+
+
+@pytest.mark.parametrize(
+    ("cause", "expected_code"),
+    [
+        (httpx.ReadTimeout("timed out"), "remote_timeout"),
+        (httpx.ReadError("connection closed"), "remote_unreachable"),
+    ],
+)
+def test_parse_via_api_maps_transport_errors_by_type(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    cause: httpx.TransportError,
+    expected_code: str,
+) -> None:
+    service = ParseService(
+        db=_FakeDB(parses=[], file_row=None),
+        fts=_FakeFTS(),
+        config_svc=None,
+        data_dir=str(tmp_path),
+        parse_lock_timeout_sec=1800,
+    )
+
+    async def _resolve_api_target(_privacy: str, _tier: Tier) -> tuple[str, str | None, str]:
+        return "https://mineru.net/api", "test-key", "remote"
+
+    class _FakeApiParser:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        async def parse_async(self, _path: str, *, page_range: str = "") -> ParseResult:
+            raise _APITransportError(stage="job polling", method="GET", attempts=3, cause=cause)
+
+    service._resolve_api_target = _resolve_api_target  # type: ignore[method-assign]
+    service._resolve_tier = lambda tier, _via: tier  # type: ignore[method-assign]
+    monkeypatch.setattr("mineru.parser.api_client.MinerUApiParser", _FakeApiParser)
+
+    with pytest.raises(ParseFailure) as exc_info:
+        asyncio.run(service._parse_via_api({"path": "/tmp/doc.pdf"}, "high", "1", "remote"))
+
+    assert exc_info.value.code == expected_code
+    assert "job polling" in exc_info.value.message
+    assert type(cause).__name__ in exc_info.value.message
 
 
 @pytest.mark.parametrize(
