@@ -9,13 +9,21 @@ description: Use MinerU when an agent needs to read, parse, OCR, search, inspect
 
 MinerU is a command-line document reader for agents. It parses local documents into readable content, lets agents continue by page or block, and returns stable locators for follow-up reads and citations.
 
+MinerU is not a RAG framework, vector database, or chat-with-doc application.
+
+This skill mainly uses the `mineru` command.
+
 ## Pre-release Status
 
 The current MinerU release line is in Alpha pre-release. Package installers normally prefer stable releases, so explicitly enable pre-release resolution whenever installing or upgrading MinerU from a package index. The installation commands in this skill already include the required installer-specific options.
 
-## What MinerU Is Not
+## Skill Installation
 
-MinerU is not a browser, RAG framework, embedding system, vector database, or chat-with-doc application. It can be used as the document parsing step in a larger pipeline, but this skill only uses the `mineru` command.
+Copy the following message and send it to your agent:
+
+```text
+Install the MinerU Skill globally for me. First run `npx skills add "opendatalab/MinerU#next" --global --yes`. If `npx` is unavailable, fetch https://raw.githubusercontent.com/opendatalab/MinerU/next/README.md, use its content as `mineru/SKILL.md`, and save it under the appropriate global skills directory for the current agent, not inside the current project.
+```
 
 ## When To Use MinerU
 
@@ -45,8 +53,6 @@ Use MinerU for local document files such as:
 MinerU is especially useful when documents contain OCR text, tables, formulas, figures, or complex page layouts.
 
 ## Do Not
-
-Do not:
 
 - Summarize a document before reading it with `mineru`.
 - Reimplement PDF/OCR extraction when `mineru` can read the document.

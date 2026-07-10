@@ -5,17 +5,15 @@ description: Use MinerU when an agent needs to read, parse, OCR, search, inspect
 
 # MinerU
 
-[Agent Guide](README.md) | [English](README_en.md) | [简体中文](README_zh.md)
-
 MinerU is a command-line document reader for agents. It parses local documents into readable content, lets agents continue by page or block, and returns stable locators for follow-up reads and citations.
+
+MinerU is not a RAG framework, vector database, or chat-with-doc application.
+
+This skill mainly uses the `mineru` command.
 
 ## Pre-release Status
 
 The current MinerU release line is in Alpha pre-release. Package installers normally prefer stable releases, so explicitly enable pre-release resolution whenever installing or upgrading MinerU from a package index. The installation commands in this skill already include the required installer-specific options.
-
-## What MinerU Is Not
-
-MinerU is not a browser, RAG framework, embedding system, vector database, or chat-with-doc application. It can be used as the document parsing step in a larger pipeline, but this skill only uses the `mineru` command.
 
 ## When To Use MinerU
 
