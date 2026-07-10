@@ -145,6 +145,7 @@ def test_config_set_managed_tier_preflights_even_when_mode_is_disabled(monkeypat
     monkeypatch.setattr(parser_tier.importlib, "import_module", _import_module)
     monkeypatch.setattr(parser_tier.importlib_metadata, "packages_distributions", lambda: {"mineru": ["mineru-next-dev"]})
     monkeypatch.setattr(parser_tier.sys, "platform", "darwin")
+    monkeypatch.setattr(parser_tier.platform, "machine", lambda: "arm64")
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
     with TestClient(doclib_app.create_app(cfg)) as client:

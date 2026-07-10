@@ -2358,6 +2358,7 @@ def test_api_server_preflights_xhigh_tier_dependencies_for_platform(
 
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
     monkeypatch.setattr(parser_tier.sys, "platform", "darwin")
+    monkeypatch.setattr(parser_tier.platform, "machine", lambda: "arm64")
 
     create_app(upload_dir=str(tmp_path), tier="xhigh")
 
@@ -2372,6 +2373,33 @@ def test_api_server_preflights_xhigh_tier_dependencies_for_platform(
         "accelerate",
         "mlx",
         "mlx_vlm",
+    ]
+
+
+def test_api_server_preflights_xhigh_tier_dependencies_skip_mlx_on_intel_macos(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    imported_modules: list[str] = []
+
+    def fake_import_module(module_name: str):
+        imported_modules.append(module_name)
+        return object()
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+    monkeypatch.setattr(parser_tier.sys, "platform", "darwin")
+    monkeypatch.setattr(parser_tier.platform, "machine", lambda: "x86_64")
+
+    create_app(upload_dir=str(tmp_path), tier="xhigh")
+
+    assert imported_modules == [
+        "ftfy",
+        "shapely",
+        "pyclipper",
+        "six",
+        "torch",
+        "torchvision",
+        "transformers",
+        "accelerate",
     ]
 
 
@@ -2397,6 +2425,7 @@ def test_api_server_cli_reports_dependency_preflight_without_traceback(monkeypat
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
     monkeypatch.setattr(parser_tier.importlib_metadata, "packages_distributions", lambda: {"mineru": ["mineru-next-dev"]})
     monkeypatch.setattr(parser_tier.sys, "platform", "darwin")
+    monkeypatch.setattr(parser_tier.platform, "machine", lambda: "arm64")
 
     result = runner.invoke(main, ["--tier", "xhigh"])
 

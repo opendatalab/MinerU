@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib
+import platform
 import sys
 from dataclasses import dataclass
 from importlib import metadata as importlib_metadata
@@ -53,8 +54,8 @@ _HIGH_REQUIRED_MODULES_COMMON = [
 _HIGH_REQUIRED_MODULES_BY_PLATFORM = {
     "linux": ["vllm"],
     "win32": ["lmdeploy", "qwen_vl_utils"],
-    "darwin": ["mlx", "mlx_vlm"],
 }
+_APPLE_SILICON_HIGH_REQUIRED_MODULES = ["mlx", "mlx_vlm"]
 
 
 class TierDependencyError(RuntimeError):
@@ -208,9 +209,12 @@ def required_modules_for_tier(tier: Tier) -> list[str]:
     if tier == "medium":
         return list(_MEDIUM_REQUIRED_MODULES)
     if tier in {"high", "xhigh"}:
+        platform_modules = list(_HIGH_REQUIRED_MODULES_BY_PLATFORM.get(sys.platform, []))
+        if sys.platform == "darwin" and platform.machine() == "arm64":
+            platform_modules.extend(_APPLE_SILICON_HIGH_REQUIRED_MODULES)
         return [
             *_HIGH_REQUIRED_MODULES_COMMON,
-            *_HIGH_REQUIRED_MODULES_BY_PLATFORM.get(sys.platform, []),
+            *platform_modules,
         ]
     return []
 
