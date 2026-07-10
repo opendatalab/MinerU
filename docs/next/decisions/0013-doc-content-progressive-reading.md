@@ -464,7 +464,7 @@ CLI marker 是展示层，不是协议源头。Server 返回 `next_request`，CL
 非分页文档:
 
 ```html
-<!-- Next: mineru parse long.docx --after doc:ab12cd3/tier:medium/page:1/block:42 -->
+<!-- Next: mineru parse long.docx --after doc:ab12cd3/tier:flash/page:1/block:42 -->
 ```
 
 机器可读协议以 `DocContentResponse.next_request` 为准。CLI marker 不应被 SDK 或 Server 反解析。

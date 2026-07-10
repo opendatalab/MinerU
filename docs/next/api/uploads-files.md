@@ -364,6 +364,6 @@ Local Parse Server 保持相同 endpoint 和对象结构，但传输实现可以
 - `upload_url` 指向本地 server 的临时上传 endpoint，例如 `/v1/uploads/{upload_id}/content`。
 - 字节上传仍由客户端使用 `upload_method`、`upload_url` 和 `upload_headers` 完成；客户端不应硬编码 OSS 行为。
 - `GET /v1/files/{file_id}/content` 直接返回 `200 + body`，不做 CDN 重定向。
-- 本地 server 支持 parse job 的 `local` source，用户可跳过 upload 直接引用 allowlist 内路径。
+- 本地 server 支持 parse job 的 `local` source；只有启动时开启 `--allow-local-source` 并在 `features.sources` 返回 `local` 时，用户才可跳过 upload 直接引用 server 进程权限范围内的本地路径。
 - 官方 API 必须拒绝 `local` source，返回 `400 invalid_request`。
 - 本地文件默认可以不设置保留期，File 对象的 `expires_at` 可为 `null`。

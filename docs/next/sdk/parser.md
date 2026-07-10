@@ -33,7 +33,7 @@
 | `DocumentParser` | abstract class | 所有 parser 的统一接口。 |
 | `ParseResult` | dataclass | 解析结果对象。 |
 | `PdfFlashParser` | class | CPU-only PDF/image 快速解析。 |
-| `PdfPipelineParser` | class | 旧 SDK 兼容类，内部委托 Hybrid low。 |
+| `PdfPipelineParser` | class | 旧 SDK 兼容类，内部委托 Hybrid medium。 |
 | `PdfVlmParser` | class | VLM backend。 |
 | `PdfHybridParser` | class | hybrid backend。 |
 | `DocxParser` | class | DOCX parser。 |
@@ -104,7 +104,7 @@ class DocumentParser:
 | Parser | 输入 | 主要 backend | 说明 |
 |--------|------|--------------|------|
 | `PdfFlashParser` | PDF/image | flash | CPU-only，快速但质量最低，主要用于发现和索引。 |
-| `PdfPipelineParser` | PDF/image | hybrid low | 旧 SDK 兼容类，等价于 `PdfHybridParser(effort="low")`。 |
+| `PdfPipelineParser` | PDF/image | hybrid medium | 旧 SDK 兼容类，等价于 `PdfHybridParser(effort="medium")`。 |
 | `PdfVlmParser` | PDF/image | VLM | VLM 解析，可通过 server URL 委托。 |
 | `PdfHybridParser` | PDF/image | hybrid | 本地小模型 + VLM 混合解析。 |
 | `DocxParser` | DOCX | office | Office 文档解析。 |
@@ -119,7 +119,7 @@ class DocumentParser:
 | Tier | 默认 backend | 说明 |
 |------|--------------|------|
 | `flash` | `flash` | 快速 CPU-only。 |
-| `medium` | `hybrid-engine` + `effort="low"` | 消费级硬件可用的本地小模型组合。 |
+| `medium` | `hybrid-engine` + `effort="medium"` | 消费级硬件可用的本地小模型组合。 |
 | `high` | hybrid 默认高质量 backend | 绝大多数场景足够好的高质量档位。 |
 | `xhigh` | hybrid backend + 更高 effort | 最高质量档位，用更多算力和时间换取小幅质量提升。 |
 
@@ -132,7 +132,7 @@ class DocumentParser:
 目标:
 
 - `from mineru.parser import parse, ParseResult` 应足够轻。
-- `PdfPipelineParser` 仅作为旧 SDK 类名保留，内部走 Hybrid low，不再加载独立 pipeline backend。
+- `PdfPipelineParser` 仅作为旧 SDK 类名保留，内部走 Hybrid medium，不再加载独立 pipeline backend。
 - `PdfVlmParser` / `PdfHybridParser` 只在执行 VLM/hybrid 时加载对应 backend。
 - Office parser 可以在构造时绑定 analyze function，但不应在模块 import 时加载重依赖。
 
@@ -150,7 +150,7 @@ print(result.markdown())
 ```python
 from mineru.parser import PdfHybridParser
 
-with PdfHybridParser(method="txt", lang="ch", effort="low") as parser:
+with PdfHybridParser(method="txt", lang="ch", effort="medium") as parser:
     result = parser.parse("report.pdf", page_range="1~10")
     images = result.images()
 ```

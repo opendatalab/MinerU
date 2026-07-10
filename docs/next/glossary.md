@@ -111,7 +111,7 @@
 |--------|------|
 | `parse()` | Tool SDK 的便捷函数 |
 | `DocumentParser` | Parser 抽象接口 |
-| `PdfPipelineParser` | 旧 SDK 兼容类，内部委托 Hybrid low |
+| `PdfPipelineParser` | 旧 SDK 兼容类，内部委托 Hybrid medium |
 | `PdfVlmParser` | 调用 VLM backend 的 parser |
 | `PdfHybridParser` | 调用 hybrid backend 的 parser |
 | `DocxParser` / `PptxParser` / `XlsxParser` | Office parser |

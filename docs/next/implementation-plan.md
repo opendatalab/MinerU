@@ -804,7 +804,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 - FTS 有内容。
 - Markdown 不落盘。
-- tier-gated 更新符合 `flash < medium < high`。
+- tier-gated 更新符合 `flash < medium < high < xhigh`。
 
 验证方式:
 
@@ -1189,7 +1189,7 @@ API-backed parser、Doclib SDK、本地 parser 的错误都能被统一捕获，
 1. 测试 `GET /v1/health`。
 2. 测试 `GET /v1/tiers`。
 3. 测试 `POST /v1/parse/jobs` 的最小本地路径 source。
-4. local source 必须校验 allowlist。
+4. local source 默认关闭；开启 `--allow-local-source` 后允许 server 进程权限范围内的本地路径。
 5. 未实现 webhook 时 health features 应标记 false。
 6. 使用同一个 `MinerUApiParser` 调用本地 server。
 

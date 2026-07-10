@@ -274,6 +274,14 @@ def _validation_error_message(exc: RequestValidationError) -> str:
     return f"Invalid request: {msg}"
 
 
+def _validation_error_code(exc: RequestValidationError) -> str:
+    for err in exc.errors():
+        loc = tuple(err.get("loc", ()))
+        if err.get("type") == "union_tag_invalid" and "source" in loc:
+            return "unsupported_source"
+    return "invalid_request"
+
+
 def _http_exception_error(exc: HTTPException) -> ErrorDetail:
     detail = exc.detail
     if isinstance(detail, dict):
@@ -482,7 +490,7 @@ class CreateJobRequest(BaseModel):
     model_config = _PYDANTIC_CONFIG
     files: list[JobFileEntry] = Field(min_length=1)
     tier: Tier | None = None
-    output_formats: list[OutputFormat] = ["markdown"]
+    output_formats: list[str] = ["markdown"]
     callback: CallbackConfig | None = None
 
 
@@ -1062,11 +1070,13 @@ def _validate_job_source_policy(
                 allow_http_source=allow_http_source,
             )
         except ValueError as exc:
+            message = str(exc)
+            code = "unsupported_source" if "source" in message else "invalid_request"
             _raise_api_error(
                 400,
                 error_type="invalid_request_error",
-                code="invalid_request",
-                message=str(exc),
+                code=code,
+                message=message,
                 param=f"files.{index}.source",
             )
 
@@ -1783,7 +1793,7 @@ async def create_job(
             _raise_api_error(
                 400,
                 error_type="invalid_request_error",
-                code="invalid_request",
+                code="unsupported_output_format",
                 message=f"Unknown output format: {fmt}",
             )
 
@@ -2163,7 +2173,7 @@ def create_app(
             400,
             ErrorDetail(
                 type="invalid_request_error",
-                code="invalid_request",
+                code=_validation_error_code(exc),
                 message=_validation_error_message(exc),
                 param=_validation_error_param(exc),
             ),

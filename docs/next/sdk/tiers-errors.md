@@ -29,7 +29,7 @@ SDK 中未指定 tier，或 Python 调用传 `tier=None` 时，必须遵循 [解
 | Tier | Backend |
 |------|---------|
 | `flash` | `flash` |
-| `medium` | `hybrid-engine` + `effort="low"` |
+| `medium` | `hybrid-engine` + `effort="medium"` |
 | `high` | hybrid 默认高质量 backend |
 | `xhigh` | hybrid backend + 更高 effort |
 

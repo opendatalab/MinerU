@@ -1267,13 +1267,13 @@ def test_create_job_request_accepts_new_format_names_and_rejects_options() -> No
     assert req.files[0].page_range is None
     assert req.output_formats == ["middle_json", "structured_content"]
 
-    with pytest.raises(ValidationError):
-        CreateJobRequest.model_validate(
-            {
-                "files": [{"source": {"type": "local", "path": "/tmp/demo.pdf"}}],
-                "output_formats": ["images"],
-            }
-        )
+    unsupported = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "local", "path": "/tmp/demo.pdf"}}],
+            "output_formats": ["images"],
+        }
+    )
+    assert unsupported.output_formats == ["images"]
 
     with pytest.raises(ValidationError):
         CreateJobRequest.model_validate(
@@ -1310,7 +1310,7 @@ def test_api_server_rejects_local_source_by_default(tmp_path: Path, monkeypatch:
 
     assert response.status_code == 400
     body = response.json()
-    assert body["error"]["code"] == "invalid_request"
+    assert body["error"]["code"] == "unsupported_source"
     assert body["error"]["param"] == "files.0.source"
     assert "--allow-local-source" in body["error"]["message"]
 
@@ -1352,7 +1352,7 @@ def test_api_server_rejects_inline_source_over_configured_limit(tmp_path: Path, 
 
     assert response.status_code == 400
     body = response.json()
-    assert body["error"]["code"] == "invalid_request"
+    assert body["error"]["code"] == "unsupported_source"
     assert body["error"]["param"] == "files.0.source"
     assert "max_inline_bytes" in body["error"]["message"]
 
@@ -1369,9 +1369,55 @@ def test_api_server_rejects_plain_http_url_source_by_default(tmp_path: Path, mon
 
     assert response.status_code == 400
     body = response.json()
-    assert body["error"]["code"] == "invalid_request"
+    assert body["error"]["code"] == "unsupported_source"
     assert body["error"]["param"] == "files.0.source"
     assert "https" in body["error"]["message"]
+
+
+def test_api_server_rejects_unsupported_output_format_with_specific_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    app = create_app(upload_dir=str(tmp_path), tier="flash", allow_local_source=True)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/parse/jobs",
+            json={
+                "tier": "flash",
+                "files": [{"source": {"type": "local", "path": str(source)}}],
+                "output_formats": ["images"],
+            },
+        )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["code"] == "unsupported_output_format"
+    assert body["error"]["param"] is None
+    assert "Unknown output format: images" in body["error"]["message"]
+
+
+def test_api_server_rejects_unsupported_source_type_with_specific_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path), tier="flash")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/parse/jobs",
+            json={
+                "tier": "flash",
+                "files": [{"source": {"type": "s3", "uri": "s3://bucket/demo.pdf"}}],
+            },
+        )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["code"] == "unsupported_source"
+    assert body["error"]["param"] == "files.0.source"
 
 
 def test_local_parse_server_rejects_callback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

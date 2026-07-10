@@ -282,7 +282,7 @@ P0 结论:
 
 - `search()` 增加 `tier`、`min_tier`、`file_type` 过滤。
 - `tier` 表示只返回指定解析档位索引结果。
-- `min_tier` 表示返回不低于该解析档位的索引结果，档位顺序为 `flash < medium < high`。
+- `min_tier` 表示返回不低于该解析档位的索引结果，档位顺序为 `flash < medium < high < xhigh`。
 - 如果 `tier` 与 `min_tier` 同时出现，二者同时生效；不兼容时返回空结果。
 - 时间范围过滤、watch 过滤放到 P1。
 - 搜索结果可信度不新增 `confidence` 或 `quality` 字段，只使用 `tier` 表达。

@@ -33,7 +33,7 @@
   "error": {
     "type": "engine_error",
     "code": "quality_tier_unavailable",
-    "message": "Default tier selection requires medium or high, but only flash is available. Start a parse-server, use --remote, or explicitly pass --tier flash.",
+    "message": "Default tier selection requires medium, high, or xhigh, but only flash is available. Start a parse-server, use --remote, or explicitly pass --tier flash.",
     "param": "tier",
     "retryable": false,
     "user_action": "start_parse_server_or_use_remote_or_explicit_flash",
@@ -81,6 +81,9 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`medium`、`high
 | `engine_error` | `parse_timeout` | 504 | 是 | null | 解析超时 | `retry_or_use_lower_tier` |
 | `timeout_error` | `parse_wait_timeout` | 408 | 是 | `wait` | CLI `parse --wait` 等待窗口到期，解析任务仍在运行 | `poll_parse_or_rerun_with_longer_wait` |
 | `engine_error` | `parse_oom` | 500 | 是 | null | 本地显存或内存不足 | `use_lower_tier_or_remote` |
+| `invalid_request_error` | `remote_unsupported_for_file_type` | 400 | 否 | `remote` | 非 PDF/image 单文件主动解析请求 remote | `use_local_flash_or_choose_pdf_image` |
+| `invalid_request_error` | `tier_unsupported_for_file_type` | 400 | 否 | `tier` | 非 PDF/image 单文件主动解析显式请求质量 tier | `use_tier_flash_or_choose_pdf_image` |
+| `invalid_request_error` | `tier_unsupported_for_remote` | 400 | 否 | `tier` | PDF/image remote 解析显式请求 `flash` | `choose_remote_quality_tier_or_local_flash` |
 
 关键约束：
 
@@ -109,6 +112,8 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`medium`、`high
 | type | code | HTTP | retryable | param | 触发场景 |
 |------|------|------|:--:|-------|----------|
 | `invalid_request_error` | `invalid_request` | 400 | 否 | 出错参数 | 参数格式或组合非法 |
+| `invalid_request_error` | `unsupported_output_format` | 400 | 否 | `output_formats` | 输出格式不支持 |
+| `invalid_request_error` | `unsupported_source` | 400 | 否 | `source` | 当前部署不支持该 source 类型或 source 策略 |
 | `invalid_request_error` | `page_range_invalid` | 400 | 否 | `page_range` | 页码范围格式非法或超出文档页数 |
 | `invalid_request_error` | `file_type_unsupported` | 400 | 否 | `file` | 文件类型不支持 |
 | `invalid_request_error` | `file_encrypted` | 400 | 否 | `file` | 文件加密或受密码保护 |
@@ -178,7 +183,7 @@ CLI 在 TTY 中可以用表格或 rich 文本展示，但非 TTY、`--json` 或 
   "error": {
     "type": "engine_error",
     "code": "quality_tier_unavailable",
-    "message": "Default tier selection requires medium or high, but only flash is available. Start a local parse-server, use --remote, or explicitly pass --tier flash.",
+    "message": "Default tier selection requires medium, high, or xhigh, but only flash is available. Start a local parse-server, use --remote, or explicitly pass --tier flash.",
     "param": "tier",
     "retryable": false,
     "user_action": "start_parse_server_or_use_remote_or_explicit_flash",

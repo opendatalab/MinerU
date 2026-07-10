@@ -403,7 +403,7 @@ marker 不应依赖自然语言提示。具体 marker 格式可在 CLI 或 Agent
 5. 调度到可用解析能力。
 6. 解析服务生成 Middle JSON 和请求的输出格式。
 7. job 进入终态。
-8. 客户端轮询、等待、SSE 或 webhook 获取结果。
+8. 客户端通过轮询或 webhook 获取结果。
 
 ### 8.3 Local Parse Server 差异
 
@@ -412,7 +412,7 @@ Local Parse Server 复用同一套客户端协议，但可以简化:
 - 鉴权默认可关闭。
 - Webhook 可以不实现。
 - 上传可以使用本地临时存储。
-- `local` source 可以引用 allowlist 内路径。
+- `local` source 只有在 `features.sources` 包含 `local` 时可用；开启后可以引用 server 进程权限范围内的本地路径。
 - 文件下载可以直接返回 body。
 
 ### 8.4 与 doclib 的关系
@@ -443,7 +443,7 @@ result = parse("report.pdf", tier="medium")
 ```python
 from mineru.parser import PdfHybridParser
 
-with PdfHybridParser(effort="low") as parser:
+with PdfHybridParser(effort="medium") as parser:
     result = parser.parse("report.pdf")
 ```
 

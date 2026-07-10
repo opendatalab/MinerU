@@ -184,7 +184,7 @@ def test_print_error_uses_single_rich_render(monkeypatch: Any) -> None:
     monkeypatch.setattr(output_mod, "stderr_console", _Console())
 
     output_mod.print_error(
-        "No medium or high engine available. You can start a local parse-server, use --remote, or explicitly pass "
+        "No medium, high, or xhigh engine available. You can start a local parse-server, use --remote, or explicitly pass "
         "--tier flash for text-only preview."
     )
 
@@ -1411,7 +1411,7 @@ def test_parse_json_error_output_is_machine_readable(monkeypatch: Any, tmp_path:
 
         def ensure_parse(self, request: Any) -> ParseResponse:
             raise RuntimeError(
-                "('quality_tier_unavailable', 'No medium or high engine available. Use --tier flash.', None)"
+                "('quality_tier_unavailable', 'No medium, high, or xhigh engine available. Use --tier flash.', None)"
             )
 
     monkeypatch.setattr(parse, "DoclibClient", _Client)
@@ -1421,7 +1421,7 @@ def test_parse_json_error_output_is_machine_readable(monkeypatch: Any, tmp_path:
     assert result.exit_code == 1
     payload = json.loads(result.output)
     assert payload["error"]["code"] == "quality_tier_unavailable"
-    assert "No medium or high engine available" in payload["error"]["message"]
+    assert "No medium, high, or xhigh engine available" in payload["error"]["message"]
 
 
 def test_parse_invalid_after_cursor_json_error_is_validation_error(monkeypatch: Any, tmp_path: Path) -> None:
@@ -2292,7 +2292,7 @@ def test_search_json_error_output_is_machine_readable(monkeypatch: Any) -> None:
             assert timeout == 10
 
         def search(self, *args: Any, **kwargs: Any) -> Any:
-            raise RuntimeError("('quality_tier_unavailable', 'No medium or high engine available.', 'tier')")
+            raise RuntimeError("('quality_tier_unavailable', 'No medium, high, or xhigh engine available.', 'tier')")
 
     monkeypatch.setattr(search_mod, "DoclibClient", _Client)
 

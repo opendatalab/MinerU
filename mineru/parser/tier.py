@@ -37,7 +37,7 @@ __all__ = [
 
 PARSER_BACKENDS = SUPPORTED_BACKENDS
 
-_STANDARD_REQUIRED_MODULES = [
+_MEDIUM_REQUIRED_MODULES = [
     "ftfy",
     "shapely",
     "pyclipper",
@@ -46,11 +46,11 @@ _STANDARD_REQUIRED_MODULES = [
     "torchvision",
     "transformers",
 ]
-_PRO_REQUIRED_MODULES_COMMON = [
-    *_STANDARD_REQUIRED_MODULES,
+_HIGH_REQUIRED_MODULES_COMMON = [
+    *_MEDIUM_REQUIRED_MODULES,
     "accelerate",
 ]
-_PRO_REQUIRED_MODULES_BY_PLATFORM = {
+_HIGH_REQUIRED_MODULES_BY_PLATFORM = {
     "linux": ["vllm"],
     "win32": ["lmdeploy", "qwen_vl_utils"],
     "darwin": ["mlx", "mlx_vlm"],
@@ -206,11 +206,11 @@ def runtime_options_for_tier(
 def required_modules_for_tier(tier: Tier) -> list[str]:
     tier = validate_tier(tier)
     if tier == "medium":
-        return list(_STANDARD_REQUIRED_MODULES)
+        return list(_MEDIUM_REQUIRED_MODULES)
     if tier in {"high", "xhigh"}:
         return [
-            *_PRO_REQUIRED_MODULES_COMMON,
-            *_PRO_REQUIRED_MODULES_BY_PLATFORM.get(sys.platform, []),
+            *_HIGH_REQUIRED_MODULES_COMMON,
+            *_HIGH_REQUIRED_MODULES_BY_PLATFORM.get(sys.platform, []),
         ]
     return []
 

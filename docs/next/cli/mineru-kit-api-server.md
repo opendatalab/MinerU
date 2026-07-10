@@ -97,7 +97,9 @@ mineru-kit api-server --tier high --language en --ocr-mode ocr --disable-image-a
 - concurrency
 - upload-dir
 - url-timeout
-- max-wait
+- allow-local-source
+- max-inline-bytes
+- allow-http-source
 
 ### 专家参数
 

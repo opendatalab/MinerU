@@ -1901,7 +1901,8 @@ def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
         docs = [
             ("1" * 64, "flash", "pdf", "flash.pdf", 2),
             ("2" * 64, "high", "pdf", "high.pdf", 12),
-            ("3" * 64, "xhigh", "docx", "xhigh.docx", 23),
+            ("3" * 64, "flash", "docx", "flash.docx", 23),
+            ("4" * 64, "xhigh", "pdf", "xhigh.pdf", 34),
         ]
 
         for sha256, tier, file_type, filename, page_count in docs:
@@ -1928,7 +1929,7 @@ def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
         assert min_total == 2
         assert {row["tier"] for row in min_results} == {"high", "xhigh"}
         assert type_total == 1
-        assert [row["filename"] for row in type_results] == ["xhigh.docx"]
+        assert [row["filename"] for row in type_results] == ["flash.docx"]
         assert [row["short_id"] for row in type_results] == ["3" * 7]
         assert [row["page_count"] for row in type_results] == [23]
 

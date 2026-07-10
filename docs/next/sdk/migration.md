@@ -76,8 +76,7 @@ SDK 迁移的目标不是重写现有 parser，而是稳定已经成形的边界
 1. 将 `MinerUApiParser` 的内部 `_V1APIError` 映射到 `MineruError`。
 2. 补齐 API/tier 错误码:
    - `unsupported_parameter`
-   - `unsupported_output_format`
-   - `unsupported_source`
+   - `invalid_request`
    - `quality_tier_unavailable`
 3. 为 doclib client 保留 error envelope -> exception 的一致行为。
 
