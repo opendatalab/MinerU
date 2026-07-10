@@ -84,7 +84,7 @@ class IngestWorkerPool:
         timeout = now - self.lock_timeout_ms
         return cast(
             FileRow | None,
-            await self.parse_svc.db.fetchone(
+            await self.parse_svc.db.fetchone_write(
                 "UPDATE files SET locked_at=? "
                 "WHERE id = ("
                 "  SELECT id FROM files "

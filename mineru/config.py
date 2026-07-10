@@ -226,6 +226,9 @@ class LogConfig(BaseModel):
 
 class SQLiteConfig(BaseModel):
     path: str = _default_path("doclib.db")
+    busy_timeout_ms: int = Field(default=5000, ge=0)
+    lock_retry_attempts: int = Field(default=3, ge=0)
+    lock_retry_base_delay_ms: int = Field(default=50, ge=0)
     mmap_size: int = 268435456
     cache_size: int = -20000
     wal_autocheckpoint: int = 1000

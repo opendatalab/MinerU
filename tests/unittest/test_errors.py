@@ -100,6 +100,7 @@ def test_http_status_for_error_codes_is_stable() -> None:
     assert http_status_for("engine_unavailable") == 503
     assert http_status_for("parse_wait_timeout") == 408
     assert http_status_for("parse_server_unavailable") == 500
+    assert http_status_for("server_busy") == 503
     assert http_status_for("internal_error") == 500
 
 

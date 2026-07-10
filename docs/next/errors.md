@@ -159,6 +159,7 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`medium`、`high
 | `invalid_request_error` | `model_not_found` | 404 | 否 | `model` | 请求的模型不存在 | `check_model_id` |
 | `api_error` | `internal_error` | 500 | 否 | null | 服务端未预期错误 | `report_with_request_id` |
 | `api_error` | `service_unavailable` | 503 | 是 | null | 服务暂不可用或依赖暂不可用 | `retry_later` |
+| `api_error` | `server_busy` | 503 | 是 | null | server 暂时无法接收请求，或 SQLite 锁竞争在有限重试后仍未恢复 | `retry_later` |
 
 ## 10. CLI 本地错误
 
@@ -169,7 +170,6 @@ CLI 在调用 server 前或通信层面产生本地错误。它们使用同一 `
 | `invalid_request_error` | `file_not_found` | 否 | 本地文件路径不存在 | `check_path` |
 | `invalid_request_error` | `file_permission_denied` | 否 | 本地文件无读取权限 | `fix_file_permission` |
 | `api_error` | `server_not_running` | 是 | CLI 无法连接 doclib UDS | `run_mineru_server_start` |
-| `api_error` | `server_busy` | 是 | server 队列满或无法接收新任务 | `retry_later` |
 | `api_error` | `server_protocol_error` | 是 | CLI 与 server 协议不兼容或响应损坏 | `upgrade_or_restart_server` |
 
 CLI 在 TTY 中可以用表格或 rich 文本展示，但非 TTY、`--json` 或 Agent 调用场景应输出结构化错误。

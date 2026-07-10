@@ -67,6 +67,9 @@ MinerU 有两类配置：
 | doclib | `doclib.parse_server_startup_grace_sec` | `30` | managed parse-server 启动宽限时间 |
 | doclib | `doclib.parse_server_stop_timeout_sec` | `10` | managed parse-server 停止超时 |
 | sqlite | `doclib.sqlite.path` | `~/.mineru/doclib.db` | SQLite DB 路径 |
+| sqlite | `doclib.sqlite.busy_timeout_ms` | `5000` | SQLite 锁等待时间（毫秒） |
+| sqlite | `doclib.sqlite.lock_retry_attempts` | `3` | `SQLITE_BUSY` / `SQLITE_LOCKED` 的额外重试次数 |
+| sqlite | `doclib.sqlite.lock_retry_base_delay_ms` | `50` | SQLite 锁重试的指数退避初始延迟（毫秒） |
 | sqlite | `doclib.sqlite.mmap_size` | `268435456` | mmap size |
 | sqlite | `doclib.sqlite.cache_size` | `-20000` | SQLite cache size |
 | sqlite | `doclib.sqlite.wal_autocheckpoint` | `1000` | WAL checkpoint 阈值 |

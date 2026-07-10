@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from mineru.config import (
@@ -43,7 +45,7 @@ def test_interpolate_env_rejects_missing_required_value(monkeypatch: pytest.Monk
         _interpolate_env("${MINERU_TEST_MISSING}")
 
 
-def test_load_config_reads_yaml_and_interpolates_env(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_config_reads_yaml_and_interpolates_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MINERU_TEST_DATA", str(tmp_path / "data"))
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
@@ -81,6 +83,9 @@ def test_apply_env_overrides_uses_greedy_field_path_matching(monkeypatch: pytest
     monkeypatch.setenv("TEST_MINERU_DOCLIB_PARSE_SERVER_PROBE_TIMEOUT_SEC", "29")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_PARSE_SERVER_STARTUP_GRACE_SEC", "31")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_PARSE_SERVER_STOP_TIMEOUT_SEC", "37")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_SQLITE_BUSY_TIMEOUT_MS", "1000")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_SQLITE_LOCK_RETRY_ATTEMPTS", "4")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_SQLITE_LOCK_RETRY_BASE_DELAY_MS", "25")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_SQLITE_MMAP_SIZE", "0")
     monkeypatch.setenv("TEST_MINERU_UNKNOWN_FIELD", "ignored")
     monkeypatch.setenv("TEST_MINERU_CONFIG", "/tmp/ignored.yaml")
@@ -99,10 +104,13 @@ def test_apply_env_overrides_uses_greedy_field_path_matching(monkeypatch: pytest
     assert cfg.doclib.parse_server_probe_timeout_sec == 29
     assert cfg.doclib.parse_server_startup_grace_sec == 31
     assert cfg.doclib.parse_server_stop_timeout_sec == 37
+    assert cfg.doclib.sqlite.busy_timeout_ms == 1000
+    assert cfg.doclib.sqlite.lock_retry_attempts == 4
+    assert cfg.doclib.sqlite.lock_retry_base_delay_ms == 25
     assert cfg.doclib.sqlite.mmap_size == 0
 
 
-def test_read_config_uses_default_config_under_mineru_home(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read_config_uses_default_config_under_mineru_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     mineru_home = tmp_path / "mineru-home"
     mineru_home.mkdir()
     monkeypatch.setenv("MINERU_HOME", str(mineru_home))

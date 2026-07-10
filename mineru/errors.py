@@ -118,6 +118,7 @@ _ERROR_CODE_STATUS_MAP: dict[str, int] = {
     "tier_not_cached": 404,
     "upload_not_found": 404,
     "watch_not_found": 404,
+    "server_busy": 503,
 }
 
 
@@ -181,6 +182,11 @@ class EngineError(MineruError):
 class ServerNotRunningError(MineruError):
     def __init__(self) -> None:
         super().__init__("server_not_running", "Local mineru server is not running. Run 'mineru server start'.")
+
+
+class ServerBusyError(MineruError):
+    def __init__(self, message: str = "MinerU server is busy. Retry the request.") -> None:
+        super().__init__("server_busy", message)
 
 
 # ── FastAPI error response builder ─────────────────────────────────

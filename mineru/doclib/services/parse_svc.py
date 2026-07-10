@@ -846,7 +846,7 @@ class ParseService:
         timeout = now - self.parse_lock_timeout_ms
         task = cast(
             ParseRow | None,
-            await self.db.fetchone(
+            await self.db.fetchone_write(
                 "UPDATE parses SET locked_at=?, status=? "
                 "WHERE id = ("
                 "  SELECT id FROM parses WHERE status=? "
