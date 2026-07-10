@@ -45,6 +45,7 @@ from mineru.doclib.types import (
     ParseResponse,
     ScanListResponse,
     ScanInfo,
+    SearchFile,
     SearchResponse,
     SearchResult,
     ServerStatusResponse,
@@ -223,17 +224,17 @@ def test_search_results_render_as_list_without_table() -> None:
                 SearchResult(
                     sha256="a" * 64,
                     short_id="aaaaaaa",
-                    filename="resume.pdf",
                     tier="medium",
                     snippet="Python\nengineer",
-                    paths=["/tmp/resume.pdf"],
+                    files=[SearchFile(path="/tmp/resume.pdf", filename="resume.pdf", ext="pdf", status="active")],
                 )
             ],
         )
     )
 
     assert "Search results (1 total)" in rendered
-    assert "1. resume.pdf (/tmp/resume.pdf) Tier: medium" in rendered
+    assert "1. Document aaaaaaa Tier: medium" in rendered
+    assert "   Files:\n   /tmp/resume.pdf" in rendered
     assert "   Python  engineer" in rendered
     assert "Snippet:" not in rendered
 
@@ -247,13 +248,12 @@ def test_search_result_snippet_preserves_fts_match_after_long_prefix() -> None:
                 SearchResult(
                     sha256="a" * 64,
                     short_id="aaaaaaa",
-                    filename="deepseek.pdf",
                     tier="flash",
                     snippet=(
                         "...on each node. Under this constraint, our MoE training framework can nearly "
                         "achieve full computation-communication overlap. <mark>Token</mark> <mark>Dropping</mark>"
                     ),
-                    paths=["/tmp/deepseek.pdf"],
+                    files=[SearchFile(path="/tmp/deepseek.pdf", filename="deepseek.pdf", ext="pdf", status="active")],
                 )
             ],
         )
@@ -261,6 +261,56 @@ def test_search_result_snippet_preserves_fts_match_after_long_prefix() -> None:
 
     assert "<mark>Token</mark>" in rendered
     assert "<mark>Dropping</mark>" in rendered
+
+
+def test_search_results_render_active_files_then_inactive_fallback_and_orphan() -> None:
+    rendered = search_mod._render_search_results(
+        SearchResponse(
+            total=3,
+            query="needle",
+            results=[
+                SearchResult(
+                    sha256="a" * 64,
+                    short_id="aaaaaaa",
+                    title="Active document",
+                    tier="high",
+                    snippet="active",
+                    files=[
+                        SearchFile(path="/tmp/deleted.pdf", filename="deleted.pdf", ext="pdf", status="deleted"),
+                        SearchFile(path="/tmp/active.pdf", filename="active.pdf", ext="pdf", status="active"),
+                    ],
+                ),
+                SearchResult(
+                    sha256="b" * 64,
+                    short_id="bbbbbbb",
+                    tier="medium",
+                    snippet="inactive",
+                    files=[
+                        SearchFile(
+                            path="/volume/unreachable.pdf",
+                            filename="unreachable.pdf",
+                            ext="pdf",
+                            status="unreachable",
+                        ),
+                        SearchFile(path="/tmp/old.pdf", filename="old.pdf", ext="pdf", status="deleted"),
+                    ],
+                ),
+                SearchResult(
+                    sha256="c" * 64,
+                    short_id="ccccccc",
+                    tier="flash",
+                    snippet="orphan",
+                    files=[],
+                ),
+            ],
+        )
+    )
+
+    assert "/tmp/active.pdf" in rendered
+    assert "/tmp/deleted.pdf" not in rendered
+    assert "/volume/unreachable.pdf (unreachable)" in rendered
+    assert "/tmp/old.pdf (deleted)" in rendered
+    assert "3. Document ccccccc Tier: flash\n   File no longer exists." in rendered
 
 
 def test_list_renderers_return_tables(monkeypatch: Any) -> None:

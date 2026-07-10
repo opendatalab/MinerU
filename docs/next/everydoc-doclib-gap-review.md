@@ -52,7 +52,7 @@
 - 删除/变更检测入口包括 watch event、watch scan，以及 4 个同步 source file path 操作: parse、info、docs?path、invalidate(path)。
 - watch scan 采用两阶段刷新: 先 refresh DB 中该 watch 下的 active paths，再 `os.walk()` 发现当前文件系统中的新路径和变化路径。
 - path 缺失且不属于设备整体不可达时，标记为 `deleted`，写入 `deleted_at`，保留 `sha256`，清空 `error_code` / `error_msg` / `locked_at`。
-- 默认 `find` 只返回 active file；默认 `search` 优先返回 active file paths，如果某个 doc 已有内容索引但没有任何 active file，则 fallback 返回非 active file paths。
+- 默认 `find` 只返回 active file；`search` JSON 返回全部 file aliases 及状态，非 JSON CLI 使用 active 优先展示。
 - `PermissionError` 与其他 stat `OSError` 不表示删除，分别写入 `file_permission_denied` / `stat_failed`。
 
 后续优化:
@@ -286,14 +286,14 @@ P0 结论:
 - 如果 `tier` 与 `min_tier` 同时出现，二者同时生效；不兼容时返回空结果。
 - 时间范围过滤、watch 过滤放到 P1。
 - 搜索结果可信度不新增 `confidence` 或 `quality` 字段，只使用 `tier` 表达。
-- 搜索结果默认优先返回 active files；由于一个 doc SHA256 可对应多个 file rows，结果中的 `paths` 是所选 file rows 的路径列表。
-- 如果某个 doc 已有内容索引但没有任何 active file，则 fallback 返回非 active file paths，使 Agent 仍能定位 deleted / unreachable 的历史文档。
+- 搜索结果按 doc SHA256 聚合，结果中的 `files` 返回全部 file rows，包含 path、filename、ext 和 status，并按 file id 降序排列。
+- 非 JSON CLI 存在 active files 时只展示 active paths；否则展示全部 deleted / unreachable paths。没有 file row 的已索引文档仍作为 orphan 返回。
 - `find()` 是文件名搜索，增加 `ext` 过滤；它仍默认只返回 active files。
 
 后续优化:
 
 - P1 再讨论 `mtime_after` / `mtime_before` / `watch_id`。
-- 如果未来 Agent 需要区分 fallback path 的状态，可在结果中增加结构化 file refs；P0 先保持 `paths` 列表。
+- Agent 通过结构化 `files` 区分 active、deleted 和 unreachable aliases。
 
 ### G-009 Agent citation 与更细粒度索引
 

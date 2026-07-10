@@ -186,7 +186,6 @@ class FtsContentSearchRow(TypedDict):
     sha256: str
     title: str
     author: str
-    filename: str
     tier: Tier
     snippet: str
     rank: float
@@ -198,16 +197,16 @@ class FtsFilenameSearchRow(TypedDict):
     snippet: str
 
 
-class SearchFileRow(FileRow):
-    title: str | None
-    author: str | None
-    page_count: int | None
-    file_type: str | None
-
-
 class FilenameSearchFileRow(FileRow):
     title: str | None
     page_count: int | None
+
+
+class SearchResultFileRow(TypedDict):
+    path: str
+    filename: str
+    ext: str
+    status: FileStatus
 
 
 class ContentSearchResultRow(TypedDict):
@@ -215,13 +214,11 @@ class ContentSearchResultRow(TypedDict):
     short_id: str
     title: str | None
     author: str | None
-    filename: str | None
-    ext: str | None
-    size_bytes: int | None
+    size_bytes: int
     page_count: int | None
     tier: Tier
     snippet: str
-    paths: list[str]
+    files: list[SearchResultFileRow]
 
 
 class FilenameSearchResultRow(TypedDict):

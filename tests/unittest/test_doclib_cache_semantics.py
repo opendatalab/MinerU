@@ -1598,8 +1598,8 @@ def test_ensure_ingested_rebinds_changed_text_file_to_new_sha(tmp_path: Path) ->
 
         assert second is not None
         assert second["sha256"] == hashlib.sha256(b"new content").hexdigest()
-        fts_row = await db.fetchone("SELECT sha256, tier, filename FROM fts_contents WHERE sha256=?", (second["sha256"],))
-        assert fts_row == {"sha256": second["sha256"], "tier": "flash", "filename": "note.txt"}
+        fts_row = await db.fetchone("SELECT sha256, tier FROM fts_contents WHERE sha256=?", (second["sha256"],))
+        assert fts_row == {"sha256": second["sha256"], "tier": "flash"}
 
     asyncio.run(_run())
 
@@ -1917,7 +1917,7 @@ def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (str(tmp_path / filename), filename, filename.rsplit(".", 1)[1], 10, now, sha256, "active", now, now),
             )
-            await fts.replace(sha256=sha256, tier=tier, text="needle content", title="", author="", filename=filename)
+            await fts.replace(sha256=sha256, tier=tier, text="needle content", title="", author="")
 
         exact_results, exact_total = await service.search("needle", tier="high")
         min_results, min_total = await service.search("needle", min_tier="high")
@@ -1930,14 +1930,46 @@ def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
         assert min_total == 2
         assert {row["tier"] for row in min_results} == {"high", "xhigh"}
         assert type_total == 1
-        assert [row["filename"] for row in type_results] == ["flash.docx"]
+        assert [[file["filename"] for file in row["files"]] for row in type_results] == [["flash.docx"]]
         assert [row["short_id"] for row in type_results] == ["3" * 7]
         assert [row["page_count"] for row in type_results] == [23]
 
     asyncio.run(_run())
 
 
-def test_search_prefers_active_paths_and_falls_back_to_non_active_paths(tmp_path: Path) -> None:
+def test_content_search_does_not_match_filename_but_find_does(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        fts = FTSManager(db)
+        service = SearchService(db, fts)
+        sha256 = "f" * 64
+        now = 1000
+        await db.execute(
+            "INSERT INTO docs (sha256, short_id, size_bytes, file_type, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (sha256, sha256[:7], 10, "pdf", now, now),
+        )
+        file_id = await db.execute_insert(
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(tmp_path / "filenameonly.pdf"), "filenameonly.pdf", "pdf", 10, now, sha256, "active", now, now),
+        )
+        await fts.replace(sha256=sha256, tier="high", text="body content", title="", author="")
+        await fts.upsert_filename(file_id, "filenameonly.pdf", "pdf")
+
+        content_results, content_total = await service.search("filenameonly")
+        filename_results, filename_total = await service.search_filenames("filenameonly")
+
+        assert content_results == []
+        assert content_total == 0
+        assert filename_total == 1
+        assert [result["filename"] for result in filename_results] == ["filenameonly.pdf"]
+
+    asyncio.run(_run())
+
+
+def test_search_returns_all_files_in_reverse_insertion_order(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
@@ -1946,16 +1978,15 @@ def test_search_prefers_active_paths_and_falls_back_to_non_active_paths(tmp_path
         now = 1000
         sha_active = "4" * 64
         sha_deleted = "5" * 64
+        sha_orphan = "6" * 64
 
-        for sha256 in (sha_active, sha_deleted):
+        for sha256 in (sha_active, sha_deleted, sha_orphan):
             await db.execute(
                 "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (sha256, sha256[:7], 10, "pdf", 7 if sha256 == sha_active else 9, now, now),
             )
-            await fts.replace(
-                sha256=sha256, tier="high", text="fallback needle", title="", author="", filename=f"{sha256[0]}.pdf"
-            )
+            await fts.replace(sha256=sha256, tier="high", text="fallback needle", title="", author="")
 
         await db.execute(
             "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
@@ -1974,12 +2005,22 @@ def test_search_prefers_active_paths_and_falls_back_to_non_active_paths(tmp_path
         )
 
         results, total = await service.search("fallback")
-        paths_by_sha = {row["sha256"]: row["paths"] for row in results}
+        files_by_sha = {row["sha256"]: row["files"] for row in results}
 
-        assert total == 2
-        assert paths_by_sha[sha_active] == [str(tmp_path / "active.pdf")]
-        assert paths_by_sha[sha_deleted] == [str(tmp_path / "deleted-only.pdf")]
-        assert {row["sha256"]: row["page_count"] for row in results} == {sha_active: 7, sha_deleted: 9}
+        assert total == 3
+        assert [(file["filename"], file["status"]) for file in files_by_sha[sha_active]] == [
+            ("deleted-copy.pdf", "deleted"),
+            ("active.pdf", "active"),
+        ]
+        assert [(file["filename"], file["status"]) for file in files_by_sha[sha_deleted]] == [
+            ("deleted-only.pdf", "deleted")
+        ]
+        assert files_by_sha[sha_orphan] == []
+        assert {row["sha256"]: row["page_count"] for row in results} == {
+            sha_active: 7,
+            sha_deleted: 9,
+            sha_orphan: 9,
+        }
 
     asyncio.run(_run())
 
@@ -3353,10 +3394,7 @@ def test_forget_path_deletes_file_row_and_filename_fts_without_deleting_doc(tmp_
             "INSERT INTO parses (sha256, tier, page_range, status, privacy, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (sha256, "high", "1", "done", "local", now, now),
         )
-        await db.execute(
-            "INSERT INTO fts_contents (sha256, tier, text, filename) VALUES (?, ?, ?, ?)",
-            (sha256, "high", "content", "doc.pdf"),
-        )
+        await db.execute("INSERT INTO fts_contents (sha256, tier, text) VALUES (?, ?, ?)", (sha256, "high", "content"))
         await db.execute(
             "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",

@@ -50,6 +50,7 @@ from mineru.doclib.types import (
     RemoveParsingRuleResponse,
     RemoveWatchResponse,
     SearchResponse,
+    SearchFile,
     SearchResult,
     ServerStatusResponse,
     ShutdownResponse,
@@ -481,10 +482,9 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     search_result = SearchResult(
         sha256="abc",
         short_id="abc",
-        filename="a.pdf",
         tier="high",
         snippet="matched text",
-        paths=["/tmp/a.pdf"],
+        files=[SearchFile(path="/tmp/a.pdf", filename="a.pdf", ext="pdf", status="active")],
     )
     find_result = FindResult(filename="a.pdf", ext="pdf", size_bytes=123, page_count=3, paths=["/tmp/a.pdf"])
     search_response = SearchResponse(results=[search_result], total=1, query="matched")

@@ -357,8 +357,8 @@ watch -> flash index -> search result -> Agent chooses document -> mineru parse
 ### 7.2 步骤
 
 1. Agent 调用 search。
-2. doclib 查询文件名索引和内容索引。
-3. search result 返回路径、sha256、snippet、当前索引来源 tier。
+2. doclib 查询内容索引；文件名查询由 find 负责。
+3. search result 返回完整 file aliases、sha256、snippet、当前索引来源 tier。
 4. Agent 选择具体文档。
 5. Agent 发起主动 parse 请求。
 6. PDF/image 请求未指定 tier 时使用默认选择策略；Office/text/HTML 按 `flash` 语义处理。

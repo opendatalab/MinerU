@@ -96,7 +96,6 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts_contents USING fts5(
     text,
     title,
     author,
-    filename,
     tokenize='unicode61'
 );
 

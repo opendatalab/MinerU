@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, cast
 from ...types import TIER_ORDER, Tier
 from ..core.db import DatabaseManager
 from ..core.fts import FTSManager, strip_sep
-from ..rows import ContentSearchResultRow, FilenameSearchFileRow, FilenameSearchResultRow, SearchFileRow
+from ..rows import ContentSearchResultRow, DocRow, FileRow, FilenameSearchFileRow, FilenameSearchResultRow
 from ..types import FILE_STATUS_ACTIVE
 
 if TYPE_CHECKING:
@@ -45,23 +45,27 @@ class SearchService:
         # dedup by sha256
         sha256s = list(dict.fromkeys(r["sha256"] for r in rows))
 
-        # join with docs + files
+        # Load document metadata independently so indexed orphan documents remain searchable.
         placeholders = ",".join("?" * len(sha256s))
-        sql = (
-            "SELECT f.*, d.short_id, d.title, d.author, d.page_count, d.file_type "
-            "FROM files f JOIN docs d ON f.sha256 = d.sha256 "
-            f"WHERE f.sha256 IN ({placeholders})"
-        )
+        doc_sql = f"SELECT * FROM docs WHERE sha256 IN ({placeholders})"
         params = [*sha256s]
 
         if file_type:
-            sql += " AND d.file_type = ?"
+            doc_sql += " AND file_type = ?"
             params.append(file_type.lower())
 
-        file_rows = cast(list[SearchFileRow], await self.db.fetchall(sql, tuple(params)))
+        doc_rows = cast(list[DocRow], await self.db.fetchall(doc_sql, tuple(params)))
+        docs_by_sha = {row["sha256"]: row for row in doc_rows}
+        file_rows = cast(
+            list[FileRow],
+            await self.db.fetchall(
+                f"SELECT * FROM files WHERE sha256 IN ({placeholders}) ORDER BY id DESC",
+                tuple(sha256s),
+            ),
+        )
 
         # group files by sha256
-        files_by_doc: dict[str, list[SearchFileRow]] = {}
+        files_by_doc: dict[str, list[FileRow]] = {}
         for fr in file_rows:
             sha = fr["sha256"]
             if sha is None:
@@ -74,29 +78,32 @@ class SearchService:
         results: list[ContentSearchResultRow] = []
         for row in rows:
             sha = row["sha256"]
-            all_files = files_by_doc.get(sha, [])
-            if not all_files:
+            doc = docs_by_sha.get(sha)
+            if doc is None:
                 continue
-
-            active_files = [file for file in all_files if file.get("status") == FILE_STATUS_ACTIVE]
-            files = active_files or all_files
-            fts_file = files[0]
+            all_files = files_by_doc.get(sha, [])
             snippet = strip_sep(row.get("snippet", ""))
             result_tier = row["tier"]
 
             results.append(
                 {
                     "sha256": sha,
-                    "short_id": fts_file["short_id"],
-                    "title": row.get("title") or fts_file.get("title"),
-                    "author": row.get("author") or fts_file.get("author"),
-                    "filename": row.get("filename") or fts_file.get("filename"),
-                    "ext": fts_file.get("ext", ""),
-                    "size_bytes": fts_file.get("size_bytes", 0),
-                    "page_count": fts_file.get("page_count"),
+                    "short_id": doc["short_id"],
+                    "title": row.get("title") or doc.get("title"),
+                    "author": row.get("author") or doc.get("author"),
+                    "size_bytes": doc["size_bytes"],
+                    "page_count": doc.get("page_count"),
                     "tier": result_tier,
                     "snippet": snippet,
-                    "paths": [f["path"] for f in files],
+                    "files": [
+                        {
+                            "path": file["path"],
+                            "filename": file["filename"],
+                            "ext": file["ext"],
+                            "status": file["status"],
+                        }
+                        for file in all_files
+                    ],
                 }
             )
 
