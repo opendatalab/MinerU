@@ -16,6 +16,9 @@ except ImportError:
     PageChars = None
 
 NEAR_IDENTICAL_CHAR_BBOX_TOLERANCE = 1.0
+OFFSET_DUPLICATE_CHAR_BBOX_TOLERANCE = 2.5
+OFFSET_DUPLICATE_TRANSLATION_TOLERANCE = 0.1
+OFFSET_DUPLICATE_MIN_BBOX_OVERLAP_RATIO = 0.45
 
 
 def get_page(
@@ -71,6 +74,75 @@ def _is_near_identical_bbox(
     return all(
         abs(coord_a - coord_b) <= NEAR_IDENTICAL_CHAR_BBOX_TOLERANCE
         for coord_a, coord_b in zip(bbox_a, bbox_b)
+    )
+
+
+def _calculate_bbox_overlap_in_smaller_area(
+    bbox_a: tuple[float, ...],
+    bbox_b: tuple[float, ...],
+) -> float:
+    """计算两个字符框交集占较小字符框面积的比例。"""
+    intersection_width = max(
+        0.0,
+        min(bbox_a[2], bbox_b[2]) - max(bbox_a[0], bbox_b[0]),
+    )
+    intersection_height = max(
+        0.0,
+        min(bbox_a[3], bbox_b[3]) - max(bbox_a[1], bbox_b[1]),
+    )
+    bbox_a_area = max(0.0, bbox_a[2] - bbox_a[0]) * max(
+        0.0,
+        bbox_a[3] - bbox_a[1],
+    )
+    bbox_b_area = max(0.0, bbox_b[2] - bbox_b[0]) * max(
+        0.0,
+        bbox_b[3] - bbox_b[1],
+    )
+    smaller_area = min(bbox_a_area, bbox_b_area)
+    if smaller_area == 0:
+        return 0.0
+    return intersection_width * intersection_height / smaller_area
+
+
+def _is_adjacent_offset_duplicate_char(
+    previous_char: dict[str, Any],
+    current_char: dict[str, Any],
+) -> bool:
+    """识别相邻字符中由对角平移阴影产生的第二个重复字符。"""
+    if _get_visible_char_signature(previous_char) != _get_visible_char_signature(
+        current_char
+    ):
+        return False
+
+    previous_bbox = _get_char_bbox_coords(previous_char)
+    current_bbox = _get_char_bbox_coords(current_char)
+    x_start_offset = current_bbox[0] - previous_bbox[0]
+    y_start_offset = current_bbox[1] - previous_bbox[1]
+    x_end_offset = current_bbox[2] - previous_bbox[2]
+    y_end_offset = current_bbox[3] - previous_bbox[3]
+
+    # 阴影层应是同一字符框的刚性平移，避免把大小不同的相邻同字误判为重复。
+    if (
+        abs(x_start_offset - x_end_offset)
+        > OFFSET_DUPLICATE_TRANSLATION_TOLERANCE
+        or abs(y_start_offset - y_end_offset)
+        > OFFSET_DUPLICATE_TRANSLATION_TOLERANCE
+    ):
+        return False
+
+    if not (
+        NEAR_IDENTICAL_CHAR_BBOX_TOLERANCE
+        < abs(x_start_offset)
+        <= OFFSET_DUPLICATE_CHAR_BBOX_TOLERANCE
+        and NEAR_IDENTICAL_CHAR_BBOX_TOLERANCE
+        < abs(y_start_offset)
+        <= OFFSET_DUPLICATE_CHAR_BBOX_TOLERANCE
+    ):
+        return False
+
+    return (
+        _calculate_bbox_overlap_in_smaller_area(previous_bbox, current_bbox)
+        >= OFFSET_DUPLICATE_MIN_BBOX_OVERLAP_RATIO
     )
 
 
@@ -218,6 +290,11 @@ def _deduplicate_near_identical_chars(
 
         visible_char_key = _get_visible_char_signature(char)
         bbox_coords = _get_char_bbox_coords(char)
+        if deduplicated_chars and _is_adjacent_offset_duplicate_char(
+            deduplicated_chars[-1],
+            char,
+        ):
+            continue
         bbox_bucket_key = _get_near_identical_bbox_bucket_key(bbox_coords)
         visible_char_bbox_buckets = seen_visible_char_bboxes.setdefault(
             visible_char_key,
