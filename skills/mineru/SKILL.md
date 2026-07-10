@@ -1,38 +1,17 @@
 ---
-name: mineru-document-parser
-description: Use when an agent needs to read, parse, OCR, search, inspect, or cite local documents with MinerU, including PDFs, scanned documents, images, DOCX, PPTX, XLSX, academic papers, long documents, tables, formulas, and document locators. Use for agent-native document reading workflows that should prefer local privacy, structured errors, continuation, and stable page/block locators.
-metadata:
-  openclaw:
-    emoji: "📄"
-    privacy: "MinerU defaults to local parsing and local storage. Document content is not uploaded unless the user explicitly allows remote parsing with --remote or an equivalent parsing rule."
-    requires:
-      bins: ["mineru"]
-    optional:
-      env: ["MINERU_HOME", "MINERU_API_KEY"]
-    install:
-      - id: "uv"
-        kind: "python"
-        package: "mineru"
-        bins: ["mineru"]
-        label: "Install via uv tool"
-      - id: "pipx"
-        kind: "python"
-        package: "mineru"
-        bins: ["mineru"]
-        label: "Install via pipx"
-      - id: "pip"
-        kind: "python"
-        package: "mineru"
-        bins: ["mineru"]
-        label: "Install via pip fallback"
-allowed-tools: Bash(mineru:*), Bash(command:*), Bash(test:*), Bash(uv:*), Bash(pipx:*), Bash(pip:*), Bash(python:*), Bash(python3:*), Bash(which:*)
+name: mineru
+description: Use MinerU when an agent needs to read, parse, OCR, search, inspect, or cite local documents, including PDFs, scanned documents, images, DOCX, PPTX, XLSX, academic papers, long documents, tables, formulas, and document locators. Use for agent-native document reading workflows that should prefer local privacy, structured errors, continuation, and stable page/block locators.
 ---
 
-# MinerU Document Parser
+# MinerU
 
-## What MinerU Is
+[Agent Guide](README.md) | [English](README_en.md) | [简体中文](README_zh.md)
 
 MinerU is a command-line document reader for agents. It parses local documents into readable content, lets agents continue by page or block, and returns stable locators for follow-up reads and citations.
+
+## Pre-release Status
+
+The current MinerU release line is in Alpha pre-release. Package installers normally prefer stable releases, so explicitly enable pre-release resolution whenever installing or upgrading MinerU from a package index. The installation commands in this skill already include the required installer-specific options.
 
 ## What MinerU Is Not
 
@@ -162,7 +141,7 @@ uv python install 3.12
 Then install MinerU with the supported interpreter that was found, or with Python 3.12 if it was installed as the fallback:
 
 ```bash
-uv tool install --python 3.12 mineru-next-dev
+uv tool install --python 3.12 --prerelease allow mineru
 ```
 
 ### Install with `pipx`
@@ -179,7 +158,7 @@ PIPX_DEFAULT_PYTHON="$(pipx environment --value PIPX_DEFAULT_PYTHON)"
 Check the `PIPX_DEFAULT_PYTHON` path reported by `pipx`. If that interpreter satisfies `>=3.10,<3.14`, install with `pipx`:
 
 ```bash
-pipx install mineru-next-dev
+pipx install --pip-args="--pre" mineru
 ```
 
 If `PIPX_DEFAULT_PYTHON` is unsupported, but a supported Python interpreter can be found on the current system, pass it explicitly. `python3.12` is an example; use any interpreter that satisfies `>=3.10,<3.14`.
@@ -187,13 +166,13 @@ If `PIPX_DEFAULT_PYTHON` is unsupported, but a supported Python interpreter can 
 ```bash
 command -v python3.12
 python3.12 --version
-pipx install --python python3.12 mineru-next-dev
+pipx install --python python3.12 --pip-args="--pre" mineru
 ```
 
 If no supported system interpreter is available and `pipx` supports Python fetching, ask for approval before downloading a standalone Python:
 
 ```bash
-pipx install --python 3.12 --fetch-python=missing mineru-next-dev
+pipx install --python 3.12 --fetch-python=missing --pip-args="--pre" mineru
 ```
 
 ### Install with global `pip`
@@ -208,7 +187,7 @@ pip --version
 If a `pip` command reports Python `>=3.10,<3.14`, and the user confirms, install with the exact supported `pip` command that was verified. Replace `pip` below with the verified pip command if needed:
 
 ```bash
-pip install mineru-next-dev
+pip install --pre mineru
 ```
 
 ### If No Supported Installer Is Available
@@ -349,12 +328,12 @@ Managed local parsing requires optional runtime dependencies. Install the requir
 
 The following examples assume the current install tool is `uv tool`. If `mineru` was installed with another tool or environment, use the equivalent command for that actual tool/environment.
 
-Installing extras with `uv tool install --force` can reinstall or upgrade the `mineru` package. Restart the MinerU server after installing extras so the CLI client, doclib server, and managed parse server use the same installed version.
+Installing extras with `uv tool install --force --prerelease allow` can reinstall or upgrade the `mineru` package. Restart the MinerU server after installing extras so the CLI client, doclib server, and managed parse server use the same installed version.
 
 Enable managed local parsing for `medium`:
 
 ```bash
-uv tool install --force "mineru-next-dev[medium]"
+uv tool install --force --prerelease allow "mineru[medium]"
 mineru server restart
 mineru config set parse_server.local.managed_tier medium
 mineru config set parse_server.local.mode managed
@@ -364,7 +343,7 @@ mineru server status --json
 Enable managed local parsing for `high`:
 
 ```bash
-uv tool install --force "mineru-next-dev[high]"
+uv tool install --force --prerelease allow "mineru[high]"
 mineru server restart
 mineru config set parse_server.local.managed_tier high
 mineru config set parse_server.local.mode managed
@@ -374,7 +353,7 @@ mineru server status --json
 Enable managed local parsing for `xhigh`:
 
 ```bash
-uv tool install --force "mineru-next-dev[xhigh]"
+uv tool install --force --prerelease allow "mineru[xhigh]"
 mineru server restart
 mineru config set parse_server.local.managed_tier xhigh
 mineru config set parse_server.local.mode managed

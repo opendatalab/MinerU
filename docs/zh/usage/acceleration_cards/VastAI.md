@@ -41,7 +41,7 @@
 
 - 安装MinerU
 
-   - 参考官方文档安装：[README_zh-CN.md#安装-mineru](https://github.com/opendatalab/MinerU/blob/master/README_zh-CN.md#安装-mineru)
+   - 参考官方文档安装：[README_zh.md#安装-mineru](https://github.com/opendatalab/MinerU/blob/master/README_zh.md#安装-mineru)
 
         ```bash
         # 启动容器

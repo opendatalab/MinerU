@@ -1,0 +1,139 @@
+name: MinerU Alpha release
+
+on:
+  push:
+    tags:
+      - "v*.*.*a*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mineru-alpha-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Validate and build Alpha wheel
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.source.outputs.version }}
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Verify annotated tag and next branch ancestry
+        run: |
+          if [[ "$(git cat-file -t "$GITHUB_REF")" != "tag" ]]; then
+            echo "Alpha releases require an annotated Git tag." >&2
+            exit 1
+          fi
+
+          git fetch --no-tags origin next:refs/remotes/origin/next
+          if ! git merge-base --is-ancestor HEAD refs/remotes/origin/next; then
+            echo "Alpha release tag must point to a commit contained in origin/next." >&2
+            exit 1
+          fi
+
+      - name: Validate Alpha tag and source version
+        id: source
+        run: |
+          version="$(python .github/scripts/alpha_release.py validate-source \
+            --tag "$GITHUB_REF_NAME" \
+            --version-file mineru/version.py)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade build twine
+
+      - name: Build and check wheel
+        run: |
+          python -m build --wheel
+          python -m twine check --strict dist/*
+
+          wheels=(dist/*.whl)
+          if [[ "${#wheels[@]}" -ne 1 ]]; then
+            echo "Expected exactly one wheel, found ${#wheels[@]}." >&2
+            exit 1
+          fi
+          python .github/scripts/alpha_release.py validate-wheel \
+            --wheel "${wheels[0]}" \
+            --expected-name mineru \
+            --expected-version "${{ steps.source.outputs.version }}"
+
+      - name: Smoke-test wheel installation
+        env:
+          EXPECTED_VERSION: ${{ steps.source.outputs.version }}
+        run: |
+          python -m venv "$RUNNER_TEMP/mineru-alpha-smoke"
+          "$RUNNER_TEMP/mineru-alpha-smoke/bin/python" -m pip install --no-deps dist/*.whl
+          "$RUNNER_TEMP/mineru-alpha-smoke/bin/python" - <<'PY'
+          import os
+          from importlib.metadata import version
+
+          installed_version = version("mineru")
+          expected_version = os.environ["EXPECTED_VERSION"]
+          if installed_version != expected_version:
+              raise SystemExit(f"Installed mineru version {installed_version!r} != {expected_version!r}")
+          PY
+
+      - name: Upload validated wheel
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: mineru-${{ steps.source.outputs.version }}
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-pypi:
+    name: Publish Alpha wheel to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/mineru/${{ needs.build.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download validated wheel
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: mineru-${{ needs.build.outputs.version }}
+          path: dist
+
+      - name: Publish wheel through PyPI Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
+
+  github-release:
+    name: Create GitHub pre-release
+    needs: [build, publish-pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download published wheel
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: mineru-${{ needs.build.outputs.version }}
+          path: dist
+
+      - name: Create GitHub pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.whl \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --prerelease \
+            --title "MinerU $VERSION" \
+            --generate-notes

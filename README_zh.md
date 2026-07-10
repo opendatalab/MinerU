@@ -28,7 +28,7 @@
 
 <!-- language -->
 
-[English](README.md) | [简体中文](README_zh-CN.md)
+[Agent Guide](README.md) | [English](README_en.md) | [简体中文](README_zh.md)
 
 <!-- hot link -->
 

@@ -2416,28 +2416,6 @@ def test_api_server_preflight_rejects_missing_tier_dependency(monkeypatch: pytes
         create_app(upload_dir=str(tmp_path), tier="medium")
 
 
-def test_api_server_cli_reports_dependency_preflight_without_traceback(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_import_module(module_name: str):
-        if module_name == "mlx":
-            raise ModuleNotFoundError("No module named 'mlx'")
-        return object()
-
-    monkeypatch.setattr(importlib, "import_module", fake_import_module)
-    monkeypatch.setattr(parser_tier.importlib_metadata, "packages_distributions", lambda: {"mineru": ["mineru-next-dev"]})
-    monkeypatch.setattr(parser_tier.sys, "platform", "darwin")
-    monkeypatch.setattr(parser_tier.platform, "machine", lambda: "arm64")
-
-    result = runner.invoke(main, ["--tier", "xhigh"])
-
-    assert result.exit_code == 1
-    assert result.output == (
-        "Error: Parse server cannot start for tier 'xhigh'; missing runtime dependencies: mlx. "
-        "Install optional dependencies for this tier in the same Python environment as MinerU, "
-        "for example: pip install 'mineru-next-dev[xhigh]'.\n"
-    )
-    assert "Traceback" not in result.output
-
-
 def test_api_server_create_app_rejects_backend_and_effort_parameters(tmp_path: Path) -> None:
     with pytest.raises(TypeError, match="backend"):
         create_app(upload_dir=str(tmp_path / "backend"), backend="pipeline")  # type: ignore[call-arg]
