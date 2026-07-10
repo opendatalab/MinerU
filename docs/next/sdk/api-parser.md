@@ -77,6 +77,18 @@ class MinerUApiParser(DocumentParser):
 8. zip 模式从 zip 中读取 middle JSON，并在 `include_images=True` 时读取 middle JSON 引用的图片 sidecar。
 9. 将 middle JSON 转为 `ParseResult`。
 
+### 传输重试
+
+客户端对可安全重放的传输操作执行有限重试:
+
+- health、upload 状态、job 轮询和产物下载使用 `GET`，可以重试。
+- 向 `upload_url` 写入相同文件字节使用 `PUT`，可以重试。
+- upload complete 的响应丢失后，客户端先查询 upload 状态；已经完成则读取其中的 File，仍为 pending 才再次 complete。
+
+`POST /v1/parse/jobs` 在 API 提供幂等键契约前不会自动重试。该请求的响应丢失时，服务端可能已经创建任务；直接重放会产生重复任务和费用。
+
+重试耗尽后，doclib 远端解析分别使用 `remote_timeout` 或 `remote_unreachable`，不把客户端传输错误归类为 `parse_failed`。远端 job 自身返回的结构化 `parse_failed` 保持原语义，客户端不根据错误消息文本猜测错误来源。
+
 本地 source:
 
 Local Parse Server 必须通过 `--allow-local-source` 开启，并在 `features.sources` 返回 `local`，SDK 才会使用该形式。
@@ -137,6 +149,8 @@ API error envelope 应映射为 SDK exception:
 | `quality_tier_unavailable` | 抛出引擎不可用错误。 |
 | `rate_limit_exceeded` | 抛出可重试错误，并保留 `Retry-After`。 |
 | `service_unavailable` | 抛出可重试错误。 |
+| `remote_timeout` | 远端传输超时，有限重试后仍未恢复。 |
+| `remote_unreachable` | 远端连接或协议错误，有限重试后仍未恢复。 |
 
 当前实现有内部 `_V1APIError`。目标公开契约应复用 `mineru.errors.MineruError` 或统一 SDK exception hierarchy。
 

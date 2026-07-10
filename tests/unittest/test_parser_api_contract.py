@@ -12,6 +12,7 @@ import types
 import zipfile
 from pathlib import Path
 
+import httpx
 import pytest
 from click.testing import CliRunner
 from fastapi.testclient import TestClient
@@ -1109,6 +1110,169 @@ def test_async_api_client_poll_uses_fixed_one_second_interval(monkeypatch: pytes
 def test_api_client_poll_timeout_budget_is_one_hour() -> None:
     """验证 v1 job 轮询最大等待预算为 1 小时。"""
     assert api_client._POLL_INTERVAL_SECONDS * api_client._POLL_MAX_ATTEMPTS == 60 * 60
+
+
+def test_api_client_retries_transient_poll_transport_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(api_url="https://mineru.net/api", tier="high")
+    calls = 0
+    sleep_delays: list[float] = []
+
+    def fake_get(_url: str, *, headers: dict[str, str]) -> httpx.Response:
+        nonlocal calls
+        assert headers == {}
+        calls += 1
+        if calls < 3:
+            raise httpx.ReadError("connection closed")
+        return httpx.Response(200, json={"job_id": "job_1", "status": "completed"})
+
+    monkeypatch.setattr(api_client, "_transport_retry_delay", lambda _attempt: 0.0)
+    monkeypatch.setattr(api_client.time, "sleep", sleep_delays.append)
+
+    job = parser._poll(types.SimpleNamespace(get=fake_get), "job_1")
+
+    assert job["status"] == "completed"
+    assert calls == 3
+    assert sleep_delays == [1, 0.0, 0.0]
+
+
+def test_async_api_client_retries_transient_poll_transport_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = MinerUApiParser(api_url="https://mineru.net/api", tier="high")
+    calls = 0
+    sleep_delays: list[float] = []
+
+    async def fake_get(_url: str, *, headers: dict[str, str]) -> httpx.Response:
+        nonlocal calls
+        assert headers == {}
+        calls += 1
+        if calls < 3:
+            raise httpx.ReadError("connection closed")
+        return httpx.Response(200, json={"job_id": "job_1", "status": "completed"})
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_delays.append(delay)
+
+    monkeypatch.setattr(api_client, "_transport_retry_delay", lambda _attempt: 0.0)
+    monkeypatch.setattr(api_client.asyncio, "sleep", fake_sleep)
+
+    job = asyncio.run(parser._async_poll(types.SimpleNamespace(get=fake_get), "job_1"))
+
+    assert job["status"] == "completed"
+    assert calls == 3
+    assert sleep_delays == [1, 0.0, 0.0]
+
+
+def test_api_client_retries_upload_content_put(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+
+    class _Client:
+        def put(self, _url: str, *, headers: dict[str, str], content: bytes) -> httpx.Response:
+            nonlocal calls
+            assert headers == {"Content-Type": "application/pdf"}
+            assert content == b"pdf"
+            calls += 1
+            if calls == 1:
+                raise httpx.WriteError("connection closed")
+            return httpx.Response(200)
+
+    monkeypatch.setattr(api_client.time, "sleep", lambda _delay: None)
+
+    response = api_client._request_with_retry(
+        _Client(),  # type: ignore[arg-type]
+        "PUT",
+        "https://upload.example/content",
+        stage="upload content",
+        headers={"Content-Type": "application/pdf"},
+        content=b"pdf",
+    )
+
+    assert response.status_code == 200
+    assert calls == 2
+
+
+def test_api_client_recovers_completed_upload_after_lost_complete_response() -> None:
+    parser = MinerUApiParser(api_url="https://mineru.net/api", tier="high")
+    complete_calls = 0
+    status_calls = 0
+
+    class _Client:
+        def post(self, _url: str, *, headers: dict[str, str]) -> httpx.Response:
+            nonlocal complete_calls
+            assert headers == {}
+            complete_calls += 1
+            raise httpx.ReadError("response lost")
+
+        def get(self, _url: str, *, headers: dict[str, str]) -> httpx.Response:
+            nonlocal status_calls
+            assert headers == {}
+            status_calls += 1
+            return httpx.Response(
+                200,
+                json={"id": "upload_1", "status": "completed", "file": {"id": "file_1"}},
+            )
+
+    upload = parser._complete_upload(_Client(), "upload_1")  # type: ignore[arg-type]
+
+    assert upload["file"]["id"] == "file_1"
+    assert complete_calls == 1
+    assert status_calls == 1
+
+
+def test_async_api_client_recovers_completed_upload_after_lost_complete_response() -> None:
+    parser = MinerUApiParser(api_url="https://mineru.net/api", tier="high")
+    complete_calls = 0
+    status_calls = 0
+
+    class _AsyncClient:
+        async def post(self, _url: str, *, headers: dict[str, str]) -> httpx.Response:
+            nonlocal complete_calls
+            assert headers == {}
+            complete_calls += 1
+            raise httpx.ReadError("response lost")
+
+        async def get(self, _url: str, *, headers: dict[str, str]) -> httpx.Response:
+            nonlocal status_calls
+            assert headers == {}
+            status_calls += 1
+            return httpx.Response(
+                200,
+                json={"id": "upload_1", "status": "completed", "file": {"id": "file_1"}},
+            )
+
+    upload = asyncio.run(parser._async_complete_upload(_AsyncClient(), "upload_1"))  # type: ignore[arg-type]
+
+    assert upload["file"]["id"] == "file_1"
+    assert complete_calls == 1
+    assert status_calls == 1
+
+
+def test_api_client_does_not_retry_job_submission_transport_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+
+    class _Client:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def __enter__(self) -> "_Client":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def post(self, _url: str, *, headers: dict[str, str], json: dict[str, object]) -> httpx.Response:
+            nonlocal calls
+            assert headers == {}
+            assert json == {"files": []}
+            calls += 1
+            raise httpx.ReadError("response lost")
+
+    monkeypatch.setattr(api_client.httpx, "Client", _Client)
+
+    with pytest.raises(api_client._APITransportError) as exc_info:
+        MinerUApiParser(api_url="https://mineru.net/api")._do_parse({"files": []})
+
+    assert exc_info.value.stage == "job submission"
+    assert exc_info.value.attempts == 1
+    assert calls == 1
 
 
 def test_api_client_omits_tier_when_unspecified(tmp_path: Path) -> None:

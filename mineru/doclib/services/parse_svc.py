@@ -24,7 +24,7 @@ from ...filetypes import (
     file_type_for_extension,
     is_office_temp_lock_file,
 )
-from ...parser.api_client import _V1APIError
+from ...parser.api_client import _APITransportError, _V1APIError
 from ...parser.base import ParseResult
 from ...types import QUALITY_TIERS, TIER_ORDER, PageInfo, Tier, select_default_quality_tier, select_parsing_rule_tier
 from ..core.db import DatabaseManager
@@ -1076,7 +1076,19 @@ class ParseService:
             tier=resolved_tier,
             include_images=Path(file_row["path"]).suffix.lower().lstrip(".") in OFFICE_EXTENSIONS,
         )
-        result = await parser.parse_async(file_row["path"], page_range=page_range)
+        try:
+            result = await parser.parse_async(file_row["path"], page_range=page_range)
+        except _APITransportError as exc:
+            if via == "remote":
+                code = "remote_timeout" if exc.timed_out else "remote_unreachable"
+                target = "Remote API"
+            else:
+                code = "parse_server_unavailable"
+                target = "Local parse-server"
+            raise ParseFailure(
+                code,
+                f"{target} transport failed during {exc.stage} after {exc.attempts} attempt(s) ({type(exc.cause).__name__}).",
+            ) from exc
         _remap_api_result_pages_to_page_range(result, page_range)
         return result, via
 
