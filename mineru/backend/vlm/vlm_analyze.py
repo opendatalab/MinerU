@@ -420,6 +420,15 @@ def _close_images(images_list):
                 pass
 
 
+def _emit_progress(progress_callback, **payload):
+    if progress_callback is None:
+        return
+    try:
+        progress_callback(**payload)
+    except Exception:
+        logger.exception("Progress callback failed")
+
+
 def doc_analyze(
     pdf_bytes,
     image_writer: DataWriter | None,
@@ -430,6 +439,7 @@ def doc_analyze(
     image_analysis: bool = True,
     **kwargs,
 ):
+    progress_callback = kwargs.pop("progress_callback", None)
     client_side_output_generation = bool(
         kwargs.pop("client_side_output_generation", False)
     )
@@ -454,6 +464,14 @@ def doc_analyze(
             f'VLM processing-window run. page_count={page_count}, '
             f'window_size={configured_window_size}, total_windows={total_windows}'
         )
+        _emit_progress(
+            progress_callback,
+            page_total=page_count,
+            page_current=0,
+            window_index=0,
+            window_total=total_windows,
+            text=f"0/{page_count} pages",
+        )
 
         infer_start = time.time()
         progress_bar = None
@@ -474,6 +492,16 @@ def doc_analyze(
                         f'VLM processing window {window_index + 1}/{total_windows}: '
                         f'pages {window_start + 1}-{window_end + 1}/{page_count} '
                         f'({len(images_pil_list)} pages)'
+                    )
+                    _emit_progress(
+                        progress_callback,
+                        page_total=page_count,
+                        page_current=window_start,
+                        window_index=window_index + 1,
+                        window_total=total_windows,
+                        window_start=window_start + 1,
+                        window_end=window_end + 1,
+                        text=f"pages {window_start + 1}-{window_end + 1}/{page_count}",
                     )
                     with predictor_execution_guard(predictor):
                         window_results = predictor.batch_two_step_extract(
@@ -497,6 +525,16 @@ def doc_analyze(
                         image_writer,
                         page_start_index=window_start,
                         progress_bar=progress_bar,
+                    )
+                    _emit_progress(
+                        progress_callback,
+                        page_total=page_count,
+                        page_current=window_end + 1,
+                        window_index=window_index + 1,
+                        window_total=total_windows,
+                        window_start=window_start + 1,
+                        window_end=window_end + 1,
+                        text=f"pages {window_start + 1}-{window_end + 1}/{page_count}",
                     )
                     last_append_end_time = time.time()
                 finally:
@@ -530,6 +568,7 @@ async def aio_doc_analyze(
     image_analysis: bool = True,
     **kwargs,
 ):
+    progress_callback = kwargs.pop("progress_callback", None)
     client_side_output_generation = bool(
         kwargs.pop("client_side_output_generation", False)
     )
@@ -554,6 +593,14 @@ async def aio_doc_analyze(
             f'VLM processing-window run. page_count={page_count}, '
             f'window_size={configured_window_size}, total_windows={total_windows}'
         )
+        _emit_progress(
+            progress_callback,
+            page_total=page_count,
+            page_current=0,
+            window_index=0,
+            window_total=total_windows,
+            text=f"0/{page_count} pages",
+        )
 
         infer_start = time.time()
         progress_bar = None
@@ -573,6 +620,16 @@ async def aio_doc_analyze(
                         f'VLM processing window {window_index + 1}/{total_windows}: '
                         f'pages {window_start + 1}-{window_end + 1}/{page_count} '
                         f'({len(images_pil_list)} pages)'
+                    )
+                    _emit_progress(
+                        progress_callback,
+                        page_total=page_count,
+                        page_current=window_start,
+                        window_index=window_index + 1,
+                        window_total=total_windows,
+                        window_start=window_start + 1,
+                        window_end=window_end + 1,
+                        text=f"pages {window_start + 1}-{window_end + 1}/{page_count}",
                     )
                     async with aio_predictor_execution_guard(predictor):
                         window_results = await predictor.aio_batch_two_step_extract(
@@ -596,6 +653,16 @@ async def aio_doc_analyze(
                         image_writer,
                         page_start_index=window_start,
                         progress_bar=progress_bar,
+                    )
+                    _emit_progress(
+                        progress_callback,
+                        page_total=page_count,
+                        page_current=window_end + 1,
+                        window_index=window_index + 1,
+                        window_total=total_windows,
+                        window_start=window_start + 1,
+                        window_end=window_end + 1,
+                        text=f"pages {window_start + 1}-{window_end + 1}/{page_count}",
                     )
                     last_append_end_time = time.time()
                 finally:
