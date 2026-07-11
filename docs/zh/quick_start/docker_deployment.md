@@ -92,5 +92,49 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
   docker compose -f compose.yaml --profile gradio up -d
   ```
   >[!TIP]
-  > 
+  >
   >- 在浏览器中访问 `http://<server_ip>:7860` 使用 Gradio WebUI。
+
+---
+
+## 纯 CPU 部署（无需 GPU）
+
+适用于没有 GPU 的环境（云服务器、ARM 服务器等），使用 `pipeline` 后端的轻量级 `docker/cpu/` 部署方案。
+
+### 构建并启动
+
+```bash
+cd docker/
+docker compose -f cpu-compose.yaml build
+docker compose -f cpu-compose.yaml run --rm mineru-api mineru-models-download -s modelscope -m pipeline
+docker compose -f cpu-compose.yaml up -d
+curl http://localhost:8888/health
+```
+
+### 提交文档解析
+
+```bash
+# 提交任务
+TASK_ID=$(curl -s -X POST http://localhost:8888/tasks \
+  -F "files=@document.pdf" \
+  -F "backend=pipeline" | python3 -c "import sys,json; print(json.load(sys.stdin)['task_id'])")
+
+# 轮询状态
+while true; do
+  STATUS=$(curl -s http://localhost:8888/tasks/$TASK_ID | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+  [[ "$STATUS" == "completed" || "$STATUS" == "failed" ]] && break
+  sleep 10
+done
+
+# 获取结果
+python3 -c "
+import urllib.request, json
+data = json.loads(urllib.request.urlopen('http://localhost:8888/tasks/$TASK_ID/result', timeout=120).read())
+for fname, content in data['results'].items():
+    print(content['md_content'])
+"
+```
+
+> [!NOTE]
+> - POST 请求中必须传 `backend=pipeline`，默认后端需要 GPU。
+> - Pipeline 模型（约 2.4GB）下载到 `mineru-models` Docker 卷中。
