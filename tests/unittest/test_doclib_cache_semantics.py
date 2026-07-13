@@ -2923,6 +2923,36 @@ def test_get_file_by_path_missing_doclib_record_message_is_not_disk_file_not_fou
     asyncio.run(_run())
 
 
+def test_get_file_by_path_maps_stat_permission_error_without_existing_file_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        parse_svc = ParseService(
+            db=db, fts=FTSManager(db), config_svc=None, data_dir=str(tmp_path / "data"), parse_lock_timeout_sec=1800
+        )
+        server = DoclibServer(SimpleNamespace(db=db, parse_svc=parse_svc))
+        source = tmp_path / "no_exec_dir" / "inside.pdf"
+
+        async def _permission_denied(path: str) -> dict[str, Any]:
+            raise PermissionError(f"permission denied: {path}")
+
+        monkeypatch.setattr(parse_svc_module, "get_file_stat", _permission_denied)
+
+        try:
+            with pytest.raises(InvalidRequestError) as exc_info:
+                await server.get_file_by_path(str(source))
+
+            assert exc_info.value.code == "file_permission_denied"
+            assert exc_info.value.param == "path"
+            assert str(source) in exc_info.value.message
+        finally:
+            await db.close()
+
+    asyncio.run(_run())
+
+
 def test_scan_service_cleanup_keeps_latest_terminal_scans_and_active_tasks(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))

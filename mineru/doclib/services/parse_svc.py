@@ -81,6 +81,22 @@ class FileRefreshResult:
         return self.file is not None and self.file.sha256 is None
 
 
+def _raise_refresh_error(refreshed: FileRefreshResult) -> None:
+    code = (
+        (refreshed.file.error_code if refreshed.file and refreshed.file.error_code else None)
+        or refreshed.error_code
+        or "ingest_failed"
+    )
+    message = (
+        (refreshed.file.error_msg if refreshed.file and refreshed.file.error_msg else None)
+        or refreshed.error_msg
+        or "File could not be ingested."
+    )
+    if code == "file_permission_denied":
+        raise InvalidRequestError(code, message, "path")
+    raise MineruError(code, message, "path")
+
+
 # ── range helpers ──────────────────────────────────────────────────
 
 
@@ -436,6 +452,8 @@ class ParseService:
         """Synchronously discover and ingest a source path when needed."""
         path = normalize_doclib_path(path)
         refreshed = await self.refresh_file(path, watch_id=watch_id, ensure_ingested=True, allow_images=allow_images)
+        if refreshed.status == "error":
+            _raise_refresh_error(refreshed)
         if refreshed.file is None or refreshed.status == "unsupported":
             return None
         return cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
@@ -685,19 +703,7 @@ class ParseService:
         if refreshed.status in {"missing", "deleted", "unreachable"}:
             raise InvalidRequestError("file_not_found", f"File {path} not found.", "path")
         if refreshed.status == "error":
-            code = (
-                (refreshed.file.error_code if refreshed.file and refreshed.file.error_code else None)
-                or refreshed.error_code
-                or "ingest_failed"
-            )
-            message = (
-                (refreshed.file.error_msg if refreshed.file and refreshed.file.error_msg else None)
-                or refreshed.error_msg
-                or "File could not be ingested."
-            )
-            if code == "file_permission_denied":
-                raise InvalidRequestError(code, message, "path")
-            raise MineruError(code, message, "path")
+            _raise_refresh_error(refreshed)
         if refreshed.file is None:
             raise MineruError("ingest_failed", "File could not be ingested.", "path")
 
