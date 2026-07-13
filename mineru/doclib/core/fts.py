@@ -55,7 +55,6 @@ class FTSManager:
         text: str,
         title: str,
         author: str,
-        filename: str,
     ) -> None:
         """Insert or replace content for a doc.  Caller is responsible
         for tier-gating (only call if new tier >= current)."""
@@ -64,9 +63,8 @@ class FTSManager:
             [
                 ("DELETE FROM fts_contents WHERE sha256=?", (sha256,)),
                 (
-                    "INSERT INTO fts_contents (sha256, tier, text, title, author, filename) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (sha256, tier, tokenized, title or "", author or "", filename),
+                    "INSERT INTO fts_contents (sha256, tier, text, title, author) VALUES (?, ?, ?, ?, ?)",
+                    (sha256, tier, tokenized, title or "", author or ""),
                 ),
             ]
         )
@@ -80,7 +78,7 @@ class FTSManager:
             return cast(
                 list[FtsContentSearchRow],
                 await self.db.fetchall(
-                    "SELECT sha256, title, author, filename, tier, "
+                    "SELECT sha256, title, author, tier, "
                     "snippet(fts_contents, 2, '<mark>', '</mark>', '...', 40) AS snippet, rank "
                     "FROM fts_contents WHERE fts_contents MATCH ? "
                     "ORDER BY rank LIMIT ?",
@@ -91,9 +89,7 @@ class FTSManager:
             return []
 
     async def get_tier(self, sha256: str) -> Tier | None:
-        row = await self.db.fetchone(
-            "SELECT tier FROM fts_contents WHERE sha256=?", (sha256,)
-        )
+        row = await self.db.fetchone("SELECT tier FROM fts_contents WHERE sha256=?", (sha256,))
         return cast(Tier, row["tier"]) if row else None
 
     async def delete(self, sha256: str) -> None:

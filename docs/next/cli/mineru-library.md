@@ -27,19 +27,23 @@ mineru search "keyword" --min-tier medium --type pdf
 - 查询 `fts_contents`，未解析或未建立内容索引的文件不会命中正文检索。
 - 按文档 SHA256 去重。
 - 支持按 `file_type`、`tier`、`min_tier` 过滤。
-- 返回文件名、文件大小、页数、命中片段和 snippet 来源 tier。
-- 默认优先返回 active file paths；如果某个已索引 doc 没有任何 active file，则 fallback 返回非 active file paths。
+- 返回文档大小、页数、命中片段、snippet 来源 tier，以及关联的全部 file aliases。
+- JSON 返回全部 file aliases 及其状态，并按 file id 降序排列。
+- 非 JSON 输出存在 active files 时只展示 active paths；没有 active file 时展示全部 inactive paths。
+- 已索引的 orphan 文档仍可命中，非 JSON 输出提示文件已不存在。
 - 通过 `--json` 提供结构化输出。
 
 JSON 输出中的每条结果至少包含:
 
 | 字段 | 说明 |
 |------|------|
-| `filename` | 文件名，不含完整路径。 |
 | `size_bytes` | 文件大小。 |
 | `page_count` | 文档页数；未知时为 `null`。 |
 | `snippet` | 命中的内容片段。 |
 | `tier` | snippet 来源 tier。 |
+| `files` | 与文档 SHA 关联的全部 files，包含 `path`、`filename`、`ext`、`status`。 |
+
+`search` 不匹配 filename；按文件名定位使用 `mineru find`。
 
 `search` 不应在 telemetry 中记录 query 或 snippet，但 CLI JSON 可以返回 snippet 供用户和 Agent 使用。
 

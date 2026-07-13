@@ -318,18 +318,23 @@ class DocContentExportResponse(DoclibModel):
     output: str
 
 
+class SearchFile(DoclibModel):
+    path: str
+    filename: str
+    ext: str
+    status: FileStatus
+
+
 class SearchResult(DoclibModel):
     sha256: str
     short_id: str
     title: str | None = None
     author: str | None = None
-    filename: str | None = None
-    ext: str | None = None
     size_bytes: int | None = None
     page_count: int | None = None
     tier: Tier
     snippet: str
-    paths: list[str] = Field(default_factory=list)
+    files: list[SearchFile] = Field(default_factory=list)
 
 
 class FindResult(DoclibModel):

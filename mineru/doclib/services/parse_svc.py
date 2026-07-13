@@ -626,7 +626,6 @@ class ParseService:
                 text=truncate_head_tail(text),
                 title=metadata["title"] or "",
                 author=metadata["author"] or "",
-                filename=filename,
             )
             return cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
 
@@ -1312,7 +1311,6 @@ class ParseService:
             text=text,
             title=file_row.get("title") or "",
             author=file_row.get("author") or "",
-            filename=file_row["filename"],
         )
 
     async def _maybe_update_docs_meta(self, sha256: str, tier: Tier) -> None:
@@ -1371,7 +1369,6 @@ class ParseService:
                 text=text,
                 title=file_row.get("title") or "",
                 author=file_row.get("author") or "",
-                filename=file_row["filename"],
             )
             return
 
