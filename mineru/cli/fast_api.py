@@ -1450,21 +1450,23 @@ async def health_check():
         )
 
     stats = task_manager.get_stats()
-    return {
-        "status": "healthy",
-        "version": __version__,
-        "protocol_version": API_PROTOCOL_VERSION,
-        "queued_tasks": stats[TASK_PENDING],
-        "processing_tasks": stats[TASK_PROCESSING],
-        "completed_tasks": stats[TASK_COMPLETED],
-        "failed_tasks": stats[TASK_FAILED],
-        "max_concurrent_requests": get_max_concurrent_requests(),
-        "processing_window_size": get_processing_window_size(
-            default=DEFAULT_PROCESSING_WINDOW_SIZE
-        ),
-        "task_retention_seconds": task_manager.task_retention_seconds,
-        "task_cleanup_interval_seconds": task_manager.task_cleanup_interval_seconds,
-    }
+    return JSONResponse(
+        content={
+            "status": "healthy",
+            "version": __version__,
+            "protocol_version": API_PROTOCOL_VERSION,
+            "queued_tasks": stats[TASK_PENDING],
+            "processing_tasks": stats[TASK_PROCESSING],
+            "completed_tasks": stats[TASK_COMPLETED],
+            "failed_tasks": stats[TASK_FAILED],
+            "max_concurrent_requests": get_max_concurrent_requests(),
+            "processing_window_size": get_processing_window_size(
+                default=DEFAULT_PROCESSING_WINDOW_SIZE
+            ),
+            "task_retention_seconds": task_manager.task_retention_seconds,
+            "task_cleanup_interval_seconds": task_manager.task_cleanup_interval_seconds,
+        }
+    )
 
 
 @click.command(
