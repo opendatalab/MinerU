@@ -6,12 +6,14 @@ import pytest
 
 from mineru.config import (
     Config,
+    LoadedConfig,
     LogConfig,
     PatchedConfig,
-    _apply_env_overrides,
+    _collect_env_overrides,
     _interpolate_env,
     _load_config,
-    _read_config,
+    _load_effective_config,
+    update_config_file,
 )
 from mineru.doclib.config_defaults import CONFIG_DEFAULTS
 
@@ -90,8 +92,10 @@ def test_apply_env_overrides_uses_greedy_field_path_matching(monkeypatch: pytest
     monkeypatch.setenv("TEST_MINERU_UNKNOWN_FIELD", "ignored")
     monkeypatch.setenv("TEST_MINERU_CONFIG", "/tmp/ignored.yaml")
 
-    cfg = _apply_env_overrides(Config(), prefix=prefix)
+    overrides, paths = _collect_env_overrides(prefix=prefix)
+    cfg = Config(**overrides)
 
+    assert ("config",) not in paths
     assert cfg.doclib.tcp.enabled is True
     assert cfg.doclib.tcp.port == 15990
     assert cfg.doclib.compaction_interval_sec == 5
@@ -125,10 +129,25 @@ doclib:
         encoding="utf-8",
     )
 
-    data = _read_config()
+    loaded = _load_effective_config()
 
-    assert data["doclib"]["tcp"]["port"] == 18080
-    assert data["doclib"]["data_dir"] == "/tmp/ignored-data-dir"
+    assert loaded.config_file == str(mineru_home / "config.yaml")
+    assert loaded.config_file_exists is True
+    assert loaded.config.doclib.tcp.port == 18080
+    assert loaded.config.doclib.data_dir == "/tmp/ignored-data-dir"
+
+
+def test_default_config_path_exists_even_when_file_is_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    mineru_home = tmp_path / "mineru-home"
+    mineru_home.mkdir()
+    monkeypatch.setenv("MINERU_HOME", str(mineru_home))
+    monkeypatch.delenv("MINERU_CONFIG", raising=False)
+
+    loaded = _load_effective_config()
+
+    assert loaded.config_file == str(mineru_home / "config.yaml")
+    assert loaded.config_file_exists is False
+    assert loaded.config == Config()
 
 
 def test_apply_env_overrides_can_override_doclib_data_dir(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -136,7 +155,8 @@ def test_apply_env_overrides_can_override_doclib_data_dir(monkeypatch: pytest.Mo
     monkeypatch.setenv("MINERU_HOME", "/tmp/mineru-home")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_DATA_DIR", "/tmp/ignored-data-dir")
 
-    cfg = _apply_env_overrides(Config(), prefix=prefix)
+    overrides, _paths = _collect_env_overrides(prefix=prefix)
+    cfg = Config(**overrides)
 
     assert cfg.doclib.data_dir == "/tmp/ignored-data-dir"
 
@@ -145,6 +165,60 @@ def test_default_doclib_data_dir_uses_doclib_directory() -> None:
     cfg = Config()
 
     assert cfg.doclib.data_dir.endswith(".mineru/doclib")
+
+
+def test_default_model_config_uses_mineru_model_directory() -> None:
+    cfg = Config()
+
+    assert cfg.model.base_dir.endswith(".mineru/models")
+    assert cfg.model.source == "auto"
+
+
+def test_load_effective_config_tracks_file_and_env_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        """
+model:
+  base_dir: /tmp/file-models
+  source: huggingface
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MINERU_CONFIG", str(config_file))
+    monkeypatch.setenv("MINERU_MODEL_SOURCE", "modelscope")
+
+    loaded = _load_effective_config()
+
+    assert loaded.config.model.base_dir == "/tmp/file-models"
+    assert loaded.config.model.source == "modelscope"
+    assert loaded.sources[("model", "base_dir")] == "file"
+    assert loaded.sources[("model", "source")] == "env"
+
+
+def test_update_config_file_deep_merges_with_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        """
+doclib:
+  tcp:
+    port: 18080
+model:
+  base_dir: /tmp/models
+  source: auto
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "mineru.config._loaded_config",
+        LoadedConfig(config=Config(), sources={}, config_file=str(config_file), config_file_exists=True),
+    )
+
+    update_config_file({"model": {"source": "huggingface"}})
+
+    data = _load_config(str(config_file))
+    assert data["doclib"]["tcp"]["port"] == 18080
+    assert data["model"] == {"base_dir": "/tmp/models", "source": "huggingface"}
+    assert not list(tmp_path.glob(".config.*.tmp"))
 
 
 def test_default_transport_prefers_uds_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -191,7 +265,8 @@ def test_transport_enabled_accepts_auto_from_env(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("TEST_MINERU_DOCLIB_UDS_ENABLED", "auto")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_TCP_ENABLED", "auto")
 
-    cfg = _apply_env_overrides(Config(doclib={"uds": {"enabled": False}, "tcp": {"enabled": True}}), prefix=prefix)
+    overrides, _paths = _collect_env_overrides(prefix=prefix)
+    cfg = Config(**overrides)
 
     assert cfg.doclib.uds.enabled == "auto"
     assert cfg.doclib.tcp.enabled == "auto"
@@ -300,7 +375,8 @@ def test_log_config_dir_override_derives_paths_in_deep_patches(monkeypatch: pyte
     prefix = "TEST_MINERU_"
     monkeypatch.setenv("TEST_MINERU_DOCLIB_LOG_DIR", "/tmp/env-logs")
 
-    env_cfg = _apply_env_overrides(Config(), prefix=prefix)
+    overrides, _paths = _collect_env_overrides(prefix=prefix)
+    env_cfg = Config(**overrides)
     patched_cfg = PatchedConfig(doclib={"log": {"dir": "/tmp/patched-logs"}})
 
     assert env_cfg.doclib.log.app_path is None

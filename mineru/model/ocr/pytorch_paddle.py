@@ -12,8 +12,7 @@ from loguru import logger
 
 from mineru.model.ocr.seal_crop import CropByPolys, SortPolyBoxes
 from mineru.utils.config_reader import get_device
-from mineru.utils.enum_class import ModelPath
-from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
+from ...utils.model_registry import PDF_EXTRACT_KIT
 from mineru.utils.ocr_language import normalize_ocr_model_lang
 from mineru.utils.ocr_utils import (
     check_img,
@@ -67,12 +66,8 @@ class PytorchPaddleOCR(TextSystem):
                 supported_langs=config['lang'],
             )
             det, rec, dict_file = get_model_params(self.lang, config)
-        ocr_models_dir = ModelPath.pytorch_paddle
-
-        det_model_path = f"{ocr_models_dir}/{det}"
-        det_model_path = os.path.join(auto_download_and_get_model_root_path(det_model_path), det_model_path)
-        rec_model_path = f"{ocr_models_dir}/{rec}"
-        rec_model_path = os.path.join(auto_download_and_get_model_root_path(rec_model_path), rec_model_path)
+        det_model_path = str(PDF_EXTRACT_KIT.pytorch_paddle.path(det).ensure())
+        rec_model_path = str(PDF_EXTRACT_KIT.pytorch_paddle.path(rec).ensure())
         kwargs['det_model_path'] = det_model_path
         kwargs['rec_model_path'] = rec_model_path
         kwargs['rec_char_dict_path'] = os.path.join(root_dir, 'pytorchocr', 'utils', 'resources', 'dict', dict_file)

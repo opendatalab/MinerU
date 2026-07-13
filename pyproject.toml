@@ -46,6 +46,7 @@ dependencies = [
     "pdftext>=0.6.3,<0.8.0",
     "modelscope>=1.26.0",
     "huggingface-hub>=0.32.4",
+    "filelock>=3.0.0",
     "json-repair>=0.46.2",
     "opencv-python>=4.11.0.86",
     "fast-langdetect>=0.2.3,<0.3.0",
@@ -114,6 +115,11 @@ all = [
     "mineru[gradio]",
 ]
 
+[tool.uv]
+exclude-dependencies = [
+    "datasets",
+]
+
 [project.urls]
 homepage = "https://mineru.net/"
 documentation = "https://opendatalab.github.io/MinerU/"
@@ -150,7 +156,6 @@ command_line = "-m pytest tests/unittest/test_e2e.py"
 source = ["mineru/"]
 omit = [
     "*/gradio_app.py",
-    "*/models_download.py",
     "*/fast_api.py",
     "*/cli/client.py",
     "*/vlm_vllm_server.py",

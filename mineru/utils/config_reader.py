@@ -29,32 +29,6 @@ def read_config() -> dict[str, Any] | None:
         return config
 
 
-def get_configured_model_source(default: str | None = None) -> str | None:
-    """读取配置文件中的固定模型来源配置，auto 或缺失时返回默认值。"""
-    supported_sources = {"huggingface", "modelscope"}
-    config = read_config()
-    if config is None:
-        return default
-
-    model_source = config.get("model-source")
-    if model_source is None:
-        return default
-    if not isinstance(model_source, str):
-        logger.warning(f"'model-source' in {get_tools_config_file_path()} must be a string, use {default} as default")
-        return default
-
-    normalized_model_source = model_source.strip().lower()
-    if not normalized_model_source:
-        return default
-    if normalized_model_source == "auto":
-        return default
-    if normalized_model_source in supported_sources:
-        return normalized_model_source
-
-    logger.warning(f"Unsupported 'model-source' in {get_tools_config_file_path()}: {model_source}, use {default} as default")
-    return default
-
-
 def get_device() -> str:
     device_mode = os.getenv("MINERU_DEVICE_MODE", None)
     if device_mode is not None:
@@ -159,12 +133,3 @@ def get_llm_aided_config() -> dict[str, Any] | None:
     else:
         return llm_aided_config
 
-
-def get_local_models_dir() -> dict[str, str] | None:
-    config = read_config()
-    if config is None:
-        return None
-    models_dir = config.get("models-dir")
-    if models_dir is None:
-        logger.warning(f"'models-dir' not found in {CONFIG_FILE_NAME}, use None as default")
-    return models_dir

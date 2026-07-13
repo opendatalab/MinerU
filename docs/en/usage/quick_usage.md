@@ -116,10 +116,7 @@ If you need to adjust parsing options through custom parameters, you can also ch
 
 ## Extending MinerU Functionality with Configuration Files
 
-MinerU is now ready to use out of the box, but also supports extending functionality through configuration files. You can edit `mineru.json` file in your user directory to add custom configurations.  
-
->[!IMPORTANT]
->The `mineru.json` file will be automatically generated when you use the built-in model download command `mineru-kit models download all`, or you can create it by copying the [configuration template file](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json) to your user directory and renaming it to `mineru.json`.
+MinerU is now ready to use out of the box, but also supports extending functionality through configuration files. Legacy tool options such as LaTeX delimiters and LLM-aided title hierarchy still use `mineru.json` in your user directory. Model storage and model source settings use `config.yaml`; see [Model Source Documentation](./model_source.md).
 
 Here are some available configuration options:  
 
@@ -152,7 +149,3 @@ Here are some available configuration options:
           }
           ```
   
-- `models-dir`: 
-    * Used to specify local model storage directory
-    * Please specify model directories for the local lightweight model bundle (`models-dir.pipeline`) and the VLM bundle (`models-dir.vlm`) separately.
-    * After specifying the directory, you can use local models by configuring the environment variable `export MINERU_MODEL_SOURCE=local`.

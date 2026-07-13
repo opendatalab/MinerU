@@ -7,6 +7,8 @@
 - ../cli/mineru-kit-models.md
 - ../cli/README.md
 
+更新: ADR-0025 已取代本文中关于模型配置落点、`pipeline` / `vlm` / `all` bundle 参数，以及下载后写入 `mineru.json` 的决策。本文保留为 `mineru-kit models` 命令组建立背景记录。
+
 ## 背景
 
 旧 CLI 提供 `mineru-models-download`，用于下载 Pipeline 或 VLM 模型，并在下载完成后更新 `mineru.json` 中的 `models-dir` 配置。

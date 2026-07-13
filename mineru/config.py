@@ -7,9 +7,13 @@ import logging
 import os
 import re
 import socket
-from typing import Any, Literal
+import tempfile
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Any, Literal, get_args, get_origin
 
 import yaml
+from filelock import FileLock
 from pydantic import BaseModel, Field
 from pydantic_core import to_jsonable_python
 
@@ -20,6 +24,8 @@ MINERU_CONFIG_ENV = "MINERU_CONFIG"
 MINERU_ENV_PREFIX = "MINERU_"
 
 AutoBool = Literal["auto"] | bool
+ConfigSource = Literal["default", "file", "env"]
+ModelSource = Literal["auto", "huggingface", "modelscope", "local"]
 
 _INTERPOLATION_RE = re.compile(r"\$\{(\w+)(?::-([^${}]*))?\}")
 
@@ -91,24 +97,23 @@ def _load_config(config_file: str) -> dict[str, Any]:
     return {}
 
 
-def _read_config() -> dict[str, Any]:
+def _resolve_config_file() -> tuple[str, bool]:
     config_file = os.getenv(MINERU_CONFIG_ENV)
-    if config_file and not os.path.isfile(config_file):
-        raise FileNotFoundError(f"MinerU config file [{config_file}] does not exist.")
+    if config_file not in (None, ""):
+        config_file = os.path.expanduser(config_file)
+        if not os.path.isfile(config_file):
+            raise FileNotFoundError(f"MinerU config file [{config_file}] does not exist.")
+        return config_file, True
 
     default_config_file = _default_path("config.yaml")
-    if not config_file and os.path.isfile(default_config_file):
-        config_file = default_config_file
-
-    if not config_file:
+    exists = os.path.isfile(default_config_file)
+    if not exists:
         _logger.debug(
             "MinerU config file not found. Default path is %s. Use %s to specify a custom path.",
             default_config_file,
             MINERU_CONFIG_ENV,
         )
-        return {}
-
-    return _load_config(config_file)
+    return default_config_file, exists
 
 
 def _collect_path(remaining: str, model_class: type[BaseModel]) -> list[str] | None:
@@ -138,19 +143,10 @@ def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, An
     return result
 
 
-def _apply_env_overrides(cfg: "Config", prefix: str = MINERU_ENV_PREFIX) -> "Config":
-    """Return a new Config with matching environment variables merged in.
-
-    Environment variable names use the prefix plus a greedy field path joined by
-    underscores. Values remain strings here and are converted by Pydantic when
-    rebuilding Config.
-
-    Examples:
-        MINERU_DOCLIB_TCP_PORT=15981 -> config.doclib.tcp.port
-        MINERU_DOCLIB_SQLITE_MMAP_SIZE=0 -> config.doclib.sqlite.mmap_size
-    """
+def _collect_env_overrides(prefix: str = MINERU_ENV_PREFIX) -> tuple[dict[str, Any], set[tuple[str, ...]]]:
     prefix_upper = prefix.upper()
     overrides: dict[str, Any] = {}
+    paths: set[tuple[str, ...]] = set()
 
     for key, value in os.environ.items():
         if not key.startswith(prefix_upper):
@@ -165,12 +161,125 @@ def _apply_env_overrides(cfg: "Config", prefix: str = MINERU_ENV_PREFIX) -> "Con
         for part in path[:-1]:
             node = node.setdefault(part, {})
         node[path[-1]] = value
+        paths.add(tuple(path))
 
-    if not overrides:
-        return cfg
+    return overrides, paths
 
-    merged = _deep_merge(to_jsonable_python(cfg), overrides)
-    return Config(**merged)
+
+def _model_annotation(annotation: Any) -> type[BaseModel] | None:
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation
+    origin = get_origin(annotation)
+    if origin is None:
+        return None
+    for arg in get_args(annotation):
+        if isinstance(arg, type) and issubclass(arg, BaseModel):
+            return arg
+    return None
+
+
+def _default_source_paths(model_class: type[BaseModel], prefix: tuple[str, ...] = ()) -> set[tuple[str, ...]]:
+    paths: set[tuple[str, ...]] = set()
+    for field_name, field in model_class.model_fields.items():
+        sub_model = _model_annotation(field.annotation)
+        current = (*prefix, field_name)
+        if sub_model is not None:
+            paths.update(_default_source_paths(sub_model, current))
+        else:
+            paths.add(current)
+    return paths
+
+
+def _configured_source_paths(
+    data: dict[str, Any],
+    model_class: type[BaseModel],
+    prefix: tuple[str, ...] = (),
+) -> set[tuple[str, ...]]:
+    paths: set[tuple[str, ...]] = set()
+    for key, value in data.items():
+        if key not in model_class.model_fields:
+            continue
+        field = model_class.model_fields[key]
+        sub_model = _model_annotation(field.annotation)
+        current = (*prefix, key)
+        if sub_model is not None and isinstance(value, dict):
+            paths.update(_configured_source_paths(value, sub_model, current))
+        else:
+            paths.add(current)
+    return paths
+
+
+def _normalize_config_source_path(path: str | Sequence[str]) -> tuple[str, ...]:
+    if isinstance(path, str):
+        return tuple(part for part in path.split(".") if part)
+    return tuple(path)
+
+
+@dataclass(frozen=True)
+class LoadedConfig:
+    config: "Config"
+    sources: dict[tuple[str, ...], ConfigSource]
+    config_file: str
+    config_file_exists: bool
+
+
+def _load_effective_config() -> LoadedConfig:
+    config_file, config_file_exists = _resolve_config_file()
+    raw_config = _load_config(config_file) if config_file_exists else {}
+    sources: dict[tuple[str, ...], ConfigSource] = dict.fromkeys(_default_source_paths(Config), "default")
+    for path in _configured_source_paths(raw_config, Config):
+        sources[path] = "file"
+
+    base_config = Config(**raw_config)
+    overrides, env_paths = _collect_env_overrides()
+    if overrides:
+        base_config = Config(**_deep_merge(to_jsonable_python(base_config), overrides))
+        for path in env_paths:
+            sources[path] = "env"
+    return LoadedConfig(
+        config=base_config,
+        sources=sources,
+        config_file=config_file,
+        config_file_exists=config_file_exists,
+    )
+
+
+def get_config_source(path: str | Sequence[str]) -> ConfigSource:
+    return _loaded_config.sources.get(_normalize_config_source_path(path), "default")
+
+
+def get_config_file_path() -> str:
+    return _loaded_config.config_file
+
+
+def get_config_file_exists() -> bool:
+    return _loaded_config.config_file_exists
+
+
+def update_config_file(patch: dict[str, Any]) -> None:
+    config_file = get_config_file_path()
+    config_dir = os.path.dirname(config_file)
+    if config_dir:
+        os.makedirs(config_dir, exist_ok=True)
+
+    lock = FileLock(f"{config_file}.lock")
+    with lock:
+        if os.path.exists(config_file):
+            with open(config_file, encoding="utf-8") as file:
+                loaded = yaml.safe_load(file)
+            current = loaded if isinstance(loaded, dict) else {}
+        else:
+            current = {}
+
+        updated = _deep_merge(current, patch)
+        fd, tmp_path = tempfile.mkstemp(prefix=".config.", suffix=".tmp", dir=config_dir or None)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as file:
+                yaml.safe_dump(updated, file, allow_unicode=True, sort_keys=False)
+            os.replace(tmp_path, config_file)
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
 
 class UDSConfig(BaseModel):
@@ -244,6 +353,11 @@ class ManagedParseServerConfig(BaseModel):
     port_probe_count: int = Field(default=100, ge=1)
 
 
+class ModelConfig(BaseModel):
+    base_dir: str = _default_path("models")
+    source: str = "auto"
+
+
 class DoclibConfig(BaseModel):
     """Doclib startup configuration.
 
@@ -289,10 +403,12 @@ class Config(BaseModel):
     """Top-level MinerU startup configuration."""
 
     doclib: DoclibConfig = Field(default_factory=DoclibConfig)
+    model: ModelConfig = Field(default_factory=ModelConfig)
     # render: RenderConfig
 
 
-config = _apply_env_overrides(Config(**_read_config()))
+_loaded_config = _load_effective_config()
+config = _loaded_config.config
 
 
 def PatchedConfig(**kwargs: Any) -> Config:
@@ -302,6 +418,10 @@ def PatchedConfig(**kwargs: Any) -> Config:
 
 __all__ = [
     "AutoBool",
+    "ConfigSource",
+    "LoadedConfig",
+    "ModelConfig",
+    "ModelSource",
     "config",
     "Config",
     "DoclibConfig",
@@ -310,6 +430,10 @@ __all__ = [
     "SQLiteConfig",
     "UDSConfig",
     "PatchedConfig",
+    "get_config_source",
+    "get_config_file_path",
+    "get_config_file_exists",
+    "update_config_file",
     "MINERU_HOME_ENV",
     "MINERU_CONFIG_ENV",
     "MINERU_ENV_PREFIX",

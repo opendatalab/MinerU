@@ -9,7 +9,7 @@ MinerU uses `HuggingFace` and `ModelScope` as model repositories. Users can swit
 ## Methods to Switch Model Sources
 
 ### Configure via Environment Variables
-MinerU configures model sources through the `MINERU_MODEL_SOURCE` environment variable. This applies to all command line tools and API calls. Supported values are `huggingface`, `modelscope`, and `local`. The environment variable has higher priority than `model-source` in `mineru.json`. Do not set this environment variable to `auto`; unset it if you want MinerU to choose a source automatically.
+MinerU configures model sources through the `MINERU_MODEL_SOURCE` environment variable. This applies to all command line tools and API calls. Supported values are `auto`, `huggingface`, `modelscope`, and `local`. The environment variable has higher priority than `model.source` in `config.yaml`.
 ```bash
 export MINERU_MODEL_SOURCE=modelscope
 mineru -p <input_path> -o <output_path>
@@ -23,11 +23,11 @@ os.environ["MINERU_MODEL_SOURCE"] = "modelscope"
 > MinerU no longer provides a CLI flag for model source selection. Model sources set through environment variables take effect in the current terminal session until the terminal is closed or the environment variable is modified.
 
 ### Configure via Configuration File
-If `MINERU_MODEL_SOURCE` is not set, MinerU reads the `model-source` field from `mineru.json` in the user directory. `model-source` supports fixed values `huggingface` and `modelscope`, and also supports the template's first-run placeholder value `auto`. When the value is `auto` or the field is missing, MinerU probes the actual source first. After the first auto probe resolves an actual source, MinerU writes `model-source` back as `huggingface` or `modelscope` to avoid switching sources on later startups due to network fluctuations.
-```json
-{
-    "model-source": "auto"
-}
+If `MINERU_MODEL_SOURCE` is not set, MinerU reads `model.source` from `config.yaml`. `model.source` supports `auto`, `huggingface`, `modelscope`, and `local`. When the value is `auto` or the field is missing, MinerU probes the actual source first. If the value came from the config file or built-in default, MinerU writes the resolved source back as `huggingface` or `modelscope` to avoid switching sources on later startups due to network fluctuations.
+```yaml
+model:
+  source: auto
+  base_dir: ~/.mineru/models
 ```
 
 ## Using Local Models
@@ -38,15 +38,14 @@ mineru-kit models download --help
 ```
 or download all built-in model bundles:
 ```bash
-mineru-kit models download all
+mineru-kit models download --tier high
 ```
 > [!NOTE]
->- After download completion, the model path will be output in the current terminal window and automatically written to `mineru.json` in the user directory. The `model-source` field records the actual remote source used for this download, either `huggingface` or `modelscope`.
->- You can also create it by copying the [configuration template file](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json) to your user directory and renaming it to `mineru.json`. The template sets `model-source` to `auto`, so MinerU auto-detects once and writes back the resolved source on first use.
->- After downloading models locally, you can freely move the model folder to other locations while updating the model path in `mineru.json`.
->- If you deploy the model folder to another server, please ensure you move the `mineru.json` file to the user directory of the new device and configure the model path correctly.
->- If you need to update model files, you can run `mineru-kit models download all` again. Model updates do not support custom paths currently - if you haven't moved the local model folder, model files will be incrementally updated; if you have moved the model folder, model files will be re-downloaded to the default location and `mineru.json` will be updated.
->- `mineru-kit models download` must use a remote model source to perform a real download. If your current shell already sets `MINERU_MODEL_SOURCE=local`, this command will temporarily ignore that value for this invocation and use your selected `auto`, `huggingface`, or `modelscope` source instead.
+>- Models are downloaded under `config.model.base_dir`. By default, this is `~/.mineru/models`.
+>- `mineru-kit models download` does not write model paths to `mineru.json`.
+>- If you need a custom model directory, set `model.base_dir` in `config.yaml` before downloading.
+>- If you need to update model files, run `mineru-kit models download --tier high` again. Existing files in the same `model.base_dir` are incrementally reused by the provider SDK.
+>- `mineru-kit models download` must use a remote model source to perform a real download. If your current config sets `model.source: local`, this command temporarily treats it as `auto` for this invocation.
 
 ### 2. Use Local Models for Parsing
 

@@ -1,24 +1,18 @@
 # Copyright (c) Opendatalab. All rights reserved.
-import os
-
 from PIL import Image
 import cv2
 import numpy as np
 import onnxruntime
-from loguru import logger
 from tqdm import tqdm
 
-from mineru.utils.enum_class import ModelPath
-from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
+from ....utils.model_registry import PDF_EXTRACT_KIT
 
 
 class PaddleTableClsModel:
     def __init__(self):
         from mineru.backend.local_model_runtime import AtomicModel
 
-        self.sess = onnxruntime.InferenceSession(
-            os.path.join(auto_download_and_get_model_root_path(ModelPath.paddle_table_cls), ModelPath.paddle_table_cls)
-        )
+        self.sess = onnxruntime.InferenceSession(str(PDF_EXTRACT_KIT.paddle_table_cls.ensure()))
         self.less_length = 256
         self.cw, self.ch = 224, 224
         self.std = [0.229, 0.224, 0.225]

@@ -1744,11 +1744,9 @@ if __name__ == "__main__":
         args.device = get_device()
 
     if args.model is None:
-        from mineru.utils.enum_class import ModelPath
-        from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
-        args.model = str(
-                os.path.join(auto_download_and_get_model_root_path(ModelPath.pp_doclayout_v2), ModelPath.pp_doclayout_v2)
-            )
+        from ...utils.model_registry import PDF_EXTRACT_KIT
+
+        args.model = str(PDF_EXTRACT_KIT.pp_doclayout_v2.ensure())
 
     args.image = "/Users/myhloli/pdf/png/index.png"
 

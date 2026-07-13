@@ -36,7 +36,7 @@ RUN /bin/bash -c '\
     if [ "$BACKEND" = "vllm" ]; then \
         source /torch/venv3/pytorch_infer/bin/activate; \
     fi && \
-    mineru-kit models download all -s modelscope'
+    mineru-kit models download --tier high -s modelscope'
 
 WORKDIR /workspace
 

@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-import click
 import typer
 
 from ...doclib.client import DoclibClient
@@ -80,13 +79,6 @@ def _validate_page_range_input(page_range: str | None) -> None:
         raise MineruError("page_range_invalid", f"Invalid page range: {page_range}", "pages") from None
 
 
-def _option_was_explicit(option_name: str) -> bool:
-    ctx = click.get_current_context(silent=True)
-    if ctx is None:
-        return False
-    return ctx.get_parameter_source(option_name) == click.core.ParameterSource.COMMANDLINE
-
-
 def parse_cmd(
     path: str = typer.Argument(..., help="Path to the document file"),
     tier: Tier | None = typer.Option(
@@ -96,7 +88,7 @@ def parse_cmd(
     ),
     pages: str = typer.Option(None, "-p", "--pages", help="Page range, e.g. '1~5' or 'all'"),
     after: str = typer.Option(None, "--after", help="Continue reading after a content cursor"),
-    limit: int = typer.Option(30000, "--limit", help="Soft character limit for STDOUT content"),
+    limit: int | None = typer.Option(None, "--limit", help="Soft character limit for STDOUT content"),
     format: Literal["markdown"] = typer.Option("markdown", "-f", "--format", help="Output format: markdown"),
     force: bool = typer.Option(False, "--force", help="Force re-parse, ignore cache"),
     remote: bool = typer.Option(False, "--remote", help="Use remote parse-server"),
@@ -109,6 +101,7 @@ def parse_cmd(
 ) -> None:
     """Parse a document file."""
     ctx = CliContext(json_mode=json_mode, verbose=verbose)
+    effective_limit = 30000 if limit is None else limit
     run_cli(
         ctx,
         lambda: _parse(
@@ -116,7 +109,7 @@ def parse_cmd(
             tier=tier,
             pages=pages,
             after=after,
-            limit=limit,
+            limit=effective_limit,
             format=format,
             force=force,
             remote=remote,
@@ -126,6 +119,9 @@ def parse_cmd(
             no_marker=no_marker,
             json_mode=json_mode,
             verbose=verbose,
+            explicit_tier=tier is not None,
+            explicit_limit=limit is not None,
+            explicit_remote=remote,
         ),
     )
 
@@ -146,6 +142,9 @@ def _parse(
     no_marker: bool,
     json_mode: bool,
     verbose: bool,
+    explicit_tier: bool,
+    explicit_limit: bool,
+    explicit_remote: bool,
 ) -> None:
     file_path = normalize_cli_path(path)
 
@@ -170,9 +169,9 @@ def _parse(
     req_tier = result.tier
     status = result.status
     wait_parse_ids = result.wait_parse_ids
-    next_marker_tier = tier if _option_was_explicit("tier") else None
-    next_marker_limit = limit if _option_was_explicit("limit") else None
-    next_marker_remote = remote if _option_was_explicit("remote") else False
+    next_marker_tier = tier if explicit_tier else None
+    next_marker_limit = limit if explicit_limit else None
+    next_marker_remote = remote if explicit_remote else False
 
     # cached
     if status == "done":

@@ -1993,19 +1993,19 @@ def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[Ti
             },
         ]
     if tier == "xhigh":
-        return ["MinerU2.5-Pro-2604-1.2B", "MinerU-HTML"], [
+        return ["MinerU2.5-Pro-2605-1.2B", "MinerU-HTML"], [
             {
                 "id": "xhigh",
                 "description": "Hybrid maximum-accuracy parsing.",
-                "current_model": "MinerU2.5-Pro-2604-1.2B",
+                "current_model": "MinerU2.5-Pro-2605-1.2B",
             },
         ]
 
-    return ["MinerU2.5-Pro-2604-1.2B", "MinerU-HTML"], [
+    return ["MinerU2.5-Pro-2605-1.2B", "MinerU-HTML"], [
         {
             "id": "high",
             "description": "Hybrid high-accuracy parsing.",
-            "current_model": "MinerU2.5-Pro-2604-1.2B",
+            "current_model": "MinerU2.5-Pro-2605-1.2B",
         },
     ]
 

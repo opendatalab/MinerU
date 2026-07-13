@@ -227,74 +227,67 @@ def test_upload_filename_helper_import_boundary_is_explicit() -> None:
     assert "normalize_upload_filename" in fast_api_upload_imports
 
 
-def test_models_download_pipeline(monkeypatch: Any) -> None:
-    monkeypatch.setattr(models, "_download_pipeline_models", lambda: "/tmp/pipeline")
-    monkeypatch.setattr(models, "_download_vlm_models", lambda: "/tmp/vlm")
-    monkeypatch.setattr(models, "_update_models_dir", lambda bundle, model_dir: Path(f"/tmp/{bundle}.json"))
+def test_models_download_tier_medium(monkeypatch: Any) -> None:
+    captured: list[str] = []
 
-    result = runner.invoke(app, ["models", "download", "pipeline"])
+    def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
+        captured.append(repo.name)
+        return Path("/tmp/models") / repo.local_name
+
+    monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
+
+    result = runner.invoke(app, ["models", "download", "--tier", "medium"])
 
     assert result.exit_code == 0
-    assert "Downloaded pipeline models" in result.output
+    assert captured == ["PDF-Extract-Kit-1.0"]
+    assert "Downloaded models for tier medium" in result.output
 
 
-def test_models_download_auto_source_resolves_before_download(monkeypatch: Any) -> None:
-    captured: dict[str, str] = {}
+def test_models_download_repo_uses_explicit_source(monkeypatch: Any) -> None:
+    captured: dict[str, Any] = {}
 
-    def fake_resolve_model_source(model_source: str | None = None, allow_auto: bool = False) -> str:
-        assert model_source == "auto"
-        assert allow_auto is True
-        return "modelscope"
+    def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
+        captured["repo"] = repo.name
+        captured["source"] = source
+        captured["local_as_auto"] = local_as_auto
+        return Path("/tmp/models") / repo.local_name
 
-    def fake_update_models_dir(bundle: str, model_dir: str) -> Path:
-        captured["bundle"] = bundle
-        captured["model_dir"] = model_dir
-        captured["effective_source"] = models.os.getenv(models.MODEL_SOURCE_ENV_VAR, "")
-        return Path(f"/tmp/{bundle}.json")
+    monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
 
-    monkeypatch.delenv(models.MODEL_SOURCE_ENV_VAR, raising=False)
-    monkeypatch.setattr(models, "resolve_model_source", fake_resolve_model_source, raising=False)
-    monkeypatch.setattr(models, "_download_pipeline_models", lambda: "/tmp/pipeline")
-    monkeypatch.setattr(models, "_update_models_dir", fake_update_models_dir)
-
-    result = runner.invoke(app, ["models", "download", "pipeline", "--source", "auto"])
+    result = runner.invoke(app, ["models", "download", "PDF-Extract-Kit-1.0", "--source", "auto"])
 
     assert result.exit_code == 0
     assert captured == {
-        "bundle": "pipeline",
-        "model_dir": "/tmp/pipeline",
-        "effective_source": "modelscope",
+        "repo": "PDF-Extract-Kit-1.0",
+        "source": "auto",
+        "local_as_auto": True,
     }
-    assert "Downloaded pipeline models from modelscope" in result.output
+    assert "Downloaded models for PDF-Extract-Kit-1.0" in result.output
 
 
 def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
-    config = tmp_path / "mineru.json"
-    pipeline_root = tmp_path / "pipeline"
-    vlm_root = tmp_path / "vlm"
-    for rel in models.PIPELINE_MODEL_PATHS:
-        target = pipeline_root / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text("x", encoding="utf-8")
-    for rel in models.VLM_MODEL_MARKERS:
-        target = vlm_root / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text("x", encoding="utf-8")
-    config.write_text(
-        (f'{{\n  "models-dir": {{"pipeline": "{pipeline_root}", "vlm": "{vlm_root}"}},\n  "config_version": "1.3.1"\n}}\n'),
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("MINERU_TOOLS_CONFIG_JSON", str(config))
+    base_dir = tmp_path / "models"
+    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
+    for repo in models.MODEL_REPOS:
+        for model_path in repo.required_paths():
+            target = repo.local_dir() / model_path.relative_path
+            if Path(model_path.relative_path).suffix:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("x", encoding="utf-8")
+                continue
+            target.mkdir(parents=True, exist_ok=True)
+            (target / "marker").write_text("x", encoding="utf-8")
 
     show_result = runner.invoke(app, ["models", "show"])
     verify_result = runner.invoke(app, ["models", "verify"])
 
     assert show_result.exit_code == 0
-    assert "pipeline.exists: True" in show_result.output
-    assert "vlm.exists: True" in show_result.output
+    assert "Config exists:" in show_result.output
+    assert "PDF-Extract-Kit-1.0: ready" in show_result.output
+    assert "MinerU2.5-Pro-2605-1.2B: ready" in show_result.output
     assert verify_result.exit_code == 0
-    assert "pipeline: ok" in verify_result.output
-    assert "vlm: ok" in verify_result.output
+    assert "PDF-Extract-Kit-1.0: ok" in verify_result.output
+    assert "MinerU2.5-Pro-2605-1.2B: ok" in verify_result.output
 
 
 def test_api_server_rejects_backend_and_effort_options() -> None:
@@ -562,7 +555,7 @@ def test_mlx_vlm_server_adapter_defaults_to_mineru_vlm_model(monkeypatch: Any) -
     )
     monkeypatch.setitem(sys.modules, "mlx_vlm", SimpleNamespace(server=fake_mlx_server))
     monkeypatch.setitem(sys.modules, "mlx_vlm.server", fake_mlx_server)
-    monkeypatch.setattr(mlx_vlm_server, "auto_download_and_get_model_root_path", lambda path, repo_mode: "/models/mineru-vlm")
+    monkeypatch.setattr(mlx_vlm_server, "_default_model_id", lambda configured_model: "/models/mineru-vlm")
 
     client = TestClient(mlx_vlm_server.create_app())
     response = client.get("/v1/models")

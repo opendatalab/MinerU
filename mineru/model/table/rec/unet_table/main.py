@@ -1,7 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import html
 import logging
-import os
 import time
 import traceback
 from dataclasses import asdict, dataclass
@@ -13,13 +12,12 @@ from bs4 import BeautifulSoup
 from loguru import logger
 from PIL import Image
 
-from mineru.utils.enum_class import ModelPath
 from mineru.utils.image_utils import calculate_contrast
-from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
+from .....utils.model_registry import PDF_EXTRACT_KIT
 
 from .table_recover import TableRecover
 from .table_structure_unet import TSRUnet
-from .utils import InputType, LoadImage, VisTable
+from .utils import InputType, LoadImage
 from .utils_table_recover import (
     box_4_2_poly_to_box_4_1,
     gather_ocr_list_by_row,
@@ -212,7 +210,12 @@ class WiredTableRecognition:
             # ocr_result = [[]]
             # for crop_img in img_crop_list:
             #     tmp_ocr_result = self.ocr_engine.ocr(crop_img)
-            #     if tmp_ocr_result[0] and len(tmp_ocr_result[0]) > 0 and isinstance(tmp_ocr_result[0], list) and len(tmp_ocr_result[0][0]) == 2:
+            #     if (
+            #         tmp_ocr_result[0]
+            #         and len(tmp_ocr_result[0]) > 0
+            #         and isinstance(tmp_ocr_result[0], list)
+            #         and len(tmp_ocr_result[0][0]) == 2
+            #     ):
             #         ocr_result[0].append(tmp_ocr_result[0][0][1])
             #     else:
             #         ocr_result[0].append(("", 0.0))
@@ -260,7 +263,7 @@ def count_table_cells_physical(html_code):
 
 class UnetTableModel:
     def __init__(self, ocr_engine):
-        model_path = os.path.join(auto_download_and_get_model_root_path(ModelPath.unet_structure), ModelPath.unet_structure)
+        model_path = str(PDF_EXTRACT_KIT.unet_structure.ensure())
         wired_input_args = WiredTableInput(model_path=model_path)
         self.wired_table_model = WiredTableRecognition(wired_input_args, ocr_engine)
         self.ocr_engine = ocr_engine
@@ -311,7 +314,10 @@ class UnetTableModel:
                     wireless_text_count += 1
                 if ocr_res[1] in wired_html_code:
                     wired_text_count += 1
-            # logger.debug(f"wireless table ocr text count: {wireless_text_count}, wired table ocr text count: {wired_text_count}")
+            # logger.debug(
+            #     f"wireless table ocr text count: {wireless_text_count}, "
+            #     f"wired table ocr text count: {wired_text_count}"
+            # )
 
             # 使用HTML解析器计算空单元格数量
             wireless_soup = (
@@ -321,7 +327,10 @@ class UnetTableModel:
             # 计算空单元格数量(没有文本内容或只有空白字符)
             wireless_blank_count = sum(1 for cell in wireless_soup.find_all(["td", "th"]) if not cell.text.strip())
             wired_blank_count = sum(1 for cell in wired_soup.find_all(["td", "th"]) if not cell.text.strip())
-            # logger.debug(f"wireless table blank cell count: {wireless_blank_count}, wired table blank cell count: {wired_blank_count}")
+            # logger.debug(
+            #     f"wireless table blank cell count: {wireless_blank_count}, "
+            #     f"wired table blank cell count: {wired_blank_count}"
+            # )
 
             # 计算非空单元格数量
             wireless_non_blank_count = wireless_len - wireless_blank_count
@@ -331,7 +340,11 @@ class UnetTableModel:
             if wireless_non_blank_count > wired_non_blank_count:
                 # 假设非空表格是接近正方表，使用非空单元格数量开平方作为表格规模的估计
                 wired_table_scale = round(wired_non_blank_count**0.5)
-                # logger.debug(f"wireless non-blank cell count: {wireless_non_blank_count}, wired non-blank cell count: {wired_non_blank_count}, wired table scale: {wired_table_scale}")
+                # logger.debug(
+                #     f"wireless non-blank cell count: {wireless_non_blank_count}, "
+                #     f"wired non-blank cell count: {wired_non_blank_count}, "
+                #     f"wired table scale: {wired_table_scale}"
+                # )
                 # 如果无线表非空格的数量比有线表多一列或以上，需要切换到无线表
                 wired_scale_plus_2_cols = wired_non_blank_count + (wired_table_scale * 2)
                 wired_scale_squared_plus_2_rows = wired_table_scale * (wired_table_scale + 2)

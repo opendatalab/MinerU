@@ -17,7 +17,7 @@ from packaging import version
 
 from ...utils.check_sys_env import is_mac_os_version_supported
 from ...utils.config_reader import get_device
-from ...utils.models_download_utils import auto_download_and_get_model_root_path
+from ...utils.model_registry import MINERU_2_5_PRO_2605_1_2B
 from .engine_utils import (
     enable_custom_logits_processors,
     mod_kwargs_by_device_type,
@@ -79,7 +79,7 @@ class ModelSingleton:
                     if param in kwargs:
                         del kwargs[param]
                 if backend not in ["http-client"] and not model_path:
-                    model_path = auto_download_and_get_model_root_path("/", "vlm")
+                    model_path = str(MINERU_2_5_PRO_2605_1_2B.ensure())
                 if backend == "transformers":
                     try:
                         from transformers import (
@@ -417,4 +417,3 @@ async def aio_predictor_execution_guard(predictor: MinerUClient) -> AsyncIterato
         yield
     finally:
         lock.release()
-

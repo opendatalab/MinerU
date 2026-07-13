@@ -32,7 +32,7 @@ RUN /opt/conda/bin/python3 -m pip install -U pip -i https://mirrors.aliyun.com/p
     /opt/conda/bin/python3 -m pip cache purge
 
 # Download models and update the configuration file
-RUN /bin/bash -c "/opt/conda/bin/mineru-kit models download all -s modelscope"
+RUN /bin/bash -c "/opt/conda/bin/mineru-kit models download --tier high -s modelscope"
 
 # Set the entry point to activate the virtual environment and run the command line tool
 ENTRYPOINT ["/bin/bash", "-c", "export MINERU_MODEL_SOURCE=local && exec \"$@\"", "--"]

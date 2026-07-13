@@ -2241,6 +2241,12 @@ def test_api_server_logs_traceback_when_job_file_fails(
     )
     job_store = api_server.JobStore()
     rec = job_store.create(request, file_store)
+    mineru_logger = logging.getLogger("mineru")
+    api_logger = logging.getLogger("mineru.parser.api_server")
+    monkeypatch.setattr(mineru_logger, "disabled", False)
+    monkeypatch.setattr(mineru_logger, "propagate", True)
+    monkeypatch.setattr(api_logger, "disabled", False)
+    monkeypatch.setattr(api_logger, "propagate", True)
 
     with caplog.at_level(logging.ERROR, logger="mineru.parser.api_server"):
         asyncio.run(
@@ -2368,7 +2374,7 @@ def test_api_server_multi_tier_state_and_metadata(tmp_path: Path, monkeypatch: p
     assert app.state.backend == "hybrid-engine"
     assert app.state.effort == "high"
     assert [tier["id"] for tier in app.state.tiers] == ["medium", "high", "xhigh"]
-    assert app.state.model_ids == ["Hybrid-Medium", "MinerU-HTML", "MinerU2.5-Pro-2604-1.2B"]
+    assert app.state.model_ids == ["Hybrid-Medium", "MinerU-HTML", "MinerU2.5-Pro-2605-1.2B"]
     assert app.state.tier_runtime_options["medium"].as_kwargs() == {
         "tier": "medium",
         "backend": "hybrid-engine",
@@ -2402,7 +2408,7 @@ def test_api_server_multi_tier_http_metadata(tmp_path: Path, monkeypatch: pytest
         "MinerU-Flash",
         "Hybrid-Medium",
         "MinerU-HTML",
-        "MinerU2.5-Pro-2604-1.2B",
+        "MinerU2.5-Pro-2605-1.2B",
     ]
 
 

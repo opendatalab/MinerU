@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import os
 import zipfile
 from pathlib import Path
 from typing import Literal, TypeAlias
@@ -14,7 +12,6 @@ from ..render.writer import FileBasedDataWriter
 from ..types import Tier
 from ..utils.image_payload import validate_image_sidecar_path
 
-SupportedBundle = Literal["pipeline", "vlm", "all"]
 KitFormat = Literal["markdown", "middle_json", "zip"]
 LocalTier: TypeAlias = Tier
 
@@ -24,17 +21,6 @@ OUTPUT_FILE_SUFFIXES = {
     "middle_json": ".json",
     "zip": ".zip",
 }
-
-PIPELINE_MODEL_PATHS = (
-    "models/Layout/PP-DocLayoutV2",
-    "models/MFR/unimernet_hf_small_2503",
-    "models/MFR/pp_formulanet_plus_m",
-    "models/OCR/paddleocr_torch",
-    "models/TabRec/SlanetPlus/slanet-plus.onnx",
-    "models/TabRec/UnetStructure/unet.onnx",
-    "models/TabCls/paddle_table_cls/PP-LCNet_x1_0_table_cls.onnx",
-)
-VLM_MODEL_MARKERS = ("config.json", "preprocessor_config.json", "tokenizer_config.json")
 
 
 def expand_input_paths(inputs: list[str]) -> list[Path]:
@@ -187,22 +173,3 @@ def parse_result_payload(path: Path, dest: Path, format: KitFormat) -> dict[str,
         "output": str(dest),
         "format": format,
     }
-
-
-def resolve_models_config_path() -> Path:
-    config_name = os.getenv("MINERU_TOOLS_CONFIG_JSON", "mineru.json")
-    config_path = Path(config_name)
-    if config_path.is_absolute():
-        return config_path
-    return Path.home() / config_path
-
-
-def read_json_file(path: Path) -> dict | None:
-    if not path.exists():
-        return None
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def write_json_file(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=4), encoding="utf-8")

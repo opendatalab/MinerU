@@ -20,8 +20,7 @@ from ..model.table.cls.paddle_table_cls import PaddleTableClsModel
 from ..model.table.rec.slanet_plus.main import PaddleTableModel
 from ..model.table.rec.unet_table.main import UnetTableModel
 from ..utils.config_reader import get_device
-from ..utils.enum_class import ModelPath
-from ..utils.models_download_utils import auto_download_and_get_model_root_path
+from ..utils.model_registry import PDF_EXTRACT_KIT, ModelPath
 from ..utils.ocr_language import normalize_ocr_model_lang
 
 
@@ -98,12 +97,12 @@ else:
     MFR_MODEL = "unimernet_small"
 
 
-def _resolve_mfr_model_path() -> str:
+def _resolve_mfr_model_path() -> ModelPath:
     """解析当前公式识别模型路径，集中维护 MFR_MODEL 到模型目录枚举的映射关系。"""
     if MFR_MODEL == "unimernet_small":
-        return ModelPath.unimernet_small
+        return PDF_EXTRACT_KIT.unimernet_small
     if MFR_MODEL == "pp_formulanet_plus_m":
-        return ModelPath.pp_formulanet_plus_m
+        return PDF_EXTRACT_KIT.pp_formulanet_plus_m
     logger.error("MFR model name not allow")
     exit(1)
 
@@ -353,12 +352,7 @@ class HybridLocalModelContext:
         """获取 Layout 原子模型，供 Hybrid 本地 layout、标题拆分和公式框检测复用。"""
         return self.atom_model_manager.get_atom_model(
             atom_model_name=AtomicModel.Layout,
-            pp_doclayout_v2_weights=str(
-                os.path.join(
-                    auto_download_and_get_model_root_path(ModelPath.pp_doclayout_v2),
-                    ModelPath.pp_doclayout_v2,
-                )
-            ),
+            pp_doclayout_v2_weights=str(PDF_EXTRACT_KIT.pp_doclayout_v2.ensure()),
             device=self.device,
         )
 
@@ -367,6 +361,6 @@ class HybridLocalModelContext:
         mfr_model_path = _resolve_mfr_model_path()
         return self.atom_model_manager.get_atom_model(
             atom_model_name=AtomicModel.MFR,
-            mfr_weight_dir=str(os.path.join(auto_download_and_get_model_root_path(mfr_model_path), mfr_model_path)),
+            mfr_weight_dir=str(mfr_model_path.ensure()),
             device=self.device,
         )

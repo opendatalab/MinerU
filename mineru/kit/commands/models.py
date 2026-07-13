@@ -1,198 +1,141 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import typer
-from loguru import logger
 
-from ...utils.enum_class import ModelPath
-from ...utils.models_download_utils import (
-    MINERU_CONFIG_VERSION,
-    auto_download_and_get_model_root_path,
-    is_config_version_outdated,
-    merge_config_dict,
-    resolve_model_source,
+from ...config import config, get_config_file_exists, get_config_file_path, get_config_source
+from ...types import validate_tier
+from ...utils.model_registry import (
+    MODEL_REPOS,
+    ModelRepo,
+    get_model_repo,
+    model_repo_names,
+    model_repos_for_tier,
 )
-from ..common import PIPELINE_MODEL_PATHS, VLM_MODEL_MARKERS, read_json_file, resolve_models_config_path, write_json_file
+from ...utils.models_download_utils import (
+    DOWNLOAD_MODEL_SOURCES,
+    MODEL_SOURCE_ENV_VAR,
+    download_model_repo,
+    verify_model_repo,
+)
 from ..errors import exit_with_message
 from ..output import print_info, print_success
 
 app = typer.Typer(help="Download, inspect, and verify local MinerU models.", no_args_is_help=True)
 
-MODEL_SOURCE_ENV_VAR = "MINERU_MODEL_SOURCE"
-REMOTE_MODEL_SOURCES = ("auto", "huggingface", "modelscope")
+
+def _validate_download_source(source: str | None) -> str | None:
+    if source is None:
+        return None
+    normalized = source.strip().lower()
+    if normalized not in DOWNLOAD_MODEL_SOURCES:
+        expected = ", ".join(DOWNLOAD_MODEL_SOURCES)
+        exit_with_message("invalid_request", f"Unsupported source '{source}'. Expected one of: {expected}.", "source")
+    return normalized
 
 
-def _load_or_template_config() -> dict:
-    config_path = resolve_models_config_path()
-    payload = read_json_file(config_path)
-    template_path = Path(__file__).resolve().parents[3] / "mineru.template.json"
-    template_payload = read_json_file(template_path) or {"models-dir": {}, "config_version": MINERU_CONFIG_VERSION}
-    if payload is not None:
-        if not is_config_version_outdated(payload.get("config_version", "0.0.0")):
-            return payload
-        return merge_config_dict(template_payload, payload, skip_keys={"config_version"})
-    return template_payload
+def _select_target_repos(repo_name: str | None, tier: str | None) -> tuple[ModelRepo, ...]:
+    if repo_name and tier:
+        exit_with_message("invalid_request", "Pass either a model repo name or --tier, not both.")
+    if not repo_name and tier is None:
+        exit_with_message("invalid_request", "Pass a model repo name or --tier.")
+
+    if tier is not None:
+        try:
+            resolved_tier = validate_tier(tier)
+        except ValueError as exc:
+            exit_with_message("invalid_request", str(exc), "tier")
+        return model_repos_for_tier(resolved_tier)
+
+    try:
+        return (get_model_repo(repo_name or ""),)
+    except ValueError as exc:
+        exit_with_message("invalid_request", str(exc), "repo")
 
 
-def _update_models_dir(bundle: str, model_dir: str) -> Path:
-    config_path = resolve_models_config_path()
-    payload = _load_or_template_config()
-    models_dir = payload.get("models-dir")
-    if not isinstance(models_dir, dict):
-        models_dir = {}
-        payload["models-dir"] = models_dir
-    models_dir[bundle] = model_dir
-    model_source = os.getenv(MODEL_SOURCE_ENV_VAR)
-    if model_source in {"huggingface", "modelscope"}:
-        payload["model-source"] = model_source
-    write_json_file(config_path, payload)
-    return config_path
-
-
-def _get_effective_download_model_source(requested_model_source: str) -> str:
-    current_model_source = os.getenv(MODEL_SOURCE_ENV_VAR)
-    if current_model_source == "local":
-        logger.warning(
-            f"{MODEL_SOURCE_ENV_VAR}=local means using pre-downloaded local models. "
-            f"`mineru-kit models download` will temporarily use '{requested_model_source}' to perform a real download."
-        )
-        return resolve_model_source(requested_model_source, allow_auto=True)
-    if current_model_source is None:
-        return resolve_model_source(requested_model_source, allow_auto=True)
-    return resolve_model_source(current_model_source)
-
-
-def _download_pipeline_models() -> str:
-    download_finish_path = ""
-    for model_path in PIPELINE_MODEL_PATHS:
-        logger.info(f"Downloading model: {model_path}")
-        download_finish_path = auto_download_and_get_model_root_path(model_path, repo_mode="pipeline")
-    return download_finish_path
-
-
-def _download_vlm_models() -> str:
-    return auto_download_and_get_model_root_path("/", repo_mode="vlm")
-
-
-def _with_temporary_model_source(model_source: str):
-    class _ModelSourceContext:
-        def __enter__(self_inner) -> None:
-            self_inner.original = os.getenv(MODEL_SOURCE_ENV_VAR)
-            os.environ[MODEL_SOURCE_ENV_VAR] = model_source
-
-        def __exit__(self_inner, exc_type, exc, tb) -> None:
-            if self_inner.original is None:
-                os.environ.pop(MODEL_SOURCE_ENV_VAR, None)
-            else:
-                os.environ[MODEL_SOURCE_ENV_VAR] = self_inner.original
-
-    return _ModelSourceContext()
+def _format_repo_status(repo: ModelRepo) -> str:
+    result = verify_model_repo(repo)
+    status = "ready" if result.ready else "missing"
+    return f"{repo.name}: {status} ({repo.local_dir()})"
 
 
 @app.command("download")
 def download_cmd(
-    bundle: str = typer.Argument(..., help="Model bundle: pipeline, vlm, all"),
-    source: str = typer.Option("auto", "--source", "-s", help="Model source: auto, huggingface, or modelscope"),
+    repo: str | None = typer.Argument(None, help="Model repo: PDF-Extract-Kit-1.0 or MinerU2.5-Pro-2605-1.2B"),
+    tier: str | None = typer.Option(None, "--tier", help="Tier to prepare: flash, medium, high, or xhigh"),
+    source: str | None = typer.Option(None, "--source", "-s", help="Model source: auto, huggingface, or modelscope"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ) -> None:
-    """Download a model bundle and update mineru.json."""
-    if bundle not in {"pipeline", "vlm", "all"}:
-        exit_with_message("invalid_request", f"Unsupported bundle '{bundle}'. Expected pipeline, vlm, or all.", "bundle")
-    if source not in REMOTE_MODEL_SOURCES:
-        exit_with_message("invalid_request", f"Unsupported source '{source}'.", "source")
-    effective_source = _get_effective_download_model_source(source)
-    try:
-        with _with_temporary_model_source(effective_source):
-            if bundle in {"pipeline", "all"}:
-                pipeline_dir = _download_pipeline_models()
-                config_path = _update_models_dir("pipeline", pipeline_dir)
-                if verbose:
-                    print_info(f"Configured pipeline models in {config_path}")
-            if bundle in {"vlm", "all"}:
-                vlm_dir = _download_vlm_models()
-                config_path = _update_models_dir("vlm", vlm_dir)
-                if verbose:
-                    print_info(f"Configured vlm models in {config_path}")
-    except Exception as exc:
-        exit_with_message("api_error", f"Failed to download models: {exc}")
-    print_success(f"Downloaded {bundle} models from {effective_source}.")
+    """Download a model repo or the repos required by a tier."""
+    normalized_source = _validate_download_source(source)
+    repos = _select_target_repos(repo, tier)
+    if tier is not None and not repos:
+        print_success("No model download required for tier flash.")
+        return
+
+    for target_repo in repos:
+        try:
+            root = download_model_repo(target_repo, source=normalized_source, local_as_auto=True)
+        except Exception as exc:
+            exit_with_message("api_error", f"Failed to download {target_repo.name}: {exc}")
+        if verbose:
+            print_info(f"{target_repo.name}: {root}")
+
+    label = f"tier {tier}" if tier is not None else repos[0].name
+    print_success(f"Downloaded models for {label}.")
 
 
 @app.command("show")
 def show_cmd() -> None:
     """Show current MinerU model configuration."""
-    config_path = resolve_models_config_path()
-    payload = read_json_file(config_path)
-    if payload is None:
-        print_info(f"Config: {config_path} (missing)")
-        return
-    models_dir = payload.get("models-dir", {})
-    pipeline = models_dir.get("pipeline", "") if isinstance(models_dir, dict) else ""
-    vlm = models_dir.get("vlm", "") if isinstance(models_dir, dict) else ""
+    config_file = get_config_file_path()
     lines = [
-        f"Config: {config_path}",
+        f"Config: {config_file}",
+        f"Config exists: {str(get_config_file_exists()).lower()}",
         f"MINERU_MODEL_SOURCE={os.getenv(MODEL_SOURCE_ENV_VAR, '') or '(unset)'}",
-        f"model-source: {payload.get('model-source', '') or '(unset)'}",
-        f"pipeline: {pipeline or '(unset)'}",
-        f"pipeline.exists: {Path(pipeline).exists() if pipeline else False}",
-        f"vlm: {vlm or '(unset)'}",
-        f"vlm.exists: {Path(vlm).exists() if vlm else False}",
+        f"model.base_dir: {config.model.base_dir}",
+        f"model.base_dir.source: {get_config_source('model.base_dir')}",
+        f"model.source: {config.model.source}",
+        f"model.source.source: {get_config_source('model.source')}",
+        "Repos:",
     ]
     for line in lines:
         print_info(line)
 
+    for repo in MODEL_REPOS:
+        print_info(f"  {_format_repo_status(repo)}")
 
-def _verify_pipeline(root: Path) -> list[str]:
-    missing: list[str] = []
-    for rel in PIPELINE_MODEL_PATHS:
-        if not (root / rel).exists():
-            missing.append(rel)
-    return missing
-
-
-def _verify_vlm(root: Path) -> list[str]:
-    missing: list[str] = []
-    for rel in VLM_MODEL_MARKERS:
-        if not (root / rel).exists():
-            missing.append(rel)
-    return missing
+    print_info("Tiers:")
+    for tier in ("flash", "medium", "high", "xhigh"):
+        repos = model_repos_for_tier(validate_tier(tier))
+        names = ", ".join(repo.name for repo in repos) or "(none)"
+        print_info(f"  {tier}: {names}")
 
 
 @app.command("verify")
 def verify_cmd(
-    bundle: str | None = typer.Argument(None, help="Optional bundle: pipeline, vlm, all"),
+    repo: str | None = typer.Argument(None, help="Optional model repo name"),
+    tier: str | None = typer.Option(None, "--tier", help="Optional tier: flash, medium, high, or xhigh"),
 ) -> None:
-    """Verify configured model directories and key paths."""
-    if bundle is not None and bundle not in {"pipeline", "vlm", "all"}:
-        exit_with_message("invalid_request", f"Unsupported bundle '{bundle}'. Expected pipeline, vlm, or all.", "bundle")
-    config_path = resolve_models_config_path()
-    payload = read_json_file(config_path)
-    if payload is None:
-        exit_with_message("file_not_found", f"Config file not found: {config_path}")
-    models_dir = payload.get("models-dir")
-    if not isinstance(models_dir, dict):
-        exit_with_message("invalid_request", f"'models-dir' not found in {config_path}")
+    """Verify local model repos and required paths."""
+    repos = MODEL_REPOS if repo is None and tier is None else _select_target_repos(repo, tier)
+    if tier == "flash":
+        print_success("flash: ok")
+        return
 
-    targets = ("pipeline", "vlm") if bundle is None or bundle == "all" else (bundle,)
     failures = 0
-    for target in targets:
-        raw = models_dir.get(target)
-        if not raw:
-            print_info(f"{target}: missing config")
-            failures += 1
+    for target_repo in repos:
+        result = verify_model_repo(target_repo)
+        if result.ready:
+            print_success(f"{target_repo.name}: ok")
             continue
-        root = Path(raw)
-        if not root.exists():
-            print_info(f"{target}: missing directory {root}")
-            failures += 1
-            continue
-        missing = _verify_pipeline(root) if target == "pipeline" else _verify_vlm(root)
-        if missing:
-            print_info(f"{target}: missing key paths: {', '.join(missing)}")
-            failures += 1
-        else:
-            print_success(f"{target}: ok")
+        failures += 1
+        missing = ", ".join(result.missing_paths)
+        print_info(f"{target_repo.name}: missing key paths: {missing}")
+
     if failures:
         raise typer.Exit(1)
+
+
+__all__ = ["app", "download_cmd", "show_cmd", "verify_cmd", "model_repo_names"]
