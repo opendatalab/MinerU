@@ -54,6 +54,16 @@ from mineru.cli.api_protocol import (
     DEFAULT_MAX_CONCURRENT_REQUESTS,
     DEFAULT_PROCESSING_WINDOW_SIZE,
 )
+from mineru.cli.api_response_models import (
+    FileParseResultResponse,
+    HTTPExceptionResponse,
+    HealthResponse,
+    TaskMessageResponse,
+    TaskResultResponse,
+    TaskStatusResponse,
+    TaskSubmissionResponse,
+    UnhealthyResponse,
+)
 from mineru.cli.backend_options import DEFAULT_HYBRID_EFFORT
 from mineru.cli.vlm_preload import (
     maybe_preload_vlm_model,
@@ -1228,6 +1238,26 @@ def get_task_manager() -> AsyncTaskManager:
 @app.post(
     path="/file_parse",
     status_code=200,
+    response_model=FileParseResultResponse,
+    responses={
+        200: {
+            "content": {"application/zip": {}},
+            "description": (
+                "JSON parsing results (default), or a ZIP archive when "
+                "response_format_zip is set on the request"
+            ),
+        },
+        409: {
+            "model": TaskMessageResponse,
+            "description": "Task execution failed",
+        },
+        503: {
+            "model": TaskMessageResponse,
+            "description": (
+                "Task manager became unavailable while waiting for the result"
+            ),
+        },
+    },
     summary="Synchronously parse uploaded files",
     description=(
         "Submit a parsing task to the shared async task manager, wait for it to "
@@ -1276,6 +1306,7 @@ async def parse_pdf(
 @app.post(
     path="/tasks",
     status_code=202,
+    response_model=TaskSubmissionResponse,
     summary="Submit an asynchronous parse task",
     description=(
         "Submit files for parsing and return immediately with a task id that can be "
@@ -1293,16 +1324,51 @@ async def submit_parse_task(
     return build_task_submission_response(task, http_request, task_manager)
 
 
-@app.get(path="/tasks/{task_id}", name="get_async_task_status")
+@app.get(
+    path="/tasks/{task_id}",
+    name="get_async_task_status",
+    response_model=TaskStatusResponse,
+    responses={
+        404: {
+            "model": HTTPExceptionResponse,
+            "description": "Task not found",
+        },
+    },
+)
 async def get_async_task_status(task_id: str, request: Request):
     task_manager = get_task_manager()
     task = task_manager.get(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    return task_manager.build_status_payload(task, request)
+    return JSONResponse(content=task_manager.build_status_payload(task, request))
 
 
-@app.get(path="/tasks/{task_id}/result", name="get_async_task_result")
+@app.get(
+    path="/tasks/{task_id}/result",
+    name="get_async_task_result",
+    response_model=TaskResultResponse,
+    responses={
+        200: {
+            "content": {"application/zip": {}},
+            "description": (
+                "JSON parsing results (default), or a ZIP archive when "
+                "response_format_zip is set on the original task"
+            ),
+        },
+        202: {
+            "model": TaskMessageResponse,
+            "description": "Task result is not ready yet",
+        },
+        404: {
+            "model": HTTPExceptionResponse,
+            "description": "Task not found",
+        },
+        409: {
+            "model": TaskMessageResponse,
+            "description": "Task execution failed",
+        },
+    },
+)
 async def get_async_task_result(
     task_id: str,
     request: Request,
@@ -1349,7 +1415,16 @@ async def get_async_task_result(
     )
 
 
-@app.get(path="/health")
+@app.get(
+    path="/health",
+    response_model=HealthResponse,
+    responses={
+        503: {
+            "model": UnhealthyResponse,
+            "description": "Service is unhealthy",
+        },
+    },
+)
 async def health_check():
     task_manager = getattr(app.state, "task_manager", None)
     if task_manager is None or not task_manager.is_healthy():
