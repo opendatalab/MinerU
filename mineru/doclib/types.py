@@ -488,6 +488,8 @@ class LocalParseServerStatus(DoclibModel):
     last_success_at: int | None = None
     last_failure_at: int | None = None
     supported_tiers: list[Tier] = Field(default_factory=list)
+    error_code: str | None = None
+    error_msg: str | None = None
 
 
 class RemoteParseServerStatus(DoclibModel):
@@ -498,6 +500,8 @@ class RemoteParseServerStatus(DoclibModel):
     last_success_at: int | None = None
     last_failure_at: int | None = None
     supported_tiers: list[Tier] = Field(default_factory=list)
+    error_code: str | None = None
+    error_msg: str | None = None
 
 
 class ParseServerStatus(DoclibModel):
