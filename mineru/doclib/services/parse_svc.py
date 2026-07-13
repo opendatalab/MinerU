@@ -58,8 +58,8 @@ def _now_ms() -> int:
 class ParseFailure(MineruError):
     """Raised when a parse cannot be completed.  Carries an error code for the parses row."""
 
-    def __init__(self, code: str, message: str) -> None:
-        super().__init__(code, message)
+    def __init__(self, code: str, message: str, param: str | None = None) -> None:
+        super().__init__(code, message, param)
         self.message = message
 
 
@@ -1108,9 +1108,9 @@ class ParseService:
 
         health = get_health()
         if via == "remote":
-            supported = health.remote_supported_tiers
+            supported = health.remote.probe.tiers
         else:
-            supported = health.local_supported_tiers
+            supported = health.local.probe.tiers
 
         if not supported:
             raise ParseFailure("engine_unavailable", "Parse-server health status unknown, cannot validate tier")
@@ -1131,10 +1131,16 @@ class ParseService:
         if privacy == "remote":
             url = cast(str, await self.config_svc.get("parse_server.remote.url"))
             api_key = (await self.config_svc.get("parse_server.remote.api_key")) or None
-            if not health.remote_healthy:
+            if not health.remote.probe.healthy:
+                if health.remote.probe.error_code == "invalid_api_key":
+                    raise ParseFailure(
+                        "invalid_api_key",
+                        _probe_error_message("Remote parse-server authentication failed", health.remote.probe.error_msg),
+                        "parse_server.remote.api_key",
+                    )
                 # try fallback to local
                 local_mode = (await self.config_svc.get("parse_server.local.mode")) or "disabled"
-                if local_mode != "disabled" and health.local_healthy:
+                if local_mode != "disabled" and health.local.probe.healthy:
                     local_url = _local_parse_server_url(local_mode, health)
                     if local_url:
                         return local_url, api_key, "local"
@@ -1150,7 +1156,13 @@ class ParseService:
         if local_url is None:
             raise ParseFailure("engine_unavailable", "Local parse-server URL not configured.")
 
-        if not health.local_healthy:
+        if not health.local.probe.healthy:
+            if local_mode == "self_hosted" and health.local.probe.error_code == "invalid_api_key":
+                raise ParseFailure(
+                    "invalid_api_key",
+                    _probe_error_message("Local self-hosted parse-server authentication failed", health.local.probe.error_msg),
+                    "parse_server.local.self_hosted_api_key",
+                )
             raise ParseFailure("engine_unavailable", "Local parse-server is not ready. Please wait or check server status.")
 
         api_key = (await self.config_svc.get("parse_server.local.self_hosted_api_key")) or None
@@ -1389,12 +1401,25 @@ def _resolve_default_tier(remote: bool = False) -> Tier:
     from ..background.parse_server_health import get_health
 
     health = get_health()
-    supported = health.remote_supported_tiers if remote else health.local_supported_tiers
+    probe = health.remote.probe if remote else health.local.probe
+    supported = probe.tiers
     selected = select_default_quality_tier(supported)
     if selected is not None:
         return selected
+    if remote and probe.error_code == "invalid_api_key":
+        raise ParseFailure(
+            "invalid_api_key",
+            _probe_error_message("Remote parse-server authentication failed", probe.error_msg),
+            "parse_server.remote.api_key",
+        )
+    if not remote and health.local_mode == "self_hosted" and probe.error_code == "invalid_api_key":
+        raise ParseFailure(
+            "invalid_api_key",
+            _probe_error_message("Local self-hosted parse-server authentication failed", probe.error_msg),
+            "parse_server.local.self_hosted_api_key",
+        )
     actions = ["start a local parse-server"]
-    if not remote and health.remote_healthy and select_default_quality_tier(health.remote_supported_tiers) is not None:
+    if not remote and health.remote.probe.healthy and select_default_quality_tier(health.remote.probe.tiers) is not None:
         actions.append("use --remote")
     actions.append("explicitly pass --tier flash for text-only preview")
     raise ParseFailure(
@@ -1408,7 +1433,7 @@ def _resolve_parsing_rule_default_tier(remote: bool = False) -> Tier:
     from ..background.parse_server_health import get_health
 
     health = get_health()
-    supported = health.remote_supported_tiers if remote else health.local_supported_tiers
+    supported = health.remote.probe.tiers if remote else health.local.probe.tiers
     return select_parsing_rule_tier(supported)
 
 
@@ -1418,6 +1443,12 @@ def _format_action_list(actions: list[str]) -> str:
     if len(actions) == 2:
         return f"{actions[0]} or {actions[1]}"
     return f"{', '.join(actions[:-1])}, or {actions[-1]}"
+
+
+def _probe_error_message(prefix: str, error_msg: str | None) -> str:
+    if error_msg:
+        return f"{prefix}: {error_msg}"
+    return prefix
 
 
 def _json_file_exists_by_batch(data_dir: str, sha256: str, tier: Tier, batch: ParseRow) -> bool:

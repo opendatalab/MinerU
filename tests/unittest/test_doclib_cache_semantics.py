@@ -21,6 +21,8 @@ from mineru.doclib.background.ingest import IngestWorkerPool
 from mineru.doclib.background.parse_server_health import (
     ParseServerHealth,
     ParseServerHealthCheck,
+    ProbeResult,
+    ProbeState,
     api_server_args_for_tier,
     select_available_managed_port,
     start_managed_parse_server,
@@ -345,10 +347,8 @@ def test_managed_parse_server_port_selection_tries_configured_range(monkeypatch:
 
 def test_default_tier_error_mentions_remote_when_remote_is_healthy(monkeypatch: pytest.MonkeyPatch) -> None:
     health = ParseServerHealth(
-        local_healthy=False,
-        local_supported_tiers=["flash"],
-        remote_healthy=True,
-        remote_supported_tiers=["high", "xhigh"],
+        local=ProbeState(probe=ProbeResult(tiers=["flash"])),
+        remote=ProbeState(probe=ProbeResult(healthy=True, tiers=["high", "xhigh"])),
     )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
 
@@ -363,10 +363,8 @@ def test_default_tier_error_mentions_remote_when_remote_is_healthy(monkeypatch: 
 
 def test_default_tier_error_omits_remote_when_remote_is_unhealthy(monkeypatch: pytest.MonkeyPatch) -> None:
     health = ParseServerHealth(
-        local_healthy=False,
-        local_supported_tiers=["flash"],
-        remote_healthy=False,
-        remote_supported_tiers=[],
+        local=ProbeState(probe=ProbeResult(tiers=["flash"])),
+        remote=ProbeState(probe=ProbeResult()),
     )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
 
@@ -379,16 +377,45 @@ def test_default_tier_error_omits_remote_when_remote_is_unhealthy(monkeypatch: p
     assert "--tier flash" in exc_info.value.message
 
 
+def test_remote_default_tier_preserves_probe_invalid_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    health = ParseServerHealth(
+        remote=ProbeState(probe=ProbeResult(error_code="invalid_api_key", error_msg="Invalid or missing API key")),
+    )
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
+
+    with pytest.raises(ParseFailure) as exc_info:
+        _resolve_default_tier(remote=True)
+
+    assert exc_info.value.code == "invalid_api_key"
+    assert exc_info.value.message == "Remote parse-server authentication failed: Invalid or missing API key"
+    assert exc_info.value.param == "parse_server.remote.api_key"
+
+
+def test_self_hosted_default_tier_preserves_probe_invalid_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    health = ParseServerHealth(
+        local=ProbeState(probe=ProbeResult(error_code="invalid_api_key", error_msg="Invalid or missing API key")),
+        local_mode="self_hosted",
+    )
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
+
+    with pytest.raises(ParseFailure) as exc_info:
+        _resolve_default_tier(remote=False)
+
+    assert exc_info.value.code == "invalid_api_key"
+    assert exc_info.value.message == "Local self-hosted parse-server authentication failed: Invalid or missing API key"
+    assert exc_info.value.param == "parse_server.local.self_hosted_api_key"
+
+
 def test_parsing_rule_default_tier_allows_flash_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    health = ParseServerHealth(local_supported_tiers=["medium", "xhigh"])
+    health = ParseServerHealth(local=ProbeState(probe=ProbeResult(tiers=["medium", "xhigh"])))
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
 
     assert _resolve_parsing_rule_default_tier() == "xhigh"
 
-    health.local_supported_tiers = ["medium", "high", "xhigh"]
+    health.local.probe = ProbeResult(tiers=["medium", "high", "xhigh"])
     assert _resolve_parsing_rule_default_tier() == "high"
 
-    health.local_supported_tiers = ["flash"]
+    health.local.probe = ProbeResult(tiers=["flash"])
     assert _resolve_parsing_rule_default_tier() == "flash"
 
 
@@ -429,15 +456,48 @@ def test_parse_server_health_probe_disables_env_proxy_for_local_urls(monkeypatch
         async def __aexit__(self, *args: object) -> None:
             return None
 
-        async def get(self, url: str) -> _Response:
+        async def get(self, url: str, headers: dict[str, str] | None = None) -> _Response:
             return _Response()
 
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.httpx.AsyncClient", _AsyncClient)
     checker = ParseServerHealthCheck(None, interval_sec=1, probe_timeout_sec=2, startup_grace_sec=3, stop_timeout_sec=4)
 
-    assert asyncio.run(checker._probe("http://127.0.0.1:16580")) == (True, ["high"])
-    assert asyncio.run(checker._probe("https://staging.mineru.org.cn/api")) == (True, ["high"])
+    assert asyncio.run(checker._probe("http://127.0.0.1:16580")) == ProbeResult(healthy=True, tiers=["high"])
+    assert asyncio.run(checker._probe("https://staging.mineru.org.cn/api")) == ProbeResult(healthy=True, tiers=["high"])
     assert calls == [False, True]
+
+
+def test_parse_server_health_probe_maps_auth_error_and_passes_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen_headers: list[dict[str, str] | None] = []
+
+    class _Response:
+        status_code = 401
+        text = '{"error":{"code":"invalid_api_key","message":"Invalid or missing API key"}}'
+
+        def json(self) -> dict[str, dict[str, str]]:
+            return {"error": {"code": "invalid_api_key", "message": "Invalid or missing API key"}}
+
+    class _AsyncClient:
+        def __init__(self, *, timeout: int, trust_env: bool) -> None:
+            return None
+
+        async def __aenter__(self) -> "_AsyncClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def get(self, url: str, headers: dict[str, str] | None = None) -> _Response:
+            seen_headers.append(headers)
+            return _Response()
+
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.httpx.AsyncClient", _AsyncClient)
+    checker = ParseServerHealthCheck(None, interval_sec=1, probe_timeout_sec=2, startup_grace_sec=3, stop_timeout_sec=4)
+
+    result = asyncio.run(checker._probe("https://staging.mineru.org.cn/api", api_key="bad-key"))
+
+    assert result == ProbeResult(error_code="invalid_api_key", error_msg="Invalid or missing API key")
+    assert seen_headers == [{"Authorization": "Bearer bad-key"}]
 
 
 def test_start_managed_parse_server_selects_port_and_writes_logs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -892,7 +952,86 @@ def test_remote_api_target_prefers_config_api_key_over_env(monkeypatch: pytest.M
     monkeypatch.setenv("MINERU_API_KEY", "env-key")
     monkeypatch.setattr(
         "mineru.doclib.background.parse_server_health.get_health",
-        lambda: SimpleNamespace(remote_healthy=True),
+        lambda: ParseServerHealth(remote=ProbeState(probe=ProbeResult(healthy=True))),
+    )
+
+    asyncio.run(_run())
+
+
+def test_remote_api_target_preserves_probe_invalid_api_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    class _ConfigService:
+        async def get(self, key: str) -> str:
+            values = {
+                "parse_server.remote.url": "https://mineru.net/api",
+                "parse_server.remote.api_key": "bad-key",
+            }
+            return values[key]
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_ConfigService(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+
+        with pytest.raises(ParseFailure) as exc_info:
+            await service._resolve_api_target("remote", "high")
+
+        assert exc_info.value.code == "invalid_api_key"
+        assert exc_info.value.message == "Remote parse-server authentication failed: Invalid or missing API key"
+        assert exc_info.value.param == "parse_server.remote.api_key"
+
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.get_health",
+        lambda: ParseServerHealth(
+            remote=ProbeState(probe=ProbeResult(error_code="invalid_api_key", error_msg="Invalid or missing API key"))
+        ),
+    )
+
+    asyncio.run(_run())
+
+
+def test_self_hosted_api_target_preserves_probe_invalid_api_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    class _ConfigService:
+        async def get(self, key: str) -> str:
+            values = {
+                "parse_server.local.mode": "self_hosted",
+                "parse_server.local.self_hosted_api_key": "bad-key",
+            }
+            return values[key]
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_ConfigService(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+
+        with pytest.raises(ParseFailure) as exc_info:
+            await service._resolve_api_target("local", "high")
+
+        assert exc_info.value.code == "invalid_api_key"
+        assert exc_info.value.message == "Local self-hosted parse-server authentication failed: Invalid or missing API key"
+        assert exc_info.value.param == "parse_server.local.self_hosted_api_key"
+
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.get_health",
+        lambda: ParseServerHealth(
+            local=ProbeState(
+                url="http://127.0.0.1:16580",
+                probe=ProbeResult(error_code="invalid_api_key", error_msg="Invalid or missing API key"),
+            ),
+            local_mode="self_hosted",
+            self_hosted_url="http://127.0.0.1:16580",
+        ),
     )
 
     asyncio.run(_run())

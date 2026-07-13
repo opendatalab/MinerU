@@ -32,25 +32,33 @@ MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
 
 
 @dataclass
+class ProbeResult:
+    healthy: bool = False
+    tiers: list[Tier] = field(default_factory=list)
+    error_code: str | None = None
+    error_msg: str | None = None
+
+
+@dataclass
+class ProbeState:
+    url: str | None = None
+    probe: ProbeResult = field(default_factory=ProbeResult)
+    last_probe_at: int | None = None
+    last_success_at: int | None = None
+    last_failure_at: int | None = None
+
+
+@dataclass
 class ParseServerHealth:
-    local_healthy: bool = False
+    local: ProbeState = field(default_factory=ProbeState)
+    remote: ProbeState = field(default_factory=ProbeState)
     local_starting: bool = False
     local_started_at: float = 0.0
-    local_supported_tiers: list[Tier] = field(default_factory=list)
     local_mode: str = "disabled"
     self_hosted_url: str | None = None
     managed_url: str = DEFAULT_MANAGED_URL
     managed_tier: Tier | None = None
     running_managed_tier: Tier | None = None
-    local_last_probe_at: int | None = None
-    local_last_success_at: int | None = None
-    local_last_failure_at: int | None = None
-    remote_healthy: bool = False
-    remote_url: str | None = None
-    remote_last_probe_at: int | None = None
-    remote_last_success_at: int | None = None
-    remote_last_failure_at: int | None = None
-    remote_supported_tiers: list[Tier] = field(default_factory=list)
     restart_count: int = 0
     managed_proc: subprocess.Popen | None = None
 
@@ -271,39 +279,46 @@ class ParseServerHealthCheck:
             if health.local_mode != "disabled":
                 url = self._local_url(health)
                 if url:
-                    healthy, tiers = await self._probe(url)
+                    api_key = None
+                    if health.local_mode == "self_hosted":
+                        api_key = (await self.config_svc.get("parse_server.local.self_hosted_api_key")) or None
+                    probe = await self._probe(url, api_key=api_key)
                     now_ms = int(time.time() * 1000)
-                    health.local_last_probe_at = now_ms
-                    health.local_healthy = healthy
-                    health.local_supported_tiers = tiers
-                    if healthy:
-                        health.local_last_success_at = now_ms
+                    health.local.url = url
+                    health.local.probe = probe
+                    health.local.last_probe_at = now_ms
+                    if probe.healthy:
+                        health.local.last_success_at = now_ms
                         health.local_starting = False
                     else:
-                        health.local_last_failure_at = now_ms
+                        health.local.last_failure_at = now_ms
+                else:
+                    health.local = ProbeState()
+            else:
+                health.local = ProbeState()
 
             # probe remote
             remote_url = cast(str, await self.config_svc.get("parse_server.remote.url"))
-            health.remote_url = remote_url
-            healthy, tiers = await self._probe(remote_url)
+            remote_api_key = (await self.config_svc.get("parse_server.remote.api_key")) or None
+            probe = await self._probe(remote_url, api_key=remote_api_key)
             now_ms = int(time.time() * 1000)
-            health.remote_last_probe_at = now_ms
-            health.remote_healthy = healthy
-            health.remote_supported_tiers = tiers
-            if healthy:
-                health.remote_last_success_at = now_ms
+            health.remote.url = remote_url
+            health.remote.probe = probe
+            health.remote.last_probe_at = now_ms
+            if probe.healthy:
+                health.remote.last_success_at = now_ms
             else:
-                health.remote_last_failure_at = now_ms
+                health.remote.last_failure_at = now_ms
 
             # managed mode: restart if crashed (skip if still starting — give it 30s)
-            if health.local_mode == "managed" and not health.local_healthy:
+            if health.local_mode == "managed" and not health.local.probe.healthy:
                 if health.local_starting:
                     elapsed = asyncio.get_event_loop().time() - health.local_started_at
                     if elapsed < self.startup_grace_sec:
                         continue  # still loading models, don't restart
                 logger.warning("Managed parse-server is unhealthy, attempting restart")
                 await self._try_restart_managed(health)
-            elif health.local_mode == "managed" and health.local_healthy:
+            elif health.local_mode == "managed" and health.local.probe.healthy:
                 await self._try_restart_managed_for_tier_change(health, desired_managed_tier)
 
             await asyncio.sleep(self.interval_sec)
@@ -365,13 +380,14 @@ class ParseServerHealthCheck:
         except Exception as exc:
             logger.error(f"Failed to restart managed parse-server: {exc}")
 
-    async def _probe(self, base_url: str) -> tuple[bool, list[Tier]]:
+    async def _probe(self, base_url: str, *, api_key: str | None = None) -> ProbeResult:
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
         try:
             async with httpx.AsyncClient(
                 timeout=self.probe_timeout_sec,
                 trust_env=should_trust_env_for_url(base_url),
             ) as client:
-                resp = await client.get(f"{base_url}/v1/tiers")
+                resp = await client.get(f"{base_url}/v1/tiers", headers=headers)
                 if resp.status_code == 200:
                     data = resp.json()
                     tiers: list[Tier] = []
@@ -379,10 +395,18 @@ class ParseServerHealthCheck:
                         tier_id = t.get("id")
                         if tier_id in TIERS:
                             tiers.append(cast(Tier, tier_id))
-                    return True, tiers
-        except Exception:
-            pass
-        return False, []
+                    return ProbeResult(healthy=True, tiers=tiers)
+                error_code, error_msg = _probe_error(resp)
+                return ProbeResult(error_code=error_code, error_msg=error_msg)
+        except httpx.TimeoutException as exc:
+            return ProbeResult(error_code="parse_server_unavailable", error_msg=str(exc) or "Parse-server probe timed out.")
+        except httpx.TransportError as exc:
+            return ProbeResult(
+                error_code="parse_server_unavailable",
+                error_msg=str(exc) or "Parse-server probe transport failed.",
+            )
+        except Exception as exc:
+            return ProbeResult(error_code="parse_server_unavailable", error_msg=str(exc) or "Parse-server probe failed.")
 
     @staticmethod
     def _local_url(health: ParseServerHealth) -> str | None:
@@ -397,3 +421,36 @@ class ParseServerHealthCheck:
         health = get_health()
         stop_managed_parse_server(health.managed_proc, timeout_sec=self.stop_timeout_sec, reason="health check stop")
         health.managed_proc = None
+
+
+def _probe_error(resp: httpx.Response) -> tuple[str, str]:
+    data: dict[str, object] = {}
+    try:
+        loaded = resp.json()
+        if isinstance(loaded, dict):
+            data = loaded
+    except Exception:
+        data = {}
+
+    error = data.get("error")
+    if isinstance(error, dict):
+        code = str(error.get("code") or "http_error")
+        message = str(error.get("message") or error)
+        return code, message
+
+    remote_message = _remote_auth_message(data)
+    if resp.status_code == 401 or remote_message is not None:
+        return "invalid_api_key", remote_message or "API key invalid or remote authentication failed."
+
+    text = resp.text[:500]
+    return "http_error", f"HTTP {resp.status_code}: {text}"
+
+
+def _remote_auth_message(data: dict[str, object]) -> str | None:
+    msg_code = data.get("msgCode")
+    msg = data.get("msg")
+    if msg_code == "A0202":
+        return str(msg or "user authenticate failed")
+    if isinstance(msg, str) and "authenticate failed" in msg.lower():
+        return msg
+    return None
