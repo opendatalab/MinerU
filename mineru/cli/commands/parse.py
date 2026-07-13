@@ -199,7 +199,7 @@ def _parse(
         if json_mode:
             _emit_parse_json_response(result, None)
         else:
-            emit_result(CliContext(json_mode=False), _prepare_parse_summary_output(result))
+            emit_result(CliContext(json_mode=False), _prepare_parse_summary_output(result, exit_code=0))
         return
 
     # poll until done or timeout
@@ -271,10 +271,14 @@ def _parse(
             parse_overrides={"status": latest_wait_status, "tip": "Re-run the same command to continue waiting."},
         )
     else:
-        _emit_notice(
-            f"Parse still in progress (tier={req_tier}). Check status with: mineru show file {file_path}", json_mode=json_mode
+        emit_result(
+            CliContext(json_mode=False),
+            _prepare_parse_summary_output(
+                result.model_copy(update={"status": latest_wait_status}),
+                waited_seconds=wait,
+                exit_code=1,
+            ),
         )
-        emit_result(CliContext(json_mode=False), cli_ok(exit_code=1))
 
 
 def _record_parse_wait(client: DoclibClient, parse_ids: list[int], status: str, started_at: float) -> None:
@@ -424,12 +428,38 @@ def _parse_json_payload(
     return payload
 
 
-def _prepare_parse_summary_output(parse_result: ParseResponse) -> CliResult[ParseSummaryOutput] | CliResult[None]:
+def _prepare_parse_summary_output(
+    parse_result: ParseResponse,
+    *,
+    waited_seconds: int | None = None,
+    exit_code: int = 0,
+) -> CliResult[ParseSummaryOutput] | CliResult[None]:
     status = parse_result.status
     tip = parse_result.tip or ""
-    if status == "pending":
-        return cli_ok(ParseSummaryOutput(f"Parse {status}... {tip}"), render=_render_parse_summary)
+    if status in ("pending", "parsing"):
+        return cli_ok(
+            ParseSummaryOutput(_format_parse_in_progress(parse_result, waited_seconds=waited_seconds, tip=tip)),
+            render=_render_parse_summary,
+            exit_code=exit_code,
+        )
     return cli_ok(ParseSummaryOutput(f"Parse complete (tier={parse_result.tier}) {tip}"), render=_render_parse_summary)
+
+
+def _format_parse_in_progress(parse_result: ParseResponse, *, waited_seconds: int | None, tip: str = "") -> str:
+    elapsed = f" after {waited_seconds}s" if waited_seconds is not None else ""
+    lines = [f"Parse still in progress{elapsed} (tier={parse_result.tier})."]
+    parse_ids = parse_result.wait_parse_ids
+    if parse_ids:
+        label = "Parse ID" if len(parse_ids) == 1 else "Parse IDs"
+        lines.append(f"{label}: {', '.join(str(parse_id) for parse_id in parse_ids)}")
+        if len(parse_ids) == 1:
+            lines.append(f"Check status: mineru show parse {parse_ids[0]}")
+        else:
+            lines.append("Check status:")
+            lines.extend(f"  mineru show parse {parse_id}" for parse_id in parse_ids)
+    if tip:
+        lines.append(tip)
+    return "\n".join(lines)
 
 
 def _render_parse_summary(data: ParseSummaryOutput) -> str:
