@@ -1159,6 +1159,69 @@ def test_parse_json_no_wait_wraps_parse_and_null_content(monkeypatch: Any, tmp_p
     assert payload["content"] is None
 
 
+def test_parse_no_wait_text_prints_parse_id_tracking_hint(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 90
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            return ParseResponse(
+                sha256="a" * 64,
+                tier="high",
+                page_range="1~1",
+                status="pending",
+                wait_parse_ids=[4686],
+                created_parse_ids=[4686],
+            )
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["parse", str(source), "--tier", "high", "--remote", "--no-wait"])
+
+    assert result.exit_code == 0
+    assert result.output == (
+        "Parse still in progress (tier=high).\n"
+        "Parse ID: 4686\n"
+        "Check status: mineru show parse 4686\n"
+    )
+
+
+def test_parse_no_wait_text_prints_multiple_parse_id_tracking_hints(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 90
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            return ParseResponse(
+                sha256="a" * 64,
+                tier="high",
+                page_range="1~2",
+                status="pending",
+                wait_parse_ids=[4686, 4687],
+                created_parse_ids=[4687],
+                reused_parse_ids=[4686],
+            )
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["parse", str(source), "--tier", "high", "--remote", "--no-wait"])
+
+    assert result.exit_code == 0
+    assert result.output == (
+        "Parse still in progress (tier=high).\n"
+        "Parse IDs: 4686, 4687\n"
+        "Check status:\n"
+        "  mineru show parse 4686\n"
+        "  mineru show parse 4687\n"
+    )
+
+
 def test_parse_expands_user_home_in_input_path(monkeypatch: Any, tmp_path: Path) -> None:
     home = tmp_path / "home"
     source = home / "mineru-e2e-test" / "sample.pdf"
@@ -1400,7 +1463,11 @@ def test_parse_wait_timeout_text_returns_nonzero_exit(monkeypatch: Any, tmp_path
     result = runner.invoke(app, ["parse", str(source), "--tier", "flash", "--wait", "1"])
 
     assert result.exit_code == 1
-    assert "Parse still in progress" in result.output
+    assert result.output == (
+        "Parse still in progress after 1s (tier=flash).\n"
+        "Parse ID: 3\n"
+        "Check status: mineru show parse 3\n"
+    )
 
 
 def test_parse_wait_timeout_json_uses_latest_parsing_status(monkeypatch: Any, tmp_path: Path) -> None:
