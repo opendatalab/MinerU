@@ -109,11 +109,6 @@ Here are the environment variables and their descriptions:
     * Used to specify configuration file path
     * defaults to `mineru.json` in user directory, can specify other configuration file paths through environment variables.
   
-- `MINERU_FORMULA_CH_SUPPORT`:
-    * Used to enable Chinese formula parsing optimization (experimental feature)
-    * Default is `false`, can be set to `true` via environment variable to enable Chinese formula parsing optimization.
-    * Only effective for local Hybrid model execution.
-  
 - `MINERU_TABLE_MERGE_ENABLE`:
     * Used to enable table merging functionality
     * Default is `true`, can be set to `false` via environment variable to disable table merging functionality.

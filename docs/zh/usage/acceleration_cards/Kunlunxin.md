@@ -38,7 +38,6 @@ docker run -u root --name mineru_docker \
     -v /usr/local/bin/xpu-smi:/usr/local/bin/xpu-smi \
     -w /workspace \
     -e MINERU_MODEL_SOURCE=local \
-    -e MINERU_FORMULA_CH_SUPPORT=true \
     -e MINERU_VLLM_DEVICE=kxpu \
     -it mineru:kxpu-vllm-latest \
     /bin/bash

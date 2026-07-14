@@ -12,7 +12,6 @@ import torch
 from loguru import logger
 
 from ..model.layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
-from ..model.mfr.pp_formulanet_plus_m.predict_formula import FormulaRecognizer
 from ..model.mfr.unimernet.Unimernet import UnimernetModel
 from ..model.ocr.pytorch_paddle import PytorchPaddleOCR
 from ..model.table.cls.mineru_table_ori_cls import MineruTableOrientationClsModel
@@ -87,24 +86,9 @@ def run_ocr_inference(inference_callable: Callable[..., Any], *args: Any, **kwar
     return _run_with_inference_lock(LOCAL_MODEL_OCR_INFERENCE_LOCK, inference_callable, *args, **kwargs)
 
 
-MFR_MODEL = os.getenv("MINERU_FORMULA_CH_SUPPORT", "False")
-if MFR_MODEL.lower() in ["true", "1", "yes"]:
-    MFR_MODEL = "pp_formulanet_plus_m"
-elif MFR_MODEL.lower() in ["false", "0", "no"]:
-    MFR_MODEL = "unimernet_small"
-else:
-    logger.warning(f"Invalid MINERU_FORMULA_CH_SUPPORT value: {MFR_MODEL}, set to default 'False'")
-    MFR_MODEL = "unimernet_small"
-
-
 def _resolve_mfr_model_path() -> ModelPath:
-    """解析当前公式识别模型路径，集中维护 MFR_MODEL 到模型目录枚举的映射关系。"""
-    if MFR_MODEL == "unimernet_small":
-        return PDF_EXTRACT_KIT.unimernet_small
-    if MFR_MODEL == "pp_formulanet_plus_m":
-        return PDF_EXTRACT_KIT.pp_formulanet_plus_m
-    logger.error("MFR model name not allow")
-    exit(1)
+    """解析公式识别模型路径。"""
+    return PDF_EXTRACT_KIT.unimernet_small
 
 
 def table_orientation_cls_model_init() -> MineruTableOrientationClsModel:
@@ -142,15 +126,8 @@ def wireless_table_model_init(lang: str | None = None) -> PaddleTableModel:
     return table_model
 
 
-def mfr_model_init(weight_dir: str, device: str | torch.device = "cpu") -> UnimernetModel | FormulaRecognizer:
-    if MFR_MODEL == "unimernet_small":
-        mfr_model = UnimernetModel(weight_dir, device)
-    elif MFR_MODEL == "pp_formulanet_plus_m":
-        mfr_model = FormulaRecognizer(weight_dir, device)
-    else:
-        logger.error("MFR model name not allow")
-        exit(1)
-    return mfr_model
+def mfr_model_init(weight_dir: str, device: str | torch.device = "cpu") -> UnimernetModel:
+    return UnimernetModel(weight_dir, device)
 
 
 def pp_doclayout_v2_model_init(weight: str, device: str | torch.device = "cpu") -> PPDocLayoutV2LayoutModel:
@@ -356,7 +333,7 @@ class HybridLocalModelContext:
             device=self.device,
         )
 
-    def get_mfr_model(self) -> UnimernetModel | FormulaRecognizer:
+    def get_mfr_model(self) -> UnimernetModel:
         """获取公式识别原子模型，统一复用当前公式模型配置和设备。"""
         mfr_model_path = _resolve_mfr_model_path()
         return self.atom_model_manager.get_atom_model(

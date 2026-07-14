@@ -4,13 +4,15 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from ..config import config
 from ..types import Tier, validate_tier
 
 if TYPE_CHECKING:
     from ..config import ModelSource
+
+DownloadMode = Literal["full", "required_paths"]
 
 
 def _join_model_path(*parts: str) -> str:
@@ -52,6 +54,7 @@ class ModelRepo:
     local_name: str
     repos: dict[str, str]
     paths: dict[str, str]
+    download_mode: DownloadMode = "full"
 
     def __getattr__(self, name: str) -> ModelPath:
         try:
@@ -85,6 +88,7 @@ class ModelRepo:
 PDF_EXTRACT_KIT = ModelRepo(
     name="PDF-Extract-Kit-1.0",
     local_name="PDF-Extract-Kit-1.0",
+    download_mode="required_paths",
     repos={
         "huggingface": "opendatalab/PDF-Extract-Kit-1.0",
         "modelscope": "OpenDataLab/PDF-Extract-Kit-1.0",
@@ -92,7 +96,6 @@ PDF_EXTRACT_KIT = ModelRepo(
     paths={
         "pp_doclayout_v2": "models/Layout/PP-DocLayoutV2",
         "unimernet_small": "models/MFR/unimernet_hf_small_2503",
-        "pp_formulanet_plus_m": "models/MFR/pp_formulanet_plus_m",
         "pytorch_paddle": "models/OCR/paddleocr_torch",
         "slanet_plus": "models/TabRec/SlanetPlus/slanet-plus.onnx",
         "unet_structure": "models/TabRec/UnetStructure/unet.onnx",
@@ -158,6 +161,7 @@ __all__ = [
     "MINERU_2_5_PRO_2605_1_2B",
     "MODEL_REPOS",
     "MODEL_REPOS_BY_NAME",
+    "DownloadMode",
     "ModelPath",
     "ModelRepo",
     "PDF_EXTRACT_KIT",

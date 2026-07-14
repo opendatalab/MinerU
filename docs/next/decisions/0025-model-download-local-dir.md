@@ -186,6 +186,7 @@ class ModelRepo:
     local_name: str
     repos: dict[str, str]
     paths: dict[str, str]
+    download_mode: Literal["full", "required_paths"] = "full"
 
     def ensure(self, *, source: ModelSource | None = None) -> Path:
         ...
@@ -217,7 +218,6 @@ PDF_EXTRACT_KIT = ModelRepo(
     paths={
         "pp_doclayout_v2": "models/Layout/PP-DocLayoutV2",
         "unimernet_small": "models/MFR/unimernet_hf_small_2503",
-        "pp_formulanet_plus_m": "models/MFR/pp_formulanet_plus_m",
         "pytorch_paddle": "models/OCR/paddleocr_torch",
         "slanet_plus": "models/TabRec/SlanetPlus/slanet-plus.onnx",
         "unet_structure": "models/TabRec/UnetStructure/unet.onnx",
@@ -267,6 +267,13 @@ REPOS_FOR_TIER = {
 
 repo registry 不反向依赖 tier。tier 只选择需要的 repo 集合，repo 自身仍只描述模型仓库。
 
+repo 同时声明默认下载策略:
+
+- `download_mode="full"`: `download_model_repo(repo)` 下载完整仓库。
+- `download_mode="required_paths"`: `download_model_repo(repo)` 只下载 `repo.required_paths()` 对应的文件/目录。
+
+当前 `PDF-Extract-Kit-1.0` 使用 `required_paths`，避免拉取仓库中未被 runtime 使用的大量历史/可选权重。`MinerU2.5-Pro-2605-1.2B` 保持 `full`，因为 VLM 模型加载通常需要完整 tokenizer/config/weights 文件集，registry 中的 paths 只作为 readiness marker。
+
 ### 7. 下载 API
 
 提供两个公开下载 API:
@@ -293,7 +300,7 @@ def _download_model(
 
 规则:
 
-- `download_model_repo` 下载整仓，并验证 repo 的完整 required paths。
+- `download_model_repo` 按 `repo.download_mode` 下载整仓或 required paths，并验证 repo 的完整 required paths。
 - `download_model_files` 只下载指定子集，并只验证本次请求的 paths。
 - 文件路径直接加入 `allow_patterns`。
 - 目录路径展开为 `path` 和 `path/*`。

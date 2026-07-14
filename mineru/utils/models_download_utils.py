@@ -164,10 +164,11 @@ def download_model_repo(repo: ModelRepo, *, source: str | None = None, local_as_
             _raise_not_ready(repo, result)
         return result.root
 
+    relative_paths = [path.relative_path for path in repo.required_paths()] if repo.download_mode == "required_paths" else None
     lock_path = repo.lock_path()
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with FileLock(str(lock_path)):
-        _snapshot_download(resolved_source, repo, None)
+        _snapshot_download(resolved_source, repo, None if relative_paths is None else _path_patterns(relative_paths))
         result = verify_model_repo(repo)
         if not result.ready:
             _raise_not_ready(repo, result)
