@@ -44,6 +44,7 @@ _ERROR_TYPE_MAP: dict[str, ErrorType] = {
     "doc_not_found": "invalid_request_error",
     "page_not_cached": "invalid_request_error",
     "parse_server_dependency_missing": "invalid_request_error",
+    "parse_server_model_not_ready": "invalid_request_error",
     "tier_not_cached": "invalid_request_error",
     "bbox_not_available": "invalid_request_error",
     "context_not_applicable": "invalid_request_error",

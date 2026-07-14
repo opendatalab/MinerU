@@ -35,6 +35,7 @@ DOCLIB_CONTRACT_ERROR_CODES = {
     "not_cached",
     "page_not_cached",
     "parse_page_remap_failed",
+    "parse_server_model_not_ready",
     "parse_server_unavailable",
     "quality_tier_unavailable",
     "rule_not_found",

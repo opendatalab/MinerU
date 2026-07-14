@@ -25,6 +25,8 @@ from ..render import render_markdown
 from ..render.markdown import blocks_to_markdown
 from ..render.office.output import blocks_to_markdown as office_blocks_to_markdown
 from ..types import EMPTY_BBOX, TIERS, Block, PageInfo, Span, Tier, select_highest_cached_tier
+from ..utils.model_registry import ModelRepo, model_repos_for_tier
+from ..utils.models_download_utils import verify_model_repo
 from ..utils.pdf_document import PDFDocument
 from ..version import __version__
 from .background.parse_server_health import get_health, get_managed_parse_server_tier
@@ -1532,6 +1534,32 @@ def _ensure_managed_parse_server_tier_available(tier: Tier, param: str) -> None:
         ensure_tier_runtime_dependencies(tier)
     except TierDependencyError as exc:
         raise InvalidRequestError("parse_server_dependency_missing", str(exc), param) from exc
+    _ensure_managed_parse_server_models_ready(tier, param)
+
+
+def _ensure_managed_parse_server_models_ready(tier: Tier, param: str) -> None:
+    missing_repos: list[str] = []
+    for repo in model_repos_for_tier(tier):
+        result = verify_model_repo(repo)
+        if result.ready:
+            continue
+        missing_repos.append(_format_missing_model_repo(repo, result.missing_paths))
+
+    if not missing_repos:
+        return
+
+    details = "; ".join(missing_repos)
+    raise InvalidRequestError(
+        "parse_server_model_not_ready",
+        f"Local managed tier '{tier}' requires model files that are not ready. {details}. "
+        f"Run: mineru-kit models download --tier {tier}",
+        param,
+    )
+
+
+def _format_missing_model_repo(repo: ModelRepo, missing_paths: list[str]) -> str:
+    missing = ", ".join(missing_paths)
+    return f"{repo.name} missing: {missing}"
 
 
 def _validate_managed_parse_server_tier(value: str, param: str) -> Tier:

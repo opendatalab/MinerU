@@ -15,6 +15,7 @@ from mineru.doclib.app import _assert_required_schema
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.server import _tail_log, _write_temp_asset
 from mineru.parser import tier as parser_tier
+from mineru.utils import model_registry
 from mineru.version import __version__
 
 
@@ -102,6 +103,53 @@ def test_config_set_rejects_invalid_known_config_values(key: str, value: str, mo
     payload = response.json()
     assert payload["error"]["code"] == "invalid_config_value"
     assert payload["error"]["param"] == "value"
+    assert config_response.json()["source"] == "default"
+
+
+def test_config_set_managed_tier_rejects_missing_models(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def _skip_background_task(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
+    monkeypatch.setattr("mineru.doclib.server.ensure_tier_runtime_dependencies", lambda tier: None)
+    monkeypatch.setattr(model_registry.config.model, "base_dir", str(tmp_path / "models"))
+
+    cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
+    with TestClient(doclib_app.create_app(cfg)) as client:
+        response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "medium"})
+        config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "parse_server_model_not_ready"
+    assert payload["error"]["param"] == "parse_server.local.managed_tier"
+    assert "PDF-Extract-Kit-1.0" in payload["error"]["message"]
+    assert "mineru-kit models download --tier medium" in payload["error"]["message"]
+    assert config_response.json()["value"] == "high"
+    assert config_response.json()["source"] == "default"
+
+
+def test_config_set_managed_mode_rejects_missing_models_for_current_tier(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def _skip_background_task(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
+    monkeypatch.setattr("mineru.doclib.server.ensure_tier_runtime_dependencies", lambda tier: None)
+    monkeypatch.setattr(model_registry.config.model, "base_dir", str(tmp_path / "models"))
+
+    cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
+    with TestClient(doclib_app.create_app(cfg)) as client:
+        response = client.put("/api/v1/configs/parse_server.local.mode", json={"value": "managed"})
+        config_response = client.get("/api/v1/configs/parse_server.local.mode")
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "parse_server_model_not_ready"
+    assert payload["error"]["param"] == "parse_server.local.mode"
+    assert "mineru-kit models download --tier high" in payload["error"]["message"]
+    assert config_response.json()["value"] == "disabled"
     assert config_response.json()["source"] == "default"
 
 
@@ -225,15 +273,17 @@ def test_setup_logging_routes_application_logs_to_rotating_file_without_stderr_d
         assert mineru_rotating_handlers[0].baseFilename == str(log_path)
         assert mineru_plain_stream_handlers == []
         assert mineru_logger.propagate is False
-        assert [handler.baseFilename for handler in uvicorn_error_logger.handlers if isinstance(handler, RotatingFileHandler)] == [
-            str(log_path)
+        uvicorn_error_log_paths = [
+            handler.baseFilename for handler in uvicorn_error_logger.handlers if isinstance(handler, RotatingFileHandler)
         ]
+        assert uvicorn_error_log_paths == [str(log_path)]
         assert [handler.baseFilename for handler in warnings_logger.handlers if isinstance(handler, RotatingFileHandler)] == [
             str(log_path)
         ]
-        assert [handler.baseFilename for handler in uvicorn_access_logger.handlers if isinstance(handler, RotatingFileHandler)] == [
-            str(access_log_path)
+        uvicorn_access_log_paths = [
+            handler.baseFilename for handler in uvicorn_access_logger.handlers if isinstance(handler, RotatingFileHandler)
         ]
+        assert uvicorn_access_log_paths == [str(access_log_path)]
     finally:
         _clear_test_loggers()
 
@@ -409,7 +459,9 @@ def test_managed_parse_server_startup_writes_stdout_and_stderr_logs(monkeypatch,
         return None
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
-    monkeypatch.setattr("mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582)
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582
+    )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
 
     with TestClient(doclib_app.create_app(cfg)) as client:
@@ -446,7 +498,9 @@ def test_managed_parse_server_startup_clears_invalid_tier_override(monkeypatch, 
         return None
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
-    monkeypatch.setattr("mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582)
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582
+    )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
 
     cfg = PatchedConfig(
@@ -524,7 +578,9 @@ def test_managed_parse_server_shutdown_uses_health_proc(monkeypatch, tmp_path) -
         return None
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
-    monkeypatch.setattr("mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582)
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582
+    )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
 
     with TestClient(doclib_app.create_app(cfg)) as client:

@@ -112,8 +112,10 @@ MINERU_2_5_PRO_2605_1_2B = ModelRepo(
     },
     paths={
         "config_json": "config.json",
+        "model_safetensors": "model.safetensors",
         "preprocessor_config_json": "preprocessor_config.json",
         "tokenizer_config_json": "tokenizer_config.json",
+        "tokenizer_json": "tokenizer.json",
     },
 )
 

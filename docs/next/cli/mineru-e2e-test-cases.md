@@ -99,6 +99,25 @@ mineru --help
 
 执行 Agent 只调用 `mineru ...` 命令，不测试 `mineru-kit`，也不直接调用 Python 模块、内部 API 或数据库。
 
+### 2.2.1 本地模型准备
+
+本地 managed `medium`、`high` 和 `xhigh` 均要求模型文件已下载到 `config.model.base_dir`。模型准备属于测试环境 setup，不属于正式 `mineru` CLI case。
+
+在执行需要本地 quality tier 的 case 前，测试环境应先准备并验证目标模型:
+
+```bash
+cd ~/mineru-e2e-test
+source .venv/bin/activate
+mineru-kit models download --tier xhigh
+mineru-kit models verify --tier xhigh
+```
+
+说明:
+
+- `xhigh` 覆盖 `high` 和 `medium` 所需模型。
+- 如果需要验证模型未准备好的 config 拦截分支，应使用新的隔离 `MINERU_HOME`，或在测试开始前清空该隔离 HOME 下的 `models/` 目录。
+- 正式 case 执行阶段仍只调用 `mineru ...` 命令。
+
 ### 2.3 Fixture 生成方法
 
 fixture 准备阶段允许使用 shell 文件操作创建隔离测试数据。`mineru` 命令限制只适用于正式 case 执行阶段。
@@ -750,6 +769,78 @@ mineru config get parse_server.local.managed_tier --json
 - get stdout 为可直接解析的 JSON
 - get JSON 包含 `parse_server.local.managed_tier`
 - get JSON 中 value 为 `high`，并且 source 应体现 override 或等价覆盖来源
+
+### CONFIG-003B managed tier 模型未准备时拒绝配置
+
+隔离要求:
+
+- 使用独立 `MINERU_HOME` 执行本 case。
+- 该 `MINERU_HOME` 下的 `models/` 目录必须为空或不存在。
+- 不执行 `mineru-kit models download`。
+
+命令:
+
+```bash
+mineru config set parse_server.local.managed_tier medium
+mineru config get parse_server.local.managed_tier --json
+```
+
+预期:
+
+- 第一条命令 exit code = 1
+- 第一条命令输出可读错误
+- stdout 或 stderr 包含 `parse_server_model_not_ready`
+- stdout 或 stderr 包含 `mineru-kit models download --tier medium`
+- 第二条命令 exit code = 0
+- get JSON 中 `value` 仍为默认值 `high`，或保持该隔离 HOME 中原有值
+- 不包含 Python traceback
+
+### CONFIG-003C managed mode 模型未准备时拒绝启用
+
+隔离要求:
+
+- 使用独立 `MINERU_HOME` 执行本 case。
+- 该 `MINERU_HOME` 下的 `models/` 目录必须为空或不存在。
+- 不执行 `mineru-kit models download`。
+
+命令:
+
+```bash
+mineru config set parse_server.local.mode managed
+mineru config get parse_server.local.mode --json
+```
+
+预期:
+
+- 第一条命令 exit code = 1
+- 第一条命令输出可读错误
+- stdout 或 stderr 包含 `parse_server_model_not_ready`
+- stdout 或 stderr 包含 `mineru-kit models download --tier high`
+- 第二条命令 exit code = 0
+- get JSON 中 `value` 仍为默认值 `disabled`，或保持该隔离 HOME 中原有值
+- 不包含 Python traceback
+
+### CONFIG-003D 模型准备后允许启用 managed mode
+
+前置条件:
+
+- 使用已完成 `mineru-kit models download --tier medium` 和 `mineru-kit models verify --tier medium` 的 `MINERU_HOME`。
+
+命令:
+
+```bash
+mineru config set parse_server.local.managed_tier medium
+mineru config set parse_server.local.mode managed
+mineru config get parse_server.local.managed_tier --json
+mineru config get parse_server.local.mode --json
+```
+
+预期:
+
+- 四条命令均 exit code = 0
+- `managed_tier` get JSON 中 `value = medium`
+- `mode` get JSON 中 `value = managed`
+- 不包含 Python traceback
 
 ### CONFIG-004 unset 配置
 
@@ -3397,6 +3488,9 @@ mineru server start
 
 - CONFIG-001 查看配置
 - CONFIG-003 设置和读取配置
+- CONFIG-003B managed tier 模型未准备时拒绝配置
+- CONFIG-003C managed mode 模型未准备时拒绝启用
+- CONFIG-003D 模型准备后允许启用 managed mode
 - CONFIG-004 unset 配置
 - CONFIG-005 exclude-rules
 - CONFIG-006 旧 exclude 命令不可用

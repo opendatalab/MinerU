@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from mineru.utils import models_download_utils
-from mineru.utils.model_registry import ModelRepo
+from mineru.utils.model_registry import MINERU_2_5_PRO_2605_1_2B, ModelRepo
 
 
 def test_resolve_model_source_does_not_persist_env_auto(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -107,3 +107,24 @@ def test_download_model_repo_keeps_full_download_as_default(
         "repo": "full-repo",
         "patterns": None,
     }
+
+
+def test_vlm_repo_verify_requires_core_model_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+
+    repo_dir = MINERU_2_5_PRO_2605_1_2B.local_dir()
+    repo_dir.mkdir(parents=True)
+    for filename in ("config.json", "preprocessor_config.json", "tokenizer_config.json", "tokenizer.json"):
+        (repo_dir / filename).write_text("{}", encoding="utf-8")
+
+    missing_weight = models_download_utils.verify_model_repo(MINERU_2_5_PRO_2605_1_2B)
+
+    assert missing_weight.ready is False
+    assert missing_weight.missing_paths == ["model.safetensors"]
+
+    (repo_dir / "model.safetensors").write_bytes(b"weights")
+
+    ready = models_download_utils.verify_model_repo(MINERU_2_5_PRO_2605_1_2B)
+
+    assert ready.ready is True
+    assert ready.missing_paths == []

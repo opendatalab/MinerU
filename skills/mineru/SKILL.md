@@ -332,10 +332,16 @@ The following examples assume the current install tool is `uv tool`. If `mineru`
 
 Installing extras with `uv tool install --force --prerelease allow` can reinstall or upgrade the `mineru` package. Restart the MinerU server after installing extras so the CLI client, doclib server, and managed parse server use the same installed version.
 
+Managed local `medium`, `high`, and `xhigh` all require downloaded model files.
+The `medium` tier uses about 2 GB of disk space; `high` and `xhigh` use about 4 GB.
+Download the target tier models before switching `parse_server.local.mode` to `managed`.
+
 Enable managed local parsing for `medium`:
 
 ```bash
 uv tool install --force --prerelease allow "mineru[medium]"
+mineru-kit models download --tier medium
+mineru-kit models verify --tier medium
 mineru server restart
 mineru config set parse_server.local.managed_tier medium
 mineru config set parse_server.local.mode managed
@@ -346,6 +352,8 @@ Enable managed local parsing for `high`:
 
 ```bash
 uv tool install --force --prerelease allow "mineru[high]"
+mineru-kit models download --tier high
+mineru-kit models verify --tier high
 mineru server restart
 mineru config set parse_server.local.managed_tier high
 mineru config set parse_server.local.mode managed
@@ -356,6 +364,8 @@ Enable managed local parsing for `xhigh`:
 
 ```bash
 uv tool install --force --prerelease allow "mineru[xhigh]"
+mineru-kit models download --tier xhigh
+mineru-kit models verify --tier xhigh
 mineru server restart
 mineru config set parse_server.local.managed_tier xhigh
 mineru config set parse_server.local.mode managed
@@ -365,6 +375,7 @@ mineru server status --json
 Rules:
 
 - Determine how the current `mineru` command was installed, then install the extra through that same tool/environment.
+- Download and verify models for the target tier before enabling managed mode.
 - After installing extras, restart the MinerU server to avoid CLI/server version mismatch.
 - Set `parse_server.local.managed_tier` before `parse_server.local.mode=managed`.
 - Poll `mineru server status --json` and use managed parsing only after the target tier is healthy.
