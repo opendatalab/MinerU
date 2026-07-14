@@ -102,6 +102,11 @@ jobs:
       name: pypi
       url: https://pypi.org/project/mineru/${{ needs.build.outputs.version }}/
     steps:
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
       - name: Download validated wheel
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
@@ -113,7 +118,8 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
         run: |
-          python -m pip install --upgrade twine
+          python -m pip install --upgrade twine "packaging>=24.2"
+          python -m twine check --strict dist/*
           python -m twine upload dist/*
 
   github-release:

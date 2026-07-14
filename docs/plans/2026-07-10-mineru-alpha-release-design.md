@@ -26,7 +26,7 @@ The build job:
 5. installs the wheel without dependencies in a clean virtual environment and verifies its installed distribution version;
 6. uploads the validated wheel as a workflow artifact.
 
-The publishing job downloads exactly that artifact and publishes it with Twine, using the same PyPI API token authentication as the stable release workflow. The token is read from the `PYPI_TOKEN` GitHub secret through Twine's `TWINE_PASSWORD` environment variable. The job remains associated with the protected `pypi` GitHub environment.
+The publishing job downloads exactly that artifact and publishes it with Twine, using the same PyPI API token authentication as the stable release workflow. It uses Python 3.12 and explicitly installs `packaging>=24.2` so Twine can validate the PEP 639 license fields emitted in Core Metadata 2.4. The job runs the strict metadata check again before upload. The token is read from the `PYPI_TOKEN` GitHub secret through Twine's `TWINE_PASSWORD` environment variable. The job remains associated with the protected `pypi` GitHub environment.
 
 The final job creates a GitHub pre-release and attaches the same wheel. It runs only after the PyPI publishing job succeeds.
 
