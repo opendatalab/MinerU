@@ -778,6 +778,11 @@ mineru config get parse_server.local.managed_tier --json
 - 该 `MINERU_HOME` 下的 `models/` 目录必须为空或不存在。
 - 不执行 `mineru-kit models download`。
 
+错误输出说明:
+
+- `mineru config set` 当前使用普通文本输出，不支持 `--json`。
+- `parse_server_model_not_ready` 是服务端/API JSON error 的 `error.code`，不要求出现在本 CLI case 的 stdout 或 stderr 中。
+
 命令:
 
 ```bash
@@ -789,7 +794,7 @@ mineru config get parse_server.local.managed_tier --json
 
 - 第一条命令 exit code = 1
 - 第一条命令输出可读错误
-- stdout 或 stderr 包含 `parse_server_model_not_ready`
+- stdout 或 stderr 表明目标 tier 的模型文件未准备完成
 - stdout 或 stderr 包含 `mineru-kit models download --tier medium`
 - 第二条命令 exit code = 0
 - get JSON 中 `value` 仍为默认值 `high`，或保持该隔离 HOME 中原有值
@@ -814,7 +819,7 @@ mineru config get parse_server.local.mode --json
 
 - 第一条命令 exit code = 1
 - 第一条命令输出可读错误
-- stdout 或 stderr 包含 `parse_server_model_not_ready`
+- stdout 或 stderr 表明当前 managed tier 的模型文件未准备完成
 - stdout 或 stderr 包含 `mineru-kit models download --tier high`
 - 第二条命令 exit code = 0
 - get JSON 中 `value` 仍为默认值 `disabled`，或保持该隔离 HOME 中原有值
