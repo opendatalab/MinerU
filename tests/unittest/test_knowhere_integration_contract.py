@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -13,6 +14,19 @@ from mineru.integrations.knowhere.contract import (
     resolve_artifact_path,
 )
 from mineru.integrations.knowhere.runner import run_knowhere_export
+
+
+def test_pipeline_extra_declares_legacy_ocr_runtime_dependency() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    project = tomllib.loads(
+        (project_root / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    pipeline_dependencies = project["project"]["optional-dependencies"]["pipeline"]
+
+    assert any(
+        dependency.split(";", 1)[0].strip().startswith("six")
+        for dependency in pipeline_dependencies
+    )
 
 
 def _write_parser_outputs(
