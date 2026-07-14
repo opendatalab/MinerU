@@ -463,7 +463,7 @@ def test_parse_server_health_probe_disables_env_proxy_for_local_urls(monkeypatch
     checker = ParseServerHealthCheck(None, interval_sec=1, probe_timeout_sec=2, startup_grace_sec=3, stop_timeout_sec=4)
 
     assert asyncio.run(checker._probe("http://127.0.0.1:16580")) == ProbeResult(healthy=True, tiers=["high"])
-    assert asyncio.run(checker._probe("https://staging.mineru.org.cn/api")) == ProbeResult(healthy=True, tiers=["high"])
+    assert asyncio.run(checker._probe("https://mineru.net/api")) == ProbeResult(healthy=True, tiers=["high"])
     assert calls == [False, True]
 
 
@@ -494,7 +494,7 @@ def test_parse_server_health_probe_maps_auth_error_and_passes_api_key(monkeypatc
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.httpx.AsyncClient", _AsyncClient)
     checker = ParseServerHealthCheck(None, interval_sec=1, probe_timeout_sec=2, startup_grace_sec=3, stop_timeout_sec=4)
 
-    result = asyncio.run(checker._probe("https://staging.mineru.org.cn/api", api_key="bad-key"))
+    result = asyncio.run(checker._probe("https://mineru.net/api", api_key="bad-key"))
 
     assert result == ProbeResult(error_code="invalid_api_key", error_msg="Invalid or missing API key")
     assert seen_headers == [{"Authorization": "Bearer bad-key"}]

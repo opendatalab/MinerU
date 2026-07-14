@@ -176,7 +176,7 @@ def test_telemetry_service_preview_returns_next_period_body(tmp_path) -> None:
     asyncio.run(_run())
 
 
-def test_signed_headers_match_staging_api_contract() -> None:
+def test_signed_headers_match_official_api_contract() -> None:
     body = b'{"api_version":"v2"}'
     headers = signed_headers(body, timestamp=1_700_000_000_000)
 

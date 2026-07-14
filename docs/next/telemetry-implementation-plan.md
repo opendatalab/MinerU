@@ -22,10 +22,10 @@
 - duration bucket 不带 `error_code`。
 - 成功状态不带 `error_code`，不上传 `none`。
 
-第一版外部 metrics API 先按 `aaa.py` 中 staging 接口实现:
+第一版外部 metrics API 按正式接口实现:
 
 ```text
-POST https://staging.mineru.org.cn/metrics/v2/metrics
+POST https://mineru.net/metrics/v2/metrics
 ```
 
 请求规则:
@@ -80,7 +80,7 @@ mineru/doclib/telemetry/
 
 实现内容:
 
-- `constants.py`: metric name、dimension whitelist、`METRIC_SPECS`、consent state、endpoint、API version、schema version、staging app key/secret。
+- `constants.py`: metric name、dimension whitelist、`METRIC_SPECS`、consent state、endpoint、API version、schema version、正式环境 app key/secret。
 - `buckets.py`: duration、pages、file size、results bucket。
 - `context.py`: `contextvars`、HTTP header parse、request context set/reset。
 - `caller.py`: parent process tree inference，最大深度 12，只读进程名。
@@ -347,7 +347,7 @@ prompt helper:
 
 1. `telemetry core`: DB、store、service、payload、buckets、context。
 2. `telemetry api`: management API、observations API、client/base/types。
-3. `telemetry flush`: worker、flush lock、staging metrics API。
+3. `telemetry flush`: worker、flush lock、正式 metrics API。
 4. `telemetry metrics`: parse/search/content/scan/watch/ingest/parse_task 打点。
 5. `telemetry cli`: commands、prompt、parse wait observation。
 

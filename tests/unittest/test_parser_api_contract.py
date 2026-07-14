@@ -332,9 +332,9 @@ def test_api_client_can_request_zip_for_image_cache(tmp_path: Path) -> None:
     assert payload["output_formats"] == ["zip"]
 
 
-def test_api_client_uses_zip_for_staging_when_model_output_requested() -> None:
+def test_api_client_uses_zip_for_official_api_when_model_output_requested() -> None:
     parser = MinerUApiParser(
-        api_url="https://staging.mineru.org.cn/api",
+        api_url="https://mineru.net/api",
         tier="xhigh",
         include_model_output=True,
     )
@@ -342,9 +342,9 @@ def test_api_client_uses_zip_for_staging_when_model_output_requested() -> None:
     assert parser._output_formats() == ["zip"]
 
 
-def test_api_client_uses_zip_for_staging_when_image_cache_requested() -> None:
+def test_api_client_uses_zip_for_official_api_when_image_cache_requested() -> None:
     parser = MinerUApiParser(
-        api_url="https://staging.mineru.org.cn/api",
+        api_url="https://mineru.net/api",
         tier="xhigh",
         include_images=True,
     )
@@ -369,8 +369,8 @@ def test_api_client_rejects_invalid_tier_names(tier: str) -> None:
         MinerUApiParser(api_url="http://localhost:8000", tier=tier)  # type: ignore[arg-type]
 
 
-def test_api_client_uses_middle_json_format_for_staging() -> None:
-    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="xhigh")
+def test_api_client_uses_middle_json_format_for_official_api() -> None:
+    parser = MinerUApiParser(api_url="https://mineru.net/api", tier="xhigh")
 
     assert parser._output_formats() == ["middle_json"]
 
@@ -548,9 +548,9 @@ def test_api_client_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPa
     assert result._model_output == [[{"raw": "model"}]]
 
 
-def test_api_client_reads_staging_layout_json_and_model_output_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_client_reads_official_layout_json_and_model_output_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(
-        api_url="https://staging.mineru.org.cn/api",
+        api_url="https://mineru.net/api",
         tier="high",
         include_images=True,
         include_model_output=True,
@@ -822,7 +822,7 @@ def test_api_client_include_images_rejects_unsafe_image_entries(monkeypatch: pyt
 
 
 def test_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="high")
+    parser = MinerUApiParser(api_url="https://mineru.net/api", tier="high")
     middle_json = {
         "_backend": "hybrid",
         "_version_name": "remote",
@@ -848,7 +848,7 @@ def test_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.Monk
 
 
 def test_async_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="high")
+    parser = MinerUApiParser(api_url="https://mineru.net/api", tier="high")
     middle_json = {
         "_backend": "hybrid",
         "pdf_info": [{"page_idx": 0, "page_size": [100, 200]}],
@@ -878,7 +878,7 @@ def test_async_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytes
 
 
 def test_api_client_rejects_legacy_json_output_file_key() -> None:
-    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="high")
+    parser = MinerUApiParser(api_url="https://mineru.net/api", tier="high")
 
     with pytest.raises(api_client._V1APIError) as exc_info:
         _parse_result_from_job(
@@ -896,7 +896,7 @@ def test_api_client_rejects_legacy_json_output_file_key() -> None:
 
 
 def test_api_client_rejects_output_reference_without_file_id() -> None:
-    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="high")
+    parser = MinerUApiParser(api_url="https://mineru.net/api", tier="high")
 
     with pytest.raises(api_client._V1APIError) as exc_info:
         api_client._download_bytes(parser, {"url": "https://example.invalid/output.json", "bytes": 10})
@@ -906,7 +906,7 @@ def test_api_client_rejects_output_reference_without_file_id() -> None:
 
 
 def test_async_api_client_rejects_output_reference_without_file_id() -> None:
-    parser = MinerUApiParser(api_url="https://staging.mineru.org.cn/api", tier="high")
+    parser = MinerUApiParser(api_url="https://mineru.net/api", tier="high")
 
     async def _run() -> None:
         await api_client._async_download_bytes(parser, {"url": "https://example.invalid/output.json", "bytes": 10})
@@ -1015,7 +1015,7 @@ def test_api_client_disables_env_proxy_for_local_network_urls() -> None:
     assert should_trust_env_for_url("http://localhost:8000") is False
     assert should_trust_env_for_url("http://127.0.0.1:8000") is False
     assert should_trust_env_for_url("http://192.168.1.20:8000/api") is False
-    assert should_trust_env_for_url("https://staging.mineru.org.cn/api") is True
+    assert should_trust_env_for_url("https://mineru.net/api") is True
 
 
 def test_api_client_passes_trust_env_from_api_url(monkeypatch: pytest.MonkeyPatch) -> None:

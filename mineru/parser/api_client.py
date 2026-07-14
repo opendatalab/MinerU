@@ -719,13 +719,13 @@ def _extract_model_output_from_archive(archive: zipfile.ZipFile) -> Any | None:
     if local_name in names:
         model_output_name = local_name
     else:
-        staging_names = sorted(name for name in names if Path(name).name.endswith("_model.json"))
-        if not staging_names:
+        legacy_names = sorted(name for name in names if Path(name).name.endswith("_model.json"))
+        if not legacy_names:
             return None
-        if len(staging_names) > 1:
-            available = ", ".join(staging_names)
+        if len(legacy_names) > 1:
+            available = ", ".join(legacy_names)
             raise _V1APIError("invalid_model_output", f"ZIP output contained multiple model outputs: {available}")
-        model_output_name = staging_names[0]
+        model_output_name = legacy_names[0]
 
     raw = archive.read(model_output_name)
     try:
@@ -794,7 +794,7 @@ def _middle_json_zip_candidates() -> list[str]:
 
 
 def _read_middle_json_from_zip(archive: zipfile.ZipFile) -> dict[str, Any]:
-    """从本地 api_server 或 staging remote server 的 zip 中读取 middle_json。"""
+    """从本地 api_server 或 remote server 的 zip 中读取 middle_json。"""
     names = set(archive.namelist())
     for candidate in _middle_json_zip_candidates():
         if candidate not in names:
@@ -957,7 +957,7 @@ def _parse_result_from_middle_json(mid_json: dict[str, Any]) -> ParseResult:
 
         pdf_info = mid_json.get("pdf_info")
         if isinstance(pdf_info, list):
-            # Staging JSON output may use the older pdf_info field instead of ParseResult pages.
+            # The official API may use the older pdf_info field instead of ParseResult pages.
             compat_payload = dict(mid_json)
             compat_payload["pages"] = pdf_info
             return ParseResult.from_dict(compat_payload)
@@ -1017,7 +1017,7 @@ def _structured_error(data: dict[str, Any]) -> dict[str, Any] | None:
 def _remote_auth_message(data: dict[str, Any]) -> str | None:
     msg_code = data.get("msgCode")
     msg = data.get("msg")
-    # Staging auth failures still use the legacy msgCode/msg payload instead of {"error": ...}.
+    # Official API auth failures may use the legacy msgCode/msg payload instead of {"error": ...}.
     if msg_code == "A0202":
         return str(msg or "user authenticate failed")
     if isinstance(msg, str) and "authenticate failed" in msg.lower():

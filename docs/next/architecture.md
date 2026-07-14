@@ -274,7 +274,7 @@ ParseWorker 按 `tier`、`privacy` 和 parse-server 健康状态路由：
 |------|----------|
 | 未指定 tier | PDF/image 通过当前目标 parse-server 能力发现，按 `high` -> `xhigh` -> `medium` 解析；Office/text/HTML 归一为 `flash` |
 | `tier=flash` | 直接本地调用轻量 parser，`via=local` |
-| `tier=medium/high/xhigh` 且 `privacy=remote` | 优先调用 config 中的远端地址；产品正式目标是 `mineru.net/api`，当前代码默认值暂为 `https://staging.mineru.org.cn/api` |
+| `tier=medium/high/xhigh` 且 `privacy=remote` | 优先调用 config 中的远端地址，默认使用 `https://mineru.net/api` |
 | remote 不可用 | 尝试 fallback 到 local parse-server |
 | `privacy=local` 且 local parse-server disabled | 返回 `no_engine` |
 | local parse-server 配置但探活失败 | 返回可重试错误 |
@@ -387,7 +387,7 @@ parse-server 配置：
 | `parse_server.local.mode` | `disabled` | `disabled` / `managed` / `self_hosted` |
 | `parse_server.local.managed_tier` | `high` | managed 模式启动的 tier；当前允许 `medium` / `high` / `xhigh` |
 | `parse_server.local.self_hosted_url` | 无 | self-hosted 地址 |
-| `parse_server.remote.url` | 当前代码默认 `https://staging.mineru.org.cn/api` | 远端地址；产品正式目标是 `https://mineru.net/api` |
+| `parse_server.remote.url` | `https://mineru.net/api` | 默认远端地址 |
 | `parse_server.remote.api_key` | 无 | 远端 API Key |
 
 API Key 优先级：config 表中的 API Key 高于环境变量 `MINERU_API_KEY`；环境变量仅作为未配置 API Key 时的默认值。

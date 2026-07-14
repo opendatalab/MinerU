@@ -13,7 +13,7 @@ CONSENT_UNSET: TelemetryConsentState = "unset"
 CONSENT_ENABLED: TelemetryConsentState = "enabled"
 CONSENT_DISABLED: TelemetryConsentState = "disabled"
 
-TELEMETRY_ENDPOINT = "https://staging.mineru.org.cn/metrics/v2/metrics"
+TELEMETRY_ENDPOINT = "https://mineru.net/metrics/v2/metrics"
 TELEMETRY_APP_KEY = "213a83db-44c8-4218-90c0-ded685cca86e"
 TELEMETRY_APP_SECRET = "sec_5f8d9a2b"
 TELEMETRY_API_VERSION = "v2"
