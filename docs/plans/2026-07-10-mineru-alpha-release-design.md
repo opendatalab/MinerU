@@ -26,7 +26,7 @@ The build job:
 5. installs the wheel without dependencies in a clean virtual environment and verifies its installed distribution version;
 6. uploads the validated wheel as a workflow artifact.
 
-The publishing job downloads exactly that artifact and publishes it through PyPI Trusted Publishing. It uses the protected `pypi` GitHub environment and grants `id-token: write` only to this job.
+The publishing job downloads exactly that artifact and publishes it with Twine, using the same PyPI API token authentication as the stable release workflow. The token is read from the `PYPI_TOKEN` GitHub secret through Twine's `TWINE_PASSWORD` environment variable. The job remains associated with the protected `pypi` GitHub environment.
 
 The final job creates a GitHub pre-release and attaches the same wheel. It runs only after the PyPI publishing job succeeds.
 
@@ -34,7 +34,7 @@ The final job creates a GitHub pre-release and attaches the same wheel. It runs 
 
 - Third-party actions are pinned to immutable commit SHAs where practical.
 - Default workflow permissions are read-only; write permissions are scoped to the jobs that need them.
-- No long-lived PyPI API token is used.
+- PyPI authentication uses the existing `PYPI_TOKEN` GitHub secret. The token should be project-scoped to `mineru` and rotated according to the release credential policy.
 - Concurrency is scoped to the tag so duplicate runs for one tag cannot publish concurrently.
 - Existing PyPI versions are not silently skipped. A duplicate upload fails visibly because published files are immutable.
 - A validation, build, or smoke-test failure stops before the publishing job.
@@ -44,6 +44,7 @@ The final job creates a GitHub pre-release and attaches the same wheel. It runs 
 1. Update `mineru/version.py` on `next`, for example to `4.0.0a1`.
 2. Commit the version change and let normal CI pass.
 3. Create and push the annotated tag `v4.0.0a1`.
-4. Approve the protected `pypi` environment deployment if required.
+4. Ensure the repository or `pypi` environment provides the `PYPI_TOKEN` secret.
+5. Approve the protected `pypi` environment deployment if required.
 
 The workflow implementation can be tested locally without creating or pushing a tag. Merely adding the workflow does not publish anything.

@@ -101,8 +101,6 @@ jobs:
     environment:
       name: pypi
       url: https://pypi.org/project/mineru/${{ needs.build.outputs.version }}/
-    permissions:
-      id-token: write
     steps:
       - name: Download validated wheel
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
@@ -110,8 +108,13 @@ jobs:
           name: mineru-${{ needs.build.outputs.version }}
           path: dist
 
-      - name: Publish wheel through PyPI Trusted Publishing
-        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
+      - name: Publish wheel to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          python -m pip install --upgrade twine
+          python -m twine upload dist/*
 
   github-release:
     name: Create GitHub pre-release
