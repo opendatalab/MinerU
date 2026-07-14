@@ -134,6 +134,7 @@ mineru-models-download = "mineru.cli.models_download:download_models"
 mineru-api = "mineru.cli.fast_api:main"
 mineru-router = "mineru.cli.router:main"
 mineru-gradio = "mineru.cli.gradio_app:main"
+mineru-knowhere-export = "mineru.integrations.knowhere.cli:main"
 
 [tool.setuptools.dynamic]
 version = { attr = "mineru.version.__version__" }
