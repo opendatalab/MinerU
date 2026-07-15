@@ -40,7 +40,7 @@ Use this skill when the user asks an agent to:
 - Retrieve page or block images for visual inspection.
 - Keep stable references to document locations using `doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}` locators.
 
-Use another tool only when the user explicitly requests it, the format is unsupported, or MinerU fails or is unavailable.
+Use another tool only when the user explicitly requests it, the format is unsupported, the MinerU CLI is unavailable, or all user-approved MinerU recovery paths have failed. Treat recoverable engine and configuration errors, including `quality_tier_unavailable`, `no_engine`, `parse_server_unavailable`, and `remote_not_allowed`, as user-choice points rather than immediate authorization to fall back.
 
 ## Supported Inputs
 
@@ -68,6 +68,7 @@ MinerU is especially useful when documents contain OCR text, tables, formulas, f
 - Follow continuation commands and `next_request`.
 - Preserve locators for citations and follow-up reads.
 - Ask before using `--remote`, changing persistent config, adding watches, stopping or restarting the server, invalidating caches, or running destructive maintenance such as `forget --no-dry-run` or `cleanup --no-dry-run`.
+- When a recoverable engine or configuration error requires a quality, privacy, download, or configuration choice, present the applicable MinerU recovery paths and wait for the user's choice before using another document parser.
 
 ## Core Decision Tree
 
@@ -285,10 +286,12 @@ Default tier behavior:
 - Omit `--tier` when the user wants normal reading quality.
 - For parse-server based parsing, MinerU chooses `high`, then `xhigh`, then `medium`; `flash` is not a default final reading tier.
 - For `mineru read doc:{short_id}`, MinerU reads the best cached result rather than starting a new parse.
-- If normal reading quality is unavailable, there are usually three options:
-  - Use remote parsing with `--remote`.
-  - Start or configure a local parse server if the hardware supports it.
+- If normal reading quality is unavailable, inspect `mineru server status --json`, then present the applicable choices to the user:
+  - Use remote parsing with `--remote`, which uploads the document and requires explicit permission.
+  - Start or configure a local parse server if the hardware supports it, which may require dependency and model downloads plus persistent configuration changes.
   - Explicitly accept the lower-quality local `flash` tier.
+  - Explicitly authorize fallback to a non-MinerU parser.
+- Stop and wait for the user's choice. Do not select a non-MinerU parser merely to finish the task without asking.
 - Use `--tier flash` only when the user explicitly asks for fastest/preview/low-cost parsing or accepts lower quality.
 
 Examples:
@@ -773,13 +776,24 @@ Agent rules:
 
 ## Error Recovery
 
+### Normal-Quality Recovery Gate
+
+When `quality_tier_unavailable` or `no_engine` is returned for an active document-reading request:
+
+1. Run `mineru server status --json` to inspect locally available tiers and parse-server state.
+2. Present the applicable choices from the Quality Tiers section, including their privacy, download, configuration, time, and quality implications.
+3. Stop and wait for the user to choose a recovery path.
+4. Run only the selected path. If that path fails, report the failure and return to this decision gate with the remaining applicable choices.
+
+Do not use another document parser before this gate unless the user already requested or authorized that fallback. A recoverable MinerU setup or tier error does not by itself mean that MinerU is unavailable.
+
 Use this table for common error codes:
 
 | Code | Meaning | Agent action |
 |---|---|---|
 | `server_not_running` | MinerU background service is unavailable | Run `mineru server start`, then retry once |
-| `quality_tier_unavailable` | Normal reading quality is unavailable | Suggest enabling local high-quality parsing, ask before `--remote`, or ask whether `--tier flash` is acceptable |
-| `no_engine` | Requested tier is unavailable locally | Suggest another tier or enable local high-quality parsing |
+| `quality_tier_unavailable` | Normal reading quality is unavailable | Follow the Normal-Quality Recovery Gate; do not fall back automatically |
+| `no_engine` | Requested tier is unavailable locally | Follow the Normal-Quality Recovery Gate; do not fall back automatically |
 | `engine_unavailable` | Engine process unavailable | Retry if `retryable`; otherwise check `mineru server status` |
 | `parse_server_unavailable` | Parsing service cannot be reached | Check `mineru server status`; do not switch privacy boundary |
 | `tier_mismatch` | Requested tier unsupported | Ask user to choose a supported tier |
