@@ -9,7 +9,7 @@ import typer
 from click.core import Context
 from typer.core import TyperGroup
 
-from .commands import cleanup, config, list_resources, server, show, telemetry, watch
+from .commands import cleanup, config, list_resources, server, show, telemetry, usage, watch
 from .commands.forget import forget_cmd
 from .commands.invalidate import invalidate_cmd
 from .commands.parse import parse_cmd
@@ -26,6 +26,7 @@ class VersionInfo:
     mineru_version: str
     python_version: str
 
+
 # Typer stores commands and command groups separately before building the Click
 # command tree, so source registration order alone does not preserve the mixed
 # top-level help order.
@@ -36,6 +37,7 @@ TOP_LEVEL_COMMAND_ORDER = [
     "watch",
     "search",
     "find",
+    "usage",
     "list",
     "show",
     "telemetry",
@@ -78,6 +80,7 @@ app.command("scan")(scan_cmd)
 app.add_typer(watch.app, name="watch")
 app.command("search")(search_cmd)
 app.command("find")(find_cmd)
+app.command("usage")(usage.usage_cmd)
 app.add_typer(list_resources.app, name="list")
 app.add_typer(show.app, name="show")
 app.add_typer(telemetry.app, name="telemetry")

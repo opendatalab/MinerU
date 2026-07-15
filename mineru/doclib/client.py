@@ -61,6 +61,7 @@ from .types import (
     RemoveExcludeRuleResponse,
     RemoveParsingRuleResponse,
     RemoveWatchResponse,
+    RemoteUsageResponse,
     ScanInfo,
     ScanKind,
     ScanListResponse,
@@ -305,6 +306,10 @@ class DoclibClient(DoclibInterface):
     @route("GET", "/files/by-path", tags=("files",))
     def get_file_by_path(self, path: str) -> FileInfoResponse:
         return self._request_model(FileInfoResponse, params={"path": path})
+
+    @route("GET", "/remote-usage", tags=("remote",))
+    def get_remote_usage(self) -> RemoteUsageResponse:
+        return self._request_model(RemoteUsageResponse)
 
     @route("GET", "/configs", tags=("config",))
     def get_config(self) -> ConfigResponse:

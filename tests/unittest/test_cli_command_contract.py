@@ -34,6 +34,7 @@ MIGRATED_QUERY_COMMANDS = {
     "commands/server.py",
     "commands/show.py",
     "commands/telemetry.py",
+    "commands/usage.py",
     "commands/watch.py",
 }
 

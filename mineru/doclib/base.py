@@ -46,6 +46,7 @@ from .types import (
     RemoveExcludeRuleResponse,
     RemoveParsingRuleResponse,
     RemoveWatchResponse,
+    RemoteUsageResponse,
     ScanInfo,
     ScanKind,
     ScanListResponse,
@@ -350,6 +351,15 @@ class DoclibInterface(ABC):
             NotFoundError: when the path is unknown to doclib.
             InvalidRequestError: when the path is malformed.
             MineruError: for server-side failures.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def get_remote_usage(self) -> RemoteUsageResponse:
+        """Return usage and limits from the configured Remote API.
+
+        Raises:
+            MineruError: for Remote API authentication, permission, rate limit, transport, or response failures.
         """
         raise NotImplementedError()
 
@@ -702,6 +712,11 @@ class AsyncDoclibInterface(ABC):
     @abstractmethod
     async def get_file_by_path(self, path: str) -> FileInfoResponse:
         """Async version of ``DoclibInterface.get_file_by_path``."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def get_remote_usage(self) -> RemoteUsageResponse:
+        """Async version of ``DoclibInterface.get_remote_usage``."""
         raise NotImplementedError()
 
     @abstractmethod

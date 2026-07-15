@@ -39,11 +39,12 @@ MinerU 仓库提供两款命令行工具：
 3. [mineru read](mineru-read.md): 理解 locator-first 读取、page/block 定位、image 输出和 continuation。
 4. [mineru server](mineru-server.md): 理解 doclib 生命周期和 parse-server 协作。
 5. [mineru library](mineru-library.md): 理解 search、find、list、show、config、watch、scan、invalidate、forget 和 cleanup。
-6. [mineru-kit](mineru-kit.md): 理解无状态工具定位。
-7. [mineru-kit models](mineru-kit-models.md): 理解模型下载、当前模型配置查看和轻量校验。
-8. [mineru-kit parse](mineru-kit-parse.md): 理解批处理解析、目录输入、local/remote 规则和输出命名。
-9. [mineru-kit api-server](mineru-kit-api-server.md): 理解本地/自部署 parse-server。
-10. [mineru-kit vlm-server](mineru-kit-vlm-server.md): 理解本地 VLM 服务与 api-server backend 的边界。
+6. [mineru usage](mineru-usage.md): 理解 Remote API usage、limits 和 API Key 引导。
+7. [mineru-kit](mineru-kit.md): 理解无状态工具定位。
+8. [mineru-kit models](mineru-kit-models.md): 理解模型下载、当前模型配置查看和轻量校验。
+9. [mineru-kit parse](mineru-kit-parse.md): 理解批处理解析、目录输入、local/remote 规则和输出命名。
+10. [mineru-kit api-server](mineru-kit-api-server.md): 理解本地/自部署 parse-server。
+11. [mineru-kit vlm-server](mineru-kit-vlm-server.md): 理解本地 VLM 服务与 api-server backend 的边界。
 
 ## 4. 共享约束
 

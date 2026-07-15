@@ -134,6 +134,7 @@ def test_root_commands_keep_product_order() -> None:
         "watch",
         "search",
         "find",
+        "usage",
         "list",
         "show",
         "telemetry",
@@ -771,7 +772,21 @@ def test_parse_wait_json_maps_invalid_api_key_param(monkeypatch: Any, tmp_path: 
         def list_parses(self, **kwargs: Any) -> ListParsesResponse:
             return ListParsesResponse(parses=[failed], total=1, limit=50, offset=0)
 
+    class _GuidanceClient:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 3
+
+        def get_config(self) -> ConfigResponse:
+            return ConfigResponse(
+                config={
+                    "parse_server.remote.url": "https://mineru.net/api",
+                    "parse_server.remote.api_key": "******",
+                },
+                sources={},
+            )
+
     monkeypatch.setattr(parse, "DoclibClient", _Client)
+    monkeypatch.setattr("mineru.cli.guidance.DoclibClient", _GuidanceClient)
     monkeypatch.setattr(parse.time, "sleep", lambda seconds: None)
 
     result = runner.invoke(app, ["parse", str(source), "--remote", "--wait", "1", "--json"])
@@ -781,6 +796,8 @@ def test_parse_wait_json_maps_invalid_api_key_param(monkeypatch: Any, tmp_path: 
     assert payload["error"]["type"] == "authentication_error"
     assert payload["error"]["code"] == "invalid_api_key"
     assert payload["error"]["param"] == "parse_server.remote.api_key"
+    assert payload["guidance"]["type"] == "configure_official_api_key"
+    assert payload["guidance"]["required"] is True
 
 
 def test_parse_wait_json_handles_failed_row_without_error_details(monkeypatch: Any, tmp_path: Path) -> None:

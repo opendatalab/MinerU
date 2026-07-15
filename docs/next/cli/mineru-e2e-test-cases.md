@@ -190,7 +190,7 @@ mineru --help
 预期:
 
 - exit code = 0
-- 输出包含 `parse`、`read`、`scan`、`watch`、`search`、`find`、`list`、`show`、`server`、`config`、`invalidate`、`forget`、`cleanup`
+- 输出包含 `parse`、`read`、`scan`、`watch`、`search`、`find`、`usage`、`list`、`show`、`server`、`config`、`invalidate`、`forget`、`cleanup`
 - 输出包含 `telemetry`
 - 输出不包含 `mineru-kit`
 
@@ -205,6 +205,7 @@ mineru scan --help
 mineru watch --help
 mineru search --help
 mineru find --help
+mineru usage --help
 mineru list --help
 mineru show --help
 mineru telemetry --help
@@ -983,6 +984,96 @@ mineru config get not.a.real.key --json
 - 如果 exit code != 0，输出必须包含 not found、unknown key、invalid key 或等价错误
 - `--json` 失败时 stdout 必须为可直接解析的 JSON error，且包含 `error.code` 和 `error.message`
 - 不包含 Python traceback
+
+## 5A. Remote API Usage
+
+### USAGE-001 查询 Remote API usage
+
+命令:
+
+```bash
+mineru config set parse_server.remote.url https://mineru.net/api
+mineru usage
+mineru usage --json
+```
+
+预期:
+
+- 三条命令均 exit code = 0
+- 普通输出标题为 `Remote API Usage`
+- 普通输出包含 Remote URL、access level、billing period、current 和 limits
+- JSON stdout 可直接解析，且包含 `object=usage`、`access_level`、`billing_period`、`current` 和 `limits`
+- JSON 数值来自 Remote API，不依赖本用例硬编码固定配额
+- 不包含 Local Parse Server usage
+
+### USAGE-002 anonymous guidance
+
+前置:
+
+- doclib server 进程未设置 `MINERU_API_KEY`
+- 当前 Remote URL 为 `https://mineru.net/api`
+
+命令:
+
+```bash
+mineru config unset parse_server.remote.api_key
+mineru usage --json
+```
+
+预期:
+
+- exit code = 0
+- `access_level = anonymous`
+- 顶层包含 `guidance`
+- `guidance.type = configure_official_api_key`
+- `guidance.required = false`
+- `guidance.url = https://mineru.net/apiManage/token`
+- `guidance.command` 使用 `parse_server.remote.api_key`，且不包含真实 API Key
+- `error` 字段不存在
+
+### USAGE-003 invalid API Key guidance
+
+命令:
+
+```bash
+mineru config set parse_server.remote.api_key invalid-e2e-api-key
+mineru usage --json
+mineru config unset parse_server.remote.api_key
+```
+
+预期:
+
+- set 和 unset 均 exit code = 0，且不回显完整 API Key
+- usage exit code != 0
+- usage stdout 为可直接解析的 JSON
+- `error.code = invalid_api_key`
+- `error.param = parse_server.remote.api_key`
+- 顶层 `guidance.type = configure_official_api_key`
+- `guidance.required = true`
+- guidance 不修改 `error.message` 或其它 error 字段
+
+### USAGE-004 环境变量 fallback
+
+前置:
+
+- doclib server 使用有效 `MINERU_API_KEY` 启动
+- SQLite 中没有 `parse_server.remote.api_key` override
+
+命令:
+
+```bash
+mineru config unset parse_server.remote.api_key
+mineru config get parse_server.remote.api_key --json
+mineru usage --json
+```
+
+预期:
+
+- 三条命令均 exit code = 0
+- config JSON 的 source 为 `environment`
+- config JSON 只包含脱敏值，不包含完整环境变量 API Key
+- usage 的 `access_level = registered`
+- usage JSON 不包含 anonymous API Key guidance
 
 ## 6. Watch 命令
 

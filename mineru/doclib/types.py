@@ -20,7 +20,8 @@ TelemetryConsentState = Literal["unset", "enabled", "disabled"]
 TelemetryAction = Literal["enable", "disable", "flush"]
 InvalidateTarget = Literal["parses"]
 ForgetMatchedAs = Literal["file", "directory", "none"]
-ConfigSource = Literal["default", "override"]
+ConfigSource = Literal["default", "override", "environment"]
+RemoteAccessLevel = Literal["anonymous", "registered"]
 ContentFormat = Literal["markdown", "image"]
 ImageFormat = Literal["jpeg", "png", "webp"]
 
@@ -396,6 +397,33 @@ class ConfigSetResponse(ConfigValueResponse):
 
 class ConfigUnsetResponse(ConfigValueResponse):
     removed: bool = True
+
+
+class RemoteUsageBillingPeriod(DoclibModel):
+    start: str
+    end: str | None = None
+
+
+class RemoteUsageCurrent(DoclibModel):
+    pages_processed: int = 0
+    files_processed: int = 0
+    jobs_created: int = 0
+
+
+class RemoteUsageLimits(DoclibModel):
+    max_pages_per_file: int
+    max_file_size_bytes: int
+    max_files_per_job: int
+    max_concurrent_jobs: int
+    max_file_retention_days: int | None = None
+
+
+class RemoteUsageResponse(DoclibModel):
+    object: Literal["usage"] = "usage"
+    access_level: RemoteAccessLevel
+    billing_period: RemoteUsageBillingPeriod
+    current: RemoteUsageCurrent
+    limits: RemoteUsageLimits
 
 
 class WatchRequest(DoclibModel):

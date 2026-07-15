@@ -53,6 +53,7 @@
 | [ADR-0023](0023-cli-runtime-contract.md) | Accepted | CLI Runtime 输出、错误与退出码集中契约 |
 | [ADR-0024](0024-file-type-tier-normalization.md) | Accepted | 文件类型与 Tier 归一化语义 |
 | [ADR-0025](0025-model-download-local-dir.md) | Accepted | 模型下载与本地模型目录 |
+| [ADR-0026](0026-remote-usage-api-key-guidance.md) | Accepted | Remote API Usage 与 API Key 引导 |
 
 ## 模板
 

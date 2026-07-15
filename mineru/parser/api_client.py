@@ -115,6 +115,30 @@ class MinerUApiParser(DocumentParser):
         job = await self._async_do_parse(payload)
         return await self._async_build_result(job, file_path.name)
 
+    def get_usage(self) -> dict[str, Any]:
+        """Return usage and limits for the configured API identity."""
+        with httpx.Client(timeout=httpx.Timeout(30, connect=10), trust_env=self._trust_env) as cli:
+            response = _request_with_retry(
+                cli,
+                "GET",
+                f"{self._base_url}/v1/usage",
+                stage="usage query",
+                headers=self._headers(),
+            )
+            return self._check(response)
+
+    async def get_usage_async(self) -> dict[str, Any]:
+        """Asynchronous version of :meth:`get_usage`."""
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30, connect=10), trust_env=self._trust_env) as cli:
+            response = await _async_request_with_retry(
+                cli,
+                "GET",
+                f"{self._base_url}/v1/usage",
+                stage="usage query",
+                headers=self._headers(),
+            )
+            return self._check(response)
+
     # ── payload construction ─────────────────────────────────────────
 
     def _build_source(self, file_path: Path) -> dict[str, Any]:

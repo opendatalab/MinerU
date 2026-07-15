@@ -87,6 +87,7 @@ def test_doclib_interface_declares_expected_methods() -> None:
         "search",
         "find",
         "get_file_by_path",
+        "get_remote_usage",
         "get_config",
         "get_config_key",
         "set_config",
@@ -207,6 +208,7 @@ def test_interface_app_uses_doclib_server_routes(tmp_path) -> None:
     assert "/api/v1/docs" in route_paths
     assert "/api/v1/docs/{doc_ref}" in route_paths
     assert "/api/v1/content" in route_paths
+    assert "/api/v1/remote-usage" in route_paths
     assert "/api/v1/docs/{doc_ref}/exports" in route_paths
     assert "/api/docs" in route_paths
     assert "/docs" not in route_paths

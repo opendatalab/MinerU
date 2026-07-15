@@ -75,6 +75,7 @@ Use this decision tree before running commands:
 8. User asks to add or refresh a watched folder: use `mineru watch` or `mineru scan`.
 9. User asks MinerU to forget a file or folder without deleting it: use `mineru forget`.
 10. User asks to force a reparse: use `mineru parse --force` or `mineru invalidate`.
+11. User asks for Remote API usage or limits: use `mineru usage --json`.
 
 ## Common Workflows
 
@@ -694,6 +695,14 @@ Rules:
 - Remote URL/API key configuration does not authorize upload by itself.
 - `--remote` or a remote-enabled parsing rule is still required.
 - Avoid printing secrets from config.
+
+## Remote API Usage
+
+Use `usage` only for the configured Remote API; Local Parse Servers do not have account usage limits:
+
+```bash
+mineru usage --json
+```
 
 ## JSON Output
 

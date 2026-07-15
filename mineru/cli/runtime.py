@@ -11,7 +11,15 @@ import typer
 
 from ..errors import MineruError, ServerNotRunningError, error_response
 from . import output
-from .contracts import CliContext, CliRenderer, CliResult, CliTaskResult, RenderableOutput, RichObject
+from .contracts import (
+    CliContext,
+    CliGuidance,
+    CliRenderer,
+    CliResult,
+    CliTaskResult,
+    RenderableOutput,
+    RichObject,
+)
 
 T = TypeVar("T")
 
@@ -59,6 +67,7 @@ def run_cli(
     action: Callable[[], T | CliResult[T]],
     *,
     render: CliRenderer[T] | None = None,
+    error_guidance: Callable[[MineruError], CliGuidance | None] | None = None,
     warnings: Callable[[T], list[str]] | None = None,
     notices: Callable[[T], list[str]] | None = None,
     exit_code: int | Callable[[T], int] = 0,
@@ -68,8 +77,15 @@ def run_cli(
     except typer.Exit:
         raise
     except Exception as exc:
-        emit_error(ctx, exc)
-    result = _coerce_result(value, render=render, warnings=warnings, notices=notices, exit_code=exit_code)
+        guidance = _resolve_error_guidance(exc, error_guidance)
+        emit_error(ctx, exc, guidance=guidance)
+    result = _coerce_result(
+        value,
+        render=render,
+        warnings=warnings,
+        notices=notices,
+        exit_code=exit_code,
+    )
     emit_result(ctx, result)
 
 
@@ -97,12 +113,17 @@ def emit_result(ctx: CliContext, result: CliResult[T]) -> None:
         raise typer.Exit(exit_code)
 
 
-def emit_error(ctx: CliContext, exc: Exception) -> NoReturn:
+def emit_error(ctx: CliContext, exc: Exception, *, guidance: CliGuidance | None = None) -> NoReturn:
     mineru_error = to_mineru_error(exc)
     if ctx.json_mode:
-        output.print_json(error_response(mineru_error))
+        payload = error_response(mineru_error)
+        if guidance is not None:
+            payload["guidance"] = guidance.data
+        output.print_json(payload)
     else:
         output.print_error(mineru_error.message or str(exc))
+        if guidance is not None:
+            output.print_notice(guidance.text)
     raise typer.Exit(1) from None
 
 
@@ -163,6 +184,18 @@ def _coerce_result(
         warnings=warnings(value) if warnings is not None else None,
         notices=notices(value) if notices is not None else None,
     )
+
+
+def _resolve_error_guidance(
+    exc: Exception,
+    resolver: Callable[[MineruError], CliGuidance | None] | None,
+) -> CliGuidance | None:
+    if resolver is None:
+        return None
+    try:
+        return resolver(to_mineru_error(exc))
+    except Exception:
+        return None
 
 
 def _parse_error_tuple(raw: str) -> tuple[str, str, str | None] | None:

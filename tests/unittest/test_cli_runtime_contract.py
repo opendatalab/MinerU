@@ -9,7 +9,7 @@ import typer
 
 from mineru.cli import output
 from mineru.cli import contracts
-from mineru.cli.contracts import CliContext
+from mineru.cli.contracts import CliContext, CliGuidance
 from mineru.cli.runtime import cli_ok, cli_task, emit_error, emit_result, run_cli
 from mineru.errors import MineruError
 
@@ -129,6 +129,48 @@ def test_emit_error_non_json_writes_human_error_to_stderr(capsys: pytest.Capture
     assert exc_info.value.exit_code == 1
     assert captured.out == ""
     assert captured.err == "Error: File missing.\n"
+
+
+def test_emit_error_json_adds_guidance_without_changing_error(capsys: pytest.CaptureFixture[str]) -> None:
+    guidance = CliGuidance(
+        data={"type": "configure_official_api_key", "required": True},
+        text="Configure an API Key.",
+    )
+
+    with pytest.raises(typer.Exit) as exc_info:
+        emit_error(
+            CliContext(json_mode=True),
+            MineruError("invalid_api_key", "Invalid API Key.", "parse_server.remote.api_key"),
+            guidance=guidance,
+        )
+
+    captured = capsys.readouterr()
+    assert exc_info.value.exit_code == 1
+    assert json.loads(captured.out) == {
+        "error": {
+            "type": "authentication_error",
+            "code": "invalid_api_key",
+            "message": "Invalid API Key.",
+            "param": "parse_server.remote.api_key",
+        },
+        "guidance": {"type": "configure_official_api_key", "required": True},
+    }
+
+
+def test_run_cli_error_guidance_failure_does_not_hide_original_error(capsys: pytest.CaptureFixture[str]) -> None:
+    def fail_guidance(_error: MineruError) -> CliGuidance | None:
+        raise RuntimeError("guidance unavailable")
+
+    with pytest.raises(typer.Exit) as exc_info:
+        run_cli(
+            CliContext(json_mode=True),
+            lambda: (_ for _ in ()).throw(MineruError("invalid_api_key", "Invalid API Key.")),
+            error_guidance=fail_guidance,
+        )
+
+    captured = capsys.readouterr()
+    assert exc_info.value.exit_code == 1
+    assert json.loads(captured.out)["error"]["code"] == "invalid_api_key"
 
 
 def test_emit_result_writes_notices_and_warnings_to_stderr(capsys: pytest.CaptureFixture[str]) -> None:

@@ -150,6 +150,15 @@ def info(self, file_path: str) -> dict: ...
 
 `search()` 的 `files` 返回与文档 SHA 关联的全部 file aliases，按 file id 降序排列；每项包含 path、filename、ext 和 status。已索引的 orphan 文档使用空列表。active 优先只属于非 JSON CLI 展示策略，不改变 SDK 响应。搜索结果可信度只通过 `tier` 表达。
 
+## Remote API 方法
+
+| 方法 | 响应 |
+|------|------|
+| `get_remote_usage()` | `RemoteUsageResponse`，返回当前配置 Remote API 的 access level、billing period、current usage 和 limits。 |
+
+该方法通过 doclib 读取 Remote URL 和有效 API Key，并调用本地 doclib route `GET /api/v1/remote-usage`。它不返回 Local Parse
+Server 运行统计。
+
 ## Config 方法
 
 Doclib client 暴露运行时配置能力:

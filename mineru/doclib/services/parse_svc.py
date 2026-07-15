@@ -30,6 +30,7 @@ from ...types import QUALITY_TIERS, TIER_ORDER, PageInfo, Tier, select_default_q
 from ..core.db import DatabaseManager
 from ..core.file_io import FileStat, MetadataExtractionError, compute_sha256, extract_metadata, get_file_stat
 from ..core.fts import FTSManager
+from ..remote_api import resolve_remote_api_key
 from ..rows import DocRow, FileRow, ParseBatchRow, ParseRow, Sha256Row, ShortIdRow, WatchTargetRow
 from ..types import (
     FILE_STATUS_ACTIVE,
@@ -1130,7 +1131,7 @@ class ParseService:
 
         if privacy == "remote":
             url = cast(str, await self.config_svc.get("parse_server.remote.url"))
-            api_key = (await self.config_svc.get("parse_server.remote.api_key")) or None
+            api_key = (await resolve_remote_api_key(self.config_svc)).value
             if not health.remote.probe.healthy:
                 if health.remote.probe.error_code == "invalid_api_key":
                     raise ParseFailure(

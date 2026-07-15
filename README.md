@@ -703,6 +703,15 @@ Rules:
 - `--remote` or a remote-enabled parsing rule is still required.
 - Avoid printing secrets from config.
 
+## Remote API Usage
+
+Query usage and limits for the configured Remote API:
+
+```bash
+mineru usage
+mineru usage --json
+```
+
 ## JSON Output
 
 Use `--json` when an agent needs stable machine-readable fields.

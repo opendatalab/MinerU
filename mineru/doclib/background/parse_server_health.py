@@ -20,6 +20,7 @@ from ...config import LogConfig, ManagedParseServerConfig, config
 from ...parser.api_client import should_trust_env_for_url
 from ...types import TIERS, Tier, validate_tier
 from ..config_defaults import CONFIG_DEFAULTS
+from ..remote_api import resolve_remote_api_key
 
 logger = logging.getLogger("mineru.health_check")
 
@@ -299,7 +300,7 @@ class ParseServerHealthCheck:
 
             # probe remote
             remote_url = cast(str, await self.config_svc.get("parse_server.remote.url"))
-            remote_api_key = (await self.config_svc.get("parse_server.remote.api_key")) or None
+            remote_api_key = (await resolve_remote_api_key(self.config_svc)).value
             probe = await self._probe(remote_url, api_key=remote_api_key)
             now_ms = int(time.time() * 1000)
             health.remote.url = remote_url
@@ -323,9 +324,7 @@ class ParseServerHealthCheck:
 
             await asyncio.sleep(self.interval_sec)
 
-    async def _try_restart_managed_for_tier_change(
-        self, health: ParseServerHealth, desired_managed_tier: Tier
-    ) -> bool:
+    async def _try_restart_managed_for_tier_change(self, health: ParseServerHealth, desired_managed_tier: Tier) -> bool:
         running_managed_tier = health.running_managed_tier
         if running_managed_tier is None or running_managed_tier == desired_managed_tier:
             return False
@@ -352,9 +351,7 @@ class ParseServerHealthCheck:
         count_restart: bool = True,
     ) -> None:
         if count_restart and health.restart_count >= MAX_RESTART_ATTEMPTS:
-            logger.error(
-                "Managed parse-server failed %d restarts, disabling", MAX_RESTART_ATTEMPTS
-            )
+            logger.error("Managed parse-server failed %d restarts, disabling", MAX_RESTART_ATTEMPTS)
             health.local_mode = "disabled"
             return
 

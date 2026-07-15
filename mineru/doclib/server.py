@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 from PIL import Image
+from pydantic import ValidationError
 
 from ..config import config
 from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
@@ -34,6 +35,7 @@ from .base import AsyncDoclibInterface
 from .config_schema import validate_config_value
 from .core.db import DatabaseManager
 from .locators import ContentCursor, block_char_ref, block_ref, page_ref, parse_content_cursor
+from .remote_api import REMOTE_API_KEY_CONFIG, resolve_remote_api_key
 from .rows import (
     ContentSearchResultRow,
     DocRow,
@@ -81,6 +83,7 @@ from .types import (
     ConfigResponse,
     ConfigSetRequest,
     ConfigSetResponse,
+    ConfigSource,
     ConfigUnsetResponse,
     ConfigValueResponse,
     ContentAsset,
@@ -124,6 +127,7 @@ from .types import (
     RemoveExcludeRuleResponse,
     RemoveParsingRuleResponse,
     RemoveWatchResponse,
+    RemoteUsageResponse,
     ScanInfo,
     ScanKind,
     ScanListResponse,
@@ -824,24 +828,55 @@ class DoclibServer(AsyncDoclibInterface):
             active_parses=active_parses,
         )
 
+    @route("GET", "/remote-usage", tags=("remote",))
+    async def get_remote_usage(self) -> RemoteUsageResponse:
+        from ..parser.api_client import MinerUApiParser, _APITransportError, _V1APIError
+
+        remote_url = cast(str, await self.state.config_svc.get("parse_server.remote.url"))
+        resolved_api_key = await resolve_remote_api_key(self.state.config_svc)
+        client = MinerUApiParser(api_url=remote_url, api_key=resolved_api_key.value)
+        try:
+            payload = await client.get_usage_async()
+        except _APITransportError as exc:
+            code = "remote_timeout" if exc.timed_out else "remote_unreachable"
+            raise MineruError(
+                code,
+                f"Remote API transport failed during {exc.stage} after {exc.attempts} attempt(s) ({type(exc.cause).__name__}).",
+            ) from exc
+        except _V1APIError as exc:
+            raise MineruError(exc.code, exc.message, exc.param) from exc
+        try:
+            return RemoteUsageResponse.model_validate(payload)
+        except ValidationError as exc:
+            raise MineruError("api_error", "Remote API returned an invalid usage response.") from exc
+
     @route("GET", "/configs", tags=("config",))
     async def get_config(self) -> ConfigResponse:
         config, sources = await self.state.config_svc.get_all_with_sources()
+        resolved_api_key = await resolve_remote_api_key(self.state.config_svc)
+        if resolved_api_key.value is not None:
+            config[REMOTE_API_KEY_CONFIG] = resolved_api_key.value
+            sources[REMOTE_API_KEY_CONFIG] = resolved_api_key.source
         return ConfigResponse(config=_mask_config(config), sources=sources)
 
     @route("GET", "/configs/{key}", tags=("config",))
     async def get_config_key(self, key: str) -> ConfigValueResponse:
-        value = await self.state.config_svc.get(key)
-        source = await self.state.config_svc.get_source(key)
+        value, source = await self._effective_config_value(key)
         return ConfigValueResponse(key=key, value=_mask_config_value(key, value or ""), source=source)
 
     @route("PUT", "/configs/{key}", tags=("config",))
     async def set_config(self, key: str, request: ConfigSetRequest) -> ConfigSetResponse:
         await self._validate_config_set(key, request.value)
         await self.state.config_svc.set(key, request.value)
-        value = await self.state.config_svc.get(key)
-        source = await self.state.config_svc.get_source(key)
+        value, source = await self._effective_config_value(key)
         return ConfigSetResponse(key=key, value=_mask_config_value(key, value or ""), source=source)
+
+    async def _effective_config_value(self, key: str) -> tuple[str | None, ConfigSource]:
+        if key == REMOTE_API_KEY_CONFIG:
+            resolved = await resolve_remote_api_key(self.state.config_svc)
+            source = "default" if resolved.source == "anonymous" else resolved.source
+            return resolved.value, source
+        return await self.state.config_svc.get(key), await self.state.config_svc.get_source(key)
 
     async def _validate_config_set(self, key: str, value: str) -> None:
         validate_config_value(key, value)
@@ -858,8 +893,7 @@ class DoclibServer(AsyncDoclibInterface):
     @route("DELETE", "/configs/{key}", tags=("config",))
     async def unset_config(self, key: str) -> ConfigUnsetResponse:
         removed = await self.state.config_svc.unset(key)
-        value = await self.state.config_svc.get(key)
-        source = await self.state.config_svc.get_source(key)
+        value, source = await self._effective_config_value(key)
         return ConfigUnsetResponse(key=key, value=_mask_config_value(key, value or ""), source=source, removed=removed)
 
     @route("POST", "/watches", tags=("watches",))

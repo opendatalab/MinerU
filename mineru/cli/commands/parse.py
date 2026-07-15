@@ -23,6 +23,7 @@ from ...doclib.types import (
 from ...errors import MineruError, error_response
 from ...types import Tier
 from ..contracts import CliContext, CliResult
+from ..guidance import api_key_guidance_for_error
 from ..path_utils import normalize_cli_path
 from ..runtime import cli_ok, emit_result, run_cli
 
@@ -123,6 +124,7 @@ def parse_cmd(
             explicit_limit=limit is not None,
             explicit_remote=remote,
         ),
+        error_guidance=api_key_guidance_for_error if remote else None,
     )
 
 
