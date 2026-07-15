@@ -264,12 +264,12 @@ mineru telemetry flush
 
 MinerU has four tiers:
 
-| Tier | Use for | How to use |
-|---|---|---|
-| `flash` | Fast discovery, preview, and search indexing | Never use as default final reading quality |
-| `medium` | Local higher-quality parsing with optional GPU acceleration | Use when high is unavailable or explicitly requested |
-| `high` | Default high-quality parsing for most active reading | Prefer for normal final reading quality |
-| `xhigh` | Highest quality with higher compute cost | Use only when the user needs maximum quality and accepts slower parsing |
+| Tier | Quality and speed | Local requirements | Local model download | Use for |
+|---|---|---|---|---|
+| `flash` | Lowest quality; fastest | No special hardware | None | Discovery, preview, and indexing; never default final reading quality |
+| `medium` | Medium quality; moderate speed | At least 16 GB total memory; CPU works, GPU can accelerate | About 2 GB | Private local reading or lower-resource local parsing |
+| `high` | High quality; similar speed to `medium` on suitable hardware | At least 16 GB total memory plus a supported accelerator | About 4 GB | Default for normal active reading and complex documents |
+| `xhigh` | Highest quality; slowest | Same as high, with greater compute use | About 4 GB | Maximum-quality work when the user accepts a longer wait |
 
 Default tier behavior:
 
@@ -283,6 +283,7 @@ Default tier behavior:
   - Explicitly authorize fallback to a non-MinerU parser.
 - Stop and wait for the user's choice. Do not select a non-MinerU parser merely to finish the task without asking.
 - Use `--tier flash` only when the user explicitly asks for fastest/preview/low-cost parsing or accepts lower quality.
+- Whenever asking the user to choose a tier, explain the available options' differences in quality, speed, local hardware requirements, local model downloads, privacy, and setup effort. Recommend one option and explain why.
 
 Examples:
 
@@ -329,22 +330,27 @@ Agent rules:
 
 Use a local parse server when the user wants `medium`, `high`, or `xhigh` quality without sending the document to remote parsing.
 
-Hardware guidance:
+### Assess Local Hardware
 
-Local managed `medium` needs extra dependencies. It can run on CPU, but GPU can accelerate it.
+When no local quality tier is available, inspect the current machine before presenting the recovery choices. `mineru server status --json` shows which tiers are currently configured and available. An empty local `supported_tiers` list may simply mean that the local parse server is disabled or not configured, so inspect the hardware before deciding whether local quality tiers can run.
 
-Use `medium` when:
+Use available read-only system commands to inspect the OS, architecture, total memory, accelerator model, and accelerator memory. Common options include:
 
-- The user wants local high-quality parsing without sending files to remote.
-- GPU is unavailable or `high` cannot be used.
+- macOS: `uname -m`, `sysctl -n hw.memsize`, and `system_profiler SPHardwareDataType SPDisplaysDataType`.
+- Linux: `uname -m`, `/proc/meminfo` or `free -b`, `lscpu`, and `nvidia-smi` when available.
+- Windows PowerShell: `(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory`, `Get-CimInstance Win32_Processor`, and `nvidia-smi` when available.
+- Other accelerators: use an already-installed vendor tool if available; do not install software merely to inspect hardware.
 
-Use `high` or `xhigh` when the machine has VLM dependencies, GPU, and enough VRAM or unified memory:
+Classify each local quality tier as `hardware-supported`, `hardware-unsupported`, or `hardware-unknown`. These labels describe hardware suitability only, not whether the required dependencies and models are installed or the tier is currently available:
 
-- Volta-or-newer NVIDIA GPU with at least 8 GB VRAM available for MinerU.
-- Apple Silicon with at least 16 GB unified memory.
-- A MinerU-supported AI accelerator such as `npu`, `gcu`, `musa`, `mlu`, or `sdaa`.
+- `medium`: `hardware-supported` with at least 16 GB total memory. A CPU is sufficient, but warn that CPU-only parsing may be slow and GPU acceleration can materially reduce parsing time.
+- `high` and `xhigh`: `hardware-supported` with at least 16 GB total memory and either a Volta-or-newer NVIDIA GPU with at least 8 GB available VRAM or Apple Silicon with at least 16 GB unified memory.
+- For `high` and `xhigh`, an `npu`, `gcu`, `musa`, `mlu`, or `sdaa` qualifies as `hardware-supported` only when MinerU compatibility with the exact device and runtime can be verified; otherwise report `hardware-unknown`.
+- Report `hardware-unsupported` when a requirement is clearly not met. If a required property cannot be verified, report `hardware-unknown`.
 
-Use `high` for normal high-quality local parsing. Use `xhigh` only when the user wants maximum quality and accepts higher compute cost.
+Before asking the user to choose a tier, summarize the detected hardware and identify each local tier's hardware status. Recommend local `high` when `hardware-supported`, otherwise local `medium` when `hardware-supported`, otherwise offer remote `high` when privacy rules allow or explicit `flash`. Mention `xhigh` only when the user wants maximum quality and accepts the extra time. Do not install dependencies, download models, change config, or restart services without approval.
+
+### Configure Managed Local Parsing
 
 Change local parse-server config or restart the server only when the user asks for or approves local high-quality parsing.
 
@@ -354,9 +360,7 @@ The following examples assume the current install tool is `uv tool`. If `mineru`
 
 Installing extras with `uv tool install --force --prerelease allow` can reinstall or upgrade the `mineru` package. Restart the MinerU server after installing extras so the CLI client, doclib server, and managed parse server use the same installed version.
 
-Managed local `medium`, `high`, and `xhigh` all require downloaded model files.
-The `medium` tier uses about 2 GB of disk space; `high` and `xhigh` use about 4 GB.
-Download the target tier models before switching `parse_server.local.mode` to `managed`.
+Managed local `medium`, `high`, and `xhigh` all require downloaded model files. Download the target tier models before switching `parse_server.local.mode` to `managed`.
 
 Enable managed local parsing for `medium`:
 
@@ -401,8 +405,6 @@ Rules:
 - After installing extras, restart the MinerU server to avoid CLI/server version mismatch.
 - Set `parse_server.local.managed_tier` before `parse_server.local.mode=managed`.
 - Poll `mineru server status --json` and use managed parsing only after the target tier is healthy.
-- Use `high` as the practical local default when the machine satisfies the local high-tier hardware guidance above.
-- Use local `xhigh` only when the user explicitly wants maximum quality.
 - If local `medium`, `high`, or `xhigh` cannot start, do not add `--remote` automatically; ask the user first.
 
 ## First Read From A File
@@ -771,9 +773,10 @@ Agent rules:
 When `quality_tier_unavailable` or `no_engine` is returned for an active document-reading request:
 
 1. Run `mineru server status --json` to inspect locally available tiers and parse-server state.
-2. Present the applicable choices from the Quality Tiers section, including their privacy, download, configuration, time, and quality implications.
-3. Stop and wait for the user to choose a recovery path.
-4. Run only the selected path. If that path fails, report the failure and return to this decision gate with the remaining applicable choices.
+2. If no local quality tier is available, follow [Assess Local Hardware](#assess-local-hardware). Do not treat an unconfigured or disabled local parse server as proof that the hardware is unsupported.
+3. Present the currently available tiers. If hardware was assessed, also present the detected hardware and each applicable local tier's hardware status. Then follow the tier-choice guidance in the Quality Tiers section.
+4. Stop and wait for the user to choose a recovery path.
+5. Run only the selected path. If that path fails, report the failure and return to this decision gate with the remaining applicable choices.
 
 Do not use another document parser before this gate unless the user already requested or authorized that fallback. A recoverable MinerU setup or tier error does not by itself mean that MinerU is unavailable.
 
