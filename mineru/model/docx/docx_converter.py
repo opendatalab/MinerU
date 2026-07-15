@@ -1514,6 +1514,10 @@ class DocxConverter:
                     "is_numbered_style": is_numbered_style,
                     "content": content_text,
                 }
+                if is_numbered_style:
+                    section_number = self._build_numbering_label(numid, ilevel)
+                    if section_number:
+                        h_block["section_number"] = section_number
                 if paragraph_anchor:
                     h_block["anchor"] = paragraph_anchor
                 self.cur_page.append(h_block)
@@ -2436,6 +2440,41 @@ class DocxConverter:
                 self.list_counters.pop(key, None)
 
         return current_number
+
+    def _build_numbering_label(self, numId: int, ilvl: int) -> Optional[str]:
+        """推进十进制 Word 编号计数器，并按当前层级的 lvlText 模板生成编号。"""
+        # 先推进当前编号层级；即使后续无法读取模板，也能返回当前数字作为降级结果。
+        current_number = self._advance_list_counter(numId, ilvl)
+        # numId 定位编号实例，ilvl 定位该实例引用的具体编号层级。
+        lvl_element = self._get_numbering_level_definition(numId, ilvl)
+        if lvl_element is None:
+            return str(current_number)
+
+        # 从当前层级读取 Word 用于展示编号的模板，例如“%1.”。
+        namespaces = {
+            "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        }
+        lvl_text_element = lvl_element.find("w:lvlText", namespaces=namespaces)
+        if lvl_text_element is None:
+            return str(current_number)
+
+        template = lvl_text_element.get(self.XML_KEY)
+        if not template:
+            return None
+
+        def replace_counter(match: re.Match) -> str:
+            # Word 占位符从 %1 开始，内部 ilvl 则从 0 开始，因此需要减 1。
+            referenced_level = int(match.group(1)) - 1
+            counter_key = (numId, referenced_level)
+            # 模板可能引用尚未出现的父级，缺失时按该层级的起始值初始化。
+            if counter_key not in self.list_counters:
+                self.list_counters[counter_key] = self._get_numbering_level_start(
+                    numId, referenced_level
+                )
+            return str(self.list_counters[counter_key])
+
+        # 用各层级的当前计数替换 %1 至 %9，并保留模板自带的标点。
+        return re.sub(r"%([1-9])", replace_counter, template).strip()
 
     def _is_numbered_list(self, numId: int, ilvl: int) -> bool:
         """
