@@ -69,8 +69,24 @@ app = typer.Typer(
 )
 
 
+def _show_version(ctx: typer.Context, value: bool) -> None:
+    if not value:
+        return
+    typer.echo(_render_version(_version_info()))
+    ctx.exit()
+
+
 @app.callback()
-def root(ctx: typer.Context) -> None:
+def root(
+    ctx: typer.Context,
+    _version_requested: bool = typer.Option(
+        False,
+        "--version",
+        callback=_show_version,
+        is_eager=True,
+        help="Show the version and exit.",
+    ),
+) -> None:
     prepare_cli_telemetry(ctx)
 
 

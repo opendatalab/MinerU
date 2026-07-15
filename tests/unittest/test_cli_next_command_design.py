@@ -115,6 +115,15 @@ def test_version_command_prints_mineru_and_python_versions() -> None:
     assert f"Python version: {sys.version.split()[0]}" in result.output
 
 
+def test_root_version_option_matches_version_command() -> None:
+    option_result = runner.invoke(app, ["--version"])
+    command_result = runner.invoke(app, ["version"])
+
+    assert option_result.exit_code == 0
+    assert command_result.exit_code == 0
+    assert option_result.output == command_result.output
+
+
 def test_version_json_writes_single_json_object() -> None:
     result = runner.invoke(app, ["version", "--json"])
 
@@ -151,6 +160,7 @@ def test_root_help_hides_typer_completion_options() -> None:
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0
+    assert "--version" in result.output
     assert "--install-completion" not in result.output
     assert "--show-completion" not in result.output
 

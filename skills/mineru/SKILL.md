@@ -48,8 +48,6 @@ MinerU is especially useful when documents contain OCR text, tables, formulas, f
 
 ## Do Not
 
-Do not:
-
 - Summarize a document before reading it with `mineru`.
 - Reimplement PDF/OCR extraction when `mineru` can read the document.
 
@@ -112,15 +110,35 @@ mineru read "doc:ab12cd3/tier:high/page:18" --json
 
 ## Installation And Setup
 
-Always check whether `mineru` is already available before installing.
+This skill requires MinerU `4.0.0` or later (`4.0.0a1` or later during the prerelease period). Before using any workflow, check whether the CLI is installed:
 
 ```bash
 command -v mineru
-mineru --help
 ```
 
-If `mineru` is not installed, install it with the first available isolated CLI installer.
+If `mineru` is not installed, install it with the first available isolated CLI installer. If it is installed, check its version:
+
+```bash
+mineru version --json
+```
+
+If `mineru version --json` fails, try `mineru --version` for older CLIs. If the detected version does not meet this requirement, tell the user which version was found and ask before upgrading it. If approved, upgrade with the same installer and environment, then check the version again. If declined, stop and do not run this skill's commands. Never assume compatibility when the version cannot be determined.
+
 MinerU requires Python `>=3.10,<3.14`.
+
+### Upgrade An Existing Installation
+
+Before upgrading, determine which tool owns the resolved `mineru` executable. Check `uv tool list`, then `pipx list --short`; otherwise, identify the Python environment containing the executable. Do not use an unrelated `pip` or install a second copy.
+
+Use the matching upgrade command only after the user approves the upgrade:
+
+```bash
+uv tool upgrade --prerelease allow mineru
+pipx upgrade mineru --pip-args="--pre"
+"<environment-python>" -m pip install --upgrade --pre mineru
+```
+
+If the owner cannot be determined, multiple installations exist, or MinerU is installed from source or in editable mode, ask the user instead of upgrading. After upgrading, check the resolved executable and its version again.
 
 ### Install with `uv` (preferred)
 
@@ -698,9 +716,10 @@ Rules:
 
 ## Remote API Usage
 
-Use `usage` only for the configured Remote API; Local Parse Servers do not have account usage limits:
+Query usage and limits for the configured Remote API:
 
 ```bash
+mineru usage
 mineru usage --json
 ```
 
