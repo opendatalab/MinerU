@@ -24,6 +24,7 @@ from mineru.kit.vlm_server import mlx_vlm_server
 from mineru.parser.base import ParseResult
 from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span
 from mineru.utils.image_payload import ImagePayloadCache
+from mineru.utils.model_registry import MODEL_COMPLETE_MARKER
 
 runner = CliRunner()
 
@@ -269,6 +270,10 @@ def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
     base_dir = tmp_path / "models"
     monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
     for repo in models.MODEL_REPOS:
+        if repo.download_mode == "full":
+            repo.local_dir().mkdir(parents=True, exist_ok=True)
+            (repo.local_dir() / MODEL_COMPLETE_MARKER).touch()
+            continue
         for model_path in repo.required_paths():
             target = repo.local_dir() / model_path.relative_path
             if Path(model_path.relative_path).suffix:
@@ -276,7 +281,7 @@ def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
                 target.write_text("x", encoding="utf-8")
                 continue
             target.mkdir(parents=True, exist_ok=True)
-            (target / "marker").write_text("x", encoding="utf-8")
+            (target / MODEL_COMPLETE_MARKER).touch()
 
     show_result = runner.invoke(app, ["models", "show"])
     verify_result = runner.invoke(app, ["models", "verify"])

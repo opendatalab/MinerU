@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, NoReturn
 
 import pytest
 
 from mineru.utils import models_download_utils
-from mineru.utils.model_registry import MINERU_2_5_PRO_2605_1_2B, ModelRepo
+from mineru.utils.model_registry import MODEL_COMPLETE_MARKER, MINERU_2_5_PRO_2605_1_2B, ModelRepo, model_path_exists
 
 
 def test_resolve_model_source_does_not_persist_env_auto(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -71,6 +72,7 @@ def test_download_model_repo_uses_required_path_patterns(
         "repo": "partial-repo",
         "patterns": ["models/weights", "models/weights/*"],
     }
+    assert (repo.local_dir() / "models/weights" / MODEL_COMPLETE_MARKER).is_file()
 
 
 def test_download_model_repo_keeps_full_download_as_default(
@@ -107,24 +109,334 @@ def test_download_model_repo_keeps_full_download_as_default(
         "repo": "full-repo",
         "patterns": None,
     }
+    assert (repo.local_dir() / MODEL_COMPLETE_MARKER).read_bytes() == b""
 
 
-def test_vlm_repo_verify_requires_core_model_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_vlm_repo_verify_requires_root_completion_marker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
 
     repo_dir = MINERU_2_5_PRO_2605_1_2B.local_dir()
     repo_dir.mkdir(parents=True)
-    for filename in ("config.json", "preprocessor_config.json", "tokenizer_config.json", "tokenizer.json"):
-        (repo_dir / filename).write_text("{}", encoding="utf-8")
+    assert MINERU_2_5_PRO_2605_1_2B.required_paths() == ()
 
-    missing_weight = models_download_utils.verify_model_repo(MINERU_2_5_PRO_2605_1_2B)
+    unmarked = models_download_utils.verify_model_repo(MINERU_2_5_PRO_2605_1_2B)
 
-    assert missing_weight.ready is False
-    assert missing_weight.missing_paths == ["model.safetensors"]
+    assert unmarked.ready is False
+    assert unmarked.missing_paths == [MODEL_COMPLETE_MARKER]
 
-    (repo_dir / "model.safetensors").write_bytes(b"weights")
+    (repo_dir / MODEL_COMPLETE_MARKER).touch()
 
     ready = models_download_utils.verify_model_repo(MINERU_2_5_PRO_2605_1_2B)
 
     assert ready.ready is True
     assert ready.missing_paths == []
+
+
+def test_model_path_exists_requires_completion_marker_for_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = ModelRepo(
+        name="repo",
+        local_name="repo",
+        repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
+        paths={"weights": "models/weights", "config": "config.json"},
+    )
+    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+
+    weights_dir = repo.weights.local_path()
+    weights_dir.mkdir(parents=True)
+    (weights_dir / "model.bin").write_bytes(b"weights")
+    assert model_path_exists(repo.weights) is False
+
+    (weights_dir / MODEL_COMPLETE_MARKER).touch()
+    assert model_path_exists(repo.weights) is True
+
+    nested_weights = repo.weights.path("det")
+    nested_weights.local_path().mkdir()
+    (nested_weights.local_path() / "det.bin").write_bytes(b"weights")
+    assert model_path_exists(nested_weights) is True
+
+    config_path = repo.config.local_path()
+    config_path.write_text("{}", encoding="utf-8")
+    assert model_path_exists(repo.config) is True
+
+
+def test_model_path_ensure_reuses_completed_directory_without_resolving_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = ModelRepo(
+        name="repo",
+        local_name="repo",
+        repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
+        paths={"weights": "models/weights"},
+    )
+    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    weights_dir = repo.weights.local_path()
+    weights_dir.mkdir(parents=True)
+    (weights_dir / "model.bin").write_bytes(b"weights")
+    (weights_dir / MODEL_COMPLETE_MARKER).touch()
+
+    def fail_resolve(*args: object, **kwargs: object) -> NoReturn:
+        raise AssertionError("ready model paths must not resolve a remote source")
+
+    monkeypatch.setattr(models_download_utils, "resolve_model_source", fail_resolve)
+
+    assert repo.weights.ensure() == weights_dir
+
+
+def test_model_repo_ensure_reuses_completed_full_repo_without_resolving_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = ModelRepo(
+        name="repo",
+        local_name="repo",
+        repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
+        paths={"config": "config.json", "weights": "model.bin"},
+    )
+    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    repo.local_dir().mkdir(parents=True)
+    repo.config.local_path().write_text("{}", encoding="utf-8")
+    repo.weights.local_path().write_bytes(b"weights")
+    (repo.local_dir() / MODEL_COMPLETE_MARKER).touch()
+
+    def fail_resolve(*args: object, **kwargs: object) -> NoReturn:
+        raise AssertionError("ready model repos must not resolve a remote source")
+
+    monkeypatch.setattr(models_download_utils, "resolve_model_source", fail_resolve)
+
+    assert repo.ensure() == repo.local_dir()
+
+
+def test_model_path_ensure_repairs_unmarked_directory_and_writes_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = ModelRepo(
+        name="repo",
+        local_name="repo",
+        repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
+        paths={"weights": "models/weights"},
+    )
+    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    weights_dir = repo.weights.local_path()
+    weights_dir.mkdir(parents=True)
+    (weights_dir / "existing.bin").write_bytes(b"existing")
+    calls = 0
+
+    def fake_snapshot_download(model_source: str, target_repo: ModelRepo, patterns: list[str] | None) -> str:
+        nonlocal calls
+        calls += 1
+        assert model_source == "modelscope"
+        assert patterns == ["models/weights", "models/weights/*"]
+        (weights_dir / "missing.bin").write_bytes(b"repaired")
+        return str(target_repo.local_dir())
+
+    monkeypatch.setattr(models_download_utils, "_snapshot_download", fake_snapshot_download)
+
+    assert repo.weights.ensure(source="modelscope") == weights_dir
+    assert calls == 1
+    assert (weights_dir / MODEL_COMPLETE_MARKER).is_file()
+
+
+def test_local_source_rejects_unmarked_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = ModelRepo(
+        name="repo",
+        local_name="repo",
+        repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
+        paths={"weights": "models/weights"},
+    )
+    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(models_download_utils.config.model, "source", "local")
+    weights_dir = repo.weights.local_path()
+    weights_dir.mkdir(parents=True)
+    (weights_dir / "partial.bin").write_bytes(b"partial")
+
+    with pytest.raises(FileNotFoundError, match="models/weights"):
+        repo.weights.ensure()
+
+    assert (weights_dir / MODEL_COMPLETE_MARKER).exists() is False
+
+
+def test_download_failure_removes_stale_directory_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = ModelRepo(
+        name="repo",
+        local_name="repo",
+        repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
+        paths={"weights": "models/weights"},
+        download_mode="required_paths",
+    )
+    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    weights_dir = repo.weights.local_path()
+    weights_dir.mkdir(parents=True)
+    marker = weights_dir / MODEL_COMPLETE_MARKER
+    marker.touch()
+
+    def fail_snapshot_download(*args: object, **kwargs: object) -> NoReturn:
+        raise RuntimeError("download interrupted")
+
+    monkeypatch.setattr(models_download_utils, "_snapshot_download", fail_snapshot_download)
+
+    with pytest.raises(RuntimeError, match="download interrupted"):
+        models_download_utils.download_model_repo(repo, source="modelscope")
+
+    assert marker.exists() is False
+
+
+def test_full_download_failure_removes_root_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = ModelRepo(
+        name="repo",
+        local_name="repo",
+        repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
+        paths={"config": "config.json"},
+    )
+    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    repo.local_dir().mkdir(parents=True)
+    marker = repo.local_dir() / MODEL_COMPLETE_MARKER
+    marker.touch()
+
+    def fail_snapshot_download(*args: object, **kwargs: object) -> NoReturn:
+        raise RuntimeError("download interrupted")
+
+    monkeypatch.setattr(models_download_utils, "_snapshot_download", fail_snapshot_download)
+
+    with pytest.raises(RuntimeError, match="download interrupted"):
+        models_download_utils.download_model_repo(repo, source="modelscope")
+
+    assert marker.exists() is False
+
+
+def test_nested_download_failure_invalidates_parent_directory_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = ModelRepo(
+        name="repo",
+        local_name="repo",
+        repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
+        paths={"weights": "models/weights"},
+    )
+    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    nested_weights = repo.weights.path("det")
+    nested_weights.local_path().mkdir(parents=True)
+    parent_marker = repo.weights.local_path() / MODEL_COMPLETE_MARKER
+    parent_marker.touch()
+
+    def fail_snapshot_download(*args: object, **kwargs: object) -> NoReturn:
+        raise RuntimeError("download interrupted")
+
+    monkeypatch.setattr(models_download_utils, "_snapshot_download", fail_snapshot_download)
+
+    with pytest.raises(RuntimeError, match="download interrupted"):
+        models_download_utils.download_model_files(repo, [nested_weights], source="modelscope")
+
+    assert parent_marker.exists() is False
+
+
+def test_nested_download_success_restores_parent_directory_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = ModelRepo(
+        name="repo",
+        local_name="repo",
+        repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
+        paths={"weights": "models/weights"},
+    )
+    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    nested_weights = repo.weights.path("det")
+    nested_weights.local_path().mkdir(parents=True)
+    parent_marker = repo.weights.local_path() / MODEL_COMPLETE_MARKER
+    parent_marker.touch()
+
+    def fake_snapshot_download(model_source: str, target_repo: ModelRepo, patterns: list[str] | None) -> str:
+        assert model_source == "modelscope"
+        assert target_repo is repo
+        assert patterns == ["models/weights/det", "models/weights/det/*"]
+        (nested_weights.local_path() / "det.bin").write_bytes(b"weights")
+        return str(repo.local_dir())
+
+    monkeypatch.setattr(models_download_utils, "_snapshot_download", fake_snapshot_download)
+
+    models_download_utils.download_model_files(repo, [nested_weights], source="modelscope")
+
+    assert parent_marker.is_file()
+    assert (nested_weights.local_path() / MODEL_COMPLETE_MARKER).is_file()
+
+
+def test_download_does_not_mark_metadata_only_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = ModelRepo(
+        name="repo",
+        local_name="repo",
+        repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
+        paths={"weights": "models/weights"},
+        download_mode="required_paths",
+    )
+    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+    weights_dir = repo.weights.local_path()
+
+    def fake_snapshot_download(model_source: str, target_repo: ModelRepo, patterns: list[str] | None) -> str:
+        assert model_source == "modelscope"
+        assert target_repo is repo
+        assert patterns == ["models/weights", "models/weights/*"]
+        (weights_dir / ".cache/huggingface").mkdir(parents=True)
+        (weights_dir / ".cache/huggingface/metadata").write_text("metadata", encoding="utf-8")
+        (weights_dir / ".msc").write_text("metadata", encoding="utf-8")
+        return str(repo.local_dir())
+
+    monkeypatch.setattr(models_download_utils, "_snapshot_download", fake_snapshot_download)
+
+    with pytest.raises(FileNotFoundError, match="models/weights"):
+        models_download_utils.download_model_repo(repo, source="modelscope")
+
+    assert (weights_dir / MODEL_COMPLETE_MARKER).exists() is False
+
+
+def test_huggingface_snapshot_rejects_missing_expected_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = ModelRepo(
+        name="repo",
+        local_name="repo",
+        repos={"huggingface": "owner/repo", "modelscope": "Owner/repo"},
+        paths={"weights": "models/weights"},
+    )
+    monkeypatch.setattr(models_download_utils.config.model, "base_dir", str(tmp_path / "models"))
+
+    class FakeApi:
+        def list_repo_files(self, repo_id: str) -> list[str]:
+            assert repo_id == "owner/repo"
+            return ["models/weights/config.json", "models/weights/model.bin"]
+
+    monkeypatch.setattr(models_download_utils, "HfApi", FakeApi)
+
+    def fake_hf_snapshot_download(repo_id: str, **kwargs: Any) -> str:
+        assert repo_id == "owner/repo"
+        target = Path(kwargs["local_dir"]) / "models/weights"
+        target.mkdir(parents=True)
+        (target / "config.json").write_text("{}", encoding="utf-8")
+        return kwargs["local_dir"]
+
+    monkeypatch.setattr(models_download_utils, "hf_snapshot_download", fake_hf_snapshot_download)
+
+    with pytest.raises(FileNotFoundError, match="models/weights/model.bin"):
+        models_download_utils._snapshot_download(
+            "huggingface",
+            repo,
+            ["models/weights", "models/weights/*"],
+        )
