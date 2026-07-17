@@ -1,19 +1,22 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
+import os
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from collections.abc import Sequence
 from typing import Literal
 
+import requests
 from filelock import FileLock
+from huggingface_hub import HfApi
 from huggingface_hub import snapshot_download as hf_snapshot_download
+from huggingface_hub.utils import filter_repo_objects
 from loguru import logger
 from modelscope import snapshot_download as ms_snapshot_download
-import requests
 
 from ..config import config, get_config_source, update_config_file
-from .model_registry import ModelPath, ModelRepo, model_path_exists
+from .model_registry import MODEL_COMPLETE_MARKER, ModelPath, ModelRepo, model_path_exists
 
 MODEL_SOURCE_ENV_VAR = "MINERU_MODEL_SOURCE"
 _HUGGINGFACE_MODELS_PAGE_URL = "https://huggingface.co/models"
@@ -23,6 +26,8 @@ _REMOTE_MODEL_SOURCES = ("huggingface", "modelscope")
 DOWNLOAD_MODEL_SOURCES = ("auto", *_REMOTE_MODEL_SOURCES)
 ResolvedRemoteModelSource = Literal["huggingface", "modelscope"]
 ResolvedModelSource = Literal["huggingface", "modelscope", "local"]
+_PROVIDER_METADATA_DIR_NAMES = {".cache", "._____temp"}
+_PROVIDER_METADATA_FILE_NAMES = {MODEL_COMPLETE_MARKER, ".msc", ".mdl", ".mv"}
 
 
 @dataclass(frozen=True)
@@ -117,7 +122,17 @@ def _snapshot_download(model_source: ResolvedRemoteModelSource, repo: ModelRepo,
     if patterns is not None:
         kwargs["allow_patterns"] = patterns
     if model_source == "huggingface":
-        return hf_snapshot_download(repo_id, **kwargs)
+        # Hugging Face may return a non-empty local_dir when the remote repo is unavailable, so verify the expected
+        # remote manifest before treating the snapshot as complete.
+        expected_files = list(filter_repo_objects(HfApi().list_repo_files(repo_id), allow_patterns=patterns))
+        if not expected_files:
+            raise FileNotFoundError(f"Hugging Face snapshot for {repo.name} has no files matching the requested paths.")
+        root = hf_snapshot_download(repo_id, **kwargs)
+        missing_files = [path for path in expected_files if not (local_dir / path).is_file()]
+        if missing_files:
+            missing = ", ".join(missing_files)
+            raise FileNotFoundError(f"Hugging Face snapshot for {repo.name} is incomplete; missing: {missing}")
+        return root
     return ms_snapshot_download(repo_id, **kwargs)
 
 
@@ -136,9 +151,7 @@ def _relative_paths(repo: ModelRepo, paths: Sequence[str | ModelPath]) -> list[s
     for path in paths:
         if isinstance(path, ModelPath):
             if path.repo is not repo:
-                raise ValueError(
-                    f"Model path {path.relative_path!r} belongs to repo {path.repo.name!r}, not {repo.name!r}."
-                )
+                raise ValueError(f"Model path {path.relative_path!r} belongs to repo {path.repo.name!r}, not {repo.name!r}.")
             relative_paths.append(path.relative_path)
         else:
             relative_paths.append(str(path).strip("/"))
@@ -151,28 +164,101 @@ def _verify_paths(repo: ModelRepo, paths: Sequence[str | ModelPath]) -> ModelRea
     return ModelReadyResult(ready=not missing, root=repo.local_dir(), missing_paths=missing)
 
 
+def _directory_has_payload(path: Path) -> bool:
+    for _root, dir_names, file_names in os.walk(path):
+        dir_names[:] = [name for name in dir_names if name not in _PROVIDER_METADATA_DIR_NAMES]
+        if any(name not in _PROVIDER_METADATA_FILE_NAMES for name in file_names):
+            return True
+    return False
+
+
+def _payload_path_exists(path: ModelPath) -> bool:
+    local_path = path.local_path()
+    if local_path.is_file():
+        return True
+    if not local_path.is_dir():
+        return False
+    return _directory_has_payload(local_path)
+
+
+def _verify_downloaded_paths(repo: ModelRepo, paths: Sequence[str | ModelPath]) -> ModelReadyResult:
+    model_paths = [path if isinstance(path, ModelPath) else repo.path(path) for path in paths]
+    missing = [path.relative_path for path in model_paths if not _payload_path_exists(path)]
+    return ModelReadyResult(ready=not missing, root=repo.local_dir(), missing_paths=missing)
+
+
+def _repo_completion_paths(repo: ModelRepo) -> list[ModelPath]:
+    if repo.download_mode == "full":
+        return [repo.path("")]
+    return list(repo.required_paths())
+
+
+def _remove_directory_markers(paths: Sequence[ModelPath]) -> list[Path]:
+    removed_markers: list[Path] = []
+    for path in paths:
+        local_path = path.local_path()
+        if not local_path.is_dir():
+            continue
+        repo_root = path.repo.local_dir()
+        for directory in (local_path, *local_path.parents):
+            marker = directory / MODEL_COMPLETE_MARKER
+            if marker.is_file():
+                marker.unlink()
+                removed_markers.append(marker)
+            if directory == repo_root:
+                break
+    return removed_markers
+
+
+def _mark_directories_complete(paths: Sequence[ModelPath]) -> None:
+    for path in paths:
+        local_path = path.local_path()
+        if local_path.is_dir():
+            (local_path / MODEL_COMPLETE_MARKER).touch(exist_ok=True)
+
+
+def _restore_directory_markers(markers: Sequence[Path]) -> None:
+    for marker in markers:
+        marker.touch(exist_ok=True)
+
+
 def _raise_not_ready(repo: ModelRepo, result: ModelReadyResult) -> None:
     missing = ", ".join(result.missing_paths)
     raise FileNotFoundError(f"Model repo {repo.name} is not ready under {result.root}; missing: {missing}")
 
 
-def download_model_repo(repo: ModelRepo, *, source: str | None = None, local_as_auto: bool = False) -> Path:
-    resolved_source = resolve_model_source(source, allow_auto=True, local_as_auto=local_as_auto)
-    if resolved_source == "local":
-        result = verify_model_repo(repo)
-        if not result.ready:
-            _raise_not_ready(repo, result)
-        return result.root
-
-    relative_paths = [path.relative_path for path in repo.required_paths()] if repo.download_mode == "required_paths" else None
+def download_model_repo(
+    repo: ModelRepo,
+    *,
+    source: str | None = None,
+    local_as_auto: bool = False,
+    reuse_ready: bool = False,
+) -> Path:
+    completion_paths = _repo_completion_paths(repo)
+    relative_paths = [path.relative_path for path in completion_paths] if repo.download_mode == "required_paths" else None
     lock_path = repo.lock_path()
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with FileLock(str(lock_path)):
+        if reuse_ready:
+            ready_result = verify_model_repo(repo)
+            if ready_result.ready:
+                return ready_result.root
+
+        resolved_source = resolve_model_source(source, allow_auto=True, local_as_auto=local_as_auto)
+        if resolved_source == "local":
+            result = verify_model_repo(repo)
+            if not result.ready:
+                _raise_not_ready(repo, result)
+            return result.root
+
+        removed_markers = _remove_directory_markers(completion_paths)
         _snapshot_download(resolved_source, repo, None if relative_paths is None else _path_patterns(relative_paths))
-        result = verify_model_repo(repo)
-        if not result.ready:
-            _raise_not_ready(repo, result)
-        return result.root
+        downloaded_result = _verify_downloaded_paths(repo, completion_paths)
+        if not downloaded_result.ready:
+            _raise_not_ready(repo, downloaded_result)
+        _mark_directories_complete(completion_paths)
+        _restore_directory_markers(removed_markers)
+        return downloaded_result.root
 
 
 def download_model_files(
@@ -181,29 +267,47 @@ def download_model_files(
     *,
     source: str | None = None,
     local_as_auto: bool = False,
+    reuse_ready: bool = False,
 ) -> Path:
     if not paths:
         return repo.local_dir()
 
-    resolved_source = resolve_model_source(source, allow_auto=True, local_as_auto=local_as_auto)
-    if resolved_source == "local":
-        result = _verify_paths(repo, paths)
-        if not result.ready:
-            _raise_not_ready(repo, result)
-        return result.root
-
+    model_paths = [path if isinstance(path, ModelPath) else repo.path(path) for path in paths]
     relative_paths = _relative_paths(repo, paths)
     lock_path = repo.lock_path()
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with FileLock(str(lock_path)):
+        if reuse_ready:
+            ready_result = _verify_paths(repo, model_paths)
+            if ready_result.ready:
+                return ready_result.root
+
+        resolved_source = resolve_model_source(source, allow_auto=True, local_as_auto=local_as_auto)
+        if resolved_source == "local":
+            result = _verify_paths(repo, model_paths)
+            if not result.ready:
+                _raise_not_ready(repo, result)
+            return result.root
+
+        removed_markers = _remove_directory_markers(model_paths)
         _snapshot_download(resolved_source, repo, _path_patterns(relative_paths))
-        result = _verify_paths(repo, paths)
-        if not result.ready:
-            _raise_not_ready(repo, result)
-        return result.root
+        downloaded_result = _verify_downloaded_paths(repo, model_paths)
+        if not downloaded_result.ready:
+            _raise_not_ready(repo, downloaded_result)
+        _mark_directories_complete(model_paths)
+        _restore_directory_markers(removed_markers)
+        return downloaded_result.root
 
 
 def verify_model_repo(repo: ModelRepo) -> ModelReadyResult:
+    if repo.download_mode == "full":
+        marker = repo.local_dir() / MODEL_COMPLETE_MARKER
+        ready = marker.is_file()
+        return ModelReadyResult(
+            ready=ready,
+            root=repo.local_dir(),
+            missing_paths=[] if ready else [MODEL_COMPLETE_MARKER],
+        )
     return _verify_paths(repo, list(repo.required_paths()))
 
 

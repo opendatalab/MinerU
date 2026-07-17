@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +12,7 @@ if TYPE_CHECKING:
     from ..config import ModelSource
 
 DownloadMode = Literal["full", "required_paths"]
+MODEL_COMPLETE_MARKER = ".mineru_complete"
 
 
 def _join_model_path(*parts: str) -> str:
@@ -44,7 +44,7 @@ class ModelPath:
     def ensure(self, *, source: "ModelSource | None" = None) -> Path:
         from .models_download_utils import download_model_files
 
-        download_model_files(self.repo, [self], source=source)
+        download_model_files(self.repo, [self], source=source, reuse_ready=True)
         return self.local_path()
 
 
@@ -82,7 +82,7 @@ class ModelRepo:
     def ensure(self, *, source: "ModelSource | None" = None) -> Path:
         from .models_download_utils import download_model_repo
 
-        return download_model_repo(self, source=source)
+        return download_model_repo(self, source=source, reuse_ready=True)
 
 
 PDF_EXTRACT_KIT = ModelRepo(
@@ -110,13 +110,7 @@ MINERU_2_5_PRO_2605_1_2B = ModelRepo(
         "huggingface": "opendatalab/MinerU2.5-Pro-2605-1.2B",
         "modelscope": "OpenDataLab/MinerU2.5-Pro-2605-1.2B",
     },
-    paths={
-        "config_json": "config.json",
-        "model_safetensors": "model.safetensors",
-        "preprocessor_config_json": "preprocessor_config.json",
-        "tokenizer_config_json": "tokenizer_config.json",
-        "tokenizer_json": "tokenizer.json",
-    },
+    paths={},
 )
 
 MODEL_REPOS: tuple[ModelRepo, ...] = (
@@ -156,11 +150,22 @@ def model_path_exists(path: ModelPath) -> bool:
         return True
     if not local_path.is_dir():
         return False
-    return any(files for _root, _dirs, files in os.walk(local_path))
+    repo_root = path.repo.local_dir()
+    try:
+        local_path.relative_to(repo_root)
+    except ValueError:
+        return False
+    for directory in (local_path, *local_path.parents):
+        if (directory / MODEL_COMPLETE_MARKER).is_file():
+            return True
+        if directory == repo_root:
+            break
+    return False
 
 
 __all__ = [
     "MINERU_2_5_PRO_2605_1_2B",
+    "MODEL_COMPLETE_MARKER",
     "MODEL_REPOS",
     "MODEL_REPOS_BY_NAME",
     "DownloadMode",

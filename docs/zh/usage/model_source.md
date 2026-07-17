@@ -47,6 +47,7 @@ mineru-kit models download --tier high
 >- 如需自定义模型目录，请先在 `config.yaml` 中设置 `model.base_dir`，再执行下载。
 >- 如需更新模型文件，可以再次运行 `mineru-kit models download --tier high`；在同一个 `model.base_dir` 下，provider SDK 会尽量复用已有文件做增量更新。
 >- `mineru-kit models download` 必须使用远端模型源执行真实下载；如果当前配置为 `model.source: local`，该命令会仅在本次执行中临时按 `auto` 处理。
+>- MinerU 会在整仓下载完成后于仓库根目录写入空白 `.mineru_complete`；按指定路径下载时，则分别标记已完成的模型目录。旧版本或中断下载留下但没有相应 marker 的目录，会在使用前通过 provider 增量下载确认；当 `model.source: local` 时，这类目录会报告为未 ready，而不会访问网络。
 
 ### 2. 使用本地模型进行解析
 

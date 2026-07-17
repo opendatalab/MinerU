@@ -272,7 +272,7 @@ repo 同时声明默认下载策略:
 - `download_mode="full"`: `download_model_repo(repo)` 下载完整仓库。
 - `download_mode="required_paths"`: `download_model_repo(repo)` 只下载 `repo.required_paths()` 对应的文件/目录。
 
-当前 `PDF-Extract-Kit-1.0` 使用 `required_paths`，避免拉取仓库中未被 runtime 使用的大量历史/可选权重。`MinerU2.5-Pro-2605-1.2B` 保持 `full`，因为 VLM 模型加载通常需要完整 tokenizer/config/weights 文件集，registry 中的 paths 只作为 readiness marker。
+当前 `PDF-Extract-Kit-1.0` 使用 `required_paths`，避免拉取仓库中未被 runtime 使用的大量历史/可选权重。`MinerU2.5-Pro-2605-1.2B` 保持 `full`，因为 VLM 模型加载通常需要完整 tokenizer/config/weights 文件集；整仓 readiness 由仓库根目录的 `.mineru_complete` 表示，不再维护逐文件 paths 清单。
 
 ### 7. 下载 API
 
@@ -352,6 +352,12 @@ def verify_model_tier(tier: Tier) -> ModelReadyResult:
 - `mineru-kit models verify --tier <tier>` 检查该 tier 需要的 repo 集合。
 - managed local parse server 的 tier readiness 检查基于 `REPOS_FOR_TIER`。
 - partial download 只验证本次请求 paths，不要求整仓 ready。
+- 最终文件存在时视为 ready；Hugging Face 和 ModelScope 都先写临时文件，完成后再移动到最终路径。
+- `full` 模式在 ModelRepo 根目录写入空白 `.mineru_complete`，表示整仓 ready；`required_paths` 模式在每个目录型 ModelPath 下分别写入 marker，文件型 ModelPath 仍按最终文件是否存在判断。
+- marker 只由 MinerU 在 provider 下载成功返回且下载后 payload 检查通过后创建。
+- 下载或更新目录前删除旧 marker；下载失败、payload 缺失或进程中断时不创建 marker。
+- provider 的 `.cache/huggingface`、`._____temp`、`.msc`、`.mdl` 和 `.mv` 等元数据或临时内容不能单独作为模型 payload。
+- 旧版本留下但没有 marker 的目录按未确认完整处理；远端 source 会通过 provider 增量补齐并创建 marker，`local` source 则报告 not ready。
 
 ### 10. 并发安全
 
