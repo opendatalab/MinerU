@@ -40,6 +40,9 @@ def build_arg_parser():
                         help="第二阶段识别模型：mineru=默认VLM，ovis=OvisOCR2")
     parser.add_argument("--ovis-url", default=None, help="OvisOCR2 OpenAI兼容服务地址")
     parser.add_argument("--ovis-model", default="ATH-MaaS/OvisOCR2", help="OvisOCR2模型名")
+    parser.add_argument("--layout-json", default=None,
+                        help="模式c使用的外部layout.json（如pp_doclayoutv3_layout.py的产出）；"
+                             "缺省则用PP-DocLayoutV2现场生成")
     return parser
 
 
@@ -121,9 +124,14 @@ def main():
             f"layout done: {layout_doc['page_count']} pages -> {layout_json_path}"
         )
     elif args.mode == "c":
-        # 两阶段分离：阶段一落盘 -> 阶段二从文件恢复
-        from mineru.backend.vlm.pipeline_layout_detector import PipelineLayoutDetector
-        if not os.path.exists(layout_json_path):
+        # 两阶段分离：阶段一落盘（或使用外部layout.json）-> 阶段二从文件恢复
+        if args.layout_json:
+            layout_json_path = args.layout_json
+            if not os.path.exists(layout_json_path):
+                raise SystemExit(f"--layout-json 不存在: {layout_json_path}")
+            logger.info(f"using external layout doc: {layout_json_path}")
+        elif not os.path.exists(layout_json_path):
+            from mineru.backend.vlm.pipeline_layout_detector import PipelineLayoutDetector
             vlm_analyze.doc_layout_analyze(
                 pdf_bytes,
                 PipelineLayoutDetector(device=args.device),
