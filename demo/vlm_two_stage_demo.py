@@ -14,6 +14,10 @@
   # 连远端VLM服务跑模式b（layout用CPU小模型，识别用远端VLM）
   python demo/vlm_two_stage_demo.py --pdf demo/pdfs/demo1.pdf --mode b \
       --backend http-client --server-url http://<gpu-host>:30000
+
+  # 识别阶段替换为OvisOCR2（需另起OvisOCR2服务，见ovis_ocr_recognizer.py顶部说明）
+  python demo/vlm_two_stage_demo.py --pdf demo/pdfs/demo1.pdf --mode b \
+      --recognizer ovis --ovis-url http://<ovis-host>:8000
 """
 import argparse
 import json
@@ -32,7 +36,21 @@ def build_arg_parser():
     parser.add_argument("--server-url", default=None, help="http-client后端的服务地址")
     parser.add_argument("--device", default=None, help="PP-DocLayoutV2设备，如cpu/cuda")
     parser.add_argument("--output", default="output/vlm_two_stage_demo", help="输出目录")
+    parser.add_argument("--recognizer", default="mineru", choices=["mineru", "ovis"],
+                        help="第二阶段识别模型：mineru=默认VLM，ovis=OvisOCR2")
+    parser.add_argument("--ovis-url", default=None, help="OvisOCR2 OpenAI兼容服务地址")
+    parser.add_argument("--ovis-model", default="ATH-MaaS/OvisOCR2", help="OvisOCR2模型名")
     return parser
+
+
+def build_content_recognizer(args):
+    """根据参数构造第二阶段识别器；mineru默认识别器返回None（由doc_analyze兜底）。"""
+    if args.recognizer == "ovis":
+        if not args.ovis_url:
+            raise SystemExit("--recognizer ovis 需要提供 --ovis-url")
+        from mineru.backend.vlm.ovis_ocr_recognizer import OvisOcrContentRecognizer
+        return OvisOcrContentRecognizer(server_url=args.ovis_url, model_name=args.ovis_model)
+    return None
 
 
 def write_outputs(md_dir, name, middle_json):
@@ -68,18 +86,25 @@ def main():
     layout_json_path = os.path.join(out_dir, DEFAULT_LAYOUT_DOC_FILENAME)
 
     vlm_kwargs = dict(backend=args.backend, server_url=args.server_url)
+    content_recognizer = build_content_recognizer(args)
 
     if args.mode == "a":
-        # 默认路径：与原版完全一致的一体两步调用
-        middle_json, _ = vlm_analyze.doc_analyze(pdf_bytes, image_writer, **vlm_kwargs)
+        # 默认路径：与原版完全一致的一体两步调用（指定ovis时改走解耦识别）
+        middle_json, _ = vlm_analyze.doc_analyze(
+            pdf_bytes,
+            image_writer,
+            content_recognizer=content_recognizer,
+            **vlm_kwargs,
+        )
         write_outputs(out_dir, pdf_path.stem, middle_json)
     elif args.mode == "b":
-        # layout换成pipeline小模型，VLM只做识别
+        # layout换成pipeline小模型，识别交给VLM或OvisOCR2
         from mineru.backend.vlm.pipeline_layout_detector import PipelineLayoutDetector
         middle_json, _ = vlm_analyze.doc_analyze(
             pdf_bytes,
             image_writer,
             layout_detector=PipelineLayoutDetector(device=args.device),
+            content_recognizer=content_recognizer,
             layout_writer=layout_writer,
             **vlm_kwargs,
         )
@@ -109,6 +134,7 @@ def main():
             pdf_bytes,
             image_writer,
             layout_detector=PrecomputedLayoutDetector(layout_json_path),
+            content_recognizer=content_recognizer,
             **vlm_kwargs,
         )
         write_outputs(out_dir, pdf_path.stem, middle_json)
