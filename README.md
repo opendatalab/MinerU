@@ -54,6 +54,8 @@ Use MinerU for local document files such as:
 | PowerPoint | `.pptx` |
 | Excel | `.xlsx` |
 
+Read `.txt`, `.md`, `.markdown`, `.csv`, `.rst`, and `.tex` files directly. Do not run `mineru parse` for these plain-text formats.
+
 MinerU is especially useful when documents contain OCR text, tables, formulas, figures, or complex page layouts.
 
 ## Do Not
@@ -74,7 +76,7 @@ MinerU is especially useful when documents contain OCR text, tables, formulas, f
 
 Use this decision tree before running commands:
 
-1. User provided a file path and wants content: run `mineru parse <file>`.
+1. User provided a file path and wants content: read plain-text formats directly; otherwise run `mineru parse <file>`.
 2. User provided a `doc:...` locator: run `mineru read <locator>`.
 3. User asks to continue from a previous output: follow the `<!-- Next: ... -->` command exactly.
 4. User asks for a specific page or block after parsing: use `mineru read <locator>`, not a fresh parse.
@@ -813,6 +815,7 @@ Use this table for common error codes:
 | `file_encrypted` | Password-protected file | Ask user for an unlocked copy |
 | `file_corrupted` | File cannot be read | Ask for a valid copy |
 | `page_range_invalid` | Bad `--pages` value | Correct to forms such as `1~5`, `1,3,8~10`, or `all` |
+| `parse_not_required` | The input is a directly readable text file | Read the source file directly; do not retry `mineru parse` |
 | `not_cached` / `cache_miss` | Requested cached content does not exist | Run `mineru parse` |
 
 Retry rules:

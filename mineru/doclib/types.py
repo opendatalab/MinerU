@@ -333,7 +333,7 @@ class SearchResult(DoclibModel):
     author: str | None = None
     size_bytes: int | None = None
     page_count: int | None = None
-    tier: Tier
+    tier: Tier | None = None
     snippet: str
     files: list[SearchFile] = Field(default_factory=list)
 

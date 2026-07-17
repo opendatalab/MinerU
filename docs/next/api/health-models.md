@@ -155,7 +155,7 @@ Tier 对象字段:
 
 v1 协议中面向用户读取文档的质量档位以 [解析 Tier](../tiers.md) 为准。具体服务当前支持哪些 tier，以 `/v1/tiers` 返回为准。
 
-请求创建 parse job 时，客户端可以省略 `tier` 或传 `null`，表示使用 [解析 Tier](../tiers.md) 中定义的默认选择策略。对 PDF/image 这类支持多 tier 的输入，默认选择不能等价于 `flash`；Office/text/HTML 按 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 的批量规则归一为 `flash`。
+请求创建 parse job 时，客户端可以省略 `tier` 或传 `null`，表示使用 [解析 Tier](../tiers.md) 中定义的默认选择策略。对 PDF/image 这类支持多 tier 的输入，默认选择不能等价于 `flash`；Office/HTML 按 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 的批量规则归一为 `flash`，text 不作为解析输入。
 
 更完整产品语义见 [解析 Tier](../tiers.md)。
 

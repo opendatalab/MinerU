@@ -58,6 +58,8 @@ FILE_TYPE_BY_EXTENSION: dict[str, str] = {
     "tex": "tex",
 }
 
+TEXT_FILE_TYPES: frozenset[str] = frozenset(FILE_TYPE_BY_EXTENSION[ext] for ext in TEXT_EXTENSIONS)
+
 MIME_TYPE_BY_EXTENSION: dict[str, str] = {
     "pdf": "application/pdf",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

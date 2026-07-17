@@ -131,7 +131,7 @@ curl -X POST http://localhost:8000/v1/parse/jobs \
   }'
 ```
 
-对 PDF/image，省略 `tier` 或传 `null` 时，本地 server 按 [解析 Tier](../tiers.md) 的默认选择策略选择非 `flash` 质量 tier。如果不可用，请求应失败，而不是使用 `flash` 返回解析结果。Office/text/HTML 按 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 的 API Server 批量规则归一为 `flash`。
+对 PDF/image，省略 `tier` 或传 `null` 时，本地 server 按 [解析 Tier](../tiers.md) 的默认选择策略选择非 `flash` 质量 tier。如果不可用，请求应失败，而不是使用 `flash` 返回解析结果。Office/HTML 按 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 的 API Server 批量规则归一为 `flash`，text 不作为解析输入。
 
 ## 本地 Server: 复用上传流程
 

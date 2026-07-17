@@ -51,7 +51,7 @@ class FTSManager:
         self,
         *,
         sha256: str,
-        tier: Tier,
+        tier: Tier | None,
         text: str,
         title: str,
         author: str,
@@ -90,7 +90,7 @@ class FTSManager:
 
     async def get_tier(self, sha256: str) -> Tier | None:
         row = await self.db.fetchone("SELECT tier FROM fts_contents WHERE sha256=?", (sha256,))
-        return cast(Tier, row["tier"]) if row else None
+        return cast(Tier | None, row["tier"]) if row else None
 
     async def delete(self, sha256: str) -> None:
         await self.db.execute("DELETE FROM fts_contents WHERE sha256=?", (sha256,))

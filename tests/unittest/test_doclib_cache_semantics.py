@@ -55,6 +55,7 @@ from mineru.doclib.services.scan_svc import ScanService
 from mineru.doclib.services.search_svc import SearchService
 from mineru.doclib.types import DocContentExportRequest, FileInfo, InvalidateRequest, ParseResponse, WatchRequest
 from mineru.errors import InvalidRequestError, MineruError, NotFoundError
+from mineru.filetypes import file_type_for_extension
 from mineru.parser import backend_for_tier, resolve_tier_and_backend
 from mineru.parser.api_client import _APITransportError, _V1APIError
 from mineru.parser.base import ParseResult
@@ -1224,7 +1225,7 @@ def test_request_parse_explicit_image_ingests_and_queues_parse(tmp_path: Path, m
     asyncio.run(_run())
 
 
-@pytest.mark.parametrize("ext", ["txt", "html", "docx", "pptx", "xlsx"])
+@pytest.mark.parametrize("ext", ["html", "docx", "pptx", "xlsx"])
 @pytest.mark.parametrize("tier", ["high", "xhigh"])
 def test_request_parse_rejects_quality_tiers_for_non_pdf_image_inputs(
     tmp_path: Path,
@@ -1324,7 +1325,7 @@ def test_refresh_file_applies_parsing_rule_effective_tier_and_privacy(
     asyncio.run(_run())
 
 
-@pytest.mark.parametrize("ext", ["txt", "html", "docx", "pptx", "xlsx"])
+@pytest.mark.parametrize("ext", ["html", "docx", "pptx", "xlsx"])
 def test_request_parse_rejects_remote_for_non_pdf_image_inputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1365,6 +1366,68 @@ def test_request_parse_rejects_remote_for_non_pdf_image_inputs(
         assert exc_info.value.code == "remote_unsupported_for_file_type"
         assert exc_info.value.param == "remote"
         assert ext in exc_info.value.message
+
+    asyncio.run(_run())
+
+
+@pytest.mark.parametrize("ext", ["txt", "md", "markdown", "csv", "rst", "tex"])
+@pytest.mark.parametrize(
+    ("tier", "force", "remote"),
+    [
+        (None, False, False),
+        ("flash", True, False),
+        ("high", False, False),
+        (None, False, True),
+    ],
+)
+def test_request_parse_reports_text_files_do_not_require_parsing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ext: str,
+    tier: Tier | None,
+    force: bool,
+    remote: bool,
+) -> None:
+    class _NoRulesConfig:
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            return []
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        fts = FTSManager(db)
+        service = ParseService(
+            db=db,
+            fts=fts,
+            config_svc=_NoRulesConfig(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / f"sample.{ext}"
+        source.write_text("unique searchable content", encoding="utf-8")
+
+        async def _metadata(path: str) -> dict[str, Any]:
+            return {
+                "page_count": 1,
+                "title": None,
+                "author": None,
+                "subject": None,
+                "keywords": None,
+                "is_image_based": 0,
+            }
+
+        monkeypatch.setattr(parse_svc_module, "extract_metadata", _metadata)
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.request_parse(str(source), tier=tier, force=force, remote=remote)
+
+        assert exc_info.value.code == "parse_not_required"
+        assert exc_info.value.param == "path"
+        assert "Read the file directly" in exc_info.value.message
+        file_row = await db.fetchone("SELECT sha256 FROM files WHERE path=?", (str(source),))
+        assert file_row is not None
+        assert await db.fetchall("SELECT id FROM parses WHERE sha256=?", (file_row["sha256"],)) == []
+        assert await fts.search("searchable")
 
     asyncio.run(_run())
 
@@ -1738,7 +1801,7 @@ def test_ensure_ingested_rebinds_changed_text_file_to_new_sha(tmp_path: Path) ->
         assert second is not None
         assert second["sha256"] == hashlib.sha256(b"new content").hexdigest()
         fts_row = await db.fetchone("SELECT sha256, tier FROM fts_contents WHERE sha256=?", (second["sha256"],))
-        assert fts_row == {"sha256": second["sha256"], "tier": "flash"}
+        assert fts_row == {"sha256": second["sha256"], "tier": None}
 
     asyncio.run(_run())
 
@@ -2043,6 +2106,7 @@ def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
             ("2" * 64, "high", "pdf", "high.pdf", 12),
             ("3" * 64, "flash", "docx", "flash.docx", 23),
             ("4" * 64, "xhigh", "pdf", "xhigh.pdf", 34),
+            ("5" * 64, None, "text", "note.txt", 1),
         ]
 
         for sha256, tier, file_type, filename, page_count in docs:
@@ -2058,20 +2122,32 @@ def test_search_filters_by_tier_min_tier_and_file_type(tmp_path: Path) -> None:
             )
             await fts.replace(sha256=sha256, tier=tier, text="needle content", title="", author="")
 
+        all_results, all_total = await service.search("needle")
         exact_results, exact_total = await service.search("needle", tier="high")
+        flash_results, flash_total = await service.search("needle", tier="flash")
         min_results, min_total = await service.search("needle", min_tier="high")
+        min_flash_results, min_flash_total = await service.search("needle", min_tier="flash")
         type_results, type_total = await service.search("needle", file_type="docx")
+        text_results, text_total = await service.search("needle", file_type="text")
 
+        assert all_total == 5
+        assert {row["tier"] for row in all_results} == {None, "flash", "high", "xhigh"}
         assert exact_total == 1
         assert [row["tier"] for row in exact_results] == ["high"]
         assert [row["short_id"] for row in exact_results] == ["2" * 7]
         assert [row["page_count"] for row in exact_results] == [12]
+        assert flash_total == 2
+        assert {row["short_id"] for row in flash_results} == {"1" * 7, "3" * 7}
         assert min_total == 2
         assert {row["tier"] for row in min_results} == {"high", "xhigh"}
+        assert min_flash_total == 4
+        assert None not in {row["tier"] for row in min_flash_results}
         assert type_total == 1
         assert [[file["filename"] for file in row["files"]] for row in type_results] == [["flash.docx"]]
         assert [row["short_id"] for row in type_results] == ["3" * 7]
         assert [row["page_count"] for row in type_results] == [23]
+        assert text_total == 1
+        assert [row["tier"] for row in text_results] == [None]
 
     asyncio.run(_run())
 
@@ -2990,6 +3066,62 @@ def test_doclib_server_accepts_short_id_for_sha256_doc_inputs(tmp_path: Path) ->
     asyncio.run(_run())
 
 
+@pytest.mark.parametrize("ext", ["txt", "md", "markdown", "csv", "rst", "tex"])
+def test_doclib_server_reports_text_invalidation_not_required(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ext: str,
+) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        fts = FTSManager(db)
+        parse_svc = ParseService(
+            db=db,
+            fts=fts,
+            config_svc=ConfigService(db),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        server = DoclibServer(SimpleNamespace(db=db, data_dir=str(tmp_path), parse_svc=parse_svc))
+        source = tmp_path / f"note.{ext}"
+        source.write_text("unique searchable content", encoding="utf-8")
+
+        async def _metadata(path: str) -> dict[str, Any]:
+            return {
+                "page_count": 1,
+                "title": None,
+                "author": None,
+                "subject": None,
+                "keywords": None,
+                "is_image_based": 0,
+            }
+
+        monkeypatch.setattr(parse_svc_module, "extract_metadata", _metadata)
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await server.invalidate(InvalidateRequest(path=str(source)))
+
+        assert exc_info.value.code == "parse_not_required"
+        assert exc_info.value.param == "path"
+        assert "Read the file directly" in exc_info.value.message
+        file_row = await db.fetchone("SELECT sha256 FROM files WHERE path=?", (str(source),))
+        assert file_row is not None
+        doc_row = await db.fetchone("SELECT short_id FROM docs WHERE sha256=?", (file_row["sha256"],))
+        assert doc_row is not None
+
+        with pytest.raises(InvalidRequestError) as doc_ref_exc_info:
+            await server.invalidate(InvalidateRequest(doc_ref=doc_row["short_id"]))
+
+        assert doc_ref_exc_info.value.code == "parse_not_required"
+        assert doc_ref_exc_info.value.param == "doc_ref"
+        assert "Read the file directly" in doc_ref_exc_info.value.message
+        assert await db.fetchall("SELECT id FROM parses WHERE sha256=?", (file_row["sha256"],)) == []
+        assert await fts.search("searchable")
+
+    asyncio.run(_run())
+
+
 def test_doc_content_invalid_after_cursor_returns_invalid_locator(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.sqlite"))
@@ -3010,6 +3142,34 @@ def test_doc_content_invalid_after_cursor_returns_invalid_locator(tmp_path: Path
             assert exc_info.value.code == "invalid_locator"
             assert exc_info.value.param == "after"
             assert "Invalid doclib content cursor" in exc_info.value.message
+        finally:
+            await db.close()
+
+    asyncio.run(_run())
+
+
+@pytest.mark.parametrize("ext", ["txt", "md", "markdown", "csv", "rst", "tex"])
+def test_read_text_locator_reports_parse_not_required(tmp_path: Path, ext: str) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.sqlite"))
+        await db.initialize()
+        server = DoclibServer(SimpleNamespace(db=db, data_dir=str(tmp_path)))
+        now = 1000
+        sha256 = "a" * 64
+        short_id = "aaaaaaa"
+        await db.execute(
+            "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (sha256, short_id, 12, file_type_for_extension(ext), 1, now, now),
+        )
+        try:
+            for locator in (f"doc:{short_id}", f"doc:{short_id}/tier:flash/page:1"):
+                with pytest.raises(InvalidRequestError) as exc_info:
+                    await server.read_content(locator)
+
+                assert exc_info.value.code == "parse_not_required"
+                assert exc_info.value.param == "locator"
+                assert "Read the file directly" in exc_info.value.message
         finally:
             await db.close()
 

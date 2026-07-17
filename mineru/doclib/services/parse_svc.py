@@ -641,7 +641,7 @@ class ParseService:
             text = await asyncio.to_thread(Path(path).read_text, encoding="utf-8", errors="replace")
             await self.fts.replace(
                 sha256=sha256,
-                tier="flash",
+                tier=None,
                 text=truncate_head_tail(text),
                 title=metadata["title"] or "",
                 author=metadata["author"] or "",
@@ -725,6 +725,12 @@ class ParseService:
         ext = file_row["ext"]
 
         # ── resolve tier (before cache check) ──
+        if ext in TEXT_EXTENSIONS:
+            raise InvalidRequestError(
+                "parse_not_required",
+                "Text files do not require MinerU parsing. Read the file directly.",
+                "path",
+            )
         if remote and ext not in TIERED_PARSE_EXTENSIONS:
             raise InvalidRequestError(
                 "remote_unsupported_for_file_type",
@@ -743,8 +749,6 @@ class ParseService:
                 f"Tier '{tier}' is only supported for PDF and image files; '{ext}' files use --tier flash.",
                 "tier",
             )
-        if ext in TEXT_EXTENSIONS:
-            return _text_response(sha256, short_id)
         if ext in TIERED_PARSE_EXTENSIONS:
             requested_tier = tier or _resolve_default_tier(remote)
         else:
@@ -1519,21 +1523,6 @@ def _done_response(sha256: str, short_id: str | None, tier: Tier, page_range: st
         created_parse_ids=[],
         reused_parse_ids=[],
         tip="Cached. Use --force to re-parse.",
-    )
-
-
-def _text_response(sha256: str, short_id: str | None) -> ParseResponse:
-    return ParseResponse(
-        sha256=sha256,
-        short_id=short_id,
-        tier="flash",
-        page_range="1",
-        status=PARSE_STATUS_DONE,
-        cache_hit=False,
-        wait_parse_ids=[],
-        created_parse_ids=[],
-        reused_parse_ids=[],
-        tip="Plain text files do not require parsing.",
     )
 
 

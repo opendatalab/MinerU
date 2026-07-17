@@ -144,11 +144,11 @@ def info(self, file_path: str) -> dict: ...
 
 | 方法 | 响应 |
 |------|------|
-| `search()` | `SearchResponse`，包含全文结果、snippet、files、tier；支持 `file_type`、`tier`、`min_tier` 过滤。 |
+| `search()` | `SearchResponse`，包含全文结果、snippet、files、可空 tier；支持 `file_type`、`tier`、`min_tier` 过滤。 |
 | `find()` | `FindResponse`，包含文件名搜索结果；支持 `ext` 过滤。 |
 | `get_file_by_path()` | `FileInfoResponse`，包含文件元信息、doc metadata 和 parse tiers。 |
 
-`search()` 的 `files` 返回与文档 SHA 关联的全部 file aliases，按 file id 降序排列；每项包含 path、filename、ext 和 status。已索引的 orphan 文档使用空列表。active 优先只属于非 JSON CLI 展示策略，不改变 SDK 响应。搜索结果可信度只通过 `tier` 表达。
+`search()` 的 `files` 返回与文档 SHA 关联的全部 file aliases，按 file id 降序排列；每项包含 path、filename、ext 和 status。已索引的 orphan 文档使用空列表。active 优先只属于非 JSON CLI 展示策略，不改变 SDK 响应。解析内容的 `tier` 表示索引来源 tier；直接索引的 text 源内容为 `null`。传入 `tier` 或 `min_tier` 时，`tier=null` 的结果不参与匹配。
 
 ## Remote API 方法
 
