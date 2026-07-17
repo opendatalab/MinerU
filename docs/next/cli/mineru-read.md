@@ -19,6 +19,8 @@ read(locator) = read existing parsed content by stable locator
 
 `read` 不负责 discover、scan、ingest，也不默认创建 parse task。它读取的是 doclib 中已有的解析结果。
 
+text 文件没有解析结果；当 locator 指向 text doc 时，返回 `parse_not_required`，调用方应直接读取源文件。
+
 ## 2. Usage
 
 ```bash

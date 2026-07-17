@@ -23,12 +23,12 @@
 | 规则 | 当前结论 |
 |------|----------|
 | `parse-server` | 最终术语，中文为“解析服务”；此前误写的相关术语不作为项目概念使用。 |
-| 默认选择策略 | 以 [解析 Tier](tiers.md) 为准；PDF/image 默认读取不会解析为 `flash`，Office/text/HTML 归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)。 |
+| 默认选择策略 | 以 [解析 Tier](tiers.md) 为准；PDF/image 默认读取不会解析为 `flash`，Office/HTML 归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)，text 直接读取。 |
 | 实际 tier 记录 | 任务、缓存、产物和 metadata 只记录实际使用的实体 tier，不记录 `requested_tier` / `resolved_tier`。 |
 | `flash` | 长期存在，既是一个解析档位，也是 PDF 快速解析 backend 名称。 |
 | doclib 产物 | `parsed/` 目录持久化按页组织的 Middle JSON 批次文件和必要图片 sidecar；Markdown、Content List、HTML 读取时转换。 |
 | 能力发现 | parse-server 的解析档位发现 endpoint 统一为 `GET /v1/tiers`。 |
-| 搜索结果 tier | search result 应以机器可读字段显式返回索引来源 tier。 |
+| 搜索结果 tier | search result 以机器可读字段返回解析索引来源 tier；直接索引的 text 源内容为 `null`。 |
 | remote fallback | 用户显式允许 remote 后，remote 失败可以 fallback 到 local；local 失败不能自动扩大到 remote。 |
 | SDK tier 参数 | 普通 parser 入口应支持 `tier` 语义；`backend` 只作为专家层或过渡参数暴露。 |
 | 错误映射 | `quality_tier_unavailable` 应进入稳定错误体系。 |
@@ -50,8 +50,8 @@
 | `mineru-kit` 参数稳定性 | 暂不划分 `stable` / `experimental` 等稳定性等级，先保持简单。 |
 | `mineru-kit parse` 输入 | 当前只支持文件和目录输入；不支持 stdin、路径列表、URL 输入和递归目录。 |
 | `mineru-kit parse` 输出 | `--output` 必填；单文件可输出到文件路径或目录路径；多文件只能输出到目录路径；同名冲突直接报错并终止整个批次。 |
-| `mineru-kit parse` local/remote | local 支持 `tier/backend` 并校验兼容，PDF/image 二者都不传时默认 `high`，Office/text/HTML 按 ADR-0024 归一；remote 支持 `--remote`/`--remote-url`/`--api-key`，允许传 `tier`，禁止传 `backend`。 |
-| parsing-rules 默认 tier | parsing-rules 允许不指定 tier；PDF/image 按 `high` -> `xhigh` -> `medium` -> `flash` 选择，Office/text/HTML 归一为 `flash`；只记录实际 tier。 |
+| `mineru-kit parse` local/remote | local 支持 `tier/backend` 并校验兼容，PDF/image 二者都不传时默认 `high`，Office/HTML 按 ADR-0024 归一，text 不作为解析输入；remote 支持 `--remote`/`--remote-url`/`--api-key`，允许传 `tier`，禁止传 `backend`。 |
+| parsing-rules 默认 tier | parsing-rules 允许不指定 tier；PDF/image 按 `high` -> `xhigh` -> `medium` -> `flash` 选择，Office/HTML 归一为 `flash`，text 只入库和索引；只记录实际 tier。 |
 | Telemetry P0 | P0 必须实现 doclib server telemetry 状态、聚合、flush 和 CLI 管理入口；纯工具无 telemetry 能力。 |
 | `mineru parse` 默认页码范围 | 分页文档默认解析和读取 `1~min(page_count,10)`；该默认由 doclib 读取/解析计划负责，CLI 参数层不硬编码默认 `--pages`。 |
 | 渐进式阅读协议 | Server 返回结构化 `next_request`；CLI marker 只由 `next_request` 渲染，不作为协议源头，详见 [ADR-0013](decisions/0013-doc-content-progressive-reading.md)。 |

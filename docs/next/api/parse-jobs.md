@@ -353,4 +353,4 @@ Local Parse Server 的任务 API 与官方 API 保持同一结构，但有以下
 - `health.features.sources` 必须反映本地 server 实际允许的 source 类型；只有启动时开启 `--allow-local-source` 才包含 `local`。
 - `local` source 可以不生成输入 `file_id`；响应中应保留 `name` 和文件级状态。
 - 对 PDF/image，省略 `tier` 或传 `null` 时，只能按默认选择策略选择本地可发现的非 `flash` 质量 tier，不能回退到 `flash`；如果只有 `flash` 可用，应返回 `quality_tier_unavailable`。
-- 对 Office/text/HTML，API Server job 按批量规则处理，即使 job tier 是质量 tier，文件实际解析也按 `flash` 语义归一；暂不新增 file-level effective tier 字段。
+- 对 Office/HTML，API Server job 按批量规则处理，即使 job tier 是质量 tier，文件实际解析也按 `flash` 语义归一；text 不进入 parse job；暂不新增 file-level effective tier 字段。

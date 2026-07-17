@@ -23,6 +23,7 @@ _ERROR_TYPE_MAP: dict[str, ErrorType] = {
     "unsupported_source": "invalid_request_error",
     "page_range_invalid": "invalid_request_error",
     "file_type_unsupported": "invalid_request_error",
+    "parse_not_required": "invalid_request_error",
     "file_encrypted": "invalid_request_error",
     "file_corrupted": "invalid_request_error",
     "file_too_large": "invalid_request_error",

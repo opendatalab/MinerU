@@ -34,6 +34,7 @@ DOCLIB_CONTRACT_ERROR_CODES = {
     "no_engine",
     "not_cached",
     "page_not_cached",
+    "parse_not_required",
     "parse_page_remap_failed",
     "parse_server_model_not_ready",
     "parse_server_unavailable",
@@ -64,6 +65,7 @@ def test_doclib_error_code_types_are_stable() -> None:
     assert error_type_for("invalid_config_key") == "invalid_request_error"
     assert error_type_for("invalid_locator") == "invalid_request_error"
     assert error_type_for("multi_page_image_not_supported") == "invalid_request_error"
+    assert error_type_for("parse_not_required") == "invalid_request_error"
 
     assert error_type_for("parse_empty") == "engine_error"
     assert error_type_for("parse_failed") == "engine_error"
@@ -81,6 +83,7 @@ def test_doclib_error_code_types_are_stable() -> None:
 
 def test_http_status_for_error_codes_is_stable() -> None:
     assert http_status_for("invalid_request") == 400
+    assert http_status_for("parse_not_required") == 400
     assert http_status_for("file_not_found") == 404
     assert http_status_for("asset_not_available") == 404
     assert http_status_for("block_not_found") == 404

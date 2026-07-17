@@ -21,7 +21,7 @@
 - 错误格式兼容 OpenAI API。
 - `message` 面向人类，`code`、`param`、`retryable` 和 `user_action` 面向程序。
 - 不显式 `--remote` 时，不用错误恢复逻辑静默上传文档。
-- PDF/image 的默认选择策略不能降级为 `flash`；找不到非 `flash` 质量 tier 时必须报错。Office/text/HTML 这类仅支持 flash tier 的输入归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)。
+- PDF/image 的默认选择策略不能降级为 `flash`；找不到非 `flash` 质量 tier 时必须报错。Office/HTML 这类仅支持 flash tier 的输入归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)。文本文件无需解析，显式 parse 请求返回 `parse_not_required`。
 - 未来新增 `code` 只能追加，不改变既有语义。
 
 ## 3. 错误响应格式
@@ -82,9 +82,10 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`medium`、`high
 | `timeout_error` | `parse_wait_timeout` | 408 | 是 | `wait` | CLI `parse --wait` 等待窗口到期，解析任务仍在运行 | `poll_parse_or_rerun_with_longer_wait` |
 | `engine_error` | `parse_oom` | 500 | 是 | null | 本地显存或内存不足 | `use_lower_tier_or_remote` |
 | `invalid_request_error` | `parse_server_model_not_ready` | 400 | 否 | `parse_server.local.mode` / `parse_server.local.managed_tier` | 配置 managed local parse-server 时，目标 tier 的本地模型文件未准备好 | `run_mineru_kit_models_download_for_tier` |
-| `invalid_request_error` | `remote_unsupported_for_file_type` | 400 | 否 | `remote` | 非 PDF/image 单文件主动解析请求 remote | `use_local_flash_or_choose_pdf_image` |
-| `invalid_request_error` | `tier_unsupported_for_file_type` | 400 | 否 | `tier` | 非 PDF/image 单文件主动解析显式请求质量 tier | `use_tier_flash_or_choose_pdf_image` |
+| `invalid_request_error` | `remote_unsupported_for_file_type` | 400 | 否 | `remote` | Office/HTML 单文件主动解析请求 remote | `use_local_flash_or_choose_pdf_image` |
+| `invalid_request_error` | `tier_unsupported_for_file_type` | 400 | 否 | `tier` | Office/HTML 单文件主动解析显式请求质量 tier | `use_tier_flash_or_choose_pdf_image` |
 | `invalid_request_error` | `tier_unsupported_for_remote` | 400 | 否 | `tier` | PDF/image remote 解析显式请求 `flash` | `choose_remote_quality_tier_or_local_flash` |
+| `invalid_request_error` | `parse_not_required` | 400 | 否 | `path` / `doc_ref` / `locator` | 对文本文件请求解析、读取解析结果或作废解析结果 | `read_source_file_directly` |
 
 关键约束：
 

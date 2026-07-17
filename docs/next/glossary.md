@@ -59,7 +59,7 @@
 - CLI/API/SDK 的用户可见参数应使用 `tier`。
 - CLI 不传 `--tier`、HTTP API 省略 `tier` 或传 JSON `null`、Python SDK 传 `None` 表示使用默认选择策略。
 - 任务入队、缓存目录、产物 metadata 应记录实际使用的实体 tier，即 `flash`、`medium`、`high` 或 `xhigh`。
-- PDF/image 的默认选择策略不能解析为 `flash`；Office/text/HTML 这类仅支持 flash tier 的输入归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)。
+- PDF/image 的默认选择策略不能解析为 `flash`；Office/HTML 这类仅支持 flash tier 的输入归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)；text 直接读取。
 
 完整产品语义见 [解析 Tier](tiers.md)。
 

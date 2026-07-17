@@ -250,6 +250,28 @@ def test_search_results_render_as_list_without_table() -> None:
     assert "Snippet:" not in rendered
 
 
+def test_search_text_result_omits_tier_label() -> None:
+    rendered = search_mod._render_search_results(
+        SearchResponse(
+            total=1,
+            query="python",
+            results=[
+                SearchResult(
+                    sha256="a" * 64,
+                    short_id="aaaaaaa",
+                    tier=None,
+                    snippet="Python notes",
+                    files=[SearchFile(path="/tmp/notes.txt", filename="notes.txt", ext="txt", status="active")],
+                )
+            ],
+        )
+    )
+
+    assert "1. Document aaaaaaa" in rendered
+    assert "Tier:" not in rendered
+    assert "/tmp/notes.txt" in rendered
+
+
 def test_search_result_snippet_preserves_fts_match_after_long_prefix() -> None:
     rendered = search_mod._render_search_results(
         SearchResponse(
@@ -1568,6 +1590,40 @@ def test_parse_json_error_output_is_machine_readable(monkeypatch: Any, tmp_path:
     assert "No medium, high, or xhigh engine available" in payload["error"]["message"]
 
 
+@pytest.mark.parametrize("json_mode", [False, True])
+def test_parse_text_file_reports_parse_not_required(monkeypatch: Any, tmp_path: Path, json_mode: bool) -> None:
+    source = tmp_path / "demo.txt"
+    source.write_text("hello", encoding="utf-8")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 90
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            assert request.path == str(source.resolve())
+            raise RuntimeError(
+                "('parse_not_required', 'Text files do not require MinerU parsing. Read the file directly.', 'path')"
+            )
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+    args = ["parse", str(source)]
+    if json_mode:
+        args.append("--json")
+
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 1
+    if json_mode:
+        payload = json.loads(result.output)
+        assert payload["error"]["type"] == "invalid_request_error"
+        assert payload["error"]["code"] == "parse_not_required"
+        assert payload["error"]["param"] == "path"
+        assert payload["error"]["message"].endswith("Read the file directly.")
+    else:
+        assert "Text files do not require MinerU parsing. Read the file directly." in result.output
+        assert "('parse_not_required'" not in result.output
+
+
 def test_parse_invalid_after_cursor_json_error_is_validation_error(monkeypatch: Any, tmp_path: Path) -> None:
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
@@ -1927,6 +1983,29 @@ def test_invalidate_non_json_prints_message_not_error_tuple(monkeypatch: Any, tm
     assert "('not_cached'" not in result.output
 
 
+def test_invalidate_text_file_reports_parse_not_required(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.txt"
+    source.write_text("hello", encoding="utf-8")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 10
+
+        def invalidate(self, request: Any) -> None:
+            assert request.path == str(source.resolve())
+            raise RuntimeError(
+                "('parse_not_required', 'Text files do not require MinerU parsing. Read the file directly.', 'path')"
+            )
+
+    monkeypatch.setattr(invalidate, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["invalidate", str(source)])
+
+    assert result.exit_code == 1
+    assert "Text files do not require MinerU parsing. Read the file directly." in result.output
+    assert "('parse_not_required'" not in result.output
+
+
 def test_show_doc_expands_files(monkeypatch: Any) -> None:
     calls: list[tuple[str, bool]] = []
 
@@ -2243,6 +2322,36 @@ def test_read_json_error_output_is_machine_readable(monkeypatch: Any) -> None:
     payload = json.loads(result.output)
     assert payload["error"]["code"] == "not_cached"
     assert "Error:" not in result.output
+
+
+@pytest.mark.parametrize("json_mode", [False, True])
+def test_read_text_locator_reports_parse_not_required(monkeypatch: Any, json_mode: bool) -> None:
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 60
+
+        def read_content(self, locator: str, **kwargs: Any) -> DocContentResponse:
+            assert locator == "doc:ab12cd3/tier:flash"
+            raise RuntimeError(
+                "('parse_not_required', 'Text files do not require MinerU parsing. Read the file directly.', 'locator')"
+            )
+
+    monkeypatch.setattr(read, "DoclibClient", _Client)
+    args = ["read", "doc:ab12cd3/tier:flash"]
+    if json_mode:
+        args.append("--json")
+
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 1
+    if json_mode:
+        payload = json.loads(result.output)
+        assert payload["error"]["type"] == "invalid_request_error"
+        assert payload["error"]["code"] == "parse_not_required"
+        assert payload["error"]["param"] == "locator"
+    else:
+        assert "Text files do not require MinerU parsing. Read the file directly." in result.output
+        assert "('parse_not_required'" not in result.output
 
 
 def test_read_json_output_writes_markdown_file_and_returns_output_object(monkeypatch: Any, tmp_path: Path) -> None:

@@ -25,7 +25,7 @@ MinerU 有两类配置：
 配置必须服务两个产品原则：
 
 - 隐私优先：任何配置都不能导致静默上传文档。
-- 质量优先：PDF/image 主动阅读未指定 tier 时使用默认选择策略，不能静默降级到 `flash`；Office/text/HTML 按实际能力归一为 `flash`。
+- 质量优先：PDF/image 主动阅读未指定 tier 时使用默认选择策略，不能静默降级到 `flash`；Office/HTML 按实际能力归一为 `flash`；text 直接读取。
 
 ## 2. 两阶段配置模型
 
@@ -237,7 +237,7 @@ mineru config parsing-rules add "*/合同/*" --tier high --remote
 - 对 PDF/image，规则必须显式指定 remote，才允许上传远端。
 - 对 PDF/image，规则命中的 tier 必须经过能力检查。
 - 对 PDF/image，规则未指定 tier 时按 `high` -> `xhigh` -> `medium` -> `flash` 选择，并只记录实际使用的实体 tier。
-- 对 Office/text/HTML，parsing-rule 的 tier 和 remote 不生效，实际按 `flash` 记录。
+- 对 Office/HTML，parsing-rule 的 tier 和 remote 不生效，实际按 `flash` 记录；text 只入库和索引，不创建 parse row。
 - 完整归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)。
 
 ### 8.3 Exclude

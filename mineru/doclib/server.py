@@ -21,6 +21,7 @@ from pydantic import ValidationError
 
 from ..config import config
 from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
+from ..filetypes import TEXT_EXTENSIONS, TEXT_FILE_TYPES
 from ..parser.tier import TierDependencyError, ensure_tier_runtime_dependencies
 from ..render import render_markdown
 from ..render.markdown import blocks_to_markdown
@@ -403,12 +404,21 @@ class DoclibServer(AsyncDoclibInterface):
         if request.target != "parses":
             raise InvalidRequestError("invalid_request", f"Unsupported invalidate target: {request.target}", "target")
         doc_row = await self._doc_for_ref(request.doc_ref, param="doc_ref") if request.doc_ref else None
+        file_row: FileRow | None = None
         sha256 = doc_row["sha256"] if doc_row else None
         if sha256 is None and request.path:
             file_row = await self.state.parse_svc.ensure_ingested(request.path)
             sha256 = file_row["sha256"] if file_row and file_row.get("sha256") else None
         if sha256 is None:
             raise NotFoundError("file_not_found", "Document not found.", "path")
+        if (file_row and file_row["ext"] in TEXT_EXTENSIONS) or (
+            doc_row and doc_row["file_type"] in TEXT_FILE_TYPES
+        ):
+            raise InvalidRequestError(
+                "parse_not_required",
+                "Text files do not require MinerU parsing. Read the file directly.",
+                "doc_ref" if doc_row else "path",
+            )
 
         short_id = doc_row["short_id"] if doc_row else await self._short_id_for_sha256(sha256)
         count = await self.state.parse_svc.invalidate(sha256, request.tier)
@@ -662,6 +672,12 @@ class DoclibServer(AsyncDoclibInterface):
         doc = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE short_id=?", (cursor.short_id,)))
         if doc is None:
             raise NotFoundError("doc_not_found", f"Document {cursor.short_id} not found.", "locator")
+        if doc["file_type"] in TEXT_FILE_TYPES:
+            raise InvalidRequestError(
+                "parse_not_required",
+                "Text files do not require MinerU parsing. Read the file directly.",
+                "locator",
+            )
 
         tier = cursor.tier or await self._default_read_tier(doc["sha256"])
         if tier is None:
@@ -748,9 +764,7 @@ class DoclibServer(AsyncDoclibInterface):
                 limit=limit,
                 offset=offset,
             )
-            response = SearchResponse(
-                results=[_search_result(row) for row in results if row.get("tier") in TIERS], total=total, query=query
-            )
+            response = SearchResponse(results=[_search_result(row) for row in results], total=total, query=query)
             dims = {"status": "succeeded"}
             await _record_telemetry_count(self.state, "search.finished.count", dimensions=dims)
             await _record_telemetry_duration(self.state, "search.duration_bucket.count", start_ms, dimensions=dims)
@@ -2315,9 +2329,7 @@ def _parsing_rule_info(row: ParsingRuleRow | None) -> ParsingRuleInfo:
 
 
 def _search_result(row: ContentSearchResultRow) -> SearchResult:
-    data = dict(row)
-    data["tier"] = cast(Tier, data["tier"])
-    return SearchResult.model_validate(data)
+    return SearchResult.model_validate(row)
 
 
 def _find_result(row: FilenameSearchResultRow) -> FindResult:

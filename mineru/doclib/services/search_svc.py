@@ -189,6 +189,8 @@ class SearchService:
 
 
 def _matches_tier(value: object, *, tier: Tier | None, min_tier: Tier | None) -> bool:
+    if value is None:
+        return tier is None and min_tier is None
     if not isinstance(value, str) or value not in TIER_ORDER:
         return False
     if tier is not None and value != tier:

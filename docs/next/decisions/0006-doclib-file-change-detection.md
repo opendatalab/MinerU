@@ -199,7 +199,7 @@ SELECT * FROM files WHERE sha256=? AND status='active' LIMIT 1
 
 - 可解析文档由 parse 成功后更新 `fts_contents`。
 - invalidate 后按剩余最高有效 tier 重建或删除 `fts_contents`。
-- 纯文本文件不创建 parse batch，但入库时应直接读取文本并写入 `fts_contents`，使 `GET /search` 能搜索文本内容。
+- 纯文本文件不创建 parse batch，但入库时应直接读取文本并以 `tier=NULL` 写入 `fts_contents`，使 `GET /search` 能搜索文本内容。
 
 ### 纯文本文件
 

@@ -186,7 +186,7 @@ class FtsContentSearchRow(TypedDict):
     sha256: str
     title: str
     author: str
-    tier: Tier
+    tier: Tier | None
     snippet: str
     rank: float
 
@@ -216,7 +216,7 @@ class ContentSearchResultRow(TypedDict):
     author: str | None
     size_bytes: int
     page_count: int | None
-    tier: Tier
+    tier: Tier | None
     snippet: str
     files: list[SearchResultFileRow]
 
