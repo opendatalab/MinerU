@@ -19,6 +19,16 @@ from .model_output_to_middle_json import (
     finalize_middle_json,
     init_middle_json,
 )
+from .stages import (
+    DEFAULT_LAYOUT_DOC_FILENAME,
+    ContentRecognizer,
+    LayoutDetector,
+    VlmContentRecognizer,
+    VlmLayoutDetector,
+    build_layout_doc,
+    layout_doc_to_json,
+)
+from mineru.backend.utils.formula_number import optimize_hybrid_formula_number_blocks
 from mineru.backend.utils.runtime_utils import exclude_progress_bar_idle_time
 from ...data.data_reader_writer import DataWriter
 from mineru.utils.pdf_image_tools import (
@@ -420,6 +430,28 @@ def _close_images(images_list):
                 pass
 
 
+def _collect_layout_pages(layout_pages, blocks_list, images_pil_list, page_start_index):
+    """在识别阶段之前为layout doc留存每页块快照。"""
+    for offset, (page_blocks, pil_img) in enumerate(zip(blocks_list, images_pil_list)):
+        layout_pages.append(
+            {
+                "page_idx": page_start_index + offset,
+                "page_size": list(pil_img.size),
+                "blocks": [dict(block) for block in page_blocks],
+            }
+        )
+
+
+def _write_layout_doc(layout_writer, layout_pages, layout_detector, filename=DEFAULT_LAYOUT_DOC_FILENAME):
+    layout_doc = build_layout_doc(
+        layout_pages,
+        layout_backend=layout_detector.name,
+        emits_formula_number=layout_detector.emits_formula_number,
+    )
+    layout_writer.write_string(filename, layout_doc_to_json(layout_doc))
+    return layout_doc
+
+
 def doc_analyze(
     pdf_bytes,
     image_writer: DataWriter | None,
@@ -428,18 +460,32 @@ def doc_analyze(
     model_path: str | None = None,
     server_url: str | None = None,
     image_analysis: bool = True,
+    layout_detector: LayoutDetector | None = None,
+    content_recognizer: ContentRecognizer | None = None,
+    layout_writer: DataWriter | None = None,
     **kwargs,
 ):
     client_side_output_generation = bool(
         kwargs.pop("client_side_output_generation", False)
     )
-    if predictor is None:
+    # 任一阶段被注入（或需要落盘中间layout）时走解耦路径；否则保持原两步合并调用
+    use_decoupled = (
+        layout_detector is not None
+        or content_recognizer is not None
+        or layout_writer is not None
+    )
+    if predictor is None and not (layout_detector is not None and content_recognizer is not None):
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
-    predictor = _maybe_enable_serial_execution(predictor, backend)
+    if predictor is not None:
+        predictor = _maybe_enable_serial_execution(predictor, backend)
+    if use_decoupled:
+        layout_detector = layout_detector or VlmLayoutDetector(predictor)
+        content_recognizer = content_recognizer or VlmContentRecognizer(predictor)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json = init_middle_json()
     results = []
+    layout_pages = []
     doc_closed = False
     try:
         page_count = get_pdfium_document_page_count(pdf_doc)
@@ -475,11 +521,32 @@ def doc_analyze(
                         f'pages {window_start + 1}-{window_end + 1}/{page_count} '
                         f'({len(images_pil_list)} pages)'
                     )
-                    with predictor_execution_guard(predictor):
-                        window_results = predictor.batch_two_step_extract(
-                            images=images_pil_list,
-                            image_analysis=image_analysis,
-                        )
+                    if use_decoupled:
+                        with predictor_execution_guard(predictor):
+                            window_blocks_list = layout_detector.batch_detect(
+                                images_pil_list,
+                                start_page_idx=window_start,
+                            )
+                            if layout_writer is not None:
+                                _collect_layout_pages(
+                                    layout_pages,
+                                    window_blocks_list,
+                                    images_pil_list,
+                                    window_start,
+                                )
+                            window_results = content_recognizer.batch_recognize(
+                                images_pil_list,
+                                window_blocks_list,
+                                image_analysis=image_analysis,
+                            )
+                        if layout_detector.emits_formula_number:
+                            optimize_hybrid_formula_number_blocks(window_results)
+                    else:
+                        with predictor_execution_guard(predictor):
+                            window_results = predictor.batch_two_step_extract(
+                                images=images_pil_list,
+                                image_analysis=image_analysis,
+                            )
                     results.extend(window_results)
                     if progress_bar is None:
                         progress_bar = tqdm(total=page_count, desc="Processing pages")
@@ -510,6 +577,8 @@ def doc_analyze(
                 f"processing-window infer finished, cost: {infer_time}, "
                 f"speed: {round(len(results) / infer_time, 3)} page/s"
             )
+        if layout_writer is not None:
+            _write_layout_doc(layout_writer, layout_pages, layout_detector)
         if not client_side_output_generation:
             finalize_middle_json(middle_json["pdf_info"])
         close_pdfium_document(pdf_doc)
@@ -528,18 +597,32 @@ async def aio_doc_analyze(
     model_path: str | None = None,
     server_url: str | None = None,
     image_analysis: bool = True,
+    layout_detector: LayoutDetector | None = None,
+    content_recognizer: ContentRecognizer | None = None,
+    layout_writer: DataWriter | None = None,
     **kwargs,
 ):
     client_side_output_generation = bool(
         kwargs.pop("client_side_output_generation", False)
     )
-    if predictor is None:
+    # 任一阶段被注入（或需要落盘中间layout）时走解耦路径；否则保持原两步合并调用
+    use_decoupled = (
+        layout_detector is not None
+        or content_recognizer is not None
+        or layout_writer is not None
+    )
+    if predictor is None and not (layout_detector is not None and content_recognizer is not None):
         predictor = await _get_model_async(backend, model_path, server_url, **kwargs)
-    predictor = _maybe_enable_serial_execution(predictor, backend)
+    if predictor is not None:
+        predictor = _maybe_enable_serial_execution(predictor, backend)
+    if use_decoupled:
+        layout_detector = layout_detector or VlmLayoutDetector(predictor)
+        content_recognizer = content_recognizer or VlmContentRecognizer(predictor)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json = init_middle_json()
     results = []
+    layout_pages = []
     doc_closed = False
     try:
         page_count = get_pdfium_document_page_count(pdf_doc)
@@ -574,11 +657,32 @@ async def aio_doc_analyze(
                         f'pages {window_start + 1}-{window_end + 1}/{page_count} '
                         f'({len(images_pil_list)} pages)'
                     )
-                    async with aio_predictor_execution_guard(predictor):
-                        window_results = await predictor.aio_batch_two_step_extract(
-                            images=images_pil_list,
-                            image_analysis=image_analysis,
-                        )
+                    if use_decoupled:
+                        async with aio_predictor_execution_guard(predictor):
+                            window_blocks_list = await layout_detector.aio_batch_detect(
+                                images_pil_list,
+                                start_page_idx=window_start,
+                            )
+                            if layout_writer is not None:
+                                _collect_layout_pages(
+                                    layout_pages,
+                                    window_blocks_list,
+                                    images_pil_list,
+                                    window_start,
+                                )
+                            window_results = await content_recognizer.aio_batch_recognize(
+                                images_pil_list,
+                                window_blocks_list,
+                                image_analysis=image_analysis,
+                            )
+                        if layout_detector.emits_formula_number:
+                            optimize_hybrid_formula_number_blocks(window_results)
+                    else:
+                        async with aio_predictor_execution_guard(predictor):
+                            window_results = await predictor.aio_batch_two_step_extract(
+                                images=images_pil_list,
+                                image_analysis=image_analysis,
+                            )
                     results.extend(window_results)
                     if progress_bar is None:
                         progress_bar = tqdm(total=page_count, desc="Processing pages")
@@ -609,6 +713,8 @@ async def aio_doc_analyze(
                 f"processing-window infer finished, cost: {infer_time}, "
                 f"speed: {round(len(results) / infer_time, 3)} page/s"
             )
+        if layout_writer is not None:
+            await asyncio.to_thread(_write_layout_doc, layout_writer, layout_pages, layout_detector)
         if not client_side_output_generation:
             await asyncio.to_thread(finalize_middle_json, middle_json["pdf_info"])
         close_pdfium_document(pdf_doc)
@@ -617,3 +723,59 @@ async def aio_doc_analyze(
     finally:
         if not doc_closed:
             close_pdfium_document(pdf_doc)
+
+
+def doc_layout_analyze(
+    pdf_bytes,
+    layout_detector: LayoutDetector,
+    layout_writer: DataWriter | None = None,
+    filename: str = DEFAULT_LAYOUT_DOC_FILENAME,
+) -> dict:
+    """仅执行第一阶段（layout检测），产出并可落盘layout doc中间结果。
+
+    产出的dict可直接构造 PrecomputedLayoutDetector 交给 doc_analyze 跑第二阶段。
+    """
+    pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
+    layout_pages = []
+    try:
+        page_count = get_pdfium_document_page_count(pdf_doc)
+        configured_window_size = get_processing_window_size(default=64)
+        effective_window_size = min(page_count, configured_window_size) if page_count else 0
+        logger.info(
+            f'Layout-only processing-window run. page_count={page_count}, '
+            f'window_size={configured_window_size}'
+        )
+        for window_start in range(0, page_count, effective_window_size or 1):
+            window_end = min(page_count - 1, window_start + effective_window_size - 1)
+            images_list = load_images_from_pdf_doc(
+                pdf_doc,
+                start_page_id=window_start,
+                end_page_id=window_end,
+                image_type=ImageType.PIL,
+                pdf_bytes=pdf_bytes,
+            )
+            try:
+                images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+                window_blocks_list = layout_detector.batch_detect(
+                    images_pil_list,
+                    start_page_idx=window_start,
+                )
+                _collect_layout_pages(
+                    layout_pages,
+                    window_blocks_list,
+                    images_pil_list,
+                    window_start,
+                )
+            finally:
+                _close_images(images_list)
+    finally:
+        close_pdfium_document(pdf_doc)
+
+    layout_doc = build_layout_doc(
+        layout_pages,
+        layout_backend=layout_detector.name,
+        emits_formula_number=layout_detector.emits_formula_number,
+    )
+    if layout_writer is not None:
+        layout_writer.write_string(filename, layout_doc_to_json(layout_doc))
+    return layout_doc
