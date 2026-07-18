@@ -22,6 +22,10 @@ build/
 dist/
 *.egg
 
+# Python coverage reports
+.coverage
+htmlcov/
+
 # vscode history
 .history
 
