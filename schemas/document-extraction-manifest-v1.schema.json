@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Kiwi-Shane/MinerU/blob/main/schemas/document-extraction-manifest-v1.schema.json",
+  "title": "MinerU document extraction manifest v1",
+  "description": "Source-owned contract for one local MinerU extraction run. This manifest describes extraction provenance and derivatives; it does not establish source sufficiency or an RA disposition.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "extraction_run_id",
+    "source_id",
+    "source_version_id",
+    "input_sha256",
+    "mineru_identity",
+    "runtime_identity",
+    "status",
+    "native_page_count",
+    "outputs",
+    "page_blocks",
+    "tables",
+    "images",
+    "ocr_profile",
+    "warnings",
+    "errors",
+    "fallback_used",
+    "derivative_not_native_source_evidence",
+    "does_not_establish_source_sufficiency"
+  ],
+  "properties": {
+    "contract_version": {
+      "type": "string",
+      "const": "document-extraction-manifest-v1"
+    },
+    "extraction_run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_version_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "input_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "mineru_identity": {
+      "$ref": "#/$defs/mineru_identity"
+    },
+    "runtime_identity": {
+      "$ref": "#/$defs/runtime_identity"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "running",
+        "completed",
+        "failed"
+      ]
+    },
+    "native_page_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/output_artifact"
+      }
+    },
+    "page_blocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "images": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "ocr_profile": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": true
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "fallback_used": {
+      "type": "boolean"
+    },
+    "derivative_not_native_source_evidence": {
+      "type": "boolean",
+      "const": true
+    },
+    "does_not_establish_source_sufficiency": {
+      "type": "boolean",
+      "const": true
+    }
+  },
+  "$defs": {
+    "mineru_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository_sha",
+        "package_version",
+        "backend",
+        "model_identifiers",
+        "configuration_sha256"
+      ],
+      "properties": {
+        "repository_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,64}$"
+        },
+        "package_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "backend": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_identifiers": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "configuration_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "runtime_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "os",
+        "architecture",
+        "accelerator_profile"
+      ],
+      "properties": {
+        "os": {
+          "type": "string",
+          "minLength": 1
+        },
+        "architecture": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accelerator_profile": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "output_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_id",
+        "artifact_type",
+        "relative_path",
+        "sha256"
+      ],
+      "properties": {
+        "artifact_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relative_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "contract_version": "document-extraction-manifest-v1",
+  "extraction_run_id": "EXT-SYNTHETIC-001",
+  "source_id": "SRC-SYNTHETIC-001",
+  "source_version_id": "SRC-SYNTHETIC-001-V001",
+  "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "mineru_identity": {
+    "repository_sha": "62a0be1318062a1f19bfb8311de0969b8f59b40f",
+    "package_version": "3.4.4",
+    "backend": "pipeline",
+    "model_identifiers": {
+      "layout": "synthetic-fixture"
+    },
+    "configuration_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "runtime_identity": {
+    "os": "synthetic",
+    "architecture": "synthetic",
+    "accelerator_profile": "cpu"
+  },
+  "status": "completed",
+  "native_page_count": 2,
+  "outputs": [
+    {
+      "artifact_id": "ART-SYNTHETIC-001",
+      "artifact_type": "markdown",
+      "relative_path": "output/document.md",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ],
+  "page_blocks": [],
+  "tables": [],
+  "images": [],
+  "ocr_profile": null,
+  "warnings": [],
+  "errors": [],
+  "fallback_used": false,
+  "derivative_not_native_source_evidence": true,
+  "does_not_establish_source_sufficiency": true
+}
