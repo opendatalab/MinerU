@@ -42,3 +42,20 @@ duplicate filenames with different SHA-256 values, and superseded versions.
 Qualification is recorded independently for each profile as `qualified`,
 `qualified_with_bounded_limitation`, `rejected`, or `deferred`. A passing
 adapter unit test does not change this disposition.
+
+## Synthetic native smoke observations
+
+On 2026-07-18, two public repository fixtures were run with MinerU
+`3.4.4`, the local `pipeline` backend, and application offline mode on
+producer revision `a63b3833e104c694bfec7bee24cb94741d6250ed`:
+
+| Fixture | Method/profile characterization | Result |
+|---|---|---|
+| `tests/unittest/pdfs/test.pdf` | `auto`; native-text characterization; 1 logical page | Completed; source SHA and all five legacy artifact entries matched; zero warnings. |
+| `demo/pdfs/small_ocr.pdf` | `ocr`; OCR characterization; 8 logical pages | Completed; source SHA and all five legacy artifact entries matched; zero warnings. |
+
+These runs confirm only local execution and legacy artifact-integrity
+behavior. `offline_verified` remains false because application flags do not
+prove host-level network denial; no critical-token/table gold adjudication,
+canonical manifest emission, or full fixture-family acceptance was performed.
+The profile disposition therefore remains `deferred`.
