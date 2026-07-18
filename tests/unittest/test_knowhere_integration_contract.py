@@ -9,6 +9,7 @@ from typing import Any, NoReturn
 import pytest
 
 from mineru.integrations.knowhere.contract import (
+    CanonicalManifestOptions,
     KnowhereExportError,
     KnowhereExportOptions,
     resolve_artifact_path,
@@ -129,6 +130,7 @@ def test_pdf_export_writes_completed_manifest_with_required_artifacts(
         "content_list_v2",
         "images_dir",
     }
+    assert not (output_root / "document-extraction-manifest-v1.json").exists()
 
 
 def test_docx_export_resolves_office_parse_directory(
@@ -301,3 +303,196 @@ def test_export_requires_no_api_key_and_sets_offline_environment(
         "TRANSFORMERS_OFFLINE": "1",
         "MODELSCOPE_OFFLINE": "1",
     }
+
+
+def _install_rich_fake_parser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mineru.integrations.knowhere import runner
+
+    def fake_do_parse(
+        output_dir: str,
+        pdf_file_names: list[str],
+        _bytes: list[bytes],
+        _languages: list[str],
+        **_kwargs: Any,
+    ) -> None:
+        stem = pdf_file_names[0]
+        parse_dir = Path(output_dir) / stem / "auto"
+        images_dir = parse_dir / "images"
+        images_dir.mkdir(parents=True)
+        (images_dir / "figure.png").write_bytes(b"synthetic image")
+        (parse_dir / f"{stem}.md").write_text(
+            "# Synthetic\n", encoding="utf-8"
+        )
+        (parse_dir / f"{stem}_middle.json").write_text(
+            json.dumps(
+                {
+                    "pdf_info": [
+                        {"page_idx": 0},
+                        {"page_idx": 1},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        (parse_dir / f"{stem}_content_list.json").write_text(
+            json.dumps(
+                [
+                    {"type": "text", "text": "Synthetic"},
+                    {"type": "table", "table_body": "<table></table>"},
+                    {"type": "image", "img_path": "images/figure.png"},
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (parse_dir / f"{stem}_content_list_v2.json").write_text(
+            json.dumps(
+                [
+                    [
+                        {
+                            "type": "paragraph",
+                            "content": {
+                                "paragraph_content": [
+                                    {"type": "text", "content": "Synthetic"}
+                                ]
+                            },
+                        },
+                        {
+                            "type": "table",
+                            "content": {
+                                "html": "<table></table>",
+                                "image_source": {"path": "images/figure.png"},
+                            },
+                        },
+                    ],
+                    [
+                        {
+                            "type": "image",
+                            "content": {
+                                "image_source": {"path": "images/figure.png"}
+                            },
+                        }
+                    ],
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(runner, "do_parse", fake_do_parse)
+
+
+def test_canonical_manifest_is_opt_in_and_maps_page_table_and_image_records(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "report.pdf"
+    source.write_bytes(b"%PDF-1.7 synthetic")
+    output_root = tmp_path / "output"
+    _install_rich_fake_parser(monkeypatch)
+
+    canonical_path = run_knowhere_export(
+        _options(
+            source,
+            output_root,
+            canonical_manifest=CanonicalManifestOptions(
+                source_id="SRC-SYNTHETIC-001",
+                source_version_id="SRC-SYNTHETIC-001-V001",
+                extraction_run_id="EXT-SYNTHETIC-001",
+                accelerator_profile="cpu",
+                model_identifiers={"layout": "synthetic-fixture"},
+            ),
+        )
+    )
+
+    assert canonical_path.name == "document-extraction-manifest-v1.json"
+    assert (output_root / "mineru_manifest.json").exists()
+    manifest = json.loads(canonical_path.read_text(encoding="utf-8"))
+    assert manifest["contract_version"] == "document-extraction-manifest-v1"
+    assert manifest["source_id"] == "SRC-SYNTHETIC-001"
+    assert manifest["source_version_id"] == "SRC-SYNTHETIC-001-V001"
+    assert manifest["extraction_run_id"] == "EXT-SYNTHETIC-001"
+    assert manifest["native_page_count"] == 2
+    assert len(manifest["page_blocks"]) == 3
+    assert manifest["page_blocks"][0]["page_number"] == 1
+    assert manifest["page_blocks"][2]["page_number"] == 2
+    assert len(manifest["tables"]) == 1
+    assert manifest["tables"][0]["block_id"] == manifest["page_blocks"][1]["block_id"]
+    assert len(manifest["images"]) == 1
+    assert manifest["images"][0]["relative_path"].endswith(
+        "report/auto/images/figure.png"
+    )
+    assert manifest["ocr_profile"] is None
+    assert manifest["derivative_not_native_source_evidence"] is True
+    assert manifest["does_not_establish_source_sufficiency"] is True
+    assert all(len(output["sha256"]) == 64 for output in manifest["outputs"])
+    schema = json.loads(
+        (
+            Path(__file__).resolve().parents[2]
+            / "schemas"
+            / "document-extraction-manifest-v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert set(schema["required"]) <= set(manifest)
+    assert set(manifest) <= set(schema["properties"])
+    assert not {
+        "evidence_status",
+        "readiness_status",
+        "regulatory_conclusion",
+    } & set(manifest)
+
+
+def test_canonical_manifest_requires_producer_revision_before_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "report.pdf"
+    source.write_bytes(b"%PDF-1.7 synthetic")
+    output_root = tmp_path / "output"
+    _install_fake_parser(monkeypatch, parse_dir_name="auto")
+    from mineru.integrations.knowhere import runner
+
+    monkeypatch.setattr(runner, "_git_commit", lambda: None)
+
+    with pytest.raises(KnowhereExportError, match="producer revision"):
+        run_knowhere_export(
+            _options(
+                source,
+                output_root,
+                canonical_manifest=CanonicalManifestOptions(
+                    source_id="SRC-SYNTHETIC-001",
+                    source_version_id="SRC-SYNTHETIC-001-V001",
+                    extraction_run_id="EXT-SYNTHETIC-001",
+                ),
+            )
+        )
+
+    assert not (output_root / "document-extraction-manifest-v1.json").exists()
+    assert not (output_root / "mineru_manifest.json").exists()
+
+
+def test_canonical_manifest_rejects_missing_source_identity_before_parsing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "report.pdf"
+    source.write_bytes(b"%PDF-1.7 synthetic")
+    from mineru.integrations.knowhere import runner
+
+    def unexpected_parse(*_args: Any, **_kwargs: Any) -> NoReturn:
+        raise AssertionError("parser must not be called")
+
+    monkeypatch.setattr(runner, "do_parse", unexpected_parse)
+
+    with pytest.raises(KnowhereExportError, match="source_id"):
+        run_knowhere_export(
+            _options(
+                source,
+                tmp_path / "output",
+                canonical_manifest=CanonicalManifestOptions(
+                    source_id="",
+                    source_version_id="SRC-SYNTHETIC-001-V001",
+                    extraction_run_id="EXT-SYNTHETIC-001",
+                ),
+            )
+        )

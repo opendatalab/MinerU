@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Sequence
 
 from mineru.integrations.knowhere.contract import (
+    CanonicalManifestOptions,
     KnowhereExportError,
     KnowhereExportOptions,
 )
@@ -45,11 +46,44 @@ def build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=True,
     )
+    parser.add_argument(
+        "--canonical-manifest",
+        action="store_true",
+        help="Also emit the source-owned document-extraction-manifest-v1 contract.",
+    )
+    parser.add_argument("--source-id")
+    parser.add_argument("--source-version-id")
+    parser.add_argument("--extraction-run-id")
+    parser.add_argument("--accelerator-profile", default="unknown")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    canonical_manifest = None
+    if args.canonical_manifest:
+        missing = [
+            option
+            for option, value in (
+                ("--source-id", args.source_id),
+                ("--source-version-id", args.source_version_id),
+                ("--extraction-run-id", args.extraction_run_id),
+            )
+            if not value or not value.strip()
+        ]
+        if missing:
+            print(
+                "mineru-knowhere-export: --canonical-manifest requires "
+                + ", ".join(missing),
+                file=sys.stderr,
+            )
+            return 2
+        canonical_manifest = CanonicalManifestOptions(
+            source_id=args.source_id,
+            source_version_id=args.source_version_id,
+            extraction_run_id=args.extraction_run_id,
+            accelerator_profile=args.accelerator_profile,
+        )
     options = KnowhereExportOptions(
         input_path=args.input,
         output_root=args.output,
@@ -61,6 +95,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         image_analysis_enabled=args.image_analysis_enabled,
         offline=args.offline,
         server_url=args.server_url,
+        canonical_manifest=canonical_manifest,
     )
     try:
         manifest_path = run_knowhere_export(options)
@@ -73,4 +108,3 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

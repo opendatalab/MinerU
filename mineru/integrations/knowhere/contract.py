@@ -3,17 +3,30 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 
 ARTIFACT_SCHEMA_VERSION = "knowhere-mineru-artifacts/1.0"
+CANONICAL_MANIFEST_VERSION = "document-extraction-manifest-v1"
 SUPPORTED_SUFFIXES = {".pdf", ".docx"}
 HTTP_CLIENT_BACKENDS = {"vlm-http-client", "hybrid-http-client"}
 
 
 class KnowhereExportError(RuntimeError):
     """Raised when the local export cannot produce a valid artifact bundle."""
+
+
+@dataclass(frozen=True)
+class CanonicalManifestOptions:
+    """Explicit source identity and runtime context for a canonical manifest."""
+
+    source_id: str
+    source_version_id: str
+    extraction_run_id: str
+    accelerator_profile: str = "unknown"
+    model_identifiers: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -30,6 +43,7 @@ class KnowhereExportOptions:
     image_analysis_enabled: bool
     offline: bool
     server_url: str | None = None
+    canonical_manifest: CanonicalManifestOptions | None = None
 
 
 def sha256_file(path: Path) -> str:
@@ -58,4 +72,3 @@ def resolve_artifact_path(output_root: Path, relative_path: str) -> Path:
             f"Artifact path must not escape the output root: {relative_path!r}"
         ) from error
     return candidate
-

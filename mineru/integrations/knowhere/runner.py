@@ -13,6 +13,10 @@ from typing import Any, Iterator
 
 from mineru.cli.common import do_parse, read_fn
 from mineru.cli.output_paths import resolve_parse_dir
+from mineru.integrations.knowhere.canonical import (
+    build_document_extraction_manifest,
+    validate_canonical_manifest_options,
+)
 from mineru.integrations.knowhere.contract import (
     ARTIFACT_SCHEMA_VERSION,
     HTTP_CLIENT_BACKENDS,
@@ -91,7 +95,7 @@ def _required_artifacts(
     output_root: Path,
     parse_dir: Path,
     stem: str,
-) -> tuple[dict[str, dict[str, str]], int]:
+) -> tuple[dict[str, dict[str, str]], int, list[list[Any]]]:
     declared_paths = {
         "markdown": parse_dir / f"{stem}.md",
         "middle_json": parse_dir / f"{stem}_middle.json",
@@ -135,7 +139,7 @@ def _required_artifacts(
     images_relative = images_dir.resolve().relative_to(output_root).as_posix()
     resolve_artifact_path(output_root, images_relative)
     artifacts["images_dir"] = {"path": images_relative}
-    return artifacts, len(content_list_v2)
+    return artifacts, len(content_list_v2), content_list_v2
 
 
 def _git_commit() -> str | None:
@@ -190,8 +194,21 @@ def run_knowhere_export(options: KnowhereExportOptions) -> Path:
     source, output_root, suffix = _validate_options(options)
     output_root.mkdir(parents=True, exist_ok=True)
     manifest_path = output_root / "mineru_manifest.json"
-    if manifest_path.exists():
-        manifest_path.unlink()
+    canonical_manifest_path = output_root / "document-extraction-manifest-v1.json"
+    if options.canonical_manifest is not None:
+        for stale_path in (manifest_path, canonical_manifest_path):
+            if stale_path.exists():
+                stale_path.unlink()
+        validate_canonical_manifest_options(options.canonical_manifest)
+        producer_revision = _git_commit()
+        if producer_revision is None:
+            raise KnowhereExportError(
+                "Canonical manifest requires a producer revision (repository SHA)."
+            )
+    else:
+        if manifest_path.exists():
+            manifest_path.unlink()
+        producer_revision = _git_commit()
 
     started_at = _utc_now()
     source_bytes = read_fn(source, suffix.lstrip("."))
@@ -234,7 +251,7 @@ def run_knowhere_export(options: KnowhereExportOptions) -> Path:
     except ValueError as error:
         raise KnowhereExportError("Resolved parse directory escapes output root.") from error
 
-    artifacts, logical_page_count = _required_artifacts(
+    artifacts, logical_page_count, content_list_v2 = _required_artifacts(
         output_root,
         parse_dir,
         source.stem,
@@ -252,7 +269,7 @@ def run_knowhere_export(options: KnowhereExportOptions) -> Path:
         "parser": {
             "name": "MinerU",
             "version": __version__,
-            "git_commit": _git_commit(),
+            "git_commit": producer_revision,
             "backend_requested": options.backend,
             "backend_effective": effective_backend,
             "method": options.method,
@@ -272,5 +289,20 @@ def run_knowhere_export(options: KnowhereExportOptions) -> Path:
         "artifacts": artifacts,
         "warnings": [],
     }
+    if options.canonical_manifest is not None:
+        canonical_manifest = build_document_extraction_manifest(
+            legacy_manifest=manifest,
+            content_list_v2=content_list_v2,
+            output_root=output_root,
+            parse_dir=parse_dir,
+            options=options,
+            canonical_options=options.canonical_manifest,
+            repository_sha=producer_revision,
+            package_version=__version__,
+            effective_backend=effective_backend,
+        )
+        _write_manifest_atomic(canonical_manifest_path, canonical_manifest)
     _write_manifest_atomic(manifest_path, manifest)
+    if options.canonical_manifest is not None:
+        return canonical_manifest_path
     return manifest_path
