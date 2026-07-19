@@ -224,3 +224,25 @@ set: the checks confirm expected synthetic tokens are visible in the
 derivative, but do not establish native meaning fidelity, reviewer-critical
 semantic correctness, table-cell association under adversarial layouts, or
 profile qualification. The qualification disposition remains `deferred`.
+
+## Chinese-only DOCX mechanical observation
+
+On 2026-07-19, the existing Knowhere fixture
+`apps/worker/tests/fixtures/sample_chinese_600chars.docx` was run through the
+same pinned MinerU GPU image with run identity
+`EXT-WP03-20260719-ZH-DOCX`. The command supplied the valid `pipeline` backend;
+the DOCX path recorded `office` as the effective backend. The image contained
+producer revision `6450b02c2d1c2fb0ef2c9369037bbe3c6663d052` and used digest
+`mineru@sha256:e034f798206a8cdd384a6c3986693cbfe385fe2ed585952963eaeac84ec836c4`.
+
+The canonical manifest completed with one parser-derived logical page, one
+page block, zero tables, zero images, four outputs, zero errors, and no
+fallback. It carried `derivative_not_native_source_evidence: true` and
+`does_not_establish_source_sufficiency: true`; the only warning was
+`model_identifiers_not_exposed_by_adapter`.
+
+This adds Chinese-only mechanical coverage for the existing multilingual
+fixture. The fixture is not a Traditional-Chinese-plus-English bilingual gold
+set, and no critical-token adjudication, native-source review, semantic
+meaning-preservation review, or profile qualification was performed. The
+qualification disposition remains `deferred`.
