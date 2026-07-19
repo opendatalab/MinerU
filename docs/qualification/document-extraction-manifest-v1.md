@@ -160,3 +160,25 @@ adjudication, native-source review, repeated-run reproducibility, host-level
 network denial, model identity completeness, encrypted/corrupt-file handling,
 duplicate or superseded-version handling, or the remaining required fixture
 families. The profile dispositions therefore remain `deferred`.
+
+## Updated native and OCR canonical emission observation
+
+On 2026-07-19, the same pinned MinerU GPU image was used for one current
+canonical emission run for the public native-text fixture and one for the
+public OCR fixture. The implementation revision was
+`6450b02c2d1c2fb0ef2c9369037bbe3c6663d052` and the image was
+`mineru@sha256:e034f798206a8cdd384a6c3986693cbfe385fe2ed585952963eaeac84ec836c4`.
+Application offline flags were requested; host-level network denial remains
+unverified.
+
+| Fixture | Profile characterization | Run | Logical pages | Page blocks | Tables | Images | Outputs | Status | Errors | Fallback | Input SHA-256 |
+|---|---|---|---:|---:|---:|---:|---:|---|---:|---|---|
+| `tests/unittest/pdfs/test.pdf` | native text; `pipeline` / `auto` | `EXT-WP03-20260719-TESTPDF` | 1 | 5 | 1 | 3 | 7 | `completed` | 0 | `false` | `ae9e3f14cc3bea88dd0ce4e2715b3b03561378501318df61f0889df207aed25b` |
+| `demo/pdfs/small_ocr.pdf` | OCR; `pipeline` / `ocr` / `en` | `EXT-WP03-20260719-SMALLOCR` | 8 | 66 | 0 | 0 | 4 | `completed` | 0 | `false` | `c48baa1997e719d414061bea6ca197ce36f1c47341837fbfbc976bbb1d226998` |
+
+Both manifests carried `derivative_not_native_source_evidence: true` and
+`does_not_establish_source_sufficiency: true`. The only warning in each run
+was `model_identifiers_not_exposed_by_adapter`. These observations expand
+current native/OCR mechanical coverage only; they do not provide critical
+token, table-cell, native-source, or meaning-preservation adjudication, and
+the profile dispositions remain `deferred`.
