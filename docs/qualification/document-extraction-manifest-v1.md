@@ -470,3 +470,24 @@ parser profile, OCR/model accuracy, native or semantic meaning, model/legal
 provenance, host-level no-egress, source-owner disposition, or D3. No model,
 source document, provider, network, private data, or runtime edge was used;
 the profile and edge dispositions remain deferred.
+
+## Current image OCI/source-binding metadata recheck
+
+On 2026-07-19, the existing `mineru-api` container and its local image metadata
+were inspected read-only. The image ID and repository digest were both
+`sha256:e034f798206a8cdd384a6c3986693cbfe385fe2ed585952963eaeac84ec836c4`.
+The image labels exposed the vLLM base-image build commit
+`ad7125a431e176d4161099480a66f0169609a690`, the vLLM build pipeline and URL,
+and `vllm/vllm-openai:v0.21.0`; they did not expose a MinerU source revision,
+MinerU release identifier, or a MinerU build-manifest label. The container
+inspection also confirmed the presence of the model-source configuration key
+and vLLM build metadata keys without recording their values; no secret or
+credential value was read.
+
+This recheck strengthens exact image/base-build identity evidence but confirms
+that the required MinerU source-to-image release binding is still absent from
+the observed OCI metadata. It does not infer that the image is unbound or
+untrusted, and it does not close model notices, license/attribution terms,
+build provenance, release-manifest, host-level no-egress, or source-owner
+qualification. No container, image, source, model, network, or runtime
+configuration was changed; the profile and edge dispositions remain deferred.
