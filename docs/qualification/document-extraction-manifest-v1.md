@@ -246,3 +246,24 @@ fixture. The fixture is not a Traditional-Chinese-plus-English bilingual gold
 set, and no critical-token adjudication, native-source review, semantic
 meaning-preservation review, or profile qualification was performed. The
 qualification disposition remains `deferred`.
+
+## Synthetic PDF page-structure observation
+
+On 2026-07-19, the existing Knowhere corpus fixture
+`apps/worker/tests/fixtures/sample_3pages.pdf` was run through the same pinned
+MinerU GPU image with run identity `EXT-WP03-20260719-SYNTHPDF`. The canonical
+manifest used producer revision
+`6450b02c2d1c2fb0ef2c9369037bbe3c6663d052` from image digest
+`mineru@sha256:e034f798206a8cdd384a6c3986693cbfe385fe2ed585952963eaeac84ec836c4`.
+
+The manifest completed with three parser-derived logical pages, three
+paragraph blocks, four outputs, zero errors, and no fallback. It contained
+zero table records and zero image records; the only warning was
+`model_identifiers_not_exposed_by_adapter`. The source SHA-256 was
+`b1dd4d86d2b7c6505e35d972d0074ec08a7431013dd95e926ba92c7fbf165b1d`.
+
+This adds bounded page-count and paragraph-structure coverage for the
+existing synthetic PDF only. It does not demonstrate table/image extraction
+for this fixture, critical-token or native-source fidelity, semantic gold,
+meaning preservation, or profile qualification; the qualification disposition
+remains `deferred`.
