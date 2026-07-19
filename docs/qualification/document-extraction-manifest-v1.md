@@ -98,3 +98,14 @@ was recorded. This is a public mechanical emission smoke only. It does not
 qualify native text/OCR accuracy, critical-token or table-cell meaning,
 host-level network denial, or any profile for private use; the profile status
 remains `deferred`.
+
+## Synthetic fail-closed smoke observation
+
+On 2026-07-18, six existing contract-test cases covering missing required
+artifacts, output-root escape, parse failure, missing producer revision, and
+missing canonical source identity passed with synthetic fixtures. The failure
+paths assert that incomplete or failed exports do not publish a completed
+manifest, and that canonical identity/revision requirements are checked before
+payload emission. This is mechanical boundary evidence only; it does not
+qualify native-source meaning, gold fixtures, or the deferred producer
+profile.
