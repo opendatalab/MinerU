@@ -454,3 +454,19 @@ a parser profile, OCR/model accuracy, native or semantic meaning, model/legal
 provenance, host-level no-egress, source-owner disposition, or D3. No model,
 source document, provider, network, private data, or runtime edge was used;
 the profile and edge dispositions remain deferred.
+
+## Latest current-head producer contract recheck
+
+On 2026-07-19, the current qualification worktree at MinerU revision
+`3f5a74e6` reran `tests/contracts/test_document_extraction_manifest_v1_contract.py`
+and `tests/unittest/test_knowhere_integration_contract.py` with the project
+`.venv` Python 3.13 environment and coverage addopts explicitly disabled for
+this focused selection. All `18` tests passed in `7.44` seconds.
+
+This is direct current-head mechanical evidence for the manifest schema,
+required artifact inventory, relative-path and deterministic-hash checks,
+canonical identity, and Knowhere integration boundary. It does not qualify a
+parser profile, OCR/model accuracy, native or semantic meaning, model/legal
+provenance, host-level no-egress, source-owner disposition, or D3. No model,
+source document, provider, network, private data, or runtime edge was used;
+the profile and edge dispositions remain deferred.
