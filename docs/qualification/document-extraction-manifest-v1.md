@@ -99,6 +99,18 @@ qualify native text/OCR accuracy, critical-token or table-cell meaning,
 host-level network denial, or any profile for private use; the profile status
 remains `deferred`.
 
+## Canonical payload boundary audit
+
+The two local canonical manifests from the public-fixture smoke were also
+checked against the producer schema root contract. Each had 19 root fields,
+zero missing required fields, zero extra root fields, and zero occurrences of
+RA authority fields such as `source_status`, `readiness_status`,
+`evidence_status`, `regulatory_conclusion`, or
+`source_sufficiency_decision` at any JSON level. Both retained
+`derivative_not_native_source_evidence: true` and
+`does_not_establish_source_sufficiency: true`. This confirms a payload
+boundary only; it does not change the deferred qualification status.
+
 ## Synthetic fail-closed smoke observation
 
 On 2026-07-18, six existing contract-test cases covering missing required
