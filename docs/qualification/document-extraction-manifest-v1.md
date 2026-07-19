@@ -208,3 +208,19 @@ merged tables, an embedded image/caption, formula-like symbols, and a page
 break. It does not establish native DOCX meaning fidelity, physical page
 mapping, critical-cell gold, or profile qualification; the profile remains
 `deferred`.
+
+## Synthetic sentinel smoke observation
+
+The same existing synthetic DOCX generator was also used for a bounded
+content-sentinel smoke with run identity `EXT-WP03-20260719-DOCX-GOLD`. Twenty
+predefined category checks derived from the generator passed: headings and
+plain text, unit/symbol tokens, simple-table cells, merged-table labels and
+numeric cells, image/caption presence, conclusion text, manifest table/image
+counts, completed status, zero manifest errors, and no fallback. No source
+content, generated document, or extracted body text was retained in Git.
+
+This is `synthetic_sentinel_smoke_only`, not a human-adjudicated gold-question
+set: the checks confirm expected synthetic tokens are visible in the
+derivative, but do not establish native meaning fidelity, reviewer-critical
+semantic correctness, table-cell association under adversarial layouts, or
+profile qualification. The qualification disposition remains `deferred`.
