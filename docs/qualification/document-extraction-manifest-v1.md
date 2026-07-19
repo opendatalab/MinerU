@@ -383,3 +383,14 @@ representation. This is an AI-assisted visual/mechanical concordance
 observation only. It does not establish native-source adjudication, critical
 table-cell correctness, meaning preservation, or profile qualification; the
 profile disposition remains `deferred`.
+
+## Current pinned contract regression recheck
+
+On 2026-07-19, the pinned MinerU checkout at revision
+`cebf5078a3ed2990260caa03110b0bab82a16b64` reran the producer-owned manifest
+contract and Knowhere integration-contract selections with the repository
+Python 3.13 environment. The schema/fixture contract and artifact-inventory
+integration selection passed `18` tests in `20.30` seconds. This reconfirms
+the current pinned mechanical contract baseline only; it does not qualify a
+parser profile, establish semantic or native-source fidelity, prove host-level
+no-egress, resolve model/legal provenance, or change the deferred disposition.
