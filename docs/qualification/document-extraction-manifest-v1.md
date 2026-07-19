@@ -423,3 +423,17 @@ request, or write an output file. It characterizes the input policy layer only;
 OCR model accuracy, language detection, critical-token/negation gold,
 meaning preservation, no-egress enforcement, and `mineru_pipeline_ocr_v1`
 qualification remain deferred. No implementation or runtime status changed.
+
+## Latest-head producer contract recheck
+
+On 2026-07-19, the latest qualification worktree at MinerU revision
+`4fe85e50` reran `tests/contracts/test_document_extraction_manifest_v1_contract.py`
+and `tests/unittest/test_knowhere_integration_contract.py` with the project
+Python 3.13 environment. All `18` tests passed in `17.85` seconds.
+
+This reconfirms the mechanical manifest schema, required artifact inventory,
+relative-path and deterministic-hash, canonical identity, and Knowhere
+integration boundaries at the latest documentation head. It does not qualify
+a parser profile, OCR/model accuracy, native or semantic meaning, model/legal
+provenance, host-level no-egress, source-owner disposition, or D3. No runtime,
+edge, private-data, provider, or implementation status changed.
