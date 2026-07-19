@@ -11,10 +11,14 @@ RUN apt-get update && \
         fonts-noto-core \
         fonts-noto-cjk \
         fontconfig \
+        git \
         libgl1 && \
     fc-cache -fv && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Keep both Python command spellings available for runtime integrations.
+RUN ln -sf "$(command -v python3)" /usr/local/bin/python
 
 # Install mineru latest
 RUN python3 -m pip install -U 'mineru[core]>=3.4.0' -i https://mirrors.aliyun.com/pypi/simple --break-system-packages && \
