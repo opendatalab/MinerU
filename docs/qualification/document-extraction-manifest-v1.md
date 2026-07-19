@@ -121,3 +121,42 @@ manifest, and that canonical identity/revision requirements are checked before
 payload emission. This is mechanical boundary evidence only; it does not
 qualify native-source meaning, gold fixtures, or the deferred producer
 profile.
+
+## Bounded public fixture characterization
+
+On 2026-07-19, a second public-fixture batch was run through the opt-in
+canonical adapter inside the pinned MinerU GPU container. The runs used MinerU
+`3.4.4`, producer revision
+`6450b02c2d1c2fb0ef2c9369037bbe3c6663d052`, image digest
+`mineru@sha256:e034f798206a8cdd384a6c3986693cbfe385fe2ed585952963eaeac84ec836c4`,
+application offline flags, and the local Docker GPU profile. The PDF runs used
+the `pipeline` backend; the DOCX run resolved to the `office` backend.
+
+| Fixture | Run | Backend | Logical pages | Page blocks | Tables | Images | Outputs | Status | Errors | Fallback |
+|---|---|---|---:|---:|---:|---:|---:|---|---:|---|
+| `demo/pdfs/demo1.pdf` | `EXT-WP03-20260719-DEMO1` | `pipeline` | 13 | 131 | 5 | 20 | 24 | `completed` | 0 | `false` |
+| `demo/pdfs/demo2.pdf` | `EXT-WP03-20260719-DEMO2` | `pipeline` | 6 | 75 | 2 | 19 | 23 | `completed` | 0 | `false` |
+| `demo/pdfs/demo3.pdf` | `EXT-WP03-20260719-DEMO3` | `pipeline` | 10 | 144 | 9 | 23 | 27 | `completed` | 0 | `false` |
+| `demo/office_docs/docx_01.docx` | `EXT-WP03-20260719-DOCX01` | `office` | 3 | 109 | 7 | 10 | 14 | `completed` | 0 | `false` |
+
+A repeat run of `demo/pdfs/demo2.pdf` with the same configuration and a new
+run identity (`EXT-WP03-20260719-DEMO2-REPEAT`) produced the same 23 non-manifest
+artifact files with identical SHA-256 values. Input SHA, page/block/table/image
+counts, fallback state, and error count also matched. This is bounded artifact
+reproducibility evidence only; it is not semantic gold or meaning-preservation
+adjudication.
+
+Each canonical manifest carried the expected derivative and non-sufficiency
+flags. Each recorded the adapter limitation
+`model_identifiers_not_exposed_by_adapter` as its only manifest warning; no
+manifest error or fallback was recorded. The DOCX run completed with
+parser-derived logical pages and required artifacts; its logical page count is
+not a stable physical pagination claim. The isolated run outputs remain local
+and ignored; no source contents or generated artifacts are retained in Git.
+
+This batch expands mechanical coverage for public complex-layout PDFs and the
+DOCX Office path only. It does not provide critical-token or table-cell gold
+adjudication, native-source review, repeated-run reproducibility, host-level
+network denial, model identity completeness, encrypted/corrupt-file handling,
+duplicate or superseded-version handling, or the remaining required fixture
+families. The profile dispositions therefore remain `deferred`.
