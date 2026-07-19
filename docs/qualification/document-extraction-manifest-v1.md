@@ -406,3 +406,20 @@ producer-manifest and Knowhere integration contract baseline only; parser
 profile qualification, native/semantic fidelity, model/legal provenance,
 host-level no-egress, source-owner disposition, and D3 remain deferred. No
 runtime, edge, private-data, provider, or implementation status changed.
+
+## OCR language-routing policy characterization
+
+On 2026-07-19, the current MinerU qualification worktree at revision
+`94118a79` ran an ephemeral pure-function smoke against
+`mineru.utils.ocr_language` with the project-local Python 3.13 environment.
+The check covered the `12` public OCR language choices, default-empty-list
+fallback to `ch`, four public compatibility aliases mapping to `ch`, four
+language-family normalizations (`east_slavic`, `arabic`, `devanagari`, and
+CPU `seal` to `seal_lite`), and two invalid/unsupported inputs that failed
+closed with `ValueError`.
+
+The smoke did not initialize a model, open a source document, make a network
+request, or write an output file. It characterizes the input policy layer only;
+OCR model accuracy, language detection, critical-token/negation gold,
+meaning preservation, no-egress enforcement, and `mineru_pipeline_ocr_v1`
+qualification remain deferred. No implementation or runtime status changed.
