@@ -363,3 +363,23 @@ meaning; and duplicate/superseded handling was inventory evidence only, not a
 source-version lifecycle or retrieval deletion decision. No gold adjudication,
 active retrieval top-N test, source sufficiency decision, or profile
 qualification was inferred. The profile dispositions remain `deferred`.
+
+## Native page-render and derivative visual concordance observation
+
+On 2026-07-19, a local rendered page for the public native-text fixture
+`cross-edge-native-text-20260718-run3` was visually compared with its existing
+derivative assets and structured blocks. The page visibly contained one
+figure/caption, one displayed equation, one paragraph, one rotated complex
+table/caption, and a page number. The derivative contained five corresponding
+producer-owned blocks with page/bounding-box locators: image, interline
+equation, paragraph, table, and page-number.
+
+The figure asset and equation asset matched the visible page regions. The
+table image preserved the rotated table presentation, while the HTML retained
+the four data rows and three columns. The table metadata explicitly recorded
+`csv_fidelity: lossy_complex` and warnings for detected rowspan/colspan
+structure; therefore CSV output was not treated as a lossless semantic table
+representation. This is an AI-assisted visual/mechanical concordance
+observation only. It does not establish native-source adjudication, critical
+table-cell correctness, meaning preservation, or profile qualification; the
+profile disposition remains `deferred`.
