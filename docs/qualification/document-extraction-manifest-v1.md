@@ -491,3 +491,28 @@ untrusted, and it does not close model notices, license/attribution terms,
 build provenance, release-manifest, host-level no-egress, or source-owner
 qualification. No container, image, source, model, network, or runtime
 configuration was changed; the profile and edge dispositions remain deferred.
+
+## Current public OCR/DOCX canonical export characterization
+
+On 2026-07-19, two additional public-fixture runs exercised the canonical
+export path with the local model/runtime environment. Dependency resolution
+used `uv run --frozen --offline` with `UV_OFFLINE=1` and `UV_FROZEN=1`; both
+commands also supplied the adapter's `--offline` flag. The completed manifests
+and generated artifacts were written to a temporary directory outside the
+repository and removed after integrity inspection.
+
+| Fixture / run | Requested path | Result | Canonical counts | Warnings | Fallback |
+|---|---|---|---|---:|---|
+| `demo/pdfs/small_ocr.pdf` / `EXT-WP03-20260719-OCR-E2E-001` | `pipeline` / `ocr` / `en` | `completed`, 8 logical/native pages | 66 page blocks, 0 tables, 0 images, 4 outputs | 1 (`model_identifiers_not_exposed_by_adapter`) | `false` |
+| `demo/office_docs/docx_01.docx` / `EXT-WP03-20260719-DOCX-E2E-001` | requested `pipeline` / `auto`; effective `office` | `completed`, 3 logical/native pages | 109 page blocks, 7 tables, 10 images, 14 outputs | 1 (`model_identifiers_not_exposed_by_adapter`) | `false` |
+
+Both canonical payloads carried
+`derivative_not_native_source_evidence: true` and
+`does_not_establish_source_sufficiency: true`; both reported zero manifest
+errors. This expands public OCR and Office model-backed mechanical coverage
+and confirms the expected effective backend/manifest boundary. It does not
+establish host-level egress denial, model identity completeness, license or
+notice provenance, critical-token/table-cell meaning, native or semantic gold,
+physical DOCX pagination, source sufficiency, or profile qualification. The
+profile dispositions remain `deferred`; no implementation, provider, private
+data, runtime configuration, or active edge was changed.
