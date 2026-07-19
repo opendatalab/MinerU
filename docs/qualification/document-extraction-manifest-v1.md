@@ -325,3 +325,41 @@ retrieval top-N execution, active route, or qualification status was created.
 The packet and generated outputs were temporary local QA material and were
 removed after the preflight. This is preparation evidence only; the profile
 disposition remains `deferred`.
+
+## Required fixture-family mechanical batch
+
+On 2026-07-19, a temporary local synthetic/public batch exercised the remaining
+fixture-family inputs against the same pinned image and producer revision. The
+batch contained 12 inputs: 10 valid documents and 2 negative-path documents.
+All 10 valid canonical manifests completed with zero errors, no fallback, an
+input SHA matching the host fixture, and the only warning
+`model_identifiers_not_exposed_by_adapter`.
+
+| Fixture family | Effective backend | Logical pages | Page blocks | Tables | Images | Outputs | Result |
+|---|---|---:|---:|---:|---:|---:|---|
+| Traditional Chinese plus English DOCX | `office` | 1 | 4 | 1 | 0 | 4 | `completed` |
+| Multi-column plus header/footer PDF | `pipeline` | 2 | 8 | 0 | 0 | 4 | `completed` |
+| Footnote PDF | `pipeline` | 1 | 1 | 0 | 0 | 4 | `completed` |
+| Cross-page table PDF | `pipeline` | 2 | 11 | 0 | 0 | 4 | `completed` |
+| Rotated-page PDF | `pipeline` | 2 | 3 | 0 | 0 | 4 | `completed` |
+| Long synthetic PDF (12 pages) | `pipeline` | 12 | 420 | 0 | 0 | 4 | `completed` |
+| Duplicate filename A/B | `pipeline` | 1 each | 1 each | 0 each | 0 each | 4 each | `completed` |
+| Superseded version v1/v2 | `pipeline` | 1 each | 1 each | 0 each | 0 each | 4 each | `completed` |
+
+The corrupt PDF and encrypted PDF both exited with code 2 and published no
+canonical manifest. The corrupt path recorded a PDFium data-format failure;
+the encrypted path recorded an incorrect-password failure. The duplicate
+basename pair had distinct SHA-256 values
+`d14246b4ce09ba78b15619a448a43e439fe1022e273c42db52e444d6c065c818` and
+`715e1ccc95b33d3a1478d1d1e003dc433f17c40a7a867d7436e7a3560ae60bb1`; the
+superseded v1/v2 pair likewise had distinct SHA-256 values
+`f3019474d861d2d8d3a1d7ed79d1ca90e46845df924da293a78151b9047c4e09` and
+`3dbd0d20e0d5a2b589570f5589dfb6dbf6f060f8e68a6da52f4478803599aa23`.
+
+This batch expands mechanical input and fail-closed coverage only. The
+cross-page-table fixture produced no canonical table record; rotated-page,
+footnote, and multi-column semantics were not human-adjudicated as preserved
+meaning; and duplicate/superseded handling was inventory evidence only, not a
+source-version lifecycle or retrieval deletion decision. No gold adjudication,
+active retrieval top-N test, source sufficiency decision, or profile
+qualification was inferred. The profile dispositions remain `deferred`.
