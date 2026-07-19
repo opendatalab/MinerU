@@ -300,3 +300,28 @@ synthetic native DOCX fixture, not human semantic adjudication, adversarial
 layout gold, retrieval top-N meaning preservation, or qualification. The
 canonical disposition remains `deferred`; host-level network denial and model
 identity completeness remain unresolved.
+
+## Candidate gold-question packet preflight
+
+On 2026-07-19, a separate preparation run used the same existing synthetic
+DOCX generator and pinned image with run identity
+`EXT-WP03-20260719-DOCX-GOLD-PREP-RUN1` and input SHA-256
+`83c43e25c9e1359b2a9be605fd6ecf1308470531c0619ab589c59c49c1cb446e`. This is
+a distinct generated DOCX instance from the earlier concordance run and is
+tracked by its own source identity. The producer revision and image digest
+were unchanged.
+
+An in-memory candidate packet contained 7 bounded question categories:
+heading hierarchy; formula, unit, and symbol tokens; simple-table cells;
+embedded image and caption; merged-table structure; conclusion text; and
+footer text. Every category had a source-side expected set and an explicit
+`content_list_v2` artifact locator. The mechanical preflight passed 7/7
+categories, including all 55 source-derived tokens, 6/6 table/image structure
+checks, and the manifest counts of 1 logical page, 12 blocks, 2 tables, 1
+image, 5 outputs, 0 errors, and no fallback.
+
+The packet remains `pending_human_adjudication`; no adjudicator, gold decision,
+retrieval top-N execution, active route, or qualification status was created.
+The packet and generated outputs were temporary local QA material and were
+removed after the preflight. This is preparation evidence only; the profile
+disposition remains `deferred`.
