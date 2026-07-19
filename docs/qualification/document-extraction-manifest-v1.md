@@ -437,3 +437,20 @@ integration boundaries at the latest documentation head. It does not qualify
 a parser profile, OCR/model accuracy, native or semantic meaning, model/legal
 provenance, host-level no-egress, source-owner disposition, or D3. No runtime,
 edge, private-data, provider, or implementation status changed.
+
+## Current-head producer contract recheck
+
+On 2026-07-19, the current qualification worktree at MinerU revision
+`43cf41d5bc0b05c35232ddf12fe0d42dbee11a3c` reran the same manifest and
+Knowhere integration selections with the project `.venv` Python environment:
+`tests/contracts/test_document_extraction_manifest_v1_contract.py` and
+`tests/unittest/test_knowhere_integration_contract.py`. The command explicitly
+overrode the repository coverage `addopts` because this environment did not
+load the coverage plugin; the test selection itself was unchanged. All `18`
+tests passed in `8.18` seconds.
+
+This is direct current-head mechanical contract evidence. It does not qualify
+a parser profile, OCR/model accuracy, native or semantic meaning, model/legal
+provenance, host-level no-egress, source-owner disposition, or D3. No model,
+source document, provider, network, private data, or runtime edge was used;
+the profile and edge dispositions remain deferred.
