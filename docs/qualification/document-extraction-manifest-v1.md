@@ -394,3 +394,15 @@ integration selection passed `18` tests in `20.30` seconds. This reconfirms
 the current pinned mechanical contract baseline only; it does not qualify a
 parser profile, establish semantic or native-source fidelity, prove host-level
 no-egress, resolve model/legal provenance, or change the deferred disposition.
+
+## Current-head producer contract recheck
+
+On 2026-07-19, the current qualification worktree at MinerU revision
+`3f41eb76` reran the existing `test_document_extraction_manifest_v1_contract.py`
+and `test_knowhere_integration_contract.py` selection with the project-local
+Python 3.13 environment and portable PostgreSQL runtime. The selection passed
+`18` tests in `13.61` seconds. This reconfirms the current mechanical
+producer-manifest and Knowhere integration contract baseline only; parser
+profile qualification, native/semantic fidelity, model/legal provenance,
+host-level no-egress, source-owner disposition, and D3 remain deferred. No
+runtime, edge, private-data, provider, or implementation status changed.
