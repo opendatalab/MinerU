@@ -4,14 +4,16 @@
 
 This document defines the versioned artifact boundary used by Knowhere's
 standalone Codex review-package exporter. The implementation baseline is
-MinerU `79d6d8d79fb8f3ddba5cc34c07a16f0ec36f56c7` (version 3.4.4) on branch
+MinerU `a1bf4d43147c6df0b88465ae6899433f74035216` (version 3.4.4) on branch
 `feat/kiwi-shane/knowhere-local-export-adapter`.
 
 The source-owned canonical contract for the broader integration is
 `schemas/document-extraction-manifest-v1.schema.json`. The legacy adapter
-manifest described below remains an observed derivative-export baseline until
-the profile-specific qualification matrix in
-`docs/qualification/document-extraction-manifest-v1.md` is completed.
+manifest described below remains an observed derivative-export baseline. The
+opt-in `--canonical-manifest` path emits the source-owned contract when the
+caller supplies explicit `source_id`, `source_version_id`, and
+`extraction_run_id`; it does not change the qualification status recorded in
+`docs/qualification/document-extraction-manifest-v1.md`.
 
 The adapter runs inside the MinerU environment and calls
 `mineru.cli.common.do_parse()` directly. Knowhere invokes the adapter as a
@@ -69,6 +71,20 @@ uv run mineru-knowhere-export \
 The printed path is the completed manifest. Consumers should validate that
 manifest, hashes, JSON structures, and confined relative paths before using
 the artifact directory.
+
+To emit the canonical manifest in addition to the legacy manifest, add the
+following explicit identity options to the command:
+
+```bash
+--canonical-manifest \
+--source-id SRC-EXAMPLE-001 \
+--source-version-id SRC-EXAMPLE-001-V001 \
+--extraction-run-id RUN-EXAMPLE-001
+```
+
+The canonical output remains a mechanical extraction derivative. It carries
+native locators and source identity for downstream verification, but it does
+not establish source sufficiency or an RA disposition.
 
 ## DOCX handling
 

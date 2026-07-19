@@ -76,3 +76,25 @@ source sufficiency, native-source verification, critical-token accuracy, table
 meaning fidelity, host-level no-egress, or profile qualification. The
 qualification status remains `deferred` until the required fixture families
 and source-owner review are completed.
+
+## Synthetic canonical smoke observations
+
+On 2026-07-18, the opt-in `--canonical-manifest` path was run against two
+public repository fixtures with MinerU `3.4.4`, producer revision
+`a1bf4d43147c6df0b88465ae6899433f74035216`, local `pipeline` execution, and
+application offline mode. The completed manifests were retained under local
+`.qa` output only and are not Git artifacts.
+
+| Fixture | Input SHA-256 | Pages | Outputs | Page blocks | Tables | Images | Warnings / errors | Fallback |
+|---|---|---:|---:|---:|---:|---:|---:|---|
+| `tests/unittest/pdfs/test.pdf` | `ae9e3f14cc3bea88dd0ce4e2715b3b03561378501318df61f0889df207aed25b` | 1 | 7 | 5 | 1 | 3 | 1 / 0 | `false` |
+| `demo/pdfs/small_ocr.pdf` | `c48baa1997e719d414061bea6ca197ce36f1c47341837fbfbc976bbb1d226998` | 8 | 4 | 66 | 0 | 0 | 1 / 0 | `false` |
+
+Both outputs carried the canonical contract version, explicit source and
+source-version identity, `derivative_not_native_source_evidence: true`, and
+`does_not_establish_source_sufficiency: true`. The only warning in each run
+was `model_identifiers_not_exposed_by_adapter`; no parser error or fallback
+was recorded. This is a public mechanical emission smoke only. It does not
+qualify native text/OCR accuracy, critical-token or table-cell meaning,
+host-level network denial, or any profile for private use; the profile status
+remains `deferred`.
