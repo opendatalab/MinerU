@@ -646,3 +646,27 @@ per-asset notices, license/attribution terms, signed release-manifest binding,
 build provenance, or owner/legal qualification. No model download, inference,
 provider execution, private-data processing, or implementation status change
 occurred.
+
+## Public fixture-family coverage inventory
+
+On 2026-07-19, a read-only metadata probe inspected the existing public MinerU
+fixtures with `pypdf`, `pdfplumber`, `python-docx`, and `openpyxl`. The probe
+persisted no extracted content or new fixture files.
+
+| Candidate family | Existing fixture observation | Evidence boundary |
+|---|---|---|
+| Native-text PDF | `tests/unittest/pdfs/test.pdf`: 1 page, 463 extracted characters, 1 detected table, 1 image | Structural/native smoke only; no critical-token adjudication |
+| Scanned OCR PDF | `demo/pdfs/small_ocr.pdf`: 8 pages, 496 embedded images, 7 extracted characters | OCR execution/material presence only; no OCR gold or language adjudication |
+| Text-rich / image PDF | `demo/pdfs/demo1.pdf`: 13 pages, 8 images; no tables detected by the probe | Layout characterization only; caption and locator fidelity unassessed |
+| Table-bearing PDF | `demo/pdfs/demo2.pdf`: 6 pages, 12 detected tables, 10 images; `demo3.pdf`: 10 pages, 12 detected tables | Detector output only; no cross-page or critical-cell gold |
+| DOCX headings/tables/images | `demo/office_docs/docx_01.docx`: 108 non-empty paragraphs, 26 headings, 8 tables, 9 inline shapes; 616 CJK and 2,159 Latin characters | Mixed-language/structure candidate only; Traditional-Chinese semantics and pagination unassessed |
+| XLSX sheets/formulas | `demo/office_docs/xlsx_01.xlsx`: 4 sheets, 2 formulas, non-empty cells across sheets | Workbook structure only; formula/value and table meaning gold absent |
+
+The inventory did not establish rotated-page, long-document, corrupt-file,
+encrypted-file, duplicate-basename/different-SHA, or superseded-version
+fixture coverage. It also did not establish image/caption pairing, formula
+meaning, critical identifiers, units, negation, table-cell meaning, or native
+source adjudication. The required fixture families and human gold gates
+therefore remain incomplete, and all three profile dispositions remain
+`deferred`; no qualification, source sufficiency, runtime, provider, or
+implementation status changed.
