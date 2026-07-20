@@ -569,3 +569,25 @@ notice terms, source-to-image release binding, model-data provenance,
 owner/legal disposition, or qualification. No model file contents, private
 configuration values, network download, container state, or source/runtime
 implementation was changed.
+
+## Public model-card license metadata cross-check
+
+On 2026-07-19, the official public model cards were read-only cross-checked
+against the model repositories declared by the current source map. The
+`opendatalab/MinerU2.5-Pro-2605-1.2B` VLM model card reports `Apache-2.0`, while
+the `opendatalab/PDF-Extract-Kit-1.0` pipeline model repository reports
+`AGPL-3.0`. The upstream MinerU repository separately identifies its source
+code as the MinerU Open Source License, based on Apache 2.0 with additional
+conditions. References: [MinerU2.5-Pro-2605-1.2B model card](https://huggingface.co/opendatalab/MinerU2.5-Pro-2605-1.2B),
+[PDF-Extract-Kit-1.0 model card](https://huggingface.co/opendatalab/PDF-Extract-Kit-1.0),
+and [MinerU upstream license information](https://github.com/opendatalab/MinerU#license-information).
+
+These are source-reported repository/model-card metadata only. They do not
+prove that the observed local snapshot is byte-identical to the public card,
+assign a single license to every individual model file or dependency, close
+notice/attribution obligations, or provide owner/legal approval. The
+AGPL-3.0 declaration on the pipeline model repository is a material legal and
+provenance gate for the current profile and remains open for per-asset review,
+source-to-image binding, and owner/legal disposition. No model was downloaded,
+executed, or modified; no runtime, provider, private-data, or qualification
+status changed.
