@@ -823,3 +823,20 @@ provider approval, private-data processing, upstream synchronization, or
 qualification of any parser profile. The profile dispositions remain
 `deferred`; no source, schema, runtime, provider, private-data, or upstream
 state changed.
+
+## Current public parser E2E assertion recheck (2026-07-20)
+
+At the current qualification checkout revision
+`9bd964e03e638ebdd533b9c8fdc24325552b4251`, the existing
+`tests/unittest/test_e2e.py` passed `1` test in `40.50` seconds using
+`uv run --frozen --offline`, local model assets, and the application offline
+flags. The public fixture assertion exercised both the text and OCR parser
+paths and checked the existing image/caption, equation-marker, text-similarity,
+table/caption, table-structure/value, and page-number expectations. Generated
+outputs remained local/ignored.
+
+This is a fresh public-fixture mechanical assertion only. It does not provide
+independent native-source adjudication, human semantic gold, profile-wide
+qualification, host-level egress denial, source sufficiency, or private-data
+evidence. The profile dispositions remain `deferred`, and no schema,
+runtime, provider, or upstream state changed.
