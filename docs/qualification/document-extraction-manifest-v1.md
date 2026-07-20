@@ -773,3 +773,14 @@ This is bounded packaging/provenance evidence, not a complete notice
 inventory or legal closure. The filename filter can miss differently named
 files, and the declaration count does not prove absence. No image, source,
 model, runtime, provider, or qualification status changed.
+
+## Current canonical schema SHA recheck
+
+The current `schemas/document-extraction-manifest-v1.schema.json` is
+byte-identical to the RA compatibility profile's frozen SHA-256
+`8d649b58e6748ae7d1fbd021d76b3c154d544044a37fd357b3e6bcdf03f25def` at
+`7048473f0c51c2062e98e700c56286c94e8ea90a`, and that commit is an ancestor of
+the current qualification head. This confirms contract-byte continuity only;
+the source-owner qualification, runtime/edge promotion, native/semantic gold,
+and release provenance gates remain open. No schema, source, runtime, provider,
+private-data, or qualification status changed.
