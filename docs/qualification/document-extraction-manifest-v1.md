@@ -647,6 +647,24 @@ build provenance, or owner/legal qualification. No model download, inference,
 provider execution, private-data processing, or implementation status change
 occurred.
 
+## Public parser E2E assertion recheck
+
+On 2026-07-19, the existing `tests/unittest/test_e2e.py` was run once with
+`MINERU_MODEL_SOURCE=local`, application/offline model flags, and locked
+offline `uv` execution. The test passed (`1 passed` in `52.81` seconds) after
+the already-declared test dependency `fuzzywuzzy==0.18.0` was installed into
+the project `.venv`; the project lockfile was not changed.
+
+The existing test exercised both `txt` and `ocr` pipeline parses of the public
+`tests/unittest/pdfs/test.pdf` and asserted image caption text, table caption
+and HTML structure, critical table values, equation markers, and text
+similarity. This is a model-backed mechanical assertion against a public
+fixture; the generated 14-file output remained local/ignored. Application
+offline flags do not prove host-level egress denial, and the test does not
+provide native-source adjudication, a human gold decision, profile-wide
+coverage, or source sufficiency. All profile dispositions remain `deferred`;
+no runtime, provider, private-data, or implementation status changed.
+
 ## Public fixture-family coverage inventory
 
 On 2026-07-19, a read-only metadata probe inspected the existing public MinerU
@@ -662,11 +680,13 @@ persisted no extracted content or new fixture files.
 | DOCX headings/tables/images | `demo/office_docs/docx_01.docx`: 108 non-empty paragraphs, 26 headings, 8 tables, 9 inline shapes; 616 CJK and 2,159 Latin characters | Mixed-language/structure candidate only; Traditional-Chinese semantics and pagination unassessed |
 | XLSX sheets/formulas | `demo/office_docs/xlsx_01.xlsx`: 4 sheets, 2 formulas, non-empty cells across sheets | Workbook structure only; formula/value and table meaning gold absent |
 
-The inventory did not establish rotated-page, long-document, corrupt-file,
-encrypted-file, duplicate-basename/different-SHA, or superseded-version
-fixture coverage. It also did not establish image/caption pairing, formula
-meaning, critical identifiers, units, negation, table-cell meaning, or native
-source adjudication. The required fixture families and human gold gates
-therefore remain incomplete, and all three profile dispositions remain
-`deferred`; no qualification, source sufficiency, runtime, provider, or
-implementation status changed.
+The narrow repository-public metadata probe itself did not establish
+rotated-page, long-document, corrupt-file, encrypted-file,
+duplicate-basename/different-SHA, or superseded-version coverage. The
+separately recorded `Required fixture-family mechanical batch` in this record
+already supplies bounded mechanical/fail-closed observations for those input
+families. Neither the probe nor that batch establishes image/caption pairing,
+formula meaning, critical identifiers, units, negation, table-cell meaning,
+native-source adjudication, or human gold. All three profile dispositions
+remain `deferred`; no qualification, source sufficiency, runtime, provider,
+or implementation status changed.
