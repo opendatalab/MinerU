@@ -742,3 +742,18 @@ notice closure. Installed license files do not by themselves establish
 complete attribution, model/data terms, source-to-image provenance, or
 owner/legal approval. No image, source, model, runtime, provider, or
 qualification status changed.
+
+## Exact-image SBOM versus Python metadata reconciliation
+
+The cached exact-image CycloneDX SBOM contained `308` PyPI components. A
+read-only normalized name/exact-version join against the running container's
+Python distributions matched `296`; `12` had no exact direct distribution
+match. Every matched component carried an SBOM license field; `195` also had a
+direct Python `License`/`License ::` signal and `101` did not. No matched
+component had a direct Python-only signal.
+
+This is a license-presence comparison only, not identifier equivalence,
+notice closure, model/data-term review, or owner/legal approval. The twelve
+unmatched rows and the direct-metadata gaps remain open provenance items. The
+temporary comparison report was removed; no image, source, model, runtime,
+provider, or qualification status changed.
