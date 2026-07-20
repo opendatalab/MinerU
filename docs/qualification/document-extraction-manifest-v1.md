@@ -516,3 +516,20 @@ notice provenance, critical-token/table-cell meaning, native or semantic gold,
 physical DOCX pagination, source sufficiency, or profile qualification. The
 profile dispositions remain `deferred`; no implementation, provider, private
 data, runtime configuration, or active edge was changed.
+
+## Exact-image SBOM bounded recheck
+
+On 2026-07-19, the pinned local `mineru` image digest
+`sha256:e034f798206a8cdd384a6c3986693cbfe385fe2ed585952963eaeac84ec836c4`
+was scanned read-only with the locally installed Syft `1.48.0` Docker source
+path, `--scope all-layers`, and a `900`-second execution bound. The scan did
+not return before the bound; the output path remained an empty `0`-byte file,
+so no CycloneDX document, component count, license inventory, or SBOM hash was
+accepted. The confirmed Syft process was stopped and the temporary output
+directory was removed after the timeout. The image, container, source tree,
+runtime configuration, and existing qualification artifacts were not changed.
+
+This is bounded timeout evidence only. It does not establish dependency
+completeness, image-license closure, model/data notices, source-to-image
+release binding, owner/legal disposition, or any parser/profile qualification;
+those gates remain `deferred`.
