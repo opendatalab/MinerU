@@ -703,3 +703,18 @@ locked/offline run of the same existing `tests/unittest/test_e2e.py` passed
 This is environment/test-performance evidence only; the E2E assertions and
 their public/local/offline boundary are unchanged, and all profile
 dispositions remain `deferred`.
+
+## Exact-image SBOM recheck
+
+On 2026-07-19, Docker Scout CLI `1.23.1` generated a non-empty CycloneDX `1.5`
+SBOM from `local://mineru:latest` at image digest
+`sha256:e034f798206a8cdd384a6c3986693cbfe385fe2ed585952963eaeac84ec836c4`.
+The report indexed `1,614` components; `777` carried at least one license
+field and `837` did not. Package-URL namespaces were `deb=732`, `cargo=518`,
+`pypi=308`, `rpm=23`, `golang=19`, `generic=11`, and `npm=3`.
+
+This is accepted exact-image SBOM evidence, not complete license/notice or
+model-data provenance evidence. The missing-license rows, model notices,
+source-to-image binding, and owner/legal disposition remain open; no image,
+container, model, source, runtime, provider, private-data, or qualification
+status changed.
