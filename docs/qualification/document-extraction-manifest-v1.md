@@ -757,3 +757,19 @@ notice closure, model/data-term review, or owner/legal approval. The twelve
 unmatched rows and the direct-metadata gaps remain open provenance items. The
 temporary comparison report was removed; no image, source, model, runtime,
 provider, or qualification status changed.
+
+## Container license-file coverage audit
+
+Read-only `importlib.metadata` inspection covered all `296` Python
+distributions in the running `mineru-api` container. `242` declared at least
+one `License-File` metadata entry. A bounded filename filter found `254`
+distributions with `433` readable license/notice-like files; all `433` were
+successfully SHA-256 hashed without retaining file contents. `96` had a file
+but no direct license field/classifier, `37` had a direct signal but no file
+found by the filter, and `18` had a declaration without a matching filtered
+path.
+
+This is bounded packaging/provenance evidence, not a complete notice
+inventory or legal closure. The filename filter can miss differently named
+files, and the declaration count does not prove absence. No image, source,
+model, runtime, provider, or qualification status changed.
