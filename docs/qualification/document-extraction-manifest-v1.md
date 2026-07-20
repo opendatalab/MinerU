@@ -591,3 +591,23 @@ provenance gate for the current profile and remains open for per-asset review,
 source-to-image binding, and owner/legal disposition. No model was downloaded,
 executed, or modified; no runtime, provider, private-data, or qualification
 status changed.
+
+## Selected pipeline submodel metadata cross-check
+
+The public component-level metadata was then checked without downloading or
+executing any model. The official `PaddlePaddle/PP-DocLayoutV2` model card
+reports `Apache-2.0`, and the committed README for
+`models/MFR/unimernet_hf_small_2503` inside the public PDF-Extract-Kit
+repository also declares `Apache-2.0`. References: [PP-DocLayoutV2 model
+card](https://huggingface.co/PaddlePaddle/PP-DocLayoutV2) and [the UniMERNet
+component README](https://huggingface.co/opendatalab/PDF-Extract-Kit-1.0/blob/7f74df574f36014d56f800bae3f98852a2dbf896/models/MFR/unimernet_hf_small_2503/README.md).
+
+The public pages inspected for the FormulaNet component, the bundled
+`paddleocr_torch` OCR assets, SlanetPlus, UnetStructure, and the PP-LCNet table
+classifier did not provide enough independent license/notice metadata to close
+those individual assets. This is an evidence gap, not a conclusion that those
+assets have no license or notice. The seven-path local cache match therefore
+remains an inventory result only; per-asset license/notice mapping, exact
+snapshot identity, attribution obligations, and owner/legal disposition remain
+open. No model download, inference, runtime, provider, private-data, or
+qualification status changed.
