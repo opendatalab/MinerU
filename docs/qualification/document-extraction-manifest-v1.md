@@ -603,11 +603,28 @@ card](https://huggingface.co/PaddlePaddle/PP-DocLayoutV2) and [the UniMERNet
 component README](https://huggingface.co/opendatalab/PDF-Extract-Kit-1.0/blob/7f74df574f36014d56f800bae3f98852a2dbf896/models/MFR/unimernet_hf_small_2503/README.md).
 
 The public pages inspected for the FormulaNet component, the bundled
-`paddleocr_torch` OCR assets, SlanetPlus, UnetStructure, and the PP-LCNet table
-classifier did not provide enough independent license/notice metadata to close
-those individual assets. This is an evidence gap, not a conclusion that those
-assets have no license or notice. The seven-path local cache match therefore
+`paddleocr_torch` OCR assets, and UnetStructure did not provide enough
+independent license/notice metadata to close those individual assets; the
+exact-name SLANetPlus and PP-LCNet results are recorded in the section below.
+This is an evidence gap, not a conclusion that those assets have no license or
+notice. The seven-path local cache match therefore
 remains an inventory result only; per-asset license/notice mapping, exact
 snapshot identity, attribution obligations, and owner/legal disposition remain
 open. No model download, inference, runtime, provider, private-data, or
 qualification status changed.
+
+## Exact versus adjacent public component metadata
+
+The remaining public checks were separated by identity. The exact local
+`SlanetPlus/slanet-plus.onnx` and `PP-LCNet_x1_0_table_cls.onnx` names have
+official cards reporting `Apache-2.0`: [SLANet_plus](https://huggingface.co/PaddlePaddle/SLANet_plus)
+and [PP-LCNet_x1_0_table_cls](https://huggingface.co/PaddlePaddle/PP-LCNet_x1_0_table_cls).
+
+The public PDF-Extract-Kit history contains the exact `PP-FormulaNet_plus-M.pth`
+file, but no independent license metadata was found for that plus-M artifact;
+a separate FormulaNet-L card is adjacent evidence only. Official PP-OCRv4
+cards are likewise adjacent to the exact language/variant files in the local
+OCR bundle. No independent metadata was found for `UnetStructure/unet.onnx`.
+These distinctions leave exact snapshot identity, per-file notice/attribution
+terms, and owner/legal disposition open. No model download, execution,
+initialization, runtime, provider, or qualification status changed.
