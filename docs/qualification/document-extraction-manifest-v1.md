@@ -690,3 +690,16 @@ formula meaning, critical identifiers, units, negation, table-cell meaning,
 native-source adjudication, or human gold. All three profile dispositions
 remain `deferred`; no qualification, source sufficiency, runtime, provider,
 or implementation status changed.
+
+## Public parser E2E dependency remediation recheck
+
+After the first E2E run reported the optional slow pure-Python
+`SequenceMatcher` warning, `python-Levenshtein==0.27.3` and its resolved
+runtime dependencies were installed only into the project `.venv`. A second
+locked/offline run of the same existing `tests/unittest/test_e2e.py` passed
+`1` test in `45.81` seconds with no pytest warning. No `pyproject.toml`,
+`uv.lock`, source file, model, image, or runtime configuration was changed.
+
+This is environment/test-performance evidence only; the E2E assertions and
+their public/local/offline boundary are unchanged, and all profile
+dispositions remain `deferred`.
