@@ -533,3 +533,39 @@ This is bounded timeout evidence only. It does not establish dependency
 completeness, image-license closure, model/data notices, source-to-image
 release binding, owner/legal disposition, or any parser/profile qualification;
 those gates remain `deferred`.
+
+## Current source/model/image notice provenance audit
+
+On 2026-07-19, a read-only source and image inventory was performed against
+MinerU revision `76b886b1b35cb8e7d59f2a625fb987394d633935` and the running
+`mineru-api` image. The scoped source tree contained the repository-level
+`LICENSE.md` (SHA-256
+`f7e50772426f4fd573c8690216e8e73936de456fc8979c35230187d93b6d51dd`) but no
+separate `NOTICE`, `COPYING`, or third-party license inventory file. The
+license declares Apache License 2.0 with additional MinerU terms, including
+commercial-use thresholds and an online-service attribution obligation. The
+package metadata declares `LicenseRef-MinerU-Open-Source-License` and points to
+`LICENSE.md`.
+
+The source model map identifies the VLM repositories
+`opendatalab/MinerU2.5-Pro-2605-1.2B` /
+`OpenDataLab/MinerU2.5-Pro-2605-1.2B` and the pipeline repositories
+`opendatalab/PDF-Extract-Kit-1.0` / `OpenDataLab/PDF-Extract-Kit-1.0`, with
+pipeline subpaths for PP-DocLayoutV2, UniMERNet, FormulaNet, PaddleOCR,
+SlanetPlus, UnetStructure, and table classification. The read-only container
+inventory found the corresponding Hugging Face model snapshots: VLM ref
+`bff20d4ae2bf202df9f45284b4d43681555a97ed` and pipeline ref
+`ed6b654c018d742e65a17671e379c5e6ecc87ec9`. It found seven expected pipeline
+model subdirectories and no `LICENSE`, `NOTICE`, `COPYING`, `README`, or
+`MODEL_CARD` files inside either downloaded snapshot directory. This absence
+is an inventory observation, not a conclusion that the models lack licenses or
+notices.
+
+The image package metadata reports MinerU `3.4.4`, vLLM `0.21.0`, and Torch
+`2.11.0+cu130`; the Docker recipe downloads all models from Hugging Face and
+the runtime entrypoint selects local model paths. These observations narrow
+the actual model/runtime inventory but do not close model-specific license or
+notice terms, source-to-image release binding, model-data provenance,
+owner/legal disposition, or qualification. No model file contents, private
+configuration values, network download, container state, or source/runtime
+implementation was changed.
