@@ -798,3 +798,28 @@ preserved and untouched.
 No source, schema, model, image, runtime, provider, private-data, or upstream
 state changed. Source-owner qualification, native/semantic gold, release
 provenance, and runtime-edge promotion remain deferred.
+
+## Current paired producer/consumer seam recheck (2026-07-19)
+
+The current producer checkout at revision `de329b20325a801c7771f9a142748502402312e6`
+re-ran `tests/contracts/test_document_extraction_manifest_v1_contract.py` and
+`tests/unittest/test_knowhere_integration_contract.py` with coverage addopts
+disabled for this focused selection. All `18` tests passed in `15.37` seconds.
+The paired Knowhere consumer checkout at revision
+`73acff28893ca9135a5cf1d7045ca037156b4d94` then passed its bounded local
+MinerU/provider boundary selection with `54` passed and `2` expected skips.
+
+The opt-in real local seam passed `1` test in `37.41` seconds using the public
+MinerU fixture and the local offline-configured pipeline. The standard PDF
+provider produced `full.md` and the sanitized log, the cloud sentinel was not
+called, and no local temporary-run directory remained. The skips were the
+Windows symlink-creation privilege check and the separate explicit E2E test
+when it was run in the bounded contract selection.
+
+This is current paired mechanical and runtime-seam evidence only. It does not
+establish host-level network denial, native or semantic gold, critical-token or
+table-cell meaning preservation, source sufficiency, model/legal provenance,
+provider approval, private-data processing, upstream synchronization, or
+qualification of any parser profile. The profile dispositions remain
+`deferred`; no source, schema, runtime, provider, private-data, or upstream
+state changed.
