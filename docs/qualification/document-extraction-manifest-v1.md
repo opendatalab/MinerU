@@ -718,3 +718,27 @@ model-data provenance evidence. The missing-license rows, model notices,
 source-to-image binding, and owner/legal disposition remain open; no image,
 container, model, source, runtime, provider, private-data, or qualification
 status changed.
+
+## Container Python distribution metadata cross-check
+
+Read-only `importlib.metadata` inspection of the running `mineru-api`
+container found `296` installed Python distributions. `195` exposed a
+non-empty `License` field or `License ::` classifier and `101` exposed
+neither. Selected results were:
+
+| Distribution | Version | Metadata signal | Installed license-like files |
+|---|---|---|---|
+| `mineru` | `3.4.4` | No license field/classifier | `LICENSE.md` |
+| `vllm` | `0.21.0` | No license field/classifier | `LICENSE` |
+| `torch` | `2.11.0+cu130` | `BSD-3-Clause` | `LICENSE`, `NOTICE` |
+| `torchvision` | `0.26.0+cu130` | `BSD` | `LICENSE` |
+| `transformers` | `4.57.6` | Apache field/classifier | `LICENSE` |
+| `pypdf` | `6.14.2` | No license field/classifier | `LICENSE` |
+
+The installed distribution metadata does not exactly reproduce the Docker
+Scout SBOM's normalized values for selected packages, including `mineru` and
+`vllm`. This remains a packaging/normalization discrepancy, not a license or
+notice closure. Installed license files do not by themselves establish
+complete attribution, model/data terms, source-to-image provenance, or
+owner/legal approval. No image, source, model, runtime, provider, or
+qualification status changed.
