@@ -784,3 +784,17 @@ the current qualification head. This confirms contract-byte continuity only;
 the source-owner qualification, runtime/edge promotion, native/semantic gold,
 and release provenance gates remain open. No schema, source, runtime, provider,
 private-data, or qualification status changed.
+
+## Current qualification-head continuity recheck (2026-07-19)
+
+The previously recorded runtime/source head `43cf41d5` remains an ancestor of
+the current qualification head `52d7917011eb5a4f55d2635339e3f7befdaba6ed`.
+The tracked diff between those heads contains only this qualification record
+(`347` lines changed); all intervening commits are documentation-only
+qualification updates. The branch remains `0` commits ahead/behind its
+tracked remote, with the existing untracked `.qa/` directory and `uv.lock`
+preserved and untouched.
+
+No source, schema, model, image, runtime, provider, private-data, or upstream
+state changed. Source-owner qualification, native/semantic gold, release
+provenance, and runtime-edge promotion remain deferred.
