@@ -628,3 +628,21 @@ OCR bundle. No independent metadata was found for `UnetStructure/unet.onnx`.
 These distinctions leave exact snapshot identity, per-file notice/attribution
 terms, and owner/legal disposition open. No model download, execution,
 initialization, runtime, provider, or qualification status changed.
+
+## Exact public snapshot ref binding recheck
+
+On 2026-07-19, a read-only `git ls-remote` comparison returned the same refs
+stored in the existing `mineru-api` image cache:
+
+| Repository | Public `main` ref | Cached image ref | Result |
+|---|---|---|---|
+| `opendatalab/MinerU2.5-Pro-2605-1.2B` | `bff20d4ae2bf202df9f45284b4d43681555a97ed` | `bff20d4ae2bf202df9f45284b4d43681555a97ed` | exact match |
+| `opendatalab/PDF-Extract-Kit-1.0` | `ed6b654c018d742e65a17671e379c5e6ecc87ec9` | `ed6b654c018d742e65a17671e379c5e6ecc87ec9` | exact match |
+
+The image remained at digest
+`sha256:e034f798206a8cdd384a6c3986693cbfe385fe2ed585952963eaeac84ec836c4`.
+This narrows snapshot identity for the observed image only. It does not close
+per-asset notices, license/attribution terms, signed release-manifest binding,
+build provenance, or owner/legal qualification. No model download, inference,
+provider execution, private-data processing, or implementation status change
+occurred.
