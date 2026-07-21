@@ -13,6 +13,7 @@ Keep the existing `Tier`, `ServerTier`, and `ManagedServerTier` types in `mineru
 - `SERVER_TIERS: tuple[ServerTier, ...] = ("flash", "basic", "standard")`
 - `MANAGED_SERVER_TIERS: tuple[ManagedServerTier, ...] = ("basic", "standard")`
 - `MODEL_TIERS: tuple[ModelTier, ...] = ("basic", "standard")`
+- `TIERS: tuple[Tier, ...] = ("flash", "basic", "standard", "advanced")`
 - `TIERS_BY_SERVER_TIER: dict[ServerTier, tuple[Tier, ...]]`
 
 The request-tier mapping remains:
@@ -39,7 +40,7 @@ No compatibility aliases or old-module re-exports remain. This is an internal so
 
 Tests and static checks verify:
 
-1. All four canonical constants have the expected ordered values and mapping.
+1. All five canonical constants have the expected ordered values and mapping.
 2. API-server startup validation and request-tier expansion are unchanged.
 3. Managed-server configuration accepts only Basic and Standard.
 4. Model commands and model-repository selection still accept only Basic and Standard.
