@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from loguru import logger as loguru_logger
+from packaging.requirements import Requirement
 
 from mineru.config import LogConfig, PatchedConfig, config as mineru_config
 from mineru.doclib import app as doclib_app
@@ -53,6 +54,15 @@ def test_doclib_runtime_dependencies_are_in_base_install() -> None:
     assert "aiosqlite" in dependency_names
     assert "packaging" in dependency_names
     assert "watchfiles" in dependency_names
+
+
+def test_huggingface_hub_base_dependency_enables_xet() -> None:
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    dependencies = (Requirement(raw_dependency) for raw_dependency in pyproject["project"]["dependencies"])
+    huggingface_hub = next(dependency for dependency in dependencies if dependency.name == "huggingface-hub")
+
+    assert huggingface_hub.extras == {"hf_xet"}
 
 
 def test_basic_extra_includes_preflight_runtime_dependencies() -> None:

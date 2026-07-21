@@ -6,6 +6,14 @@ MinerU使用 `HuggingFace` 和 `ModelScope` 作为模型仓库，用户可以根
 - `HuggingFace` 在全球范围内提供了优异的加载速度和极高稳定性。
 - `ModelScope` 是中国大陆地区用户的最佳选择，提供了无缝兼容的SDK模块，适用于无法访问`HuggingFace`的用户。
 
+使用 `HuggingFace` 下载模型时，MinerU 默认通过 `hf_xet` 加速传输。如果当前网络或代理无法访问 Xet CAS，设置
+`HF_HUB_DISABLE_XET=1` 可回退到普通 HTTP 下载。
+
+```powershell
+$env:HF_HUB_DISABLE_XET = "1"
+mineru-kit models download --tier standard --source huggingface
+```
+
 ## 模型源的切换方法
 
 ### 通过环境变量切换
