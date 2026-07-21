@@ -6,6 +6,7 @@ from collections.abc import Generator
 from typing import Any
 
 from ...types import Block, BlockType, ContentType, ContentTypeV2, Line, Span
+from ..image import ImageRenderer, strip_embedded_image_tags
 from ..markdown_table import to_markdown_table
 from .merge import (
     _append_hyperlink_part,
@@ -361,6 +362,7 @@ def blocks_to_markdown(
     img_bucket_path: str = "",
     no_rich_content: bool = False,
     prefer_markdown_table: bool = False,
+    image_renderer: ImageRenderer | None = None,
 ) -> list[str]:
     page_markdown = []
     for para_block in para_blocks:
@@ -368,6 +370,8 @@ def blocks_to_markdown(
         para_type = para_block.type
         if para_type in [BlockType.TEXT, BlockType.INTERLINE_EQUATION]:
             para_text = merge_para_with_text(para_block)
+            if para_type == BlockType.INTERLINE_EQUATION and not para_text and image_renderer is not None:
+                para_text = image_renderer(para_block)
             if para_type == BlockType.TEXT:
                 bookmark_anchor = para_block.anchor
                 if isinstance(bookmark_anchor, str) and bookmark_anchor.strip() and bookmark_anchor.strip().startswith("_Toc"):
@@ -387,21 +391,32 @@ def blocks_to_markdown(
         elif para_type == BlockType.IMAGE:
             if no_rich_content:
                 continue
-            for span in _iter_body_spans(para_block, BlockType.IMAGE_BODY, ContentType.IMAGE):
-                if span:
-                    para_text += f"![]({img_bucket_path}/{span.image_path})"
+            if image_renderer is not None:
+                para_text += image_renderer(para_block)
+            else:
+                for span in _iter_body_spans(para_block, BlockType.IMAGE_BODY, ContentType.IMAGE):
+                    if span:
+                        para_text += f"![]({img_bucket_path}/{span.image_path})"
             for caption_text in _collect_caption_texts(para_block, BlockType.IMAGE_CAPTION):
                 para_text += "  \n" + caption_text
 
         elif para_type == BlockType.TABLE:
             if no_rich_content:
                 continue
+            rendered_table = False
             for span in _iter_body_spans(para_block, BlockType.TABLE_BODY, ContentType.TABLE):
                 table_html = _format_embedded_html(span.content, img_bucket_path)
+                if image_renderer is not None:
+                    table_html = strip_embedded_image_tags(table_html)
+                if not table_html:
+                    continue
+                rendered_table = True
                 if prefer_markdown_table:
                     para_text += f"\n{to_markdown_table(table_html)}\n"
                 else:
                     para_text += f"\n{table_html}\n"
+            if not rendered_table and image_renderer is not None:
+                para_text += image_renderer(para_block)
             for caption_text in _collect_caption_texts(para_block, BlockType.TABLE_CAPTION):
                 para_text += "  \n" + caption_text
         elif para_type == BlockType.CHART:
@@ -409,7 +424,12 @@ def blocks_to_markdown(
                 continue
             image_path, chart_content = get_body_data(para_block)
             if chart_content:
-                para_text += f"\n{_format_embedded_html(chart_content, img_bucket_path)}\n"
+                chart_html = _format_embedded_html(chart_content, img_bucket_path)
+                if image_renderer is not None:
+                    chart_html = strip_embedded_image_tags(chart_html)
+                para_text += f"\n{chart_html}\n"
+            elif image_renderer is not None:
+                para_text += image_renderer(para_block)
             elif image_path:
                 para_text += f"![]({_build_media_path(img_bucket_path, image_path)})"
             else:

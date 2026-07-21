@@ -1,6 +1,11 @@
 import pytest
 
-from mineru.doclib.server import _next_content_request, _normalize_content_page_range, _page_markdown_blocks, _render_progressive_markdown
+from mineru.doclib.server import (
+    _next_content_request,
+    _normalize_content_page_range,
+    _page_markdown_blocks,
+    _render_progressive_markdown,
+)
 from mineru.doclib.types import ContentRange
 from mineru.errors import InvalidRequestError
 from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span
@@ -174,7 +179,14 @@ def test_paginated_next_request_is_never_after_only() -> None:
     assert next_request.after is not None
 
 
-def test_paginated_empty_page_renders_page_marker_and_content_range() -> None:
+@pytest.mark.parametrize(
+    ("page_count", "expected_marker"),
+    [(None, "<!-- page 1 -->"), (38, "<!-- page 1 of 38 -->")],
+)
+def test_paginated_empty_page_renders_page_marker_and_content_range(
+    page_count: int | None,
+    expected_marker: str,
+) -> None:
     rendered = _render_progressive_markdown(
         [PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[], _backend="flash")],
         short_id="ab12cd3",
@@ -182,9 +194,10 @@ def test_paginated_empty_page_renders_page_marker_and_content_range() -> None:
         after=None,
         limit=30000,
         add_markers=True,
+        page_count=page_count,
     )
 
-    assert rendered.content == "<!-- page 1 -->"
+    assert rendered.content == expected_marker
     assert rendered.content_ranges == [
         ContentRange(page_range="1", start="doc:ab12cd3/tier:flash/page:1", end="doc:ab12cd3/tier:flash/page:1")
     ]

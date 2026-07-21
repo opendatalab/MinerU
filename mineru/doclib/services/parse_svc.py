@@ -1385,7 +1385,7 @@ class ParseService:
 
             from ...render import render_markdown
 
-            text = truncate_head_tail(render_markdown(pages, add_markers=False))
+            text = truncate_head_tail(render_markdown(pages, add_markers=False, image_renderer=lambda _block: ""))
             await self.fts.replace(
                 sha256=sha256,
                 tier=tier,

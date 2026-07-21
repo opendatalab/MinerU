@@ -105,8 +105,37 @@ class PDFDocument:
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def from_image(image_bytes: bytes) -> "PDFDocument":
-        return PDFDocument(images_bytes_to_pdf_bytes(image_bytes))
+    def from_image(
+        image_bytes: bytes,
+        render_scale: float = DEFAULT_RENDER_SCALE,
+        render_max_edge: int = DEFAULT_RENDER_MAX_EDGE,
+    ) -> "PDFDocument":
+        image = Image.open(BytesIO(image_bytes))
+        # 根据 EXIF 信息自动转正（处理手机拍摄的带 Orientation 标记的图片）
+        image = ImageOps.exif_transpose(image) or image
+
+        # 只在必要时转换
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+
+        render_dpi = max(1, int(round(render_scale * POINTS_PER_INCH)))
+
+        with BytesIO() as pdf_buffer:
+            # 第一张图保存为 PDF，其余追加
+            image.save(
+                pdf_buffer,
+                format="PDF",
+                resolution=render_dpi,
+                quality=95,
+                subsampling=0,
+            )
+            pdf_bytes = pdf_buffer.getvalue()
+
+        return PDFDocument(
+            pdf_bytes,
+            render_scale=render_scale,
+            render_max_edge=render_max_edge,
+        )
 
     # ------------------------------------------------------------------ #
     #  Lifecycle
@@ -199,7 +228,7 @@ class PDFDocument:
         return await asyncio.to_thread(self.render_pages, start, end, scale=scale)
 
     # TODO: move
-    def crop_image(self, bbox: BBox, page_idx: int, *, scale: int = 2) -> bytes:
+    def crop_image(self, bbox: BBox, page_idx: int, *, scale: float = 2) -> bytes:
         image = self.render_page(page_idx, scale=scale)
         crop = None
         try:
@@ -354,9 +383,7 @@ def _deduplicate_near_identical_chars(chars: list[Char]) -> list[Char]:
             unique_chars.append(char)
             continue
 
-        rounded_bbox = tuple(
-            int(round(float(value) / NEAR_DUPLICATE_CHAR_BBOX_TOLERANCE)) for value in bbox_values
-        )
+        rounded_bbox = tuple(int(round(float(value) / NEAR_DUPLICATE_CHAR_BBOX_TOLERANCE)) for value in bbox_values)
         key = (
             text,
             *rounded_bbox,
@@ -429,7 +456,7 @@ def _get_single_char_text(char: Char) -> str:
     text = str(char.get("char", ""))
     if len(text) == 1:
         return text
-    return text[:1] or "\uFFFD"
+    return text[:1] or "\ufffd"
 
 
 def _get_char_font_id(
@@ -524,28 +551,6 @@ def get_lines_from_chars(
         line_distance_threshold=line_distance_threshold,
     )
     return lines
-
-
-def images_bytes_to_pdf_bytes(image_bytes: bytes) -> bytes:
-    # 载入并转换所有图像为 RGB 模式
-    image = Image.open(BytesIO(image_bytes))
-    # 根据 EXIF 信息自动转正（处理手机拍摄的带 Orientation 标记的图片）
-    image = ImageOps.exif_transpose(image) or image
-
-    # 只在必要时转换
-    if image.mode != "RGB":
-        image = image.convert("RGB")
-
-    with BytesIO() as pdf_buffer:
-        # 第一张图保存为 PDF，其余追加
-        image.save(
-            pdf_buffer,
-            format="PDF",
-            resolution=DEFAULT_RENDER_DPI,
-            quality=95,
-            subsampling=0,
-        )
-        return pdf_buffer.getvalue()
 
 
 def _page_to_image(page: pdfium.PdfPage, scale: float, max_edge: int) -> PDFPageImage:

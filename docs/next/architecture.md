@@ -314,16 +314,16 @@ ParseWorker 按 `tier`、`privacy` 和 parse-server 健康状态路由：
           medium/
             1~10_1710001234000.json
             11~20_1710002234000.json
+            images/              # 仅在解析结果包含必要 sidecar 时存在
           high/
             1~20_1710003234000.json
           xhigh/
             1~20_1710004234000.json
-            images/
 ```
 
 每个 JSON 文件表示一次解析批次，文件名由页码范围和完成时间组成。每个 tier 独立目录，互不覆盖。remote 解析完成后也写入同一结构，供 CLI、SDK、搜索和缓存统一读取。
 
-doclib 不在 `parsed/` 中保存 Markdown、Content List 或 HTML。它们都从 Middle JSON 读取时转换得到；搜索索引可以使用临时渲染出的 Markdown 文本，但不把这份 Markdown 保存为产物文件。
+doclib 不在 `parsed/` 中保存 Markdown、Content List 或 HTML。它们都从 Middle JSON 读取时转换得到；搜索索引可以使用临时渲染出的 Markdown 文本，但不把这份 Markdown 保存为产物文件。PDF 和 image 通常不保存 block 图片，读取时从源页面按 bbox 裁剪；Office 等后端只有在解析结果包含图片时才保存 `images/` sidecar。
 
 搜索策略：
 

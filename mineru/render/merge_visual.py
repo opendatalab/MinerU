@@ -6,6 +6,7 @@ from html import escape, unescape
 from typing import Any
 
 from ..types import Block, BlockType, ContentType
+from .image import ImageRenderer, strip_embedded_image_tags
 from .merge import inline_left, inline_right, merge_para_text
 
 # --------------------------------------------------------------------------- #
@@ -14,12 +15,32 @@ from .merge import inline_left, inline_right, merge_para_text
 # --------------------------------------------------------------------------- #
 
 
-def merge_visual_para_text(para_block: Block, img_bucket_path: str = "") -> str:
+def merge_visual_para_text(
+    para_block: Block,
+    img_bucket_path: str = "",
+    image_renderer: ImageRenderer | None = None,
+) -> str:
     rendered_segments: list[tuple[str, str]] = []
+    image_reference_pending = image_renderer is not None
 
     for block in _blocks_in_index_order(para_block.blocks):
         render_block = _inherit_parent_code_render_metadata(block, para_block)
-        rendered_segments.extend(_render_visual_block_segments(render_block, para_block, img_bucket_path))
+        render_image_reference = image_reference_pending and render_block.type in {
+            BlockType.IMAGE_BODY,
+            BlockType.TABLE_BODY,
+            BlockType.CHART_BODY,
+        }
+        rendered_segments.extend(
+            _render_visual_block_segments(
+                render_block,
+                para_block,
+                img_bucket_path,
+                image_renderer=image_renderer,
+                render_image_reference=render_image_reference,
+            )
+        )
+        if render_image_reference:
+            image_reference_pending = False
 
     para_text = ""
     prev_kind: str | None = None
@@ -103,8 +124,10 @@ def _build_media_path(img_bucket_path: str, image_path: str) -> str:
 # -- Visual body / details ---------------------------------------------------
 
 
-def _build_visual_details_block(content: Any, summary: str) -> str:
+def _build_visual_details_block(content: Any, summary: str, *, strip_images: bool = False) -> str:
     normalized = _normalize_visual_content(content)
+    if strip_images:
+        normalized = strip_embedded_image_tags(normalized)
     if not normalized:
         return ""
     return f"<details>\n<summary>{summary}</summary>\n\n{normalized}\n</details>"
@@ -156,17 +179,19 @@ def _render_algorithm_code_html(block: Block) -> str:
     content = "\n".join(rendered_lines).strip("\n")
     if not content.strip():
         return ""
-    return (
-        '<div class="mineru-algorithm" style="white-space: pre-wrap; font-family:monospace;">\n'
-        f"{content}\n"
-        "</div>"
-    )
+    return f'<div class="mineru-algorithm" style="white-space: pre-wrap; font-family:monospace;">\n{content}\n</div>'
 
 
 # -- Per-block-type segment rendering ----------------------------------------
 
 
-def _render_visual_block_segments(block: Block, para_block: Block, img_bucket_path: str) -> list[tuple[str, str]]:
+def _render_visual_block_segments(
+    block: Block,
+    para_block: Block,
+    img_bucket_path: str,
+    image_renderer: ImageRenderer | None,
+    render_image_reference: bool,
+) -> list[tuple[str, str]]:
     # 将单个视觉子 block 渲染成一个或多个 segment。
     # 文本类子块统一输出 markdown_line；
     # table 的 html 输出为 html_block，供后续决定是否需要空行隔开。
@@ -199,47 +224,87 @@ def _render_visual_block_segments(block: Block, para_block: Block, img_bucket_pa
     # IMAGE_BODY
     if block_type == BlockType.IMAGE_BODY:
         image_segments: list[tuple[str, str]] = []
+        if image_renderer is not None and render_image_reference:
+            image_reference = image_renderer(para_block)
+            if image_reference:
+                image_segments.append((image_reference, "markdown_line"))
         for line in block.lines:
             for span in line.spans:
                 if span.type != ContentType.IMAGE:
                     continue
-                image_segments.extend(
-                    _build_visual_body_segments(
-                        image_path=span.image_path,
-                        content=span.content,
-                        img_bucket_path=img_bucket_path,
-                        details_summary=para_block.sub_type or "image content",
+                if image_renderer is None:
+                    image_segments.extend(
+                        _build_visual_body_segments(
+                            image_path=span.image_path,
+                            content=span.content,
+                            img_bucket_path=img_bucket_path,
+                            details_summary=para_block.sub_type or "image content",
+                        )
                     )
-                )
+                else:
+                    details = _build_visual_details_block(
+                        span.content,
+                        para_block.sub_type or "image content",
+                        strip_images=True,
+                    )
+                    if details:
+                        image_segments.append((details, "details_block"))
         return image_segments
 
     # CHART_BODY
     if block_type == BlockType.CHART_BODY:
         chart_segments: list[tuple[str, str]] = []
+        has_content = any(
+            _normalize_visual_content(span.content)
+            for line in block.lines
+            for span in line.spans
+            if span.type == ContentType.CHART
+        )
+        if image_renderer is not None and render_image_reference and not has_content:
+            image_reference = image_renderer(para_block)
+            if image_reference:
+                chart_segments.append((image_reference, "markdown_line"))
         for line in block.lines:
             for span in line.spans:
                 if span.type != ContentType.CHART:
                     continue
-                chart_segments.extend(
-                    _build_visual_body_segments(
-                        image_path=span.image_path,
-                        content=span.content,
-                        img_bucket_path=img_bucket_path,
-                        details_summary=para_block.sub_type or "chart content",
+                if image_renderer is None:
+                    chart_segments.extend(
+                        _build_visual_body_segments(
+                            image_path=span.image_path,
+                            content=span.content,
+                            img_bucket_path=img_bucket_path,
+                            details_summary=para_block.sub_type or "chart content",
+                        )
                     )
-                )
+                else:
+                    details = _build_visual_details_block(
+                        span.content,
+                        para_block.sub_type or "chart content",
+                        strip_images=True,
+                    )
+                    if details:
+                        chart_segments.append((details, "details_block"))
         return chart_segments
 
     # TABLE_BODY
     if block_type == BlockType.TABLE_BODY:
         table_segments: list[tuple[str, str]] = []
+        has_content = any(bool(span.content) for line in block.lines for span in line.spans if span.type == ContentType.TABLE)
+        if image_renderer is not None and render_image_reference and not has_content:
+            image_reference = image_renderer(para_block)
+            if image_reference:
+                table_segments.append((image_reference, "markdown_line"))
         for line in block.lines:
             for span in line.spans:
                 if span.type != ContentType.TABLE:
                     continue
                 if span.content:  # (VLM) also checks table_enable
-                    table_segments.append((_format_embedded_html(span.content, img_bucket_path), "html_block"))
-                elif span.image_path:
+                    table_html = _format_embedded_html(span.content, img_bucket_path)
+                    if image_renderer is not None:
+                        table_html = strip_embedded_image_tags(table_html)
+                    table_segments.append((table_html, "html_block"))
+                elif image_renderer is None and span.image_path:
                     if media_path := _build_media_path(img_bucket_path, span.image_path):
                         table_segments.append((f"![]({media_path})", "markdown_line"))
         return table_segments

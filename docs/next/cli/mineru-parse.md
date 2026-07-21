@@ -119,6 +119,8 @@ marker 是 Agent 的控制协议，不应依赖自然语言猜测。
 
 默认输出到 STDOUT，便于 Agent 直接消费。指定 `--output` 时写入文件。
 
+Markdown 中的可视图片使用 `mineru read` 可读取的 block locator，不暴露 doclib 内部 `image_path`。`--output` 保留 locator 引用，只写 Markdown 文件，不额外创建 `images/` 目录。
+
 `--json` 时，`mineru parse` 的顶层返回命令级 envelope：
 
 ```json
