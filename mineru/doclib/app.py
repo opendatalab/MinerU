@@ -8,6 +8,7 @@ import logging
 import os
 import socket
 import time
+import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
@@ -299,6 +300,7 @@ class AppState:
         self.background_tasks: list[asyncio.Task[Any]] = []
         self.start_time: float = 0.0
         self.pid: int = 0
+        self.server_id: str = str(uuid.uuid4())
         self.mineru_home: str = ""
         self.socket_path: str = ""
         self.data_dir: str = ""
@@ -436,7 +438,8 @@ def main() -> None:
         raise RuntimeError("At least one doclib local transport must be enabled.")
     if uds_enabled and not uds_available():
         raise RuntimeError(
-            "Unix domain socket is enabled but is not available in this Python runtime. Enable doclib.tcp or disable doclib.uds."
+            "Unix domain socket is enabled but is not available in this Python runtime. "
+            "Enable doclib.tcp or disable doclib.uds."
         )
 
     app = create_app(cfg)
@@ -479,7 +482,12 @@ def main() -> None:
     else:
         app.state.doclib_state.tcp_port = None
 
-    write_endpoint_file(endpoint_path, pid=os.getpid(), transports=transports)
+    write_endpoint_file(
+        endpoint_path,
+        pid=os.getpid(),
+        server_id=app.state.doclib_state.server_id,
+        transports=transports,
+    )
     print("MinerU server listening on " + " and ".join(_format_transport(transport) for transport in transports))
 
     loop = asyncio.new_event_loop()

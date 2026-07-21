@@ -172,6 +172,7 @@ CLI 在调用 server 前或通信层面产生本地错误。它们使用同一 `
 | `invalid_request_error` | `file_not_found` | 否 | 本地文件路径不存在 | `check_path` |
 | `invalid_request_error` | `file_permission_denied` | 否 | 本地文件无读取权限 | `fix_file_permission` |
 | `api_error` | `server_not_running` | 是 | CLI 无法连接 doclib UDS | `run_mineru_server_start` |
+| `api_error` | `server_instance_mismatch` | 是 | endpoint 指向的进程不是写入该 endpoint 的 server 实例 | `restart_server` |
 | `api_error` | `server_protocol_error` | 是 | CLI 与 server 协议不兼容或响应损坏 | `upgrade_or_restart_server` |
 
 CLI 在 TTY 中可以用表格或 rich 文本展示，但非 TTY、`--json` 或 Agent 调用场景应输出结构化错误。

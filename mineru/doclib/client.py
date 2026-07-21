@@ -16,7 +16,6 @@ from .base import DoclibInterface
 from .endpoint import (
     DOCLIB_UDS_BASE_URL,
     EndpointTransport,
-    config_transports,
     default_endpoint_path,
     read_endpoint_file,
     uds_available,
@@ -103,13 +102,14 @@ class DoclibClient(DoclibInterface):
     ) -> None:
         if socket_path is not None and base_url is not None:
             raise ValueError("socket_path and base_url cannot both be provided.")
-        self._clients = _build_clients(
+        self._clients, self._expected_server_id = _build_clients(
             endpoint_path=endpoint_path,
             socket_path=socket_path,
             base_url=base_url,
             timeout=timeout,
         )
         self._active_client: httpx.Client | None = self._clients[0] if self._clients else None
+        self._validated_client_ids: set[int] = set()
         self._api_prefix = api_prefix.rstrip("/")
         self._default_telemetry_context = infer_default_client_context(source="sdk")
 
@@ -425,8 +425,10 @@ class DoclibClient(DoclibInterface):
         if not self._clients:
             raise ServerNotRunningError()
         clients = self._ordered_clients()
+        instance_mismatch: _ServerInstanceMismatch | None = None
         for client in clients:
             try:
+                self._validate_server_instance(client)
                 if method == "GET":
                     resp = client.get(path, params=params, headers=self._telemetry_headers())
                 elif method == "POST":
@@ -438,10 +440,37 @@ class DoclibClient(DoclibInterface):
                 else:
                     raise MineruError("internal_error", f"Unsupported client method: {method}")
             except httpx.ConnectError:
+                self._validated_client_ids.discard(id(client))
+                continue
+            except _ServerInstanceMismatch as exc:
+                instance_mismatch = exc
                 continue
             self._active_client = client
             return resp
+        if instance_mismatch is not None:
+            raise MineruError(
+                "server_instance_mismatch",
+                "The discovered endpoint belongs to a different MinerU server instance. "
+                "Restart the local MinerU server to refresh the endpoint file.",
+            )
         raise ServerNotRunningError() from None
+
+    def _validate_server_instance(self, client: httpx.Client) -> None:
+        expected_server_id = self._expected_server_id
+        client_id = id(client)
+        if expected_server_id is None or client_id in self._validated_client_ids:
+            return
+
+        resp = client.get(
+            f"{self._api_prefix}/server/status",
+            params={},
+            headers=self._telemetry_headers(),
+        )
+        data = _decode_response(resp)
+        actual_server_id = data.get("server_id")
+        if actual_server_id != expected_server_id:
+            raise _ServerInstanceMismatch()
+        self._validated_client_ids.add(client_id)
 
     def _ordered_clients(self) -> list[httpx.Client]:
         if self._active_client is None:
@@ -483,25 +512,25 @@ def _build_clients(
     socket_path: str | Path | None,
     base_url: str | None,
     timeout: int,
-) -> list[httpx.Client]:
+) -> tuple[list[httpx.Client], str | None]:
     if socket_path is not None:
         client = _client_for_transport(EndpointTransport(type="uds", path=str(socket_path)), timeout=timeout)
-        return [client] if client is not None else []
+        return ([client] if client is not None else [], None)
     if base_url is not None:
         client = _client_for_transport(EndpointTransport(type="tcp", base_url=base_url), timeout=timeout)
-        return [client] if client is not None else []
+        return ([client] if client is not None else [], None)
 
     discovery_path = str(endpoint_path) if endpoint_path is not None else default_endpoint_path()
-    transports = read_endpoint_file(discovery_path)
-    if not transports:
-        transports = config_transports()
+    endpoint = read_endpoint_file(discovery_path)
+    if endpoint is None:
+        return [], None
 
     clients: list[httpx.Client] = []
-    for transport in sorted(transports, key=lambda item: 0 if item.type == "uds" else 1):
+    for transport in sorted(endpoint.transports, key=lambda item: 0 if item.type == "uds" else 1):
         client = _client_for_transport(transport, timeout=timeout)
         if client is not None:
             clients.append(client)
-    return clients
+    return clients, endpoint.server_id
 
 
 def _client_for_transport(transport: EndpointTransport, *, timeout: int) -> httpx.Client | None:
@@ -517,6 +546,10 @@ def _client_for_transport(transport: EndpointTransport, *, timeout: int) -> http
     if not transport.base_url:
         return None
     return httpx.Client(base_url=transport.base_url, timeout=timeout, trust_env=False)
+
+
+class _ServerInstanceMismatch(Exception):
+    pass
 
 
 def _decode_response(resp: httpx.Response) -> dict[str, Any]:

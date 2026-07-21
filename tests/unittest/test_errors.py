@@ -41,6 +41,7 @@ DOCLIB_CONTRACT_ERROR_CODES = {
     "quality_tier_unavailable",
     "rule_not_found",
     "scan_not_found",
+    "server_instance_mismatch",
     "tier_mismatch",
     "tier_not_cached",
     "watch_not_found",
@@ -79,6 +80,7 @@ def test_doclib_error_code_types_are_stable() -> None:
     assert error_type_for("parse_json_write_failed") == "api_error"
     assert error_type_for("read_metadata_failed") == "api_error"
     assert error_type_for("scan_failed") == "api_error"
+    assert error_type_for("server_instance_mismatch") == "api_error"
 
 
 def test_http_status_for_error_codes_is_stable() -> None:
