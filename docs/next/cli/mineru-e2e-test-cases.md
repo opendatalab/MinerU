@@ -1552,13 +1552,15 @@ mineru show parse <created_parse_id> --json
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --pages 1~1
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier medium --pages 1~1
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier high --pages 1~1
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier xhigh --pages 1~1
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier pro --pages 1~1
 ```
 
 预期:
 
-- 两条命令均 exit code != 0
+- 四条命令均 exit code != 0
 - 输出明确说明 tier 取值无效，并列出或体现 `flash`、`basic`、`standard`、`advanced` 中的合法值
 - 不启动 parse，不生成新的 parse record
 - 不包含 Python traceback
@@ -3164,7 +3166,7 @@ mineru read "doc:<short_id>/tier:flash/page:1" --context 2 --limit 30000 --json
 - request_scope.context = 2 或等价字段体现 context 生效
 - 如果文档页数不足，命令应优雅返回可用范围，不报 traceback
 
-### FILETYPE-001 文档类输入文件
+### FILETYPE-001 Office 与文本类输入文件
 
 命令:
 
@@ -3179,9 +3181,11 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.csv" --tier flash --wait 60 --json
 
 预期:
 
-- 六条命令均 exit code = 0
-- stdout 均为可直接解析的 JSON
-- JSON 中 content 或 doc metadata 合理存在
+- DOCX、PPTX、XLSX 三条命令 exit code = 0
+- DOCX、PPTX、XLSX 的 stdout 均为可直接解析的 JSON，且 content 或 doc metadata 合理存在
+- MD、TXT、CSV 三条命令 exit code != 0
+- MD、TXT、CSV 的 stdout 均为可直接解析的 JSON error
+- MD、TXT、CSV 的 `error.type = invalid_request_error`、`error.code = parse_not_required`、`error.param = path`
 - 不包含 Python traceback
 
 ### FILETYPE-001A 图片输入
@@ -3772,7 +3776,7 @@ mineru server start
 
 必跑 case:
 
-- FILETYPE-001 文档类输入文件
+- FILETYPE-001 Office 与文本类输入文件
 - FILETYPE-001A 图片输入
 - FILETYPE-002 损坏、空、不可读文件中尚未执行的 empty/no-read 子项
 - PATH-001 路径字符边界
