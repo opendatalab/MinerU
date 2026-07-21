@@ -113,7 +113,7 @@ mineru read "doc:ab12cd3/tier:standard/page:18" --json
 
 ## Installation And Setup
 
-This skill requires MinerU `4.0.0` or later (`4.0.0a1` or later during the prerelease period). Before using any workflow, check whether the CLI is installed:
+This skill requires MinerU `>=4.0.0a3`. Before using any workflow, check whether the CLI is installed:
 
 ```bash
 command -v mineru
@@ -266,17 +266,17 @@ mineru telemetry flush
 
 MinerU has four tiers:
 
-| Tier | Quality and speed | Local requirements | Local model download | Use for |
-|---|---|---|---|---|
-| `flash` | Lowest quality; fastest | No special hardware | None | Discovery, preview, and indexing; never default final reading quality |
-| `basic` | Basic quality; moderate speed | At least 16 GB total memory; CPU works, GPU can accelerate | About 2 GB | Private local reading or lower-resource local parsing |
-| `standard` | Standard high quality; similar speed to `basic` on suitable hardware | At least 16 GB total memory plus a supported accelerator | About 4 GB | Default for normal active reading and complex documents |
-| `advanced` | Standard quality on ordinary documents and better quality on difficult documents; slowest | Same as Standard, with greater compute use | About 4 GB | Difficult documents and maximum-quality work when the user accepts a longer wait |
+| Tier | Chinese name | Quality and speed | Local requirements | Local model download | Use for |
+|---|---|---|---|---|---|
+| `flash` | 极速解析 | Lowest quality; fastest | No special hardware | None | Discovery, preview, and indexing; never default final reading quality |
+| `basic` | 基础解析 | Basic quality; moderate speed | At least 16 GB total memory; CPU works, GPU can accelerate | About 2 GB | Private local reading or lower-resource local parsing |
+| `standard` | 标准解析 | Standard high quality; similar speed to `basic` on suitable hardware | At least 16 GB total memory plus a supported accelerator | About 4 GB | Default for normal active reading and complex documents |
+| `advanced` | 高级解析 | Standard quality on ordinary documents and better quality on difficult documents; slowest | Same as Standard, with greater compute use | About 4 GB | Difficult documents and maximum-quality work when the user accepts a longer wait |
 
 Default tier behavior:
 
 - Omit `--tier` when the user wants normal reading quality.
-- For parse-server based parsing, MinerU chooses `standard`, then `advanced`, then `basic`; `flash` is not a default final reading tier.
+- For parse-server based parsing, MinerU chooses `standard`, then `basic`; `advanced` is not selected implicitly, and `flash` is not a default final reading tier.
 - For `mineru read doc:{short_id}`, MinerU reads the best cached result rather than starting a new parse.
 - If normal reading quality is unavailable, inspect `mineru server status --json`, then present the applicable choices to the user:
   - Use remote parsing with `--remote`, which uploads the document and requires explicit permission.
@@ -285,7 +285,11 @@ Default tier behavior:
   - Explicitly authorize fallback to a non-MinerU parser.
 - Stop and wait for the user's choice. Do not select a non-MinerU parser merely to finish the task without asking.
 - Use `--tier flash` only when the user explicitly asks for fastest/preview/low-cost parsing or accepts lower quality.
-- Whenever asking the user to choose a tier, explain the available options' differences in quality, speed, local hardware requirements, local model downloads, privacy, and setup effort. Recommend one option and explain why.
+- Before asking the user to choose a parsing tier or a managed parse-server tier for the first time in the current conversation, introduce the tier system rather than presenting tier names without context. Do not assume that the user has read this skill, knows that MinerU uses tiers, knows which tiers are available, or understands how they differ.
+  - For a parsing-tier choice, explain that the tier controls parsing quality, speed, and compute requirements. Briefly describe the tiers available in the current situation and their relevant trade-offs.
+  - For a managed parse-server-tier choice, explain that the server tier is a deployment capability level rather than the tier selected for an individual parsing request. Briefly describe the available server tiers, their setup and hardware requirements, and which parsing tiers each server tier enables.
+  - In either case, recommend one option based on the user's goal and environment, and explain the reason for the recommendation.
+  - When communicating in Chinese, use the Chinese tier name together with its identifier on first mention, for example, 标准解析 (`standard`).
 
 Examples:
 
