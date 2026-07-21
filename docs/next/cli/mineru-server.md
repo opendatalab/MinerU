@@ -42,7 +42,10 @@
 1. 停止后台任务。
 2. managed 模式下停止 local parse-server。
 3. 关闭数据库资源。
-4. 删除 socket 文件和 endpoint discovery 文件。
+4. 保留 socket 文件和 endpoint discovery 文件，由下一次 `mineru server start` 在确认没有存活实例后清理。
+
+`mineru server stop` 会等待 server 确实不可连接后才返回成功。`restart` 只有在 stop 完成后才启动 replacement，避免两个
+server 同时操作一个 MinerU home。
 
 ## 4. 状态输出
 

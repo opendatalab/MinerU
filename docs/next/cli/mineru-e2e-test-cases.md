@@ -450,7 +450,8 @@ unset MINERU_DOCLIB_UDS_ENABLED MINERU_DOCLIB_TCP_ENABLED MINERU_DOCLIB_TCP_PORT
 - status JSON 中 `tcp.port` 是大于 0 的实际端口，不应为 0
 - endpoint JSON 的 `transports` 只需包含 TCP transport，`base_url` 端口必须等于 status JSON 的 `tcp.port`
 - stop exit code = 0
-- stop 后 `$MINERU_HOME/doclib.endpoint.json` 被清理，或后续 `mineru server status --json` 返回 `running=false`
+- stop 后 `$MINERU_HOME/doclib.endpoint.json` 可以保留，后续 `mineru server status --json` 返回 `running=false`
+- 再次 start 时会清理残留 endpoint，并写入新的 version 2 endpoint
 
 ### SERVER-015 endpoint stale 清理
 
@@ -480,7 +481,8 @@ export MINERU_HOME="$MAIN_MINERU_HOME"
 - status JSON 返回 `running=false`，不因 stale endpoint 输出 Python traceback
 - stop exit code = 0
 - stop 输出 `Server is not running` 或等价信息
-- stop 后 stale endpoint 文件被 best-effort 清理
+- stop 后 stale endpoint 文件仍然存在
+- 后续 start 在创建子进程前清理 stale endpoint 和 UDS socket
 
 ### SERVER-016 endpoint server identity 校验
 
@@ -494,6 +496,20 @@ export MINERU_HOME="$MAIN_MINERU_HOME"
 - 默认 client 在发送业务请求前发现 `server_id` 不匹配。
 - 不向主测试 HOME 的 server 发送业务请求或 shutdown 请求。
 - 没有其他匹配 transport 时返回 `server_instance_mismatch`，或由 `server status` 表示当前 HOME 的 server 未运行。
+
+### SERVER-017 version 1 endpoint 升级迁移
+
+前置:
+
+- 使用独立 `MINERU_HOME` 启动 server。
+- 将 endpoint 改写为 version 1，保留原 PID 和 transports，删除 `server_id`。
+
+预期:
+
+- `mineru server status --json` 通过 endpoint/status PID 对应关系识别旧格式 server。
+- `mineru server restart` 先等待旧实例完全退出，再启动 replacement。
+- replacement 写入 version 2 endpoint 和新的 `server_id`。
+- version 1 endpoint PID 与 status PID 不同时返回 `server_instance_mismatch`，且不发送 shutdown。
 
 ## 4A. Telemetry 命令
 
@@ -3589,6 +3605,7 @@ mineru server start
 - SERVER-014 TCP-only fallback
 - SERVER-015 endpoint stale 清理
 - SERVER-016 endpoint server identity 校验
+- SERVER-017 version 1 endpoint 升级迁移
 - SERVER-012 error summary 与 recent logs
 - SERVER-010 停止 server
 

@@ -19,9 +19,10 @@ from mineru.doclib.endpoint import (
 from mineru.errors import MineruError, ServerNotRunningError
 
 
-def _status_payload(server_id: str) -> dict[str, object]:
+def _status_payload(server_id: str, pid: int) -> dict[str, object]:
     return {
         "running": True,
+        "pid": pid,
         "server_id": server_id,
         "socket_path": "",
         "data_dir": "",
@@ -31,13 +32,14 @@ def _status_payload(server_id: str) -> dict[str, object]:
 
 
 class _FakeClient:
-    def __init__(self, server_id: str) -> None:
+    def __init__(self, server_id: str, *, pid: int = 123) -> None:
         self.server_id = server_id
+        self.pid = pid
         self.paths: list[str] = []
 
     def get(self, path: str, *, params: dict | None = None, headers: dict | None = None) -> httpx.Response:
         self.paths.append(path)
-        return httpx.Response(200, json=_status_payload(self.server_id), request=httpx.Request("GET", path))
+        return httpx.Response(200, json=_status_payload(self.server_id, self.pid), request=httpx.Request("GET", path))
 
     def close(self) -> None:
         pass
@@ -89,6 +91,27 @@ def test_endpoint_pid_is_diagnostic_only(tmp_path: Path) -> None:
         version=ENDPOINT_VERSION,
         pid=None,
         server_id="server-123",
+        transports=[EndpointTransport(type="tcp", base_url="http://127.0.0.1:15980")],
+    )
+
+
+def test_read_endpoint_file_accepts_legacy_v1_with_pid(tmp_path: Path) -> None:
+    endpoint = tmp_path / "doclib.endpoint.json"
+    endpoint.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "pid": 123,
+                "transports": [{"type": "tcp", "base_url": "http://127.0.0.1:15980"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert read_endpoint_file(endpoint) == EndpointInfo(
+        version=1,
+        pid=123,
+        server_id=None,
         transports=[EndpointTransport(type="tcp", base_url="http://127.0.0.1:15980")],
     )
 
@@ -166,7 +189,7 @@ def test_doclib_client_discovers_uds_then_tcp(monkeypatch: pytest.MonkeyPatch, t
         None,
         "{}",
         "not json",
-        json.dumps({"version": 1, "pid": 123, "transports": [{"type": "tcp", "base_url": "http://127.0.0.1:15980"}]}),
+        json.dumps({"version": 1, "pid": "not-a-pid", "transports": []}),
     ],
 )
 def test_doclib_client_does_not_infer_transports_without_valid_endpoint(
@@ -198,7 +221,7 @@ def test_doclib_client_lazily_validates_discovered_server_id(monkeypatch: pytest
         server_id="expected-server",
         transports=[EndpointTransport(type="tcp", base_url="http://127.0.0.1:15980")],
     )
-    fake_client = _FakeClient("expected-server")
+    fake_client = _FakeClient("expected-server", pid=456)
     monkeypatch.setattr(client_module, "_client_for_transport", lambda transport, timeout: fake_client)
 
     client = DoclibClient(endpoint_path=endpoint)
@@ -207,6 +230,49 @@ def test_doclib_client_lazily_validates_discovered_server_id(monkeypatch: pytest
     status = client.get_server_status()
     assert status.server_id == "expected-server"
     assert fake_client.paths == ["/api/v1/server/status", "/api/v1/server/status"]
+
+
+def test_doclib_client_validates_legacy_endpoint_pid(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    endpoint = tmp_path / "doclib.endpoint.json"
+    endpoint.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "pid": 123,
+                "transports": [{"type": "tcp", "base_url": "http://127.0.0.1:15980"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake_client = _FakeClient("", pid=123)
+    monkeypatch.setattr(client_module, "_client_for_transport", lambda transport, timeout: fake_client)
+
+    status = DoclibClient(endpoint_path=endpoint).get_server_status()
+
+    assert status.pid == 123
+    assert fake_client.paths == ["/api/v1/server/status", "/api/v1/server/status"]
+
+
+def test_doclib_client_rejects_legacy_endpoint_pid_mismatch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    endpoint = tmp_path / "doclib.endpoint.json"
+    endpoint.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "pid": 123,
+                "transports": [{"type": "tcp", "base_url": "http://127.0.0.1:15980"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake_client = _FakeClient("", pid=456)
+    monkeypatch.setattr(client_module, "_client_for_transport", lambda transport, timeout: fake_client)
+
+    with pytest.raises(MineruError) as exc_info:
+        DoclibClient(endpoint_path=endpoint).get_server_status()
+
+    assert exc_info.value.code == "server_instance_mismatch"
+    assert fake_client.paths == ["/api/v1/server/status"]
 
 
 def test_doclib_client_rejects_discovered_server_id_mismatch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

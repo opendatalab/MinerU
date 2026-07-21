@@ -21,7 +21,7 @@ from loguru import logger as loguru_logger
 
 from ..config import Config, LogConfig, _mineru_home, config
 from ..errors import MineruError, error_response, http_status_for
-from .endpoint import EndpointTransport, remove_endpoint_file, uds_available, write_endpoint_file
+from .endpoint import EndpointTransport, uds_available, write_endpoint_file
 from .server import DoclibServer
 from .types import PARSE_STATUS_FAILED, PARSE_STATUS_PARSING, SCAN_STATUS_FAILED, SCAN_STATUS_RUNNING
 
@@ -500,12 +500,6 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        if uds_enabled:
-            try:
-                os.unlink(uds_path)
-            except OSError:
-                pass
-        remove_endpoint_file(endpoint_path)
         _cancel_pending_loop_tasks(loop)
         loop.close()
 

@@ -32,7 +32,7 @@ then binds its socket and atomically writes a fresh version 2 endpoint.
 
 A version 1 endpoint whose PID differs from server status is rejected as
 `server_instance_mismatch`. A shutdown that does not complete within the
-configured wait period fails with `service_unavailable` and does not start a
+15-second wait period fails with `service_unavailable` and does not start a
 replacement.
 
 ## Verification

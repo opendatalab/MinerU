@@ -15,6 +15,7 @@ from ..types import Tier
 from .base import DoclibInterface
 from .endpoint import (
     DOCLIB_UDS_BASE_URL,
+    EndpointInfo,
     EndpointTransport,
     default_endpoint_path,
     read_endpoint_file,
@@ -102,7 +103,7 @@ class DoclibClient(DoclibInterface):
     ) -> None:
         if socket_path is not None and base_url is not None:
             raise ValueError("socket_path and base_url cannot both be provided.")
-        self._clients, self._expected_server_id = _build_clients(
+        self._clients, self._expected_endpoint = _build_clients(
             endpoint_path=endpoint_path,
             socket_path=socket_path,
             base_url=base_url,
@@ -456,9 +457,9 @@ class DoclibClient(DoclibInterface):
         raise ServerNotRunningError() from None
 
     def _validate_server_instance(self, client: httpx.Client) -> None:
-        expected_server_id = self._expected_server_id
+        expected_endpoint = self._expected_endpoint
         client_id = id(client)
-        if expected_server_id is None or client_id in self._validated_client_ids:
+        if expected_endpoint is None or client_id in self._validated_client_ids:
             return
 
         resp = client.get(
@@ -467,8 +468,11 @@ class DoclibClient(DoclibInterface):
             headers=self._telemetry_headers(),
         )
         data = _decode_response(resp)
-        actual_server_id = data.get("server_id")
-        if actual_server_id != expected_server_id:
+        if expected_endpoint.server_id is not None:
+            identity_matches = data.get("server_id") == expected_endpoint.server_id
+        else:
+            identity_matches = data.get("pid") == expected_endpoint.pid
+        if not identity_matches:
             raise _ServerInstanceMismatch()
         self._validated_client_ids.add(client_id)
 
@@ -512,7 +516,7 @@ def _build_clients(
     socket_path: str | Path | None,
     base_url: str | None,
     timeout: int,
-) -> tuple[list[httpx.Client], str | None]:
+) -> tuple[list[httpx.Client], EndpointInfo | None]:
     if socket_path is not None:
         client = _client_for_transport(EndpointTransport(type="uds", path=str(socket_path)), timeout=timeout)
         return ([client] if client is not None else [], None)
@@ -530,7 +534,7 @@ def _build_clients(
         client = _client_for_transport(transport, timeout=timeout)
         if client is not None:
             clients.append(client)
-    return clients, endpoint.server_id
+    return clients, endpoint
 
 
 def _client_for_transport(transport: EndpointTransport, *, timeout: int) -> httpx.Client | None:
