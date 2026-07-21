@@ -45,7 +45,7 @@ dependencies = [
     "reportlab",
     "pdftext>=0.6.3,<0.8.0",
     "modelscope>=1.26.0",
-    "huggingface-hub>=0.32.4",
+    "huggingface-hub[hf_xet]>=0.32.4",
     "filelock>=3.0.0",
     "json-repair>=0.46.2",
     "opencv-python>=4.11.0.86",
