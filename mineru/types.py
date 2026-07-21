@@ -58,10 +58,10 @@ DEPLOYMENT_TIERS: tuple[DeploymentTier, ...] = (
 )
 
 
-QUALITY_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("standard", "advanced", "basic")
-QUALITY_TIERS: frozenset[Tier] = frozenset(QUALITY_TIER_SELECTION_ORDER)
+DEFAULT_QUALITY_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("standard", "basic")
+QUALITY_TIERS: frozenset[Tier] = frozenset(("basic", "standard", "advanced"))
 CACHED_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("advanced", "standard", "basic", "flash")
-PARSING_RULE_TIER_SELECTION_ORDER: tuple[Tier, ...] = (*QUALITY_TIER_SELECTION_ORDER, "flash")
+PARSING_RULE_TIER_SELECTION_ORDER: tuple[Tier, ...] = (*DEFAULT_QUALITY_TIER_SELECTION_ORDER, "flash")
 
 
 def validate_tier(tier: str | None) -> Tier:
@@ -81,7 +81,7 @@ def _validated_tier_set(available_tiers: Iterable[object] | str) -> set[Tier]:
 def select_default_quality_tier(available_tiers: Iterable[object] | str) -> Tier | None:
     """Select the default quality tier from discovered parse-server capabilities."""
     available = _validated_tier_set(available_tiers)
-    for candidate in QUALITY_TIER_SELECTION_ORDER:
+    for candidate in DEFAULT_QUALITY_TIER_SELECTION_ORDER:
         if candidate in available:
             return candidate
     return None

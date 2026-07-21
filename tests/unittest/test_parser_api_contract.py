@@ -40,7 +40,10 @@ from mineru.parser.api_server import (
 )
 from mineru.parser.base import ParseResult
 from mineru.types import (
+    DEFAULT_QUALITY_TIER_SELECTION_ORDER,
     DEPLOYMENT_TIERS,
+    PARSING_RULE_TIER_SELECTION_ORDER,
+    QUALITY_TIERS,
     SERVER_TIERS,
     TIER_ORDER,
     TIERS,
@@ -49,6 +52,8 @@ from mineru.types import (
     Line,
     PageInfo,
     Span,
+    select_default_quality_tier,
+    select_parsing_rule_tier,
     validate_tier,
 )
 from mineru.utils.image_payload import ImagePayloadCache
@@ -189,12 +194,17 @@ def test_tier_runtime_options_map_hybrid_effort() -> None:
     }
 
 
-def test_advanced_dependency_error_recommends_standard_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_standard_dependency_error_recommends_standard_extra(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(parser_tier, "installed_distribution_name", lambda: "mineru")
 
-    error = parser_tier.TierDependencyError("advanced", ["vllm"])
+    error = parser_tier.TierDependencyError("standard", ["vllm"])
 
     assert "pip install 'mineru[standard]'" in str(error)
+
+
+def test_advanced_is_not_a_deployment_dependency_tier() -> None:
+    with pytest.raises(ValueError, match="Unsupported deployment tier 'advanced'"):
+        parser_tier.required_modules_for_tier("advanced")  # type: ignore[arg-type]
 
 
 def test_public_tier_literals_match_product_contract() -> None:
@@ -215,6 +225,17 @@ def test_server_and_deployment_tier_constants_match_product_contract() -> None:
         "basic": ("flash", "basic"),
         "standard": ("flash", "basic", "standard", "advanced"),
     }
+
+
+def test_implicit_tier_selection_excludes_advanced() -> None:
+    assert DEFAULT_QUALITY_TIER_SELECTION_ORDER == ("standard", "basic")
+    assert QUALITY_TIERS == frozenset(("basic", "standard", "advanced"))
+    assert PARSING_RULE_TIER_SELECTION_ORDER == ("standard", "basic", "flash")
+    assert select_default_quality_tier(("basic", "advanced", "standard")) == "standard"
+    assert select_default_quality_tier(("advanced", "basic")) == "basic"
+    assert select_default_quality_tier(("advanced",)) is None
+    assert select_parsing_rule_tier(("advanced", "basic", "flash")) == "basic"
+    assert select_parsing_rule_tier(("advanced", "flash")) == "flash"
 
 
 def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> None:
@@ -2625,6 +2646,15 @@ def test_api_server_rejects_invalid_startup_tier_configuration(tmp_path: Path) -
 
     with pytest.raises(ValueError, match="--tier flash cannot be combined with --no-flash"):
         create_app(upload_dir=str(tmp_path / "empty"), tier="flash", no_flash=True)
+
+
+def test_api_server_skips_dependency_preflight_for_flash(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def fail_import_module(module_name: str) -> None:
+        pytest.fail(f"Flash startup unexpectedly imported dependency module: {module_name}")
+
+    monkeypatch.setattr(importlib, "import_module", fail_import_module)
+
+    create_app(upload_dir=str(tmp_path), tier="flash")
 
 
 def test_api_server_preflights_basic_tier_dependencies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

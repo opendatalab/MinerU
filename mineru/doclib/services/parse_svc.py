@@ -1402,7 +1402,7 @@ class ParseService:
 
 
 def _resolve_default_tier(remote: bool = False) -> Tier:
-    """从健康检查中选择默认质量 tier，顺序为 standard > advanced > basic。"""
+    """从健康检查中选择默认质量 tier，顺序为 standard > basic。"""
     from ..background.parse_server_health import get_health
 
     health = get_health()
@@ -1434,7 +1434,7 @@ def _resolve_default_tier(remote: bool = False) -> Tier:
 
 
 def _resolve_parsing_rule_default_tier(remote: bool = False) -> Tier:
-    """Parsing-rule 是后台批量策略，允许 standard -> advanced -> basic -> flash。"""
+    """Parsing-rule 是后台批量策略，允许 standard -> basic -> flash。"""
     from ..background.parse_server_health import get_health
 
     health = get_health()

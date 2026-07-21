@@ -59,7 +59,6 @@ DIM_TIER_VALUES = frozenset(
         "advanced",
         "basic(default)",
         "standard(default)",
-        "advanced(default)",
         "unknown",
     }
 )

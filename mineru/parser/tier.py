@@ -7,14 +7,14 @@ import sys
 from dataclasses import dataclass
 from importlib import metadata as importlib_metadata
 
-from ..types import Tier, validate_tier
+from ..types import DEPLOYMENT_TIERS, DeploymentTier, Tier, validate_tier
 from ..utils.backend_options import (
     CANONICAL_HYBRID_ENGINE,
+    DEFAULT_HYBRID_EFFORT,
     LEGACY_PIPELINE_BACKEND_ALIASES,
     LEGACY_VLM_BACKEND_ALIASES,
     LOCAL_HYBRID_EFFORT,
     SUPPORTED_BACKENDS,
-    DEFAULT_HYBRID_EFFORT,
     effort_for_tier,
     is_hybrid_backend,
     normalize_backend,
@@ -56,25 +56,22 @@ _STANDARD_REQUIRED_MODULES_BY_PLATFORM = {
     "linux": ["vllm"],
     "win32": ["lmdeploy", "qwen_vl_utils"],
 }
-_APPLE_SILICON_STANDARD_REQUIRED_MODULES = ["mlx", "mlx_vlm"]
-_RUNTIME_EXTRA_BY_TIER = {
-    "basic": "basic",
-    "standard": "standard",
-    "advanced": "standard",
-}
+_APPLE_SILICON_STANDARD_REQUIRED_MODULES = [
+    "mlx",
+    "mlx_vlm",
+]
 
 
 class TierDependencyError(RuntimeError):
-    def __init__(self, tier: Tier, missing_modules: list[str]) -> None:
+    def __init__(self, tier: DeploymentTier, missing_modules: list[str]) -> None:
         self.tier = tier
         self.missing_modules = missing_modules
         missing = ", ".join(missing_modules)
         package_name = installed_distribution_name()
-        runtime_extra = _RUNTIME_EXTRA_BY_TIER.get(tier, "standard")
         super().__init__(
             f"Parse server cannot start for tier '{tier}'; missing runtime dependencies: {missing}. "
             f"Install optional dependencies for this tier in the same Python environment as MinerU, "
-            f"for example: pip install '{package_name}[{runtime_extra}]'."
+            f"for example: pip install '{package_name}[{tier}]'."
         )
 
 
@@ -211,22 +208,21 @@ def runtime_options_for_tier(
     return resolve_runtime_options(tier=tier, backend=backend, effort=effort)
 
 
-def required_modules_for_tier(tier: Tier) -> list[str]:
-    tier = validate_tier(tier)
+def required_modules_for_tier(tier: DeploymentTier) -> list[str]:
+    if tier not in DEPLOYMENT_TIERS:
+        raise ValueError(f"Unsupported deployment tier '{tier}'. Supported tiers: {', '.join(DEPLOYMENT_TIERS)}")
     if tier == "basic":
         return list(_BASIC_REQUIRED_MODULES)
-    if tier in {"standard", "advanced"}:
-        platform_modules = list(_STANDARD_REQUIRED_MODULES_BY_PLATFORM.get(sys.platform, []))
-        if sys.platform == "darwin" and platform.machine() == "arm64":
-            platform_modules.extend(_APPLE_SILICON_STANDARD_REQUIRED_MODULES)
-        return [
-            *_STANDARD_REQUIRED_MODULES_COMMON,
-            *platform_modules,
-        ]
-    return []
+    platform_modules = list(_STANDARD_REQUIRED_MODULES_BY_PLATFORM.get(sys.platform, []))
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        platform_modules.extend(_APPLE_SILICON_STANDARD_REQUIRED_MODULES)
+    return [
+        *_STANDARD_REQUIRED_MODULES_COMMON,
+        *platform_modules,
+    ]
 
 
-def missing_modules_for_tier(tier: Tier) -> list[str]:
+def missing_modules_for_tier(tier: DeploymentTier) -> list[str]:
     missing_modules = []
     for module_name in required_modules_for_tier(tier):
         try:
@@ -246,7 +242,7 @@ def installed_distribution_name(import_package: str = "mineru") -> str:
     return distributions[0] if distributions else import_package
 
 
-def ensure_tier_runtime_dependencies(tier: Tier) -> None:
+def ensure_tier_runtime_dependencies(tier: DeploymentTier) -> None:
     missing_modules = missing_modules_for_tier(tier)
     if missing_modules:
         raise TierDependencyError(tier, missing_modules)

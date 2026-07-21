@@ -42,7 +42,7 @@ flash < basic < standard < advanced
 Default quality selection for a parse-server capability list is:
 
 ```text
-standard -> advanced -> basic -> error
+standard -> basic -> error
 ```
 
 The highest cached non-Flash result is selected in this order:
@@ -54,7 +54,7 @@ advanced -> standard -> basic
 Parsing-rule fallback remains quality-oriented but may end at Flash:
 
 ```text
-standard -> advanced -> basic -> flash
+standard -> basic -> flash
 ```
 
 Direct local parsing without capability discovery defaults to Standard. Watch and lightweight-only file behavior continue to use Flash according to existing file-type rules.

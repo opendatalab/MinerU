@@ -420,7 +420,7 @@ def test_parsing_rule_default_tier_allows_flash_fallback(monkeypatch: pytest.Mon
     health = ParseServerHealth(local=ProbeState(probe=ProbeResult(tiers=["basic", "advanced"])))
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
 
-    assert _resolve_parsing_rule_default_tier() == "advanced"
+    assert _resolve_parsing_rule_default_tier() == "basic"
 
     health.local.probe = ProbeResult(tiers=["basic", "standard", "advanced"])
     assert _resolve_parsing_rule_default_tier() == "standard"

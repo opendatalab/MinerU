@@ -2035,7 +2035,9 @@ def _model_ids_and_tiers_for_server_tiers(tiers: list[Tier]) -> tuple[list[str],
     return model_ids, tier_infos
 
 
-def _preflight_tier_dependencies(tier: Tier) -> None:
+def _preflight_tier_dependencies(tier: ServerTier) -> None:
+    if tier == "flash":
+        return
     try:
         ensure_tier_runtime_dependencies(tier)
     except TierDependencyError as exc:
