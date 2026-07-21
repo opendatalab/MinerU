@@ -61,8 +61,8 @@ from .tier import (
     runtime_options_for_tier,
 )
 
-_API_SERVER_TIERS: tuple[Tier, ...] = ("flash", "medium", "high", "xhigh")
-_DEFAULT_API_SERVER_TIER: Tier = "high"
+_API_SERVER_TIERS: tuple[Tier, ...] = ("flash", "basic", "standard", "advanced")
+_DEFAULT_API_SERVER_TIER: Tier = "standard"
 _API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
 _MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
 _MAX_INLINE_BYTES_DEFAULT = 1024 * 1024
@@ -1809,7 +1809,7 @@ async def create_job(
                 error_type="engine_error",
                 code="quality_tier_unavailable",
                 message=(
-                    "No medium, high, or xhigh tier available in this server. "
+                    "No basic, standard, or advanced tier available in this server. "
                     "Pass tier='flash' explicitly for flash parsing."
                 ),
             )
@@ -1984,27 +1984,27 @@ def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[Ti
                 "current_model": "flash",
             },
         ]
-    if tier == "medium":
-        return ["Hybrid-Medium", "MinerU-HTML"], [
+    if tier == "basic":
+        return ["Hybrid-Basic", "MinerU-HTML"], [
             {
-                "id": "medium",
-                "description": "Hybrid medium parsing with local lightweight models.",
-                "current_model": "hybrid-medium",
+                "id": "basic",
+                "description": "Basic parsing with local lightweight models.",
+                "current_model": "hybrid-basic",
             },
         ]
-    if tier == "xhigh":
+    if tier == "advanced":
         return ["MinerU2.5-Pro-2605-1.2B", "MinerU-HTML"], [
             {
-                "id": "xhigh",
-                "description": "Hybrid maximum-accuracy parsing.",
+                "id": "advanced",
+                "description": "Advanced parsing for difficult documents.",
                 "current_model": "MinerU2.5-Pro-2605-1.2B",
             },
         ]
 
     return ["MinerU2.5-Pro-2605-1.2B", "MinerU-HTML"], [
         {
-            "id": "high",
-            "description": "Hybrid high-accuracy parsing.",
+            "id": "standard",
+            "description": "Standard parsing for most documents.",
             "current_model": "MinerU2.5-Pro-2605-1.2B",
         },
     ]
@@ -2067,8 +2067,8 @@ def create_app(
     upload_dir:
         Directory for uploaded files and parse artifacts.
     tier:
-        Server parsing tier. ``"flash"`` selects flash parsing; ``"medium"``,
-        ``"high"`` and ``"xhigh"`` map to Hybrid efforts.
+        Server parsing tier. ``"flash"`` selects flash parsing; ``"basic"``,
+        ``"standard"`` and ``"advanced"`` map to Hybrid efforts.
     concurrency:
         Maximum concurrent parse jobs (default 1).
     url_timeout:
@@ -2240,7 +2240,7 @@ def create_app(
     type=click.Choice(list(_API_SERVER_TIERS)),
     help=(
         "Server parsing tier; repeat to expose multiple tiers. "
-        "Defaults to flash, medium, high, and xhigh; requests without tier default to high."
+        "Defaults to flash, basic, standard, and advanced; requests without tier default to standard."
     ),
 )
 @click.option(

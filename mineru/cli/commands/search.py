@@ -18,11 +18,11 @@ FILE_EXTS = ", ".join(FILE_TYPE_BY_EXTENSION)
 def search_cmd(
     query: str = typer.Argument(..., help="Search query"),
     file_type: str | None = typer.Option(None, "--type", help=f"File type filter: {FILE_TYPES}"),
-    tier: Tier | None = typer.Option(None, "--tier", help="Exact search index tier: flash, medium, high, xhigh"),
+    tier: Tier | None = typer.Option(None, "--tier", help="Exact search index tier: flash, basic, standard, advanced"),
     min_tier: Tier | None = typer.Option(
         None,
         "--min-tier",
-        help="Minimum search index tier: flash, medium, high, xhigh",
+        help="Minimum search index tier: flash, basic, standard, advanced",
     ),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
     offset: int = typer.Option(0, "--offset", help="Result offset"),

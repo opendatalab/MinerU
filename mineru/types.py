@@ -10,33 +10,33 @@ T = TypeVar("T", bound="_DocElement")
 
 Tier = Literal[
     "flash",
-    "medium",
-    "high",
-    "xhigh",
+    "basic",
+    "standard",
+    "advanced",
 ]
 
 TIERS: set[Tier] = {
     "flash",
-    "medium",
-    "high",
-    "xhigh",
+    "basic",
+    "standard",
+    "advanced",
 }
 
 TIER_ORDER: dict[Tier, int] = {
     "flash": 0,
-    "medium": 1,
-    "high": 2,
-    "xhigh": 3,
+    "basic": 1,
+    "standard": 2,
+    "advanced": 3,
 }
 
-QUALITY_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("high", "xhigh", "medium")
+QUALITY_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("standard", "advanced", "basic")
 QUALITY_TIERS: frozenset[Tier] = frozenset(QUALITY_TIER_SELECTION_ORDER)
-CACHED_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("xhigh", "high", "medium", "flash")
+CACHED_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("advanced", "standard", "basic", "flash")
 PARSING_RULE_TIER_SELECTION_ORDER: tuple[Tier, ...] = (*QUALITY_TIER_SELECTION_ORDER, "flash")
 
 
 def validate_tier(tier: str | None) -> Tier:
-    """校验公开 tier 取值，保证入口只接受 flash/medium/high/xhigh。"""
+    """校验公开 tier 取值，保证入口只接受 flash/basic/standard/advanced。"""
     normalized = (tier or "").strip().lower()
     if normalized in TIERS:
         return normalized  # type: ignore[return-value]

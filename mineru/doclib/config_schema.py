@@ -8,7 +8,7 @@ from ..errors import InvalidRequestError
 from .config_defaults import CONFIG_DEFAULTS
 
 LOCAL_PARSE_SERVER_MODES = ("disabled", "managed", "self_hosted")
-MANAGED_PARSE_SERVER_TIERS = ("medium", "high", "xhigh")
+MANAGED_PARSE_SERVER_TIERS = ("basic", "standard", "advanced")
 URL_CONFIG_KEYS = ("parse_server.remote.url", "parse_server.local.self_hosted_url")
 
 

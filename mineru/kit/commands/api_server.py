@@ -10,7 +10,7 @@ from ...utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..errors import exit_with_message
 
 API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
-API_SERVER_TIERS = ("flash", "medium", "high", "xhigh")
+API_SERVER_TIERS = ("flash", "basic", "standard", "advanced")
 
 
 def _normalize_tier_options(tier: Sequence[str] | str | None) -> list[str]:

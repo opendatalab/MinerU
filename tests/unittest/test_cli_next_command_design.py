@@ -196,8 +196,8 @@ def test_print_error_uses_single_rich_render(monkeypatch: Any) -> None:
     monkeypatch.setattr(output_mod, "stderr_console", _Console())
 
     output_mod.print_error(
-        "No medium, high, or xhigh engine available. You can start a local parse-server, use --remote, or explicitly pass "
-        "--tier flash for text-only preview."
+        "No basic, standard, or advanced engine available. You can start a local parse-server, "
+        "use --remote, or explicitly pass --tier flash for text-only preview."
     )
 
     assert len(calls) == 1
@@ -235,7 +235,7 @@ def test_search_results_render_as_list_without_table() -> None:
                 SearchResult(
                     sha256="a" * 64,
                     short_id="aaaaaaa",
-                    tier="medium",
+                    tier="basic",
                     snippet="Python\nengineer",
                     files=[SearchFile(path="/tmp/resume.pdf", filename="resume.pdf", ext="pdf", status="active")],
                 )
@@ -244,7 +244,7 @@ def test_search_results_render_as_list_without_table() -> None:
     )
 
     assert "Search results (1 total)" in rendered
-    assert "1. Document aaaaaaa Tier: medium" in rendered
+    assert "1. Document aaaaaaa Tier: basic" in rendered
     assert "   Files:\n   /tmp/resume.pdf" in rendered
     assert "   Python  engineer" in rendered
     assert "Snippet:" not in rendered
@@ -306,7 +306,7 @@ def test_search_results_render_active_files_then_inactive_fallback_and_orphan() 
                     sha256="a" * 64,
                     short_id="aaaaaaa",
                     title="Active document",
-                    tier="high",
+                    tier="standard",
                     snippet="active",
                     files=[
                         SearchFile(path="/tmp/deleted.pdf", filename="deleted.pdf", ext="pdf", status="deleted"),
@@ -316,7 +316,7 @@ def test_search_results_render_active_files_then_inactive_fallback_and_orphan() 
                 SearchResult(
                     sha256="b" * 64,
                     short_id="bbbbbbb",
-                    tier="medium",
+                    tier="basic",
                     snippet="inactive",
                     files=[
                         SearchFile(
@@ -352,7 +352,7 @@ def test_list_renderers_return_tables(monkeypatch: Any) -> None:
         id=7,
         sha256="a" * 64,
         short_id="aaaaaaa",
-        tier="medium",
+        tier="basic",
         page_range="1~2",
         status="done",
         privacy="local",
@@ -400,7 +400,7 @@ def test_list_renderers_return_tables(monkeypatch: Any) -> None:
     docs_table = list_resources._render_list_docs(ListDocsResponse(docs=[doc], total=1, limit=50))
 
     assert parses_table.title == "Parses (1 total)"
-    assert ("7", "done", "medium", "1~2", "aaaaaaa") in parses_table.rows
+    assert ("7", "done", "basic", "1~2", "aaaaaaa") in parses_table.rows
     assert scans_table.title == "Scans (1 total)"
     assert ("8", "done", "manual", "/tmp/docs", "3", "2", "1") in scans_table.rows
     assert files_table.title == "Files (1 total)"
@@ -413,7 +413,7 @@ def test_config_and_rule_renderers_return_tables(monkeypatch: Any) -> None:
     monkeypatch.setattr(config, "Table", _FakeTable)
 
     config_table = config._render_config(
-        ConfigResponse(config={"parse.default_tier": "medium"}, sources={"parse.default_tier": "override"})
+        ConfigResponse(config={"parse.default_tier": "basic"}, sources={"parse.default_tier": "override"})
     )
     exclude_table = config._render_exclude_rules(
         ExcludeRuleListResponse(rules=[ExcludeRuleInfo(id=3, pattern="*.tmp", priority=10)])
@@ -421,17 +421,17 @@ def test_config_and_rule_renderers_return_tables(monkeypatch: Any) -> None:
     parsing_table = config._render_parsing_rules(
         ParsingRuleListResponse(
             rules=[
-                ParsingRuleInfo(id=4, pattern="*.pdf", tier="medium", page_range="1~2", remote=True, name="pdfs")
+                ParsingRuleInfo(id=4, pattern="*.pdf", tier="basic", page_range="1~2", remote=True, name="pdfs")
             ]
         )
     )
 
     assert config_table.title == "Config"
-    assert ("parse.default_tier", "medium", "override") in config_table.rows
+    assert ("parse.default_tier", "basic", "override") in config_table.rows
     assert exclude_table.title == "Exclude Rules"
     assert ("3", "*.tmp", "10") in exclude_table.rows
     assert parsing_table.title == "Parsing Rules"
-    assert ("4", "*.pdf", "medium", "1~2", "yes", "pdfs") in parsing_table.rows
+    assert ("4", "*.pdf", "basic", "1~2", "yes", "pdfs") in parsing_table.rows
 
 
 def test_watch_list_renderer_returns_table(monkeypatch: Any) -> None:
@@ -451,7 +451,7 @@ def test_show_detail_renderers_return_tables(monkeypatch: Any) -> None:
         id=9,
         sha256="a" * 64,
         short_id="aaaaaaa",
-        tier="high",
+        tier="standard",
         page_range="1",
         status="done",
         privacy="local",
@@ -486,7 +486,7 @@ def test_show_detail_renderers_return_tables(monkeypatch: Any) -> None:
     doc_table = show._render_doc_info(doc)
 
     assert parse_table.title == "Parse 9: done"
-    assert ("Tier", "high") in parse_table.rows
+    assert ("Tier", "standard") in parse_table.rows
     assert scan_table.title == "Scan 10: done"
     assert ("Seen", "4") in scan_table.rows
     assert doc_table.title == "Doc ddddddd"
@@ -686,13 +686,13 @@ def test_list_parses_passes_filters_to_doclib_client(monkeypatch: Any) -> None:
 
     result = runner.invoke(
         app,
-        ["list", "parses", "--status", "pending", "--tier", "medium", "--limit", "10", "--offset", "5", "--json"],
+        ["list", "parses", "--status", "pending", "--tier", "basic", "--limit", "10", "--offset", "5", "--json"],
     )
 
     assert result.exit_code == 0
     assert calls[-1] == (
         "list_parses",
-        {"status": "pending", "tier": "medium", "limit": 10, "offset": 5},
+        {"status": "pending", "tier": "basic", "limit": 10, "offset": 5},
     )
 
 
@@ -705,7 +705,7 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
         id=2,
         sha256="a" * 64,
         short_id="aaaaaaa",
-        tier="high",
+        tier="standard",
         page_range="1~10",
         status="failed",
         privacy="remote",
@@ -718,7 +718,7 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
         id=3,
         sha256="a" * 64,
         short_id="aaaaaaa",
-        tier="high",
+        tier="standard",
         page_range="1~10",
         status="done",
         privacy="remote",
@@ -735,7 +735,7 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
         def ensure_parse(self, request: Any) -> ParseResponse:
             return ParseResponse(
                 sha256="a" * 64,
-                tier="high",
+                tier="standard",
                 page_range="1~10",
                 status="pending",
                 wait_parse_ids=[3],
@@ -750,7 +750,7 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="aaaaaaa",
-                tier="high",
+                tier="standard",
                 format="markdown",
                 content="parsed",
                 request_scope=ContentRequestScope(page_range="1~10", after=None, limit=30000),
@@ -777,7 +777,7 @@ def test_parse_wait_json_maps_invalid_api_key_param(monkeypatch: Any, tmp_path: 
         id=3,
         sha256="a" * 64,
         short_id="aaaaaaa",
-        tier="high",
+        tier="standard",
         page_range="1~1",
         status="failed",
         privacy="remote",
@@ -794,7 +794,7 @@ def test_parse_wait_json_maps_invalid_api_key_param(monkeypatch: Any, tmp_path: 
         def ensure_parse(self, request: Any) -> ParseResponse:
             return ParseResponse(
                 sha256="a" * 64,
-                tier="high",
+                tier="standard",
                 page_range="1~1",
                 status="pending",
                 wait_parse_ids=[3],
@@ -1155,14 +1155,14 @@ def test_parse_next_marker_omits_default_parse_context(monkeypatch: Any, tmp_pat
         def ensure_parse(self, request: Any) -> ParseResponse:
             assert request.tier is None
             assert request.remote is False
-            return ParseResponse(sha256="a" * 64, tier="medium", page_range="1~10", status="done", cache_hit=True)
+            return ParseResponse(sha256="a" * 64, tier="basic", page_range="1~10", status="done", cache_hit=True)
 
         def get_doc_content(self, *args: Any, **kwargs: Any) -> DocContentResponse:
             assert kwargs["limit"] == 30000
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="aaaaaaa",
-                tier="medium",
+                tier="basic",
                 format="markdown",
                 content="parsed",
                 request_scope=ContentRequestScope(page_range="1~10", limit=30000),
@@ -1219,7 +1219,7 @@ def test_parse_no_wait_text_prints_parse_id_tracking_hint(monkeypatch: Any, tmp_
         def ensure_parse(self, request: Any) -> ParseResponse:
             return ParseResponse(
                 sha256="a" * 64,
-                tier="high",
+                tier="standard",
                 page_range="1~1",
                 status="pending",
                 wait_parse_ids=[4686],
@@ -1228,11 +1228,11 @@ def test_parse_no_wait_text_prints_parse_id_tracking_hint(monkeypatch: Any, tmp_
 
     monkeypatch.setattr(parse, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["parse", str(source), "--tier", "high", "--remote", "--no-wait"])
+    result = runner.invoke(app, ["parse", str(source), "--tier", "standard", "--remote", "--no-wait"])
 
     assert result.exit_code == 0
     assert result.output == (
-        "Parse still in progress (tier=high).\n"
+        "Parse still in progress (tier=standard).\n"
         "Parse ID: 4686\n"
         "Check status: mineru show parse 4686\n"
     )
@@ -1249,7 +1249,7 @@ def test_parse_no_wait_text_prints_multiple_parse_id_tracking_hints(monkeypatch:
         def ensure_parse(self, request: Any) -> ParseResponse:
             return ParseResponse(
                 sha256="a" * 64,
-                tier="high",
+                tier="standard",
                 page_range="1~2",
                 status="pending",
                 wait_parse_ids=[4686, 4687],
@@ -1259,11 +1259,11 @@ def test_parse_no_wait_text_prints_multiple_parse_id_tracking_hints(monkeypatch:
 
     monkeypatch.setattr(parse, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["parse", str(source), "--tier", "high", "--remote", "--no-wait"])
+    result = runner.invoke(app, ["parse", str(source), "--tier", "standard", "--remote", "--no-wait"])
 
     assert result.exit_code == 0
     assert result.output == (
-        "Parse still in progress (tier=high).\n"
+        "Parse still in progress (tier=standard).\n"
         "Parse IDs: 4686, 4687\n"
         "Check status:\n"
         "  mineru show parse 4686\n"
@@ -1577,7 +1577,7 @@ def test_parse_json_error_output_is_machine_readable(monkeypatch: Any, tmp_path:
 
         def ensure_parse(self, request: Any) -> ParseResponse:
             raise RuntimeError(
-                "('quality_tier_unavailable', 'No medium, high, or xhigh engine available. Use --tier flash.', None)"
+                "('quality_tier_unavailable', 'No basic, standard, or advanced engine available. Use --tier flash.', None)"
             )
 
     monkeypatch.setattr(parse, "DoclibClient", _Client)
@@ -1587,7 +1587,7 @@ def test_parse_json_error_output_is_machine_readable(monkeypatch: Any, tmp_path:
     assert result.exit_code == 1
     payload = json.loads(result.output)
     assert payload["error"]["code"] == "quality_tier_unavailable"
-    assert "No medium, high, or xhigh engine available" in payload["error"]["message"]
+    assert "No basic, standard, or advanced engine available" in payload["error"]["message"]
 
 
 @pytest.mark.parametrize("json_mode", [False, True])
@@ -1633,7 +1633,7 @@ def test_parse_invalid_after_cursor_json_error_is_validation_error(monkeypatch: 
             assert timeout == 31
 
         def ensure_parse(self, request: Any) -> ParseResponse:
-            return ParseResponse(sha256="a" * 64, tier="medium", page_range="1", status="done")
+            return ParseResponse(sha256="a" * 64, tier="basic", page_range="1", status="done")
 
         def get_doc_content(self, *args: Any, **kwargs: Any) -> DocContentResponse:
             raise RuntimeError(
@@ -1956,7 +1956,7 @@ def test_invalidate_normalizes_user_path_before_request(monkeypatch: Any, tmp_pa
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setattr(invalidate, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["invalidate", "~/docs/../docs/demo.pdf", "--tier", "medium"])
+    result = runner.invoke(app, ["invalidate", "~/docs/../docs/demo.pdf", "--tier", "basic"])
 
     assert result.exit_code == 0
     assert calls == [os.path.normpath(os.path.abspath(os.path.expanduser("~/docs/../docs/demo.pdf")))]
@@ -2234,7 +2234,7 @@ def test_read_passes_locator_parameters_to_doclib_client(monkeypatch: Any) -> No
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
-                tier="medium",
+                tier="basic",
                 format="markdown",
                 content="hello",
                 request_scope=ContentRequestScope(locator=locator, context=kwargs["context"], limit=kwargs["limit"]),
@@ -2244,13 +2244,13 @@ def test_read_passes_locator_parameters_to_doclib_client(monkeypatch: Any) -> No
 
     result = runner.invoke(
         app,
-        ["read", "doc:ab12cd3/tier:medium/page:4", "--context", "2", "--limit", "123", "--format", "markdown"],
+        ["read", "doc:ab12cd3/tier:basic/page:4", "--context", "2", "--limit", "123", "--format", "markdown"],
     )
 
     assert result.exit_code == 0
     assert calls == [
         (
-            "doc:ab12cd3/tier:medium/page:4",
+            "doc:ab12cd3/tier:basic/page:4",
             {"context": 2, "limit": 123, "format": "markdown", "no_marker": False},
         )
     ]
@@ -2266,20 +2266,20 @@ def test_read_json_output_preserves_locator_next_request(monkeypatch: Any) -> No
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
-                tier="medium",
+                tier="basic",
                 format="markdown",
                 content="hello",
                 request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
-                next_request=ContentNextRequest(locator="doc:ab12cd3/tier:medium/page:5"),
+                next_request=ContentNextRequest(locator="doc:ab12cd3/tier:basic/page:5"),
             )
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4", "--json"])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--json"])
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["next_request"]["locator"] == "doc:ab12cd3/tier:medium/page:5"
+    assert payload["next_request"]["locator"] == "doc:ab12cd3/tier:basic/page:5"
 
 
 def test_read_markdown_output_separates_next_marker_with_blank_line(monkeypatch: Any) -> None:
@@ -2291,19 +2291,19 @@ def test_read_markdown_output_separates_next_marker_with_blank_line(monkeypatch:
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
-                tier="medium",
+                tier="basic",
                 format="markdown",
                 content="hello",
                 request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
-                next_request=ContentNextRequest(locator="doc:ab12cd3/tier:medium/page:5"),
+                next_request=ContentNextRequest(locator="doc:ab12cd3/tier:basic/page:5"),
             )
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4"])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4"])
 
     assert result.exit_code == 0
-    assert "hello\n\n<!-- Next: mineru read doc:ab12cd3/tier:medium/page:5 -->" in result.output
+    assert "hello\n\n<!-- Next: mineru read doc:ab12cd3/tier:basic/page:5 -->" in result.output
 
 
 def test_read_json_error_output_is_machine_readable(monkeypatch: Any) -> None:
@@ -2316,7 +2316,7 @@ def test_read_json_error_output_is_machine_readable(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4", "--json"])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--json"])
 
     assert result.exit_code == 1
     payload = json.loads(result.output)
@@ -2365,7 +2365,7 @@ def test_read_json_output_writes_markdown_file_and_returns_output_object(monkeyp
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
-                tier="medium",
+                tier="basic",
                 format="markdown",
                 content="hello",
                 request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
@@ -2373,7 +2373,7 @@ def test_read_json_output_writes_markdown_file_and_returns_output_object(monkeyp
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4", "--output", str(output), "--json"])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--output", str(output), "--json"])
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
@@ -2397,7 +2397,7 @@ def test_read_json_output_writes_image_file_and_returns_output_object(monkeypatc
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
-                tier="medium",
+                tier="basic",
                 format="image",
                 content="",
                 request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
@@ -2406,7 +2406,7 @@ def test_read_json_output_writes_image_file_and_returns_output_object(monkeypatc
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4", "--format", "image", "--output", str(output), "--json"])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--format", "image", "--output", str(output), "--json"])
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
@@ -2441,7 +2441,7 @@ def test_read_image_output_extension_selects_server_image_format(
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
-                tier="medium",
+                tier="basic",
                 format="image",
                 content="",
                 request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
@@ -2450,7 +2450,7 @@ def test_read_image_output_extension_selects_server_image_format(
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4", "--format", "image", "--output", str(output)])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--format", "image", "--output", str(output)])
 
     assert result.exit_code == 0
     assert output.read_bytes() == b"image-bytes"
@@ -2467,7 +2467,7 @@ def test_read_image_output_rejects_unsupported_output_extension_before_client_ca
     monkeypatch.setattr(read, "DoclibClient", _Client)
     output = output_arg if output_arg == "-" else str(tmp_path / output_arg)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4", "--format", "image", "--output", output, "--json"])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--format", "image", "--output", output, "--json"])
 
     assert result.exit_code == 1
     payload = json.loads(result.output)
@@ -2489,7 +2489,7 @@ def test_read_json_image_output_missing_asset_reports_error_envelope(monkeypatch
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
-                tier="medium",
+                tier="basic",
                 format="image",
                 content="",
                 request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
@@ -2498,7 +2498,7 @@ def test_read_json_image_output_missing_asset_reports_error_envelope(monkeypatch
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4", "--format", "image", "--output", str(output), "--json"])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--format", "image", "--output", str(output), "--json"])
 
     assert result.exit_code == 1
     payload = json.loads(result.output)
@@ -2522,7 +2522,7 @@ def test_read_image_output_copies_server_asset_locally(monkeypatch: Any, tmp_pat
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
-                tier="medium",
+                tier="basic",
                 format="image",
                 content="",
                 request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
@@ -2531,7 +2531,7 @@ def test_read_image_output_copies_server_asset_locally(monkeypatch: Any, tmp_pat
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4", "--format", "image", "--output", str(output)])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--format", "image", "--output", str(output)])
 
     assert result.exit_code == 0
     assert output.read_bytes() == b"png-bytes"
@@ -2545,7 +2545,7 @@ def test_search_json_error_output_is_machine_readable(monkeypatch: Any) -> None:
             assert timeout == 10
 
         def search(self, *args: Any, **kwargs: Any) -> Any:
-            raise RuntimeError("('quality_tier_unavailable', 'No medium, high, or xhigh engine available.', 'tier')")
+            raise RuntimeError("('quality_tier_unavailable', 'No basic, standard, or advanced engine available.', 'tier')")
 
     monkeypatch.setattr(search_mod, "DoclibClient", _Client)
 

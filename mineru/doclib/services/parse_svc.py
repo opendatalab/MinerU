@@ -740,7 +740,7 @@ class ParseService:
         if remote and tier == "flash":
             raise InvalidRequestError(
                 "tier_unsupported_for_remote",
-                "--remote does not support tier 'flash'; use --tier medium, --tier high, or --tier xhigh.",
+                "--remote does not support tier 'flash'; use --tier basic, --tier standard, or --tier advanced.",
                 "tier",
             )
         if tier in QUALITY_TIERS and ext not in TIERED_PARSE_EXTENSIONS:
@@ -1402,7 +1402,7 @@ class ParseService:
 
 
 def _resolve_default_tier(remote: bool = False) -> Tier:
-    """从健康检查中选择默认质量 tier，顺序为 high > xhigh > medium。"""
+    """从健康检查中选择默认质量 tier，顺序为 standard > advanced > basic。"""
     from ..background.parse_server_health import get_health
 
     health = get_health()
@@ -1429,12 +1429,12 @@ def _resolve_default_tier(remote: bool = False) -> Tier:
     actions.append("explicitly pass --tier flash for text-only preview")
     raise ParseFailure(
         "quality_tier_unavailable",
-        f"No medium, high, or xhigh engine available. You can {_format_action_list(actions)}.",
+        f"No basic, standard, or advanced engine available. You can {_format_action_list(actions)}.",
     )
 
 
 def _resolve_parsing_rule_default_tier(remote: bool = False) -> Tier:
-    """Parsing-rule 是后台批量策略，允许 high -> xhigh -> medium -> flash。"""
+    """Parsing-rule 是后台批量策略，允许 standard -> advanced -> basic -> flash。"""
     from ..background.parse_server_health import get_health
 
     health = get_health()

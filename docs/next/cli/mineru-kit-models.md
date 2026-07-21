@@ -55,14 +55,14 @@ model:
 
 ```bash
 mineru-kit models download <repo> [flags]
-mineru-kit models download --tier <flash|medium|high|xhigh> [flags]
+mineru-kit models download --tier <flash|basic|standard|advanced> [flags]
 ```
 
 参数:
 
 | Flag | 简写 | 类型 | 默认 | 说明 |
 |------|------|------|------|------|
-| `--tier` | - | `flash \| medium \| high \| xhigh` | - | 按 tier 下载所需模型 |
+| `--tier` | - | `flash \| basic \| standard \| advanced` | - | 按 tier 下载所需模型 |
 | `--source` | `-s` | `auto \| huggingface \| modelscope` | 配置值 | 本次下载源 |
 | `--verbose` | `-v` | bool | false | 输出详细路径 |
 
@@ -83,15 +83,15 @@ mineru-kit models download --tier <flash|medium|high|xhigh> [flags]
 Tier 到 repo 的映射:
 
 - `flash`: 不需要模型
-- `medium`: `PDF-Extract-Kit-1.0`
-- `high`: `PDF-Extract-Kit-1.0` + `MinerU2.5-Pro-2605-1.2B`
-- `xhigh`: `PDF-Extract-Kit-1.0` + `MinerU2.5-Pro-2605-1.2B`
+- `basic`: `PDF-Extract-Kit-1.0`
+- `standard`: `PDF-Extract-Kit-1.0` + `MinerU2.5-Pro-2605-1.2B`
+- `advanced`: `PDF-Extract-Kit-1.0` + `MinerU2.5-Pro-2605-1.2B`
 
 示例:
 
 ```bash
-mineru-kit models download --tier medium
-mineru-kit models download --tier high --source modelscope
+mineru-kit models download --tier basic
+mineru-kit models download --tier standard --source modelscope
 mineru-kit models download PDF-Extract-Kit-1.0
 mineru-kit models download MinerU2.5-Pro-2605-1.2B --source huggingface
 ```
@@ -122,7 +122,7 @@ mineru-kit models show
 ```bash
 mineru-kit models verify
 mineru-kit models verify <repo>
-mineru-kit models verify --tier <flash|medium|high|xhigh>
+mineru-kit models verify --tier <flash|basic|standard|advanced>
 ```
 
 规则:
@@ -138,7 +138,7 @@ mineru-kit models verify --tier <flash|medium|high|xhigh>
 ```bash
 mineru-kit models verify
 mineru-kit models verify PDF-Extract-Kit-1.0
-mineru-kit models verify --tier high
+mineru-kit models verify --tier standard
 ```
 
 ## 4. 相关文档

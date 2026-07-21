@@ -19,6 +19,7 @@ from ..utils.backend_options import (
     is_hybrid_backend,
     normalize_backend,
     resolve_backend_and_effort,
+    tier_for_effort,
 )
 
 __all__ = [
@@ -38,7 +39,7 @@ __all__ = [
 
 PARSER_BACKENDS = SUPPORTED_BACKENDS
 
-_MEDIUM_REQUIRED_MODULES = [
+_BASIC_REQUIRED_MODULES = [
     "ftfy",
     "shapely",
     "pyclipper",
@@ -47,15 +48,15 @@ _MEDIUM_REQUIRED_MODULES = [
     "torchvision",
     "transformers",
 ]
-_HIGH_REQUIRED_MODULES_COMMON = [
-    *_MEDIUM_REQUIRED_MODULES,
+_STANDARD_REQUIRED_MODULES_COMMON = [
+    *_BASIC_REQUIRED_MODULES,
     "accelerate",
 ]
-_HIGH_REQUIRED_MODULES_BY_PLATFORM = {
+_STANDARD_REQUIRED_MODULES_BY_PLATFORM = {
     "linux": ["vllm"],
     "win32": ["lmdeploy", "qwen_vl_utils"],
 }
-_APPLE_SILICON_HIGH_REQUIRED_MODULES = ["mlx", "mlx_vlm"]
+_APPLE_SILICON_STANDARD_REQUIRED_MODULES = ["mlx", "mlx_vlm"]
 
 
 class TierDependencyError(RuntimeError):
@@ -93,9 +94,9 @@ def backend_for_tier(tier: Tier) -> str:
     tier = validate_tier(tier)
     mapping = {
         "flash": "flash",
-        "medium": CANONICAL_HYBRID_ENGINE,
-        "high": CANONICAL_HYBRID_ENGINE,
-        "xhigh": CANONICAL_HYBRID_ENGINE,
+        "basic": CANONICAL_HYBRID_ENGINE,
+        "standard": CANONICAL_HYBRID_ENGINE,
+        "advanced": CANONICAL_HYBRID_ENGINE,
     }
     return mapping[tier]
 
@@ -104,14 +105,14 @@ def tier_for_backend(backend: str) -> Tier:
     """根据旧 backend 专家输入推断等价 tier，仅服务本地 parser 兼容入口。"""
     raw_backend = (backend or "").strip()
     if raw_backend in LEGACY_PIPELINE_BACKEND_ALIASES:
-        return "medium"
+        return "basic"
     if raw_backend in LEGACY_VLM_BACKEND_ALIASES:
-        return "xhigh"
+        return "advanced"
     normalized_backend = normalize_backend(backend)
     if normalized_backend == "flash":
         return "flash"
     if is_hybrid_backend(normalized_backend):
-        return DEFAULT_HYBRID_EFFORT  # type: ignore[return-value]
+        return _tier_for_effort(DEFAULT_HYBRID_EFFORT)
     raise ValueError(f"Unsupported backend '{backend}'. Supported backends: {', '.join(PARSER_BACKENDS)}")
 
 
@@ -120,28 +121,28 @@ def _backend_supports_tier(backend: str, tier: Tier) -> bool:
     normalized_backend = normalize_backend(backend)
     if tier == "flash":
         return normalized_backend == "flash"
-    if tier == "medium":
+    if tier == "basic":
         return raw_backend in LEGACY_PIPELINE_BACKEND_ALIASES or (
             is_hybrid_backend(normalized_backend) and raw_backend not in LEGACY_VLM_BACKEND_ALIASES
         )
-    if tier == "high":
+    if tier == "standard":
         return (
             is_hybrid_backend(normalized_backend)
             and raw_backend not in LEGACY_PIPELINE_BACKEND_ALIASES
             and raw_backend not in LEGACY_VLM_BACKEND_ALIASES
         )
-    if tier == "xhigh":
+    if tier == "advanced":
         return is_hybrid_backend(normalized_backend) and raw_backend not in LEGACY_PIPELINE_BACKEND_ALIASES
     return False
 
 
 def _tier_for_effort(effort: str) -> Tier:
-    return validate_tier(effort)
+    return validate_tier(tier_for_effort(effort))
 
 
 def resolve_tier_and_backend(tier: Tier | None = None, backend: str | None = None) -> tuple[Tier, str]:
     """将公开 tier 和本地专家 backend 解析为可执行 parser backend。"""
-    resolved_tier: Tier = validate_tier(tier) if tier is not None else "high"
+    resolved_tier: Tier = validate_tier(tier) if tier is not None else "standard"
     if backend:
         normalized_backend = normalize_backend(backend)
         if tier is None:
@@ -206,14 +207,14 @@ def runtime_options_for_tier(
 
 def required_modules_for_tier(tier: Tier) -> list[str]:
     tier = validate_tier(tier)
-    if tier == "medium":
-        return list(_MEDIUM_REQUIRED_MODULES)
-    if tier in {"high", "xhigh"}:
-        platform_modules = list(_HIGH_REQUIRED_MODULES_BY_PLATFORM.get(sys.platform, []))
+    if tier == "basic":
+        return list(_BASIC_REQUIRED_MODULES)
+    if tier in {"standard", "advanced"}:
+        platform_modules = list(_STANDARD_REQUIRED_MODULES_BY_PLATFORM.get(sys.platform, []))
         if sys.platform == "darwin" and platform.machine() == "arm64":
-            platform_modules.extend(_APPLE_SILICON_HIGH_REQUIRED_MODULES)
+            platform_modules.extend(_APPLE_SILICON_STANDARD_REQUIRED_MODULES)
         return [
-            *_HIGH_REQUIRED_MODULES_COMMON,
+            *_STANDARD_REQUIRED_MODULES_COMMON,
             *platform_modules,
         ]
     return []

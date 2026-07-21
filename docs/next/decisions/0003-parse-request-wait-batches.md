@@ -26,7 +26,7 @@ parse 请求返回本次请求需要等待的 batch 集合，而不是单个 `pa
 ```json
 {
   "sha256": "...",
-  "tier": "medium",
+  "tier": "basic",
   "page_range": "1~10",
   "status": "pending",
   "wait_parse_ids": [12, 13],
@@ -69,8 +69,8 @@ GET /parses?ids=12,13
 ```json
 {
   "parses": [
-    {"id": 12, "sha256": "...", "tier": "medium", "page_range": "1~5", "status": "done"},
-    {"id": 13, "sha256": "...", "tier": "medium", "page_range": "6~10", "status": "parsing"}
+    {"id": 12, "sha256": "...", "tier": "basic", "page_range": "1~5", "status": "done"},
+    {"id": 13, "sha256": "...", "tier": "basic", "page_range": "6~10", "status": "parsing"}
   ]
 }
 ```

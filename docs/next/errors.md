@@ -33,7 +33,7 @@
   "error": {
     "type": "engine_error",
     "code": "quality_tier_unavailable",
-    "message": "Default tier selection requires medium, high, or xhigh, but only flash is available. Start a parse-server, use --remote, or explicitly pass --tier flash.",
+    "message": "Default tier selection requires basic, standard, or advanced, but only flash is available. Start a parse-server, use --remote, or explicitly pass --tier flash.",
     "param": "tier",
     "retryable": false,
     "user_action": "start_parse_server_or_use_remote_or_explicit_flash",
@@ -68,7 +68,7 @@
 
 ## 5. Tier 与引擎错误
 
-Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`medium`、`high` 和默认选择策略相关错误。
+Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`basic`、`standard` 和默认选择策略相关错误。
 
 | type | code | HTTP | retryable | param | 触发场景 | user_action |
 |------|------|------|:--:|-------|----------|-------------|
@@ -90,7 +90,7 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`medium`、`high
 关键约束：
 
 - `quality_tier_unavailable` 不能自动 fallback 到 `flash`。
-- `tier_mismatch` 不自动降级。例如用户请求 `high`，server 只支持 `medium`，必须报错。
+- `tier_mismatch` 不自动降级。例如用户请求 `standard`，server 只支持 `basic`，必须报错。
 - `parse_failed` 不做 remote/local fallback；文件级解析失败应直接暴露。
 - `engine_unavailable` 和 `parse_server_unavailable` 可重试，但重试不得改变 `privacy`。
 
@@ -185,7 +185,7 @@ CLI 在 TTY 中可以用表格或 rich 文本展示，但非 TTY、`--json` 或 
   "error": {
     "type": "engine_error",
     "code": "quality_tier_unavailable",
-    "message": "Default tier selection requires medium, high, or xhigh, but only flash is available. Start a local parse-server, use --remote, or explicitly pass --tier flash.",
+    "message": "Default tier selection requires basic, standard, or advanced, but only flash is available. Start a local parse-server, use --remote, or explicitly pass --tier flash.",
     "param": "tier",
     "retryable": false,
     "user_action": "start_parse_server_or_use_remote_or_explicit_flash",
@@ -233,7 +233,7 @@ CLI 在 TTY 中可以用表格或 rich 文本展示，但非 TTY、`--json` 或 
   "error": {
     "type": "engine_error",
     "code": "no_engine",
-    "message": "No local engine available for tier 'medium'. Available tiers: flash. Use --remote or --tier flash.",
+    "message": "No local engine available for tier 'basic'. Available tiers: flash. Use --remote or --tier flash.",
     "param": "tier",
     "retryable": false,
     "user_action": "enable_parse_server_or_change_tier",

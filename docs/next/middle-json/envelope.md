@@ -25,7 +25,7 @@
   "_meta": {
     "mineru_version": "2.x",
     "backend": "hybrid",
-    "tier": "medium",
+    "tier": "basic",
     "file": {
       "sha256": "...",
       "page_count": 12,
@@ -64,7 +64,7 @@
 |------|------|:--:|------|
 | `mineru_version` | string | 是 | 生成该结果的 MinerU 版本。 |
 | `backend` | string | 是 | `hybrid`、`office`、`html`、`flash`。 |
-| `tier` | string 或 null | 是 | `flash`、`medium`、`high`、`xhigh` 的解析结果语义；未经过 tier 解析的工具层结果可为 `null`。 |
+| `tier` | string 或 null | 是 | `flash`、`basic`、`standard`、`advanced` 的解析结果语义；未经过 tier 解析的工具层结果可为 `null`。 |
 | `file` | object | 是 | 文件级信息。 |
 | `features` | object | 是 | 本次解析启用的能力。 |
 | `models` | object | 是 | 实际模型信息。 |

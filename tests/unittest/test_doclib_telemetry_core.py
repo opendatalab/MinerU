@@ -244,7 +244,7 @@ def test_parse_route_records_request_finished_and_duration_metrics(tmp_path) -> 
         async def request_parse(self, *args, **kwargs) -> dict:
             return {
                 "sha256": "abc",
-                "tier": "high",
+                "tier": "standard",
                 "page_range": "1",
                 "status": "pending",
                 "cache_hit": False,
@@ -261,7 +261,7 @@ def test_parse_route_records_request_finished_and_duration_metrics(tmp_path) -> 
         await telemetry.initialize()
         server = DoclibServer(SimpleNamespace(parse_svc=_ParseService(), telemetry_svc=telemetry))
 
-        await server.ensure_parse(ParseRequest(path="/tmp/a.pdf", tier="high"))
+        await server.ensure_parse(ParseRequest(path="/tmp/a.pdf", tier="standard"))
         body = await telemetry.preview_body()
 
         metric_names = {metric["name"] for metric in body["metrics"]}
@@ -273,7 +273,7 @@ def test_parse_route_records_request_finished_and_duration_metrics(tmp_path) -> 
             "caller": "unknown",
             "source": "unknown",
             "status": "queued",
-            "tier": "high",
+            "tier": "standard",
         }
 
     asyncio.run(_run())
@@ -499,7 +499,7 @@ def test_parse_wait_observation_uses_parse_rows_for_tier_and_pages_bucket(tmp_pa
         )
         await db.execute(
             "INSERT INTO parses (sha256, tier, page_range, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            ("sha", "high", "1~3", "done", now, now),
+            ("sha", "standard", "1~3", "done", now, now),
         )
         row = await db.fetchone("SELECT id FROM parses WHERE sha256=?", ("sha",))
 
@@ -523,7 +523,7 @@ def test_parse_wait_observation_uses_parse_rows_for_tier_and_pages_bucket(tmp_pa
             "pages_bucket": "2_5",
             "source": "unknown",
             "status": "succeeded",
-            "tier": "high",
+            "tier": "standard",
         }
         assert by_name["parse.wait_duration_bucket.count"]["dimensions"]["bucket"] == "1_5s"
 

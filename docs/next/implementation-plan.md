@@ -804,7 +804,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 - FTS 有内容。
 - Markdown 不落盘。
-- tier-gated 更新符合 `flash < medium < high < xhigh`。
+- tier-gated 更新符合 `flash < basic < standard < advanced`。
 
 验证方式:
 
@@ -843,11 +843,11 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 具体步骤:
 
-1. 构造 health: local supported tiers = `["medium", "high"]`。
+1. 构造 health: local supported tiers = `["basic", "standard"]`。
 2. 请求 `tier=None`。
-3. 期望入队 tier 为 `high`。
-4. 构造 health: local supported tiers = `["medium"]`。
-5. 期望入队 tier 为 `medium`。
+3. 期望入队 tier 为 `standard`。
+4. 构造 health: local supported tiers = `["basic"]`。
+5. 期望入队 tier 为 `basic`。
 6. 构造 health: only `flash` 或空。
 7. 期望返回 `quality_tier_unavailable` 或等价错误。
 
@@ -988,10 +988,10 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 具体步骤:
 
-1. mock parse-server supported tiers = `["medium"]`。
-2. 请求 `tier="high"`。
+1. mock parse-server supported tiers = `["basic"]`。
+2. 请求 `tier="standard"`。
 3. 期望 `tier_mismatch`。
-4. 确认不会改成 `medium`。
+4. 确认不会改成 `basic`。
 5. 确认不会改成 `flash`。
 
 完成边界:
@@ -1090,14 +1090,14 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 2. 增加 `tier: str | None = None`。
 3. `backend` 显式传入时覆盖 `tier`。
 4. `tier=flash` 映射到 `flash` backend。
-5. `tier=medium` 映射到默认 medium backend。
-6. `tier=high` 映射到默认 high backend。
+5. `tier=basic` 映射到默认 basic backend。
+6. `tier=standard` 映射到默认 standard backend。
 7. `tier=None` 在 Tool SDK 的 PDF/image 场景中如果不能发现非 `flash` 质量 tier，应报错，不静默 flash；Office/HTML 这类仅支持 flash tier 的输入按实际能力归一为 `flash`。
 
 完成边界:
 
 - `parse(path, tier="flash")` 可用。
-- `parse(path, tier="medium")` 可用或返回明确能力错误。
+- `parse(path, tier="basic")` 可用或返回明确能力错误。
 - `parse(path, backend="pipeline")` 兼容。
 - `backend` 覆盖 `tier` 有测试。
 

@@ -8,7 +8,7 @@
 
 `mineru parse` 支持多种输入格式，但不同格式背后的解析路径并不相同：
 
-- PDF 和 image 可以进入质量 tier 路径，支持 `flash`、`medium`、`high` 和 `xhigh`。
+- PDF 和 image 可以进入质量 tier 路径，支持 `flash`、`basic`、`standard` 和 `advanced`。
 - Office 文件走专门的 Office parser，实际只支持 `flash`。
 - HTML 不走 PDF 质量后端，只具备 `flash` 语义。
 - text 输入可入库和建立搜索索引，但无需解析，不产生 parse row 或 Middle JSON。
@@ -40,7 +40,7 @@ image 扩展名只进入 `INGESTIBLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTEN
 
 质量 tier 只对 PDF 和 image 有意义。
 
-| 文件类型 | `flash` | `medium` | `high` | `xhigh` |
+| 文件类型 | `flash` | `basic` | `standard` | `advanced` |
 |----------|---------|----------|--------|---------|
 | PDF | 支持 | 支持 | 支持 | 支持 |
 | image | 支持 | 支持 | 支持 | 支持 |

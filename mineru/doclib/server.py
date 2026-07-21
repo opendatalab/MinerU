@@ -1469,7 +1469,7 @@ class DoclibServer(AsyncDoclibInterface):
 
 _READ_LOCATOR_RE = re.compile(
     r"^doc:(?P<short_id>[0-9a-fA-F]+)"
-    r"(?:/tier:(?P<tier>flash|medium|high|xhigh)"
+    r"(?:/tier:(?P<tier>flash|basic|standard|advanced)"
     r"(?:/page:(?P<page_no>[1-9][0-9]*)"
     r"(?:/block:(?P<block_no>[1-9][0-9]*)(?:/char:(?P<char_offset>0|[1-9][0-9]*))?)?)?)?$"
 )
@@ -1648,10 +1648,10 @@ def _format_missing_model_repo(repo: ModelRepo, missing_paths: list[str]) -> str
 
 
 def _validate_managed_parse_server_tier(value: str, param: str) -> Tier:
-    if value not in ("medium", "high", "xhigh"):
+    if value not in ("basic", "standard", "advanced"):
         raise InvalidRequestError(
             "invalid_config_value",
-            "parse_server.local.managed_tier must be one of: medium, high, xhigh.",
+            "parse_server.local.managed_tier must be one of: basic, standard, advanced.",
             param,
         )
     return cast(Tier, value)
@@ -2065,7 +2065,7 @@ def _page_markdown_blocks(
     data_dir: str = "",
     sha256: str = "",
     short_id: str = "",
-    tier: Tier = "high",
+    tier: Tier = "standard",
 ) -> list[tuple[int, str]]:
     backend = page._backend
     result: list[tuple[int, str]] = []

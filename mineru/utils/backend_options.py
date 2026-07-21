@@ -27,10 +27,11 @@ HYBRID_EFFORT_CHOICES: Final[tuple[str, ...]] = (
     MAX_HYBRID_EFFORT,
 )
 HYBRID_EFFORT_BY_TIER: Final[dict[str, str]] = {
-    LOCAL_HYBRID_EFFORT: LOCAL_HYBRID_EFFORT,
-    LAYOUT_HYBRID_EFFORT: LAYOUT_HYBRID_EFFORT,
-    "xhigh": MAX_HYBRID_EFFORT,
+    "basic": LOCAL_HYBRID_EFFORT,
+    "standard": LAYOUT_HYBRID_EFFORT,
+    "advanced": MAX_HYBRID_EFFORT,
 }
+TIER_BY_HYBRID_EFFORT: Final[dict[str, str]] = {effort: tier for tier, effort in HYBRID_EFFORT_BY_TIER.items()}
 BACKEND_SCHEMA_EXTRA: Final[dict[str, list[str]]] = {"enum": list(PUBLIC_BACKEND_CHOICES)}
 HYBRID_EFFORT_SCHEMA_EXTRA: Final[dict[str, list[str]]] = {"enum": list(HYBRID_EFFORT_CHOICES)}
 
@@ -90,6 +91,12 @@ def effort_for_tier(tier: str | None) -> str:
         return HYBRID_EFFORT_BY_TIER[normalized]
     supported_tiers = ", ".join(HYBRID_EFFORT_BY_TIER)
     raise ValueError(f"Unsupported tier '{tier}'. Supported hybrid tiers: {supported_tiers}")
+
+
+def tier_for_effort(effort: str | None) -> str:
+    """将 Hybrid effort 映射回公开 tier，避免把内部 effort 当作 tier 校验。"""
+    normalized = validate_effort(effort)
+    return TIER_BY_HYBRID_EFFORT[normalized]
 
 
 def resolve_backend_and_effort(backend: str | None, effort: str | None = None) -> tuple[str, str]:

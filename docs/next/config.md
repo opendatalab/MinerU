@@ -91,7 +91,7 @@ MinerU 有两类配置：
 | `watches` 表 | watch 目录、可插拔设备状态 | 表结构 | 文件发现配置 |
 | `exclude_rules` 表 | exclude | 表结构 | 路径排除规则 |
 | `parsing_rules` 表 | parsing-rules | 表结构 | 路径解析规则 |
-| 当前命令显式参数 | `--tier high`、`--remote` | 不持久化 | 当前请求覆盖 |
+| 当前命令显式参数 | `--tier standard`、`--remote` | 不持久化 | 当前请求覆盖 |
 | 环境变量 | `MINERU_API_KEY` | 不持久化 | 临时凭证或 CI 覆盖 |
 | SDK client 参数 | `base_url`、`api_key` | 调用方决定 | 当前 client 实例 |
 
@@ -119,19 +119,19 @@ SDK client 显式参数属于当前调用方传入的请求上下文；当它最
 | key | 默认值 | 说明 |
 |-----|--------|------|
 | `parse_server.local.mode` | `disabled` | 本地 parse-server 模式 |
-| `parse_server.local.managed_tier` | `high` | managed 模式启动 tier |
+| `parse_server.local.managed_tier` | `standard` | managed 模式启动 tier |
 | `parse_server.remote.url` | `https://mineru.net/api` | 默认远端 API 地址 |
 
 ## 5. Parse-server 配置
 
-parse-server 是 `medium` / `high` / `xhigh` 等质量 tier 的解析能力来源。它可以是本地独立进程，也可以是远端 `mineru.net/api`。
+parse-server 是 `basic` / `standard` / `advanced` 等质量 tier 的解析能力来源。它可以是本地独立进程，也可以是远端 `mineru.net/api`。
 
 ### 5.1 Local parse-server
 
 | key | 默认值 | 说明 |
 |-----|--------|------|
 | `parse_server.local.mode` | `disabled` | `disabled` / `managed` / `self_hosted` |
-| `parse_server.local.managed_tier` | `high` | managed 模式启动的 tier |
+| `parse_server.local.managed_tier` | `standard` | managed 模式启动的 tier |
 | `parse_server.local.self_hosted_url` | 无 | self-hosted parse-server URL |
 | `parse_server.local.self_hosted_api_key` | 无 | self-hosted API Key，可选 |
 
@@ -188,7 +188,7 @@ API Key 读取优先级：
 
 ```bash
 mineru config parse-server local.mode managed
-mineru config parse-server local.managed-tier medium
+mineru config parse-server local.managed-tier basic
 mineru config parse-server remote.api-key sk-...
 ```
 
@@ -228,15 +228,15 @@ Watch 用于自动发现文件和建立搜索索引。
 Parsing-rules 通过路径 glob 指定自动解析策略。
 
 ```bash
-mineru config parsing-rules add "*/论文/*" --tier medium --pages all
-mineru config parsing-rules add "*/合同/*" --tier high --remote
+mineru config parsing-rules add "*/论文/*" --tier basic --pages all
+mineru config parsing-rules add "*/合同/*" --tier standard --remote
 ```
 
 约束：
 
 - 对 PDF/image，规则必须显式指定 remote，才允许上传远端。
 - 对 PDF/image，规则命中的 tier 必须经过能力检查。
-- 对 PDF/image，规则未指定 tier 时按 `high` -> `xhigh` -> `medium` -> `flash` 选择，并只记录实际使用的实体 tier。
+- 对 PDF/image，规则未指定 tier 时按 `standard` -> `advanced` -> `basic` -> `flash` 选择，并只记录实际使用的实体 tier。
 - 对 Office/HTML，parsing-rule 的 tier 和 remote 不生效，实际按 `flash` 记录；text 只入库和索引，不创建 parse row。
 - 完整归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)。
 

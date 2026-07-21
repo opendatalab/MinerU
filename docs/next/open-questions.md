@@ -35,9 +35,9 @@
 | JSON 输出格式 | 不把 `json` 作为正式产物名；正式格式为 `middle_json`、`content_list`、`structured_content`，详见 [ADR-0001](decisions/0001-json-output-formats.md)。 |
 | Force 与 invalidate | `--force` 跳过 done cache，可复用 active parse，只为未覆盖页创建新 parse；invalidate 才改变旧缓存可用性，详见 [ADR-0002](decisions/0002-force-vs-invalidate.md)。 |
 | doclib HTTP API | 本地 doclib HTTP API 使用 `/docs`、`/parses`、`/search` 和 `POST /invalidate`，详见 [ADR-0004](decisions/0004-doclib-http-api-resources.md)。 |
-| 本地 `high` | `high` 本地运行是正式支持能力，不是实验能力；当前代码基本 ready。 |
-| mineru.net tier | `mineru.net/api` 在相当长时间内默认提供 `high` 解析；`high` 是绝大多数场景足够好的高质量档位，但不是最高档。 |
-| api-server tier | `mineru-kit api-server --tier` 可重复；未传时当前暴露 `flash`、`medium`、`high`、`xhigh`。 |
+| 本地 `standard` | `standard` 本地运行是正式支持能力，不是实验能力；当前代码基本 ready。 |
+| mineru.net tier | `mineru.net/api` 在相当长时间内默认提供 `standard` 解析；`standard` 是绝大多数场景足够好的高质量档位，但不是最高档。 |
+| api-server tier | `mineru-kit api-server --tier` 可重复；未传时当前暴露 `flash`、`basic`、`standard`、`advanced`。 |
 | managed 生命周期 | managed 模式下，模型下载、预热、重试和退避由 `mineru-kit api-server` 负责。 |
 | 本地 api-server 安全 | 本地 api-server 默认监听 loopback；可通过 `--api-key` 设置固定 API Key，默认不设置。 |
 | P0 主链路 | P0 包含完整 watch、rules、search，不再把它们标为可选主链路。 |
@@ -50,8 +50,8 @@
 | `mineru-kit` 参数稳定性 | 暂不划分 `stable` / `experimental` 等稳定性等级，先保持简单。 |
 | `mineru-kit parse` 输入 | 当前只支持文件和目录输入；不支持 stdin、路径列表、URL 输入和递归目录。 |
 | `mineru-kit parse` 输出 | `--output` 必填；单文件可输出到文件路径或目录路径；多文件只能输出到目录路径；同名冲突直接报错并终止整个批次。 |
-| `mineru-kit parse` local/remote | local 支持 `tier/backend` 并校验兼容，PDF/image 二者都不传时默认 `high`，Office/HTML 按 ADR-0024 归一，text 不作为解析输入；remote 支持 `--remote`/`--remote-url`/`--api-key`，允许传 `tier`，禁止传 `backend`。 |
-| parsing-rules 默认 tier | parsing-rules 允许不指定 tier；PDF/image 按 `high` -> `xhigh` -> `medium` -> `flash` 选择，Office/HTML 归一为 `flash`，text 只入库和索引；只记录实际 tier。 |
+| `mineru-kit parse` local/remote | local 支持 `tier/backend` 并校验兼容，PDF/image 二者都不传时默认 `standard`，Office/HTML 按 ADR-0024 归一，text 不作为解析输入；remote 支持 `--remote`/`--remote-url`/`--api-key`，允许传 `tier`，禁止传 `backend`。 |
+| parsing-rules 默认 tier | parsing-rules 允许不指定 tier；PDF/image 按 `standard` -> `advanced` -> `basic` -> `flash` 选择，Office/HTML 归一为 `flash`，text 只入库和索引；只记录实际 tier。 |
 | Telemetry P0 | P0 必须实现 doclib server telemetry 状态、聚合、flush 和 CLI 管理入口；纯工具无 telemetry 能力。 |
 | `mineru parse` 默认页码范围 | 分页文档默认解析和读取 `1~min(page_count,10)`；该默认由 doclib 读取/解析计划负责，CLI 参数层不硬编码默认 `--pages`。 |
 | 渐进式阅读协议 | Server 返回结构化 `next_request`；CLI marker 只由 `next_request` 渲染，不作为协议源头，详见 [ADR-0013](decisions/0013-doc-content-progressive-reading.md)。 |

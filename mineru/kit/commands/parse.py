@@ -91,7 +91,7 @@ def parse_cmd(
                 path_effort = DEFAULT_HYBRID_EFFORT
             else:
                 path_tier, path_backend = effective_local_tier_and_backend(tier, normalized_backend)
-                if path_tier in {"medium", "high", "xhigh"}:
+                if path_tier in {"basic", "standard", "advanced"}:
                     path_effort = effort_for_tier(path_tier)
             return local_parse(
                 path,

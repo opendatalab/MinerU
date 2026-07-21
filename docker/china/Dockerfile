@@ -21,7 +21,7 @@ RUN python3 -m pip install -U 'mineru[core]>=3.4.0' -i https://mirrors.aliyun.co
     python3 -m pip cache purge
 
 # Download models and update the configuration file
-RUN /bin/bash -c "mineru-kit models download --tier high -s modelscope"
+RUN /bin/bash -c "mineru-kit models download --tier standard -s modelscope"
 
 # Set the entry point to activate the virtual environment and run the command line tool
 ENTRYPOINT ["/bin/bash", "-c", "export MINERU_MODEL_SOURCE=local && exec \"$@\"", "--"]

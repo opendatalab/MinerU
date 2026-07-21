@@ -18,8 +18,8 @@
 
 ```bash
 mineru search "keyword"
-mineru search "keyword" --tier medium
-mineru search "keyword" --min-tier medium --type pdf
+mineru search "keyword" --tier basic
+mineru search "keyword" --min-tier basic --type pdf
 ```
 
 行为：
@@ -127,7 +127,7 @@ JSON 输出至少包含:
 ```json
 [
   {"tier": "flash", "page_range": "1~20"},
-  {"tier": "medium", "page_range": "1~5,18~20"}
+  {"tier": "basic", "page_range": "1~5,18~20"}
 ]
 ```
 
@@ -135,7 +135,7 @@ JSON 输出至少包含:
 
 ```json
 [
-  {"id": 123, "tier": "high", "page_range": "6~17", "status": "parsing"}
+  {"id": 123, "tier": "standard", "page_range": "6~17", "status": "parsing"}
 ]
 ```
 
@@ -336,13 +336,13 @@ parsing-rules 用于按路径规则指定自动解析策略。
 示例：
 
 ```bash
-mineru config parsing-rules add "*/论文/*" --tier medium --pages all
-mineru config parsing-rules add "*/合同/*" --tier high --remote
+mineru config parsing-rules add "*/论文/*" --tier basic --pages all
+mineru config parsing-rules add "*/合同/*" --tier standard --remote
 ```
 
 parsing-rule 的 `tier` 和 `remote` 只适用于 PDF 和 image。Office 和 HTML 命中规则时忽略 `tier` 和 `remote`，按 `flash` 解析，并且 parse row 记录为 `flash`；text 只入库和索引，不创建 parse row。
 
-PDF/image 命中规则时，系统必须检查本地或远端能力是否支持对应 tier。rule 未指定 tier 时，按 `high` -> `xhigh` -> `medium` -> `flash` 选择可用 tier，并记录实际 tier。完整文件类型归一规则见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。
+PDF/image 命中规则时，系统必须检查本地或远端能力是否支持对应 tier。rule 未指定 tier 时，按 `standard` -> `advanced` -> `basic` -> `flash` 选择可用 tier，并记录实际 tier。完整文件类型归一规则见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。
 
 ## 已收敛规则
 

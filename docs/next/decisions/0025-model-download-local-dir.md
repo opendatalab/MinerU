@@ -253,17 +253,17 @@ PDF_EXTRACT_KIT.pytorch_paddle.path(rec_model_name).ensure()
 ```python
 REPOS_FOR_TIER = {
     "flash": (),
-    "medium": (PDF_EXTRACT_KIT,),
-    "high": (PDF_EXTRACT_KIT, MINERU_2_5_PRO_2605_1_2B),
-    "xhigh": (PDF_EXTRACT_KIT, MINERU_2_5_PRO_2605_1_2B),
+    "basic": (PDF_EXTRACT_KIT,),
+    "standard": (PDF_EXTRACT_KIT, MINERU_2_5_PRO_2605_1_2B),
+    "advanced": (PDF_EXTRACT_KIT, MINERU_2_5_PRO_2605_1_2B),
 }
 ```
 
 语义:
 
 - `flash` 不需要本地模型下载。
-- `medium` 需要 `PDF-Extract-Kit-1.0`。
-- `high` 和 `xhigh` 需要 `PDF-Extract-Kit-1.0` 与 `MinerU2.5-Pro-2605-1.2B`。
+- `basic` 需要 `PDF-Extract-Kit-1.0`。
+- `standard` 和 `advanced` 需要 `PDF-Extract-Kit-1.0` 与 `MinerU2.5-Pro-2605-1.2B`。
 
 repo registry 不反向依赖 tier。tier 只选择需要的 repo 集合，repo 自身仍只描述模型仓库。
 
@@ -393,9 +393,9 @@ def verify_model_tier(tier: Tier) -> ModelReadyResult:
 `mineru-kit models download` 支持按 tier 或按模型仓库下载:
 
 ```bash
-mineru-kit models download --tier medium
-mineru-kit models download --tier high
-mineru-kit models download --tier xhigh
+mineru-kit models download --tier basic
+mineru-kit models download --tier standard
+mineru-kit models download --tier advanced
 mineru-kit models download PDF-Extract-Kit-1.0
 mineru-kit models download MinerU2.5-Pro-2605-1.2B
 ```
@@ -440,7 +440,7 @@ source 解析规则:
 `mineru-kit models verify` 使用与 download 相同的目标选择语义:
 
 ```bash
-mineru-kit models verify --tier high
+mineru-kit models verify --tier standard
 mineru-kit models verify PDF-Extract-Kit-1.0
 mineru-kit models verify
 ```
@@ -507,7 +507,7 @@ mineru-kit models verify
 
 - `pipeline` / `vlm` 是旧实现分组名，不是模型仓库名。
 - 用户关心的是准备某个 tier 所需模型，或下载某个具体模型仓库。
-- 继续暴露 bundle 会让 `medium/high/xhigh` 与模型准备动作之间多一层间接概念。
+- 继续暴露 bundle 会让 `basic/standard/advanced` 与模型准备动作之间多一层间接概念。
 - 当前实际远端模型仓库只有两个，用真实仓库名表达更直接。
 
 ### 方案 G: 为每个 repo 编写强类型路径类或 decorator 语法
@@ -561,7 +561,7 @@ PDF_EXTRACT_KIT.pp_doclayout_v2.ensure()
 
 - 本地模型目录稳定、可解释。
 - `mineru-kit models show/verify` 能直接展示模型仓库、tier 需求、expected local dir 和 readiness。
-- `mineru-kit models download --tier high` 直接表达“准备 high tier”，不要求用户理解旧 `pipeline` / `vlm` 分组。
+- `mineru-kit models download --tier standard` 直接表达“准备 standard tier”，不要求用户理解旧 `pipeline` / `vlm` 分组。
 - 使用 `model.source=local` 时，离线部署行为更明确。
 - 首次模型准备可以从“parse 时静默下载”转为“配置/下载命令显式准备”。
 

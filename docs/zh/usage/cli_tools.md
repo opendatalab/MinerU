@@ -14,14 +14,14 @@ Options:
   -m, --method [auto|txt|ocr]     解析方法：auto（默认）、txt、ocr（仅用于 hybrid* 后端）
   -b, --backend [hybrid-engine|hybrid-http-client]
                                   解析后端（默认为 hybrid-engine）
-  --effort [low|medium|high]      Hybrid 解析强度（默认：medium）
+  --effort [medium|high|xhigh]    Hybrid 解析强度（默认：high）
   -l, --lang [ch|ch_server|korean|ta|te|ka|th|el|arabic|east_slavic|cyrillic|devanagari]
                                   指定文档语言（可提升 OCR 准确率，仅用于 hybrid* 后端）
   -u, --url TEXT                  当使用 http-client 时，传给服务端后端的 OpenAI 兼容地址
   -s, --start INTEGER             开始解析的页码（从 0 开始）
   -e, --end INTEGER               结束解析的页码（从 0 开始）
   --image-analysis BOOLEAN        是否启用 hybrid 的图片/图表分析；Hybrid
-                                  low 和 medium 强度会自动关闭图片/图表分析（默认开启）
+                                  medium 和 high effort 会自动关闭图片/图表分析（默认开启）
   --client-side-output-generation BOOLEAN
                                   在客户端基于服务端返回的 middle JSON、图片与原文件
                                   生成 Markdown 和 content list（默认关闭）

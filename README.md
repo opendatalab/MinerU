@@ -102,7 +102,7 @@ Then answer from `content.content`. If `next_request` exists and the question ne
 
 ```bash
 mineru parse "book.pdf" --pages 1~10 --limit 12000 --json
-mineru read "doc:ab12cd3/tier:high/page:11" --limit 12000 --json
+mineru read "doc:ab12cd3/tier:standard/page:11" --limit 12000 --json
 ```
 
 Continue with returned `next_request.locator`.
@@ -110,15 +110,15 @@ Continue with returned `next_request.locator`.
 ### Read or inspect a known location
 
 ```bash
-mineru read "doc:ab12cd3/tier:high/page:42" --context 1 --json
-mineru read "doc:ab12cd3/tier:high/page:12/block:5" --format image --output ./page12-block5.png
+mineru read "doc:ab12cd3/tier:standard/page:42" --context 1 --json
+mineru read "doc:ab12cd3/tier:standard/page:12/block:5" --format image --output ./page12-block5.png
 ```
 
 ### Search local library, then read
 
 ```bash
-mineru search "liquidated damages" --min-tier medium --json
-mineru read "doc:ab12cd3/tier:high/page:18" --json
+mineru search "liquidated damages" --min-tier basic --json
+mineru read "doc:ab12cd3/tier:standard/page:18" --json
 ```
 
 ## Installation And Setup
@@ -279,14 +279,14 @@ MinerU has four tiers:
 | Tier | Quality and speed | Local requirements | Local model download | Use for |
 |---|---|---|---|---|
 | `flash` | Lowest quality; fastest | No special hardware | None | Discovery, preview, and indexing; never default final reading quality |
-| `medium` | Medium quality; moderate speed | At least 16 GB total memory; CPU works, GPU can accelerate | About 2 GB | Private local reading or lower-resource local parsing |
-| `high` | High quality; similar speed to `medium` on suitable hardware | At least 16 GB total memory plus a supported accelerator | About 4 GB | Default for normal active reading and complex documents |
-| `xhigh` | Highest quality; slowest | Same as high, with greater compute use | About 4 GB | Maximum-quality work when the user accepts a longer wait |
+| `basic` | Basic quality; moderate speed | At least 16 GB total memory; CPU works, GPU can accelerate | About 2 GB | Private local reading or lower-resource local parsing |
+| `standard` | Standard high quality; similar speed to `basic` on suitable hardware | At least 16 GB total memory plus a supported accelerator | About 4 GB | Default for normal active reading and complex documents |
+| `advanced` | Standard quality on ordinary documents and better quality on difficult documents; slowest | Same as Standard, with greater compute use | About 4 GB | Difficult documents and maximum-quality work when the user accepts a longer wait |
 
 Default tier behavior:
 
 - Omit `--tier` when the user wants normal reading quality.
-- For parse-server based parsing, MinerU chooses `high`, then `xhigh`, then `medium`; `flash` is not a default final reading tier.
+- For parse-server based parsing, MinerU chooses `standard`, then `advanced`, then `basic`; `flash` is not a default final reading tier.
 - For `mineru read doc:{short_id}`, MinerU reads the best cached result rather than starting a new parse.
 - If normal reading quality is unavailable, inspect `mineru server status --json`, then present the applicable choices to the user:
   - Use remote parsing with `--remote`, which uploads the document and requires explicit permission.
@@ -301,9 +301,9 @@ Examples:
 
 ```bash
 mineru parse "paper.pdf"
-mineru parse "paper.pdf" --tier medium
-mineru parse "paper.pdf" --tier high
-mineru parse "paper.pdf" --tier xhigh
+mineru parse "paper.pdf" --tier basic
+mineru parse "paper.pdf" --tier standard
+mineru parse "paper.pdf" --tier advanced
 mineru parse "paper.pdf" --tier flash
 ```
 
@@ -340,7 +340,7 @@ Agent rules:
 
 ## Local Parse Server
 
-Use a local parse server when the user wants `medium`, `high`, or `xhigh` quality without sending the document to remote parsing.
+Use a local parse server when the user wants `basic`, `standard`, or `advanced` quality without sending the document to remote parsing.
 
 ### Assess Local Hardware
 
@@ -355,12 +355,12 @@ Use available read-only system commands to inspect the OS, architecture, total m
 
 Classify each local quality tier as `hardware-supported`, `hardware-unsupported`, or `hardware-unknown`. These labels describe hardware suitability only, not whether the required dependencies and models are installed or the tier is currently available:
 
-- `medium`: `hardware-supported` with at least 16 GB total memory. A CPU is sufficient, but warn that CPU-only parsing may be slow and GPU acceleration can materially reduce parsing time.
-- `high` and `xhigh`: `hardware-supported` with at least 16 GB total memory and either a Volta-or-newer NVIDIA GPU with at least 8 GB available VRAM or Apple Silicon with at least 16 GB unified memory.
-- For `high` and `xhigh`, an `npu`, `gcu`, `musa`, `mlu`, or `sdaa` qualifies as `hardware-supported` only when MinerU compatibility with the exact device and runtime can be verified; otherwise report `hardware-unknown`.
+- `basic`: `hardware-supported` with at least 16 GB total memory. A CPU is sufficient, but warn that CPU-only parsing may be slow and GPU acceleration can materially reduce parsing time.
+- `standard` and `advanced`: `hardware-supported` with at least 16 GB total memory and either a Volta-or-newer NVIDIA GPU with at least 8 GB available VRAM or Apple Silicon with at least 16 GB unified memory.
+- For `standard` and `advanced`, an `npu`, `gcu`, `musa`, `mlu`, or `sdaa` qualifies as `hardware-supported` only when MinerU compatibility with the exact device and runtime can be verified; otherwise report `hardware-unknown`.
 - Report `hardware-unsupported` when a requirement is clearly not met. If a required property cannot be verified, report `hardware-unknown`.
 
-Before asking the user to choose a tier, summarize the detected hardware and identify each local tier's hardware status. Recommend local `high` when `hardware-supported`, otherwise local `medium` when `hardware-supported`, otherwise offer remote `high` when privacy rules allow or explicit `flash`. Mention `xhigh` only when the user wants maximum quality and accepts the extra time. Do not install dependencies, download models, change config, or restart services without approval.
+Before asking the user to choose a tier, summarize the detected hardware and identify each local tier's hardware status. Recommend local `standard` when `hardware-supported`, otherwise local `basic` when `hardware-supported`, otherwise offer remote `standard` when privacy rules allow or explicit `flash`. Mention `advanced` only when the user wants maximum quality and accepts the extra time. Do not install dependencies, download models, change config, or restart services without approval.
 
 ### Configure Managed Local Parsing
 
@@ -372,40 +372,40 @@ The following examples assume the current install tool is `uv tool`. If `mineru`
 
 Installing extras with `uv tool install --force --prerelease allow` can reinstall or upgrade the `mineru` package. Restart the MinerU server after installing extras so the CLI client, doclib server, and managed parse server use the same installed version.
 
-Managed local `medium`, `high`, and `xhigh` all require downloaded model files. Download the target tier models before switching `parse_server.local.mode` to `managed`.
+Managed local `basic`, `standard`, and `advanced` all require downloaded model files. Download the target tier models before switching `parse_server.local.mode` to `managed`.
 
-Enable managed local parsing for `medium`:
+Enable managed local parsing for `basic`:
 
 ```bash
-uv tool install --force --prerelease allow "mineru[medium]"
-mineru-kit models download --tier medium
-mineru-kit models verify --tier medium
+uv tool install --force --prerelease allow "mineru[basic]"
+mineru-kit models download --tier basic
+mineru-kit models verify --tier basic
 mineru server restart
-mineru config set parse_server.local.managed_tier medium
+mineru config set parse_server.local.managed_tier basic
 mineru config set parse_server.local.mode managed
 mineru server status --json
 ```
 
-Enable managed local parsing for `high`:
+Enable managed local parsing for `standard`:
 
 ```bash
-uv tool install --force --prerelease allow "mineru[high]"
-mineru-kit models download --tier high
-mineru-kit models verify --tier high
+uv tool install --force --prerelease allow "mineru[standard]"
+mineru-kit models download --tier standard
+mineru-kit models verify --tier standard
 mineru server restart
-mineru config set parse_server.local.managed_tier high
+mineru config set parse_server.local.managed_tier standard
 mineru config set parse_server.local.mode managed
 mineru server status --json
 ```
 
-Enable managed local parsing for `xhigh`:
+Enable managed local parsing for `advanced`:
 
 ```bash
-uv tool install --force --prerelease allow "mineru[xhigh]"
-mineru-kit models download --tier xhigh
-mineru-kit models verify --tier xhigh
+uv tool install --force --prerelease allow "mineru[advanced]"
+mineru-kit models download --tier advanced
+mineru-kit models verify --tier advanced
 mineru server restart
-mineru config set parse_server.local.managed_tier xhigh
+mineru config set parse_server.local.managed_tier advanced
 mineru config set parse_server.local.mode managed
 mineru server status --json
 ```
@@ -417,7 +417,7 @@ Rules:
 - After installing extras, restart the MinerU server to avoid CLI/server version mismatch.
 - Set `parse_server.local.managed_tier` before `parse_server.local.mode=managed`.
 - Poll `mineru server status --json` and use managed parsing only after the target tier is healthy.
-- If local `medium`, `high`, or `xhigh` cannot start, do not add `--remote` automatically; ask the user first.
+- If local `basic`, `standard`, or `advanced` cannot start, do not add `--remote` automatically; ask the user first.
 
 ## First Read From A File
 
@@ -480,7 +480,7 @@ Rules:
 MinerU output may include a command to continue reading:
 
 ```text
-<!-- Next: mineru read doc:ab12cd3/tier:high/page:11 -->
+<!-- Next: mineru read doc:ab12cd3/tier:standard/page:11 -->
 ```
 
 or:
@@ -517,10 +517,10 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 Examples:
 
 ```bash
-mineru read "doc:ab12cd3/tier:high/page:4"
-mineru read "doc:ab12cd3/tier:high/page:4/block:7"
-mineru read "doc:ab12cd3/tier:high/page:4/block:7" --context 2
-mineru read "doc:ab12cd3/tier:high/page:4" --limit 8000 --json
+mineru read "doc:ab12cd3/tier:standard/page:4"
+mineru read "doc:ab12cd3/tier:standard/page:4/block:7"
+mineru read "doc:ab12cd3/tier:standard/page:4/block:7" --context 2
+mineru read "doc:ab12cd3/tier:standard/page:4" --limit 8000 --json
 ```
 
 Rules:
@@ -535,9 +535,9 @@ Rules:
 Use image output only when the user needs visual inspection, layout evidence, cropped figures, page screenshots, or block-level visual verification.
 
 ```bash
-mineru read "doc:ab12cd3/tier:high/page:4" --format image
-mineru read "doc:ab12cd3/tier:high/page:4/block:7" --format image
-mineru read "doc:ab12cd3/tier:high/page:4/block:7" --format image --output ./block-7.png
+mineru read "doc:ab12cd3/tier:standard/page:4" --format image
+mineru read "doc:ab12cd3/tier:standard/page:4/block:7" --format image
+mineru read "doc:ab12cd3/tier:standard/page:4/block:7" --format image --output ./block-7.png
 ```
 
 Rules:
@@ -563,7 +563,7 @@ Use `search` for parsed document content:
 ```bash
 mineru search "revenue recognition"
 mineru search "transformer architecture" --type pdf
-mineru search "appendix" --min-tier medium --limit 10 --json
+mineru search "appendix" --min-tier basic --limit 10 --json
 ```
 
 Rules:
@@ -634,8 +634,8 @@ Watch rules:
 Use parsing rules only when the user wants automatic parse policy for paths:
 
 ```bash
-mineru config parsing-rules add "*/papers/*" --tier high --pages all
-mineru config parsing-rules add "*/contracts/*" --tier high --remote
+mineru config parsing-rules add "*/papers/*" --tier standard --pages all
+mineru config parsing-rules add "*/contracts/*" --tier standard --remote
 mineru config parsing-rules list
 mineru config parsing-rules remove 3
 ```
@@ -691,7 +691,7 @@ Invalidate cached parse results:
 
 ```bash
 mineru invalidate "report.pdf"
-mineru invalidate "report.pdf" --tier high
+mineru invalidate "report.pdf" --tier standard
 ```
 
 Rules:
@@ -839,11 +839,11 @@ When answering after reading a document:
 Citation style examples:
 
 ```text
-The warranty period is 24 months (doc:ab12cd3/tier:high/page:7/block:3).
+The warranty period is 24 months (doc:ab12cd3/tier:standard/page:7/block:3).
 ```
 
 ```text
-The method is described across pages 4-5; I checked doc:ab12cd3/tier:high/page:4 and doc:ab12cd3/tier:high/page:5.
+The method is described across pages 4-5; I checked doc:ab12cd3/tier:standard/page:4 and doc:ab12cd3/tier:standard/page:5.
 ```
 
 ## Operating Rules

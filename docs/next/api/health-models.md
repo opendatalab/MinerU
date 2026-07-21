@@ -135,8 +135,8 @@ GET /v1/tiers HTTP/1.1
   "object": "list",
   "data": [
     {
-      "id": "high",
-      "description": "High-accuracy VLM-based parsing.",
+      "id": "standard",
+      "description": "Standard parsing for most documents.",
       "current_model": "MinerU2.5-Pro-2605-1.2B"
     }
   ]
@@ -147,7 +147,7 @@ Tier 对象字段:
 
 | 字段 | 类型 | 必带 | 说明 |
 |------|------|:--:|------|
-| `id` | string | 是 | 当前服务提供的真实质量 tier，例如 `medium`、`high` 或 `xhigh`。 |
+| `id` | string | 是 | 当前服务提供的真实质量 tier，例如 `basic`、`standard` 或 `advanced`。 |
 | `description` | string | 是 | 档位说明。 |
 | `current_model` | string 或 null | 是 | 当前 tier 背后的模型 ID。 |
 
@@ -182,7 +182,7 @@ Local Parse Server 的 `health` 通常返回:
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `parser_version` | string | 本地解析器版本。 |
-| `models` | object | 各后端健康状态，例如 `{"medium":"ok","high":"ok","xhigh":"missing"}`。 |
+| `models` | object | 各解析档位健康状态，例如 `{"basic":"ok","standard":"ok","advanced":"missing"}`。 |
 
 这些额外字段只供运维和调试使用，通用客户端不能依赖。
 
@@ -190,13 +190,13 @@ Local Parse Server 的 `health` 通常返回:
 
 | 本地 api-server 进程能力 | `/v1/tiers` 应返回 |
 |-------------------------|-------------------|
-| Medium | `medium` |
-| High | `high` |
-| Extra High | `xhigh` |
+| Basic | `basic` |
+| Standard | `standard` |
+| Advanced | `advanced` |
 | 只有 Flash | 不应把 `flash` 作为用户质量解析 tier；默认选择请求应失败。 |
 
 本地或兼容服务应以 `/v1/tiers` 返回值作为能力发现事实。它可以只暴露一个 tier，也可以暴露多个 tier；客户端不应假设具体进程模型。
 
 如果本地 server 支持 `flash`，它可以用于显式 `flash`、仅支持 flash tier 的输入归一化、watch 或索引机制，但不应出现在 PDF/image 面向用户质量解析的默认选择候选中。
 
-`mineru.net/api` 在相当长时间内只提供 `high`。远端 `/v1/tiers` 因此应返回 `high`；省略 `tier` 或传 `null` 等价于使用 `high`。
+`mineru.net/api` 在相当长时间内只提供 `standard`。远端 `/v1/tiers` 因此应返回 `standard`；省略 `tier` 或传 `null` 等价于使用 `standard`。

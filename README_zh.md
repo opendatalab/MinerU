@@ -232,9 +232,9 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     <tr>
       <th>精度指标<sup>1</sup></th>
       <td style="text-align:center;">86.47</td>
-      <td style="text-align:center;">95.39（high）<br>95.26（medium）</td>
+      <td style="text-align:center;">95.39（effort=high）<br>95.26（effort=medium）</td>
       <td style="text-align:center;">95.30</td>
-      <td style="text-align:center;">95.39（high）<br>95.26（medium）</td>
+      <td style="text-align:center;">95.39（effort=high）<br>95.26（effort=medium）</td>
       <td style="text-align:center;">95.30</td>
     </tr>
     <tr>

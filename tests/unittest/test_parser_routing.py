@@ -22,7 +22,7 @@ def test_build_parser_prefers_html_extension_when_content_guess_is_plain_text(
     assert isinstance(parser, HtmlParser)
 
 
-@pytest.mark.parametrize("tier", ["medium", "high", "xhigh"])
+@pytest.mark.parametrize("tier", ["basic", "standard", "advanced"])
 def test_build_parser_rejects_quality_tier_for_html_input(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

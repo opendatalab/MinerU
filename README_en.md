@@ -234,9 +234,9 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     <tr>
       <th>Accuracy<sup>1</sup></th>
       <td style="text-align:center;">86.47</td>
-      <td style="text-align:center;">95.39 (high)<br>95.26 (medium)</td>
+      <td style="text-align:center;">95.39 (effort=high)<br>95.26 (effort=medium)</td>
       <td style="text-align:center;">95.30</td>
-      <td style="text-align:center;">95.39 (high)<br>95.26 (medium)</td>
+      <td style="text-align:center;">95.39 (effort=high)<br>95.26 (effort=medium)</td>
       <td style="text-align:center;">95.30</td>
     </tr>
     <tr>

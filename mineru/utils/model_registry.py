@@ -122,9 +122,9 @@ MODEL_REPOS_BY_NAME: dict[str, ModelRepo] = {repo.name: repo for repo in MODEL_R
 
 REPOS_FOR_TIER: dict[Tier, tuple[ModelRepo, ...]] = {
     "flash": (),
-    "medium": (PDF_EXTRACT_KIT,),
-    "high": (PDF_EXTRACT_KIT, MINERU_2_5_PRO_2605_1_2B),
-    "xhigh": (PDF_EXTRACT_KIT, MINERU_2_5_PRO_2605_1_2B),
+    "basic": (PDF_EXTRACT_KIT,),
+    "standard": (PDF_EXTRACT_KIT, MINERU_2_5_PRO_2605_1_2B),
+    "advanced": (PDF_EXTRACT_KIT, MINERU_2_5_PRO_2605_1_2B),
 }
 
 

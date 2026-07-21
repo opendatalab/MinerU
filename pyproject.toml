@@ -77,14 +77,14 @@ dev = [
     "lxml-stubs",
 ]
 test = [
-    "mineru[xhigh]",
+    "mineru[advanced]",
     "pytest",
     "pytest-cov",
     "coverage",
     "fuzzywuzzy",
     "tomli; python_version < '3.11'",
 ]
-medium = [
+basic = [
     "ftfy>=6.3.1,<7",
     "shapely>=2.0.7,<3",
     "pyclipper>=1.3.0,<2",
@@ -94,8 +94,8 @@ medium = [
     "transformers>=4.57.3,<5.0.0",
     "safetensors>=0.4.0,<1",
 ]
-high = [
-    "mineru[medium]",
+standard = [
+    "mineru[basic]",
     "accelerate>=1.5.1",
     "vllm>=0.10.1.1,<0.22.0 ; sys_platform == 'linux'",
     "lmdeploy>=0.10.2,<0.12 ; sys_platform == 'win32'",
@@ -103,15 +103,15 @@ high = [
     "mlx<=0.31.1 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mlx-vlm>=0.3.3,<0.4 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
-xhigh = [
-    "mineru[high]",
+advanced = [
+    "mineru[standard]",
 ]
 gradio = [
     "gradio>=5.49.1,!=6.0.0,!=6.0.1,!=6.0.2,!=6.1.0,!=6.2.0,!=6.3.0,!=6.4.0,!=6.5.0,!=6.5.1,!=6.6.0,!=6.7.0,<6.9.0",
     "gradio-pdf>=0.0.22",
 ]
 all = [
-    "mineru[high]",
+    "mineru[standard]",
     "mineru[gradio]",
 ]
 

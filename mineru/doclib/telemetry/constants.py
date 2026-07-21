@@ -54,12 +54,12 @@ DIM_TIER_VALUES = frozenset(
     {
         "default",
         "flash",
-        "medium",
-        "high",
-        "xhigh",
-        "medium(default)",
-        "high(default)",
-        "xhigh(default)",
+        "basic",
+        "standard",
+        "advanced",
+        "basic(default)",
+        "standard(default)",
+        "advanced(default)",
         "unknown",
     }
 )
@@ -70,7 +70,20 @@ DIM_CONTENT_MODE_VALUES = frozenset({"read", "parse_output", "export", "unknown"
 DIM_OUTPUT_FORMAT_VALUES = frozenset({"markdown", "image", "other"})
 DIM_TRIGGER_VALUES = frozenset({"parse", "scan", "watch", "show", "background", "unknown"})
 DIM_RESULT_VALUES = frozenset(
-    {"seen", "refreshed", "new", "changed", "deleted", "unreachable", "error", "unsupported", "excluded", "hit", "miss", "unknown"}
+    {
+        "seen",
+        "refreshed",
+        "new",
+        "changed",
+        "deleted",
+        "unreachable",
+        "error",
+        "unsupported",
+        "excluded",
+        "hit",
+        "miss",
+        "unknown",
+    }
 )
 DIM_ERROR_CODE_VALUES = frozenset(
     {
@@ -199,7 +212,9 @@ METRIC_SPECS: dict[str, MetricSpec] = {
     "find.results_bucket.count": MetricSpec(REQ_CONTEXT | BUCKET),
     "content.request.count": MetricSpec(REQ_CONTEXT | frozenset({"content_mode", "output_format"})),
     "content.finished.count": MetricSpec(REQ_CONTEXT | STATUS | TIER | frozenset({"content_mode", "output_format"})),
-    "content.duration_bucket.count": MetricSpec(REQ_CONTEXT | STATUS | TIER | BUCKET | frozenset({"content_mode", "output_format"})),
+    "content.duration_bucket.count": MetricSpec(
+        REQ_CONTEXT | STATUS | TIER | BUCKET | frozenset({"content_mode", "output_format"})
+    ),
     "scan.request.count": MetricSpec(REQ_CONTEXT),
     "scan.finished.count": MetricSpec(STATUS),
     "scan.duration_bucket.count": MetricSpec(STATUS | BUCKET),

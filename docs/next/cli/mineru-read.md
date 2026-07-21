@@ -48,11 +48,11 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 规则：
 
 - `short_id` 是 doclib 为文档生成的稳定短 ID。
-- `tier` 取值为 `flash`、`medium`、`high`、`xhigh`。
+- `tier` 取值为 `flash`、`basic`、`standard`、`advanced`。
 - `page_no` 和 `block_no` 使用 1-based 编号。
 - `char:{offset}` 使用 block 渲染文本内的 0-based 字符 offset。
 
-当只给出 `doc:{short_id}` 时，系统不会创建新解析，而是在当前已缓存的非 `flash` 质量 tier 中选择最高质量结果，顺序为 `xhigh` -> `high` -> `medium`。如果不存在非 `flash` 质量 tier 结果，则返回错误，不静默降级到 `flash`。
+当只给出 `doc:{short_id}` 时，系统不会创建新解析，而是在当前已缓存的非 `flash` 质量 tier 中选择最高质量结果，顺序为 `advanced` -> `standard` -> `basic`。如果不存在非 `flash` 质量 tier 结果，则返回错误，不静默降级到 `flash`。
 
 ## 4. 核心参数
 
@@ -89,7 +89,7 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 Markdown 继续优先输出 table、chart 和 formula 的结构化内容。需要输出图片时，doclib 使用可读取的 block locator，不暴露 Middle JSON 内部的 `image_path`：
 
 ```markdown
-![Image block](doc:ab12cd3/tier:high/page:1/block:4)
+![Image block](doc:ab12cd3/tier:standard/page:1/block:4)
 ![Table block]()
 ```
 
@@ -155,7 +155,7 @@ locator-first 读取时：
 普通 markdown 输出中，如果还有下一段可读内容，CLI 会输出：
 
 ```text
-<!-- Next: mineru read doc:ab12cd3/tier:medium/page:5 -->
+<!-- Next: mineru read doc:ab12cd3/tier:basic/page:5 -->
 ```
 
 `--json` 时，通过 `next_request.locator` 表示下一次建议读取的位置。

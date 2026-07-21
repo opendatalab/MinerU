@@ -228,7 +228,7 @@ def test_upload_filename_helper_import_boundary_is_explicit() -> None:
     assert "normalize_upload_filename" in fast_api_upload_imports
 
 
-def test_models_download_tier_medium(monkeypatch: Any) -> None:
+def test_models_download_tier_basic(monkeypatch: Any) -> None:
     captured: list[str] = []
 
     def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
@@ -237,11 +237,11 @@ def test_models_download_tier_medium(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
 
-    result = runner.invoke(app, ["models", "download", "--tier", "medium"])
+    result = runner.invoke(app, ["models", "download", "--tier", "basic"])
 
     assert result.exit_code == 0
     assert captured == ["PDF-Extract-Kit-1.0"]
-    assert "Downloaded models for tier medium" in result.output
+    assert "Downloaded models for tier basic" in result.output
 
 
 def test_models_download_repo_uses_explicit_source(monkeypatch: Any) -> None:
@@ -371,14 +371,14 @@ def test_api_server_forwards_repeated_tiers(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
 
-    result = runner.invoke(app, ["api-server", "--tier", "medium", "--tier", "xhigh"])
+    result = runner.invoke(app, ["api-server", "--tier", "basic", "--tier", "advanced"])
 
     assert result.exit_code == 0
     assert seen["prog_name"] == "mineru-kit api-server"
     assert seen["standalone_mode"] is False
     assert [seen["args"][index + 1] for index, item in enumerate(seen["args"]) if item == "--tier"] == [
-        "medium",
-        "xhigh",
+        "basic",
+        "advanced",
     ]
 
 
@@ -386,7 +386,7 @@ def test_api_server_without_tier_lets_parser_api_apply_all_tier_default(monkeypa
     seen: dict[str, Any] = {}
 
     def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
-        """记录 mineru-kit api-server 默认参数，确认不再强制单 high tier。"""
+        """记录 mineru-kit api-server 默认参数，确认不再强制单 standard tier。"""
         seen["args"] = args
         seen["prog_name"] = prog_name
         seen["standalone_mode"] = standalone_mode
@@ -790,10 +790,10 @@ def test_parse_rejects_single_office_input_with_quality_tier(monkeypatch: Any, t
 
     monkeypatch.setattr(parse, "local_parse", _fake_local_parse)
 
-    result = runner.invoke(app, ["parse", str(source), "-o", str(output), "--tier", "high"])
+    result = runner.invoke(app, ["parse", str(source), "-o", str(output), "--tier", "standard"])
 
     assert result.exit_code == 1
-    assert "Tier 'high' is only supported for PDF and image files" in " ".join(result.output.split())
+    assert "Tier 'standard' is only supported for PDF and image files" in " ".join(result.output.split())
 
 
 def test_parse_batch_normalizes_office_quality_tier_to_flash(monkeypatch: Any, tmp_path: Path) -> None:
@@ -824,11 +824,11 @@ def test_parse_batch_normalizes_office_quality_tier_to_flash(monkeypatch: Any, t
 
     monkeypatch.setattr(parse, "local_parse", _fake_local_parse)
 
-    result = runner.invoke(app, ["parse", str(pdf), str(html), "-o", str(output), "--tier", "high"])
+    result = runner.invoke(app, ["parse", str(pdf), str(html), "-o", str(output), "--tier", "standard"])
 
     assert result.exit_code == 0
     assert [(call["path"].name, call["tier"], call["backend"]) for call in calls] == [
-        ("demo.pdf", "high", "hybrid-engine"),
+        ("demo.pdf", "standard", "hybrid-engine"),
         ("page.html", "flash", "flash"),
     ]
 
@@ -879,7 +879,7 @@ def test_parse_remote_requests_image_cache(monkeypatch: Any, tmp_path: Path) -> 
             "--api-key",
             "test-key",
             "--tier",
-            "high",
+            "standard",
             "--pages",
             "1",
         ],
@@ -890,7 +890,7 @@ def test_parse_remote_requests_image_cache(monkeypatch: Any, tmp_path: Path) -> 
     assert seen == {
         "api_url": "http://localhost:8000/api",
         "api_key": "test-key",
-        "tier": "high",
+        "tier": "standard",
         "include_images": True,
         "path": source,
         "page_range": "1",
@@ -947,18 +947,18 @@ def test_parse_rejects_removed_ch_lite_language(tmp_path: Path) -> None:
 def test_gradio_tier_selection_derives_v1_runtime() -> None:
     from mineru.cli_old import gradio_app
 
-    assert gradio_app.resolve_gradio_runtime_options("medium").as_kwargs() == {
-        "tier": "medium",
+    assert gradio_app.resolve_gradio_runtime_options("basic").as_kwargs() == {
+        "tier": "basic",
         "backend": "hybrid-engine",
         "effort": "medium",
     }
-    assert gradio_app.resolve_gradio_runtime_options("high").as_kwargs() == {
-        "tier": "high",
+    assert gradio_app.resolve_gradio_runtime_options("standard").as_kwargs() == {
+        "tier": "standard",
         "backend": "hybrid-engine",
         "effort": "high",
     }
-    assert gradio_app.resolve_gradio_runtime_options("xhigh").as_kwargs() == {
-        "tier": "xhigh",
+    assert gradio_app.resolve_gradio_runtime_options("advanced").as_kwargs() == {
+        "tier": "advanced",
         "backend": "hybrid-engine",
         "effort": "xhigh",
     }
@@ -970,16 +970,16 @@ def test_gradio_extracts_supported_tiers_from_v1_tiers_payload() -> None:
     payload = {
         "data": [
             {"id": "flash"},
-            {"id": "xhigh"},
+            {"id": "advanced"},
             {"id": "experimental"},
-            {"id": "medium"},
-            {"id": "high"},
-            {"id": "xhigh"},
+            {"id": "basic"},
+            {"id": "standard"},
+            {"id": "advanced"},
         ]
     }
 
-    assert gradio_app.extract_v1_tier_choices(payload) == ("flash", "xhigh", "medium", "high")
-    assert gradio_app.default_v1_gradio_tier(("flash", "xhigh", "medium", "high")) == "high"
+    assert gradio_app.extract_v1_tier_choices(payload) == ("flash", "advanced", "basic", "standard")
+    assert gradio_app.default_v1_gradio_tier(("flash", "advanced", "basic", "standard")) == "standard"
 
 
 def test_gradio_rejects_v1_tiers_payload_without_supported_tiers() -> None:
@@ -1357,7 +1357,7 @@ def test_cli_old_legacy_vlm_branch_maps_to_hybrid_xhigh(monkeypatch: Any, tmp_pa
     monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=False: "vllm-engine")
 
     def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
-        """记录 legacy VLM 输入最终进入 Hybrid xhigh 分支。"""
+        """记录 legacy VLM 输入最终进入 Hybrid advanced 分支。"""
         seen["backend"] = args[3]
         seen["hybrid_backend"] = args[5]
         seen["kwargs"] = kwargs
@@ -1435,11 +1435,11 @@ def test_cli_old_hybrid_medium_skips_vlm_engine_resolution(monkeypatch: Any, tmp
     monkeypatch.setattr(common, "ensure_backend_dependencies", lambda backend: None)
 
     def fail_get_vlm_engine(*_args: Any, **_kwargs: Any) -> str:
-        """Hybrid medium 不应触发 VLM engine 解析。"""
+        """Hybrid basic 不应触发 VLM engine 解析。"""
         raise AssertionError("medium effort should not resolve VLM engine")
 
     def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
-        """记录 Hybrid medium 仍进入 Hybrid 处理分支。"""
+        """记录 Hybrid basic 仍进入 Hybrid 处理分支。"""
         seen["backend"] = args[5]
         seen["langs"] = list(args[3])
         seen["pdf_count"] = len(args[2])
@@ -1472,7 +1472,7 @@ def test_process_hybrid_medium_calls_analyzer_per_file(monkeypatch: Any, tmp_pat
     outputs: list[tuple[str, str, str]] = []
 
     def fake_doc_analyze(pdf_bytes: bytes, **kwargs: Any) -> tuple[list[PageInfo], list[object], bool]:
-        """记录每个文件独立进入 Hybrid medium analyzer。"""
+        """记录每个文件独立进入 Hybrid basic analyzer。"""
         calls.append(pdf_bytes)
         languages.append(kwargs["language"])
         analyzer_kwargs.append(kwargs)
@@ -1534,7 +1534,7 @@ def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_xhigh(monkeypatch: Any, 
     monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=True: "vllm-async-engine")
 
     async def _fake_async_process_hybrid(*args: Any, **kwargs: Any) -> None:
-        """记录异步 legacy VLM 输入最终进入 Hybrid xhigh 分支。"""
+        """记录异步 legacy VLM 输入最终进入 Hybrid advanced 分支。"""
         seen["backend"] = args[3]
         seen["hybrid_backend"] = args[5]
         seen["kwargs"] = kwargs

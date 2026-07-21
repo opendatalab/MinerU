@@ -45,11 +45,11 @@ def test_pipeline_markdown_uses_custom_block_image_renderer_and_keeps_caption() 
 
     rendered = blocks_to_markdown(
         [block],
-        image_renderer=lambda _block: "![Image block](doc:aaaaaaa/tier:high/page:1/block:1)",
+        image_renderer=lambda _block: "![Image block](doc:aaaaaaa/tier:standard/page:1/block:1)",
     )
 
     assert len(rendered) == 1
-    assert "![Image block](doc:aaaaaaa/tier:high/page:1/block:1)" in rendered[0]
+    assert "![Image block](doc:aaaaaaa/tier:standard/page:1/block:1)" in rendered[0]
     assert "Figure caption" in rendered[0]
     assert "internal/hash.jpg" not in rendered[0]
 

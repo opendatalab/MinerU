@@ -63,7 +63,7 @@ def _format_repo_status(repo: ModelRepo) -> str:
 @app.command("download")
 def download_cmd(
     repo: str | None = typer.Argument(None, help="Model repo: PDF-Extract-Kit-1.0 or MinerU2.5-Pro-2605-1.2B"),
-    tier: str | None = typer.Option(None, "--tier", help="Tier to prepare: flash, medium, high, or xhigh"),
+    tier: str | None = typer.Option(None, "--tier", help="Tier to prepare: flash, basic, standard, or advanced"),
     source: str | None = typer.Option(None, "--source", "-s", help="Model source: auto, huggingface, or modelscope"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ) -> None:
@@ -107,7 +107,7 @@ def show_cmd() -> None:
         print_info(f"  {_format_repo_status(repo)}")
 
     print_info("Tiers:")
-    for tier in ("flash", "medium", "high", "xhigh"):
+    for tier in ("flash", "basic", "standard", "advanced"):
         repos = model_repos_for_tier(validate_tier(tier))
         names = ", ".join(repo.name for repo in repos) or "(none)"
         print_info(f"  {tier}: {names}")
@@ -116,7 +116,7 @@ def show_cmd() -> None:
 @app.command("verify")
 def verify_cmd(
     repo: str | None = typer.Argument(None, help="Optional model repo name"),
-    tier: str | None = typer.Option(None, "--tier", help="Optional tier: flash, medium, high, or xhigh"),
+    tier: str | None = typer.Option(None, "--tier", help="Optional tier: flash, basic, standard, or advanced"),
 ) -> None:
     """Verify local model repos and required paths."""
     repos = MODEL_REPOS if repo is None and tier is None else _select_target_repos(repo, tier)

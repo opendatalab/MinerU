@@ -66,8 +66,8 @@ SDK 迁移的目标不是重写现有 parser，而是稳定已经成形的边界
 
 验收:
 
-- `parse(path, tier="medium")` 可用。
-- `parse(path, tier="high")` 可用或给出明确 engine error。
+- `parse(path, tier="basic")` 可用。
+- `parse(path, tier="standard")` 可用或给出明确 engine error。
 - PDF/image 的 `parse(path)` 或 `parse(path, tier=None)` 不会静默使用 flash；Office/HTML 这类仅支持 flash tier 的输入未指定 tier 时返回实际 `flash` 语义。
 - `parse(path, tier="flash")` 只有显式请求时使用 flash。
 

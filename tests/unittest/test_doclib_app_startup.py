@@ -55,11 +55,11 @@ def test_doclib_runtime_dependencies_are_in_base_install() -> None:
     assert "watchfiles" in dependency_names
 
 
-def test_medium_extra_includes_preflight_runtime_dependencies() -> None:
+def test_basic_extra_includes_preflight_runtime_dependencies() -> None:
     pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
     pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-    medium_dependencies = pyproject["project"]["optional-dependencies"]["medium"]
-    dependency_names = {dependency.split(">", 1)[0].split("=", 1)[0].lower() for dependency in medium_dependencies}
+    basic_dependencies = pyproject["project"]["optional-dependencies"]["basic"]
+    dependency_names = {dependency.split(">", 1)[0].split("=", 1)[0].lower() for dependency in basic_dependencies}
     module_to_distribution = {
         "ftfy": "ftfy",
         "pyclipper": "pyclipper",
@@ -72,7 +72,7 @@ def test_medium_extra_includes_preflight_runtime_dependencies() -> None:
 
     missing = [
         module_name
-        for module_name in parser_tier.required_modules_for_tier("medium")
+        for module_name in parser_tier.required_modules_for_tier("basic")
         if module_to_distribution[module_name] not in dependency_names
     ]
 
@@ -116,7 +116,7 @@ def test_config_set_managed_tier_rejects_missing_models(monkeypatch: pytest.Monk
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
     with TestClient(doclib_app.create_app(cfg)) as client:
-        response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "medium"})
+        response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "basic"})
         config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
 
     assert response.status_code == 400
@@ -124,8 +124,8 @@ def test_config_set_managed_tier_rejects_missing_models(monkeypatch: pytest.Monk
     assert payload["error"]["code"] == "parse_server_model_not_ready"
     assert payload["error"]["param"] == "parse_server.local.managed_tier"
     assert "PDF-Extract-Kit-1.0" in payload["error"]["message"]
-    assert "mineru-kit models download --tier medium" in payload["error"]["message"]
-    assert config_response.json()["value"] == "high"
+    assert "mineru-kit models download --tier basic" in payload["error"]["message"]
+    assert config_response.json()["value"] == "standard"
     assert config_response.json()["source"] == "default"
 
 
@@ -148,7 +148,7 @@ def test_config_set_managed_mode_rejects_missing_models_for_current_tier(
     payload = response.json()
     assert payload["error"]["code"] == "parse_server_model_not_ready"
     assert payload["error"]["param"] == "parse_server.local.mode"
-    assert "mineru-kit models download --tier high" in payload["error"]["message"]
+    assert "mineru-kit models download --tier standard" in payload["error"]["message"]
     assert config_response.json()["value"] == "disabled"
     assert config_response.json()["source"] == "default"
 
@@ -491,7 +491,7 @@ def test_managed_parse_server_startup_clears_invalid_tier_override(monkeypatch, 
     def _popen(*args: object, **kwargs: object) -> _Proc:
         cmd = args[0]
         assert "--tier" in cmd
-        assert cmd[cmd.index("--tier") + 1] == "high"
+        assert cmd[cmd.index("--tier") + 1] == "standard"
         return _Proc()
 
     def _skip_background_task(*args, **kwargs):
@@ -522,8 +522,8 @@ def test_managed_parse_server_startup_clears_invalid_tier_override(monkeypatch, 
         config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
         status_response = client.get("/api/v1/server/status")
 
-    assert config_response.json()["value"] == "high"
-    assert status_response.json()["parse_server"]["local"]["managed_tier"] == "high"
+    assert config_response.json()["value"] == "standard"
+    assert status_response.json()["parse_server"]["local"]["managed_tier"] == "standard"
 
 
 def test_managed_parse_server_shutdown_uses_health_proc(monkeypatch, tmp_path) -> None:

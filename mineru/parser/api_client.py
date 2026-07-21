@@ -58,12 +58,12 @@ class MinerUApiParser(DocumentParser):
 
         # local deployment — uses ``local`` source only when the server advertises it.
         # Start the local server with --allow-local-source to skip upload.
-        parser = MinerUApiParser(api_url="http://localhost:8000", tier="medium")
+        parser = MinerUApiParser(api_url="http://localhost:8000", tier="basic")
 
         # cloud (remote)
         parser = MinerUApiParser(
             api_url="https://mineru.net/api", api_key="sk_...",
-            tier="high",
+            tier="standard",
         )
 
         result = parser.parse("report.pdf")
@@ -71,7 +71,7 @@ class MinerUApiParser(DocumentParser):
 
     Constructor parameters:
 
-    - ``tier`` → v1 ``tier`` (``"flash"`` / ``"medium"`` / ``"high"`` / ``"xhigh"``); ``None`` omits the field
+    - ``tier`` → v1 ``tier`` (``"flash"`` / ``"basic"`` / ``"standard"`` / ``"advanced"``); ``None`` omits the field
     - ``page_range`` → per-file v1 ``page_range``
     """
 

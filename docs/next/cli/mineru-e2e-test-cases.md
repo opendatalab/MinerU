@@ -58,10 +58,10 @@
   - `$MINERU_E2E_FIXTURE_DIR/no-read.pdf`，权限不可读文件；若平台无法稳定制造权限场景，可标记相关用例 BLOCKED。
   - `$MINERU_E2E_FIXTURE_DIR/output-dir/`，用于输出文件测试的目录。
 - 测试环境允许启动本地 doclib server。
-- 测试环境必须安装 `xhigh` extra，以覆盖本地 `medium`、`high`、`xhigh` quality parse-server；默认 tier 相关用例应验证本地 quality tier 可用，不再按缺少本地 quality tier 的预期失败分支判定。
-- MinerU 的公开 tier 只有 `flash`、`medium`、`high`、`xhigh`；默认 quality tier 选择顺序为 `high`、`xhigh`、`medium`，已缓存结果的读取顺序为 `xhigh`、`high`、`medium`、`flash`。
-- 显式指定 quality tier 的 remote 请求应按 remote 成功、remote 失败后同 tier local fallback、remote 与 local 均不可用三个分支判定；不得 fallback 到 `flash`。未指定 tier 时需要先从 remote 能力中按 `high`、`xhigh`、`medium` 选择默认值，无法选择时返回 `quality_tier_unavailable`。
-- PARSE-013A1 是 remote high 硬性测试，remote parse-server 不可用或不支持 high 均记录为失败。
+- 测试环境必须安装 `advanced` extra，以覆盖本地 `basic`、`standard`、`advanced` quality parse-server；默认 tier 相关用例应验证本地 quality tier 可用，不再按缺少本地 quality tier 的预期失败分支判定。
+- MinerU 的公开 tier 只有 `flash`、`basic`、`standard`、`advanced`；默认 quality tier 选择顺序为 `standard`、`advanced`、`basic`，已缓存结果的读取顺序为 `advanced`、`standard`、`basic`、`flash`。
+- 显式指定 quality tier 的 remote 请求应按 remote 成功、remote 失败后同 tier local fallback、remote 与 local 均不可用三个分支判定；不得 fallback 到 `flash`。未指定 tier 时需要先从 remote 能力中按 `standard`、`advanced`、`basic` 选择默认值，无法选择时返回 `quality_tier_unavailable`。
+- PARSE-013A1 是 remote Standard 硬性测试，remote parse-server 不可用或不支持 Standard 均记录为失败。
 
 ### 2.1 测试 HOME 与隔离配置
 
@@ -88,12 +88,12 @@ rm -rf .venv
 uv venv .venv
 source .venv/bin/activate
 cd ~/MinerU-Repo
-uv pip install ".[xhigh]"
+uv pip install ".[advanced]"
 cd ~/mineru-e2e-test
 mineru --help
 ```
 
-当前仓库的 `xhigh` extra 会依次包含 `high` 和 `medium` extra，因此上述安装用于覆盖全部本地 quality tier。
+当前仓库的 `advanced` extra 会依次包含 `standard` 和 `basic` extra，因此上述安装用于覆盖全部本地 quality tier。
 
 安装完成后，`mineru` 应由 `pyproject.toml` 的脚本入口直接提供，不需要配置 shell alias。
 
@@ -101,20 +101,20 @@ mineru --help
 
 ### 2.2.1 本地模型准备
 
-本地 managed `medium`、`high` 和 `xhigh` 均要求模型文件已下载到 `config.model.base_dir`。模型准备属于测试环境 setup，不属于正式 `mineru` CLI case。
+本地 managed `basic`、`standard` 和 `advanced` 均要求模型文件已下载到 `config.model.base_dir`。模型准备属于测试环境 setup，不属于正式 `mineru` CLI case。
 
 在执行需要本地 quality tier 的 case 前，测试环境应先准备并验证目标模型:
 
 ```bash
 cd ~/mineru-e2e-test
 source .venv/bin/activate
-mineru-kit models download --tier xhigh
-mineru-kit models verify --tier xhigh
+mineru-kit models download --tier advanced
+mineru-kit models verify --tier advanced
 ```
 
 说明:
 
-- `xhigh` 覆盖 `high` 和 `medium` 所需模型。
+- `advanced` 覆盖 `standard` 和 `basic` 所需模型。
 - 如果需要验证模型未准备好的 config 拦截分支，应使用新的隔离 `MINERU_HOME`，或在测试开始前清空该隔离 HOME 下的 `models/` 目录。
 - 正式 case 执行阶段仍只调用 `mineru ...` 命令。
 
@@ -744,7 +744,7 @@ mineru config show --json
 命令:
 
 ```bash
-mineru config set parse_server.local.managed_tier high
+mineru config set parse_server.local.managed_tier standard
 mineru config get parse_server.local.managed_tier
 ```
 
@@ -752,14 +752,14 @@ mineru config get parse_server.local.managed_tier
 
 - 两条 exit code = 0
 - get 输出包含 `parse_server.local.managed_tier`
-- get 输出包含 `high`
+- get 输出包含 `standard`
 
 ### CONFIG-003A JSON 读取配置
 
 命令:
 
 ```bash
-mineru config set parse_server.local.managed_tier high
+mineru config set parse_server.local.managed_tier standard
 mineru config get parse_server.local.managed_tier --json
 ```
 
@@ -769,7 +769,7 @@ mineru config get parse_server.local.managed_tier --json
 - set 使用普通文本输出；本用例不要求 `config set` 支持 `--json`
 - get stdout 为可直接解析的 JSON
 - get JSON 包含 `parse_server.local.managed_tier`
-- get JSON 中 value 为 `high`，并且 source 应体现 override 或等价覆盖来源
+- get JSON 中 value 为 `standard`，并且 source 应体现 override 或等价覆盖来源
 
 ### CONFIG-003B managed tier 模型未准备时拒绝配置
 
@@ -787,7 +787,7 @@ mineru config get parse_server.local.managed_tier --json
 命令:
 
 ```bash
-mineru config set parse_server.local.managed_tier medium
+mineru config set parse_server.local.managed_tier basic
 mineru config get parse_server.local.managed_tier --json
 ```
 
@@ -796,9 +796,9 @@ mineru config get parse_server.local.managed_tier --json
 - 第一条命令 exit code = 1
 - 第一条命令输出可读错误
 - stdout 或 stderr 表明目标 tier 的模型文件未准备完成
-- stdout 或 stderr 包含 `mineru-kit models download --tier medium`
+- stdout 或 stderr 包含 `mineru-kit models download --tier basic`
 - 第二条命令 exit code = 0
-- get JSON 中 `value` 仍为默认值 `high`，或保持该隔离 HOME 中原有值
+- get JSON 中 `value` 仍为默认值 `standard`，或保持该隔离 HOME 中原有值
 - 不包含 Python traceback
 
 ### CONFIG-003C managed mode 模型未准备时拒绝启用
@@ -821,7 +821,7 @@ mineru config get parse_server.local.mode --json
 - 第一条命令 exit code = 1
 - 第一条命令输出可读错误
 - stdout 或 stderr 表明当前 managed tier 的模型文件未准备完成
-- stdout 或 stderr 包含 `mineru-kit models download --tier high`
+- stdout 或 stderr 包含 `mineru-kit models download --tier standard`
 - 第二条命令 exit code = 0
 - get JSON 中 `value` 仍为默认值 `disabled`，或保持该隔离 HOME 中原有值
 - 不包含 Python traceback
@@ -830,12 +830,12 @@ mineru config get parse_server.local.mode --json
 
 前置条件:
 
-- 使用已完成 `mineru-kit models download --tier medium` 和 `mineru-kit models verify --tier medium` 的 `MINERU_HOME`。
+- 使用已完成 `mineru-kit models download --tier basic` 和 `mineru-kit models verify --tier basic` 的 `MINERU_HOME`。
 
 命令:
 
 ```bash
-mineru config set parse_server.local.managed_tier medium
+mineru config set parse_server.local.managed_tier basic
 mineru config set parse_server.local.mode managed
 mineru config get parse_server.local.managed_tier --json
 mineru config get parse_server.local.mode --json
@@ -844,7 +844,7 @@ mineru config get parse_server.local.mode --json
 预期:
 
 - 四条命令均 exit code = 0
-- `managed_tier` get JSON 中 `value = medium`
+- `managed_tier` get JSON 中 `value = basic`
 - `mode` get JSON 中 `value = managed`
 - 不包含 Python traceback
 
@@ -861,14 +861,14 @@ mineru config get parse_server.local.managed_tier
 
 - 两条 exit code = 0
 - unset 输出包含 `removed` 或 `unchanged`
-- get 仍能返回有效配置值，默认值应为 `high` 或等价默认 tier
+- get 仍能返回有效配置值，默认值应为 `standard` 或等价默认 tier
 
 ### CONFIG-004A unset 后 JSON 读取配置
 
 命令:
 
 ```bash
-mineru config set parse_server.local.managed_tier high
+mineru config set parse_server.local.managed_tier standard
 mineru config unset parse_server.local.managed_tier
 mineru config get parse_server.local.managed_tier --json
 ```
@@ -878,7 +878,7 @@ mineru config get parse_server.local.managed_tier --json
 - 三条 exit code = 0
 - unset 使用普通文本输出；本用例不要求 `config unset` 支持 `--json`
 - get 输出为可直接解析的 JSON
-- unset 后 get 仍能返回有效配置值，默认值应为 `high` 或等价默认 tier
+- unset 后 get 仍能返回有效配置值，默认值应为 `standard` 或等价默认 tier
 
 ### CONFIG-005 exclude-rules
 
@@ -1185,7 +1185,7 @@ mineru list parses --tier flash --status done --json
 - 三条命令均 exit code = 0，stdout 均为可直接解析的 JSON
 - show file JSON 中 `watch-doc.pdf` 最终存在 `flash` parse/cache
 - list parses 中与该文件 sha256 匹配的 parse record 为 `tier = flash`、`privacy = local`、`via = local`
-- 未命中 parsing rule 时不自动创建 `medium`、`high`、`xhigh` 或 remote parse record
+- 未命中 parsing rule 时不自动创建 `basic`、`standard`、`advanced` 或 remote parse record
 - watch 结果仅用于发现和索引，不视为默认最终阅读质量
 - 不包含 Python traceback
 
@@ -1445,7 +1445,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --for
 命令:
 
 ```bash
-mineru config set parse_server.local.managed_tier high
+mineru config set parse_server.local.managed_tier standard
 mineru config set parse_server.local.mode managed
 mineru server status --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --pages 1~1 --force --wait 180 --json
@@ -1454,97 +1454,97 @@ mineru show parse <created_parse_id> --json
 
 执行说明:
 
-- 重复执行 `mineru server status --json`，直到 local parse-server healthy 且 `supported_tiers` 包含 `high`，再执行 parse。
+- 重复执行 `mineru server status --json`，直到 local parse-server healthy 且 `supported_tiers` 包含 `standard`，再执行 parse。
 - `<created_parse_id>` 从 parse JSON 的 `parse.created_parse_ids[0]` 提取。
 
 预期:
 
 - 五条命令均 exit code = 0
 - parse JSON 和 show JSON 均可直接解析
-- 默认实际 tier 为 `high`，不为 `flash`
-- show JSON 中 `tier = high`、`privacy = local`、`via = local`
+- 默认实际 tier 为 `standard`，不为 `flash`
+- show JSON 中 `tier = standard`、`privacy = local`、`via = local`
 - 不允许静默返回 flash 内容
 - 不包含 Python traceback
 
-### PARSE-007A PDF local medium tier
+### PARSE-007A PDF local basic tier
 
 命令:
 
 ```bash
-mineru config set parse_server.local.managed_tier medium
+mineru config set parse_server.local.managed_tier basic
 mineru config set parse_server.local.mode managed
 mineru server status --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier medium --pages 1~1 --force --wait 120 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier basic --pages 1~1 --force --wait 120 --json
 mineru show parse <created_parse_id> --json
 ```
 
 执行说明:
 
-- 重复执行 `mineru server status --json`，直到 local parse-server healthy 且 `supported_tiers` 包含 `medium`，再执行 parse。
+- 重复执行 `mineru server status --json`，直到 local parse-server healthy 且 `supported_tiers` 包含 `basic`，再执行 parse。
 - `<created_parse_id>` 从 parse JSON 的 `parse.created_parse_ids[0]` 提取。
 
 预期:
 
 - 五条命令均 exit code = 0
 - parse JSON 和 show JSON 均可直接解析
-- `parse.tier = medium`
+- `parse.tier = basic`
 - `parse.status = done`
 - `content` 不为 null
-- show JSON 中 `tier = medium`、`privacy = local`、`via = local`
+- show JSON 中 `tier = basic`、`privacy = local`、`via = local`
 - 不包含 Python traceback
 
-### PARSE-007B PDF local high tier
+### PARSE-007B PDF local standard tier
 
 命令:
 
 ```bash
-mineru config set parse_server.local.managed_tier high
+mineru config set parse_server.local.managed_tier standard
 mineru config set parse_server.local.mode managed
 mineru server status --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier high --pages 1~1 --force --wait 180 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --pages 1~1 --force --wait 180 --json
 mineru show parse <created_parse_id> --json
 ```
 
 执行说明:
 
-- 重复执行 `mineru server status --json`，直到 local parse-server healthy 且 `supported_tiers` 包含 `high`，再执行 parse。
+- 重复执行 `mineru server status --json`，直到 local parse-server healthy 且 `supported_tiers` 包含 `standard`，再执行 parse。
 - `<created_parse_id>` 从 parse JSON 的 `parse.created_parse_ids[0]` 提取。
 
 预期:
 
 - 五条命令均 exit code = 0
 - parse JSON 和 show JSON 均可直接解析
-- `parse.tier = high`
+- `parse.tier = standard`
 - `parse.status = done`
 - `content` 不为 null
-- show JSON 中 `tier = high`、`privacy = local`、`via = local`
+- show JSON 中 `tier = standard`、`privacy = local`、`via = local`
 - 不包含 Python traceback
 
-### PARSE-007C PDF local xhigh tier
+### PARSE-007C PDF local advanced tier
 
 命令:
 
 ```bash
-mineru config set parse_server.local.managed_tier xhigh
+mineru config set parse_server.local.managed_tier advanced
 mineru config set parse_server.local.mode managed
 mineru server status --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier xhigh --pages 1~1 --force --wait 300 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier advanced --pages 1~1 --force --wait 300 --json
 mineru show parse <created_parse_id> --json
 ```
 
 执行说明:
 
-- 重复执行 `mineru server status --json`，直到 local parse-server healthy 且 `supported_tiers` 包含 `xhigh`，再执行 parse。
+- 重复执行 `mineru server status --json`，直到 local parse-server healthy 且 `supported_tiers` 包含 `advanced`，再执行 parse。
 - `<created_parse_id>` 从 parse JSON 的 `parse.created_parse_ids[0]` 提取。
 
 预期:
 
 - 五条命令均 exit code = 0
 - parse JSON 和 show JSON 均可直接解析
-- `parse.tier = xhigh`
+- `parse.tier = advanced`
 - `parse.status = done`
 - `content` 不为 null
-- show JSON 中 `tier = xhigh`、`privacy = local`、`via = local`
+- show JSON 中 `tier = advanced`、`privacy = local`、`via = local`
 - 不包含 Python traceback
 
 ### PARSE-007D 旧 tier 名称不可用
@@ -1559,7 +1559,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier pro --pages 1~1
 预期:
 
 - 两条命令均 exit code != 0
-- 输出明确说明 tier 取值无效，并列出或体现 `flash`、`medium`、`high`、`xhigh` 中的合法值
+- 输出明确说明 tier 取值无效，并列出或体现 `flash`、`basic`、`standard`、`advanced` 中的合法值
 - 不启动 parse，不生成新的 parse record
 - 不包含 Python traceback
 
@@ -1683,7 +1683,7 @@ mineru show parse <created_parse_id> --json
 
 - 如果 remote parse-server 暴露 quality tier:
   - parse 和 show 均 exit code = 0，stdout 均为可直接解析的 JSON
-  - 默认 tier 按 `high`、`xhigh`、`medium` 的顺序选择第一个受 remote 支持的 tier
+  - 默认 tier 按 `standard`、`advanced`、`basic` 的顺序选择第一个受 remote 支持的 tier
   - show JSON 中 `privacy = remote`、`via = remote`
 - 如果 remote parse-server 未暴露任何 quality tier:
   - exit code != 0
@@ -1692,12 +1692,12 @@ mineru show parse <created_parse_id> --json
 - 不允许 fallback 到 `flash`
 - 不包含 Python traceback
 
-### PARSE-013A1 PDF remote high tier
+### PARSE-013A1 PDF remote standard tier
 
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier high --remote --pages 1~1 --force --wait 180 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --remote --pages 1~1 --force --wait 180 --json
 mineru show parse <created_parse_id> --json
 ```
 
@@ -1708,10 +1708,10 @@ mineru show parse <created_parse_id> --json
 预期:
 
 - 两条命令均 exit code = 0，stdout 均为可直接解析的 JSON
-- `parse.tier = high`
-- show JSON 中 `tier = high`、`privacy = remote`、`via = remote`
-- remote 不可用、remote 不支持 high、或实际 `via = local` 均记录为失败
-- 不允许 fallback 到 local high、其它 tier 或 flash
+- `parse.tier = standard`
+- show JSON 中 `tier = standard`、`privacy = remote`、`via = remote`
+- remote 不可用、remote 不支持 Standard、或实际 `via = local` 均记录为失败
+- 不允许 fallback 到 local standard、其它 tier 或 flash
 - 不包含 Python traceback
 
 ### PARSE-013B remote no-wait
@@ -1719,7 +1719,7 @@ mineru show parse <created_parse_id> --json
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier high --remote --pages 1~1 --force --no-wait --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --remote --pages 1~1 --force --no-wait --json
 mineru show parse <created_parse_id> --json
 ```
 
@@ -1731,7 +1731,7 @@ mineru show parse <created_parse_id> --json
 预期分支:
 
 - 第一条 exit code = 0，stdout 为可直接解析的 JSON，不长时间阻塞
-- `parse.tier = high`、`parse.created_parse_ids` 非空，状态为 pending、parsing 或 done
+- `parse.tier = standard`、`parse.created_parse_ids` 非空，状态为 pending、parsing 或 done
 - 最终 done 时，show JSON 中 `privacy = remote`，`via` 为 `remote` 或同 tier fallback 的 `local`
 - 最终 failed 时，show JSON 中 `error_code` 为 `parse_server_unavailable`、`engine_unavailable`、`tier_mismatch` 或其它结构化执行错误码
 - 不允许 fallback 到 `flash` 或其它 tier
@@ -1742,7 +1742,7 @@ mineru show parse <created_parse_id> --json
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier high --remote --pages 1~1 --force --wait 180 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --remote --pages 1~1 --force --wait 180 --json
 mineru show parse <created_parse_id> --json
 ```
 
@@ -1756,9 +1756,9 @@ mineru show parse <created_parse_id> --json
   - parse 和 show 均 exit code = 0，stdout 均为可直接解析的 JSON
   - 不复用旧的 done batch 作为唯一依据，JSON 中应体现新 parse 或 force 后结果
   - show JSON 中 `privacy = remote`
-  - remote 成功时 `via = remote`；remote 不可用但 local high 可用时允许 `via = local`
+  - remote 成功时 `via = remote`；remote 不可用但 local Standard 可用时允许 `via = local`
   - 后续普通 remote parse 不因 force 损坏缓存
-- 如果 remote 不支持 high，或 remote 和 local high 均不可用:
+- 如果 remote 不支持 Standard，或 remote 和 local Standard 均不可用:
   - exit code != 0
   - stdout 为可直接解析的 JSON error
   - 依据 `error.code` 判定，不依赖 `error.message` 文案
@@ -1770,7 +1770,7 @@ mineru show parse <created_parse_id> --json
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier high --remote --pages 1~1 --force --wait 180 --output "$MINERU_E2E_FIXTURE_DIR/output-dir/remote-output.md"
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --remote --pages 1~1 --force --wait 180 --output "$MINERU_E2E_FIXTURE_DIR/output-dir/remote-output.md"
 ```
 
 预期分支:
@@ -1780,7 +1780,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier high --remote --pages 1
   - 输出包含 `Written to` 或等价成功信息
   - stdout 不大量打印完整文档内容
   - 输出路径为命令指定路径
-- 如果 remote 和 local high 均不可用:
+- 如果 remote 和 local Standard 均不可用:
   - exit code != 0
   - 不创建空的成功输出文件
 - 不允许 fallback 到 `flash` 或其它 tier
@@ -1792,14 +1792,14 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier high --remote --pages 1
 
 ```bash
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier high --remote --pages 1~1 --force --wait 180 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --remote --pages 1~1 --force --wait 180 --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --json
 ```
 
 预期:
 
 - 第一条和第三条 local flash 命令 exit code = 0，tier = flash
-- 第二条按 PARSE-013C 的 remote/local fallback 分支判定，成功时 tier 必须为 high
+- 第二条按 PARSE-013C 的 remote/local fallback 分支判定，成功时 tier 必须为 standard
 - remote 成功或失败均不得污染 local flash 缓存
 - 第三条不应因为第二条 remote 失败而失败
 
@@ -1808,7 +1808,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wai
 命令:
 
 ```bash
-mineru config parsing-rules add "*/sample.pdf" --tier high --remote --pages 1~1 --name e2e-remote-rule --json
+mineru config parsing-rules add "*/sample.pdf" --tier standard --remote --pages 1~1 --name e2e-remote-rule --json
 mineru watch add "$MINERU_E2E_FIXTURE_DIR" --label e2e-remote-rule-watch --json
 mineru watch rescan "$MINERU_E2E_FIXTURE_DIR" --wait 60 --json
 mineru list parses --limit 20 --json
@@ -1825,9 +1825,9 @@ mineru config parsing-rules remove <rule_id>
 
 - add/watch/rescan/list/remove exit code = 0，JSON 可解析
 - parsing-rule 的 `remote` 字段用于规则命中后的自动解析策略，尤其是 watch 自动触发/后台解析；不要求用户主动 `mineru parse <path>` 在未传 `--remote` 时也按该规则上传远端
-- 规则命中的 parse record 应为 `tier = high`、`privacy = remote`
+- 规则命中的 parse record 应为 `tier = standard`、`privacy = remote`
 - remote 成功时 parse record 的 `via = remote`
-- remote 不可用但 local high 可用时允许 `via = local`；remote 和 local high 均不可用时 parse record 应为 failed，并记录结构化 `error_code`
+- remote 不可用但 local Standard 可用时允许 `via = local`；remote 和 local Standard 均不可用时 parse record 应为 failed，并记录结构化 `error_code`
 - 不允许规则任务 fallback 到 `flash` 或其它 tier
 - remove 后规则不再影响后续 watch 自动解析
 
@@ -1836,8 +1836,8 @@ mineru config parsing-rules remove <rule_id>
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.docx" --tier high --wait 60 --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.docx" --tier high --remote --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.docx" --tier standard --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.docx" --tier standard --remote --wait 60 --json
 ```
 
 预期:
@@ -1845,7 +1845,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.docx" --tier high --remote --wait 6
 - 两条命令均 exit code != 0，stdout 均为可直接解析的 JSON error
 - 第一条 `error.code = tier_unsupported_for_file_type`，`error.param = tier`
 - 第二条 `error.code = remote_unsupported_for_file_type`，`error.param = remote`
-- Office 文件只允许 local `flash`，不创建 high/remote parse record
+- Office 文件只允许 local `flash`，不创建 Standard/remote parse record
 - 不包含 Python traceback
 
 ### PARSE-014 非法 format
@@ -1920,7 +1920,7 @@ mineru read "doc:<short_id>/tier:flash/page:1" --json
 
 ### READ-002A 无 tier locator 读取最高缓存
 
-前置: PARSE-007A、PARSE-007B、PARSE-007C 已为同一 `sample.pdf` 的第 1 页生成 `medium`、`high`、`xhigh` 三种 done 缓存。
+前置: PARSE-007A、PARSE-007B、PARSE-007C 已为同一 `sample.pdf` 的第 1 页生成 `basic`、`standard`、`advanced` 三种 done 缓存。
 
 命令模板:
 
@@ -1931,7 +1931,7 @@ mineru read "doc:<short_id>" --json
 预期:
 
 - exit code = 0，stdout 为可直接解析的 JSON
-- 返回 `tier = xhigh`
+- 返回 `tier = advanced`
 - `request_scope.locator` 体现输入 locator 或规范化 locator
 - 命令只读取最高已缓存结果，不创建新的 parse record
 - 不包含 Python traceback
@@ -3390,7 +3390,7 @@ mineru server start
 命令:
 
 ```bash
-mineru config set parse_server.local.managed_tier high
+mineru config set parse_server.local.managed_tier standard
 mineru server restart
 mineru config get parse_server.local.managed_tier --json
 mineru config unset parse_server.local.managed_tier
@@ -3399,7 +3399,7 @@ mineru config unset parse_server.local.managed_tier
 预期:
 
 - 四条 exit code = 0
-- restart 后 get JSON 仍体现 `high`，并且 source 应体现 override 或等价覆盖来源
+- restart 后 get JSON 仍体现 `standard`，并且 source 应体现 override 或等价覆盖来源
 - unset 后恢复默认配置来源
 - 不包含 Python traceback
 
@@ -3644,9 +3644,9 @@ mineru server start
 - PARSE-006A force 默认输出不打印过程 status
 - PARSE-006B verbose 输出允许过程 status
 - PARSE-007 默认 tier 行为
-- PARSE-007A PDF local medium tier
-- PARSE-007B PDF local high tier
-- PARSE-007C PDF local xhigh tier
+- PARSE-007A PDF local basic tier
+- PARSE-007B PDF local standard tier
+- PARSE-007C PDF local advanced tier
 - PARSE-007D 旧 tier 名称不可用
 - PARSE-008 输出到文件
 - PARSE-010 limit 截断与 next_request
@@ -3654,7 +3654,7 @@ mineru server start
 - PARSE-012 no-marker
 - PARSE-013 remote 不接受 flash tier
 - PARSE-013A remote 默认 tier
-- PARSE-013A1 PDF remote high tier
+- PARSE-013A1 PDF remote standard tier
 - PARSE-013B remote no-wait
 - PARSE-013C remote force
 - PARSE-013D remote output
@@ -3669,7 +3669,7 @@ mineru server start
 - remote 路由必须通过 `show parse --json` 的 `privacy`、`via`、`tier` 验证，不能从 parse JSON 中推断。
 - 显式 quality tier 的 remote 请求在 remote 不可用时允许同 tier local fallback；未指定 tier 且 remote 无 quality tier 时应返回 `quality_tier_unavailable`。
 - remote/local fallback 不得改变 tier，也不得降级到 `flash`。
-- PARSE-013A1 是 remote high 硬性测试；remote 不可用或不支持 high 均记录为失败，不能静默 fallback 到 local 或其它 tier。
+- PARSE-013A1 是 remote standard 硬性测试；remote 不可用或不支持 standard 均记录为失败，不能静默 fallback 到 local 或其它 tier。
 - force/cache/no-wait 用例必须记录 parse id/status 是否符合预期。
 
 ### COVERAGE-007 read 边界、续读、image 与 context 补充
@@ -3859,7 +3859,7 @@ Blocked:
 Environment:
 - mineru version: <如果 help/status 输出能看到则填写，否则 unknown>
 - fixture dir: ...
-- quality tier available: medium/high/xhigh
-- remote high available: yes
+- quality tier available: basic/standard/advanced
+- remote Standard available: yes
 - pdf fixture source: ...
 ```

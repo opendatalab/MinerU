@@ -48,7 +48,7 @@ mineru parse <file> [flags]
 
 | Flag | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `--tier` | `flash` / `medium` / `high` / `xhigh` | 不传 | 解析 tier；省略时由服务端决定；语义见 [解析 Tier](../tiers.md) |
+| `--tier` | `flash` / `basic` / `standard` / `advanced` | 不传 | 解析 tier；省略时由服务端决定；语义见 [解析 Tier](../tiers.md) |
 | `-p, --pages` | range | 不传 | 分页文档的页码范围；`all` 表示全部页 |
 | `--after` | cursor | 不传 | 从服务端返回的 cursor 继续读取 |
 | `--limit` | int | `30000` | STDOUT 内容软字符上限 |
@@ -74,7 +74,7 @@ mineru parse <file> [flags]
 
 `mineru parse` 未指定 `--tier` 时使用默认选择策略。
 
-PDF/image 的默认选择策略通过当前目标 parse-server 的能力发现，按 [解析 Tier](../tiers.md) 定义的 `high` -> `xhigh` -> `medium` 顺序选择。如果找不到可用质量 tier，返回可解释错误。Office/HTML 归一为 `flash` 语义，详见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。文本文件不创建 parse 任务或 Middle JSON，显式请求返回 `parse_not_required`。
+PDF/image 的默认选择策略通过当前目标 parse-server 的能力发现，按 [解析 Tier](../tiers.md) 定义的 `standard` -> `advanced` -> `basic` 顺序选择。如果找不到可用质量 tier，返回可解释错误。Office/HTML 归一为 `flash` 语义，详见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。文本文件不创建 parse 任务或 Middle JSON，显式请求返回 `parse_not_required`。
 
 `flash` 只有在用户显式指定 `--tier flash` 时才作为最终解析结果返回。
 
@@ -153,7 +153,7 @@ Markdown 中的可视图片使用 `mineru read` 可读取的 block locator，不
 - `--no-wait`：立即返回任务状态。
 - 超过等待时间：返回可继续查询的状态，而不是丢失任务。
 
-缓存实体应落到解析后的实体 tier，例如 `medium`、`high` 或 `xhigh`。
+缓存实体应落到解析后的实体 tier，例如 `basic`、`standard` 或 `advanced`。
 
 ## 未决问题
 

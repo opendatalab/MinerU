@@ -75,7 +75,7 @@
   -> 输出到 STDOUT 或文件
 ```
 
-纯文本文件可以直接读取；Office 和 HTML 通常可本地 CPU 解析；PDF 和图片按 tier 路由到默认选择、`flash`、`medium`、`high` 或 `xhigh`。
+纯文本文件可以直接读取；Office 和 HTML 通常可本地 CPU 解析；PDF 和图片按 tier 路由到默认选择、`flash`、`basic`、`standard` 或 `advanced`。
 
 ## 5. parse 与 read
 
@@ -93,7 +93,7 @@ read(locator) = read existing parsed content by stable locator
 
 1. `mineru parse report.pdf`
 2. 从输出或 JSON 响应中拿到后续 locator
-3. `mineru read doc:ab12cd3/tier:medium/page:11`
+3. `mineru read doc:ab12cd3/tier:basic/page:11`
 
 ## 6. 与 mineru-kit 的关系
 

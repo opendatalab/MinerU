@@ -83,7 +83,7 @@
 
 - VLM 输出不出现归一化 bbox。
 - VLM 特有 block type 能被 renderer 和 Agent locator 识别。
-- 默认选择得到的 `high` 结果可以恢复为 `ParseResult`。
+- 默认选择得到的 `standard` 结果可以恢复为 `ParseResult`。
 
 ## Hybrid
 

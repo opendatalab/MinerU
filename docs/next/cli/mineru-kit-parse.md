@@ -113,7 +113,7 @@ local 模式支持：
 2. 可以只传 `--backend`
 3. 可以同时传 `--tier` 和 `--backend`
 4. 如果二者不兼容，直接报错
-5. `--tier` 与 `--backend` 都不传时，PDF/image 当前默认为 `high`
+5. `--tier` 与 `--backend` 都不传时，PDF/image 当前默认为 `standard`
 6. 单文件 Office/HTML 未指定 tier 时归一为 `flash`；显式指定质量 tier 时报错
 7. 多文件或目录输入按批量规则处理，Office/HTML 即使遇到质量 tier 也归一为 `flash`
 8. PDF/image 的 `flash` 只能显式指定：
@@ -133,7 +133,7 @@ remote 模式通过以下参数进入：
 1. `--remote` 与 `--remote-url` 互斥
 2. remote 模式允许传 `--tier`
 3. remote 模式禁止传 `--backend`
-4. remote 模式未传 `--tier` 时，PDF/image 使用目标服务的默认选择策略，按 `high` -> `xhigh` -> `medium` 选择
+4. remote 模式未传 `--tier` 时，PDF/image 使用目标服务的默认选择策略，按 `standard` -> `advanced` -> `basic` 选择
 5. remote 模式传了 `--tier` 时：
    - 服务提供该 tier，则按该 tier 解析
    - 服务不提供该 tier，则报错

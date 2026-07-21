@@ -95,10 +95,10 @@ def effective_local_tier_and_backend(tier: Tier | None, backend: str | None) -> 
     from ..parser.tier import backend_for_tier, resolve_tier_and_backend
 
     if tier is None and backend is None:
-        return "high", backend_for_tier("high")
+        return "standard", backend_for_tier("standard")
     resolved_tier, resolved_backend = resolve_tier_and_backend(tier=tier, backend=backend)
     if tier is None and backend is None:
-        resolved_backend = backend_for_tier("high")
+        resolved_backend = backend_for_tier("standard")
     return resolved_tier, resolved_backend
 
 

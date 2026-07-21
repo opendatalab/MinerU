@@ -38,13 +38,13 @@ mineru-kit models download --help
 ```
 or download all built-in model bundles:
 ```bash
-mineru-kit models download --tier high
+mineru-kit models download --tier standard
 ```
 > [!NOTE]
 >- Models are downloaded under `config.model.base_dir`. By default, this is `~/.mineru/models`.
 >- `mineru-kit models download` does not write model paths to `mineru.json`.
 >- If you need a custom model directory, set `model.base_dir` in `config.yaml` before downloading.
->- If you need to update model files, run `mineru-kit models download --tier high` again. Existing files in the same `model.base_dir` are incrementally reused by the provider SDK.
+>- If you need to update model files, run `mineru-kit models download --tier standard` again. Existing files in the same `model.base_dir` are incrementally reused by the provider SDK.
 >- `mineru-kit models download` must use a remote model source to perform a real download. If your current config sets `model.source: local`, this command temporarily treats it as `auto` for this invocation.
 >- MinerU marks a fully downloaded repository with an empty `.mineru_complete` file at its root. Repositories downloaded by required paths instead mark each completed model directory. A directory left by an older release or an interrupted download without its marker is checked through an incremental provider download before use. With `model.source: local`, such a directory is reported as not ready instead of accessing the network.
 
