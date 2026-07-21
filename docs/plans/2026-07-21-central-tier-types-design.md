@@ -14,7 +14,7 @@ Keep the existing `Tier`, `ServerTier`, and `ManagedServerTier` types in `mineru
 - `MANAGED_SERVER_TIERS: tuple[ManagedServerTier, ...] = ("basic", "standard")`
 - `MODEL_TIERS: tuple[ModelTier, ...] = ("basic", "standard")`
 - `TIERS: tuple[Tier, ...] = ("flash", "basic", "standard", "advanced")`
-- `TIER_ORDER: dict[Tier, int] = {tier: index for index, tier in enumerate(TIERS)}`
+- `TIER_ORDER: dict[Tier, int] = {"flash": 0, "basic": 1, "standard": 2, "advanced": 3}`
 - `TIERS_BY_SERVER_TIER: dict[ServerTier, tuple[Tier, ...]]`
 
 The request-tier mapping remains:
@@ -23,7 +23,7 @@ The request-tier mapping remains:
 - Basic server: Flash and Basic requests;
 - Standard server: Flash, Basic, Standard, and Advanced requests.
 
-Tuple definitions remain explicit rather than being derived dynamically from `Literal` annotations. `TIER_ORDER` is a convenience rank index derived from the canonical `TIERS` tuple, avoiding a second manually maintained tier ordering while preserving readable comparisons, sorting, and tolerant `.get(..., -1)` lookups.
+Tuple and mapping definitions remain explicit rather than being derived dynamically. The small amount of duplicated ordering in `TIER_ORDER` is intentional: it keeps rank semantics visible to static source analysis while preserving readable comparisons, sorting, and tolerant `.get(..., -1)` lookups.
 
 ## Migration
 
@@ -41,7 +41,7 @@ No compatibility aliases or old-module re-exports remain. This is an internal so
 
 Tests and static checks verify:
 
-1. All five canonical constants have the expected ordered values and mapping, and `TIER_ORDER` matches the indices of `TIERS`.
+1. All five canonical constants and the explicit `TIER_ORDER` mapping have the expected ordered values.
 2. API-server startup validation and request-tier expansion are unchanged.
 3. Managed-server configuration accepts only Basic and Standard.
 4. Model commands and model-repository selection still accept only Basic and Standard.
