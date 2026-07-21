@@ -103,8 +103,9 @@ $MINERU_HOME/doclib.endpoint.json
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "pid": 12345,
+  "server_id": "df971716-36c7-4e4d-b585-b798331ec7f4",
   "transports": [
     {
       "type": "uds",
@@ -121,6 +122,7 @@ $MINERU_HOME/doclib.endpoint.json
 规则:
 
 - 只写入实际成功绑定的 transports。
+- `server_id` 是每次 server 启动生成的随机 UUID，并由 `/server/status` 返回。
 - TCP 使用随机端口时，`base_url` 必须写入真实端口。
 - 文件写入应使用 atomic write: 先写临时文件，再 `replace`。
 - server shutdown / stop 时 best-effort 删除该文件。
@@ -170,14 +172,19 @@ DOCLIB_UDS_BASE_URL = "http://mineru"
 3. 否则读取 `$MINERU_HOME/doclib.endpoint.json`。
 4. endpoint 中同时存在 UDS 和 TCP 时，优先尝试 UDS。
 5. UDS 不存在、不可用或连接失败时，尝试 TCP。
-6. endpoint 不存在时，可以根据当前 config 推导默认 UDS / TCP endpoint 作为 fallback。
-7. 所有候选 endpoint 都失败时，抛 `ServerNotRunningError`。
+6. endpoint 不存在、无效或不包含可用 transport 时，不根据当前 config 推导 transport。
+7. 第一次使用候选 transport 前，通过 `/server/status` 校验其 `server_id` 与 endpoint 一致。
+8. 身份不匹配时继续尝试下一个 transport；所有候选均不匹配时抛出 `server_instance_mismatch`。
+9. 没有候选 endpoint 或所有候选 endpoint 都无法连接时，抛 `ServerNotRunningError`。
+
+显式 `socket_path` 或 `base_url` 代表调用方明确选择的 server，不执行 endpoint `server_id` 校验。
 
 CLI 的 `server status`、`server stop` 和业务命令都应使用同一套 resolver，不再依赖 socket 文件是否存在判断 server 是否运行。
 
 ### Server status
 
-状态模型中的 `http` 字段改为 `tcp`，CLI human-readable 输出也显示 `TCP`。
+状态模型中的 `http` 字段改为 `tcp`，CLI human-readable 输出也显示 `TCP`。状态中的 `server_id` 标识当前
+server 进程，并用于默认 endpoint discovery 的身份校验；`pid` 和 `mineru_home` 只用于诊断。
 
 `server status --json` 应继续返回:
 

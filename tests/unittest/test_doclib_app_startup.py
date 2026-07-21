@@ -2,6 +2,7 @@ import asyncio
 import logging
 import subprocess
 import tomllib
+import uuid
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -378,6 +379,7 @@ def test_server_status_reports_configured_socket_path(monkeypatch, tmp_path) -> 
 
     assert response.status_code == 200
     payload = response.json()
+    assert uuid.UUID(payload["server_id"])
     assert payload["mineru_home"]
     assert payload["version"] == __version__
     assert isinstance(payload["python_version"], str)

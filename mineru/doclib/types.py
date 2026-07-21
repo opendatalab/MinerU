@@ -591,6 +591,7 @@ class ErrorSummary(DoclibModel):
 class ServerStatusResponse(DoclibModel):
     running: bool
     pid: int | None = None
+    server_id: str = ""
     uptime_seconds: float | None = None
     mineru_home: str = ""
     version: str = ""

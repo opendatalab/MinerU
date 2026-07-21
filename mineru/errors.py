@@ -90,6 +90,7 @@ _ERROR_TYPE_MAP: dict[str, ErrorType] = {
     "scan_failed": "api_error",
     "service_unavailable": "api_error",
     "server_not_running": "api_error",
+    "server_instance_mismatch": "api_error",
     "server_busy": "api_error",
     "remote_timeout": "api_error",
     "remote_unreachable": "api_error",

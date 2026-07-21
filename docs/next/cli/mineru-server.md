@@ -52,6 +52,7 @@
 
 - `running`
 - `pid`
+- `server_id`
 - `uptime_seconds`
 - `mineru_home`
 - `socket_path`

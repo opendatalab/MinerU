@@ -407,7 +407,8 @@ mineru server status --json
 预期:
 
 - endpoint 文件存在，且 stdout 可解析为 JSON
-- endpoint JSON 至少包含 `version`、`pid`、`transports`
+- endpoint JSON 至少包含 `version=2`、`pid`、非空 `server_id`、`transports`
+- endpoint JSON 的 `server_id` 等于 status JSON 的 `server_id`
 - `transports` 非空，每个 transport 均包含 `type`
 - 默认 UDS 可用环境下，`transports` 至少包含 `{"type": "uds", "path": ...}`，且 path 位于测试 HOME
 - 如果当前环境使用 TCP transport，则对应项包含 `{"type": "tcp", "base_url": "http://127.0.0.1:<port>"}`
@@ -466,7 +467,7 @@ MAIN_MINERU_HOME="$MINERU_HOME"
 export MINERU_HOME="$HOME/mineru-e2e-test-stale-endpoint"
 mkdir -p "$MINERU_HOME"
 cat > "$MINERU_HOME/doclib.endpoint.json" <<'JSON'
-{"version":1,"pid":999999,"transports":[{"type":"tcp","base_url":"http://127.0.0.1:9"}]}
+{"version":2,"pid":999999,"server_id":"stale-server","transports":[{"type":"tcp","base_url":"http://127.0.0.1:9"}]}
 JSON
 mineru server status --json
 mineru server stop
@@ -480,6 +481,19 @@ export MINERU_HOME="$MAIN_MINERU_HOME"
 - stop exit code = 0
 - stop 输出 `Server is not running` 或等价信息
 - stop 后 stale endpoint 文件被 best-effort 清理
+
+### SERVER-016 endpoint server identity 校验
+
+前置:
+
+- 主测试 HOME 的 server 正在运行。
+- 使用独立 `MINERU_HOME`，并将主测试 HOME 的 endpoint 复制到该目录后修改 `server_id`。
+
+预期:
+
+- 默认 client 在发送业务请求前发现 `server_id` 不匹配。
+- 不向主测试 HOME 的 server 发送业务请求或 shutdown 请求。
+- 没有其他匹配 transport 时返回 `server_instance_mismatch`，或由 `server status` 表示当前 HOME 的 server 未运行。
 
 ## 4A. Telemetry 命令
 
@@ -3570,6 +3584,7 @@ mineru server start
 - SERVER-013 endpoint discovery 文件写入
 - SERVER-014 TCP-only fallback
 - SERVER-015 endpoint stale 清理
+- SERVER-016 endpoint server identity 校验
 - SERVER-012 error summary 与 recent logs
 - SERVER-010 停止 server
 

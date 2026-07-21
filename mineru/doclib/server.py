@@ -289,6 +289,7 @@ class DoclibServer(AsyncDoclibInterface):
         return ServerStatusResponse(
             running=True,
             pid=getattr(self.state, "pid", os.getpid()),
+            server_id=getattr(self.state, "server_id", ""),
             uptime_seconds=uptime,
             mineru_home=getattr(self.state, "mineru_home", ""),
             version=__version__,

@@ -21,8 +21,16 @@ class EndpointTransport:
     base_url: str | None = None
 
 
+@dataclass(frozen=True)
+class EndpointInfo:
+    version: int
+    pid: int | None
+    server_id: str
+    transports: list[EndpointTransport]
+
+
 DOCLIB_UDS_BASE_URL = "http://mineru"
-ENDPOINT_VERSION = 1
+ENDPOINT_VERSION = 2
 
 
 def uds_available() -> bool:
@@ -38,12 +46,13 @@ def default_endpoint_path(cfg: Config | None = None) -> str:
     return os.path.expanduser(cfg.doclib.endpoint_path)
 
 
-def write_endpoint_file(path: str | os.PathLike[str], *, pid: int, transports: list[EndpointTransport]) -> None:
+def write_endpoint_file(path: str | os.PathLike[str], *, pid: int, server_id: str, transports: list[EndpointTransport]) -> None:
     endpoint_path = Path(path).expanduser()
     endpoint_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "version": ENDPOINT_VERSION,
         "pid": pid,
+        "server_id": server_id,
         "transports": [_transport_to_payload(transport) for transport in transports],
     }
     tmp_path = endpoint_path.with_name(f"{endpoint_path.name}.tmp")
@@ -62,26 +71,26 @@ def remove_endpoint_file(path: str | os.PathLike[str]) -> None:
         pass
 
 
-def read_endpoint_file(path: str | os.PathLike[str]) -> list[EndpointTransport]:
+def read_endpoint_file(path: str | os.PathLike[str]) -> EndpointInfo | None:
     endpoint_path = Path(path).expanduser()
     try:
         payload = json.loads(endpoint_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return []
+        return None
+    if not isinstance(payload, dict):
+        return None
+    version = payload.get("version")
+    pid = payload.get("pid")
+    server_id = payload.get("server_id")
     transports = payload.get("transports")
-    if not isinstance(transports, list):
-        return []
-    return [_parse_transport(item) for item in transports if isinstance(item, dict)]
-
-
-def config_transports(cfg: Config | None = None) -> list[EndpointTransport]:
-    cfg = config if cfg is None else cfg
-    transports: list[EndpointTransport] = []
-    if cfg.doclib.resolved_uds_enabled and uds_available():
-        transports.append(EndpointTransport(type="uds", path=os.path.expanduser(cfg.doclib.uds.path)))
-    if cfg.doclib.resolved_tcp_enabled:
-        transports.append(EndpointTransport(type="tcp", base_url=f"http://{cfg.doclib.tcp.host}:{cfg.doclib.tcp.port}"))
-    return transports
+    if version != ENDPOINT_VERSION or not isinstance(server_id, str) or not server_id or not isinstance(transports, list):
+        return None
+    return EndpointInfo(
+        version=version,
+        pid=pid if isinstance(pid, int) and not isinstance(pid, bool) and pid > 0 else None,
+        server_id=server_id,
+        transports=[_parse_transport(item) for item in transports if isinstance(item, dict)],
+    )
 
 
 def _transport_to_payload(transport: EndpointTransport) -> dict[str, str]:
@@ -104,8 +113,8 @@ def _parse_transport(item: dict[str, Any]) -> EndpointTransport:
 __all__ = [
     "DOCLIB_UDS_BASE_URL",
     "ENDPOINT_VERSION",
+    "EndpointInfo",
     "EndpointTransport",
-    "config_transports",
     "default_endpoint_path",
     "read_endpoint_file",
     "remove_endpoint_file",
