@@ -57,6 +57,11 @@ _STANDARD_REQUIRED_MODULES_BY_PLATFORM = {
     "win32": ["lmdeploy", "qwen_vl_utils"],
 }
 _APPLE_SILICON_STANDARD_REQUIRED_MODULES = ["mlx", "mlx_vlm"]
+_RUNTIME_EXTRA_BY_TIER = {
+    "basic": "basic",
+    "standard": "standard",
+    "advanced": "standard",
+}
 
 
 class TierDependencyError(RuntimeError):
@@ -65,10 +70,11 @@ class TierDependencyError(RuntimeError):
         self.missing_modules = missing_modules
         missing = ", ".join(missing_modules)
         package_name = installed_distribution_name()
+        runtime_extra = _RUNTIME_EXTRA_BY_TIER.get(tier, "standard")
         super().__init__(
             f"Parse server cannot start for tier '{tier}'; missing runtime dependencies: {missing}. "
             f"Install optional dependencies for this tier in the same Python environment as MinerU, "
-            f"for example: pip install '{package_name}[{tier}]'."
+            f"for example: pip install '{package_name}[{runtime_extra}]'."
         )
 
 

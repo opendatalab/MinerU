@@ -133,7 +133,7 @@ P0 不做基于启发式的自动提示或自动排队升级。watch 使用 `fla
 
 `advanced` 是当前公开 tier 中最高的本地/自部署档位。
 
-它适合极高质量要求、专家批处理或自部署服务。`advanced` 与 `standard` 的本地硬件要求相同，也需要 VLM 相关 runtime 依赖；区别是 `advanced` 会消耗更多算力，通常需要更长解析时间，并可能带来更高运行成本。用户主动指定 `--tier advanced`，或目标 parse-server 能力发现只暴露/优先暴露 `advanced` 时，系统可以使用该 tier。
+它适合极高质量要求、专家批处理或自部署服务。`advanced` 与 `standard` 的本地硬件要求相同，复用 `mineru[standard]` extra 和 Standard 模型集；区别是 `advanced` 会消耗更多推理算力，通常需要更长解析时间，并可能带来更高运行成本。准备本地 Advanced 环境时使用 `mineru-kit models download --tier standard`。用户主动指定 `--tier advanced`，或目标 parse-server 能力发现只暴露/优先暴露 `advanced` 时，系统可以使用该 tier。
 
 ## 8. 隐私优先与质量优先
 

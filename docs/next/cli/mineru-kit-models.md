@@ -12,7 +12,7 @@
 
 第一阶段目标只有三个:
 
-- 按 tier 或模型仓库下载模型
+- 按模型 tier 或模型仓库下载模型
 - 查看当前模型配置和 readiness
 - 校验模型仓库关键路径
 
@@ -51,18 +51,18 @@ model:
 
 ### 3.1 `mineru-kit models download`
 
-下载指定模型仓库，或下载某个 tier 需要的模型仓库。
+下载指定模型仓库，或下载某个模型 tier 需要的模型仓库。
 
 ```bash
 mineru-kit models download <repo> [flags]
-mineru-kit models download --tier <flash|basic|standard|advanced> [flags]
+mineru-kit models download --tier <basic|standard> [flags]
 ```
 
 参数:
 
 | Flag | 简写 | 类型 | 默认 | 说明 |
 |------|------|------|------|------|
-| `--tier` | - | `flash \| basic \| standard \| advanced` | - | 按 tier 下载所需模型 |
+| `--tier` | - | `basic \| standard` | - | 按模型 tier 下载所需模型 |
 | `--source` | `-s` | `auto \| huggingface \| modelscope` | 配置值 | 本次下载源 |
 | `--verbose` | `-v` | bool | false | 输出详细路径 |
 
@@ -70,7 +70,7 @@ mineru-kit models download --tier <flash|basic|standard|advanced> [flags]
 
 - repo 位置参数与 `--tier` 互斥
 - 不带 repo 且不带 `--tier` 会报错
-- `--tier flash` 不需要模型，返回成功
+- `--tier` 只接受 `basic` 和 `standard`；Flash 不需要模型，Advanced 复用 Standard
 - `--source` 不支持 `local`
 - 如果当前配置为 `model.source: local`，显式 download 会临时按 `auto` 解析远端源，不改写配置
 - 下载目标固定为 `config.model.base_dir` 下的 repo local dir
@@ -80,12 +80,12 @@ mineru-kit models download --tier <flash|basic|standard|advanced> [flags]
 - `PDF-Extract-Kit-1.0`
 - `MinerU2.5-Pro-2605-1.2B`
 
-Tier 到 repo 的映射:
+模型 tier 到 repo 的映射:
 
-- `flash`: 不需要模型
 - `basic`: `PDF-Extract-Kit-1.0`
 - `standard`: `PDF-Extract-Kit-1.0` + `MinerU2.5-Pro-2605-1.2B`
-- `advanced`: `PDF-Extract-Kit-1.0` + `MinerU2.5-Pro-2605-1.2B`
+
+解析 Tier 中的 Flash 不进入模型管理流程；Advanced 使用 Standard 模型集。
 
 示例:
 
@@ -111,7 +111,7 @@ mineru-kit models show
 - `model.base_dir` 和来源
 - `model.source` 和来源
 - 每个 repo 的 local dir 和 readiness
-- 每个 tier 需要的 repo 集合
+- Basic 和 Standard 模型 tier 需要的 repo 集合
 
 第一阶段不支持 `--json`。
 
@@ -122,14 +122,14 @@ mineru-kit models show
 ```bash
 mineru-kit models verify
 mineru-kit models verify <repo>
-mineru-kit models verify --tier <flash|basic|standard|advanced>
+mineru-kit models verify --tier <basic|standard>
 ```
 
 规则:
 
 - 默认校验全部 repo
 - repo 位置参数与 `--tier` 互斥
-- `--tier flash` 直接成功
+- `--tier` 只接受 `basic` 和 `standard`
 - 不是单纯目录存在性检查，还会检查 registry 中声明的关键路径
 - 第一阶段不做 hash 级完整性校验
 

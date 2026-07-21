@@ -178,6 +178,14 @@ def test_tier_runtime_options_map_hybrid_effort() -> None:
     }
 
 
+def test_advanced_dependency_error_recommends_standard_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(parser_tier, "installed_distribution_name", lambda: "mineru")
+
+    error = parser_tier.TierDependencyError("advanced", ["vllm"])
+
+    assert "pip install 'mineru[standard]'" in str(error)
+
+
 def test_public_tier_literals_match_product_contract() -> None:
     from mineru.parser.tier import runtime_options_for_tier
 

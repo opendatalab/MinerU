@@ -127,9 +127,9 @@ Optional dependency groups become:
 
 - `mineru[basic]` for the Basic runtime dependency set
 - `mineru[standard]` for Basic plus accelerated/VLM dependencies
-- `mineru[advanced]` for the same dependency family required by Advanced
+- Advanced reuses `mineru[standard]`; no separate Advanced extra is exposed
 
-Test, all-in-one, Docker, and documentation references use the renamed extras. Runtime dependency errors recommend the new extra matching the requested public Tier.
+Test, all-in-one, Docker, and documentation references use the renamed extras. Runtime dependency errors recommend Basic for Basic, and Standard for both Standard and Advanced.
 
 ## Documentation Rules
 

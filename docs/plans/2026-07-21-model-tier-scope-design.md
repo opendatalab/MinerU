@@ -11,7 +11,7 @@ Keep the four public parsing tiers (`flash`, `basic`, `standard`, and `advanced`
 
 The project exposes only `basic` and `standard` model-runtime extras. The `advanced` extra is removed because Advanced uses the same dependencies as Standard. Test dependencies use `mineru[standard]`.
 
-Users preparing Advanced parsing install `mineru[standard]`; no compatibility alias for `mineru[advanced]` is retained.
+Users preparing Advanced parsing install `mineru[standard]`; no separate Advanced compatibility extra is retained.
 
 ## Model Registry
 

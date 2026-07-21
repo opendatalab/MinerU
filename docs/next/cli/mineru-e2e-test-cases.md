@@ -58,7 +58,7 @@
   - `$MINERU_E2E_FIXTURE_DIR/no-read.pdf`，权限不可读文件；若平台无法稳定制造权限场景，可标记相关用例 BLOCKED。
   - `$MINERU_E2E_FIXTURE_DIR/output-dir/`，用于输出文件测试的目录。
 - 测试环境允许启动本地 doclib server。
-- 测试环境必须安装 `advanced` extra，以覆盖本地 `basic`、`standard`、`advanced` quality parse-server；默认 tier 相关用例应验证本地 quality tier 可用，不再按缺少本地 quality tier 的预期失败分支判定。
+- 测试环境必须安装 `standard` extra，以覆盖本地 `basic`、`standard`、`advanced` quality parse-server；默认 tier 相关用例应验证本地 quality tier 可用，不再按缺少本地 quality tier 的预期失败分支判定。
 - MinerU 的公开 tier 只有 `flash`、`basic`、`standard`、`advanced`；默认 quality tier 选择顺序为 `standard`、`advanced`、`basic`，已缓存结果的读取顺序为 `advanced`、`standard`、`basic`、`flash`。
 - 显式指定 quality tier 的 remote 请求应按 remote 成功、remote 失败后同 tier local fallback、remote 与 local 均不可用三个分支判定；不得 fallback 到 `flash`。未指定 tier 时需要先从 remote 能力中按 `standard`、`advanced`、`basic` 选择默认值，无法选择时返回 `quality_tier_unavailable`。
 - PARSE-013A1 是 remote Standard 硬性测试，remote parse-server 不可用或不支持 Standard 均记录为失败。
@@ -88,12 +88,12 @@ rm -rf .venv
 uv venv .venv
 source .venv/bin/activate
 cd ~/MinerU-Repo
-uv pip install ".[advanced]"
+uv pip install ".[standard]"
 cd ~/mineru-e2e-test
 mineru --help
 ```
 
-当前仓库的 `advanced` extra 会依次包含 `standard` 和 `basic` extra，因此上述安装用于覆盖全部本地 quality tier。
+当前仓库以 `standard` extra 覆盖 Standard 和 Advanced 的共同 runtime 依赖，并通过其包含的 `basic` extra 覆盖 Basic。
 
 安装完成后，`mineru` 应由 `pyproject.toml` 的脚本入口直接提供，不需要配置 shell alias。
 
@@ -101,20 +101,20 @@ mineru --help
 
 ### 2.2.1 本地模型准备
 
-本地 managed `basic`、`standard` 和 `advanced` 均要求模型文件已下载到 `config.model.base_dir`。模型准备属于测试环境 setup，不属于正式 `mineru` CLI case。
+本地 managed `basic`、`standard` 和 `advanced` 均要求模型文件已下载到 `config.model.base_dir`。模型管理只区分 Basic 和 Standard 两套模型；Advanced 复用 Standard。模型准备属于测试环境 setup，不属于正式 `mineru` CLI case。
 
 在执行需要本地 quality tier 的 case 前，测试环境应先准备并验证目标模型:
 
 ```bash
 cd ~/mineru-e2e-test
 source .venv/bin/activate
-mineru-kit models download --tier advanced
-mineru-kit models verify --tier advanced
+mineru-kit models download --tier standard
+mineru-kit models verify --tier standard
 ```
 
 说明:
 
-- `advanced` 覆盖 `standard` 和 `basic` 所需模型。
+- Standard 模型集覆盖 Advanced，并包含 Basic 所需模型。
 - 如果需要验证模型未准备好的 config 拦截分支，应使用新的隔离 `MINERU_HOME`，或在测试开始前清空该隔离 HOME 下的 `models/` 目录。
 - 正式 case 执行阶段仍只调用 `mineru ...` 命令。
 

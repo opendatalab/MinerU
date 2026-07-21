@@ -362,7 +362,7 @@ The following examples assume the current install tool is `uv tool`. If `mineru`
 
 Installing extras with `uv tool install --force --prerelease allow` can reinstall or upgrade the `mineru` package. Restart the MinerU server after installing extras so the CLI client, doclib server, and managed parse server use the same installed version.
 
-Managed local `basic`, `standard`, and `advanced` all require downloaded model files. Download the target tier models before switching `parse_server.local.mode` to `managed`.
+Managed local `basic`, `standard`, and `advanced` all require downloaded model files. Model management has two model tiers: Basic and Standard. Advanced reuses the Standard dependencies and model set.
 
 Enable managed local parsing for `basic`:
 
@@ -391,9 +391,9 @@ mineru server status --json
 Enable managed local parsing for `advanced`:
 
 ```bash
-uv tool install --force --prerelease allow "mineru[advanced]"
-mineru-kit models download --tier advanced
-mineru-kit models verify --tier advanced
+uv tool install --force --prerelease allow "mineru[standard]"
+mineru-kit models download --tier standard
+mineru-kit models verify --tier standard
 mineru server restart
 mineru config set parse_server.local.managed_tier advanced
 mineru config set parse_server.local.mode managed

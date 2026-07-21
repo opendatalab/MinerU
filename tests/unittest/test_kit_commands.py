@@ -244,6 +244,37 @@ def test_models_download_tier_basic(monkeypatch: Any) -> None:
     assert "Downloaded models for tier basic" in result.output
 
 
+def test_models_download_tier_standard(monkeypatch: Any) -> None:
+    captured: list[str] = []
+
+    def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
+        captured.append(repo.name)
+        return Path("/tmp/models") / repo.local_name
+
+    monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
+
+    result = runner.invoke(app, ["models", "download", "--tier", "standard"])
+
+    assert result.exit_code == 0
+    assert captured == ["PDF-Extract-Kit-1.0", "MinerU2.5-Pro-2605-1.2B"]
+    assert "Downloaded models for tier standard" in result.output
+
+
+@pytest.mark.parametrize("tier", ["flash", "advanced"])
+def test_model_registry_rejects_non_model_tiers(tier: str) -> None:
+    with pytest.raises(ValueError, match="Supported model tiers: basic, standard"):
+        models.model_repos_for_tier(tier)
+
+
+@pytest.mark.parametrize("command", ["download", "verify"])
+@pytest.mark.parametrize("tier", ["flash", "advanced"])
+def test_models_commands_reject_non_model_tiers(command: str, tier: str) -> None:
+    result = runner.invoke(app, ["models", command, "--tier", tier])
+
+    assert result.exit_code == 1
+    assert "Supported model tiers: basic, standard" in " ".join(result.output.split())
+
+
 def test_models_download_repo_uses_explicit_source(monkeypatch: Any) -> None:
     captured: dict[str, Any] = {}
 
@@ -290,6 +321,11 @@ def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
     assert "Config exists:" in show_result.output
     assert "PDF-Extract-Kit-1.0: ready" in show_result.output
     assert "MinerU2.5-Pro-2605-1.2B: ready" in show_result.output
+    assert "Model tiers:" in show_result.output
+    assert "  basic:" in show_result.output
+    assert "  standard:" in show_result.output
+    assert "  flash:" not in show_result.output
+    assert "  advanced:" not in show_result.output
     assert verify_result.exit_code == 0
     assert "PDF-Extract-Kit-1.0: ok" in verify_result.output
     assert "MinerU2.5-Pro-2605-1.2B: ok" in verify_result.output

@@ -79,6 +79,15 @@ def test_basic_extra_includes_preflight_runtime_dependencies() -> None:
     assert missing == []
 
 
+def test_standard_is_the_highest_model_runtime_extra() -> None:
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    extras = pyproject["project"]["optional-dependencies"]
+
+    assert "advanced" not in extras
+    assert "mineru[standard]" in extras["test"]
+
+
 @pytest.mark.parametrize(
     ("key", "value"),
     [
@@ -127,6 +136,25 @@ def test_config_set_managed_tier_rejects_missing_models(monkeypatch: pytest.Monk
     assert "mineru-kit models download --tier basic" in payload["error"]["message"]
     assert config_response.json()["value"] == "standard"
     assert config_response.json()["source"] == "default"
+
+
+def test_config_set_managed_advanced_reuses_standard_models(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def _skip_background_task(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
+    monkeypatch.setattr("mineru.doclib.server.ensure_tier_runtime_dependencies", lambda tier: None)
+    monkeypatch.setattr(model_registry.config.model, "base_dir", str(tmp_path / "models"))
+
+    cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
+    with TestClient(doclib_app.create_app(cfg)) as client:
+        response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "advanced"})
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "parse_server_model_not_ready"
+    assert "Local managed tier 'advanced'" in payload["error"]["message"]
+    assert "mineru-kit models download --tier standard" in payload["error"]["message"]
 
 
 def test_config_set_managed_mode_rejects_missing_models_for_current_tier(

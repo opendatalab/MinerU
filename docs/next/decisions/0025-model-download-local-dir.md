@@ -246,24 +246,22 @@ PDF_EXTRACT_KIT.pytorch_paddle.path(det_model_name).ensure()
 PDF_EXTRACT_KIT.pytorch_paddle.path(rec_model_name).ensure()
 ```
 
-### 6. Tier 到模型仓库的映射
+### 6. 模型 Tier 到模型仓库的映射
 
-模型下载命令不再使用 `pipeline` / `vlm` bundle。需要下载哪些模型由 tier 决定:
+模型下载命令不再使用 `pipeline` / `vlm` bundle。模型管理只保留实际不同的 Basic 和 Standard 两套模型:
 
 ```python
 REPOS_FOR_TIER = {
-    "flash": (),
     "basic": (PDF_EXTRACT_KIT,),
     "standard": (PDF_EXTRACT_KIT, MINERU_2_5_PRO_2605_1_2B),
-    "advanced": (PDF_EXTRACT_KIT, MINERU_2_5_PRO_2605_1_2B),
 }
 ```
 
 语义:
 
-- `flash` 不需要本地模型下载。
 - `basic` 需要 `PDF-Extract-Kit-1.0`。
-- `standard` 和 `advanced` 需要 `PDF-Extract-Kit-1.0` 与 `MinerU2.5-Pro-2605-1.2B`。
+- `standard` 需要 `PDF-Extract-Kit-1.0` 与 `MinerU2.5-Pro-2605-1.2B`。
+- 解析 Tier 中的 `flash` 不进入模型 registry；`advanced` 在调用前显式复用 Standard 模型集。
 
 repo registry 不反向依赖 tier。tier 只选择需要的 repo 集合，repo 自身仍只描述模型仓库。
 
@@ -349,8 +347,8 @@ def verify_model_tier(tier: Tier) -> ModelReadyResult:
 
 - `model.source=local` 时禁止下载，只做 ready 检查。
 - `mineru-kit models verify <repo>` 检查指定 repo 的完整 required paths。
-- `mineru-kit models verify --tier <tier>` 检查该 tier 需要的 repo 集合。
-- managed local parse server 的 tier readiness 检查基于 `REPOS_FOR_TIER`。
+- `mineru-kit models verify --tier <tier>` 只接受 Basic/Standard，并检查对应 repo 集合。
+- managed local parse server 的 tier readiness 检查在 Advanced→Standard 归一化后调用 `REPOS_FOR_TIER`。
 - partial download 只验证本次请求 paths，不要求整仓 ready。
 - 最终文件存在时视为 ready；Hugging Face 和 ModelScope 都先写临时文件，完成后再移动到最终路径。
 - `full` 模式在 ModelRepo 根目录写入空白 `.mineru_complete`，表示整仓 ready；`required_paths` 模式在每个目录型 ModelPath 下分别写入 marker，文件型 ModelPath 仍按最终文件是否存在判断。
@@ -395,7 +393,6 @@ def verify_model_tier(tier: Tier) -> ModelReadyResult:
 ```bash
 mineru-kit models download --tier basic
 mineru-kit models download --tier standard
-mineru-kit models download --tier advanced
 mineru-kit models download PDF-Extract-Kit-1.0
 mineru-kit models download MinerU2.5-Pro-2605-1.2B
 ```
@@ -405,7 +402,7 @@ mineru-kit models download MinerU2.5-Pro-2605-1.2B
 - repo 参数和 `--tier` 二选一。
 - 两者都不传时报错，不默认下载大模型。
 - 两者同时出现时报错。
-- `--tier flash` 成功 no-op，并提示 flash 不需要本地模型下载。
+- `--tier` 只接受 `basic` 和 `standard`；Flash 不需要模型，Advanced 复用 Standard。
 - 不支持 repo alias；repo 参数只接受 registry 中的模型仓库主名。错误时列出可用 repo 名。
 - 继续保留 `--source`。
 - `--source` 只接受 `auto`、`huggingface`、`modelscope`；不接受 `local`。
@@ -434,7 +431,7 @@ source 解析规则:
 - `model.source`
 - `MINERU_MODEL_SOURCE`
 - 每个模型仓库的 expected local dir
-- 每个 tier 需要的模型仓库
+- Basic 和 Standard 模型 tier 需要的模型仓库
 - readiness 状态
 
 `mineru-kit models verify` 使用与 download 相同的目标选择语义:
@@ -507,7 +504,7 @@ mineru-kit models verify
 
 - `pipeline` / `vlm` 是旧实现分组名，不是模型仓库名。
 - 用户关心的是准备某个 tier 所需模型，或下载某个具体模型仓库。
-- 继续暴露 bundle 会让 `basic/standard/advanced` 与模型准备动作之间多一层间接概念。
+- 继续暴露 bundle 会让 Basic/Standard 模型集与模型准备动作之间多一层间接概念。
 - 当前实际远端模型仓库只有两个，用真实仓库名表达更直接。
 
 ### 方案 G: 为每个 repo 编写强类型路径类或 decorator 语法
@@ -588,5 +585,5 @@ PDF_EXTRACT_KIT.pp_doclayout_v2.ensure()
    - partial download 只验证请求路径
    - `ModelRepo.path()` 和 `ModelPath.path()` 支持更细粒度 partial download
    - `mineru-kit models download` 的 repo 参数与 `--tier` 互斥
-   - `mineru-kit models download --tier flash` 为 no-op
+   - `mineru-kit models download/verify --tier` 只接受 `basic` 和 `standard`
    - `mineru-kit models verify` 检查 repo required paths 和 tier 所需 repo 集合

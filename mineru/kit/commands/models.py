@@ -5,13 +5,14 @@ import os
 import typer
 
 from ...config import config, get_config_file_exists, get_config_file_path, get_config_source
-from ...types import validate_tier
 from ...utils.model_registry import (
     MODEL_REPOS,
+    MODEL_TIERS,
     ModelRepo,
     get_model_repo,
     model_repo_names,
     model_repos_for_tier,
+    validate_model_tier,
 )
 from ...utils.models_download_utils import (
     DOWNLOAD_MODEL_SOURCES,
@@ -43,7 +44,7 @@ def _select_target_repos(repo_name: str | None, tier: str | None) -> tuple[Model
 
     if tier is not None:
         try:
-            resolved_tier = validate_tier(tier)
+            resolved_tier = validate_model_tier(tier)
         except ValueError as exc:
             exit_with_message("invalid_request", str(exc), "tier")
         return model_repos_for_tier(resolved_tier)
@@ -63,16 +64,13 @@ def _format_repo_status(repo: ModelRepo) -> str:
 @app.command("download")
 def download_cmd(
     repo: str | None = typer.Argument(None, help="Model repo: PDF-Extract-Kit-1.0 or MinerU2.5-Pro-2605-1.2B"),
-    tier: str | None = typer.Option(None, "--tier", help="Tier to prepare: flash, basic, standard, or advanced"),
+    tier: str | None = typer.Option(None, "--tier", help="Model tier to prepare: basic or standard"),
     source: str | None = typer.Option(None, "--source", "-s", help="Model source: auto, huggingface, or modelscope"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ) -> None:
     """Download a model repo or the repos required by a tier."""
     normalized_source = _validate_download_source(source)
     repos = _select_target_repos(repo, tier)
-    if tier is not None and not repos:
-        print_success("No model download required for tier flash.")
-        return
 
     for target_repo in repos:
         try:
@@ -106,9 +104,9 @@ def show_cmd() -> None:
     for repo in MODEL_REPOS:
         print_info(f"  {_format_repo_status(repo)}")
 
-    print_info("Tiers:")
-    for tier in ("flash", "basic", "standard", "advanced"):
-        repos = model_repos_for_tier(validate_tier(tier))
+    print_info("Model tiers:")
+    for tier in MODEL_TIERS:
+        repos = model_repos_for_tier(tier)
         names = ", ".join(repo.name for repo in repos) or "(none)"
         print_info(f"  {tier}: {names}")
 
@@ -116,13 +114,10 @@ def show_cmd() -> None:
 @app.command("verify")
 def verify_cmd(
     repo: str | None = typer.Argument(None, help="Optional model repo name"),
-    tier: str | None = typer.Option(None, "--tier", help="Optional tier: flash, basic, standard, or advanced"),
+    tier: str | None = typer.Option(None, "--tier", help="Optional model tier: basic or standard"),
 ) -> None:
     """Verify local model repos and required paths."""
     repos = MODEL_REPOS if repo is None and tier is None else _select_target_repos(repo, tier)
-    if tier == "flash":
-        print_success("flash: ok")
-        return
 
     failures = 0
     for target_repo in repos:
