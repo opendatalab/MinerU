@@ -25,11 +25,7 @@ Definitions remain explicit rather than deriving tuples dynamically from `Litera
 
 ## Migration
 
-Replace the old names everywhere:
-
-- `MANAGED_PARSE_SERVER_TIERS` becomes `MANAGED_SERVER_TIERS`;
-- `API_SERVER_TIERS` and `_API_SERVER_TIERS` both become `SERVER_TIERS`;
-- `_REQUEST_TIERS_BY_SERVER_TIER` becomes `TIERS_BY_SERVER_TIER`.
+Replace the old names everywhere: the managed-server collection becomes `MANAGED_SERVER_TIERS`, both duplicated API-server collections become `SERVER_TIERS`, and the request-tier expansion mapping becomes `TIERS_BY_SERVER_TIER`.
 
 Move `ModelTier` and `MODEL_TIERS` out of `mineru/utils/model_registry.py`. Consumers import them directly from `mineru/types.py`; the registry no longer re-exports them.
 
@@ -47,5 +43,5 @@ Tests and static checks verify:
 2. API-server startup validation and request-tier expansion are unchanged.
 3. Managed-server configuration accepts only Basic and Standard.
 4. Model commands and model-repository selection still accept only Basic and Standard.
-5. The old names no longer occur in tracked code or documentation.
+5. The superseded identifiers no longer occur in tracked code or documentation.
 6. Ruff, import checks, and the tracked unit-test suite remain green.
