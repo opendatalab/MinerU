@@ -113,7 +113,7 @@ P0 不做基于启发式的自动提示或自动排队升级。watch 使用 `fla
 
 `basic` 的核心价值是本地隐私解析：当用户不接受把文档发送到远端解析，同时硬件又不是特别高端时，`basic` 应成为本地可用的最佳默认方案。
 
-本地 managed `basic`、`standard` 和 `advanced` parse server 都要求至少 16GB 总内存。低于该基线时，不建议启用本地 managed 质量 tier；应考虑远端解析，或在用户明确接受低质量时显式使用 `flash`。
+本地 managed parse server 只有 `basic` 和 `standard` 两个启动能力上限，两者都要求至少 16GB 总内存。Standard 服务同时提供 Standard 和 Advanced 请求能力。低于该基线时，不建议启用本地 managed 质量 tier；应考虑远端解析，或在用户明确接受低质量时显式使用 `flash`。
 
 ## 6. Standard
 
@@ -133,7 +133,7 @@ P0 不做基于启发式的自动提示或自动排队升级。watch 使用 `fla
 
 `advanced` 是当前公开 tier 中最高的本地/自部署档位。
 
-它适合极高质量要求、专家批处理或自部署服务。`advanced` 与 `standard` 的本地硬件要求相同，复用 `mineru[standard]` extra 和 Standard 模型集；区别是 `advanced` 会消耗更多推理算力，通常需要更长解析时间，并可能带来更高运行成本。准备本地 Advanced 环境时使用 `mineru-kit models download --tier standard`。用户主动指定 `--tier advanced`，或目标 parse-server 能力发现只暴露/优先暴露 `advanced` 时，系统可以使用该 tier。
+它适合极高质量要求、专家批处理或自部署服务。`advanced` 与 `standard` 的本地硬件要求相同，复用 `mineru[standard]` extra 和 Standard 模型集；区别是 `advanced` 会消耗更多推理算力，通常需要更长解析时间，并可能带来更高运行成本。准备本地 Advanced 环境时安装 Standard extra、使用 `mineru-kit models download --tier standard`，并以 Standard 启动 parse-server；解析请求再显式选择 `--tier advanced`。Advanced 不需要也不支持独立的服务启动配置。
 
 ## 8. 隐私优先与质量优先
 

@@ -85,7 +85,7 @@
 - 对普通用户显示 `tier`，不要把 `backend` 作为主选择项。
 - `backend` 只应暴露在 kit 或核心开发层，例如 `mineru-kit parse --backend`。
 - Tool SDK 的直接 parser 可以接受专家 `backend` 参数；API-backed parser、Doclib SDK、doclib server API 和 v1 API 不应要求用户理解或选择 `backend`。
-- `mineru-kit api-server` 启动参数应优先使用 `--tier`；也可以暴露高级 `--backend` 覆盖，用于选择该进程内部加载的 parser backend。`--backend` 公开使用 `hybrid-*`，旧 `pipeline` / `vlm-*` 仅作为隐藏兼容输入。启动后的 HTTP API 只暴露 `tier`。
+- `mineru-kit api-server` 使用单值 `--tier flash|basic|standard` 表示能力上限，不暴露 `--backend`；启动后的 HTTP API 通过 `/v1/tiers` 发布展开后的请求 tier。
 - Middle JSON 中 `_meta.backend` 表示产物来源实现，不表示用户请求的 `tier`。
 - `backend` 不应承担隐私语义；隐私由 `privacy` / `remote` / `via` 描述。
 

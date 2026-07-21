@@ -385,7 +385,7 @@ parse-server 配置：
 | key | 默认值 | 说明 |
 |-----|--------|------|
 | `parse_server.local.mode` | `disabled` | `disabled` / `managed` / `self_hosted` |
-| `parse_server.local.managed_tier` | `standard` | managed 模式启动的 tier；当前允许 `basic` / `standard` / `advanced` |
+| `parse_server.local.managed_tier` | `standard` | managed 模式的启动能力上限；只允许 `basic` / `standard`，Standard 同时提供 Advanced 请求能力 |
 | `parse_server.local.self_hosted_url` | 无 | self-hosted 地址 |
 | `parse_server.remote.url` | `https://mineru.net/api` | 默认远端地址 |
 | `parse_server.remote.api_key` | 无 | 远端 API Key |

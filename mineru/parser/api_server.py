@@ -47,7 +47,7 @@ from ..filetypes import (
     file_type_for_extension,
     is_flash_only_parse_extension,
 )
-from ..types import PageInfo, Tier, select_default_quality_tier, validate_tier
+from ..types import SERVER_TIERS, TIERS_BY_SERVER_TIER, PageInfo, ServerTier, Tier, select_default_quality_tier
 from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
 from ..utils.image_payload import validate_image_sidecar_path
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
@@ -61,8 +61,7 @@ from .tier import (
     runtime_options_for_tier,
 )
 
-_API_SERVER_TIERS: tuple[Tier, ...] = ("flash", "basic", "standard", "advanced")
-_DEFAULT_API_SERVER_TIER: Tier = "standard"
+_DEFAULT_API_SERVER_TIER: ServerTier = "standard"
 _API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
 _MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
 _MAX_INLINE_BYTES_DEFAULT = 1024 * 1024
@@ -1269,6 +1268,10 @@ def _job_has_only_flash_only_inputs(req: CreateJobRequest, file_store: FileStore
     return all(is_flash_only_parse_extension(_source_name(entry.source, file_store)) for entry in req.files)
 
 
+def _job_has_any_flash_only_inputs(req: CreateJobRequest, file_store: FileStore) -> bool:
+    return any(is_flash_only_parse_extension(_source_name(entry.source, file_store)) for entry in req.files)
+
+
 def _compact_page_numbers(page_numbers: list[int]) -> str:
     if not page_numbers:
         return ""
@@ -1800,6 +1803,14 @@ async def create_job(
     # 按请求 tier 选择启动时预先解析好的 runtime；全轻量输入可按 ADR-0024 直接归一到 flash 执行。
     default_tier: Tier | None = request.app.state.default_tier
     only_flash_only_inputs = _job_has_only_flash_only_inputs(body, file_store)
+    if not request.app.state.flash_enabled and _job_has_any_flash_only_inputs(body, file_store):
+        _raise_api_error(
+            400,
+            error_type="invalid_request_error",
+            code="invalid_request",
+            message="Flash parsing is disabled in this server, but one or more inputs require the Flash backend",
+            param="files",
+        )
     if body.tier is None and default_tier is None:
         if only_flash_only_inputs:
             body.tier = "flash"
@@ -1953,25 +1964,26 @@ def _build_v1_router() -> APIRouter:
 _OCR_MODES = ("auto", "txt", "ocr")
 
 
-def _normalize_server_tiers(tier: Tier | list[Tier] | tuple[Tier, ...] | None) -> list[Tier]:
-    """规范化 API server 启动 tier 列表，保留用户顺序并拒绝非法 tier。"""
-    raw_tiers: list[Tier]
-    if tier is None:
-        raw_tiers = list(_API_SERVER_TIERS)
-    elif isinstance(tier, str):
-        raw_tiers = [validate_tier(tier)]
-    else:
-        raw_tiers = [validate_tier(item) for item in list(tier)] or list(_API_SERVER_TIERS)
+def _normalize_server_tier(tier: str | None) -> ServerTier:
+    """规范化 API server 的单个启动能力档位。"""
+    if tier is not None and not isinstance(tier, str):
+        raise ValueError("Server tier must be a single value: flash, basic, or standard")
+    normalized = (tier or _DEFAULT_API_SERVER_TIER).strip().lower()
+    if normalized in SERVER_TIERS:
+        return normalized  # type: ignore[return-value]
+    supported = ", ".join(SERVER_TIERS)
+    raise ValueError(f"Unsupported server tier '{tier}'. Supported server tiers: {supported}")
 
-    tiers: list[Tier] = []
-    for item in raw_tiers:
-        if item not in tiers:
-            tiers.append(item)
-    return tiers
+
+def _request_tiers_for_server_tier(tier: ServerTier, *, no_flash: bool) -> list[Tier]:
+    """将单个启动档位展开为该进程可接受的请求 tier。"""
+    if tier == "flash" and no_flash:
+        raise ValueError("--tier flash cannot be combined with --no-flash")
+    return [request_tier for request_tier in TIERS_BY_SERVER_TIER[tier] if not no_flash or request_tier != "flash"]
 
 
 def _runtime_options_for_server_tiers(tiers: list[Tier]) -> dict[Tier, ParserRuntimeOptions]:
-    """为每个启动 tier 生成独立 runtime，API server 只允许 tier 决定 backend/effort。"""
+    """为展开后的请求 tier 生成独立 runtime，API server 只允许 tier 决定 backend/effort。"""
     return {tier: runtime_options_for_tier(tier) for tier in tiers}
 
 
@@ -2011,7 +2023,7 @@ def _model_ids_and_tiers_for_server_tier(tier: Tier) -> tuple[list[str], list[Ti
 
 
 def _model_ids_and_tiers_for_server_tiers(tiers: list[Tier]) -> tuple[list[str], list[TierInfoData]]:
-    """聚合多个启动 tier 的模型和 tier metadata，并对重复 model id 保序去重。"""
+    """聚合展开后的请求 tier metadata，并对重复 model id 保序去重。"""
     model_ids: list[str] = []
     tier_infos: list[TierInfoData] = []
     for tier in tiers:
@@ -2030,26 +2042,11 @@ def _preflight_tier_dependencies(tier: Tier) -> None:
         raise ParseServerStartupError(str(exc)) from exc
 
 
-def _dependency_tier_for_runtime(runtime: ParserRuntimeOptions) -> Tier:
-    """根据实际 runtime 判断依赖预检 tier。"""
-    return runtime.tier
-
-
-def _preflight_runtime_dependencies(runtime_options: dict[Tier, ParserRuntimeOptions]) -> None:
-    """对多 tier server 的 runtime 依赖做去重预检，避免重复导入检查。"""
-    checked_tiers: set[Tier] = set()
-    for runtime in runtime_options.values():
-        dependency_tier = _dependency_tier_for_runtime(runtime)
-        if dependency_tier in checked_tiers:
-            continue
-        checked_tiers.add(dependency_tier)
-        _preflight_tier_dependencies(dependency_tier)
-
-
 def create_app(
     *,
     upload_dir: str = "",
-    tier: Tier | list[Tier] | tuple[Tier, ...] | None = None,
+    tier: ServerTier | None = None,
+    no_flash: bool = False,
     concurrency: int = 1,
     url_timeout: int = 60,
     allow_local_source: bool = False,
@@ -2067,8 +2064,10 @@ def create_app(
     upload_dir:
         Directory for uploaded files and parse artifacts.
     tier:
-        Server parsing tier. ``"flash"`` selects flash parsing; ``"basic"``,
-        ``"standard"`` and ``"advanced"`` map to Hybrid efforts.
+        Server capability ceiling. ``"flash"`` exposes Flash, ``"basic"``
+        exposes Flash and Basic, and ``"standard"`` exposes all request tiers.
+    no_flash:
+        Disable Flash advertisement and execution. Invalid with ``tier="flash"``.
     concurrency:
         Maximum concurrent parse jobs (default 1).
     url_timeout:
@@ -2090,16 +2089,14 @@ def create_app(
         Whether image analysis is enabled for Hybrid backends.
     """
     upload_dir = upload_dir or ""
-    tier_input = None if tier in ((), []) else tier
-    server_tiers = _normalize_server_tiers(tier_input)
+    tier = _normalize_server_tier(tier)
+    server_tiers = _request_tiers_for_server_tier(tier, no_flash=no_flash)
     tier_runtime_options = _runtime_options_for_server_tiers(server_tiers)
-    server_tiers = list(tier_runtime_options)
     default_tier = select_default_quality_tier(tier_runtime_options)
-    default_runtime = tier_runtime_options[default_tier] if default_tier is not None else tier_runtime_options[server_tiers[0]]
-    tier = default_tier or server_tiers[0]
-    backend = default_runtime.backend
-    effort = default_runtime.effort
-    _preflight_runtime_dependencies(tier_runtime_options)
+    startup_runtime = runtime_options_for_tier(tier)
+    backend = startup_runtime.backend
+    effort = startup_runtime.effort
+    _preflight_tier_dependencies(tier)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
     _upload_dir.mkdir(parents=True, exist_ok=True)
@@ -2114,6 +2111,7 @@ def create_app(
         application.state.upload_dir = _upload_dir
         application.state.tier = tier
         application.state.default_tier = default_tier
+        application.state.flash_enabled = not no_flash
         application.state.backend = backend
         application.state.tier_runtime_options = tier_runtime_options
         application.state.model_ids = _model_ids
@@ -2145,6 +2143,7 @@ def create_app(
     application.state.upload_dir = _upload_dir
     application.state.tier = tier
     application.state.default_tier = default_tier
+    application.state.flash_enabled = not no_flash
     application.state.backend = backend
     application.state.tier_runtime_options = tier_runtime_options
     application.state.model_ids = _model_ids
@@ -2236,12 +2235,17 @@ def create_app(
 )
 @click.option(
     "--tier",
-    multiple=True,
-    type=click.Choice(list(_API_SERVER_TIERS)),
+    default=None,
+    type=click.Choice(list(SERVER_TIERS)),
     help=(
-        "Server parsing tier; repeat to expose multiple tiers. "
-        "Defaults to flash, basic, standard, and advanced; requests without tier default to standard."
+        "Server capability tier: flash, basic, or standard. "
+        "Defaults to standard, which accepts flash, basic, standard, and advanced requests."
     ),
+)
+@click.option(
+    "--no-flash",
+    is_flag=True,
+    help="Disable Flash tier advertisement and execution.",
 )
 @click.option(
     "--concurrency",
@@ -2295,7 +2299,8 @@ def main(
     host: str,
     port: int,
     upload_dir: str,
-    tier: tuple[Tier, ...],
+    tier: ServerTier | None,
+    no_flash: bool,
     concurrency: int,
     url_timeout: int,
     allow_local_source: bool,
@@ -2310,7 +2315,8 @@ def main(
     try:
         application = create_app(
             upload_dir=upload_dir,
-            tier=tier or None,
+            tier=tier,
+            no_flash=no_flash,
             concurrency=concurrency,
             url_timeout=url_timeout,
             allow_local_source=allow_local_source,

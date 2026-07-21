@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-from dataclasses import dataclass
-
 import typer
 from click.core import Context
 from typer.core import TyperGroup
@@ -16,15 +13,8 @@ from .commands.parse import parse_cmd
 from .commands.read import read_cmd
 from .commands.scan import scan_cmd
 from .commands.search import find_cmd, search_cmd
-from .contracts import CliContext
-from .runtime import run_cli
 from .telemetry import prepare_cli_telemetry
-
-
-@dataclass(frozen=True)
-class VersionInfo:
-    mineru_version: str
-    python_version: str
+from .version_command import show_version, version_cmd
 
 
 # Typer stores commands and command groups separately before building the Click
@@ -69,20 +59,13 @@ app = typer.Typer(
 )
 
 
-def _show_version(ctx: typer.Context, value: bool) -> None:
-    if not value:
-        return
-    typer.echo(_render_version(_version_info()))
-    ctx.exit()
-
-
 @app.callback()
 def root(
     ctx: typer.Context,
     _version_requested: bool = typer.Option(
         False,
         "--version",
-        callback=_show_version,
+        callback=show_version,
         is_eager=True,
         help="Show the version and exit.",
     ),
@@ -105,28 +88,7 @@ app.add_typer(config.app, name="config")
 app.command("invalidate")(invalidate_cmd)
 app.command("forget")(forget_cmd)
 app.add_typer(cleanup.app, name="cleanup")
-
-
-@app.command()
-def version(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
-    """Print MinerU and Python versions."""
-    ctx = CliContext(json_mode=json_mode)
-    run_cli(ctx, _version_info, render=_render_version)
-
-
-def _version_info() -> VersionInfo:
-    from ..version import __version__
-
-    return VersionInfo(mineru_version=__version__, python_version=sys.version.split()[0])
-
-
-def _render_version(data: VersionInfo) -> str:
-    return "\n".join(
-        [
-            f"MinerU version: {data.mineru_version}",
-            f"Python version: {data.python_version}",
-        ]
-    )
+app.command("version")(version_cmd)
 
 
 def main() -> None:

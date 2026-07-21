@@ -5,9 +5,9 @@ import os
 import typer
 
 from ...config import config, get_config_file_exists, get_config_file_path, get_config_source
+from ...types import DEPLOYMENT_TIERS
 from ...utils.model_registry import (
     MODEL_REPOS,
-    MODEL_TIERS,
     ModelRepo,
     get_model_repo,
     model_repo_names,
@@ -105,7 +105,7 @@ def show_cmd() -> None:
         print_info(f"  {_format_repo_status(repo)}")
 
     print_info("Model tiers:")
-    for tier in MODEL_TIERS:
+    for tier in DEPLOYMENT_TIERS:
         repos = model_repos_for_tier(tier)
         names = ", ".join(repo.name for repo in repos) or "(none)"
         print_info(f"  {tier}: {names}")

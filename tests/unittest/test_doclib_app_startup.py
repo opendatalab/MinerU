@@ -138,7 +138,7 @@ def test_config_set_managed_tier_rejects_missing_models(monkeypatch: pytest.Monk
     assert config_response.json()["source"] == "default"
 
 
-def test_config_set_managed_advanced_reuses_standard_models(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_config_set_managed_advanced_is_rejected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     def _skip_background_task(*args, **kwargs):
         return None
 
@@ -152,9 +152,8 @@ def test_config_set_managed_advanced_reuses_standard_models(monkeypatch: pytest.
 
     assert response.status_code == 400
     payload = response.json()
-    assert payload["error"]["code"] == "parse_server_model_not_ready"
-    assert "Local managed tier 'advanced'" in payload["error"]["message"]
-    assert "mineru-kit models download --tier standard" in payload["error"]["message"]
+    assert payload["error"]["code"] == "invalid_config_value"
+    assert "basic, standard" in payload["error"]["message"]
 
 
 def test_config_set_managed_mode_rejects_missing_models_for_current_tier(
@@ -501,7 +500,7 @@ def test_managed_parse_server_startup_writes_stdout_and_stderr_logs(monkeypatch,
     assert parse_stderr_log_path.read_text(encoding="utf-8").endswith("parse stderr\n")
 
 
-def test_managed_parse_server_startup_clears_invalid_tier_override(monkeypatch, tmp_path) -> None:
+def test_managed_parse_server_startup_ignores_invalid_tier_override(monkeypatch, tmp_path) -> None:
     db = DatabaseManager(str(tmp_path / "doclib.db"))
     asyncio.run(db.initialize())
     asyncio.run(db.execute("INSERT INTO config (key, value) VALUES (?, ?)", ("parse_server.local.mode", "managed")))
@@ -550,7 +549,7 @@ def test_managed_parse_server_startup_clears_invalid_tier_override(monkeypatch, 
         config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
         status_response = client.get("/api/v1/server/status")
 
-    assert config_response.json()["value"] == "standard"
+    assert config_response.json()["value"] == "ultra"
     assert status_response.json()["parse_server"]["local"]["managed_tier"] == "standard"
 
 

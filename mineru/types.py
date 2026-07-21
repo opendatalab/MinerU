@@ -15,12 +15,12 @@ Tier = Literal[
     "advanced",
 ]
 
-TIERS: set[Tier] = {
+TIERS: tuple[Tier, ...] = (
     "flash",
     "basic",
     "standard",
     "advanced",
-}
+)
 
 TIER_ORDER: dict[Tier, int] = {
     "flash": 0,
@@ -28,6 +28,35 @@ TIER_ORDER: dict[Tier, int] = {
     "standard": 2,
     "advanced": 3,
 }
+
+ServerTier = Literal[
+    "flash",
+    "basic",
+    "standard",
+]
+
+SERVER_TIERS: tuple[ServerTier, ...] = (
+    "flash",
+    "basic",
+    "standard",
+)
+
+TIERS_BY_SERVER_TIER: dict[ServerTier, tuple[Tier, ...]] = {
+    "flash": ("flash",),
+    "basic": ("flash", "basic"),
+    "standard": ("flash", "basic", "standard", "advanced"),
+}
+
+DeploymentTier = Literal[
+    "basic",
+    "standard",
+]
+
+DEPLOYMENT_TIERS: tuple[DeploymentTier, ...] = (
+    "basic",
+    "standard",
+)
+
 
 QUALITY_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("standard", "advanced", "basic")
 QUALITY_TIERS: frozenset[Tier] = frozenset(QUALITY_TIER_SELECTION_ORDER)

@@ -190,12 +190,13 @@ Local Parse Server 的 `health` 通常返回:
 
 | 本地 api-server 进程能力 | `/v1/tiers` 应返回 |
 |-------------------------|-------------------|
-| Basic | `basic` |
-| Standard | `standard` |
-| Advanced | `advanced` |
-| 只有 Flash | 不应把 `flash` 作为用户质量解析 tier；默认选择请求应失败。 |
+| `--tier flash` | `flash`；默认选择请求应失败，除非显式请求 Flash。 |
+| `--tier basic` | `flash`、`basic` |
+| `--tier basic --no-flash` | `basic` |
+| `--tier standard` | `flash`、`basic`、`standard`、`advanced` |
+| `--tier standard --no-flash` | `basic`、`standard`、`advanced` |
 
-本地或兼容服务应以 `/v1/tiers` 返回值作为能力发现事实。它可以只暴露一个 tier，也可以暴露多个 tier；客户端不应假设具体进程模型。
+本地或兼容服务应以 `/v1/tiers` 返回值作为能力发现事实。客户端不应根据启动参数猜测具体能力。
 
 如果本地 server 支持 `flash`，它可以用于显式 `flash`、仅支持 flash tier 的输入归一化、watch 或索引机制，但不应出现在 PDF/image 面向用户质量解析的默认选择候选中。
 

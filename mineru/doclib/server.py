@@ -27,8 +27,19 @@ from ..filetypes import IMAGE_EXTENSIONS, TEXT_EXTENSIONS, TEXT_FILE_TYPES
 from ..parser.tier import TierDependencyError, ensure_tier_runtime_dependencies
 from ..render.markdown import blocks_to_markdown
 from ..render.office.output import blocks_to_markdown as office_blocks_to_markdown
-from ..types import EMPTY_BBOX, TIERS, Block, BlockType, PageInfo, Span, Tier, select_highest_cached_tier
-from ..utils.model_registry import ModelRepo, ModelTier, model_repos_for_tier
+from ..types import (
+    EMPTY_BBOX,
+    DEPLOYMENT_TIERS,
+    TIERS,
+    Block,
+    BlockType,
+    DeploymentTier,
+    PageInfo,
+    Span,
+    Tier,
+    select_highest_cached_tier,
+)
+from ..utils.model_registry import ModelRepo, model_repos_for_tier
 from ..utils.models_download_utils import verify_model_repo
 from ..utils.pdf_document import PDFDocument
 from ..version import __version__
@@ -424,9 +435,7 @@ class DoclibServer(AsyncDoclibInterface):
             sha256 = file_row["sha256"] if file_row and file_row.get("sha256") else None
         if sha256 is None:
             raise NotFoundError("file_not_found", "Document not found.", "path")
-        if (file_row and file_row["ext"] in TEXT_EXTENSIONS) or (
-            doc_row and doc_row["file_type"] in TEXT_FILE_TYPES
-        ):
+        if (file_row and file_row["ext"] in TEXT_EXTENSIONS) or (doc_row and doc_row["file_type"] in TEXT_FILE_TYPES):
             raise InvalidRequestError(
                 "parse_not_required",
                 "Text files do not require MinerU parsing. Read the file directly.",
@@ -1614,7 +1623,7 @@ def _parse_server_status(
     )
 
 
-def _ensure_managed_parse_server_tier_available(tier: Tier, param: str) -> None:
+def _ensure_managed_parse_server_tier_available(tier: DeploymentTier, param: str) -> None:
     try:
         ensure_tier_runtime_dependencies(tier)
     except TierDependencyError as exc:
@@ -1622,10 +1631,9 @@ def _ensure_managed_parse_server_tier_available(tier: Tier, param: str) -> None:
     _ensure_managed_parse_server_models_ready(tier, param)
 
 
-def _ensure_managed_parse_server_models_ready(tier: Tier, param: str) -> None:
-    model_tier = _model_tier_for_parse_tier(tier)
+def _ensure_managed_parse_server_models_ready(tier: DeploymentTier, param: str) -> None:
     missing_repos: list[str] = []
-    for repo in model_repos_for_tier(model_tier):
+    for repo in model_repos_for_tier(tier):
         result = verify_model_repo(repo)
         if result.ready:
             continue
@@ -1638,17 +1646,9 @@ def _ensure_managed_parse_server_models_ready(tier: Tier, param: str) -> None:
     raise InvalidRequestError(
         "parse_server_model_not_ready",
         f"Local managed tier '{tier}' requires model files that are not ready. {details}. "
-        f"Run: mineru-kit models download --tier {model_tier}",
+        f"Run: mineru-kit models download --tier {tier}",
         param,
     )
-
-
-def _model_tier_for_parse_tier(tier: Tier) -> ModelTier:
-    if tier == "basic":
-        return "basic"
-    if tier in {"standard", "advanced"}:
-        return "standard"
-    raise ValueError(f"Tier '{tier}' does not use managed model files.")
 
 
 def _format_missing_model_repo(repo: ModelRepo, missing_paths: list[str]) -> str:
@@ -1656,14 +1656,14 @@ def _format_missing_model_repo(repo: ModelRepo, missing_paths: list[str]) -> str
     return f"{repo.name} missing: {missing}"
 
 
-def _validate_managed_parse_server_tier(value: str, param: str) -> Tier:
-    if value not in ("basic", "standard", "advanced"):
+def _validate_managed_parse_server_tier(value: str, param: str) -> DeploymentTier:
+    if value not in DEPLOYMENT_TIERS:
         raise InvalidRequestError(
             "invalid_config_value",
-            "parse_server.local.managed_tier must be one of: basic, standard, advanced.",
+            "parse_server.local.managed_tier must be one of: basic, standard.",
             param,
         )
-    return cast(Tier, value)
+    return cast(DeploymentTier, value)
 
 
 def _port_from_url(url: str | None) -> int | None:

@@ -348,7 +348,7 @@ def verify_model_tier(tier: Tier) -> ModelReadyResult:
 - `model.source=local` 时禁止下载，只做 ready 检查。
 - `mineru-kit models verify <repo>` 检查指定 repo 的完整 required paths。
 - `mineru-kit models verify --tier <tier>` 只接受 Basic/Standard，并检查对应 repo 集合。
-- managed local parse server 的 tier readiness 检查在 Advanced→Standard 归一化后调用 `REPOS_FOR_TIER`。
+- managed local parse server 只检查 Basic 或 Standard 启动能力对应的 `REPOS_FOR_TIER`；Standard 模型集同时覆盖 Advanced 请求。
 - partial download 只验证本次请求 paths，不要求整仓 ready。
 - 最终文件存在时视为 ready；Hugging Face 和 ModelScope 都先写临时文件，完成后再移动到最终路径。
 - `full` 模式在 ModelRepo 根目录写入空白 `.mineru_complete`，表示整仓 ready；`required_paths` 模式在每个目录型 ModelPath 下分别写入 marker，文件型 ModelPath 仍按最终文件是否存在判断。

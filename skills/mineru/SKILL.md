@@ -362,7 +362,7 @@ The following examples assume the current install tool is `uv tool`. If `mineru`
 
 Installing extras with `uv tool install --force --prerelease allow` can reinstall or upgrade the `mineru` package. Restart the MinerU server after installing extras so the CLI client, doclib server, and managed parse server use the same installed version.
 
-Managed local `basic`, `standard`, and `advanced` all require downloaded model files. Model management has two model tiers: Basic and Standard. Advanced reuses the Standard dependencies and model set.
+Managed local parsing has two startup tiers: `basic` and `standard`. A Standard server provides `basic`, `standard`, and `advanced` request tiers. Advanced uses the same Standard dependencies, model set, and hardware setup; it differs only by spending more inference compute when the request selects `--tier advanced`.
 
 Enable managed local parsing for `basic`:
 
@@ -376,7 +376,7 @@ mineru config set parse_server.local.mode managed
 mineru server status --json
 ```
 
-Enable managed local parsing for `standard`:
+Enable managed local parsing for both `standard` and `advanced` requests:
 
 ```bash
 uv tool install --force --prerelease allow "mineru[standard]"
@@ -388,26 +388,14 @@ mineru config set parse_server.local.mode managed
 mineru server status --json
 ```
 
-Enable managed local parsing for `advanced`:
-
-```bash
-uv tool install --force --prerelease allow "mineru[standard]"
-mineru-kit models download --tier standard
-mineru-kit models verify --tier standard
-mineru server restart
-mineru config set parse_server.local.managed_tier advanced
-mineru config set parse_server.local.mode managed
-mineru server status --json
-```
-
 Rules:
 
 - Determine how the current `mineru` command was installed, then install the extra through that same tool/environment.
-- Download and verify models for the target tier before enabling managed mode.
+- Download and verify models for the startup tier (`basic` or `standard`) before enabling managed mode.
 - After installing extras, restart the MinerU server to avoid CLI/server version mismatch.
 - Set `parse_server.local.managed_tier` before `parse_server.local.mode=managed`.
 - Poll `mineru server status --json` and use managed parsing only after the target tier is healthy.
-- If local `basic`, `standard`, or `advanced` cannot start, do not add `--remote` automatically; ask the user first.
+- If local quality parsing cannot start, do not add `--remote` automatically; ask the user first.
 
 ## First Read From A File
 

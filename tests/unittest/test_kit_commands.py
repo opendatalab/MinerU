@@ -16,8 +16,11 @@ from typing import Any
 import click
 import pytest
 from fastapi.testclient import TestClient
+from typer.main import get_command
 from typer.testing import CliRunner
 
+from mineru.cli.main import app as mineru_app
+from mineru.cli.version_command import version_cmd
 from mineru.kit.commands import api_server, models, parse, router, vlm_server
 from mineru.kit.main import app
 from mineru.kit.vlm_server import mlx_vlm_server
@@ -25,6 +28,7 @@ from mineru.parser.base import ParseResult
 from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span
 from mineru.utils.image_payload import ImagePayloadCache
 from mineru.utils.model_registry import MODEL_COMPLETE_MARKER
+from mineru.version import __version__
 
 runner = CliRunner()
 
@@ -54,14 +58,90 @@ def test_kit_root_and_models_help() -> None:
     assert "api-server" in result.output
     assert "vlm-server" in result.output
     assert "router" in result.output
+    assert "version" in result.output
+
+
+def test_top_level_commands_register_implementation_callbacks_directly() -> None:
+    callbacks = {command.name: command.callback for command in app.registered_commands}
+
+    assert callbacks["parse"] is parse.parse_cmd
+    assert callbacks["api-server"] is api_server.api_server_cmd
+    assert callbacks["vlm-server"] is vlm_server.vlm_server_cmd
+    assert callbacks["router"] is router.router_cmd
+    assert callbacks["version"] is version_cmd
+
+
+@pytest.mark.parametrize(
+    ("command", "expected_options"),
+    [
+        ("parse", ("--output", "--format", "--tier", "--effort")),
+        ("api-server", ("--host", "--port", "--tier", "--no-flash")),
+        ("vlm-server", ("--engine",)),
+        ("router", ("--host", "--upstream-url", "--local-gpus")),
+        ("version", ("--json",)),
+    ],
+)
+def test_directly_registered_command_help(command: str, expected_options: tuple[str, ...]) -> None:
+    result = runner.invoke(app, [command, "--help"])
+
+    assert result.exit_code == 0
+    for option in expected_options:
+        assert option in result.output
 
 
 def test_kit_root_help_hides_typer_completion_options() -> None:
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0
+    assert "--version" in result.output
     assert "--install-completion" not in result.output
     assert "--show-completion" not in result.output
+
+
+def test_kit_root_commands_keep_product_order() -> None:
+    command = get_command(app)
+
+    assert command.list_commands(None) == [
+        "parse",
+        "api-server",
+        "vlm-server",
+        "router",
+        "models",
+        "version",
+    ]
+
+
+def test_kit_version_command_matches_mineru() -> None:
+    kit_result = runner.invoke(app, ["version"])
+    mineru_result = runner.invoke(mineru_app, ["version"])
+
+    assert kit_result.exit_code == 0
+    assert mineru_result.exit_code == 0
+    assert kit_result.output == mineru_result.output
+    assert f"MinerU version: {__version__}" in kit_result.output
+    assert f"Python version: {sys.version.split()[0]}" in kit_result.output
+
+
+def test_kit_root_version_option_matches_version_command() -> None:
+    option_result = runner.invoke(app, ["--version"])
+    command_result = runner.invoke(app, ["version"])
+
+    assert option_result.exit_code == 0
+    assert command_result.exit_code == 0
+    assert option_result.output == command_result.output
+
+
+def test_kit_version_json_matches_mineru() -> None:
+    kit_result = runner.invoke(app, ["version", "--json"])
+    mineru_result = runner.invoke(mineru_app, ["version", "--json"])
+
+    assert kit_result.exit_code == 0
+    assert mineru_result.exit_code == 0
+    assert kit_result.output == mineru_result.output
+    assert json.loads(kit_result.output) == {
+        "mineru_version": __version__,
+        "python_version": sys.version.split()[0],
+    }
 
 
 def test_kit_root_show_completion_is_not_a_supported_option() -> None:
@@ -396,33 +476,31 @@ def test_cli_old_api_request_models_remove_formula_table_fields() -> None:
         assert _REMOVED_TABLE_ENABLE_PARAM not in annotations
 
 
-def test_api_server_forwards_repeated_tiers(monkeypatch: Any) -> None:
+def test_api_server_forwards_single_tier_and_no_flash(monkeypatch: Any) -> None:
     seen: dict[str, Any] = {}
 
     def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
-        """记录 mineru-kit api-server 对多 tier 启动参数的原样转发。"""
+        """记录 mineru-kit api-server 对启动能力参数的原样转发。"""
         seen["args"] = args
         seen["prog_name"] = prog_name
         seen["standalone_mode"] = standalone_mode
 
     monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
 
-    result = runner.invoke(app, ["api-server", "--tier", "basic", "--tier", "advanced"])
+    result = runner.invoke(app, ["api-server", "--tier", "standard", "--no-flash"])
 
     assert result.exit_code == 0
     assert seen["prog_name"] == "mineru-kit api-server"
     assert seen["standalone_mode"] is False
-    assert [seen["args"][index + 1] for index, item in enumerate(seen["args"]) if item == "--tier"] == [
-        "basic",
-        "advanced",
-    ]
+    assert [seen["args"][index + 1] for index, item in enumerate(seen["args"]) if item == "--tier"] == ["standard"]
+    assert "--no-flash" in seen["args"]
 
 
-def test_api_server_without_tier_lets_parser_api_apply_all_tier_default(monkeypatch: Any) -> None:
+def test_api_server_without_tier_lets_parser_api_apply_standard_default(monkeypatch: Any) -> None:
     seen: dict[str, Any] = {}
 
     def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
-        """记录 mineru-kit api-server 默认参数，确认不再强制单 standard tier。"""
+        """记录 mineru-kit api-server 默认参数，由底层应用 Standard 能力默认值。"""
         seen["args"] = args
         seen["prog_name"] = prog_name
         seen["standalone_mode"] = standalone_mode
@@ -435,6 +513,20 @@ def test_api_server_without_tier_lets_parser_api_apply_all_tier_default(monkeypa
     assert seen["prog_name"] == "mineru-kit api-server"
     assert seen["standalone_mode"] is False
     assert "--tier" not in seen["args"]
+
+
+def test_api_server_rejects_advanced_startup_tier() -> None:
+    result = runner.invoke(app, ["api-server", "--tier", "advanced"])
+
+    assert result.exit_code == 1
+    assert "Unsupported server tier 'advanced'" in result.output
+
+
+def test_api_server_rejects_flash_no_flash_conflict() -> None:
+    result = runner.invoke(app, ["api-server", "--tier", "flash", "--no-flash"])
+
+    assert result.exit_code == 1
+    assert "--tier flash cannot be combined with --no-flash" in result.output
 
 
 def test_api_server_normalizes_hidden_language_alias(monkeypatch: Any) -> None:

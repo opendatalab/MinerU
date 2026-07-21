@@ -57,12 +57,13 @@ def _resolve_auto_engine() -> Literal["vllm", "lmdeploy", "mlx"]:
 
 
 def vlm_server_cmd(
-    engine: str = "auto",
-    ctx: typer.Context | None = None,
+    ctx: typer.Context,
+    engine: str = typer.Option("auto", "--engine", help="VLM serving engine: auto, vllm, lmdeploy, mlx"),
 ) -> None:
+    """Start the local VLM server with OpenAI-compatible chat completions."""
     if engine not in {"auto", "vllm", "lmdeploy", "mlx"}:
         exit_with_message("invalid_request", f"Unsupported engine '{engine}'.", "engine")
-    extra_args = list(ctx.args) if ctx is not None else []
+    extra_args = list(ctx.args)
 
     if engine == "auto":
         engine = _resolve_auto_engine()

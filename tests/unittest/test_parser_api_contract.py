@@ -39,7 +39,18 @@ from mineru.parser.api_server import (
     main,
 )
 from mineru.parser.base import ParseResult
-from mineru.types import Block, Line, PageInfo, Span, TIERS, validate_tier
+from mineru.types import (
+    DEPLOYMENT_TIERS,
+    SERVER_TIERS,
+    TIER_ORDER,
+    TIERS,
+    TIERS_BY_SERVER_TIER,
+    Block,
+    Line,
+    PageInfo,
+    Span,
+    validate_tier,
+)
 from mineru.utils.image_payload import ImagePayloadCache
 
 runner = CliRunner()
@@ -189,10 +200,21 @@ def test_advanced_dependency_error_recommends_standard_extra(monkeypatch: pytest
 def test_public_tier_literals_match_product_contract() -> None:
     from mineru.parser.tier import runtime_options_for_tier
 
-    assert TIERS == {"flash", "basic", "standard", "advanced"}
+    assert TIERS == ("flash", "basic", "standard", "advanced")
+    assert TIER_ORDER == {"flash": 0, "basic": 1, "standard": 2, "advanced": 3}
     assert validate_tier("advanced") == "advanced"
     with pytest.raises(ValueError, match="Unsupported tier 'ultra'"):
         runtime_options_for_tier("ultra")
+
+
+def test_server_and_deployment_tier_constants_match_product_contract() -> None:
+    assert SERVER_TIERS == ("flash", "basic", "standard")
+    assert DEPLOYMENT_TIERS == ("basic", "standard")
+    assert TIERS_BY_SERVER_TIER == {
+        "flash": ("flash",),
+        "basic": ("flash", "basic"),
+        "standard": ("flash", "basic", "standard", "advanced"),
+    }
 
 
 def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> None:
@@ -1522,7 +1544,7 @@ def test_api_server_rejects_inline_source_over_configured_limit(tmp_path: Path, 
                             "data": base64.b64encode(b"1234").decode("ascii"),
                         }
                     }
-                ]
+                ],
             },
         )
 
@@ -1575,9 +1597,7 @@ def test_api_server_rejects_unsupported_output_format_with_specific_code(
     assert "Unknown output format: images" in body["error"]["message"]
 
 
-def test_api_server_rejects_unsupported_source_type_with_specific_code(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_api_server_rejects_unsupported_source_type_with_specific_code(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_api_server_dependency_preflight(monkeypatch)
     app = create_app(upload_dir=str(tmp_path), tier="flash")
 
@@ -1869,7 +1889,7 @@ def test_api_server_accepts_lightweight_job_without_requested_quality_runtime(
     monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
     source = tmp_path / "demo.html"
     source.write_text("<p>content</p>", encoding="utf-8")
-    app = create_app(upload_dir=str(tmp_path / "api"), tier=["flash"], allow_local_source=True)
+    app = create_app(upload_dir=str(tmp_path / "api"), tier="flash", allow_local_source=True)
 
     payload: dict[str, object] = {
         "files": [{"source": {"type": "local", "path": str(source)}}],
@@ -1882,6 +1902,65 @@ def test_api_server_accepts_lightweight_job_without_requested_quality_runtime(
 
     assert response.status_code == 202
     assert response.json()["tier"] == response_tier
+
+
+def test_api_server_no_flash_rejects_lightweight_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    source = tmp_path / "demo.html"
+    source.write_text("<p>content</p>", encoding="utf-8")
+    app = create_app(
+        upload_dir=str(tmp_path / "api"),
+        tier="standard",
+        no_flash=True,
+        allow_local_source=True,
+    )
+
+    response = TestClient(app).post(
+        "/v1/parse/jobs",
+        json={
+            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "tier": "standard",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == {
+        "type": "invalid_request_error",
+        "code": "invalid_request",
+        "message": "Flash parsing is disabled in this server, but one or more inputs require the Flash backend",
+        "param": "files",
+    }
+
+
+def test_api_server_no_flash_rejects_mixed_batch_with_lightweight_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    pdf_source = tmp_path / "demo.pdf"
+    html_source = tmp_path / "demo.html"
+    pdf_source.write_bytes(b"%PDF-1.7\n")
+    html_source.write_text("<p>content</p>", encoding="utf-8")
+    app = create_app(
+        upload_dir=str(tmp_path / "api"),
+        tier="standard",
+        no_flash=True,
+        allow_local_source=True,
+    )
+
+    response = TestClient(app).post(
+        "/v1/parse/jobs",
+        json={
+            "files": [
+                {"source": {"type": "local", "path": str(pdf_source)}},
+                {"source": {"type": "local", "path": str(html_source)}},
+            ],
+            "tier": "standard",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "one or more inputs require the Flash backend" in response.text
 
 
 def test_api_server_middle_json_preserves_backend_for_client_rendering(
@@ -2326,7 +2405,6 @@ def test_api_server_tier_selects_compatible_backend(tmp_path: Path, monkeypatch:
     flash_app = create_app(upload_dir=str(tmp_path / "flash"), tier="flash")
     basic_app = create_app(upload_dir=str(tmp_path / "basic"), tier="basic")
     standard_app = create_app(upload_dir=str(tmp_path / "standard"), tier="standard")
-    advanced_app = create_app(upload_dir=str(tmp_path / "advanced"), tier="advanced")
 
     assert flash_app.state.tier == "flash"
     assert flash_app.state.backend == "flash"
@@ -2334,15 +2412,11 @@ def test_api_server_tier_selects_compatible_backend(tmp_path: Path, monkeypatch:
     assert basic_app.state.tier == "basic"
     assert basic_app.state.backend == "hybrid-engine"
     assert basic_app.state.effort == "medium"
-    assert [tier["id"] for tier in basic_app.state.tiers] == ["basic"]
+    assert [tier["id"] for tier in basic_app.state.tiers] == ["flash", "basic"]
     assert standard_app.state.tier == "standard"
     assert standard_app.state.backend == "hybrid-engine"
     assert standard_app.state.effort == "high"
-    assert [tier["id"] for tier in standard_app.state.tiers] == ["standard"]
-    assert advanced_app.state.tier == "advanced"
-    assert advanced_app.state.backend == "hybrid-engine"
-    assert advanced_app.state.effort == "xhigh"
-    assert [tier["id"] for tier in advanced_app.state.tiers] == ["advanced"]
+    assert [tier["id"] for tier in standard_app.state.tiers] == ["flash", "basic", "standard", "advanced"]
 
 
 def test_api_server_defaults_to_all_quality_tiers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2376,15 +2450,16 @@ def test_api_server_defaults_to_all_quality_tiers(tmp_path: Path, monkeypatch: p
     }
 
 
-def test_api_server_multi_tier_state_and_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """校验同一个 API server 可发布多个 tier，并在包含 standard 时以 standard 作为默认 tier。"""
+def test_api_server_standard_no_flash_state_and_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """校验 Standard 能力上限发布三个模型档位，并可严格禁用 Flash。"""
     _stub_api_server_dependency_preflight(monkeypatch)
-    app = create_app(upload_dir=str(tmp_path), tier=["basic", "standard", "advanced"])
+    app = create_app(upload_dir=str(tmp_path), tier="standard", no_flash=True)
 
     assert app.state.tier == "standard"
     assert app.state.default_tier == "standard"
     assert app.state.backend == "hybrid-engine"
     assert app.state.effort == "high"
+    assert app.state.flash_enabled is False
     assert [tier["id"] for tier in app.state.tiers] == ["basic", "standard", "advanced"]
     assert app.state.model_ids == ["Hybrid-Basic", "MinerU-HTML", "MinerU2.5-Pro-2605-1.2B"]
     assert app.state.tier_runtime_options["basic"].as_kwargs() == {
@@ -2404,10 +2479,10 @@ def test_api_server_multi_tier_state_and_metadata(tmp_path: Path, monkeypatch: p
     }
 
 
-def test_api_server_multi_tier_http_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """校验 /v1/tiers 与 /v1/models 返回启动时声明的全部 tier 能力。"""
+def test_api_server_standard_http_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """校验 /v1/tiers 与 /v1/models 返回 Standard 上限展开后的全部能力。"""
     _stub_api_server_dependency_preflight(monkeypatch)
-    app = create_app(upload_dir=str(tmp_path), tier=["flash", "basic", "standard", "advanced"])
+    app = create_app(upload_dir=str(tmp_path), tier="standard")
 
     with TestClient(app) as client:
         tiers_response = client.get("/v1/tiers")
@@ -2424,8 +2499,8 @@ def test_api_server_multi_tier_http_metadata(tmp_path: Path, monkeypatch: pytest
     ]
 
 
-def test_api_server_multi_tier_jobs_use_requested_tier_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """校验多 tier server 按每个 job 的 tier 选择 backend/effort，而不是复用全局默认值。"""
+def test_api_server_standard_jobs_use_requested_tier_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """校验 Standard server 按每个 job 的 tier 选择 backend/effort，而不是复用全局默认值。"""
     _stub_api_server_dependency_preflight(monkeypatch)
     calls: list[dict[str, object]] = []
 
@@ -2437,7 +2512,7 @@ def test_api_server_multi_tier_jobs_use_requested_tier_runtime(tmp_path: Path, m
     monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
-    app = create_app(upload_dir=str(tmp_path / "api"), tier=["basic", "standard"], allow_local_source=True)
+    app = create_app(upload_dir=str(tmp_path / "api"), tier="standard", allow_local_source=True)
     file_store = FileStore(tmp_path / "api-files")
     job_store = api_server.JobStore()
 
@@ -2478,21 +2553,32 @@ def test_api_server_multi_tier_jobs_use_requested_tier_runtime(tmp_path: Path, m
             }
         )
     )
+    advanced_response = asyncio.run(
+        run_request(
+            {
+                "files": [{"source": {"type": "local", "path": str(source)}}],
+                "tier": "advanced",
+                "output_formats": ["middle_json"],
+            }
+        )
+    )
 
     assert default_response["tier"] == "standard"
     assert basic_response["tier"] == "basic"
+    assert advanced_response["tier"] == "advanced"
     assert [(call["tier"], call["backend"], call["effort"]) for call in calls] == [
         ("standard", "hybrid-engine", "high"),
         ("basic", "hybrid-engine", "medium"),
+        ("advanced", "hybrid-engine", "xhigh"),
     ]
 
 
-def test_api_server_single_tier_rejects_unavailable_tier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """校验单 tier server 不接受未启动的 tier，避免请求绕过启动能力边界。"""
+def test_api_server_basic_rejects_advanced_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """校验 Basic 能力上限不接受 Advanced 请求。"""
     _stub_api_server_dependency_preflight(monkeypatch)
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
-    app = create_app(upload_dir=str(tmp_path / "api"), tier="standard")
+    app = create_app(upload_dir=str(tmp_path / "api"), tier="basic", allow_local_source=True)
 
     with TestClient(app) as client:
         response = client.post(
@@ -2505,6 +2591,40 @@ def test_api_server_single_tier_rejects_unavailable_tier(tmp_path: Path, monkeyp
 
     assert response.status_code == 400
     assert "Tier 'advanced' not available in this server" in response.text
+
+
+def test_api_server_no_flash_rejects_flash_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    app = create_app(
+        upload_dir=str(tmp_path / "api"),
+        tier="standard",
+        no_flash=True,
+        allow_local_source=True,
+    )
+
+    response = TestClient(app).post(
+        "/v1/parse/jobs",
+        json={
+            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "tier": "flash",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Tier 'flash' not available in this server" in response.text
+
+
+def test_api_server_rejects_invalid_startup_tier_configuration(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="Unsupported server tier 'advanced'"):
+        create_app(upload_dir=str(tmp_path / "advanced"), tier="advanced")  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="must be a single value"):
+        create_app(upload_dir=str(tmp_path / "multiple"), tier=["basic", "standard"])  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="--tier flash cannot be combined with --no-flash"):
+        create_app(upload_dir=str(tmp_path / "empty"), tier="flash", no_flash=True)
 
 
 def test_api_server_preflights_basic_tier_dependencies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -2529,9 +2649,7 @@ def test_api_server_preflights_basic_tier_dependencies(monkeypatch: pytest.Monke
     ]
 
 
-def test_api_server_preflights_advanced_tier_dependencies_for_platform(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_api_server_preflights_standard_tier_dependencies_for_platform(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     imported_modules: list[str] = []
 
     def fake_import_module(module_name: str):
@@ -2542,7 +2660,7 @@ def test_api_server_preflights_advanced_tier_dependencies_for_platform(
     monkeypatch.setattr(parser_tier.sys, "platform", "darwin")
     monkeypatch.setattr(parser_tier.platform, "machine", lambda: "arm64")
 
-    create_app(upload_dir=str(tmp_path), tier="advanced")
+    create_app(upload_dir=str(tmp_path), tier="standard")
 
     assert imported_modules == [
         "ftfy",
@@ -2558,7 +2676,7 @@ def test_api_server_preflights_advanced_tier_dependencies_for_platform(
     ]
 
 
-def test_api_server_preflights_advanced_tier_dependencies_skip_mlx_on_intel_macos(
+def test_api_server_preflights_standard_tier_dependencies_skip_mlx_on_intel_macos(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     imported_modules: list[str] = []
@@ -2571,7 +2689,7 @@ def test_api_server_preflights_advanced_tier_dependencies_skip_mlx_on_intel_maco
     monkeypatch.setattr(parser_tier.sys, "platform", "darwin")
     monkeypatch.setattr(parser_tier.platform, "machine", lambda: "x86_64")
 
-    create_app(upload_dir=str(tmp_path), tier="advanced")
+    create_app(upload_dir=str(tmp_path), tier="standard")
 
     assert imported_modules == [
         "ftfy",
@@ -2911,11 +3029,11 @@ def test_api_server_cli_defaults_to_all_quality_tiers(monkeypatch: pytest.Monkey
     }
 
 
-def test_api_server_cli_accepts_repeated_tier_list(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_server_cli_accepts_single_tier_and_no_flash(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, object] = {}
 
     def _fake_run(server) -> None:
-        """记录重复 --tier 启动后的 API server 能力列表，避免测试启动真实服务。"""
+        """记录单个 --tier 与 --no-flash 启动后的 API server 能力列表。"""
         seen["tiers"] = [tier["id"] for tier in server.config.app.state.tiers]
         seen["default_tier"] = server.config.app.state.default_tier
         seen["effort_by_tier"] = {
@@ -2924,13 +3042,13 @@ def test_api_server_cli_accepts_repeated_tier_list(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr("uvicorn.Server.run", _fake_run)
 
-    result = runner.invoke(main, ["--tier", "basic", "--tier", "advanced", "--host", "0.0.0.0", "--port", "15984"])
+    result = runner.invoke(main, ["--tier", "standard", "--no-flash", "--host", "0.0.0.0", "--port", "15984"])
 
     assert result.exit_code == 0
     assert seen == {
-        "tiers": ["basic", "advanced"],
-        "default_tier": "advanced",
-        "effort_by_tier": {"basic": "medium", "advanced": "xhigh"},
+        "tiers": ["basic", "standard", "advanced"],
+        "default_tier": "standard",
+        "effort_by_tier": {"basic": "medium", "standard": "high", "advanced": "xhigh"},
     }
 
 
@@ -2939,6 +3057,13 @@ def test_api_server_cli_rejects_invalid_tier_names() -> None:
 
     assert result.exit_code != 0
     assert "Invalid value for '--tier'" in result.output
+
+
+def test_api_server_cli_rejects_flash_no_flash_conflict() -> None:
+    result = runner.invoke(main, ["--tier", "flash", "--no-flash"])
+
+    assert result.exit_code != 0
+    assert "--tier flash cannot be combined with --no-flash" in result.output
 
 
 def test_api_server_cli_normalizes_hidden_language_alias(monkeypatch: pytest.MonkeyPatch) -> None:

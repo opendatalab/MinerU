@@ -44,22 +44,24 @@ managed 是生命周期管理方式，不是用户直接操作的独立命令产
 
 ### 3. 单进程 tier 规则
 
-一个 `mineru-kit api-server` 进程可以通过重复 `--tier` 暴露一个或多个 tier。
+一个 `mineru-kit api-server` 进程使用单个 `--tier` 表示启动能力上限。
 
-支持的公开 tier：
+支持的启动 tier：
 
 - `flash`
 - `basic`
 - `standard`
-- `advanced`
+
+Advanced 仍是公开请求 tier，但不是启动 tier；Standard 的依赖和模型同时覆盖 Advanced。
 
 规则：
 
-1. `--tier` 是主入口
-2. `--backend` 是高级覆盖参数
-3. 可以同时传 `--tier` 和 `--backend`
-4. 如果二者不兼容，启动直接报错
-5. 未传 `--tier` 时暴露 `flash`、`basic`、`standard`、`advanced`；请求未指定 tier 时默认 `standard`
+1. `--tier flash` 暴露 `flash`
+2. `--tier basic` 暴露 `flash`、`basic`
+3. `--tier standard` 暴露 `flash`、`basic`、`standard`、`advanced`
+4. 未传 `--tier` 等价于 `--tier standard`
+5. `--no-flash` 从能力中移除 Flash，并禁止该进程执行 Flash backend
+6. `--tier flash --no-flash` 启动失败
 
 ### 4. backend 的公开边界
 
@@ -67,12 +69,12 @@ backend 不是普通 API 协议层字段。
 
 规则：
 
-- 启动参数允许公开 `--backend`
+- 启动参数不公开 `--backend`
 - 运行中的普通 API 响应不暴露 backend
 - `GET /v1/tiers` 也不新增 backend 字段
 - 调用方如需推断实现，只能从 `current_model` 做弱推断
 
-因此 backend 继续只属于启动参数和内部实现概念。
+因此 backend 只属于内部实现概念。
 
 ### 5. 参数分层
 
@@ -81,21 +83,17 @@ backend 不是普通 API 协议层字段。
 - `--host`
 - `--port`
 - `--tier`
+- `--no-flash`
 - `--api-key`
 
 #### 稳定解析参数
 
 - `--language`
 - `--ocr-mode`
-- `--effort`
 - `--disable-image-analysis`
 - `--concurrency`
 - `--upload-dir`
 - `--url-timeout`
-
-#### 专家参数
-
-- `--backend`
 
 ### 6. 不进入正式契约的参数
 
@@ -163,7 +161,7 @@ api-server 不负责 doclib 的文档库资源语义。
 
 ### 2. 在 `GET /v1/tiers` 中额外公开 backend
 
-没有采用。虽然能力发现理论上可以承载 backend，但当前决定保持 v1 API 文档不改动，backend 只属于启动参数和内部实现概念。
+没有采用。虽然能力发现理论上可以承载 backend，但当前决定保持 v1 API 文档不改动，backend 只属于内部实现概念。
 
 ### 3. 保留 `--reload` 作为正式参数
 

@@ -37,7 +37,7 @@
 | doclib HTTP API | 本地 doclib HTTP API 使用 `/docs`、`/parses`、`/search` 和 `POST /invalidate`，详见 [ADR-0004](decisions/0004-doclib-http-api-resources.md)。 |
 | 本地 `standard` | `standard` 本地运行是正式支持能力，不是实验能力；当前代码基本 ready。 |
 | mineru.net tier | `mineru.net/api` 在相当长时间内默认提供 `standard` 解析；`standard` 是绝大多数场景足够好的高质量档位，但不是最高档。 |
-| api-server tier | `mineru-kit api-server --tier` 可重复；未传时当前暴露 `flash`、`basic`、`standard`、`advanced`。 |
+| api-server tier | `mineru-kit api-server --tier` 是单值能力上限，只接受 `flash`、`basic`、`standard`；未传时按 `standard` 暴露四个请求 tier。 |
 | managed 生命周期 | managed 模式下，模型下载、预热、重试和退避由 `mineru-kit api-server` 负责。 |
 | 本地 api-server 安全 | 本地 api-server 默认监听 loopback；可通过 `--api-key` 设置固定 API Key，默认不设置。 |
 | P0 主链路 | P0 包含完整 watch、rules、search，不再把它们标为可选主链路。 |

@@ -6,13 +6,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from ..config import config
+from ..types import DEPLOYMENT_TIERS, DeploymentTier
 
 if TYPE_CHECKING:
     from ..config import ModelSource
 
 DownloadMode = Literal["full", "required_paths"]
-ModelTier = Literal["basic", "standard"]
-MODEL_TIERS: tuple[ModelTier, ...] = ("basic", "standard")
 MODEL_COMPLETE_MARKER = ".mineru_complete"
 
 
@@ -121,7 +120,7 @@ MODEL_REPOS: tuple[ModelRepo, ...] = (
 
 MODEL_REPOS_BY_NAME: dict[str, ModelRepo] = {repo.name: repo for repo in MODEL_REPOS}
 
-REPOS_FOR_TIER: dict[ModelTier, tuple[ModelRepo, ...]] = {
+REPOS_FOR_TIER: dict[DeploymentTier, tuple[ModelRepo, ...]] = {
     "basic": (PDF_EXTRACT_KIT,),
     "standard": (PDF_EXTRACT_KIT, MINERU_2_5_PRO_2605_1_2B),
 }
@@ -135,11 +134,11 @@ def get_model_repo(name: str) -> ModelRepo:
         raise ValueError(f"Unsupported model repo '{name}'. Available repos: {available}.") from exc
 
 
-def validate_model_tier(tier: str) -> ModelTier:
+def validate_model_tier(tier: str) -> DeploymentTier:
     normalized = tier.strip().lower()
-    if normalized in MODEL_TIERS:
+    if normalized in DEPLOYMENT_TIERS:
         return normalized  # type: ignore[return-value]
-    supported = ", ".join(MODEL_TIERS)
+    supported = ", ".join(DEPLOYMENT_TIERS)
     raise ValueError(f"Unsupported model tier '{tier}'. Supported model tiers: {supported}.")
 
 
@@ -175,9 +174,7 @@ __all__ = [
     "MODEL_COMPLETE_MARKER",
     "MODEL_REPOS",
     "MODEL_REPOS_BY_NAME",
-    "MODEL_TIERS",
     "DownloadMode",
-    "ModelTier",
     "ModelPath",
     "ModelRepo",
     "PDF_EXTRACT_KIT",

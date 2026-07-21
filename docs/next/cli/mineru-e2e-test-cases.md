@@ -101,7 +101,7 @@ mineru --help
 
 ### 2.2.1 本地模型准备
 
-本地 managed `basic`、`standard` 和 `advanced` 均要求模型文件已下载到 `config.model.base_dir`。模型管理只区分 Basic 和 Standard 两套模型；Advanced 复用 Standard。模型准备属于测试环境 setup，不属于正式 `mineru` CLI case。
+本地 managed 只配置 `basic` 或 `standard` 启动能力，两者均要求模型文件已下载到 `config.model.base_dir`。Standard managed server 同时提供 Standard 和 Advanced 请求能力。模型准备属于测试环境 setup，不属于正式 `mineru` CLI case。
 
 在执行需要本地 quality tier 的 case 前，测试环境应先准备并验证目标模型:
 
@@ -1525,7 +1525,7 @@ mineru show parse <created_parse_id> --json
 命令:
 
 ```bash
-mineru config set parse_server.local.managed_tier advanced
+mineru config set parse_server.local.managed_tier standard
 mineru config set parse_server.local.mode managed
 mineru server status --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier advanced --pages 1~1 --force --wait 300 --json

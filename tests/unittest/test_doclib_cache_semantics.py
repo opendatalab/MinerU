@@ -308,15 +308,17 @@ def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() 
         "--port",
         "16580",
         "--allow-local-source",
+        "--no-flash",
     ]
-    assert api_server_args_for_tier("advanced", host="127.0.0.2", port=16581) == [
+    assert api_server_args_for_tier("basic", host="127.0.0.2", port=16581) == [
         "--tier",
-        "advanced",
+        "basic",
         "--host",
         "127.0.0.2",
         "--port",
         "16581",
         "--allow-local-source",
+        "--no-flash",
     ]
 
 
@@ -650,23 +652,16 @@ def test_managed_parse_server_restart_writes_stdout_and_stderr_logs(monkeypatch:
     assert parse_stderr_log_path.read_text(encoding="utf-8").endswith("parse restart stderr\n")
 
 
-def test_managed_parse_server_restart_clears_invalid_tier_override(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_managed_parse_server_restart_ignores_invalid_tier_override(monkeypatch: pytest.MonkeyPatch) -> None:
     events: list[str] = []
 
     class _ConfigSvc:
         def __init__(self) -> None:
             self.value = "ultra"
-            self.unset_keys: list[str] = []
 
         async def get(self, key: str) -> str:
             assert key == "parse_server.local.managed_tier"
             return self.value
-
-        async def unset(self, key: str) -> bool:
-            assert key == "parse_server.local.managed_tier"
-            self.unset_keys.append(key)
-            self.value = CONFIG_DEFAULTS[key]
-            return True
 
     class _Proc:
         pid = 67890
@@ -702,7 +697,7 @@ def test_managed_parse_server_restart_clears_invalid_tier_override(monkeypatch: 
     asyncio.run(checker._try_restart_managed(health))
 
     assert events == ["start"]
-    assert config_svc.unset_keys == ["parse_server.local.managed_tier"]
+    assert config_svc.value == "ultra"
     assert health.running_managed_tier == "standard"
 
 
@@ -784,12 +779,12 @@ def test_managed_parse_server_tier_change_detection_triggers_restart(monkeypatch
     monkeypatch.setattr(checker, "_try_restart_managed", _restart)
     health = ParseServerHealth(running_managed_tier="standard")
 
-    restarted = asyncio.run(checker._try_restart_managed_for_tier_change(health, "advanced"))
+    restarted = asyncio.run(checker._try_restart_managed_for_tier_change(health, "basic"))
     unchanged = asyncio.run(checker._try_restart_managed_for_tier_change(health, "standard"))
 
     assert restarted is True
     assert unchanged is False
-    assert calls == [("tier-change", "tier change standard->advanced", False)]
+    assert calls == [("tier-change", "tier change standard->basic", False)]
 
 
 def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -799,7 +794,7 @@ def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch:
     class _ConfigSvc:
         async def get(self, key: str) -> str:
             assert key == "parse_server.local.managed_tier"
-            return "advanced"
+            return "basic"
 
     class _Proc:
         pid = 24680
@@ -810,11 +805,13 @@ def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch:
         assert reason == "tier-change"
         events.append("stop")
 
-    def _start(*, tier: Tier, managed_cfg: ManagedParseServerConfig, log_cfg: LogConfig | None, marker: str) -> tuple[_Proc, str]:
-        assert tier == "advanced"
+    def _start(
+        *, tier: Tier, managed_cfg: ManagedParseServerConfig, log_cfg: LogConfig | None, marker: str
+    ) -> tuple[_Proc, str]:
+        assert tier == "basic"
         assert managed_cfg.host == "127.0.0.2"
         assert log_cfg is None
-        assert marker == "tier change standard->advanced"
+        assert marker == "tier change standard->basic"
         events.append("start")
         return _Proc(), "http://127.0.0.2:16582"
 
@@ -835,14 +832,14 @@ def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch:
         checker._try_restart_managed(
             health,
             reason="tier-change",
-            marker="tier change standard->advanced",
+            marker="tier change standard->basic",
             count_restart=False,
         )
     )
 
     assert events == ["stop", "start"]
     assert health.managed_proc.pid == 24680
-    assert health.running_managed_tier == "advanced"
+    assert health.running_managed_tier == "basic"
     assert health.restart_count == 2
 
 
@@ -2168,8 +2165,7 @@ def test_content_search_does_not_match_filename_but_find_does(tmp_path: Path) ->
         sha256 = "f" * 64
         now = 1000
         await db.execute(
-            "INSERT INTO docs (sha256, short_id, size_bytes, file_type, first_seen_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO docs (sha256, short_id, size_bytes, file_type, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
             (sha256, sha256[:7], 10, "pdf", now, now),
         )
         file_id = await db.execute_insert(
@@ -2234,9 +2230,7 @@ def test_search_returns_all_files_in_reverse_insertion_order(tmp_path: Path) -> 
             ("deleted-copy.pdf", "deleted"),
             ("active.pdf", "active"),
         ]
-        assert [(file["filename"], file["status"]) for file in files_by_sha[sha_deleted]] == [
-            ("deleted-only.pdf", "deleted")
-        ]
+        assert [(file["filename"], file["status"]) for file in files_by_sha[sha_deleted]] == [("deleted-only.pdf", "deleted")]
         assert files_by_sha[sha_orphan] == []
         assert {row["sha256"]: row["page_count"] for row in results} == {
             sha_active: 7,
@@ -3525,9 +3519,7 @@ def test_add_watch_queues_initial_watch_scan() -> None:
 
         await server.add_watch(WatchRequest(path="/watched", removable=True, label="Docs"))
 
-        assert scan_svc.created_scans == [
-            {"path": "/watched", "kind": "watch", "source": "watch", "watch_id": 1}
-        ]
+        assert scan_svc.created_scans == [{"path": "/watched", "kind": "watch", "source": "watch", "watch_id": 1}]
 
     asyncio.run(_run())
 
