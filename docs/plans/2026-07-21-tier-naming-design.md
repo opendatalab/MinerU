@@ -19,17 +19,29 @@ The public Tier and the Hybrid runtime effort are separate concepts. Hybrid keep
 
 ## Compatibility Policy
 
-This is an intentional breaking change.
+This is an intentional breaking change with a one-time database safety migration.
 
 - Public inputs accept only `flash`, `basic`, `standard`, and `advanced`.
 - Public outputs emit only those four literals.
 - Retired public Tier literals are not accepted as aliases.
-- Existing doclib databases and parsed cache directories are not migrated.
+- Existing doclib databases are migrated so retired Tier values cannot break typed API responses.
+- Existing parsed cache directories are not renamed or merged, and retired cached parse results are invalidated.
 - Historical locators using retired Tier literals become invalid.
 - Packaging extras are renamed directly, without compatibility extras.
-- Users must clear old doclib data before using the renamed Tier system.
 
-The initial database schema remains structurally valid because Tier columns are text fields. Code-backed defaults and all newly written values use the new literals; no schema-version increment or data migration is added.
+The initial database schema remains structurally valid because Tier columns are text fields. Schema migration v002 removes references to incompatible cached parse results, clears retired metadata and search-index Tiers, and maps persistent user configuration to the new literals. Code-backed defaults and all newly written values use the new literals.
+
+## Database Migration
+
+Migration v002 makes an existing doclib database safe to open without preserving old parsed artifacts:
+
+- Delete `parses` rows whose Tier is `medium`, `high`, or `xhigh`.
+- Delete `fts_contents` rows whose Tier is `medium`, `high`, or `xhigh`.
+- Set `docs.meta_tier` to `NULL` when it contains a retired Tier.
+- Map parsing rules from `medium` to `basic`, `high` to `standard`, and `xhigh` to `advanced`.
+- Map managed parse-server configuration from `medium` to `basic`, and from `high` or `xhigh` to `standard`.
+
+The migration does not inspect, move, or delete old cache directories. Those directories become unreferenced artifacts and may be removed separately. Historical locators remain invalid, and old parse results must be regenerated under a new Tier.
 
 ## Selection Semantics
 
@@ -110,7 +122,7 @@ New doclib records use the renamed Tier values in:
 - managed parse-server configuration
 - telemetry dimensions
 
-New parsed artifacts continue to use the Tier as a directory component, now with the new literal. No old directory is inspected, renamed, or merged.
+New parsed artifacts continue to use the Tier as a directory component, now with the new literal. Migration v002 invalidates database rows that reference old directories; no old directory is inspected, renamed, or merged.
 
 Locator parsers accept only the new literals, and canonical locators emit only the new literals:
 
@@ -148,6 +160,7 @@ Verification must cover:
 5. CLI, mineru-kit, model commands, and Gradio choices.
 6. Packaging extras and Docker commands.
 7. Documentation and bundled Skill examples.
-8. A final residue audit showing that `medium`, `high`, and `xhigh` occur only as Hybrid effort terminology or ordinary non-Tier English.
+8. Migration from databases containing retired Tier values, including idempotent initialization and typed API responses after migration.
+9. A final residue audit showing that `medium`, `high`, and `xhigh` occur only as Hybrid effort terminology, migration compatibility data, or ordinary non-Tier English.
 
-No compatibility, migration, or legacy-locator tests are added because those behaviors are intentionally unsupported.
+Historical locators and parsed artifacts remain intentionally unsupported; migration tests cover database safety without asserting cache compatibility.
