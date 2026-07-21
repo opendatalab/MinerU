@@ -4,15 +4,14 @@ Date: 2026-07-21
 
 ## Goal
 
-Make `mineru/types.py` the single source of truth for server, managed-server, and model tier types and their finite value collections. Remove duplicate definitions and replace internal/private names with consistent public names.
+Make `mineru/types.py` the single source of truth for request, server, and deployment tier types and their finite value collections. Remove duplicate definitions and replace internal/private names with consistent public names.
 
 ## Canonical Definitions
 
-Keep the existing `Tier`, `ServerTier`, and `ManagedServerTier` types in `mineru/types.py`, add `ModelTier`, and define these explicit constants next to their corresponding types:
+Keep `Tier` and `ServerTier` in `mineru/types.py`, add a shared `DeploymentTier` for managed-server provisioning and model preparation, and define these explicit constants next to their corresponding types:
 
 - `SERVER_TIERS: tuple[ServerTier, ...] = ("flash", "basic", "standard")`
-- `MANAGED_SERVER_TIERS: tuple[ManagedServerTier, ...] = ("basic", "standard")`
-- `MODEL_TIERS: tuple[ModelTier, ...] = ("basic", "standard")`
+- `DEPLOYMENT_TIERS: tuple[DeploymentTier, ...] = ("basic", "standard")`
 - `TIERS: tuple[Tier, ...] = ("flash", "basic", "standard", "advanced")`
 - `TIER_ORDER: dict[Tier, int] = {"flash": 0, "basic": 1, "standard": 2, "advanced": 3}`
 - `TIERS_BY_SERVER_TIER: dict[ServerTier, tuple[Tier, ...]]`
@@ -27,9 +26,9 @@ Tuple and mapping definitions remain explicit rather than being derived dynamica
 
 ## Migration
 
-Replace the old names everywhere: the managed-server collection becomes `MANAGED_SERVER_TIERS`, both duplicated API-server collections become `SERVER_TIERS`, and the request-tier expansion mapping becomes `TIERS_BY_SERVER_TIER`.
+The managed-server configuration and model-repository selection layers both use `DeploymentTier` and `DEPLOYMENT_TIERS`. Basic and Standard are deployment profiles: Flash needs no managed deployment or model bundle, while Advanced reuses the Standard deployment.
 
-Move `ModelTier` and `MODEL_TIERS` out of `mineru/utils/model_registry.py`. Consumers import them directly from `mineru/types.py`; the registry no longer re-exports them.
+Remove the redundant identity conversion between managed-server and model tiers. A validated deployment tier can be passed directly to model-repository selection.
 
 No compatibility aliases or old-module re-exports remain. This is an internal source migration with no intended behavior, API payload, CLI option, error-message, or tier-order change.
 
@@ -43,7 +42,7 @@ Tests and static checks verify:
 
 1. All five canonical constants and the explicit `TIER_ORDER` mapping have the expected ordered values.
 2. API-server startup validation and request-tier expansion are unchanged.
-3. Managed-server configuration accepts only Basic and Standard.
-4. Model commands and model-repository selection still accept only Basic and Standard.
+3. Managed-server configuration accepts only Basic and Standard deployment tiers.
+4. Model commands and model-repository selection use the same deployment tiers.
 5. The superseded identifiers no longer occur in tracked code or documentation.
 6. Ruff, import checks, and the tracked unit-test suite remain green.
