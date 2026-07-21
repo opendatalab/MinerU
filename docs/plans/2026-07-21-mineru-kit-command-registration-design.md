@@ -52,7 +52,7 @@ No parser behavior, API-server behavior, request schema, or command-line option 
 
 ## Error Handling
 
-Existing command validation remains in the implementation modules. The API-server wrapper continues translating Click exceptions from the underlying parser API server into MinerU Kit errors. Direct Typer registration must preserve the current exit codes and messages for invalid tiers, conflicting Flash options, invalid languages, and parse failures.
+Existing command validation remains in the implementation modules. The API-server implementation continues translating Click exceptions from the underlying parser API server into MinerU Kit errors. Direct Typer registration must preserve the current exit codes and messages for invalid tiers, conflicting Flash options, invalid languages, and parse failures.
 
 ## Verification
 
