@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from ..types import PageInfo
+from .image import ImageRenderer
 from .markdown import blocks_to_markdown
 from .office.output import blocks_to_markdown as office_blocks_to_markdown
 from .structured_content import block_to_structured_content, merge_adjacent_ref_text_blocks_for_content
@@ -81,6 +82,7 @@ def render_markdown(
     prefer_markdown_table: bool = False,
     no_rich_content: bool = False,
     add_markers: bool = False,
+    image_renderer: ImageRenderer | None = None,
 ) -> str:
     """Render pages to a single Markdown string.
 
@@ -96,6 +98,7 @@ def render_markdown(
                 img_bucket_path=img_bucket_path,
                 no_rich_content=no_rich_content,
                 prefer_markdown_table=prefer_markdown_table,
+                image_renderer=image_renderer,
             )
             if add_markers:
                 page_num = page_info.page_idx + 1
@@ -110,6 +113,7 @@ def render_markdown(
                 formula_as_image=not formula_enable,
                 no_rich_content=no_rich_content,
                 prefer_markdown_table=prefer_markdown_table,
+                image_renderer=image_renderer,
             )
             if add_markers:
                 page_num = page_info.page_idx + 1

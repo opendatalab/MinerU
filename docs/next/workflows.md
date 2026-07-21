@@ -333,7 +333,7 @@ client.parse("report.pdf")
 | Markdown | 默认阅读输出；读取时从 Middle JSON 转换 |
 | Content List / HTML | 读取时从 Middle JSON 转换 |
 
-doclib 不持久化 Markdown、Content List 或 HTML。它们都是 CPU-only 的派生格式，转换成本低，按需生成即可。
+doclib 不持久化 Markdown、Content List 或 HTML。它们都是 CPU-only 的派生格式，转换成本低，按需生成即可。Markdown 中的图片使用 visual block locator；`image_path` 是 doclib 内部 sidecar 定位信息，不向读取者暴露。
 
 ### 6.7 约束
 
@@ -486,11 +486,11 @@ doclib 解析产物按内容和实际使用的 tier 隔离。`parsed/` 目录下
           medium/
             1~10_1710001234000.json
             11~20_1710002234000.json
+            images/              # 可选，仅保存解析产生的必要 sidecar
           high/
             1~20_1710003234000.json
           xhigh/
             1~20_1710004234000.json
-            images/
 ```
 
 单个 JSON 文件表示一次解析批次，基本形态:
@@ -508,6 +508,8 @@ doclib 不在 `parsed/` 中保存:
 - `output.md`
 - `content_list.json`
 - `structured_content.json`
+
+PDF 和 image block 图片通常在读取时从源页面按 bbox 裁剪，不写入 `images/`。无 bbox 的 visual block 只有在对应 sidecar 文件存在时才输出非空图片 locator。
 - `output.html`
 
 这些格式都由 Middle JSON 读取时转换得到。

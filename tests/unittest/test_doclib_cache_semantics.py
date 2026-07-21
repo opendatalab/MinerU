@@ -34,7 +34,14 @@ from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.file_io import FileStat, get_file_stat
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.locators import ContentCursor
-from mineru.doclib.server import DoclibServer, _LocatorParts, _ReadPlan, _locator_after
+from mineru.doclib.server import (
+    DoclibServer,
+    _find_block_by_no,
+    _LocatorParts,
+    _make_doclib_image_renderer,
+    _ReadPlan,
+    _locator_after,
+)
 from mineru.doclib.services import parse_svc as parse_svc_module
 from mineru.doclib.services.cleanup_svc import CleanupService
 from mineru.doclib.services.config_svc import ConfigService
@@ -4238,12 +4245,11 @@ def test_locator_after_uses_resolved_tier_when_locator_tier_is_absent() -> None:
     assert _locator_after(locator, "xhigh") == "doc:eeeeeee/tier:xhigh/page:1/block:2/char:8"
 
 
-def test_progressive_markdown_uses_public_image_sidecar_prefix(tmp_path: Path) -> None:
+def test_progressive_markdown_uses_readable_pdf_block_locator(tmp_path: Path) -> None:
     sha256 = "e" * 64
     tier = "high"
     page = _image_page("figures/rendered.jpg")
     _write_batch(tmp_path, sha256, tier, "1", 1000, ParseResult([page]).to_dict(skip_defaults=True)["pages"])
-    image_dir = tmp_path / "parsed" / sha256[:2] / sha256 / tier / "images"
     db = _FakeDB(
         parses=[
             {
@@ -4255,6 +4261,7 @@ def test_progressive_markdown_uses_public_image_sidecar_prefix(tmp_path: Path) -
             }
         ],
         file_row=None,
+        doc_row={"sha256": sha256, "short_id": "eeeeeee", "file_type": "pdf", "page_count": 1},
     )
     server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=db))
     plan = _ReadPlan(
@@ -4272,8 +4279,139 @@ def test_progressive_markdown_uses_public_image_sidecar_prefix(tmp_path: Path) -
 
     response = asyncio.run(server._execute_read_plan(plan))
 
-    assert str(image_dir) not in response.content
-    assert "![](images/figures/rendered.jpg)" in response.content
+    assert "![Image block](doc:eeeeeee/tier:high/page:1/block:1)" in response.content
+    assert "figures/rendered.jpg" not in response.content
+
+
+@pytest.mark.parametrize(
+    ("page_count", "expected_marker"),
+    [(100, "<!-- page 5 of 100 -->"), (None, "<!-- page 5 -->")],
+)
+def test_doc_content_marker_uses_document_page_count_only(
+    tmp_path: Path,
+    page_count: int | None,
+    expected_marker: str,
+) -> None:
+    sha256 = "e" * 64
+    tier = "high"
+    page = _text_page("selected page")
+    page.page_idx = 4
+    _write_batch(tmp_path, sha256, tier, "5", 1000, ParseResult([page]).to_dict(skip_defaults=True)["pages"])
+    db = _FakeDB(
+        parses=[{"sha256": sha256, "tier": tier, "status": "done", "page_range": "5", "done_at": 1000}],
+        file_row=None,
+        doc_row={"sha256": sha256, "short_id": "eeeeeee", "file_type": "pdf", "page_count": page_count},
+    )
+    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=db))
+
+    content = asyncio.run(
+        server._render_doc_content(
+            sha256,
+            tier=tier,
+            page_range="5",
+            format="markdown",
+            no_marker=False,
+        )
+    )
+
+    assert expected_marker in content
+    assert "<!-- page 5 of 1 -->" not in content
+
+
+@pytest.mark.parametrize(
+    ("block_type", "label"),
+    [
+        (BlockType.IMAGE, "Image block"),
+        (BlockType.TABLE, "Table block"),
+        (BlockType.CHART, "Chart block"),
+        (BlockType.INTERLINE_EQUATION, "Formula block"),
+    ],
+)
+def test_doclib_image_renderer_uses_type_label_and_canonical_locator(
+    tmp_path: Path,
+    block_type: str,
+    label: str,
+) -> None:
+    renderer = _make_doclib_image_renderer(
+        data_dir=str(tmp_path),
+        sha256="e" * 64,
+        short_id="eeeeeee",
+        tier="high",
+        page_no=2,
+    )
+    block = Block(index=3, type=block_type, bbox=(1, 2, 30, 40))
+
+    assert renderer(block) == f"![{label}](doc:eeeeeee/tier:high/page:2/block:4)"
+
+
+def test_doclib_image_renderer_rejects_non_finite_bbox(tmp_path: Path) -> None:
+    renderer = _make_doclib_image_renderer(
+        data_dir=str(tmp_path),
+        sha256="e" * 64,
+        short_id="eeeeeee",
+        tier="high",
+        page_no=1,
+    )
+    block = Block(index=0, type=BlockType.IMAGE, bbox=(0, 0, float("nan"), 10))
+
+    assert renderer(block) == "![Image block]()"
+
+
+def test_find_block_by_no_ignores_conflicting_child_indexes() -> None:
+    first = Block(
+        index=0,
+        type=BlockType.IMAGE,
+        bbox=(0, 0, 5, 5),
+        blocks=[Block(index=1, type=BlockType.IMAGE_CAPTION, bbox=(1, 1, 2, 2))],
+    )
+    second = Block(index=1, type=BlockType.IMAGE, bbox=(10, 10, 20, 20))
+    page = PageInfo(page_idx=0, para_blocks=[first, second])
+
+    assert _find_block_by_no(page, 2) is second
+
+
+@pytest.mark.parametrize(
+    ("sidecar_exists", "expected_target"),
+    [(True, "doc:eeeeeee/tier:high/page:1/block:1"), (False, "")],
+)
+def test_progressive_markdown_uses_sidecar_availability_for_bboxless_blocks(
+    tmp_path: Path,
+    sidecar_exists: bool,
+    expected_target: str,
+) -> None:
+    sha256 = "e" * 64
+    tier = "high"
+    page = _image_page("figures/rendered.jpg")
+    page._backend = "office"
+    page.para_blocks[0].bbox = (0, 0, 0, 0)
+    _write_batch(tmp_path, sha256, tier, "1", 1000, ParseResult([page]).to_dict(skip_defaults=True)["pages"])
+    if sidecar_exists:
+        sidecar = Path(parse_image_sidecar_dir(str(tmp_path), sha256, tier)) / "figures/rendered.jpg"
+        sidecar.parent.mkdir(parents=True)
+        sidecar.write_bytes(b"image")
+    db = _FakeDB(
+        parses=[{"sha256": sha256, "tier": tier, "status": "done", "page_range": "1", "done_at": 1000}],
+        file_row=None,
+        doc_row={"sha256": sha256, "short_id": "eeeeeee", "file_type": "docx", "page_count": 1},
+    )
+    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=db))
+    plan = _ReadPlan(
+        sha256=sha256,
+        short_id="eeeeeee",
+        tier=tier,
+        page_range=None,
+        after=None,
+        locator=None,
+        context=0,
+        limit=30000,
+        format="markdown",
+        no_marker=False,
+    )
+
+    response = asyncio.run(server._execute_read_plan(plan))
+
+    assert f"![Image block]({expected_target})" in response.content
+    assert "figures/rendered.jpg" not in response.content
 
 
 def test_doclib_office_image_asset_reads_cached_sidecar(tmp_path: Path) -> None:
@@ -4294,7 +4432,7 @@ def test_doclib_office_image_asset_reads_cached_sidecar(tmp_path: Path) -> None:
         bbox=(1, 1, 20, 20),
         lines=[Line(bbox=(1, 1, 20, 20), spans=[image_span])],
     )
-    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(1, 1, 20, 20), blocks=[body])
+    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(0, 0, 0, 0), blocks=[body])
     page = PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="office")
     server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=None))
     plan = _ReadPlan(
@@ -4312,12 +4450,141 @@ def test_doclib_office_image_asset_reads_cached_sidecar(tmp_path: Path) -> None:
         target=ContentCursor(short_id="fffffff", tier=tier, page_no=1, block_no=1),
     )
 
-    asset = asyncio.run(server._render_office_image_asset(plan, page))
+    asset = asyncio.run(server._render_image_response(plan, [page])).asset
 
+    assert asset is not None
     assert asset.mime_type == "image/png"
     assert Path(asset.path).suffix == ".png"
     with Image.open(asset.path) as image:
         assert image.format == "PNG"
+
+
+@pytest.mark.parametrize(
+    ("block_type", "body_type", "content_type"),
+    [
+        (BlockType.TABLE, BlockType.TABLE_BODY, ContentType.TABLE),
+        (BlockType.CHART, BlockType.CHART_BODY, ContentType.CHART),
+        (BlockType.INTERLINE_EQUATION, None, ContentType.INTERLINE_EQUATION),
+    ],
+)
+def test_doclib_visual_block_asset_reads_cached_sidecar(
+    tmp_path: Path,
+    block_type: str,
+    body_type: str | None,
+    content_type: str,
+) -> None:
+    sha256 = "f" * 64
+    tier = "high"
+    image_path = f"figures/{block_type}.png"
+    sidecar = Path(parse_image_sidecar_dir(str(tmp_path), sha256, tier)) / image_path
+    sidecar.parent.mkdir(parents=True)
+    sidecar.write_bytes(
+        base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC")
+    )
+    span = Span(type=content_type, bbox=(0, 0, 0, 0), image_path=image_path)
+    line = Line(bbox=(0, 0, 0, 0), spans=[span])
+    if body_type is None:
+        visual_block = Block(index=0, type=block_type, bbox=(0, 0, 0, 0), lines=[line])
+    else:
+        body = Block(index=0, type=body_type, bbox=(0, 0, 0, 0), lines=[line])
+        visual_block = Block(index=0, type=block_type, bbox=(0, 0, 0, 0), blocks=[body])
+    page = PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[visual_block], _backend="office")
+    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=None))
+    plan = _ReadPlan(
+        sha256=sha256,
+        short_id="fffffff",
+        tier=tier,
+        page_range=None,
+        after=None,
+        locator="doc:fffffff/tier:high/page:1/block:1",
+        context=0,
+        limit=30000,
+        format="image",
+        no_marker=False,
+        image_format="png",
+        target=ContentCursor(short_id="fffffff", tier=tier, page_no=1, block_no=1),
+    )
+
+    asset = asyncio.run(server._render_image_response(plan, [page])).asset
+
+    assert asset is not None
+    assert asset.mime_type == "image/png"
+    with Image.open(asset.path) as image:
+        assert image.format == "PNG"
+
+
+def test_doclib_pdf_block_locator_crops_source_pdf(tmp_path: Path) -> None:
+    sha256 = "a" * 64
+    tier = "high"
+    source_path = tmp_path / "source.pdf"
+    Image.new("RGB", (100, 100), color="white").save(source_path, "PDF")
+    page = _image_page("internal/not-persisted.png")
+    db = _FakeDB(
+        parses=[],
+        file_row={"path": str(source_path), "ext": "pdf", "sha256": sha256, "status": "active"},
+        doc_row={"sha256": sha256, "short_id": "aaaaaaa", "file_type": "pdf", "page_count": 1},
+    )
+    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=db))
+    plan = _ReadPlan(
+        sha256=sha256,
+        short_id="aaaaaaa",
+        tier=tier,
+        page_range=None,
+        after=None,
+        locator="doc:aaaaaaa/tier:high/page:1/block:1",
+        context=0,
+        limit=30000,
+        format="image",
+        no_marker=False,
+        image_format="png",
+        target=ContentCursor(short_id="aaaaaaa", tier=tier, page_no=1, block_no=1),
+    )
+
+    asset = asyncio.run(server._render_image_response(plan, [page])).asset
+
+    assert asset is not None
+    assert asset.mime_type == "image/png"
+    with Image.open(asset.path) as image:
+        assert image.format == "PNG"
+        assert image.width > 0
+        assert image.height > 0
+
+
+def test_doclib_image_block_locator_crops_source_image_at_original_resolution(tmp_path: Path) -> None:
+    sha256 = "b" * 64
+    tier = "high"
+    source_path = tmp_path / "source.png"
+    Image.new("RGB", (1000, 500), color="white").save(source_path)
+    page = _image_page("internal/not-persisted.png")
+    page.page_size = (360, 180)
+    page.para_blocks[0].bbox = (0, 0, 360, 180)
+    db = _FakeDB(
+        parses=[],
+        file_row={"path": str(source_path), "ext": "png", "sha256": sha256, "status": "active"},
+        doc_row={"sha256": sha256, "short_id": "bbbbbbb", "file_type": "image", "page_count": 1},
+    )
+    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=db))
+    plan = _ReadPlan(
+        sha256=sha256,
+        short_id="bbbbbbb",
+        tier=tier,
+        page_range=None,
+        after=None,
+        locator="doc:bbbbbbb/tier:high/page:1/block:1",
+        context=0,
+        limit=30000,
+        format="image",
+        no_marker=False,
+        image_format="png",
+        target=ContentCursor(short_id="bbbbbbb", tier=tier, page_no=1, block_no=1),
+    )
+
+    asset = asyncio.run(server._render_image_response(plan, [page])).asset
+
+    assert asset is not None
+    assert asset.mime_type == "image/png"
+    with Image.open(asset.path) as image:
+        assert image.size == (1000, 500)
 
 
 def test_doclib_office_image_asset_transcodes_to_requested_format(tmp_path: Path) -> None:
@@ -4338,7 +4605,7 @@ def test_doclib_office_image_asset_transcodes_to_requested_format(tmp_path: Path
         bbox=(1, 1, 20, 20),
         lines=[Line(bbox=(1, 1, 20, 20), spans=[image_span])],
     )
-    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(1, 1, 20, 20), blocks=[body])
+    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(0, 0, 0, 0), blocks=[body])
     page = PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="office")
     server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=None))
     plan = _ReadPlan(
@@ -4356,8 +4623,9 @@ def test_doclib_office_image_asset_transcodes_to_requested_format(tmp_path: Path
         target=ContentCursor(short_id="fffffff", tier=tier, page_no=1, block_no=1),
     )
 
-    asset = asyncio.run(server._render_office_image_asset(plan, page))
+    asset = asyncio.run(server._render_image_response(plan, [page])).asset
 
+    assert asset is not None
     assert asset.mime_type == "image/jpeg"
     assert Path(asset.path).suffix == ".jpg"
     with Image.open(asset.path) as image:
@@ -4375,7 +4643,7 @@ def test_doclib_office_image_asset_missing_sidecar_reports_asset_not_available(t
         bbox=(1, 1, 20, 20),
         lines=[Line(bbox=(1, 1, 20, 20), spans=[image_span])],
     )
-    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(1, 1, 20, 20), blocks=[body])
+    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(0, 0, 0, 0), blocks=[body])
     page = PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="office")
     server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=None))
     plan = _ReadPlan(
@@ -4394,7 +4662,7 @@ def test_doclib_office_image_asset_missing_sidecar_reports_asset_not_available(t
     )
 
     with pytest.raises(NotFoundError) as exc_info:
-        asyncio.run(server._render_office_image_asset(plan, page))
+        asyncio.run(server._render_image_response(plan, [page]))
 
     assert exc_info.value.code == "asset_not_available"
     assert exc_info.value.param == "locator"
