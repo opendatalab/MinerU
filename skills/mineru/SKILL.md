@@ -133,6 +133,13 @@ MinerU requires Python `>=3.10,<3.14`.
 
 Before upgrading, determine which tool owns the resolved `mineru` executable. Check `uv tool list`, then `pipx list --short`; otherwise, identify the Python environment containing the executable. Do not use an unrelated `pip` or install a second copy.
 
+Before an in-place upgrade or reinstall, stop the MinerU server. On Windows, confirm that status reports `running=false` before modifying the environment:
+
+```bash
+mineru server stop
+mineru server status --json
+```
+
 Use the matching upgrade command only after the user approves the upgrade:
 
 ```bash
@@ -142,6 +149,8 @@ pipx upgrade mineru --pip-args="--pre"
 ```
 
 If the owner cannot be determined, multiple installations exist, or MinerU is installed from source or in editable mode, ask the user instead of upgrading. After upgrading, check the resolved executable and its version again.
+
+If a failed Windows reinstall has already broken the CLI, locate and stop the residual `python.exe -m mineru.doclib.app` process by PID in Task Manager or PowerShell, then rerun the full install command. Do not delete the tool directory while that process is running.
 
 ### Install with `uv` (preferred)
 
@@ -364,17 +373,19 @@ Managed local parsing requires optional runtime dependencies. Install the requir
 
 The following examples assume the current install tool is `uv tool`. If `mineru` was installed with another tool or environment, use the equivalent command for that actual tool/environment.
 
-Installing extras with `uv tool install --force --prerelease allow` can reinstall or upgrade the `mineru` package. Restart the MinerU server after installing extras so the CLI client, doclib server, and managed parse server use the same installed version.
+Installing extras with `uv tool install --force --prerelease allow` can replace the active `mineru` environment. Stop the MinerU server first, confirm `running=false`, and start it again after installing dependencies and models.
 
 Managed local parsing has two startup tiers: `basic` and `standard`. A Standard server provides `basic`, `standard`, and `advanced` request tiers. Advanced uses the same Standard dependencies, model set, and hardware setup; it differs only by spending more inference compute when the request selects `--tier advanced`.
 
 Enable managed local parsing for `basic`:
 
 ```bash
+mineru server stop
+mineru server status --json
 uv tool install --force --prerelease allow "mineru[basic]"
 mineru-kit models download --tier basic
 mineru-kit models verify --tier basic
-mineru server restart
+mineru server start
 mineru config set parse_server.local.managed_tier basic
 mineru config set parse_server.local.mode managed
 mineru server status --json
@@ -383,10 +394,12 @@ mineru server status --json
 Enable managed local parsing for both `standard` and `advanced` requests:
 
 ```bash
+mineru server stop
+mineru server status --json
 uv tool install --force --prerelease allow "mineru[standard]"
 mineru-kit models download --tier standard
 mineru-kit models verify --tier standard
-mineru server restart
+mineru server start
 mineru config set parse_server.local.managed_tier standard
 mineru config set parse_server.local.mode managed
 mineru server status --json
@@ -395,8 +408,9 @@ mineru server status --json
 Rules:
 
 - Determine how the current `mineru` command was installed, then install the extra through that same tool/environment.
+- Stop the MinerU server and confirm `running=false` before replacing its environment, especially on Windows.
 - Download and verify models for the startup tier (`basic` or `standard`) before enabling managed mode.
-- After installing extras, restart the MinerU server to avoid CLI/server version mismatch.
+- Start the MinerU server only after the extra and models are ready.
 - Set `parse_server.local.managed_tier` before `parse_server.local.mode=managed`.
 - Poll `mineru server status --json` and use managed parsing only after the target tier is healthy.
 - If local quality parsing cannot start, do not add `--remote` automatically; ask the user first.
