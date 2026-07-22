@@ -1055,7 +1055,8 @@ mineru usage --json
 - 三条命令均 exit code = 0
 - 普通输出标题为 `Remote API Usage`
 - 普通输出包含 Remote URL、access level、billing period、current 和 limits
-- JSON stdout 可直接解析，且包含 `object=usage`、`access_level`、`billing_period`、`current` 和 `limits`
+- JSON stdout 可直接解析，顶层包含 `remote_url` 和 `usage`
+- `usage.object = usage`，且 `usage` 内包含 `access_level`、`billing_period`、`current` 和 `limits`
 - JSON 数值来自 Remote API，不依赖本用例硬编码固定配额
 - 不包含 Local Parse Server usage
 
@@ -1076,7 +1077,8 @@ mineru usage --json
 预期:
 
 - exit code = 0
-- `access_level = anonymous`
+- 顶层包含 `usage`，且 `usage.object = usage`
+- `usage.access_level = anonymous`
 - 顶层包含 `guidance`
 - `guidance.type = configure_official_api_key`
 - `guidance.required = false`
