@@ -69,6 +69,9 @@ the owned home, but the user-facing message does not expose the lock path. The
 exception carries no home or lock-path state because both are deterministically
 derived from the active `MINERU_HOME`. This avoids duplicating state and
 suggesting that deleting the lock file is a valid recovery action.
+`DoclibLockUnavailable` is an internal control-flow marker and does not format a
+user-facing message; CLI and direct process entrypoints render the ownership
+message at their respective error boundaries.
 
 Direct app startup and CLI `start`, `stop`, and `status` use the same ownership
 message: `MinerU home [<home>] is currently owned by another doclib server
