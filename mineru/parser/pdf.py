@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
+import time
 from abc import abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +23,8 @@ from ..utils.backend_options import (
 )
 from ..utils.image_payload import ImagePayloadCache
 from .base import DocumentParser, ParseResult
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -149,7 +153,23 @@ class PdfBaseParser(DocumentParser):
 
         suffix = guess_suffix_by_path(path)
         if suffix in IMAGE_EXTENSIONS:
+            conversion_started_at = time.perf_counter()
+            input_size = len(pdf_bytes)
+            logger.debug(
+                "Image input conversion started filename=%s suffix=%s input_bytes=%d",
+                path.name,
+                suffix,
+                input_size,
+            )
             pdf_bytes = PDFDocument.from_image(pdf_bytes).bytes
+            logger.debug(
+                "Image input conversion completed filename=%s suffix=%s input_bytes=%d pdf_bytes=%d elapsed_ms=%d",
+                path.name,
+                suffix,
+                input_size,
+                len(pdf_bytes),
+                round((time.perf_counter() - conversion_started_at) * 1000),
+            )
 
         pdf_bytes, retained_page_indices, broken_page_indices = self._maybe_adjust_pdf_bytes(
             pdf_bytes,
@@ -336,6 +356,12 @@ class PdfFlashParser(PdfBaseParser):
         from ..types import Block, Line, PageInfo, Span
         from ..utils.page_index import resolve_output_page_idx
 
+        extraction_started_at = time.perf_counter()
+        logger.debug(
+            "Flash PDF extraction started pdf_bytes=%d mapped_pages=%s",
+            len(pdf_bytes),
+            len(page_index_map) if page_index_map is not None else "all",
+        )
         filepath = self._pdf_bytes_to_tempfile(pdf_bytes)
         try:
             pages_text = extract_pages_text(filepath)
@@ -344,6 +370,11 @@ class PdfFlashParser(PdfBaseParser):
                 os.unlink(filepath)
             except OSError:
                 pass
+        logger.debug(
+            "Flash PDF extraction completed pages=%d elapsed_ms=%d",
+            len(pages_text),
+            round((time.perf_counter() - extraction_started_at) * 1000),
+        )
 
         pages: list[PageInfo] = []
         block_idx = 0

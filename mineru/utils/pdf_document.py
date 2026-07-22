@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
+import time
 from contextlib import contextmanager
 from io import BytesIO
 from typing import Any, Iterator, Literal, TypeAlias, cast
@@ -20,6 +22,8 @@ from .pdf_classify import classify, get_sample_page_indices
 from .pdf_image_tools import get_crop_img, load_images_from_pdf_bytes_range
 from .pdf_reader import image_to_bytes
 from .pdfium_guard import _pdfium_lock, safe_rewrite_pdf_bytes_with_pdfium
+
+logger = logging.getLogger(__name__)
 
 POINTS_PER_INCH: int = 72
 DEFAULT_RENDER_DPI: int = 200
@@ -110,18 +114,54 @@ class PDFDocument:
         render_scale: float = DEFAULT_RENDER_SCALE,
         render_max_edge: int = DEFAULT_RENDER_MAX_EDGE,
     ) -> "PDFDocument":
+        open_started_at = time.perf_counter()
+        logger.debug("Pillow image open started input_bytes=%d", len(image_bytes))
         image = Image.open(BytesIO(image_bytes))
+        logger.debug(
+            "Pillow image open completed format=%s mode=%s size=%sx%s elapsed_ms=%d",
+            image.format,
+            image.mode,
+            image.width,
+            image.height,
+            round((time.perf_counter() - open_started_at) * 1000),
+        )
+
         # 根据 EXIF 信息自动转正（处理手机拍摄的带 Orientation 标记的图片）
+        transpose_started_at = time.perf_counter()
+        logger.debug("Pillow EXIF transpose started")
         image = ImageOps.exif_transpose(image) or image
+        logger.debug(
+            "Pillow EXIF transpose completed mode=%s size=%sx%s elapsed_ms=%d",
+            image.mode,
+            image.width,
+            image.height,
+            round((time.perf_counter() - transpose_started_at) * 1000),
+        )
 
         # 只在必要时转换
         if image.mode != "RGB":
+            source_mode = image.mode
+            conversion_started_at = time.perf_counter()
+            logger.debug("Pillow RGB conversion started source_mode=%s", source_mode)
             image = image.convert("RGB")
+            logger.debug(
+                "Pillow RGB conversion completed source_mode=%s elapsed_ms=%d",
+                source_mode,
+                round((time.perf_counter() - conversion_started_at) * 1000),
+            )
 
         render_dpi = max(1, int(round(render_scale * POINTS_PER_INCH)))
 
         with BytesIO() as pdf_buffer:
             # 第一张图保存为 PDF，其余追加
+            save_started_at = time.perf_counter()
+            logger.debug(
+                "Pillow PDF encoding started mode=%s size=%sx%s dpi=%d",
+                image.mode,
+                image.width,
+                image.height,
+                render_dpi,
+            )
             image.save(
                 pdf_buffer,
                 format="PDF",
@@ -130,6 +170,11 @@ class PDFDocument:
                 subsampling=0,
             )
             pdf_bytes = pdf_buffer.getvalue()
+            logger.debug(
+                "Pillow PDF encoding completed output_bytes=%d elapsed_ms=%d",
+                len(pdf_bytes),
+                round((time.perf_counter() - save_started_at) * 1000),
+            )
 
         return PDFDocument(
             pdf_bytes,

@@ -918,7 +918,18 @@ class ParseService:
         server_dim = "local(flash)" if tier == "flash" else "unknown"
         try:
             if tier == "flash":
+                logger.debug(
+                    "Local flash parse started task_id=%s path=%s page_range=%s",
+                    task["id"],
+                    file_row["path"],
+                    page_range,
+                )
                 result = await self._parse_via_local(file_row, tier, page_range)
+                logger.debug(
+                    "Local flash parse completed task_id=%s elapsed_ms=%d",
+                    task["id"],
+                    _now_ms() - execute_start_ms,
+                )
             else:
                 result, via = await self._parse_via_api(file_row, tier, page_range, privacy)
                 server_dim = await self._telemetry_server_dim(via=via, tier=tier)
