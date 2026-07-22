@@ -30,6 +30,59 @@ def _capture_log_messages() -> tuple[list[str], int]:
     return messages, handler_id
 
 
+def test_pdf_render_worker_exits_after_parent_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[object] = []
+
+    class _ParentProcess:
+        def join(self) -> None:
+            events.append("parent.join")
+
+    monkeypatch.setattr(pdf_image_tools.multiprocessing, "parent_process", _ParentProcess)
+    monkeypatch.setattr(pdf_image_tools.os, "_exit", lambda code: events.append(("exit", code)))
+
+    pdf_image_tools._exit_pdf_render_worker_when_parent_exits()
+
+    assert events == ["parent.join", ("exit", 1)]
+
+
+def test_pdf_render_worker_without_multiprocessing_parent_does_not_exit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pdf_image_tools.multiprocessing, "parent_process", lambda: None)
+    monkeypatch.setattr(pdf_image_tools.os, "_exit", lambda code: pytest.fail(f"unexpected exit {code}"))
+
+    pdf_image_tools._exit_pdf_render_worker_when_parent_exits()
+
+
+def test_pdf_render_executor_installs_parent_exit_watcher() -> None:
+    executor = pdf_image_tools._create_pdf_render_executor(max_workers=1)
+    try:
+        assert executor._initializer is pdf_image_tools._install_pdf_render_parent_exit_watcher
+    finally:
+        executor.shutdown(wait=True, cancel_futures=True)
+
+
+def test_pdf_render_parent_exit_watcher_is_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[object] = []
+
+    class _Thread:
+        def __init__(self, *, target: Any, name: str, daemon: bool) -> None:
+            events.append((target, name, daemon))
+
+        def start(self) -> None:
+            events.append("start")
+
+    monkeypatch.setattr(pdf_image_tools.threading, "Thread", _Thread)
+    pdf_image_tools._install_pdf_render_parent_exit_watcher()
+
+    assert events == [
+        (
+            pdf_image_tools._exit_pdf_render_worker_when_parent_exits,
+            "mineru-pdf-render-parent-exit-watcher",
+            True,
+        ),
+        "start",
+    ]
+
+
 def test_pdf_render_future_states_cover_terminal_and_active_states() -> None:
     pending: Future[Any] = Future()
     running: Future[Any] = Future()

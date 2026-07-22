@@ -161,9 +161,26 @@ def _get_pdf_render_pool_capacity(cpu_count: int | None = None) -> int:
     )
 
 
+def _exit_pdf_render_worker_when_parent_exits() -> None:
+    parent = multiprocessing.parent_process()
+    if parent is None:
+        return
+    parent.join()
+    os._exit(1)
+
+
+def _install_pdf_render_parent_exit_watcher() -> None:
+    watcher = threading.Thread(
+        target=_exit_pdf_render_worker_when_parent_exits,
+        name="mineru-pdf-render-parent-exit-watcher",
+        daemon=True,
+    )
+    watcher.start()
+
+
 def _create_pdf_render_executor(max_workers: int) -> ProcessPoolExecutor:
     if is_windows_environment():
-        return ProcessPoolExecutor(max_workers=max_workers)
+        return ProcessPoolExecutor(max_workers=max_workers, initializer=_install_pdf_render_parent_exit_watcher)
 
     start_method = multiprocessing.get_start_method()
     if start_method != "spawn":
@@ -171,9 +188,10 @@ def _create_pdf_render_executor(max_workers: int) -> ProcessPoolExecutor:
         return ProcessPoolExecutor(
             max_workers=max_workers,
             mp_context=multiprocessing.get_context("spawn"),
+            initializer=_install_pdf_render_parent_exit_watcher,
         )
 
-    return ProcessPoolExecutor(max_workers=max_workers)
+    return ProcessPoolExecutor(max_workers=max_workers, initializer=_install_pdf_render_parent_exit_watcher)
 
 
 def _is_pdf_render_pool_still_spawning_workers(executor: ProcessPoolExecutor) -> bool:
