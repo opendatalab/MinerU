@@ -65,11 +65,17 @@ not prove that shutdown cleanup has finished or that a replacement can safely
 start.
 
 Failure to acquire the lock exits startup with a concise message identifying
-the home and lock path. It does not remove endpoint, UDS, database, or lock
-files. A live endpoint may still be queried for diagnostics, but endpoint state
-never overrides ownership. When the lock is held but the endpoint does not
-respond, `start`, `stop`, and `status` include the endpoint PID if a valid value
-is available; otherwise they retain the same error without a PID.
+the owned home, but the user-facing message does not expose the lock path. The
+exception retains the lock path internally for programmatic diagnostics. This
+avoids suggesting that deleting the lock file is a valid recovery action.
+
+Direct app startup and CLI `start`, `stop`, and `status` use the same ownership
+message: `MinerU home [<home>] is currently owned by another doclib server
+process`, with a parenthetical `reported PID <pid>` when valid current endpoint
+metadata is available. The message does not claim that an endpoint is not
+responding because discovery may instead be absent, incomplete during startup,
+invalid, or temporarily unreachable. It does not remove endpoint, UDS,
+database, or lock files. Endpoint state never overrides ownership.
 
 The guarantee applies between versions that implement `doclib.lock`. Existing
 endpoint probing remains useful during upgrades, but an older process that does
