@@ -95,6 +95,19 @@ def test_endpoint_pid_is_diagnostic_only(tmp_path: Path) -> None:
     )
 
 
+def test_endpoint_file_accepts_empty_transports_during_startup(tmp_path: Path) -> None:
+    endpoint = tmp_path / "doclib.endpoint.json"
+
+    write_endpoint_file(endpoint, pid=123, server_id="server-123", transports=[])
+
+    assert read_endpoint_file(endpoint) == EndpointInfo(
+        version=ENDPOINT_VERSION,
+        pid=123,
+        server_id="server-123",
+        transports=[],
+    )
+
+
 def test_read_endpoint_file_accepts_legacy_v1_with_pid(tmp_path: Path) -> None:
     endpoint = tmp_path / "doclib.endpoint.json"
     endpoint.write_text(

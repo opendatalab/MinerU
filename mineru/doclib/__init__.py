@@ -1,1 +1,3 @@
-# The local mineru document library.
+"""The local MinerU document library."""
+
+__all__: list[str] = []

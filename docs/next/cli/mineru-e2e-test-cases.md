@@ -450,8 +450,8 @@ unset MINERU_DOCLIB_UDS_ENABLED MINERU_DOCLIB_TCP_ENABLED MINERU_DOCLIB_TCP_PORT
 - status JSON 中 `tcp.port` 是大于 0 的实际端口，不应为 0
 - endpoint JSON 的 `transports` 只需包含 TCP transport，`base_url` 端口必须等于 status JSON 的 `tcp.port`
 - stop exit code = 0
-- stop 后 `$MINERU_HOME/doclib.endpoint.json` 可以保留，后续 `mineru server status --json` 返回 `running=false`
-- 再次 start 时会清理残留 endpoint，并写入新的 version 2 endpoint
+- stop 后 `$MINERU_HOME/doclib.endpoint.json` 被清理；不检查 `doclib.lock` 文件是否保留
+- 后续 `mineru server status --json` 返回 `running=false`
 
 ### SERVER-015 endpoint stale 清理
 
@@ -482,7 +482,7 @@ export MINERU_HOME="$MAIN_MINERU_HOME"
 - stop exit code = 0
 - stop 输出 `Server is not running` 或等价信息
 - stop 后 stale endpoint 文件仍然存在
-- 后续 start 在创建子进程前清理 stale endpoint 和 UDS socket
+- 后续 start 创建的 server 在取得 `doclib.lock` 后清理 stale endpoint 和 UDS socket
 
 ### SERVER-016 endpoint server identity 校验
 
@@ -510,6 +510,29 @@ export MINERU_HOME="$MAIN_MINERU_HOME"
 - `mineru server restart` 先等待旧实例完全退出，再启动 replacement。
 - replacement 写入 version 2 endpoint 和新的 `server_id`。
 - version 1 endpoint PID 与 status PID 不同时返回 `server_instance_mismatch`，且不发送 shutdown。
+
+### SERVER-018 doclib home ownership lock
+
+前置:
+
+- 使用独立 `MINERU_HOME`。
+
+步骤:
+
+1. 通过 `mineru server start` 启动第一个 doclib。
+2. 确认 `$MINERU_HOME/doclib.lock` 存在。
+3. 使用相同环境直接执行第二个 `python -m mineru.doclib.app`。
+4. 确认第二个进程立即失败，第一个 server 仍可通过 status 访问。
+5. 强制终止第一个 server 进程，再次执行 `mineru server start`。
+
+预期:
+
+- 第二个进程 exit code 非 0，stderr 包含当前 home，但不显示 `doclib.lock` 路径。
+- 第二个进程不删除第一个实例的 endpoint 或 UDS socket。
+- endpoint 不可连接但 ownership lock 被占用时，status/start/stop 返回 `service_unavailable` 和统一的 home ownership 消息，
+  不得报告普通未运行状态；endpoint 含有效 PID 时，错误中包含 `reported PID <pid>`，但不自动终止进程。
+- 第一个进程退出后 OS lock 自动释放；replacement 能取得 ownership、清理 stale discovery 文件并正常启动。
+- `doclib.lock` 文件是否存在不表示 server 是否正在运行，其保留行为可能因平台而异。
 
 ## 4A. Telemetry 命令
 
@@ -3606,6 +3629,7 @@ mineru server start
 - SERVER-015 endpoint stale 清理
 - SERVER-016 endpoint server identity 校验
 - SERVER-017 version 1 endpoint 升级迁移
+- SERVER-018 doclib home ownership lock
 - SERVER-012 error summary 与 recent logs
 - SERVER-010 停止 server
 

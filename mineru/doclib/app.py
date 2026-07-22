@@ -21,7 +21,8 @@ from loguru import logger as loguru_logger
 
 from ..config import Config, LogConfig, _mineru_home, config
 from ..errors import MineruError, error_response, http_status_for
-from .endpoint import EndpointTransport, uds_available, write_endpoint_file
+from .endpoint import EndpointTransport, remove_endpoint_file, uds_available, write_endpoint_file
+from .instance_lock import DoclibLockUnavailable, build_doclib_home_owned_message, doclib_home_lock
 from .server import DoclibServer
 from .types import PARSE_STATUS_FAILED, PARSE_STATUS_PARSING, SCAN_STATUS_FAILED, SCAN_STATUS_RUNNING
 
@@ -428,7 +429,15 @@ def _bind_tcp_socket(host: str, port: int, *, strict_port: bool, port_probe_coun
 
 def main() -> None:
     """Entry point: python -m mineru.doclib.app"""
-    cfg = config
+    try:
+        with doclib_home_lock():
+            _run_server(config)
+    except DoclibLockUnavailable:
+        raise SystemExit(build_doclib_home_owned_message()) from None
+
+
+def _run_server(cfg: Config) -> None:
+    """Run the doclib server while the caller holds the home ownership lock."""
     uds_path = os.path.expanduser(cfg.doclib.uds.path)
     endpoint_path = os.path.expanduser(cfg.doclib.endpoint_path)
     uds_enabled = cfg.doclib.resolved_uds_enabled
@@ -442,66 +451,84 @@ def main() -> None:
             "Enable doclib.tcp or disable doclib.uds."
         )
 
-    app = create_app(cfg)
-    uv_config = uvicorn.Config(
-        app,
-        log_config=None,
-        lifespan="on",
-        timeout_keep_alive=cfg.doclib.tcp.timeout,
-    )
-    server = uvicorn.Server(uv_config)
-
-    sockets: list[socket.socket] = []
-    transports: list[EndpointTransport] = []
-
+    remove_endpoint_file(endpoint_path)
     if uds_enabled:
         try:
             os.unlink(uds_path)
         except OSError:
             pass
-        uds_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        uds_sock.bind(uds_path)
-        os.chmod(uds_path, cfg.doclib.uds.permission)
-        uds_sock.listen(cfg.doclib.tcp.backlog)
-        sockets.append(uds_sock)
-        transports.append(EndpointTransport(type="uds", path=uds_path))
-
-    if tcp_enabled:
-        tcp_sock, port = _bind_tcp_socket(
-            cfg.doclib.tcp.host,
-            cfg.doclib.tcp.port,
-            strict_port=cfg.doclib.tcp.strict_port,
-            port_probe_count=cfg.doclib.tcp.port_probe_count,
-        )
-        if cfg.doclib.tcp.port != 0 and port != cfg.doclib.tcp.port:
-            print(f"Port {cfg.doclib.tcp.port} in use, using {port}")
-        tcp_sock.listen(cfg.doclib.tcp.backlog)
-        sockets.append(tcp_sock)
-        app.state.doclib_state.tcp_port = port
-        transports.append(EndpointTransport(type="tcp", base_url=f"http://{cfg.doclib.tcp.host}:{port}"))
-    else:
-        app.state.doclib_state.tcp_port = None
-
-    write_endpoint_file(
-        endpoint_path,
-        pid=os.getpid(),
-        server_id=app.state.doclib_state.server_id,
-        transports=transports,
-    )
-    print("MinerU server listening on " + " and ".join(_format_transport(transport) for transport in transports))
-
-    loop = asyncio.new_event_loop()
-
-    async def serve() -> None:
-        await server.serve(sockets=sockets)
-
+    sockets: list[socket.socket] = []
+    transports: list[EndpointTransport] = []
+    loop: asyncio.AbstractEventLoop | None = None
     try:
-        loop.run_until_complete(serve())
-    except KeyboardInterrupt:
-        pass
+        app = create_app(cfg)
+        write_endpoint_file(
+            endpoint_path,
+            pid=os.getpid(),
+            server_id=app.state.doclib_state.server_id,
+            transports=[],
+        )
+        uv_config = uvicorn.Config(
+            app,
+            log_config=None,
+            lifespan="on",
+            timeout_keep_alive=cfg.doclib.tcp.timeout,
+        )
+        server = uvicorn.Server(uv_config)
+
+        if uds_enabled:
+            uds_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            uds_sock.bind(uds_path)
+            os.chmod(uds_path, cfg.doclib.uds.permission)
+            uds_sock.listen(cfg.doclib.tcp.backlog)
+            sockets.append(uds_sock)
+            transports.append(EndpointTransport(type="uds", path=uds_path))
+
+        if tcp_enabled:
+            tcp_sock, port = _bind_tcp_socket(
+                cfg.doclib.tcp.host,
+                cfg.doclib.tcp.port,
+                strict_port=cfg.doclib.tcp.strict_port,
+                port_probe_count=cfg.doclib.tcp.port_probe_count,
+            )
+            if cfg.doclib.tcp.port != 0 and port != cfg.doclib.tcp.port:
+                print(f"Port {cfg.doclib.tcp.port} in use, using {port}")
+            tcp_sock.listen(cfg.doclib.tcp.backlog)
+            sockets.append(tcp_sock)
+            app.state.doclib_state.tcp_port = port
+            transports.append(EndpointTransport(type="tcp", base_url=f"http://{cfg.doclib.tcp.host}:{port}"))
+        else:
+            app.state.doclib_state.tcp_port = None
+
+        write_endpoint_file(
+            endpoint_path,
+            pid=os.getpid(),
+            server_id=app.state.doclib_state.server_id,
+            transports=transports,
+        )
+        print("MinerU server listening on " + " and ".join(_format_transport(transport) for transport in transports))
+
+        loop = asyncio.new_event_loop()
+
+        async def serve() -> None:
+            await server.serve(sockets=sockets)
+
+        try:
+            loop.run_until_complete(serve())
+        except KeyboardInterrupt:
+            pass
     finally:
-        _cancel_pending_loop_tasks(loop)
-        loop.close()
+        if loop is not None:
+            _cancel_pending_loop_tasks(loop)
+            loop.close()
+        for bound_socket in sockets:
+            bound_socket.close()
+        if uds_enabled:
+            try:
+                os.unlink(uds_path)
+            except OSError:
+                pass
+        remove_endpoint_file(endpoint_path)
 
 
 def _setup_logging(log_cfg: LogConfig) -> None:

@@ -121,11 +121,13 @@ $MINERU_HOME/doclib.endpoint.json
 
 规则:
 
-- 只写入实际成功绑定的 transports。
+- server 取得 ownership 并清理 stale discovery 后，先写入 PID、`server_id` 和空 transports；绑定完成后只写入实际成功绑定的
+  transports。
 - `server_id` 是每次 server 启动生成的随机 UUID，并由 `/server/status` 返回。
 - TCP 使用随机端口时，`base_url` 必须写入真实端口。
 - 文件写入应使用 atomic write: 先写临时文件，再 `replace`。
-- server shutdown / stop 时保留 endpoint；下一次 start 确认没有存活 server 后再删除并重建。
+- server 持有 `$MINERU_HOME/doclib.lock` 时才能写入或清理 endpoint；正常 shutdown 在释放 ownership 前清理 endpoint。
+- 崩溃残留的 endpoint 由下一个成功取得 `doclib.lock` 的 server 删除并重建，CLI spawn 进程不直接清理。
 - stale endpoint 文件不能被视为 server 一定运行；client 连接失败后仍应报 `ServerNotRunningError`。
 
 ### Client 连接策略
@@ -255,7 +257,9 @@ Server 影响:
 
 - server 启动时按 `uds.enabled` 和 `tcp.enabled` 分别创建 socket。
 - server 允许只启 TCP。
-- server 启动时写入 `doclib.endpoint.json`；停止时保留 discovery 文件，由下一次 CLI 启动清理 stale 文件。
+- server 自身持有 `$MINERU_HOME/doclib.lock`，取得 ownership 后才清理 stale discovery 文件并写入新 endpoint。
+- 正常停止在释放 ownership 前清理 discovery 文件；异常退出的残留文件由下一个 owner 清理。
+- endpoint PID 只用于诊断，不作为 ownership 或自动终止进程的依据。
 - UDS 不可用不再导致 config import 失败。
 
 Client / CLI 影响:
@@ -275,7 +279,7 @@ Client / CLI 影响:
 - 增加 UDS 可用时默认只启 UDS 的配置测试。
 - 增加 UDS 不可用时默认启 TCP 的配置测试。
 - 增加 server 只启 TCP 的启动测试。
-- 增加 endpoint 文件写入、随机端口写入、shutdown 保留与下次启动清理测试。
+- 增加 endpoint 文件写入、随机端口写入、ownership 内 shutdown 清理与崩溃后恢复测试。
 - 增加 client resolver 优先 UDS、fallback TCP、stale endpoint 失败测试。
 - 更新 `MINERU_DOCLIB_HTTP_*` 相关测试为 `MINERU_DOCLIB_TCP_*`。
 

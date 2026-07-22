@@ -16,6 +16,7 @@ from rich.table import Table
 
 from ...config import config
 from ...doclib.endpoint import remove_endpoint_file
+from ...doclib.instance_lock import DoclibLockUnavailable, build_doclib_home_owned_message, doclib_home_lock
 from ...doclib.types import ServerStatusResponse, TCPServerStatus
 from ...errors import MineruError
 from ...version import __version__
@@ -153,24 +154,41 @@ def _server_running() -> bool:
         return False
 
 
-def _wait_for_server(timeout: float = 15.0) -> bool:
+def _doclib_lock_available() -> bool:
+    try:
+        with doclib_home_lock():
+            return True
+    except DoclibLockUnavailable:
+        return False
+
+
+def _home_owner_unavailable_error() -> MineruError:
+    return MineruError("service_unavailable", build_doclib_home_owned_message())
+
+
+def _wait_for_started_server(proc: subprocess.Popen[bytes], timeout: float = 15.0) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         if _server_running():
             return True
+        if proc.poll() is not None:
+            return False
         time.sleep(0.3)
     return False
-
-
-def _wait_for_sock(timeout: float = 15.0) -> bool:
-    return _wait_for_server(timeout)
 
 
 def _wait_for_server_stop(timeout: float = 15.0) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         if not _server_running():
-            return True
+            try:
+                with doclib_home_lock():
+                    if _server_running():
+                        continue
+                    _cleanup_local_endpoint_files()
+                    return True
+            except DoclibLockUnavailable:
+                pass
         time.sleep(0.3)
     return False
 
@@ -196,8 +214,8 @@ def _start() -> str:
         with _ServerStartLock(_server_start_lock_path()) as start_lock:
             if not start_lock.acquired or _server_running():
                 return "Server is already running."
-
-            _cleanup_local_endpoint_files()
+            if not _doclib_lock_available():
+                raise _home_owner_unavailable_error()
 
             with open(log_path, "a", encoding="utf-8") as log_file:
                 log_file.write("\n--- mineru server start ---\n")
@@ -217,8 +235,9 @@ def _start() -> str:
                     start_new_session=True,
                 )
 
-                if not _wait_for_server():
-                    proc.kill()
+                if not _wait_for_started_server(proc):
+                    if proc.poll() is None:
+                        proc.kill()
                     raise MineruError(
                         "service_unavailable",
                         "Server failed to start within 15 seconds. "
@@ -243,6 +262,8 @@ def stop() -> None:
 
 def _stop() -> str:
     if not _server_running():
+        if not _doclib_lock_available():
+            raise _home_owner_unavailable_error()
         return "Server is not running."
 
     try:
@@ -285,6 +306,8 @@ def status(json_mode: bool = typer.Option(False, "--json", help="JSON output")) 
 
 def _server_status() -> ServerStatusResponse:
     if not _server_running():
+        if not _doclib_lock_available():
+            raise _home_owner_unavailable_error()
         return _not_running_status()
     from ...doclib.client import DoclibClient
 
