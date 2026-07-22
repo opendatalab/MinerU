@@ -7,7 +7,7 @@ import multiprocessing
 import os
 import threading
 import time
-from concurrent.futures import ALL_COMPLETED, ProcessPoolExecutor, wait
+from concurrent.futures import ALL_COMPLETED, Future, ProcessPoolExecutor, wait
 from concurrent.futures.process import BrokenProcessPool
 from io import BytesIO
 from typing import Any, Callable, Literal
@@ -76,7 +76,25 @@ def _load_images_from_pdf_worker(
     image_type: Literal["pil_img", "base64_img"],
 ) -> list[dict[str, Any]]:
     """用于进程池的包装函数"""
-    return load_images_from_pdf_core(pdf_bytes, dpi, start_page_id, end_page_id, image_type)
+    started_at = time.monotonic()
+    worker_pid = os.getpid()
+    page_range = f"{start_page_id + 1}-{end_page_id + 1}"
+    logger.debug(
+        f"PDF render worker started: pid={worker_pid}, pages={page_range}, dpi={dpi}, "
+        f"image_type={image_type}, pdf_bytes={len(pdf_bytes)}"
+    )
+    try:
+        images = load_images_from_pdf_core(pdf_bytes, dpi, start_page_id, end_page_id, image_type)
+    except Exception:
+        elapsed = time.monotonic() - started_at
+        logger.exception(f"PDF render worker failed: pid={worker_pid}, pages={page_range}, elapsed={elapsed:.3f}s")
+        raise
+
+    elapsed = time.monotonic() - started_at
+    logger.debug(
+        f"PDF render worker completed: pid={worker_pid}, pages={page_range}, elapsed={elapsed:.3f}s, images={len(images)}"
+    )
+    return images
 
 
 def _close_image_dicts(images_list: list[dict[str, Any]] | None) -> None:
@@ -196,6 +214,62 @@ def _submit_pdf_render_task(
         return future
 
 
+def _get_pdf_render_future_states(
+    future_to_range: dict[Future[Any], tuple[int, int]],
+) -> list[dict[str, Any]]:
+    states = []
+    for future, (range_start, range_end) in future_to_range.items():
+        try:
+            if future.cancelled():
+                state = "cancelled"
+            elif future.done():
+                state = "done"
+            elif future.running():
+                state = "running"
+            else:
+                state = "pending"
+        except Exception:
+            state = "unknown"
+        states.append(
+            {
+                "pages": f"{range_start + 1}-{range_end + 1}",
+                "state": state,
+            }
+        )
+    return states
+
+
+def _get_pdf_render_worker_states(executor: ProcessPoolExecutor) -> list[dict[str, Any]]:
+    try:
+        process_map = getattr(executor, "_processes", None) or {}
+        processes = list(process_map.values())
+    except Exception:
+        return []
+
+    states = []
+    for process in processes:
+        try:
+            pid = getattr(process, "pid", None)
+        except Exception:
+            pid = None
+        try:
+            exit_code = getattr(process, "exitcode", None)
+        except Exception:
+            exit_code = None
+        try:
+            alive = process.is_alive()
+        except Exception:
+            alive = None
+        states.append(
+            {
+                "pid": pid,
+                "alive": alive,
+                "exit_code": exit_code,
+            }
+        )
+    return sorted(states, key=lambda state: (state["pid"] is None, state["pid"] or 0))
+
+
 def _get_pdf_render_executor() -> ProcessPoolExecutor:
     global _pdf_render_executor
 
@@ -276,13 +350,22 @@ def load_images_from_pdf_bytes_range(
         f"PDF image rendering uses {actual_threads} processes for pages {start_page_id + 1}-{end_page_id + 1}: {page_ranges}"
     )
 
+    render_started_at = time.monotonic()
     executor = _get_pdf_render_executor()
+    executor_id = hex(id(executor))
+    parent_pid = os.getpid()
+    parent_thread = threading.current_thread().name
     recycle_executor = False
     collected_image_lists = []
     try:
-        futures = []
-        future_to_range = {}
+        futures: list[Future[Any]] = []
+        future_to_range: dict[Future[Any], tuple[int, int]] = {}
         for range_start, range_end in page_ranges:
+            page_range = f"{range_start + 1}-{range_end + 1}"
+            logger.debug(
+                f"Submitting PDF render task: parent_pid={parent_pid}, thread={parent_thread}, "
+                f"executor={executor_id}, pages={page_range}"
+            )
             future = _submit_pdf_render_task(
                 executor,
                 _load_images_from_pdf_worker,
@@ -293,16 +376,27 @@ def load_images_from_pdf_bytes_range(
                 image_type,
             )
             futures.append(future)
-            future_to_range[future] = range_start
+            future_to_range[future] = (range_start, range_end)
+            logger.debug(
+                f"Submitted PDF render task: parent_pid={parent_pid}, thread={parent_thread}, executor={executor_id}, "
+                f"pages={page_range}, workers={_get_pdf_render_worker_states(executor)}"
+            )
 
         _, not_done = wait(futures, timeout=timeout, return_when=ALL_COMPLETED)
         if not_done:
             recycle_executor = True
+            elapsed = time.monotonic() - render_started_at
+            logger.warning(
+                f"PDF image rendering timed out: timeout={timeout}s, elapsed={elapsed:.3f}s, parent_pid={parent_pid}, "
+                f"thread={parent_thread}, executor={executor_id}, pages={start_page_id + 1}-{end_page_id + 1}, "
+                f"futures={_get_pdf_render_future_states(future_to_range)}, "
+                f"workers={_get_pdf_render_worker_states(executor)}"
+            )
             raise TimeoutError(f"PDF image rendering timeout after {timeout}s for pages {start_page_id + 1}-{end_page_id + 1}")
 
         all_results = []
         for future in futures:
-            range_start = future_to_range[future]
+            range_start, _ = future_to_range[future]
             images_list = future.result()
             collected_image_lists.append(images_list)
             all_results.append((range_start, images_list))
@@ -313,6 +407,11 @@ def load_images_from_pdf_bytes_range(
             images_list.extend(imgs)
 
         collected_image_lists.clear()
+        elapsed = time.monotonic() - render_started_at
+        logger.debug(
+            f"PDF image rendering completed: elapsed={elapsed:.3f}s, parent_pid={parent_pid}, thread={parent_thread}, "
+            f"executor={executor_id}, pages={start_page_id + 1}-{end_page_id + 1}, images={len(images_list)}"
+        )
         return images_list
     except BrokenProcessPool:
         recycle_executor = True
