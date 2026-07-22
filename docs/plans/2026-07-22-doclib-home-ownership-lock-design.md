@@ -66,8 +66,9 @@ start.
 
 Failure to acquire the lock exits startup with a concise message identifying
 the owned home, but the user-facing message does not expose the lock path. The
-exception retains the lock path internally for programmatic diagnostics. This
-avoids suggesting that deleting the lock file is a valid recovery action.
+exception carries no home or lock-path state because both are deterministically
+derived from the active `MINERU_HOME`. This avoids duplicating state and
+suggesting that deleting the lock file is a valid recovery action.
 
 Direct app startup and CLI `start`, `stop`, and `status` use the same ownership
 message: `MinerU home [<home>] is currently owned by another doclib server
