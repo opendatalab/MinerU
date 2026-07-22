@@ -166,6 +166,15 @@ def _wait_for_sock(timeout: float = 15.0) -> bool:
     return _wait_for_server(timeout)
 
 
+def _wait_for_server_stop(timeout: float = 15.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not _server_running():
+            return True
+        time.sleep(0.3)
+    return False
+
+
 @app.command()
 def start() -> None:
     """Start the mineru server in the background."""
@@ -188,13 +197,7 @@ def _start() -> str:
             if not start_lock.acquired or _server_running():
                 return "Server is already running."
 
-            socket_path = _socket_path()
-            # Clean stale socket
-            try:
-                os.unlink(socket_path)
-            except OSError:
-                pass
-            remove_endpoint_file(_endpoint_path())
+            _cleanup_local_endpoint_files()
 
             with open(log_path, "a", encoding="utf-8") as log_file:
                 log_file.write("\n--- mineru server start ---\n")
@@ -240,7 +243,6 @@ def stop() -> None:
 
 def _stop() -> str:
     if not _server_running():
-        _cleanup_local_endpoint_files()
         return "Server is not running."
 
     try:
@@ -248,11 +250,14 @@ def _stop() -> str:
 
         c = DoclibClient(timeout=5)
         c.shutdown_server()
-    except Exception:
-        pass
+    except Exception as exc:
+        raise MineruError("service_unavailable", f"Failed to request MinerU server shutdown: {exc}") from exc
 
-    time.sleep(0.5)
-    _cleanup_local_endpoint_files()
+    if not _wait_for_server_stop():
+        raise MineruError(
+            "service_unavailable",
+            "MinerU server did not stop within 15 seconds. The server was not restarted.",
+        )
 
     return "Server stopped."
 
@@ -266,7 +271,6 @@ def restart() -> None:
 def _restart() -> str:
     if _server_running():
         stop_message = _stop()
-        time.sleep(1)
         start_message = _start()
         return f"{stop_message}\n{start_message}"
     return _start()

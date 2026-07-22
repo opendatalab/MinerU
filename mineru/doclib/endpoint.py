@@ -25,12 +25,13 @@ class EndpointTransport:
 class EndpointInfo:
     version: int
     pid: int | None
-    server_id: str
+    server_id: str | None
     transports: list[EndpointTransport]
 
 
 DOCLIB_UDS_BASE_URL = "http://mineru"
 ENDPOINT_VERSION = 2
+LEGACY_ENDPOINT_VERSION = 1
 
 
 def uds_available() -> bool:
@@ -83,12 +84,23 @@ def read_endpoint_file(path: str | os.PathLike[str]) -> EndpointInfo | None:
     pid = payload.get("pid")
     server_id = payload.get("server_id")
     transports = payload.get("transports")
-    if version != ENDPOINT_VERSION or not isinstance(server_id, str) or not server_id or not isinstance(transports, list):
+    if not isinstance(transports, list):
+        return None
+    parsed_pid = pid if isinstance(pid, int) and not isinstance(pid, bool) and pid > 0 else None
+    if version == LEGACY_ENDPOINT_VERSION:
+        if parsed_pid is None:
+            return None
+        parsed_server_id = None
+    elif version == ENDPOINT_VERSION:
+        if not isinstance(server_id, str) or not server_id:
+            return None
+        parsed_server_id = server_id
+    else:
         return None
     return EndpointInfo(
         version=version,
-        pid=pid if isinstance(pid, int) and not isinstance(pid, bool) and pid > 0 else None,
-        server_id=server_id,
+        pid=parsed_pid,
+        server_id=parsed_server_id,
         transports=[_parse_transport(item) for item in transports if isinstance(item, dict)],
     )
 
@@ -113,6 +125,7 @@ def _parse_transport(item: dict[str, Any]) -> EndpointTransport:
 __all__ = [
     "DOCLIB_UDS_BASE_URL",
     "ENDPOINT_VERSION",
+    "LEGACY_ENDPOINT_VERSION",
     "EndpointInfo",
     "EndpointTransport",
     "default_endpoint_path",

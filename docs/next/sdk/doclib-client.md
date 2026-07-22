@@ -48,6 +48,7 @@ class DoclibClient:
 - 默认通过 `$MINERU_HOME/doclib.endpoint.json` 发现 doclib endpoint。
 - 默认发现不从启动配置推导 UDS 或 TCP；endpoint 文件不存在或无效时，方法调用抛出 `ServerNotRunningError`。
 - 默认发现会在首次请求前校验 endpoint 与 `/server/status` 的 `server_id`；不匹配的 transport 不会承载业务请求。
+- version 1 endpoint 仅用于升级迁移，通过 endpoint/status PID 对应关系识别旧 server；version 2 的 PID 不参与身份判断。
 - `socket_path` 表示显式 UDS endpoint；`base_url` 只表示显式 TCP endpoint，例如 `http://127.0.0.1:15980`。
 - 显式 `socket_path` / `base_url` 代表调用方明确选择的 server，不执行 endpoint `server_id` 校验。
 - `socket_path` 和 `base_url` 不能同时传入。

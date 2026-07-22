@@ -125,7 +125,7 @@ $MINERU_HOME/doclib.endpoint.json
 - `server_id` 是每次 server 启动生成的随机 UUID，并由 `/server/status` 返回。
 - TCP 使用随机端口时，`base_url` 必须写入真实端口。
 - 文件写入应使用 atomic write: 先写临时文件，再 `replace`。
-- server shutdown / stop 时 best-effort 删除该文件。
+- server shutdown / stop 时保留 endpoint；下一次 start 确认没有存活 server 后再删除并重建。
 - stale endpoint 文件不能被视为 server 一定运行；client 连接失败后仍应报 `ServerNotRunningError`。
 
 ### Client 连接策略
@@ -173,7 +173,8 @@ DOCLIB_UDS_BASE_URL = "http://mineru"
 4. endpoint 中同时存在 UDS 和 TCP 时，优先尝试 UDS。
 5. UDS 不存在、不可用或连接失败时，尝试 TCP。
 6. endpoint 不存在、无效或不包含可用 transport 时，不根据当前 config 推导 transport。
-7. 第一次使用候选 transport 前，通过 `/server/status` 校验其 `server_id` 与 endpoint 一致。
+7. 第一次使用候选 transport 前，通过 `/server/status` 校验身份：version 2 比较 `server_id`；version 1
+   仅作为升级迁移格式，比较 endpoint PID 与 status PID。
 8. 身份不匹配时继续尝试下一个 transport；所有候选均不匹配时抛出 `server_instance_mismatch`。
 9. 没有候选 endpoint 或所有候选 endpoint 都无法连接时，抛 `ServerNotRunningError`。
 
@@ -185,6 +186,7 @@ CLI 的 `server status`、`server stop` 和业务命令都应使用同一套 res
 
 状态模型中的 `http` 字段改为 `tcp`，CLI human-readable 输出也显示 `TCP`。状态中的 `server_id` 标识当前
 server 进程，并用于默认 endpoint discovery 的身份校验；`pid` 和 `mineru_home` 只用于诊断。
+version 1 endpoint 是例外：由于旧格式没有 `server_id`，PID 仅在停止和迁移旧 server 时承担临时身份校验。
 
 `server status --json` 应继续返回:
 
@@ -253,7 +255,7 @@ Server 影响:
 
 - server 启动时按 `uds.enabled` 和 `tcp.enabled` 分别创建 socket。
 - server 允许只启 TCP。
-- server 写入并清理 `doclib.endpoint.json`。
+- server 启动时写入 `doclib.endpoint.json`；停止时保留 discovery 文件，由下一次 CLI 启动清理 stale 文件。
 - UDS 不可用不再导致 config import 失败。
 
 Client / CLI 影响:
@@ -273,7 +275,7 @@ Client / CLI 影响:
 - 增加 UDS 可用时默认只启 UDS 的配置测试。
 - 增加 UDS 不可用时默认启 TCP 的配置测试。
 - 增加 server 只启 TCP 的启动测试。
-- 增加 endpoint 文件写入、随机端口写入、shutdown 清理测试。
+- 增加 endpoint 文件写入、随机端口写入、shutdown 保留与下次启动清理测试。
 - 增加 client resolver 优先 UDS、fallback TCP、stale endpoint 失败测试。
 - 更新 `MINERU_DOCLIB_HTTP_*` 相关测试为 `MINERU_DOCLIB_TCP_*`。
 

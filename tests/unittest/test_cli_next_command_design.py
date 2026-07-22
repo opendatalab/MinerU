@@ -54,7 +54,7 @@ from mineru.doclib.types import (
     WatchInfo,
     WatchListResponse,
 )
-from mineru.errors import ServerNotRunningError
+from mineru.errors import MineruError, ServerNotRunningError
 from mineru.filetypes import FILE_TYPE_BY_EXTENSION
 from mineru.version import __version__
 
@@ -2102,6 +2102,87 @@ def test_server_start_lock_blocks_concurrent_start(monkeypatch: Any, tmp_path: P
                 pass
 
     assert not lock_path.exists()
+
+
+def test_server_start_cleans_stale_discovery_files_before_spawn(monkeypatch: Any, tmp_path: Path) -> None:
+    socket_path = tmp_path / "doclib.sock"
+    endpoint_path = tmp_path / "doclib.endpoint.json"
+    socket_path.write_text("stale", encoding="utf-8")
+    endpoint_path.write_text("{}", encoding="utf-8")
+
+    class _Proc:
+        pid = 12345
+
+    def _popen(*args: Any, **kwargs: Any) -> _Proc:
+        assert not socket_path.exists()
+        assert not endpoint_path.exists()
+        return _Proc()
+
+    monkeypatch.setattr(server, "_server_running", lambda: False)
+    monkeypatch.setattr(server, "_wait_for_server", lambda: True)
+    monkeypatch.setattr(server, "_socket_path", lambda: str(socket_path))
+    monkeypatch.setattr(server, "_endpoint_path", lambda: str(endpoint_path))
+    monkeypatch.setattr(server, "_server_start_lock_path", lambda: str(tmp_path / "doclib.start.lock"))
+    monkeypatch.setattr(server, "_server_log_path", lambda: str(tmp_path / "doclib.log"))
+    monkeypatch.setattr(server, "_server_stdout_log_path", lambda: str(tmp_path / "doclib.stdout.log"))
+    monkeypatch.setattr(server, "_server_stderr_log_path", lambda: str(tmp_path / "doclib.stderr.log"))
+    monkeypatch.setattr(server.subprocess, "Popen", _popen)
+
+    assert server._start() == "Server started (PID 12345)."
+
+
+def test_server_stop_leaves_stale_discovery_files_when_not_running(monkeypatch: Any, tmp_path: Path) -> None:
+    socket_path = tmp_path / "doclib.sock"
+    endpoint_path = tmp_path / "doclib.endpoint.json"
+    socket_path.write_text("stale", encoding="utf-8")
+    endpoint_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(server, "_server_running", lambda: False)
+    monkeypatch.setattr(server, "_socket_path", lambda: str(socket_path))
+    monkeypatch.setattr(server, "_endpoint_path", lambda: str(endpoint_path))
+
+    assert server._stop() == "Server is not running."
+    assert socket_path.exists()
+    assert endpoint_path.exists()
+
+
+def test_server_stop_waits_until_shutdown_completes(monkeypatch: Any) -> None:
+    events: list[str] = []
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 5
+
+        def shutdown_server(self) -> None:
+            events.append("shutdown")
+
+    monkeypatch.setattr(server, "_server_running", lambda: True)
+    monkeypatch.setattr(server, "_wait_for_server_stop", lambda: events.append("wait") or True)
+    monkeypatch.setattr("mineru.doclib.client.DoclibClient", _Client)
+
+    assert server._stop() == "Server stopped."
+    assert events == ["shutdown", "wait"]
+
+
+def test_server_stop_timeout_does_not_start_replacement(monkeypatch: Any) -> None:
+    starts: list[bool] = []
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            pass
+
+        def shutdown_server(self) -> None:
+            pass
+
+    monkeypatch.setattr(server, "_server_running", lambda: True)
+    monkeypatch.setattr(server, "_wait_for_server_stop", lambda: False)
+    monkeypatch.setattr(server, "_start", lambda: starts.append(True) or "started")
+    monkeypatch.setattr("mineru.doclib.client.DoclibClient", _Client)
+
+    with pytest.raises(MineruError) as exc_info:
+        server._restart()
+
+    assert exc_info.value.code == "service_unavailable"
+    assert starts == []
 
 
 def test_parse_content_read_failure_exits_nonzero(monkeypatch: Any, tmp_path: Path) -> None:
