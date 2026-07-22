@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import socket
 from dataclasses import dataclass
@@ -10,6 +11,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 from ..config import Config, config
+
+logger = logging.getLogger("mineru.doclib.endpoint")
 
 TransportType = Literal["uds", "tcp"]
 
@@ -65,9 +68,11 @@ def write_endpoint_file(path: str | os.PathLike[str], *, pid: int, server_id: st
     os.replace(tmp_path, endpoint_path)
 
 
-def remove_endpoint_file(path: str | os.PathLike[str]) -> None:
+def remove_endpoint_file(path: str | os.PathLike[str], *, reason: str) -> None:
+    endpoint_path = Path(path).expanduser()
+    logger.debug("Removing doclib endpoint path=%s pid=%d reason=%s", endpoint_path, os.getpid(), reason)
     try:
-        Path(path).expanduser().unlink()
+        endpoint_path.unlink()
     except OSError:
         pass
 

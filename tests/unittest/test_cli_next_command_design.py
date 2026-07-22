@@ -6,10 +6,13 @@ import shlex
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
 import pytest
+from rich.console import Console
+from rich.text import Text
 from typer.main import get_command
 from typer.testing import CliRunner
 
@@ -517,7 +520,7 @@ def test_server_status_renders_separate_recent_log_panels(monkeypatch: Any) -> N
                 data_dir="/tmp/mineru",
                 sqlite_path="/tmp/doclib.db",
                 log_path="/tmp/doclib.log",
-                app_logs=["app\n"],
+                app_logs=["app [/Users/jinzhenj/.mineru]\n"],
                 access_logs=["access\n"],
                 stderr_logs=["stderr\n"],
                 stdout_logs=["stdout\n"],
@@ -536,8 +539,9 @@ def test_server_status_renders_separate_recent_log_panels(monkeypatch: Any) -> N
         "Recent Parse Server Stderr Logs",
         "Recent Parse Server Stdout Logs",
     ]
-    assert [panel["renderable"] for panel in panels] == [
-        "app",
+    assert all(isinstance(panel["renderable"], Text) for panel in panels)
+    assert [panel["renderable"].plain for panel in panels] == [
+        "app [/Users/jinzhenj/.mineru]",
         "access",
         "stderr",
         "stdout",
@@ -546,6 +550,32 @@ def test_server_status_renders_separate_recent_log_panels(monkeypatch: Any) -> N
     ]
     assert all(panel["border_style"] == "dim" for panel in panels)
     assert not any(getattr(item, "title", None) == "Recent Logs" for item in rendered)
+
+
+def test_server_status_renders_markup_like_log_text_literally() -> None:
+    rendered = list(
+        server._render_server_status(
+            ServerStatusResponse(
+                running=True,
+                pid=123,
+                uptime_seconds=1,
+                socket_path="/tmp/doclib.sock",
+                data_dir="/tmp/mineru",
+                sqlite_path="/tmp/doclib.db",
+                log_path="/tmp/doclib.log",
+                access_logs=["MinerU home [/Users/jinzhenj/.mineru]\n[bold]\n[/invalid]\n"],
+            )
+        )
+    )
+    panel = next(item for item in rendered if getattr(item, "title", None) == "Recent Access Logs")
+    output = StringIO()
+
+    Console(file=output, width=160, color_system=None).print(panel)
+
+    rendered_text = output.getvalue()
+    assert "MinerU home [/Users/jinzhenj/.mineru]" in rendered_text
+    assert "[bold]" in rendered_text
+    assert "[/invalid]" in rendered_text
 
 
 def test_telemetry_status_command_prints_installation_id(monkeypatch: Any) -> None:
@@ -2194,10 +2224,9 @@ def test_wait_for_server_stop_requires_ownership_release(monkeypatch: Any) -> No
 
     monkeypatch.setattr(server, "_server_running", lambda: False)
     monkeypatch.setattr(server, "doclib_home_lock", _home_lock)
-    monkeypatch.setattr(server, "_cleanup_local_endpoint_files", lambda: events.append("cleanup"))
 
     assert server._wait_for_server_stop(timeout=1) is True
-    assert events == ["lock", "cleanup"]
+    assert events == ["lock"]
 
 
 def test_server_stop_waits_until_shutdown_completes(monkeypatch: Any) -> None:

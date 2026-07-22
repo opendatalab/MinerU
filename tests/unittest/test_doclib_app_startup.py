@@ -346,6 +346,45 @@ def test_setup_logging_routes_loguru_records_to_application_log(tmp_path: Path) 
         _clear_test_loggers()
 
 
+def test_shutdown_removes_only_endpoint_owned_by_current_server(tmp_path: Path) -> None:
+    endpoint_path = tmp_path / "doclib.endpoint.json"
+    doclib_app.write_endpoint_file(endpoint_path, pid=123, server_id="current-server", transports=[])
+
+    doclib_app._remove_owned_endpoint_file(str(endpoint_path), "old-server")
+    assert endpoint_path.exists()
+
+    doclib_app._remove_owned_endpoint_file(str(endpoint_path), "current-server")
+    assert not endpoint_path.exists()
+
+
+def test_shutdown_removes_only_uds_path_with_bound_identity(tmp_path: Path) -> None:
+    uds_path = tmp_path / "doclib.sock"
+    uds_path.write_text("original", encoding="utf-8")
+    original_identity = doclib_app._path_identity(str(uds_path))
+    assert original_identity is not None
+
+    uds_path.unlink()
+    uds_path.write_text("replacement", encoding="utf-8")
+    doclib_app._remove_owned_uds_path(str(uds_path), original_identity)
+    assert uds_path.read_text(encoding="utf-8") == "replacement"
+
+    replacement_identity = doclib_app._path_identity(str(uds_path))
+    assert replacement_identity is not None
+    doclib_app._remove_owned_uds_path(str(uds_path), replacement_identity)
+    assert not uds_path.exists()
+
+
+def test_discovery_cleanup_runs_only_once() -> None:
+    state = doclib_app.AppState()
+    events: list[str] = []
+    state.discovery_cleanup = lambda: events.append("cleanup")
+
+    doclib_app._run_discovery_cleanup(state)
+    doclib_app._run_discovery_cleanup(state)
+
+    assert events == ["cleanup"]
+
+
 def test_server_status_reports_configured_socket_path(monkeypatch, tmp_path) -> None:
     app_log_path = tmp_path / "doclib.log"
     access_log_path = tmp_path / "doclib.access.log"
@@ -627,7 +666,7 @@ def test_managed_parse_server_shutdown_uses_health_proc(monkeypatch, tmp_path) -
         assert not hasattr(state, "parse_server_proc")
         assert client.get("/api/v1/server/status").status_code == 200
 
-    assert events == ["stdin.close", "wait:10"]
+    assert events == ["stdin.close", "wait:2.0"]
 
 
 def test_startup_resets_running_scans_to_failed(monkeypatch, tmp_path) -> None:

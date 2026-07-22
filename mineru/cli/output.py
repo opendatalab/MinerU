@@ -13,8 +13,8 @@ from rich.text import Text
 
 from .contracts import RenderableObject
 
-console = Console()
-stderr_console = Console(stderr=True)
+console = Console(markup=False)
+stderr_console = Console(stderr=True, markup=False)
 
 
 def print_rich(*objects: RenderableObject) -> None:

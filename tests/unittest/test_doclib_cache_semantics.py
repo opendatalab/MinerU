@@ -620,8 +620,14 @@ def test_start_managed_parse_server_selects_port_and_writes_logs(monkeypatch: py
     assert parse_stderr_log_path.read_text(encoding="utf-8").endswith("parse helper stderr\n")
 
 
-def test_stop_managed_parse_server_closes_stdin_then_terminates_then_kills() -> None:
-    events: list[str] = []
+def test_stop_managed_parse_server_uses_one_total_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[str | tuple[str, float]] = []
+    now = 100.0
+
+    def _monotonic() -> float:
+        return now
+
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.time.monotonic", _monotonic)
 
     class _Stdin:
         closed = False
@@ -638,9 +644,11 @@ def test_stop_managed_parse_server_closes_stdin_then_terminates_then_kills() -> 
         def poll(self) -> None:
             return None
 
-        def wait(self, timeout: int) -> None:
+        def wait(self, timeout: float) -> None:
+            nonlocal now
             self.waits += 1
-            events.append(f"wait:{timeout}")
+            events.append(("wait", timeout))
+            now += timeout
             if self.waits < 3:
                 raise subprocess.TimeoutExpired(cmd=["parse-server"], timeout=timeout)
 
@@ -652,7 +660,36 @@ def test_stop_managed_parse_server_closes_stdin_then_terminates_then_kills() -> 
 
     stop_managed_parse_server(_Proc(), timeout_sec=4, reason="test")
 
-    assert events == ["stdin.close", "wait:4", "terminate", "wait:4", "kill", "wait:4"]
+    assert [event for event in events if isinstance(event, str)] == ["stdin.close", "terminate", "kill"]
+    waits = [event[1] for event in events if isinstance(event, tuple)]
+    assert waits == pytest.approx([2.0, 1.2, 0.8])
+    assert sum(waits) == pytest.approx(4.0)
+
+
+def test_stop_managed_parse_server_shortens_startup_grace(monkeypatch: pytest.MonkeyPatch) -> None:
+    waits: list[float] = []
+
+    class _Stdin:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class _Proc:
+        pid = 12345
+        stdin = _Stdin()
+
+        def poll(self) -> None:
+            return None
+
+        def wait(self, timeout: float) -> None:
+            waits.append(timeout)
+
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.time.monotonic", lambda: 100.0)
+
+    stop_managed_parse_server(_Proc(), timeout_sec=10, reason="startup", startup_in_progress=True)
+
+    assert waits == [2.0]
 
 
 def test_managed_parse_server_restart_writes_stdout_and_stderr_logs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -773,10 +810,11 @@ def test_managed_parse_server_restart_stops_recorded_proc_before_start(monkeypat
     class _Proc:
         pid = 67890
 
-    def _stop(proc: object, *, timeout_sec: int, reason: str) -> None:
+    def _stop(proc: object, *, timeout_sec: int, reason: str, startup_in_progress: bool) -> None:
         assert proc is old_proc
         assert timeout_sec == 4
         assert reason == "restart"
+        assert startup_in_progress is True
         events.append("stop")
 
     def _popen(*args: Any, **kwargs: Any) -> _Proc:
@@ -802,7 +840,7 @@ def test_managed_parse_server_restart_stops_recorded_proc_before_start(monkeypat
         stop_timeout_sec=4,
         managed_parse_server=ManagedParseServerConfig(host="127.0.0.2", port=16580, port_probe_count=3),
     )
-    health = ParseServerHealth(managed_proc=old_proc)
+    health = ParseServerHealth(managed_proc=old_proc, local_starting=True)
 
     asyncio.run(checker._try_restart_managed(health))
 
@@ -859,10 +897,11 @@ def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch:
     class _Proc:
         pid = 24680
 
-    def _stop(proc: object, *, timeout_sec: int, reason: str) -> None:
+    def _stop(proc: object, *, timeout_sec: int, reason: str, startup_in_progress: bool) -> None:
         assert proc is old_proc
         assert timeout_sec == 4
         assert reason == "tier-change"
+        assert startup_in_progress is False
         events.append("stop")
 
     def _start(

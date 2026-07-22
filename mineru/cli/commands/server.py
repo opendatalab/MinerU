@@ -13,9 +13,9 @@ from typing import Any
 import typer
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from ...config import config
-from ...doclib.endpoint import remove_endpoint_file
 from ...doclib.instance_lock import DoclibLockUnavailable, build_doclib_home_owned_message, doclib_home_lock
 from ...doclib.types import ServerStatusResponse, TCPServerStatus
 from ...errors import MineruError
@@ -185,7 +185,6 @@ def _wait_for_server_stop(timeout: float = 15.0) -> bool:
                 with doclib_home_lock():
                     if _server_running():
                         continue
-                    _cleanup_local_endpoint_files()
                     return True
             except DoclibLockUnavailable:
                 pass
@@ -524,7 +523,7 @@ def _render_server_status(data: ServerStatusResponse) -> Iterator[RenderableObje
         logs = _get(data, key, [])
         if logs:
             log_text = "".join(logs)
-            panel = Panel(log_text.strip() or "(empty)", title=title, border_style="dim")
+            panel = Panel(Text(log_text.strip() or "(empty)"), title=title, border_style="dim")
             yield panel
 
 
@@ -592,14 +591,6 @@ def _error_summary_rows(error_summary: Any) -> list[tuple[str, str, int]]:
         for bucket in _get(error_summary, attr, []):
             rows.append((scope, _get(bucket, "code", ""), int(_get(bucket, "count", 0))))
     return rows
-
-
-def _cleanup_local_endpoint_files() -> None:
-    try:
-        os.unlink(_socket_path())
-    except OSError:
-        pass
-    remove_endpoint_file(_endpoint_path())
 
 
 def _ensure_log_dir(path: str) -> None:

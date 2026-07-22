@@ -19,9 +19,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from loguru import logger as loguru_logger
 
-from ..config import Config, LogConfig, _mineru_home, config
+from ..config import Config, LogConfig, _mineru_home, config, get_config_source
 from ..errors import MineruError, error_response, http_status_for
-from .endpoint import EndpointTransport, remove_endpoint_file, uds_available, write_endpoint_file
+from .endpoint import EndpointTransport, read_endpoint_file, remove_endpoint_file, uds_available, write_endpoint_file
 from .instance_lock import DoclibLockUnavailable, build_doclib_home_owned_message, doclib_home_lock
 from .server import DoclibServer
 from .types import PARSE_STATUS_FAILED, PARSE_STATUS_PARSING, SCAN_STATUS_FAILED, SCAN_STATUS_RUNNING
@@ -30,6 +30,8 @@ if TYPE_CHECKING:
     from loguru import Message as LoguruMessage
 else:
     LoguruMessage = Any
+
+logger = logging.getLogger("mineru.doclib.app")
 
 
 def create_app(cfg: Config | None = None) -> FastAPI:
@@ -208,6 +210,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                 health.managed_proc,
                 timeout_sec=cfg.doclib.parse_server_stop_timeout_sec,
                 reason="doclib shutdown",
+                startup_in_progress=health.local_starting,
             )
             health.managed_proc = None
 
@@ -236,7 +239,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         try:
             yield
         finally:
-            await shutdown()
+            try:
+                await shutdown()
+            finally:
+                _run_discovery_cleanup(state)
 
     app.router.lifespan_context = lifespan
 
@@ -317,6 +323,7 @@ class AppState:
         self.tcp_host: str = ""
         self.tcp_port: int | None = None
         self.config: Config | None = None
+        self.discovery_cleanup: Callable[[], None] | None = None
 
 
 REQUIRED_SCHEMA_TABLES = {
@@ -452,21 +459,32 @@ def _run_server(cfg: Config) -> None:
             "Enable doclib.tcp or disable doclib.uds."
         )
 
-    remove_endpoint_file(endpoint_path)
-    if uds_enabled:
-        try:
-            os.unlink(uds_path)
-        except OSError:
-            pass
+    app = create_app(cfg)
+    server_id = app.state.doclib_state.server_id
+    log_source = get_config_source("doclib.log.level") if cfg is config else "provided"
+    logger.info(
+        "Doclib logging configured level=%s source=%s path=%s",
+        logging.getLevelName(_resolve_log_level(cfg.doclib.log)),
+        log_source,
+        os.path.expanduser(cfg.doclib.log.resolved_app_path),
+    )
+    _remove_stale_discovery_files(endpoint_path, uds_path if uds_enabled else None)
     sockets: list[socket.socket] = []
     transports: list[EndpointTransport] = []
+    uds_identity: tuple[int, int] | None = None
     loop: asyncio.AbstractEventLoop | None = None
+
+    def cleanup_discovery() -> None:
+        _remove_owned_endpoint_file(endpoint_path, server_id)
+        if uds_enabled and uds_identity is not None:
+            _remove_owned_uds_path(uds_path, uds_identity)
+
+    app.state.doclib_state.discovery_cleanup = cleanup_discovery
     try:
-        app = create_app(cfg)
         write_endpoint_file(
             endpoint_path,
             pid=os.getpid(),
-            server_id=app.state.doclib_state.server_id,
+            server_id=server_id,
             transports=[],
         )
         uv_config = uvicorn.Config(
@@ -481,6 +499,7 @@ def _run_server(cfg: Config) -> None:
             uds_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             uds_sock.bind(uds_path)
             os.chmod(uds_path, cfg.doclib.uds.permission)
+            uds_identity = _path_identity(uds_path)
             uds_sock.listen(cfg.doclib.tcp.backlog)
             sockets.append(uds_sock)
             transports.append(EndpointTransport(type="uds", path=uds_path))
@@ -504,9 +523,17 @@ def _run_server(cfg: Config) -> None:
         write_endpoint_file(
             endpoint_path,
             pid=os.getpid(),
-            server_id=app.state.doclib_state.server_id,
+            server_id=server_id,
             transports=transports,
         )
+        logger.debug(
+            "Doclib endpoint published path=%s pid=%d server_id=%s transports=%d",
+            endpoint_path,
+            os.getpid(),
+            server_id,
+            len(transports),
+        )
+
         print("MinerU server listening on " + " and ".join(_format_transport(transport) for transport in transports))
 
         loop = asyncio.new_event_loop()
@@ -524,16 +551,85 @@ def _run_server(cfg: Config) -> None:
             loop.close()
         for bound_socket in sockets:
             bound_socket.close()
-        if uds_enabled:
-            try:
-                os.unlink(uds_path)
-            except OSError:
-                pass
-        remove_endpoint_file(endpoint_path)
+        _run_discovery_cleanup(app.state.doclib_state)
+
+
+def _path_identity(path: str) -> tuple[int, int] | None:
+    try:
+        stat_result = os.stat(path, follow_symlinks=False)
+    except OSError:
+        return None
+    return stat_result.st_dev, stat_result.st_ino
+
+
+def _run_discovery_cleanup(state: AppState) -> None:
+    cleanup = state.discovery_cleanup
+    if cleanup is None:
+        return
+    state.discovery_cleanup = None
+    cleanup()
+
+
+def _remove_stale_discovery_files(endpoint_path: str, uds_path: str | None) -> None:
+    previous = read_endpoint_file(endpoint_path)
+    logger.debug(
+        "Removing stale doclib discovery files endpoint=%s previous_pid=%s previous_server_id=%s uds=%s",
+        endpoint_path,
+        previous.pid if previous is not None else None,
+        previous.server_id if previous is not None else None,
+        uds_path,
+    )
+    remove_endpoint_file(endpoint_path, reason="startup_stale_cleanup")
+    if uds_path is not None:
+        try:
+            os.unlink(uds_path)
+        except FileNotFoundError:
+            pass
+
+
+def _remove_owned_endpoint_file(endpoint_path: str, server_id: str) -> None:
+    current = read_endpoint_file(endpoint_path)
+    if current is None:
+        logger.debug("Doclib endpoint already absent during shutdown path=%s server_id=%s", endpoint_path, server_id)
+        return
+    if current.server_id != server_id:
+        logger.warning(
+            "Skipping doclib endpoint cleanup because ownership changed path=%s expected_server_id=%s current_server_id=%s",
+            endpoint_path,
+            server_id,
+            current.server_id,
+        )
+        return
+    remove_endpoint_file(endpoint_path, reason="shutdown_owned_cleanup")
+    logger.debug("Removed owned doclib endpoint path=%s server_id=%s", endpoint_path, server_id)
+
+
+def _remove_owned_uds_path(uds_path: str, expected_identity: tuple[int, int]) -> None:
+    current_identity = _path_identity(uds_path)
+    if current_identity is None:
+        logger.debug("Doclib UDS path already absent during shutdown path=%s", uds_path)
+        return
+    if current_identity != expected_identity:
+        logger.warning(
+            "Skipping doclib UDS cleanup because path identity changed path=%s expected=%s current=%s",
+            uds_path,
+            expected_identity,
+            current_identity,
+        )
+        return
+    try:
+        os.unlink(uds_path)
+    except FileNotFoundError:
+        return
+    logger.debug("Removed owned doclib UDS path=%s identity=%s", uds_path, expected_identity)
+
+
+def _resolve_log_level(log_cfg: LogConfig) -> int:
+    return getattr(logging, log_cfg.level.upper(), logging.INFO)
 
 
 def _setup_logging(log_cfg: LogConfig) -> None:
-    level = getattr(logging, log_cfg.level.upper(), logging.INFO)
+    level = _resolve_log_level(log_cfg)
     log_path = os.path.expanduser(log_cfg.resolved_app_path)
     access_log_path = os.path.expanduser(log_cfg.resolved_access_path)
     _ensure_log_dir(log_path)
@@ -567,7 +663,7 @@ def _setup_logging(log_cfg: LogConfig) -> None:
         logger.addHandler(access_handler)
 
     logging.captureWarnings(True)
-    _setup_loguru_bridge(log_cfg.level.upper())
+    _setup_loguru_bridge(logging.getLevelName(level))
 
 
 def _ensure_log_dir(path: str) -> None:

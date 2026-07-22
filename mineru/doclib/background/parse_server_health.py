@@ -210,11 +210,19 @@ def start_managed_parse_server(
     return proc, managed_url
 
 
-def stop_managed_parse_server(proc: subprocess.Popen | None, *, timeout_sec: int, reason: str) -> None:
+def stop_managed_parse_server(
+    proc: subprocess.Popen | None,
+    *,
+    timeout_sec: int,
+    reason: str,
+    startup_in_progress: bool = False,
+) -> None:
     if proc is None or proc.poll() is not None:
         return
 
     pid = proc.pid
+    total_timeout = max(float(timeout_sec), 0.0)
+    deadline = time.monotonic() + total_timeout
     stdin = getattr(proc, "stdin", None)
     if stdin is not None and not getattr(stdin, "closed", False):
         try:
@@ -223,7 +231,8 @@ def stop_managed_parse_server(proc: subprocess.Popen | None, *, timeout_sec: int
             logger.debug("Failed to close managed parse-server stdin (PID %d, reason=%s): %s", pid, reason, exc)
 
     try:
-        proc.wait(timeout=timeout_sec)
+        graceful_cap = min(2.0, total_timeout * 0.2) if startup_in_progress else total_timeout * 0.5
+        proc.wait(timeout=min(graceful_cap, max(deadline - time.monotonic(), 0.0)))
         logger.info("Managed parse-server stopped after stdin EOF (PID %d, reason=%s)", pid, reason)
         return
     except subprocess.TimeoutExpired:
@@ -231,7 +240,8 @@ def stop_managed_parse_server(proc: subprocess.Popen | None, *, timeout_sec: int
 
     try:
         proc.terminate()
-        proc.wait(timeout=timeout_sec)
+        terminate_cap = total_timeout * 0.3
+        proc.wait(timeout=min(terminate_cap, max(deadline - time.monotonic(), 0.0)))
         logger.info("Managed parse-server terminated (PID %d, reason=%s)", pid, reason)
         return
     except subprocess.TimeoutExpired:
@@ -241,7 +251,7 @@ def stop_managed_parse_server(proc: subprocess.Popen | None, *, timeout_sec: int
 
     try:
         proc.kill()
-        proc.wait(timeout=timeout_sec)
+        proc.wait(timeout=max(deadline - time.monotonic(), 0.0))
         logger.info("Managed parse-server killed (PID %d, reason=%s)", pid, reason)
     except Exception as exc:
         logger.error("Failed to kill managed parse-server (PID %d, reason=%s): %s", pid, reason, exc)
@@ -416,7 +426,12 @@ class ParseServerHealthCheck:
         if count_restart:
             health.restart_count += 1
         managed_tier = await get_managed_parse_server_tier(self.config_svc)
-        stop_managed_parse_server(health.managed_proc, timeout_sec=self.stop_timeout_sec, reason=reason)
+        stop_managed_parse_server(
+            health.managed_proc,
+            timeout_sec=self.stop_timeout_sec,
+            reason=reason,
+            startup_in_progress=health.local_starting,
+        )
         health.managed_proc = None
         health.running_managed_tier = None
         try:
@@ -474,7 +489,12 @@ class ParseServerHealthCheck:
     async def stop(self) -> None:
         self.running = False
         health = get_health()
-        stop_managed_parse_server(health.managed_proc, timeout_sec=self.stop_timeout_sec, reason="health check stop")
+        stop_managed_parse_server(
+            health.managed_proc,
+            timeout_sec=self.stop_timeout_sec,
+            reason="health check stop",
+            startup_in_progress=health.local_starting,
+        )
         health.managed_proc = None
 
 
