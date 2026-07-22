@@ -167,6 +167,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             interval_sec=cfg.doclib.parse_server_health_check_interval_sec,
             probe_timeout_sec=cfg.doclib.parse_server_probe_timeout_sec,
             startup_grace_sec=cfg.doclib.parse_server_startup_grace_sec,
+            startup_timeout_sec=cfg.doclib.parse_server_startup_timeout_sec,
             stop_timeout_sec=cfg.doclib.parse_server_stop_timeout_sec,
             managed_parse_server=cfg.doclib.managed_parse_server,
             log_cfg=cfg.doclib.log,

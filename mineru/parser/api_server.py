@@ -40,14 +40,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.datastructures import State
 
-from ..render.writer import DataWriter
 from ..filetypes import (
     PARSEABLE_EXTENSIONS,
     batch_effective_parse_tier,
     file_type_for_extension,
     is_flash_only_parse_extension,
 )
-from ..types import SERVER_TIERS, TIERS_BY_SERVER_TIER, PageInfo, ServerTier, Tier, select_default_quality_tier
+from ..render.writer import DataWriter
+from ..types import SERVER_TIERS, TIERS_BY_SERVER_TIER, DeploymentTier, PageInfo, ServerTier, Tier, select_default_quality_tier
 from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
 from ..utils.image_payload import validate_image_sidecar_path
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
@@ -301,13 +301,6 @@ def _http_exception_error(exc: HTTPException) -> ErrorDetail:
 # ── Health ───────────────────────────────────────────────────────────
 
 
-class ModelHealthStatus(BaseModel):
-    model_config = _PYDANTIC_CONFIG
-    pipeline: str = "ok"
-    vlm: str = "ok"
-    html: str = "ok"
-
-
 class HealthFeatures(BaseModel):
     model_config = _PYDANTIC_CONFIG
     webhook: bool = False
@@ -319,8 +312,6 @@ class HealthResponse(BaseModel):
     model_config = _PYDANTIC_CONFIG
     status: str = "ok"
     version: str
-    parser_version: str | None = None
-    models: ModelHealthStatus | None = None
     features: HealthFeatures = Field(default_factory=HealthFeatures)
 
 
@@ -1511,9 +1502,22 @@ _ERR_404: _ErrorResponseMap = {404: {"model": ErrorResponse}}
 _ERR_409: _ErrorResponseMap = {409: {"model": ErrorResponse}}
 _ERR_413: _ErrorResponseMap = {413: {"model": ErrorResponse}}
 _ERR_429: _ErrorResponseMap = {429: {"model": ErrorResponse}}
+_ERR_503: _ErrorResponseMap = {503: {"model": ErrorResponse}}
 
 
 # ── Health ───────────────────────────────────────────────────────────
+
+
+def _require_model_preload_ready(request: Request) -> None:
+    preload_error: _ModelPreloadError | None = request.app.state.model_preload_error
+    if preload_error is None:
+        return
+    _raise_api_error(
+        503,
+        error_type="engine_error",
+        code=preload_error.code,
+        message=preload_error.message,
+    )
 
 
 @_router.get(
@@ -1525,10 +1529,9 @@ _ERR_429: _ErrorResponseMap = {429: {"model": ErrorResponse}}
 )
 async def get_health(request: Request) -> HealthResponse:
     """Health check endpoint."""
+    _require_model_preload_ready(request)
     return HealthResponse(
         version=__version__,
-        parser_version=__version__,
-        models=ModelHealthStatus(),
         features=HealthFeatures(sources=_parse_sources_for_server(allow_local_source=request.app.state.allow_local_source)),
     )
 
@@ -1540,10 +1543,12 @@ async def get_health(request: Request) -> HealthResponse:
     "/models",
     response_model=ModelListResponse,
     status_code=status.HTTP_200_OK,
+    responses=_ERR_503,
     tags=["Models"],
 )
 async def list_models(request: Request) -> ModelListResponse:
     """List all available parsing models."""
+    _require_model_preload_ready(request)
     model_ids: list[str] = request.app.state.model_ids
     now = int(time.time())
     return ModelListResponse(
@@ -1555,7 +1560,7 @@ async def list_models(request: Request) -> ModelListResponse:
     "/models/{model}",
     response_model=ModelInfo,
     status_code=status.HTTP_200_OK,
-    responses={**_ERR_404, **_ERR_403},
+    responses={**_ERR_404, **_ERR_403, **_ERR_503},
     tags=["Models"],
 )
 async def get_model(
@@ -1563,6 +1568,7 @@ async def get_model(
     model: str = Path(description="Model ID"),
 ) -> ModelInfo:
     """Retrieve a single model by ID."""
+    _require_model_preload_ready(request)
     model_ids: list[str] = request.app.state.model_ids
     if model not in model_ids:
         _raise_api_error(
@@ -1582,10 +1588,12 @@ async def get_model(
     "/tiers",
     response_model=TierListResponse,
     status_code=status.HTTP_200_OK,
+    responses=_ERR_503,
     tags=["Tiers"],
 )
 async def list_tiers(request: Request) -> TierListResponse:
     """List all available parser tiers."""
+    _require_model_preload_ready(request)
     tiers: list[TierInfoData] = request.app.state.tiers
     return TierListResponse(
         data=[TierInfo(**p) for p in tiers],
@@ -1762,6 +1770,7 @@ async def delete_file(
         **_ERR_400,
         **_ERR_403,
         **_ERR_429,
+        **_ERR_503,
     },
     tags=["Jobs"],
 )
@@ -1773,6 +1782,7 @@ async def create_job(
     access_level: AccessLevel = Depends(_resolve_access_level),
 ) -> Response:
     """Create a parse job."""
+    _require_model_preload_ready(request)
     if body.callback is not None:
         _raise_api_error(
             400,
@@ -2044,6 +2054,69 @@ def _preflight_tier_dependencies(tier: ServerTier) -> None:
         raise ParseServerStartupError(str(exc)) from exc
 
 
+@dataclass(frozen=True)
+class _ModelPreloadResult:
+    tier: DeploymentTier
+    engine: str
+
+
+@dataclass(frozen=True)
+class _ModelPreloadError:
+    code: str
+    message: str
+
+
+_MODEL_PRELOAD_DEVICE_ERROR_PATTERNS = (
+    "cuda is not available",
+    "device is not available",
+    "failed to infer device type",
+    "no available accelerator",
+    "no available gpu",
+    "unsupported device",
+    "only supported on macos",
+)
+
+
+def _classify_model_preload_error(exc: Exception) -> tuple[str, str]:
+    message = str(exc).strip() or type(exc).__name__
+    if isinstance(exc, (ModuleNotFoundError, ImportError)):
+        return "model_preload_dependency_missing", message
+    if isinstance(exc, FileNotFoundError):
+        return "model_preload_files_missing", message
+
+    normalized_message = message.lower()
+    if any(pattern in normalized_message for pattern in _MODEL_PRELOAD_DEVICE_ERROR_PATTERNS):
+        return "model_preload_device_unavailable", message
+    return "model_preload_failed", message
+
+
+def _preload_local_models(language: str) -> None:
+    from ..backend.local_model_runtime import AtomicModel, HybridLocalModelContextSingleton
+
+    context = HybridLocalModelContextSingleton().get_model(lang=language, formula_enable=True)
+    manager = context.atom_model_manager
+    manager.get_atom_model(atom_model_name=AtomicModel.TableOrientationCls)
+    manager.get_atom_model(atom_model_name=AtomicModel.TableCls)
+    manager.get_atom_model(atom_model_name=AtomicModel.WirelessTable, lang=language)
+    manager.get_atom_model(atom_model_name=AtomicModel.WiredTable, lang=language)
+    manager.get_atom_model(atom_model_name=AtomicModel.OCR, lang="seal")
+
+
+def _preload_server_models(tier: DeploymentTier, *, language: str) -> _ModelPreloadResult:
+    if tier == "basic":
+        _preload_local_models(language)
+        return _ModelPreloadResult(tier=tier, engine="hybrid-local")
+
+    from ..utils.engine_utils import get_vlm_engine
+
+    engine = get_vlm_engine("auto", is_async=True)
+    from ..model.vlm.runtime import ModelSingleton
+
+    ModelSingleton().get_model(engine, None, None)  # type: ignore[arg-type]
+    _preload_local_models(language)
+    return _ModelPreloadResult(tier=tier, engine=engine)
+
+
 def create_app(
     *,
     upload_dir: str = "",
@@ -2058,6 +2131,7 @@ def create_app(
     language: str = "ch",
     ocr_mode: str = "auto",
     image_analysis: bool = True,
+    preload_models: bool = False,
 ) -> FastAPI:
     """Create a FastAPI application implementing the MinerU v1 REST API.
 
@@ -2089,6 +2163,8 @@ def create_app(
         PDF OCR/text extraction mode for Hybrid backends.
     image_analysis:
         Whether image analysis is enabled for Hybrid backends.
+    preload_models:
+        Load the configured local models during server startup. Flash has no local models to preload.
     """
     upload_dir = upload_dir or ""
     tier = _normalize_server_tier(tier)
@@ -2107,6 +2183,9 @@ def create_app(
     language = validate_public_ocr_lang(language)
 
     _model_ids, _tiers = _model_ids_and_tiers_for_server_tiers(server_tiers)
+    _preload_tier: DeploymentTier | None = None
+    if preload_models and tier != "flash":
+        _preload_tier = tier
 
     @asynccontextmanager
     async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -2128,6 +2207,29 @@ def create_app(
         application.state.ocr_mode = ocr_mode
         application.state.effort = effort
         application.state.image_analysis = image_analysis
+        application.state.preload_models = preload_models
+        application.state.model_preload_error = None
+        if _preload_tier is not None:
+            logger.info("Preloading local models for startup tier %s", _preload_tier)
+            try:
+                preload_result = await asyncio.to_thread(
+                    _preload_server_models,
+                    _preload_tier,
+                    language=language,
+                )
+            except Exception as exc:
+                error_code, error_msg = _classify_model_preload_error(exc)
+                application.state.model_preload_error = _ModelPreloadError(
+                    code=error_code,
+                    message=error_msg,
+                )
+                logger.exception("Local model preload failed for startup tier %s", _preload_tier)
+            else:
+                logger.info(
+                    "Local model preload completed for startup tier %s (engine=%s)",
+                    _preload_tier,
+                    preload_result.engine,
+                )
         yield
         if not upload_dir and _upload_dir.exists():
             shutil.rmtree(_upload_dir, ignore_errors=True)
@@ -2160,6 +2262,8 @@ def create_app(
     application.state.ocr_mode = ocr_mode
     application.state.effort = effort
     application.state.image_analysis = image_analysis
+    application.state.preload_models = preload_models
+    application.state.model_preload_error = None
     FileStore(_upload_dir).install(application.state)
     JobStore(concurrency=concurrency).install(application.state)
     application.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -2290,7 +2394,16 @@ def create_app(
     type=click.Choice(_OCR_MODES),
     help="PDF OCR/text extraction mode. Applies to hybrid-* backends.",
 )
-@click.option("--disable-image-analysis", is_flag=True, help="Disable image analysis for Hybrid backends.")
+@click.option(
+    "--disable-image-analysis",
+    is_flag=True,
+    help="Disable image analysis for Hybrid backends.",
+)
+@click.option(
+    "--preload-models",
+    is_flag=True,
+    help="Load local models during server startup. Ignored for Flash.",
+)
 @click.option(
     "--api-key",
     default=None,
@@ -2311,6 +2424,7 @@ def main(
     language: str,
     ocr_mode: str,
     disable_image_analysis: bool,
+    preload_models: bool,
     api_key: str | None,
 ) -> None:
     """Start the MinerU v1 REST API server."""
@@ -2328,6 +2442,7 @@ def main(
             language=language,
             ocr_mode=ocr_mode,
             image_analysis=not disable_image_analysis,
+            preload_models=preload_models,
         )
     except ParseServerStartupError as exc:
         raise click.ClickException(str(exc)) from None

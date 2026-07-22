@@ -23,6 +23,7 @@ from mineru.doclib.background.parse_server_health import (
     ParseServerHealthCheck,
     ProbeResult,
     ProbeState,
+    _managed_parse_server_needs_restart,
     api_server_args_for_tier,
     select_available_managed_port,
     start_managed_parse_server,
@@ -309,6 +310,7 @@ def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() 
         "16580",
         "--allow-local-source",
         "--no-flash",
+        "--preload-models",
     ]
     assert api_server_args_for_tier("basic", host="127.0.0.2", port=16581) == [
         "--tier",
@@ -319,6 +321,7 @@ def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() 
         "16581",
         "--allow-local-source",
         "--no-flash",
+        "--preload-models",
     ]
 
 
@@ -508,6 +511,63 @@ def test_parse_server_health_probe_maps_auth_error_and_passes_api_key(monkeypatc
 
     assert result == ProbeResult(error_code="invalid_api_key", error_msg="Invalid or missing API key")
     assert seen_headers == [{"Authorization": "Bearer bad-key"}]
+
+
+def test_managed_parse_server_does_not_restart_live_child_before_startup_timeout() -> None:
+    proc = SimpleNamespace(poll=lambda: None)
+    health = ParseServerHealth(
+        local=ProbeState(probe=ProbeResult(error_code="parse_server_unavailable")),
+        local_starting=True,
+        local_started_at=100.0,
+        managed_proc=proc,  # type: ignore[arg-type]
+    )
+
+    assert _managed_parse_server_needs_restart(health, now=109.0, startup_timeout_sec=10) is False
+
+
+def test_managed_parse_server_restarts_live_child_after_startup_timeout() -> None:
+    proc = SimpleNamespace(poll=lambda: None)
+    health = ParseServerHealth(
+        local=ProbeState(probe=ProbeResult(error_code="parse_server_unavailable")),
+        local_starting=True,
+        local_started_at=100.0,
+        managed_proc=proc,  # type: ignore[arg-type]
+    )
+
+    assert _managed_parse_server_needs_restart(health, now=110.0, startup_timeout_sec=10) is True
+
+
+@pytest.mark.parametrize(
+    "error_code",
+    ["model_preload_dependency_missing", "model_preload_files_missing", "model_preload_device_unavailable"],
+)
+def test_managed_parse_server_does_not_restart_deterministic_model_preload_failure(error_code: str) -> None:
+    health = ParseServerHealth(
+        local=ProbeState(probe=ProbeResult(error_code=error_code, error_msg="runtime unavailable")),
+        local_starting=False,
+    )
+
+    assert _managed_parse_server_needs_restart(health, now=100.0, startup_timeout_sec=10) is False
+
+
+def test_managed_parse_server_restarts_transient_model_preload_failure() -> None:
+    health = ParseServerHealth(
+        local=ProbeState(probe=ProbeResult(error_code="model_preload_failed", error_msg="engine boot failed")),
+        local_starting=False,
+    )
+
+    assert _managed_parse_server_needs_restart(health, now=100.0, startup_timeout_sec=10) is True
+
+
+def test_managed_parse_server_restarts_after_starting_child_exits() -> None:
+    proc = SimpleNamespace(poll=lambda: 1)
+    health = ParseServerHealth(
+        local=ProbeState(probe=ProbeResult(error_code="parse_server_unavailable")),
+        local_starting=True,
+        managed_proc=proc,  # type: ignore[arg-type]
+    )
+
+    assert _managed_parse_server_needs_restart(health, now=100.0, startup_timeout_sec=10) is True
 
 
 def test_start_managed_parse_server_selects_port_and_writes_logs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

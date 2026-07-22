@@ -40,6 +40,10 @@ DOCLIB_CONTRACT_ERROR_CODES = {
     "parse_server_unavailable",
     "quality_tier_unavailable",
     "rule_not_found",
+    "model_preload_dependency_missing",
+    "model_preload_device_unavailable",
+    "model_preload_failed",
+    "model_preload_files_missing",
     "scan_not_found",
     "server_instance_mismatch",
     "tier_mismatch",
@@ -72,6 +76,10 @@ def test_doclib_error_code_types_are_stable() -> None:
     assert error_type_for("parse_failed") == "engine_error"
     assert error_type_for("parse_page_remap_failed") == "engine_error"
     assert error_type_for("quality_tier_unavailable") == "engine_error"
+    assert error_type_for("model_preload_dependency_missing") == "engine_error"
+    assert error_type_for("model_preload_device_unavailable") == "engine_error"
+    assert error_type_for("model_preload_failed") == "engine_error"
+    assert error_type_for("model_preload_files_missing") == "engine_error"
 
     assert error_type_for("parse_wait_timeout") == "timeout_error"
 

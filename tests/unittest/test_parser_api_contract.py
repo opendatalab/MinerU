@@ -11,6 +11,7 @@ import sys
 import types
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -42,6 +43,7 @@ from mineru.parser.base import ParseResult
 from mineru.types import (
     DEFAULT_QUALITY_TIER_SELECTION_ORDER,
     DEPLOYMENT_TIERS,
+    DeploymentTier,
     PARSING_RULE_TIER_SELECTION_ORDER,
     QUALITY_TIERS,
     SERVER_TIERS,
@@ -2394,7 +2396,7 @@ def test_job_list_item_uses_file_count() -> None:
     }
 
 
-def test_api_contract_uses_parser_version_not_backend_version() -> None:
+def test_parse_info_uses_parser_version_not_backend_version() -> None:
     parse = FileParseInfo(model_used="model-a", duration_ms=12, parser_version="3.2.1")
     assert parse.model_dump(exclude_none=True) == {
         "model_used": "model-a",
@@ -2402,11 +2404,16 @@ def test_api_contract_uses_parser_version_not_backend_version() -> None:
         "parser_version": "3.2.1",
     }
 
-    health = HealthResponse(status="ok", version="3.2.1", parser_version="3.2.1")
+    with pytest.raises(ValidationError):
+        FileParseInfo.model_validate({"backend_version": "3.2.1"})
+
+
+def test_health_response_uses_only_standard_version_and_feature_fields() -> None:
+    health = HealthResponse(status="ok", version="3.2.1")
+
     assert health.model_dump(exclude_none=True) == {
         "status": "ok",
         "version": "3.2.1",
-        "parser_version": "3.2.1",
         "features": {
             "webhook": False,
             "output_formats": ["markdown", "middle_json", "content_list", "structured_content", "zip"],
@@ -2414,11 +2421,11 @@ def test_api_contract_uses_parser_version_not_backend_version() -> None:
         },
     }
 
-    with pytest.raises(ValidationError):
-        FileParseInfo.model_validate({"backend_version": "3.2.1"})
 
+@pytest.mark.parametrize("field", ["backend_version", "parser_version"])
+def test_health_response_rejects_nonstandard_version_fields(field: str) -> None:
     with pytest.raises(ValidationError):
-        HealthResponse.model_validate({"status": "ok", "version": "3.2.1", "backend_version": "3.2.1"})
+        HealthResponse.model_validate({"status": "ok", "version": "3.2.1", field: "3.2.1"})
 
 
 def test_api_server_tier_selects_compatible_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2506,9 +2513,15 @@ def test_api_server_standard_http_metadata(tmp_path: Path, monkeypatch: pytest.M
     app = create_app(upload_dir=str(tmp_path), tier="standard")
 
     with TestClient(app) as client:
+        health_response = client.get("/v1/health")
         tiers_response = client.get("/v1/tiers")
         models_response = client.get("/v1/models")
 
+    assert health_response.status_code == 200
+    assert health_response.json()["status"] == "ok"
+    assert "models" not in health_response.json()
+    assert "parser_version" not in health_response.json()
+    assert "runtime" not in health_response.json()
     assert tiers_response.status_code == 200
     assert [tier["id"] for tier in tiers_response.json()["data"]] == ["flash", "basic", "standard", "advanced"]
     assert models_response.status_code == 200
@@ -2518,6 +2531,51 @@ def test_api_server_standard_http_metadata(tmp_path: Path, monkeypatch: pytest.M
         "MinerU-HTML",
         "MinerU2.5-Pro-2605-1.2B",
     ]
+
+
+def test_api_server_model_preload_failure_keeps_health_diagnostics_and_rejects_capabilities(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+
+    def _fail_preload(startup_tier: DeploymentTier, *, language: str) -> api_server._ModelPreloadResult:
+        raise ValueError("CUDA is not available.")
+
+    monkeypatch.setattr(api_server, "_preload_server_models", _fail_preload)
+    app = create_app(upload_dir=str(tmp_path), tier="standard", preload_models=True)
+
+    with TestClient(app) as client:
+        health_response = client.get("/v1/health")
+        tiers_response = client.get("/v1/tiers")
+        models_response = client.get("/v1/models")
+
+    assert health_response.status_code == 503
+    assert health_response.json()["error"]["code"] == "model_preload_device_unavailable"
+    assert health_response.json()["error"]["message"] == "CUDA is not available."
+    assert tiers_response.status_code == 503
+    assert tiers_response.json()["error"]["code"] == "model_preload_device_unavailable"
+    assert models_response.status_code == 503
+    assert models_response.json()["error"]["code"] == "model_preload_device_unavailable"
+
+
+def test_api_server_model_preload_is_opt_in_and_ignored_for_flash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_api_server_dependency_preflight(monkeypatch)
+    calls: list[tuple[str, str]] = []
+
+    def _preload(startup_tier: DeploymentTier, *, language: str) -> api_server._ModelPreloadResult:
+        calls.append((startup_tier, language))
+        return api_server._ModelPreloadResult(tier=startup_tier, engine="test")
+
+    monkeypatch.setattr(api_server, "_preload_server_models", _preload)
+
+    with TestClient(create_app(upload_dir=str(tmp_path / "lazy"), tier="basic")) as lazy_client:
+        assert lazy_client.get("/v1/health").status_code == 200
+    with TestClient(create_app(upload_dir=str(tmp_path / "preload"), tier="basic", preload_models=True)) as preload_client:
+        assert preload_client.get("/v1/health").status_code == 200
+    with TestClient(create_app(upload_dir=str(tmp_path / "flash"), tier="flash", preload_models=True)) as flash_client:
+        assert flash_client.get("/v1/health").status_code == 200
+
+    assert calls == [("basic", "ch")]
 
 
 def test_api_server_standard_jobs_use_requested_tier_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3006,6 +3064,7 @@ def test_api_server_cli_exposes_parser_runtime_options() -> None:
     assert "--allow-http-source" in option_names
     assert "--effort" not in option_names
     assert "--disable-image-analysis" in option_names
+    assert "--preload-models" in option_names
     assert _REMOVED_DISABLE_TABLE_OPTION not in option_names
     assert _REMOVED_DISABLE_FORMULA_OPTION not in option_names
     assert _API_SERVER_LANGUAGES == (
@@ -3080,6 +3139,20 @@ def test_api_server_cli_accepts_single_tier_and_no_flash(monkeypatch: pytest.Mon
         "default_tier": "standard",
         "effort_by_tier": {"basic": "medium", "standard": "high", "advanced": "xhigh"},
     }
+
+
+def test_api_server_cli_enables_model_preload(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, bool] = {}
+
+    def _fake_run(server: Any) -> None:
+        seen["preload_models"] = server.config.app.state.preload_models
+
+    monkeypatch.setattr("uvicorn.Server.run", _fake_run)
+
+    result = runner.invoke(main, ["--tier", "basic", "--preload-models"])
+
+    assert result.exit_code == 0
+    assert seen == {"preload_models": True}
 
 
 def test_api_server_cli_rejects_invalid_tier_names() -> None:

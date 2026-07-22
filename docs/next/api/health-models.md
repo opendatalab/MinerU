@@ -177,15 +177,6 @@ Local Parse Server 的 `health` 通常返回:
 
 如果 Local Parse Server 启动时开启 `--allow-local-source`，`features.sources` 额外包含 `local`。
 
-本地实现可以额外返回运维字段，例如:
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `parser_version` | string | 本地解析器版本。 |
-| `models` | object | 各解析档位健康状态，例如 `{"basic":"ok","standard":"ok","advanced":"missing"}`。 |
-
-这些额外字段只供运维和调试使用，通用客户端不能依赖。
-
 本地 `GET /v1/models` 和 `GET /v1/tiers` 必须反映当前 server 实际可用能力。常见组合:
 
 | 本地 api-server 进程能力 | `/v1/tiers` 应返回 |

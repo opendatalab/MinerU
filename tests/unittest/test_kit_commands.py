@@ -75,7 +75,7 @@ def test_top_level_commands_register_implementation_callbacks_directly() -> None
     ("command", "expected_options"),
     [
         ("parse", ("--output", "--format", "--tier", "--effort")),
-        ("api-server", ("--host", "--port", "--tier", "--no-flash")),
+        ("api-server", ("--host", "--port", "--tier", "--no-flash", "--preload-models")),
         ("vlm-server", ("--engine",)),
         ("router", ("--host", "--upstream-url", "--local-gpus")),
         ("version", ("--json",)),
@@ -487,13 +487,14 @@ def test_api_server_forwards_single_tier_and_no_flash(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
 
-    result = runner.invoke(app, ["api-server", "--tier", "standard", "--no-flash"])
+    result = runner.invoke(app, ["api-server", "--tier", "standard", "--no-flash", "--preload-models"])
 
     assert result.exit_code == 0
     assert seen["prog_name"] == "mineru-kit api-server"
     assert seen["standalone_mode"] is False
     assert [seen["args"][index + 1] for index, item in enumerate(seen["args"]) if item == "--tier"] == ["standard"]
     assert "--no-flash" in seen["args"]
+    assert "--preload-models" in seen["args"]
 
 
 def test_api_server_without_tier_lets_parser_api_apply_standard_default(monkeypatch: Any) -> None:
@@ -513,6 +514,7 @@ def test_api_server_without_tier_lets_parser_api_apply_standard_default(monkeypa
     assert seen["prog_name"] == "mineru-kit api-server"
     assert seen["standalone_mode"] is False
     assert "--tier" not in seen["args"]
+    assert "--preload-models" not in seen["args"]
 
 
 def test_api_server_rejects_advanced_startup_tier() -> None:

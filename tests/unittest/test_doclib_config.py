@@ -84,6 +84,7 @@ def test_apply_env_overrides_uses_greedy_field_path_matching(monkeypatch: pytest
     monkeypatch.setenv("TEST_MINERU_DOCLIB_PARSE_SERVER_HEALTH_CHECK_INTERVAL_SEC", "23")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_PARSE_SERVER_PROBE_TIMEOUT_SEC", "29")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_PARSE_SERVER_STARTUP_GRACE_SEC", "31")
+    monkeypatch.setenv("TEST_MINERU_DOCLIB_PARSE_SERVER_STARTUP_TIMEOUT_SEC", "601")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_PARSE_SERVER_STOP_TIMEOUT_SEC", "37")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_SQLITE_BUSY_TIMEOUT_MS", "1000")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_SQLITE_LOCK_RETRY_ATTEMPTS", "4")
@@ -107,6 +108,7 @@ def test_apply_env_overrides_uses_greedy_field_path_matching(monkeypatch: pytest
     assert cfg.doclib.parse_server_health_check_interval_sec == 23
     assert cfg.doclib.parse_server_probe_timeout_sec == 29
     assert cfg.doclib.parse_server_startup_grace_sec == 31
+    assert cfg.doclib.parse_server_startup_timeout_sec == 601
     assert cfg.doclib.parse_server_stop_timeout_sec == 37
     assert cfg.doclib.sqlite.busy_timeout_ms == 1000
     assert cfg.doclib.sqlite.lock_retry_attempts == 4
@@ -417,6 +419,7 @@ def test_interval_and_timeout_config_is_startup_config_not_runtime_kv() -> None:
         "parse_server_health_check_interval_sec",
         "parse_server_probe_timeout_sec",
         "parse_server_startup_grace_sec",
+        "parse_server_startup_timeout_sec",
         "parse_server_stop_timeout_sec",
     }
 

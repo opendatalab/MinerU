@@ -65,6 +65,7 @@ MinerU 有两类配置：
 | doclib | `doclib.parse_server_health_check_interval_sec` | `60` | parse-server 健康检查间隔 |
 | doclib | `doclib.parse_server_probe_timeout_sec` | `10` | parse-server 探测超时 |
 | doclib | `doclib.parse_server_startup_grace_sec` | `30` | managed parse-server 启动宽限时间 |
+| doclib | `doclib.parse_server_startup_timeout_sec` | `600` | managed parse-server 启动硬超时；超时后进入重启策略 |
 | doclib | `doclib.parse_server_stop_timeout_sec` | `10` | managed parse-server 停止超时 |
 | sqlite | `doclib.sqlite.path` | `~/.mineru/doclib.db` | SQLite DB 路径 |
 | sqlite | `doclib.sqlite.busy_timeout_ms` | `5000` | SQLite 锁等待时间（毫秒） |

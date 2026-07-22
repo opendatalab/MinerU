@@ -81,6 +81,10 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`basic`、`stand
 | `engine_error` | `parse_timeout` | 504 | 是 | null | 解析超时 | `retry_or_use_lower_tier` |
 | `timeout_error` | `parse_wait_timeout` | 408 | 是 | `wait` | CLI `parse --wait` 等待窗口到期，解析任务仍在运行 | `poll_parse_or_rerun_with_longer_wait` |
 | `engine_error` | `parse_oom` | 500 | 是 | null | 本地显存或内存不足 | `use_lower_tier_or_remote` |
+| `engine_error` | `model_preload_dependency_missing` | 503 | 否 | null | parse-server 预加载时缺少目标 tier 的运行依赖 | `install_local_tier_dependencies` |
+| `engine_error` | `model_preload_files_missing` | 503 | 否 | null | parse-server 预加载时模型文件缺失或不可用 | `download_and_verify_local_models` |
+| `engine_error` | `model_preload_device_unavailable` | 503 | 否 | null | 当前设备不支持所选本地模型 | `choose_supported_tier_device_or_remote` |
+| `engine_error` | `model_preload_failed` | 503 | 是 | null | 本地模型预加载出现未分类错误 | `retry_or_inspect_parse_server_logs` |
 | `invalid_request_error` | `parse_server_model_not_ready` | 400 | 否 | `parse_server.local.mode` / `parse_server.local.managed_tier` | 配置 managed local parse-server 时，目标 tier 的本地模型文件未准备好 | `run_mineru_kit_models_download_for_tier` |
 | `invalid_request_error` | `remote_unsupported_for_file_type` | 400 | 否 | `remote` | Office/HTML 单文件主动解析请求 remote | `use_local_flash_or_choose_pdf_image` |
 | `invalid_request_error` | `tier_unsupported_for_file_type` | 400 | 否 | `tier` | Office/HTML 单文件主动解析显式请求质量 tier | `use_tier_flash_or_choose_pdf_image` |

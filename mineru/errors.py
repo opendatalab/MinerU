@@ -78,6 +78,10 @@ _ERROR_TYPE_MAP: dict[str, ErrorType] = {
     "parse_page_remap_failed": "engine_error",
     "parse_timeout": "engine_error",
     "quality_tier_unavailable": "engine_error",
+    "model_preload_dependency_missing": "engine_error",
+    "model_preload_files_missing": "engine_error",
+    "model_preload_device_unavailable": "engine_error",
+    "model_preload_failed": "engine_error",
     # timeout_error
     "parse_wait_timeout": "timeout_error",
     # api_error

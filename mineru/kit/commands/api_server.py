@@ -48,6 +48,7 @@ def api_server_cmd(
     ),
     ocr_mode: str = typer.Option("auto", "--ocr-mode", help="OCR mode: auto, txt, ocr"),
     disable_image_analysis: bool = typer.Option(False, "--disable-image-analysis", help="Disable image analysis"),
+    preload_models: bool = typer.Option(False, "--preload-models", help="Load local models during server startup"),
     api_key: str | None = typer.Option(None, "--api-key", help="Optional fixed API key"),
 ) -> None:
     """Start the self-hosted MinerU parse API server."""
@@ -80,6 +81,7 @@ def api_server_cmd(
                 *(["--allow-http-source"] if allow_http_source else []),
                 *(["--upload-dir", upload_dir] if upload_dir else []),
                 *(["--disable-image-analysis"] if disable_image_analysis else []),
+                *(["--preload-models"] if preload_models else []),
                 *(["--api-key", api_key] if api_key else []),
             ],
             prog_name="mineru-kit api-server",

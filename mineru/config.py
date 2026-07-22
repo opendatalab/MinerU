@@ -384,6 +384,7 @@ class DoclibConfig(BaseModel):
     parse_server_health_check_interval_sec: int = 60
     parse_server_probe_timeout_sec: int = 10
     parse_server_startup_grace_sec: int = 30
+    parse_server_startup_timeout_sec: int = 600
     parse_server_stop_timeout_sec: int = 10
 
     @property

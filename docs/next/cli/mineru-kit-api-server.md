@@ -74,10 +74,13 @@ api-server 启动时可使用单个 `--tier` 指定能力上限：
 mineru-kit api-server --tier basic --port 16580
 mineru-kit api-server --tier standard --port 15982
 mineru-kit api-server --tier standard --no-flash --port 8000
+mineru-kit api-server --tier standard --preload-models
 mineru-kit api-server --tier standard --language en --ocr-mode ocr --disable-image-analysis
 ```
 
 未传 `--tier` 时暴露 `flash`、`basic`、`standard`、`advanced`；PDF/image 请求未指定 tier 时默认 `standard`。
+
+模型默认在首次解析时懒加载。`--preload-models` 会在 Basic 或 Standard 服务启动时提前加载所需模型，并在加载失败时让能力接口返回明确错误；Flash 没有本地模型，该参数对 Flash 无操作。Doclib managed parse-server 会自动启用模型预加载。
 
 启动完成后，HTTP API 不暴露 backend。`GET /v1/tiers` 也不新增 backend 字段；调用方如需推断实现，只能从 `current_model` 做弱推断。
 
@@ -90,6 +93,7 @@ mineru-kit api-server --tier standard --language en --ocr-mode ocr --disable-ima
 - host / port
 - tier，单值 `flash` / `basic` / `standard`
 - no-flash
+- preload-models
 - API key
 
 ### 稳定解析参数

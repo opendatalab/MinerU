@@ -30,6 +30,13 @@ if TYPE_CHECKING:
 MAX_RESTART_ATTEMPTS = 3
 DEFAULT_MANAGED_URL = "http://127.0.0.1:16580"
 MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
+_NON_RETRYABLE_MODEL_PRELOAD_ERRORS = frozenset(
+    {
+        "model_preload_dependency_missing",
+        "model_preload_files_missing",
+        "model_preload_device_unavailable",
+    }
+)
 
 
 @dataclass
@@ -101,6 +108,7 @@ def api_server_args_for_tier(tier: DeploymentTier, *, host: str, port: int) -> l
         str(port),
         "--allow-local-source",
         "--no-flash",
+        "--preload-models",
     ]
 
 
@@ -239,6 +247,20 @@ def stop_managed_parse_server(proc: subprocess.Popen | None, *, timeout_sec: int
         logger.error("Failed to kill managed parse-server (PID %d, reason=%s): %s", pid, reason, exc)
 
 
+def _managed_parse_server_needs_restart(
+    health: ParseServerHealth,
+    *,
+    now: float,
+    startup_timeout_sec: int,
+) -> bool:
+    if health.local.probe.error_code in _NON_RETRYABLE_MODEL_PRELOAD_ERRORS:
+        return False
+    proc = health.managed_proc
+    if health.local_starting and proc is not None and proc.poll() is None:
+        return now - health.local_started_at >= startup_timeout_sec
+    return True
+
+
 class ParseServerHealthCheck:
     """Periodically probes parse-server health via GET /v1/tiers."""
 
@@ -250,6 +272,7 @@ class ParseServerHealthCheck:
         probe_timeout_sec: int,
         startup_grace_sec: int,
         stop_timeout_sec: int,
+        startup_timeout_sec: int | None = None,
         managed_parse_server: ManagedParseServerConfig | None = None,
         log_cfg: LogConfig | None = None,
     ) -> None:
@@ -257,6 +280,9 @@ class ParseServerHealthCheck:
         self.interval_sec = interval_sec
         self.probe_timeout_sec = probe_timeout_sec
         self.startup_grace_sec = startup_grace_sec
+        self.startup_timeout_sec = (
+            startup_timeout_sec if startup_timeout_sec is not None else config.doclib.parse_server_startup_timeout_sec
+        )
         self.stop_timeout_sec = stop_timeout_sec
         self.managed_parse_server = managed_parse_server or config.doclib.managed_parse_server
         self.log_cfg = log_cfg
@@ -292,6 +318,8 @@ class ParseServerHealthCheck:
                         health.local_starting = False
                     else:
                         health.local.last_failure_at = now_ms
+                        if probe.error_code != "parse_server_unavailable":
+                            health.local_starting = False
                 else:
                     health.local = ProbeState()
             else:
@@ -310,16 +338,43 @@ class ParseServerHealthCheck:
             else:
                 health.remote.last_failure_at = now_ms
 
-            # managed mode: restart if crashed (skip if still starting — give it 30s)
-            if health.local_mode == "managed" and not health.local.probe.healthy:
-                if health.local_starting:
-                    elapsed = asyncio.get_event_loop().time() - health.local_started_at
-                    if elapsed < self.startup_grace_sec:
-                        continue  # still loading models, don't restart
-                logger.warning("Managed parse-server is unhealthy, attempting restart")
-                await self._try_restart_managed(health)
-            elif health.local_mode == "managed" and health.local.probe.healthy:
-                await self._try_restart_managed_for_tier_change(health, desired_managed_tier)
+            if health.local_mode == "managed":
+                tier_changed = await self._try_restart_managed_for_tier_change(health, desired_managed_tier)
+                proc = health.managed_proc
+                now = asyncio.get_event_loop().time()
+                startup_elapsed_sec = now - health.local_started_at
+                if (
+                    not tier_changed
+                    and health.local_starting
+                    and proc is not None
+                    and proc.poll() is None
+                    and startup_elapsed_sec >= self.startup_grace_sec
+                    and startup_elapsed_sec < self.startup_timeout_sec
+                ):
+                    logger.info(
+                        "Managed parse-server is still preparing startup tier %s (PID %d)",
+                        health.running_managed_tier,
+                        proc.pid,
+                    )
+                if (
+                    not tier_changed
+                    and not health.local.probe.healthy
+                    and _managed_parse_server_needs_restart(
+                        health,
+                        now=now,
+                        startup_timeout_sec=self.startup_timeout_sec,
+                    )
+                ):
+                    if health.local_starting and proc is not None and proc.poll() is None:
+                        logger.warning(
+                            "Managed parse-server startup exceeded %ds for tier %s (PID %d), attempting restart",
+                            self.startup_timeout_sec,
+                            health.running_managed_tier,
+                            proc.pid,
+                        )
+                    else:
+                        logger.warning("Managed parse-server is unhealthy, attempting restart")
+                    await self._try_restart_managed(health)
 
             await asyncio.sleep(self.interval_sec)
 
