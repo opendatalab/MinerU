@@ -71,7 +71,9 @@ derived from the active `MINERU_HOME`. This avoids duplicating state and
 suggesting that deleting the lock file is a valid recovery action.
 `DoclibLockUnavailable` is an internal control-flow marker and does not format a
 user-facing message; CLI and direct process entrypoints render the ownership
-message at their respective error boundaries.
+message at their respective error boundaries. Both boundaries call one shared
+message builder, which reads the current endpoint metadata and includes a valid
+version 2 PID when available. PID discovery is not duplicated at call sites.
 
 Direct app startup and CLI `start`, `stop`, and `status` use the same ownership
 message: `MinerU home [<home>] is currently owned by another doclib server
