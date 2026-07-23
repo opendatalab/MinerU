@@ -152,6 +152,10 @@ def test_default_config_path_exists_even_when_file_is_missing(tmp_path: Path, mo
     assert loaded.config == Config()
 
 
+def test_default_parse_server_health_check_interval_is_30_seconds() -> None:
+    assert Config().doclib.parse_server_health_check_interval_sec == 30
+
+
 def test_apply_env_overrides_can_override_doclib_data_dir(monkeypatch: pytest.MonkeyPatch) -> None:
     prefix = "TEST_MINERU_"
     monkeypatch.setenv("MINERU_HOME", "/tmp/mineru-home")

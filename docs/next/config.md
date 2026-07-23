@@ -62,7 +62,7 @@ MinerU 有两类配置：
 | doclib | `doclib.parse_lock_timeout_sec` | `1800` | parse 锁超时 |
 | doclib | `doclib.scan_lock_timeout_sec` | `1800` | scan 锁超时 |
 | doclib | `doclib.compaction_interval_sec` | `3600` | compaction 间隔 |
-| doclib | `doclib.parse_server_health_check_interval_sec` | `60` | parse-server 健康检查间隔 |
+| doclib | `doclib.parse_server_health_check_interval_sec` | `30` | parse-server 健康检查间隔 |
 | doclib | `doclib.parse_server_probe_timeout_sec` | `10` | parse-server 探测超时 |
 | doclib | `doclib.parse_server_startup_grace_sec` | `30` | managed parse-server 启动宽限时间 |
 | doclib | `doclib.parse_server_startup_timeout_sec` | `600` | managed parse-server 启动硬超时；超时后进入重启策略 |
