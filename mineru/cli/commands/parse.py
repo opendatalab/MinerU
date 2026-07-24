@@ -6,7 +6,7 @@ import shlex
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 
 import typer
 
@@ -36,6 +36,11 @@ class ParseTextOutput:
 @dataclass(frozen=True)
 class ParseSummaryOutput:
     text: str
+
+
+ParseCommandResult: TypeAlias = (
+    CliResult[dict[str, Any]] | CliResult[ParseTextOutput] | CliResult[ParseSummaryOutput] | CliResult[None]
+)
 
 
 def _normalize_output_path(output: str | None) -> str | None:
@@ -147,7 +152,7 @@ def _parse(
     explicit_tier: bool,
     explicit_limit: bool,
     explicit_remote: bool,
-) -> None:
+) -> ParseCommandResult:
     file_path = normalize_cli_path(path)
 
     if not Path(file_path).exists():
@@ -179,7 +184,7 @@ def _parse(
     if status == "done":
         if verbose:
             _emit_notice("Cache hit — returning cached result.", json_mode=json_mode)
-        _output_parse_result(
+        return _prepare_parse_result(
             client,
             result,
             json_mode=json_mode,
@@ -193,15 +198,12 @@ def _parse(
             next_marker_limit=next_marker_limit,
             next_marker_remote=next_marker_remote,
         )
-        return
 
     # no-wait
     if no_wait or not wait_parse_ids:
         if json_mode:
-            _emit_parse_json_response(result, None)
-        else:
-            emit_result(CliContext(json_mode=False), _prepare_parse_summary_output(result, exit_code=0))
-        return
+            return cli_ok(_parse_json_payload(result, None))
+        return _prepare_parse_summary_output(result, exit_code=0)
 
     # poll until done or timeout
     if verbose:
@@ -238,7 +240,7 @@ def _parse(
         if st == "done":
             _record_parse_wait(client, wait_parse_ids, "succeeded", wait_started_at)
             done_result = result.model_copy(update={"status": "done"})
-            _output_parse_result(
+            return _prepare_parse_result(
                 client,
                 done_result,
                 json_mode=json_mode,
@@ -252,7 +254,6 @@ def _parse(
                 next_marker_limit=next_marker_limit,
                 next_marker_remote=next_marker_remote,
             )
-            return
         if st == "failed":
             failed = next((row for row in parse_rows if row.status == "failed"), None)
             _record_parse_wait(client, wait_parse_ids, "failed", wait_started_at)
@@ -264,22 +265,20 @@ def _parse(
     _record_parse_wait(client, wait_parse_ids, "timeout", wait_started_at)
     timeout_error = MineruError("parse_wait_timeout", f"Parse did not finish within {wait} seconds.", "wait")
     if json_mode:
-        _emit_parse_json_response(
-            result,
-            None,
-            error=timeout_error,
-            exit_code=1,
-            parse_overrides={"status": latest_wait_status, "tip": "Re-run the same command to continue waiting."},
-        )
-    else:
-        emit_result(
-            CliContext(json_mode=False),
-            _prepare_parse_summary_output(
-                result.model_copy(update={"status": latest_wait_status}),
-                waited_seconds=wait,
-                exit_code=1,
+        return cli_ok(
+            _parse_json_payload(
+                result,
+                None,
+                error=timeout_error,
+                parse_overrides={"status": latest_wait_status, "tip": "Re-run the same command to continue waiting."},
             ),
+            exit_code=1,
         )
+    return _prepare_parse_summary_output(
+        result.model_copy(update={"status": latest_wait_status}),
+        waited_seconds=wait,
+        exit_code=1,
+    )
 
 
 def _record_parse_wait(client: DoclibClient, parse_ids: list[int], status: str, started_at: float) -> None:
@@ -301,7 +300,7 @@ def _record_parse_wait(client: DoclibClient, parse_ids: list[int], status: str, 
         pass
 
 
-def _output_parse_result(
+def _prepare_parse_result(
     client: DoclibClient,
     parse_result: ParseResponse,
     json_mode: bool,
@@ -314,8 +313,8 @@ def _output_parse_result(
     next_marker_tier: Tier | None = None,
     next_marker_limit: int | None = None,
     next_marker_remote: bool = False,
-) -> None:
-    """Fetch and output parsed content for a parse command."""
+) -> ParseCommandResult:
+    """Fetch and prepare parsed content for CLI output."""
     sha256 = parse_result.sha256
     tier = parse_result.tier
     page_range = parse_result.page_range
@@ -332,12 +331,8 @@ def _output_parse_result(
             ),
         )
         if json_mode:
-            _emit_parse_json_response(parse_result, None, output=exported.output)
-            return
-        emit_result(
-            CliContext(json_mode=False), cli_ok(ParseTextOutput(f"Written to {exported.output}"), render=_render_parse_text)
-        )
-        return
+            return cli_ok(_parse_json_payload(parse_result, None, output=exported.output))
+        return cli_ok(ParseTextOutput(f"Written to {exported.output}"), render=_render_parse_text)
 
     content = _fetch_doc_content(
         client,
@@ -352,18 +347,14 @@ def _output_parse_result(
     if not content.content and content.format == "markdown" and not content.content_ranges:
         raise MineruError("parse_empty", "No content returned from parse.")
     if json_mode:
-        _emit_parse_json_response(parse_result, content)
-        return
-    emit_result(
-        CliContext(json_mode=False),
-        _prepare_parse_content_output(
-            content,
-            source_path=source_path,
-            no_marker=no_marker,
-            next_marker_tier=next_marker_tier,
-            next_marker_limit=next_marker_limit,
-            next_marker_remote=next_marker_remote,
-        ),
+        return cli_ok(_parse_json_payload(parse_result, content))
+    return _prepare_parse_content_output(
+        content,
+        source_path=source_path,
+        no_marker=no_marker,
+        next_marker_tier=next_marker_tier,
+        next_marker_limit=next_marker_limit,
+        next_marker_remote=next_marker_remote,
     )
 
 
@@ -386,24 +377,6 @@ def _fetch_doc_content(
         limit=limit,
         format=format,
         no_marker=no_marker,
-    )
-
-
-def _emit_parse_json_response(
-    parse_result: ParseResponse,
-    content: DocContentResponse | None,
-    *,
-    output: str | None = None,
-    error: MineruError | None = None,
-    exit_code: int = 0,
-    parse_overrides: dict[str, str | None] | None = None,
-) -> None:
-    emit_result(
-        CliContext(json_mode=True),
-        cli_ok(
-            _parse_json_payload(parse_result, content, output=output, error=error, parse_overrides=parse_overrides),
-            exit_code=exit_code,
-        ),
     )
 
 

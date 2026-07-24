@@ -152,7 +152,7 @@ def to_mineru_error(exc: Exception) -> MineruError:
     if parsed is not None:
         code, message, param = parsed
         return MineruError(code, message, param)
-    return MineruError("api_error", str(exc), None)
+    return MineruError("cli_internal_error", str(exc), None)
 
 
 def _result_exit_code(result: CliResult[Any]) -> int:

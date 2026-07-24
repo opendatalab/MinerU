@@ -64,7 +64,8 @@
 | `rate_limit_error` | 限流 | 429 |
 | `engine_error` | 解析引擎、tier、parse-server 或解析执行错误 | 500 / 503 / 504 |
 | `timeout_error` | 客户端或请求等待窗口到期，但后台任务不一定失败 | 408 |
-| `api_error` | 服务端内部错误或通信不可用 | 500 / 503 |
+| `internal_error` | CLI 或服务端未预期的内部错误 | 500 |
+| `api_error` | 服务通信失败或暂不可用 | 500 / 503 |
 
 ## 5. Tier 与引擎错误
 
@@ -163,7 +164,7 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`basic`、`stand
 | type | code | HTTP | retryable | param | 触发场景 | user_action |
 |------|------|------|:--:|-------|----------|-------------|
 | `invalid_request_error` | `model_not_found` | 404 | 否 | `model` | 请求的模型不存在 | `check_model_id` |
-| `api_error` | `internal_error` | 500 | 否 | null | 服务端未预期错误 | `report_with_request_id` |
+| `internal_error` | `internal_error` | 500 | 否 | null | 服务端未预期错误 | `report_with_request_id` |
 | `api_error` | `service_unavailable` | 503 | 是 | null | 服务暂不可用或依赖暂不可用 | `retry_later` |
 | `api_error` | `server_busy` | 503 | 是 | null | server 暂时无法接收请求，或 SQLite 锁竞争在有限重试后仍未恢复 | `retry_later` |
 
@@ -175,6 +176,7 @@ CLI 在调用 server 前或通信层面产生本地错误。它们使用同一 `
 |------|------|:--:|----------|-------------|
 | `invalid_request_error` | `file_not_found` | 否 | 本地文件路径不存在 | `check_path` |
 | `invalid_request_error` | `file_permission_denied` | 否 | 本地文件无读取权限 | `fix_file_permission` |
+| `internal_error` | `cli_internal_error` | 否 | CLI 未预期的内部错误 | `report_with_command_output` |
 | `api_error` | `server_not_running` | 是 | CLI 无法连接 doclib UDS | `run_mineru_server_start` |
 | `api_error` | `server_instance_mismatch` | 是 | endpoint 指向的进程不是写入该 endpoint 的 server 实例 | `restart_server` |
 | `api_error` | `server_protocol_error` | 是 | CLI 与 server 协议不兼容或响应损坏 | `upgrade_or_restart_server` |

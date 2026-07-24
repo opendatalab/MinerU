@@ -11,6 +11,7 @@ ErrorType = Literal[
     "rate_limit_error",
     "engine_error",
     "timeout_error",
+    "internal_error",
     "api_error",
 ]
 
@@ -84,9 +85,11 @@ _ERROR_TYPE_MAP: dict[str, ErrorType] = {
     "model_preload_failed": "engine_error",
     # timeout_error
     "parse_wait_timeout": "timeout_error",
+    # internal_error
+    "internal_error": "internal_error",
+    "cli_internal_error": "internal_error",
     # api_error
     "ingest_failed": "api_error",
-    "internal_error": "api_error",
     "metadata_failed": "api_error",
     "open_failed": "api_error",
     "parse_json_write_failed": "api_error",
@@ -108,6 +111,7 @@ _ERROR_STATUS_MAP: dict[ErrorType, int] = {
     "rate_limit_error": 429,
     "engine_error": 503,
     "timeout_error": 408,
+    "internal_error": 500,
     "api_error": 500,
 }
 

@@ -2291,7 +2291,8 @@ def test_parse_content_read_failure_exits_nonzero(monkeypatch: Any, tmp_path: Pa
 
     assert result.exit_code == 1
     payload = json.loads(result.output)
-    assert payload["error"]["code"] == "api_error"
+    assert payload["error"]["type"] == "internal_error"
+    assert payload["error"]["code"] == "cli_internal_error"
     assert "content missing" in payload["error"]["message"]
     assert "Error:" not in result.output
 

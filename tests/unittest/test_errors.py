@@ -82,6 +82,8 @@ def test_doclib_error_code_types_are_stable() -> None:
     assert error_type_for("model_preload_files_missing") == "engine_error"
 
     assert error_type_for("parse_wait_timeout") == "timeout_error"
+    assert error_type_for("internal_error") == "internal_error"
+    assert error_type_for("cli_internal_error") == "internal_error"
 
     assert error_type_for("ingest_failed") == "api_error"
     assert error_type_for("open_failed") == "api_error"
@@ -118,6 +120,7 @@ def test_http_status_for_error_codes_is_stable() -> None:
     assert http_status_for("remote_unreachable") == 503
     assert http_status_for("server_busy") == 503
     assert http_status_for("internal_error") == 500
+    assert http_status_for("cli_internal_error") == 500
 
 
 def test_mineru_error_string_is_human_readable() -> None:
@@ -143,9 +146,9 @@ def test_cli_connection_error_uses_server_not_running_code() -> None:
     assert error.message == "Local mineru server is not running. Run 'mineru server start'."
 
 
-def test_cli_unknown_exception_uses_exception_message() -> None:
+def test_cli_unknown_exception_uses_cli_internal_error() -> None:
     error = to_mineru_error(RuntimeError("boom"))
 
-    assert error.code == "api_error"
-    assert error.type == "api_error"
+    assert error.code == "cli_internal_error"
+    assert error.type == "internal_error"
     assert error.message == "boom"
