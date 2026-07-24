@@ -7,6 +7,7 @@ from click.core import Context
 from typer.core import TyperGroup
 
 from ..cli.version_command import show_version, version_cmd
+from ..utils.stdio import configure_standard_streams
 from .commands import api_server, models, parse, router, vlm_server
 
 TOP_LEVEL_COMMAND_ORDER = [
@@ -61,6 +62,7 @@ app.command("version")(version_cmd)
 
 
 def main() -> None:
+    configure_standard_streams()
     app()
 
 

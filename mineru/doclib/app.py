@@ -21,6 +21,7 @@ from loguru import logger as loguru_logger
 
 from ..config import Config, LogConfig, _mineru_home, config, get_config_source
 from ..errors import MineruError, error_response, http_status_for
+from ..utils.stdio import configure_standard_streams
 from .endpoint import EndpointTransport, read_endpoint_file, remove_endpoint_file, uds_available, write_endpoint_file
 from .instance_lock import DoclibLockUnavailable, build_doclib_home_owned_message, doclib_home_lock
 from .server import DoclibServer
@@ -437,6 +438,7 @@ def _bind_tcp_socket(host: str, port: int, *, strict_port: bool, port_probe_coun
 
 def main() -> None:
     """Entry point: python -m mineru.doclib.app"""
+    configure_standard_streams()
     try:
         with doclib_home_lock():
             _run_server(config)
@@ -512,7 +514,7 @@ def _run_server(cfg: Config) -> None:
                 port_probe_count=cfg.doclib.tcp.port_probe_count,
             )
             if cfg.doclib.tcp.port != 0 and port != cfg.doclib.tcp.port:
-                print(f"Port {cfg.doclib.tcp.port} in use, using {port}")
+                logger.warning("Port %d in use, using %d", cfg.doclib.tcp.port, port)
             tcp_sock.listen(cfg.doclib.tcp.backlog)
             sockets.append(tcp_sock)
             app.state.doclib_state.tcp_port = port
@@ -534,7 +536,7 @@ def _run_server(cfg: Config) -> None:
             len(transports),
         )
 
-        print("MinerU server listening on " + " and ".join(_format_transport(transport) for transport in transports))
+        logger.info("MinerU server listening on %s", " and ".join(_format_transport(transport) for transport in transports))
 
         loop = asyncio.new_event_loop()
 
@@ -698,7 +700,13 @@ def _forward_loguru_to_logging(message: LoguruMessage) -> None:
 
 
 def _rotating_log_handler(path: str, level: int) -> RotatingFileHandler:
-    handler = RotatingFileHandler(path, maxBytes=5 * 1024 * 1024, backupCount=3)
+    handler = RotatingFileHandler(
+        path,
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
+        errors="backslashreplace",
+    )
     handler.setLevel(level)
     handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
     return handler

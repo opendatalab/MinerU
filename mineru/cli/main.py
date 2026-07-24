@@ -6,6 +6,7 @@ import typer
 from click.core import Context
 from typer.core import TyperGroup
 
+from ..utils.stdio import configure_standard_streams
 from .commands import cleanup, config, list_resources, server, show, telemetry, usage, watch
 from .commands.forget import forget_cmd
 from .commands.invalidate import invalidate_cmd
@@ -92,6 +93,7 @@ app.command("version")(version_cmd)
 
 
 def main() -> None:
+    configure_standard_streams()
     app()
 
 

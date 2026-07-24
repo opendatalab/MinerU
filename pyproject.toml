@@ -125,8 +125,8 @@ issues = "https://github.com/opendatalab/MinerU/issues"
 License = "https://github.com/opendatalab/MinerU/blob/master/LICENSE.md"
 
 [project.scripts]
-mineru = "mineru.cli.main:app"
-mineru-kit = "mineru.kit.main:app"
+mineru = "mineru.cli.main:main"
+mineru-kit = "mineru.kit.main:main"
 mineru-gradio = "mineru.cli_old.gradio_app:main"
 
 [tool.setuptools.dynamic]

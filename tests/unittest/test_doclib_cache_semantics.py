@@ -592,6 +592,7 @@ def test_start_managed_parse_server_selects_port_and_writes_logs(monkeypatch: py
         assert kwargs["stdout"] is not kwargs["stderr"]
         assert kwargs["stdin"] is subprocess.PIPE
         assert kwargs["env"]["MINERU_MANAGED_PARSE_SERVER"] == "1"
+        assert kwargs["env"]["PYTHONIOENCODING"] == "utf-8:backslashreplace"
         kwargs["stdout"].write("parse helper stdout\n")
         kwargs["stdout"].flush()
         kwargs["stderr"].write("parse helper stderr\n")

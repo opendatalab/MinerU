@@ -2096,6 +2096,7 @@ def test_server_start_failure_points_to_log_and_does_not_discard_child_stderr(mo
         assert kwargs["stdout"] is not server.subprocess.DEVNULL
         assert kwargs["stderr"] is not server.subprocess.DEVNULL
         assert kwargs["stdout"] is not kwargs["stderr"]
+        assert kwargs["env"]["PYTHONIOENCODING"] == "utf-8:backslashreplace"
         kwargs["stdout"].write("child stdout\n")
         kwargs["stdout"].flush()
         kwargs["stderr"].write("child failed\n")

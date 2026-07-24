@@ -129,18 +129,18 @@ def emit_error(ctx: CliContext, exc: Exception, *, guidance: CliGuidance | None 
 
 def _emit_rendered_output(rendered_output: RenderableOutput) -> None:
     if isinstance(rendered_output, str):
-        print(rendered_output)
+        output.print_text(rendered_output)
         return
     if isinstance(rendered_output, RichObject):
         output.print_rich(rendered_output)
         return
     for item in rendered_output:
         if isinstance(item, str):
-            print(item)
+            output.print_text(item)
         elif isinstance(item, RichObject):
             output.print_rich(item)
         else:
-            print(item)
+            output.print_text(item)
 
 
 def to_mineru_error(exc: Exception) -> MineruError:

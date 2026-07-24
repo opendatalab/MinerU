@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
@@ -21,18 +22,22 @@ def print_rich(*objects: RenderableObject) -> None:
     console.print(*objects)
 
 
+def print_text(value: object) -> None:
+    sys.stdout.write(f"{value}\n")
+
+
 def print_success(msg: str) -> None:
     if console:
         console.print(msg, style="green")
     else:
-        print(msg)
+        print_text(msg)
 
 
 def print_info(msg: str) -> None:
     if console:
         console.print(msg, style="dim")
     else:
-        print(msg)
+        print_text(msg)
 
 
 def print_notice(msg: str) -> None:
@@ -47,9 +52,9 @@ def print_error(msg: str) -> None:
 
 def print_json(data: Any) -> None:
     if isinstance(data, BaseModel):
-        print(to_json(data, indent=2).decode("utf-8"))
+        print_text(to_json(data, indent=2).decode("utf-8"))
         return
     if is_dataclass(data) and not isinstance(data, type):
-        print(json.dumps(asdict(data), ensure_ascii=False, indent=2))
+        print_text(json.dumps(asdict(data), ensure_ascii=False, indent=2))
         return
-    print(json.dumps(data, ensure_ascii=False, indent=2))
+    print_text(json.dumps(data, ensure_ascii=False, indent=2))

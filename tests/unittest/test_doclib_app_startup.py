@@ -309,6 +309,8 @@ def test_setup_logging_routes_application_logs_to_rotating_file_without_stderr_d
 
         assert len(mineru_rotating_handlers) == 1
         assert mineru_rotating_handlers[0].baseFilename == str(log_path)
+        assert mineru_rotating_handlers[0].encoding == "utf-8"
+        assert mineru_rotating_handlers[0].errors == "backslashreplace"
         assert mineru_plain_stream_handlers == []
         assert mineru_logger.propagate is False
         uvicorn_error_log_paths = [
@@ -322,6 +324,10 @@ def test_setup_logging_routes_application_logs_to_rotating_file_without_stderr_d
             handler.baseFilename for handler in uvicorn_access_logger.handlers if isinstance(handler, RotatingFileHandler)
         ]
         assert uvicorn_access_log_paths == [str(access_log_path)]
+
+        mineru_logger.info("Unicode log: \u223c \u4e2d\u6587 \u2713")
+        mineru_rotating_handlers[0].flush()
+        assert "Unicode log: \u223c \u4e2d\u6587 \u2713" in log_path.read_text(encoding="utf-8")
     finally:
         _clear_test_loggers()
 

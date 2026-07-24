@@ -19,6 +19,7 @@ from ...config import config
 from ...doclib.instance_lock import DoclibLockUnavailable, build_doclib_home_owned_message, doclib_home_lock
 from ...doclib.types import ServerStatusResponse, TCPServerStatus
 from ...errors import MineruError
+from ...utils.stdio import utf8_subprocess_env
 from ...version import __version__
 from ..contracts import CliContext, RenderableObject
 from ..runtime import run_cli
@@ -232,6 +233,7 @@ def _start() -> str:
                     stdout=stdout_log_file,
                     stderr=stderr_log_file,
                     start_new_session=True,
+                    env=utf8_subprocess_env(),
                 )
 
                 if not _wait_for_started_server(proc):

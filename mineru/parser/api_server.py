@@ -51,6 +51,7 @@ from ..types import SERVER_TIERS, TIERS_BY_SERVER_TIER, DeploymentTier, PageInfo
 from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
 from ..utils.image_payload import validate_image_sidecar_path
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
+from ..utils.stdio import configure_standard_streams
 from ..version import __version__
 from . import parse_async
 from .base import ParseResult
@@ -2428,6 +2429,7 @@ def main(
     api_key: str | None,
 ) -> None:
     """Start the MinerU v1 REST API server."""
+    configure_standard_streams()
     try:
         application = create_app(
             upload_dir=upload_dir,

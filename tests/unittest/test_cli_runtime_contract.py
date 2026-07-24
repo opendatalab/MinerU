@@ -7,6 +7,7 @@ import types
 import pytest
 import typer
 
+import mineru.cli.main as cli_main
 from mineru.cli import output
 from mineru.cli import contracts
 from mineru.cli.contracts import CliContext, CliGuidance
@@ -24,6 +25,29 @@ def _plain_output(monkeypatch: pytest.MonkeyPatch) -> None:
             print(item)
 
     monkeypatch.setattr(output, "print_rich", print_rich)
+
+
+def test_main_configures_standard_streams_before_running_app(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(cli_main, "configure_standard_streams", lambda: calls.append("configure"))
+    monkeypatch.setattr(cli_main, "app", lambda: calls.append("app"))
+
+    cli_main.main()
+
+    assert calls == ["configure", "app"]
+
+
+def test_text_output_uses_output_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
+    written: list[object] = []
+    monkeypatch.setattr(output, "print_text", written.append)
+
+    run_cli(
+        CliContext(json_mode=False),
+        lambda: {"name": "demo"},
+        render=lambda data: [f"name={data['name']}", 3],
+    )
+
+    assert written == ["name=demo", 3]
 
 
 def test_emit_result_json_mode_writes_single_json_object(capsys: pytest.CaptureFixture[str]) -> None:

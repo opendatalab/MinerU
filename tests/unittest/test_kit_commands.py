@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from typer.main import get_command
 from typer.testing import CliRunner
 
+import mineru.kit.main as kit_main
 from mineru.cli.main import app as mineru_app
 from mineru.cli.version_command import version_cmd
 from mineru.kit.commands import api_server, models, parse, router, vlm_server
@@ -37,6 +38,16 @@ _REMOVED_DISABLE_FORMULA_OPTION = "--disable-" + "formula"
 _REMOVED_TABLE_ENABLE_PARAM = "table" + "_enable"
 _REMOVED_FORMULA_ENABLE_PARAM = "formula" + "_enable"
 _REMOVED_INLINE_FORMULA_PARAM = "inline_" + _REMOVED_FORMULA_ENABLE_PARAM
+
+
+def test_kit_main_configures_standard_streams_before_running_app(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(kit_main, "configure_standard_streams", lambda: calls.append("configure"))
+    monkeypatch.setattr(kit_main, "app", lambda: calls.append("app"))
+
+    kit_main.main()
+
+    assert calls == ["configure", "app"]
 
 
 def _assert_unsafe_sidecar_error(output: str) -> None:
