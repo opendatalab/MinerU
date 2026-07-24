@@ -1029,6 +1029,79 @@ def test_complete_visual_row_promotes_number_and_demotes_inline_body() -> None:
     assert inline_row.text == "inline label inline body"
 
 
+def test_low_coverage_mixed_weight_visual_row_demotes_inline_title() -> None:
+    """验证低字体覆盖率的同一视觉行仍按字重冲突识别为行内粗体正文。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line(
+            "body one",
+            (0.0, 0.0, 100.0, 10.0),
+            0,
+            font_signature=body_font,
+            font_coverage=1.0,
+            dominant_font_weight=400.0,
+        ),
+        _text_line(
+            "body two",
+            (0.0, 12.0, 100.0, 22.0),
+            1,
+            font_signature=body_font,
+            font_coverage=1.0,
+            dominant_font_weight=400.0,
+        ),
+        _text_line(
+            "body three",
+            (0.0, 24.0, 100.0, 34.0),
+            2,
+            font_signature=body_font,
+            font_coverage=1.0,
+            dominant_font_weight=400.0,
+        ),
+        _text_line(
+            "inline label",
+            (0.0, 50.0, 35.0, 62.0),
+            3,
+            visual_row_id=30,
+            split_from_row=True,
+            font_signature=("Heading", 0),
+            font_coverage=0.6,
+            dominant_font_weight=700.0,
+        ),
+        _text_line(
+            "inline body",
+            (37.0, 50.0, 100.0, 62.0),
+            4,
+            visual_row_id=30,
+            run_index=1,
+            split_from_row=True,
+            font_signature=body_font,
+            font_coverage=0.6,
+            dominant_font_weight=400.0,
+        ),
+        _text_line(
+            "body continuation",
+            (0.0, 64.0, 100.0, 74.0),
+            5,
+            font_signature=body_font,
+            font_coverage=1.0,
+            dominant_font_weight=400.0,
+        ),
+    ]
+
+    pdf_extractor._classify_page_titles(
+        lines,
+        (100.0, 100.0),
+        page_index=1,
+        container_bboxes=[],
+    )
+    merged = pdf_extractor._merge_title_resolved_visual_rows(lines, (100.0, 100.0))
+
+    inline_row = next(line for line in merged if line.visual_row_id == 30)
+    assert inline_row.semantic_type is None
+    assert inline_row.text == "inline label inline body"
+
+
 def test_full_width_normal_height_inline_heading_merges_with_body_continuation() -> None:
     """验证满栏正常字号粗体行降为正文，并只与其下方常规正文续接。"""
 
@@ -1045,7 +1118,14 @@ def test_full_width_normal_height_inline_heading_merges_with_body_continuation()
             font_coverage=1.0,
             dominant_font_weight=700.0,
         ),
-        _text_line("continuation one", (0.0, 52.0, 100.0, 62.0), 3, font_signature=body_font, font_coverage=1.0),
+        _text_line(
+            "continuation one",
+            (0.0, 52.0, 100.0, 62.0),
+            3,
+            effective_height=8.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
         _text_line("continuation two", (0.0, 64.0, 100.0, 74.0), 4, font_signature=body_font, font_coverage=1.0),
         _text_line("continuation three", (0.0, 76.0, 100.0, 86.0), 5, font_signature=body_font, font_coverage=1.0),
     ]
@@ -1249,6 +1329,78 @@ def test_hanging_indent_groups_neutral_entries_and_ignores_centered_heading() ->
     ]
 
 
+def test_hanging_indent_accepts_reference_spacing_and_italic_tail() -> None:
+    """验证 1.25 倍行高的参考文献间距不会拆掉前一条斜体尾行。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line(
+            "Alpha begins",
+            (0.0, 0.0, 100.0, 10.0),
+            0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "alpha continues",
+            (15.0, 10.0, 100.0, 20.0),
+            1,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "alpha italic tail",
+            (15.0, 20.0, 75.0, 30.0),
+            2,
+            font_signature=("BodyItalic", 1),
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "Beta begins",
+            (0.0, 42.5, 100.0, 52.5),
+            3,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "beta continues",
+            (15.0, 52.5, 100.0, 62.5),
+            4,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "Gamma begins",
+            (0.0, 75.0, 100.0, 85.0),
+            5,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "gamma continues",
+            (15.0, 85.0, 100.0, 95.0),
+            6,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+    ]
+    lane = pdf_extractor._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(line, line.bbox) for line in lines],
+    )
+
+    group_map = pdf_extractor._build_hanging_indent_group_map(lane, [], [])
+    blocks = pdf_extractor._build_text_blocks(lines, [], (120.0, 120.0))
+
+    assert [group_map[index] for index in range(7)] == [0, 0, 0, 1, 1, 2, 2]
+    assert [block["content"] for block in blocks] == [
+        "Alpha begins alpha continues alpha italic tail",
+        "Beta begins beta continues",
+        "Gamma begins gamma continues",
+    ]
+
+
 def test_first_line_indent_and_large_gap_do_not_form_hanging_indent_groups() -> None:
     """验证普通首行缩进及跨越大间距的行不会误触发悬挂缩进模式。"""
 
@@ -1299,12 +1451,12 @@ def test_twelve_point_gutter_keeps_two_text_lanes_and_paragraphs_separate() -> N
 
 
 def test_cross_column_caption_tail_stays_in_span_lane_and_one_text_block() -> None:
-    """验证同时覆盖双栏的短 caption 尾行不会按中心点落回左栏。"""
+    """验证仅占单栏宽的短 caption 尾行仍回收到连续跨栏 caption。"""
 
     lines: list[pdf_extractor._LineItem] = [
         _text_line("caption line one", (0.0, 10.0, 200.0, 20.0), 0),
         _text_line("caption line two", (0.0, 22.0, 200.0, 32.0), 1),
-        _text_line("caption tail", (0.0, 34.0, 160.0, 44.0), 2),
+        _text_line("caption tail", (0.0, 34.0, 70.0, 44.0), 2),
         _text_line("ordinary left short line", (0.0, 70.0, 70.0, 80.0), 3),
     ]
     for row_index, top in enumerate((100.0, 112.0, 124.0, 136.0, 148.0)):
@@ -1367,6 +1519,58 @@ def test_slight_bbox_overlap_contributes_to_gap_estimate_and_separates_caption()
         lane,
         regular_gap,
         gap_mad,
+        [],
+        [],
+    )
+
+
+def test_local_previous_left_edge_exposes_first_line_indent() -> None:
+    """验证局部版心左移后仍能识别下一行相对前一物理行的首行缩进。"""
+
+    previous = _text_line(
+        "previous paragraph without punctuation",
+        (0.0, 0.0, 80.0, 10.0),
+        0,
+    )
+    current = _text_line(
+        "Indented new paragraph",
+        (10.0, 12.0, 100.0, 22.0),
+        1,
+    )
+    lane = pdf_extractor._TextLane(
+        left=20.0,
+        right=100.0,
+        lines=[(previous, previous.bbox), (current, current.bbox)],
+    )
+
+    assert not pdf_extractor._should_connect_text_rows(
+        (previous, previous.bbox),
+        (current, current.bbox),
+        lane,
+        2.0,
+        0.0,
+        [],
+        [],
+    )
+
+
+def test_terminal_full_lane_row_breaks_after_abnormal_clearance() -> None:
+    """验证满栏句末行后的净空超过常规间距半行高时强制另起段落。"""
+
+    previous = _text_line("Figure caption ends.", (0.0, 0.0, 100.0, 10.0), 0)
+    current = _text_line("new paragraph fills the lane", (0.0, 17.0, 100.0, 27.0), 1)
+    lane = pdf_extractor._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(previous, previous.bbox), (current, current.bbox)],
+    )
+
+    assert not pdf_extractor._should_connect_text_rows(
+        (previous, previous.bbox),
+        (current, current.bbox),
+        lane,
+        1.0,
+        0.0,
         [],
         [],
     )
@@ -2145,6 +2349,18 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
         0,
         0,
     ]
+    assert [len(page) for page in model_list] == [
+        23,
+        15,
+        13,
+        21,
+        19,
+        16,
+        16,
+        15,
+        17,
+        18,
+    ]
     page7_tables = [block for block in model_list[6] if block["type"] == "table"]
     page7_table4 = next(
         block for block in page7_tables if "Number of parameters" in block["content"]
@@ -2154,10 +2370,10 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
         for block in model_list[6]
         if block["content"] == "Table 4: Model size comparison."
     )
-    page7_inline_title = next(
+    page7_inline_body = next(
         block
         for block in model_list[6]
-        if block["content"] == "Row, Column, & Global Positional IDs."
+        if block["content"].startswith("Row, Column, & Global Positional IDs.")
     )
     page9_conclusion = next(
         block
@@ -2181,7 +2397,8 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
     )
     assert page7_table4_caption["content"] not in page7_table4["content"]
     assert page7_table4["bbox"][3] < page7_table4_caption["bbox"][1]
-    assert page7_inline_title["type"] == "paragraph_title"
+    assert page7_inline_body["type"] == "text"
+    assert "With TAPASBASE" in page7_inline_body["content"]
     assert "To tackle this" in page9_conclusion["content"]
     assert "Acknowledgments" not in page9_conclusion["content"]
     assert "Cong Yu. 2021. TURL:" in page10_first_reference["content"]
@@ -2216,12 +2433,31 @@ def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_formula() -> Non
     released_code = next(
         block for block in page1 if "TABLEFORMER.md" in block["content"]
     )
+    introduction = next(
+        block for block in page1 if block["content"].startswith("Recently, semi-structured")
+    )
+    nutshell = next(
+        block for block in page1 if block["content"].startswith("In a nutshell")
+    )
+    figure_caption = next(
+        block for block in page1 if block["content"].startswith("Figure 1:")
+    )
+    tables_body = next(
+        block for block in page1 if block["content"].startswith("tables or rows")
+    )
 
     assert title["type"] == "doc_title"
     assert len(front_matter) == len(front_matter_contents)
     assert all(block["type"] == "text" for block in front_matter)
     assert next(block for block in page1 if block["content"] == "Abstract")["type"] == "paragraph_title"
     assert released_code["type"] == "text"
+    assert introduction["content"].endswith("(Eisenschlos et al., 2021; Liu et al., 2021).")
+    assert nutshell["type"] == "text"
+    assert nutshell["content"].endswith("by serializing")
+    assert figure_caption["type"] == "text"
+    assert figure_caption["content"].endswith("both questions.")
+    assert "tables or rows" not in figure_caption["content"]
+    assert tables_body["type"] == "text"
 
     section_title = next(
         block for block in page2 if block["content"].startswith("2 Preliminaries:")
@@ -2250,6 +2486,66 @@ def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_formula() -> Non
     assert as_model_blocks[0]["content"].startswith("As for the model")
     assert "attends to all the tokens." in as_model_blocks[0]["content"]
     assert "Let the layer input" in as_model_blocks[0]["content"]
+
+
+def test_demo3_pages6_7_and10_fix_caption_inline_titles_and_reference_tail() -> None:
+    """验证跨栏 caption、行内粗体正文与参考文献尾行均保持正确归属。"""
+
+    model_list = _native_model_list("demo3.pdf")
+    page6 = model_list[5]
+    page7 = model_list[6]
+    page10 = model_list[9]
+
+    table2_caption = next(
+        block for block in page6 if block["content"].startswith("Table 2:")
+    )
+    assert table2_caption["type"] == "text"
+    assert "Median of 5 independent runs are reported." in table2_caption["content"]
+    assert table2_caption["content"].endswith("not reported in the original paper.")
+    assert sum(
+        "not reported in the original paper." in block["content"]
+        for block in page6
+    ) == 1
+
+    attention_bias = next(
+        block for block in page7 if block["content"].startswith("Attention Bias Scaling.")
+    )
+    positional_ids = next(
+        block
+        for block in page7
+        if block["content"].startswith("Row, Column, & Global Positional IDs.")
+    )
+    formula6 = next(
+        block
+        for block in page7
+        if block["type"] == "equation" and "(6)" in block["content"]
+    )
+    assert attention_bias["type"] == "text"
+    assert attention_bias["content"].endswith("attention score by:")
+    assert positional_ids["type"] == "text"
+    assert "With TAPASBASE" in positional_ids["content"]
+    assert formula6["content"].splitlines()[-1] == "(6)"
+    assert not [
+        block
+        for block in page7
+        if block["type"] == "paragraph_title"
+        and block["content"].startswith(
+            ("Attention Bias Scaling.", "Row, Column, & Global Positional IDs.")
+        )
+    ]
+
+    ying_reference = next(
+        block for block in page10 if block["content"].startswith("Chengxuan Ying")
+    )
+    yu_reference = next(
+        block for block in page10 if block["content"].startswith("Tao Yu")
+    )
+    assert ying_reference["type"] == yu_reference["type"] == "text"
+    assert ying_reference["content"].endswith("arXiv:2106.05234.")
+    assert "Tao Yu" not in ying_reference["content"]
+    assert not [
+        block for block in page10 if block["content"] == "arXiv:2106.05234."
+    ]
 
 
 def test_demo3_page3_form_image_formulas_titles_and_inline_body_are_whole() -> None:

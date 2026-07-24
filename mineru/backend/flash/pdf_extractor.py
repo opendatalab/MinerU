@@ -1425,7 +1425,7 @@ def _is_full_width_inline_heading(
     return (
         next_line.semantic_type is None
         and next_uses_body_font
-        and 0.85 <= next_height / profile.body_height <= 1.15
+        and 0.75 <= next_height / profile.body_height <= 1.15
         and (next_bbox[2] - next_bbox[0]) >= 0.75 * lane_width
         and _effective_text_row_gap(rows[index], rows[index + 1])
         <= profile.regular_gap + 0.25 * profile.body_height
@@ -1561,15 +1561,23 @@ def _line_near_visual_container(
 
 
 def _title_fonts_compatible(first: _LineItem, second: _LineItem) -> bool:
-    """检查两行标题字体是否兼容；缺少高覆盖字体信息时允许几何兜底。"""
+    """检查标题字体和字重是否兼容；低字体覆盖率时仍保留可靠字重证据。"""
 
-    return not (
+    font_conflicts = (
         first.font_signature is not None
         and second.font_signature is not None
         and first.font_coverage >= 0.75
         and second.font_coverage >= 0.75
         and first.font_signature != second.font_signature
     )
+    weight_conflicts = (
+        first.dominant_font_weight is not None
+        and second.dominant_font_weight is not None
+        and abs(first.dominant_font_weight - second.dominant_font_weight) >= 100.0
+        and max(first.dominant_font_weight, second.dominant_font_weight)
+        >= 1.15 * min(first.dominant_font_weight, second.dominant_font_weight)
+    )
+    return not (font_conflicts or weight_conflicts)
 
 
 def _expand_paragraph_title_neighbors(
@@ -4009,7 +4017,7 @@ def _build_hanging_indent_group_map(
         """检查相邻行的净空和几何障碍是否允许组成同一缩进序列。"""
 
         effective_gap = _effective_text_row_gap(previous, current)
-        if not -0.6 * median_height <= effective_gap <= 1.2 * median_height:
+        if not -0.6 * median_height <= effective_gap <= 1.3 * median_height:
             return False
         if _connection_crosses_table(
             previous[0].bbox,
@@ -4387,7 +4395,105 @@ def _infer_text_lanes(
                 is_span=True,
             )
         )
+    _reattach_span_lane_continuations(lanes, median_height)
     return lanes
+
+
+def _reattach_span_lane_continuations(
+    lanes: list[_TextLane],
+    median_height: float,
+) -> None:
+    """把紧随稳定跨栏多行之后的单栏宽短尾行迁回对应 span lane。"""
+
+    regular_lanes = [lane for lane in lanes if not lane.is_span]
+    span_lanes = [lane for lane in lanes if lane.is_span]
+    if len(regular_lanes) < 2 or not span_lanes:
+        return
+
+    for span_lane in span_lanes:
+        span_lane.lines.sort(
+            key=lambda item: (item[1][1], item[1][0], item[0].source_index)
+        )
+        if len(span_lane.lines) < 2:
+            continue
+        previous, last = span_lane.lines[-2:]
+        previous_height = _line_effective_height(*previous)
+        last_height = _line_effective_height(*last)
+        if (
+            previous[0].semantic_type != last[0].semantic_type
+            or abs(previous[1][0] - last[1][0]) > 0.75 * median_height
+            or max(previous_height, last_height) / min(previous_height, last_height) > 1.35
+            or not _title_fonts_compatible(previous[0], last[0])
+            or not -0.25 * median_height
+            <= _effective_text_row_gap(previous, last)
+            <= 0.75 * median_height
+        ):
+            continue
+
+        while True:
+            candidates: list[
+                tuple[
+                    float,
+                    float,
+                    _TextLane,
+                    tuple[_LineItem, BBox],
+                ]
+            ] = []
+            for regular_lane in regular_lanes:
+                for candidate in regular_lane.lines:
+                    candidate_line, candidate_bbox = candidate
+                    if (
+                        candidate_line.semantic_type != last[0].semantic_type
+                        or candidate_bbox[1] <= last[1][1]
+                    ):
+                        continue
+                    gap = _effective_text_row_gap(last, candidate)
+                    candidate_height = _line_effective_height(*candidate)
+                    if (
+                        not -0.25 * median_height <= gap <= 0.75 * median_height
+                        or abs(candidate_bbox[0] - last[1][0]) > 0.75 * median_height
+                        or max(last_height, candidate_height)
+                        / min(last_height, candidate_height)
+                        > 1.35
+                        or not _title_fonts_compatible(last[0], candidate_line)
+                    ):
+                        continue
+                    has_parallel_peer = any(
+                        other_line is not candidate_line
+                        and _bbox_axis_overlap_ratio(
+                            candidate_bbox,
+                            other_bbox,
+                            axis="y",
+                        )
+                        >= 0.5
+                        for lane in regular_lanes
+                        for other_line, other_bbox in lane.lines
+                    )
+                    if has_parallel_peer:
+                        continue
+                    candidates.append(
+                        (
+                            max(0.0, gap),
+                            candidate_bbox[1],
+                            regular_lane,
+                            candidate,
+                        )
+                    )
+            if not candidates:
+                break
+            _gap, _top, regular_lane, candidate = min(
+                candidates,
+                key=lambda item: (item[0], item[1]),
+            )
+            regular_lane.lines.remove(candidate)
+            span_lane.lines.append(candidate)
+            span_lane.left = min(span_lane.left, candidate[1][0])
+            span_lane.right = max(span_lane.right, candidate[1][2])
+            span_lane.lines.sort(
+                key=lambda item: (item[1][1], item[1][0], item[0].source_index)
+            )
+            last = candidate
+            last_height = _line_effective_height(*last)
 
 
 def _estimate_lane_gap(lane: _TextLane) -> tuple[float, float]:
@@ -4493,9 +4599,15 @@ def _should_connect_text_rows(
     if vertical_gap > gap_limit:
         return False
 
-    next_indent = current_bbox[0] - lane.left
-    previous_fill = max(0.0, previous_bbox[2] - lane.left) / lane_width
     terminal_previous = bool(re.search(r"[.!?。！？:：;；][\]\)}）】》”’'\"]*$", previous_line.text.rstrip()))
+    if terminal_previous and vertical_gap > regular_gap + 0.5 * pair_height:
+        return False
+
+    # 局部版心可能比整栏推断边界更靠左，缩进需同时参考上一物理行。
+    local_lane_left = min(lane.left, previous_bbox[0])
+    local_lane_width = max(0.1, lane.right - local_lane_left)
+    next_indent = current_bbox[0] - local_lane_left
+    previous_fill = max(0.0, previous_bbox[2] - local_lane_left) / local_lane_width
     if next_indent >= max(5.0, 0.65 * pair_height) and (previous_fill <= 0.8 or terminal_previous):
         return False
 
