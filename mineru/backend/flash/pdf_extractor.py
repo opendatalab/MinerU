@@ -2050,27 +2050,45 @@ def _count_stable_columns(
     rows: list[_VisualRow],
     median_height: float,
 ) -> tuple[int, float]:
-    """聚类每行片段左边界，返回稳定列数和最低列覆盖率。"""
+    """分别聚类片段左边界、中心和右边界，返回最稳定的列分布。"""
 
     tolerance = max(3.0, median_height * 0.75)
-    clusters: list[dict[str, Any]] = []
-    for row_index, row in enumerate(rows):
-        for fragment in row.fragments:
-            anchor = fragment.local_bbox[0]
-            cluster = next(
-                (item for item in clusters if abs(anchor - float(item["mean"])) <= tolerance),
-                None,
-            )
-            if cluster is None:
-                clusters.append({"mean": anchor, "values": [anchor], "rows": {row_index}})
-            else:
-                cluster["values"].append(anchor)
-                cluster["rows"].add(row_index)
-                cluster["mean"] = sum(cluster["values"]) / len(cluster["values"])
-    stable_coverages = [len(cluster["rows"]) / len(rows) for cluster in clusters if len(cluster["rows"]) / len(rows) >= 0.5]
-    if not stable_coverages:
-        return 0, 0.0
-    return len(stable_coverages), min(stable_coverages)
+    best_result = (0, 0.0)
+    # 三种对齐方式分别聚类，避免把同一片段的不同锚点混算为多列。
+    for alignment in ("left", "center", "right"):
+        clusters: list[dict[str, Any]] = []
+        for row_index, row in enumerate(rows):
+            for fragment in row.fragments:
+                left, _top, right, _bottom = fragment.local_bbox
+                if alignment == "left":
+                    anchor = left
+                elif alignment == "center":
+                    anchor = (left + right) / 2
+                else:
+                    anchor = right
+                cluster = next(
+                    (item for item in clusters if abs(anchor - float(item["mean"])) <= tolerance),
+                    None,
+                )
+                if cluster is None:
+                    clusters.append({"mean": anchor, "values": [anchor], "rows": {row_index}})
+                else:
+                    cluster["values"].append(anchor)
+                    cluster["rows"].add(row_index)
+                    cluster["mean"] = sum(cluster["values"]) / len(cluster["values"])
+        stable_coverages = [
+            len(cluster["rows"]) / len(rows)
+            for cluster in clusters
+            if len(cluster["rows"]) / len(rows) >= 0.5
+        ]
+        result = (
+            len(stable_coverages),
+            min(stable_coverages) if stable_coverages else 0.0,
+        )
+        # 仅在结果严格更优时更新，平局时保留既有的左对齐优先级。
+        if result > best_result:
+            best_result = result
+    return best_result
 
 
 def _transform_axis_lines(

@@ -434,19 +434,29 @@ def test_long_rule_group_uses_40pt_or_ten_times_height_threshold(
 
 def _rule_table_fixture(
     rule_count: int = 3,
+    *,
+    centered_columns: bool = False,
 ) -> tuple[
     list[pdf_extractor._VisualRow],
     list[pdf_extractor._LineItem],
     list[pdf_extractor._LocalAxisLine],
 ]:
-    """构造无 caption 的三行三列表格及指定数量的长横线。"""
+    """构造无 caption 的规则表格，并可切换为宽度变化的居中列。"""
 
     rows: list[pdf_extractor._VisualRow] = []
     lines: list[pdf_extractor._LineItem] = []
     source_index = 0
     for row_index, top in enumerate((10.0, 30.0, 50.0)):
         fragments: list[pdf_extractor._Fragment] = []
-        for column_index, (left, right) in enumerate(((10.0, 20.0), (50.0, 60.0), (90.0, 100.0))):
+        if centered_columns:
+            half_width = (2.0, 8.0, 14.0)[row_index]
+            column_bounds = (
+                (30.0 - half_width, 30.0 + half_width),
+                (90.0 - half_width, 90.0 + half_width),
+            )
+        else:
+            column_bounds = ((10.0, 20.0), (50.0, 60.0), (90.0, 100.0))
+        for column_index, (left, right) in enumerate(column_bounds):
             bbox = (left, top, right, top + 5.0)
             text = f"r{row_index}c{column_index}"
             fragments.append(
@@ -497,6 +507,25 @@ def test_rule_table_candidate_accepts_captionless_regular_text_distribution() ->
 
     assert len(candidates) == 1
     assert candidates[0].line_indices == set(range(9))
+
+
+def test_rule_table_candidate_accepts_center_aligned_columns_with_varying_widths() -> None:
+    """验证左右边界变化但中心稳定的两列表格仍可形成候选。"""
+
+    rows, lines, axis_lines = _rule_table_fixture(centered_columns=True)
+
+    assert pdf_extractor._count_stable_columns(rows, 5.0) == (2, 1.0)
+    candidates = pdf_extractor._build_rule_table_candidates(
+        rows,
+        lines,
+        (150.0, 100.0),
+        0,
+        5.0,
+        axis_lines,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].line_indices == set(range(6))
 
 
 def test_two_horizontal_rule_grid_is_deliberately_rejected() -> None:
@@ -2111,11 +2140,20 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
         0,
         1,
         2,
-        1,
+        2,
         2,
         0,
         0,
     ]
+    page7_tables = [block for block in model_list[6] if block["type"] == "table"]
+    page7_table4 = next(
+        block for block in page7_tables if "Number of parameters" in block["content"]
+    )
+    page7_table4_caption = next(
+        block
+        for block in model_list[6]
+        if block["content"] == "Table 4: Model size comparison."
+    )
     page7_inline_title = next(
         block
         for block in model_list[6]
@@ -2131,6 +2169,18 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
         for block in model_list[9]
         if block["content"].startswith("Xiang Deng, Huan Sun")
     )
+    assert all(
+        marker in page7_table4["content"]
+        for marker in (
+            "Model",
+            "TAPASBASE",
+            "TABLEFORMERBASE",
+            "TAPASLARGE",
+            "TABLEFORMERLARGE",
+        )
+    )
+    assert page7_table4_caption["content"] not in page7_table4["content"]
+    assert page7_table4["bbox"][3] < page7_table4_caption["bbox"][1]
     assert page7_inline_title["type"] == "paragraph_title"
     assert "To tackle this" in page9_conclusion["content"]
     assert "Acknowledgments" not in page9_conclusion["content"]
