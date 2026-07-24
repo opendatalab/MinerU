@@ -53,6 +53,8 @@ _TEXT_SEMANTIC_TYPES = {
     "header",
     "footer",
     "page_number",
+    "page_footnote",
+    "aside_text",
 }
 _OUTPUT_BLOCK_TYPES = {"text", "table", "image", "equation"} | _TEXT_SEMANTIC_TYPES
 _PAGE_NUMBER_RE = re.compile(
@@ -185,6 +187,7 @@ class _PreparedPage:
     table_bboxes: list[BBox]
     drawing_lines: list[_AxisLine]
     fixed_blocks: list[dict[str, Any]]
+    page_footnote_groups: list[set[int]] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -611,7 +614,7 @@ def _get_pdf_drawing_lines(pdf_doc: PDFDocument, page_idx: int) -> list[_AxisLin
 
 
 def _prepare_page_source(source: _PageSource) -> _PreparedPage:
-    """先完成表格、Form、图形和点阵图认领，留下可跨页比较的轻量文本行。"""
+    """先认领视觉容器，再标注辅助文本并留下可跨页比较的轻量文本行。"""
 
     form_bboxes = _select_form_image_bboxes(source)
     candidates = [
@@ -663,13 +666,15 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
         table_bboxes,
     )
     _compact_prepared_lines(remaining_lines, source.page_size)
-    return _PreparedPage(
+    prepared = _PreparedPage(
         page_size=source.page_size,
         remaining_lines=remaining_lines,
         table_bboxes=table_bboxes,
         drawing_lines=source.drawing_lines,
         fixed_blocks=table_blocks + form_image_blocks + graphic_blocks + raster_image_blocks,
     )
+    _classify_page_auxiliary_text(prepared)
+    return prepared
 
 
 def _compact_prepared_lines(
@@ -684,13 +689,253 @@ def _compact_prepared_lines(
         line.chars.clear()
 
 
+def _classify_page_auxiliary_text(prepared: _PreparedPage) -> None:
+    """在容器认领后仅按空间关系标注侧栏文字和页脚注。"""
+
+    _classify_aside_text(prepared.remaining_lines, prepared.page_size)
+    prepared.page_footnote_groups = _classify_page_footnotes(
+        prepared.remaining_lines,
+        prepared.table_bboxes,
+        prepared.drawing_lines,
+        prepared.page_size,
+    )
+
+
+def _classify_aside_text(
+    lines: list[_LineItem],
+    page_size: tuple[float, float],
+) -> None:
+    """在横排正文占绝对多数时，以边缘带和物理尺寸识别垂直侧栏。"""
+
+    available = [line for line in lines if line.semantic_type is None]
+    upright_lines = [line for line in available if line.angle == 0]
+    if len(upright_lines) < 4:
+        return
+
+    support_by_angle = _geometric_text_support_by_angle(available, page_size)
+    total_support = sum(support_by_angle.values())
+    if total_support <= 0 or support_by_angle.get(0, 0.0) / total_support < 0.8:
+        return
+
+    page_width, page_height = page_size
+    if page_width <= 0 or page_height <= 0:
+        return
+    # 侧栏必须完整位于 12% 边缘带，且兼具不超过 8% 的窄宽和至少 15% 的物理高度。
+    aside_source_indices = {
+        line.source_index
+        for line in available
+        if line.angle in {90, 270}
+        and line.bbox[2] - line.bbox[0] <= 0.08 * page_width
+        and line.bbox[3] - line.bbox[1] >= 0.15 * page_height
+        and (
+            line.bbox[2] <= 0.12 * page_width
+            or line.bbox[0] >= 0.88 * page_width
+        )
+    }
+    for line in available:
+        if line.source_index in aside_source_indices:
+            line.semantic_type = "aside_text"
+
+
+def _geometric_text_support_by_angle(
+    lines: list[_LineItem],
+    page_size: tuple[float, float],
+) -> dict[int, float]:
+    """按局部行宽乘有效行高累计各文字方向的纯几何支持度。"""
+
+    support_by_angle: dict[int, float] = {}
+    for line in lines:
+        local_bbox = _rotate_bbox_to_upright(line.bbox, page_size, line.angle)
+        local_width = max(0.1, local_bbox[2] - local_bbox[0])
+        support_by_angle[line.angle] = support_by_angle.get(line.angle, 0.0) + (
+            local_width * _line_effective_height(line, local_bbox)
+        )
+    return support_by_angle
+
+
+def _classify_page_footnotes(
+    lines: list[_LineItem],
+    table_bboxes: list[BBox],
+    drawing_lines: list[_AxisLine],
+    page_size: tuple[float, float],
+) -> list[set[int]]:
+    """识别主方向页脚注，并按触发分隔线返回来源编号分组。"""
+
+    available = [line for line in lines if line.semantic_type is None]
+    if not available or not drawing_lines:
+        return []
+    support_by_angle = _geometric_text_support_by_angle(available, page_size)
+    if not support_by_angle:
+        return []
+    dominant_angle = max(
+        sorted(support_by_angle),
+        key=lambda angle: support_by_angle[angle],
+    )
+    line_geometry = [
+        (line, _rotate_bbox_to_upright(line.bbox, page_size, dominant_angle))
+        for line in available
+        if line.angle == dominant_angle
+    ]
+    if not line_geometry:
+        return []
+
+    local_page_size = (
+        (page_size[1], page_size[0])
+        if dominant_angle in {90, 270}
+        else page_size
+    )
+    local_page_width, local_page_height = local_page_size
+    if local_page_width <= 0 or local_page_height <= 0:
+        return []
+    effective_heights = [
+        _line_effective_height(line, bbox)
+        for line, bbox in line_geometry
+    ]
+    median_height = statistics.median(effective_heights) if effective_heights else 1.0
+    lanes = _infer_text_lanes(line_geometry, local_page_width, median_height)
+    local_axis_lines = _transform_axis_lines(
+        drawing_lines,
+        page_size,
+        dominant_angle,
+    )
+
+    candidate_groups: list[set[int]] = []
+    for axis_line in local_axis_lines:
+        if axis_line.orientation != "horizontal":
+            continue
+        # 分隔线中心必须进入页面下方 30%，上方的正文分隔线不参与脚注判定。
+        rule_center_y = _bbox_center_y(axis_line.bbox)
+        if rule_center_y < 0.7 * local_page_height:
+            continue
+        # 表格边界会产生断裂横线；除框内线段外，也排除与其同高且近邻的框外线段。
+        if _rule_belongs_to_confirmed_table(
+            axis_line,
+            local_axis_lines,
+            table_bboxes,
+            local_page_width,
+        ):
+            continue
+        rule_source_indices: set[int] = set()
+        for lane in lanes:
+            rule_source_indices.update(
+                _footnote_lane_members(
+                    lane,
+                    axis_line.bbox,
+                    local_page_size,
+                )
+            )
+        if rule_source_indices:
+            candidate_groups.append(rule_source_indices)
+
+    page_footnote_groups = _merge_overlapping_source_groups(candidate_groups)
+    footnote_source_indices = set().union(*page_footnote_groups) if page_footnote_groups else set()
+    for line in available:
+        if line.source_index in footnote_source_indices:
+            line.semantic_type = "page_footnote"
+    return page_footnote_groups
+
+
+def _rule_belongs_to_confirmed_table(
+    candidate: _LocalAxisLine,
+    local_axis_lines: list[_LocalAxisLine],
+    table_bboxes: list[BBox],
+    local_page_width: float,
+) -> bool:
+    """把表格框内横线及其同高近邻断裂段一并排除，避免框外残段触发脚注。"""
+
+    if not table_bboxes:
+        return False
+    maximum_segment_gap = 0.04 * local_page_width
+    for table_line in local_axis_lines:
+        if table_line.orientation != "horizontal":
+            continue
+        table_margin = max(0.5, table_line.width)
+        if not any(
+            _bbox_intersects(
+                _expand_bbox(table_line.original_bbox, table_margin),
+                table_bbox,
+            )
+            for table_bbox in table_bboxes
+        ):
+            continue
+        center_tolerance = max(1.0, candidate.width, table_line.width)
+        if abs(_bbox_center_y(candidate.bbox) - _bbox_center_y(table_line.bbox)) > center_tolerance:
+            continue
+        if _horizontal_bbox_gap(candidate.bbox, table_line.bbox) <= maximum_segment_gap:
+            return True
+    return False
+
+
+def _merge_overlapping_source_groups(groups: list[set[int]]) -> list[set[int]]:
+    """合并共享来源行的分隔线候选组，消除重复绘图线造成的重复分组。"""
+
+    merged: list[set[int]] = []
+    for group in groups:
+        combined = set(group)
+        index = 0
+        while index < len(merged):
+            if combined & merged[index]:
+                combined.update(merged.pop(index))
+                index = 0
+                continue
+            index += 1
+        merged.append(combined)
+    return sorted(merged, key=lambda group: min(group))
+
+
+def _footnote_lane_members(
+    lane: _TextLane,
+    rule_bbox: BBox,
+    local_page_size: tuple[float, float],
+) -> set[int]:
+    """验证横线与单个栏带的对齐关系，并返回其下连续脚注行的来源编号。"""
+
+    lane_lines = [item for item in lane.lines if item[0].semantic_type is None]
+    if not lane_lines:
+        return set()
+    lane_lines.sort(key=lambda item: (item[1][1], item[1][0], item[0].source_index))
+    local_page_width, local_page_height = local_page_size
+    lane_width = max(0.1, lane.right - lane.left)
+    lane_heights = [_line_effective_height(line, bbox) for line, bbox in lane_lines]
+    median_height = statistics.median(lane_heights) if lane_heights else 1.0
+    rule_width = max(0.0, rule_bbox[2] - rule_bbox[0])
+    # 同时限制绝对短线、相对长线和左缘偏移，排除图标、公式线及跨栏正文分隔线。
+    if rule_width < max(4.0 * median_height, 0.04 * local_page_width):
+        return set()
+    if rule_width > 0.65 * lane_width:
+        return set()
+    if abs(rule_bbox[0] - lane.left) > max(2.0 * median_height, 0.04 * lane_width):
+        return set()
+
+    # 首行采用较宽的 3.5% 页高窗口；命中后仅按紧凑的连续净空向下扩展。
+    first_gap_limit = max(3.0 * median_height, 0.035 * local_page_height)
+    first_index: int | None = None
+    for index, (_line, bbox) in enumerate(lane_lines):
+        rule_gap = bbox[1] - rule_bbox[3]
+        if rule_gap < -0.5 * median_height:
+            continue
+        if rule_gap <= first_gap_limit:
+            first_index = index
+        break
+    if first_index is None:
+        return set()
+
+    continuation_gap_limit = max(1.25 * median_height, 0.01 * local_page_height)
+    members = [lane_lines[first_index]]
+    for current in lane_lines[first_index + 1 :]:
+        if _effective_text_row_gap(members[-1], current) > continuation_gap_limit:
+            break
+        members.append(current)
+    return {line.source_index for line, _bbox in members}
+
+
 def _finalize_prepared_page(
     prepared: _PreparedPage,
     page_index: int,
 ) -> list[dict[str, Any]]:
-    """按边缘类型、公式、标题、正文的优先级完成单页文本并排序。"""
+    """按预分类语义、公式、标题、正文的优先级完成单页文本并排序。"""
 
-    marginal_lines = [line for line in prepared.remaining_lines if line.semantic_type in {"header", "footer", "page_number"}]
+    semantic_lines = [line for line in prepared.remaining_lines if line.semantic_type is not None]
     formula_input = [line for line in prepared.remaining_lines if line.semantic_type is None]
     formula_blocks, remaining_lines = _build_formula_like_blocks(
         formula_input,
@@ -718,10 +963,11 @@ def _finalize_prepared_page(
         prepared.table_bboxes,
     )
     text_blocks = _build_text_blocks(
-        marginal_lines + remaining_lines,
+        semantic_lines + remaining_lines,
         prepared.table_bboxes,
         prepared.page_size,
         prepared.drawing_lines,
+        page_footnote_groups=prepared.page_footnote_groups,
     )
     absolute_blocks = prepared.fixed_blocks + formula_blocks + text_blocks
     sorted_blocks = _sort_blocks_with_visual_row_groups(absolute_blocks, prepared.page_size)
@@ -4138,15 +4384,205 @@ def _build_hanging_indent_group_map(
     return group_map
 
 
+def _build_grouped_page_footnote_blocks(
+    lines: list[_LineItem],
+    source_groups: Sequence[set[int]],
+    page_size: tuple[float, float],
+) -> tuple[list[dict[str, Any]], set[int]]:
+    """按分隔线组切分几何脚注条目，并返回已消费的来源编号。"""
+
+    footnote_by_source = {
+        line.source_index: line
+        for line in lines
+        if line.semantic_type == "page_footnote"
+    }
+    blocks: list[dict[str, Any]] = []
+    consumed_source_indices: set[int] = set()
+    for source_group in source_groups:
+        group_lines = [
+            footnote_by_source[source_index]
+            for source_index in source_group
+            if source_index in footnote_by_source
+        ]
+        for angle in sorted({line.angle for line in group_lines}):
+            directional_lines = [line for line in group_lines if line.angle == angle]
+            tight_bboxes = _tight_page_footnote_bboxes(
+                directional_lines,
+                page_size,
+            )
+            for entry_lines in _split_page_footnote_entries(
+                directional_lines,
+                page_size,
+            ):
+                ordered_lines = sorted(
+                    entry_lines,
+                    key=lambda line: (
+                        _rotate_bbox_to_upright(line.bbox, page_size, angle)[1],
+                        _rotate_bbox_to_upright(line.bbox, page_size, angle)[0],
+                        line.source_index,
+                    ),
+                )
+                content = _merge_text_line_content([line.text for line in ordered_lines])
+                if not content:
+                    continue
+                visual_row_ids = {
+                    line.visual_row_id
+                    for line in ordered_lines
+                    if line.visual_row_id is not None
+                }
+                single_run_row_id = (
+                    ordered_lines[0].visual_row_id
+                    if len(ordered_lines) == 1
+                    and ordered_lines[0].split_from_row
+                    and ordered_lines[0].visual_row_id is not None
+                    else None
+                )
+                blocks.append(
+                    {
+                        "type": "page_footnote",
+                        "bbox": _bbox_union_many(
+                            [tight_bboxes[line.source_index] for line in ordered_lines]
+                        ),
+                        "angle": angle,
+                        "content": content,
+                        "_visual_row_ids": visual_row_ids,
+                        "_single_run_row_id": single_run_row_id,
+                    }
+                )
+                consumed_source_indices.update(
+                    line.source_index for line in ordered_lines
+                )
+    return blocks, consumed_source_indices
+
+
+def _split_page_footnote_entries(
+    lines: list[_LineItem],
+    page_size: tuple[float, float],
+) -> list[list[_LineItem]]:
+    """按首行或续行缩进模式，把同一分隔线下的脚注行切成条目。"""
+
+    if not lines:
+        return []
+    angle = lines[0].angle
+    line_geometry = [
+        (line, _rotate_bbox_to_upright(line.bbox, page_size, angle))
+        for line in lines
+    ]
+    line_geometry.sort(
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index)
+    )
+    if len(line_geometry) == 1:
+        return [[line_geometry[0][0]]]
+
+    effective_heights = [
+        _line_effective_height(line, bbox)
+        for line, bbox in line_geometry
+    ]
+    median_height = statistics.median(effective_heights)
+    glyph_widths = [
+        line.median_glyph_width
+        for line, _bbox in line_geometry
+        if line.median_glyph_width is not None
+    ]
+    median_glyph_width = (
+        statistics.median(glyph_widths)
+        if glyph_widths
+        else 0.5 * median_height
+    )
+    indent_threshold = max(1.5 * median_height, 2.0 * median_glyph_width)
+    base_left = min(bbox[0] for _line, bbox in line_geometry)
+    maximum_row_width = max(bbox[2] - bbox[0] for _line, bbox in line_geometry)
+    first_line_is_indented = line_geometry[0][1][0] - base_left > indent_threshold
+
+    entries: list[list[_LineItem]] = [[line_geometry[0][0]]]
+    for previous, current in zip(line_geometry, line_geometry[1:]):
+        previous_width = previous[1][2] - previous[1][0]
+        previous_is_near_full = previous_width >= 0.8 * maximum_row_width
+        current_is_indented = current[1][0] - base_left > indent_threshold
+        # 满行后必然续接；其余行按首页观测到的首行/续行缩进模式决定边界。
+        continues_previous = previous_is_near_full or (
+            not current_is_indented
+            if first_line_is_indented
+            else current_is_indented
+        )
+        if continues_previous:
+            entries[-1].append(current[0])
+        else:
+            entries.append([current[0]])
+    return entries
+
+
+def _tight_page_footnote_bboxes(
+    lines: list[_LineItem],
+    page_size: tuple[float, float],
+) -> dict[int, BBox]:
+    """以有效行高和相邻行距收紧脚注框，避免异常字体框跨入相邻条目。"""
+
+    if not lines:
+        return {}
+    angle = lines[0].angle
+    line_geometry = [
+        (line, _rotate_bbox_to_upright(line.bbox, page_size, angle))
+        for line in lines
+    ]
+    line_geometry.sort(
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index)
+    )
+    median_height = statistics.median(
+        _line_effective_height(line, bbox)
+        for line, bbox in line_geometry
+    )
+    row_pitches = [
+        current[1][1] - previous[1][1]
+        for previous, current in zip(line_geometry, line_geometry[1:])
+        if current[1][1] - previous[1][1] > 0.25 * median_height
+    ]
+    median_pitch = statistics.median(row_pitches) if row_pitches else None
+
+    output: dict[int, BBox] = {}
+    for line, bbox in line_geometry:
+        tight_height = min(
+            bbox[3] - bbox[1],
+            _line_effective_height(line, bbox),
+        )
+        if median_pitch is not None:
+            tight_height = min(tight_height, 0.9 * median_pitch)
+        tight_height = max(0.1, tight_height)
+        center_y = _bbox_center_y(bbox)
+        tight_local_bbox = (
+            bbox[0],
+            center_y - 0.5 * tight_height,
+            bbox[2],
+            center_y + 0.5 * tight_height,
+        )
+        output[line.source_index] = _rotate_bbox_from_upright(
+            tight_local_bbox,
+            page_size,
+            angle,
+        )
+    return output
+
+
 def _build_text_blocks(
     lines: list[_LineItem],
     table_bboxes: list[BBox],
     page_size: tuple[float, float],
     drawing_lines: list[_AxisLine] | None = None,
+    *,
+    page_footnote_groups: Sequence[set[int]] | None = None,
 ) -> list[dict[str, Any]]:
-    """按类型屏障、局部栏带和自然段边界聚合剩余文本行。"""
+    """先构建分组脚注，再按类型屏障、栏带和自然段边界聚合其余文本。"""
 
-    blocks: list[dict[str, Any]] = []
+    blocks, grouped_footnote_indices = _build_grouped_page_footnote_blocks(
+        lines,
+        page_footnote_groups or [],
+        page_size,
+    )
+    lines = [
+        line
+        for line in lines
+        if line.source_index not in grouped_footnote_indices
+    ]
     for angle in sorted({line.angle for line in lines}):
         line_geometry = [(line, _rotate_bbox_to_upright(line.bbox, page_size, angle)) for line in lines if line.angle == angle]
         if not line_geometry:
