@@ -105,6 +105,14 @@ gradio = [
     "gradio>=5.49.1,!=6.0.0,!=6.0.1,!=6.0.2,!=6.1.0,!=6.2.0,!=6.3.0,!=6.4.0,!=6.5.0,!=6.5.1,!=6.6.0,!=6.7.0,<6.9.0",
     "gradio-pdf>=0.0.22",
 ]
+vietocr = [
+    # Optional: high-accuracy Vietnamese recognition (lang='vi') via VietOCR,
+    # replacing PaddleOCR's shared "latin" recognizer which drops tone marks.
+    # Install with `mineru[pipeline,vietocr]`. PyMuPDF is used by the optional
+    # mineru_viet.py flattening wrapper for broken-text-layer PDFs.
+    "vietocr>=0.3.13",
+    "PyMuPDF>=1.24.0",
+]
 core = [
     "mineru[vlm]",
     "mineru[pipeline]",
