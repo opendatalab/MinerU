@@ -203,11 +203,14 @@ def test_demo2_pages2_to6_restore_paragraphs_formulas_and_reading_order() -> Non
     assert results.endswith("methods that operate on pairs of images.")
     assert improvements.endswith("has the effect")
 
-    page5_contents = [block["content"] for block in model_list[4]]
+    page5 = model_list[4]
+    page5_contents = [block["content"] for block in page5]
     optimal_feedback = next(content for content in page5_contents if content.startswith("The optimal value"))
     page5_references = [content for content in page5_contents if content.startswith("[")]
+    references_title = next(block for block in page5 if block["content"] == "REFERENCES")
     assert "noise ranging between ±0 to ±40" in optimal_feedback
     assert optimal_feedback.endswith("temporal stereo matching is used.")
+    assert references_title["type"] == "paragraph_title"
     assert [content.partition("]")[0] + "]" for content in page5_references] == [
         f"[{number}]" for number in range(1, 6)
     ]
@@ -676,5 +679,4 @@ def test_demo3_pages4_and5_fix_lists_formula_titles_italics_and_footnotes() -> N
     assert final_bullet["type"] == "text"
     assert final_footnote["type"] == "page_footnote"
     assert "3By perturbation" not in final_bullet["content"]
-
 

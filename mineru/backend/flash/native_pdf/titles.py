@@ -300,11 +300,28 @@ def _classify_paragraph_titles_in_lane(
             and not _title_fonts_compatible(rows[index - 1][0], line)
         ):
             continue
-        if height_ratio < 0.9 and not inside_front_matter and not _has_following_body_row(
-            rows,
-            index,
-            lane_width,
-            profile,
+        compact_text_section = (
+            height_ratio < 0.9
+            and centered
+            and width_ratio <= 0.7
+            and gap_above >= 0.35
+            and gap_below >= 0.2
+            and _has_following_compact_text_section(
+                rows,
+                index,
+                lane_width,
+            )
+        )
+        if (
+            height_ratio < 0.9
+            and not inside_front_matter
+            and not _has_following_body_row(
+                rows,
+                index,
+                lane_width,
+                profile,
+            )
+            and not compact_text_section
         ):
             continue
         if width_ratio >= 0.9 and height_ratio < 1.15 and not (
@@ -495,6 +512,36 @@ def _has_following_body_row(
     return False
 
 
+def _has_following_compact_text_section(
+    rows: list[tuple[_LineItem, BBox]],
+    index: int,
+    lane_width: float,
+) -> bool:
+    """检查小字号候选后是否紧接三行同尺度的宽文本区段。"""
+
+    candidate = rows[index]
+    candidate_height = _line_effective_height(*candidate)
+    following_rows = rows[index + 1 : index + 4]
+    if len(following_rows) < 3:
+        return False
+
+    previous = candidate
+    for current in following_rows:
+        line, bbox = current
+        height_ratio = _line_effective_height(line, bbox) / candidate_height
+        width_ratio = (bbox[2] - bbox[0]) / lane_width
+        gap = _effective_text_row_gap(previous, current)
+        if (
+            line.semantic_type is not None
+            or not 0.75 <= height_ratio <= 1.25
+            or width_ratio < 0.45
+            or not -0.25 * candidate_height <= gap <= 0.75 * candidate_height
+        ):
+            return False
+        previous = current
+    return True
+
+
 def _unify_visual_row_title_types(
     lane: _TextLane,
     selected_indices: set[int],
@@ -651,4 +698,3 @@ def _expand_paragraph_title_neighbors(
             candidate_line.semantic_type = "paragraph_title"
             selected_indices.add(candidate_index)
             pending.append(candidate_index)
-

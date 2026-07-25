@@ -83,6 +83,86 @@ def test_centered_smaller_paragraph_title_uses_layout_contrast_only() -> None:
     assert lines[2].semantic_type == "paragraph_title"
 
 
+def test_centered_smaller_paragraph_title_accepts_compact_text_section() -> None:
+    """验证小字号居中标题可由紧随其后的连续小字号正文区段支撑。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line(
+            f"body {index}",
+            (0.0, 12.0 * index, 100.0, 12.0 * index + 10.0),
+            index,
+            font_signature=body_font,
+            font_coverage=1.0,
+        )
+        for index in range(5)
+    ]
+    lines.extend(
+        [
+            _text_line(
+                "neutral label",
+                (30.0, 70.0, 70.0, 78.0),
+                5,
+                effective_height=8.0,
+                font_signature=body_font,
+                font_coverage=1.0,
+            ),
+            _text_line("compact row one", (0.0, 84.0, 100.0, 92.0), 6, effective_height=8.0),
+            _text_line("compact row two", (0.0, 94.0, 100.0, 102.0), 7, effective_height=8.0),
+            _text_line("compact row three", (0.0, 104.0, 100.0, 112.0), 8, effective_height=8.0),
+        ]
+    )
+
+    titles._classify_page_titles(lines, (100.0, 140.0), page_index=1, container_bboxes=[])
+
+    assert lines[5].semantic_type == "paragraph_title"
+
+
+@pytest.mark.parametrize("failure_mode", ["too_few", "narrow", "large_gap"])
+def test_centered_smaller_paragraph_title_rejects_incomplete_compact_section(
+    failure_mode: str,
+) -> None:
+    """验证不足三行、行宽不足或行距中断的小字号区段不能放宽标题。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line(
+            f"body {index}",
+            (0.0, 12.0 * index, 100.0, 12.0 * index + 10.0),
+            index,
+            font_signature=body_font,
+            font_coverage=1.0,
+        )
+        for index in range(5)
+    ]
+    compact_rows = [
+        _text_line("compact row one", (0.0, 84.0, 100.0, 92.0), 6, effective_height=8.0),
+        _text_line("compact row two", (0.0, 94.0, 100.0, 102.0), 7, effective_height=8.0),
+        _text_line("compact row three", (0.0, 104.0, 100.0, 112.0), 8, effective_height=8.0),
+    ]
+    if failure_mode == "too_few":
+        compact_rows.pop()
+    elif failure_mode == "narrow":
+        compact_rows[-1].bbox = (0.0, 104.0, 40.0, 112.0)
+    else:
+        compact_rows[-1].bbox = (0.0, 114.0, 100.0, 122.0)
+    lines.append(
+        _text_line(
+            "neutral label",
+            (30.0, 70.0, 70.0, 78.0),
+            5,
+            effective_height=8.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        )
+    )
+    lines.extend(compact_rows)
+
+    titles._classify_page_titles(lines, (100.0, 140.0), page_index=1, container_bboxes=[])
+
+    assert lines[5].semantic_type is None
+
+
 def test_multiline_document_title_does_not_absorb_author_line() -> None:
     """验证首页两行大字号标题合并为文档标题，较小作者行保持普通文本。"""
 
@@ -472,6 +552,7 @@ def test_paragraph_title_detector_does_not_read_line_text() -> None:
             titles._is_near_full_mixed_inline_row,
             titles._is_full_width_inline_heading,
             titles._has_following_body_row,
+            titles._has_following_compact_text_section,
             titles._unify_visual_row_title_types,
             titles._protect_front_matter_title_types,
             titles._infer_front_matter_boundary,
@@ -483,5 +564,4 @@ def test_paragraph_title_detector_does_not_read_line_text() -> None:
     )
 
     assert ".text" not in source
-
 
