@@ -45,6 +45,7 @@ from .graphics import (
     _build_form_image_blocks,
     _build_graphic_like_blocks,
     _build_raster_image_blocks,
+    _detect_strong_graphic_bboxes,
     _form_supersedes_nested_bbox,
     _select_form_image_bboxes,
 )
@@ -55,6 +56,7 @@ from .formulas import (
 from .auxiliary_text import (
     _classify_page_auxiliary_text,
     _classify_repeated_page_marginals,
+    _classify_repeated_visual_headers,
 )
 from .titles import _classify_page_titles
 from .text_blocks import _build_text_blocks
@@ -98,6 +100,7 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
         )
         prepared_pages.append(_prepare_page_source(source))
 
+    _classify_repeated_visual_headers(prepared_pages)
     _classify_repeated_page_marginals(prepared_pages)
     return [
         _finalize_prepared_page(prepared, page_index)
@@ -109,9 +112,13 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
     """先认领视觉容器，再标注辅助文本并留下可跨页比较的轻量文本行。"""
 
     form_bboxes = _select_form_image_bboxes(source)
+    strong_graphic_bboxes = _detect_strong_graphic_bboxes(source)
     candidates = [
         candidate
-        for candidate in _detect_table_candidates(source)
+        for candidate in _detect_table_candidates(
+            source,
+            excluded_bboxes=strong_graphic_bboxes,
+        )
         if not any(
             _form_supersedes_nested_bbox(form_bbox, candidate.bbox)
             for form_bbox in form_bboxes
@@ -140,6 +147,7 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
         source,
         table_bboxes + active_form_bboxes,
         claimed_line_indices | claimed_form_line_indices,
+        strong_graphic_bboxes,
     )
     raster_image_blocks, claimed_raster_line_indices = _build_raster_image_blocks(
         source,

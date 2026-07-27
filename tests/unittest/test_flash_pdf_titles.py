@@ -58,6 +58,77 @@ def test_heading_like_content_with_body_layout_remains_text() -> None:
     assert lines[2].semantic_type is None
 
 
+def test_physical_title_gap_ignores_disjoint_column_and_keeps_overlapping_row() -> None:
+    """验证物理邻行只在水平投影相交时参与标题留白，避免另一栏正文压缩间距。"""
+
+    target = _text_line("target", (0.0, 40.0, 40.0, 50.0), 0)
+    disjoint = _text_line("other column", (60.0, 39.0, 100.0, 49.0), 1)
+    overlapping = _text_line("wide row", (0.0, 25.0, 100.0, 35.0), 2)
+
+    gaps = titles._build_physical_title_gap_map(
+        [(target, target.bbox), (disjoint, disjoint.bbox), (overlapping, overlapping.bbox)]
+    )
+
+    assert gaps[target.source_index] == (5.0, None)
+
+
+def test_grid_title_suppression_requires_two_distinct_parallel_bands() -> None:
+    """验证单个三栏短首行带不足以抑制标题，重复两带才形成信息网格证据。"""
+
+    lanes = []
+    source_index = 0
+    for lane_index in range(3):
+        left = 110.0 * lane_index
+        first_opener = _text_line(
+            f"opener-{lane_index}-0",
+            (left, 10.0, left + 20.0, 20.0),
+            source_index,
+        )
+        source_index += 1
+        first_body = _text_line(
+            f"body-{lane_index}-0",
+            (left, 20.0, left + 80.0, 30.0),
+            source_index,
+        )
+        source_index += 1
+        lanes.append(
+            titles._TextLane(
+                left=left,
+                right=left + 100.0,
+                lines=[
+                    (first_opener, first_opener.bbox),
+                    (first_body, first_body.bbox),
+                ],
+            )
+        )
+
+    assert titles._find_repeated_grid_title_suppressions(lanes, 10.0) == set()
+
+    second_band_sources = set()
+    for lane in lanes[:2]:
+        second_opener = _text_line(
+            "second opener",
+            (lane.left, 40.0, lane.left + 20.0, 50.0),
+            source_index,
+        )
+        second_band_sources.add(source_index)
+        source_index += 1
+        second_body = _text_line(
+            "second body",
+            (lane.left, 50.0, lane.left + 80.0, 60.0),
+            source_index,
+        )
+        source_index += 1
+        lane.lines.extend(
+            [(second_opener, second_opener.bbox), (second_body, second_body.bbox)]
+        )
+
+    suppressions = titles._find_repeated_grid_title_suppressions(lanes, 10.0)
+
+    assert second_band_sources <= suppressions
+    assert len(suppressions) == 5
+
+
 def test_centered_smaller_paragraph_title_uses_layout_contrast_only() -> None:
     """验证同字体的小字号居中标题可由栏宽和上下留白识别。"""
 
@@ -544,6 +615,8 @@ def test_paragraph_title_detector_does_not_read_line_text() -> None:
         inspect.getsource(function)
         for function in (
             titles._classify_page_titles,
+            titles._build_physical_title_gap_map,
+            titles._find_repeated_grid_title_suppressions,
             titles._infer_lane_body_profile,
             titles._classify_document_title,
             titles._document_title_uses_page_fallback,
@@ -564,4 +637,3 @@ def test_paragraph_title_detector_does_not_read_line_text() -> None:
     )
 
     assert ".text" not in source
-

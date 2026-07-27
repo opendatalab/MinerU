@@ -477,3 +477,88 @@ def test_single_page_marginal_content_remains_text() -> None:
     assert [line.semantic_type for line in page.remaining_lines] == [None, None]
 
 
+def test_repeated_visual_headers_use_geometry_and_skip_first_page() -> None:
+    """验证三页重复页首图片重标为 header，首页与 content 差异不参与匹配。"""
+
+    pages = [_prepared_text_page(page_size=(100.0, 100.0)) for _ in range(5)]
+    contents = ["cover", "alpha", "beta", "gamma", "delta"]
+    for page, content in zip(pages, contents, strict=True):
+        page.fixed_blocks = [
+            {
+                "type": "image",
+                "bbox": (10.0, 0.0, 90.0, 10.0),
+                "angle": 0,
+                "content": content,
+            }
+        ]
+
+    auxiliary_text._classify_repeated_visual_headers(pages)
+
+    assert pages[0].fixed_blocks[0]["type"] == "image"
+    assert [page.fixed_blocks[0]["type"] for page in pages[1:]] == ["header"] * 4
+
+
+def test_repeated_visual_headers_require_three_top_geometry_matches() -> None:
+    """验证两页重复、非页首图片和明显漂移的 bbox 均不形成视觉页眉。"""
+
+    pages = [_prepared_text_page(page_size=(100.0, 100.0)) for _ in range(6)]
+    bboxes = [
+        (10.0, 0.0, 90.0, 10.0),
+        (10.0, 0.0, 90.0, 10.0),
+        (10.0, 0.0, 90.0, 10.0),
+        (10.0, 20.0, 90.0, 30.0),
+        (30.0, 0.0, 90.0, 10.0),
+        (10.0, 0.0, 90.0, 10.0),
+    ]
+    for page, bbox in zip(pages, bboxes, strict=True):
+        page.fixed_blocks = [
+            {
+                "type": "image",
+                "bbox": bbox,
+                "angle": 0,
+                "content": "value",
+            }
+        ]
+
+    auxiliary_text._classify_repeated_visual_headers(pages)
+
+    assert [page.fixed_blocks[0]["type"] for page in pages] == ["image"] * 6
+
+
+def test_repeated_visual_headers_support_alternating_pages() -> None:
+    """验证同奇偶页间隔为二的重复图片仍可形成视觉页眉簇。"""
+
+    pages = [_prepared_text_page(page_size=(100.0, 100.0)) for _ in range(7)]
+    for page_index, page in enumerate(pages):
+        if page_index in {2, 4, 6}:
+            page.fixed_blocks = [
+                {
+                    "type": "image",
+                    "bbox": (10.0, 0.0, 90.0, 10.0),
+                    "angle": 0,
+                    "content": f"page-{page_index}",
+                }
+            ]
+
+    auxiliary_text._classify_repeated_visual_headers(pages)
+
+    assert [pages[index].fixed_blocks[0]["type"] for index in (2, 4, 6)] == ["header"] * 3
+
+
+def test_repeated_visual_headers_require_matching_orientation() -> None:
+    """验证 bbox 相同但方向不一致的三页图片不会形成同一视觉页眉簇。"""
+
+    pages = [_prepared_text_page(page_size=(100.0, 100.0)) for _ in range(4)]
+    for page_index, page in enumerate(pages[1:], start=1):
+        page.fixed_blocks = [
+            {
+                "type": "image",
+                "bbox": (10.0, 0.0, 90.0, 10.0),
+                "angle": 90 if page_index == 3 else 0,
+                "content": f"page-{page_index}",
+            }
+        ]
+
+    auxiliary_text._classify_repeated_visual_headers(pages)
+
+    assert [page.fixed_blocks[0]["type"] for page in pages[1:]] == ["image"] * 3

@@ -10,6 +10,7 @@ from typing import Any
 
 
 from mineru.types import BBox
+from mineru.utils.pdf_document import PDFPathInfo
 
 from .models import (
     _AxisLine,
@@ -152,11 +153,14 @@ def _build_graphic_like_blocks(
     source: _PageSource,
     table_bboxes: list[BBox],
     claimed_line_indices: set[int],
+    strong_core_bboxes: list[BBox] | None = None,
 ) -> tuple[list[dict[str, Any]], set[int]]:
     """在表格认领后把紧凑绘图组件及其短标签聚成内部图形文本块。"""
 
     lines = [line for line in source.lines if line.source_index not in claimed_line_indices]
-    if len(lines) < 2 or len(source.drawing_lines) < 4:
+    if strong_core_bboxes is None:
+        strong_core_bboxes = _detect_strong_graphic_bboxes(source)
+    if len(lines) < 2 or (len(source.drawing_lines) < 4 and not strong_core_bboxes):
         return [], set()
 
     effective_heights = [
@@ -172,12 +176,42 @@ def _build_graphic_like_blocks(
     ]
     median_height = statistics.median(effective_heights)
     lanes = _infer_graphic_text_lanes(lines, source.page_size, median_height)
-    candidates = _detect_graphic_candidates(
+    line_candidates = _detect_graphic_candidates(
         source.drawing_lines,
         source.page_size,
         median_height,
         lanes,
         table_bboxes,
+    )
+    # 复杂 Path 或成对坐标轴形成的强图形核心优先于普通绘图线组件，
+    # 避免同一图表被拆成多个相互重叠的 image。
+    candidates = [
+        candidate
+        for candidate in line_candidates
+        if not any(
+            _bbox_overlap_in_smaller(candidate.core_bbox, core_bbox) >= 0.5
+            for core_bbox in strong_core_bboxes
+        )
+    ]
+    candidates.extend(
+        _GraphicCandidate(
+            core_bbox=core_bbox,
+            lane_index=-1,
+            label_margin_scale=(
+                2.5
+                if any(
+                    _bbox_overlap_in_smaller(candidate.core_bbox, core_bbox) >= 0.5
+                    and _bbox_area(candidate.core_bbox) >= 0.8 * _bbox_area(core_bbox)
+                    for candidate in line_candidates
+                )
+                else 1.0
+            ),
+        )
+        for core_bbox in strong_core_bboxes
+        if not any(
+            _bbox_overlap_in_smaller(core_bbox, table_bbox) >= 0.5
+            for table_bbox in table_bboxes
+        )
     )
     if not candidates:
         return [], set()
@@ -198,10 +232,15 @@ def _build_graphic_like_blocks(
         row_lane_index = _graphic_lane_index(row_lines[0].bbox, lanes)
         matches: list[tuple[int, float, int]] = []
         for candidate_index, candidate in enumerate(candidates):
-            if candidate.lane_index != row_lane_index:
+            if candidate.lane_index >= 0 and candidate.lane_index != row_lane_index:
                 continue
             member_flags = [
-                _is_graphic_label_member(line, candidate.core_bbox, median_height)
+                _is_graphic_label_member(
+                    line,
+                    candidate.core_bbox,
+                    median_height,
+                    margin_scale=candidate.label_margin_scale,
+                )
                 for line in row_lines
             ]
             # 同一 pdftext 视觉行必须整体归属或整体保留，避免只吞掉 caption 的短碎片。
@@ -242,6 +281,203 @@ def _build_graphic_like_blocks(
 
     blocks.sort(key=lambda block: (block["bbox"][1], block["bbox"][0]))
     return blocks, claimed
+
+
+def _detect_strong_graphic_bboxes(source: _PageSource) -> list[BBox]:
+    """仅按复杂 Path、容器尺度与成对坐标轴识别高置信图形核心。"""
+
+    if not source.path_infos:
+        return []
+    effective_heights = [
+        _line_effective_height(line, line.bbox)
+        for line in source.lines
+        if line.angle == 0
+    ]
+    median_height = statistics.median(effective_heights) if effective_heights else 1.0
+    candidates = [
+        *_detect_complex_path_containers(
+            source.path_infos,
+            source.page_size,
+            median_height,
+        ),
+        *_detect_axis_path_graphics(
+            source.path_infos,
+            source.page_size,
+            median_height,
+        ),
+        *_detect_complex_drawing_components(
+            source.drawing_lines,
+            source.path_infos,
+            source.page_size,
+            median_height,
+        ),
+    ]
+
+    output: list[BBox] = []
+    for bbox in sorted(candidates, key=_bbox_area, reverse=True):
+        if any(_bbox_overlap_in_first(bbox, accepted) >= 0.9 for accepted in output):
+            continue
+        output.append(bbox)
+    return sorted(output, key=lambda bbox: (bbox[1], bbox[0], bbox[3], bbox[2]))
+
+
+def _detect_complex_path_containers(
+    path_infos: list[PDFPathInfo],
+    page_size: tuple[float, float],
+    median_height: float,
+) -> list[BBox]:
+    """筛选包含多个内部 Path 且至少含一个二维复杂轮廓的大容器。"""
+
+    page_area = max(0.1, page_size[0] * page_size[1])
+    output: list[BBox] = []
+    for path_info in path_infos:
+        bbox = path_info.bbox
+        width = bbox[2] - bbox[0]
+        height = bbox[3] - bbox[1]
+        area_ratio = _bbox_area(bbox) / page_area
+        if (
+            path_info.form_depth != 0
+            or not path_info.fill_visible
+            or not 0.005 <= area_ratio <= 0.5
+            or width < 4.0 * median_height
+            or height < 4.0 * median_height
+        ):
+            continue
+        inner_paths = [
+            item
+            for item in path_infos
+            if item.source_index != path_info.source_index
+            and _bbox_overlap_in_first(item.bbox, bbox) >= 0.9
+            and _bbox_area(item.bbox) < 0.95 * _bbox_area(bbox)
+        ]
+        if len(inner_paths) < 4:
+            continue
+        if not any(_is_two_dimensional_complex_path(item, median_height) for item in inner_paths):
+            continue
+        output.append(bbox)
+    return output
+
+
+def _detect_axis_path_graphics(
+    path_infos: list[PDFPathInfo],
+    page_size: tuple[float, float],
+    median_height: float,
+) -> list[BBox]:
+    """用相交的长横纵轴和内部二维复杂路径补充无外框图表。"""
+
+    thin_limit = max(1.0, 0.5 * median_height)
+    minimum_axis_length = 6.0 * median_height
+    horizontal_axes = [
+        item
+        for item in path_infos
+        if item.form_depth == 0
+        and item.stroke_visible
+        and item.bbox[3] - item.bbox[1] <= thin_limit
+        and item.bbox[2] - item.bbox[0] >= minimum_axis_length
+    ]
+    vertical_axes = [
+        item
+        for item in path_infos
+        if item.form_depth == 0
+        and item.stroke_visible
+        and item.bbox[2] - item.bbox[0] <= thin_limit
+        and item.bbox[3] - item.bbox[1] >= minimum_axis_length
+    ]
+    tolerance = max(2.0, median_height)
+    output: list[BBox] = []
+    for horizontal in horizontal_axes:
+        horizontal_y = _bbox_center_y(horizontal.bbox)
+        for vertical in vertical_axes:
+            vertical_x = _bbox_center_x(vertical.bbox)
+            touches_x = min(
+                abs(vertical_x - horizontal.bbox[0]),
+                abs(vertical_x - horizontal.bbox[2]),
+            ) <= tolerance
+            touches_y = min(
+                abs(horizontal_y - vertical.bbox[1]),
+                abs(horizontal_y - vertical.bbox[3]),
+            ) <= tolerance
+            if not (touches_x and touches_y):
+                continue
+            plot_bbox = _bbox_union(horizontal.bbox, vertical.bbox)
+            width = plot_bbox[2] - plot_bbox[0]
+            height = plot_bbox[3] - plot_bbox[1]
+            if width > 0.65 * page_size[0] or height > 0.5 * page_size[1]:
+                continue
+            complex_paths = [
+                item
+                for item in path_infos
+                if _is_two_dimensional_complex_path(item, median_height)
+                and _bbox_overlap_in_smaller(item.bbox, plot_bbox) >= 0.2
+            ]
+            if not complex_paths:
+                continue
+            output.append(
+                _bbox_union(
+                    plot_bbox,
+                    _bbox_union_many([item.bbox for item in complex_paths]),
+                )
+            )
+    return output
+
+
+def _is_two_dimensional_complex_path(
+    path_info: PDFPathInfo,
+    median_height: float,
+) -> bool:
+    """排除细轴线，只保留横纵均有尺寸且段数较多的图形轮廓。"""
+
+    width = path_info.bbox[2] - path_info.bbox[0]
+    height = path_info.bbox[3] - path_info.bbox[1]
+    return (
+        path_info.form_depth == 0
+        and path_info.segment_count >= 6
+        and width >= 1.5 * median_height
+        and height >= 1.5 * median_height
+    )
+
+
+def _detect_complex_drawing_components(
+    drawing_lines: list[_AxisLine],
+    path_infos: list[PDFPathInfo],
+    page_size: tuple[float, float],
+    median_height: float,
+) -> list[BBox]:
+    """以横纵绘图线组件和内部二维复杂 Path 识别坐标图或嵌入式图表。"""
+
+    tolerance = max(2.0, 0.75 * median_height)
+    output: list[BBox] = []
+    for component in _connected_drawing_line_components(drawing_lines, tolerance):
+        horizontal_count = sum(line.orientation == "horizontal" for line in component)
+        vertical_count = len(component) - horizontal_count
+        core_bbox = _bbox_union_many([line.bbox for line in component])
+        width = core_bbox[2] - core_bbox[0]
+        height = core_bbox[3] - core_bbox[1]
+        if (
+            len(component) < 4
+            or horizontal_count < 2
+            or vertical_count < 2
+            or width < 4.0 * median_height
+            or height < 3.0 * median_height
+            or width > 0.65 * page_size[0]
+            or height > 0.5 * page_size[1]
+        ):
+            continue
+        complex_paths = [
+            path_info
+            for path_info in path_infos
+            if _is_two_dimensional_complex_path(path_info, median_height)
+            and _bbox_overlap_in_smaller(path_info.bbox, core_bbox) >= 0.2
+        ]
+        if not complex_paths:
+            continue
+        output.append(
+            _bbox_union(
+                core_bbox,
+                _bbox_union_many([path_info.bbox for path_info in complex_paths]),
+            )
+        )
+    return output
 
 
 def _infer_graphic_text_lanes(
@@ -365,6 +601,8 @@ def _is_graphic_label_member(
     line: _LineItem,
     core_bbox: BBox,
     median_height: float,
+    *,
+    margin_scale: float = 2.5,
 ) -> bool:
     """判断短文本是否位于图形核心内部或对应轴向的邻近标签区。"""
 
@@ -392,11 +630,19 @@ def _is_graphic_label_member(
     horizontal_gap = max(core_bbox[0] - line.bbox[2], line.bbox[0] - core_bbox[2], 0.0)
     vertical_gap = max(core_bbox[1] - line.bbox[3], line.bbox[1] - core_bbox[3], 0.0)
     if _bbox_axis_overlap_ratio(line.bbox, core_bbox, axis="x") >= 0.15:
-        return vertical_gap <= 2.5 * median_height
+        return vertical_gap <= margin_scale * median_height
     if _bbox_axis_overlap_ratio(line.bbox, core_bbox, axis="y") >= 0.15:
-        horizontal_limit = max(2.5 * median_height, 0.2 * (core_bbox[2] - core_bbox[0]))
+        horizontal_limit = max(
+            margin_scale * median_height,
+            0.2 * (core_bbox[2] - core_bbox[0]),
+        )
         return horizontal_gap <= horizontal_limit
-    return False
+    corner_limit = min(margin_scale, 1.5) * median_height
+    return (
+        horizontal_gap <= corner_limit
+        and vertical_gap <= corner_limit
+        and math.hypot(horizontal_gap, vertical_gap) <= corner_limit
+    )
 
 
 def _image_members_to_content(

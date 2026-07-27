@@ -56,6 +56,11 @@ def _classify_page_titles(
         lanes = _infer_text_lanes(line_geometry, local_page_width, median_height)
         for lane in lanes:
             lane.lines.sort(key=lambda item: (item[1][1], item[1][0], item[0].source_index))
+        physical_gaps = _build_physical_title_gap_map(line_geometry)
+        grid_title_suppressions = _find_repeated_grid_title_suppressions(
+            lanes,
+            median_height,
+        )
 
         document_title_bottom: float | None = None
         if page_index == 0:
@@ -80,7 +85,113 @@ def _classify_page_titles(
                 local_container_bboxes,
                 document_title_bottom=document_title_bottom,
                 preserve_front_matter_boundaries=preserve_front_matter_boundaries,
+                physical_gaps=physical_gaps,
+                grid_title_suppressions=grid_title_suppressions,
             )
+
+
+def _build_physical_title_gap_map(
+    line_geometry: list[tuple[_LineItem, BBox]],
+) -> dict[int, tuple[float | None, float | None]]:
+    """为每行记录同方向且水平投影相交的最近上、下物理行净空。"""
+
+    output: dict[int, tuple[float | None, float | None]] = {}
+    for line, bbox in line_geometry:
+        line_center = _bbox_center_y(bbox)
+        above_gaps: list[float] = []
+        below_gaps: list[float] = []
+        for other_line, other_bbox in line_geometry:
+            if other_line is line:
+                continue
+            if _bbox_axis_overlap_ratio(bbox, other_bbox, axis="x") < 0.1:
+                # 双栏同高度正文并非当前行的物理上下文，不能抹掉真实标题留白。
+                continue
+            if (
+                line.visual_row_id is not None
+                and other_line.visual_row_id == line.visual_row_id
+            ):
+                continue
+            other_center = _bbox_center_y(other_bbox)
+            if other_center < line_center:
+                above_gaps.append(
+                    max(
+                        0.0,
+                        _effective_text_row_gap(
+                            (other_line, other_bbox),
+                            (line, bbox),
+                        ),
+                    )
+                )
+            elif other_center > line_center:
+                below_gaps.append(
+                    max(
+                        0.0,
+                        _effective_text_row_gap(
+                            (line, bbox),
+                            (other_line, other_bbox),
+                        ),
+                    )
+                )
+        output[line.source_index] = (
+            min(above_gaps) if above_gaps else None,
+            min(below_gaps) if below_gaps else None,
+        )
+    return output
+
+
+def _find_repeated_grid_title_suppressions(
+    lanes: list[_TextLane],
+    median_height: float,
+) -> set[int]:
+    """识别重复双栏信息网格中的短首行，避免把城市等记录头标成标题。"""
+
+    candidates: list[tuple[int, int, float]] = []
+    for lane_index, lane in enumerate(lanes):
+        if lane.is_span:
+            continue
+        lane_width = max(0.1, lane.right - lane.left)
+        for row_index, (line, bbox) in enumerate(lane.lines[:-1]):
+            next_line, next_bbox = lane.lines[row_index + 1]
+            width = bbox[2] - bbox[0]
+            next_width = next_bbox[2] - next_bbox[0]
+            gap = _effective_text_row_gap(
+                (line, bbox),
+                (next_line, next_bbox),
+            )
+            if (
+                line.semantic_type is not None
+                or next_line.semantic_type is not None
+                or width > 0.35 * lane_width
+                or next_width < max(0.6 * lane_width, 1.8 * width)
+                or abs(next_bbox[0] - bbox[0]) > 0.75 * median_height
+                or not -0.25 * median_height <= gap <= 0.75 * median_height
+            ):
+                continue
+            candidates.append((lane_index, line.source_index, _bbox_center_y(bbox)))
+
+    bands: list[list[tuple[int, int, float]]] = []
+    for candidate in sorted(candidates, key=lambda item: item[2]):
+        target = next(
+            (
+                band
+                for band in bands
+                if abs(candidate[2] - statistics.median(item[2] for item in band))
+                <= 0.5 * median_height
+            ),
+            None,
+        )
+        if target is None:
+            bands.append([candidate])
+        else:
+            target.append(candidate)
+    paired_bands = [
+        {source_index for _lane_index, source_index, _center_y in band}
+        for band in bands
+        if len({lane_index for lane_index, _source_index, _center_y in band}) >= 2
+    ]
+    if len(paired_bands) < 2:
+        return set()
+    return set().union(*paired_bands)
 
 
 def _infer_lane_body_profile(lane: _TextLane) -> _LaneBodyProfile:
@@ -236,6 +347,8 @@ def _classify_paragraph_titles_in_lane(
     *,
     document_title_bottom: float | None,
     preserve_front_matter_boundaries: bool,
+    physical_gaps: dict[int, tuple[float | None, float | None]],
+    grid_title_suppressions: set[int],
 ) -> None:
     """以字号、样式、留白、对齐、栏宽和容器邻接判定段落标题。"""
 
@@ -250,6 +363,8 @@ def _classify_paragraph_titles_in_lane(
     )
     for index, (line, bbox) in enumerate(rows):
         if line.semantic_type is not None:
+            continue
+        if line.source_index in grid_title_suppressions:
             continue
         if not 0.07 * local_page_height <= _bbox_center_y(bbox) <= 0.93 * local_page_height:
             continue
@@ -279,8 +394,20 @@ def _classify_paragraph_titles_in_lane(
             and line.dominant_font_weight is not None
             and line.dominant_font_weight >= max(profile.body_weight + 100.0, 1.15 * profile.body_weight)
         )
-        gap_above = _normalized_title_gap(rows, index, direction=-1, body_height=profile.body_height)
-        gap_below = _normalized_title_gap(rows, index, direction=1, body_height=profile.body_height)
+        gap_above = _normalized_title_gap(
+            rows,
+            index,
+            direction=-1,
+            body_height=profile.body_height,
+            physical_gaps=physical_gaps,
+        )
+        gap_below = _normalized_title_gap(
+            rows,
+            index,
+            direction=1,
+            body_height=profile.body_height,
+            physical_gaps=physical_gaps,
+        )
         has_spacing_signal = gap_above >= 0.35
 
         if _visual_row_has_body_style_sibling(rows, index):
@@ -319,6 +446,7 @@ def _classify_paragraph_titles_in_lane(
                 rows,
                 index,
                 lane_width,
+                lane.left,
                 profile,
             )
             and not compact_text_section
@@ -500,16 +628,33 @@ def _has_following_body_row(
     rows: list[tuple[_LineItem, BBox]],
     index: int,
     lane_width: float,
+    lane_left: float,
     profile: _LaneBodyProfile,
 ) -> bool:
-    """检查小字号候选下方是否仍有正常字号的正文续行。"""
+    """只检查紧邻且空间相关的下一行，禁止用远处正文支撑小字号标题。"""
 
-    for line, bbox in rows[index + 1 :]:
-        height_ratio = _line_effective_height(line, bbox) / profile.body_height
-        width_ratio = (bbox[2] - bbox[0]) / lane_width
-        if 0.9 <= height_ratio <= 1.2 and width_ratio >= 0.45:
-            return True
-    return False
+    if index + 1 >= len(rows):
+        return False
+    current = rows[index]
+    line, bbox = rows[index + 1]
+    gap = _effective_text_row_gap(current, (line, bbox))
+    horizontally_related = (
+        _bbox_axis_overlap_ratio(current[1], bbox, axis="x") >= 0.35
+        or abs(current[1][0] - bbox[0]) <= 0.75 * profile.body_height
+    )
+    current_centered = abs(
+        _bbox_center_x(current[1]) - (lane_left + lane_width / 2.0)
+    ) <= 0.12 * lane_width
+    maximum_gap = (1.5 if current_centered else 0.75) * profile.body_height
+    height_ratio = _line_effective_height(line, bbox) / profile.body_height
+    width_ratio = (bbox[2] - bbox[0]) / lane_width
+    return (
+        line.semantic_type is None
+        and horizontally_related
+        and -0.25 * profile.body_height <= gap <= maximum_gap
+        and 0.9 <= height_ratio <= 1.2
+        and width_ratio >= 0.45
+    )
 
 
 def _has_following_compact_text_section(
@@ -625,16 +770,21 @@ def _normalized_title_gap(
     *,
     direction: Literal[-1, 1],
     body_height: float,
+    physical_gaps: dict[int, tuple[float | None, float | None]],
 ) -> float:
-    """返回标题候选与相邻物理行之间按正文行高归一化的有效净空。"""
+    """返回栏内邻行和页面最近物理邻行中较小的归一化净空。"""
 
     neighbor_index = index + direction
-    if not 0 <= neighbor_index < len(rows):
-        return 0.5
-    if direction < 0:
-        gap = _effective_text_row_gap(rows[neighbor_index], rows[index])
+    if 0 <= neighbor_index < len(rows):
+        if direction < 0:
+            lane_gap = _effective_text_row_gap(rows[neighbor_index], rows[index])
+        else:
+            lane_gap = _effective_text_row_gap(rows[index], rows[neighbor_index])
     else:
-        gap = _effective_text_row_gap(rows[index], rows[neighbor_index])
+        lane_gap = 0.5 * body_height
+    physical_pair = physical_gaps.get(rows[index][0].source_index, (None, None))
+    physical_gap = physical_pair[0 if direction < 0 else 1]
+    gap = lane_gap if physical_gap is None else min(lane_gap, physical_gap)
     return max(0.0, gap) / max(0.1, body_height)
 
 

@@ -12,6 +12,7 @@ from loguru import logger
 
 from mineru.backend.hybrid.table_text import project_pdf_table_text
 from mineru.types import BBox
+from mineru.utils.pdf_document import PDFPathInfo
 
 from .models import (
     _Fragment,
@@ -22,12 +23,14 @@ from .models import (
     _VisualRow,
 )
 from .geometry import (
+    _bbox_area,
     _bbox_axis_overlap_ratio,
     _bbox_center_x,
     _bbox_center_y,
     _bbox_overlap_in_smaller,
     _bbox_union,
     _bbox_union_many,
+    _expand_bbox,
     _point_in_bbox,
     _rotate_bbox_from_upright,
     _rotate_bbox_to_upright,
@@ -57,10 +60,26 @@ _TABLE_SPLIT_NUMBER_RE = re.compile(
 )
 
 
-def _detect_table_candidates(source: _PageSource) -> list[_TableCandidate]:
-    """按文本方向融合三条长横线与规则文本分布，生成表格候选。"""
+_FILLED_GRID_MIN_PAGE_AREA_RATIO = 0.005
+_FILLED_GRID_MAX_PAGE_AREA_RATIO = 0.25
+_FILLED_GRID_MIN_PAGE_WIDTH_RATIO = 0.12
+_FILLED_GRID_MIN_PAGE_HEIGHT_RATIO = 0.03
 
-    candidates: list[_TableCandidate] = []
+
+def _detect_table_candidates(
+    source: _PageSource,
+    excluded_bboxes: list[BBox] | None = None,
+) -> list[_TableCandidate]:
+    """按文本方向融合横线区间、规则文本和填充行带，生成表格候选。"""
+
+    excluded_bboxes = excluded_bboxes or []
+    filled_grid_candidates = _detect_filled_grid_table_candidates(
+        source.path_infos,
+        source.page_size,
+        excluded_bboxes,
+    )
+    filled_grid_bboxes = [candidate.bbox for candidate in filled_grid_candidates]
+    rule_candidates: list[_TableCandidate] = []
     angles = sorted({line.angle for line in source.lines})
     for angle in angles:
         angle_lines = [line for line in source.lines if line.angle == angle]
@@ -76,7 +95,14 @@ def _detect_table_candidates(source: _PageSource) -> list[_TableCandidate]:
             source.page_size,
             angle,
         )
-        candidates.extend(
+        local_excluded_bboxes = [
+            _expand_bbox(
+                _rotate_bbox_to_upright(bbox, source.page_size, angle),
+                2.5 * median_height,
+            )
+            for bbox in [*excluded_bboxes, *filled_grid_bboxes]
+        ]
+        rule_candidates.extend(
             _build_rule_table_candidates(
                 rows,
                 angle_lines,
@@ -84,9 +110,254 @@ def _detect_table_candidates(source: _PageSource) -> list[_TableCandidate]:
                 angle,
                 median_height,
                 local_axis_lines,
+                path_infos=source.path_infos,
+                excluded_bboxes=local_excluded_bboxes,
             )
         )
-    return _merge_table_candidates(candidates)
+    merged_rule_candidates = [
+        candidate
+        for candidate in _merge_table_candidates(rule_candidates)
+        if not any(
+            _bbox_overlap_in_smaller(candidate.bbox, filled_bbox) >= 0.2
+            for filled_bbox in filled_grid_bboxes
+        )
+    ]
+    return sorted(
+        [*filled_grid_candidates, *merged_rule_candidates],
+        key=lambda candidate: (candidate.bbox[1], candidate.bbox[0]),
+    )
+
+
+def _detect_filled_grid_table_candidates(
+    path_infos: list[PDFPathInfo],
+    page_size: tuple[float, float],
+    excluded_bboxes: list[BBox] | None = None,
+) -> list[_TableCandidate]:
+    """仅按根层填充矩形的嵌套行带识别精确表格外框。"""
+
+    page_width, page_height = page_size
+    page_area = page_width * page_height
+    if page_area <= 0:
+        return []
+    excluded_bboxes = excluded_bboxes or []
+    rectangles = [
+        path_info.bbox
+        for path_info in path_infos
+        if path_info.form_depth == 0
+        and path_info.fill_visible
+        and path_info.segment_count == 5
+        and _bbox_area(path_info.bbox) > 0
+    ]
+    evidence: list[tuple[_TableCandidate, int, float, float]] = []
+    for outer_bbox in rectangles:
+        outer_width = outer_bbox[2] - outer_bbox[0]
+        outer_height = outer_bbox[3] - outer_bbox[1]
+        outer_area = _bbox_area(outer_bbox)
+        if not (
+            _FILLED_GRID_MIN_PAGE_AREA_RATIO
+            <= outer_area / page_area
+            <= _FILLED_GRID_MAX_PAGE_AREA_RATIO
+            and outer_width >= _FILLED_GRID_MIN_PAGE_WIDTH_RATIO * page_width
+            and outer_height >= _FILLED_GRID_MIN_PAGE_HEIGHT_RATIO * page_height
+        ):
+            continue
+        if any(
+            _bbox_overlap_in_smaller(outer_bbox, excluded_bbox) >= 0.5
+            for excluded_bbox in excluded_bboxes
+        ):
+            continue
+
+        cells = _select_maximal_filled_grid_cells(rectangles, outer_bbox)
+        bands = _group_filled_grid_cells_into_bands(cells, outer_bbox)
+        accepted_bands = [
+            band
+            for band in bands
+            if _filled_grid_band_covers_outer_width(band, outer_bbox)
+        ]
+        if len(accepted_bands) < 4:
+            continue
+        accepted_bands.sort(
+            key=lambda band: (
+                min(cell[1] for cell in band),
+                min(cell[0] for cell in band),
+            )
+        )
+        covered_height = sum(
+            max(cell[3] for cell in band) - min(cell[1] for cell in band)
+            for band in accepted_bands
+        )
+        vertical_coverage = covered_height / outer_height
+        if vertical_coverage < 0.75:
+            continue
+        if any(
+            min(cell[1] for cell in next_band)
+            - max(cell[3] for cell in current_band)
+            > 0.05 * outer_height
+            for current_band, next_band in zip(
+                accepted_bands,
+                accepted_bands[1:],
+            )
+        ):
+            continue
+        candidate = _TableCandidate(
+            bbox=outer_bbox,
+            local_bbox=outer_bbox,
+            angle=0,
+            score=float(100.0 + len(accepted_bands) + vertical_coverage),
+            core_bbox=outer_bbox,
+            line_indices=set(),
+        )
+        evidence.append(
+            (
+                candidate,
+                len(accepted_bands),
+                vertical_coverage,
+                outer_area,
+            )
+        )
+
+    output: list[_TableCandidate] = []
+    for candidate, _band_count, _coverage, _outer_area in sorted(
+        evidence,
+        key=lambda item: (item[1], item[2], item[3]),
+        reverse=True,
+    ):
+        if any(
+            _bbox_overlap_in_smaller(candidate.bbox, accepted.bbox) >= 0.9
+            for accepted in output
+        ):
+            continue
+        output.append(candidate)
+    return sorted(output, key=lambda candidate: (candidate.bbox[1], candidate.bbox[0]))
+
+
+def _select_maximal_filled_grid_cells(
+    rectangles: list[BBox],
+    outer_bbox: BBox,
+) -> list[BBox]:
+    """移除边缘细条、重复 Path 和同跨度半行底纹，保留最大单元格。"""
+
+    outer_width = outer_bbox[2] - outer_bbox[0]
+    outer_height = outer_bbox[3] - outer_bbox[1]
+    outer_area = _bbox_area(outer_bbox)
+    x_tolerance = 0.01 * outer_width
+    y_tolerance = 0.02 * outer_height
+    nested_rectangles = [
+        rectangle
+        for rectangle in rectangles
+        if rectangle != outer_bbox
+        and _bbox_is_contained_with_tolerance(
+            rectangle,
+            outer_bbox,
+            x_tolerance,
+            y_tolerance,
+        )
+        and _bbox_area(rectangle) <= 0.8 * outer_area
+        and rectangle[2] - rectangle[0] >= 0.1 * outer_width
+        and rectangle[3] - rectangle[1] >= 0.06 * outer_height
+    ]
+    output: list[BBox] = []
+    for rectangle in sorted(
+        nested_rectangles,
+        key=lambda bbox: (-_bbox_area(bbox), bbox[1], bbox[0]),
+    ):
+        if any(
+            rectangle != other
+            and _bbox_is_contained_with_tolerance(
+                rectangle,
+                other,
+                x_tolerance,
+                y_tolerance,
+            )
+            and _bbox_area(other) >= 1.08 * _bbox_area(rectangle)
+            and _bbox_area(other) <= 0.8 * outer_area
+            and abs(
+                (rectangle[2] - rectangle[0])
+                - (other[2] - other[0])
+            )
+            <= 0.01 * outer_width
+            for other in nested_rectangles
+        ):
+            continue
+        if any(
+            _bbox_overlap_in_smaller(rectangle, accepted) >= 0.95
+            for accepted in output
+        ):
+            continue
+        output.append(rectangle)
+    return sorted(output, key=lambda bbox: (bbox[1], bbox[0], bbox[3], bbox[2]))
+
+
+def _bbox_is_contained_with_tolerance(
+    inner_bbox: BBox,
+    outer_bbox: BBox,
+    x_tolerance: float,
+    y_tolerance: float,
+) -> bool:
+    """按横纵独立容差判断一个矩形是否完整位于另一个矩形内。"""
+
+    return (
+        inner_bbox[0] >= outer_bbox[0] - x_tolerance
+        and inner_bbox[1] >= outer_bbox[1] - y_tolerance
+        and inner_bbox[2] <= outer_bbox[2] + x_tolerance
+        and inner_bbox[3] <= outer_bbox[3] + y_tolerance
+    )
+
+
+def _group_filled_grid_cells_into_bands(
+    cells: list[BBox],
+    outer_bbox: BBox,
+) -> list[list[BBox]]:
+    """按相近上下边界把最大填充单元格聚成水平行带。"""
+
+    y_tolerance = 0.02 * (outer_bbox[3] - outer_bbox[1])
+    bands: list[list[BBox]] = []
+    for cell in sorted(cells, key=lambda bbox: (bbox[1], bbox[0], bbox[3])):
+        target = next(
+            (
+                band
+                for band in bands
+                if abs(cell[1] - band[0][1]) <= y_tolerance
+                and abs(cell[3] - band[0][3]) <= y_tolerance
+            ),
+            None,
+        )
+        if target is None:
+            bands.append([cell])
+        else:
+            target.append(cell)
+    return bands
+
+
+def _filled_grid_band_covers_outer_width(
+    band: list[BBox],
+    outer_bbox: BBox,
+) -> bool:
+    """校验单个填充行带的单元格数量、横向覆盖、间隙和端点。"""
+
+    if len(band) < 2:
+        return False
+    outer_width = outer_bbox[2] - outer_bbox[0]
+    segments = sorted((cell[0], cell[2]) for cell in band)
+    current_left, current_right = segments[0]
+    covered_width = 0.0
+    maximum_gap = 0.0
+    for left, right in segments[1:]:
+        if left <= current_right:
+            current_right = max(current_right, right)
+            continue
+        covered_width += current_right - current_left
+        maximum_gap = max(maximum_gap, left - current_right)
+        current_left, current_right = left, right
+    covered_width += current_right - current_left
+    return (
+        covered_width >= 0.9 * outer_width
+        and maximum_gap <= 0.01 * outer_width
+        and abs(min(cell[0] for cell in band) - outer_bbox[0])
+        <= 0.02 * outer_width
+        and abs(max(cell[2] for cell in band) - outer_bbox[2])
+        <= 0.02 * outer_width
+    )
 
 
 def _build_fragments(
@@ -174,37 +445,134 @@ def _build_rule_table_candidates(
     angle: int,
     median_height: float,
     axis_lines: list[_LocalAxisLine],
+    *,
+    path_infos: list[PDFPathInfo] | None = None,
+    excluded_bboxes: list[BBox] | None = None,
 ) -> list[_TableCandidate]:
-    """用三条长横线确定区域，再以连续多列文本分布确认表格。"""
+    """枚举同跨度横线边界区间，再以连续多列文本分布确认表格。"""
 
     candidates: list[_TableCandidate] = []
+    path_infos = path_infos or []
+    excluded_bboxes = excluded_bboxes or []
     for rule_group in _group_long_horizontal_rules(axis_lines, median_height):
-        rule_bbox = _bbox_union_many([line.bbox for line in rule_group])
-        core_rows: list[_VisualRow] = []
-        for row in rows:
-            clipped_row = _clip_visual_row_to_corridor(row, rule_bbox, margin=0.0)
-            if clipped_row is not None and rule_bbox[1] <= clipped_row.center_y <= rule_bbox[3]:
-                core_rows.append(clipped_row)
+        for first_index, top_rule in enumerate(rule_group[:-1]):
+            for bottom_index in range(first_index + 1, len(rule_group)):
+                bottom_rule = rule_group[bottom_index]
+                boundary_rules = [top_rule, bottom_rule]
+                rule_bbox = _bbox_union_many([line.bbox for line in boundary_rules])
+                core_rows = _rows_inside_rule_interval(
+                    rows,
+                    rule_bbox,
+                    excluded_bboxes,
+                )
+                if not _every_rule_interval_has_multi_cell_row(
+                    core_rows,
+                    rule_group[first_index : bottom_index + 1],
+                    median_height,
+                ):
+                    continue
+                if not _rule_intervals_are_column_compatible(
+                    core_rows,
+                    rule_group[first_index : bottom_index + 1],
+                    median_height,
+                ):
+                    continue
 
-        dense_rows = _longest_dense_multi_cell_rows(core_rows, median_height)
-        if len(dense_rows) < 3:
-            continue
-        stable_columns, column_coverage = _count_stable_columns(dense_rows, median_height)
-        if stable_columns < 2 or column_coverage < 0.5:
-            continue
+                fill_band_count = _count_repeated_fill_bands(
+                    path_infos,
+                    rule_bbox,
+                    page_size,
+                    angle,
+                    median_height,
+                )
+                aligned_vertical_count = _count_aligned_vertical_rules(
+                    axis_lines,
+                    rule_bbox,
+                    median_height,
+                )
 
-        caption_line = _find_table_caption(lines, rule_bbox, page_size, angle, median_height)
-        candidate = _expand_rule_table_candidate(
-            rule_group,
-            core_rows,
-            rows,
-            page_size,
-            angle,
-            median_height,
-            caption_line,
-        )
-        candidate.score = float(len(rule_group) + len(dense_rows) + stable_columns)
-        candidates.append(candidate)
+                row_segments = _continuous_table_row_segments(core_rows, median_height)
+                accepted: tuple[list[_VisualRow], list[_VisualRow], int, float] | None = None
+                for row_segment in row_segments:
+                    dense_rows = [row for row in row_segment if len(row.fragments) >= 2]
+                    if len(dense_rows) < 3:
+                        continue
+                    # 真表格的多单元行会在整个数据带内反复出现；少数图题、图例和
+                    # 坐标刻度偶然形成的多列行不能支撑一大片正文区域。
+                    if len(dense_rows) / len(row_segment) < 0.2:
+                        continue
+                    stable_columns, column_coverage = _count_stable_columns(
+                        dense_rows,
+                        median_height,
+                    )
+                    if stable_columns < 2 or column_coverage < 0.5:
+                        continue
+                    if _looks_like_page_column_prose(
+                        row_segment,
+                        dense_rows,
+                        stable_columns,
+                        fill_band_count,
+                        aligned_vertical_count,
+                        rule_bbox,
+                    ):
+                        continue
+                    if not _table_segment_reaches_boundaries(
+                        row_segment,
+                        rule_bbox,
+                        median_height,
+                    ):
+                        continue
+                    if not _table_rows_align_with_rule_span(
+                        row_segment,
+                        rule_bbox,
+                        median_height,
+                    ):
+                        continue
+                    result = (
+                        row_segment,
+                        dense_rows,
+                        stable_columns,
+                        column_coverage,
+                    )
+                    if accepted is None or (
+                        len(row_segment),
+                        len(dense_rows),
+                        stable_columns,
+                        column_coverage,
+                    ) > (
+                        len(accepted[0]),
+                        len(accepted[1]),
+                        accepted[2],
+                        accepted[3],
+                    ):
+                        accepted = result
+                if accepted is None:
+                    continue
+
+                accepted_rows, dense_rows, stable_columns, _coverage = accepted
+                caption_line = _find_table_caption(
+                    lines,
+                    rule_bbox,
+                    page_size,
+                    angle,
+                    median_height,
+                )
+                candidate = _expand_rule_table_candidate(
+                    boundary_rules,
+                    accepted_rows,
+                    rows,
+                    page_size,
+                    angle,
+                    median_height,
+                    caption_line,
+                )
+                candidate.score = float(
+                    2
+                    + len(dense_rows)
+                    + stable_columns
+                    + min(fill_band_count, 8)
+                )
+                candidates.append(candidate)
     return candidates
 
 
@@ -212,7 +580,7 @@ def _group_long_horizontal_rules(
     axis_lines: list[_LocalAxisLine],
     median_height: float,
 ) -> list[list[_LocalAxisLine]]:
-    """按近似左右端点和纵向距离聚合长横线，并去除同位置重复路径。"""
+    """按近似左右端点聚合长横线，并去除同位置重复路径。"""
 
     minimum_length = max(40.0, 10.0 * median_height)
     horizontal_lines = [
@@ -236,27 +604,272 @@ def _group_long_horizontal_rules(
             target.append(line)
 
     output: list[list[_LocalAxisLine]] = []
-    maximum_vertical_gap = 24.0 * median_height
     for span_group in span_groups:
-        vertical_groups: list[list[_LocalAxisLine]] = []
+        unique_lines: list[_LocalAxisLine] = []
         for line in sorted(span_group, key=lambda item: _bbox_center_y(item.bbox)):
-            if (
-                not vertical_groups
-                or _bbox_center_y(line.bbox) - _bbox_center_y(vertical_groups[-1][-1].bbox) > maximum_vertical_gap
+            if any(
+                abs(_bbox_center_y(line.bbox) - _bbox_center_y(item.bbox)) <= 1.0
+                for item in unique_lines
             ):
-                vertical_groups.append([line])
-            else:
-                vertical_groups[-1].append(line)
-
-        for vertical_group in vertical_groups:
-            unique_lines: list[_LocalAxisLine] = []
-            for line in vertical_group:
-                if any(abs(_bbox_center_y(line.bbox) - _bbox_center_y(item.bbox)) <= 1.0 for item in unique_lines):
-                    continue
-                unique_lines.append(line)
-            if len(unique_lines) >= 3:
-                output.append(unique_lines)
+                continue
+            unique_lines.append(line)
+        if len(unique_lines) >= 2:
+            output.append(unique_lines)
     return output
+
+
+def _rows_inside_rule_interval(
+    rows: list[_VisualRow],
+    rule_bbox: BBox,
+    excluded_bboxes: list[BBox],
+) -> list[_VisualRow]:
+    """截取边界走廊内文本行，并移除已由强图形核心覆盖的片段。"""
+
+    output: list[_VisualRow] = []
+    for row in rows:
+        clipped_row = _clip_visual_row_to_corridor(row, rule_bbox, margin=0.0)
+        if clipped_row is None or not rule_bbox[1] <= clipped_row.center_y <= rule_bbox[3]:
+            continue
+        fragments = [
+            fragment
+            for fragment in clipped_row.fragments
+            if not any(
+                _point_in_bbox(
+                    (
+                        _bbox_center_x(fragment.local_bbox),
+                        _bbox_center_y(fragment.local_bbox),
+                    ),
+                    excluded_bbox,
+                )
+                for excluded_bbox in excluded_bboxes
+            )
+        ]
+        if not fragments:
+            continue
+        output.append(
+            _VisualRow(
+                fragments=fragments,
+                center_y=sum(
+                    _bbox_center_y(fragment.local_bbox) for fragment in fragments
+                )
+                / len(fragments),
+                bbox=_bbox_union_many([fragment.local_bbox for fragment in fragments]),
+                visual_row_id=clipped_row.visual_row_id,
+            )
+        )
+    return output
+
+
+def _every_rule_interval_has_multi_cell_row(
+    rows: list[_VisualRow],
+    rule_group: list[_LocalAxisLine],
+    median_height: float,
+) -> bool:
+    """要求候选跨过的每个相邻横线区间都存在至少一行多单元文本。"""
+
+    if len(rule_group) < 2:
+        return False
+    for interval_index, (top_rule, bottom_rule) in enumerate(
+        zip(rule_group, rule_group[1:])
+    ):
+        top = _bbox_center_y(top_rule.bbox)
+        bottom = _bbox_center_y(bottom_rule.bbox)
+        interval_rows = [row for row in rows if top <= row.center_y <= bottom]
+        if any(len(row.fragments) >= 2 for row in interval_rows):
+            continue
+        # 紧邻顶边界的合并表头可能由 pdftext 输出为一个短 fragment；
+        # 只放宽高度很小的首区间，避免把远处章节标题接到表格上。
+        if (
+            interval_index == 0
+            and interval_rows
+            and bottom - top <= 2.5 * median_height
+        ):
+            continue
+        return False
+    return True
+
+
+def _rule_intervals_are_column_compatible(
+    rows: list[_VisualRow],
+    rule_group: list[_LocalAxisLine],
+    median_height: float,
+) -> bool:
+    """拒绝跨过长篇栏式正文、导致稳定列数明显塌缩的多表合并区间。"""
+
+    profiles: list[tuple[int, float]] = []
+    for top_rule, bottom_rule in zip(rule_group, rule_group[1:]):
+        top = _bbox_center_y(top_rule.bbox)
+        bottom = _bbox_center_y(bottom_rule.bbox)
+        interval_rows = [
+            row
+            for row in rows
+            if top <= row.center_y <= bottom and len(row.fragments) >= 2
+        ]
+        stable_columns, _coverage = _count_stable_columns(
+            interval_rows,
+            median_height,
+        )
+        profiles.append((stable_columns, bottom - top))
+    maximum_columns = max((columns for columns, _height in profiles), default=0)
+    if maximum_columns < 4:
+        return True
+    for interval_index, (columns, interval_height) in enumerate(profiles):
+        # 首个区间可能只是跨列表头；后续长区间若退化成普通双栏正文，
+        # 就不能把前后两张表合成一个候选。
+        if interval_index == 0:
+            continue
+        if columns < max(2, int(0.5 * maximum_columns)) and interval_height > 4.0 * median_height:
+            return False
+    return True
+
+
+def _continuous_table_row_segments(
+    rows: list[_VisualRow],
+    median_height: float,
+) -> list[list[_VisualRow]]:
+    """按物理行距切分边界区间，保留单元格换行参与连续性判断。"""
+
+    segments: list[list[_VisualRow]] = []
+    for row in sorted(rows, key=lambda item: item.center_y):
+        if (
+            not segments
+            or max(0.0, row.bbox[1] - segments[-1][-1].bbox[3])
+            > 3.0 * median_height
+        ):
+            segments.append([row])
+        else:
+            segments[-1].append(row)
+    return segments
+
+
+def _table_segment_reaches_boundaries(
+    rows: list[_VisualRow],
+    rule_bbox: BBox,
+    median_height: float,
+) -> bool:
+    """要求数据行链分别贴近最近的上下边界，排除页眉线和远处章节标题。"""
+
+    if not rows:
+        return False
+    maximum_gap = 2.5 * median_height
+    top_gap = max(0.0, rows[0].bbox[1] - rule_bbox[1])
+    bottom_gap = max(0.0, rule_bbox[3] - rows[-1].bbox[3])
+    return top_gap <= maximum_gap and bottom_gap <= maximum_gap
+
+
+def _table_rows_align_with_rule_span(
+    rows: list[_VisualRow],
+    rule_bbox: BBox,
+    median_height: float,
+) -> bool:
+    """校验数据行总体跨度与横线走廊重叠，拒绝仅在边缘偶遇的多列文本。"""
+
+    if not rows:
+        return False
+    rows_bbox = _bbox_union_many([row.bbox for row in rows])
+    rule_width = max(0.1, rule_bbox[2] - rule_bbox[0])
+    rows_width = max(0.1, rows_bbox[2] - rows_bbox[0])
+    overlap = max(
+        0.0,
+        min(rows_bbox[2], rule_bbox[2]) - max(rows_bbox[0], rule_bbox[0]),
+    )
+    return (
+        overlap / min(rule_width, rows_width) >= 0.9
+        and rows_width >= max(8.0 * median_height, 0.25 * rule_width)
+    )
+
+
+def _count_aligned_vertical_rules(
+    axis_lines: list[_LocalAxisLine],
+    rule_bbox: BBox,
+    median_height: float,
+) -> int:
+    """统计贯穿候选主要高度且位于横线跨度内的竖向分隔线。"""
+
+    required_height = max(4.0 * median_height, 0.5 * (rule_bbox[3] - rule_bbox[1]))
+    return sum(
+        line.orientation == "vertical"
+        and rule_bbox[0] - median_height <= _bbox_center_x(line.bbox) <= rule_bbox[2] + median_height
+        and line.bbox[3] - line.bbox[1] >= required_height
+        and _bbox_axis_overlap_ratio(line.bbox, rule_bbox, axis="y") >= 0.8
+        for line in axis_lines
+    )
+
+
+def _looks_like_page_column_prose(
+    rows: list[_VisualRow],
+    dense_rows: list[_VisualRow],
+    stable_columns: int,
+    fill_band_count: int,
+    aligned_vertical_count: int,
+    rule_bbox: BBox,
+) -> bool:
+    """用双栏占宽率识别夹在远横线间的普通并排正文。"""
+
+    if (
+        stable_columns != 2
+        or fill_band_count >= 2
+        or aligned_vertical_count > 0
+        or len(dense_rows) / len(rows) < 0.55
+    ):
+        return False
+    corridor_width = max(0.1, rule_bbox[2] - rule_bbox[0])
+    occupied_ratios = [
+        sum(fragment.local_bbox[2] - fragment.local_bbox[0] for fragment in row.fragments)
+        / corridor_width
+        for row in dense_rows
+    ]
+    return statistics.median(occupied_ratios) >= 0.75
+
+
+def _count_repeated_fill_bands(
+    path_infos: list[PDFPathInfo],
+    rule_bbox: BBox,
+    page_size: tuple[float, float],
+    angle: int,
+    median_height: float,
+) -> int:
+    """统计区间内左右端点和高度重复的填充行带，并对重叠 Path 去重。"""
+
+    minimum_width = max(8.0 * median_height, 0.3 * (rule_bbox[2] - rule_bbox[0]))
+    candidates: list[BBox] = []
+    for path_info in path_infos:
+        if path_info.form_depth != 0 or not path_info.fill_visible:
+            continue
+        bbox = _rotate_bbox_to_upright(path_info.bbox, page_size, angle)
+        width = bbox[2] - bbox[0]
+        height = bbox[3] - bbox[1]
+        if (
+            width < minimum_width
+            or not 0.25 * median_height <= height <= 3.0 * median_height
+            or _bbox_center_y(bbox) < rule_bbox[1]
+            or _bbox_center_y(bbox) > rule_bbox[3]
+            or _bbox_axis_overlap_ratio(bbox, rule_bbox, axis="x") < 0.8
+        ):
+            continue
+        if any(_bbox_overlap_in_smaller(bbox, item) >= 0.9 for item in candidates):
+            continue
+        candidates.append(bbox)
+
+    endpoint_tolerance = max(3.0, median_height)
+    groups: list[list[BBox]] = []
+    for bbox in candidates:
+        target = next(
+            (
+                group
+                for group in groups
+                if abs(bbox[0] - group[0][0]) <= endpoint_tolerance
+                and abs(bbox[2] - group[0][2]) <= endpoint_tolerance
+                and abs((bbox[3] - bbox[1]) - (group[0][3] - group[0][1]))
+                <= endpoint_tolerance
+            ),
+            None,
+        )
+        if target is None:
+            groups.append([bbox])
+        else:
+            target.append(bbox)
+    return max((len(group) for group in groups), default=0)
 
 
 def _clip_visual_row_to_corridor(

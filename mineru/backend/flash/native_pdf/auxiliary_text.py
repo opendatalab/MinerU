@@ -26,6 +26,8 @@ from .geometry import (
     _bbox_center_x,
     _bbox_center_y,
     _bbox_intersects,
+    _clip_bbox,
+    _coerce_bbox,
     _expand_bbox,
     _horizontal_bbox_gap,
     _rotate_bbox_to_upright,
@@ -332,6 +334,110 @@ def _classify_repeated_page_marginals(pages: list[_PreparedPage]) -> None:
             ):
                 left.line.semantic_type = left.region
                 right.line.semantic_type = right.region
+
+
+def _classify_repeated_visual_headers(pages: list[_PreparedPage]) -> None:
+    """仅按页首位置与跨页重复几何，把整体图片重标为视觉页眉。"""
+
+    candidates: list[tuple[int, dict[str, object], BBox, int]] = []
+    for page_index, page in enumerate(pages):
+        # 首页常使用独立封面版式，不参与正文页视觉页眉聚类。
+        if page_index == 0:
+            continue
+        page_width, page_height = page.page_size
+        if page_width <= 0 or page_height <= 0:
+            continue
+        for block in page.fixed_blocks:
+            if block.get("type") != "image":
+                continue
+            content = block.get("content")
+            # 当前 model_list 不保留空文本 header；这里只限制输出可表示性，
+            # 跨页匹配本身完全不比较 content。
+            if not isinstance(content, str) or not content.strip():
+                continue
+            bbox = _clip_bbox(_coerce_bbox(block.get("bbox")), page.page_size)
+            if bbox is None or bbox[3] > 0.12 * page_height:
+                continue
+            normalized_bbox = (
+                bbox[0] / page_width,
+                bbox[1] / page_height,
+                bbox[2] / page_width,
+                bbox[3] / page_height,
+            )
+            angle = int(block.get("angle", 0) or 0) % 360
+            candidates.append((page_index, block, normalized_bbox, angle))
+
+    if len(candidates) < 3:
+        return
+
+    parents = list(range(len(candidates)))
+
+    def find(index: int) -> int:
+        """查找视觉页眉候选所属几何簇的根节点。"""
+
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
+    def union(first_index: int, second_index: int) -> None:
+        """合并跨页距离和归一化几何均匹配的两个候选。"""
+
+        first_root = find(first_index)
+        second_root = find(second_index)
+        if first_root != second_root:
+            parents[second_root] = first_root
+
+    for first_index, (
+        first_page,
+        _first_block,
+        first_bbox,
+        first_angle,
+    ) in enumerate(candidates):
+        for second_index in range(first_index + 1, len(candidates)):
+            second_page, _second_block, second_bbox, second_angle = candidates[
+                second_index
+            ]
+            page_delta = second_page - first_page
+            if page_delta > 2:
+                break
+            if (
+                page_delta > 0
+                and first_angle == second_angle
+                and _visual_header_geometry_matches(first_bbox, second_bbox)
+            ):
+                union(first_index, second_index)
+
+    clusters: dict[int, list[int]] = {}
+    for candidate_index in range(len(candidates)):
+        clusters.setdefault(find(candidate_index), []).append(candidate_index)
+    for member_indices in clusters.values():
+        page_indices = {candidates[index][0] for index in member_indices}
+        if len(page_indices) < 3:
+            continue
+        for index in member_indices:
+            candidates[index][1]["type"] = "header"
+
+
+def _visual_header_geometry_matches(first: BBox, second: BBox) -> bool:
+    """比较两个归一化页首图片的 IoU 与宽高尺度。"""
+
+    first_width = first[2] - first[0]
+    first_height = first[3] - first[1]
+    second_width = second[2] - second[0]
+    second_height = second[3] - second[1]
+    if min(first_width, first_height, second_width, second_height) <= 0:
+        return False
+    if max(first_width, second_width) / min(first_width, second_width) > 1.1:
+        return False
+    if max(first_height, second_height) / min(first_height, second_height) > 1.1:
+        return False
+
+    intersection_width = max(0.0, min(first[2], second[2]) - max(first[0], second[0]))
+    intersection_height = max(0.0, min(first[3], second[3]) - max(first[1], second[1]))
+    intersection = intersection_width * intersection_height
+    union_area = first_width * first_height + second_width * second_height - intersection
+    return union_area > 0 and intersection / union_area >= 0.9
 
 
 def _build_marginal_candidate(

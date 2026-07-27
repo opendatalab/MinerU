@@ -77,7 +77,7 @@ class _LocalAxisLine:
 
 @dataclass(slots=True)
 class _TableCandidate:
-    """保存已通过三横线与文本分布校验的表格候选。"""
+    """保存已通过相邻横线边界与文本分布校验的表格候选。"""
 
     bbox: BBox
     local_bbox: BBox
@@ -93,6 +93,7 @@ class _GraphicCandidate:
 
     core_bbox: BBox
     lane_index: int
+    label_margin_scale: float = 2.5
     line_indices: set[int] = field(default_factory=set)
 
 

@@ -22,6 +22,7 @@ from .models import (
     _TextLane,
 )
 from .geometry import (
+    _bbox_axis_overlap_ratio,
     _bbox_center_y,
     _bbox_union_many,
     _rotate_bbox_from_upright,
@@ -489,9 +490,366 @@ def _build_text_blocks(
                         "content": content,
                         "_visual_row_ids": visual_row_ids,
                         "_single_run_row_id": single_run_row_id,
+                        "_local_line_bboxes": [bbox for _line, bbox in component_geometry],
+                        "_line_heights": [
+                            _line_effective_height(line, bbox)
+                            for line, bbox in component_geometry
+                        ],
+                        "_lane_interval": (lane.left, lane.right),
+                        "_lane_is_span": lane.is_span,
                     }
                 )
-    return blocks
+    return _merge_spatial_text_components(blocks, page_size)
+
+
+def _merge_spatial_text_components(
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+) -> list[dict[str, Any]]:
+    """按短首行、紧邻续行和双栏递减尾行二次连接被栏带拆开的正文块。"""
+
+    parents = list(range(len(blocks)))
+
+    def find(index: int) -> int:
+        """查找正文组件所属合并组的根节点。"""
+
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
+    def union(first_index: int, second_index: int) -> None:
+        """合并两个已经通过空间连续性校验的正文组件。"""
+
+        first_root = find(first_index)
+        second_root = find(second_index)
+        if first_root != second_root:
+            parents[second_root] = first_root
+
+    for angle in sorted(
+        {
+            int(block.get("angle", 0) or 0) % 360
+            for block in blocks
+            if block.get("type") == "text" and block.get("_local_line_bboxes")
+        }
+    ):
+        candidate_indices = [
+            index
+            for index, block in enumerate(blocks)
+            if block.get("type") == "text"
+            and int(block.get("angle", 0) or 0) % 360 == angle
+            and isinstance(block.get("_local_line_bboxes"), list)
+            and block["_local_line_bboxes"]
+        ]
+        if len(candidate_indices) < 2:
+            continue
+        local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
+        all_heights = [
+            float(height)
+            for index in candidate_indices
+            for height in blocks[index].get("_line_heights", [])
+            if isinstance(height, (int, float)) and height > 0
+        ]
+        median_height = statistics.median(all_heights) if all_heights else 1.0
+        section_starts = {
+            index
+            for index in candidate_indices
+            if _block_starts_with_short_wide_rows(
+                blocks[index],
+                local_page_width,
+            )
+        }
+
+        opener_pairs = _find_short_opener_pairs(
+            blocks,
+            candidate_indices,
+            local_page_width,
+            median_height,
+        )
+        for opener_index, body_index in opener_pairs:
+            section_starts.add(opener_index)
+            union(opener_index, body_index)
+
+        for current_index in sorted(
+            candidate_indices,
+            key=lambda index: _text_component_sort_key(blocks[index]),
+        ):
+            section_roots = {find(index) for index in section_starts}
+            if find(current_index) not in section_roots:
+                continue
+            next_index = _nearest_following_text_component(
+                blocks,
+                current_index,
+                candidate_indices,
+                maximum_gap=0.75 * median_height,
+                section_starts=section_starts,
+            )
+            if next_index is not None:
+                union(current_index, next_index)
+
+        for current_index in candidate_indices:
+            if not _has_parallel_text_component(
+                blocks,
+                current_index,
+                candidate_indices,
+            ):
+                continue
+            next_index = _nearest_tapered_tail_component(
+                blocks,
+                current_index,
+                candidate_indices,
+                median_height,
+                section_starts,
+            )
+            if next_index is not None:
+                union(current_index, next_index)
+
+    grouped_indices: dict[int, list[int]] = {}
+    for index in range(len(blocks)):
+        grouped_indices.setdefault(find(index), []).append(index)
+
+    output: list[dict[str, Any]] = []
+    for indices in grouped_indices.values():
+        if len(indices) == 1:
+            output.append(blocks[indices[0]])
+            continue
+        ordered_indices = sorted(
+            indices,
+            key=lambda index: _text_component_sort_key(blocks[index]),
+        )
+        merged = dict(blocks[ordered_indices[0]])
+        merged["bbox"] = _bbox_union_many([blocks[index]["bbox"] for index in ordered_indices])
+        merged["content"] = _merge_text_line_content(
+            [str(blocks[index].get("content", "")) for index in ordered_indices]
+        )
+        merged["_visual_row_ids"] = set().union(
+            *[
+                block_ids
+                for index in ordered_indices
+                if isinstance(
+                    (block_ids := blocks[index].get("_visual_row_ids")),
+                    set,
+                )
+            ]
+        )
+        merged["_single_run_row_id"] = None
+        merged["_local_line_bboxes"] = [
+            bbox
+            for index in ordered_indices
+            for bbox in blocks[index].get("_local_line_bboxes", [])
+        ]
+        merged["_line_heights"] = [
+            height
+            for index in ordered_indices
+            for height in blocks[index].get("_line_heights", [])
+        ]
+        output.append(merged)
+    return output
+
+
+def _component_lane_interval(
+    block: dict[str, Any],
+) -> tuple[float, float] | None:
+    """读取普通文本组件所属的有效非跨栏栏带区间。"""
+
+    if block.get("_lane_is_span") is not False:
+        return None
+    interval = block.get("_lane_interval")
+    if (
+        not isinstance(interval, (list, tuple))
+        or len(interval) != 2
+        or not all(isinstance(value, (int, float)) for value in interval)
+    ):
+        return None
+    left, right = float(interval[0]), float(interval[1])
+    return (left, right) if right > left else None
+
+
+def _component_reference_width(
+    block: dict[str, Any],
+    local_page_width: float,
+) -> float:
+    """优先返回组件的局部栏宽，缺少可靠栏带时回退页面宽度。"""
+
+    interval = _component_lane_interval(block)
+    return interval[1] - interval[0] if interval is not None else local_page_width
+
+
+def _compatible_component_lane_width(
+    first_block: dict[str, Any],
+    second_block: dict[str, Any],
+    local_page_width: float,
+    median_height: float,
+) -> float:
+    """同一局部栏带的两个组件使用栏宽，否则继续使用页面宽度。"""
+
+    first_interval = _component_lane_interval(first_block)
+    second_interval = _component_lane_interval(second_block)
+    if first_interval is None or second_interval is None:
+        return local_page_width
+    tolerance = 0.75 * median_height
+    if (
+        abs(first_interval[0] - second_interval[0]) > tolerance
+        or abs(first_interval[1] - second_interval[1]) > tolerance
+    ):
+        return local_page_width
+    return min(
+        first_interval[1] - first_interval[0],
+        second_interval[1] - second_interval[0],
+    )
+
+
+def _block_starts_with_short_wide_rows(
+    block: dict[str, Any],
+    local_page_width: float,
+) -> bool:
+    """判断组件内部是否以短首行和紧邻宽正文形成明确分组起点。"""
+
+    line_bboxes = block.get("_local_line_bboxes")
+    if not isinstance(line_bboxes, list) or len(line_bboxes) < 2:
+        return False
+    first_bbox, second_bbox = line_bboxes[:2]
+    first_width = first_bbox[2] - first_bbox[0]
+    second_width = second_bbox[2] - second_bbox[0]
+    reference_width = _component_reference_width(block, local_page_width)
+    return (
+        first_width <= 0.35 * reference_width
+        and second_width >= max(0.25 * reference_width, 1.8 * first_width)
+    )
+
+
+def _find_short_opener_pairs(
+    blocks: list[dict[str, Any]],
+    candidate_indices: list[int],
+    local_page_width: float,
+    median_height: float,
+) -> list[tuple[int, int]]:
+    """查找跨栏拆开的短首行与紧邻满宽正文组件。"""
+
+    output: list[tuple[int, int]] = []
+    for opener_index in candidate_indices:
+        opener_bboxes = blocks[opener_index]["_local_line_bboxes"]
+        if len(opener_bboxes) != 1:
+            continue
+        opener_bbox = opener_bboxes[0]
+        opener_width = opener_bbox[2] - opener_bbox[0]
+        matches: list[tuple[float, int]] = []
+        for body_index in candidate_indices:
+            if body_index == opener_index:
+                continue
+            body_bbox = blocks[body_index]["_local_line_bboxes"][0]
+            gap = body_bbox[1] - opener_bbox[3]
+            body_width = body_bbox[2] - body_bbox[0]
+            reference_width = _compatible_component_lane_width(
+                blocks[opener_index],
+                blocks[body_index],
+                local_page_width,
+                median_height,
+            )
+            if (
+                not 0.0 <= gap <= 0.75 * median_height
+                or abs(body_bbox[0] - opener_bbox[0]) > 0.75 * median_height
+                or opener_width > 0.35 * reference_width
+                or body_width < 0.6 * reference_width
+            ):
+                continue
+            matches.append((gap, body_index))
+        if matches:
+            output.append((opener_index, min(matches)[1]))
+    return output
+
+
+def _nearest_following_text_component(
+    blocks: list[dict[str, Any]],
+    current_index: int,
+    candidate_indices: list[int],
+    *,
+    maximum_gap: float,
+    section_starts: set[int],
+) -> int | None:
+    """返回同一水平流中紧邻且不是新分组起点的下一正文组件。"""
+
+    current_bbox = blocks[current_index]["_local_line_bboxes"][-1]
+    matches: list[tuple[float, float, int]] = []
+    for candidate_index in candidate_indices:
+        if candidate_index == current_index or candidate_index in section_starts:
+            continue
+        candidate_bbox = blocks[candidate_index]["_local_line_bboxes"][0]
+        gap = candidate_bbox[1] - current_bbox[3]
+        if not -0.25 * maximum_gap <= gap <= maximum_gap:
+            continue
+        overlap = _bbox_axis_overlap_ratio(current_bbox, candidate_bbox, axis="x")
+        left_gap = abs(candidate_bbox[0] - current_bbox[0])
+        if overlap < 0.5 and left_gap > 3.0 * maximum_gap:
+            continue
+        matches.append((max(0.0, gap), left_gap, candidate_index))
+    return min(matches)[2] if matches else None
+
+
+def _has_parallel_text_component(
+    blocks: list[dict[str, Any]],
+    current_index: int,
+    candidate_indices: list[int],
+) -> bool:
+    """检查当前组件同一纵向带内是否存在水平分离的并栏组件。"""
+
+    current_bbox = blocks[current_index]["bbox"]
+    for candidate_index in candidate_indices:
+        if candidate_index == current_index:
+            continue
+        candidate_bbox = blocks[candidate_index]["bbox"]
+        vertical_overlap = max(
+            0.0,
+            min(current_bbox[3], candidate_bbox[3])
+            - max(current_bbox[1], candidate_bbox[1]),
+        )
+        horizontally_separate = (
+            candidate_bbox[0] >= current_bbox[2]
+            or current_bbox[0] >= candidate_bbox[2]
+        )
+        if vertical_overlap > 0 and horizontally_separate:
+            return True
+    return False
+
+
+def _nearest_tapered_tail_component(
+    blocks: list[dict[str, Any]],
+    current_index: int,
+    candidate_indices: list[int],
+    median_height: float,
+    section_starts: set[int],
+) -> int | None:
+    """查找左对齐、行宽递减且行距略大的信息组尾行组件。"""
+
+    previous_bbox = blocks[current_index]["_local_line_bboxes"][-1]
+    previous_width = previous_bbox[2] - previous_bbox[0]
+    matches: list[tuple[float, int]] = []
+    for candidate_index in candidate_indices:
+        if candidate_index == current_index or candidate_index in section_starts:
+            continue
+        candidate_bboxes = blocks[candidate_index]["_local_line_bboxes"]
+        first_bbox = candidate_bboxes[0]
+        last_bbox = candidate_bboxes[-1]
+        gap = first_bbox[1] - previous_bbox[3]
+        first_width = first_bbox[2] - first_bbox[0]
+        last_width = last_bbox[2] - last_bbox[0]
+        if (
+            not 0.75 * median_height < gap <= 1.5 * median_height
+            or len(candidate_bboxes) > 2
+            or abs(first_bbox[0] - previous_bbox[0]) > 0.75 * median_height
+            or first_width > 0.85 * previous_width
+            or last_width > first_width + 0.5 * median_height
+        ):
+            continue
+        matches.append((gap, candidate_index))
+    return min(matches)[1] if matches else None
+
+
+def _text_component_sort_key(block: dict[str, Any]) -> tuple[float, float]:
+    """返回正文组件按局部首行位置排序的稳定键。"""
+
+    first_bbox = block["_local_line_bboxes"][0]
+    return first_bbox[1], first_bbox[0]
 
 
 def _merge_text_line_content(line_texts: Sequence[str]) -> str:

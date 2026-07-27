@@ -735,3 +735,236 @@ def test_hyphen_continuation_cannot_start_false_hanging_indent_entry() -> None:
         "The expression starts here the stream function is given below:",
         "F = fraction",
     ]
+
+
+def test_spatial_post_merge_connects_short_opener_wide_body_and_tail() -> None:
+    """验证跨栏拆开的短首行、满宽正文和紧邻尾行仅按空间关系重新连接。"""
+
+    blocks = [
+        {
+            "type": "text",
+            "bbox": (10.0, 10.0, 40.0, 20.0),
+            "angle": 0,
+            "content": "section",
+            "_visual_row_ids": {0},
+            "_local_line_bboxes": [(10.0, 10.0, 40.0, 20.0)],
+            "_line_heights": [10.0],
+        },
+        {
+            "type": "text",
+            "bbox": (10.0, 22.0, 190.0, 42.0),
+            "angle": 0,
+            "content": "wide body",
+            "_visual_row_ids": {1, 2},
+            "_local_line_bboxes": [
+                (10.0, 22.0, 190.0, 32.0),
+                (10.0, 32.0, 190.0, 42.0),
+            ],
+            "_line_heights": [10.0, 10.0],
+        },
+        {
+            "type": "text",
+            "bbox": (10.0, 44.0, 100.0, 54.0),
+            "angle": 0,
+            "content": "tail",
+            "_visual_row_ids": {3},
+            "_local_line_bboxes": [(10.0, 44.0, 100.0, 54.0)],
+            "_line_heights": [10.0],
+        },
+    ]
+
+    merged = text_blocks._merge_spatial_text_components(
+        blocks,
+        (200.0, 100.0),
+    )
+
+    assert len(merged) == 1
+    assert merged[0]["bbox"] == (10.0, 10.0, 190.0, 54.0)
+    assert merged[0]["content"] == "section wide body tail"
+    assert merged[0]["_visual_row_ids"] == {0, 1, 2, 3}
+
+
+def test_spatial_post_merge_uses_compatible_local_lane_width() -> None:
+    """验证半页栏内的短首行可连接多段正文，并在下一分组起点停止。"""
+
+    lane_metadata = {
+        "_lane_interval": (40.0, 370.0),
+        "_lane_is_span": False,
+    }
+    blocks = [
+        {
+            "type": "text",
+            "bbox": (40.0, 10.0, 80.0, 20.0),
+            "angle": 0,
+            "content": "opener",
+            "_visual_row_ids": {0},
+            "_local_line_bboxes": [(40.0, 10.0, 80.0, 20.0)],
+            "_line_heights": [10.0],
+            **lane_metadata,
+        },
+        {
+            "type": "text",
+            "bbox": (40.0, 22.0, 365.0, 42.0),
+            "angle": 0,
+            "content": "body one",
+            "_visual_row_ids": {1, 2},
+            "_local_line_bboxes": [
+                (40.0, 22.0, 365.0, 32.0),
+                (40.0, 32.0, 365.0, 42.0),
+            ],
+            "_line_heights": [10.0, 10.0],
+            **lane_metadata,
+        },
+        {
+            "type": "text",
+            "bbox": (40.0, 44.0, 365.0, 54.0),
+            "angle": 0,
+            "content": "body two",
+            "_visual_row_ids": {3},
+            "_local_line_bboxes": [(40.0, 44.0, 365.0, 54.0)],
+            "_line_heights": [10.0],
+            **lane_metadata,
+        },
+        {
+            "type": "text",
+            "bbox": (40.0, 56.0, 365.0, 76.0),
+            "angle": 0,
+            "content": "body three",
+            "_visual_row_ids": {4, 5},
+            "_local_line_bboxes": [
+                (40.0, 56.0, 365.0, 66.0),
+                (40.0, 66.0, 365.0, 76.0),
+            ],
+            "_line_heights": [10.0, 10.0],
+            **lane_metadata,
+        },
+        {
+            "type": "text",
+            "bbox": (40.0, 78.0, 230.0, 88.0),
+            "angle": 0,
+            "content": "body tail",
+            "_visual_row_ids": {6},
+            "_local_line_bboxes": [(40.0, 78.0, 230.0, 88.0)],
+            "_line_heights": [10.0],
+            **lane_metadata,
+        },
+        {
+            "type": "text",
+            "bbox": (40.0, 90.0, 365.0, 112.0),
+            "angle": 0,
+            "content": "next section body",
+            "_visual_row_ids": {7, 8},
+            "_local_line_bboxes": [
+                (40.0, 90.0, 90.0, 100.0),
+                (40.0, 102.0, 365.0, 112.0),
+            ],
+            "_line_heights": [10.0, 10.0],
+            **lane_metadata,
+        },
+    ]
+
+    merged = text_blocks._merge_spatial_text_components(
+        blocks,
+        (600.0, 200.0),
+    )
+
+    assert [block["content"] for block in merged] == [
+        "opener body one body two body three body tail",
+        "next section body",
+    ]
+    assert merged[0]["bbox"] == (40.0, 10.0, 365.0, 88.0)
+
+
+def test_spatial_post_merge_does_not_share_incompatible_lane_width() -> None:
+    """验证左右栏区间不兼容时仍使用页面宽度，不能放宽首段合并。"""
+
+    blocks = [
+        {
+            "type": "text",
+            "bbox": (40.0, 10.0, 80.0, 20.0),
+            "angle": 0,
+            "content": "left opener",
+            "_visual_row_ids": {0},
+            "_local_line_bboxes": [(40.0, 10.0, 80.0, 20.0)],
+            "_line_heights": [10.0],
+            "_lane_interval": (40.0, 370.0),
+            "_lane_is_span": False,
+        },
+        {
+            "type": "text",
+            "bbox": (270.0, 22.0, 590.0, 42.0),
+            "angle": 0,
+            "content": "right body",
+            "_visual_row_ids": {1, 2},
+            "_local_line_bboxes": [
+                (270.0, 22.0, 590.0, 32.0),
+                (270.0, 32.0, 590.0, 42.0),
+            ],
+            "_line_heights": [10.0, 10.0],
+            "_lane_interval": (270.0, 590.0),
+            "_lane_is_span": False,
+        },
+    ]
+
+    merged = text_blocks._merge_spatial_text_components(
+        blocks,
+        (600.0, 100.0),
+    )
+
+    assert [block["content"] for block in merged] == [
+        "left opener",
+        "right body",
+    ]
+
+
+def test_spatial_post_merge_limits_tapered_tail_to_parallel_information_grid() -> None:
+    """验证略大间距的递减尾行只在并列信息网格中并回其左对齐主体。"""
+
+    blocks = [
+        {
+            "type": "text",
+            "bbox": (10.0, 10.0, 90.0, 40.0),
+            "angle": 0,
+            "content": "left body",
+            "_visual_row_ids": {0},
+            "_local_line_bboxes": [(10.0, 30.0, 90.0, 40.0)],
+            "_line_heights": [10.0],
+        },
+        {
+            "type": "text",
+            "bbox": (110.0, 10.0, 190.0, 40.0),
+            "angle": 0,
+            "content": "right body",
+            "_visual_row_ids": {1},
+            "_local_line_bboxes": [(110.0, 30.0, 190.0, 40.0)],
+            "_line_heights": [10.0],
+        },
+        {
+            "type": "text",
+            "bbox": (10.0, 50.0, 60.0, 60.0),
+            "angle": 0,
+            "content": "left tail",
+            "_visual_row_ids": {2},
+            "_local_line_bboxes": [(10.0, 50.0, 60.0, 60.0)],
+            "_line_heights": [10.0],
+        },
+    ]
+
+    merged = text_blocks._merge_spatial_text_components(
+        blocks,
+        (200.0, 100.0),
+    )
+
+    assert [block["content"] for block in merged] == [
+        "left body left tail",
+        "right body",
+    ]
+
+    isolated = text_blocks._merge_spatial_text_components(
+        [blocks[0], blocks[2]],
+        (200.0, 100.0),
+    )
+    assert [block["content"] for block in isolated] == [
+        "left body",
+        "left tail",
+    ]

@@ -7,6 +7,7 @@ from mineru.backend.flash.native_pdf import (
     models,
     pipeline,
 )
+from mineru.utils.pdf_document import PDFPathInfo
 
 
 from _flash_pdf_test_utils import (
@@ -24,6 +25,26 @@ def _drawing_axis_line(
         bbox=bbox,
         width=0.5,
         orientation=orientation,  # type: ignore[arg-type]
+    )
+
+
+def _path_info(
+    bbox: tuple[float, float, float, float],
+    source_index: int,
+    *,
+    segment_count: int = 5,
+    fill_visible: bool = True,
+    stroke_visible: bool = False,
+) -> PDFPathInfo:
+    """构造强图形核心测试使用的根层 PDF Path。"""
+
+    return PDFPathInfo(
+        bbox=bbox,
+        segment_count=segment_count,
+        fill_visible=fill_visible,
+        stroke_visible=stroke_visible,
+        form_depth=0,
+        source_index=source_index,
     )
 
 
@@ -91,6 +112,35 @@ def test_double_box_graphic_claims_six_labels_but_not_caption_or_body() -> None:
     assert "Nearby prose" not in blocks[0]["content"]
 
 
+def test_graphic_label_accepts_only_near_diagonal_corner_text() -> None:
+    """验证无轴向重叠的短标签仅在严格角部距离内归入图形。"""
+
+    core_bbox = (20.0, 20.0, 80.0, 80.0)
+    near_corner = _text_line("unit", (5.0, 5.0, 15.0, 15.0), 0)
+    distant_corner = _text_line("unit", (-5.0, -5.0, 5.0, 5.0), 1)
+    long_title = _text_line(
+        "deliberately wide title",
+        (0.0, 5.0, 80.0, 15.0),
+        2,
+    )
+
+    assert graphics._is_graphic_label_member(
+        near_corner,
+        core_bbox,
+        10.0,
+    )
+    assert not graphics._is_graphic_label_member(
+        distant_corner,
+        core_bbox,
+        10.0,
+    )
+    assert not graphics._is_graphic_label_member(
+        long_title,
+        core_bbox,
+        10.0,
+    )
+
+
 def test_materialized_table_bbox_has_priority_over_graphic_candidate() -> None:
     """验证绘图组件与成功表格框重叠时跳过图形容器并保留全部文本身份。"""
 
@@ -102,6 +152,72 @@ def test_materialized_table_bbox_has_priority_over_graphic_candidate() -> None:
 
     assert blocks == []
     assert claimed == set()
+
+
+def test_complex_path_container_builds_graphic_without_drawing_lines() -> None:
+    """验证大 Path 容器和内部二维复杂轮廓可直接形成图形核心。"""
+
+    source = models._PageSource(
+        page_size=(100.0, 100.0),
+        lines=[
+            _text_line("10", (15.0, 20.0, 25.0, 25.0), 0, visual_row_id=1),
+            _text_line("label", (30.0, 55.0, 50.0, 60.0), 1, visual_row_id=2),
+        ],
+        chars=[],
+        drawing_lines=[],
+        path_infos=[
+            _path_info((10.0, 10.0, 90.0, 70.0), 0),
+            _path_info((20.0, 20.0, 75.0, 50.0), 1, segment_count=12),
+            _path_info((25.0, 25.0, 35.0, 35.0), 2),
+            _path_info((40.0, 25.0, 50.0, 40.0), 3),
+            _path_info((55.0, 20.0, 65.0, 45.0), 4),
+        ],
+    )
+
+    core_bboxes = graphics._detect_strong_graphic_bboxes(source)
+    blocks, claimed = graphics._build_graphic_like_blocks(
+        source,
+        [],
+        set(),
+        core_bboxes,
+    )
+
+    assert core_bboxes == [(10.0, 10.0, 90.0, 70.0)]
+    assert claimed == {0, 1}
+    assert blocks[0]["bbox"] == (10.0, 10.0, 90.0, 70.0)
+    assert blocks[0]["content"] == "10\nlabel"
+
+
+def test_axis_pair_requires_internal_two_dimensional_complex_path() -> None:
+    """验证相交坐标轴须有二维复杂曲线支撑，规则矩形行带不会误报图形。"""
+
+    source = models._PageSource(
+        page_size=(100.0, 100.0),
+        lines=[
+            _text_line("0", (12.0, 65.0, 17.0, 70.0), 0),
+            _text_line("x", (78.0, 72.0, 83.0, 77.0), 1),
+        ],
+        chars=[],
+        drawing_lines=[],
+        path_infos=[
+            _path_info((20.0, 20.0, 21.0, 70.0), 0, segment_count=2, fill_visible=False, stroke_visible=True),
+            _path_info((20.0, 69.0, 80.0, 70.0), 1, segment_count=2, fill_visible=False, stroke_visible=True),
+            _path_info((25.0, 30.0, 75.0, 60.0), 2, segment_count=12, fill_visible=False, stroke_visible=True),
+        ],
+    )
+
+    assert graphics._detect_strong_graphic_bboxes(source) == [
+        (20.0, 20.0, 80.0, 70.0)
+    ]
+
+    source.path_infos[2] = _path_info(
+        (25.0, 30.0, 75.0, 31.0),
+        2,
+        segment_count=12,
+        fill_visible=False,
+        stroke_visible=True,
+    )
+    assert graphics._detect_strong_graphic_bboxes(source) == []
 
 
 def test_form_image_claims_internal_text_and_small_table_but_not_caption() -> None:
@@ -226,5 +342,3 @@ def test_raster_image_content_is_removed_from_text_and_empty_image_page_is_kept(
             "content": "",
         }
     ]
-
-
