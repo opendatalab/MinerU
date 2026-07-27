@@ -8,6 +8,7 @@ import sys
 import time
 import uuid
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any
 
 import typer
@@ -16,6 +17,7 @@ from rich.table import Table
 from rich.text import Text
 
 from ...config import config
+from ...doclib.endpoint import read_endpoint_file
 from ...doclib.instance_lock import DoclibLockUnavailable, build_doclib_home_owned_message, doclib_home_lock
 from ...doclib.types import ServerStatusResponse, TCPServerStatus
 from ...errors import MineruError
@@ -27,6 +29,12 @@ from ..runtime import run_cli
 app = typer.Typer(help="Server lifecycle management", no_args_is_help=True)
 
 SERVER_START_TIMEOUT_SEC = 30.0
+
+
+@dataclass(frozen=True)
+class _ServerStartingStatus:
+    status: str = "starting"
+    pid: int | None = None
 
 
 def _socket_path() -> str:
@@ -240,7 +248,7 @@ def _start() -> str:
 
                 if not _wait_for_started_server(proc):
                     if proc.poll() is None:
-                        proc.kill()
+                        return f"Server is still starting (PID {proc.pid}).\nCheck status: mineru server status"
                     raise MineruError(
                         "service_unavailable",
                         f"Server failed to start within {int(SERVER_START_TIMEOUT_SEC)} seconds. "
@@ -307,10 +315,11 @@ def status(json_mode: bool = typer.Option(False, "--json", help="JSON output")) 
     run_cli(ctx, _server_status, render=_render_server_status)
 
 
-def _server_status() -> ServerStatusResponse:
+def _server_status() -> ServerStatusResponse | _ServerStartingStatus:
     if not _server_running():
         if not _doclib_lock_available():
-            raise _home_owner_unavailable_error()
+            endpoint = read_endpoint_file(_endpoint_path())
+            return _ServerStartingStatus(pid=endpoint.pid if endpoint is not None else None)
         return _not_running_status()
     from ...doclib.client import DoclibClient
 
@@ -318,7 +327,14 @@ def _server_status() -> ServerStatusResponse:
     return c.get_server_status()
 
 
-def _render_server_status(data: ServerStatusResponse) -> Iterator[RenderableObject]:
+def _render_server_status(data: ServerStatusResponse | _ServerStartingStatus) -> Iterator[RenderableObject]:
+    if isinstance(data, _ServerStartingStatus):
+        if data.pid is None:
+            yield "Server is still starting."
+        else:
+            yield f"Server is still starting (PID {data.pid})."
+        yield "Check again: mineru server status"
+        return
     if not _get(data, "running"):
         yield "Server is not running."
         return

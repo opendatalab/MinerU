@@ -2085,8 +2085,8 @@ def test_server_start_failure_points_to_log_and_does_not_discard_child_stderr(mo
     class _Proc:
         pid = 12345
 
-        def poll(self) -> None:
-            return None
+        def poll(self) -> int:
+            return 1
 
         def kill(self) -> None:
             popen_calls.append({"kill": True})
@@ -2124,7 +2124,32 @@ def test_server_start_failure_points_to_log_and_does_not_discard_child_stderr(mo
     assert "child failed\n" not in log_path.read_text(encoding="utf-8")
     assert "child stdout\n" in stdout_log_path.read_text(encoding="utf-8")
     assert "child failed\n" in stderr_log_path.read_text(encoding="utf-8")
-    assert popen_calls[-1] == {"kill": True}
+    assert {"kill": True} not in popen_calls
+
+
+def test_server_start_reports_starting_process_without_killing_it(monkeypatch: Any, tmp_path: Path) -> None:
+    class _Proc:
+        pid = 12345
+
+        def poll(self) -> None:
+            return None
+
+    def _popen(*args: Any, **kwargs: Any) -> _Proc:
+        return _Proc()
+
+    monkeypatch.setattr(server, "_server_running", lambda: False)
+    monkeypatch.setattr(server, "_doclib_lock_available", lambda: True)
+    monkeypatch.setattr(server, "_wait_for_started_server", lambda proc: False)
+    monkeypatch.setattr(server, "_server_log_path", lambda: str(tmp_path / "doclib.log"))
+    monkeypatch.setattr(server, "_server_stdout_log_path", lambda: str(tmp_path / "doclib.stdout.log"))
+    monkeypatch.setattr(server, "_server_stderr_log_path", lambda: str(tmp_path / "doclib.stderr.log"))
+    monkeypatch.setattr(server.subprocess, "Popen", _popen)
+
+    result = runner.invoke(app, ["server", "start"])
+
+    assert result.exit_code == 0
+    assert "Server is still starting (PID 12345)." in result.output
+    assert "Check status: mineru server status" in result.output
 
 
 def test_server_start_lock_blocks_concurrent_start(monkeypatch: Any, tmp_path: Path) -> None:
@@ -2807,18 +2832,26 @@ def test_server_status_json_not_running_returns_state_json(monkeypatch: Any) -> 
     assert "Server is not running." not in result.output
 
 
-def test_server_status_json_reports_unresponsive_home_owner(monkeypatch: Any, tmp_path: Path) -> None:
+def test_server_status_json_reports_starting_without_endpoint_pid(monkeypatch: Any) -> None:
     monkeypatch.setattr(server, "_server_running", lambda: False)
     monkeypatch.setattr(server, "_doclib_lock_available", lambda: False)
-    monkeypatch.setattr("mineru.doclib.instance_lock._mineru_home", lambda: str(tmp_path))
-    monkeypatch.setattr("mineru.doclib.instance_lock.read_endpoint_file", lambda path: None)
+    monkeypatch.setattr(server, "read_endpoint_file", lambda path: None)
 
     result = runner.invoke(app, ["server", "status", "--json"])
 
-    assert result.exit_code == 1
+    assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["error"]["code"] == "service_unavailable"
-    assert payload["error"]["message"] == (
-        f"MinerU home [{tmp_path}] is currently owned by another doclib server process."
-    )
-    assert "doclib.lock" not in payload["error"]["message"]
+    assert payload == {"status": "starting", "pid": None}
+
+
+def test_server_status_reports_starting_with_endpoint_pid(monkeypatch: Any) -> None:
+    endpoint = type("Endpoint", (), {"pid": 12345})()
+    monkeypatch.setattr(server, "_server_running", lambda: False)
+    monkeypatch.setattr(server, "_doclib_lock_available", lambda: False)
+    monkeypatch.setattr(server, "read_endpoint_file", lambda path: endpoint)
+
+    result = runner.invoke(app, ["server", "status"])
+
+    assert result.exit_code == 0
+    assert "Server is still starting (PID 12345)." in result.output
+    assert "Check again: mineru server status" in result.output
