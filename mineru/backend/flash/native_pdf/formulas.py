@@ -61,9 +61,40 @@ def _build_formula_like_blocks(
         local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
         lanes = _infer_text_lanes(angle_geometry, local_page_width, median_height)
         for lane in lanes:
-            if lane.is_span or len(lane.lines) < 2:
+            if lane.is_span:
                 continue
             lane.lines.sort(key=lambda item: (item[1][1], item[1][0], item[0].source_index))
+            for line, bbox in list(lane.lines):
+                if (
+                    line.compact_formula_cluster
+                    and _is_isolated_compact_formula_cluster(
+                        (line, bbox),
+                        lane,
+                        median_height,
+                    )
+                ):
+                    content = _sanitize_pdf_control_text(
+                        line.text,
+                        preserve_newlines=False,
+                    ).strip()
+                    if not content:
+                        continue
+                    blocks.append(
+                        {
+                            "type": "equation",
+                            "bbox": line.bbox,
+                            "angle": angle,
+                            "content": content,
+                        }
+                    )
+                    claimed_source_indices.add(line.source_index)
+            lane.lines = [
+                item
+                for item in lane.lines
+                if item[0].source_index not in claimed_source_indices
+            ]
+            if len(lane.lines) < 2:
+                continue
             dominant_body_font = _infer_formula_body_font(lane, median_height)
             anchors = _find_formula_spatial_anchors(
                 lane,
@@ -124,6 +155,53 @@ def _build_formula_like_blocks(
     return blocks, remaining_lines
 
 
+def _is_isolated_compact_formula_cluster(
+    candidate: tuple[_LineItem, BBox],
+    lane: _TextLane,
+    median_height: float,
+) -> bool:
+    """用上下正文邻行确认紧凑二维文本簇是独立行间公式。"""
+
+    line, bbox = candidate
+    if not line.compact_formula_cluster:
+        return False
+    lane_width = max(0.1, lane.right - lane.left)
+    if bbox[2] - bbox[0] > 0.6 * lane_width:
+        return False
+    if bbox[3] - bbox[1] > 3.0 * median_height:
+        return False
+
+    candidate_center = _bbox_center_y(bbox)
+    body_rows = [
+        item
+        for item in lane.lines
+        if item[0].source_index != line.source_index
+        and item[1][2] - item[1][0] >= 0.6 * lane_width
+        and 0.8 * median_height
+        <= _line_effective_height(*item)
+        <= 1.25 * median_height
+    ]
+    rows_above = [
+        item
+        for item in body_rows
+        if _bbox_center_y(item[1]) < candidate_center
+    ]
+    rows_below = [
+        item
+        for item in body_rows
+        if _bbox_center_y(item[1]) > candidate_center
+    ]
+    if not rows_above or not rows_below:
+        return False
+    previous = max(rows_above, key=lambda item: _bbox_center_y(item[1]))
+    following = min(rows_below, key=lambda item: _bbox_center_y(item[1]))
+    return (
+        candidate_center - _bbox_center_y(previous[1]) <= 2.5 * median_height
+        and _bbox_center_y(following[1]) - candidate_center
+        <= 2.5 * median_height
+    )
+
+
 def _find_formula_spatial_anchors(
     lane: _TextLane,
     median_height: float,
@@ -177,8 +255,10 @@ def _find_formula_spatial_anchors(
         detached_below_body = body_bottom < center_y <= body_bottom + 6.0 * median_height
         if not body_top <= center_y <= body_bottom and not detached_below_body:
             continue
-        has_left_peer = any(
-            other_line.source_index != line.source_index
+        left_peers = [
+            (other_line, other_bbox)
+            for other_line, other_bbox in lane.lines
+            if other_line.source_index != line.source_index
             and other_bbox[2] - other_bbox[0] <= 0.75 * lane_width
             and _bbox_center_x(other_bbox) < bbox[0]
             and (
@@ -196,9 +276,21 @@ def _find_formula_spatial_anchors(
                     _line_effective_height(other_line, other_bbox),
                 )
             )
-            for other_line, other_bbox in lane.lines
-        )
-        if has_left_peer:
+        ]
+        if is_short_right_anchor and not has_formula_number_suffix:
+            # 非编号短锚点必须与左侧主体真正分离；分母字符与正文横向重叠时不能扩张成公式。
+            if any(
+                _bbox_axis_overlap_ratio(bbox, other_bbox, axis="x") >= 0.5
+                for _other_line, other_bbox in left_peers
+            ):
+                continue
+            minimum_gap = max(0.5, 0.1 * line_height)
+            if not any(
+                bbox[0] - other_bbox[2] >= minimum_gap
+                for _other_line, other_bbox in left_peers
+            ):
+                continue
+        if left_peers:
             anchors.append(
                 _FormulaAnchor(
                     line=line,
@@ -573,4 +665,3 @@ def _formula_members_to_block(
         "angle": angle,
         "content": content,
     }
-

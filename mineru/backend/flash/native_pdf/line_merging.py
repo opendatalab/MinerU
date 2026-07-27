@@ -9,11 +9,16 @@ import statistics
 
 from mineru.types import BBox
 
-from .models import _LineItem
+from .models import (
+    _LineItem,
+    _TextLane,
+)
 from .geometry import (
+    _bbox_axis_overlap_ratio,
     _bbox_center_y,
     _bbox_intersects,
     _bbox_union_many,
+    _horizontal_bbox_gap,
     _rotate_bbox_to_upright,
 )
 from .native_text import (
@@ -88,6 +93,250 @@ def _merge_same_baseline_text_lines(
     )
     return output
 
+
+def _merge_overlapping_inline_text_clusters(
+    lines: list[_LineItem],
+    page_size: tuple[float, float],
+    table_bboxes: list[BBox],
+) -> list[_LineItem]:
+    """在容器认领后恢复由分子、分母和上下标拆成的二维物理文本行。"""
+
+    if len(lines) < 2:
+        return list(lines)
+
+    consumed_source_indices: set[int] = set()
+    merged_lines: list[_LineItem] = []
+    for angle in sorted({line.angle for line in lines}):
+        angle_geometry = [(line, _rotate_bbox_to_upright(line.bbox, page_size, angle)) for line in lines if line.angle == angle]
+        if len(angle_geometry) < 2:
+            continue
+        angle_median_height = statistics.median(_line_effective_height(line, bbox) for line, bbox in angle_geometry)
+        local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
+        lanes = _infer_text_lanes(
+            angle_geometry,
+            local_page_width,
+            angle_median_height,
+        )
+        for lane in lanes:
+            if lane.is_span or len(lane.lines) < 2:
+                continue
+            lane.lines.sort(key=lambda item: (item[1][1], item[1][0], item[0].source_index))
+            lane_median_height = statistics.median(_line_effective_height(line, bbox) for line, bbox in lane.lines)
+            parents = list(range(len(lane.lines)))
+
+            def find(index: int) -> int:
+                """查找当前栏二维文本簇并查集的根节点。"""
+
+                while parents[index] != index:
+                    parents[index] = parents[parents[index]]
+                    index = parents[index]
+                return index
+
+            def union(first_index: int, second_index: int) -> None:
+                """合并两个满足二维物理行邻接条件的成员。"""
+
+                first_root = find(first_index)
+                second_root = find(second_index)
+                if first_root != second_root:
+                    parents[second_root] = first_root
+
+            for first_index, first in enumerate(lane.lines):
+                for second_index in range(first_index + 1, len(lane.lines)):
+                    second = lane.lines[second_index]
+                    if _overlapping_inline_cluster_pair_is_connected(
+                        first,
+                        second,
+                        lane_median_height,
+                        table_bboxes,
+                    ):
+                        union(first_index, second_index)
+
+            groups: dict[int, list[tuple[_LineItem, BBox]]] = {}
+            for index, item in enumerate(lane.lines):
+                groups.setdefault(find(index), []).append(item)
+            for members in groups.values():
+                cluster_kind = _classify_overlapping_inline_cluster(
+                    members,
+                    lane,
+                    lane_median_height,
+                    table_bboxes,
+                )
+                if cluster_kind is None:
+                    continue
+                merged_lines.append(
+                    _merge_overlapping_inline_cluster(
+                        members,
+                        page_size,
+                        lane_median_height,
+                        compact_formula_cluster=cluster_kind == "formula",
+                    )
+                )
+                consumed_source_indices.update(line.source_index for line, _bbox in members)
+
+    output = [line for line in lines if line.source_index not in consumed_source_indices]
+    output.extend(merged_lines)
+    output.sort(
+        key=lambda line: (
+            line.angle,
+            _rotate_bbox_to_upright(
+                line.bbox,
+                page_size,
+                line.angle,
+            )[1],
+            _rotate_bbox_to_upright(
+                line.bbox,
+                page_size,
+                line.angle,
+            )[0],
+            line.source_index,
+        )
+    )
+    return output
+
+
+def _overlapping_inline_cluster_pair_is_connected(
+    first: tuple[_LineItem, BBox],
+    second: tuple[_LineItem, BBox],
+    median_height: float,
+    table_bboxes: list[BBox],
+) -> bool:
+    """判断两个同栏成员是否为同一二维物理行中的重叠片段。"""
+
+    first_line, first_bbox = first
+    second_line, second_bbox = second
+    if first_line.angle != second_line.angle:
+        return False
+    if first_line.semantic_type != second_line.semantic_type:
+        return False
+    if _connection_crosses_table(
+        first_line.bbox,
+        second_line.bbox,
+        table_bboxes,
+    ):
+        return False
+    if _bbox_axis_overlap_ratio(first_bbox, second_bbox, axis="y") < 0.55:
+        return False
+
+    horizontal_gap = _horizontal_bbox_gap(first_bbox, second_bbox)
+    if first_line.visual_row_id == second_line.visual_row_id and (first_line.split_from_row or second_line.split_from_row):
+        return horizontal_gap <= 3.0 * median_height
+    pair_height = max(
+        _line_effective_height(first_line, first_bbox),
+        _line_effective_height(second_line, second_bbox),
+    )
+    return _bbox_axis_overlap_ratio(first_bbox, second_bbox, axis="x") > 0.0 or horizontal_gap <= 1.5 * pair_height
+
+
+def _classify_overlapping_inline_cluster(
+    members: list[tuple[_LineItem, BBox]],
+    lane: _TextLane,
+    median_height: float,
+    table_bboxes: list[BBox],
+) -> str | None:
+    """按正文宿主和紧凑程度区分行内文本簇与独立公式簇。"""
+
+    if len(members) < 2:
+        return None
+    visual_row_ids = {line.visual_row_id for line, _bbox in members if line.visual_row_id is not None}
+    if len(visual_row_ids) < 2:
+        return None
+    if any(_bbox_intersects(line.bbox, table_bbox) for line, _bbox in members for table_bbox in table_bboxes):
+        return None
+
+    union_bbox = _bbox_union_many([bbox for _line, bbox in members])
+    if union_bbox[3] - union_bbox[1] > 3.0 * median_height:
+        return None
+    lane_width = max(0.1, lane.right - lane.left)
+    has_fragment = any(
+        _line_effective_height(line, bbox) <= 0.88 * median_height or line.font_coverage < 0.75 for line, bbox in members
+    )
+    if not has_fragment:
+        return None
+
+    has_body_host = any(
+        bbox[2] - bbox[0] >= max(4.0 * median_height, 0.35 * lane_width)
+        and _line_effective_height(line, bbox) >= 0.8 * median_height
+        and line.font_coverage >= 0.75
+        for line, bbox in members
+    )
+    if has_body_host:
+        return "inline"
+    if len(members) >= 3 and len(visual_row_ids) >= 3 and union_bbox[2] - union_bbox[0] <= 0.6 * lane_width:
+        return "formula"
+    return None
+
+
+def _select_overlapping_inline_cluster_host(
+    members: list[tuple[_LineItem, BBox]],
+    median_height: float,
+) -> _LineItem:
+    """选择与其他成员纵向重叠最多且最接近正文尺度的宿主行。"""
+
+    union_bbox = _bbox_union_many([bbox for _line, bbox in members])
+    union_center_y = _bbox_center_y(union_bbox)
+
+    def host_score(item: tuple[_LineItem, BBox]) -> tuple[float, ...]:
+        """生成宿主候选的正文尺度、同行支持和中心距离评分。"""
+
+        line, bbox = item
+        vertical_support = sum(
+            max(0.0, min(bbox[3], other_bbox[3]) - max(bbox[1], other_bbox[1]))
+            for other_line, other_bbox in members
+            if other_line is not line
+        )
+        same_row_support = sum(
+            line.visual_row_id is not None and line.visual_row_id == other_line.visual_row_id
+            for other_line, _other_bbox in members
+            if other_line is not line
+        )
+        body_like = float(_line_effective_height(line, bbox) >= 0.8 * median_height and line.font_coverage >= 0.75)
+        return (
+            body_like,
+            float(same_row_support),
+            vertical_support,
+            bbox[2] - bbox[0],
+            -abs(_bbox_center_y(bbox) - union_center_y),
+            -float(line.source_index),
+        )
+
+    return max(members, key=host_score)[0]
+
+
+def _merge_overlapping_inline_cluster(
+    members: list[tuple[_LineItem, BBox]],
+    page_size: tuple[float, float],
+    median_height: float,
+    *,
+    compact_formula_cluster: bool,
+) -> _LineItem:
+    """按来源顺序合并二维文本簇，并保留字符与宿主排版信息。"""
+
+    ordered_members = sorted(
+        (line for line, _bbox in members),
+        key=lambda line: line.source_index,
+    )
+    host = _select_overlapping_inline_cluster_host(members, median_height)
+    merged = _LineItem(
+        text=" ".join(text for line in ordered_members if (text := line.text.strip())),
+        bbox=_bbox_union_many([line.bbox for line in ordered_members]),
+        angle=host.angle,
+        source_index=min(line.source_index for line in ordered_members),
+        chars=[char for line in ordered_members for char in line.chars],
+        visual_row_id=host.visual_row_id,
+        run_index=host.run_index,
+        effective_height=host.effective_height,
+        font_signature=host.font_signature,
+        font_coverage=host.font_coverage,
+        dominant_font_weight=host.dominant_font_weight,
+        median_glyph_width=host.median_glyph_width,
+        split_from_row=any(line.split_from_row for line in ordered_members),
+        semantic_type=host.semantic_type,
+        restored_inline_cluster=True,
+        compact_formula_cluster=compact_formula_cluster,
+    )
+    if merged.chars:
+        _fill_native_typography(merged, page_size)
+    return merged
 
 def _merge_post_semantic_text_runs(
     lines: list[_LineItem],
@@ -353,6 +602,12 @@ def _merge_same_baseline_group(
         else None,
         split_from_row=any(member.split_from_row for member in members),
         semantic_type=members[0].semantic_type,
+        restored_inline_cluster=any(
+            member.restored_inline_cluster for member in members
+        ),
+        compact_formula_cluster=any(
+            member.compact_formula_cluster for member in members
+        ),
     )
     if merged.chars:
         _fill_native_typography(merged, page_size)
@@ -685,6 +940,12 @@ def _merge_dense_split_visual_row(
         else None,
         split_from_row=False,
         semantic_type=ordered_members[0].semantic_type,
+        restored_inline_cluster=any(
+            member.restored_inline_cluster for member in ordered_members
+        ),
+        compact_formula_cluster=any(
+            member.compact_formula_cluster for member in ordered_members
+        ),
     )
     if merged.chars:
         _fill_native_typography(merged, page_size)

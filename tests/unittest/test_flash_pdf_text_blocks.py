@@ -508,3 +508,230 @@ def test_smaller_footnote_after_abnormal_gap_forces_text_block_break() -> None:
     )
 
 
+def test_overlapping_fraction_fragments_merge_with_ha_and_nb_body_hosts() -> None:
+    """验证 Ha、Nb 的上下分式碎片并回正文宿主，且普通后续行保持独立。"""
+
+    body_font = ("Body", 0)
+    math_font = ("Math", 1)
+    lines = [
+        _text_line(
+            "Ha =",
+            (0.0, 10.0, 20.0, 20.0),
+            0,
+            visual_row_id=0,
+            split_from_row=True,
+            effective_height=10.0,
+            font_signature=math_font,
+            font_coverage=0.67,
+        ),
+        _text_line(
+            "root",
+            (30.0, 0.0, 40.0, 12.0),
+            1,
+            visual_row_id=0,
+            split_from_row=True,
+            effective_height=9.0,
+            font_signature=math_font,
+            font_coverage=0.57,
+        ),
+        _text_line(
+            "sigma",
+            (30.0, 9.0, 34.0, 16.0),
+            2,
+            visual_row_id=1,
+            effective_height=7.0,
+            font_signature=math_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "mu",
+            (30.0, 16.0, 34.0, 23.0),
+            3,
+            visual_row_id=2,
+            effective_height=7.0,
+            font_signature=math_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "denotes the Hartmann number",
+            (22.0, 3.0, 100.0, 25.0),
+            4,
+            visual_row_id=3,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=0.9,
+        ),
+        _text_line(
+            "Nb = numerator",
+            (0.0, 40.0, 42.0, 53.0),
+            5,
+            visual_row_id=4,
+            effective_height=8.0,
+            font_signature=math_font,
+            font_coverage=0.6,
+        ),
+        _text_line(
+            "mu",
+            (30.0, 48.0, 34.0, 55.0),
+            6,
+            visual_row_id=5,
+            effective_height=7.0,
+            font_signature=math_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "denotes the Brownian parameter",
+            (46.0, 43.0, 100.0, 53.0),
+            7,
+            visual_row_id=6,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "ordinary following row",
+            (0.0, 70.0, 100.0, 80.0),
+            8,
+            visual_row_id=7,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+    ]
+
+    merged = line_merging._merge_overlapping_inline_text_clusters(
+        lines,
+        (120.0, 100.0),
+        [],
+    )
+
+    assert [line.source_index for line in merged] == [0, 5, 8]
+    assert merged[0].text == "Ha = root sigma mu denotes the Hartmann number"
+    assert merged[1].text == "Nb = numerator mu denotes the Brownian parameter"
+    assert all(line.restored_inline_cluster for line in merged[:2])
+    assert not any(line.text in {"sigma", "mu"} for line in merged)
+
+
+def test_overlapping_delta_fraction_and_tail_form_one_text_block() -> None:
+    """验证同一物理行的分子分母恢复后可与下一行幅值说明组成单块。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line(
+            "where, delta = numerator",
+            (0.0, 0.0, 32.0, 13.0),
+            0,
+            visual_row_id=0,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=0.73,
+        ),
+        _text_line(
+            "denominator displays the amplitude",
+            (28.0, 3.0, 100.0, 16.0),
+            1,
+            visual_row_id=1,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=0.86,
+        ),
+        _text_line(
+            "ratio.",
+            (0.0, 18.0, 20.0, 28.0),
+            2,
+            visual_row_id=2,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+    ]
+
+    merged = line_merging._merge_overlapping_inline_text_clusters(
+        lines,
+        (120.0, 100.0),
+        [],
+    )
+    blocks = text_blocks._build_text_blocks(merged, [], (120.0, 100.0))
+
+    assert len(merged) == 2
+    assert [block["content"] for block in blocks] == ["where, delta = numerator denominator displays the amplitude ratio."]
+
+
+def test_overlapping_inline_pair_respects_table_and_physical_row_gap() -> None:
+    """验证二维碎片连接不会跨表格，也不会连接普通上下相邻正文行。"""
+
+    first = _text_line("left", (0.0, 0.0, 40.0, 10.0), 0, effective_height=10.0)
+    same_row = _text_line("right", (60.0, 0.0, 100.0, 10.0), 1, effective_height=10.0)
+    next_row = _text_line("next", (0.0, 12.0, 40.0, 22.0), 2, effective_height=10.0)
+
+    assert not line_merging._overlapping_inline_cluster_pair_is_connected(
+        (first, first.bbox),
+        (same_row, same_row.bbox),
+        10.0,
+        [(45.0, -5.0, 55.0, 15.0)],
+    )
+    assert not line_merging._overlapping_inline_cluster_pair_is_connected(
+        (first, first.bbox),
+        (next_row, next_row.bbox),
+        10.0,
+        [],
+    )
+
+
+def test_hyphen_continuation_cannot_start_false_hanging_indent_entry() -> None:
+    """验证断词续行优先归前段，后续首行缩进说明和紧凑公式仍各自分块。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line(
+            "linear equations in the trans-",
+            (0.0, 0.0, 100.0, 10.0),
+            0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "verse direction.",
+            (0.0, 12.0, 40.0, 22.0),
+            1,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "The expression starts here",
+            (12.0, 24.0, 100.0, 34.0),
+            2,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "the stream function is given below:",
+            (0.0, 36.0, 75.0, 46.0),
+            3,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "F = fraction",
+            (12.0, 48.0, 45.0, 55.0),
+            4,
+            effective_height=7.0,
+            font_signature=("Math", 1),
+            font_coverage=0.5,
+        ),
+    ]
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(line, line.bbox) for line in lines],
+    )
+
+    group_map = text_blocks._build_hanging_indent_group_map(lane, [], [])
+    blocks = text_blocks._build_text_blocks(lines, [], (120.0, 100.0))
+
+    assert 1 not in group_map
+    assert [block["content"] for block in blocks] == [
+        "linear equations in the transverse direction.",
+        "The expression starts here the stream function is given below:",
+        "F = fraction",
+    ]

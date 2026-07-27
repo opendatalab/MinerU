@@ -8,7 +8,10 @@ import statistics
 from typing import Any, Sequence
 
 
-from mineru.backend.utils.char_utils import resolve_text_line_boundary
+from mineru.backend.utils.char_utils import (
+    is_hyphen_at_line_end,
+    resolve_text_line_boundary,
+)
 from mineru.types import BBox
 from mineru.utils.language import detect_lang
 
@@ -90,6 +93,13 @@ def _build_hanging_indent_group_map(
     ) -> tuple[int, float] | None:
         """消费一个左突首行及其续行，并返回下一条首行位置。"""
 
+        if (
+            start_index > 0
+            and is_hyphen_at_line_end(rows[start_index - 1][0].text)
+            and rows_are_adjacent(rows[start_index - 1], rows[start_index])
+        ):
+            # 排版断词后的下一物理行属于前文，不能被缩进几何误当成新条目首行。
+            return None
         continuation_index = start_index + 1
         if continuation_index >= len(rows):
             return None
@@ -426,7 +436,18 @@ def _build_text_blocks(
                 else:
                     previous_group = hanging_indent_groups.get(previous[0].source_index)
                     current_group = hanging_indent_groups.get(current[0].source_index)
-                    if previous_group is not None or current_group is not None:
+                    if is_hyphen_at_line_end(previous[0].text):
+                        # 断词续行优先于悬挂缩进分组，但仍复用正文连接中的距离和障碍限制。
+                        should_connect = _should_connect_text_rows(
+                            previous,
+                            current,
+                            lane,
+                            regular_gap,
+                            gap_mad,
+                            table_bboxes,
+                            local_axis_lines,
+                        )
+                    elif previous_group is not None or current_group is not None:
                         should_connect = previous_group is not None and previous_group == current_group
                     else:
                         should_connect = _should_connect_text_rows(

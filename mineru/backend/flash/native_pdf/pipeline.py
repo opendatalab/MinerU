@@ -30,6 +30,7 @@ from .native_text import (
     _sanitize_pdf_control_text,
 )
 from .line_merging import (
+    _merge_overlapping_inline_text_clusters,
     _merge_post_semantic_text_runs,
     _merge_same_baseline_text_lines,
     _merge_title_resolved_visual_rows,
@@ -149,6 +150,11 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
     )
     remaining_lines = _merge_same_baseline_text_lines(
         [line for line in source.lines if line.source_index not in claimed_line_indices],
+        source.page_size,
+        table_bboxes,
+    )
+    remaining_lines = _merge_overlapping_inline_text_clusters(
+        remaining_lines,
         source.page_size,
         table_bboxes,
     )
@@ -306,4 +312,3 @@ def _normalize_output_block(
         "angle": 0 if normalized_type == "image" else int(block.get("angle", 0) or 0) % 360,
         "content": content,
     }
-

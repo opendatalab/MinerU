@@ -6,6 +6,7 @@ import pytest
 from mineru.backend.flash.native_pdf import (
     formulas,
     geometry,
+    line_merging,
     models,
 )
 
@@ -295,3 +296,135 @@ def test_detached_formula_anchor_collects_multiline_formula_but_not_body_prefix(
     assert punctuation.text not in member_texts
 
 
+def test_overlapping_denominator_cannot_become_short_formula_anchor() -> None:
+    """验证与正文横向重叠的右缘分母字符不会成为非编号公式锚点。"""
+
+    body_font = ("Body", 0)
+    body_lines = [
+        _text_line(
+            f"body-{index}",
+            (0.0, top, 92.0, top + 10.0),
+            index,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        )
+        for index, top in enumerate((0.0, 12.0, 24.0))
+    ]
+    formula_body = _text_line(
+        "Pr = cp mu",
+        (25.0, 36.0, 90.0, 46.0),
+        3,
+        effective_height=10.0,
+        font_signature=body_font,
+        font_coverage=0.8,
+    )
+    denominator = _text_line(
+        "k",
+        (88.0, 38.0, 92.0, 45.0),
+        4,
+        effective_height=7.0,
+        font_signature=("Math", 1),
+        font_coverage=1.0,
+    )
+    lane = models._TextLane(
+        left=0.0,
+        right=92.0,
+        lines=[
+            *((line, line.bbox) for line in body_lines),
+            (formula_body, formula_body.bbox),
+            (denominator, denominator.bbox),
+        ],
+    )
+
+    assert formulas._find_formula_spatial_anchors(lane, 10.0, body_font) == []
+
+
+def test_compact_multiline_cluster_becomes_one_isolated_equation() -> None:
+    """验证可提取的紧凑 F/G 多行簇形成单个公式块且不进入前后正文。"""
+
+    body_font = ("Body", 0)
+    body_lines = [
+        _text_line(
+            f"body-{index}",
+            (0.0, top, 100.0, top + 10.0),
+            index,
+            visual_row_id=index,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        )
+        for index, top in enumerate((0.0, 12.0, 24.0))
+    ]
+    fragments = [
+        _text_line(
+            "F = numerator",
+            (10.0, 36.0, 25.0, 49.0),
+            3,
+            visual_row_id=3,
+            effective_height=8.0,
+            font_signature=("Math", 1),
+            font_coverage=0.5,
+        ),
+        _text_line(
+            "denominator, G =",
+            (20.0, 39.0, 40.0, 52.0),
+            4,
+            visual_row_id=4,
+            split_from_row=True,
+            effective_height=9.5,
+            font_signature=("Math", 1),
+            font_coverage=0.4,
+        ),
+        _text_line(
+            "numerator",
+            (46.0, 36.0, 52.0, 43.0),
+            5,
+            visual_row_id=4,
+            split_from_row=True,
+            effective_height=7.0,
+            font_signature=("Math", 1),
+            font_coverage=0.5,
+        ),
+        _text_line(
+            "denominator",
+            (46.0, 39.0, 53.0, 52.0),
+            6,
+            visual_row_id=5,
+            effective_height=7.0,
+            font_signature=("Math", 1),
+            font_coverage=0.33,
+        ),
+    ]
+    following = _text_line(
+        "following body",
+        (0.0, 54.0, 100.0, 64.0),
+        7,
+        visual_row_id=6,
+        effective_height=10.0,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+
+    merged = line_merging._merge_overlapping_inline_text_clusters(
+        [*body_lines, *fragments, following],
+        (120.0, 100.0),
+        [],
+    )
+    compact_cluster = next(line for line in merged if line.source_index == 3)
+    blocks, remaining = formulas._build_formula_like_blocks(
+        merged,
+        [],
+        (120.0, 100.0),
+    )
+
+    assert compact_cluster.compact_formula_cluster
+    assert blocks == [
+        {
+            "type": "equation",
+            "bbox": (10.0, 36.0, 53.0, 52.0),
+            "angle": 0,
+            "content": "F = numerator denominator, G = numerator denominator",
+        }
+    ]
+    assert compact_cluster not in remaining

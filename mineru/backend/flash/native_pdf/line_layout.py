@@ -108,7 +108,15 @@ def _effective_text_row_gap(
 
     previous_line, previous_bbox = previous
     _current_line, current_bbox = current
-    return current_bbox[1] - (previous_bbox[1] + _line_effective_height(previous_line, previous_bbox))
+    if previous_line.restored_inline_cluster:
+        # 二维文本簇的 bbox 底边是真实分母边界；同时截断深度重叠，避免相邻分式互相成为段落屏障。
+        return max(
+            current_bbox[1] - previous_bbox[3],
+            -0.25 * _line_effective_height(previous_line, previous_bbox),
+        )
+    return current_bbox[1] - (
+        previous_bbox[1] + _line_effective_height(previous_line, previous_bbox)
+    )
 
 
 def _infer_text_lanes(
@@ -479,4 +487,3 @@ def _connection_crosses_table(
         )
     )
     return connector is not None and any(_bbox_intersects(connector, table_bbox) for table_bbox in table_bboxes)
-
