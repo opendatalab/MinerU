@@ -216,6 +216,32 @@ def test_flush_once_sends_enabled_period_and_deletes_on_success(monkeypatch, tmp
     asyncio.run(_run())
 
 
+def test_flush_once_sends_unset_period_during_alpha(monkeypatch, tmp_path) -> None:
+    async def _run() -> None:
+        captured: list[dict] = []
+
+        async def _send(payload: dict) -> str:
+            captured.append(payload)
+            return "success"
+
+        monkeypatch.setattr(telemetry_service_module, "send_payload", _send)
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        store = TelemetryStore(db)
+        service = TelemetryService(store)
+        await service.initialize()
+        await service.record_count("search.request.count", timestamp_ms=1_700_000_000_000)
+
+        result = await service.flush_once()
+
+        assert result.status == "success"
+        assert result.succeeded == 1
+        assert len(captured) == 1
+        assert await store.list_periods_for_flush() == []
+
+    asyncio.run(_run())
+
+
 def test_flush_once_keeps_period_on_retry(monkeypatch, tmp_path) -> None:
     async def _run() -> None:
         async def _send(_payload: dict) -> str:

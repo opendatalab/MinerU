@@ -261,6 +261,8 @@ Telemetry does not collect document contents, extracted text or images, file nam
 
 Telemetry starts in an unset consent state. In this state MinerU may keep local aggregate data but will not upload it. Users can enable or disable telemetry explicitly; disabling telemetry stops new telemetry aggregation and removes unsent local telemetry data.
 
+During the current alpha prerelease, the unset state may also upload locally aggregated metrics. The existing interactive prompt and explicit enable/disable commands remain unchanged. This temporary behavior will be reverted for the stable release.
+
 Do not prompt for telemetry consent in agent or non-interactive contexts. If the user asks about telemetry, use:
 
 ```bash
