@@ -26,6 +26,8 @@ from ..runtime import run_cli
 
 app = typer.Typer(help="Server lifecycle management", no_args_is_help=True)
 
+SERVER_START_TIMEOUT_SEC = 30.0
+
 
 def _socket_path() -> str:
     return config.doclib.uds.path
@@ -167,7 +169,7 @@ def _home_owner_unavailable_error() -> MineruError:
     return MineruError("service_unavailable", build_doclib_home_owned_message())
 
 
-def _wait_for_started_server(proc: subprocess.Popen[bytes], timeout: float = 15.0) -> bool:
+def _wait_for_started_server(proc: subprocess.Popen[bytes], timeout: float = SERVER_START_TIMEOUT_SEC) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         if _server_running():
@@ -241,7 +243,7 @@ def _start() -> str:
                         proc.kill()
                     raise MineruError(
                         "service_unavailable",
-                        "Server failed to start within 15 seconds. "
+                        f"Server failed to start within {int(SERVER_START_TIMEOUT_SEC)} seconds. "
                         f"See log: {log_path}; stdout: {stdout_log_path}; stderr: {stderr_log_path}",
                     )
     except MineruError:
