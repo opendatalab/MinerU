@@ -517,23 +517,34 @@ def _read_formula_vector(workbook, formula: str):
 
     sheet_name, min_col, min_row, max_col, max_row = parsed
 
+    if min_col != max_col and min_row != max_row:
+        return None
+
     try:
         worksheet = workbook[sheet_name]
     except KeyError:
         return None
 
-    if min_col != max_col and min_row != max_row:
-        return None
-
-    values = []
+    rows = worksheet.iter_rows(
+        min_row=min_row,
+        max_row=max_row,
+        min_col=min_col,
+        max_col=max_col,
+        values_only=True,
+    )
     if min_col == max_col:
-        for row_idx in range(min_row, max_row + 1):
-            values.append(worksheet.cell(row=row_idx, column=min_col).value)
+        values = [row[0] for row in rows]
     else:
-        for col_idx in range(min_col, max_col + 1):
-            values.append(worksheet.cell(row=min_row, column=col_idx).value)
+        values = list(next(rows, ()))
 
-    return sheet_name, values
+    return sheet_name, _trim_trailing_empty_series_values(values)
+
+
+def _trim_trailing_empty_series_values(values: list[Any]) -> list[Any]:
+    end = len(values)
+    while end > 0 and values[end - 1] in (None, ""):
+        end -= 1
+    return values[:end]
 
 
 def _read_formula_scalar(workbook, formula: str) -> str | None:
