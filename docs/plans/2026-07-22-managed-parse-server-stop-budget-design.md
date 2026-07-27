@@ -2,9 +2,9 @@
 
 ## Problem
 
-`mineru server stop` waits up to 15 seconds for doclib to stop and release its HOME ownership lock. Managed parse-server shutdown currently applies `parse_server_stop_timeout_sec` independently to stdin EOF, terminate, and kill. With the default value of 10 seconds, shutdown can consume up to 30 seconds before doclib continues its remaining cleanup.
+`mineru server stop` waits up to 15 seconds for doclib to stop and release its HOME ownership lock. Managed parse-server shutdown currently applies `parse_server_stop_timeout_sec` independently to the control shutdown, terminate, and kill stages. With the default value of 10 seconds, shutdown can consume up to 30 seconds before doclib continues its remaining cleanup.
 
-During model preload, the parse-server process can remain inside model initialization after its stdin watcher sets `server.should_exit`. In the observed E2E failure, it ignored stdin EOF for 10 seconds and terminate for another 10 seconds. The CLI returned after 15 seconds while doclib still held the ownership lock.
+During model preload, the parse-server process can remain inside model initialization after its control watcher sets `server.should_exit`. In the observed E2E failure, it ignored the shutdown request for 10 seconds and terminate for another 10 seconds. The CLI returned after 15 seconds while doclib still held the ownership lock.
 
 ## Decision
 
@@ -12,8 +12,8 @@ Treat `parse_server_stop_timeout_sec` as a total managed parse-server stop budge
 
 For the default 10-second budget:
 
-- Healthy or established process: wait up to 5 seconds after stdin EOF.
-- Startup or preload process: wait no more than 2 seconds after stdin EOF.
+- Healthy or established process: wait up to 5 seconds after a control shutdown request.
+- Startup or preload process: wait no more than 2 seconds after a control shutdown request.
 - Wait up to 3 seconds after terminate.
 - Use the remaining budget after kill to reap the process.
 
@@ -27,11 +27,12 @@ The shutdown policy remains centralized in `stop_managed_parse_server`.
 
 Callers pass whether the managed process is still starting from the existing `ParseServerHealth.local_starting` state. No new configuration keys or timeout logic are added to individual background tasks.
 
-The parse-server stdin watcher and model preload implementation remain unchanged. Making model initialization cooperatively cancellable would require broader model-runtime changes and is not required to bound doclib shutdown.
+The managed parse-server uses a dedicated `multiprocessing.connection` control channel rather than stdin. Unix uses `AF_UNIX`; Windows uses `AF_PIPE`. Making model initialization cooperatively cancellable would require broader model-runtime changes and is not required to bound doclib shutdown.
 
 ## Failure Handling
 
-- Closing stdin remains the first shutdown action.
+- Sending the control shutdown command is the first shutdown action.
+- If the control channel is unavailable, skip the graceful wait and send terminate.
 - If the graceful stage exceeds its allocation, send terminate.
 - If terminate exceeds its allocation, send kill.
 - If kill or reap fails, log the failure and let doclib continue shutdown instead of extending the configured budget.

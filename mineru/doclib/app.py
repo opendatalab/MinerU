@@ -129,7 +129,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             managed_tier = await get_managed_parse_server_tier(state.config_svc)
             health.managed_tier = managed_tier
             try:
-                proc, managed_url = start_managed_parse_server(
+                proc, managed_url, control = start_managed_parse_server(
                     tier=managed_tier,
                     managed_cfg=cfg.doclib.managed_parse_server,
                     log_cfg=cfg.doclib.log,
@@ -138,6 +138,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                 health.managed_url = managed_url
                 logging.info("Managed parse-server started (PID %d, tier=%s)", proc.pid, managed_tier)
                 health.managed_proc = proc
+                health.managed_control = control
                 health.running_managed_tier = managed_tier
                 health.local_starting = True
                 health.local_started_at = asyncio.get_event_loop().time()
@@ -209,11 +210,13 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         if health.managed_proc:
             stop_managed_parse_server(
                 health.managed_proc,
+                control=health.managed_control,
                 timeout_sec=cfg.doclib.parse_server_stop_timeout_sec,
                 reason="doclib shutdown",
                 startup_in_progress=health.local_starting,
             )
             health.managed_proc = None
+            health.managed_control = None
 
         for comp in [
             "watch",

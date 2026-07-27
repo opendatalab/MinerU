@@ -590,8 +590,8 @@ def test_start_managed_parse_server_selects_port_and_writes_logs(monkeypatch: py
         assert kwargs["stdout"] is not subprocess.DEVNULL
         assert kwargs["stderr"] is not subprocess.DEVNULL
         assert kwargs["stdout"] is not kwargs["stderr"]
-        assert kwargs["stdin"] is subprocess.PIPE
-        assert kwargs["env"]["MINERU_MANAGED_PARSE_SERVER"] == "1"
+        assert kwargs["stdin"] is subprocess.DEVNULL
+        assert kwargs["env"]["MINERU_MANAGED_CONTROL"]
         assert kwargs["env"]["PYTHONIOENCODING"] == "utf-8:backslashreplace"
         kwargs["stdout"].write("parse helper stdout\n")
         kwargs["stdout"].flush()
@@ -604,7 +604,7 @@ def test_start_managed_parse_server_selects_port_and_writes_logs(monkeypatch: py
     )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
 
-    proc, url = start_managed_parse_server(
+    proc, url, control = start_managed_parse_server(
         tier="standard",
         managed_cfg=ManagedParseServerConfig(host="127.0.0.2", port=16580, port_probe_count=3),
         log_cfg=LogConfig(
@@ -619,6 +619,7 @@ def test_start_managed_parse_server_selects_port_and_writes_logs(monkeypatch: py
     assert popen_calls
     assert parse_stdout_log_path.read_text(encoding="utf-8").endswith("parse helper stdout\n")
     assert parse_stderr_log_path.read_text(encoding="utf-8").endswith("parse helper stderr\n")
+    control.close()
 
 
 def test_stop_managed_parse_server_uses_one_total_budget(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -630,16 +631,16 @@ def test_stop_managed_parse_server_uses_one_total_budget(monkeypatch: pytest.Mon
 
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.time.monotonic", _monotonic)
 
-    class _Stdin:
-        closed = False
+    class _Control:
+        def request_shutdown(self, timeout_sec: float) -> bool:
+            events.append(("control.shutdown", timeout_sec))
+            return True
 
         def close(self) -> None:
-            events.append("stdin.close")
-            self.closed = True
+            events.append("control.close")
 
     class _Proc:
         pid = 12345
-        stdin = _Stdin()
         waits = 0
 
         def poll(self) -> None:
@@ -659,10 +660,10 @@ def test_stop_managed_parse_server_uses_one_total_budget(monkeypatch: pytest.Mon
         def kill(self) -> None:
             events.append("kill")
 
-    stop_managed_parse_server(_Proc(), timeout_sec=4, reason="test")
+    stop_managed_parse_server(_Proc(), control=_Control(), timeout_sec=4, reason="test")
 
-    assert [event for event in events if isinstance(event, str)] == ["stdin.close", "terminate", "kill"]
-    waits = [event[1] for event in events if isinstance(event, tuple)]
+    assert [event for event in events if isinstance(event, str)] == ["terminate", "kill", "control.close"]
+    waits = [event[1] for event in events if isinstance(event, tuple) and event[0] == "wait"]
     assert waits == pytest.approx([2.0, 1.2, 0.8])
     assert sum(waits) == pytest.approx(4.0)
 
@@ -670,15 +671,15 @@ def test_stop_managed_parse_server_uses_one_total_budget(monkeypatch: pytest.Mon
 def test_stop_managed_parse_server_shortens_startup_grace(monkeypatch: pytest.MonkeyPatch) -> None:
     waits: list[float] = []
 
-    class _Stdin:
-        closed = False
+    class _Control:
+        def request_shutdown(self, timeout_sec: float) -> bool:
+            return True
 
         def close(self) -> None:
-            self.closed = True
+            pass
 
     class _Proc:
         pid = 12345
-        stdin = _Stdin()
 
         def poll(self) -> None:
             return None
@@ -688,7 +689,9 @@ def test_stop_managed_parse_server_shortens_startup_grace(monkeypatch: pytest.Mo
 
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.time.monotonic", lambda: 100.0)
 
-    stop_managed_parse_server(_Proc(), timeout_sec=10, reason="startup", startup_in_progress=True)
+    stop_managed_parse_server(
+        _Proc(), control=_Control(), timeout_sec=10, reason="startup", startup_in_progress=True
+    )
 
     assert waits == [2.0]
 
@@ -811,8 +814,9 @@ def test_managed_parse_server_restart_stops_recorded_proc_before_start(monkeypat
     class _Proc:
         pid = 67890
 
-    def _stop(proc: object, *, timeout_sec: int, reason: str, startup_in_progress: bool) -> None:
+    def _stop(proc: object, *, control: object, timeout_sec: int, reason: str, startup_in_progress: bool) -> None:
         assert proc is old_proc
+        assert control is None
         assert timeout_sec == 4
         assert reason == "restart"
         assert startup_in_progress is True
@@ -847,6 +851,7 @@ def test_managed_parse_server_restart_stops_recorded_proc_before_start(monkeypat
 
     assert events == ["stop", "start"]
     assert health.managed_proc.pid == 67890
+    health.managed_control.close()
 
 
 def test_managed_parse_server_tier_change_detection_triggers_restart(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -898,8 +903,9 @@ def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch:
     class _Proc:
         pid = 24680
 
-    def _stop(proc: object, *, timeout_sec: int, reason: str, startup_in_progress: bool) -> None:
+    def _stop(proc: object, *, control: object, timeout_sec: int, reason: str, startup_in_progress: bool) -> None:
         assert proc is old_proc
+        assert control is None
         assert timeout_sec == 4
         assert reason == "tier-change"
         assert startup_in_progress is False
@@ -907,13 +913,13 @@ def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch:
 
     def _start(
         *, tier: Tier, managed_cfg: ManagedParseServerConfig, log_cfg: LogConfig | None, marker: str
-    ) -> tuple[_Proc, str]:
+    ) -> tuple[_Proc, str, None]:
         assert tier == "basic"
         assert managed_cfg.host == "127.0.0.2"
         assert log_cfg is None
         assert marker == "tier change standard->basic"
         events.append("start")
-        return _Proc(), "http://127.0.0.2:16582"
+        return _Proc(), "http://127.0.0.2:16582", None
 
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.stop_managed_parse_server", _stop)
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.start_managed_parse_server", _start)

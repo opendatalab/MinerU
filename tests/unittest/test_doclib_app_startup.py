@@ -512,8 +512,8 @@ def test_managed_parse_server_startup_writes_stdout_and_stderr_logs(monkeypatch,
         assert kwargs["stdout"] is not subprocess.DEVNULL
         assert kwargs["stderr"] is not subprocess.DEVNULL
         assert kwargs["stdout"] is not kwargs["stderr"]
-        assert kwargs["stdin"] is subprocess.PIPE
-        assert kwargs["env"]["MINERU_MANAGED_PARSE_SERVER"] == "1"
+        assert kwargs["stdin"] is subprocess.DEVNULL
+        assert kwargs["env"]["MINERU_MANAGED_CONTROL"]
         kwargs["stdout"].write("parse stdout\n")
         kwargs["stdout"].flush()
         kwargs["stderr"].write("parse stderr\n")
@@ -672,7 +672,7 @@ def test_managed_parse_server_shutdown_uses_health_proc(monkeypatch, tmp_path) -
         assert not hasattr(state, "parse_server_proc")
         assert client.get("/api/v1/server/status").status_code == 200
 
-    assert events == ["stdin.close", "wait:2.0"]
+    assert events == ["terminate", "wait:3.0"]
 
 
 def test_startup_resets_running_scans_to_failed(monkeypatch, tmp_path) -> None:

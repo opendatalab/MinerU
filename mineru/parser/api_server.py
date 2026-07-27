@@ -19,7 +19,6 @@ import os
 import pathlib
 import secrets
 import shutil
-import sys
 import tempfile
 import threading
 import time
@@ -50,6 +49,7 @@ from ..render.writer import DataWriter
 from ..types import SERVER_TIERS, TIERS_BY_SERVER_TIER, DeploymentTier, PageInfo, ServerTier, Tier, select_default_quality_tier
 from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
 from ..utils.image_payload import validate_image_sidecar_path
+from ..utils.managed_process_control import ManagedProcessControlWatcher
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..utils.stdio import configure_standard_streams
 from ..version import __version__
@@ -64,7 +64,6 @@ from .tier import (
 
 _DEFAULT_API_SERVER_TIER: ServerTier = "standard"
 _API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
-_MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
 _MAX_INLINE_BYTES_DEFAULT = 1024 * 1024
 _LOCAL_PARSE_OUTPUT_FORMATS: tuple[OutputFormat, ...] = (
     "markdown",
@@ -160,27 +159,6 @@ def _env_flag(name: str, default: bool = True) -> bool:
     if val is None:
         return default
     return val.strip().lower() in ("1", "true", "yes", "on")
-
-
-def _install_managed_parse_server_stdin_watcher(server: uvicorn.Server) -> threading.Thread | None:
-    if not _env_flag(_MANAGED_PARSE_SERVER_ENV, default=False):
-        return None
-
-    def _watch_stdin_for_eof() -> None:
-        stdin_stream = getattr(sys.stdin, "buffer", sys.stdin)
-        try:
-            stdin_stream.read()
-        except Exception:
-            return
-        server.should_exit = True
-
-    watcher = threading.Thread(
-        target=_watch_stdin_for_eof,
-        name="mineru-managed-parse-server-stdin-sentinel",
-        daemon=True,
-    )
-    watcher.start()
-    return watcher
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -2430,6 +2408,21 @@ def main(
 ) -> None:
     """Start the MinerU v1 REST API server."""
     configure_standard_streams()
+    shutdown_requested = threading.Event()
+    server_ref: list[uvicorn.Server | None] = [None]
+
+    def _request_shutdown() -> None:
+        shutdown_requested.set()
+        server = server_ref[0]
+        if server is not None:
+            server.should_exit = True
+
+    try:
+        control_watcher = ManagedProcessControlWatcher.from_environment(_request_shutdown)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from None
+    if control_watcher is not None:
+        control_watcher.start()
     try:
         application = create_app(
             upload_dir=upload_dir,
@@ -2447,8 +2440,12 @@ def main(
             preload_models=preload_models,
         )
     except ParseServerStartupError as exc:
+        if control_watcher is not None:
+            control_watcher.close()
         raise click.ClickException(str(exc)) from None
     except ValueError as exc:
+        if control_watcher is not None:
+            control_watcher.close()
         raise click.ClickException(str(exc)) from exc
 
     config = uvicorn.Config(
@@ -2457,8 +2454,14 @@ def main(
         port=port,
     )
     server = uvicorn.Server(config)
-    _install_managed_parse_server_stdin_watcher(server)
-    server.run()
+    server_ref[0] = server
+    if shutdown_requested.is_set():
+        server.should_exit = True
+    try:
+        server.run()
+    finally:
+        if control_watcher is not None:
+            control_watcher.close()
 
 
 if __name__ == "__main__":

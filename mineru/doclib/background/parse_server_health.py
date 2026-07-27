@@ -19,6 +19,7 @@ import httpx
 from ...config import LogConfig, ManagedParseServerConfig, config
 from ...parser.api_client import should_trust_env_for_url
 from ...types import DEPLOYMENT_TIERS, TIERS, DeploymentTier, Tier
+from ...utils.managed_process_control import ManagedProcessControl
 from ...utils.stdio import utf8_subprocess_env
 from ..config_defaults import CONFIG_DEFAULTS
 from ..remote_api import resolve_remote_api_key
@@ -30,7 +31,6 @@ if TYPE_CHECKING:
 
 MAX_RESTART_ATTEMPTS = 3
 DEFAULT_MANAGED_URL = "http://127.0.0.1:16580"
-MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
 _NON_RETRYABLE_MODEL_PRELOAD_ERRORS = frozenset(
     {
         "model_preload_dependency_missing",
@@ -70,6 +70,7 @@ class ParseServerHealth:
     running_managed_tier: DeploymentTier | None = None
     restart_count: int = 0
     managed_proc: subprocess.Popen | None = None
+    managed_control: ManagedProcessControl | None = None
 
 
 _parse_server_health = ParseServerHealth()
@@ -186,7 +187,7 @@ def start_managed_parse_server(
     managed_cfg: ManagedParseServerConfig,
     log_cfg: LogConfig | None,
     marker: str,
-) -> tuple[subprocess.Popen, str]:
+) -> tuple[subprocess.Popen, str, ManagedProcessControl]:
     port = select_available_managed_port(
         managed_cfg.host,
         managed_cfg.port,
@@ -201,49 +202,67 @@ def start_managed_parse_server(
         *api_server_args_for_tier(tier, host=managed_cfg.host, port=port),
     ]
     env = utf8_subprocess_env()
-    env[MANAGED_PARSE_SERVER_ENV] = "1"
+    control = ManagedProcessControl.create()
+    env.update(control.child_env())
     logger.info("Starting managed parse-server (%s): %s", marker, " ".join(cmd))
-    with open_managed_parse_server_logs(marker=marker, log_cfg=log_cfg) as (
-        stdout_log_file,
-        stderr_log_file,
-    ):
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=stdout_log_file, stderr=stderr_log_file, env=env)
-    return proc, managed_url
+    control.start_accepting()
+    try:
+        with open_managed_parse_server_logs(marker=marker, log_cfg=log_cfg) as (
+            stdout_log_file,
+            stderr_log_file,
+        ):
+            proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=stdout_log_file, stderr=stderr_log_file, env=env)
+    except Exception:
+        control.close()
+        raise
+    return proc, managed_url, control
 
 
 def stop_managed_parse_server(
     proc: subprocess.Popen | None,
     *,
+    control: ManagedProcessControl | None = None,
     timeout_sec: int,
     reason: str,
     startup_in_progress: bool = False,
 ) -> None:
-    if proc is None or proc.poll() is not None:
+    if proc is None:
+        if control is not None:
+            control.close()
+        return
+    if proc.poll() is not None:
+        if control is not None:
+            control.close()
         return
 
     pid = proc.pid
     total_timeout = max(float(timeout_sec), 0.0)
     deadline = time.monotonic() + total_timeout
-    stdin = getattr(proc, "stdin", None)
-    if stdin is not None and not getattr(stdin, "closed", False):
+    graceful_cap = min(2.0, total_timeout * 0.2) if startup_in_progress else total_timeout * 0.5
+    shutdown_sent = control.request_shutdown(graceful_cap) if control is not None else False
+    if shutdown_sent:
         try:
-            stdin.close()
-        except Exception as exc:
-            logger.debug("Failed to close managed parse-server stdin (PID %d, reason=%s): %s", pid, reason, exc)
-
-    try:
-        graceful_cap = min(2.0, total_timeout * 0.2) if startup_in_progress else total_timeout * 0.5
-        proc.wait(timeout=min(graceful_cap, max(deadline - time.monotonic(), 0.0)))
-        logger.info("Managed parse-server stopped after stdin EOF (PID %d, reason=%s)", pid, reason)
-        return
-    except subprocess.TimeoutExpired:
-        logger.warning("Managed parse-server did not stop after stdin EOF (PID %d, reason=%s), terminating", pid, reason)
+            proc.wait(timeout=min(graceful_cap, max(deadline - time.monotonic(), 0.0)))
+            logger.info("Managed parse-server stopped after control shutdown (PID %d, reason=%s)", pid, reason)
+            if control is not None:
+                control.close()
+            return
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "Managed parse-server did not stop after control shutdown (PID %d, reason=%s), terminating",
+                pid,
+                reason,
+            )
+    else:
+        logger.warning("Managed parse-server control channel unavailable (PID %d, reason=%s), terminating", pid, reason)
 
     try:
         proc.terminate()
         terminate_cap = total_timeout * 0.3
         proc.wait(timeout=min(terminate_cap, max(deadline - time.monotonic(), 0.0)))
         logger.info("Managed parse-server terminated (PID %d, reason=%s)", pid, reason)
+        if control is not None:
+            control.close()
         return
     except subprocess.TimeoutExpired:
         logger.warning("Managed parse-server did not terminate within timeout (PID %d, reason=%s), killing", pid, reason)
@@ -256,6 +275,9 @@ def stop_managed_parse_server(
         logger.info("Managed parse-server killed (PID %d, reason=%s)", pid, reason)
     except Exception as exc:
         logger.error("Failed to kill managed parse-server (PID %d, reason=%s): %s", pid, reason, exc)
+    finally:
+        if control is not None:
+            control.close()
 
 
 def _managed_parse_server_needs_restart(
@@ -429,14 +451,16 @@ class ParseServerHealthCheck:
         managed_tier = await get_managed_parse_server_tier(self.config_svc)
         stop_managed_parse_server(
             health.managed_proc,
+            control=health.managed_control,
             timeout_sec=self.stop_timeout_sec,
             reason=reason,
             startup_in_progress=health.local_starting,
         )
         health.managed_proc = None
+        health.managed_control = None
         health.running_managed_tier = None
         try:
-            proc, managed_url = start_managed_parse_server(
+            proc, managed_url, control = start_managed_parse_server(
                 tier=managed_tier,
                 managed_cfg=self.managed_parse_server,
                 log_cfg=self.log_cfg,
@@ -445,6 +469,7 @@ class ParseServerHealthCheck:
             health.managed_url = managed_url
             logger.info("Managed parse-server restarted (PID %d, tier=%s)", proc.pid, managed_tier)
             health.managed_proc = proc
+            health.managed_control = control
             health.running_managed_tier = managed_tier
             health.local_starting = True
             health.local_started_at = asyncio.get_event_loop().time()
@@ -492,11 +517,13 @@ class ParseServerHealthCheck:
         health = get_health()
         stop_managed_parse_server(
             health.managed_proc,
+            control=health.managed_control,
             timeout_sec=self.stop_timeout_sec,
             reason="health check stop",
             startup_in_progress=health.local_starting,
         )
         health.managed_proc = None
+        health.managed_control = None
 
 
 def _probe_error(resp: httpx.Response) -> tuple[str, str]:

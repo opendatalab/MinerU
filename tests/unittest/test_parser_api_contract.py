@@ -35,7 +35,6 @@ from mineru.parser.api_server import (
     JobListItem,
     OutputFileRef,
     OutputFiles,
-    _install_managed_parse_server_stdin_watcher,
     create_app,
     main,
 )
@@ -1734,28 +1733,6 @@ def test_api_server_cli_no_longer_exposes_reload() -> None:
     assert result.exit_code != 0
     assert "No such option" in result.output
     assert "--reload" in result.output
-
-
-def test_managed_parse_server_env_enables_stdin_eof_shutdown_watcher(monkeypatch: pytest.MonkeyPatch) -> None:
-    server = type("Server", (), {"should_exit": False})()
-    monkeypatch.setenv("MINERU_MANAGED_PARSE_SERVER", "1")
-    monkeypatch.setattr(api_server.sys, "stdin", type("Stdin", (), {"buffer": io.BytesIO(b"")})())
-
-    watcher = _install_managed_parse_server_stdin_watcher(server)
-
-    assert watcher is not None
-    watcher.join(timeout=1)
-    assert server.should_exit is True
-
-
-def test_managed_parse_server_stdin_watcher_is_disabled_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    server = type("Server", (), {"should_exit": False})()
-    monkeypatch.delenv("MINERU_MANAGED_PARSE_SERVER", raising=False)
-
-    watcher = _install_managed_parse_server_stdin_watcher(server)
-
-    assert watcher is None
-    assert server.should_exit is False
 
 
 def test_output_files_expose_new_names_without_inline_content() -> None:
