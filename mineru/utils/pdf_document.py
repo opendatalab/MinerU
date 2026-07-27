@@ -76,6 +76,18 @@ class PDFDrawingLine:
     orientation: Literal["horizontal", "vertical"]
 
 
+@dataclass(frozen=True)
+class PDFPathInfo:
+    """PDF Path 的可见几何和绘制特征，bbox 使用页面左上原点坐标。"""
+
+    bbox: BBox
+    segment_count: int
+    fill_visible: bool
+    stroke_visible: bool
+    form_depth: int
+    source_index: int
+
+
 @dataclass
 class _PathSubpath:
     """保存一个 PDF Path 子路径的点、直线段和闭合状态。"""
@@ -321,6 +333,16 @@ class PDFDocument:
                 page_rotation = 0
             return _extract_page_drawing_lines(page, page_bbox, page_rotation)
 
+    def get_page_path_infos(self, page_idx: int) -> list[PDFPathInfo]:
+        """提取页面及嵌套 Form 中的 Path 几何和绘制特征。"""
+        with self._open_page(page_idx) as page:
+            page_bbox = _normalize_pdf_page_bbox(page.get_bbox())
+            try:
+                page_rotation = int(page.get_rotation()) % 360
+            except Exception:
+                page_rotation = 0
+            return _extract_page_path_infos(page, page_bbox, page_rotation)
+
     def get_page_image_bboxes(self, page_idx: int) -> list[BBox]:
         """提取页面及嵌套 Form 中的点阵图 bbox，并转换为页面左上原点坐标。"""
         with self._open_page(page_idx) as page:
@@ -494,15 +516,15 @@ def _get_raw_object_matrix(raw_obj: Any) -> tuple[float, float, float, float, fl
     )
 
 
-def _walk_raw_page_objects(
+def _walk_raw_page_objects_with_depth(
     container: Any,
     *,
     is_form: bool,
     parent_matrix: tuple[float, float, float, float, float, float],
     depth: int,
     target_type: int,
-) -> Iterator[tuple[Any, tuple[float, float, float, float, float, float]]]:
-    """递归遍历页面或 Form 中的目标对象，并携带累积到页面坐标的矩阵。"""
+) -> Iterator[tuple[Any, tuple[float, float, float, float, float, float], int]]:
+    """递归遍历目标对象，并携带累积矩阵及所在 Form 深度。"""
     if depth >= DRAWING_FORM_MAX_DEPTH:
         return
 
@@ -530,15 +552,35 @@ def _walk_raw_page_objects(
             continue
 
         if object_type == target_type:
-            yield raw_obj, combined_matrix
+            yield raw_obj, combined_matrix, depth
         if object_type == pdfium_c.FPDF_PAGEOBJ_FORM:
-            yield from _walk_raw_page_objects(
+            yield from _walk_raw_page_objects_with_depth(
                 raw_obj,
                 is_form=True,
                 parent_matrix=combined_matrix,
                 depth=depth + 1,
                 target_type=target_type,
             )
+
+
+def _walk_raw_page_objects(
+    container: Any,
+    *,
+    is_form: bool,
+    parent_matrix: tuple[float, float, float, float, float, float],
+    depth: int,
+    target_type: int,
+) -> Iterator[tuple[Any, tuple[float, float, float, float, float, float]]]:
+    """兼容既有调用，仅返回目标对象及累积到页面坐标的矩阵。"""
+
+    for raw_obj, matrix, _form_depth in _walk_raw_page_objects_with_depth(
+        container,
+        is_form=is_form,
+        parent_matrix=parent_matrix,
+        depth=depth,
+        target_type=target_type,
+    ):
+        yield raw_obj, matrix
 
 
 def _walk_raw_path_objects(
@@ -568,6 +610,21 @@ def _iter_raw_path_objects(
         is_form=False,
         parent_matrix=identity,
         depth=0,
+    )
+
+
+def _iter_raw_path_objects_with_depth(
+    page: pdfium.PdfPage,
+) -> Iterator[tuple[Any, tuple[float, float, float, float, float, float], int]]:
+    """遍历全部 Path，并保留其所在 Form 深度供上层过滤图标。"""
+
+    identity = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+    yield from _walk_raw_page_objects_with_depth(
+        page,
+        is_form=False,
+        parent_matrix=identity,
+        depth=0,
+        target_type=pdfium_c.FPDF_PAGEOBJ_PATH,
     )
 
 
@@ -751,6 +808,64 @@ def _transform_path_subpath(
         points=[transform(point) for point in subpath.points],
         straight_segments=[(transform(start), transform(end)) for start, end in subpath.straight_segments],
         closed=subpath.closed,
+    )
+
+
+def _path_info_from_object(
+    raw_obj: Any,
+    matrix: tuple[float, float, float, float, float, float],
+    page_bbox: BBox,
+    page_rotation: int,
+    form_depth: int,
+    source_index: int,
+) -> PDFPathInfo | None:
+    """将一个原始 Path 转换为页面几何；贝塞尔控制点也纳入保守 bbox。"""
+
+    try:
+        segment_count = int(pdfium_c.FPDFPath_CountSegments(raw_obj))
+    except Exception:
+        return None
+    if segment_count <= 0:
+        return None
+
+    fill_visible, stroke_visible = _get_path_visibility(raw_obj)
+    points = [
+        point
+        for raw_subpath in _read_raw_path_subpaths(raw_obj)
+        for point in _transform_path_subpath(
+            raw_subpath,
+            matrix,
+            page_bbox,
+            page_rotation,
+        ).points
+    ]
+    if not points:
+        return None
+    coordinates = [coordinate for point in points for coordinate in point]
+    if not all(math.isfinite(value) for value in coordinates):
+        return None
+
+    page_width, page_height = _drawing_page_size(page_bbox, page_rotation)
+    stroke_margin = 0.0
+    if stroke_visible:
+        a, b, c, d, _, _ = matrix
+        stroke_scale = max(math.hypot(a, b), math.hypot(c, d))
+        stroke_margin = 0.5 * _get_raw_stroke_width(raw_obj) * stroke_scale
+    bbox = (
+        max(0.0, min(point[0] for point in points) - stroke_margin),
+        max(0.0, min(point[1] for point in points) - stroke_margin),
+        min(page_width, max(point[0] for point in points) + stroke_margin),
+        min(page_height, max(point[1] for point in points) + stroke_margin),
+    )
+    if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+        return None
+    return PDFPathInfo(
+        bbox=bbox,
+        segment_count=segment_count,
+        fill_visible=fill_visible,
+        stroke_visible=stroke_visible,
+        form_depth=form_depth,
+        source_index=source_index,
     )
 
 
@@ -1085,6 +1200,34 @@ def _extract_page_form_bboxes(
         if form_bbox is not None:
             form_bboxes.append(form_bbox)
     return sorted(form_bboxes, key=lambda bbox: (bbox[1], bbox[0], bbox[3], bbox[2]))
+
+
+def _extract_page_path_infos(
+    page: pdfium.PdfPage,
+    page_bbox: BBox,
+    page_rotation: int,
+) -> list[PDFPathInfo]:
+    """在调用方持有 PDFium 锁时提取 Path 信息，并隔离单对象异常。"""
+
+    path_infos: list[PDFPathInfo] = []
+    for source_index, (raw_obj, matrix, form_depth) in enumerate(
+        _iter_raw_path_objects_with_depth(page)
+    ):
+        try:
+            path_info = _path_info_from_object(
+                raw_obj,
+                matrix,
+                page_bbox,
+                page_rotation,
+                form_depth,
+                source_index,
+            )
+        except Exception:
+            # PDFium 遇到个别损坏 Path 时，保留同页其他对象的有效结果。
+            continue
+        if path_info is not None:
+            path_infos.append(path_info)
+    return path_infos
 
 
 def _extract_page_drawing_lines(

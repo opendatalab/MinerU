@@ -41,6 +41,13 @@ def _build_drawing_pdf() -> bytes:
 
     # 斜线不属于表格横竖线，公共接口应过滤。
     canvas.line(10, 10, 90, 50)
+    # 闭合贝塞尔用于验证 Path 信息保留控制点形成的几何范围。
+    curve = canvas.beginPath()
+    curve.moveTo(10, 80)
+    curve.curveTo(20, 95, 30, 95, 40, 80)
+    curve.lineTo(10, 80)
+    curve.close()
+    canvas.drawPath(curve, stroke=0, fill=1)
     canvas.save()
     return output.getvalue()
 
@@ -197,6 +204,15 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
         events.append(f"image_bboxes:{lock.depth}:{page_bbox}:{page_rotation}")
         return []
 
+    def fake_extract_page_path_infos(
+        page: _FakePage,
+        page_bbox: tuple[float, float, float, float],
+        page_rotation: int,
+    ) -> list[pdf_document.PDFPathInfo]:
+        """记录完整 Path 几何遍历时仍由 PDFDocument 持有 PDFium 锁。"""
+        events.append(f"path_infos:{lock.depth}:{page_bbox}:{page_rotation}")
+        return []
+
     def fake_extract_page_form_bboxes(
         page: _FakePage,
         page_bbox: tuple[float, float, float, float],
@@ -210,6 +226,7 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
     monkeypatch.setattr(pdf_document, "get_chars", fake_get_chars, raising=False)
     monkeypatch.setattr(pdf_document, "pdftext_get_chars", fake_get_chars, raising=False)
     monkeypatch.setattr(pdf_document, "_extract_page_drawing_lines", fake_extract_page_drawing_lines)
+    monkeypatch.setattr(pdf_document, "_extract_page_path_infos", fake_extract_page_path_infos)
     monkeypatch.setattr(pdf_document, "_extract_page_image_bboxes", fake_extract_page_image_bboxes)
     monkeypatch.setattr(pdf_document, "_extract_page_form_bboxes", fake_extract_page_form_bboxes)
 
@@ -221,6 +238,7 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
     assert image.scale == 3
     assert doc.get_page_chars(0)[0]["char"] == "A"
     assert doc.get_page_drawing_lines(0) == []
+    assert doc.get_page_path_infos(0) == []
     assert doc.get_page_image_bboxes(0) == []
     assert doc.get_page_form_bboxes(0) == []
 
@@ -235,6 +253,7 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
     assert "get_chars:1:[0.0, 10.0, 20.0, 0.0]:0" in events
     assert "textpage.close:1" in events
     assert "drawing_lines:1:(0.0, 0.0, 20.0, 10.0):0" in events
+    assert "path_infos:1:(0.0, 0.0, 20.0, 10.0):0" in events
     assert "image_bboxes:1:(0.0, 0.0, 20.0, 10.0):0" in events
     assert "form_bboxes:1:(0.0, 0.0, 20.0, 10.0):0" in events
 
@@ -273,6 +292,25 @@ def test_get_page_drawing_lines_extracts_forms_filled_rectangles_and_merges_segm
     assert lines[2].bbox == pytest.approx((10.0, 60.0, 90.0, 60.5))
 
 
+def test_get_page_path_infos_preserves_bezier_visibility_depth_and_source_order() -> None:
+    """验证完整 Path 接口保留贝塞尔 bbox、绘制模式、Form 深度和稳定源序号。"""
+
+    with pdf_document.PDFDocument(_build_drawing_pdf()) as doc:
+        path_infos = doc.get_page_path_infos(0)
+
+    assert len(path_infos) == 7
+    assert [item.source_index for item in path_infos] == [0, 1, 2, 3, 4, 6, 7]
+    assert path_infos[0].bbox == pytest.approx((9.5, 19.5, 90.5, 20.5))
+    assert not path_infos[0].fill_visible and path_infos[0].stroke_visible
+    assert path_infos[3].bbox == pytest.approx((10.0, 60.0, 90.0, 60.5))
+    assert path_infos[3].fill_visible and not path_infos[3].stroke_visible
+    nested_path = next(item for item in path_infos if item.form_depth == 1)
+    assert nested_path.bbox == pytest.approx((29.0, 99.0, 71.0, 101.0))
+    bezier_path = path_infos[-1]
+    assert bezier_path.segment_count == 5
+    assert bezier_path.bbox == pytest.approx((10.0, 105.0, 40.0, 120.0))
+
+
 def test_get_page_drawing_lines_applies_crop_box_and_page_rotation() -> None:
     """验证页面 CropBox 与 90 度旋转被转换为左上原点坐标。"""
     with pdf_document.PDFDocument(_build_rotated_cropped_drawing_pdf()) as doc:
@@ -289,6 +327,18 @@ def test_get_page_drawing_lines_applies_crop_box_and_page_rotation() -> None:
     assert line.end == pytest.approx((10.0, 85.0))
     assert line.bbox == pytest.approx((9.0, 5.0, 11.0, 85.0))
     assert line.width == pytest.approx(2.0)
+
+
+def test_get_page_path_infos_applies_crop_box_page_rotation_and_stroke_width() -> None:
+    """验证 Path bbox 在 CropBox 与页面旋转后仍保留可见描边宽度。"""
+
+    with pdf_document.PDFDocument(_build_rotated_cropped_drawing_pdf()) as doc:
+        path_infos = doc.get_page_path_infos(0)
+
+    assert len(path_infos) == 1
+    assert path_infos[0].bbox == pytest.approx((9.0, 4.0, 11.0, 86.0))
+    assert path_infos[0].form_depth == 0
+    assert path_infos[0].segment_count == 2
 
 
 def test_get_page_image_bboxes_applies_forms_crop_box_rotation_and_clipping() -> None:
@@ -381,3 +431,27 @@ def test_get_page_drawing_lines_skips_one_bad_path(monkeypatch: pytest.MonkeyPat
     assert len(lines) == 3
     assert all(line.start[1] != pytest.approx(20.0) for line in lines)
     assert [line.start[1] for line in lines] == pytest.approx([40.0, 60.25, 100.0])
+
+
+def test_get_page_path_infos_skips_one_bad_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证单个 Path 信息解析失败不会丢失同页其他有效对象。"""
+
+    original_extract = pdf_document._path_info_from_object
+    call_count = 0
+
+    def flaky_extract(*args: Any, **kwargs: Any) -> pdf_document.PDFPathInfo | None:
+        """仅让首个 Path 失败，后续对象仍调用真实实现。"""
+
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise RuntimeError("broken path")
+        return original_extract(*args, **kwargs)
+
+    monkeypatch.setattr(pdf_document, "_path_info_from_object", flaky_extract)
+    with pdf_document.PDFDocument(_build_drawing_pdf()) as doc:
+        path_infos = doc.get_page_path_infos(0)
+
+    assert call_count >= 8
+    assert len(path_infos) == 6
+    assert all(item.source_index != 0 for item in path_infos)

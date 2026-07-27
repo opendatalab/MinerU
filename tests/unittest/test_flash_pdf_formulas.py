@@ -9,6 +9,7 @@ from mineru.backend.flash.native_pdf import (
     line_merging,
     models,
 )
+from mineru.utils.pdf_document import PDFPathInfo
 
 
 from _flash_pdf_test_utils import (
@@ -33,6 +34,187 @@ def _formula_member(
         ),
         bbox,
     )
+
+
+def _vector_path(
+    bbox: tuple[float, float, float, float],
+    source_index: int,
+    *,
+    segment_count: int = 16,
+    fill_visible: bool = True,
+    stroke_visible: bool = False,
+    form_depth: int = 0,
+) -> PDFPathInfo:
+    """构造矢量公式检测测试使用的 Path 信息。"""
+
+    return PDFPathInfo(
+        bbox=bbox,
+        segment_count=segment_count,
+        fill_visible=fill_visible,
+        stroke_visible=stroke_visible,
+        form_depth=form_depth,
+        source_index=source_index,
+    )
+
+
+def _vector_formula_body_paths(
+    *,
+    left: float = 20.0,
+    top: float = 50.0,
+    source_start: int = 0,
+) -> list[PDFPathInfo]:
+    """构造满足复杂度和尺寸约束的六字形矢量公式主体。"""
+
+    return [
+        _vector_path(
+            (left + index * 6.0, top, left + index * 6.0 + 4.0, top + 12.0),
+            source_start + index,
+        )
+        for index in range(6)
+    ]
+
+
+def _vector_formula_source(
+    *path_infos: PDFPathInfo,
+    page_size: tuple[float, float] = (100.0, 120.0),
+    extra_lines: list[models._LineItem] | None = None,
+) -> models._PageSource:
+    """构造具有稳定正文栏带且公式所在高度留白的页面源。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line(
+            f"body-{index}",
+            (0.0, top, 100.0, top + 10.0),
+            index,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        )
+        for index, top in enumerate((0.0, 20.0, 80.0, 100.0))
+    ]
+    lines.extend(extra_lines or [])
+    return models._PageSource(
+        page_size=page_size,
+        lines=lines,
+        chars=[],
+        drawing_lines=[],
+        path_infos=list(path_infos),
+    )
+
+
+def test_vector_formula_paths_and_detached_path_number_form_one_empty_equation() -> None:
+    """验证矢量主体与远距栏右缘路径编号形成一个空内容公式。"""
+
+    body_paths = _vector_formula_body_paths()
+    number_paths = [
+        _vector_path((91.0 + index * 3.0, 51.0, 93.0 + index * 3.0, 60.0), 10 + index)
+        for index in range(3)
+    ]
+    blocks, claimed = formulas._build_vector_formula_blocks(
+        _vector_formula_source(*body_paths, *number_paths),
+        [],
+        set(),
+    )
+
+    assert claimed == set()
+    assert blocks == [
+        {
+            "type": "equation",
+            "bbox": (19.0, 49.0, 100.0, 63.0),
+            "angle": 0,
+            "content": "",
+        }
+    ]
+
+
+def test_vector_formula_claims_text_number_but_keeps_content_empty() -> None:
+    """验证可提取的独立编号并入路径公式并唯一认领，但不充当公式正文。"""
+
+    number = _text_line("(12)", (91.0, 51.0, 99.0, 60.0), 20, effective_height=9.0)
+    blocks, claimed = formulas._build_vector_formula_blocks(
+        _vector_formula_source(*_vector_formula_body_paths(), extra_lines=[number]),
+        [],
+        set(),
+    )
+
+    assert claimed == {20}
+    assert blocks[0]["type"] == "equation"
+    assert blocks[0]["content"] == ""
+    assert blocks[0]["bbox"] == pytest.approx((19.0, 49.0, 100.0, 63.0))
+
+
+def test_vector_formula_rejects_unmatched_number_rules_strokes_forms_and_inline_paths() -> None:
+    """验证无主体编号、细规则、描边、Form 图标和正文同行路径均不会误报。"""
+
+    unmatched_number = [
+        _vector_path((91.0 + index * 3.0, 51.0, 93.0 + index * 3.0, 60.0), index)
+        for index in range(3)
+    ]
+    rules = [
+        _vector_path((10.0 + index * 12.0, 70.0, 20.0 + index * 12.0, 70.5), 10 + index, segment_count=5)
+        for index in range(6)
+    ]
+    excluded = [
+        _vector_path((20.0, 50.0, 24.0, 62.0), 30, stroke_visible=True),
+        _vector_path((26.0, 50.0, 30.0, 62.0), 31, form_depth=1),
+    ]
+    inline_paths = _vector_formula_body_paths(top=20.0, source_start=40)
+    blocks, claimed = formulas._build_vector_formula_blocks(
+        _vector_formula_source(*unmatched_number, *rules, *excluded, *inline_paths),
+        [],
+        set(),
+    )
+
+    assert blocks == []
+    assert claimed == set()
+
+
+def test_vector_formula_respects_columns_and_existing_containers() -> None:
+    """验证同高双栏主体不互连，且高优先级容器覆盖的主体被排除。"""
+
+    left_lines = [
+        _text_line(f"left-{index}", (0.0, top, 100.0, top + 10.0), index, effective_height=10.0)
+        for index, top in enumerate((0.0, 20.0, 80.0, 100.0))
+    ]
+    right_lines = [
+        _text_line(
+            f"right-{index}",
+            (120.0, top, 220.0, top + 10.0),
+            10 + index,
+            effective_height=10.0,
+        )
+        for index, top in enumerate((0.0, 20.0, 80.0, 100.0))
+    ]
+    source = models._PageSource(
+        page_size=(220.0, 120.0),
+        lines=[*left_lines, *right_lines],
+        chars=[],
+        drawing_lines=[],
+        path_infos=[
+            *_vector_formula_body_paths(left=20.0, source_start=0),
+            *_vector_formula_body_paths(left=140.0, source_start=20),
+        ],
+    )
+
+    column_blocks, column_claimed = formulas._build_vector_formula_blocks(
+        source,
+        [],
+        set(),
+    )
+    blocks, claimed = formulas._build_vector_formula_blocks(
+        source,
+        [{"type": "image", "bbox": (130.0, 45.0, 180.0, 67.0), "content": ""}],
+        set(),
+    )
+
+    assert column_claimed == set()
+    assert len(column_blocks) == 2
+    assert column_blocks[0]["bbox"] == pytest.approx((19.0, 49.0, 55.0, 63.0))
+    assert column_blocks[1]["bbox"] == pytest.approx((139.0, 49.0, 175.0, 63.0))
+    assert claimed == set()
+    assert len(blocks) == 1
+    assert blocks[0]["bbox"] == pytest.approx((19.0, 49.0, 55.0, 63.0))
 
 
 def test_detached_formula_sidecar_sharing_middle_row_moves_to_trailing_line() -> None:

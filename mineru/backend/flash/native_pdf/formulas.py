@@ -6,23 +6,32 @@ from __future__ import annotations
 
 import re
 import statistics
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any
 
 
 from mineru.types import BBox
+from mineru.utils.pdf_document import PDFPathInfo
 
 from .models import (
     _FormulaAnchor,
     _LineItem,
+    _PageSource,
     _TextLane,
 )
 from .geometry import (
     _bbox_axis_overlap_ratio,
     _bbox_center_x,
     _bbox_center_y,
+    _bbox_distance,
+    _bbox_intersects,
+    _bbox_overlap_in_first,
+    _bbox_overlap_in_smaller,
     _bbox_union,
     _bbox_union_many,
+    _clip_bbox,
+    _coerce_bbox,
+    _expand_bbox,
     _rotate_bbox_to_upright,
 )
 from .native_text import _sanitize_pdf_control_text
@@ -37,6 +46,501 @@ from .line_merging import _join_formula_visual_row
 _FORMULA_NUMBER_SUFFIX_RE = re.compile(
     r"^(?P<prefix>.*?)(?P<marker>[(（﹙][^()（）﹙﹚\r\n]+[)）﹚])\s*$"
 )
+
+
+_VECTOR_FORMULA_COMPLEX_SEGMENTS = 8
+_VECTOR_FORMULA_MIN_PATHS = 5
+_VECTOR_FORMULA_MIN_COMPLEX_PATHS = 5
+_VECTOR_FORMULA_MIN_COMPLEX_RATIO = 0.5
+_VECTOR_FORMULA_NUMBER_MIN_PATHS = 3
+_VECTOR_FORMULA_NUMBER_MAX_PATHS = 6
+
+
+@dataclass(slots=True)
+class _VectorPathComponent:
+    """保存同栏邻接 Path 形成的矢量组件。"""
+
+    lane_index: int
+    path_infos: list[PDFPathInfo]
+    bbox: BBox
+
+
+@dataclass(slots=True)
+class _VectorFormulaCandidate:
+    """保存已通过主体校验、等待吸收横线和编号的矢量公式。"""
+
+    lane_index: int
+    bbox: BBox
+    path_source_indices: set[int]
+    has_number: bool = False
+
+
+def _build_vector_formula_blocks(
+    source: _PageSource,
+    container_blocks: list[dict[str, Any]],
+    claimed_line_indices: set[int],
+) -> tuple[list[dict[str, Any]], set[int]]:
+    """从根层填充 Path 构建空内容公式，并唯一认领可提取的公式编号。"""
+
+    available_lines = [
+        line
+        for line in source.lines
+        if line.angle == 0 and line.source_index not in claimed_line_indices
+    ]
+    if len(available_lines) < 3 or not source.path_infos:
+        return [], set()
+
+    line_geometry = [(line, line.bbox) for line in available_lines]
+    effective_heights = [_line_effective_height(line, bbox) for line, bbox in line_geometry]
+    median_height = statistics.median(effective_heights) if effective_heights else 0.0
+    if median_height <= 0:
+        return [], set()
+    lanes = [
+        lane
+        for lane in _infer_text_lanes(line_geometry, source.page_size[0], median_height)
+        if not lane.is_span and len(lane.lines) >= 3
+    ]
+    if not lanes:
+        return [], set()
+
+    components = _build_vector_path_components(
+        source.path_infos,
+        lanes,
+        median_height,
+    )
+    container_bboxes = [
+        bbox
+        for block in container_blocks
+        if (bbox := _coerce_bbox(block.get("bbox"))) is not None
+    ]
+    candidates = [
+        _VectorFormulaCandidate(
+            lane_index=component.lane_index,
+            bbox=component.bbox,
+            path_source_indices={item.source_index for item in component.path_infos},
+        )
+        for component in components
+        if _is_vector_formula_core(
+            component,
+            lanes[component.lane_index],
+            median_height,
+            source.page_size,
+            container_bboxes,
+        )
+    ]
+    if not candidates:
+        return [], set()
+
+    _attach_vector_formula_rules(candidates, components, median_height)
+    _attach_vector_formula_path_numbers(candidates, components, lanes, median_height)
+    claimed_number_indices = _attach_vector_formula_text_numbers(
+        candidates,
+        lanes,
+        median_height,
+        claimed_line_indices,
+    )
+
+    padding = min(1.5, 0.1 * median_height)
+    blocks: list[dict[str, Any]] = []
+    for candidate in sorted(candidates, key=lambda item: (item.bbox[1], item.bbox[0])):
+        padded_bbox = _clip_bbox(
+            (
+                candidate.bbox[0] - padding,
+                candidate.bbox[1] - padding,
+                candidate.bbox[2] + padding,
+                candidate.bbox[3] + padding,
+            ),
+            source.page_size,
+        )
+        if padded_bbox is None:
+            continue
+        blocks.append(
+            {
+                "type": "equation",
+                "bbox": padded_bbox,
+                "angle": 0,
+                "content": "",
+            }
+        )
+    return blocks, claimed_number_indices
+
+
+def _build_vector_path_components(
+    path_infos: list[PDFPathInfo],
+    lanes: list[_TextLane],
+    median_height: float,
+) -> list[_VectorPathComponent]:
+    """按文本栏带筛选矢量字形，并用空间网格生成局部连通组件。"""
+
+    members_by_lane: dict[int, list[PDFPathInfo]] = {}
+    for path_info in path_infos:
+        if (
+            path_info.form_depth != 0
+            or not path_info.fill_visible
+            or path_info.stroke_visible
+        ):
+            continue
+        lane_index = _assign_vector_path_lane(path_info.bbox, lanes, median_height)
+        if lane_index is None:
+            continue
+        if not _is_vector_formula_path_member(
+            path_info.bbox,
+            lanes[lane_index],
+            median_height,
+        ):
+            continue
+        members_by_lane.setdefault(lane_index, []).append(path_info)
+
+    components: list[_VectorPathComponent] = []
+    for lane_index, members in members_by_lane.items():
+        components.extend(
+            _connect_vector_path_members(
+                members,
+                lane_index,
+                median_height,
+            )
+        )
+    return sorted(
+        components,
+        key=lambda item: (item.bbox[1], item.bbox[0], item.path_infos[0].source_index),
+    )
+
+
+def _assign_vector_path_lane(
+    bbox: BBox,
+    lanes: list[_TextLane],
+    median_height: float,
+) -> int | None:
+    """按中心点和水平覆盖率把 Path 唯一分配给一个正文栏带。"""
+
+    center_x = _bbox_center_x(bbox)
+    path_width = max(0.1, bbox[2] - bbox[0])
+    tolerance = 0.75 * median_height
+    matches: list[tuple[float, float, int]] = []
+    for lane_index, lane in enumerate(lanes):
+        if not lane.left - tolerance <= center_x <= lane.right + tolerance:
+            continue
+        overlap = max(0.0, min(bbox[2], lane.right) - max(bbox[0], lane.left))
+        coverage = overlap / path_width
+        lane_center = (lane.left + lane.right) / 2.0
+        matches.append((-coverage, abs(center_x - lane_center), lane_index))
+    return min(matches)[2] if matches else None
+
+
+def _is_vector_formula_path_member(
+    bbox: BBox,
+    lane: _TextLane,
+    median_height: float,
+) -> bool:
+    """保留小字形轮廓和细横线，过滤跨栏或过大的普通矢量对象。"""
+
+    width = bbox[2] - bbox[0]
+    height = bbox[3] - bbox[1]
+    lane_width = max(0.1, lane.right - lane.left)
+    is_glyph = width <= 3.0 * median_height and height <= 3.0 * median_height
+    is_formula_rule = height <= 0.2 * median_height and width <= lane_width + median_height
+    return is_glyph or is_formula_rule
+
+
+def _connect_vector_path_members(
+    members: list[PDFPathInfo],
+    lane_index: int,
+    median_height: float,
+) -> list[_VectorPathComponent]:
+    """用扩张 bbox 的网格邻接和并查集连接同栏 Path，避免全量两两比较。"""
+
+    if not members:
+        return []
+    ordered = sorted(members, key=lambda item: item.source_index)
+    parents = list(range(len(ordered)))
+
+    def find(index: int) -> int:
+        """查找并压缩一个 Path 的并查集根节点。"""
+
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
+    def merge(first: int, second: int) -> None:
+        """合并两个相交扩张框所属的连通分量。"""
+
+        first_root = find(first)
+        second_root = find(second)
+        if first_root != second_root:
+            parents[second_root] = first_root
+
+    margin = 0.5 * median_height
+    cell_size = max(1.0, median_height)
+    expanded_bboxes = [_expand_bbox(item.bbox, margin) for item in ordered]
+    grid: dict[tuple[int, int], list[int]] = {}
+    seen_pairs: set[tuple[int, int]] = set()
+    for index, bbox in enumerate(expanded_bboxes):
+        start_x = int(bbox[0] // cell_size)
+        end_x = int(bbox[2] // cell_size)
+        start_y = int(bbox[1] // cell_size)
+        end_y = int(bbox[3] // cell_size)
+        for cell_x in range(start_x, end_x + 1):
+            for cell_y in range(start_y, end_y + 1):
+                cell = (cell_x, cell_y)
+                for other_index in grid.get(cell, []):
+                    pair = (other_index, index)
+                    if pair in seen_pairs:
+                        continue
+                    seen_pairs.add(pair)
+                    if _bbox_intersects(bbox, expanded_bboxes[other_index]):
+                        merge(index, other_index)
+                grid.setdefault(cell, []).append(index)
+
+    grouped: dict[int, list[PDFPathInfo]] = {}
+    for index, path_info in enumerate(ordered):
+        grouped.setdefault(find(index), []).append(path_info)
+    return [
+        _VectorPathComponent(
+            lane_index=lane_index,
+            path_infos=group,
+            bbox=_bbox_union_many([item.bbox for item in group]),
+        )
+        for group in grouped.values()
+    ]
+
+
+def _is_vector_formula_core(
+    component: _VectorPathComponent,
+    lane: _TextLane,
+    median_height: float,
+    page_size: tuple[float, float],
+    container_bboxes: list[BBox],
+) -> bool:
+    """按复杂度、尺寸、正文碰撞和容器优先级校验公式主体组件。"""
+
+    path_count = len(component.path_infos)
+    complex_count = sum(
+        item.segment_count >= _VECTOR_FORMULA_COMPLEX_SEGMENTS
+        for item in component.path_infos
+    )
+    if (
+        path_count < _VECTOR_FORMULA_MIN_PATHS
+        or complex_count < _VECTOR_FORMULA_MIN_COMPLEX_PATHS
+        or complex_count / path_count < _VECTOR_FORMULA_MIN_COMPLEX_RATIO
+    ):
+        return False
+
+    bbox = component.bbox
+    width = bbox[2] - bbox[0]
+    height = bbox[3] - bbox[1]
+    if not (
+        width >= 2.5 * median_height
+        and 0.9 * median_height <= height <= 8.0 * median_height
+        and width >= 1.4 * height
+    ):
+        return False
+    page_height = page_size[1]
+    if bbox[3] <= 0.05 * page_height or bbox[1] >= 0.95 * page_height:
+        return False
+    if any(
+        _bbox_overlap_in_smaller(bbox, container_bbox) >= 0.5
+        for container_bbox in container_bboxes
+    ):
+        return False
+    return not any(
+        _vector_formula_collides_with_text(bbox, line, line_bbox, median_height)
+        for line, line_bbox in lane.lines
+    )
+
+
+def _vector_formula_collides_with_text(
+    formula_bbox: BBox,
+    line: _LineItem,
+    line_bbox: BBox,
+    median_height: float,
+) -> bool:
+    """排除覆盖正文或紧贴正文同行的 Path 组件，独立公式编号除外。"""
+
+    if _standalone_formula_number_marker(line.text) is not None:
+        return False
+    if _bbox_overlap_in_first(formula_bbox, line_bbox) >= 0.2:
+        return True
+    horizontal_gap = max(
+        formula_bbox[0] - line_bbox[2],
+        line_bbox[0] - formula_bbox[2],
+        0.0,
+    )
+    return (
+        _bbox_axis_overlap_ratio(formula_bbox, line_bbox, axis="y") >= 0.5
+        and horizontal_gap <= median_height
+    )
+
+
+def _attach_vector_formula_rules(
+    candidates: list[_VectorFormulaCandidate],
+    components: list[_VectorPathComponent],
+    median_height: float,
+) -> None:
+    """把靠近公式主体且横向覆盖充分的孤立细横线唯一并入主体。"""
+
+    used_sources = {
+        source_index
+        for candidate in candidates
+        for source_index in candidate.path_source_indices
+    }
+    for component in components:
+        component_sources = {item.source_index for item in component.path_infos}
+        if component_sources & used_sources or not all(
+            item.bbox[3] - item.bbox[1] <= 0.2 * median_height
+            for item in component.path_infos
+        ):
+            continue
+        matches = [
+            (
+                _bbox_distance(candidate.bbox, component.bbox),
+                abs(_bbox_center_y(candidate.bbox) - _bbox_center_y(component.bbox)),
+                candidate_index,
+            )
+            for candidate_index, candidate in enumerate(candidates)
+            if candidate.lane_index == component.lane_index
+            and _bbox_distance(candidate.bbox, component.bbox) <= 0.5 * median_height
+            and _bbox_axis_overlap_ratio(candidate.bbox, component.bbox, axis="x") >= 0.5
+        ]
+        if not matches:
+            continue
+        candidate = candidates[min(matches)[2]]
+        candidate.bbox = _bbox_union(candidate.bbox, component.bbox)
+        candidate.path_source_indices.update(component_sources)
+        used_sources.update(component_sources)
+
+
+def _attach_vector_formula_path_numbers(
+    candidates: list[_VectorFormulaCandidate],
+    components: list[_VectorPathComponent],
+    lanes: list[_TextLane],
+    median_height: float,
+) -> None:
+    """把栏右缘的小型复杂 Path 组件作为公式编号并入唯一主体。"""
+
+    used_sources = {
+        source_index
+        for candidate in candidates
+        for source_index in candidate.path_source_indices
+    }
+    for component in components:
+        component_sources = {item.source_index for item in component.path_infos}
+        if component_sources & used_sources or not _is_vector_formula_number_component(
+            component,
+            lanes[component.lane_index],
+            median_height,
+        ):
+            continue
+        matches = _vector_formula_number_matches(
+            component.bbox,
+            component.lane_index,
+            candidates,
+            median_height,
+        )
+        if not matches:
+            continue
+        candidate = candidates[min(matches)[3]]
+        candidate.bbox = _bbox_union(candidate.bbox, component.bbox)
+        candidate.path_source_indices.update(component_sources)
+        candidate.has_number = True
+        used_sources.update(component_sources)
+
+
+def _is_vector_formula_number_component(
+    component: _VectorPathComponent,
+    lane: _TextLane,
+    median_height: float,
+) -> bool:
+    """识别位于栏右缘、尺寸接近正文行高的全复杂路径编号组件。"""
+
+    path_count = len(component.path_infos)
+    bbox = component.bbox
+    width = bbox[2] - bbox[0]
+    height = bbox[3] - bbox[1]
+    return (
+        _VECTOR_FORMULA_NUMBER_MIN_PATHS
+        <= path_count
+        <= _VECTOR_FORMULA_NUMBER_MAX_PATHS
+        and all(
+            item.segment_count >= _VECTOR_FORMULA_COMPLEX_SEGMENTS
+            for item in component.path_infos
+        )
+        and 0.5 * median_height <= width <= 2.0 * median_height
+        and 0.6 * median_height <= height <= 1.4 * median_height
+        and abs(lane.right - bbox[2]) <= 1.5 * median_height
+    )
+
+
+def _vector_formula_number_matches(
+    number_bbox: BBox,
+    lane_index: int,
+    candidates: list[_VectorFormulaCandidate],
+    median_height: float,
+) -> list[tuple[float, float, float, int]]:
+    """返回编号可关联的公式主体及稳定排序分值。"""
+
+    matches: list[tuple[float, float, float, int]] = []
+    for candidate_index, candidate in enumerate(candidates):
+        if candidate.has_number or candidate.lane_index != lane_index:
+            continue
+        vertical_overlap = _bbox_axis_overlap_ratio(candidate.bbox, number_bbox, axis="y")
+        if (
+            number_bbox[0] < candidate.bbox[2]
+            or vertical_overlap < 0.6
+        ):
+            continue
+        center_distance = abs(_bbox_center_y(candidate.bbox) - _bbox_center_y(number_bbox))
+        horizontal_gap = max(0.0, number_bbox[0] - candidate.bbox[2])
+        matches.append(
+            (-vertical_overlap, center_distance, horizontal_gap / max(0.1, median_height), candidate_index)
+        )
+    return matches
+
+
+def _attach_vector_formula_text_numbers(
+    candidates: list[_VectorFormulaCandidate],
+    lanes: list[_TextLane],
+    median_height: float,
+    claimed_line_indices: set[int],
+) -> set[int]:
+    """关联可提取的独立公式编号并认领其文本身份，防止重复输出。"""
+
+    claimed: set[int] = set()
+    for lane_index, lane in enumerate(lanes):
+        for line, bbox in sorted(lane.lines, key=lambda item: (item[1][1], item[1][0])):
+            if line.source_index in claimed_line_indices or _standalone_formula_number_marker(line.text) is None:
+                continue
+            width = bbox[2] - bbox[0]
+            height = bbox[3] - bbox[1]
+            if not (
+                0.5 * median_height <= width <= 2.0 * median_height
+                and 0.6 * median_height <= height <= 1.4 * median_height
+                and abs(lane.right - bbox[2]) <= 1.5 * median_height
+            ):
+                continue
+            matches = _vector_formula_number_matches(
+                bbox,
+                lane_index,
+                candidates,
+                median_height,
+            )
+            if not matches:
+                continue
+            candidate = candidates[min(matches)[3]]
+            candidate.bbox = _bbox_union(candidate.bbox, bbox)
+            candidate.has_number = True
+            claimed.add(line.source_index)
+    return claimed
+
+
+def _standalone_formula_number_marker(text: str) -> str | None:
+    """仅接受整行由圆括号公式编号构成的文本，不接纳带正文前缀的后缀。"""
+
+    parts = _split_trailing_formula_number(text)
+    if parts is None:
+        return None
+    prefix, marker = parts
+    return marker if not prefix else None
 
 
 def _build_formula_like_blocks(

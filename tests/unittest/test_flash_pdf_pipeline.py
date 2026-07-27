@@ -114,3 +114,24 @@ def test_output_normalization_preserves_new_flash_types(block_type: str) -> None
 
     assert block is not None
     assert block["type"] == block_type
+
+
+def test_output_normalization_keeps_empty_equation_but_drops_empty_text() -> None:
+    """验证纯矢量公式可保留空 content，普通空文本仍不会进入 model_list。"""
+
+    equation = pipeline._normalize_output_block(
+        {"type": "equation", "bbox": (10.0, 20.0, 40.0, 50.0), "angle": 0, "content": ""},
+        (100.0, 100.0),
+    )
+    text = pipeline._normalize_output_block(
+        {"type": "text", "bbox": (10.0, 20.0, 40.0, 50.0), "angle": 0, "content": ""},
+        (100.0, 100.0),
+    )
+
+    assert equation == {
+        "type": "equation",
+        "bbox": [0.1, 0.2, 0.4, 0.5],
+        "angle": 0,
+        "content": "",
+    }
+    assert text is None

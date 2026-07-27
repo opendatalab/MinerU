@@ -10,6 +10,7 @@ from typing import Any, Literal
 from pdftext.schema import Char
 
 from mineru.types import BBox
+from mineru.utils.pdf_document import PDFPathInfo
 
 
 @dataclass(slots=True)
@@ -124,6 +125,7 @@ class _PageSource:
     drawing_lines: list[_AxisLine]
     image_bboxes: list[BBox] = field(default_factory=list)
     form_bboxes: list[BBox] = field(default_factory=list)
+    path_infos: list[PDFPathInfo] = field(default_factory=list)
 
 
 @dataclass(slots=True)

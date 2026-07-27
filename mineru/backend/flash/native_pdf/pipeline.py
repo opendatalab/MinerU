@@ -48,7 +48,10 @@ from .graphics import (
     _form_supersedes_nested_bbox,
     _select_form_image_bboxes,
 )
-from .formulas import _build_formula_like_blocks
+from .formulas import (
+    _build_formula_like_blocks,
+    _build_vector_formula_blocks,
+)
 from .auxiliary_text import (
     _classify_page_auxiliary_text,
     _classify_repeated_page_marginals,
@@ -91,6 +94,7 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
             drawing_lines=drawing_lines,
             image_bboxes=pdf_doc.get_page_image_bboxes(page_idx),
             form_bboxes=pdf_doc.get_page_form_bboxes(page_idx),
+            path_infos=pdf_doc.get_page_path_infos(page_idx),
         )
         prepared_pages.append(_prepare_page_source(source))
 
@@ -142,11 +146,20 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
         table_blocks + form_image_blocks + graphic_blocks,
         claimed_line_indices | claimed_form_line_indices | claimed_graphic_line_indices,
     )
+    vector_formula_blocks, claimed_vector_number_indices = _build_vector_formula_blocks(
+        source,
+        table_blocks + form_image_blocks + graphic_blocks + raster_image_blocks,
+        claimed_line_indices
+        | claimed_form_line_indices
+        | claimed_graphic_line_indices
+        | claimed_raster_line_indices,
+    )
     claimed_line_indices = (
         claimed_line_indices
         | claimed_form_line_indices
         | claimed_graphic_line_indices
         | claimed_raster_line_indices
+        | claimed_vector_number_indices
     )
     remaining_lines = _merge_same_baseline_text_lines(
         [line for line in source.lines if line.source_index not in claimed_line_indices],
@@ -164,7 +177,13 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
         remaining_lines=remaining_lines,
         table_bboxes=table_bboxes,
         drawing_lines=source.drawing_lines,
-        fixed_blocks=table_blocks + form_image_blocks + graphic_blocks + raster_image_blocks,
+        fixed_blocks=(
+            table_blocks
+            + form_image_blocks
+            + graphic_blocks
+            + raster_image_blocks
+            + vector_formula_blocks
+        ),
     )
     _classify_page_auxiliary_text(prepared)
     return prepared
@@ -303,7 +322,7 @@ def _normalize_output_block(
     content = _sanitize_pdf_control_text(content, preserve_newlines=True)
     block_type = block.get("type")
     normalized_type = block_type if block_type in _OUTPUT_BLOCK_TYPES else "text"
-    if normalized_type != "image" and not content.strip():
+    if normalized_type not in {"image", "equation"} and not content.strip():
         return None
     normalized_bbox = _normalize_bbox_to_thousandths(bbox, page_size)
     return {
