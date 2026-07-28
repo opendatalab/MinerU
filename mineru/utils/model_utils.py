@@ -1,8 +1,13 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import ctypes
+import gc
 import math
 import os
+import sys
 import time
-import gc
+from functools import lru_cache
+from typing import Callable
+
 from PIL import Image
 from loguru import logger
 import numpy as np
@@ -33,6 +38,39 @@ TEXT_REGION_LABELS = {
     "vertical_text",
     "vision_footnote",
 }
+
+
+@lru_cache(maxsize=1)
+def _get_malloc_trim() -> Callable[[int], int] | None:
+    """Return glibc's heap trimming function when it is available."""
+    if sys.platform != "linux":
+        return None
+
+    try:
+        libc = ctypes.CDLL(None)
+        malloc_trim = getattr(libc, "malloc_trim", None)
+    except OSError:
+        return None
+
+    if malloc_trim is None:
+        return None
+
+    malloc_trim.argtypes = [ctypes.c_size_t]
+    malloc_trim.restype = ctypes.c_int
+    return malloc_trim
+
+
+def trim_process_memory() -> None:
+    """Return unused glibc heap pages to the operating system when possible."""
+    malloc_trim = _get_malloc_trim()
+    if malloc_trim is None:
+        return
+
+    try:
+        malloc_trim(0)
+    except Exception as exc:
+        # Heap trimming is an optional optimization and must never break parsing.
+        logger.debug(f"Unable to trim process heap: {exc}")
 
 
 def _get_bbox(item):
@@ -203,6 +241,7 @@ def clean_memory(device='cuda'):
         if torch.sdaa.is_available():
             torch.sdaa.empty_cache()  
     gc.collect()
+    trim_process_memory()
 
 
 def clean_vram(device, vram_threshold=8):
