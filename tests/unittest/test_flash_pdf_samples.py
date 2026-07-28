@@ -180,6 +180,9 @@ def test_demo2_pages2_to6_restore_paragraphs_formulas_and_reading_order() -> Non
 
     page3 = model_list[2]
     page3_contents = [block["content"] for block in page3]
+    assert next(
+        block for block in page3 if block["content"] == "B. Temporal cost aggregation"
+    )["type"] == "paragraph_title"
     assert page3_contents[12] == "D. Iterative Disparity Refinement"
     assert all(block["bbox"][2] <= 0.5 for block in page3[:12])
     assert "O(ω2) to O(ω)" in page3_contents[0]
@@ -337,7 +340,7 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
         0,
     ]
     assert [len(page) for page in model_list] == [
-        24,
+        23,
         15,
         13,
         21,
@@ -348,6 +351,7 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
         17,
         18,
     ]
+    assert sum(len(page) for page in model_list) == 173
     page7_tables = [block for block in model_list[6] if block["type"] == "table"]
     page7_table4 = next(
         block for block in page7_tables if "Number of parameters" in block["content"]
@@ -442,13 +446,13 @@ def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_formula() -> Non
     page1, page2 = _native_model_list("demo3.pdf")[:2]
     title = next(block for block in page1 if block["content"].startswith("TABLEFORMER:"))
     front_matter_contents = {
-        "∗",
         "Aditya Gupta† Rahul Goel†",
-        "Jingfeng Yang Luheng He†",
+        "Jingfeng Yang∗ Luheng He†",
         "Shyam Upadhyay† Shachi Paul †",
         "?Georgia Institute of Technology",
         "†Google Assistant",
-        "jingfengyangpku@gmail.com tableformer@google.com",
+        "jingfengyangpku@gmail.com",
+        "tableformer@google.com",
     }
     front_matter = [
         block for block in page1 if block["content"] in front_matter_contents
@@ -473,6 +477,7 @@ def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_formula() -> Non
     assert title["type"] == "doc_title"
     assert len(front_matter) == len(front_matter_contents)
     assert all(block["type"] == "text" for block in front_matter)
+    assert not [block for block in page1 if block["content"] == "∗"]
     assert next(block for block in page1 if block["content"] == "Abstract")["type"] == "paragraph_title"
     assert released_code["type"] == "page_footnote"
     assert aside["angle"] == 270

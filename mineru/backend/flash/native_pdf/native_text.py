@@ -234,6 +234,37 @@ def _fill_native_typography(line: _LineItem, page_size: tuple[float, float]) -> 
         line.dominant_font_weight = None
 
 
+def _is_detached_inline_script_candidate(
+    small_bbox: BBox,
+    base_bbox: BBox,
+    base_height: float,
+) -> bool:
+    """仅依据紧凑宽度、边缘邻接和垂直偏移确认低重叠外置上下标。"""
+
+    small_width = max(0.0, small_bbox[2] - small_bbox[0])
+    edge_distance = min(
+        abs(base_bbox[0] - small_bbox[2]),
+        abs(small_bbox[0] - base_bbox[2]),
+    )
+    vertical_gap = max(
+        0.0,
+        base_bbox[1] - small_bbox[3],
+        small_bbox[1] - base_bbox[3],
+    )
+    center_offset = abs(_bbox_center_y(small_bbox) - _bbox_center_y(base_bbox))
+    outside_offset = max(
+        base_bbox[1] - small_bbox[1],
+        small_bbox[3] - base_bbox[3],
+    )
+    return (
+        small_width <= 0.75 * base_height
+        and edge_distance <= max(1.0, 0.1 * base_height)
+        and vertical_gap <= max(0.5, 0.15 * base_height)
+        and center_offset >= max(0.5, 0.25 * base_height)
+        and outside_offset >= max(0.5, 0.2 * base_height)
+    )
+
+
 def _merge_native_inline_scripts(
     lines: list[_LineItem],
     page_size: tuple[float, float],
@@ -241,6 +272,7 @@ def _merge_native_inline_scripts(
     """以 mutual-nearest 规则把跨粗行的小字号前后置标记合入主体视觉行。"""
 
     candidates: list[tuple[float, int, int, Literal["prefix", "suffix"]]] = []
+    detached_candidate_pairs: set[tuple[int, int, Literal["prefix", "suffix"]]] = set()
     for small_index, small in enumerate(lines):
         compact_text = "".join(char for char in small.text if not char.isspace())
         if not compact_text:
@@ -263,7 +295,12 @@ def _merge_native_inline_scripts(
             )
             small_height = max(0.1, small_local_bbox[3] - small_local_bbox[1])
             overlap_ratio = vertical_overlap / small_height
-            if overlap_ratio < 0.5:
+            detached_candidate = overlap_ratio < 0.5 and _is_detached_inline_script_candidate(
+                small_local_bbox,
+                base_local_bbox,
+                base.effective_height,
+            )
+            if overlap_ratio < 0.5 and not detached_candidate:
                 continue
             center_offset = abs(_bbox_center_y(small_local_bbox) - _bbox_center_y(base_local_bbox))
             if center_offset < max(0.5, 0.12 * base.effective_height):
@@ -291,6 +328,8 @@ def _merge_native_inline_scripts(
                 continue
             metric = abs(gap) + (1.0 - overlap_ratio) * base.effective_height
             candidates.append((metric, small_index, base_index, position))
+            if detached_candidate:
+                detached_candidate_pairs.add((small_index, base_index, position))
 
     best_base_for_small: dict[int, tuple[float, int, Literal["prefix", "suffix"]]] = {}
     best_small_for_base: dict[tuple[int, str], tuple[float, int]] = {}
@@ -301,7 +340,7 @@ def _merge_native_inline_scripts(
         if base_key not in best_small_for_base or metric < best_small_for_base[base_key][0]:
             best_small_for_base[base_key] = (metric, small_index)
 
-    matches: dict[int, dict[str, int]] = {}
+    matches: dict[int, dict[Literal["prefix", "suffix"], int]] = {}
     for small_index, (_metric, base_index, position) in best_base_for_small.items():
         if best_small_for_base.get((base_index, position), (math.inf, -1))[1] == small_index:
             matches.setdefault(base_index, {})[position] = small_index
@@ -337,6 +376,12 @@ def _merge_native_inline_scripts(
             base.split_from_row = base.split_from_row or suffix.split_from_row
         base.bbox = merged_bbox
         base.chars = merged_chars
+        # 只有低重叠外置候选才需要按完整二维 bbox 计算后继行距；普通上下标保持原有基线行为。
+        base.restored_inline_cluster = base.restored_inline_cluster or any(
+            lines[child_index].restored_inline_cluster
+            or (child_index, base_index, position) in detached_candidate_pairs
+            for position, child_index in positions.items()
+        )
         _fill_native_typography(base, page_size)
         visiting.remove(base_index)
         merged_base_indices.add(base_index)
@@ -398,4 +443,3 @@ def _median_native_glyph_width(line: _LineItem, page_size: tuple[float, float]) 
         widths.append(max(0.1, local_bbox[2] - local_bbox[0]))
     line.median_glyph_width = statistics.median(widths) if widths else None
     return line.median_glyph_width
-

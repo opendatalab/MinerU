@@ -360,6 +360,7 @@ def test_inline_scripts_and_touching_low_coverage_runs_are_recovered() -> None:
     merged_scripts = native_text._merge_native_inline_scripts(script_lines, (200.0, 100.0))
 
     assert [line.text for line in merged_scripts] == ["O(ω2", "Dip"]
+    assert not any(line.restored_inline_cluster for line in merged_scripts)
 
     caption_prefix = _text_line(
         "(4",
@@ -404,6 +405,81 @@ def test_inline_scripts_and_touching_low_coverage_runs_are_recovered() -> None:
         formula_number.bbox,
         [],
     )
+
+
+def test_low_overlap_detached_script_preserves_following_row_gap() -> None:
+    """验证低重叠外置字形按几何归入主体，且抬高的顶边不会拆断后继行。"""
+
+    base = _text_line(
+        "Alpha",
+        (10.0, 10.0, 70.0, 20.8),
+        0,
+        visual_row_id=0,
+        effective_height=10.8,
+    )
+    detached_script = _text_line(
+        "◇",
+        (70.0, 3.6, 74.2, 11.1),
+        1,
+        visual_row_id=1,
+        effective_height=7.5,
+    )
+    following = _text_line(
+        "Beta",
+        (35.0, 22.0, 80.0, 34.0),
+        2,
+        visual_row_id=2,
+        effective_height=10.8,
+    )
+
+    merged = native_text._merge_native_inline_scripts(
+        [base, detached_script, following],
+        (120.0, 100.0),
+    )
+
+    assert [line.text for line in merged] == ["Alpha◇", "Beta"]
+    assert merged[0].bbox == (10.0, 3.6, 74.2, 20.8)
+    assert merged[0].restored_inline_cluster
+    assert line_layout._effective_text_row_gap(
+        (merged[0], merged[0].bbox),
+        (following, following.bbox),
+    ) == pytest.approx(1.2)
+
+
+@pytest.mark.parametrize(
+    ("small_text", "small_bbox"),
+    [
+        pytest.param("wide", (50.0, 3.5, 62.0, 11.0), id="wide-token"),
+        pytest.param("◇", (53.0, 3.5, 57.2, 11.0), id="horizontal-gap"),
+        pytest.param("◇", (50.0, 0.0, 54.2, 7.5), id="vertical-gap"),
+        pytest.param("◇", (50.0, 12.0, 54.2, 19.5), id="same-baseline-cell"),
+    ],
+)
+def test_detached_script_geometry_rejects_ambiguous_small_runs(
+    small_text: str,
+    small_bbox: tuple[float, float, float, float],
+) -> None:
+    """验证宽文本、远距文本和同行小单元格不能仅凭小字号并入主体。"""
+
+    base = _text_line(
+        "Base",
+        (0.0, 10.0, 50.0, 22.0),
+        0,
+        visual_row_id=0,
+        effective_height=12.0,
+    )
+    small = _text_line(
+        small_text,
+        small_bbox,
+        1,
+        visual_row_id=1,
+        effective_height=7.5,
+    )
+
+    merged = native_text._merge_native_inline_scripts([base, small], (120.0, 100.0))
+
+    assert [line.text for line in merged] == ["Base", small_text]
+    assert not any(line.restored_inline_cluster for line in merged)
 
 
 def test_full_lane_large_height_mismatch_only_recovers_aligned_continuation() -> None:
