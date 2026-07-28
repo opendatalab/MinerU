@@ -46,6 +46,11 @@ def _format_embedded_html(html: str, img_buket_path: str) -> str:
     return _replace_eq_tags_in_table_html(_prefix_table_img_src(html, img_buket_path))
 
 
+def _build_visual_details_block(content: str, summary: str) -> str:
+    """Preserve structured visual content without replacing the rendered visual."""
+    return f"<details>\n<summary>{summary}</summary>\n\n{content}\n\n</details>"
+
+
 def _build_media_path(img_buket_path: str, image_path: str) -> str:
     """构造图片展示路径，空图片路径保持为空。"""
     if not image_path:
@@ -413,11 +418,20 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path='', page_idx=No
                 continue
             elif make_mode == MakeMode.MM_MD:
                 image_path, chart_content = get_body_data(para_block)
-                if chart_content:
-                    para_text += f"\n{_format_embedded_html(chart_content, img_buket_path)}\n"
-                elif image_path:
+                if image_path:
                     para_text += f"![]({_build_media_path(img_buket_path, image_path)})"
-                else:
+                if chart_content:
+                    formatted_content = _format_embedded_html(
+                        chart_content,
+                        img_buket_path,
+                    )
+                    if image_path:
+                        formatted_content = _build_visual_details_block(
+                            formatted_content,
+                            "chart content",
+                        )
+                    para_text += f"\n{formatted_content}\n"
+                if not image_path and not chart_content:
                     continue
                 for caption_text in _collect_caption_texts(
                     para_block,

@@ -19,7 +19,10 @@ from mineru.backend.utils.office_image import (
     serialize_vector_image_with_placeholder,
 )
 from mineru.model.docx.tools.math.omml import oMath2Latex
-from mineru.backend.utils.office_chart import extract_chart_html_from_ooxml
+from mineru.backend.utils.office_chart import (
+    extract_chart_html_from_ooxml,
+    render_chart_svg_from_ooxml,
+)
 from mineru.model.office_stream import read_stream_bytes_from_start, rewind_stream
 from mineru.model.pptx.package_normalizer import normalize_pptx_package
 from mineru.model.pptx.xycut_pp_sorter import sort_entries
@@ -703,21 +706,39 @@ class PptxConverter:
         except Exception as e:
             logger.warning(f"Warning: chart workbook cannot be loaded: {e}")
 
+        chart_html = ""
         try:
             chart_html = extract_chart_html_from_ooxml(chart_xml, workbook_bytes)
         except Exception as e:
             logger.warning(f"Warning: chart HTML cannot be extracted: {e}")
+
+        chart_image = ""
+        try:
+            chart_width = 960
+            aspect_ratio = (
+                float(shape.height) / float(shape.width)
+                if shape.width
+                else 540 / chart_width
+            )
+            chart_height = max(320, min(720, round(chart_width * aspect_ratio)))
+            chart_image = render_chart_svg_from_ooxml(
+                chart_xml,
+                width=chart_width,
+                height=chart_height,
+            )
+        except Exception as e:
+            logger.warning(f"Warning: chart SVG cannot be rendered: {e}")
+
+        if not chart_html and not chart_image:
             return
 
-        if not chart_html:
-            return
-
-        self.cur_page.append(
-            {
-                "type": BlockType.CHART,
-                "content": chart_html,
-            }
-        )
+        chart_block = {
+            "type": BlockType.CHART,
+            "content": chart_html,
+        }
+        if chart_image:
+            chart_block["image_base64"] = chart_image
+        self.cur_page.append(chart_block)
 
     def _handle_pictures(self, shape):
         image_data = self._get_shape_image_data(shape)

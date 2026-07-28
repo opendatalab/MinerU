@@ -1,4 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import base64
 import math
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
@@ -10,12 +11,41 @@ from lxml import etree
 from openpyxl import load_workbook
 from openpyxl.utils.cell import range_to_tuple
 from openpyxl.utils.datetime import MAC_EPOCH, WINDOWS_EPOCH, from_excel
+from reportlab.graphics import renderSVG
+from reportlab.graphics.charts.barcharts import VerticalBarChart
+from reportlab.graphics.charts.lineplots import LinePlot
+from reportlab.graphics.shapes import Drawing, Group, Line, Rect, String
+from reportlab.lib import colors
 
 
 _CHART_NS: Final = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 _DRAWING_NS: Final = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _NS: Final = {"c": _CHART_NS, "a": _DRAWING_NS}
 _MAX_CACHE_INDEX_SPAN: Final = 100_000
+_DEFAULT_CHART_WIDTH: Final = 960
+_DEFAULT_CHART_HEIGHT: Final = 540
+_CHART_PALETTE: Final = (
+    "4472C4",
+    "ED7D31",
+    "70AD47",
+    "A5A5A5",
+    "FFC000",
+    "5B9BD5",
+    "C00000",
+    "00B050",
+)
+_SCHEME_COLORS: Final = {
+    "dk1": "000000",
+    "lt1": "FFFFFF",
+    "dk2": "1F497D",
+    "lt2": "EEECE1",
+    "accent1": "4F81BD",
+    "accent2": "C0504D",
+    "accent3": "9BBB59",
+    "accent4": "8064A2",
+    "accent5": "4BACC6",
+    "accent6": "F79646",
+}
 _PLOT_TAGS: Final = (
     "areaChart",
     "area3DChart",
@@ -49,6 +79,9 @@ class SeriesSpec:
     cached_x_values: list[str] = field(default_factory=list)
     cached_values: list[str] = field(default_factory=list)
     cached_bubble_sizes: list[str] = field(default_factory=list)
+    line_color: str | None = None
+    line_dash: str | None = None
+    line_width: float | None = None
 
 
 @dataclass
@@ -62,6 +95,12 @@ class ChartSpec:
     has_date_axis: bool = False
     date_1904: bool = False
     series: list[SeriesSpec] = field(default_factory=list)
+    x_axis_min: float | None = None
+    x_axis_max: float | None = None
+    x_axis_major_unit: float | None = None
+    y_axis_min: float | None = None
+    y_axis_max: float | None = None
+    y_axis_major_unit: float | None = None
 
 
 def html_table_from_excel_bytes(excel_bytes: bytes) -> str:
@@ -178,6 +217,329 @@ def extract_chart_html_from_ooxml(chart_xml: bytes, workbook_bytes: bytes | None
     return chart_cache_html
 
 
+def render_chart_svg_from_ooxml(
+    chart_xml: bytes,
+    width: int = _DEFAULT_CHART_WIDTH,
+    height: int = _DEFAULT_CHART_HEIGHT,
+) -> str:
+    """Render supported OOXML charts as an SVG data URI using cached display data."""
+    spec = parse_chart_spec_from_ooxml(chart_xml)
+    if spec is None or not spec.series:
+        return ""
+
+    drawing = _build_chart_drawing(spec, width, height)
+    if drawing is None:
+        return ""
+
+    svg = renderSVG.drawToString(drawing)
+    encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded}"
+
+
+def _build_chart_drawing(spec: ChartSpec, width: int, height: int) -> Drawing | None:
+    width = max(int(width), 320)
+    height = max(int(height), 240)
+    if spec.plot_kind == "scatter":
+        return _build_scatter_chart_drawing(spec, width, height)
+    if spec.chart_type in {"barChart", "bar3DChart"}:
+        return _build_bar_chart_drawing(spec, width, height)
+    return None
+
+
+def _chart_number(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _scatter_series_data(
+    spec: ChartSpec,
+) -> list[tuple[SeriesSpec, str, list[tuple[float, float]]]]:
+    series_data = []
+    for index, series in enumerate(spec.series, start=1):
+        points = []
+        for raw_x, raw_y in zip(series.cached_x_values, series.cached_values):
+            x_value = _chart_number(raw_x)
+            y_value = _chart_number(raw_y)
+            if x_value is not None and y_value is not None:
+                points.append((x_value, y_value))
+        if points:
+            series_data.append((series, _resolve_series_name(series, index), points))
+    return series_data
+
+
+def _category_series_data(
+    spec: ChartSpec,
+) -> tuple[list[str], list[tuple[SeriesSpec, str, list[float]]]]:
+    categories = next(
+        (series.cached_categories for series in spec.series if series.cached_categories),
+        [],
+    )
+    row_count = max(
+        len(categories),
+        max((len(series.cached_values) for series in spec.series), default=0),
+    )
+    if row_count == 0:
+        return [], []
+    if not categories:
+        categories = [str(index) for index in range(1, row_count + 1)]
+    elif len(categories) < row_count:
+        categories = [*categories, *[""] * (row_count - len(categories))]
+
+    series_data = []
+    for index, series in enumerate(spec.series, start=1):
+        values = []
+        for raw_value in series.cached_values:
+            value = _chart_number(raw_value)
+            values.append(value if value is not None else 0.0)
+        values.extend([0.0] * (row_count - len(values)))
+        series_data.append((series, _resolve_series_name(series, index), values))
+    return categories, series_data
+
+
+def _series_color(series: SeriesSpec, index: int):
+    color_value = series.line_color or _CHART_PALETTE[index % len(_CHART_PALETTE)]
+    return colors.HexColor(f"#{color_value}")
+
+
+def _line_dash_array(dash_name: str | None) -> list[int] | None:
+    if dash_name in {"dash", "sysDash", "lgDash"}:
+        return [8, 5]
+    if dash_name in {"dot", "sysDot"}:
+        return [2, 4]
+    if dash_name in {"dashDot", "sysDashDot", "lgDashDot"}:
+        return [8, 4, 2, 4]
+    if dash_name in {"lgDashDotDot", "sysDashDotDot"}:
+        return [10, 4, 2, 4, 2, 4]
+    return None
+
+
+def _configure_value_axis(axis, value_min, value_max, major_unit) -> None:
+    axis.visibleGrid = True
+    axis.gridStrokeColor = colors.HexColor("#D9D9D9")
+    axis.gridStrokeWidth = 0.6
+    axis.gridStrokeDashArray = [1, 2]
+    axis.strokeColor = colors.HexColor("#A6A6A6")
+    axis.labels.fillColor = colors.HexColor("#262626")
+    axis.labels.fontSize = 10
+    if value_min is not None:
+        axis.valueMin = value_min
+    if value_max is not None:
+        axis.valueMax = value_max
+    if major_unit is not None and major_unit > 0:
+        axis.valueStep = major_unit
+
+
+def _add_chart_title_and_legend(
+    drawing: Drawing,
+    spec: ChartSpec,
+    series_info: list[tuple[SeriesSpec, str]],
+    width: int,
+    height: int,
+    *,
+    bar_swatch: bool = False,
+) -> float:
+    drawing.add(
+        String(
+            width / 2,
+            height - 27,
+            spec.title,
+            textAnchor="middle",
+            fontName="Helvetica",
+            fontSize=17,
+            fillColor=colors.black,
+        )
+    )
+    if not series_info:
+        return height - 55
+
+    columns = min(3, max(1, math.ceil(len(series_info) / 2)))
+    rows = math.ceil(len(series_info) / columns)
+    item_width = (width - 140) / columns
+    for index, (series, name) in enumerate(series_info):
+        column = index % columns
+        row = index // columns
+        x = 70 + column * item_width
+        y = height - 57 - row * 19
+        color = _series_color(series, index)
+        if bar_swatch:
+            drawing.add(Rect(x, y - 4, 24, 9, fillColor=color, strokeColor=color))
+        else:
+            legend_line = Line(
+                x,
+                y,
+                x + 28,
+                y,
+                strokeColor=color,
+                strokeWidth=series.line_width or 2,
+            )
+            dash_array = _line_dash_array(series.line_dash)
+            if dash_array:
+                legend_line.strokeDashArray = dash_array
+            drawing.add(legend_line)
+        drawing.add(
+            String(
+                x + 35,
+                y - 4,
+                name,
+                fontName="Helvetica",
+                fontSize=10,
+                fillColor=colors.HexColor("#262626"),
+            )
+        )
+    return height - 68 - (rows - 1) * 19
+
+
+def _add_axis_titles(
+    drawing: Drawing,
+    spec: ChartSpec,
+    chart_left: float,
+    chart_bottom: float,
+    chart_width: float,
+    chart_height: float,
+) -> None:
+    if spec.x_axis_title:
+        drawing.add(
+            String(
+                chart_left + chart_width / 2,
+                22,
+                spec.x_axis_title,
+                textAnchor="middle",
+                fontName="Helvetica",
+                fontSize=12,
+            )
+        )
+    if spec.value_axis_title:
+        axis_title_group = Group()
+        axis_title_group.add(
+            String(
+                0,
+                0,
+                spec.value_axis_title,
+                textAnchor="middle",
+                fontName="Helvetica",
+                fontSize=12,
+            )
+        )
+        axis_title_group.transform = (
+            0,
+            1,
+            -1,
+            0,
+            24,
+            chart_bottom + chart_height / 2,
+        )
+        drawing.add(axis_title_group)
+
+
+def _build_scatter_chart_drawing(spec: ChartSpec, width: int, height: int) -> Drawing | None:
+    series_data = _scatter_series_data(spec)
+    if not series_data:
+        return None
+
+    drawing = Drawing(width, height)
+    drawing.add(Rect(0, 0, width, height, fillColor=colors.white, strokeColor=None))
+    series_info = [(series, name) for series, name, _ in series_data]
+    chart_top = _add_chart_title_and_legend(drawing, spec, series_info, width, height)
+    chart_left = 72
+    chart_bottom = 58
+    chart_width = width - chart_left - 28
+    chart_height = max(chart_top - chart_bottom, 100)
+
+    chart = LinePlot()
+    chart.x = chart_left
+    chart.y = chart_bottom
+    chart.width = chart_width
+    chart.height = chart_height
+    chart.data = [points for _, _, points in series_data]
+    chart.joinedLines = True
+    _configure_value_axis(
+        chart.xValueAxis,
+        spec.x_axis_min,
+        spec.x_axis_max,
+        spec.x_axis_major_unit,
+    )
+    _configure_value_axis(
+        chart.yValueAxis,
+        spec.y_axis_min,
+        spec.y_axis_max,
+        spec.y_axis_major_unit,
+    )
+    for index, (series, _, _) in enumerate(series_data):
+        chart.lines[index].strokeColor = _series_color(series, index)
+        chart.lines[index].strokeWidth = series.line_width or 2
+        dash_array = _line_dash_array(series.line_dash)
+        if dash_array:
+            chart.lines[index].strokeDashArray = dash_array
+
+    drawing.add(chart)
+    _add_axis_titles(
+        drawing,
+        spec,
+        chart_left,
+        chart_bottom,
+        chart_width,
+        chart_height,
+    )
+    return drawing
+
+
+def _build_bar_chart_drawing(spec: ChartSpec, width: int, height: int) -> Drawing | None:
+    categories, series_data = _category_series_data(spec)
+    if not series_data:
+        return None
+
+    drawing = Drawing(width, height)
+    drawing.add(Rect(0, 0, width, height, fillColor=colors.white, strokeColor=None))
+    series_info = [(series, name) for series, name, _ in series_data]
+    chart_top = _add_chart_title_and_legend(
+        drawing,
+        spec,
+        series_info,
+        width,
+        height,
+        bar_swatch=True,
+    )
+    chart_left = 72
+    chart_bottom = 58
+    chart_width = width - chart_left - 28
+    chart_height = max(chart_top - chart_bottom, 100)
+
+    chart = VerticalBarChart()
+    chart.x = chart_left
+    chart.y = chart_bottom
+    chart.width = chart_width
+    chart.height = chart_height
+    chart.data = [values for _, _, values in series_data]
+    chart.categoryAxis.categoryNames = categories
+    chart.categoryAxis.labels.fontSize = 9
+    chart.categoryAxis.labels.fillColor = colors.HexColor("#262626")
+    chart.categoryAxis.strokeColor = colors.HexColor("#A6A6A6")
+    _configure_value_axis(
+        chart.valueAxis,
+        spec.y_axis_min,
+        spec.y_axis_max,
+        spec.y_axis_major_unit,
+    )
+    for index, (series, _, _) in enumerate(series_data):
+        color = _series_color(series, index)
+        chart.bars[index].fillColor = color
+        chart.bars[index].strokeColor = color
+
+    drawing.add(chart)
+    _add_axis_titles(
+        drawing,
+        spec,
+        chart_left,
+        chart_bottom,
+        chart_width,
+        chart_height,
+    )
+    return drawing
+
+
 def parse_chart_spec_from_ooxml(chart_xml: bytes) -> ChartSpec | None:
     try:
         root = etree.fromstring(
@@ -222,21 +584,35 @@ def parse_chart_spec_from_ooxml(chart_xml: bytes) -> ChartSpec | None:
 
     x_axis_title = ""
     value_axis_title = ""
+    x_axis_min = x_axis_max = x_axis_major_unit = None
+    y_axis_min = y_axis_max = y_axis_major_unit = None
     if plot_kind in {"scatter", "bubble"}:
+        x_axis_found = False
+        y_axis_found = False
         for axis in plot_area.findall("c:valAx", namespaces=_NS):
             axis_pos = axis.find("c:axPos", namespaces=_NS)
             axis_position = axis_pos.get("val") if axis_pos is not None else ""
             title = _extract_title_text(axis.find("c:title", namespaces=_NS))
-            if axis_position == "b" and not x_axis_title:
+            axis_min, axis_max, major_unit = _extract_axis_scale(axis)
+            if axis_position == "b" and not x_axis_found:
                 x_axis_title = title
-            elif axis_position == "l" and not value_axis_title:
+                x_axis_min = axis_min
+                x_axis_max = axis_max
+                x_axis_major_unit = major_unit
+                x_axis_found = True
+            elif axis_position == "l" and not y_axis_found:
                 value_axis_title = title
+                y_axis_min = axis_min
+                y_axis_max = axis_max
+                y_axis_major_unit = major_unit
+                y_axis_found = True
         if not x_axis_title:
             x_axis_title = category_axis_title
     else:
         axis = plot_area.find("c:valAx", namespaces=_NS)
         if axis is not None:
             value_axis_title = _extract_title_text(axis.find("c:title", namespaces=_NS))
+            y_axis_min, y_axis_max, y_axis_major_unit = _extract_axis_scale(axis)
 
     series_specs = []
     for _, plot_element in plot_elements:
@@ -269,6 +645,9 @@ def parse_chart_spec_from_ooxml(chart_xml: bytes) -> ChartSpec | None:
                     cached_bubble_sizes=_extract_reference_cache(
                         series_element.find("c:bubbleSize", namespaces=_NS)
                     ),
+                    line_color=_extract_series_line_color(series_element),
+                    line_dash=_extract_series_line_dash(series_element),
+                    line_width=_extract_series_line_width(series_element),
                 )
             )
 
@@ -286,6 +665,12 @@ def parse_chart_spec_from_ooxml(chart_xml: bytes) -> ChartSpec | None:
         has_date_axis=has_date_axis,
         date_1904=_chart_uses_date_1904(root),
         series=series_specs,
+        x_axis_min=x_axis_min,
+        x_axis_max=x_axis_max,
+        x_axis_major_unit=x_axis_major_unit,
+        y_axis_min=y_axis_min,
+        y_axis_max=y_axis_max,
+        y_axis_major_unit=y_axis_major_unit,
     )
 
 
@@ -724,6 +1109,62 @@ def _extract_title_text(title_element) -> str:
         return ""
     texts = title_element.findall(".//a:t", namespaces=_NS)
     return "".join(text.text or "" for text in texts).strip()
+
+
+def _float_xml_value(element) -> float | None:
+    if element is None:
+        return None
+    try:
+        value = float(element.get("val"))
+    except (TypeError, ValueError):
+        return None
+    return value if math.isfinite(value) else None
+
+
+def _extract_axis_scale(axis) -> tuple[float | None, float | None, float | None]:
+    if axis is None:
+        return None, None, None
+    return (
+        _float_xml_value(axis.find("c:scaling/c:min", namespaces=_NS)),
+        _float_xml_value(axis.find("c:scaling/c:max", namespaces=_NS)),
+        _float_xml_value(axis.find("c:majorUnit", namespaces=_NS)),
+    )
+
+
+def _extract_series_line_color(series_element) -> str | None:
+    line = series_element.find("c:spPr/a:ln", namespaces=_NS)
+    if line is None:
+        return None
+    srgb_color = line.find("a:solidFill/a:srgbClr", namespaces=_NS)
+    if srgb_color is not None:
+        raw_color = (srgb_color.get("val") or "").upper()
+        if len(raw_color) == 6 and all(char in "0123456789ABCDEF" for char in raw_color):
+            return raw_color
+    scheme_color = line.find("a:solidFill/a:schemeClr", namespaces=_NS)
+    if scheme_color is not None:
+        return _SCHEME_COLORS.get(scheme_color.get("val") or "")
+    return None
+
+
+def _extract_series_line_dash(series_element) -> str | None:
+    line = series_element.find("c:spPr/a:ln", namespaces=_NS)
+    if line is None:
+        return None
+    dash = line.find("a:prstDash", namespaces=_NS)
+    return dash.get("val") if dash is not None else None
+
+
+def _extract_series_line_width(series_element) -> float | None:
+    line = series_element.find("c:spPr/a:ln", namespaces=_NS)
+    if line is None:
+        return None
+    try:
+        width = float(line.get("w")) / 12_700.0
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(width) or width <= 0:
+        return None
+    return width
 
 
 def _find_reference_element(container):
