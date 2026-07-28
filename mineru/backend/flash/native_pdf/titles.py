@@ -19,6 +19,7 @@ from .geometry import (
     _bbox_axis_overlap_ratio,
     _bbox_center_x,
     _bbox_center_y,
+    _bbox_union_many,
     _rotate_bbox_to_upright,
 )
 from .line_layout import (
@@ -61,21 +62,29 @@ def _classify_page_titles(
             lanes,
             median_height,
         )
+        local_container_bboxes = [
+            _rotate_bbox_to_upright(bbox, page_size, angle)
+            for bbox in container_bboxes
+        ]
+        grid_title_suppressions.update(
+            _find_container_visual_row_title_suppressions(
+                line_geometry,
+                local_container_bboxes,
+                median_height,
+            )
+        )
 
         document_title_bottom: float | None = None
         if page_index == 0:
             document_title_bottom = _classify_document_title(
                 lanes,
                 local_page_height,
+                local_page_width,
             )
         preserve_front_matter_boundaries = _document_title_uses_page_fallback(
             lanes,
         )
 
-        local_container_bboxes = [
-            _rotate_bbox_to_upright(bbox, page_size, angle)
-            for bbox in container_bboxes
-        ]
         for lane in lanes:
             profile = _infer_lane_body_profile(lane)
             _classify_paragraph_titles_in_lane(
@@ -194,6 +203,37 @@ def _find_repeated_grid_title_suppressions(
     return set().union(*paired_bands)
 
 
+def _find_container_visual_row_title_suppressions(
+    line_geometry: list[tuple[_LineItem, BBox]],
+    container_bboxes: list[BBox],
+    median_height: float,
+) -> set[int]:
+    """用完整视觉行与图表容器的邻接关系抑制拆分 caption 标题误报。"""
+
+    visual_rows: dict[int, list[tuple[_LineItem, BBox]]] = {}
+    for item in line_geometry:
+        row_id = item[0].visual_row_id
+        if row_id is not None:
+            visual_rows.setdefault(row_id, []).append(item)
+    suppressed: set[int] = set()
+    for members in visual_rows.values():
+        if len(members) < 2:
+            continue
+        row_bbox = _bbox_union_many([bbox for _line, bbox in members])
+        if any(
+            _bbox_axis_overlap_ratio(row_bbox, container_bbox, axis="x") >= 0.35
+            and max(
+                row_bbox[1] - container_bbox[3],
+                container_bbox[1] - row_bbox[3],
+                0.0,
+            )
+            <= 1.5 * median_height
+            for container_bbox in container_bboxes
+        ):
+            suppressed.update(line.source_index for line, _bbox in members)
+    return suppressed
+
+
 def _infer_lane_body_profile(lane: _TextLane) -> _LaneBodyProfile:
     """从栏带的长行主体估计正文行高、主字体、字重、常规行距和样式占比。"""
 
@@ -241,6 +281,7 @@ def _infer_lane_body_profile(lane: _TextLane) -> _LaneBodyProfile:
 def _classify_document_title(
     lanes: list[_TextLane],
     local_page_height: float,
+    local_page_width: float,
 ) -> float | None:
     """从首页上部选取显著大字号锚点，并用同版式邻行扩展多行文档标题。"""
 
@@ -255,7 +296,7 @@ def _classify_document_title(
     for lane, profile in lane_profiles:
         lane_width = max(0.1, lane.right - lane.left)
         available = [item for item in lane.lines if item[0].semantic_type is None]
-        for row_index, item in enumerate(available[:5]):
+        for row_index, item in enumerate(available):
             line, bbox = item
             reference_height = min(profile.body_height, 1.25 * document_body_height)
             height_ratio = _line_effective_height(line, bbox) / max(0.1, reference_height)
@@ -265,6 +306,8 @@ def _classify_document_title(
             )
             width_ratio = (bbox[2] - bbox[0]) / lane_width
             centered = abs(_bbox_center_x(bbox) - (lane.left + lane.right) / 2.0) <= 0.15 * lane_width
+            page_centered = abs(_bbox_center_x(bbox) - 0.5 * local_page_width) <= 0.15 * local_page_width
+            page_width_ratio = (bbox[2] - bbox[0]) / max(0.1, local_page_width)
             spans_columns_fallback = (
                 lane.is_span
                 and centered
@@ -276,10 +319,22 @@ def _classify_document_title(
                 or (height_ratio < 1.4 and not spans_columns_fallback)
                 or width_ratio < 0.2
                 or (not centered and height_ratio < 1.7)
+                or (
+                    not page_centered
+                    and page_width_ratio < 0.45
+                    and height_ratio < 1.8
+                )
             ):
                 continue
             top_preference = max(0.0, 0.45 - _bbox_center_y(bbox) / local_page_height)
-            score = height_ratio + (0.75 if centered else 0.0) + top_preference - 0.05 * row_index
+            score = (
+                height_ratio
+                + (0.75 if centered else 0.0)
+                + (1.25 if page_centered else 0.0)
+                + (0.75 if page_width_ratio >= 0.55 else 0.0)
+                + top_preference
+                - 0.02 * row_index
+            )
             candidates.append((score, lane, row_index, item))
     if not candidates:
         return None
@@ -301,7 +356,7 @@ def _classify_document_title(
             candidate_height = _line_effective_height(candidate_line, candidate_bbox)
             if not 0.8 <= candidate_height / anchor_height <= 1.25:
                 break
-            if not _title_fonts_compatible(anchor_line, candidate_line):
+            if not _document_title_fonts_compatible(anchor_line, candidate_line):
                 break
             vertical_gap = max(candidate_bbox[1] - previous_bbox[3], previous_bbox[1] - candidate_bbox[3], 0.0)
             lane_width = max(0.1, lane.right - lane.left)
@@ -314,6 +369,25 @@ def _classify_document_title(
             previous_bbox = candidate_bbox
             index += direction
     return max(bbox[3] for _line, bbox in selected)
+
+
+def _document_title_fonts_compatible(
+    first: _LineItem,
+    second: _LineItem,
+) -> bool:
+    """允许混排标题因主字体覆盖不足而切换字体，同时保留可靠字重屏障。"""
+
+    if _title_fonts_compatible(first, second):
+        return True
+    uncertain_dominant_font = min(first.font_coverage, second.font_coverage) < 0.85
+    weights_compatible = (
+        first.dominant_font_weight is None
+        or second.dominant_font_weight is None
+        or abs(first.dominant_font_weight - second.dominant_font_weight) < 100.0
+        or max(first.dominant_font_weight, second.dominant_font_weight)
+        < 1.15 * min(first.dominant_font_weight, second.dominant_font_weight)
+    )
+    return uncertain_dominant_font and weights_compatible
 
 
 def _document_title_uses_page_fallback(lanes: list[_TextLane]) -> bool:
@@ -388,6 +462,12 @@ def _classify_paragraph_titles_in_lane(
             and line.font_coverage >= 0.75
             and line.font_signature != profile.body_font
         )
+        low_coverage_style_differs = (
+            profile.body_font is not None
+            and line.font_signature is not None
+            and 0.5 <= line.font_coverage < 0.75
+            and line.font_signature != profile.body_font
+        )
         style_support = profile.style_support.get(line.font_signature, 1.0) if line.font_signature is not None else 1.0
         weight_emphasized = (
             profile.body_weight is not None
@@ -427,6 +507,27 @@ def _classify_paragraph_titles_in_lane(
             and not _title_fonts_compatible(rows[index - 1][0], line)
         ):
             continue
+        if _continues_local_body_row(
+            rows,
+            index,
+            lane_width,
+            profile,
+        ):
+            continue
+        compact_local_transition = (
+            low_coverage_style_differs
+            and left_aligned
+            and width_ratio <= 0.65
+            and gap_above >= 0.1
+            and gap_below >= 0.2
+            and _has_following_body_row(
+                rows,
+                index,
+                lane_width,
+                lane.left,
+                profile,
+            )
+        )
         compact_text_section = (
             height_ratio < 0.9
             and centered
@@ -457,9 +558,9 @@ def _classify_paragraph_titles_in_lane(
         ):
             continue
         score = 0.0
-        if style_differs:
+        if style_differs or compact_local_transition:
             score += 2.0
-            if style_support <= 0.2:
+            if compact_local_transition or style_support <= 0.2:
                 score += 0.75
         if weight_emphasized:
             score += 1.0
@@ -483,10 +584,15 @@ def _classify_paragraph_titles_in_lane(
         strong_layout_signal = (
             height_ratio >= 1.18
             or style_differs
+            or compact_local_transition
             or weight_emphasized
             or (centered and width_ratio <= 0.7 and gap_above >= 0.35 and gap_below >= 0.2)
         )
-        if score >= 4.0 and has_spacing_signal and strong_layout_signal:
+        if (
+            score >= 4.0
+            and (has_spacing_signal or compact_local_transition)
+            and strong_layout_signal
+        ):
             if _is_full_width_inline_heading(
                 rows,
                 index,
@@ -589,6 +695,40 @@ def _is_near_full_mixed_inline_row(
     )
 
 
+def _continues_local_body_row(
+    rows: list[tuple[_LineItem, BBox]],
+    index: int,
+    lane_width: float,
+    profile: _LaneBodyProfile,
+) -> bool:
+    """识别紧随同字体满行的正文尾行，阻止全局小字号基线造成标题误判。"""
+
+    if index <= 0:
+        return False
+    previous_line, previous_bbox = rows[index - 1]
+    line, bbox = rows[index]
+    if previous_line.semantic_type is not None:
+        return False
+    if (
+        previous_line.font_signature is not None
+        and line.font_signature is not None
+        and previous_line.font_signature != line.font_signature
+    ):
+        return False
+    previous_height = _line_effective_height(previous_line, previous_bbox)
+    line_height = _line_effective_height(line, bbox)
+    pair_height = max(previous_height, line_height)
+    gap = _effective_text_row_gap(rows[index - 1], rows[index])
+    return (
+        0.8 <= line_height / previous_height <= 1.25
+        and previous_bbox[2] - previous_bbox[0] >= 0.75 * lane_width
+        and abs(bbox[0] - previous_bbox[0]) <= 2.0 * pair_height
+        and -0.25 * pair_height
+        <= gap
+        <= profile.regular_gap + pair_height
+    )
+
+
 def _is_full_width_inline_heading(
     rows: list[tuple[_LineItem, BBox]],
     index: int,
@@ -645,7 +785,13 @@ def _has_following_body_row(
     current_centered = abs(
         _bbox_center_x(current[1]) - (lane_left + lane_width / 2.0)
     ) <= 0.12 * lane_width
-    maximum_gap = (1.5 if current_centered else 0.75) * profile.body_height
+    compact_left_aligned = (
+        current[1][2] - current[1][0] <= 0.35 * lane_width
+        and abs(current[1][0] - lane_left) <= 0.65 * profile.body_height
+    )
+    maximum_gap = (
+        1.5 if current_centered else 1.25 if compact_left_aligned else 0.75
+    ) * profile.body_height
     height_ratio = _line_effective_height(line, bbox) / profile.body_height
     width_ratio = (bbox[2] - bbox[0]) / lane_width
     return (
@@ -798,6 +944,9 @@ def _line_near_visual_container(
     for container_bbox in container_bboxes:
         if _bbox_axis_overlap_ratio(line_bbox, container_bbox, axis="x") < 0.35:
             continue
+        container_width = max(0.1, container_bbox[2] - container_bbox[0])
+        if line_bbox[2] - line_bbox[0] > 0.8 * container_width:
+            continue
         vertical_gap = max(line_bbox[1] - container_bbox[3], container_bbox[1] - line_bbox[3], 0.0)
         if vertical_gap <= 1.5 * body_height:
             return True
@@ -830,6 +979,12 @@ def _expand_paragraph_title_neighbors(
             if not 0.75 <= candidate_height / selected_height <= 1.25:
                 continue
             if candidate_bbox[2] - candidate_bbox[0] > 0.8 * lane_width:
+                continue
+            if (
+                selected_line.font_signature is not None
+                and candidate_line.font_signature is not None
+                and selected_line.font_signature != candidate_line.font_signature
+            ):
                 continue
             if not _title_fonts_compatible(selected_line, candidate_line):
                 continue

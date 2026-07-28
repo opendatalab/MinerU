@@ -737,6 +737,60 @@ def test_hyphen_continuation_cannot_start_false_hanging_indent_entry() -> None:
     ]
 
 
+def test_local_two_column_band_survives_full_width_body_below() -> None:
+    """验证页面顶部局部双栏不会被下方通栏正文覆盖。"""
+
+    lines: list[models._LineItem] = []
+    for row_index, top in enumerate((0.0, 12.0, 24.0, 36.0)):
+        lines.extend(
+            [
+                _text_line(f"left-{row_index}", (10.0, top, 90.0, top + 10.0), row_index * 2),
+                _text_line(f"right-{row_index}", (110.0, top, 190.0, top + 10.0), row_index * 2 + 1),
+            ]
+        )
+    lines.extend(
+        _text_line(f"wide-{row_index}", (10.0, top, 190.0, top + 10.0), 20 + row_index)
+        for row_index, top in enumerate((70.0, 82.0, 94.0, 106.0))
+    )
+
+    lanes = line_layout._infer_text_lanes(
+        [(line, line.bbox) for line in lines],
+        200.0,
+        10.0,
+    )
+
+    lane_texts = [{line.text for line, _bbox in lane.lines} for lane in lanes]
+    assert {f"left-{index}" for index in range(4)} in lane_texts
+    assert {f"right-{index}" for index in range(4)} in lane_texts
+    assert {f"wide-{index}" for index in range(4)} in lane_texts
+
+
+def test_short_span_tail_reattaches_before_later_cross_layout_region() -> None:
+    """验证局部通栏段的短尾行不会因页面后续另有通栏行而留在单栏。"""
+
+    first = _text_line("wide one", (10.0, 0.0, 190.0, 10.0), 0)
+    second = _text_line("wide two", (10.0, 10.0, 190.0, 20.0), 1)
+    tail = _text_line("tail", (10.0, 20.0, 50.0, 30.0), 2)
+    later = _text_line("later wide", (10.0, 80.0, 190.0, 90.0), 3)
+    parallel = _text_line("parallel", (110.0, 50.0, 190.0, 60.0), 4)
+    left_lane = models._TextLane(left=10.0, right=90.0, lines=[(tail, tail.bbox)])
+    right_lane = models._TextLane(left=110.0, right=190.0, lines=[(parallel, parallel.bbox)])
+    span_lane = models._TextLane(
+        left=10.0,
+        right=190.0,
+        lines=[(first, first.bbox), (second, second.bbox), (later, later.bbox)],
+        is_span=True,
+    )
+
+    line_layout._reattach_span_lane_continuations(
+        [left_lane, right_lane, span_lane],
+        10.0,
+    )
+
+    assert tail not in [line for line, _bbox in left_lane.lines]
+    assert tail in [line for line, _bbox in span_lane.lines]
+
+
 def test_spatial_post_merge_connects_short_opener_wide_body_and_tail() -> None:
     """验证跨栏拆开的短首行、满宽正文和紧邻尾行仅按空间关系重新连接。"""
 
@@ -915,6 +969,284 @@ def test_spatial_post_merge_does_not_share_incompatible_lane_width() -> None:
         "left opener",
         "right body",
     ]
+
+
+def test_spatial_post_merge_does_not_join_span_caption_to_column_body() -> None:
+    """验证跨栏图注即使紧邻单栏正文也不会在二次阶段合并。"""
+
+    blocks = [
+        {
+            "type": "text",
+            "bbox": (40.0, 10.0, 560.0, 30.0),
+            "angle": 0,
+            "content": "wide caption",
+            "_visual_row_ids": {0, 1},
+            "_local_line_bboxes": [
+                (200.0, 10.0, 360.0, 20.0),
+                (40.0, 20.0, 560.0, 30.0),
+            ],
+            "_line_heights": [10.0, 10.0],
+            "_lane_interval": (40.0, 560.0),
+            "_lane_is_span": True,
+        },
+        {
+            "type": "text",
+            "bbox": (40.0, 35.0, 290.0, 65.0),
+            "angle": 0,
+            "content": "left column body",
+            "_visual_row_ids": {2, 3, 4},
+            "_local_line_bboxes": [
+                (40.0, 35.0, 290.0, 45.0),
+                (40.0, 45.0, 290.0, 55.0),
+                (40.0, 55.0, 290.0, 65.0),
+            ],
+            "_line_heights": [10.0, 10.0, 10.0],
+            "_lane_interval": (40.0, 290.0),
+            "_lane_is_span": False,
+        },
+    ]
+
+    merged = text_blocks._merge_spatial_text_components(blocks, (600.0, 100.0))
+
+    assert [block["content"] for block in merged] == [
+        "wide caption",
+        "left column body",
+    ]
+
+
+def test_image_caption_marker_only_attaches_same_font_spatial_tail() -> None:
+    """验证通用图注标记仅确认图像邻近候选，并把同字体续行接回对应图注。"""
+
+    common = {
+        "type": "text",
+        "angle": 0,
+        "_single_run_row_id": None,
+        "_lane_interval": (10.0, 90.0),
+        "_lane_is_span": True,
+    }
+    blocks = [
+        {
+            **common,
+            "bbox": (30.0, 50.0, 70.0, 60.0),
+            "content": "图1 neutral caption",
+            "_visual_row_ids": {1},
+            "_local_line_bboxes": [(30.0, 50.0, 70.0, 60.0)],
+            "_line_heights": [10.0],
+            "_font_signatures": {("Chinese", 0)},
+        },
+        {
+            **common,
+            "bbox": (10.0, 58.0, 90.0, 68.0),
+            "content": "Fig. 1 neutral caption;",
+            "_visual_row_ids": {2},
+            "_local_line_bboxes": [(10.0, 58.0, 90.0, 68.0)],
+            "_line_heights": [10.0],
+            "_font_signatures": {("English", 0)},
+        },
+        {
+            **common,
+            "bbox": (20.0, 67.0, 80.0, 77.0),
+            "content": "caption continuation",
+            "_visual_row_ids": {3},
+            "_local_line_bboxes": [(20.0, 67.0, 80.0, 77.0)],
+            "_line_heights": [10.0],
+            "_font_signatures": {("English", 0)},
+        },
+    ]
+
+    merged = text_blocks._merge_image_caption_text_blocks(
+        blocks,
+        [(20.0, 10.0, 80.0, 50.0)],
+    )
+
+    assert len(merged) == 2
+    chinese = next(block for block in merged if block["content"].startswith("图1"))
+    english = next(block for block in merged if block["content"].startswith("Fig. 1"))
+    assert "continuation" not in chinese["content"]
+    assert "caption continuation" in english["content"]
+    assert english["bbox"] == (10.0, 58.0, 90.0, 77.0)
+
+
+def test_fragmented_center_header_merges_but_remote_volume_stays_separate() -> None:
+    """验证等距窄页眉字形形成一个逻辑块，远端卷期块不被吸收。"""
+
+    blocks = []
+    for index, left in enumerate((40.0, 60.0, 80.0, 100.0)):
+        blocks.append(
+            {
+                "type": "header",
+                "bbox": (left, 5.0, left + 6.0, 15.0),
+                "angle": 0,
+                "content": f"h{index}",
+                "_visual_row_ids": {0},
+                "_single_run_row_id": 0,
+                "_local_line_bboxes": [(left, 5.0, left + 6.0, 15.0)],
+                "_line_heights": [10.0],
+                "_font_signatures": {("Header", 0)},
+                "_lane_interval": (0.0, 200.0),
+                "_lane_is_span": True,
+            }
+        )
+    blocks.append(
+        {
+            "type": "header",
+            "bbox": (170.0, 5.0, 190.0, 15.0),
+            "angle": 0,
+            "content": "volume",
+            "_visual_row_ids": {0},
+            "_single_run_row_id": 0,
+            "_local_line_bboxes": [(170.0, 5.0, 190.0, 15.0)],
+            "_line_heights": [10.0],
+            "_font_signatures": {("Header", 0)},
+            "_lane_interval": (0.0, 200.0),
+            "_lane_is_span": True,
+        }
+    )
+
+    merged = text_blocks._merge_fragmented_header_blocks(blocks)
+
+    assert len(merged) == 2
+    center = next(block for block in merged if block["content"].startswith("h0"))
+    assert center["content"] == "h0 h1 h2 h3"
+    assert center["bbox"] == (40.0, 5.0, 106.0, 15.0)
+    assert next(block for block in merged if block["content"] == "volume")
+
+
+def test_spatial_post_merge_cannot_skip_intervening_title_block() -> None:
+    """验证二次组件合并不能越过同一水平流中的中间标题块。"""
+
+    common = {
+        "angle": 0,
+        "_single_run_row_id": None,
+        "_lane_interval": (0.0, 100.0),
+        "_lane_is_span": False,
+        "_font_signatures": {("Body", 0)},
+    }
+    blocks = [
+        {
+            **common,
+            "type": "text",
+            "bbox": (0.0, 0.0, 25.0, 10.0),
+            "content": "short opener",
+            "_visual_row_ids": {0},
+            "_local_line_bboxes": [(0.0, 0.0, 25.0, 10.0)],
+            "_line_heights": [10.0],
+        },
+        {
+            **common,
+            "type": "paragraph_title",
+            "bbox": (0.0, 9.0, 45.0, 19.0),
+            "content": "intervening title",
+            "_visual_row_ids": {1},
+            "_local_line_bboxes": [(0.0, 9.0, 45.0, 19.0)],
+            "_line_heights": [10.0],
+        },
+        {
+            **common,
+            "type": "text",
+            "bbox": (0.0, 12.0, 100.0, 22.0),
+            "content": "wide body",
+            "_visual_row_ids": {2},
+            "_local_line_bboxes": [(0.0, 12.0, 100.0, 22.0)],
+            "_line_heights": [10.0],
+        },
+    ]
+
+    merged = text_blocks._merge_spatial_text_components(blocks, (100.0, 50.0))
+
+    assert [block["content"] for block in merged] == [
+        "short opener",
+        "intervening title",
+        "wide body",
+    ]
+
+
+def test_exaggerated_bbox_short_tail_stays_with_full_width_previous_row() -> None:
+    """验证同左边界短尾行不会因异常字体框高度而从正文段落脱落。"""
+
+    previous = _text_line(
+        "full width previous row",
+        (0.0, 0.0, 100.0, 10.0),
+        0,
+        effective_height=10.0,
+        font_signature=("Body", 0),
+        font_coverage=1.0,
+    )
+    current = _text_line(
+        "short tail",
+        (0.0, 12.0, 25.0, 30.0),
+        1,
+        effective_height=18.0,
+        font_signature=("Number", 0),
+        font_coverage=1.0,
+    )
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(previous, previous.bbox), (current, current.bbox)],
+    )
+
+    assert line_layout._should_connect_text_rows(
+        (previous, previous.bbox),
+        (current, current.bbox),
+        lane,
+        regular_gap=2.0,
+        gap_mad=0.5,
+        table_bboxes=[],
+        axis_lines=[],
+    )
+
+
+def test_indented_list_row_can_return_to_lane_left_for_short_tail() -> None:
+    """验证列表首行轻度缩进时，回到栏左边的同字体短尾行仍可续接。"""
+
+    body_font = ("Body", 0)
+    previous = _text_line(
+        "indented list row",
+        (15.0, 0.0, 100.0, 10.0),
+        0,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+    current = _text_line(
+        "short tail",
+        (0.0, 10.0, 65.0, 20.0),
+        1,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(previous, previous.bbox), (current, current.bbox)],
+    )
+
+    assert line_layout._should_connect_text_rows(
+        (previous, previous.bbox),
+        (current, current.bbox),
+        lane,
+        regular_gap=0.0,
+        gap_mad=0.0,
+        table_bboxes=[],
+        axis_lines=[],
+    )
+
+
+def test_outdented_reference_number_starts_new_structural_entry() -> None:
+    """验证通用参考文献编号仅在左突几何成立时切开上一条续行。"""
+
+    previous = _text_line("previous continuation", (25.0, 0.0, 100.0, 10.0), 0)
+    current = _text_line("［23］ next reference", (0.0, 10.0, 100.0, 20.0), 1)
+    aligned = _text_line("［23］ inline marker", (25.0, 10.0, 100.0, 20.0), 2)
+
+    assert text_blocks._starts_structural_reference_entry(
+        (previous, previous.bbox),
+        (current, current.bbox),
+    )
+    assert not text_blocks._starts_structural_reference_entry(
+        (previous, previous.bbox),
+        (aligned, aligned.bbox),
+    )
 
 
 def test_spatial_post_merge_limits_tapered_tail_to_parallel_information_grid() -> None:

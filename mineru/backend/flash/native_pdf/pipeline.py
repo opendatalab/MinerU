@@ -16,6 +16,8 @@ from .models import (
     _PreparedPage,
 )
 from .geometry import (
+    _bbox_axis_overlap_ratio,
+    _bbox_center_y,
     _bbox_overlap_in_smaller,
     _bbox_union_many,
     _clip_bbox,
@@ -59,7 +61,11 @@ from .auxiliary_text import (
     _classify_repeated_visual_headers,
 )
 from .titles import _classify_page_titles
-from .text_blocks import _build_text_blocks
+from .text_blocks import (
+    _build_text_blocks,
+    _merge_fragmented_header_blocks,
+    _merge_image_caption_text_blocks,
+)
 
 
 _TEXT_SEMANTIC_TYPES = {
@@ -249,6 +255,15 @@ def _finalize_prepared_page(
         prepared.drawing_lines,
         page_footnote_groups=prepared.page_footnote_groups,
     )
+    text_blocks = _merge_image_caption_text_blocks(
+        text_blocks,
+        [
+            block["bbox"]
+            for block in prepared.fixed_blocks
+            if block.get("type") == "image"
+        ],
+    )
+    text_blocks = _merge_fragmented_header_blocks(text_blocks)
     absolute_blocks = prepared.fixed_blocks + formula_blocks + text_blocks
     sorted_blocks = _sort_blocks_with_visual_row_groups(absolute_blocks, prepared.page_size)
     return [
@@ -272,8 +287,26 @@ def _sort_blocks_with_visual_row_groups(
 ) -> list[dict[str, Any]]:
     """把同一粗行拆出的单行 block 包装成虚拟项排序，再按局部 x 顺序展开。"""
 
+    top_marginals: list[dict[str, Any]] = []
+    bottom_marginals: list[dict[str, Any]] = []
+    body_blocks: list[dict[str, Any]] = []
+    local_page_height = page_size[1]
+    for block in blocks:
+        block_type = block.get("type")
+        bbox = block.get("bbox")
+        if block_type == "header" or (
+            block_type == "page_number"
+            and isinstance(bbox, (list, tuple))
+            and _bbox_center_y(bbox) <= 0.5 * local_page_height
+        ):
+            top_marginals.append(block)
+        elif block_type in {"footer", "page_footnote"} or block_type == "page_number":
+            bottom_marginals.append(block)
+        else:
+            body_blocks.append(block)
+
     grouped_indices: dict[int, list[int]] = {}
-    for index, block in enumerate(blocks):
+    for index, block in enumerate(body_blocks):
         row_id = block.get("_single_run_row_id")
         if isinstance(row_id, int):
             grouped_indices.setdefault(row_id, []).append(index)
@@ -283,7 +316,7 @@ def _sort_blocks_with_visual_row_groups(
     for row_id, indices in grouped_indices.items():
         if len(indices) < 2:
             continue
-        members = [blocks[index] for index in indices]
+        members = [body_blocks[index] for index in indices]
         virtual_group = {
             "type": "_xycut_visual_row_group",
             "bbox": _bbox_union_many([member["bbox"] for member in members]),
@@ -294,7 +327,11 @@ def _sort_blocks_with_visual_row_groups(
         virtual_groups[row_id] = virtual_group
         consumed_indices.update(indices)
 
-    sortable_blocks = [block for index, block in enumerate(blocks) if index not in consumed_indices]
+    sortable_blocks = [
+        block
+        for index, block in enumerate(body_blocks)
+        if index not in consumed_indices
+    ]
     sortable_blocks.extend(virtual_groups.values())
     sorted_payloads = sort_entries(sortable_blocks)
     output: list[dict[str, Any]] = []
@@ -311,7 +348,139 @@ def _sort_blocks_with_visual_row_groups(
             )
         )
         output.extend(members)
+    output = _stabilize_overlapping_lane_order(output, page_size)
+    return [
+        *_sort_marginal_blocks(top_marginals, page_size),
+        *output,
+        *_sort_marginal_blocks(bottom_marginals, page_size),
+    ]
+
+
+def _sort_marginal_blocks(
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+) -> list[dict[str, Any]]:
+    """先按视觉中心聚合边缘同排块，再按行内 x 排序以消除字体框顶边抖动。"""
+
+    if len(blocks) < 2:
+        return list(blocks)
+    geometry = [
+        (
+            block,
+            _rotate_bbox_to_upright(
+                block["bbox"],
+                page_size,
+                int(block.get("angle", 0) or 0) % 360,
+            ),
+        )
+        for block in blocks
+    ]
+    heights = [
+        float(height)
+        for block in blocks
+        for height in block.get("_line_heights", [])
+        if isinstance(height, (int, float)) and height > 0
+    ]
+    median_height = sorted(heights)[len(heights) // 2] if heights else 1.0
+    rows: list[list[tuple[dict[str, Any], tuple[float, float, float, float]]]] = []
+    for item in sorted(geometry, key=lambda value: _bbox_center_y(value[1])):
+        target = next(
+            (
+                row
+                for row in rows
+                if abs(
+                    _bbox_center_y(item[1])
+                    - sum(_bbox_center_y(member[1]) for member in row) / len(row)
+                )
+                <= 0.75 * median_height
+            ),
+            None,
+        )
+        if target is None:
+            rows.append([item])
+        else:
+            target.append(item)
+    rows.sort(
+        key=lambda row: sum(_bbox_center_y(member[1]) for member in row) / len(row)
+    )
+    return [
+        block
+        for row in rows
+        for block, _bbox in sorted(row, key=lambda member: member[1][0])
+    ]
+
+
+def _stabilize_overlapping_lane_order(
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+) -> list[dict[str, Any]]:
+    """对同栏轻微重叠块按视觉中心纠正局部逆序，不改变跨栏主阅读顺序。"""
+
+    output = list(blocks)
+    for _pass_index in range(len(output)):
+        changed = False
+        for index in range(len(output) - 1):
+            first = output[index]
+            second = output[index + 1]
+            if not _overlapping_lane_pair_is_inverted(first, second, page_size):
+                continue
+            output[index], output[index + 1] = second, first
+            changed = True
+        if not changed:
+            break
     return output
+
+
+def _overlapping_lane_pair_is_inverted(
+    first: dict[str, Any],
+    second: dict[str, Any],
+    page_size: tuple[float, float],
+) -> bool:
+    """判断相邻块是否属于同一内部栏带且视觉中心顺序与当前结果相反。"""
+
+    first_interval = first.get("_lane_interval")
+    second_interval = second.get("_lane_interval")
+    if (
+        not isinstance(first_interval, (list, tuple))
+        or not isinstance(second_interval, (list, tuple))
+        or len(first_interval) != 2
+        or len(second_interval) != 2
+        or first.get("_lane_is_span") != second.get("_lane_is_span")
+        or int(first.get("angle", 0) or 0) % 360
+        != int(second.get("angle", 0) or 0) % 360
+    ):
+        return False
+    first_bbox = _rotate_bbox_to_upright(
+        first["bbox"],
+        page_size,
+        int(first.get("angle", 0) or 0) % 360,
+    )
+    second_bbox = _rotate_bbox_to_upright(
+        second["bbox"],
+        page_size,
+        int(second.get("angle", 0) or 0) % 360,
+    )
+    line_heights = [
+        float(height)
+        for block in (first, second)
+        for height in block.get("_line_heights", [])
+        if isinstance(height, (int, float)) and height > 0
+    ]
+    tolerance = 0.75 * (min(line_heights) if line_heights else 1.0)
+    same_lane = (
+        abs(float(first_interval[0]) - float(second_interval[0])) <= tolerance
+        and abs(float(first_interval[1]) - float(second_interval[1])) <= tolerance
+    )
+    vertical_overlap = min(first_bbox[3], second_bbox[3]) - max(
+        first_bbox[1],
+        second_bbox[1],
+    )
+    return (
+        same_lane
+        and _bbox_center_y(first_bbox) > _bbox_center_y(second_bbox) + 0.1 * tolerance
+        and _bbox_axis_overlap_ratio(first_bbox, second_bbox, axis="x") >= 0.35
+        and vertical_overlap >= 0.0
+    )
 
 
 def _normalize_output_block(

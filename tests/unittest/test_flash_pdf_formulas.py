@@ -478,6 +478,117 @@ def test_detached_formula_anchor_collects_multiline_formula_but_not_body_prefix(
     assert punctuation.text not in member_texts
 
 
+def test_formula_above_dense_body_collects_math_but_stops_at_title_barrier() -> None:
+    """验证正文密集区上方的公式可聚合，且不会吸收紧邻的章节标题。"""
+
+    body_font = ("Body", 0)
+    formula_lines = [
+        _text_line(
+            "formula numerator",
+            (20.0, 8.0, 58.0, 18.0),
+            0,
+            effective_height=10.0,
+            font_signature=("Math", 0),
+            font_coverage=0.6,
+        ),
+        _text_line(
+            "formula denominator",
+            (25.0, 19.0, 55.0, 29.0),
+            1,
+            effective_height=10.0,
+            font_signature=("Math", 0),
+            font_coverage=0.6,
+        ),
+    ]
+    number = _text_line("(5)", (91.0, 17.0, 100.0, 27.0), 2, effective_height=10.0)
+    heading = _text_line(
+        "neutral section heading",
+        (0.0, 28.0, 40.0, 42.0),
+        3,
+        effective_height=14.0,
+        font_signature=("Heading", 0),
+        font_coverage=1.0,
+    )
+    body_lines = [
+        _text_line(
+            f"body-{index}",
+            (0.0, top, 100.0, top + 10.0),
+            4 + index,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        )
+        for index, top in enumerate((44.0, 56.0, 68.0, 80.0))
+    ]
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[
+            *((line, line.bbox) for line in formula_lines),
+            (number, number.bbox),
+            (heading, heading.bbox),
+            *((line, line.bbox) for line in body_lines),
+        ],
+    )
+
+    anchors = formulas._find_formula_spatial_anchors(lane, 10.0, body_font)
+
+    assert len(anchors) == 1
+    assert anchors[0].detached_above_body
+    members = formulas._grow_formula_spatial_component(
+        lane,
+        anchors[0],
+        0.0,
+        100.0,
+        set(),
+        [],
+        body_font,
+        10.0,
+    )
+
+    assert {line.text for line, _bbox in members} == {
+        "formula numerator",
+        "formula denominator",
+        "(5)",
+    }
+
+
+def test_formula_number_cannot_upgrade_ordinary_body_row() -> None:
+    """验证括号编号缺少独立公式主体时不能把普通正文升级为公式。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line(
+            f"body-{index}",
+            (0.0, top, 100.0, top + 10.0),
+            index,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        )
+        for index, top in enumerate((0.0, 12.0, 48.0, 60.0))
+    ]
+    ordinary = _text_line(
+        "ordinary body row",
+        (0.0, 30.0, 70.0, 40.0),
+        4,
+        effective_height=10.0,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+    number = _text_line("(9)", (91.0, 30.0, 100.0, 40.0), 5, effective_height=10.0)
+
+    blocks, remaining = formulas._build_formula_like_blocks(
+        [*lines, ordinary, number],
+        [],
+        (100.0, 80.0),
+    )
+
+    assert blocks == []
+    assert ordinary in remaining
+    assert number in remaining
+
+
 def test_overlapping_denominator_cannot_become_short_formula_anchor() -> None:
     """验证与正文横向重叠的右缘分母字符不会成为非编号公式锚点。"""
 

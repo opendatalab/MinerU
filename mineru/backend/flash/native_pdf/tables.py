@@ -48,8 +48,7 @@ _TABLE_CAPTION_RE = re.compile(
 
 _TABLE_NOTE_RE = re.compile(
     r"^(?:notes?|sources?)\b|^(?:注释?|说明)\s*[:：]?|^for\s+[*†‡]"
-    r"|^(?:\d+|[*†‡])\s+\S"
-    r"|^(?:[*†‡]|[a-z]|p|t|ns|na)\s+(?:indicates?|denotes?|rainfall\b|total\b|low\b|for\b)",
+    r"|^[*†‡]\s*\S",
     re.IGNORECASE,
 )
 
@@ -561,6 +560,7 @@ def _build_rule_table_candidates(
                     boundary_rules,
                     accepted_rows,
                     rows,
+                    lines,
                     page_size,
                     angle,
                     median_height,
@@ -696,7 +696,7 @@ def _rule_intervals_are_column_compatible(
 ) -> bool:
     """拒绝跨过长篇栏式正文、导致稳定列数明显塌缩的多表合并区间。"""
 
-    profiles: list[tuple[int, float]] = []
+    profiles: list[tuple[int, float, int, float]] = []
     for top_rule, bottom_rule in zip(rule_group, rule_group[1:]):
         top = _bbox_center_y(top_rule.bbox)
         bottom = _bbox_center_y(bottom_rule.bbox)
@@ -705,20 +705,33 @@ def _rule_intervals_are_column_compatible(
             for row in rows
             if top <= row.center_y <= bottom and len(row.fragments) >= 2
         ]
-        stable_columns, _coverage = _count_stable_columns(
+        stable_columns, column_coverage = _count_stable_columns(
             interval_rows,
             median_height,
         )
-        profiles.append((stable_columns, bottom - top))
-    maximum_columns = max((columns for columns, _height in profiles), default=0)
-    if maximum_columns < 4:
-        return True
-    for interval_index, (columns, interval_height) in enumerate(profiles):
-        # 首个区间可能只是跨列表头；后续长区间若退化成普通双栏正文，
-        # 就不能把前后两张表合成一个候选。
-        if interval_index == 0:
+        profiles.append(
+            (
+                stable_columns,
+                bottom - top,
+                len(interval_rows),
+                column_coverage,
+            )
+        )
+    maximum_columns = max(
+        (columns for columns, _height, _row_count, _coverage in profiles),
+        default=0,
+    )
+    for interval_index, (columns, interval_height, row_count, coverage) in enumerate(profiles):
+        # 紧凑首区间可能只是跨列表头；一旦区间明显高于普通表头，
+        # 也必须具有连续多单元格行，不能无条件跨过正文连接两张表。
+        if interval_index == 0 and interval_height <= 2.5 * median_height:
             continue
-        if columns < max(2, int(0.5 * maximum_columns)) and interval_height > 4.0 * median_height:
+        if interval_height <= 6.0 * median_height:
+            continue
+        minimum_rows = max(2, int(interval_height / max(8.0 * median_height, 0.1)))
+        if row_count < minimum_rows or coverage < 0.5:
+            return False
+        if columns < max(2, int(0.5 * maximum_columns)):
             return False
     return True
 
@@ -915,6 +928,7 @@ def _expand_rule_table_candidate(
     rule_group: list[_LocalAxisLine],
     core_rows: list[_VisualRow],
     all_rows: list[_VisualRow],
+    all_lines: list[_LineItem],
     page_size: tuple[float, float],
     angle: int,
     median_height: float,
@@ -927,6 +941,7 @@ def _expand_rule_table_candidate(
     caption_rows = _collect_caption_rows(all_rows, caption_line, rule_bbox, median_height)
     footnote_rows = _collect_footnote_rows(
         all_rows,
+        all_lines,
         rule_bbox,
         median_height,
         core_line_indices,
@@ -986,6 +1001,7 @@ def _collect_caption_rows(
 
 def _collect_footnote_rows(
     rows: list[_VisualRow],
+    lines: list[_LineItem],
     rule_bbox: BBox,
     median_height: float,
     core_line_indices: set[int],
@@ -997,6 +1013,10 @@ def _collect_footnote_rows(
     note_chain_started = False
     margin = 2.0 * median_height
     selected_line_indices = set(core_line_indices)
+    line_by_index = {line.source_index: line for line in lines}
+    note_left: float | None = None
+    note_height: float | None = None
+    note_fonts: set[tuple[str, int]] = set()
     for row in rows:
         clipped_row = _clip_visual_row_to_corridor(row, rule_bbox, margin=margin)
         if clipped_row is None or clipped_row.bbox[3] <= bottom:
@@ -1005,9 +1025,49 @@ def _collect_footnote_rows(
         if line_indices.issubset(selected_line_indices):
             bottom = max(bottom, clipped_row.bbox[3])
             continue
-        if max(0.0, clipped_row.bbox[1] - bottom) > 1.5 * median_height:
+        row_gap = max(0.0, clipped_row.bbox[1] - bottom)
+        row_lines = [
+            line_by_index[line_index]
+            for line_index in line_indices
+            if line_index in line_by_index
+        ]
+        row_heights = [
+            _line_effective_height(line, line.bbox)
+            for line in row_lines
+        ]
+        row_height = statistics.median(row_heights) if row_heights else clipped_row.bbox[3] - clipped_row.bbox[1]
+        row_fonts = {
+            line.font_signature
+            for line in row_lines
+            if line.font_signature is not None and line.font_coverage >= 0.75
+        }
+        if row_gap > (1.25 if not note_chain_started else 1.0) * median_height:
             break
-        if not note_chain_started and not _is_table_note_text(_visual_row_text(clipped_row)):
+        if not note_chain_started:
+            if not _is_table_note_text(_visual_row_text(clipped_row)):
+                break
+            if (
+                _bbox_axis_overlap_ratio(row.bbox, rule_bbox, axis="x") < 0.35
+                or abs(clipped_row.bbox[0] - rule_bbox[0]) > 2.0 * median_height
+                or row_height > 1.15 * median_height
+            ):
+                break
+            note_left = clipped_row.bbox[0]
+            note_height = max(0.1, row_height)
+            note_fonts = row_fonts
+        elif (
+            note_left is None
+            or note_height is None
+            or abs(clipped_row.bbox[0] - note_left) > 1.5 * median_height
+            or not 0.75 <= row_height / note_height <= 1.25
+            or (
+                note_fonts
+                and row_fonts
+                and note_fonts.isdisjoint(row_fonts)
+            )
+            or _bbox_axis_overlap_ratio(row.bbox, rule_bbox, axis="x") < 0.35
+        ):
+            # 字号、字体或缩进突变表明已进入标题/正文，表注链必须立即终止。
             break
         output.append(clipped_row)
         selected_line_indices.update(line_indices)

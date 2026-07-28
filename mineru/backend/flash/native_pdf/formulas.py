@@ -757,7 +757,12 @@ def _find_formula_spatial_anchors(
             continue
         center_y = _bbox_center_y(bbox)
         detached_below_body = body_bottom < center_y <= body_bottom + 6.0 * median_height
-        if not body_top <= center_y <= body_bottom and not detached_below_body:
+        detached_above_body = body_top - 6.0 * median_height <= center_y < body_top
+        if (
+            not body_top <= center_y <= body_bottom
+            and not detached_below_body
+            and not detached_above_body
+        ):
             continue
         left_peers = [
             (other_line, other_bbox)
@@ -772,7 +777,7 @@ def _find_formula_spatial_anchors(
                     other_bbox,
                     _line_effective_height(other_line, other_bbox),
                 )
-                if detached_below_body
+                if detached_below_body or detached_above_body
                 else _formula_seed_vertical_match(
                     bbox,
                     line_height,
@@ -800,6 +805,7 @@ def _find_formula_spatial_anchors(
                     line=line,
                     bbox=bbox,
                     detached_below_body=detached_below_body,
+                    detached_above_body=detached_above_body,
                 )
             )
     return _deduplicate_formula_anchors(anchors, median_height)
@@ -908,6 +914,12 @@ def _grow_formula_spatial_component(
             dominant_body_font,
             median_height,
         )
+        and not _is_formula_title_barrier(
+            item,
+            lane,
+            dominant_body_font,
+            median_height,
+        )
         and not _is_formula_body_prefix(
             item,
             lane,
@@ -928,7 +940,7 @@ def _grow_formula_spatial_component(
                 item[1],
                 _line_effective_height(*item),
             )
-            if anchor.detached_below_body
+            if anchor.detached_below_body or anchor.detached_above_body
             else _formula_seed_vertical_match(
                 anchor_bbox,
                 _line_effective_height(anchor_line, anchor_bbox),
@@ -972,7 +984,7 @@ def _is_formula_body_barrier(
     dominant_body_font: tuple[str, int] | None,
     median_height: float,
 ) -> bool:
-    """识别近满栏、高置信正文行，阻止公式连通分量跨越正文边界。"""
+    """识别具有稳定正文排版的行，阻止公式分量吸收正文尾行。"""
 
     if dominant_body_font is None:
         return False
@@ -981,8 +993,32 @@ def _is_formula_body_barrier(
     line_height = _line_effective_height(line, bbox)
     return (
         line.font_signature == dominant_body_font
-        and bbox[2] - bbox[0] >= 0.85 * lane_width
+        and line.font_coverage >= 0.75
+        and bbox[2] - bbox[0] >= 0.3 * lane_width
         and 0.8 * median_height <= line_height <= 1.25 * median_height
+    )
+
+
+def _is_formula_title_barrier(
+    candidate: tuple[_LineItem, BBox],
+    lane: _TextLane,
+    dominant_body_font: tuple[str, int] | None,
+    median_height: float,
+) -> bool:
+    """用左对齐、字号突变和字体变化隔离公式下方的章节标题。"""
+
+    if dominant_body_font is None:
+        return False
+    line, bbox = candidate
+    lane_width = max(0.1, lane.right - lane.left)
+    line_height = _line_effective_height(line, bbox)
+    return (
+        line.font_signature is not None
+        and line.font_signature != dominant_body_font
+        and line.font_coverage >= 0.75
+        and 1.1 * median_height <= line_height <= 1.6 * median_height
+        and bbox[2] - bbox[0] >= 0.25 * lane_width
+        and abs(bbox[0] - lane.left) <= median_height
     )
 
 

@@ -74,16 +74,30 @@ def _should_connect_semantic_rows(
         return False
     if (
         previous_line.semantic_type == "paragraph_title"
-        and vertical_gap > 0.65 * pair_height
+        and vertical_gap > 0.5 * pair_height
     ):
         return False
-    if (
+    font_conflicts = (
         previous_line.font_signature is not None
         and current_line.font_signature is not None
         and previous_line.font_coverage >= 0.75
         and current_line.font_coverage >= 0.75
         and previous_line.font_signature != current_line.font_signature
-    ):
+    )
+    uncertain_document_title_font = (
+        previous_line.semantic_type == "doc_title"
+        and min(previous_line.font_coverage, current_line.font_coverage) < 0.85
+        and (
+            previous_line.dominant_font_weight is None
+            or current_line.dominant_font_weight is None
+            or abs(
+                previous_line.dominant_font_weight
+                - current_line.dominant_font_weight
+            )
+            < 100.0
+        )
+    )
+    if font_conflicts and not uncertain_document_title_font:
         return False
     lane_width = max(0.1, lane.right - lane.left)
     centered_pair = (
@@ -127,9 +141,15 @@ def _infer_text_lanes(
     """从重复左右边缘推断稳定栏带，并把跨栏行放入独立 span lane。"""
 
     anchor_tolerance = max(3.0, 0.75 * median_height)
-    regular_lines = [
+    anchor_geometry = [
         item
         for item in line_geometry
+        if item[0].semantic_type
+        not in {"header", "footer", "page_number", "page_footnote", "aside_text"}
+    ]
+    regular_lines = [
+        item
+        for item in anchor_geometry
         if item[1][2] - item[1][0] >= max(4.0 * _line_effective_height(*item), 0.15 * local_page_width)
     ]
     left_clusters: list[list[tuple[_LineItem, BBox]]] = []
@@ -175,6 +195,67 @@ def _infer_text_lanes(
             )
         ]
 
+    nested_column_band = None
+    if len(filtered_intervals) == 1:
+        nested_column_band = _infer_nested_column_band(
+            anchor_geometry,
+            local_page_width,
+            median_height,
+            filtered_intervals[0][:2],
+        )
+    if nested_column_band is not None:
+        nested_lanes, band_top, band_bottom = nested_column_band
+        fallback_lane = _TextLane(
+            left=filtered_intervals[0][0],
+            right=filtered_intervals[0][1],
+        )
+        span_lines: list[tuple[_LineItem, BBox]] = []
+        for item in line_geometry:
+            line, bbox = item
+            center_y = _bbox_center_y(bbox)
+            if (
+                line.semantic_type
+                in {"header", "footer", "page_number", "page_footnote", "aside_text"}
+                or not band_top <= center_y <= band_bottom
+            ):
+                fallback_lane.lines.append(item)
+                continue
+            line_width = max(0.1, bbox[2] - bbox[0])
+            scored_lanes = [
+                (
+                    max(0.0, min(bbox[2], lane.right) - max(bbox[0], lane.left))
+                    / line_width,
+                    lane,
+                )
+                for lane in nested_lanes
+            ]
+            coverage_scores = sorted(
+                (coverage for coverage, _lane in scored_lanes),
+                reverse=True,
+            )
+            if len(coverage_scores) > 1 and coverage_scores[1] >= 0.2:
+                span_lines.append(item)
+                continue
+            best_coverage, best_lane = max(scored_lanes, key=lambda value: value[0])
+            if best_coverage >= 0.5:
+                best_lane.lines.append(item)
+            else:
+                span_lines.append(item)
+        lanes = [lane for lane in nested_lanes if lane.lines]
+        if fallback_lane.lines:
+            lanes.append(fallback_lane)
+        if span_lines:
+            lanes.append(
+                _TextLane(
+                    left=min(item[1][0] for item in span_lines),
+                    right=max(item[1][2] for item in span_lines),
+                    lines=span_lines,
+                    is_span=True,
+                )
+            )
+        _reattach_span_lane_continuations(lanes, median_height)
+        return lanes
+
     lanes = [_TextLane(left=left, right=right) for left, right, _support in filtered_intervals]
     span_lines: list[tuple[_LineItem, BBox]] = []
     for item in line_geometry:
@@ -219,6 +300,113 @@ def _infer_text_lanes(
     return lanes
 
 
+def _infer_nested_column_band(
+    line_geometry: list[tuple[_LineItem, BBox]],
+    local_page_width: float,
+    median_height: float,
+    outer_interval: tuple[float, float],
+) -> tuple[list[_TextLane], float, float] | None:
+    """在全宽版心内查找仅占局部纵向区间的并列正文栏。"""
+
+    outer_width = max(0.1, outer_interval[1] - outer_interval[0])
+    candidates = [
+        item
+        for item in line_geometry
+        if item[0].semantic_type is None
+        and max(4.0 * _line_effective_height(*item), 0.12 * local_page_width)
+        <= item[1][2] - item[1][0]
+        <= 0.62 * outer_width
+    ]
+    if len(candidates) < 6:
+        return None
+
+    center_tolerance = max(2.0 * median_height, 0.06 * local_page_width)
+    center_clusters: list[list[tuple[_LineItem, BBox]]] = []
+    for item in sorted(candidates, key=lambda value: _bbox_center_x(value[1])):
+        center = _bbox_center_x(item[1])
+        target = next(
+            (
+                cluster
+                for cluster in center_clusters
+                if abs(
+                    center
+                    - statistics.median(_bbox_center_x(member[1]) for member in cluster)
+                )
+                <= center_tolerance
+            ),
+            None,
+        )
+        if target is None:
+            center_clusters.append([item])
+        else:
+            target.append(item)
+
+    supported = [cluster for cluster in center_clusters if len(cluster) >= 3]
+    supported.sort(
+        key=lambda cluster: statistics.median(_bbox_center_x(item[1]) for item in cluster)
+    )
+    best_pair: tuple[
+        tuple[int, float, float],
+        list[tuple[_LineItem, BBox]],
+        list[tuple[_LineItem, BBox]],
+        tuple[float, float],
+        tuple[float, float],
+    ] | None = None
+    for left_cluster, right_cluster in zip(supported, supported[1:]):
+        left_interval = (
+            statistics.median(item[1][0] for item in left_cluster),
+            statistics.median(item[1][2] for item in left_cluster),
+        )
+        right_interval = (
+            statistics.median(item[1][0] for item in right_cluster),
+            statistics.median(item[1][2] for item in right_cluster),
+        )
+        gutter = right_interval[0] - left_interval[1]
+        common_top = max(
+            min(item[1][1] for item in left_cluster),
+            min(item[1][1] for item in right_cluster),
+        )
+        common_bottom = min(
+            max(item[1][3] for item in left_cluster),
+            max(item[1][3] for item in right_cluster),
+        )
+        combined_width = right_interval[1] - left_interval[0]
+        if (
+            gutter < max(6.0, 0.75 * median_height)
+            or common_bottom - common_top < 2.0 * median_height
+            or combined_width < 0.55 * outer_width
+        ):
+            continue
+        score = (
+            min(len(left_cluster), len(right_cluster)),
+            common_bottom - common_top,
+            gutter,
+        )
+        candidate_pair = (
+            score,
+            left_cluster,
+            right_cluster,
+            left_interval,
+            right_interval,
+        )
+        if best_pair is None or candidate_pair[0] > best_pair[0]:
+            best_pair = candidate_pair
+    if best_pair is None:
+        return None
+
+    _score, left_cluster, right_cluster, left_interval, right_interval = best_pair
+    band_top = min(item[1][1] for item in [*left_cluster, *right_cluster]) - 0.5 * median_height
+    band_bottom = max(item[1][3] for item in [*left_cluster, *right_cluster]) + 0.5 * median_height
+    return (
+        [
+            _TextLane(left=left_interval[0], right=left_interval[1]),
+            _TextLane(left=right_interval[0], right=right_interval[1]),
+        ],
+        band_top,
+        band_bottom,
+    )
+
+
 def _reattach_span_lane_continuations(
     lanes: list[_TextLane],
     median_height: float,
@@ -231,26 +419,10 @@ def _reattach_span_lane_continuations(
         return
 
     for span_lane in span_lanes:
-        span_lane.lines.sort(
-            key=lambda item: (item[1][1], item[1][0], item[0].source_index)
-        )
-        if len(span_lane.lines) < 2:
-            continue
-        previous, last = span_lane.lines[-2:]
-        previous_height = _line_effective_height(*previous)
-        last_height = _line_effective_height(*last)
-        if (
-            previous[0].semantic_type != last[0].semantic_type
-            or abs(previous[1][0] - last[1][0]) > 0.75 * median_height
-            or max(previous_height, last_height) / min(previous_height, last_height) > 1.35
-            or not _title_fonts_compatible(previous[0], last[0])
-            or not -0.25 * median_height
-            <= _effective_text_row_gap(previous, last)
-            <= 0.75 * median_height
-        ):
-            continue
-
         while True:
+            span_lane.lines.sort(
+                key=lambda item: (item[1][1], item[1][0], item[0].source_index)
+            )
             candidates: list[
                 tuple[
                     float,
@@ -262,9 +434,26 @@ def _reattach_span_lane_continuations(
             for regular_lane in regular_lanes:
                 for candidate in regular_lane.lines:
                     candidate_line, candidate_bbox = candidate
+                    preceding = [
+                        item
+                        for item in span_lane.lines
+                        if item[0].semantic_type == candidate_line.semantic_type
+                        and item[1][1] < candidate_bbox[1]
+                    ]
+                    if len(preceding) < 2:
+                        continue
+                    previous, last = preceding[-2:]
+                    previous_height = _line_effective_height(*previous)
+                    last_height = _line_effective_height(*last)
                     if (
-                        candidate_line.semantic_type != last[0].semantic_type
-                        or candidate_bbox[1] <= last[1][1]
+                        abs(previous[1][0] - last[1][0]) > 0.75 * median_height
+                        or max(previous_height, last_height)
+                        / min(previous_height, last_height)
+                        > 1.35
+                        or not _title_fonts_compatible(previous[0], last[0])
+                        or not -0.25 * median_height
+                        <= _effective_text_row_gap(previous, last)
+                        <= 0.75 * median_height
                     ):
                         continue
                     gap = _effective_text_row_gap(last, candidate)
@@ -293,15 +482,15 @@ def _reattach_span_lane_continuations(
                         continue
                     candidates.append(
                         (
-                            max(0.0, gap),
                             candidate_bbox[1],
+                            max(0.0, gap),
                             regular_lane,
                             candidate,
                         )
                     )
             if not candidates:
                 break
-            _gap, _top, regular_lane, candidate = min(
+            _top, _gap, regular_lane, candidate = min(
                 candidates,
                 key=lambda item: (item[0], item[1]),
             )
@@ -312,8 +501,6 @@ def _reattach_span_lane_continuations(
             span_lane.lines.sort(
                 key=lambda item: (item[1][1], item[1][0], item[0].source_index)
             )
-            last = candidate
-            last_height = _line_effective_height(*last)
 
 
 def _estimate_lane_gap(lane: _TextLane) -> tuple[float, float]:
@@ -381,18 +568,52 @@ def _should_connect_text_rows(
         return False
     if (
         current_height < 0.88 * previous_height
-        and vertical_gap > regular_gap + 0.25 * previous_height
+        and vertical_gap
+        > regular_gap + max(0.25 * previous_height, 3.0 * gap_mad)
     ):
         return False
-    height_ratio = max(previous_height, current_height) / min(previous_height, current_height)
-    if height_ratio > 1.35:
-        both_fill_lane = previous_width >= 0.8 * lane_width and current_width >= 0.8 * lane_width
-        aligned_left_edges = abs(previous_bbox[0] - current_bbox[0]) <= 0.5 * pair_height
-        font_style_changed = (
-            previous_line.font_signature is not None
-            and current_line.font_signature is not None
-            and previous_line.font_signature[1] != current_line.font_signature[1]
+    both_fill_lane = previous_width >= 0.8 * lane_width and current_width >= 0.8 * lane_width
+    aligned_left_edges = abs(previous_bbox[0] - current_bbox[0]) <= 0.5 * pair_height
+    current_returns_to_lane_left = (
+        abs(current_bbox[0] - lane.left) <= 0.75 * pair_height
+        and -0.5 * pair_height
+        <= previous_bbox[0] - lane.left
+        <= 2.0 * pair_height
+    )
+    reliable_font_match = (
+        previous_line.font_signature is None
+        or current_line.font_signature is None
+        or previous_line.font_coverage < 0.75
+        or current_line.font_coverage < 0.75
+        or previous_line.font_signature == current_line.font_signature
+        or (
+            current_width <= 0.5 * lane_width
+            and previous_line.font_signature[1] == current_line.font_signature[1]
         )
+    )
+    safe_short_tail = (
+        previous_width >= 0.75 * lane_width
+        and current_width <= 0.7 * lane_width
+        and (aligned_left_edges or current_returns_to_lane_left)
+        and reliable_font_match
+        and -0.25 * pair_height
+        <= vertical_gap
+        <= regular_gap + max(0.75 * pair_height, 3.0 * gap_mad)
+    )
+    height_ratio = max(previous_height, current_height) / min(previous_height, current_height)
+    font_style_changed = (
+        previous_line.font_signature is not None
+        and current_line.font_signature is not None
+        and previous_line.font_signature[1] != current_line.font_signature[1]
+    )
+    full_width_continuation = (
+        both_fill_lane
+        and aligned_left_edges
+        and not font_style_changed
+        and vertical_gap
+        <= regular_gap + max(0.75 * min(previous_height, current_height), 3.0 * gap_mad)
+    )
+    if height_ratio > 1.35 and not safe_short_tail and not full_width_continuation:
         # 满栏混合字体可跨字号续接，但显式正体/斜体等样式边界仍保持原分段语义。
         if not both_fill_lane or not aligned_left_edges or font_style_changed:
             return False
@@ -401,7 +622,7 @@ def _should_connect_text_rows(
         return False
     if _bbox_axis_overlap_ratio(previous_bbox, current_bbox, axis="x") < 0.5 and abs(
         previous_bbox[0] - current_bbox[0]
-    ) > 1.5 * pair_height:
+    ) > 1.5 * pair_height and not safe_short_tail:
         return False
     if _connection_crosses_table(previous_line.bbox, current_line.bbox, table_bboxes):
         return False
@@ -431,7 +652,7 @@ def _should_connect_text_rows(
     if next_indent >= max(5.0, 0.65 * pair_height) and (previous_fill <= 0.8 or terminal_previous):
         return False
 
-    abnormal_gap = vertical_gap > regular_gap + 0.25 * pair_height
+    abnormal_gap = vertical_gap > regular_gap + max(0.25 * pair_height, 3.0 * gap_mad)
     if (
         previous_line.font_signature is not None
         and current_line.font_signature is not None
@@ -439,9 +660,15 @@ def _should_connect_text_rows(
         and current_line.font_coverage >= 0.75
         and previous_line.font_signature != current_line.font_signature
         and (abnormal_gap or min(previous_width, current_width) <= 0.7 * lane_width)
+        and not both_fill_lane
+        and not safe_short_tail
     ):
         return False
-    if abnormal_gap and min(previous_width, current_width) <= 0.65 * lane_width:
+    if (
+        abnormal_gap
+        and min(previous_width, current_width) <= 0.65 * lane_width
+        and not safe_short_tail
+    ):
         return False
     return True
 

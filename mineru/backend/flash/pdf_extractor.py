@@ -82,7 +82,7 @@ if __name__ == '__main__':
     if __name__ == "__main__":
         # pdf_path = "/Users/myhloli/pdf/截断合并/demo1-3.pdf"
         # pdf_path = "/Users/myhloli/pdf/png/seal4.png"  # shubiao.png
-        pdf_path = "/Users/myhloli/pdf/caibao1.pdf"
+        pdf_path = "/Users/myhloli/pdf/基于Boosting、Bagging、Stacking与Voting四大集成学习模型的粉质砂土冻土抗剪强度预测研究.pdf"
         pdf_bytes = read_fn(pdf_path)
         model_list = doc_analyze(pdf_bytes, parse_mode="auto")
         logger.info(f"model_list: {model_list}")

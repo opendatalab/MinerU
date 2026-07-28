@@ -109,11 +109,12 @@ class _TextLane:
 
 @dataclass(slots=True)
 class _FormulaAnchor:
-    """保存公式右缘锚点及其是否落在正文密集区下方。"""
+    """保存公式右缘锚点及其相对正文密集区的上下位置。"""
 
     line: _LineItem
     bbox: BBox
     detached_below_body: bool = False
+    detached_above_body: bool = False
 
 
 @dataclass(slots=True)

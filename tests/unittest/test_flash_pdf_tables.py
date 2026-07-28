@@ -525,6 +525,50 @@ def test_chart_tick_rows_fail_dense_multi_cell_distribution() -> None:
     assert candidates == []
 
 
+def test_long_sparse_rule_interval_cannot_bridge_two_low_column_tables() -> None:
+    """验证低列数表格之间仅有一行稀疏文本时不能跨长区间合并。"""
+
+    rows: list[models._VisualRow] = []
+    source_index = 0
+    for row_index, (top, anchors) in enumerate(
+        (
+            (10.0, (10.0, 50.0, 90.0)),
+            (20.0, (10.0, 50.0, 90.0)),
+            (30.0, (10.0, 50.0, 90.0)),
+            (80.0, (10.0, 90.0)),
+            (130.0, (10.0, 50.0, 90.0)),
+            (140.0, (10.0, 50.0, 90.0)),
+        )
+    ):
+        fragments = []
+        for anchor in anchors:
+            bbox = (anchor, top, anchor + 5.0, top + 5.0)
+            fragments.append(
+                models._Fragment(
+                    text=f"cell-{source_index}",
+                    bbox=bbox,
+                    local_bbox=bbox,
+                    line_index=source_index,
+                    visual_row_id=row_index,
+                )
+            )
+            source_index += 1
+        rows.append(
+            models._VisualRow(
+                fragments=fragments,
+                center_y=top + 2.5,
+                bbox=geometry._bbox_union_many([fragment.bbox for fragment in fragments]),
+                visual_row_id=row_index,
+            )
+        )
+    rules = [
+        _axis_line("horizontal", (0.0, top, 110.0, top + 0.1))
+        for top in (0.0, 40.0, 120.0, 150.0)
+    ]
+
+    assert not tables._rule_intervals_are_column_compatible(rows, rules, 5.0)
+
+
 def test_split_table_footnote_marker_is_joined_before_matching() -> None:
     """验证旋转表拆开的 For 与星号脚注在视觉行拼接后可被识别。"""
 
@@ -538,7 +582,89 @@ def test_split_table_footnote_marker_is_joined_before_matching() -> None:
     )
 
     assert tables._is_table_note_text(tables._visual_row_text(row))
-    assert tables._is_table_note_text("1 Numeric table footnote")
+    assert not tables._is_table_note_text("1 Numeric table footnote")
+
+
+def test_table_note_chain_stops_at_font_and_size_transition() -> None:
+    """验证表注续行不能跨越字体字号突变的标题或后续正文。"""
+
+    specs = [
+        ("Note: neutral marker", (0.0, 52.0, 60.0, 60.0), ("Note", 0), 8.0),
+        ("neutral continuation", (0.0, 61.0, 65.0, 69.0), ("Note", 0), 8.0),
+        ("section barrier", (0.0, 70.0, 45.0, 84.0), ("Heading", 0), 14.0),
+        ("ordinary body", (10.0, 85.0, 100.0, 95.0), ("Body", 0), 10.0),
+    ]
+    lines: list[models._LineItem] = []
+    rows: list[models._VisualRow] = []
+    for source_index, (text, bbox, font, height) in enumerate(specs):
+        lines.append(
+            models._LineItem(
+                text=text,
+                bbox=bbox,
+                angle=0,
+                source_index=source_index,
+                effective_height=height,
+                font_signature=font,
+                font_coverage=1.0,
+            )
+        )
+        fragment = models._Fragment(
+            text=text,
+            bbox=bbox,
+            local_bbox=bbox,
+            line_index=source_index,
+            visual_row_id=source_index,
+        )
+        rows.append(
+            models._VisualRow(
+                fragments=[fragment],
+                center_y=geometry._bbox_center_y(bbox),
+                bbox=bbox,
+                visual_row_id=source_index,
+            )
+        )
+
+    selected = tables._collect_footnote_rows(
+        rows,
+        lines,
+        (0.0, 0.0, 100.0, 50.0),
+        10.0,
+        set(),
+    )
+
+    assert [tables._visual_row_text(row) for row in selected] == [
+        "Note: neutral marker",
+        "neutral continuation",
+    ]
+
+
+def test_numeric_body_row_cannot_start_table_note_chain() -> None:
+    """验证数字开头正文即使紧邻表格下边界也不能独立启动表注扩张。"""
+
+    bbox = (0.0, 52.0, 80.0, 62.0)
+    line = models._LineItem(
+        text="5 ordinary numbered body",
+        bbox=bbox,
+        angle=0,
+        source_index=0,
+        effective_height=10.0,
+        font_signature=("Body", 0),
+        font_coverage=1.0,
+    )
+    row = models._VisualRow(
+        fragments=[models._Fragment(line.text, bbox, bbox, 0, 0)],
+        center_y=geometry._bbox_center_y(bbox),
+        bbox=bbox,
+        visual_row_id=0,
+    )
+
+    assert tables._collect_footnote_rows(
+        [row],
+        [line],
+        (0.0, 0.0, 100.0, 50.0),
+        10.0,
+        set(),
+    ) == []
 
 
 @pytest.mark.parametrize("projection_mode", ["empty", "error"])

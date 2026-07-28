@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 import statistics
 from typing import Any, Sequence
 
@@ -23,6 +24,7 @@ from .models import (
 )
 from .geometry import (
     _bbox_axis_overlap_ratio,
+    _bbox_center_x,
     _bbox_center_y,
     _bbox_union_many,
     _rotate_bbox_from_upright,
@@ -40,6 +42,34 @@ from .line_layout import (
     _should_connect_semantic_rows,
     _should_connect_text_rows,
 )
+
+
+_REFERENCE_ENTRY_RE = re.compile(r"^[［\[]\s*\d+\s*[］\]]")
+_FIGURE_CAPTION_MARKER_RE = re.compile(
+    r"^(?:图\s*[0-9０-９一二三四五六七八九十]|fig(?:ure)?\.?\s*[0-9])",
+    re.IGNORECASE,
+)
+
+
+def _starts_structural_reference_entry(
+    previous: tuple[_LineItem, BBox],
+    current: tuple[_LineItem, BBox],
+) -> bool:
+    """仅在编号行相对续行明显左突时确认新的参考文献条目。"""
+
+    if _REFERENCE_ENTRY_RE.match(current[0].text.strip()) is None:
+        return False
+    previous_height = _line_effective_height(*previous)
+    current_height = _line_effective_height(*current)
+    pair_height = max(previous_height, current_height)
+    return (
+        current[1][0] <= previous[1][0] - max(5.0, 0.6 * min(previous_height, current_height))
+        and -0.75 * pair_height
+        <= _effective_text_row_gap(previous, current)
+        <= 1.5 * pair_height
+    )
+
+
 def _build_hanging_indent_group_map(
     lane: _TextLane,
     table_bboxes: list[BBox],
@@ -437,7 +467,10 @@ def _build_text_blocks(
                 else:
                     previous_group = hanging_indent_groups.get(previous[0].source_index)
                     current_group = hanging_indent_groups.get(current[0].source_index)
-                    if is_hyphen_at_line_end(previous[0].text):
+                    if _starts_structural_reference_entry(previous, current):
+                        # 编号只确认已经由悬挂缩进几何形成的新条目，不能单独扩张范围。
+                        should_connect = False
+                    elif is_hyphen_at_line_end(previous[0].text):
                         # 断词续行优先于悬挂缩进分组，但仍复用正文连接中的距离和障碍限制。
                         should_connect = _should_connect_text_rows(
                             previous,
@@ -469,7 +502,17 @@ def _build_text_blocks(
 
             for component_geometry in components:
                 component_lines = [item[0] for item in component_geometry]
-                content = _merge_text_line_content([line.text for line in component_lines])
+                if component_lines[0].semantic_type == "doc_title":
+                    # 文档标题保留自然换行，避免混排标题因语言检测在中文折行处插入空格。
+                    content = "\n".join(
+                        normalized
+                        for line in component_lines
+                        if (normalized := _normalize_native_run_text(line.text))
+                    )
+                else:
+                    content = _merge_text_line_content(
+                        [line.text for line in component_lines]
+                    )
                 if not content:
                     continue
                 visual_row_ids = {
@@ -495,11 +538,267 @@ def _build_text_blocks(
                             _line_effective_height(line, bbox)
                             for line, bbox in component_geometry
                         ],
+                        "_font_signatures": {
+                            line.font_signature
+                            for line in component_lines
+                            if line.font_signature is not None
+                            and line.font_coverage >= 0.5
+                        },
                         "_lane_interval": (lane.left, lane.right),
                         "_lane_is_span": lane.is_span,
                     }
                 )
     return _merge_spatial_text_components(blocks, page_size)
+
+
+def _merge_image_caption_text_blocks(
+    blocks: list[dict[str, Any]],
+    image_bboxes: list[BBox],
+) -> list[dict[str, Any]]:
+    """在图像邻接已成立后，用通用图注标记确认锚点并吸收同字体续行。"""
+
+    if not image_bboxes:
+        return blocks
+    text_indices = [
+        index
+        for index, block in enumerate(blocks)
+        if block.get("type") == "text"
+        and isinstance(block.get("content"), str)
+        and isinstance(block.get("bbox"), (list, tuple))
+    ]
+    all_heights = [
+        float(height)
+        for index in text_indices
+        for height in blocks[index].get("_line_heights", [])
+        if isinstance(height, (int, float)) and height > 0
+    ]
+    median_height = statistics.median(all_heights) if all_heights else 1.0
+    seed_indices = {
+        index
+        for index in text_indices
+        if _FIGURE_CAPTION_MARKER_RE.match(str(blocks[index]["content"]).strip())
+        and any(
+            _caption_seed_matches_image(
+                blocks[index],
+                image_bbox,
+                median_height,
+            )
+            for image_bbox in image_bboxes
+        )
+    }
+    if not seed_indices:
+        return blocks
+
+    assignments: dict[int, list[int]] = {index: [] for index in seed_indices}
+    for candidate_index in text_indices:
+        if candidate_index in seed_indices:
+            continue
+        candidate = blocks[candidate_index]
+        matches: list[tuple[float, float, int]] = []
+        for seed_index in seed_indices:
+            seed = blocks[seed_index]
+            if not _caption_tail_matches_seed(
+                seed,
+                candidate,
+                median_height,
+            ):
+                continue
+            seed_bbox = seed["bbox"]
+            candidate_bbox = candidate["bbox"]
+            matches.append(
+                (
+                    _bbox_center_y(candidate_bbox) - _bbox_center_y(seed_bbox),
+                    abs(_bbox_center_x(candidate_bbox) - _bbox_center_x(seed_bbox)),
+                    seed_index,
+                )
+            )
+        if matches:
+            assignments[min(matches)[2]].append(candidate_index)
+
+    merged_indices: set[int] = set()
+    replacements: dict[int, dict[str, Any]] = {}
+    for seed_index, tail_indices in assignments.items():
+        if not tail_indices:
+            continue
+        group_indices = [seed_index, *tail_indices]
+        replacements[seed_index] = _merge_internal_text_block_group(
+            blocks,
+            group_indices,
+        )
+        merged_indices.update(tail_indices)
+    return [
+        replacements.get(index, block)
+        for index, block in enumerate(blocks)
+        if index not in merged_indices
+    ]
+
+
+def _caption_seed_matches_image(
+    block: dict[str, Any],
+    image_bbox: BBox,
+    median_height: float,
+) -> bool:
+    """用上下位置、水平投影和居中关系确认图像下方的图注空间候选。"""
+
+    bbox = block["bbox"]
+    image_width = max(0.1, image_bbox[2] - image_bbox[0])
+    block_width = max(0.1, bbox[2] - bbox[0])
+    vertical_gap = max(0.0, bbox[1] - image_bbox[3])
+    return (
+        _bbox_center_y(bbox) >= image_bbox[3] - 0.25 * median_height
+        and vertical_gap <= 2.5 * median_height
+        and _bbox_axis_overlap_ratio(bbox, image_bbox, axis="x") >= 0.35
+        and abs(_bbox_center_x(bbox) - _bbox_center_x(image_bbox))
+        <= 0.35 * max(image_width, block_width)
+        and block_width <= 1.75 * image_width
+    )
+
+
+def _caption_tail_matches_seed(
+    seed: dict[str, Any],
+    candidate: dict[str, Any],
+    median_height: float,
+) -> bool:
+    """只用同栏角色、字体、邻接和投影把无标记的图注续行接回锚点。"""
+
+    if not _components_share_lane_role(seed, candidate, median_height):
+        return False
+    seed_bbox = seed["bbox"]
+    candidate_bbox = candidate["bbox"]
+    if _bbox_center_y(candidate_bbox) <= _bbox_center_y(seed_bbox):
+        return False
+    vertical_gap = max(0.0, candidate_bbox[1] - seed_bbox[3])
+    if (
+        vertical_gap > 1.25 * median_height
+        or _bbox_center_y(candidate_bbox) - _bbox_center_y(seed_bbox)
+        > 2.0 * median_height
+        or _bbox_axis_overlap_ratio(seed_bbox, candidate_bbox, axis="x") < 0.35
+    ):
+        return False
+    seed_fonts = seed.get("_font_signatures")
+    candidate_fonts = candidate.get("_font_signatures")
+    return not (
+        isinstance(seed_fonts, set)
+        and seed_fonts
+        and isinstance(candidate_fonts, set)
+        and candidate_fonts
+        and seed_fonts.isdisjoint(candidate_fonts)
+    )
+
+
+def _merge_fragmented_header_blocks(
+    blocks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """聚合同一视觉行中等距分散的窄页眉字形，同时保留远端卷期信息。"""
+
+    grouped: dict[tuple[int, int], list[int]] = {}
+    for index, block in enumerate(blocks):
+        row_id = block.get("_single_run_row_id")
+        angle = int(block.get("angle", 0) or 0) % 360
+        if block.get("type") == "header" and isinstance(row_id, int):
+            grouped.setdefault((angle, row_id), []).append(index)
+
+    replacements: dict[int, dict[str, Any]] = {}
+    consumed: set[int] = set()
+    for indices in grouped.values():
+        ordered = sorted(indices, key=lambda index: blocks[index]["bbox"][0])
+        components: list[list[int]] = []
+        for index in ordered:
+            bbox = blocks[index]["bbox"]
+            heights = blocks[index].get("_line_heights", [])
+            effective_height = (
+                statistics.median(heights)
+                if isinstance(heights, list) and heights
+                else max(0.1, bbox[3] - bbox[1])
+            )
+            if bbox[2] - bbox[0] > 1.25 * effective_height:
+                continue
+            if not components:
+                components.append([index])
+                continue
+            previous_index = components[-1][-1]
+            previous_bbox = blocks[previous_index]["bbox"]
+            previous_heights = blocks[previous_index].get("_line_heights", [])
+            previous_height = (
+                statistics.median(previous_heights)
+                if isinstance(previous_heights, list) and previous_heights
+                else max(0.1, previous_bbox[3] - previous_bbox[1])
+            )
+            if (
+                bbox[0] - previous_bbox[2]
+                <= 4.0 * max(effective_height, previous_height)
+                and _bbox_axis_overlap_ratio(previous_bbox, bbox, axis="y") >= 0.5
+            ):
+                components[-1].append(index)
+            else:
+                components.append([index])
+        for component in components:
+            if len(component) < 2:
+                continue
+            replacement = _merge_internal_text_block_group(
+                blocks,
+                component,
+                preserve_visual_spaces=True,
+            )
+            replacement["_single_run_row_id"] = None
+            replacements[component[0]] = replacement
+            consumed.update(component[1:])
+    return [
+        replacements.get(index, block)
+        for index, block in enumerate(blocks)
+        if index not in consumed
+    ]
+
+
+def _merge_internal_text_block_group(
+    blocks: list[dict[str, Any]],
+    indices: list[int],
+    *,
+    preserve_visual_spaces: bool = False,
+) -> dict[str, Any]:
+    """合并内部文本块及其版面元数据，最终输出阶段仍会统一移除这些字段。"""
+
+    ordered_indices = sorted(
+        indices,
+        key=lambda index: _text_component_sort_key(blocks[index]),
+    )
+    merged = dict(blocks[ordered_indices[0]])
+    merged["bbox"] = _bbox_union_many([blocks[index]["bbox"] for index in ordered_indices])
+    contents = [str(blocks[index].get("content", "")) for index in ordered_indices]
+    merged["content"] = (
+        " ".join(content.strip() for content in contents if content.strip())
+        if preserve_visual_spaces
+        else _merge_text_line_content(contents)
+    )
+    merged["_visual_row_ids"] = set().union(
+        *[
+            row_ids
+            for index in ordered_indices
+            if isinstance((row_ids := blocks[index].get("_visual_row_ids")), set)
+        ]
+    )
+    merged["_single_run_row_id"] = None
+    merged["_local_line_bboxes"] = [
+        bbox
+        for index in ordered_indices
+        for bbox in blocks[index].get("_local_line_bboxes", [])
+    ]
+    merged["_line_heights"] = [
+        height
+        for index in ordered_indices
+        for height in blocks[index].get("_line_heights", [])
+    ]
+    merged["_font_signatures"] = set().union(
+        *[
+            signatures
+            for index in ordered_indices
+            if isinstance(
+                (signatures := blocks[index].get("_font_signatures")),
+                set,
+            )
+        ]
+    )
+    return merged
 
 
 def _merge_spatial_text_components(
@@ -643,6 +942,16 @@ def _merge_spatial_text_components(
             for index in ordered_indices
             for height in blocks[index].get("_line_heights", [])
         ]
+        merged["_font_signatures"] = set().union(
+            *[
+                signatures
+                for index in ordered_indices
+                if isinstance(
+                    (signatures := blocks[index].get("_font_signatures")),
+                    set,
+                )
+            ]
+        )
         output.append(merged)
     return output
 
@@ -699,6 +1008,33 @@ def _compatible_component_lane_width(
     )
 
 
+def _components_share_lane_role(
+    first_block: dict[str, Any],
+    second_block: dict[str, Any],
+    median_height: float,
+) -> bool:
+    """要求二次合并组件同为跨栏或属于同一普通栏带。"""
+
+    first_role = first_block.get("_lane_is_span")
+    second_role = second_block.get("_lane_is_span")
+    if isinstance(first_role, bool) and isinstance(second_role, bool):
+        if first_role != second_role:
+            return False
+        if first_role:
+            return True
+        first_interval = _component_lane_interval(first_block)
+        second_interval = _component_lane_interval(second_block)
+        if first_interval is None or second_interval is None:
+            return False
+        tolerance = 0.75 * median_height
+        return (
+            abs(first_interval[0] - second_interval[0]) <= tolerance
+            and abs(first_interval[1] - second_interval[1]) <= tolerance
+        )
+    # 兼容缺少内部栏元数据的旧调用；生产路径始终会携带该字段。
+    return not isinstance(first_role, bool) and not isinstance(second_role, bool)
+
+
 def _block_starts_with_short_wide_rows(
     block: dict[str, Any],
     local_page_width: float,
@@ -737,6 +1073,12 @@ def _find_short_opener_pairs(
         for body_index in candidate_indices:
             if body_index == opener_index:
                 continue
+            if not _components_share_lane_role(
+                blocks[opener_index],
+                blocks[body_index],
+                median_height,
+            ):
+                continue
             body_bbox = blocks[body_index]["_local_line_bboxes"][0]
             gap = body_bbox[1] - opener_bbox[3]
             body_width = body_bbox[2] - body_bbox[0]
@@ -751,6 +1093,12 @@ def _find_short_opener_pairs(
                 or abs(body_bbox[0] - opener_bbox[0]) > 0.75 * median_height
                 or opener_width > 0.35 * reference_width
                 or body_width < 0.6 * reference_width
+                or _component_connection_skips_block(
+                    blocks,
+                    opener_index,
+                    body_index,
+                    median_height,
+                )
             ):
                 continue
             matches.append((gap, body_index))
@@ -774,6 +1122,12 @@ def _nearest_following_text_component(
     for candidate_index in candidate_indices:
         if candidate_index == current_index or candidate_index in section_starts:
             continue
+        if not _components_share_lane_role(
+            blocks[current_index],
+            blocks[candidate_index],
+            maximum_gap / 0.75,
+        ):
+            continue
         candidate_bbox = blocks[candidate_index]["_local_line_bboxes"][0]
         gap = candidate_bbox[1] - current_bbox[3]
         if not -0.25 * maximum_gap <= gap <= maximum_gap:
@@ -781,6 +1135,13 @@ def _nearest_following_text_component(
         overlap = _bbox_axis_overlap_ratio(current_bbox, candidate_bbox, axis="x")
         left_gap = abs(candidate_bbox[0] - current_bbox[0])
         if overlap < 0.5 and left_gap > 3.0 * maximum_gap:
+            continue
+        if _component_connection_skips_block(
+            blocks,
+            current_index,
+            candidate_index,
+            maximum_gap / 0.75,
+        ):
             continue
         matches.append((max(0.0, gap), left_gap, candidate_index))
     return min(matches)[2] if matches else None
@@ -827,6 +1188,12 @@ def _nearest_tapered_tail_component(
     for candidate_index in candidate_indices:
         if candidate_index == current_index or candidate_index in section_starts:
             continue
+        if not _components_share_lane_role(
+            blocks[current_index],
+            blocks[candidate_index],
+            median_height,
+        ):
+            continue
         candidate_bboxes = blocks[candidate_index]["_local_line_bboxes"]
         first_bbox = candidate_bboxes[0]
         last_bbox = candidate_bboxes[-1]
@@ -839,10 +1206,54 @@ def _nearest_tapered_tail_component(
             or abs(first_bbox[0] - previous_bbox[0]) > 0.75 * median_height
             or first_width > 0.85 * previous_width
             or last_width > first_width + 0.5 * median_height
+            or _component_connection_skips_block(
+                blocks,
+                current_index,
+                candidate_index,
+                median_height,
+            )
         ):
             continue
         matches.append((gap, candidate_index))
     return min(matches)[1] if matches else None
+
+
+def _component_connection_skips_block(
+    blocks: list[dict[str, Any]],
+    first_index: int,
+    second_index: int,
+    median_height: float,
+) -> bool:
+    """检查两个正文组件之间是否已有同水平流的中间块，禁止二次合并跨越它。"""
+
+    first_bbox = blocks[first_index]["_local_line_bboxes"][-1]
+    second_bbox = blocks[second_index]["_local_line_bboxes"][0]
+    first_center = _bbox_center_y(first_bbox)
+    second_center = _bbox_center_y(second_bbox)
+    corridor_top, corridor_bottom = sorted((first_center, second_center))
+    corridor_bbox = (
+        min(first_bbox[0], second_bbox[0]),
+        corridor_top,
+        max(first_bbox[2], second_bbox[2]),
+        corridor_bottom,
+    )
+    for index, block in enumerate(blocks):
+        if index in {first_index, second_index}:
+            continue
+        local_bboxes = block.get("_local_line_bboxes")
+        if not isinstance(local_bboxes, list) or not local_bboxes:
+            continue
+        other_bbox = local_bboxes[0]
+        other_center = _bbox_center_y(other_bbox)
+        if not (
+            corridor_top + 0.1 * median_height
+            < other_center
+            < corridor_bottom - 0.1 * median_height
+        ):
+            continue
+        if _bbox_axis_overlap_ratio(corridor_bbox, other_bbox, axis="x") >= 0.2:
+            return True
+    return False
 
 
 def _text_component_sort_key(block: dict[str, Any]) -> tuple[float, float]:

@@ -274,6 +274,152 @@ def test_multiline_document_title_does_not_absorb_author_line() -> None:
     assert [line.semantic_type for line in lines[:3]] == ["doc_title", "doc_title", None]
 
 
+def test_multiline_document_title_accepts_uncertain_mixed_dominant_font() -> None:
+    """验证混排标题主字体覆盖不稳定时仍可按字号、居中和字重合并。"""
+
+    lines = [
+        _text_line(
+            "wide mixed title",
+            (5.0, 20.0, 95.0, 35.0),
+            0,
+            effective_height=15.0,
+            font_signature=("MixedDominant", 0),
+            font_coverage=0.8,
+            dominant_font_weight=500.0,
+        ),
+        _text_line(
+            "wide title continuation",
+            (10.0, 36.0, 90.0, 50.0),
+            1,
+            effective_height=14.0,
+            font_signature=("LocalTitle", 0),
+            font_coverage=1.0,
+            dominant_font_weight=500.0,
+        ),
+        _text_line(
+            "author",
+            (35.0, 60.0, 65.0, 69.0),
+            2,
+            effective_height=9.0,
+            font_signature=("LocalTitle", 0),
+            font_coverage=1.0,
+            dominant_font_weight=500.0,
+        ),
+        _text_line("body one", (0.0, 110.0, 100.0, 120.0), 3),
+        _text_line("body two", (0.0, 122.0, 100.0, 132.0), 4),
+        _text_line("body three", (0.0, 134.0, 100.0, 144.0), 5),
+    ]
+
+    titles._classify_page_titles(
+        lines,
+        (100.0, 200.0),
+        page_index=0,
+        container_bboxes=[],
+    )
+
+    assert [line.semantic_type for line in lines[:3]] == ["doc_title", "doc_title", None]
+    blocks = text_blocks._build_text_blocks(lines, [], (100.0, 200.0))
+    title_blocks = [block for block in blocks if block["type"] == "doc_title"]
+    assert len(title_blocks) == 1
+    assert title_blocks[0]["content"] == "wide mixed title\nwide title continuation"
+
+
+def test_compact_left_heading_accepts_one_body_height_following_gap() -> None:
+    """验证短标题与后继正文相隔约一行时仍可由局部样式过渡确认。"""
+
+    body_font = ("Body", 0)
+    heading = _text_line(
+        "neutral heading",
+        (0.0, 45.0, 25.0, 56.0),
+        3,
+        effective_height=11.0,
+        font_signature=("Heading", 0),
+        font_coverage=0.65,
+    )
+    lines = [
+        _text_line(
+            "body one",
+            (0.0, 0.0, 100.0, 10.0),
+            0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "body two",
+            (0.0, 12.0, 100.0, 22.0),
+            1,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "body three",
+            (0.0, 24.0, 100.0, 34.0),
+            2,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        heading,
+        _text_line(
+            "next body",
+            (0.0, 67.0, 100.0, 77.0),
+            4,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "next body two",
+            (0.0, 79.0, 100.0, 89.0),
+            5,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+    ]
+
+    titles._classify_page_titles(
+        lines,
+        (100.0, 120.0),
+        page_index=1,
+        container_bboxes=[],
+    )
+
+    assert heading.semantic_type == "paragraph_title"
+
+
+def test_same_font_body_tail_with_moderate_gap_is_not_title() -> None:
+    """验证同字体满行之后的短正文尾行不会因中等间距被升级为标题。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line("reference body", (0.0, 0.0, 100.0, 10.0), 0, effective_height=8.0),
+        _text_line("reference body two", (0.0, 10.0, 100.0, 20.0), 1, effective_height=8.0),
+        _text_line(
+            "local full body",
+            (0.0, 35.0, 100.0, 45.0),
+            2,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "local body tail",
+            (0.0, 54.0, 60.0, 64.0),
+            3,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line("different section", (0.0, 80.0, 100.0, 90.0), 4),
+        _text_line("different continuation", (0.0, 92.0, 100.0, 102.0), 5),
+    ]
+
+    titles._classify_page_titles(
+        lines,
+        (100.0, 120.0),
+        page_index=1,
+        container_bboxes=[],
+    )
+
+    assert lines[3].semantic_type is None
+
+
 def test_cross_column_document_title_uses_thirteen_tenths_body_height_fallback() -> None:
     """验证首页跨栏居中标题达到正文 1.30 倍时可命中，作者行保持正文类型。"""
 
@@ -617,12 +763,15 @@ def test_paragraph_title_detector_does_not_read_line_text() -> None:
             titles._classify_page_titles,
             titles._build_physical_title_gap_map,
             titles._find_repeated_grid_title_suppressions,
+            titles._find_container_visual_row_title_suppressions,
             titles._infer_lane_body_profile,
             titles._classify_document_title,
+            titles._document_title_fonts_compatible,
             titles._document_title_uses_page_fallback,
             titles._classify_paragraph_titles_in_lane,
             titles._visual_row_has_body_style_sibling,
             titles._is_near_full_mixed_inline_row,
+            titles._continues_local_body_row,
             titles._is_full_width_inline_heading,
             titles._has_following_body_row,
             titles._has_following_compact_text_section,
