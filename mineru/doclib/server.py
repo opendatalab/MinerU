@@ -802,7 +802,7 @@ class DoclibServer(AsyncDoclibInterface):
             raise
 
     @route("GET", "/find", tags=("search",))
-    async def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse:
+    async def find(self, query: str, *, ext: str | None = None, limit: int = 50, offset: int = 0) -> FindResponse:
         start_ms = _now_ms()
         await _record_telemetry_count(self.state, "find.request.count")
         try:
@@ -810,6 +810,7 @@ class DoclibServer(AsyncDoclibInterface):
                 query=query,
                 ext=ext,
                 limit=limit,
+                offset=offset,
                 refresh_file=self.state.parse_svc.refresh_file,
             )
             response = FindResponse(results=[_find_result(row) for row in results], total=total, query=query)

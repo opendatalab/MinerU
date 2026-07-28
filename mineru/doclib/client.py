@@ -301,8 +301,11 @@ class DoclibClient(DoclibInterface):
         )
 
     @route("GET", "/find", tags=("search",))
-    def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse:
-        return self._request_model(FindResponse, params={"query": query, "ext": ext, "limit": limit})
+    def find(self, query: str, *, ext: str | None = None, limit: int = 50, offset: int = 0) -> FindResponse:
+        return self._request_model(
+            FindResponse,
+            params={"query": query, "ext": ext, "limit": limit, "offset": offset},
+        )
 
     @route("GET", "/files/by-path", tags=("files",))
     def get_file_by_path(self, path: str) -> FileInfoResponse:

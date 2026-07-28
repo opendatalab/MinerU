@@ -2379,6 +2379,40 @@ def test_find_filters_by_ext(tmp_path: Path) -> None:
     asyncio.run(_run())
 
 
+def test_find_paginates_after_filtering(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        fts = FTSManager(db)
+        service = SearchService(db, fts)
+        now = 1000
+        filenames = ("sample-1.pdf", "sample-2.docx", "sample-3.pdf")
+
+        for index, filename in enumerate(filenames, start=1):
+            ext = filename.rsplit(".", maxsplit=1)[1]
+            sha256 = str(index) * 64
+            await db.execute(
+                "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (sha256, sha256[:7], 10, ext, index, now, now),
+            )
+            file_id = await db.execute_insert(
+                "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, status, first_seen_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (str(tmp_path / filename), filename, ext, 10, now, sha256, "active", now, now),
+            )
+            await fts.upsert_filename(file_id, filename, ext)
+
+        first_page, first_total = await service.search_filenames("sample", ext="pdf", limit=1, offset=0)
+        second_page, second_total = await service.search_filenames("sample", ext="pdf", limit=1, offset=1)
+
+        assert first_total == second_total == 2
+        assert [row["filename"] for row in first_page] == ["sample-1.pdf"]
+        assert [row["filename"] for row in second_page] == ["sample-3.pdf"]
+
+    asyncio.run(_run())
+
+
 def test_find_probes_and_filters_deleted_paths_without_rescan(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))

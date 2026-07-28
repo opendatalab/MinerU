@@ -180,6 +180,13 @@ def test_list_methods_expose_consistent_pagination_contract() -> None:
         assert "offset" in signature.parameters, method_name
 
 
+def test_search_methods_expose_consistent_pagination_contract() -> None:
+    for method_name in ("search", "find"):
+        signature = inspect.signature(getattr(DoclibInterface, method_name))
+        assert "limit" in signature.parameters, method_name
+        assert "offset" in signature.parameters, method_name
+
+
 def test_interface_app_uses_doclib_server_routes(tmp_path) -> None:
     cfg = PatchedConfig(doclib={"log": {"dir": str(tmp_path / "logs")}})
 

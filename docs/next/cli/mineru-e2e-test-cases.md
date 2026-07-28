@@ -2302,7 +2302,7 @@ mineru find "sample" --limit 1 --json
 - exit code = 0
 - stdout 为可直接解析的 JSON
 - limit 生效，单次返回结果数量不超过 1
-- `find` 当前只承诺文件名查询、扩展名过滤、limit 和 JSON 输出；offset 契约单独由 SEARCH-013 覆盖
+- `find` 承诺文件名查询、扩展名过滤、limit、offset 和 JSON 输出；分页契约由 SEARCH-013 覆盖
 
 ### SEARCH-008 search type filter
 
@@ -3160,13 +3160,15 @@ mineru list docs --file-type docx --limit 20 --json
 命令:
 
 ```bash
+mineru find "sample" --limit 1 --offset 0 --json
 mineru find "sample" --limit 1 --offset 1 --json
 ```
 
 预期:
 
-- 如果 CLI 设计支持 find offset，exit code = 0，stdout 为可直接解析的 JSON，返回数量不超过 1
-- 如果 CLI 设计不支持 find offset，exit code != 0，输出包含 no such option、unknown option 或等价错误
+- 两条命令 exit code = 0，stdout 均为可直接解析的 JSON，返回数量均不超过 1
+- 如果至少有两条匹配结果，两页的 filename/path 组合不重复
+- 重复执行相同命令时，结果顺序保持一致
 - 不包含 Python traceback
 
 ### PARSE-016 page range 边界

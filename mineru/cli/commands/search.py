@@ -47,12 +47,13 @@ def find_cmd(
     query: str = typer.Argument(..., help="Filename search query"),
     ext: str | None = typer.Option(None, "--ext", help=f"File extension filter: {FILE_EXTS}"),
     limit: int = typer.Option(50, "--limit", "-n", help="Max results"),
+    offset: int = typer.Option(0, "--offset", help="Result offset"),
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
 ) -> None:
     """Search filenames only (not document content)."""
     run_cli(
         CliContext(json_mode=json_mode),
-        lambda: DoclibClient(timeout=10).find(query, ext=ext, limit=limit),
+        lambda: DoclibClient(timeout=10).find(query, ext=ext, limit=limit, offset=offset),
         render=_render_find_results,
     )
 
