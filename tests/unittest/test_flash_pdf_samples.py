@@ -85,6 +85,13 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     assert sum(block["type"] == "header" for page in model_list for block in page) == 12
     assert sum(block["type"] == "page_number" for page in model_list for block in page) == 12
     assert sum(block["type"] == "equation" for page in model_list for block in page) == 7
+    assert [block["bbox"] for block in model_list[5] if block["type"] == "table"] == [
+        [0.087, 0.125, 0.922, 0.363],
+        [0.087, 0.669, 0.922, 0.893],
+    ]
+    assert [block["bbox"] for block in model_list[8] if block["type"] == "table"] == [
+        [0.078, 0.125, 0.913, 0.416]
+    ]
     page1_footnotes = [block for block in model_list[0] if block["type"] == "page_footnote"]
     assert len(page1_footnotes) == 1
     assert page1_footnotes[0]["content"].startswith("* Corresponding author.")
@@ -296,6 +303,8 @@ def test_demo2_table_captions_and_numeric_footnotes_are_not_text_blocks() -> Non
     assert "the avgerage % of bad pixels." in page5_table["content"]
     assert "ral stereo matching." not in residual_text
     assert "Millions of Disparity Estimates per Second." not in residual_text
+    assert page4_table["bbox"] == [0.51, 0.484, 0.915, 0.675]
+    assert page5_table["bbox"] == [0.51, 0.218, 0.915, 0.438]
 
 
 def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
@@ -679,4 +688,3 @@ def test_demo3_pages4_and5_fix_lists_formula_titles_italics_and_footnotes() -> N
     assert final_bullet["type"] == "text"
     assert final_footnote["type"] == "page_footnote"
     assert "3By perturbation" not in final_bullet["content"]
-

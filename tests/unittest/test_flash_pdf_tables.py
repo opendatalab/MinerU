@@ -585,6 +585,360 @@ def test_split_table_footnote_marker_is_joined_before_matching() -> None:
     assert not tables._is_table_note_text("1 Numeric table footnote")
 
 
+def _table_note_reference_fixture(
+    marker: str,
+    reference_mode: str,
+    *,
+    angle: int = 0,
+    note_height: float = 8.0,
+) -> tuple[
+    list[models._VisualRow],
+    list[models._LineItem],
+    tuple[float, float, float, float],
+    set[int],
+    tuple[float, float],
+]:
+    """构造含中性表内引用、表注首行和正文高度样本的局部坐标夹具。"""
+
+    page_size = (200.0, 200.0)
+    rule_bbox = (0.0, 20.0, 100.0, 50.0)
+    core_local_bbox = (10.0, 25.0, 70.0, 35.0)
+    core_chars: list[dict[str, object]] = []
+    if reference_mode == "superscript":
+        core_text = f"cell{marker}"
+        x_position = 10.0
+        for raw_char in "cell":
+            local_bbox = (x_position, 25.0, x_position + 7.0, 35.0)
+            core_chars.append(
+                {
+                    "char": raw_char,
+                    "bbox": geometry._rotate_bbox_from_upright(local_bbox, page_size, angle),
+                }
+            )
+            x_position += 8.0
+        for raw_char in marker:
+            local_bbox = (x_position, 22.0, x_position + 5.0, 28.0)
+            core_chars.append(
+                {
+                    "char": raw_char,
+                    "bbox": geometry._rotate_bbox_from_upright(local_bbox, page_size, angle),
+                }
+            )
+            x_position += 5.5
+    elif reference_mode == "compact":
+        core_text = marker
+    else:
+        core_text = "neutral value"
+
+    core_line = models._LineItem(
+        text=core_text,
+        bbox=geometry._rotate_bbox_from_upright(core_local_bbox, page_size, angle),
+        angle=angle,
+        source_index=0,
+        chars=core_chars,  # type: ignore[arg-type]
+        effective_height=10.0,
+        font_signature=("Table", 0),
+        font_coverage=1.0,
+    )
+    note_local_bbox = (0.0, 51.0, 80.0, 51.0 + note_height)
+    note_line = models._LineItem(
+        text=f"{marker} neutral explanation",
+        bbox=geometry._rotate_bbox_from_upright(note_local_bbox, page_size, angle),
+        angle=angle,
+        source_index=1,
+        effective_height=note_height,
+        font_signature=("Note", 0),
+        font_coverage=1.0,
+    )
+    body_lines = [
+        models._LineItem(
+            text=f"body-{source_index}",
+            bbox=geometry._rotate_bbox_from_upright(
+                (110.0, top, 190.0, top + 10.0),
+                page_size,
+                angle,
+            ),
+            angle=angle,
+            source_index=source_index,
+            effective_height=10.0,
+            font_signature=("Body", 0),
+            font_coverage=1.0,
+        )
+        for source_index, top in enumerate((140.0, 152.0, 164.0, 176.0), start=2)
+    ]
+    rows = [
+        models._VisualRow(
+            fragments=[models._Fragment(core_text, core_local_bbox, core_local_bbox, 0, 0)],
+            center_y=geometry._bbox_center_y(core_local_bbox),
+            bbox=core_local_bbox,
+            visual_row_id=0,
+        ),
+        models._VisualRow(
+            fragments=[models._Fragment(note_line.text, note_local_bbox, note_local_bbox, 1, 1)],
+            center_y=geometry._bbox_center_y(note_local_bbox),
+            bbox=note_local_bbox,
+            visual_row_id=1,
+        ),
+    ]
+    return rows, [core_line, note_line, *body_lines], rule_bbox, {0}, page_size
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    (("7 neutral", "7"), ("(q) neutral", "q"), ("xy: neutral", "xy")),
+)
+def test_auxiliary_table_note_marker_is_unicode_generic(text: str, expected: str) -> None:
+    """验证辅助标记仅受通用 Unicode 形态约束，具体字符变化不影响提取。"""
+
+    assert tables._extract_auxiliary_table_note_marker(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("marker", "reference_mode"),
+    (("7", "superscript"), ("q", "compact"), ("xy", "compact")),
+)
+def test_auxiliary_table_note_requires_neutral_core_reference(
+    marker: str,
+    reference_mode: str,
+) -> None:
+    """验证中性标记经上标或紧凑单元格确认后可以启动表注链。"""
+
+    rows, lines, rule_bbox, core_indices, page_size = _table_note_reference_fixture(
+        marker,
+        reference_mode,
+    )
+
+    selected = tables._collect_footnote_rows(
+        rows,
+        lines,
+        rule_bbox,
+        8.0,
+        core_indices,
+        page_size,
+        0,
+    )
+
+    assert [tables._visual_row_text(row) for row in selected] == [
+        f"{marker} neutral explanation"
+    ]
+
+
+def test_auxiliary_table_note_rejects_marker_without_core_reference() -> None:
+    """验证紧邻表格的短标记正文在缺少表内引用时不能启动表注链。"""
+
+    rows, lines, rule_bbox, core_indices, page_size = _table_note_reference_fixture(
+        "7",
+        "none",
+    )
+
+    assert tables._collect_footnote_rows(
+        rows,
+        lines,
+        rule_bbox,
+        8.0,
+        core_indices,
+        page_size,
+        0,
+    ) == []
+
+
+def test_superscript_reference_requires_smaller_raised_glyph() -> None:
+    """验证普通基线上的同字符不能被当成表内上标引用。"""
+
+    _rows, lines, _rule_bbox, _core_indices, page_size = _table_note_reference_fixture(
+        "7",
+        "superscript",
+    )
+    core_line = lines[0]
+    for char in core_line.chars:
+        if str(char.get("char")) == "7":
+            char["bbox"] = (42.0, 25.0, 49.0, 35.0)
+
+    assert not tables._line_has_superscript_marker(core_line, "7", page_size, 0)
+
+
+@pytest.mark.parametrize("note_height", [10.0, 14.0])
+def test_auxiliary_table_note_rejects_body_or_title_sized_first_row(
+    note_height: float,
+) -> None:
+    """验证具有表内引用的普通正文或标题字号行仍不能启动表注链。"""
+
+    rows, lines, rule_bbox, core_indices, page_size = _table_note_reference_fixture(
+        "q",
+        "compact",
+        note_height=note_height,
+    )
+
+    assert tables._collect_footnote_rows(
+        rows,
+        lines,
+        rule_bbox,
+        8.0,
+        core_indices,
+        page_size,
+        0,
+    ) == []
+
+
+def test_auxiliary_table_note_rejects_loose_first_gap() -> None:
+    """验证辅助标记首行距超过四分之三局部行高时立即停止扩张。"""
+
+    rows, lines, rule_bbox, core_indices, page_size = _table_note_reference_fixture(
+        "q",
+        "compact",
+    )
+    late_bbox = (0.0, 57.0, 80.0, 65.0)
+    lines[1].bbox = late_bbox
+    rows[1] = models._VisualRow(
+        fragments=[models._Fragment(lines[1].text, late_bbox, late_bbox, 1, 1)],
+        center_y=geometry._bbox_center_y(late_bbox),
+        bbox=late_bbox,
+        visual_row_id=1,
+    )
+
+    assert tables._collect_footnote_rows(
+        rows,
+        lines,
+        rule_bbox,
+        8.0,
+        core_indices,
+        page_size,
+        0,
+    ) == []
+
+
+def test_auxiliary_table_note_requires_smaller_than_body_reference() -> None:
+    """验证辅助标记首行还必须显著小于同方向正文参考高度。"""
+
+    rows, lines, rule_bbox, core_indices, page_size = _table_note_reference_fixture(
+        "q",
+        "compact",
+    )
+    for line in lines[2:]:
+        line.effective_height = 8.5
+
+    assert tables._collect_footnote_rows(
+        rows,
+        lines,
+        rule_bbox,
+        8.0,
+        core_indices,
+        page_size,
+        0,
+    ) == []
+
+
+def test_auxiliary_table_note_uses_clipped_corridor_projection() -> None:
+    """验证另一栏短标记不能借表格栏内片段制造虚假的整行投影证据。"""
+
+    rows, lines, rule_bbox, core_indices, page_size = _table_note_reference_fixture(
+        "q",
+        "compact",
+    )
+    outside_bbox = (140.0, 51.0, 190.0, 59.0)
+    inside_bbox = (10.0, 51.0, 70.0, 59.0)
+    rows[1] = models._VisualRow(
+        fragments=[
+            models._Fragment("q outside", outside_bbox, outside_bbox, 1, 1),
+            models._Fragment("inside continuation", inside_bbox, inside_bbox, 6, 1),
+        ],
+        center_y=55.0,
+        bbox=geometry._bbox_union(outside_bbox, inside_bbox),
+        visual_row_id=1,
+    )
+    lines.append(
+        models._LineItem(
+            text="inside continuation",
+            bbox=inside_bbox,
+            angle=0,
+            source_index=6,
+            effective_height=8.0,
+            font_signature=("Note", 0),
+            font_coverage=1.0,
+        )
+    )
+
+    assert tables._collect_footnote_rows(
+        rows,
+        lines,
+        rule_bbox,
+        8.0,
+        core_indices,
+        page_size,
+        0,
+    ) == []
+
+
+def test_rotated_auxiliary_table_note_uses_local_superscript_geometry() -> None:
+    """验证旋转表格先转入局部正向坐标后仍可确认上标引用。"""
+
+    rows, lines, rule_bbox, core_indices, page_size = _table_note_reference_fixture(
+        "7",
+        "superscript",
+        angle=90,
+    )
+
+    selected = tables._collect_footnote_rows(
+        rows,
+        lines,
+        rule_bbox,
+        8.0,
+        core_indices,
+        page_size,
+        90,
+    )
+
+    assert [tables._visual_row_text(row) for row in selected] == [
+        "7 neutral explanation"
+    ]
+
+
+def test_table_note_chain_cannot_expand_beyond_ten_line_heights() -> None:
+    """验证表注续行链即使字体和行距稳定也不能无限向页面底部扩张。"""
+
+    lines: list[models._LineItem] = []
+    rows: list[models._VisualRow] = []
+    specs = [("Note: neutral", (0.0, 51.0, 80.0, 59.0))]
+    specs.extend(
+        (f"continuation-{index}", (0.0, 59.5 + 8.5 * index, 80.0, 67.5 + 8.5 * index))
+        for index in range(12)
+    )
+    for source_index, (text, bbox) in enumerate(specs):
+        lines.append(
+            models._LineItem(
+                text=text,
+                bbox=bbox,
+                angle=0,
+                source_index=source_index,
+                effective_height=8.0,
+                font_signature=("Note", 0),
+                font_coverage=1.0,
+            )
+        )
+        rows.append(
+            models._VisualRow(
+                fragments=[models._Fragment(text, bbox, bbox, source_index, source_index)],
+                center_y=geometry._bbox_center_y(bbox),
+                bbox=bbox,
+                visual_row_id=source_index,
+            )
+        )
+
+    selected = tables._collect_footnote_rows(
+        rows,
+        lines,
+        (0.0, 0.0, 100.0, 50.0),
+        8.0,
+        set(),
+        (200.0, 200.0),
+        0,
+    )
+
+    assert selected
+    assert len(selected) < len(rows)
+    assert selected[-1].bbox[3] <= 130.0
+
+
 def test_table_note_chain_stops_at_font_and_size_transition() -> None:
     """验证表注续行不能跨越字体字号突变的标题或后续正文。"""
 
@@ -630,6 +984,8 @@ def test_table_note_chain_stops_at_font_and_size_transition() -> None:
         (0.0, 0.0, 100.0, 50.0),
         10.0,
         set(),
+        (100.0, 100.0),
+        0,
     )
 
     assert [tables._visual_row_text(row) for row in selected] == [
@@ -664,6 +1020,8 @@ def test_numeric_body_row_cannot_start_table_note_chain() -> None:
         (0.0, 0.0, 100.0, 50.0),
         10.0,
         set(),
+        (100.0, 100.0),
+        0,
     ) == []
 
 

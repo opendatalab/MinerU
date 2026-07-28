@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 import statistics
+import unicodedata
 from typing import Any
 
 from loguru import logger
@@ -30,6 +31,7 @@ from .geometry import (
     _bbox_overlap_in_smaller,
     _bbox_union,
     _bbox_union_many,
+    _coerce_bbox,
     _expand_bbox,
     _point_in_bbox,
     _rotate_bbox_from_upright,
@@ -50,6 +52,12 @@ _TABLE_NOTE_RE = re.compile(
     r"^(?:notes?|sources?)\b|^(?:注释?|说明)\s*[:：]?|^for\s+[*†‡]"
     r"|^[*†‡]\s*\S",
     re.IGNORECASE,
+)
+
+
+_AUXILIARY_TABLE_NOTE_RE = re.compile(
+    r"^\s*[([{（［【]?(?P<marker>[^\s)\]}）］】.:：、]{1,3})"
+    r"[)\]}）］】]?[.:：、)]*\s+(?P<body>\S.*)$"
 )
 
 
@@ -945,6 +953,8 @@ def _expand_rule_table_candidate(
         rule_bbox,
         median_height,
         core_line_indices,
+        page_size,
+        angle,
     )
     included_rows = [*caption_rows, *core_rows, *footnote_rows]
     core_local_bbox = _bbox_union(rule_bbox, _bbox_union_many([row.bbox for row in core_rows]))
@@ -1005,8 +1015,10 @@ def _collect_footnote_rows(
     rule_bbox: BBox,
     median_height: float,
     core_line_indices: set[int],
+    page_size: tuple[float, float],
+    angle: int,
 ) -> list[_VisualRow]:
-    """从表格下边界开始吸收带通用标记的脚注及其连续换行。"""
+    """从表格下边界吸收具有表内引用和版面证据的表注连续行。"""
 
     output: list[_VisualRow] = []
     bottom = rule_bbox[3]
@@ -1014,6 +1026,15 @@ def _collect_footnote_rows(
     margin = 2.0 * median_height
     selected_line_indices = set(core_line_indices)
     line_by_index = {line.source_index: line for line in lines}
+    core_lines = [line for line in lines if line.source_index in core_line_indices]
+    body_reference_height = _table_note_body_reference_height(
+        lines,
+        rule_bbox,
+        median_height,
+        core_line_indices,
+        page_size,
+        angle,
+    )
     note_left: float | None = None
     note_height: float | None = None
     note_fonts: set[tuple[str, int]] = set()
@@ -1032,7 +1053,10 @@ def _collect_footnote_rows(
             if line_index in line_by_index
         ]
         row_heights = [
-            _line_effective_height(line, line.bbox)
+            _line_effective_height(
+                line,
+                _rotate_bbox_to_upright(line.bbox, page_size, angle),
+            )
             for line in row_lines
         ]
         row_height = statistics.median(row_heights) if row_heights else clipped_row.bbox[3] - clipped_row.bbox[1]
@@ -1041,16 +1065,40 @@ def _collect_footnote_rows(
             for line in row_lines
             if line.font_signature is not None and line.font_coverage >= 0.75
         }
-        if row_gap > (1.25 if not note_chain_started else 1.0) * median_height:
+        if note_chain_started and clipped_row.bbox[3] - rule_bbox[3] > 10.0 * median_height:
+            break
+        row_text = _visual_row_text(clipped_row)
+        explicit_note = _is_table_note_text(row_text)
+        auxiliary_marker = _extract_auxiliary_table_note_marker(row_text)
+        auxiliary_note = (
+            auxiliary_marker is not None
+            and _table_core_references_marker(
+                auxiliary_marker,
+                core_lines,
+                page_size,
+                angle,
+            )
+        )
+        first_gap_limit = 0.75 if auxiliary_note and not explicit_note else 1.25
+        if row_gap > (first_gap_limit if not note_chain_started else 1.0) * median_height:
             break
         if not note_chain_started:
-            if not _is_table_note_text(_visual_row_text(clipped_row)):
+            if not explicit_note and not auxiliary_note:
                 break
-            if (
-                _bbox_axis_overlap_ratio(row.bbox, rule_bbox, axis="x") < 0.35
-                or abs(clipped_row.bbox[0] - rule_bbox[0]) > 2.0 * median_height
-                or row_height > 1.15 * median_height
-            ):
+            if explicit_note:
+                spatially_compatible = (
+                    _bbox_axis_overlap_ratio(clipped_row.bbox, rule_bbox, axis="x") >= 0.35
+                    and abs(clipped_row.bbox[0] - rule_bbox[0]) <= 2.0 * median_height
+                    and row_height <= 1.15 * median_height
+                )
+            else:
+                spatially_compatible = (
+                    _bbox_axis_overlap_ratio(clipped_row.bbox, rule_bbox, axis="x") >= 0.50
+                    and abs(clipped_row.bbox[0] - rule_bbox[0]) <= 3.0 * median_height
+                    and row_height <= 1.05 * median_height
+                    and row_height <= 0.90 * body_reference_height
+                )
+            if not spatially_compatible:
                 break
             note_left = clipped_row.bbox[0]
             note_height = max(0.1, row_height)
@@ -1065,7 +1113,7 @@ def _collect_footnote_rows(
                 and row_fonts
                 and note_fonts.isdisjoint(row_fonts)
             )
-            or _bbox_axis_overlap_ratio(row.bbox, rule_bbox, axis="x") < 0.35
+            or _bbox_axis_overlap_ratio(clipped_row.bbox, rule_bbox, axis="x") < 0.35
         ):
             # 字号、字体或缩进突变表明已进入标题/正文，表注链必须立即终止。
             break
@@ -1074,6 +1122,132 @@ def _collect_footnote_rows(
         bottom = max(bottom, clipped_row.bbox[3])
         note_chain_started = True
     return output
+
+
+def _extract_auxiliary_table_note_marker(text: str) -> str | None:
+    """提取行首一至三个通用 Unicode 标记，不解释任何具体标记含义。"""
+
+    match = _AUXILIARY_TABLE_NOTE_RE.match(str(text or ""))
+    if match is None:
+        return None
+    marker = unicodedata.normalize("NFKC", match.group("marker")).casefold()
+    if not marker or not all(unicodedata.category(char)[0] in {"L", "N", "S"} for char in marker):
+        return None
+    return marker
+
+
+def _table_core_references_marker(
+    marker: str,
+    core_lines: list[_LineItem],
+    page_size: tuple[float, float],
+    angle: int,
+) -> bool:
+    """要求通用短标记在表格核心中具有上标或紧凑单元格引用。"""
+
+    return any(
+        _line_has_superscript_marker(line, marker, page_size, angle)
+        or _line_has_compact_marker_token(line.text, marker)
+        for line in core_lines
+    )
+
+
+def _line_has_compact_marker_token(text: str, marker: str) -> bool:
+    """仅在短小单元格文本中确认独立标记 token，避免普通句子偶然命中。"""
+
+    normalized_text = unicodedata.normalize("NFKC", str(text or "")).casefold()
+    if sum(not char.isspace() for char in normalized_text) > 12:
+        return False
+    tokens: list[str] = []
+    current: list[str] = []
+    for char in normalized_text:
+        if unicodedata.category(char)[0] in {"L", "N", "S"}:
+            current.append(char)
+        elif current:
+            tokens.append("".join(current))
+            current = []
+    if current:
+        tokens.append("".join(current))
+    return len(tokens) <= 4 and marker in tokens
+
+
+def _line_has_superscript_marker(
+    line: _LineItem,
+    marker: str,
+    page_size: tuple[float, float],
+    angle: int,
+) -> bool:
+    """在正向局部坐标中检查标记字形是否同时更小并明显上移。"""
+
+    glyphs: list[tuple[str, BBox]] = []
+    for char in line.chars:
+        raw_char = str(char.get("char") or "")
+        if not raw_char.isprintable() or raw_char.isspace():
+            continue
+        bbox = _coerce_bbox(char.get("bbox"))
+        if bbox is None:
+            continue
+        local_bbox = _rotate_bbox_to_upright(bbox, page_size, angle)
+        glyphs.append((unicodedata.normalize("NFKC", raw_char).casefold(), local_bbox))
+    if len(glyphs) < 2:
+        return False
+
+    for start_index in range(len(glyphs)):
+        combined = ""
+        for end_index in range(start_index, len(glyphs)):
+            combined += glyphs[end_index][0]
+            if not marker.startswith(combined):
+                break
+            if combined != marker:
+                continue
+            marker_indices = set(range(start_index, end_index + 1))
+            ordinary_bboxes = [bbox for index, (_char, bbox) in enumerate(glyphs) if index not in marker_indices]
+            if not ordinary_bboxes:
+                continue
+            normal_height = statistics.median(bbox[3] - bbox[1] for bbox in ordinary_bboxes)
+            if normal_height <= 0:
+                continue
+            baseline_bboxes = [
+                bbox
+                for bbox in ordinary_bboxes
+                if bbox[3] - bbox[1] >= 0.90 * normal_height
+            ]
+            marker_bboxes = [glyphs[index][1] for index in marker_indices]
+            marker_height = statistics.median(bbox[3] - bbox[1] for bbox in marker_bboxes)
+            marker_center = statistics.median(_bbox_center_y(bbox) for bbox in marker_bboxes)
+            normal_center = statistics.median(_bbox_center_y(bbox) for bbox in baseline_bboxes)
+            if (
+                marker_height <= 0.85 * normal_height
+                and normal_center - marker_center >= 0.12 * normal_height
+            ):
+                return True
+    return False
+
+
+def _table_note_body_reference_height(
+    lines: list[_LineItem],
+    rule_bbox: BBox,
+    median_height: float,
+    core_line_indices: set[int],
+    page_size: tuple[float, float],
+    angle: int,
+) -> float:
+    """以同方向非表格行的最高四分位估计正文高度，样本不足时稳健回退。"""
+
+    exclusion_top = rule_bbox[1] - 3.0 * median_height
+    exclusion_bottom = rule_bbox[3] + 10.0 * median_height
+    heights: list[float] = []
+    for line in lines:
+        if line.angle != angle or line.source_index in core_line_indices:
+            continue
+        local_bbox = _rotate_bbox_to_upright(line.bbox, page_size, angle)
+        if exclusion_top <= _bbox_center_y(local_bbox) <= exclusion_bottom:
+            continue
+        heights.append(_line_effective_height(line, local_bbox))
+    if len(heights) < 4:
+        return 1.25 * median_height
+    heights.sort()
+    upper_quartile_count = max(1, (len(heights) + 3) // 4)
+    return statistics.median(heights[-upper_quartile_count:])
 
 
 def _visual_row_text(row: _VisualRow) -> str:
