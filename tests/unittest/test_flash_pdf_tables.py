@@ -364,6 +364,71 @@ def _rule_table_fixture(
     return rows, lines, axis_lines
 
 
+def _compact_fully_ruled_table_fixture() -> tuple[
+    list[models._VisualRow],
+    list[models._LineItem],
+    list[models._LocalAxisLine],
+]:
+    """构造两行四列、三横五竖的紧凑全封闭网格。"""
+
+    rows: list[models._VisualRow] = []
+    lines: list[models._LineItem] = []
+    column_bounds = (
+        (5.0, 20.0),
+        (32.0, 48.0),
+        (60.0, 75.0),
+        (87.0, 105.0),
+    )
+    source_index = 0
+    for row_index, top in enumerate((10.0, 22.0)):
+        fragments: list[models._Fragment] = []
+        for column_index, (left, right) in enumerate(column_bounds):
+            bbox = (left, top, right, top + 5.0)
+            text = f"cell-{row_index}-{column_index}"
+            fragments.append(
+                models._Fragment(
+                    text=text,
+                    bbox=bbox,
+                    local_bbox=bbox,
+                    line_index=source_index,
+                    visual_row_id=row_index,
+                )
+            )
+            lines.append(
+                models._LineItem(
+                    text=text,
+                    bbox=bbox,
+                    angle=0,
+                    source_index=source_index,
+                    effective_height=5.0,
+                    visual_row_id=row_index,
+                )
+            )
+            source_index += 1
+        rows.append(
+            models._VisualRow(
+                fragments=fragments,
+                center_y=top + 2.5,
+                bbox=geometry._bbox_union_many(
+                    [fragment.bbox for fragment in fragments]
+                ),
+                visual_row_id=row_index,
+            )
+        )
+
+    axis_lines = [
+        *[
+            _axis_line("horizontal", (0.0, top, 110.0, top + 0.1))
+            for top in (8.0, 20.0, 32.0)
+        ],
+        *[
+            _axis_line("vertical", (left, 8.1, left + 0.1, 32.0))
+            for left in (0.0, 27.5, 55.0, 82.5, 109.9)
+        ],
+    ]
+    return rows, lines, axis_lines
+
+
 def test_rule_table_candidate_accepts_captionless_regular_text_distribution() -> None:
     """验证三横线和连续稳定列足以识别没有显式标题的表格。"""
 
@@ -399,6 +464,124 @@ def test_rule_table_candidate_accepts_center_aligned_columns_with_varying_widths
 
     assert len(candidates) == 1
     assert candidates[0].line_indices == set(range(6))
+
+
+def test_compact_fully_ruled_two_row_table_is_accepted() -> None:
+    """验证两行表格在三横五竖形成完整网格时可通过严格候选准入。"""
+
+    rows, lines, axis_lines = _compact_fully_ruled_table_fixture()
+
+    candidates = tables._build_rule_table_candidates(
+        rows,
+        lines,
+        (150.0, 100.0),
+        0,
+        5.0,
+        axis_lines,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].line_indices == set(range(8))
+    assert candidates[0].score == 8.0
+
+
+def test_compact_grid_deduplicates_repeated_vertical_paths() -> None:
+    """验证同位置重复竖线路径不会扩大紧凑表格的物理列数和评分。"""
+
+    rows, lines, axis_lines = _compact_fully_ruled_table_fixture()
+    axis_lines.extend(
+        _axis_line("vertical", (left + 0.3, 8.1, left + 0.4, 32.0))
+        for left in (0.0, 27.5, 55.0, 82.5, 109.9)
+    )
+
+    candidates = tables._build_rule_table_candidates(
+        rows,
+        lines,
+        (150.0, 100.0),
+        0,
+        5.0,
+        axis_lines,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].score == 8.0
+
+
+@pytest.mark.parametrize(
+    "failure_mode",
+    [
+        "horizontal_only",
+        "short_verticals",
+        "missing_outer",
+        "same_cell",
+        "center_on_boundary",
+    ],
+)
+def test_compact_two_row_layout_requires_complete_grid(
+    failure_mode: str,
+) -> None:
+    """验证两行文本缺少完整竖向网格或唯一单元格映射时仍保持非表格。"""
+
+    rows, lines, axis_lines = _compact_fully_ruled_table_fixture()
+    if failure_mode == "horizontal_only":
+        axis_lines = [line for line in axis_lines if line.orientation == "horizontal"]
+    elif failure_mode == "short_verticals":
+        axis_lines = [
+            _axis_line("vertical", (line.bbox[0], 13.0, line.bbox[2], 27.0))
+            if line.orientation == "vertical"
+            else line
+            for line in axis_lines
+        ]
+    elif failure_mode == "missing_outer":
+        axis_lines = [
+            line
+            for line in axis_lines
+            if line.orientation != "vertical" or line.bbox[0] > 1.0
+        ]
+    elif failure_mode == "same_cell":
+        rows[0].fragments[1].bbox = (8.0, 10.0, 18.0, 15.0)
+        rows[0].fragments[1].local_bbox = rows[0].fragments[1].bbox
+    else:
+        rows[0].fragments[1].bbox = (26.5, 10.0, 28.5, 15.0)
+        rows[0].fragments[1].local_bbox = rows[0].fragments[1].bbox
+
+    candidates = tables._build_rule_table_candidates(
+        rows,
+        lines,
+        (150.0, 100.0),
+        0,
+        5.0,
+        axis_lines,
+    )
+
+    assert candidates == []
+
+
+def test_compact_admission_does_not_accept_two_row_column_prose() -> None:
+    """验证两行普通双栏文本不会因紧凑表格分支而降低准入门槛。"""
+
+    rows, lines, axis_lines = _compact_fully_ruled_table_fixture()
+    for row in rows:
+        row.fragments = [row.fragments[0], row.fragments[-1]]
+        row.bbox = geometry._bbox_union_many(
+            [fragment.bbox for fragment in row.fragments]
+        )
+    retained_indices = {
+        fragment.line_index for row in rows for fragment in row.fragments
+    }
+    lines = [line for line in lines if line.source_index in retained_indices]
+    axis_lines = [line for line in axis_lines if line.orientation == "horizontal"]
+
+    candidates = tables._build_rule_table_candidates(
+        rows,
+        lines,
+        (150.0, 100.0),
+        0,
+        5.0,
+        axis_lines,
+    )
+
+    assert candidates == []
 
 
 def test_two_horizontal_rule_grid_is_accepted_by_spatial_distribution() -> None:

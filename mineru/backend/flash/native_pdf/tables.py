@@ -465,6 +465,7 @@ def _build_rule_table_candidates(
         for first_index, top_rule in enumerate(rule_group[:-1]):
             for bottom_index in range(first_index + 1, len(rule_group)):
                 bottom_rule = rule_group[bottom_index]
+                interval_rules = rule_group[first_index : bottom_index + 1]
                 boundary_rules = [top_rule, bottom_rule]
                 rule_bbox = _bbox_union_many([line.bbox for line in boundary_rules])
                 core_rows = _rows_inside_rule_interval(
@@ -474,13 +475,13 @@ def _build_rule_table_candidates(
                 )
                 if not _every_rule_interval_has_multi_cell_row(
                     core_rows,
-                    rule_group[first_index : bottom_index + 1],
+                    interval_rules,
                     median_height,
                 ):
                     continue
                 if not _rule_intervals_are_column_compatible(
                     core_rows,
-                    rule_group[first_index : bottom_index + 1],
+                    interval_rules,
                     median_height,
                 ):
                     continue
@@ -502,7 +503,19 @@ def _build_rule_table_candidates(
                 accepted: tuple[list[_VisualRow], list[_VisualRow], int, float] | None = None
                 for row_segment in row_segments:
                     dense_rows = [row for row in row_segment if len(row.fragments) >= 2]
-                    if len(dense_rows) < 3:
+                    compact_grid_columns = (
+                        _compact_fully_ruled_grid_column_count(
+                            row_segment,
+                            dense_rows,
+                            interval_rules,
+                            axis_lines,
+                            rule_bbox,
+                            median_height,
+                        )
+                        if len(dense_rows) == 2
+                        else 0
+                    )
+                    if len(dense_rows) < 3 and compact_grid_columns == 0:
                         continue
                     # 真表格的多单元行会在整个数据带内反复出现；少数图题、图例和
                     # 坐标刻度偶然形成的多列行不能支撑一大片正文区域。
@@ -512,6 +525,9 @@ def _build_rule_table_candidates(
                         dense_rows,
                         median_height,
                     )
+                    if compact_grid_columns > 0:
+                        # 两行样本容易把左右/中心锚点误算成不同稳定列，使用物理网格列数。
+                        stable_columns = compact_grid_columns
                     if stable_columns < 2 or column_coverage < 0.5:
                         continue
                     if _looks_like_page_column_prose(
@@ -815,6 +831,120 @@ def _count_aligned_vertical_rules(
         and _bbox_axis_overlap_ratio(line.bbox, rule_bbox, axis="y") >= 0.8
         for line in axis_lines
     )
+
+
+def _compact_fully_ruled_grid_column_count(
+    row_segment: list[_VisualRow],
+    dense_rows: list[_VisualRow],
+    interval_rules: list[_LocalAxisLine],
+    axis_lines: list[_LocalAxisLine],
+    rule_bbox: BBox,
+    median_height: float,
+) -> int:
+    """以完整横竖边界确认两行紧凑网格，并返回物理列数，失败时返回零。"""
+
+    rule_height = max(0.1, rule_bbox[3] - rule_bbox[1])
+    if (
+        len(row_segment) != 2
+        or len(dense_rows) != 2
+        or len(interval_rules) < 3
+        or rule_height > 6.0 * median_height
+    ):
+        return 0
+
+    vertical_positions = _full_height_vertical_rule_positions(
+        axis_lines,
+        rule_bbox,
+        median_height,
+    )
+    if len(vertical_positions) < 3:
+        return 0
+
+    edge_tolerance = max(1.5, 0.25 * median_height)
+    left_boundary = min(
+        vertical_positions,
+        key=lambda position: abs(position - rule_bbox[0]),
+    )
+    right_boundary = min(
+        vertical_positions,
+        key=lambda position: abs(position - rule_bbox[2]),
+    )
+    if (
+        abs(left_boundary - rule_bbox[0]) > edge_tolerance
+        or abs(right_boundary - rule_bbox[2]) > edge_tolerance
+        or right_boundary <= left_boundary
+    ):
+        return 0
+
+    grid_boundaries = [
+        position
+        for position in vertical_positions
+        if left_boundary <= position <= right_boundary
+    ]
+    if len(grid_boundaries) < 3:
+        return 0
+    grid_intervals = list(zip(grid_boundaries, grid_boundaries[1:]))
+
+    occupied_columns: list[set[int]] = []
+    for row in dense_rows:
+        row_columns: list[int] = []
+        for fragment in row.fragments:
+            fragment_center = _bbox_center_x(fragment.local_bbox)
+            matching_columns = [
+                index
+                for index, (left, right) in enumerate(grid_intervals)
+                if left <= fragment_center <= right
+            ]
+            if len(matching_columns) != 1:
+                return 0
+            column_index = matching_columns[0]
+            if column_index in row_columns:
+                return 0
+            row_columns.append(column_index)
+        if len(row_columns) < 2:
+            return 0
+        occupied_columns.append(set(row_columns))
+
+    if len(occupied_columns[0] & occupied_columns[1]) < 2:
+        return 0
+    return len(grid_intervals)
+
+
+def _full_height_vertical_rule_positions(
+    axis_lines: list[_LocalAxisLine],
+    rule_bbox: BBox,
+    median_height: float,
+) -> list[float]:
+    """收集覆盖紧凑候选主要高度的竖线中心，并合并同位置重复路径。"""
+
+    rule_height = max(0.1, rule_bbox[3] - rule_bbox[1])
+    raw_positions: list[float] = []
+    for line in axis_lines:
+        if line.orientation != "vertical":
+            continue
+        overlap = max(
+            0.0,
+            min(line.bbox[3], rule_bbox[3])
+            - max(line.bbox[1], rule_bbox[1]),
+        )
+        if (
+            overlap / rule_height < 0.8
+            or line.bbox[3] - line.bbox[1] < 0.8 * rule_height
+            or not rule_bbox[0] - median_height
+            <= _bbox_center_x(line.bbox)
+            <= rule_bbox[2] + median_height
+        ):
+            continue
+        raw_positions.append(_bbox_center_x(line.bbox))
+
+    deduplicated: list[list[float]] = []
+    position_tolerance = max(1.0, 0.1 * median_height)
+    for position in sorted(raw_positions):
+        if deduplicated and abs(position - statistics.mean(deduplicated[-1])) <= position_tolerance:
+            deduplicated[-1].append(position)
+        else:
+            deduplicated.append([position])
+    return [statistics.mean(group) for group in deduplicated]
 
 
 def _looks_like_page_column_prose(
