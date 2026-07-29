@@ -761,6 +761,8 @@ def test_paragraph_title_detector_does_not_read_line_text() -> None:
         inspect.getsource(function)
         for function in (
             titles._classify_page_titles,
+            titles._infer_document_body_profile,
+            titles._document_font_is_regular,
             titles._build_physical_title_gap_map,
             titles._find_repeated_grid_title_suppressions,
             titles._find_container_visual_row_title_suppressions,
@@ -769,6 +771,7 @@ def test_paragraph_title_detector_does_not_read_line_text() -> None:
             titles._document_title_fonts_compatible,
             titles._document_title_uses_page_fallback,
             titles._classify_paragraph_titles_in_lane,
+            titles._line_uses_document_regular_font,
             titles._visual_row_has_body_style_sibling,
             titles._is_near_full_mixed_inline_row,
             titles._continues_local_body_row,

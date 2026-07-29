@@ -162,3 +162,12 @@ class _LaneBodyProfile:
     body_weight: float | None
     regular_gap: float
     style_support: dict[tuple[str, int], float]
+
+
+@dataclass(frozen=True, slots=True)
+class _DocumentBodyProfile:
+    """保存跨页正文行高、常规字重与反复出现的常规字体。"""
+
+    body_height: float
+    body_weight: float | None
+    regular_fonts: frozenset[tuple[str, int]]

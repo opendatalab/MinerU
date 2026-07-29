@@ -11,6 +11,7 @@ from mineru.backend.utils.xycut_pp_sorter import sort_entries
 from mineru.utils.pdf_document import PDFDocument, PDFImageInfo, get_lines_from_chars
 
 from .models import (
+    _DocumentBodyProfile,
     _LineItem,
     _PageSource,
     _PreparedPage,
@@ -39,6 +40,7 @@ from .line_merging import (
     _merge_title_resolved_visual_rows,
     _restore_dense_split_visual_rows,
 )
+from .index_blocks import _extract_index_blocks
 from .tables import (
     _detect_table_candidates,
     _materialize_table_blocks,
@@ -61,7 +63,10 @@ from .auxiliary_text import (
     _classify_repeated_page_marginals,
     _classify_repeated_visual_headers,
 )
-from .titles import _classify_page_titles
+from .titles import (
+    _classify_page_titles,
+    _infer_document_body_profile,
+)
 from .text_blocks import (
     _build_text_blocks,
     _merge_fragmented_header_blocks,
@@ -77,6 +82,7 @@ _TEXT_SEMANTIC_TYPES = {
     "page_number",
     "page_footnote",
     "aside_text",
+    "index",
 }
 
 
@@ -182,8 +188,13 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
 
     _classify_repeated_visual_headers(prepared_pages)
     _classify_repeated_page_marginals(prepared_pages)
+    document_body_profile = _infer_document_body_profile(prepared_pages)
     return [
-        _finalize_prepared_page(prepared, page_index)
+        _finalize_prepared_page(
+            prepared,
+            page_index,
+            document_body_profile=document_body_profile,
+        )
         for page_index, prepared in enumerate(prepared_pages)
     ]
 
@@ -292,6 +303,8 @@ def _compact_prepared_lines(
 def _finalize_prepared_page(
     prepared: _PreparedPage,
     page_index: int,
+    *,
+    document_body_profile: _DocumentBodyProfile | None = None,
 ) -> list[dict[str, Any]]:
     """按预分类语义、公式、标题、正文的优先级完成单页文本并排序。"""
 
@@ -307,11 +320,18 @@ def _finalize_prepared_page(
         prepared.page_size,
         prepared.table_bboxes,
     )
+    container_bboxes = [block["bbox"] for block in prepared.fixed_blocks]
+    index_blocks, remaining_lines = _extract_index_blocks(
+        remaining_lines,
+        prepared.page_size,
+        container_bboxes,
+    )
     _classify_page_titles(
         remaining_lines,
         prepared.page_size,
         page_index=page_index,
-        container_bboxes=[block["bbox"] for block in prepared.fixed_blocks],
+        container_bboxes=container_bboxes,
+        document_body_profile=document_body_profile,
     )
     remaining_lines = _merge_title_resolved_visual_rows(
         remaining_lines,
@@ -338,7 +358,9 @@ def _finalize_prepared_page(
         ],
     )
     text_blocks = _merge_fragmented_header_blocks(text_blocks)
-    absolute_blocks = prepared.fixed_blocks + formula_blocks + text_blocks
+    absolute_blocks = (
+        prepared.fixed_blocks + formula_blocks + index_blocks + text_blocks
+    )
     sorted_blocks = _sort_blocks_with_visual_row_groups(absolute_blocks, prepared.page_size)
     return [
         normalized

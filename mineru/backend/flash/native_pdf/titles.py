@@ -11,8 +11,10 @@ from typing import Literal
 from mineru.types import BBox
 
 from .models import (
+    _DocumentBodyProfile,
     _LaneBodyProfile,
     _LineItem,
+    _PreparedPage,
     _TextLane,
 )
 from .geometry import (
@@ -32,12 +34,18 @@ from .line_layout import (
 )
 
 
+# PDF FontDescriptor 中 Italic 与 ForceBold 位用于排除非常规字体画像。
+_PDF_FONT_ITALIC_FLAG = 1 << 6
+_PDF_FONT_FORCE_BOLD_FLAG = 1 << 18
+
+
 def _classify_page_titles(
     lines: list[_LineItem],
     page_size: tuple[float, float],
     *,
     page_index: int,
     container_bboxes: list[BBox],
+    document_body_profile: _DocumentBodyProfile | None = None,
 ) -> None:
     """只用页面几何与字体排版标注首页文档标题和各页段落标题。"""
 
@@ -80,9 +88,11 @@ def _classify_page_titles(
                 lanes,
                 local_page_height,
                 local_page_width,
+                document_body_profile=document_body_profile,
             )
         preserve_front_matter_boundaries = _document_title_uses_page_fallback(
             lanes,
+            document_body_profile=document_body_profile,
         )
 
         for lane in lanes:
@@ -96,7 +106,134 @@ def _classify_page_titles(
                 preserve_front_matter_boundaries=preserve_front_matter_boundaries,
                 physical_gaps=physical_gaps,
                 grid_title_suppressions=grid_title_suppressions,
+                document_body_profile=document_body_profile,
             )
+
+
+def _infer_document_body_profile(
+    prepared_pages: list[_PreparedPage],
+) -> _DocumentBodyProfile | None:
+    """按跨页覆盖和累计行宽推断全文正文行高及常规字体集合。"""
+
+    samples: list[
+        tuple[
+            float,
+            int,
+            float,
+            tuple[str, int] | None,
+            float | None,
+        ]
+    ] = []
+    for page_index, prepared in enumerate(prepared_pages):
+        for line in prepared.remaining_lines:
+            if line.semantic_type is not None:
+                continue
+            local_bbox = _rotate_bbox_to_upright(
+                line.bbox,
+                prepared.page_size,
+                line.angle,
+            )
+            local_page_width = (
+                prepared.page_size[1]
+                if line.angle in {90, 270}
+                else prepared.page_size[0]
+            )
+            height = _line_effective_height(line, local_bbox)
+            normalized_width = max(0.0, local_bbox[2] - local_bbox[0]) / max(
+                0.1,
+                local_page_width,
+            )
+            if height <= 0 or normalized_width <= 0:
+                continue
+            samples.append(
+                (
+                    height,
+                    page_index,
+                    normalized_width,
+                    line.font_signature if line.font_coverage >= 0.75 else None,
+                    line.dominant_font_weight,
+                )
+            )
+    if not samples:
+        return None
+
+    height_clusters: list[list[tuple[float, int, float]]] = []
+    for height, page_index, normalized_width, _font, _weight in sorted(
+        samples,
+        key=lambda item: item[0],
+    ):
+        target = next(
+            (
+                cluster
+                for cluster in height_clusters
+                if abs(height - statistics.median(item[0] for item in cluster))
+                <= 0.1 * statistics.median(item[0] for item in cluster)
+            ),
+            None,
+        )
+        if target is None:
+            height_clusters.append([(height, page_index, normalized_width)])
+        else:
+            target.append((height, page_index, normalized_width))
+    body_cluster = max(
+        height_clusters,
+        key=lambda cluster: (
+            len({item[1] for item in cluster}),
+            sum(item[2] for item in cluster),
+        ),
+    )
+    body_height = statistics.median(item[0] for item in body_cluster)
+
+    body_weights = [
+        weight
+        for height, _page_index, _width, _font, weight in samples
+        if weight is not None and 0.9 <= height / body_height <= 1.1
+    ]
+    body_weight = statistics.median(body_weights) if body_weights else None
+
+    font_pages: dict[tuple[str, int], set[int]] = {}
+    font_widths: dict[tuple[str, int], float] = {}
+    font_weights: dict[tuple[str, int], list[float]] = {}
+    for _height, page_index, width, font, weight in samples:
+        if font is None:
+            continue
+        font_pages.setdefault(font, set()).add(page_index)
+        font_widths[font] = font_widths.get(font, 0.0) + width
+        if weight is not None:
+            font_weights.setdefault(font, []).append(weight)
+
+    regular_fonts = frozenset(
+        font
+        for font, pages in font_pages.items()
+        if len(pages) >= 3
+        and font_widths.get(font, 0.0) >= 2.0
+        and font_widths.get(font, 0.0) >= 0.75 * len(pages)
+        and _document_font_is_regular(
+            font,
+            font_weights.get(font, []),
+            body_weight,
+        )
+    )
+    return _DocumentBodyProfile(
+        body_height=max(0.1, body_height),
+        body_weight=body_weight,
+        regular_fonts=regular_fonts,
+    )
+
+
+def _document_font_is_regular(
+    font: tuple[str, int],
+    weights: list[float],
+    body_weight: float | None,
+) -> bool:
+    """用字体样式位和全文正文基准过滤斜体、粗体等强调字体。"""
+
+    if font[1] & (_PDF_FONT_ITALIC_FLAG | _PDF_FONT_FORCE_BOLD_FLAG):
+        return False
+    if not weights or body_weight is None:
+        return True
+    median_weight = statistics.median(weights)
+    return median_weight < max(body_weight + 100.0, 1.15 * body_weight)
 
 
 def _build_physical_title_gap_map(
@@ -282,17 +419,25 @@ def _classify_document_title(
     lanes: list[_TextLane],
     local_page_height: float,
     local_page_width: float,
+    *,
+    document_body_profile: _DocumentBodyProfile | None = None,
 ) -> float | None:
     """从首页上部选取显著大字号锚点，并用同版式邻行扩展多行文档标题。"""
 
     candidates: list[tuple[float, _TextLane, int, tuple[_LineItem, BBox]]] = []
     lane_profiles = [(lane, _infer_lane_body_profile(lane)) for lane in lanes]
     column_body_heights = [profile.body_height for lane, profile in lane_profiles if not lane.is_span]
-    document_body_height = (
-        statistics.median(column_body_heights)
-        if column_body_heights
-        else min((profile.body_height for _lane, profile in lane_profiles), default=1.0)
-    )
+    if document_body_profile is not None:
+        document_body_height = document_body_profile.body_height
+    else:
+        document_body_height = (
+            statistics.median(column_body_heights)
+            if column_body_heights
+            else min(
+                (profile.body_height for _lane, profile in lane_profiles),
+                default=1.0,
+            )
+        )
     for lane, profile in lane_profiles:
         lane_width = max(0.1, lane.right - lane.left)
         available = [item for item in lane.lines if item[0].semantic_type is None]
@@ -390,7 +535,11 @@ def _document_title_fonts_compatible(
     return uncertain_dominant_font and weights_compatible
 
 
-def _document_title_uses_page_fallback(lanes: list[_TextLane]) -> bool:
+def _document_title_uses_page_fallback(
+    lanes: list[_TextLane],
+    *,
+    document_body_profile: _DocumentBodyProfile | None = None,
+) -> bool:
     """判断首页标题是否依赖跨栏 1.30 倍全文正文行高兜底。"""
 
     title_heights = [
@@ -406,7 +555,11 @@ def _document_title_uses_page_fallback(lanes: list[_TextLane]) -> bool:
     ]
     if not title_heights or not column_body_heights:
         return False
-    document_body_height = statistics.median(column_body_heights)
+    document_body_height = (
+        document_body_profile.body_height
+        if document_body_profile is not None
+        else statistics.median(column_body_heights)
+    )
     return any(
         1.3 <= title_height / max(0.1, document_body_height) < 1.4
         for title_height in title_heights
@@ -423,6 +576,7 @@ def _classify_paragraph_titles_in_lane(
     preserve_front_matter_boundaries: bool,
     physical_gaps: dict[int, tuple[float | None, float | None]],
     grid_title_suppressions: set[int],
+    document_body_profile: _DocumentBodyProfile | None,
 ) -> None:
     """以字号、样式、留白、对齐、栏宽和容器邻接判定段落标题。"""
 
@@ -448,22 +602,46 @@ def _classify_paragraph_titles_in_lane(
         )
         if inside_front_matter and not preserve_front_matter_boundaries:
             continue
+        if (
+            document_title_bottom is not None
+            and document_title_bottom <= 0.6 * local_page_height
+            and _bbox_center_y(bbox) >= 0.84 * local_page_height
+        ):
+            # 首页底部短行通常是版本、日期等封面元数据，不属于正文标题层级。
+            continue
         if _line_near_visual_container(bbox, container_bboxes, profile.body_height):
             continue
 
         line_height = _line_effective_height(line, bbox)
-        height_ratio = line_height / profile.body_height
+        recurrent_regular_font = _line_uses_document_regular_font(
+            line,
+            document_body_profile,
+        )
+        document_regular_body_candidate = (
+            recurrent_regular_font
+            and document_body_profile is not None
+            and line_height >= 0.9 * document_body_profile.body_height
+        )
+        reference_body_height = profile.body_height
+        if document_regular_body_candidate and document_body_profile is not None:
+            reference_body_height = max(
+                reference_body_height,
+                document_body_profile.body_height,
+            )
+        height_ratio = line_height / reference_body_height
         width_ratio = (bbox[2] - bbox[0]) / lane_width
         centered = abs(_bbox_center_x(bbox) - (lane.left + lane.right) / 2.0) <= 0.12 * lane_width
         left_aligned = abs(bbox[0] - lane.left) <= 0.65 * profile.body_height
         style_differs = (
-            profile.body_font is not None
+            not recurrent_regular_font
+            and profile.body_font is not None
             and line.font_signature is not None
             and line.font_coverage >= 0.75
             and line.font_signature != profile.body_font
         )
         low_coverage_style_differs = (
-            profile.body_font is not None
+            not recurrent_regular_font
+            and profile.body_font is not None
             and line.font_signature is not None
             and 0.5 <= line.font_coverage < 0.75
             and line.font_signature != profile.body_font
@@ -586,7 +764,12 @@ def _classify_paragraph_titles_in_lane(
             or style_differs
             or compact_local_transition
             or weight_emphasized
-            or (centered and width_ratio <= 0.7 and gap_above >= 0.35 and gap_below >= 0.2)
+            or (
+                centered
+                and width_ratio <= 0.7
+                and gap_above >= 0.35
+                and gap_below >= 0.2
+            )
         )
         if (
             score >= 4.0
@@ -618,6 +801,20 @@ def _classify_paragraph_titles_in_lane(
             profile,
             front_matter_boundary,
         )
+
+
+def _line_uses_document_regular_font(
+    line: _LineItem,
+    document_body_profile: _DocumentBodyProfile | None,
+) -> bool:
+    """判断当前行是否使用跨页反复出现且未加粗的常规字体。"""
+
+    return (
+        document_body_profile is not None
+        and line.font_signature is not None
+        and line.font_coverage >= 0.5
+        and line.font_signature in document_body_profile.regular_fonts
+    )
 
 
 def _protect_front_matter_title_types(
