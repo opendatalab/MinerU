@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 
+import pytest
+
 
 from mineru.backend.flash.native_pdf import (
     graphics,
@@ -264,6 +266,187 @@ def test_form_image_claims_internal_text_and_small_table_but_not_caption() -> No
     ]
 
 
+def _inline_raster_sequence_source() -> models._PageSource:
+    """构造四张点阵图、三个同行间隔符及其右侧三行正文。"""
+
+    return models._PageSource(
+        page_size=(100.0, 100.0),
+        lines=[
+            _text_line(
+                "、",
+                (20.0, 22.0, 22.0, 25.0),
+                0,
+                visual_row_id=7,
+                run_index=0,
+                split_from_row=True,
+            ),
+            _text_line(
+                "、",
+                (32.0, 22.0, 34.0, 25.0),
+                1,
+                visual_row_id=7,
+                run_index=1,
+                split_from_row=True,
+            ),
+            _text_line(
+                "、",
+                (48.0, 22.0, 50.0, 25.0),
+                2,
+                visual_row_id=7,
+                run_index=2,
+                split_from_row=True,
+            ),
+            _text_line(
+                "尾随文字",
+                (60.0, 22.0, 90.0, 25.0),
+                3,
+                visual_row_id=7,
+                run_index=3,
+                split_from_row=True,
+            ),
+            _text_line("正文第一行", (10.0, 27.0, 90.0, 30.0), 4, visual_row_id=8),
+            _text_line("正文第二行", (10.0, 32.0, 50.0, 35.0), 5, visual_row_id=9),
+        ],
+        chars=[],
+        drawing_lines=[],
+        image_bboxes=[
+            (10.0, 20.0, 20.0, 24.0),
+            (22.0, 20.0, 32.0, 24.0),
+            (34.0, 20.0, 48.0, 24.0),
+            (50.0, 20.0, 60.0, 24.0),
+        ],
+    )
+
+
+def test_raster_image_threshold_accepts_point_38_percent_only() -> None:
+    """验证页面面积达到 0.38% 时准入，略低于阈值的孤立图片仍过滤。"""
+
+    source = models._PageSource(
+        page_size=(100.0, 100.0),
+        lines=[],
+        chars=[],
+        drawing_lines=[],
+        image_bboxes=[
+            (0.0, 0.0, 9.5, 4.0),
+            (20.0, 0.0, 29.49, 4.0),
+        ],
+    )
+
+    blocks, claimed = graphics._build_raster_image_blocks(source, [], set())
+
+    assert [block["bbox"] for block in blocks] == [(0.0, 0.0, 9.5, 4.0)]
+    assert claimed == set()
+
+
+def test_inline_raster_images_and_gap_runs_form_one_composite_image() -> None:
+    """验证四张已准入图片与三个同行间隔符合成一个复合 image。"""
+
+    source = _inline_raster_sequence_source()
+
+    blocks, claimed = graphics._build_raster_image_blocks(source, [], set())
+
+    assert len(blocks) == 1
+    assert blocks[0]["bbox"] == (10.0, 20.0, 60.0, 25.0)
+    assert blocks[0]["content"].replace(" ", "") == "、、、"
+    assert blocks[0]["_inline_visual_row_id"] == 7
+    assert claimed == {0, 1, 2}
+    assert 3 not in claimed
+
+
+@pytest.mark.parametrize(
+    "failure_mode",
+    [
+        "misaligned",
+        "wide_gap",
+        "missing_gap",
+        "inconsistent_row",
+        "too_few_images",
+        "container_bridge",
+    ],
+)
+def test_inline_raster_composite_requires_complete_spatial_sequence(
+    failure_mode: str,
+) -> None:
+    """验证图片或间隔符结构不完整时保留独立图片而不生成复合容器。"""
+
+    source = _inline_raster_sequence_source()
+    container_blocks: list[dict[str, object]] = []
+    if failure_mode == "misaligned":
+        source.image_bboxes[1] = (22.0, 10.0, 32.0, 14.0)
+    elif failure_mode == "wide_gap":
+        source.image_bboxes[2] = (42.0, 20.0, 56.0, 24.0)
+        source.image_bboxes[3] = (58.0, 20.0, 68.0, 24.0)
+        source.lines[2].bbox = (56.0, 22.0, 58.0, 25.0)
+    elif failure_mode == "missing_gap":
+        source.lines = [line for line in source.lines if line.source_index != 1]
+    elif failure_mode == "inconsistent_row":
+        source.lines[1].visual_row_id = 8
+    elif failure_mode == "too_few_images":
+        source.image_bboxes = source.image_bboxes[:2]
+    else:
+        container_blocks = [
+            {
+                "type": "table",
+                "bbox": (32.5, 20.0, 33.5, 25.0),
+                "angle": 0,
+                "content": "",
+            }
+        ]
+
+    blocks, claimed = graphics._build_raster_image_blocks(
+        source,
+        container_blocks,
+        set(),
+    )
+
+    assert len(blocks) == len(source.image_bboxes)
+    assert not [block for block in blocks if "_inline_visual_row_id" in block]
+    assert claimed == set()
+
+
+def test_inline_composite_sorts_before_overlapping_multiline_text() -> None:
+    """验证复合图片与含同行首行的多行正文绑定后始终先输出图片。"""
+
+    blocks = [
+        {
+            "type": "image",
+            "bbox": (10.0, 20.0, 60.0, 25.0),
+            "angle": 0,
+            "content": "、、、",
+            "_inline_visual_row_id": 7,
+        },
+        {
+            "type": "text",
+            "bbox": (10.0, 22.0, 90.0, 35.0),
+            "angle": 0,
+            "content": "尾随文字正文第一行正文第二行",
+            "_visual_row_ids": {7, 8, 9},
+            "_local_line_bboxes": [
+                (60.0, 22.0, 90.0, 25.0),
+                (10.0, 27.0, 90.0, 30.0),
+                (10.0, 32.0, 50.0, 35.0),
+            ],
+        },
+        {
+            "type": "paragraph_title",
+            "bbox": (10.0, 40.0, 30.0, 44.0),
+            "angle": 0,
+            "content": "下一节",
+        },
+    ]
+
+    sorted_blocks = pipeline._sort_blocks_with_visual_row_groups(
+        blocks,
+        (100.0, 100.0),
+    )
+
+    assert [block["type"] for block in sorted_blocks] == [
+        "image",
+        "text",
+        "paragraph_title",
+    ]
+
+
 def test_raster_images_filter_small_objects_avoid_containers_and_claim_text_once() -> None:
     """验证点阵图过滤、容器优先、空 content 和重叠对象的唯一文本归属。"""
 
@@ -280,7 +463,7 @@ def test_raster_images_filter_small_objects_avoid_containers_and_claim_text_once
             (10.0, 10.0, 50.0, 50.0),
             (20.0, 20.0, 40.0, 40.0),
             (60.0, 10.0, 90.0, 40.0),
-            (0.0, 90.0, 10.0, 94.0),
+            (0.0, 90.0, 9.0, 94.0),
             (10.0, 60.0, 50.0, 90.0),
         ],
     )

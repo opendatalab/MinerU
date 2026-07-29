@@ -42,7 +42,7 @@ from .line_layout import (
 from .line_merging import _join_formula_visual_row
 
 
-_MIN_RASTER_IMAGE_PAGE_AREA_RATIO = 0.005
+_MIN_RASTER_IMAGE_PAGE_AREA_RATIO = 0.0038
 
 
 _MIN_FORM_IMAGE_PAGE_AREA_RATIO = 0.01
@@ -695,6 +695,182 @@ def _graphic_members_to_block(
     }
 
 
+def _inline_raster_gap_member(
+    source: _PageSource,
+    left_bbox: BBox,
+    right_bbox: BBox,
+    claimed_line_indices: set[int],
+    median_height: float,
+) -> _LineItem | None:
+    """查找恰好填充两张同行图片间隙的唯一拆分文本 run。"""
+
+    left_height = max(0.1, left_bbox[3] - left_bbox[1])
+    right_height = max(0.1, right_bbox[3] - right_bbox[1])
+    vertical_overlap = max(
+        0.0,
+        min(left_bbox[3], right_bbox[3])
+        - max(left_bbox[1], right_bbox[1]),
+    )
+    horizontal_gap = right_bbox[0] - left_bbox[2]
+    if (
+        max(left_height, right_height) / min(left_height, right_height) > 1.25
+        or vertical_overlap / min(left_height, right_height) < 0.8
+        or not 0.0 <= horizontal_gap <= 1.5 * median_height
+    ):
+        return None
+
+    edge_tolerance = max(0.5, 0.25 * median_height)
+    band_top = max(left_bbox[1], right_bbox[1])
+    band_bottom = min(left_bbox[3], right_bbox[3])
+    gap_members = [
+        line
+        for line in source.lines
+        if line.source_index not in claimed_line_indices
+        and line.angle == 0
+        and line.split_from_row
+        and line.visual_row_id is not None
+        and left_bbox[2] - edge_tolerance
+        <= _bbox_center_x(line.bbox)
+        <= right_bbox[0] + edge_tolerance
+        and band_top - edge_tolerance
+        <= _bbox_center_y(line.bbox)
+        <= band_bottom + edge_tolerance
+    ]
+    if len(gap_members) != 1:
+        return None
+    member = gap_members[0]
+    if (
+        abs(member.bbox[0] - left_bbox[2]) > edge_tolerance
+        or abs(member.bbox[2] - right_bbox[0]) > edge_tolerance
+    ):
+        return None
+    return member
+
+
+def _inline_raster_group_has_only_expected_text(
+    source: _PageSource,
+    image_bboxes: list[BBox],
+    gap_members: list[_LineItem],
+    group_bbox: BBox,
+    claimed_line_indices: set[int],
+) -> bool:
+    """确认复合图片框内没有图片内部文本和间隔符之外的正文。"""
+
+    gap_member_indices = {line.source_index for line in gap_members}
+    for line in source.lines:
+        if line.source_index in claimed_line_indices:
+            continue
+        center = (_bbox_center_x(line.bbox), _bbox_center_y(line.bbox))
+        if not _point_in_bbox(center, group_bbox):
+            continue
+        if line.source_index in gap_member_indices:
+            continue
+        if any(_point_in_bbox(center, image_bbox) for image_bbox in image_bboxes):
+            continue
+        return False
+    return True
+
+
+def _merge_inline_raster_image_candidates(
+    source: _PageSource,
+    candidate_bboxes: list[BBox],
+    container_bboxes: list[BBox],
+    claimed_line_indices: set[int],
+) -> list[tuple[BBox, int | None]]:
+    """把由同一视觉行间隔符连接的已准入图片合成为单一候选。"""
+
+    if len(candidate_bboxes) < 3:
+        return [(bbox, None) for bbox in candidate_bboxes]
+    effective_heights = [
+        _line_effective_height(line, line.bbox)
+        for line in source.lines
+        if line.source_index not in claimed_line_indices and line.angle == 0
+    ]
+    median_height = statistics.median(effective_heights) if effective_heights else 1.0
+
+    adjacency: dict[int, set[int]] = {
+        index: set() for index in range(len(candidate_bboxes))
+    }
+    gap_members: dict[tuple[int, int], _LineItem] = {}
+    for first_index, first_bbox in enumerate(candidate_bboxes):
+        for second_index, second_bbox in enumerate(candidate_bboxes):
+            if first_index == second_index or first_bbox[0] >= second_bbox[0]:
+                continue
+            member = _inline_raster_gap_member(
+                source,
+                first_bbox,
+                second_bbox,
+                claimed_line_indices,
+                median_height,
+            )
+            if member is None:
+                continue
+            adjacency[first_index].add(second_index)
+            adjacency[second_index].add(first_index)
+            gap_members[(first_index, second_index)] = member
+
+    components: list[list[int]] = []
+    visited: set[int] = set()
+    for start_index in range(len(candidate_bboxes)):
+        if start_index in visited:
+            continue
+        component: list[int] = []
+        pending = [start_index]
+        while pending:
+            current_index = pending.pop()
+            if current_index in visited:
+                continue
+            visited.add(current_index)
+            component.append(current_index)
+            pending.extend(adjacency[current_index] - visited)
+        components.append(component)
+
+    merged_specs: list[tuple[BBox, int | None]] = []
+    consumed_indices: set[int] = set()
+    for component in components:
+        if len(component) < 3:
+            continue
+        ordered_indices = sorted(
+            component,
+            key=lambda index: candidate_bboxes[index][0],
+        )
+        ordered_pairs = list(zip(ordered_indices, ordered_indices[1:]))
+        if not all(pair in gap_members for pair in ordered_pairs):
+            continue
+        members = [gap_members[pair] for pair in ordered_pairs]
+        visual_row_ids = {member.visual_row_id for member in members}
+        if len(visual_row_ids) != 1 or None in visual_row_ids:
+            continue
+        image_bboxes = [candidate_bboxes[index] for index in ordered_indices]
+        group_bbox = _bbox_union_many(
+            [*image_bboxes, *[member.bbox for member in members]],
+        )
+        if any(
+            _bbox_overlap_in_smaller(group_bbox, container_bbox)
+            >= _IMAGE_CONTAINER_OVERLAP_THRESHOLD
+            for container_bbox in container_bboxes
+        ):
+            continue
+        if not _inline_raster_group_has_only_expected_text(
+            source,
+            image_bboxes,
+            members,
+            group_bbox,
+            claimed_line_indices,
+        ):
+            continue
+        merged_specs.append((group_bbox, next(iter(visual_row_ids))))
+        consumed_indices.update(ordered_indices)
+
+    merged_specs.extend(
+        (bbox, None)
+        for index, bbox in enumerate(candidate_bboxes)
+        if index not in consumed_indices
+    )
+    merged_specs.sort(key=lambda item: (item[0][1], item[0][0], item[0][3], item[0][2]))
+    return merged_specs
+
+
 def _build_raster_image_blocks(
     source: _PageSource,
     container_blocks: list[dict[str, Any]],
@@ -725,6 +901,14 @@ def _build_raster_image_blocks(
     if not candidate_bboxes:
         return [], set()
 
+    candidate_specs = _merge_inline_raster_image_candidates(
+        source,
+        candidate_bboxes,
+        container_bboxes,
+        claimed_line_indices,
+    )
+    candidate_bboxes = [bbox for bbox, _row_id in candidate_specs]
+
     members_by_candidate: list[list[_LineItem]] = [[] for _ in candidate_bboxes]
     claimed: set[int] = set()
     for line in source.lines:
@@ -746,14 +930,20 @@ def _build_raster_image_blocks(
         members_by_candidate[candidate_index].append(line)
         claimed.add(line.source_index)
 
-    blocks = [
-        {
+    blocks: list[dict[str, Any]] = []
+    for (bbox, visual_row_id), members in zip(
+        candidate_specs,
+        members_by_candidate,
+        strict=True,
+    ):
+        block = {
             "type": "image",
             "bbox": bbox,
             "angle": 0,
             "content": _image_members_to_content(members, source.page_size),
         }
-        for bbox, members in zip(candidate_bboxes, members_by_candidate, strict=True)
-    ]
+        if visual_row_id is not None:
+            block["_inline_visual_row_id"] = visual_row_id
+        blocks.append(block)
     blocks.sort(key=lambda block: (block["bbox"][1], block["bbox"][0]))
     return blocks, claimed

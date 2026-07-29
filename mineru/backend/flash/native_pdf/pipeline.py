@@ -326,11 +326,16 @@ def _finalize_prepared_page(
         prepared.page_size,
         container_bboxes,
     )
+    title_container_bboxes = [
+        block["bbox"]
+        for block in prepared.fixed_blocks
+        if not isinstance(block.get("_inline_visual_row_id"), int)
+    ]
     _classify_page_titles(
         remaining_lines,
         prepared.page_size,
         page_index=page_index,
-        container_bboxes=container_bboxes,
+        container_bboxes=title_container_bboxes,
         document_body_profile=document_body_profile,
     )
     remaining_lines = _merge_title_resolved_visual_rows(
@@ -401,14 +406,34 @@ def _sort_blocks_with_visual_row_groups(
         else:
             body_blocks.append(block)
 
+    inline_grouped_indices = _collect_inline_image_text_groups(body_blocks)
+    inline_consumed_indices = {
+        index
+        for indices in inline_grouped_indices.values()
+        for index in indices
+    }
     grouped_indices: dict[int, list[int]] = {}
     for index, block in enumerate(body_blocks):
+        if index in inline_consumed_indices:
+            continue
         row_id = block.get("_single_run_row_id")
         if isinstance(row_id, int):
             grouped_indices.setdefault(row_id, []).append(index)
 
-    virtual_groups: dict[int, dict[str, Any]] = {}
-    consumed_indices: set[int] = set()
+    virtual_groups: list[dict[str, Any]] = []
+    consumed_indices: set[int] = set(inline_consumed_indices)
+    for row_id, indices in inline_grouped_indices.items():
+        members = [body_blocks[index] for index in indices]
+        virtual_groups.append(
+            {
+                "type": "_xycut_visual_row_group",
+                "bbox": _bbox_union_many([member["bbox"] for member in members]),
+                "angle": members[0].get("angle", 0),
+                "content": "",
+                "_members": members,
+                "_inline_visual_row_id": row_id,
+            }
+        )
     for row_id, indices in grouped_indices.items():
         if len(indices) < 2:
             continue
@@ -420,7 +445,7 @@ def _sort_blocks_with_visual_row_groups(
             "content": "",
             "_members": members,
         }
-        virtual_groups[row_id] = virtual_group
+        virtual_groups.append(virtual_group)
         consumed_indices.update(indices)
 
     sortable_blocks = [
@@ -428,13 +453,22 @@ def _sort_blocks_with_visual_row_groups(
         for index, block in enumerate(body_blocks)
         if index not in consumed_indices
     ]
-    sortable_blocks.extend(virtual_groups.values())
+    sortable_blocks.extend(virtual_groups)
     sorted_payloads = sort_entries(sortable_blocks)
     output: list[dict[str, Any]] = []
     for payload in sorted_payloads:
         members = payload.get("_members")
         if not isinstance(members, list):
             output.append(payload)
+            continue
+        if isinstance(payload.get("_inline_visual_row_id"), int):
+            members.sort(
+                key=lambda member: _inline_visual_group_member_sort_key(
+                    member,
+                    page_size,
+                )
+            )
+            output.extend(members)
             continue
         angle = int(payload.get("angle", 0) or 0) % 360
         members.sort(
@@ -450,6 +484,62 @@ def _sort_blocks_with_visual_row_groups(
         *output,
         *_sort_marginal_blocks(bottom_marginals, page_size),
     ]
+
+
+def _collect_inline_image_text_groups(
+    body_blocks: list[dict[str, Any]],
+) -> dict[int, list[int]]:
+    """把复合图片与包含同一首行的正文块组成专用排序组。"""
+
+    image_indices_by_row: dict[int, list[int]] = {}
+    for index, block in enumerate(body_blocks):
+        row_id = block.get("_inline_visual_row_id")
+        if block.get("type") == "image" and isinstance(row_id, int):
+            image_indices_by_row.setdefault(row_id, []).append(index)
+
+    output: dict[int, list[int]] = {}
+    consumed_text_indices: set[int] = set()
+    for row_id, image_indices in sorted(image_indices_by_row.items()):
+        text_indices = [
+            index
+            for index, block in enumerate(body_blocks)
+            if index not in consumed_text_indices
+            and block.get("type") == "text"
+            and isinstance(block.get("_visual_row_ids"), set)
+            and row_id in block["_visual_row_ids"]
+        ]
+        if not text_indices:
+            continue
+        output[row_id] = [*image_indices, *text_indices]
+        consumed_text_indices.update(text_indices)
+    return output
+
+
+def _inline_visual_group_member_sort_key(
+    block: dict[str, Any],
+    page_size: tuple[float, float],
+) -> tuple[float, float, int]:
+    """按图片位置或正文首个局部行位置确定复合视觉行的组内顺序。"""
+
+    local_line_bboxes = block.get("_local_line_bboxes")
+    if (
+        block.get("type") == "text"
+        and isinstance(local_line_bboxes, list)
+        and local_line_bboxes
+    ):
+        local_bbox = local_line_bboxes[0]
+    else:
+        angle = int(block.get("angle", 0) or 0) % 360
+        local_bbox = _rotate_bbox_to_upright(
+            block["bbox"],
+            page_size,
+            angle,
+        )
+    return (
+        float(local_bbox[0]),
+        float(local_bbox[1]),
+        0 if block.get("type") == "image" else 1,
+    )
 
 
 def _sort_marginal_blocks(
