@@ -58,6 +58,7 @@ dependencies = [
     "lxml>=4.0.0,<7.0.0",
     "openpyxl>=3.1.5,<4",
     "fastapi",
+    "fastapi-offline",
     "python-multipart",
     "uvicorn",
 ]
