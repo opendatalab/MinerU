@@ -8,7 +8,7 @@ from typing import Any
 
 
 from mineru.backend.utils.xycut_pp_sorter import sort_entries
-from mineru.utils.pdf_document import PDFDocument, get_lines_from_chars
+from mineru.utils.pdf_document import PDFDocument, PDFImageInfo, get_lines_from_chars
 
 from .models import (
     _LineItem,
@@ -16,6 +16,7 @@ from .models import (
     _PreparedPage,
 )
 from .geometry import (
+    _bbox_area,
     _bbox_axis_overlap_ratio,
     _bbox_center_y,
     _bbox_overlap_in_smaller,
@@ -80,14 +81,83 @@ _TEXT_SEMANTIC_TYPES = {
 
 
 _OUTPUT_BLOCK_TYPES = {"text", "table", "image", "equation"} | _TEXT_SEMANTIC_TYPES
+_REPEATED_RASTER_IMAGE_MIN_PAGE_AREA_RATIO = 0.08
+_REPEATED_RASTER_IMAGE_MIN_DISTINCT_PAGES = 3
+
+
+def _is_large_raster_image(
+    image_info: PDFImageInfo,
+    page_size: tuple[float, float],
+) -> bool:
+    """判断点阵图裁剪后面积是否达到页面面积的 8%。"""
+
+    bbox = _coerce_bbox(image_info.bbox)
+    page_area = max(0.0, page_size[0]) * max(0.0, page_size[1])
+    return (
+        bbox is not None
+        and page_area > 0
+        and _bbox_area(bbox) / page_area
+        >= _REPEATED_RASTER_IMAGE_MIN_PAGE_AREA_RATIO
+    )
+
+
+def _detect_repeated_raster_watermark_fingerprints(
+    page_image_infos: list[list[PDFImageInfo]],
+    page_sizes: list[tuple[float, float]],
+) -> set[str]:
+    """按大图指纹统计不同页号，出现至少三页时判为跨页图片水印。"""
+
+    page_indices_by_fingerprint: dict[str, set[int]] = {}
+    for page_idx, (image_infos, page_size) in enumerate(
+        zip(page_image_infos, page_sizes, strict=True)
+    ):
+        for image_info in image_infos:
+            if image_info.fingerprint is None or not _is_large_raster_image(image_info, page_size):
+                continue
+            page_indices_by_fingerprint.setdefault(image_info.fingerprint, set()).add(page_idx)
+    return {
+        fingerprint
+        for fingerprint, page_indices in page_indices_by_fingerprint.items()
+        if len(page_indices) >= _REPEATED_RASTER_IMAGE_MIN_DISTINCT_PAGES
+    }
+
+
+def _filter_repeated_raster_watermark_bboxes(
+    image_infos: list[PDFImageInfo],
+    page_size: tuple[float, float],
+    watermark_fingerprints: set[str],
+) -> list[tuple[float, float, float, float]]:
+    """仅删除命中跨页水印指纹且面积达标的 bbox，小尺寸同图继续保留。"""
+
+    return [
+        image_info.bbox
+        for image_info in image_infos
+        if not (
+            image_info.fingerprint in watermark_fingerprints
+            and _is_large_raster_image(image_info, page_size)
+        )
+    ]
 
 
 def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]:
     """逐页读取数字 PDF，并在轻量页面上完成跨页文本类型判定。"""
 
+    page_sizes = [
+        pdf_doc.page_size(page_idx)
+        for page_idx in range(pdf_doc.page_count)
+    ]
+    page_image_infos = [
+        pdf_doc.get_page_image_infos(page_idx)
+        for page_idx in range(pdf_doc.page_count)
+    ]
+    watermark_fingerprints = _detect_repeated_raster_watermark_fingerprints(
+        page_image_infos,
+        page_sizes,
+    )
+
     prepared_pages: list[_PreparedPage] = []
     for page_idx in range(pdf_doc.page_count):
-        page_size = pdf_doc.page_size(page_idx)
+        page_size = page_sizes[page_idx]
         chars = pdf_doc.get_page_chars(page_idx)
         lines = _build_native_line_items(
             get_lines_from_chars(chars),
@@ -100,7 +170,11 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
             lines=lines,
             chars=chars,
             drawing_lines=drawing_lines,
-            image_bboxes=pdf_doc.get_page_image_bboxes(page_idx),
+            image_bboxes=_filter_repeated_raster_watermark_bboxes(
+                page_image_infos[page_idx],
+                page_size,
+                watermark_fingerprints,
+            ),
             form_bboxes=pdf_doc.get_page_form_bboxes(page_idx),
             path_infos=pdf_doc.get_page_path_infos(page_idx),
         )

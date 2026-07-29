@@ -204,6 +204,16 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
         events.append(f"image_bboxes:{lock.depth}:{page_bbox}:{page_rotation}")
         return []
 
+    def fake_extract_page_image_infos(
+        page: _FakePage,
+        page_bbox: tuple[float, float, float, float],
+        page_rotation: int,
+    ) -> list[pdf_document.PDFImageInfo]:
+        """记录图片指纹元数据遍历时仍由 PDFDocument 持有 PDFium 锁。"""
+
+        events.append(f"image_infos:{lock.depth}:{page_bbox}:{page_rotation}")
+        return []
+
     def fake_extract_page_path_infos(
         page: _FakePage,
         page_bbox: tuple[float, float, float, float],
@@ -228,6 +238,7 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
     monkeypatch.setattr(pdf_document, "_extract_page_drawing_lines", fake_extract_page_drawing_lines)
     monkeypatch.setattr(pdf_document, "_extract_page_path_infos", fake_extract_page_path_infos)
     monkeypatch.setattr(pdf_document, "_extract_page_image_bboxes", fake_extract_page_image_bboxes)
+    monkeypatch.setattr(pdf_document, "_extract_page_image_infos", fake_extract_page_image_infos)
     monkeypatch.setattr(pdf_document, "_extract_page_form_bboxes", fake_extract_page_form_bboxes)
 
     doc = pdf_document.PDFDocument(b"%PDF")
@@ -240,6 +251,7 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
     assert doc.get_page_drawing_lines(0) == []
     assert doc.get_page_path_infos(0) == []
     assert doc.get_page_image_bboxes(0) == []
+    assert doc.get_page_image_infos(0) == []
     assert doc.get_page_form_bboxes(0) == []
 
     assert any(event.startswith("doc.open:") and not event.startswith("doc.open:0:") for event in events)
@@ -255,6 +267,7 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
     assert "drawing_lines:1:(0.0, 0.0, 20.0, 10.0):0" in events
     assert "path_infos:1:(0.0, 0.0, 20.0, 10.0):0" in events
     assert "image_bboxes:1:(0.0, 0.0, 20.0, 10.0):0" in events
+    assert "image_infos:1:(0.0, 0.0, 20.0, 10.0):0" in events
     assert "form_bboxes:1:(0.0, 0.0, 20.0, 10.0):0" in events
 
 
@@ -355,6 +368,55 @@ def test_get_page_image_bboxes_applies_forms_crop_box_rotation_and_clipping() ->
             (76.0, 47.0, 88.0, 53.0),
         ]
     )
+
+
+def test_get_page_image_infos_preserves_bboxes_and_fingerprints_reused_images() -> None:
+    """验证图片信息保持既有几何，并为普通与 Form 复用图生成相同内容指纹。"""
+
+    with pdf_document.PDFDocument(_build_rotated_cropped_image_pdf()) as doc:
+        image_infos = doc.get_page_image_infos(0)
+
+    assert [info.bbox for info in image_infos] == pytest.approx(
+        [
+            (160.0, 0.0, 180.0, 15.0),
+            (10.0, 5.0, 50.0, 35.0),
+            (76.0, 47.0, 88.0, 53.0),
+        ]
+    )
+    assert len({info.fingerprint for info in image_infos}) == 1
+    assert image_infos[0].fingerprint is not None
+
+
+def test_image_fingerprint_fails_open_when_raw_stream_exceeds_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证超大图片流不分配缓冲区且返回空指纹，后续按普通图片放行。"""
+
+    raw_data_calls: list[tuple[object | None, int]] = []
+
+    def fake_metadata(raw_obj: object, raw_page: object, metadata_pointer: Any) -> int:
+        """填入有效像素宽高，使测试只命中原始流大小上限。"""
+
+        metadata_pointer._obj.width = 100
+        metadata_pointer._obj.height = 200
+        return 1
+
+    def fake_raw_data(raw_obj: object, buffer: object | None, buffer_length: int) -> int:
+        """声明超过上限的流，并记录是否发生第二次缓冲区读取。"""
+
+        raw_data_calls.append((buffer, buffer_length))
+        return pdf_document.PDF_IMAGE_FINGERPRINT_MAX_RAW_BYTES + 1
+
+    class _FakePage:
+        """提供 PDFium 元数据接口所需的最小 raw 页面句柄。"""
+
+        raw = object()
+
+    monkeypatch.setattr(pdf_document.pdfium_c, "FPDFImageObj_GetImageMetadata", fake_metadata)
+    monkeypatch.setattr(pdf_document.pdfium_c, "FPDFImageObj_GetImageDataRaw", fake_raw_data)
+
+    assert pdf_document._get_raw_image_fingerprint(object(), _FakePage()) is None
+    assert raw_data_calls == [(None, 0)]
 
 
 def test_get_page_form_bboxes_reads_root_forms_and_nested_content_bounds() -> None:

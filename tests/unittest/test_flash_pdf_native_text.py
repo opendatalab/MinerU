@@ -1,0 +1,109 @@
+from __future__ import annotations
+
+import math
+from typing import Any
+
+import pytest
+
+from mineru.backend.flash.native_pdf import native_text
+
+
+def _span(
+    text: str,
+    bbox: tuple[float, float, float, float],
+    angle_degrees: float,
+) -> dict[str, Any]:
+    """构造只包含方向、文本和 bbox 的最小 pdftext span。"""
+
+    return {
+        "text": text,
+        "bbox": bbox,
+        "rotation": math.radians(angle_degrees),
+        "chars": [],
+    }
+
+
+def _line(
+    spans: list[dict[str, Any]],
+    angle_degrees: float,
+    bbox: tuple[float, float, float, float] = (0.0, 0.0, 100.0, 100.0),
+) -> dict[str, Any]:
+    """构造测试混合方向拆分使用的最小 pdftext line。"""
+
+    return {
+        "spans": spans,
+        "bbox": bbox,
+        "rotation": math.radians(angle_degrees),
+    }
+
+
+def test_mixed_footer_and_315_degree_watermark_are_split_before_filtering() -> None:
+    """验证接近 315 度的 span 不会继续借用父行 0 度方向与巨型 bbox。"""
+
+    pdf_line = _line(
+        [
+            _span("文档问题反馈: aw-document@example.com", (30.0, 90.0, 80.0, 98.0), 0.0),
+            _span("深圳TCL智能家庭科技有限公司raynL", (5.0, 10.0, 25.0, 95.0), 315.000019),
+            _span("\r\n", (26.0, 20.0, 26.0, 20.0), 0.0),
+        ],
+        0.0,
+    )
+
+    children = native_text._split_pdftext_line_by_rotation(pdf_line)
+    items = native_text._build_native_line_items([pdf_line], (100.0, 100.0))
+
+    assert [round(math.degrees(child["rotation"]), 6) for child in children] == [0.0, 315.000019]
+    assert children[0]["bbox"] == (30.0, 90.0, 80.0, 98.0)
+    assert children[1]["bbox"] == (5.0, 10.0, 25.0, 95.0)
+    assert [(item.text, item.bbox, item.angle) for item in items] == [
+        ("文档问题反馈: aw-document@example.com", (30.0, 90.0, 80.0, 98.0), 0)
+    ]
+
+
+def test_small_oblique_span_stays_inside_standard_direction_line() -> None:
+    """验证约 19 度的仿斜体 span 不触发方向拆分且沿用父行 0 度。"""
+
+    pdf_line = _line(
+        [
+            _span("normal ", (10.0, 20.0, 40.0, 30.0), 0.0),
+            _span("oblique", (40.0, 18.0, 75.0, 30.0), 19.0),
+        ],
+        0.0,
+    )
+
+    children = native_text._split_pdftext_line_by_rotation(pdf_line)
+    items = native_text._build_native_line_items([pdf_line], (100.0, 100.0))
+
+    assert len(children) == 1
+    assert math.degrees(children[0]["rotation"]) == pytest.approx(0.0)
+    assert [(item.text, item.angle) for item in items] == [("normal oblique", 0)]
+
+
+@pytest.mark.parametrize(
+    ("line_angle", "page_rotation", "expected_angle"),
+    [
+        (0.0, 0, 0),
+        (90.0, 0, 90),
+        (270.0, 0, 270),
+        (180.0, 0, None),
+        (315.000019, 0, None),
+        (180.0, 90, 270),
+        (90.0, 90, None),
+    ],
+)
+def test_only_supported_visual_line_directions_are_retained(
+    line_angle: float,
+    page_rotation: int,
+    expected_angle: int | None,
+) -> None:
+    """验证方向白名单在页面旋转后生效，且不会先把斜向行归一为 0 度。"""
+
+    pdf_line = _line([_span("value", (10.0, 20.0, 40.0, 30.0), line_angle)], line_angle)
+
+    items = native_text._build_native_line_items(
+        [pdf_line],
+        (100.0, 100.0),
+        page_rotation=page_rotation,
+    )
+
+    assert [item.angle for item in items] == ([] if expected_angle is None else [expected_angle])

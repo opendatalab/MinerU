@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import ctypes
+import hashlib
 import math
 import os
 from contextlib import contextmanager
@@ -40,6 +41,7 @@ DRAWING_LINE_AXIS_RATIO_TOLERANCE = 0.02
 DRAWING_LINE_MIN_LENGTH = 1.0
 DRAWING_THIN_RECT_MAX_THICKNESS = 2.0
 DRAWING_THIN_RECT_MIN_ASPECT_RATIO = 4.0
+PDF_IMAGE_FINGERPRINT_MAX_RAW_BYTES = 16 * 1024 * 1024
 
 try:
     from pdftext.pdf.chars import PageChars
@@ -86,6 +88,14 @@ class PDFPathInfo:
     stroke_visible: bool
     form_depth: int
     source_index: int
+
+
+@dataclass(frozen=True)
+class PDFImageInfo:
+    """PDF 点阵图的页面几何与稳定内容指纹，指纹读取失败时为 None。"""
+
+    bbox: BBox
+    fingerprint: str | None
 
 
 @dataclass
@@ -352,6 +362,17 @@ class PDFDocument:
             except Exception:
                 page_rotation = 0
             return _extract_page_image_bboxes(page, page_bbox, page_rotation)
+
+    def get_page_image_infos(self, page_idx: int) -> list[PDFImageInfo]:
+        """提取点阵图 bbox 与内容指纹，供 Flash 在认领正文前识别跨页重复图。"""
+
+        with self._open_page(page_idx) as page:
+            page_bbox = _normalize_pdf_page_bbox(page.get_bbox())
+            try:
+                page_rotation = int(page.get_rotation()) % 360
+            except Exception:
+                page_rotation = 0
+            return _extract_page_image_infos(page, page_bbox, page_rotation)
 
     def get_page_form_bboxes(self, page_idx: int) -> list[BBox]:
         """提取页面顶层 Form XObject bbox，并转换为页面左上原点坐标。"""
@@ -1181,6 +1202,75 @@ def _extract_page_image_bboxes(
         if image_bbox is not None:
             image_bboxes.append(image_bbox)
     return sorted(image_bboxes, key=lambda bbox: (bbox[1], bbox[0], bbox[3], bbox[2]))
+
+
+def _get_raw_image_fingerprint(raw_obj: Any, page: pdfium.PdfPage) -> str | None:
+    """读取受限大小的图片原始流，并结合像素宽高生成 SHA-256 指纹。"""
+
+    metadata = pdfium_c.FPDF_IMAGEOBJ_METADATA()
+    try:
+        if not pdfium_c.FPDFImageObj_GetImageMetadata(
+            raw_obj,
+            page.raw,
+            ctypes.byref(metadata),
+        ):
+            return None
+        width = int(metadata.width)
+        height = int(metadata.height)
+        raw_size = int(pdfium_c.FPDFImageObj_GetImageDataRaw(raw_obj, None, 0))
+    except Exception:
+        return None
+    if (
+        width <= 0
+        or height <= 0
+        or raw_size <= 0
+        or raw_size > PDF_IMAGE_FINGERPRINT_MAX_RAW_BYTES
+    ):
+        return None
+
+    try:
+        buffer = ctypes.create_string_buffer(raw_size)
+    except (MemoryError, OverflowError):
+        return None
+    try:
+        bytes_read = int(pdfium_c.FPDFImageObj_GetImageDataRaw(raw_obj, buffer, raw_size))
+    except Exception:
+        return None
+    if bytes_read <= 0 or bytes_read > raw_size:
+        return None
+
+    digest = hashlib.sha256()
+    digest.update(f"{width}:{height}:".encode("ascii"))
+    digest.update(buffer.raw[:bytes_read])
+    return digest.hexdigest()
+
+
+def _extract_page_image_infos(
+    page: pdfium.PdfPage,
+    page_bbox: BBox,
+    page_rotation: int,
+) -> list[PDFImageInfo]:
+    """提取全部有效点阵图几何；单图指纹失败时保留 bbox 并按放行处理。"""
+
+    image_infos: list[PDFImageInfo] = []
+    for raw_obj, matrix in _iter_raw_image_objects(page):
+        try:
+            image_bbox = _image_bbox_from_matrix(matrix, page_bbox, page_rotation)
+        except Exception:
+            # 单个损坏 Image 对象不能中断同页其他点阵图提取。
+            continue
+        if image_bbox is None:
+            continue
+        image_infos.append(
+            PDFImageInfo(
+                bbox=image_bbox,
+                fingerprint=_get_raw_image_fingerprint(raw_obj, page),
+            )
+        )
+    return sorted(
+        image_infos,
+        key=lambda info: (info.bbox[1], info.bbox[0], info.bbox[3], info.bbox[2]),
+    )
 
 
 def _extract_page_form_bboxes(

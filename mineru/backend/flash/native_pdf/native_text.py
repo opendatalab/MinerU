@@ -30,6 +30,9 @@ from .geometry import (
 
 
 _PDF_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_PDFTEXT_ROTATION_SPLIT_THRESHOLD_DEGREES = 44.9
+_PDFTEXT_LINE_ANGLE_TOLERANCE_DEGREES = 0.1
+_SUPPORTED_PDFTEXT_LINE_ANGLES = (0.0, 90.0, 270.0)
 
 
 def _build_native_line_items(
@@ -41,7 +44,16 @@ def _build_native_line_items(
     """将 pdftext 粗行按字符间隙精修成 Flash 视觉 run。"""
 
     items: list[_LineItem] = []
-    for visual_row_id, pdf_line in enumerate(pdf_lines):
+    supported_lines = [
+        child_line
+        for pdf_line in pdf_lines
+        for child_line in _split_pdftext_line_by_rotation(pdf_line)
+        if _is_supported_pdftext_line_rotation(
+            child_line.get("rotation"),
+            page_rotation=page_rotation,
+        )
+    ]
+    for visual_row_id, pdf_line in enumerate(supported_lines):
         bbox = _clip_bbox(_coerce_bbox(pdf_line.get("bbox")), page_size)
         if bbox is None:
             continue
@@ -62,6 +74,91 @@ def _build_native_line_items(
         # source_index 必须在页内唯一，表格投影和失败回滚都依赖该精确成员标识。
         item.source_index = source_index
     return merged_items
+
+
+def _pdftext_angle_degrees(value: Any) -> float:
+    """把 pdftext 弧度方向转换为 0 到 360 度，非法值按 0 度处理。"""
+
+    try:
+        angle_radians = float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(angle_radians):
+        return 0.0
+    return math.degrees(angle_radians) % 360.0
+
+
+def _circular_angle_distance(first: float, second: float) -> float:
+    """返回两个方向之间不超过 180 度的最短圆周角差。"""
+
+    return abs((first - second + 180.0) % 360.0 - 180.0)
+
+
+def _span_has_visible_text(span: dict[str, Any]) -> bool:
+    """判断 span 是否包含可见的非空白字符，换行与占位空格不参与方向拆分。"""
+
+    return any(
+        char.isprintable() and not char.isspace()
+        for char in str(span.get("text") or "")
+    )
+
+
+def _build_pdftext_child_line(
+    pdf_line: dict[str, Any],
+    spans: list[dict[str, Any]],
+    angle_degrees: float,
+) -> dict[str, Any]:
+    """使用同方向 span 重建子行，并收缩原粗行被异向内容扩大的 bbox。"""
+
+    span_bboxes = [
+        bbox
+        for span in spans
+        if (bbox := _coerce_bbox(span.get("bbox"))) is not None
+    ]
+    child_line = dict(pdf_line)
+    child_line["spans"] = spans
+    child_line["bbox"] = _bbox_union_many(span_bboxes) if span_bboxes else pdf_line.get("bbox")
+    child_line["rotation"] = math.radians(angle_degrees)
+    return child_line
+
+
+def _split_pdftext_line_by_rotation(pdf_line: dict[str, Any]) -> list[dict[str, Any]]:
+    """按 45 度边界拆开 pdftext 误合并的异向 span，并保留小角度仿斜体。"""
+
+    spans = [span for span in (pdf_line.get("spans") or []) if isinstance(span, dict)]
+    if not spans:
+        return [pdf_line]
+
+    output: list[dict[str, Any]] = []
+    current_spans: list[dict[str, Any]] = []
+    current_angle = _pdftext_angle_degrees(pdf_line.get("rotation"))
+    for span in spans:
+        span_angle = _pdftext_angle_degrees(span.get("rotation"))
+        if (
+            current_spans
+            and _span_has_visible_text(span)
+            and _circular_angle_distance(span_angle, current_angle)
+            >= _PDFTEXT_ROTATION_SPLIT_THRESHOLD_DEGREES
+        ):
+            output.append(_build_pdftext_child_line(pdf_line, current_spans, current_angle))
+            current_spans = []
+            current_angle = span_angle
+        current_spans.append(span)
+
+    if current_spans:
+        output.append(_build_pdftext_child_line(pdf_line, current_spans, current_angle))
+    return output
+
+
+def _is_supported_pdftext_line_rotation(value: Any, *, page_rotation: int) -> bool:
+    """应用页面旋转后只允许 0、90、270 度行，避免异向水印被归一成正文。"""
+
+    visual_angle = (_pdftext_angle_degrees(value) + int(page_rotation or 0)) % 360.0
+    return any(
+        _circular_angle_distance(visual_angle, supported_angle)
+        <= _PDFTEXT_LINE_ANGLE_TOLERANCE_DEGREES
+        for supported_angle in _SUPPORTED_PDFTEXT_LINE_ANGLES
+    )
 
 
 def _split_native_visual_runs(

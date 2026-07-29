@@ -20,6 +20,62 @@ from mineru.backend.flash.native_pdf import (
     text_blocks,
     titles,
 )
+from mineru.utils.pdf_document import PDFImageInfo
+
+
+def _image_info(
+    fingerprint: str | None,
+    bbox: tuple[float, float, float, float],
+) -> PDFImageInfo:
+    """构造跨页图片水印规则使用的轻量图片信息。"""
+
+    return PDFImageInfo(bbox=bbox, fingerprint=fingerprint)
+
+
+def test_repeated_large_image_requires_three_distinct_pages() -> None:
+    """验证同页重复只计一次，面积恰好 8% 且跨三页时才命中水印。"""
+
+    page_sizes = [(100.0, 100.0)] * 4
+    page_image_infos = [
+        [
+            _image_info("watermark", (0.0, 0.0, 40.0, 20.0)),
+            _image_info("watermark", (0.0, 0.0, 40.0, 20.0)),
+            _image_info("two-pages", (0.0, 0.0, 50.0, 20.0)),
+        ],
+        [_image_info("watermark", (10.0, 10.0, 50.0, 30.0))],
+        [_image_info("watermark", (20.0, 20.0, 60.0, 40.0))],
+        [_image_info("two-pages", (0.0, 0.0, 50.0, 20.0))],
+    ]
+
+    fingerprints = pipeline._detect_repeated_raster_watermark_fingerprints(
+        page_image_infos,
+        page_sizes,
+    )
+
+    assert fingerprints == {"watermark"}
+
+
+def test_repeated_watermark_filter_keeps_small_or_unfingerprinted_images() -> None:
+    """验证已命中指纹也只删除大图，小图和指纹读取失败的图片继续进入现有流程。"""
+
+    image_infos = [
+        _image_info("watermark", (0.0, 0.0, 40.0, 20.0)),
+        _image_info("watermark", (0.0, 0.0, 39.9, 20.0)),
+        _image_info(None, (0.0, 0.0, 80.0, 80.0)),
+        _image_info("ordinary", (0.0, 0.0, 80.0, 80.0)),
+    ]
+
+    filtered = pipeline._filter_repeated_raster_watermark_bboxes(
+        image_infos,
+        (100.0, 100.0),
+        {"watermark"},
+    )
+
+    assert filtered == [
+        (0.0, 0.0, 39.9, 20.0),
+        (0.0, 0.0, 80.0, 80.0),
+        (0.0, 0.0, 80.0, 80.0),
+    ]
 
 
 def test_flash_extractor_has_no_local_ocr_runtime_logic() -> None:
