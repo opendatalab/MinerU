@@ -338,6 +338,31 @@ def test_raster_image_threshold_accepts_point_38_percent_only() -> None:
     assert claimed == set()
 
 
+def test_signature_images_bypass_raster_threshold_and_deduplicate_same_geometry() -> None:
+    """验证小签名仍输出，且签名间及签名与点阵图的同框候选只保留一次。"""
+
+    source = models._PageSource(
+        page_size=(1000.0, 1000.0),
+        lines=[],
+        chars=[],
+        drawing_lines=[],
+        image_bboxes=[(100.0, 100.0, 200.0, 200.0)],
+        signature_bboxes=[
+            (10.0, 10.0, 30.0, 30.0),
+            (10.2, 10.1, 30.1, 30.2),
+            (100.0, 100.0, 200.0, 200.0),
+        ],
+    )
+
+    blocks, claimed = graphics._build_raster_image_blocks(source, [], set())
+
+    assert [block["bbox"] for block in blocks] == [
+        (10.0, 10.0, 30.0, 30.0),
+        (100.0, 100.0, 200.0, 200.0),
+    ]
+    assert claimed == set()
+
+
 def test_inline_raster_images_and_gap_runs_form_one_composite_image() -> None:
     """验证四张已准入图片与三个同行间隔符合成一个复合 image。"""
 

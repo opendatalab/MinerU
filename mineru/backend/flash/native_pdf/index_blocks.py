@@ -46,8 +46,10 @@ def _extract_index_blocks(
     lines: list[_LineItem],
     page_size: tuple[float, float],
     container_bboxes: list[BBox],
+    *,
+    require_heading: bool = False,
 ) -> tuple[list[dict[str, object]], list[_LineItem]]:
-    """用页码行尾和稳定版式识别目录区域，并返回独立 index 块。"""
+    """用页码行尾和稳定版式识别目录；预判阶段可强制要求几何目录标题。"""
 
     claimed_line_ids: set[int] = set()
     blocks: list[dict[str, object]] = []
@@ -71,6 +73,8 @@ def _extract_index_blocks(
                 candidate,
                 local_page_width,
             )
+            if require_heading and heading_row is None:
+                continue
             if heading_row is not None:
                 for line in heading_row.members:
                     line.semantic_type = "paragraph_title"

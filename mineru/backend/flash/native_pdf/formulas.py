@@ -48,6 +48,7 @@ _FORMULA_NUMBER_SUFFIX_RE = re.compile(
 )
 
 
+_FORMULA_PAGE_MARGIN_RATIO = 0.05
 _VECTOR_FORMULA_COMPLEX_SEGMENTS = 8
 _VECTOR_FORMULA_MIN_PATHS = 5
 _VECTOR_FORMULA_MIN_COMPLEX_PATHS = 5
@@ -335,8 +336,7 @@ def _is_vector_formula_core(
         and width >= 1.4 * height
     ):
         return False
-    page_height = page_size[1]
-    if bbox[3] <= 0.05 * page_height or bbox[1] >= 0.95 * page_height:
+    if _is_formula_component_in_page_margin(bbox, page_size[1]):
         return False
     if any(
         _bbox_overlap_in_smaller(bbox, container_bbox) >= 0.5
@@ -347,6 +347,13 @@ def _is_vector_formula_core(
         _vector_formula_collides_with_text(bbox, line, line_bbox, median_height)
         for line, line_bbox in lane.lines
     )
+
+
+def _is_formula_component_in_page_margin(bbox: BBox, page_height: float) -> bool:
+    """仅当公式组件完全落在页面顶部或底部边缘带时排除。"""
+
+    margin = _FORMULA_PAGE_MARGIN_RATIO * page_height
+    return bbox[3] <= margin or bbox[1] >= page_height - margin
 
 
 def _vector_formula_collides_with_text(
@@ -563,6 +570,7 @@ def _build_formula_like_blocks(
         effective_heights = [_line_effective_height(line, bbox) for line, bbox in angle_geometry]
         median_height = statistics.median(effective_heights) if effective_heights else 1.0
         local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
+        local_page_height = page_size[0] if angle in {90, 270} else page_size[1]
         lanes = _infer_text_lanes(angle_geometry, local_page_width, median_height)
         for lane in lanes:
             if lane.is_span:
@@ -571,6 +579,10 @@ def _build_formula_like_blocks(
             for line, bbox in list(lane.lines):
                 if (
                     line.compact_formula_cluster
+                    and not _is_formula_component_in_page_margin(
+                        bbox,
+                        local_page_height,
+                    )
                     and _is_isolated_compact_formula_cluster(
                         (line, bbox),
                         lane,
@@ -643,6 +655,14 @@ def _build_formula_like_blocks(
                     members[1][1],
                     axis="y",
                 ) < 0.2:
+                    continue
+                component_bbox = _bbox_union_many(
+                    [member_bbox for _member_line, member_bbox in members]
+                )
+                if _is_formula_component_in_page_margin(
+                    component_bbox,
+                    local_page_height,
+                ):
                     continue
                 block = _formula_members_to_block(
                     members,

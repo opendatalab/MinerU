@@ -90,6 +90,29 @@ def test_index_block_merges_split_rows_and_preserves_heading() -> None:
     assert all(line.semantic_type == "index" for line in lines if line is not remaining[0])
 
 
+def test_index_prepass_requires_geometric_heading_but_fallback_keeps_legacy_detection() -> None:
+    """验证公式前目录预判拒绝无标题编号行，公式后的兼容识别仍可处理无标题目录。"""
+
+    lines = _directory_lines(set(range(6)), row_count=6)[1:]
+
+    prepass_blocks, prepass_remaining = index_blocks._extract_index_blocks(
+        lines,
+        (100.0, 130.0),
+        [],
+        require_heading=True,
+    )
+    fallback_blocks, fallback_remaining = index_blocks._extract_index_blocks(
+        lines,
+        (100.0, 130.0),
+        [],
+    )
+
+    assert prepass_blocks == []
+    assert prepass_remaining == lines
+    assert len(fallback_blocks) == 1
+    assert fallback_remaining == []
+
+
 @pytest.mark.parametrize(
     ("numeric_rows", "expected_block_count"),
     [

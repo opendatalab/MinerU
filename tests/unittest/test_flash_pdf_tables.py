@@ -389,6 +389,190 @@ def test_disconnected_stacked_rule_grids_remain_separate() -> None:
     )
 
 
+def _closed_sparse_grid_fixture(
+    *,
+    horizontal_count: int = 3,
+) -> tuple[
+    list[models._VisualRow],
+    list[models._LineItem],
+    list[models._LocalAxisLine],
+]:
+    """构造仅有少量文本、但外轨完整闭合的物理网格。"""
+
+    fragment_bboxes = (
+        (10.0, 10.0, 30.0, 15.0),
+        (75.0, 10.0, 95.0, 15.0),
+    )
+    fragments = [
+        models._Fragment(
+            text=f"cell-{index}",
+            bbox=bbox,
+            local_bbox=bbox,
+            line_index=index,
+            visual_row_id=0,
+        )
+        for index, bbox in enumerate(fragment_bboxes)
+    ]
+    rows = [
+        models._VisualRow(
+            fragments=fragments,
+            center_y=12.5,
+            bbox=geometry._bbox_union_many(fragment_bboxes),
+            visual_row_id=0,
+        )
+    ]
+    lines = [
+        models._LineItem(
+            text=fragment.text,
+            bbox=fragment.bbox,
+            angle=0,
+            source_index=fragment.line_index,
+            effective_height=5.0,
+            visual_row_id=0,
+        )
+        for fragment in fragments
+    ]
+    horizontal_tops = (
+        (0.0, 20.0, 40.0)
+        if horizontal_count == 3
+        else (0.0, 40.0)
+    )
+    axis_lines = [
+        *[
+            _axis_line("horizontal", (0.0, top, 110.0, top + 0.1))
+            for top in horizontal_tops
+        ],
+        *[
+            _axis_line("vertical", (left, 0.0, left + 0.1, 40.1))
+            for left in (0.0, 55.0, 109.9)
+        ],
+    ]
+    return rows, lines, axis_lines
+
+
+def test_closed_grid_accepts_sparse_single_column_form_with_empty_row() -> None:
+    """验证三条横边界和完整外轨可接纳有空数据行的单列表单。"""
+
+    rows, lines, axis_lines = _closed_sparse_grid_fixture()
+    rows[0].fragments = rows[0].fragments[:1]
+    rows[0].bbox = rows[0].fragments[0].bbox
+    lines = lines[:1]
+
+    candidates = tables._build_closed_rule_grid_candidates(
+        rows,
+        lines,
+        (150.0, 100.0),
+        0,
+        5.0,
+        axis_lines,
+        [],
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].core_bbox == pytest.approx(
+        (0.0, 0.0, 110.0, 40.1)
+    )
+    assert candidates[0].line_indices == {0}
+
+
+def test_closed_two_boundary_grid_requires_text_in_two_physical_columns() -> None:
+    """验证两条横边界只有在三条贯穿竖轨且文字占两列时才接纳。"""
+
+    rows, lines, axis_lines = _closed_sparse_grid_fixture(
+        horizontal_count=2,
+    )
+
+    candidates = tables._build_closed_rule_grid_candidates(
+        rows,
+        lines,
+        (150.0, 100.0),
+        0,
+        5.0,
+        axis_lines,
+        [],
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].line_indices == {0, 1}
+
+
+@pytest.mark.parametrize(
+    "failure_mode",
+    [
+        "no_text",
+        "short_outer_tracks",
+        "only_two_vertical_tracks",
+        "one_occupied_column",
+        "excluded_graphic",
+    ],
+)
+def test_closed_sparse_grid_rejects_incomplete_or_excluded_geometry(
+    failure_mode: str,
+) -> None:
+    """验证空框、短外轨、单格框、单列文字和强图形区域不会误报表格。"""
+
+    rows, lines, axis_lines = _closed_sparse_grid_fixture(
+        horizontal_count=2,
+    )
+    excluded_bboxes: list[tuple[float, float, float, float]] = []
+    if failure_mode == "no_text":
+        rows = []
+        lines = []
+    elif failure_mode == "short_outer_tracks":
+        axis_lines = [
+            _axis_line("vertical", (line.bbox[0], 5.0, line.bbox[2], 35.0))
+            if line.orientation == "vertical"
+            else line
+            for line in axis_lines
+        ]
+    elif failure_mode == "only_two_vertical_tracks":
+        axis_lines = [
+            line
+            for line in axis_lines
+            if line.orientation != "vertical" or line.bbox[0] != 55.0
+        ]
+    elif failure_mode == "one_occupied_column":
+        rows[0].fragments[1].bbox = (32.0, 10.0, 48.0, 15.0)
+        rows[0].fragments[1].local_bbox = rows[0].fragments[1].bbox
+        rows[0].bbox = geometry._bbox_union_many(
+            [fragment.bbox for fragment in rows[0].fragments]
+        )
+    else:
+        excluded_bboxes = [(0.0, 0.0, 110.0, 40.1)]
+
+    assert tables._build_closed_rule_grid_candidates(
+        rows,
+        lines,
+        (150.0, 100.0),
+        0,
+        5.0,
+        axis_lines,
+        excluded_bboxes,
+    ) == []
+
+
+def test_closed_grid_inside_form_bbox_is_not_a_table_candidate() -> None:
+    """验证 Form 容器内的闭合线框继续由图片分支处理而不生成表格。"""
+
+    rows, lines, axis_lines = _closed_sparse_grid_fixture()
+    source = models._PageSource(
+        page_size=(150.0, 100.0),
+        lines=lines,
+        chars=[],
+        drawing_lines=[
+            models._AxisLine(
+                bbox=line.bbox,
+                width=line.width,
+                orientation=line.orientation,
+            )
+            for line in axis_lines
+        ],
+        form_bboxes=[(0.0, 0.0, 110.0, 40.1)],
+    )
+
+    assert tables._detect_table_candidates(source) == []
+
+
 def _rule_table_fixture(
     rule_count: int = 3,
     *,

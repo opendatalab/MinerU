@@ -109,6 +109,13 @@ def _detect_table_candidates(
             )
             for bbox in [*excluded_bboxes, *filled_grid_bboxes]
         ]
+        local_closed_grid_excluded_bboxes = [
+            *local_excluded_bboxes,
+            *[
+                _rotate_bbox_to_upright(bbox, source.page_size, angle)
+                for bbox in source.form_bboxes
+            ],
+        ]
         rule_candidates.extend(
             _build_rule_table_candidates(
                 rows,
@@ -119,6 +126,17 @@ def _detect_table_candidates(
                 local_axis_lines,
                 path_infos=source.path_infos,
                 excluded_bboxes=local_excluded_bboxes,
+            )
+        )
+        rule_candidates.extend(
+            _build_closed_rule_grid_candidates(
+                rows,
+                angle_lines,
+                source.page_size,
+                angle,
+                median_height,
+                local_axis_lines,
+                local_closed_grid_excluded_bboxes,
             )
         )
     merged_rule_candidates = [
@@ -690,13 +708,167 @@ def _expand_candidates_to_connected_rule_grids(
     return candidates
 
 
+def _build_closed_rule_grid_candidates(
+    rows: list[_VisualRow],
+    lines: list[_LineItem],
+    page_size: tuple[float, float],
+    angle: int,
+    median_height: float,
+    axis_lines: list[_LocalAxisLine],
+    excluded_bboxes: list[BBox],
+) -> list[_TableCandidate]:
+    """用闭合物理网格接纳含空行或仅有表头文本的稀疏表格。"""
+
+    candidates: list[_TableCandidate] = []
+    for component in _connected_rule_grid_components(axis_lines, median_height):
+        grid_bbox = _bbox_union_many([rule.bbox for rule in component])
+        if any(
+            _bbox_overlap_in_smaller(grid_bbox, excluded_bbox) >= 0.5
+            for excluded_bbox in excluded_bboxes
+        ):
+            continue
+        core_rows = _rows_inside_rule_interval(
+            rows,
+            grid_bbox,
+            excluded_bboxes,
+        )
+        if not core_rows:
+            continue
+
+        vertical_positions = _closed_grid_vertical_track_positions(
+            component,
+            axis_lines,
+            median_height,
+        )
+        if len(vertical_positions) < 2:
+            continue
+        edge_tolerance = max(2.0, 0.25 * median_height)
+        if (
+            abs(vertical_positions[0] - grid_bbox[0]) > edge_tolerance
+            or abs(vertical_positions[-1] - grid_bbox[2]) > edge_tolerance
+        ):
+            continue
+
+        if len(component) == 2:
+            if len(vertical_positions) < 3:
+                continue
+            occupied_columns = _count_occupied_closed_grid_columns(
+                core_rows,
+                vertical_positions,
+            )
+            if occupied_columns < 2:
+                continue
+
+        caption_line = _find_table_caption(
+            lines,
+            grid_bbox,
+            page_size,
+            angle,
+            median_height,
+        )
+        candidate = _expand_rule_table_candidate(
+            [component[0], component[-1]],
+            core_rows,
+            rows,
+            lines,
+            page_size,
+            angle,
+            median_height,
+            caption_line,
+        )
+        candidate.score = float(
+            100 + len(component) + len(vertical_positions)
+        )
+        candidates.append(candidate)
+    return candidates
+
+
+def _closed_grid_vertical_track_positions(
+    horizontal_rules: list[_LocalAxisLine],
+    axis_lines: list[_LocalAxisLine],
+    median_height: float,
+) -> list[float]:
+    """收集覆盖首末横边界中心跨度至少九成的竖轨并合并重复路径。"""
+
+    top = _bbox_center_y(horizontal_rules[0].bbox)
+    bottom = _bbox_center_y(horizontal_rules[-1].bbox)
+    grid_height = max(0.1, bottom - top)
+    left = min(rule.bbox[0] for rule in horizontal_rules)
+    right = max(rule.bbox[2] for rule in horizontal_rules)
+    edge_tolerance = max(2.0, 0.25 * median_height)
+    raw_positions = []
+    for line in axis_lines:
+        if line.orientation != "vertical":
+            continue
+        overlap = max(
+            0.0,
+            min(line.bbox[3], bottom) - max(line.bbox[1], top),
+        )
+        position = _bbox_center_x(line.bbox)
+        if (
+            overlap / grid_height >= 0.9
+            and left - edge_tolerance <= position <= right + edge_tolerance
+        ):
+            raw_positions.append(position)
+
+    position_tolerance = max(1.0, 0.1 * median_height)
+    position_groups: list[list[float]] = []
+    for position in sorted(raw_positions):
+        if (
+            position_groups
+            and abs(position - statistics.mean(position_groups[-1]))
+            <= position_tolerance
+        ):
+            position_groups[-1].append(position)
+        else:
+            position_groups.append([position])
+    return [statistics.mean(group) for group in position_groups]
+
+
+def _count_occupied_closed_grid_columns(
+    rows: list[_VisualRow],
+    vertical_positions: list[float],
+) -> int:
+    """按文本片段中心统计闭合网格中实际有文字的物理列数。"""
+
+    occupied_columns: set[int] = set()
+    for row in rows:
+        for fragment in row.fragments:
+            center_x = _bbox_center_x(fragment.local_bbox)
+            matching_columns = [
+                index
+                for index, (left, right) in enumerate(
+                    zip(vertical_positions, vertical_positions[1:])
+                )
+                if left < center_x < right
+            ]
+            if len(matching_columns) == 1:
+                occupied_columns.add(matching_columns[0])
+    return len(occupied_columns)
+
+
 def _connected_rule_grid_bboxes(
     axis_lines: list[_LocalAxisLine],
     median_height: float,
 ) -> list[BBox]:
     """把端点一致且由外轨或至少两条列轨贯穿的相邻横线组成网格框。"""
 
-    output: list[BBox] = []
+    return [
+        _bbox_union_many([rule.bbox for rule in component])
+        for component in _connected_rule_grid_components(
+            axis_lines,
+            median_height,
+        )
+    ]
+
+
+def _connected_rule_grid_components(
+    axis_lines: list[_LocalAxisLine],
+    median_height: float,
+) -> list[list[_LocalAxisLine]]:
+    """保留连续网格的横边界成员，供精确外轨和横边界数量校验。"""
+
+    output: list[list[_LocalAxisLine]] = []
     for rule_group in _group_long_horizontal_rules(axis_lines, median_height):
         components: list[list[_LocalAxisLine]] = []
         for rule in rule_group:
@@ -709,11 +881,7 @@ def _connected_rule_grid_bboxes(
                 components.append([rule])
             else:
                 components[-1].append(rule)
-        output.extend(
-            _bbox_union_many([rule.bbox for rule in component])
-            for component in components
-            if len(component) >= 2
-        )
+        output.extend(component for component in components if len(component) >= 2)
     return output
 
 

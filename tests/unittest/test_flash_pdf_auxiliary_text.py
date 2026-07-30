@@ -728,6 +728,129 @@ def test_single_page_marginal_content_remains_text() -> None:
     assert [line.semantic_type for line in page.remaining_lines] == [None, None]
 
 
+def test_extreme_page_footnotes_can_be_overridden_by_repeated_marginals() -> None:
+    """验证只有极底脚注可凭跨页重复和递增证据改判为页脚、页码。"""
+
+    pages = []
+    for page_index in range(3):
+        pages.append(
+            _prepared_text_page(
+                _text_line(
+                    "stable footer",
+                    (20.0, 95.0, 70.0, 99.0),
+                    0,
+                    effective_height=4.0,
+                    font_signature=("Margin", 0),
+                    font_coverage=1.0,
+                    semantic_type="page_footnote",
+                ),
+                _text_line(
+                    str(page_index + 10),
+                    (90.0, 95.0, 95.0, 99.0),
+                    1,
+                    effective_height=4.0,
+                    font_signature=("Margin", 0),
+                    font_coverage=1.0,
+                    semantic_type="page_footnote",
+                ),
+                _text_line(
+                    "local note",
+                    (20.0, 86.0, 60.0, 90.0),
+                    2,
+                    semantic_type="page_footnote",
+                ),
+            )
+        )
+
+    auxiliary_text._classify_repeated_page_marginals(pages)
+
+    assert [
+        [line.semantic_type for line in page.remaining_lines]
+        for page in pages
+    ] == [["footer", "page_number", "page_footnote"]] * 3
+
+
+def test_single_page_compound_header_requires_small_split_row_and_body_edge() -> None:
+    """验证单页顶部的小字号拆分同行可由正文栏右缘确认为页眉。"""
+
+    header_name = _text_line(
+        "journal",
+        (60.0, 2.0, 85.0, 4.0),
+        0,
+        visual_row_id=7,
+        run_index=0,
+        split_from_row=True,
+        effective_height=2.0,
+    )
+    header_number = _text_line(
+        "5",
+        (96.0, 2.0, 98.0, 4.0),
+        1,
+        visual_row_id=7,
+        run_index=1,
+        split_from_row=True,
+        effective_height=2.0,
+    )
+    page = _prepared_text_page(
+        header_name,
+        header_number,
+        *[
+            _text_line(
+                f"body-{index}",
+                (50.0, 10.0 + 12.0 * index, 98.0, 20.0 + 12.0 * index),
+                2 + index,
+                effective_height=10.0,
+            )
+            for index in range(4)
+        ],
+    )
+
+    auxiliary_text._classify_single_page_compound_headers([page])
+
+    assert header_name.semantic_type == "header"
+    assert header_number.semantic_type == "header"
+
+
+def test_isolated_first_page_footer_uses_multi_page_geometry_only() -> None:
+    """验证多页首页唯一极底短行可补标页脚，而单页相同布局保持正文。"""
+
+    def build_page() -> tuple[models._PreparedPage, models._LineItem]:
+        """构造带四行下延正文和一个孤立极底候选的页面。"""
+
+        footer = _text_line(
+            "neutral notice",
+            (37.5, 98.0, 62.5, 100.0),
+            4,
+            effective_height=2.0,
+        )
+        return (
+            _prepared_text_page(
+                *[
+                    _text_line(
+                        f"body-{index}",
+                        (0.0, 55.0 + 10.0 * index, 100.0, 60.0 + 10.0 * index),
+                        index,
+                        effective_height=5.0,
+                    )
+                    for index in range(4)
+                ],
+                footer,
+            ),
+            footer,
+        )
+
+    multi_page, multi_footer = build_page()
+    single_page, single_footer = build_page()
+
+    auxiliary_text._classify_isolated_first_page_footer(
+        [multi_page, _prepared_text_page()]
+    )
+    auxiliary_text._classify_isolated_first_page_footer([single_page])
+
+    assert multi_footer.semantic_type == "footer"
+    assert single_footer.semantic_type is None
+
+
 def test_repeated_visual_headers_use_geometry_and_skip_first_page() -> None:
     """验证重复页首图片仅按几何重标，空 content 也可保留为 header。"""
 

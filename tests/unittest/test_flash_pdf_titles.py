@@ -13,6 +13,7 @@ from mineru.backend.flash.native_pdf import (
 
 
 from _flash_pdf_test_utils import (
+    _prepared_text_page,
     _text_line,
 )
 
@@ -56,6 +57,40 @@ def test_heading_like_content_with_body_layout_remains_text() -> None:
     titles._classify_page_titles(lines, (100.0, 120.0), page_index=1, container_bboxes=[])
 
     assert lines[2].semantic_type is None
+
+
+def test_document_regular_fonts_only_use_body_height_band() -> None:
+    """验证跨页重复的大字号标题字体不会进入全文常规正文字体集合。"""
+
+    body_font = ("Body", 0)
+    heading_font = ("RepeatedHeading", 0)
+    pages = [
+        _prepared_text_page(
+            _text_line(
+                f"heading-{page_index}",
+                (10.0, 10.0, 90.0, 28.0),
+                0,
+                effective_height=18.0,
+                font_signature=heading_font,
+                font_coverage=1.0,
+            ),
+            _text_line(
+                f"body-{page_index}",
+                (0.0, 40.0, 100.0, 50.0),
+                1,
+                effective_height=10.0,
+                font_signature=body_font,
+                font_coverage=1.0,
+            ),
+        )
+        for page_index in range(3)
+    ]
+
+    profile = titles._infer_document_body_profile(pages)
+
+    assert profile is not None
+    assert profile.body_height == pytest.approx(10.0)
+    assert profile.regular_fonts == frozenset({body_font})
 
 
 def test_physical_title_gap_ignores_disjoint_column_and_keeps_overlapping_row() -> None:

@@ -384,6 +384,22 @@ class PDFDocument:
                 page_rotation = 0
             return _extract_page_form_bboxes(page, page_bbox, page_rotation)
 
+    def get_page_signature_bboxes(self, page_idx: int) -> list[BBox]:
+        """提取带可见正常外观的数字签名控件，并转换为页面左上原点坐标。"""
+
+        with self._open_page(page_idx) as page:
+            page_bbox = _normalize_pdf_page_bbox(page.get_bbox())
+            try:
+                page_rotation = int(page.get_rotation()) % 360
+            except Exception:
+                page_rotation = 0
+            return _extract_page_signature_bboxes(
+                page,
+                page_bbox,
+                page_rotation,
+                form_handle=getattr(self._pdf_doc, "formenv", None),
+            )
+
     # ------------------------------------------------------------------ #
     #  Classification
     # ------------------------------------------------------------------ #
@@ -444,7 +460,14 @@ class PDFDocument:
         if self._pdf_doc_opened is None:
             with _pdfium_lock:
                 if self._pdf_doc_opened is None:
-                    self._pdf_doc_opened = pdfium.PdfDocument(self._pdf_bytes)
+                    pdf_doc = pdfium.PdfDocument(self._pdf_bytes)
+                    try:
+                        # 表单环境必须在打开页面前初始化，签名字段类型才能沿 Parent 正确继承。
+                        pdf_doc.init_forms()
+                    except Exception:
+                        # 异常表单不能阻断普通文本、绘图和渲染接口。
+                        pass
+                    self._pdf_doc_opened = pdf_doc
         return self._pdf_doc_opened
 
     @contextmanager
@@ -1184,6 +1207,159 @@ def _form_bbox_from_object(
     if visual_right <= visual_left or visual_bottom <= visual_top:
         return None
     return visual_left, visual_top, visual_right, visual_bottom
+
+
+def _get_annotation_string(raw_annot: Any, key: bytes) -> str | None:
+    """读取 PDFium 注释字典中的 UTF-16 字符串或名称，异常和空值统一返回 None。"""
+
+    try:
+        required = int(pdfium_c.FPDFAnnot_GetStringValue(raw_annot, key, None, 0))
+    except Exception:
+        return None
+    if required <= 2:
+        return None
+    try:
+        buffer = (ctypes.c_ushort * ((required + 1) // 2))()
+        actual = int(
+            pdfium_c.FPDFAnnot_GetStringValue(
+                raw_annot,
+                key,
+                buffer,
+                ctypes.sizeof(buffer),
+            )
+        )
+    except Exception:
+        return None
+    if actual <= 2 or actual > ctypes.sizeof(buffer):
+        return None
+    try:
+        return bytes(buffer)[: actual - 2].decode("utf-16-le")
+    except UnicodeDecodeError:
+        return None
+
+
+def _signature_bbox_from_annotation(
+    raw_annot: Any,
+    page_bbox: BBox,
+    page_rotation: int,
+    form_handle: Any | None,
+) -> BBox | None:
+    """校验一个可见签名 Widget，并把注释矩形裁剪到视觉页面坐标。"""
+
+    try:
+        if int(pdfium_c.FPDFAnnot_GetSubtype(raw_annot)) != pdfium_c.FPDF_ANNOT_WIDGET:
+            return None
+        flags = int(pdfium_c.FPDFAnnot_GetFlags(raw_annot))
+    except Exception:
+        return None
+    hidden_flags = (
+        pdfium_c.FPDF_ANNOT_FLAG_INVISIBLE
+        | pdfium_c.FPDF_ANNOT_FLAG_HIDDEN
+        | pdfium_c.FPDF_ANNOT_FLAG_NOVIEW
+    )
+    if flags & hidden_flags:
+        return None
+    field_type: int | None = None
+    if form_handle is not None:
+        try:
+            field_type = int(
+                pdfium_c.FPDFAnnot_GetFormFieldType(form_handle, raw_annot)
+            )
+        except Exception:
+            field_type = None
+    if field_type == pdfium_c.FPDF_FORMFIELD_SIGNATURE:
+        pass
+    elif field_type is None or field_type <= pdfium_c.FPDF_FORMFIELD_UNKNOWN:
+        if _get_annotation_string(raw_annot, b"FT") != "Sig":
+            return None
+    else:
+        return None
+
+    # 正常外观长度只有 UTF-16 终止符时等价于无 /AP /N，不能形成可见签名。
+    try:
+        appearance_length = int(
+            pdfium_c.FPDFAnnot_GetAP(
+                raw_annot,
+                pdfium_c.FPDF_ANNOT_APPEARANCEMODE_NORMAL,
+                None,
+                0,
+            )
+        )
+    except Exception:
+        return None
+    if appearance_length <= 2:
+        return None
+
+    rect = pdfium_c.FS_RECTF()
+    try:
+        if not pdfium_c.FPDFAnnot_GetRect(raw_annot, ctypes.byref(rect)):
+            return None
+    except Exception:
+        return None
+    raw_bbox = _normalize_pdf_page_bbox(
+        (float(rect.left), float(rect.bottom), float(rect.right), float(rect.top))
+    )
+    if not all(math.isfinite(value) for value in raw_bbox):
+        return None
+    page_points = [
+        _transform_drawing_point(point, page_bbox, page_rotation)
+        for point in (
+            (raw_bbox[0], raw_bbox[1]),
+            (raw_bbox[0], raw_bbox[3]),
+            (raw_bbox[2], raw_bbox[1]),
+            (raw_bbox[2], raw_bbox[3]),
+        )
+    ]
+    page_width, page_height = _drawing_page_size(page_bbox, page_rotation)
+    visual_bbox = (
+        max(0.0, min(point[0] for point in page_points)),
+        max(0.0, min(point[1] for point in page_points)),
+        min(page_width, max(point[0] for point in page_points)),
+        min(page_height, max(point[1] for point in page_points)),
+    )
+    if visual_bbox[2] <= visual_bbox[0] or visual_bbox[3] <= visual_bbox[1]:
+        return None
+    return visual_bbox
+
+
+def _extract_page_signature_bboxes(
+    page: pdfium.PdfPage,
+    page_bbox: BBox,
+    page_rotation: int,
+    *,
+    form_handle: Any | None = None,
+) -> list[BBox]:
+    """遍历页面签名注释；逐个关闭句柄，并隔离损坏注释造成的异常。"""
+
+    try:
+        annot_count = max(0, int(pdfium_c.FPDFPage_GetAnnotCount(page.raw)))
+    except Exception:
+        return []
+    signature_bboxes: list[BBox] = []
+    for annot_index in range(annot_count):
+        raw_annot = None
+        try:
+            raw_annot = pdfium_c.FPDFPage_GetAnnot(page.raw, annot_index)
+            if not raw_annot:
+                continue
+            signature_bbox = _signature_bbox_from_annotation(
+                raw_annot,
+                page_bbox,
+                page_rotation,
+                form_handle,
+            )
+            if signature_bbox is not None:
+                signature_bboxes.append(signature_bbox)
+        except Exception:
+            # 单个损坏注释不能影响同页其他有效签名框。
+            continue
+        finally:
+            if raw_annot:
+                try:
+                    pdfium_c.FPDFPage_CloseAnnot(raw_annot)
+                except Exception:
+                    pass
+    return sorted(signature_bboxes, key=lambda bbox: (bbox[1], bbox[0], bbox[3], bbox[2]))
 
 
 def _extract_page_image_bboxes(

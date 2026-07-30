@@ -45,6 +45,9 @@ from .line_merging import _join_formula_visual_row
 _MIN_RASTER_IMAGE_PAGE_AREA_RATIO = 0.0038
 
 
+_SIGNATURE_IMAGE_BBOX_DEDUP_TOLERANCE = 0.5
+
+
 _MIN_FORM_IMAGE_PAGE_AREA_RATIO = 0.01
 
 
@@ -871,12 +874,21 @@ def _merge_inline_raster_image_candidates(
     return merged_specs
 
 
+def _image_bboxes_are_near_equal(first: BBox, second: BBox) -> bool:
+    """用亚 point 边界容差识别同一图片框，避免签名与点阵来源重复输出。"""
+
+    return all(
+        abs(first_value - second_value) <= _SIGNATURE_IMAGE_BBOX_DEDUP_TOLERANCE
+        for first_value, second_value in zip(first, second, strict=True)
+    )
+
+
 def _build_raster_image_blocks(
     source: _PageSource,
     container_blocks: list[dict[str, Any]],
     claimed_line_indices: set[int],
 ) -> tuple[list[dict[str, Any]], set[int]]:
-    """过滤点阵图、避让高优先级容器，并唯一认领图片内部的原生文本。"""
+    """过滤点阵图并接纳签名框，避让高优先级容器后唯一认领内部文本。"""
 
     page_area = max(0.0, source.page_size[0]) * max(0.0, source.page_size[1])
     if page_area <= 0:
@@ -887,7 +899,25 @@ def _build_raster_image_blocks(
         for block in container_blocks
         if (bbox := _coerce_bbox(block.get("bbox"))) is not None
     ]
-    candidate_bboxes: list[BBox] = []
+    signature_bboxes: list[BBox] = []
+    for raw_bbox in source.signature_bboxes:
+        bbox = _clip_bbox(_coerce_bbox(raw_bbox), source.page_size)
+        if bbox is None:
+            continue
+        if any(
+            _bbox_overlap_in_smaller(bbox, container_bbox)
+            >= _IMAGE_CONTAINER_OVERLAP_THRESHOLD
+            for container_bbox in container_bboxes
+        ):
+            continue
+        if not any(
+            _image_bboxes_are_near_equal(bbox, existing_bbox)
+            for existing_bbox in signature_bboxes
+        ):
+            # 已由注释可见性和 /AP 严格确认的签名不再套用普通点阵图面积门槛。
+            signature_bboxes.append(bbox)
+
+    raster_bboxes: list[BBox] = []
     for raw_bbox in source.image_bboxes:
         bbox = _clip_bbox(_coerce_bbox(raw_bbox), source.page_size)
         if bbox is None or _bbox_area(bbox) / page_area < _MIN_RASTER_IMAGE_PAGE_AREA_RATIO:
@@ -897,15 +927,28 @@ def _build_raster_image_blocks(
             for container_bbox in container_bboxes
         ):
             continue
-        candidate_bboxes.append(bbox)
-    if not candidate_bboxes:
+        if any(
+            _image_bboxes_are_near_equal(bbox, signature_bbox)
+            for signature_bbox in signature_bboxes
+        ):
+            continue
+        raster_bboxes.append(bbox)
+    if not raster_bboxes and not signature_bboxes:
         return [], set()
 
-    candidate_specs = _merge_inline_raster_image_candidates(
-        source,
-        candidate_bboxes,
-        container_bboxes,
-        claimed_line_indices,
+    candidate_specs = (
+        _merge_inline_raster_image_candidates(
+            source,
+            raster_bboxes,
+            container_bboxes,
+            claimed_line_indices,
+        )
+        if raster_bboxes
+        else []
+    )
+    candidate_specs.extend((bbox, None) for bbox in signature_bboxes)
+    candidate_specs.sort(
+        key=lambda item: (item[0][1], item[0][0], item[0][3], item[0][2])
     )
     candidate_bboxes = [bbox for bbox, _row_id in candidate_specs]
 

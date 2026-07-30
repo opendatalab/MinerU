@@ -64,7 +64,8 @@ def test_document_body_profile_prefers_cross_page_body_and_regular_fonts() -> No
     assert profile is not None
     assert profile.body_height == 10.0
     assert profile.body_weight == 400.0
-    assert profile.regular_fonts == frozenset({body_font, mono_font})
+    # 正文字体画像只统计正文高度带，较矮的等宽和斜体样本不再进入 regular_fonts。
+    assert profile.regular_fonts == frozenset({body_font})
 
 
 def test_sparse_repeated_font_is_not_document_regular_style() -> None:

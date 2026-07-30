@@ -33,6 +33,9 @@ _PDF_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _PDFTEXT_ROTATION_SPLIT_THRESHOLD_DEGREES = 44.9
 _PDFTEXT_LINE_ANGLE_TOLERANCE_DEGREES = 0.1
 _SUPPORTED_PDFTEXT_LINE_ANGLES = (0.0, 90.0, 270.0)
+_PDFTEXT_SHEARED_HORIZONTAL_MAX_ANGLE_DEGREES = 30.0
+_PDFTEXT_HORIZONTAL_BASELINE_MAX_ANGLE_DEGREES = 2.0
+_PDFTEXT_HORIZONTAL_BASELINE_MAX_DISPERSION_RATIO = 0.75
 
 
 def _build_native_line_items(
@@ -45,15 +48,18 @@ def _build_native_line_items(
 
     items: list[_LineItem] = []
     supported_lines = [
-        child_line
+        (child_line, visual_angle)
         for pdf_line in pdf_lines
         for child_line in _split_pdftext_line_by_rotation(pdf_line)
-        if _is_supported_pdftext_line_rotation(
-            child_line.get("rotation"),
-            page_rotation=page_rotation,
+        if (
+            visual_angle := _resolve_pdftext_line_angle(
+                child_line,
+                page_rotation=page_rotation,
+            )
         )
+        is not None
     ]
-    for visual_row_id, pdf_line in enumerate(supported_lines):
+    for visual_row_id, (pdf_line, visual_angle) in enumerate(supported_lines):
         bbox = _clip_bbox(_coerce_bbox(pdf_line.get("bbox")), page_size)
         if bbox is None:
             continue
@@ -62,7 +68,7 @@ def _build_native_line_items(
         coarse_item = _LineItem(
             text="".join(str(span.get("text") or "") for span in spans),
             bbox=bbox,
-            angle=(_normalize_pdftext_angle(pdf_line.get("rotation")) + int(page_rotation or 0)) % 360,
+            angle=visual_angle,
             source_index=-1,
             chars=chars,
             visual_row_id=visual_row_id,
@@ -158,6 +164,95 @@ def _is_supported_pdftext_line_rotation(value: Any, *, page_rotation: int) -> bo
         _circular_angle_distance(visual_angle, supported_angle)
         <= _PDFTEXT_LINE_ANGLE_TOLERANCE_DEGREES
         for supported_angle in _SUPPORTED_PDFTEXT_LINE_ANGLES
+    )
+
+
+def _resolve_pdftext_line_angle(
+    pdf_line: dict[str, Any],
+    *,
+    page_rotation: int,
+) -> int | None:
+    """解析视觉文字方向，并用字符基线纠正字体 shear 造成的伪斜向行。"""
+
+    visual_angle = (
+        _pdftext_angle_degrees(pdf_line.get("rotation"))
+        + int(page_rotation or 0)
+    ) % 360.0
+    for supported_angle in _SUPPORTED_PDFTEXT_LINE_ANGLES:
+        if (
+            _circular_angle_distance(visual_angle, supported_angle)
+            <= _PDFTEXT_LINE_ANGLE_TOLERANCE_DEGREES
+        ):
+            return int(supported_angle)
+    if (
+        _circular_angle_distance(visual_angle, 0.0)
+        <= _PDFTEXT_SHEARED_HORIZONTAL_MAX_ANGLE_DEGREES
+        and _pdftext_line_has_horizontal_char_baseline(pdf_line)
+    ):
+        return 0
+    return None
+
+
+def _pdftext_line_has_horizontal_char_baseline(
+    pdf_line: dict[str, Any],
+) -> bool:
+    """用字符中心的水平基线确认小角度只来自仿斜体变换，而非真实旋转。"""
+
+    visible_bboxes: list[BBox] = []
+    for span in pdf_line.get("spans") or []:
+        if not isinstance(span, dict):
+            continue
+        for char in span.get("chars") or []:
+            if not isinstance(char, dict):
+                continue
+            raw_char = str(char.get("char") or "")
+            bbox = _coerce_bbox(char.get("bbox"))
+            if (
+                bbox is not None
+                and raw_char.isprintable()
+                and not raw_char.isspace()
+            ):
+                visible_bboxes.append(bbox)
+    if len(visible_bboxes) < 4:
+        return False
+
+    line_bbox = _bbox_union_many(visible_bboxes)
+    line_width = line_bbox[2] - line_bbox[0]
+    line_height = line_bbox[3] - line_bbox[1]
+    glyph_heights = [bbox[3] - bbox[1] for bbox in visible_bboxes]
+    median_height = statistics.median(glyph_heights)
+    if (
+        line_height <= 0
+        or median_height <= 0
+        or line_width / line_height < 3.0
+    ):
+        return False
+
+    ordered = sorted(
+        visible_bboxes,
+        key=lambda bbox: ((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0),
+    )
+    first_center = (
+        (ordered[0][0] + ordered[0][2]) / 2.0,
+        (ordered[0][1] + ordered[0][3]) / 2.0,
+    )
+    last_center = (
+        (ordered[-1][0] + ordered[-1][2]) / 2.0,
+        (ordered[-1][1] + ordered[-1][3]) / 2.0,
+    )
+    baseline_width = last_center[0] - first_center[0]
+    if baseline_width <= 0:
+        return False
+    baseline_angle = abs(
+        math.degrees(
+            math.atan2(last_center[1] - first_center[1], baseline_width)
+        )
+    )
+    centers_y = [(bbox[1] + bbox[3]) / 2.0 for bbox in ordered]
+    return (
+        baseline_angle <= _PDFTEXT_HORIZONTAL_BASELINE_MAX_ANGLE_DEGREES
+        and max(centers_y) - min(centers_y)
+        <= _PDFTEXT_HORIZONTAL_BASELINE_MAX_DISPERSION_RATIO * median_height
     )
 
 

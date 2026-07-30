@@ -197,9 +197,10 @@ def _infer_document_body_profile(
     font_pages: dict[tuple[str, int], set[int]] = {}
     font_widths: dict[tuple[str, int], float] = {}
     font_weights: dict[tuple[str, int], list[float]] = {}
-    for _height, page_index, width, font, weight in samples:
-        if font is None:
+    for height, page_index, width, font, weight in samples:
+        if font is None or not 0.9 <= height / body_height <= 1.1:
             continue
+        # 常规字体支持必须来自正文高度带；跨页重复的大标题不能反向污染正文画像。
         font_pages.setdefault(font, set()).add(page_index)
         font_widths[font] = font_widths.get(font, 0.0) + width
         if weight is not None:

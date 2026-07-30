@@ -672,6 +672,137 @@ def _classify_repeated_page_marginals(pages: list[_PreparedPage]) -> None:
                 right.line.semantic_type = right.region
 
 
+def _classify_single_page_compound_headers(pages: list[_PreparedPage]) -> None:
+    """以拆分同行、字号收缩和正文栏右缘共同确认单页复合页眉。"""
+
+    if len(pages) != 1:
+        return
+    page = pages[0]
+    page_width, page_height = page.page_size
+    if page_width <= 0 or page_height <= 0:
+        return
+
+    row_groups: dict[tuple[int, int], list[_LineItem]] = {}
+    for line in page.remaining_lines:
+        if (
+            line.semantic_type is None
+            and line.visual_row_id is not None
+            and line.split_from_row
+        ):
+            row_groups.setdefault((line.angle, line.visual_row_id), []).append(line)
+
+    for (angle, _row_id), members in row_groups.items():
+        if len(members) < 2:
+            continue
+        local_page_width = page_height if angle in {90, 270} else page_width
+        local_page_height = page_width if angle in {90, 270} else page_height
+        local_members = [
+            (line, _rotate_bbox_to_upright(line.bbox, page.page_size, angle))
+            for line in members
+        ]
+        row_top = min(bbox[1] for _line, bbox in local_members)
+        row_bottom = max(bbox[3] for _line, bbox in local_members)
+        if row_top < 0 or row_bottom > 0.05 * local_page_height:
+            continue
+
+        row_left = min(bbox[0] for _line, bbox in local_members)
+        row_right = max(bbox[2] for _line, bbox in local_members)
+        related_body = [
+            (line, local_bbox)
+            for line in page.remaining_lines
+            if line.semantic_type is None
+            and line.angle == angle
+            and line not in members
+            and (
+                local_bbox := _rotate_bbox_to_upright(
+                    line.bbox,
+                    page.page_size,
+                    angle,
+                )
+            )[1]
+            >= 0.05 * local_page_height
+            and local_bbox[2] - local_bbox[0] >= 0.3 * local_page_width
+            and _bbox_axis_overlap_ratio(
+                (row_left, row_top, row_right, row_bottom),
+                local_bbox,
+                axis="x",
+            )
+            >= 0.2
+        ]
+        if len(related_body) < 3:
+            continue
+        body_height = statistics.median(
+            _line_effective_height(line, bbox)
+            for line, bbox in related_body
+        )
+        row_height = max(
+            _line_effective_height(line, bbox)
+            for line, bbox in local_members
+        )
+        if row_height > 0.85 * body_height:
+            continue
+        body_right = statistics.median(bbox[2] for _line, bbox in related_body)
+        has_right_sidecar = any(
+            bbox[2] - bbox[0] <= max(4.0 * row_height, 0.12 * local_page_width)
+            and abs(bbox[2] - body_right) <= max(3.0, 0.02 * local_page_width)
+            for _line, bbox in local_members
+        )
+        if has_right_sidecar:
+            for line, _bbox in local_members:
+                line.semantic_type = "header"
+
+
+def _classify_isolated_first_page_footer(pages: list[_PreparedPage]) -> None:
+    """用多页首页的极底位置、正文尺度和孤立净空补标唯一页脚。"""
+
+    if len(pages) < 2:
+        return
+    page = pages[0]
+    page_width, page_height = page.page_size
+    if page_width <= 0 or page_height <= 0:
+        return
+
+    body_lines = [
+        line
+        for line in page.remaining_lines
+        if line.semantic_type is None
+        and line.angle == 0
+        and line.bbox[2] - line.bbox[0] >= 0.3 * page_width
+        and 0.1 * page_height <= _bbox_center_y(line.bbox) <= 0.94 * page_height
+    ]
+    if len(body_lines) < 4:
+        return
+    body_height = statistics.median(
+        _line_effective_height(line, line.bbox)
+        for line in body_lines
+    )
+    body_bottom = max(line.bbox[3] for line in body_lines)
+    if body_bottom < 0.7 * page_height:
+        return
+    container_bboxes = [
+        bbox
+        for block in page.fixed_blocks
+        if (bbox := _coerce_bbox(block.get("bbox"))) is not None
+    ]
+    candidates = [
+        line
+        for line in page.remaining_lines
+        if line.semantic_type is None
+        and line.angle == 0
+        and line.bbox[1] >= 0.94 * page_height
+        and line.bbox[2] - line.bbox[0] <= 0.6 * page_width
+        and abs(_bbox_center_x(line.bbox) - 0.5 * page_width) <= 0.08 * page_width
+        and _line_effective_height(line, line.bbox) <= 0.95 * body_height
+        and line.bbox[1] - body_bottom >= 1.5 * body_height
+        and not any(
+            _bbox_intersects(line.bbox, container_bbox)
+            for container_bbox in container_bboxes
+        )
+    ]
+    if len(candidates) == 1:
+        candidates[0].semantic_type = "footer"
+
+
 def _classify_repeated_visual_headers(pages: list[_PreparedPage]) -> None:
     """仅按页首位置与跨页重复几何，把整体图片重标为视觉页眉。"""
 
@@ -778,7 +909,7 @@ def _build_marginal_candidate(
 ) -> _MarginalCandidate | None:
     """把页面上下百分之十五内的常规小行转换成跨页比较候选。"""
 
-    if line.semantic_type is not None:
+    if line.semantic_type not in {None, "page_footnote"}:
         return None
     local_bbox = _rotate_bbox_to_upright(line.bbox, page_size, line.angle)
     local_page_size = (page_size[1], page_size[0]) if line.angle in {90, 270} else page_size
@@ -787,6 +918,9 @@ def _build_marginal_candidate(
         return None
     normalized_center_y = _bbox_center_y(local_bbox) / local_page_height
     normalized_center_x = _bbox_center_x(local_bbox) / local_page_width
+    if line.semantic_type == "page_footnote" and normalized_center_y < 0.94:
+        # 只允许极底部脚注重新参加跨页强证据匹配，正文脚注继续保留原类型。
+        return None
     if normalized_center_y <= 0.15:
         region: Literal["header", "footer", "side"] = "header"
     elif normalized_center_y >= 0.85:

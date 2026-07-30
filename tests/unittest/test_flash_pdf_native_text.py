@@ -12,6 +12,8 @@ def _span(
     text: str,
     bbox: tuple[float, float, float, float],
     angle_degrees: float,
+    *,
+    chars: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """构造只包含方向、文本和 bbox 的最小 pdftext span。"""
 
@@ -19,8 +21,17 @@ def _span(
         "text": text,
         "bbox": bbox,
         "rotation": math.radians(angle_degrees),
-        "chars": [],
+        "chars": chars or [],
     }
+
+
+def _char(
+    value: str,
+    bbox: tuple[float, float, float, float],
+) -> dict[str, Any]:
+    """构造字符基线方向测试使用的最小 pdftext 字符。"""
+
+    return {"char": value, "bbox": bbox}
 
 
 def _line(
@@ -77,6 +88,59 @@ def test_small_oblique_span_stays_inside_standard_direction_line() -> None:
     assert len(children) == 1
     assert math.degrees(children[0]["rotation"]) == pytest.approx(0.0)
     assert [(item.text, item.angle) for item in items] == [("normal oblique", 0)]
+
+
+def test_sheared_horizontal_line_uses_char_baseline_and_splits_far_sidecar() -> None:
+    """验证仿斜体粗行可由水平字符基线恢复，并继续拆开远端页码。"""
+
+    chars = [
+        _char(value, (10.0 + index * 5.0, 80.0, 14.0 + index * 5.0, 88.0))
+        for index, value in enumerate("NOTICE")
+    ]
+    chars.append(_char("2", (90.0, 80.2, 94.0, 88.2)))
+    pdf_line = _line(
+        [
+            _span(
+                "NOTICE 2",
+                (10.0, 80.0, 94.0, 88.2),
+                18.433,
+                chars=chars,
+            )
+        ],
+        18.433,
+        bbox=(10.0, 80.0, 94.0, 88.2),
+    )
+
+    items = native_text._build_native_line_items([pdf_line], (100.0, 100.0))
+
+    assert [(item.text, item.angle) for item in items] == [
+        ("NOTICE", 0),
+        ("2", 0),
+    ]
+    assert all(item.split_from_row for item in items)
+
+
+def test_true_diagonal_char_baseline_is_not_recovered_as_horizontal() -> None:
+    """验证真实斜向字符中心不会因字符数量和长宽比被恢复为水平正文。"""
+
+    chars = [
+        _char(value, (10.0 + index * 8.0, 70.0 - index * 6.0, 14.0 + index * 8.0, 78.0 - index * 6.0))
+        for index, value in enumerate("WATERMARK")
+    ]
+    pdf_line = _line(
+        [
+            _span(
+                "WATERMARK",
+                (10.0, 22.0, 78.0, 78.0),
+                315.0,
+                chars=chars,
+            )
+        ],
+        315.0,
+        bbox=(10.0, 22.0, 78.0, 78.0),
+    )
+
+    assert native_text._build_native_line_items([pdf_line], (100.0, 100.0)) == []
 
 
 @pytest.mark.parametrize(

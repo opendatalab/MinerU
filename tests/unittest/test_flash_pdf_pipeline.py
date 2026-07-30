@@ -23,6 +23,11 @@ from mineru.backend.flash.native_pdf import (
 )
 from mineru.utils.pdf_document import PDFImageInfo
 
+from _flash_pdf_test_utils import (
+    _prepared_text_page,
+    _text_line,
+)
+
 
 def _image_info(
     fingerprint: str | None,
@@ -195,3 +200,108 @@ def test_output_normalization_keeps_empty_equation_but_drops_empty_text() -> Non
         "content": "",
     }
     assert text is None
+
+
+def test_index_is_claimed_before_formula_anchor_growth() -> None:
+    """验证目录右缘页码先形成完整 index，不再扩张为重叠公式。"""
+
+    heading = _text_line(
+        "contents",
+        (40.0, 5.0, 60.0, 10.0),
+        0,
+        effective_height=5.0,
+    )
+    rows = []
+    source_index = 1
+    for row_index, top in enumerate((20.0, 30.0, 40.0, 50.0, 60.0, 70.0)):
+        visual_row_id = 10 + row_index
+        rows.extend(
+            [
+                _text_line(
+                    f"entry-{row_index}",
+                    (10.0, top, 80.0, top + 5.0),
+                    source_index,
+                    visual_row_id=visual_row_id,
+                    run_index=0,
+                    split_from_row=True,
+                    effective_height=5.0,
+                ),
+                _text_line(
+                    str(row_index + 1),
+                    (90.0, top, 95.0, top + 5.0),
+                    source_index + 1,
+                    visual_row_id=visual_row_id,
+                    run_index=1,
+                    split_from_row=True,
+                    effective_height=5.0,
+                ),
+            ]
+        )
+        source_index += 2
+    page = _prepared_text_page(heading, *rows)
+
+    blocks = pipeline._finalize_prepared_page(page, page_index=1)
+
+    assert [block["type"] for block in blocks].count("index") == 1
+    assert not [block for block in blocks if block["type"] == "equation"]
+    assert next(block for block in blocks if block["type"] == "index")[
+        "content"
+    ].count("entry-") == 6
+    assert next(block for block in blocks if block["content"] == "contents")[
+        "type"
+    ] == "paragraph_title"
+
+
+def test_numbered_formula_rows_are_not_claimed_as_index() -> None:
+    """验证连续编号公式先保留公式语义，不被无标题目录候选吞并。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line(
+            "ordinary body row",
+            (0.0, 10.0 * index, 100.0, 10.0 * index + 7.0),
+            index,
+            effective_height=7.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        )
+        for index in range(10)
+    ]
+    source_index = 10
+    for row_index, top in enumerate(
+        (102.0, 113.0, 124.0, 135.0, 146.0, 157.0)
+    ):
+        visual_row_id = 100 + row_index
+        lines.extend(
+            [
+                _text_line(
+                    f"x{row_index}=y{row_index}",
+                    (20.0, top, 55.0, top + 7.0),
+                    source_index,
+                    visual_row_id=visual_row_id,
+                    run_index=0,
+                    split_from_row=True,
+                    effective_height=7.0,
+                    font_signature=("Math", 0),
+                    font_coverage=0.6,
+                ),
+                _text_line(
+                    f"({row_index + 1})",
+                    (91.0, top, 100.0, top + 7.0),
+                    source_index + 1,
+                    visual_row_id=visual_row_id,
+                    run_index=1,
+                    split_from_row=True,
+                    effective_height=7.0,
+                ),
+            ]
+        )
+        source_index += 2
+
+    blocks = pipeline._finalize_prepared_page(
+        _prepared_text_page(*lines, page_size=(100.0, 200.0)),
+        page_index=1,
+    )
+
+    assert sum(block["type"] == "equation" for block in blocks) == 6
+    assert not [block for block in blocks if block["type"] == "index"]

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 
+from dataclasses import replace
+
 import pytest
 
 from mineru.backend.flash.native_pdf import (
@@ -721,6 +723,237 @@ def test_compact_multiline_cluster_becomes_one_isolated_equation() -> None:
         }
     ]
     assert compact_cluster not in remaining
+
+
+def _build_compact_margin_case(
+    candidate_bbox: tuple[float, float, float, float],
+    above_bbox: tuple[float, float, float, float],
+    below_bbox: tuple[float, float, float, float],
+) -> tuple[
+    models._LineItem,
+    list[dict[str, object]],
+    list[models._LineItem],
+]:
+    """构造上下都有稳定正文行的紧凑公式页边用例。"""
+
+    body_font = ("Body", 0)
+    above = _text_line(
+        "body above",
+        above_bbox,
+        0,
+        effective_height=10.0,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+    candidate = replace(
+        _text_line(
+            "formula cluster",
+            candidate_bbox,
+            1,
+            effective_height=10.0,
+            font_signature=("Math", 1),
+            font_coverage=0.5,
+        ),
+        compact_formula_cluster=True,
+    )
+    below = _text_line(
+        "body below",
+        below_bbox,
+        2,
+        effective_height=10.0,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+    blocks, remaining = formulas._build_formula_like_blocks(
+        [above, candidate, below],
+        [],
+        (100.0, 1000.0),
+    )
+    return candidate, blocks, remaining
+
+
+def _build_text_formula_margin_case(
+    formula_bboxes: tuple[
+        tuple[float, float, float, float],
+        tuple[float, float, float, float],
+        tuple[float, float, float, float],
+    ],
+    body_tops: tuple[float, float, float, float],
+) -> tuple[list[dict[str, object]], list[models._LineItem]]:
+    """构造带右缘编号和稳定正文栏带的文本公式页边用例。"""
+
+    body_font = ("Body", 0)
+    formula_lines = [
+        _text_line(
+            "formula numerator",
+            formula_bboxes[0],
+            0,
+            effective_height=10.0,
+            font_signature=("Math", 0),
+            font_coverage=0.6,
+        ),
+        _text_line(
+            "formula denominator",
+            formula_bboxes[1],
+            1,
+            effective_height=10.0,
+            font_signature=("Math", 0),
+            font_coverage=0.6,
+        ),
+        _text_line("(5)", formula_bboxes[2], 2, effective_height=10.0),
+    ]
+    body_lines = [
+        _text_line(
+            f"body-{index}",
+            (0.0, top, 100.0, top + 10.0),
+            3 + index,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        )
+        for index, top in enumerate(body_tops)
+    ]
+    return formulas._build_formula_like_blocks(
+        [*formula_lines, *body_lines],
+        [],
+        (100.0, 1000.0),
+    )
+
+
+@pytest.mark.parametrize(
+    ("candidate_bbox", "above_bbox", "below_bbox"),
+    [
+        ((25.0, 20.0, 65.0, 30.0), (0.0, 0.0, 100.0, 10.0), (0.0, 40.0, 100.0, 50.0)),
+        (
+            (25.0, 970.0, 65.0, 980.0),
+            (0.0, 940.0, 100.0, 950.0),
+            (0.0, 990.0, 100.0, 1000.0),
+        ),
+    ],
+    ids=["top", "bottom"],
+)
+def test_compact_formula_fully_in_page_margin_remains_text(
+    candidate_bbox: tuple[float, float, float, float],
+    above_bbox: tuple[float, float, float, float],
+    below_bbox: tuple[float, float, float, float],
+) -> None:
+    """验证紧凑公式簇整体落入顶部或底部 5% 时不升级为公式。"""
+
+    candidate, blocks, remaining = _build_compact_margin_case(
+        candidate_bbox,
+        above_bbox,
+        below_bbox,
+    )
+
+    assert blocks == []
+    assert candidate in remaining
+
+
+def test_compact_formula_crossing_page_margin_boundary_remains_equation() -> None:
+    """验证跨过顶部 5% 分界的紧凑真公式仍能输出公式块。"""
+
+    candidate, blocks, remaining = _build_compact_margin_case(
+        (25.0, 45.0, 65.0, 55.0),
+        (0.0, 30.0, 100.0, 40.0),
+        (0.0, 60.0, 100.0, 70.0),
+    )
+
+    assert blocks == [
+        {
+            "type": "equation",
+            "bbox": candidate.bbox,
+            "angle": 0,
+            "content": "formula cluster",
+        }
+    ]
+    assert candidate not in remaining
+
+
+@pytest.mark.parametrize(
+    ("formula_bboxes", "body_tops"),
+    [
+        (
+            (
+                (20.0, 8.0, 58.0, 18.0),
+                (25.0, 19.0, 55.0, 29.0),
+                (91.0, 17.0, 100.0, 27.0),
+            ),
+            (44.0, 56.0, 68.0, 80.0),
+        ),
+        (
+            (
+                (20.0, 955.0, 58.0, 965.0),
+                (25.0, 966.0, 55.0, 976.0),
+                (91.0, 973.0, 100.0, 983.0),
+            ),
+            (900.0, 912.0, 924.0, 936.0),
+        ),
+    ],
+    ids=["top", "bottom"],
+)
+def test_text_formula_fully_in_page_margin_remains_text(
+    formula_bboxes: tuple[
+        tuple[float, float, float, float],
+        tuple[float, float, float, float],
+        tuple[float, float, float, float],
+    ],
+    body_tops: tuple[float, float, float, float],
+) -> None:
+    """验证文本公式空间分量整体落入页边 5% 时不认领原文本行。"""
+
+    blocks, remaining = _build_text_formula_margin_case(
+        formula_bboxes,
+        body_tops,
+    )
+
+    assert blocks == []
+    assert {line.source_index for line in remaining} == set(range(7))
+
+
+@pytest.mark.parametrize(
+    ("formula_bboxes", "body_tops", "expected_bbox"),
+    [
+        (
+            (
+                (20.0, 40.0, 58.0, 50.0),
+                (25.0, 51.0, 55.0, 61.0),
+                (91.0, 49.0, 100.0, 59.0),
+            ),
+            (76.0, 88.0, 100.0, 112.0),
+            (20.0, 40.0, 100.0, 61.0),
+        ),
+        (
+            (
+                (20.0, 940.0, 58.0, 950.0),
+                (25.0, 951.0, 55.0, 961.0),
+                (91.0, 958.0, 100.0, 968.0),
+            ),
+            (885.0, 897.0, 909.0, 921.0),
+            (20.0, 940.0, 100.0, 968.0),
+        ),
+    ],
+    ids=["top", "bottom"],
+)
+def test_text_formula_crossing_page_margin_boundary_remains_equation(
+    formula_bboxes: tuple[
+        tuple[float, float, float, float],
+        tuple[float, float, float, float],
+        tuple[float, float, float, float],
+    ],
+    body_tops: tuple[float, float, float, float],
+    expected_bbox: tuple[float, float, float, float],
+) -> None:
+    """验证跨过顶部或底部 5% 分界的文本真公式仍能输出。"""
+
+    blocks, remaining = _build_text_formula_margin_case(
+        formula_bboxes,
+        body_tops,
+    )
+
+    assert len(blocks) == 1
+    assert blocks[0]["type"] == "equation"
+    assert blocks[0]["bbox"] == expected_bbox
+    assert {line.source_index for line in remaining} == {3, 4, 5, 6}
 
 
 def test_justified_mixed_font_visual_row_before_body_is_not_formula_anchor() -> None:

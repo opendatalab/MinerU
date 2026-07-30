@@ -59,11 +59,13 @@ from .formulas import (
     _build_vector_formula_blocks,
 )
 from .auxiliary_text import (
+    _classify_isolated_first_page_footer,
     _classify_page_number_outer_companions,
     _classify_page_auxiliary_text,
     _classify_rule_delimited_headers,
     _classify_repeated_page_marginals,
     _classify_repeated_visual_headers,
+    _classify_single_page_compound_headers,
 )
 from .titles import (
     _classify_page_titles,
@@ -158,6 +160,10 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
         pdf_doc.get_page_image_infos(page_idx)
         for page_idx in range(pdf_doc.page_count)
     ]
+    page_signature_bboxes = [
+        pdf_doc.get_page_signature_bboxes(page_idx)
+        for page_idx in range(pdf_doc.page_count)
+    ]
     watermark_fingerprints = _detect_repeated_raster_watermark_fingerprints(
         page_image_infos,
         page_sizes,
@@ -183,6 +189,7 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
                 page_size,
                 watermark_fingerprints,
             ),
+            signature_bboxes=page_signature_bboxes[page_idx],
             form_bboxes=pdf_doc.get_page_form_bboxes(page_idx),
             path_infos=pdf_doc.get_page_path_infos(page_idx),
         )
@@ -190,8 +197,10 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
 
     _classify_repeated_visual_headers(prepared_pages)
     _classify_repeated_page_marginals(prepared_pages)
+    _classify_single_page_compound_headers(prepared_pages)
     _classify_rule_delimited_headers(prepared_pages)
     _classify_page_number_outer_companions(prepared_pages)
+    _classify_isolated_first_page_footer(prepared_pages)
     document_body_profile = _infer_document_body_profile(prepared_pages)
     return [
         _finalize_prepared_page(
@@ -313,7 +322,20 @@ def _finalize_prepared_page(
     """按预分类语义、公式、标题、正文的优先级完成单页文本并排序。"""
 
     semantic_lines = [line for line in prepared.remaining_lines if line.semantic_type is not None]
-    formula_input = [line for line in prepared.remaining_lines if line.semantic_type is None]
+    unresolved_lines = [line for line in prepared.remaining_lines if line.semantic_type is None]
+    container_bboxes = [block["bbox"] for block in prepared.fixed_blocks]
+    index_blocks, unresolved_lines = _extract_index_blocks(
+        unresolved_lines,
+        prepared.page_size,
+        container_bboxes,
+        require_heading=True,
+    )
+    semantic_lines.extend(
+        line
+        for line in unresolved_lines
+        if line.semantic_type is not None
+    )
+    formula_input = [line for line in unresolved_lines if line.semantic_type is None]
     formula_blocks, remaining_lines = _build_formula_like_blocks(
         formula_input,
         prepared.table_bboxes,
@@ -324,12 +346,22 @@ def _finalize_prepared_page(
         prepared.page_size,
         prepared.table_bboxes,
     )
-    container_bboxes = [block["bbox"] for block in prepared.fixed_blocks]
-    index_blocks, remaining_lines = _extract_index_blocks(
+    fallback_index_blocks, remaining_lines = _extract_index_blocks(
         remaining_lines,
         prepared.page_size,
         container_bboxes,
     )
+    index_blocks.extend(fallback_index_blocks)
+    semantic_lines.extend(
+        line
+        for line in remaining_lines
+        if line.semantic_type is not None
+    )
+    remaining_lines = [
+        line
+        for line in remaining_lines
+        if line.semantic_type is None
+    ]
     title_container_bboxes = [
         block["bbox"]
         for block in prepared.fixed_blocks
@@ -381,7 +413,7 @@ def _finalize_prepared_page(
 def _analyze_page_source(source: _PageSource) -> list[dict[str, Any]]:
     """兼容单页测试入口；单页不凭边缘位置猜测页眉、页脚或页码。"""
 
-    if not source.lines and not source.image_bboxes:
+    if not source.lines and not source.image_bboxes and not source.signature_bboxes:
         return []
     return _finalize_prepared_page(_prepare_page_source(source), page_index=0)
 

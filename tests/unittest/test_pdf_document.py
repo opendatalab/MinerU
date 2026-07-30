@@ -5,6 +5,15 @@ from typing import Any
 
 import pytest
 from pypdf import PdfReader, PdfWriter
+from pypdf.generic import (
+    ArrayObject,
+    DecodedStreamObject,
+    DictionaryObject,
+    FloatObject,
+    NameObject,
+    NumberObject,
+    TextStringObject,
+)
 from pdftext.schema import Bbox
 from PIL import Image
 from reportlab.lib.utils import ImageReader
@@ -102,6 +111,107 @@ def _build_rotated_cropped_image_pdf() -> bytes:
     page.cropbox.upper_right = (95, 190)
     writer = PdfWriter()
     writer.add_page(page)
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
+def _build_rotated_cropped_signature_pdf() -> bytes:
+    """构造带可见签名和各类无效注释的 CropBox 旋转测试 PDF。"""
+
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=100, height=200)
+    page.rotate(90)
+    page.cropbox.lower_left = (5, 10)
+    page.cropbox.upper_right = (95, 190)
+
+    def add_appearance(width: float, height: float) -> object:
+        """为测试签名创建最小正常 Form 外观流。"""
+
+        appearance = DecodedStreamObject()
+        appearance.set_data(b"q 1 0 0 rg 0 0 1 1 re f Q")
+        appearance.update(
+            {
+                NameObject("/Type"): NameObject("/XObject"),
+                NameObject("/Subtype"): NameObject("/Form"),
+                NameObject("/BBox"): ArrayObject(
+                    [
+                        FloatObject(0),
+                        FloatObject(0),
+                        FloatObject(width),
+                        FloatObject(height),
+                    ]
+                ),
+                NameObject("/Resources"): DictionaryObject(),
+            }
+        )
+        return writer._add_object(appearance)
+
+    annotations = ArrayObject()
+    form_fields = ArrayObject()
+
+    def add_widget(
+        rect: tuple[float, float, float, float],
+        *,
+        flags: int = 4,
+        field_type: str = "/Sig",
+        subtype: str = "/Widget",
+        with_appearance: bool = True,
+        inherited_field_type: bool = False,
+    ) -> None:
+        """追加一个可配置的测试 Widget，覆盖可见性和结构过滤分支。"""
+
+        annotation = DictionaryObject(
+            {
+                NameObject("/Type"): NameObject("/Annot"),
+                NameObject("/Subtype"): NameObject(subtype),
+                NameObject("/Rect"): ArrayObject([FloatObject(value) for value in rect]),
+                NameObject("/F"): NumberObject(flags),
+            }
+        )
+        parent_field = None
+        parent_reference = None
+        if inherited_field_type:
+            parent_field = DictionaryObject(
+                {
+                    NameObject("/FT"): NameObject(field_type),
+                    NameObject("/T"): TextStringObject("InheritedSignature"),
+                }
+            )
+            parent_reference = writer._add_object(parent_field)
+            annotation[NameObject("/Parent")] = parent_reference
+        else:
+            annotation[NameObject("/FT")] = NameObject(field_type)
+        if with_appearance:
+            annotation[NameObject("/AP")] = DictionaryObject(
+                {
+                    NameObject("/N"): add_appearance(
+                        abs(rect[2] - rect[0]),
+                        abs(rect[3] - rect[1]),
+                    )
+                }
+            )
+        annotation_reference = writer._add_object(annotation)
+        annotations.append(annotation_reference)
+        if parent_field is not None and parent_reference is not None:
+            parent_field[NameObject("/Kids")] = ArrayObject([annotation_reference])
+            form_fields.append(parent_reference)
+        elif subtype == "/Widget":
+            form_fields.append(annotation_reference)
+
+    add_widget((10, 20, 40, 60), inherited_field_type=True)
+    add_widget((-10, 170, 20, 210))
+    add_widget((20, 80, 40, 100), flags=pdf_document.pdfium_c.FPDF_ANNOT_FLAG_HIDDEN)
+    add_widget((20, 80, 40, 100), flags=pdf_document.pdfium_c.FPDF_ANNOT_FLAG_INVISIBLE)
+    add_widget((20, 80, 40, 100), flags=pdf_document.pdfium_c.FPDF_ANNOT_FLAG_NOVIEW)
+    add_widget((20, 80, 40, 100), with_appearance=False)
+    add_widget((20, 80, 40, 100), field_type="/Btn")
+    add_widget((20, 80, 40, 100), subtype="/Text")
+    page[NameObject("/Annots")] = annotations
+    writer._root_object[NameObject("/AcroForm")] = DictionaryObject(
+        {NameObject("/Fields"): form_fields}
+    )
+
     output = BytesIO()
     writer.write(output)
     return output.getvalue()
@@ -232,6 +342,19 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
         events.append(f"form_bboxes:{lock.depth}:{page_bbox}:{page_rotation}")
         return []
 
+    def fake_extract_page_signature_bboxes(
+        page: _FakePage,
+        page_bbox: tuple[float, float, float, float],
+        page_rotation: int,
+        *,
+        form_handle: object | None = None,
+    ) -> list[tuple[float, float, float, float]]:
+        """记录签名注释遍历时仍由 PDFDocument 持有 PDFium 锁。"""
+
+        assert form_handle is None
+        events.append(f"signature_bboxes:{lock.depth}:{page_bbox}:{page_rotation}")
+        return []
+
     monkeypatch.setattr(pdf_document.pdfium, "PdfDocument", _FakeDoc)
     monkeypatch.setattr(pdf_document, "get_chars", fake_get_chars, raising=False)
     monkeypatch.setattr(pdf_document, "pdftext_get_chars", fake_get_chars, raising=False)
@@ -240,6 +363,7 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
     monkeypatch.setattr(pdf_document, "_extract_page_image_bboxes", fake_extract_page_image_bboxes)
     monkeypatch.setattr(pdf_document, "_extract_page_image_infos", fake_extract_page_image_infos)
     monkeypatch.setattr(pdf_document, "_extract_page_form_bboxes", fake_extract_page_form_bboxes)
+    monkeypatch.setattr(pdf_document, "_extract_page_signature_bboxes", fake_extract_page_signature_bboxes)
 
     doc = pdf_document.PDFDocument(b"%PDF")
 
@@ -253,6 +377,7 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
     assert doc.get_page_image_bboxes(0) == []
     assert doc.get_page_image_infos(0) == []
     assert doc.get_page_form_bboxes(0) == []
+    assert doc.get_page_signature_bboxes(0) == []
 
     assert any(event.startswith("doc.open:") and not event.startswith("doc.open:0:") for event in events)
     assert any(event.startswith("doc.__getitem__:") and not event.startswith("doc.__getitem__:0:") for event in events)
@@ -269,6 +394,7 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
     assert "image_bboxes:1:(0.0, 0.0, 20.0, 10.0):0" in events
     assert "image_infos:1:(0.0, 0.0, 20.0, 10.0):0" in events
     assert "form_bboxes:1:(0.0, 0.0, 20.0, 10.0):0" in events
+    assert "signature_bboxes:1:(0.0, 0.0, 20.0, 10.0):0" in events
 
 
 def test_pdf_document_does_not_expose_legacy_compat_hooks() -> None:
@@ -435,6 +561,66 @@ def test_get_page_form_bboxes_applies_crop_box_rotation_and_clipping() -> None:
 
     assert page_size == pytest.approx((180.0, 90.0))
     assert form_bboxes == pytest.approx([(76.0, 47.0, 88.0, 53.0)])
+
+
+def test_get_page_signature_bboxes_filters_visibility_and_applies_page_geometry() -> None:
+    """验证仅输出可见正常签名，并正确应用 CropBox、旋转和页面裁剪。"""
+
+    with pdf_document.PDFDocument(_build_rotated_cropped_signature_pdf()) as doc:
+        page_size = doc.page_size(0)
+        signature_bboxes = doc.get_page_signature_bboxes(0)
+
+    assert page_size == pytest.approx((180.0, 90.0))
+    assert signature_bboxes == pytest.approx(
+        [
+            (160.0, 0.0, 180.0, 15.0),
+            (10.0, 5.0, 50.0, 35.0),
+        ]
+    )
+
+
+def test_extract_page_signature_bboxes_closes_handles_and_skips_bad_annotation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证损坏签名被隔离，且成功或失败路径都关闭注释句柄。"""
+
+    bad_annot = object()
+    good_annot = object()
+    closed: list[object] = []
+
+    class _FakePage:
+        """提供注释原始接口所需的最小页面句柄。"""
+
+        raw = object()
+
+    def fake_get_annot(_raw_page: object, index: int) -> object:
+        """按索引返回一个损坏注释和一个有效注释。"""
+
+        return (bad_annot, good_annot)[index]
+
+    def fake_signature_bbox(
+        raw_annot: object,
+        _page_bbox: tuple[float, float, float, float],
+        _page_rotation: int,
+        _form_handle: object | None,
+    ) -> tuple[float, float, float, float]:
+        """让首个注释抛错，验证第二个注释仍能被提取。"""
+
+        if raw_annot is bad_annot:
+            raise RuntimeError("broken annotation")
+        return (10.0, 20.0, 30.0, 40.0)
+
+    monkeypatch.setattr(pdf_document.pdfium_c, "FPDFPage_GetAnnotCount", lambda _page: 2)
+    monkeypatch.setattr(pdf_document.pdfium_c, "FPDFPage_GetAnnot", fake_get_annot)
+    monkeypatch.setattr(pdf_document.pdfium_c, "FPDFPage_CloseAnnot", closed.append)
+    monkeypatch.setattr(pdf_document, "_signature_bbox_from_annotation", fake_signature_bbox)
+
+    assert pdf_document._extract_page_signature_bboxes(
+        _FakePage(),
+        (0.0, 0.0, 100.0, 200.0),
+        0,
+    ) == [(10.0, 20.0, 30.0, 40.0)]
+    assert closed == [bad_annot, good_annot]
 
 
 def test_extract_page_form_bboxes_skips_one_bad_object(monkeypatch: pytest.MonkeyPatch) -> None:

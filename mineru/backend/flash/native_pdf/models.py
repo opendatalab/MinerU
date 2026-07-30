@@ -127,6 +127,7 @@ class _PageSource:
     chars: list[Char]
     drawing_lines: list[_AxisLine]
     image_bboxes: list[BBox] = field(default_factory=list)
+    signature_bboxes: list[BBox] = field(default_factory=list)
     form_bboxes: list[BBox] = field(default_factory=list)
     path_infos: list[PDFPathInfo] = field(default_factory=list)
 

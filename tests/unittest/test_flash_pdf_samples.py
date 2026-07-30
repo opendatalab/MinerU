@@ -50,6 +50,7 @@ def _native_page_source(pdf_name: str, page_idx: int) -> models._PageSource:
             chars=chars,
             drawing_lines=native_text._get_pdf_drawing_lines(pdf_doc, page_idx),
             image_bboxes=pdf_doc.get_page_image_bboxes(page_idx),
+            signature_bboxes=pdf_doc.get_page_signature_bboxes(page_idx),
             form_bboxes=pdf_doc.get_page_form_bboxes(page_idx),
         )
 
@@ -169,6 +170,12 @@ def test_demo2_page1_forms_sixteen_blocks_and_keeps_figure_caption_separate() ->
     assert "Figure 1:" not in graphic_block["content"]
     assert "Left camera" not in caption_block["content"]
     assert sum(block["content"].count("Left camera") for block in page) == 1
+    copyright_block = next(
+        block
+        for block in page
+        if block["content"].startswith("978-1-4673-5208-6")
+    )
+    assert copyright_block["type"] == "footer"
 
 
 def test_demo2_pages2_to6_restore_paragraphs_formulas_and_reading_order() -> None:
@@ -841,6 +848,36 @@ def test_demo5_targeted_table_and_footer_regressions() -> None:
 
     model_list = _native_model_list("demo5.pdf")
 
+    sparse_table_counts = {
+        4: 2,
+        49: 1,
+        55: 1,
+        56: 2,
+        59: 1,
+        61: 1,
+        83: 2,
+        84: 3,
+        85: 3,
+        87: 1,
+    }
+    for page_number, expected_count in sparse_table_counts.items():
+        page = model_list[page_number - 1]
+        table_blocks = [block for block in page if block["type"] == "table"]
+        assert len(table_blocks) == expected_count
+        for table_block in table_blocks:
+            table_bbox = table_block["bbox"]
+            assert not [
+                block
+                for block in page
+                if block["type"] == "text"
+                and table_bbox[0]
+                <= (block["bbox"][0] + block["bbox"][2]) / 2
+                <= table_bbox[2]
+                and table_bbox[1]
+                <= (block["bbox"][1] + block["bbox"][3]) / 2
+                <= table_bbox[3]
+            ]
+
     for page_number in (9, 10, 22, 38, 70, 77):
         page = model_list[page_number - 1]
         table_blocks = [block for block in page if block["type"] == "table"]
@@ -907,3 +944,12 @@ def test_demo6_default3_targeted_title_regressions() -> None:
         matches = _blocks_containing(blocks, probe)
         assert matches
         assert {block["type"] for block in matches} == {"text"}
+
+    page7_images = [block for block in model_list[6] if block["type"] == "image"]
+    assert [block["bbox"] for block in page7_images] == [
+        [0.601, 0.106, 0.811, 0.255],
+        [0.615, 0.244, 0.839, 0.403],
+    ]
+    assert [block["content"] for block in page7_images] == ["（签名）", "（盖章）"]
+    assert sum("签名" in str(block["content"]) for block in model_list[6]) == 1
+    assert sum("盖章" in str(block["content"]) for block in model_list[6]) == 1
