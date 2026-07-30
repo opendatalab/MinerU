@@ -351,8 +351,12 @@ def _trim_projected_lines(lines: list[str]) -> str:
     return "\n".join(trimmed_lines)
 
 
-def _project_spatial_items(items: list[_SpatialTextItem]) -> str:
-    """把空间文本项投影到等宽字符网格，生成保留列关系的多行纯文本。"""
+def _project_spatial_items(
+    items: list[_SpatialTextItem],
+    *,
+    preserve_blank_rows: bool = False,
+) -> str:
+    """把空间文本项投影到等宽字符网格，并按需保留明显的空白行。"""
     valid_items = [
         item
         for item in items
@@ -362,8 +366,21 @@ def _project_spatial_items(items: list[_SpatialTextItem]) -> str:
         return ""
 
     median_width, median_height = _compute_text_grid_size(valid_items)
+    spatial_lines = _form_spatial_lines(valid_items, median_width, median_height)
     projected_lines: list[str] = []
-    for line in _form_spatial_lines(valid_items, median_width, median_height):
+    previous_bottom: float | None = None
+    for line in spatial_lines:
+        line_top = min(item.bbox[1] for item in line)
+        if (
+            preserve_blank_rows
+            and previous_bottom is not None
+            and line_top - previous_bottom > 1.25 * median_height
+        ):
+            blank_count = max(
+                1,
+                round((line_top - previous_bottom) / median_height) - 1,
+            )
+            projected_lines.extend("" for _ in range(blank_count))
         projected_line = ""
         for item in line:
             target_column = max(0, round(item.bbox[0] / median_width))
@@ -374,15 +391,32 @@ def _project_spatial_items(items: list[_SpatialTextItem]) -> str:
             projected_line += " " * (target_column - len(projected_line))
             projected_line += item.text
         projected_lines.append(projected_line)
+        previous_bottom = max(item.bbox[3] for item in line)
     return _trim_projected_lines(projected_lines)
+
+
+def project_pdf_spatial_text(
+    chars: list[Char],
+    region_bbox: BBox,
+    angle: int = 0,
+    *,
+    preserve_blank_rows: bool = False,
+) -> str:
+    """从 PDF 指定区域提取字符，并返回可选保留空行的空间投影文本。"""
+
+    normalized_bbox = _coerce_bbox(region_bbox)
+    if normalized_bbox is None:
+        return ""
+    return _project_spatial_items(
+        _build_pdf_spatial_items(chars, normalized_bbox, angle),
+        preserve_blank_rows=preserve_blank_rows,
+    )
 
 
 def project_pdf_table_text(chars: list[Char], table_bbox: BBox, angle: int = 0) -> str:
     """从 PDF 原生字符中提取指定表格，并返回空间投影纯文本。"""
-    normalized_bbox = _coerce_bbox(table_bbox)
-    if normalized_bbox is None:
-        return ""
-    return _project_spatial_items(_build_pdf_spatial_items(chars, normalized_bbox, angle))
+
+    return project_pdf_spatial_text(chars, table_bbox, angle)
 
 
 def project_ocr_table_text(ocr_result: Any, table_size: tuple[int, int]) -> str:

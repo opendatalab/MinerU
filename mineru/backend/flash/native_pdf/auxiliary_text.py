@@ -51,6 +51,17 @@ def _classify_page_auxiliary_text(prepared: _PreparedPage) -> None:
     """在容器认领后仅按空间关系标注侧栏文字和页脚注。"""
 
     _classify_aside_text(prepared.remaining_lines, prepared.page_size)
+    _classify_image_footnotes(
+        prepared.remaining_lines,
+        [
+            block["bbox"]
+            for block in prepared.fixed_blocks
+            if block.get("type") == "image"
+        ],
+        prepared.table_bboxes,
+        prepared.drawing_lines,
+        prepared.page_size,
+    )
     prepared.page_footnote_groups = _classify_page_footnotes(
         prepared.remaining_lines,
         prepared.table_bboxes,
@@ -109,6 +120,155 @@ def _geometric_text_support_by_angle(
             local_width * _line_effective_height(line, local_bbox)
         )
     return support_by_angle
+
+
+def _classify_image_footnotes(
+    lines: list[_LineItem],
+    image_bboxes: list[BBox],
+    table_bboxes: list[BBox],
+    drawing_lines: list[_AxisLine],
+    page_size: tuple[float, float],
+) -> None:
+    """用图片、下缘长横线和紧凑小字的联合关系识别图表脚注。"""
+
+    available = [line for line in lines if line.semantic_type is None]
+    if not available or not image_bboxes or not drawing_lines:
+        return
+    support_by_angle = _geometric_text_support_by_angle(available, page_size)
+    if not support_by_angle:
+        return
+    dominant_angle = max(
+        sorted(support_by_angle),
+        key=lambda angle: support_by_angle[angle],
+    )
+    local_page_size = (
+        (page_size[1], page_size[0])
+        if dominant_angle in {90, 270}
+        else page_size
+    )
+    local_page_width, local_page_height = local_page_size
+    if local_page_width <= 0 or local_page_height <= 0:
+        return
+
+    line_geometry = sorted(
+        [
+            (line, _rotate_bbox_to_upright(line.bbox, page_size, dominant_angle))
+            for line in available
+            if line.angle == dominant_angle
+        ],
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    if not line_geometry:
+        return
+    body_samples = [
+        _line_effective_height(line, bbox)
+        for line, bbox in line_geometry
+        if bbox[2] - bbox[0] >= 0.2 * local_page_width
+    ]
+    if not body_samples:
+        body_samples = [
+            _line_effective_height(line, bbox)
+            for line, bbox in line_geometry
+        ]
+    body_height = max(0.1, statistics.median(body_samples))
+    local_images = [
+        _rotate_bbox_to_upright(bbox, page_size, dominant_angle)
+        for bbox in image_bboxes
+    ]
+    local_axis_lines = _transform_axis_lines(
+        drawing_lines,
+        page_size,
+        dominant_angle,
+    )
+
+    matched_source_indices: set[int] = set()
+    for image_bbox in local_images:
+        image_width = max(0.1, image_bbox[2] - image_bbox[0])
+        # 同一视觉行的并排图可能高度略有差异；共享较低下缘可避免把留白误作远距。
+        row_bottom = max(
+            peer_bbox[3]
+            for peer_bbox in local_images
+            if _bbox_axis_overlap_ratio(image_bbox, peer_bbox, axis="y") >= 0.5
+        )
+        candidate_rules = [
+            axis_line
+            for axis_line in local_axis_lines
+            if axis_line.orientation == "horizontal"
+            and 0.75 * image_width
+            <= axis_line.bbox[2] - axis_line.bbox[0]
+            <= 1.3 * image_width
+            and max(
+                0.0,
+                min(axis_line.bbox[2], image_bbox[2])
+                - max(axis_line.bbox[0], image_bbox[0]),
+            )
+            >= 0.85 * image_width
+            and -0.25 * body_height
+            <= axis_line.bbox[1] - row_bottom
+            <= max(0.01 * local_page_height, 0.75 * body_height)
+            and not _rule_belongs_to_confirmed_table(
+                axis_line,
+                local_axis_lines,
+                table_bboxes,
+                local_page_width,
+            )
+        ]
+        if not candidate_rules:
+            continue
+        rule = min(
+            candidate_rules,
+            key=lambda item: (max(0.0, item.bbox[1] - row_bottom), item.bbox[1]),
+        )
+        matched_source_indices.update(
+            _image_footnote_members(
+                line_geometry,
+                rule.bbox,
+                body_height,
+                local_page_height,
+            )
+        )
+
+    for line in available:
+        if line.source_index in matched_source_indices:
+            line.semantic_type = "footnote"
+
+
+def _image_footnote_members(
+    line_geometry: list[tuple[_LineItem, BBox]],
+    rule_bbox: BBox,
+    body_height: float,
+    local_page_height: float,
+) -> set[int]:
+    """返回长横线下方、位于同一水平走廊内的连续小字号文本行。"""
+
+    first_gap_limit = max(0.025 * local_page_height, 2.0 * body_height)
+    horizontal_tolerance = 0.5 * body_height
+    candidates = [
+        item
+        for item in line_geometry
+        if -0.25 * body_height <= item[1][1] - rule_bbox[3] <= first_gap_limit
+        and item[1][0] >= rule_bbox[0] - horizontal_tolerance
+        and item[1][2] <= rule_bbox[2] + horizontal_tolerance
+        and _line_effective_height(*item) <= 0.9 * body_height
+    ]
+    if not candidates:
+        return set()
+    first = min(candidates, key=lambda item: (item[1][1], item[1][0]))
+    members = [first]
+    continuation_gap_limit = max(1.25 * _line_effective_height(*first), 0.01 * local_page_height)
+    for current in line_geometry:
+        if current[0] is first[0] or current[1][1] < first[1][1]:
+            continue
+        if current[1][0] < rule_bbox[0] - horizontal_tolerance:
+            continue
+        if current[1][2] > rule_bbox[2] + horizontal_tolerance:
+            continue
+        if _line_effective_height(*current) > 0.95 * body_height:
+            continue
+        if _effective_text_row_gap(members[-1], current) > continuation_gap_limit:
+            break
+        members.append(current)
+    return {line.source_index for line, _bbox in members}
 
 
 def _classify_page_footnotes(

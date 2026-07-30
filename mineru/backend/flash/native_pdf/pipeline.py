@@ -12,6 +12,7 @@ from mineru.utils.pdf_document import PDFDocument, PDFImageInfo, get_lines_from_
 
 from .models import (
     _DocumentBodyProfile,
+    _DocumentTitleProfile,
     _LineItem,
     _PageSource,
     _PreparedPage,
@@ -58,6 +59,7 @@ from .formulas import (
     _build_formula_like_blocks,
     _build_vector_formula_blocks,
 )
+from .code_blocks import _build_code_blocks
 from .auxiliary_text import (
     _classify_isolated_first_page_footer,
     _classify_page_number_outer_companions,
@@ -70,11 +72,13 @@ from .auxiliary_text import (
 from .titles import (
     _classify_page_titles,
     _infer_document_body_profile,
+    _infer_document_title_profile,
 )
 from .text_blocks import (
     _build_text_blocks,
     _merge_fragmented_header_blocks,
     _merge_image_caption_text_blocks,
+    _merge_repeated_compact_title_continuations,
 )
 
 
@@ -84,13 +88,14 @@ _TEXT_SEMANTIC_TYPES = {
     "header",
     "footer",
     "page_number",
+    "footnote",
     "page_footnote",
     "aside_text",
     "index",
 }
 
 
-_OUTPUT_BLOCK_TYPES = {"text", "table", "image", "equation"} | _TEXT_SEMANTIC_TYPES
+_OUTPUT_BLOCK_TYPES = {"text", "table", "image", "equation", "code"} | _TEXT_SEMANTIC_TYPES
 _REPEATED_RASTER_IMAGE_MIN_PAGE_AREA_RATIO = 0.08
 _REPEATED_RASTER_IMAGE_MIN_DISTINCT_PAGES = 3
 
@@ -202,11 +207,16 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
     _classify_page_number_outer_companions(prepared_pages)
     _classify_isolated_first_page_footer(prepared_pages)
     document_body_profile = _infer_document_body_profile(prepared_pages)
+    document_title_profile = _infer_document_title_profile(
+        prepared_pages,
+        document_body_profile,
+    )
     return [
         _finalize_prepared_page(
             prepared,
             page_index,
             document_body_profile=document_body_profile,
+            document_title_profile=document_title_profile,
         )
         for page_index, prepared in enumerate(prepared_pages)
     ]
@@ -242,32 +252,51 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
             for table_bbox in table_bboxes
         )
     ]
+    code_blocks, claimed_code_line_indices = _build_code_blocks(
+        source,
+        table_bboxes
+        + active_form_bboxes
+        + strong_graphic_bboxes
+        + list(source.image_bboxes)
+        + list(source.signature_bboxes),
+        claimed_line_indices,
+    )
+    code_bboxes = [block["bbox"] for block in code_blocks]
     form_image_blocks, claimed_form_line_indices = _build_form_image_blocks(
         source,
         active_form_bboxes,
-        claimed_line_indices,
+        claimed_line_indices | claimed_code_line_indices,
     )
     graphic_blocks, claimed_graphic_line_indices = _build_graphic_like_blocks(
         source,
-        table_bboxes + active_form_bboxes,
-        claimed_line_indices | claimed_form_line_indices,
+        table_bboxes + active_form_bboxes + code_bboxes,
+        claimed_line_indices | claimed_code_line_indices | claimed_form_line_indices,
         strong_graphic_bboxes,
     )
     raster_image_blocks, claimed_raster_line_indices = _build_raster_image_blocks(
         source,
-        table_blocks + form_image_blocks + graphic_blocks,
-        claimed_line_indices | claimed_form_line_indices | claimed_graphic_line_indices,
+        table_blocks + code_blocks + form_image_blocks + graphic_blocks,
+        claimed_line_indices
+        | claimed_code_line_indices
+        | claimed_form_line_indices
+        | claimed_graphic_line_indices,
     )
     vector_formula_blocks, claimed_vector_number_indices = _build_vector_formula_blocks(
         source,
-        table_blocks + form_image_blocks + graphic_blocks + raster_image_blocks,
+        table_blocks
+        + code_blocks
+        + form_image_blocks
+        + graphic_blocks
+        + raster_image_blocks,
         claimed_line_indices
+        | claimed_code_line_indices
         | claimed_form_line_indices
         | claimed_graphic_line_indices
         | claimed_raster_line_indices,
     )
     claimed_line_indices = (
         claimed_line_indices
+        | claimed_code_line_indices
         | claimed_form_line_indices
         | claimed_graphic_line_indices
         | claimed_raster_line_indices
@@ -291,6 +320,7 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
         drawing_lines=source.drawing_lines,
         fixed_blocks=(
             table_blocks
+            + code_blocks
             + form_image_blocks
             + graphic_blocks
             + raster_image_blocks
@@ -318,6 +348,7 @@ def _finalize_prepared_page(
     page_index: int,
     *,
     document_body_profile: _DocumentBodyProfile | None = None,
+    document_title_profile: _DocumentTitleProfile | None = None,
 ) -> list[dict[str, Any]]:
     """按预分类语义、公式、标题、正文的优先级完成单页文本并排序。"""
 
@@ -373,6 +404,7 @@ def _finalize_prepared_page(
         page_index=page_index,
         container_bboxes=title_container_bboxes,
         document_body_profile=document_body_profile,
+        document_title_profile=document_title_profile,
     )
     remaining_lines = _merge_title_resolved_visual_rows(
         remaining_lines,
@@ -399,6 +431,10 @@ def _finalize_prepared_page(
         ],
     )
     text_blocks = _merge_fragmented_header_blocks(text_blocks)
+    text_blocks = _merge_repeated_compact_title_continuations(
+        text_blocks,
+        prepared.page_size,
+    )
     absolute_blocks = (
         prepared.fixed_blocks + formula_blocks + index_blocks + text_blocks
     )

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import statistics
+from dataclasses import replace
 from typing import Literal
 
 
@@ -12,10 +13,12 @@ from mineru.types import BBox
 
 from .models import (
     _DocumentBodyProfile,
+    _DocumentTitleProfile,
     _LaneBodyProfile,
     _LineItem,
     _PreparedPage,
     _TextLane,
+    _TitleStylePrototype,
 )
 from .geometry import (
     _bbox_axis_overlap_ratio,
@@ -31,6 +34,7 @@ from .line_layout import (
     _font_weights_conflict,
     _infer_text_lanes,
     _line_effective_height,
+    _normalized_font_family,
     _should_connect_semantic_rows,
     _title_fonts_compatible,
 )
@@ -48,6 +52,7 @@ def _classify_page_titles(
     page_index: int,
     container_bboxes: list[BBox],
     document_body_profile: _DocumentBodyProfile | None = None,
+    document_title_profile: _DocumentTitleProfile | None = None,
 ) -> None:
     """只用页面几何与字体排版标注首页文档标题和各页段落标题。"""
 
@@ -102,6 +107,7 @@ def _classify_page_titles(
             _classify_paragraph_titles_in_lane(
                 lane,
                 profile,
+                local_page_width,
                 local_page_height,
                 local_container_bboxes,
                 document_title_bottom=document_title_bottom,
@@ -109,6 +115,7 @@ def _classify_page_titles(
                 physical_gaps=physical_gaps,
                 grid_title_suppressions=grid_title_suppressions,
                 document_body_profile=document_body_profile,
+                document_title_profile=document_title_profile,
                 page_index=page_index,
             )
 
@@ -223,6 +230,241 @@ def _infer_document_body_profile(
         body_weight=body_weight,
         regular_fonts=regular_fonts,
     )
+
+
+def _infer_document_title_profile(
+    prepared_pages: list[_PreparedPage],
+    document_body_profile: _DocumentBodyProfile | None,
+) -> _DocumentTitleProfile | None:
+    """在副本上复用现有标题判定，并把跨页稳定样式聚成标题原型。"""
+
+    if document_body_profile is None:
+        return None
+    seeds: list[
+        tuple[
+            str,
+            int,
+            float,
+            float | None,
+            Literal["left", "center"],
+            float,
+            int,
+        ]
+    ] = []
+    for page_index, prepared in enumerate(prepared_pages):
+        probe_lines = [replace(line) for line in prepared.remaining_lines]
+        container_bboxes = [
+            block["bbox"]
+            for block in prepared.fixed_blocks
+            if not isinstance(block.get("_inline_visual_row_id"), int)
+        ]
+        _classify_page_titles(
+            probe_lines,
+            prepared.page_size,
+            page_index=page_index,
+            container_bboxes=container_bboxes,
+            document_body_profile=document_body_profile,
+        )
+        seen_rows: set[tuple[int, int]] = set()
+        for angle in sorted({line.angle for line in probe_lines}):
+            geometry = [
+                (
+                    line,
+                    _rotate_bbox_to_upright(
+                        line.bbox,
+                        prepared.page_size,
+                        angle,
+                    ),
+                )
+                for line in probe_lines
+                if line.angle == angle
+            ]
+            if not geometry:
+                continue
+            median_height = statistics.median(
+                _line_effective_height(line, bbox)
+                for line, bbox in geometry
+            )
+            local_page_width = (
+                prepared.page_size[1]
+                if angle in {90, 270}
+                else prepared.page_size[0]
+            )
+            lanes = _infer_text_lanes(
+                geometry,
+                local_page_width,
+                median_height,
+            )
+            local_container_bboxes = [
+                _rotate_bbox_to_upright(
+                    bbox,
+                    prepared.page_size,
+                    angle,
+                )
+                for bbox in container_bboxes
+            ]
+            for lane in lanes:
+                for line, bbox in lane.lines:
+                    line_height_ratio = (
+                        _line_effective_height(line, bbox)
+                        / document_body_profile.body_height
+                    )
+                    large_unresolved_seed = (
+                        page_index > 0
+                        and
+                        line.semantic_type is None
+                        and line_height_ratio >= 1.3
+                        and bbox[2] - bbox[0] <= 0.8 * local_page_width
+                        and not _line_inside_visual_container(
+                            bbox,
+                            local_container_bboxes,
+                        )
+                    )
+                    if (
+                        (
+                            line.semantic_type != "paragraph_title"
+                            and not large_unresolved_seed
+                        )
+                        or line.font_signature is None
+                        or line.font_coverage < 0.75
+                    ):
+                        continue
+                    row_identity = (
+                        line.visual_row_id
+                        if line.visual_row_id is not None
+                        else line.source_index
+                    )
+                    row_key = (angle, row_identity)
+                    if row_key in seen_rows:
+                        continue
+                    alignment = _title_profile_alignment(
+                        bbox,
+                        lane,
+                        document_body_profile.body_height,
+                    )
+                    if alignment is None:
+                        continue
+                    font_family = _normalized_font_family(line.font_signature)
+                    if font_family is None:
+                        continue
+                    mode, anchor_offset = alignment
+                    seeds.append(
+                        (
+                            font_family,
+                            line.font_signature[1],
+                            line_height_ratio,
+                            line.dominant_font_weight,
+                            mode,
+                            anchor_offset,
+                            page_index,
+                        )
+                    )
+                    seen_rows.add(row_key)
+
+    clusters: list[list[tuple[str, int, float, float | None, Literal["left", "center"], float, int]]] = []
+    for seed in sorted(seeds, key=lambda item: (item[0], item[1], item[4], item[2])):
+        target = next(
+            (
+                cluster
+                for cluster in clusters
+                if _title_profile_seed_matches_cluster(seed, cluster)
+            ),
+            None,
+        )
+        if target is None:
+            clusters.append([seed])
+        else:
+            target.append(seed)
+
+    prototypes: list[_TitleStylePrototype] = []
+    for cluster in clusters:
+        support_pages = len({seed[6] for seed in cluster})
+        if len(cluster) < 3 and support_pages < 2:
+            continue
+        weights = [seed[3] for seed in cluster if seed[3] is not None]
+        prototypes.append(
+            _TitleStylePrototype(
+                font_family=cluster[0][0],
+                font_flags=cluster[0][1],
+                height_ratio=statistics.median(seed[2] for seed in cluster),
+                weight=statistics.median(weights) if weights else None,
+                alignment=cluster[0][4],
+                anchor_offset=statistics.median(seed[5] for seed in cluster),
+                support_count=len(cluster),
+                support_pages=support_pages,
+            )
+        )
+    if not prototypes:
+        return None
+    prototypes.sort(
+        key=lambda item: (item.support_pages, item.support_count),
+        reverse=True,
+    )
+    return _DocumentTitleProfile(tuple(prototypes))
+
+
+def _title_profile_seed_matches_cluster(
+    seed: tuple[
+        str,
+        int,
+        float,
+        float | None,
+        Literal["left", "center"],
+        float,
+        int,
+    ],
+    cluster: list[
+        tuple[
+            str,
+            int,
+            float,
+            float | None,
+            Literal["left", "center"],
+            float,
+            int,
+        ]
+    ],
+) -> bool:
+    """判断标题种子是否与已有字体、尺度和对齐簇兼容。"""
+
+    reference = cluster[0]
+    median_ratio = statistics.median(item[2] for item in cluster)
+    median_anchor = statistics.median(item[5] for item in cluster)
+    weights = [item[3] for item in cluster if item[3] is not None]
+    weight_compatible = (
+        seed[3] is None
+        or not weights
+        or abs(seed[3] - statistics.median(weights)) < 100.0
+        or max(seed[3], statistics.median(weights))
+        < 1.15 * min(seed[3], statistics.median(weights))
+    )
+    return (
+        seed[0] == reference[0]
+        and seed[1] == reference[1]
+        and seed[4] == reference[4]
+        and abs(seed[2] - median_ratio) <= 0.1 * median_ratio
+        and abs(seed[5] - median_anchor) <= 0.12
+        and weight_compatible
+    )
+
+
+def _title_profile_alignment(
+    bbox: BBox,
+    lane: _TextLane,
+    body_height: float,
+) -> tuple[Literal["left", "center"], float] | None:
+    """返回标题行的栏内对齐模式及归一化锚点偏移。"""
+
+    lane_width = max(0.1, lane.right - lane.left)
+    center_offset = (
+        _bbox_center_x(bbox) - (lane.left + lane.right) / 2.0
+    ) / lane_width
+    left_offset = (bbox[0] - lane.left) / lane_width
+    if abs(center_offset) <= 0.12 and bbox[2] - bbox[0] <= 0.85 * lane_width:
+        return "center", center_offset
+    if abs(bbox[0] - lane.left) <= 3.0 * body_height:
+        return "left", left_offset
+    return None
 
 
 def _document_font_is_regular(
@@ -416,6 +658,7 @@ def _infer_lane_body_profile(lane: _TextLane) -> _LaneBodyProfile:
         body_weight=statistics.median(body_weights) if body_weights else None,
         regular_gap=regular_gap,
         style_support=style_support,
+        body_row_count=len(body_rows),
     )
 
 
@@ -573,6 +816,7 @@ def _document_title_uses_page_fallback(
 def _classify_paragraph_titles_in_lane(
     lane: _TextLane,
     profile: _LaneBodyProfile,
+    local_page_width: float,
     local_page_height: float,
     container_bboxes: list[BBox],
     *,
@@ -581,6 +825,7 @@ def _classify_paragraph_titles_in_lane(
     physical_gaps: dict[int, tuple[float | None, float | None]],
     grid_title_suppressions: set[int],
     document_body_profile: _DocumentBodyProfile | None,
+    document_title_profile: _DocumentTitleProfile | None,
     page_index: int,
 ) -> None:
     """以字号、样式、留白、对齐、栏宽和容器邻接判定段落标题。"""
@@ -614,10 +859,38 @@ def _classify_paragraph_titles_in_lane(
         ):
             # 首页底部短行通常是版本、日期等封面元数据，不属于正文标题层级。
             continue
-        if _line_near_visual_container(bbox, container_bboxes, profile.body_height):
+        line_height = _line_effective_height(line, bbox)
+        title_prototype = _matching_document_title_prototype(
+            line,
+            bbox,
+            lane,
+            document_body_profile,
+            document_title_profile,
+        )
+        title_profile_size_conflict = (
+            title_prototype is None
+            and _line_conflicts_document_title_profile(
+                line,
+                bbox,
+                lane,
+                document_body_profile,
+                document_title_profile,
+            )
+        )
+        inside_visual_container = _line_inside_visual_container(
+            bbox,
+            container_bboxes,
+        )
+        near_visual_container = _line_near_visual_container(
+            bbox,
+            container_bboxes,
+            profile.body_height,
+        )
+        if inside_visual_container or (
+            near_visual_container and title_prototype is None
+        ):
             continue
 
-        line_height = _line_effective_height(line, bbox)
         recurrent_regular_font = _line_uses_document_regular_font(
             line,
             document_body_profile,
@@ -628,6 +901,11 @@ def _classify_paragraph_titles_in_lane(
             and line_height >= 0.9 * document_body_profile.body_height
         )
         reference_body_height = profile.body_height
+        if (
+            profile.body_row_count < 3
+            and document_body_profile is not None
+        ):
+            reference_body_height = document_body_profile.body_height
         if document_regular_body_candidate and document_body_profile is not None:
             reference_body_height = max(
                 reference_body_height,
@@ -637,6 +915,12 @@ def _classify_paragraph_titles_in_lane(
         width_ratio = (bbox[2] - bbox[0]) / lane_width
         centered = abs(_bbox_center_x(bbox) - (lane.left + lane.right) / 2.0) <= 0.12 * lane_width
         left_aligned = abs(bbox[0] - lane.left) <= 0.65 * profile.body_height
+        if (
+            line.median_glyph_width is not None
+            and bbox[2] - bbox[0] <= 1.25 * line.median_glyph_width
+            and height_ratio < 1.18
+        ):
+            continue
         style_differs = (
             not recurrent_regular_font
             and profile.body_font is not None
@@ -677,6 +961,9 @@ def _classify_paragraph_titles_in_lane(
             body_height=profile.body_height,
             physical_gaps=physical_gaps,
         )
+        regular_gap_ratio = profile.regular_gap / max(0.1, profile.body_height)
+        gap_above_excess = max(0.0, gap_above - regular_gap_ratio)
+        gap_below_excess = max(0.0, gap_below - regular_gap_ratio)
         has_spacing_signal = gap_above >= 0.35
 
         if _visual_row_has_body_style_sibling(rows, index):
@@ -730,6 +1017,69 @@ def _classify_paragraph_titles_in_lane(
                 lane_width,
             )
         )
+        weak_regular_pitch_body_candidate = (
+            document_body_profile is not None
+            and 0.9
+            <= line_height / document_body_profile.body_height
+            <= 1.1
+            and title_prototype is None
+            and (not centered or width_ratio >= 0.75)
+            and not weight_emphasized
+            and gap_above_excess < 0.1
+            and gap_below_excess < 0.1
+        )
+        if weak_regular_pitch_body_candidate:
+            continue
+        if (
+            title_profile_size_conflict
+            and document_body_profile is not None
+            and line_height <= 1.18 * document_body_profile.body_height
+            and not weight_emphasized
+        ):
+            continue
+        prototype_promotion = (
+            title_prototype is not None
+            and (
+                width_ratio <= 0.9
+                or (bbox[2] - bbox[0]) / max(0.1, local_page_width) <= 0.8
+            )
+            and (centered or left_aligned)
+            and (
+                (
+                    document_body_profile is not None
+                    and line_height >= 1.18 * document_body_profile.body_height
+                )
+                or
+                near_visual_container
+                or (has_following_body_row and gap_above_excess >= 0.1)
+                or gap_above_excess >= 0.35
+            )
+        )
+        prototype_inline_heading = (
+            document_body_profile is not None
+            and line_height <= 1.15 * document_body_profile.body_height
+            and _is_full_width_inline_heading(
+                rows,
+                index,
+                lane_width,
+                profile,
+            )
+        )
+        if prototype_promotion and not prototype_inline_heading:
+            line.semantic_type = "paragraph_title"
+            selected_indices.add(index)
+            continue
+        if (
+            document_body_profile is not None
+            and 0.9
+            <= line_height / document_body_profile.body_height
+            <= 1.1
+            and title_prototype is None
+            and centered
+            and not has_following_body_row
+            and not compact_text_section
+        ):
+            continue
         if (
             height_ratio < 0.9
             and not inside_front_matter
@@ -845,6 +1195,145 @@ def _line_uses_document_regular_font(
             _font_signatures_share_family(line.font_signature, regular_font)
             for regular_font in document_body_profile.regular_fonts
         )
+    )
+
+
+def _matching_document_title_prototype(
+    line: _LineItem,
+    bbox: BBox,
+    lane: _TextLane,
+    document_body_profile: _DocumentBodyProfile | None,
+    document_title_profile: _DocumentTitleProfile | None,
+) -> _TitleStylePrototype | None:
+    """返回与当前行字体、字号、字重和栏内锚点兼容的最强标题原型。"""
+
+    if (
+        document_body_profile is None
+        or document_title_profile is None
+        or line.font_signature is None
+        or line.font_coverage < 0.75
+    ):
+        return None
+    font_family = _normalized_font_family(line.font_signature)
+    if font_family is None:
+        return None
+    height_ratio = _line_effective_height(line, bbox) / max(
+        0.1,
+        document_body_profile.body_height,
+    )
+    candidates: list[_TitleStylePrototype] = []
+    for prototype in document_title_profile.prototypes:
+        if (
+            prototype.font_family != font_family
+            or prototype.font_flags != line.font_signature[1]
+            or abs(height_ratio - prototype.height_ratio)
+            > 0.1 * prototype.height_ratio
+        ):
+            continue
+        if (
+            prototype.weight is not None
+            and line.dominant_font_weight is not None
+            and abs(prototype.weight - line.dominant_font_weight) >= 100.0
+            and max(prototype.weight, line.dominant_font_weight)
+            >= 1.15 * min(prototype.weight, line.dominant_font_weight)
+        ):
+            continue
+        alignment = _title_profile_alignment(
+            bbox,
+            lane,
+            document_body_profile.body_height,
+        )
+        if (
+            alignment is None
+            or alignment[0] != prototype.alignment
+            or abs(alignment[1] - prototype.anchor_offset) > 0.15
+        ):
+            continue
+        candidates.append(prototype)
+    return max(
+        candidates,
+        key=lambda item: (item.support_pages, item.support_count),
+        default=None,
+    )
+
+
+def _line_inside_visual_container(
+    line_bbox: BBox,
+    container_bboxes: list[BBox],
+) -> bool:
+    """检查文本行中心是否落入视觉容器，容器内标签不得借标题原型晋升。"""
+
+    center_x = _bbox_center_x(line_bbox)
+    center_y = _bbox_center_y(line_bbox)
+    return any(
+        bbox[0] <= center_x <= bbox[2]
+        and bbox[1] <= center_y <= bbox[3]
+        for bbox in container_bboxes
+    )
+
+
+def _line_conflicts_document_title_profile(
+    line: _LineItem,
+    bbox: BBox,
+    lane: _TextLane,
+    document_body_profile: _DocumentBodyProfile | None,
+    document_title_profile: _DocumentTitleProfile | None,
+) -> bool:
+    """识别字体与标题原型一致、但字号明显落入正文带的弱标题候选。"""
+
+    if (
+        document_body_profile is None
+        or document_title_profile is None
+        or line.font_signature is None
+        or line.font_coverage < 0.75
+    ):
+        return False
+    font_family = _normalized_font_family(line.font_signature)
+    alignment = _title_profile_alignment(
+        bbox,
+        lane,
+        document_body_profile.body_height,
+    )
+    if font_family is None or alignment is None:
+        return False
+    height_ratio = _line_effective_height(line, bbox) / max(
+        0.1,
+        document_body_profile.body_height,
+    )
+    for prototype in document_title_profile.prototypes:
+        if (
+            not _title_font_families_compatible(
+                prototype.font_family,
+                font_family,
+            )
+            or prototype.font_flags != line.font_signature[1]
+            or prototype.alignment != alignment[0]
+            or abs(prototype.anchor_offset - alignment[1]) > 0.15
+        ):
+            continue
+        if (
+            prototype.weight is not None
+            and line.dominant_font_weight is not None
+            and abs(prototype.weight - line.dominant_font_weight) >= 100.0
+            and max(prototype.weight, line.dominant_font_weight)
+            >= 1.15 * min(prototype.weight, line.dominant_font_weight)
+        ):
+            continue
+        if abs(height_ratio - prototype.height_ratio) > 0.15 * prototype.height_ratio:
+            return True
+    return False
+
+
+def _title_font_families_compatible(first: str, second: str) -> bool:
+    """忽略已由 flags 和字重单独约束的常见字体样式后缀。"""
+
+    if first == second:
+        return True
+    style_suffixes = (",bold", "bold", ",regular", "regular", ",medium", "medium")
+    return any(
+        first.removesuffix(suffix) == second
+        or second.removesuffix(suffix) == first
+        for suffix in style_suffixes
     )
 
 
@@ -1238,7 +1727,7 @@ def _line_near_visual_container(
         if line_bbox[2] - line_bbox[0] > 0.8 * container_width:
             continue
         vertical_gap = max(line_bbox[1] - container_bbox[3], container_bbox[1] - line_bbox[3], 0.0)
-        if vertical_gap <= 1.5 * body_height:
+        if vertical_gap <= 2.0 * body_height:
             return True
     return False
 

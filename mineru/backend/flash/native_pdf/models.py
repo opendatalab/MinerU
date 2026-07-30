@@ -99,6 +99,15 @@ class _GraphicCandidate:
 
 
 @dataclass(slots=True)
+class _CodeCandidate:
+    """保存由浅色填充背景与等宽文本共同确认的代码区域。"""
+
+    bbox: BBox
+    angle: int
+    line_indices: set[int] = field(default_factory=set)
+
+
+@dataclass(slots=True)
 class _TextLane:
     """保存同一文本方向下的局部栏带与已归属文本行。"""
 
@@ -164,6 +173,7 @@ class _LaneBodyProfile:
     body_weight: float | None
     regular_gap: float
     style_support: dict[tuple[str, int], float]
+    body_row_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,3 +183,24 @@ class _DocumentBodyProfile:
     body_height: float
     body_weight: float | None
     regular_fonts: frozenset[tuple[str, int]]
+
+
+@dataclass(frozen=True, slots=True)
+class _TitleStylePrototype:
+    """保存跨页标题原型的字体、尺度、字重和栏内对齐特征。"""
+
+    font_family: str
+    font_flags: int
+    height_ratio: float
+    weight: float | None
+    alignment: Literal["left", "center"]
+    anchor_offset: float
+    support_count: int
+    support_pages: int
+
+
+@dataclass(frozen=True, slots=True)
+class _DocumentTitleProfile:
+    """保存全文中由重复高置信标题形成的排版原型集合。"""
+
+    prototypes: tuple[_TitleStylePrototype, ...]

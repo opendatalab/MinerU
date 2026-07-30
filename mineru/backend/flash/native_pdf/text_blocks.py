@@ -78,7 +78,7 @@ def _build_hanging_indent_group_map(
 ) -> dict[int, int]:
     """仅按重复的左突首行和稳定续行缩进识别悬挂缩进条目。"""
 
-    if lane.is_span or len(lane.lines) < 4:
+    if len(lane.lines) < 4:
         return {}
     rows = sorted(
         (item for item in lane.lines if item[0].semantic_type is None),
@@ -101,7 +101,16 @@ def _build_hanging_indent_group_map(
         """检查相邻行的净空和几何障碍是否允许组成同一缩进序列。"""
 
         effective_gap = _effective_text_row_gap(previous, current)
-        if not -0.6 * median_height <= effective_gap <= 1.3 * median_height:
+        top_pitch = current[1][1] - previous[1][1]
+        robust_pitch_fallback = (
+            0.5 * median_height
+            <= top_pitch
+            <= 1.8 * median_height
+        )
+        if (
+            not -0.6 * median_height <= effective_gap <= 1.3 * median_height
+            and not robust_pitch_fallback
+        ):
             return False
         if _connection_crosses_table(
             previous[0].bbox,
@@ -1135,6 +1144,97 @@ def _merge_fragmented_header_blocks(
         replacements.get(index, block)
         for index, block in enumerate(blocks)
         if index not in consumed
+    ]
+
+
+def _merge_repeated_compact_title_continuations(
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+) -> list[dict[str, Any]]:
+    """把重复出现的两行弱标题与紧邻异字体续行恢复为普通文本块。"""
+
+    candidate_pairs: list[tuple[int, int, float]] = []
+    for title_index, title in enumerate(blocks):
+        title_lines = title.get("_local_line_bboxes")
+        title_fonts = title.get("_font_signatures")
+        title_bbox = title.get("bbox")
+        if (
+            title.get("type") != "paragraph_title"
+            or not isinstance(title_bbox, (list, tuple))
+            or not isinstance(title_lines, list)
+            or len(title_lines) < 2
+            or not isinstance(title_fonts, set)
+            or not title_fonts
+        ):
+            continue
+        angle = int(title.get("angle", 0) or 0) % 360
+        local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
+        line_heights = [
+            float(height)
+            for height in title.get("_line_heights", [])
+            if isinstance(height, (int, float)) and height > 0
+        ]
+        title_height = statistics.median(line_heights) if line_heights else 0.0
+        if (
+            title_height <= 0
+            or title_bbox[2] - title_bbox[0] > 0.55 * local_page_width
+        ):
+            continue
+
+        continuations: list[tuple[float, int]] = []
+        for text_index, text_block in enumerate(blocks):
+            text_bbox = text_block.get("bbox")
+            text_fonts = text_block.get("_font_signatures")
+            if (
+                text_block.get("type") != "text"
+                or int(text_block.get("angle", 0) or 0) % 360 != angle
+                or not isinstance(text_bbox, (list, tuple))
+                or not isinstance(text_fonts, set)
+                or not text_fonts
+                or not title_fonts.isdisjoint(text_fonts)
+                or text_bbox[2] - text_bbox[0] > 0.6 * local_page_width
+            ):
+                continue
+            gap = text_bbox[1] - title_bbox[3]
+            if (
+                -0.25 * title_height <= gap <= 0.6 * title_height
+                and abs(text_bbox[0] - title_bbox[0]) <= 0.75 * title_height
+            ):
+                continuations.append((max(0.0, gap), text_index))
+        if continuations:
+            _gap, text_index = min(continuations)
+            candidate_pairs.append((title_index, text_index, title_height))
+
+    supported_pairs: list[tuple[int, int]] = []
+    for title_index, text_index, title_height in candidate_pairs:
+        title_bbox = blocks[title_index]["bbox"]
+        support_count = sum(
+            abs(blocks[other_title]["bbox"][0] - title_bbox[0])
+            <= max(title_height, other_height)
+            and 0.75 <= other_height / title_height <= 1.25
+            for other_title, _other_text, other_height in candidate_pairs
+        )
+        if support_count >= 2:
+            supported_pairs.append((title_index, text_index))
+    if not supported_pairs:
+        return blocks
+
+    replacements: dict[int, dict[str, Any]] = {}
+    consumed: set[int] = set()
+    for title_index, text_index in supported_pairs:
+        if title_index in consumed or text_index in consumed:
+            continue
+        merged = _merge_internal_text_block_group(
+            blocks,
+            [title_index, text_index],
+        )
+        merged["type"] = "text"
+        replacements[min(title_index, text_index)] = merged
+        consumed.update({title_index, text_index})
+    return [
+        replacements.get(index, block)
+        for index, block in enumerate(blocks)
+        if index not in consumed or index in replacements
     ]
 
 

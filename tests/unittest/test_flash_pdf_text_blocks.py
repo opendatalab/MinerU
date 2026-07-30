@@ -1076,6 +1076,156 @@ def test_short_span_tail_reattaches_before_later_cross_layout_region() -> None:
     assert tail in [line for line, _bbox in span_lane.lines]
 
 
+def test_repeated_indented_span_tails_reattach_and_form_separate_entries() -> None:
+    """验证重复的跨栏首行与缩进尾行迁回 span 后仍逐条分组。"""
+
+    body_font = ("Body", 0)
+    first = _text_line(
+        "first wide",
+        (10.0, 0.0, 190.0, 10.0),
+        0,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+    first_tail = _text_line(
+        "first tail",
+        (25.0, 10.0, 90.0, 20.0),
+        1,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+    second = _text_line(
+        "second wide",
+        (10.0, 20.0, 190.0, 30.0),
+        2,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+    second_tail = _text_line(
+        "second tail",
+        (25.0, 30.0, 80.0, 40.0),
+        3,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+    left_lane = models._TextLane(
+        left=10.0,
+        right=90.0,
+        lines=[(first_tail, first_tail.bbox), (second_tail, second_tail.bbox)],
+    )
+    right_marker = _text_line("peer", (110.0, 70.0, 190.0, 80.0), 4)
+    right_lane = models._TextLane(
+        left=110.0,
+        right=190.0,
+        lines=[(right_marker, right_marker.bbox)],
+    )
+    span_lane = models._TextLane(
+        left=10.0,
+        right=190.0,
+        lines=[(first, first.bbox), (second, second.bbox)],
+        is_span=True,
+    )
+
+    line_layout._reattach_span_lane_continuations(
+        [left_lane, right_lane, span_lane],
+        10.0,
+    )
+    group_map = text_blocks._build_hanging_indent_group_map(span_lane, [], [])
+
+    assert not left_lane.lines
+    assert [group_map[index] for index in range(4)] == [0, 0, 1, 1]
+
+
+def test_single_indented_span_tail_does_not_reattach() -> None:
+    """验证缺少重复结构支持时单个缩进行不会被猜测为跨栏续行。"""
+
+    first = _text_line("wide", (10.0, 0.0, 190.0, 10.0), 0)
+    tail = _text_line("tail", (25.0, 10.0, 80.0, 20.0), 1)
+    peer = _text_line("peer", (110.0, 50.0, 190.0, 60.0), 2)
+    left_lane = models._TextLane(left=10.0, right=90.0, lines=[(tail, tail.bbox)])
+    right_lane = models._TextLane(left=110.0, right=190.0, lines=[(peer, peer.bbox)])
+    span_lane = models._TextLane(
+        left=10.0,
+        right=190.0,
+        lines=[(first, first.bbox)],
+        is_span=True,
+    )
+
+    line_layout._reattach_span_lane_continuations(
+        [left_lane, right_lane, span_lane],
+        10.0,
+    )
+
+    assert tail in [line for line, _bbox in left_lane.lines]
+
+
+def test_aligned_fallback_fonts_merge_but_style_conflict_stays_separate() -> None:
+    """验证紧邻地址与联系方式可跨字体族续接，而样式位变化仍形成边界。"""
+
+    address = _text_line(
+        "address",
+        (0.0, 0.0, 70.0, 10.0),
+        0,
+        font_signature=("CJK", 32),
+        font_coverage=1.0,
+        dominant_font_weight=250.0,
+    )
+    contact = _text_line(
+        "contact",
+        (0.0, 12.0, 80.0, 22.0),
+        1,
+        font_signature=("Latin", 32),
+        font_coverage=1.0,
+        dominant_font_weight=220.0,
+    )
+    emphasized = _text_line(
+        "emphasized",
+        (0.0, 24.0, 80.0, 34.0),
+        2,
+        font_signature=("LatinBold", 64),
+        font_coverage=1.0,
+        dominant_font_weight=650.0,
+    )
+
+    blocks = text_blocks._build_text_blocks(
+        [address, contact, emphasized],
+        [],
+        (100.0, 100.0),
+    )
+
+    assert [block["content"] for block in blocks] == [
+        "address contact",
+        "emphasized",
+    ]
+
+
+def test_hanging_indent_uses_top_pitch_when_terminal_glyph_height_is_abnormal() -> None:
+    """验证异常偏高末字符不会把已重复的参考文献悬挂缩进拆开。"""
+
+    lines = [
+        _text_line("entry one", (0.0, 0.0, 100.0, 10.0), 0),
+        _text_line("entry one tail", (15.0, 10.0, 90.0, 20.0), 1),
+        _text_line("entry two", (0.0, 20.0, 100.0, 30.0), 2),
+        _text_line(
+            "entry two tall tail",
+            (15.0, 30.0, 90.0, 40.0),
+            3,
+            effective_height=18.6,
+        ),
+        _text_line("entry three", (0.0, 42.0, 100.0, 52.0), 4),
+        _text_line("entry three tail", (15.0, 52.0, 90.0, 62.0), 5),
+    ]
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(line, line.bbox) for line in lines],
+    )
+
+    group_map = text_blocks._build_hanging_indent_group_map(lane, [], [])
+
+    assert [group_map[index] for index in range(6)] == [0, 0, 1, 1, 2, 2]
+
+
 def test_spatial_post_merge_connects_short_opener_wide_body_and_tail() -> None:
     """验证跨栏拆开的短首行、满宽正文和紧邻尾行仅按空间关系重新连接。"""
 
@@ -1932,4 +2082,117 @@ def test_caption_post_merge_respects_typographic_gap_barrier() -> None:
     assert [block["content"] for block in merged] == [
         "Fig. 1 caption",
         "body starts",
+    ]
+
+
+def test_repeated_compact_title_continuations_merge_across_font_switch() -> None:
+    """验证重复两行弱标题可与紧邻异字体续行合并并恢复为正文。"""
+
+    blocks: list[dict[str, object]] = []
+    for offset, label in ((0.0, "first"), (45.0, "second")):
+        blocks.extend(
+            [
+                {
+                    "type": "paragraph_title",
+                    "bbox": (10.0, 10.0 + offset, 65.0, 30.0 + offset),
+                    "angle": 0,
+                    "content": f"{label} name {label} address",
+                    "_visual_row_ids": {1, 2},
+                    "_single_run_row_id": None,
+                    "_local_line_bboxes": [
+                        (10.0, 10.0 + offset, 50.0, 20.0 + offset),
+                        (10.0, 20.0 + offset, 65.0, 30.0 + offset),
+                    ],
+                    "_line_heights": [10.0, 10.0],
+                    "_font_signatures": {("Title", 0)},
+                    "_lane_interval": (10.0, 100.0),
+                    "_lane_is_span": False,
+                },
+                {
+                    "type": "text",
+                    "bbox": (10.0, 31.0 + offset, 80.0, 41.0 + offset),
+                    "angle": 0,
+                    "content": f"{label} contact",
+                    "_visual_row_ids": {3},
+                    "_single_run_row_id": None,
+                    "_local_line_bboxes": [
+                        (10.0, 31.0 + offset, 80.0, 41.0 + offset),
+                    ],
+                    "_line_heights": [10.0],
+                    "_font_signatures": {("Body", 0)},
+                    "_lane_interval": (10.0, 100.0),
+                    "_lane_is_span": False,
+                },
+            ]
+        )
+
+    merged = text_blocks._merge_repeated_compact_title_continuations(
+        blocks,
+        (200.0, 200.0),
+    )
+
+    assert [block["type"] for block in merged] == ["text", "text"]
+    assert [block["content"] for block in merged] == [
+        "first name first address first contact",
+        "second name second address second contact",
+    ]
+
+
+def test_compact_title_continuation_requires_repetition_and_font_switch() -> None:
+    """验证单组结构或相同字体续行不会越过真正的标题边界。"""
+
+    title = {
+        "type": "paragraph_title",
+        "bbox": (10.0, 10.0, 65.0, 30.0),
+        "angle": 0,
+        "content": "title",
+        "_visual_row_ids": {1, 2},
+        "_single_run_row_id": None,
+        "_local_line_bboxes": [
+            (10.0, 10.0, 50.0, 20.0),
+            (10.0, 20.0, 65.0, 30.0),
+        ],
+        "_line_heights": [10.0, 10.0],
+        "_font_signatures": {("Title", 0)},
+        "_lane_interval": (10.0, 100.0),
+        "_lane_is_span": False,
+    }
+    continuation = {
+        "type": "text",
+        "bbox": (10.0, 31.0, 80.0, 41.0),
+        "angle": 0,
+        "content": "body",
+        "_visual_row_ids": {3},
+        "_single_run_row_id": None,
+        "_local_line_bboxes": [(10.0, 31.0, 80.0, 41.0)],
+        "_line_heights": [10.0],
+        "_font_signatures": {("Body", 0)},
+        "_lane_interval": (10.0, 100.0),
+        "_lane_is_span": False,
+    }
+
+    unique = text_blocks._merge_repeated_compact_title_continuations(
+        [title, continuation],
+        (200.0, 200.0),
+    )
+    same_font = text_blocks._merge_repeated_compact_title_continuations(
+        [
+            title,
+            {**continuation, "_font_signatures": {("Title", 0)}},
+            {**title, "bbox": (10.0, 55.0, 65.0, 75.0)},
+            {
+                **continuation,
+                "bbox": (10.0, 76.0, 80.0, 86.0),
+                "_font_signatures": {("Title", 0)},
+            },
+        ],
+        (200.0, 200.0),
+    )
+
+    assert [block["type"] for block in unique] == ["paragraph_title", "text"]
+    assert [block["type"] for block in same_font] == [
+        "paragraph_title",
+        "text",
+        "paragraph_title",
+        "text",
     ]

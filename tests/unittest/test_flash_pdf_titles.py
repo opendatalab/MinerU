@@ -894,6 +894,9 @@ def test_paragraph_title_detector_does_not_read_line_text() -> None:
         for function in (
             titles._classify_page_titles,
             titles._infer_document_body_profile,
+            titles._infer_document_title_profile,
+            titles._title_profile_seed_matches_cluster,
+            titles._title_profile_alignment,
             titles._document_font_is_regular,
             titles._build_physical_title_gap_map,
             titles._find_repeated_grid_title_suppressions,
@@ -904,6 +907,8 @@ def test_paragraph_title_detector_does_not_read_line_text() -> None:
             titles._document_title_uses_page_fallback,
             titles._classify_paragraph_titles_in_lane,
             titles._line_uses_document_regular_font,
+            titles._matching_document_title_prototype,
+            titles._line_inside_visual_container,
             titles._visual_row_has_body_style_sibling,
             titles._is_near_full_mixed_inline_row,
             titles._continues_local_body_row,

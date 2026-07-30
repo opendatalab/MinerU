@@ -1,0 +1,141 @@
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+
+from mineru.backend.flash.native_pdf import code_blocks, models, pipeline
+from mineru.backend.hybrid.table_text import project_pdf_spatial_text
+from mineru.utils.pdf_document import PDFPathInfo
+
+from _flash_pdf_test_utils import _text_line
+
+
+def _mono_line(
+    text: str,
+    bbox: tuple[float, float, float, float],
+    source_index: int,
+    *,
+    font_name: str = "TestMono",
+    glyph_widths: list[float] | None = None,
+) -> models._LineItem:
+    """构造带原生字符框的等宽或比例字体测试行。"""
+
+    widths = glyph_widths or [5.0] * len(text)
+    line = _text_line(
+        text,
+        bbox,
+        source_index,
+        effective_height=bbox[3] - bbox[1],
+        font_signature=(font_name, 0),
+        font_coverage=1.0,
+        median_glyph_width=5.0,
+    )
+    x = bbox[0]
+    chars: list[dict[str, Any]] = []
+    for char_offset, (value, width) in enumerate(zip(text, widths, strict=True)):
+        chars.append(
+            {
+                "bbox": (x, bbox[1], x + width, bbox[3]),
+                "char": value,
+                "rotation": 0.0,
+                "font": {
+                    "name": font_name,
+                    "flags": 0,
+                    "size": bbox[3] - bbox[1],
+                    "weight": 400,
+                },
+                "char_idx": source_index * 100 + char_offset,
+            }
+        )
+        x += width
+    line.chars = chars
+    return line
+
+
+def _code_source(
+    *lines: models._LineItem,
+    fill_rgba: tuple[int, int, int, int] = (242, 242, 255, 255),
+) -> models._PageSource:
+    """构造带大幅浅色填充背景的代码页测试源。"""
+
+    return models._PageSource(
+        page_size=(200.0, 100.0),
+        lines=list(lines),
+        chars=[char for line in lines for char in line.chars],
+        drawing_lines=[],
+        path_infos=[
+            PDFPathInfo(
+                bbox=(10.0, 10.0, 190.0, 70.0),
+                segment_count=5,
+                fill_visible=True,
+                stroke_visible=False,
+                form_depth=0,
+                source_index=0,
+                fill_rgba=fill_rgba,
+            )
+        ],
+    )
+
+
+def test_colored_monospace_region_materializes_code_and_claims_text() -> None:
+    """验证浅色等宽区域输出 code，并且内部文本不再重复进入正文。"""
+
+    first = _mono_line("alpha", (15.0, 15.0, 40.0, 23.0), 0)
+    second = _mono_line("beta", (20.0, 35.0, 40.0, 43.0), 1)
+    source = _code_source(first, second)
+
+    prepared = pipeline._prepare_page_source(source)
+    blocks = pipeline._finalize_prepared_page(prepared, page_index=0)
+
+    assert prepared.remaining_lines == []
+    assert len(blocks) == 1
+    assert blocks[0]["type"] == "code"
+    assert blocks[0]["content"] == "alpha\n\n beta"
+
+
+@pytest.mark.parametrize("rejection", ["white", "proportional", "table_overlap"])
+def test_code_candidate_rejects_missing_background_or_monospace_evidence(
+    rejection: str,
+) -> None:
+    """验证白框、比例字体和已确认表格均不会被升级为代码块。"""
+
+    if rejection == "proportional":
+        first = _mono_line(
+            "alpha",
+            (15.0, 15.0, 42.0, 23.0),
+            0,
+            font_name="Body",
+            glyph_widths=[3.0, 7.0, 4.0, 8.0, 5.0],
+        )
+    else:
+        first = _mono_line("alpha", (15.0, 15.0, 40.0, 23.0), 0)
+    second = _mono_line("beta", (15.0, 35.0, 35.0, 43.0), 1)
+    source = _code_source(
+        first,
+        second,
+        fill_rgba=(255, 255, 255, 255) if rejection == "white" else (242, 242, 255, 255),
+    )
+    excluded = [(10.0, 10.0, 190.0, 70.0)] if rejection == "table_overlap" else []
+
+    blocks, claimed = code_blocks._build_code_blocks(source, excluded, set())
+
+    assert blocks == []
+    assert claimed == set()
+
+
+def test_code_projection_preserves_columns_and_blank_rows() -> None:
+    """验证通用 PDF 空间投影保留等宽缩进、双列关系和明显空行。"""
+
+    left = _mono_line("left", (5.0, 5.0, 25.0, 13.0), 0)
+    right = _mono_line("right", (55.0, 5.0, 80.0, 13.0), 1)
+    tail = _mono_line("tail", (10.0, 30.0, 30.0, 38.0), 2)
+    chars = [char for line in (left, right, tail) for char in line.chars]
+
+    content = project_pdf_spatial_text(
+        chars,
+        (0.0, 0.0, 100.0, 50.0),
+        preserve_blank_rows=True,
+    )
+
+    assert content == "left      right\n\n tail"

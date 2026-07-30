@@ -88,6 +88,7 @@ class PDFPathInfo:
     stroke_visible: bool
     form_depth: int
     source_index: int
+    fill_rgba: tuple[int, int, int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -706,8 +707,12 @@ def _iter_raw_root_form_objects(page: pdfium.PdfPage) -> Iterator[Any]:
             continue
 
 
-def _get_raw_object_alpha(raw_obj: Any, color_getter: Any) -> int:
-    """读取对象颜色 alpha；旧 PDFium 或读取失败时按不透明处理。"""
+def _get_raw_object_rgba(
+    raw_obj: Any,
+    color_getter: Any,
+) -> tuple[int, int, int, int] | None:
+    """读取对象 RGBA；旧 PDFium、不支持的对象或读取失败时返回 None。"""
+
     red = ctypes.c_uint()
     green = ctypes.c_uint()
     blue = ctypes.c_uint()
@@ -721,8 +726,22 @@ def _get_raw_object_alpha(raw_obj: Any, color_getter: Any) -> int:
             ctypes.byref(alpha),
         )
     except Exception:
-        return 255
-    return int(alpha.value) if ok else 255
+        return None
+    if not ok:
+        return None
+    return (
+        int(red.value),
+        int(green.value),
+        int(blue.value),
+        int(alpha.value),
+    )
+
+
+def _get_raw_object_alpha(raw_obj: Any, color_getter: Any) -> int:
+    """读取对象颜色 alpha；旧 PDFium 或读取失败时按不透明处理。"""
+
+    rgba = _get_raw_object_rgba(raw_obj, color_getter)
+    return rgba[3] if rgba is not None else 255
 
 
 def _get_path_visibility(raw_obj: Any) -> tuple[bool, bool]:
@@ -910,6 +929,14 @@ def _path_info_from_object(
         stroke_visible=stroke_visible,
         form_depth=form_depth,
         source_index=source_index,
+        fill_rgba=(
+            _get_raw_object_rgba(
+                raw_obj,
+                pdfium_c.FPDFPageObj_GetFillColor,
+            )
+            if fill_visible
+            else None
+        ),
     )
 
 

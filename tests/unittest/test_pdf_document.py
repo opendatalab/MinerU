@@ -81,6 +81,21 @@ def _build_rotated_cropped_drawing_pdf() -> bytes:
     return output.getvalue()
 
 
+def _build_colored_path_pdf() -> bytes:
+    """构造可见浅色填充与透明填充 Path，验证 RGBA 元数据。"""
+
+    output = BytesIO()
+    canvas = Canvas(output, pagesize=(100, 100))
+    canvas.setFillColorRGB(242 / 255, 255 / 255, 242 / 255)
+    canvas.rect(10, 60, 80, 20, stroke=0, fill=1)
+    canvas.saveState()
+    canvas.setFillAlpha(0)
+    canvas.rect(10, 20, 80, 20, stroke=0, fill=1)
+    canvas.restoreState()
+    canvas.save()
+    return output.getvalue()
+
+
 def _build_rotated_cropped_image_pdf() -> bytes:
     """构造普通、嵌套 Form、部分页外和完全页外点阵图，并应用 CropBox 与旋转。"""
     image = Image.new("RGB", (3, 4), "red")
@@ -443,11 +458,35 @@ def test_get_page_path_infos_preserves_bezier_visibility_depth_and_source_order(
     assert not path_infos[0].fill_visible and path_infos[0].stroke_visible
     assert path_infos[3].bbox == pytest.approx((10.0, 60.0, 90.0, 60.5))
     assert path_infos[3].fill_visible and not path_infos[3].stroke_visible
+    assert path_infos[3].fill_rgba == (0, 0, 0, 255)
     nested_path = next(item for item in path_infos if item.form_depth == 1)
     assert nested_path.bbox == pytest.approx((29.0, 99.0, 71.0, 101.0))
     bezier_path = path_infos[-1]
     assert bezier_path.segment_count == 5
     assert bezier_path.bbox == pytest.approx((10.0, 105.0, 40.0, 120.0))
+
+
+def test_get_page_path_infos_exposes_fill_rgba_and_transparency() -> None:
+    """验证可见 Path 保留填充 RGBA，透明填充不伪装成可见背景。"""
+
+    with pdf_document.PDFDocument(_build_colored_path_pdf()) as doc:
+        path_infos = doc.get_page_path_infos(0)
+
+    visible = next(item for item in path_infos if item.fill_visible)
+    transparent = next(item for item in path_infos if not item.fill_visible)
+    assert visible.fill_rgba == (242, 255, 242, 255)
+    assert transparent.fill_rgba is None
+
+
+def test_raw_object_rgba_failure_returns_none() -> None:
+    """验证旧 PDFium 或损坏对象读取颜色失败时返回 None。"""
+
+    def broken_getter(*_args: Any) -> bool:
+        """模拟底层颜色接口异常。"""
+
+        raise RuntimeError("broken color")
+
+    assert pdf_document._get_raw_object_rgba(object(), broken_getter) is None
 
 
 def test_get_page_drawing_lines_applies_crop_box_and_page_rotation() -> None:

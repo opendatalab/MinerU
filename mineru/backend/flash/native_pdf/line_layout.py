@@ -539,6 +539,11 @@ def _reattach_span_lane_continuations(
         return
 
     for span_lane in span_lanes:
+        _reattach_repeated_indented_span_tails(
+            span_lane,
+            regular_lanes,
+            median_height,
+        )
         while True:
             span_lane.lines.sort(
                 key=lambda item: (item[1][1], item[1][0], item[0].source_index)
@@ -621,6 +626,78 @@ def _reattach_span_lane_continuations(
             span_lane.lines.sort(
                 key=lambda item: (item[1][1], item[1][0], item[0].source_index)
             )
+
+
+def _reattach_repeated_indented_span_tails(
+    span_lane: _TextLane,
+    regular_lanes: list[_TextLane],
+    median_height: float,
+) -> None:
+    """识别重复的跨栏首行与缩进短尾，并把短尾统一迁回跨栏栏带。"""
+
+    span_rows = sorted(
+        span_lane.lines,
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    matches: list[
+        tuple[_TextLane, tuple[_LineItem, BBox], tuple[_LineItem, BBox], float]
+    ] = []
+    for span_index, span_row in enumerate(span_rows):
+        span_line, span_bbox = span_row
+        next_span_top = (
+            span_rows[span_index + 1][1][1]
+            if span_index + 1 < len(span_rows)
+            else float("inf")
+        )
+        for regular_lane in regular_lanes:
+            for candidate in regular_lane.lines:
+                candidate_line, candidate_bbox = candidate
+                if candidate_line.semantic_type != span_line.semantic_type:
+                    continue
+                gap = _effective_text_row_gap(span_row, candidate)
+                indent = candidate_bbox[0] - span_bbox[0]
+                span_height = _line_effective_height(*span_row)
+                candidate_height = _line_effective_height(*candidate)
+                if (
+                    candidate_bbox[1] <= span_bbox[1]
+                    or candidate_bbox[1] >= next_span_top
+                    or not -0.25 * median_height <= gap <= 0.75 * median_height
+                    or not 0.75 * median_height <= indent <= 6.0 * median_height
+                    or max(span_height, candidate_height)
+                    / min(span_height, candidate_height)
+                    > 1.35
+                    or not _title_fonts_compatible(span_line, candidate_line)
+                ):
+                    continue
+                has_parallel_peer = any(
+                    other_line is not candidate_line
+                    and _bbox_axis_overlap_ratio(candidate_bbox, other_bbox, axis="y") >= 0.5
+                    for lane in regular_lanes
+                    for other_line, other_bbox in lane.lines
+                )
+                if not has_parallel_peer:
+                    matches.append((regular_lane, candidate, span_row, indent))
+
+    if len(matches) < 2:
+        return
+    median_indent = statistics.median(match[3] for match in matches)
+    supported = [
+        match
+        for match in matches
+        if abs(match[3] - median_indent) <= max(0.75 * median_height, 0.25 * median_indent)
+    ]
+    if len(supported) < 2:
+        return
+    for regular_lane, candidate, _span_row, _indent in supported:
+        if candidate not in regular_lane.lines:
+            continue
+        regular_lane.lines.remove(candidate)
+        span_lane.lines.append(candidate)
+        span_lane.left = min(span_lane.left, candidate[1][0])
+        span_lane.right = max(span_lane.right, candidate[1][2])
+    span_lane.lines.sort(
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index)
+    )
 
 
 def _estimate_lane_gap(lane: _TextLane) -> tuple[float, float]:
@@ -774,6 +851,27 @@ def _should_connect_text_rows(
             or _font_weights_conflict(previous_line, current_line)
         )
     )
+    fallback_font_continuation = (
+        previous_line.font_signature is not None
+        and current_line.font_signature is not None
+        and previous_line.font_coverage >= 0.75
+        and current_line.font_coverage >= 0.75
+        and previous_line.font_signature[0] != current_line.font_signature[0]
+        and previous_line.font_signature[1] == current_line.font_signature[1]
+        and aligned_left_edges
+        and height_ratio <= 1.25
+        and not _font_weights_conflict(previous_line, current_line)
+        and -0.25 * pair_height
+        <= vertical_gap
+        <= regular_gap + max(0.35 * pair_height, 3.0 * gap_mad)
+    )
+    if (
+        font_style_changed
+        and _font_weights_conflict(previous_line, current_line)
+        and not fallback_font_continuation
+    ):
+        # 显式样式位与显著字重同时变化仍是硬边界，不能被满栏几何放宽。
+        return False
     if (
         not is_hyphen_at_line_end(previous_line.text)
         and _is_structural_typography_gap(
@@ -784,6 +882,7 @@ def _should_connect_text_rows(
             gap_mad,
             reliable_style_change=reliable_style_conflict,
         )
+        and not fallback_font_continuation
     ):
         # 图注到正文等排版层级转换即使同栏满行，也不能被常规续行规则重新吸收。
         return False
@@ -839,6 +938,7 @@ def _should_connect_text_rows(
         and (abnormal_gap or min(previous_width, current_width) <= 0.7 * lane_width)
         and not both_fill_lane
         and not safe_short_tail
+        and not fallback_font_continuation
     ):
         return False
     if (

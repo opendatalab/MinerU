@@ -58,6 +58,85 @@ def test_page_footnote_uses_separator_and_stops_before_distant_footer_text() -> 
     assert page.page_footnote_groups == [{3, 4, 5}]
 
 
+def test_image_footnote_requires_image_rule_and_smaller_text() -> None:
+    """验证图表脚注必须同时具备图片、下缘长横线和字号收缩证据。"""
+
+    lines = [
+        _text_line(
+            f"body {index}",
+            (50.0, 40.0 + 20.0 * index, 450.0, 50.0 + 20.0 * index),
+            index,
+            effective_height=10.0,
+        )
+        for index in range(4)
+    ]
+    note = _text_line(
+        "chart source",
+        (50.0, 325.0, 180.0, 333.0),
+        4,
+        effective_height=8.0,
+    )
+    lines.append(note)
+    page = _prepared_text_page(*lines, page_size=(500.0, 500.0))
+    page.fixed_blocks = [
+        {
+            "type": "image",
+            "bbox": (50.0, 140.0, 300.0, 315.0),
+            "angle": 0,
+            "content": "",
+        }
+    ]
+    page.drawing_lines = [
+        models._AxisLine((50.0, 318.0, 300.0, 319.0), 1.0, "horizontal")
+    ]
+
+    auxiliary_text._classify_page_auxiliary_text(page)
+
+    assert note.semantic_type == "footnote"
+    assert page.page_footnote_groups == []
+
+
+@pytest.mark.parametrize("missing_evidence", ["image", "rule", "small_text"])
+def test_image_footnote_rejects_incomplete_visual_evidence(
+    missing_evidence: str,
+) -> None:
+    """验证缺少任一联合证据时普通图下文字不会晋升为图表脚注。"""
+
+    body = [
+        _text_line(
+            f"body {index}",
+            (50.0, 40.0 + 20.0 * index, 450.0, 50.0 + 20.0 * index),
+            index,
+            effective_height=10.0,
+        )
+        for index in range(4)
+    ]
+    note = _text_line(
+        "candidate",
+        (50.0, 325.0, 180.0, 333.0),
+        4,
+        effective_height=10.0 if missing_evidence == "small_text" else 8.0,
+    )
+    page = _prepared_text_page(*body, note, page_size=(500.0, 500.0))
+    if missing_evidence != "image":
+        page.fixed_blocks = [
+            {
+                "type": "image",
+                "bbox": (50.0, 140.0, 300.0, 315.0),
+                "angle": 0,
+                "content": "",
+            }
+        ]
+    if missing_evidence != "rule":
+        page.drawing_lines = [
+            models._AxisLine((50.0, 318.0, 300.0, 319.0), 1.0, "horizontal")
+        ]
+
+    auxiliary_text._classify_page_auxiliary_text(page)
+
+    assert note.semantic_type is None
+
+
 def test_page_footnote_supports_independent_column_rules() -> None:
     """验证左右栏各自的短横线只认领本栏连续页脚注。"""
 
@@ -494,6 +573,8 @@ def test_auxiliary_text_classifiers_do_not_read_line_text() -> None:
             auxiliary_text._classify_page_auxiliary_text,
             auxiliary_text._classify_aside_text,
             auxiliary_text._geometric_text_support_by_angle,
+            auxiliary_text._classify_image_footnotes,
+            auxiliary_text._image_footnote_members,
             auxiliary_text._classify_page_footnotes,
             auxiliary_text._augment_footnote_groups_with_edge_markers,
             auxiliary_text._classify_rule_delimited_headers,
@@ -514,6 +595,7 @@ def test_finalize_preserves_preclassified_auxiliary_text_types() -> None:
 
     page = _prepared_text_page(
         _text_line("note", (10.0, 80.0, 40.0, 90.0), 0, semantic_type="page_footnote"),
+        _text_line("chart note", (10.0, 65.0, 40.0, 75.0), 2, semantic_type="footnote"),
         _text_line(
             "aside",
             (2.0, 20.0, 5.0, 60.0),
@@ -526,7 +608,11 @@ def test_finalize_preserves_preclassified_auxiliary_text_types() -> None:
 
     blocks = pipeline._finalize_prepared_page(page, page_index=0)
 
-    assert {block["type"] for block in blocks} == {"page_footnote", "aside_text"}
+    assert {block["type"] for block in blocks} == {
+        "footnote",
+        "page_footnote",
+        "aside_text",
+    }
 
 
 def test_repeated_marginals_require_cross_page_evidence_and_separate_page_numbers() -> None:
