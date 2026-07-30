@@ -185,11 +185,18 @@ def _infer_document_body_profile(
             height_clusters.append([(height, page_index, normalized_width)])
         else:
             target.append((height, page_index, normalized_width))
+    cross_page_clusters = [
+        cluster
+        for cluster in height_clusters
+        if len({item[1] for item in cluster}) >= 2
+    ]
+    eligible_clusters = cross_page_clusters or height_clusters
     body_cluster = max(
-        height_clusters,
+        eligible_clusters,
         key=lambda cluster: (
-            len({item[1] for item in cluster}),
             sum(item[2] for item in cluster),
+            len({item[1] for item in cluster}),
+            len(cluster),
         ),
     )
     body_height = statistics.median(item[0] for item in body_cluster)
@@ -230,6 +237,166 @@ def _infer_document_body_profile(
         body_weight=body_weight,
         regular_fonts=regular_fonts,
     )
+
+
+def _classify_body_height_section_titles(
+    lines: list[_LineItem],
+    page_size: tuple[float, float],
+    *,
+    container_bboxes: list[BBox],
+    document_body_profile: _DocumentBodyProfile | None,
+) -> None:
+    """用重复的短行加正文组结构识别与正文同字号的独立章节标题。"""
+
+    if document_body_profile is None:
+        return
+    body_height = document_body_profile.body_height
+    if body_height <= 0:
+        return
+
+    for angle in sorted({line.angle for line in lines if line.semantic_type is None}):
+        line_geometry = sorted(
+            [
+                (line, _rotate_bbox_to_upright(line.bbox, page_size, angle))
+                for line in lines
+                if line.angle == angle and line.semantic_type is None
+            ],
+            key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+        )
+        if len(line_geometry) < 8:
+            continue
+        median_height = statistics.median(
+            _line_effective_height(line, bbox)
+            for line, bbox in line_geometry
+        )
+        local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
+        local_page_height = page_size[0] if angle in {90, 270} else page_size[1]
+        lanes = _infer_text_lanes(
+            line_geometry,
+            local_page_width,
+            median_height,
+        )
+        lane_by_source: dict[int, _TextLane] = {}
+        regular_gaps: list[float] = []
+        for lane in lanes:
+            lane.lines.sort(
+                key=lambda item: (item[1][1], item[1][0], item[0].source_index)
+            )
+            regular_gap, _gap_mad = _estimate_lane_gap(lane)
+            regular_gaps.append(regular_gap)
+            for line, _bbox in lane.lines:
+                lane_by_source[line.source_index] = lane
+        if not lane_by_source:
+            continue
+
+        page_regular_gap = (
+            statistics.median(regular_gaps)
+            if regular_gaps
+            else 0.2 * body_height
+        )
+        physical_gaps = _build_physical_title_gap_map(line_geometry)
+        local_container_bboxes = [
+            _rotate_bbox_to_upright(bbox, page_size, angle)
+            for bbox in container_bboxes
+        ]
+        candidates: list[tuple[_LineItem, BBox, _TextLane]] = []
+        for line, bbox in line_geometry:
+            lane = lane_by_source.get(line.source_index)
+            if lane is None:
+                continue
+            line_height = _line_effective_height(line, bbox)
+            lane_width = max(0.1, lane.right - lane.left)
+            if not 0.9 <= line_height / body_height <= 1.1:
+                continue
+            if bbox[2] - bbox[0] > 0.22 * lane_width:
+                continue
+            if abs(bbox[0] - lane.left) > 0.75 * body_height:
+                continue
+            if _line_inside_visual_container(bbox, local_container_bboxes):
+                continue
+
+            followers = _body_height_section_followers(
+                line,
+                bbox,
+                line_geometry,
+                lane_by_source,
+                body_height,
+            )
+            if len(followers) < 3:
+                continue
+            gap_above = physical_gaps.get(line.source_index, (None, None))[0]
+            starts_body = (
+                gap_above is None
+                and bbox[1] <= 0.2 * local_page_height
+            )
+            has_extra_gap = (
+                gap_above is not None
+                and gap_above - page_regular_gap >= 0.75 * body_height
+            )
+            has_full_width_follower = any(
+                follower_bbox[2] - follower_bbox[0]
+                >= 0.75
+                * max(
+                    0.1,
+                    lane_by_source[follower_line.source_index].right
+                    - lane_by_source[follower_line.source_index].left,
+                )
+                for follower_line, follower_bbox in followers
+                if follower_line.source_index in lane_by_source
+            )
+            if starts_body or has_extra_gap or has_full_width_follower:
+                candidates.append((line, bbox, lane))
+
+        for line, bbox, _lane in candidates:
+            compatible_count = sum(
+                1
+                for peer_line, peer_bbox, _peer_lane in candidates
+                if abs(peer_bbox[0] - bbox[0]) <= body_height
+                and 0.9
+                <= _line_effective_height(peer_line, peer_bbox)
+                / _line_effective_height(line, bbox)
+                <= 1.1
+                and _title_fonts_compatible(line, peer_line)
+            )
+            if compatible_count >= 2:
+                # 只标记结构锚点本身，避免普通正文被标题邻行扩展再次吞入。
+                line.semantic_type = "paragraph_title"
+
+
+def _body_height_section_followers(
+    candidate_line: _LineItem,
+    candidate_bbox: BBox,
+    line_geometry: list[tuple[_LineItem, BBox]],
+    lane_by_source: dict[int, _TextLane],
+    body_height: float,
+) -> list[tuple[_LineItem, BBox]]:
+    """返回短标题后方同锚点、同正文尺度且行距稳定的前三行。"""
+
+    followers: list[tuple[_LineItem, BBox]] = []
+    previous_top = candidate_bbox[1]
+    for line, bbox in line_geometry:
+        if line is candidate_line or bbox[1] <= candidate_bbox[1] + 0.4 * body_height:
+            continue
+        if not (
+            candidate_bbox[0] - 0.75 * body_height
+            <= bbox[0]
+            <= candidate_bbox[0] + 1.5 * body_height
+        ):
+            continue
+        top_pitch = bbox[1] - previous_top
+        if top_pitch < 0.5 * body_height:
+            continue
+        if top_pitch > 1.8 * body_height:
+            break
+        if not 0.9 <= _line_effective_height(line, bbox) / body_height <= 1.1:
+            break
+        if line.source_index not in lane_by_source:
+            break
+        followers.append((line, bbox))
+        previous_top = bbox[1]
+        if len(followers) == 3:
+            break
+    return followers
 
 
 def _infer_document_title_profile(

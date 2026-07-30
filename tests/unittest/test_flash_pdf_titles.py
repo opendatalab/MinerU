@@ -93,6 +93,94 @@ def test_document_regular_fonts_only_use_body_height_band() -> None:
     assert profile.regular_fonts == frozenset({body_font})
 
 
+def test_document_body_profile_prefers_width_support_over_footer_page_count() -> None:
+    """验证窄页脚覆盖更多页面时，累计行宽更大的正文高度仍优先。"""
+
+    body_font = ("Body", 0)
+    footer_font = ("Footer", 0)
+    pages = []
+    for page_index in range(4):
+        lines = [
+            _text_line(
+                f"footer-{page_index}",
+                (0.0, 90.0, 10.0, 98.0),
+                100,
+                effective_height=8.0,
+                font_signature=footer_font,
+                font_coverage=1.0,
+            )
+        ]
+        if page_index < 3:
+            lines.extend(
+                _text_line(
+                    f"body-{page_index}-{row_index}",
+                    (0.0, 10.0 + 12.0 * row_index, 100.0, 20.0 + 12.0 * row_index),
+                    row_index,
+                    effective_height=10.0,
+                    font_signature=body_font,
+                    font_coverage=1.0,
+                )
+                for row_index in range(4)
+            )
+        pages.append(_prepared_text_page(*lines))
+
+    profile = titles._infer_document_body_profile(pages)
+
+    assert profile is not None
+    assert profile.body_height == pytest.approx(10.0)
+    assert profile.regular_fonts == frozenset({body_font})
+
+
+def test_body_height_section_titles_mark_only_repeated_short_anchors() -> None:
+    """验证同字号短章节锚点独立成标题，明细、联系方式和版权行保持正文。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line("first section", (0.0, 10.0, 20.0, 20.0), 0),
+        _text_line("wide body one", (0.0, 24.0, 100.0, 34.0), 1),
+        _text_line("wide body two", (0.0, 36.0, 100.0, 46.0), 2),
+        _text_line("wide body three", (0.0, 48.0, 100.0, 58.0), 3),
+        _text_line("second section", (0.0, 72.0, 20.0, 82.0), 4),
+        _text_line("compact row one", (0.0, 84.0, 60.0, 94.0), 5),
+        _text_line("compact row two", (0.0, 96.0, 60.0, 106.0), 6),
+        _text_line("compact row three", (0.0, 108.0, 60.0, 118.0), 7),
+        _text_line("boxed label", (0.0, 132.0, 20.0, 142.0), 8),
+        _text_line("boxed row one", (0.0, 144.0, 100.0, 154.0), 9),
+        _text_line("boxed row two", (0.0, 156.0, 100.0, 166.0), 10),
+        _text_line("boxed row three", (0.0, 168.0, 100.0, 178.0), 11),
+        _text_line("contact label", (0.0, 192.0, 20.0, 202.0), 12),
+        _text_line("small address", (0.0, 204.0, 60.0, 212.0), 13, effective_height=8.0),
+        _text_line("small phone", (0.0, 214.0, 60.0, 222.0), 14, effective_height=8.0),
+        _text_line("small email", (0.0, 224.0, 60.0, 232.0), 15, effective_height=8.0),
+        _text_line("copyright", (0.0, 250.0, 20.0, 260.0), 16),
+    ]
+    for line in lines:
+        line.font_signature = body_font
+        line.font_coverage = 1.0
+        line.dominant_font_weight = 250.0
+
+    titles._classify_body_height_section_titles(
+        lines,
+        (100.0, 280.0),
+        container_bboxes=[(0.0, 128.0, 100.0, 180.0)],
+        document_body_profile=titles._DocumentBodyProfile(
+            body_height=10.0,
+            body_weight=250.0,
+            regular_fonts=frozenset({body_font}),
+        ),
+    )
+
+    assert [lines[index].semantic_type for index in (0, 4)] == [
+        "paragraph_title",
+        "paragraph_title",
+    ]
+    assert all(
+        line.semantic_type is None
+        for index, line in enumerate(lines)
+        if index not in {0, 4}
+    )
+
+
 def test_physical_title_gap_ignores_disjoint_column_and_keeps_overlapping_row() -> None:
     """验证物理邻行只在水平投影相交时参与标题留白，避免另一栏正文压缩间距。"""
 
@@ -894,6 +982,8 @@ def test_paragraph_title_detector_does_not_read_line_text() -> None:
         for function in (
             titles._classify_page_titles,
             titles._infer_document_body_profile,
+            titles._classify_body_height_section_titles,
+            titles._body_height_section_followers,
             titles._infer_document_title_profile,
             titles._title_profile_seed_matches_cluster,
             titles._title_profile_alignment,

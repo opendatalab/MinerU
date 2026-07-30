@@ -61,6 +61,7 @@ from .formulas import (
 )
 from .code_blocks import _build_code_blocks
 from .auxiliary_text import (
+    _classify_deferred_image_footnotes,
     _classify_isolated_first_page_footer,
     _classify_page_number_outer_companions,
     _classify_page_auxiliary_text,
@@ -70,6 +71,7 @@ from .auxiliary_text import (
     _classify_single_page_compound_headers,
 )
 from .titles import (
+    _classify_body_height_section_titles,
     _classify_page_titles,
     _infer_document_body_profile,
     _infer_document_title_profile,
@@ -207,6 +209,11 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
     _classify_page_number_outer_companions(prepared_pages)
     _classify_isolated_first_page_footer(prepared_pages)
     document_body_profile = _infer_document_body_profile(prepared_pages)
+    if document_body_profile is not None:
+        _classify_deferred_image_footnotes(
+            prepared_pages,
+            document_body_profile.body_height,
+        )
     document_title_profile = _infer_document_title_profile(
         prepared_pages,
         document_body_profile,
@@ -398,6 +405,12 @@ def _finalize_prepared_page(
         for block in prepared.fixed_blocks
         if not isinstance(block.get("_inline_visual_row_id"), int)
     ]
+    _classify_body_height_section_titles(
+        remaining_lines,
+        prepared.page_size,
+        container_bboxes=title_container_bboxes,
+        document_body_profile=document_body_profile,
+    )
     _classify_page_titles(
         remaining_lines,
         prepared.page_size,

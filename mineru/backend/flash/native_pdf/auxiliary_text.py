@@ -128,6 +128,8 @@ def _classify_image_footnotes(
     table_bboxes: list[BBox],
     drawing_lines: list[_AxisLine],
     page_size: tuple[float, float],
+    *,
+    reference_body_height: float | None = None,
 ) -> None:
     """用图片、下缘长横线和紧凑小字的联合关系识别图表脚注。"""
 
@@ -160,17 +162,21 @@ def _classify_image_footnotes(
     )
     if not line_geometry:
         return
-    body_samples = [
-        _line_effective_height(line, bbox)
-        for line, bbox in line_geometry
-        if bbox[2] - bbox[0] >= 0.2 * local_page_width
-    ]
-    if not body_samples:
+    if reference_body_height is not None and reference_body_height > 0:
+        # 图片占主导的稀疏页可能只剩图注和脚注，延迟复核时改用全文正文尺度。
+        body_height = max(0.1, reference_body_height)
+    else:
         body_samples = [
             _line_effective_height(line, bbox)
             for line, bbox in line_geometry
+            if bbox[2] - bbox[0] >= 0.2 * local_page_width
         ]
-    body_height = max(0.1, statistics.median(body_samples))
+        if not body_samples:
+            body_samples = [
+                _line_effective_height(line, bbox)
+                for line, bbox in line_geometry
+            ]
+        body_height = max(0.1, statistics.median(body_samples))
     local_images = [
         _rotate_bbox_to_upright(bbox, page_size, dominant_angle)
         for bbox in image_bboxes
@@ -231,6 +237,29 @@ def _classify_image_footnotes(
     for line in available:
         if line.source_index in matched_source_indices:
             line.semantic_type = "footnote"
+
+
+def _classify_deferred_image_footnotes(
+    prepared_pages: list[_PreparedPage],
+    body_height: float,
+) -> None:
+    """在全文正文尺度确定后，仅重试仍未分类的图片脚注候选。"""
+
+    if body_height <= 0:
+        return
+    for prepared in prepared_pages:
+        _classify_image_footnotes(
+            prepared.remaining_lines,
+            [
+                block["bbox"]
+                for block in prepared.fixed_blocks
+                if block.get("type") == "image"
+            ],
+            prepared.table_bboxes,
+            prepared.drawing_lines,
+            prepared.page_size,
+            reference_body_height=body_height,
+        )
 
 
 def _image_footnote_members(

@@ -929,7 +929,12 @@ def _should_connect_text_rows(
     local_lane_width = max(0.1, lane.right - local_lane_left)
     next_indent = current_bbox[0] - local_lane_left
     previous_fill = max(0.0, previous_bbox[2] - local_lane_left) / local_lane_width
-    if next_indent >= max(5.0, 0.65 * pair_height) and (previous_fill <= 0.8 or terminal_previous):
+    if (
+        next_indent >= max(5.0, 0.65 * pair_height)
+        and (previous_fill <= 0.8 or terminal_previous)
+        and not safe_short_tail
+    ):
+        # 已确认的同左缘短尾优先于栏左缘缩进，避免参考文献冒号后的末行被切断。
         return False
 
     abnormal_gap = vertical_gap > regular_gap + max(0.25 * pair_height, 3.0 * gap_mad)

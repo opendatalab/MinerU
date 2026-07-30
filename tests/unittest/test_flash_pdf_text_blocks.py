@@ -1632,6 +1632,52 @@ def test_exaggerated_bbox_short_tail_stays_with_full_width_previous_row() -> Non
     )
 
 
+def test_indented_reference_colon_keeps_safe_short_tail_with_abnormal_height() -> None:
+    """验证参考文献续行相对编号左缘缩进时，冒号后的异常高短尾仍保持同块。"""
+
+    previous = _text_line(
+        "full continuation：",
+        (25.0, 0.0, 100.0, 10.0),
+        0,
+        effective_height=9.0,
+    )
+    current = _text_line(
+        "short tall tail",
+        (25.0, 11.0, 50.0, 29.0),
+        1,
+        effective_height=18.6,
+    )
+    next_entry = _text_line(
+        "［10］ next entry",
+        (0.0, 24.0, 100.0, 34.0),
+        2,
+        effective_height=10.0,
+    )
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[
+            (previous, previous.bbox),
+            (current, current.bbox),
+            (next_entry, next_entry.bbox),
+        ],
+    )
+
+    assert line_layout._should_connect_text_rows(
+        (previous, previous.bbox),
+        (current, current.bbox),
+        lane,
+        regular_gap=1.0,
+        gap_mad=0.1,
+        table_bboxes=[],
+        axis_lines=[],
+    )
+    assert text_blocks._starts_structural_reference_entry(
+        (current, current.bbox),
+        (next_entry, next_entry.bbox),
+    )
+
+
 def test_indented_list_row_can_return_to_lane_left_for_short_tail() -> None:
     """验证列表首行轻度缩进时，回到栏左边的同字体短尾行仍可续接。"""
 

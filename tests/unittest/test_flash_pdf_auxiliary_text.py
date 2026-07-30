@@ -96,7 +96,56 @@ def test_image_footnote_requires_image_rule_and_smaller_text() -> None:
     assert page.page_footnote_groups == []
 
 
-@pytest.mark.parametrize("missing_evidence", ["image", "rule", "small_text"])
+def test_sparse_image_footnotes_retry_with_document_body_height() -> None:
+    """验证稀疏图片页可用全文正文尺度恢复两个被自身字号污染的图表脚注。"""
+
+    caption = _text_line(
+        "chart caption",
+        (50.0, 40.0, 300.0, 48.0),
+        0,
+        effective_height=8.0,
+    )
+    notes = [
+        _text_line(
+            "left source",
+            (50.0, 255.0, 300.0, 262.0),
+            1,
+            effective_height=7.0,
+        ),
+        _text_line(
+            "right source",
+            (550.0, 255.0, 800.0, 262.0),
+            2,
+            effective_height=7.0,
+        ),
+    ]
+    page = _prepared_text_page(caption, *notes, page_size=(1000.0, 500.0))
+    page.fixed_blocks = [
+        {"type": "image", "bbox": bbox, "angle": 0, "content": ""}
+        for bbox in [
+            (50.0, 80.0, 450.0, 250.0),
+            (550.0, 80.0, 950.0, 250.0),
+        ]
+    ]
+    page.drawing_lines = [
+        models._AxisLine((50.0, 252.0, 450.0, 253.0), 1.0, "horizontal"),
+        models._AxisLine((550.0, 252.0, 950.0, 253.0), 1.0, "horizontal"),
+    ]
+
+    auxiliary_text._classify_page_auxiliary_text(page)
+
+    assert [line.semantic_type for line in notes] == [None, None]
+
+    auxiliary_text._classify_deferred_image_footnotes([page], body_height=10.0)
+
+    assert [line.semantic_type for line in notes] == ["footnote", "footnote"]
+    assert page.page_footnote_groups == []
+
+
+@pytest.mark.parametrize(
+    "missing_evidence",
+    ["image", "rule", "small_text", "table_rule"],
+)
 def test_image_footnote_rejects_incomplete_visual_evidence(
     missing_evidence: str,
 ) -> None:
@@ -131,8 +180,11 @@ def test_image_footnote_rejects_incomplete_visual_evidence(
         page.drawing_lines = [
             models._AxisLine((50.0, 318.0, 300.0, 319.0), 1.0, "horizontal")
         ]
+    if missing_evidence == "table_rule":
+        page.table_bboxes = [(40.0, 300.0, 310.0, 340.0)]
 
     auxiliary_text._classify_page_auxiliary_text(page)
+    auxiliary_text._classify_deferred_image_footnotes([page], body_height=10.0)
 
     assert note.semantic_type is None
 
@@ -574,6 +626,7 @@ def test_auxiliary_text_classifiers_do_not_read_line_text() -> None:
             auxiliary_text._classify_aside_text,
             auxiliary_text._geometric_text_support_by_angle,
             auxiliary_text._classify_image_footnotes,
+            auxiliary_text._classify_deferred_image_footnotes,
             auxiliary_text._image_footnote_members,
             auxiliary_text._classify_page_footnotes,
             auxiliary_text._augment_footnote_groups_with_edge_markers,
