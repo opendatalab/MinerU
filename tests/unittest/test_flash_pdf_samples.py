@@ -60,6 +60,21 @@ def _normalized_content_probe(text: str) -> str:
     return "".join(char.casefold() for char in text if char.isalnum())
 
 
+def _blocks_containing(
+    blocks: list[dict[str, Any]],
+    probe: str,
+) -> list[dict[str, Any]]:
+    """返回归一化内容中包含指定探针的模型块。"""
+
+    normalized_probe = _normalized_content_probe(probe)
+    return [
+        block
+        for block in blocks
+        if normalized_probe
+        in _normalized_content_probe(str(block.get("content", "")))
+    ]
+
+
 def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     """验证 demo1 首页脚注、参考文献、公式与五个真实表格均保持正确。"""
 
@@ -693,3 +708,202 @@ def test_demo3_pages4_and5_fix_lists_formula_titles_italics_and_footnotes() -> N
     assert final_bullet["type"] == "text"
     assert final_footnote["type"] == "page_footnote"
     assert "3By perturbation" not in final_bullet["content"]
+
+
+def test_demo4_nct00083083_targeted_flash_regressions() -> None:
+    """验证 demo4 的页眉脚注、续行、公式否决和参考文献分组。"""
+
+    model_list = _native_model_list("demo4.pdf")
+
+    page1 = model_list[0]
+    assert any(
+        block["type"] == "header"
+        and "07388-8" in str(block["content"])
+        for block in page1
+    )
+    assert next(
+        block for block in page1 if block["content"] == "ORIGINAL ARTICLE"
+    )["type"] == "text"
+    assert _blocks_containing(page1, "contributed equally")[0]["type"] == "page_footnote"
+    assert _blocks_containing(page1, "University of Edinburgh")[0]["type"] == "page_footnote"
+
+    abstract_sections = [
+        _blocks_containing(page1, opener)
+        for opener in (
+            "Purpose Prognostication",
+            "Methods This study",
+            "Results Conventional",
+            "Conclusions Innate",
+        )
+    ]
+    assert all(len(matches) == 1 for matches in abstract_sections)
+    assert len({id(matches[0]) for matches in abstract_sections}) == 4
+    for matches, tail in zip(
+        abstract_sections,
+        ("glucose metabolism", "chemoradiation", "0.77", "NSCLC patients"),
+        strict=True,
+    ):
+        assert _normalized_content_probe(tail) in _normalized_content_probe(
+            str(matches[0]["content"])
+        )
+
+    email = _blocks_containing(page1, "adriana.tavares@ed.ac.uk")[0]
+    affiliation_blocks = [
+        block
+        for block in page1
+        if block["type"] == "page_footnote"
+        and block["bbox"][1] > email["bbox"][1]
+        and str(block.get("content", "")).lstrip()[:1] in set("123456")
+    ]
+    assert len(affiliation_blocks) == 6
+    assert {
+        str(block["content"]).lstrip()[:1]
+        for block in affiliation_blocks
+    } == set("123456")
+    assert not [
+        block
+        for block in page1
+        if block["type"] == "page_footnote"
+        and str(block.get("content", "")).strip() in set("123456")
+    ]
+
+    introduction = _blocks_containing(page1, "Cancer is one of the leading causes")
+    assert len(introduction) == 1
+    assert "throughoutthebody14" in _normalized_content_probe(
+        str(introduction[0]["content"])
+    )
+
+    page4 = model_list[3]
+    caption_tail = _blocks_containing(page4, "included in the ACRIN 6668 study")
+    assert len(caption_tail) == 1
+    assert _normalized_content_probe(str(caption_tail[0]["content"])).startswith(
+        "inreducingglucoseuptake"
+    )
+    figure_caption = _blocks_containing(page4, "Fig. 1 Conventional")
+    figure_body = _blocks_containing(page4, "in reducing glucose uptake")
+    assert len(figure_caption) == 1
+    assert len(figure_body) == 1
+    assert figure_caption[0] is not figure_body[0]
+    assert "inreducingglucoseuptake" not in _normalized_content_probe(
+        str(figure_caption[0]["content"])
+    )
+
+    page5 = model_list[4]
+    right_continuation = _blocks_containing(
+        page5,
+        "also observed when conducting Cox regression",
+    )
+    assert len(right_continuation) == 1
+    assert "importantlythereisahomogenisation" in _normalized_content_probe(
+        str(right_continuation[0]["content"])
+    )
+
+    page6 = model_list[5]
+    left_continuation = _blocks_containing(page6, "This study aimed")
+    assert len(left_continuation) == 1
+    assert "primarytumoursite" in _normalized_content_probe(
+        str(left_continuation[0]["content"])
+    )
+
+    page9 = model_list[8]
+    assert not [block for block in page9 if block["type"] == "equation"]
+    supplementary = _blocks_containing(page9, "Supplementary Information")
+    assert len(supplementary) == 1
+    assert "073888" in _normalized_content_probe(str(supplementary[0]["content"]))
+
+    page11 = model_list[10]
+    reference_blocks = [
+        block
+        for block in page11
+        if block["type"] == "text"
+        and any(
+            str(block["content"]).lstrip().startswith(f"{number}.")
+            for number in range(45, 54)
+        )
+    ]
+    assert len(reference_blocks) == 9
+    assert {
+        int(str(block["content"]).lstrip().partition(".")[0])
+        for block in reference_blocks
+    } == set(range(45, 54))
+    reference48 = next(
+        block
+        for block in reference_blocks
+        if str(block["content"]).lstrip().startswith("48.")
+    )
+    assert "103389fimmu20231222129" in _normalized_content_probe(
+        str(reference48["content"])
+    )
+
+
+def test_demo5_targeted_table_and_footer_regressions() -> None:
+    """验证 demo5 代表页表格完整、框内无残文且页码外图片成为页脚。"""
+
+    model_list = _native_model_list("demo5.pdf")
+
+    for page_number in (9, 10, 22, 38, 70, 77):
+        page = model_list[page_number - 1]
+        table_blocks = [block for block in page if block["type"] == "table"]
+        assert len(table_blocks) == 1
+        table_bbox = table_blocks[0]["bbox"]
+        residual_text = [
+            block
+            for block in page
+            if block["type"] == "text"
+            and table_bbox[0]
+            <= (block["bbox"][0] + block["bbox"][2]) / 2
+            <= table_bbox[2]
+            and table_bbox[1]
+            <= (block["bbox"][1] + block["bbox"][3]) / 2
+            <= table_bbox[3]
+        ]
+        assert not residual_text
+
+    page77_note = _blocks_containing(model_list[76], "注：（1）指气量")
+    assert len(page77_note) == 1
+    assert page77_note[0]["type"] == "text"
+
+    page9 = model_list[8]
+    page_number_block = next(
+        block for block in page9 if block["type"] == "page_number"
+    )
+    empty_footer = next(
+        block
+        for block in page9
+        if block["type"] == "footer" and not str(block["content"]).strip()
+    )
+    assert empty_footer["bbox"][1] > page_number_block["bbox"][3]
+
+
+def test_demo6_default3_targeted_title_regressions() -> None:
+    """验证 demo6 的五个正文负样本和九个真实章节标题。"""
+
+    model_list = _native_model_list("demo6.pdf")
+    blocks = [block for page in model_list for block in page]
+    expected_titles = {
+        "一、招标条件",
+        "二、项目概况和招标范围",
+        "三、投标人资格要求",
+        "四、招标文件的获取",
+        "五、投标文件的递交",
+        "六、开标时间及地点",
+        "七、其他",
+        "八、监督部门",
+        "九、联系方式",
+    }
+    assert {
+        block["content"]
+        for block in blocks
+        if block["type"] == "paragraph_title"
+    } == expected_titles
+
+    for probe in (
+        "招标编号",
+        "(001)河南农业大学",
+        "递交方式",
+        "[2014]68号）。",
+        "招 标 人",
+    ):
+        matches = _blocks_containing(blocks, probe)
+        assert matches
+        assert {block["type"] for block in matches} == {"text"}
