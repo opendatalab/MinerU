@@ -973,6 +973,45 @@ def _pages_from_middle_json(mid_json: dict[str, Any] | None) -> list[PageInfo]:
     return _parse_result_from_middle_json(mid_json).pages
 
 
+def _normalize_legacy_pdf_info_spans(pdf_info: Any) -> None:
+    """旧版 middle_json 的 span 可能用 html 字段携带 table/chart 等内容而不设 content。
+
+    Span.from_dict 只读取 dataclass 定义的字段，会丢弃 html，导致 content 为空。
+    在反序列化前把非空 html 回填到 content。
+    """
+    if not isinstance(pdf_info, list):
+        return
+    for page in pdf_info:
+        if not isinstance(page, dict):
+            continue
+        for key in ("preproc_blocks", "para_blocks", "discarded_blocks"):
+            blocks = page.get(key)
+            if isinstance(blocks, list):
+                _normalize_legacy_blocks(blocks)
+
+
+def _normalize_legacy_blocks(blocks: list[Any]) -> None:
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        lines = block.get("lines")
+        if isinstance(lines, list):
+            for line in lines:
+                if not isinstance(line, dict):
+                    continue
+                spans = line.get("spans")
+                if isinstance(spans, list):
+                    for span in spans:
+                        if not isinstance(span, dict):
+                            continue
+                        html = span.get("html")
+                        if isinstance(html, str) and html:
+                            span["content"] = html
+        children = block.get("blocks")
+        if isinstance(children, list):
+            _normalize_legacy_blocks(children)
+
+
 def _parse_result_from_middle_json(mid_json: dict[str, Any]) -> ParseResult:
     if isinstance(mid_json, dict):
         pages = mid_json.get("pages")
@@ -982,6 +1021,7 @@ def _parse_result_from_middle_json(mid_json: dict[str, Any]) -> ParseResult:
         pdf_info = mid_json.get("pdf_info")
         if isinstance(pdf_info, list):
             # The official API may use the older pdf_info field instead of ParseResult pages.
+            _normalize_legacy_pdf_info_spans(pdf_info)
             compat_payload = dict(mid_json)
             compat_payload["pages"] = pdf_info
             return ParseResult.from_dict(compat_payload)

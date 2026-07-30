@@ -1466,6 +1466,128 @@ def test_api_client_accepts_legacy_pdf_info_middle_json() -> None:
     assert pages[0].page_size == (100, 200)
 
 
+def _legacy_span_with_html(html: str, *, content: str | None = None, span_type: str = "table") -> dict[str, Any]:
+    span: dict[str, Any] = {"type": span_type, "bbox": [0, 0, 10, 10], "html": html}
+    if content is not None:
+        span["content"] = content
+    return span
+
+
+def _legacy_page_with_spans(spans: list[dict[str, Any]], *, block_key: str = "para_blocks") -> dict[str, Any]:
+    return {
+        "page_idx": 0,
+        "page_size": [100, 200],
+        block_key: [
+            {
+                "index": 0,
+                "type": "table",
+                "bbox": [0, 0, 100, 100],
+                "lines": [{"bbox": [0, 0, 100, 100], "spans": spans}],
+            }
+        ],
+    }
+
+
+def test_legacy_pdf_info_fills_content_from_html_when_content_missing() -> None:
+    pages = _pages_from_middle_json(
+        {"pdf_info": [_legacy_page_with_spans([_legacy_span_with_html("<table></table>")])]}
+    )
+
+    spans = list(pages[0].para_blocks[0].lines[0].spans)
+    assert len(spans) == 1
+    assert spans[0].content == "<table></table>"
+
+
+def test_legacy_pdf_info_overrides_content_with_non_empty_html() -> None:
+    pages = _pages_from_middle_json(
+        {"pdf_info": [_legacy_page_with_spans([_legacy_span_with_html("<table>new</table>", content="old")])]}
+    )
+
+    spans = list(pages[0].para_blocks[0].lines[0].spans)
+    assert spans[0].content == "<table>new</table>"
+
+
+def test_legacy_pdf_info_leaves_content_untouched_when_html_missing_or_empty() -> None:
+    span_no_html: dict[str, Any] = {"type": "text", "bbox": [0, 0, 10, 10], "content": "keep"}
+    span_empty_html: dict[str, Any] = {"type": "text", "bbox": [0, 0, 10, 10], "content": "keep", "html": ""}
+
+    pages = _pages_from_middle_json(
+        {"pdf_info": [_legacy_page_with_spans([span_no_html, span_empty_html])]}
+    )
+
+    spans = list(pages[0].para_blocks[0].lines[0].spans)
+    assert [s.content for s in spans] == ["keep", "keep"]
+
+
+def test_legacy_pdf_info_normalizes_spans_in_nested_blocks_and_all_block_lists() -> None:
+    nested_span = _legacy_span_with_html("<table>nested</table>")
+    preproc_span = _legacy_span_with_html("<table>preproc</table>")
+    discarded_span = _legacy_span_with_html("<table>discarded</table>")
+
+    page: dict[str, Any] = {
+        "page_idx": 0,
+        "page_size": [100, 200],
+        "preproc_blocks": [
+            {
+                "index": 0,
+                "type": "table",
+                "bbox": [0, 0, 100, 100],
+                "lines": [{"bbox": [0, 0, 100, 100], "spans": [preproc_span]}],
+            }
+        ],
+        "para_blocks": [
+            {
+                "index": 0,
+                "type": "image",
+                "bbox": [0, 0, 100, 100],
+                "blocks": [
+                    {
+                        "index": 0,
+                        "type": "image_body",
+                        "bbox": [0, 0, 50, 50],
+                        "lines": [{"bbox": [0, 0, 50, 50], "spans": [nested_span]}],
+                    }
+                ],
+            }
+        ],
+        "discarded_blocks": [
+            {
+                "index": 0,
+                "type": "discarded",
+                "bbox": [0, 0, 100, 100],
+                "lines": [{"bbox": [0, 0, 100, 100], "spans": [discarded_span]}],
+            }
+        ],
+    }
+
+    pages = _pages_from_middle_json({"pdf_info": [page]})
+
+    assert list(pages[0].preproc_blocks[0].lines[0].spans)[0].content == "<table>preproc</table>"
+    nested = list(pages[0].para_blocks[0].blocks[0].lines[0].spans)[0]
+    assert nested.content == "<table>nested</table>"
+    assert list(pages[0].discarded_blocks[0].lines[0].spans)[0].content == "<table>discarded</table>"
+
+
+def test_new_format_pages_does_not_treat_html_as_content() -> None:
+    # 新版 pages 格式不走 compat 分支，span 的 html 字段应被 Span.from_dict 正常丢弃，不回填 content。
+    page = {
+        "page_idx": 0,
+        "page_size": [100, 200],
+        "para_blocks": [
+            {
+                "index": 0,
+                "type": "table",
+                "bbox": [0, 0, 100, 100],
+                "lines": [{"bbox": [0, 0, 100, 100], "spans": [_legacy_span_with_html("<table>html</table>")]}],
+            }
+        ],
+    }
+
+    result = ParseResult.from_dict({"pages": [page]})
+    spans = list(result.pages[0].para_blocks[0].lines[0].spans)
+    assert spans[0].content == ""
+
+
 @pytest.mark.parametrize("payload", [[{"page_idx": 0}], {"pdf_info": {"preproc_blocks": []}}])
 def test_api_client_rejects_legacy_middle_json_shapes(payload: object) -> None:
     with pytest.raises(Exception, match="pages"):
