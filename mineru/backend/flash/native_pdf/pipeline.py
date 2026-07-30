@@ -59,7 +59,9 @@ from .formulas import (
     _build_vector_formula_blocks,
 )
 from .auxiliary_text import (
+    _classify_page_number_outer_companions,
     _classify_page_auxiliary_text,
+    _classify_rule_delimited_headers,
     _classify_repeated_page_marginals,
     _classify_repeated_visual_headers,
 )
@@ -188,6 +190,8 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
 
     _classify_repeated_visual_headers(prepared_pages)
     _classify_repeated_page_marginals(prepared_pages)
+    _classify_rule_delimited_headers(prepared_pages)
+    _classify_page_number_outer_companions(prepared_pages)
     document_body_profile = _infer_document_body_profile(prepared_pages)
     return [
         _finalize_prepared_page(
@@ -685,7 +689,7 @@ def _normalize_output_block(
     content = _sanitize_pdf_control_text(content, preserve_newlines=True)
     block_type = block.get("type")
     normalized_type = block_type if block_type in _OUTPUT_BLOCK_TYPES else "text"
-    if normalized_type not in {"image", "equation"} and not content.strip():
+    if normalized_type not in {"image", "equation", "header", "footer"} and not content.strip():
         return None
     normalized_bbox = _normalize_bbox_to_thousandths(bbox, page_size)
     return {

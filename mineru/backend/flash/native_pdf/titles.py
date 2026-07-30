@@ -27,6 +27,8 @@ from .geometry import (
 from .line_layout import (
     _effective_text_row_gap,
     _estimate_lane_gap,
+    _font_signatures_share_family,
+    _font_weights_conflict,
     _infer_text_lanes,
     _line_effective_height,
     _should_connect_semantic_rows,
@@ -107,6 +109,7 @@ def _classify_page_titles(
                 physical_gaps=physical_gaps,
                 grid_title_suppressions=grid_title_suppressions,
                 document_body_profile=document_body_profile,
+                page_index=page_index,
             )
 
 
@@ -577,6 +580,7 @@ def _classify_paragraph_titles_in_lane(
     physical_gaps: dict[int, tuple[float | None, float | None]],
     grid_title_suppressions: set[int],
     document_body_profile: _DocumentBodyProfile | None,
+    page_index: int,
 ) -> None:
     """以字号、样式、留白、对齐、栏宽和容器邻接判定段落标题。"""
 
@@ -637,14 +641,20 @@ def _classify_paragraph_titles_in_lane(
             and profile.body_font is not None
             and line.font_signature is not None
             and line.font_coverage >= 0.75
-            and line.font_signature != profile.body_font
+            and not _font_signatures_share_family(
+                line.font_signature,
+                profile.body_font,
+            )
         )
         low_coverage_style_differs = (
             not recurrent_regular_font
             and profile.body_font is not None
             and line.font_signature is not None
             and 0.5 <= line.font_coverage < 0.75
-            and line.font_signature != profile.body_font
+            and not _font_signatures_share_family(
+                line.font_signature,
+                profile.body_font,
+            )
         )
         style_support = profile.style_support.get(line.font_signature, 1.0) if line.font_signature is not None else 1.0
         weight_emphasized = (
@@ -692,19 +702,20 @@ def _classify_paragraph_titles_in_lane(
             profile,
         ):
             continue
+        has_following_body_row = _has_following_body_row(
+            rows,
+            index,
+            lane_width,
+            lane.left,
+            profile,
+        )
         compact_local_transition = (
             low_coverage_style_differs
             and left_aligned
             and width_ratio <= 0.65
             and gap_above >= 0.1
             and gap_below >= 0.2
-            and _has_following_body_row(
-                rows,
-                index,
-                lane_width,
-                lane.left,
-                profile,
-            )
+            and has_following_body_row
         )
         compact_text_section = (
             height_ratio < 0.9
@@ -721,13 +732,7 @@ def _classify_paragraph_titles_in_lane(
         if (
             height_ratio < 0.9
             and not inside_front_matter
-            and not _has_following_body_row(
-                rows,
-                index,
-                lane_width,
-                lane.left,
-                profile,
-            )
+            and not has_following_body_row
             and not compact_text_section
         ):
             continue
@@ -759,17 +764,39 @@ def _classify_paragraph_titles_in_lane(
         if left_aligned:
             score += 0.25
 
+        precisely_centered = (
+            abs(
+                _bbox_center_x(bbox)
+                - (lane.left + lane.right) / 2.0
+            )
+            <= 0.05 * lane_width
+        )
+        centered_structural_fallback = (
+            0.75 <= height_ratio <= 1.15
+            and precisely_centered
+            and width_ratio <= 0.7
+            and not inside_front_matter
+            and not (
+                page_index == 0
+                and _bbox_center_y(bbox) <= 0.2 * local_page_height
+            )
+            and 0.35 <= gap_above <= 1.5
+            and 0.2 <= gap_below <= 1.5
+            and has_following_body_row
+            and not _is_continuous_field_row(
+                rows,
+                index,
+                lane_width,
+                profile,
+            )
+        )
         strong_layout_signal = (
             height_ratio >= 1.18
             or style_differs
             or compact_local_transition
             or weight_emphasized
-            or (
-                centered
-                and width_ratio <= 0.7
-                and gap_above >= 0.35
-                and gap_below >= 0.2
-            )
+            or centered_structural_fallback
+            or compact_text_section
         )
         if (
             score >= 4.0
@@ -813,7 +840,10 @@ def _line_uses_document_regular_font(
         document_body_profile is not None
         and line.font_signature is not None
         and line.font_coverage >= 0.5
-        and line.font_signature in document_body_profile.regular_fonts
+        and any(
+            _font_signatures_share_family(line.font_signature, regular_font)
+            for regular_font in document_body_profile.regular_fonts
+        )
     )
 
 
@@ -906,16 +936,43 @@ def _continues_local_body_row(
     line, bbox = rows[index]
     if previous_line.semantic_type is not None:
         return False
+    previous_visual_row = (
+        [
+            item
+            for item in rows[:index]
+            if item[0].visual_row_id == previous_line.visual_row_id
+        ]
+        if previous_line.visual_row_id is not None
+        else [rows[index - 1]]
+    )
+    previous_style_members = [
+        member
+        for member, _member_bbox in previous_visual_row
+        if member.font_signature is not None and member.font_coverage >= 0.5
+    ]
     if (
-        previous_line.font_signature is not None
-        and line.font_signature is not None
-        and previous_line.font_signature != line.font_signature
+        line.font_signature is not None
+        and previous_style_members
+        and not any(
+            _font_signatures_share_family(member.font_signature, line.font_signature)
+            and not _font_weights_conflict(member, line)
+            for member in previous_style_members
+        )
     ):
         return False
-    previous_height = _line_effective_height(previous_line, previous_bbox)
+    previous_bbox = _bbox_union_many(
+        [member_bbox for _member, member_bbox in previous_visual_row]
+    )
+    previous_height = statistics.median(
+        _line_effective_height(member, member_bbox)
+        for member, member_bbox in previous_visual_row
+    )
     line_height = _line_effective_height(line, bbox)
     pair_height = max(previous_height, line_height)
-    gap = _effective_text_row_gap(rows[index - 1], rows[index])
+    gap = _effective_text_row_gap(
+        (previous_line, previous_bbox),
+        rows[index],
+    )
     return (
         0.8 <= line_height / previous_height <= 1.25
         and previous_bbox[2] - previous_bbox[0] >= 0.75 * lane_width
@@ -924,6 +981,38 @@ def _continues_local_body_row(
         <= gap
         <= profile.regular_gap + pair_height
     )
+
+
+def _is_continuous_field_row(
+    rows: list[tuple[_LineItem, BBox]],
+    index: int,
+    lane_width: float,
+    profile: _LaneBodyProfile,
+) -> bool:
+    """识别同缩进、同尺度且紧邻的连续字段行，阻止其借居中误差成为标题。"""
+
+    _line, bbox = rows[index]
+    line_height = _line_effective_height(*rows[index])
+    if not 0.85 <= line_height / profile.body_height <= 1.15:
+        return False
+    for neighbor_index in (index - 1, index + 1):
+        if not 0 <= neighbor_index < len(rows):
+            continue
+        neighbor_line, neighbor_bbox = rows[neighbor_index]
+        neighbor_height = _line_effective_height(neighbor_line, neighbor_bbox)
+        if (
+            neighbor_line.semantic_type is None
+            and 0.85 <= neighbor_height / profile.body_height <= 1.15
+            and neighbor_bbox[2] - neighbor_bbox[0] >= 0.35 * lane_width
+            and abs(neighbor_bbox[0] - bbox[0]) <= 0.75 * profile.body_height
+            and max(
+                _effective_text_row_gap(rows[neighbor_index], rows[index]),
+                _effective_text_row_gap(rows[index], rows[neighbor_index]),
+            )
+            <= 1.5 * profile.body_height
+        ):
+            return True
+    return False
 
 
 def _is_full_width_inline_heading(
@@ -949,7 +1038,10 @@ def _is_full_width_inline_heading(
         profile.body_font is None
         or next_line.font_signature is None
         or next_line.font_coverage < 0.75
-        or next_line.font_signature == profile.body_font
+        or _font_signatures_share_family(
+            next_line.font_signature,
+            profile.body_font,
+        )
     )
     return (
         next_line.semantic_type is None

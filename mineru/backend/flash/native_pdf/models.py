@@ -29,6 +29,7 @@ class _LineItem:
     font_coverage: float = 0.0
     dominant_font_weight: float | None = None
     median_glyph_width: float | None = None
+    leading_emphasis_width: float | None = None
     split_from_row: bool = False
     semantic_type: str | None = None
     restored_inline_cluster: bool = False

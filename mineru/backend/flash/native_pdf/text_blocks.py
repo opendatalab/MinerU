@@ -38,6 +38,7 @@ from .line_layout import (
     _estimate_lane_gap,
     _horizontal_rule_separates_rows,
     _infer_text_lanes,
+    _is_structural_typography_gap,
     _line_effective_height,
     _should_connect_semantic_rows,
     _should_connect_text_rows,
@@ -184,9 +185,10 @@ def _build_hanging_indent_group_map(
             row_index += 1
             continue
 
-        next_start_index, continuation_left = first_entry
-        start_indices = [row_index, next_start_index]
-        current_start_index = next_start_index
+        _next_start_index, continuation_left = first_entry
+        start_indices = [row_index]
+        current_start_index = row_index
+        end_index: int | None = None
         while True:
             next_entry = consume_entry(
                 current_start_index,
@@ -195,21 +197,32 @@ def _build_hanging_indent_group_map(
                 require_next_start=True,
             )
             if next_entry is None:
+                final_entry = consume_entry(
+                    current_start_index,
+                    start_left,
+                    continuation_left,
+                    require_next_start=False,
+                )
+                if final_entry is not None:
+                    end_index = final_entry[0]
                 break
             next_start_index, _continuation_left = next_entry
+            prospective_entry = consume_entry(
+                next_start_index,
+                start_left,
+                continuation_left,
+                require_next_start=False,
+            )
+            if prospective_entry is None:
+                # 当前条目已经完整确认；后面的普通左对齐段落只作为终止边界，
+                # 不能让它反向使此前所有悬挂缩进条目失效。
+                end_index = next_start_index
+                break
             start_indices.append(next_start_index)
             current_start_index = next_start_index
-
-        final_entry = consume_entry(
-            start_indices[-1],
-            start_left,
-            continuation_left,
-            require_next_start=False,
-        )
-        if final_entry is None:
+        if len(start_indices) < 2 or end_index is None:
             row_index += 1
             continue
-        end_index, _continuation_left = final_entry
 
         entry_ranges = [
             (start, end)
@@ -336,6 +349,153 @@ def _split_page_footnote_entries(
     indent_threshold = max(1.5 * median_height, 2.0 * median_glyph_width)
     base_left = min(bbox[0] for _line, bbox in line_geometry)
     maximum_row_width = max(bbox[2] - bbox[0] for _line, bbox in line_geometry)
+    marker_rows = _find_page_footnote_marker_rows(
+        line_geometry,
+        median_height,
+        median_glyph_width,
+        base_left,
+    )
+    if len(marker_rows) >= 2:
+        return _split_marked_page_footnote_entries(
+            line_geometry,
+            marker_rows,
+            median_height,
+            median_glyph_width,
+            base_left,
+            maximum_row_width,
+            indent_threshold,
+        )
+    return _split_unmarked_page_footnote_entries(
+        line_geometry,
+        base_left,
+        maximum_row_width,
+        indent_threshold,
+    )
+
+
+def _find_page_footnote_marker_rows(
+    line_geometry: list[tuple[_LineItem, BBox]],
+    median_height: float,
+    median_glyph_width: float,
+    base_left: float,
+) -> list[tuple[tuple[_LineItem, BBox], tuple[_LineItem, BBox]]]:
+    """用同视觉行的窄左片段和右侧正文识别脚注编号锚点。"""
+
+    by_visual_row: dict[int, list[tuple[_LineItem, BBox]]] = {}
+    for item in line_geometry:
+        line = item[0]
+        if line.visual_row_id is None or not line.split_from_row:
+            continue
+        by_visual_row.setdefault(line.visual_row_id, []).append(item)
+
+    marker_rows: list[tuple[tuple[_LineItem, BBox], tuple[_LineItem, BBox]]] = []
+    marker_width_limit = max(1.5 * median_glyph_width, 0.75 * median_height)
+    for members in by_visual_row.values():
+        ordered = sorted(members, key=lambda item: item[1][0])
+        if len(ordered) < 2:
+            continue
+        marker, body = ordered[0], ordered[1]
+        marker_width = marker[1][2] - marker[1][0]
+        body_width = body[1][2] - body[1][0]
+        horizontal_gap = body[1][0] - marker[1][2]
+        if (
+            marker_width > marker_width_limit
+            or marker[1][0] - base_left > 0.5 * median_height
+            or not 0.0 <= horizontal_gap <= 1.5 * median_height
+            or body[1][0] - base_left < max(1.5 * marker_width, 0.75 * median_height)
+            or body_width < max(4.0 * marker_width, 4.0 * median_glyph_width)
+            or abs(_bbox_center_y(marker[1]) - _bbox_center_y(body[1]))
+            > 0.4 * median_height
+        ):
+            continue
+        marker_rows.append((marker, body))
+    marker_rows.sort(key=lambda pair: (min(pair[0][1][1], pair[1][1][1]), pair[0][1][0]))
+    return marker_rows
+
+
+def _split_marked_page_footnote_entries(
+    line_geometry: list[tuple[_LineItem, BBox]],
+    marker_rows: list[tuple[tuple[_LineItem, BBox], tuple[_LineItem, BBox]]],
+    median_height: float,
+    median_glyph_width: float,
+    base_left: float,
+    maximum_row_width: float,
+    indent_threshold: float,
+) -> list[list[_LineItem]]:
+    """把编号、右侧首行和对齐续行聚合，并保留编号区之前的独立脚注。"""
+
+    first_marker_top = min(marker_rows[0][0][1][1], marker_rows[0][1][1][1])
+    prefix_geometry = [item for item in line_geometry if item[1][1] < first_marker_top]
+    entries = _split_unmarked_page_footnote_entries(
+        prefix_geometry,
+        base_left,
+        maximum_row_width,
+        indent_threshold,
+    )
+    consumed = {
+        line.source_index
+        for entry in entries
+        for line in entry
+    }
+    continuation_tolerance = max(0.75 * median_height, 2.0 * median_glyph_width)
+    for marker_index, (marker, body) in enumerate(marker_rows):
+        next_marker_top = (
+            min(marker_rows[marker_index + 1][0][1][1], marker_rows[marker_index + 1][1][1][1])
+            if marker_index + 1 < len(marker_rows)
+            else float("inf")
+        )
+        entry_items = [marker, body]
+        consumed.update((marker[0].source_index, body[0].source_index))
+        previous = body
+        for candidate in line_geometry:
+            if candidate[0].source_index in consumed:
+                continue
+            if candidate[1][1] < body[1][1] or candidate[1][1] >= next_marker_top:
+                continue
+            if abs(candidate[1][0] - body[1][0]) > continuation_tolerance:
+                continue
+            if _effective_text_row_gap(previous, candidate) > 1.5 * median_height:
+                continue
+            entry_items.append(candidate)
+            consumed.add(candidate[0].source_index)
+            previous = candidate
+        entry_items.sort(key=lambda item: (item[1][1], item[1][0], item[0].source_index))
+        entries.append([line for line, _bbox in entry_items])
+
+    leftovers = [
+        item
+        for item in line_geometry
+        if item[0].source_index not in consumed
+    ]
+    entries.extend(
+        _split_unmarked_page_footnote_entries(
+            leftovers,
+            base_left,
+            maximum_row_width,
+            indent_threshold,
+        )
+    )
+    entries.sort(
+        key=lambda entry: min(
+            bbox[1]
+            for line in entry
+            for candidate, bbox in line_geometry
+            if candidate.source_index == line.source_index
+        )
+    )
+    return entries
+
+
+def _split_unmarked_page_footnote_entries(
+    line_geometry: list[tuple[_LineItem, BBox]],
+    base_left: float,
+    maximum_row_width: float,
+    indent_threshold: float,
+) -> list[list[_LineItem]]:
+    """沿用首行和续行缩进模式切分没有稳定编号锚点的脚注行。"""
+
+    if not line_geometry:
+        return []
     first_line_is_indented = line_geometry[0][1][0] - base_left > indent_threshold
 
     entries: list[list[_LineItem]] = [[line_geometry[0][0]]]
@@ -407,6 +567,140 @@ def _tight_page_footnote_bboxes(
     return output
 
 
+def _infer_local_text_lane_map(lane: _TextLane) -> dict[int, _TextLane]:
+    """从连续同左缘正文推导局部栏宽，修正跨栏上文污染的全宽栏带。"""
+
+    if lane.is_span or len(lane.lines) < 3:
+        return {}
+    rows = sorted(
+        lane.lines,
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    median_height = statistics.median(
+        _line_effective_height(line, bbox) for line, bbox in rows
+    )
+    left_tolerance = max(3.0, 0.75 * median_height)
+    height_ratio_limit = 1.25
+    runs: list[list[tuple[_LineItem, BBox]]] = []
+    current_run: list[tuple[_LineItem, BBox]] = []
+
+    def submit_run() -> None:
+        """提交当前连续正文行，语义行和明显左缘变化都会结束该局部区段。"""
+
+        nonlocal current_run
+        if current_run:
+            runs.append(current_run)
+            current_run = []
+
+    for item in rows:
+        line, bbox = item
+        if line.semantic_type is not None:
+            submit_run()
+            continue
+        if not current_run:
+            current_run = [item]
+            continue
+        run_left = statistics.median(member[1][0] for member in current_run)
+        run_heights = [
+            _line_effective_height(member, member_bbox)
+            for member, member_bbox in current_run
+        ]
+        current_height = _line_effective_height(line, bbox)
+        if (
+            abs(bbox[0] - run_left) <= left_tolerance
+            and max([*run_heights, current_height])
+            / max(0.1, min([*run_heights, current_height]))
+            <= height_ratio_limit
+        ):
+            current_run.append(item)
+        else:
+            submit_run()
+            current_run = [item]
+    submit_run()
+
+    global_width = max(0.1, lane.right - lane.left)
+    local_by_source: dict[int, _TextLane] = {}
+    for run in runs:
+        if len(run) < 3:
+            continue
+        local_left = statistics.median(bbox[0] for _line, bbox in run)
+        local_right = max(bbox[2] for _line, bbox in run)
+        local_width = max(0.1, local_right - local_left)
+        wide_support = sum(
+            bbox[2] - bbox[0] >= 0.7 * local_width
+            for _line, bbox in run
+        )
+        if global_width < 1.4 * local_width or wide_support < 3:
+            continue
+        local_lane = _TextLane(
+            left=local_left,
+            right=local_right,
+            lines=run,
+            is_span=False,
+        )
+        for line, _bbox in run:
+            local_by_source[line.source_index] = local_lane
+    return local_by_source
+
+
+def _structured_text_break_sources(
+    lane: _TextLane,
+    regular_gap: float,
+    gap_mad: float,
+) -> set[int]:
+    """用重复强调首行和前行右侧留白确认结构化正文的新段起点。"""
+
+    rows = sorted(
+        lane.lines,
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    lane_width = max(0.1, lane.right - lane.left)
+    break_sources: set[int] = set()
+    regions: list[list[tuple[_LineItem, BBox]]] = []
+    for row in rows:
+        if row[0].semantic_type is not None:
+            if regions and regions[-1]:
+                regions.append([])
+            continue
+        if not regions:
+            regions.append([])
+        regions[-1].append(row)
+
+    for region in regions:
+        candidates: list[int] = []
+        for index, (line, bbox) in enumerate(region):
+            height = _line_effective_height(line, bbox)
+            line_width = bbox[2] - bbox[0]
+            if (
+                line.leading_emphasis_width is not None
+                and line.leading_emphasis_width <= 0.2 * lane_width
+                and line_width >= 0.95 * lane_width
+                and abs(bbox[0] - lane.left) <= 0.75 * height
+            ):
+                candidates.append(index)
+        if len(candidates) < 3:
+            continue
+        for index in candidates:
+            if index == 0:
+                continue
+            previous = region[index - 1]
+            current = region[index]
+            pair_height = max(
+                _line_effective_height(*previous),
+                _line_effective_height(*current),
+            )
+            previous_fill = (previous[1][2] - lane.left) / lane_width
+            vertical_gap = _effective_text_row_gap(previous, current)
+            if (
+                previous_fill <= 0.8
+                and -0.25 * pair_height
+                <= vertical_gap
+                <= regular_gap + max(0.75 * pair_height, 3.0 * gap_mad)
+            ):
+                break_sources.add(current[0].source_index)
+    return break_sources
+
+
 def _build_text_blocks(
     lines: list[_LineItem],
     table_bboxes: list[BBox],
@@ -443,6 +737,12 @@ def _build_text_blocks(
             if not lane.lines:
                 continue
             regular_gap, gap_mad = _estimate_lane_gap(lane)
+            local_lane_by_source = _infer_local_text_lane_map(lane)
+            structured_break_sources = _structured_text_break_sources(
+                lane,
+                regular_gap,
+                gap_mad,
+            )
             hanging_indent_groups = _build_hanging_indent_group_map(
                 lane,
                 table_bboxes,
@@ -467,7 +767,21 @@ def _build_text_blocks(
                 else:
                     previous_group = hanging_indent_groups.get(previous[0].source_index)
                     current_group = hanging_indent_groups.get(current[0].source_index)
-                    if _starts_structural_reference_entry(previous, current):
+                    previous_local_lane = local_lane_by_source.get(
+                        previous[0].source_index
+                    )
+                    current_local_lane = local_lane_by_source.get(
+                        current[0].source_index
+                    )
+                    connection_lane = (
+                        current_local_lane
+                        if current_local_lane is not None
+                        and previous_local_lane is current_local_lane
+                        else lane
+                    )
+                    if current[0].source_index in structured_break_sources:
+                        should_connect = False
+                    elif _starts_structural_reference_entry(previous, current):
                         # 编号只确认已经由悬挂缩进几何形成的新条目，不能单独扩张范围。
                         should_connect = False
                     elif is_hyphen_at_line_end(previous[0].text):
@@ -475,7 +789,7 @@ def _build_text_blocks(
                         should_connect = _should_connect_text_rows(
                             previous,
                             current,
-                            lane,
+                            connection_lane,
                             regular_gap,
                             gap_mad,
                             table_bboxes,
@@ -487,7 +801,7 @@ def _build_text_blocks(
                         should_connect = _should_connect_text_rows(
                             previous,
                             current,
-                            lane,
+                            connection_lane,
                             regular_gap,
                             gap_mad,
                             table_bboxes,
@@ -502,6 +816,14 @@ def _build_text_blocks(
 
             for component_geometry in components:
                 component_lines = [item[0] for item in component_geometry]
+                component_local_lane = local_lane_by_source.get(
+                    component_lines[0].source_index
+                )
+                if component_local_lane is None or not all(
+                    local_lane_by_source.get(line.source_index) is component_local_lane
+                    for line in component_lines
+                ):
+                    component_local_lane = lane
                 if component_lines[0].semantic_type == "doc_title":
                     # 文档标题保留自然换行，避免混排标题因语言检测在中文折行处插入空格。
                     content = "\n".join(
@@ -544,8 +866,11 @@ def _build_text_blocks(
                             if line.font_signature is not None
                             and line.font_coverage >= 0.5
                         },
-                        "_lane_interval": (lane.left, lane.right),
-                        "_lane_is_span": lane.is_span,
+                        "_lane_interval": (
+                            component_local_lane.left,
+                            component_local_lane.right,
+                        ),
+                        "_lane_is_span": component_local_lane.is_span,
                     }
                 )
     return _merge_spatial_text_components(blocks, page_size)
@@ -654,6 +979,67 @@ def _caption_seed_matches_image(
     )
 
 
+def _caption_body_has_structural_gap(
+    seed: dict[str, Any],
+    candidate: dict[str, Any],
+) -> bool:
+    """用图注末行、候选首行和图注内部行距阻止跨排版层级回并。"""
+
+    seed_bboxes = seed.get("_local_line_bboxes")
+    seed_heights = seed.get("_line_heights")
+    candidate_bboxes = candidate.get("_local_line_bboxes")
+    candidate_heights = candidate.get("_line_heights")
+    if not (
+        isinstance(seed_bboxes, list)
+        and isinstance(seed_heights, list)
+        and len(seed_bboxes) == len(seed_heights)
+        and seed_bboxes
+        and isinstance(candidate_bboxes, list)
+        and isinstance(candidate_heights, list)
+        and len(candidate_bboxes) == len(candidate_heights)
+        and candidate_bboxes
+    ):
+        return False
+
+    seed_rows = sorted(
+        zip(seed_bboxes, seed_heights, strict=True),
+        key=lambda item: (item[0][1], item[0][0]),
+    )
+    candidate_rows = sorted(
+        zip(candidate_bboxes, candidate_heights, strict=True),
+        key=lambda item: (item[0][1], item[0][0]),
+    )
+    previous_bbox, previous_height = seed_rows[-1]
+    current_bbox, current_height = candidate_rows[0]
+    internal_gaps = [
+        max(0.0, current[0][1] - (previous[0][1] + float(previous[1])))
+        for previous, current in zip(seed_rows, seed_rows[1:])
+    ]
+    regular_gap = statistics.median(internal_gaps) if internal_gaps else 0.0
+    gap_mad = (
+        statistics.median(abs(gap - regular_gap) for gap in internal_gaps)
+        if internal_gaps
+        else 0.0
+    )
+    seed_fonts = seed.get("_font_signatures")
+    candidate_fonts = candidate.get("_font_signatures")
+    reliable_style_change = (
+        isinstance(seed_fonts, set)
+        and bool(seed_fonts)
+        and isinstance(candidate_fonts, set)
+        and bool(candidate_fonts)
+        and seed_fonts.isdisjoint(candidate_fonts)
+    )
+    return _is_structural_typography_gap(
+        float(previous_height),
+        float(current_height),
+        current_bbox[1] - (previous_bbox[1] + float(previous_height)),
+        regular_gap,
+        gap_mad,
+        reliable_style_change=reliable_style_change,
+    )
+
+
 def _caption_tail_matches_seed(
     seed: dict[str, Any],
     candidate: dict[str, Any],
@@ -666,6 +1052,8 @@ def _caption_tail_matches_seed(
     seed_bbox = seed["bbox"]
     candidate_bbox = candidate["bbox"]
     if _bbox_center_y(candidate_bbox) <= _bbox_center_y(seed_bbox):
+        return False
+    if _caption_body_has_structural_gap(seed, candidate):
         return False
     vertical_gap = max(0.0, candidate_bbox[1] - seed_bbox[3])
     if (

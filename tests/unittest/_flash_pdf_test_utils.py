@@ -21,6 +21,7 @@ def _text_line(
     font_coverage: float = 0.0,
     dominant_font_weight: float | None = None,
     median_glyph_width: float | None = None,
+    leading_emphasis_width: float | None = None,
     semantic_type: str | None = None,
 ) -> models._LineItem:
     """构造栏带、排版恢复与图形标签测试使用的原生文本行。"""
@@ -37,6 +38,7 @@ def _text_line(
         font_coverage=font_coverage,
         dominant_font_weight=dominant_font_weight,
         median_glyph_width=median_glyph_width,
+        leading_emphasis_width=leading_emphasis_width,
         split_from_row=split_from_row,
         semantic_type=semantic_type,
     )
@@ -55,5 +57,4 @@ def _prepared_text_page(
         drawing_lines=[],
         fixed_blocks=[],
     )
-
 

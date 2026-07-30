@@ -329,6 +329,7 @@ def _merge_overlapping_inline_cluster(
         font_coverage=host.font_coverage,
         dominant_font_weight=host.dominant_font_weight,
         median_glyph_width=host.median_glyph_width,
+        leading_emphasis_width=ordered_members[0].leading_emphasis_width,
         split_from_row=any(line.split_from_row for line in ordered_members),
         semantic_type=host.semantic_type,
         restored_inline_cluster=True,
@@ -600,6 +601,7 @@ def _merge_same_baseline_group(
         )
         if any(member.median_glyph_width is not None for member in members)
         else None,
+        leading_emphasis_width=members[0].leading_emphasis_width,
         split_from_row=any(member.split_from_row for member in members),
         semantic_type=members[0].semantic_type,
         restored_inline_cluster=any(
@@ -938,6 +940,7 @@ def _merge_dense_split_visual_row(
         )
         if any(member.median_glyph_width is not None for member in ordered_members)
         else None,
+        leading_emphasis_width=ordered_members[0].leading_emphasis_width,
         split_from_row=False,
         semantic_type=ordered_members[0].semantic_type,
         restored_inline_cluster=any(
@@ -950,4 +953,3 @@ def _merge_dense_split_visual_row(
     if merged.chars:
         _fill_native_typography(merged, page_size)
     return merged
-

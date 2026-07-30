@@ -721,3 +721,102 @@ def test_compact_multiline_cluster_becomes_one_isolated_equation() -> None:
         }
     ]
     assert compact_cluster not in remaining
+
+
+def test_justified_mixed_font_visual_row_before_body_is_not_formula_anchor() -> None:
+    """验证粗体短语与常规字体混排的满栏同行不会因右缘短词误判公式。"""
+
+    body_font = ("Body", 0)
+    heading_font = ("Heading", 1)
+    lines = [
+        _text_line(
+            f"body-{index}",
+            (0.0, top, 100.0, top + 10.0),
+            index,
+            visual_row_id=index,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        )
+        for index, top in enumerate((0.0, 12.0, 24.0))
+    ]
+    fragments = [
+        _text_line(
+            "label",
+            (0.0, 36.0, 20.0, 46.0),
+            10,
+            visual_row_id=10,
+            split_from_row=True,
+            effective_height=10.0,
+            font_signature=heading_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "one",
+            (24.0, 36.0, 38.0, 46.0),
+            11,
+            visual_row_id=10,
+            split_from_row=True,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "two",
+            (43.0, 36.0, 57.0, 46.0),
+            12,
+            visual_row_id=10,
+            split_from_row=True,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "three",
+            (63.0, 36.0, 80.0, 46.0),
+            13,
+            visual_row_id=10,
+            split_from_row=True,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "contains",
+            (86.0, 36.0, 100.0, 46.0),
+            14,
+            visual_row_id=10,
+            split_from_row=True,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+    ]
+    continuation = _text_line(
+        "continuation body row",
+        (0.0, 46.0, 100.0, 56.0),
+        15,
+        visual_row_id=11,
+        effective_height=10.0,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+
+    blocks, remaining = formulas._build_formula_like_blocks(
+        [*lines, *fragments, continuation],
+        [],
+        (100.0, 100.0),
+    )
+
+    assert blocks == []
+    assert {line.source_index for line in remaining} == {
+        0,
+        1,
+        2,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+    }

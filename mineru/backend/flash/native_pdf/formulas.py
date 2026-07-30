@@ -753,6 +753,13 @@ def _find_formula_spatial_anchors(
         ):
             # 一条粗行被多个大空格拆成密集词组时更像普通排版行，不能把末词当作公式编号锚点。
             continue
+        if _split_visual_row_has_prose_continuation(
+            lane,
+            line,
+            same_row_fragments,
+            median_height,
+        ):
+            continue
         if abs(lane.right - bbox[2]) > max(3.0, 0.02 * lane_width):
             continue
         center_y = _bbox_center_y(bbox)
@@ -809,6 +816,67 @@ def _find_formula_spatial_anchors(
                 )
             )
     return _deduplicate_formula_anchors(anchors, median_height)
+
+
+def _split_visual_row_has_prose_continuation(
+    lane: _TextLane,
+    anchor_line: _LineItem,
+    same_row_fragments: list[_LineItem],
+    median_height: float,
+) -> bool:
+    """识别覆盖大部分栏宽且紧接下一正文行的同行拆分文本。"""
+
+    if len(same_row_fragments) < 3 or anchor_line.visual_row_id is None:
+        return False
+    fragment_sources = {
+        line.source_index
+        for line in same_row_fragments
+    }
+    fragment_geometry = [
+        (line, bbox)
+        for line, bbox in lane.lines
+        if line.source_index in fragment_sources
+    ]
+    if len(fragment_geometry) < 3:
+        return False
+    lane_width = max(0.1, lane.right - lane.left)
+    row_bbox = _bbox_union_many([bbox for _line, bbox in fragment_geometry])
+    if row_bbox[2] - row_bbox[0] < 0.75 * lane_width:
+        return False
+    row_center = statistics.median(
+        _bbox_center_y(bbox)
+        for _line, bbox in fragment_geometry
+    )
+    if any(
+        abs(_bbox_center_y(bbox) - row_center) > 0.25 * median_height
+        or not 0.7 * median_height
+        <= _line_effective_height(line, bbox)
+        <= 1.3 * median_height
+        for line, bbox in fragment_geometry
+    ):
+        return False
+    following_rows = [
+        (line, bbox)
+        for line, bbox in lane.lines
+        if line.source_index not in fragment_sources
+        and _bbox_center_y(bbox) > row_center + 0.5 * median_height
+    ]
+    if not following_rows:
+        return False
+    following_line, following_bbox = min(
+        following_rows,
+        key=lambda item: (_bbox_center_y(item[1]), item[1][0]),
+    )
+    following_height = _line_effective_height(
+        following_line,
+        following_bbox,
+    )
+    return (
+        following_bbox[2] - following_bbox[0] >= 0.6 * lane_width
+        and abs(following_bbox[0] - lane.left) <= 0.75 * median_height
+        and 0.75 * median_height <= following_height <= 1.3 * median_height
+        and following_bbox[1] - row_bbox[3] <= 1.25 * median_height
+    )
 
 
 def _infer_formula_body_font(

@@ -36,14 +36,46 @@ def _title_fonts_compatible(first: _LineItem, second: _LineItem) -> bool:
         and second.font_coverage >= 0.75
         and first.font_signature != second.font_signature
     )
-    weight_conflicts = (
+    weight_conflicts = _font_weights_conflict(first, second)
+    return not (font_conflicts or weight_conflicts)
+
+
+def _normalized_font_family(
+    signature: tuple[str, int] | None,
+) -> str | None:
+    """移除 PDF 字体子集前缀并归一化字体族名称，供几何续行作软兼容判断。"""
+
+    if signature is None:
+        return None
+    name = re.sub(r"^[A-Z]{6}\+", "", signature[0])
+    return re.sub(r"[\s_-]+", "", name).casefold() or None
+
+
+def _font_signatures_share_family(
+    first: tuple[str, int] | None,
+    second: tuple[str, int] | None,
+) -> bool:
+    """判断两个可靠字体签名是否仅因 PDF 子集前缀或描述标志不同。"""
+
+    first_family = _normalized_font_family(first)
+    second_family = _normalized_font_family(second)
+    return (
+        first_family is not None
+        and second_family is not None
+        and first_family == second_family
+    )
+
+
+def _font_weights_conflict(first: _LineItem, second: _LineItem) -> bool:
+    """判断两行是否存在足以构成段落硬边界的显著字重差异。"""
+
+    return (
         first.dominant_font_weight is not None
         and second.dominant_font_weight is not None
         and abs(first.dominant_font_weight - second.dominant_font_weight) >= 100.0
         and max(first.dominant_font_weight, second.dominant_font_weight)
         >= 1.15 * min(first.dominant_font_weight, second.dominant_font_weight)
     )
-    return not (font_conflicts or weight_conflicts)
 
 
 def _should_connect_semantic_rows(
@@ -137,15 +169,17 @@ def _infer_text_lanes(
     line_geometry: list[tuple[_LineItem, BBox]],
     local_page_width: float,
     median_height: float,
+    *,
+    recalculate_intervals: bool = True,
 ) -> list[_TextLane]:
-    """从重复左右边缘推断稳定栏带，并把跨栏行放入独立 span lane。"""
+    """从重复左右边缘推断稳定栏带，并按需用已分配成员重算边界。"""
 
     anchor_tolerance = max(3.0, 0.75 * median_height)
     anchor_geometry = [
         item
         for item in line_geometry
         if item[0].semantic_type
-        not in {"header", "footer", "page_number", "page_footnote", "aside_text"}
+        not in {"header", "footer", "page_number", "aside_text"}
     ]
     regular_lines = [
         item
@@ -233,15 +267,30 @@ def _infer_text_lanes(
                 (coverage for coverage, _lane in scored_lanes),
                 reverse=True,
             )
-            if len(coverage_scores) > 1 and coverage_scores[1] >= 0.2:
+            best_coverage, best_lane = max(scored_lanes, key=lambda value: value[0])
+            fits_only_one_lane = _fits_only_one_lane(
+                bbox,
+                best_lane,
+                nested_lanes,
+                anchor_tolerance,
+            )
+            if (
+                len(coverage_scores) > 1
+                and coverage_scores[1] >= 0.2
+                and not fits_only_one_lane
+            ):
                 span_lines.append(item)
                 continue
-            best_coverage, best_lane = max(scored_lanes, key=lambda value: value[0])
-            if best_coverage >= 0.5:
+            if best_coverage >= 0.5 or fits_only_one_lane:
                 best_lane.lines.append(item)
             else:
                 span_lines.append(item)
         lanes = [lane for lane in nested_lanes if lane.lines]
+        if recalculate_intervals:
+            _expand_nested_lane_intervals_from_members(
+                lanes,
+                anchor_tolerance,
+            )
         if fallback_lane.lines:
             lanes.append(fallback_lane)
         if span_lines:
@@ -272,21 +321,32 @@ def _infer_text_lanes(
             (coverage for coverage, _lane in scored_lanes),
             reverse=True,
         )
-        # 同时覆盖两个稳定正文栏的短尾行仍属于跨栏内容，不能按中心点落回单栏。
-        if len(coverage_scores) > 1 and coverage_scores[1] >= 0.2:
+        best_coverage, best_lane = max(scored_lanes, key=lambda value: value[0])
+        fits_only_one_lane = _fits_only_one_lane(
+            bbox,
+            best_lane,
+            lanes,
+            anchor_tolerance,
+        )
+        # 同时覆盖两个稳定正文栏的行仍属于跨栏内容；只进入单侧栏且未越过栏沟的
+        # 宽正文行则回到该栏，避免窄图注把正文错误挤入 span lane。
+        if (
+            len(coverage_scores) > 1
+            and coverage_scores[1] >= 0.2
+            and not fits_only_one_lane
+        ):
             span_lines.append(item)
             continue
-        best_coverage, best_lane = max(scored_lanes, key=lambda value: value[0])
-        if len(lanes) == 1 or (
-            best_coverage >= 0.5
-            and best_lane.left - anchor_tolerance
-            <= _bbox_center_x(bbox)
-            <= best_lane.right + anchor_tolerance
-        ):
+        if len(lanes) == 1 or fits_only_one_lane:
             best_lane.lines.append(item)
         else:
             span_lines.append(item)
 
+    if recalculate_intervals:
+        _expand_nested_lane_intervals_from_members(
+            lanes,
+            anchor_tolerance,
+        )
     if span_lines:
         lanes.append(
             _TextLane(
@@ -298,6 +358,66 @@ def _infer_text_lanes(
         )
     _reattach_span_lane_continuations(lanes, median_height)
     return lanes
+
+
+def _fits_only_one_lane(
+    bbox: BBox,
+    best_lane: _TextLane,
+    lanes: list[_TextLane],
+    tolerance: float,
+) -> bool:
+    """判断宽行是否仍完整停留在某一栏及其栏沟边界以内。"""
+
+    ordered = sorted(lanes, key=lambda lane: lane.left)
+    lane_index = ordered.index(best_lane)
+    if lane_index > 0 and bbox[0] < ordered[lane_index - 1].right - tolerance:
+        return False
+    if (
+        lane_index + 1 < len(ordered)
+        and bbox[2] > ordered[lane_index + 1].left - 0.25 * tolerance
+    ):
+        return False
+    return (
+        best_lane.left - tolerance
+        <= _bbox_center_x(bbox)
+        <= best_lane.right + max(tolerance, bbox[2] - best_lane.right)
+    )
+
+
+def _expand_nested_lane_intervals_from_members(
+    lanes: list[_TextLane],
+    tolerance: float,
+) -> None:
+    """按已归属成员扩展局部栏边界，并在相邻栏相交前保留稳定栏沟。"""
+
+    for lane in lanes:
+        alignment_tolerance = max(1.0, 0.5 * tolerance)
+        body_members = [
+            bbox
+            for line, bbox in lane.lines
+            if line.semantic_type is None
+        ]
+        if not body_members:
+            continue
+        aligned_members = [
+            bbox
+            for bbox in body_members
+            if abs(bbox[0] - lane.left) <= alignment_tolerance
+            or abs(bbox[2] - lane.right) <= alignment_tolerance
+        ]
+        if not aligned_members:
+            continue
+        # 页眉、页码和标题不参与；同时只让至少一侧锚点稳定的正文扩张栏宽，
+        # 避免页面后续另一版式区段把当前局部栏整体拉宽。
+        lane.left = min(lane.left, min(bbox[0] for bbox in aligned_members))
+        lane.right = max(lane.right, max(bbox[2] for bbox in aligned_members))
+    ordered = sorted(lanes, key=lambda lane: lane.left)
+    for left_lane, right_lane in zip(ordered, ordered[1:]):
+        if left_lane.right < right_lane.left - tolerance:
+            continue
+        midpoint = (left_lane.right + right_lane.left) / 2.0
+        left_lane.right = min(left_lane.right, midpoint)
+        right_lane.left = max(right_lane.left, midpoint)
 
 
 def _infer_nested_column_band(
@@ -542,6 +662,29 @@ def _estimate_lane_gap(lane: _TextLane) -> tuple[float, float]:
     return regular_gap, gap_mad
 
 
+def _is_structural_typography_gap(
+    previous_height: float,
+    current_height: float,
+    vertical_gap: float,
+    regular_gap: float,
+    gap_mad: float,
+    *,
+    reliable_style_change: bool = False,
+) -> bool:
+    """判断异常段间净空是否同时具有行高或可靠字体层级变化。"""
+
+    pair_height = max(previous_height, current_height)
+    minimum_height = max(0.1, min(previous_height, current_height))
+    prominent_gap = vertical_gap > regular_gap + max(
+        0.75 * pair_height,
+        3.0 * gap_mad,
+    )
+    return prominent_gap and (
+        pair_height / minimum_height >= 1.12
+        or reliable_style_change
+    )
+
+
 def _should_connect_text_rows(
     previous: tuple[_LineItem, BBox],
     current: tuple[_LineItem, BBox],
@@ -586,6 +729,10 @@ def _should_connect_text_rows(
         or previous_line.font_coverage < 0.75
         or current_line.font_coverage < 0.75
         or previous_line.font_signature == current_line.font_signature
+        or _font_signatures_share_family(
+            previous_line.font_signature,
+            current_line.font_signature,
+        )
         or (
             current_width <= 0.5 * lane_width
             and previous_line.font_signature[1] == current_line.font_signature[1]
@@ -596,6 +743,7 @@ def _should_connect_text_rows(
         and current_width <= 0.7 * lane_width
         and (aligned_left_edges or current_returns_to_lane_left)
         and reliable_font_match
+        and not _font_weights_conflict(previous_line, current_line)
         and -0.25 * pair_height
         <= vertical_gap
         <= regular_gap + max(0.75 * pair_height, 3.0 * gap_mad)
@@ -605,7 +753,40 @@ def _should_connect_text_rows(
         previous_line.font_signature is not None
         and current_line.font_signature is not None
         and previous_line.font_signature[1] != current_line.font_signature[1]
+        and not _font_signatures_share_family(
+            previous_line.font_signature,
+            current_line.font_signature,
+        )
     )
+    reliable_style_conflict = (
+        previous_line.font_signature is not None
+        and current_line.font_signature is not None
+        and previous_line.font_coverage >= 0.75
+        and current_line.font_coverage >= 0.75
+        and (
+            (
+                previous_line.font_signature != current_line.font_signature
+                and not _font_signatures_share_family(
+                    previous_line.font_signature,
+                    current_line.font_signature,
+                )
+            )
+            or _font_weights_conflict(previous_line, current_line)
+        )
+    )
+    if (
+        not is_hyphen_at_line_end(previous_line.text)
+        and _is_structural_typography_gap(
+            previous_height,
+            current_height,
+            vertical_gap,
+            regular_gap,
+            gap_mad,
+            reliable_style_change=reliable_style_conflict,
+        )
+    ):
+        # 图注到正文等排版层级转换即使同栏满行，也不能被常规续行规则重新吸收。
+        return False
     full_width_continuation = (
         both_fill_lane
         and aligned_left_edges
@@ -654,11 +835,7 @@ def _should_connect_text_rows(
 
     abnormal_gap = vertical_gap > regular_gap + max(0.25 * pair_height, 3.0 * gap_mad)
     if (
-        previous_line.font_signature is not None
-        and current_line.font_signature is not None
-        and previous_line.font_coverage >= 0.75
-        and current_line.font_coverage >= 0.75
-        and previous_line.font_signature != current_line.font_signature
+        reliable_style_conflict
         and (abnormal_gap or min(previous_width, current_width) <= 0.7 * lane_width)
         and not both_fill_lane
         and not safe_short_tail

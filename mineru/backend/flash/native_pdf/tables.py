@@ -597,7 +597,183 @@ def _build_rule_table_candidates(
                     + min(fill_band_count, 8)
                 )
                 candidates.append(candidate)
+    return _expand_candidates_to_connected_rule_grids(
+        candidates,
+        rows,
+        page_size,
+        angle,
+        median_height,
+        axis_lines,
+        excluded_bboxes,
+    )
+
+
+def _expand_candidates_to_connected_rule_grids(
+    candidates: list[_TableCandidate],
+    rows: list[_VisualRow],
+    page_size: tuple[float, float],
+    angle: int,
+    median_height: float,
+    axis_lines: list[_LocalAxisLine],
+    excluded_bboxes: list[BBox],
+) -> list[_TableCandidate]:
+    """把已确认候选沿连续横边界和贯穿竖轨扩展到完整物理网格。"""
+
+    grid_bboxes = [
+        grid_bbox
+        for grid_bbox in _connected_rule_grid_bboxes(axis_lines, median_height)
+        if not any(
+            _bbox_overlap_in_smaller(grid_bbox, excluded_bbox) >= 0.5
+            for excluded_bbox in excluded_bboxes
+        )
+    ]
+    if not grid_bboxes:
+        return candidates
+
+    tolerance = max(2.0, median_height)
+    for candidate in candidates:
+        if candidate.core_bbox is None:
+            continue
+        core_local_bbox = _rotate_bbox_to_upright(
+            candidate.core_bbox,
+            page_size,
+            angle,
+        )
+        matches = [
+            grid_bbox
+            for grid_bbox in grid_bboxes
+            if _bbox_axis_overlap_ratio(
+                core_local_bbox,
+                grid_bbox,
+                axis="x",
+            )
+            >= 0.9
+            and core_local_bbox[3] >= grid_bbox[1] - tolerance
+            and core_local_bbox[1] <= grid_bbox[3] + tolerance
+        ]
+        if not matches:
+            continue
+        grid_bbox = max(
+            matches,
+            key=lambda bbox: (
+                min(core_local_bbox[3], bbox[3])
+                - max(core_local_bbox[1], bbox[1]),
+                _bbox_area(bbox),
+            ),
+        )
+        expanded_core_bbox = _bbox_union(core_local_bbox, grid_bbox)
+        candidate.local_bbox = _bbox_union(candidate.local_bbox, grid_bbox)
+        candidate.core_bbox = _rotate_bbox_from_upright(
+            expanded_core_bbox,
+            page_size,
+            angle,
+        )
+        candidate.bbox = _rotate_bbox_from_upright(
+            candidate.local_bbox,
+            page_size,
+            angle,
+        )
+        for row in rows:
+            if not expanded_core_bbox[1] <= row.center_y <= expanded_core_bbox[3]:
+                continue
+            candidate.line_indices.update(
+                fragment.line_index
+                for fragment in row.fragments
+                if _point_in_bbox(
+                    (
+                        _bbox_center_x(fragment.local_bbox),
+                        _bbox_center_y(fragment.local_bbox),
+                    ),
+                    expanded_core_bbox,
+                )
+            )
     return candidates
+
+
+def _connected_rule_grid_bboxes(
+    axis_lines: list[_LocalAxisLine],
+    median_height: float,
+) -> list[BBox]:
+    """把端点一致且由外轨或至少两条列轨贯穿的相邻横线组成网格框。"""
+
+    output: list[BBox] = []
+    for rule_group in _group_long_horizontal_rules(axis_lines, median_height):
+        components: list[list[_LocalAxisLine]] = []
+        for rule in rule_group:
+            if not components or not _rule_bands_share_grid_tracks(
+                components[-1][-1],
+                rule,
+                axis_lines,
+                median_height,
+            ):
+                components.append([rule])
+            else:
+                components[-1].append(rule)
+        output.extend(
+            _bbox_union_many([rule.bbox for rule in component])
+            for component in components
+            if len(component) >= 2
+        )
+    return output
+
+
+def _rule_bands_share_grid_tracks(
+    top_rule: _LocalAxisLine,
+    bottom_rule: _LocalAxisLine,
+    axis_lines: list[_LocalAxisLine],
+    median_height: float,
+) -> bool:
+    """校验相邻横边界的跨度，并确认其间存在连续外框或稳定列分隔线。"""
+
+    top_width = max(0.1, top_rule.bbox[2] - top_rule.bbox[0])
+    bottom_width = max(0.1, bottom_rule.bbox[2] - bottom_rule.bbox[0])
+    overlap_left = max(top_rule.bbox[0], bottom_rule.bbox[0])
+    overlap_right = min(top_rule.bbox[2], bottom_rule.bbox[2])
+    overlap_width = max(0.0, overlap_right - overlap_left)
+    endpoint_tolerance = max(4.0, 2.0 * median_height)
+    if (
+        overlap_width / max(top_width, bottom_width) < 0.9
+        or abs(top_rule.bbox[0] - bottom_rule.bbox[0]) > endpoint_tolerance
+        or abs(top_rule.bbox[2] - bottom_rule.bbox[2]) > endpoint_tolerance
+    ):
+        return False
+
+    top_y = _bbox_center_y(top_rule.bbox)
+    bottom_y = _bbox_center_y(bottom_rule.bbox)
+    track_tolerance = max(1.0, 0.25 * median_height)
+    raw_positions = [
+        _bbox_center_x(line.bbox)
+        for line in axis_lines
+        if line.orientation == "vertical"
+        and line.bbox[1] <= top_y + track_tolerance
+        and line.bbox[3] >= bottom_y - track_tolerance
+        and overlap_left - track_tolerance
+        <= _bbox_center_x(line.bbox)
+        <= overlap_right + track_tolerance
+    ]
+    position_groups: list[list[float]] = []
+    for position in sorted(raw_positions):
+        if (
+            position_groups
+            and abs(position - statistics.mean(position_groups[-1]))
+            <= track_tolerance
+        ):
+            position_groups[-1].append(position)
+        else:
+            position_groups.append([position])
+    positions = [statistics.mean(group) for group in position_groups]
+    has_outer_tracks = (
+        any(abs(position - overlap_left) <= endpoint_tolerance for position in positions)
+        and any(abs(position - overlap_right) <= endpoint_tolerance for position in positions)
+    )
+    interior_tracks = [
+        position
+        for position in positions
+        if overlap_left + track_tolerance
+        < position
+        < overlap_right - track_tolerance
+    ]
+    return has_outer_tracks or len(interior_tracks) >= 2
 
 
 def _group_long_horizontal_rules(

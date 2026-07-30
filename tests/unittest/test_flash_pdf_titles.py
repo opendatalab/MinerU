@@ -420,6 +420,103 @@ def test_same_font_body_tail_with_moderate_gap_is_not_title() -> None:
     assert lines[3].semantic_type is None
 
 
+def test_subset_font_visual_row_continues_into_short_body_tail() -> None:
+    """验证同一满行的拆分片段归一化子集字体后，短尾仍优先判为正文续行。"""
+
+    first = _text_line(
+        "prefix",
+        (0.0, 0.0, 12.0, 10.0),
+        0,
+        visual_row_id=10,
+        split_from_row=True,
+        font_signature=("SimSun", 0),
+        font_coverage=1.0,
+    )
+    second = _text_line(
+        "full row remainder",
+        (15.0, 0.0, 100.0, 10.0),
+        1,
+        visual_row_id=10,
+        split_from_row=True,
+        font_signature=("ABCDEF+SimSun", 0),
+        font_coverage=1.0,
+    )
+    tail = _text_line(
+        "short tail",
+        (0.0, 12.0, 35.0, 22.0),
+        2,
+        font_signature=("UVWXYZ+SimSun", 0),
+        font_coverage=1.0,
+    )
+    rows = [(line, line.bbox) for line in (first, second, tail)]
+    profile = titles._LaneBodyProfile(
+        body_height=10.0,
+        body_font=("ABCDEF+SimSun", 0),
+        body_weight=400.0,
+        regular_gap=2.0,
+        style_support={},
+    )
+
+    assert titles._continues_local_body_row(rows, 2, 100.0, profile)
+
+
+def test_normal_body_font_needs_precise_centering_for_layout_title_fallback() -> None:
+    """验证普通正文样式只有精确居中且紧邻正文时才能使用版式标题兜底。"""
+
+    body_font = ("Body", 0)
+    imprecise_lines = [
+        _text_line("body one", (0.0, 0.0, 100.0, 10.0), 0, font_signature=body_font, font_coverage=1.0),
+        _text_line("body two", (0.0, 12.0, 100.0, 22.0), 1, font_signature=body_font, font_coverage=1.0),
+        _text_line("imprecise label", (20.0, 35.0, 65.0, 45.0), 2, font_signature=body_font, font_coverage=1.0),
+        _text_line("body three", (0.0, 58.0, 100.0, 68.0), 3, font_signature=body_font, font_coverage=1.0),
+        _text_line("body four", (0.0, 70.0, 100.0, 80.0), 4, font_signature=body_font, font_coverage=1.0),
+    ]
+    precise_lines = [
+        _text_line("body one", (0.0, 0.0, 100.0, 10.0), 10, font_signature=body_font, font_coverage=1.0),
+        _text_line("body two", (0.0, 12.0, 100.0, 22.0), 11, font_signature=body_font, font_coverage=1.0),
+        _text_line("precise label", (30.0, 35.0, 70.0, 45.0), 12, font_signature=body_font, font_coverage=1.0),
+        _text_line("body three", (0.0, 58.0, 100.0, 68.0), 13, font_signature=body_font, font_coverage=1.0),
+        _text_line("body four", (0.0, 70.0, 100.0, 80.0), 14, font_signature=body_font, font_coverage=1.0),
+    ]
+
+    titles._classify_page_titles(
+        imprecise_lines,
+        (100.0, 120.0),
+        page_index=1,
+        container_bboxes=[],
+    )
+    titles._classify_page_titles(
+        precise_lines,
+        (100.0, 120.0),
+        page_index=1,
+        container_bboxes=[],
+    )
+
+    assert imprecise_lines[2].semantic_type is None
+    assert precise_lines[2].semantic_type == "paragraph_title"
+
+
+def test_first_page_centered_body_style_metadata_does_not_use_title_fallback() -> None:
+    """验证首页上部普通字号居中元数据不会仅凭留白升级为段落标题。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line("metadata", (30.0, 20.0, 70.0, 30.0), 0, font_signature=body_font, font_coverage=1.0),
+        _text_line("body one", (0.0, 43.0, 100.0, 53.0), 1, font_signature=body_font, font_coverage=1.0),
+        _text_line("body two", (0.0, 55.0, 100.0, 65.0), 2, font_signature=body_font, font_coverage=1.0),
+        _text_line("body three", (0.0, 67.0, 100.0, 77.0), 3, font_signature=body_font, font_coverage=1.0),
+    ]
+
+    titles._classify_page_titles(
+        lines,
+        (100.0, 150.0),
+        page_index=0,
+        container_bboxes=[],
+    )
+
+    assert lines[0].semantic_type is None
+
+
 def test_cross_column_document_title_uses_thirteen_tenths_body_height_fallback() -> None:
     """验证首页跨栏居中标题达到正文 1.30 倍时可命中，作者行保持正文类型。"""
 
@@ -775,6 +872,7 @@ def test_paragraph_title_detector_does_not_read_line_text() -> None:
             titles._visual_row_has_body_style_sibling,
             titles._is_near_full_mixed_inline_row,
             titles._continues_local_body_row,
+            titles._is_continuous_field_row,
             titles._is_full_width_inline_heading,
             titles._has_following_body_row,
             titles._has_following_compact_text_section,

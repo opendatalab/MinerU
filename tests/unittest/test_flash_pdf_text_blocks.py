@@ -8,6 +8,7 @@ from mineru.backend.flash.native_pdf import (
     line_merging,
     models,
     native_text,
+    pipeline,
     text_blocks,
 )
 
@@ -153,6 +154,32 @@ def test_first_line_indent_and_large_gap_do_not_form_hanging_indent_groups() -> 
     )
 
     assert text_blocks._build_hanging_indent_group_map(lane, [], []) == {}
+
+
+def test_hanging_indent_keeps_confirmed_entries_before_plain_trailing_paragraph() -> None:
+    """验证尾随普通左对齐段落不会让此前已确认的悬挂缩进条目整体失效。"""
+
+    lines = [
+        _text_line("entry one", (0.0, 0.0, 100.0, 10.0), 0),
+        _text_line("entry one tail", (15.0, 10.0, 100.0, 20.0), 1),
+        _text_line("entry two", (0.0, 20.0, 100.0, 30.0), 2),
+        _text_line("entry two tail", (15.0, 30.0, 100.0, 40.0), 3),
+        _text_line("entry three", (0.0, 40.0, 100.0, 50.0), 4),
+        _text_line("entry three tail", (15.0, 50.0, 100.0, 60.0), 5),
+        _text_line("plain trailing paragraph", (0.0, 60.0, 100.0, 70.0), 6),
+        _text_line("plain continuation", (0.0, 70.0, 100.0, 80.0), 7),
+    ]
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(line, line.bbox) for line in lines],
+    )
+
+    group_map = text_blocks._build_hanging_indent_group_map(lane, [], [])
+
+    assert [group_map[index] for index in range(6)] == [0, 0, 1, 1, 2, 2]
+    assert 6 not in group_map
+    assert 7 not in group_map
 
 
 def test_twelve_point_gutter_keeps_two_text_lanes_and_paragraphs_separate() -> None:
@@ -548,6 +575,84 @@ def test_full_lane_large_height_mismatch_only_recovers_aligned_continuation() ->
     )
 
 
+def test_pdf_subset_font_variants_keep_full_rows_and_short_tail_connected() -> None:
+    """验证同字体族的 PDF 子集签名差异不会拆断满栏正文及其短尾行。"""
+
+    first = _text_line(
+        "first full row",
+        (0.0, 0.0, 100.0, 10.0),
+        0,
+        font_signature=("ABCDEF+TimesNewRomanPSMT", 1),
+        font_coverage=1.0,
+    )
+    second = _text_line(
+        "second full row",
+        (0.0, 10.0, 100.0, 20.0),
+        1,
+        font_signature=("TimesNewRomanPSMT", 29),
+        font_coverage=1.0,
+    )
+    tail = _text_line(
+        "short tail",
+        (0.0, 20.0, 45.0, 30.0),
+        2,
+        font_signature=("GHIJKL+TimesNewRomanPSMT", 17),
+        font_coverage=1.0,
+    )
+    lane = models._TextLane(left=0.0, right=100.0)
+
+    assert line_layout._should_connect_text_rows(
+        (first, first.bbox),
+        (second, second.bbox),
+        lane,
+        0.0,
+        0.0,
+        [],
+        [],
+    )
+    assert line_layout._should_connect_text_rows(
+        (second, second.bbox),
+        (tail, tail.bbox),
+        lane,
+        0.0,
+        0.0,
+        [],
+        [],
+    )
+
+
+def test_pdf_subset_font_short_tail_keeps_significant_weight_barrier() -> None:
+    """验证字体族相同但字重显著变化时，短尾续行仍保持硬分段。"""
+
+    body = _text_line(
+        "full body row",
+        (0.0, 0.0, 100.0, 10.0),
+        0,
+        font_signature=("ABCDEF+Body", 1),
+        font_coverage=1.0,
+        dominant_font_weight=400.0,
+    )
+    emphasized_tail = _text_line(
+        "bold short row",
+        (0.0, 10.0, 45.0, 20.0),
+        1,
+        font_signature=("GHIJKL+Body", 29),
+        font_coverage=1.0,
+        dominant_font_weight=700.0,
+    )
+    lane = models._TextLane(left=0.0, right=100.0)
+
+    assert not line_layout._should_connect_text_rows(
+        (body, body.bbox),
+        (emphasized_tail, emphasized_tail.bbox),
+        lane,
+        0.0,
+        0.0,
+        [],
+        [],
+    )
+
+
 def test_smaller_footnote_after_abnormal_gap_forces_text_block_break() -> None:
     """验证字号不足前行 88% 且净空偏大时，正文与脚注强制分块。"""
 
@@ -839,6 +944,110 @@ def test_local_two_column_band_survives_full_width_body_below() -> None:
     assert {f"left-{index}" for index in range(4)} in lane_texts
     assert {f"right-{index}" for index in range(4)} in lane_texts
     assert {f"wide-{index}" for index in range(4)} in lane_texts
+
+
+def test_nested_lane_accepts_wider_one_sided_rows_and_expands_interval() -> None:
+    """验证窄图注推断的局部栏仍可接纳未进入另一栏的宽正文行。"""
+
+    lines: list[models._LineItem] = []
+    for row_index, top in enumerate((0.0, 10.0, 20.0, 30.0, 40.0)):
+        lines.extend(
+            [
+                _text_line(
+                    f"narrow-left-{row_index}",
+                    (10.0, top, 55.0, top + 8.0),
+                    row_index * 2,
+                ),
+                _text_line(
+                    f"right-{row_index}",
+                    (115.0, top, 190.0, top + 8.0),
+                    row_index * 2 + 1,
+                ),
+            ]
+        )
+    lines.extend(
+        [
+            _text_line("wide-left-one", (10.0, 32.0, 105.0, 40.0), 20),
+            _text_line("wide-left-two", (10.0, 42.0, 105.0, 50.0), 21),
+        ]
+    )
+    lines.extend(
+        _text_line(
+            f"outer-{row_index}",
+            (10.0, top, 190.0, top + 8.0),
+            30 + row_index,
+        )
+        for row_index, top in enumerate(
+            (90.0, 100.0, 110.0, 120.0, 130.0, 140.0, 150.0, 160.0, 170.0, 180.0)
+        )
+    )
+
+    lanes = line_layout._infer_text_lanes(
+        [(line, line.bbox) for line in lines],
+        200.0,
+        8.0,
+    )
+
+    left_lane = next(
+        lane
+        for lane in lanes
+        if any(line.text == "wide-left-one" for line, _bbox in lane.lines)
+    )
+    assert not left_lane.is_span
+    assert left_lane.right == pytest.approx(105.0)
+    assert {
+        line.text
+        for line, _bbox in left_lane.lines
+        if line.text.startswith("wide-left")
+    } == {"wide-left-one", "wide-left-two"}
+
+
+def test_regular_lanes_accept_wider_one_sided_rows_but_keep_gutter_crossing_span() -> None:
+    """验证普通双栏会扩展单侧栏宽，同时不吸收越过栏沟的通栏行。"""
+
+    lines: list[models._LineItem] = []
+    for row_index, top in enumerate((0.0, 10.0, 20.0, 30.0, 40.0)):
+        lines.extend(
+            [
+                _text_line(
+                    f"narrow-left-{row_index}",
+                    (10.0, top, 55.0, top + 8.0),
+                    row_index * 2,
+                ),
+                _text_line(
+                    f"right-{row_index}",
+                    (115.0, top, 190.0, top + 8.0),
+                    row_index * 2 + 1,
+                ),
+            ]
+        )
+    lines.extend(
+        [
+            _text_line("wide-left-one", (10.0, 52.0, 105.0, 60.0), 20),
+            _text_line("wide-left-two", (10.0, 62.0, 105.0, 70.0), 21),
+            _text_line("crosses-gutter", (10.0, 74.0, 130.0, 82.0), 22),
+        ]
+    )
+
+    lanes = line_layout._infer_text_lanes(
+        [(line, line.bbox) for line in lines],
+        200.0,
+        8.0,
+    )
+
+    left_lane = next(
+        lane
+        for lane in lanes
+        if any(line.text == "wide-left-one" for line, _bbox in lane.lines)
+    )
+    span_lane = next(
+        lane
+        for lane in lanes
+        if any(line.text == "crosses-gutter" for line, _bbox in lane.lines)
+    )
+    assert not left_lane.is_span
+    assert left_lane.right == pytest.approx(105.0)
+    assert span_lane.is_span
 
 
 def test_short_span_tail_reattaches_before_later_cross_layout_region() -> None:
@@ -1375,4 +1584,352 @@ def test_spatial_post_merge_limits_tapered_tail_to_parallel_information_grid() -
     assert [block["content"] for block in isolated] == [
         "left body",
         "left tail",
+    ]
+
+
+def test_repeated_leading_emphasis_and_tail_gap_split_structured_text() -> None:
+    """验证重复行首强调只在前行留白充分时形成结构化正文边界。"""
+
+    lines = [
+        _text_line(
+            "Purpose first section opener",
+            (0.0, 0.0, 100.0, 10.0),
+            0,
+            leading_emphasis_width=12.0,
+        ),
+        _text_line("purpose tail.", (0.0, 10.0, 78.0, 20.0), 1),
+        _text_line(
+            "Methods second section opener",
+            (0.0, 20.0, 100.0, 30.0),
+            2,
+            leading_emphasis_width=12.0,
+        ),
+        _text_line("methods tail.", (0.0, 30.0, 60.0, 40.0), 3),
+        _text_line(
+            "Results third section opener",
+            (0.0, 40.0, 100.0, 50.0),
+            4,
+            leading_emphasis_width=12.0,
+        ),
+        _text_line("results tail.", (0.0, 50.0, 35.0, 60.0), 5),
+        _text_line(
+            "Conclusions fourth section opener",
+            (0.0, 60.0, 100.0, 70.0),
+            6,
+            leading_emphasis_width=15.0,
+        ),
+        _text_line("conclusions tail.", (0.0, 70.0, 70.0, 80.0), 7),
+    ]
+
+    blocks = text_blocks._build_text_blocks(lines, [], (100.0, 100.0))
+
+    assert [block["content"] for block in blocks] == [
+        "Purpose first section opener purpose tail.",
+        "Methods second section opener methods tail.",
+        "Results third section opener results tail.",
+        "Conclusions fourth section opener conclusions tail.",
+    ]
+
+
+def test_native_typography_caches_leading_emphasis_before_chars_are_cleared() -> None:
+    """验证字符释放前缓存短粗体前缀宽度，后续文本分块仍可读取。"""
+
+    chars = []
+    for index, char in enumerate("Lead"):
+        chars.append(
+            {
+                "char": char,
+                "bbox": (float(index * 5), 0.0, float(index * 5 + 5), 10.0),
+                "font": {"name": "LeadFont", "flags": 0, "weight": 600},
+            }
+        )
+    for index, char in enumerate("body", start=5):
+        chars.append(
+            {
+                "char": char,
+                "bbox": (float(index * 5), 0.0, float(index * 5 + 5), 10.0),
+                "font": {"name": "BodyFont", "flags": 0, "weight": 400},
+            }
+        )
+    line = models._LineItem(
+        text="Lead body",
+        bbox=(0.0, 0.0, 45.0, 10.0),
+        angle=0,
+        source_index=0,
+        chars=chars,
+    )
+
+    native_text._fill_native_typography(line, (100.0, 100.0))
+    pipeline._compact_prepared_lines([line], (100.0, 100.0))
+
+    assert line.leading_emphasis_width == 20.0
+    assert not line.chars
+
+
+def test_two_leading_emphasis_rows_do_not_activate_structured_text_split() -> None:
+    """验证不足三个重复强调首行时不会把普通混排正文切碎。"""
+
+    lines = [
+        _text_line(
+            "first emphasized opener",
+            (0.0, 0.0, 100.0, 10.0),
+            0,
+            leading_emphasis_width=15.0,
+        ),
+        _text_line("first short tail", (0.0, 10.0, 60.0, 20.0), 1),
+        _text_line(
+            "second emphasized opener",
+            (0.0, 20.0, 100.0, 30.0),
+            2,
+            leading_emphasis_width=15.0,
+        ),
+        _text_line("second short tail", (0.0, 30.0, 60.0, 40.0), 3),
+    ]
+
+    blocks = text_blocks._build_text_blocks(lines, [], (100.0, 100.0))
+
+    assert len(blocks) == 1
+
+
+def test_leading_emphasis_count_does_not_cross_semantic_title_boundary() -> None:
+    """验证不同语义区段的强调首行数量不能合并触发结构化正文模式。"""
+
+    lines = [
+        _text_line("first opener", (0.0, 0.0, 100.0, 10.0), 0, leading_emphasis_width=10.0),
+        _text_line("first tail", (0.0, 10.0, 60.0, 20.0), 1),
+        _text_line("second opener", (0.0, 20.0, 100.0, 30.0), 2, leading_emphasis_width=10.0),
+        _text_line("second tail", (0.0, 30.0, 60.0, 40.0), 3),
+        _text_line(
+            "semantic title",
+            (0.0, 50.0, 40.0, 60.0),
+            4,
+            semantic_type="paragraph_title",
+        ),
+        _text_line("third opener", (0.0, 70.0, 100.0, 80.0), 5, leading_emphasis_width=10.0),
+        _text_line("third tail", (0.0, 80.0, 60.0, 90.0), 6),
+    ]
+
+    blocks = text_blocks._build_text_blocks(lines, [], (100.0, 100.0))
+
+    first_region = next(block for block in blocks if "first opener" in block["content"])
+    assert "second opener" in first_region["content"]
+
+
+def test_page_footnote_visual_markers_attach_six_affiliation_entries() -> None:
+    """验证同行窄编号与右侧单位首行、续行分别组成独立脚注条目。"""
+
+    lines = [
+        _text_line("contact name", (10.0, 0.0, 48.0, 10.0), 0, semantic_type="page_footnote"),
+        _text_line("contact email", (10.0, 10.0, 55.0, 20.0), 1, semantic_type="page_footnote"),
+    ]
+    source_index = 2
+    for marker in range(1, 7):
+        top = 20.0 + (marker - 1) * 20.0
+        visual_row_id = 100 + marker
+        lines.extend(
+            [
+                _text_line(
+                    str(marker),
+                    (0.0, top, 3.0, top + 8.0),
+                    source_index,
+                    visual_row_id=visual_row_id,
+                    run_index=0,
+                    split_from_row=True,
+                    median_glyph_width=3.0,
+                    semantic_type="page_footnote",
+                ),
+                _text_line(
+                    f"affiliation {marker} first row",
+                    (10.0, top, 90.0, top + 10.0),
+                    source_index + 1,
+                    visual_row_id=visual_row_id,
+                    run_index=1,
+                    split_from_row=True,
+                    median_glyph_width=4.0,
+                    semantic_type="page_footnote",
+                ),
+                _text_line(
+                    f"affiliation {marker} continuation",
+                    (10.0, top + 10.0, 75.0, top + 20.0),
+                    source_index + 2,
+                    visual_row_id=visual_row_id + 100,
+                    median_glyph_width=4.0,
+                    semantic_type="page_footnote",
+                ),
+            ]
+        )
+        source_index += 3
+
+    blocks = text_blocks._build_text_blocks(
+        lines,
+        [],
+        (100.0, 160.0),
+        page_footnote_groups=[{line.source_index for line in lines}],
+    )
+
+    assert [block["content"] for block in blocks[:2]] == [
+        "contact name",
+        "contact email",
+    ]
+    assert len(blocks[2:]) == 6
+    for marker, block in enumerate(blocks[2:], start=1):
+        assert block["content"].startswith(f"{marker} affiliation {marker} first row")
+        assert f"affiliation {marker} continuation" in block["content"]
+
+
+def test_local_aligned_column_replaces_polluted_full_width_lane() -> None:
+    """验证跨栏上文不会使后续稳定单栏正文被首行缩进规则拆开。"""
+
+    lines = [
+        _text_line("wide row one", (0.0, 0.0, 200.0, 10.0), 0),
+        _text_line("wide row two", (0.0, 10.0, 200.0, 20.0), 1),
+        _text_line("wide short tail", (0.0, 20.0, 150.0, 30.0), 2),
+        _text_line(
+            "Introduction",
+            (110.0, 40.0, 150.0, 50.0),
+            3,
+            semantic_type="paragraph_title",
+        ),
+        _text_line("local first sentence.", (110.0, 55.0, 200.0, 65.0), 4),
+        _text_line("local second sentence", (110.0, 65.0, 200.0, 75.0), 5),
+        _text_line("local third sentence", (110.0, 75.0, 200.0, 85.0), 6),
+        _text_line("local final sentence.", (110.0, 85.0, 195.0, 95.0), 7),
+    ]
+
+    blocks = text_blocks._build_text_blocks(lines, [], (200.0, 120.0))
+    introduction_body = next(
+        block for block in blocks if "local first sentence" in block["content"]
+    )
+
+    assert introduction_body["content"] == (
+        "local first sentence. local second sentence local third sentence "
+        "local final sentence."
+    )
+    assert introduction_body["_lane_interval"] == (110.0, 200.0)
+
+
+def test_typographic_gap_splits_caption_body_without_image_geometry() -> None:
+    """验证异常净空与行高层级变化可独立于图片位置形成段落硬边界。"""
+
+    caption = _text_line(
+        "caption ends without punctuation",
+        (0.0, 0.0, 100.0, 10.0),
+        0,
+        effective_height=10.0,
+        font_signature=("Body", 0),
+        font_coverage=1.0,
+    )
+    body = _text_line(
+        "body starts",
+        (0.0, 19.0, 100.0, 30.5),
+        1,
+        effective_height=11.5,
+        font_signature=("Body", 0),
+        font_coverage=1.0,
+    )
+    lane = models._TextLane(left=0.0, right=100.0)
+
+    assert not line_layout._should_connect_text_rows(
+        (caption, caption.bbox),
+        (body, body.bbox),
+        lane,
+        regular_gap=0.0,
+        gap_mad=0.0,
+        table_bboxes=[],
+        axis_lines=[],
+    )
+
+
+def test_typographic_gap_requires_both_spacing_and_typography_evidence() -> None:
+    """验证单独字号变化或单独中等净空都不会触发新增段落屏障。"""
+
+    base = _text_line("base", (0.0, 0.0, 100.0, 10.0), 0, effective_height=10.0)
+    larger_nearby = _text_line(
+        "larger nearby",
+        (0.0, 10.0, 100.0, 21.5),
+        1,
+        effective_height=11.5,
+    )
+    same_size_spaced = _text_line(
+        "same size spaced",
+        (0.0, 18.0, 100.0, 28.0),
+        2,
+        effective_height=10.0,
+    )
+    lane = models._TextLane(left=0.0, right=100.0)
+
+    assert line_layout._should_connect_text_rows(
+        (base, base.bbox),
+        (larger_nearby, larger_nearby.bbox),
+        lane,
+        0.0,
+        0.0,
+        [],
+        [],
+    )
+    assert line_layout._should_connect_text_rows(
+        (base, base.bbox),
+        (same_size_spaced, same_size_spaced.bbox),
+        lane,
+        0.0,
+        0.0,
+        [],
+        [],
+    )
+
+
+def test_hyphenated_row_bypasses_typographic_gap_barrier() -> None:
+    """验证排版断词仍可在现有近距离上限内跨过字号和净空变化。"""
+
+    previous = _text_line("hyphen-", (0.0, 0.0, 100.0, 10.0), 0, effective_height=10.0)
+    current = _text_line("ated", (0.0, 19.0, 100.0, 30.5), 1, effective_height=11.5)
+    lane = models._TextLane(left=0.0, right=100.0)
+
+    assert line_layout._should_connect_text_rows(
+        (previous, previous.bbox),
+        (current, current.bbox),
+        lane,
+        0.0,
+        0.0,
+        [],
+        [],
+    )
+
+
+def test_caption_post_merge_respects_typographic_gap_barrier() -> None:
+    """验证图片邻接后处理不能跨过已确认的图注正文排版边界。"""
+
+    common = {
+        "type": "text",
+        "angle": 0,
+        "_single_run_row_id": None,
+        "_lane_interval": (0.0, 100.0),
+        "_lane_is_span": False,
+        "_font_signatures": {("Body", 0)},
+    }
+    caption = {
+        **common,
+        "bbox": (0.0, 50.0, 100.0, 60.0),
+        "content": "Fig. 1 caption",
+        "_visual_row_ids": {1},
+        "_local_line_bboxes": [(0.0, 50.0, 100.0, 60.0)],
+        "_line_heights": [10.0],
+    }
+    body = {
+        **common,
+        "bbox": (0.0, 69.0, 100.0, 80.5),
+        "content": "body starts",
+        "_visual_row_ids": {2},
+        "_local_line_bboxes": [(0.0, 69.0, 100.0, 80.5)],
+        "_line_heights": [11.5],
+    }
+
+    merged = text_blocks._merge_image_caption_text_blocks(
+        [caption, body],
+        [(0.0, 10.0, 100.0, 50.0)],
+    )
+
+    assert [block["content"] for block in merged] == [
+        "Fig. 1 caption",
+        "body starts",
     ]

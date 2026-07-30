@@ -92,6 +92,129 @@ def test_page_footnote_supports_independent_column_rules() -> None:
     assert page.page_footnote_groups == [{6, 7}, {8, 9}]
 
 
+def test_page_footnote_accepts_lower_half_column_width_rule_with_smaller_text() -> None:
+    """验证页面下半部的栏宽横线可凭字号收缩识别单栏脚注。"""
+
+    lines = [
+        _text_line(
+            f"body {index}",
+            (100.0, 180.0 + 24.0 * index, 900.0, 190.0 + 24.0 * index),
+            index,
+            effective_height=10.0,
+        )
+        for index in range(4)
+    ]
+    lines.extend(
+        [
+            _text_line(
+                "note one",
+                (100.0, 620.0, 650.0, 628.0),
+                4,
+                effective_height=8.0,
+            ),
+            _text_line(
+                "note two",
+                (100.0, 632.0, 620.0, 640.0),
+                5,
+                effective_height=8.0,
+            ),
+        ]
+    )
+    page = _prepared_text_page(*lines, page_size=(1000.0, 1000.0))
+    page.drawing_lines = [
+        models._AxisLine((100.0, 600.0, 900.0, 602.0), 1.0, "horizontal")
+    ]
+
+    auxiliary_text._classify_page_auxiliary_text(page)
+
+    assert all(line.semantic_type is None for line in lines[:4])
+    assert [line.semantic_type for line in lines[4:]] == [
+        "page_footnote",
+        "page_footnote",
+    ]
+    assert page.page_footnote_groups == [{4, 5}]
+
+
+def test_page_footnote_stops_at_next_aligned_column_rule() -> None:
+    """验证同栏第二条分隔线会把贡献说明和作者单位拆成两个脚注组。"""
+
+    lines = [
+        *[
+            _text_line(
+                f"body {index}",
+                (100.0, 150.0 + 30.0 * index, 500.0, 160.0 + 30.0 * index),
+                index,
+                effective_height=10.0,
+            )
+            for index in range(4)
+        ],
+        _text_line(
+            "contribution one",
+            (100.0, 590.0, 430.0, 598.0),
+            4,
+            effective_height=8.0,
+        ),
+        _text_line(
+            "contribution two",
+            (100.0, 602.0, 240.0, 610.0),
+            5,
+            effective_height=8.0,
+        ),
+        _text_line(
+            "affiliation one",
+            (120.0, 640.0, 460.0, 648.0),
+            6,
+            effective_height=8.0,
+        ),
+        _text_line(
+            "affiliation two",
+            (120.0, 652.0, 400.0, 660.0),
+            7,
+            effective_height=8.0,
+        ),
+    ]
+    page = _prepared_text_page(*lines, page_size=(1000.0, 1000.0))
+    page.drawing_lines = [
+        models._AxisLine((100.0, 570.0, 500.0, 572.0), 1.0, "horizontal"),
+        models._AxisLine((100.0, 620.0, 500.0, 622.0), 1.0, "horizontal"),
+    ]
+
+    auxiliary_text._classify_page_auxiliary_text(page)
+
+    assert page.page_footnote_groups == [{4, 5}, {6, 7}]
+    assert all(line.semantic_type == "page_footnote" for line in lines[4:])
+
+
+def test_page_footnote_rejects_column_width_rule_without_size_contraction() -> None:
+    """验证栏宽横线下的正常字号正文不会仅凭下半页位置变成脚注。"""
+
+    lines = [
+        _text_line(
+            f"body {index}",
+            (100.0, 180.0 + 24.0 * index, 900.0, 190.0 + 24.0 * index),
+            index,
+            effective_height=10.0,
+        )
+        for index in range(4)
+    ]
+    lines.append(
+        _text_line(
+            "continued body",
+            (100.0, 620.0, 700.0, 630.0),
+            4,
+            effective_height=10.0,
+        )
+    )
+    page = _prepared_text_page(*lines, page_size=(1000.0, 1000.0))
+    page.drawing_lines = [
+        models._AxisLine((100.0, 600.0, 900.0, 602.0), 1.0, "horizontal")
+    ]
+
+    auxiliary_text._classify_page_auxiliary_text(page)
+
+    assert all(line.semantic_type is None for line in lines)
+
+
 def test_page_footnote_unions_aligned_regular_and_span_lanes_only() -> None:
     """验证同左缘 regular/span 栏可联合认领，但不会吞掉右侧正文栏。"""
 
@@ -372,6 +495,9 @@ def test_auxiliary_text_classifiers_do_not_read_line_text() -> None:
             auxiliary_text._classify_aside_text,
             auxiliary_text._geometric_text_support_by_angle,
             auxiliary_text._classify_page_footnotes,
+            auxiliary_text._augment_footnote_groups_with_edge_markers,
+            auxiliary_text._classify_rule_delimited_headers,
+            auxiliary_text._classify_page_number_outer_companions,
             auxiliary_text._rule_belongs_to_confirmed_table,
             auxiliary_text._merge_overlapping_source_groups,
             auxiliary_text._footnote_lane_members,
@@ -441,6 +567,131 @@ def test_repeated_marginals_require_cross_page_evidence_and_separate_page_number
     ]
 
 
+def test_top_rule_marks_only_unclassified_text_above_it_as_header() -> None:
+    """验证页码先保留类型，长横线上方其余文本补标页眉且线下正文不变。"""
+
+    page_number = _text_line(
+        "7",
+        (900.0, 30.0, 920.0, 40.0),
+        0,
+        semantic_type="page_number",
+    )
+    journal = _text_line("journal", (100.0, 30.0, 600.0, 40.0), 1)
+    doi = _text_line("doi", (100.0, 44.0, 500.0, 54.0), 2)
+    body = _text_line("body", (100.0, 80.0, 700.0, 90.0), 3)
+    page = _prepared_text_page(
+        page_number,
+        journal,
+        doi,
+        body,
+        page_size=(1000.0, 1000.0),
+    )
+    page.drawing_lines = [
+        models._AxisLine((80.0, 60.0, 920.0, 62.0), 1.0, "horizontal")
+    ]
+
+    auxiliary_text._classify_rule_delimited_headers([page])
+
+    assert [line.semantic_type for line in page.remaining_lines] == [
+        "page_number",
+        "header",
+        "header",
+        None,
+    ]
+
+
+def test_top_rule_inside_graphic_does_not_mark_header() -> None:
+    """验证图形容器内的页首长横线不会把其上方普通文本误标为页眉。"""
+
+    upper_text = _text_line("upper text", (100.0, 30.0, 600.0, 40.0), 0)
+    body = _text_line("body", (100.0, 80.0, 700.0, 90.0), 1)
+    page = _prepared_text_page(
+        upper_text,
+        body,
+        page_size=(1000.0, 1000.0),
+    )
+    page.fixed_blocks = [
+        {
+            "type": "image",
+            "bbox": (50.0, 50.0, 950.0, 70.0),
+            "angle": 0,
+            "content": "",
+        }
+    ]
+    page.drawing_lines = [
+        models._AxisLine((80.0, 60.0, 920.0, 62.0), 1.0, "horizontal")
+    ]
+
+    auxiliary_text._classify_rule_delimited_headers([page])
+
+    assert upper_text.semantic_type is None
+    assert body.semantic_type is None
+
+
+def test_page_number_outer_companions_classify_top_and_bottom_text_and_images() -> None:
+    """验证上下页码外侧的文本和空内容图片对称转换为页眉页脚。"""
+
+    top_page = _prepared_text_page(
+        _text_line("top visual", (20.0, 1.0, 80.0, 5.0), 0),
+        _text_line(
+            "1",
+            (90.0, 8.0, 95.0, 13.0),
+            1,
+            semantic_type="page_number",
+        ),
+        _text_line("top body", (20.0, 18.0, 80.0, 28.0), 2),
+    )
+    top_page.fixed_blocks = [
+        {
+            "type": "image",
+            "bbox": (40.0, 0.0, 60.0, 5.0),
+            "angle": 0,
+            "content": "",
+        }
+    ]
+    bottom_page = _prepared_text_page(
+        _text_line("bottom body", (20.0, 70.0, 80.0, 80.0), 0),
+        _text_line(
+            "2",
+            (90.0, 82.0, 95.0, 87.0),
+            1,
+            semantic_type="page_number",
+        ),
+        _text_line("bottom visual", (20.0, 91.0, 80.0, 96.0), 2),
+    )
+    bottom_page.fixed_blocks = [
+        {
+            "type": "image",
+            "bbox": (40.0, 90.0, 60.0, 99.0),
+            "angle": 0,
+            "content": "",
+        }
+    ]
+
+    auxiliary_text._classify_page_number_outer_companions(
+        [top_page, bottom_page]
+    )
+
+    assert [line.semantic_type for line in top_page.remaining_lines] == [
+        "header",
+        "page_number",
+        None,
+    ]
+    assert top_page.fixed_blocks[0]["type"] == "header"
+    assert [line.semantic_type for line in bottom_page.remaining_lines] == [
+        None,
+        "page_number",
+        "footer",
+    ]
+    assert bottom_page.fixed_blocks[0]["type"] == "footer"
+
+    blocks = pipeline._finalize_prepared_page(bottom_page, page_index=1)
+    assert any(
+        block["type"] == "footer" and block["content"] == ""
+        for block in blocks
+    )
+
+
 def test_page_number_sequence_survives_portrait_to_landscape_edge_change() -> None:
     """验证横竖版切换时连续页码可从底边迁移到侧边，且后续侧边序列继续命中。"""
 
@@ -478,10 +729,10 @@ def test_single_page_marginal_content_remains_text() -> None:
 
 
 def test_repeated_visual_headers_use_geometry_and_skip_first_page() -> None:
-    """验证三页重复页首图片重标为 header，首页与 content 差异不参与匹配。"""
+    """验证重复页首图片仅按几何重标，空 content 也可保留为 header。"""
 
     pages = [_prepared_text_page(page_size=(100.0, 100.0)) for _ in range(5)]
-    contents = ["cover", "alpha", "beta", "gamma", "delta"]
+    contents = ["cover", "", "beta", "", "delta"]
     for page, content in zip(pages, contents, strict=True):
         page.fixed_blocks = [
             {

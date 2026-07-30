@@ -301,6 +301,94 @@ def test_long_rule_group_uses_40pt_or_ten_times_height_threshold(
     assert len(tables._group_long_horizontal_rules(accepted_lines, median_height)) == 1
 
 
+def test_connected_rule_grid_expands_core_and_reclaims_sparse_bottom_row() -> None:
+    """验证连续物理网格会补全候选底边，并重新认领稀疏末行文本。"""
+
+    bottom_bbox = (10.0, 66.0, 35.0, 72.0)
+    bottom_line = models._LineItem(
+        text="sparse bottom",
+        bbox=bottom_bbox,
+        angle=0,
+        source_index=9,
+        effective_height=6.0,
+        visual_row_id=3,
+    )
+    bottom_row = models._VisualRow(
+        fragments=[
+            models._Fragment(
+                text=bottom_line.text,
+                bbox=bottom_bbox,
+                local_bbox=bottom_bbox,
+                line_index=9,
+                visual_row_id=3,
+            )
+        ],
+        center_y=69.0,
+        bbox=bottom_bbox,
+        visual_row_id=3,
+    )
+    candidate = models._TableCandidate(
+        bbox=(0.0, 8.0, 110.0, 58.1),
+        local_bbox=(0.0, 8.0, 110.0, 58.1),
+        angle=0,
+        score=8.0,
+        core_bbox=(0.0, 8.0, 110.0, 58.1),
+        line_indices=set(range(9)),
+    )
+    axis_lines = [
+        *[
+            _axis_line("horizontal", (0.0, top, 110.0, top + 0.1))
+            for top in (8.0, 58.0, 80.0)
+        ],
+        *[
+            _axis_line("vertical", (left, 8.0, left + 0.1, 80.1))
+            for left in (0.0, 55.0, 109.9)
+        ],
+    ]
+
+    expanded = tables._expand_candidates_to_connected_rule_grids(
+        [candidate],
+        [bottom_row],
+        (150.0, 100.0),
+        0,
+        5.0,
+        axis_lines,
+        [],
+    )
+
+    assert expanded[0].core_bbox == pytest.approx((0.0, 8.0, 110.0, 80.1))
+    assert expanded[0].bbox == pytest.approx((0.0, 8.0, 110.0, 80.1))
+    assert 9 in expanded[0].line_indices
+
+
+def test_disconnected_stacked_rule_grids_remain_separate() -> None:
+    """验证竖轨未跨越空白间距时，同跨度上下网格仍保持为两张表。"""
+
+    axis_lines = [
+        *[
+            _axis_line("horizontal", (0.0, top, 110.0, top + 0.1))
+            for top in (8.0, 58.0, 90.0, 140.0)
+        ],
+        *[
+            _axis_line("vertical", (left, 8.0, left + 0.1, 58.1))
+            for left in (0.0, 55.0, 109.9)
+        ],
+        *[
+            _axis_line("vertical", (left, 90.0, left + 0.1, 140.1))
+            for left in (0.0, 55.0, 109.9)
+        ],
+    ]
+
+    grid_bboxes = tables._connected_rule_grid_bboxes(axis_lines, 5.0)
+
+    assert grid_bboxes == pytest.approx(
+        [
+            (0.0, 8.0, 110.0, 58.1),
+            (0.0, 90.0, 110.0, 140.1),
+        ]
+    )
+
+
 def _rule_table_fixture(
     rule_count: int = 3,
     *,

@@ -281,6 +281,45 @@ def _sanitize_pdf_control_text(text: str, *, preserve_newlines: bool) -> str:
     return _PDF_CONTROL_CHAR_RE.sub("", normalized)
 
 
+def _detect_leading_emphasis_width(
+    glyphs: list[tuple[BBox, tuple[str, int] | None, float | None]],
+) -> float | None:
+    """从行首连续字体 run 中提取字重显著高于后续正文的几何宽度。"""
+
+    if len(glyphs) < 4:
+        return None
+    first_signature = glyphs[0][1]
+    if first_signature is None:
+        return None
+
+    prefix: list[tuple[BBox, tuple[str, int] | None, float | None]] = []
+    body: list[tuple[BBox, tuple[str, int] | None, float | None]] = []
+    reached_body = False
+    for glyph in glyphs:
+        if not reached_body and glyph[1] == first_signature:
+            prefix.append(glyph)
+            continue
+        reached_body = True
+        body.append(glyph)
+    if len(prefix) < 2 or len(body) < 2:
+        return None
+
+    prefix_weights = [weight for _bbox, _signature, weight in prefix if weight is not None]
+    body_weights = [weight for _bbox, _signature, weight in body if weight is not None]
+    if not prefix_weights or not body_weights:
+        return None
+    prefix_weight = statistics.median(prefix_weights)
+    body_weight = statistics.median(body_weights)
+    if (
+        prefix_weight - body_weight < 100.0
+        or prefix_weight < 1.15 * max(1.0, body_weight)
+    ):
+        return None
+
+    prefix_bbox = _bbox_union_many([bbox for bbox, _signature, _weight in prefix])
+    return max(0.1, prefix_bbox[2] - prefix_bbox[0])
+
+
 def _fill_native_typography(line: _LineItem, page_size: tuple[float, float]) -> None:
     """使用非空字符 bbox 高度和 dominant font 填充原生行排版特征。"""
 
@@ -288,6 +327,7 @@ def _fill_native_typography(line: _LineItem, page_size: tuple[float, float]) -> 
     glyph_widths: list[float] = []
     font_counts: dict[tuple[str, int], int] = {}
     font_weights: dict[tuple[str, int], list[float]] = {}
+    glyph_typography: list[tuple[BBox, tuple[str, int] | None, float | None]] = []
     valid_font_chars = 0
     for char in line.chars:
         raw_char = str(char.get("char") or "")
@@ -302,6 +342,7 @@ def _fill_native_typography(line: _LineItem, page_size: tuple[float, float]) -> 
         font = char.get("font") or {}
         font_name = str(font.get("name") or "")
         if not font_name:
+            glyph_typography.append((local_bbox, None, None))
             continue
         try:
             font_flags = int(font.get("flags") or 0)
@@ -315,6 +356,9 @@ def _fill_native_typography(line: _LineItem, page_size: tuple[float, float]) -> 
             font_weight = math.nan
         if math.isfinite(font_weight):
             font_weights.setdefault(signature, []).append(font_weight)
+            glyph_typography.append((local_bbox, signature, font_weight))
+        else:
+            glyph_typography.append((local_bbox, signature, None))
         valid_font_chars += 1
 
     local_bbox = _rotate_bbox_to_upright(line.bbox, page_size, line.angle)
@@ -329,6 +373,7 @@ def _fill_native_typography(line: _LineItem, page_size: tuple[float, float]) -> 
         line.font_signature = None
         line.font_coverage = 0.0
         line.dominant_font_weight = None
+    line.leading_emphasis_width = _detect_leading_emphasis_width(glyph_typography)
 
 
 def _is_detached_inline_script_candidate(
