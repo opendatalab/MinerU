@@ -2242,3 +2242,180 @@ def test_compact_title_continuation_requires_repetition_and_font_switch() -> Non
         "paragraph_title",
         "text",
     ]
+
+
+def test_caption_neighbor_uses_union_of_aligned_image_row() -> None:
+    """验证三张并排图片会额外形成统一图注邻接使用的联合 bbox。"""
+
+    grouped = text_blocks._caption_image_group_bboxes(
+        [
+            (10.0, 10.0, 35.0, 40.0),
+            (37.0, 10.0, 62.0, 40.0),
+            (64.0, 10.0, 90.0, 40.0),
+        ],
+        median_height=10.0,
+    )
+
+    assert (10.0, 10.0, 90.0, 40.0) in grouped
+
+
+def test_inline_math_fragments_merge_into_wide_split_text_row() -> None:
+    """验证宽正文行上下叠放的多个小数学块收敛为一个文本块。"""
+
+    host = {
+        "type": "text",
+        "bbox": (10.0, 40.0, 90.0, 50.0),
+        "angle": 0,
+        "content": "body host",
+        "_visual_row_ids": {1},
+        "_single_run_row_id": 1,
+        "_local_line_bboxes": [(10.0, 40.0, 90.0, 50.0)],
+        "_line_heights": [10.0],
+        "_font_signatures": {("Body", 0)},
+    }
+    fragments = [
+        {
+            "type": "text",
+            "bbox": bbox,
+            "angle": 0,
+            "content": content,
+            "_visual_row_ids": {index + 2},
+            "_single_run_row_id": None,
+            "_local_line_bboxes": [bbox],
+            "_line_heights": [bbox[3] - bbox[1]],
+            "_font_signatures": {("Math", 0)},
+        }
+        for index, (bbox, content) in enumerate(
+            (
+                ((30.0, 34.0, 40.0, 43.0), "numerator"),
+                ((30.0, 47.0, 40.0, 56.0), "denominator"),
+                ((60.0, 35.0, 70.0, 44.0), "power"),
+            )
+        )
+    ]
+
+    merged = text_blocks._merge_inline_math_fragment_text_blocks(
+        [host, *fragments],
+        (200.0, 100.0),
+    )
+
+    assert len(merged) == 1
+    assert merged[0]["bbox"] == (10.0, 34.0, 90.0, 56.0)
+    assert all(
+        token in merged[0]["content"]
+        for token in ("body host", "numerator", "denominator", "power")
+    )
+
+
+def test_residual_narrow_math_fragment_merges_into_unique_wide_host() -> None:
+    """验证单个窄数学碎片与宽正文行重叠时会收回唯一宿主。"""
+
+    host = {
+        "type": "text",
+        "bbox": (10.0, 40.0, 90.0, 52.0),
+        "angle": 0,
+        "content": "body host",
+        "_local_line_bboxes": [(10.0, 40.0, 90.0, 52.0)],
+        "_line_heights": [12.0],
+    }
+    fragment = {
+        "type": "text",
+        "bbox": (50.0, 48.0, 54.0, 57.0),
+        "angle": 0,
+        "content": "gamma",
+        "_local_line_bboxes": [(50.0, 48.0, 54.0, 57.0)],
+        "_line_heights": [9.0],
+    }
+
+    merged = text_blocks._merge_residual_narrow_math_text_blocks(
+        [host, fragment],
+        (200.0, 100.0),
+    )
+
+    assert len(merged) == 1
+    assert merged[0]["bbox"] == (10.0, 40.0, 90.0, 57.0)
+    assert "body host" in merged[0]["content"]
+    assert "gamma" in merged[0]["content"]
+
+
+def test_overlapping_wide_text_rows_merge_without_broad_page_line_merge() -> None:
+    """验证同左沿宽正文的重叠行可在块级合并，且不依赖全页行合并。"""
+
+    first = {
+        "type": "text",
+        "bbox": (20.0, 40.0, 140.0, 52.0),
+        "angle": 0,
+        "content": "first row",
+        "_local_line_bboxes": [(20.0, 40.0, 140.0, 52.0)],
+        "_line_heights": [12.0],
+        "_font_signatures": {("Body", 0)},
+    }
+    second = {
+        "type": "text",
+        "bbox": (20.0, 42.0, 180.0, 65.0),
+        "angle": 0,
+        "content": "second row continuation",
+        "_local_line_bboxes": [
+            (100.0, 42.0, 180.0, 53.0),
+            (20.0, 54.0, 180.0, 65.0),
+        ],
+        "_line_heights": [11.0, 11.0],
+        "_font_signatures": {("Body", 0)},
+    }
+
+    merged = text_blocks._merge_overlapping_same_line_text_blocks(
+        [first, second],
+        (300.0, 200.0),
+    )
+
+    assert len(merged) == 1
+    assert merged[0]["bbox"] == (20.0, 40.0, 180.0, 65.0)
+    assert "first row" in merged[0]["content"]
+    assert "second row continuation" in merged[0]["content"]
+
+
+def test_front_matter_grid_merges_each_author_column_independently() -> None:
+    """验证标题后的四列规则前置信息按列合并且不横向串列。"""
+
+    title = {
+        "type": "doc_title",
+        "bbox": (200.0, 100.0, 800.0, 130.0),
+        "angle": 0,
+        "content": "document title",
+        "_visual_row_ids": {0},
+        "_single_run_row_id": None,
+        "_local_line_bboxes": [(200.0, 100.0, 800.0, 130.0)],
+        "_line_heights": [30.0],
+        "_font_signatures": {("Title", 0)},
+    }
+    author_parts = []
+    for column_index, left in enumerate((75.0, 325.0, 575.0, 825.0)):
+        for row_index, top in enumerate((150.0, 165.0, 180.0)):
+            bbox = (left, top, left + 100.0, top + 10.0)
+            author_parts.append(
+                {
+                    "type": "text",
+                    "bbox": bbox,
+                    "angle": 0,
+                    "content": f"author-{column_index}-row-{row_index}",
+                    "_visual_row_ids": {10 + row_index},
+                    "_single_run_row_id": None,
+                    "_local_line_bboxes": [bbox],
+                    "_line_heights": [10.0],
+                    "_font_signatures": {("Body", 0)},
+                }
+            )
+
+    merged = text_blocks._merge_front_matter_column_blocks(
+        [title, *author_parts],
+        (1000.0, 1000.0),
+        page_index=0,
+    )
+    merged_authors = [block for block in merged if block["type"] == "text"]
+
+    assert len(merged_authors) == 4
+    for column_index, block in enumerate(merged_authors):
+        assert all(
+            f"author-{column_index}-row-{row_index}" in block["content"]
+            for row_index in range(3)
+        )

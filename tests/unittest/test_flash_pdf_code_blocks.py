@@ -139,3 +139,74 @@ def test_code_projection_preserves_columns_and_blank_rows() -> None:
     )
 
     assert content == "left      right\n\n tail"
+
+
+def _rule_delimited_code_source(
+    *,
+    include_internal_grid: bool = False,
+) -> models._PageSource:
+    """构造带上下边界、行号槽和可选内部网格线的代码清单页面。"""
+
+    lines: list[models._LineItem] = []
+    for row_index, top in enumerate((30.0, 42.0, 54.0, 66.0, 78.0, 90.0)):
+        number = _text_line(
+            str(row_index + 1),
+            (25.0, top, 31.0, top + 8.0),
+            2 * row_index,
+            visual_row_id=row_index,
+            split_from_row=True,
+            effective_height=8.0,
+        )
+        statement = _text_line(
+            f"statement {row_index}",
+            (42.0 + 6.0 * (row_index % 3), top, 125.0, top + 8.0),
+            2 * row_index + 1,
+            visual_row_id=row_index,
+            split_from_row=True,
+            effective_height=8.0,
+        )
+        lines.extend((number, statement))
+    drawing_lines = [
+        models._AxisLine((20.0, 20.0, 180.0, 21.0), 1.0, "horizontal"),
+        models._AxisLine((20.0, 104.0, 180.0, 105.0), 1.0, "horizontal"),
+    ]
+    if include_internal_grid:
+        drawing_lines.append(
+            models._AxisLine(
+                (20.0, 60.0, 180.0, 61.0),
+                1.0,
+                "horizontal",
+            )
+        )
+    return models._PageSource(
+        page_size=(200.0, 300.0),
+        lines=lines,
+        chars=[],
+        drawing_lines=drawing_lines,
+    )
+
+
+def test_rule_delimited_listing_materializes_code_before_table_claim() -> None:
+    """验证无内部网格的上下横线清单形成单一 code 并唯一认领全部来源行。"""
+
+    source = _rule_delimited_code_source()
+    blocks, claimed = code_blocks._build_rule_delimited_code_blocks(
+        source,
+        [],
+    )
+
+    assert len(blocks) == 1
+    assert blocks[0]["type"] == "code"
+    assert claimed == set(range(12))
+
+
+def test_rule_delimited_listing_rejects_real_table_internal_grid() -> None:
+    """验证带内部横向网格的区域不会被规则代码路径侵蚀。"""
+
+    blocks, claimed = code_blocks._build_rule_delimited_code_blocks(
+        _rule_delimited_code_source(include_internal_grid=True),
+        [],
+    )
+
+    assert blocks == []
+    assert claimed == set()

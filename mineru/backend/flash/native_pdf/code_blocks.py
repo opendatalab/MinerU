@@ -19,6 +19,7 @@ from .geometry import (
     _bbox_center_y,
     _bbox_overlap_in_first,
     _bbox_overlap_in_smaller,
+    _bbox_union_many,
 )
 from .models import _CodeCandidate, _LineItem, _PageSource
 from .native_text import _sanitize_pdf_control_text
@@ -47,6 +48,30 @@ def _build_code_blocks(
         excluded_bboxes,
         claimed_line_indices,
     )
+    return _materialize_code_candidates(source, candidates)
+
+
+def _build_rule_delimited_code_blocks(
+    source: _PageSource,
+    excluded_bboxes: list[BBox],
+    claimed_line_indices: set[int] | None = None,
+) -> tuple[list[dict[str, Any]], set[int]]:
+    """在表格认领前物化外框或上下横线限定的代码清单。"""
+
+    candidates = _detect_rule_delimited_code_candidates(
+        source,
+        excluded_bboxes,
+        claimed_line_indices or set(),
+    )
+    return _materialize_code_candidates(source, candidates)
+
+
+def _materialize_code_candidates(
+    source: _PageSource,
+    candidates: list[_CodeCandidate],
+) -> tuple[list[dict[str, Any]], set[int]]:
+    """统一投影代码候选，确保来源行只被一个 code block 认领。"""
+
     if not candidates:
         return [], set()
     lines_by_index = {line.source_index: line for line in source.lines}
@@ -81,6 +106,201 @@ def _build_code_blocks(
         claimed.update(candidate.line_indices)
     blocks.sort(key=lambda block: (block["bbox"][1], block["bbox"][0]))
     return blocks, claimed
+
+
+def _detect_rule_delimited_code_candidates(
+    source: _PageSource,
+    excluded_bboxes: list[BBox],
+    claimed_line_indices: set[int],
+) -> list[_CodeCandidate]:
+    """按规则边界、稳定行距和缩进层次识别非等宽代码清单。"""
+
+    page_width, page_height = source.page_size
+    if page_width <= 0 or page_height <= 0:
+        return []
+    available = [
+        line
+        for line in source.lines
+        if line.source_index not in claimed_line_indices and line.angle == 0
+    ]
+    if len(available) < 5:
+        return []
+    median_height = statistics.median(
+        max(0.1, line.effective_height or line.bbox[3] - line.bbox[1])
+        for line in available
+    )
+    horizontal_rules = sorted(
+        [
+            line
+            for line in source.drawing_lines
+            if line.orientation == "horizontal"
+            and line.bbox[2] - line.bbox[0] >= 0.22 * page_width
+        ],
+        key=lambda line: (line.bbox[1], line.bbox[0]),
+    )
+    vertical_rules = [
+        line
+        for line in source.drawing_lines
+        if line.orientation == "vertical"
+    ]
+    raw_candidates: list[_CodeCandidate] = []
+    endpoint_tolerance = max(2.0, 0.75 * median_height)
+    for top_index, top_rule in enumerate(horizontal_rules[:-1]):
+        for bottom_rule in horizontal_rules[top_index + 1 :]:
+            if (
+                abs(top_rule.bbox[0] - bottom_rule.bbox[0]) > endpoint_tolerance
+                or abs(top_rule.bbox[2] - bottom_rule.bbox[2]) > endpoint_tolerance
+            ):
+                continue
+            candidate_bbox = _bbox_union_many(
+                [top_rule.bbox, bottom_rule.bbox]
+            )
+            candidate_height = candidate_bbox[3] - candidate_bbox[1]
+            if not 6.0 * median_height <= candidate_height <= 0.35 * page_height:
+                continue
+            if any(
+                _bbox_overlap_in_smaller(candidate_bbox, excluded_bbox) >= 0.5
+                for excluded_bbox in excluded_bboxes
+            ):
+                continue
+            interior_rules = [
+                rule
+                for rule in horizontal_rules
+                if top_rule.bbox[3] + 0.5 * median_height
+                < rule.bbox[1]
+                < bottom_rule.bbox[1] - 0.5 * median_height
+                and _bbox_overlap_in_first(rule.bbox, candidate_bbox) >= 0.8
+                and rule.bbox[2] - rule.bbox[0]
+                >= 0.6 * (candidate_bbox[2] - candidate_bbox[0])
+            ]
+            if interior_rules:
+                continue
+            internal_vertical_rules = [
+                rule
+                for rule in vertical_rules
+                if candidate_bbox[0] + median_height
+                < _bbox_center_x(rule.bbox)
+                < candidate_bbox[2] - median_height
+                and rule.bbox[3] - rule.bbox[1] >= 0.6 * candidate_height
+                and _bbox_overlap_in_first(rule.bbox, candidate_bbox) >= 0.8
+            ]
+            if internal_vertical_rules:
+                continue
+            members = [
+                line
+                for line in available
+                if candidate_bbox[0] - 0.5 * median_height
+                <= _bbox_center_x(line.bbox)
+                <= candidate_bbox[2] + 0.5 * median_height
+                and top_rule.bbox[3]
+                <= _bbox_center_y(line.bbox)
+                <= bottom_rule.bbox[1]
+            ]
+            if not _rule_delimited_code_members_are_structured(
+                members,
+                candidate_bbox,
+                median_height,
+            ):
+                continue
+            raw_candidates.append(
+                _CodeCandidate(
+                    bbox=candidate_bbox,
+                    angle=0,
+                    line_indices={line.source_index for line in members},
+                )
+            )
+
+    accepted: list[_CodeCandidate] = []
+    for candidate in sorted(raw_candidates, key=lambda item: _bbox_area(item.bbox)):
+        if any(
+            _bbox_overlap_in_smaller(candidate.bbox, existing.bbox) >= 0.85
+            for existing in accepted
+        ):
+            continue
+        accepted.append(candidate)
+    return sorted(accepted, key=lambda item: (item.bbox[1], item.bbox[0]))
+
+
+def _rule_delimited_code_members_are_structured(
+    members: list[_LineItem],
+    candidate_bbox: BBox,
+    median_height: float,
+) -> bool:
+    """验证候选具有稳定基线、代码缩进或窄行号槽，并排除规则多列表格。"""
+
+    if len(members) < 5:
+        return False
+    rows: dict[int, list[_LineItem]] = {}
+    fallback_row = 1_000_000
+    for line in members:
+        row_key = line.visual_row_id
+        if row_key is None:
+            row_key = fallback_row
+            fallback_row += 1
+        rows.setdefault(row_key, []).append(line)
+    if len(rows) < 5:
+        return False
+    ordered_rows = sorted(
+        rows.values(),
+        key=lambda row: min(_bbox_center_y(line.bbox) for line in row),
+    )
+    row_centers = [
+        statistics.median(_bbox_center_y(line.bbox) for line in row)
+        for row in ordered_rows
+    ]
+    row_gaps = [
+        current - previous
+        for previous, current in zip(row_centers, row_centers[1:])
+        if current > previous
+    ]
+    if not row_gaps:
+        return False
+    base_pitch = statistics.median(row_gaps)
+    if base_pitch <= 0 or sum(
+        0.65 * base_pitch <= gap <= 1.8 * base_pitch
+        for gap in row_gaps
+    ) / len(row_gaps) < 0.75:
+        return False
+    if sum(len(row) >= 3 for row in ordered_rows) / len(ordered_rows) >= 0.25:
+        return False
+
+    left_positions = sorted(line.bbox[0] for line in members)
+    indent_clusters: list[list[float]] = []
+    for position in left_positions:
+        if (
+            not indent_clusters
+            or position - statistics.median(indent_clusters[-1])
+            > 0.75 * median_height
+        ):
+            indent_clusters.append([position])
+        else:
+            indent_clusters[-1].append(position)
+    narrow_gutter_rows = 0
+    for row in ordered_rows:
+        ordered = sorted(row, key=lambda line: line.bbox[0])
+        if (
+            len(ordered) >= 2
+            and ordered[0].bbox[2] - ordered[0].bbox[0]
+            <= 2.0 * median_height
+            and ordered[1].bbox[0] - ordered[0].bbox[2]
+            >= 0.5 * median_height
+        ):
+            narrow_gutter_rows += 1
+    has_line_number_gutter = narrow_gutter_rows / len(ordered_rows) >= 0.35
+    has_indent_hierarchy = (
+        len(indent_clusters) >= 3
+        and sum(len(cluster) >= 2 for cluster in indent_clusters) >= 2
+    )
+    if not has_line_number_gutter and not has_indent_hierarchy:
+        return False
+
+    occupied_width = max(line.bbox[2] for line in members) - min(
+        line.bbox[0] for line in members
+    )
+    return occupied_width <= 0.95 * max(
+        0.1,
+        candidate_bbox[2] - candidate_bbox[0],
+    )
 
 
 def _code_member_chars(lines: list[_LineItem]) -> list[dict[str, Any]]:

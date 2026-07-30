@@ -557,13 +557,17 @@ def _build_formula_like_blocks(
 ) -> tuple[list[dict[str, Any]], list[_LineItem]]:
     """仅依据栏带、右侧短锚点和空间连通关系聚合公式状区域。"""
 
-    blocks: list[dict[str, Any]] = []
-    claimed_source_indices: set[int] = set()
+    blocks, claimed_source_indices = _build_split_visual_row_formula_blocks(
+        lines,
+        table_bboxes,
+        page_size,
+    )
     for angle in sorted({line.angle for line in lines}):
         angle_geometry = [
             (line, _rotate_bbox_to_upright(line.bbox, page_size, angle))
             for line in lines
             if line.angle == angle
+            and line.source_index not in claimed_source_indices
         ]
         if len(angle_geometry) < 2:
             continue
@@ -576,19 +580,35 @@ def _build_formula_like_blocks(
             if lane.is_span:
                 continue
             lane.lines.sort(key=lambda item: (item[1][1], item[1][0], item[0].source_index))
+            dominant_body_font = _infer_formula_body_font(
+                lane,
+                median_height,
+            )
             for line, bbox in list(lane.lines):
                 if (
-                    line.compact_formula_cluster
-                    and not _is_formula_component_in_page_margin(
-                        bbox,
-                        local_page_height,
+                    (
+                        line.compact_formula_cluster
+                        and not _compact_cluster_has_nearby_number_anchor(
+                            (line, bbox),
+                            lane,
+                            median_height,
+                        )
+                        and _is_isolated_compact_formula_cluster(
+                            (line, bbox),
+                            lane,
+                            median_height,
+                        )
                     )
-                    and _is_isolated_compact_formula_cluster(
+                    or _is_isolated_unnumbered_formula_line(
                         (line, bbox),
                         lane,
                         median_height,
+                        dominant_body_font,
                     )
-                ):
+                ) and not _is_formula_component_in_page_margin(
+                        bbox,
+                        local_page_height,
+                    ):
                     content = _sanitize_pdf_control_text(
                         line.text,
                         preserve_newlines=False,
@@ -611,7 +631,6 @@ def _build_formula_like_blocks(
             ]
             if len(lane.lines) < 2:
                 continue
-            dominant_body_font = _infer_formula_body_font(lane, median_height)
             anchors = _find_formula_spatial_anchors(
                 lane,
                 median_height,
@@ -679,6 +698,151 @@ def _build_formula_like_blocks(
     return blocks, remaining_lines
 
 
+def _build_split_visual_row_formula_blocks(
+    lines: list[_LineItem],
+    table_bboxes: list[BBox],
+    page_size: tuple[float, float],
+) -> tuple[list[dict[str, Any]], set[int]]:
+    """在栏带推断前恢复同一视觉行中带右侧编号的多字体公式。"""
+
+    row_groups: dict[tuple[int, int], list[_LineItem]] = {}
+    for line in lines:
+        if line.visual_row_id is None or not line.split_from_row:
+            continue
+        row_groups.setdefault((line.angle, line.visual_row_id), []).append(line)
+
+    blocks: list[dict[str, Any]] = []
+    claimed: set[int] = set()
+    for (angle, _row_id), members in row_groups.items():
+        if len(members) < 3:
+            continue
+        markers = [
+            member
+            for member in members
+            if _standalone_formula_number_marker(member.text) is not None
+        ]
+        if len(markers) != 1:
+            continue
+        marker = markers[0]
+        if any(
+            _bbox_intersects(member.bbox, table_bbox)
+            for member in members
+            for table_bbox in table_bboxes
+        ):
+            continue
+        local_members = [
+            (
+                member,
+                _rotate_bbox_to_upright(
+                    member.bbox,
+                    page_size,
+                    angle,
+                ),
+            )
+            for member in members
+        ]
+        marker_bbox = next(
+            bbox
+            for member, bbox in local_members
+            if member is marker
+        )
+        body_members = [
+            (member, bbox)
+            for member, bbox in local_members
+            if member is not marker
+        ]
+        if not body_members or marker_bbox[0] <= max(
+            _bbox_center_x(bbox)
+            for _member, bbox in body_members
+        ):
+            continue
+        median_height = statistics.median(
+            _line_effective_height(member, bbox)
+            for member, bbox in local_members
+        )
+        row_center = statistics.median(
+            _bbox_center_y(bbox)
+            for _member, bbox in local_members
+        )
+        if any(
+            abs(_bbox_center_y(bbox) - row_center) > 0.75 * median_height
+            for _member, bbox in local_members
+        ):
+            continue
+        body_fonts = {
+            member.font_signature
+            for member, _bbox in body_members
+            if member.font_signature is not None
+        }
+        has_math_typography = (
+            len(body_fonts) >= 2
+            or any(
+                member.compact_formula_cluster
+                or member.font_coverage < 0.8
+                for member, _bbox in body_members
+            )
+        )
+        if not has_math_typography:
+            continue
+        body_bbox = _bbox_union_many(
+            [bbox for _member, bbox in body_members]
+        )
+        body_width = max(0.1, body_bbox[2] - body_bbox[0])
+        member_ids = {id(member) for member in members}
+        has_nearby_formula_fragment = False
+        for other in lines:
+            if id(other) in member_ids or other.angle != angle:
+                continue
+            other_bbox = _rotate_bbox_to_upright(
+                other.bbox,
+                page_size,
+                angle,
+            )
+            vertical_gap = max(
+                0.0,
+                max(other_bbox[1], body_bbox[1])
+                - min(other_bbox[3], body_bbox[3]),
+            )
+            if (
+                vertical_gap <= 0.75 * median_height
+                and other_bbox[2] - other_bbox[0] <= 0.65 * body_width
+                and max(
+                    0.0,
+                    max(other_bbox[0], body_bbox[0])
+                    - min(other_bbox[2], body_bbox[2]),
+                )
+                <= median_height
+            ):
+                has_nearby_formula_fragment = True
+                break
+        if has_nearby_formula_fragment:
+            continue
+        block = _formula_members_to_block(
+            local_members,
+            page_size,
+            angle,
+            anchor_source_index=marker.source_index,
+        )
+        if block is None:
+            continue
+        local_bbox = _bbox_union_many(
+            [bbox for _member, bbox in local_members]
+        )
+        local_page_height = (
+            page_size[0]
+            if angle in {90, 270}
+            else page_size[1]
+        )
+        if _is_formula_component_in_page_margin(
+            local_bbox,
+            local_page_height,
+        ):
+            continue
+        blocks.append(block)
+        claimed.update(member.source_index for member in members)
+    return blocks, claimed
+
+
 def _is_isolated_compact_formula_cluster(
     candidate: tuple[_LineItem, BBox],
     lane: _TextLane,
@@ -694,13 +858,18 @@ def _is_isolated_compact_formula_cluster(
         return False
     if bbox[3] - bbox[1] > 3.0 * median_height:
         return False
+    if (
+        abs(_bbox_center_x(bbox) - 0.5 * (lane.left + lane.right))
+        > 0.2 * lane_width
+    ):
+        return False
 
     candidate_center = _bbox_center_y(bbox)
     body_rows = [
         item
         for item in lane.lines
         if item[0].source_index != line.source_index
-        and item[1][2] - item[1][0] >= 0.6 * lane_width
+        and item[1][2] - item[1][0] >= 0.45 * lane_width
         and 0.8 * median_height
         <= _line_effective_height(*item)
         <= 1.25 * median_height
@@ -720,10 +889,137 @@ def _is_isolated_compact_formula_cluster(
     previous = max(rows_above, key=lambda item: _bbox_center_y(item[1]))
     following = min(rows_below, key=lambda item: _bbox_center_y(item[1]))
     return (
-        candidate_center - _bbox_center_y(previous[1]) <= 2.5 * median_height
+        candidate_center - _bbox_center_y(previous[1]) <= 8.0 * median_height
         and _bbox_center_y(following[1]) - candidate_center
-        <= 2.5 * median_height
+        <= 8.0 * median_height
     )
+
+
+def _compact_cluster_has_nearby_number_anchor(
+    candidate: tuple[_LineItem, BBox],
+    lane: _TextLane,
+    median_height: float,
+) -> bool:
+    """检测紧凑公式右侧的独立编号，保留给既有空间锚点统一扩张。"""
+
+    line, bbox = candidate
+    return any(
+        other_line.source_index != line.source_index
+        and _standalone_formula_number_marker(other_line.text) is not None
+        and other_bbox[0] > _bbox_center_x(bbox)
+        and abs(_bbox_center_y(other_bbox) - _bbox_center_y(bbox))
+        <= 2.5 * median_height
+        for other_line, other_bbox in lane.lines
+    )
+
+
+def _is_isolated_unnumbered_formula_line(
+    candidate: tuple[_LineItem, BBox],
+    lane: _TextLane,
+    median_height: float,
+    dominant_body_font: tuple[str, int] | None,
+) -> bool:
+    """用低正文覆盖的数学排版和上下正文邻接识别无编号行间公式。"""
+
+    line, bbox = candidate
+    if (
+        line.compact_formula_cluster
+        or dominant_body_font is None
+        or line.font_signature is None
+        or line.font_signature == dominant_body_font
+        or line.font_coverage >= 0.75
+    ):
+        return False
+    lane_width = max(0.1, lane.right - lane.left)
+    line_width = bbox[2] - bbox[0]
+    if not 0.15 * lane_width <= line_width <= 0.8 * lane_width:
+        return False
+    if (
+        abs(_bbox_center_x(bbox) - 0.5 * (lane.left + lane.right))
+        > 0.08 * lane_width
+    ):
+        return False
+    if bbox[3] - bbox[1] > 1.8 * median_height:
+        return False
+    candidate_center = _bbox_center_y(bbox)
+    if any(
+        other_line.source_index != line.source_index
+        and _standalone_formula_number_marker(other_line.text) is not None
+        and abs(_bbox_center_y(other_bbox) - candidate_center)
+        <= 4.0 * median_height
+        for other_line, other_bbox in lane.lines
+    ) or _has_nearby_punctuated_formula_number_anchor(
+        candidate,
+        lane,
+        median_height,
+    ):
+        return False
+    body_rows = [
+        item
+        for item in lane.lines
+        if item[0].source_index != line.source_index
+        and item[0].font_signature == dominant_body_font
+        and item[0].font_coverage >= 0.75
+        and item[1][2] - item[1][0] >= 0.45 * lane_width
+        and 0.8 * median_height
+        <= _line_effective_height(*item)
+        <= 1.25 * median_height
+    ]
+    rows_above = [
+        item
+        for item in body_rows
+        if _bbox_center_y(item[1]) < candidate_center
+    ]
+    rows_below = [
+        item
+        for item in body_rows
+        if _bbox_center_y(item[1]) > candidate_center
+    ]
+    if not rows_above or not rows_below:
+        return False
+    previous = max(rows_above, key=lambda item: _bbox_center_y(item[1]))
+    following = min(rows_below, key=lambda item: _bbox_center_y(item[1]))
+    return (
+        candidate_center - _bbox_center_y(previous[1]) <= 4.0 * median_height
+        and _bbox_center_y(following[1]) - candidate_center
+        <= 4.0 * median_height
+    )
+
+
+def _has_nearby_punctuated_formula_number_anchor(
+    candidate: tuple[_LineItem, BBox],
+    lane: _TextLane,
+    median_height: float,
+) -> bool:
+    """识别同一公式带右侧仅带标点前缀的编号，避免分式上下行被提前认领。"""
+
+    line, bbox = candidate
+    for other_line, other_bbox in lane.lines:
+        if other_line.source_index == line.source_index:
+            continue
+        parts = _split_trailing_formula_number(other_line.text)
+        if parts is None:
+            continue
+        prefix, _marker = parts
+        compact_prefix = prefix.strip()
+        if (
+            not compact_prefix
+            or len(compact_prefix) > 3
+            or any(character.isalnum() for character in compact_prefix)
+        ):
+            continue
+        vertical_gap = max(
+            0.0,
+            max(other_bbox[1], bbox[1]) - min(other_bbox[3], bbox[3]),
+        )
+        horizontal_gap = max(0.0, other_bbox[0] - bbox[2])
+        if (
+            other_bbox[0] >= bbox[2] - 0.5 * median_height
+            and vertical_gap <= 0.75 * median_height
+            and horizontal_gap <= 4.0 * median_height
+        ):
+            return True
+    return False
 
 
 def _find_formula_spatial_anchors(

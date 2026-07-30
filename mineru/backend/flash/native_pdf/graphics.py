@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import math
+import re
 import statistics
 from typing import Any
 
@@ -55,6 +56,12 @@ _MAX_FORM_IMAGE_PAGE_AREA_RATIO = 0.8
 
 
 _IMAGE_CONTAINER_OVERLAP_THRESHOLD = 0.5
+
+
+_FIGURE_CAPTION_LINE_RE = re.compile(
+    r"^\s*(?:fig(?:ure)?\.?)[ \t]*\d+[A-Za-z]?(?:\s*[.:])?",
+    re.IGNORECASE,
+)
 
 
 def _form_supersedes_nested_bbox(form_bbox: BBox, nested_bbox: BBox) -> bool:
@@ -231,7 +238,18 @@ def _build_graphic_like_blocks(
             [],
         ).append(line)
 
+    protected_caption_indices = _graphic_caption_line_indices_to_preserve(
+        lines,
+        candidates,
+        median_height,
+    )
+
     for row_lines in row_groups.values():
+        if any(
+            line.source_index in protected_caption_indices
+            for line in row_lines
+        ):
+            continue
         row_lane_index = _graphic_lane_index(row_lines[0].bbox, lanes)
         matches: list[tuple[int, float, int]] = []
         for candidate_index, candidate in enumerate(candidates):
@@ -284,6 +302,59 @@ def _build_graphic_like_blocks(
 
     blocks.sort(key=lambda block: (block["bbox"][1], block["bbox"][0]))
     return blocks, claimed
+
+
+def _graphic_caption_line_indices_to_preserve(
+    lines: list[_LineItem],
+    candidates: list[_GraphicCandidate],
+    median_height: float,
+) -> set[int]:
+    """保护贴近图形下沿的图注及其同字体续行，避免末词被图片容器认领。"""
+
+    protected: set[int] = set()
+    ordered_lines = sorted(
+        (line for line in lines if line.angle == 0),
+        key=lambda line: (line.bbox[1], line.bbox[0], line.source_index),
+    )
+    for seed_index, seed in enumerate(ordered_lines):
+        if not _FIGURE_CAPTION_LINE_RE.match(seed.text):
+            continue
+        matching_candidates = [
+            candidate
+            for candidate in candidates
+            if _bbox_axis_overlap_ratio(
+                seed.bbox,
+                candidate.core_bbox,
+                axis="x",
+            )
+            >= 0.35
+            and candidate.core_bbox[3] - 2.5 * median_height
+            <= _bbox_center_y(seed.bbox)
+            <= candidate.core_bbox[3] + 2.5 * median_height
+        ]
+        if not matching_candidates:
+            continue
+        protected.add(seed.source_index)
+        previous = seed
+        for candidate_line in ordered_lines[seed_index + 1 :]:
+            if candidate_line.bbox[1] - previous.bbox[3] > 0.75 * median_height:
+                break
+            if _bbox_center_y(candidate_line.bbox) <= _bbox_center_y(previous.bbox):
+                continue
+            if (
+                abs(candidate_line.bbox[0] - seed.bbox[0]) > median_height
+                or (
+                    seed.font_signature is not None
+                    and candidate_line.font_signature is not None
+                    and seed.font_signature != candidate_line.font_signature
+                )
+            ):
+                continue
+            protected.add(candidate_line.source_index)
+            previous = candidate_line
+            if candidate_line.text.rstrip().endswith((".", "!", "?")):
+                break
+    return protected
 
 
 def _detect_strong_graphic_bboxes(source: _PageSource) -> list[BBox]:

@@ -471,7 +471,9 @@ def _can_merge_same_baseline_pair(
         return False
     if first.semantic_type != second.semantic_type:
         return False
-    if first.visual_row_id == second.visual_row_id and (first.split_from_row or second.split_from_row):
+    if first.visual_row_id == second.visual_row_id and (
+        first.split_from_row or second.split_from_row
+    ):
         return False
     if _connection_crosses_table(first.bbox, second.bbox, table_bboxes):
         return False
@@ -836,9 +838,9 @@ def _can_restore_dense_split_visual_row(
     table_bboxes: list[BBox],
     lane_keys: dict[int, tuple[int, int]],
 ) -> bool:
-    """检查 hard-split run 是否构成同栏、同字体且占用充分的完整视觉行。"""
+    """检查 hard-split run 是否构成同字体且占用充分的完整视觉行。"""
 
-    if len(members) < 3 or not all(member.split_from_row for member in members):
+    if len(members) < 2 or not all(member.split_from_row for member in members):
         return False
     if len({member.semantic_type for member in members}) != 1:
         return False
@@ -846,8 +848,7 @@ def _can_restore_dense_split_visual_row(
     if [member.run_index for member in ordered] != list(range(len(ordered))):
         return False
     member_lane_keys = {lane_keys.get(member.source_index) for member in ordered}
-    if None in member_lane_keys or len(member_lane_keys) != 1:
-        return False
+    same_inferred_lane = None not in member_lane_keys and len(member_lane_keys) == 1
     font_signatures = {member.font_signature for member in ordered}
     if len(font_signatures) != 1:
         return False
@@ -866,6 +867,15 @@ def _can_restore_dense_split_visual_row(
         for member in ordered
     ]
     local_geometry.sort(key=lambda item: (item[1][0], item[1][1], item[0].source_index))
+    if not same_inferred_lane:
+        member_widths = [
+            bbox[2] - bbox[0]
+            for _member, bbox in local_geometry
+        ]
+        if len(members) == 2 and min(member_widths) > 0.35 * max(member_widths):
+            return False
+        if 3 <= len(members) <= 6:
+            return False
     heights = [_line_effective_height(member, bbox) for member, bbox in local_geometry]
     median_height = statistics.median(heights)
     glyph_widths = [
@@ -874,7 +884,11 @@ def _can_restore_dense_split_visual_row(
         if (width := _median_native_glyph_width(member, page_size)) is not None
     ]
     median_glyph_width = statistics.median(glyph_widths) if glyph_widths else 0.0
-    gap_limit = max(12.0, 1.75 * median_height, 3.0 * median_glyph_width)
+    gap_limit = (
+        max(12.0, 1.75 * median_height, 3.0 * median_glyph_width)
+        if same_inferred_lane
+        else max(8.0, 2.0 * median_height, 2.5 * median_glyph_width)
+    )
     for previous, current in zip(local_geometry, local_geometry[1:]):
         if not _same_baseline_geometry(
             previous[1],
@@ -887,7 +901,19 @@ def _can_restore_dense_split_visual_row(
 
     union_bbox = _bbox_union_many([bbox for _member, bbox in local_geometry])
     occupied_width = sum(bbox[2] - bbox[0] for _member, bbox in local_geometry)
-    return occupied_width / max(0.1, union_bbox[2] - union_bbox[0]) >= 0.65
+    minimum_occupancy = (
+        0.8
+        if len(members) == 2 and same_inferred_lane
+        else 0.85
+        if len(members) == 2
+        else 0.65
+        if not same_inferred_lane
+        else 0.65
+    )
+    return (
+        occupied_width / max(0.1, union_bbox[2] - union_bbox[0])
+        >= minimum_occupancy
+    )
 
 
 def _merge_dense_split_visual_row(

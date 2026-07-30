@@ -882,7 +882,429 @@ def _build_text_blocks(
                         "_lane_is_span": component_local_lane.is_span,
                     }
                 )
-    return _merge_spatial_text_components(blocks, page_size)
+    blocks = _merge_spatial_text_components(blocks, page_size)
+    blocks = _merge_overlapping_same_line_text_blocks(blocks, page_size)
+    return _merge_inline_math_fragment_text_blocks(blocks, page_size)
+
+
+def _merge_overlapping_same_line_text_blocks(
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+) -> list[dict[str, Any]]:
+    """合并同左沿且纵向重叠的宽正文块，修复同一视觉行被错误分栏的问题。"""
+
+    consumed: set[int] = set()
+    replacements: dict[int, dict[str, Any]] = {}
+    for first_index, first in enumerate(blocks):
+        first_bbox = first.get("bbox")
+        first_rows = first.get("_local_line_bboxes")
+        angle = int(first.get("angle", 0) or 0) % 360
+        local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
+        if (
+            first_index in consumed
+            or first.get("type") != "text"
+            or not isinstance(first_bbox, (list, tuple))
+            or not isinstance(first_rows, list)
+            or not 1 <= len(first_rows) <= 2
+            or first_bbox[2] - first_bbox[0] < 0.3 * local_page_width
+        ):
+            continue
+        first_heights = [
+            float(height)
+            for height in first.get("_line_heights", [])
+            if isinstance(height, (int, float)) and height > 0
+        ]
+        first_height = (
+            statistics.median(first_heights)
+            if first_heights
+            else first_bbox[3] - first_bbox[1]
+        )
+        for second_index in range(first_index + 1, len(blocks)):
+            second = blocks[second_index]
+            second_bbox = second.get("bbox")
+            second_rows = second.get("_local_line_bboxes")
+            if (
+                second_index in consumed
+                or second.get("type") != "text"
+                or int(second.get("angle", 0) or 0) % 360 != angle
+                or not isinstance(second_bbox, (list, tuple))
+                or not isinstance(second_rows, list)
+                or not 1 <= len(second_rows) <= 2
+                or min(len(first_rows), len(second_rows)) != 1
+                or second_bbox[2] - second_bbox[0] < 0.3 * local_page_width
+            ):
+                continue
+            second_heights = [
+                float(height)
+                for height in second.get("_line_heights", [])
+                if isinstance(height, (int, float)) and height > 0
+            ]
+            second_height = (
+                statistics.median(second_heights)
+                if second_heights
+                else second_bbox[3] - second_bbox[1]
+            )
+            pair_height = max(first_height, second_height, 0.1)
+            vertical_overlap = max(
+                0.0,
+                min(first_bbox[3], second_bbox[3])
+                - max(first_bbox[1], second_bbox[1]),
+            )
+            minimum_box_height = max(
+                0.1,
+                min(
+                    first_bbox[3] - first_bbox[1],
+                    second_bbox[3] - second_bbox[1],
+                ),
+            )
+            first_fonts = first.get("_font_signatures")
+            second_fonts = second.get("_font_signatures")
+            if (
+                abs(first_bbox[0] - second_bbox[0]) > pair_height
+                or vertical_overlap / minimum_box_height < 0.5
+                or _bbox_axis_overlap_ratio(first_bbox, second_bbox, axis="x")
+                < 0.75
+                or (
+                    isinstance(first_fonts, set)
+                    and isinstance(second_fonts, set)
+                    and first_fonts
+                    and second_fonts
+                    and first_fonts.isdisjoint(second_fonts)
+                )
+            ):
+                continue
+            union_bbox = _bbox_union_many([first_bbox, second_bbox])
+            if union_bbox[3] - union_bbox[1] > 4.0 * pair_height:
+                continue
+            replacement_index = min(first_index, second_index)
+            replacements[replacement_index] = _merge_internal_text_block_group(
+                blocks,
+                [first_index, second_index],
+            )
+            consumed.update({first_index, second_index})
+            break
+    return [
+        replacements.get(index, block)
+        for index, block in enumerate(blocks)
+        if index not in consumed or index in replacements
+    ]
+
+
+def _merge_inline_math_fragment_text_blocks(
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+) -> list[dict[str, Any]]:
+    """把同一宽正文行上下叠放的多个小数学碎片收回一个文本块。"""
+
+    consumed: set[int] = set()
+    replacements: dict[int, dict[str, Any]] = {}
+    for host_index, host in enumerate(blocks):
+        host_bbox = host.get("bbox")
+        host_heights = host.get("_line_heights")
+        host_rows = host.get("_local_line_bboxes")
+        angle = int(host.get("angle", 0) or 0) % 360
+        local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
+        if (
+            host_index in consumed
+            or host.get("type") != "text"
+            or (
+                host.get("_single_run_row_id") is None
+                and (
+                    not isinstance(host_rows, list)
+                    or len(host_rows) > 2
+                )
+            )
+            or not isinstance(host_bbox, (list, tuple))
+            or host_bbox[2] - host_bbox[0] < 0.35 * local_page_width
+            or not isinstance(host_heights, list)
+            or not host_heights
+        ):
+            continue
+        host_height = statistics.median(
+            float(height)
+            for height in host_heights
+            if isinstance(height, (int, float)) and height > 0
+        )
+        fragment_indices: list[int] = []
+        for candidate_index, candidate in enumerate(blocks):
+            candidate_bbox = candidate.get("bbox")
+            candidate_rows = candidate.get("_local_line_bboxes")
+            if (
+                candidate_index == host_index
+                or candidate_index in consumed
+                or candidate.get("type") != "text"
+                or int(candidate.get("angle", 0) or 0) % 360 != angle
+                or not isinstance(candidate_bbox, (list, tuple))
+                or not isinstance(candidate_rows, list)
+                or len(candidate_rows) != 1
+                or candidate_bbox[2] - candidate_bbox[0]
+                > 0.25 * (host_bbox[2] - host_bbox[0])
+                or _bbox_axis_overlap_ratio(
+                    host_bbox,
+                    candidate_bbox,
+                    axis="x",
+                )
+                <= 0.0
+            ):
+                continue
+            union_bbox = _bbox_union_many([host_bbox, candidate_bbox])
+            vertical_gap = max(
+                0.0,
+                max(host_bbox[1], candidate_bbox[1])
+                - min(host_bbox[3], candidate_bbox[3]),
+            )
+            if (
+                vertical_gap <= 0.75 * host_height
+                and union_bbox[3] - union_bbox[1] <= 3.5 * host_height
+            ):
+                fragment_indices.append(candidate_index)
+        if len(fragment_indices) < 2:
+            continue
+        group_indices = [host_index, *fragment_indices]
+        replacement_index = min(group_indices)
+        replacements[replacement_index] = _merge_internal_text_block_group(
+            blocks,
+            group_indices,
+        )
+        consumed.update(group_indices)
+    output = [
+        replacements.get(index, block)
+        for index, block in enumerate(blocks)
+        if index not in consumed or index in replacements
+    ]
+    output = _merge_hostless_inline_math_fragment_blocks(output, page_size)
+    return _merge_residual_narrow_math_text_blocks(output, page_size)
+
+
+def _merge_residual_narrow_math_text_blocks(
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+) -> list[dict[str, Any]]:
+    """把仍嵌在宽正文行范围内的单个窄数学碎片吸收到唯一宿主块。"""
+
+    consumed: set[int] = set()
+    replacements: dict[int, dict[str, Any]] = {}
+    for candidate_index, candidate in enumerate(blocks):
+        candidate_bbox = candidate.get("bbox")
+        candidate_rows = candidate.get("_local_line_bboxes")
+        angle = int(candidate.get("angle", 0) or 0) % 360
+        local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
+        if (
+            candidate.get("type") != "text"
+            or not isinstance(candidate_bbox, (list, tuple))
+            or not isinstance(candidate_rows, list)
+            or len(candidate_rows) != 1
+            or candidate_bbox[2] - candidate_bbox[0] > 0.05 * local_page_width
+        ):
+            continue
+        candidate_heights = [
+            float(height)
+            for height in candidate.get("_line_heights", [])
+            if isinstance(height, (int, float)) and height > 0
+        ]
+        candidate_height = (
+            statistics.median(candidate_heights)
+            if candidate_heights
+            else candidate_bbox[3] - candidate_bbox[1]
+        )
+        hosts: list[tuple[float, float, int]] = []
+        for host_index, host in enumerate(blocks):
+            host_bbox = host.get("bbox")
+            host_heights = [
+                float(height)
+                for height in host.get("_line_heights", [])
+                if isinstance(height, (int, float)) and height > 0
+            ]
+            if (
+                host_index == candidate_index
+                or host_index in consumed
+                or host.get("type") != "text"
+                or int(host.get("angle", 0) or 0) % 360 != angle
+                or not isinstance(host_bbox, (list, tuple))
+                or host_bbox[2] - host_bbox[0] < 0.3 * local_page_width
+                or candidate_bbox[0] < host_bbox[0]
+                or candidate_bbox[2] > host_bbox[2]
+            ):
+                continue
+            host_height = (
+                statistics.median(host_heights)
+                if host_heights
+                else host_bbox[3] - host_bbox[1]
+            )
+            vertical_overlap = max(
+                0.0,
+                min(candidate_bbox[3], host_bbox[3])
+                - max(candidate_bbox[1], host_bbox[1]),
+            )
+            vertical_gap = max(
+                0.0,
+                max(candidate_bbox[1], host_bbox[1])
+                - min(candidate_bbox[3], host_bbox[3]),
+            )
+            pair_height = max(candidate_height, host_height, 0.1)
+            union_bbox = _bbox_union_many([candidate_bbox, host_bbox])
+            if (
+                vertical_overlap < 0.35 * min(candidate_height, host_height)
+                and vertical_gap > 0.5 * pair_height
+            ) or union_bbox[3] - union_bbox[1] > 3.0 * pair_height:
+                continue
+            hosts.append(
+                (
+                    -vertical_overlap,
+                    abs(_bbox_center_y(candidate_bbox) - _bbox_center_y(host_bbox)),
+                    host_index,
+                )
+            )
+        if len(hosts) != 1:
+            continue
+        host_index = hosts[0][2]
+        replacement_index = min(candidate_index, host_index)
+        replacements[replacement_index] = _merge_internal_text_block_group(
+            blocks,
+            [candidate_index, host_index],
+        )
+        consumed.update({candidate_index, host_index})
+    return [
+        replacements.get(index, block)
+        for index, block in enumerate(blocks)
+        if index not in consumed or index in replacements
+    ]
+
+
+def _merge_hostless_inline_math_fragment_blocks(
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+) -> list[dict[str, Any]]:
+    """把没有单一宽宿主但在一栏内二维密集排列的数学碎片合成文本块。"""
+
+    grouped_indices: list[list[int]] = []
+    for angle in sorted(
+        {
+            int(block.get("angle", 0) or 0) % 360
+            for block in blocks
+            if block.get("type") == "text"
+        }
+    ):
+        local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
+        candidates = {
+            index
+            for index, block in enumerate(blocks)
+            if block.get("type") == "text"
+            and int(block.get("angle", 0) or 0) % 360 == angle
+            and isinstance(block.get("bbox"), (list, tuple))
+            and isinstance(block.get("_local_line_bboxes"), list)
+            and len(block["_local_line_bboxes"]) == 1
+            and block["bbox"][2] - block["bbox"][0]
+            <= 0.25 * local_page_width
+        }
+        while candidates:
+            component = {candidates.pop()}
+            changed = True
+            while changed:
+                changed = False
+                for candidate_index in list(candidates):
+                    candidate_bbox = blocks[candidate_index]["bbox"]
+                    candidate_heights = blocks[candidate_index].get(
+                        "_line_heights",
+                        [],
+                    )
+                    candidate_height = (
+                        statistics.median(candidate_heights)
+                        if candidate_heights
+                        else candidate_bbox[3] - candidate_bbox[1]
+                    )
+                    if any(
+                        (
+                            max(
+                                0.0,
+                                max(candidate_bbox[1], blocks[index]["bbox"][1])
+                                - min(candidate_bbox[3], blocks[index]["bbox"][3]),
+                            )
+                            <= 0.75 * max(
+                                candidate_height,
+                                statistics.median(
+                                    blocks[index].get("_line_heights", [])
+                                )
+                                if blocks[index].get("_line_heights")
+                                else blocks[index]["bbox"][3]
+                                - blocks[index]["bbox"][1],
+                            )
+                            and max(
+                                0.0,
+                                max(candidate_bbox[0], blocks[index]["bbox"][0])
+                                - min(candidate_bbox[2], blocks[index]["bbox"][2]),
+                            )
+                            <= 1.5 * max(
+                                candidate_height,
+                                statistics.median(
+                                    blocks[index].get("_line_heights", [])
+                                )
+                                if blocks[index].get("_line_heights")
+                                else blocks[index]["bbox"][3]
+                                - blocks[index]["bbox"][1],
+                            )
+                        )
+                        for index in component
+                    ):
+                        component.add(candidate_index)
+                        candidates.remove(candidate_index)
+                        changed = True
+            if len(component) < 4:
+                continue
+            component_heights = [
+                float(height)
+                for index in component
+                for height in blocks[index].get("_line_heights", [])
+                if isinstance(height, (int, float)) and height > 0
+            ]
+            if not component_heights:
+                continue
+            median_height = statistics.median(component_heights)
+            union_bbox = _bbox_union_many(
+                [blocks[index]["bbox"] for index in component]
+            )
+            font_signatures = set().union(
+                *[
+                    signatures
+                    for index in component
+                    if isinstance(
+                        (signatures := blocks[index].get("_font_signatures")),
+                        set,
+                    )
+                ]
+            )
+            if (
+                len(font_signatures) < 2
+                or not 0.25 * local_page_width
+                <= union_bbox[2] - union_bbox[0]
+                <= 0.5 * local_page_width
+                or union_bbox[3] - union_bbox[1] > 3.5 * median_height
+                or sum(
+                    blocks[index]["bbox"][2] - blocks[index]["bbox"][0]
+                    >= 3.5 * median_height
+                    for index in component
+                )
+                < 2
+            ):
+                continue
+            grouped_indices.append(sorted(component))
+
+    consumed: set[int] = set()
+    replacements: dict[int, dict[str, Any]] = {}
+    for group in grouped_indices:
+        if any(index in consumed for index in group):
+            continue
+        replacement_index = min(group)
+        replacements[replacement_index] = _merge_internal_text_block_group(
+            blocks,
+            group,
+        )
+        consumed.update(group)
+    return [
+        replacements.get(index, block)
+        for index, block in enumerate(blocks)
+        if index not in consumed or index in replacements
+    ]
 
 
 def _merge_image_caption_text_blocks(
@@ -907,6 +1329,10 @@ def _merge_image_caption_text_blocks(
         if isinstance(height, (int, float)) and height > 0
     ]
     median_height = statistics.median(all_heights) if all_heights else 1.0
+    caption_image_bboxes = _caption_image_group_bboxes(
+        image_bboxes,
+        median_height,
+    )
     seed_indices = {
         index
         for index in text_indices
@@ -917,7 +1343,7 @@ def _merge_image_caption_text_blocks(
                 image_bbox,
                 median_height,
             )
-            for image_bbox in image_bboxes
+            for image_bbox in caption_image_bboxes
         )
     }
     if not seed_indices:
@@ -965,6 +1391,54 @@ def _merge_image_caption_text_blocks(
         for index, block in enumerate(blocks)
         if index not in merged_indices
     ]
+
+
+def _caption_image_group_bboxes(
+    image_bboxes: list[BBox],
+    median_height: float,
+) -> list[BBox]:
+    """合并同一视觉行的并排图片 bbox，使跨多图的统一图注也能建立邻接。"""
+
+    remaining = list(image_bboxes)
+    grouped_bboxes = list(image_bboxes)
+    while remaining:
+        group = [remaining.pop(0)]
+        changed = True
+        while changed:
+            changed = False
+            for candidate in list(remaining):
+                aligned = False
+                for member in group:
+                    overlap = max(
+                        0.0,
+                        min(candidate[3], member[3])
+                        - max(candidate[1], member[1]),
+                    )
+                    minimum_height = max(
+                        0.1,
+                        min(
+                            candidate[3] - candidate[1],
+                            member[3] - member[1],
+                        ),
+                    )
+                    horizontal_gap = max(
+                        0.0,
+                        max(candidate[0], member[0])
+                        - min(candidate[2], member[2]),
+                    )
+                    if (
+                        overlap / minimum_height >= 0.7
+                        and horizontal_gap <= 2.0 * median_height
+                    ):
+                        aligned = True
+                        break
+                if aligned:
+                    group.append(candidate)
+                    remaining.remove(candidate)
+                    changed = True
+        if len(group) >= 2:
+            grouped_bboxes.append(_bbox_union_many(group))
+    return grouped_bboxes
 
 
 def _caption_seed_matches_image(
@@ -1056,19 +1530,20 @@ def _caption_tail_matches_seed(
 ) -> bool:
     """只用同栏角色、字体、邻接和投影把无标记的图注续行接回锚点。"""
 
-    if not _components_share_lane_role(seed, candidate, median_height):
-        return False
     seed_bbox = seed["bbox"]
     candidate_bbox = candidate["bbox"]
+    if not _components_share_lane_role(seed, candidate, median_height) and (
+        _bbox_axis_overlap_ratio(seed_bbox, candidate_bbox, axis="x") < 0.75
+        or abs(seed_bbox[0] - candidate_bbox[0]) > median_height
+    ):
+        return False
     if _bbox_center_y(candidate_bbox) <= _bbox_center_y(seed_bbox):
         return False
     if _caption_body_has_structural_gap(seed, candidate):
         return False
     vertical_gap = max(0.0, candidate_bbox[1] - seed_bbox[3])
     if (
-        vertical_gap > 1.25 * median_height
-        or _bbox_center_y(candidate_bbox) - _bbox_center_y(seed_bbox)
-        > 2.0 * median_height
+        vertical_gap > 0.5 * median_height
         or _bbox_axis_overlap_ratio(seed_bbox, candidate_bbox, axis="x") < 0.35
     ):
         return False
@@ -1083,16 +1558,98 @@ def _caption_tail_matches_seed(
     )
 
 
+def _merge_multiline_title_blocks(
+    blocks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """跨错误栏带合并紧贴且字体兼容的多行文档标题和段落标题。"""
+
+    replacements: dict[int, dict[str, Any]] = {}
+    consumed: set[int] = set()
+    for block_type in ("doc_title", "paragraph_title"):
+        indices = [
+            index
+            for index, block in enumerate(blocks)
+            if block.get("type") == block_type
+            and isinstance(block.get("bbox"), (list, tuple))
+        ]
+        indices.sort(
+            key=lambda index: (
+                blocks[index]["bbox"][1],
+                blocks[index]["bbox"][0],
+            )
+        )
+        groups: list[list[int]] = []
+        for index in indices:
+            if not groups:
+                groups.append([index])
+                continue
+            previous_index = groups[-1][-1]
+            previous = blocks[previous_index]
+            current = blocks[index]
+            previous_bbox = previous["bbox"]
+            current_bbox = current["bbox"]
+            previous_heights = previous.get("_line_heights", [])
+            current_heights = current.get("_line_heights", [])
+            previous_height = (
+                statistics.median(previous_heights)
+                if isinstance(previous_heights, list) and previous_heights
+                else previous_bbox[3] - previous_bbox[1]
+            )
+            current_height = (
+                statistics.median(current_heights)
+                if isinstance(current_heights, list) and current_heights
+                else current_bbox[3] - current_bbox[1]
+            )
+            vertical_gap = current_bbox[1] - previous_bbox[3]
+            previous_fonts = previous.get("_font_signatures")
+            current_fonts = current.get("_font_signatures")
+            fonts_conflict = (
+                isinstance(previous_fonts, set)
+                and previous_fonts
+                and isinstance(current_fonts, set)
+                and current_fonts
+                and previous_fonts.isdisjoint(current_fonts)
+            )
+            if (
+                -0.2 * max(previous_height, current_height)
+                <= vertical_gap
+                <= 0.4 * max(previous_height, current_height)
+                and _bbox_axis_overlap_ratio(
+                    previous_bbox,
+                    current_bbox,
+                    axis="x",
+                )
+                >= 0.2
+                and not fonts_conflict
+            ):
+                groups[-1].append(index)
+            else:
+                groups.append([index])
+        for group in groups:
+            if len(group) < 2:
+                continue
+            replacements[group[0]] = _merge_internal_text_block_group(
+                blocks,
+                group,
+            )
+            consumed.update(group[1:])
+    return [
+        replacements.get(index, block)
+        for index, block in enumerate(blocks)
+        if index not in consumed
+    ]
+
+
 def _merge_fragmented_header_blocks(
     blocks: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """聚合同一视觉行中等距分散的窄页眉字形，同时保留远端卷期信息。"""
+    """聚合同一视觉行中等距分散的页眉页脚片段。"""
 
     grouped: dict[tuple[int, int], list[int]] = {}
     for index, block in enumerate(blocks):
         row_id = block.get("_single_run_row_id")
         angle = int(block.get("angle", 0) or 0) % 360
-        if block.get("type") == "header" and isinstance(row_id, int):
+        if block.get("type") in {"header", "footer"} and isinstance(row_id, int):
             grouped.setdefault((angle, row_id), []).append(index)
 
     replacements: dict[int, dict[str, Any]] = {}
@@ -1108,7 +1665,10 @@ def _merge_fragmented_header_blocks(
                 if isinstance(heights, list) and heights
                 else max(0.1, bbox[3] - bbox[1])
             )
-            if bbox[2] - bbox[0] > 1.25 * effective_height:
+            if (
+                blocks[index].get("type") == "header"
+                and bbox[2] - bbox[0] > 1.25 * effective_height
+            ):
                 continue
             if not components:
                 components.append([index])
@@ -1140,6 +1700,152 @@ def _merge_fragmented_header_blocks(
             replacement["_single_run_row_id"] = None
             replacements[component[0]] = replacement
             consumed.update(component[1:])
+    return [
+        replacements.get(index, block)
+        for index, block in enumerate(blocks)
+        if index not in consumed
+    ]
+
+
+def _merge_front_matter_column_blocks(
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+    *,
+    page_index: int,
+) -> list[dict[str, Any]]:
+    """把首页标题下方规则排列的多列作者信息按列聚合。"""
+
+    if page_index != 0:
+        return blocks
+    page_width, page_height = page_size
+    if page_width <= 0 or page_height <= 0:
+        return blocks
+    title_blocks = [
+        block
+        for block in blocks
+        if block.get("type") == "doc_title"
+        and isinstance(block.get("bbox"), (list, tuple))
+    ]
+    if not title_blocks:
+        return blocks
+    title_bottom = max(block["bbox"][3] for block in title_blocks)
+    candidates = [
+        index
+        for index, block in enumerate(blocks)
+        if block.get("type") == "text"
+        and isinstance(block.get("bbox"), (list, tuple))
+        and title_bottom < block["bbox"][1]
+        and block["bbox"][3] <= min(
+            0.4 * page_height,
+            title_bottom + 0.22 * page_height,
+        )
+        and block["bbox"][2] - block["bbox"][0] <= 0.32 * page_width
+        and block["bbox"][3] - block["bbox"][1] <= 0.035 * page_height
+    ]
+    if len(candidates) < 9:
+        return blocks
+    median_height = statistics.median(
+        blocks[index]["bbox"][3] - blocks[index]["bbox"][1]
+        for index in candidates
+    )
+    row_groups: list[list[int]] = []
+    for index in sorted(
+        candidates,
+        key=lambda item: (
+            _bbox_center_y(blocks[item]["bbox"]),
+            blocks[item]["bbox"][0],
+        ),
+    ):
+        center_y = _bbox_center_y(blocks[index]["bbox"])
+        target = next(
+            (
+                row
+                for row in row_groups
+                if abs(
+                    center_y
+                    - statistics.median(
+                        _bbox_center_y(blocks[member]["bbox"])
+                        for member in row
+                    )
+                )
+                <= 0.6 * median_height
+            ),
+            None,
+        )
+        if target is None:
+            row_groups.append([index])
+        else:
+            target.append(index)
+    dense_rows = [
+        row
+        for row in row_groups
+        if 3 <= len(row) <= 6
+        and (
+            max(blocks[index]["bbox"][2] for index in row)
+            - min(blocks[index]["bbox"][0] for index in row)
+            >= 0.55 * page_width
+        )
+    ]
+    if len(dense_rows) < 2:
+        return blocks
+    anchor_row = min(
+        dense_rows,
+        key=lambda row: (
+            -len(row),
+            statistics.median(
+                _bbox_center_y(blocks[index]["bbox"])
+                for index in row
+            ),
+        ),
+    )
+    anchor_centers = sorted(
+        _bbox_center_x(blocks[index]["bbox"])
+        for index in anchor_row
+    )
+    if len(anchor_centers) != 4:
+        return blocks
+    boundaries = [
+        0.5 * (left + right)
+        for left, right in zip(anchor_centers, anchor_centers[1:])
+    ]
+    band_top = min(
+        min(blocks[index]["bbox"][1] for index in row)
+        for row in dense_rows
+    ) - median_height
+    band_bottom = max(
+        max(blocks[index]["bbox"][3] for index in row)
+        for row in dense_rows
+    ) + median_height
+    column_groups: list[list[int]] = [
+        [] for _center in anchor_centers
+    ]
+    for index in candidates:
+        bbox = blocks[index]["bbox"]
+        if not band_top <= _bbox_center_y(bbox) <= band_bottom:
+            continue
+        center_x = _bbox_center_x(bbox)
+        column_index = sum(center_x > boundary for boundary in boundaries)
+        if column_index >= len(column_groups):
+            continue
+        column_groups[column_index].append(index)
+    if any(len(group) < 3 for group in column_groups):
+        return blocks
+
+    replacements: dict[int, dict[str, Any]] = {}
+    consumed: set[int] = set()
+    for group in column_groups:
+        ordered = sorted(
+            group,
+            key=lambda index: (
+                blocks[index]["bbox"][1],
+                blocks[index]["bbox"][0],
+            ),
+        )
+        replacements[ordered[0]] = _merge_internal_text_block_group(
+            blocks,
+            ordered,
+        )
+        consumed.update(ordered[1:])
     return [
         replacements.get(index, block)
         for index, block in enumerate(blocks)
@@ -1248,7 +1954,11 @@ def _merge_internal_text_block_group(
 
     ordered_indices = sorted(
         indices,
-        key=lambda index: _text_component_sort_key(blocks[index]),
+        key=(
+            (lambda index: blocks[index]["bbox"][0])
+            if preserve_visual_spaces
+            else (lambda index: _text_component_sort_key(blocks[index]))
+        ),
     )
     merged = dict(blocks[ordered_indices[0]])
     merged["bbox"] = _bbox_union_many([blocks[index]["bbox"] for index in ordered_indices])

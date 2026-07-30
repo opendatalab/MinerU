@@ -1075,3 +1075,144 @@ def test_repeated_visual_headers_require_matching_orientation() -> None:
     auxiliary_text._classify_repeated_visual_headers(pages)
 
     assert [page.fixed_blocks[0]["type"] for page in pages[1:]] == ["image"] * 3
+
+
+def test_image_bottom_border_does_not_create_image_or_page_footnote() -> None:
+    """验证图片下沿自身的坐标轴横线不会把紧邻图中文字判成脚注。"""
+
+    body = [
+        _text_line(
+            f"body {index}",
+            (50.0, 40.0 + 20.0 * index, 450.0, 50.0 + 20.0 * index),
+            index,
+            effective_height=10.0,
+        )
+        for index in range(4)
+    ]
+    axis_label = _text_line(
+        "T -1/4",
+        (150.0, 317.0, 230.0, 325.0),
+        4,
+        effective_height=8.0,
+    )
+    page = _prepared_text_page(
+        *body,
+        axis_label,
+        page_size=(500.0, 500.0),
+    )
+    page.fixed_blocks = [
+        {
+            "type": "image",
+            "bbox": (50.0, 140.0, 300.0, 315.0),
+            "angle": 0,
+            "content": "",
+        }
+    ]
+    page.drawing_lines = [
+        models._AxisLine(
+            (50.0, 314.0, 300.0, 315.0),
+            1.0,
+            "horizontal",
+        )
+    ]
+
+    auxiliary_text._classify_page_auxiliary_text(page)
+
+    assert axis_label.semantic_type is None
+    assert page.page_footnote_groups == []
+
+
+def test_two_bottom_rules_classify_centered_url_as_footer() -> None:
+    """验证页面底部两条同跨度横线把其间居中网址标为页脚。"""
+
+    body = [
+        _text_line(
+            f"body {index}",
+            (100.0, 100.0 + 30.0 * index, 900.0, 110.0 + 30.0 * index),
+            index,
+            effective_height=10.0,
+        )
+        for index in range(4)
+    ]
+    url = _text_line(
+        "https://example.test/journal",
+        (350.0, 920.0, 650.0, 930.0),
+        10,
+        effective_height=10.0,
+    )
+    page = _prepared_text_page(
+        *body,
+        url,
+        page_size=(1000.0, 1000.0),
+    )
+    page.drawing_lines = [
+        models._AxisLine((300.0, 900.0, 700.0, 901.0), 1.0, "horizontal"),
+        models._AxisLine((300.0, 950.0, 700.0, 951.0), 1.0, "horizontal"),
+    ]
+
+    auxiliary_text._classify_rule_delimited_footers([page])
+
+    assert url.semantic_type == "footer"
+
+
+def test_split_footer_row_fragments_inherit_stable_anchor_type() -> None:
+    """验证同一页脚视觉行的左右碎片从稳定锚点继承 footer 类型。"""
+
+    fragments = [
+        _text_line(
+            "journal",
+            (100.0, 930.0, 300.0, 940.0),
+            0,
+            visual_row_id=8,
+            split_from_row=True,
+        ),
+        _text_line(
+            "Vol. 1",
+            (420.0, 930.0, 500.0, 940.0),
+            1,
+            visual_row_id=8,
+            split_from_row=True,
+            semantic_type="footer",
+        ),
+        _text_line(
+            "No. 2",
+            (650.0, 930.0, 750.0, 940.0),
+            2,
+            visual_row_id=8,
+            split_from_row=True,
+        ),
+    ]
+    page = _prepared_text_page(
+        *fragments,
+        page_size=(1000.0, 1000.0),
+    )
+
+    auxiliary_text._classify_split_marginal_row_companions([page])
+
+    assert [line.semantic_type for line in fragments] == ["footer"] * 3
+
+
+def test_distant_same_row_text_inherits_top_page_number_header_type() -> None:
+    """验证页码与远距运行标题同基线时不依赖水平距离也能标为页眉。"""
+
+    page_number = _text_line(
+        "8",
+        (10.0, 10.0, 15.0, 15.0),
+        0,
+        semantic_type="page_number",
+    )
+    running_title = _text_line(
+        "running title",
+        (60.0, 10.0, 90.0, 15.0),
+        1,
+    )
+    page = _prepared_text_page(
+        page_number,
+        running_title,
+        page_size=(100.0, 100.0),
+    )
+
+    auxiliary_text._classify_page_number_outer_companions([page])
+
+    assert page_number.semantic_type == "page_number"
+    assert running_title.semantic_type == "header"

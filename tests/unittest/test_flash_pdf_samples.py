@@ -26,6 +26,16 @@ def _native_model_list(pdf_name: str) -> list[list[dict[str, Any]]]:
         return pipeline._analyze_native_document(pdf_doc)
 
 
+def _txt_model_list(pdf_name: str) -> list[list[dict[str, Any]]]:
+    """显式使用 Flash TXT 模式解析仓库内回归 PDF，禁止经过 auto 分类。"""
+
+    pdf_path = Path(__file__).parents[2] / "demo" / "pdfs" / pdf_name
+    return pdf_extractor.doc_analyze(
+        pdf_path.read_bytes(),
+        parse_mode="txt",
+    )
+
+
 def _native_table_counts(pdf_name: str) -> list[int]:
     """返回仓库内数字 PDF 样例的逐页表格块数量。"""
 
@@ -953,3 +963,145 @@ def test_demo6_default3_targeted_title_regressions() -> None:
     assert [block["content"] for block in page7_images] == ["（签名）", "（盖章）"]
     assert sum("签名" in str(block["content"]) for block in model_list[6]) == 1
     assert sum("盖章" in str(block["content"]) for block in model_list[6]) == 1
+
+
+def test_mixed_elements_pages_03_06_force_txt_regressions() -> None:
+    """验证原文 3–6 页的标题、公式、图内坐标和边缘文本修复。"""
+
+    model_list = _txt_model_list("mixed_elements_pages_03_06.pdf")
+
+    assert len(model_list) == 4
+    for probe in (
+        "INTRODUCTION",
+        "EXPERIMENTAL",
+        "RESULTS AND DISCUSSION",
+        "CONCLUSIONS",
+        "REFERENCES",
+    ):
+        matches = _blocks_containing(
+            [block for page in model_list for block in page],
+            probe,
+        )
+        assert len(matches) == 1
+        assert matches[0]["type"] == "paragraph_title"
+
+    page4 = model_list[1]
+    assert sum(block["type"] == "equation" for block in page4) == 1
+    assert not [
+        block
+        for block in page4
+        if block["type"] == "text"
+        and 0.65 <= block["bbox"][1] <= 0.87
+        and block["bbox"][2] - block["bbox"][0] < 0.05
+    ]
+
+    page5 = model_list[2]
+    axis_label = _blocks_containing(page5, "T–1/4, K–1/4")
+    assert len(axis_label) == 1
+    assert axis_label[0]["type"] == "text"
+    assert _blocks_containing(page5, "MIKOLAICHUK et al.")[0]["type"] == "header"
+    assert len([block for block in page5 if block["type"] == "footer"]) == 1
+
+
+def test_mixed_elements_pages_07_10_force_txt_regressions() -> None:
+    """验证原文 7–10 页作者列、代码边界、尾词标题和参考文献修复。"""
+
+    model_list = _txt_model_list("mixed_elements_pages_07_10.pdf")
+    page7, page8, _page9, page10 = model_list
+
+    author_blocks = [
+        block
+        for block in page7
+        if block["type"] == "text"
+        and 0.15 <= block["bbox"][1]
+        and block["bbox"][3] <= 0.28
+    ]
+    assert len(author_blocks) == 4
+    assert {
+        name
+        for name in ("Xing Wang", "Yingzhou Zhang", "Lian Zhao", "Xinghao Chen")
+        if any(name in str(block["content"]) for block in author_blocks)
+    } == {"Xing Wang", "Yingzhou Zhang", "Lian Zhao", "Xinghao Chen"}
+    for probe in ("general applicability.", "called static slicing."):
+        matches = _blocks_containing(page7, probe)
+        assert len(matches) == 1
+        assert matches[0]["type"] == "text"
+
+    code_blocks = [block for block in page8 if block["type"] == "code"]
+    assert len(code_blocks) == 3
+    assert not [block for block in page8 if block["type"] == "table"]
+    figure_caption = _blocks_containing(page8, "Figure 1. Program containing dead code")
+    assert len(figure_caption) == 1
+    assert figure_caption[0]["type"] == "text"
+
+    reference5 = _blocks_containing(page10, "[5] A. Srivastava")
+    assert len(reference5) == 1
+    assert reference5[0]["type"] == "text"
+    assert "[6]" not in str(reference5[0]["content"])
+
+
+def test_mixed_elements_pages_11_15_force_txt_regressions() -> None:
+    """验证原文 11–15 页双行标题、正文小节、页码、图注与网址页脚。"""
+
+    model_list = _txt_model_list("mixed_elements_pages_11_15.pdf")
+    all_blocks = [block for page in model_list for block in page]
+    document_titles = [block for block in all_blocks if block["type"] == "doc_title"]
+
+    assert len(document_titles) == 1
+    assert "Ecabet sodium prevents esophageal lesions" in document_titles[0]["content"]
+    assert "reflux of gastric juice in rats" in document_titles[0]["content"]
+    for probe in (
+        "2. Effects on esophageal lesions",
+        "3. Effect on digestion of mucus",
+    ):
+        matches = _blocks_containing(all_blocks, probe)
+        assert len(matches) == 1
+        assert matches[0]["type"] == "paragraph_title"
+
+    assert {
+        block["content"]
+        for block in all_blocks
+        if block["type"] == "page_number"
+    } == {"91", "92", "93", "94"}
+    assert not [
+        block
+        for block in all_blocks
+        if block["type"] == "image"
+        and str(block["content"]).strip() in {"91", "92"}
+    ]
+
+    figure2 = _blocks_containing(model_list[2], "Fig. 2. Pathological changes")
+    figure6 = _blocks_containing(model_list[3], "Fig. 6. Effect of ecabet")
+    assert len(figure2) == len(figure6) == 1
+    assert figure2[0]["type"] == figure6[0]["type"] == "text"
+    assert "Under anesthesia with ether" in figure2[0]["content"]
+    assert "pepsin. Isolated and everted esophagus" in figure6[0]["content"]
+    assert not [block for block in all_blocks if block["type"] == "footnote"]
+
+    online_footer = _blocks_containing(model_list[4], "http://www.birkhauser.ch/IPh")
+    assert len(online_footer) == 1
+    assert online_footer[0]["type"] == "footer"
+
+
+def test_mixed_elements_pages_39_40_force_txt_regressions() -> None:
+    """验证原文 39–40 页三个公式和公式后同视觉行正文的唯一输出。"""
+
+    model_list = _txt_model_list("mixed_elements_pages_39_40.pdf")
+    page40 = model_list[1]
+    equations = [block for block in page40 if block["type"] == "equation"]
+
+    assert len(equations) == 3
+    assert sum("(8)" in str(block["content"]) for block in equations) == 1
+    assert sum("(9)" in str(block["content"]) for block in equations) == 1
+    inequality = _blocks_containing(equations, "Mπ(Xn)")
+    assert len(inequality) == 1
+    assert inequality[0]["type"] == "equation"
+
+    continuation = _blocks_containing(page40, "so that we have a near-unbiased estimator")
+    assert len(continuation) == 1
+    assert continuation[0]["type"] == "text"
+    assert "Coupling this observation" in continuation[0]["content"]
+    assert sum(
+        "Coupling this observation" in str(block["content"])
+        for block in page40
+    ) == 1

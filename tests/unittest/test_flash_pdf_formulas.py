@@ -1053,3 +1053,142 @@ def test_justified_mixed_font_visual_row_before_body_is_not_formula_anchor() -> 
         14,
         15,
     }
+
+
+def test_split_visual_row_with_right_number_forms_one_equation() -> None:
+    """验证多字体同行公式及其右侧编号在栏推断前合成一个公式块。"""
+
+    body_font = ("Body", 0)
+    math_font = ("Math", 0)
+    lines = [
+        _text_line(
+            "body above",
+            (0.0, 10.0, 100.0, 20.0),
+            0,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "E =",
+            (20.0, 35.0, 40.0, 45.0),
+            1,
+            visual_row_id=10,
+            split_from_row=True,
+            effective_height=10.0,
+            font_signature=math_font,
+            font_coverage=0.6,
+        ),
+        _text_line(
+            "mc2",
+            (42.0, 35.0, 65.0, 45.0),
+            2,
+            visual_row_id=10,
+            split_from_row=True,
+            effective_height=10.0,
+            font_signature=("MathItalic", 0),
+            font_coverage=0.6,
+        ),
+        _text_line(
+            "(8)",
+            (90.0, 35.0, 100.0, 45.0),
+            3,
+            visual_row_id=10,
+            split_from_row=True,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "body below",
+            (0.0, 60.0, 100.0, 70.0),
+            4,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+    ]
+
+    blocks, remaining = formulas._build_formula_like_blocks(
+        lines,
+        [],
+        (100.0, 100.0),
+    )
+
+    assert len(blocks) == 1
+    assert blocks[0]["type"] == "equation"
+    assert "(8)" in blocks[0]["content"]
+    assert {line.source_index for line in remaining} == {0, 4}
+
+
+def test_centered_low_body_font_line_forms_unnumbered_equation() -> None:
+    """验证上下正文之间居中且低正文覆盖的数学字体行形成无编号公式。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line(
+            f"body {index}",
+            (0.0, top, 100.0, top + 10.0),
+            index,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        )
+        for index, top in enumerate((0.0, 14.0, 58.0, 72.0))
+    ]
+    lines.append(
+        _text_line(
+            "|E(X) - M| < n-1",
+            (25.0, 36.0, 75.0, 46.0),
+            10,
+            effective_height=10.0,
+            font_signature=("Math", 0),
+            font_coverage=0.5,
+        )
+    )
+
+    blocks, remaining = formulas._build_formula_like_blocks(
+        lines,
+        [],
+        (100.0, 100.0),
+    )
+
+    assert len(blocks) == 1
+    assert blocks[0]["type"] == "equation"
+    assert blocks[0]["content"] == "|E(X) - M| < n-1"
+    assert {line.source_index for line in remaining} == {0, 1, 2, 3}
+
+
+def test_punctuated_number_anchor_protects_stacked_formula_member() -> None:
+    """验证右侧短标点编号会阻止分式成员被提前识别成无编号公式。"""
+
+    candidate = _text_line(
+        "fraction numerator",
+        (20.0, 30.0, 65.0, 40.0),
+        1,
+        effective_height=10.0,
+        font_signature=("Math", 0),
+        font_coverage=0.5,
+    )
+    number_anchor = _text_line(
+        ", (4)",
+        (66.0, 32.0, 78.0, 42.0),
+        2,
+        effective_height=10.0,
+        font_signature=("Body", 0),
+        font_coverage=1.0,
+    )
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[
+            (candidate, candidate.bbox),
+            (number_anchor, number_anchor.bbox),
+        ],
+    )
+
+    assert formulas._has_nearby_punctuated_formula_number_anchor(
+        (candidate, candidate.bbox),
+        lane,
+        median_height=10.0,
+    )

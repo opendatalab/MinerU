@@ -100,7 +100,7 @@ class _GraphicCandidate:
 
 @dataclass(slots=True)
 class _CodeCandidate:
-    """保存由浅色填充背景与等宽文本共同确认的代码区域。"""
+    """保存由填充背景或成对横线与稳定文本节奏确认的代码区域。"""
 
     bbox: BBox
     angle: int

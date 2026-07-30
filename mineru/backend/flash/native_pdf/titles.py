@@ -51,6 +51,7 @@ def _classify_page_titles(
     *,
     page_index: int,
     container_bboxes: list[BBox],
+    caption_container_bboxes: list[BBox] | None = None,
     document_body_profile: _DocumentBodyProfile | None = None,
     document_title_profile: _DocumentTitleProfile | None = None,
 ) -> None:
@@ -97,8 +98,32 @@ def _classify_page_titles(
                 local_page_width,
                 document_body_profile=document_body_profile,
             )
+            document_title_bottom = _expand_document_title_across_lanes(
+                line_geometry,
+                local_page_width,
+                local_page_height,
+                document_title_bottom,
+            )
         preserve_front_matter_boundaries = _document_title_uses_page_fallback(
             lanes,
+            document_body_profile=document_body_profile,
+        )
+
+        _classify_cross_lane_centered_section_titles(
+            line_geometry,
+            lanes,
+            local_page_width,
+            local_page_height,
+            local_container_bboxes,
+            document_title_bottom=document_title_bottom,
+        )
+        _classify_cross_lane_emphasized_section_titles(
+            line_geometry,
+            lanes,
+            local_page_width,
+            local_page_height,
+            local_container_bboxes,
+            document_title_bottom=document_title_bottom,
             document_body_profile=document_body_profile,
         )
 
@@ -118,6 +143,20 @@ def _classify_page_titles(
                 document_title_profile=document_title_profile,
                 page_index=page_index,
             )
+        _expand_cross_lane_paragraph_title_neighbors(
+            line_geometry,
+        )
+        _demote_cross_lane_body_continuation_titles(
+            line_geometry,
+            lanes,
+        )
+        _demote_visual_container_caption_titles(
+            line_geometry,
+            [
+                _rotate_bbox_to_upright(bbox, page_size, angle)
+                for bbox in (caption_container_bboxes or [])
+            ],
+        )
 
 
 def _infer_document_body_profile(
@@ -325,6 +364,8 @@ def _classify_body_height_section_titles(
             if len(followers) < 3:
                 continue
             gap_above = physical_gaps.get(line.source_index, (None, None))[0]
+            if gap_above is not None and gap_above <= 0.25 * body_height:
+                continue
             starts_body = (
                 gap_above is None
                 and bbox[1] <= 0.2 * local_page_height
@@ -928,6 +969,493 @@ def _classify_document_title(
             previous_bbox = candidate_bbox
             index += direction
     return max(bbox[3] for _line, bbox in selected)
+
+
+def _expand_document_title_across_lanes(
+    line_geometry: list[tuple[_LineItem, BBox]],
+    local_page_width: float,
+    local_page_height: float,
+    document_title_bottom: float | None,
+) -> float | None:
+    """跨错误推断栏扩展紧邻、同字号且对齐的多行文档标题。"""
+
+    title_items = [
+        item
+        for item in line_geometry
+        if item[0].semantic_type == "doc_title"
+    ]
+    if not title_items:
+        return document_title_bottom
+    selected_ids = {id(line) for line, _bbox in title_items}
+    changed = True
+    while changed:
+        changed = False
+        title_bbox = _bbox_union_many([bbox for _line, bbox in title_items])
+        title_height = statistics.median(
+            _line_effective_height(line, bbox)
+            for line, bbox in title_items
+        )
+        anchors = [line for line, _bbox in title_items]
+        candidates = [
+            item
+            for item in line_geometry
+            if id(item[0]) not in selected_ids
+            and item[0].semantic_type is None
+            and _bbox_center_y(item[1]) <= 0.45 * local_page_height
+        ]
+        candidates.sort(
+            key=lambda item: min(
+                abs(item[1][1] - title_bbox[3]),
+                abs(title_bbox[1] - item[1][3]),
+            )
+        )
+        for candidate_line, candidate_bbox in candidates:
+            candidate_height = _line_effective_height(
+                candidate_line,
+                candidate_bbox,
+            )
+            if not 0.8 <= candidate_height / max(0.1, title_height) <= 1.25:
+                continue
+            if not any(
+                _document_title_fonts_compatible(anchor, candidate_line)
+                for anchor in anchors
+            ):
+                continue
+            vertical_gap = max(
+                candidate_bbox[1] - title_bbox[3],
+                title_bbox[1] - candidate_bbox[3],
+                0.0,
+            )
+            centered = (
+                abs(_bbox_center_x(candidate_bbox) - _bbox_center_x(title_bbox))
+                <= 0.18 * local_page_width
+            )
+            aligned = (
+                abs(candidate_bbox[0] - title_bbox[0])
+                <= 0.75 * title_height
+            )
+            title_width = max(0.1, title_bbox[2] - title_bbox[0])
+            candidate_width = candidate_bbox[2] - candidate_bbox[0]
+            aligned_continuation = (
+                aligned and candidate_width >= 0.25 * title_width
+            )
+            centered_continuation = (
+                centered and candidate_width >= 0.45 * title_width
+            )
+            if (
+                vertical_gap > 1.1 * title_height
+                or not (aligned_continuation or centered_continuation)
+            ):
+                continue
+            candidate_line.semantic_type = "doc_title"
+            title_items.append((candidate_line, candidate_bbox))
+            selected_ids.add(id(candidate_line))
+            changed = True
+            break
+    return max(bbox[3] for _line, bbox in title_items)
+
+
+def _classify_cross_lane_centered_section_titles(
+    line_geometry: list[tuple[_LineItem, BBox]],
+    lanes: list[_TextLane],
+    local_page_width: float,
+    local_page_height: float,
+    container_bboxes: list[BBox],
+    *,
+    document_title_bottom: float | None,
+) -> None:
+    """用正文栏中心、上下留白和正文邻行补标被单独推成窄栏的标题。"""
+
+    stable_lanes = [
+        lane
+        for lane in lanes
+        if not lane.is_span
+        and len(lane.lines) >= 5
+        and lane.right - lane.left >= 0.2 * local_page_width
+    ]
+    for line, bbox in line_geometry:
+        if line.semantic_type is not None:
+            continue
+        if not 0.07 * local_page_height <= _bbox_center_y(bbox) <= 0.93 * local_page_height:
+            continue
+        candidate_lanes = [
+            lane
+            for lane in stable_lanes
+            if lane.left <= _bbox_center_x(bbox) <= lane.right
+        ]
+        if not candidate_lanes:
+            continue
+        lane = min(
+            candidate_lanes,
+            key=lambda candidate: abs(
+                _bbox_center_x(bbox)
+                - 0.5 * (candidate.left + candidate.right)
+            ),
+        )
+        profile = _infer_lane_body_profile(lane)
+        lane_width = max(0.1, lane.right - lane.left)
+        line_width = bbox[2] - bbox[0]
+        line_height = _line_effective_height(line, bbox)
+        if not 0.08 * lane_width <= line_width <= 0.7 * lane_width:
+            continue
+        if (
+            abs(_bbox_center_x(bbox) - 0.5 * (lane.left + lane.right))
+            > 0.05 * lane_width
+        ):
+            continue
+        if not 0.75 <= line_height / max(0.1, profile.body_height) <= 1.3:
+            continue
+        if (
+            document_title_bottom is not None
+            and bbox[1] <= document_title_bottom + profile.body_height
+        ):
+            continue
+        if _line_inside_visual_container(bbox, container_bboxes) or _line_near_visual_container(
+            bbox,
+            container_bboxes,
+            profile.body_height,
+        ):
+            continue
+        body_rows = [
+            item
+            for item in lane.lines
+            if item[0] is not line
+            and item[0].semantic_type is None
+            and item[1][2] - item[1][0] >= 0.5 * lane_width
+            and 0.75
+            <= _line_effective_height(*item) / max(0.1, profile.body_height)
+            <= 1.3
+        ]
+        rows_above = [
+            item
+            for item in body_rows
+            if _bbox_center_y(item[1]) < _bbox_center_y(bbox)
+        ]
+        rows_below = [
+            item
+            for item in body_rows
+            if _bbox_center_y(item[1]) > _bbox_center_y(bbox)
+        ]
+        if not rows_above or not rows_below:
+            continue
+        previous = max(rows_above, key=lambda item: _bbox_center_y(item[1]))
+        following_rows = sorted(
+            rows_below,
+            key=lambda item: _bbox_center_y(item[1]),
+        )
+        if len(following_rows) < 3 or any(
+            _effective_text_row_gap(previous_row, current_row)
+            > profile.regular_gap + 0.75 * profile.body_height
+            for previous_row, current_row in zip(
+                following_rows[:3],
+                following_rows[1:3],
+            )
+        ):
+            continue
+        following = following_rows[0]
+        gap_above = bbox[1] - previous[1][3]
+        gap_below = following[1][1] - bbox[3]
+        if (
+            gap_above < 0.3 * profile.body_height
+            or gap_below < -0.1 * profile.body_height
+            or max(gap_above, gap_below)
+            < profile.regular_gap + 0.2 * profile.body_height
+        ):
+            continue
+        line.semantic_type = "paragraph_title"
+
+
+def _demote_cross_lane_body_continuation_titles(
+    line_geometry: list[tuple[_LineItem, BBox]],
+    lanes: list[_TextLane],
+) -> None:
+    """把紧接上一正文行、同字号同字体的短续行从标题降回正文。"""
+
+    stable_lanes = [
+        lane
+        for lane in lanes
+        if not lane.is_span and len(lane.lines) >= 4
+    ]
+    for line, bbox in line_geometry:
+        if line.semantic_type != "paragraph_title":
+            continue
+        line_height = _line_effective_height(line, bbox)
+        global_preceding = [
+            item
+            for item in line_geometry
+            if item[0] is not line
+            and item[0].semantic_type is None
+            and item[0].angle == line.angle
+            and _bbox_center_y(item[1]) < _bbox_center_y(bbox)
+            and abs(item[1][0] - bbox[0]) <= line_height
+        ]
+        if global_preceding:
+            previous_line, previous_bbox = max(
+                global_preceding,
+                key=lambda item: _bbox_center_y(item[1]),
+            )
+            previous_height = _line_effective_height(
+                previous_line,
+                previous_bbox,
+            )
+            same_family = (
+                previous_line.font_signature is None
+                or line.font_signature is None
+                or _font_signatures_share_family(
+                    previous_line.font_signature,
+                    line.font_signature,
+                )
+            )
+            if (
+                same_family
+                and 0.9
+                <= line_height / max(0.1, previous_height)
+                <= 1.1
+                and bbox[1] - previous_bbox[3]
+                <= 0.2 * max(line_height, previous_height)
+                and abs(bbox[0] - previous_bbox[0])
+                <= 0.75 * max(line_height, previous_height)
+                and previous_bbox[2] - previous_bbox[0]
+                >= 2.0 * (bbox[2] - bbox[0])
+            ):
+                line.semantic_type = None
+                continue
+        candidate_lanes = [
+            lane
+            for lane in stable_lanes
+            if lane.left <= _bbox_center_x(bbox) <= lane.right
+        ]
+        if not candidate_lanes:
+            continue
+        lane = min(
+            candidate_lanes,
+            key=lambda candidate: abs(
+                _bbox_center_x(bbox)
+                - 0.5 * (candidate.left + candidate.right)
+            ),
+        )
+        lane_width = max(0.1, lane.right - lane.left)
+        if bbox[2] - bbox[0] > 0.55 * lane_width:
+            continue
+        preceding = [
+            item
+            for item in line_geometry
+            if item[0] is not line
+            and item[0].semantic_type is None
+            and _bbox_center_y(item[1]) < _bbox_center_y(bbox)
+            and lane.left <= _bbox_center_x(item[1]) <= lane.right
+        ]
+        if not preceding:
+            continue
+        previous_line, previous_bbox = max(
+            preceding,
+            key=lambda item: _bbox_center_y(item[1]),
+        )
+        previous_height = _line_effective_height(
+            previous_line,
+            previous_bbox,
+        )
+        line_height = _line_effective_height(line, bbox)
+        if not 0.9 <= line_height / max(0.1, previous_height) <= 1.1:
+            continue
+        if (
+            previous_line.font_signature is not None
+            and line.font_signature is not None
+            and not _font_signatures_share_family(
+                previous_line.font_signature,
+                line.font_signature,
+            )
+        ):
+            continue
+        if previous_bbox[2] - previous_bbox[0] < 0.5 * lane_width:
+            continue
+        if bbox[1] - previous_bbox[3] > 0.15 * max(line_height, previous_height):
+            continue
+        if abs(bbox[0] - lane.left) > max(1.0, 0.75 * line_height):
+            continue
+        line.semantic_type = None
+
+
+def _classify_cross_lane_emphasized_section_titles(
+    line_geometry: list[tuple[_LineItem, BBox]],
+    lanes: list[_TextLane],
+    local_page_width: float,
+    local_page_height: float,
+    container_bboxes: list[BBox],
+    *,
+    document_title_bottom: float | None,
+    document_body_profile: _DocumentBodyProfile | None,
+) -> None:
+    """用正文栏左缘、强调字体和段间留白补标跨栏推断失败的小节标题。"""
+
+    stable_lanes = [
+        lane
+        for lane in lanes
+        if not lane.is_span
+        and len(lane.lines) >= 5
+        and lane.right - lane.left >= 0.2 * local_page_width
+    ]
+    for line, bbox in line_geometry:
+        if line.semantic_type is not None or line.font_signature is None:
+            continue
+        if not line.font_signature[1] & _PDF_FONT_ITALIC_FLAG:
+            continue
+        if _line_uses_document_regular_font(line, document_body_profile):
+            continue
+        if not 0.07 * local_page_height <= _bbox_center_y(bbox) <= 0.93 * local_page_height:
+            continue
+        candidate_lanes = [
+            lane
+            for lane in stable_lanes
+            if lane.left <= _bbox_center_x(bbox) <= lane.right
+        ]
+        if not candidate_lanes:
+            continue
+        lane = min(
+            candidate_lanes,
+            key=lambda candidate: abs(bbox[0] - candidate.left),
+        )
+        profile = _infer_lane_body_profile(lane)
+        if (
+            profile.body_font is None
+            or line.font_signature == profile.body_font
+            or line.font_coverage < 0.75
+        ):
+            continue
+        lane_width = max(0.1, lane.right - lane.left)
+        line_height = _line_effective_height(line, bbox)
+        if bbox[2] - bbox[0] > 0.9 * lane_width:
+            continue
+        if abs(bbox[0] - lane.left) > 2.0 * profile.body_height:
+            continue
+        if not 0.8 <= line_height / max(0.1, profile.body_height) <= 1.35:
+            continue
+        if (
+            document_title_bottom is not None
+            and bbox[1] <= document_title_bottom + 2.0 * profile.body_height
+        ):
+            continue
+        if _line_inside_visual_container(bbox, container_bboxes) or _line_near_visual_container(
+            bbox,
+            container_bboxes,
+            profile.body_height,
+        ):
+            continue
+        body_rows = [
+            item
+            for item in lane.lines
+            if item[0] is not line
+            and item[0].semantic_type is None
+            and item[0].font_signature == profile.body_font
+            and item[1][2] - item[1][0] >= 0.45 * lane_width
+        ]
+        rows_above = [
+            item
+            for item in body_rows
+            if _bbox_center_y(item[1]) < _bbox_center_y(bbox)
+        ]
+        rows_below = [
+            item
+            for item in body_rows
+            if _bbox_center_y(item[1]) > _bbox_center_y(bbox)
+        ]
+        if not rows_above or not rows_below:
+            continue
+        previous = max(rows_above, key=lambda item: _bbox_center_y(item[1]))
+        following = min(rows_below, key=lambda item: _bbox_center_y(item[1]))
+        gap_above = bbox[1] - previous[1][3]
+        gap_below = following[1][1] - bbox[3]
+        if (
+            gap_above < 0.35 * profile.body_height
+            or gap_below > 3.0 * profile.body_height
+            or gap_below < -0.1 * profile.body_height
+        ):
+            continue
+        line.semantic_type = "paragraph_title"
+
+
+def _expand_cross_lane_paragraph_title_neighbors(
+    line_geometry: list[tuple[_LineItem, BBox]],
+) -> None:
+    """把紧贴标题锚点的同字体相邻行跨栏补标为同一标题。"""
+
+    changed = True
+    while changed:
+        changed = False
+        title_items = [
+            item
+            for item in line_geometry
+            if item[0].semantic_type == "paragraph_title"
+        ]
+        for title_line, title_bbox in title_items:
+            title_height = _line_effective_height(title_line, title_bbox)
+            for candidate_line, candidate_bbox in line_geometry:
+                if candidate_line.semantic_type is not None:
+                    continue
+                candidate_height = _line_effective_height(
+                    candidate_line,
+                    candidate_bbox,
+                )
+                if not 0.85 <= candidate_height / max(0.1, title_height) <= 1.2:
+                    continue
+                title_width = max(0.1, title_bbox[2] - title_bbox[0])
+                candidate_width = candidate_bbox[2] - candidate_bbox[0]
+                if not 0.25 <= candidate_width / title_width <= 2.0:
+                    continue
+                if (
+                    title_line.font_signature is not None
+                    and candidate_line.font_signature is not None
+                    and title_line.font_signature != candidate_line.font_signature
+                ):
+                    continue
+                vertical_gap = max(
+                    candidate_bbox[1] - title_bbox[3],
+                    title_bbox[1] - candidate_bbox[3],
+                    0.0,
+                )
+                if vertical_gap > 0.35 * max(title_height, candidate_height):
+                    continue
+                if (
+                    _bbox_axis_overlap_ratio(title_bbox, candidate_bbox, axis="x")
+                    < 0.2
+                    and abs(candidate_bbox[0] - title_bbox[0])
+                    > 2.0 * title_height
+                ):
+                    continue
+                candidate_line.semantic_type = "paragraph_title"
+                changed = True
+                break
+            if changed:
+                break
+
+
+def _demote_visual_container_caption_titles(
+    line_geometry: list[tuple[_LineItem, BBox]],
+    container_bboxes: list[BBox],
+) -> None:
+    """把紧贴视觉容器下缘且水平居中的标题候选降回普通图注文本。"""
+
+    for line, bbox in line_geometry:
+        if line.semantic_type != "paragraph_title":
+            continue
+        line_height = _line_effective_height(line, bbox)
+        for container_bbox in container_bboxes:
+            vertical_gap = bbox[1] - container_bbox[3]
+            if not -0.25 * line_height <= vertical_gap <= 1.5 * line_height:
+                continue
+            if _bbox_axis_overlap_ratio(bbox, container_bbox, axis="x") < 0.35:
+                continue
+            if (
+                abs(_bbox_center_x(bbox) - _bbox_center_x(container_bbox))
+                > 0.35
+                * max(
+                    container_bbox[2] - container_bbox[0],
+                    bbox[2] - bbox[0],
+                )
+            ):
+                continue
+            line.semantic_type = None
+            break
 
 
 def _document_title_fonts_compatible(

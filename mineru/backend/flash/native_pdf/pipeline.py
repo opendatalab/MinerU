@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 
@@ -59,13 +60,19 @@ from .formulas import (
     _build_formula_like_blocks,
     _build_vector_formula_blocks,
 )
-from .code_blocks import _build_code_blocks
+from .code_blocks import (
+    _build_code_blocks,
+    _build_rule_delimited_code_blocks,
+)
 from .auxiliary_text import (
     _classify_deferred_image_footnotes,
     _classify_isolated_first_page_footer,
     _classify_page_number_outer_companions,
     _classify_page_auxiliary_text,
+    _classify_raw_page_marginals,
+    _classify_rule_delimited_footers,
     _classify_rule_delimited_headers,
+    _classify_split_marginal_row_companions,
     _classify_repeated_page_marginals,
     _classify_repeated_visual_headers,
     _classify_single_page_compound_headers,
@@ -79,7 +86,9 @@ from .titles import (
 from .text_blocks import (
     _build_text_blocks,
     _merge_fragmented_header_blocks,
+    _merge_front_matter_column_blocks,
     _merge_image_caption_text_blocks,
+    _merge_multiline_title_blocks,
     _merge_repeated_compact_title_continuations,
 )
 
@@ -176,7 +185,7 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
         page_sizes,
     )
 
-    prepared_pages: list[_PreparedPage] = []
+    page_sources: list[_PageSource] = []
     for page_idx in range(pdf_doc.page_count):
         page_size = page_sizes[page_idx]
         chars = pdf_doc.get_page_chars(page_idx)
@@ -200,12 +209,20 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
             form_bboxes=pdf_doc.get_page_form_bboxes(page_idx),
             path_infos=pdf_doc.get_page_path_infos(page_idx),
         )
-        prepared_pages.append(_prepare_page_source(source))
+        page_sources.append(source)
+
+    _classify_raw_page_marginals(page_sources)
+    prepared_pages = [
+        _prepare_page_source(source)
+        for source in page_sources
+    ]
 
     _classify_repeated_visual_headers(prepared_pages)
     _classify_repeated_page_marginals(prepared_pages)
+    _classify_split_marginal_row_companions(prepared_pages)
     _classify_single_page_compound_headers(prepared_pages)
     _classify_rule_delimited_headers(prepared_pages)
+    _classify_rule_delimited_footers(prepared_pages)
     _classify_page_number_outer_companions(prepared_pages)
     _classify_isolated_first_page_footer(prepared_pages)
     document_body_profile = _infer_document_body_profile(prepared_pages)
@@ -232,13 +249,36 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
 def _prepare_page_source(source: _PageSource) -> _PreparedPage:
     """先认领视觉容器，再标注辅助文本并留下可跨页比较的轻量文本行。"""
 
+    protected_line_indices = {
+        line.source_index
+        for line in source.lines
+        if line.semantic_type is not None
+    }
+    analysis_source = replace(
+        source,
+        lines=[
+            line
+            for line in source.lines
+            if line.source_index not in protected_line_indices
+        ],
+    )
     form_bboxes = _select_form_image_bboxes(source)
-    strong_graphic_bboxes = _detect_strong_graphic_bboxes(source)
+    strong_graphic_bboxes = _detect_strong_graphic_bboxes(analysis_source)
+    rule_code_blocks, claimed_rule_code_line_indices = (
+        _build_rule_delimited_code_blocks(
+            analysis_source,
+            form_bboxes
+            + strong_graphic_bboxes
+            + list(source.image_bboxes)
+            + list(source.signature_bboxes),
+        )
+    )
+    rule_code_bboxes = [block["bbox"] for block in rule_code_blocks]
     candidates = [
         candidate
         for candidate in _detect_table_candidates(
-            source,
-            excluded_bboxes=strong_graphic_bboxes,
+            analysis_source,
+            excluded_bboxes=strong_graphic_bboxes + rule_code_bboxes,
         )
         if not any(
             _form_supersedes_nested_bbox(form_bbox, candidate.bbox)
@@ -246,9 +286,10 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
         )
     ]
     table_blocks, claimed_line_indices = _materialize_table_blocks(
-        source,
+        analysis_source,
         candidates,
     )
+    claimed_line_indices.update(claimed_rule_code_line_indices)
     table_bboxes = [block["bbox"] for block in table_blocks]
     active_form_bboxes = [
         form_bbox
@@ -260,7 +301,7 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
         )
     ]
     code_blocks, claimed_code_line_indices = _build_code_blocks(
-        source,
+        analysis_source,
         table_bboxes
         + active_form_bboxes
         + strong_graphic_bboxes
@@ -270,27 +311,32 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
     )
     code_bboxes = [block["bbox"] for block in code_blocks]
     form_image_blocks, claimed_form_line_indices = _build_form_image_blocks(
-        source,
+        analysis_source,
         active_form_bboxes,
         claimed_line_indices | claimed_code_line_indices,
     )
     graphic_blocks, claimed_graphic_line_indices = _build_graphic_like_blocks(
-        source,
-        table_bboxes + active_form_bboxes + code_bboxes,
+        analysis_source,
+        table_bboxes + active_form_bboxes + rule_code_bboxes + code_bboxes,
         claimed_line_indices | claimed_code_line_indices | claimed_form_line_indices,
         strong_graphic_bboxes,
     )
     raster_image_blocks, claimed_raster_line_indices = _build_raster_image_blocks(
-        source,
-        table_blocks + code_blocks + form_image_blocks + graphic_blocks,
+        analysis_source,
+        table_blocks
+        + rule_code_blocks
+        + code_blocks
+        + form_image_blocks
+        + graphic_blocks,
         claimed_line_indices
         | claimed_code_line_indices
         | claimed_form_line_indices
         | claimed_graphic_line_indices,
     )
     vector_formula_blocks, claimed_vector_number_indices = _build_vector_formula_blocks(
-        source,
+        analysis_source,
         table_blocks
+        + rule_code_blocks
         + code_blocks
         + form_image_blocks
         + graphic_blocks
@@ -319,6 +365,12 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
         source.page_size,
         table_bboxes,
     )
+    # 首轮同行合并可能补齐宿主 bbox，使相邻 hard-split 尾段具备二次闭包条件。
+    remaining_lines = _merge_same_baseline_text_lines(
+        remaining_lines,
+        source.page_size,
+        table_bboxes,
+    )
     _compact_prepared_lines(remaining_lines, source.page_size)
     prepared = _PreparedPage(
         page_size=source.page_size,
@@ -326,7 +378,8 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
         table_bboxes=table_bboxes,
         drawing_lines=source.drawing_lines,
         fixed_blocks=(
-            table_blocks
+            rule_code_blocks
+            + table_blocks
             + code_blocks
             + form_image_blocks
             + graphic_blocks
@@ -374,15 +427,20 @@ def _finalize_prepared_page(
         if line.semantic_type is not None
     )
     formula_input = [line for line in unresolved_lines if line.semantic_type is None]
+    formula_input = _restore_dense_split_visual_rows(
+        formula_input,
+        prepared.page_size,
+        prepared.table_bboxes,
+    )
+    formula_input = _merge_same_baseline_text_lines(
+        formula_input,
+        prepared.page_size,
+        prepared.table_bboxes,
+    )
     formula_blocks, remaining_lines = _build_formula_like_blocks(
         formula_input,
         prepared.table_bboxes,
         prepared.page_size,
-    )
-    remaining_lines = _restore_dense_split_visual_rows(
-        remaining_lines,
-        prepared.page_size,
-        prepared.table_bboxes,
     )
     fallback_index_blocks, remaining_lines = _extract_index_blocks(
         remaining_lines,
@@ -405,6 +463,11 @@ def _finalize_prepared_page(
         for block in prepared.fixed_blocks
         if not isinstance(block.get("_inline_visual_row_id"), int)
     ]
+    caption_container_bboxes = [
+        block["bbox"]
+        for block in prepared.fixed_blocks
+        if block.get("type") in {"image", "code"}
+    ]
     _classify_body_height_section_titles(
         remaining_lines,
         prepared.page_size,
@@ -416,6 +479,7 @@ def _finalize_prepared_page(
         prepared.page_size,
         page_index=page_index,
         container_bboxes=title_container_bboxes,
+        caption_container_bboxes=caption_container_bboxes,
         document_body_profile=document_body_profile,
         document_title_profile=document_title_profile,
     )
@@ -434,6 +498,12 @@ def _finalize_prepared_page(
         prepared.page_size,
         prepared.drawing_lines,
         page_footnote_groups=prepared.page_footnote_groups,
+    )
+    text_blocks = _merge_multiline_title_blocks(text_blocks)
+    text_blocks = _merge_front_matter_column_blocks(
+        text_blocks,
+        prepared.page_size,
+        page_index=page_index,
     )
     text_blocks = _merge_image_caption_text_blocks(
         text_blocks,

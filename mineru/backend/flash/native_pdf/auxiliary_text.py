@@ -18,6 +18,7 @@ from .models import (
     _LineItem,
     _LocalAxisLine,
     _MarginalCandidate,
+    _PageSource,
     _PreparedPage,
     _TextLane,
 )
@@ -67,6 +68,11 @@ def _classify_page_auxiliary_text(prepared: _PreparedPage) -> None:
         prepared.table_bboxes,
         prepared.drawing_lines,
         prepared.page_size,
+        visual_bboxes=[
+            block["bbox"]
+            for block in prepared.fixed_blocks
+            if block.get("type") == "image"
+        ],
     )
 
 
@@ -209,7 +215,8 @@ def _classify_image_footnotes(
                 - max(axis_line.bbox[0], image_bbox[0]),
             )
             >= 0.85 * image_width
-            and -0.25 * body_height
+            # 图片外框的底边属于图形本身，不能拿来证明下方文字是图表脚注。
+            and 0.0
             <= axis_line.bbox[1] - row_bottom
             <= max(0.01 * local_page_height, 0.75 * body_height)
             and not _rule_belongs_to_confirmed_table(
@@ -305,6 +312,8 @@ def _classify_page_footnotes(
     table_bboxes: list[BBox],
     drawing_lines: list[_AxisLine],
     page_size: tuple[float, float],
+    *,
+    visual_bboxes: list[BBox] | None = None,
 ) -> list[set[int]]:
     """识别主方向页脚注，并按触发分隔线返回来源编号分组。"""
 
@@ -353,6 +362,7 @@ def _classify_page_footnotes(
     )
 
     candidate_groups: list[set[int]] = []
+    visual_bboxes = visual_bboxes or []
     for axis_line in local_axis_lines:
         if axis_line.orientation != "horizontal":
             continue
@@ -368,6 +378,15 @@ def _classify_page_footnotes(
             table_bboxes,
             local_page_width,
         ):
+            continue
+        if any(
+            _bbox_intersects(
+                _expand_bbox(axis_line.original_bbox, max(0.5, axis_line.width)),
+                visual_bbox,
+            )
+            for visual_bbox in visual_bboxes
+        ):
+            # 图形坐标轴和外框不能充当页面脚注分隔线。
             continue
         rule_source_indices: set[int] = set()
         for lane in lanes:
@@ -714,6 +733,106 @@ def _classify_rule_delimited_headers(pages: list[_PreparedPage]) -> None:
                 line.semantic_type = "header"
 
 
+def _classify_rule_delimited_footers(pages: list[_PreparedPage]) -> None:
+    """用页面底部两条同跨度横线确认其间孤立的居中页脚。"""
+
+    for page in pages:
+        available = [
+            line
+            for line in page.remaining_lines
+            if line.semantic_type is None
+        ]
+        if not available or not page.drawing_lines:
+            continue
+        support_by_angle = _geometric_text_support_by_angle(
+            page.remaining_lines,
+            page.page_size,
+        )
+        if not support_by_angle:
+            continue
+        dominant_angle = max(
+            sorted(support_by_angle),
+            key=lambda angle: support_by_angle[angle],
+        )
+        local_page_size = (
+            (page.page_size[1], page.page_size[0])
+            if dominant_angle in {90, 270}
+            else page.page_size
+        )
+        local_page_width, local_page_height = local_page_size
+        if local_page_width <= 0 or local_page_height <= 0:
+            continue
+        local_axis_lines = _transform_axis_lines(
+            page.drawing_lines,
+            page.page_size,
+            dominant_angle,
+        )
+        rules = [
+            rule
+            for rule in local_axis_lines
+            if rule.orientation == "horizontal"
+            and _bbox_center_y(rule.bbox) >= 0.85 * local_page_height
+            and rule.bbox[2] - rule.bbox[0] >= 0.2 * local_page_width
+            and not _rule_belongs_to_confirmed_table(
+                rule,
+                local_axis_lines,
+                page.table_bboxes,
+                local_page_width,
+            )
+            and not _rule_overlaps_fixed_container(
+                rule,
+                page.fixed_blocks,
+                page.page_size,
+            )
+        ]
+        local_lines = [
+            (
+                line,
+                _rotate_bbox_to_upright(
+                    line.bbox,
+                    page.page_size,
+                    dominant_angle,
+                ),
+            )
+            for line in available
+            if line.angle == dominant_angle
+        ]
+        if not local_lines:
+            continue
+        median_height = statistics.median(
+            _line_effective_height(line, bbox)
+            for line, bbox in local_lines
+        )
+        for upper_index, upper in enumerate(rules[:-1]):
+            for lower in rules[upper_index + 1 :]:
+                vertical_gap = lower.bbox[1] - upper.bbox[3]
+                if not 2.0 * median_height <= vertical_gap <= 6.0 * median_height:
+                    continue
+                if _bbox_axis_overlap_ratio(upper.bbox, lower.bbox, axis="x") < 0.9:
+                    continue
+                corridor_left = max(upper.bbox[0], lower.bbox[0])
+                corridor_right = min(upper.bbox[2], lower.bbox[2])
+                members = [
+                    (line, bbox)
+                    for line, bbox in local_lines
+                    if bbox[1] >= upper.bbox[3]
+                    and bbox[3] <= lower.bbox[1]
+                    and bbox[0] >= corridor_left - 0.5 * median_height
+                    and bbox[2] <= corridor_right + 0.5 * median_height
+                ]
+                if not 1 <= len(members) <= 3:
+                    continue
+                if any(
+                    abs(_bbox_center_x(bbox) - 0.5 * (corridor_left + corridor_right))
+                    > 0.15 * max(0.1, corridor_right - corridor_left)
+                    for _line, bbox in members
+                ):
+                    continue
+                for line, _bbox in members:
+                    line.semantic_type = "footer"
+                break
+
+
 def _rule_overlaps_fixed_container(
     rule: _LocalAxisLine,
     fixed_blocks: list[dict[str, object]],
@@ -784,7 +903,15 @@ def _classify_page_number_outer_companions(
                     if target_type == "header"
                     else local_bbox[1] >= outward_limit
                 )
-                if is_outward:
+                same_marginal_row = (
+                    _bbox_axis_overlap_ratio(
+                        local_bbox,
+                        page_number_bbox,
+                        axis="y",
+                    )
+                    >= 0.5
+                )
+                if is_outward or same_marginal_row:
                     line.semantic_type = target_type
             for block in page.fixed_blocks:
                 if block.get("type") != "image":
@@ -808,8 +935,90 @@ def _classify_page_number_outer_companions(
                     if target_type == "header"
                     else local_bbox[1] >= outward_limit
                 )
-                if is_outward:
+                same_marginal_row = (
+                    _bbox_axis_overlap_ratio(
+                        local_bbox,
+                        page_number_bbox,
+                        axis="y",
+                    )
+                    >= 0.5
+                )
+                if is_outward or same_marginal_row:
                     block["type"] = target_type
+
+
+def _classify_split_marginal_row_companions(
+    pages: list[_PreparedPage],
+) -> None:
+    """把页边缘同一拆分视觉行中的未分类碎片继承为页眉或页脚。"""
+
+    for page in pages:
+        row_groups: dict[tuple[int, int], list[_LineItem]] = {}
+        for line in page.remaining_lines:
+            if line.visual_row_id is None or not line.split_from_row:
+                continue
+            row_groups.setdefault((line.angle, line.visual_row_id), []).append(
+                line
+            )
+        for (angle, _row_id), members in row_groups.items():
+            local_page_height = (
+                page.page_size[0]
+                if angle in {90, 270}
+                else page.page_size[1]
+            )
+            local_bboxes = [
+                _rotate_bbox_to_upright(line.bbox, page.page_size, angle)
+                for line in members
+            ]
+            row_center = statistics.fmean(
+                _bbox_center_y(bbox)
+                for bbox in local_bboxes
+            )
+            if row_center <= 0.1 * local_page_height:
+                target_type: Literal["header", "footer"] = "header"
+            elif row_center >= 0.9 * local_page_height:
+                target_type = "footer"
+            else:
+                continue
+            anchor_types = {
+                line.semantic_type
+                for line in members
+                if line.semantic_type in {target_type, "page_number"}
+            }
+            if not anchor_types:
+                continue
+            for line in members:
+                if line.semantic_type is None:
+                    line.semantic_type = target_type
+
+
+def _classify_raw_page_marginals(sources: list[_PageSource]) -> None:
+    """在视觉容器认领前保护强跨页页码、页眉和页脚文本。"""
+
+    if len(sources) < 2:
+        return
+    candidates = [
+        candidate
+        for page_index, source in enumerate(sources)
+        for line in source.lines
+        if (
+            candidate := _build_marginal_candidate(
+                page_index,
+                line,
+                source.page_size,
+            )
+        )
+        is not None
+        and (
+            _bbox_center_y(candidate.local_bbox)
+            / candidate.local_page_size[1]
+            <= 0.08
+            or _bbox_center_y(candidate.local_bbox)
+            / candidate.local_page_size[1]
+            >= 0.92
+        )
+    ]
+    _classify_marginal_candidates(candidates)
 
 
 def _classify_repeated_page_marginals(pages: list[_PreparedPage]) -> None:
@@ -823,6 +1032,14 @@ def _classify_repeated_page_marginals(pages: list[_PreparedPage]) -> None:
         for line in page.remaining_lines
         if (candidate := _build_marginal_candidate(page_index, line, page.page_size)) is not None
     ]
+
+    _classify_marginal_candidates(candidates)
+
+
+def _classify_marginal_candidates(
+    candidates: list[_MarginalCandidate],
+) -> None:
+    """复用跨页递增页码和稳定边缘文本的强证据匹配。"""
 
     for left_index, left in enumerate(candidates):
         left_value = _parse_page_number_value(left.line.text)
@@ -1112,7 +1329,7 @@ def _build_marginal_candidate(
         return None
     if normalized_center_y <= 0.15:
         region: Literal["header", "footer", "side"] = "header"
-    elif normalized_center_y >= 0.85:
+    elif normalized_center_y >= 0.9:
         region = "footer"
     elif (
         normalized_center_y <= 0.18
