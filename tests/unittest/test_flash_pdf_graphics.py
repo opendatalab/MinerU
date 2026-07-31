@@ -37,6 +37,7 @@ def _path_info(
     segment_count: int = 5,
     fill_visible: bool = True,
     stroke_visible: bool = False,
+    form_depth: int = 0,
 ) -> PDFPathInfo:
     """构造强图形核心测试使用的根层 PDF Path。"""
 
@@ -45,7 +46,7 @@ def _path_info(
         segment_count=segment_count,
         fill_visible=fill_visible,
         stroke_visible=stroke_visible,
-        form_depth=0,
+        form_depth=form_depth,
         source_index=source_index,
     )
 
@@ -284,6 +285,77 @@ def test_form_image_claims_internal_text_and_small_table_but_not_caption() -> No
             "content": "inside row one\ninside row two",
         }
     ]
+
+
+def test_form_image_bbox_tightens_to_supported_internal_evidence() -> None:
+    """验证含充分嵌套 Path 的 Form 去除空白边缘，文本轻微越界仍纳入证据并裁到页面。"""
+
+    source = models._PageSource(
+        page_size=(120.0, 120.0),
+        lines=[
+            _text_line("top label", (20.0, 25.0, 70.0, 34.0), 0),
+            _text_line("bottom label", (25.0, 68.0, 80.0, 81.0), 1),
+        ],
+        chars=[],
+        drawing_lines=[
+            _drawing_axis_line("horizontal", (20.0, 25.0, 85.0, 25.5)),
+            _drawing_axis_line("horizontal", (20.0, 75.0, 85.0, 75.5)),
+            _drawing_axis_line("vertical", (20.0, 25.0, 20.5, 75.0)),
+            _drawing_axis_line("vertical", (84.5, 25.0, 85.0, 75.0)),
+        ],
+        form_bboxes=[(10.0, 10.0, 100.0, 80.0)],
+        path_infos=[
+            _path_info((20.0, 25.0, 80.0, 70.0), 0, form_depth=1),
+            _path_info((25.0, 30.0, 85.0, 75.0), 1, form_depth=1),
+        ],
+    )
+
+    assert graphics._select_form_image_bboxes(source) == [
+        (20.0, 25.0, 85.0, 81.0)
+    ]
+
+
+def test_graphic_label_absorbs_short_axis_title_but_rejects_long_caption() -> None:
+    """验证上下坐标轴标题可放宽到八倍行高，长图注仍被图形容器拒绝。"""
+
+    core_bbox = (20.0, 30.0, 140.0, 80.0)
+    top_axis_title = _text_line(
+        "axis title",
+        (20.0, 17.0, 70.0, 25.0),
+        0,
+        effective_height=8.0,
+    )
+    bottom_axis_title = _text_line(
+        "axis title",
+        (80.0, 85.0, 115.0, 91.0),
+        1,
+        effective_height=6.0,
+    )
+    long_caption = _text_line(
+        "a deliberately long figure caption",
+        (20.0, 85.0, 140.0, 93.0),
+        2,
+        effective_height=8.0,
+    )
+
+    assert graphics._is_graphic_label_member(
+        top_axis_title,
+        core_bbox,
+        8.0,
+        margin_scale=1.0,
+    )
+    assert graphics._is_graphic_label_member(
+        bottom_axis_title,
+        core_bbox,
+        8.0,
+        margin_scale=1.0,
+    )
+    assert not graphics._is_graphic_label_member(
+        long_caption,
+        core_bbox,
+        8.0,
+        margin_scale=1.0,
+    )
 
 
 def _inline_raster_sequence_source() -> models._PageSource:

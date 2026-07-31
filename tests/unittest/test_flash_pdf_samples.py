@@ -36,6 +36,16 @@ def _txt_model_list(pdf_name: str) -> list[list[dict[str, Any]]]:
     )
 
 
+def _auto_model_list(pdf_name: str) -> list[list[dict[str, Any]]]:
+    """通过稳定公共入口以 auto 模式解析仓库内最小回归 PDF。"""
+
+    pdf_path = Path(__file__).parents[2] / "demo" / "pdfs" / pdf_name
+    return pdf_extractor.doc_analyze(
+        pdf_path.read_bytes(),
+        parse_mode="auto",
+    )
+
+
 def _native_table_counts(pdf_name: str) -> list[int]:
     """返回仓库内数字 PDF 样例的逐页表格块数量。"""
 
@@ -180,6 +190,7 @@ def test_demo2_page1_forms_sixteen_blocks_and_keeps_figure_caption_separate() ->
     assert "Figure 1:" not in graphic_block["content"]
     assert "Left camera" not in caption_block["content"]
     assert sum(block["content"].count("Left camera") for block in page) == 1
+    assert graphic_block["bbox"] == [0.516, 0.311, 0.913, 0.442]
     copyright_block = next(
         block
         for block in page
@@ -906,6 +917,31 @@ def test_demo5_targeted_table_and_footer_regressions() -> None:
         ]
         assert not residual_text
 
+    repaired_table_bboxes = {
+        23: [0.034, 0.151, 0.968, 0.696],
+        24: [0.034, 0.151, 0.968, 0.696],
+        36: [0.033, 0.151, 0.967, 0.525],
+        71: [0.057, 0.151, 0.943, 0.685],
+        75: [0.057, 0.151, 0.943, 0.684],
+        81: [0.143, 0.086, 0.857, 0.785],
+    }
+    for page_number, expected_bbox in repaired_table_bboxes.items():
+        page = model_list[page_number - 1]
+        table_blocks = [block for block in page if block["type"] == "table"]
+        assert [block["bbox"] for block in table_blocks] == [expected_bbox]
+        assert not [block for block in page if block["type"] == "code"]
+        assert not [
+            block
+            for block in page
+            if block["type"] in {"text", "header"}
+            and expected_bbox[0]
+            <= (block["bbox"][0] + block["bbox"][2]) / 2
+            <= expected_bbox[2]
+            and expected_bbox[1]
+            <= (block["bbox"][1] + block["bbox"][3]) / 2
+            <= expected_bbox[3]
+        ]
+
     page77_note = _blocks_containing(model_list[76], "注：（1）指气量")
     assert len(page77_note) == 1
     assert page77_note[0]["type"] == "text"
@@ -1037,7 +1073,7 @@ def test_mixed_elements_pages_03_06_force_txt_regressions() -> None:
     page5 = model_list[2]
     axis_label = _blocks_containing(page5, "T–1/4, K–1/4")
     assert len(axis_label) == 1
-    assert axis_label[0]["type"] == "text"
+    assert axis_label[0]["type"] == "image"
     assert _blocks_containing(page5, "MIKOLAICHUK et al.")[0]["type"] == "header"
     assert len([block for block in page5 if block["type"] == "footer"]) == 1
     lower_graphs = [
@@ -1046,8 +1082,63 @@ def test_mixed_elements_pages_03_06_force_txt_regressions() -> None:
         if block["type"] == "image" and block["bbox"][1] >= 0.6
     ]
     assert len(lower_graphs) == 1
-    assert lower_graphs[0]["bbox"][2] <= 0.48
+    assert lower_graphs[0]["bbox"] == [0.096, 0.634, 0.46, 0.862]
+    assert "σT1/2, S K1/2/m" in str(lower_graphs[0]["content"])
+    assert "T–1/4, K–1/4" in str(lower_graphs[0]["content"])
     assert "ular films." not in str(lower_graphs[0]["content"])
+    figure4_caption = _blocks_containing(page5, "Fig. 4. Plots of σT1/2")
+    assert len(figure4_caption) == 1
+    assert figure4_caption[0]["type"] == "text"
+
+
+def test_caibao_table_reclaims_repeated_dates_but_keeps_real_marginals() -> None:
+    """验证财报两页表格回收底部日期行，免责声明与页码仍独立保留。"""
+
+    model_list = _auto_model_list("caibao1_pages_10_11.pdf")
+
+    assert len(model_list) == 2
+    for page in model_list:
+        tables_on_page = [block for block in page if block["type"] == "table"]
+        footers = [block for block in page if block["type"] == "footer"]
+        page_numbers = [block for block in page if block["type"] == "page_number"]
+        assert len(tables_on_page) == len(footers) == len(page_numbers) == 1
+        assert "2024 年 07 月" in str(tables_on_page[0]["content"])
+        assert footers[0]["content"] == "免责声明和披露以及分析师声明是报告的一部分，请务必一起阅读。"
+        assert "2024 年" not in str(footers[0]["content"])
+        assert tables_on_page[0]["bbox"][3] < footers[0]["bbox"][1]
+        assert tables_on_page[0]["bbox"][3] < page_numbers[0]["bbox"][1]
+
+
+def test_iebm_left_indented_compact_formula_is_equation() -> None:
+    """验证右栏左缩进紧凑公式通过公共 auto 入口输出为 equation。"""
+
+    page = _auto_model_list("IEBM_A_2667169_O-5_page_1.pdf")[0]
+    target = [
+        block
+        for block in page
+        if block["bbox"] == [0.532, 0.292, 0.658, 0.312]
+    ]
+
+    assert len(target) == 1
+    assert target[0]["type"] == "equation"
+    assert target[0]["content"] == "F ¼ @ψ @Y, G ¼ @ψ @X."
+
+
+def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
+    """验证三条悬挂缩进参考文献尾行不再误报 equation，且各自仅出现一次。"""
+
+    page = _auto_model_list("frozen_soil_ensemble_page_9.pdf")[0]
+
+    assert not [block for block in page if block["type"] == "equation"]
+    for probe in (
+        "分析［J］. 深空探测学报，2023",
+        "形变监测［J］. 测绘通报，2025",
+        "岩爆预测［J］. 高压物理学报，2025",
+    ):
+        matches = _blocks_containing(page, probe)
+        assert len(matches) == 1
+        assert matches[0]["type"] == "text"
+        assert str(matches[0]["content"]).count(probe) == 1
 
 
 def test_mixed_elements_pages_07_10_force_txt_regressions() -> None:

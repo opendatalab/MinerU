@@ -725,6 +725,121 @@ def test_compact_multiline_cluster_becomes_one_isolated_equation() -> None:
     assert compact_cluster not in remaining
 
 
+@pytest.mark.parametrize(
+    ("candidate_bbox", "expected_equation_count"),
+    [
+        ((5.0, 36.0, 38.0, 46.0), 1),
+        ((0.0, 36.0, 33.0, 46.0), 0),
+    ],
+    ids=["deliberate-indent", "flush-left"],
+)
+def test_compact_formula_accepts_deliberate_indent_but_rejects_flush_left(
+    candidate_bbox: tuple[float, float, float, float],
+    expected_equation_count: int,
+) -> None:
+    """验证正文间紧凑公式可按明确左缩进升级，贴栏短文本仍保留为正文。"""
+
+    body_font = ("Body", 0)
+    candidate = replace(
+        _text_line(
+            "F = dY, G = dX",
+            candidate_bbox,
+            2,
+            effective_height=10.0,
+            font_signature=("Math", 1),
+            font_coverage=0.5,
+        ),
+        compact_formula_cluster=True,
+    )
+    lines = [
+        _text_line(
+            "body above",
+            (0.0, 20.0, 100.0, 30.0),
+            0,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        candidate,
+        _text_line(
+            "body below",
+            (0.0, 52.0, 100.0, 62.0),
+            1,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+    ]
+
+    blocks, remaining = formulas._build_formula_like_blocks(
+        lines,
+        [],
+        (100.0, 100.0),
+    )
+
+    assert len(blocks) == expected_equation_count
+    assert (candidate in remaining) is (expected_equation_count == 0)
+
+
+def test_hanging_indent_reference_tail_is_not_unnumbered_equation() -> None:
+    """验证同字体续行后接左突新条目的短尾行不会因偶然居中升级为公式。"""
+
+    body_font = ("Body", 0)
+    reference_font = ("Reference", 0)
+    candidate = _text_line(
+        "short reference tail",
+        (15.0, 36.0, 85.0, 46.0),
+        2,
+        effective_height=10.0,
+        font_signature=reference_font,
+        font_coverage=0.5,
+    )
+    lines = [
+        _text_line(
+            "body above",
+            (0.0, 0.0, 100.0, 10.0),
+            0,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "long reference continuation",
+            (15.0, 24.0, 95.0, 34.0),
+            1,
+            effective_height=10.0,
+            font_signature=reference_font,
+            font_coverage=1.0,
+        ),
+        candidate,
+        _text_line(
+            "next reference entry",
+            (0.0, 48.0, 100.0, 58.0),
+            3,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "body below",
+            (0.0, 60.0, 100.0, 70.0),
+            4,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+    ]
+
+    blocks, remaining = formulas._build_formula_like_blocks(
+        lines,
+        [],
+        (100.0, 100.0),
+    )
+
+    assert blocks == []
+    assert candidate in remaining
+
+
 def _build_compact_margin_case(
     candidate_bbox: tuple[float, float, float, float],
     above_bbox: tuple[float, float, float, float],

@@ -270,6 +270,71 @@ def test_filled_grid_materialization_uses_existing_spatial_projection(
     ]
 
 
+def test_table_core_reclaims_semantic_line_without_touching_outer_marginals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 core 内预标页脚可被表格认领，表框外页脚与页码保持未认领。"""
+
+    lines = [
+        models._LineItem(
+            text="cell",
+            bbox=(10.0, 10.0, 40.0, 20.0),
+            angle=0,
+            source_index=0,
+            effective_height=10.0,
+        ),
+        models._LineItem(
+            text="table tail",
+            bbox=(10.0, 40.0, 40.0, 50.0),
+            angle=0,
+            source_index=1,
+            effective_height=10.0,
+            semantic_type="footer",
+        ),
+        models._LineItem(
+            text="disclaimer",
+            bbox=(10.0, 70.0, 60.0, 80.0),
+            angle=0,
+            source_index=2,
+            effective_height=10.0,
+            semantic_type="footer",
+        ),
+        models._LineItem(
+            text="1",
+            bbox=(90.0, 70.0, 95.0, 80.0),
+            angle=0,
+            source_index=3,
+            effective_height=10.0,
+            semantic_type="page_number",
+        ),
+    ]
+    source = models._PageSource(
+        page_size=(100.0, 100.0),
+        lines=lines,
+        chars=[],
+        drawing_lines=[],
+    )
+    candidate = models._TableCandidate(
+        bbox=(0.0, 0.0, 80.0, 60.0),
+        local_bbox=(0.0, 0.0, 80.0, 60.0),
+        angle=0,
+        score=1.0,
+        core_bbox=(0.0, 0.0, 80.0, 60.0),
+        line_indices={0},
+    )
+    projection = MagicMock(return_value="cell\ntable tail")
+    monkeypatch.setattr(tables, "project_pdf_table_text", projection)
+
+    blocks, claimed = tables._materialize_table_blocks(source, [candidate])
+
+    assert len(blocks) == 1
+    assert claimed == {0, 1}
+    assert {line.source_index for line in lines if line.source_index not in claimed} == {
+        2,
+        3,
+    }
+
+
 @pytest.mark.parametrize(
     ("median_height", "rejected_length", "accepted_length"),
     [

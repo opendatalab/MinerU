@@ -38,6 +38,55 @@ def _image_info(
     return PDFImageInfo(bbox=bbox, fingerprint=fingerprint)
 
 
+def test_prepare_page_materializes_table_against_original_semantic_lines(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证表格检测避开预分类行，但物化阶段可看到 core 内误标页脚。"""
+
+    body = _text_line("body", (10.0, 10.0, 90.0, 20.0), 0)
+    footer = _text_line(
+        "table tail",
+        (10.0, 80.0, 40.0, 90.0),
+        1,
+        semantic_type="footer",
+    )
+    source = models._PageSource(
+        page_size=(100.0, 100.0),
+        lines=[body, footer],
+        chars=[],
+        drawing_lines=[],
+    )
+    observed: dict[str, list[int]] = {}
+
+    def fake_detect(
+        analysis_source: models._PageSource,
+        *,
+        excluded_bboxes: list[tuple[float, float, float, float]],
+    ) -> list[models._TableCandidate]:
+        """记录候选检测阶段可见的来源行。"""
+
+        assert excluded_bboxes == []
+        observed["detect"] = [line.source_index for line in analysis_source.lines]
+        return []
+
+    def fake_materialize(
+        materialization_source: models._PageSource,
+        candidates: list[models._TableCandidate],
+    ) -> tuple[list[dict[str, object]], set[int]]:
+        """记录表格物化阶段可见的来源行。"""
+
+        assert candidates == []
+        observed["materialize"] = [
+            line.source_index for line in materialization_source.lines
+        ]
+        return [], set()
+
+    monkeypatch.setattr(pipeline, "_detect_table_candidates", fake_detect)
+    monkeypatch.setattr(pipeline, "_materialize_table_blocks", fake_materialize)
+
+    pipeline._prepare_page_source(source)
+
+    assert observed == {"detect": [0], "materialize": [0, 1]}
 def test_repeated_large_image_requires_three_distinct_pages() -> None:
     """验证同页重复只计一次，面积恰好 8% 且跨三页时才命中水印。"""
 

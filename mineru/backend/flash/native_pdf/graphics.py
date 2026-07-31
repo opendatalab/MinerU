@@ -76,6 +76,52 @@ def _form_supersedes_nested_bbox(form_bbox: BBox, nested_bbox: BBox) -> bool:
     )
 
 
+def _tighten_form_image_bbox(
+    source: _PageSource,
+    form_bbox: BBox,
+) -> BBox:
+    """用充分的 Form 内部矢量与文本证据收紧空白容器，证据不足时保留原框。"""
+
+    internal_paths = [
+        path_info.bbox
+        for path_info in source.path_infos
+        if path_info.form_depth > 0
+        and _bbox_overlap_in_first(path_info.bbox, form_bbox) >= 0.9
+    ]
+    internal_drawing_lines = [
+        drawing_line.bbox
+        for drawing_line in source.drawing_lines
+        if _bbox_overlap_in_first(drawing_line.bbox, form_bbox) >= 0.9
+    ]
+    # 至少两个嵌套 Path 和四个矢量元素，避免只凭普通边框或少量文本裁剪 Form。
+    if len(internal_paths) < 2 or len(internal_paths) + len(internal_drawing_lines) < 4:
+        return form_bbox
+    internal_text = [
+        line.bbox
+        for line in source.lines
+        if _bbox_overlap_in_first(line.bbox, form_bbox) >= 0.9
+    ]
+    evidence_bbox = _clip_bbox(
+        _bbox_union_many(
+            internal_paths + internal_drawing_lines + internal_text
+        ),
+        source.page_size,
+    )
+    if evidence_bbox is None:
+        return form_bbox
+    form_width = max(0.1, form_bbox[2] - form_bbox[0])
+    form_height = max(0.1, form_bbox[3] - form_bbox[1])
+    evidence_width = evidence_bbox[2] - evidence_bbox[0]
+    evidence_height = evidence_bbox[3] - evidence_bbox[1]
+    if (
+        evidence_width < 0.5 * form_width
+        or evidence_height < 0.5 * form_height
+        or _bbox_area(evidence_bbox) < 0.25 * _bbox_area(form_bbox)
+    ):
+        return form_bbox
+    return evidence_bbox
+
+
 def _select_form_image_bboxes(source: _PageSource) -> list[BBox]:
     """按页面占比、行高和内部视觉证据筛选矢量 Form 图片候选。"""
 
@@ -114,7 +160,7 @@ def _select_form_image_bboxes(source: _PageSource) -> list[BBox]:
         )
         if len(member_rows) < 2 and internal_drawing_count < 4:
             continue
-        output.append(bbox)
+        output.append(_tighten_form_image_bbox(source, bbox))
     return sorted(output, key=lambda bbox: (bbox[1], bbox[0], bbox[3], bbox[2]))
 
 
@@ -726,11 +772,22 @@ def _is_graphic_label_member(
     else:
         primary_length = line.bbox[2] - line.bbox[0]
         core_primary_length = core_bbox[2] - core_bbox[0]
-    if primary_length > min(5.0 * line_height, 0.5 * core_primary_length):
-        return False
 
     horizontal_gap = max(core_bbox[0] - line.bbox[2], line.bbox[0] - core_bbox[2], 0.0)
     vertical_gap = max(core_bbox[1] - line.bbox[3], line.bbox[1] - core_bbox[3], 0.0)
+    # 横排坐标轴标题允许比刻度标签略长，但必须与图宽、行高和上下间距同时相容。
+    is_horizontal_axis_title = (
+        line.angle in {0, 180}
+        and primary_length <= 8.0 * line_height
+        and primary_length <= 0.45 * core_primary_length
+        and _bbox_axis_overlap_ratio(line.bbox, core_bbox, axis="x") >= 0.15
+        and vertical_gap <= 2.5 * median_height
+    )
+    if is_horizontal_axis_title:
+        return True
+    if primary_length > min(5.0 * line_height, 0.5 * core_primary_length):
+        return False
+
     if _bbox_axis_overlap_ratio(line.bbox, core_bbox, axis="x") >= 0.15:
         return vertical_gap <= margin_scale * median_height
     if _bbox_axis_overlap_ratio(line.bbox, core_bbox, axis="y") >= 0.15:

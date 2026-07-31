@@ -858,10 +858,17 @@ def _is_isolated_compact_formula_cluster(
         return False
     if bbox[3] - bbox[1] > 3.0 * median_height:
         return False
-    if (
-        abs(_bbox_center_x(bbox) - 0.5 * (lane.left + lane.right))
-        > 0.2 * lane_width
-    ):
+    center_delta_ratio = abs(
+        _bbox_center_x(bbox) - 0.5 * (lane.left + lane.right)
+    ) / lane_width
+    left_indent_ratio = (bbox[0] - lane.left) / lane_width
+    right_blank_ratio = (lane.right - bbox[2]) / lane_width
+    # 部分期刊把独立公式按固定左缩进排版；同时要求右侧大留白，排除贴栏正文。
+    deliberately_left_indented = (
+        0.03 <= left_indent_ratio <= 0.25
+        and right_blank_ratio >= 0.35
+    )
+    if center_delta_ratio > 0.2 and not deliberately_left_indented:
         return False
 
     candidate_center = _bbox_center_y(bbox)
@@ -941,6 +948,8 @@ def _is_isolated_unnumbered_formula_line(
         return False
     if bbox[3] - bbox[1] > 1.8 * median_height:
         return False
+    if _is_hanging_indent_tail_line(candidate, lane, median_height):
+        return False
     candidate_center = _bbox_center_y(bbox)
     if any(
         other_line.source_index != line.source_index
@@ -983,6 +992,51 @@ def _is_isolated_unnumbered_formula_line(
         candidate_center - _bbox_center_y(previous[1]) <= 4.0 * median_height
         and _bbox_center_y(following[1]) - candidate_center
         <= 4.0 * median_height
+    )
+
+
+def _is_hanging_indent_tail_line(
+    candidate: tuple[_LineItem, BBox],
+    lane: _TextLane,
+    median_height: float,
+) -> bool:
+    """用相邻行缩进、字体和节奏识别参考条目的悬挂缩进尾行。"""
+
+    line, bbox = candidate
+    if line.font_signature is None:
+        return False
+    candidate_center = _bbox_center_y(bbox)
+    rows_above = [
+        item
+        for item in lane.lines
+        if item[0].source_index != line.source_index
+        and _bbox_center_y(item[1]) < candidate_center
+    ]
+    rows_below = [
+        item
+        for item in lane.lines
+        if item[0].source_index != line.source_index
+        and _bbox_center_y(item[1]) > candidate_center
+    ]
+    if not rows_above or not rows_below:
+        return False
+    previous = max(rows_above, key=lambda item: _bbox_center_y(item[1]))
+    following = min(rows_below, key=lambda item: _bbox_center_y(item[1]))
+    previous_line, previous_bbox = previous
+    _following_line, following_bbox = following
+    previous_pitch = candidate_center - _bbox_center_y(previous_bbox)
+    following_pitch = _bbox_center_y(following_bbox) - candidate_center
+    lane_width = max(0.1, lane.right - lane.left)
+    candidate_width = bbox[2] - bbox[0]
+    previous_width = previous_bbox[2] - previous_bbox[0]
+    return (
+        previous_line.font_signature == line.font_signature
+        and abs(previous_bbox[0] - bbox[0]) <= 0.5 * median_height
+        and candidate_width <= 0.9 * previous_width
+        and 0.65 * median_height <= previous_pitch <= 1.6 * median_height
+        and 0.65 * median_height <= following_pitch <= 1.6 * median_height
+        and following_bbox[0] <= bbox[0] - 1.5 * median_height
+        and following_bbox[2] - following_bbox[0] >= 0.75 * lane_width
     )
 
 

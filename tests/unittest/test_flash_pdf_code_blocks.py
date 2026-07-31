@@ -210,3 +210,28 @@ def test_rule_delimited_listing_rejects_real_table_internal_grid() -> None:
 
     assert blocks == []
     assert claimed == set()
+
+
+def test_rule_delimited_listing_rejects_vertical_track_spanning_candidate() -> None:
+    """验证跨越上下边界的长竖轨按候选高度计量并否决伪代码区域。"""
+
+    source = _rule_delimited_code_source()
+    source.drawing_lines.append(
+        models._AxisLine(
+            (70.0, 0.0, 71.0, 250.0),
+            1.0,
+            "vertical",
+        )
+    )
+
+    blocks, claimed = code_blocks._build_rule_delimited_code_blocks(
+        source,
+        [],
+    )
+
+    assert code_blocks._vertical_rule_candidate_height_coverage(
+        source.drawing_lines[-1].bbox,
+        (20.0, 20.0, 180.0, 105.0),
+    ) == 1.0
+    assert blocks == []
+    assert claimed == set()

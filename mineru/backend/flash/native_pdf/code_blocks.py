@@ -108,6 +108,23 @@ def _materialize_code_candidates(
     return blocks, claimed
 
 
+def _vertical_rule_candidate_height_coverage(
+    rule_bbox: BBox,
+    candidate_bbox: BBox,
+) -> float:
+    """计算竖轨在候选高度方向上的实际覆盖比例，长轨超出候选时仍按交集计量。"""
+
+    candidate_height = max(0.0, candidate_bbox[3] - candidate_bbox[1])
+    if candidate_height <= 0:
+        return 0.0
+    overlap = max(
+        0.0,
+        min(rule_bbox[3], candidate_bbox[3])
+        - max(rule_bbox[1], candidate_bbox[1]),
+    )
+    return overlap / candidate_height
+
+
 def _detect_rule_delimited_code_candidates(
     source: _PageSource,
     excluded_bboxes: list[BBox],
@@ -181,8 +198,12 @@ def _detect_rule_delimited_code_candidates(
                 if candidate_bbox[0] + median_height
                 < _bbox_center_x(rule.bbox)
                 < candidate_bbox[2] - median_height
-                and rule.bbox[3] - rule.bbox[1] >= 0.6 * candidate_height
-                and _bbox_overlap_in_first(rule.bbox, candidate_bbox) >= 0.8
+                # 表格竖轨可能贯穿候选上下边界，必须相对候选高度计算覆盖率。
+                and _vertical_rule_candidate_height_coverage(
+                    rule.bbox,
+                    candidate_bbox,
+                )
+                >= 0.6
             ]
             if internal_vertical_rules:
                 continue
