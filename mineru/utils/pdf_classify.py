@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from ctypes import byref, c_int, create_string_buffer
 from io import BytesIO
 from typing import Any
@@ -10,6 +11,7 @@ import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
 from loguru import logger
 from pypdf import PdfReader
+from pypdf.generic import ContentStream
 
 from .pdfium_guard import close_pdfium_child, pdfium_guard
 
@@ -136,7 +138,7 @@ def classify(pdf_doc: pdfium.PdfDocument, pdf_bytes: bytes) -> str:
             )
             cid_font_usage_signal = _get_cid_font_usage_signal_from_samples(
                 text_samples,
-                font_resource_signals["cid_without_to_unicode"],
+                font_resource_signals["cid_without_to_unicode_usage"],
             )
             if cid_font_usage_signal["triggered"]:
                 logger.debug(
@@ -549,9 +551,9 @@ def _get_pdfium_char_font_name(text_page: Any, char_index: int) -> str:
 
 
 def _get_cid_font_usage_signal_from_samples(
-    text_samples: list[dict[str, Any]], cid_font_signal: dict[str, Any]
+    text_samples: list[dict[str, Any]], cid_font_usage: dict[int, dict[str, Any]]
 ) -> dict[str, Any]:
-    """基于 PDFium 字符级字体名统计可疑 CID 字体在抽样页中的真实使用比例。"""
+    """结合内容流精确计数与 PDFium 总字符数计算可疑 CID 字体使用比例。"""
     best_signal = {
         "triggered": False,
         "page_index": None,
@@ -560,30 +562,22 @@ def _get_cid_font_usage_signal_from_samples(
         "total_chars": 0,
         "cid_font_usage_ratio": 0.0,
     }
-    if not cid_font_signal or not cid_font_signal.get("triggered"):
-        return best_signal
 
-    page_fonts = cid_font_signal.get("page_fonts") or {}
     for text_sample in text_samples:
         page_index = text_sample.get("page_index")
-        cid_font_names = {_normalize_pdf_font_name(font_name) for font_name in page_fonts.get(page_index, set())}
-        cid_font_names.discard("")
-        if not cid_font_names:
-            continue
-
         total_chars = text_sample["char_count"]
         if total_chars <= 0:
             continue
 
-        font_name_counts = text_sample.get("font_name_counts") or {}
-        matched_font_names = cid_font_names.intersection(font_name_counts)
-        cid_font_char_count = sum(font_name_counts[font_name] for font_name in matched_font_names)
+        page_usage = cid_font_usage.get(page_index) or {}
+        cid_font_char_count = int(page_usage.get("cid_font_char_count", 0))
+        matched_font_names = sorted(page_usage.get("font_names") or [])
 
         cid_font_usage_ratio = cid_font_char_count / total_chars
         signal = {
             "triggered": False,
             "page_index": page_index,
-            "font_names": sorted(matched_font_names),
+            "font_names": matched_font_names,
             "cid_font_char_count": cid_font_char_count,
             "total_chars": total_chars,
             "cid_font_usage_ratio": cid_font_usage_ratio,
@@ -861,13 +855,196 @@ def _get_sampled_ascii_punct_signal_from_samples(text_samples: list[dict[str, An
     return best_signal
 
 
-def _get_font_resource_cache_key(font_ref: Any, font: Any) -> tuple[Any, ...]:
-    """为 pypdf 字体资源生成页间可复用的分析缓存键。"""
-    idnum = getattr(font_ref, "idnum", None)
-    generation = getattr(font_ref, "generation", None)
+def _get_pdf_object_cache_key(obj_ref: Any, obj: Any) -> tuple[Any, ...]:
+    """为 pypdf 间接或直接对象生成可复用的身份键。"""
+    idnum = getattr(obj_ref, "idnum", None)
+    generation = getattr(obj_ref, "generation", None)
     if idnum is not None:
         return "indirect", idnum, generation
-    return "direct", id(font)
+    return "direct", id(obj)
+
+
+def _get_font_resource_analysis(
+    font_ref: Any,
+    font_analysis_cache: dict[tuple[Any, ...], dict[str, bool]],
+) -> tuple[Any, dict[str, bool]]:
+    """按字体资源对象身份缓存 CID 与 Type1 字体语义分析结果。"""
+    font = _resolve_pdf_object(font_ref)
+    if not font:
+        raise ValueError("Unable to resolve PDF font resource")
+
+    cache_key = _get_pdf_object_cache_key(font_ref, font)
+    analysis = font_analysis_cache.get(cache_key)
+    if analysis is None:
+        subtype = str(font.get("/Subtype"))
+        encoding = str(font.get("/Encoding"))
+        cid_without_to_unicode = (
+            subtype == "/Type0"
+            and encoding in ("/Identity-H", "/Identity-V")
+            and "/DescendantFonts" in font
+            and "/ToUnicode" not in font
+        )
+        latin_charset_signal = _get_latin_charset_with_to_unicode_signal(font)
+        analysis = {
+            "cid_without_to_unicode": cid_without_to_unicode,
+            "latin_charset_with_to_unicode": latin_charset_signal["triggered"],
+        }
+        font_analysis_cache[cache_key] = analysis
+    return font, analysis
+
+
+def _get_pdf_string_raw_bytes(value: Any) -> bytes:
+    """读取 pypdf 字符串对象的原始字节，禁止用已解码文本替代。"""
+    raw_bytes = getattr(value, "original_bytes", None)
+    if isinstance(raw_bytes, bytes):
+        return raw_bytes
+    if isinstance(value, bytes):
+        return value
+    raise ValueError("PDF text string does not expose original bytes")
+
+
+def _count_identity_cid_string(value: Any) -> int:
+    """按 Identity-H/V 的双字节编码统计文本字符串中的 CID 数量。"""
+    raw_bytes = _get_pdf_string_raw_bytes(value)
+    if len(raw_bytes) % 2:
+        raise ValueError("Identity CID text string has an odd byte length")
+    return len(raw_bytes) // 2
+
+
+def _resource_graph_has_cid_without_to_unicode(
+    resources: Any,
+    font_analysis_cache: dict[tuple[Any, ...], dict[str, bool]],
+    active_form_keys: frozenset[tuple[Any, ...]] = frozenset(),
+) -> bool:
+    """递归检查页面及 Form 资源图中是否存在缺少 ToUnicode 的 Identity CID 字体。"""
+    resources = _resolve_pdf_object(resources)
+    if not resources:
+        return False
+
+    fonts = _resolve_pdf_object(resources.get("/Font")) or {}
+    for font_ref in fonts.values():
+        _font, analysis = _get_font_resource_analysis(
+            font_ref,
+            font_analysis_cache,
+        )
+        if analysis["cid_without_to_unicode"]:
+            return True
+
+    xobjects = _resolve_pdf_object(resources.get("/XObject")) or {}
+    for xobject_ref in xobjects.values():
+        xobject = _resolve_pdf_object(xobject_ref)
+        if not xobject or str(xobject.get("/Subtype")) != "/Form":
+            continue
+
+        form_key = _get_pdf_object_cache_key(xobject_ref, xobject)
+        if form_key in active_form_keys:
+            continue
+        form_resources = xobject.get("/Resources")
+        if form_resources is None:
+            continue
+        if _resource_graph_has_cid_without_to_unicode(
+            form_resources,
+            font_analysis_cache,
+            active_form_keys | {form_key},
+        ):
+            return True
+    return False
+
+
+def _count_cid_font_usage_in_content(
+    reader: PdfReader,
+    content: Any,
+    resources: Any,
+    font_analysis_cache: dict[tuple[Any, ...], dict[str, bool]],
+    *,
+    inherited_font: tuple[str, bool] | None = None,
+    active_form_keys: frozenset[tuple[Any, ...]] = frozenset(),
+) -> Counter[str]:
+    """按实际 Tf 资源递归统计内容流中缺少 ToUnicode 的 Identity CID 字形。"""
+    counts: Counter[str] = Counter()
+    if content is None:
+        return counts
+
+    resources = _resolve_pdf_object(resources)
+    if resources is None:
+        raise ValueError("PDF content stream has no resolvable resources")
+
+    fonts = _resolve_pdf_object(resources.get("/Font")) or {}
+    xobjects = _resolve_pdf_object(resources.get("/XObject")) or {}
+    current_font = inherited_font
+    font_stack: list[tuple[str, bool] | None] = []
+
+    for operands, operator in ContentStream(content, reader).operations:
+        if operator == b"q":
+            font_stack.append(current_font)
+            continue
+        if operator == b"Q":
+            current_font = font_stack.pop() if font_stack else inherited_font
+            continue
+        if operator == b"Tf":
+            if not operands:
+                raise ValueError("PDF Tf operator has no font resource name")
+            font_key = operands[0]
+            font_ref = fonts.get(font_key)
+            if font_ref is None:
+                raise ValueError(f"Unable to resolve PDF font resource {font_key}")
+            font, analysis = _get_font_resource_analysis(
+                font_ref,
+                font_analysis_cache,
+            )
+            font_name = _normalize_pdf_font_name(font.get("/BaseFont") or font_key)
+            current_font = (
+                font_name,
+                analysis["cid_without_to_unicode"],
+            )
+            continue
+
+        if operator in (b"Tj", b"'", b'"'):
+            if current_font is None:
+                raise ValueError("PDF text is shown before selecting a font")
+            if current_font[1]:
+                counts[current_font[0]] += _count_identity_cid_string(operands[-1])
+            continue
+        if operator == b"TJ":
+            if current_font is None:
+                raise ValueError("PDF text is shown before selecting a font")
+            if current_font[1]:
+                for value in operands[0]:
+                    if isinstance(value, (int, float)):
+                        continue
+                    counts[current_font[0]] += _count_identity_cid_string(value)
+            continue
+        if operator != b"Do":
+            continue
+
+        if not operands:
+            raise ValueError("PDF Do operator has no XObject resource name")
+        xobject_key = operands[0]
+        xobject_ref = xobjects.get(xobject_key)
+        if xobject_ref is None:
+            raise ValueError(f"Unable to resolve PDF XObject resource {xobject_key}")
+        xobject = _resolve_pdf_object(xobject_ref)
+        if not xobject:
+            raise ValueError(f"Unable to resolve PDF XObject {xobject_key}")
+        if str(xobject.get("/Subtype")) != "/Form":
+            continue
+
+        form_key = _get_pdf_object_cache_key(xobject_ref, xobject)
+        if form_key in active_form_keys:
+            raise ValueError(f"Cyclic PDF Form XObject reference {xobject_key}")
+        form_resources = xobject.get("/Resources")
+        child_resources = resources if form_resources is None else form_resources
+        counts.update(
+            _count_cid_font_usage_in_content(
+                reader,
+                xobject,
+                child_resources,
+                font_analysis_cache,
+                inherited_font=current_font,
+                active_form_keys=active_form_keys | {form_key},
+            )
+        )
+    return counts
 
 
 def _get_font_resource_signals_pypdf(
@@ -877,6 +1054,7 @@ def _get_font_resource_signals_pypdf(
     """一次扫描抽样页字体资源，收集 CID 缺映射和 Type1 Latin 候选字体。"""
     reader = PdfReader(BytesIO(pdf_bytes))
     cid_page_fonts: dict[int, set[str]] = {}
+    cid_page_usage: dict[int, dict[str, Any]] = {}
     latin_charset_page_fonts: dict[int, set[str]] = {}
     font_analysis_cache: dict[tuple[Any, ...], dict[str, bool]] = {}
 
@@ -886,38 +1064,20 @@ def _get_font_resource_signals_pypdf(
         if not resources:
             continue
 
-        fonts = _resolve_pdf_object(resources.get("/Font"))
-        if not fonts:
-            continue
+        fonts = _resolve_pdf_object(resources.get("/Font")) or {}
 
-        # PDFium 只返回规范化字体名；同名不同资源无法可靠归因到具体字体对象。
+        # Type1 Latin 信号仍按字体名使用 PDFium 统计；CID 用量在后续按资源对象精确计算。
         page_latin_font_resources: dict[str, dict[tuple[Any, ...], bool]] = {}
         for font_key, font_ref in fonts.items():
-            font = _resolve_pdf_object(font_ref)
-            if not font:
-                continue
-
+            font, analysis = _get_font_resource_analysis(
+                font_ref,
+                font_analysis_cache,
+            )
             font_name = _normalize_pdf_font_name(font.get("/BaseFont") or font_key)
             if not font_name:
                 continue
 
-            cache_key = _get_font_resource_cache_key(font_ref, font)
-            analysis = font_analysis_cache.get(cache_key)
-            if analysis is None:
-                subtype = str(font.get("/Subtype"))
-                encoding = str(font.get("/Encoding"))
-                cid_without_to_unicode = (
-                    subtype == "/Type0"
-                    and encoding in ("/Identity-H", "/Identity-V")
-                    and "/DescendantFonts" in font
-                    and "/ToUnicode" not in font
-                )
-                latin_charset_signal = _get_latin_charset_with_to_unicode_signal(font)
-                analysis = {
-                    "cid_without_to_unicode": cid_without_to_unicode,
-                    "latin_charset_with_to_unicode": latin_charset_signal["triggered"],
-                }
-                font_analysis_cache[cache_key] = analysis
+            cache_key = _get_pdf_object_cache_key(font_ref, font)
 
             if analysis["cid_without_to_unicode"]:
                 cid_page_fonts.setdefault(page_index, set()).add(font_name)
@@ -930,11 +1090,31 @@ def _get_font_resource_signals_pypdf(
             if len(resource_states) == 1 and set(resource_states.values()) == {True}:
                 latin_charset_page_fonts.setdefault(page_index, set()).add(font_name)
 
+        if _resource_graph_has_cid_without_to_unicode(
+            resources,
+            font_analysis_cache,
+        ):
+            usage_counts = _count_cid_font_usage_in_content(
+                reader,
+                page.get_contents(),
+                resources,
+                font_analysis_cache,
+            )
+            cid_page_usage[page_index] = {
+                "font_names": sorted(
+                    font_name
+                    for font_name, char_count in usage_counts.items()
+                    if char_count > 0
+                ),
+                "cid_font_char_count": sum(usage_counts.values()),
+            }
+
     return {
         "cid_without_to_unicode": {
             "triggered": bool(cid_page_fonts),
             "page_fonts": cid_page_fonts,
         },
+        "cid_without_to_unicode_usage": cid_page_usage,
         "latin_charset_with_to_unicode": {
             "triggered": bool(latin_charset_page_fonts),
             "page_fonts": latin_charset_page_fonts,
