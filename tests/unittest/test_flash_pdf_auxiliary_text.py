@@ -1155,6 +1155,136 @@ def test_two_bottom_rules_classify_centered_url_as_footer() -> None:
     assert url.semantic_type == "footer"
 
 
+def test_single_bottom_rule_classifies_small_right_lane_rows_as_footer() -> None:
+    """验证底部单横线下方的右栏连续小字被标为页脚。"""
+
+    body = [
+        _text_line(
+            f"body {column}-{row}",
+            (
+                80.0 + 500.0 * column,
+                100.0 + 25.0 * row,
+                420.0 + 500.0 * column,
+                110.0 + 25.0 * row,
+            ),
+            10 * column + row,
+            effective_height=10.0,
+        )
+        for column in range(2)
+        for row in range(5)
+    ]
+    footer_rows = [
+        _text_line(
+            f"footer {index}",
+            (600.0, 858.0 + 10.0 * index, 880.0, 866.0 + 10.0 * index),
+            20 + index,
+            effective_height=8.0,
+        )
+        for index in range(3)
+    ]
+    page = _prepared_text_page(
+        *body,
+        *footer_rows,
+        page_size=(1000.0, 1000.0),
+    )
+    page.drawing_lines = [
+        models._AxisLine((580.0, 850.0, 900.0, 851.0), 1.0, "horizontal")
+    ]
+
+    auxiliary_text._classify_rule_delimited_footers([page])
+
+    assert [line.semantic_type for line in footer_rows] == ["footer"] * 3
+    assert all(line.semantic_type is None for line in body)
+
+
+@pytest.mark.parametrize("inside_image", [False, True])
+def test_single_bottom_rule_rejects_body_sized_or_container_rows(
+    inside_image: bool,
+) -> None:
+    """验证正文大小的行和图片内部横线均不能触发单横线页脚。"""
+
+    body = [
+        _text_line(
+            f"body {index}",
+            (100.0, 100.0 + 25.0 * index, 900.0, 110.0 + 25.0 * index),
+            index,
+            effective_height=10.0,
+        )
+        for index in range(6)
+    ]
+    bottom_rows = [
+        _text_line(
+            f"bottom {index}",
+            (150.0, 858.0 + 12.0 * index, 850.0, 868.0 + 12.0 * index),
+            10 + index,
+            effective_height=8.0 if inside_image else 10.0,
+        )
+        for index in range(2)
+    ]
+    page = _prepared_text_page(
+        *body,
+        *bottom_rows,
+        page_size=(1000.0, 1000.0),
+    )
+    page.drawing_lines = [
+        models._AxisLine((100.0, 850.0, 900.0, 851.0), 1.0, "horizontal")
+    ]
+    if inside_image:
+        page.fixed_blocks = [
+            {
+                "type": "image",
+                "bbox": (80.0, 800.0, 920.0, 900.0),
+                "angle": 0,
+                "content": "",
+            }
+        ]
+
+    auxiliary_text._classify_rule_delimited_footers([page])
+
+    assert all(line.semantic_type is None for line in bottom_rows)
+
+
+def test_single_bottom_rule_rejects_formula_fragments_with_unstable_left_edges() -> None:
+    """验证分数线下横向起点离散的公式碎片不能被误判为页脚。"""
+
+    body = [
+        _text_line(
+            f"body {column}-{row}",
+            (
+                80.0 + 500.0 * column,
+                100.0 + 25.0 * row,
+                420.0 + 500.0 * column,
+                110.0 + 25.0 * row,
+            ),
+            10 * column + row,
+            effective_height=10.0,
+        )
+        for column in range(2)
+        for row in range(5)
+    ]
+    formula_fragments = [
+        _text_line(
+            f"fragment {index}",
+            (left, 858.0 + 9.0 * index, left + 80.0, 866.0 + 9.0 * index),
+            20 + index,
+            effective_height=8.0,
+        )
+        for index, left in enumerate((590.0, 710.0, 620.0))
+    ]
+    page = _prepared_text_page(
+        *body,
+        *formula_fragments,
+        page_size=(1000.0, 1000.0),
+    )
+    page.drawing_lines = [
+        models._AxisLine((600.0, 850.0, 850.0, 851.0), 1.0, "horizontal")
+    ]
+
+    auxiliary_text._classify_rule_delimited_footers([page])
+
+    assert all(line.semantic_type is None for line in formula_fragments)
+
+
 def test_split_footer_row_fragments_inherit_stable_anchor_type() -> None:
     """验证同一页脚视觉行的左右碎片从稳定锚点继承 footer 类型。"""
 

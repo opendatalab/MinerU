@@ -2305,6 +2305,7 @@ def test_inline_math_fragments_merge_into_wide_split_text_row() -> None:
         token in merged[0]["content"]
         for token in ("body host", "numerator", "denominator", "power")
     )
+    assert merged[0][text_blocks._INLINE_MATH_RECOVERY_MARKER] is True
 
 
 def test_residual_narrow_math_fragment_merges_into_unique_wide_host() -> None:
@@ -2336,6 +2337,156 @@ def test_residual_narrow_math_fragment_merges_into_unique_wide_host() -> None:
     assert merged[0]["bbox"] == (10.0, 40.0, 90.0, 57.0)
     assert "body host" in merged[0]["content"]
     assert "gamma" in merged[0]["content"]
+    assert merged[0][text_blocks._INLINE_MATH_RECOVERY_MARKER] is True
+
+
+def test_hostless_inline_math_fragments_keep_recovery_marker() -> None:
+    """验证无宽宿主的数学碎片合并后也保留内部恢复标记。"""
+
+    fragments = [
+        {
+            "type": "text",
+            "bbox": bbox,
+            "angle": 0,
+            "content": f"fragment {index}",
+            "_local_line_bboxes": [bbox],
+            "_line_heights": [10.0],
+            "_font_signatures": {("Body" if index < 2 else "Math", 0)},
+        }
+        for index, bbox in enumerate(
+            (
+                (20.0, 40.0, 60.0, 50.0),
+                (62.0, 40.0, 100.0, 50.0),
+                (20.0, 52.0, 55.0, 62.0),
+                (57.0, 52.0, 100.0, 62.0),
+            )
+        )
+    ]
+
+    merged = text_blocks._merge_hostless_inline_math_fragment_blocks(
+        fragments,
+        (200.0, 100.0),
+    )
+
+    assert len(merged) == 1
+    assert merged[0][text_blocks._INLINE_MATH_RECOVERY_MARKER] is True
+
+
+def _inline_math_paragraph_test_blocks(
+    marker_indices: tuple[int, ...] = (0, 2),
+) -> list[dict[str, object]]:
+    """构造同一栏内连续的五个宽正文块，供数学段落闭合测试复用。"""
+
+    bboxes = (
+        (20.0, 40.0, 172.0, 70.0),
+        (20.0, 74.0, 172.0, 94.0),
+        (20.0, 99.0, 172.0, 129.0),
+        (20.0, 122.0, 172.0, 145.0),
+        (20.0, 145.0, 172.0, 175.0),
+    )
+    blocks: list[dict[str, object]] = []
+    for index, bbox in enumerate(bboxes):
+        block: dict[str, object] = {
+            "type": "text",
+            "bbox": bbox,
+            "angle": 0,
+            "content": f"paragraph part {index}",
+            "_local_line_bboxes": [bbox],
+            "_line_heights": [10.0],
+            "_font_signatures": {("Body", 0)},
+            "_lane_interval": (20.0, 180.0),
+            "_lane_is_span": False,
+        }
+        if index in marker_indices:
+            block[text_blocks._INLINE_MATH_RECOVERY_MARKER] = True
+        blocks.append(block)
+    return blocks
+
+
+def test_inline_math_paragraph_continuations_merge_five_wide_blocks() -> None:
+    """验证至少两个数学恢复块可带动同栏五段正文闭合为一个块。"""
+
+    merged = text_blocks._merge_inline_math_paragraph_continuations(
+        _inline_math_paragraph_test_blocks(),
+        (300.0, 300.0),
+    )
+
+    assert len(merged) == 1
+    assert merged[0]["bbox"] == (20.0, 40.0, 172.0, 175.0)
+    assert all(
+        f"paragraph part {index}" in str(merged[0]["content"])
+        for index in range(5)
+    )
+    assert merged[0][text_blocks._INLINE_MATH_RECOVERY_MARKER] is True
+
+
+def test_inline_math_paragraph_does_not_merge_ordinary_paragraphs() -> None:
+    """验证缺少两个数学恢复锚点时不合并普通连续段落。"""
+
+    merged = text_blocks._merge_inline_math_paragraph_continuations(
+        _inline_math_paragraph_test_blocks(marker_indices=(0,)),
+        (300.0, 300.0),
+    )
+
+    assert len(merged) == 5
+
+
+@pytest.mark.parametrize("variant", ["different_lane", "large_gap", "font_conflict"])
+def test_inline_math_paragraph_rejects_geometry_or_font_conflict(
+    variant: str,
+) -> None:
+    """验证跨栏、过大间距或字体冲突会切断数学正文段落链。"""
+
+    blocks = _inline_math_paragraph_test_blocks()
+    if variant == "different_lane":
+        for block in blocks[2:]:
+            left, top, right, bottom = block["bbox"]
+            shifted = (left + 170.0, top, right + 170.0, bottom)
+            block["bbox"] = shifted
+            block["_local_line_bboxes"] = [shifted]
+            block["_lane_interval"] = (190.0, 350.0)
+    elif variant == "large_gap":
+        for block in blocks[2:]:
+            left, top, right, bottom = block["bbox"]
+            shifted = (left, top + 20.0, right, bottom + 20.0)
+            block["bbox"] = shifted
+            block["_local_line_bboxes"] = [shifted]
+    else:
+        for block in blocks[2:]:
+            block["_font_signatures"] = {("Other", 0)}
+
+    merged = text_blocks._merge_inline_math_paragraph_continuations(
+        blocks,
+        (400.0, 300.0),
+    )
+
+    assert len(merged) == 5
+
+
+def test_inline_math_paragraph_does_not_cross_footer_boundary() -> None:
+    """验证位于相邻正文块之间的 footer 会阻断数学段落闭合。"""
+
+    blocks = _inline_math_paragraph_test_blocks()
+    footer_bbox = (20.0, 95.0, 172.0, 98.0)
+    footer = {
+        "type": "footer",
+        "bbox": footer_bbox,
+        "angle": 0,
+        "content": "footer",
+        "_local_line_bboxes": [footer_bbox],
+        "_line_heights": [3.0],
+        "_font_signatures": {("Body", 0)},
+        "_lane_interval": (20.0, 180.0),
+        "_lane_is_span": False,
+    }
+
+    merged = text_blocks._merge_inline_math_paragraph_continuations(
+        [*blocks[:2], footer, *blocks[2:]],
+        (300.0, 300.0),
+    )
+
+    assert len(merged) == 6
+    assert sum(block["type"] == "footer" for block in merged) == 1
 
 
 def test_overlapping_wide_text_rows_merge_without_broad_page_line_merge() -> None:
@@ -2372,6 +2523,89 @@ def test_overlapping_wide_text_rows_merge_without_broad_page_line_merge() -> Non
     assert merged[0]["bbox"] == (20.0, 40.0, 180.0, 65.0)
     assert "first row" in merged[0]["content"]
     assert "second row continuation" in merged[0]["content"]
+
+
+def test_boundary_visual_row_merges_two_and_three_row_text_blocks() -> None:
+    """验证前块末行与后块首行拼接时可合并二行块和三行块。"""
+
+    first = {
+        "type": "text",
+        "bbox": (20.0, 40.0, 280.0, 64.0),
+        "angle": 0,
+        "content": "first block ending",
+        "_local_line_bboxes": [
+            (20.0, 40.0, 280.0, 51.0),
+            (20.0, 52.0, 200.0, 64.0),
+        ],
+        "_line_heights": [11.0, 12.0],
+        "_font_signatures": {("Body", 0)},
+    }
+    second = {
+        "type": "text",
+        "bbox": (20.0, 54.0, 280.0, 90.0),
+        "angle": 0,
+        "content": "continued on the same visual row",
+        "_local_line_bboxes": [
+            (204.0, 54.0, 280.0, 64.0),
+            (20.0, 66.0, 280.0, 77.0),
+            (20.0, 79.0, 280.0, 90.0),
+        ],
+        "_line_heights": [10.0, 11.0, 11.0],
+        "_font_signatures": {("Body", 0)},
+    }
+
+    merged = text_blocks._merge_overlapping_same_line_text_blocks(
+        [first, second],
+        (300.0, 200.0),
+    )
+
+    assert len(merged) == 1
+    assert "first block ending" in merged[0]["content"]
+    assert "continued on the same visual row" in merged[0]["content"]
+
+
+@pytest.mark.parametrize(
+    ("boundary_left", "second_font"),
+    [(220.0, ("Body", 0)), (204.0, ("Other", 0))],
+)
+def test_boundary_visual_row_rejects_large_gap_or_font_conflict(
+    boundary_left: float,
+    second_font: tuple[str, int],
+) -> None:
+    """验证边界行横向间隔过大或字体集合冲突时不合并正文块。"""
+
+    first = {
+        "type": "text",
+        "bbox": (20.0, 40.0, 280.0, 64.0),
+        "angle": 0,
+        "content": "first",
+        "_local_line_bboxes": [
+            (20.0, 40.0, 280.0, 51.0),
+            (20.0, 52.0, 200.0, 64.0),
+        ],
+        "_line_heights": [11.0, 12.0],
+        "_font_signatures": {("Body", 0)},
+    }
+    second = {
+        "type": "text",
+        "bbox": (20.0, 54.0, 280.0, 90.0),
+        "angle": 0,
+        "content": "second",
+        "_local_line_bboxes": [
+            (boundary_left, 54.0, 280.0, 64.0),
+            (20.0, 66.0, 280.0, 77.0),
+            (20.0, 79.0, 280.0, 90.0),
+        ],
+        "_line_heights": [10.0, 11.0, 11.0],
+        "_font_signatures": {second_font},
+    }
+
+    merged = text_blocks._merge_overlapping_same_line_text_blocks(
+        [first, second],
+        (300.0, 200.0),
+    )
+
+    assert len(merged) == 2
 
 
 def test_front_matter_grid_merges_each_author_column_independently() -> None:

@@ -994,6 +994,45 @@ def test_mixed_elements_pages_03_06_force_txt_regressions() -> None:
         and 0.65 <= block["bbox"][1] <= 0.87
         and block["bbox"][2] - block["bbox"][0] < 0.05
     ]
+    math_paragraph = _blocks_containing(
+        page4,
+        "This allowed us to estimate the low-temperature hop distance",
+    )
+    assert len(math_paragraph) == 1
+    assert math_paragraph[0]["bbox"] == [0.081, 0.665, 0.475, 0.911]
+    assert set(math_paragraph[0]) == {"type", "bbox", "angle", "content"}
+    for probe in (
+        "where T0",
+        "Fermi-level density",
+        "ized states N(EF)",
+        "frequency factor",
+        "Boltzmann constant",
+    ):
+        assert _blocks_containing(page4, probe) == math_paragraph
+    assert [
+        block
+        for block in page4
+        if block["type"] == "text"
+        and block != math_paragraph[0]
+        and block["bbox"][0] < 0.49
+        and block["bbox"][1] < 0.92
+        and block["bbox"][3] > 0.66
+    ] == []
+    page4_footer = [block for block in page4 if block["type"] == "footer"]
+    assert len(page4_footer) == 1
+    assert page4_footer[0]["bbox"] == [0.104, 0.93, 0.449, 0.941]
+    assert math_paragraph[0]["bbox"][3] < page4_footer[0]["bbox"][1]
+    assert [
+        block["bbox"]
+        for block in page4
+        if block["type"] in {"text", "image"}
+        and block["bbox"][0] >= 0.49
+        and block["bbox"][1] >= 0.49
+    ] == [
+        [0.498, 0.509, 0.892, 0.634],
+        [0.503, 0.66, 0.886, 0.871],
+        [0.521, 0.889, 0.869, 0.911],
+    ]
 
     page5 = model_list[2]
     axis_label = _blocks_containing(page5, "T–1/4, K–1/4")
@@ -1001,13 +1040,21 @@ def test_mixed_elements_pages_03_06_force_txt_regressions() -> None:
     assert axis_label[0]["type"] == "text"
     assert _blocks_containing(page5, "MIKOLAICHUK et al.")[0]["type"] == "header"
     assert len([block for block in page5 if block["type"] == "footer"]) == 1
+    lower_graphs = [
+        block
+        for block in page5
+        if block["type"] == "image" and block["bbox"][1] >= 0.6
+    ]
+    assert len(lower_graphs) == 1
+    assert lower_graphs[0]["bbox"][2] <= 0.48
+    assert "ular films." not in str(lower_graphs[0]["content"])
 
 
 def test_mixed_elements_pages_07_10_force_txt_regressions() -> None:
     """验证原文 7–10 页作者列、代码边界、尾词标题和参考文献修复。"""
 
     model_list = _txt_model_list("mixed_elements_pages_07_10.pdf")
-    page7, page8, _page9, page10 = model_list
+    page7, page8, page9, page10 = model_list
 
     author_blocks = [
         block
@@ -1033,6 +1080,19 @@ def test_mixed_elements_pages_07_10_force_txt_regressions() -> None:
     figure_caption = _blocks_containing(page8, "Figure 1. Program containing dead code")
     assert len(figure_caption) == 1
     assert figure_caption[0]["type"] == "text"
+
+    framework_title = _blocks_containing(
+        page9,
+        "IV. DEAD CODE DETECTION FRAMEWORK BASED ON LLVM INFRASTRUCTURE",
+    )
+    assert len(framework_title) == 1
+    assert framework_title[0]["type"] == "paragraph_title"
+    experiment_title = _blocks_containing(page9, "V. EXPERIMENT RESULTS")
+    assert len(experiment_title) == 1
+    assert experiment_title[0]["type"] == "paragraph_title"
+    url_footer = _blocks_containing(page9, "http://klee.github.io")
+    assert len(url_footer) == 1
+    assert url_footer[0]["type"] == "footer"
 
     reference5 = _blocks_containing(page10, "[5] A. Srivastava")
     assert len(reference5) == 1
@@ -1105,3 +1165,11 @@ def test_mixed_elements_pages_39_40_force_txt_regressions() -> None:
         "Coupling this observation" in str(block["content"])
         for block in page40
     ) == 1
+    equation9_following = _blocks_containing(
+        page40,
+        "Clearly, the random variable",
+    )
+    assert len(equation9_following) == 1
+    assert equation9_following[0]["type"] == "text"
+    assert "is an unbiased estimator" in equation9_following[0]["content"]
+    assert "McAllester and Schapire" in equation9_following[0]["content"]

@@ -734,7 +734,7 @@ def _classify_rule_delimited_headers(pages: list[_PreparedPage]) -> None:
 
 
 def _classify_rule_delimited_footers(pages: list[_PreparedPage]) -> None:
-    """用页面底部两条同跨度横线确认其间孤立的居中页脚。"""
+    """用页面底部横线确认双线间页脚或单线下方的小字号栏内页脚。"""
 
     for page in pages:
         available = [
@@ -803,6 +803,16 @@ def _classify_rule_delimited_footers(pages: list[_PreparedPage]) -> None:
             _line_effective_height(line, bbox)
             for line, bbox in local_lines
         )
+        lanes = [
+            lane
+            for lane in _infer_text_lanes(
+                local_lines,
+                local_page_width,
+                median_height,
+                recalculate_intervals=False,
+            )
+            if not lane.is_span
+        ]
         for upper_index, upper in enumerate(rules[:-1]):
             for lower in rules[upper_index + 1 :]:
                 vertical_gap = lower.bbox[1] - upper.bbox[3]
@@ -831,6 +841,80 @@ def _classify_rule_delimited_footers(pages: list[_PreparedPage]) -> None:
                 for line, _bbox in members:
                     line.semantic_type = "footer"
                 break
+        for rule in rules:
+            for line in _single_rule_footer_members(
+                rule,
+                local_lines,
+                lanes,
+                median_height,
+            ):
+                line.semantic_type = "footer"
+
+
+def _single_rule_footer_members(
+    rule: _LocalAxisLine,
+    local_lines: list[tuple[_LineItem, BBox]],
+    lanes: list[_TextLane],
+    body_height: float,
+) -> list[_LineItem]:
+    """返回底部单横线下方、唯一栏内连续的小字号页脚行。"""
+
+    rule_width = max(0.1, rule.bbox[2] - rule.bbox[0])
+    rule_center_x = _bbox_center_x(rule.bbox)
+    matching_lanes = []
+    for lane in lanes:
+        overlap = max(
+            0.0,
+            min(rule.bbox[2], lane.right) - max(rule.bbox[0], lane.left),
+        )
+        if overlap / rule_width >= 0.8 and lane.left <= rule_center_x <= lane.right:
+            matching_lanes.append(lane)
+    if len(matching_lanes) != 1:
+        return []
+
+    lane = matching_lanes[0]
+    if (
+        len(lanes) > 1
+        and lane.left < max(candidate_lane.left for candidate_lane in lanes) - body_height
+    ):
+        return []
+    tolerance = 0.5 * body_height
+    rows_below = sorted(
+        (
+            (line, bbox)
+            for line, bbox in local_lines
+            if line.semantic_type is None
+            and bbox[1] >= rule.bbox[3]
+            and bbox[0] >= lane.left - tolerance
+            and bbox[2] <= lane.right + tolerance
+        ),
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    if not rows_below:
+        return []
+    first_line, first_bbox = rows_below[0]
+    if (
+        first_bbox[1] - rule.bbox[3] > body_height
+        or _line_effective_height(first_line, first_bbox) > 0.9 * body_height
+    ):
+        return []
+
+    members = [(first_line, first_bbox)]
+    for line, bbox in rows_below[1:]:
+        previous_bbox = members[-1][1]
+        if (
+            bbox[1] - previous_bbox[3] > body_height
+            or bbox[3] - first_bbox[1] > 5.0 * body_height
+            or _line_effective_height(line, bbox) > 0.9 * body_height
+        ):
+            break
+        members.append((line, bbox))
+    if not 2 <= len(members) <= 8:
+        return []
+    member_left_edges = [bbox[0] for _line, bbox in members]
+    if max(member_left_edges) - min(member_left_edges) > 0.75 * body_height:
+        return []
+    return [line for line, _bbox in members]
 
 
 def _rule_overlaps_fixed_container(

@@ -206,7 +206,11 @@ def _build_graphic_like_blocks(
     candidates.extend(
         _GraphicCandidate(
             core_bbox=core_bbox,
-            lane_index=-1,
+            lane_index=_strong_graphic_lane_index(
+                core_bbox,
+                lanes,
+                median_height,
+            ),
             label_margin_scale=(
                 2.5
                 if any(
@@ -596,6 +600,30 @@ def _graphic_lane_index(bbox: BBox, lanes: list[_TextLane]) -> int:
             best_score = score
             best_index = lane_index
     return best_index
+
+
+def _strong_graphic_lane_index(
+    core_bbox: BBox,
+    lanes: list[_TextLane],
+    median_height: float,
+) -> int:
+    """仅把几乎完整落入唯一栏带的强图形核心绑定到该栏。"""
+
+    core_width = max(0.1, core_bbox[2] - core_bbox[0])
+    tolerance = max(1.0, median_height)
+    matching_indices = []
+    for lane_index, lane in enumerate(lanes):
+        overlap = max(
+            0.0,
+            min(core_bbox[2], lane.right) - max(core_bbox[0], lane.left),
+        )
+        if (
+            overlap / core_width >= 0.9
+            and core_bbox[0] >= lane.left - tolerance
+            and core_bbox[2] <= lane.right + tolerance
+        ):
+            matching_indices.append(lane_index)
+    return matching_indices[0] if len(matching_indices) == 1 else -1
 
 
 def _detect_graphic_candidates(

@@ -190,6 +190,26 @@ def test_complex_path_container_builds_graphic_without_drawing_lines() -> None:
     assert blocks[0]["content"] == "10\nlabel"
 
 
+def test_strong_graphic_core_binds_only_to_unique_containing_lane() -> None:
+    """验证单栏强图形不会吸收邻栏文本，而真正跨栏核心仍保持跨栏。"""
+
+    lanes = [
+        models._TextLane(left=50.0, right=290.0),
+        models._TextLane(left=305.0, right=545.0),
+    ]
+
+    assert graphics._strong_graphic_lane_index(
+        (73.0, 516.0, 281.0, 655.0),
+        lanes,
+        10.0,
+    ) == 0
+    assert graphics._strong_graphic_lane_index(
+        (73.0, 516.0, 520.0, 655.0),
+        lanes,
+        10.0,
+    ) == -1
+
+
 def test_axis_pair_requires_internal_two_dimensional_complex_path() -> None:
     """验证相交坐标轴须有二维复杂曲线支撑，规则矩形行带不会误报图形。"""
 

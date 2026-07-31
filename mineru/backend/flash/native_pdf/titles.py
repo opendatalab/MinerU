@@ -1374,6 +1374,28 @@ def _classify_cross_lane_emphasized_section_titles(
         line.semantic_type = "paragraph_title"
 
 
+def _is_wide_leading_title_continuation(
+    title_bbox: BBox,
+    candidate_bbox: BBox,
+    title_height: float,
+    candidate_height: float,
+) -> bool:
+    """识别紧贴在窄标题锚点上方、同中心的较宽首行。"""
+
+    pair_height = max(0.1, title_height, candidate_height)
+    title_width = max(0.1, title_bbox[2] - title_bbox[0])
+    width_ratio = (candidate_bbox[2] - candidate_bbox[0]) / title_width
+    vertical_gap = title_bbox[1] - candidate_bbox[3]
+    return (
+        2.0 < width_ratio <= 2.5
+        and _bbox_center_y(candidate_bbox) < _bbox_center_y(title_bbox)
+        and -0.1 * pair_height <= vertical_gap <= 0.15 * pair_height
+        and _bbox_axis_overlap_ratio(title_bbox, candidate_bbox, axis="x") >= 0.8
+        and abs(_bbox_center_x(candidate_bbox) - _bbox_center_x(title_bbox))
+        <= 0.5 * pair_height
+    )
+
+
 def _expand_cross_lane_paragraph_title_neighbors(
     line_geometry: list[tuple[_LineItem, BBox]],
 ) -> None:
@@ -1400,7 +1422,15 @@ def _expand_cross_lane_paragraph_title_neighbors(
                     continue
                 title_width = max(0.1, title_bbox[2] - title_bbox[0])
                 candidate_width = candidate_bbox[2] - candidate_bbox[0]
-                if not 0.25 <= candidate_width / title_width <= 2.0:
+                if not (
+                    0.25 <= candidate_width / title_width <= 2.0
+                    or _is_wide_leading_title_continuation(
+                        title_bbox,
+                        candidate_bbox,
+                        title_height,
+                        candidate_height,
+                    )
+                ):
                     continue
                 if (
                     title_line.font_signature is not None

@@ -1011,9 +1011,45 @@ def test_paragraph_title_detector_does_not_read_line_text() -> None:
             titles._infer_front_matter_boundary,
             titles._normalized_title_gap,
             titles._line_near_visual_container,
+            titles._is_wide_leading_title_continuation,
             line_layout._title_fonts_compatible,
             titles._expand_paragraph_title_neighbors,
         )
     )
 
     assert ".text" not in source
+
+
+def test_cross_lane_title_expansion_accepts_only_wide_leading_line() -> None:
+    """验证较宽首行可并入下方窄标题锚点，反向的正文续行不会被扩成标题。"""
+
+    heading_font = ("Heading", 0)
+    leading = _text_line(
+        "wide leading line",
+        (72.0, 20.0, 287.0, 30.0),
+        0,
+        font_signature=heading_font,
+        font_coverage=1.0,
+    )
+    anchor = _text_line(
+        "narrow anchor",
+        (130.0, 30.6, 230.0, 40.6),
+        1,
+        semantic_type="paragraph_title",
+        font_signature=heading_font,
+        font_coverage=1.0,
+    )
+    following = _text_line(
+        "wide following line",
+        (72.0, 41.2, 287.0, 51.2),
+        2,
+        font_signature=heading_font,
+        font_coverage=1.0,
+    )
+
+    titles._expand_cross_lane_paragraph_title_neighbors(
+        [(leading, leading.bbox), (anchor, anchor.bbox), (following, following.bbox)]
+    )
+
+    assert leading.semantic_type == "paragraph_title"
+    assert following.semantic_type is None
