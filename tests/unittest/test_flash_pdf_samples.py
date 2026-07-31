@@ -1092,12 +1092,13 @@ def test_mixed_elements_pages_03_06_force_txt_regressions() -> None:
 
 
 def test_caibao_table_reclaims_repeated_dates_but_keeps_real_marginals() -> None:
-    """验证财报两页表格回收底部日期行，免责声明与页码仍独立保留。"""
+    """验证完整财报第 9–16 页回收表格日期行，免责声明与页码仍独立保留。"""
 
-    model_list = _auto_model_list("caibao1_pages_10_11.pdf")
+    model_list = _auto_model_list("caibao1.pdf")
 
-    assert len(model_list) == 2
-    for page in model_list:
+    assert len(model_list) == 22
+    for page_number in range(9, 17):
+        page = model_list[page_number - 1]
         tables_on_page = [block for block in page if block["type"] == "table"]
         footers = [block for block in page if block["type"] == "footer"]
         page_numbers = [block for block in page if block["type"] == "page_number"]
@@ -1112,7 +1113,7 @@ def test_caibao_table_reclaims_repeated_dates_but_keeps_real_marginals() -> None
 def test_iebm_left_indented_compact_formula_is_equation() -> None:
     """验证右栏左缩进紧凑公式通过公共 auto 入口输出为 equation。"""
 
-    page = _auto_model_list("IEBM_A_2667169_O-5_page_1.pdf")[0]
+    page = _auto_model_list("IEBM_A_2667169_O-5.pdf")[0]
     target = [
         block
         for block in page
@@ -1125,9 +1126,11 @@ def test_iebm_left_indented_compact_formula_is_equation() -> None:
 
 
 def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
-    """验证三条悬挂缩进参考文献尾行不再误报 equation，且各自仅出现一次。"""
+    """验证完整粉质砂土论文第 9 页的参考文献尾行不误报 equation。"""
 
-    page = _auto_model_list("frozen_soil_ensemble_page_9.pdf")[0]
+    page = _auto_model_list(
+        "基于Boosting、Bagging、Stacking与Voting四大集成学习模型的粉质砂土冻土抗剪强度预测研究.pdf"
+    )[8]
 
     assert not [block for block in page if block["type"] == "equation"]
     for probe in (
@@ -1145,6 +1148,7 @@ def test_mixed_elements_pages_07_10_force_txt_regressions() -> None:
     """验证原文 7–10 页作者列、代码边界、尾词标题和参考文献修复。"""
 
     model_list = _txt_model_list("mixed_elements_pages_07_10.pdf")
+    assert len(model_list) == 4
     page7, page8, page9, page10 = model_list
 
     author_blocks = [
