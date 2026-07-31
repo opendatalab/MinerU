@@ -1128,9 +1128,7 @@ def test_iebm_left_indented_compact_formula_is_equation() -> None:
 def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
     """验证完整粉质砂土论文第 9 页的参考文献尾行不误报 equation。"""
 
-    page = _auto_model_list(
-        "基于Boosting、Bagging、Stacking与Voting四大集成学习模型的粉质砂土冻土抗剪强度预测研究.pdf"
-    )[8]
+    page = _auto_model_list("中文论文.pdf")[8]
 
     assert not [block for block in page if block["type"] == "equation"]
     for probe in (
