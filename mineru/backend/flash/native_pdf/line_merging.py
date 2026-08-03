@@ -331,6 +331,9 @@ def _merge_overlapping_inline_cluster(
         median_glyph_width=host.median_glyph_width,
         leading_emphasis_width=ordered_members[0].leading_emphasis_width,
         split_from_row=any(line.split_from_row for line in ordered_members),
+        preserve_split_boundary=any(
+            line.preserve_split_boundary for line in ordered_members
+        ),
         semantic_type=host.semantic_type,
         restored_inline_cluster=True,
         compact_formula_cluster=compact_formula_cluster,
@@ -605,6 +608,9 @@ def _merge_same_baseline_group(
         else None,
         leading_emphasis_width=members[0].leading_emphasis_width,
         split_from_row=any(member.split_from_row for member in members),
+        preserve_split_boundary=any(
+            member.preserve_split_boundary for member in members
+        ),
         semantic_type=members[0].semantic_type,
         restored_inline_cluster=any(
             member.restored_inline_cluster for member in members
@@ -726,6 +732,8 @@ def _merge_title_resolved_visual_rows(
     for members in row_groups.values():
         if len(members) < 2 or not all(member.split_from_row for member in members):
             continue
+        if any(member.preserve_split_boundary for member in members):
+            continue
         semantic_types = {member.semantic_type for member in members}
         if len(semantic_types) != 1:
             continue
@@ -790,6 +798,7 @@ def _is_dense_same_font_two_run_row(
     if (
         len(members) != 2
         or not all(member.split_from_row for member in members)
+        or any(member.preserve_split_boundary for member in members)
         or any(member.semantic_type is not None for member in members)
         or any(member.font_signature is None for member in members)
         or any(member.font_coverage < 0.75 for member in members)
@@ -840,7 +849,11 @@ def _can_restore_dense_split_visual_row(
 ) -> bool:
     """检查 hard-split run 是否构成同字体且占用充分的完整视觉行。"""
 
-    if len(members) < 2 or not all(member.split_from_row for member in members):
+    if (
+        len(members) < 2
+        or not all(member.split_from_row for member in members)
+        or any(member.preserve_split_boundary for member in members)
+    ):
         return False
     if len({member.semantic_type for member in members}) != 1:
         return False
@@ -968,6 +981,9 @@ def _merge_dense_split_visual_row(
         else None,
         leading_emphasis_width=ordered_members[0].leading_emphasis_width,
         split_from_row=False,
+        preserve_split_boundary=any(
+            member.preserve_split_boundary for member in ordered_members
+        ),
         semantic_type=ordered_members[0].semantic_type,
         restored_inline_cluster=any(
             member.restored_inline_cluster for member in ordered_members

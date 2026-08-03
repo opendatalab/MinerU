@@ -55,6 +55,7 @@ from .graphics import (
     _detect_strong_graphic_bboxes,
     _form_supersedes_nested_bbox,
     _select_form_image_bboxes,
+    _split_parallel_graphic_rule_rows,
 )
 from .formulas import (
     _build_formula_like_blocks,
@@ -357,8 +358,31 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
         | claimed_raster_line_indices
         | claimed_vector_number_indices
     )
+    remaining_lines = _split_parallel_graphic_rule_rows(
+        [
+            line
+            for line in source.lines
+            if line.source_index not in claimed_line_indices
+        ],
+        source.drawing_lines,
+        [
+            block["bbox"]
+            for block in (
+                form_image_blocks
+                + graphic_blocks
+                + raster_image_blocks
+            )
+        ],
+        table_bboxes,
+        source.page_size,
+        source_index_start=max(
+            (line.source_index for line in source.lines),
+            default=-1,
+        )
+        + 1,
+    )
     remaining_lines = _merge_same_baseline_text_lines(
-        [line for line in source.lines if line.source_index not in claimed_line_indices],
+        remaining_lines,
         source.page_size,
         table_bboxes,
     )

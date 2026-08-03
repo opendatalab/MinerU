@@ -974,6 +974,69 @@ def test_dense_same_font_two_run_row_requires_complete_high_occupancy_geometry()
     assert len([line for line in merged if line.visual_row_id == 20]) == 2
 
 
+def test_preserved_split_boundary_blocks_dense_and_title_row_restoration() -> None:
+    """验证空间分栏保护同时阻止密集正文恢复和段落标题同行恢复。"""
+
+    body_font = ("Body", 0)
+    protected_members = [
+        _text_line(
+            "left",
+            (0.0, 0.0, 48.0, 10.0),
+            0,
+            visual_row_id=10,
+            run_index=0,
+            split_from_row=True,
+            preserve_split_boundary=True,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "right",
+            (52.0, 0.0, 100.0, 10.0),
+            1,
+            visual_row_id=10,
+            run_index=1,
+            split_from_row=True,
+            preserve_split_boundary=True,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+    ]
+
+    assert not line_merging._is_dense_same_font_two_run_row(
+        protected_members,
+        (100.0, 100.0),
+    )
+    assert not line_merging._can_restore_dense_split_visual_row(
+        protected_members,
+        (100.0, 100.0),
+        [],
+        {0: (0, 0), 1: (0, 0)},
+    )
+
+    protected_titles = [
+        _text_line(
+            member.text,
+            member.bbox,
+            member.source_index,
+            visual_row_id=member.visual_row_id,
+            run_index=member.run_index,
+            split_from_row=True,
+            preserve_split_boundary=True,
+            font_signature=body_font,
+            font_coverage=1.0,
+            semantic_type="paragraph_title",
+        )
+        for member in protected_members
+    ]
+    merged = line_merging._merge_title_resolved_visual_rows(
+        protected_titles,
+        (100.0, 100.0),
+    )
+
+    assert [line.text for line in merged] == ["left", "right"]
+
+
 def test_paragraph_title_detector_does_not_read_line_text() -> None:
     """守卫段落标题候选、打分和邻行扩展不读取文本内容。"""
 

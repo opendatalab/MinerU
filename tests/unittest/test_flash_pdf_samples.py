@@ -1110,6 +1110,52 @@ def test_caibao_table_reclaims_repeated_dates_but_keeps_real_marginals() -> None
         assert tables_on_page[0]["bbox"][3] < page_numbers[0]["bbox"][1]
 
 
+def test_caibao_page2_parallel_chart_captions_stay_separate() -> None:
+    """验证第二页左右图表的同行图注按各自横线和图形范围独立输出。"""
+
+    model_list = _txt_model_list("caibao1.pdf")
+    page = model_list[1]
+    first_caption = [
+        block
+        for block in page
+        if block["type"] == "text"
+        and str(block["content"]).startswith("图表1")
+    ]
+    second_caption = [
+        block
+        for block in page
+        if block["type"] == "text"
+        and str(block["content"]).startswith("图表2")
+    ]
+
+    assert len(page) == 20
+    assert len(first_caption) == len(second_caption) == 1
+    assert first_caption[0]["type"] == second_caption[0]["type"] == "text"
+    assert first_caption[0]["bbox"] == [0.073, 0.235, 0.485, 0.245]
+    assert second_caption[0]["bbox"] == [0.513, 0.235, 0.843, 0.245]
+    assert "行业周涨幅" not in str(first_caption[0]["content"])
+    assert "汽车指数上周下跌" not in str(second_caption[0]["content"])
+    assert [
+        block["bbox"]
+        for block in page
+        if block["type"] == "image" and block["bbox"][1] < 0.5
+    ] == [
+        [0.082, 0.267, 0.48, 0.447],
+        [0.522, 0.254, 0.92, 0.46],
+    ]
+
+    page3_captions = [
+        block
+        for block in model_list[2]
+        if block["type"] == "text"
+        and str(block["content"]).startswith(("图表4", "图表5"))
+    ]
+    assert [block["bbox"] for block in page3_captions] == [
+        [0.073, 0.181, 0.298, 0.191],
+        [0.514, 0.181, 0.738, 0.191],
+    ]
+
+
 def test_iebm_left_indented_compact_formula_is_equation() -> None:
     """验证右栏左缩进紧凑公式通过公共 auto 入口输出为 equation。"""
 

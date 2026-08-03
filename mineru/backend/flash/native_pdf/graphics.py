@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import math
 import re
 import statistics
@@ -26,6 +27,7 @@ from .geometry import (
     _bbox_center_x,
     _bbox_center_y,
     _bbox_distance,
+    _bbox_intersects,
     _bbox_overlap_in_first,
     _bbox_overlap_in_smaller,
     _bbox_union,
@@ -35,7 +37,11 @@ from .geometry import (
     _point_in_bbox,
     _rotate_bbox_to_upright,
 )
-from .native_text import _sanitize_pdf_control_text
+from .native_text import (
+    _fill_native_typography,
+    _normalize_native_run_text,
+    _sanitize_pdf_control_text,
+)
 from .line_layout import (
     _infer_text_lanes,
     _line_effective_height,
@@ -352,6 +358,303 @@ def _build_graphic_like_blocks(
 
     blocks.sort(key=lambda block: (block["bbox"][1], block["bbox"][0]))
     return blocks, claimed
+
+
+def _parallel_graphic_rule_pairs(
+    drawing_lines: list[_AxisLine],
+    image_bboxes: list[BBox],
+    table_bboxes: list[BBox],
+    page_size: tuple[float, float],
+    median_height: float,
+) -> list[tuple[BBox, BBox]]:
+    """筛选分别贴近两个并排图形上沿的同高长横线。"""
+
+    minimum_rule_width = max(8.0 * median_height, 0.18 * page_size[0])
+    long_rules = [
+        line.bbox
+        for line in drawing_lines
+        if line.orientation == "horizontal"
+        and line.bbox[2] - line.bbox[0] >= minimum_rule_width
+        and not any(
+            _point_in_bbox(
+                (_bbox_center_x(line.bbox), _bbox_center_y(line.bbox)),
+                table_bbox,
+            )
+            for table_bbox in table_bboxes
+        )
+    ]
+    ordered_images = sorted(image_bboxes, key=lambda bbox: (bbox[0], bbox[1]))
+    rule_pairs: list[tuple[BBox, BBox]] = []
+    seen_pairs: set[tuple[BBox, BBox]] = set()
+    for left_index, left_image in enumerate(ordered_images):
+        left_height = max(0.1, left_image[3] - left_image[1])
+        for right_image in ordered_images[left_index + 1 :]:
+            if left_image[2] >= right_image[0]:
+                continue
+            right_height = max(0.1, right_image[3] - right_image[1])
+            image_overlap = max(
+                0.0,
+                min(left_image[3], right_image[3])
+                - max(left_image[1], right_image[1]),
+            )
+            if image_overlap < 0.7 * min(left_height, right_height):
+                continue
+            if any(
+                _bbox_overlap_in_smaller(image_bbox, table_bbox) >= 0.5
+                for image_bbox in (left_image, right_image)
+                for table_bbox in table_bboxes
+            ):
+                continue
+
+            left_rules = [
+                rule_bbox
+                for rule_bbox in long_rules
+                if _bbox_axis_overlap_ratio(rule_bbox, left_image, axis="x") >= 0.8
+                and -0.25 * median_height
+                <= left_image[1] - rule_bbox[3]
+                <= 3.0 * median_height
+            ]
+            right_rules = [
+                rule_bbox
+                for rule_bbox in long_rules
+                if _bbox_axis_overlap_ratio(rule_bbox, right_image, axis="x") >= 0.8
+                and -0.25 * median_height
+                <= right_image[1] - rule_bbox[3]
+                <= 3.0 * median_height
+            ]
+            for left_rule in left_rules:
+                for right_rule in right_rules:
+                    if left_rule[2] >= right_rule[0]:
+                        continue
+                    if (
+                        abs(_bbox_center_y(left_rule) - _bbox_center_y(right_rule))
+                        > 0.5 * median_height
+                    ):
+                        continue
+                    rule_gap = right_rule[0] - left_rule[2]
+                    if not 0.5 * median_height <= rule_gap <= 5.0 * median_height:
+                        continue
+                    pair = (left_rule, right_rule)
+                    if pair not in seen_pairs:
+                        seen_pairs.add(pair)
+                        rule_pairs.append(pair)
+    return rule_pairs
+
+
+def _parallel_graphic_row_split_boundary(
+    members: list[_LineItem],
+    left_rule: BBox,
+    right_rule: BBox,
+    table_bboxes: list[BBox],
+    page_size: tuple[float, float],
+    median_height: float,
+) -> float | None:
+    """用横线栏沟和字符投影确认并排图形上方文本的安全切分点。"""
+
+    if (
+        not members
+        or any(member.angle != 0 for member in members)
+        or len({member.semantic_type for member in members}) != 1
+    ):
+        return None
+    row_bbox = _bbox_union_many([member.bbox for member in members])
+    if any(_bbox_intersects(row_bbox, table_bbox) for table_bbox in table_bboxes):
+        return None
+    rule_top = min(left_rule[1], right_rule[1])
+    if not -0.2 * median_height <= rule_top - row_bbox[3] <= 1.5 * median_height:
+        return None
+
+    glyph_bboxes = [
+        bbox
+        for member in members
+        for char in member.chars
+        if str(char.get("char") or "").isprintable()
+        and not str(char.get("char") or "").isspace()
+        and (bbox := _clip_bbox(_coerce_bbox(char.get("bbox")), page_size))
+        is not None
+    ]
+    if not glyph_bboxes:
+        return None
+    boundary = 0.5 * (left_rule[2] + right_rule[0])
+    if any(
+        _bbox_center_x(bbox) < left_rule[0] - median_height
+        or _bbox_center_x(bbox) > right_rule[2] + median_height
+        for bbox in glyph_bboxes
+    ):
+        return None
+    left_glyphs = [bbox for bbox in glyph_bboxes if _bbox_center_x(bbox) < boundary]
+    right_glyphs = [bbox for bbox in glyph_bboxes if _bbox_center_x(bbox) > boundary]
+    if len(left_glyphs) < 3 or len(right_glyphs) < 3:
+        return None
+    left_width = max(bbox[2] for bbox in left_glyphs) - min(
+        bbox[0] for bbox in left_glyphs
+    )
+    right_width = max(bbox[2] for bbox in right_glyphs) - min(
+        bbox[0] for bbox in right_glyphs
+    )
+    if min(left_width, right_width) < 4.0 * median_height:
+        return None
+    left_edge = max(bbox[2] for bbox in left_glyphs)
+    right_edge = min(bbox[0] for bbox in right_glyphs)
+    if right_edge - left_edge < 0.75 * median_height:
+        return None
+    if not (
+        left_edge <= left_rule[2] <= right_edge
+        and left_edge <= right_rule[0] <= right_edge
+    ):
+        return None
+    return boundary
+
+
+def _split_parallel_graphic_rule_rows(
+    lines: list[_LineItem],
+    drawing_lines: list[_AxisLine],
+    image_bboxes: list[BBox],
+    table_bboxes: list[BBox],
+    page_size: tuple[float, float],
+    *,
+    source_index_start: int | None = None,
+) -> list[_LineItem]:
+    """按成对图形、独立顶边横线和栏沟字符投影拆分并排图形上方文本。"""
+
+    horizontal_lines = [
+        line for line in lines if line.angle == 0 and line.effective_height > 0
+    ]
+    if len(horizontal_lines) < 1 or len(image_bboxes) < 2:
+        return list(lines)
+    median_height = statistics.median(
+        line.effective_height for line in horizontal_lines
+    )
+    rule_pairs = _parallel_graphic_rule_pairs(
+        drawing_lines,
+        image_bboxes,
+        table_bboxes,
+        page_size,
+        median_height,
+    )
+    if not rule_pairs:
+        return list(lines)
+
+    row_groups: dict[tuple[int, int], list[_LineItem]] = {}
+    for line in horizontal_lines:
+        if line.visual_row_id is not None:
+            row_groups.setdefault((line.angle, line.visual_row_id), []).append(line)
+    boundaries_by_row: dict[tuple[int, int], list[float]] = {}
+    for row_key, members in row_groups.items():
+        for left_rule, right_rule in rule_pairs:
+            boundary = _parallel_graphic_row_split_boundary(
+                members,
+                left_rule,
+                right_rule,
+                table_bboxes,
+                page_size,
+                median_height,
+            )
+            if boundary is None:
+                continue
+            row_boundaries = boundaries_by_row.setdefault(row_key, [])
+            if not any(
+                abs(boundary - existing) <= 0.5 * median_height
+                for existing in row_boundaries
+            ):
+                row_boundaries.append(boundary)
+    if not boundaries_by_row:
+        return list(lines)
+
+    next_source_index = max(
+        max((line.source_index for line in lines), default=-1) + 1,
+        source_index_start or 0,
+    )
+    consumed_source_indices: set[int] = set()
+    split_lines: list[_LineItem] = []
+    for row_key, boundaries in boundaries_by_row.items():
+        members = sorted(
+            row_groups[row_key],
+            key=lambda line: (line.bbox[0], line.run_index, line.source_index),
+        )
+        ordered_chars = [char for member in members for char in member.chars]
+        split_indices: list[int] = []
+        for boundary in sorted(boundaries):
+            split_index = next(
+                (
+                    index
+                    for index, char in enumerate(ordered_chars)
+                    if str(char.get("char") or "").isprintable()
+                    and not str(char.get("char") or "").isspace()
+                    and (
+                        bbox := _clip_bbox(
+                            _coerce_bbox(char.get("bbox")),
+                            page_size,
+                        )
+                    )
+                    is not None
+                    and _bbox_center_x(bbox) > boundary
+                ),
+                None,
+            )
+            if split_index is not None and split_index not in split_indices:
+                split_indices.append(split_index)
+        if not split_indices:
+            continue
+        ranges: list[tuple[int, int]] = []
+        start = 0
+        for split_index in sorted(split_indices):
+            ranges.append((start, split_index))
+            start = split_index
+        ranges.append((start, len(ordered_chars)))
+
+        source_indices = [member.source_index for member in members]
+        rebuilt: list[_LineItem] = []
+        for run_index, (start, end) in enumerate(ranges):
+            run_chars = ordered_chars[start:end]
+            run_bboxes = [
+                bbox
+                for char in run_chars
+                if str(char.get("char") or "").isprintable()
+                and not str(char.get("char") or "").isspace()
+                and (
+                    bbox := _clip_bbox(
+                        _coerce_bbox(char.get("bbox")),
+                        page_size,
+                    )
+                )
+                is not None
+            ]
+            run_text = _normalize_native_run_text(
+                "".join(str(char.get("char") or "") for char in run_chars)
+            )
+            if not run_text or not run_bboxes:
+                continue
+            if run_index < len(source_indices):
+                source_index = source_indices[run_index]
+            else:
+                source_index = next_source_index
+                next_source_index += 1
+            template = members[min(run_index, len(members) - 1)]
+            rebuilt_line = replace(
+                template,
+                text=run_text,
+                bbox=_bbox_union_many(run_bboxes),
+                source_index=source_index,
+                chars=list(run_chars),
+                visual_row_id=row_key[1],
+                run_index=run_index,
+                split_from_row=True,
+                preserve_split_boundary=True,
+            )
+            _fill_native_typography(rebuilt_line, page_size)
+            rebuilt.append(rebuilt_line)
+        if len(rebuilt) < 2:
+            continue
+        consumed_source_indices.update(member.source_index for member in members)
+        split_lines.extend(rebuilt)
+
+    output = [
+        line for line in lines if line.source_index not in consumed_source_indices
+    ]
+    output.extend(split_lines)
+    output.sort(key=lambda line: (line.angle, line.bbox[1], line.bbox[0], line.source_index))
+    return output
 
 
 def _graphic_caption_line_indices_to_preserve(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 
 import pytest
 
@@ -49,6 +50,129 @@ def _path_info(
         form_depth=form_depth,
         source_index=source_index,
     )
+
+
+def _parallel_rule_split_fixture(
+    *,
+    cross_gutter: bool = False,
+) -> tuple[
+    models._LineItem,
+    list[models._AxisLine],
+    list[tuple[float, float, float, float]],
+]:
+    """构造无语义文本、成对图形、独立横线和可选栏沟干扰字符。"""
+
+    left_chars = [
+        {
+            "char": "L",
+            "bbox": (
+                100.0 + 40.0 * index,
+                80.0,
+                120.0 + 40.0 * index,
+                89.0,
+            ),
+        }
+        for index in range(8)
+    ]
+    if cross_gutter:
+        left_chars[-1]["bbox"] = (475.0, 80.0, 505.0, 89.0)
+    right_chars = [
+        {
+            "char": "R",
+            "bbox": (
+                540.0 + 40.0 * index,
+                80.0,
+                560.0 + 40.0 * index,
+                89.0,
+            ),
+        }
+        for index in range(8)
+    ]
+    line = _text_line(
+        "LLLLLLLL RRRRRRRR",
+        (100.0, 80.0, 840.0, 89.0),
+        7,
+        visual_row_id=12,
+        effective_height=10.0,
+    )
+    line.chars = [*left_chars, {"char": " ", "bbox": (400.0, 80.0, 540.0, 89.0)}, *right_chars]
+    rules = [
+        _drawing_axis_line("horizontal", (80.0, 90.0, 480.0, 90.5)),
+        _drawing_axis_line("horizontal", (520.0, 90.0, 920.0, 90.5)),
+    ]
+    images = [
+        (100.0, 100.0, 470.0, 300.0),
+        (530.0, 100.0, 900.0, 300.0),
+    ]
+    return line, rules, images
+
+
+def test_parallel_graphic_rule_rows_split_without_reading_text_content() -> None:
+    """验证完整空间证据把同一视觉行拆成左右两个受保护 run。"""
+
+    line, rules, images = _parallel_rule_split_fixture()
+
+    split = graphics._split_parallel_graphic_rule_rows(
+        [line],
+        rules,
+        images,
+        [],
+        (1000.0, 500.0),
+        source_index_start=50,
+    )
+
+    assert [(item.text, item.bbox) for item in split] == [
+        ("LLLLLLLL", (100.0, 80.0, 400.0, 89.0)),
+        ("RRRRRRRR", (540.0, 80.0, 840.0, 89.0)),
+    ]
+    assert [item.source_index for item in split] == [7, 50]
+    assert [item.run_index for item in split] == [0, 1]
+    assert {item.visual_row_id for item in split} == {12}
+    assert all(item.split_from_row for item in split)
+    assert all(item.preserve_split_boundary for item in split)
+
+    source = "\n".join(
+        inspect.getsource(function)
+        for function in (
+            graphics._parallel_graphic_rule_pairs,
+            graphics._parallel_graphic_row_split_boundary,
+            graphics._split_parallel_graphic_rule_rows,
+        )
+    )
+    assert ".text" not in source
+
+
+@pytest.mark.parametrize(
+    "missing_evidence",
+    ["right_rule", "right_image", "independent_rules", "clear_gutter", "outside_table"],
+)
+def test_parallel_graphic_rule_rows_require_all_spatial_evidence(
+    missing_evidence: str,
+) -> None:
+    """验证横线、图形、栏沟或表格排除任一不成立时都不拆分。"""
+
+    line, rules, images = _parallel_rule_split_fixture(
+        cross_gutter=missing_evidence == "clear_gutter"
+    )
+    table_bboxes: list[tuple[float, float, float, float]] = []
+    if missing_evidence == "right_rule":
+        rules = rules[:1]
+    elif missing_evidence == "right_image":
+        images = images[:1]
+    elif missing_evidence == "independent_rules":
+        rules = [_drawing_axis_line("horizontal", (80.0, 90.0, 920.0, 90.5))]
+    elif missing_evidence == "outside_table":
+        table_bboxes = [(70.0, 70.0, 930.0, 310.0)]
+
+    output = graphics._split_parallel_graphic_rule_rows(
+        [line],
+        rules,
+        images,
+        table_bboxes,
+        (1000.0, 500.0),
+    )
+
+    assert output == [line]
 
 
 def _graphic_source_fixture() -> models._PageSource:

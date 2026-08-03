@@ -31,6 +31,7 @@ class _LineItem:
     median_glyph_width: float | None = None
     leading_emphasis_width: float | None = None
     split_from_row: bool = False
+    preserve_split_boundary: bool = False
     semantic_type: str | None = None
     restored_inline_cluster: bool = False
     compact_formula_cluster: bool = False
