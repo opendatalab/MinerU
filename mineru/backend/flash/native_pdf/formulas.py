@@ -788,6 +788,12 @@ def _build_split_visual_row_formula_blocks(
             [bbox for _member, bbox in body_members]
         )
         body_width = max(0.1, body_bbox[2] - body_bbox[0])
+        # 同行成员可能只是分式尾部；窄尾部不能压低外部公式片段的宽度容差，
+        # 否则会提前认领分母、右括号和编号，使左侧公式主体落回普通文本。
+        nearby_fragment_width_limit = max(
+            0.65 * body_width,
+            3.0 * median_height,
+        )
         member_ids = {id(member) for member in members}
         has_nearby_formula_fragment = False
         for other in lines:
@@ -805,7 +811,7 @@ def _build_split_visual_row_formula_blocks(
             )
             if (
                 vertical_gap <= 0.75 * median_height
-                and other_bbox[2] - other_bbox[0] <= 0.65 * body_width
+                and other_bbox[2] - other_bbox[0] <= nearby_fragment_width_limit
                 and max(
                     0.0,
                     max(other_bbox[0], body_bbox[0])

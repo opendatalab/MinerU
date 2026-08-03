@@ -1236,6 +1236,137 @@ def test_split_visual_row_with_right_number_forms_one_equation() -> None:
     assert {line.source_index for line in remaining} == {0, 4}
 
 
+def test_split_visual_row_formula_tail_defers_to_spatial_growth() -> None:
+    """验证分式尾部同行时延后认领，并由空间锚点收齐完整公式。"""
+
+    body_font = ("Body", 0)
+    math_font = ("Math", 0)
+    italic_font = ("MathItalic", 0)
+    bracket_font = ("Bracket", 0)
+    lines = [
+        _text_line(
+            "body above 1",
+            (0.0, 0.0, 100.0, 10.0),
+            0,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "body above 2",
+            (0.0, 12.0, 100.0, 22.0),
+            1,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "formula intro",
+            (0.0, 36.0, 100.0, 46.0),
+            2,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "at = 1",
+            (10.0, 63.0, 28.0, 73.0),
+            3,
+            effective_height=10.0,
+            font_signature=italic_font,
+            font_coverage=0.5,
+        ),
+        _text_line(
+            "2 ln",
+            (30.0, 67.0, 42.0, 77.0),
+            4,
+            effective_height=10.0,
+            font_signature=math_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "( 1 - εt",
+            (45.0, 52.0, 65.0, 82.0),
+            5,
+            effective_height=10.0,
+            font_signature=bracket_font,
+            font_coverage=0.2,
+        ),
+        _text_line(
+            "εt",
+            (58.0, 72.0, 62.0, 80.0),
+            6,
+            visual_row_id=10,
+            run_index=0,
+            split_from_row=True,
+            effective_height=8.0,
+            font_signature=italic_font,
+            font_coverage=0.5,
+        ),
+        _text_line(
+            ")",
+            (67.0, 52.0, 70.0, 82.0),
+            7,
+            visual_row_id=10,
+            run_index=1,
+            split_from_row=True,
+            effective_height=30.0,
+            font_signature=bracket_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "（3）",
+            (90.0, 67.0, 100.0, 77.0),
+            8,
+            visual_row_id=10,
+            run_index=2,
+            split_from_row=True,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=0.67,
+        ),
+        _text_line(
+            "body below 1",
+            (0.0, 86.0, 100.0, 96.0),
+            9,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "body below 2",
+            (0.0, 98.0, 100.0, 108.0),
+            10,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+    ]
+
+    early_blocks, early_claimed = formulas._build_split_visual_row_formula_blocks(
+        lines,
+        [],
+        (100.0, 120.0),
+    )
+    blocks, remaining = formulas._build_formula_like_blocks(
+        lines,
+        [],
+        (100.0, 120.0),
+    )
+
+    assert early_blocks == []
+    assert early_claimed == set()
+    assert blocks == [
+        {
+            "type": "equation",
+            "bbox": (10.0, 52.0, 100.0, 82.0),
+            "angle": 0,
+            "content": "at = 1   ( 1 - εt)\n2 ln\nεt\n（3）",
+        }
+    ]
+    assert {line.source_index for line in remaining} == {0, 1, 2, 9, 10}
+
+
 def test_centered_low_body_font_line_forms_unnumbered_equation() -> None:
     """验证上下正文之间居中且低正文覆盖的数学字体行形成无编号公式。"""
 

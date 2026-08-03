@@ -1332,6 +1332,38 @@ def test_npu_numbered_figure_captions_are_independent_annotations() -> None:
     assert not [block for page in model_list for block in page if block["type"] == "footnote"]
 
 
+def test_frozen_soil_page3_formula3_remains_one_equation() -> None:
+    """验证中文论文第三页公式（3）完整归入单个公式块。"""
+
+    page = _txt_model_list("中文论文.pdf")[2]
+    equations = [block for block in page if block["type"] == "equation"]
+    formula3 = [
+        block
+        for block in equations
+        if "（3）" in str(block.get("content", ""))
+    ]
+
+    assert len(page) == 28
+    assert len(equations) == 4
+    assert len(formula3) == 1
+    assert formula3[0]["bbox"] == [0.653, 0.703, 0.898, 0.751]
+    assert all(
+        probe in str(formula3[0]["content"])
+        for probe in ("at = 1", "2 ln", "1 - εt", "εt", "（3）")
+    )
+    assert not [
+        block
+        for block in page
+        if block["type"] == "text"
+        and any(
+            probe in str(block.get("content", ""))
+            for probe in ("at = 1", "2 ln", "1 - εt")
+        )
+    ]
+    for marker in ("（1）", "（2）", "（3）", "（4）"):
+        assert sum(marker in str(block.get("content", "")) for block in equations) == 1
+
+
 def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
     """验证中文论文双语图注独立标记，正文图引用和参考文献保持 text。"""
 
