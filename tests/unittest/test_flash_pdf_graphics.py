@@ -727,7 +727,7 @@ def test_raster_images_filter_small_objects_avoid_containers_and_claim_text_once
 
 
 def test_raster_image_content_is_removed_from_text_and_empty_image_page_is_kept() -> None:
-    """验证图内文本只进入 image，caption 保持 text，纯图片页仍输出空 content。"""
+    """验证图内文本只进入 image，独立 caption 正确标记，纯图片页仍输出空 content。"""
 
     source = models._PageSource(
         page_size=(100.0, 100.0),
@@ -743,10 +743,10 @@ def test_raster_image_content_is_removed_from_text_and_empty_image_page_is_kept(
 
     blocks = pipeline._analyze_page_source(source)
     image_block = next(block for block in blocks if block["type"] == "image")
-    text_block = next(block for block in blocks if block["type"] == "text")
+    caption_block = next(block for block in blocks if block["type"] == "caption")
 
     assert image_block["content"] == "inside row one\ninside row two"
-    assert text_block["content"] == "Figure 1: outside caption"
+    assert caption_block["content"] == "Figure 1: outside caption"
     assert sum("inside row" in block["content"] for block in blocks) == 1
 
     empty_page_blocks = pipeline._analyze_page_source(

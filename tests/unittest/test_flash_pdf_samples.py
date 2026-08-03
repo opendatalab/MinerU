@@ -15,6 +15,7 @@ from mineru.backend.flash.native_pdf import (
     pipeline,
     tables,
 )
+from mineru.backend.hybrid.magic_model import MagicModel
 from mineru.utils.pdf_document import get_lines_from_chars
 
 
@@ -121,6 +122,7 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     assert sum(block["type"] == "header" for page in model_list for block in page) == 12
     assert sum(block["type"] == "page_number" for page in model_list for block in page) == 12
     assert sum(block["type"] == "equation" for page in model_list for block in page) == 7
+    assert sum(block["type"] == "caption" for page in model_list for block in page) == 5
     assert [block["bbox"] for block in model_list[5] if block["type"] == "table"] == [
         [0.087, 0.125, 0.922, 0.363],
         [0.087, 0.669, 0.922, 0.893],
@@ -187,6 +189,7 @@ def test_demo2_page1_forms_sixteen_blocks_and_keeps_figure_caption_separate() ->
     for expected_text in ("dp", "¯x", "p =", "¯p =", "Left camera", "Right camera"):
         assert expected_text in graphic_block["content"]
     assert graphic_block is not caption_block
+    assert caption_block["type"] == "caption"
     assert "Figure 1:" not in graphic_block["content"]
     assert "Left camera" not in caption_block["content"]
     assert sum(block["content"].count("Left camera") for block in page) == 1
@@ -208,6 +211,7 @@ def test_demo2_pages2_to6_restore_paragraphs_formulas_and_reading_order() -> Non
     assert [sum(block["type"] == "image" for block in page) for page in model_list] == [1, 0, 0, 5, 2, 0]
     assert [sum(block["type"] == "table" for block in page) for page in model_list] == [0, 0, 0, 1, 1, 0]
     assert sum(block["type"] == "equation" for page in model_list for block in page) == 9
+    assert sum(block["type"] == "caption" for page in model_list for block in page) == 5
 
     page2 = model_list[1]
     page2_contents = [block["content"] for block in page2]
@@ -403,6 +407,7 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
         18,
     ]
     assert sum(len(page) for page in model_list) == 173
+    assert sum(block["type"] == "caption" for page in model_list for block in page) == 8
     page7_tables = [block for block in model_list[6] if block["type"] == "table"]
     page7_table4 = next(
         block for block in page7_tables if "Number of parameters" in block["content"]
@@ -438,6 +443,7 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
         )
     )
     assert page7_table4_caption["content"] not in page7_table4["content"]
+    assert page7_table4_caption["type"] == "caption"
     assert page7_table4["bbox"][3] < page7_table4_caption["bbox"][1]
     assert page7_inline_body["type"] == "text"
     assert "With TAPASBASE" in page7_inline_body["content"]
@@ -581,7 +587,7 @@ def test_demo3_pages6_7_and10_fix_caption_inline_titles_and_reference_tail() -> 
     table2_caption = next(
         block for block in page6 if block["content"].startswith("Table 2:")
     )
-    assert table2_caption["type"] == "text"
+    assert table2_caption["type"] == "caption"
     assert "Median of 5 independent runs are reported." in table2_caption["content"]
     assert table2_caption["content"].endswith("not reported in the original paper.")
     assert sum(
@@ -659,7 +665,7 @@ def test_demo3_page3_form_image_formulas_titles_and_inline_body_are_whole() -> N
         or "types of task independent biases" in block["content"]
     ]
     assert len(caption_blocks) == 1
-    assert caption_blocks[0]["type"] == "text"
+    assert caption_blocks[0]["type"] == "caption"
     assert "This example corresponds to table (a)" in caption_blocks[0]["content"]
     assert "associated text." in caption_blocks[0]["content"]
 
@@ -820,9 +826,21 @@ def test_demo4_nct00083083_targeted_flash_regressions() -> None:
     assert len(figure_caption) == 1
     assert len(figure_body) == 1
     assert figure_caption[0] is not figure_body[0]
+    assert figure_caption[0]["type"] == "caption"
     assert "inreducingglucoseuptake" not in _normalized_content_probe(
         str(figure_caption[0]["content"])
     )
+    side_caption = _blocks_containing(page4, "Fig. 2 [18F]FDG uptake")
+    side_image = next(
+        block
+        for block in page4
+        if block["type"] == "image" and block["bbox"] == [0.3, 0.608, 0.914, 0.897]
+    )
+    assert len(side_caption) == 1
+    assert side_caption[0]["type"] == "caption"
+    assert side_caption[0]["bbox"][2] < side_image["bbox"][0]
+    assert page4.index(side_caption[0]) < page4.index(side_image)
+    assert sum(block["type"] == "caption" for page in model_list for block in page) == 5
 
     page5 = model_list[4]
     right_continuation = _blocks_containing(
@@ -952,7 +970,34 @@ def test_demo5_targeted_table_and_footer_regressions() -> None:
 
     page77_note = _blocks_containing(model_list[76], "注：（1）指气量")
     assert len(page77_note) == 1
-    assert page77_note[0]["type"] == "text"
+    assert page77_note[0]["type"] == "footnote"
+
+    expected_footnote_pages = {6, 7, 31, 36, 39, 43, 49, 53, 55, 57, 58, 59, 77}
+    assert {
+        page_number
+        for page_number, page in enumerate(model_list, start=1)
+        if any(block["type"] == "footnote" for block in page)
+    } == expected_footnote_pages
+    assert sum(
+        block["type"] == "footnote"
+        for page in model_list
+        for block in page
+    ) == 13
+    assert sum(block["type"] == "caption" for page in model_list for block in page) == 3
+    page62_note = _blocks_containing(
+        model_list[61],
+        "排入城镇集中污水处理设施的生活污水",
+    )
+    page86_table20 = _blocks_containing(model_list[85], "表20 改正规定信息表")
+    assert len(page62_note) == len(page86_table20) == 1
+    assert page62_note[0]["type"] == page86_table20[0]["type"] == "text"
+
+    page6_magic_model = MagicModel(model_list[5], 1000, 1000)
+    page6_table = page6_magic_model.get_table_blocks()[0]
+    assert [child.type for child in page6_table.blocks] == [
+        "table_body",
+        "table_footnote",
+    ]
 
     page9 = model_list[8]
     page_number_block = next(
@@ -1007,6 +1052,12 @@ def test_demo6_default3_targeted_title_regressions() -> None:
     assert [block["content"] for block in page7_images] == ["（签名）", "（盖章）"]
     assert sum("签名" in str(block["content"]) for block in model_list[6]) == 1
     assert sum("盖章" in str(block["content"]) for block in model_list[6]) == 1
+    assert not [
+        block
+        for page in model_list
+        for block in page
+        if block["type"] in {"caption", "footnote"}
+    ]
 
 
 def test_mixed_elements_pages_03_06_force_txt_regressions() -> None:
@@ -1069,7 +1120,7 @@ def test_mixed_elements_pages_03_06_force_txt_regressions() -> None:
     assert [
         block["bbox"]
         for block in page4
-        if block["type"] in {"text", "image"}
+        if block["type"] in {"text", "image", "caption"}
         and block["bbox"][0] >= 0.49
         and block["bbox"][1] >= 0.49
     ] == [
@@ -1096,7 +1147,20 @@ def test_mixed_elements_pages_03_06_force_txt_regressions() -> None:
     assert "ular films." not in str(lower_graphs[0]["content"])
     figure4_caption = _blocks_containing(page5, "Fig. 4. Plots of σT1/2")
     assert len(figure4_caption) == 1
-    assert figure4_caption[0]["type"] == "text"
+    assert figure4_caption[0]["type"] == "caption"
+    assert sum(block["type"] == "caption" for page in model_list for block in page) == 4
+
+    figure1_caption = _blocks_containing(page4, "Fig. 1. Electron micrographs")
+    panel_images = [
+        block
+        for block in page4
+        if block["type"] == "image" and block["bbox"][3] < 0.44
+    ]
+    assert len(figure1_caption) == 1
+    assert len(panel_images) == 4
+    assert max(page4.index(block) for block in panel_images) < page4.index(
+        figure1_caption[0]
+    )
 
 
 def test_caibao_table_reclaims_repeated_dates_but_keeps_real_marginals() -> None:
@@ -1116,6 +1180,11 @@ def test_caibao_table_reclaims_repeated_dates_but_keeps_real_marginals() -> None
         assert "2024 年" not in str(footers[0]["content"])
         assert tables_on_page[0]["bbox"][3] < footers[0]["bbox"][1]
         assert tables_on_page[0]["bbox"][3] < page_numbers[0]["bbox"][1]
+        assert not [block for block in page if block["type"] == "footnote"]
+
+    page18 = model_list[17]
+    assert len([block for block in page18 if block["type"] == "footer"]) == 1
+    assert not [block for block in page18 if block["type"] == "footnote"]
 
 
 def test_caibao_page2_parallel_chart_captions_stay_separate() -> None:
@@ -1126,19 +1195,19 @@ def test_caibao_page2_parallel_chart_captions_stay_separate() -> None:
     first_caption = [
         block
         for block in page
-        if block["type"] == "text"
+        if block["type"] == "caption"
         and str(block["content"]).startswith("图表1")
     ]
     second_caption = [
         block
         for block in page
-        if block["type"] == "text"
+        if block["type"] == "caption"
         and str(block["content"]).startswith("图表2")
     ]
 
     assert len(page) == 20
     assert len(first_caption) == len(second_caption) == 1
-    assert first_caption[0]["type"] == second_caption[0]["type"] == "text"
+    assert first_caption[0]["type"] == second_caption[0]["type"] == "caption"
     assert first_caption[0]["bbox"] == [0.073, 0.235, 0.485, 0.245]
     assert second_caption[0]["bbox"] == [0.513, 0.235, 0.843, 0.245]
     assert "行业周涨幅" not in str(first_caption[0]["content"])
@@ -1151,17 +1220,76 @@ def test_caibao_page2_parallel_chart_captions_stay_separate() -> None:
         [0.082, 0.267, 0.48, 0.447],
         [0.522, 0.254, 0.92, 0.46],
     ]
+    first_index = page.index(first_caption[0])
+    second_index = page.index(second_caption[0])
+    assert [block["type"] for block in page[first_index : first_index + 3]] == [
+        "caption",
+        "image",
+        "footnote",
+    ]
+    assert [block["type"] for block in page[second_index : second_index + 3]] == [
+        "caption",
+        "image",
+        "footnote",
+    ]
+    assert first_index + 3 == second_index
 
     page3_captions = [
         block
         for block in model_list[2]
-        if block["type"] == "text"
+        if block["type"] == "caption"
         and str(block["content"]).startswith(("图表4", "图表5"))
     ]
     assert [block["bbox"] for block in page3_captions] == [
         [0.073, 0.181, 0.298, 0.191],
         [0.514, 0.181, 0.738, 0.191],
     ]
+    page3 = model_list[2]
+    for caption in page3_captions:
+        index = page3.index(caption)
+        assert [block["type"] for block in page3[index : index + 3]] == [
+            "caption",
+            "image",
+            "footnote",
+        ]
+
+    expected_new_footnotes = {1: 2, 6: 1, 7: 1, 8: 2, 17: 1, 19: 1}
+    assert {
+        page_number: sum(block["type"] == "footnote" for block in model_list[page_number - 1])
+        for page_number in expected_new_footnotes
+    } == expected_new_footnotes
+    assert all(
+        str(block["content"]).startswith("资料来源：")
+        for page_number in expected_new_footnotes
+        for block in model_list[page_number - 1]
+        if block["type"] == "footnote"
+    )
+    assert sum(
+        block["type"] == "caption"
+        for page_blocks in model_list
+        for block in page_blocks
+    ) == 15
+    assert sum(
+        block["type"] == "footnote"
+        for page_blocks in model_list
+        for block in page_blocks
+    ) == 16
+
+    page2_magic_model = MagicModel(page, 1000, 1000)
+    for caption_prefix in ("图表1", "图表2"):
+        image_group = next(
+            group
+            for group in page2_magic_model.get_image_blocks()
+            if any(
+                str(child.content).startswith(caption_prefix)
+                for child in group.blocks
+            )
+        )
+        assert [child.type for child in image_group.blocks] == [
+            "image_caption",
+            "image_body",
+            "image_footnote",
+        ]
 
 
 def test_iebm_left_indented_compact_formula_is_equation() -> None:
@@ -1177,12 +1305,62 @@ def test_iebm_left_indented_compact_formula_is_equation() -> None:
     assert len(target) == 1
     assert target[0]["type"] == "equation"
     assert target[0]["content"] == "F ¼ @ψ @Y, G ¼ @ψ @X."
+    assert not [block for block in page if block["type"] in {"caption", "footnote"}]
+
+
+def test_npu_numbered_figure_captions_are_independent_annotations() -> None:
+    """验证 NPU 指南十四个编号图注独立输出，且不产生视觉脚注误报。"""
+
+    model_list = _txt_model_list("NPU_开发环境部署_参考指南.pdf")
+    expected_counts = {6: 1, 7: 1, 14: 2, 15: 2, 16: 2, 17: 1, 18: 1, 19: 2, 20: 2}
+
+    assert {
+        page_number: sum(block["type"] == "caption" for block in model_list[page_number - 1])
+        for page_number in expected_counts
+    } == expected_counts
+    assert sum(
+        block["type"] == "caption"
+        for page in model_list
+        for block in page
+    ) == 14
+    assert all(
+        str(block["content"]).startswith("图 ")
+        for page in model_list
+        for block in page
+        if block["type"] == "caption"
+    )
+    assert not [block for page in model_list for block in page if block["type"] == "footnote"]
 
 
 def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
-    """验证完整粉质砂土论文第 9 页的参考文献尾行不误报 equation。"""
+    """验证中文论文双语图注独立标记，正文图引用和参考文献保持 text。"""
 
-    page = _auto_model_list("中文论文.pdf")[8]
+    model_list = _auto_model_list("中文论文.pdf")
+    page = model_list[8]
+
+    captions = [
+        block
+        for page_blocks in model_list
+        for block in page_blocks
+        if block["type"] == "caption"
+    ]
+    assert len(captions) == 15
+    page2 = model_list[1]
+    image = next(block for block in page2 if block["type"] == "image")
+    chinese_caption = _blocks_containing(page2, "图1 冻土抗剪强度试验流程示意图")
+    english_caption = _blocks_containing(page2, "Fig. 1 Schematic diagram")
+    assert len(chinese_caption) == len(english_caption) == 1
+    assert chinese_caption[0]["type"] == english_caption[0]["type"] == "caption"
+    assert page2.index(image) < page2.index(chinese_caption[0]) < page2.index(
+        english_caption[0]
+    )
+
+    narrative_reference = _blocks_containing(
+        model_list[7],
+        "图 8（a）、8（b）分别为",
+    )
+    assert len(narrative_reference) == 1
+    assert narrative_reference[0]["type"] == "text"
 
     assert not [block for block in page if block["type"] == "equation"]
     for probe in (
@@ -1226,7 +1404,29 @@ def test_mixed_elements_pages_07_10_force_txt_regressions() -> None:
     assert not [block for block in page8 if block["type"] == "table"]
     figure_caption = _blocks_containing(page8, "Figure 1. Program containing dead code")
     assert len(figure_caption) == 1
-    assert figure_caption[0]["type"] == "text"
+    assert figure_caption[0]["type"] == "caption"
+    algorithm1 = _blocks_containing(page8, "Algorithm 1 Detection of Irrelevant Code")
+    algorithm2 = _blocks_containing(page8, "Algorithm 2 Detection of Unreachable Code")
+    assert len(algorithm1) == len(algorithm2) == 1
+    assert algorithm1[0]["type"] == algorithm2[0]["type"] == "caption"
+    assert page8.index(algorithm1[0]) + 1 == page8.index(code_blocks[1])
+    assert page8.index(algorithm2[0]) + 1 == page8.index(code_blocks[2])
+    assert sum(block["type"] == "caption" for page in model_list for block in page) == 4
+
+    page8_magic_model = MagicModel(page8, 1000, 1000)
+    algorithm_groups = [
+        group
+        for group in page8_magic_model.get_code_blocks()
+        if any(
+            str(child.content).startswith("Algorithm")
+            for child in group.blocks
+        )
+    ]
+    assert len(algorithm_groups) == 2
+    assert all(
+        [child.type for child in group.blocks] == ["code_caption", "code_body"]
+        for group in algorithm_groups
+    )
 
     framework_title = _blocks_containing(
         page9,
@@ -1280,10 +1480,11 @@ def test_mixed_elements_pages_11_15_force_txt_regressions() -> None:
     figure2 = _blocks_containing(model_list[2], "Fig. 2. Pathological changes")
     figure6 = _blocks_containing(model_list[3], "Fig. 6. Effect of ecabet")
     assert len(figure2) == len(figure6) == 1
-    assert figure2[0]["type"] == figure6[0]["type"] == "text"
+    assert figure2[0]["type"] == figure6[0]["type"] == "caption"
     assert "Under anesthesia with ether" in figure2[0]["content"]
     assert "pepsin. Isolated and everted esophagus" in figure6[0]["content"]
     assert not [block for block in all_blocks if block["type"] == "footnote"]
+    assert sum(block["type"] == "caption" for block in all_blocks) == 6
 
     online_footer = _blocks_containing(model_list[4], "http://www.birkhauser.ch/IPh")
     assert len(online_footer) == 1
@@ -1308,6 +1509,12 @@ def test_mixed_elements_pages_39_40_force_txt_regressions() -> None:
     assert len(continuation) == 1
     assert continuation[0]["type"] == "text"
     assert "Coupling this observation" in continuation[0]["content"]
+    assert not [
+        block
+        for page in model_list
+        for block in page
+        if block["type"] in {"caption", "footnote"}
+    ]
     assert sum(
         "Coupling this observation" in str(block["content"])
         for block in page40

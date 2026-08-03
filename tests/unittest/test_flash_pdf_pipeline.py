@@ -20,6 +20,7 @@ from mineru.backend.flash.native_pdf import (
     tables,
     text_blocks,
     titles,
+    visual_annotations,
 )
 from mineru.utils.pdf_document import PDFImageInfo
 
@@ -153,6 +154,7 @@ def test_flash_extractor_has_no_local_ocr_runtime_logic() -> None:
             tables,
             text_blocks,
             titles,
+            visual_annotations,
         )
     )
     forbidden_tokens = (
@@ -192,6 +194,7 @@ def test_native_pdf_domain_modules_do_not_import_each_other() -> None:
         tables,
         text_blocks,
         titles,
+        visual_annotations,
     )
     domain_names = {module.__name__.rsplit(".", 1)[-1] for module in domain_modules}
     for module in domain_modules:
@@ -212,6 +215,8 @@ def test_native_pdf_domain_modules_do_not_import_each_other() -> None:
         "header",
         "footer",
         "page_number",
+        "caption",
+        "footnote",
         "page_footnote",
         "aside_text",
         "index",

@@ -92,6 +92,7 @@ from .text_blocks import (
     _merge_multiline_title_blocks,
     _merge_repeated_compact_title_continuations,
 )
+from .visual_annotations import _classify_and_bind_visual_annotations
 
 
 _TEXT_SEMANTIC_TYPES = {
@@ -100,6 +101,7 @@ _TEXT_SEMANTIC_TYPES = {
     "header",
     "footer",
     "page_number",
+    "caption",
     "footnote",
     "page_footnote",
     "aside_text",
@@ -547,7 +549,15 @@ def _finalize_prepared_page(
     absolute_blocks = (
         prepared.fixed_blocks + formula_blocks + index_blocks + text_blocks
     )
-    sorted_blocks = _sort_blocks_with_visual_row_groups(absolute_blocks, prepared.page_size)
+    visual_annotation_regions = _classify_and_bind_visual_annotations(
+        absolute_blocks,
+        prepared.page_size,
+    )
+    sorted_blocks = _sort_blocks_with_visual_row_groups(
+        absolute_blocks,
+        prepared.page_size,
+        visual_annotation_regions=visual_annotation_regions,
+    )
     return [
         normalized
         for block in sorted_blocks
@@ -566,8 +576,10 @@ def _analyze_page_source(source: _PageSource) -> list[dict[str, Any]]:
 def _sort_blocks_with_visual_row_groups(
     blocks: list[dict[str, Any]],
     page_size: tuple[float, float],
+    *,
+    visual_annotation_regions: list[list[dict[str, Any]]] | None = None,
 ) -> list[dict[str, Any]]:
-    """把同一粗行拆出的单行 block 包装成虚拟项排序，再按局部 x 顺序展开。"""
+    """把视觉注释区域和拆分粗行包装成虚拟项排序，再按各自局部顺序展开。"""
 
     top_marginals: list[dict[str, Any]] = []
     bottom_marginals: list[dict[str, Any]] = []
@@ -587,7 +599,29 @@ def _sort_blocks_with_visual_row_groups(
         else:
             body_blocks.append(block)
 
-    inline_grouped_indices = _collect_inline_image_text_groups(body_blocks)
+    body_index_by_identity = {
+        id(block): index for index, block in enumerate(body_blocks)
+    }
+    region_groups: list[list[dict[str, Any]]] = []
+    region_consumed_indices: set[int] = set()
+    for region in visual_annotation_regions or []:
+        indices = [
+            body_index_by_identity[id(member)]
+            for member in region
+            if id(member) in body_index_by_identity
+        ]
+        if len(indices) < 2 or any(index in region_consumed_indices for index in indices):
+            continue
+        members = [body_blocks[index] for index in indices]
+        for member in members:
+            member["_visual_annotation_region_member"] = True
+        region_groups.append(members)
+        region_consumed_indices.update(indices)
+
+    inline_grouped_indices = _collect_inline_image_text_groups(
+        body_blocks,
+        excluded_indices=region_consumed_indices,
+    )
     inline_consumed_indices = {
         index
         for indices in inline_grouped_indices.values()
@@ -595,14 +629,25 @@ def _sort_blocks_with_visual_row_groups(
     }
     grouped_indices: dict[int, list[int]] = {}
     for index, block in enumerate(body_blocks):
-        if index in inline_consumed_indices:
+        if index in region_consumed_indices or index in inline_consumed_indices:
             continue
         row_id = block.get("_single_run_row_id")
         if isinstance(row_id, int):
             grouped_indices.setdefault(row_id, []).append(index)
 
     virtual_groups: list[dict[str, Any]] = []
-    consumed_indices: set[int] = set(inline_consumed_indices)
+    consumed_indices: set[int] = set(region_consumed_indices | inline_consumed_indices)
+    for members in region_groups:
+        virtual_groups.append(
+            {
+                "type": "_xycut_visual_annotation_region",
+                "bbox": _bbox_union_many([member["bbox"] for member in members]),
+                "angle": members[0].get("angle", 0),
+                "content": "",
+                "_members": members,
+                "_visual_annotation_region": True,
+            }
+        )
     for row_id, indices in inline_grouped_indices.items():
         members = [body_blocks[index] for index in indices]
         virtual_groups.append(
@@ -642,6 +687,9 @@ def _sort_blocks_with_visual_row_groups(
         if not isinstance(members, list):
             output.append(payload)
             continue
+        if payload.get("_visual_annotation_region") is True:
+            output.extend(members)
+            continue
         if isinstance(payload.get("_inline_visual_row_id"), int):
             members.sort(
                 key=lambda member: _inline_visual_group_member_sort_key(
@@ -669,11 +717,16 @@ def _sort_blocks_with_visual_row_groups(
 
 def _collect_inline_image_text_groups(
     body_blocks: list[dict[str, Any]],
+    *,
+    excluded_indices: set[int] | None = None,
 ) -> dict[int, list[int]]:
     """把复合图片与包含同一首行的正文块组成专用排序组。"""
 
+    excluded_indices = excluded_indices or set()
     image_indices_by_row: dict[int, list[int]] = {}
     for index, block in enumerate(body_blocks):
+        if index in excluded_indices:
+            continue
         row_id = block.get("_inline_visual_row_id")
         if block.get("type") == "image" and isinstance(row_id, int):
             image_indices_by_row.setdefault(row_id, []).append(index)
@@ -684,7 +737,8 @@ def _collect_inline_image_text_groups(
         text_indices = [
             index
             for index, block in enumerate(body_blocks)
-            if index not in consumed_text_indices
+            if index not in excluded_indices
+            and index not in consumed_text_indices
             and block.get("type") == "text"
             and isinstance(block.get("_visual_row_ids"), set)
             and row_id in block["_visual_row_ids"]
@@ -805,6 +859,10 @@ def _overlapping_lane_pair_is_inverted(
 ) -> bool:
     """判断相邻块是否属于同一内部栏带且视觉中心顺序与当前结果相反。"""
 
+    if first.get("_visual_annotation_region_member") or second.get(
+        "_visual_annotation_region_member"
+    ):
+        return False
     first_interval = first.get("_lane_interval")
     second_interval = second.get("_lane_interval")
     if (
