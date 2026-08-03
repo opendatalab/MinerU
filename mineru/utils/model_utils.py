@@ -1,6 +1,8 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import ctypes
 import math
 import os
+import sys
 import time
 import gc
 from PIL import Image
@@ -180,7 +182,37 @@ def get_res_list_from_layout_res(layout_res, overlap_threshold=0.8):
     return ocr_res_list, table_res_list, single_page_mfdetrec_res
 
 
-def clean_memory(device='cuda'):
+def trim_process_heap() -> None:
+    """Return unused glibc heap pages to the operating system.
+
+    On long-running processes (e.g. the MinerU API) the C allocator can hold
+    onto freed pages as heap fragmentation.  Calling ``malloc_trim(0)`` asks
+    glibc to release any unused memory back to the OS.  On non-glibc platforms
+    this function is a safe no-op.
+    """
+    try:
+        libc = ctypes.CDLL(None)
+        if not hasattr(libc, "malloc_trim"):
+            return
+        libc.malloc_trim(0)
+    except Exception:
+        pass
+
+
+def is_heap_trim_enabled() -> bool:
+    """Return whether glibc heap trimming is enabled.
+
+    Controlled by the ``MINERU_MALLOC_TRIM`` environment variable.  When the
+    variable is unset the feature defaults to enabled on Linux (where glibc is
+    the default allocator) and disabled everywhere else.
+    """
+    env = os.getenv("MINERU_MALLOC_TRIM", "")
+    if env == "":
+        return sys.platform.startswith("linux")
+    return env.lower() not in ("0", "false", "no", "off", "disable", "disabled")
+
+
+def clean_memory(device='cuda', trim_heap=None):
     if str(device).startswith("cuda"):
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -201,8 +233,12 @@ def clean_memory(device='cuda'):
             torch.mlu.empty_cache()
     elif str(device).startswith("sdaa"):
         if torch.sdaa.is_available():
-            torch.sdaa.empty_cache()  
+            torch.sdaa.empty_cache()
     gc.collect()
+    if trim_heap is None:
+        trim_heap = is_heap_trim_enabled()
+    if trim_heap:
+        trim_process_heap()
 
 
 def clean_vram(device, vram_threshold=8):

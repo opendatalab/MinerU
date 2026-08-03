@@ -27,7 +27,7 @@ from mineru.utils.pdf_image_tools import (
 )
 from ...utils.check_sys_env import is_mac_os_version_supported
 from ...utils.config_reader import get_device, get_processing_window_size
-
+from ...utils.model_utils import clean_memory, trim_process_heap
 from ...utils.enum_class import ImageType
 from ...utils.pdfium_guard import (
     close_pdfium_document,
@@ -437,6 +437,8 @@ def doc_analyze(
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
 
+    device = get_device()
+
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json = init_middle_json()
     results = []
@@ -501,6 +503,7 @@ def doc_analyze(
                     last_append_end_time = time.time()
                 finally:
                     _close_images(images_list)
+                    trim_process_heap()
         finally:
             if progress_bar is not None:
                 progress_bar.close()
@@ -514,6 +517,7 @@ def doc_analyze(
             finalize_middle_json(middle_json["pdf_info"])
         close_pdfium_document(pdf_doc)
         doc_closed = True
+        clean_memory(device)
         return middle_json, results
     finally:
         if not doc_closed:
@@ -536,6 +540,8 @@ async def aio_doc_analyze(
     if predictor is None:
         predictor = await _get_model_async(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
+
+    device = get_device()
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json = init_middle_json()
@@ -600,6 +606,7 @@ async def aio_doc_analyze(
                     last_append_end_time = time.time()
                 finally:
                     _close_images(images_list)
+                    trim_process_heap()
         finally:
             if progress_bar is not None:
                 progress_bar.close()
@@ -613,6 +620,7 @@ async def aio_doc_analyze(
             await asyncio.to_thread(finalize_middle_json, middle_json["pdf_info"])
         close_pdfium_document(pdf_doc)
         doc_closed = True
+        clean_memory(device)
         return middle_json, results
     finally:
         if not doc_closed:
