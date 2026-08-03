@@ -972,6 +972,47 @@ def test_demo5_targeted_table_and_footer_regressions() -> None:
     assert len(page77_note) == 1
     assert page77_note[0]["type"] == "footnote"
 
+    merged_table_footnotes = {
+        6: (
+            [0.086, 0.412, 0.522, 0.567],
+            "注：（1）指主要生产单元所采用的工艺名称。",
+            "（7）指设计年生产时间。",
+        ),
+        7: (
+            [0.086, 0.552, 0.572, 0.652],
+            "注：（1）指材料种类，选填“原料”或“辅料”。",
+            "（4）指有毒有害物质或元素",
+        ),
+        31: (
+            [0.086, 0.535, 0.36, 0.675],
+            "注：（1）指主要生产设施。",
+            "（4）指有组织排放或无组织排放。",
+        ),
+    }
+    for page_number, (expected_bbox, prefix, tail_probe) in merged_table_footnotes.items():
+        page = model_list[page_number - 1]
+        footnotes = [block for block in page if block["type"] == "footnote"]
+        assert len(footnotes) == 1
+        footnote = footnotes[0]
+        assert footnote["bbox"] == expected_bbox
+        assert str(footnote["content"]).startswith(prefix)
+        assert _blocks_containing(page, tail_probe) == [footnote]
+        assert not _blocks_containing(
+            [block for block in page if block["type"] == "text"],
+            tail_probe,
+        )
+
+        magic_model = MagicModel(page, 1000, 1000)
+        table_blocks = magic_model.get_table_blocks()
+        assert len(table_blocks) == 1
+        assert [child.type for child in table_blocks[0].blocks] == [
+            "table_body",
+            "table_footnote",
+        ]
+        table_footnote = table_blocks[0].blocks[1]
+        assert table_footnote.bbox == tuple(round(value * 1000) for value in expected_bbox)
+        assert _normalized_content_probe(tail_probe) in _normalized_content_probe(str(table_footnote.content))
+
     expected_footnote_pages = {6, 7, 31, 36, 39, 43, 49, 53, 55, 57, 58, 59, 77}
     assert {
         page_number
@@ -992,12 +1033,21 @@ def test_demo5_targeted_table_and_footer_regressions() -> None:
     assert len(page62_note) == len(page86_table20) == 1
     assert page62_note[0]["type"] == page86_table20[0]["type"] == "text"
 
-    page6_magic_model = MagicModel(model_list[5], 1000, 1000)
-    page6_table = page6_magic_model.get_table_blocks()[0]
-    assert [child.type for child in page6_table.blocks] == [
-        "table_body",
-        "table_footnote",
+    page36_footnotes = [block for block in model_list[35] if block["type"] == "footnote"]
+    assert [block["bbox"] for block in page36_footnotes] == [[0.086, 0.587, 0.404, 0.654]]
+    page57_footnotes = [block for block in model_list[56] if block["type"] == "footnote"]
+    page58_continuation = [
+        block
+        for block in _blocks_containing(
+            model_list[57],
+            "可通过排污许可证管理信息平台中的GIS系统点选后自动生成经纬度",
+        )
+        if block["type"] == "text"
     ]
+    assert len(page57_footnotes) == len(page58_continuation) == 1
+    assert page57_footnotes[0]["type"] == "footnote"
+    assert page58_continuation[0]["type"] == "text"
+    assert page58_continuation[0]["bbox"] == [0.086, 0.155, 0.803, 0.221]
 
     page9 = model_list[8]
     page_number_block = next(

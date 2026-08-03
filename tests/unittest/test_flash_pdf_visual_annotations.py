@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from mineru.backend.flash.native_pdf import pipeline, visual_annotations
+from mineru.backend.flash.native_pdf import (
+    geometry,
+    pipeline,
+    text_blocks,
+    visual_annotations,
+)
 
 
 _PAGE_SIZE = (200.0, 200.0)
@@ -14,18 +19,26 @@ def _text_block(
     *,
     block_type: str = "text",
     row_id: int | None = None,
+    line_height: float = 10.0,
+    local_bbox: tuple[float, float, float, float] | None = None,
+    lane_interval: tuple[float, float] | None = None,
+    lane_is_span: bool = False,
+    font_signature: tuple[str, int] | None = ("TestFont", 400),
 ) -> dict[str, object]:
-    """构造带稳定十点行高的独立文本测试块。"""
+    """构造带稳定行框、字体和栏带元数据的独立文本测试块。"""
 
     return {
         "type": block_type,
         "bbox": bbox,
         "angle": 0,
         "content": content,
-        "_line_heights": [10.0],
+        "_line_heights": [line_height],
+        "_local_line_bboxes": [local_bbox or bbox],
+        "_font_signatures": {font_signature} if font_signature else set(),
+        "_visual_row_ids": {row_id} if row_id is not None else set(),
         "_single_run_row_id": row_id,
-        "_lane_interval": (bbox[0], bbox[2]),
-        "_lane_is_span": False,
+        "_lane_interval": lane_interval or (bbox[0], bbox[2]),
+        "_lane_is_span": lane_is_span,
     }
 
 
@@ -42,6 +55,18 @@ def _visual_block(
         "angle": 0,
         "content": "",
     }
+
+
+def _classify_with_text_block_merge(
+    blocks: list[dict[str, object]],
+) -> list[list[dict[str, object]]]:
+    """通过 pipeline 使用的文本合并回调运行视觉注释分类。"""
+
+    return visual_annotations._classify_and_bind_visual_annotations(
+        blocks,
+        _PAGE_SIZE,
+        merge_text_block_group=text_blocks._merge_internal_text_block_group,
+    )
 
 
 @pytest.mark.parametrize(
@@ -139,10 +164,7 @@ def test_caption_binds_on_all_four_sides(
     image = _visual_block((40.0, 40.0, 80.0, 80.0))
     blocks = [caption, image]
 
-    regions = visual_annotations._classify_and_bind_visual_annotations(
-        blocks,
-        _PAGE_SIZE,
-    )
+    regions = _classify_with_text_block_merge(blocks)
 
     assert caption["type"] == "caption"
     assert len(regions) == 1
@@ -227,6 +249,316 @@ def test_existing_visual_footnote_binds_without_content_marker() -> None:
     )
 
     assert [block["type"] for block in regions[0]] == ["image", "footnote"]
+
+
+def test_table_footnote_merges_multiple_hanging_indent_continuations() -> None:
+    """验证表注强标记会吸收多个同栏悬挂缩进续块并保留内部元数据。"""
+
+    table = _visual_block((20.0, 20.0, 180.0, 60.0), block_type="table")
+    anchor = _text_block(
+        "注：（1）首项。",
+        (20.0, 70.0, 100.0, 80.0),
+        row_id=1,
+        lane_interval=(20.0, 160.0),
+    )
+    continuation1 = _text_block(
+        "（2）续项。",
+        (30.0, 85.0, 130.0, 95.0),
+        row_id=2,
+        lane_interval=(20.0, 160.0),
+    )
+    continuation2 = _text_block(
+        "（3）末项。",
+        (30.0, 100.0, 150.0, 110.0),
+        row_id=3,
+        lane_interval=(20.0, 160.0),
+    )
+    blocks = [table, anchor, continuation1, continuation2]
+
+    regions = _classify_with_text_block_merge(blocks)
+
+    assert len(blocks) == 2
+    merged = blocks[1]
+    assert merged["type"] == "footnote"
+    assert merged["content"] == "注：（1）首项。（2）续项。（3）末项。"
+    assert merged["bbox"] == (20.0, 70.0, 150.0, 110.0)
+    assert merged["_local_line_bboxes"] == [
+        (20.0, 70.0, 100.0, 80.0),
+        (30.0, 85.0, 130.0, 95.0),
+        (30.0, 100.0, 150.0, 110.0),
+    ]
+    assert merged["_line_heights"] == [10.0, 10.0, 10.0]
+    assert merged["_font_signatures"] == {("TestFont", 400)}
+    assert merged["_visual_row_ids"] == {1, 2, 3}
+    assert merged["_single_run_row_id"] is None
+    assert regions == [[table, merged]]
+
+
+@pytest.mark.parametrize(
+    ("gap", "should_merge"),
+    [(13.5, True), (13.6, False)],
+)
+def test_table_footnote_uses_pair_median_gap_limit(
+    gap: float,
+    should_merge: bool,
+) -> None:
+    """验证 page 31 型净空按配对中位行高的一点五倍闭区间判定。"""
+
+    table = _visual_block((20.0, 20.0, 180.0, 60.0), block_type="table")
+    anchor = _text_block(
+        "注：（1）首项。",
+        (20.0, 70.0, 100.0, 78.0),
+        line_height=8.0,
+        lane_interval=(20.0, 160.0),
+    )
+    continuation = _text_block(
+        "（2）续项。",
+        (30.0, 78.0 + gap, 130.0, 88.0 + gap),
+        line_height=10.0,
+        lane_interval=(20.0, 160.0),
+    )
+    blocks = [table, anchor, continuation]
+
+    regions = _classify_with_text_block_merge(blocks)
+
+    if should_merge:
+        assert len(blocks) == 2
+        assert blocks[1]["content"] == "注：（1）首项。（2）续项。"
+        assert regions == [[table, blocks[1]]]
+    else:
+        assert blocks == [table, anchor, continuation]
+        assert regions == [[table, anchor]]
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        _text_block(
+            "（2）间距过大。",
+            (30.0, 95.1, 130.0, 105.1),
+            lane_interval=(20.0, 160.0),
+        ),
+        _text_block(
+            "（2）没有悬挂缩进。",
+            (20.0, 85.0, 130.0, 95.0),
+            lane_interval=(20.0, 160.0),
+        ),
+        _text_block(
+            "（2）字体不同。",
+            (30.0, 85.0, 130.0, 95.0),
+            lane_interval=(20.0, 160.0),
+            font_signature=("OtherFont", 400),
+        ),
+        _text_block(
+            "（2）行高不同。",
+            (30.0, 85.0, 130.0, 95.0),
+            line_height=13.4,
+            lane_interval=(20.0, 160.0),
+        ),
+        _text_block(
+            "（2）栏带不同。",
+            (30.0, 85.0, 130.0, 95.0),
+            lane_interval=(30.0, 170.0),
+        ),
+        _text_block(
+            "（2）跨栏属性不同。",
+            (30.0, 85.0, 130.0, 95.0),
+            lane_interval=(20.0, 160.0),
+            lane_is_span=True,
+        ),
+    ],
+)
+def test_table_footnote_rejects_incompatible_continuation(
+    candidate: dict[str, object],
+) -> None:
+    """验证间距、缩进、字体、行高或栏带突变均终止表注聚合。"""
+
+    table = _visual_block((20.0, 20.0, 180.0, 60.0), block_type="table")
+    anchor = _text_block(
+        "注：（1）首项。",
+        (20.0, 70.0, 100.0, 80.0),
+        lane_interval=(20.0, 160.0),
+    )
+    blocks = [table, anchor, candidate]
+
+    regions = _classify_with_text_block_merge(blocks)
+
+    assert len(blocks) == 3
+    assert anchor["type"] == "footnote"
+    assert candidate["type"] == "text"
+    assert regions == [[table, anchor]]
+
+
+@pytest.mark.parametrize("barrier_type", ["paragraph_title", "image"])
+def test_table_footnote_does_not_skip_semantic_or_visual_barrier(
+    barrier_type: str,
+) -> None:
+    """验证语义块或视觉块横隔栏带时，不会越过它吸收后续文本。"""
+
+    table = _visual_block((20.0, 20.0, 180.0, 60.0), block_type="table")
+    anchor = _text_block(
+        "注：（1）首项。",
+        (20.0, 70.0, 100.0, 80.0),
+        lane_interval=(20.0, 160.0),
+    )
+    barrier = (
+        _text_block(
+            "正文标题",
+            (20.0, 85.0, 130.0, 95.0),
+            block_type=barrier_type,
+            lane_interval=(20.0, 160.0),
+        )
+        if barrier_type != "image"
+        else _visual_block((20.0, 85.0, 160.0, 95.0))
+    )
+    continuation = _text_block(
+        "（2）不得吸收。",
+        (30.0, 100.0, 130.0, 110.0),
+        lane_interval=(20.0, 160.0),
+    )
+    blocks = [table, anchor, barrier, continuation]
+
+    _classify_with_text_block_merge(blocks)
+
+    assert len(blocks) == 4
+    assert anchor["type"] == "footnote"
+    assert continuation["type"] == "text"
+
+
+def test_table_footnote_stops_before_second_strong_annotation() -> None:
+    """验证第二个强标记注释保持独立，不会成为前一个表注的续块。"""
+
+    table = _visual_block((20.0, 20.0, 180.0, 60.0), block_type="table")
+    first = _text_block(
+        "注：（1）首项。",
+        (20.0, 70.0, 100.0, 80.0),
+        lane_interval=(20.0, 160.0),
+    )
+    second = _text_block(
+        "备注：另一条注释。",
+        (20.0, 85.0, 130.0, 95.0),
+        lane_interval=(20.0, 160.0),
+    )
+    blocks = [table, first, second]
+
+    regions = _classify_with_text_block_merge(blocks)
+
+    assert [block["type"] for block in blocks] == ["table", "footnote", "footnote"]
+    assert regions == [[table, first, second]]
+
+
+def test_table_footnote_continuation_uses_rotated_local_coordinates() -> None:
+    """验证九十度表注在共同局部坐标中按相同缩进规则完成合并。"""
+
+    angle = 90
+    table_local = (20.0, 20.0, 180.0, 60.0)
+    anchor_local = (20.0, 70.0, 100.0, 80.0)
+    continuation_local = (30.0, 85.0, 150.0, 95.0)
+    table = _visual_block(
+        geometry._rotate_bbox_from_upright(table_local, _PAGE_SIZE, angle),
+        block_type="table",
+    )
+    anchor = _text_block(
+        "注：（1）首项。",
+        geometry._rotate_bbox_from_upright(anchor_local, _PAGE_SIZE, angle),
+        local_bbox=anchor_local,
+        lane_interval=(20.0, 160.0),
+    )
+    continuation = _text_block(
+        "（2）续项。",
+        geometry._rotate_bbox_from_upright(
+            continuation_local,
+            _PAGE_SIZE,
+            angle,
+        ),
+        local_bbox=continuation_local,
+        lane_interval=(20.0, 160.0),
+    )
+    table["angle"] = anchor["angle"] = continuation["angle"] = angle
+    blocks = [table, anchor, continuation]
+
+    regions = _classify_with_text_block_merge(blocks)
+
+    assert len(blocks) == 2
+    merged_local_bbox = visual_annotations._block_local_bbox(
+        blocks[1],
+        _PAGE_SIZE,
+        angle,
+    )
+    assert merged_local_bbox == pytest.approx((20.0, 70.0, 150.0, 95.0))
+    assert regions == [[table, blocks[1]]]
+
+
+@pytest.mark.parametrize("visual_type", ["image", "code"])
+def test_non_table_or_existing_footnote_does_not_expand_continuations(
+    visual_type: str,
+) -> None:
+    """验证图片、代码脚注和既有 footnote 不进入表格强标记聚合范围。"""
+
+    image = _visual_block(
+        (20.0, 20.0, 180.0, 60.0),
+        block_type=visual_type,
+    )
+    image_note = _text_block(
+        "注：（1）图片注释。",
+        (20.0, 70.0, 100.0, 80.0),
+        lane_interval=(20.0, 160.0),
+    )
+    image_continuation = _text_block(
+        "（2）图片续块。",
+        (30.0, 85.0, 130.0, 95.0),
+        lane_interval=(20.0, 160.0),
+    )
+    image_blocks = [image, image_note, image_continuation]
+
+    _classify_with_text_block_merge(image_blocks)
+
+    table = _visual_block((20.0, 110.0, 180.0, 140.0), block_type="table")
+    existing_note = _text_block(
+        "既有脚注",
+        (20.0, 150.0, 100.0, 160.0),
+        block_type="footnote",
+        lane_interval=(20.0, 160.0),
+    )
+    existing_continuation = _text_block(
+        "缩进正文",
+        (30.0, 165.0, 130.0, 175.0),
+        lane_interval=(20.0, 160.0),
+    )
+    table_blocks = [table, existing_note, existing_continuation]
+
+    _classify_with_text_block_merge(table_blocks)
+
+    assert len(image_blocks) == 3
+    assert image_note["type"] == "footnote"
+    assert image_continuation["type"] == "text"
+    assert len(table_blocks) == 3
+    assert existing_note["type"] == "footnote"
+    assert existing_continuation["type"] == "text"
+
+
+def test_caption_does_not_expand_hanging_indent_text() -> None:
+    """验证表格 caption 即使后接悬挂缩进正文也不会触发表注聚合。"""
+
+    table = _visual_block((20.0, 20.0, 180.0, 60.0), block_type="table")
+    caption = _text_block(
+        "表1：测试表格",
+        (20.0, 70.0, 100.0, 80.0),
+        lane_interval=(20.0, 160.0),
+    )
+    continuation = _text_block(
+        "缩进正文",
+        (30.0, 85.0, 130.0, 95.0),
+        lane_interval=(20.0, 160.0),
+    )
+    blocks = [table, caption, continuation]
+
+    regions = _classify_with_text_block_merge(blocks)
+
+    assert blocks == [table, caption, continuation]
+    assert caption["type"] == "caption"
+    assert continuation["type"] == "text"
+    assert regions == [[table, caption]]
 
 
 def test_multi_panel_images_only_group_when_union_improves_coverage() -> None:

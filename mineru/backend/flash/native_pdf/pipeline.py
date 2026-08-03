@@ -89,6 +89,7 @@ from .text_blocks import (
     _merge_fragmented_header_blocks,
     _merge_front_matter_column_blocks,
     _merge_image_caption_text_blocks,
+    _merge_internal_text_block_group,
     _merge_multiline_title_blocks,
     _merge_repeated_compact_title_continuations,
 )
@@ -552,6 +553,7 @@ def _finalize_prepared_page(
     visual_annotation_regions = _classify_and_bind_visual_annotations(
         absolute_blocks,
         prepared.page_size,
+        merge_text_block_group=_merge_internal_text_block_group,
     )
     sorted_blocks = _sort_blocks_with_visual_row_groups(
         absolute_blocks,

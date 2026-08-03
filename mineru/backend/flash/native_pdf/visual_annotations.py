@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 import statistics
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -29,6 +30,13 @@ _FOOTNOTE_MAX_GAP_IN_LINE_HEIGHTS = 6.0
 _MIN_PROJECTION_OVERLAP = 0.8
 _MIN_ANNOTATION_COVERAGE = 0.65
 _COMPONENT_COVERAGE_GAIN = 0.15
+_TABLE_FOOTNOTE_CONTINUATION_MAX_GAP = 1.5
+_TABLE_FOOTNOTE_FIRST_INDENT_MIN = 0.5
+_TABLE_FOOTNOTE_FIRST_INDENT_MAX = 2.0
+_TABLE_FOOTNOTE_FOLLOWING_INDENT_TOLERANCE = 0.5
+_TABLE_FOOTNOTE_LANE_TOLERANCE = 0.5
+_TABLE_FOOTNOTE_MIN_LINE_HEIGHT_RATIO = 0.75
+_TABLE_FOOTNOTE_MAX_LINE_HEIGHT_RATIO = 1.25
 
 _IDENTIFIER_PATTERN = (
     r"(?:"
@@ -67,6 +75,10 @@ _SUBFIGURE_REFERENCE_TAIL_RE = re.compile(
 
 _Direction = Literal["above", "below", "left", "right"]
 _AnnotationKind = Literal["caption", "footnote"]
+_TextBlockGroupMerger = Callable[
+    [list[dict[str, Any]], list[int]],
+    dict[str, Any],
+]
 
 
 @dataclass(frozen=True)
@@ -188,6 +200,275 @@ def _collect_annotation_candidates(
         elif _is_strong_footnote_text(content):
             output[index] = "footnote"
     return output
+
+
+def _coerce_lane_interval(value: object) -> tuple[float, float] | None:
+    """读取内部栏带区间，拒绝缺失、逆序或非数值元数据。"""
+
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    try:
+        start, end = float(value[0]), float(value[1])
+    except (TypeError, ValueError):
+        return None
+    if end <= start:
+        return None
+    return start, end
+
+
+def _block_first_local_row_bbox(
+    block: dict[str, Any],
+    page_size: tuple[float, float],
+    angle: int,
+) -> BBox | None:
+    """返回块在指定方向局部坐标中的首个文本行框。"""
+
+    rows = block.get("_local_line_bboxes")
+    local_rows = [bbox for row in rows if (bbox := _coerce_bbox(row)) is not None] if isinstance(rows, list) else []
+    if local_rows:
+        return min(local_rows, key=lambda bbox: (bbox[1], bbox[0]))
+    return _block_local_bbox(block, page_size, angle)
+
+
+def _blocks_share_table_footnote_lane(
+    anchor: dict[str, Any],
+    candidate: dict[str, Any],
+    line_height: float,
+) -> bool:
+    """要求表注锚点与续块来自同一内部栏带和 span 层级。"""
+
+    if anchor.get("_lane_is_span") != candidate.get("_lane_is_span"):
+        return False
+    anchor_interval = _coerce_lane_interval(anchor.get("_lane_interval"))
+    candidate_interval = _coerce_lane_interval(candidate.get("_lane_interval"))
+    if anchor_interval is None or candidate_interval is None:
+        return False
+    tolerance = _TABLE_FOOTNOTE_LANE_TOLERANCE * line_height
+    return (
+        abs(anchor_interval[0] - candidate_interval[0]) <= tolerance
+        and abs(anchor_interval[1] - candidate_interval[1]) <= tolerance
+    )
+
+
+def _block_overlaps_table_footnote_lane(
+    block: dict[str, Any],
+    lane_interval: tuple[float, float],
+    page_size: tuple[float, float],
+    angle: int,
+) -> bool:
+    """判断任意块是否横穿表注栏带，用于保证收集过程不跨越障碍。"""
+
+    local_bbox = _block_local_bbox(block, page_size, angle)
+    if local_bbox is None:
+        return False
+    overlap = max(
+        0.0,
+        min(local_bbox[2], lane_interval[1]) - max(local_bbox[0], lane_interval[0]),
+    )
+    shorter_width = max(
+        0.1,
+        min(
+            local_bbox[2] - local_bbox[0],
+            lane_interval[1] - lane_interval[0],
+        ),
+    )
+    return overlap / shorter_width >= 0.5
+
+
+def _table_footnote_fonts_are_compatible(
+    previous: dict[str, Any],
+    candidate: dict[str, Any],
+) -> bool:
+    """仅在两侧都有可靠字体信息且完全不相交时拒绝续块。"""
+
+    previous_fonts = previous.get("_font_signatures")
+    candidate_fonts = candidate.get("_font_signatures")
+    return not (
+        isinstance(previous_fonts, set)
+        and isinstance(candidate_fonts, set)
+        and previous_fonts
+        and candidate_fonts
+        and previous_fonts.isdisjoint(candidate_fonts)
+    )
+
+
+def _table_footnote_candidate_fits_parent(
+    candidate_bbox: BBox,
+    parent_bbox: BBox,
+    line_height: float,
+) -> bool:
+    """要求续块位于父表格下方并保持既有横向投影覆盖标准。"""
+
+    if _bbox_center_y(candidate_bbox) < _bbox_center_y(parent_bbox):
+        return False
+    projection_overlap, annotation_coverage, _center_offset = _axis_overlap_metrics(
+        candidate_bbox,
+        parent_bbox,
+        axis="x",
+        float_margin=line_height,
+    )
+    return projection_overlap >= _MIN_PROJECTION_OVERLAP and annotation_coverage >= _MIN_ANNOTATION_COVERAGE
+
+
+def _table_footnote_continuation_is_compatible(
+    anchor: dict[str, Any],
+    previous: dict[str, Any],
+    candidate: dict[str, Any],
+    parent_bbox: BBox,
+    page_size: tuple[float, float],
+    angle: int,
+    continuation_left: float | None,
+) -> tuple[bool, float | None]:
+    """按栏带、字体、行高、净空和悬挂缩进确认单个表注续块。"""
+
+    previous_bbox = _block_local_bbox(previous, page_size, angle)
+    candidate_bbox = _block_local_bbox(candidate, page_size, angle)
+    anchor_first_row = _block_first_local_row_bbox(anchor, page_size, angle)
+    candidate_first_row = _block_first_local_row_bbox(candidate, page_size, angle)
+    if previous_bbox is None or candidate_bbox is None or anchor_first_row is None or candidate_first_row is None:
+        return False, continuation_left
+
+    previous_height = _block_median_line_height(previous, page_size)
+    candidate_height = _block_median_line_height(candidate, page_size)
+    if previous_height <= 0 or candidate_height <= 0:
+        return False, continuation_left
+    height_ratio = candidate_height / previous_height
+    pair_height = statistics.median((previous_height, candidate_height))
+    vertical_gap = max(0.0, candidate_bbox[1] - previous_bbox[3])
+    if (
+        not _TABLE_FOOTNOTE_MIN_LINE_HEIGHT_RATIO <= height_ratio <= _TABLE_FOOTNOTE_MAX_LINE_HEIGHT_RATIO
+        or vertical_gap > _TABLE_FOOTNOTE_CONTINUATION_MAX_GAP * pair_height
+        or not _blocks_share_table_footnote_lane(anchor, candidate, pair_height)
+        or not _table_footnote_fonts_are_compatible(previous, candidate)
+        or not _table_footnote_candidate_fits_parent(
+            candidate_bbox,
+            parent_bbox,
+            pair_height,
+        )
+    ):
+        return False, continuation_left
+
+    candidate_left = candidate_first_row[0]
+    if continuation_left is None:
+        indent = candidate_left - anchor_first_row[0]
+        if not (_TABLE_FOOTNOTE_FIRST_INDENT_MIN * pair_height <= indent <= _TABLE_FOOTNOTE_FIRST_INDENT_MAX * pair_height):
+            return False, continuation_left
+        return True, candidate_left
+    if abs(candidate_left - continuation_left) > _TABLE_FOOTNOTE_FOLLOWING_INDENT_TOLERANCE * pair_height:
+        return False, continuation_left
+    return True, continuation_left
+
+
+def _collect_table_footnote_continuation_indices(
+    anchor_index: int,
+    relation: _AnnotationRelation,
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+    annotation_indices: set[int],
+    consumed_indices: set[int],
+) -> list[int]:
+    """从表注锚点向下连续收集同栏悬挂缩进文本，不跨越首个障碍。"""
+
+    anchor = blocks[anchor_index]
+    angle = relation.parent.angle
+    anchor_bbox = _block_local_bbox(anchor, page_size, angle)
+    lane_interval = _coerce_lane_interval(anchor.get("_lane_interval"))
+    if anchor_bbox is None or lane_interval is None:
+        return []
+
+    ordered_indices = sorted(
+        (
+            index
+            for index, block in enumerate(blocks)
+            if index != anchor_index
+            and index not in relation.parent.member_indices
+            and index not in consumed_indices
+            and _block_angle(block) == angle
+            and (local_bbox := _block_local_bbox(block, page_size, angle)) is not None
+            and _bbox_center_y(local_bbox) > _bbox_center_y(anchor_bbox)
+            and _block_overlaps_table_footnote_lane(
+                block,
+                lane_interval,
+                page_size,
+                angle,
+            )
+        ),
+        key=lambda index: (
+            _block_local_bbox(blocks[index], page_size, angle)[1],
+            _block_local_bbox(blocks[index], page_size, angle)[0],
+            index,
+        ),
+    )
+
+    output: list[int] = []
+    previous = anchor
+    continuation_left: float | None = None
+    for index in ordered_indices:
+        candidate = blocks[index]
+        if index in annotation_indices or candidate.get("type") != "text":
+            break
+        compatible, continuation_left = _table_footnote_continuation_is_compatible(
+            anchor,
+            previous,
+            candidate,
+            relation.parent.local_bbox,
+            page_size,
+            angle,
+            continuation_left,
+        )
+        if not compatible:
+            break
+        output.append(index)
+        previous = candidate
+    return output
+
+
+def _merge_table_footnote_continuations(
+    blocks: list[dict[str, Any]],
+    candidates: dict[int, _AnnotationKind],
+    assignments: dict[int, _AnnotationRelation],
+    page_size: tuple[float, float],
+    merge_text_block_group: _TextBlockGroupMerger | None,
+) -> set[int]:
+    """合并已绑定单表格的强标记脚注及其页内续块，并返回被消费索引。"""
+
+    if merge_text_block_group is None:
+        return set()
+    annotation_indices = set(candidates)
+    consumed_indices: set[int] = set()
+    for anchor_index in sorted(
+        assignments,
+        key=lambda index: _annotation_local_sort_key(index, blocks, page_size),
+    ):
+        relation = assignments[anchor_index]
+        parent_indices = relation.parent.member_indices
+        anchor = blocks[anchor_index]
+        if (
+            candidates.get(anchor_index) != "footnote"
+            or anchor.get("type") != "text"
+            or not isinstance(anchor.get("content"), str)
+            or not _is_strong_footnote_text(str(anchor["content"]))
+            or relation.direction != "below"
+            or len(parent_indices) != 1
+            or blocks[parent_indices[0]].get("type") != "table"
+        ):
+            continue
+        continuation_indices = _collect_table_footnote_continuation_indices(
+            anchor_index,
+            relation,
+            blocks,
+            page_size,
+            annotation_indices,
+            consumed_indices,
+        )
+        if not continuation_indices:
+            continue
+        blocks[anchor_index] = merge_text_block_group(
+            blocks,
+            [anchor_index, *continuation_indices],
+        )
+        consumed_indices.update(continuation_indices)
+    return consumed_indices
 
 
 def _axis_overlap_metrics(
@@ -654,6 +935,8 @@ def _build_visual_annotation_regions(
 def _classify_and_bind_visual_annotations(
     blocks: list[dict[str, Any]],
     page_size: tuple[float, float],
+    *,
+    merge_text_block_group: _TextBlockGroupMerger | None = None,
 ) -> list[list[dict[str, Any]]]:
     """重分类强规则独立注释，并返回供全局 XYCut++ 使用的有序视觉区域。"""
 
@@ -684,7 +967,21 @@ def _classify_and_bind_visual_annotations(
         )
         is not None
     }
+    consumed_indices = _merge_table_footnote_continuations(
+        blocks,
+        candidates,
+        assignments,
+        page_size,
+        merge_text_block_group,
+    )
     for index, relation in assignments.items():
         blocks[index]["type"] = candidates[index]
         blocks[index]["_visual_annotation_direction"] = relation.direction
-    return _build_visual_annotation_regions(assignments, blocks, page_size)
+    regions = _build_visual_annotation_regions(assignments, blocks, page_size)
+    if consumed_indices:
+        blocks[:] = [
+            block
+            for index, block in enumerate(blocks)
+            if index not in consumed_indices
+        ]
+    return regions
