@@ -299,10 +299,16 @@ def _build_graphic_like_blocks(
         candidates,
         median_height,
     )
+    protected_body_tail_indices = _graphic_body_tail_line_indices_to_preserve(
+        lines,
+        candidates,
+        lanes,
+        median_height,
+    )
 
     for row_lines in row_groups.values():
         if any(
-            line.source_index in protected_caption_indices
+            line.source_index in protected_caption_indices | protected_body_tail_indices
             for line in row_lines
         ):
             continue
@@ -707,6 +713,82 @@ def _graphic_caption_line_indices_to_preserve(
             previous = candidate_line
             if candidate_line.text.rstrip().endswith((".", "!", "?")):
                 break
+    return protected
+
+
+def _graphic_body_tail_line_indices_to_preserve(
+    lines: list[_LineItem],
+    candidates: list[_GraphicCandidate],
+    lanes: list[_TextLane],
+    median_height: float,
+) -> set[int]:
+    """保护贴近图形上沿但延续上方满栏正文排版的短尾行。"""
+
+    protected: set[int] = set()
+    horizontal_lines = [line for line in lines if line.angle == 0]
+    for tail in horizontal_lines:
+        lane_index = _graphic_lane_index(tail.bbox, lanes)
+        lane = lanes[lane_index]
+        lane_width = max(0.1, lane.right - lane.left)
+        tail_width = tail.bbox[2] - tail.bbox[0]
+        if tail_width > 0.5 * lane_width:
+            continue
+
+        matching_candidates = [
+            candidate
+            for candidate in candidates
+            if (candidate.lane_index < 0 or candidate.lane_index == lane_index)
+            and tail.bbox[3] <= candidate.core_bbox[1] + 0.25 * median_height
+            and _is_graphic_label_member(
+                tail,
+                candidate.core_bbox,
+                median_height,
+                margin_scale=candidate.label_margin_scale,
+            )
+        ]
+        if not matching_candidates:
+            continue
+
+        tail_height = _line_effective_height(tail, tail.bbox)
+        for previous in horizontal_lines:
+            if previous.source_index == tail.source_index:
+                continue
+            if _graphic_lane_index(previous.bbox, lanes) != lane_index:
+                continue
+            vertical_gap = tail.bbox[1] - previous.bbox[3]
+            if not -0.25 * median_height <= vertical_gap <= 0.75 * median_height:
+                continue
+            if abs(previous.bbox[0] - tail.bbox[0]) > 0.75 * median_height:
+                continue
+
+            previous_width = previous.bbox[2] - previous.bbox[0]
+            if (
+                previous_width < 0.75 * lane_width
+                or lane.right - previous.bbox[2] > median_height
+                or previous_width < 1.5 * tail_width
+            ):
+                continue
+            previous_height = _line_effective_height(previous, previous.bbox)
+            if max(previous_height, tail_height) > 1.25 * min(previous_height, tail_height):
+                continue
+            if (
+                previous.font_signature is not None
+                and tail.font_signature is not None
+                and previous.font_signature != tail.font_signature
+            ):
+                continue
+            if any(
+                _is_graphic_label_member(
+                    previous,
+                    candidate.core_bbox,
+                    median_height,
+                    margin_scale=candidate.label_margin_scale,
+                )
+                for candidate in matching_candidates
+            ):
+                continue
+            protected.add(tail.source_index)
+            break
     return protected
 
 

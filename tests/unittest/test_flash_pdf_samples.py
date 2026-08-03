@@ -313,7 +313,7 @@ def test_demo2_container_claims_are_pairwise_disjoint() -> None:
 
 
 def test_demo2_page4_groups_five_graphics_and_keeps_table1() -> None:
-    """验证 demo2 第四页五个图形区域分别聚合，Table 1 继续优先输出为 table。"""
+    """验证 demo2 第四页正文尾行不被图形吸收，五个图形和 Table 1 均保持完整。"""
 
     page = _native_model_list("demo2.pdf")[3]
     table_blocks = [block for block in page if block["type"] == "table"]
@@ -328,6 +328,14 @@ def test_demo2_page4_groups_five_graphics_and_keeps_table1() -> None:
     assert len({id(block) for block in graphic_blocks}) == 5
     assert "Frame 90" in graphic_blocks[0]["content"]
     assert all("Figure" not in block["content"] for block in graphic_blocks)
+    body_tail_block = next(
+        block
+        for block in page
+        if block["content"].startswith("of the synthetic stereo scene")
+    )
+    assert body_tail_block["type"] == "text"
+    assert body_tail_block["content"].endswith("discontinuity map.")
+    assert "discontinuity map." not in graphic_blocks[0]["content"]
 
 
 def test_demo2_table_captions_and_numeric_footnotes_are_not_text_blocks() -> None:
