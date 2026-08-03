@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -97,12 +98,54 @@ def _blocks_containing(
     ]
 
 
+def test_all_demo_pdfs_keep_expected_txt_block_inventory() -> None:
+    """验证 15 份 demo PDF 在显式 TXT 模式下仅新增既定表格注释块。"""
+
+    pdf_names = sorted(
+        path.name
+        for path in (Path(__file__).parents[2] / "demo" / "pdfs").glob("*.pdf")
+    )
+    inventory: Counter[str] = Counter()
+    page_count = 0
+    for pdf_name in pdf_names:
+        model_list = _txt_model_list(pdf_name)
+        page_count += len(model_list)
+        inventory.update(
+            block["type"]
+            for page in model_list
+            for block in page
+        )
+
+    assert len(pdf_names) == 15
+    assert page_count == 218
+    assert sum(inventory.values()) == 2591
+    assert inventory == Counter(
+        {
+            "text": 901,
+            "image": 530,
+            "paragraph_title": 214,
+            "header": 180,
+            "page_number": 179,
+            "footer": 176,
+            "table": 135,
+            "caption": 120,
+            "equation": 50,
+            "footnote": 39,
+            "code": 33,
+            "page_footnote": 21,
+            "doc_title": 10,
+            "index": 2,
+            "aside_text": 1,
+        }
+    )
+
+
 def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     """验证 demo1 首页脚注、参考文献、公式与五个真实表格均保持正确。"""
 
     model_list = _native_model_list("demo1.pdf")
 
-    assert [len(page) for page in model_list] == [16, 9, 12, 18, 10, 9, 11, 8, 10, 7, 10, 26, 9]
+    assert [len(page) for page in model_list] == [16, 9, 12, 18, 12, 13, 11, 10, 12, 7, 10, 26, 9]
     assert [sum(block["type"] == "table" for block in page) for page in model_list] == [
         0,
         0,
@@ -122,13 +165,41 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     assert sum(block["type"] == "header" for page in model_list for block in page) == 12
     assert sum(block["type"] == "page_number" for page in model_list for block in page) == 12
     assert sum(block["type"] == "equation" for page in model_list for block in page) == 7
-    assert sum(block["type"] == "caption" for page in model_list for block in page) == 5
+    assert sum(block["type"] == "caption" for page in model_list for block in page) == 10
+    assert sum(block["type"] == "footnote" for page in model_list for block in page) == 5
     assert [block["bbox"] for block in model_list[5] if block["type"] == "table"] == [
-        [0.087, 0.125, 0.922, 0.363],
-        [0.087, 0.669, 0.922, 0.893],
+        [0.087, 0.153, 0.922, 0.333],
+        [0.087, 0.697, 0.922, 0.876],
     ]
     assert [block["bbox"] for block in model_list[8] if block["type"] == "table"] == [
-        [0.078, 0.125, 0.913, 0.416]
+        [0.078, 0.167, 0.913, 0.333]
+    ]
+    page5_visual_blocks = [
+        block
+        for block in model_list[4]
+        if block["type"] in {"caption", "table", "footnote"}
+    ]
+    assert [block["type"] for block in page5_visual_blocks] == [
+        "caption",
+        "table",
+        "footnote",
+    ]
+    assert [block["bbox"] for block in page5_visual_blocks] == [
+        [0.078, 0.729, 0.107, 0.891],
+        [0.117, 0.125, 0.431, 0.891],
+        [0.44, 0.435, 0.452, 0.891],
+    ]
+    assert [block["angle"] for block in page5_visual_blocks] == [270, 270, 270]
+    assert page5_visual_blocks[2]["content"] == (
+        "For *rainfall distribution, U, uniform; W, winter dominated; "
+        "S, summer dominated. BFI, baseflow index."
+    )
+    assert [
+        [child.type for child in group.blocks]
+        for group in MagicModel(model_list[5], 1000, 1000).get_table_blocks()
+    ] == [
+        ["table_caption", "table_body", "table_footnote"],
+        ["table_caption", "table_body", "table_footnote"],
     ]
     page1_footnotes = [block for block in model_list[0] if block["type"] == "page_footnote"]
     assert len(page1_footnotes) == 1
@@ -147,10 +218,25 @@ def test_demo1_rotated_table_claims_all_206_lines_without_residual_text() -> Non
 
     source = _native_page_source("demo1.pdf", 4)
     candidates = tables._detect_table_candidates(source)
-    blocks, claimed = tables._materialize_table_blocks(source, candidates)
+    blocks, annotation_blocks, claimed = tables._materialize_table_blocks(
+        source,
+        candidates,
+    )
     rotated_indices = {line.source_index for line in source.lines if line.angle == 270}
 
     assert len(blocks) == 1
+    assert {block["type"] for block in annotation_blocks} == {
+        "caption",
+        "footnote",
+    }
+    assert next(
+        block for block in annotation_blocks if block["type"] == "caption"
+    )["bbox"] == next(
+        annotation.bbox
+        for annotation in candidates[0].annotations
+        if annotation.kind == "caption"
+    )
+    assert blocks[0]["bbox"] == candidates[0].core_bbox
     assert len(rotated_indices) == 206
     assert claimed == rotated_indices
     assert not [
@@ -207,11 +293,12 @@ def test_demo2_pages2_to6_restore_paragraphs_formulas_and_reading_order() -> Non
 
     model_list = _native_model_list("demo2.pdf")
 
-    assert [len(page) for page in model_list] == [16, 16, 21, 13, 16, 16]
+    assert [len(page) for page in model_list] == [16, 16, 21, 15, 18, 16]
     assert [sum(block["type"] == "image" for block in page) for page in model_list] == [1, 0, 0, 5, 2, 0]
     assert [sum(block["type"] == "table" for block in page) for page in model_list] == [0, 0, 0, 1, 1, 0]
     assert sum(block["type"] == "equation" for page in model_list for block in page) == 9
-    assert sum(block["type"] == "caption" for page in model_list for block in page) == 5
+    assert sum(block["type"] == "caption" for page in model_list for block in page) == 7
+    assert sum(block["type"] == "footnote" for page in model_list for block in page) == 2
 
     page2 = model_list[1]
     page2_contents = [block["content"] for block in page2]
@@ -285,7 +372,9 @@ def test_demo2_container_claims_are_pairwise_disjoint() -> None:
     for page_idx in (1, 2, 3):
         source = _native_page_source("demo2.pdf", page_idx)
         table_candidates = tables._detect_table_candidates(source)
-        table_blocks, table_claimed = tables._materialize_table_blocks(source, table_candidates)
+        table_blocks, _table_annotations, table_claimed = (
+            tables._materialize_table_blocks(source, table_candidates)
+        )
         table_bboxes = [block["bbox"] for block in table_blocks]
         _graphic_blocks, graphic_claimed = graphics._build_graphic_like_blocks(
             source,
@@ -328,7 +417,12 @@ def test_demo2_page4_groups_five_graphics_and_keeps_table1() -> None:
     ]
 
     assert len(table_blocks) == 1
-    assert "Table I:" in table_blocks[0]["content"]
+    table_caption = next(
+        block for block in page if str(block["content"]).startswith("Table I:")
+    )
+    assert table_caption["type"] == "caption"
+    assert "Table I:" not in table_blocks[0]["content"]
+    assert "Symbol" in table_blocks[0]["content"]
     assert len({id(block) for block in graphic_blocks}) == 5
     assert "Frame 90" in graphic_blocks[0]["content"]
     assert all("Figure" not in block["content"] for block in graphic_blocks)
@@ -342,27 +436,58 @@ def test_demo2_page4_groups_five_graphics_and_keeps_table1() -> None:
     assert "discontinuity map." not in graphic_blocks[0]["content"]
 
 
-def test_demo2_table_captions_and_numeric_footnotes_are_not_text_blocks() -> None:
-    """验证 demo2 两张表的换行标题和数字脚注全部并入表格投影。"""
+def test_demo2_table_captions_and_numeric_footnotes_are_independent_blocks() -> None:
+    """验证 demo2 两张表的换行标题和数字脚注独立输出并绑定为三段子块。"""
 
     model_list = _native_model_list("demo2.pdf")
     page4_table = next(block for block in model_list[3] if block["type"] == "table")
     page5_table = next(block for block in model_list[4] if block["type"] == "table")
+    page4_caption = _blocks_containing(model_list[3], "Table I: Parameters")[0]
+    page5_caption = _blocks_containing(model_list[4], "Table II: A comparison")[0]
+    page4_footnote = _blocks_containing(
+        model_list[3],
+        "1 To enable propagation of disparity information",
+    )[0]
+    page5_footnote = _blocks_containing(
+        model_list[4],
+        "1 Millions of Disparity Estimates per Second",
+    )[0]
     residual_text = "\n".join(
         block["content"] for page_idx in (3, 4) for block in model_list[page_idx] if block["type"] == "text"
     )
 
-    assert "ral stereo matching." in page4_table["content"]
-    assert "1 To enable propagation of disparity information" in page4_table["content"]
-    assert "0.01, respectively." in page4_table["content"]
+    assert page4_caption["type"] == page5_caption["type"] == "caption"
+    assert page4_footnote["type"] == page5_footnote["type"] == "footnote"
+    assert "ral stereo matching." in page4_caption["content"]
+    assert "0.01, respectively." in page4_footnote["content"]
     assert "Noise: ±20" not in page4_table["content"]
-    assert "1 Millions of Disparity Estimates per Second." in page5_table["content"]
-    assert "2 Assumes 320 × 240 images with 32 disparity levels." in page5_table["content"]
-    assert "the avgerage % of bad pixels." in page5_table["content"]
+    assert "2 Assumes 320 × 240 images with 32 disparity levels." in page5_footnote["content"]
+    assert "the avgerage % of bad pixels." in page5_footnote["content"]
+    assert "Table I:" not in page4_table["content"]
+    assert "To enable propagation" not in page4_table["content"]
+    assert "Table II:" not in page5_table["content"]
+    assert "Millions of Disparity" not in page5_table["content"]
     assert "ral stereo matching." not in residual_text
     assert "Millions of Disparity Estimates per Second." not in residual_text
-    assert page4_table["bbox"] == [0.51, 0.484, 0.915, 0.675]
-    assert page5_table["bbox"] == [0.51, 0.218, 0.915, 0.438]
+    assert [page4_caption["bbox"], page4_table["bbox"], page4_footnote["bbox"]] == [
+        [0.51, 0.484, 0.915, 0.514],
+        [0.539, 0.53, 0.891, 0.638],
+        [0.549, 0.639, 0.891, 0.675],
+    ]
+    assert [page5_caption["bbox"], page5_table["bbox"], page5_footnote["bbox"]] == [
+        [0.51, 0.218, 0.915, 0.263],
+        [0.52, 0.278, 0.91, 0.39],
+        [0.53, 0.391, 0.91, 0.438],
+    ]
+    for page_index in (3, 4):
+        assert [
+            child.type
+            for child in MagicModel(
+                model_list[page_index],
+                1000,
+                1000,
+            ).get_table_blocks()[0].blocks
+        ] == ["table_caption", "table_body", "table_footnote"]
 
 
 def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
@@ -840,7 +965,31 @@ def test_demo4_nct00083083_targeted_flash_regressions() -> None:
     assert side_caption[0]["type"] == "caption"
     assert side_caption[0]["bbox"][2] < side_image["bbox"][0]
     assert page4.index(side_caption[0]) < page4.index(side_image)
-    assert sum(block["type"] == "caption" for page in model_list for block in page) == 5
+    assert sum(block["type"] == "caption" for page in model_list for block in page) == 6
+    page2_table_caption = _blocks_containing(
+        model_list[1],
+        "Table 1 Patient demographics",
+    )[0]
+    page2_table = next(
+        block for block in model_list[1] if block["type"] == "table"
+    )
+    assert [page2_table_caption["type"], page2_table["type"]] == [
+        "caption",
+        "table",
+    ]
+    assert [page2_table_caption["bbox"], page2_table["bbox"]] == [
+        [0.514, 0.588, 0.914, 0.616],
+        [0.514, 0.615, 0.914, 0.894],
+    ]
+    assert "Patient demographics" not in str(page2_table["content"])
+    assert [
+        child.type
+        for child in MagicModel(
+            model_list[1],
+            1000,
+            1000,
+        ).get_table_blocks()[0].blocks
+    ] == ["table_caption", "table_body"]
 
     page5 = model_list[4]
     right_continuation = _blocks_containing(
@@ -1005,15 +1154,15 @@ def test_demo5_targeted_table_and_footer_regressions() -> None:
         magic_model = MagicModel(page, 1000, 1000)
         table_blocks = magic_model.get_table_blocks()
         assert len(table_blocks) == 1
-        assert [child.type for child in table_blocks[0].blocks] == [
+        assert [child.type for child in table_blocks[0].blocks][-2:] == [
             "table_body",
             "table_footnote",
         ]
-        table_footnote = table_blocks[0].blocks[1]
+        table_footnote = table_blocks[0].blocks[-1]
         assert table_footnote.bbox == tuple(round(value * 1000) for value in expected_bbox)
         assert _normalized_content_probe(tail_probe) in _normalized_content_probe(str(table_footnote.content))
 
-    expected_footnote_pages = {6, 7, 31, 36, 39, 43, 49, 53, 55, 57, 58, 59, 77}
+    expected_footnote_pages = {2, 6, 7, 31, 36, 39, 43, 49, 53, 55, 57, 58, 59, 77}
     assert {
         page_number
         for page_number, page in enumerate(model_list, start=1)
@@ -1023,8 +1172,66 @@ def test_demo5_targeted_table_and_footer_regressions() -> None:
         block["type"] == "footnote"
         for page in model_list
         for block in page
-    ) == 13
-    assert sum(block["type"] == "caption" for page in model_list for block in page) == 3
+    ) == 14
+    assert sum(block["type"] == "caption" for page in model_list for block in page) == 25
+
+    page2_visual_blocks = [
+        block
+        for block in model_list[1]
+        if block["type"] in {"caption", "table", "footnote"}
+    ]
+    assert [block["type"] for block in page2_visual_blocks] == [
+        "caption",
+        "table",
+        "footnote",
+    ]
+    assert [block["bbox"] for block in page2_visual_blocks] == [
+        [0.403, 0.132, 0.597, 0.144],
+        [0.121, 0.147, 0.879, 0.871],
+        [0.151, 0.873, 0.53, 0.886],
+    ]
+    assert "表1 排污单位基本信息表" not in str(page2_visual_blocks[1]["content"])
+    assert "指生产经营场所地址所在地邮政编码" not in str(
+        page2_visual_blocks[1]["content"]
+    )
+    assert [
+        child.type
+        for child in MagicModel(
+            model_list[1],
+            1000,
+            1000,
+        ).get_table_blocks()[0].blocks
+    ] == ["table_caption", "table_body", "table_footnote"]
+
+    page4_table_groups = MagicModel(
+        model_list[3],
+        1000,
+        1000,
+    ).get_table_blocks()
+    assert [
+        [child.type for child in group.blocks]
+        for group in page4_table_groups
+    ] == [
+        ["table_caption", "table_body"],
+        ["table_caption", "table_body"],
+    ]
+    assert [group.blocks[0].bbox for group in page4_table_groups] == [
+        (425, 308, 575, 326),
+        (406, 619, 594, 637),
+    ]
+
+    for page_number in (65, 66):
+        in_border_note = _blocks_containing(
+            model_list[page_number - 1],
+            "注：设计贮存/处置危险废物数量",
+        )
+        assert len(in_border_note) == 1
+        assert in_border_note[0]["type"] == "table"
+        assert not [
+            block
+            for block in model_list[page_number - 1]
+            if block["type"] == "footnote"
+        ]
     page62_note = _blocks_containing(
         model_list[61],
         "排入城镇集中污水处理设施的生活污水",
@@ -1303,16 +1510,24 @@ def test_caibao_page2_parallel_chart_captions_stay_separate() -> None:
             "footnote",
         ]
 
-    expected_new_footnotes = {1: 2, 6: 1, 7: 1, 8: 2, 17: 1, 19: 1}
+    expected_new_footnotes = {1: 2, 6: 1, 7: 2, 8: 2, 17: 1, 19: 1}
     assert {
         page_number: sum(block["type"] == "footnote" for block in model_list[page_number - 1])
         for page_number in expected_new_footnotes
     } == expected_new_footnotes
+    page7_table_note = _blocks_containing(
+        model_list[6],
+        "注：截止 2024 年 7 月 21 日",
+    )
+    assert len(page7_table_note) == 1
+    assert page7_table_note[0]["type"] == "footnote"
+    assert page7_table_note[0]["bbox"] == [0.073, 0.483, 0.219, 0.504]
+    assert "资料来源：Wind、华泰研究" in str(page7_table_note[0]["content"])
     assert all(
         str(block["content"]).startswith("资料来源：")
         for page_number in expected_new_footnotes
         for block in model_list[page_number - 1]
-        if block["type"] == "footnote"
+        if block["type"] == "footnote" and block is not page7_table_note[0]
     )
     assert sum(
         block["type"] == "caption"
@@ -1323,7 +1538,25 @@ def test_caibao_page2_parallel_chart_captions_stay_separate() -> None:
         block["type"] == "footnote"
         for page_blocks in model_list
         for block in page_blocks
-    ) == 16
+    ) == 17
+
+    page7_table_groups = MagicModel(
+        model_list[6],
+        1000,
+        1000,
+    ).get_table_blocks()
+    assert [
+        [child.type for child in group.blocks]
+        for group in page7_table_groups
+    ] == [
+        ["table_caption", "table_body", "table_footnote"],
+        ["table_caption", "table_body", "table_footnote"],
+    ]
+    assert [child.bbox for child in page7_table_groups[0].blocks] == [
+        (76, 83, 364, 94),
+        (72, 94, 930, 480),
+        (73, 483, 219, 504),
+    ]
 
     page2_magic_model = MagicModel(page, 1000, 1000)
     for caption_prefix in ("图表1", "图表2"):
@@ -1393,7 +1626,7 @@ def test_frozen_soil_page3_formula3_remains_one_equation() -> None:
         if "（3）" in str(block.get("content", ""))
     ]
 
-    assert len(page) == 28
+    assert len(page) == 30
     assert len(equations) == 4
     assert len(formula3) == 1
     assert formula3[0]["bbox"] == [0.653, 0.703, 0.898, 0.751]
@@ -1426,7 +1659,7 @@ def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
         for block in page_blocks
         if block["type"] == "caption"
     ]
-    assert len(captions) == 15
+    assert len(captions) == 18
     page2 = model_list[1]
     image = next(block for block in page2 if block["type"] == "image")
     chinese_caption = _blocks_containing(page2, "图1 冻土抗剪强度试验流程示意图")
@@ -1436,6 +1669,55 @@ def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
     assert page2.index(image) < page2.index(chinese_caption[0]) < page2.index(
         english_caption[0]
     )
+
+    page3 = model_list[2]
+    page3_table_group = MagicModel(
+        page3,
+        1000,
+        1000,
+    ).get_table_blocks()[0]
+    assert [child.type for child in page3_table_group.blocks] == [
+        "table_caption",
+        "table_caption",
+        "table_body",
+        "table_footnote",
+    ]
+    assert [child.bbox for child in page3_table_group.blocks] == [
+        (184, 684, 411, 708),
+        (116, 700, 473, 725),
+        (107, 721, 483, 838),
+        (107, 838, 489, 925),
+    ]
+    assert str(page3_table_group.blocks[0].content).startswith("表1")
+    assert str(page3_table_group.blocks[1].content).startswith("Table 1")
+
+    page5_table_groups = MagicModel(
+        model_list[4],
+        1000,
+        1000,
+    ).get_table_blocks()
+    assert [
+        [child.type for child in group.blocks]
+        for group in page5_table_groups
+    ] == [
+        ["table_caption", "table_caption", "table_body"],
+        ["table_caption", "table_caption", "table_body"],
+    ]
+    assert [
+        [child.bbox for child in group.blocks]
+        for group in page5_table_groups
+    ] == [
+        [
+            (217, 121, 373, 145),
+            (170, 137, 419, 162),
+            (107, 158, 483, 416),
+        ],
+        [
+            (209, 624, 380, 649),
+            (128, 641, 461, 665),
+            (107, 662, 483, 826),
+        ],
+    ]
 
     narrative_reference = _blocks_containing(
         model_list[7],
@@ -1493,7 +1775,31 @@ def test_mixed_elements_pages_07_10_force_txt_regressions() -> None:
     assert algorithm1[0]["type"] == algorithm2[0]["type"] == "caption"
     assert page8.index(algorithm1[0]) + 1 == page8.index(code_blocks[1])
     assert page8.index(algorithm2[0]) + 1 == page8.index(code_blocks[2])
-    assert sum(block["type"] == "caption" for page in model_list for block in page) == 4
+    assert sum(block["type"] == "caption" for page in model_list for block in page) == 6
+
+    page10_table_groups = MagicModel(
+        page10,
+        1000,
+        1000,
+    ).get_table_blocks()
+    assert [
+        [child.type for child in group.blocks]
+        for group in page10_table_groups
+    ] == [
+        ["table_caption", "table_body"],
+        ["table_caption", "table_body"],
+    ]
+    assert [
+        [child.bbox for child in group.blocks]
+        for group in page10_table_groups
+    ] == [
+        [(151, 333, 432, 344), (112, 352, 470, 496)],
+        [(193, 607, 389, 618), (121, 626, 461, 710)],
+    ]
+    assert all(
+        "TABLE" not in str(group.blocks[-1].content)
+        for group in page10_table_groups
+    )
 
     page8_magic_model = MagicModel(page8, 1000, 1000)
     algorithm_groups = [
@@ -1566,7 +1872,22 @@ def test_mixed_elements_pages_11_15_force_txt_regressions() -> None:
     assert "Under anesthesia with ether" in figure2[0]["content"]
     assert "pepsin. Isolated and everted esophagus" in figure6[0]["content"]
     assert not [block for block in all_blocks if block["type"] == "footnote"]
-    assert sum(block["type"] == "caption" for block in all_blocks) == 6
+    assert sum(block["type"] == "caption" for block in all_blocks) == 7
+
+    table_group = MagicModel(
+        model_list[3],
+        1000,
+        1000,
+    ).get_table_blocks()[0]
+    assert [child.type for child in table_group.blocks] == [
+        "table_caption",
+        "table_body",
+    ]
+    assert [child.bbox for child in table_group.blocks] == [
+        (79, 93, 798, 103),
+        (79, 109, 922, 247),
+    ]
+    assert "Table 1." not in str(table_group.blocks[1].content)
 
     online_footer = _blocks_containing(model_list[4], "http://www.birkhauser.ch/IPh")
     assert len(online_footer) == 1

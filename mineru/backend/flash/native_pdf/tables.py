@@ -7,19 +7,22 @@ from __future__ import annotations
 import re
 import statistics
 import unicodedata
-from typing import Any
+from typing import Any, Literal
 
 from loguru import logger
 
+from mineru.backend.utils.char_utils import resolve_text_line_boundary
 from mineru.backend.hybrid.table_text import project_pdf_table_text
 from mineru.types import BBox
 from mineru.utils.pdf_document import PDFPathInfo
+from mineru.utils.language import detect_lang
 
 from .models import (
     _Fragment,
     _LineItem,
     _LocalAxisLine,
     _PageSource,
+    _TableAnnotation,
     _TableCandidate,
     _VisualRow,
 )
@@ -40,6 +43,7 @@ from .geometry import (
 )
 from .line_layout import _line_effective_height
 from .line_merging import _same_baseline_geometry
+from .native_text import _normalize_native_run_text
 
 
 _TABLE_CAPTION_RE = re.compile(
@@ -705,6 +709,8 @@ def _expand_candidates_to_connected_rule_grids(
                     expanded_core_bbox,
                 )
             )
+        for annotation in candidate.annotations:
+            candidate.line_indices.difference_update(annotation.line_indices)
     return candidates
 
 
@@ -1416,7 +1422,7 @@ def _expand_rule_table_candidate(
     median_height: float,
     caption_line: _LineItem | None,
 ) -> _TableCandidate:
-    """合并横线核心、上方标题和下方脚注，构造统一投影候选。"""
+    """合并横线核心与上下注释，并保留注释的独立行身份。"""
 
     rule_bbox = _bbox_union_many([line.bbox for line in rule_group])
     core_line_indices = {fragment.line_index for row in core_rows for fragment in row.fragments}
@@ -1430,8 +1436,27 @@ def _expand_rule_table_candidate(
         page_size,
         angle,
     )
-    included_rows = [*caption_rows, *core_rows, *footnote_rows]
     core_local_bbox = _bbox_union(rule_bbox, _bbox_union_many([row.bbox for row in core_rows]))
+    caption_annotation = _build_table_annotation(
+        "caption",
+        caption_rows,
+        excluded_line_indices=core_line_indices,
+        excluded_local_bbox=core_local_bbox,
+    )
+    footnote_annotation = _build_table_annotation(
+        "footnote",
+        footnote_rows,
+        excluded_line_indices=core_line_indices,
+    )
+    annotations = [
+        annotation
+        for annotation in (caption_annotation, footnote_annotation)
+        if annotation is not None
+    ]
+    annotation_line_indices = set().union(
+        *(annotation.line_indices for annotation in annotations),
+    ) if annotations else set()
+    included_rows = [*caption_rows, *core_rows, *footnote_rows]
     local_bbox = _bbox_union(core_local_bbox, _bbox_union_many([row.bbox for row in included_rows]))
     return _TableCandidate(
         bbox=_rotate_bbox_from_upright(local_bbox, page_size, angle),
@@ -1439,7 +1464,53 @@ def _expand_rule_table_candidate(
         angle=angle,
         score=0.0,
         core_bbox=_rotate_bbox_from_upright(core_local_bbox, page_size, angle),
-        line_indices={fragment.line_index for row in included_rows for fragment in row.fragments},
+        # 表体成员与注释成员保持互斥；物化失败时会显式把无效注释放回表体投影。
+        line_indices=core_line_indices - annotation_line_indices,
+        annotations=annotations,
+    )
+
+
+def _build_table_annotation(
+    kind: Literal["caption", "footnote"],
+    rows: list[_VisualRow],
+    *,
+    excluded_line_indices: set[int] | None = None,
+    excluded_local_bbox: BBox | None = None,
+) -> _TableAnnotation | None:
+    """把已确认视觉行压缩成一个带精确来源行集合的表格注释记录。"""
+
+    excluded_line_indices = excluded_line_indices or set()
+    fragments = [
+        fragment
+        for row in rows
+        for fragment in row.fragments
+        if fragment.line_index not in excluded_line_indices
+        and not (
+            excluded_local_bbox is not None
+            and fragment.local_bbox[3] > excluded_local_bbox[1]
+            and _bbox_axis_overlap_ratio(
+                fragment.local_bbox,
+                excluded_local_bbox,
+                axis="x",
+            )
+            >= 0.05
+        )
+    ]
+    if not fragments:
+        return None
+    line_bboxes: dict[int, BBox] = {}
+    for fragment in fragments:
+        existing_bbox = line_bboxes.get(fragment.line_index)
+        line_bboxes[fragment.line_index] = (
+            fragment.bbox
+            if existing_bbox is None
+            else _bbox_union(existing_bbox, fragment.bbox)
+        )
+    return _TableAnnotation(
+        kind=kind,
+        bbox=_bbox_union_many(list(line_bboxes.values())),
+        line_indices=set(line_bboxes),
+        line_bboxes=line_bboxes,
     )
 
 
@@ -1874,50 +1945,249 @@ def _merge_table_candidates(candidates: list[_TableCandidate]) -> list[_TableCan
         elif candidate.core_bbox is not None:
             target.core_bbox = _bbox_union(target.core_bbox, candidate.core_bbox)
         target.line_indices.update(candidate.line_indices)
+        _merge_table_candidate_annotations(target, candidate)
         target.score = max(target.score, candidate.score)
     return sorted(merged, key=lambda item: (item.bbox[1], item.bbox[0]))
+
+
+def _merge_table_candidate_annotations(
+    target: _TableCandidate,
+    candidate: _TableCandidate,
+) -> None:
+    """按类型合并重复候选注释，并以表体优先消解来源行角色冲突。"""
+
+    for annotation in candidate.annotations:
+        existing = next(
+            (
+                item
+                for item in target.annotations
+                if item.kind == annotation.kind
+            ),
+            None,
+        )
+        if existing is None:
+            target.annotations.append(
+                _TableAnnotation(
+                    kind=annotation.kind,
+                    bbox=annotation.bbox,
+                    line_indices=set(annotation.line_indices),
+                    line_bboxes=dict(annotation.line_bboxes),
+                )
+            )
+            continue
+        existing.bbox = _bbox_union(existing.bbox, annotation.bbox)
+        existing.line_indices.update(annotation.line_indices)
+        for line_index, bbox in annotation.line_bboxes.items():
+            existing_bbox = existing.line_bboxes.get(line_index)
+            existing.line_bboxes[line_index] = (
+                bbox
+                if existing_bbox is None
+                else _bbox_union(existing_bbox, bbox)
+            )
+
+    # 重复候选发生角色冲突时以任一候选确认的表体成员为准，避免表头被并入 caption。
+    retained_annotations: list[_TableAnnotation] = []
+    for annotation in target.annotations:
+        annotation.line_indices.difference_update(target.line_indices)
+        annotation.line_bboxes = {
+            line_index: bbox
+            for line_index, bbox in annotation.line_bboxes.items()
+            if line_index in annotation.line_indices
+        }
+        if not annotation.line_indices:
+            continue
+        if annotation.line_bboxes:
+            annotation.bbox = _bbox_union_many(
+                list(annotation.line_bboxes.values()),
+            )
+        retained_annotations.append(annotation)
+    target.annotations = retained_annotations
 
 
 def _materialize_table_blocks(
     source: _PageSource,
     candidates: list[_TableCandidate],
-) -> tuple[list[dict[str, Any]], set[int]]:
-    """为候选生成空间投影 content，仅认领投影成功的文本行。"""
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], set[int]]:
+    """原子物化表体及其独立注释，仅认领整组成功输出的文本行。"""
 
-    blocks: list[dict[str, Any]] = []
+    table_blocks: list[dict[str, Any]] = []
+    annotation_blocks: list[dict[str, Any]] = []
+    accepted_candidate_bboxes: list[BBox] = []
     claimed: set[int] = set()
     for candidate in sorted(candidates, key=lambda item: item.score, reverse=True):
-        if any(_bbox_overlap_in_smaller(candidate.bbox, block["bbox"]) >= 0.5 for block in blocks):
+        # 候选去重仍使用包含注释的完整框，不能因输出表体收缩而放行重复表格。
+        if any(
+            _bbox_overlap_in_smaller(candidate.bbox, bbox) >= 0.5
+            for bbox in accepted_candidate_bboxes
+        ):
             continue
         output_angle = candidate.angle
+        candidate_annotation_blocks, externalized_line_indices, failed_annotations = (
+            _materialize_table_annotations(source, candidate)
+        )
         projection_line_indices = _candidate_projection_line_indices(source, candidate)
+        for annotation in candidate.annotations:
+            projection_line_indices.update(annotation.line_indices)
+        projection_line_indices.difference_update(externalized_line_indices)
+        body_bbox = _table_body_materialization_bbox(
+            candidate,
+            failed_annotations,
+        )
         try:
             candidate_chars = [
                 char for line in source.lines if line.source_index in projection_line_indices for char in line.chars
             ]
             content = project_pdf_table_text(
                 candidate_chars,
-                candidate.bbox,
+                body_bbox,
                 angle=candidate.angle,
             )
         except Exception as exc:
-            # 单个表格的字符投影异常只撤销该候选，不能中止整页提取。
+            # 表体投影异常时同时撤销预构造注释，保持整组不输出、不认领。
             logger.warning(f"Flash table projection failed and rolled back: bbox={candidate.bbox}, error={exc}")
             continue
         if not content or not content.strip():
             continue
-        blocks.append(
+        table_blocks.append(
             {
                 "type": "table",
-                "bbox": candidate.bbox,
+                "bbox": body_bbox,
                 "angle": output_angle,
                 "content": content,
             }
         )
-        # 只认领候选明确接纳的视觉行，避免远标题与表格之间的正文被矩形 bbox 连带删除。
-        claimed.update(projection_line_indices)
-    blocks.sort(key=lambda block: (block["bbox"][1], block["bbox"][0]))
-    return blocks, claimed
+        annotation_blocks.extend(candidate_annotation_blocks)
+        accepted_candidate_bboxes.append(candidate.bbox)
+        # 表体和成功外置的注释行在同一事务中各认领一次。
+        claimed.update(projection_line_indices | externalized_line_indices)
+    table_blocks.sort(key=lambda block: (block["bbox"][1], block["bbox"][0]))
+    annotation_blocks.sort(key=lambda block: (block["bbox"][1], block["bbox"][0]))
+    return table_blocks, annotation_blocks, claimed
+
+
+def _materialize_table_annotations(
+    source: _PageSource,
+    candidate: _TableCandidate,
+) -> tuple[list[dict[str, Any]], set[int], list[_TableAnnotation]]:
+    """构造候选注释块，并返回成功外置行与需回退到表体的注释记录。"""
+
+    blocks: list[dict[str, Any]] = []
+    externalized_line_indices: set[int] = set()
+    failed_annotations: list[_TableAnnotation] = []
+    annotations = sorted(
+        candidate.annotations,
+        key=lambda annotation: (
+            _rotate_bbox_to_upright(
+                annotation.bbox,
+                source.page_size,
+                candidate.angle,
+            )[1],
+            _rotate_bbox_to_upright(
+                annotation.bbox,
+                source.page_size,
+                candidate.angle,
+            )[0],
+            annotation.kind,
+        ),
+    )
+    for annotation in annotations:
+        block = _build_table_annotation_block(
+            source,
+            candidate,
+            annotation,
+        )
+        if block is None:
+            failed_annotations.append(annotation)
+            continue
+        blocks.append(block)
+        externalized_line_indices.update(annotation.line_indices)
+    return blocks, externalized_line_indices, failed_annotations
+
+
+def _build_table_annotation_block(
+    source: _PageSource,
+    candidate: _TableCandidate,
+    annotation: _TableAnnotation,
+) -> dict[str, Any] | None:
+    """按父表格局部方向整理原生行，并生成保留排版元数据的独立注释块。"""
+
+    line_geometry = [
+        (
+            line,
+            _rotate_bbox_to_upright(
+                line.bbox,
+                source.page_size,
+                candidate.angle,
+            ),
+        )
+        for line in source.lines
+        if line.source_index in annotation.line_indices
+    ]
+    # 原生来源顺序可抵抗旋转文字同一基线上的字形顶边抖动。
+    line_geometry.sort(key=lambda item: item[0].source_index)
+    content = _merge_table_annotation_content(
+        [line.text for line, _local_bbox in line_geometry],
+    )
+    if not line_geometry or not content:
+        return None
+    return {
+        "type": annotation.kind,
+        "bbox": annotation.bbox,
+        "angle": candidate.angle,
+        "content": content,
+        "_local_line_bboxes": [bbox for _line, bbox in line_geometry],
+        "_line_heights": [
+            _line_effective_height(line, bbox)
+            for line, bbox in line_geometry
+        ],
+        "_font_signatures": {
+            line.font_signature
+            for line, _bbox in line_geometry
+            if line.font_signature is not None and line.font_coverage >= 0.5
+        },
+        # 已由表格检测器给出完整边界，禁止通用表注规则继续向下扩张。
+        "_table_annotation_complete": True,
+    }
+
+
+def _merge_table_annotation_content(line_texts: list[str]) -> str:
+    """按正文一致的语言与行末断词规则折叠表格注释原生行。"""
+
+    normalized_lines = [
+        normalized
+        for text in line_texts
+        if (normalized := _normalize_native_run_text(str(text or "")))
+    ]
+    if not normalized_lines:
+        return ""
+    try:
+        block_language = detect_lang("".join(normalized_lines))
+    except Exception:
+        block_language = ""
+    content_parts = [normalized_lines[0]]
+    for current_line in normalized_lines[1:]:
+        processed_previous, separator = resolve_text_line_boundary(
+            content_parts[-1],
+            block_language=block_language,
+            next_starts_with_lowercase=current_line[0].islower(),
+        )
+        content_parts[-1] = processed_previous
+        content_parts.extend([separator, current_line])
+    return "".join(content_parts).strip()
+
+
+def _table_body_materialization_bbox(
+    candidate: _TableCandidate,
+    failed_annotations: list[_TableAnnotation],
+) -> BBox:
+    """返回排除有效注释后的表体框，并把无效注释边界保守并回表体。"""
+
+    if not candidate.annotations or len(failed_annotations) == len(candidate.annotations):
+        return candidate.bbox
+    body_bbox = candidate.core_bbox or candidate.bbox
+    for annotation in failed_annotations:
+        body_bbox = _bbox_union(body_bbox, annotation.bbox)
+    return body_bbox
 
 
 def _candidate_projection_line_indices(

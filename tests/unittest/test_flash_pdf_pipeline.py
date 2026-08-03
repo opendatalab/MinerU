@@ -73,14 +73,14 @@ def test_prepare_page_materializes_table_against_original_semantic_lines(
     def fake_materialize(
         materialization_source: models._PageSource,
         candidates: list[models._TableCandidate],
-    ) -> tuple[list[dict[str, object]], set[int]]:
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]], set[int]]:
         """记录表格物化阶段可见的来源行。"""
 
         assert candidates == []
         observed["materialize"] = [
             line.source_index for line in materialization_source.lines
         ]
-        return [], set()
+        return [], [], set()
 
     monkeypatch.setattr(pipeline, "_detect_table_candidates", fake_detect)
     monkeypatch.setattr(pipeline, "_materialize_table_blocks", fake_materialize)
@@ -88,6 +88,52 @@ def test_prepare_page_materializes_table_against_original_semantic_lines(
     pipeline._prepare_page_source(source)
 
     assert observed == {"detect": [0], "materialize": [0, 1]}
+
+
+def test_prepare_page_uses_only_table_body_bbox_and_keeps_annotations_fixed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 Pipeline 仅用表体框作容器屏障，同时把预分类注释送入固定块。"""
+
+    source = models._PageSource(
+        page_size=(100.0, 100.0),
+        lines=[],
+        chars=[],
+        drawing_lines=[],
+    )
+    table_block = {
+        "type": "table",
+        "bbox": (10.0, 30.0, 90.0, 70.0),
+        "angle": 0,
+        "content": "body",
+    }
+    caption_block = {
+        "type": "caption",
+        "bbox": (10.0, 10.0, 50.0, 20.0),
+        "angle": 0,
+        "content": "Table 1",
+    }
+
+    monkeypatch.setattr(
+        pipeline,
+        "_detect_table_candidates",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_materialize_table_blocks",
+        lambda *_args, **_kwargs: ([table_block], [caption_block], set()),
+    )
+
+    prepared = pipeline._prepare_page_source(source)
+
+    assert prepared.table_bboxes == [table_block["bbox"]]
+    assert [block["type"] for block in prepared.fixed_blocks] == [
+        "caption",
+        "table",
+    ]
+
+
 def test_repeated_large_image_requires_three_distinct_pages() -> None:
     """验证同页重复只计一次，面积恰好 8% 且跨三页时才命中水印。"""
 

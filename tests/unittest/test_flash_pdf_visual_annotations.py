@@ -251,6 +251,36 @@ def test_existing_visual_footnote_binds_without_content_marker() -> None:
     assert [block["type"] for block in regions[0]] == ["image", "footnote"]
 
 
+def test_preclassified_table_annotations_keep_local_order_and_do_not_expand() -> None:
+    """验证预分类 caption/table/footnote 稳定成组，完整表注不吸收后续正文。"""
+
+    caption = _text_block(
+        "unmarked table title",
+        (20.0, 10.0, 120.0, 20.0),
+        block_type="caption",
+    )
+    table = _visual_block((20.0, 30.0, 180.0, 70.0), block_type="table")
+    footnote = _text_block(
+        "1 numeric table note",
+        (20.0, 80.0, 140.0, 90.0),
+        block_type="footnote",
+        lane_interval=(20.0, 160.0),
+    )
+    footnote["_table_annotation_complete"] = True
+    continuation = _text_block(
+        "indented body text",
+        (30.0, 95.0, 150.0, 105.0),
+        lane_interval=(20.0, 160.0),
+    )
+    blocks = [table, continuation, footnote, caption]
+
+    regions = _classify_with_text_block_merge(blocks)
+
+    assert len(blocks) == 4
+    assert regions == [[caption, table, footnote]]
+    assert continuation["type"] == "text"
+
+
 def test_table_footnote_merges_multiple_hanging_indent_continuations() -> None:
     """验证表注强标记会吸收多个同栏悬挂缩进续块并保留内部元数据。"""
 

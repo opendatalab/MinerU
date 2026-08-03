@@ -257,9 +257,13 @@ def test_filled_grid_materialization_uses_existing_spatial_projection(
     projection = MagicMock(return_value="inside-left   inside-right")
     monkeypatch.setattr(tables, "project_pdf_table_text", projection)
 
-    blocks, claimed = tables._materialize_table_blocks(source, [candidate])
+    blocks, annotation_blocks, claimed = tables._materialize_table_blocks(
+        source,
+        [candidate],
+    )
 
     assert claimed == {0, 1}
+    assert annotation_blocks == []
     assert blocks == [
         {
             "type": "table",
@@ -325,9 +329,13 @@ def test_table_core_reclaims_semantic_line_without_touching_outer_marginals(
     projection = MagicMock(return_value="cell\ntable tail")
     monkeypatch.setattr(tables, "project_pdf_table_text", projection)
 
-    blocks, claimed = tables._materialize_table_blocks(source, [candidate])
+    blocks, annotation_blocks, claimed = tables._materialize_table_blocks(
+        source,
+        [candidate],
+    )
 
     assert len(blocks) == 1
+    assert annotation_blocks == []
     assert claimed == {0, 1}
     assert {line.source_index for line in lines if line.source_index not in claimed} == {
         2,
@@ -1105,6 +1113,181 @@ def test_split_table_footnote_marker_is_joined_before_matching() -> None:
     assert not tables._is_table_note_text("1 Numeric table footnote")
 
 
+def test_table_candidate_merge_keeps_body_and_annotation_roles_disjoint() -> None:
+    """验证重复候选合并时表体身份优先，并据逐行框收紧 caption 边界。"""
+
+    caption_bbox = (10.0, 10.0, 50.0, 20.0)
+    header_bbox = (10.0, 25.0, 90.0, 35.0)
+    primary = models._TableCandidate(
+        bbox=(0.0, 0.0, 100.0, 80.0),
+        local_bbox=(0.0, 0.0, 100.0, 80.0),
+        angle=0,
+        score=2.0,
+        core_bbox=(0.0, 25.0, 100.0, 80.0),
+        line_indices={2},
+        annotations=[
+            models._TableAnnotation(
+                kind="caption",
+                bbox=geometry._bbox_union(caption_bbox, header_bbox),
+                line_indices={0, 1},
+                line_bboxes={0: caption_bbox, 1: header_bbox},
+            )
+        ],
+    )
+    secondary = models._TableCandidate(
+        bbox=(0.0, 0.0, 100.0, 80.0),
+        local_bbox=(0.0, 0.0, 100.0, 80.0),
+        angle=0,
+        score=1.0,
+        core_bbox=(0.0, 25.0, 100.0, 80.0),
+        line_indices={1, 2},
+        annotations=[
+            models._TableAnnotation(
+                kind="caption",
+                bbox=caption_bbox,
+                line_indices={0},
+                line_bboxes={0: caption_bbox},
+            )
+        ],
+    )
+
+    merged = tables._merge_table_candidates([primary, secondary])
+
+    assert len(merged) == 1
+    assert merged[0].line_indices == {1, 2}
+    assert len(merged[0].annotations) == 1
+    assert merged[0].annotations[0].line_indices == {0}
+    assert merged[0].annotations[0].bbox == caption_bbox
+
+
+def test_materialize_table_externalizes_multiline_annotations_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证拆分编号 caption、多行数字脚注和表体按来源行各物化并认领一次。"""
+
+    line_specs = (
+        ("Table", (10.0, 10.0, 35.0, 20.0), 0),
+        ("2: Metrics", (38.0, 10.0, 80.0, 20.0), 1),
+        ("Header Body", (10.0, 30.0, 90.0, 60.0), 2),
+        ("1 Numeric note", (10.0, 70.0, 70.0, 80.0), 3),
+        ("* Symbol note", (10.0, 80.0, 70.0, 90.0), 4),
+    )
+    lines = [
+        models._LineItem(
+            text=text,
+            bbox=bbox,
+            angle=0,
+            source_index=source_index,
+            effective_height=10.0,
+            font_signature=("Test", 0),
+            font_coverage=1.0,
+        )
+        for text, bbox, source_index in line_specs
+    ]
+    source = models._PageSource(
+        page_size=(100.0, 100.0),
+        lines=lines,
+        chars=[],
+        drawing_lines=[],
+    )
+    candidate = models._TableCandidate(
+        bbox=(10.0, 10.0, 90.0, 90.0),
+        local_bbox=(10.0, 10.0, 90.0, 90.0),
+        angle=0,
+        score=1.0,
+        core_bbox=(10.0, 30.0, 90.0, 60.0),
+        line_indices={2},
+        annotations=[
+            models._TableAnnotation(
+                kind="caption",
+                bbox=(10.0, 10.0, 80.0, 20.0),
+                line_indices={0, 1},
+            ),
+            models._TableAnnotation(
+                kind="footnote",
+                bbox=(10.0, 70.0, 70.0, 90.0),
+                line_indices={3, 4},
+            ),
+        ],
+    )
+    projection = MagicMock(return_value="Header Body")
+    monkeypatch.setattr(tables, "project_pdf_table_text", projection)
+
+    table_blocks, annotation_blocks, claimed = tables._materialize_table_blocks(
+        source,
+        [candidate],
+    )
+
+    assert table_blocks == [
+        {
+            "type": "table",
+            "bbox": (10.0, 30.0, 90.0, 60.0),
+            "angle": 0,
+            "content": "Header Body",
+        }
+    ]
+    assert [block["type"] for block in annotation_blocks] == [
+        "caption",
+        "footnote",
+    ]
+    assert [block["content"] for block in annotation_blocks] == [
+        "Table 2: Metrics",
+        "1 Numeric note * Symbol note",
+    ]
+    assert all(
+        block["_table_annotation_complete"] is True
+        and block["_font_signatures"] == {("Test", 0)}
+        and len(block["_line_heights"]) == 2
+        for block in annotation_blocks
+    )
+    assert projection.call_args.args[1] == (10.0, 30.0, 90.0, 60.0)
+    assert claimed == {0, 1, 2, 3, 4}
+
+
+def test_invalid_table_annotation_falls_back_to_full_table_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证无法形成内容的注释行留在表体投影，表框与认领均不收缩。"""
+
+    lines = [
+        models._LineItem("body", (10.0, 30.0, 90.0, 60.0), 0, 0),
+        models._LineItem("", (10.0, 10.0, 90.0, 20.0), 0, 1),
+    ]
+    source = models._PageSource(
+        page_size=(100.0, 100.0),
+        lines=lines,
+        chars=[],
+        drawing_lines=[],
+    )
+    candidate = models._TableCandidate(
+        bbox=(10.0, 10.0, 90.0, 60.0),
+        local_bbox=(10.0, 10.0, 90.0, 60.0),
+        angle=0,
+        score=1.0,
+        core_bbox=(10.0, 30.0, 90.0, 60.0),
+        line_indices={0},
+        annotations=[
+            models._TableAnnotation(
+                kind="caption",
+                bbox=(10.0, 10.0, 90.0, 20.0),
+                line_indices={1},
+            )
+        ],
+    )
+    projection = MagicMock(return_value="body")
+    monkeypatch.setattr(tables, "project_pdf_table_text", projection)
+
+    table_blocks, annotation_blocks, claimed = tables._materialize_table_blocks(
+        source,
+        [candidate],
+    )
+
+    assert annotation_blocks == []
+    assert table_blocks[0]["bbox"] == candidate.bbox
+    assert projection.call_args.args[1] == candidate.bbox
+    assert claimed == {0, 1}
+
+
 def _table_note_reference_fixture(
     marker: str,
     reference_mode: str,
@@ -1552,16 +1735,25 @@ def test_failed_table_projection_does_not_claim_text(
 ) -> None:
     """验证投影为空或抛错时完整回滚候选，文本行仍可进入正文路径。"""
 
-    line = models._LineItem(
-        text="cell",
-        bbox=(10.0, 10.0, 30.0, 20.0),
-        angle=0,
-        source_index=0,
-        effective_height=10.0,
-    )
+    lines = [
+        models._LineItem(
+            text="cell",
+            bbox=(10.0, 20.0, 30.0, 30.0),
+            angle=0,
+            source_index=0,
+            effective_height=10.0,
+        ),
+        models._LineItem(
+            text="Table 1",
+            bbox=(10.0, 5.0, 30.0, 15.0),
+            angle=0,
+            source_index=1,
+            effective_height=10.0,
+        ),
+    ]
     source = models._PageSource(
         page_size=(100.0, 100.0),
-        lines=[line],
+        lines=lines,
         chars=[],
         drawing_lines=[],
     )
@@ -1570,15 +1762,26 @@ def test_failed_table_projection_does_not_claim_text(
         local_bbox=(0.0, 0.0, 50.0, 50.0),
         angle=0,
         score=1.0,
-        core_bbox=(0.0, 0.0, 50.0, 50.0),
+        core_bbox=(0.0, 20.0, 50.0, 50.0),
         line_indices={0},
+        annotations=[
+            models._TableAnnotation(
+                kind="caption",
+                bbox=(10.0, 5.0, 30.0, 15.0),
+                line_indices={1},
+            )
+        ],
     )
     projection = MagicMock(return_value="")
     if projection_mode == "error":
         projection.side_effect = RuntimeError("projection failed")
     monkeypatch.setattr(tables, "project_pdf_table_text", projection)
 
-    blocks, claimed = tables._materialize_table_blocks(source, [candidate])
+    blocks, annotation_blocks, claimed = tables._materialize_table_blocks(
+        source,
+        [candidate],
+    )
 
     assert blocks == []
+    assert annotation_blocks == []
     assert claimed == set()

@@ -291,9 +291,11 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
     ]
     # 候选检测仍避开预分类边缘文本；已确认表格物化时回到原始行，
     # 让 core_bbox 内的误标页脚可被重新认领，表格外边缘文本不会被矩形扩张带入。
-    table_blocks, claimed_line_indices = _materialize_table_blocks(
-        source,
-        candidates,
+    table_blocks, table_annotation_blocks, claimed_line_indices = (
+        _materialize_table_blocks(
+            source,
+            candidates,
+        )
     )
     claimed_line_indices.update(claimed_rule_code_line_indices)
     table_bboxes = [block["bbox"] for block in table_blocks]
@@ -408,6 +410,7 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
         drawing_lines=source.drawing_lines,
         fixed_blocks=(
             rule_code_blocks
+            + table_annotation_blocks
             + table_blocks
             + code_blocks
             + form_image_blocks

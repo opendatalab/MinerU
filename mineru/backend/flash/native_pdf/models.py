@@ -78,6 +78,16 @@ class _LocalAxisLine:
 
 
 @dataclass(slots=True)
+class _TableAnnotation:
+    """保存表格候选中已识别注释的类型、紧致边界和原始行身份。"""
+
+    kind: Literal["caption", "footnote"]
+    bbox: BBox
+    line_indices: set[int] = field(default_factory=set)
+    line_bboxes: dict[int, BBox] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class _TableCandidate:
     """保存已通过相邻横线边界与文本分布校验的表格候选。"""
 
@@ -87,6 +97,7 @@ class _TableCandidate:
     score: float
     core_bbox: BBox | None = None
     line_indices: set[int] = field(default_factory=set)
+    annotations: list[_TableAnnotation] = field(default_factory=list)
 
 
 @dataclass(slots=True)

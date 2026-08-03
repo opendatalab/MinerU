@@ -184,13 +184,13 @@ def _block_median_line_height(
 def _collect_annotation_candidates(
     blocks: list[dict[str, Any]],
 ) -> dict[int, _AnnotationKind]:
-    """仅从独立 text 和已有 footnote 中收集可参与视觉绑定的注释候选。"""
+    """从独立 text 及预分类 caption/footnote 中收集视觉绑定候选。"""
 
     output: dict[int, _AnnotationKind] = {}
     for index, block in enumerate(blocks):
         block_type = block.get("type")
-        if block_type == "footnote":
-            output[index] = "footnote"
+        if block_type in {"caption", "footnote"}:
+            output[index] = block_type
             continue
         if block_type != "text" or not isinstance(block.get("content"), str):
             continue
@@ -445,6 +445,7 @@ def _merge_table_footnote_continuations(
         anchor = blocks[anchor_index]
         if (
             candidates.get(anchor_index) != "footnote"
+            or anchor.get("_table_annotation_complete") is True
             or anchor.get("type") != "text"
             or not isinstance(anchor.get("content"), str)
             or not _is_strong_footnote_text(str(anchor["content"]))
