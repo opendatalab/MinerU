@@ -58,6 +58,168 @@ def test_page_footnote_uses_separator_and_stops_before_distant_footer_text() -> 
     assert page.page_footnote_groups == [{3, 4, 5}]
 
 
+@pytest.mark.parametrize(
+    ("page_index", "page_count"),
+    [(0, 1), (1, 3)],
+)
+def test_page_footnote_trailing_footer_applies_on_any_page(
+    page_index: int,
+    page_count: int,
+) -> None:
+    """验证单页或非首页脚注投影内、越过续行阈值的紧凑尾段可标为页脚。"""
+
+    body_lines = [
+        _text_line(
+            f"body {index}",
+            (100.0, 100.0 + 30.0 * index, 900.0, 110.0 + 30.0 * index),
+            index,
+            effective_height=10.0,
+        )
+        for index in range(3)
+    ]
+    footnote_lines = [
+        _text_line(
+            "note one",
+            (100.0, 770.0, 800.0, 778.0),
+            3,
+            effective_height=8.0,
+            semantic_type="page_footnote",
+        ),
+        _text_line(
+            "note two",
+            (100.0, 790.0, 500.0, 798.0),
+            4,
+            effective_height=8.0,
+            semantic_type="page_footnote",
+        ),
+        _text_line(
+            "note three",
+            (100.0, 810.0, 450.0, 818.0),
+            5,
+            effective_height=8.0,
+            semantic_type="page_footnote",
+        ),
+    ]
+    footer_lines = [
+        _text_line(
+            "footer first",
+            (100.0, 834.0, 600.0, 842.0),
+            6,
+            effective_height=8.0,
+        ),
+        _text_line(
+            "footer second",
+            (100.0, 846.0, 400.0, 854.0),
+            7,
+            effective_height=8.0,
+        ),
+    ]
+    page = _prepared_text_page(
+        *body_lines,
+        *footnote_lines,
+        *footer_lines,
+        page_size=(1000.0, 1000.0),
+    )
+    page.page_footnote_groups = [{3, 4, 5}]
+
+    pages = [_prepared_text_page() for _index in range(page_count)]
+    pages[page_index] = page
+    auxiliary_text._classify_page_footnote_trailing_footers(pages)
+
+    assert [line.semantic_type for line in footnote_lines] == [
+        "page_footnote",
+    ] * 3
+    assert [line.semantic_type for line in footer_lines] == ["footer"] * 2
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "other_lane",
+        "within_continuation",
+        "body_sized",
+        "split_tail",
+        "container_overlap",
+        "missing_anchor",
+    ],
+)
+def test_page_footnote_trailing_footer_rejects_weak_geometry(case: str) -> None:
+    """验证跨栏正文、弱分隔、正文尺度、多尾段和容器重叠均不能猜成页脚。"""
+
+    body_lines = [
+        _text_line(
+            f"body {index}",
+            (100.0, 100.0 + 30.0 * index, 900.0, 110.0 + 30.0 * index),
+            index,
+            effective_height=10.0,
+        )
+        for index in range(3)
+    ]
+    footnote_lines = [
+        _text_line(
+            f"note {index}",
+            (100.0, 770.0 + 20.0 * index, 500.0, 778.0 + 20.0 * index),
+            3 + index,
+            effective_height=8.0,
+            semantic_type="page_footnote",
+        )
+        for index in range(3)
+    ]
+    first_top, second_top = (828.0, 840.0) if case == "within_continuation" else (834.0, 846.0)
+    if case == "split_tail":
+        second_top = 870.0
+    tail_height = 10.0 if case == "body_sized" else 8.0
+    tail_lines = [
+        _text_line(
+            "tail first",
+            (100.0, first_top, 600.0, first_top + tail_height),
+            6,
+            effective_height=tail_height,
+        ),
+        _text_line(
+            "tail second",
+            (100.0, second_top, 400.0, second_top + tail_height),
+            7,
+            effective_height=tail_height,
+        ),
+    ]
+    extra_lines = (
+        [
+            _text_line(
+                "right column body",
+                (700.0, 835.0, 950.0, 845.0),
+                8,
+                effective_height=10.0,
+            )
+        ]
+        if case == "other_lane"
+        else []
+    )
+    page = _prepared_text_page(
+        *body_lines,
+        *footnote_lines,
+        *tail_lines,
+        *extra_lines,
+        page_size=(1000.0, 1000.0),
+    )
+    if case != "missing_anchor":
+        page.page_footnote_groups = [{3, 4, 5}]
+    if case == "container_overlap":
+        page.fixed_blocks = [
+            {
+                "type": "image",
+                "bbox": (80.0, 825.0, 620.0, 860.0),
+                "angle": 0,
+                "content": "",
+            }
+        ]
+
+    auxiliary_text._classify_page_footnote_trailing_footers([page])
+
+    assert all(line.semantic_type is None for line in tail_lines)
+    assert all(line.semantic_type is None for line in extra_lines)
+
+
 def test_image_footnote_requires_image_rule_and_smaller_text() -> None:
     """验证图表脚注必须同时具备图片、下缘长横线和字号收缩证据。"""
 
@@ -629,6 +791,9 @@ def test_auxiliary_text_classifiers_do_not_read_line_text() -> None:
             auxiliary_text._classify_deferred_image_footnotes,
             auxiliary_text._image_footnote_members,
             auxiliary_text._classify_page_footnotes,
+            auxiliary_text._classify_page_footnote_trailing_footers,
+            auxiliary_text._page_footnote_trailing_footer_members,
+            auxiliary_text._page_footnote_continuation_gap_limit,
             auxiliary_text._augment_footnote_groups_with_edge_markers,
             auxiliary_text._classify_rule_delimited_headers,
             auxiliary_text._classify_page_number_outer_companions,

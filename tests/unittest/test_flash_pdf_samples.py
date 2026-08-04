@@ -99,7 +99,7 @@ def _blocks_containing(
 
 
 def test_all_demo_pdfs_keep_expected_txt_block_inventory() -> None:
-    """验证 15 份 demo PDF 在显式 TXT 模式下仅新增既定表格注释块。"""
+    """验证 15 份 demo PDF 在显式 TXT 模式下保持预期块库存与页脚迁移。"""
 
     pdf_names = sorted(
         path.name
@@ -121,12 +121,12 @@ def test_all_demo_pdfs_keep_expected_txt_block_inventory() -> None:
     assert sum(inventory.values()) == 2591
     assert inventory == Counter(
         {
-            "text": 901,
+            "text": 900,
             "image": 530,
             "paragraph_title": 214,
             "header": 180,
             "page_number": 179,
-            "footer": 176,
+            "footer": 177,
             "table": 135,
             "caption": 120,
             "equation": 50,
@@ -141,7 +141,7 @@ def test_all_demo_pdfs_keep_expected_txt_block_inventory() -> None:
 
 
 def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
-    """验证 demo1 首页脚注、参考文献、公式与五个真实表格均保持正确。"""
+    """验证 demo1 首页脚注尾段页脚、参考文献、公式与五个真实表格均正确。"""
 
     model_list = _native_model_list("demo1.pdf")
 
@@ -207,8 +207,10 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     copyright_block = next(
         block for block in model_list[0] if block["content"].startswith("0022-1694/$")
     )
-    assert copyright_block["type"] == "text"
+    assert copyright_block["type"] == "footer"
+    assert copyright_block["bbox"] == [0.078, 0.87, 0.513, 0.894]
     assert "doi:10.1016/j.jhydrol.2005.01.006" in copyright_block["content"]
+    assert model_list[0].index(page1_footnotes[0]) < model_list[0].index(copyright_block)
     assert next(block for block in model_list[0] if block["content"] == "Abstract")["type"] == "paragraph_title"
     assert next(block for block in model_list[6] if block["content"].startswith("4.2."))["type"] == "paragraph_title"
 
@@ -620,6 +622,12 @@ def test_demo3_auxiliary_text_types_match_real_page_geometry() -> None:
         for block in model_list[6]
         if block["type"] in {"aside_text", "page_footnote"}
     ]
+    assert not [
+        block
+        for page in model_list
+        for block in page
+        if block["type"] == "footer"
+    ]
 
 
 def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_formula() -> None:
@@ -893,6 +901,11 @@ def test_demo4_nct00083083_targeted_flash_regressions() -> None:
     )["type"] == "text"
     assert _blocks_containing(page1, "contributed equally")[0]["type"] == "page_footnote"
     assert _blocks_containing(page1, "University of Edinburgh")[0]["type"] == "page_footnote"
+    assert [
+        block["bbox"]
+        for block in page1
+        if block["type"] == "footer"
+    ] == [[0.086, 0.934, 0.157, 0.957]]
 
     abstract_sections = [
         _blocks_containing(page1, opener)
@@ -1873,6 +1886,18 @@ def test_mixed_elements_pages_11_15_force_txt_regressions() -> None:
     assert "pepsin. Isolated and everted esophagus" in figure6[0]["content"]
     assert not [block for block in all_blocks if block["type"] == "footnote"]
     assert sum(block["type"] == "caption" for block in all_blocks) == 7
+    page1_corresponding_author = _blocks_containing(
+        model_list[0],
+        "Corresponding author",
+    )
+    page1_right_column_tail = _blocks_containing(
+        model_list[0],
+        "The reflux of gastric juice was induced",
+    )
+    assert len(page1_corresponding_author) == len(page1_right_column_tail) == 1
+    assert page1_corresponding_author[0]["type"] == "page_footnote"
+    assert page1_right_column_tail[0]["type"] == "text"
+    assert not [block for block in model_list[0] if block["type"] == "footer"]
 
     table_group = MagicModel(
         model_list[3],

@@ -68,6 +68,7 @@ from .code_blocks import (
 from .auxiliary_text import (
     _classify_deferred_image_footnotes,
     _classify_isolated_first_page_footer,
+    _classify_page_footnote_trailing_footers,
     _classify_page_number_outer_companions,
     _classify_page_auxiliary_text,
     _classify_raw_page_marginals,
@@ -228,6 +229,7 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
     _classify_rule_delimited_headers(prepared_pages)
     _classify_rule_delimited_footers(prepared_pages)
     _classify_page_number_outer_companions(prepared_pages)
+    _classify_page_footnote_trailing_footers(prepared_pages)
     _classify_isolated_first_page_footer(prepared_pages)
     document_body_profile = _infer_document_body_profile(prepared_pages)
     if document_body_profile is not None:

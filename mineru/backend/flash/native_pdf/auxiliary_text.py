@@ -27,6 +27,7 @@ from .geometry import (
     _bbox_center_x,
     _bbox_center_y,
     _bbox_intersects,
+    _bbox_union_many,
     _clip_bbox,
     _coerce_bbox,
     _expand_bbox,
@@ -609,7 +610,10 @@ def _footnote_lane_members(
         ):
             return set()
 
-    continuation_gap_limit = max(1.25 * median_height, 0.01 * local_page_height)
+    continuation_gap_limit = _page_footnote_continuation_gap_limit(
+        median_height,
+        local_page_height,
+    )
     members = [lane_lines[first_index]]
     for current in lane_lines[first_index + 1 :]:
         if lower_barrier_y is not None and current[1][1] >= lower_barrier_y:
@@ -618,6 +622,15 @@ def _footnote_lane_members(
             break
         members.append(current)
     return {line.source_index for line, _bbox in members}
+
+
+def _page_footnote_continuation_gap_limit(
+    reference_height: float,
+    local_page_height: float,
+) -> float:
+    """统一返回页脚注连续扩展允许的最大有效净空。"""
+
+    return max(1.25 * reference_height, 0.01 * local_page_height)
 
 
 def _footnote_lane_width_reference(
@@ -1240,6 +1253,225 @@ def _classify_single_page_compound_headers(pages: list[_PreparedPage]) -> None:
         if has_right_sidecar:
             for line, _bbox in local_members:
                 line.semantic_type = "header"
+
+
+def _classify_page_footnote_trailing_footers(
+    pages: list[_PreparedPage],
+) -> None:
+    """把任意页脚注投影下方、已越过续行边界的紧凑尾段标为页脚。"""
+
+    for page in pages:
+        line_by_source = {
+            line.source_index: line
+            for line in page.remaining_lines
+        }
+        ranked_groups: list[tuple[float, set[int]]] = []
+        for source_indices in page.page_footnote_groups:
+            anchor_lines = [
+                line_by_source[source_index]
+                for source_index in source_indices
+                if source_index in line_by_source
+                and line_by_source[source_index].semantic_type == "page_footnote"
+            ]
+            angles = {line.angle for line in anchor_lines}
+            if len(angles) != 1:
+                continue
+            angle = next(iter(angles))
+            local_bottom = max(
+                _rotate_bbox_to_upright(
+                    line.bbox,
+                    page.page_size,
+                    angle,
+                )[3]
+                for line in anchor_lines
+            )
+            ranked_groups.append((local_bottom, source_indices))
+
+        # 优先处理页面最下方的脚注组，避免上方脚注跨过下方脚注寻找页脚。
+        for _local_bottom, source_indices in sorted(
+            ranked_groups,
+            key=lambda item: item[0],
+            reverse=True,
+        ):
+            for line in _page_footnote_trailing_footer_members(
+                page,
+                source_indices,
+            ):
+                line.semantic_type = "footer"
+
+
+def _page_footnote_trailing_footer_members(
+    page: _PreparedPage,
+    source_indices: set[int],
+) -> list[_LineItem]:
+    """返回脚注水平投影下方唯一、紧凑且小于正文尺度的页脚行。"""
+
+    line_by_source = {
+        line.source_index: line
+        for line in page.remaining_lines
+    }
+    anchor_lines = [
+        line_by_source[source_index]
+        for source_index in source_indices
+        if source_index in line_by_source
+        and line_by_source[source_index].semantic_type == "page_footnote"
+    ]
+    angles = {line.angle for line in anchor_lines}
+    if len(angles) != 1:
+        return []
+    angle = next(iter(angles))
+    local_page_size = (
+        (page.page_size[1], page.page_size[0])
+        if angle in {90, 270}
+        else page.page_size
+    )
+    local_page_width, local_page_height = local_page_size
+    if local_page_width <= 0 or local_page_height <= 0:
+        return []
+
+    anchor_geometry = [
+        (
+            line,
+            _rotate_bbox_to_upright(
+                line.bbox,
+                page.page_size,
+                angle,
+            ),
+        )
+        for line in anchor_lines
+    ]
+    anchor_bbox = _bbox_union_many([bbox for _line, bbox in anchor_geometry])
+    if anchor_bbox[3] < 0.75 * local_page_height:
+        return []
+
+    unresolved_geometry = [
+        (
+            line,
+            _rotate_bbox_to_upright(
+                line.bbox,
+                page.page_size,
+                angle,
+            ),
+        )
+        for line in page.remaining_lines
+        if line.semantic_type is None and line.angle == angle
+    ]
+    body_geometry = [
+        (line, bbox)
+        for line, bbox in unresolved_geometry
+        if bbox[3] <= anchor_bbox[1]
+        and bbox[2] - bbox[0] >= 0.3 * local_page_width
+        and 0.1 * local_page_height
+        <= _bbox_center_y(bbox)
+        <= 0.94 * local_page_height
+        and _bbox_axis_overlap_ratio(
+            anchor_bbox,
+            bbox,
+            axis="x",
+        )
+        >= 0.2
+    ]
+    if len(body_geometry) < 3:
+        return []
+    body_height = statistics.median(
+        _line_effective_height(line, bbox)
+        for line, bbox in body_geometry
+    )
+    if body_height <= 0:
+        return []
+
+    if any(
+        bbox[1] <= anchor_bbox[3] < bbox[3]
+        for _line, bbox in unresolved_geometry
+    ):
+        # 另一栏正文仍跨过脚注底边时，不能把其下方局部文本猜成全页页脚。
+        return []
+    trailing_geometry = sorted(
+        (
+            (line, bbox)
+            for line, bbox in unresolved_geometry
+            if bbox[1] > anchor_bbox[3]
+        ),
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    if not 1 <= len(trailing_geometry) <= 3:
+        return []
+
+    first = trailing_geometry[0]
+    candidate_bbox = _bbox_union_many(
+        [bbox for _line, bbox in trailing_geometry]
+    )
+    if first[1][1] < 0.82 * local_page_height:
+        return []
+    projection_tolerance = 0.5 * body_height
+    if (
+        candidate_bbox[0] < anchor_bbox[0] - projection_tolerance
+        or candidate_bbox[2] > anchor_bbox[2] + projection_tolerance
+        or abs(candidate_bbox[0] - anchor_bbox[0]) > body_height
+    ):
+        return []
+    left_edges = [bbox[0] for _line, bbox in trailing_geometry]
+    if max(left_edges) - min(left_edges) > 0.75 * body_height:
+        return []
+    if candidate_bbox[2] - candidate_bbox[0] > 0.6 * local_page_width:
+        return []
+    if candidate_bbox[3] - candidate_bbox[1] > 4.0 * body_height:
+        return []
+    if any(
+        _line_effective_height(line, bbox) > 0.95 * body_height
+        for line, bbox in trailing_geometry
+    ):
+        return []
+
+    projecting_anchor_rows = [
+        item
+        for item in anchor_geometry
+        if _bbox_axis_overlap_ratio(
+            item[1],
+            candidate_bbox,
+            axis="x",
+        )
+        >= 0.2
+    ]
+    if not projecting_anchor_rows:
+        return []
+    anchor_last = max(
+        projecting_anchor_rows,
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    continuation_gap_limit = _page_footnote_continuation_gap_limit(
+        body_height,
+        local_page_height,
+    )
+    first_gap = _effective_text_row_gap(anchor_last, first)
+    if not continuation_gap_limit < first_gap <= 3.0 * body_height:
+        return []
+    if any(
+        _effective_text_row_gap(previous, current) > continuation_gap_limit
+        for previous, current in zip(
+            trailing_geometry,
+            trailing_geometry[1:],
+        )
+    ):
+        return []
+
+    original_candidate_bbox = _bbox_union_many(
+        [line.bbox for line, _bbox in trailing_geometry]
+    )
+    if any(
+        container_bbox is not None
+        and _bbox_intersects(original_candidate_bbox, container_bbox)
+        for block in page.fixed_blocks
+        if (
+            container_bbox := _clip_bbox(
+                _coerce_bbox(block.get("bbox")),
+                page.page_size,
+            )
+        )
+        is not None
+    ):
+        return []
+    return [line for line, _bbox in trailing_geometry]
 
 
 def _classify_isolated_first_page_footer(pages: list[_PreparedPage]) -> None:
