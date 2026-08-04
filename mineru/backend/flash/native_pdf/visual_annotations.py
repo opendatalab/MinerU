@@ -30,6 +30,9 @@ _FOOTNOTE_MAX_GAP_IN_LINE_HEIGHTS = 6.0
 _MIN_PROJECTION_OVERLAP = 0.8
 _MIN_ANNOTATION_COVERAGE = 0.65
 _COMPONENT_COVERAGE_GAIN = 0.15
+_CROSS_LANE_CAPTION_ROW_TOP_TOLERANCE = 0.25
+_CROSS_LANE_CAPTION_MIN_LINE_HEIGHT_RATIO = 0.85
+_CROSS_LANE_CAPTION_MAX_LINE_HEIGHT_RATIO = 1.15
 _TABLE_FOOTNOTE_CONTINUATION_MAX_GAP = 1.5
 _TABLE_FOOTNOTE_FIRST_INDENT_MIN = 0.5
 _TABLE_FOOTNOTE_FIRST_INDENT_MAX = 2.0
@@ -810,6 +813,169 @@ def _choose_annotation_relation(
     )
 
 
+def _caption_blocks_use_distinct_regular_lanes(
+    anchor: dict[str, Any],
+    candidate: dict[str, Any],
+) -> bool:
+    """确认两个标题块分别属于互不重叠的普通栏带。"""
+
+    if (
+        anchor.get("_lane_is_span") is not False
+        or candidate.get("_lane_is_span") is not False
+    ):
+        return False
+    anchor_interval = _coerce_lane_interval(anchor.get("_lane_interval"))
+    candidate_interval = _coerce_lane_interval(candidate.get("_lane_interval"))
+    if anchor_interval is None or candidate_interval is None:
+        return False
+    return (
+        anchor_interval[1] <= candidate_interval[0]
+        or candidate_interval[1] <= anchor_interval[0]
+    )
+
+
+def _caption_blocks_have_compatible_typography(
+    anchor: dict[str, Any],
+    candidate: dict[str, Any],
+    page_size: tuple[float, float],
+) -> bool:
+    """用行高和字体交集确认跨栏标题块来自同一排版层级。"""
+
+    anchor_height = _block_median_line_height(anchor, page_size)
+    candidate_height = _block_median_line_height(candidate, page_size)
+    if anchor_height <= 0 or candidate_height <= 0:
+        return False
+    height_ratio = candidate_height / anchor_height
+    if not (
+        _CROSS_LANE_CAPTION_MIN_LINE_HEIGHT_RATIO
+        <= height_ratio
+        <= _CROSS_LANE_CAPTION_MAX_LINE_HEIGHT_RATIO
+    ):
+        return False
+
+    anchor_fonts = anchor.get("_font_signatures")
+    candidate_fonts = candidate.get("_font_signatures")
+    if not (
+        isinstance(anchor_fonts, (set, frozenset))
+        and isinstance(candidate_fonts, (set, frozenset))
+        and anchor_fonts
+        and candidate_fonts
+    ):
+        return False
+    return not anchor_fonts.isdisjoint(candidate_fonts)
+
+
+def _cross_lane_caption_companion_relation(
+    anchor_index: int,
+    candidate_index: int,
+    anchor_relation: _AnnotationRelation,
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+    parents: list[_VisualParent],
+    annotation_indices: set[int],
+) -> _AnnotationRelation | None:
+    """仅凭空间、栏带和排版信息确认一个跨栏标题同伴。"""
+
+    if anchor_relation.direction not in {"above", "below"}:
+        return None
+    anchor = blocks[anchor_index]
+    candidate = blocks[candidate_index]
+    if (
+        candidate.get("type") != "text"
+        or _block_angle(candidate) != anchor_relation.parent.angle
+    ):
+        return None
+    if not _caption_blocks_use_distinct_regular_lanes(anchor, candidate):
+        return None
+    if not _caption_blocks_have_compatible_typography(
+        anchor,
+        candidate,
+        page_size,
+    ):
+        return None
+
+    angle = anchor_relation.parent.angle
+    anchor_first_row = _block_first_local_row_bbox(anchor, page_size, angle)
+    candidate_first_row = _block_first_local_row_bbox(
+        candidate,
+        page_size,
+        angle,
+    )
+    if anchor_first_row is None or candidate_first_row is None:
+        return None
+    pair_height = statistics.median(
+        (
+            _block_median_line_height(anchor, page_size),
+            _block_median_line_height(candidate, page_size),
+        )
+    )
+    if (
+        abs(anchor_first_row[1] - candidate_first_row[1])
+        > _CROSS_LANE_CAPTION_ROW_TOP_TOLERANCE * pair_height
+    ):
+        return None
+
+    relation = _choose_annotation_relation(
+        candidate_index,
+        "caption",
+        blocks,
+        page_size,
+        parents,
+        annotation_indices | {candidate_index},
+    )
+    if (
+        relation is None
+        or relation.parent != anchor_relation.parent
+        or relation.direction != anchor_relation.direction
+    ):
+        return None
+    return relation
+
+
+def _expand_cross_lane_caption_assignments(
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+    parents: list[_VisualParent],
+    candidates: dict[int, _AnnotationKind],
+    assignments: dict[int, _AnnotationRelation],
+) -> dict[int, _AnnotationRelation]:
+    """从原始已绑定标题出发，保守补标唯一的跨栏空间同伴。"""
+
+    annotation_indices = set(candidates)
+    proposals: dict[int, list[_AnnotationRelation]] = {}
+    for anchor_index, anchor_relation in assignments.items():
+        if candidates.get(anchor_index) != "caption":
+            continue
+        matches = [
+            (index, relation)
+            for index in range(len(blocks))
+            if index not in annotation_indices
+            and (
+                relation := _cross_lane_caption_companion_relation(
+                    anchor_index,
+                    index,
+                    anchor_relation,
+                    blocks,
+                    page_size,
+                    parents,
+                    annotation_indices,
+                )
+            )
+            is not None
+        ]
+        if len(matches) != 1:
+            continue
+        index, relation = matches[0]
+        proposals.setdefault(index, []).append(relation)
+
+    output: dict[int, _AnnotationRelation] = {}
+    for index, relations in proposals.items():
+        # 同伴同时被多个锚点认领时归属不唯一，保守地维持正文分类。
+        if len(relations) == 1:
+            output[index] = relations[0]
+    return output
+
+
 def _merge_parent_assignment_groups(
     assignments: dict[int, _AnnotationRelation],
 ) -> list[tuple[set[int], dict[int, _AnnotationRelation]]]:
@@ -866,6 +1032,87 @@ def _annotation_local_sort_key(
     return (local_bbox[1], local_bbox[0], index)
 
 
+def _sort_annotation_indices_by_visual_rows(
+    indices: list[int],
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+    relations: dict[int, _AnnotationRelation],
+) -> list[int]:
+    """先聚合首行对齐的标题视觉行，再按行内左到右稳定排序。"""
+
+    positioned: list[tuple[int, BBox, float]] = []
+    fallback: list[int] = []
+    for index in indices:
+        block = blocks[index]
+        angle = _block_angle(block)
+        first_row = _block_first_local_row_bbox(block, page_size, angle)
+        if first_row is None:
+            fallback.append(index)
+            continue
+        positioned.append(
+            (
+                index,
+                first_row,
+                _block_median_line_height(block, page_size),
+            )
+        )
+    positioned.sort(key=lambda item: (item[1][1], item[1][0], item[0]))
+
+    rows: list[list[tuple[int, BBox, float]]] = []
+    for item in positioned:
+        if rows:
+            current_row = rows[-1]
+            item_relation = relations.get(item[0])
+            shares_cross_lane_row = (
+                item_relation is not None
+                and item_relation.direction in {"above", "below"}
+                and all(
+                    (
+                        member_relation := relations.get(member[0])
+                    ) is not None
+                    and member_relation.direction == item_relation.direction
+                    and _caption_blocks_use_distinct_regular_lanes(
+                        blocks[member[0]],
+                        blocks[item[0]],
+                    )
+                    for member in current_row
+                )
+            )
+            reference_top = statistics.median(
+                member[1][1]
+                for member in current_row
+            )
+            reference_height = statistics.median(
+                member[2]
+                for member in current_row
+            )
+            pair_height = statistics.median((reference_height, item[2]))
+            if (
+                shares_cross_lane_row
+                and abs(item[1][1] - reference_top)
+                <= _CROSS_LANE_CAPTION_ROW_TOP_TOLERANCE * pair_height
+            ):
+                current_row.append(item)
+                continue
+        rows.append([item])
+
+    output: list[int] = []
+    for row in rows:
+        row.sort(key=lambda item: (item[1][0], item[1][1], item[0]))
+        output.extend(item[0] for item in row)
+    output.extend(
+        sorted(
+            fallback,
+            key=lambda index: _annotation_local_sort_key(
+                index,
+                blocks,
+                page_size,
+            ),
+        )
+    )
+    return output
+
+
 def _build_visual_annotation_regions(
     assignments: dict[int, _AnnotationRelation],
     blocks: list[dict[str, Any]],
@@ -896,25 +1143,21 @@ def _build_visual_annotation_regions(
             [
                 *(
                     blocks[index]
-                    for index in sorted(
+                    for index in _sort_annotation_indices_by_visual_rows(
                         leading,
-                        key=lambda value: _annotation_local_sort_key(
-                            value,
-                            blocks,
-                            page_size,
-                        ),
+                        blocks,
+                        page_size,
+                        relations,
                     )
                 ),
                 *_sort_visual_body_members(parent_indices, blocks, page_size),
                 *(
                     blocks[index]
-                    for index in sorted(
+                    for index in _sort_annotation_indices_by_visual_rows(
                         trailing,
-                        key=lambda value: _annotation_local_sort_key(
-                            value,
-                            blocks,
-                            page_size,
-                        ),
+                        blocks,
+                        page_size,
+                        relations,
                     )
                 ),
                 *(
@@ -968,6 +1211,15 @@ def _classify_and_bind_visual_annotations(
         )
         is not None
     }
+    cross_lane_assignments = _expand_cross_lane_caption_assignments(
+        blocks,
+        page_size,
+        parents,
+        candidates,
+        assignments,
+    )
+    candidates.update(dict.fromkeys(cross_lane_assignments, "caption"))
+    assignments.update(cross_lane_assignments)
     consumed_indices = _merge_table_footnote_continuations(
         blocks,
         candidates,

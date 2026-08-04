@@ -121,14 +121,14 @@ def test_all_demo_pdfs_keep_expected_txt_block_inventory() -> None:
     assert sum(inventory.values()) == 2591
     assert inventory == Counter(
         {
-            "text": 900,
+            "text": 896,
             "image": 530,
             "paragraph_title": 214,
             "header": 180,
             "page_number": 179,
             "footer": 177,
             "table": 135,
-            "caption": 120,
+            "caption": 124,
             "equation": 50,
             "footnote": 39,
             "code": 33,
@@ -886,7 +886,7 @@ def test_demo3_pages4_and5_fix_lists_formula_titles_italics_and_footnotes() -> N
 
 
 def test_demo4_nct00083083_targeted_flash_regressions() -> None:
-    """验证 demo4 的页眉脚注、续行、公式否决和参考文献分组。"""
+    """验证 demo4 的跨栏图注、页眉脚注、续行、公式否决和参考文献分组。"""
 
     model_list = _native_model_list("demo4.pdf")
 
@@ -953,6 +953,43 @@ def test_demo4_nct00083083_targeted_flash_regressions() -> None:
         str(introduction[0]["content"])
     )
 
+    cross_lane_visual_regions = {
+        4: [
+            [0.086, 0.073, 0.914, 0.282],
+            [0.086, 0.292, 0.486, 0.358],
+            [0.514, 0.293, 0.915, 0.359],
+        ],
+        5: [
+            [0.086, 0.073, 0.914, 0.556],
+            [0.086, 0.566, 0.486, 0.683],
+            [0.514, 0.566, 0.915, 0.67],
+        ],
+        6: [
+            [0.086, 0.073, 0.914, 0.344],
+            [0.086, 0.356, 0.486, 0.421],
+            [0.514, 0.355, 0.914, 0.408],
+        ],
+        8: [
+            [0.086, 0.073, 0.914, 0.568],
+            [0.086, 0.579, 0.486, 0.695],
+            [0.514, 0.579, 0.914, 0.682],
+        ],
+    }
+    for page_number, expected_bboxes in cross_lane_visual_regions.items():
+        page = model_list[page_number - 1]
+        members = []
+        for bbox in expected_bboxes:
+            matches = [block for block in page if block["bbox"] == bbox]
+            assert len(matches) == 1
+            members.append(matches[0])
+        assert [block["type"] for block in members] == [
+            "image",
+            "caption",
+            "caption",
+        ]
+        first_index = page.index(members[0])
+        assert page[first_index : first_index + 3] == members
+
     page4 = model_list[3]
     caption_tail = _blocks_containing(page4, "included in the ACRIN 6668 study")
     assert len(caption_tail) == 1
@@ -978,7 +1015,7 @@ def test_demo4_nct00083083_targeted_flash_regressions() -> None:
     assert side_caption[0]["type"] == "caption"
     assert side_caption[0]["bbox"][2] < side_image["bbox"][0]
     assert page4.index(side_caption[0]) < page4.index(side_image)
-    assert sum(block["type"] == "caption" for page in model_list for block in page) == 6
+    assert sum(block["type"] == "caption" for page in model_list for block in page) == 10
     page2_table_caption = _blocks_containing(
         model_list[1],
         "Table 1 Patient demographics",

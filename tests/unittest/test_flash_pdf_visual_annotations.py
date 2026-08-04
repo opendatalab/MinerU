@@ -591,6 +591,231 @@ def test_caption_does_not_expand_hanging_indent_text() -> None:
     assert regions == [[table, caption]]
 
 
+@pytest.mark.parametrize("visual_type", ["image", "table", "code"])
+def test_cross_lane_caption_companion_uses_geometry_for_all_visual_parents(
+    visual_type: str,
+) -> None:
+    """验证三类跨栏视觉父块均可仅凭空间补标另一栏标题。"""
+
+    parent = _visual_block(
+        (20.0, 20.0, 180.0, 80.0),
+        block_type=visual_type,
+    )
+    left_caption = _text_block(
+        "Figure 1: Spatial anchor",
+        (20.0, 90.5, 90.0, 120.5),
+        lane_interval=(20.0, 90.0),
+    )
+    right_companion = _text_block(
+        "plain continuation without a caption marker",
+        (110.0, 90.0, 180.0, 110.0),
+        lane_interval=(110.0, 180.0),
+    )
+    body = _text_block(
+        "ordinary body paragraph",
+        (20.0, 135.0, 90.0, 165.0),
+        line_height=13.0,
+        lane_interval=(20.0, 90.0),
+    )
+    blocks = [parent, left_caption, body, right_companion]
+
+    regions = _classify_with_text_block_merge(blocks)
+    ordered = pipeline._sort_blocks_with_visual_row_groups(
+        blocks,
+        _PAGE_SIZE,
+        visual_annotation_regions=regions,
+    )
+
+    assert left_caption["type"] == right_companion["type"] == "caption"
+    assert regions == [[parent, left_caption, right_companion]]
+    assert ordered == [parent, left_caption, right_companion, body]
+
+
+def test_cross_lane_caption_companion_above_parent_keeps_left_to_right_order() -> None:
+    """验证父块上方的双栏标题同样按左栏、右栏、主体展开。"""
+
+    table = _visual_block(
+        (20.0, 80.0, 180.0, 130.0),
+        block_type="table",
+    )
+    left_caption = _text_block(
+        "Table 1: Spatial anchor",
+        (20.0, 60.0, 90.0, 70.0),
+        lane_interval=(20.0, 90.0),
+    )
+    right_companion = _text_block(
+        "plain continuation",
+        (110.0, 59.5, 180.0, 69.5),
+        lane_interval=(110.0, 180.0),
+    )
+    blocks = [table, right_companion, left_caption]
+
+    regions = _classify_with_text_block_merge(blocks)
+
+    assert left_caption["type"] == right_companion["type"] == "caption"
+    assert regions == [[left_caption, right_companion, table]]
+
+
+def test_cross_lane_caption_companion_uses_rotated_local_coordinates() -> None:
+    """验证旋转页面在共同局部坐标中完成跨栏匹配和行内排序。"""
+
+    angle = 90
+    parent_local = (20.0, 20.0, 180.0, 80.0)
+    left_local = (20.0, 90.5, 90.0, 110.5)
+    right_local = (110.0, 90.0, 180.0, 110.0)
+    parent = _visual_block(
+        geometry._rotate_bbox_from_upright(parent_local, _PAGE_SIZE, angle),
+    )
+    left_caption = _text_block(
+        "Figure 1: Rotated anchor",
+        geometry._rotate_bbox_from_upright(left_local, _PAGE_SIZE, angle),
+        local_bbox=left_local,
+        lane_interval=(20.0, 90.0),
+    )
+    right_companion = _text_block(
+        "plain rotated continuation",
+        geometry._rotate_bbox_from_upright(
+            right_local,
+            _PAGE_SIZE,
+            angle,
+        ),
+        local_bbox=right_local,
+        lane_interval=(110.0, 180.0),
+    )
+    parent["angle"] = left_caption["angle"] = right_companion["angle"] = angle
+    blocks = [parent, right_companion, left_caption]
+
+    regions = _classify_with_text_block_merge(blocks)
+
+    assert left_caption["type"] == right_companion["type"] == "caption"
+    assert regions == [[parent, left_caption, right_companion]]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "no_anchor",
+        "same_lane",
+        "misaligned",
+        "line_height",
+        "font",
+        "missing_font",
+        "span_lane",
+        "narrow_parent",
+        "barrier",
+        "competing_parent",
+    ],
+)
+def test_cross_lane_caption_companion_rejects_unsafe_geometry(case: str) -> None:
+    """验证缺少任一关键空间或排版证据时不补标跨栏标题。"""
+
+    parent = _visual_block((20.0, 20.0, 180.0, 80.0))
+    anchor = _text_block(
+        "ordinary text" if case == "no_anchor" else "Figure 1: Spatial anchor",
+        (20.0, 90.5, 90.0, 110.5),
+        lane_interval=(20.0, 90.0),
+    )
+    companion_bbox = (
+        (110.0, 94.0, 180.0, 114.0)
+        if case == "misaligned"
+        else (110.0, 90.0, 180.0, 110.0)
+    )
+    companion = _text_block(
+        "plain continuation",
+        companion_bbox,
+        line_height=12.0 if case == "line_height" else 10.0,
+        lane_interval=(
+            (20.0, 90.0)
+            if case == "same_lane"
+            else (110.0, 180.0)
+        ),
+        lane_is_span=case == "span_lane",
+        font_signature=(
+            None
+            if case == "missing_font"
+            else ("OtherFont", 400)
+            if case == "font"
+            else ("TestFont", 400)
+        ),
+    )
+    extra_blocks: list[dict[str, object]] = []
+    if case == "narrow_parent":
+        parent["bbox"] = (20.0, 20.0, 90.0, 80.0)
+    elif case == "barrier":
+        extra_blocks.append(
+            _text_block(
+                "intervening body",
+                (110.0, 83.0, 180.0, 87.0),
+                lane_interval=(110.0, 180.0),
+            )
+        )
+    elif case == "competing_parent":
+        extra_blocks.append(
+            _visual_block((110.0, 82.0, 180.0, 86.0))
+        )
+    blocks = [parent, anchor, *extra_blocks, companion]
+
+    _classify_with_text_block_merge(blocks)
+
+    assert companion["type"] == "text"
+
+
+def test_cross_lane_caption_companion_rejects_multiple_spatial_peers() -> None:
+    """验证一个锚点同时命中多个栏带时保持全部同伴为正文。"""
+
+    parent = _visual_block((10.0, 20.0, 190.0, 80.0))
+    anchor = _text_block(
+        "Figure 1: Spatial anchor",
+        (10.0, 90.0, 60.0, 110.0),
+        lane_interval=(10.0, 60.0),
+    )
+    middle = _text_block(
+        "first possible continuation",
+        (75.0, 90.0, 125.0, 110.0),
+        lane_interval=(75.0, 125.0),
+    )
+    right = _text_block(
+        "second possible continuation",
+        (140.0, 90.0, 190.0, 110.0),
+        lane_interval=(140.0, 190.0),
+    )
+    blocks = [parent, anchor, middle, right]
+
+    regions = _classify_with_text_block_merge(blocks)
+
+    assert anchor["type"] == "caption"
+    assert middle["type"] == right["type"] == "text"
+    assert regions == [[parent, anchor]]
+
+
+def test_cross_lane_caption_companion_rejects_multiple_caption_anchors() -> None:
+    """验证一个同伴被多个标题锚点认领时维持正文分类。"""
+
+    parent = _visual_block((20.0, 20.0, 180.0, 80.0))
+    upper_anchor = _text_block(
+        "Figure 1: First spatial anchor",
+        (20.0, 90.0, 52.0, 110.0),
+        lane_interval=(20.0, 90.0),
+    )
+    lower_anchor = _text_block(
+        "Figure 2: Second spatial anchor",
+        (58.0, 90.0, 90.0, 110.0),
+        lane_interval=(20.0, 90.0),
+    )
+    companion = _text_block(
+        "plain shared continuation",
+        (110.0, 90.0, 180.0, 110.0),
+        lane_interval=(110.0, 180.0),
+    )
+    blocks = [parent, upper_anchor, lower_anchor, companion]
+
+    regions = _classify_with_text_block_merge(blocks)
+
+    assert upper_anchor["type"] == lower_anchor["type"] == "caption"
+    assert companion["type"] == "text"
+    assert regions == [[parent, upper_anchor, lower_anchor]]
+
+
 def test_multi_panel_images_only_group_when_union_improves_coverage() -> None:
     """验证跨面板标题绑定图片并集，而单图标题不会无故吞并相邻图片。"""
 
