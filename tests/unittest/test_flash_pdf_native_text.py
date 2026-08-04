@@ -171,3 +171,84 @@ def test_only_supported_visual_line_directions_are_retained(
     )
 
     assert [item.angle for item in items] == ([] if expected_angle is None else [expected_angle])
+
+
+@pytest.mark.parametrize(
+    "separator",
+    [
+        "\u00a0",
+        "\u1680",
+        "\u2000",
+        "\u2001",
+        "\u2002",
+        "\u2003",
+        "\u2004",
+        "\u2005",
+        "\u2006",
+        "\u2007",
+        "\u2008",
+        "\u2009",
+        "\u200a",
+        "\u202f",
+        "\u205f",
+        "\u3000",
+    ],
+)
+def test_pdf_unicode_separator_spaces_are_normalized_to_ascii(separator: str) -> None:
+    """验证所有 Unicode Zs 排版空格均转换为普通 ASCII 空格。"""
+
+    assert native_text._sanitize_pdf_control_text(
+        f"left{separator}right",
+        preserve_newlines=True,
+    ) == "left right"
+
+
+def test_pdf_unicode_line_separators_follow_newline_policy() -> None:
+    """验证 NEXT LINE、行分隔符和段分隔符统一遵循物理换行保留策略。"""
+
+    content = "first\u0085second\u2028third\u2029fourth"
+
+    assert native_text._sanitize_pdf_control_text(
+        content,
+        preserve_newlines=True,
+    ) == "first\nsecond\nthird\nfourth"
+    assert native_text._sanitize_pdf_control_text(
+        content,
+        preserve_newlines=False,
+    ) == "firstsecondthirdfourth"
+
+
+def test_pdf_safe_invisible_and_control_characters_are_removed_idempotently() -> None:
+    """验证无正文语义的零宽字符和 C0/C1 控制字符被稳定删除。"""
+
+    content = "A\u200bB\u2060C\ufeffD\x00E\x07F\x7fG\x80H\x9fI"
+    normalized = native_text._sanitize_pdf_control_text(
+        content,
+        preserve_newlines=True,
+    )
+
+    assert normalized == "ABCDEFGHI"
+    assert native_text._sanitize_pdf_control_text(
+        normalized,
+        preserve_newlines=True,
+    ) == normalized
+
+
+def test_pdf_soft_hyphens_keep_only_latin_line_end_breaks() -> None:
+    """验证两类 PDF 软断词仅在拉丁字母行末转成 ASCII hyphen。"""
+
+    assert native_text._normalize_native_run_text("inter\u00ad") == "inter-"
+    assert native_text._normalize_native_run_text("co\u00adoperate") == "cooperate"
+    assert native_text._normalize_native_run_text("word\x02") == "word-"
+    assert native_text._normalize_native_run_text("A\x02B") == "AB"
+
+
+def test_pdf_semantic_joiners_and_decode_markers_are_preserved() -> None:
+    """验证语言连接符、私用区字形和解码占位符不会被通用清理静默删除。"""
+
+    content = "a\u200cb\u200dc\uf8f1d\ufffde"
+
+    assert native_text._sanitize_pdf_control_text(
+        content,
+        preserve_newlines=True,
+    ) == content

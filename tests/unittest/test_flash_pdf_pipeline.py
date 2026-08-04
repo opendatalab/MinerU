@@ -302,6 +302,23 @@ def test_output_normalization_keeps_empty_equation_but_drops_empty_text() -> Non
     assert text is None
 
 
+def test_output_normalization_applies_unicode_content_safety_net() -> None:
+    """验证最终 model_list 归一化会兜底清理排版空格和安全零宽字符。"""
+
+    block = pipeline._normalize_output_block(
+        {
+            "type": "text",
+            "bbox": (10.0, 20.0, 40.0, 50.0),
+            "angle": 0,
+            "content": "alpha\u00a0beta\u200bgamma",
+        },
+        (100.0, 100.0),
+    )
+
+    assert block is not None
+    assert block["content"] == "alpha betagamma"
+
+
 def test_index_is_claimed_before_formula_anchor_growth() -> None:
     """验证目录右缘页码先形成完整 index，不再扩张为重叠公式。"""
 

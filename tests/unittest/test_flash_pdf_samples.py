@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 from typing import Any
+import unicodedata
 
 
 from mineru.backend.flash import pdf_extractor
@@ -83,6 +84,20 @@ def _normalized_content_probe(text: str) -> str:
     return "".join(char.casefold() for char in text if char.isalnum())
 
 
+def _unsafe_flash_content_characters(text: str) -> list[str]:
+    """返回 Flash content 中不应跨接口保留的排版空白与控制字符。"""
+
+    return [
+        char
+        for char in text
+        if (
+            (unicodedata.category(char).startswith("Z") and char != " ")
+            or (unicodedata.category(char) == "Cc" and char != "\n")
+            or char in {"\u00ad", "\u200b", "\u2060", "\ufeff"}
+        )
+    ]
+
+
 def _blocks_containing(
     blocks: list[dict[str, Any]],
     probe: str,
@@ -107,6 +122,7 @@ def test_all_demo_pdfs_keep_expected_txt_block_inventory() -> None:
     )
     inventory: Counter[str] = Counter()
     page_count = 0
+    unsafe_content: list[tuple[str, int, int, list[str]]] = []
     for pdf_name in pdf_names:
         model_list = _txt_model_list(pdf_name)
         page_count += len(model_list)
@@ -115,10 +131,21 @@ def test_all_demo_pdfs_keep_expected_txt_block_inventory() -> None:
             for page in model_list
             for block in page
         )
+        unsafe_content.extend(
+            (pdf_name, page_index, block_index, unsafe_chars)
+            for page_index, page in enumerate(model_list)
+            for block_index, block in enumerate(page)
+            if (
+                unsafe_chars := _unsafe_flash_content_characters(
+                    str(block.get("content", ""))
+                )
+            )
+        )
 
     assert len(pdf_names) == 15
     assert page_count == 218
     assert sum(inventory.values()) == 2591
+    assert unsafe_content == []
     assert inventory == Counter(
         {
             "text": 896,
@@ -899,6 +926,11 @@ def test_demo4_nct00083083_targeted_flash_regressions() -> None:
     assert next(
         block for block in page1 if block["content"] == "ORIGINAL ARTICLE"
     )["type"] == "text"
+    author_line = _blocks_containing(page1, "Rucha Ronghe1")[0]
+    assert author_line["content"] == (
+        "Rucha Ronghe1 · Teresa Crespo Gonzalez2 · Catriona Wimberley3,4,5 "
+        "· Karla Suchacki3,6 · Adriana A. S. Tavares3,4"
+    )
     assert _blocks_containing(page1, "contributed equally")[0]["type"] == "page_footnote"
     assert _blocks_containing(page1, "University of Edinburgh")[0]["type"] == "page_footnote"
     assert [
@@ -1087,6 +1119,8 @@ def test_demo4_nct00083083_targeted_flash_regressions() -> None:
     assert "103389fimmu20231222129" in _normalized_content_probe(
         str(reference48["content"])
     )
+    assert "\u200b" not in str(reference48["content"])
+    assert "fimmu.2023.1222129" in str(reference48["content"])
 
 
 def test_demo5_targeted_table_and_footer_regressions() -> None:

@@ -29,7 +29,26 @@ from .geometry import (
 )
 
 
-_PDF_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_PDF_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
+_PDF_LINE_END_SOFT_HYPHEN_RE = re.compile(
+    r"(?<=[A-Za-z])[\x02\u00ad](?=[\t ]*(?:\n|$))"
+)
+# Unicode Zs 空格在 model_list 中只承担分词作用，统一成可互操作的 ASCII 空格。
+_PDF_SEPARATOR_SPACE_CHARS = (
+    "\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006"
+    "\u2007\u2008\u2009\u200a\u202f\u205f\u3000"
+)
+_PDF_UNICODE_TEXT_TRANSLATION = str.maketrans(
+    {
+        **dict.fromkeys(_PDF_SEPARATOR_SPACE_CHARS, " "),
+        "\u0085": "\n",
+        "\u2028": "\n",
+        "\u2029": "\n",
+        "\u200b": None,
+        "\u2060": None,
+        "\ufeff": None,
+    }
+)
 _PDFTEXT_ROTATION_SPLIT_THRESHOLD_DEGREES = 44.9
 _PDFTEXT_LINE_ANGLE_TOLERANCE_DEGREES = 0.1
 _SUPPORTED_PDFTEXT_LINE_ANGLES = (0.0, 90.0, 270.0)
@@ -358,18 +377,18 @@ def _split_native_visual_runs(
 def _normalize_native_run_text(text: str) -> str:
     """清理原生 run 文本，并把字母后的 PDF 软断词标记转换成 ASCII hyphen。"""
 
-    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-    normalized = re.sub(r"(?<=[A-Za-z])\x02(?=\s*$)", "-", normalized)
-    normalized = _sanitize_pdf_control_text(normalized, preserve_newlines=False)
+    normalized = _sanitize_pdf_control_text(text, preserve_newlines=False)
     normalized = re.sub(r"[\t\f\v ]+", " ", normalized)
     return normalized.strip()
 
 
 def _sanitize_pdf_control_text(text: str, *, preserve_newlines: bool) -> str:
-    """删除 PDF 字体编码残留控制字符，并按调用场景决定是否保留物理换行。"""
+    """规范 PDF 排版空白与控制字符，并按调用场景决定是否保留物理换行。"""
 
     normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
-    normalized = re.sub(r"(?<=[A-Za-z])\x02(?=[\t ]*(?:\n|$))", "-", normalized)
+    normalized = normalized.translate(_PDF_UNICODE_TEXT_TRANSLATION)
+    normalized = _PDF_LINE_END_SOFT_HYPHEN_RE.sub("-", normalized)
+    normalized = normalized.replace("\u00ad", "")
     normalized = normalized.replace("\t", " ")
     if not preserve_newlines:
         normalized = normalized.replace("\n", "")
