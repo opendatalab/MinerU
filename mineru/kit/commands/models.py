@@ -12,6 +12,7 @@ from ...utils.model_registry import (
     get_model_repo,
     model_repo_names,
     model_repos_for_tier,
+    resolve_model_stack,
     validate_model_tier,
 )
 from ...utils.models_download_utils import (
@@ -98,8 +99,19 @@ def download_cmd(
 
 
 @app.command("show")
-def show_cmd() -> None:
+def show_cmd(
+    stack: str | None = typer.Option(
+        None,
+        "--stack",
+        help="Model stack: auto (default, follows config.model.stack), light, or full.",
+    ),
+) -> None:
     """Show current MinerU model configuration."""
+    try:
+        effective_stack = resolve_model_stack(stack)
+    except ValueError as exc:
+        exit_with_message("invalid_request", str(exc), "stack")
+
     config_file = get_config_file_path()
     lines = [
         f"Config: {config_file}",
@@ -109,17 +121,20 @@ def show_cmd() -> None:
         f"model.base_dir.source: {get_config_source('model.base_dir')}",
         f"model.source: {config.model.source}",
         f"model.source.source: {get_config_source('model.source')}",
+        f"model.stack: {config.model.stack}",
+        f"model.stack.source: {get_config_source('model.stack')}",
+        f"Effective stack: {effective_stack}",
         "Repos:",
     ]
     for line in lines:
         print_info(line)
 
     for repo in MODEL_REPOS:
-        print_info(f"  {_format_repo_status(repo)}")
+        print_info(f"  {_format_repo_status(repo)} [stack={repo.stack}]")
 
     print_info("Model tiers:")
     for tier in DEPLOYMENT_TIERS:
-        repos = model_repos_for_tier(tier)
+        repos = model_repos_for_tier(tier, stack=effective_stack)
         names = ", ".join(repo.name for repo in repos) or "(none)"
         print_info(f"  {tier}: {names}")
 

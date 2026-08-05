@@ -2018,3 +2018,38 @@ def test_models_download_repo_ignores_stack(monkeypatch: Any) -> None:
     assert captured["repo"] == "PP-DocLayoutV2_onnx"
     assert captured["stack"] == "light"
     assert "Downloaded models for PP-DocLayoutV2_onnx" in result.output
+
+
+def test_models_show_displays_stack_fields(tmp_path: Path, monkeypatch: Any) -> None:
+    base_dir = tmp_path / "models"
+    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
+    monkeypatch.setattr(models.config.model, "stack", "full")
+
+    result = runner.invoke(app, ["models", "show"])
+
+    assert result.exit_code == 0
+    assert "model.stack: full" in result.output
+    assert "Effective stack: full" in result.output
+    assert "[stack=full]" in result.output
+    assert "[stack=light]" in result.output
+
+
+def test_models_show_with_light_stack_filter(tmp_path: Path, monkeypatch: Any) -> None:
+    """--stack light 时 effective stack 解析为 light，tiers 部分按 light 显示。"""
+    base_dir = tmp_path / "models"
+    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
+    monkeypatch.setattr(models.config.model, "stack", "full")
+
+    result = runner.invoke(app, ["models", "show", "--stack", "light"])
+
+    assert result.exit_code == 0
+    assert "Effective stack: light" in result.output
+    assert "PP-DocLayoutV2_onnx: " in result.output
+    assert "PDF-Extract-Kit-1.0: " in result.output
+
+
+def test_models_show_rejects_invalid_stack() -> None:
+    result = runner.invoke(app, ["models", "show", "--stack", "torch"])
+
+    assert result.exit_code == 1
+    assert "Unsupported stack 'torch'" in " ".join(result.output.split())
