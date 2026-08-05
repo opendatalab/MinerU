@@ -320,6 +320,7 @@ def test_upload_filename_helper_import_boundary_is_explicit() -> None:
 
 
 def test_models_download_tier_basic(monkeypatch: Any) -> None:
+    monkeypatch.setattr(models.config.model, "stack", "full")
     captured: list[str] = []
 
     def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
@@ -336,6 +337,7 @@ def test_models_download_tier_basic(monkeypatch: Any) -> None:
 
 
 def test_models_download_tier_standard(monkeypatch: Any) -> None:
+    monkeypatch.setattr(models.config.model, "stack", "full")
     captured: list[str] = []
 
     def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
@@ -354,7 +356,7 @@ def test_models_download_tier_standard(monkeypatch: Any) -> None:
 @pytest.mark.parametrize("tier", ["flash", "advanced"])
 def test_model_registry_rejects_non_model_tiers(tier: str) -> None:
     with pytest.raises(ValueError, match="Supported model tiers: basic, standard"):
-        models.model_repos_for_tier(tier)
+        models.model_repos_for_tier(tier, stack="full")
 
 
 @pytest.mark.parametrize("command", ["download", "verify"])
@@ -391,6 +393,7 @@ def test_models_download_repo_uses_explicit_source(monkeypatch: Any) -> None:
 def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
     base_dir = tmp_path / "models"
     monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
+    monkeypatch.setattr(models.config.model, "stack", "full")
     for repo in models.MODEL_REPOS:
         if repo.download_mode == "full":
             repo.local_dir().mkdir(parents=True, exist_ok=True)
