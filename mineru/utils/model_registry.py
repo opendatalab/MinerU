@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -51,10 +51,15 @@ class ModelPath:
 @dataclass(frozen=True)
 class ModelRepo:
     name: str
-    local_name: str
     repos: dict[str, str]
-    paths: dict[str, str]
+    local_name: str = ""
+    paths: dict[str, str] = field(default_factory=dict)
     download_mode: DownloadMode = "full"
+    stack: str = "full"  # "light" | "full"
+
+    def __post_init__(self) -> None:
+        if not self.local_name:
+            object.__setattr__(self, "local_name", self.name)
 
     def __getattr__(self, name: str) -> ModelPath:
         try:
@@ -87,7 +92,6 @@ class ModelRepo:
 
 PDF_EXTRACT_KIT = ModelRepo(
     name="PDF-Extract-Kit-1.0",
-    local_name="PDF-Extract-Kit-1.0",
     download_mode="required_paths",
     repos={
         "huggingface": "opendatalab/PDF-Extract-Kit-1.0",
@@ -105,24 +109,142 @@ PDF_EXTRACT_KIT = ModelRepo(
 
 MINERU_2_5_PRO_2605_1_2B = ModelRepo(
     name="MinerU2.5-Pro-2605-1.2B",
-    local_name="MinerU2.5-Pro-2605-1.2B",
     repos={
         "huggingface": "opendatalab/MinerU2.5-Pro-2605-1.2B",
         "modelscope": "OpenDataLab/MinerU2.5-Pro-2605-1.2B",
     },
-    paths={},
+)
+
+# PaddlePaddle 官方 ONNX 模型，与 PDF_EXTRACT_KIT 中 transformers/torch 版本等价但更轻量。
+# 暂不与任何 tier 关联，仅供实验性 ONNX 后端使用。
+PP_DOCLAYOUT_V2_ONNX = ModelRepo(
+    name="PP-DocLayoutV2_onnx",
+    stack="light",
+    repos={
+        "huggingface": "PaddlePaddle/PP-DocLayoutV2_onnx",
+        "modelscope": "PaddlePaddle/PP-DocLayoutV2_onnx",
+    },
+    paths={
+        "onnx": "inference.onnx",
+        "config": "inference.yml",
+    },
+)
+
+PP_OCR_V6_SMALL_DET_ONNX = ModelRepo(
+    name="PP-OCRv6_small_det_onnx",
+    stack="light",
+    repos={
+        "huggingface": "PaddlePaddle/PP-OCRv6_small_det_onnx",
+        "modelscope": "PaddlePaddle/PP-OCRv6_small_det_onnx",
+    },
+    paths={
+        "onnx": "inference.onnx",
+        "config": "inference.yml",
+    },
+)
+
+PP_OCR_V6_SMALL_REC_ONNX = ModelRepo(
+    name="PP-OCRv6_small_rec_onnx",
+    stack="light",
+    repos={
+        "huggingface": "PaddlePaddle/PP-OCRv6_small_rec_onnx",
+        "modelscope": "PaddlePaddle/PP-OCRv6_small_rec_onnx",
+    },
+    paths={
+        "onnx": "inference.onnx",
+        "config": "inference.yml",
+    },
+)
+
+PP_OCR_V6_MEDIUM_DET_ONNX = ModelRepo(
+    name="PP-OCRv6_medium_det_onnx",
+    stack="light",
+    repos={
+        "huggingface": "PaddlePaddle/PP-OCRv6_medium_det_onnx",
+        "modelscope": "PaddlePaddle/PP-OCRv6_medium_det_onnx",
+    },
+    paths={
+        "onnx": "inference.onnx",
+        "config": "inference.yml",
+    },
+)
+
+PP_OCR_V6_MEDIUM_REC_ONNX = ModelRepo(
+    name="PP-OCRv6_medium_rec_onnx",
+    stack="light",
+    repos={
+        "huggingface": "PaddlePaddle/PP-OCRv6_medium_rec_onnx",
+        "modelscope": "PaddlePaddle/PP-OCRv6_medium_rec_onnx",
+    },
+    paths={
+        "onnx": "inference.onnx",
+        "config": "inference.yml",
+    },
+)
+
+# PP-FormulaNet-Plus-M ONNX，由 RapidDoc 转出，托管在 jinzhenj 双平台镜像。
+# 暂不与任何 tier 关联，仅供实验性 ONNX 后端使用。
+PP_FORMULANET_PLUS_M_ONNX = ModelRepo(
+    name="PP-FormulaNet_plus-M_onnx",
+    stack="light",
+    repos={
+        "huggingface": "jinzhenj/PP-FormulaNet_plus-M_onnx",
+        "modelscope": "jinzhenj/PP-FormulaNet_plus-M_onnx",
+    },
+    paths={
+        "onnx": "inference.onnx",
+        "config": "inference.yml",
+    },
 )
 
 MODEL_REPOS: tuple[ModelRepo, ...] = (
     PDF_EXTRACT_KIT,
     MINERU_2_5_PRO_2605_1_2B,
+    PP_DOCLAYOUT_V2_ONNX,
+    PP_OCR_V6_SMALL_DET_ONNX,
+    PP_OCR_V6_SMALL_REC_ONNX,
+    PP_OCR_V6_MEDIUM_DET_ONNX,
+    PP_OCR_V6_MEDIUM_REC_ONNX,
+    PP_FORMULANET_PLUS_M_ONNX,
 )
 
 MODEL_REPOS_BY_NAME: dict[str, ModelRepo] = {repo.name: repo for repo in MODEL_REPOS}
 
-REPOS_FOR_TIER: dict[DeploymentTier, tuple[ModelRepo, ...]] = {
+
+def resolve_model_stack(stack: str | None) -> Literal["light", "full"]:
+    """把 ``--stack`` 参数或 config 值解析为 ``"light"`` / ``"full"``。
+
+    ``None`` 或 ``"auto"`` 走 ``get_model_stack()``（依据 ``config.model.stack`` 与设备自动选择）。
+    """
+    from ..utils.config_reader import get_model_stack
+
+    if stack in ("light", "full"):
+        return stack  # type: ignore[return-value]
+    if stack is None or stack == "auto":
+        return get_model_stack()  # type: ignore[return-value]
+    raise ValueError(f"Unsupported stack '{stack}'. Expected one of: auto, light, full.")
+
+
+_REPOS_FOR_TIER_FULL: dict[DeploymentTier, tuple[ModelRepo, ...]] = {
     "basic": (PDF_EXTRACT_KIT,),
     "standard": (PDF_EXTRACT_KIT, MINERU_2_5_PRO_2605_1_2B),
+}
+
+_REPOS_FOR_TIER_LIGHT: dict[DeploymentTier, tuple[ModelRepo, ...]] = {
+    "basic": (
+        PP_DOCLAYOUT_V2_ONNX,
+        PP_OCR_V6_SMALL_DET_ONNX,
+        PP_OCR_V6_SMALL_REC_ONNX,
+        PP_FORMULANET_PLUS_M_ONNX,
+    ),
+    # light stack 暂未提供 VLM，standard 与 basic 共用同一组小模型，
+    # 避免让用户误以为下载完就能跑 standard tier。
+    "standard": (
+        PP_DOCLAYOUT_V2_ONNX,
+        PP_OCR_V6_SMALL_DET_ONNX,
+        PP_OCR_V6_SMALL_REC_ONNX,
+        PP_FORMULANET_PLUS_M_ONNX,
+    ),
 }
 
 
@@ -142,8 +264,15 @@ def validate_model_tier(tier: str) -> DeploymentTier:
     raise ValueError(f"Unsupported model tier '{tier}'. Supported model tiers: {supported}.")
 
 
-def model_repos_for_tier(tier: str) -> tuple[ModelRepo, ...]:
-    return REPOS_FOR_TIER[validate_model_tier(tier)]
+def model_repos_for_tier(
+    tier: str,
+    *,
+    stack: str | None = None,
+) -> tuple[ModelRepo, ...]:
+    resolved_tier = validate_model_tier(tier)
+    resolved_stack = resolve_model_stack(stack)
+    mapping = _REPOS_FOR_TIER_LIGHT if resolved_stack == "light" else _REPOS_FOR_TIER_FULL
+    return mapping[resolved_tier]
 
 
 def model_repo_names() -> tuple[str, ...]:
@@ -178,7 +307,13 @@ __all__ = [
     "ModelPath",
     "ModelRepo",
     "PDF_EXTRACT_KIT",
-    "REPOS_FOR_TIER",
+    "PP_DOCLAYOUT_V2_ONNX",
+    "PP_OCR_V6_SMALL_DET_ONNX",
+    "PP_OCR_V6_SMALL_REC_ONNX",
+    "PP_OCR_V6_MEDIUM_DET_ONNX",
+    "PP_OCR_V6_MEDIUM_REC_ONNX",
+    "PP_FORMULANET_PLUS_M_ONNX",
+    "resolve_model_stack",
     "get_model_repo",
     "model_path_exists",
     "model_repo_names",

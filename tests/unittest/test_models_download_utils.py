@@ -440,3 +440,30 @@ def test_huggingface_snapshot_rejects_missing_expected_files(
             repo,
             ["models/weights", "models/weights/*"],
         )
+
+
+def test_resolve_model_stack_explicit_light() -> None:
+    from mineru.utils.model_registry import resolve_model_stack
+
+    assert resolve_model_stack("light") == "light"
+    assert resolve_model_stack("full") == "full"
+
+
+def test_resolve_model_stack_auto_falls_back_to_get_model_stack(monkeypatch: pytest.MonkeyPatch) -> None:
+    import mineru.utils.config_reader as config_reader
+    from mineru.utils.model_registry import resolve_model_stack
+
+    monkeypatch.setattr(config_reader, "get_model_stack", lambda: "light")
+    assert resolve_model_stack(None) == "light"
+    assert resolve_model_stack("auto") == "light"
+
+    monkeypatch.setattr(config_reader, "get_model_stack", lambda: "full")
+    assert resolve_model_stack(None) == "full"
+    assert resolve_model_stack("auto") == "full"
+
+
+def test_resolve_model_stack_rejects_invalid_value() -> None:
+    from mineru.utils.model_registry import resolve_model_stack
+
+    with pytest.raises(ValueError, match="Unsupported stack 'torch'"):
+        resolve_model_stack("torch")
