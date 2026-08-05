@@ -2053,3 +2053,68 @@ def test_models_show_rejects_invalid_stack() -> None:
 
     assert result.exit_code == 1
     assert "Unsupported stack 'torch'" in " ".join(result.output.split())
+
+
+def test_models_verify_filters_by_effective_stack_full(tmp_path: Path, monkeypatch: Any) -> None:
+    """config.model.stack=full 时，verify 默认只验证 full repos。"""
+    base_dir = tmp_path / "models"
+    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
+    monkeypatch.setattr(models.config.model, "stack", "full")
+
+    # 仅把 full repos 设为 ready，light repos 不创建
+    for repo in models.MODEL_REPOS:
+        if repo.stack == "full":
+            if repo.download_mode == "full":
+                repo.local_dir().mkdir(parents=True, exist_ok=True)
+                (repo.local_dir() / MODEL_COMPLETE_MARKER).touch()
+                continue
+            for model_path in repo.required_paths():
+                target = repo.local_dir() / model_path.relative_path
+                if Path(model_path.relative_path).suffix:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text("x", encoding="utf-8")
+                else:
+                    target.mkdir(parents=True, exist_ok=True)
+                    (target / MODEL_COMPLETE_MARKER).touch()
+
+    result = runner.invoke(app, ["models", "verify"])
+
+    assert result.exit_code == 0
+    assert "PDF-Extract-Kit-1.0: ok" in result.output
+    assert "MinerU2.5-Pro-2605-1.2B: ok" in result.output
+    assert "PP-DocLayoutV2_onnx" not in result.output
+
+
+def test_models_verify_with_light_stack(tmp_path: Path, monkeypatch: Any) -> None:
+    """--stack light 时，verify 只验证 light repos。"""
+    base_dir = tmp_path / "models"
+    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
+
+    result = runner.invoke(app, ["models", "verify", "--stack", "light"])
+
+    assert result.exit_code == 1  # light repos 未准备，应失败
+    assert "PP-DocLayoutV2_onnx: missing key paths" in " ".join(result.output.split())
+    assert "PDF-Extract-Kit-1.0" not in result.output
+
+
+def test_models_verify_repo_ignores_stack(tmp_path: Path, monkeypatch: Any) -> None:
+    """传具体 repo 名时 --stack 被忽略。"""
+    base_dir = tmp_path / "models"
+    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
+
+    # PP-DocLayoutV2_onnx 是 download_mode=full，只需创建 marker 文件
+    repo = next(r for r in models.MODEL_REPOS if r.name == "PP-DocLayoutV2_onnx")
+    repo.local_dir().mkdir(parents=True, exist_ok=True)
+    (repo.local_dir() / MODEL_COMPLETE_MARKER).touch()
+
+    result = runner.invoke(app, ["models", "verify", "PP-DocLayoutV2_onnx", "--stack", "full"])
+
+    assert result.exit_code == 0
+    assert "PP-DocLayoutV2_onnx: ok" in result.output
+
+
+def test_models_verify_rejects_invalid_stack() -> None:
+    result = runner.invoke(app, ["models", "verify", "--stack", "torch"])
+
+    assert result.exit_code == 1
+    assert "Unsupported stack 'torch'" in " ".join(result.output.split())

@@ -143,9 +143,30 @@ def show_cmd(
 def verify_cmd(
     repo: str | None = typer.Argument(None, help="Optional model repo name"),
     tier: str | None = typer.Option(None, "--tier", help="Optional model tier: basic or standard"),
+    stack: str | None = typer.Option(
+        None,
+        "--stack",
+        help="Model stack: auto (default, follows config.model.stack), light, or full. Ignored when REPO is given.",
+    ),
 ) -> None:
     """Verify local model repos and required paths."""
-    repos = MODEL_REPOS if repo is None and tier is None else _select_target_repos(repo, tier)
+    if repo is not None:
+        repos = _select_target_repos(repo, tier)
+    elif tier is not None:
+        try:
+            effective_stack = resolve_model_stack(stack)
+        except ValueError as exc:
+            exit_with_message("invalid_request", str(exc), "stack")
+        try:
+            repos = model_repos_for_tier(tier, stack=effective_stack)
+        except ValueError as exc:
+            exit_with_message("invalid_request", str(exc), "tier")
+    else:
+        try:
+            effective_stack = resolve_model_stack(stack)
+        except ValueError as exc:
+            exit_with_message("invalid_request", str(exc), "stack")
+        repos = tuple(r for r in MODEL_REPOS if r.stack == effective_stack)
 
     failures = 0
     for target_repo in repos:
