@@ -36,7 +36,12 @@ def _validate_download_source(source: str | None) -> str | None:
     return normalized
 
 
-def _select_target_repos(repo_name: str | None, tier: str | None) -> tuple[ModelRepo, ...]:
+def _select_target_repos(
+    repo_name: str | None,
+    tier: str | None,
+    *,
+    stack: str | None = None,
+) -> tuple[ModelRepo, ...]:
     if repo_name and tier:
         exit_with_message("invalid_request", "Pass either a model repo name or --tier, not both.")
     if not repo_name and tier is None:
@@ -47,7 +52,10 @@ def _select_target_repos(repo_name: str | None, tier: str | None) -> tuple[Model
             resolved_tier = validate_model_tier(tier)
         except ValueError as exc:
             exit_with_message("invalid_request", str(exc), "tier")
-        return model_repos_for_tier(resolved_tier)
+        try:
+            return model_repos_for_tier(resolved_tier, stack=stack)
+        except ValueError as exc:
+            exit_with_message("invalid_request", str(exc), "stack")
 
     try:
         return (get_model_repo(repo_name or ""),)
@@ -65,12 +73,17 @@ def _format_repo_status(repo: ModelRepo) -> str:
 def download_cmd(
     repo: str | None = typer.Argument(None, help="Model repo: PDF-Extract-Kit-1.0 or MinerU2.5-Pro-2605-1.2B"),
     tier: str | None = typer.Option(None, "--tier", help="Model tier to prepare: basic or standard"),
+    stack: str | None = typer.Option(
+        None,
+        "--stack",
+        help="Model stack: auto (default, follows config.model.stack), light, or full. Ignored when REPO is given.",
+    ),
     source: str | None = typer.Option(None, "--source", "-s", help="Model source: auto, huggingface, or modelscope"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ) -> None:
     """Download a model repo or the repos required by a tier."""
     normalized_source = _validate_download_source(source)
-    repos = _select_target_repos(repo, tier)
+    repos = _select_target_repos(repo, tier, stack=stack)
 
     for target_repo in repos:
         try:

@@ -1951,3 +1951,70 @@ def test_parse_output_replaces_surrogate_chars(monkeypatch: Any, tmp_path: Path)
 
     assert result.exit_code == 0
     assert output.read_text(encoding="utf-8") == "before ? after\n"
+
+
+def test_models_download_tier_basic_light(monkeypatch: Any) -> None:
+    captured: list[str] = []
+
+    def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
+        captured.append(repo.name)
+        return Path("/tmp/models") / repo.local_name
+
+    monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
+
+    result = runner.invoke(app, ["models", "download", "--tier", "basic", "--stack", "light"])
+
+    assert result.exit_code == 0
+    assert captured == [
+        "PP-DocLayoutV2_onnx",
+        "PP-OCRv6_small_det_onnx",
+        "PP-OCRv6_small_rec_onnx",
+        "PP-FormulaNet_plus-M_onnx",
+    ]
+    assert "Downloaded models for tier basic" in result.output
+
+
+def test_models_download_tier_standard_light_matches_basic_light(monkeypatch: Any) -> None:
+    captured: list[str] = []
+
+    def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
+        captured.append(repo.name)
+        return Path("/tmp/models") / repo.local_name
+
+    monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
+
+    result = runner.invoke(app, ["models", "download", "--tier", "standard", "--stack", "light"])
+
+    assert result.exit_code == 0
+    assert captured == [
+        "PP-DocLayoutV2_onnx",
+        "PP-OCRv6_small_det_onnx",
+        "PP-OCRv6_small_rec_onnx",
+        "PP-FormulaNet_plus-M_onnx",
+    ]
+
+
+def test_models_download_rejects_invalid_stack() -> None:
+    result = runner.invoke(app, ["models", "download", "--tier", "basic", "--stack", "torch"])
+
+    assert result.exit_code == 1
+    assert "Unsupported stack 'torch'" in " ".join(result.output.split())
+
+
+def test_models_download_repo_ignores_stack(monkeypatch: Any) -> None:
+    """传具体 repo 名时 --stack 应被忽略，repo 自身的 stack 字段决定行为。"""
+    captured: dict[str, Any] = {}
+
+    def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
+        captured["repo"] = repo.name
+        captured["stack"] = repo.stack
+        return Path("/tmp/models") / repo.local_name
+
+    monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
+
+    result = runner.invoke(app, ["models", "download", "PP-DocLayoutV2_onnx", "--stack", "full"])
+
+    assert result.exit_code == 0
+    assert captured["repo"] == "PP-DocLayoutV2_onnx"
+    assert captured["stack"] == "light"
+    assert "Downloaded models for PP-DocLayoutV2_onnx" in result.output
