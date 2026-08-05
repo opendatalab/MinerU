@@ -70,6 +70,9 @@ dependencies = [
     "rich>=13.0.0",
     "jieba>=0.42.1",
     "onnxruntime>=1.17.0",
+    "ftfy>=6.3.1,<7",
+    "shapely>=2.0.7,<3",
+    "pyclipper>=1.3.0,<2",
 ]
 
 [project.optional-dependencies]
@@ -85,9 +88,6 @@ test = [
     "tomli; python_version < '3.11'",
 ]
 basic = [
-    "ftfy>=6.3.1,<7",
-    "shapely>=2.0.7,<3",
-    "pyclipper>=1.3.0,<2",
     "six>=1.17.0,<2",
     "torch>=2.6.0,<3",
     "torchvision",

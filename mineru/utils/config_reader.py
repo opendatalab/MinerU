@@ -77,6 +77,23 @@ def get_device() -> str:
     return "cpu"
 
 
+def get_model_stack() -> str:
+    """返回模型推理技术栈：``"light"`` 或 ``"full"``。
+
+    优先读取 ``config.model.stack``（支持环境变量 ``MINERU_MODEL_STACK``）。
+    当值为 ``"auto"`` 时，根据 ``get_device()`` 的结果自动选择：
+    device 为 ``"cpu"`` 时用 ``"light"``（onnxruntime / llama.cpp），否则用 ``"full"``（PyTorch / transformers）。
+    """
+    from ..config import config
+
+    stack = config.model.stack
+    if stack in ("light", "full"):
+        return stack
+    # auto: cpu → light, 其他 → full
+    device = get_device()
+    return "light" if device == "cpu" else "full"
+
+
 def get_ocr_det_mask_inline_formula_enable(enable: bool) -> bool:
     enable_env = os.getenv("MINERU_OCR_DET_MASK_INLINE_FORMULA_ENABLE")
     enable = enable if enable_env is None else enable_env.lower() == "true"

@@ -2822,13 +2822,11 @@ def test_api_server_preflights_basic_tier_dependencies(monkeypatch: pytest.Monke
         return object()
 
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
+    monkeypatch.setenv("MINERU_MODEL_STACK", "full")
 
     create_app(upload_dir=str(tmp_path), tier="basic")
 
     assert imported_modules == [
-        "ftfy",
-        "shapely",
-        "pyclipper",
         "six",
         "torch",
         "torchvision",
@@ -2846,13 +2844,11 @@ def test_api_server_preflights_standard_tier_dependencies_for_platform(monkeypat
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
     monkeypatch.setattr(parser_tier.sys, "platform", "darwin")
     monkeypatch.setattr(parser_tier.platform, "machine", lambda: "arm64")
+    monkeypatch.setenv("MINERU_MODEL_STACK", "full")
 
     create_app(upload_dir=str(tmp_path), tier="standard")
 
     assert imported_modules == [
-        "ftfy",
-        "shapely",
-        "pyclipper",
         "six",
         "torch",
         "torchvision",
@@ -2875,13 +2871,11 @@ def test_api_server_preflights_standard_tier_dependencies_skip_mlx_on_intel_maco
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
     monkeypatch.setattr(parser_tier.sys, "platform", "darwin")
     monkeypatch.setattr(parser_tier.platform, "machine", lambda: "x86_64")
+    monkeypatch.setenv("MINERU_MODEL_STACK", "full")
 
     create_app(upload_dir=str(tmp_path), tier="standard")
 
     assert imported_modules == [
-        "ftfy",
-        "shapely",
-        "pyclipper",
         "six",
         "torch",
         "torchvision",

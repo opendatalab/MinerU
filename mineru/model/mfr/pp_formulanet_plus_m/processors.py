@@ -8,12 +8,10 @@ import re
 from PIL import Image, ImageOps
 from typing import List, Optional, Tuple, Union, Dict, Any
 
-from loguru import logger
 from tokenizers import AddedToken
 from tokenizers import Tokenizer as TokenizerFast
 
-from mineru.model.mfr.utils import fix_latex_left_right, fix_latex_environments, remove_up_commands, \
-    remove_unsupported_commands
+from mineru.model.mfr.post_process import post_process_formula
 
 
 class UniMERNetImgDecode(object):
@@ -541,7 +539,7 @@ class UniMERNetDecode(object):
             generated_text.append(
                 self.tokenizer.decode(tok_id, skip_special_tokens=True)
             )
-        generated_text = [self.post_process(text) for text in generated_text]
+        generated_text = [post_process_formula(text) for text in generated_text]
         return generated_text
 
     def normalize(self, s: str) -> str:
@@ -585,49 +583,6 @@ class UniMERNetDecode(object):
             if news == s:
                 break
         return s.replace("XXXXXXX", " ")
-
-    def remove_chinese_text_wrapping(self, formula):
-        pattern = re.compile(r"\\text\s*{\s*([^}]*?[\u4e00-\u9fff]+[^}]*?)\s*}")
-
-        def replacer(match):
-            return match.group(1)
-
-        replaced_formula = pattern.sub(replacer, formula)
-        return replaced_formula.replace('"', "")
-
-    def post_process(self, text: str) -> str:
-        """Post-processes a string by fixing text and normalizing it.
-
-        Args:
-            text (str): String to post-process.
-
-        Returns:
-            str: Post-processed string.
-        """
-        from ftfy import fix_text
-
-        text = self.remove_chinese_text_wrapping(text)
-        text = fix_text(text)
-        # logger.debug(f"Text after ftfy fix: {text}")
-        text = self.fix_latex(text)
-        # logger.debug(f"Text after LaTeX fix: {text}")
-        return text
-
-    def fix_latex(self, text: str) -> str:
-        """Fixes LaTeX formatting in a string.
-
-        Args:
-            text (str): String to fix.
-
-        Returns:
-            str: Fixed string.
-        """
-        text = fix_latex_left_right(text, fix_delimiter=False)
-        text = fix_latex_environments(text)
-        text = remove_up_commands(text)
-        text = remove_unsupported_commands(text)
-        # text = self.normalize(text)
-        return text
 
     def __call__(
             self,

@@ -6,19 +6,21 @@ from __future__ import annotations
 import os
 import threading
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import torch
 from loguru import logger
 
-from ..model.layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
-from ..model.mfr.unimernet.Unimernet import UnimernetModel
-from ..model.ocr.pytorch_paddle import PytorchPaddleOCR
 from ..model.table.cls.mineru_table_ori_cls import MineruTableOrientationClsModel
 from ..model.table.cls.paddle_table_cls import PaddleTableClsModel
 from ..model.table.rec.slanet_plus.main import PaddleTableModel
 from ..model.table.rec.unet_table.main import UnetTableModel
+
+if TYPE_CHECKING:
+    from ..model.layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
+    from ..model.mfr.unimernet.Unimernet import UnimernetModel
+    from ..model.ocr.pytorch_paddle import PytorchPaddleOCR
 from ..utils.config_reader import get_device
+from ..utils.config_reader import get_model_stack
 from ..utils.model_registry import PDF_EXTRACT_KIT, ModelPath
 from ..utils.ocr_language import normalize_ocr_model_lang
 
@@ -126,12 +128,18 @@ def wireless_table_model_init(lang: str | None = None) -> PaddleTableModel:
     return table_model
 
 
-def mfr_model_init(weight_dir: str, device: str | torch.device = "cpu") -> UnimernetModel:
+def mfr_model_init(weight_dir: str, device: str = "cpu") -> "UnimernetModel":
+    from ..model.mfr.unimernet.Unimernet import UnimernetModel
+
     return UnimernetModel(weight_dir, device)
 
 
-def pp_doclayout_v2_model_init(weight: str, device: str | torch.device = "cpu") -> PPDocLayoutV2LayoutModel:
+def pp_doclayout_v2_model_init(weight: str, device: str = "cpu") -> "PPDocLayoutV2LayoutModel":
+    from ..model.layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
+
     if str(device).startswith("npu"):
+        import torch
+
         device = torch.device(device)
     model = PPDocLayoutV2LayoutModel(weight, device)
     return model
@@ -142,7 +150,9 @@ def ocr_model_init(
     lang: str | None = None,
     det_db_unclip_ratio: float = 1.5,
     enable_merge_det_boxes: bool = True,
-) -> PytorchPaddleOCR:
+) -> "PytorchPaddleOCR":
+    from ..model.ocr.pytorch_paddle import PytorchPaddleOCR
+
     ocr_kwargs = {
         "lang": normalize_ocr_model_lang(lang),
         "det_db_box_thresh": det_db_box_thresh,
@@ -192,18 +202,52 @@ class AtomModelSingleton:
 
 
 def atom_model_init(model_name: str, **kwargs: Any) -> Any:
+    stack = get_model_stack()
     atom_model = None
     if model_name == AtomicModel.Layout:
-        atom_model = pp_doclayout_v2_model_init(kwargs.get("pp_doclayout_v2_weights"), kwargs.get("device"))
+        if stack == "light":
+            from ..model.layout.pp_doclayout_v2_onnx import PPDocLayoutV2LayoutModelONNX
+            from ..utils.model_registry import PP_DOCLAYOUT_V2_ONNX
+
+            atom_model = PPDocLayoutV2LayoutModelONNX(
+                weight=str(PP_DOCLAYOUT_V2_ONNX.onnx.ensure()),
+                device=kwargs.get("device", "cpu"),
+            )
+        else:
+            atom_model = pp_doclayout_v2_model_init(kwargs.get("pp_doclayout_v2_weights"), kwargs.get("device"))
     elif model_name == AtomicModel.MFR:
-        atom_model = mfr_model_init(kwargs.get("mfr_weight_dir"), kwargs.get("device"))
+        if stack == "light":
+            from ..model.mfr.pp_formulanet_plus_m_onnx import PPFormulaNetPlusMONNX
+            from ..utils.model_registry import PP_FORMULANET_PLUS_M_ONNX
+
+            atom_model = PPFormulaNetPlusMONNX(
+                model_path=str(PP_FORMULANET_PLUS_M_ONNX.onnx.ensure()),
+                config_path=str(PP_FORMULANET_PLUS_M_ONNX.config.ensure()),
+                device=kwargs.get("device", "cpu"),
+            )
+        else:
+            atom_model = mfr_model_init(kwargs.get("mfr_weight_dir"), kwargs.get("device"))
     elif model_name == AtomicModel.OCR:
-        atom_model = ocr_model_init(
-            kwargs.get("det_db_box_thresh", 0.5),
-            kwargs.get("lang"),
-            kwargs.get("det_db_unclip_ratio", 1.5),
-            kwargs.get("enable_merge_det_boxes", True),
-        )
+        if stack == "light":
+            from ..model.ocr.pp_ocr_v6_onnx import PPOCRv6ONNX
+            from ..utils.model_registry import PP_OCR_V6_SMALL_DET_ONNX, PP_OCR_V6_SMALL_REC_ONNX
+
+            atom_model = PPOCRv6ONNX(
+                det_model_path=str(PP_OCR_V6_SMALL_DET_ONNX.onnx.ensure()),
+                rec_model_path=str(PP_OCR_V6_SMALL_REC_ONNX.onnx.ensure()),
+                dict_path=str(PP_OCR_V6_SMALL_REC_ONNX.config.ensure()),
+                device=kwargs.get("device", "cpu"),
+                det_db_box_thresh=kwargs.get("det_db_box_thresh", 0.5),
+                det_db_unclip_ratio=kwargs.get("det_db_unclip_ratio", 1.5),
+                enable_merge_det_boxes=kwargs.get("enable_merge_det_boxes", True),
+            )
+        else:
+            atom_model = ocr_model_init(
+                kwargs.get("det_db_box_thresh", 0.5),
+                kwargs.get("lang"),
+                kwargs.get("det_db_unclip_ratio", 1.5),
+                kwargs.get("enable_merge_det_boxes", True),
+            )
     elif model_name == AtomicModel.WirelessTable:
         atom_model = wireless_table_model_init(
             kwargs.get("lang"),
@@ -254,8 +298,11 @@ class HybridLocalModelContextSingleton:
 
 
 def ocr_det_batch_setting() -> bool:
-    import torch as _torch
-    from packaging import version
+    try:
+        import torch as _torch
+        from packaging import version
+    except ImportError:
+        return True
 
     device_type = os.getenv("MINERU_LMDEPLOY_DEVICE", "")
     if device_type.lower() in ["corex"]:
@@ -315,7 +362,7 @@ class HybridLocalModelContext:
         det_db_box_thresh: float = 0.5,
         det_db_unclip_ratio: float = 1.5,
         enable_merge_det_boxes: bool = True,
-    ) -> PytorchPaddleOCR:
+    ) -> "PytorchPaddleOCR":
         """获取 OCR 原子模型，默认使用当前 Hybrid 本地上下文语言并复用 singleton 缓存。"""
         return self.atom_model_manager.get_atom_model(
             atom_model_name=AtomicModel.OCR,
@@ -325,7 +372,7 @@ class HybridLocalModelContext:
             enable_merge_det_boxes=enable_merge_det_boxes,
         )
 
-    def get_layout_model(self) -> PPDocLayoutV2LayoutModel:
+    def get_layout_model(self) -> "PPDocLayoutV2LayoutModel":
         """获取 Layout 原子模型，供 Hybrid 本地 layout、标题拆分和公式框检测复用。"""
         return self.atom_model_manager.get_atom_model(
             atom_model_name=AtomicModel.Layout,
@@ -333,7 +380,7 @@ class HybridLocalModelContext:
             device=self.device,
         )
 
-    def get_mfr_model(self) -> UnimernetModel:
+    def get_mfr_model(self) -> "UnimernetModel":
         """获取公式识别原子模型，统一复用当前公式模型配置和设备。"""
         mfr_model_path = _resolve_mfr_model_path()
         return self.atom_model_manager.get_atom_model(

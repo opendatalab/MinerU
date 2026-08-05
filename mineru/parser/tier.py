@@ -40,9 +40,6 @@ __all__ = [
 PARSER_BACKENDS = SUPPORTED_BACKENDS
 
 _BASIC_REQUIRED_MODULES = [
-    "ftfy",
-    "shapely",
-    "pyclipper",
     "six",
     "torch",
     "torchvision",
@@ -211,6 +208,11 @@ def runtime_options_for_tier(
 def required_modules_for_tier(tier: DeploymentTier) -> list[str]:
     if tier not in DEPLOYMENT_TIERS:
         raise ValueError(f"Unsupported deployment tier '{tier}'. Supported tiers: {', '.join(DEPLOYMENT_TIERS)}")
+    from ..utils.config_reader import get_model_stack
+
+    stack = get_model_stack()
+    if stack == "light":
+        return []
     if tier == "basic":
         return list(_BASIC_REQUIRED_MODULES)
     platform_modules = list(_STANDARD_REQUIRED_MODULES_BY_PLATFORM.get(sys.platform, []))

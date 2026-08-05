@@ -356,6 +356,7 @@ class ManagedParseServerConfig(BaseModel):
 class ModelConfig(BaseModel):
     base_dir: str = _default_path("models")
     source: str = "auto"
+    stack: str = "auto"  # "auto" | "light" | "full"
 
 
 class DoclibConfig(BaseModel):

@@ -72,14 +72,20 @@ def test_basic_extra_includes_preflight_runtime_dependencies() -> None:
     basic_dependencies = pyproject["project"]["optional-dependencies"]["basic"]
     dependency_names = {dependency.split(">", 1)[0].split("=", 1)[0].lower() for dependency in basic_dependencies}
     module_to_distribution = {
-        "ftfy": "ftfy",
-        "pyclipper": "pyclipper",
-        "shapely": "shapely",
         "six": "six",
         "torch": "torch",
         "torchvision": "torchvision",
         "transformers": "transformers",
     }
+
+    # light backend 跳过所有模块检查，只验证 full backend 的依赖完整性
+    import os
+    os.environ["MINERU_MODEL_STACK"] = "full"
+    import mineru.config as cfg
+    import importlib
+    importlib.reload(cfg)
+    cfg._loaded_config = cfg._load_effective_config()
+    cfg.config = cfg._loaded_config.config
 
     missing = [
         module_name
