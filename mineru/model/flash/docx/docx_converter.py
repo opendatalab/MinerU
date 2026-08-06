@@ -21,9 +21,9 @@ from mineru.backend.utils.office_chart import extract_chart_html_from_ooxml
 from mineru.backend.utils.office_image import (
     serialize_office_image,
 )
-from mineru.model.docx.package_normalizer import normalize_docx_package
-from mineru.model.docx.tools.math.omml import oMath2Latex
-from mineru.model.docx.tools.office_xml import read_str
+from mineru.model.flash.docx.package_normalizer import normalize_docx_package
+from mineru.model.flash.docx.tools.math.omml import oMath2Latex
+from mineru.model.flash.docx.tools.office_xml import read_str
 from mineru.types import BlockType
 from mineru.utils.docx_formatting import Formatting, Script
 from mineru.utils.office_rich_text import (

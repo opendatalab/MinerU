@@ -2,7 +2,7 @@
 
 """Flash PDF 公共提取入口。
 
-原生文本处理位于 native_pdf 内部包；需要 OCR 时统一委托 Hybrid low。
+原生文本处理由 FlashModel 提供；需要 OCR 时统一委托 Hybrid low。
 """
 
 from __future__ import annotations
@@ -59,12 +59,10 @@ def doc_analyze(
             resolved_mode = parse_mode
 
         if resolved_mode == "txt":
-            # 延迟加载原生分析流水线，使逐页纯文本接口保持轻量。
-            from mineru.backend.flash.native_pdf.pipeline import (
-                _analyze_native_document,
-            )
+            # 延迟加载 FlashModel，使逐页纯文本和 OCR 路径保持轻量。
+            from mineru.model.flash import FlashModel
 
-            return _analyze_native_document(pdf_doc)
+            return FlashModel().predict(pdf_doc)
 
     # OCR 路径延迟加载 Hybrid，保证原生 Flash 不引入本地视觉模型运行时。
     from mineru.backend.hybrid.analyze import doc_analyze as hybrid_doc_analyze

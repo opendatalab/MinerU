@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mineru.backend.flash.native_pdf import titles
+from mineru.model.flash.native_pdf import titles
 
 from _flash_pdf_test_utils import _prepared_text_page, _text_line
 

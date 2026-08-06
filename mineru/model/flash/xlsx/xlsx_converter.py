@@ -20,9 +20,9 @@ from pydantic import BaseModel, Field, NonNegativeInt, PositiveInt
 from pydantic.dataclasses import dataclass
 
 from mineru.backend.utils.office_image import is_vector_image, serialize_vector_image_with_placeholder
-from mineru.model.docx.tools.math.omml import oMath2Latex
+from mineru.model.flash.docx.tools.math.omml import oMath2Latex
 from mineru.model.office_stream import read_stream_bytes_from_start, rewind_stream
-from mineru.model.xlsx.package_normalizer import normalize_xlsx_package
+from mineru.model.flash.xlsx.package_normalizer import normalize_xlsx_package
 from mineru.types import BlockType
 from mineru.utils.pdf_reader import image_to_b64str
 

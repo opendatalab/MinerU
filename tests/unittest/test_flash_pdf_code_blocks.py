@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from mineru.backend.flash.native_pdf import code_blocks, models, pipeline
+from mineru.model.flash.native_pdf import code_blocks, models, pipeline
 from mineru.backend.hybrid.table_text import project_pdf_spatial_text
 from mineru.utils.pdf_document import PDFPathInfo
 

@@ -7,7 +7,7 @@ from typing import Any
 
 from loguru import logger
 
-from ...model.pptx.main import convert_binary
+from ...model.flash.pptx.main import convert_binary
 from ...types import PageInfo
 from ...utils.image_payload import ImagePayloadCache
 from .model_output_to_middle_json import result_to_middle_json

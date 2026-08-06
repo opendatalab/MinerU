@@ -1,7 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from typing import BinaryIO
 
-from mineru.model.docx.docx_converter import DocxConverter
+from mineru.model.flash.docx.docx_converter import DocxConverter
 
 
 def convert_path(file_path: str):

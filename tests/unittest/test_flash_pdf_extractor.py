@@ -8,7 +8,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from mineru.backend.flash import pdf_extractor
-from mineru.backend.flash.native_pdf import (
+from mineru.model.flash import FlashModel
+from mineru.model.flash.native_pdf import (
     pipeline,
 )
 
@@ -107,8 +108,8 @@ def test_txt_mode_keeps_native_flash_path(
         monkeypatch,
         classified_mode="txt",
     )
-    native_analyze = MagicMock(return_value=expected_model_list)
-    monkeypatch.setattr(pipeline, "_analyze_native_document", native_analyze)
+    native_predict = MagicMock(return_value=expected_model_list)
+    monkeypatch.setattr(FlashModel, "predict", native_predict)
     hybrid_doc_analyze = _install_hybrid_analyze(
         monkeypatch,
         model_list=[[{"type": "text", "content": "unexpected"}]],
@@ -121,8 +122,10 @@ def test_txt_mode_keeps_native_flash_path(
 
     assert result is expected_model_list
     assert pdf_doc.classify.call_count == expected_classify_calls
-    native_analyze.assert_called_once_with(pdf_doc)
+    native_predict.assert_called_once_with(pdf_doc)
     hybrid_doc_analyze.assert_not_called()
+
+
 def test_invalid_parse_mode_is_rejected_before_opening_pdf(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证非法解析模式在打开 PDF 前保持原有报错行为。"""
 

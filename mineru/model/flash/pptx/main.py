@@ -1,7 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from typing import BinaryIO
 
-from mineru.model.xlsx.xlsx_converter import XlsxConverter
+from mineru.model.flash.pptx.pptx_converter import PptxConverter
 
 
 def convert_path(file_path: str):
@@ -10,9 +10,10 @@ def convert_path(file_path: str):
 
 
 def convert_binary(file_binary: BinaryIO):
-    converter = XlsxConverter()
+    converter = PptxConverter()
     converter.convert(file_binary)
     return converter.pages
 
+
 if __name__ == "__main__":
-    print(convert_path("test_xlsx/xlsx_01.xlsx"))
+    print(convert_path("powerpoint_sample.pptx"))

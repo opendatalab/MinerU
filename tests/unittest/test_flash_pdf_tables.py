@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from mineru.backend.flash.native_pdf import (
+from mineru.model.flash.native_pdf import (
     geometry,
     models,
     tables,

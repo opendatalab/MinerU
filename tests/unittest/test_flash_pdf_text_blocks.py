@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from mineru.backend.flash.native_pdf import (
+from mineru.model.flash.native_pdf import (
     line_layout,
     line_merging,
     models,
