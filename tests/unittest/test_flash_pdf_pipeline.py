@@ -6,7 +6,7 @@ import inspect
 import pytest
 
 from mineru.backend.flash import pdf_extractor
-from mineru.model.flash import FlashModel
+from mineru.model.flash import PdfModel
 from mineru.model.flash.native_pdf import (
     auxiliary_text,
     formulas,
@@ -188,7 +188,7 @@ def test_flash_extractor_has_no_local_ocr_runtime_logic() -> None:
         inspect.getsource(module)
         for module in (
             pdf_extractor,
-            FlashModel,
+            PdfModel,
             auxiliary_text,
             formulas,
             geometry,

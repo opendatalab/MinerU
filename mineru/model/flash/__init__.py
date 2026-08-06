@@ -1,7 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-"""Flash 原生 PDF 模型入口。"""
+"""Flash PDF 与 Office 模型公开入口。"""
 
-from .model import FlashModel
+from .model import DocxModel, PdfModel, PptxModel, XlsxModel
 
-__all__ = ["FlashModel"]
+__all__ = ["PdfModel", "DocxModel", "PptxModel", "XlsxModel"]

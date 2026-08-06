@@ -7,7 +7,7 @@ from typing import Any
 
 from loguru import logger
 
-from ...model.flash.xlsx.main import convert_binary
+from ...model.flash import XlsxModel
 from ...types import PageInfo
 from ...utils.image_payload import ImagePayloadCache
 from .model_output_to_middle_json import result_to_middle_json
@@ -17,7 +17,7 @@ def office_xlsx_analyze(file_bytes: bytes, image_cache: ImagePayloadCache | None
     infer_start = time.time()
 
     file_stream = BytesIO(file_bytes)
-    results = convert_binary(file_stream)
+    results = XlsxModel().predict(file_stream)
 
     infer_time = round(time.time() - infer_start, 2)
     safe_time = max(infer_time, 0.01)

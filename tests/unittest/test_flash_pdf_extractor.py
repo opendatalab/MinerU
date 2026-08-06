@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from mineru.backend.flash import pdf_extractor
-from mineru.model.flash import FlashModel
+from mineru.model.flash import PdfModel
 from mineru.model.flash.native_pdf import (
     pipeline,
 )
@@ -109,7 +109,7 @@ def test_txt_mode_keeps_native_flash_path(
         classified_mode="txt",
     )
     native_predict = MagicMock(return_value=expected_model_list)
-    monkeypatch.setattr(FlashModel, "predict", native_predict)
+    monkeypatch.setattr(PdfModel, "predict", native_predict)
     hybrid_doc_analyze = _install_hybrid_analyze(
         monkeypatch,
         model_list=[[{"type": "text", "content": "unexpected"}]],
