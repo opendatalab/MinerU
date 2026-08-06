@@ -1104,15 +1104,13 @@ def _lines_to_block_content(lines: list[Line], block_type: str) -> str:
 
 
 def _build_ocr_det_line_items(lines: list[Line], page_size: tuple[float, float]) -> list[dict[str, Any]]:
-    """将内部 Line 转换为归一化行框，并仅保留首尾有效行。"""
+    """将内部 Line 转换为归一化行框"""
     line_items = []
     for line in lines:
         normalized_bbox = _page_bbox_to_unit_bbox(line.bbox, page_size)
         if normalized_bbox is not None:
-            line_items.append({"type": "line", "bbox": normalized_bbox})
-    if len(line_items) <= 2:
-        return line_items
-    return [line_items[0], line_items[-1]]
+            line_items.append({"bbox": normalized_bbox})
+    return line_items
 
 
 def _resolve_model_title_line_avg_height(lines: list[Line], block_bbox: BBox | None) -> int:
@@ -1151,9 +1149,9 @@ def _apply_block_content_and_line_metadata(
     for block_item in page_model_list:
         block_type = str(block_item.get("type") or block_item.get("label") or "")
         if block_type == BlockType.TEXT:
-            block_item["_ocr_det_lines"] = []
+            block_item["_lines"] = []
         else:
-            block_item.pop("_ocr_det_lines", None)
+            block_item.pop("_lines", None)
         if block_type not in TITLE_BLOCK_TYPES:
             block_item.pop("_line_avg_height", None)
 
@@ -1166,7 +1164,7 @@ def _apply_block_content_and_line_metadata(
             block_item["content"] = _lines_to_block_content(lines, block_type)
 
         if block_type == BlockType.TEXT:
-            block_item["_ocr_det_lines"] = _build_ocr_det_line_items(lines, page_size)
+            block_item["_lines"] = _build_ocr_det_line_items(lines, page_size)
         elif block_type in TITLE_BLOCK_TYPES:
             block_item["_line_avg_height"] = _resolve_model_title_line_avg_height(
                 lines,
