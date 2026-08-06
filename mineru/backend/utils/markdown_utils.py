@@ -3,7 +3,7 @@
 import re
 from html import escape
 
-CONSERVATIVE_MARKDOWN_SPECIAL_CHARS = ("*", "_", "`", "~", "$")
+CONSERVATIVE_MARKDOWN_SPECIAL_CHARS = ("*", "_", "`", "~", "$", "<")
 TEXT_BLOCK_MARKDOWN_PREFIX_RE = re.compile(
     r"^(?P<indent>[ \t]{0,3})(?P<marker>#{1,6}|[+-])(?=[ \t])"
 )
