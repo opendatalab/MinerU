@@ -10,7 +10,7 @@ import signal
 import sys
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Iterator, cast
@@ -219,6 +219,7 @@ class _LocatorParts:
     page_no: int | None = None
     block_no: int | None = None
     char_offset: int | None = None
+    is_last_page: bool = False
 
 
 class DoclibServer(AsyncDoclibInterface):
@@ -701,6 +702,7 @@ class DoclibServer(AsyncDoclibInterface):
                 "Text files do not require MinerU parsing. Read the file directly.",
                 "locator",
             )
+        cursor = _resolve_last_page(cursor, doc)
 
         tier = cursor.tier or await self._default_read_tier(doc["sha256"])
         if tier is None:
@@ -1480,7 +1482,7 @@ class DoclibServer(AsyncDoclibInterface):
 _READ_LOCATOR_RE = re.compile(
     r"^doc:(?P<short_id>[0-9a-fA-F]+)"
     r"(?:/tier:(?P<tier>flash|basic|standard|advanced)"
-    r"(?:/page:(?P<page_no>[1-9][0-9]*)"
+    r"(?:/page:(?P<page_no>last|[1-9][0-9]*)"
     r"(?:/block:(?P<block_no>[1-9][0-9]*)(?:/char:(?P<char_offset>0|[1-9][0-9]*))?)?)?)?$"
 )
 
@@ -1495,10 +1497,24 @@ def _parse_doc_locator(locator: str) -> _LocatorParts:
     return _LocatorParts(
         short_id=match.group("short_id"),
         tier=cast(Tier | None, match.group("tier")),
-        page_no=int(page_no) if page_no is not None else None,
+        page_no=int(page_no) if page_no not in (None, "last") else None,
         block_no=int(block_no) if block_no is not None else None,
         char_offset=int(char_offset) if char_offset is not None else None,
+        is_last_page=page_no == "last",
     )
+
+
+def _resolve_last_page(locator: _LocatorParts, doc: DocRow) -> _LocatorParts:
+    if not locator.is_last_page:
+        return locator
+    page_count = doc.get("page_count")
+    if page_count is None or page_count < 1:
+        raise InvalidRequestError(
+            "invalid_locator",
+            "Cannot resolve page:last because the document page count is unavailable.",
+            "locator",
+        )
+    return replace(locator, page_no=page_count, is_last_page=False)
 
 
 def _canonical_locator(short_id: str, tier: Tier, locator: _LocatorParts) -> str:
