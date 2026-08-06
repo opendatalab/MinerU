@@ -29,7 +29,6 @@ from mineru.backend.utils.formula_number import optimize_hybrid_formula_number_b
 from mineru.backend.utils.middle_json_utils import append_pages
 from mineru.backend.utils.runtime_utils import exclude_progress_bar_idle_time
 from mineru.backend.utils.span_block_fix import fix_text_block
-from mineru.backend.utils.span_orientation import VERTICAL_SPAN_HEIGHT_TO_WIDTH_RATIO_THRESHOLD
 from mineru.backend.utils.span_pre_proc import (
     SpanBlockMatcher,
     __replace_ligatures,
@@ -989,11 +988,10 @@ def _group_page_spans_by_block(
     page_spans: list[Span],
     page_size: tuple[float, float],
     target_block_types: set[str],
-) -> tuple[dict[int, list[Line]], dict[int, BBox]]:
+) -> dict[int, list[Line]]:
     """按 block 原始顺序消费 span，并使用现有文本修复逻辑形成真实行。"""
     span_matcher = SpanBlockMatcher(page_spans)
     block_lines: dict[int, list[Line]] = {}
-    block_bboxes: dict[int, BBox] = {}
     for block_idx, block_item in enumerate(page_model_list):
         block_type = str(block_item.get("type") or block_item.get("label") or "")
         if block_type not in target_block_types:
@@ -1003,7 +1001,6 @@ def _group_page_spans_by_block(
             block_lines[block_idx] = []
             continue
 
-        block_bboxes[block_idx] = block_bbox
         fix_block = Block(
             index=block_idx,
             type=block_type,
@@ -1011,7 +1008,7 @@ def _group_page_spans_by_block(
             _fix_spans=span_matcher.collect_for_block(block_bbox),
         )
         block_lines[block_idx] = fix_text_block(fix_block).lines
-    return block_lines, block_bboxes
+    return block_lines
 
 
 def _apply_window_post_ocr(
@@ -1113,47 +1110,18 @@ def _build_ocr_det_line_items(lines: list[Line], page_size: tuple[float, float])
     return line_items
 
 
-def _resolve_model_title_line_avg_height(lines: list[Line], block_bbox: BBox | None) -> int:
-    """根据标题 block 高宽比计算平均行尺寸，无有效行时回退到 block 对应尺寸。"""
-    if block_bbox is None or len(block_bbox) < 4:
-        return 0
-
-    block_width = max(0.0, block_bbox[2] - block_bbox[0])
-    block_height = max(0.0, block_bbox[3] - block_bbox[1])
-    # 复用 span 的严格竖排阈值，高宽比等于阈值时仍按横排标题处理。
-    is_vertical_title = (
-        block_width > 0 and block_height > 0 and block_height / block_width > VERTICAL_SPAN_HEIGHT_TO_WIDTH_RATIO_THRESHOLD
-    )
-
-    line_sizes = []
-    for line in lines:
-        bbox = line.bbox
-        if not bbox or len(bbox) < 4:
-            continue
-        line_size = bbox[2] - bbox[0] if is_vertical_title else bbox[3] - bbox[1]
-        if line_size > 0:
-            line_sizes.append(line_size)
-
-    if line_sizes:
-        return round(sum(line_sizes) / len(line_sizes))
-    return round(block_width if is_vertical_title else block_height)
-
-
 def _apply_block_content_and_line_metadata(
     page_model_list: list[dict[str, Any]],
     block_lines: dict[int, list[Line]],
-    block_bboxes: dict[int, BBox],
     page_size: tuple[float, float],
 ) -> None:
-    """将组行结果回填到 block，并只为 TEXT 保存行框、为标题保存平均行高。"""
+    """将组行结果回填到 block，并只为 TEXT 保存行框。"""
     for block_item in page_model_list:
         block_type = str(block_item.get("type") or block_item.get("label") or "")
         if block_type == BlockType.TEXT:
             block_item["_lines"] = []
         else:
             block_item.pop("_lines", None)
-        if block_type not in TITLE_BLOCK_TYPES:
-            block_item.pop("_line_avg_height", None)
 
     for block_idx, lines in block_lines.items():
         block_item = page_model_list[block_idx]
@@ -1165,11 +1133,6 @@ def _apply_block_content_and_line_metadata(
 
         if block_type == BlockType.TEXT:
             block_item["_lines"] = _build_ocr_det_line_items(lines, page_size)
-        elif block_type in TITLE_BLOCK_TYPES:
-            block_item["_line_avg_height"] = _resolve_model_title_line_avg_height(
-                lines,
-                block_bboxes.get(block_idx),
-            )
 
 
 def _fill_window_block_content_and_lines(
@@ -1219,7 +1182,7 @@ def _fill_window_block_content_and_lines(
                 page_size,
             )
 
-        block_lines, block_bboxes = _group_page_spans_by_block(
+        block_lines = _group_page_spans_by_block(
             page_model_list,
             page_spans,
             page_size,
@@ -1230,7 +1193,6 @@ def _fill_window_block_content_and_lines(
         _apply_block_content_and_line_metadata(
             page_model_list,
             block_lines,
-            block_bboxes,
             page_size,
         )
     return model_list
@@ -1954,7 +1916,7 @@ def _process_low_text(
         target_block_types = set(PIPELINE_DET_TYPE) | TITLE_BLOCK_TYPES | {BlockType.TEXT}
         for pdf_page, page_model_list in zip(pdf_pages, model_list):
             page_size = tuple(float(value) for value in pdf_page.size)
-            block_lines, block_bboxes = _group_page_spans_by_block(
+            block_lines = _group_page_spans_by_block(
                 page_model_list,
                 _build_pdf_text_line_spans(pdf_page),
                 page_size,
@@ -1963,7 +1925,6 @@ def _process_low_text(
             _apply_block_content_and_line_metadata(
                 page_model_list,
                 block_lines,
-                block_bboxes,
                 page_size,
             )
     elif parse_mode == "ocr":
