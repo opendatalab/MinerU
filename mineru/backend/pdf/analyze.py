@@ -27,8 +27,6 @@ from mineru.backend.utils.boxbase import (
 )
 from mineru.backend.utils.char_utils import resolve_text_line_boundary
 from mineru.backend.utils.formula_number import optimize_hybrid_formula_number_blocks
-from mineru.backend.utils.middle_json_utils import append_pages
-from mineru.backend.utils.runtime_utils import exclude_progress_bar_idle_time
 from mineru.backend.utils.span_block_fix import fix_text_block
 from mineru.backend.utils.span_pre_proc import (
     SpanBlockMatcher,
@@ -1414,7 +1412,7 @@ def _attach_visual_block_images(
     images_list: list[dict[str, Any]],
     page_start_index: int = 0,
 ) -> None:
-    """为最终 model_list 视觉块写入回正后的页面裁图，不影响已构造的 middle_json。"""
+    """在窗口页图释放前，为最终 model_list 视觉块写入回正后的页面裁图。"""
     if len(model_list) != len(images_list):
         raise ValueError(f"Hybrid visual crop page count mismatch: model_list={len(model_list)}, images={len(images_list)}")
 
@@ -2197,6 +2195,7 @@ def doc_analyze(
     if parse_mode not in ["txt", "ocr"]:
         raise ValueError(f"parse_mode {parse_mode} is not supported")
 
+    # Analyze 阶段暂不组装 Middle JSON，仅返回包含完整模型结果的 model_list。
     middle_json: list[PageInfo] = []
     model_list: list[list[dict[str, Any]]] = []
     doc_closed = False
@@ -2209,17 +2208,6 @@ def doc_analyze(
         flash_txt_mode = effort == "flash" and parse_mode == "txt"
         page_count = pdf_doc.page_count
         hybrid_model = None
-
-        if flash_txt_mode:
-            # Flash 先对整份 PDF 生成完整 model_list，不依赖页面渲染和处理窗口。
-            from mineru.model.flash import PdfModel
-
-            infer_start = time.time()
-            model_list = PdfModel().predict(pdf_doc)
-
-        configured_window_size = get_processing_window_size(default=64)
-        windows = _build_processing_windows(page_count, configured_window_size)
-        _log_processing_window_plan(page_count, configured_window_size, len(windows))
 
         if not flash_txt_mode:
             hybrid_model_singleton = HybridLocalModelContextSingleton()
@@ -2237,151 +2225,138 @@ def doc_analyze(
             else:
                 vlm_predictor = None
 
+        infer_start = time.time()
+
+        if flash_txt_mode:
+            # Flash 先对整份 PDF 生成完整 model_list，不依赖页面渲染和处理窗口。
+            from mineru.model.flash import PdfModel
+
             infer_start = time.time()
+            model_list = PdfModel().predict(pdf_doc)
 
-        progress_bar = None
-        last_append_end_time = None
+        configured_window_size = get_processing_window_size(default=64)
+        windows = _build_processing_windows(page_count, configured_window_size)
+        _log_processing_window_plan(page_count, configured_window_size, len(windows))
 
-        try:
-            for window in windows:
-                pdf_pages = _get_window_pdf_pages(pdf_doc, window)
-                images_list = load_images_from_pdf_bytes_range(
-                    pdf_bytes=pdf_bytes,
-                    start_page_id=window.start,
-                    end_page_id=window.end,
-                    image_type="pil_img",
-                )
+        for window in windows:
+            pdf_pages = _get_window_pdf_pages(pdf_doc, window)
+            images_list = load_images_from_pdf_bytes_range(
+                pdf_bytes=pdf_bytes,
+                start_page_id=window.start,
+                end_page_id=window.end,
+                image_type="pil_img",
+            )
+            try:
                 if len(pdf_pages) != len(images_list):
                     raise ValueError("Hybrid processing window PDF page count does not match image count")
-                try:
-                    images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
-                    _log_processing_window(window, page_count, len(images_pil_list))
+                images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+                _log_processing_window(window, page_count, len(images_pil_list))
 
-                    if flash_txt_mode:
-                        # 仅切割外层列表供当前窗口生成 middle_json，完整 Flash model_list 保持不变。
-                        window_model_list = model_list[window.start : window.end + 1]
-                    else:
-                        np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
-                        images_layout_res = hybrid_model.layout_model.batch_predict(
-                            images_pil_list, batch_size=min(8, BATCH_RATIO * LAYOUT_BASE_BATCH_SIZE)
-                        )
+                if flash_txt_mode:
+                    # Flash 仅切割当前窗口的外层列表，用于页图释放前原地补充视觉块裁图。
+                    window_model_list = model_list[window.start : window.end + 1]
+                else:
+                    np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
+                    images_layout_res = hybrid_model.layout_model.batch_predict(
+                        images_pil_list, batch_size=min(8, BATCH_RATIO * LAYOUT_BASE_BATCH_SIZE)
+                    )
 
-                        # 使用小模型layout时对layout的表格做旋转检测
-                        if effort in ["low", "medium", "high"]:
-                            table_items = _collect_table_items(images_layout_res, np_images)
-                            if table_items:
-                                _apply_table_orientations(
-                                    table_items,
-                                    parse_mode,
-                                    pdf_pages,
-                                    images_list,
-                                    hybrid_model,
-                                )
-
-                        vl_style_layout_blocks = _build_vl_style_layout_blocks(images_layout_res, images_pil_list)
-
-                        if parse_mode == "txt":
-                            if effort in ["low", "medium"]:
-                                window_model_list = vl_style_layout_blocks
-                            elif effort == "high":
-                                window_model_list = vlm_predictor.batch_extract_with_layout(
-                                    images=images_pil_list,
-                                    blocks_list=vl_style_layout_blocks,
-                                    not_extract_list=NOT_EXTRACT_TYPES,
-                                    image_analysis=False,
-                                )
-                            elif effort == "xhigh":
-                                window_model_list = vlm_predictor.batch_two_step_extract(
-                                    images=images_pil_list,
-                                    not_extract_list=NOT_EXTRACT_TYPES,
-                                    image_analysis=image_analysis,
-                                )
-                                _apply_layout_title_split(
-                                    window_model_list,
-                                    images_layout_res,
-                                    [_normalize_page_size(image) for image in images_pil_list],
-                                )
-                            else:
-                                raise ValueError(f"Unsupported analyze effort: {effort}")
-                        elif parse_mode == "ocr":
-                            if effort in ["low", "medium"]:
-                                window_model_list = vl_style_layout_blocks
-                            elif effort == "high":
-                                window_model_list = vlm_predictor.batch_extract_with_layout(
-                                    images=images_pil_list,
-                                    blocks_list=vl_style_layout_blocks,
-                                    image_analysis=False,
-                                )
-                            elif effort == "xhigh":
-                                window_model_list = vlm_predictor.batch_two_step_extract(
-                                    images=images_pil_list,
-                                    image_analysis=image_analysis,
-                                )
-                                _apply_layout_title_split(
-                                    window_model_list,
-                                    images_layout_res,
-                                    [_normalize_page_size(image) for image in images_pil_list],
-                                )
-                            else:
-                                raise ValueError(f"Unsupported analyze effort: {effort}")
-                        else:
-                            raise ValueError(f"Unsupported parse mode: {parse_mode}")
-
-                        if effort == "low":
-                            window_model_list = _process_low_text(
-                                images_list,
-                                pdf_pages,
-                                window_model_list,
+                    # 使用小模型layout时对layout的表格做旋转检测
+                    if effort in ["low", "medium", "high"]:
+                        table_items = _collect_table_items(images_layout_res, np_images)
+                        if table_items:
+                            _apply_table_orientations(
+                                table_items,
                                 parse_mode,
-                                hybrid_model,
-                                images_layout_res,
-                            )
-                        else:
-                            window_model_list = _process_text_and_formulas(
-                                images_list,
                                 pdf_pages,
-                                window_model_list,
-                                parse_mode,
-                                effort,
+                                images_list,
                                 hybrid_model,
-                                images_layout_res,
                             )
 
-                        if effort in {"medium", "high"}:
-                            _apply_seal_ocr(hybrid_model, window_model_list, np_images)
+                    vl_style_layout_blocks = _build_vl_style_layout_blocks(images_layout_res, images_pil_list)
 
-                        model_list.extend(window_model_list)
-
-                    if progress_bar is None:
-                        progress_bar = tqdm(total=page_count, desc="Processing pages")
+                    if parse_mode == "txt":
+                        if effort in ["low", "medium"]:
+                            window_model_list = vl_style_layout_blocks
+                        elif effort == "high":
+                            window_model_list = vlm_predictor.batch_extract_with_layout(
+                                images=images_pil_list,
+                                blocks_list=vl_style_layout_blocks,
+                                not_extract_list=NOT_EXTRACT_TYPES,
+                                image_analysis=False,
+                            )
+                        elif effort == "xhigh":
+                            window_model_list = vlm_predictor.batch_two_step_extract(
+                                images=images_pil_list,
+                                not_extract_list=NOT_EXTRACT_TYPES,
+                                image_analysis=image_analysis,
+                            )
+                            _apply_layout_title_split(
+                                window_model_list,
+                                images_layout_res,
+                                [_normalize_page_size(image) for image in images_pil_list],
+                            )
+                        else:
+                            raise ValueError(f"Unsupported analyze effort: {effort}")
+                    elif parse_mode == "ocr":
+                        if effort in ["low", "medium"]:
+                            window_model_list = vl_style_layout_blocks
+                        elif effort == "high":
+                            window_model_list = vlm_predictor.batch_extract_with_layout(
+                                images=images_pil_list,
+                                blocks_list=vl_style_layout_blocks,
+                                image_analysis=False,
+                            )
+                        elif effort == "xhigh":
+                            window_model_list = vlm_predictor.batch_two_step_extract(
+                                images=images_pil_list,
+                                image_analysis=image_analysis,
+                            )
+                            _apply_layout_title_split(
+                                window_model_list,
+                                images_layout_res,
+                                [_normalize_page_size(image) for image in images_pil_list],
+                            )
+                        else:
+                            raise ValueError(f"Unsupported analyze effort: {effort}")
                     else:
-                        exclude_progress_bar_idle_time(
-                            progress_bar,
-                            last_append_end_time,
-                            now=time.time(),
+                        raise ValueError(f"Unsupported parse mode: {parse_mode}")
+
+                    if effort == "low":
+                        window_model_list = _process_low_text(
+                            images_list,
+                            pdf_pages,
+                            window_model_list,
+                            parse_mode,
+                            hybrid_model,
+                            images_layout_res,
                         )
-                    _replace_inline_formula_delimiters(window_model_list)
-                    append_pages(
-                        middle_json,
-                        window_model_list,
-                        images_list,
-                        pdf_doc,
-                        page_start_index=window.start,
-                        page_index_map=page_index_map,
-                        progress_bar=progress_bar,
-                        image_cache=image_cache,
-                    )
-                    _attach_visual_block_images(
-                        window_model_list,
-                        images_list,
-                        page_start_index=window.start,
-                    )
-                    last_append_end_time = time.time()
-                finally:
-                    _close_images(images_list)
-        finally:
-            if progress_bar is not None:
-                progress_bar.close()
+                    else:
+                        window_model_list = _process_text_and_formulas(
+                            images_list,
+                            pdf_pages,
+                            window_model_list,
+                            parse_mode,
+                            effort,
+                            hybrid_model,
+                            images_layout_res,
+                        )
+
+                    if effort in {"medium", "high"}:
+                        _apply_seal_ocr(hybrid_model, window_model_list, np_images)
+
+                _attach_visual_block_images(
+                    window_model_list,
+                    images_list,
+                    page_start_index=window.start,
+                )
+                if not flash_txt_mode:
+                    model_list.extend(window_model_list)
+            finally:
+                _close_images(images_list)
+
+        # 等全部窗口合并完成后统一替换，确保完整 model_list 的处理语义一致。
+        _replace_inline_formula_delimiters(model_list)
         infer_time = round(time.time() - infer_start, 2)
         if infer_time > 0 and page_count > 0:
             logger.debug(
