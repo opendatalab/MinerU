@@ -41,6 +41,16 @@ A14_DRAWING_NS: Final = "http://schemas.microsoft.com/office/drawing/2010/main"
 OMML_NS: Final = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 _EFFECTIVE_FONT_SIZE_KEY: Final = "_effective_font_size_pt"
 _EFFECTIVE_ALL_BOLD_KEY: Final = "_effective_all_bold"
+# PPTX 标题占位符角色仅用于单页内部归一化，返回 model_output 前必须清理。
+_PPTX_TITLE_ROLE_KEY: Final = "_pptx_title_role"
+_PPTX_TITLE_ROLE_CENTER: Final = "center_title"
+_PPTX_TITLE_ROLE_TITLE: Final = "title"
+_PPTX_TITLE_ROLE_SUBTITLE: Final = "subtitle"
+_PPTX_TITLE_PLACEHOLDER_ROLES: Final = {
+    PP_PLACEHOLDER.CENTER_TITLE: _PPTX_TITLE_ROLE_CENTER,
+    PP_PLACEHOLDER.TITLE: _PPTX_TITLE_ROLE_TITLE,
+    PP_PLACEHOLDER.SUBTITLE: _PPTX_TITLE_ROLE_SUBTITLE,
+}
 
 
 @dataclass(frozen=True)
@@ -156,6 +166,7 @@ class PptxConverter:
     def _walk_linear(self, pptx_obj: presentation.Presentation):
         slide_width = int(pptx_obj.slide_width)
         slide_height = int(pptx_obj.slide_height)
+        has_visible_content_slide = False
 
         # 遍历每一张幻灯片
         for _, slide in enumerate(pptx_obj.slides):
@@ -195,9 +206,16 @@ class PptxConverter:
                 self.cur_page.extend(entry["blocks"])
             self.cur_page.extend(tail_blocks)
 
+            visible_slide_has_content = bool(self.cur_page)
             self._handle_slide_notes(slide)
             self._promote_slide_text_blocks_to_titles(self.cur_page)
+            self._finalize_slide_title_types(
+                self.cur_page,
+                is_first_visible_slide=visible_slide_has_content and not has_visible_content_slide,
+            )
             self._cleanup_slide_text_block_metadata(self.cur_page)
+            if visible_slide_has_content:
+                has_visible_content_slide = True
             self.cur_page = []
             self.pages.append(self.cur_page)
 
@@ -1758,10 +1776,36 @@ class PptxConverter:
                 block["level"] = 3
 
     @staticmethod
+    def _finalize_slide_title_types(
+        slide_blocks: list[dict],
+        *,
+        is_first_visible_slide: bool,
+    ) -> None:
+        """将 PPTX 内部 title 统一拆分为文档标题、段落标题或普通文本。"""
+        for block in slide_blocks:
+            title_role = block.pop(_PPTX_TITLE_ROLE_KEY, None)
+            if title_role == _PPTX_TITLE_ROLE_SUBTITLE:
+                block["type"] = BlockType.TEXT
+                block.pop("level", None)
+                block.pop("is_numbered_style", None)
+                continue
+
+            if block.get("type") != BlockType.TITLE:
+                continue
+
+            if title_role == _PPTX_TITLE_ROLE_CENTER and is_first_visible_slide:
+                block["type"] = BlockType.DOC_TITLE
+                block.pop("level", None)
+                block.pop("is_numbered_style", None)
+            else:
+                block["type"] = BlockType.PARAGRAPH_TITLE
+
+    @staticmethod
     def _cleanup_slide_text_block_metadata(slide_blocks: list[dict]) -> None:
         for block in slide_blocks:
             block.pop(_EFFECTIVE_FONT_SIZE_KEY, None)
             block.pop(_EFFECTIVE_ALL_BOLD_KEY, None)
+            block.pop(_PPTX_TITLE_ROLE_KEY, None)
 
     def _handle_text_elements(self, shape):
         self.list_block_stack = []
@@ -1807,13 +1851,11 @@ class PptxConverter:
             }
             if shape.is_placeholder:
                 placeholder_type = shape.placeholder_format.type
-                if placeholder_type in [
-                    PP_PLACEHOLDER.CENTER_TITLE,
-                    PP_PLACEHOLDER.TITLE,
-                    PP_PLACEHOLDER.SUBTITLE,
-                ]:
+                title_role = _PPTX_TITLE_PLACEHOLDER_ROLES.get(placeholder_type)
+                if title_role is not None:
                     block["type"] = BlockType.TITLE
                     block["level"] = 2
+                    block[_PPTX_TITLE_ROLE_KEY] = title_role
 
             self.cur_page.append(block)
 

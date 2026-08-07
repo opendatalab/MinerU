@@ -266,7 +266,7 @@ class XlsxConverter:
     def _build_sheet_title_block(sheet_title: str) -> dict:
         """构造工作表标题块，复用 Office 标题渲染链路输出 Markdown 标题。"""
         return {
-            "type": BlockType.TITLE,
+            "type": BlockType.PARAGRAPH_TITLE,
             "content": sheet_title,
         }
 

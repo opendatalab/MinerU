@@ -1351,7 +1351,7 @@ class DocxConverter:
                 content_text = self._build_text_with_equations_and_hyperlinks(paragraph_elements, text, equations)
                 if content_text:
                     title_block = {
-                        "type": BlockType.TITLE,
+                        "type": BlockType.PARAGRAPH_TITLE,
                         "level": ilevel + 1,
                         "is_numbered_style": is_numbered,
                         "content": content_text,
@@ -1381,9 +1381,7 @@ class DocxConverter:
             content_text = self._build_text_with_equations_and_hyperlinks(paragraph_elements, text, equations)
             if content_text != "":
                 title_block = {
-                    "type": BlockType.TITLE,
-                    "level": 1,
-                    "is_numbered_style": False,
+                    "type": BlockType.DOC_TITLE,
                     "content": content_text,
                 }
                 if paragraph_anchor:
@@ -1396,7 +1394,7 @@ class DocxConverter:
             content_text = self._build_text_with_equations_and_hyperlinks(paragraph_elements, text, equations)
             if content_text != "":
                 h_block = {
-                    "type": BlockType.TITLE,
+                    "type": BlockType.PARAGRAPH_TITLE,
                     "level": p_level if p_level is not None else 2,
                     "is_numbered_style": is_numbered_style,
                     "content": content_text,
