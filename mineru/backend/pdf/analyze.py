@@ -3,6 +3,7 @@ import base64
 import html
 import math
 import os
+import re
 import time
 from collections import Counter
 from dataclasses import dataclass
@@ -88,6 +89,7 @@ MODEL_JSON_VISUAL_BLOCK_TYPES = {
     BlockType.TABLE,
     BlockType.EQUATION,
 }
+_INLINE_FORMULA_PATTERN = re.compile(r"\\\((.*?)\\\)")
 
 VLM_LAYOUT_LABEL_MAP = {
     "abstract": BlockType.TEXT,
@@ -2168,6 +2170,19 @@ def _apply_layout_title_split(
                 block["type"] = BlockType.PARAGRAPH_TITLE
 
 
+def _replace_inline_formula_delimiters(model_list: list[list[dict[str, Any]]]) -> None:
+    """将 model JSON content 中的行内公式定界符原地替换为 eq 标签。"""
+    for page_model_list in model_list:
+        for block in page_model_list:
+            content = block.get("content")
+            if not isinstance(content, str):
+                continue
+            block["content"] = _INLINE_FORMULA_PATTERN.sub(
+                lambda match: f"<eq>{match.group(1)}</eq>",
+                content,
+            )
+
+
 def doc_analyze(
     pdf_bytes: bytes,
     effort: Literal["flash", "low", "medium", "high", "xhigh"] = "high",
@@ -2345,6 +2360,7 @@ def doc_analyze(
                             last_append_end_time,
                             now=time.time(),
                         )
+                    _replace_inline_formula_delimiters(window_model_list)
                     append_pages(
                         middle_json,
                         window_model_list,
