@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 from mineru.backend import analyze
+from mineru.backend.utils.span_pre_proc import (
+    POST_OCR_FALLBACK_CONTENT_KEY,
+    POST_OCR_FALLBACK_SCORE_KEY,
+)
 from mineru.model.flash import PdfModel
 from mineru.types import BlockType, ContentType, Line, Span
 from mineru.utils.pdf_document import PDFDocument
@@ -29,6 +35,141 @@ def _build_text_lines(*contents: str) -> list[Line]:
         )
         for line_idx, content in enumerate(contents)
     ]
+
+
+def _build_post_ocr_page_block_lines(
+    *page_crop_values: int | tuple[int, ...],
+) -> tuple[list[dict[int, list[Line]]], list[Span]]:
+    """按页构造携带待 OCR 裁图的 span，便于验证窗口级批处理和回填顺序。"""
+    page_block_lines_list: list[dict[int, list[Line]]] = []
+    spans: list[Span] = []
+    for page_idx, crop_values in enumerate(page_crop_values):
+        normalized_crop_values = (crop_values,) if isinstance(crop_values, int) else crop_values
+        page_spans: list[Span] = []
+        for span_idx, crop_value in enumerate(normalized_crop_values):
+            bbox = (float(span_idx), float(page_idx), float(span_idx + 1), float(page_idx + 1))
+            span = Span(
+                type=ContentType.TEXT,
+                bbox=bbox,
+                _np_img=np.full((4, 8, 3), crop_value, dtype=np.uint8),
+            )
+            spans.append(span)
+            page_spans.append(span)
+        line_bbox = (0.0, float(page_idx), float(len(page_spans)), float(page_idx + 1))
+        page_block_lines_list.append({0: [Line(bbox=line_bbox, spans=page_spans)]})
+    return page_block_lines_list, spans
+
+
+def test_window_post_ocr_batches_all_pages_once() -> None:
+    """验证窗口内多页待识别 span 合并为一次 OCR-rec，并按原顺序回填。"""
+    page_block_lines_list, spans = _build_post_ocr_page_block_lines((11, 12), (21, 22))
+    local_model_context = MagicMock()
+    local_model_context.ocr_model.ocr.return_value = [
+        [("第一页一", 0.91), ("第一页二", 0.82), ("第二页一", 0.73), ("第二页二", 0.64)]
+    ]
+
+    analyze._apply_window_post_ocr(local_model_context, page_block_lines_list)
+
+    local_model_context.ocr_model.ocr.assert_called_once()
+    call_args = local_model_context.ocr_model.ocr.call_args
+    assert [int(crop[0, 0, 0]) for crop in call_args.args[0]] == [11, 12, 21, 22]
+    assert call_args.kwargs == {"det": False, "tqdm_enable": True}
+    assert [span.content for span in spans] == ["第一页一", "第一页二", "第二页一", "第二页二"]
+    assert [span.score for span in spans] == [0.91, 0.82, 0.73, 0.64]
+    assert all(span._np_img is None for span in spans)
+
+
+def test_window_post_ocr_skips_empty_window() -> None:
+    """验证窗口内没有待识别裁图时不会调用 OCR-rec。"""
+    local_model_context = MagicMock()
+
+    analyze._apply_window_post_ocr(local_model_context, [{}, {0: []}])
+
+    local_model_context.ocr_model.ocr.assert_not_called()
+
+
+def test_window_post_ocr_rejects_result_count_mismatch() -> None:
+    """验证窗口级 OCR-rec 返回数量异常时继续抛出明确错误。"""
+    page_block_lines_list, _ = _build_post_ocr_page_block_lines(11, 22)
+    local_model_context = MagicMock()
+    local_model_context.ocr_model.ocr.return_value = [[("仅一个结果", 0.9)]]
+
+    with pytest.raises(ValueError, match="ocr_res_list=1, need_ocr_spans=2"):
+        analyze._apply_window_post_ocr(local_model_context, page_block_lines_list)
+
+
+def test_window_post_ocr_keeps_low_confidence_fallback_semantics() -> None:
+    """验证低置信结果仍恢复原生文本兜底，无兜底文本的 span 继续置空。"""
+    page_block_lines_list, spans = _build_post_ocr_page_block_lines(11, 22)
+    spans[0].content = "原生文本"
+    spans[0].score = 0.88
+    spans[0]._extra[POST_OCR_FALLBACK_CONTENT_KEY] = spans[0].content
+    spans[0]._extra[POST_OCR_FALLBACK_SCORE_KEY] = spans[0].score
+    local_model_context = MagicMock()
+    local_model_context.ocr_model.ocr.return_value = [[("低置信文本", 0.0), ("低置信文本", 0.0)]]
+
+    analyze._apply_window_post_ocr(local_model_context, page_block_lines_list)
+
+    assert spans[0].content == "原生文本"
+    assert spans[0].score == 0.88
+    assert spans[0]._extra == {}
+    assert spans[1].content == ""
+    assert spans[1].score == 0.0
+
+
+def test_fill_window_batches_txt_post_ocr_before_page_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 TXT 窗口先统一 OCR-rec，再按页生成最终 block content。"""
+    page_block_lines_list, _ = _build_post_ocr_page_block_lines(11, 22)
+    grouped_page_lines = iter(page_block_lines_list)
+    monkeypatch.setattr(analyze, "_build_page_text_formula_spans", lambda *_args: [])
+    monkeypatch.setattr(analyze, "_fill_native_pdf_text_spans", lambda _page, spans, *_args: spans)
+    monkeypatch.setattr(analyze, "_group_page_spans_by_block", lambda *_args: next(grouped_page_lines))
+    local_model_context = MagicMock()
+    local_model_context.ocr_model.ocr.return_value = [[("窗口第一页", 0.9), ("窗口第二页", 0.8)]]
+    model_list = [
+        [{"type": BlockType.TEXT, "bbox": [0.0, 0.0, 1.0, 1.0], "content": ""}],
+        [{"type": BlockType.TEXT, "bbox": [0.0, 0.0, 1.0, 1.0], "content": ""}],
+    ]
+    pdf_pages = [MagicMock(size=(100.0, 100.0)), MagicMock(size=(100.0, 100.0))]
+
+    result = analyze._fill_window_block_content_and_lines(
+        [{"img_pil": object(), "scale": 1.0}, {"img_pil": object(), "scale": 1.0}],
+        pdf_pages,
+        model_list,
+        [[], []],
+        [[], []],
+        "txt",
+        {BlockType.TEXT},
+        local_model_context,
+    )
+
+    assert result is model_list
+    local_model_context.ocr_model.ocr.assert_called_once()
+    assert [page[0]["content"] for page in model_list] == ["窗口第一页", "窗口第二页"]
+
+
+def test_fill_window_ocr_mode_does_not_run_txt_post_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 OCR 模式不进入 TXT 的窗口级 post-OCR 分支。"""
+    page_block_lines_list, spans = _build_post_ocr_page_block_lines(11)
+    spans[0].content = "已有 OCR 文本"
+    monkeypatch.setattr(analyze, "_build_page_text_formula_spans", lambda *_args: [])
+    monkeypatch.setattr(analyze, "_group_page_spans_by_block", lambda *_args: page_block_lines_list[0])
+    local_model_context = MagicMock()
+    model_list = [[{"type": BlockType.TEXT, "bbox": [0.0, 0.0, 1.0, 1.0], "content": ""}]]
+
+    analyze._fill_window_block_content_and_lines(
+        [{"img_pil": object(), "scale": 1.0}],
+        [MagicMock(size=(100.0, 100.0))],
+        model_list,
+        [[]],
+        [[]],
+        "ocr",
+        {BlockType.TEXT},
+        local_model_context,
+    )
+
+    local_model_context.ocr_model.ocr.assert_not_called()
+    assert model_list[0][0]["content"] == "已有 OCR 文本"
 
 
 def test_empty_index_content_preserves_grouped_line_breaks() -> None:

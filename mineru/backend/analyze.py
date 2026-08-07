@@ -1025,19 +1025,20 @@ def _group_page_spans_by_block(
 
 def _apply_window_post_ocr(
     local_model_context: HybridLocalModelContext,
-    block_lines: dict[int, list[Line]],
+    page_block_lines_list: list[dict[int, list[Line]]],
 ) -> None:
     """在当前窗口内识别原生字符不足的 span，保持 finalize 后置 OCR 的回退语义。"""
     need_ocr_spans: list[Span] = []
     img_crop_list: list[np.ndarray] = []
-    for lines in block_lines.values():
-        for line in lines:
-            for span in line.spans:
-                if span._np_img is None:
-                    continue
-                need_ocr_spans.append(span)
-                img_crop_list.append(rotate_vertical_crop_if_needed(span._np_img))
-                span._np_img = None
+    for block_lines in page_block_lines_list:
+        for lines in block_lines.values():
+            for line in lines:
+                for span in line.spans:
+                    if span._np_img is None:
+                        continue
+                    need_ocr_spans.append(span)
+                    img_crop_list.append(rotate_vertical_crop_if_needed(span._np_img))
+                    span._np_img = None
 
     if not img_crop_list:
         return
@@ -1169,6 +1170,7 @@ def _fill_window_block_content_and_lines(
         raise ValueError(f"Hybrid block content page count mismatch: {page_counts}")
 
     target_block_types = set(ocr_det_type) | TITLE_BLOCK_TYPES | {BlockType.TEXT}
+    page_block_line_results: list[tuple[list[dict[str, Any]], dict[int, list[Line]], tuple[float, float]]] = []
     for image_dict, pdf_page, page_model_list, page_inline_formula_list, page_ocr_res_list in zip(
         images_list,
         pdf_pages,
@@ -1200,8 +1202,15 @@ def _fill_window_block_content_and_lines(
             page_size,
             target_block_types,
         )
-        if parse_mode == "txt":
-            _apply_window_post_ocr(local_model_context, block_lines)
+        page_block_line_results.append((page_model_list, block_lines, page_size))
+
+    if parse_mode == "txt":
+        _apply_window_post_ocr(
+            local_model_context,
+            [block_lines for _, block_lines, _ in page_block_line_results],
+        )
+
+    for page_model_list, block_lines, page_size in page_block_line_results:
         _apply_block_content_and_line_metadata(
             page_model_list,
             block_lines,
