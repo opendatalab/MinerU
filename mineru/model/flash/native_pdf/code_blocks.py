@@ -9,7 +9,7 @@ import statistics
 import unicodedata
 from typing import Any
 
-from mineru.backend.pdf.table_text import project_pdf_spatial_text
+from mineru.backend.utils.table_text import project_pdf_spatial_text
 from mineru.types import BBox
 from mineru.utils.pdf_document import PDFPathInfo
 

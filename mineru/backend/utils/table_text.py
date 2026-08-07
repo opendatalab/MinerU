@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 from pdftext.schema import Char
 
-from ...types import BBox
+from mineru.types import BBox
 
 
 # 空间投影思路参考 LiteParse v2.6.0 的字符分段和网格投影；

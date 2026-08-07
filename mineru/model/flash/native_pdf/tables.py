@@ -12,7 +12,7 @@ from typing import Any, Literal
 from loguru import logger
 
 from mineru.backend.utils.char_utils import resolve_text_line_boundary
-from mineru.backend.pdf.table_text import project_pdf_table_text
+from mineru.backend.utils.table_text import project_pdf_table_text
 from mineru.types import BBox
 from mineru.utils.pdf_document import PDFPathInfo
 from mineru.utils.language import detect_lang
