@@ -1082,13 +1082,13 @@ def _line_content_parts(line: Line) -> list[tuple[str, str]]:
 
 
 def _lines_to_block_content(lines: list[Line], block_type: str) -> str:
-    """将真实行折叠为统一 block content，保留代码换行并处理自然语言跨行连接。"""
+    """将真实行折叠为统一 block content，保留目录/代码换行并处理自然语言跨行连接。"""
     content_lines = [parts for line in lines if (parts := _line_content_parts(line))]
     if not content_lines:
         return ""
 
     rendered_lines = [" ".join(content for _, content in parts) for parts in content_lines]
-    if block_type in CODE_CONTENT_BLOCK_TYPES:
+    if block_type == BlockType.INDEX or block_type in CODE_CONTENT_BLOCK_TYPES:
         return "\n".join(rendered_lines).strip()
 
     text_for_language = "".join(
@@ -2405,8 +2405,8 @@ if __name__ == "__main__":
     # 根据当前文件位置定位项目根目录，读取 demo 下的 PDF 和 Office 样例。
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     demo_file_paths = [
-        os.path.join(project_root, "demo", "office_docs", "docx_01.docx"),
-        os.path.join(project_root, "demo", "pdfs", "demo1.pdf"),
+        # os.path.join(project_root, "demo", "office_docs", "docx_01.docx"),
+        os.path.join(project_root, "demo", "pdfs", "NPU_开发环境部署_参考指南.pdf"),
     ]
 
     for file_path in demo_file_paths:
