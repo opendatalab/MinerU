@@ -988,7 +988,7 @@ class XlsxConverter:
                 self.cur_page.append(
                     {
                         "type": BlockType.IMAGE,
-                        "content": image_info["base64"],
+                        "image_base64": image_info["base64"],
                     }
                 )
 

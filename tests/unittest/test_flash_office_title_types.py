@@ -53,6 +53,47 @@ def _set_subtitle(slide: Any, text: str) -> None:
     subtitle.text = text
 
 
+def test_office_models_store_standalone_images_in_image_base64() -> None:
+    """验证三类 Office model 的独立图片只通过 image_base64 输出。"""
+    for suffix, model in (
+        ("docx", DocxModel()),
+        ("pptx", PptxModel()),
+        ("xlsx", XlsxModel()),
+    ):
+        image_blocks = [
+            block
+            for block in _flatten_pages(_predict_sample(model, suffix))
+            if block.get("type") == BlockType.IMAGE
+        ]
+
+        assert image_blocks, suffix
+        for block in image_blocks:
+            assert "content" not in block
+            assert isinstance(block.get("image_base64"), str)
+            assert block["image_base64"].startswith("data:image/")
+            assert ";base64," in block["image_base64"]
+
+
+def test_pptx_svg_picture_uses_image_base64(monkeypatch: Any) -> None:
+    """验证 PPTX SVG 图片分支同样使用 image_base64 字段。"""
+    converter = PptxConverter()
+
+    def fake_get_shape_image_data(_shape: Any) -> tuple[bytes, str]:
+        """返回固定 SVG 图片载荷，隔离 PPTX shape 解析逻辑。"""
+        return b"<svg/>", "image/svg+xml"
+
+    monkeypatch.setattr(converter, "_get_shape_image_data", fake_get_shape_image_data)
+
+    converter._handle_pictures(object())
+
+    assert converter.cur_page == [
+        {
+            "type": BlockType.IMAGE,
+            "image_base64": "data:image/svg+xml;base64,PHN2Zy8+",
+        }
+    ]
+
+
 def test_docx_model_splits_document_and_paragraph_titles() -> None:
     """验证 DOCX model 按样式来源拆分文档标题和段落标题。"""
     pages = _predict_sample(DocxModel(), "docx")
