@@ -2400,20 +2400,20 @@ def doc_analyze(
 
 if __name__ == "__main__":
     from mineru.cli_old.common import read_fn
-
-
+    import json
 
     # 根据当前文件位置定位项目根目录，读取 demo 下的 PDF 和 Office 样例。
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     demo_file_paths = [
-        os.path.join(project_root, "demo", "pdfs", "demo1.pdf"),
         os.path.join(project_root, "demo", "office_docs", "docx_01.docx"),
+        os.path.join(project_root, "demo", "pdfs", "demo1.pdf"),
     ]
 
     for file_path in demo_file_paths:
         file_bytes = read_fn(file_path)
         file_suffix = os.path.splitext(file_path)[1].lstrip(".").lower()
         middle_json, model_list = doc_analyze(file_bytes, effort="medium", file_suffix=file_suffix)
+        model_json = json.dumps(model_list, ensure_ascii=False, indent=4)
         logger.info(f"file_path: {file_path}")
         logger.info(f"middle_json: {middle_json}")
         logger.info(f"model_list: {model_list}")
