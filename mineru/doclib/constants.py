@@ -41,8 +41,6 @@ TEXT_EXTENSIONS: set[str] = {
 DISCOVERABLE_EXTENSIONS: set[str] = {
     "pdf",
     *OFFICE_EXTENSIONS,
-    "html",
-    "htm",
     *TEXT_EXTENSIONS,
     # Unsupported legacy Office formats:
     # "doc",

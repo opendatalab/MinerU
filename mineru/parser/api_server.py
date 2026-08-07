@@ -1009,8 +1009,6 @@ _SUPPORTED_SUFFIXES: dict[str, str] = {
     ".docx": "docx",
     ".pptx": "pptx",
     ".xlsx": "xlsx",
-    ".html": "html",
-    ".htm": "html",
 }
 
 _OUTPUT_FORMATS_LOCAL = set(_LOCAL_PARSE_OUTPUT_FORMATS)

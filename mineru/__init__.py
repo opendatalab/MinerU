@@ -2,7 +2,6 @@
 from .parser import (  # noqa: F401
     DocumentParser,
     DocxParser,
-    HtmlParser,
     MinerUApiParser,
     ParseResult,
     PdfFlashParser,
@@ -19,7 +18,6 @@ __all__ = [
     "Block",
     "DocumentParser",
     "DocxParser",
-    "HtmlParser",
     "Line",
     "MinerUApiParser",
     "PageInfo",

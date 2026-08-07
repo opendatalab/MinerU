@@ -10,8 +10,8 @@ from ...types import Tier
 from ..contracts import CliContext
 from ..runtime import run_cli
 
-FILE_TYPES = "pdf, image, docx, pptx, xlsx, html, markdown, csv, rst, tex, txt"
-FILE_EXTS = "pdf, png, jpg, jpeg, jp2, webp, gif, bmp, tiff, docx, pptx, xlsx, html, htm, md, markdown, csv, rst, tex, txt"
+FILE_TYPES = "pdf, image, docx, pptx, xlsx, markdown, csv, rst, tex, txt"
+FILE_EXTS = "pdf, png, jpg, jpeg, jp2, webp, gif, bmp, tiff, docx, pptx, xlsx, md, markdown, csv, rst, tex, txt"
 
 
 def search_cmd(
