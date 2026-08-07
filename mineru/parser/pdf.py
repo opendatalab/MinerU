@@ -252,7 +252,7 @@ class PdfHybridParser(PdfBaseParser):
         page_index_map: list[int] | None = None,
         image_cache: ImagePayloadCache | None = None,
     ) -> tuple[list[PageInfo], Any]:
-        from ..backend.hybrid.analyze import doc_analyze as hybrid_doc_analyze
+        from ..backend.pdf.analyze import doc_analyze as hybrid_doc_analyze
 
         backend = (
             self.backend
@@ -277,7 +277,7 @@ class PdfHybridParser(PdfBaseParser):
         page_index_map: list[int] | None = None,
         image_cache: ImagePayloadCache | None = None,
     ) -> tuple[list[PageInfo], Any]:
-        from ..backend.hybrid.analyze import aio_doc_analyze as hybrid_aio_doc_analyze
+        from ..backend.pdf.analyze import aio_doc_analyze as hybrid_aio_doc_analyze
 
         backend = (
             self.backend if self.effort == LOCAL_HYBRID_EFFORT else _resolve_hybrid_backend(self.backend, is_async=True)

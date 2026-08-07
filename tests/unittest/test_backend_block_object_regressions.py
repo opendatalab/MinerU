@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 from PIL import Image
 
-from mineru.backend.hybrid import hybrid_analyze
-from mineru.backend.hybrid.model_output_to_middle_json import blocks_to_page_info as hybrid_blocks_to_page_info
+from mineru.backend.pdf import hybrid_analyze
+from mineru.backend.pdf.model_output_to_middle_json import blocks_to_page_info as hybrid_blocks_to_page_info
 from mineru.types import BlockType
 
 

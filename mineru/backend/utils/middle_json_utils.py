@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 from typing import Any, Iterator, TypeVar
 
-from ..hybrid.model_output_to_middle_json import blocks_to_page_info
+from ..pdf.model_output_to_middle_json import blocks_to_page_info
 from ...types import Block, PageInfo, Span
 from ...utils.image_payload import ImagePayloadCache
 from ...utils.page_index import resolve_output_page_idx

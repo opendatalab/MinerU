@@ -123,7 +123,7 @@ class PDFDocument:
 - `mineru/api/pdf_parser.py`: `_prepare_input` 中图片转 PDF 改为 `PDFDocument.from_image()`，页面裁切改为 `doc.extract_page_range()`
 - `mineru/backend/pipeline/pipeline_analyze.py`: `open_pdfium_document(pdf_bytes)` → 接收 PDFDocument
 - `mineru/backend/vlm/vlm_analyze.py`: 同上
-- `mineru/backend/hybrid/hybrid_analyze.py`: 同上
+- `../../mineru/backend/pdf/hybrid_analyze.py`: 同上
 - `mineru/utils/pdf_classify.py`: `classify(pdf_bytes)` → `pdf_doc.classify()`
 - `mineru/utils/draw_bbox.py`: `draw_layout_bbox(pdf_info, pdf_bytes, ...)` → `pdf_doc.draw_layout_bbox(pages, ...)`
 - `mineru/utils/pdf_text_tool.py`: `get_page_chars(page, ...)` → `pdf_doc.get_page_chars(page_idx)`

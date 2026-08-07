@@ -13,7 +13,7 @@ import numpy as np
 from PIL import Image
 from loguru import logger
 
-from mineru.backend.hybrid.table_text import project_ocr_table_text, project_pdf_table_text
+from mineru.backend.pdf.table_text import project_ocr_table_text, project_pdf_table_text
 from mineru.backend.local_model_runtime import (
     AtomicModel,
     HybridLocalModelContext,

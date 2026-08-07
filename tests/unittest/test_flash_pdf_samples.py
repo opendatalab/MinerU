@@ -17,7 +17,7 @@ from mineru.model.flash.native_pdf import (
     pipeline,
     tables,
 )
-from mineru.backend.hybrid.magic_model import MagicModel
+from mineru.backend.pdf.magic_model import MagicModel
 from mineru.utils.pdf_document import get_lines_from_chars
 
 
