@@ -12,9 +12,7 @@ from typing import Any, Callable, Sequence
 
 from loguru import logger
 
-from mineru.backend.office.docx_analyze import office_docx_analyze
-from mineru.backend.office.pptx_analyze import office_pptx_analyze
-from mineru.backend.office.xlsx_analyze import office_xlsx_analyze
+from mineru.backend.office.analyze import analyze as office_analyze
 from mineru.cli_old.visualization import select_pages_for_pdf_visualization
 from mineru.parser.base import ParseResult
 from mineru.render import render_content_list, render_markdown, render_structured_content
@@ -33,7 +31,6 @@ from ..version import __version__
 os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
 if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
     import torch
-
     torch.backends.cudnn.enabled = False
 
 
@@ -512,17 +509,12 @@ def _process_office_doc(
             local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, "office")
             md_writer = FileBasedDataWriter(local_md_dir)
 
-            if file_suffix in docx_suffixes:
-                office_analyze = office_docx_analyze
-            elif file_suffix in pptx_suffixes:
-                office_analyze = office_pptx_analyze
-            elif file_suffix in xlsx_suffixes:
-                office_analyze = office_xlsx_analyze
-            else:
-                raise ValueError(f"Unsupported office suffix: {file_suffix}")
-
             image_cache = ImagePayloadCache()
-            middle_json, infer_result = office_analyze(file_bytes, image_cache=image_cache)
+            middle_json, infer_result = office_analyze(
+                file_bytes=file_bytes,
+                file_suffix=file_suffix,
+                image_cache=image_cache,
+            )
 
             f_draw_layout_bbox = False
             f_draw_span_bbox = False

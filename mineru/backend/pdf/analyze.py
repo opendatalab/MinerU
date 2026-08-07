@@ -38,7 +38,6 @@ from mineru.backend.utils.span_pre_proc import (
     _restore_post_ocr_fallback,
     txt_spans_extract,
 )
-from mineru.cli_old.common import read_fn
 from mineru.utils.bbox_utils import normalize_to_int_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.language import detect_lang
@@ -82,6 +81,12 @@ TITLE_BLOCK_TYPES = {
 CODE_CONTENT_BLOCK_TYPES = {
     BlockType.CODE,
     BlockType.ALGORITHM,
+}
+MODEL_JSON_VISUAL_BLOCK_TYPES = {
+    BlockType.IMAGE,
+    BlockType.CHART,
+    BlockType.TABLE,
+    BlockType.EQUATION,
 }
 
 VLM_LAYOUT_LABEL_MAP = {
@@ -1319,20 +1324,21 @@ def _select_table_owner(
     return max(candidates, key=lambda item: item[0])[1]
 
 
-def _normalize_medium_table_angle(angle: Any) -> int:
-    """规范表格角度为 0/90/180/270，无法识别的角度按 0 处理。"""
+def _normalize_visual_block_angle(angle: Any) -> int:
+    """规范视觉块角度为 0/90/180/270，无法识别的角度按 0 处理。"""
     try:
         normalized_angle = int(float(angle or 0)) % 360
     except (TypeError, ValueError):
-        normalized_angle = 0
+        logger.warning(f"Unsupported visual block angle: {angle}, using 0")
+        return 0
     if normalized_angle not in {0, 90, 180, 270}:
-        logger.warning(f"Unsupported Hybrid medium table angle: {angle}, using 0")
+        logger.warning(f"Unsupported visual block angle: {angle}, using 0")
         return 0
     return normalized_angle
 
 
-def _rotate_medium_table_image(image: np.ndarray, angle: int) -> np.ndarray:
-    """按 layout 表格角度把裁图旋转至正向，角度语义与方向分类模型保持一致。"""
+def _rotate_visual_block_image_to_upright(image: np.ndarray, angle: int) -> np.ndarray:
+    """按 layout 视觉块角度把裁图旋转至正向，角度语义与方向分类模型保持一致。"""
     if angle == 270:
         return cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
     if angle == 90:
@@ -1378,12 +1384,12 @@ def _get_medium_table_virtual_image_bbox(
     )
 
 
-def _encode_medium_table_image(
+def _encode_page_crop_as_jpeg_data_uri(
     np_image: np.ndarray,
     page_bbox: BBox,
     angle: int,
 ) -> str:
-    """从页面原图裁剪表内图片，按表格方向旋转后编码为 JPEG data URI。"""
+    """从页面原图按像素框裁剪，按视觉块方向回正后编码为 JPEG data URI。"""
     image_h, image_w = np_image.shape[:2]
     image_bbox = normalize_to_int_bbox(page_bbox, image_size=(image_h, image_w))
     if image_bbox is None:
@@ -1393,12 +1399,75 @@ def _encode_medium_table_image(
     if crop_rgb.size == 0:
         return ""
 
-    crop_rgb = _rotate_medium_table_image(crop_rgb, angle)
+    crop_rgb = _rotate_visual_block_image_to_upright(crop_rgb, angle)
     crop_bgr = cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2BGR)
     success, encoded = cv2.imencode(".jpg", crop_bgr)
     if not success:
         return ""
     return f"data:image/jpeg;base64,{base64.b64encode(encoded.tobytes()).decode('ascii')}"
+
+
+def _attach_visual_block_images(
+    model_list: list[list[dict[str, Any]]],
+    images_list: list[dict[str, Any]],
+    page_start_index: int = 0,
+) -> None:
+    """为最终 model_list 视觉块写入回正后的页面裁图，不影响已构造的 middle_json。"""
+    if len(model_list) != len(images_list):
+        raise ValueError(f"Hybrid visual crop page count mismatch: model_list={len(model_list)}, images={len(images_list)}")
+
+    for page_offset, (page_model_list, image_dict) in enumerate(zip(model_list, images_list)):
+        visual_blocks = [
+            (block_idx, block)
+            for block_idx, block in enumerate(page_model_list)
+            if block.get("type") in MODEL_JSON_VISUAL_BLOCK_TYPES
+        ]
+        if not visual_blocks:
+            continue
+
+        # 先清理模型可能携带的同名字段，保证最终载荷只来自当前 PDF 页面裁图。
+        for _, block in visual_blocks:
+            block.pop("image_base64", None)
+
+        page_index = page_start_index + page_offset
+        page_pil_image = image_dict.get("img_pil")
+        if page_pil_image is None:
+            logger.warning(f"Skipping model visual block crops without page image: page={page_index}")
+            continue
+
+        converted_page_image = None
+        try:
+            if getattr(page_pil_image, "mode", None) == "RGB":
+                page_rgb_image = page_pil_image
+            else:
+                converted_page_image = page_pil_image.convert("RGB")
+                page_rgb_image = converted_page_image
+
+            page_size = _normalize_page_size(page_rgb_image)
+            np_image = np.asarray(page_rgb_image)
+            for block_idx, block in visual_blocks:
+                try:
+                    pixel_bbox = _bbox_to_pixel_bbox(block.get("bbox"), page_size)
+                    if pixel_bbox is None:
+                        raise ValueError("invalid bbox")
+                    angle = _normalize_visual_block_angle(block.get("angle", 0))
+                    image_base64 = _encode_page_crop_as_jpeg_data_uri(
+                        np_image,
+                        pixel_bbox,
+                        angle,
+                    )
+                    if not image_base64:
+                        raise ValueError("empty crop or JPEG encoding failure")
+                    block["image_base64"] = image_base64
+                except Exception as exc:
+                    logger.warning(
+                        "Skipping invalid model visual block crop: "
+                        f"page={page_index}, block={block_idx}, type={block.get('type')}, "
+                        f"bbox={block.get('bbox')}, error={exc}"
+                    )
+        finally:
+            if converted_page_image is not None:
+                converted_page_image.close()
 
 
 def _collect_medium_table_tasks(
@@ -1430,7 +1499,7 @@ def _collect_medium_table_tasks(
                     "table_block": block,
                     "table_bbox": table_bbox,
                     "table_crop": table_crop,
-                    "angle": _normalize_medium_table_angle(block.get("angle", 0)),
+                    "angle": _normalize_visual_block_angle(block.get("angle", 0)),
                     "inline_objects": [],
                 }
             )
@@ -1485,7 +1554,7 @@ def _collect_medium_table_tasks(
             table_crop = table_entry["table_crop"]
             angle = table_entry["angle"]
             crop_h, crop_w = table_crop.shape[:2]
-            rotated_crop = _rotate_medium_table_image(table_crop, angle)
+            rotated_crop = _rotate_visual_block_image_to_upright(table_crop, angle)
             rotated_h, rotated_w = rotated_crop.shape[:2]
             prepared_objects: list[dict[str, Any]] = []
             for inline_object in table_entry["inline_objects"]:
@@ -1504,7 +1573,7 @@ def _collect_medium_table_tasks(
                     content = f"<eq>{html.escape(latex)}</eq>" if latex else ""
                     token_bbox = rotated_bbox
                 else:
-                    image_src = _encode_medium_table_image(np_image, inline_object["page_bbox"], angle)
+                    image_src = _encode_page_crop_as_jpeg_data_uri(np_image, inline_object["page_bbox"], angle)
                     content = f'<img src="{image_src}"/>' if image_src else ""
                     token_bbox = _get_medium_table_virtual_image_bbox(
                         rotated_bbox,
@@ -1872,8 +1941,8 @@ def _fill_low_table_contents(
             if table_crop.size == 0:
                 raise ValueError("empty table crop")
 
-            angle = _normalize_medium_table_angle(table_block.get("angle", 0))
-            rotated_crop = _rotate_medium_table_image(table_crop, angle)
+            angle = _normalize_visual_block_angle(table_block.get("angle", 0))
+            rotated_crop = _rotate_visual_block_image_to_upright(table_crop, angle)
             bgr_crop = cv2.cvtColor(rotated_crop, cv2.COLOR_RGB2BGR)
             page_ocr_results = run_ocr_inference(table_ocr_model.ocr, bgr_crop)
             raw_ocr_result = page_ocr_results[0] if page_ocr_results else None
@@ -2286,6 +2355,11 @@ def doc_analyze(
                         progress_bar=progress_bar,
                         image_cache=image_cache,
                     )
+                    _attach_visual_block_images(
+                        window_model_list,
+                        images_list,
+                        page_start_index=window.start,
+                    )
                     last_append_end_time = time.time()
                 finally:
                     _close_images(images_list)
@@ -2309,10 +2383,12 @@ def doc_analyze(
 
 
 if __name__ == "__main__":
-    pdf_path = "/Users/myhloli/pdf/截断合并/demo1-3.pdf"
+    from mineru.cli_old.common import read_fn
+
+    # pdf_path = "/Users/myhloli/pdf/截断合并/demo1-3.pdf"
     # pdf_path = "/Users/myhloli/pdf/png/seal4.png"  # shubiao.png
-    # pdf_path = "/Users/myhloli/pdf/demo1.pdf"
+    pdf_path = "/Users/myhloli/pdf/demo1.pdf"
     pdf_bytes = read_fn(pdf_path)
-    middle_json, model_list = doc_analyze(pdf_bytes, effort="medium")
+    middle_json, model_list = doc_analyze(pdf_bytes, effort="flash")
     logger.info(f"middle_json: {middle_json}")
     logger.info(f"model_list: {model_list}")
