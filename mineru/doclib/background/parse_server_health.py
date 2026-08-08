@@ -72,6 +72,17 @@ class ParseServerHealth:
     managed_proc: subprocess.Popen | None = None
     managed_control: ManagedProcessControl | None = None
 
+    def begin_managed_tier_transition(self, tier: DeploymentTier) -> None:
+        self.managed_tier = tier
+        self.local_starting = True
+        self.local = ProbeState(
+            url=self.managed_url,
+            probe=ProbeResult(
+                error_code="parse_server_unavailable",
+                error_msg=f"Managed parse-server is restarting for tier '{tier}'.",
+            ),
+        )
+
 
 _parse_server_health = ParseServerHealth()
 
@@ -449,12 +460,14 @@ class ParseServerHealthCheck:
         if count_restart:
             health.restart_count += 1
         managed_tier = await get_managed_parse_server_tier(self.config_svc)
+        startup_in_progress = health.local_starting
+        health.begin_managed_tier_transition(managed_tier)
         stop_managed_parse_server(
             health.managed_proc,
             control=health.managed_control,
             timeout_sec=self.stop_timeout_sec,
             reason=reason,
-            startup_in_progress=health.local_starting,
+            startup_in_progress=startup_in_progress,
         )
         health.managed_proc = None
         health.managed_control = None

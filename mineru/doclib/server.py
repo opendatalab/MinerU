@@ -905,8 +905,16 @@ class DoclibServer(AsyncDoclibInterface):
     async def set_config(self, key: str, request: ConfigSetRequest) -> ConfigSetResponse:
         await self._validate_config_set(key, request.value)
         await self.state.config_svc.set(key, request.value)
+        if key == "parse_server.local.managed_tier":
+            self._begin_managed_tier_transition_if_needed(cast(DeploymentTier, request.value))
         value, source = await self._effective_config_value(key)
         return ConfigSetResponse(key=key, value=_mask_config_value(key, value or ""), source=source)
+
+    @staticmethod
+    def _begin_managed_tier_transition_if_needed(tier: DeploymentTier) -> None:
+        health = get_health()
+        if health.local_mode == "managed" and health.running_managed_tier != tier:
+            health.begin_managed_tier_transition(tier)
 
     async def _effective_config_value(self, key: str) -> tuple[str | None, ConfigSource]:
         if key == REMOTE_API_KEY_CONFIG:
@@ -931,6 +939,8 @@ class DoclibServer(AsyncDoclibInterface):
     async def unset_config(self, key: str) -> ConfigUnsetResponse:
         removed = await self.state.config_svc.unset(key)
         value, source = await self._effective_config_value(key)
+        if key == "parse_server.local.managed_tier" and value:
+            self._begin_managed_tier_transition_if_needed(cast(DeploymentTier, value))
         return ConfigUnsetResponse(key=key, value=_mask_config_value(key, value or ""), source=source, removed=removed)
 
     @route("POST", "/watches", tags=("watches",))
