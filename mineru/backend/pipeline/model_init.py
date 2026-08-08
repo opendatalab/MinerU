@@ -230,9 +230,9 @@ def atom_model_init(model_name: str, **kwargs):
 
 class MineruPipelineModel:
     def __init__(self, **kwargs):
-        self.formula_config = kwargs.get('formula_config')
+        self.formula_config = kwargs.get('formula_config') or {}
         self.apply_formula = self.formula_config.get('enable', True)
-        self.table_config = kwargs.get('table_config')
+        self.table_config = kwargs.get('table_config') or {}
         self.apply_table = self.table_config.get('enable', True)
         self.lang = kwargs.get('lang', None)
         self.device = kwargs.get('device', 'cpu')
