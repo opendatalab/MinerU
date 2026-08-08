@@ -308,7 +308,7 @@ uv pip install -e .[all]
 
 > [!TIP]
 > - `mineru[all]` includes all core features, compatible with Windows / Linux / macOS systems, suitable for most users.
-> - **Apple Silicon (M-series) acceleration**: On macOS with M-series chips, MinerU automatically uses the MPS backend for the `pipeline`/`hybrid-engine` PyTorch models, the CoreML execution provider for table-structure ONNX models, and the MLX engine for VLM inference (`mineru[all]` installs the `mlx` extra on macOS automatically). Override device detection with `MINERU_DEVICE_MODE=mps|cpu` and tune batch sizing with `MINERU_VIRTUAL_VRAM_SIZE` (GB).
+> - Apple Silicon (M-series) is accelerated out of the box: MPS (PyTorch), CoreML (table ONNX), MLX (VLM). Override with `MINERU_DEVICE_MODE` / `MINERU_VIRTUAL_VRAM_SIZE`.
 > - If CUDA acceleration is unavailable after installing on Windows, see the [Windows CUDA acceleration FAQ](https://opendatalab.github.io/MinerU/faq/#windows-cuda-acceleration).
 > - If you need to specify the inference framework for the VLM model, or only intend to install a lightweight client on an edge device, please refer to the documentation [Extension Modules Installation Guide](https://opendatalab.github.io/MinerU/quick_start/extension_modules/).
 
@@ -338,6 +338,16 @@ mineru -p <input_path> -o <output_path> -b pipeline
 ```
 
 `mineru` currently supports local `PDF`, image, `DOCX`, `PPTX`, and `XLSX` file or directory inputs, and can be used for document parsing through the CLI, API, WebUI, and `mineru-router`. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).
+
+#### Local WebUI
+```bash
+./mineru-webui.sh start     # start WebUI at http://127.0.0.1:7866
+./mineru-webui.sh stop      # stop WebUI
+./mineru-webui.sh restart   # restart WebUI
+./mineru-webui.sh status    # show running status
+./mineru-webui.sh logs      # show recent logs
+```
+Environment overrides: `MINERU_WEBUI_PORT` / `MINERU_WEBUI_HOST` / `MINERU_DEVICE_MODE`.
 
 # FAQ
 
