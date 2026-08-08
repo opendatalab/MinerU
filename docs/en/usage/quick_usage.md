@@ -24,6 +24,14 @@ mineru -p <input_path> -o <output_path>
 > The command line tool will automatically attempt cuda/mps acceleration on Linux and macOS systems. 
 > Windows users who need cuda acceleration should visit the [PyTorch official website](https://pytorch.org/get-started/locally/) to select the appropriate command for their cuda version to install acceleration-enabled `torch` and `torchvision`.
 
+> [!TIP]
+> **Apple Silicon (M-series) acceleration**: MinerU automatically enables the following accelerations on macOS with M-series chips:
+> - `pipeline` / `hybrid-engine`: Metal Performance Shaders (MPS) for all PyTorch models (layout, formula recognition, OCR);
+> - Table structure ONNX models: `CoreMLExecutionProvider` (auto-falls back to CPU when unsupported);
+> - VLM inference (`-b vlm-engine` / `-b hybrid-engine`): auto-selects the `mlx-engine` backend powered by [MLX](https://github.com/ml-explore/mlx) on macOS 13.5+.
+>
+> You can override device auto-detection with `MINERU_DEVICE_MODE=mps|cpu`, and tune the memory estimate used for batch sizing with `MINERU_VIRTUAL_VRAM_SIZE` (in GB). See [Advanced CLI Parameters](./advanced_cli_parameters.md) for details.
+
 If you need to adjust parsing options through custom parameters, you can also check the more detailed [Command Line Tools Usage Instructions](./cli_tools.md) in the documentation.
 
 ## Advanced Usage via API, WebUI, http-client/server

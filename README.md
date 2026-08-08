@@ -308,6 +308,7 @@ uv pip install -e .[all]
 
 > [!TIP]
 > - `mineru[all]` includes all core features, compatible with Windows / Linux / macOS systems, suitable for most users.
+> - **Apple Silicon (M-series) acceleration**: On macOS with M-series chips, MinerU automatically uses the MPS backend for the `pipeline`/`hybrid-engine` PyTorch models, the CoreML execution provider for table-structure ONNX models, and the MLX engine for VLM inference (`mineru[all]` installs the `mlx` extra on macOS automatically). Override device detection with `MINERU_DEVICE_MODE=mps|cpu` and tune batch sizing with `MINERU_VIRTUAL_VRAM_SIZE` (GB).
 > - If CUDA acceleration is unavailable after installing on Windows, see the [Windows CUDA acceleration FAQ](https://opendatalab.github.io/MinerU/faq/#windows-cuda-acceleration).
 > - If you need to specify the inference framework for the VLM model, or only intend to install a lightweight client on an edge device, please refer to the documentation [Extension Modules Installation Guide](https://opendatalab.github.io/MinerU/quick_start/extension_modules/).
 

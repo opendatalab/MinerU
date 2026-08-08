@@ -124,7 +124,7 @@ def mfr_model_init(weight_dir, device='cpu'):
 
 
 def pp_doclayout_v2_model_init(weight, device='cpu'):
-    if str(device).startswith('npu'):
+    if str(device).startswith(('npu', 'mps', 'cuda')):
         device = torch.device(device)
     model = PPDocLayoutV2LayoutModel(weight, device)
     return model

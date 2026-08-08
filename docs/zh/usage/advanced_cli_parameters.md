@@ -30,6 +30,17 @@
 >   CUDA_VISIBLE_DEVICES=""  # No GPU will be visible
 >   ```
 
+### macOS（Apple Silicon）设备选择
+> [!TIP]
+> 在搭载 M 系列芯片的 macOS 上，MinerU 会自动为 `pipeline` / `hybrid-engine` 后端检测并启用 `mps` 设备，为表格结构 ONNX 模型使用 CoreML 执行提供器加速，并在 VLM 推理（`-b vlm-engine` / `-b hybrid-engine`）时自动选择 `mlx-engine` 后端。相关环境变量：
+>   ```bash
+>   MINERU_DEVICE_MODE=mps        # 强制指定设备：mps / cuda / cpu 等
+>   MINERU_VIRTUAL_VRAM_SIZE=16   # 覆盖用于批量大小估算的内存大小（GB）
+>   MINERU_HYBRID_BATCH_RATIO=4   # 直接指定 hybrid-engine 的 batch ratio
+>   ```
+> - `MINERU_DEVICE_MODE` 支持 `cpu`、`mps`、`cuda`、`npu` 等取值；未设置时按 `cuda` > `mps` > `npu` > `cpu` 自动检测。
+> - `MINERU_VIRTUAL_VRAM_SIZE` 主要用于自动检测不准确的场景（如 MPS 统一内存估算偏差、远程/多租户部署等）。
+
 ## 实际应用场景
 
 > [!TIP]

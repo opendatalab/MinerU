@@ -30,6 +30,17 @@
 >   CUDA_VISIBLE_DEVICES=""  # No GPU will be visible
 >   ```
 
+### Device Selection on macOS (Apple Silicon)
+> [!TIP]
+> On macOS with M-series chips, MinerU auto-detects the `mps` device for `pipeline` / `hybrid-engine` backends, uses the CoreML execution provider for table-structure ONNX models, and auto-selects the `mlx-engine` backend for VLM inference (`-b vlm-engine` / `-b hybrid-engine`). Related environment variables:
+>   ```bash
+>   MINERU_DEVICE_MODE=mps        # Force the device: mps / cuda / cpu
+>   MINERU_VIRTUAL_VRAM_SIZE=16   # Override the memory (GB) used for batch-size estimation
+>   MINERU_HYBRID_BATCH_RATIO=4   # Override the hybrid-engine batch ratio directly
+>   ```
+> - `MINERU_DEVICE_MODE` accepts `cpu`, `mps`, `cuda`, `npu` etc. When unset, the device is auto-detected (`cuda` > `mps` > `npu` > `cpu`).
+> - `MINERU_VIRTUAL_VRAM_SIZE` is mainly useful when auto-detection is inaccurate (e.g. MPS shared-memory estimation or remote/multi-tenant deployment).
+
 ## Practical Application Scenarios
 > [!TIP]
 > Here are some possible usage scenarios:

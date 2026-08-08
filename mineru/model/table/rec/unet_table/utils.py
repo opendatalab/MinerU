@@ -3,20 +3,19 @@ import os
 import traceback
 from io import BytesIO
 from pathlib import Path
-from typing import List, Union, Dict, Any, Tuple, Optional
+from typing import List, Union, Dict, Any, Optional
 
 import cv2
 import loguru
 import numpy as np
 from onnxruntime import (
     GraphOptimizationLevel,
-    InferenceSession,
     SessionOptions,
     get_available_providers,
 )
 from PIL import Image, UnidentifiedImageError
 
-from ..onnxruntime_provider import build_table_onnx_providers
+from ..onnxruntime_provider import create_table_onnx_session
 
 
 root_dir = Path(__file__).resolve().parent
@@ -30,13 +29,12 @@ class OrtInferSession:
         model_path = config.get("model_path", None)
 
         self.had_providers: List[str] = get_available_providers()
-        EP_list = self._get_ep_list()
-
         sess_opt = self._init_sess_opts(config)
-        self.session = InferenceSession(
+        # 优先使用 CUDA/CoreML 等加速 EP，初始化失败时自动回退 CPU。
+        self.session = create_table_onnx_session(
             model_path,
             sess_options=sess_opt,
-            providers=EP_list,
+            available_providers=self.had_providers,
         )
 
     @staticmethod
@@ -56,9 +54,6 @@ class OrtInferSession:
             sess_opt.inter_op_num_threads = inter_op_num_threads
 
         return sess_opt
-
-    def _get_ep_list(self) -> List[Tuple[str, Dict[str, Any]]]:
-        return build_table_onnx_providers(self.had_providers)
 
     def __call__(self, input_content: List[np.ndarray]) -> np.ndarray:
         input_dict = dict(zip(self.get_input_names(), input_content))

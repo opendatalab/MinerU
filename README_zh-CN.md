@@ -309,6 +309,7 @@ uv pip install -e .[all] -i https://mirrors.aliyun.com/pypi/simple
 
 > [!TIP]
 > - `mineru[all]`包含所有核心功能，兼容Windows / Linux / macOS系统，适合绝大多数用户。
+> - **Apple Silicon（M系列）加速**：在搭载 M 系列芯片的 macOS 上，MinerU 会自动为 `pipeline`/`hybrid-engine` 的 PyTorch 模型启用 MPS 加速、为表格结构 ONNX 模型启用 CoreML 执行提供器加速，并为 VLM 推理自动启用 MLX 引擎（`mineru[all]` 在 macOS 上会自动安装 `mlx` 扩展）。可通过 `MINERU_DEVICE_MODE=mps|cpu` 覆盖设备自动检测，通过 `MINERU_VIRTUAL_VRAM_SIZE`（单位 GB）调整批量大小估算。
 > - 如果您在 Windows 上安装后无法使用 CUDA 加速，请参考 [Windows CUDA 加速 FAQ](https://opendatalab.github.io/MinerU/zh/faq/#windows-cuda-acceleration)。
 > - 如果您需要指定vlm模型的推理框架，或是仅准备在边缘设备安装轻量版client端，可以参考文档[扩展模块安装指南](https://opendatalab.github.io/MinerU/zh/quick_start/extension_modules/)。
 

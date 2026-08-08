@@ -20,13 +20,12 @@ import cv2
 import numpy as np
 from onnxruntime import (
     GraphOptimizationLevel,
-    InferenceSession,
     SessionOptions,
     get_available_providers,
 )
 
 from loguru import logger
-from ..onnxruntime_provider import build_table_onnx_providers
+from ..onnxruntime_provider import create_table_onnx_session
 
 
 class OrtInferSession:
@@ -37,13 +36,12 @@ class OrtInferSession:
         self._verify_model(model_path)
 
         self.had_providers: List[str] = get_available_providers()
-        EP_list = self._get_ep_list()
-
         sess_opt = self._init_sess_opts(config)
-        self.session = InferenceSession(
+        # 优先使用 CUDA/CoreML 等加速 EP，初始化失败时自动回退 CPU。
+        self.session = create_table_onnx_session(
             model_path,
             sess_options=sess_opt,
-            providers=EP_list,
+            available_providers=self.had_providers,
         )
 
     @staticmethod
@@ -68,9 +66,6 @@ class OrtInferSession:
         meta_dict = self.session.get_modelmeta().custom_metadata_map
         content_list = meta_dict[key].splitlines()
         return content_list
-
-    def _get_ep_list(self) -> List[Tuple[str, Dict[str, Any]]]:
-        return build_table_onnx_providers(self.had_providers)
 
     def __call__(self, input_content: List[np.ndarray]) -> np.ndarray:
         input_dict = dict(zip(self.get_input_names(), input_content))

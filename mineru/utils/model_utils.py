@@ -9,9 +9,13 @@ import numpy as np
 
 try:
     import torch
+except ImportError:
+    torch = None
+
+try:
     import torch_npu
 except ImportError:
-    pass
+    torch_npu = None
 
 TEXT_REGION_LABELS = {
     "abstract",
@@ -181,15 +185,22 @@ def get_res_list_from_layout_res(layout_res, overlap_threshold=0.8):
 
 
 def clean_memory(device='cuda'):
+    if torch is None:
+        gc.collect()
+        return
     if str(device).startswith("cuda"):
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             # torch.cuda.ipc_collect()
     elif str(device).startswith("npu"):
-        if torch_npu.npu.is_available():
+        if torch_npu is not None and torch_npu.npu.is_available():
             torch_npu.npu.empty_cache()
     elif str(device).startswith("mps"):
-        torch.mps.empty_cache()
+        try:
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+        except Exception:
+            pass
     elif str(device).startswith("gcu"):
         if torch.gcu.is_available():
             torch.gcu.empty_cache()
@@ -214,6 +225,29 @@ def clean_vram(device, vram_threshold=8):
         logger.debug(f"gc time: {gc_time}")
 
 
+def _get_physical_memory_gb() -> int:
+    """获取宿主机物理内存大小（GB）。
+
+    macOS 上 MPS 与 CPU 共享统一内存，没有独立的显存 API，
+    这里用物理内存大小的 3/4 作为 MPS 设备可用内存的保守估算，
+    避免批量大小设置得过于激进；用户可通过 MINERU_VIRTUAL_VRAM_SIZE 精确控制。
+    """
+    total_bytes = 0
+    try:
+        total_bytes = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except (AttributeError, ValueError, OSError):
+        total_bytes = 0
+    if total_bytes <= 0:
+        try:
+            import psutil
+
+            total_bytes = psutil.virtual_memory().total
+        except Exception:
+            total_bytes = 0
+    total_gb = max(1, total_bytes // (1024 ** 3))
+    return max(1, total_gb * 3 // 4)
+
+
 def get_vram(device) -> int:
     env_vram = os.getenv("MINERU_VIRTUAL_VRAM_SIZE")
 
@@ -232,11 +266,14 @@ def get_vram(device) -> int:
 
     # 环境变量未配置或配置错误,根据device自动获取
     total_memory = 1
-    if torch.cuda.is_available() and str(device).startswith("cuda"):
+    if torch is not None and torch.cuda.is_available() and str(device).startswith("cuda"):
         total_memory = round(torch.cuda.get_device_properties(device).total_memory / (1024 ** 3))  # 将字节转换为 GB
     elif str(device).startswith("npu"):
-        if torch_npu.npu.is_available():
+        if torch_npu is not None and torch_npu.npu.is_available():
             total_memory = round(torch_npu.npu.get_device_properties(device).total_memory / (1024 ** 3))  # 转为 GB
+    elif str(device).startswith("mps"):
+        # MPS 使用统一内存，按物理内存估算，避免 batch 大小被固定为 1。
+        total_memory = _get_physical_memory_gb()
     elif str(device).startswith("gcu"):
         if torch.gcu.is_available():
             total_memory = round(torch.gcu.get_device_properties(device).total_memory / (1024 ** 3))  # 转为 GB

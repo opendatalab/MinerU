@@ -24,6 +24,14 @@ mineru -p <input_path> -o <output_path>
 > 命令行工具会在Linux和macOS系统自动尝试cuda/mps加速。Windows用户如需使用cuda加速，
 > 请前往 [Pytorch官网](https://pytorch.org/get-started/locally/) 选择适合自己cuda版本的命令安装支持加速的`torch`和`torchvision`。
 
+> [!TIP]
+> **Apple Silicon（M系列）加速**：在搭载 M 系列芯片的 macOS 上，MinerU 会自动启用以下加速能力：
+> - `pipeline` / `hybrid-engine` 后端：所有 PyTorch 模型（版面分析、公式识别、OCR）自动使用 Metal Performance Shaders（MPS）加速；
+> - 表格结构 ONNX 模型：自动使用 `CoreMLExecutionProvider` 加速（不支持时自动回退 CPU）；
+> - VLM 推理（`-b vlm-engine` / `-b hybrid-engine`）：macOS 13.5+ 上自动选择基于 [MLX](https://github.com/ml-explore/mlx) 的 `mlx-engine` 后端。
+>
+> 可通过 `MINERU_DEVICE_MODE=mps|cpu` 覆盖设备自动检测，通过 `MINERU_VIRTUAL_VRAM_SIZE`（单位 GB）手动指定用于批量大小估算的内存大小，详见[命令行进阶参数](./advanced_cli_parameters.md)。
+
 如果需要通过自定义参数调整解析选项，您也可以在文档中查看更详细的[命令行工具使用说明](./cli_tools.md)。
 
 ## 通过api、webui、http-client/server进阶使用

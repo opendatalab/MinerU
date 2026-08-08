@@ -5,9 +5,13 @@ from loguru import logger
 
 try:
     import torch
+except ImportError:
+    torch = None
+
+try:
     import torch_npu
 except ImportError:
-    pass
+    torch_npu = None
 
 
 # 定义配置文件名常量
@@ -107,6 +111,8 @@ def get_device():
     if device_mode is not None:
         return device_mode
     else:
+        if torch is None:
+            return "cpu"
         if torch.cuda.is_available():
             return "cuda"
         elif torch.backends.mps.is_available():

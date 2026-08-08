@@ -4,19 +4,28 @@ import os
 from PIL import Image
 import cv2
 import numpy as np
-import onnxruntime
 from loguru import logger
 from tqdm import tqdm
 
 from mineru.backend.pipeline.model_list import AtomicModel
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
+from mineru.model.table.rec.onnxruntime_provider import create_table_onnx_session
 
 
 class PaddleTableClsModel:
     def __init__(self):
-        self.sess = onnxruntime.InferenceSession(
-            os.path.join(auto_download_and_get_model_root_path(ModelPath.paddle_table_cls), ModelPath.paddle_table_cls)
+        from onnxruntime import get_available_providers
+
+        model_path = os.path.join(
+            auto_download_and_get_model_root_path(ModelPath.paddle_table_cls),
+            ModelPath.paddle_table_cls,
+        )
+        # 在 macOS Apple Silicon 上优先使用 CoreML 加速，失败时自动回退 CPU。
+        self.sess = create_table_onnx_session(
+            model_path,
+            sess_options=None,
+            available_providers=get_available_providers(),
         )
         self.less_length = 256
         self.cw, self.ch = 224, 224
