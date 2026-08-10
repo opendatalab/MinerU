@@ -15,6 +15,8 @@ import numpy as np
 from PIL import Image
 from loguru import logger
 
+# from mineru.backend.model_list_to_midlle_json import model_list_to_pages
+from mineru.version import __version__ as mineru_version
 from mineru.backend.utils.table_text import project_ocr_table_text, project_pdf_table_text
 from mineru.backend.local_model_runtime import (
     AtomicModel,
@@ -68,6 +70,9 @@ LAYOUT_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 8
 LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD = 0.8
+IMAGE_BLOCK_CONTAINMENT_THRESHOLD = 0.8
+IMAGE_BLOCK_LAYOUT_COVERAGE_THRESHOLD = 0.9
+IMAGE_BLOCK_LAYOUT_MIN_IMAGE_COUNT = 2
 BATCH_RATIO = 2
 TABLE_TEXT_LINE_OVERLAP_THRESHOLD = 0.5
 TABLE_TEXT_ORIENTATION_MIN_VALID_LINES = 3
@@ -1423,6 +1428,170 @@ def _encode_page_crop_as_jpeg_data_uri(
     return f"data:image/jpeg;base64,{base64.b64encode(encoded.tobytes()).decode('ascii')}"
 
 
+def _normalize_model_bbox_for_containment(raw_bbox: Any) -> BBox | None:
+    """校验模型 block 的四点框，返回可用于面积包含判断的浮点坐标。"""
+    try:
+        if raw_bbox is None or len(raw_bbox) != 4:
+            return None
+        bbox = tuple(float(value) for value in raw_bbox)
+    except (TypeError, ValueError):
+        return None
+
+    if not all(math.isfinite(value) for value in bbox):
+        return None
+    if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+        return None
+    return bbox
+
+
+def _collapse_image_blocks(
+    page_model_list: list[dict[str, Any]],
+    containment_threshold: float = IMAGE_BLOCK_CONTAINMENT_THRESHOLD,
+) -> None:
+    """将 image_block 折叠为单个图片，并删除面积上被其包裹的非容器子块。"""
+    image_blocks = [block for block in page_model_list if block.get("type") == "image_block"]
+    if not image_blocks:
+        return
+
+    image_block_ids = {id(block) for block in image_blocks}
+    image_block_bboxes = [
+        bbox
+        for block in image_blocks
+        if (bbox := _normalize_model_bbox_for_containment(block.get("bbox"))) is not None
+    ]
+
+    retained_blocks: list[dict[str, Any]] = []
+    for block in page_model_list:
+        if id(block) in image_block_ids:
+            block["type"] = BlockType.IMAGE
+            retained_blocks.append(block)
+            continue
+
+        block_bbox = _normalize_model_bbox_for_containment(block.get("bbox"))
+        is_contained = block_bbox is not None and any(
+            calculate_overlap_area_in_bbox1_area_ratio(block_bbox, image_block_bbox) >= containment_threshold
+            for image_block_bbox in image_block_bboxes
+        )
+        if not is_contained:
+            retained_blocks.append(block)
+
+    page_model_list[:] = retained_blocks
+
+
+def _supplement_missing_image_block_containers(
+    model_list: list[list[dict[str, Any]]],
+    layout_blocks_list: list[list[dict[str, Any]]],
+    containment_threshold: float = IMAGE_BLOCK_CONTAINMENT_THRESHOLD,
+    coverage_threshold: float = IMAGE_BLOCK_LAYOUT_COVERAGE_THRESHOLD,
+    min_image_count: int = IMAGE_BLOCK_LAYOUT_MIN_IMAGE_COUNT,
+) -> None:
+    """用本地 layout 整图框为 xhigh 结果补充缺失的 image_block 容器。"""
+    if len(model_list) != len(layout_blocks_list):
+        raise ValueError(
+            "Hybrid image-block fallback page count mismatch: "
+            f"model_list={len(model_list)}, layout_blocks={len(layout_blocks_list)}"
+        )
+
+    for page_model_list, page_layout_blocks in zip(model_list, layout_blocks_list):
+        existing_image_block_bboxes = [
+            bbox
+            for block in page_model_list
+            if block.get("type") == "image_block"
+            if (bbox := _normalize_model_bbox_for_containment(block.get("bbox"))) is not None
+        ]
+
+        existing_claimed_block_ids: set[int] = set()
+        if existing_image_block_bboxes:
+            for block in page_model_list:
+                if block.get("type") == "image_block":
+                    continue
+                block_bbox = _normalize_model_bbox_for_containment(block.get("bbox"))
+                if block_bbox is not None and any(
+                    calculate_overlap_area_in_bbox1_area_ratio(block_bbox, image_block_bbox)
+                    >= containment_threshold
+                    for image_block_bbox in existing_image_block_bboxes
+                ):
+                    existing_claimed_block_ids.add(id(block))
+
+        candidates: list[tuple[int, float, int, int, dict[str, Any], set[int]]] = []
+        for layout_order, layout_block in enumerate(page_layout_blocks):
+            if layout_block.get("type") != BlockType.IMAGE or layout_block.get("sub_type") == "seal":
+                continue
+
+            layout_bbox = _normalize_model_bbox_for_containment(layout_block.get("bbox"))
+            if layout_bbox is None:
+                continue
+            if any(
+                calculate_overlap_area_2_minbox_area_ratio(layout_bbox, image_block_bbox)
+                >= containment_threshold
+                for image_block_bbox in existing_image_block_bboxes
+            ):
+                continue
+
+            contained_blocks: list[tuple[int, dict[str, Any], BBox]] = []
+            for block_index, block in enumerate(page_model_list):
+                if block.get("type") == "image_block" or id(block) in existing_claimed_block_ids:
+                    continue
+                block_bbox = _normalize_model_bbox_for_containment(block.get("bbox"))
+                if block_bbox is None:
+                    continue
+                if (
+                    calculate_overlap_area_in_bbox1_area_ratio(block_bbox, layout_bbox)
+                    >= containment_threshold
+                ):
+                    contained_blocks.append((block_index, block, block_bbox))
+
+            contained_images = [
+                (block_index, block)
+                for block_index, block, _ in contained_blocks
+                if block.get("type") == BlockType.IMAGE
+            ]
+            if len(contained_images) < min_image_count:
+                continue
+
+            layout_area = (layout_bbox[2] - layout_bbox[0]) * (layout_bbox[3] - layout_bbox[1])
+            contained_area = sum(
+                (block_bbox[2] - block_bbox[0]) * (block_bbox[3] - block_bbox[1])
+                for _, _, block_bbox in contained_blocks
+            )
+            if contained_area / layout_area <= coverage_threshold:
+                continue
+
+            image_ids = {id(block) for _, block in contained_images}
+            first_block_index = min(block_index for block_index, _, _ in contained_blocks)
+            candidates.append(
+                (
+                    -len(contained_images),
+                    layout_area,
+                    layout_order,
+                    first_block_index,
+                    layout_block,
+                    image_ids,
+                )
+            )
+
+        claimed_image_ids: set[int] = set()
+        selected_containers: list[tuple[int, dict[str, Any]]] = []
+        for _, _, _, first_block_index, layout_block, image_ids in sorted(candidates):
+            if claimed_image_ids.intersection(image_ids):
+                continue
+            claimed_image_ids.update(image_ids)
+            selected_containers.append(
+                (
+                    first_block_index,
+                    {
+                        "type": "image_block",
+                        "bbox": list(layout_block["bbox"]),
+                        "angle": layout_block.get("angle", 0),
+                        "content": None,
+                    },
+                )
+            )
+
+        for insert_index, image_block in sorted(selected_containers, reverse=True):
+            page_model_list.insert(insert_index, image_block)
+
+
 def _attach_visual_block_images(
     model_list: list[list[dict[str, Any]]],
     images_list: list[dict[str, Any]],
@@ -1433,6 +1602,7 @@ def _attach_visual_block_images(
         raise ValueError(f"Hybrid visual crop page count mismatch: model_list={len(model_list)}, images={len(images_list)}")
 
     for page_offset, (page_model_list, image_dict) in enumerate(zip(model_list, images_list)):
+        _collapse_image_blocks(page_model_list)
         visual_blocks = [
             (block_idx, block)
             for block_idx, block in enumerate(page_model_list)
@@ -2373,6 +2543,11 @@ def doc_analyze(
 
                         if effort in {"medium", "high"}:
                             _apply_seal_ocr(hybrid_model, window_model_list, np_images)
+                        elif effort == "xhigh":
+                            _supplement_missing_image_block_containers(
+                                window_model_list,
+                                vl_style_layout_blocks,
+                            )
 
                     _attach_visual_block_images(
                         window_model_list,
@@ -2399,7 +2574,14 @@ def doc_analyze(
     _log_infer_performance(file_suffix, len(model_list), infer_elapsed)
 
     # PDF 与 Office 的 model_list 在此汇合，后续统一生产 Middle JSON。
-    middle_json: list[PageInfo] = []
+    middle_json = {
+        "pages": [],
+        "file_suffix": file_suffix,
+        "effort": effort,
+        "parse_mode": parse_mode,
+        "mineru_version": mineru_version,
+    }
+    # middle_json["pages"] = model_list_to_pages(model_list, page_index_map)
     return middle_json, model_list
 
 
@@ -2411,13 +2593,15 @@ if __name__ == "__main__":
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     demo_file_paths = [
         # os.path.join(project_root, "demo", "office_docs", "docx_01.docx"),
-        os.path.join(project_root, "demo", "pdfs", "NPU_开发环境部署_参考指南.pdf"),
+        # os.path.join(project_root, "demo", "pdfs", "NPU_开发环境部署_参考指南.pdf"),
+        "/Users/myhloli/pdf/png/demo2_page4.png"
     ]
 
     for file_path in demo_file_paths:
         file_bytes = read_fn(file_path)
         file_suffix = os.path.splitext(file_path)[1].lstrip(".").lower()
-        middle_json, model_list = doc_analyze(file_bytes, effort="medium", file_suffix=file_suffix)
+        file_suffix = "pdf"
+        middle_json, model_list = doc_analyze(file_bytes, effort="xhigh", file_suffix=file_suffix)
         model_json = json.dumps(model_list, ensure_ascii=False, indent=4)
         logger.info(f"file_path: {file_path}")
         logger.info(f"middle_json: {middle_json}")

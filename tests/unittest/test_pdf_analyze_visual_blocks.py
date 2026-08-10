@@ -91,7 +91,7 @@ def test_visual_block_crop_rotates_to_upright(
 
     analyze._attach_visual_block_images([[block]], [{"img_pil": page_image}])
 
-    crop_image = _decode_jpeg_data_uri(block["image_base64"])
+    crop_image = _decode_jpeg_data_uri(block["_image_base64"])
     try:
         assert crop_image.size == expected_size
         _assert_colors_close(_sample_quadrant_colors(crop_image), expected_colors)
@@ -139,7 +139,7 @@ def test_visual_block_types_receive_jpeg_data_uri_only() -> None:
             "bbox": [0.1, 0.2, 0.6, 0.7],
             "angle": 0,
             "content": f"content-{block_type}",
-            "image_base64": "stale",
+            "_image_base64": "stale",
         }
         for block_type in (
             BlockType.IMAGE,
@@ -152,7 +152,7 @@ def test_visual_block_types_receive_jpeg_data_uri_only() -> None:
         "type": BlockType.TEXT,
         "bbox": [0.0, 0.0, 1.0, 1.0],
         "content": "text",
-        "image_base64": "keep-text-field",
+        "_image_base64": "keep-text-field",
     }
 
     analyze._attach_visual_block_images(
@@ -163,21 +163,21 @@ def test_visual_block_types_receive_jpeg_data_uri_only() -> None:
 
     try:
         for block in visual_blocks:
-            assert block["image_base64"] != "stale"
-            crop_image = _decode_jpeg_data_uri(block["image_base64"])
+            assert block["_image_base64"] != "stale"
+            crop_image = _decode_jpeg_data_uri(block["_image_base64"])
             try:
                 assert crop_image.size == (50, 30)
             finally:
                 crop_image.close()
             assert block["content"] == f"content-{block['type']}"
             assert block["bbox"] == [0.1, 0.2, 0.6, 0.7]
-        assert text_block["image_base64"] == "keep-text-field"
+        assert text_block["_image_base64"] == "keep-text-field"
     finally:
         page_image.close()
 
 
 def test_visual_block_crop_clips_page_boundary_and_skips_invalid_bbox() -> None:
-    """验证像素框会裁到页面范围，无效框会清理旧载荷且不影响其他块。"""
+    """验证像素框会裁到页面范围，无效框会跳过载荷写入且不影响其他块。"""
     page_image = Image.new("L", (100, 80), 128)
     clipped_block = {
         "type": BlockType.CHART,
@@ -188,7 +188,6 @@ def test_visual_block_crop_clips_page_boundary_and_skips_invalid_bbox() -> None:
         "type": BlockType.TABLE,
         "bbox": [0.5, 0.5, 0.5, 0.8],
         "angle": 0,
-        "image_base64": "stale",
     }
 
     analyze._attach_visual_block_images(
@@ -196,13 +195,235 @@ def test_visual_block_crop_clips_page_boundary_and_skips_invalid_bbox() -> None:
         [{"img_pil": page_image}],
     )
 
-    crop_image = _decode_jpeg_data_uri(clipped_block["image_base64"])
+    crop_image = _decode_jpeg_data_uri(clipped_block["_image_base64"])
     try:
         assert crop_image.size == (30, 20)
     finally:
         crop_image.close()
         page_image.close()
-    assert "image_base64" not in invalid_block
+    assert "_image_base64" not in invalid_block
+
+
+def test_image_block_collapses_contained_blocks_before_visual_crop() -> None:
+    """验证 image_block 截图前吸收内部小块，并按子块面积应用 0.8 包含阈值。"""
+    page_image = Image.new("RGB", (100, 60), "white")
+    leading_text = {
+        "type": BlockType.TEXT,
+        "bbox": [0.0, 0.0, 1.0, 1.0],
+        "content": "keep-leading-text",
+    }
+    image_block = {
+        "type": "image_block",
+        "bbox": [0.0, 0.0, 0.8, 0.8],
+        "angle": 0,
+        "content": None,
+    }
+    threshold_image = {
+        "type": BlockType.IMAGE,
+        "bbox": [0.0, 0.0, 1.0, 0.8],
+        "angle": 0,
+    }
+    contained_caption = {
+        "type": BlockType.IMAGE_CAPTION,
+        "bbox": [0.1, 0.1, 0.3, 0.2],
+        "content": "remove-contained-caption",
+    }
+    below_threshold_caption = {
+        "type": BlockType.IMAGE_CAPTION,
+        "bbox": [0.0, 0.0, 1.0, 0.81],
+        "content": "keep-below-threshold-caption",
+    }
+    invalid_caption = {
+        "type": BlockType.IMAGE_CAPTION,
+        "bbox": [0.2, 0.2, 0.2, 0.3],
+        "content": "keep-invalid-caption",
+    }
+    external_caption = {
+        "type": BlockType.IMAGE_CAPTION,
+        "bbox": [0.0, 0.82, 0.8, 0.9],
+        "content": "keep-external-caption",
+    }
+    page_model_list = [
+        leading_text,
+        image_block,
+        threshold_image,
+        contained_caption,
+        below_threshold_caption,
+        invalid_caption,
+        external_caption,
+    ]
+
+    analyze._attach_visual_block_images(
+        [page_model_list],
+        [{"img_pil": page_image}],
+    )
+
+    try:
+        assert page_model_list == [
+            leading_text,
+            image_block,
+            below_threshold_caption,
+            invalid_caption,
+            external_caption,
+        ]
+        assert image_block["type"] == BlockType.IMAGE
+        assert all(block.get("type") != "image_block" for block in page_model_list)
+        crop_image = _decode_jpeg_data_uri(image_block["_image_base64"])
+        try:
+            assert crop_image.size == (80, 48)
+        finally:
+            crop_image.close()
+    finally:
+        page_image.close()
+
+
+def test_image_block_collapse_keeps_invalid_bbox_blocks() -> None:
+    """验证无效容器或子块不会参与面积吸收，但容器类型仍会规范为 image。"""
+    invalid_image_block = {
+        "type": "image_block",
+        "bbox": None,
+        "content": None,
+    }
+    valid_child = {
+        "type": BlockType.IMAGE,
+        "bbox": [0.1, 0.1, 0.2, 0.2],
+    }
+    invalid_child = {
+        "type": BlockType.IMAGE_CAPTION,
+        "bbox": [0.2, 0.2, 0.2, 0.3],
+    }
+    page_model_list = [invalid_image_block, valid_child, invalid_child]
+
+    analyze._collapse_image_blocks(page_model_list)
+
+    assert page_model_list == [invalid_image_block, valid_child, invalid_child]
+    assert invalid_image_block["type"] == BlockType.IMAGE
+
+
+def test_xhigh_layout_image_supplements_missing_container_before_crop() -> None:
+    """验证 xhigh 可用高覆盖率 layout 整图框补容器并复用现有截图折叠流程。"""
+    page_image = Image.new("RGB", (1700, 2200), "white")
+    page_model_list = [
+        {"type": BlockType.IMAGE, "bbox": [0.083, 0.127, 0.278, 0.243]},
+        {"type": BlockType.IMAGE, "bbox": [0.281, 0.127, 0.477, 0.243]},
+        {"type": BlockType.IMAGE, "bbox": [0.084, 0.246, 0.278, 0.361]},
+        {"type": BlockType.IMAGE, "bbox": [0.281, 0.246, 0.477, 0.361]},
+        {"type": BlockType.IMAGE, "bbox": [0.084, 0.364, 0.278, 0.48]},
+        {"type": BlockType.IMAGE, "bbox": [0.281, 0.364, 0.477, 0.48]},
+        {"type": BlockType.IMAGE, "bbox": [0.083, 0.483, 0.279, 0.598]},
+        {"type": BlockType.IMAGE, "bbox": [0.281, 0.483, 0.477, 0.598]},
+        {
+            "type": BlockType.IMAGE_CAPTION,
+            "bbox": [0.154, 0.6, 0.214, 0.611],
+            "content": "Frame 30",
+        },
+        {
+            "type": BlockType.IMAGE_CAPTION,
+            "bbox": [0.35, 0.6, 0.41, 0.611],
+            "content": "Frame 90",
+        },
+        {
+            "type": BlockType.IMAGE_CAPTION,
+            "bbox": [0.074, 0.616, 0.493, 0.678],
+            "content": "Figure 2: keep external caption",
+        },
+    ]
+    layout_blocks_list = [
+        [
+            {
+                "type": BlockType.IMAGE,
+                "bbox": [0.082352941, 0.127272727, 0.477647059, 0.611818182],
+                "angle": 0,
+            }
+        ]
+    ]
+
+    analyze._supplement_missing_image_block_containers(
+        [page_model_list],
+        layout_blocks_list,
+    )
+    assert sum(block.get("type") == "image_block" for block in page_model_list) == 1
+
+    analyze._attach_visual_block_images(
+        [page_model_list],
+        [{"img_pil": page_image}],
+    )
+
+    try:
+        assert len(page_model_list) == 2
+        image_block, external_caption = page_model_list
+        assert image_block["type"] == BlockType.IMAGE
+        assert image_block["bbox"] == layout_blocks_list[0][0]["bbox"]
+        assert external_caption["content"] == "Figure 2: keep external caption"
+        crop_image = _decode_jpeg_data_uri(image_block["_image_base64"])
+        try:
+            assert crop_image.size == (674, 1068)
+        finally:
+            crop_image.close()
+    finally:
+        page_image.close()
+
+
+@pytest.mark.parametrize(
+    ("image_bboxes", "layout_type", "expected_container_count"),
+    [
+        (([0.0, 0.0, 0.46, 1.0], [0.54, 0.0, 1.0, 1.0]), BlockType.IMAGE, 1),
+        (([0.0, 0.0, 0.45, 1.0], [0.55, 0.0, 1.0, 1.0]), BlockType.IMAGE, 0),
+        (([0.0, 0.0, 0.95, 1.0],), BlockType.IMAGE, 0),
+        (([0.0, 0.0, 0.46, 1.0], [0.54, 0.0, 1.0, 1.0]), BlockType.CHART, 0),
+    ],
+)
+def test_xhigh_layout_image_fallback_requires_image_count_and_strict_coverage(
+    image_bboxes: tuple[list[float], ...],
+    layout_type: str,
+    expected_container_count: int,
+) -> None:
+    """验证 layout 回退要求至少两个 image，且面积占比必须严格大于 0.9。"""
+    page_model_list = [
+        {"type": BlockType.IMAGE, "bbox": bbox}
+        for bbox in image_bboxes
+    ]
+    layout_blocks_list = [[{"type": layout_type, "bbox": [0.0, 0.0, 1.0, 1.0], "angle": 0}]]
+
+    analyze._supplement_missing_image_block_containers(
+        [page_model_list],
+        layout_blocks_list,
+    )
+
+    assert sum(block.get("type") == "image_block" for block in page_model_list) == expected_container_count
+
+
+def test_xhigh_layout_image_fallback_does_not_duplicate_existing_or_overlapping_containers() -> None:
+    """验证已有 VLM 容器和竞争 layout 框不会重复认领相同 image。"""
+    existing_image_block = {
+        "type": "image_block",
+        "bbox": [0.0, 0.0, 0.48, 1.0],
+        "angle": 0,
+    }
+    page_model_list = [
+        existing_image_block,
+        {"type": BlockType.IMAGE, "bbox": [0.0, 0.0, 0.24, 1.0]},
+        {"type": BlockType.IMAGE, "bbox": [0.24, 0.0, 0.48, 1.0]},
+        {"type": BlockType.IMAGE, "bbox": [0.52, 0.0, 0.76, 1.0]},
+        {"type": BlockType.IMAGE, "bbox": [0.76, 0.0, 1.0, 1.0]},
+    ]
+    layout_blocks_list = [
+        [
+            {"type": BlockType.IMAGE, "bbox": [0.0, 0.0, 0.48, 1.0], "angle": 0},
+            {"type": BlockType.IMAGE, "bbox": [0.5, 0.0, 1.0, 1.0], "angle": 0},
+            {"type": BlockType.IMAGE, "bbox": [0.51, 0.0, 1.0, 1.0], "angle": 0},
+        ]
+    ]
+
+    analyze._supplement_missing_image_block_containers(
+        [page_model_list],
+        layout_blocks_list,
+    )
+
+    image_blocks = [block for block in page_model_list if block.get("type") == "image_block"]
+    assert len(image_blocks) == 2
+    assert existing_image_block in image_blocks
+    assert sum(block.get("bbox") in ([0.5, 0.0, 1.0, 1.0], [0.51, 0.0, 1.0, 1.0]) for block in image_blocks) == 1
 
 
 def test_visual_block_crop_rejects_page_count_mismatch() -> None:
@@ -574,9 +795,9 @@ def test_doc_analyze_flash_returns_complete_model_list_without_middle_json(monke
     assert requested_ranges == [(0, 1), (2, 2)]
     assert model_list[0][0]["content"] == "第一页 <eq>x+y</eq>"
     assert model_list[2][0]["content"] == "第三页 <eq>z</eq>"
-    assert "image_base64" not in model_list[0][0]
+    assert "_image_base64" not in model_list[0][0]
     for block in (model_list[1][0], model_list[2][0]):
-        crop_image = _decode_jpeg_data_uri(block["image_base64"])
+        crop_image = _decode_jpeg_data_uri(block["_image_base64"])
         crop_image.close()
     for image in rendered_images:
         with pytest.raises(ValueError, match="closed image"):
