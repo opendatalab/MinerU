@@ -1441,10 +1441,6 @@ def _attach_visual_block_images(
         if not visual_blocks:
             continue
 
-        # 先清理模型可能携带的同名字段，保证最终载荷只来自当前 PDF 页面裁图。
-        for _, block in visual_blocks:
-            block.pop("image_base64", None)
-
         page_index = page_start_index + page_offset
         page_pil_image = image_dict.get("img_pil")
         if page_pil_image is None:
@@ -1474,7 +1470,7 @@ def _attach_visual_block_images(
                     )
                     if not image_base64:
                         raise ValueError("empty crop or JPEG encoding failure")
-                    block["image_base64"] = image_base64
+                    block["_image_base64"] = image_base64
                 except Exception as exc:
                     logger.warning(
                         "Skipping invalid model visual block crop: "

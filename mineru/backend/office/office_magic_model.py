@@ -59,8 +59,8 @@ class MagicModel:
                     bbox=EMPTY_BBOX,
                     content=image_cache.replace_html_data_uri_sources(block_content),
                 )
-                if block_info.get("image_base64"):
-                    span.image_path = image_cache.register_data_uri(block_info["image_base64"])
+                if block_info.get("_image_base64"):
+                    span.image_path = image_cache.register_data_uri(block_info["_image_base64"])
             elif block_type in ["equation"]:
                 block_type = BlockType.INTERLINE_EQUATION
                 span = Span(type=ContentType.INTERLINE_EQUATION, bbox=EMPTY_BBOX, content=block_content)
