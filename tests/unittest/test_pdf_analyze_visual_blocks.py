@@ -228,6 +228,19 @@ def test_image_block_collapses_contained_blocks_before_visual_crop() -> None:
         "bbox": [0.1, 0.1, 0.3, 0.2],
         "content": "remove-contained-caption",
     }
+    contained_text = {
+        "type": BlockType.TEXT,
+        "bbox": [0.3, 0.3, 0.4, 0.4],
+        "content": "remove-contained-text",
+    }
+    contained_table = {
+        "type": BlockType.TABLE,
+        "bbox": [0.4, 0.4, 0.5, 0.5],
+    }
+    contained_equation = {
+        "type": BlockType.EQUATION,
+        "bbox": [0.5, 0.5, 0.6, 0.6],
+    }
     below_threshold_caption = {
         "type": BlockType.IMAGE_CAPTION,
         "bbox": [0.0, 0.0, 1.0, 0.81],
@@ -248,6 +261,9 @@ def test_image_block_collapses_contained_blocks_before_visual_crop() -> None:
         image_block,
         threshold_image,
         contained_caption,
+        contained_text,
+        contained_table,
+        contained_equation,
         below_threshold_caption,
         invalid_caption,
         external_caption,
@@ -365,23 +381,56 @@ def test_xhigh_layout_image_supplements_missing_container_before_crop() -> None:
 
 
 @pytest.mark.parametrize(
-    ("image_bboxes", "layout_type", "expected_container_count"),
+    ("block_types", "block_bboxes", "layout_type", "expected_container_count"),
     [
-        (([0.0, 0.0, 0.46, 1.0], [0.54, 0.0, 1.0, 1.0]), BlockType.IMAGE, 1),
-        (([0.0, 0.0, 0.45, 1.0], [0.55, 0.0, 1.0, 1.0]), BlockType.IMAGE, 0),
-        (([0.0, 0.0, 0.95, 1.0],), BlockType.IMAGE, 0),
-        (([0.0, 0.0, 0.46, 1.0], [0.54, 0.0, 1.0, 1.0]), BlockType.CHART, 0),
+        (
+            (BlockType.IMAGE, BlockType.IMAGE),
+            ([0.0, 0.0, 0.46, 1.0], [0.54, 0.0, 1.0, 1.0]),
+            BlockType.IMAGE,
+            1,
+        ),
+        (
+            (BlockType.IMAGE, BlockType.IMAGE),
+            ([0.0, 0.0, 0.45, 1.0], [0.55, 0.0, 1.0, 1.0]),
+            BlockType.IMAGE,
+            1,
+        ),
+        (
+            (BlockType.CHART, BlockType.CHART),
+            ([0.0, 0.0, 0.46, 1.0], [0.54, 0.0, 1.0, 1.0]),
+            BlockType.IMAGE,
+            1,
+        ),
+        (
+            (BlockType.IMAGE, BlockType.CHART),
+            ([0.0, 0.0, 0.46, 1.0], [0.54, 0.0, 1.0, 1.0]),
+            BlockType.IMAGE,
+            1,
+        ),
+        (
+            (BlockType.IMAGE,),
+            ([0.0, 0.0, 0.95, 1.0],),
+            BlockType.IMAGE,
+            0,
+        ),
+        (
+            (BlockType.IMAGE, BlockType.CHART),
+            ([0.0, 0.0, 0.46, 1.0], [0.54, 0.0, 1.0, 1.0]),
+            BlockType.CHART,
+            0,
+        ),
     ],
 )
-def test_xhigh_layout_image_fallback_requires_image_count_and_strict_coverage(
-    image_bboxes: tuple[list[float], ...],
+def test_xhigh_layout_image_fallback_requires_visual_count_and_coverage(
+    block_types: tuple[str, ...],
+    block_bboxes: tuple[list[float], ...],
     layout_type: str,
     expected_container_count: int,
 ) -> None:
-    """验证 layout 回退要求至少两个 image，且面积占比必须严格大于 0.9。"""
+    """验证回退要求至少两个 image/chart，且白名单面积占比大于等于 0.9。"""
     page_model_list = [
-        {"type": BlockType.IMAGE, "bbox": bbox}
-        for bbox in image_bboxes
+        {"type": block_type, "bbox": bbox}
+        for block_type, bbox in zip(block_types, block_bboxes)
     ]
     layout_blocks_list = [[{"type": layout_type, "bbox": [0.0, 0.0, 1.0, 1.0], "angle": 0}]]
 
@@ -391,6 +440,53 @@ def test_xhigh_layout_image_fallback_requires_image_count_and_strict_coverage(
     )
 
     assert sum(block.get("type") == "image_block" for block in page_model_list) == expected_container_count
+
+
+def test_xhigh_layout_image_fallback_uses_whitelist_for_area_but_absorbs_all_types() -> None:
+    """验证白名单只负责面积判定，回退成功后仍吸收框内所有类型。"""
+    assert analyze.LOCAL_LAYOUT_IMAGE_BLOCK_AREA_TYPES == {
+        BlockType.IMAGE,
+        BlockType.CHART,
+        BlockType.IMAGE_CAPTION,
+        BlockType.CAPTION,
+        BlockType.IMAGE_FOOTNOTE,
+        BlockType.FOOTNOTE,
+    }
+    layout_blocks_list = [[{"type": BlockType.IMAGE, "bbox": [0.0, 0.0, 1.0, 1.0], "angle": 0}]]
+    insufficient_page = [
+        {"type": BlockType.IMAGE, "bbox": [0.0, 0.0, 0.4, 1.0]},
+        {"type": BlockType.CHART, "bbox": [0.4, 0.0, 0.8, 1.0]},
+        {"type": BlockType.TEXT, "bbox": [0.8, 0.0, 0.9, 1.0]},
+        {"type": BlockType.CHART_CAPTION, "bbox": [0.9, 0.0, 1.0, 1.0]},
+    ]
+
+    analyze._supplement_missing_image_block_containers(
+        [insufficient_page],
+        layout_blocks_list,
+    )
+
+    assert all(block.get("type") != "image_block" for block in insufficient_page)
+
+    external_text = {"type": BlockType.TEXT, "bbox": [1.1, 0.0, 1.2, 0.1], "content": "keep-external"}
+    qualifying_page = [
+        {"type": BlockType.IMAGE, "bbox": [0.0, 0.0, 0.4, 1.0]},
+        {"type": BlockType.CHART, "bbox": [0.4, 0.0, 0.8, 1.0]},
+        {"type": BlockType.CAPTION, "bbox": [0.8, 0.0, 0.9, 1.0]},
+        {"type": BlockType.TEXT, "bbox": [0.1, 0.1, 0.2, 0.2]},
+        {"type": BlockType.TABLE, "bbox": [0.2, 0.2, 0.3, 0.3]},
+        {"type": BlockType.EQUATION, "bbox": [0.3, 0.3, 0.4, 0.4]},
+        external_text,
+    ]
+
+    analyze._supplement_missing_image_block_containers(
+        [qualifying_page],
+        layout_blocks_list,
+    )
+    analyze._collapse_image_blocks(qualifying_page)
+
+    assert len(qualifying_page) == 2
+    assert qualifying_page[0]["type"] == BlockType.IMAGE
+    assert qualifying_page[1] is external_text
 
 
 def test_xhigh_layout_image_fallback_does_not_duplicate_existing_or_overlapping_containers() -> None:

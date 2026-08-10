@@ -72,7 +72,7 @@ OCR_DET_BASE_BATCH_SIZE = 8
 LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD = 0.8
 IMAGE_BLOCK_CONTAINMENT_THRESHOLD = 0.8
 IMAGE_BLOCK_LAYOUT_COVERAGE_THRESHOLD = 0.9
-IMAGE_BLOCK_LAYOUT_MIN_IMAGE_COUNT = 2
+IMAGE_BLOCK_LAYOUT_MIN_VISUAL_COUNT = 2
 BATCH_RATIO = 2
 TABLE_TEXT_LINE_OVERLAP_THRESHOLD = 0.5
 TABLE_TEXT_ORIENTATION_MIN_VALID_LINES = 3
@@ -98,6 +98,17 @@ MODEL_JSON_VISUAL_BLOCK_TYPES = {
     BlockType.CHART,
     BlockType.TABLE,
     BlockType.EQUATION,
+}
+LOCAL_LAYOUT_IMAGE_BLOCK_BODY_TYPES = {
+    BlockType.IMAGE,
+    BlockType.CHART,
+}
+LOCAL_LAYOUT_IMAGE_BLOCK_AREA_TYPES = {
+    *LOCAL_LAYOUT_IMAGE_BLOCK_BODY_TYPES,
+    BlockType.IMAGE_CAPTION,
+    BlockType.CAPTION,
+    BlockType.IMAGE_FOOTNOTE,
+    BlockType.FOOTNOTE,
 }
 _INLINE_FORMULA_PATTERN = re.compile(r"\\\((.*?)\\\)")
 
@@ -1483,7 +1494,7 @@ def _supplement_missing_image_block_containers(
     layout_blocks_list: list[list[dict[str, Any]]],
     containment_threshold: float = IMAGE_BLOCK_CONTAINMENT_THRESHOLD,
     coverage_threshold: float = IMAGE_BLOCK_LAYOUT_COVERAGE_THRESHOLD,
-    min_image_count: int = IMAGE_BLOCK_LAYOUT_MIN_IMAGE_COUNT,
+    min_visual_count: int = IMAGE_BLOCK_LAYOUT_MIN_VISUAL_COUNT,
 ) -> None:
     """用本地 layout 整图框为 xhigh 结果补充缺失的 image_block 容器。"""
     if len(model_list) != len(layout_blocks_list):
@@ -1541,41 +1552,48 @@ def _supplement_missing_image_block_containers(
                 ):
                     contained_blocks.append((block_index, block, block_bbox))
 
-            contained_images = [
+            contained_visuals = [
                 (block_index, block)
                 for block_index, block, _ in contained_blocks
-                if block.get("type") == BlockType.IMAGE
+                if block.get("type") in LOCAL_LAYOUT_IMAGE_BLOCK_BODY_TYPES
             ]
-            if len(contained_images) < min_image_count:
+            if len(contained_visuals) < min_visual_count:
                 continue
 
             layout_area = (layout_bbox[2] - layout_bbox[0]) * (layout_bbox[3] - layout_bbox[1])
             contained_area = sum(
                 (block_bbox[2] - block_bbox[0]) * (block_bbox[3] - block_bbox[1])
-                for _, _, block_bbox in contained_blocks
+                for _, block, block_bbox in contained_blocks
+                if block.get("type") in LOCAL_LAYOUT_IMAGE_BLOCK_AREA_TYPES
             )
-            if contained_area / layout_area <= coverage_threshold:
+            coverage_ratio = contained_area / layout_area
+            if coverage_ratio < coverage_threshold and not math.isclose(
+                coverage_ratio,
+                coverage_threshold,
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            ):
                 continue
 
-            image_ids = {id(block) for _, block in contained_images}
+            contained_block_ids = {id(block) for _, block, _ in contained_blocks}
             first_block_index = min(block_index for block_index, _, _ in contained_blocks)
             candidates.append(
                 (
-                    -len(contained_images),
+                    -len(contained_visuals),
                     layout_area,
                     layout_order,
                     first_block_index,
                     layout_block,
-                    image_ids,
+                    contained_block_ids,
                 )
             )
 
-        claimed_image_ids: set[int] = set()
+        claimed_block_ids: set[int] = set()
         selected_containers: list[tuple[int, dict[str, Any]]] = []
-        for _, _, _, first_block_index, layout_block, image_ids in sorted(candidates):
-            if claimed_image_ids.intersection(image_ids):
+        for _, _, _, first_block_index, layout_block, block_ids in sorted(candidates):
+            if claimed_block_ids.intersection(block_ids):
                 continue
-            claimed_image_ids.update(image_ids)
+            claimed_block_ids.update(block_ids)
             selected_containers.append(
                 (
                     first_block_index,
