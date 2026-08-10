@@ -35,6 +35,7 @@ from ...utils.pdfium_guard import (
     open_pdfium_document,
 )
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
+from ...utils.mlx_vlm_compat import patch_mlx_vlm_utf8_decoder
 
 from mineru_vl_utils import MinerUClient
 from packaging import version
@@ -109,6 +110,8 @@ class ModelSingleton:
                     mlx_supported = is_mac_os_version_supported()
                     if not mlx_supported:
                         raise EnvironmentError("mlx-engine backend is only supported on macOS 13.5+ with Apple Silicon.")
+                    if patch_mlx_vlm_utf8_decoder():
+                        logger.info("Applied mlx-vlm UTF-8 streaming compatibility patch")
                     from mineru_vl_utils.mlx_compat import load_mlx_model
                     model, processor = load_mlx_model(model_path)
                 else:
