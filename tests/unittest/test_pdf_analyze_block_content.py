@@ -60,6 +60,85 @@ def _build_post_ocr_page_block_lines(
     return page_block_lines_list, spans
 
 
+def test_xhigh_vlm_blocks_normalize_visual_annotation_types() -> None:
+    """验证 xhigh VLM 的细分视觉标题和脚注会统一成通用类型。"""
+    page_blocks = [
+        {"type": BlockType.TABLE_CAPTION, "content": "table caption"},
+        {"type": BlockType.IMAGE_CAPTION, "content": "image caption"},
+        {"type": BlockType.CODE_CAPTION, "content": "code caption"},
+        {"type": BlockType.TABLE_FOOTNOTE, "content": "table footnote"},
+        {"type": BlockType.IMAGE_FOOTNOTE, "content": "image footnote"},
+        {"type": BlockType.TEXT, "content": "text"},
+    ]
+
+    analyze._normalize_xhigh_vlm_blocks([page_blocks])
+
+    assert [block["type"] for block in page_blocks] == [
+        BlockType.CAPTION,
+        BlockType.CAPTION,
+        BlockType.CAPTION,
+        BlockType.FOOTNOTE,
+        BlockType.FOOTNOTE,
+        BlockType.TEXT,
+    ]
+    assert [block["content"] for block in page_blocks] == [
+        "table caption",
+        "image caption",
+        "code caption",
+        "table footnote",
+        "image footnote",
+        "text",
+    ]
+
+
+def test_xhigh_vlm_blocks_remove_merge_prev_from_all_text_blocks() -> None:
+    """验证 xhigh VLM 正文无论 merge_prev 取值如何都移除该字段。"""
+    page_blocks = [
+        {"type": BlockType.TEXT, "content": "merge", "merge_prev": True},
+        {"type": BlockType.TEXT, "content": "do not merge", "merge_prev": False},
+        {"type": BlockType.TEXT, "content": "without hint"},
+        {"type": BlockType.CAPTION, "content": "caption"},
+    ]
+
+    analyze._normalize_xhigh_vlm_blocks([page_blocks])
+
+    assert all("merge_prev" not in block for block in page_blocks if block["type"] == BlockType.TEXT)
+    assert page_blocks[-1] == {"type": BlockType.CAPTION, "content": "caption"}
+
+
+def test_caption_and_footnote_keep_normalized_line_metadata() -> None:
+    """验证通用 caption/footnote 与 text 一样保留归一化 _lines。"""
+    assert analyze.LINE_METADATA_BLOCK_TYPES == {
+        BlockType.TEXT,
+        BlockType.CAPTION,
+        BlockType.FOOTNOTE,
+    }
+    text_block = {"type": BlockType.TEXT, "content": "text"}
+    caption_block = {"type": BlockType.CAPTION, "content": "caption"}
+    footnote_block = {"type": BlockType.FOOTNOTE, "content": "footnote"}
+    unrelated_block = {"type": BlockType.TITLE, "content": "title", "_lines": [{"bbox": [0, 0, 1, 1]}]}
+    page_blocks = [text_block, caption_block, footnote_block, unrelated_block]
+
+    analyze._apply_block_content_and_line_metadata(
+        page_blocks,
+        {
+            0: _build_text_lines("text"),
+            1: _build_text_lines("caption line 1", "caption line 2"),
+            2: _build_text_lines("footnote"),
+            3: _build_text_lines("title"),
+        },
+        (200.0, 100.0),
+    )
+
+    assert text_block["_lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
+    assert caption_block["_lines"] == [
+        {"bbox": [0.0, 0.0, 0.5, 0.01]},
+        {"bbox": [0.0, 0.01, 0.5, 0.02]},
+    ]
+    assert footnote_block["_lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
+    assert "_lines" not in unrelated_block
+
+
 def test_window_post_ocr_batches_all_pages_once() -> None:
     """验证窗口内多页待识别 span 合并为一次 OCR-rec，并按原顺序回填。"""
     page_block_lines_list, spans = _build_post_ocr_page_block_lines((11, 12), (21, 22))

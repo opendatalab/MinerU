@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 from copy import deepcopy
-from typing import Any
+from typing import Any, cast
 
 from ...types import BBox, Block, BlockType
 from .boxbase import bbox_center_distance, bbox_distance
@@ -54,6 +54,45 @@ VISUAL_TYPE_MAPPING = {
     },
 }
 
+BlockLike = Block | dict[str, Any]
+
+
+def _get_block_field(block: BlockLike, field_name: str, default: Any = None) -> Any:
+    """统一读取 Block 属性或 dict 字段。"""
+    if isinstance(block, dict):
+        return block.get(field_name, default)
+    return getattr(block, field_name, default)
+
+
+def _set_block_field(block: BlockLike, field_name: str, value: Any) -> None:
+    """统一回写 Block 属性或 dict 字段。"""
+    if isinstance(block, dict):
+        block[field_name] = value
+    else:
+        setattr(block, field_name, value)
+
+
+def _block_index(block: BlockLike) -> int:
+    """读取 block 顺序索引，缺失时沿用原有的零值排序语义。"""
+    return int(_get_block_field(block, "index", 0) or 0)
+
+
+def _block_type(block: BlockLike) -> str:
+    """读取 block 类型。"""
+    return str(_get_block_field(block, "type", "") or "")
+
+
+def _block_bbox(block: BlockLike) -> BBox:
+    """读取参与视觉关系判断的 block bbox。"""
+    return cast(BBox, _get_block_field(block, "bbox"))
+
+
+def _block_line_items(block: BlockLike) -> list[Any]:
+    """读取行级元数据，dict 使用 _lines，Block 使用 lines。"""
+    if isinstance(block, dict):
+        return list(block.get("_lines") or [])
+    return list(block.lines or [])
+
 
 def isolated_formula_clean(txt: str) -> str:
     latex = txt[:]
@@ -98,33 +137,42 @@ def clean_content(content: str | None) -> str | None:
     return content
 
 
-def fallback_inline_caption_fragments(blocks: list[Block], visual_main_types: dict[str, str] | set[str]) -> None:
+def fallback_inline_caption_fragments(
+    blocks: list[BlockLike],
+    visual_main_types: dict[str, str] | set[str],
+) -> None:
     """将紧贴视觉主体上方的同行 text/footnote 片段兜底为通用 caption。"""
     if len(blocks) < 3:
         return
 
     main_types = set(visual_main_types)
-    ordered_blocks = sorted(blocks, key=lambda x: x.index or 0)
+    ordered_blocks = sorted(blocks, key=_block_index)
     for pos, block in enumerate(ordered_blocks):
-        if block.type not in INLINE_CAPTION_FRAGMENT_TYPES:
+        if _block_type(block) not in INLINE_CAPTION_FRAGMENT_TYPES:
             continue
 
         previous_block = find_previous_effective_block(ordered_blocks, pos)
         next_block = find_next_effective_block(ordered_blocks, pos)
-        if not (previous_block and next_block and previous_block.type == BlockType.CAPTION and next_block.type in main_types):
+        if not (
+            previous_block
+            and next_block
+            and _block_type(previous_block) == BlockType.CAPTION
+            and _block_type(next_block) in main_types
+        ):
             continue
 
         if not is_inline_caption_fragment(previous_block, block, next_block):
             continue
 
-        block.type = BlockType.CAPTION
-        # fallback 后该块已是视觉 caption 片段，不再参与正文跨块合并。
-        block.merge_prev = False
+        _set_block_field(block, "type", BlockType.CAPTION)
 
     fallback_stacked_table_caption_fragments(blocks, visual_main_types)
 
 
-def fallback_leading_table_continuation_captions(blocks: list[Block], visual_main_types: dict[Any, Any] | set[Any]) -> None:
+def fallback_leading_table_continuation_captions(
+    blocks: list[BlockLike],
+    visual_main_types: dict[Any, Any] | set[Any],
+) -> None:
     """将页首紧贴表格的续表文本兜底为通用 caption。
 
     该规则只处理页面有效块开头的 text，避免正文中出现“续表”时被误挂。
@@ -136,7 +184,9 @@ def fallback_leading_table_continuation_captions(blocks: list[Block], visual_mai
         return
 
     effective_blocks = [
-        block for block in sorted(blocks, key=lambda x: x.index or 0) if block.type not in VISUAL_RELATION_IGNORED_TYPES
+        block
+        for block in sorted(blocks, key=_block_index)
+        if _block_type(block) not in VISUAL_RELATION_IGNORED_TYPES
     ]
     if len(effective_blocks) < 2:
         return
@@ -154,30 +204,29 @@ def fallback_leading_table_continuation_captions(blocks: list[Block], visual_mai
         return
 
     table_block = effective_blocks[cursor]
-    if table_block.type not in table_main_types:
+    if _block_type(table_block) not in table_main_types:
         return
 
     if not _is_leading_continuation_cluster_near_table(leading_blocks, table_block):
         return
 
     for block in leading_blocks:
-        block.type = BlockType.CAPTION
-        # fallback 后该块已是视觉 caption，不再参与正文跨块合并。
-        block.merge_prev = False
+        _set_block_field(block, "type", BlockType.CAPTION)
 
 
-def _is_leading_continuation_text_block(block: Block) -> bool:
+def _is_leading_continuation_text_block(block: BlockLike) -> bool:
     """判断页首候选块是否是单行续表文本。"""
     return (
-        block.type in INLINE_CAPTION_FRAGMENT_TYPES
+        _block_type(block) in INLINE_CAPTION_FRAGMENT_TYPES
         and is_single_line_caption_fragment(block)
         and is_table_continuation_text(_block_text_content(block))
     )
 
 
-def _block_text_content(block: Block) -> str:
+def _block_text_content(block: BlockLike) -> str:
     """提取视觉块中的可见文本，用于续表 marker 判断。"""
-    return "".join(span.content for line in block.lines for span in line.spans)
+    content = _get_block_field(block, "content", "")
+    return content if isinstance(content, str) else ""
 
 
 def is_transparent_visual_relation_block(block: Block) -> bool:
@@ -191,36 +240,43 @@ def is_transparent_visual_relation_block(block: Block) -> bool:
     return not _block_text_content(block).strip()
 
 
-def _is_leading_continuation_cluster_near_table(leading_blocks: list[Block], table_block: Block) -> bool:
+def _is_leading_continuation_cluster_near_table(
+    leading_blocks: list[BlockLike],
+    table_block: BlockLike,
+) -> bool:
     """判断页首续表文本簇是否与后续 table 在几何上相邻。"""
-    next_top = table_block.bbox[1]
+    next_top = _block_bbox(table_block)[1]
     max_child_height = 1
 
     for block in reversed(leading_blocks):
         if not is_horizontally_near_table(block, table_block):
             return False
 
-        block_height = max(block.bbox[3] - block.bbox[1], 1)
-        vertical_gap = next_top - block.bbox[3]
+        block_bbox = _block_bbox(block)
+        block_height = max(block_bbox[3] - block_bbox[1], 1)
+        vertical_gap = next_top - block_bbox[3]
         max_gap = stacked_caption_max_gap(max(max_child_height, block_height))
         max_overlap = max(2, block_height * 0.3)
         if vertical_gap > max_gap or vertical_gap < -max_overlap:
             return False
 
-        next_top = block.bbox[1]
+        next_top = block_bbox[1]
         max_child_height = max(max_child_height, block_height)
 
     return True
 
 
-def fallback_stacked_table_caption_fragments(blocks: list[Block], visual_main_types: dict[str, str] | set[str]) -> None:
+def fallback_stacked_table_caption_fragments(
+    blocks: list[BlockLike],
+    visual_main_types: dict[str, str] | set[str],
+) -> None:
     """将 table 上方紧贴标题簇里的 text/footnote 片段兜底为 caption。"""
     table_main_types = get_table_main_types(visual_main_types)
     if not table_main_types:
         return
 
     for table_block in blocks:
-        if table_block.type not in table_main_types:
+        if _block_type(table_block) not in table_main_types:
             continue
 
         caption_cluster = find_stacked_table_caption_cluster(table_block, blocks)
@@ -232,10 +288,8 @@ def fallback_stacked_table_caption_fragments(blocks: list[Block], visual_main_ty
             continue
 
         for block in caption_cluster[last_caption_pos + 1 :]:
-            if block.type in INLINE_CAPTION_FRAGMENT_TYPES and is_single_line_caption_fragment(block):
-                block.type = BlockType.CAPTION
-                # fallback 后该块已是视觉 caption 片段，不再参与正文跨块合并。
-                block.merge_prev = False
+            if _block_type(block) in INLINE_CAPTION_FRAGMENT_TYPES and is_single_line_caption_fragment(block):
+                _set_block_field(block, "type", BlockType.CAPTION)
 
 
 def get_table_main_types(visual_main_types: dict[str, str] | set[str]) -> set[str]:
@@ -247,16 +301,19 @@ def get_table_main_types(visual_main_types: dict[str, str] | set[str]) -> set[st
     return main_types & {BlockType.TABLE, BlockType.TABLE_BODY}
 
 
-def find_stacked_table_caption_cluster(table_block: Block, blocks: list[Block]) -> list[Block]:
+def find_stacked_table_caption_cluster(
+    table_block: BlockLike,
+    blocks: list[BlockLike],
+) -> list[BlockLike]:
     """按几何位置收集紧贴 table 上方的 caption/text/footnote 标题簇。"""
-    table_bbox = table_block.bbox
+    table_bbox = _block_bbox(table_block)
     table_top = table_bbox[1]
     above_candidates = [
         block
         for block in blocks
         if block is not table_block
-        and block.type in STACKED_TABLE_CAPTION_CLUSTER_TYPES
-        and block.bbox[3] <= table_top
+        and _block_type(block) in STACKED_TABLE_CAPTION_CLUSTER_TYPES
+        and _block_bbox(block)[3] <= table_top
         and is_horizontally_near_table(block, table_block)
     ]
     if not above_candidates:
@@ -267,42 +324,43 @@ def find_stacked_table_caption_cluster(table_block: Block, blocks: list[Block]) 
     max_child_height = 1
     for block in sorted(
         above_candidates,
-        key=lambda x: (x.bbox[1], x.index),
+        key=lambda x: (_block_bbox(x)[1], _block_index(x)),
         reverse=True,
     ):
-        block_height = max(block.bbox[3] - block.bbox[1], 1)
+        block_bbox = _block_bbox(block)
+        block_height = max(block_bbox[3] - block_bbox[1], 1)
         max_allowed_gap = stacked_caption_max_gap(max(max_child_height, block_height))
-        vertical_gap = next_top - block.bbox[3]
+        vertical_gap = next_top - block_bbox[3]
         if not 0 <= vertical_gap <= max_allowed_gap:
             break
 
         caption_cluster.append(block)
-        next_top = block.bbox[1]
+        next_top = block_bbox[1]
         max_child_height = max(max_child_height, block_height)
 
     return list(reversed(caption_cluster))
 
 
-def find_last_caption_position(caption_cluster: list[Block]) -> int | None:
+def find_last_caption_position(caption_cluster: list[BlockLike]) -> int | None:
     """定位标题簇里的最后一个 caption，避免吸收上一张表的尾注。"""
     for pos in range(len(caption_cluster) - 1, -1, -1):
-        if caption_cluster[pos].type == BlockType.CAPTION:
+        if _block_type(caption_cluster[pos]) == BlockType.CAPTION:
             return pos
     return None
 
 
-def is_horizontally_near_table(block: Block, table_block: Block) -> bool:
+def is_horizontally_near_table(block: BlockLike, table_block: BlockLike) -> bool:
     """判断标题簇候选块是否横向落在 table 范围附近。"""
-    table_bbox = table_block.bbox
-    block_bbox = block.bbox
+    table_bbox = _block_bbox(table_block)
+    block_bbox = _block_bbox(block)
     table_width = max(table_bbox[2] - table_bbox[0], 1)
     tolerance = max(12, table_width * 0.03)
     return not (block_bbox[2] < table_bbox[0] - tolerance or block_bbox[0] > table_bbox[2] + tolerance)
 
 
-def is_single_line_caption_fragment(block: Block) -> bool:
+def is_single_line_caption_fragment(block: BlockLike) -> bool:
     """判断待兜底片段是否是单行块，避免吞掉多行正文。"""
-    return len(block.lines or [None]) <= 1
+    return len(_block_line_items(block) or [None]) <= 1
 
 
 def stacked_caption_max_gap(block_height: float) -> float:
@@ -310,29 +368,33 @@ def stacked_caption_max_gap(block_height: float) -> float:
     return max(12, block_height * 1.5)
 
 
-def find_previous_effective_block(ordered_blocks: list[Block], pos: int) -> Block | None:
+def find_previous_effective_block(ordered_blocks: list[BlockLike], pos: int) -> BlockLike | None:
     """向前查找参与视觉关系判断的有效块，跳过页眉页脚等外围块。"""
     for index in range(pos - 1, -1, -1):
         block = ordered_blocks[index]
-        if block.type not in VISUAL_RELATION_IGNORED_TYPES:
+        if _block_type(block) not in VISUAL_RELATION_IGNORED_TYPES:
             return block
     return None
 
 
-def find_next_effective_block(ordered_blocks: list[Block], pos: int) -> Block | None:
+def find_next_effective_block(ordered_blocks: list[BlockLike], pos: int) -> BlockLike | None:
     """向后查找参与视觉关系判断的有效块，跳过页眉页脚等外围块。"""
     for index in range(pos + 1, len(ordered_blocks)):
         block = ordered_blocks[index]
-        if block.type not in VISUAL_RELATION_IGNORED_TYPES:
+        if _block_type(block) not in VISUAL_RELATION_IGNORED_TYPES:
             return block
     return None
 
 
-def is_inline_caption_fragment(previous_caption: Block, text_block: Block, next_visual: Block) -> bool:
+def is_inline_caption_fragment(
+    previous_caption: BlockLike,
+    text_block: BlockLike,
+    next_visual: BlockLike,
+) -> bool:
     """判断当前块是否是前一 caption 的同行补充片段。"""
-    caption_bbox = previous_caption.bbox
-    text_bbox = text_block.bbox
-    visual_bbox = next_visual.bbox
+    caption_bbox = _block_bbox(previous_caption)
+    text_bbox = _block_bbox(text_block)
+    visual_bbox = _block_bbox(next_visual)
 
     caption_height = max(caption_bbox[3] - caption_bbox[1], 1)
     text_height = max(text_bbox[3] - text_bbox[1], 1)

@@ -93,6 +93,18 @@ CODE_CONTENT_BLOCK_TYPES = {
     BlockType.CODE,
     BlockType.ALGORITHM,
 }
+LINE_METADATA_BLOCK_TYPES = {
+    BlockType.TEXT,
+    BlockType.CAPTION,
+    BlockType.FOOTNOTE,
+}
+VLM_VISUAL_ANNOTATION_TYPE_MAP = {
+    BlockType.TABLE_CAPTION: BlockType.CAPTION,
+    BlockType.IMAGE_CAPTION: BlockType.CAPTION,
+    BlockType.CODE_CAPTION: BlockType.CAPTION,
+    BlockType.TABLE_FOOTNOTE: BlockType.FOOTNOTE,
+    BlockType.IMAGE_FOOTNOTE: BlockType.FOOTNOTE,
+}
 MODEL_JSON_VISUAL_BLOCK_TYPES = {
     BlockType.IMAGE,
     BlockType.CHART,
@@ -387,6 +399,17 @@ def _build_vl_style_layout_blocks(
                 page_blocks.append(content_block)
         blocks_list.append(page_blocks)
     return blocks_list
+
+
+def _normalize_xhigh_vlm_blocks(model_list: list[list[dict[str, Any]]]) -> None:
+    """归一化 xhigh VLM 注释类型，并移除正文块的 merge_prev。"""
+    for page_model_list in model_list:
+        for block in page_model_list:
+            if block.get("type") == BlockType.TEXT:
+                block.pop("merge_prev", None)
+            normalized_type = VLM_VISUAL_ANNOTATION_TYPE_MAP.get(block.get("type"))
+            if normalized_type is not None:
+                block["type"] = normalized_type
 
 
 def _build_formula_inputs(images_layout_res: list[list[dict[str, Any]]]) -> list[list[dict[str, Any]]]:
@@ -1144,10 +1167,10 @@ def _apply_block_content_and_line_metadata(
     block_lines: dict[int, list[Line]],
     page_size: tuple[float, float],
 ) -> None:
-    """将组行结果回填到 block，并只为 TEXT 保存行框。"""
+    """将组行结果回填到 block，并为正文、视觉标题和视觉脚注保存行框。"""
     for block_item in page_model_list:
         block_type = str(block_item.get("type") or block_item.get("label") or "")
-        if block_type == BlockType.TEXT:
+        if block_type in LINE_METADATA_BLOCK_TYPES:
             block_item["_lines"] = []
         else:
             block_item.pop("_lines", None)
@@ -1160,7 +1183,7 @@ def _apply_block_content_and_line_metadata(
         if not has_nonempty_content:
             block_item["content"] = _lines_to_block_content(lines, block_type)
 
-        if block_type == BlockType.TEXT:
+        if block_type in LINE_METADATA_BLOCK_TYPES:
             block_item["_lines"] = _build_ocr_det_line_items(lines, page_size)
 
 
@@ -2508,6 +2531,7 @@ def doc_analyze(
                                     not_extract_list=NOT_EXTRACT_TYPES,
                                     image_analysis=image_analysis,
                                 )
+                                _normalize_xhigh_vlm_blocks(window_model_list)
                                 _apply_layout_title_split(
                                     window_model_list,
                                     images_layout_res,
@@ -2529,6 +2553,7 @@ def doc_analyze(
                                     images=images_pil_list,
                                     image_analysis=image_analysis,
                                 )
+                                _normalize_xhigh_vlm_blocks(window_model_list)
                                 _apply_layout_title_split(
                                     window_model_list,
                                     images_layout_res,

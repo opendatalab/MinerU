@@ -9,10 +9,10 @@ from mineru.backend.utils.visual_magic_model_utils import (
     code_content_clean,
     isolated_formula_clean,
     clean_content,
-    fallback_inline_caption_fragments,
-    fallback_leading_table_continuation_captions,
     VISUAL_MAIN_TYPES,
     regroup_visual_blocks,
+    fallback_inline_caption_fragments,
+    fallback_leading_table_continuation_captions,
 )
 from mineru.types import BlockType
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
@@ -36,7 +36,6 @@ class MagicModel:
             if block_info.get("bbox"):
                 is_block_has_bbox = True
 
-            guess_lang = None
             code_block_sub_type = None
             block_type = block_info.get("type", "")
             block_content = block_info.get("content", "")
@@ -77,6 +76,7 @@ class MagicModel:
             block = block_info
             block["type"] = block_type
             block["content"] = block_content
+            block["index"] = index
             if code_block_sub_type:
                 block["sub_type"] = code_block_sub_type
             blocks.append(block)
@@ -111,7 +111,6 @@ class MagicModel:
         else:
             self.list_blocks = fix_office_list_blocks(self.list_blocks)
             self.index_blocks = fix_office_index_blocks(self.index_blocks)
-
 
         visual_groups, unmatched_child_blocks = regroup_visual_blocks(blocks)
         self.image_blocks = visual_groups[BlockType.IMAGE]
