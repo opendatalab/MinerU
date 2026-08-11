@@ -6,7 +6,7 @@ from copy import deepcopy
 from typing import Any
 
 from ...types import BBox, Block, BlockType
-from .boxbase import bbox_center_distance, bbox_distance, calculate_overlap_area_in_bbox1_area_ratio
+from .boxbase import bbox_center_distance, bbox_distance
 from .table_continuation import is_table_continuation_text
 
 IMAGE_BLOCK_BODY = "image_block_body"
@@ -351,9 +351,7 @@ def is_inline_caption_fragment(previous_caption: Block, text_block: Block, next_
 
 def regroup_visual_blocks(blocks: list[Block]) -> tuple[dict[Any, list[Block]], list[Block]]:
     ordered_blocks = sorted(blocks, key=lambda x: x.index or 0)
-    absorbed_member_indices, sub_images_by_index = absorb_image_block_members(ordered_blocks)
-    effective_blocks = [block for block in ordered_blocks if block.index not in absorbed_member_indices]
-    visual_relation_blocks = [block for block in effective_blocks if not is_transparent_visual_relation_block(block)]
+    visual_relation_blocks = [block for block in ordered_blocks if not is_transparent_visual_relation_block(block)]
     position_by_index = {block.index: pos for pos, block in enumerate(visual_relation_blocks)}
     main_blocks = [block for block in visual_relation_blocks if block.type in VISUAL_MAIN_TYPES]
     child_blocks = [block for block in visual_relation_blocks if block.type in GENERIC_CHILD_TYPES]
@@ -362,10 +360,6 @@ def regroup_visual_blocks(blocks: list[Block]) -> tuple[dict[Any, list[Block]], 
         block.index: {"captions": [], "footnotes": []} for block in main_blocks
     }
     unmatched_child_blocks = []
-
-    for main_block in main_blocks:
-        if main_block.index in sub_images_by_index:
-            main_block._sub_images = sub_images_by_index[main_block.index]
 
     for child_block in child_blocks:
         parent_block = find_best_visual_parent(
@@ -393,7 +387,6 @@ def regroup_visual_blocks(blocks: list[Block]) -> tuple[dict[Any, list[Block]], 
         mapping = VISUAL_TYPE_MAPPING[visual_type]
         body_block = deepcopy(main_block)
         body_block.type = mapping["body"]
-        body_block._sub_images = []
         body_block.sub_type = ""
 
         captions = []
@@ -422,8 +415,6 @@ def regroup_visual_blocks(blocks: list[Block]) -> tuple[dict[Any, list[Block]], 
         )
         if visual_type in [BlockType.IMAGE, BlockType.CHART] and main_block.sub_type:
             two_layer_block.sub_type = main_block.sub_type
-        if visual_type == BlockType.IMAGE and main_block._sub_images:
-            two_layer_block._sub_images = main_block._sub_images
         if visual_type == BlockType.TABLE and main_block._cell_merge:
             two_layer_block._cell_merge = main_block._cell_merge
         two_layer_block.blocks.sort(key=lambda x: x.index or 0)
@@ -434,54 +425,6 @@ def regroup_visual_blocks(blocks: list[Block]) -> tuple[dict[Any, list[Block]], 
         blocks_of_type.sort(key=lambda x: x.index or 0)
 
     return grouped_blocks, unmatched_child_blocks
-
-
-def absorb_image_block_members(blocks: list[Block]) -> tuple[set[int], dict[int, list[Block]]]:
-    image_block_bodies = [block for block in blocks if block.type == IMAGE_BLOCK_BODY]
-    member_candidates = [block for block in blocks if block.type in [BlockType.IMAGE_BODY, BlockType.CHART_BODY]]
-
-    assignments = {}
-    for member in member_candidates:
-        best_key = None
-        best_parent_index = None
-        for image_block in image_block_bodies:
-            overlap_ratio = calculate_overlap_area_in_bbox1_area_ratio(
-                member.bbox,
-                image_block.bbox,
-            )
-            if overlap_ratio < 0.9:
-                continue
-
-            candidate_key = (
-                -overlap_ratio,
-                bbox_area(image_block.bbox),
-                image_block.index,
-            )
-            if best_key is None or candidate_key < best_key:
-                best_key = candidate_key
-                best_parent_index = image_block.index
-
-        if best_parent_index is not None:
-            assignments[member.index] = best_parent_index
-
-    absorbed_member_indices = set()
-    sub_images_by_index = {}
-    for image_block in image_block_bodies:
-        members = [member for member in member_candidates if assignments.get(member.index) == image_block.index]
-        if not members:
-            continue
-
-        members.sort(key=lambda x: x.index or 0)
-        absorbed_member_indices.update(member.index for member in members)
-        sub_images_by_index[image_block.index] = [
-            {
-                "type": child_visual_type(member.type),
-                "bbox": relative_bbox(member.bbox, image_block.bbox),
-            }
-            for member in members
-        ]
-
-    return absorbed_member_indices, sub_images_by_index
 
 
 def find_best_visual_parent(
@@ -680,29 +623,3 @@ def child_kind_from_type(block_type: str) -> str:
     if block_type == BlockType.CAPTION:
         return "caption"
     return "footnote"
-
-
-def child_visual_type(block_type: str) -> str:
-    if block_type == BlockType.CHART_BODY:
-        return BlockType.CHART
-    return BlockType.IMAGE
-
-
-def bbox_area(bbox: BBox) -> float:
-    return max(0, bbox[2] - bbox[0]) * max(0, bbox[3] - bbox[1])
-
-
-def relative_bbox(child_bbox: BBox, parent_bbox: BBox) -> BBox:
-    parent_x0, parent_y0, parent_x1, parent_y1 = parent_bbox
-    parent_w = max(parent_x1 - parent_x0, 1)
-    parent_h = max(parent_y1 - parent_y0, 1)
-    return (
-        clamp_and_round((child_bbox[0] - parent_x0) / parent_w),
-        clamp_and_round((child_bbox[1] - parent_y0) / parent_h),
-        clamp_and_round((child_bbox[2] - parent_x0) / parent_w),
-        clamp_and_round((child_bbox[3] - parent_y0) / parent_h),
-    )
-
-
-def clamp_and_round(value: float) -> float:
-    return round(min(max(value, 0.0), 1.0), 3)

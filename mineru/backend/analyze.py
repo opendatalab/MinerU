@@ -59,7 +59,7 @@ from mineru.utils.ocr_utils import (
 from mineru.utils.pdf_image_tools import load_images_from_pdf_bytes_range, get_crop_np_img
 from tqdm import tqdm
 
-from ..types import BBox, Block, BlockType, ContentType, Line, NOT_EXTRACT_TYPES, PageInfo, Span
+from ..types import BBox, Block, BlockType, ContentType, Line, NOT_EXTRACT_TYPES, Span
 from ..utils.config_reader import get_processing_window_size
 from ..utils.pdf_document import PDFDocument, PDFPage, get_lines_from_chars
 
@@ -2397,7 +2397,7 @@ def doc_analyze(
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
     file_suffix: Literal["pdf", "docx", "pptx", "xlsx"] = "pdf",
-) -> tuple[list[PageInfo], list[list[dict[str, Any]]]]:
+):
     if file_suffix not in _SUPPORTED_FILE_SUFFIXES:
         raise ValueError(f"Unsupported file suffix: {file_suffix!r}")
 
@@ -2612,7 +2612,7 @@ if __name__ == "__main__":
     demo_file_paths = [
         # os.path.join(project_root, "demo", "office_docs", "docx_01.docx"),
         # os.path.join(project_root, "demo", "pdfs", "NPU_开发环境部署_参考指南.pdf"),
-        "/Users/myhloli/pdf/png/demo2_page4.png"
+        "/Users/myhloli/pdf/png/2407.00079v4_origi-10.pdf"
     ]
 
     for file_path in demo_file_paths:
@@ -2623,4 +2623,5 @@ if __name__ == "__main__":
         model_json = json.dumps(model_list, ensure_ascii=False, indent=4)
         logger.info(f"file_path: {file_path}")
         logger.info(f"middle_json: {middle_json}")
+        logger.info(f"model_json: {model_json}")
         logger.info(f"model_list: {model_list}")
