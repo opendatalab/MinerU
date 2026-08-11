@@ -10,6 +10,7 @@ from mineru.backend.utils.visual_magic_model_utils import (
     isolated_formula_clean,
     clean_content,
     VISUAL_MAIN_TYPES,
+    _bbox_for_calculation,
     regroup_visual_blocks,
     fallback_inline_caption_fragments,
     fallback_leading_table_continuation_captions,
@@ -28,7 +29,7 @@ class MagicModel:
         self,
         page_model_list: list[dict[str, Any]],
     ) -> None:
-        blocks = []
+        self.blocks = []
         is_block_has_bbox = False
         # 解析每个块
         for index, block_info in enumerate(page_model_list):
@@ -79,11 +80,11 @@ class MagicModel:
             block["index"] = index
             if code_block_sub_type:
                 block["sub_type"] = code_block_sub_type
-            blocks.append(block)
+            self.blocks.append(block)
 
         if is_block_has_bbox:
-            fallback_inline_caption_fragments(blocks, VISUAL_MAIN_TYPES)
-            fallback_leading_table_continuation_captions(blocks, VISUAL_MAIN_TYPES)
+            fallback_inline_caption_fragments(self.blocks, VISUAL_MAIN_TYPES)
+            fallback_leading_table_continuation_captions(self.blocks, VISUAL_MAIN_TYPES)
 
 
         self.text_blocks = []
@@ -91,14 +92,14 @@ class MagicModel:
         self.list_blocks = []
         self.index_blocks = []
 
-        for block in blocks:
-            if block.type == BlockType.TEXT:
+        for block in self.blocks:
+            if block["type"] == BlockType.TEXT:
                 self.text_blocks.append(block)
-            elif block.type == BlockType.REF_TEXT:
+            elif block["type"] == BlockType.REF_TEXT:
                 self.ref_text_blocks.append(block)
-            elif block.type == BlockType.LIST:
+            elif block["type"] == BlockType.LIST:
                 self.list_blocks.append(block)
-            elif block.type == BlockType.INDEX:
+            elif block["type"] == BlockType.INDEX:
                 self.index_blocks.append(block)
 
         if is_block_has_bbox:
@@ -112,22 +113,22 @@ class MagicModel:
             self.list_blocks = fix_office_list_blocks(self.list_blocks)
             self.index_blocks = fix_office_index_blocks(self.index_blocks)
 
-        visual_groups, unmatched_child_blocks = regroup_visual_blocks(blocks)
+        visual_groups, unmatched_child_blocks = regroup_visual_blocks(self.blocks)
         self.image_blocks = visual_groups[BlockType.IMAGE]
         self.table_blocks = visual_groups[BlockType.TABLE]
         self.chart_blocks = visual_groups[BlockType.CHART]
         self.code_blocks = visual_groups[BlockType.CODE]
 
         for code_block in self.code_blocks:
-            if code_block.sub_type == "code":
+            if code_block["sub_type"] == "code":
                 for sub_block in code_block["blocks"]:
                     if sub_block.get("type") == BlockType.CODE_BODY:
                         guess_lang = guess_language_by_text(sub_block.get("content", ""))
-                        code_block.guess_lang = guess_lang
+                        code_block["guess_lang"] = guess_lang
                         break
 
         for block in unmatched_child_blocks:
-            block.type = BlockType.TEXT
+            block["type"] = BlockType.TEXT
 
 
 def fix_pdf_list_blocks(
@@ -142,8 +143,8 @@ def fix_pdf_list_blocks(
         for list_block in list_blocks:
             if (
                 calculate_overlap_area_in_bbox1_area_ratio(
-                    block.bbox,
-                    list_block.bbox,
+                    _bbox_for_calculation(block["bbox"]),
+                    _bbox_for_calculation(list_block["bbox"]),
                 )
                 >= 0.8
             ):
@@ -162,7 +163,7 @@ def fix_pdf_list_blocks(
     for list_block in list_blocks:
         type_count = {}
         for sub_block in list_block["content"]:
-            sub_block_type = sub_block.type
+            sub_block_type = sub_block["type"]
             if sub_block_type not in type_count:
                 type_count[sub_block_type] = 0
             type_count[sub_block_type] += 1

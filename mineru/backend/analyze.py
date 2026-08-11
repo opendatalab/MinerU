@@ -15,7 +15,7 @@ import numpy as np
 from PIL import Image
 from loguru import logger
 
-# from mineru.backend.model_list_to_midlle_json import model_list_to_pages
+from mineru.backend.model_list_to_midlle_json import model_list_to_pages
 from mineru.version import __version__ as mineru_version
 from mineru.backend.utils.table_text import project_ocr_table_text, project_pdf_table_text
 from mineru.backend.local_model_runtime import (
@@ -2624,7 +2624,7 @@ def doc_analyze(
         "parse_mode": parse_mode,
         "mineru_version": mineru_version,
     }
-    # middle_json["pages"] = model_list_to_pages(model_list, page_index_map)
+    middle_json["pages"] = model_list_to_pages(model_list, page_index_map)
     return middle_json, model_list
 
 
@@ -2637,14 +2637,15 @@ if __name__ == "__main__":
     demo_file_paths = [
         # os.path.join(project_root, "demo", "office_docs", "docx_01.docx"),
         # os.path.join(project_root, "demo", "pdfs", "NPU_开发环境部署_参考指南.pdf"),
-        "/Users/myhloli/pdf/png/2407.00079v4_origi-10.pdf"
+        # "/Users/myhloli/pdf/png/2407.00079v4_origi-10.pdf",
+        os.path.join(project_root, "demo", "pdfs", "demo1.pdf"),
     ]
 
     for file_path in demo_file_paths:
         file_bytes = read_fn(file_path)
         file_suffix = os.path.splitext(file_path)[1].lstrip(".").lower()
         file_suffix = "pdf"
-        middle_json, model_list = doc_analyze(file_bytes, effort="xhigh", file_suffix=file_suffix)
+        middle_json, model_list = doc_analyze(file_bytes, effort="flash", file_suffix=file_suffix)
         model_json = json.dumps(model_list, ensure_ascii=False, indent=4)
         logger.info(f"file_path: {file_path}")
         logger.info(f"middle_json: {middle_json}")
