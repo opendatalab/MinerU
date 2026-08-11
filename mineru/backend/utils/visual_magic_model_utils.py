@@ -82,9 +82,17 @@ def _block_type(block: BlockLike) -> str:
     return str(_get_block_field(block, "type", "") or "")
 
 
+def _bbox_for_calculation(bbox: BBox) -> BBox:
+    """返回仅用于计算的 bbox 副本，归一化坐标临时放大一千倍。"""
+    x0, y0, x1, y1 = bbox
+    if all(value <= 1 for value in (x0, y0, x1, y1)):
+        return x0 * 1000, y0 * 1000, x1 * 1000, y1 * 1000
+    return x0, y0, x1, y1
+
+
 def _block_bbox(block: BlockLike) -> BBox:
     """读取参与视觉关系判断的 block bbox。"""
-    return cast(BBox, _get_block_field(block, "bbox"))
+    return _bbox_for_calculation(cast(BBox, _get_block_field(block, "bbox")))
 
 
 def _block_line_items(block: BlockLike) -> list[Any]:
@@ -540,7 +548,14 @@ def find_best_visual_parent(
     if len(closest_index_candidates) == 1:
         return closest_index_candidates[0]
 
-    edge_distances = [(main_block, bbox_distance(child_block.bbox, main_block.bbox)) for main_block in closest_index_candidates]
+    child_bbox = _bbox_for_calculation(child_block.bbox)
+    edge_distances = [
+        (
+            main_block,
+            bbox_distance(child_bbox, _bbox_for_calculation(main_block.bbox)),
+        )
+        for main_block in closest_index_candidates
+    ]
     edge_values = [edge_distance for _, edge_distance in edge_distances]
     if max(edge_values) - min(edge_values) > 2:
         return min(
@@ -563,7 +578,10 @@ def find_best_visual_parent(
     return min(
         closest_index_candidates,
         key=lambda main_block: (
-            bbox_center_distance(child_block.bbox, main_block.bbox),
+            bbox_center_distance(
+                child_bbox,
+                _bbox_for_calculation(main_block.bbox),
+            ),
             main_block.index,
         ),
     )
@@ -644,8 +662,8 @@ def is_block_outside_visual_gap(between_block: Block, child_block: Block, main_b
 
 def vertical_gap_between_blocks(first_block: Block, second_block: Block) -> tuple[float, float] | None:
     """计算两个块上下分离时的垂直间隔；发生纵向重叠时保持严格阻断。"""
-    first_bbox = first_block.bbox
-    second_bbox = second_block.bbox
+    first_bbox = _bbox_for_calculation(first_block.bbox)
+    second_bbox = _bbox_for_calculation(second_block.bbox)
     if first_bbox[3] <= second_bbox[1]:
         return first_bbox[3], second_bbox[1]
     if second_bbox[3] <= first_bbox[1]:
@@ -655,6 +673,7 @@ def vertical_gap_between_blocks(first_block: Block, second_block: Block) -> tupl
 
 def is_bbox_intersecting_vertical_gap(bbox: BBox, vertical_gap: tuple[float, float]) -> bool:
     """判断 bbox 是否与视觉父子块之间的垂直间隔相交。"""
+    bbox = _bbox_for_calculation(bbox)
     gap_top, gap_bottom = vertical_gap
     return bbox[1] < gap_bottom and bbox[3] > gap_top
 
@@ -666,6 +685,8 @@ def is_bbox_overlapping_visual_relation_block(bbox: BBox, child_bbox: BBox, main
 
 def are_bboxes_overlapping(first_bbox: BBox, second_bbox: BBox) -> bool:
     """判断两个 bbox 是否存在二维相交。"""
+    first_bbox = _bbox_for_calculation(first_bbox)
+    second_bbox = _bbox_for_calculation(second_bbox)
     return not (
         first_bbox[2] <= second_bbox[0]
         or first_bbox[0] >= second_bbox[2]
