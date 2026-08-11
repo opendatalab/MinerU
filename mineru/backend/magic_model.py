@@ -127,6 +127,36 @@ class MagicModel:
 
         for block in unmatched_child_blocks:
             block["type"] = BlockType.TEXT
+            self.text_blocks.append(block)
+
+        # 移除已完成分类或分组的原始块，再写回处理后的顶层块。
+        replaced_block_types = {
+            BlockType.TEXT,
+            BlockType.REF_TEXT,
+            BlockType.LIST,
+            BlockType.INDEX,
+            BlockType.CAPTION,
+            BlockType.FOOTNOTE,
+            BlockType.IMAGE_BODY,
+            BlockType.TABLE_BODY,
+            BlockType.CHART_BODY,
+            BlockType.CODE_BODY,
+        }
+        self.blocks = [
+            block
+            for block in self.blocks
+            if block["type"] not in replaced_block_types
+        ]
+        self.blocks.extend(
+            self.list_blocks
+            + self.text_blocks
+            + self.ref_text_blocks
+            + self.index_blocks
+            + self.image_blocks
+            + self.table_blocks
+            + self.chart_blocks
+            + self.code_blocks
+        )
 
 
 def fix_pdf_list_blocks(
