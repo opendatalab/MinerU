@@ -5,8 +5,10 @@ from mineru.backend.utils.visual_magic_model_utils import (
     _bbox_for_calculation,
     fallback_inline_caption_fragments,
     fallback_leading_table_continuation_captions,
+    fallback_no_bbox_caption_fragments,
     find_best_visual_parent,
     is_block_outside_visual_gap,
+    regroup_visual_blocks,
 )
 from mineru.types import Block, BlockType, Line
 
@@ -255,3 +257,164 @@ def test_block_class_fallbacks_keep_attribute_access_compatibility() -> None:
     assert inline_companion.merge_prev is True
     assert continuation.type == BlockType.CAPTION
     assert continuation.merge_prev is True
+
+
+def test_regroup_visual_blocks_supports_bbox_dicts() -> None:
+    """验证带 bbox 的 dict 可沿用现有视觉关系规则生成 dict 两层块。"""
+    caption = {
+        "index": 0,
+        "type": BlockType.CAPTION,
+        "bbox": [0.0, 0.0, 80.0, 10.0],
+        "content": "Figure 1",
+    }
+    body = {
+        "index": 1,
+        "type": BlockType.IMAGE_BODY,
+        "bbox": [0.0, 15.0, 80.0, 60.0],
+        "content": "",
+    }
+    footnote = {
+        "index": 2,
+        "type": BlockType.FOOTNOTE,
+        "bbox": [0.0, 65.0, 80.0, 75.0],
+        "content": "source",
+    }
+
+    grouped_blocks, unmatched_blocks = regroup_visual_blocks(
+        [caption, body, footnote]
+    )
+
+    assert unmatched_blocks == []
+    assert len(grouped_blocks[BlockType.IMAGE]) == 1
+    image_block = grouped_blocks[BlockType.IMAGE][0]
+    assert isinstance(image_block, dict)
+    assert image_block["type"] == BlockType.IMAGE
+    assert image_block["bbox"] == body["bbox"]
+    assert [block["type"] for block in image_block["blocks"]] == [
+        BlockType.IMAGE_CAPTION,
+        BlockType.IMAGE_BODY,
+        BlockType.IMAGE_FOOTNOTE,
+    ]
+    assert caption["type"] == BlockType.CAPTION
+    assert footnote["type"] == BlockType.FOOTNOTE
+
+
+def test_regroup_visual_blocks_keeps_block_output_compatibility() -> None:
+    """验证 Block 输入仍生成 Block 两层结构。"""
+    blocks = [
+        Block(
+            index=0,
+            type=BlockType.CAPTION,
+            bbox=(0.0, 0.0, 80.0, 10.0),
+        ),
+        Block(
+            index=1,
+            type=BlockType.IMAGE_BODY,
+            bbox=(0.0, 15.0, 80.0, 60.0),
+        ),
+    ]
+
+    grouped_blocks, unmatched_blocks = regroup_visual_blocks(blocks)
+
+    assert unmatched_blocks == []
+    image_block = grouped_blocks[BlockType.IMAGE][0]
+    assert isinstance(image_block, Block)
+    assert [block.type for block in image_block.blocks] == [
+        BlockType.IMAGE_CAPTION,
+        BlockType.IMAGE_BODY,
+    ]
+
+
+def test_regroup_visual_blocks_preserves_dict_visual_metadata() -> None:
+    """验证 dict 根节点保留 code subtype、视觉 subtype 与表格合并信息。"""
+    blocks = [
+        {
+            "index": 0,
+            "type": BlockType.CODE_BODY,
+            "content": "print('ok')",
+            "sub_type": "code",
+        },
+        {
+            "index": 1,
+            "type": BlockType.IMAGE_BODY,
+            "content": "",
+            "sub_type": "seal",
+        },
+        {
+            "index": 2,
+            "type": BlockType.TABLE_BODY,
+            "content": "<table></table>",
+            "_cell_merge": [1, 0],
+        },
+    ]
+
+    grouped_blocks, _ = regroup_visual_blocks(blocks, use_bbox=False)
+
+    code_block = grouped_blocks[BlockType.CODE][0]
+    image_block = grouped_blocks[BlockType.IMAGE][0]
+    table_block = grouped_blocks[BlockType.TABLE][0]
+    assert code_block["sub_type"] == "code"
+    assert code_block["blocks"][0]["sub_type"] == ""
+    assert image_block["sub_type"] == "seal"
+    assert table_block["_cell_merge"] == [1, 0]
+
+
+def test_regroup_visual_blocks_without_bbox_prefers_previous_parent() -> None:
+    """验证无 bbox 等距匹配优先选择 caption 前方的视觉主体。"""
+    image_body = {"index": 0, "type": BlockType.IMAGE_BODY, "content": ""}
+    caption = {"index": 1, "type": BlockType.CAPTION, "content": "Figure 1"}
+    table_body = {"index": 2, "type": BlockType.TABLE_BODY, "content": ""}
+
+    grouped_blocks, unmatched_blocks = regroup_visual_blocks(
+        [image_body, caption, table_body],
+        use_bbox=False,
+    )
+
+    assert unmatched_blocks == []
+    assert "bbox" not in grouped_blocks[BlockType.IMAGE][0]
+    assert [
+        block["type"]
+        for block in grouped_blocks[BlockType.IMAGE][0]["blocks"]
+    ] == [BlockType.IMAGE_BODY, BlockType.IMAGE_CAPTION]
+    assert [
+        block["type"]
+        for block in grouped_blocks[BlockType.TABLE][0]["blocks"]
+    ] == [BlockType.TABLE_BODY]
+
+
+def test_regroup_visual_blocks_without_bbox_keeps_text_as_barrier() -> None:
+    """验证无 bbox 模式不会跨过普通文本关联 caption。"""
+    caption = {"index": 0, "type": BlockType.CAPTION, "content": "Table 1"}
+    text = {"index": 1, "type": BlockType.TEXT, "content": "paragraph"}
+    table_body = {"index": 2, "type": BlockType.TABLE_BODY, "content": ""}
+
+    grouped_blocks, unmatched_blocks = regroup_visual_blocks(
+        [caption, text, table_body],
+        use_bbox=False,
+    )
+
+    assert unmatched_blocks == [caption]
+    assert [
+        block["type"]
+        for block in grouped_blocks[BlockType.TABLE][0]["blocks"]
+    ] == [BlockType.TABLE_BODY]
+
+
+def test_no_bbox_caption_fallback_uses_office_prefixes() -> None:
+    """验证无 bbox 的 table/image/chart 后置文本按 Office 前缀提升。"""
+    cases = [
+        (BlockType.TABLE_BODY, "Table 1", BlockType.CAPTION),
+        (BlockType.IMAGE_BODY, "图 1", BlockType.CAPTION),
+        (BlockType.CHART_BODY, "Chart 1", BlockType.CAPTION),
+        (BlockType.IMAGE_BODY, "ordinary text", BlockType.TEXT),
+    ]
+
+    for main_type, content, expected_type in cases:
+        blocks = [
+            {"index": 0, "type": main_type, "content": ""},
+            {"index": 1, "type": BlockType.TEXT, "content": content},
+        ]
+
+        fallback_no_bbox_caption_fragments(blocks, VISUAL_MAIN_TYPES)
+
+        assert blocks[1]["type"] == expected_type

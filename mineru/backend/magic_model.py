@@ -14,6 +14,7 @@ from mineru.backend.utils.visual_magic_model_utils import (
     regroup_visual_blocks,
     fallback_inline_caption_fragments,
     fallback_leading_table_continuation_captions,
+    fallback_no_bbox_caption_fragments,
 )
 from mineru.types import BlockType
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
@@ -30,22 +31,14 @@ class MagicModel:
         page_model_list: list[dict[str, Any]],
     ) -> None:
         self.blocks = []
-        is_block_has_bbox = False
+        is_block_has_bbox = any(block_info.get("bbox") for block_info in page_model_list)
         # 解析每个块
         for index, block_info in enumerate(page_model_list):
-
-            if block_info.get("bbox"):
-                is_block_has_bbox = True
-
             code_block_sub_type = None
             block_type = block_info.get("type", "")
             block_content = block_info.get("content", "")
 
-            if block_type in ["image_caption", "table_caption", "code_caption"]:
-                block_type = BlockType.CAPTION
-            elif block_type in ["image_footnote", "table_footnote"]:
-                block_type = BlockType.FOOTNOTE
-            elif block_type == "image":
+            if block_type == "image":
                 block_type = BlockType.IMAGE_BODY
             elif block_type == "table":
                 block_type = BlockType.TABLE_BODY
@@ -85,6 +78,8 @@ class MagicModel:
         if is_block_has_bbox:
             fallback_inline_caption_fragments(self.blocks, VISUAL_MAIN_TYPES)
             fallback_leading_table_continuation_captions(self.blocks, VISUAL_MAIN_TYPES)
+        else:
+            fallback_no_bbox_caption_fragments(self.blocks, VISUAL_MAIN_TYPES)
 
 
         self.text_blocks = []
@@ -113,7 +108,10 @@ class MagicModel:
             self.list_blocks = fix_office_list_blocks(self.list_blocks)
             self.index_blocks = fix_office_index_blocks(self.index_blocks)
 
-        visual_groups, unmatched_child_blocks = regroup_visual_blocks(self.blocks)
+        visual_groups, unmatched_child_blocks = regroup_visual_blocks(
+            self.blocks,
+            use_bbox=is_block_has_bbox,
+        )
         self.image_blocks = visual_groups[BlockType.IMAGE]
         self.table_blocks = visual_groups[BlockType.TABLE]
         self.chart_blocks = visual_groups[BlockType.CHART]
