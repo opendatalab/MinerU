@@ -935,14 +935,14 @@ def _rule_overlaps_fixed_container(
     fixed_blocks: list[dict[str, object]],
     page_size: tuple[float, float],
 ) -> bool:
-    """排除落在表格、图片或公式容器内的页首横线。"""
+    """排除落在表格、图片、公式或代码容器内的页首横线。"""
 
     expanded_rule = _expand_bbox(
         rule.original_bbox,
         max(1.0, rule.width),
     )
     for block in fixed_blocks:
-        if block.get("type") not in {"table", "image", "equation"}:
+        if block.get("type") not in {"table", "image", "equation", "code"}:
             continue
         bbox = _clip_bbox(_coerce_bbox(block.get("bbox")), page_size)
         if bbox is not None and _bbox_intersects(expanded_rule, bbox):

@@ -173,7 +173,7 @@ def _detect_rule_delimited_code_candidates(
                 [top_rule.bbox, bottom_rule.bbox]
             )
             candidate_height = candidate_bbox[3] - candidate_bbox[1]
-            if not 6.0 * median_height <= candidate_height <= 0.35 * page_height:
+            if not 6.0 * median_height <= candidate_height <= 0.5 * page_height:
                 continue
             if any(
                 _bbox_overlap_in_smaller(candidate_bbox, excluded_bbox) >= 0.5
@@ -314,6 +314,9 @@ def _rule_delimited_code_members_are_structured(
     )
     if not has_line_number_gutter and not has_indent_hierarchy:
         return False
+    # 稳定行号槽属于强代码证据，允许右侧长语句或注释自然触及清单边界。
+    if has_line_number_gutter:
+        return True
 
     occupied_width = max(line.bbox[2] for line in members) - min(
         line.bbox[0] for line in members

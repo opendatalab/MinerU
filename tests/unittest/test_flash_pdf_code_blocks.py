@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+from mineru.model.flash import PdfModel
 from mineru.model.flash.native_pdf import code_blocks, models, pipeline
 from mineru.backend.utils.table_text import project_pdf_spatial_text
-from mineru.utils.pdf_document import PDFPathInfo
+from mineru.utils.pdf_document import PDFDocument, PDFPathInfo
 
 from _flash_pdf_test_utils import _text_line
 
@@ -144,6 +146,8 @@ def test_code_projection_preserves_columns_and_blank_rows() -> None:
 def _rule_delimited_code_source(
     *,
     include_internal_grid: bool = False,
+    page_height: float = 300.0,
+    touch_right_edge: bool = False,
 ) -> models._PageSource:
     """构造带上下边界、行号槽和可选内部网格线的代码清单页面。"""
 
@@ -159,7 +163,12 @@ def _rule_delimited_code_source(
         )
         statement = _text_line(
             f"statement {row_index}",
-            (42.0 + 6.0 * (row_index % 3), top, 125.0, top + 8.0),
+            (
+                42.0 + 6.0 * (row_index % 3),
+                top,
+                180.0 if touch_right_edge else 125.0,
+                top + 8.0,
+            ),
             2 * row_index + 1,
             visual_row_id=row_index,
             split_from_row=True,
@@ -179,10 +188,34 @@ def _rule_delimited_code_source(
             )
         )
     return models._PageSource(
-        page_size=(200.0, 300.0),
+        page_size=(200.0, page_height),
         lines=lines,
         chars=[],
         drawing_lines=drawing_lines,
+    )
+
+
+def _full_width_indent_only_source() -> models._PageSource:
+    """构造没有行号槽、仅靠多层缩进且横向占满的宽幅文本候选。"""
+
+    lines = [
+        _text_line(
+            f"paragraph {row_index}",
+            (20.0 + 12.0 * (row_index % 3), top, 180.0, top + 8.0),
+            row_index,
+            visual_row_id=row_index,
+            effective_height=8.0,
+        )
+        for row_index, top in enumerate((30.0, 42.0, 54.0, 66.0, 78.0, 90.0))
+    ]
+    return models._PageSource(
+        page_size=(200.0, 200.0),
+        lines=lines,
+        chars=[],
+        drawing_lines=[
+            models._AxisLine((20.0, 20.0, 180.0, 21.0), 1.0, "horizontal"),
+            models._AxisLine((20.0, 104.0, 180.0, 105.0), 1.0, "horizontal"),
+        ],
     )
 
 
@@ -198,6 +231,36 @@ def test_rule_delimited_listing_materializes_code_before_table_claim() -> None:
     assert len(blocks) == 1
     assert blocks[0]["type"] == "code"
     assert claimed == set(range(12))
+
+
+def test_tall_full_width_rule_delimited_listing_materializes_code() -> None:
+    """验证高占比且文本触边的强行号槽清单仍能形成单一 code。"""
+
+    source = _rule_delimited_code_source(
+        page_height=200.0,
+        touch_right_edge=True,
+    )
+
+    blocks, claimed = code_blocks._build_rule_delimited_code_blocks(
+        source,
+        [],
+    )
+
+    assert len(blocks) == 1
+    assert blocks[0]["type"] == "code"
+    assert claimed == set(range(12))
+
+
+def test_tall_full_width_indent_only_listing_is_rejected() -> None:
+    """验证没有行号槽的宽幅缩进正文仍受占宽保护，不会误判为 code。"""
+
+    blocks, claimed = code_blocks._build_rule_delimited_code_blocks(
+        _full_width_indent_only_source(),
+        [],
+    )
+
+    assert blocks == []
+    assert claimed == set()
 
 
 def test_rule_delimited_listing_rejects_real_table_internal_grid() -> None:
@@ -235,3 +298,49 @@ def test_rule_delimited_listing_rejects_vertical_track_spanning_candidate() -> N
     ) == 1.0
     assert blocks == []
     assert claimed == set()
+
+
+def test_kvcache_algorithm_pdf_materializes_caption_and_code() -> None:
+    """验证真实长算法页面输出相邻 caption/code，且来源文本不再重复。"""
+
+    pdf_path = (
+        Path(__file__).parents[2]
+        / "demo"
+        / "pdfs"
+        / "2407.00079v4_origi-10.pdf"
+    )
+    with PDFDocument(str(pdf_path)) as pdf_doc:
+        page = PdfModel().predict(pdf_doc)[0]
+
+    caption_text = "Algorithm 1 KVCache-centric Scheduling Algorithm"
+    captions = [
+        block
+        for block in page
+        if block["type"] == "caption" and block.get("content") == caption_text
+    ]
+    code = [block for block in page if block["type"] == "code"]
+
+    assert len(captions) == 1
+    assert captions[0]["bbox"] == [0.176, 0.094, 0.528, 0.106]
+    assert len(code) == 1
+    assert code[0]["bbox"] == [0.176, 0.108, 0.824, 0.539]
+    assert page.index(captions[0]) + 1 == page.index(code[0])
+    assert not [
+        block
+        for block in page
+        if block["type"] == "header" and block.get("content") == caption_text
+    ]
+
+    code_content = str(code[0]["content"])
+    probes = (
+        "Input: prefill instance pool P",
+        "1: block_keys",
+        "31: return (p, d)",
+        "KVCache hot-spot migration",
+    )
+    assert all(probe in code_content for probe in probes)
+    for probe in probes:
+        assert sum(
+            probe in str(block.get("content", ""))
+            for block in page
+        ) == 1
