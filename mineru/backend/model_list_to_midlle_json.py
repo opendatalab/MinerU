@@ -5,23 +5,6 @@ from typing import Any
 from mineru.backend.magic_model import MagicModel
 
 
-def model_list_to_pages(
-    model_list:  list[list[dict[str, Any]]],
-    page_index_map: list[int] | None = None,
-):
-    """将 model_list 转换为 pages"""
-    if page_index_map is None:
-        page_index_map = list(range(len(model_list)))
-    pages: list[list[dict[str, Any]]] = []
-    for page_model_list, page_index in zip(model_list, page_index_map):
-        page_info = blocks_to_page_info(
-            page_model_list,
-        )
-        page_info["page_idx"] = page_index
-        pages.append(page_info)
-    return pages
-
-
 def blocks_to_page_info(
     page_model_list: list[dict[str, Any]],
 ):
@@ -39,6 +22,27 @@ def blocks_to_page_info(
         "blocks": page_blocks,
     }
     return page_info
+
+
+def model_list_to_pages(
+    model_list:  list[list[dict[str, Any]]],
+    page_index_map: list[int] | None = None,
+):
+    """将 model_list 转换为 pages"""
+    if page_index_map is None:
+        page_index_map = list(range(len(model_list)))
+    pages: list[list[dict[str, Any]]] = []
+    for page_model_list, page_index in zip(model_list, page_index_map):
+        page_info = blocks_to_page_info(
+            page_model_list,
+        )
+        page_info["page_idx"] = page_index
+        pages.append(page_info)
+
+    # 接着对连续页码做后处理：段落拼接、表格拼接，当且仅当page_index_map为None时，允许标题分级
+    # 后处理需要有bbox信息，通过是否有bbox区分是office文档还是pdf文档
+
+    return pages
 
 
 # def finalize_middle_json_from_preproc(pages: list[PageInfo], effort: str = DEFAULT_HYBRID_EFFORT) -> None:

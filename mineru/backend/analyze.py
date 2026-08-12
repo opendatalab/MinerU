@@ -2645,8 +2645,8 @@ if __name__ == "__main__":
     demo_file_paths = [
         # os.path.join(project_root, "demo", "office_docs", "docx_01.docx"),
         # os.path.join(project_root, "demo", "pdfs", "NPU_开发环境部署_参考指南.pdf"),
-        "/Users/myhloli/pdf/png/2407.00079v4_origi-10.pdf",
-        # os.path.join(project_root, "demo", "pdfs", "demo1.pdf"),
+        # "/Users/myhloli/pdf/png/2407.00079v4_origi-10.pdf",
+        os.path.join(project_root, "demo", "pdfs", "demo1.pdf"),
     ]
 
     for file_path in demo_file_paths:
