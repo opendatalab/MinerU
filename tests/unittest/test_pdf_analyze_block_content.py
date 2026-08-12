@@ -5,6 +5,9 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+from PIL import Image
+from mineru_vl_utils.structs import ContentBlock as VlmContentBlock
+from mineru_vl_utils.structs import ExtractResult
 
 from mineru.backend import analyze
 from mineru.backend.utils.span_pre_proc import (
@@ -58,6 +61,144 @@ def _build_post_ocr_page_block_lines(
         line_bbox = (0.0, float(page_idx), float(len(page_spans)), float(page_idx + 1))
         page_block_lines_list.append({0: [Line(bbox=line_bbox, spans=page_spans)]})
     return page_block_lines_list, spans
+
+
+def test_convert_vlm_results_to_model_list_uses_builtin_containers() -> None:
+    """验证 VLM 容器子类会转换为原生 list/dict，且不会修改源块。"""
+    source_block = VlmContentBlock(
+        type=BlockType.TEXT,
+        bbox=[0.1, 0.2, 0.8, 0.4],
+        angle=0,
+        content="原始文本",
+        merge_prev=True,
+    )
+    source_page = ExtractResult([source_block], layout_scored=object())
+
+    model_list = analyze._convert_vlm_results_to_model_list([source_page, ExtractResult()])
+
+    assert type(model_list) is list
+    assert all(type(page) is list for page in model_list)
+    assert type(model_list[0][0]) is dict
+    assert list(model_list[0][0]) == list(source_block)
+    assert model_list[0][0] == dict(source_block)
+    assert model_list[1] == []
+    assert model_list[0] is not source_page
+    assert model_list[0][0] is not source_block
+
+    model_list[0][0]["content"] = "转换后文本"
+    assert source_block["content"] == "原始文本"
+
+
+@pytest.mark.parametrize(
+    ("effort", "parse_mode", "vlm_method_name"),
+    [
+        ("high", "txt", "batch_extract_with_layout"),
+        ("high", "ocr", "batch_extract_with_layout"),
+        ("xhigh", "txt", "batch_two_step_extract"),
+        ("xhigh", "ocr", "batch_two_step_extract"),
+    ],
+)
+def test_doc_analyze_converts_vlm_results_before_downstream_processing(
+    monkeypatch: pytest.MonkeyPatch,
+    effort: str,
+    parse_mode: str,
+    vlm_method_name: str,
+) -> None:
+    """验证 high/xhigh 的 TXT/OCR 路径都只向后续阶段传递原生 list/dict。"""
+    source_block = VlmContentBlock(
+        type=BlockType.PAGE_NUMBER,
+        bbox=[0.45, 0.9, 0.55, 0.95],
+        angle=0,
+        content="1",
+    )
+    source_page = ExtractResult([source_block], layout_scored=object())
+    fake_document = MagicMock()
+    fake_document.page_count = 1
+    fake_document.__getitem__.return_value = MagicMock(size=(612.0, 792.0))
+
+    hybrid_model = MagicMock()
+    hybrid_model.device = "cpu"
+    hybrid_model.layout_model.batch_predict.return_value = [[]]
+    hybrid_singleton = MagicMock()
+    hybrid_singleton.get_model.return_value = hybrid_model
+
+    vlm_predictor = MagicMock()
+    getattr(vlm_predictor, vlm_method_name).return_value = [source_page]
+    vlm_singleton = MagicMock()
+    vlm_singleton.get_model.return_value = vlm_predictor
+    serial_wrapper = MagicMock(return_value=vlm_predictor)
+    page_image = Image.new("RGB", (64, 96), "white")
+
+    def fake_process_text_and_formulas(
+        _images_list: object,
+        _pdf_pages: object,
+        window_model_list: list[list[dict[str, object]]],
+        _parse_mode: object,
+        _effort: object,
+        _hybrid_model: object,
+        _images_layout_res: object,
+    ) -> list[list[dict[str, object]]]:
+        """原样返回窗口结果，并在后处理入口校验精确容器类型。"""
+        assert type(window_model_list) is list
+        assert all(type(page) is list for page in window_model_list)
+        assert all(type(block) is dict for page in window_model_list for block in page)
+        return window_model_list
+
+    xhigh_normalizer = MagicMock(wraps=analyze._normalize_xhigh_vlm_blocks)
+    monkeypatch.setattr(analyze, "PDFDocument", MagicMock(return_value=fake_document))
+    monkeypatch.setattr(analyze, "HybridLocalModelContextSingleton", MagicMock(return_value=hybrid_singleton))
+    monkeypatch.setattr(
+        analyze,
+        "_load_vlm_runtime",
+        MagicMock(
+            return_value={
+                "ModelSingleton": MagicMock(return_value=vlm_singleton),
+                "_maybe_enable_serial_execution": serial_wrapper,
+            }
+        ),
+    )
+    monkeypatch.setattr(analyze, "get_vlm_engine", MagicMock(return_value="transformers"))
+    monkeypatch.setattr(
+        analyze,
+        "load_images_from_pdf_bytes_range",
+        MagicMock(return_value=[{"img_pil": page_image, "scale": 1.0}]),
+    )
+    monkeypatch.setattr(analyze, "_process_text_and_formulas", fake_process_text_and_formulas)
+    monkeypatch.setattr(analyze, "_normalize_xhigh_vlm_blocks", xhigh_normalizer)
+    monkeypatch.setattr(analyze, "_apply_seal_ocr", MagicMock())
+    monkeypatch.setattr(analyze, "_supplement_missing_image_block_containers", MagicMock())
+    monkeypatch.setattr(analyze, "_attach_visual_block_images", MagicMock())
+    monkeypatch.setattr(analyze, "model_list_to_pages", MagicMock(return_value=[]))
+    monkeypatch.setattr(analyze, "clean_memory", MagicMock())
+
+    middle_json, model_list = analyze.doc_analyze(
+        b"fake-pdf",
+        effort=effort,  # type: ignore[arg-type]
+        parse_mode=parse_mode,  # type: ignore[arg-type]
+    )
+
+    assert type(model_list) is list
+    assert type(model_list[0]) is list
+    assert type(model_list[0][0]) is dict
+    assert model_list == [[{"type": BlockType.PAGE_NUMBER, "bbox": [0.45, 0.9, 0.55, 0.95], "content": "1"}]]
+    assert middle_json["pages"] == []
+    assert middle_json["effort"] == effort
+    assert middle_json["parse_mode"] == parse_mode
+    assert type(source_page) is ExtractResult
+    assert type(source_block) is VlmContentBlock
+    assert source_block["angle"] == 0
+
+    if effort == "xhigh":
+        xhigh_normalizer.assert_called_once()
+        normalized_model_list = xhigh_normalizer.call_args.args[0]
+        assert all(type(page) is list for page in normalized_model_list)
+        assert all(type(block) is dict for page in normalized_model_list for block in page)
+        vlm_predictor.batch_two_step_extract.assert_called_once()
+        vlm_predictor.batch_extract_with_layout.assert_not_called()
+    else:
+        xhigh_normalizer.assert_not_called()
+        vlm_predictor.batch_extract_with_layout.assert_called_once()
+        vlm_predictor.batch_two_step_extract.assert_not_called()
 
 
 def test_xhigh_vlm_blocks_normalize_visual_annotation_types() -> None:

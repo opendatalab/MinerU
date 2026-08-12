@@ -6,6 +6,7 @@ import os
 import re
 import time
 from collections import Counter
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Literal
@@ -399,6 +400,13 @@ def _build_vl_style_layout_blocks(
                 page_blocks.append(content_block)
         blocks_list.append(page_blocks)
     return blocks_list
+
+
+def _convert_vlm_results_to_model_list(
+    vlm_results: Iterable[Iterable[Mapping[str, Any]]],
+) -> list[list[dict[str, Any]]]:
+    """将 VLM 返回的 ExtractResult/ContentBlock 转换为原生 list/dict。"""
+    return [[dict(block) for block in page_blocks] for page_blocks in vlm_results]
 
 
 def _normalize_xhigh_vlm_blocks(model_list: list[list[dict[str, Any]]]) -> None:
@@ -2422,7 +2430,7 @@ def doc_analyze(
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
     file_suffix: Literal["pdf", "docx", "pptx", "xlsx"] = "pdf",
-):
+) -> tuple[dict[str, Any], list[list[dict[str, Any]]]]:
     if file_suffix not in _SUPPORTED_FILE_SUFFIXES:
         raise ValueError(f"Unsupported file suffix: {file_suffix!r}")
 
@@ -2533,12 +2541,6 @@ def doc_analyze(
                                     not_extract_list=NOT_EXTRACT_TYPES,
                                     image_analysis=image_analysis,
                                 )
-                                _normalize_xhigh_vlm_blocks(window_model_list)
-                                _apply_layout_title_split(
-                                    window_model_list,
-                                    images_layout_res,
-                                    [_normalize_page_size(image) for image in images_pil_list],
-                                )
                             else:
                                 raise ValueError(f"Unsupported analyze effort: {effort}")
                         elif parse_mode == "ocr":
@@ -2555,16 +2557,20 @@ def doc_analyze(
                                     images=images_pil_list,
                                     image_analysis=image_analysis,
                                 )
-                                _normalize_xhigh_vlm_blocks(window_model_list)
-                                _apply_layout_title_split(
-                                    window_model_list,
-                                    images_layout_res,
-                                    [_normalize_page_size(image) for image in images_pil_list],
-                                )
                             else:
                                 raise ValueError(f"Unsupported analyze effort: {effort}")
                         else:
                             raise ValueError(f"Unsupported parse mode: {parse_mode}")
+
+                        if effort in {"high", "xhigh"}:
+                            window_model_list = _convert_vlm_results_to_model_list(window_model_list)
+                        if effort == "xhigh":
+                            _normalize_xhigh_vlm_blocks(window_model_list)
+                            _apply_layout_title_split(
+                                window_model_list,
+                                images_layout_res,
+                                [_normalize_page_size(image) for image in images_pil_list],
+                            )
 
                         if effort == "low":
                             window_model_list = _process_low_text(
@@ -2639,15 +2645,15 @@ if __name__ == "__main__":
     demo_file_paths = [
         # os.path.join(project_root, "demo", "office_docs", "docx_01.docx"),
         # os.path.join(project_root, "demo", "pdfs", "NPU_开发环境部署_参考指南.pdf"),
-        # "/Users/myhloli/pdf/png/2407.00079v4_origi-10.pdf",
-        os.path.join(project_root, "demo", "pdfs", "demo1.pdf"),
+        "/Users/myhloli/pdf/png/2407.00079v4_origi-10.pdf",
+        # os.path.join(project_root, "demo", "pdfs", "demo1.pdf"),
     ]
 
     for file_path in demo_file_paths:
         file_bytes = read_fn(file_path)
         file_suffix = os.path.splitext(file_path)[1].lstrip(".").lower()
         file_suffix = "pdf"
-        middle_json, model_list = doc_analyze(file_bytes, effort="medium", file_suffix=file_suffix)
+        middle_json, model_list = doc_analyze(file_bytes, effort="xhigh", file_suffix=file_suffix)
         model_json = json.dumps(model_list, ensure_ascii=False, indent=4)
         logger.info(f"file_path: {file_path}")
         logger.info(f"middle_json: {middle_json}")
