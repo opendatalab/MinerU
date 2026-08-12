@@ -62,8 +62,9 @@ def _build_native_line_items(
     page_size: tuple[float, float],
     *,
     page_rotation: int = 0,
+    supported_angles: Sequence[float] = _SUPPORTED_PDFTEXT_LINE_ANGLES,
 ) -> list[_LineItem]:
-    """将 pdftext 粗行按字符间隙精修成 Flash 视觉 run。"""
+    """按指定视觉方向将 pdftext 粗行精修成字符间隙分隔的视觉 run。"""
 
     items: list[_LineItem] = []
     supported_lines = [
@@ -74,6 +75,7 @@ def _build_native_line_items(
             visual_angle := _resolve_pdftext_line_angle(
                 child_line,
                 page_rotation=page_rotation,
+                supported_angles=supported_angles,
             )
         )
         is not None
@@ -175,14 +177,19 @@ def _split_pdftext_line_by_rotation(pdf_line: dict[str, Any]) -> list[dict[str, 
     return output
 
 
-def _is_supported_pdftext_line_rotation(value: Any, *, page_rotation: int) -> bool:
-    """应用页面旋转后只允许 0、90、270 度行，避免异向水印被归一成正文。"""
+def _is_supported_pdftext_line_rotation(
+    value: Any,
+    *,
+    page_rotation: int,
+    supported_angles: Sequence[float] = _SUPPORTED_PDFTEXT_LINE_ANGLES,
+) -> bool:
+    """应用页面旋转后按调用方白名单筛选视觉文字方向。"""
 
     visual_angle = (_pdftext_angle_degrees(value) + int(page_rotation or 0)) % 360.0
     return any(
         _circular_angle_distance(visual_angle, supported_angle)
         <= _PDFTEXT_LINE_ANGLE_TOLERANCE_DEGREES
-        for supported_angle in _SUPPORTED_PDFTEXT_LINE_ANGLES
+        for supported_angle in supported_angles
     )
 
 
@@ -190,6 +197,7 @@ def _resolve_pdftext_line_angle(
     pdf_line: dict[str, Any],
     *,
     page_rotation: int,
+    supported_angles: Sequence[float] = _SUPPORTED_PDFTEXT_LINE_ANGLES,
 ) -> int | None:
     """解析视觉文字方向，并用字符基线纠正字体 shear 造成的伪斜向行。"""
 
@@ -197,14 +205,20 @@ def _resolve_pdftext_line_angle(
         _pdftext_angle_degrees(pdf_line.get("rotation"))
         + int(page_rotation or 0)
     ) % 360.0
-    for supported_angle in _SUPPORTED_PDFTEXT_LINE_ANGLES:
+    for supported_angle in supported_angles:
         if (
             _circular_angle_distance(visual_angle, supported_angle)
             <= _PDFTEXT_LINE_ANGLE_TOLERANCE_DEGREES
         ):
             return int(supported_angle)
+    supports_horizontal = any(
+        _circular_angle_distance(0.0, supported_angle)
+        <= _PDFTEXT_LINE_ANGLE_TOLERANCE_DEGREES
+        for supported_angle in supported_angles
+    )
     if (
-        _circular_angle_distance(visual_angle, 0.0)
+        supports_horizontal
+        and _circular_angle_distance(visual_angle, 0.0)
         <= _PDFTEXT_SHEARED_HORIZONTAL_MAX_ANGLE_DEGREES
         and _pdftext_line_has_horizontal_char_baseline(pdf_line)
     ):

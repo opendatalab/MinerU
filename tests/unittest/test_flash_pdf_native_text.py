@@ -173,6 +173,31 @@ def test_only_supported_visual_line_directions_are_retained(
     assert [item.angle for item in items] == ([] if expected_angle is None else [expected_angle])
 
 
+def test_native_line_builder_can_opt_in_to_180_degree_visual_runs() -> None:
+    """验证 Low/TXT 可显式扩展方向白名单且不改变 Flash 默认行为。"""
+
+    pdf_line = _line(
+        [_span("upside down", (10.0, 20.0, 60.0, 30.0), 180.0)],
+        180.0,
+        bbox=(10.0, 20.0, 60.0, 30.0),
+    )
+
+    default_items = native_text._build_native_line_items(
+        [pdf_line],
+        (100.0, 100.0),
+    )
+    low_txt_items = native_text._build_native_line_items(
+        [pdf_line],
+        (100.0, 100.0),
+        supported_angles=(0.0, 90.0, 180.0, 270.0),
+    )
+
+    assert default_items == []
+    assert [(item.text, item.angle) for item in low_txt_items] == [
+        ("upside down", 180)
+    ]
+
+
 @pytest.mark.parametrize(
     "separator",
     [

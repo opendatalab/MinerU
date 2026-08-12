@@ -529,7 +529,7 @@ def test_visual_block_crop_rejects_page_count_mismatch() -> None:
 
 
 def test_normalize_pdf_model_list_updates_in_place() -> None:
-    """验证 block 元数据清理和行内公式替换会原地更新 model JSON。"""
+    """验证元数据、公式和无效 PDF 文本块过滤会原地更新 model JSON。"""
     model_list = [
         [
             {
@@ -537,23 +537,46 @@ def test_normalize_pdf_model_list_updates_in_place() -> None:
                 "content": "前 \\(a+b\\) 中 \\(c_d\\) 后",
                 "angle": 0,
                 "score": 0.98,
+                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
             },
             {
                 "type": BlockType.TEXT,
                 "content": "已有 <eq>x</eq> 保持不变",
                 "angle": 90,
+                "lines": [{"bbox": [0.1, 0.2, 0.9, 0.3]}],
             },
             {
                 "type": BlockType.TEXT,
                 "content": "未闭合 \\(formula",
                 "score": 0.75,
+                "lines": [{"bbox": [0.1, 0.3, 0.9, 0.4]}],
             },
         ],
         [
-            {"type": BlockType.TEXT, "content": ""},
-            {"type": BlockType.TEXT, "content": None, "angle": 180, "score": 0.5},
-            {"type": BlockType.TEXT, "content": ["非字符串"], "score": 0.25},
-            {"type": BlockType.TEXT, "content": "跨行 \\(a\nb\\)", "angle": 270},
+            {
+                "type": BlockType.TEXT,
+                "content": "",
+                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
+            },
+            {
+                "type": BlockType.TEXT,
+                "content": None,
+                "angle": 180,
+                "score": 0.5,
+                "lines": [{"bbox": [0.1, 0.2, 0.9, 0.3]}],
+            },
+            {
+                "type": BlockType.TEXT,
+                "content": ["非字符串"],
+                "score": 0.25,
+                "lines": [{"bbox": [0.1, 0.3, 0.9, 0.4]}],
+            },
+            {
+                "type": BlockType.TEXT,
+                "content": "跨行 \\(a\nb\\)",
+                "angle": 270,
+                "lines": [{"bbox": [0.1, 0.4, 0.9, 0.5]}],
+            },
         ],
     ]
 
@@ -563,15 +586,114 @@ def test_normalize_pdf_model_list_updates_in_place() -> None:
     assert model_list[0][0]["content"] == "前 <eq>a+b</eq> 中 <eq>c_d</eq> 后"
     assert model_list[0][1]["content"] == "已有 <eq>x</eq> 保持不变"
     assert model_list[0][2]["content"] == "未闭合 \\(formula"
-    assert model_list[1][0]["content"] == ""
-    assert model_list[1][1]["content"] is None
-    assert model_list[1][2]["content"] == ["非字符串"]
-    assert model_list[1][3]["content"] == "跨行 \\(a\nb\\)"
+    assert [block["content"] for block in model_list[1]] == [
+        "跨行 \\(a\nb\\)"
+    ]
     assert all(
         "angle" not in block and "score" not in block
         for page_model_list in model_list
         for block in page_model_list
     )
+
+
+@pytest.mark.parametrize(
+    "block_type",
+    [
+        BlockType.TEXT,
+        BlockType.DOC_TITLE,
+        BlockType.PARAGRAPH_TITLE,
+        BlockType.CAPTION,
+        BlockType.FOOTNOTE,
+    ],
+)
+@pytest.mark.parametrize(
+    "invalid_lines",
+    [
+        None,
+        [],
+        [{}],
+        [{"bbox": [0.1, 0.2, 0.3]}],
+        [{"bbox": [0.1, 0.2, float("nan"), 0.4]}],
+        [{"bbox": [-0.1, 0.2, 0.3, 0.4]}],
+        [{"bbox": [0.1, 0.2, 1.1, 0.4]}],
+        [{"bbox": [0.3, 0.2, 0.3, 0.4]}],
+        [{"bbox": [0.1, 0.4, 0.3, 0.4]}],
+        [
+            {"bbox": [0.1, 0.2, 0.3, 0.4]},
+            {"bbox": [0.4, 0.5, 0.4, 0.6]},
+        ],
+    ],
+)
+def test_normalize_pdf_model_list_removes_five_text_types_with_invalid_lines(
+    block_type: str,
+    invalid_lines: object,
+) -> None:
+    """验证五类文本块只要任一行框非法就按 fail-closed 规则删除。"""
+
+    model_list = [[{"type": block_type, "content": "valid", "lines": invalid_lines}]]
+
+    analyze._normalize_pdf_model_list(model_list)
+
+    assert model_list == [[]]
+
+
+@pytest.mark.parametrize(
+    "block_type",
+    [
+        BlockType.TEXT,
+        BlockType.DOC_TITLE,
+        BlockType.PARAGRAPH_TITLE,
+        BlockType.CAPTION,
+        BlockType.FOOTNOTE,
+    ],
+)
+@pytest.mark.parametrize("invalid_content", [None, "", "   ", ["not a string"]])
+def test_normalize_pdf_model_list_removes_five_text_types_with_empty_content(
+    block_type: str,
+    invalid_content: object,
+) -> None:
+    """验证五类文本块即使行框有效，正文为空或非字符串时仍会删除。"""
+
+    model_list = [
+        [
+            {
+                "type": block_type,
+                "content": invalid_content,
+                "lines": [{"bbox": [0.1, 0.2, 0.3, 0.4]}],
+            }
+        ]
+    ]
+
+    analyze._normalize_pdf_model_list(model_list)
+
+    assert model_list == [[]]
+
+
+def test_normalize_pdf_model_list_keeps_other_types_and_valid_text_order() -> None:
+    """验证过滤不影响其他类型，并保持合法文本块的相对顺序。"""
+
+    equation = {"type": BlockType.EQUATION, "content": "", "lines": []}
+    header = {"type": BlockType.HEADER, "content": "", "lines": []}
+    first_text = {
+        "type": BlockType.TEXT,
+        "content": "first",
+        "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
+    }
+    invalid_text = {
+        "type": BlockType.CAPTION,
+        "content": "caption",
+        "lines": [],
+    }
+    second_text = {
+        "type": BlockType.FOOTNOTE,
+        "content": "second",
+        "lines": [{"bbox": [0.1, 0.8, 0.9, 0.9]}],
+    }
+    model_list = [[equation, first_text, invalid_text, header, second_text]]
+
+    analyze._normalize_pdf_model_list(model_list)
+
+    assert model_list == [[equation, first_text, header, second_text]]
 
 
 @pytest.mark.parametrize(

@@ -27,6 +27,7 @@ from .geometry import (
     _clip_bbox,
     _coerce_bbox,
     _normalize_bbox_to_thousandths,
+    _rotate_bbox_from_upright,
     _rotate_bbox_to_upright,
 )
 from .native_text import (
@@ -112,6 +113,13 @@ _TEXT_SEMANTIC_TYPES = {
 
 
 _OUTPUT_BLOCK_TYPES = {"text", "table", "image", "equation", "code"} | _TEXT_SEMANTIC_TYPES
+_LINE_METADATA_OUTPUT_TYPES = {
+    "text",
+    "doc_title",
+    "paragraph_title",
+    "caption",
+    "footnote",
+}
 _REPEATED_RASTER_IMAGE_MIN_PAGE_AREA_RATIO = 0.08
 _REPEATED_RASTER_IMAGE_MIN_DISTINCT_PAGES = 3
 
@@ -934,9 +942,49 @@ def _normalize_output_block(
     if normalized_type not in {"image", "equation", "header", "footer"} and not content.strip():
         return None
     normalized_bbox = _normalize_bbox_to_thousandths(bbox, page_size)
-    return {
+    output_block = {
         "type": normalized_type,
         "bbox": normalized_bbox,
         "angle": 0 if normalized_type == "image" else int(block.get("angle", 0) or 0) % 360,
         "content": content,
     }
+    if normalized_type in _LINE_METADATA_OUTPUT_TYPES:
+        output_block["lines"] = _normalize_output_line_items(block, page_size)
+    return output_block
+
+
+def _normalize_output_line_items(
+    block: dict[str, Any],
+    page_size: tuple[float, float],
+) -> list[dict[str, list[float]]]:
+    """将 Flash 正向局部行框逆变换为页面坐标并归一化输出。"""
+
+    local_line_bboxes = block.get("_local_line_bboxes")
+    if not isinstance(local_line_bboxes, list):
+        return []
+
+    angle = int(block.get("angle", 0) or 0) % 360
+    line_items: list[dict[str, list[float]]] = []
+    for local_line_bbox in local_line_bboxes:
+        try:
+            raw_bbox = tuple(float(value) for value in local_line_bbox)
+        except (TypeError, ValueError):
+            return []
+        coerced_bbox = _coerce_bbox(raw_bbox)
+        if (
+            len(raw_bbox) != 4
+            or coerced_bbox is None
+            or raw_bbox[2] <= raw_bbox[0]
+            or raw_bbox[3] <= raw_bbox[1]
+        ):
+            return []
+        page_bbox = _clip_bbox(
+            _rotate_bbox_from_upright(coerced_bbox, page_size, angle),
+            page_size,
+        )
+        if page_bbox is None:
+            return []
+        line_items.append(
+            {"bbox": _normalize_bbox_to_thousandths(page_bbox, page_size)}
+        )
+    return line_items

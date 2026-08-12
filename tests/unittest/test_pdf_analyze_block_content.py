@@ -247,37 +247,76 @@ def test_xhigh_vlm_blocks_remove_merge_prev_from_all_text_blocks() -> None:
     assert page_blocks[-1] == {"type": BlockType.CAPTION, "content": "caption"}
 
 
-def test_caption_and_footnote_keep_normalized_line_metadata() -> None:
-    """验证通用 caption/footnote 与 text 一样保留归一化 _lines。"""
+def test_five_pdf_text_types_keep_normalized_line_metadata() -> None:
+    """验证五类 PDF 文本块统一保留公开的归一化 lines。"""
     assert analyze.LINE_METADATA_BLOCK_TYPES == {
         BlockType.TEXT,
+        BlockType.DOC_TITLE,
+        BlockType.PARAGRAPH_TITLE,
         BlockType.CAPTION,
         BlockType.FOOTNOTE,
     }
     text_block = {"type": BlockType.TEXT, "content": "text"}
+    doc_title_block = {"type": BlockType.DOC_TITLE, "content": "doc title"}
+    paragraph_title_block = {
+        "type": BlockType.PARAGRAPH_TITLE,
+        "content": "paragraph title",
+    }
     caption_block = {"type": BlockType.CAPTION, "content": "caption"}
     footnote_block = {"type": BlockType.FOOTNOTE, "content": "footnote"}
-    unrelated_block = {"type": BlockType.TITLE, "content": "title", "_lines": [{"bbox": [0, 0, 1, 1]}]}
-    page_blocks = [text_block, caption_block, footnote_block, unrelated_block]
+    unrelated_block = {
+        "type": BlockType.TITLE,
+        "content": "title",
+        "lines": [{"bbox": [0, 0, 1, 1]}],
+    }
+    page_blocks = [
+        text_block,
+        doc_title_block,
+        paragraph_title_block,
+        caption_block,
+        footnote_block,
+        unrelated_block,
+    ]
 
     analyze._apply_block_content_and_line_metadata(
         page_blocks,
         {
             0: _build_text_lines("text"),
-            1: _build_text_lines("caption line 1", "caption line 2"),
-            2: _build_text_lines("footnote"),
-            3: _build_text_lines("title"),
+            1: _build_text_lines("doc title"),
+            2: _build_text_lines("paragraph title"),
+            3: _build_text_lines("caption line 1", "caption line 2"),
+            4: _build_text_lines("footnote"),
+            5: _build_text_lines("title"),
         },
         (200.0, 100.0),
     )
 
-    assert text_block["_lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
-    assert caption_block["_lines"] == [
+    assert text_block["lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
+    assert doc_title_block["lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
+    assert paragraph_title_block["lines"] == [
+        {"bbox": [0.0, 0.0, 0.5, 0.01]}
+    ]
+    assert caption_block["lines"] == [
         {"bbox": [0.0, 0.0, 0.5, 0.01]},
         {"bbox": [0.0, 0.01, 0.5, 0.02]},
     ]
-    assert footnote_block["_lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
-    assert "_lines" not in unrelated_block
+    assert footnote_block["lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
+    assert "lines" not in unrelated_block
+
+
+@pytest.mark.parametrize("effort", ["high", "xhigh"])
+def test_high_ocr_detects_lines_for_all_five_pdf_text_types(
+    effort: str,
+) -> None:
+    """验证 High/XHigh OCR 对标题、正文、caption 和 footnote 都执行行检测。"""
+
+    ocr_det_type, mfr_enabled = analyze._build_ocr_det_type_and_mfr_enable(
+        "ocr",
+        effort,
+    )
+
+    assert ocr_det_type == analyze.LINE_METADATA_BLOCK_TYPES
+    assert mfr_enabled is False
 
 
 def test_window_post_ocr_batches_all_pages_once() -> None:
@@ -452,11 +491,71 @@ def test_existing_index_content_is_not_overwritten() -> None:
     )
 
     assert block["content"] == "已有目录一\n已有目录二"
-    assert "_lines" not in block
+    assert "lines" not in block
 
 
-def test_npu_page_three_medium_index_matches_flash_line_structure() -> None:
-    """验证真实 NPU 目录页的 Medium 回填结果与 Flash 一样保留 24 个目录行。"""
+def test_low_txt_visual_runs_split_distant_text_before_layout_matching(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 Low/TXT 在版面匹配前按 Flash 字符间隙拆开同一粗行。"""
+
+    chars = [
+        {"char": "L", "bbox": (5.0, 10.0, 9.0, 20.0)},
+        {"char": "e", "bbox": (9.0, 10.0, 13.0, 20.0)},
+        {"char": "f", "bbox": (13.0, 10.0, 17.0, 20.0)},
+        {"char": "t", "bbox": (17.0, 10.0, 21.0, 20.0)},
+        {"char": " ", "bbox": (21.0, 10.0, 25.0, 20.0)},
+        {"char": "R", "bbox": (70.0, 10.0, 74.0, 20.0)},
+        {"char": "i", "bbox": (74.0, 10.0, 78.0, 20.0)},
+        {"char": "g", "bbox": (78.0, 10.0, 82.0, 20.0)},
+        {"char": "h", "bbox": (82.0, 10.0, 86.0, 20.0)},
+        {"char": "t", "bbox": (86.0, 10.0, 90.0, 20.0)},
+    ]
+    pdf_lines = [
+        {
+            "bbox": (5.0, 10.0, 90.0, 20.0),
+            "rotation": 0.0,
+            "spans": [
+                {
+                    "text": "Left Right",
+                    "bbox": (5.0, 10.0, 90.0, 20.0),
+                    "rotation": 0.0,
+                    "chars": chars,
+                }
+            ],
+        }
+    ]
+    pdf_page = MagicMock()
+    pdf_page.size = (100.0, 100.0)
+    pdf_page.rotation = 0
+    pdf_page.get_chars.return_value = []
+    monkeypatch.setattr(analyze, "get_lines_from_chars", lambda _chars: pdf_lines)
+
+    spans = analyze._build_pdf_text_visual_run_spans(pdf_page)
+
+    assert [(span.content, span.bbox) for span in spans] == [
+        ("Left", (5.0, 10.0, 21.0, 20.0)),
+        ("Right", (70.0, 10.0, 90.0, 20.0)),
+    ]
+
+
+def test_existing_text_content_is_preserved_while_lines_are_refreshed() -> None:
+    """验证 Low/TXT 只补空正文，已有 VLM 内容不覆盖但仍写入真实行框。"""
+
+    block = {"type": BlockType.TEXT, "content": "existing content"}
+
+    analyze._apply_block_content_and_line_metadata(
+        [block],
+        {0: _build_text_lines("native content")},
+        (200.0, 100.0),
+    )
+
+    assert block["content"] == "existing content"
+    assert block["lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
+
+
+def test_npu_page_three_low_visual_runs_keep_index_line_structure() -> None:
+    """验证 Low/TXT 的 Flash visual run 拆分不会破坏 NPU 的 24 行目录。"""
     document = PDFDocument(_NPU_PDF_PATH.read_bytes())
     try:
         page = document[2]
@@ -469,7 +568,7 @@ def test_npu_page_three_medium_index_matches_flash_line_structure() -> None:
         }
         block_lines = analyze._group_page_spans_by_block(
             [index_block],
-            analyze._build_pdf_text_line_spans(page),
+            analyze._build_pdf_text_visual_run_spans(page),
             page_size,
             {BlockType.INDEX},
         )

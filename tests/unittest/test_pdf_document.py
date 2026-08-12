@@ -494,10 +494,12 @@ def test_get_page_drawing_lines_applies_crop_box_and_page_rotation() -> None:
     with pdf_document.PDFDocument(_build_rotated_cropped_drawing_pdf()) as doc:
         page_size = doc.page_size(0)
         page_rotation = doc.page_rotation(0)
+        page_object_rotation = doc[0].rotation
         lines = doc.get_page_drawing_lines(0)
 
     assert page_size == pytest.approx((180.0, 90.0))
     assert page_rotation == 90
+    assert page_object_rotation == 90
     assert len(lines) == 1
     line = lines[0]
     assert line.orientation == "vertical"

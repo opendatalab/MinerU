@@ -96,6 +96,8 @@ CODE_CONTENT_BLOCK_TYPES = {
 }
 LINE_METADATA_BLOCK_TYPES = {
     BlockType.TEXT,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
     BlockType.CAPTION,
     BlockType.FOOTNOTE,
 }
@@ -171,7 +173,10 @@ VLM_OCR_DET_TYPE = {
     BlockType.TEXT,
     BlockType.DOC_TITLE,
     BlockType.PARAGRAPH_TITLE,
+    BlockType.CAPTION,
+    BlockType.FOOTNOTE,
 }
+_LOW_TXT_VISUAL_RUN_ANGLES = (0.0, 90.0, 180.0, 270.0)
 
 
 @dataclass
@@ -778,6 +783,34 @@ def _build_pdf_text_line_spans(pdf_page: PDFPage) -> list[Span]:
             Span(
                 type=ContentType.TEXT,
                 bbox=(x0, y0, x1, y1),
+                content=content,
+                score=1.0,
+            )
+        )
+    return page_spans
+
+
+def _build_pdf_text_visual_run_spans(pdf_page: PDFPage) -> list[Span]:
+    """将 Low/TXT 原生粗行按 Flash 字符间隙拆成可独立分配的视觉 run。"""
+
+    # 延迟导入避免 Hybrid 模块初始化时提前加载完整 Flash PDF 流水线。
+    from mineru.model.flash.native_pdf.native_text import _build_native_line_items
+
+    line_items = _build_native_line_items(
+        get_lines_from_chars(pdf_page.get_chars()),
+        tuple(float(value) for value in pdf_page.size),
+        page_rotation=pdf_page.rotation,
+        supported_angles=_LOW_TXT_VISUAL_RUN_ANGLES,
+    )
+    page_spans: list[Span] = []
+    for line_item in line_items:
+        content = __replace_ligatures(__replace_unicode(line_item.text)).strip()
+        if not content:
+            continue
+        page_spans.append(
+            Span(
+                type=ContentType.TEXT,
+                bbox=line_item.bbox,
                 content=content,
                 score=1.0,
             )
@@ -2218,7 +2251,7 @@ def _process_low_text(
             page_size = tuple(float(value) for value in pdf_page.size)
             block_lines = _group_page_spans_by_block(
                 page_model_list,
-                _build_pdf_text_line_spans(pdf_page),
+                _build_pdf_text_visual_run_spans(pdf_page),
                 page_size,
                 target_block_types,
             )
@@ -2399,8 +2432,41 @@ def _apply_layout_title_split(
                 block["type"] = BlockType.PARAGRAPH_TITLE
 
 
+def _is_valid_pdf_text_block(block: dict[str, Any]) -> bool:
+    """检查 PDF 文本块是否同时具有非空正文和完整合法的归一化行框。"""
+
+    content = block.get("content")
+    if not isinstance(content, str) or not content.strip():
+        return False
+
+    lines = block.get("lines")
+    if not isinstance(lines, list) or not lines:
+        return False
+    for line in lines:
+        if not isinstance(line, dict):
+            return False
+        bbox = line.get("bbox")
+        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+            return False
+        if any(
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(float(value))
+            for value in bbox
+        ):
+            return False
+        x0, y0, x1, y1 = [float(value) for value in bbox]
+        if (
+            not all(0.0 <= value <= 1.0 for value in (x0, y0, x1, y1))
+            or x1 <= x0
+            or y1 <= y0
+        ):
+            return False
+    return True
+
+
 def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
-    """清理 model JSON block 元数据，并原地替换 content 中的行内公式定界符。"""
+    """清理 PDF block 元数据、规范公式，并过滤正文或行框无效的文本块。"""
     for page_model_list in model_list:
         for block in page_model_list:
             block.pop("angle", None)
@@ -2412,6 +2478,12 @@ def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
                 lambda match: f"<eq>{match.group(1)}</eq>",
                 content,
             )
+        page_model_list[:] = [
+            block
+            for block in page_model_list
+            if block.get("type") not in LINE_METADATA_BLOCK_TYPES
+            or _is_valid_pdf_text_block(block)
+        ]
 
 
 def _log_infer_performance(file_suffix: str, page_count: int, elapsed: float) -> None:

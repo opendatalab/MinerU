@@ -117,6 +117,12 @@ class PDFPage:
     def size(self) -> tuple[float, float]:
         return self.pdf_doc.page_size(self._idx)
 
+    @property
+    def rotation(self) -> Literal[0, 90, 180, 270]:
+        """只读返回当前页声明的标准旋转角度。"""
+
+        return self.pdf_doc.page_rotation(self._idx)
+
     def get_char_count(self) -> int:
         return self.pdf_doc.page_char_count(self._idx)
 
