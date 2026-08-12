@@ -110,7 +110,7 @@ def _block_bbox(block: BlockLike) -> BBox:
 def _block_line_items(block: BlockLike) -> list[Any]:
     """读取行级元数据，dict 使用 _lines，Block 使用 lines。"""
     if isinstance(block, dict):
-        return list(block.get("_lines") or [])
+        return list(block.get("lines") or [])
     return list(block.lines or [])
 
 
@@ -550,7 +550,7 @@ def regroup_visual_blocks(
             child_block = deepcopy(caption)
             _set_block_field(child_block, "type", mapping["caption"])
             if isinstance(child_block, dict):
-                child_block.pop("_lines", None)
+                child_block.pop("lines", None)
             captions.append(child_block)
 
         footnotes: list[BlockLike] = []
@@ -561,7 +561,7 @@ def regroup_visual_blocks(
             child_block = deepcopy(footnote)
             _set_block_field(child_block, "type", mapping["footnote"])
             if isinstance(child_block, dict):
-                child_block.pop("_lines", None)
+                child_block.pop("lines", None)
             footnotes.append(child_block)
 
         child_items = sorted(

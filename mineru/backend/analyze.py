@@ -1179,9 +1179,9 @@ def _apply_block_content_and_line_metadata(
     for block_item in page_model_list:
         block_type = str(block_item.get("type") or block_item.get("label") or "")
         if block_type in LINE_METADATA_BLOCK_TYPES:
-            block_item["_lines"] = []
+            block_item["lines"] = []
         else:
-            block_item.pop("_lines", None)
+            block_item.pop("lines", None)
 
     for block_idx, lines in block_lines.items():
         block_item = page_model_list[block_idx]
@@ -1192,7 +1192,7 @@ def _apply_block_content_and_line_metadata(
             block_item["content"] = _lines_to_block_content(lines, block_type)
 
         if block_type in LINE_METADATA_BLOCK_TYPES:
-            block_item["_lines"] = _build_ocr_det_line_items(lines, page_size)
+            block_item["lines"] = _build_ocr_det_line_items(lines, page_size)
 
 
 def _fill_window_block_content_and_lines(
@@ -1689,7 +1689,7 @@ def _attach_visual_block_images(
                     )
                     if not image_base64:
                         raise ValueError("empty crop or JPEG encoding failure")
-                    block["_image_base64"] = image_base64
+                    block["image_base64"] = image_base64
                 except Exception as exc:
                     logger.warning(
                         "Skipping invalid model visual block crop: "
