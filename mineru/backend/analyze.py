@@ -2391,10 +2391,12 @@ def _apply_layout_title_split(
                 block["type"] = BlockType.PARAGRAPH_TITLE
 
 
-def _replace_inline_formula_delimiters(model_list: list[list[dict[str, Any]]]) -> None:
-    """将 model JSON content 中的行内公式定界符原地替换为 eq 标签。"""
+def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
+    """清理 model JSON block 元数据，并原地替换 content 中的行内公式定界符。"""
     for page_model_list in model_list:
         for block in page_model_list:
+            block.pop("angle", None)
+            block.pop("score", None)
             content = block.get("content")
             if not isinstance(content, str):
                 continue
@@ -2602,8 +2604,8 @@ def doc_analyze(
                 finally:
                     _close_images(images_list)
 
-            # 仅 PDF 模型结果需要将行内公式定界符统一替换为 eq 标签。
-            _replace_inline_formula_delimiters(model_list)
+            # 仅 PDF 模型结果需要统一清理块元数据并规范化行内公式。
+            _normalize_pdf_model_list(model_list)
             infer_elapsed = time.perf_counter() - infer_started_at
 
             document.close()
@@ -2645,7 +2647,7 @@ if __name__ == "__main__":
         file_bytes = read_fn(file_path)
         file_suffix = os.path.splitext(file_path)[1].lstrip(".").lower()
         file_suffix = "pdf"
-        middle_json, model_list = doc_analyze(file_bytes, effort="flash", file_suffix=file_suffix)
+        middle_json, model_list = doc_analyze(file_bytes, effort="medium", file_suffix=file_suffix)
         model_json = json.dumps(model_list, ensure_ascii=False, indent=4)
         logger.info(f"file_path: {file_path}")
         logger.info(f"middle_json: {middle_json}")

@@ -119,7 +119,7 @@ class MagicModel:
 
         for code_block in self.code_blocks:
             if code_block["sub_type"] == "code":
-                for sub_block in code_block["blocks"]:
+                for sub_block in code_block["content"]:
                     if sub_block.get("type") == BlockType.CODE_BODY:
                         guess_lang = guess_language_by_text(sub_block.get("content", ""))
                         code_block["guess_lang"] = guess_lang

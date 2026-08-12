@@ -528,23 +528,36 @@ def test_visual_block_crop_rejects_page_count_mismatch() -> None:
         analyze._attach_visual_block_images([[]], [])
 
 
-def test_replace_inline_formula_delimiters_updates_model_list_in_place() -> None:
-    """验证行内公式定界符会在 model JSON 原对象上统一替换为 eq 标签。"""
+def test_normalize_pdf_model_list_updates_in_place() -> None:
+    """验证 block 元数据清理和行内公式替换会原地更新 model JSON。"""
     model_list = [
         [
-            {"type": BlockType.TEXT, "content": "前 \\(a+b\\) 中 \\(c_d\\) 后"},
-            {"type": BlockType.TEXT, "content": "已有 <eq>x</eq> 保持不变"},
-            {"type": BlockType.TEXT, "content": "未闭合 \\(formula"},
+            {
+                "type": BlockType.TEXT,
+                "content": "前 \\(a+b\\) 中 \\(c_d\\) 后",
+                "angle": 0,
+                "score": 0.98,
+            },
+            {
+                "type": BlockType.TEXT,
+                "content": "已有 <eq>x</eq> 保持不变",
+                "angle": 90,
+            },
+            {
+                "type": BlockType.TEXT,
+                "content": "未闭合 \\(formula",
+                "score": 0.75,
+            },
         ],
         [
             {"type": BlockType.TEXT, "content": ""},
-            {"type": BlockType.TEXT, "content": None},
-            {"type": BlockType.TEXT, "content": ["非字符串"]},
-            {"type": BlockType.TEXT, "content": "跨行 \\(a\nb\\)"},
+            {"type": BlockType.TEXT, "content": None, "angle": 180, "score": 0.5},
+            {"type": BlockType.TEXT, "content": ["非字符串"], "score": 0.25},
+            {"type": BlockType.TEXT, "content": "跨行 \\(a\nb\\)", "angle": 270},
         ],
     ]
 
-    result = analyze._replace_inline_formula_delimiters(model_list)
+    result = analyze._normalize_pdf_model_list(model_list)
 
     assert result is None
     assert model_list[0][0]["content"] == "前 <eq>a+b</eq> 中 <eq>c_d</eq> 后"
@@ -554,6 +567,11 @@ def test_replace_inline_formula_delimiters_updates_model_list_in_place() -> None
     assert model_list[1][1]["content"] is None
     assert model_list[1][2]["content"] == ["非字符串"]
     assert model_list[1][3]["content"] == "跨行 \\(a\nb\\)"
+    assert all(
+        "angle" not in block and "score" not in block
+        for page_model_list in model_list
+        for block in page_model_list
+    )
 
 
 @pytest.mark.parametrize(
@@ -618,7 +636,7 @@ def test_doc_analyze_office_returns_model_list_without_pdf_processing(
     window_builder = MagicMock()
     image_loader = MagicMock()
     visual_image_attacher = MagicMock()
-    formula_replacer = MagicMock()
+    model_list_normalizer = MagicMock()
     monkeypatch.setattr(analyze, "_OFFICE_MODEL_MAP", model_factories)
     monkeypatch.setattr(analyze, "PDFDocument", pdf_document)
     monkeypatch.setattr(analyze, "HybridLocalModelContextSingleton", hybrid_model_factory)
@@ -626,7 +644,7 @@ def test_doc_analyze_office_returns_model_list_without_pdf_processing(
     monkeypatch.setattr(analyze, "_build_processing_windows", window_builder)
     monkeypatch.setattr(analyze, "load_images_from_pdf_bytes_range", image_loader)
     monkeypatch.setattr(analyze, "_attach_visual_block_images", visual_image_attacher)
-    monkeypatch.setattr(analyze, "_replace_inline_formula_delimiters", formula_replacer)
+    monkeypatch.setattr(analyze, "_normalize_pdf_model_list", model_list_normalizer)
     monkeypatch.setattr(analyze.time, "perf_counter", fake_perf_counter)
 
     middle_json, model_list = analyze.doc_analyze(
@@ -652,7 +670,7 @@ def test_doc_analyze_office_returns_model_list_without_pdf_processing(
     window_builder.assert_not_called()
     image_loader.assert_not_called()
     visual_image_attacher.assert_not_called()
-    formula_replacer.assert_not_called()
+    model_list_normalizer.assert_not_called()
 
 
 def test_doc_analyze_rejects_unsupported_suffix_before_resource_initialization(
@@ -718,9 +736,9 @@ def test_pdf_infer_timer_excludes_hybrid_vlm_initialization_and_cleanup(
         events.append(f"timer_{value}")
         return value
 
-    def fake_replace_formula(_model_list: list[list[dict[str, object]]]) -> None:
-        """记录 PDF model_list 公式规范化顺序。"""
-        events.append("formula_replace")
+    def fake_normalize_model_list(_model_list: list[list[dict[str, object]]]) -> None:
+        """记录 PDF model_list 规范化顺序。"""
+        events.append("normalize_model_list")
 
     def fake_clean_memory(_device: str) -> None:
         """记录设备缓存清理顺序。"""
@@ -738,7 +756,7 @@ def test_pdf_infer_timer_excludes_hybrid_vlm_initialization_and_cleanup(
     )
     monkeypatch.setattr(analyze, "get_vlm_engine", MagicMock(return_value="transformers"))
     monkeypatch.setattr(analyze.time, "perf_counter", fake_perf_counter)
-    monkeypatch.setattr(analyze, "_replace_inline_formula_delimiters", fake_replace_formula)
+    monkeypatch.setattr(analyze, "_normalize_pdf_model_list", fake_normalize_model_list)
     monkeypatch.setattr(analyze, "clean_memory", fake_clean_memory)
 
     middle_json, model_list = analyze.doc_analyze(
@@ -754,7 +772,7 @@ def test_pdf_infer_timer_excludes_hybrid_vlm_initialization_and_cleanup(
         "vlm_init",
         "vlm_wrap",
         "timer_20.0",
-        "formula_replace",
+        "normalize_model_list",
         "timer_22.0",
         "document_close",
         "clean_memory",
@@ -856,12 +874,12 @@ def test_doc_analyze_flash_returns_complete_model_list_without_middle_json(monke
         events.append("attach_visual")
         original_attach_visual_block_images(*args, **kwargs)  # type: ignore[arg-type]
 
-    original_replace_formula = analyze._replace_inline_formula_delimiters
+    original_normalize_model_list = analyze._normalize_pdf_model_list
 
-    def tracked_replace_formula(model_list: list[list[dict[str, object]]]) -> None:
-        """记录 PDF 公式规范化顺序并调用真实实现。"""
-        events.append("formula_replace")
-        original_replace_formula(model_list)  # type: ignore[arg-type]
+    def tracked_normalize_model_list(model_list: list[list[dict[str, object]]]) -> None:
+        """记录 PDF model_list 规范化顺序并调用真实实现。"""
+        events.append("normalize_model_list")
+        original_normalize_model_list(model_list)  # type: ignore[arg-type]
 
     perf_counter_values = iter([30.0, 33.0])
 
@@ -875,7 +893,7 @@ def test_doc_analyze_flash_returns_complete_model_list_without_middle_json(monke
     monkeypatch.setattr(analyze, "get_processing_window_size", lambda default: 2)
     monkeypatch.setattr(analyze, "load_images_from_pdf_bytes_range", fake_load_images_for_window)
     monkeypatch.setattr(analyze, "_attach_visual_block_images", tracked_attach_visual_block_images)
-    monkeypatch.setattr(analyze, "_replace_inline_formula_delimiters", tracked_replace_formula)
+    monkeypatch.setattr(analyze, "_normalize_pdf_model_list", tracked_normalize_model_list)
     monkeypatch.setattr(analyze.time, "perf_counter", fake_perf_counter)
     monkeypatch.setattr(flash_model, "PdfModel", MagicMock(return_value=fake_pdf_model))
 
@@ -908,7 +926,7 @@ def test_doc_analyze_flash_returns_complete_model_list_without_middle_json(monke
         "attach_visual",
         "render_window",
         "attach_visual",
-        "formula_replace",
+        "normalize_model_list",
         "timer_33.0",
         "document_close",
     ]

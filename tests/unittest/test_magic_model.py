@@ -54,7 +54,7 @@ def test_magic_model_groups_bbox_dict_visual_blocks() -> None:
     assert len(magic_model.image_blocks) == 1
     image_block = magic_model.image_blocks[0]
     assert isinstance(image_block, dict)
-    assert [block["type"] for block in image_block["blocks"]] == [
+    assert [block["type"] for block in image_block["content"]] == [
         BlockType.IMAGE_CAPTION,
         BlockType.IMAGE_BODY,
     ]
@@ -78,7 +78,7 @@ def test_magic_model_groups_no_bbox_office_caption_by_prefix() -> None:
     assert magic_model.text_blocks == []
     assert len(magic_model.image_blocks) == 1
     image_block = magic_model.image_blocks[0]
-    assert [block["type"] for block in image_block["blocks"]] == [
+    assert [block["type"] for block in image_block["content"]] == [
         BlockType.IMAGE_BODY,
         BlockType.IMAGE_CAPTION,
     ]
@@ -95,14 +95,14 @@ def test_magic_model_groups_no_bbox_chart_and_code_captions() -> None:
         ]
     )
 
-    assert [block["type"] for block in magic_model.chart_blocks[0]["blocks"]] == [
+    assert [block["type"] for block in magic_model.chart_blocks[0]["content"]] == [
         BlockType.CHART_CAPTION,
         BlockType.CHART_BODY,
     ]
     code_block = magic_model.code_blocks[0]
     assert code_block["sub_type"] == "code"
     assert code_block["guess_lang"]
-    assert [block["type"] for block in code_block["blocks"]] == [
+    assert [block["type"] for block in code_block["content"]] == [
         BlockType.CODE_CAPTION,
         BlockType.CODE_BODY,
     ]

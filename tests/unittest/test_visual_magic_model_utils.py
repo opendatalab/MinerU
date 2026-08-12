@@ -266,6 +266,8 @@ def test_regroup_visual_blocks_supports_bbox_dicts() -> None:
         "type": BlockType.CAPTION,
         "bbox": [0.0, 0.0, 80.0, 10.0],
         "content": "Figure 1",
+        "_lines": [{"bbox": [0.0, 0.0, 80.0, 10.0]}],
+        "merge_prev": True,
     }
     body = {
         "index": 1,
@@ -278,6 +280,7 @@ def test_regroup_visual_blocks_supports_bbox_dicts() -> None:
         "type": BlockType.FOOTNOTE,
         "bbox": [0.0, 65.0, 80.0, 75.0],
         "content": "source",
+        "_lines": [{"bbox": [0.0, 65.0, 80.0, 75.0]}],
     }
 
     grouped_blocks, unmatched_blocks = regroup_visual_blocks(
@@ -290,11 +293,17 @@ def test_regroup_visual_blocks_supports_bbox_dicts() -> None:
     assert isinstance(image_block, dict)
     assert image_block["type"] == BlockType.IMAGE
     assert image_block["bbox"] == body["bbox"]
-    assert [block["type"] for block in image_block["blocks"]] == [
+    assert [block["type"] for block in image_block["content"]] == [
         BlockType.IMAGE_CAPTION,
         BlockType.IMAGE_BODY,
         BlockType.IMAGE_FOOTNOTE,
     ]
+    image_caption, _, image_footnote = image_block["content"]
+    assert "_lines" not in image_caption
+    assert image_caption["merge_prev"] is True
+    assert "_lines" not in image_footnote
+    assert "_lines" in caption
+    assert "_lines" in footnote
     assert caption["type"] == BlockType.CAPTION
     assert footnote["type"] == BlockType.FOOTNOTE
 
@@ -311,6 +320,7 @@ def test_regroup_visual_blocks_keeps_block_output_compatibility() -> None:
             index=1,
             type=BlockType.IMAGE_BODY,
             bbox=(0.0, 15.0, 80.0, 60.0),
+            sub_type="seal",
         ),
     ]
 
@@ -319,10 +329,12 @@ def test_regroup_visual_blocks_keeps_block_output_compatibility() -> None:
     assert unmatched_blocks == []
     image_block = grouped_blocks[BlockType.IMAGE][0]
     assert isinstance(image_block, Block)
-    assert [block.type for block in image_block.blocks] == [
+    assert image_block.sub_type == "seal"
+    assert [block.type for block in image_block.content] == [
         BlockType.IMAGE_CAPTION,
         BlockType.IMAGE_BODY,
     ]
+    assert image_block.content[1].sub_type == ""
 
 
 def test_regroup_visual_blocks_preserves_dict_visual_metadata() -> None:
@@ -344,6 +356,8 @@ def test_regroup_visual_blocks_preserves_dict_visual_metadata() -> None:
             "index": 2,
             "type": BlockType.TABLE_BODY,
             "content": "<table></table>",
+            "angle": 0,
+            "score": 0.0,
             "_cell_merge": [1, 0],
         },
     ]
@@ -354,9 +368,15 @@ def test_regroup_visual_blocks_preserves_dict_visual_metadata() -> None:
     image_block = grouped_blocks[BlockType.IMAGE][0]
     table_block = grouped_blocks[BlockType.TABLE][0]
     assert code_block["sub_type"] == "code"
-    assert code_block["blocks"][0]["sub_type"] == ""
+    assert "sub_type" not in code_block["content"][0]
     assert image_block["sub_type"] == "seal"
+    assert "sub_type" not in image_block["content"][0]
+    assert "sub_type" not in table_block
+    assert "sub_type" not in table_block["content"][0]
+    assert table_block["content"][0]["angle"] == 0
+    assert table_block["content"][0]["score"] == 0.0
     assert table_block["_cell_merge"] == [1, 0]
+    assert table_block["content"][0]["_cell_merge"] == [1, 0]
 
 
 def test_regroup_visual_blocks_without_bbox_prefers_previous_parent() -> None:
@@ -374,11 +394,11 @@ def test_regroup_visual_blocks_without_bbox_prefers_previous_parent() -> None:
     assert "bbox" not in grouped_blocks[BlockType.IMAGE][0]
     assert [
         block["type"]
-        for block in grouped_blocks[BlockType.IMAGE][0]["blocks"]
+        for block in grouped_blocks[BlockType.IMAGE][0]["content"]
     ] == [BlockType.IMAGE_BODY, BlockType.IMAGE_CAPTION]
     assert [
         block["type"]
-        for block in grouped_blocks[BlockType.TABLE][0]["blocks"]
+        for block in grouped_blocks[BlockType.TABLE][0]["content"]
     ] == [BlockType.TABLE_BODY]
 
 
@@ -396,7 +416,7 @@ def test_regroup_visual_blocks_without_bbox_keeps_text_as_barrier() -> None:
     assert unmatched_blocks == [caption]
     assert [
         block["type"]
-        for block in grouped_blocks[BlockType.TABLE][0]["blocks"]
+        for block in grouped_blocks[BlockType.TABLE][0]["content"]
     ] == [BlockType.TABLE_BODY]
 
 

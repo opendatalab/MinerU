@@ -533,9 +533,14 @@ def regroup_visual_blocks(
         main_index = _block_index(main_block)
         visual_type = VISUAL_MAIN_TYPES[_block_type(main_block)]
         mapping = VISUAL_TYPE_MAPPING[visual_type]
+        main_sub_type = str(_get_block_field(main_block, "sub_type", "") or "")
         body_block = deepcopy(main_block)
         _set_block_field(body_block, "type", mapping["body"])
-        _set_block_field(body_block, "sub_type", "")
+        if main_sub_type:
+            if isinstance(body_block, dict):
+                body_block.pop("sub_type", None)
+            else:
+                body_block.sub_type = ""
 
         captions: list[BlockLike] = []
         for caption in sorted(
@@ -544,6 +549,8 @@ def regroup_visual_blocks(
         ):
             child_block = deepcopy(caption)
             _set_block_field(child_block, "type", mapping["caption"])
+            if isinstance(child_block, dict):
+                child_block.pop("_lines", None)
             captions.append(child_block)
 
         footnotes: list[BlockLike] = []
@@ -553,21 +560,23 @@ def regroup_visual_blocks(
         ):
             child_block = deepcopy(footnote)
             _set_block_field(child_block, "type", mapping["footnote"])
+            if isinstance(child_block, dict):
+                child_block.pop("_lines", None)
             footnotes.append(child_block)
 
         child_items = sorted(
             [body_block, *captions, *footnotes],
             key=_block_index,
         )
-        main_sub_type = str(_get_block_field(main_block, "sub_type", "") or "")
         cell_merge = _get_block_field(main_block, "_cell_merge", [])
         if isinstance(main_block, dict):
             two_layer_block: BlockLike = {
                 "index": main_index,
                 "type": visual_type,
                 "content": child_items,
-                "sub_type": main_sub_type,
             }
+            if main_sub_type:
+                two_layer_block["sub_type"] = main_sub_type
             if "bbox" in main_block:
                 two_layer_block["bbox"] = deepcopy(main_block["bbox"])
             if visual_type == BlockType.TABLE and cell_merge:
@@ -579,7 +588,7 @@ def regroup_visual_blocks(
                 bbox=main_block.bbox,
                 content=cast(Any, child_items),
             )
-            if visual_type in [BlockType.IMAGE, BlockType.CHART] and main_sub_type:
+            if main_sub_type:
                 two_layer_block.sub_type = main_sub_type
             if visual_type == BlockType.TABLE and cell_merge:
                 two_layer_block._cell_merge = cell_merge
