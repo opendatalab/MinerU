@@ -4,6 +4,7 @@ from typing import Any
 
 from mineru.backend.magic_model import MagicModel
 from mineru.backend.utils.para_block_utils import merge_para_text_blocks
+from mineru.backend.utils.table_merge import merge_table
 
 
 def blocks_to_page_info(
@@ -48,4 +49,5 @@ def model_list_to_pages(
     )
     if has_bbox_block:
         merge_para_text_blocks(pages)
+        merge_table(pages)
     return pages

@@ -238,3 +238,50 @@ def test_model_list_to_pages_detects_pdf_after_empty_first_page() -> None:
 
     assert pages[0] == {"blocks": [], "page_idx": 0}
     assert "lines" not in pages[1]["blocks"][0]
+
+
+def test_model_list_to_pages_marks_only_later_boundary_table() -> None:
+    """验证 PDF 统一入口只给连续页的后表写入 continues_prev。"""
+    previous_html = "<table><tr><td>A</td><td>B</td></tr></table>"
+    current_html = "<table><tr><td>C</td><td>D</td></tr></table>"
+    model_list = [
+        [
+            {"type": BlockType.HEADER, "bbox": [0.1, 0.01, 0.9, 0.03], "content": "header"},
+            {"type": BlockType.TABLE, "bbox": [0.1, 0.1, 0.9, 0.85], "content": previous_html},
+            {"type": BlockType.PAGE_NUMBER, "bbox": [0.45, 0.95, 0.55, 0.98], "content": "1"},
+        ],
+        [
+            {"type": BlockType.HEADER, "bbox": [0.1, 0.01, 0.9, 0.03], "content": "header"},
+            {"type": BlockType.TABLE, "bbox": [0.1, 0.1, 0.9, 0.85], "content": current_html},
+            {"type": BlockType.PAGE_NUMBER, "bbox": [0.45, 0.95, 0.55, 0.98], "content": "2"},
+        ],
+    ]
+    original_model_list = deepcopy(model_list)
+
+    pages = model_list_to_pages(model_list)
+
+    previous_table = next(block for block in pages[0]["blocks"] if block["type"] == BlockType.TABLE)
+    current_table = next(block for block in pages[1]["blocks"] if block["type"] == BlockType.TABLE)
+    previous_body = next(block for block in previous_table["content"] if block["type"] == BlockType.TABLE_BODY)
+    current_body = next(block for block in current_table["content"] if block["type"] == BlockType.TABLE_BODY)
+    assert "continues_prev" not in previous_table
+    assert current_table["continues_prev"] is True
+    assert "continues_prev" not in current_body
+    assert previous_body["content"] == previous_html
+    assert current_body["content"] == current_html
+    assert previous_table["bbox"] == [0.1, 0.1, 0.9, 0.85]
+    assert current_table["bbox"] == [0.1, 0.1, 0.9, 0.85]
+    assert model_list == original_model_list
+
+
+def test_model_list_to_pages_does_not_mark_table_across_page_index_gap() -> None:
+    """验证统一入口会把 page_index_map 跳页传递给跨页表格判断。"""
+    model_list = [
+        [{"type": BlockType.TABLE, "bbox": [0.1, 0.1, 0.9, 0.85], "content": "<table><tr><td>A</td></tr></table>"}],
+        [{"type": BlockType.TABLE, "bbox": [0.1, 0.1, 0.9, 0.85], "content": "<table><tr><td>B</td></tr></table>"}],
+    ]
+
+    pages = model_list_to_pages(model_list, page_index_map=[0, 2])
+
+    current_table = next(block for block in pages[1]["blocks"] if block["type"] == BlockType.TABLE)
+    assert "continues_prev" not in current_table

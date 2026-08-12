@@ -1,18 +1,34 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
+import math
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeAlias
 
 from bs4 import BeautifulSoup, Tag
 
-from ...render.merge import merge_para_text
-from ...types import BBox, Block, BlockType, PageInfo, Span
+from ...types import BlockType
 from .char_utils import full_to_half
 from .table_continuation import is_table_continuation_text
 
 MAX_HEADER_ROWS = 5
+
+# 页边界扫描时可忽略的版面噪声块；其余非表格块都会阻断跨页关系。
+TABLE_BOUNDARY_IGNORED_TYPES = {
+    BlockType.HEADER,
+    BlockType.FOOTER,
+    BlockType.PAGE_NUMBER,
+    BlockType.PAGE_FOOTNOTE,
+    BlockType.ASIDE_TEXT,
+    BlockType.HEADER_IMAGE,
+    BlockType.FOOTER_IMAGE,
+    BlockType.DISCARDED,
+}
+
+BlockDict: TypeAlias = dict[str, Any]
+PageInfoDict: TypeAlias = dict[str, Any]
+CalculationBBox: TypeAlias = tuple[int, int, int, int]
 
 
 @dataclass
@@ -54,8 +70,8 @@ class RowScanResult:
 
 @dataclass
 class TableMergeState:
-    owner_block: Block
-    body_span: Span
+    owner_block: BlockDict | None
+    body_block: BlockDict | None
     soup: Any
     tbody: Any
     rows: list[Any]
@@ -69,22 +85,26 @@ class TableMergeState:
 
 
 def _colspan(cell: Any) -> int:
+    """读取 HTML 单元格 colspan，非法值交由上层安全降级。"""
     val = cell.get("colspan", "1")
     assert isinstance(val, str)
     return int(val)
 
 
 def _rowspan(cell: Any) -> int:
+    """读取 HTML 单元格 rowspan，非法值交由上层安全降级。"""
     val = cell.get("rowspan", "1")
     assert isinstance(val, str)
     return int(val)
 
 
 def _normalize_cell_text(cell: Tag) -> str:
+    """生成表头匹配使用的半角无空白文本。"""
     return "".join(full_to_half(cell.get_text()).split())
 
 
 def _display_cell_text(cell: Tag) -> str:
+    """生成保留内部空白的半角展示文本。"""
     return full_to_half(cell.get_text().strip())
 
 
@@ -158,6 +178,7 @@ def _scan_rows(rows: list[Tag], initial_occupied: dict[int, set[int]] | None = N
 
 
 def _build_row_signature(row: Tag, effective_cols: int) -> RowSignature:
+    """构建表头检测使用的行结构与文本签名。"""
     cells = row.find_all(["td", "th"])
     return RowSignature(
         effective_cols=effective_cols,
@@ -171,6 +192,7 @@ def _build_row_signature(row: Tag, effective_cols: int) -> RowSignature:
 def _build_front_cache(
     rows: list[Tag], max_header_rows: int = MAX_HEADER_ROWS
 ) -> tuple[list[RowSignature], dict[int, RowMetrics]]:
+    """缓存表格前部表头签名和首批数据行指标。"""
     front_limit = min(len(rows), max_header_rows + 1)
     front_rows = rows[:front_limit]
     front_scan = _scan_rows(front_rows)
@@ -183,40 +205,72 @@ def _build_front_cache(
     return front_header_info, front_first_data_row_metrics
 
 
-def _find_table_body_block(table_block: Block) -> Block | None:
-    """查找 table block 中的主体子块。"""
-    for block in table_block.blocks:
-        if block.type == BlockType.TABLE_BODY:
+def _bbox_for_calculation(bbox: Any) -> CalculationBBox | None:
+    """复制归一化 bbox 并放大为千分位整数，原始字段保持不变。"""
+    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+        return None
+    if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in bbox):
+        return None
+
+    values = tuple(float(value) for value in bbox)
+    if not all(math.isfinite(value) and 0 <= value <= 1 for value in values):
+        return None
+
+    x0, y0, x1, y1 = (int(round(value * 1000)) for value in values)
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return x0, y0, x1, y1
+
+
+def _table_children(table_block: BlockDict) -> list[BlockDict]:
+    """读取 table 根块下的合法 dict 子块。"""
+    content = table_block.get("content")
+    if not isinstance(content, list):
+        return []
+    return [block for block in content if isinstance(block, dict)]
+
+
+def _find_table_body_block(table_block: BlockDict) -> BlockDict | None:
+    """查找 dict table block 中的主体子块。"""
+    for block in _table_children(table_block):
+        if block.get("type") == BlockType.TABLE_BODY:
             return block
     return None
 
 
-def _build_post_body_child_index(table_block: Block, offset: int) -> int | None:
-    """为跨页搬运到上一页表格的子块生成表体后的安全 index。"""
+def _build_post_body_child_index(table_block: BlockDict, offset: int) -> int | None:
+    """为复制到前表的 footnote 生成表体后的安全 index。"""
     body_block = _find_table_body_block(table_block)
     if body_block is None:
         return None
-    body_index = body_block.index
-    return body_index + offset
+    body_index = body_block.get("index")
+    if not isinstance(body_index, int):
+        return None
+
+    child_indices = [block.get("index") for block in _table_children(table_block) if isinstance(block.get("index"), int)]
+    return max([body_index, *child_indices]) + offset
 
 
-def _find_table_body_span(table_block: Block) -> Span | None:
-    body_block = _find_table_body_block(table_block)
-    if body_block and body_block.lines and body_block.lines[0].spans:
-        return body_block.lines[0].spans[0]
-    return None
+def _block_text(block: BlockDict) -> str:
+    """递归读取 dict block 的文本内容，供续表标记判断使用。"""
+    content = block.get("content")
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    return "".join(_block_text(child) for child in content if isinstance(child, dict))
 
 
-def _is_continuation_caption(caption_block: Block) -> bool:
-    """判断 caption 文本是否带有续表标记。"""
-    return is_table_continuation_text(merge_para_text(caption_block))
+def _is_continuation_caption(caption_block: BlockDict) -> bool:
+    """判断 dict caption 文本是否带有续表标记。"""
+    return is_table_continuation_text(_block_text(caption_block))
 
 
-def _is_post_table_non_continuation_caption(table_block: Block, caption_block: Block) -> bool:
+def _is_post_table_non_continuation_caption(table_block: BlockDict, caption_block: BlockDict) -> bool:
     """判断 caption 是否是误挂到表格下方的新段落标题。
 
     这类 caption 位于 table body 下方，且不含续表标记；它不应作为
-    当前表的新标题阻断跨页合并，后续会被恢复成独立 text block。
+    当前表的新标题阻断跨页关系判断。
     """
     if _is_continuation_caption(caption_block):
         return False
@@ -225,46 +279,16 @@ def _is_post_table_non_continuation_caption(table_block: Block, caption_block: B
     if body_block is None:
         return False
 
-    body_bbox = body_block.bbox
-    caption_bbox = caption_block.bbox
-    if not body_bbox or not caption_bbox:
+    body_bbox = _bbox_for_calculation(body_block.get("bbox"))
+    caption_bbox = _bbox_for_calculation(caption_block.get("bbox"))
+    if body_bbox is None or caption_bbox is None:
         return False
 
     return caption_bbox[1] >= body_bbox[3]
 
 
-def _get_post_table_caption_blocks(table_block: Block) -> list[Block]:
-    """收集当前表格下方、需要恢复为普通文本的非续表 caption。"""
-    return [
-        block
-        for block in table_block.blocks
-        if block.type == BlockType.TABLE_CAPTION and _is_post_table_non_continuation_caption(table_block, block)
-    ]
-
-
-def _restore_post_table_captions_as_text(page_info: PageInfo, table_block: Block, caption_blocks: list[Block]) -> None:
-    """将误挂到表格下方的 caption 迁回当前页，作为独立 text block 输出。"""
-    if not caption_blocks:
-        return
-
-    para_blocks = page_info.para_blocks
-    try:
-        insert_idx = para_blocks.index(table_block) + 1
-    except ValueError:
-        return
-
-    restored_blocks = []
-    for caption_block in caption_blocks:
-        text_block = deepcopy(caption_block)
-        text_block.type = BlockType.TEXT
-        restored_blocks.append(text_block)
-
-    para_blocks[insert_idx:insert_idx] = restored_blocks
-    restored_caption_ids = {id(block) for block in caption_blocks}
-    table_block.blocks = [block for block in table_block.blocks if id(block) not in restored_caption_ids]
-
-
 def _refresh_table_state_metrics(state: TableMergeState) -> None:
+    """HTML 结构调整后重新计算表格状态指标。"""
     scan = _scan_rows(state.rows)
     state.row_effective_cols = scan.row_effective_cols
     state.total_cols = scan.total_cols
@@ -280,7 +304,7 @@ def build_table_state_from_html(
     """从原始 HTML 构建 TableMergeState，不依赖 MinerU block 结构。
 
     供外部工具（如 mineru-vl-utils）调用，用于跨页表格结构检测。
-    返回的 state 仅可用于 can_merge_by_structure()，不可传入 can_merge_tables()。
+    返回的 state 供 HTML-only 结构 helper 使用，不包含 MinerU block 所有者。
     """
     if not html:
         return None
@@ -288,15 +312,23 @@ def build_table_state_from_html(
     soup = BeautifulSoup(html, "html.parser")
     tbody = soup.find("tbody") or soup.find("table")
     rows = soup.find_all("tr")
-    if not rows:
+    if tbody is None or not rows:
         return None
 
-    scan = _scan_rows(rows)
-    front_header_info, front_first_data_row_metrics = _build_front_cache(rows, max_header_rows=max_header_rows)
+    try:
+        scan = _scan_rows(rows)
+        front_header_info, front_first_data_row_metrics = _build_front_cache(
+            rows,
+            max_header_rows=max_header_rows,
+        )
+    except (AssertionError, TypeError, ValueError):
+        return None
+    if scan.total_cols <= 0 or scan.last_nonempty_row_metrics is None:
+        return None
 
     return TableMergeState(
-        owner_block={},
-        body_span={},
+        owner_block=None,
+        body_block=None,
         soup=soup,
         tbody=tbody,
         rows=rows,
@@ -309,24 +341,30 @@ def build_table_state_from_html(
     )
 
 
-def _build_table_state(table_block: Block, max_header_rows: int = MAX_HEADER_ROWS) -> TableMergeState | None:
-    body_span = _find_table_body_span(table_block)
-    if body_span is None:
+def _build_table_state(table_block: BlockDict, max_header_rows: int = MAX_HEADER_ROWS) -> TableMergeState | None:
+    """从 dict table block 构建结构缓存，非法主体安全返回空。"""
+    body_block = _find_table_body_block(table_block)
+    if body_block is None:
         return None
 
-    html = body_span.content
-    if not html:
+    html = body_block.get("content")
+    if not isinstance(html, str) or not html:
         return None
 
     soup = BeautifulSoup(html, "html.parser")
     tbody = soup.find("tbody") or soup.find("table")
     rows = soup.find_all("tr")
+    if tbody is None or not rows:
+        return None
+
     scan = _scan_rows(rows)
+    if scan.total_cols <= 0 or scan.last_nonempty_row_metrics is None:
+        return None
     front_header_info, front_first_data_row_metrics = _build_front_cache(rows, max_header_rows=max_header_rows)
 
     return TableMergeState(
         owner_block=table_block,
-        body_span=body_span,
+        body_block=body_block,
         soup=soup,
         tbody=tbody,
         rows=rows,
@@ -340,24 +378,32 @@ def _build_table_state(table_block: Block, max_header_rows: int = MAX_HEADER_ROW
 
 
 def _get_or_create_table_state(
-    table_block: Block,
+    table_block: BlockDict,
     state_cache: dict[int, TableMergeState],
     max_header_rows: int = MAX_HEADER_ROWS,
 ) -> TableMergeState | None:
+    """按 table dict 对象身份复用 HTML 结构扫描结果。"""
     cache_key = id(table_block)
     state = state_cache.get(cache_key)
     if state is not None:
         return state
 
-    state = _build_table_state(table_block, max_header_rows=max_header_rows)
+    try:
+        state = _build_table_state(table_block, max_header_rows=max_header_rows)
+    except (AssertionError, TypeError, ValueError):
+        return None
     if state is not None:
         state_cache[cache_key] = state
     return state
 
 
-def _serialize_table_state_html(state: TableMergeState) -> None:
-    state.body_span.content = str(state.soup)
+def _serialize_table_state_html(state: TableMergeState) -> bool:
+    """将合并后的 BeautifulSoup 写回克隆表体，缺失表体时返回失败。"""
+    if state.body_block is None:
+        return False
+    state.body_block["content"] = str(state.soup)
     state.dirty = False
+    return True
 
 
 def calculate_table_total_columns(soup: BeautifulSoup) -> int:
@@ -660,21 +706,30 @@ def _expand_header_count_by_rowspan(rows: list[Tag], header_count: int) -> int:
 def can_merge_by_structure(
     current_state: TableMergeState,
     previous_state: TableMergeState,
-    current_bbox: BBox | None = None,
-    previous_bbox: BBox | None = None,
+    current_bbox: Any = None,
+    previous_bbox: Any = None,
 ) -> bool:
     """仅基于表格结构判断是否可合并（不检查 caption/footnote）。
 
     供外部工具调用，忽略 caption 和 footnote 检查。
     """
-    if current_bbox is not None and previous_bbox is not None:
-        x0_t1, _, x1_t1, _ = current_bbox
-        x0_t2, _, x1_t2, _ = previous_bbox
-        table1_width = x1_t1 - x0_t1
-        table2_width = x1_t2 - x0_t2
-        if table1_width > 0 and table2_width > 0:
-            if abs(table1_width - table2_width) / min(table1_width, table2_width) >= 0.1:
-                return False
+    if (
+        current_bbox is not None
+        and previous_bbox is not None
+        and not _table_widths_are_compatible(
+            current_bbox,
+            previous_bbox,
+        )
+    ):
+        return False
+
+    if (
+        previous_state.total_cols <= 0
+        or current_state.total_cols <= 0
+        or previous_state.last_data_row_metrics is None
+        or current_state.last_data_row_metrics is None
+    ):
+        return False
 
     if previous_state.total_cols == current_state.total_cols:
         return True
@@ -682,19 +737,31 @@ def can_merge_by_structure(
     return check_rows_match(previous_state, current_state)
 
 
+def _table_widths_are_compatible(current_bbox: Any, previous_bbox: Any) -> bool:
+    """使用千分位 bbox 判断两张表的宽度相对差是否小于百分之十。"""
+    current_calc_bbox = _bbox_for_calculation(current_bbox)
+    previous_calc_bbox = _bbox_for_calculation(previous_bbox)
+    if current_calc_bbox is None or previous_calc_bbox is None:
+        return False
+
+    current_width = current_calc_bbox[2] - current_calc_bbox[0]
+    previous_width = previous_calc_bbox[2] - previous_calc_bbox[0]
+    min_width = min(current_width, previous_width)
+    return min_width > 0 and abs(current_width - previous_width) / min_width < 0.1
+
+
 def can_merge_tables(current_state: TableMergeState, previous_state: TableMergeState) -> bool:
-    """判断两个表格是否可以合并."""
+    """根据 dict 表格的辅助文本、宽度和 HTML 结构判断是否可合并。"""
     current_table_block = current_state.owner_block
     previous_table_block = previous_state.owner_block
 
-    if not isinstance(previous_table_block, Block) or not isinstance(current_table_block, Block):
-        raise ValueError(
-            "can_merge_tables() requires owner_block to be a Block instance. "
-            "For HTML-only states from build_table_state_from_html(), use can_merge_by_structure() instead."
-        )
+    if not isinstance(previous_table_block, dict) or not isinstance(current_table_block, dict):
+        return False
 
-    footnote_count = sum(1 for block in previous_table_block.blocks if block.type == BlockType.TABLE_FOOTNOTE)
-    caption_blocks = [block for block in current_table_block.blocks if block.type == BlockType.TABLE_CAPTION]
+    previous_children = _table_children(previous_table_block)
+    current_children = _table_children(current_table_block)
+    footnote_count = sum(1 for block in previous_children if block.get("type") == BlockType.TABLE_FOOTNOTE)
+    caption_blocks = [block for block in current_children if block.get("type") == BlockType.TABLE_CAPTION]
     merge_caption_blocks = [
         block for block in caption_blocks if not _is_post_table_non_continuation_caption(current_table_block, block)
     ]
@@ -709,18 +776,10 @@ def can_merge_tables(current_state: TableMergeState, previous_state: TableMergeS
     elif footnote_count > 0:
         return False
 
-    x0_t1, _, x1_t1, _ = current_table_block.bbox
-    x0_t2, _, x1_t2, _ = previous_table_block.bbox
-    table1_width = x1_t1 - x0_t1
-    table2_width = x1_t2 - x0_t2
-
-    if abs(table1_width - table2_width) / min(table1_width, table2_width) >= 0.1:
+    if not _table_widths_are_compatible(current_table_block.get("bbox"), previous_table_block.get("bbox")):
         return False
 
-    if previous_state.total_cols == current_state.total_cols:
-        return True
-
-    return check_rows_match(previous_state, current_state)
+    return can_merge_by_structure(current_state, previous_state)
 
 
 def check_rows_match(previous_state: TableMergeState, current_state: TableMergeState) -> bool:
@@ -746,6 +805,7 @@ def check_rows_match(previous_state: TableMergeState, current_state: TableMergeS
 
 
 def check_row_columns_match(row1: Tag, row2: Tag) -> bool:
+    """判断两行显式单元格数量与 colspan 结构是否一致。"""
     cells1 = row1.find_all(["td", "th"])
     cells2 = row2.find_all(["td", "th"])
     if len(cells1) != len(cells2):
@@ -925,7 +985,7 @@ def _apply_cell_merge(
     previous_state: TableMergeState,
     current_state: TableMergeState,
     header_count: int,
-) -> None:
+) -> bool:
     """应用 cell_merge 语义合并。
 
     当 cell_merge 中的值为 1 时，将下表第一数据行对应单元格的内容
@@ -936,19 +996,19 @@ def _apply_cell_merge(
     两个表格中可能因 rowspan 而具有不同 <td> 元素数量的行。
     元数据仅从当前页 table body 读取，不依赖外层 table block。
     """
-    current_body_block = _find_table_body_block(current_state.owner_block)
-    if current_body_block is None:
-        return
+    current_body_block = current_state.body_block
+    if not isinstance(current_body_block, dict):
+        return False
 
-    cell_merge = current_body_block._cell_merge
-    if not cell_merge:
-        return
+    cell_merge = current_body_block.get("cell_merge")
+    if not isinstance(cell_merge, list) or not cell_merge:
+        return False
 
     rows2 = current_state.rows
     if header_count >= len(rows2):
-        return
+        return False
     if not previous_state.rows:
-        return
+        return False
 
     first_data_row = rows2[header_count]
     last_row = previous_state.rows[-1]
@@ -1007,19 +1067,23 @@ def _apply_cell_merge(
         if first_data_row in rows2:
             rows2.remove(first_data_row)
 
+    return bool(transferred_pairs)
 
-def perform_table_merge(
+
+def _perform_table_content_merge(
     previous_state: TableMergeState,
     current_state: TableMergeState,
-    previous_table_block: Block,
-    wait_merge_table_footnotes: list[Block],
-) -> None:
-    """执行表格合并操作."""
+    previous_table_block: BlockDict,
+    current_table_block: BlockDict,
+) -> bool:
+    """在两个克隆表格上执行 HTML、单元格和 footnote 的内容合并。"""
     header_count, _, _ = detect_table_headers(previous_state, current_state)
     header_count = _expand_header_count_by_rowspan(current_state.rows, header_count)
 
     rows1 = previous_state.rows
     rows2 = current_state.rows
+    if not rows1 or header_count >= len(rows2):
+        return False
 
     previous_adjusted = False
 
@@ -1065,17 +1129,22 @@ def perform_table_merge(
     if previous_adjusted:
         _refresh_table_state_metrics(previous_state)
 
-    _apply_cell_merge(previous_state, current_state, header_count)
+    cell_merge_applied = _apply_cell_merge(previous_state, current_state, header_count)
 
     appended_rows = rows2[header_count:]
     append_start_idx = len(previous_state.rows)
     merged_rows = []
 
-    if previous_state.tbody and current_state.tbody:
-        for row in appended_rows:
-            row.extract()
-            previous_state.tbody.append(row)
-            merged_rows.append(row)
+    if previous_state.tbody is None or current_state.tbody is None:
+        return False
+
+    for row in appended_rows:
+        row.extract()
+        previous_state.tbody.append(row)
+        merged_rows.append(row)
+
+    if not merged_rows and not cell_merge_applied:
+        return False
 
     previous_state.rows.extend(merged_rows)
 
@@ -1091,69 +1160,152 @@ def perform_table_merge(
             previous_state.last_data_row_metrics = appended_scan.last_nonempty_row_metrics
         previous_state.tail_occupied = appended_scan.tail_occupied
 
-    previous_table_block.blocks = [block for block in previous_table_block.blocks if block.type != BlockType.TABLE_FOOTNOTE]
-    for footnote_offset, table_footnote in enumerate(wait_merge_table_footnotes, start=1):
+    previous_content = previous_table_block.get("content")
+    if not isinstance(previous_content, list):
+        return False
+
+    previous_table_block["content"] = [
+        block for block in previous_content if not isinstance(block, dict) or block.get("type") != BlockType.TABLE_FOOTNOTE
+    ]
+    current_footnotes = [
+        block for block in _table_children(current_table_block) if block.get("type") == BlockType.TABLE_FOOTNOTE
+    ]
+    footnote_base_index = _build_post_body_child_index(previous_table_block, 0)
+    for footnote_offset, table_footnote in enumerate(current_footnotes, start=1):
         temp_table_footnote = deepcopy(table_footnote)
-        temp_table_footnote._cross_page = True
-        post_body_index = _build_post_body_child_index(previous_table_block, footnote_offset)
-        if post_body_index is None:
-            temp_table_footnote.index = 0
+        temp_table_footnote.pop("_cross_page", None)
+        if footnote_base_index is None:
+            temp_table_footnote["index"] = 0
         else:
-            temp_table_footnote.index = post_body_index
-        previous_table_block.blocks.append(temp_table_footnote)
+            temp_table_footnote["index"] = footnote_base_index + footnote_offset
+        previous_table_block["content"].append(temp_table_footnote)
 
     previous_state.dirty = True
+    return _serialize_table_state_html(previous_state)
 
 
-def merge_table(page_info_list: list[PageInfo]) -> None:
-    """合并跨页表格."""
+def merge_table_content(previous_table: BlockDict, current_table: BlockDict) -> BlockDict | None:
+    """纯函数式合并两张跨页表格的内容，失败时返回 ``None``。
+
+    两个输入都会先深拷贝；返回块保留前表外层信息，只改克隆表体 HTML
+    并用当前表 footnote 替换前表 footnote，不会修改任何输入对象。
+    """
+    if (
+        not isinstance(previous_table, dict)
+        or not isinstance(current_table, dict)
+        or previous_table.get("type") != BlockType.TABLE
+        or current_table.get("type") != BlockType.TABLE
+    ):
+        return None
+
+    previous_clone = deepcopy(previous_table)
+    current_clone = deepcopy(current_table)
+    try:
+        previous_state = _build_table_state(previous_clone)
+        current_state = _build_table_state(current_clone)
+        if previous_state is None or current_state is None:
+            return None
+        if not can_merge_tables(current_state, previous_state):
+            return None
+        if not _perform_table_content_merge(
+            previous_state,
+            current_state,
+            previous_clone,
+            current_clone,
+        ):
+            return None
+    except (AssertionError, TypeError, ValueError):
+        return None
+
+    return previous_clone
+
+
+def _clear_table_continuation_marker(table_block: BlockDict) -> None:
+    """递归清除 table 根块及其子块中过期的 ``continues_prev``。"""
+    table_block.pop("continues_prev", None)
+    content = table_block.get("content")
+    if not isinstance(content, list):
+        return
+    for child in content:
+        if isinstance(child, dict):
+            child.pop("continues_prev", None)
+            _clear_nested_continuation_markers(child)
+
+
+def _clear_nested_continuation_markers(block: BlockDict) -> None:
+    """清除表格子树中的旧延续标记，避免标记落到嵌套子块。"""
+    content = block.get("content")
+    if not isinstance(content, list):
+        return
+    for child in content:
+        if isinstance(child, dict):
+            child.pop("continues_prev", None)
+            _clear_nested_continuation_markers(child)
+
+
+def _find_boundary_table(blocks: list[Any], *, from_end: bool) -> BlockDict | None:
+    """从页边界扫描 table；噪声块可跳过，其他语义块立即阻断。"""
+    ordered_blocks = reversed(blocks) if from_end else iter(blocks)
+    for block in ordered_blocks:
+        if not isinstance(block, dict):
+            return None
+        block_type = block.get("type")
+        if block_type in TABLE_BOUNDARY_IGNORED_TYPES:
+            continue
+        if block_type == BlockType.TABLE:
+            return block
+        return None
+    return None
+
+
+def _is_consecutive_page_pair(previous_page: PageInfoDict, current_page: PageInfoDict) -> bool:
+    """按显式零基 page_idx 判断页面在文档中是否严格连续。"""
+    previous_page_idx = previous_page.get("page_idx")
+    current_page_idx = current_page.get("page_idx")
+    return type(previous_page_idx) is int and type(current_page_idx) is int and current_page_idx == previous_page_idx + 1
+
+
+def merge_table(page_info_list: list[PageInfoDict]) -> None:
+    """倒序识别连续页边界表格，并只在后表写入延续标记。"""
+    if not isinstance(page_info_list, list):
+        return
+
+    for page_info in page_info_list:
+        if not isinstance(page_info, dict):
+            continue
+        blocks = page_info.get("blocks")
+        if not isinstance(blocks, list):
+            continue
+        for block in blocks:
+            if isinstance(block, dict) and block.get("type") == BlockType.TABLE:
+                _clear_table_continuation_marker(block)
+
     state_cache: dict[int, TableMergeState] = {}
-    merged_away_blocks: set[int] = set()
 
-    for page_idx in range(len(page_info_list) - 1, -1, -1):
-        if page_idx == 0:
+    for page_position in range(len(page_info_list) - 1, 0, -1):
+        current_page = page_info_list[page_position]
+        previous_page = page_info_list[page_position - 1]
+        if not isinstance(current_page, dict) or not isinstance(previous_page, dict):
+            continue
+        if not _is_consecutive_page_pair(previous_page, current_page):
             continue
 
-        page_info = page_info_list[page_idx]
-        previous_page_info = page_info_list[page_idx - 1]
-
-        if not (page_info.para_blocks and page_info.para_blocks[0].type == BlockType.TABLE):
+        current_blocks = current_page.get("blocks")
+        previous_blocks = previous_page.get("blocks")
+        if not isinstance(current_blocks, list) or not isinstance(previous_blocks, list):
             continue
 
-        if not (previous_page_info.para_blocks and previous_page_info.para_blocks[-1].type == BlockType.TABLE):
+        current_table_block = _find_boundary_table(current_blocks, from_end=False)
+        previous_table_block = _find_boundary_table(previous_blocks, from_end=True)
+        if current_table_block is None or previous_table_block is None:
             continue
-
-        current_table_block = page_info.para_blocks[0]
-        previous_table_block = previous_page_info.para_blocks[-1]
 
         current_state = _get_or_create_table_state(current_table_block, state_cache)
         previous_state = _get_or_create_table_state(previous_table_block, state_cache)
         if current_state is None or previous_state is None:
             continue
 
-        post_table_caption_blocks = _get_post_table_caption_blocks(current_table_block)
-        wait_merge_table_footnotes = [block for block in current_table_block.blocks if block.type == BlockType.TABLE_FOOTNOTE]
-
         if not can_merge_tables(current_state, previous_state):
             continue
 
-        perform_table_merge(
-            previous_state,
-            current_state,
-            previous_table_block,
-            wait_merge_table_footnotes,
-        )
-        _restore_post_table_captions_as_text(
-            page_info,
-            current_table_block,
-            post_table_caption_blocks,
-        )
-
-        merged_away_blocks.add(id(current_table_block))
-        for block in current_table_block.blocks:
-            block.lines = []
-            block._lines_deleted = True
-
-    for state in state_cache.values():
-        if state.dirty and id(state.owner_block) not in merged_away_blocks:
-            _serialize_table_state_html(state)
+        current_table_block["continues_prev"] = True

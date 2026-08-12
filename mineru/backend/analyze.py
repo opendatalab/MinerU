@@ -2718,14 +2718,15 @@ if __name__ == "__main__":
         # os.path.join(project_root, "demo", "office_docs", "docx_01.docx"),
         # os.path.join(project_root, "demo", "pdfs", "NPU_开发环境部署_参考指南.pdf"),
         # "/Users/myhloli/pdf/png/2407.00079v4_origi-10.pdf",
-        os.path.join(project_root, "demo", "pdfs", "demo1.pdf"),
+        "/Users/myhloli/pdf/跨页表格/跨页单元格3.pdf",
+        # os.path.join(project_root, "demo", "pdfs", "demo1.pdf"),
     ]
 
     for file_path in demo_file_paths:
         file_bytes = read_fn(file_path)
         file_suffix = os.path.splitext(file_path)[1].lstrip(".").lower()
         file_suffix = "pdf"
-        middle_json, model_list = doc_analyze(file_bytes, effort="xhigh", file_suffix=file_suffix)
+        middle_json, model_list = doc_analyze(file_bytes, effort="high", file_suffix=file_suffix)
         model_json = json.dumps(model_list, ensure_ascii=False, indent=4)
         logger.info(f"file_path: {file_path}")
         logger.info(f"middle_json: {middle_json}")

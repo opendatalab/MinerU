@@ -13,9 +13,9 @@ from ..utils.para_block_utils import (
     build_para_blocks_from_preproc,
     cleanup_internal_para_block_metadata,
 )
-from ..utils.runtime_utils import cross_page_table_merge
 from ..utils.visual_span_utils import cut_visual_spans_in_blocks
 from .magic_model import MagicModel
+
 
 def blocks_to_page_info(
     page_model_list: list[dict[str, Any]],
@@ -89,8 +89,6 @@ def finalize_middle_json_from_preproc(pages: list[PageInfo], effort: str = DEFAU
     validate_effort(effort)
     build_para_blocks_from_preproc(pages)
     # 段落延续标记已在统一 model_list_to_pages dict 路径完成，此处不再重复处理。
-
-    cross_page_table_merge(pages)
 
     apply_title_leveling_to_pdf_info(pages)
     cleanup_internal_para_block_metadata(pages)

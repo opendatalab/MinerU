@@ -1,81 +1,92 @@
 from __future__ import annotations
 
-from mineru.backend.utils.table_merge import _apply_cell_merge, _build_table_state
-from mineru.types import Block, BlockType, Line, Span
+from copy import deepcopy
+from typing import Any
+
+from bs4 import BeautifulSoup
+
+from mineru.backend.utils.table_merge import merge_table_content
+from mineru.types import BlockType
 
 
-def _build_table_block(index: int, html: str, cell_merge: list[int]) -> Block:
-    """构造 cell_merge 跨页合并测试使用的两层表格块。"""
-    bbox = (0.0, 0.0, 100.0, 100.0)
-    body_block = Block(
-        index=index,
-        type=BlockType.TABLE_BODY,
-        bbox=bbox,
-        lines=[
-            Line(
-                bbox=bbox,
-                spans=[Span(type=BlockType.TABLE, bbox=bbox, content=html)],
-            )
-        ],
-    )
-    body_block._cell_merge = cell_merge
-    return Block(
-        index=index,
-        type=BlockType.TABLE,
-        bbox=bbox,
-        blocks=[body_block],
-    )
+def _build_table_block(index: int, html: str, cell_merge: list[int] | None = None) -> dict[str, Any]:
+    """构造纯内容合并测试使用的两层 dict 表格块。"""
+    body: dict[str, Any] = {
+        "index": index,
+        "type": BlockType.TABLE_BODY,
+        "bbox": [0.1, 0.1, 0.9, 0.9],
+        "content": html,
+    }
+    if cell_merge is not None:
+        body["cell_merge"] = cell_merge
+    return {
+        "index": index,
+        "type": BlockType.TABLE,
+        "bbox": [0.1, 0.1, 0.9, 0.9],
+        "content": [body],
+    }
 
 
-def test_apply_cell_merge_reads_metadata_from_table_body() -> None:
-    """验证顶层无 cell_merge 时仍按 table body 元数据续接单元格。"""
+def _row_texts(table: dict[str, Any]) -> list[list[str]]:
+    """提取合并后 table body 的逐行单元格文本。"""
+    body = table["content"][0]
+    soup = BeautifulSoup(body["content"], "html.parser")
+    return [[cell.get_text() for cell in row.find_all(["td", "th"])] for row in soup.find_all("tr")]
+
+
+def test_merge_table_content_applies_partial_cell_merge_from_table_body() -> None:
+    """验证部分视觉列续接后保留当前首行并清空已迁移单元格。"""
     previous_table = _build_table_block(
         0,
         "<table><tr><td>A</td><td>X</td></tr></table>",
-        [],
     )
     current_table = _build_table_block(
         1,
         "<table><tr><td>B</td><td>Y</td></tr></table>",
         [1, 0],
     )
-    previous_state = _build_table_state(previous_table)
-    current_state = _build_table_state(current_table)
-    assert previous_state is not None
-    assert current_state is not None
-    assert current_table._cell_merge == []
+    previous_original = deepcopy(previous_table)
+    current_original = deepcopy(current_table)
 
-    _apply_cell_merge(previous_state, current_state, header_count=0)
+    merged = merge_table_content(previous_table, current_table)
 
-    previous_cells = previous_state.rows[-1].find_all(["td", "th"])
-    current_cells = current_state.rows[0].find_all(["td", "th"])
-    assert [cell.get_text() for cell in previous_cells] == ["AB", "X"]
-    assert [cell.get_text() for cell in current_cells] == ["", "Y"]
+    assert merged is not None
+    assert _row_texts(merged) == [["AB", "X"], ["", "Y"]]
+    assert previous_table == previous_original
+    assert current_table == current_original
 
 
-def test_apply_cell_merge_skips_missing_or_empty_body_metadata() -> None:
-    """验证 table body 缺失或 cell_merge 为空时安全跳过。"""
-    for remove_body, cell_merge in [(False, []), (True, [1, 0])]:
-        previous_table = _build_table_block(
-            0,
-            "<table><tr><td>A</td><td>X</td></tr></table>",
-            [],
-        )
-        current_table = _build_table_block(
-            1,
-            "<table><tr><td>B</td><td>Y</td></tr></table>",
-            cell_merge,
-        )
-        previous_state = _build_table_state(previous_table)
-        current_state = _build_table_state(current_table)
-        assert previous_state is not None
-        assert current_state is not None
-        if remove_body:
-            current_table.blocks = []
+def test_merge_table_content_applies_full_cell_merge_and_removes_consumed_row() -> None:
+    """验证全部视觉列续接后删除已消费行，并继续追加后续数据行。"""
+    previous_table = _build_table_block(
+        0,
+        "<table><tr><td>A</td><td>X</td></tr></table>",
+    )
+    current_table = _build_table_block(
+        1,
+        "<table><tr><td>B</td><td>Y</td></tr><tr><td>C</td><td>Z</td></tr></table>",
+        [1, 1],
+    )
 
-        _apply_cell_merge(previous_state, current_state, header_count=0)
+    merged = merge_table_content(previous_table, current_table)
 
-        previous_cells = previous_state.rows[-1].find_all(["td", "th"])
-        current_cells = current_state.rows[0].find_all(["td", "th"])
-        assert [cell.get_text() for cell in previous_cells] == ["A", "X"]
-        assert [cell.get_text() for cell in current_cells] == ["B", "Y"]
+    assert merged is not None
+    assert _row_texts(merged) == [["AB", "XY"], ["C", "Z"]]
+
+
+def test_merge_table_content_supports_fully_consumed_only_current_row() -> None:
+    """验证当前表仅有一行且被 cell_merge 全部消费时仍返回合并结果。"""
+    previous_table = _build_table_block(
+        0,
+        "<table><tr><td>A</td><td>X</td></tr></table>",
+    )
+    current_table = _build_table_block(
+        1,
+        "<table><tr><td>B</td><td>Y</td></tr></table>",
+        [1, 1],
+    )
+
+    merged = merge_table_content(previous_table, current_table)
+
+    assert merged is not None
+    assert _row_texts(merged) == [["AB", "XY"]]
