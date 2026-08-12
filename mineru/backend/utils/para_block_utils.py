@@ -1,9 +1,9 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import copy
-from collections.abc import Generator
+import math
+from typing import Any, TypeAlias
 
-from ...types import BBox, Block, BlockType, Line, PageInfo, Span
-from .span_orientation import is_vertical_text_block_by_spans
+from ...types import Block, BlockType, PageInfo
 
 LINE_STOP_FLAG = (".", "!", "?", "。", "！", "？", ")", "）", '"', "”", ":", "：", ";", "；")
 SECTION_MERGE_BARRIER_TYPES = {
@@ -23,15 +23,12 @@ TEXT_MERGE_TRANSPARENT_TYPES = {
     BlockType.CHART,
     BlockType.CODE,
 }
+VERTICAL_LINE_HEIGHT_TO_WIDTH_RATIO_THRESHOLD = 2
+VERTICAL_LINE_IN_BLOCK_THRESHOLD = 0.8
 
-
-def iter_block_spans(block: Block) -> Generator[Span, None, None]:
-    for line in block.lines:
-        for span in line.spans:
-            yield span
-
-    for sub_block in block.blocks:
-        yield from iter_block_spans(sub_block)
+BlockDict: TypeAlias = dict[str, Any]
+CalculationBBox: TypeAlias = tuple[int, int, int, int]
+OrderedBlock: TypeAlias = tuple[int, int, BlockDict]
 
 
 def build_para_blocks_from_preproc(pages: list[PageInfo]) -> None:
@@ -39,176 +36,102 @@ def build_para_blocks_from_preproc(pages: list[PageInfo]) -> None:
         page_info.para_blocks = copy.deepcopy(page_info.preproc_blocks)
 
 
-def merge_para_text_blocks(
-    pages: list[PageInfo],
-    auto_merge_by_det: bool = False,
-    auto_merge_vertical_by_det: bool = False,
-) -> None:
-    ordered_blocks: list[tuple[int, int, Block]] = []
+def merge_para_text_blocks(pages: list[dict[str, Any]]) -> None:
+    """按页面阅读顺序给可延续的文本或参考文献列表写入 continues_prev 标记。"""
+    ordered_blocks: list[OrderedBlock] = []
     for page_info in pages:
-        page_idx = page_info.page_idx
-        for order_idx, block in enumerate(page_info.para_blocks):
-            ordered_blocks.append((page_idx, order_idx, block))
+        blocks = page_info.get("blocks")
+        if not isinstance(blocks, list):
+            continue
+
+        for block in blocks:
+            if isinstance(block, dict):
+                _clear_nested_continues_prev(block)
+                if block.get("type") != BlockType.TEXT:
+                    block.pop("continues_prev", None)
+
+        page_idx = page_info.get("page_idx")
+        if not isinstance(page_idx, int):
+            continue
+        for order_idx, block in enumerate(blocks):
+            if isinstance(block, dict):
+                ordered_blocks.append((page_idx, order_idx, block))
 
     for current_index in range(len(ordered_blocks) - 1, -1, -1):
         current_page_idx, _, current_block = ordered_blocks[current_index]
-        current_type = current_block.type
+        current_type = current_block.get("type")
         if current_type == BlockType.TEXT:
-            if not _block_has_lines(current_block):
+            # 已清理过 lines 的结果视为 finalize 完成，保留其既有标记以支持幂等调用。
+            if "lines" not in current_block:
                 continue
-            _merge_current_text_block(
-                ordered_blocks,
-                current_index,
-                current_page_idx,
-                current_block,
-                auto_merge_by_det,
-                auto_merge_vertical_by_det,
-            )
+            current_block.pop("continues_prev", None)
+            previous_block = _find_previous_text_block(ordered_blocks, current_index)
+            if previous_block is None:
+                continue
+            previous_page_idx, _, previous_text_block = previous_block
+            if not _is_same_or_consecutive_page(current_page_idx, previous_page_idx):
+                continue
+            if can_auto_merge_text_blocks(current_block, previous_text_block):
+                current_block["continues_prev"] = True
         elif current_type == BlockType.LIST:
-            if not current_block.blocks:
-                continue
-            _merge_current_ref_text_list_block(
+            previous_block = _find_previous_ref_text_list_block(
                 ordered_blocks,
                 current_index,
                 current_block,
             )
+            if previous_block is None:
+                continue
+            previous_page_idx, _, _ = previous_block
+            if _is_same_or_consecutive_page(current_page_idx, previous_page_idx):
+                current_block["continues_prev"] = True
+
+    for page_info in pages:
+        blocks = page_info.get("blocks")
+        if not isinstance(blocks, list):
+            continue
+        for block in blocks:
+            if isinstance(block, dict):
+                _remove_line_metadata(block)
 
 
-def _merge_current_text_block(
-    ordered_blocks: list[tuple[int, int, Block]],
-    current_index: int,
-    current_page_idx: int,
-    current_block: Block,
-    auto_merge_by_det: bool,
-    auto_merge_vertical_by_det: bool,
-) -> None:
-    """处理当前 text block 的 merge_prev 候选合并和 Hybrid det 自动合并。"""
-    previous_block = None
-    if current_block.merge_prev:
-        previous_block = _find_previous_merge_prev_text_block(
-            ordered_blocks,
-            current_index,
-            current_page_idx,
-        )
-        if previous_block is not None:
-            _, _, previous_text_block = previous_block
-            if not can_auto_merge_text_blocks(
-                current_block,
-                previous_text_block,
-                allow_single_line_blocks=True,
-            ):
-                previous_block = None
-
-    if previous_block is None and auto_merge_by_det:
-        previous_block = _find_previous_text_block(
-            ordered_blocks,
-            current_index,
-        )
-        if previous_block is not None:
-            _, _, previous_text_block = previous_block
-            if not can_auto_merge_text_blocks(
-                current_block,
-                previous_text_block,
-                allow_vertical_blocks=auto_merge_vertical_by_det,
-            ):
-                previous_block = None
-
-    if previous_block is None:
-        return
-
-    previous_page_idx, _, previous_text_block = previous_block
-    _merge_text_block(
-        current_block,
-        previous_text_block,
-        is_cross_page=current_page_idx != previous_page_idx,
-    )
-
-
-def _merge_current_ref_text_list_block(
-    ordered_blocks: list[tuple[int, int, Block]],
-    current_index: int,
-    current_block: Block,
-) -> None:
-    """处理当前 ref_text list 与前一个相邻 ref_text list 的合并。"""
-    previous_block = _find_previous_ref_text_list_block(
-        ordered_blocks,
-        current_index,
-        current_block,
-    )
-    if previous_block is None:
-        return
-
-    current_page_idx, _, _ = ordered_blocks[current_index]
-    previous_page_idx, _, previous_list_block = previous_block
-    _merge_ref_text_list_block(
-        current_block,
-        previous_list_block,
-        is_cross_page=current_page_idx != previous_page_idx,
-    )
-
-
-def can_auto_merge_text_blocks(
-    current_block: Block,
-    previous_block: Block,
-    allow_single_line_blocks: bool = False,
-    allow_vertical_blocks: bool = False,
-) -> bool:
-    """按段落首尾文本和行几何规则判断 text 是否可合并。"""
-    current_lines = current_block.lines
-    previous_lines = previous_block.lines
-    current_metric_lines = _resolve_local_metric_lines(current_block)
-    previous_metric_lines = _resolve_local_metric_lines(previous_block)
-    if not current_lines or not previous_lines or not current_metric_lines or not previous_metric_lines:
+def can_auto_merge_text_blocks(current_block: BlockDict, previous_block: BlockDict) -> bool:
+    """按文本首尾、行方向和几何关系判断两个 dict text block 是否可连续。"""
+    current_metric_lines = _metric_line_bboxes(current_block)
+    previous_metric_lines = _metric_line_bboxes(previous_block)
+    if not current_metric_lines or not previous_metric_lines:
         return False
 
-    if (
-        allow_vertical_blocks
-        and _is_vertical_text_block_by_lines(current_metric_lines)
-        and _is_vertical_text_block_by_lines(previous_metric_lines)
-    ):
+    current_bbox = _bbox_for_calculation(current_block.get("bbox"))
+    previous_bbox = _bbox_for_calculation(previous_block.get("bbox"))
+    if current_bbox is None or previous_bbox is None:
+        return False
+
+    current_content = _normalized_text_content(current_block)
+    previous_content = _normalized_text_content(previous_block)
+    if not current_content or not previous_content:
+        return False
+
+    current_is_vertical = _is_vertical_text_block_by_lines(current_metric_lines)
+    previous_is_vertical = _is_vertical_text_block_by_lines(previous_metric_lines)
+    if current_is_vertical != previous_is_vertical:
+        return False
+    if current_is_vertical:
         return _can_auto_merge_vertical_text_blocks(
-            current_block,
-            previous_block,
-            current_lines,
-            previous_lines,
+            current_content,
+            previous_content,
+            current_bbox,
+            previous_bbox,
             current_metric_lines,
             previous_metric_lines,
         )
-
-    first_metric_line = current_metric_lines[0]
-    last_metric_line = previous_metric_lines[-1]
-    first_line_height = _line_height(first_metric_line)
-    last_line_height = _line_height(last_metric_line)
-    if first_line_height <= 0 or last_line_height <= 0:
-        return False
-
-    current_bbox_fs = _build_bbox_fs(current_block, current_metric_lines)
-    previous_bbox_fs = _build_bbox_fs(previous_block, previous_metric_lines)
-    if abs(current_bbox_fs[0] - first_metric_line.bbox[0]) >= first_line_height / 2:
-        return False
-    if abs(previous_bbox_fs[2] - last_metric_line.bbox[2]) >= last_line_height:
-        return False
-
-    first_content = _first_non_empty_content(current_lines)
-    last_content = _last_non_empty_content(previous_lines)
-    if not first_content or not last_content:
-        return False
-    if last_content.endswith(LINE_STOP_FLAG):
-        return False
-    if first_content[0].isdigit() or first_content[0].isupper():
-        return False
-
-    current_metric_width = current_bbox_fs[2] - current_bbox_fs[0]
-    previous_metric_width = previous_bbox_fs[2] - previous_bbox_fs[0]
-    min_metric_width = min(current_metric_width, previous_metric_width)
-    if min_metric_width <= 0:
-        return False
-    if abs(current_metric_width - previous_metric_width) >= min_metric_width:
-        return False
-
-    if not allow_single_line_blocks and len(current_metric_lines) <= 1 and len(previous_metric_lines) <= 1:
-        return False
-    return _has_mergeable_block_bbox_relation(current_block, previous_block)
+    return _can_auto_merge_horizontal_text_blocks(
+        current_content,
+        previous_content,
+        current_bbox,
+        previous_bbox,
+        current_metric_lines,
+        previous_metric_lines,
+    )
 
 
 def cleanup_internal_para_block_metadata(pages: list[PageInfo]) -> None:
@@ -222,14 +145,13 @@ def cleanup_internal_para_block_metadata(pages: list[PageInfo]) -> None:
 
 
 def _find_previous_text_block(
-    ordered_blocks: list[tuple[int, int, Block]],
+    ordered_blocks: list[OrderedBlock],
     current_index: int,
-) -> tuple[int, int, Block] | None:
-    """查找前序 text；除 merge_prev 专用路径外默认允许跨页查找。"""
+) -> OrderedBlock | None:
+    """向前查找 text，视觉根块可跨过，结构或其他语义块会阻断查找。"""
     for previous_index in range(current_index - 1, -1, -1):
-        _, _, previous_block = ordered_blocks[previous_index]
-
-        previous_type = previous_block.type
+        previous_block = ordered_blocks[previous_index][2]
+        previous_type = previous_block.get("type")
         if previous_type in TEXT_MERGE_BARRIER_TYPES:
             return None
         if previous_type != BlockType.TEXT:
@@ -237,217 +159,199 @@ def _find_previous_text_block(
                 return None
             continue
         return ordered_blocks[previous_index]
-
-    return None
-
-
-def _find_previous_merge_prev_text_block(
-    ordered_blocks: list[tuple[int, int, Block]],
-    current_index: int,
-    current_page_idx: int,
-) -> tuple[int, int, Block] | None:
-    """查找同页 merge_prev 提示对应的前序 text，但不跨越段落合并屏障。"""
-    for previous_index in range(current_index - 1, -1, -1):
-        previous_page_idx, _, previous_block = ordered_blocks[previous_index]
-        if previous_page_idx != current_page_idx:
-            return None
-
-        previous_type = previous_block.type
-        if previous_type in TEXT_MERGE_BARRIER_TYPES:
-            return None
-        if previous_type != BlockType.TEXT:
-            if previous_type not in TEXT_MERGE_TRANSPARENT_TYPES:
-                return None
-            continue
-        return ordered_blocks[previous_index]
-
     return None
 
 
 def _find_previous_ref_text_list_block(
-    ordered_blocks: list[tuple[int, int, Block]],
+    ordered_blocks: list[OrderedBlock],
     current_index: int,
-    current_block: Block,
-) -> tuple[int, int, Block] | None:
-    """查找紧邻当前 list 的前一个 ref_text list，默认允许跨页拼接。"""
+    current_block: BlockDict,
+) -> OrderedBlock | None:
+    """查找紧邻当前块的前一个 ref_text list，列表之间不允许跨过其他块。"""
     previous_index = current_index - 1
     if previous_index < 0:
         return None
-
-    _, _, previous_block = ordered_blocks[previous_index]
-    if previous_block.type in SECTION_MERGE_BARRIER_TYPES:
-        return None
-    if previous_block.type != BlockType.LIST:
-        return None
+    previous_block = ordered_blocks[previous_index][2]
     if not _is_ref_text_list_block(current_block) or not _is_ref_text_list_block(previous_block):
         return None
     return ordered_blocks[previous_index]
 
 
-def _is_ref_text_list_block(block: Block) -> bool:
-    """判断 list block 是否为引用文本列表，只允许这种列表自动拼接。"""
-    return block.type == BlockType.LIST and block.sub_type == BlockType.REF_TEXT
+def _is_ref_text_list_block(block: BlockDict) -> bool:
+    """判断当前 dict block 是否为参考文献列表。"""
+    return block.get("type") == BlockType.LIST and block.get("sub_type") == BlockType.REF_TEXT
 
 
-def _resolve_auto_metric_lines(block: Block) -> list[Line]:
-    """优先使用 OCR det 行提示；没有提示时退回 block 自身 lines。"""
-    return block._ocr_det_lines or block.lines
+def _is_same_or_consecutive_page(current_page_idx: int, previous_page_idx: int) -> bool:
+    """只允许同页或页码严格连续的前后页建立延续关系。"""
+    return current_page_idx == previous_page_idx or current_page_idx == previous_page_idx + 1
 
 
-def _resolve_local_metric_lines(block: Block) -> list[Line]:
-    """过滤跨页追加行，避免已合并内容污染后续本地几何判定。"""
-    metric_lines = _resolve_auto_metric_lines(block)
-    local_metric_lines = [line for line in metric_lines if not _is_cross_page_line(line)]
-    return local_metric_lines or metric_lines
+def _bbox_for_calculation(bbox: Any) -> CalculationBBox | None:
+    """复制并将 0～1 bbox 放大为千分位整数，原始 bbox 保持不变。"""
+    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+        return None
+    try:
+        values = tuple(float(value) for value in bbox)
+    except (TypeError, ValueError):
+        return None
+    if not all(math.isfinite(value) and 0 <= value <= 1 for value in values):
+        return None
+
+    x0, y0, x1, y1 = (int(round(value * 1000)) for value in values)
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return x0, y0, x1, y1
 
 
-def _merge_text_block(current_block: Block, previous_block: Block, is_cross_page: bool) -> None:
-    if is_cross_page:
-        _mark_lines_cross_page(current_block.lines)
-        _mark_lines_cross_page(current_block._ocr_det_lines)
+def _metric_line_bboxes(block: BlockDict) -> list[CalculationBBox]:
+    """读取 block.lines 的全部合法行框，任一行非法时整块按不可合并处理。"""
+    lines = block.get("lines")
+    if not isinstance(lines, list) or not lines:
+        return []
 
-    previous_block.lines.extend(current_block.lines)
-    previous_block._ocr_det_lines.extend(current_block._ocr_det_lines)
-
-    current_block.lines = []
-    current_block._ocr_det_lines = []
-    current_block._lines_deleted = True
-
-
-def _mark_lines_cross_page(lines: list[Line]) -> None:
-    """给跨页合并进来的文本行和 det hint 行同步打跨页标记。"""
+    line_bboxes: list[CalculationBBox] = []
     for line in lines:
-        for span in line.spans:
-            span._cross_page = True
+        if not isinstance(line, dict):
+            return []
+        line_bbox = _bbox_for_calculation(line.get("bbox"))
+        if line_bbox is None:
+            return []
+        line_bboxes.append(line_bbox)
+    return line_bboxes
 
 
-def _is_cross_page_line(line: Line) -> bool:
-    """判断整行是否来自跨页追加，供几何度量时排除。"""
-    spans = line.spans
-    return bool(spans) and all(span._cross_page for span in spans)
+def _normalized_text_content(block: BlockDict) -> str:
+    """读取并去除 text block 内容首尾空白，非字符串内容按无文本处理。"""
+    content = block.get("content")
+    return content.strip() if isinstance(content, str) else ""
 
 
-def _merge_ref_text_list_block(current_block: Block, previous_block: Block, is_cross_page: bool) -> None:
-    """合并相邻 ref_text list，并在跨页时给当前 list 内 span 标记跨页。"""
-    if is_cross_page:
-        for span in iter_block_spans(current_block):
-            span._cross_page = True
-
-    previous_block.blocks.extend(current_block.blocks)
-    current_block.blocks = []
-    current_block._lines_deleted = True
-
-
-def _line_height(line: Line) -> float:
-    bbox = line.bbox
-    if not bbox:
-        return 0
-    return bbox[3] - bbox[1]
+def _bbox_union(line_bboxes: list[CalculationBBox]) -> CalculationBBox:
+    """聚合全部行框，得到只用于几何判断的文本覆盖范围。"""
+    return (
+        min(bbox[0] for bbox in line_bboxes),
+        min(bbox[1] for bbox in line_bboxes),
+        max(bbox[2] for bbox in line_bboxes),
+        max(bbox[3] for bbox in line_bboxes),
+    )
 
 
-def _line_width(line: Line) -> float:
-    """计算行或纵排列的宽度，供纵排几何规则使用。"""
-    bbox = line.bbox
-    if not bbox:
-        return 0
-    return bbox[2] - bbox[0]
+def _line_height(line_bbox: CalculationBBox) -> int:
+    """计算千分位行框高度。"""
+    return line_bbox[3] - line_bbox[1]
 
 
-def _build_bbox_fs(block: Block, lines: list[Line]) -> BBox:
-    if lines:
-        return (
-            min(line.bbox[0] for line in lines),
-            min(line.bbox[1] for line in lines),
-            max(line.bbox[2] for line in lines),
-            max(line.bbox[3] for line in lines),
-        )
-    return block.bbox
+def _line_width(line_bbox: CalculationBBox) -> int:
+    """计算千分位行框宽度。"""
+    return line_bbox[2] - line_bbox[0]
 
 
-def _block_has_lines(block: Block) -> bool:
-    return any(line.spans for line in block.lines)
+def _is_vertical_text_block_by_lines(line_bboxes: list[CalculationBBox]) -> bool:
+    """按行框高宽比判断 block 是否为竖排文本。"""
+    vertical_line_count = sum(
+        _line_height(line_bbox) / _line_width(line_bbox) > VERTICAL_LINE_HEIGHT_TO_WIDTH_RATIO_THRESHOLD
+        for line_bbox in line_bboxes
+    )
+    return vertical_line_count / len(line_bboxes) > VERTICAL_LINE_IN_BLOCK_THRESHOLD
 
 
-def _first_non_empty_content(lines: list[Line]) -> str:
-    """从行列表中提取第一个非空 span 文本，用于段落起始字符规则判断。"""
-    for line in lines:
-        for span in line.spans:
-            content = span.content or ""
-            if content:
-                return content
-    return ""
+def _has_mergeable_text_boundary(current_content: str, previous_content: str) -> bool:
+    """使用前块结尾和后块开头字符排除明显的新段落边界。"""
+    if previous_content.endswith(LINE_STOP_FLAG):
+        return False
+    first_char = current_content[0]
+    return not first_char.isdigit() and not first_char.isupper()
 
 
-def _last_non_empty_content(lines: list[Line]) -> str:
-    """从行列表中提取最后一个非空 span 文本，用于段落结尾字符规则判断。"""
-    for line in reversed(lines):
-        for span in reversed(line.spans):
-            content = span.content or ""
-            if content:
-                return content
-    return ""
+def _can_auto_merge_horizontal_text_blocks(
+    current_content: str,
+    previous_content: str,
+    current_bbox: CalculationBBox,
+    previous_bbox: CalculationBBox,
+    current_lines: list[CalculationBBox],
+    previous_lines: list[CalculationBBox],
+) -> bool:
+    """使用横排段落的首行、末行、宽度和 block 相交规则判断是否连续。"""
+    first_line = current_lines[0]
+    last_line = previous_lines[-1]
+    first_line_height = _line_height(first_line)
+    last_line_height = _line_height(last_line)
+    if first_line_height <= 0 or last_line_height <= 0:
+        return False
 
+    current_lines_bbox = _bbox_union(current_lines)
+    previous_lines_bbox = _bbox_union(previous_lines)
+    if abs(current_lines_bbox[0] - first_line[0]) >= first_line_height / 2:
+        return False
+    if abs(previous_lines_bbox[2] - last_line[2]) >= last_line_height:
+        return False
+    if not _has_mergeable_text_boundary(current_content, previous_content):
+        return False
 
-def _has_mergeable_block_bbox_relation(current_block: Block, previous_block: Block) -> bool:
-    """复用本地 Hybrid text 合并的核心几何条件：当前块上边界进入前块范围。"""
-    return current_block.bbox[1] < previous_block.bbox[3]
-
-
-def _is_vertical_text_block_by_lines(lines: list[Line]) -> bool:
-    """使用当前几何行中的 spans 判断文本块是否为纵排。"""
-    spans = [
-        span
-        for line in lines
-        for span in line.spans
-    ]
-    return is_vertical_text_block_by_spans(spans)
+    current_width = current_lines_bbox[2] - current_lines_bbox[0]
+    previous_width = previous_lines_bbox[2] - previous_lines_bbox[0]
+    min_width = min(current_width, previous_width)
+    if min_width <= 0 or abs(current_width - previous_width) >= min_width:
+        return False
+    if len(current_lines) <= 1 and len(previous_lines) <= 1:
+        return False
+    return current_bbox[1] < previous_bbox[3]
 
 
 def _can_auto_merge_vertical_text_blocks(
-    current_block: Block,
-    previous_block: Block,
-    current_lines: list[Line],
-    previous_lines: list[Line],
-    current_metric_lines: list[Line],
-    previous_metric_lines: list[Line],
+    current_content: str,
+    previous_content: str,
+    current_bbox: CalculationBBox,
+    previous_bbox: CalculationBBox,
+    current_lines: list[CalculationBBox],
+    previous_lines: list[CalculationBBox],
 ) -> bool:
-    """复用本地 Hybrid 纵排文本块合并规则，几何优先使用 OCR det 行。"""
-    first_metric_line = current_metric_lines[0]
-    last_metric_line = previous_metric_lines[-1]
-    first_line_width = _line_width(first_metric_line)
-    last_line_width = _line_width(last_metric_line)
+    """使用竖排段落的首列、末列、高度和 block 相交规则判断是否连续。"""
+    first_line = current_lines[0]
+    last_line = previous_lines[-1]
+    first_line_width = _line_width(first_line)
+    last_line_width = _line_width(last_line)
     if first_line_width <= 0 or last_line_width <= 0:
         return False
 
-    current_bbox_fs = _build_bbox_fs(current_block, current_metric_lines)
-    previous_bbox_fs = _build_bbox_fs(previous_block, previous_metric_lines)
-    if abs(current_bbox_fs[1] - first_metric_line.bbox[1]) >= first_line_width / 2:
+    current_lines_bbox = _bbox_union(current_lines)
+    previous_lines_bbox = _bbox_union(previous_lines)
+    if abs(current_lines_bbox[1] - first_line[1]) >= first_line_width / 2:
         return False
-    if abs(previous_bbox_fs[3] - last_metric_line.bbox[3]) >= last_line_width:
+    if abs(previous_lines_bbox[3] - last_line[3]) >= last_line_width:
         return False
-
-    first_content = _first_non_empty_content(current_lines)
-    last_content = _last_non_empty_content(previous_lines)
-    if not first_content or not last_content:
-        return False
-    if last_content.endswith(LINE_STOP_FLAG):
-        return False
-    if first_content[0].isdigit() or first_content[0].isupper():
+    if not _has_mergeable_text_boundary(current_content, previous_content):
         return False
 
-    current_metric_height = current_bbox_fs[3] - current_bbox_fs[1]
-    previous_metric_height = previous_bbox_fs[3] - previous_bbox_fs[1]
-    min_metric_height = min(current_metric_height, previous_metric_height)
-    if min_metric_height <= 0:
+    current_height = current_lines_bbox[3] - current_lines_bbox[1]
+    previous_height = previous_lines_bbox[3] - previous_lines_bbox[1]
+    min_height = min(current_height, previous_height)
+    if min_height <= 0 or abs(current_height - previous_height) >= min_height:
         return False
-    if abs(current_metric_height - previous_metric_height) >= min_metric_height:
-        return False
-    return _has_mergeable_vertical_block_bbox_relation(current_block, previous_block)
+    return current_bbox[2] > previous_bbox[0]
 
 
-def _has_mergeable_vertical_block_bbox_relation(current_block: Block, previous_block: Block) -> bool:
-    """复刻横排同构关系：当前纵排块右边界需要进入前块左边界右侧。"""
-    return current_block.bbox[2] > previous_block.bbox[0]
+def _clear_nested_continues_prev(block: BlockDict) -> None:
+    """递归清理子块旧标记，顶层 text 标记由是否仍有 lines 决定是否重算。"""
+    content = block.get("content")
+    if not isinstance(content, list):
+        return
+    for child_block in content:
+        if isinstance(child_block, dict):
+            child_block.pop("continues_prev", None)
+            _clear_nested_continues_prev(child_block)
+
+
+def _remove_line_metadata(block: BlockDict) -> None:
+    """递归删除顶层及嵌套 block 的临时 lines 字段。"""
+    block.pop("lines", None)
+    content = block.get("content")
+    if not isinstance(content, list):
+        return
+    for child_block in content:
+        if isinstance(child_block, dict):
+            _remove_line_metadata(child_block)
 
 
 def _cleanup_block_internal_metadata(block: Block) -> None:

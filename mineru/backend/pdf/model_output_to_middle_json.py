@@ -4,15 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...types import BlockType, PageInfo
+from ...types import PageInfo
 from ...utils.image_payload import ImagePayloadCache
 from ...utils.pdf_document import PDFPage
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from ...utils.backend_options import DEFAULT_HYBRID_EFFORT, LAYOUT_HYBRID_EFFORT, LOCAL_HYBRID_EFFORT, validate_effort
+from ...utils.backend_options import DEFAULT_HYBRID_EFFORT, validate_effort
 from ..utils.para_block_utils import (
     build_para_blocks_from_preproc,
     cleanup_internal_para_block_metadata,
-    merge_para_text_blocks,
 )
 from ..utils.runtime_utils import cross_page_table_merge
 from ..utils.visual_span_utils import cut_visual_spans_in_blocks
@@ -87,13 +86,9 @@ def blocks_to_page_info(
 
 def finalize_middle_json_from_preproc(pages: list[PageInfo], effort: str = DEFAULT_HYBRID_EFFORT) -> None:
     """从 Hybrid preproc_blocks 执行完整 finalize，供服务端完整路径和客户端复用。"""
-    effort = validate_effort(effort)
+    validate_effort(effort)
     build_para_blocks_from_preproc(pages)
-    merge_para_text_blocks(
-        pages,
-        auto_merge_by_det=True,
-        auto_merge_vertical_by_det=effort in {LOCAL_HYBRID_EFFORT, LAYOUT_HYBRID_EFFORT},
-    )
+    # 段落延续标记已在统一 model_list_to_pages dict 路径完成，此处不再重复处理。
 
     cross_page_table_merge(pages)
 

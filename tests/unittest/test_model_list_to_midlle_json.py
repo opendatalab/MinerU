@@ -157,3 +157,84 @@ def test_model_list_to_pages_preserves_office_nested_input() -> None:
 
     list_block["content"][0]["content"] = "changed"
     assert model_list == original_model_list
+
+
+def test_model_list_to_pages_marks_pdf_continuation_and_removes_lines() -> None:
+    """验证统一入口会处理带 bbox 的 PDF，并保持原始 model_list 不变。"""
+    model_list = [
+        [
+            {
+                "type": BlockType.TEXT,
+                "bbox": [0.1, 0.1, 0.9, 0.3],
+                "content": "previous continuation",
+                "lines": [
+                    {"bbox": [0.1, 0.1, 0.9, 0.15]},
+                    {"bbox": [0.1, 0.2, 0.9, 0.25]},
+                ],
+            },
+            {
+                "type": BlockType.TEXT,
+                "bbox": [0.1, 0.25, 0.9, 0.45],
+                "content": "current continuation",
+                "lines": [
+                    {"bbox": [0.1, 0.25, 0.9, 0.3]},
+                    {"bbox": [0.1, 0.35, 0.9, 0.4]},
+                ],
+            },
+        ]
+    ]
+    original_model_list = deepcopy(model_list)
+
+    pages = model_list_to_pages(model_list)
+
+    assert model_list == original_model_list
+    assert [block["content"] for block in pages[0]["blocks"]] == [
+        "previous continuation",
+        "current continuation",
+    ]
+    assert "continues_prev" not in pages[0]["blocks"][0]
+    assert pages[0]["blocks"][1]["continues_prev"] is True
+    assert all("lines" not in block for block in pages[0]["blocks"])
+    assert [block["bbox"] for block in pages[0]["blocks"]] == [
+        [0.1, 0.1, 0.9, 0.3],
+        [0.1, 0.25, 0.9, 0.45],
+    ]
+
+
+def test_model_list_to_pages_skips_para_merge_for_office_without_bbox() -> None:
+    """验证无 bbox 的 Office 不进入段落后处理，也不会删除其 lines。"""
+    model_list = [
+        [
+            {
+                "type": BlockType.TEXT,
+                "content": "office text",
+                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
+            }
+        ]
+    ]
+
+    pages = model_list_to_pages(model_list)
+
+    office_text = pages[0]["blocks"][0]
+    assert office_text["lines"] == [{"bbox": [0.1, 0.1, 0.9, 0.2]}]
+    assert "continues_prev" not in office_text
+
+
+def test_model_list_to_pages_detects_pdf_after_empty_first_page() -> None:
+    """验证 PDF 检测会扫描后续页面，而不是只检查空白首页。"""
+    model_list = [
+        [],
+        [
+            {
+                "type": BlockType.TEXT,
+                "bbox": [0.1, 0.1, 0.9, 0.3],
+                "content": "later page",
+                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
+            }
+        ],
+    ]
+
+    pages = model_list_to_pages(model_list)
+
+    assert pages[0] == {"blocks": [], "page_idx": 0}
+    assert "lines" not in pages[1]["blocks"][0]
