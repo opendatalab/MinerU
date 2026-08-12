@@ -1,5 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from copy import deepcopy
 from typing import Any
+
 from mineru.backend.magic_model import MagicModel
 
 
@@ -24,8 +26,9 @@ def blocks_to_page_info(
     page_model_list: list[dict[str, Any]],
 ):
     """将blocks转换为页面信息"""
+    # Middle JSON 转换允许重写块结构，但不能污染调用方保留的原始 model_list。
     magic_model = MagicModel(
-        page_model_list,
+        deepcopy(page_model_list),
     )
 
     page_blocks = magic_model.blocks
