@@ -565,7 +565,7 @@ def regroup_visual_blocks(
             two_layer_block: BlockLike = {
                 "index": main_index,
                 "type": visual_type,
-                "blocks": child_items,
+                "content": child_items,
                 "sub_type": main_sub_type,
             }
             if "bbox" in main_block:
@@ -577,7 +577,7 @@ def regroup_visual_blocks(
                 index=main_index,
                 type=visual_type,
                 bbox=main_block.bbox,
-                blocks=cast(list[Block], child_items),
+                content=cast(Any, child_items),
             )
             if visual_type in [BlockType.IMAGE, BlockType.CHART] and main_sub_type:
                 two_layer_block.sub_type = main_sub_type
