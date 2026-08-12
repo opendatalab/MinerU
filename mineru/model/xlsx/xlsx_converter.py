@@ -112,6 +112,9 @@ class _MergedCellLookup:
             collections.defaultdict(list)
         )
         self._anchor_spans: dict[tuple[int, int], tuple[int, int]] = {}
+        self._merged_row_anchors: dict[
+            int, list[tuple[int, int, int, int]]
+        ] = collections.defaultdict(list)
 
         for merged in sheet.merged_cells.ranges:
             min_row = merged.min_row - 1
@@ -126,6 +129,9 @@ class _MergedCellLookup:
 
             for row in range(min_row, max_row + 1):
                 self._merged_row_intervals[row].append((min_col, max_col))
+                self._merged_row_anchors[row].append(
+                    (min_col, max_col, min_row, min_col)
+                )
                 hidden_start_col = min_col + 1 if row == min_row else min_col
                 if hidden_start_col <= max_col:
                     self._hidden_row_intervals[row].append(
@@ -136,6 +142,8 @@ class _MergedCellLookup:
             intervals.sort()
         for intervals in self._hidden_row_intervals.values():
             intervals.sort()
+        for anchors in self._merged_row_anchors.values():
+            anchors.sort()
 
     @staticmethod
     def _contains_interval(
@@ -162,6 +170,17 @@ class _MergedCellLookup:
     def get_anchor_span(self, row: int, col: int) -> tuple[int, int]:
         """返回合并区域左上角坐标对应的 rowspan/colspan，非合并锚点返回 1x1。"""
         return self._anchor_spans.get((row, col), (1, 1))
+
+    def get_anchor_position(self, row: int, col: int) -> tuple[int, int]:
+        """Return the top-left coordinate for a merged cell, or the input coordinate."""
+        for start_col, end_col, anchor_row, anchor_col in self._merged_row_anchors.get(
+            row, []
+        ):
+            if start_col <= col <= end_col:
+                return anchor_row, anchor_col
+            if start_col > col:
+                break
+        return row, col
 
 
 class XlsxConverter:
@@ -344,12 +363,16 @@ class XlsxConverter:
         if self.workbook is None:
             return images
 
+        merged_lookup = self._get_merged_cell_lookup(sheet)
         for item in getattr(sheet, "_images", []):  # type: ignore[attr-defined]
             try:
                 image: XlsImage = cast(XlsImage, item)
+                anchor = self._get_anchor_pos(item.anchor)
+                if anchor[0] is not None and anchor[1] is not None:
+                    anchor = merged_lookup.get_anchor_position(*anchor)
                 images.append(
                     {
-                        "anchor": self._get_anchor_pos(item.anchor),
+                        "anchor": anchor,
                         "base64": self._serialize_sheet_image(image),
                     }
                 )
