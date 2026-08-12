@@ -568,7 +568,6 @@ def regroup_visual_blocks(
             [body_block, *captions, *footnotes],
             key=_block_index,
         )
-        cell_merge = _get_block_field(main_block, "_cell_merge", [])
         if isinstance(main_block, dict):
             two_layer_block: BlockLike = {
                 "index": main_index,
@@ -579,8 +578,6 @@ def regroup_visual_blocks(
                 two_layer_block["sub_type"] = main_sub_type
             if "bbox" in main_block:
                 two_layer_block["bbox"] = deepcopy(main_block["bbox"])
-            if visual_type == BlockType.TABLE and cell_merge:
-                two_layer_block["_cell_merge"] = cell_merge
         else:
             two_layer_block = Block(
                 index=main_index,
@@ -590,8 +587,6 @@ def regroup_visual_blocks(
             )
             if main_sub_type:
                 two_layer_block.sub_type = main_sub_type
-            if visual_type == BlockType.TABLE and cell_merge:
-                two_layer_block._cell_merge = cell_merge
 
         grouped_blocks[visual_type].append(two_layer_block)
 

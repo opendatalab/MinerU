@@ -934,8 +934,13 @@ def _apply_cell_merge(
 
     cell_merge 按视觉列索引对齐，通过构建视觉列映射来正确匹配
     两个表格中可能因 rowspan 而具有不同 <td> 元素数量的行。
+    元数据仅从当前页 table body 读取，不依赖外层 table block。
     """
-    cell_merge = current_state.owner_block._cell_merge
+    current_body_block = _find_table_body_block(current_state.owner_block)
+    if current_body_block is None:
+        return
+
+    cell_merge = current_body_block._cell_merge
     if not cell_merge:
         return
 
