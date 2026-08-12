@@ -284,6 +284,12 @@ def _process_output(
         make_func = office_union_make
     else:
         raise Exception(f"Unknown process_mode: {process_mode}")
+    if process_mode in {"pipeline", "vlm"}:
+        # PDF link annotations are not part of model middle JSON; merge them
+        # before generating Markdown, content lists, and middle JSON outputs.
+        from mineru.utils.pdf_hyperlink import enrich_pdf_hyperlinks
+
+        enrich_pdf_hyperlinks(pdf_info, pdf_bytes)
     """处理输出文件"""
     if f_draw_layout_bbox:
         try:

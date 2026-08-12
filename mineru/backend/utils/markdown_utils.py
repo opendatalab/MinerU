@@ -48,6 +48,20 @@ def escape_text_block_markdown_prefix(content: str) -> str:
     return f"{content[:marker_start]}\\{content[marker_start:]}"
 
 
+def render_markdown_hyperlink(content: str, target: str) -> str:
+    """Render a link using Markdown's angle-bracket destination form."""
+    label = escape_conservative_markdown_text(str(content or ""))
+    label = label.replace("[", r"\[").replace("]", r"\]")
+    href = str(target or "").replace("\r", "").replace("\n", "")
+    href = href.replace("<", "%3C").replace(">", "%3E")
+    return f"[{label}](<{href}>)"
+
+
+def render_page_anchor(anchor: str) -> str:
+    """Render a stable HTML anchor that works in generated Markdown."""
+    return f'<a id="{escape(str(anchor), quote=True)}"></a>'
+
+
 def render_algorithm_html_from_lines(
     lines: list[dict],
     inline_left_delimiter: str,

@@ -13,6 +13,8 @@ from mineru.backend.utils.markdown_utils import (
     escape_conservative_markdown_text,
     escape_text_block_markdown_prefix,
     render_algorithm_html_from_lines,
+    render_markdown_hyperlink,
+    render_page_anchor,
 )
 
 latex_delimiters_config = get_latex_delimiter_config()
@@ -76,7 +78,7 @@ def _has_following_joinable_span(para_block, line_idx, span_idx):
         start_span_idx = span_idx + 1 if next_line_idx == line_idx else 0
         for next_span in next_line.get('spans', [])[start_span_idx:]:
             next_span_type = next_span.get('type')
-            if next_span_type == ContentType.TEXT:
+            if next_span_type in [ContentType.TEXT, ContentType.HYPERLINK]:
                 if _normalize_text_content(next_span.get('content')).strip():
                     return True
             elif next_span_type == ContentType.INLINE_EQUATION:
@@ -296,6 +298,11 @@ def merge_para_with_text(
                 content = span['content']
                 if escape_markdown_text:
                     content = escape_conservative_markdown_text(content)
+            elif span_type == ContentType.HYPERLINK:
+                content = render_markdown_hyperlink(
+                    _normalize_text_content(span.get('content', '')),
+                    span.get('url', ''),
+                )
             elif span_type == ContentType.INLINE_EQUATION:
                 content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
             elif span_type == ContentType.INTERLINE_EQUATION:
@@ -330,7 +337,7 @@ def merge_para_with_text(
                         para_text += content
                 else:
                     # 西方文本语境下 每行的最后一个span判断是否要去除连字符
-                    if span_type in [ContentType.TEXT, ContentType.INLINE_EQUATION]:
+                    if span_type in [ContentType.TEXT, ContentType.HYPERLINK, ContentType.INLINE_EQUATION]:
                         # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
                         if (
                                 is_last_span
@@ -818,11 +825,19 @@ def merge_para_with_text_v2(para_block):
         for j, span in enumerate(line['spans']):
             span_type = span['type']
             if span.get("content", '').strip():
+                is_hyperlink = span_type == ContentType.HYPERLINK
                 if span_type == ContentType.TEXT:
                     if para_type == BlockType.PHONETIC:
                         span_type = ContentTypeV2.SPAN_PHONETIC
                     else:
                         span_type = ContentTypeV2.SPAN_TEXT
+                elif is_hyperlink:
+                    span_type = ContentTypeV2.SPAN_TEXT
+                    span = dict(span)
+                    span['content'] = render_markdown_hyperlink(
+                        _normalize_text_content(span.get('content', '')),
+                        span.get('url', ''),
+                    )
                 if span_type == ContentType.INLINE_EQUATION:
                     span_type = ContentTypeV2.SPAN_EQUATION_INLINE
                 if span_type in [
@@ -865,7 +880,12 @@ def merge_para_with_text_v2(para_block):
                             else:
                                 span_content = span['content']
 
-                    if para_content and para_content[-1]['type'] == span_type:
+                    if (
+                        para_content
+                        and para_content[-1]['type'] == span_type
+                        and not para_content[-1].get('url')
+                        and not is_hyperlink
+                    ):
                         # 合并相同类型的span
                         para_content[-1]['content'] += span_content
                     else:
@@ -873,6 +893,8 @@ def merge_para_with_text_v2(para_block):
                             'type': span_type,
                             'content': span_content,
                         }
+                        if is_hyperlink:
+                            span_content['url'] = span.get('url', '')
                         para_content.append(span_content)
 
                 elif span_type in [
@@ -905,8 +927,13 @@ def union_make(pdf_info_dict: list,
         page_size = page_info.get('page_size')
         if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
             if not paras_of_layout:
+                if page_info.get('page_anchor'):
+                    output_content.append(render_page_anchor(page_info['page_anchor']))
                 continue
             page_markdown = mk_blocks_to_markdown(paras_of_layout, make_mode, formula_enable, table_enable, img_buket_path)
+            page_anchor = page_info.get('page_anchor')
+            if page_anchor:
+                page_markdown.insert(0, render_page_anchor(page_anchor))
             output_content.extend(page_markdown)
         elif make_mode == MakeMode.CONTENT_LIST:
             para_blocks = (paras_of_layout or []) + (paras_of_discarded or [])
