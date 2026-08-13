@@ -1,9 +1,8 @@
 # Copyright (c) Opendatalab. All rights reserved.
-import copy
 import math
 from typing import Any, TypeAlias
 
-from ...types import Block, BlockType, PageInfo
+from ...types import BlockType
 
 LINE_STOP_FLAG = (".", "!", "?", "。", "！", "？", ")", "）", '"', "”", ":", "：", ";", "；")
 SECTION_MERGE_BARRIER_TYPES = {
@@ -28,11 +27,6 @@ VERTICAL_LINE_IN_BLOCK_THRESHOLD = 0.8
 BlockDict: TypeAlias = dict[str, Any]
 CalculationBBox: TypeAlias = tuple[int, int, int, int]
 OrderedBlock: TypeAlias = tuple[int, int, BlockDict]
-
-
-def build_para_blocks_from_preproc(pages: list[PageInfo]) -> None:
-    for page_info in pages:
-        page_info.para_blocks = copy.deepcopy(page_info.preproc_blocks)
 
 
 def merge_para_text_blocks(pages: list[dict[str, Any]]) -> None:
@@ -131,16 +125,6 @@ def can_auto_merge_text_blocks(current_block: BlockDict, previous_block: BlockDi
         current_metric_lines,
         previous_metric_lines,
     )
-
-
-def cleanup_internal_para_block_metadata(pages: list[PageInfo]) -> None:
-    for page_info in pages:
-        for block in page_info.preproc_blocks:
-            _cleanup_block_internal_metadata(block)
-        for block in page_info.para_blocks:
-            _cleanup_block_internal_metadata(block)
-        for block in page_info.discarded_blocks:
-            _cleanup_block_internal_metadata(block)
 
 
 def _find_previous_text_block(
@@ -351,11 +335,3 @@ def _remove_line_metadata(block: BlockDict) -> None:
     for child_block in content:
         if isinstance(child_block, dict):
             _remove_line_metadata(child_block)
-
-
-def _cleanup_block_internal_metadata(block: Block) -> None:
-    """递归清理只供 finalize 内部流程使用的临时字段。"""
-    block._ocr_det_lines = []
-    block._line_avg_height = 0
-    for sub_block in block.blocks:
-        _cleanup_block_internal_metadata(sub_block)

@@ -303,10 +303,6 @@ class SpanBlockMatcher:
                 self.used_span_indices.add(span_idx)
         return block_spans
 
-    def remaining_spans(self) -> list[_AnalyzeSpan]:
-        """返回尚未归属到任何 block 的 span，方便保持后续兼容。"""
-        return [span for index, span in enumerate(self.spans) if index not in self.used_span_indices]
-
     @staticmethod
     def _default_overlap_ratio(span: _AnalyzeSpan, block_bbox: BBox) -> float:
         """默认沿用旧逻辑：计算 span 面积中落入 block 的比例。"""

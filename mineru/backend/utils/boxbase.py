@@ -6,19 +6,6 @@ import math
 from ...types import BBox
 
 
-def is_in(box1: BBox, box2: BBox) -> bool:
-    """box1是否完全在box2里面."""
-    x0_1, y0_1, x1_1, y1_1 = box1
-    x0_2, y0_2, x1_2, y1_2 = box2
-
-    return (
-        x0_1 >= x0_2  # box1的左边界不在box2的左边外
-        and y0_1 >= y0_2  # box1的上边界不在box2的上边外
-        and x1_1 <= x1_2  # box1的右边界不在box2的右边外
-        and y1_1 <= y1_2
-    )  # box1的下边界不在box2的下边外
-
-
 def bbox_relative_pos(bbox1: BBox, bbox2: BBox) -> tuple[bool, bool, bool, bool]:
     """判断两个矩形框的相对位置关系.
 
@@ -102,23 +89,6 @@ def bbox_center_distance(bbox1: BBox, bbox2: BBox) -> float:
     return math.sqrt((center1_x - center2_x) ** 2 + (center1_y - center2_y) ** 2)
 
 
-def get_minbox_if_overlap_by_ratio(bbox1: BBox, bbox2: BBox, ratio: float) -> BBox | None:
-    """通过calculate_overlap_area_2_minbox_area_ratio计算两个bbox重叠的面积占最小面积的box的比例
-    如果比例大于ratio，则返回小的那个bbox, 否则返回None."""
-    x1_min, y1_min, x1_max, y1_max = bbox1
-    x2_min, y2_min, x2_max, y2_max = bbox2
-    area1 = (x1_max - x1_min) * (y1_max - y1_min)
-    area2 = (x2_max - x2_min) * (y2_max - y2_min)
-    overlap_ratio = calculate_overlap_area_2_minbox_area_ratio(bbox1, bbox2)
-    if overlap_ratio > ratio:
-        if area1 <= area2:
-            return bbox1
-        else:
-            return bbox2
-    else:
-        return None
-
-
 def calculate_overlap_area_2_minbox_area_ratio(bbox1: BBox, bbox2: BBox) -> float:
     """计算box1和box2的重叠面积占最小面积的box的比例."""
     # Determine the coordinates of the intersection rectangle
@@ -139,42 +109,6 @@ def calculate_overlap_area_2_minbox_area_ratio(bbox1: BBox, bbox2: BBox) -> floa
         return intersection_area / min_box_area
 
 
-def calculate_iou(bbox1: BBox, bbox2: BBox) -> float:
-    """计算两个边界框的交并比(IOU)。
-
-    Args:
-        bbox1: 第一个边界框的坐标，格式为 (x1, y1, x2, y2)，其中 (x1, y1) 为左上角坐标，(x2, y2) 为右下角坐标。
-        bbox2: 第二个边界框的坐标，格式与 `bbox1` 相同。
-
-    Returns:
-        float: 两个边界框的交并比(IOU)，取值范围为 [0, 1]。
-    """
-    # Determine the coordinates of the intersection rectangle
-    x_left = max(bbox1[0], bbox2[0])
-    y_top = max(bbox1[1], bbox2[1])
-    x_right = min(bbox1[2], bbox2[2])
-    y_bottom = min(bbox1[3], bbox2[3])
-
-    if x_right < x_left or y_bottom < y_top:
-        return 0.0
-
-    # The area of overlap area
-    intersection_area = (x_right - x_left) * (y_bottom - y_top)
-
-    # The area of both rectangles
-    bbox1_area = (bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1])
-    bbox2_area = (bbox2[2] - bbox2[0]) * (bbox2[3] - bbox2[1])
-
-    if any([bbox1_area == 0, bbox2_area == 0]):
-        return 0
-
-    # Compute the intersection over union by taking the intersection area
-    # and dividing it by the sum of both areas minus the intersection area
-    iou = intersection_area / float(bbox1_area + bbox2_area - intersection_area)
-
-    return iou
-
-
 def calculate_overlap_area_in_bbox1_area_ratio(bbox1: BBox, bbox2: BBox) -> float:
     """计算box1和box2的重叠面积占bbox1的比例."""
     # Determine the coordinates of the intersection rectangle
@@ -193,38 +127,3 @@ def calculate_overlap_area_in_bbox1_area_ratio(bbox1: BBox, bbox2: BBox) -> floa
         return 0
     else:
         return intersection_area / bbox1_area
-
-
-def calculate_vertical_projection_overlap_ratio(block1: BBox, block2: BBox) -> float:
-    """
-    Calculate the proportion of the x-axis covered by the vertical projection of two blocks.
-
-    Args:
-        block1 (tuple): Coordinates of the first block (x0, y0, x1, y1).
-        block2 (tuple): Coordinates of the second block (x0, y0, x1, y1).
-
-    Returns:
-        float: The proportion of the x-axis covered by the vertical projection of the two blocks.
-    """
-    x0_1, _, x1_1, _ = block1
-    x0_2, _, x1_2, _ = block2
-
-    # Calculate the intersection of the x-coordinates
-    x_left = max(x0_1, x0_2)
-    x_right = min(x1_1, x1_2)
-
-    if x_right < x_left:
-        return 0.0
-
-    # Length of the intersection
-    intersection_length = x_right - x_left
-
-    # Length of the x-axis projection of the first block
-    block1_length = x1_1 - x0_1
-
-    if block1_length == 0:
-        return 0.0
-
-    # Proportion of the x-axis covered by the intersection
-    # logger.info(f"intersection_length: {intersection_length}, block1_length: {block1_length}")
-    return intersection_length / block1_length
