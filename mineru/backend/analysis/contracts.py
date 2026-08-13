@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from typing import Any, Literal, TypeAlias
 
 AnalyzeEffort: TypeAlias = Literal["flash", "low", "medium", "high", "xhigh"]
+# 请求阶段允许自动分类，分析结果中的模式必须已经收敛为 txt 或 ocr。
 ParseMode: TypeAlias = Literal["auto", "txt", "ocr"]
+ResolvedParseMode: TypeAlias = Literal["txt", "ocr"]
 OfficeSuffix: TypeAlias = Literal["docx", "pptx", "xlsx"]
 
 
@@ -17,5 +19,5 @@ class AnalysisResult:
 
     model_list: list[list[dict[str, Any]]]
     effort: AnalyzeEffort
-    parse_mode: ParseMode
+    parse_mode: ResolvedParseMode
     elapsed: float

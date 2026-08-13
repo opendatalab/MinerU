@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
-from mineru.backend.analysis.contracts import AnalysisResult
+from mineru.backend.analysis.contracts import AnalysisResult, ResolvedParseMode
 from mineru.backend.local_model_runtime import HybridLocalModelContextSingleton
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.model_utils import clean_memory
@@ -30,22 +30,21 @@ def analyze_pdf(
 ) -> AnalysisResult:
     """生产 PDF model-list，并返回最终路由元数据和精确推理耗时。"""
     document = PDFDocument(file_bytes)
-    document_closed = False
     hybrid_model = None
-    model_list: list[list[dict[str, Any]]] = []
     try:
         if parse_mode == "auto":
             parse_mode = document.classify()
         if parse_mode not in ["txt", "ocr"]:
             raise ValueError(f"parse_mode {parse_mode} is not supported")
+        resolved_parse_mode = cast(ResolvedParseMode, parse_mode)
         if effort not in _SUPPORTED_PDF_EFFORTS:
             raise ValueError(f"Unsupported analyze effort: {effort}")
 
         # Flash 只处理原生文本，OCR 文档继续复用 Hybrid low 流程。
-        if effort == "flash" and parse_mode == "ocr":
+        if effort == "flash" and resolved_parse_mode == "ocr":
             effort = "low"
 
-        flash_txt_mode = effort == "flash" and parse_mode == "txt"
+        flash_txt_mode = effort == "flash" and resolved_parse_mode == "txt"
         vlm_predictor = None
 
         if not flash_txt_mode:
@@ -65,11 +64,11 @@ def analyze_pdf(
                 vlm_predictor = None
 
         infer_started_at = time.perf_counter()
-        model_list = process_pdf_windows(
+        model_list: list[list[dict[str, Any]]] = process_pdf_windows(
             file_bytes,
             document,
             effort=effort,
-            parse_mode=parse_mode,  # type: ignore[arg-type]
+            parse_mode=resolved_parse_mode,
             image_analysis=image_analysis,
             flash_txt_mode=flash_txt_mode,
             hybrid_model=hybrid_model,
@@ -82,9 +81,7 @@ def analyze_pdf(
 
     finally:
         try:
-            if not document_closed:
-                document.close()
-                document_closed = True
+            document.close()
         finally:
             # 无论窗口处理是否异常，都释放已初始化的 Hybrid 模型资源。
             if hybrid_model is not None:
@@ -93,6 +90,6 @@ def analyze_pdf(
     return AnalysisResult(
         model_list=model_list,
         effort=effort,
-        parse_mode=parse_mode,
+        parse_mode=resolved_parse_mode,
         elapsed=infer_elapsed,
     )
