@@ -140,7 +140,7 @@ def _escape_office_inline_text(content: str, inline_syntax: str) -> str:
 
 
 def get_title_level(para_block: Block) -> int:
-    title_level = para_block.level
+    title_level = getattr(para_block, "level", None)
     if title_level is None:
         title_level = 2
     return title_level
@@ -506,7 +506,7 @@ def _hyperlink_requires_html(span: Span) -> bool:
 
 def _iter_block_inline_units(para_block: Block) -> Generator[dict[str, Any], None, None]:
     """把 block 展开为线性文本单元，用于判断 Markdown 边界风险。"""
-    if para_block.type == BlockType.TITLE:
+    if para_block.type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
         section_number = para_block.section_number
         if para_block.is_numbered_style and section_number:
             yield {
@@ -881,7 +881,7 @@ def merge_para_with_text(para_block: Block, escape_text_block_prefix: bool = Tru
         _append_style_grouped_text_parts(parts, text_span_buffer, inline_syntax)
         text_span_buffer.clear()
 
-    if para_block.type == BlockType.TITLE:
+    if para_block.type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
         if para_block.is_numbered_style:
             section_number = para_block.section_number
             if section_number:

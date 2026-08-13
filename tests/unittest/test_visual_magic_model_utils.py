@@ -10,6 +10,7 @@ from mineru.backend.utils.visual_magic_model_utils import (
     is_block_outside_visual_gap,
     regroup_visual_blocks,
 )
+from mineru.backend.utils.raw_block_types import RAW_CAPTION, RAW_FOOTNOTE
 from mineru.types import BlockType
 
 
@@ -41,7 +42,7 @@ def test_normalized_dict_bbox_matches_scaled_caption_geometry_without_rewrite() 
     normalized_blocks = [
         {
             "index": 0,
-            "type": BlockType.CAPTION,
+            "type": RAW_CAPTION,
             "bbox": [0.7, 0.1, 0.95, 0.12],
             "content": "Table 1",
             "lines": _line_metadata(1),
@@ -74,7 +75,7 @@ def test_normalized_dict_bbox_matches_scaled_caption_geometry_without_rewrite() 
 def test_normalized_dict_bbox_matches_scaled_visual_parent_without_rewrite() -> None:
     """验证 raw dict 归一化框与千倍坐标选择同一视觉父块且保留原框。"""
     previous_table = {"index": 0, "type": BlockType.TABLE_BODY, "bbox": [0.1, 0.1, 0.4, 0.4]}
-    caption = {"index": 1, "type": BlockType.CAPTION, "bbox": [0.1, 0.42, 0.4, 0.44]}
+    caption = {"index": 1, "type": RAW_CAPTION, "bbox": [0.1, 0.42, 0.4, 0.44]}
     following_table = {"index": 2, "type": BlockType.TABLE_BODY, "bbox": [0.1, 0.8, 0.4, 0.95]}
     normalized_blocks = [previous_table, caption, following_table]
     original_bboxes = [list(block["bbox"]) for block in normalized_blocks]
@@ -103,7 +104,7 @@ def test_normalized_dict_bbox_matches_scaled_visual_parent_without_rewrite() -> 
 
 def test_normalized_dict_bbox_matches_scaled_visual_gap_geometry() -> None:
     """验证归一化框在视觉间隔、相交和重叠判断中与千倍坐标一致。"""
-    child = {"index": 0, "type": BlockType.CAPTION, "bbox": [0.1, 0.1, 0.4, 0.2]}
+    child = {"index": 0, "type": RAW_CAPTION, "bbox": [0.1, 0.1, 0.4, 0.2]}
     inside_gap = {"index": 1, "type": BlockType.TEXT, "bbox": [0.8, 0.3, 0.9, 0.4]}
     outside_gap = {"index": 2, "type": BlockType.TEXT, "bbox": [0.8, 0.8, 0.9, 0.9]}
     main = {"index": 3, "type": BlockType.TABLE_BODY, "bbox": [0.1, 0.6, 0.4, 0.7]}
@@ -131,7 +132,7 @@ def test_dict_inline_caption_fragment_uses_common_fields() -> None:
     blocks = [
         {
             "index": 0,
-            "type": BlockType.CAPTION,
+            "type": RAW_CAPTION,
             "bbox": [0.0, 0.0, 40.0, 10.0],
             "content": "Table 1",
             "lines": _line_metadata(1),
@@ -147,7 +148,7 @@ def test_dict_inline_caption_fragment_uses_common_fields() -> None:
 
     fallback_inline_caption_fragments(blocks, VISUAL_MAIN_TYPES)
 
-    assert companion["type"] == BlockType.CAPTION
+    assert companion["type"] == RAW_CAPTION
 
 
 def test_dict_stacked_caption_fragment_uses_line_metadata() -> None:
@@ -162,7 +163,7 @@ def test_dict_stacked_caption_fragment_uses_line_metadata() -> None:
     blocks = [
         {
             "index": 0,
-            "type": BlockType.CAPTION,
+            "type": RAW_CAPTION,
             "bbox": [0.0, 0.0, 80.0, 10.0],
             "content": "Table 1",
             "lines": _line_metadata(1),
@@ -178,7 +179,7 @@ def test_dict_stacked_caption_fragment_uses_line_metadata() -> None:
 
     fallback_inline_caption_fragments(blocks, VISUAL_MAIN_TYPES)
 
-    assert single_line["type"] == BlockType.CAPTION
+    assert single_line["type"] == RAW_CAPTION
     single_line["type"] = BlockType.TEXT
     single_line["lines"] = _line_metadata(2)
 
@@ -208,14 +209,14 @@ def test_dict_leading_table_continuation_reads_top_level_content() -> None:
 
     fallback_leading_table_continuation_captions(blocks, VISUAL_MAIN_TYPES)
 
-    assert continuation["type"] == BlockType.CAPTION
+    assert continuation["type"] == RAW_CAPTION
 
 
 def test_regroup_visual_blocks_supports_bbox_dicts() -> None:
     """验证带 bbox 的 dict 可沿用现有视觉关系规则生成 dict 两层块。"""
     caption = {
         "index": 0,
-        "type": BlockType.CAPTION,
+        "type": RAW_CAPTION,
         "bbox": [0.0, 0.0, 80.0, 10.0],
         "content": "Figure 1",
         "lines": [{"bbox": [0.0, 0.0, 80.0, 10.0]}],
@@ -228,7 +229,7 @@ def test_regroup_visual_blocks_supports_bbox_dicts() -> None:
     }
     footnote = {
         "index": 2,
-        "type": BlockType.FOOTNOTE,
+        "type": RAW_FOOTNOTE,
         "bbox": [0.0, 65.0, 80.0, 75.0],
         "content": "source",
         "lines": [{"bbox": [0.0, 65.0, 80.0, 75.0]}],
@@ -254,8 +255,8 @@ def test_regroup_visual_blocks_supports_bbox_dicts() -> None:
     assert "lines" not in image_footnote
     assert "lines" in caption
     assert "lines" in footnote
-    assert caption["type"] == BlockType.CAPTION
-    assert footnote["type"] == BlockType.FOOTNOTE
+    assert caption["type"] == RAW_CAPTION
+    assert footnote["type"] == RAW_FOOTNOTE
 
 
 def test_regroup_visual_blocks_preserves_dict_visual_metadata() -> None:
@@ -322,7 +323,7 @@ def test_regroup_visual_blocks_keeps_cell_merge_on_dict_body() -> None:
 def test_regroup_visual_blocks_without_bbox_prefers_previous_parent() -> None:
     """验证无 bbox 等距匹配优先选择 caption 前方的视觉主体。"""
     image_body = {"index": 0, "type": BlockType.IMAGE_BODY, "content": ""}
-    caption = {"index": 1, "type": BlockType.CAPTION, "content": "Figure 1"}
+    caption = {"index": 1, "type": RAW_CAPTION, "content": "Figure 1"}
     table_body = {"index": 2, "type": BlockType.TABLE_BODY, "content": ""}
 
     grouped_blocks, unmatched_blocks = regroup_visual_blocks(
@@ -370,7 +371,7 @@ def test_regroup_visual_blocks_supports_code_footnote() -> None:
 
 def test_regroup_visual_blocks_without_bbox_keeps_text_as_barrier() -> None:
     """验证无 bbox 模式不会跨过普通文本关联 caption。"""
-    caption = {"index": 0, "type": BlockType.CAPTION, "content": "Table 1"}
+    caption = {"index": 0, "type": RAW_CAPTION, "content": "Table 1"}
     text = {"index": 1, "type": BlockType.TEXT, "content": "paragraph"}
     table_body = {"index": 2, "type": BlockType.TABLE_BODY, "content": ""}
 
@@ -389,9 +390,9 @@ def test_regroup_visual_blocks_without_bbox_keeps_text_as_barrier() -> None:
 def test_no_bbox_caption_fallback_uses_office_prefixes() -> None:
     """验证无 bbox 的 table/image/chart 后置文本按 Office 前缀提升。"""
     cases = [
-        (BlockType.TABLE_BODY, "Table 1", BlockType.CAPTION),
-        (BlockType.IMAGE_BODY, "图 1", BlockType.CAPTION),
-        (BlockType.CHART_BODY, "Chart 1", BlockType.CAPTION),
+        (BlockType.TABLE_BODY, "Table 1", RAW_CAPTION),
+        (BlockType.IMAGE_BODY, "图 1", RAW_CAPTION),
+        (BlockType.CHART_BODY, "Chart 1", RAW_CAPTION),
         (BlockType.IMAGE_BODY, "ordinary text", BlockType.TEXT),
     ]
 

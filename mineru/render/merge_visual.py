@@ -5,6 +5,7 @@ from copy import deepcopy
 from html import escape, unescape
 from typing import Any
 
+from ..backend.utils.raw_block_types import RAW_ALGORITHM
 from ..types import Block, BlockType, ContentType
 from .merge import inline_left, inline_right, merge_para_text
 
@@ -173,7 +174,7 @@ def _render_visual_block_segments(block: Block, para_block: Block, img_bucket_pa
 
     block_type = block.type
 
-    if block_type == BlockType.CODE_BODY and block.sub_type == BlockType.ALGORITHM:
+    if block_type == BlockType.CODE_BODY and block.sub_type == RAW_ALGORITHM:
         text = _render_algorithm_code_html(block)
         if text:
             return [(text, "html_block")]

@@ -39,7 +39,6 @@ from mineru.backend.utils.raw_block_types import (
     RAW_CAPTION,
     RAW_FOOTNOTE,
     RAW_PHONETIC,
-    RAW_TITLE,
 )
 from mineru.backend.utils.span_pre_proc import (
     SpanBlockMatcher,
@@ -69,7 +68,7 @@ from mineru.utils.ocr_utils import (
 from mineru.utils.pdf_image_tools import load_images_from_pdf_bytes_range, get_crop_np_img
 from tqdm import tqdm
 
-from ..types import BBox, BlockType, ContentType, MiddleJson, NOT_EXTRACT_TYPES
+from ..types import BBox, BlockType, ContentType, MiddleJson
 from ..utils.config_reader import get_processing_window_size
 from ..utils.pdf_document import PDFDocument, PDFPage, get_lines_from_chars
 
@@ -94,8 +93,9 @@ _OFFICE_MODEL_MAP = {
     "xlsx": XlsxModel,
 }
 _SUPPORTED_FILE_SUFFIXES = {"pdf", *_OFFICE_MODEL_MAP}
+_VLM_UNCLASSIFIED_TITLE_TYPE = "title"
 TITLE_BLOCK_TYPES = {
-    RAW_TITLE,
+    _VLM_UNCLASSIFIED_TITLE_TYPE,
     BlockType.DOC_TITLE,
     BlockType.PARAGRAPH_TITLE,
 }
@@ -179,6 +179,25 @@ PIPELINE_DET_TYPE = {
     BlockType.PARAGRAPH_TITLE,
     BlockType.REF_TEXT,
     RAW_FOOTNOTE,
+}
+NOT_EXTRACT_TYPES = {
+    BlockType.TEXT,
+    _VLM_UNCLASSIFIED_TITLE_TYPE,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
+    BlockType.HEADER,
+    BlockType.FOOTER,
+    BlockType.PAGE_NUMBER,
+    BlockType.PAGE_FOOTNOTE,
+    BlockType.REF_TEXT,
+    BlockType.TABLE_CAPTION,
+    BlockType.IMAGE_CAPTION,
+    RAW_CAPTION,
+    BlockType.TABLE_FOOTNOTE,
+    BlockType.IMAGE_FOOTNOTE,
+    RAW_FOOTNOTE,
+    BlockType.CODE_CAPTION,
+    RAW_PHONETIC,
 }
 VLM_TXT_DET_TYPE = NOT_EXTRACT_TYPES
 VLM_OCR_DET_TYPE = {
@@ -2439,7 +2458,7 @@ def _apply_layout_title_split(
     for page_model_list, layout_res, page_size in zip(model_list, images_layout_res, page_sizes):
         doc_title_bboxes = _collect_layout_doc_title_bboxes(layout_res, page_size)
         for block in page_model_list:
-            if block.get("type") != RAW_TITLE:
+            if block.get("type") != _VLM_UNCLASSIFIED_TITLE_TYPE:
                 continue
             title_bbox = _bbox_to_pixel_bbox(block.get("bbox"), page_size)
             if title_bbox is None:
@@ -2498,7 +2517,7 @@ def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
                     if equation_content.endswith("\\]"):
                         equation_content = equation_content[:-2]
                     block["content"] = equation_content.strip()
-            elif raw_type == RAW_TITLE:
+            elif raw_type == _VLM_UNCLASSIFIED_TITLE_TYPE:
                 raise ValueError(
                     "Unclassified PDF title block: "
                     f"page_idx={page_idx}, block_idx={block_idx}"

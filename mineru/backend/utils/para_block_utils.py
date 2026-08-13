@@ -7,7 +7,6 @@ from ...types import Block, BlockType, PageInfo
 
 LINE_STOP_FLAG = (".", "!", "?", "。", "！", "？", ")", "）", '"', "”", ":", "：", ";", "；")
 SECTION_MERGE_BARRIER_TYPES = {
-    BlockType.TITLE,
     BlockType.DOC_TITLE,
     BlockType.PARAGRAPH_TITLE,
     BlockType.EQUATION,

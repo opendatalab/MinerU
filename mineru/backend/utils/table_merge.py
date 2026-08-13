@@ -21,9 +21,6 @@ TABLE_BOUNDARY_IGNORED_TYPES = {
     BlockType.PAGE_NUMBER,
     BlockType.PAGE_FOOTNOTE,
     BlockType.ASIDE_TEXT,
-    BlockType.HEADER_IMAGE,
-    BlockType.FOOTER_IMAGE,
-    BlockType.DISCARDED,
 }
 
 BlockDict: TypeAlias = dict[str, Any]

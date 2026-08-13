@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..backend.utils.char_utils import CJK_LANGS, resolve_text_line_boundary
+from ..backend.utils.raw_block_types import RAW_ALGORITHM, RAW_PHONETIC
 from ..types import BBox, Block, BlockType, ContentType, ContentTypeV2, IntBBox, Line
 from ..utils.language import detect_lang
 from .markdown import _get_title_level
@@ -73,7 +74,7 @@ def block_to_structured_content(
                 f"{content_type}_content": merge_para_with_structured_spans(para_block),
             },
         }
-    elif para_type == BlockType.TITLE:
+    elif para_type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
         title_level = _get_title_level(para_block)
         if title_level != 0:
             para_content = {
@@ -85,7 +86,7 @@ def block_to_structured_content(
             }
         else:
             para_content = _paragraph_content(para_block)
-    elif para_type in [BlockType.TEXT, BlockType.ABSTRACT, BlockType.PHONETIC]:
+    elif para_type in [BlockType.TEXT, RAW_PHONETIC]:
         para_content = _paragraph_content(para_block)
     elif para_type == BlockType.EQUATION:
         image_path, math_content = _get_body_data(para_block)
@@ -136,7 +137,7 @@ def merge_para_with_structured_spans(para_block: Block) -> list[dict[str, Any]]:
                 if not content.strip():
                     continue
 
-                output_type = ContentTypeV2.SPAN_PHONETIC if para_type == BlockType.PHONETIC else ContentTypeV2.SPAN_TEXT
+                output_type = ContentTypeV2.SPAN_PHONETIC if para_type == RAW_PHONETIC else ContentTypeV2.SPAN_TEXT
                 rendered_content = _render_text_span_content(
                     para_block,
                     block_lang,
@@ -300,7 +301,7 @@ def _code_content(para_block: Block) -> dict[str, Any]:
                 "code_language": para_block.guess_lang or "txt",
             },
         }
-    if sub_type == BlockType.ALGORITHM:
+    if sub_type == RAW_ALGORITHM:
         return {
             "type": ContentTypeV2.ALGORITHM,
             "content": {

@@ -112,7 +112,7 @@ def test_merge_para_text_blocks_requires_consecutive_cross_page_indices(
     [
         (BlockType.IMAGE, True),
         (BlockType.CODE, True),
-        (BlockType.TITLE, False),
+        (BlockType.DOC_TITLE, False),
         (BlockType.LIST, False),
         (BlockType.REF_TEXT, False),
     ],

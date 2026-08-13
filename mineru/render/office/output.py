@@ -376,7 +376,7 @@ def blocks_to_markdown(
             para_text = merge_list_to_markdown(para_block)
         elif para_type == BlockType.INDEX:
             para_text = merge_index_to_markdown(para_block)
-        elif para_type == BlockType.TITLE:
+        elif para_type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
             title_level = get_title_level(para_block)
             title_text = merge_para_with_text(para_block)
             bookmark_anchor = para_block.anchor
@@ -446,7 +446,7 @@ def make_blocks_to_content_list(para_block: Block, img_bucket_path: str, page_id
             "type": para_type,
             "list_items": _flatten_index_items(para_block),
         }
-    elif para_type == BlockType.TITLE:
+    elif para_type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
         title_level = get_title_level(para_block)
         para_content = {
             "type": ContentType.TEXT,
@@ -524,7 +524,7 @@ def block_to_structured_content(para_block: Block, img_bucket_path: str) -> dict
                 f"{content_type}_content": merge_para_with_structured_spans(para_block),
             },
         }
-    elif para_type == BlockType.TITLE:
+    elif para_type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
         title_level = get_title_level(para_block)
         if title_level != 0:
             para_content = {
@@ -714,7 +714,7 @@ def merge_para_with_structured_spans(para_block: Block) -> list[dict[str, Any]]:
     """将 Office 段落转换为 structured_content spans，避免原地修改 middle_json。"""
     _visible_styles = {"underline", "strikethrough"}
     para_content: list[dict[str, Any]] = []
-    if para_block.type == BlockType.TITLE:
+    if para_block.type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
         section_number = para_block.section_number
         if section_number:
             # structured_content 保持结构化 spans，同时补上 middle_json 已生成的自动标题编号。

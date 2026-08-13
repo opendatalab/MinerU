@@ -41,6 +41,7 @@ A14_DRAWING_NS: Final = "http://schemas.microsoft.com/office/drawing/2010/main"
 OMML_NS: Final = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 _EFFECTIVE_FONT_SIZE_KEY: Final = "_effective_font_size_pt"
 _EFFECTIVE_ALL_BOLD_KEY: Final = "_effective_all_bold"
+_PPTX_TITLE_CANDIDATE_KEY: Final = "_pptx_title_candidate"
 # PPTX 标题占位符角色仅用于单页内部归一化，返回 model_output 前必须清理。
 _PPTX_TITLE_ROLE_KEY: Final = "_pptx_title_role"
 _PPTX_TITLE_ROLE_CENTER: Final = "center_title"
@@ -1675,6 +1676,7 @@ class PptxConverter:
                 for block in slide_blocks
                 if (
                     block.get("type") == BlockType.TEXT
+                    and block.get(_PPTX_TITLE_CANDIDATE_KEY) is not True
                     and block.get(_EFFECTIVE_FONT_SIZE_KEY) is not None
                     and not block.get(_EFFECTIVE_ALL_BOLD_KEY, False)
                 )
@@ -1694,6 +1696,7 @@ class PptxConverter:
             for block in slide_blocks
             if (
                 block.get("type") == BlockType.TEXT
+                and block.get(_PPTX_TITLE_CANDIDATE_KEY) is not True
                 and block.get(_EFFECTIVE_ALL_BOLD_KEY, False)
                 and block.get(_EFFECTIVE_FONT_SIZE_KEY) is not None
             )
@@ -1717,7 +1720,7 @@ class PptxConverter:
         if len(bold_font_sizes) > 1 and level2_font_size_pt < bold_font_sizes[1] + 2:
             return
 
-        level2_candidates[0]["type"] = BlockType.TITLE
+        level2_candidates[0][_PPTX_TITLE_CANDIDATE_KEY] = True
         level2_candidates[0]["level"] = 2
 
     def _promote_level3_text_blocks(
@@ -1733,7 +1736,7 @@ class PptxConverter:
                 block[_EFFECTIVE_FONT_SIZE_KEY]
                 for block in slide_blocks
                 if (
-                    block.get("type") == BlockType.TITLE
+                    block.get(_PPTX_TITLE_CANDIDATE_KEY) is True
                     and block.get("level") == 2
                     and block.get(_EFFECTIVE_FONT_SIZE_KEY) is not None
                 )
@@ -1750,6 +1753,7 @@ class PptxConverter:
                 for block in slide_blocks
                 if (
                     block.get("type") == BlockType.TEXT
+                    and block.get(_PPTX_TITLE_CANDIDATE_KEY) is not True
                     and block.get(_EFFECTIVE_ALL_BOLD_KEY, False)
                     and block.get(_EFFECTIVE_FONT_SIZE_KEY) is not None
                     and block[_EFFECTIVE_FONT_SIZE_KEY] < level2_font_size_pt
@@ -1769,10 +1773,11 @@ class PptxConverter:
         for block in slide_blocks:
             if (
                 block.get("type") == BlockType.TEXT
+                and block.get(_PPTX_TITLE_CANDIDATE_KEY) is not True
                 and block.get(_EFFECTIVE_ALL_BOLD_KEY, False)
                 and block.get(_EFFECTIVE_FONT_SIZE_KEY) == level3_font_size_pt
             ):
-                block["type"] = BlockType.TITLE
+                block[_PPTX_TITLE_CANDIDATE_KEY] = True
                 block["level"] = 3
 
     @staticmethod
@@ -1781,16 +1786,16 @@ class PptxConverter:
         *,
         is_first_visible_slide: bool,
     ) -> None:
-        """将 PPTX 内部 title 统一拆分为文档标题、段落标题或普通文本。"""
+        """将 PPTX 标题候选统一拆分为文档标题、段落标题或普通文本。"""
         for block in slide_blocks:
+            is_title_candidate = block.pop(_PPTX_TITLE_CANDIDATE_KEY, False) is True
             title_role = block.pop(_PPTX_TITLE_ROLE_KEY, None)
+            if not is_title_candidate:
+                continue
             if title_role == _PPTX_TITLE_ROLE_SUBTITLE:
                 block["type"] = BlockType.TEXT
                 block.pop("level", None)
                 block.pop("is_numbered_style", None)
-                continue
-
-            if block.get("type") != BlockType.TITLE:
                 continue
 
             if title_role == _PPTX_TITLE_ROLE_CENTER and is_first_visible_slide:
@@ -1805,6 +1810,7 @@ class PptxConverter:
         for block in slide_blocks:
             block.pop(_EFFECTIVE_FONT_SIZE_KEY, None)
             block.pop(_EFFECTIVE_ALL_BOLD_KEY, None)
+            block.pop(_PPTX_TITLE_CANDIDATE_KEY, None)
             block.pop(_PPTX_TITLE_ROLE_KEY, None)
 
     def _handle_text_elements(self, shape):
@@ -1853,7 +1859,7 @@ class PptxConverter:
                 placeholder_type = shape.placeholder_format.type
                 title_role = _PPTX_TITLE_PLACEHOLDER_ROLES.get(placeholder_type)
                 if title_role is not None:
-                    block["type"] = BlockType.TITLE
+                    block[_PPTX_TITLE_CANDIDATE_KEY] = True
                     block["level"] = 2
                     block[_PPTX_TITLE_ROLE_KEY] = title_role
 

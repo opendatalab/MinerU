@@ -21,6 +21,7 @@ from mineru.backend.utils.office_chart import extract_chart_html_from_ooxml
 from mineru.backend.utils.office_image import (
     serialize_office_image,
 )
+from mineru.backend.utils.raw_block_types import RAW_CAPTION
 from mineru.model.flash.docx.package_normalizer import normalize_docx_package
 from mineru.model.flash.docx.tools.math.omml import oMath2Latex
 from mineru.model.flash.docx.tools.office_xml import read_str
@@ -1450,7 +1451,7 @@ class DocxConverter:
             content_text = self._build_text_with_equations_and_hyperlinks(paragraph_elements, text, equations)
             if content_text != "":
                 caption_block = {
-                    "type": BlockType.CAPTION,
+                    "type": RAW_CAPTION,
                     "content": content_text,
                 }
                 self.cur_page.append(caption_block)

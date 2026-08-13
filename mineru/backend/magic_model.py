@@ -7,20 +7,18 @@ from mineru.backend.utils.raw_block_types import (
     RAW_ALGORITHM,
     RAW_CAPTION,
     RAW_FOOTNOTE,
-    RAW_TITLE,
 )
 from mineru.backend.utils.visual_magic_model_utils import (
     code_content_clean,
     isolated_formula_clean,
     clean_content,
-    VISUAL_MAIN_TYPES,
     _bbox_for_calculation,
     regroup_visual_blocks,
     fallback_inline_caption_fragments,
     fallback_leading_table_continuation_captions,
     fallback_no_bbox_caption_fragments,
 )
-from mineru.types import BlockType
+from mineru.types import BlockType, VISUAL_MAIN_TYPES
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
 
 
@@ -66,7 +64,7 @@ class MagicModel:
                 if block_content:
                     block_content = clean_content(block_content) or ""
                 # 对于标题类块，去除换行符和多余空格
-                if block_type in [RAW_TITLE, BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE] and block_content:
+                if block_type in [BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE] and block_content:
                     block_content = re.sub(r"\n\s*", " ", block_content).strip()
                 # 处理 code/algorithm 分类的特殊情况：如果 code 类型的块中包含成对的行内公式标记，则将其分类为 algorithm。
                 if (

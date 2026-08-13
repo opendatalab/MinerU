@@ -11,6 +11,7 @@ from mineru_vl_utils.structs import ExtractResult
 
 from mineru.backend import analyze
 from mineru.backend.utils.analyze_draft import _AnalyzeLine, _AnalyzeSpan
+from mineru.backend.utils.raw_block_types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE
 from mineru.backend.utils.span_pre_proc import (
     POST_OCR_FALLBACK_CONTENT_KEY,
     POST_OCR_FALLBACK_SCORE_KEY,
@@ -237,11 +238,11 @@ def test_xhigh_vlm_blocks_normalize_visual_annotation_types() -> None:
     analyze._normalize_xhigh_vlm_blocks([page_blocks])
 
     assert [block["type"] for block in page_blocks] == [
-        BlockType.CAPTION,
-        BlockType.CAPTION,
-        BlockType.CAPTION,
-        BlockType.FOOTNOTE,
-        BlockType.FOOTNOTE,
+        RAW_CAPTION,
+        RAW_CAPTION,
+        RAW_CAPTION,
+        RAW_FOOTNOTE,
+        RAW_FOOTNOTE,
         BlockType.TEXT,
     ]
     assert [block["content"] for block in page_blocks] == [
@@ -260,8 +261,8 @@ def test_five_pdf_text_types_keep_normalized_line_metadata() -> None:
         BlockType.TEXT,
         BlockType.DOC_TITLE,
         BlockType.PARAGRAPH_TITLE,
-        BlockType.CAPTION,
-        BlockType.FOOTNOTE,
+        RAW_CAPTION,
+        RAW_FOOTNOTE,
     }
     text_block = {"type": BlockType.TEXT, "content": "text"}
     doc_title_block = {"type": BlockType.DOC_TITLE, "content": "doc title"}
@@ -269,11 +270,11 @@ def test_five_pdf_text_types_keep_normalized_line_metadata() -> None:
         "type": BlockType.PARAGRAPH_TITLE,
         "content": "paragraph title",
     }
-    caption_block = {"type": BlockType.CAPTION, "content": "caption"}
-    footnote_block = {"type": BlockType.FOOTNOTE, "content": "footnote"}
+    caption_block = {"type": RAW_CAPTION, "content": "caption"}
+    footnote_block = {"type": RAW_FOOTNOTE, "content": "footnote"}
     unrelated_block = {
-        "type": BlockType.TITLE,
-        "content": "title",
+        "type": BlockType.EQUATION,
+        "content": "x=1",
         "lines": [{"bbox": [0, 0, 1, 1]}],
     }
     page_blocks = [
@@ -293,7 +294,7 @@ def test_five_pdf_text_types_keep_normalized_line_metadata() -> None:
             2: _build_text_lines("paragraph title"),
             3: _build_text_lines("caption line 1", "caption line 2"),
             4: _build_text_lines("footnote"),
-            5: _build_text_lines("title"),
+            5: _build_text_lines("x=1"),
         },
         (200.0, 100.0),
     )
@@ -471,7 +472,7 @@ def test_text_content_keeps_natural_paragraph_joining() -> None:
     assert content == "第一行第二行"
 
 
-@pytest.mark.parametrize("block_type", [BlockType.CODE, BlockType.ALGORITHM])
+@pytest.mark.parametrize("block_type", [BlockType.CODE, RAW_ALGORITHM])
 def test_code_content_keeps_existing_line_breaks(block_type: str) -> None:
     """验证 code/algorithm 原有的逐行拼接语义保持不变。"""
     content = analyze._lines_to_block_content(

@@ -5,54 +5,22 @@ import re
 from copy import deepcopy
 from typing import Any
 
-from ...types import BBox, BlockType
+from ...types import (
+    BBox,
+    BlockType,
+    VISUAL_MAIN_TYPES,
+    VISUAL_RELATION_IGNORED_TYPES,
+    VISUAL_TYPE_MAPPING,
+)
 from .boxbase import bbox_center_distance, bbox_distance
 from .raw_block_types import RAW_CAPTION, RAW_FOOTNOTE
 from .table_continuation import is_table_continuation_text
 
-IMAGE_BLOCK_BODY = "image_block_body"
-GENERIC_CHILD_TYPES = (RAW_CAPTION, RAW_FOOTNOTE)
 INLINE_CAPTION_FRAGMENT_TYPES = {BlockType.TEXT, RAW_FOOTNOTE}
 STACKED_TABLE_CAPTION_CLUSTER_TYPES = {
     RAW_CAPTION,
     BlockType.TEXT,
     RAW_FOOTNOTE,
-}
-VISUAL_RELATION_IGNORED_TYPES = {
-    BlockType.HEADER,
-    BlockType.FOOTER,
-    BlockType.PAGE_NUMBER,
-    BlockType.PAGE_FOOTNOTE,
-    BlockType.ASIDE_TEXT,
-}
-VISUAL_MAIN_TYPES = {
-    BlockType.IMAGE_BODY: BlockType.IMAGE,
-    IMAGE_BLOCK_BODY: BlockType.IMAGE,
-    BlockType.TABLE_BODY: BlockType.TABLE,
-    BlockType.CHART_BODY: BlockType.CHART,
-    BlockType.CODE_BODY: BlockType.CODE,
-}
-VISUAL_TYPE_MAPPING = {
-    BlockType.IMAGE: {
-        "body": BlockType.IMAGE_BODY,
-        "caption": BlockType.IMAGE_CAPTION,
-        "footnote": BlockType.IMAGE_FOOTNOTE,
-    },
-    BlockType.TABLE: {
-        "body": BlockType.TABLE_BODY,
-        "caption": BlockType.TABLE_CAPTION,
-        "footnote": BlockType.TABLE_FOOTNOTE,
-    },
-    BlockType.CHART: {
-        "body": BlockType.CHART_BODY,
-        "caption": BlockType.CHART_CAPTION,
-        "footnote": BlockType.CHART_FOOTNOTE,
-    },
-    BlockType.CODE: {
-        "body": BlockType.CODE_BODY,
-        "caption": BlockType.CODE_CAPTION,
-        "footnote": BlockType.CODE_FOOTNOTE,
-    },
 }
 VISUAL_CHILD_TYPE_MAPPING: dict[str, tuple[str | None, str]] = {
     RAW_CAPTION: (None, "caption"),

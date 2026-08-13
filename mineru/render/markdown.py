@@ -1,3 +1,4 @@
+from ..backend.utils.raw_block_types import RAW_PHONETIC
 from ..types import Block, BlockType, ContentType
 from .markdown_table import to_markdown_table
 from .merge import merge_para_text
@@ -38,18 +39,16 @@ def _block_to_markdown(
     para_type = para_block.type
     if para_type == BlockType.TEXT:
         return merge_para_text(para_block)
-    if para_type == BlockType.TITLE:
+    if para_type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
         title_level = _get_title_level(para_block)
         return f"{'#' * title_level} {merge_para_text(para_block)}"
     if para_type == BlockType.INDEX:
-        return merge_para_text(para_block)
-    if para_type == BlockType.ABSTRACT:
         return merge_para_text(para_block)
     if para_type == BlockType.REF_TEXT:
         return merge_para_text(para_block)
     if para_type == BlockType.LIST:
         return merge_para_text(para_block)
-    if para_type == BlockType.PHONETIC:
+    if para_type == RAW_PHONETIC:
         return merge_para_text(para_block)
     if para_type == BlockType.CODE:
         return merge_visual_para_text(para_block)
@@ -76,7 +75,7 @@ def _block_to_markdown(
 
 
 def _get_title_level(block: Block) -> int:
-    title_level = block.level
+    title_level = getattr(block, "level", None)
     if title_level is None:
         title_level = 1
     if title_level > 6:

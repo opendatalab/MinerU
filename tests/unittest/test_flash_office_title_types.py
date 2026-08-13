@@ -10,6 +10,9 @@ from pptx.enum.shapes import PP_PLACEHOLDER
 from mineru.model.flash import DocxModel, PptxModel, XlsxModel
 from mineru.model.flash.pptx.pptx_converter import (
     PptxConverter,
+    _EFFECTIVE_ALL_BOLD_KEY,
+    _EFFECTIVE_FONT_SIZE_KEY,
+    _PPTX_TITLE_CANDIDATE_KEY,
     _PPTX_TITLE_ROLE_CENTER,
     _PPTX_TITLE_ROLE_KEY,
     _PPTX_TITLE_ROLE_SUBTITLE,
@@ -99,7 +102,6 @@ def test_docx_model_splits_document_and_paragraph_titles() -> None:
     pages = _predict_sample(DocxModel(), "docx")
     blocks = _flatten_pages(pages)
 
-    assert all(block.get("type") != BlockType.TITLE for block in blocks)
     assert pages[0][0]["content"] == "MinerU supports DOCX document parsing now"
 
     doc_title = _find_block_by_content(blocks, "MinerU supports DOCX document parsing now")
@@ -124,7 +126,7 @@ def test_pptx_model_splits_title_placeholders_and_subtitle() -> None:
     pages = _predict_sample(PptxModel(), "pptx")
     blocks = _flatten_pages(pages)
 
-    assert all(block.get("type") != BlockType.TITLE for block in blocks)
+    assert all(_PPTX_TITLE_CANDIDATE_KEY not in block for block in blocks)
     assert all(_PPTX_TITLE_ROLE_KEY not in block for block in blocks)
     assert [block["content"] for block in pages[0] if block.get("content") in {"Test Table Slide", "With footnote"}] == [
         "Test Table Slide",
@@ -146,32 +148,36 @@ def test_pptx_model_splits_title_placeholders_and_subtitle() -> None:
     assert slide_title["level"] == 2
 
 
-def test_pptx_internal_titles_are_finalized_without_losing_levels() -> None:
-    """验证 PPTX 内部 title 收口时清理文档标题字段并保留段落标题层级。"""
+def test_pptx_title_candidates_are_finalized_without_losing_levels() -> None:
+    """验证 PPTX 标题候选收口时清理内部标记并保留段落标题层级。"""
     blocks = [
         {
-            "type": BlockType.TITLE,
+            "type": BlockType.TEXT,
             "content": "document",
             "level": 2,
             "is_numbered_style": False,
+            _PPTX_TITLE_CANDIDATE_KEY: True,
             _PPTX_TITLE_ROLE_KEY: _PPTX_TITLE_ROLE_CENTER,
         },
         {
-            "type": BlockType.TITLE,
+            "type": BlockType.TEXT,
             "content": "subtitle",
             "level": 2,
+            _PPTX_TITLE_CANDIDATE_KEY: True,
             _PPTX_TITLE_ROLE_KEY: _PPTX_TITLE_ROLE_SUBTITLE,
         },
         {
-            "type": BlockType.TITLE,
+            "type": BlockType.TEXT,
             "content": "slide title",
             "level": 2,
+            _PPTX_TITLE_CANDIDATE_KEY: True,
             _PPTX_TITLE_ROLE_KEY: _PPTX_TITLE_ROLE_TITLE,
         },
         {
-            "type": BlockType.TITLE,
+            "type": BlockType.TEXT,
             "content": "promoted title",
             "level": 3,
+            _PPTX_TITLE_CANDIDATE_KEY: True,
         },
     ]
 
@@ -188,13 +194,15 @@ def test_pptx_internal_titles_are_finalized_without_losing_levels() -> None:
     assert "level" not in blocks[1]
     assert blocks[2]["level"] == 2
     assert blocks[3]["level"] == 3
+    assert all(_PPTX_TITLE_CANDIDATE_KEY not in block for block in blocks)
     assert all(_PPTX_TITLE_ROLE_KEY not in block for block in blocks)
 
     later_center_title = [
         {
-            "type": BlockType.TITLE,
+            "type": BlockType.TEXT,
             "content": "later center title",
             "level": 2,
+            _PPTX_TITLE_CANDIDATE_KEY: True,
             _PPTX_TITLE_ROLE_KEY: _PPTX_TITLE_ROLE_CENTER,
         }
     ]
@@ -204,6 +212,38 @@ def test_pptx_internal_titles_are_finalized_without_losing_levels() -> None:
     )
     assert later_center_title[0]["type"] == BlockType.PARAGRAPH_TITLE
     assert later_center_title[0]["level"] == 2
+
+
+def test_pptx_existing_title_candidates_do_not_participate_in_text_promotion() -> None:
+    """验证占位符标题候选不会干扰普通文本的字号标题提升。"""
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "content": "placeholder title",
+            _PPTX_TITLE_CANDIDATE_KEY: True,
+            _PPTX_TITLE_ROLE_KEY: _PPTX_TITLE_ROLE_CENTER,
+            _EFFECTIVE_FONT_SIZE_KEY: 48.0,
+            _EFFECTIVE_ALL_BOLD_KEY: True,
+        },
+        {
+            "type": BlockType.TEXT,
+            "content": "body",
+            _EFFECTIVE_FONT_SIZE_KEY: 10.0,
+            _EFFECTIVE_ALL_BOLD_KEY: False,
+        },
+        {
+            "type": BlockType.TEXT,
+            "content": "promoted section",
+            _EFFECTIVE_FONT_SIZE_KEY: 20.0,
+            _EFFECTIVE_ALL_BOLD_KEY: True,
+        },
+    ]
+
+    PptxConverter()._promote_slide_text_blocks_to_titles(blocks)
+
+    assert blocks[0][_PPTX_TITLE_CANDIDATE_KEY] is True
+    assert blocks[2][_PPTX_TITLE_CANDIDATE_KEY] is True
+    assert blocks[2]["level"] == 2
 
 
 def test_pptx_notes_only_slide_does_not_consume_document_title() -> None:
@@ -231,7 +271,7 @@ def test_pptx_notes_only_slide_does_not_consume_document_title() -> None:
     later_title = _find_block_by_content(blocks, "Section cover")
     assert later_title["type"] == BlockType.PARAGRAPH_TITLE
     assert later_title["level"] == 2
-    assert all(block.get("type") != BlockType.TITLE for block in blocks)
+    assert all(_PPTX_TITLE_CANDIDATE_KEY not in block for block in blocks)
 
 
 def test_xlsx_model_emits_sheet_names_as_paragraph_titles() -> None:
@@ -243,4 +283,4 @@ def test_xlsx_model_emits_sheet_names_as_paragraph_titles() -> None:
     assert [page[0]["content"] for page in pages] == ["Sheet1", "Sheet2", "Sheet3"]
     assert all(block["type"] == BlockType.PARAGRAPH_TITLE for block in sheet_titles)
     assert all("level" not in block for block in sheet_titles)
-    assert all(block.get("type") not in {BlockType.TITLE, BlockType.DOC_TITLE} for block in blocks)
+    assert all(block.get("type") != BlockType.DOC_TITLE for block in blocks)

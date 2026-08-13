@@ -13,7 +13,6 @@ from ..render.merge import merge_para_text
 from ..types import BBox, Block, BlockType, PageInfo
 
 TITLE_BLOCK_TYPES = {
-    BlockType.TITLE,
     BlockType.DOC_TITLE,
     BlockType.PARAGRAPH_TITLE,
 }
@@ -229,12 +228,6 @@ def _apply_levels_to_blocks(title_block_refs: list[tuple[PageInfo, Block]], leve
         block.level = int(levels_by_index[i])
 
 
-def _normalize_title_types(title_block_refs: list[tuple[PageInfo, Block]]) -> None:
-    for _, block in title_block_refs:
-        if block.type in [BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE]:
-            block.type = BlockType.TITLE
-
-
 def _get_title_block_identity(block: Block) -> tuple[str, int] | tuple[str, BBox, str]:
     block_index = block.index
     if block_index is not None:
@@ -262,8 +255,9 @@ def _sync_para_titles_to_preproc(page_info_list: list[PageInfo]) -> None:
                 continue
 
             block.type = para_block.type
-            if para_block.level is not None:
-                block.level = para_block.level
+            para_level = getattr(para_block, "level", None)
+            if para_level is not None:
+                block.level = para_level
 
 
 def _run_single_pass_title_leveling(title_block_refs: list[tuple[PageInfo, Block]], title_aided_config: dict[str, Any]) -> None:
@@ -313,13 +307,6 @@ def _request_paragraph_group_levels(
 
 
 def _run_grouped_title_leveling(title_block_refs: list[tuple[PageInfo, Block]], title_aided_config: dict[str, Any]) -> None:
-    doc_title_refs = []
-    for title_ref in title_block_refs:
-        _, block = title_ref
-        if block.type == BlockType.DOC_TITLE:
-            block.level = 1
-            doc_title_refs.append(title_ref)
-
     paragraph_title_groups = _split_paragraph_title_groups(title_block_refs)
     group_levels = []
 
@@ -343,10 +330,6 @@ def _run_grouped_title_leveling(title_block_refs: list[tuple[PageInfo, Block]], 
     for title_group, levels_by_index in zip(paragraph_title_groups, group_levels):
         _apply_levels_to_blocks(title_group, levels_by_index)
 
-    _normalize_title_types(doc_title_refs)
-    for title_group in paragraph_title_groups:
-        _normalize_title_types(title_group)
-
 
 def llm_aided_title(page_info_list: list[PageInfo], title_aided_config: dict[str, Any]) -> None:
     title_block_refs, title_types = _collect_title_block_refs(page_info_list)
@@ -356,26 +339,18 @@ def llm_aided_title(page_info_list: list[PageInfo], title_aided_config: dict[str
 
     has_doc_title = BlockType.DOC_TITLE in title_types
     has_paragraph_title = BlockType.PARAGRAPH_TITLE in title_types
-    has_generic_title = BlockType.TITLE in title_types
-
-    if has_doc_title and has_paragraph_title and not has_generic_title:
+    if has_doc_title and has_paragraph_title:
         _run_grouped_title_leveling(title_block_refs, title_aided_config)
         _sync_para_titles_to_preproc(page_info_list)
         return
 
-    doc_title_refs = []
     title_refs_for_llm = []
     for title_ref in title_block_refs:
         _, block = title_ref
-        if block.type == BlockType.DOC_TITLE:
-            block.level = 1
-            doc_title_refs.append(title_ref)
-        else:
+        if block.type != BlockType.DOC_TITLE:
             title_refs_for_llm.append(title_ref)
 
     if len(title_refs_for_llm) > 0:
         _run_single_pass_title_leveling(title_refs_for_llm, title_aided_config)
 
-    _normalize_title_types(doc_title_refs)
-    _normalize_title_types(title_refs_for_llm)
     _sync_para_titles_to_preproc(page_info_list)

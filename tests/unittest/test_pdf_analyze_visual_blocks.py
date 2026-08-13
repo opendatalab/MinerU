@@ -10,6 +10,7 @@ import pytest
 from PIL import Image, ImageDraw
 
 from mineru.backend import analyze
+from mineru.backend.utils.raw_block_types import RAW_CAPTION, RAW_FOOTNOTE, RAW_PHONETIC
 from mineru.types import BlockType, MiddleJson
 
 
@@ -448,9 +449,9 @@ def test_xhigh_layout_image_fallback_uses_whitelist_for_area_but_absorbs_all_typ
         BlockType.IMAGE,
         BlockType.CHART,
         BlockType.IMAGE_CAPTION,
-        BlockType.CAPTION,
+        RAW_CAPTION,
         BlockType.IMAGE_FOOTNOTE,
-        BlockType.FOOTNOTE,
+        RAW_FOOTNOTE,
     }
     layout_blocks_list = [[{"type": BlockType.IMAGE, "bbox": [0.0, 0.0, 1.0, 1.0], "angle": 0}]]
     insufficient_page = [
@@ -471,7 +472,7 @@ def test_xhigh_layout_image_fallback_uses_whitelist_for_area_but_absorbs_all_typ
     qualifying_page = [
         {"type": BlockType.IMAGE, "bbox": [0.0, 0.0, 0.4, 1.0]},
         {"type": BlockType.CHART, "bbox": [0.4, 0.0, 0.8, 1.0]},
-        {"type": BlockType.CAPTION, "bbox": [0.8, 0.0, 0.9, 1.0]},
+        {"type": RAW_CAPTION, "bbox": [0.8, 0.0, 0.9, 1.0]},
         {"type": BlockType.TEXT, "bbox": [0.1, 0.1, 0.2, 0.2]},
         {"type": BlockType.TABLE, "bbox": [0.2, 0.2, 0.3, 0.3]},
         {"type": BlockType.EQUATION, "bbox": [0.3, 0.3, 0.4, 0.4]},
@@ -600,7 +601,7 @@ def test_normalize_pdf_model_list_converts_phonetic_and_cleans_equation() -> Non
     """验证 phonetic 转公开类型，同时 equation 保持类型并清理展示分隔符。"""
     model_list = [[
         {
-            "type": BlockType.PHONETIC,
+            "type": RAW_PHONETIC,
             "bbox": [0.1, 0.1, 0.9, 0.2],
             "content": "phonetic",
             "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
@@ -657,11 +658,11 @@ def test_formula_number_optimizer_does_not_accept_legacy_interline_equation() ->
     ]
 
 
-def test_normalize_pdf_model_list_rejects_unclassified_raw_title() -> None:
-    """验证未被 layout 结果分类的 raw title 以页块位置明确报错。"""
+def test_normalize_pdf_model_list_rejects_unclassified_vlm_title() -> None:
+    """验证未被 layout 结果分类的 VLM title 以页块位置明确报错。"""
     with pytest.raises(ValueError, match="page_idx=0, block_idx=0"):
         analyze._normalize_pdf_model_list(
-            [[{"type": BlockType.TITLE, "bbox": [0.1, 0.1, 0.9, 0.2], "content": "title"}]]
+            [[{"type": analyze._VLM_UNCLASSIFIED_TITLE_TYPE, "bbox": [0.1, 0.1, 0.9, 0.2], "content": "title"}]]
         )
 
 
@@ -671,8 +672,8 @@ def test_normalize_pdf_model_list_rejects_unclassified_raw_title() -> None:
         BlockType.TEXT,
         BlockType.DOC_TITLE,
         BlockType.PARAGRAPH_TITLE,
-        BlockType.CAPTION,
-        BlockType.FOOTNOTE,
+        RAW_CAPTION,
+        RAW_FOOTNOTE,
     ],
 )
 @pytest.mark.parametrize(
@@ -712,8 +713,8 @@ def test_normalize_pdf_model_list_removes_five_text_types_with_invalid_lines(
         BlockType.TEXT,
         BlockType.DOC_TITLE,
         BlockType.PARAGRAPH_TITLE,
-        BlockType.CAPTION,
-        BlockType.FOOTNOTE,
+        RAW_CAPTION,
+        RAW_FOOTNOTE,
     ],
 )
 @pytest.mark.parametrize("invalid_content", [None, "", "   ", ["not a string"]])
@@ -749,12 +750,12 @@ def test_normalize_pdf_model_list_keeps_other_types_and_valid_text_order() -> No
         "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
     }
     invalid_text = {
-        "type": BlockType.CAPTION,
+        "type": RAW_CAPTION,
         "content": "caption",
         "lines": [],
     }
     second_text = {
-        "type": BlockType.FOOTNOTE,
+        "type": RAW_FOOTNOTE,
         "content": "second",
         "lines": [{"bbox": [0.1, 0.8, 0.9, 0.9]}],
     }

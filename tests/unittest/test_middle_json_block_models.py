@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from typing import get_args
 
 import pytest
 from pydantic import ValidationError
@@ -10,6 +11,8 @@ from mineru.backend.utils.raw_block_types import RAW_ONLY_BLOCK_TYPES
 from mineru.types import (
     BLOCK_ADAPTER,
     BLOCK_TYPES,
+    BlockType,
+    BlockTypes,
     CodeBlock,
     EquationBlock,
     ListBlock,
@@ -77,7 +80,19 @@ def test_all_29_public_discriminators_parse_to_concrete_models() -> None:
     assert isinstance(parse_block(payloads["equation"]), EquationBlock)
 
 
-@pytest.mark.parametrize("raw_type", ["algorithm", "caption", "footnote", "title", "phonetic"])
+def test_public_block_type_declarations_match_block_union() -> None:
+    """验证 BlockType、BlockTypes 和 BLOCK_TYPES 只公开 Block 联合的 discriminator。"""
+    class_values = {
+        value
+        for name, value in vars(BlockType).items()
+        if name.isupper()
+    }
+
+    assert class_values == BLOCK_TYPES
+    assert set(get_args(BlockTypes)) == BLOCK_TYPES
+
+
+@pytest.mark.parametrize("raw_type", sorted(RAW_ONLY_BLOCK_TYPES))
 def test_raw_only_types_are_rejected(raw_type: str) -> None:
     """验证 Analyze 私有 raw type 不能越过公开对象边界。"""
     assert raw_type in RAW_ONLY_BLOCK_TYPES

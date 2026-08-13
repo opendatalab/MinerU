@@ -1,6 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
+from ..backend.utils.raw_block_types import RAW_PHONETIC
 from ..types import EMPTY_BBOX, BBox, Block, BlockType, ContentItem, ContentType, IntBBox
 from .markdown import _build_media_path, _get_title_level
 from .merge import _merge_para_text, merge_para_text
@@ -16,7 +17,7 @@ def block_to_content_list(
     para_type = para_block.type
     if para_type in [
         BlockType.TEXT,
-        BlockType.PHONETIC,
+        RAW_PHONETIC,
         BlockType.HEADER,
         BlockType.FOOTER,
         BlockType.PAGE_NUMBER,
@@ -27,7 +28,7 @@ def block_to_content_list(
             type=para_type,
             text=merge_para_text(para_block),
         )
-    elif para_type in [BlockType.INDEX, BlockType.ABSTRACT]:
+    elif para_type == BlockType.INDEX:
         item = ContentItem(
             type=ContentType.TEXT,
             text=merge_para_text(para_block),
@@ -55,7 +56,7 @@ def block_to_content_list(
                 type=para_type,
                 text=merge_para_text(para_block),
             )
-    elif para_type == BlockType.TITLE:
+    elif para_type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
         title_level = _get_title_level(para_block)
         item = ContentItem(
             type=ContentType.TEXT,

@@ -11,6 +11,8 @@ from typing import Annotated, Any, ClassVar, Literal, TypeAlias, Union
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
+from .backend.utils.raw_block_types import RAW_ALGORITHM
+
 Tier = Literal[
     "flash",
     "medium",
@@ -63,20 +65,13 @@ class BlockType:
     CODE_CAPTION = "code_caption"
     CODE_FOOTNOTE = "code_footnote"
 
-    CAPTION = "caption"  # generic caption type (e.g., for Word documents)
-    ALGORITHM_CAPTION = "algorithm_caption"
-    FOOTNOTE = "footnote"  # pp_layout中的vision_footnote
     TEXT = "text"
-    TITLE = "title"
     EQUATION = "equation"  # 行间公式（独立公式）
     LIST = "list"
     INDEX = "index"
-    DISCARDED = "discarded"
 
     # Added in vlm 2.5
-    ALGORITHM = "algorithm"
     REF_TEXT = "ref_text"
-    PHONETIC = "phonetic"
     HEADER = "header"
     FOOTER = "footer"
     PAGE_NUMBER = "page_number"
@@ -84,12 +79,8 @@ class BlockType:
     PAGE_FOOTNOTE = "page_footnote"
 
     # Added in pp_doclayout_v2
-    ABSTRACT = "abstract"
     DOC_TITLE = "doc_title"
     PARAGRAPH_TITLE = "paragraph_title"
-    VERTICAL_TEXT = "vertical_text"
-    HEADER_IMAGE = "header_image"
-    FOOTER_IMAGE = "footer_image"
     FORMULA_NUMBER = "formula_number"
 
 
@@ -195,55 +186,6 @@ BLOCK_TYPES = {
     BlockType.FORMULA_NUMBER,
 }
 
-NOT_EXTRACT_TYPES = {
-    BlockType.TEXT,
-    BlockType.TITLE,
-    BlockType.DOC_TITLE,
-    BlockType.PARAGRAPH_TITLE,
-    BlockType.HEADER,
-    BlockType.FOOTER,
-    BlockType.PAGE_NUMBER,
-    BlockType.PAGE_FOOTNOTE,
-    BlockType.REF_TEXT,
-    BlockType.TABLE_CAPTION,
-    BlockType.IMAGE_CAPTION,
-    BlockType.CAPTION,
-    BlockType.TABLE_FOOTNOTE,
-    BlockType.IMAGE_FOOTNOTE,
-    BlockType.FOOTNOTE,
-    BlockType.CODE_CAPTION,
-    BlockType.PHONETIC,
-}
-
-
-# 文本类 block 共用 text bbox 样式，避免新增文本形态时遗漏多个绘制入口。
-TEXT_LIKE_BLOCK_TYPES_FOR_BBOX = {
-    BlockType.TEXT,
-    BlockType.REF_TEXT,
-    BlockType.ABSTRACT,
-    BlockType.PHONETIC,
-}
-
-# layout.pdf 中这些 block 直接使用自身 bbox，复合 block 则使用子 block bbox。
-DIRECT_LAYOUT_BBOX_BLOCK_TYPES = TEXT_LIKE_BLOCK_TYPES_FOR_BBOX | {
-    BlockType.TITLE,
-    BlockType.EQUATION,
-    BlockType.LIST,
-    BlockType.INDEX,
-}
-
-# span.pdf 从这些结构性 block 中收集内部 span bbox。
-SPAN_SOURCE_BLOCK_TYPES = DIRECT_LAYOUT_BBOX_BLOCK_TYPES
-
-
-IMAGE_BLOCK_BODY = "image_block_body"
-GENERIC_CHILD_TYPES = (BlockType.CAPTION, BlockType.FOOTNOTE)
-INLINE_CAPTION_FRAGMENT_TYPES = {BlockType.TEXT, BlockType.FOOTNOTE}
-STACKED_TABLE_CAPTION_CLUSTER_TYPES = {
-    BlockType.CAPTION,
-    BlockType.TEXT,
-    BlockType.FOOTNOTE,
-}
 VISUAL_RELATION_IGNORED_TYPES = {
     BlockType.HEADER,
     BlockType.FOOTER,
@@ -253,7 +195,6 @@ VISUAL_RELATION_IGNORED_TYPES = {
 }
 VISUAL_MAIN_TYPES = {
     BlockType.IMAGE_BODY: BlockType.IMAGE,
-    IMAGE_BLOCK_BODY: BlockType.IMAGE,
     BlockType.TABLE_BODY: BlockType.TABLE,
     BlockType.CHART_BODY: BlockType.CHART,
     BlockType.CODE_BODY: BlockType.CODE,
@@ -280,8 +221,6 @@ VISUAL_TYPE_MAPPING = {
         "footnote": BlockType.CODE_FOOTNOTE,
     },
 }
-
-
 # ── model types ─────────────────────────────────────────────────────
 
 BBox: TypeAlias = tuple[float, float, float, float]
@@ -611,7 +550,7 @@ CodeChildBlock: TypeAlias = Annotated[
 class CodeBlock(_VisualBlockBase):
     type: Literal[BlockType.CODE]
     content: list[CodeChildBlock]
-    sub_type: Literal[BlockType.CODE, BlockType.ALGORITHM]
+    sub_type: Literal[BlockType.CODE, RAW_ALGORITHM]
     guess_lang: str | None = None
     _body_type: ClassVar[str] = BlockType.CODE_BODY
 

@@ -9,19 +9,20 @@ from loguru import logger
 from pypdf import PageObject, PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
+from ..backend.utils.raw_block_types import RAW_PHONETIC
 from ..types import BBox, Block, BlockType, ContentType, PageInfo, Span
 
 # 文本类 block 共用 text bbox 样式，避免新增文本形态时遗漏多个绘制入口。
 TEXT_LIKE_BLOCK_TYPES_FOR_BBOX = {
     BlockType.TEXT,
     BlockType.REF_TEXT,
-    BlockType.ABSTRACT,
-    BlockType.PHONETIC,
+    RAW_PHONETIC,
 }
 
 # layout.pdf 中这些 block 直接使用自身 bbox，复合 block 则使用子 block bbox。
 DIRECT_LAYOUT_BBOX_BLOCK_TYPES = TEXT_LIKE_BLOCK_TYPES_FOR_BBOX | {
-    BlockType.TITLE,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
     BlockType.EQUATION,
     BlockType.LIST,
     BlockType.INDEX,
@@ -236,7 +237,7 @@ def draw_layout_bbox(
                     elif nested_block.type == BlockType.CHART_FOOTNOTE:
                         bbox = nested_block.bbox
                         imgs_footnote.append(bbox)
-            elif block.type == BlockType.TITLE:
+            elif block.type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
                 titles.append(bbox)
             elif block.type in TEXT_LIKE_BLOCK_TYPES_FOR_BBOX:
                 texts.append(bbox)

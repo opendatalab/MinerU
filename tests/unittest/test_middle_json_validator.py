@@ -137,7 +137,7 @@ def _validate_block(block: Block, path: str, issues: list[ValidationIssue], page
                 message=f"unknown block type: {block.type}",
             )
         )
-    elif _has_field(block, "type") and block.type == BlockType.TITLE:
+    elif _has_field(block, "type") and block.type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
         _validate_title_level(block, f"{path}.level", issues)
 
     if _has_field(block, "bbox"):
@@ -461,7 +461,7 @@ def test_validate_pages_reports_unknown_block_type_and_bad_title_level() -> None
     page.para_blocks.append(
         Block(
             index=1,
-            type=BlockType.TITLE,
+            type=BlockType.PARAGRAPH_TITLE,
             bbox=(2.0, 2.0, 20.0, 20.0),
             lines=[Line(bbox=(2.0, 2.0, 20.0, 20.0), spans=[])],
             level=0,

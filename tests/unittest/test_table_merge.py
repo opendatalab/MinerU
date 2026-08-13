@@ -152,9 +152,6 @@ def test_merge_table_requires_consecutive_increasing_page_indices(
         BlockType.PAGE_NUMBER,
         BlockType.PAGE_FOOTNOTE,
         BlockType.ASIDE_TEXT,
-        BlockType.HEADER_IMAGE,
-        BlockType.FOOTER_IMAGE,
-        BlockType.DISCARDED,
     ],
 )
 def test_merge_table_skips_boundary_noise(block_type: str) -> None:
