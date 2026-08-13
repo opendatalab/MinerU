@@ -20,7 +20,6 @@ from pdftext.schema import Bbox, Char, Line
 from PIL import Image, ImageOps
 
 from ..types import BBox, PageInfo
-from .draw_bbox import draw_layout_bbox, draw_span_bbox
 from .pdf_classify import classify, get_sample_page_indices
 from .pdf_image_tools import get_crop_img, load_images_from_pdf_bytes_range
 from .pdf_reader import image_to_bytes
@@ -449,11 +448,15 @@ class PDFDocument:
     # ------------------------------------------------------------------ #
 
     def draw_layout_bbox(self, pages: list[PageInfo], output_path: str) -> None:
+        from .draw_bbox import draw_layout_bbox
+
         out_dir = os.path.dirname(output_path) or "."
         filename = os.path.basename(output_path)
         draw_layout_bbox(pages, self._pdf_bytes, out_dir, filename)
 
     def draw_span_bbox(self, pages: list[PageInfo], output_path: str) -> None:
+        from .draw_bbox import draw_span_bbox
+
         out_dir = os.path.dirname(output_path) or "."
         filename = os.path.basename(output_path)
         draw_span_bbox(pages, self._pdf_bytes, out_dir, filename)

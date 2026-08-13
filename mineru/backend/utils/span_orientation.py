@@ -1,11 +1,11 @@
 # Copyright (c) Opendatalab. All rights reserved.
-from ...types import Span
+from .analyze_draft import _AnalyzeSpan
 
 VERTICAL_SPAN_HEIGHT_TO_WIDTH_RATIO_THRESHOLD = 2
 VERTICAL_SPAN_IN_BLOCK_THRESHOLD = 0.8
 
 
-def is_vertical_text_block_by_spans(spans: list[Span]) -> bool:
+def is_vertical_text_block_by_spans(spans: list[_AnalyzeSpan]) -> bool:
     """根据块内文本 span 的高宽比判断文本块是否更像竖排文本。"""
     valid_span_count = 0
     vertical_span_count = 0

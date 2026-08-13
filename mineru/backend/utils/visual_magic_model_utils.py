@@ -3,19 +3,20 @@ from __future__ import annotations
 
 import re
 from copy import deepcopy
-from typing import Any, cast
+from typing import Any
 
-from ...types import BBox, Block, BlockType
+from ...types import BBox, BlockType
 from .boxbase import bbox_center_distance, bbox_distance
+from .raw_block_types import RAW_CAPTION, RAW_FOOTNOTE
 from .table_continuation import is_table_continuation_text
 
 IMAGE_BLOCK_BODY = "image_block_body"
-GENERIC_CHILD_TYPES = (BlockType.CAPTION, BlockType.FOOTNOTE)
-INLINE_CAPTION_FRAGMENT_TYPES = {BlockType.TEXT, BlockType.FOOTNOTE}
+GENERIC_CHILD_TYPES = (RAW_CAPTION, RAW_FOOTNOTE)
+INLINE_CAPTION_FRAGMENT_TYPES = {BlockType.TEXT, RAW_FOOTNOTE}
 STACKED_TABLE_CAPTION_CLUSTER_TYPES = {
-    BlockType.CAPTION,
+    RAW_CAPTION,
     BlockType.TEXT,
-    BlockType.FOOTNOTE,
+    RAW_FOOTNOTE,
 }
 VISUAL_RELATION_IGNORED_TYPES = {
     BlockType.HEADER,
@@ -54,8 +55,8 @@ VISUAL_TYPE_MAPPING = {
     },
 }
 VISUAL_CHILD_TYPE_MAPPING: dict[str, tuple[str | None, str]] = {
-    BlockType.CAPTION: (None, "caption"),
-    BlockType.FOOTNOTE: (None, "footnote"),
+    RAW_CAPTION: (None, "caption"),
+    RAW_FOOTNOTE: (None, "footnote"),
     BlockType.IMAGE_CAPTION: (BlockType.IMAGE, "caption"),
     BlockType.IMAGE_FOOTNOTE: (BlockType.IMAGE, "footnote"),
     BlockType.TABLE_CAPTION: (BlockType.TABLE, "caption"),
@@ -66,30 +67,25 @@ VISUAL_CHILD_TYPE_MAPPING: dict[str, tuple[str | None, str]] = {
     BlockType.CODE_FOOTNOTE: (BlockType.CODE, "footnote"),
 }
 
-BlockLike = Block | dict[str, Any]
+BlockDict = dict[str, Any]
 
 
-def _get_block_field(block: BlockLike, field_name: str, default: Any = None) -> Any:
-    """统一读取 Block 属性或 dict 字段。"""
-    if isinstance(block, dict):
-        return block.get(field_name, default)
-    return getattr(block, field_name, default)
+def _get_block_field(block: BlockDict, field_name: str, default: Any = None) -> Any:
+    """读取 raw dict block 字段。"""
+    return block.get(field_name, default)
 
 
-def _set_block_field(block: BlockLike, field_name: str, value: Any) -> None:
-    """统一回写 Block 属性或 dict 字段。"""
-    if isinstance(block, dict):
-        block[field_name] = value
-    else:
-        setattr(block, field_name, value)
+def _set_block_field(block: BlockDict, field_name: str, value: Any) -> None:
+    """回写 raw dict block 字段。"""
+    block[field_name] = value
 
 
-def _block_index(block: BlockLike) -> int:
+def _block_index(block: BlockDict) -> int:
     """读取 block 顺序索引，缺失时沿用原有的零值排序语义。"""
     return int(_get_block_field(block, "index", 0) or 0)
 
 
-def _block_type(block: BlockLike) -> str:
+def _block_type(block: BlockDict) -> str:
     """读取 block 类型。"""
     return str(_get_block_field(block, "type", "") or "")
 
@@ -102,16 +98,14 @@ def _bbox_for_calculation(bbox: BBox) -> BBox:
     return x0, y0, x1, y1
 
 
-def _block_bbox(block: BlockLike) -> BBox:
+def _block_bbox(block: BlockDict) -> BBox:
     """读取参与视觉关系判断的 block bbox。"""
-    return _bbox_for_calculation(cast(BBox, _get_block_field(block, "bbox")))
+    return _bbox_for_calculation(block["bbox"])
 
 
-def _block_line_items(block: BlockLike) -> list[Any]:
-    """读取行级元数据，dict 使用 _lines，Block 使用 lines。"""
-    if isinstance(block, dict):
-        return list(block.get("lines") or [])
-    return list(block.lines or [])
+def _block_line_items(block: BlockDict) -> list[Any]:
+    """读取 raw block 的临时行级元数据。"""
+    return list(block.get("lines") or [])
 
 
 def isolated_formula_clean(txt: str) -> str:
@@ -158,7 +152,7 @@ def clean_content(content: str | None) -> str | None:
 
 
 def fallback_inline_caption_fragments(
-    blocks: list[BlockLike],
+    blocks: list[BlockDict],
     visual_main_types: dict[str, str] | set[str],
 ) -> None:
     """将紧贴视觉主体上方的同行 text/footnote 片段兜底为通用 caption。"""
@@ -176,7 +170,7 @@ def fallback_inline_caption_fragments(
         if not (
             previous_block
             and next_block
-            and _block_type(previous_block) == BlockType.CAPTION
+            and _block_type(previous_block) == RAW_CAPTION
             and _block_type(next_block) in main_types
         ):
             continue
@@ -184,13 +178,13 @@ def fallback_inline_caption_fragments(
         if not is_inline_caption_fragment(previous_block, block, next_block):
             continue
 
-        _set_block_field(block, "type", BlockType.CAPTION)
+        _set_block_field(block, "type", RAW_CAPTION)
 
     fallback_stacked_table_caption_fragments(blocks, visual_main_types)
 
 
 def fallback_no_bbox_caption_fragments(
-    blocks: list[BlockLike],
+    blocks: list[BlockDict],
     visual_main_types: dict[str, str],
 ) -> None:
     """将无坐标视觉主体后紧邻且带标题前缀的 text 兜底为 caption。"""
@@ -212,11 +206,11 @@ def fallback_no_bbox_caption_fragments(
 
         content = _block_text_content(next_block).strip().lower()
         if any(content.startswith(prefix) for prefix in prefixes):
-            _set_block_field(next_block, "type", BlockType.CAPTION)
+            _set_block_field(next_block, "type", RAW_CAPTION)
 
 
 def fallback_leading_table_continuation_captions(
-    blocks: list[BlockLike],
+    blocks: list[BlockDict],
     visual_main_types: dict[Any, Any] | set[Any],
 ) -> None:
     """将页首紧贴表格的续表文本兜底为通用 caption。
@@ -257,10 +251,10 @@ def fallback_leading_table_continuation_captions(
         return
 
     for block in leading_blocks:
-        _set_block_field(block, "type", BlockType.CAPTION)
+        _set_block_field(block, "type", RAW_CAPTION)
 
 
-def _is_leading_continuation_text_block(block: BlockLike) -> bool:
+def _is_leading_continuation_text_block(block: BlockDict) -> bool:
     """判断页首候选块是否是单行续表文本。"""
     return (
         _block_type(block) in INLINE_CAPTION_FRAGMENT_TYPES
@@ -269,21 +263,19 @@ def _is_leading_continuation_text_block(block: BlockLike) -> bool:
     )
 
 
-def _block_text_content(block: BlockLike) -> str:
+def _block_text_content(block: BlockDict) -> str:
     """提取视觉块中的可见文本，用于续表 marker 判断。"""
     content = _get_block_field(block, "content", "")
     return content if isinstance(content, str) else ""
 
 
-def is_transparent_visual_relation_block(block: BlockLike) -> bool:
+def is_transparent_visual_relation_block(block: BlockDict) -> bool:
     """判断视觉关系中可忽略的结构性空块。"""
     if _block_type(block) != BlockType.LIST:
         return False
 
-    nested_blocks = _get_block_field(block, "blocks", [])
-    if not nested_blocks and isinstance(block, dict):
-        content = block.get("content")
-        nested_blocks = content if isinstance(content, list) else []
+    content = block.get("content")
+    nested_blocks = content if isinstance(content, list) else []
     if nested_blocks:
         return False
 
@@ -291,8 +283,8 @@ def is_transparent_visual_relation_block(block: BlockLike) -> bool:
 
 
 def _is_leading_continuation_cluster_near_table(
-    leading_blocks: list[BlockLike],
-    table_block: BlockLike,
+    leading_blocks: list[BlockDict],
+    table_block: BlockDict,
 ) -> bool:
     """判断页首续表文本簇是否与后续 table 在几何上相邻。"""
     next_top = _block_bbox(table_block)[1]
@@ -317,7 +309,7 @@ def _is_leading_continuation_cluster_near_table(
 
 
 def fallback_stacked_table_caption_fragments(
-    blocks: list[BlockLike],
+    blocks: list[BlockDict],
     visual_main_types: dict[str, str] | set[str],
 ) -> None:
     """将 table 上方紧贴标题簇里的 text/footnote 片段兜底为 caption。"""
@@ -339,7 +331,7 @@ def fallback_stacked_table_caption_fragments(
 
         for block in caption_cluster[last_caption_pos + 1 :]:
             if _block_type(block) in INLINE_CAPTION_FRAGMENT_TYPES and is_single_line_caption_fragment(block):
-                _set_block_field(block, "type", BlockType.CAPTION)
+                _set_block_field(block, "type", RAW_CAPTION)
 
 
 def get_table_main_types(visual_main_types: dict[str, str] | set[str]) -> set[str]:
@@ -352,9 +344,9 @@ def get_table_main_types(visual_main_types: dict[str, str] | set[str]) -> set[st
 
 
 def find_stacked_table_caption_cluster(
-    table_block: BlockLike,
-    blocks: list[BlockLike],
-) -> list[BlockLike]:
+    table_block: BlockDict,
+    blocks: list[BlockDict],
+) -> list[BlockDict]:
     """按几何位置收集紧贴 table 上方的 caption/text/footnote 标题簇。"""
     table_bbox = _block_bbox(table_block)
     table_top = table_bbox[1]
@@ -391,15 +383,15 @@ def find_stacked_table_caption_cluster(
     return list(reversed(caption_cluster))
 
 
-def find_last_caption_position(caption_cluster: list[BlockLike]) -> int | None:
+def find_last_caption_position(caption_cluster: list[BlockDict]) -> int | None:
     """定位标题簇里的最后一个 caption，避免吸收上一张表的尾注。"""
     for pos in range(len(caption_cluster) - 1, -1, -1):
-        if _block_type(caption_cluster[pos]) == BlockType.CAPTION:
+        if _block_type(caption_cluster[pos]) == RAW_CAPTION:
             return pos
     return None
 
 
-def is_horizontally_near_table(block: BlockLike, table_block: BlockLike) -> bool:
+def is_horizontally_near_table(block: BlockDict, table_block: BlockDict) -> bool:
     """判断标题簇候选块是否横向落在 table 范围附近。"""
     table_bbox = _block_bbox(table_block)
     block_bbox = _block_bbox(block)
@@ -408,7 +400,7 @@ def is_horizontally_near_table(block: BlockLike, table_block: BlockLike) -> bool
     return not (block_bbox[2] < table_bbox[0] - tolerance or block_bbox[0] > table_bbox[2] + tolerance)
 
 
-def is_single_line_caption_fragment(block: BlockLike) -> bool:
+def is_single_line_caption_fragment(block: BlockDict) -> bool:
     """判断待兜底片段是否是单行块，避免吞掉多行正文。"""
     return len(_block_line_items(block) or [None]) <= 1
 
@@ -418,7 +410,7 @@ def stacked_caption_max_gap(block_height: float) -> float:
     return max(12, block_height * 1.5)
 
 
-def find_previous_effective_block(ordered_blocks: list[BlockLike], pos: int) -> BlockLike | None:
+def find_previous_effective_block(ordered_blocks: list[BlockDict], pos: int) -> BlockDict | None:
     """向前查找参与视觉关系判断的有效块，跳过页眉页脚等外围块。"""
     for index in range(pos - 1, -1, -1):
         block = ordered_blocks[index]
@@ -427,7 +419,7 @@ def find_previous_effective_block(ordered_blocks: list[BlockLike], pos: int) -> 
     return None
 
 
-def find_next_effective_block(ordered_blocks: list[BlockLike], pos: int) -> BlockLike | None:
+def find_next_effective_block(ordered_blocks: list[BlockDict], pos: int) -> BlockDict | None:
     """向后查找参与视觉关系判断的有效块，跳过页眉页脚等外围块。"""
     for index in range(pos + 1, len(ordered_blocks)):
         block = ordered_blocks[index]
@@ -437,9 +429,9 @@ def find_next_effective_block(ordered_blocks: list[BlockLike], pos: int) -> Bloc
 
 
 def is_inline_caption_fragment(
-    previous_caption: BlockLike,
-    text_block: BlockLike,
-    next_visual: BlockLike,
+    previous_caption: BlockDict,
+    text_block: BlockDict,
+    next_visual: BlockDict,
 ) -> bool:
     """判断当前块是否是前一 caption 的同行补充片段。"""
     caption_bbox = _block_bbox(previous_caption)
@@ -462,10 +454,10 @@ def is_inline_caption_fragment(
 
 
 def regroup_visual_blocks(
-    blocks: list[BlockLike],
+    blocks: list[BlockDict],
     *,
     use_bbox: bool = True,
-) -> tuple[dict[Any, list[BlockLike]], list[BlockLike]]:
+) -> tuple[dict[Any, list[BlockDict]], list[BlockDict]]:
     """按 bbox 或纯阅读顺序将通用 caption/footnote 归入视觉主体。"""
     ordered_blocks = sorted(blocks, key=_block_index)
     if use_bbox:
@@ -491,11 +483,11 @@ def regroup_visual_blocks(
         if _block_type(block) in VISUAL_CHILD_TYPE_MAPPING
     ]
 
-    grouped_children: dict[int, dict[str, list[BlockLike]]] = {
+    grouped_children: dict[int, dict[str, list[BlockDict]]] = {
         _block_index(block): {"captions": [], "footnotes": []}
         for block in main_blocks
     }
-    unmatched_child_blocks: list[BlockLike] = []
+    unmatched_child_blocks: list[BlockDict] = []
 
     for child_block in child_blocks:
         child_visual_type, child_kind = VISUAL_CHILD_TYPE_MAPPING[
@@ -522,7 +514,7 @@ def regroup_visual_blocks(
             child_block
         )
 
-    grouped_blocks: dict[str, list[BlockLike]] = {
+    grouped_blocks: dict[str, list[BlockDict]] = {
         BlockType.IMAGE: [],
         BlockType.TABLE: [],
         BlockType.CHART: [],
@@ -536,57 +528,41 @@ def regroup_visual_blocks(
         main_sub_type = str(_get_block_field(main_block, "sub_type", "") or "")
         body_block = deepcopy(main_block)
         _set_block_field(body_block, "type", mapping["body"])
-        if main_sub_type:
-            if isinstance(body_block, dict):
-                body_block.pop("sub_type", None)
-            else:
-                body_block.sub_type = ""
+        body_block.pop("sub_type", None)
 
-        captions: list[BlockLike] = []
+        captions: list[BlockDict] = []
         for caption in sorted(
             grouped_children[main_index]["captions"],
             key=_block_index,
         ):
             child_block = deepcopy(caption)
             _set_block_field(child_block, "type", mapping["caption"])
-            if isinstance(child_block, dict):
-                child_block.pop("lines", None)
+            child_block.pop("lines", None)
             captions.append(child_block)
 
-        footnotes: list[BlockLike] = []
+        footnotes: list[BlockDict] = []
         for footnote in sorted(
             grouped_children[main_index]["footnotes"],
             key=_block_index,
         ):
             child_block = deepcopy(footnote)
             _set_block_field(child_block, "type", mapping["footnote"])
-            if isinstance(child_block, dict):
-                child_block.pop("lines", None)
+            child_block.pop("lines", None)
             footnotes.append(child_block)
 
         child_items = sorted(
             [body_block, *captions, *footnotes],
             key=_block_index,
         )
-        if isinstance(main_block, dict):
-            two_layer_block: BlockLike = {
-                "index": main_index,
-                "type": visual_type,
-                "content": child_items,
-            }
-            if main_sub_type:
-                two_layer_block["sub_type"] = main_sub_type
-            if "bbox" in main_block:
-                two_layer_block["bbox"] = deepcopy(main_block["bbox"])
-        else:
-            two_layer_block = Block(
-                index=main_index,
-                type=visual_type,
-                bbox=main_block.bbox,
-                content=cast(Any, child_items),
-            )
-            if main_sub_type:
-                two_layer_block.sub_type = main_sub_type
+        two_layer_block: BlockDict = {
+            "index": main_index,
+            "type": visual_type,
+            "content": child_items,
+        }
+        if main_sub_type:
+            two_layer_block["sub_type"] = main_sub_type
+        if "bbox" in main_block:
+            two_layer_block["bbox"] = deepcopy(main_block["bbox"])
 
         grouped_blocks[visual_type].append(two_layer_block)
 
@@ -597,14 +573,14 @@ def regroup_visual_blocks(
 
 
 def find_best_visual_parent(
-    child_block: BlockLike,
-    main_blocks: list[BlockLike],
-    ordered_blocks: list[BlockLike],
+    child_block: BlockDict,
+    main_blocks: list[BlockDict],
+    ordered_blocks: list[BlockDict],
     position_by_index: dict[int, int],
     main_type_to_visual_type: dict[Any, Any] | None = None,
     type_by_index: dict[int, str] | None = None,
     use_bbox: bool = True,
-) -> BlockLike | None:
+) -> BlockDict | None:
     """为通用 caption/footnote 查找最合适的视觉主体。"""
     if main_type_to_visual_type is None:
         main_type_to_visual_type = VISUAL_MAIN_TYPES
@@ -700,9 +676,9 @@ def find_best_visual_parent(
 
 
 def effective_visual_index_diff(
-    child_block: BlockLike,
-    main_block: BlockLike,
-    ordered_blocks: list[BlockLike],
+    child_block: BlockDict,
+    main_block: BlockDict,
+    ordered_blocks: list[BlockDict],
     type_by_index: dict[int, str] | None = None,
 ) -> int:
     """按有效块序列计算视觉子块与主体距离，吸收的 image 子成员视为零成本。"""
@@ -725,9 +701,9 @@ def effective_visual_index_diff(
 
 
 def is_visual_neighbor(
-    child_block: BlockLike,
-    main_block: BlockLike,
-    ordered_blocks: list[BlockLike],
+    child_block: BlockDict,
+    main_block: BlockDict,
+    ordered_blocks: list[BlockDict],
     position_by_index: dict[int, int],
     type_by_index: dict[int, str] | None = None,
     use_bbox: bool = True,
@@ -765,9 +741,9 @@ def is_visual_neighbor(
 
 
 def is_block_outside_visual_gap(
-    between_block: BlockLike,
-    child_block: BlockLike,
-    main_block: BlockLike,
+    between_block: BlockDict,
+    child_block: BlockDict,
+    main_block: BlockDict,
 ) -> bool:
     """判断阅读顺序夹在中间的块是否没有落入视觉父子块的垂直间隔。"""
     visual_gap = vertical_gap_between_blocks(child_block, main_block)
@@ -788,8 +764,8 @@ def is_block_outside_visual_gap(
 
 
 def vertical_gap_between_blocks(
-    first_block: BlockLike,
-    second_block: BlockLike,
+    first_block: BlockDict,
+    second_block: BlockDict,
 ) -> tuple[float, float] | None:
     """计算两个块上下分离时的垂直间隔；发生纵向重叠时保持严格阻断。"""
     first_bbox = _block_bbox(first_block)
@@ -825,7 +801,7 @@ def are_bboxes_overlapping(first_bbox: BBox, second_bbox: BBox) -> bool:
     )
 
 
-def block_type(block: BlockLike, type_by_index: dict[int, str] | None = None) -> str:
+def block_type(block: BlockDict, type_by_index: dict[int, str] | None = None) -> str:
     """读取块类型；本地 Hybrid 会传入改写前的原始类型映射。"""
     if type_by_index is not None:
         return type_by_index[_block_index(block)]

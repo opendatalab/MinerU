@@ -7,6 +7,7 @@ import re
 import time
 from collections import Counter
 from collections.abc import Iterable, Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Literal
@@ -31,7 +32,16 @@ from mineru.backend.utils.boxbase import (
 )
 from mineru.backend.utils.char_utils import resolve_text_line_boundary
 from mineru.backend.utils.formula_number import optimize_hybrid_formula_number_blocks
-from mineru.backend.utils.span_block_fix import fix_text_block
+from mineru.backend.utils.analyze_draft import _AnalyzeLine, _AnalyzeSpan
+from mineru.backend.utils.span_block_fix import group_spans_to_lines
+from mineru.backend.utils.raw_block_types import (
+    RAW_ALGORITHM,
+    RAW_CAPTION,
+    RAW_EQUATION,
+    RAW_FOOTNOTE,
+    RAW_PHONETIC,
+    RAW_TITLE,
+)
 from mineru.backend.utils.span_pre_proc import (
     SpanBlockMatcher,
     __replace_ligatures,
@@ -60,7 +70,7 @@ from mineru.utils.ocr_utils import (
 from mineru.utils.pdf_image_tools import load_images_from_pdf_bytes_range, get_crop_np_img
 from tqdm import tqdm
 
-from ..types import BBox, Block, BlockType, ContentType, Line, NOT_EXTRACT_TYPES, Span
+from ..types import BBox, BlockType, ContentType, MiddleJson, NOT_EXTRACT_TYPES
 from ..utils.config_reader import get_processing_window_size
 from ..utils.pdf_document import PDFDocument, PDFPage, get_lines_from_chars
 
@@ -86,33 +96,36 @@ _OFFICE_MODEL_MAP = {
 }
 _SUPPORTED_FILE_SUFFIXES = {"pdf", *_OFFICE_MODEL_MAP}
 TITLE_BLOCK_TYPES = {
-    BlockType.TITLE,
+    RAW_TITLE,
     BlockType.DOC_TITLE,
     BlockType.PARAGRAPH_TITLE,
 }
 CODE_CONTENT_BLOCK_TYPES = {
     BlockType.CODE,
-    BlockType.ALGORITHM,
+    RAW_ALGORITHM,
 }
 LINE_METADATA_BLOCK_TYPES = {
     BlockType.TEXT,
     BlockType.DOC_TITLE,
     BlockType.PARAGRAPH_TITLE,
-    BlockType.CAPTION,
-    BlockType.FOOTNOTE,
+    RAW_CAPTION,
+    RAW_FOOTNOTE,
 }
 VLM_VISUAL_ANNOTATION_TYPE_MAP = {
-    BlockType.TABLE_CAPTION: BlockType.CAPTION,
-    BlockType.IMAGE_CAPTION: BlockType.CAPTION,
-    BlockType.CODE_CAPTION: BlockType.CAPTION,
-    BlockType.TABLE_FOOTNOTE: BlockType.FOOTNOTE,
-    BlockType.IMAGE_FOOTNOTE: BlockType.FOOTNOTE,
+    BlockType.TABLE_CAPTION: RAW_CAPTION,
+    BlockType.IMAGE_CAPTION: RAW_CAPTION,
+    BlockType.CODE_CAPTION: RAW_CAPTION,
+    BlockType.TABLE_FOOTNOTE: RAW_FOOTNOTE,
+    BlockType.IMAGE_FOOTNOTE: RAW_FOOTNOTE,
 }
+VLM_MODEL_LIST_FIELDS = frozenset(
+    {"type", "bbox", "content", "angle", "score", "sub_type", "cell_merge"}
+)
 MODEL_JSON_VISUAL_BLOCK_TYPES = {
     BlockType.IMAGE,
     BlockType.CHART,
     BlockType.TABLE,
-    BlockType.EQUATION,
+    RAW_EQUATION,
 }
 LOCAL_LAYOUT_IMAGE_BLOCK_BODY_TYPES = {
     BlockType.IMAGE,
@@ -121,9 +134,9 @@ LOCAL_LAYOUT_IMAGE_BLOCK_BODY_TYPES = {
 LOCAL_LAYOUT_IMAGE_BLOCK_AREA_TYPES = {
     *LOCAL_LAYOUT_IMAGE_BLOCK_BODY_TYPES,
     BlockType.IMAGE_CAPTION,
-    BlockType.CAPTION,
+    RAW_CAPTION,
     BlockType.IMAGE_FOOTNOTE,
-    BlockType.FOOTNOTE,
+    RAW_FOOTNOTE,
 }
 _INLINE_FORMULA_PATTERN = re.compile(r"\\\((.*?)\\\)")
 
@@ -133,9 +146,9 @@ VLM_LAYOUT_LABEL_MAP = {
     "aside_text": BlockType.ASIDE_TEXT,
     "chart": BlockType.CHART,
     "content": BlockType.INDEX,
-    "display_formula": BlockType.EQUATION,
+    "display_formula": RAW_EQUATION,
     "doc_title": BlockType.DOC_TITLE,
-    "figure_title": BlockType.CAPTION,
+    "figure_title": RAW_CAPTION,
     "footer": BlockType.FOOTER,
     "footer_image": BlockType.FOOTER,
     "footnote": BlockType.PAGE_FOOTNOTE,
@@ -150,7 +163,7 @@ VLM_LAYOUT_LABEL_MAP = {
     "table": BlockType.TABLE,
     "text": BlockType.TEXT,
     "vertical_text": BlockType.TEXT,
-    "vision_footnote": BlockType.FOOTNOTE,
+    "vision_footnote": RAW_FOOTNOTE,
 }
 
 PIPELINE_DET_TYPE = {
@@ -159,22 +172,22 @@ PIPELINE_DET_TYPE = {
     BlockType.ASIDE_TEXT,
     BlockType.INDEX,
     BlockType.DOC_TITLE,
-    BlockType.CAPTION,
+    RAW_CAPTION,
     BlockType.FOOTER,
     BlockType.PAGE_FOOTNOTE,
     BlockType.HEADER,
     BlockType.PAGE_NUMBER,
     BlockType.PARAGRAPH_TITLE,
     BlockType.REF_TEXT,
-    BlockType.FOOTNOTE,
+    RAW_FOOTNOTE,
 }
 VLM_TXT_DET_TYPE = NOT_EXTRACT_TYPES
 VLM_OCR_DET_TYPE = {
     BlockType.TEXT,
     BlockType.DOC_TITLE,
     BlockType.PARAGRAPH_TITLE,
-    BlockType.CAPTION,
-    BlockType.FOOTNOTE,
+    RAW_CAPTION,
+    RAW_FOOTNOTE,
 }
 _LOW_TXT_VISUAL_RUN_ANGLES = (0.0, 90.0, 180.0, 270.0)
 
@@ -410,16 +423,24 @@ def _build_vl_style_layout_blocks(
 def _convert_vlm_results_to_model_list(
     vlm_results: Iterable[Iterable[Mapping[str, Any]]],
 ) -> list[list[dict[str, Any]]]:
-    """将 VLM 返回的 ExtractResult/ContentBlock 转换为原生 list/dict。"""
-    return [[dict(block) for block in page_blocks] for page_blocks in vlm_results]
+    """将 VLM 结果投影为允许进入 Analyze 的字段，丢弃未采用的外部属性。"""
+    return [
+        [
+            {
+                field_name: deepcopy(value)
+                for field_name, value in dict(block).items()
+                if field_name in VLM_MODEL_LIST_FIELDS
+            }
+            for block in page_blocks
+        ]
+        for page_blocks in vlm_results
+    ]
 
 
 def _normalize_xhigh_vlm_blocks(model_list: list[list[dict[str, Any]]]) -> None:
-    """归一化 xhigh VLM 注释类型，并移除正文块的 merge_prev。"""
+    """归一化 xhigh VLM 的视觉注释类型。"""
     for page_model_list in model_list:
         for block in page_model_list:
-            if block.get("type") == BlockType.TEXT:
-                block.pop("merge_prev", None)
             normalized_type = VLM_VISUAL_ANNOTATION_TYPE_MAP.get(block.get("type"))
             if normalized_type is not None:
                 block["type"] = normalized_type
@@ -474,7 +495,7 @@ def _apply_medium_display_formula_results(
         page_size = _normalize_page_size(page_image)
         equation_blocks_by_bbox: dict[tuple[float, ...], list[dict[str, Any]]] = {}
         for block in page_model_list:
-            if block.get("type") != BlockType.EQUATION:
+            if block.get("type") != RAW_EQUATION:
                 continue
             block_bbox = block.get("bbox")
             if block_bbox is None or len(block_bbox) != 4:
@@ -751,9 +772,9 @@ def _validate_text_formula_window_inputs(
             raise ValueError(f"Hybrid text/formula window image scale must be positive: page_idx={page_idx}")
 
 
-def _build_pdf_text_line_spans(pdf_page: PDFPage) -> list[Span]:
-    """将标准方向的 pdftext line 转为文本 Span，并复用现有字符清洗规则。"""
-    page_spans: list[Span] = []
+def _build_pdf_text_line_spans(pdf_page: PDFPage) -> list[_AnalyzeSpan]:
+    """将标准方向的 pdftext line 转为私有 span，并复用现有字符清洗规则。"""
+    page_spans: list[_AnalyzeSpan] = []
     for pdf_line in get_lines_from_chars(pdf_page.get_chars()):
         try:
             rotation = float(pdf_line.get("rotation", 0.0) or 0.0)
@@ -780,7 +801,7 @@ def _build_pdf_text_line_spans(pdf_page: PDFPage) -> list[Span]:
             continue
 
         page_spans.append(
-            Span(
+            _AnalyzeSpan(
                 type=ContentType.TEXT,
                 bbox=(x0, y0, x1, y1),
                 content=content,
@@ -790,7 +811,7 @@ def _build_pdf_text_line_spans(pdf_page: PDFPage) -> list[Span]:
     return page_spans
 
 
-def _build_pdf_text_visual_run_spans(pdf_page: PDFPage) -> list[Span]:
+def _build_pdf_text_visual_run_spans(pdf_page: PDFPage) -> list[_AnalyzeSpan]:
     """将 Low/TXT 原生粗行按 Flash 字符间隙拆成可独立分配的视觉 run。"""
 
     # 延迟导入避免 Hybrid 模块初始化时提前加载完整 Flash PDF 流水线。
@@ -802,13 +823,13 @@ def _build_pdf_text_visual_run_spans(pdf_page: PDFPage) -> list[Span]:
         page_rotation=pdf_page.rotation,
         supported_angles=_LOW_TXT_VISUAL_RUN_ANGLES,
     )
-    page_spans: list[Span] = []
+    page_spans: list[_AnalyzeSpan] = []
     for line_item in line_items:
         content = __replace_ligatures(__replace_unicode(line_item.text)).strip()
         if not content:
             continue
         page_spans.append(
-            Span(
+            _AnalyzeSpan(
                 type=ContentType.TEXT,
                 bbox=line_item.bbox,
                 content=content,
@@ -1024,15 +1045,15 @@ def _build_page_text_formula_spans(
     page_ocr_res_list: list[dict[str, Any]],
     page_size: tuple[float, float],
     render_scale: float,
-) -> list[Span]:
-    """将当前页行内公式和 OCR 结果转换为统一 Span，正文与公式后续共同组行。"""
-    page_spans: list[Span] = []
+) -> list[_AnalyzeSpan]:
+    """将当前页行内公式和 OCR 结果转换为私有 span，供正文与公式共同组行。"""
+    page_spans: list[_AnalyzeSpan] = []
     for formula in page_inline_formula_list:
         bbox = _sidecar_bbox_to_page_bbox(formula.get("bbox"), page_size, render_scale)
         if bbox is None:
             continue
         page_spans.append(
-            Span(
+            _AnalyzeSpan(
                 type=ContentType.INLINE_EQUATION,
                 bbox=bbox,
                 content=str(formula.get("latex", "") or "").strip(),
@@ -1045,7 +1066,7 @@ def _build_page_text_formula_spans(
         if bbox is None:
             continue
         page_spans.append(
-            Span(
+            _AnalyzeSpan(
                 type=ContentType.TEXT,
                 bbox=bbox,
                 content=str(ocr_res.get("text", "") or ""),
@@ -1057,11 +1078,11 @@ def _build_page_text_formula_spans(
 
 def _fill_native_pdf_text_spans(
     pdf_page: PDFPage,
-    page_spans: list[Span],
+    page_spans: list[_AnalyzeSpan],
     page_pil_image: Image.Image,
     render_scale: float,
     page_size: tuple[float, float],
-) -> list[Span]:
+) -> list[_AnalyzeSpan]:
     """复用原生 PDF 字符回填逻辑，并为内容不足的 span 准备后置 OCR 裁图。"""
     page_width, page_height = page_size
     virtual_block = (0, 0, page_width, page_height, None, None, None, BlockType.TEXT)
@@ -1077,13 +1098,13 @@ def _fill_native_pdf_text_spans(
 
 def _group_page_spans_by_block(
     page_model_list: list[dict[str, Any]],
-    page_spans: list[Span],
+    page_spans: list[_AnalyzeSpan],
     page_size: tuple[float, float],
     target_block_types: set[str],
-) -> dict[int, list[Line]]:
+) -> dict[int, list[_AnalyzeLine]]:
     """按 block 原始顺序消费 span，并使用现有文本修复逻辑形成真实行。"""
     span_matcher = SpanBlockMatcher(page_spans)
-    block_lines: dict[int, list[Line]] = {}
+    block_lines: dict[int, list[_AnalyzeLine]] = {}
     for block_idx, block_item in enumerate(page_model_list):
         block_type = str(block_item.get("type") or block_item.get("label") or "")
         if block_type not in target_block_types:
@@ -1093,32 +1114,28 @@ def _group_page_spans_by_block(
             block_lines[block_idx] = []
             continue
 
-        fix_block = Block(
-            index=block_idx,
-            type=block_type,
-            bbox=block_bbox,
-            _fix_spans=span_matcher.collect_for_block(block_bbox),
+        block_lines[block_idx] = group_spans_to_lines(
+            span_matcher.collect_for_block(block_bbox)
         )
-        block_lines[block_idx] = fix_text_block(fix_block).lines
     return block_lines
 
 
 def _apply_window_post_ocr(
     local_model_context: HybridLocalModelContext,
-    page_block_lines_list: list[dict[int, list[Line]]],
+    page_block_lines_list: list[dict[int, list[_AnalyzeLine]]],
 ) -> None:
     """在当前窗口内识别原生字符不足的 span，保持 finalize 后置 OCR 的回退语义。"""
-    need_ocr_spans: list[Span] = []
+    need_ocr_spans: list[_AnalyzeSpan] = []
     img_crop_list: list[np.ndarray] = []
     for block_lines in page_block_lines_list:
         for lines in block_lines.values():
             for line in lines:
                 for span in line.spans:
-                    if span._np_img is None:
+                    if span.image is None:
                         continue
                     need_ocr_spans.append(span)
-                    img_crop_list.append(rotate_vertical_crop_if_needed(span._np_img))
-                    span._np_img = None
+                    img_crop_list.append(rotate_vertical_crop_if_needed(span.image))
+                    span.image = None
 
     if not img_crop_list:
         return
@@ -1146,7 +1163,7 @@ def _apply_window_post_ocr(
             span.score = 0.0
 
 
-def _line_content_parts(line: Line) -> list[tuple[str, str]]:
+def _line_content_parts(line: _AnalyzeLine) -> list[tuple[str, str]]:
     """提取一行内可输出的文本与行内公式，公式统一包装为反斜杠圆括号格式。"""
     parts: list[tuple[str, str]] = []
     for span in line.spans:
@@ -1162,7 +1179,7 @@ def _line_content_parts(line: Line) -> list[tuple[str, str]]:
     return parts
 
 
-def _lines_to_block_content(lines: list[Line], block_type: str) -> str:
+def _lines_to_block_content(lines: list[_AnalyzeLine], block_type: str) -> str:
     """将真实行折叠为统一 block content，保留目录/代码换行并处理自然语言跨行连接。"""
     content_lines = [parts for line in lines if (parts := _line_content_parts(line))]
     if not content_lines:
@@ -1193,8 +1210,8 @@ def _lines_to_block_content(lines: list[Line], block_type: str) -> str:
     return "".join(content_parts).strip()
 
 
-def _build_ocr_det_line_items(lines: list[Line], page_size: tuple[float, float]) -> list[dict[str, Any]]:
-    """将内部 Line 转换为归一化行框"""
+def _build_ocr_det_line_items(lines: list[_AnalyzeLine], page_size: tuple[float, float]) -> list[dict[str, Any]]:
+    """将 Analyze 私有行转换为归一化行框。"""
     line_items = []
     for line in lines:
         normalized_bbox = _page_bbox_to_unit_bbox(line.bbox, page_size)
@@ -1205,7 +1222,7 @@ def _build_ocr_det_line_items(lines: list[Line], page_size: tuple[float, float])
 
 def _apply_block_content_and_line_metadata(
     page_model_list: list[dict[str, Any]],
-    block_lines: dict[int, list[Line]],
+    block_lines: dict[int, list[_AnalyzeLine]],
     page_size: tuple[float, float],
 ) -> None:
     """将组行结果回填到 block，并为正文、视觉标题和视觉脚注保存行框。"""
@@ -1250,7 +1267,9 @@ def _fill_window_block_content_and_lines(
         raise ValueError(f"Hybrid block content page count mismatch: {page_counts}")
 
     target_block_types = set(ocr_det_type) | TITLE_BLOCK_TYPES | {BlockType.TEXT}
-    page_block_line_results: list[tuple[list[dict[str, Any]], dict[int, list[Line]], tuple[float, float]]] = []
+    page_block_line_results: list[
+        tuple[list[dict[str, Any]], dict[int, list[_AnalyzeLine]], tuple[float, float]]
+    ] = []
     for image_dict, pdf_page, page_model_list, page_inline_formula_list, page_ocr_res_list in zip(
         images_list,
         pdf_pages,
@@ -2067,7 +2086,7 @@ def _remove_low_table_inner_blocks(
     """按表格中心点归属规则移除 low 表内图片、公式和公式编号块。"""
     inner_block_types = {
         BlockType.IMAGE,
-        BlockType.EQUATION,
+        RAW_EQUATION,
         BlockType.FORMULA_NUMBER,
     }
     for image_dict, page_model_list in zip(images_list, model_list):
@@ -2421,7 +2440,7 @@ def _apply_layout_title_split(
     for page_model_list, layout_res, page_size in zip(model_list, images_layout_res, page_sizes):
         doc_title_bboxes = _collect_layout_doc_title_bboxes(layout_res, page_size)
         for block in page_model_list:
-            if block.get("type") != BlockType.TITLE:
+            if block.get("type") != RAW_TITLE:
                 continue
             title_bbox = _bbox_to_pixel_bbox(block.get("bbox"), page_size)
             if title_bbox is None:
@@ -2467,8 +2486,25 @@ def _is_valid_pdf_text_block(block: dict[str, Any]) -> bool:
 
 def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
     """清理 PDF block 元数据、规范公式，并过滤正文或行框无效的文本块。"""
-    for page_model_list in model_list:
-        for block in page_model_list:
+    for page_idx, page_model_list in enumerate(model_list):
+        for block_idx, block in enumerate(page_model_list):
+            raw_type = block.get("type")
+            if raw_type == RAW_PHONETIC:
+                block["type"] = BlockType.TEXT
+            elif raw_type == RAW_EQUATION:
+                block["type"] = BlockType.INTERLINE_EQUATION
+                equation_content = block.get("content")
+                if isinstance(equation_content, str):
+                    if equation_content.startswith("\\["):
+                        equation_content = equation_content[2:]
+                    if equation_content.endswith("\\]"):
+                        equation_content = equation_content[:-2]
+                    block["content"] = equation_content.strip()
+            elif raw_type == RAW_TITLE:
+                raise ValueError(
+                    "Unclassified PDF title block: "
+                    f"page_idx={page_idx}, block_idx={block_idx}"
+                )
             block.pop("angle", None)
             block.pop("score", None)
             content = block.get("content")
@@ -2502,7 +2538,7 @@ def doc_analyze(
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
     file_suffix: Literal["pdf", "docx", "pptx", "xlsx"] = "pdf",
-) -> tuple[dict[str, Any], list[list[dict[str, Any]]]]:
+) -> tuple[MiddleJson, list[list[dict[str, Any]]]]:
     if file_suffix not in _SUPPORTED_FILE_SUFFIXES:
         raise ValueError(f"Unsupported file suffix: {file_suffix!r}")
 
@@ -2697,19 +2733,17 @@ def doc_analyze(
     _log_infer_performance(file_suffix, len(model_list), infer_elapsed)
 
     # PDF 与 Office 的 model_list 在此汇合，后续统一生产 Middle JSON。
-    middle_json = {
-        "pages": [],
-        "file_suffix": file_suffix,
-        "effort": effort,
-        "parse_mode": parse_mode,
-        "mineru_version": mineru_version,
-    }
-    middle_json["pages"] = model_list_to_pages(model_list, page_index_map)
+    middle_json = MiddleJson(
+        pages=model_list_to_pages(model_list, page_index_map),
+        file_suffix=file_suffix,
+        effort=effort,
+        parse_mode=parse_mode,
+        mineru_version=mineru_version,
+    )
     return middle_json, model_list
 
 
 if __name__ == "__main__":
-    from mineru.cli_old.common import read_fn
     import json
 
     # 根据当前文件位置定位项目根目录，读取 demo 下的 PDF 和 Office 样例。
@@ -2723,7 +2757,7 @@ if __name__ == "__main__":
     ]
 
     for file_path in demo_file_paths:
-        file_bytes = read_fn(file_path)
+        file_bytes = open(file_path, "rb").read()
         file_suffix = os.path.splitext(file_path)[1].lstrip(".").lower()
         file_suffix = "pdf"
         middle_json, model_list = doc_analyze(file_bytes, effort="high", file_suffix=file_suffix)

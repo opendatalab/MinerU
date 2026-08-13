@@ -53,8 +53,8 @@ def _set_subtitle(slide: Any, text: str) -> None:
     subtitle.text = text
 
 
-def test_office_models_store_standalone_images_in_private_image_base64() -> None:
-    """验证三类 Office model 的独立图片只通过 _image_base64 输出。"""
+def test_office_models_store_standalone_images_in_image_base64() -> None:
+    """验证三类 Office model 的独立图片统一通过 image_base64 输出。"""
     for suffix, model in (
         ("docx", DocxModel()),
         ("pptx", PptxModel()),
@@ -69,13 +69,13 @@ def test_office_models_store_standalone_images_in_private_image_base64() -> None
         assert image_blocks, suffix
         for block in image_blocks:
             assert "content" not in block
-            assert isinstance(block.get("_image_base64"), str)
-            assert block["_image_base64"].startswith("data:image/")
-            assert ";base64," in block["_image_base64"]
+            assert isinstance(block.get("image_base64"), str)
+            assert block["image_base64"].startswith("data:image/")
+            assert ";base64," in block["image_base64"]
 
 
-def test_pptx_svg_picture_uses_private_image_base64(monkeypatch: Any) -> None:
-    """验证 PPTX SVG 图片分支同样使用 _image_base64 字段。"""
+def test_pptx_svg_picture_uses_image_base64(monkeypatch: Any) -> None:
+    """验证 PPTX SVG 图片分支同样使用统一 image_base64 字段。"""
     converter = PptxConverter()
 
     def fake_get_shape_image_data(_shape: Any) -> tuple[bytes, str]:
@@ -89,7 +89,7 @@ def test_pptx_svg_picture_uses_private_image_base64(monkeypatch: Any) -> None:
     assert converter.cur_page == [
         {
             "type": BlockType.IMAGE,
-            "_image_base64": "data:image/svg+xml;base64,PHN2Zy8+",
+            "image_base64": "data:image/svg+xml;base64,PHN2Zy8+",
         }
     ]
 

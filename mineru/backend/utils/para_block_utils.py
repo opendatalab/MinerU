@@ -356,7 +356,6 @@ def _remove_line_metadata(block: BlockDict) -> None:
 
 def _cleanup_block_internal_metadata(block: Block) -> None:
     """递归清理只供 finalize 内部流程使用的临时字段。"""
-    block.merge_prev = False
     block._ocr_det_lines = []
     block._line_avg_height = 0
     for sub_block in block.blocks:

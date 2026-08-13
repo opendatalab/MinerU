@@ -1,166 +1,162 @@
-# 当前事实标准
+# 当前 Middle JSON 事实标准
 
 状态: Draft
+
 读者: backend 开发者、SDK 开发者、输出开发者
-范围: 当前 `mineru/types.py` 中 document model 的字段契约和注意事项
-来源: 由根目录旧 Middle JSON 底稿迁移整理而来
+
+范围: `doc_analyze()` 第一返回值及 `mineru/types.py` 中的公开 Middle JSON 对象
 
 ## 标准来源
 
-当前事实标准来自 `mineru/types.py`:
+当前事实标准由以下 Pydantic v2 模型定义：
 
+- `MiddleJson`
 - `PageInfo`
-- `Block`
-- `Line`
-- `Span`
-- `ContentItem`
-- `BlockType`
-- `ContentType`
-- `ContentTypeV2`
+- `Block` discriminated union
+- 各具体 `*Block` 模型
 
-这些类型已具备 `to_dict()` / `from_dict()` 能力，能够递归处理嵌套 dataclass list，并把 JSON 中的 list bbox / page_size 转回 tuple。
+所有模型使用 `extra="forbid"` 和严格校验。反序列化入口是
+`model_validate()` / `model_validate_json()`，序列化入口是 `to_dict()` /
+`to_json()`。不再提供旧 `Block(...)` 通用构造器或 dict-like 兼容接口。
 
-当前 `ParseResult.to_dict()` 输出顶层 `schema_version + pages`，并在所有 page backend 一致时保留顶层 `_backend` 作为临时兼容 metadata。`ParseResult.from_dict()` / `from_json()` 已可恢复 `pages` envelope，但不接受旧 `pdf_info` envelope。
+本轮未迁移的 `ParseResult`、renderer、LLM 标题修正和 Structured Content
+不属于本文档描述的对象链路。
+
+## `MiddleJson`
+
+| 字段 | 类型 | 要求 |
+|------|------|------|
+| `pages` | `list[PageInfo]` | 必填，`page_idx` 唯一且严格递增 |
+| `file_suffix` | `pdf/docx/pptx/xlsx` | 必填 |
+| `effort` | `flash/low/medium/high/xhigh` | 必填 |
+| `parse_mode` | `txt/ocr` | 必填 |
+| `mineru_version` | 非空字符串 | 必填 |
+
+当 `file_suffix="pdf"` 时，每个页面顶层 block 必须具有有效 bbox。Office
+顶层 block 可以没有 bbox。
 
 ## `PageInfo`
 
-字段:
+| 字段 | 类型 | 要求 |
+|------|------|------|
+| `page_idx` | 非负整数 | 必填，使用实际页号映射 |
+| `blocks` | `list[Block]` | 必填，默认为空列表 |
 
-| 字段 | 类型 | 当前要求 | 说明 |
-|------|------|----------|------|
-| `page_idx` | int | 必填 | 0-based 页号。 |
-| `page_size` | tuple[int, int] 或 null | 建议必填 | PDF/VLM/Hybrid 通常有；Office/HTML 可能为空。 |
-| `preproc_blocks` | list[Block] | 默认空 | 预处理 block。Pipeline/VLM/Hybrid 中较常见。 |
-| `para_blocks` | list[Block] | 默认空 | 主阅读流。render 主要消费它。 |
-| `discarded_blocks` | list[Block] | 默认空 | 页眉、页脚、页码等边缘内容。 |
-| `_backend` | internal | 临时 | 当前 render facade 仍依赖它 dispatch。长期应移入 `_meta.backend`。 |
+顶层 block 必须具有非负 `index`。同一页内的 index 必须唯一、严格递增，
+但允许缺号或从非零值开始。数组位置不能替代 index。
 
-目标要求:
+## Block 公共字段
 
-- `page_idx` 必须稳定对应原文档页号。
-- `para_blocks` 必须按 reading order 排序。
-- `discarded_blocks` 不应混入主阅读流，但需要保留以支持搜索和引用。
-- `_backend` 不进入长期 public schema。
+所有具体 block 只共享以下定位字段：
 
-## `Block`
+| 字段 | 类型 | 要求 |
+|------|------|------|
+| `type` | discriminator literal | 必填 |
+| `index` | 非负整数或 null | 顶层必填，嵌套项可省略 |
+| `bbox` | 4 个 float 的 tuple 或 null | PDF 顶层必填，Office/嵌套项可省略 |
 
-字段:
+bbox 必须是有限的 `[0, 1]` 归一化坐标，并满足 `x1 > x0`、`y1 > y0`。
+每个具体 block 都显式声明必填 `content`，公共基类不再杂糅类型专属字段。
 
-| 字段 | 类型 | 当前要求 | 说明 |
-|------|------|----------|------|
-| `index` | int | 必填 | 页内排序标识。当前仍有 backend 差异。 |
-| `type` | str | 必填 | 来自 `BlockType`。 |
-| `bbox` | tuple[float, float, float, float] | 必填 | 当前类型必填；未知时常用 `EMPTY_BBOX`。 |
-| `lines` | list[Line] | 默认空 | 叶子内容。 |
-| `blocks` | list[Block] | 默认空 | 嵌套结构，如 list、image/table/code 容器。 |
-| `angle` | int 或 null | 可选 | 文本角度。 |
-| `score` | float 或 null | 可选 | 置信度。 |
-| `level` | int 或 null | 可选 | 标题层级。 |
-| `sub_type` | str | 可选 | 代码等细分类型。 |
-| `guess_lang` | str | 可选 | 语言猜测。 |
-| `merge_prev` | bool | 可选 | 与前一 block 合并。 |
-| `section_number` | str | 可选 | Office 标题编号等。 |
-| `html` | str | 可选 | 表格或富内容。 |
-| `text` | str | 可选 | 兼容字段。 |
-| `latex` | str | 可选 | 公式内容。 |
-| `anchor` | str | Office | 目录/标题 anchor。 |
+公开 discriminator 共 29 个：
 
-目标要求:
+```text
+aside_text
+chart, chart_body, chart_caption, chart_footnote
+code, code_body, code_caption, code_footnote
+doc_title, paragraph_title
+footer, formula_number, header
+image, image_body, image_caption, image_footnote
+index, interline_equation, list
+page_footnote, page_number, ref_text
+table, table_body, table_caption, table_footnote
+text
+```
 
-- 一个 block 可以同时有 `lines` 和 `blocks`，但公开消费方应优先按 block type 理解结构。
-- `index` 必须在 normalization 阶段变成 Agent 可依赖的 reading order。
-- `bbox=EMPTY_BBOX` 表示未知，不等于真实页面左上角零面积框。
+仅 raw 阶段允许的 `algorithm/caption/equation/footnote/title/phonetic` 不属于
+公开 union。其它旧 `BlockType` 常量也不会被严格反序列化接受。
 
-## `Line`
+## 主要具体模型
 
-字段:
+| 模型 | `content` | 专属字段 |
+|------|-----------|----------|
+| `TextBlock` | `str` | `continues_prev`；不允许 `anchor` |
+| `RefTextBlock` | `str` | 不允许 `continues_prev` |
+| `DocTitleBlock` | `str` | `anchor` |
+| `ParagraphTitleBlock` | `str` | `anchor`、正整数 `level` |
+| `TableBlock` | 有序视觉子块列表 | `continues_prev` |
+| `TableBodyBlock` | `str` | `cell_merge`、图片字段 |
+| `CodeBlock` | 有序视觉子块列表 | `sub_type`、`guess_lang` |
+| `ImageBlock/ChartBlock` | 有序视觉子块列表 | 开放字符串 `sub_type` |
+| `ImageBodyBlock/ChartBodyBlock` | `str` 或 null | 图片字段 |
+| 其它叶子 block | `str` | 仅各自声明的字段 |
 
-| 字段 | 类型 | 当前要求 | 说明 |
-|------|------|----------|------|
-| `bbox` | tuple[float, float, float, float] | 必填 | 当前类型必填；未知时使用 `EMPTY_BBOX`。 |
-| `spans` | list[Span] | 默认空 | 行内内容。 |
+`CodeBlock(sub_type="code")` 必须有非空 `guess_lang`；
+`sub_type="algorithm"` 禁止 `guess_lang`。`continues_prev` 只允许出现在页面
+顶层 `text/list/table`，任何嵌套项即使显式写成 null 也会被拒绝。
 
-内部字段:
+`merge_prev`、`is_numbered_style` 和 `section_number` 均不属于公开模型。
+Office 自动标题编号已在对象化前写入 `ParagraphTitleBlock.content`。
 
-- `_is_list_start`
-- `_is_list_end`
-- `_code_type`
-- `_code_guess_lang`
+## 递归容器
 
-这些字段不应进入 public schema。
+`ListBlock.content` 是保持原顺序的递归列表：
 
-## `Span`
+```text
+TextBlock | RefTextBlock | ListBlock
+```
 
-字段:
+`sub_type` 存在时，只约束当前层直接文本子项；嵌套 ListBlock 独立校验。
 
-| 字段 | 类型 | 当前要求 | 说明 |
-|------|------|----------|------|
-| `type` | str | 必填 | 来自 `ContentType` 或兼容字符串。 |
-| `bbox` | tuple[float, float, float, float] | 必填 | 当前类型必填；未知时使用 `EMPTY_BBOX`。 |
-| `content` | str | 默认空 | 文本、公式或图表描述。 |
-| `score` | float | 默认 0 | OCR 置信度等。 |
-| `image_path` | str | 默认空 | 图片产物路径。 |
-| `image_base64` | str | 默认空 | 内联图像。 |
-| `html` | str | 默认空 | 表格 HTML。 |
-| `latex` | str | 默认空 | 公式 LaTeX。 |
+`IndexBlock.content` 同样递归：
 
-内部字段:
+```text
+TextBlock | IndexBlock
+```
 
-- `_cross_page`
-- `_np_img`
-- `_url`
-- `_style`
-- `_children`
-- `_extra`
+Office 目录规范化会递归移除普通 TextBlock 的 `anchor`。递归结构始终序列化到
+`content`，不产生通用 `blocks` 字段。
 
-Office 解析已经使用 `_url`、`_style`、`_children` 表达超链接和文本样式。是否公开这些字段需要单独决策。
+## 视觉容器
 
-## Type 集合
+视觉父块的 `content` 使用上下文限定的有序子 block：
 
-`BlockType` 已覆盖:
+| 父块 | 允许的子块 |
+|------|------------|
+| `image` | `image_body/image_caption/image_footnote` |
+| `table` | `table_body/table_caption/table_footnote` |
+| `chart` | `chart_body/chart_caption/chart_footnote` |
+| `code` | `code_body/code_caption/code_footnote` |
 
-- 基础正文: `text`、`title`、`list`、`index`
-- 视觉容器: `image`、`table`、`chart`、`code`
-- 视觉子块: `image_body`、`table_body`、`chart_body`、`code_body` 等
-- 特殊正文: `algorithm`、`ref_text`、`phonetic`、`abstract`
-- 页边内容: `header`、`footer`、`page_number`、`aside_text`、`page_footnote`
-- Pipeline 类型: `doc_title`、`paragraph_title`、`vertical_text`、`header_image`、`footer_image`、`formula_number`
+每个父块必须且只能有一个对应 body；caption 和 footnote 可以有多个。父块有
+index 时 body 必须使用相同 index；父子同时有 bbox 时必须相等。
 
-`ContentType` 已覆盖:
+## 图片载荷与导出
 
-- `text`
-- `inline_equation`
+以下 block 可以直接携带 `image_base64` 和 `image_path`：
+
+- `image_body`
+- `table_body`
+- `chart_body`
 - `interline_equation`
-- `image`
-- `table`
-- `chart`
-- `equation`
-- `hyperlink`
 
-当前 `Span` 没有公开 `index` 字段；span 级 locator 不属于 P0 public contract。
+普通 `to_dict()` / `to_json()` 不执行文件 I/O；可通过
+`exclude_block_fields={"image_base64"}` 递归排除图片字段。完整序列化保留
+base64 并支持严格 round-trip。
 
-## Validator 现状
+`MiddleJson.export()` 会在深拷贝上完成图片外置并原子提交 JSON 与 sidecar：
 
-生产代码当前不提供 Middle JSON validator。原轻量页面树校验逻辑已退化为单测中的 test-local helper，用于约束当前 dataclass 结构的预期行为。
+```text
+images/page_{page_idx}_{type}_{index}.{ext}
+images/page_{page_idx}_{type}_{index}_{ordinal}.{ext}
+```
 
-已覆盖:
+第二种名称用于同一 HTML block 中的多张内嵌图片，ordinal 从 1 开始。导出
+JSON 不包含 `image_base64` 或 `data:image/...`，原始 MiddleJson 对象保持不变。
 
-- page 的 `page_idx` 与可选 `page_size`。
-- block 的 `index`、`type`、`bbox`、title level。
-- line 的 `bbox`、`spans`。
-- span 的 `type`、`bbox` 和基础内容缺失 warning。
-- `EMPTY_BBOX` 在单测 validator helper 中按 unknown bbox 处理，并作为 warning。
+## Analyze 私有对象
 
-当前未覆盖完整 envelope 校验、JSON Schema 文件和跨文件 migration。
-
-## 当前标准的缺口
-
-当前 dataclass 已经是事实标准，但仍缺少:
-
-- 顶层 `_meta`。
-- 完整 canonical `_meta`。
-- `file.sha256`。
-- 统一 locator。
-- 旧 `pdf_info` 到 `pages` 的 migration。
-- 对 `EMPTY_BBOX` 和真实 bbox 的正式语义区分。
-- 对内部字段公开策略的决策。
+公开 Block/PageInfo 不引用 `Line` 或 `Span`。Analyze 的文字回填与组行使用
+backend 私有 slotted draft，并只把最终 content 和临时行框写回 raw dict。
+旧 `Line/Span/ContentItem` dataclass 已从 `types.py` 删除；旧 parser、renderer、
+doclib 和 content-list 不属于当前保证可用的 Analyze/MiddleJson 边界。

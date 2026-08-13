@@ -123,11 +123,8 @@
 | OQ-M-006 | `equation` 与 `interline_equation` 是否合并为同一公开语义，还是保留 span/block 粒度差异。 | Middle JSON schema |
 | OQ-M-007 | `algorithm_caption` 是否应由后端补生产，还是从公开 schema 中删除或降级为普通 caption。 | Middle JSON schema / structured content |
 | OQ-M-008 | `DISCARDED` 是否从 `BlockType` enum 拆出，改为 page-level `discarded_blocks` 或 metadata 状态。 | Middle JSON schema |
-| OQ-M-009 | `index` 目录类型是否作为独立公开 block type，还是收敛到 list/tree item 结构。 | Middle JSON schema / structured content |
 | OQ-M-010 | `_meta.models` 字段粒度如何定义，是按 layout/OCR/formula/table/VLM 细分，还是仅保留 backend/model 汇总。 | Middle JSON envelope |
-| OQ-M-011 | `merge_prev` 与跨页合并状态是否合并为同一公开机制，或继续作为内部 staged metadata。 | Middle JSON schema |
-| OQ-M-012 | 是否发布 canonical JSON Schema 文件，以及它与未来 Python dataclass validator 的权威关系和存放路径。 | Middle JSON schema |
-| OQ-M-013 | 是否实现 `validate_middle_json(data)` 作为 envelope 级校验入口，并规定其 error/warning 稳定格式。 | Middle JSON validator |
+| OQ-M-012 | 是否发布 canonical JSON Schema 文件，以及它与 Pydantic `model_json_schema()` 的权威关系和存放路径。 | Middle JSON schema |
 
 ## 8. Roadmap 与评测
 

@@ -2,9 +2,14 @@
 import re
 from typing import Any
 
-from loguru import logger
-
 from mineru.backend.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
+from mineru.backend.utils.raw_block_types import (
+    RAW_ALGORITHM,
+    RAW_CAPTION,
+    RAW_EQUATION,
+    RAW_FOOTNOTE,
+    RAW_TITLE,
+)
 from mineru.backend.utils.visual_magic_model_utils import (
     code_content_clean,
     isolated_formula_clean,
@@ -29,9 +34,15 @@ class MagicModel:
     def __init__(
         self,
         page_model_list: list[dict[str, Any]],
+        *,
+        use_bbox: bool | None = None,
     ) -> None:
         self.blocks = []
-        is_block_has_bbox = any(block_info.get("bbox") for block_info in page_model_list)
+        is_block_has_bbox = (
+            any(block_info.get("bbox") for block_info in page_model_list)
+            if use_bbox is None
+            else use_bbox
+        )
         # 解析每个块
         for index, block_info in enumerate(page_model_list):
             code_block_sub_type = None
@@ -44,11 +55,11 @@ class MagicModel:
                 block_type = BlockType.TABLE_BODY
             elif block_type == "chart":
                 block_type = BlockType.CHART_BODY
-            elif block_type in ["code", "algorithm"]:
+            elif block_type in [BlockType.CODE, RAW_ALGORITHM]:
                 code_block_sub_type = block_type
                 block_content = code_content_clean(block_content)
                 block_type = BlockType.CODE_BODY
-            elif block_type == "equation":
+            elif block_type == RAW_EQUATION:
                 block_type = BlockType.INTERLINE_EQUATION
                 block_content = isolated_formula_clean(block_content)
 
@@ -57,7 +68,7 @@ class MagicModel:
                 if block_content:
                     block_content = clean_content(block_content) or ""
                 # 对于标题类块，去除换行符和多余空格
-                if block_type in [BlockType.TITLE, BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE] and block_content:
+                if block_type in [RAW_TITLE, BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE] and block_content:
                     block_content = re.sub(r"\n\s*", " ", block_content).strip()
                 # 处理 code/algorithm 分类的特殊情况：如果 code 类型的块中包含成对的行内公式标记，则将其分类为 algorithm。
                 if (
@@ -135,12 +146,20 @@ class MagicModel:
             BlockType.REF_TEXT,
             BlockType.LIST,
             BlockType.INDEX,
-            BlockType.CAPTION,
-            BlockType.FOOTNOTE,
+            RAW_CAPTION,
+            RAW_FOOTNOTE,
             BlockType.IMAGE_BODY,
             BlockType.TABLE_BODY,
             BlockType.CHART_BODY,
             BlockType.CODE_BODY,
+            BlockType.IMAGE_CAPTION,
+            BlockType.IMAGE_FOOTNOTE,
+            BlockType.TABLE_CAPTION,
+            BlockType.TABLE_FOOTNOTE,
+            BlockType.CHART_CAPTION,
+            BlockType.CHART_FOOTNOTE,
+            BlockType.CODE_CAPTION,
+            BlockType.CODE_FOOTNOTE,
         }
         self.blocks = [
             block
@@ -158,10 +177,65 @@ class MagicModel:
             + self.code_blocks
         )
 
+    @staticmethod
+    def fix_office_paragraph_titles(
+        model_list: list[list[dict[str, Any]]],
+    ) -> None:
+        """按文档级标题序列内化 Office 自动编号，并清除私有编号元数据。"""
+        counters: dict[int, int] = {}
+        for page_model_list in model_list:
+            for block in page_model_list:
+                if block.get("type") != BlockType.PARAGRAPH_TITLE:
+                    continue
+
+                raw_level = block.get("level")
+                level_is_valid = (
+                    isinstance(raw_level, int)
+                    and not isinstance(raw_level, bool)
+                    and raw_level >= 1
+                )
+                level = raw_level if level_is_valid else 1
+                if not level_is_valid:
+                    block.pop("level", None)
+
+                is_numbered_style = block.pop("is_numbered_style", None)
+                block.pop("section_number", None)
+                content = block.get("content")
+                if not isinstance(content, str):
+                    continue
+
+                if is_numbered_style is True:
+                    for ancestor_level in range(1, level):
+                        counters.setdefault(ancestor_level, 1)
+                    counters[level] = counters.get(level, 0) + 1
+                    _clear_deeper_title_counters(counters, level)
+                    section_number = ".".join(
+                        str(counters[ancestor_level])
+                        for ancestor_level in range(1, level + 1)
+                    )
+                    block["content"] = f"{section_number} {content}"
+                    continue
+
+                if is_numbered_style is False and level_is_valid:
+                    number_match = re.match(r"^\s*(\d+(?:\.\d+)*)\b", _visible_text(content))
+                    if number_match is None:
+                        continue
+                    number_parts = [int(part) for part in number_match.group(1).split(".")]
+                    if len(number_parts) != level:
+                        continue
+                    counters.update(
+                        (part_level, number)
+                        for part_level, number in enumerate(number_parts, start=1)
+                    )
+                    _clear_deeper_title_counters(counters, level)
+
 
 def fix_pdf_list_blocks(
-    list_blocks, text_blocks, ref_text_blocks
-):
+    list_blocks: list[dict[str, Any]],
+    text_blocks: list[dict[str, Any]],
+    ref_text_blocks: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """按 bbox 把 PDF text/ref_text 归入 list，并推断列表子类型。"""
     for list_block in list_blocks:
         list_block["content"] = []
 
@@ -204,7 +278,9 @@ def fix_pdf_list_blocks(
     return list_blocks, text_blocks, ref_text_blocks
 
 
-def fix_pdf_index_blocks(index_blocks):
+def fix_pdf_index_blocks(
+    index_blocks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """将 PDF 目录块的多行内容拆分为多个文本子块。"""
     for index_block in index_blocks:
         index_block["content"] = [
@@ -215,12 +291,16 @@ def fix_pdf_index_blocks(index_blocks):
     return index_blocks
 
 
-def fix_office_index_blocks(index_blocks):
-    """递归移除 Office 目录块及其子块中的 ilevel 字段。"""
+def fix_office_index_blocks(
+    index_blocks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """递归移除 Office 目录私有字段，并禁止普通 text 子块携带 anchor。"""
     pending_blocks = list(index_blocks)
     while pending_blocks:
         block = pending_blocks.pop()
         block.pop("ilevel", None)
+        if block.get("type") == BlockType.TEXT:
+            block.pop("anchor", None)
 
         content = block.get("content")
         if isinstance(content, list):
@@ -231,6 +311,17 @@ def fix_office_index_blocks(index_blocks):
             )
 
     return index_blocks
+
+
+def _clear_deeper_title_counters(counters: dict[int, int], level: int) -> None:
+    """删除当前标题层级之后的旧计数，避免返回浅层后错误续接深层编号。"""
+    for counter_level in [value for value in counters if value > level]:
+        del counters[counter_level]
+
+
+def _visible_text(content: str) -> str:
+    """移除简单富文本标签，供显式标题编号识别可见文本开头。"""
+    return re.sub(r"<[^>]+>", "", content)
 
 
 def fix_office_list_blocks(

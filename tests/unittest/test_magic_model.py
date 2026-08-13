@@ -46,7 +46,7 @@ def test_magic_model_groups_bbox_dict_visual_blocks() -> None:
             {
                 "type": BlockType.IMAGE,
                 "bbox": [0.0, 15.0, 80.0, 60.0],
-                "_image_base64": "data:image/jpeg;base64,image",
+                "image_base64": "data:image/jpeg;base64,image",
             },
         ]
     )
@@ -66,7 +66,7 @@ def test_magic_model_groups_no_bbox_office_caption_by_prefix() -> None:
         [
             {
                 "type": BlockType.IMAGE,
-                "_image_base64": "data:image/jpeg;base64,image",
+                "image_base64": "data:image/jpeg;base64,image",
             },
             {
                 "type": BlockType.TEXT,

@@ -10,7 +10,7 @@ from mineru.backend.utils.visual_magic_model_utils import (
     is_block_outside_visual_gap,
     regroup_visual_blocks,
 )
-from mineru.types import Block, BlockType, Line
+from mineru.types import BlockType
 
 
 def _line_metadata(count: int) -> list[dict[str, list[float]]]:
@@ -36,7 +36,7 @@ def test_normalized_dict_bbox_matches_scaled_caption_geometry_without_rewrite() 
         "type": BlockType.TEXT,
         "bbox": [0.02, 0.125, 0.1, 0.145],
         "content": "unrelated text",
-        "_lines": _line_metadata(1),
+        "lines": _line_metadata(1),
     }
     normalized_blocks = [
         {
@@ -44,7 +44,7 @@ def test_normalized_dict_bbox_matches_scaled_caption_geometry_without_rewrite() 
             "type": BlockType.CAPTION,
             "bbox": [0.7, 0.1, 0.95, 0.12],
             "content": "Table 1",
-            "_lines": _line_metadata(1),
+            "lines": _line_metadata(1),
         },
         companion,
         {
@@ -71,19 +71,15 @@ def test_normalized_dict_bbox_matches_scaled_caption_geometry_without_rewrite() 
     assert [block["bbox"] for block in normalized_blocks] == original_bboxes
 
 
-def test_normalized_block_bbox_matches_scaled_visual_parent_without_rewrite() -> None:
-    """验证 Block 归一化框与千倍坐标选择同一视觉父块且保留原框。"""
-    previous_table = Block(index=0, type=BlockType.TABLE_BODY, bbox=(0.1, 0.1, 0.4, 0.4))
-    caption = Block(index=1, type=BlockType.CAPTION, bbox=(0.1, 0.42, 0.4, 0.44))
-    following_table = Block(index=2, type=BlockType.TABLE_BODY, bbox=(0.1, 0.8, 0.4, 0.95))
+def test_normalized_dict_bbox_matches_scaled_visual_parent_without_rewrite() -> None:
+    """验证 raw dict 归一化框与千倍坐标选择同一视觉父块且保留原框。"""
+    previous_table = {"index": 0, "type": BlockType.TABLE_BODY, "bbox": [0.1, 0.1, 0.4, 0.4]}
+    caption = {"index": 1, "type": BlockType.CAPTION, "bbox": [0.1, 0.42, 0.4, 0.44]}
+    following_table = {"index": 2, "type": BlockType.TABLE_BODY, "bbox": [0.1, 0.8, 0.4, 0.95]}
     normalized_blocks = [previous_table, caption, following_table]
-    original_bboxes = [block.bbox for block in normalized_blocks]
+    original_bboxes = [list(block["bbox"]) for block in normalized_blocks]
     scaled_blocks = [
-        Block(
-            index=block.index,
-            type=block.type,
-            bbox=tuple(value * 1000 for value in block.bbox),
-        )
+        {**block, "bbox": [value * 1000 for value in block["bbox"]]}
         for block in normalized_blocks
     ]
 
@@ -91,33 +87,29 @@ def test_normalized_block_bbox_matches_scaled_visual_parent_without_rewrite() ->
         caption,
         [previous_table, following_table],
         normalized_blocks,
-        {block.index: position for position, block in enumerate(normalized_blocks)},
+        {block["index"]: position for position, block in enumerate(normalized_blocks)},
     )
     scaled_parent = find_best_visual_parent(
         scaled_blocks[1],
         [scaled_blocks[0], scaled_blocks[2]],
         scaled_blocks,
-        {block.index: position for position, block in enumerate(scaled_blocks)},
+        {block["index"]: position for position, block in enumerate(scaled_blocks)},
     )
 
     assert normalized_parent is previous_table
     assert scaled_parent is scaled_blocks[0]
-    assert [block.bbox for block in normalized_blocks] == original_bboxes
+    assert [block["bbox"] for block in normalized_blocks] == original_bboxes
 
 
-def test_normalized_block_bbox_matches_scaled_visual_gap_geometry() -> None:
+def test_normalized_dict_bbox_matches_scaled_visual_gap_geometry() -> None:
     """验证归一化框在视觉间隔、相交和重叠判断中与千倍坐标一致。"""
-    child = Block(index=0, type=BlockType.CAPTION, bbox=(0.1, 0.1, 0.4, 0.2))
-    inside_gap = Block(index=1, type=BlockType.TEXT, bbox=(0.8, 0.3, 0.9, 0.4))
-    outside_gap = Block(index=2, type=BlockType.TEXT, bbox=(0.8, 0.8, 0.9, 0.9))
-    main = Block(index=3, type=BlockType.TABLE_BODY, bbox=(0.1, 0.6, 0.4, 0.7))
+    child = {"index": 0, "type": BlockType.CAPTION, "bbox": [0.1, 0.1, 0.4, 0.2]}
+    inside_gap = {"index": 1, "type": BlockType.TEXT, "bbox": [0.8, 0.3, 0.9, 0.4]}
+    outside_gap = {"index": 2, "type": BlockType.TEXT, "bbox": [0.8, 0.8, 0.9, 0.9]}
+    main = {"index": 3, "type": BlockType.TABLE_BODY, "bbox": [0.1, 0.6, 0.4, 0.7]}
     normalized_blocks = [child, inside_gap, outside_gap, main]
     scaled_blocks = [
-        Block(
-            index=block.index,
-            type=block.type,
-            bbox=tuple(value * 1000 for value in block.bbox),
-        )
+        {**block, "bbox": [value * 1000 for value in block["bbox"]]}
         for block in normalized_blocks
     ]
 
@@ -134,7 +126,7 @@ def test_dict_inline_caption_fragment_uses_common_fields() -> None:
         "type": BlockType.TEXT,
         "bbox": [40.0, 0.0, 80.0, 10.0],
         "content": "continued caption",
-        "_lines": _line_metadata(1),
+        "lines": _line_metadata(1),
     }
     blocks = [
         {
@@ -142,7 +134,7 @@ def test_dict_inline_caption_fragment_uses_common_fields() -> None:
             "type": BlockType.CAPTION,
             "bbox": [0.0, 0.0, 40.0, 10.0],
             "content": "Table 1",
-            "_lines": _line_metadata(1),
+            "lines": _line_metadata(1),
         },
         companion,
         {
@@ -156,17 +148,16 @@ def test_dict_inline_caption_fragment_uses_common_fields() -> None:
     fallback_inline_caption_fragments(blocks, VISUAL_MAIN_TYPES)
 
     assert companion["type"] == BlockType.CAPTION
-    assert "merge_prev" not in companion
 
 
 def test_dict_stacked_caption_fragment_uses_line_metadata() -> None:
-    """验证堆叠标题片段根据 dict 的 _lines 区分单行和多行。"""
+    """验证堆叠标题片段根据 dict 的临时 lines 区分单行和多行。"""
     single_line = {
         "index": 1,
         "type": BlockType.TEXT,
         "bbox": [0.0, 12.0, 80.0, 22.0],
         "content": "single line",
-        "_lines": _line_metadata(1),
+        "lines": _line_metadata(1),
     }
     blocks = [
         {
@@ -174,7 +165,7 @@ def test_dict_stacked_caption_fragment_uses_line_metadata() -> None:
             "type": BlockType.CAPTION,
             "bbox": [0.0, 0.0, 80.0, 10.0],
             "content": "Table 1",
-            "_lines": _line_metadata(1),
+            "lines": _line_metadata(1),
         },
         single_line,
         {
@@ -189,7 +180,7 @@ def test_dict_stacked_caption_fragment_uses_line_metadata() -> None:
 
     assert single_line["type"] == BlockType.CAPTION
     single_line["type"] = BlockType.TEXT
-    single_line["_lines"] = _line_metadata(2)
+    single_line["lines"] = _line_metadata(2)
 
     fallback_inline_caption_fragments(blocks, VISUAL_MAIN_TYPES)
 
@@ -197,14 +188,13 @@ def test_dict_stacked_caption_fragment_uses_line_metadata() -> None:
 
 
 def test_dict_leading_table_continuation_reads_top_level_content() -> None:
-    """验证 dict 页首续表使用顶层 content 和 _lines 完成判断。"""
+    """验证 dict 页首续表使用顶层 content 和临时 lines 完成判断。"""
     continuation = {
         "index": 0,
         "type": BlockType.TEXT,
         "bbox": [0.0, 0.0, 80.0, 10.0],
         "content": "Table 1 (continued)",
-        "_lines": _line_metadata(1),
-        "merge_prev": True,
+        "lines": _line_metadata(1),
     }
     blocks = [
         continuation,
@@ -219,44 +209,6 @@ def test_dict_leading_table_continuation_reads_top_level_content() -> None:
     fallback_leading_table_continuation_captions(blocks, VISUAL_MAIN_TYPES)
 
     assert continuation["type"] == BlockType.CAPTION
-    assert continuation["merge_prev"] is True
-
-
-def test_block_class_fallbacks_keep_attribute_access_compatibility() -> None:
-    """验证两个 fallback 仍兼容使用属性和 Line 的 Block class。"""
-    inline_companion = Block(
-        index=1,
-        type=BlockType.TEXT,
-        bbox=(40.0, 0.0, 80.0, 10.0),
-        lines=[Line(bbox=(40.0, 0.0, 80.0, 10.0))],
-        content="continued caption",
-        merge_prev=True,
-    )
-    inline_blocks = [
-        Block(index=0, type=BlockType.CAPTION, bbox=(0.0, 0.0, 40.0, 10.0), content="Table 1"),
-        inline_companion,
-        Block(index=2, type=BlockType.TABLE_BODY, bbox=(0.0, 15.0, 80.0, 60.0)),
-    ]
-    fallback_inline_caption_fragments(inline_blocks, VISUAL_MAIN_TYPES)
-
-    continuation = Block(
-        index=0,
-        type=BlockType.TEXT,
-        bbox=(0.0, 0.0, 80.0, 10.0),
-        lines=[Line(bbox=(0.0, 0.0, 80.0, 10.0))],
-        content="Table 1 (continued)",
-        merge_prev=True,
-    )
-    continuation_blocks = [
-        continuation,
-        Block(index=1, type=BlockType.TABLE_BODY, bbox=(0.0, 15.0, 80.0, 60.0)),
-    ]
-    fallback_leading_table_continuation_captions(continuation_blocks, VISUAL_MAIN_TYPES)
-
-    assert inline_companion.type == BlockType.CAPTION
-    assert inline_companion.merge_prev is True
-    assert continuation.type == BlockType.CAPTION
-    assert continuation.merge_prev is True
 
 
 def test_regroup_visual_blocks_supports_bbox_dicts() -> None:
@@ -266,8 +218,7 @@ def test_regroup_visual_blocks_supports_bbox_dicts() -> None:
         "type": BlockType.CAPTION,
         "bbox": [0.0, 0.0, 80.0, 10.0],
         "content": "Figure 1",
-        "_lines": [{"bbox": [0.0, 0.0, 80.0, 10.0]}],
-        "merge_prev": True,
+        "lines": [{"bbox": [0.0, 0.0, 80.0, 10.0]}],
     }
     body = {
         "index": 1,
@@ -280,7 +231,7 @@ def test_regroup_visual_blocks_supports_bbox_dicts() -> None:
         "type": BlockType.FOOTNOTE,
         "bbox": [0.0, 65.0, 80.0, 75.0],
         "content": "source",
-        "_lines": [{"bbox": [0.0, 65.0, 80.0, 75.0]}],
+        "lines": [{"bbox": [0.0, 65.0, 80.0, 75.0]}],
     }
 
     grouped_blocks, unmatched_blocks = regroup_visual_blocks(
@@ -299,42 +250,12 @@ def test_regroup_visual_blocks_supports_bbox_dicts() -> None:
         BlockType.IMAGE_FOOTNOTE,
     ]
     image_caption, _, image_footnote = image_block["content"]
-    assert "_lines" not in image_caption
-    assert image_caption["merge_prev"] is True
-    assert "_lines" not in image_footnote
-    assert "_lines" in caption
-    assert "_lines" in footnote
+    assert "lines" not in image_caption
+    assert "lines" not in image_footnote
+    assert "lines" in caption
+    assert "lines" in footnote
     assert caption["type"] == BlockType.CAPTION
     assert footnote["type"] == BlockType.FOOTNOTE
-
-
-def test_regroup_visual_blocks_keeps_block_output_compatibility() -> None:
-    """验证 Block 输入仍生成 Block 两层结构。"""
-    blocks = [
-        Block(
-            index=0,
-            type=BlockType.CAPTION,
-            bbox=(0.0, 0.0, 80.0, 10.0),
-        ),
-        Block(
-            index=1,
-            type=BlockType.IMAGE_BODY,
-            bbox=(0.0, 15.0, 80.0, 60.0),
-            sub_type="seal",
-        ),
-    ]
-
-    grouped_blocks, unmatched_blocks = regroup_visual_blocks(blocks)
-
-    assert unmatched_blocks == []
-    image_block = grouped_blocks[BlockType.IMAGE][0]
-    assert isinstance(image_block, Block)
-    assert image_block.sub_type == "seal"
-    assert [block.type for block in image_block.content] == [
-        BlockType.IMAGE_CAPTION,
-        BlockType.IMAGE_BODY,
-    ]
-    assert image_block.content[1].sub_type == ""
 
 
 def test_regroup_visual_blocks_preserves_dict_visual_metadata() -> None:
@@ -358,7 +279,7 @@ def test_regroup_visual_blocks_preserves_dict_visual_metadata() -> None:
             "content": "<table></table>",
             "angle": 0,
             "score": 0.0,
-            "_cell_merge": [1, 0],
+            "cell_merge": [1, 0],
         },
     ]
 
@@ -375,30 +296,27 @@ def test_regroup_visual_blocks_preserves_dict_visual_metadata() -> None:
     assert "sub_type" not in table_block["content"][0]
     assert table_block["content"][0]["angle"] == 0
     assert table_block["content"][0]["score"] == 0.0
-    assert "_cell_merge" not in table_block
-    assert table_block["content"][0]["_cell_merge"] == [1, 0]
+    assert "cell_merge" not in table_block
+    assert table_block["content"][0]["cell_merge"] == [1, 0]
 
 
-def test_regroup_visual_blocks_keeps_cell_merge_on_block_body() -> None:
-    """验证 Block 表格的 cell_merge 只保留在 table body。"""
-    table_body = Block(
-        index=0,
-        type=BlockType.TABLE_BODY,
-        bbox=(0.0, 0.0, 80.0, 60.0),
-        content="<table></table>",
-    )
-    table_body._cell_merge = [1, 0]
+def test_regroup_visual_blocks_keeps_cell_merge_on_dict_body() -> None:
+    """验证 raw dict 表格的 cell_merge 只保留在 table body。"""
+    table_body = {
+        "index": 0,
+        "type": BlockType.TABLE_BODY,
+        "bbox": [0.0, 0.0, 80.0, 60.0],
+        "content": "<table></table>",
+        "cell_merge": [1, 0],
+    }
 
     grouped_blocks, unmatched_blocks = regroup_visual_blocks([table_body])
 
     assert unmatched_blocks == []
     table_block = grouped_blocks[BlockType.TABLE][0]
-    assert isinstance(table_block, Block)
-    assert table_block._cell_merge == []
-    assert len(table_block.content) == 1
-    grouped_body = table_block.content[0]
-    assert isinstance(grouped_body, Block)
-    assert grouped_body._cell_merge == [1, 0]
+    assert "cell_merge" not in table_block
+    assert len(table_block["content"]) == 1
+    assert table_block["content"][0]["cell_merge"] == [1, 0]
 
 
 def test_regroup_visual_blocks_without_bbox_prefers_previous_parent() -> None:
@@ -422,6 +340,32 @@ def test_regroup_visual_blocks_without_bbox_prefers_previous_parent() -> None:
         block["type"]
         for block in grouped_blocks[BlockType.TABLE][0]["content"]
     ] == [BlockType.TABLE_BODY]
+
+
+def test_regroup_visual_blocks_supports_code_footnote() -> None:
+    """验证具体 code_footnote 可直接归入 code，且不会残留为额外顶层块。"""
+    code_body = {
+        "index": 0,
+        "type": BlockType.CODE_BODY,
+        "content": "print('ok')",
+        "sub_type": "code",
+    }
+    code_footnote = {
+        "index": 1,
+        "type": BlockType.CODE_FOOTNOTE,
+        "content": "runtime note",
+    }
+
+    grouped_blocks, unmatched_blocks = regroup_visual_blocks(
+        [code_body, code_footnote],
+        use_bbox=False,
+    )
+
+    assert unmatched_blocks == []
+    assert [child["type"] for child in grouped_blocks[BlockType.CODE][0]["content"]] == [
+        BlockType.CODE_BODY,
+        BlockType.CODE_FOOTNOTE,
+    ]
 
 
 def test_regroup_visual_blocks_without_bbox_keeps_text_as_barrier() -> None:

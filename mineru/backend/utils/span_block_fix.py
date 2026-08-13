@@ -1,126 +1,103 @@
 # Copyright (c) Opendatalab. All rights reserved.
-from ...types import Block, ContentType, Line, Span
+from __future__ import annotations
+
+from ...types import ContentType
 from ...utils.ocr_utils import _is_overlaps_x_exceeds_threshold, _is_overlaps_y_exceeds_threshold
+from .analyze_draft import _AnalyzeLine, _AnalyzeSpan
 from .span_orientation import is_vertical_text_block_by_spans
 
 
-def fix_text_block(block: Block) -> Block:
-    # 文本block中的公式span都应该转换成行内type
-    for span in block._fix_spans:
+def group_spans_to_lines(spans: list[_AnalyzeSpan]) -> list[_AnalyzeLine]:
+    """直接把私有 span 分组成有序行，不再构造带临时字段的公开 Block。"""
+    for span in spans:
         if span.type == ContentType.INTERLINE_EQUATION:
             span.type = ContentType.INLINE_EQUATION
 
-    if is_vertical_text_block_by_spans(block._fix_spans):
-        # 如果是纵向文本块，则按纵向lines处理
-        block_lines = merge_spans_to_vertical_line(block._fix_spans)
-        sort_block_lines = vertical_line_sort_spans_from_top_to_bottom(block_lines)
-    else:
-        block_lines = merge_spans_to_line(block._fix_spans)
-        sort_block_lines = line_sort_spans_by_left_to_right(block_lines)
-
-    block.lines = sort_block_lines
-    block._fix_spans = []
-    return block
+    if is_vertical_text_block_by_spans(spans):
+        return vertical_line_sort_spans_from_top_to_bottom(
+            merge_spans_to_vertical_line(spans)
+        )
+    return line_sort_spans_by_left_to_right(merge_spans_to_line(spans))
 
 
-def merge_spans_to_line(spans: list[Span], threshold: float = 0.6) -> list[list[Span]]:
-    if len(spans) == 0:
+def merge_spans_to_line(
+    spans: list[_AnalyzeSpan],
+    threshold: float = 0.6,
+) -> list[list[_AnalyzeSpan]]:
+    """按 y 轴重叠关系把横排 span 分组成行。"""
+    if not spans:
         return []
-    else:
-        # 按照y0坐标排序
-        spans.sort(key=lambda span: span.bbox[1])
-
-        lines = []
-        current_line = [spans[0]]
-        for span in spans[1:]:
-            # 如果当前的span类型为"interline_equation" 或者 当前行中已经有"interline_equation"
-            # image和table类型，同上
-            if span.type in [ContentType.INTERLINE_EQUATION, ContentType.IMAGE, ContentType.TABLE] or any(
-                s.type in [ContentType.INTERLINE_EQUATION, ContentType.IMAGE, ContentType.TABLE] for s in current_line
-            ):
-                # 则开始新行
-                lines.append(current_line)
-                current_line = [span]
-                continue
-
-            # 如果当前的span与当前行的最后一个span在y轴上重叠，则添加到当前行
-            if _is_overlaps_y_exceeds_threshold(span.bbox, current_line[-1].bbox, threshold):
-                current_line.append(span)
-            else:
-                # 否则，开始新行
-                lines.append(current_line)
-                current_line = [span]
-
-        # 添加最后一行
-        if current_line:
+    spans.sort(key=lambda span: span.bbox[1])
+    lines: list[list[_AnalyzeSpan]] = []
+    current_line = [spans[0]]
+    special_types = {ContentType.INTERLINE_EQUATION, ContentType.IMAGE, ContentType.TABLE}
+    for span in spans[1:]:
+        if span.type in special_types or any(item.type in special_types for item in current_line):
             lines.append(current_line)
+            current_line = [span]
+        elif _is_overlaps_y_exceeds_threshold(span.bbox, current_line[-1].bbox, threshold):
+            current_line.append(span)
+        else:
+            lines.append(current_line)
+            current_line = [span]
+    lines.append(current_line)
+    return lines
 
-        return lines
 
-
-def merge_spans_to_vertical_line(spans: list[Span], threshold: float = 0.6) -> list[list[Span]]:
-    """将纵向文本的spans合并成纵向lines（从右向左阅读）"""
-    if len(spans) == 0:
+def merge_spans_to_vertical_line(
+    spans: list[_AnalyzeSpan],
+    threshold: float = 0.6,
+) -> list[list[_AnalyzeSpan]]:
+    """按 x 轴重叠关系把竖排 span 从右向左分组成列。"""
+    if not spans:
         return []
-    else:
-        # 按照x2坐标从大到小排序（从右向左）
-        spans.sort(key=lambda span: span.bbox[2], reverse=True)
-
-        vertical_lines = []
-        current_line = [spans[0]]
-
-        for span in spans[1:]:
-            # 特殊类型元素单独成列
-            if span.type in [ContentType.INTERLINE_EQUATION, ContentType.IMAGE, ContentType.TABLE] or any(
-                s.type in [ContentType.INTERLINE_EQUATION, ContentType.IMAGE, ContentType.TABLE] for s in current_line
-            ):
-                vertical_lines.append(current_line)
-                current_line = [span]
-                continue
-
-            # 如果当前的span与当前行的最后一个span在y轴上重叠，则添加到当前行
-            if _is_overlaps_x_exceeds_threshold(span.bbox, current_line[-1].bbox, threshold):
-                current_line.append(span)
-            else:
-                vertical_lines.append(current_line)
-                current_line = [span]
-
-        # 添加最后一列
-        if current_line:
-            vertical_lines.append(current_line)
-
-        return vertical_lines
+    spans.sort(key=lambda span: span.bbox[2], reverse=True)
+    lines: list[list[_AnalyzeSpan]] = []
+    current_line = [spans[0]]
+    special_types = {ContentType.INTERLINE_EQUATION, ContentType.IMAGE, ContentType.TABLE}
+    for span in spans[1:]:
+        if span.type in special_types or any(item.type in special_types for item in current_line):
+            lines.append(current_line)
+            current_line = [span]
+        elif _is_overlaps_x_exceeds_threshold(span.bbox, current_line[-1].bbox, threshold):
+            current_line.append(span)
+        else:
+            lines.append(current_line)
+            current_line = [span]
+    lines.append(current_line)
+    return lines
 
 
-# 将每一个line中的span从左到右排序
-def line_sort_spans_by_left_to_right(lines: list[list[Span]]) -> list[Line]:
-    line_objects = []
+def line_sort_spans_by_left_to_right(
+    lines: list[list[_AnalyzeSpan]],
+) -> list[_AnalyzeLine]:
+    """将横排行内 span 从左到右排序并计算行框。"""
+    line_objects: list[_AnalyzeLine] = []
     for line in lines:
-        #  按照x0坐标排序
         line.sort(key=lambda span: span.bbox[0])
-        line_bbox = (
-            min(span.bbox[0] for span in line),  # x0
-            min(span.bbox[1] for span in line),  # y0
-            max(span.bbox[2] for span in line),  # x1
-            max(span.bbox[3] for span in line),  # y1
-        )
-        line_objects.append(Line(bbox=line_bbox, spans=line))
+        line_objects.append(_line_from_spans(line))
     return line_objects
 
 
-def vertical_line_sort_spans_from_top_to_bottom(vertical_lines: list[list[Span]]) -> list[Line]:
-    line_objects = []
+def vertical_line_sort_spans_from_top_to_bottom(
+    vertical_lines: list[list[_AnalyzeSpan]],
+) -> list[_AnalyzeLine]:
+    """将竖排列内 span 从上到下排序并计算列框。"""
+    line_objects: list[_AnalyzeLine] = []
     for line in vertical_lines:
-        # 按照y0坐标排序（从上到下）
         line.sort(key=lambda span: span.bbox[1])
-
-        # 计算整个列的边界框
-        line_bbox = (
-            min(span.bbox[0] for span in line),  # x0
-            min(span.bbox[1] for span in line),  # y0
-            max(span.bbox[2] for span in line),  # x1
-            max(span.bbox[3] for span in line),  # y1
-        )
-
-        line_objects.append(Line(bbox=line_bbox, spans=line))
+        line_objects.append(_line_from_spans(line))
     return line_objects
+
+
+def _line_from_spans(spans: list[_AnalyzeSpan]) -> _AnalyzeLine:
+    """聚合一组 span 的外接矩形并构造私有行对象。"""
+    return _AnalyzeLine(
+        bbox=(
+            min(span.bbox[0] for span in spans),
+            min(span.bbox[1] for span in spans),
+            max(span.bbox[2] for span in spans),
+            max(span.bbox[3] for span in spans),
+        ),
+        spans=spans,
+    )

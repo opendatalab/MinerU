@@ -1529,7 +1529,7 @@ class DocxConverter:
 
             image_block = {
                 "type": BlockType.IMAGE,
-                "_image_base64": img_base64,
+                "image_base64": img_base64,
             }
             self.cur_page.append(image_block)
 

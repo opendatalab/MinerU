@@ -10,7 +10,7 @@ import pytest
 from PIL import Image, ImageDraw
 
 from mineru.backend import analyze
-from mineru.types import BlockType
+from mineru.types import BlockType, MiddleJson
 
 
 JPEG_DATA_URI_PREFIX = "data:image/jpeg;base64,"
@@ -91,7 +91,7 @@ def test_visual_block_crop_rotates_to_upright(
 
     analyze._attach_visual_block_images([[block]], [{"img_pil": page_image}])
 
-    crop_image = _decode_jpeg_data_uri(block["_image_base64"])
+    crop_image = _decode_jpeg_data_uri(block["image_base64"])
     try:
         assert crop_image.size == expected_size
         _assert_colors_close(_sample_quadrant_colors(crop_image), expected_colors)
@@ -139,7 +139,7 @@ def test_visual_block_types_receive_jpeg_data_uri_only() -> None:
             "bbox": [0.1, 0.2, 0.6, 0.7],
             "angle": 0,
             "content": f"content-{block_type}",
-            "_image_base64": "stale",
+            "image_base64": "stale",
         }
         for block_type in (
             BlockType.IMAGE,
@@ -152,7 +152,7 @@ def test_visual_block_types_receive_jpeg_data_uri_only() -> None:
         "type": BlockType.TEXT,
         "bbox": [0.0, 0.0, 1.0, 1.0],
         "content": "text",
-        "_image_base64": "keep-text-field",
+        "image_base64": "keep-text-field",
     }
 
     analyze._attach_visual_block_images(
@@ -163,15 +163,15 @@ def test_visual_block_types_receive_jpeg_data_uri_only() -> None:
 
     try:
         for block in visual_blocks:
-            assert block["_image_base64"] != "stale"
-            crop_image = _decode_jpeg_data_uri(block["_image_base64"])
+            assert block["image_base64"] != "stale"
+            crop_image = _decode_jpeg_data_uri(block["image_base64"])
             try:
                 assert crop_image.size == (50, 30)
             finally:
                 crop_image.close()
             assert block["content"] == f"content-{block['type']}"
             assert block["bbox"] == [0.1, 0.2, 0.6, 0.7]
-        assert text_block["_image_base64"] == "keep-text-field"
+        assert text_block["image_base64"] == "keep-text-field"
     finally:
         page_image.close()
 
@@ -195,13 +195,13 @@ def test_visual_block_crop_clips_page_boundary_and_skips_invalid_bbox() -> None:
         [{"img_pil": page_image}],
     )
 
-    crop_image = _decode_jpeg_data_uri(clipped_block["_image_base64"])
+    crop_image = _decode_jpeg_data_uri(clipped_block["image_base64"])
     try:
         assert crop_image.size == (30, 20)
     finally:
         crop_image.close()
         page_image.close()
-    assert "_image_base64" not in invalid_block
+    assert "image_base64" not in invalid_block
 
 
 def test_image_block_collapses_contained_blocks_before_visual_crop() -> None:
@@ -284,7 +284,7 @@ def test_image_block_collapses_contained_blocks_before_visual_crop() -> None:
         ]
         assert image_block["type"] == BlockType.IMAGE
         assert all(block.get("type") != "image_block" for block in page_model_list)
-        crop_image = _decode_jpeg_data_uri(image_block["_image_base64"])
+        crop_image = _decode_jpeg_data_uri(image_block["image_base64"])
         try:
             assert crop_image.size == (80, 48)
         finally:
@@ -371,7 +371,7 @@ def test_xhigh_layout_image_supplements_missing_container_before_crop() -> None:
         assert image_block["type"] == BlockType.IMAGE
         assert image_block["bbox"] == layout_blocks_list[0][0]["bbox"]
         assert external_caption["content"] == "Figure 2: keep external caption"
-        crop_image = _decode_jpeg_data_uri(image_block["_image_base64"])
+        crop_image = _decode_jpeg_data_uri(image_block["image_base64"])
         try:
             assert crop_image.size == (674, 1068)
         finally:
@@ -596,6 +596,40 @@ def test_normalize_pdf_model_list_updates_in_place() -> None:
     )
 
 
+def test_normalize_pdf_model_list_converts_phonetic_and_equation_raw_types() -> None:
+    """验证 phonetic/equation 在正文与 lines 校验前转成公开类型。"""
+    model_list = [[
+        {
+            "type": BlockType.PHONETIC,
+            "bbox": [0.1, 0.1, 0.9, 0.2],
+            "content": "phonetic",
+            "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
+        },
+        {
+            "type": BlockType.EQUATION,
+            "bbox": [0.1, 0.3, 0.9, 0.4],
+            "content": r"\[x+1\]",
+        },
+    ]]
+
+    analyze._normalize_pdf_model_list(model_list)
+
+    assert model_list[0][0]["type"] == BlockType.TEXT
+    assert model_list[0][1] == {
+        "type": BlockType.INTERLINE_EQUATION,
+        "bbox": [0.1, 0.3, 0.9, 0.4],
+        "content": "x+1",
+    }
+
+
+def test_normalize_pdf_model_list_rejects_unclassified_raw_title() -> None:
+    """验证未被 layout 结果分类的 raw title 以页块位置明确报错。"""
+    with pytest.raises(ValueError, match="page_idx=0, block_idx=0"):
+        analyze._normalize_pdf_model_list(
+            [[{"type": BlockType.TITLE, "bbox": [0.1, 0.1, 0.9, 0.2], "content": "title"}]]
+        )
+
+
 @pytest.mark.parametrize(
     "block_type",
     [
@@ -776,7 +810,11 @@ def test_doc_analyze_office_returns_model_list_without_pdf_processing(
         file_suffix=file_suffix,  # type: ignore[arg-type]
     )
 
-    assert middle_json == []
+    assert isinstance(middle_json, MiddleJson)
+    assert len(middle_json.pages) == 1
+    assert middle_json.file_suffix == file_suffix
+    assert middle_json.effort == "flash"
+    assert middle_json.parse_mode == "txt"
     assert model_list is source_model_list
     assert model_list[0][0]["content"] == "原始 \\(office\\) 内容"
     for suffix, model_factory in model_factories.items():
@@ -887,7 +925,8 @@ def test_pdf_infer_timer_excludes_hybrid_vlm_initialization_and_cleanup(
         parse_mode="txt",
     )
 
-    assert middle_json == []
+    assert isinstance(middle_json, MiddleJson)
+    assert middle_json.pages == []
     assert model_list == []
     assert events == [
         "hybrid_init",
@@ -916,23 +955,44 @@ def test_doc_analyze_office_real_samples(file_suffix: str, expected_page_count: 
         file_suffix=file_suffix,  # type: ignore[arg-type]
     )
 
-    assert middle_json == []
+    assert isinstance(middle_json, MiddleJson)
+    assert len(middle_json.pages) == expected_page_count
+    assert all(page.page_idx == page_idx for page_idx, page in enumerate(middle_json.pages))
     assert len(model_list) == expected_page_count
     assert all(isinstance(page, list) for page in model_list)
 
 
-def test_doc_analyze_flash_returns_complete_model_list_without_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    """验证 Flash 多窗口仅补充完整 model list，并固定返回空 Middle JSON。"""
+def test_doc_analyze_flash_real_pdf_returns_typed_middle_json() -> None:
+    """验证一页真实 PDF 经 Flash Analyze 后返回严格对象且 raw 结果无废弃字段。"""
+    sample_path = _PROJECT_ROOT / "demo" / "pdfs" / "2407.00079v4_origi-10.pdf"
+
+    middle_json, model_list = analyze.doc_analyze(
+        sample_path.read_bytes(),
+        effort="flash",
+        parse_mode="txt",
+        file_suffix="pdf",
+    )
+
+    assert isinstance(middle_json, MiddleJson)
+    assert len(middle_json.pages) == len(model_list) == 1
+    assert all(block.bbox is not None for block in middle_json.pages[0].blocks)
+    assert all("merge_prev" not in block for page in model_list for block in page)
+    assert MiddleJson.model_validate_json(middle_json.to_json()) == middle_json
+
+
+def test_doc_analyze_flash_returns_complete_model_list_and_typed_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 Flash 多窗口补充完整 raw model list，并返回严格 MiddleJson。"""
     from mineru.model import flash as flash_model
 
     events: list[str] = []
     source_model_list = [
         [
-            {
-                "type": BlockType.TEXT,
-                "bbox": [0.0, 0.0, 1.0, 1.0],
-                "content": "第一页 \\(x+y\\)",
-            }
+                {
+                    "type": BlockType.TEXT,
+                    "bbox": [0.0, 0.0, 1.0, 1.0],
+                    "content": "第一页 \\(x+y\\)",
+                    "lines": [{"bbox": [0.0, 0.0, 1.0, 1.0]}],
+                }
         ],
         [
             {
@@ -1023,17 +1083,18 @@ def test_doc_analyze_flash_returns_complete_model_list_without_middle_json(monke
         b"fake-pdf",
         effort="flash",
         parse_mode="txt",
-        page_index_map=[9, 8, 7],
+        page_index_map=[7, 8, 9],
     )
 
-    assert middle_json == []
+    assert isinstance(middle_json, MiddleJson)
+    assert [page.page_idx for page in middle_json.pages] == [7, 8, 9]
     assert model_list is source_model_list
     assert requested_ranges == [(0, 1), (2, 2)]
     assert model_list[0][0]["content"] == "第一页 <eq>x+y</eq>"
     assert model_list[2][0]["content"] == "第三页 <eq>z</eq>"
-    assert "_image_base64" not in model_list[0][0]
+    assert "image_base64" not in model_list[0][0]
     for block in (model_list[1][0], model_list[2][0]):
-        crop_image = _decode_jpeg_data_uri(block["_image_base64"])
+        crop_image = _decode_jpeg_data_uri(block["image_base64"])
         crop_image.close()
     for image in rendered_images:
         with pytest.raises(ValueError, match="closed image"):

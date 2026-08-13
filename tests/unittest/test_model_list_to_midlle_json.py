@@ -1,287 +1,206 @@
 from copy import deepcopy
 
+import pytest
+
 from mineru.backend.model_list_to_midlle_json import model_list_to_pages
-from mineru.types import BlockType
+from mineru.types import ImageBlock, ListBlock, PageInfo, ParagraphTitleBlock, TableBlock, TextBlock
 
 
-def test_model_list_to_pages_preserves_pdf_input() -> None:
-    """验证 PDF 块完成规范化和分组后不会污染原始 model_list。"""
-    model_list = [
-        [
-            {
-                "type": BlockType.IMAGE_CAPTION,
-                "bbox": [0, 0, 100, 10],
-                "content": "Figure 1",
-            },
-            {
-                "type": BlockType.IMAGE,
-                "bbox": [0, 15, 100, 80],
-                "image_base64": "data:image/jpeg;base64,image",
-            },
-            {
-                "type": BlockType.EQUATION,
-                "bbox": [0, 85, 100, 100],
-                "content": r"\[x+1\]",
-            },
-            {
-                "type": BlockType.LIST,
-                "bbox": [0, 105, 100, 150],
-                "content": "",
-            },
-            {
-                "type": BlockType.TEXT,
-                "bbox": [10, 110, 90, 125],
-                "content": "list item",
-            },
-            {
-                "type": BlockType.TABLE_CAPTION,
-                "bbox": [0, 155, 100, 165],
-                "content": "Table 1",
-            },
-            {
-                "type": BlockType.TABLE,
-                "bbox": [0, 170, 100, 240],
-                "content": "<table></table>",
-            },
-        ]
-    ]
-    original_model_list = deepcopy(model_list)
+def test_model_list_to_pages_returns_typed_pdf_tree_without_mutating_input() -> None:
+    """验证 PDF raw dict 只在副本上分组，并返回具体 PageInfo/Block 对象。"""
+    model_list = [[
+        {"type": "image_caption", "bbox": [0.1, 0.05, 0.9, 0.1], "content": "Figure 1"},
+        {
+            "type": "image",
+            "bbox": [0.1, 0.12, 0.9, 0.45],
+            "content": None,
+            "image_base64": "data:image/jpeg;base64,/9j/2Q==",
+        },
+        {"type": "list", "bbox": [0.1, 0.5, 0.9, 0.8], "content": ""},
+        {"type": "text", "bbox": [0.15, 0.55, 0.85, 0.65], "content": "item"},
+    ]]
+    original = deepcopy(model_list)
 
     pages = model_list_to_pages(model_list, page_index_map=[7])
 
-    assert model_list == original_model_list
-    assert pages[0]["page_idx"] == 7
-    blocks_by_type = {block["type"]: block for block in pages[0]["blocks"]}
-
-    image_block = blocks_by_type[BlockType.IMAGE]
-    assert [block["type"] for block in image_block["content"]] == [
-        BlockType.IMAGE_CAPTION,
-        BlockType.IMAGE_BODY,
+    assert model_list == original
+    assert isinstance(pages[0], PageInfo)
+    assert pages[0].page_idx == 7
+    assert isinstance(pages[0].blocks[0], ImageBlock)
+    assert [child.type for child in pages[0].blocks[0].content] == [
+        "image_caption",
+        "image_body",
     ]
+    assert isinstance(pages[0].blocks[1], ListBlock)
+    assert isinstance(pages[0].blocks[1].content[0], TextBlock)
 
-    equation_block = blocks_by_type[BlockType.INTERLINE_EQUATION]
-    assert equation_block["content"] == "x+1"
-    assert equation_block is not model_list[0][2]
 
-    list_block = blocks_by_type[BlockType.LIST]
-    assert list_block["content"] == [
+def test_model_list_to_pages_preserves_recursive_office_list_and_index() -> None:
+    """验证 Office list/index 任意深度递归对象化，并删除目录 text 的 anchor。"""
+    model_list = [[
         {
-            "type": BlockType.TEXT,
-            "bbox": [10, 110, 90, 125],
-            "content": "list item",
-            "index": 4,
-        }
-    ]
-    assert list_block["sub_type"] == BlockType.TEXT
+            "type": "list",
+            "attribute": "ordered",
+            "ilevel": 0,
+            "start": 1,
+            "content": [
+                {"type": "text", "content": "first"},
+                {
+                    "type": "list",
+                    "attribute": "unordered",
+                    "ilevel": 1,
+                    "content": [
+                        {"type": "text", "content": "child"},
+                        {"type": "list", "content": [{"type": "text", "content": "deep"}]},
+                    ],
+                },
+            ],
+        },
+        {
+            "type": "index",
+            "content": [
+                {
+                    "type": "index",
+                    "content": [{"type": "text", "content": "section", "anchor": "a1"}],
+                }
+            ],
+        },
+    ]]
 
-    table_block = blocks_by_type[BlockType.TABLE]
-    assert [block["type"] for block in table_block["content"]] == [
-        BlockType.TABLE_CAPTION,
-        BlockType.TABLE_BODY,
-    ]
+    page = model_list_to_pages(model_list)[0]
+    list_block = page.blocks[0]
+    index_block = page.blocks[1]
 
-    equation_block["content"] = "changed"
-    assert model_list == original_model_list
+    assert isinstance(list_block, ListBlock)
+    assert list_block.content[0].content == "1. first"
+    assert isinstance(list_block.content[1], ListBlock)
+    assert list_block.content[1].content[0].content == "- child"
+    assert isinstance(list_block.content[1].content[1], ListBlock)
+    assert index_block.content[0].content[0].content == "section"
+    assert "anchor" not in index_block.content[0].content[0].model_fields_set
 
 
-def test_model_list_to_pages_preserves_office_nested_input() -> None:
-    """验证 Office 嵌套列表和目录规范化不会污染原始 model_list。"""
+def test_office_paragraph_numbering_is_document_wide_and_copy_only() -> None:
+    """验证 Office 标题跨页编号、显式编号同步和 raw 元数据保留。"""
     model_list = [
         [
-            {
-                "type": BlockType.IMAGE,
-                "_image_base64": "data:image/jpeg;base64,image",
-            },
-            {
-                "type": BlockType.TEXT,
-                "content": "Figure 1",
-            },
-            {
-                "type": BlockType.LIST,
-                "attribute": "ordered",
-                "ilevel": 0,
-                "start": 1,
-                "content": [
-                    {"type": BlockType.TEXT, "content": "first"},
-                    {
-                        "type": BlockType.LIST,
-                        "attribute": "unordered",
-                        "ilevel": 1,
-                        "content": [
-                            {"type": BlockType.TEXT, "content": "child"},
-                        ],
-                    },
-                ],
-            },
-            {
-                "type": BlockType.INDEX,
-                "ilevel": 0,
-                "content": [
-                    {
-                        "type": BlockType.INDEX,
-                        "ilevel": 1,
-                        "content": [
-                            {"type": BlockType.TEXT, "content": "section"},
-                        ],
-                    },
-                ],
-            },
-        ]
-    ]
-    original_model_list = deepcopy(model_list)
-
-    pages = model_list_to_pages(model_list)
-
-    assert model_list == original_model_list
-    assert pages[0]["page_idx"] == 0
-    blocks_by_type = {block["type"]: block for block in pages[0]["blocks"]}
-
-    image_block = blocks_by_type[BlockType.IMAGE]
-    assert [block["type"] for block in image_block["content"]] == [
-        BlockType.IMAGE_BODY,
-        BlockType.IMAGE_CAPTION,
-    ]
-
-    list_block = blocks_by_type[BlockType.LIST]
-    assert list_block["content"][0]["content"] == "1. first"
-    nested_list = list_block["content"][1]
-    assert nested_list["content"][0]["content"] == "- child"
-    for metadata_key in ("attribute", "ilevel", "start"):
-        assert metadata_key not in list_block
-        assert metadata_key not in nested_list
-    assert list_block is not model_list[0][2]
-
-    index_block = blocks_by_type[BlockType.INDEX]
-    assert "ilevel" not in index_block
-    assert "ilevel" not in index_block["content"][0]
-
-    list_block["content"][0]["content"] = "changed"
-    assert model_list == original_model_list
-
-
-def test_model_list_to_pages_marks_pdf_continuation_and_removes_lines() -> None:
-    """验证统一入口会处理带 bbox 的 PDF，并保持原始 model_list 不变。"""
-    model_list = [
+            {"type": "paragraph_title", "content": "<b>A</b>", "level": 1, "is_numbered_style": True},
+            {"type": "paragraph_title", "content": "B", "level": 2, "is_numbered_style": True},
+        ],
         [
-            {
-                "type": BlockType.TEXT,
-                "bbox": [0.1, 0.1, 0.9, 0.3],
-                "content": "previous continuation",
-                "lines": [
-                    {"bbox": [0.1, 0.1, 0.9, 0.15]},
-                    {"bbox": [0.1, 0.2, 0.9, 0.25]},
-                ],
-            },
-            {
-                "type": BlockType.TEXT,
-                "bbox": [0.1, 0.25, 0.9, 0.45],
-                "content": "current continuation",
-                "lines": [
-                    {"bbox": [0.1, 0.25, 0.9, 0.3]},
-                    {"bbox": [0.1, 0.35, 0.9, 0.4]},
-                ],
-            },
-        ]
+            {"type": "paragraph_title", "content": "1.4 Explicit", "level": 2, "is_numbered_style": False},
+            {"type": "paragraph_title", "content": "C", "level": 2, "is_numbered_style": True},
+            {"type": "paragraph_title", "content": "No level", "is_numbered_style": True},
+        ],
     ]
-    original_model_list = deepcopy(model_list)
+    original = deepcopy(model_list)
 
     pages = model_list_to_pages(model_list)
+    titles = [block for page in pages for block in page.blocks]
 
-    assert model_list == original_model_list
-    assert [block["content"] for block in pages[0]["blocks"]] == [
-        "previous continuation",
-        "current continuation",
+    assert all(isinstance(block, ParagraphTitleBlock) for block in titles)
+    assert [block.content for block in titles] == [
+        "1 <b>A</b>",
+        "1.1 B",
+        "1.4 Explicit",
+        "1.5 C",
+        "2 No level",
     ]
-    assert "continues_prev" not in pages[0]["blocks"][0]
-    assert pages[0]["blocks"][1]["continues_prev"] is True
-    assert all("lines" not in block for block in pages[0]["blocks"])
-    assert [block["bbox"] for block in pages[0]["blocks"]] == [
-        [0.1, 0.1, 0.9, 0.3],
-        [0.1, 0.25, 0.9, 0.45],
+    assert titles[-1].level is None
+    assert model_list == original
+
+
+def test_office_paragraph_numbering_clears_deeper_levels() -> None:
+    """验证标题返回浅层时会清理旧深层计数，后续重新从一开始编号。"""
+    model_list = [[
+        {"type": "paragraph_title", "content": "A", "level": 1, "is_numbered_style": True},
+        {"type": "paragraph_title", "content": "B", "level": 2, "is_numbered_style": True},
+        {"type": "paragraph_title", "content": "C", "level": 3, "is_numbered_style": True},
+        {"type": "paragraph_title", "content": "D", "level": 2, "is_numbered_style": True},
+        {"type": "paragraph_title", "content": "E", "level": 3, "is_numbered_style": True},
+        {"type": "paragraph_title", "content": "F", "level": 1, "is_numbered_style": True},
+        {"type": "paragraph_title", "content": "G", "level": 2, "is_numbered_style": True},
+    ]]
+
+    titles = model_list_to_pages(model_list)[0].blocks
+
+    assert [title.content for title in titles] == [
+        "1 A",
+        "1.1 B",
+        "1.1.1 C",
+        "1.2 D",
+        "1.2.1 E",
+        "2 F",
+        "2.1 G",
     ]
 
 
-def test_model_list_to_pages_skips_para_merge_for_office_without_bbox() -> None:
-    """验证无 bbox 的 Office 不进入段落后处理，也不会删除其 lines。"""
-    model_list = [
-        [
-            {
-                "type": BlockType.TEXT,
-                "content": "office text",
-                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
-            }
-        ]
-    ]
+def test_visual_body_drops_empty_parent_subtype() -> None:
+    """验证 raw visual 的空 subtype 只用于父块判断，不会泄漏到严格 body 模型。"""
+    page = model_list_to_pages(
+        [[{"type": "image", "content": None, "sub_type": None}]]
+    )[0]
 
-    pages = model_list_to_pages(model_list)
-
-    office_text = pages[0]["blocks"][0]
-    assert office_text["lines"] == [{"bbox": [0.1, 0.1, 0.9, 0.2]}]
-    assert "continues_prev" not in office_text
+    assert isinstance(page.blocks[0], ImageBlock)
+    assert page.blocks[0].sub_type is None
+    assert page.blocks[0].content[0].type == "image_body"
 
 
-def test_model_list_to_pages_detects_pdf_after_empty_first_page() -> None:
-    """验证 PDF 检测会扫描后续页面，而不是只检查空白首页。"""
-    model_list = [
+def test_pdf_continuation_is_typed_and_line_metadata_is_removed() -> None:
+    """验证 raw 段落延续在对象化前完成，公开 TextBlock 不保留临时 lines。"""
+    model_list = [[
+        {
+            "type": "text",
+            "bbox": [0.1, 0.1, 0.9, 0.3],
+            "content": "previous continuation",
+            "lines": [{"bbox": [0.1, 0.1, 0.9, 0.15]}, {"bbox": [0.1, 0.2, 0.9, 0.25]}],
+        },
+        {
+            "type": "text",
+            "bbox": [0.1, 0.25, 0.9, 0.45],
+            "content": "current continuation",
+            "lines": [{"bbox": [0.1, 0.25, 0.9, 0.3]}, {"bbox": [0.1, 0.35, 0.9, 0.4]}],
+        },
+    ]]
+
+    page = model_list_to_pages(model_list)[0]
+
+    assert all(isinstance(block, TextBlock) for block in page.blocks)
+    assert page.blocks[0].continues_prev is None
+    assert page.blocks[1].continues_prev is True
+    assert all("lines" not in type(block).model_fields for block in page.blocks)
+
+
+def test_pdf_detection_scans_past_empty_first_page() -> None:
+    """验证整份文档 bbox 判定不会把 PDF 空白首页误认为 Office。"""
+    pages = model_list_to_pages([
         [],
-        [
-            {
-                "type": BlockType.TEXT,
-                "bbox": [0.1, 0.1, 0.9, 0.3],
-                "content": "later page",
-                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
-            }
-        ],
-    ]
+        [{"type": "text", "bbox": [0.1, 0.1, 0.9, 0.3], "content": "later", "lines": []}],
+    ])
 
-    pages = model_list_to_pages(model_list)
-
-    assert pages[0] == {"blocks": [], "page_idx": 0}
-    assert "lines" not in pages[1]["blocks"][0]
+    assert pages[0].blocks == []
+    assert isinstance(pages[1].blocks[0], TextBlock)
 
 
-def test_model_list_to_pages_marks_only_later_boundary_table() -> None:
-    """验证 PDF 统一入口只给连续页的后表写入 continues_prev。"""
-    previous_html = "<table><tr><td>A</td><td>B</td></tr></table>"
-    current_html = "<table><tr><td>C</td><td>D</td></tr></table>"
-    model_list = [
-        [
-            {"type": BlockType.HEADER, "bbox": [0.1, 0.01, 0.9, 0.03], "content": "header"},
-            {"type": BlockType.TABLE, "bbox": [0.1, 0.1, 0.9, 0.85], "content": previous_html},
-            {"type": BlockType.PAGE_NUMBER, "bbox": [0.45, 0.95, 0.55, 0.98], "content": "1"},
-        ],
-        [
-            {"type": BlockType.HEADER, "bbox": [0.1, 0.01, 0.9, 0.03], "content": "header"},
-            {"type": BlockType.TABLE, "bbox": [0.1, 0.1, 0.9, 0.85], "content": current_html},
-            {"type": BlockType.PAGE_NUMBER, "bbox": [0.45, 0.95, 0.55, 0.98], "content": "2"},
-        ],
-    ]
-    original_model_list = deepcopy(model_list)
+def test_cross_page_table_continuation_remains_raw_postprocess() -> None:
+    """验证连续页表格仍在对象化前写入 continues_prev。"""
+    html_a = "<table><tr><td>A</td><td>B</td></tr></table>"
+    html_b = "<table><tr><td>C</td><td>D</td></tr></table>"
+    pages = model_list_to_pages([
+        [{"type": "table", "bbox": [0.1, 0.1, 0.9, 0.85], "content": html_a}],
+        [{"type": "table", "bbox": [0.1, 0.1, 0.9, 0.85], "content": html_b}],
+    ])
 
-    pages = model_list_to_pages(model_list)
-
-    previous_table = next(block for block in pages[0]["blocks"] if block["type"] == BlockType.TABLE)
-    current_table = next(block for block in pages[1]["blocks"] if block["type"] == BlockType.TABLE)
-    previous_body = next(block for block in previous_table["content"] if block["type"] == BlockType.TABLE_BODY)
-    current_body = next(block for block in current_table["content"] if block["type"] == BlockType.TABLE_BODY)
-    assert "continues_prev" not in previous_table
-    assert current_table["continues_prev"] is True
-    assert "continues_prev" not in current_body
-    assert previous_body["content"] == previous_html
-    assert current_body["content"] == current_html
-    assert previous_table["bbox"] == [0.1, 0.1, 0.9, 0.85]
-    assert current_table["bbox"] == [0.1, 0.1, 0.9, 0.85]
-    assert model_list == original_model_list
+    assert isinstance(pages[0].blocks[0], TableBlock)
+    assert pages[0].blocks[0].continues_prev is None
+    assert pages[1].blocks[0].continues_prev is True
 
 
-def test_model_list_to_pages_does_not_mark_table_across_page_index_gap() -> None:
-    """验证统一入口会把 page_index_map 跳页传递给跨页表格判断。"""
-    model_list = [
-        [{"type": BlockType.TABLE, "bbox": [0.1, 0.1, 0.9, 0.85], "content": "<table><tr><td>A</td></tr></table>"}],
-        [{"type": BlockType.TABLE, "bbox": [0.1, 0.1, 0.9, 0.85], "content": "<table><tr><td>B</td></tr></table>"}],
-    ]
-
-    pages = model_list_to_pages(model_list, page_index_map=[0, 2])
-
-    current_table = next(block for block in pages[1]["blocks"] if block["type"] == BlockType.TABLE)
-    assert "continues_prev" not in current_table
+@pytest.mark.parametrize(
+    ("page_index_map", "message"),
+    [([0], "length mismatch"), ([0, 0], "unique"), ([1, 0], "increasing"), ([0, -1], "non-negative")],
+)
+def test_page_index_map_is_strict(page_index_map: list[int], message: str) -> None:
+    """验证页号映射不允许截断、重复、逆序或负数。"""
+    with pytest.raises(ValueError, match=message):
+        model_list_to_pages([[], []], page_index_map=page_index_map)

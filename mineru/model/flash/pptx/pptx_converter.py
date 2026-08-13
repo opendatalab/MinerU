@@ -719,7 +719,7 @@ class PptxConverter:
         if content_type == "image/svg+xml":
             image_block = {
                 "type": BlockType.IMAGE,
-                "_image_base64": self._bytes_to_data_uri(image_bytes, content_type),
+                "image_base64": self._bytes_to_data_uri(image_bytes, content_type),
             }
             self.cur_page.append(image_block)
             return
@@ -730,7 +730,7 @@ class PptxConverter:
 
         image_block = {
             "type": BlockType.IMAGE,
-            "_image_base64": img_base64,
+            "image_base64": img_base64,
         }
         self.cur_page.append(image_block)
         return

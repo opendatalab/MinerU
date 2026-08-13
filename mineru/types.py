@@ -1,11 +1,15 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
-from dataclasses import MISSING, Field, InitVar, dataclass, field, fields
-from typing import Any, Iterator, Literal, TypeAlias, TypeVar, get_type_hints, TypedDict
+import json
+import math
+import os
+from dataclasses import dataclass
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+from typing import Annotated, Any, ClassVar, Literal, TypeAlias, Union
 
-T = TypeVar("T", bound="_DocElement")
-
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 Tier = Literal[
     "flash",
@@ -135,40 +139,28 @@ BlockTypes = Literal[
     BlockType.IMAGE_BODY,
     BlockType.TABLE_BODY,
     BlockType.CHART_BODY,
-    BlockType.CAPTION,
     BlockType.IMAGE_CAPTION,
     BlockType.TABLE_CAPTION,
     BlockType.CHART_CAPTION,
-    BlockType.ALGORITHM_CAPTION,
-    BlockType.FOOTNOTE,
     BlockType.IMAGE_FOOTNOTE,
     BlockType.TABLE_FOOTNOTE,
     BlockType.CHART_FOOTNOTE,
     BlockType.TEXT,
-    BlockType.TITLE,
     BlockType.INTERLINE_EQUATION,
-    BlockType.EQUATION,
     BlockType.LIST,
     BlockType.INDEX,
-    BlockType.DISCARDED,
     BlockType.CODE,
     BlockType.CODE_BODY,
     BlockType.CODE_CAPTION,
     BlockType.CODE_FOOTNOTE,
-    BlockType.ALGORITHM,
     BlockType.REF_TEXT,
-    BlockType.PHONETIC,
     BlockType.HEADER,
     BlockType.FOOTER,
     BlockType.PAGE_NUMBER,
     BlockType.ASIDE_TEXT,
     BlockType.PAGE_FOOTNOTE,
-    BlockType.ABSTRACT,
     BlockType.DOC_TITLE,
     BlockType.PARAGRAPH_TITLE,
-    BlockType.VERTICAL_TEXT,
-    BlockType.HEADER_IMAGE,
-    BlockType.FOOTER_IMAGE,
     BlockType.FORMULA_NUMBER,
 ]
 
@@ -179,40 +171,28 @@ BLOCK_TYPES = {
     BlockType.IMAGE_BODY,
     BlockType.TABLE_BODY,
     BlockType.CHART_BODY,
-    BlockType.CAPTION,
     BlockType.IMAGE_CAPTION,
     BlockType.TABLE_CAPTION,
     BlockType.CHART_CAPTION,
-    BlockType.ALGORITHM_CAPTION,
-    BlockType.FOOTNOTE,
     BlockType.IMAGE_FOOTNOTE,
     BlockType.TABLE_FOOTNOTE,
     BlockType.CHART_FOOTNOTE,
     BlockType.TEXT,
-    BlockType.TITLE,
     BlockType.INTERLINE_EQUATION,
-    BlockType.EQUATION,
     BlockType.LIST,
     BlockType.INDEX,
-    BlockType.DISCARDED,
     BlockType.CODE,
     BlockType.CODE_BODY,
     BlockType.CODE_CAPTION,
     BlockType.CODE_FOOTNOTE,
-    BlockType.ALGORITHM,
     BlockType.REF_TEXT,
-    BlockType.PHONETIC,
     BlockType.HEADER,
     BlockType.FOOTER,
     BlockType.PAGE_NUMBER,
     BlockType.ASIDE_TEXT,
     BlockType.PAGE_FOOTNOTE,
-    BlockType.ABSTRACT,
     BlockType.DOC_TITLE,
     BlockType.PARAGRAPH_TITLE,
-    BlockType.VERTICAL_TEXT,
-    BlockType.HEADER_IMAGE,
-    BlockType.FOOTER_IMAGE,
     BlockType.FORMULA_NUMBER,
 }
 
@@ -309,255 +289,661 @@ BBox: TypeAlias = tuple[float, float, float, float]
 IntBBox: TypeAlias = tuple[int, int, int, int]
 
 
-def _is_default_value(f: Field, value: Any) -> bool:
-    if f.default is not MISSING:
-        return value == f.default
-    if f.default_factory is not MISSING:
-        return value == f.default_factory()
-    return False
+def _remove_block_fields(value: Any, excluded_fields: set[str]) -> Any:
+    """递归删除序列化结果中指定的 block 字段，覆盖任意深度的容器。"""
+    if isinstance(value, list):
+        return [_remove_block_fields(item, excluded_fields) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    result = {
+        key: _remove_block_fields(item, excluded_fields)
+        for key, item in value.items()
+        if not ("type" in value and key in excluded_fields)
+    }
+    return result
 
 
-def _initvar_default(value: Any, default: Any) -> Any:
-    """修正 InitVar 与同名 property 共存时产生的 property 默认值。"""
-    return default if isinstance(value, property) else value
+class _StrictMiddleModel(BaseModel):
+    """Middle JSON 严格模型基类，提供无副作用的统一序列化入口。"""
 
+    model_config = ConfigDict(extra="forbid", strict=True, validate_assignment=True)
 
-EMPTY_BBOX: BBox = (0.0, 0.0, 0.0, 0.0)
-
-
-def _origin_is_list(tp: Any) -> bool:
-    return getattr(tp, "__origin__", None) is list
-
-
-def _list_arg(tp: Any) -> Any | None:
-    args = getattr(tp, "__args__", None)
-    return args[0] if args else None
-
-
-@dataclass
-class _DocElement:
-    """Base class for document-model nodes (Span, Line, Block, PageInfo)."""
-
-    def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
-        """Serialize to dict, excluding private fields (prefixed with ``_``).
-
-        When *skip_defaults* is True, fields whose value equals their
-        default are also omitted.
-        """
-        result: dict[str, Any] = {}
-        for f in fields(self):
-            if f.name.startswith("_"):
-                continue
-            value = getattr(self, f.name)
-            if skip_defaults and _is_default_value(f, value):
-                continue
-            if isinstance(value, list):
-                result[f.name] = [v.to_dict(skip_defaults=skip_defaults) if isinstance(v, _DocElement) else v for v in value]
-            else:
-                result[f.name] = value
-        return result
-
-    @classmethod
-    def from_dict(cls: type[T], d: dict) -> T:
-        """Reconstruct from dict (inverse of ``to_dict``). Handles nested dataclass lists and list→tuple conversion."""
-        hints = get_type_hints(cls)
-        kwargs: dict[str, Any] = {}
-        for f in fields(cls):
-            if f.name.startswith("_"):
-                continue
-            if f.name not in d:
-                continue
-            value = d[f.name]
-            f_type = hints.get(f.name)
-            if f_type is not None and _origin_is_list(f_type):
-                elem_type = _list_arg(f_type)
-                if isinstance(elem_type, type) and issubclass(elem_type, _DocElement):
-                    value = [elem_type.from_dict(v) for v in value]
-            if f.name in ("bbox", "page_size") and isinstance(value, list):
-                value = tuple(value)
-            kwargs[f.name] = value
-        return cls(**kwargs)
-
-
-@dataclass
-class Span(_DocElement):
-    """Leaf node of the block tree.  Holds text, formula, image, or table content."""
-
-    type: str
-    bbox: BBox
-    content: str = ""
-    score: float = 0.0
-    image_path: str = ""
-
-    # Internal
-    _np_img: Any = None
-
-    _url: str = ""
-    _style: list[str] = field(default_factory=list)
-    _children: list[Span] = field(default_factory=list)
-
-    _extra: dict = field(default_factory=dict)
-
-
-@dataclass
-class Line(_DocElement):
-    """A line within a block, containing one or more spans."""
-
-    bbox: BBox
-    spans: list[Span] = field(default_factory=list)
-
-
-@dataclass
-class OcrDetLineItem(TypedDict):
-    """OCR 检测得到的归一化行框。"""
-
-    bbox: list[float]
-    type: Literal["line"]
-
-
-@dataclass
-class Block(_DocElement):
-    """A layout block on a page.  May nest child blocks (e.g. list items, image body)."""
-
-    # Required
-    index: int
-    type: str
-    bbox: BBox
-    lines: list[Line] = field(default_factory=list)
-    blocks: list[Block] = field(default_factory=list)
-    content: str = ""
-
-    # Optional
-    level: int | None = None
-    sub_type: str = ""
-    guess_lang: str = ""
-    section_number: str = ""
-
-    # Office
-    anchor: str = ""
-    start: int | None = None
-    ilevel: int | None = None
-
-    # Init-only draft fields.  These are accepted for backend conversion
-    # compatibility, but are not middle_json block fields and never serialize.
-    angle: InitVar[int | None] = None
-    score: InitVar[float | None] = None
-    merge_prev: InitVar[bool] = False
-    is_numbered_style: InitVar[bool] = False
-
-    # Internal
-    _ocr_det_lines: list[OcrDetLineItem] = field(default_factory=list)
-    _line_avg_height: int = 0
-    _cell_merge: list[int] = field(default_factory=list)
-    _fix_spans: list[Span] = field(default_factory=list)
-    _list_attribute: str = ""
-    _bbox_fs: BBox | None = None
-    _sub_images: list[Block] = field(default_factory=list)
-
-    def __post_init__(
+    def to_dict(
         self,
-        angle: int | None,
-        score: float | None,
-        merge_prev: bool,
-        is_numbered_style: bool,
-    ) -> None:
-        """接收转换阶段临时字段，但只存入内部属性，避免污染 middle_json 输出。"""
-        self._angle = _initvar_default(angle, None)
-        self._layout_score = _initvar_default(score, None)
-        self._merge_prev = _initvar_default(merge_prev, False)
-        self._is_numbered_style = _initvar_default(is_numbered_style, False)
+        *,
+        skip_defaults: bool = True,
+        exclude_none: bool = False,
+        exclude_block_fields: set[str] | None = None,
+    ) -> dict[str, Any]:
+        """序列化对象，并按字段名递归排除任意层级的 block 字段。"""
+        payload = self.model_dump(
+            mode="json",
+            exclude_defaults=skip_defaults,
+            exclude_none=exclude_none,
+        )
+        if exclude_block_fields:
+            payload = _remove_block_fields(payload, set(exclude_block_fields))
+        return payload
 
-    def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
-        """仅在 staged middle_json 需要时输出 merge_prev 合并提示。"""
-        result = super().to_dict(skip_defaults=skip_defaults)
-        if self.merge_prev or not skip_defaults:
-            result["merge_prev"] = self.merge_prev
-        return result
+    def to_json(
+        self,
+        *,
+        skip_defaults: bool = True,
+        exclude_none: bool = False,
+        exclude_block_fields: set[str] | None = None,
+        indent: int | None = 4,
+    ) -> str:
+        """将对象编码为 UTF-8 友好的 JSON 字符串，不执行图片文件写入。"""
+        return json.dumps(
+            self.to_dict(
+                skip_defaults=skip_defaults,
+                exclude_none=exclude_none,
+                exclude_block_fields=exclude_block_fields,
+            ),
+            ensure_ascii=False,
+            indent=indent,
+        )
 
+
+class BlockBase(_StrictMiddleModel):
+    """所有公开 Middle JSON block 的最小公共字段。"""
+
+    type: BlockTypes
+    index: int | None = Field(default=None, ge=0)
+    bbox: BBox | None = None
+
+    @field_validator("bbox", mode="before")
     @classmethod
-    def from_dict(cls, d: dict) -> Block:
-        """读取 staged middle_json 中的 merge_prev 合并提示。"""
-        block = _DocElement.from_dict.__func__(cls, d)
-        if "merge_prev" in d:
-            block.merge_prev = bool(d.get("merge_prev", False))
-        return block
-
-    @property
-    def angle(self) -> int | None:
-        """转换阶段读取的原始旋转角，默认不作为 middle_json block 字段输出。"""
-        return self._angle
-
-    @angle.setter
-    def angle(self, value: int | None) -> None:
-        self._angle = value
-
-    @property
-    def score(self) -> float | None:
-        """layout 置信度只作为内部调试/传递信息保存，不进入 public block。"""
-        return self._layout_score
-
-    @score.setter
-    def score(self, value: float | None) -> None:
-        self._layout_score = value
-
-    @property
-    def merge_prev(self) -> bool:
-        """raw content block 的合并提示，仅供段落合并阶段消费。"""
-        return self._merge_prev
-
-    @merge_prev.setter
-    def merge_prev(self, value: bool) -> None:
-        self._merge_prev = value
-
-    @property
-    def is_numbered_style(self) -> bool:
-        """Office 标题编号中间状态，生成 section_number 后不输出。"""
-        return self._is_numbered_style
-
-    @is_numbered_style.setter
-    def is_numbered_style(self, value: bool) -> None:
-        self._is_numbered_style = value
-
-    def all_spans(self) -> Iterator[Span]:
-        """Depth-first yield every span in this block tree."""
-        for line in self.lines:
-            yield from line.spans
-        for child in self.blocks:
-            yield from child.all_spans()
+    def _validate_bbox(cls, value: Any) -> BBox | None:
+        """接受 JSON 数组形式的 bbox，并严格校验归一化坐标。"""
+        if value is None:
+            return None
+        if not isinstance(value, (list, tuple)) or len(value) != 4:
+            raise ValueError("bbox must contain exactly four numbers")
+        if any(isinstance(item, bool) or not isinstance(item, (int, float)) for item in value):
+            raise ValueError("bbox values must be numbers")
+        bbox = tuple(float(item) for item in value)
+        if not all(math.isfinite(item) and 0.0 <= item <= 1.0 for item in bbox):
+            raise ValueError("bbox values must be finite normalized coordinates")
+        if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+            raise ValueError("bbox must satisfy x1 > x0 and y1 > y0")
+        return bbox  # type: ignore[return-value]
 
 
-@dataclass
-class PageInfo(_DocElement):
-    """Parsed content of a single page."""
-
-    page_idx: int
-    blocks: list[Block] = field(default_factory=list)
-
-    # Temporary — will be removed once the render layer converges.
-    _backend: Literal["hybrid", "office"] | None = None
+class TextBlock(BlockBase):
+    type: Literal[BlockType.TEXT]
+    content: str
+    continues_prev: bool | None = None
 
 
-@dataclass
-class ContentItem(_DocElement):
-    """A single item in the Content List (V1) output format."""
+class RefTextBlock(BlockBase):
+    type: Literal[BlockType.REF_TEXT]
+    content: str
 
-    type: str
-    page_idx: int = 0
-    bbox: IntBBox | None = None
-    text: str | None = None
-    text_level: int | None = None
-    text_format: str | None = None
-    img_path: str | None = None
-    content: str | None = None
+
+class DocTitleBlock(BlockBase):
+    type: Literal[BlockType.DOC_TITLE]
+    content: str
+    anchor: str | None = None
+
+
+class ParagraphTitleBlock(BlockBase):
+    type: Literal[BlockType.PARAGRAPH_TITLE]
+    content: str
+    anchor: str | None = None
+    level: int | None = Field(default=None, ge=1)
+
+
+class AsideTextBlock(BlockBase):
+    type: Literal[BlockType.ASIDE_TEXT]
+    content: str
+
+
+class HeaderBlock(BlockBase):
+    type: Literal[BlockType.HEADER]
+    content: str
+
+
+class FooterBlock(BlockBase):
+    type: Literal[BlockType.FOOTER]
+    content: str
+
+
+class PageNumberBlock(BlockBase):
+    type: Literal[BlockType.PAGE_NUMBER]
+    content: str
+
+
+class PageFootnoteBlock(BlockBase):
+    type: Literal[BlockType.PAGE_FOOTNOTE]
+    content: str
+
+
+class FormulaNumberBlock(BlockBase):
+    type: Literal[BlockType.FORMULA_NUMBER]
+    content: str
+
+
+class ImagePayloadBlock(BlockBase):
+    """直接携带图片 data URI 的 block 基类。"""
+
+    image_base64: str | None = Field(default=None, repr=False)
+    image_path: str | None = None
+
+    @field_validator("image_path")
+    @classmethod
+    def _validate_image_path(cls, value: str | None) -> str | None:
+        """校验已记录的图片路径只能是安全的 POSIX 相对路径。"""
+        if value is None:
+            return None
+        from .utils.image_payload import validate_image_sidecar_path
+
+        return validate_image_sidecar_path(value)
+
+
+class InterlineEquationBlock(ImagePayloadBlock):
+    type: Literal[BlockType.INTERLINE_EQUATION]
+    content: str
+
+
+class ImageBodyBlock(ImagePayloadBlock):
+    type: Literal[BlockType.IMAGE_BODY]
+    content: str | None
+
+
+class TableBodyBlock(ImagePayloadBlock):
+    type: Literal[BlockType.TABLE_BODY]
+    content: str
+    cell_merge: list[Literal[0, 1]] | None = None
+
+
+class ChartBodyBlock(ImagePayloadBlock):
+    type: Literal[BlockType.CHART_BODY]
+    content: str | None
+
+
+class CodeBodyBlock(BlockBase):
+    type: Literal[BlockType.CODE_BODY]
+    content: str
+
+
+class ImageCaptionBlock(BlockBase):
+    type: Literal[BlockType.IMAGE_CAPTION]
+    content: str
+
+
+class ImageFootnoteBlock(BlockBase):
+    type: Literal[BlockType.IMAGE_FOOTNOTE]
+    content: str
+
+
+class TableCaptionBlock(BlockBase):
+    type: Literal[BlockType.TABLE_CAPTION]
+    content: str
+
+
+class TableFootnoteBlock(BlockBase):
+    type: Literal[BlockType.TABLE_FOOTNOTE]
+    content: str
+
+
+class ChartCaptionBlock(BlockBase):
+    type: Literal[BlockType.CHART_CAPTION]
+    content: str
+
+
+class ChartFootnoteBlock(BlockBase):
+    type: Literal[BlockType.CHART_FOOTNOTE]
+    content: str
+
+
+class CodeCaptionBlock(BlockBase):
+    type: Literal[BlockType.CODE_CAPTION]
+    content: str
+
+
+class CodeFootnoteBlock(BlockBase):
+    type: Literal[BlockType.CODE_FOOTNOTE]
+    content: str
+
+
+ListChildBlock: TypeAlias = Annotated[
+    Union[TextBlock, RefTextBlock, "ListBlock"],
+    Field(discriminator="type"),
+]
+
+
+class ListBlock(BlockBase):
+    type: Literal[BlockType.LIST]
+    content: list[ListChildBlock]
+    sub_type: Literal[BlockType.TEXT, BlockType.REF_TEXT] | None = None
+    continues_prev: bool | None = None
+
+    @model_validator(mode="after")
+    def _validate_sub_type(self) -> ListBlock:
+        """存在 subtype 时，要求当前层直接文本子项与声明类型一致。"""
+        if self.sub_type is None:
+            return self
+        for child in self.content:
+            if isinstance(child, ListBlock):
+                continue
+            if child.type != self.sub_type:
+                raise ValueError("list direct text children must match sub_type")
+        return self
+
+
+IndexChildBlock: TypeAlias = Annotated[
+    Union[TextBlock, "IndexBlock"],
+    Field(discriminator="type"),
+]
+
+
+class IndexBlock(BlockBase):
+    type: Literal[BlockType.INDEX]
+    content: list[IndexChildBlock]
+
+
+class _VisualBlockBase(BlockBase):
+    """视觉父块的共享结构约束。"""
+
+    _body_type: ClassVar[str]
+
+    @model_validator(mode="after")
+    def _validate_visual_children(self) -> _VisualBlockBase:
+        """校验视觉父块只有一个 body，且父子定位字段保持一致。"""
+        children = getattr(self, "content", [])
+        bodies = [child for child in children if child.type == self._body_type]
+        if len(bodies) != 1:
+            raise ValueError(f"{self.type} must contain exactly one {self._body_type}")
+        body = bodies[0]
+        if self.index is not None and body.index != self.index:
+            raise ValueError(f"{self.type} body index must equal parent index")
+        if self.bbox is not None and body.bbox is not None and body.bbox != self.bbox:
+            raise ValueError(f"{self.type} body bbox must equal parent bbox")
+        return self
+
+
+ImageChildBlock: TypeAlias = Annotated[
+    Union[ImageBodyBlock, ImageCaptionBlock, ImageFootnoteBlock],
+    Field(discriminator="type"),
+]
+
+
+class ImageBlock(_VisualBlockBase):
+    type: Literal[BlockType.IMAGE]
+    content: list[ImageChildBlock]
     sub_type: str | None = None
-    list_items: list[str] = field(default_factory=list)
-    image_caption: list[str] = field(default_factory=list)
-    image_footnote: list[str] = field(default_factory=list)
-    table_caption: list[str] = field(default_factory=list)
-    table_footnote: list[str] = field(default_factory=list)
-    table_body: str | None = None
-    chart_caption: list[str] = field(default_factory=list)
-    chart_footnote: list[str] = field(default_factory=list)
-    code_caption: list[str] = field(default_factory=list)
-    code_footnote: list[str] = field(default_factory=list)
-    code_body: str | None = None
+    _body_type: ClassVar[str] = BlockType.IMAGE_BODY
+
+
+TableChildBlock: TypeAlias = Annotated[
+    Union[TableBodyBlock, TableCaptionBlock, TableFootnoteBlock],
+    Field(discriminator="type"),
+]
+
+
+class TableBlock(_VisualBlockBase):
+    type: Literal[BlockType.TABLE]
+    content: list[TableChildBlock]
+    continues_prev: bool | None = None
+    _body_type: ClassVar[str] = BlockType.TABLE_BODY
+
+
+ChartChildBlock: TypeAlias = Annotated[
+    Union[ChartBodyBlock, ChartCaptionBlock, ChartFootnoteBlock],
+    Field(discriminator="type"),
+]
+
+
+class ChartBlock(_VisualBlockBase):
+    type: Literal[BlockType.CHART]
+    content: list[ChartChildBlock]
+    sub_type: str | None = None
+    _body_type: ClassVar[str] = BlockType.CHART_BODY
+
+
+CodeChildBlock: TypeAlias = Annotated[
+    Union[CodeBodyBlock, CodeCaptionBlock, CodeFootnoteBlock],
+    Field(discriminator="type"),
+]
+
+
+class CodeBlock(_VisualBlockBase):
+    type: Literal[BlockType.CODE]
+    content: list[CodeChildBlock]
+    sub_type: Literal[BlockType.CODE, BlockType.ALGORITHM]
+    guess_lang: str | None = None
+    _body_type: ClassVar[str] = BlockType.CODE_BODY
+
+    @model_validator(mode="after")
+    def _validate_language(self) -> CodeBlock:
+        """代码块要求语言，算法块则禁止携带代码语言猜测结果。"""
+        if self.sub_type == BlockType.CODE:
+            if not isinstance(self.guess_lang, str) or not self.guess_lang.strip():
+                raise ValueError("code block must contain a non-empty guess_lang")
+        elif self.guess_lang is not None:
+            raise ValueError("algorithm block must not contain guess_lang")
+        return self
+
+
+ListBlock.model_rebuild()
+IndexBlock.model_rebuild()
+
+
+Block: TypeAlias = Annotated[
+    Union[
+        TextBlock,
+        RefTextBlock,
+        DocTitleBlock,
+        ParagraphTitleBlock,
+        AsideTextBlock,
+        HeaderBlock,
+        FooterBlock,
+        PageNumberBlock,
+        PageFootnoteBlock,
+        FormulaNumberBlock,
+        InterlineEquationBlock,
+        ListBlock,
+        IndexBlock,
+        ImageBodyBlock,
+        ImageCaptionBlock,
+        ImageFootnoteBlock,
+        ImageBlock,
+        TableBodyBlock,
+        TableCaptionBlock,
+        TableFootnoteBlock,
+        TableBlock,
+        ChartBodyBlock,
+        ChartCaptionBlock,
+        ChartFootnoteBlock,
+        ChartBlock,
+        CodeBodyBlock,
+        CodeCaptionBlock,
+        CodeFootnoteBlock,
+        CodeBlock,
+    ],
+    Field(discriminator="type"),
+]
+
+BLOCK_ADAPTER = TypeAdapter(Block)
+
+
+def parse_block(value: Any) -> Block:
+    """将字典或已有模型严格解析成对应的具体 Block 类型。"""
+    return BLOCK_ADAPTER.validate_python(value)
+
+
+def _iter_child_blocks(block: BlockBase) -> list[BlockBase]:
+    """返回容器 block 的直接子块，叶子 block 返回空列表。"""
+    content = getattr(block, "content", None)
+    if not isinstance(content, list):
+        return []
+    return [child for child in content if isinstance(child, BlockBase)]
+
+
+class PageInfo(_StrictMiddleModel):
+    """一页的严格 Middle JSON 内容。"""
+
+    page_idx: int = Field(ge=0)
+    blocks: list[Block] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_page_tree(self) -> PageInfo:
+        """校验顶层 index 顺序，并禁止嵌套块携带跨块延续标记。"""
+        indices: list[int] = []
+        for block in self.blocks:
+            if block.index is None:
+                raise ValueError("top-level block index is required")
+            indices.append(block.index)
+        if len(indices) != len(set(indices)):
+            raise ValueError("top-level block indices must be unique")
+        if any(current <= previous for previous, current in zip(indices, indices[1:])):
+            raise ValueError("top-level block indices must be strictly increasing")
+
+        pending = [child for block in self.blocks for child in _iter_child_blocks(block)]
+        while pending:
+            child = pending.pop()
+            if "continues_prev" in child.model_fields_set:
+                raise ValueError("nested blocks must not contain continues_prev")
+            pending.extend(_iter_child_blocks(child))
+        return self
+
+
+class MiddleJson(_StrictMiddleModel):
+    """Analyze 返回的完整严格 Middle JSON 对象。"""
+
+    pages: list[PageInfo]
+    file_suffix: Literal["pdf", "docx", "pptx", "xlsx"]
+    effort: Literal["flash", "low", "medium", "high", "xhigh"]
+    parse_mode: Literal["txt", "ocr"]
+    mineru_version: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_document(self) -> MiddleJson:
+        """校验页号唯一有序，并要求 PDF 顶层 block 均具有 bbox。"""
+        page_indices = [page.page_idx for page in self.pages]
+        if len(page_indices) != len(set(page_indices)):
+            raise ValueError("page_idx values must be unique")
+        if any(current <= previous for previous, current in zip(page_indices, page_indices[1:])):
+            raise ValueError("page_idx values must be strictly increasing")
+        if self.file_suffix == "pdf":
+            for page in self.pages:
+                for block in page.blocks:
+                    if block.bbox is None:
+                        raise ValueError(
+                            f"PDF top-level block requires bbox: page_idx={page.page_idx}, index={block.index}"
+                        )
+        return self
+
+    def export(
+        self,
+        output_dir: str | Path,
+        *,
+        json_name: str = "middle_json.json",
+        overwrite: bool = False,
+    ) -> MiddleJsonExportResult:
+        """在副本上外置全部图片，并原子写出不含 base64 的 Middle JSON。"""
+        return _export_middle_json(self, Path(output_dir), json_name=json_name, overwrite=overwrite)
+
+
+@dataclass(frozen=True, slots=True)
+class MiddleJsonExportResult:
+    """Middle JSON 图片外置后的对象副本与实际文件路径。"""
+
+    middle_json: MiddleJson
+    json_path: Path
+    image_paths: tuple[Path, ...]
+
+
+def _iter_page_blocks(blocks: list[Block]) -> list[BlockBase]:
+    """按深度优先顺序展开页面 block 树，供图片外置统一遍历。"""
+    result: list[BlockBase] = []
+    pending: list[BlockBase] = list(reversed(blocks))
+    while pending:
+        block = pending.pop()
+        result.append(block)
+        pending.extend(reversed(_iter_child_blocks(block)))
+    return result
+
+
+def _register_export_file(files: dict[str, bytes], relative_path: str, payload: bytes) -> None:
+    """登记待写文件，并在同名内容冲突时立即终止导出。"""
+    existing = files.get(relative_path)
+    if existing is not None and existing != payload:
+        raise ValueError(f"Conflicting image payload for path: {relative_path}")
+    files[relative_path] = payload
+
+
+def _prepare_export_copy(middle_json: MiddleJson) -> tuple[MiddleJson, dict[str, bytes]]:
+    """复制对象、解析直接及 HTML 图片，并回填副本中的相对路径。"""
+    from .utils.image_payload import INLINE_IMAGE_DATA_URI_RE, parse_image_data_uri_strict
+
+    exported = middle_json.model_copy(deep=True)
+    image_files: dict[str, bytes] = {}
+    for page in exported.pages:
+        for block in _iter_page_blocks(page.blocks):
+            data_uri = getattr(block, "image_base64", None)
+            if data_uri is not None:
+                if block.index is None:
+                    raise ValueError(
+                        f"Image carrier requires index: page_idx={page.page_idx}, type={block.type}"
+                    )
+                image_bytes, extension = parse_image_data_uri_strict(data_uri)
+                relative_path = f"images/page_{page.page_idx}_{block.type}_{block.index}.{extension}"
+                _register_export_file(image_files, relative_path, image_bytes)
+                block.image_path = relative_path  # type: ignore[attr-defined]
+                block.image_base64 = None  # type: ignore[attr-defined]
+
+            content = getattr(block, "content", None)
+            if not isinstance(content, str) or "data:image/" not in content:
+                continue
+            if block.index is None:
+                raise ValueError(
+                    f"HTML image carrier requires index: page_idx={page.page_idx}, type={block.type}"
+                )
+            ordinal = 0
+
+            def _replace_data_uri(match: Any) -> str:
+                """将当前 HTML data URI 登记为 sidecar，并返回确定性相对路径。"""
+                nonlocal ordinal
+                ordinal += 1
+                image_bytes, extension = parse_image_data_uri_strict(match.group(0))
+                relative_path = (
+                    f"images/page_{page.page_idx}_{block.type}_{block.index}_{ordinal}.{extension}"
+                )
+                _register_export_file(image_files, relative_path, image_bytes)
+                return relative_path
+
+            block.content = INLINE_IMAGE_DATA_URI_RE.sub(_replace_data_uri, content)  # type: ignore[assignment]
+    return exported, image_files
+
+
+def _resolve_export_target(output_root: Path, relative_path: str) -> Path:
+    """校验导出相对路径并确保解析后的目标仍位于文档输出目录内。"""
+    from .utils.image_payload import validate_image_sidecar_path
+
+    safe_path = validate_image_sidecar_path(relative_path)
+    if output_root.is_symlink():
+        raise ValueError(f"Export directory must not be a symlink: {output_root}")
+    if output_root.exists() and not output_root.is_dir():
+        raise ValueError(f"Export directory must be a directory: {output_root}")
+    root = output_root.resolve()
+    target = root / safe_path
+    current_parent = root
+    for path_part in Path(safe_path).parts[:-1]:
+        current_parent /= path_part
+        if current_parent.is_symlink():
+            raise ValueError(f"Export path contains a symlink: {relative_path}")
+        if current_parent.exists() and not current_parent.is_dir():
+            raise ValueError(f"Export path parent is not a directory: {relative_path}")
+    try:
+        target.parent.resolve(strict=False).relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"Export path escapes output directory: {relative_path}") from exc
+    return target
+
+
+def _commit_export_files(files: dict[Path, bytes], *, overwrite: bool) -> None:
+    """预检冲突后以临时文件提交，并在提交失败时恢复已有文件。"""
+    pending: dict[Path, bytes] = {}
+    originals: dict[Path, bytes | None] = {}
+    for target, payload in files.items():
+        if target.is_symlink():
+            raise ValueError(f"Export target must not be a symlink: {target}")
+        if target.exists():
+            if not target.is_file():
+                raise ValueError(f"Export target is not a regular file: {target}")
+            current = target.read_bytes()
+            if current == payload:
+                continue
+            if not overwrite:
+                raise FileExistsError(f"Export target already exists with different content: {target}")
+            originals[target] = current
+        else:
+            originals[target] = None
+        pending[target] = payload
+
+    temp_paths: dict[Path, Path] = {}
+    committed: list[Path] = []
+    try:
+        for target, payload in pending.items():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with NamedTemporaryFile(
+                mode="wb",
+                prefix=".mineru-export-",
+                dir=target.parent,
+                delete=False,
+            ) as temp_file:
+                temp_file.write(payload)
+                temp_paths[target] = Path(temp_file.name)
+        for target, temp_path in temp_paths.items():
+            os.replace(temp_path, target)
+            committed.append(target)
+    except Exception:
+        for temp_path in temp_paths.values():
+            temp_path.unlink(missing_ok=True)
+        for target in reversed(committed):
+            original = originals[target]
+            if original is None:
+                target.unlink(missing_ok=True)
+            else:
+                target.write_bytes(original)
+        raise
+
+
+def _validate_export_path_relationships(relative_paths: list[str]) -> None:
+    """拒绝任一导出文件占用另一文件的父目录，避免提交阶段才产生冲突。"""
+    path_parts = {
+        relative_path: Path(relative_path).parts
+        for relative_path in relative_paths
+    }
+    for relative_path, parts in path_parts.items():
+        for other_path, other_parts in path_parts.items():
+            if relative_path == other_path or len(parts) >= len(other_parts):
+                continue
+            if other_parts[: len(parts)] == parts:
+                raise ValueError(
+                    "Export file path conflicts with a required directory: "
+                    f"{relative_path} -> {other_path}"
+                )
+
+
+def _export_middle_json(
+    middle_json: MiddleJson,
+    output_dir: Path,
+    *,
+    json_name: str,
+    overwrite: bool,
+) -> MiddleJsonExportResult:
+    """构造完整导出事务，保证 JSON 与图片使用同一份规范化对象副本。"""
+    from .utils.image_payload import validate_image_sidecar_path
+
+    exported, image_files = _prepare_export_copy(middle_json)
+    json_text = exported.to_json(
+        exclude_block_fields={"image_base64"},
+    )
+    if "data:image/" in json_text.lower():
+        raise ValueError("Exported Middle JSON still contains an inline image data URI")
+    json_bytes = json_text.encode("utf-8")
+    safe_json_name = validate_image_sidecar_path(json_name)
+    relative_files = dict(image_files)
+    if safe_json_name in relative_files:
+        raise ValueError(f"JSON path conflicts with an exported image: {safe_json_name}")
+    relative_files[safe_json_name] = json_bytes
+    _validate_export_path_relationships(list(relative_files))
+    absolute_files = {
+        _resolve_export_target(output_dir, relative_path): payload
+        for relative_path, payload in relative_files.items()
+    }
+    _commit_export_files(absolute_files, overwrite=overwrite)
+    json_path = _resolve_export_target(output_dir, safe_json_name)
+    image_paths = tuple(
+        _resolve_export_target(output_dir, relative_path)
+        for relative_path in sorted(image_files)
+    )
+    return MiddleJsonExportResult(
+        middle_json=exported,
+        json_path=json_path,
+        image_paths=image_paths,
+    )

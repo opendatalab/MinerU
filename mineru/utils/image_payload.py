@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import base64
+import binascii
 from pathlib import Path, PureWindowsPath
 import re
+import xml.etree.ElementTree as ElementTree
 
 from .hash_utils import str_sha256
 
@@ -34,6 +36,50 @@ def parse_image_data_uri(data_uri: str) -> tuple[bytes, str] | None:
         return base64.b64decode(match.group(2)), normalize_image_extension(match.group(1))
     except Exception:
         return None
+
+
+def parse_image_data_uri_strict(data_uri: str) -> tuple[bytes, str]:
+    """严格解析图片 data URI，并同时校验 MIME 与文件签名是否一致。"""
+    match = re.fullmatch(r"data:image/([^;]+);base64,([A-Za-z0-9+/]*={0,2})", data_uri)
+    if match is None:
+        raise ValueError("Invalid image data URI")
+
+    mime_subtype = match.group(1).lower()
+    extension = normalize_image_extension(mime_subtype)
+    try:
+        payload = base64.b64decode(match.group(2), validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("Invalid base64 image payload") from exc
+    if not payload:
+        raise ValueError("Image payload must not be empty")
+
+    if extension == "svg":
+        if mime_subtype != "svg+xml":
+            raise ValueError(f"Unsupported image MIME subtype: {mime_subtype}")
+        try:
+            svg_root = ElementTree.fromstring(payload)
+        except ElementTree.ParseError as exc:
+            raise ValueError("Invalid SVG image payload") from exc
+        if not isinstance(svg_root.tag, str) or svg_root.tag.rsplit("}", 1)[-1].lower() != "svg":
+            raise ValueError("Image signature does not match MIME subtype: svg+xml")
+        return payload, extension
+
+    signatures: dict[str, tuple[bytes, ...]] = {
+        "jpg": (b"\xff\xd8\xff",),
+        "png": (b"\x89PNG\r\n\x1a\n",),
+        "gif": (b"GIF87a", b"GIF89a"),
+        "webp": (b"RIFF",),
+        "bmp": (b"BM",),
+        "tiff": (b"II*\x00", b"MM\x00*"),
+    }
+    expected = signatures.get(extension)
+    if expected is None:
+        raise ValueError(f"Unsupported image MIME subtype: {mime_subtype}")
+    if not any(payload.startswith(signature) for signature in expected):
+        raise ValueError(f"Image signature does not match MIME subtype: {mime_subtype}")
+    if extension == "webp" and (len(payload) < 12 or payload[8:12] != b"WEBP"):
+        raise ValueError("Image signature does not match MIME subtype: webp")
+    return payload, extension
 
 
 def image_path_from_data_uri(data_uri: str) -> str | None:
@@ -132,6 +178,9 @@ def validate_image_sidecar_path(image_path: str) -> str:
     windows_path = PureWindowsPath(image_path)
     if (
         not image_path
+        or image_path == "."
+        or "\x00" in image_path
+        or "\\" in image_path
         or posix_path.is_absolute()
         or windows_path.is_absolute()
         or windows_path.drive

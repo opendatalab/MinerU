@@ -3,19 +3,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...types import Block, BlockType, ContentType, PageInfo, Span
+from ...types import BlockType
 from .char_utils import full_to_half
 from .visual_magic_model_utils import isolated_formula_clean
-
-
-def extract_text_from_block(block: Block) -> str:
-    """从 typed Block 中提取纯文本，用于公式编号归一化。"""
-    text_parts = []
-    for line in block.lines:
-        for span in line.spans:
-            if span.type == ContentType.TEXT:
-                text_parts.append(span.content)
-    return "".join(text_parts).strip()
 
 
 def normalize_formula_tag_content(tag_content: str) -> str:
@@ -40,55 +30,6 @@ def build_tagged_formula_content(formula_content: str, tag_content: str) -> str 
     if not formula_content or not tag_content:
         return None
     return f"{formula_content}\\tag{{{tag_content}}}"
-
-
-def get_interline_equation_span(block: Block) -> Span | None:
-    """查找 typed 公式块中的行间公式 span。"""
-    for line in block.lines:
-        for span in line.spans:
-            if span.type == ContentType.INTERLINE_EQUATION:
-                return span
-    return None
-
-
-def append_formula_number_tag(equation_block: Block, formula_number_block: Block) -> None:
-    """把 typed 公式编号合并进相邻行间公式的 LaTeX 内容。"""
-    equation_span = get_interline_equation_span(equation_block)
-    if equation_span is None:
-        return
-    tagged_content = build_tagged_formula_content(equation_span.content, extract_text_from_block(formula_number_block))
-    if tagged_content:
-        equation_span.content = tagged_content
-
-
-def optimize_pipeline_formula_number_blocks(pages: list[PageInfo]) -> None:
-    """合并 Pipeline typed middle-json 中的公式编号块，无法合并时降级为文本块。"""
-    for page_info in pages:
-        optimized_blocks = []
-        blocks = page_info.preproc_blocks
-        for index, block in enumerate(blocks):
-            if block.type != BlockType.FORMULA_NUMBER:
-                optimized_blocks.append(block)
-                continue
-
-            prev_block = blocks[index - 1] if index > 0 else None
-            if prev_block and prev_block.type == BlockType.INTERLINE_EQUATION:
-                append_formula_number_tag(prev_block, block)
-                continue
-
-            next_block = blocks[index + 1] if index + 1 < len(blocks) else None
-            next_next_block = blocks[index + 2] if index + 2 < len(blocks) else None
-            if (
-                next_block
-                and next_block.type == BlockType.INTERLINE_EQUATION
-                and (next_next_block is None or next_next_block.type != BlockType.FORMULA_NUMBER)
-            ):
-                append_formula_number_tag(next_block, block)
-                continue
-
-            block.type = BlockType.TEXT
-            optimized_blocks.append(block)
-        page_info.preproc_blocks = optimized_blocks
 
 
 def _is_hybrid_equation_block(block: dict[str, Any]) -> bool:

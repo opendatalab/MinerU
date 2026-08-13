@@ -12,11 +12,12 @@ import numpy as np
 from loguru import logger
 from pdftext.schema import Char
 
-from ...types import BBox, BlockType, ContentType, Span
+from ...types import BBox, BlockType, ContentType
 from ...utils.image_utils import calculate_contrast
 from ...utils.pdf_document import PDFPage, get_lines_from_chars
 from ...utils.pdf_image_tools import get_crop_img
 from .boxbase import calculate_overlap_area_in_bbox1_area_ratio
+from .analyze_draft import _AnalyzeSpan
 
 MAX_NATIVE_TEXT_CHARS_PER_PAGE = 65535
 PRIVATE_USE_AREA_START = 0xE000
@@ -48,12 +49,12 @@ def __replace_unicode(text: str) -> str:
 
 def txt_spans_extract(
     pdf_page: PDFPage,
-    spans: list[Span],
+    spans: list[_AnalyzeSpan],
     pil_img: Any,
     scale: float,
     all_bboxes: list[tuple[Any, ...]],
     all_discarded_blocks: list[tuple[Any, ...]],
-) -> list[Span]:
+) -> list[_AnalyzeSpan]:
     page_char_count = None
     try:
         page_char_count = pdf_page.get_char_count()
@@ -73,8 +74,8 @@ def txt_spans_extract(
     for span in spans:
         if span.type in [ContentType.TEXT]:
             span_height = span.bbox[3] - span.bbox[1]
-            span._extra["height"] = span_height
-            span._extra["width"] = span.bbox[2] - span.bbox[0]
+            span.metadata["height"] = span_height
+            span.metadata["width"] = span.bbox[2] - span.bbox[0]
             span_height_list.append(span_height)
     if len(span_height_list) == 0:
         return spans
@@ -91,7 +92,10 @@ def txt_spans_extract(
                 if block[7] in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.INTERLINE_EQUATION]:
                     continue
                 if calculate_overlap_area_in_bbox1_area_ratio(span.bbox, block[0:4]) > 0.5:
-                    if span._extra["height"] > median_span_height * 2.3 and span._extra["height"] > span._extra["width"] * 2.3:
+                    if (
+                        span.metadata["height"] > median_span_height * 2.3
+                        and span.metadata["height"] > span.metadata["width"] * 2.3
+                    ):
                         vertical_spans.append(span)
                     elif block in all_bboxes:
                         useful_spans.append(span)
@@ -118,7 +122,7 @@ def txt_spans_extract(
 
     for span in useful_spans + unuseful_spans:
         if span.type in [ContentType.TEXT]:
-            span._extra["chars"] = []
+            span.metadata["chars"] = []
             new_spans.append(span)
 
     need_ocr_spans = fill_char_in_spans(new_spans, page_all_chars, median_span_height)
@@ -211,11 +215,11 @@ def _get_chars_for_span_fill(page_chars: list[Char] | dict[str, list[Char]]) -> 
 
 
 def _prepare_post_ocr_spans(
-    need_ocr_spans: list[Span],
-    spans: list[Span],
+    need_ocr_spans: list[_AnalyzeSpan],
+    spans: list[_AnalyzeSpan],
     pil_img: Any,
     scale: float,
-) -> list[Span]:
+) -> list[_AnalyzeSpan]:
     if len(need_ocr_spans) == 0:
         return spans
 
@@ -233,7 +237,7 @@ def _prepare_post_ocr_spans(
 
         span.content = ""
         span.score = 1.0
-        span._np_img = span_img
+        span.image = span_img
 
     return spans
 
@@ -241,21 +245,21 @@ def _prepare_post_ocr_spans(
 class SpanBlockMatcher:
     """按 block 顺序消费 span，并用 y 方向索引减少无效重叠计算。"""
 
-    def __init__(self, spans: list[Span]) -> None:
+    def __init__(self, spans: list[_AnalyzeSpan]) -> None:
         self.spans = list(spans)
         self.used_span_indices = set()
         self.grid_size = self._get_grid_size(self.spans)
         self.grid = self._build_grid(self.spans)
 
     @staticmethod
-    def _get_grid_size(spans: list[Span]) -> float:
+    def _get_grid_size(spans: list[_AnalyzeSpan]) -> float:
         """根据 span 高度估算索引网格大小，避免过细或过粗。"""
         heights = [span.bbox[3] - span.bbox[1] for span in spans if span.bbox and span.bbox[3] > span.bbox[1]]
         if not heights:
             return 1
         return max(1, statistics.median(heights))
 
-    def _build_grid(self, spans: list[Span]) -> dict[int, list[int]]:
+    def _build_grid(self, spans: list[_AnalyzeSpan]) -> dict[int, list[int]]:
         """将 span 按 y 方向网格登记，后续按 block bbox 快速取候选。"""
         grid = collections.defaultdict(list)
         for index, span in enumerate(spans):
@@ -284,7 +288,7 @@ class SpanBlockMatcher:
         block_bbox: BBox,
         overlap_ratio_getter: Callable | None = None,
         threshold: float = 0.5,
-    ) -> list[Span]:
+    ) -> list[_AnalyzeSpan]:
         """返回当前 block 命中的 span，并标记为已消费以保持旧归属语义。"""
         if overlap_ratio_getter is None:
             overlap_ratio_getter = self._default_overlap_ratio
@@ -299,21 +303,21 @@ class SpanBlockMatcher:
                 self.used_span_indices.add(span_idx)
         return block_spans
 
-    def remaining_spans(self) -> list[Span]:
+    def remaining_spans(self) -> list[_AnalyzeSpan]:
         """返回尚未归属到任何 block 的 span，方便保持后续兼容。"""
         return [span for index, span in enumerate(self.spans) if index not in self.used_span_indices]
 
     @staticmethod
-    def _default_overlap_ratio(span: Span, block_bbox: BBox) -> float:
+    def _default_overlap_ratio(span: _AnalyzeSpan, block_bbox: BBox) -> float:
         """默认沿用旧逻辑：计算 span 面积中落入 block 的比例。"""
         return calculate_overlap_area_in_bbox1_area_ratio(span.bbox, block_bbox)
 
 
 def fill_char_in_spans(
-    spans: list[Span],
+    spans: list[_AnalyzeSpan],
     all_chars: list[Char],
     median_span_height: float,
-) -> list[Span]:
+) -> list[_AnalyzeSpan]:
     # 简单从上到下排一下序
     spans = sorted(spans, key=lambda x: x.bbox[1])
 
@@ -346,24 +350,24 @@ def fill_char_in_spans(
             ):
                 continue
             if calculate_char_in_span(char_bbox, span_bbox, char["char"]):
-                span._extra["chars"].append(char)
+                span.metadata["chars"].append(char)
                 break
 
     need_ocr_spans = []
     for span in spans:
-        private_use_signal = _get_private_use_text_signal(span._extra["chars"])
+        private_use_signal = _get_private_use_text_signal(span.metadata["chars"])
         should_post_ocr_private_use = _should_fallback_to_post_ocr_for_private_use_text(private_use_signal)
         chars_to_content(span)
         # 有的span中虽然没有字但有一两个空的占位符，用宽高和content长度过滤
         if should_post_ocr_private_use and span.content:
-            span._extra[POST_OCR_FALLBACK_CONTENT_KEY] = span.content
-            span._extra[POST_OCR_FALLBACK_SCORE_KEY] = span.score
-            span._extra[POST_OCR_REASON_KEY] = POST_OCR_REASON_PRIVATE_USE_TEXT
+            span.metadata[POST_OCR_FALLBACK_CONTENT_KEY] = span.content
+            span.metadata[POST_OCR_FALLBACK_SCORE_KEY] = span.score
+            span.metadata[POST_OCR_REASON_KEY] = POST_OCR_REASON_PRIVATE_USE_TEXT
             need_ocr_spans.append(span)
-        elif len(span.content) * span._extra["height"] < span._extra["width"] * 0.5:
+        elif len(span.content) * span.metadata["height"] < span.metadata["width"] * 0.5:
             # logger.info(f"maybe empty span: {len(span['content'])}, {span['height']}, {span['width']}")
             need_ocr_spans.append(span)
-        del span._extra["height"], span._extra["width"]
+        del span.metadata["height"], span.metadata["width"]
     return need_ocr_spans
 
 
@@ -466,22 +470,22 @@ def _should_fallback_to_post_ocr_for_private_use_text(signal: dict[str, float | 
     )
 
 
-def _clear_post_ocr_fallback(span: Span) -> None:
+def _clear_post_ocr_fallback(span: _AnalyzeSpan) -> None:
     """清理后置 OCR 内部兜底字段，避免进入最终 middle-json 输出。"""
-    span._extra.pop(POST_OCR_FALLBACK_CONTENT_KEY, None)
-    span._extra.pop(POST_OCR_FALLBACK_SCORE_KEY, None)
-    span._extra.pop(POST_OCR_REASON_KEY, None)
+    span.metadata.pop(POST_OCR_FALLBACK_CONTENT_KEY, None)
+    span.metadata.pop(POST_OCR_FALLBACK_SCORE_KEY, None)
+    span.metadata.pop(POST_OCR_REASON_KEY, None)
 
 
-def _restore_post_ocr_fallback(span: Span) -> bool:
+def _restore_post_ocr_fallback(span: _AnalyzeSpan) -> bool:
     """在后置 OCR 无法使用时恢复原始文本兜底，返回是否已恢复。"""
-    if POST_OCR_FALLBACK_CONTENT_KEY not in span._extra:
+    if POST_OCR_FALLBACK_CONTENT_KEY not in span.metadata:
         _clear_post_ocr_fallback(span)
         return False
 
-    span.content = span._extra[POST_OCR_FALLBACK_CONTENT_KEY]
-    if POST_OCR_FALLBACK_SCORE_KEY in span._extra:
-        span.score = span._extra[POST_OCR_FALLBACK_SCORE_KEY]
+    span.content = span.metadata[POST_OCR_FALLBACK_CONTENT_KEY]
+    if POST_OCR_FALLBACK_SCORE_KEY in span.metadata:
+        span.score = span.metadata[POST_OCR_FALLBACK_SCORE_KEY]
     _clear_post_ocr_fallback(span)
     return True
 
@@ -621,10 +625,10 @@ def _wrap_script_runs(role_text_parts: list[tuple[str, str]]) -> str:
     return "".join(wrapped_parts)
 
 
-def chars_to_content(span: Span) -> None:
+def chars_to_content(span: _AnalyzeSpan) -> None:
     # 检查span中的char是否为空
-    if len(span._extra["chars"]) != 0:
-        chars = span._extra["chars"]
+    if len(span.metadata["chars"]) != 0:
+        chars = span.metadata["chars"]
         # 大多数情况下 char 已按 PDF 原始顺序进入，只有乱序时才排序。
         if any(chars[idx]["char_idx"] > chars[idx + 1]["char_idx"] for idx in range(len(chars) - 1)):
             chars = sorted(chars, key=lambda x: x["char_idx"])
@@ -660,4 +664,4 @@ def chars_to_content(span: Span) -> None:
         content = __replace_ligatures(content)
         span.content = content.strip()
 
-    del span._extra["chars"]
+    del span.metadata["chars"]

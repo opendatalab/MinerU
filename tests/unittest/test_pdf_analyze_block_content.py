@@ -10,12 +10,13 @@ from mineru_vl_utils.structs import ContentBlock as VlmContentBlock
 from mineru_vl_utils.structs import ExtractResult
 
 from mineru.backend import analyze
+from mineru.backend.utils.analyze_draft import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.utils.span_pre_proc import (
     POST_OCR_FALLBACK_CONTENT_KEY,
     POST_OCR_FALLBACK_SCORE_KEY,
 )
 from mineru.model.flash import PdfModel
-from mineru.types import BlockType, ContentType, Line, Span
+from mineru.types import BlockType, ContentType, MiddleJson
 from mineru.utils.pdf_document import PDFDocument
 
 
@@ -23,13 +24,13 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _NPU_PDF_PATH = _PROJECT_ROOT / "demo" / "pdfs" / "NPU_开发环境部署_参考指南.pdf"
 
 
-def _build_text_lines(*contents: str) -> list[Line]:
+def _build_text_lines(*contents: str) -> list[_AnalyzeLine]:
     """按输入文本构造稳定的多行文本结构，供 block content 拼接测试复用。"""
     return [
-        Line(
+        _AnalyzeLine(
             bbox=(0.0, float(line_idx), 100.0, float(line_idx + 1)),
             spans=[
-                Span(
+                _AnalyzeSpan(
                     type=ContentType.TEXT,
                     bbox=(0.0, float(line_idx), 100.0, float(line_idx + 1)),
                     content=content,
@@ -42,24 +43,24 @@ def _build_text_lines(*contents: str) -> list[Line]:
 
 def _build_post_ocr_page_block_lines(
     *page_crop_values: int | tuple[int, ...],
-) -> tuple[list[dict[int, list[Line]]], list[Span]]:
+) -> tuple[list[dict[int, list[_AnalyzeLine]]], list[_AnalyzeSpan]]:
     """按页构造携带待 OCR 裁图的 span，便于验证窗口级批处理和回填顺序。"""
-    page_block_lines_list: list[dict[int, list[Line]]] = []
-    spans: list[Span] = []
+    page_block_lines_list: list[dict[int, list[_AnalyzeLine]]] = []
+    spans: list[_AnalyzeSpan] = []
     for page_idx, crop_values in enumerate(page_crop_values):
         normalized_crop_values = (crop_values,) if isinstance(crop_values, int) else crop_values
-        page_spans: list[Span] = []
+        page_spans: list[_AnalyzeSpan] = []
         for span_idx, crop_value in enumerate(normalized_crop_values):
             bbox = (float(span_idx), float(page_idx), float(span_idx + 1), float(page_idx + 1))
-            span = Span(
+            span = _AnalyzeSpan(
                 type=ContentType.TEXT,
                 bbox=bbox,
-                _np_img=np.full((4, 8, 3), crop_value, dtype=np.uint8),
+                image=np.full((4, 8, 3), crop_value, dtype=np.uint8),
             )
             spans.append(span)
             page_spans.append(span)
         line_bbox = (0.0, float(page_idx), float(len(page_spans)), float(page_idx + 1))
-        page_block_lines_list.append({0: [Line(bbox=line_bbox, spans=page_spans)]})
+        page_block_lines_list.append({0: [_AnalyzeLine(bbox=line_bbox, spans=page_spans)]})
     return page_block_lines_list, spans
 
 
@@ -79,14 +80,34 @@ def test_convert_vlm_results_to_model_list_uses_builtin_containers() -> None:
     assert type(model_list) is list
     assert all(type(page) is list for page in model_list)
     assert type(model_list[0][0]) is dict
-    assert list(model_list[0][0]) == list(source_block)
-    assert model_list[0][0] == dict(source_block)
+    assert model_list[0][0] == {
+        "type": BlockType.TEXT,
+        "bbox": [0.1, 0.2, 0.8, 0.4],
+        "angle": 0,
+        "content": "原始文本",
+    }
     assert model_list[1] == []
     assert model_list[0] is not source_page
     assert model_list[0][0] is not source_block
 
     model_list[0][0]["content"] = "转换后文本"
     assert source_block["content"] == "原始文本"
+
+
+def test_convert_vlm_results_deep_copies_projected_mutable_fields() -> None:
+    """验证 VLM 投影后的可变字段不会与上游对象共享引用。"""
+    source_cell_merge = [1, 0]
+    source_block = {
+        "type": BlockType.TABLE,
+        "bbox": [0.1, 0.2, 0.8, 0.4],
+        "content": "<table></table>",
+        "cell_merge": source_cell_merge,
+    }
+
+    model_list = analyze._convert_vlm_results_to_model_list([[source_block]])
+    model_list[0][0]["cell_merge"].append(1)
+
+    assert source_cell_merge == [1, 0]
 
 
 @pytest.mark.parametrize(
@@ -181,9 +202,10 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
     assert type(model_list[0]) is list
     assert type(model_list[0][0]) is dict
     assert model_list == [[{"type": BlockType.PAGE_NUMBER, "bbox": [0.45, 0.9, 0.55, 0.95], "content": "1"}]]
-    assert middle_json["pages"] == []
-    assert middle_json["effort"] == effort
-    assert middle_json["parse_mode"] == parse_mode
+    assert isinstance(middle_json, MiddleJson)
+    assert middle_json.pages == []
+    assert middle_json.effort == effort
+    assert middle_json.parse_mode == parse_mode
     assert type(source_page) is ExtractResult
     assert type(source_block) is VlmContentBlock
     assert source_block["angle"] == 0
@@ -230,21 +252,6 @@ def test_xhigh_vlm_blocks_normalize_visual_annotation_types() -> None:
         "image footnote",
         "text",
     ]
-
-
-def test_xhigh_vlm_blocks_remove_merge_prev_from_all_text_blocks() -> None:
-    """验证 xhigh VLM 正文无论 merge_prev 取值如何都移除该字段。"""
-    page_blocks = [
-        {"type": BlockType.TEXT, "content": "merge", "merge_prev": True},
-        {"type": BlockType.TEXT, "content": "do not merge", "merge_prev": False},
-        {"type": BlockType.TEXT, "content": "without hint"},
-        {"type": BlockType.CAPTION, "content": "caption"},
-    ]
-
-    analyze._normalize_xhigh_vlm_blocks([page_blocks])
-
-    assert all("merge_prev" not in block for block in page_blocks if block["type"] == BlockType.TEXT)
-    assert page_blocks[-1] == {"type": BlockType.CAPTION, "content": "caption"}
 
 
 def test_five_pdf_text_types_keep_normalized_line_metadata() -> None:
@@ -335,7 +342,7 @@ def test_window_post_ocr_batches_all_pages_once() -> None:
     assert call_args.kwargs == {"det": False, "tqdm_enable": True}
     assert [span.content for span in spans] == ["第一页一", "第一页二", "第二页一", "第二页二"]
     assert [span.score for span in spans] == [0.91, 0.82, 0.73, 0.64]
-    assert all(span._np_img is None for span in spans)
+    assert all(span.image is None for span in spans)
 
 
 def test_window_post_ocr_skips_empty_window() -> None:
@@ -362,8 +369,8 @@ def test_window_post_ocr_keeps_low_confidence_fallback_semantics() -> None:
     page_block_lines_list, spans = _build_post_ocr_page_block_lines(11, 22)
     spans[0].content = "原生文本"
     spans[0].score = 0.88
-    spans[0]._extra[POST_OCR_FALLBACK_CONTENT_KEY] = spans[0].content
-    spans[0]._extra[POST_OCR_FALLBACK_SCORE_KEY] = spans[0].score
+    spans[0].metadata[POST_OCR_FALLBACK_CONTENT_KEY] = spans[0].content
+    spans[0].metadata[POST_OCR_FALLBACK_SCORE_KEY] = spans[0].score
     local_model_context = MagicMock()
     local_model_context.ocr_model.ocr.return_value = [[("低置信文本", 0.0), ("低置信文本", 0.0)]]
 
@@ -371,7 +378,7 @@ def test_window_post_ocr_keeps_low_confidence_fallback_semantics() -> None:
 
     assert spans[0].content == "原生文本"
     assert spans[0].score == 0.88
-    assert spans[0]._extra == {}
+    assert spans[0].metadata == {}
     assert spans[1].content == ""
     assert spans[1].score == 0.0
 
