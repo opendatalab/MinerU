@@ -134,6 +134,7 @@ def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
                 raise ValueError(f"Unclassified PDF title block: page_idx={page_idx}, block_idx={block_idx}")
             block.pop("angle", None)
             block.pop("score", None)
+            block.pop("merge_prev", None)
             content = block.get("content")
             if not isinstance(content, str):
                 continue

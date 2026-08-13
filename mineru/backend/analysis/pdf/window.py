@@ -402,6 +402,9 @@ def process_pdf_windows(
                         hybrid_model,
                         images_layout_res,
                     )
+                    # low 在表内对象清理后复用统一公式编号合并，确保视觉裁图包含编号区域。
+                    for page_model_list in window_model_list:
+                        page_model_list[:] = optimize_hybrid_formula_number_blocks(page_model_list)
                 else:
                     window_model_list = _process_text_and_formulas(
                         images_list,

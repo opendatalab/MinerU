@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import cv2
@@ -63,8 +64,36 @@ def _is_hybrid_formula_number_block(block: dict[str, Any]) -> bool:
     return str(block.get("type") or "").lower() == BlockType.FORMULA_NUMBER
 
 
-def _append_hybrid_formula_number_tag(equation_block: dict[str, Any], number_block: dict[str, Any]) -> None:
-    """把 raw Hybrid/VLM 公式编号合并到相邻公式 block 的 content/latex 字段。"""
+def _normalize_hybrid_formula_bbox(bbox: Any) -> list[float] | None:
+    """将 Hybrid/VLM 公式框规范为合法浮点四元组，非法或退化框返回 None。"""
+    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+        return None
+    if any(isinstance(value, bool) for value in bbox):
+        return None
+    try:
+        normalized_bbox = [float(value) for value in bbox]
+    except (TypeError, ValueError):
+        return None
+    if any(not math.isfinite(value) for value in normalized_bbox):
+        return None
+    x0, y0, x1, y1 = normalized_bbox
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return normalized_bbox
+
+
+def _merge_hybrid_formula_number_block(equation_block: dict[str, Any], number_block: dict[str, Any]) -> None:
+    """把公式编号的 bbox 和非空内容合并到相邻 Hybrid/VLM 公式 block。"""
+    equation_bbox = _normalize_hybrid_formula_bbox(equation_block.get("bbox"))
+    number_bbox = _normalize_hybrid_formula_bbox(number_block.get("bbox"))
+    if equation_bbox is not None and number_bbox is not None:
+        equation_block["bbox"] = [
+            min(equation_bbox[0], number_bbox[0]),
+            min(equation_bbox[1], number_bbox[1]),
+            max(equation_bbox[2], number_bbox[2]),
+            max(equation_bbox[3], number_bbox[3]),
+        ]
+
     target_key = "latex" if equation_block.get("latex") else "content"
     tagged_content = build_tagged_formula_content(
         str(equation_block.get(target_key) or ""),
@@ -85,7 +114,7 @@ def optimize_hybrid_formula_number_blocks(page_model_list: list[dict[str, Any]])
 
         prev_block = blocks[index - 1] if index > 0 else None
         if prev_block and _is_hybrid_equation_block(prev_block):
-            _append_hybrid_formula_number_tag(prev_block, block)
+            _merge_hybrid_formula_number_block(prev_block, block)
             continue
 
         next_block = blocks[index + 1] if index + 1 < len(blocks) else None
@@ -95,7 +124,7 @@ def optimize_hybrid_formula_number_blocks(page_model_list: list[dict[str, Any]])
             and _is_hybrid_equation_block(next_block)
             and (next_next_block is None or not _is_hybrid_formula_number_block(next_next_block))
         ):
-            _append_hybrid_formula_number_tag(next_block, block)
+            _merge_hybrid_formula_number_block(next_block, block)
             continue
 
         fallback_block = dict(block)

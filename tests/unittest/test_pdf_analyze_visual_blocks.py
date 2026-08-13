@@ -731,15 +731,168 @@ def test_formula_number_optimizer_recognizes_canonical_and_upstream_equation_typ
     """验证公式编号只需兼容 canonical equation 与上游 display_formula 标签。"""
     optimized = formulas.optimize_hybrid_formula_number_blocks(
         [
-            {"type": equation_type, "content": r"\[x+1\]"},
-            {"type": BlockType.FORMULA_NUMBER, "content": "(2)"},
+            {
+                "type": equation_type,
+                "bbox": [0.1, 0.3, 0.7, 0.4],
+                "content": r"\[x+1\]",
+            },
+            {
+                "type": BlockType.FORMULA_NUMBER,
+                "bbox": [0.75, 0.32, 0.85, 0.38],
+                "content": "(2)",
+            },
         ]
     )
 
     assert optimized == [
         {
             "type": equation_type,
+            "bbox": [0.1, 0.3, 0.85, 0.4],
             "content": r"x+1\tag{2}",
+        }
+    ]
+
+
+def test_formula_number_optimizer_merges_leading_number_bbox() -> None:
+    """验证前置公式编号按既有相邻规则合并，并扩展后续公式 bbox。"""
+    optimized = formulas.optimize_hybrid_formula_number_blocks(
+        [
+            {
+                "type": BlockType.FORMULA_NUMBER,
+                "bbox": [0.1, 0.32, 0.2, 0.38],
+                "content": "(3)",
+            },
+            {
+                "type": BlockType.EQUATION,
+                "bbox": [0.25, 0.3, 0.9, 0.4],
+                "content": "x=3",
+            },
+        ]
+    )
+
+    assert optimized == [
+        {
+            "type": BlockType.EQUATION,
+            "bbox": [0.1, 0.3, 0.9, 0.4],
+            "content": r"x=3\tag{3}",
+        }
+    ]
+
+
+def test_formula_number_optimizer_merges_empty_content_by_geometry() -> None:
+    """验证 low 的空内容公式仍合并 bbox，并移除相邻公式编号块。"""
+    optimized = formulas.optimize_hybrid_formula_number_blocks(
+        [
+            {
+                "type": BlockType.EQUATION,
+                "bbox": [0.1, 0.3, 0.7, 0.4],
+                "content": "",
+            },
+            {
+                "type": BlockType.FORMULA_NUMBER,
+                "bbox": [0.75, 0.32, 0.85, 0.38],
+                "content": "",
+            },
+        ]
+    )
+
+    assert optimized == [
+        {
+            "type": BlockType.EQUATION,
+            "bbox": [0.1, 0.3, 0.85, 0.4],
+            "content": "",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("equation_bbox", "number_bbox", "expected_bbox"),
+    [
+        (None, [0.75, 0.32, 0.85, 0.38], None),
+        ([0.1, 0.3, 0.7, 0.4], None, [0.1, 0.3, 0.7, 0.4]),
+        ([0.1, 0.3, 0.7, 0.4], ["bad", 0.32, 0.85, 0.38], [0.1, 0.3, 0.7, 0.4]),
+        ([0.1, 0.3, 0.7, 0.4], [0.85, 0.32, 0.75, 0.38], [0.1, 0.3, 0.7, 0.4]),
+    ],
+)
+def test_formula_number_optimizer_preserves_equation_bbox_when_union_is_invalid(
+    equation_bbox: list[float] | None,
+    number_bbox: list[float | str] | None,
+    expected_bbox: list[float] | None,
+) -> None:
+    """验证任一 bbox 缺失、非法或退化时不阻断内容合并且保留公式原框。"""
+    equation = {
+        "type": BlockType.EQUATION,
+        "content": "x=4",
+    }
+    if equation_bbox is not None:
+        equation["bbox"] = equation_bbox
+    number = {
+        "type": BlockType.FORMULA_NUMBER,
+        "content": "(4)",
+    }
+    if number_bbox is not None:
+        number["bbox"] = number_bbox
+
+    optimized = formulas.optimize_hybrid_formula_number_blocks([equation, number])
+
+    assert len(optimized) == 1
+    assert optimized[0]["content"] == r"x=4\tag{4}"
+    assert optimized[0].get("bbox") == expected_bbox
+
+
+def test_formula_number_optimizer_prefers_trailing_number() -> None:
+    """验证前后编号夹住公式时仅合并后置编号，前置编号继续降级为文本。"""
+    optimized = formulas.optimize_hybrid_formula_number_blocks(
+        [
+            {
+                "type": BlockType.FORMULA_NUMBER,
+                "bbox": [0.1, 0.32, 0.2, 0.38],
+                "content": "(1)",
+            },
+            {
+                "type": BlockType.EQUATION,
+                "bbox": [0.25, 0.3, 0.7, 0.4],
+                "content": "x=2",
+            },
+            {
+                "type": BlockType.FORMULA_NUMBER,
+                "bbox": [0.75, 0.32, 0.85, 0.38],
+                "content": "(2)",
+            },
+        ]
+    )
+
+    assert optimized == [
+        {
+            "type": BlockType.TEXT,
+            "bbox": [0.1, 0.32, 0.2, 0.38],
+            "content": "(1)",
+        },
+        {
+            "type": BlockType.EQUATION,
+            "bbox": [0.25, 0.3, 0.85, 0.4],
+            "content": r"x=2\tag{2}",
+        },
+    ]
+
+
+def test_formula_number_optimizer_downgrades_unmatched_number() -> None:
+    """验证没有相邻公式时继续把编号块降级为普通文本。"""
+    optimized = formulas.optimize_hybrid_formula_number_blocks(
+        [
+            {
+                "type": BlockType.FORMULA_NUMBER,
+                "bbox": [0.75, 0.32, 0.85, 0.38],
+                "content": "(5)",
+            }
+        ]
+    )
+
+    assert optimized == [
+        {
+            "type": BlockType.TEXT,
+            "bbox": [0.75, 0.32, 0.85, 0.38],
+            "content": "(5)",
         }
     ]
 
@@ -757,6 +910,108 @@ def test_formula_number_optimizer_does_not_accept_legacy_interline_equation() ->
         {"type": "interline_equation", "content": "x+1"},
         {"type": BlockType.TEXT, "content": "(2)"},
     ]
+
+
+def test_low_formula_number_merge_runs_before_visual_crop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 low 在文本与表格处理后合并公式编号，并把扩框结果交给视觉裁图。"""
+    fake_document = MagicMock()
+    fake_document.page_count = 1
+    fake_document.__getitem__.return_value = MagicMock(size=(100.0, 100.0))
+    page_image = Image.new("RGB", (100, 100), "white")
+    layout_results = [
+        [
+            {
+                "label": "display_formula",
+                "bbox": [10, 30, 70, 40],
+                "score": 0.9,
+            },
+            {
+                "label": "formula_number",
+                "bbox": [75, 32, 85, 38],
+                "score": 0.9,
+            },
+        ]
+    ]
+    hybrid_model = MagicMock()
+    hybrid_model.layout_model.batch_predict.return_value = layout_results
+    events: list[str] = []
+    optimize_call_count = 0
+    original_optimizer = formulas.optimize_hybrid_formula_number_blocks
+
+    def fake_process_low_text(
+        _images_list: object,
+        _pdf_pages: object,
+        model_list: list[list[dict[str, object]]],
+        _parse_mode: object,
+        _hybrid_model: object,
+        _images_layout_res: object,
+    ) -> list[list[dict[str, object]]]:
+        """记录 low 文本与表格处理完成，并原样返回 layout block。"""
+        events.append("process_low")
+        return model_list
+
+    def tracked_optimizer(page_model_list: list[dict[str, object]]) -> list[dict[str, object]]:
+        """记录 low 公式编号合并次数，并调用真实合并实现。"""
+        nonlocal optimize_call_count
+        optimize_call_count += 1
+        events.append("optimize_formula_number")
+        return original_optimizer(page_model_list)  # type: ignore[arg-type, return-value]
+
+    def fake_attach_visual_blocks(
+        model_list: list[list[dict[str, object]]],
+        _images_list: object,
+        *,
+        page_start_index: int,
+    ) -> None:
+        """校验视觉裁图入口接收到已经完成编号合并和 bbox 扩展的公式块。"""
+        events.append("attach_visual")
+        assert page_start_index == 0
+        assert model_list == [
+            [
+                {
+                    "type": BlockType.EQUATION,
+                    "bbox": [0.1, 0.3, 0.85, 0.4],
+                    "angle": 0,
+                }
+            ]
+        ]
+
+    monkeypatch.setattr(window, "get_processing_window_size", lambda default: 1)
+    monkeypatch.setattr(
+        window,
+        "load_images_from_pdf_bytes_range",
+        MagicMock(return_value=[{"img_pil": page_image}]),
+    )
+    monkeypatch.setattr(window, "_process_low_text", fake_process_low_text)
+    monkeypatch.setattr(window, "optimize_hybrid_formula_number_blocks", tracked_optimizer)
+    monkeypatch.setattr(window, "_attach_visual_block_images", fake_attach_visual_blocks)
+
+    model_list = window.process_pdf_windows(
+        b"fake-pdf",
+        fake_document,
+        effort="low",
+        parse_mode="txt",
+        image_analysis=True,
+        flash_txt_mode=False,
+        hybrid_model=hybrid_model,
+        vlm_predictor=None,
+    )
+
+    assert model_list == [
+        [
+            {
+                "type": BlockType.EQUATION,
+                "bbox": [0.1, 0.3, 0.85, 0.4],
+                "angle": 0,
+            }
+        ]
+    ]
+    assert optimize_call_count == 1
+    assert events == ["process_low", "optimize_formula_number", "attach_visual"]
+    with pytest.raises(ValueError, match="closed image"):
+        page_image.getpixel((0, 0))
 
 
 def test_normalize_pdf_model_list_rejects_unclassified_vlm_title() -> None:
