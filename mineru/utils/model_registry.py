@@ -197,6 +197,22 @@ PP_FORMULANET_PLUS_M_ONNX = ModelRepo(
     },
 )
 
+# MinerU2.5-Pro-2605-1.2B GGUF 量化版（Q8_0），用于 llama.cpp / llama-cpp-python 推理。
+# 托管在 jinzhenj 双平台镜像，含主权重与多模态投影权重。
+# 归入 light standard tier（llama.cpp 后端尚未集成到运行时，仅供实验性使用）。
+MINERU_2_5_PRO_2605_1_2B_GGUF = ModelRepo(
+    name="MinerU2.5-Pro-2605-1.2B-GGUF",
+    stack="light",
+    repos={
+        "huggingface": "jinzhenj/MinerU2.5-Pro-2605-1.2B-GGUF",
+        "modelscope": "jinzhenj/MinerU2.5-Pro-2605-1.2B-GGUF",
+    },
+    paths={
+        "main": "MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+        "mmproj": "mmproj-MinerU2.5-Pro-2605-1.2B-Q8_0.gguf",
+    },
+)
+
 MODEL_REPOS: tuple[ModelRepo, ...] = (
     PDF_EXTRACT_KIT,
     MINERU_2_5_PRO_2605_1_2B,
@@ -206,6 +222,7 @@ MODEL_REPOS: tuple[ModelRepo, ...] = (
     PP_OCR_V6_MEDIUM_DET_ONNX,
     PP_OCR_V6_MEDIUM_REC_ONNX,
     PP_FORMULANET_PLUS_M_ONNX,
+    MINERU_2_5_PRO_2605_1_2B_GGUF,
 )
 
 MODEL_REPOS_BY_NAME: dict[str, ModelRepo] = {repo.name: repo for repo in MODEL_REPOS}
@@ -237,13 +254,13 @@ _REPOS_FOR_TIER_LIGHT: dict[DeploymentTier, tuple[ModelRepo, ...]] = {
         PP_OCR_V6_SMALL_REC_ONNX,
         PP_FORMULANET_PLUS_M_ONNX,
     ),
-    # light stack 暂未提供 VLM，standard 与 basic 共用同一组小模型，
-    # 避免让用户误以为下载完就能跑 standard tier。
+    # light standard 在 basic 小模型基础上追加 GGUF VLM（llama.cpp 推理）。
     "standard": (
         PP_DOCLAYOUT_V2_ONNX,
         PP_OCR_V6_SMALL_DET_ONNX,
         PP_OCR_V6_SMALL_REC_ONNX,
-        PP_FORMULANET_PLUS_M_ONNX,
+        PP_FORMULANET_PLUS_M_ONNX,  # TODO: remove?
+        MINERU_2_5_PRO_2605_1_2B_GGUF,
     ),
 }
 
@@ -300,6 +317,7 @@ def model_path_exists(path: ModelPath) -> bool:
 
 __all__ = [
     "MINERU_2_5_PRO_2605_1_2B",
+    "MINERU_2_5_PRO_2605_1_2B_GGUF",
     "MODEL_COMPLETE_MARKER",
     "MODEL_REPOS",
     "MODEL_REPOS_BY_NAME",

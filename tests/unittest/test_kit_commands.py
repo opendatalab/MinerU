@@ -1974,7 +1974,7 @@ def test_models_download_tier_basic_light(monkeypatch: Any) -> None:
     assert "Downloaded models for tier basic" in result.output
 
 
-def test_models_download_tier_standard_light_matches_basic_light(monkeypatch: Any) -> None:
+def test_models_download_tier_standard_light(monkeypatch: Any) -> None:
     captured: list[str] = []
 
     def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
@@ -1991,6 +1991,7 @@ def test_models_download_tier_standard_light_matches_basic_light(monkeypatch: An
         "PP-OCRv6_small_det_onnx",
         "PP-OCRv6_small_rec_onnx",
         "PP-FormulaNet_plus-M_onnx",
+        "MinerU2.5-Pro-2605-1.2B-GGUF",
     ]
 
 

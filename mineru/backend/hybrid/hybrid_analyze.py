@@ -26,6 +26,7 @@ from ...utils.backend_options import (
     MAX_HYBRID_EFFORT,
     validate_effort,
 )
+from ...utils.bbox_utils import normalize_to_int_bbox
 from ...utils.config_reader import get_device, get_processing_window_size
 from ...utils.enum_class import ImageType
 from ...utils.image_payload import ImagePayloadCache
@@ -41,13 +42,11 @@ from ...utils.ocr_utils import (
     update_det_boxes,
 )
 from ...utils.pdf_document import PDFDocument
-from ...utils.pdf_image_tools import aio_load_images_from_pdf_bytes_range, load_images_from_pdf_bytes_range
-from ...utils.bbox_utils import normalize_to_int_bbox
-from ...utils.pdf_image_tools import get_crop_np_img
+from ...utils.pdf_image_tools import aio_load_images_from_pdf_bytes_range, get_crop_np_img, load_images_from_pdf_bytes_range
 from ..local_model_runtime import (
     AtomicModel,
-    HybridLocalModelContextSingleton,
     HybridLocalModelContext,
+    HybridLocalModelContextSingleton,
     run_layout_inference,
     run_mfr_inference,
     run_ocr_inference,
@@ -95,6 +94,8 @@ class _OcrDetCrop:
     useful_list: list[Any]
     adjusted_mfdetrec_res: list[Any]
     page_ocr_res_list: list[dict[str, Any]]
+
+
 HYBRID_VLM_LAYOUT_LABEL_MAP = {
     "abstract": MineruBlockType.TEXT,
     "algorithm": MineruBlockType.CODE,
@@ -951,10 +952,7 @@ def _sort_medium_table_ocr_result(ocr_result: list[list[Any]]) -> None:
         for j in range(i, -1, -1):
             cur_box = np.asarray(sorted_result[j][0], dtype=np.float32)
             next_box = np.asarray(sorted_result[j + 1][0], dtype=np.float32)
-            if (
-                abs(float(next_box[0][1]) - float(cur_box[0][1])) < 10
-                and float(next_box[0][0]) < float(cur_box[0][0])
-            ):
+            if abs(float(next_box[0][1]) - float(cur_box[0][1])) < 10 and float(next_box[0][0]) < float(cur_box[0][0]):
                 sorted_result[j], sorted_result[j + 1] = sorted_result[j + 1], sorted_result[j]
             else:
                 break
@@ -1163,11 +1161,7 @@ def _build_medium_table_ocr_det_items(table_items: list[dict[str, Any]]) -> list
     table_det_items = []
     for table_id, table_item in enumerate(table_items):
         bgr_image = cv2.cvtColor(table_item["table_img"], cv2.COLOR_RGB2BGR)
-        inline_objects = (
-            table_item.get("table_inline_objects", [])
-            if _medium_table_supports_inline_objects(table_item)
-            else []
-        )
+        inline_objects = table_item.get("table_inline_objects", []) if _medium_table_supports_inline_objects(table_item) else []
         inline_mask_boxes = [{"bbox": inline_object["table_rel_mask_bbox"]} for inline_object in inline_objects]
         formula_mask_boxes = [
             {"bbox": inline_object["table_rel_mask_bbox"]}
@@ -1578,8 +1572,7 @@ def _apply_ocr_rec_results(
 
     if len(ocr_result_list) != len(need_ocr_list):
         raise ValueError(
-            "Hybrid OCR rec result count mismatch: "
-            f"ocr_result_list={len(ocr_result_list)}, need_ocr_list={len(need_ocr_list)}"
+            f"Hybrid OCR rec result count mismatch: ocr_result_list={len(ocr_result_list)}, need_ocr_list={len(need_ocr_list)}"
         )
 
     items_to_remove = []
@@ -1953,6 +1946,7 @@ def doc_analyze(
     predictor: Any | None = None,
     backend: Literal[
         "http-client",
+        "llama-cpp-engine",
         "transformers",
         "mlx-engine",
         "lmdeploy-engine",
@@ -2116,6 +2110,7 @@ async def aio_doc_analyze(
     predictor: Any | None = None,
     backend: Literal[
         "http-client",
+        "llama-cpp-engine",
         "transformers",
         "mlx-engine",
         "lmdeploy-engine",
