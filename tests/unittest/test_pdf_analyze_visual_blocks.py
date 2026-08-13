@@ -10,7 +10,7 @@ import pytest
 from PIL import Image, ImageDraw
 
 from mineru.backend import analyze
-from mineru.backend.utils.raw_block_types import RAW_CAPTION, RAW_FOOTNOTE, RAW_PHONETIC
+from mineru.backend.utils.raw_block_types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_PHONETIC
 from mineru.types import BlockType, MiddleJson
 
 
@@ -595,6 +595,100 @@ def test_normalize_pdf_model_list_updates_in_place() -> None:
         for page_model_list in model_list
         for block in page_model_list
     )
+
+
+@pytest.mark.parametrize(
+    "block_type",
+    [
+        BlockType.TEXT,
+        BlockType.DOC_TITLE,
+        BlockType.PARAGRAPH_TITLE,
+        BlockType.ASIDE_TEXT,
+        BlockType.HEADER,
+        BlockType.FOOTER,
+        BlockType.PAGE_NUMBER,
+        BlockType.PAGE_FOOTNOTE,
+        BlockType.REF_TEXT,
+        BlockType.LIST,
+        BlockType.INDEX,
+        RAW_CAPTION,
+        RAW_FOOTNOTE,
+        RAW_PHONETIC,
+    ],
+)
+def test_normalize_pdf_model_list_converts_full_width_alphanumeric_for_textual_blocks(
+    block_type: str,
+) -> None:
+    """验证 PDF 自然语言块统一转换全角字母和数字，同时保留全角标点。"""
+    model_list = [[{
+        "type": block_type,
+        "content": "Ａｚ０，。！？（）",
+        "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
+    }]]
+
+    analyze._normalize_pdf_model_list(model_list)
+
+    assert model_list[0][0]["content"] == "Az0，。！？（）"
+    expected_type = BlockType.TEXT if block_type == RAW_PHONETIC else block_type
+    assert model_list[0][0]["type"] == expected_type
+
+
+def test_normalize_pdf_model_list_preserves_inline_formulas_during_full_width_cleanup() -> None:
+    """验证两种行内公式片段不参与全角转换，普通正文仍正常清洗。"""
+    model_list = [[{
+        "type": BlockType.TEXT,
+        "content": "前Ａ１ \\(Ｆ２+x\\) 中Ｂ３ <eq>Ｃ４+y</eq> 后Ｄ５",
+        "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
+    }]]
+
+    analyze._normalize_pdf_model_list(model_list)
+
+    assert model_list[0][0]["content"] == "前A1 <eq>Ｆ２+x</eq> 中B3 <eq>Ｃ４+y</eq> 后D5"
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        ("前Ａ１ \\(Ｆ２ 后Ｂ３", "前A1 \\(Ｆ２ 后Ｂ３"),
+        ("前Ａ１ <eq>Ｆ２ 后Ｂ３", "前A1 <eq>Ｆ２ 后Ｂ３"),
+    ],
+)
+def test_normalize_pdf_model_list_preserves_content_after_unclosed_inline_formula(
+    content: str,
+    expected: str,
+) -> None:
+    """验证未闭合公式从起始符到文本末尾均保持原样，避免误清洗公式内容。"""
+    model_list = [[{
+        "type": BlockType.TEXT,
+        "content": content,
+        "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
+    }]]
+
+    analyze._normalize_pdf_model_list(model_list)
+
+    assert model_list[0][0]["content"] == expected
+
+
+@pytest.mark.parametrize(
+    "block_type",
+    [
+        BlockType.TABLE,
+        BlockType.CODE,
+        RAW_ALGORITHM,
+        BlockType.EQUATION,
+        BlockType.FORMULA_NUMBER,
+        BlockType.IMAGE,
+        BlockType.CHART,
+        "unknown",
+    ],
+)
+def test_normalize_pdf_model_list_skips_non_natural_language_content(block_type: str) -> None:
+    """验证表格、代码、公式、视觉主体和未知类型不执行自然语言全角清洗。"""
+    model_list = [[{"type": block_type, "content": "Ａｚ０，。！？（）"}]]
+
+    analyze._normalize_pdf_model_list(model_list)
+
+    assert model_list[0][0]["content"] == "Ａｚ０，。！？（）"
 
 
 def test_normalize_pdf_model_list_converts_phonetic_and_cleans_equation() -> None:

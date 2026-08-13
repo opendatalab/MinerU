@@ -30,7 +30,7 @@ from mineru.backend.utils.boxbase import (
     calculate_overlap_area_2_minbox_area_ratio,
     calculate_overlap_area_in_bbox1_area_ratio,
 )
-from mineru.backend.utils.char_utils import resolve_text_line_boundary
+from mineru.backend.utils.char_utils import full_to_half_exclude_marks, resolve_text_line_boundary
 from mineru.backend.utils.formula_number import optimize_hybrid_formula_number_blocks
 from mineru.backend.utils.analyze_draft import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.utils.span_block_fix import group_spans_to_lines
@@ -107,6 +107,21 @@ LINE_METADATA_BLOCK_TYPES = {
     BlockType.TEXT,
     BlockType.DOC_TITLE,
     BlockType.PARAGRAPH_TITLE,
+    RAW_CAPTION,
+    RAW_FOOTNOTE,
+}
+NATURAL_LANGUAGE_CONTENT_BLOCK_TYPES = {
+    BlockType.TEXT,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
+    BlockType.ASIDE_TEXT,
+    BlockType.HEADER,
+    BlockType.FOOTER,
+    BlockType.PAGE_NUMBER,
+    BlockType.PAGE_FOOTNOTE,
+    BlockType.REF_TEXT,
+    BlockType.LIST,
+    BlockType.INDEX,
     RAW_CAPTION,
     RAW_FOOTNOTE,
 }
@@ -2502,6 +2517,36 @@ def _is_valid_pdf_text_block(block: dict[str, Any]) -> bool:
     return True
 
 
+def _normalize_natural_language_content(content: str) -> str:
+    """将自然语言中的全角字母和数字转为半角，同时原样保留行内公式片段。"""
+    normalized_parts: list[str] = []
+    cursor = 0
+    formula_markers = (("\\(", "\\)"), ("<eq>", "</eq>"))
+
+    while cursor < len(content):
+        formula_starts = [
+            (start, opening, closing)
+            for opening, closing in formula_markers
+            if (start := content.find(opening, cursor)) >= 0
+        ]
+        if not formula_starts:
+            normalized_parts.append(full_to_half_exclude_marks(content[cursor:]))
+            break
+
+        formula_start, opening, closing = min(formula_starts, key=lambda item: item[0])
+        normalized_parts.append(full_to_half_exclude_marks(content[cursor:formula_start]))
+        formula_end = content.find(closing, formula_start + len(opening))
+        if formula_end < 0:
+            normalized_parts.append(content[formula_start:])
+            break
+
+        formula_end += len(closing)
+        normalized_parts.append(content[formula_start:formula_end])
+        cursor = formula_end
+
+    return "".join(normalized_parts)
+
+
 def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
     """清理 PDF block 元数据、规范公式，并过滤正文或行框无效的文本块。"""
     for page_idx, page_model_list in enumerate(model_list):
@@ -2527,6 +2572,8 @@ def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
             content = block.get("content")
             if not isinstance(content, str):
                 continue
+            if block.get("type") in NATURAL_LANGUAGE_CONTENT_BLOCK_TYPES:
+                content = _normalize_natural_language_content(content)
             block["content"] = _INLINE_FORMULA_PATTERN.sub(
                 lambda match: f"<eq>{match.group(1)}</eq>",
                 content,
