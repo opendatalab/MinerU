@@ -189,21 +189,29 @@ def test_recursive_list_and_index_round_trip() -> None:
     assert parse_block(index_block.to_dict(skip_defaults=False)) == index_block
 
 
-def test_list_subtype_must_match_direct_text_children() -> None:
-    """验证 List subtype 只约束当前层直接文本子项。"""
-    with pytest.raises(ValidationError, match="match sub_type"):
-        parse_block({"type": "list", "sub_type": "ref_text", "content": [{"type": "text", "content": "x"}]})
+def test_list_subtype_allows_mixed_direct_text_children() -> None:
+    """验证 List subtype 是子项类型的统计结果，不约束每个直接子项。"""
     block = parse_block(
         {
-            "type": "list",
-            "sub_type": "text",
+            "type": "list", "sub_type": "ref_text",
             "content": [
                 {"type": "text", "content": "x"},
-                {"type": "list", "sub_type": "ref_text", "content": [{"type": "ref_text", "content": "r"}]},
+                {"type": "ref_text", "content": "r1"},
+                {"type": "ref_text", "content": "r2"},
+                {"type": "list", "sub_type": "text", "content": [{"type": "ref_text", "content": "nested"}]},
             ],
         }
     )
     assert isinstance(block, ListBlock)
+    assert block.sub_type == BlockType.REF_TEXT
+    assert [child.type for child in block.content] == [
+        BlockType.TEXT,
+        BlockType.REF_TEXT,
+        BlockType.REF_TEXT,
+        BlockType.LIST,
+    ]
+    assert isinstance(block.content[3], ListBlock)
+    assert block.content[3].content[0].type == BlockType.REF_TEXT
 
 
 @pytest.mark.parametrize("visual_type", ["image", "table", "chart", "code"])

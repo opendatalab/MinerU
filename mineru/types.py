@@ -458,18 +458,6 @@ class ListBlock(BlockBase):
     sub_type: Literal[BlockType.TEXT, BlockType.REF_TEXT] | None = None
     continues_prev: bool | None = None
 
-    @model_validator(mode="after")
-    def _validate_sub_type(self) -> ListBlock:
-        """存在 subtype 时，要求当前层直接文本子项与声明类型一致。"""
-        if self.sub_type is None:
-            return self
-        for child in self.content:
-            if isinstance(child, ListBlock):
-                continue
-            if child.type != self.sub_type:
-                raise ValueError("list direct text children must match sub_type")
-        return self
-
 
 IndexChildBlock: TypeAlias = Annotated[
     Union[TextBlock, "IndexBlock"],
