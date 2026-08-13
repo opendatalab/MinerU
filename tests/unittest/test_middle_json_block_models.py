@@ -7,7 +7,8 @@ import pytest
 from pydantic import ValidationError
 
 import mineru.types as types_module
-from mineru.types import RAW_ONLY_BLOCK_TYPES
+from mineru.backend.postprocess.pages import model_list_to_pages
+from mineru.types import RAW_FORMULA_NUMBER, RAW_ONLY_BLOCK_TYPES
 from mineru.types import (
     BLOCK_ADAPTER,
     BLOCK_TYPES,
@@ -24,13 +25,12 @@ from mineru.types import (
 
 
 def _public_block_payloads() -> dict[str, dict[str, object]]:
-    """构造 29 个公开 discriminator 的最小合法载荷。"""
+    """构造 28 个公开 discriminator 的最小合法载荷。"""
     text_leaf = {"type": "text", "content": "item"}
     payloads: dict[str, dict[str, object]] = {
         "aside_text": {"type": "aside_text", "content": "aside"},
         "doc_title": {"type": "doc_title", "content": "title"},
         "footer": {"type": "footer", "content": "footer"},
-        "formula_number": {"type": "formula_number", "content": "(1)"},
         "header": {"type": "header", "content": "header"},
         "index": {"type": "index", "content": [text_leaf]},
         "equation": {"type": "equation", "content": "x=1"},
@@ -69,12 +69,12 @@ def _public_block_payloads() -> dict[str, dict[str, object]]:
     return payloads
 
 
-def test_all_29_public_discriminators_parse_to_concrete_models() -> None:
+def test_all_28_public_discriminators_parse_to_concrete_models() -> None:
     """验证公开类型集合与 discriminated union 完整一致。"""
     payloads = _public_block_payloads()
 
     assert set(payloads) == BLOCK_TYPES
-    assert len(payloads) == 29
+    assert len(payloads) == 28
     assert "equation" not in RAW_ONLY_BLOCK_TYPES
     assert all(parse_block(payload).type == block_type for block_type, payload in payloads.items())
     assert isinstance(parse_block(payloads["equation"]), EquationBlock)
@@ -112,6 +112,22 @@ def test_equation_schema_uses_only_canonical_discriminator() -> None:
     assert "interline_equation" not in mapping
     assert "EquationBlock" in schema["$defs"]
     assert legacy_model_name not in schema["$defs"]
+
+
+def test_formula_number_is_rejected_by_middle_json_boundary_and_schema() -> None:
+    """验证 formula_number 仅属于 Analyze raw 阶段，不能进入公开 Block 或 Middle JSON。"""
+    schema = BLOCK_ADAPTER.json_schema()
+    mapping = schema["discriminator"]["mapping"]
+
+    assert RAW_FORMULA_NUMBER in RAW_ONLY_BLOCK_TYPES
+    assert RAW_FORMULA_NUMBER not in mapping
+    assert "FormulaNumberBlock" not in schema["$defs"]
+    with pytest.raises(ValidationError):
+        parse_block({"type": RAW_FORMULA_NUMBER, "content": "(1)"})
+    with pytest.raises(ValidationError):
+        model_list_to_pages(
+            [[{"type": RAW_FORMULA_NUMBER, "bbox": [0.7, 0.3, 0.8, 0.4], "content": "(1)"}]]
+        )
 
 
 def test_cross_type_fields_and_unknown_fields_are_rejected() -> None:

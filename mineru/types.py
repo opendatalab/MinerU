@@ -17,12 +17,14 @@ RawBlockType: TypeAlias = Literal[
     "algorithm",
     "caption",
     "footnote",
+    "formula_number",
     "phonetic",
 ]
 
 RAW_ALGORITHM: RawBlockType = "algorithm"
 RAW_CAPTION: RawBlockType = "caption"
 RAW_FOOTNOTE: RawBlockType = "footnote"
+RAW_FORMULA_NUMBER: RawBlockType = "formula_number"
 RAW_PHONETIC: RawBlockType = "phonetic"
 
 RAW_ONLY_BLOCK_TYPES = frozenset(
@@ -30,6 +32,7 @@ RAW_ONLY_BLOCK_TYPES = frozenset(
         RAW_ALGORITHM,
         RAW_CAPTION,
         RAW_FOOTNOTE,
+        RAW_FORMULA_NUMBER,
         RAW_PHONETIC,
     }
 )
@@ -102,7 +105,6 @@ class BlockType:
     # Added in pp_doclayout_v2
     DOC_TITLE = "doc_title"
     PARAGRAPH_TITLE = "paragraph_title"
-    FORMULA_NUMBER = "formula_number"
 
 
 class ContentType:
@@ -172,7 +174,6 @@ BlockTypes = Literal[
     BlockType.PAGE_FOOTNOTE,
     BlockType.DOC_TITLE,
     BlockType.PARAGRAPH_TITLE,
-    BlockType.FORMULA_NUMBER,
 ]
 
 BLOCK_TYPES = {
@@ -204,7 +205,6 @@ BLOCK_TYPES = {
     BlockType.PAGE_FOOTNOTE,
     BlockType.DOC_TITLE,
     BlockType.PARAGRAPH_TITLE,
-    BlockType.FORMULA_NUMBER,
 }
 
 VISUAL_RELATION_IGNORED_TYPES = {
@@ -376,11 +376,6 @@ class PageNumberBlock(BlockBase):
 
 class PageFootnoteBlock(BlockBase):
     type: Literal[BlockType.PAGE_FOOTNOTE]
-    content: str
-
-
-class FormulaNumberBlock(BlockBase):
-    type: Literal[BlockType.FORMULA_NUMBER]
     content: str
 
 
@@ -589,7 +584,6 @@ Block: TypeAlias = Annotated[
         FooterBlock,
         PageNumberBlock,
         PageFootnoteBlock,
-        FormulaNumberBlock,
         EquationBlock,
         ListBlock,
         IndexBlock,

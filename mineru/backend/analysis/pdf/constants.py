@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import re
 
-from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_PHONETIC, BlockType
+from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_FORMULA_NUMBER, RAW_PHONETIC, BlockType
 
 LAYOUT_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
@@ -85,7 +85,7 @@ VLM_LAYOUT_LABEL_MAP = {
     "footer": BlockType.FOOTER,
     "footer_image": BlockType.FOOTER,
     "footnote": BlockType.PAGE_FOOTNOTE,
-    "formula_number": BlockType.FORMULA_NUMBER,
+    "formula_number": RAW_FORMULA_NUMBER,
     "header": BlockType.HEADER,
     "header_image": BlockType.HEADER,
     "image": BlockType.IMAGE,

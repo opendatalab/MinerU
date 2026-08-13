@@ -14,7 +14,7 @@ from loguru import logger
 
 from mineru.backend.local_model_runtime import HybridLocalModelContext, run_ocr_inference
 from mineru.model.model_types import AtomicModelName
-from mineru.types import BBox, BlockType, ContentType
+from mineru.types import RAW_FORMULA_NUMBER, BBox, BlockType, ContentType
 from mineru.utils.bbox_utils import (
     calculate_overlap_area_in_bbox1_area_ratio,
     normalize_to_int_bbox,
@@ -535,7 +535,7 @@ def _remove_low_table_inner_blocks(
     inner_block_types = {
         BlockType.IMAGE,
         BlockType.EQUATION,
-        BlockType.FORMULA_NUMBER,
+        RAW_FORMULA_NUMBER,
     }
     for image_dict, page_model_list in zip(images_list, model_list):
         page_size = _normalize_page_size(image_dict["img_pil"])

@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 from mineru.backend import analyze
 from mineru.backend.analysis import office
 from mineru.backend.analysis.pdf import constants, formulas, normalization, pipeline, tables, visuals, window
-from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_PHONETIC
+from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_FORMULA_NUMBER, RAW_PHONETIC
 from mineru.types import BlockType, MiddleJson
 
 
@@ -681,7 +681,6 @@ def test_normalize_pdf_model_list_preserves_content_after_unclosed_inline_formul
         BlockType.CODE,
         RAW_ALGORITHM,
         BlockType.EQUATION,
-        BlockType.FORMULA_NUMBER,
         BlockType.IMAGE,
         BlockType.CHART,
         "unknown",
@@ -737,7 +736,7 @@ def test_formula_number_optimizer_recognizes_canonical_and_upstream_equation_typ
                 "content": r"\[x+1\]",
             },
             {
-                "type": BlockType.FORMULA_NUMBER,
+                "type": RAW_FORMULA_NUMBER,
                 "bbox": [0.75, 0.32, 0.85, 0.38],
                 "content": "(2)",
             },
@@ -758,7 +757,7 @@ def test_formula_number_optimizer_merges_leading_number_bbox() -> None:
     optimized = formulas.optimize_hybrid_formula_number_blocks(
         [
             {
-                "type": BlockType.FORMULA_NUMBER,
+                "type": RAW_FORMULA_NUMBER,
                 "bbox": [0.1, 0.32, 0.2, 0.38],
                 "content": "(3)",
             },
@@ -789,7 +788,7 @@ def test_formula_number_optimizer_merges_empty_content_by_geometry() -> None:
                 "content": "",
             },
             {
-                "type": BlockType.FORMULA_NUMBER,
+                "type": RAW_FORMULA_NUMBER,
                 "bbox": [0.75, 0.32, 0.85, 0.38],
                 "content": "",
             },
@@ -827,7 +826,7 @@ def test_formula_number_optimizer_preserves_equation_bbox_when_union_is_invalid(
     if equation_bbox is not None:
         equation["bbox"] = equation_bbox
     number = {
-        "type": BlockType.FORMULA_NUMBER,
+        "type": RAW_FORMULA_NUMBER,
         "content": "(4)",
     }
     if number_bbox is not None:
@@ -845,7 +844,7 @@ def test_formula_number_optimizer_prefers_trailing_number() -> None:
     optimized = formulas.optimize_hybrid_formula_number_blocks(
         [
             {
-                "type": BlockType.FORMULA_NUMBER,
+                "type": RAW_FORMULA_NUMBER,
                 "bbox": [0.1, 0.32, 0.2, 0.38],
                 "content": "(1)",
             },
@@ -855,7 +854,7 @@ def test_formula_number_optimizer_prefers_trailing_number() -> None:
                 "content": "x=2",
             },
             {
-                "type": BlockType.FORMULA_NUMBER,
+                "type": RAW_FORMULA_NUMBER,
                 "bbox": [0.75, 0.32, 0.85, 0.38],
                 "content": "(2)",
             },
@@ -881,7 +880,7 @@ def test_formula_number_optimizer_downgrades_unmatched_number() -> None:
     optimized = formulas.optimize_hybrid_formula_number_blocks(
         [
             {
-                "type": BlockType.FORMULA_NUMBER,
+                "type": RAW_FORMULA_NUMBER,
                 "bbox": [0.75, 0.32, 0.85, 0.38],
                 "content": "(5)",
             }
@@ -902,7 +901,7 @@ def test_formula_number_optimizer_does_not_accept_legacy_interline_equation() ->
     optimized = formulas.optimize_hybrid_formula_number_blocks(
         [
             {"type": "interline_equation", "content": "x+1"},
-            {"type": BlockType.FORMULA_NUMBER, "content": "(2)"},
+            {"type": RAW_FORMULA_NUMBER, "content": "(2)"},
         ]
     )
 

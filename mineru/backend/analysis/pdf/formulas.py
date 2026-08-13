@@ -14,7 +14,7 @@ from mineru.backend.local_model_runtime import HybridLocalModelContext
 from mineru.utils.bbox_utils import normalize_to_int_bbox
 from mineru.utils.ocr_utils import get_rotate_crop_image_for_text_rec
 
-from ....types import BlockType
+from ....types import RAW_FORMULA_NUMBER, BlockType
 from mineru.utils.text_utils import full_to_half
 from mineru.utils.text_utils import clean_isolated_formula
 
@@ -61,7 +61,7 @@ def _is_hybrid_equation_block(block: dict[str, Any]) -> bool:
 
 def _is_hybrid_formula_number_block(block: dict[str, Any]) -> bool:
     """判断 raw Hybrid/VLM block 是否表示公式编号。"""
-    return str(block.get("type") or "").lower() == BlockType.FORMULA_NUMBER
+    return str(block.get("type") or "").lower() == RAW_FORMULA_NUMBER
 
 
 def _normalize_hybrid_formula_bbox(bbox: Any) -> list[float] | None:
@@ -222,7 +222,7 @@ def _apply_medium_formula_number_ocr(
         image_h, image_w = np_img.shape[:2]
         bgr_image = cv2.cvtColor(np_img, cv2.COLOR_RGB2BGR)
         for block_item in block_list:
-            if block_item.get("type") != BlockType.FORMULA_NUMBER:
+            if block_item.get("type") != RAW_FORMULA_NUMBER:
                 continue
 
             formula_number_bbox = normalize_to_int_bbox(
