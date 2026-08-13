@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from bs4 import BeautifulSoup
 
-from mineru.backend.utils.table_merge import merge_table, merge_table_content
+from mineru.backend.postprocess.table_merge import merge_table, merge_table_content
 from mineru.types import BlockType
 
 

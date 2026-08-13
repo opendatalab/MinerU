@@ -7,7 +7,7 @@ import pytest
 
 from mineru.model.flash import PdfModel
 from mineru.model.flash.native_pdf import code_blocks, models, pipeline
-from mineru.backend.utils.table_text import project_pdf_spatial_text
+from mineru.utils.spatial_text import project_pdf_spatial_text
 from mineru.utils.pdf_document import PDFDocument, PDFPathInfo
 
 from _flash_pdf_test_utils import _text_line
@@ -292,10 +292,13 @@ def test_rule_delimited_listing_rejects_vertical_track_spanning_candidate() -> N
         [],
     )
 
-    assert code_blocks._vertical_rule_candidate_height_coverage(
-        source.drawing_lines[-1].bbox,
-        (20.0, 20.0, 180.0, 105.0),
-    ) == 1.0
+    assert (
+        code_blocks._vertical_rule_candidate_height_coverage(
+            source.drawing_lines[-1].bbox,
+            (20.0, 20.0, 180.0, 105.0),
+        )
+        == 1.0
+    )
     assert blocks == []
     assert claimed == set()
 
@@ -303,21 +306,12 @@ def test_rule_delimited_listing_rejects_vertical_track_spanning_candidate() -> N
 def test_kvcache_algorithm_pdf_materializes_caption_and_code() -> None:
     """验证真实长算法页面输出相邻 caption/code，且来源文本不再重复。"""
 
-    pdf_path = (
-        Path(__file__).parents[2]
-        / "demo"
-        / "pdfs"
-        / "2407.00079v4_origi-10.pdf"
-    )
+    pdf_path = Path(__file__).parents[2] / "demo" / "pdfs" / "2407.00079v4_origi-10.pdf"
     with PDFDocument(str(pdf_path)) as pdf_doc:
         page = PdfModel().predict(pdf_doc)[0]
 
     caption_text = "Algorithm 1 KVCache-centric Scheduling Algorithm"
-    captions = [
-        block
-        for block in page
-        if block["type"] == "caption" and block.get("content") == caption_text
-    ]
+    captions = [block for block in page if block["type"] == "caption" and block.get("content") == caption_text]
     code = [block for block in page if block["type"] == "code"]
 
     assert len(captions) == 1
@@ -325,11 +319,7 @@ def test_kvcache_algorithm_pdf_materializes_caption_and_code() -> None:
     assert len(code) == 1
     assert code[0]["bbox"] == [0.176, 0.108, 0.824, 0.539]
     assert page.index(captions[0]) + 1 == page.index(code[0])
-    assert not [
-        block
-        for block in page
-        if block["type"] == "header" and block.get("content") == caption_text
-    ]
+    assert not [block for block in page if block["type"] == "header" and block.get("content") == caption_text]
 
     code_content = str(code[0]["content"])
     probes = (
@@ -340,7 +330,4 @@ def test_kvcache_algorithm_pdf_materializes_caption_and_code() -> None:
     )
     assert all(probe in code_content for probe in probes)
     for probe in probes:
-        assert sum(
-            probe in str(block.get("content", ""))
-            for block in page
-        ) == 1
+        assert sum(probe in str(block.get("content", "")) for block in page) == 1

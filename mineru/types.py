@@ -11,7 +11,28 @@ from typing import Annotated, Any, ClassVar, Literal, TypeAlias, Union
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
-from .backend.utils.raw_block_types import RAW_ALGORITHM
+
+# 这些字符串不能作为公开 Block.type discriminator，只用于 raw 阶段或 Block 内部枚举值。
+RawBlockType: TypeAlias = Literal[
+    "algorithm",
+    "caption",
+    "footnote",
+    "phonetic",
+]
+
+RAW_ALGORITHM: RawBlockType = "algorithm"
+RAW_CAPTION: RawBlockType = "caption"
+RAW_FOOTNOTE: RawBlockType = "footnote"
+RAW_PHONETIC: RawBlockType = "phonetic"
+
+RAW_ONLY_BLOCK_TYPES = frozenset(
+    {
+        RAW_ALGORITHM,
+        RAW_CAPTION,
+        RAW_FOOTNOTE,
+        RAW_PHONETIC,
+    }
+)
 
 Tier = Literal[
     "flash",
@@ -657,9 +678,7 @@ class MiddleJson(_StrictMiddleModel):
             for page in self.pages:
                 for block in page.blocks:
                     if block.bbox is None:
-                        raise ValueError(
-                            f"PDF top-level block requires bbox: page_idx={page.page_idx}, index={block.index}"
-                        )
+                        raise ValueError(f"PDF top-level block requires bbox: page_idx={page.page_idx}, index={block.index}")
         return self
 
     def export(
@@ -712,9 +731,7 @@ def _prepare_export_copy(middle_json: MiddleJson) -> tuple[MiddleJson, dict[str,
             data_uri = getattr(block, "image_base64", None)
             if data_uri is not None:
                 if block.index is None:
-                    raise ValueError(
-                        f"Image carrier requires index: page_idx={page.page_idx}, type={block.type}"
-                    )
+                    raise ValueError(f"Image carrier requires index: page_idx={page.page_idx}, type={block.type}")
                 image_bytes, extension = parse_image_data_uri_strict(data_uri)
                 relative_path = f"images/page_{page.page_idx}_{block.type}_{block.index}.{extension}"
                 _register_export_file(image_files, relative_path, image_bytes)
@@ -725,9 +742,7 @@ def _prepare_export_copy(middle_json: MiddleJson) -> tuple[MiddleJson, dict[str,
             if not isinstance(content, str) or "data:image/" not in content:
                 continue
             if block.index is None:
-                raise ValueError(
-                    f"HTML image carrier requires index: page_idx={page.page_idx}, type={block.type}"
-                )
+                raise ValueError(f"HTML image carrier requires index: page_idx={page.page_idx}, type={block.type}")
             ordinal = 0
 
             def _replace_data_uri(match: Any) -> str:
@@ -735,9 +750,7 @@ def _prepare_export_copy(middle_json: MiddleJson) -> tuple[MiddleJson, dict[str,
                 nonlocal ordinal
                 ordinal += 1
                 image_bytes, extension = parse_image_data_uri_strict(match.group(0))
-                relative_path = (
-                    f"images/page_{page.page_idx}_{block.type}_{block.index}_{ordinal}.{extension}"
-                )
+                relative_path = f"images/page_{page.page_idx}_{block.type}_{block.index}_{ordinal}.{extension}"
                 _register_export_file(image_files, relative_path, image_bytes)
                 return relative_path
 
@@ -820,19 +833,13 @@ def _commit_export_files(files: dict[Path, bytes], *, overwrite: bool) -> None:
 
 def _validate_export_path_relationships(relative_paths: list[str]) -> None:
     """拒绝任一导出文件占用另一文件的父目录，避免提交阶段才产生冲突。"""
-    path_parts = {
-        relative_path: Path(relative_path).parts
-        for relative_path in relative_paths
-    }
+    path_parts = {relative_path: Path(relative_path).parts for relative_path in relative_paths}
     for relative_path, parts in path_parts.items():
         for other_path, other_parts in path_parts.items():
             if relative_path == other_path or len(parts) >= len(other_parts):
                 continue
             if other_parts[: len(parts)] == parts:
-                raise ValueError(
-                    "Export file path conflicts with a required directory: "
-                    f"{relative_path} -> {other_path}"
-                )
+                raise ValueError(f"Export file path conflicts with a required directory: {relative_path} -> {other_path}")
 
 
 def _export_middle_json(
@@ -859,15 +866,11 @@ def _export_middle_json(
     relative_files[safe_json_name] = json_bytes
     _validate_export_path_relationships(list(relative_files))
     absolute_files = {
-        _resolve_export_target(output_dir, relative_path): payload
-        for relative_path, payload in relative_files.items()
+        _resolve_export_target(output_dir, relative_path): payload for relative_path, payload in relative_files.items()
     }
     _commit_export_files(absolute_files, overwrite=overwrite)
     json_path = _resolve_export_target(output_dir, safe_json_name)
-    image_paths = tuple(
-        _resolve_export_target(output_dir, relative_path)
-        for relative_path in sorted(image_files)
-    )
+    image_paths = tuple(_resolve_export_target(output_dir, relative_path) for relative_path in sorted(image_files))
     return MiddleJsonExportResult(
         middle_json=exported,
         json_path=json_path,

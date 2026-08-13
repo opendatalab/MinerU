@@ -12,12 +12,6 @@ import pytest
 
 import mineru.model.flash as flash_models
 import mineru.model.flash.model as flat_model_module
-from mineru.backend.office import docx_analyze as docx_backend
-from mineru.backend.office import pptx_analyze as pptx_backend
-from mineru.backend.office import xlsx_analyze as xlsx_backend
-from mineru.backend.office.docx_analyze import office_docx_analyze
-from mineru.backend.office.pptx_analyze import office_pptx_analyze
-from mineru.backend.office.xlsx_analyze import office_xlsx_analyze
 from mineru.model.flash import DocxModel, PdfModel, PptxModel, XlsxModel
 from mineru.model.flash.docx import docx_converter as docx_converter_module
 from mineru.model.flash.docx import main as docx_main
@@ -25,7 +19,6 @@ from mineru.model.flash.pptx import main as pptx_main
 from mineru.model.flash.pptx import pptx_converter as pptx_converter_module
 from mineru.model.flash.xlsx import main as xlsx_main
 from mineru.model.flash.xlsx import xlsx_converter as xlsx_converter_module
-from mineru.parser.office import DocxParser, PptxParser, XlsxParser
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -151,43 +144,6 @@ def test_convert_path_delegates_to_binary_helper(
     assert file_stream.closed
 
 
-@pytest.mark.parametrize(
-    ("backend_module", "analyze_name", "model_name"),
-    [
-        (docx_backend, "office_docx_analyze", "DocxModel"),
-        (pptx_backend, "office_pptx_analyze", "PptxModel"),
-        (xlsx_backend, "office_xlsx_analyze", "XlsxModel"),
-    ],
-)
-def test_office_backend_uses_document_model(
-    monkeypatch: pytest.MonkeyPatch,
-    backend_module: ModuleType,
-    analyze_name: str,
-    model_name: str,
-) -> None:
-    """验证 Office 后端调用对应模型，并保留中间结果转换边界。"""
-
-    model_output = [[{"content": "model"}]]
-    middle_json = [MagicMock()]
-    image_cache = MagicMock()
-    model = MagicMock()
-    model.predict.return_value = model_output
-    model_factory = MagicMock(return_value=model)
-    middle_json_builder = MagicMock(return_value=middle_json)
-    monkeypatch.setattr(backend_module, model_name, model_factory)
-    monkeypatch.setattr(backend_module, "result_to_middle_json", middle_json_builder)
-
-    result = getattr(backend_module, analyze_name)(b"office", image_cache=image_cache)
-
-    assert result == (middle_json, model_output)
-    model_factory.assert_called_once_with()
-    file_stream = model.predict.call_args.args[0]
-    assert isinstance(file_stream, BytesIO)
-    assert file_stream.getvalue() == b"office"
-    assert not file_stream.closed
-    middle_json_builder.assert_called_once_with(model_output, image_cache=image_cache)
-
-
 def test_models_are_exported_from_flash_root() -> None:
     """验证四个模型统一由 Flash 根包公开。"""
 
@@ -236,14 +192,6 @@ def test_importing_pdf_model_does_not_load_office_converters() -> None:
     )
 
     assert result.returncode == 0, result.stderr
-
-
-def test_office_parsers_bind_existing_analyzers() -> None:
-    """验证三个 Office Parser 仍绑定原有的后端分析入口。"""
-
-    assert DocxParser()._analyze_fn is office_docx_analyze
-    assert PptxParser()._analyze_fn is office_pptx_analyze
-    assert XlsxParser()._analyze_fn is office_xlsx_analyze
 
 
 @pytest.mark.parametrize(

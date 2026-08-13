@@ -10,7 +10,9 @@ import pytest
 from PIL import Image, ImageDraw
 
 from mineru.backend import analyze
-from mineru.backend.utils.raw_block_types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_PHONETIC
+from mineru.backend.analysis import office
+from mineru.backend.analysis.pdf import constants, formulas, normalization, pipeline, tables, visuals, window
+from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_PHONETIC
 from mineru.types import BlockType, MiddleJson
 
 
@@ -90,7 +92,7 @@ def test_visual_block_crop_rotates_to_upright(
         "content": "keep-content",
     }
 
-    analyze._attach_visual_block_images([[block]], [{"img_pil": page_image}])
+    visuals._attach_visual_block_images([[block]], [{"img_pil": page_image}])
 
     crop_image = _decode_jpeg_data_uri(block["image_base64"])
     try:
@@ -113,7 +115,7 @@ def test_medium_table_task_reuses_visual_block_upright_rotation() -> None:
         "angle": 270,
     }
 
-    table_tasks = analyze._collect_medium_table_tasks(
+    table_tasks = tables._collect_medium_table_tasks(
         [[table_block]],
         [[]],
         [np_image],
@@ -156,7 +158,7 @@ def test_visual_block_types_receive_jpeg_data_uri_only() -> None:
         "image_base64": "keep-text-field",
     }
 
-    analyze._attach_visual_block_images(
+    visuals._attach_visual_block_images(
         [[*visual_blocks, text_block]],
         [{"img_pil": page_image}],
         page_start_index=7,
@@ -191,7 +193,7 @@ def test_visual_block_crop_clips_page_boundary_and_skips_invalid_bbox() -> None:
         "angle": 0,
     }
 
-    analyze._attach_visual_block_images(
+    visuals._attach_visual_block_images(
         [[clipped_block, invalid_block]],
         [{"img_pil": page_image}],
     )
@@ -270,7 +272,7 @@ def test_image_block_collapses_contained_blocks_before_visual_crop() -> None:
         external_caption,
     ]
 
-    analyze._attach_visual_block_images(
+    visuals._attach_visual_block_images(
         [page_model_list],
         [{"img_pil": page_image}],
     )
@@ -311,7 +313,7 @@ def test_image_block_collapse_keeps_invalid_bbox_blocks() -> None:
     }
     page_model_list = [invalid_image_block, valid_child, invalid_child]
 
-    analyze._collapse_image_blocks(page_model_list)
+    visuals._collapse_image_blocks(page_model_list)
 
     assert page_model_list == [invalid_image_block, valid_child, invalid_child]
     assert invalid_image_block["type"] == BlockType.IMAGE
@@ -355,13 +357,13 @@ def test_xhigh_layout_image_supplements_missing_container_before_crop() -> None:
         ]
     ]
 
-    analyze._supplement_missing_image_block_containers(
+    visuals._supplement_missing_image_block_containers(
         [page_model_list],
         layout_blocks_list,
     )
     assert sum(block.get("type") == "image_block" for block in page_model_list) == 1
 
-    analyze._attach_visual_block_images(
+    visuals._attach_visual_block_images(
         [page_model_list],
         [{"img_pil": page_image}],
     )
@@ -429,13 +431,10 @@ def test_xhigh_layout_image_fallback_requires_visual_count_and_coverage(
     expected_container_count: int,
 ) -> None:
     """验证回退要求至少两个 image/chart，且白名单面积占比大于等于 0.9。"""
-    page_model_list = [
-        {"type": block_type, "bbox": bbox}
-        for block_type, bbox in zip(block_types, block_bboxes)
-    ]
+    page_model_list = [{"type": block_type, "bbox": bbox} for block_type, bbox in zip(block_types, block_bboxes)]
     layout_blocks_list = [[{"type": layout_type, "bbox": [0.0, 0.0, 1.0, 1.0], "angle": 0}]]
 
-    analyze._supplement_missing_image_block_containers(
+    visuals._supplement_missing_image_block_containers(
         [page_model_list],
         layout_blocks_list,
     )
@@ -445,7 +444,7 @@ def test_xhigh_layout_image_fallback_requires_visual_count_and_coverage(
 
 def test_xhigh_layout_image_fallback_uses_whitelist_for_area_but_absorbs_all_types() -> None:
     """验证白名单只负责面积判定，回退成功后仍吸收框内所有类型。"""
-    assert analyze.LOCAL_LAYOUT_IMAGE_BLOCK_AREA_TYPES == {
+    assert constants.LOCAL_LAYOUT_IMAGE_BLOCK_AREA_TYPES == {
         BlockType.IMAGE,
         BlockType.CHART,
         BlockType.IMAGE_CAPTION,
@@ -461,7 +460,7 @@ def test_xhigh_layout_image_fallback_uses_whitelist_for_area_but_absorbs_all_typ
         {"type": BlockType.CHART_CAPTION, "bbox": [0.9, 0.0, 1.0, 1.0]},
     ]
 
-    analyze._supplement_missing_image_block_containers(
+    visuals._supplement_missing_image_block_containers(
         [insufficient_page],
         layout_blocks_list,
     )
@@ -479,11 +478,11 @@ def test_xhigh_layout_image_fallback_uses_whitelist_for_area_but_absorbs_all_typ
         external_text,
     ]
 
-    analyze._supplement_missing_image_block_containers(
+    visuals._supplement_missing_image_block_containers(
         [qualifying_page],
         layout_blocks_list,
     )
-    analyze._collapse_image_blocks(qualifying_page)
+    visuals._collapse_image_blocks(qualifying_page)
 
     assert len(qualifying_page) == 2
     assert qualifying_page[0]["type"] == BlockType.IMAGE
@@ -512,7 +511,7 @@ def test_xhigh_layout_image_fallback_does_not_duplicate_existing_or_overlapping_
         ]
     ]
 
-    analyze._supplement_missing_image_block_containers(
+    visuals._supplement_missing_image_block_containers(
         [page_model_list],
         layout_blocks_list,
     )
@@ -526,7 +525,7 @@ def test_xhigh_layout_image_fallback_does_not_duplicate_existing_or_overlapping_
 def test_visual_block_crop_rejects_page_count_mismatch() -> None:
     """验证 model_list 与渲染页数量不一致时抛出明确异常，避免静默漏页。"""
     with pytest.raises(ValueError, match="Hybrid visual crop page count mismatch"):
-        analyze._attach_visual_block_images([[]], [])
+        visuals._attach_visual_block_images([[]], [])
 
 
 def test_normalize_pdf_model_list_updates_in_place() -> None:
@@ -581,20 +580,14 @@ def test_normalize_pdf_model_list_updates_in_place() -> None:
         ],
     ]
 
-    result = analyze._normalize_pdf_model_list(model_list)
+    result = normalization._normalize_pdf_model_list(model_list)
 
     assert result is None
     assert model_list[0][0]["content"] == "前 <eq>a+b</eq> 中 <eq>c_d</eq> 后"
     assert model_list[0][1]["content"] == "已有 <eq>x</eq> 保持不变"
     assert model_list[0][2]["content"] == "未闭合 \\(formula"
-    assert [block["content"] for block in model_list[1]] == [
-        "跨行 \\(a\nb\\)"
-    ]
-    assert all(
-        "angle" not in block and "score" not in block
-        for page_model_list in model_list
-        for block in page_model_list
-    )
+    assert [block["content"] for block in model_list[1]] == ["跨行 \\(a\nb\\)"]
+    assert all("angle" not in block and "score" not in block for page_model_list in model_list for block in page_model_list)
 
 
 @pytest.mark.parametrize(
@@ -620,13 +613,17 @@ def test_normalize_pdf_model_list_converts_full_width_alphanumeric_for_textual_b
     block_type: str,
 ) -> None:
     """验证 PDF 自然语言块统一转换全角字母和数字，同时保留全角标点。"""
-    model_list = [[{
-        "type": block_type,
-        "content": "Ａｚ０，。！？（）",
-        "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
-    }]]
+    model_list = [
+        [
+            {
+                "type": block_type,
+                "content": "Ａｚ０，。！？（）",
+                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
+            }
+        ]
+    ]
 
-    analyze._normalize_pdf_model_list(model_list)
+    normalization._normalize_pdf_model_list(model_list)
 
     assert model_list[0][0]["content"] == "Az0，。！？（）"
     expected_type = BlockType.TEXT if block_type == RAW_PHONETIC else block_type
@@ -635,13 +632,17 @@ def test_normalize_pdf_model_list_converts_full_width_alphanumeric_for_textual_b
 
 def test_normalize_pdf_model_list_preserves_inline_formulas_during_full_width_cleanup() -> None:
     """验证两种行内公式片段不参与全角转换，普通正文仍正常清洗。"""
-    model_list = [[{
-        "type": BlockType.TEXT,
-        "content": "前Ａ１ \\(Ｆ２+x\\) 中Ｂ３ <eq>Ｃ４+y</eq> 后Ｄ５",
-        "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
-    }]]
+    model_list = [
+        [
+            {
+                "type": BlockType.TEXT,
+                "content": "前Ａ１ \\(Ｆ２+x\\) 中Ｂ３ <eq>Ｃ４+y</eq> 后Ｄ５",
+                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
+            }
+        ]
+    ]
 
-    analyze._normalize_pdf_model_list(model_list)
+    normalization._normalize_pdf_model_list(model_list)
 
     assert model_list[0][0]["content"] == "前A1 <eq>Ｆ２+x</eq> 中B3 <eq>Ｃ４+y</eq> 后D5"
 
@@ -658,13 +659,17 @@ def test_normalize_pdf_model_list_preserves_content_after_unclosed_inline_formul
     expected: str,
 ) -> None:
     """验证未闭合公式从起始符到文本末尾均保持原样，避免误清洗公式内容。"""
-    model_list = [[{
-        "type": BlockType.TEXT,
-        "content": content,
-        "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
-    }]]
+    model_list = [
+        [
+            {
+                "type": BlockType.TEXT,
+                "content": content,
+                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
+            }
+        ]
+    ]
 
-    analyze._normalize_pdf_model_list(model_list)
+    normalization._normalize_pdf_model_list(model_list)
 
     assert model_list[0][0]["content"] == expected
 
@@ -686,28 +691,30 @@ def test_normalize_pdf_model_list_skips_non_natural_language_content(block_type:
     """验证表格、代码、公式、视觉主体和未知类型不执行自然语言全角清洗。"""
     model_list = [[{"type": block_type, "content": "Ａｚ０，。！？（）"}]]
 
-    analyze._normalize_pdf_model_list(model_list)
+    normalization._normalize_pdf_model_list(model_list)
 
     assert model_list[0][0]["content"] == "Ａｚ０，。！？（）"
 
 
 def test_normalize_pdf_model_list_converts_phonetic_and_cleans_equation() -> None:
     """验证 phonetic 转公开类型，同时 equation 保持类型并清理展示分隔符。"""
-    model_list = [[
-        {
-            "type": RAW_PHONETIC,
-            "bbox": [0.1, 0.1, 0.9, 0.2],
-            "content": "phonetic",
-            "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
-        },
-        {
-            "type": BlockType.EQUATION,
-            "bbox": [0.1, 0.3, 0.9, 0.4],
-            "content": r"\[x+1\]",
-        },
-    ]]
+    model_list = [
+        [
+            {
+                "type": RAW_PHONETIC,
+                "bbox": [0.1, 0.1, 0.9, 0.2],
+                "content": "phonetic",
+                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
+            },
+            {
+                "type": BlockType.EQUATION,
+                "bbox": [0.1, 0.3, 0.9, 0.4],
+                "content": r"\[x+1\]",
+            },
+        ]
+    ]
 
-    analyze._normalize_pdf_model_list(model_list)
+    normalization._normalize_pdf_model_list(model_list)
 
     assert model_list[0][0]["type"] == BlockType.TEXT
     assert model_list[0][1] == {
@@ -722,7 +729,7 @@ def test_formula_number_optimizer_recognizes_canonical_and_upstream_equation_typ
     equation_type: str,
 ) -> None:
     """验证公式编号只需兼容 canonical equation 与上游 display_formula 标签。"""
-    optimized = analyze.optimize_hybrid_formula_number_blocks(
+    optimized = formulas.optimize_hybrid_formula_number_blocks(
         [
             {"type": equation_type, "content": r"\[x+1\]"},
             {"type": BlockType.FORMULA_NUMBER, "content": "(2)"},
@@ -739,7 +746,7 @@ def test_formula_number_optimizer_recognizes_canonical_and_upstream_equation_typ
 
 def test_formula_number_optimizer_does_not_accept_legacy_interline_equation() -> None:
     """验证旧 interline_equation 不再被公式编号合并逻辑视为合法公式块。"""
-    optimized = analyze.optimize_hybrid_formula_number_blocks(
+    optimized = formulas.optimize_hybrid_formula_number_blocks(
         [
             {"type": "interline_equation", "content": "x+1"},
             {"type": BlockType.FORMULA_NUMBER, "content": "(2)"},
@@ -755,8 +762,8 @@ def test_formula_number_optimizer_does_not_accept_legacy_interline_equation() ->
 def test_normalize_pdf_model_list_rejects_unclassified_vlm_title() -> None:
     """验证未被 layout 结果分类的 VLM title 以页块位置明确报错。"""
     with pytest.raises(ValueError, match="page_idx=0, block_idx=0"):
-        analyze._normalize_pdf_model_list(
-            [[{"type": analyze._VLM_UNCLASSIFIED_TITLE_TYPE, "bbox": [0.1, 0.1, 0.9, 0.2], "content": "title"}]]
+        normalization._normalize_pdf_model_list(
+            [[{"type": constants._VLM_UNCLASSIFIED_TITLE_TYPE, "bbox": [0.1, 0.1, 0.9, 0.2], "content": "title"}]]
         )
 
 
@@ -796,7 +803,7 @@ def test_normalize_pdf_model_list_removes_five_text_types_with_invalid_lines(
 
     model_list = [[{"type": block_type, "content": "valid", "lines": invalid_lines}]]
 
-    analyze._normalize_pdf_model_list(model_list)
+    normalization._normalize_pdf_model_list(model_list)
 
     assert model_list == [[]]
 
@@ -828,7 +835,7 @@ def test_normalize_pdf_model_list_removes_five_text_types_with_empty_content(
         ]
     ]
 
-    analyze._normalize_pdf_model_list(model_list)
+    normalization._normalize_pdf_model_list(model_list)
 
     assert model_list == [[]]
 
@@ -855,7 +862,7 @@ def test_normalize_pdf_model_list_keeps_other_types_and_valid_text_order() -> No
     }
     model_list = [[equation, first_text, invalid_text, header, second_text]]
 
-    analyze._normalize_pdf_model_list(model_list)
+    normalization._normalize_pdf_model_list(model_list)
 
     assert model_list == [[equation, first_text, header, second_text]]
 
@@ -923,15 +930,15 @@ def test_doc_analyze_office_returns_model_list_without_pdf_processing(
     image_loader = MagicMock()
     visual_image_attacher = MagicMock()
     model_list_normalizer = MagicMock()
-    monkeypatch.setattr(analyze, "_OFFICE_MODEL_MAP", model_factories)
-    monkeypatch.setattr(analyze, "PDFDocument", pdf_document)
-    monkeypatch.setattr(analyze, "HybridLocalModelContextSingleton", hybrid_model_factory)
-    monkeypatch.setattr(analyze, "get_processing_window_size", window_size_reader)
-    monkeypatch.setattr(analyze, "_build_processing_windows", window_builder)
-    monkeypatch.setattr(analyze, "load_images_from_pdf_bytes_range", image_loader)
-    monkeypatch.setattr(analyze, "_attach_visual_block_images", visual_image_attacher)
-    monkeypatch.setattr(analyze, "_normalize_pdf_model_list", model_list_normalizer)
-    monkeypatch.setattr(analyze.time, "perf_counter", fake_perf_counter)
+    monkeypatch.setattr(office, "_OFFICE_MODEL_MAP", model_factories)
+    monkeypatch.setattr(pipeline, "PDFDocument", pdf_document)
+    monkeypatch.setattr(pipeline, "HybridLocalModelContextSingleton", hybrid_model_factory)
+    monkeypatch.setattr(window, "get_processing_window_size", window_size_reader)
+    monkeypatch.setattr(window, "_build_processing_windows", window_builder)
+    monkeypatch.setattr(window, "load_images_from_pdf_bytes_range", image_loader)
+    monkeypatch.setattr(window, "_attach_visual_block_images", visual_image_attacher)
+    monkeypatch.setattr(pipeline, "_normalize_pdf_model_list", model_list_normalizer)
+    monkeypatch.setattr(office.time, "perf_counter", fake_perf_counter)
 
     middle_json, model_list = analyze.doc_analyze(
         b"office-bytes",
@@ -969,8 +976,8 @@ def test_doc_analyze_rejects_unsupported_suffix_before_resource_initialization(
     """验证非法后缀会在创建 PDF 文档或 Office 模型前直接报错。"""
     pdf_document = MagicMock()
     model_factories = {suffix: MagicMock() for suffix in ("docx", "pptx", "xlsx")}
-    monkeypatch.setattr(analyze, "PDFDocument", pdf_document)
-    monkeypatch.setattr(analyze, "_OFFICE_MODEL_MAP", model_factories)
+    monkeypatch.setattr(pipeline, "PDFDocument", pdf_document)
+    monkeypatch.setattr(office, "_OFFICE_MODEL_MAP", model_factories)
 
     with pytest.raises(ValueError, match="Unsupported file suffix: 'PDF'"):
         analyze.doc_analyze(b"unknown", file_suffix="PDF")  # type: ignore[arg-type]
@@ -978,6 +985,68 @@ def test_doc_analyze_rejects_unsupported_suffix_before_resource_initialization(
     pdf_document.assert_not_called()
     for model_factory in model_factories.values():
         model_factory.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("effort", "parse_mode", "expected_message"),
+    [
+        ("turbo", "txt", "Unsupported analyze effort: turbo"),
+        ("low", "invalid", "parse_mode invalid is not supported"),
+    ],
+)
+def test_doc_analyze_rejects_invalid_pdf_modes_before_model_initialization(
+    monkeypatch: pytest.MonkeyPatch,
+    effort: str,
+    parse_mode: str,
+    expected_message: str,
+) -> None:
+    """验证非法 PDF effort/parse_mode 统一报 ValueError，且不初始化模型。"""
+    fake_document = MagicMock()
+    hybrid_model_factory = MagicMock()
+    monkeypatch.setattr(pipeline, "PDFDocument", MagicMock(return_value=fake_document))
+    monkeypatch.setattr(pipeline, "HybridLocalModelContextSingleton", hybrid_model_factory)
+
+    with pytest.raises(ValueError, match=expected_message):
+        analyze.doc_analyze(
+            b"invalid-mode-pdf",
+            effort=effort,  # type: ignore[arg-type]
+            parse_mode=parse_mode,  # type: ignore[arg-type]
+        )
+
+    fake_document.close.assert_called_once_with()
+    hybrid_model_factory.assert_not_called()
+
+
+def test_pdf_flash_ocr_routes_to_low_hybrid_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 Flash 遇到 OCR PDF 时降级为 Low，并把最终路由元数据带回门面。"""
+    fake_document = MagicMock()
+    hybrid_model = MagicMock()
+    hybrid_model.device = "cpu"
+    hybrid_singleton = MagicMock()
+    hybrid_singleton.get_model.return_value = hybrid_model
+    process_pdf_windows = MagicMock(return_value=[])
+
+    monkeypatch.setattr(pipeline, "PDFDocument", MagicMock(return_value=fake_document))
+    monkeypatch.setattr(
+        pipeline,
+        "HybridLocalModelContextSingleton",
+        MagicMock(return_value=hybrid_singleton),
+    )
+    monkeypatch.setattr(pipeline, "process_pdf_windows", process_pdf_windows)
+    monkeypatch.setattr(pipeline, "clean_memory", MagicMock())
+
+    result = pipeline.analyze_pdf(
+        b"ocr-pdf",
+        effort="flash",
+        parse_mode="ocr",
+    )
+
+    assert result.effort == "low"
+    assert result.parse_mode == "ocr"
+    assert process_pdf_windows.call_args.kwargs["effort"] == "low"
+    assert process_pdf_windows.call_args.kwargs["flash_txt_mode"] is False
 
 
 def test_pdf_infer_timer_excludes_hybrid_vlm_initialization_and_cleanup(
@@ -1034,20 +1103,20 @@ def test_pdf_infer_timer_excludes_hybrid_vlm_initialization_and_cleanup(
         """记录设备缓存清理顺序。"""
         events.append("clean_memory")
 
-    monkeypatch.setattr(analyze, "PDFDocument", MagicMock(return_value=fake_document))
-    monkeypatch.setattr(analyze, "HybridLocalModelContextSingleton", MagicMock(return_value=hybrid_singleton))
+    monkeypatch.setattr(pipeline, "PDFDocument", MagicMock(return_value=fake_document))
+    monkeypatch.setattr(pipeline, "HybridLocalModelContextSingleton", MagicMock(return_value=hybrid_singleton))
     monkeypatch.setattr(
-        analyze,
+        pipeline,
         "_load_vlm_runtime",
         lambda: {
             "ModelSingleton": MagicMock(return_value=vlm_singleton),
             "_maybe_enable_serial_execution": fake_enable_serial_execution,
         },
     )
-    monkeypatch.setattr(analyze, "get_vlm_engine", MagicMock(return_value="transformers"))
-    monkeypatch.setattr(analyze.time, "perf_counter", fake_perf_counter)
-    monkeypatch.setattr(analyze, "_normalize_pdf_model_list", fake_normalize_model_list)
-    monkeypatch.setattr(analyze, "clean_memory", fake_clean_memory)
+    monkeypatch.setattr(pipeline, "get_vlm_engine", MagicMock(return_value="transformers"))
+    monkeypatch.setattr(pipeline.time, "perf_counter", fake_perf_counter)
+    monkeypatch.setattr(pipeline, "_normalize_pdf_model_list", fake_normalize_model_list)
+    monkeypatch.setattr(pipeline, "clean_memory", fake_clean_memory)
 
     middle_json, model_list = analyze.doc_analyze(
         b"empty-pdf",
@@ -1068,6 +1137,71 @@ def test_pdf_infer_timer_excludes_hybrid_vlm_initialization_and_cleanup(
         "document_close",
         "clean_memory",
     ]
+
+
+def test_pdf_analyze_releases_document_and_model_when_window_processing_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证窗口处理异常时仍关闭 PDF 文档并释放已初始化的 Hybrid 模型。"""
+    fake_document = MagicMock()
+    hybrid_model = MagicMock()
+    hybrid_model.device = "cpu"
+    hybrid_singleton = MagicMock()
+    hybrid_singleton.get_model.return_value = hybrid_model
+    clean_memory = MagicMock()
+
+    monkeypatch.setattr(pipeline, "PDFDocument", MagicMock(return_value=fake_document))
+    monkeypatch.setattr(
+        pipeline,
+        "HybridLocalModelContextSingleton",
+        MagicMock(return_value=hybrid_singleton),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "process_pdf_windows",
+        MagicMock(side_effect=RuntimeError("window failed")),
+    )
+    monkeypatch.setattr(pipeline, "clean_memory", clean_memory)
+
+    with pytest.raises(RuntimeError, match="window failed"):
+        pipeline.analyze_pdf(b"broken-pdf", effort="low", parse_mode="txt")
+
+    fake_document.close.assert_called_once_with()
+    clean_memory.assert_called_once_with("cpu")
+
+
+def test_pdf_window_releases_rendered_images_when_layout_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证窗口内布局阶段异常时仍释放该窗口已经渲染的页图。"""
+    page_image = Image.new("RGB", (20, 20), "white")
+    fake_document = MagicMock()
+    fake_document.page_count = 1
+    fake_document.__getitem__.return_value = MagicMock()
+    hybrid_model = MagicMock()
+    hybrid_model.layout_model.batch_predict.side_effect = RuntimeError("layout failed")
+
+    monkeypatch.setattr(window, "get_processing_window_size", lambda default: 1)
+    monkeypatch.setattr(
+        window,
+        "load_images_from_pdf_bytes_range",
+        lambda **_kwargs: [{"img_pil": page_image}],
+    )
+
+    with pytest.raises(RuntimeError, match="layout failed"):
+        window.process_pdf_windows(
+            b"broken-pdf",
+            fake_document,
+            effort="low",
+            parse_mode="txt",
+            image_analysis=True,
+            flash_txt_mode=False,
+            hybrid_model=hybrid_model,
+            vlm_predictor=None,
+        )
+
+    with pytest.raises(ValueError, match="closed image"):
+        page_image.getpixel((0, 0))
 
 
 @pytest.mark.parametrize(
@@ -1092,17 +1226,9 @@ def test_doc_analyze_office_real_samples(file_suffix: str, expected_page_count: 
     assert all(isinstance(page, list) for page in model_list)
     if file_suffix == "docx":
         model_equations = [
-            block
-            for page_model_list in model_list
-            for block in page_model_list
-            if block.get("type") == BlockType.EQUATION
+            block for page_model_list in model_list for block in page_model_list if block.get("type") == BlockType.EQUATION
         ]
-        middle_equations = [
-            block
-            for page in middle_json.pages
-            for block in page.blocks
-            if block.type == BlockType.EQUATION
-        ]
+        middle_equations = [block for page in middle_json.pages for block in page.blocks if block.type == BlockType.EQUATION]
         assert model_equations
         assert len(middle_equations) == len(model_equations)
         assert "interline_equation" not in middle_json.to_json()
@@ -1138,17 +1264,9 @@ def test_doc_analyze_flash_demo1_uses_canonical_equation_type() -> None:
     )
 
     model_equations = [
-        block
-        for page_model_list in model_list
-        for block in page_model_list
-        if block.get("type") == BlockType.EQUATION
+        block for page_model_list in model_list for block in page_model_list if block.get("type") == BlockType.EQUATION
     ]
-    middle_equations = [
-        block
-        for page in middle_json.pages
-        for block in page.blocks
-        if block.type == BlockType.EQUATION
-    ]
+    middle_equations = [block for page in middle_json.pages for block in page.blocks if block.type == BlockType.EQUATION]
 
     assert model_equations
     assert len(middle_equations) == len(model_equations)
@@ -1162,12 +1280,12 @@ def test_doc_analyze_flash_returns_complete_model_list_and_typed_middle_json(mon
     events: list[str] = []
     source_model_list = [
         [
-                {
-                    "type": BlockType.TEXT,
-                    "bbox": [0.0, 0.0, 1.0, 1.0],
-                    "content": "第一页 \\(x+y\\)",
-                    "lines": [{"bbox": [0.0, 0.0, 1.0, 1.0]}],
-                }
+            {
+                "type": BlockType.TEXT,
+                "bbox": [0.0, 0.0, 1.0, 1.0],
+                "content": "第一页 \\(x+y\\)",
+                "lines": [{"bbox": [0.0, 0.0, 1.0, 1.0]}],
+            }
         ],
         [
             {
@@ -1218,20 +1336,19 @@ def test_doc_analyze_flash_returns_complete_model_list_and_typed_middle_json(mon
         events.append("render_window")
         requested_ranges.append((start_page_id, end_page_id))
         window_images = [
-            Image.new("RGB", (40, 20), (page_idx * 40, 100, 160))
-            for page_idx in range(start_page_id, end_page_id + 1)
+            Image.new("RGB", (40, 20), (page_idx * 40, 100, 160)) for page_idx in range(start_page_id, end_page_id + 1)
         ]
         rendered_images.extend(window_images)
         return [{"img_pil": image} for image in window_images]
 
-    original_attach_visual_block_images = analyze._attach_visual_block_images
+    original_attach_visual_block_images = visuals._attach_visual_block_images
 
     def tracked_attach_visual_block_images(*args: object, **kwargs: object) -> None:
         """记录视觉块补图顺序并调用真实实现。"""
         events.append("attach_visual")
         original_attach_visual_block_images(*args, **kwargs)  # type: ignore[arg-type]
 
-    original_normalize_model_list = analyze._normalize_pdf_model_list
+    original_normalize_model_list = normalization._normalize_pdf_model_list
 
     def tracked_normalize_model_list(model_list: list[list[dict[str, object]]]) -> None:
         """记录 PDF model_list 规范化顺序并调用真实实现。"""
@@ -1246,12 +1363,12 @@ def test_doc_analyze_flash_returns_complete_model_list_and_typed_middle_json(mon
         events.append(f"timer_{value}")
         return value
 
-    monkeypatch.setattr(analyze, "PDFDocument", lambda _: fake_pdf_doc)
-    monkeypatch.setattr(analyze, "get_processing_window_size", lambda default: 2)
-    monkeypatch.setattr(analyze, "load_images_from_pdf_bytes_range", fake_load_images_for_window)
-    monkeypatch.setattr(analyze, "_attach_visual_block_images", tracked_attach_visual_block_images)
-    monkeypatch.setattr(analyze, "_normalize_pdf_model_list", tracked_normalize_model_list)
-    monkeypatch.setattr(analyze.time, "perf_counter", fake_perf_counter)
+    monkeypatch.setattr(pipeline, "PDFDocument", lambda _: fake_pdf_doc)
+    monkeypatch.setattr(window, "get_processing_window_size", lambda default: 2)
+    monkeypatch.setattr(window, "load_images_from_pdf_bytes_range", fake_load_images_for_window)
+    monkeypatch.setattr(window, "_attach_visual_block_images", tracked_attach_visual_block_images)
+    monkeypatch.setattr(pipeline, "_normalize_pdf_model_list", tracked_normalize_model_list)
+    monkeypatch.setattr(pipeline.time, "perf_counter", fake_perf_counter)
     monkeypatch.setattr(flash_model, "PdfModel", MagicMock(return_value=fake_pdf_model))
 
     middle_json, model_list = analyze.doc_analyze(

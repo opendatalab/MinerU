@@ -5,7 +5,6 @@ import inspect
 
 import pytest
 
-from mineru.backend.flash import pdf_extractor
 from mineru.model.flash import PdfModel
 from mineru.model.flash.native_pdf import (
     auxiliary_text,
@@ -78,9 +77,7 @@ def test_prepare_page_materializes_table_against_original_semantic_lines(
         """记录表格物化阶段可见的来源行。"""
 
         assert candidates == []
-        observed["materialize"] = [
-            line.source_index for line in materialization_source.lines
-        ]
+        observed["materialize"] = [line.source_index for line in materialization_source.lines]
         return [], [], set()
 
     monkeypatch.setattr(pipeline, "_detect_table_candidates", fake_detect)
@@ -187,7 +184,6 @@ def test_flash_extractor_has_no_local_ocr_runtime_logic() -> None:
     source = "\n".join(
         inspect.getsource(module)
         for module in (
-            pdf_extractor,
             PdfModel,
             auxiliary_text,
             formulas,
@@ -222,13 +218,6 @@ def test_flash_extractor_has_no_local_ocr_runtime_logic() -> None:
     )
 
     assert not [token for token in forbidden_tokens if token in source]
-
-
-def test_flash_extractor_only_exports_supported_entrypoints() -> None:
-    """验证旧模块只声明两个稳定公共入口，不再承载内部实现。"""
-
-    assert pdf_extractor.__all__ == ["doc_analyze", "extract_pages_text"]
-    assert not hasattr(pdf_extractor, "_analyze_native_document")
 
 
 def test_native_pdf_domain_modules_do_not_import_each_other() -> None:
@@ -363,12 +352,8 @@ def test_index_is_claimed_before_formula_anchor_growth() -> None:
 
     assert [block["type"] for block in blocks].count("index") == 1
     assert not [block for block in blocks if block["type"] == "equation"]
-    assert next(block for block in blocks if block["type"] == "index")[
-        "content"
-    ].count("entry-") == 6
-    assert next(block for block in blocks if block["content"] == "contents")[
-        "type"
-    ] == "paragraph_title"
+    assert next(block for block in blocks if block["type"] == "index")["content"].count("entry-") == 6
+    assert next(block for block in blocks if block["content"] == "contents")["type"] == "paragraph_title"
 
 
 def test_numbered_formula_rows_are_not_claimed_as_index() -> None:
@@ -387,9 +372,7 @@ def test_numbered_formula_rows_are_not_claimed_as_index() -> None:
         for index in range(10)
     ]
     source_index = 10
-    for row_index, top in enumerate(
-        (102.0, 113.0, 124.0, 135.0, 146.0, 157.0)
-    ):
+    for row_index, top in enumerate((102.0, 113.0, 124.0, 135.0, 146.0, 157.0)):
         visual_row_id = 100 + row_index
         lines.extend(
             [

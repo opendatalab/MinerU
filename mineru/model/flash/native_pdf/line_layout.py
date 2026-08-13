@@ -9,7 +9,7 @@ import re
 import statistics
 
 
-from mineru.backend.utils.char_utils import is_hyphen_at_line_end
+from mineru.utils.text_utils import is_hyphen_at_line_end
 from mineru.types import BBox
 
 from .models import (

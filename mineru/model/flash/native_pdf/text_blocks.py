@@ -9,7 +9,7 @@ import statistics
 from typing import Any, Sequence
 
 
-from mineru.backend.utils.char_utils import (
+from mineru.utils.text_utils import (
     is_hyphen_at_line_end,
     resolve_text_line_boundary,
 )

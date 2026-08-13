@@ -17,11 +17,11 @@ from mammoth.conversion import convert_document_element_to_html
 from mammoth.docx import body_xml
 from pydantic import AnyUrl
 
-from mineru.backend.utils.office_chart import extract_chart_html_from_ooxml
-from mineru.backend.utils.office_image import (
+from mineru.model.flash.office.chart import extract_chart_html_from_ooxml
+from mineru.model.flash.office.image import (
     serialize_office_image,
 )
-from mineru.backend.utils.raw_block_types import RAW_CAPTION
+from mineru.types import RAW_CAPTION
 from mineru.model.flash.docx.package_normalizer import normalize_docx_package
 from mineru.model.flash.docx.tools.math.omml import oMath2Latex
 from mineru.model.flash.docx.tools.office_xml import read_str

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 
-from mineru.backend.utils.xycut_pp_sorter import sort_entries
+from mineru.model.flash.xycut import sort_entries
 from mineru.types import BBox
 
 from .geometry import (

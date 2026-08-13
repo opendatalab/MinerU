@@ -8,7 +8,7 @@ from dataclasses import replace
 from typing import Any
 
 
-from mineru.backend.utils.xycut_pp_sorter import sort_entries
+from mineru.model.flash.xycut import sort_entries
 from mineru.utils.pdf_document import PDFDocument, PDFImageInfo, get_lines_from_chars
 
 from .models import (

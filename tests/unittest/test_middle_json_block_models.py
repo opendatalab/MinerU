@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 import mineru.types as types_module
-from mineru.backend.utils.raw_block_types import RAW_ONLY_BLOCK_TYPES
+from mineru.types import RAW_ONLY_BLOCK_TYPES
 from mineru.types import (
     BLOCK_ADAPTER,
     BLOCK_TYPES,
@@ -82,11 +82,7 @@ def test_all_29_public_discriminators_parse_to_concrete_models() -> None:
 
 def test_public_block_type_declarations_match_block_union() -> None:
     """验证 BlockType、BlockTypes 和 BLOCK_TYPES 只公开 Block 联合的 discriminator。"""
-    class_values = {
-        value
-        for name, value in vars(BlockType).items()
-        if name.isupper()
-    }
+    class_values = {value for name, value in vars(BlockType).items() if name.isupper()}
 
     assert class_values == BLOCK_TYPES
     assert set(get_args(BlockTypes)) == BLOCK_TYPES
@@ -193,7 +189,8 @@ def test_list_subtype_allows_mixed_direct_text_children() -> None:
     """验证 List subtype 是子项类型的统计结果，不约束每个直接子项。"""
     block = parse_block(
         {
-            "type": "list", "sub_type": "ref_text",
+            "type": "list",
+            "sub_type": "ref_text",
             "content": [
                 {"type": "text", "content": "x"},
                 {"type": "ref_text", "content": "r1"},

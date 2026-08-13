@@ -1,6 +1,6 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """Hybrid 与本地小模型共享的运行时初始化模块。"""
 
-# Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
 import os
@@ -12,6 +12,7 @@ from typing import Any
 import torch
 from loguru import logger
 
+from ..model.model_types import AtomicModelName
 from ..model.layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
 from ..model.mfr.pp_formulanet_plus_m.predict_formula import FormulaRecognizer
 from ..model.mfr.unimernet.Unimernet import UnimernetModel
@@ -24,18 +25,6 @@ from ..utils.config_reader import get_device
 from ..utils.enum_class import ModelPath
 from ..utils.models_download_utils import auto_download_and_get_model_root_path
 from ..utils.ocr_language import normalize_ocr_model_lang
-
-
-class AtomicModel:
-    """本地原子模型名称集合，供 Hybrid medium 和共享模型单例统一索引。"""
-
-    Layout = "layout"
-    MFR = "mfr"
-    OCR = "ocr"
-    WirelessTable = "wireless_table"
-    WiredTable = "wired_table"
-    TableCls = "table_cls"
-    TableOrientationCls = "table_ori_cls"
 
 LOCAL_MODEL_INIT_LOCK = threading.RLock()
 # 这些锁保护 Hybrid medium/high/extra_high 共享的 atom model/native 模型推理调用，避免多线程同时进入同一个模型对象。
@@ -109,9 +98,10 @@ def _resolve_mfr_model_path() -> str:
 
 
 def table_orientation_cls_model_init() -> MineruTableOrientationClsModel:
+    """初始化表格方向分类包装器，并注入适配方向检测的 OCR 引擎。"""
     atom_model_manager = AtomModelSingleton()
     ocr_engine = atom_model_manager.get_atom_model(
-        atom_model_name=AtomicModel.OCR,
+        atom_model_name=AtomicModelName.OCR,
         det_db_box_thresh=0.5,
         det_db_unclip_ratio=1.6,
         lang="ch",
@@ -122,28 +112,40 @@ def table_orientation_cls_model_init() -> MineruTableOrientationClsModel:
 
 
 def table_cls_model_init() -> PaddleTableClsModel:
+    """初始化有线与无线表格类型分类模型。"""
     return PaddleTableClsModel()
 
 
 def wired_table_model_init(lang: str | None = None) -> UnetTableModel:
+    """初始化有线表格识别模型，并注入指定语言的 OCR 引擎。"""
     atom_model_manager = AtomModelSingleton()
     ocr_engine = atom_model_manager.get_atom_model(
-        atom_model_name=AtomicModel.OCR, det_db_box_thresh=0.5, det_db_unclip_ratio=1.6, lang=lang, enable_merge_det_boxes=False
+        atom_model_name=AtomicModelName.OCR,
+        det_db_box_thresh=0.5,
+        det_db_unclip_ratio=1.6,
+        lang=lang,
+        enable_merge_det_boxes=False,
     )
     table_model = UnetTableModel(ocr_engine)
     return table_model
 
 
 def wireless_table_model_init(lang: str | None = None) -> PaddleTableModel:
+    """初始化无线表格识别模型，并注入指定语言的 OCR 引擎。"""
     atom_model_manager = AtomModelSingleton()
     ocr_engine = atom_model_manager.get_atom_model(
-        atom_model_name=AtomicModel.OCR, det_db_box_thresh=0.5, det_db_unclip_ratio=1.6, lang=lang, enable_merge_det_boxes=False
+        atom_model_name=AtomicModelName.OCR,
+        det_db_box_thresh=0.5,
+        det_db_unclip_ratio=1.6,
+        lang=lang,
+        enable_merge_det_boxes=False,
     )
     table_model = PaddleTableModel(ocr_engine)
     return table_model
 
 
 def mfr_model_init(weight_dir: str, device: str | torch.device = "cpu") -> UnimernetModel | FormulaRecognizer:
+    """根据公式模型配置和权重目录初始化对应的公式识别器。"""
     if MFR_MODEL == "unimernet_small":
         mfr_model = UnimernetModel(weight_dir, device)
     elif MFR_MODEL == "pp_formulanet_plus_m":
@@ -155,6 +157,7 @@ def mfr_model_init(weight_dir: str, device: str | torch.device = "cpu") -> Unime
 
 
 def pp_doclayout_v2_model_init(weight: str, device: str | torch.device = "cpu") -> PPDocLayoutV2LayoutModel:
+    """在指定设备上初始化 PP-DocLayoutV2 版面分析模型。"""
     if str(device).startswith("npu"):
         device = torch.device(device)
     model = PPDocLayoutV2LayoutModel(weight, device)
@@ -167,6 +170,7 @@ def ocr_model_init(
     det_db_unclip_ratio: float = 1.5,
     enable_merge_det_boxes: bool = True,
 ) -> PytorchPaddleOCR:
+    """按语言和检测阈值初始化本地 Paddle OCR 模型。"""
     ocr_kwargs = {
         "lang": normalize_ocr_model_lang(lang),
         "det_db_box_thresh": det_db_box_thresh,
@@ -177,23 +181,27 @@ def ocr_model_init(
 
 
 class AtomModelSingleton:
+    """按模型配置缓存并复用本地原子模型实例。"""
+
     _instance: AtomModelSingleton | None = None
     _models: dict[object, object] = {}
     _lock: threading.RLock = LOCAL_MODEL_INIT_LOCK
 
     def __new__(cls, *args: Any, **kwargs: Any) -> AtomModelSingleton:
+        """在线程锁保护下创建或返回唯一的原子模型管理器。"""
         with cls._lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
         return cls._instance
 
     def get_atom_model(self, atom_model_name: str, **kwargs: Any) -> Any:
+        """根据模型名称和关键配置生成缓存键，并获取对应原子模型。"""
         lang = kwargs.get("lang", None)
         ocr_singleton_lang = normalize_ocr_model_lang(lang)
 
-        if atom_model_name in [AtomicModel.WiredTable, AtomicModel.WirelessTable]:
+        if atom_model_name in [AtomicModelName.WiredTable, AtomicModelName.WirelessTable]:
             key = (atom_model_name, ocr_singleton_lang)
-        elif atom_model_name in [AtomicModel.OCR]:
+        elif atom_model_name in [AtomicModelName.OCR]:
             key = (
                 atom_model_name,
                 kwargs.get("det_db_box_thresh", 0.5),
@@ -201,7 +209,7 @@ class AtomModelSingleton:
                 kwargs.get("det_db_unclip_ratio", 1.5),
                 kwargs.get("enable_merge_det_boxes", True),
             )
-        elif atom_model_name in [AtomicModel.Layout, AtomicModel.MFR]:
+        elif atom_model_name in [AtomicModelName.Layout, AtomicModelName.MFR]:
             key = (
                 atom_model_name,
                 kwargs.get("device"),
@@ -216,29 +224,30 @@ class AtomModelSingleton:
 
 
 def atom_model_init(model_name: str, **kwargs: Any) -> Any:
+    """将原子模型名称分派到具体初始化函数，并校验初始化结果。"""
     atom_model = None
-    if model_name == AtomicModel.Layout:
+    if model_name == AtomicModelName.Layout:
         atom_model = pp_doclayout_v2_model_init(kwargs.get("pp_doclayout_v2_weights"), kwargs.get("device"))
-    elif model_name == AtomicModel.MFR:
+    elif model_name == AtomicModelName.MFR:
         atom_model = mfr_model_init(kwargs.get("mfr_weight_dir"), kwargs.get("device"))
-    elif model_name == AtomicModel.OCR:
+    elif model_name == AtomicModelName.OCR:
         atom_model = ocr_model_init(
             kwargs.get("det_db_box_thresh", 0.5),
             kwargs.get("lang"),
             kwargs.get("det_db_unclip_ratio", 1.5),
             kwargs.get("enable_merge_det_boxes", True),
         )
-    elif model_name == AtomicModel.WirelessTable:
+    elif model_name == AtomicModelName.WirelessTable:
         atom_model = wireless_table_model_init(
             kwargs.get("lang"),
         )
-    elif model_name == AtomicModel.WiredTable:
+    elif model_name == AtomicModelName.WiredTable:
         atom_model = wired_table_model_init(
             kwargs.get("lang"),
         )
-    elif model_name == AtomicModel.TableCls:
+    elif model_name == AtomicModelName.TableCls:
         atom_model = table_cls_model_init()
-    elif model_name == AtomicModel.TableOrientationCls:
+    elif model_name == AtomicModelName.TableOrientationCls:
         atom_model = table_orientation_cls_model_init()
     else:
         logger.error("model name not allow")
@@ -252,11 +261,14 @@ def atom_model_init(model_name: str, **kwargs: Any) -> Any:
 
 
 class HybridLocalModelContextSingleton:
+    """全局缓存并复用 Hybrid 本地模型上下文。"""
+
     _instance: HybridLocalModelContextSingleton | None = None
     _model: HybridLocalModelContext | None = None
     _lock: threading.RLock = LOCAL_MODEL_INIT_LOCK
 
     def __new__(cls, *args: Any, **kwargs: Any) -> HybridLocalModelContextSingleton:
+        """在线程锁保护下创建或返回唯一的上下文管理器。"""
         with cls._lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
@@ -273,6 +285,7 @@ class HybridLocalModelContextSingleton:
 
 
 def ocr_det_batch_setting() -> bool:
+    """根据运行设备和 PyTorch 版本确定是否启用 OCR 检测批处理。"""
     import torch as _torch
     from packaging import version
 
@@ -288,6 +301,8 @@ def ocr_det_batch_setting() -> bool:
 
 
 class HybridLocalModelContext:
+    """集中管理 Hybrid 分析所需本地模型及其惰性加载生命周期。"""
+
     def __init__(
         self,
         device: str | None = None,
@@ -358,7 +373,7 @@ class HybridLocalModelContext:
     ) -> PytorchPaddleOCR:
         """获取 OCR 原子模型，默认使用当前 Hybrid 本地上下文语言并复用 singleton 缓存。"""
         return self.atom_model_manager.get_atom_model(
-            atom_model_name=AtomicModel.OCR,
+            atom_model_name=AtomicModelName.OCR,
             det_db_box_thresh=det_db_box_thresh,
             lang="ch",
             det_db_unclip_ratio=det_db_unclip_ratio,
@@ -368,7 +383,7 @@ class HybridLocalModelContext:
     def get_layout_model(self) -> PPDocLayoutV2LayoutModel:
         """获取 Layout 原子模型，供 Hybrid 本地 layout、标题拆分和公式框检测复用。"""
         return self.atom_model_manager.get_atom_model(
-            atom_model_name=AtomicModel.Layout,
+            atom_model_name=AtomicModelName.Layout,
             pp_doclayout_v2_weights=str(
                 os.path.join(
                     auto_download_and_get_model_root_path(ModelPath.pp_doclayout_v2),
@@ -382,7 +397,7 @@ class HybridLocalModelContext:
         """获取公式识别原子模型，统一复用当前公式模型配置和设备。"""
         mfr_model_path = _resolve_mfr_model_path()
         return self.atom_model_manager.get_atom_model(
-            atom_model_name=AtomicModel.MFR,
+            atom_model_name=AtomicModelName.MFR,
             mfr_weight_dir=str(os.path.join(auto_download_and_get_model_root_path(mfr_model_path), mfr_model_path)),
             device=self.device,
         )
@@ -390,32 +405,32 @@ class HybridLocalModelContext:
     def get_wireless_table_model(self) -> PaddleTableModel:
         """获取无线表格识别原子模型。"""
         return self.atom_model_manager.get_atom_model(
-            atom_model_name=AtomicModel.WirelessTable,
+            atom_model_name=AtomicModelName.WirelessTable,
             lang="ch",
         )
 
     def get_wired_table_model(self) -> UnetTableModel:
         """获取有线表格识别原子模型。"""
         return self.atom_model_manager.get_atom_model(
-            atom_model_name=AtomicModel.WiredTable,
+            atom_model_name=AtomicModelName.WiredTable,
             lang="ch",
         )
 
     def get_table_cls_model(self) -> PaddleTableClsModel:
         """获取表格分类原子模型。"""
         return self.atom_model_manager.get_atom_model(
-            atom_model_name=AtomicModel.TableCls,
+            atom_model_name=AtomicModelName.TableCls,
         )
 
     def get_table_orientation_cls_model(self) -> MineruTableOrientationClsModel:
         """获取表格方向分类原子模型。"""
         return self.atom_model_manager.get_atom_model(
-            atom_model_name=AtomicModel.TableOrientationCls,
+            atom_model_name=AtomicModelName.TableOrientationCls,
         )
 
     def get_seal_ocr_model(self) -> PytorchPaddleOCR:
         """获取印章识别 OCR 原子模型"""
         return self.atom_model_manager.get_atom_model(
-            atom_model_name=AtomicModel.OCR,
+            atom_model_name=AtomicModelName.OCR,
             lang="seal",
         )

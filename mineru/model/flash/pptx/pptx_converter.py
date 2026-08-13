@@ -12,12 +12,12 @@ from pptx import Presentation, presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.oxml.text import CT_TextLineBreak
 
-from mineru.backend.utils.office_chart import extract_chart_html_from_ooxml
-from mineru.backend.utils.office_image import PIL_IMAGE_LOAD_ERRORS, is_vector_image, serialize_vector_image_with_placeholder
+from mineru.model.flash.office.chart import extract_chart_html_from_ooxml
+from mineru.model.flash.office.image import PIL_IMAGE_LOAD_ERRORS, is_vector_image, serialize_vector_image_with_placeholder
 from mineru.model.flash.docx.tools.math.omml import oMath2Latex
 from mineru.model.office_stream import read_stream_bytes_from_start, rewind_stream
 from mineru.model.flash.pptx.package_normalizer import normalize_pptx_package
-from mineru.model.flash.pptx.xycut_pp_sorter import sort_entries
+from mineru.model.flash.xycut import sort_entries
 from mineru.types import BlockType
 from mineru.utils.office_rich_text import OfficeRichTextSegment, build_rich_text_from_segments
 from mineru.utils.pdf_reader import image_to_b64str

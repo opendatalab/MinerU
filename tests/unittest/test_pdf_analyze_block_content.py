@@ -10,9 +10,11 @@ from mineru_vl_utils.structs import ContentBlock as VlmContentBlock
 from mineru_vl_utils.structs import ExtractResult
 
 from mineru.backend import analyze
-from mineru.backend.utils.analyze_draft import _AnalyzeLine, _AnalyzeSpan
-from mineru.backend.utils.raw_block_types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE
-from mineru.backend.utils.span_pre_proc import (
+from mineru.backend.analysis.pdf import constants, layout, ocr, pipeline, tables, window
+from mineru.backend.analysis.pdf.text import content as text_content
+from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
+from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE
+from mineru.backend.analysis.pdf.text.native import (
     POST_OCR_FALLBACK_CONTENT_KEY,
     POST_OCR_FALLBACK_SCORE_KEY,
 )
@@ -76,7 +78,7 @@ def test_convert_vlm_results_to_model_list_uses_builtin_containers() -> None:
     )
     source_page = ExtractResult([source_block], layout_scored=object())
 
-    model_list = analyze._convert_vlm_results_to_model_list([source_page, ExtractResult()])
+    model_list = layout._convert_vlm_results_to_model_list([source_page, ExtractResult()])
 
     assert type(model_list) is list
     assert all(type(page) is list for page in model_list)
@@ -105,7 +107,7 @@ def test_convert_vlm_results_deep_copies_projected_mutable_fields() -> None:
         "cell_merge": source_cell_merge,
     }
 
-    model_list = analyze._convert_vlm_results_to_model_list([[source_block]])
+    model_list = layout._convert_vlm_results_to_model_list([[source_block]])
     model_list[0][0]["cell_merge"].append(1)
 
     assert source_cell_merge == [1, 0]
@@ -166,11 +168,11 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
         assert all(type(block) is dict for page in window_model_list for block in page)
         return window_model_list
 
-    xhigh_normalizer = MagicMock(wraps=analyze._normalize_xhigh_vlm_blocks)
-    monkeypatch.setattr(analyze, "PDFDocument", MagicMock(return_value=fake_document))
-    monkeypatch.setattr(analyze, "HybridLocalModelContextSingleton", MagicMock(return_value=hybrid_singleton))
+    xhigh_normalizer = MagicMock(wraps=layout._normalize_xhigh_vlm_blocks)
+    monkeypatch.setattr(pipeline, "PDFDocument", MagicMock(return_value=fake_document))
+    monkeypatch.setattr(pipeline, "HybridLocalModelContextSingleton", MagicMock(return_value=hybrid_singleton))
     monkeypatch.setattr(
-        analyze,
+        pipeline,
         "_load_vlm_runtime",
         MagicMock(
             return_value={
@@ -179,19 +181,19 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
             }
         ),
     )
-    monkeypatch.setattr(analyze, "get_vlm_engine", MagicMock(return_value="transformers"))
+    monkeypatch.setattr(pipeline, "get_vlm_engine", MagicMock(return_value="transformers"))
     monkeypatch.setattr(
-        analyze,
+        window,
         "load_images_from_pdf_bytes_range",
         MagicMock(return_value=[{"img_pil": page_image, "scale": 1.0}]),
     )
-    monkeypatch.setattr(analyze, "_process_text_and_formulas", fake_process_text_and_formulas)
-    monkeypatch.setattr(analyze, "_normalize_xhigh_vlm_blocks", xhigh_normalizer)
-    monkeypatch.setattr(analyze, "_apply_seal_ocr", MagicMock())
-    monkeypatch.setattr(analyze, "_supplement_missing_image_block_containers", MagicMock())
-    monkeypatch.setattr(analyze, "_attach_visual_block_images", MagicMock())
+    monkeypatch.setattr(window, "_process_text_and_formulas", fake_process_text_and_formulas)
+    monkeypatch.setattr(window, "_normalize_xhigh_vlm_blocks", xhigh_normalizer)
+    monkeypatch.setattr(window, "_apply_seal_ocr", MagicMock())
+    monkeypatch.setattr(window, "_supplement_missing_image_block_containers", MagicMock())
+    monkeypatch.setattr(window, "_attach_visual_block_images", MagicMock())
     monkeypatch.setattr(analyze, "model_list_to_pages", MagicMock(return_value=[]))
-    monkeypatch.setattr(analyze, "clean_memory", MagicMock())
+    monkeypatch.setattr(pipeline, "clean_memory", MagicMock())
 
     middle_json, model_list = analyze.doc_analyze(
         b"fake-pdf",
@@ -235,7 +237,7 @@ def test_xhigh_vlm_blocks_normalize_visual_annotation_types() -> None:
         {"type": BlockType.TEXT, "content": "text"},
     ]
 
-    analyze._normalize_xhigh_vlm_blocks([page_blocks])
+    layout._normalize_xhigh_vlm_blocks([page_blocks])
 
     assert [block["type"] for block in page_blocks] == [
         RAW_CAPTION,
@@ -257,7 +259,7 @@ def test_xhigh_vlm_blocks_normalize_visual_annotation_types() -> None:
 
 def test_five_pdf_text_types_keep_normalized_line_metadata() -> None:
     """验证五类 PDF 文本块统一保留公开的归一化 lines。"""
-    assert analyze.LINE_METADATA_BLOCK_TYPES == {
+    assert constants.LINE_METADATA_BLOCK_TYPES == {
         BlockType.TEXT,
         BlockType.DOC_TITLE,
         BlockType.PARAGRAPH_TITLE,
@@ -286,7 +288,7 @@ def test_five_pdf_text_types_keep_normalized_line_metadata() -> None:
         unrelated_block,
     ]
 
-    analyze._apply_block_content_and_line_metadata(
+    text_content._apply_block_content_and_line_metadata(
         page_blocks,
         {
             0: _build_text_lines("text"),
@@ -301,9 +303,7 @@ def test_five_pdf_text_types_keep_normalized_line_metadata() -> None:
 
     assert text_block["lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
     assert doc_title_block["lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
-    assert paragraph_title_block["lines"] == [
-        {"bbox": [0.0, 0.0, 0.5, 0.01]}
-    ]
+    assert paragraph_title_block["lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
     assert caption_block["lines"] == [
         {"bbox": [0.0, 0.0, 0.5, 0.01]},
         {"bbox": [0.0, 0.01, 0.5, 0.02]},
@@ -318,12 +318,12 @@ def test_high_ocr_detects_lines_for_all_five_pdf_text_types(
 ) -> None:
     """验证 High/XHigh OCR 对标题、正文、caption 和 footnote 都执行行检测。"""
 
-    ocr_det_type, mfr_enabled = analyze._build_ocr_det_type_and_mfr_enable(
+    ocr_det_type, mfr_enabled = ocr._build_ocr_det_type_and_mfr_enable(
         "ocr",
         effort,
     )
 
-    assert ocr_det_type == analyze.LINE_METADATA_BLOCK_TYPES
+    assert ocr_det_type == constants.LINE_METADATA_BLOCK_TYPES
     assert mfr_enabled is False
 
 
@@ -335,7 +335,7 @@ def test_window_post_ocr_batches_all_pages_once() -> None:
         [("第一页一", 0.91), ("第一页二", 0.82), ("第二页一", 0.73), ("第二页二", 0.64)]
     ]
 
-    analyze._apply_window_post_ocr(local_model_context, page_block_lines_list)
+    text_content._apply_window_post_ocr(local_model_context, page_block_lines_list)
 
     local_model_context.ocr_model.ocr.assert_called_once()
     call_args = local_model_context.ocr_model.ocr.call_args
@@ -350,7 +350,7 @@ def test_window_post_ocr_skips_empty_window() -> None:
     """验证窗口内没有待识别裁图时不会调用 OCR-rec。"""
     local_model_context = MagicMock()
 
-    analyze._apply_window_post_ocr(local_model_context, [{}, {0: []}])
+    text_content._apply_window_post_ocr(local_model_context, [{}, {0: []}])
 
     local_model_context.ocr_model.ocr.assert_not_called()
 
@@ -362,7 +362,7 @@ def test_window_post_ocr_rejects_result_count_mismatch() -> None:
     local_model_context.ocr_model.ocr.return_value = [[("仅一个结果", 0.9)]]
 
     with pytest.raises(ValueError, match="ocr_res_list=1, need_ocr_spans=2"):
-        analyze._apply_window_post_ocr(local_model_context, page_block_lines_list)
+        text_content._apply_window_post_ocr(local_model_context, page_block_lines_list)
 
 
 def test_window_post_ocr_keeps_low_confidence_fallback_semantics() -> None:
@@ -375,7 +375,7 @@ def test_window_post_ocr_keeps_low_confidence_fallback_semantics() -> None:
     local_model_context = MagicMock()
     local_model_context.ocr_model.ocr.return_value = [[("低置信文本", 0.0), ("低置信文本", 0.0)]]
 
-    analyze._apply_window_post_ocr(local_model_context, page_block_lines_list)
+    text_content._apply_window_post_ocr(local_model_context, page_block_lines_list)
 
     assert spans[0].content == "原生文本"
     assert spans[0].score == 0.88
@@ -388,9 +388,9 @@ def test_fill_window_batches_txt_post_ocr_before_page_content(monkeypatch: pytes
     """验证 TXT 窗口先统一 OCR-rec，再按页生成最终 block content。"""
     page_block_lines_list, _ = _build_post_ocr_page_block_lines(11, 22)
     grouped_page_lines = iter(page_block_lines_list)
-    monkeypatch.setattr(analyze, "_build_page_text_formula_spans", lambda *_args: [])
-    monkeypatch.setattr(analyze, "_fill_native_pdf_text_spans", lambda _page, spans, *_args: spans)
-    monkeypatch.setattr(analyze, "_group_page_spans_by_block", lambda *_args: next(grouped_page_lines))
+    monkeypatch.setattr(text_content, "_build_page_text_formula_spans", lambda *_args: [])
+    monkeypatch.setattr(text_content, "_fill_native_pdf_text_spans", lambda _page, spans, *_args: spans)
+    monkeypatch.setattr(text_content, "_group_page_spans_by_block", lambda *_args: next(grouped_page_lines))
     local_model_context = MagicMock()
     local_model_context.ocr_model.ocr.return_value = [[("窗口第一页", 0.9), ("窗口第二页", 0.8)]]
     model_list = [
@@ -399,7 +399,7 @@ def test_fill_window_batches_txt_post_ocr_before_page_content(monkeypatch: pytes
     ]
     pdf_pages = [MagicMock(size=(100.0, 100.0)), MagicMock(size=(100.0, 100.0))]
 
-    result = analyze._fill_window_block_content_and_lines(
+    result = text_content._fill_window_block_content_and_lines(
         [{"img_pil": object(), "scale": 1.0}, {"img_pil": object(), "scale": 1.0}],
         pdf_pages,
         model_list,
@@ -419,12 +419,12 @@ def test_fill_window_ocr_mode_does_not_run_txt_post_ocr(monkeypatch: pytest.Monk
     """验证 OCR 模式不进入 TXT 的窗口级 post-OCR 分支。"""
     page_block_lines_list, spans = _build_post_ocr_page_block_lines(11)
     spans[0].content = "已有 OCR 文本"
-    monkeypatch.setattr(analyze, "_build_page_text_formula_spans", lambda *_args: [])
-    monkeypatch.setattr(analyze, "_group_page_spans_by_block", lambda *_args: page_block_lines_list[0])
+    monkeypatch.setattr(text_content, "_build_page_text_formula_spans", lambda *_args: [])
+    monkeypatch.setattr(text_content, "_group_page_spans_by_block", lambda *_args: page_block_lines_list[0])
     local_model_context = MagicMock()
     model_list = [[{"type": BlockType.TEXT, "bbox": [0.0, 0.0, 1.0, 1.0], "content": ""}]]
 
-    analyze._fill_window_block_content_and_lines(
+    text_content._fill_window_block_content_and_lines(
         [{"img_pil": object(), "scale": 1.0}],
         [MagicMock(size=(100.0, 100.0))],
         model_list,
@@ -448,7 +448,7 @@ def test_empty_index_content_preserves_grouped_line_breaks() -> None:
         "content": "",
     }
 
-    analyze._apply_block_content_and_line_metadata(
+    text_content._apply_block_content_and_line_metadata(
         [block],
         {0: _build_text_lines("第一行", "第二行")},
         (100.0, 100.0),
@@ -464,7 +464,7 @@ def test_empty_index_content_preserves_grouped_line_breaks() -> None:
 
 def test_text_content_keeps_natural_paragraph_joining() -> None:
     """验证普通中文正文仍沿用自然段跨行连接规则，不受目录修复影响。"""
-    content = analyze._lines_to_block_content(
+    content = text_content._lines_to_block_content(
         _build_text_lines("第一行", "第二行"),
         BlockType.TEXT,
     )
@@ -475,7 +475,7 @@ def test_text_content_keeps_natural_paragraph_joining() -> None:
 @pytest.mark.parametrize("block_type", [BlockType.CODE, RAW_ALGORITHM])
 def test_code_content_keeps_existing_line_breaks(block_type: str) -> None:
     """验证 code/algorithm 原有的逐行拼接语义保持不变。"""
-    content = analyze._lines_to_block_content(
+    content = text_content._lines_to_block_content(
         _build_text_lines("line one", "line two"),
         block_type,
     )
@@ -492,7 +492,7 @@ def test_existing_index_content_is_not_overwritten() -> None:
         "content": "已有目录一\n已有目录二",
     }
 
-    analyze._apply_block_content_and_line_metadata(
+    text_content._apply_block_content_and_line_metadata(
         [block],
         {0: _build_text_lines("回填目录一", "回填目录二")},
         (100.0, 100.0),
@@ -537,9 +537,9 @@ def test_low_txt_visual_runs_split_distant_text_before_layout_matching(
     pdf_page.size = (100.0, 100.0)
     pdf_page.rotation = 0
     pdf_page.get_chars.return_value = []
-    monkeypatch.setattr(analyze, "get_lines_from_chars", lambda _chars: pdf_lines)
+    monkeypatch.setattr(tables, "get_lines_from_chars", lambda _chars: pdf_lines)
 
-    spans = analyze._build_pdf_text_visual_run_spans(pdf_page)
+    spans = tables._build_pdf_text_visual_run_spans(pdf_page)
 
     assert [(span.content, span.bbox) for span in spans] == [
         ("Left", (5.0, 10.0, 21.0, 20.0)),
@@ -552,7 +552,7 @@ def test_existing_text_content_is_preserved_while_lines_are_refreshed() -> None:
 
     block = {"type": BlockType.TEXT, "content": "existing content"}
 
-    analyze._apply_block_content_and_line_metadata(
+    text_content._apply_block_content_and_line_metadata(
         [block],
         {0: _build_text_lines("native content")},
         (200.0, 100.0),
@@ -574,15 +574,15 @@ def test_npu_page_three_low_visual_runs_keep_index_line_structure() -> None:
             "angle": 0,
             "content": "",
         }
-        block_lines = analyze._group_page_spans_by_block(
+        block_lines = text_content._group_page_spans_by_block(
             [index_block],
-            analyze._build_pdf_text_visual_run_spans(page),
+            tables._build_pdf_text_visual_run_spans(page),
             page_size,
             {BlockType.INDEX},
         )
 
         assert len(block_lines[0]) == 24
-        analyze._apply_block_content_and_line_metadata(
+        text_content._apply_block_content_and_line_metadata(
             [index_block],
             block_lines,
             page_size,

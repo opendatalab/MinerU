@@ -14,7 +14,7 @@ from mineru.utils.models_download_utils import auto_download_and_get_model_root_
 
 class PaddleTableClsModel:
     def __init__(self):
-        from mineru.backend.local_model_runtime import AtomicModel
+        from mineru.model.model_types import AtomicModelName
 
         self.sess = onnxruntime.InferenceSession(
             os.path.join(auto_download_and_get_model_root_path(ModelPath.paddle_table_cls), ModelPath.paddle_table_cls)
@@ -24,7 +24,7 @@ class PaddleTableClsModel:
         self.std = [0.229, 0.224, 0.225]
         self.scale = 0.00392156862745098
         self.mean = [0.485, 0.456, 0.406]
-        self.labels = [AtomicModel.WiredTable, AtomicModel.WirelessTable]
+        self.labels = [AtomicModelName.WiredTable, AtomicModelName.WirelessTable]
 
     def preprocess(self, input_img):
         # 放大图片，使其最短边长为256
