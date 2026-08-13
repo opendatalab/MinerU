@@ -596,8 +596,8 @@ def test_normalize_pdf_model_list_updates_in_place() -> None:
     )
 
 
-def test_normalize_pdf_model_list_converts_phonetic_and_equation_raw_types() -> None:
-    """验证 phonetic/equation 在正文与 lines 校验前转成公开类型。"""
+def test_normalize_pdf_model_list_converts_phonetic_and_cleans_equation() -> None:
+    """验证 phonetic 转公开类型，同时 equation 保持类型并清理展示分隔符。"""
     model_list = [[
         {
             "type": BlockType.PHONETIC,
@@ -616,10 +616,45 @@ def test_normalize_pdf_model_list_converts_phonetic_and_equation_raw_types() -> 
 
     assert model_list[0][0]["type"] == BlockType.TEXT
     assert model_list[0][1] == {
-        "type": BlockType.INTERLINE_EQUATION,
+        "type": BlockType.EQUATION,
         "bbox": [0.1, 0.3, 0.9, 0.4],
         "content": "x+1",
     }
+
+
+@pytest.mark.parametrize("equation_type", [BlockType.EQUATION, "display_formula"])
+def test_formula_number_optimizer_recognizes_canonical_and_upstream_equation_types(
+    equation_type: str,
+) -> None:
+    """验证公式编号只需兼容 canonical equation 与上游 display_formula 标签。"""
+    optimized = analyze.optimize_hybrid_formula_number_blocks(
+        [
+            {"type": equation_type, "content": r"\[x+1\]"},
+            {"type": BlockType.FORMULA_NUMBER, "content": "(2)"},
+        ]
+    )
+
+    assert optimized == [
+        {
+            "type": equation_type,
+            "content": r"x+1\tag{2}",
+        }
+    ]
+
+
+def test_formula_number_optimizer_does_not_accept_legacy_interline_equation() -> None:
+    """验证旧 interline_equation 不再被公式编号合并逻辑视为合法公式块。"""
+    optimized = analyze.optimize_hybrid_formula_number_blocks(
+        [
+            {"type": "interline_equation", "content": "x+1"},
+            {"type": BlockType.FORMULA_NUMBER, "content": "(2)"},
+        ]
+    )
+
+    assert optimized == [
+        {"type": "interline_equation", "content": "x+1"},
+        {"type": BlockType.TEXT, "content": "(2)"},
+    ]
 
 
 def test_normalize_pdf_model_list_rejects_unclassified_raw_title() -> None:
@@ -960,6 +995,22 @@ def test_doc_analyze_office_real_samples(file_suffix: str, expected_page_count: 
     assert all(page.page_idx == page_idx for page_idx, page in enumerate(middle_json.pages))
     assert len(model_list) == expected_page_count
     assert all(isinstance(page, list) for page in model_list)
+    if file_suffix == "docx":
+        model_equations = [
+            block
+            for page_model_list in model_list
+            for block in page_model_list
+            if block.get("type") == BlockType.EQUATION
+        ]
+        middle_equations = [
+            block
+            for page in middle_json.pages
+            for block in page.blocks
+            if block.type == BlockType.EQUATION
+        ]
+        assert model_equations
+        assert len(middle_equations) == len(model_equations)
+        assert "interline_equation" not in middle_json.to_json()
 
 
 def test_doc_analyze_flash_real_pdf_returns_typed_middle_json() -> None:
@@ -978,6 +1029,35 @@ def test_doc_analyze_flash_real_pdf_returns_typed_middle_json() -> None:
     assert all(block.bbox is not None for block in middle_json.pages[0].blocks)
     assert all("merge_prev" not in block for page in model_list for block in page)
     assert MiddleJson.model_validate_json(middle_json.to_json()) == middle_json
+
+
+def test_doc_analyze_flash_demo1_uses_canonical_equation_type() -> None:
+    """验证真实 demo1.pdf 的 model list 与 MiddleJson 统一输出 equation。"""
+    sample_path = _PROJECT_ROOT / "demo" / "pdfs" / "demo1.pdf"
+
+    middle_json, model_list = analyze.doc_analyze(
+        sample_path.read_bytes(),
+        effort="flash",
+        parse_mode="txt",
+        file_suffix="pdf",
+    )
+
+    model_equations = [
+        block
+        for page_model_list in model_list
+        for block in page_model_list
+        if block.get("type") == BlockType.EQUATION
+    ]
+    middle_equations = [
+        block
+        for page in middle_json.pages
+        for block in page.blocks
+        if block.type == BlockType.EQUATION
+    ]
+
+    assert model_equations
+    assert len(middle_equations) == len(model_equations)
+    assert "interline_equation" not in middle_json.to_json()
 
 
 def test_doc_analyze_flash_returns_complete_model_list_and_typed_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1092,6 +1172,9 @@ def test_doc_analyze_flash_returns_complete_model_list_and_typed_middle_json(mon
     assert requested_ranges == [(0, 1), (2, 2)]
     assert model_list[0][0]["content"] == "第一页 <eq>x+y</eq>"
     assert model_list[2][0]["content"] == "第三页 <eq>z</eq>"
+    assert model_list[2][0]["type"] == BlockType.EQUATION
+    assert middle_json.pages[2].blocks[0].type == BlockType.EQUATION
+    assert "interline_equation" not in middle_json.to_json()
     assert "image_base64" not in model_list[0][0]
     for block in (model_list[1][0], model_list[2][0]):
         crop_image = _decode_jpeg_data_uri(block["image_base64"])

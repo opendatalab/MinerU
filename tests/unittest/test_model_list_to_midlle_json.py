@@ -3,7 +3,36 @@ from copy import deepcopy
 import pytest
 
 from mineru.backend.model_list_to_midlle_json import model_list_to_pages
-from mineru.types import ImageBlock, ListBlock, PageInfo, ParagraphTitleBlock, TableBlock, TextBlock
+from mineru.types import (
+    EquationBlock,
+    ImageBlock,
+    ListBlock,
+    PageInfo,
+    ParagraphTitleBlock,
+    TableBlock,
+    TextBlock,
+)
+
+
+def test_model_list_to_pages_keeps_equation_type_without_mutating_input() -> None:
+    """验证 equation 经 MagicModel 和严格对象化后保持类型、内容与图片载荷。"""
+    model_list = [[
+        {
+            "type": "equation",
+            "bbox": [0.1, 0.2, 0.9, 0.4],
+            "content": r"\[x+1\]",
+            "image_base64": "data:image/jpeg;base64,/9j/2Q==",
+        }
+    ]]
+    original = deepcopy(model_list)
+
+    page = model_list_to_pages(model_list)[0]
+
+    assert model_list == original
+    assert isinstance(page.blocks[0], EquationBlock)
+    assert page.blocks[0].type == "equation"
+    assert page.blocks[0].content == "x+1"
+    assert page.blocks[0].image_base64 == "data:image/jpeg;base64,/9j/2Q=="
 
 
 def test_model_list_to_pages_returns_typed_pdf_tree_without_mutating_input() -> None:

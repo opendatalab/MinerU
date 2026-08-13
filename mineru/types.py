@@ -68,8 +68,7 @@ class BlockType:
     FOOTNOTE = "footnote"  # pp_layout中的vision_footnote
     TEXT = "text"
     TITLE = "title"
-    INTERLINE_EQUATION = "interline_equation"
-    EQUATION = "equation"  # 公式(独立公式)
+    EQUATION = "equation"  # 行间公式（独立公式）
     LIST = "list"
     INDEX = "index"
     DISCARDED = "discarded"
@@ -146,7 +145,7 @@ BlockTypes = Literal[
     BlockType.TABLE_FOOTNOTE,
     BlockType.CHART_FOOTNOTE,
     BlockType.TEXT,
-    BlockType.INTERLINE_EQUATION,
+    BlockType.EQUATION,
     BlockType.LIST,
     BlockType.INDEX,
     BlockType.CODE,
@@ -178,7 +177,7 @@ BLOCK_TYPES = {
     BlockType.TABLE_FOOTNOTE,
     BlockType.CHART_FOOTNOTE,
     BlockType.TEXT,
-    BlockType.INTERLINE_EQUATION,
+    BlockType.EQUATION,
     BlockType.LIST,
     BlockType.INDEX,
     BlockType.CODE,
@@ -228,7 +227,7 @@ TEXT_LIKE_BLOCK_TYPES_FOR_BBOX = {
 # layout.pdf 中这些 block 直接使用自身 bbox，复合 block 则使用子 block bbox。
 DIRECT_LAYOUT_BBOX_BLOCK_TYPES = TEXT_LIKE_BLOCK_TYPES_FOR_BBOX | {
     BlockType.TITLE,
-    BlockType.INTERLINE_EQUATION,
+    BlockType.EQUATION,
     BlockType.LIST,
     BlockType.INDEX,
 }
@@ -442,8 +441,8 @@ class ImagePayloadBlock(BlockBase):
         return validate_image_sidecar_path(value)
 
 
-class InterlineEquationBlock(ImagePayloadBlock):
-    type: Literal[BlockType.INTERLINE_EQUATION]
+class EquationBlock(ImagePayloadBlock):
+    type: Literal[BlockType.EQUATION]
     content: str
 
 
@@ -643,7 +642,7 @@ Block: TypeAlias = Annotated[
         PageNumberBlock,
         PageFootnoteBlock,
         FormulaNumberBlock,
-        InterlineEquationBlock,
+        EquationBlock,
         ListBlock,
         IndexBlock,
         ImageBodyBlock,

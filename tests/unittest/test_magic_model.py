@@ -4,6 +4,24 @@ from mineru.backend.magic_model import MagicModel, fix_pdf_list_blocks
 from mineru.types import BlockType
 
 
+def test_magic_model_keeps_canonical_equation_type_and_cleans_content() -> None:
+    """验证 MagicModel 清理行间公式内容时不再改写 equation 类型。"""
+    equation = {
+        "type": BlockType.EQUATION,
+        "content": r"\[x+1\]",
+    }
+
+    magic_model = MagicModel([equation], use_bbox=False)
+
+    assert magic_model.blocks == [
+        {
+            "type": BlockType.EQUATION,
+            "content": "x+1",
+            "index": 0,
+        }
+    ]
+
+
 def test_fix_pdf_list_blocks_supports_unit_bbox_without_rewrite() -> None:
     """验证归一化列表框可与像素文本框计算包含关系且不回写 bbox。"""
     list_bbox = [0.0, 0.0, 1.0, 1.0]

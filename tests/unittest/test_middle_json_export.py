@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from mineru.types import MiddleJson, PageInfo, TableBlock, TableBodyBlock
+from mineru.types import EquationBlock, MiddleJson, PageInfo, TableBlock, TableBodyBlock
 
 
 def _data_uri(mime_subtype: str, payload: bytes) -> str:
@@ -40,6 +40,33 @@ def test_full_serialization_round_trip_and_recursive_field_exclusion() -> None:
     assert jpeg_uri in full_json
     assert MiddleJson.model_validate_json(full_json) == middle_json
     assert "image_base64" not in excluded["pages"][0]["blocks"][0]["content"][0]
+
+
+def test_equation_export_uses_canonical_sidecar_name(tmp_path: Path) -> None:
+    """验证行间公式图片使用 equation discriminator 生成确定性 sidecar 名称。"""
+    jpeg_payload = b"\xff\xd8\xffequation\xff\xd9"
+    equation = EquationBlock(
+        type="equation",
+        index=6,
+        content="x+1",
+        image_base64=_data_uri("jpeg", jpeg_payload),
+    )
+    middle_json = MiddleJson(
+        pages=[PageInfo(page_idx=3, blocks=[equation])],
+        file_suffix="docx",
+        effort="flash",
+        parse_mode="txt",
+        mineru_version="test",
+    )
+
+    result = middle_json.export(tmp_path)
+    exported_equation = result.middle_json.pages[0].blocks[0]
+
+    assert [path.name for path in result.image_paths] == ["page_3_equation_6.jpg"]
+    assert (tmp_path / "images/page_3_equation_6.jpg").read_bytes() == jpeg_payload
+    assert exported_equation.image_path == "images/page_3_equation_6.jpg"
+    assert exported_equation.image_base64 is None
+    assert equation.image_base64 is not None
 
 
 def test_export_writes_direct_and_multiple_html_images_without_mutating_source(tmp_path: Path) -> None:

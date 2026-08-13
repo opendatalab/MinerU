@@ -64,7 +64,7 @@ render 不应直接依赖:
 | `title` | heading，使用 `level`。 | text item with level。 |
 | `list` | 列表。 | list item。 |
 | `index` | 目录。 | index/list item。 |
-| `interline_equation` | display math。 | equation item。 |
+| `equation` | display math。 | equation item。 |
 | `image` | image markdown，包含 caption/footnote。 | image item。 |
 | `table` | HTML 或 table image。 | table item。 |
 | `chart` | chart image/content。 | chart item。 |

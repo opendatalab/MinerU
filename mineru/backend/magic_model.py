@@ -6,7 +6,6 @@ from mineru.backend.utils.boxbase import calculate_overlap_area_in_bbox1_area_ra
 from mineru.backend.utils.raw_block_types import (
     RAW_ALGORITHM,
     RAW_CAPTION,
-    RAW_EQUATION,
     RAW_FOOTNOTE,
     RAW_TITLE,
 )
@@ -59,8 +58,7 @@ class MagicModel:
                 code_block_sub_type = block_type
                 block_content = code_content_clean(block_content)
                 block_type = BlockType.CODE_BODY
-            elif block_type == RAW_EQUATION:
-                block_type = BlockType.INTERLINE_EQUATION
+            elif block_type == BlockType.EQUATION:
                 block_content = isolated_formula_clean(block_content)
 
             if block_type not in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.CHART_BODY]:

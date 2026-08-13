@@ -87,7 +87,7 @@ def block_to_structured_content(
             para_content = _paragraph_content(para_block)
     elif para_type in [BlockType.TEXT, BlockType.ABSTRACT, BlockType.PHONETIC]:
         para_content = _paragraph_content(para_block)
-    elif para_type == BlockType.INTERLINE_EQUATION:
+    elif para_type == BlockType.EQUATION:
         image_path, math_content = _get_body_data(para_block)
         para_content = {
             "type": ContentTypeV2.EQUATION_INTERLINE,

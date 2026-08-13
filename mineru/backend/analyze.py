@@ -37,7 +37,6 @@ from mineru.backend.utils.span_block_fix import group_spans_to_lines
 from mineru.backend.utils.raw_block_types import (
     RAW_ALGORITHM,
     RAW_CAPTION,
-    RAW_EQUATION,
     RAW_FOOTNOTE,
     RAW_PHONETIC,
     RAW_TITLE,
@@ -125,7 +124,7 @@ MODEL_JSON_VISUAL_BLOCK_TYPES = {
     BlockType.IMAGE,
     BlockType.CHART,
     BlockType.TABLE,
-    RAW_EQUATION,
+    BlockType.EQUATION,
 }
 LOCAL_LAYOUT_IMAGE_BLOCK_BODY_TYPES = {
     BlockType.IMAGE,
@@ -146,7 +145,7 @@ VLM_LAYOUT_LABEL_MAP = {
     "aside_text": BlockType.ASIDE_TEXT,
     "chart": BlockType.CHART,
     "content": BlockType.INDEX,
-    "display_formula": RAW_EQUATION,
+    "display_formula": BlockType.EQUATION,
     "doc_title": BlockType.DOC_TITLE,
     "figure_title": RAW_CAPTION,
     "footer": BlockType.FOOTER,
@@ -495,7 +494,7 @@ def _apply_medium_display_formula_results(
         page_size = _normalize_page_size(page_image)
         equation_blocks_by_bbox: dict[tuple[float, ...], list[dict[str, Any]]] = {}
         for block in page_model_list:
-            if block.get("type") != RAW_EQUATION:
+            if block.get("type") != BlockType.EQUATION:
                 continue
             block_bbox = block.get("bbox")
             if block_bbox is None or len(block_bbox) != 4:
@@ -2086,7 +2085,7 @@ def _remove_low_table_inner_blocks(
     """按表格中心点归属规则移除 low 表内图片、公式和公式编号块。"""
     inner_block_types = {
         BlockType.IMAGE,
-        RAW_EQUATION,
+        BlockType.EQUATION,
         BlockType.FORMULA_NUMBER,
     }
     for image_dict, page_model_list in zip(images_list, model_list):
@@ -2491,8 +2490,7 @@ def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
             raw_type = block.get("type")
             if raw_type == RAW_PHONETIC:
                 block["type"] = BlockType.TEXT
-            elif raw_type == RAW_EQUATION:
-                block["type"] = BlockType.INTERLINE_EQUATION
+            elif raw_type == BlockType.EQUATION:
                 equation_content = block.get("content")
                 if isinstance(equation_content, str):
                     if equation_content.startswith("\\["):

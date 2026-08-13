@@ -366,7 +366,7 @@ def blocks_to_markdown(
     for para_block in para_blocks:
         para_text = ""
         para_type = para_block.type
-        if para_type in [BlockType.TEXT, BlockType.INTERLINE_EQUATION]:
+        if para_type in [BlockType.TEXT, BlockType.EQUATION]:
             para_text = merge_para_with_text(para_block)
             if para_type == BlockType.TEXT:
                 bookmark_anchor = para_block.anchor
@@ -454,7 +454,7 @@ def make_blocks_to_content_list(para_block: Block, img_bucket_path: str, page_id
         }
         if title_level != 0:
             para_content["text_level"] = title_level
-    elif para_type == BlockType.INTERLINE_EQUATION:
+    elif para_type == BlockType.EQUATION:
         para_content = {
             "type": ContentType.EQUATION,
             "text": merge_para_with_text(para_block),
@@ -547,7 +547,7 @@ def block_to_structured_content(para_block: Block, img_bucket_path: str) -> dict
                 "paragraph_content": merge_para_with_structured_spans(para_block),
             },
         }
-    elif para_type == BlockType.INTERLINE_EQUATION:
+    elif para_type == BlockType.EQUATION:
         _, math_content = get_body_data(para_block)
         para_content = {
             "type": ContentTypeV2.EQUATION_INTERLINE,
@@ -640,7 +640,7 @@ def get_body_data(para_block: Block) -> tuple[str, str]:
     """
     Extract image_path and body content from para_block
     Returns:
-        - For IMAGE/INTERLINE_EQUATION: (image_path, '')
+        - For IMAGE/EQUATION: (image_path, '')
         - For TABLE: (image_path, html)
         - For CHART: (image_path, content)
         - Default: ('', '')

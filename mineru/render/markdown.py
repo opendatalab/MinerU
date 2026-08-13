@@ -54,7 +54,7 @@ def _block_to_markdown(
     if para_type == BlockType.CODE:
         return merge_visual_para_text(para_block)
 
-    if para_type == BlockType.INTERLINE_EQUATION:
+    if para_type == BlockType.EQUATION:
         if not formula_as_image:
             if (para_text := merge_para_text(para_block)).strip():
                 return para_text

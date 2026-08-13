@@ -67,14 +67,17 @@ code, code_body, code_caption, code_footnote
 doc_title, paragraph_title
 footer, formula_number, header
 image, image_body, image_caption, image_footnote
-index, interline_equation, list
+equation, index, list
 page_footnote, page_number, ref_text
 table, table_body, table_caption, table_footnote
 text
 ```
 
-仅 raw 阶段允许的 `algorithm/caption/equation/footnote/title/phonetic` 不属于
+仅 raw 阶段允许的 `algorithm/caption/footnote/title/phonetic` 不属于
 公开 union。其它旧 `BlockType` 常量也不会被严格反序列化接受。
+
+块级行间公式唯一使用 `equation`。Legacy Span 链中的
+`ContentType.INTERLINE_EQUATION` 暂未迁移，不属于公开 Block discriminator。
 
 ## 主要具体模型
 
@@ -138,7 +141,7 @@ index 时 body 必须使用相同 index；父子同时有 bbox 时必须相等�
 - `image_body`
 - `table_body`
 - `chart_body`
-- `interline_equation`
+- `equation`
 
 普通 `to_dict()` / `to_json()` 不执行文件 I/O；可通过
 `exclude_block_fields={"image_base64"}` 递归排除图片字段。完整序列化保留

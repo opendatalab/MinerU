@@ -62,7 +62,7 @@ def block_to_content_list(
             text=merge_para_text(para_block),
             text_level=title_level if title_level != 0 else None,
         )
-    elif para_type == BlockType.INTERLINE_EQUATION:
+    elif para_type == BlockType.EQUATION:
         item = ContentItem(
             type=ContentType.EQUATION,
             img_path=_body_data(para_block, img_bucket_path)[0],
@@ -134,7 +134,7 @@ def _body_data(para_block: Block, img_bucket_path: str) -> tuple[str, str]:
             BlockType.IMAGE_BODY,
             BlockType.TABLE_BODY,
             BlockType.CHART_BODY,
-            BlockType.INTERLINE_EQUATION,
+            BlockType.EQUATION,
         ]
         for line in block.lines
         for span in line.spans

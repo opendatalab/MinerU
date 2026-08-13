@@ -89,7 +89,7 @@ def txt_spans_extract(
     for span in spans:
         if span.type in [ContentType.TEXT]:
             for block in all_bboxes + all_discarded_blocks:
-                if block[7] in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.INTERLINE_EQUATION]:
+                if block[7] in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.EQUATION]:
                     continue
                 if calculate_overlap_area_in_bbox1_area_ratio(span.bbox, block[0:4]) > 0.5:
                     if (

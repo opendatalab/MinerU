@@ -34,7 +34,10 @@ def build_tagged_formula_content(formula_content: str, tag_content: str) -> str 
 
 def _is_hybrid_equation_block(block: dict[str, Any]) -> bool:
     """判断 raw Hybrid/VLM block 是否表示可合并编号的行间公式。"""
-    return str(block.get("type") or "").lower() in {"equation", "display_formula", BlockType.INTERLINE_EQUATION}
+    return str(block.get("type") or "").lower() in {
+        BlockType.EQUATION,
+        "display_formula",
+    }
 
 
 def _is_hybrid_formula_number_block(block: dict[str, Any]) -> bool:

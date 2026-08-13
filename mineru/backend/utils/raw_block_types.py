@@ -5,7 +5,6 @@ from typing import Literal, TypeAlias
 RawBlockType: TypeAlias = Literal[
     "algorithm",
     "caption",
-    "equation",
     "footnote",
     "title",
     "phonetic",
@@ -13,11 +12,10 @@ RawBlockType: TypeAlias = Literal[
 
 RAW_ALGORITHM: RawBlockType = "algorithm"
 RAW_CAPTION: RawBlockType = "caption"
-RAW_EQUATION: RawBlockType = "equation"
 RAW_FOOTNOTE: RawBlockType = "footnote"
 RAW_TITLE: RawBlockType = "title"
 RAW_PHONETIC: RawBlockType = "phonetic"
 
 RAW_ONLY_BLOCK_TYPES = frozenset(
-    {RAW_ALGORITHM, RAW_CAPTION, RAW_EQUATION, RAW_FOOTNOTE, RAW_TITLE, RAW_PHONETIC}
+    {RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_TITLE, RAW_PHONETIC}
 )

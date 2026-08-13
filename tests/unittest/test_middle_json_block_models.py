@@ -6,9 +6,12 @@ import pytest
 from pydantic import ValidationError
 
 import mineru.types as types_module
+from mineru.backend.utils.raw_block_types import RAW_ONLY_BLOCK_TYPES
 from mineru.types import (
+    BLOCK_ADAPTER,
     BLOCK_TYPES,
     CodeBlock,
+    EquationBlock,
     ListBlock,
     MiddleJson,
     PageInfo,
@@ -27,7 +30,7 @@ def _public_block_payloads() -> dict[str, dict[str, object]]:
         "formula_number": {"type": "formula_number", "content": "(1)"},
         "header": {"type": "header", "content": "header"},
         "index": {"type": "index", "content": [text_leaf]},
-        "interline_equation": {"type": "interline_equation", "content": "x=1"},
+        "equation": {"type": "equation", "content": "x=1"},
         "list": {"type": "list", "content": [text_leaf]},
         "page_footnote": {"type": "page_footnote", "content": "note"},
         "page_number": {"type": "page_number", "content": "1"},
@@ -69,14 +72,35 @@ def test_all_29_public_discriminators_parse_to_concrete_models() -> None:
 
     assert set(payloads) == BLOCK_TYPES
     assert len(payloads) == 29
+    assert "equation" not in RAW_ONLY_BLOCK_TYPES
     assert all(parse_block(payload).type == block_type for block_type, payload in payloads.items())
+    assert isinstance(parse_block(payloads["equation"]), EquationBlock)
 
 
-@pytest.mark.parametrize("raw_type", ["algorithm", "caption", "equation", "footnote", "title", "phonetic"])
+@pytest.mark.parametrize("raw_type", ["algorithm", "caption", "footnote", "title", "phonetic"])
 def test_raw_only_types_are_rejected(raw_type: str) -> None:
     """验证 Analyze 私有 raw type 不能越过公开对象边界。"""
+    assert raw_type in RAW_ONLY_BLOCK_TYPES
     with pytest.raises(ValidationError):
         parse_block({"type": raw_type, "content": "raw"})
+
+
+def test_legacy_interline_equation_discriminator_is_rejected() -> None:
+    """验证旧 interline_equation 不提供兼容入口，严格对象只接受 equation。"""
+    with pytest.raises(ValidationError):
+        parse_block({"type": "interline_equation", "content": "x=1"})
+
+
+def test_equation_schema_uses_only_canonical_discriminator() -> None:
+    """验证生成的 JSON Schema 只公开 equation 与 EquationBlock。"""
+    schema = BLOCK_ADAPTER.json_schema()
+    mapping = schema["discriminator"]["mapping"]
+    legacy_model_name = "Interline" + "EquationBlock"
+
+    assert mapping["equation"] == "#/$defs/EquationBlock"
+    assert "interline_equation" not in mapping
+    assert "EquationBlock" in schema["$defs"]
+    assert legacy_model_name not in schema["$defs"]
 
 
 def test_cross_type_fields_and_unknown_fields_are_rejected() -> None:
@@ -100,10 +124,12 @@ def test_every_public_block_rejects_removed_merge_field() -> None:
 
 def test_removed_block_classes_are_not_exposed() -> None:
     """验证未采用的旧 block 类没有重新进入公开对象体系。"""
+    legacy_equation_model_name = "Interline" + "EquationBlock"
     removed_names = (
         "TitleBlock",
         "HeaderImageBlock",
         "FooterImageBlock",
+        legacy_equation_model_name,
         "_DocElement",
         "Span",
         "Line",
@@ -115,6 +141,7 @@ def test_removed_block_classes_are_not_exposed() -> None:
     )
     for removed_name in removed_names:
         assert not hasattr(types_module, removed_name)
+    assert not hasattr(types_module.BlockType, "INTERLINE_" + "EQUATION")
 
 
 @pytest.mark.parametrize(
