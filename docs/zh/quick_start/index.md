@@ -121,7 +121,7 @@ uv pip install -U "mineru[all]" -i https://mirrors.aliyun.com/pypi/simple
 ```bash
 git clone https://github.com/opendatalab/MinerU.git
 cd MinerU
-uv pip install -e .[all] -i https://mirrors.aliyun.com/pypi/simple
+uv pip install -e '.[all]' -i https://mirrors.aliyun.com/pypi/simple
 ```
 
 > [!TIP]

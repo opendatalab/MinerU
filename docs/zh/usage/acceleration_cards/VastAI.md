@@ -57,7 +57,7 @@
         # 通过源码安装MinerU
         git clone https://github.com/opendatalab/MinerU.git
         git checkout 8c4b3ef3a20b11ddac9903f25124d24ea82639b5
-        pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
+        pip install -e '.[core]' -i https://mirrors.aliyun.com/pypi/simple
 
         # 或使用pip安装MinerU
         pip install -U "mineru[core]==2.7.0" -i https://mirrors.aliyun.com/pypi/simple
