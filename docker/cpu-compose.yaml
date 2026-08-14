@@ -1,0 +1,30 @@
+services:
+  mineru-api:
+    build:
+      context: .
+      dockerfile: cpu/Dockerfile
+    image: mineru:cpu
+    container_name: mineru-api-cpu
+    ports:
+      - "8888:8888"
+    environment:
+      - MINERU_MODEL_SOURCE=local
+    volumes:
+      - mineru-models:/root/.cache
+      - mineru-output:/output
+      - ./mineru.json:/root/mineru.json:ro
+    command: mineru-api --host 0.0.0.0 --port 8888
+    deploy:
+      resources:
+        limits:
+          memory: 12G
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  mineru-models:
+  mineru-output:
