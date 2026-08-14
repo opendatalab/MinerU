@@ -1,19 +1,22 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
 
-def remove_non_official_s3_args(s3path):
+S3_URI_SCHEMES = ('s3://', 's3a://')
+
+
+def remove_non_official_s3_args(s3path: str) -> str:
     """
     example: s3://abc/xxxx.json?bytes=0,81350 ==> s3://abc/xxxx.json
     """
     arr = s3path.split("?")
     return arr[0]
 
-def parse_s3path(s3path: str):
+def parse_s3path(s3path: str) -> tuple[str, str]:
     # from s3pathlib import S3Path
     # p = S3Path(remove_non_official_s3_args(s3path))
     # return p.bucket, p.key
     s3path = remove_non_official_s3_args(s3path).strip()
-    if s3path.startswith(('s3://', 's3a://')):
+    if is_s3_path(s3path):
         prefix, path = s3path.split('://', 1)
         bucket_name, key = path.split('/', 1)
         return bucket_name, key
@@ -23,7 +26,11 @@ def parse_s3path(s3path: str):
         raise ValueError("Invalid S3 path format. Expected 's3://bucket-name/key' or 's3a://bucket-name/key'.")
 
 
-def parse_s3_range_params(s3path: str):
+def is_s3_path(s3path: str) -> bool:
+    return s3path.strip().startswith(S3_URI_SCHEMES)
+
+
+def parse_s3_range_params(s3path: str) -> list[str] | None:
     """
     example: s3://abc/xxxx.json?bytes=0,81350 ==> [0, 81350]
     """

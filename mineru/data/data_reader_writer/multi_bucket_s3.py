@@ -3,10 +3,10 @@
 from ..utils.exceptions import InvalidConfig, InvalidParams
 from .base import DataReader, DataWriter
 from ..utils.schemas import S3Config
-from ..utils.path_utils import parse_s3_range_params, parse_s3path, remove_non_official_s3_args
+from ..utils.path_utils import is_s3_path, parse_s3_range_params, parse_s3path, remove_non_official_s3_args
 
 
-def _load_s3_io_classes():
+def _load_s3_io_classes() -> tuple[type, type]:
     """延迟加载 S3 IO 类，仅在实际读写 S3 时要求安装 boto3。"""
     try:
         from ..io.s3 import S3Reader, S3Writer
@@ -23,7 +23,8 @@ class MultiS3Mixin:
         """Initialized with multiple s3 configs.
 
         Args:
-            default_prefix (str): the default prefix of the relative path. for example, {some_bucket}/{some_prefix} or {some_bucket}
+            default_prefix (str): default relative path prefix, for example, {some_bucket}/{some_prefix}
+                or {some_bucket}.
             s3_configs (list[S3Config]): list of s3 configs, the bucket_name must be unique in the list.
 
         Raises:
@@ -49,7 +50,7 @@ class MultiS3Mixin:
                 f'default_bucket: {self.default_bucket} config must be provided in s3_configs: {s3_configs}'
             )
 
-        uniq_bucket = set([conf.bucket_name for conf in s3_configs])
+        uniq_bucket = {conf.bucket_name for conf in s3_configs}
         if len(uniq_bucket) != len(s3_configs):
             raise InvalidConfig(
                 f'the bucket_name in s3_configs: {s3_configs} must be unique'
@@ -65,8 +66,8 @@ class MultiBucketS3DataReader(DataReader, MultiS3Mixin):
         based on the bucket, also support range read.
 
         Args:
-            path (str): the s3 path of file, the path must be in the format of s3://bucket_name/path?offset,limit.
-            for example: s3://bucket_name/path?0,100.
+            path (str): the s3 path of file, the path must be in the format of s3://bucket_name/path?offset,limit
+            or s3a://bucket_name/path?offset,limit. For example: s3://bucket_name/path?0,100.
 
         Returns:
             bytes: the content of s3 file.
@@ -79,8 +80,8 @@ class MultiBucketS3DataReader(DataReader, MultiS3Mixin):
         path = remove_non_official_s3_args(path)
         return self.read_at(path, byte_start, byte_len)
 
-    def __get_s3_client(self, bucket_name: str):
-        if bucket_name not in set([conf.bucket_name for conf in self.s3_configs]):
+    def __get_s3_client(self, bucket_name: str) -> object:
+        if bucket_name not in {conf.bucket_name for conf in self.s3_configs}:
             raise InvalidParams(
                 f'bucket name: {bucket_name} not found in s3_configs: {self.s3_configs}'
             )
@@ -110,7 +111,7 @@ class MultiBucketS3DataReader(DataReader, MultiS3Mixin):
         Returns:
             bytes: the file content.
         """
-        if path.startswith('s3://'):
+        if is_s3_path(path):
             bucket_name, path = parse_s3path(path)
             s3_reader = self.__get_s3_client(bucket_name)
         else:
@@ -121,8 +122,8 @@ class MultiBucketS3DataReader(DataReader, MultiS3Mixin):
 
 
 class MultiBucketS3DataWriter(DataWriter, MultiS3Mixin):
-    def __get_s3_client(self, bucket_name: str):
-        if bucket_name not in set([conf.bucket_name for conf in self.s3_configs]):
+    def __get_s3_client(self, bucket_name: str) -> object:
+        if bucket_name not in {conf.bucket_name for conf in self.s3_configs}:
             raise InvalidParams(
                 f'bucket name: {bucket_name} not found in s3_configs: {self.s3_configs}'
             )
@@ -148,7 +149,7 @@ class MultiBucketS3DataWriter(DataWriter, MultiS3Mixin):
             path (str): the path of file, if the path is relative path, it will be joined with parent_dir.
             data (bytes): the data want to write.
         """
-        if path.startswith('s3://'):
+        if is_s3_path(path):
             bucket_name, path = parse_s3path(path)
             s3_writer = self.__get_s3_client(bucket_name)
         else:
