@@ -4,6 +4,7 @@ from typing import Any, List
 
 import numpy as np
 import pypdfium2 as pdfium
+import pypdfium2.raw as pdfium_c
 from pdftext.pdf.chars import deduplicate_chars, get_chars
 from pdftext.pdf.pages import assign_scripts, get_blocks, get_lines, get_spans
 from pdftext.schema import Bbox
@@ -197,6 +198,84 @@ def _ensure_legacy_chars(chars) -> list[dict[str, Any]]:
     return chars
 
 
+def _restore_pdfium_surrogate_pairs(
+    chars: list[dict[str, Any]],
+    textpage: pdfium.PdfTextPage,
+) -> list[dict[str, Any]]:
+    """利用 PDFium 原始 UTF-16 code unit 恢复 pdftext 丢失的补充平面字符。"""
+    if not any(
+        len(text := str(char.get("char", ""))) == 1
+        and (text == "\uFFFD" or 0xD800 <= ord(text) <= 0xDFFF)
+        for char in chars
+    ):
+        return chars
+
+    try:
+        textpage_raw = textpage.raw
+        char_count = int(textpage.count_chars())
+    except Exception:
+        textpage_raw = None
+        char_count = 0
+
+    restored_chars = []
+    consumed_char_indices = set()
+    get_unicode = pdfium_c.FPDFText_GetUnicode
+
+    for char in chars:
+        text = str(char.get("char", ""))
+        raw_char_idx = char.get("char_idx")
+        try:
+            char_idx = int(raw_char_idx) if raw_char_idx is not None else -1
+        except (TypeError, ValueError):
+            char_idx = -1
+
+        if char_idx in consumed_char_indices:
+            continue
+
+        raw_code = None
+        if (
+            textpage_raw is not None
+            and 0 <= char_idx < char_count
+            and len(text) == 1
+            and (text == "\uFFFD" or 0xD800 <= ord(text) <= 0xDFFF)
+        ):
+            raw_code = int(get_unicode(textpage_raw, char_idx))
+
+        high_surrogate = None
+        low_surrogate = None
+        if raw_code is not None and 0xD800 <= raw_code <= 0xDBFF and char_idx + 1 < char_count:
+            next_code = int(get_unicode(textpage_raw, char_idx + 1))
+            if 0xDC00 <= next_code <= 0xDFFF:
+                high_surrogate = raw_code
+                low_surrogate = next_code
+                consumed_char_indices.add(char_idx + 1)
+        elif raw_code is not None and 0xDC00 <= raw_code <= 0xDFFF and char_idx > 0:
+            previous_code = int(get_unicode(textpage_raw, char_idx - 1))
+            if 0xD800 <= previous_code <= 0xDBFF:
+                high_surrogate = previous_code
+                low_surrogate = raw_code
+
+        if high_surrogate is not None and low_surrogate is not None:
+            restored_char = dict(char)
+            restored_char["char"] = chr(
+                0x10000
+                + ((high_surrogate - 0xD800) << 10)
+                + (low_surrogate - 0xDC00)
+            )
+            restored_chars.append(restored_char)
+            continue
+
+        if len(text) == 1 and 0xD800 <= ord(text) <= 0xDFFF:
+            restored_char = dict(char)
+            restored_char["char"] = "\uFFFD"
+            restored_chars.append(restored_char)
+            continue
+
+        restored_chars.append(char)
+
+    return restored_chars
+
+
 def _get_single_char_text(char: dict[str, Any]) -> str:
     """提取单个 PDF 字符文本，异常空值用替换符保证 PageChars 长度一致。"""
     text = char.get("char", "")
@@ -343,6 +422,7 @@ def get_page_chars(
                 get_chars(textpage, page_bbox, page_rotation, quote_loosebox)
             )
             chars = _ensure_legacy_chars(chars)
+            chars = _restore_pdfium_surrogate_pairs(chars, textpage)
             chars = _deduplicate_near_identical_chars(chars)
     finally:
         if owns_textpage:
