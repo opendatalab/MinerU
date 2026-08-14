@@ -420,6 +420,41 @@ def test_pdf_document_does_not_expose_legacy_compat_hooks() -> None:
     assert pdf_document.PDFDocument._pdf_doc.fset is None
 
 
+def test_restore_pdfium_surrogate_pairs_recovers_supplementary_unicode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证合法 surrogate pair 可恢复，真实替换符与孤立 surrogate 不被误判。"""
+
+    raw_codes = [ord("A"), 0xD835, 0xDF03, 0xFFFD, 0xD835, ord("B")]
+
+    class _FakeTextPage:
+        raw = object()
+
+        def count_chars(self) -> int:
+            return len(raw_codes)
+
+    monkeypatch.setattr(
+        pdf_document.pdfium_c,
+        "FPDFText_GetUnicode",
+        lambda _textpage, char_idx: raw_codes[char_idx],
+    )
+    chars = [
+        {
+            "char": text,
+            "bbox": Bbox([float(char_idx), 0.0, float(char_idx + 1), 1.0]),
+            "rotation": 0,
+            "font": {},
+            "char_idx": char_idx,
+        }
+        for char_idx, text in enumerate(["A", "\uFFFD", "\uFFFD", "\uFFFD", "\ud835", "B"])
+    ]
+
+    restored = pdf_document._restore_pdfium_surrogate_pairs(chars, _FakeTextPage())
+
+    assert [char["char"] for char in restored] == ["A", "𝜃", "\uFFFD", "\uFFFD", "B"]
+    assert [char["char_idx"] for char in restored] == [0, 1, 3, 4, 5]
+
+
 def test_get_page_drawing_lines_extracts_forms_filled_rectangles_and_merges_segments() -> None:
     """验证绘图线接口支持 Form、细长填充矩形、共线合并并过滤斜线。"""
     with pdf_document.PDFDocument(_build_drawing_pdf()) as doc:
