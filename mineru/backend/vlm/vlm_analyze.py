@@ -369,18 +369,21 @@ def shutdown_cached_models() -> None:
 atexit.register(shutdown_cached_models)
 
 
-def _predictor_uses_mlx(predictor: MinerUClient, backend: str | None = None) -> bool:
-    if backend == "mlx-engine":
+def _predictor_requires_serial_execution(
+    predictor: MinerUClient,
+    backend: str | None = None,
+) -> bool:
+    if backend in {"mlx-engine", "transformers"}:
         return True
     client = getattr(predictor, "client", None)
-    return type(client).__module__.endswith(".mlx_client")
+    return type(client).__module__.endswith((".mlx_client", ".transformers_client"))
 
 
 def _maybe_enable_serial_execution(
     predictor: MinerUClient,
     backend: str | None = None,
 ) -> MinerUClient:
-    if _predictor_uses_mlx(predictor, backend) and not hasattr(
+    if _predictor_requires_serial_execution(predictor, backend) and not hasattr(
         predictor, "_mineru_execution_lock"
     ):
         predictor._mineru_execution_lock = threading.Lock()
