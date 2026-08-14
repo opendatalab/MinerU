@@ -17,6 +17,32 @@ If you need to read from or write to S3, install the `s3` extension module.
 uv pip install "mineru[s3]"
 ```
 
+The `s3` extension supports Amazon S3 and S3-compatible providers (MinIO, [Tigris](https://www.tigrisdata.com), Cloudflare R2, etc.) via the `endpoint_url` parameter on `S3DataReader` and `S3DataWriter`:
+
+```python
+from mineru.data.data_reader_writer import S3DataReader, S3DataWriter
+
+# Amazon S3
+reader = S3DataReader(
+    default_prefix_without_bucket="documents",
+    bucket="my-bucket",
+    ak="AKIAxxx",
+    sk="...",
+    endpoint_url="https://s3.us-east-1.amazonaws.com",
+)
+
+# Tigris (S3-compatible)
+reader = S3DataReader(
+    default_prefix_without_bucket="documents",
+    bucket="my-bucket",
+    ak="tid_...",
+    sk="tsec_...",
+    endpoint_url="https://t3.storage.dev",
+)
+```
+
+Tigris uses a single global endpoint with reads served from the nearest region and no egress fees, which can matter for re-extraction passes over the same corpus or workers spread across regions. Choose AWS S3 (Express One Zone in particular) when compute and bucket are pinned to the same AZ.
+
 ---
 
 ### Using `vllm` to Accelerate VLM Model Inference
