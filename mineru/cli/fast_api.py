@@ -17,10 +17,10 @@ from typing import Annotated, Any, Optional
 
 import click
 import uvicorn
+from fastapi_offline import FastAPIOffline as FastAPI
 from fastapi import (
     BackgroundTasks,
     Depends,
-    FastAPI,
     HTTPException,
     Request,
     UploadFile,
