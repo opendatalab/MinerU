@@ -1,4 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import re
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any
 
@@ -36,8 +37,11 @@ def extract_formula_number_text(block: Block) -> str:
 
 
 def normalize_formula_tag_content(tag_content: str) -> str:
-    """归一化公式编号文本，去掉外层括号并转换全角字符。"""
+    """归一化公式编号文本，去掉引导符和外层括号并转换全角字符。"""
     tag_content = full_to_half(tag_content.strip())
+    trailing_tag = re.search(r"\(([^()]*)\)\s*$", tag_content)
+    if trailing_tag:
+        return trailing_tag.group(1).strip()
     if tag_content.startswith("("):
         tag_content = tag_content[1:].strip()
     if tag_content.endswith(")"):
