@@ -837,9 +837,9 @@ class DocxConverter:
                 try:
                     # 处理表格元素
                     self._handle_tables(element)
-                except Exception:
-                    # 如果表格解析失败，记录调试信息
-                    logger.debug("could not parse a table, broken docx table")
+                except Exception as e:
+                    # 表格解析失败会导致整表丢失，需以 warning 级别暴露异常详情。
+                    logger.warning(f"Could not parse a table, broken docx table: {e}")
             # 检查图片元素
             elif picture_refs:
                 # 判断图片是否为锚定（浮动）图片
@@ -997,9 +997,56 @@ class DocxConverter:
         )
 
     @staticmethod
+    def _xml_table_char_fragment(node: Any) -> str:
+        """按 Mammoth 规则把字符级 OOXML 元素渲染为表格签名文本。
+
+        仅拼接 w:t 会遗漏不间断连字符、软连字符和 Symbol 字符，
+        导致 XML 签名与 Mammoth HTML 签名不一致。未映射的 w:sym 在
+        Mammoth 中会被忽略，此处同样返回空字符串。
+        """
+        w_ns = DocxConverter._BLIP_NAMESPACES["w"]
+        if node.tag == f"{{{w_ns}}}t":
+            return node.text or ""
+        if node.tag == f"{{{w_ns}}}noBreakHyphen":
+            # NON-BREAKING HYPHEN U+2011，与 Mammoth 的 HTML 渲染一致。
+            return "‑"
+        if node.tag == f"{{{w_ns}}}softHyphen":
+            # SOFT HYPHEN U+00AD，与 Mammoth 的 HTML 渲染一致。
+            return "­"
+        if node.tag == f"{{{w_ns}}}sym":
+            try:
+                from mammoth.docx.dingbats import dingbats
+            except ImportError:
+                return ""
+
+            font = node.get(f"{{{w_ns}}}font", "")
+            char = node.get(f"{{{w_ns}}}char", "")
+            try:
+                code = dingbats.get((font, int(char, 16)))
+                if code is None and re.match(r"^F0..", char):
+                    code = dingbats.get((font, int(char[2:], 16)))
+            except (TypeError, ValueError):
+                return ""
+            return chr(code) if code is not None else ""
+        return ""
+
+    @staticmethod
     def _xml_table_signature(xml_table) -> dict:
-        """提取 XML 表格的轻量签名，用于与 Mammoth HTML 表格对齐。"""
-        text = "".join(node.text or "" for node in xml_table.xpath('.//*[local-name()="t"]') if node.text)
+        """提取与 Mammoth 渲染规则一致的 XML 表格轻量签名。
+
+        按文档顺序收集 w:t 及特殊字符元素，并且只处理 WordprocessingML
+        命名空间，以排除 Mammoth 不渲染的 OMML m:t 公式文本。
+        """
+        w_ns = DocxConverter._BLIP_NAMESPACES["w"]
+        char_tags = (
+            f"{{{w_ns}}}t",
+            f"{{{w_ns}}}noBreakHyphen",
+            f"{{{w_ns}}}softHyphen",
+            f"{{{w_ns}}}sym",
+        )
+        text = "".join(
+            DocxConverter._xml_table_char_fragment(node) for node in xml_table.iter() if node.tag in char_tags
+        )
         return {
             "row_count": len(xml_table.xpath('./*[local-name()="tr"]')),
             "cell_count": len(xml_table.xpath('.//*[local-name()="tc"]')),
