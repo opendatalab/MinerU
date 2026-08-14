@@ -58,9 +58,10 @@
   - `$MINERU_E2E_FIXTURE_DIR/no-read.pdf`，权限不可读文件；若平台无法稳定制造权限场景，可标记相关用例 BLOCKED。
   - `$MINERU_E2E_FIXTURE_DIR/output-dir/`，用于输出文件测试的目录。
 - 测试环境允许启动本地 doclib server。
-- 测试环境必须安装 `standard` extra，以覆盖本地 `basic`、`standard`、`advanced` quality parse-server；默认 tier 相关用例应验证本地 quality tier 可用，不再按缺少本地 quality tier 的预期失败分支判定。
-- MinerU 的公开 tier 只有 `flash`、`basic`、`standard`、`advanced`；默认 quality tier 选择顺序为 `standard`、`advanced`、`basic`，已缓存结果的读取顺序为 `advanced`、`standard`、`basic`、`flash`。
-- 显式指定 quality tier 的 remote 请求应按 remote 成功、remote 失败后同 tier local fallback、remote 与 local 均不可用三个分支判定；不得 fallback 到 `flash`。未指定 tier 时需要先从 remote 能力中按 `standard`、`advanced`、`basic` 选择默认值，无法选择时返回 `quality_tier_unavailable`。
+- 测试环境必须安装 `full` extra，并满足 README 中 `full` stack 的硬件要求，以同时覆盖 `light` 和 `full` model stack 下的本地 `basic`、`standard`、`advanced` quality parse-server；默认 tier 相关用例应验证本地 quality tier 可用，不再按缺少本地 quality tier 的预期失败分支判定。
+- 全量主流程固定使用 `light` stack；`full` stack 作为硬性 profile，必须额外覆盖本地 PDF Basic、Standard、Advanced。不得使用 `auto` 执行这些用例，以免硬件探测导致测试环境不确定。
+- MinerU 的公开 tier 只有 `flash`、`basic`、`standard`、`advanced`；默认 quality tier 选择顺序为 `standard`、`basic`，`advanced` 只在显式请求时使用；已缓存结果的读取顺序为 `advanced`、`standard`、`basic`、`flash`。
+- 显式指定 quality tier 的 remote 请求应按 remote 成功、remote 失败后同 tier local fallback、remote 与 local 均不可用三个分支判定；不得 fallback 到 `flash`。未指定 tier 时需要先从 remote 能力中按 `standard`、`basic` 选择默认值，无法选择时返回 `quality_tier_unavailable`；仅暴露 `advanced` 不构成可用的默认 quality tier。
 - PARSE-013A1 是 remote Standard 硬性测试，remote parse-server 不可用或不支持 Standard 均记录为失败。
 
 ### 2.1 测试 HOME 与隔离配置
@@ -71,12 +72,15 @@
 ~/mineru-e2e-test
 ```
 
-进入测试目录后，只需设置 `MINERU_HOME`，即可让默认配置文件（`$MINERU_HOME/config.yaml`）、DB、日志、endpoint discovery 文件、UDS socket（启用 UDS 时）和数据目录都落在测试目录中:
+进入测试目录后，设置 `MINERU_HOME` 隔离运行数据，并将全量主流程固定为 `light` stack:
 
 ```bash
 cd ~/mineru-e2e-test
 export MINERU_HOME=`pwd`
+export MINERU_MODEL_STACK=light
 ```
+
+`MINERU_HOME` 使默认配置文件（`$MINERU_HOME/config.yaml`）、DB、日志、endpoint discovery 文件、UDS socket（启用 UDS 时）和数据目录都落在测试目录中。`MINERU_MODEL_STACK=light` 必须由 doclib server 及其 managed parse-server 继承。
 
 ### 2.2 安装方法
 
@@ -88,12 +92,12 @@ rm -rf .venv
 uv venv .venv
 source .venv/bin/activate
 cd ~/MinerU-Repo
-uv pip install ".[standard]"
+uv pip install ".[full]"
 cd ~/mineru-e2e-test
 mineru --help
 ```
 
-当前仓库以 `standard` extra 覆盖 Standard 和 Advanced 的共同 runtime 依赖，并通过其包含的 `basic` extra 覆盖 Basic。
+基础安装已包含 `light` stack 所需的 ONNX 和 llama.cpp runtime；`full` extra 额外安装 PyTorch、vLLM/lmdeploy/mlx 等完整 runtime。由于本 E2E 将 `full` profile 作为硬性测试，安装阶段统一使用 `.[full]`。
 
 安装完成后，`mineru` 应由 `pyproject.toml` 的脚本入口直接提供，不需要配置 shell alias。
 
@@ -108,15 +112,45 @@ mineru --help
 ```bash
 cd ~/mineru-e2e-test
 source .venv/bin/activate
-mineru-kit models download --tier standard
-mineru-kit models verify --tier standard
+mineru-kit models download --tier standard --stack light
+mineru-kit models verify --tier standard --stack light
+mineru-kit models download --tier standard --stack full
+mineru-kit models verify --tier standard --stack full
 ```
 
 说明:
 
-- Standard 模型集覆盖 Advanced，并包含 Basic 所需模型。
+- 每个 stack 的 Standard 模型集覆盖该 stack 的 Advanced 请求，并包含 Basic 所需模型。
+- 模型下载和验证必须显式传 `--stack`；不得依赖 `model.stack=auto` 的硬件探测结果。
 - 如果需要验证模型未准备好的 config 拦截分支，应使用新的隔离 `MINERU_HOME`，或在测试开始前清空该隔离 HOME 下的 `models/` 目录。
+- 模型未准备分支固定继承 `MINERU_MODEL_STACK=light`，确保断言针对 light 模型集。
 - 正式 case 执行阶段仍只调用 `mineru ...` 命令。
+
+### 2.2.2 Model stack profile 切换
+
+全量主流程默认在 `light` profile 下执行。切换 profile 前必须停止 doclib server，使新的 server 和 managed parse-server 继承目标环境变量。
+
+切换到 `full` profile:
+
+```bash
+mineru config set parse_server.local.mode disabled
+mineru server stop
+export MINERU_MODEL_STACK=full
+mineru server start
+```
+
+恢复 `light` profile:
+
+```bash
+mineru config set parse_server.local.mode disabled
+mineru server stop
+export MINERU_MODEL_STACK=light
+mineru server start
+mineru config set parse_server.local.managed_tier standard
+mineru config set parse_server.local.mode managed
+```
+
+切换后必须轮询 `mineru server status --json`，直到 doclib 正常运行且目标 local parse-server healthy，再执行对应 profile 的 parse case。不得在 server 运行期间仅修改环境变量并假定 stack 已切换。
 
 ### 2.3 Fixture 生成方法
 
@@ -523,14 +557,20 @@ export MINERU_HOME="$MAIN_MINERU_HOME"
 2. 确认 `$MINERU_HOME/doclib.lock` 存在。
 3. 使用相同环境直接执行第二个 `python -m mineru.doclib.app`。
 4. 确认第二个进程立即失败，第一个 server 仍可通过 status 访问。
-5. 强制终止第一个 server 进程，再次执行 `mineru server start`。
+5. 保留 endpoint 中有效的 PID 和 `server_id`，临时将 transports 改为不可连接的地址，依次执行 `mineru server status --json`、
+   `mineru server start` 和 `mineru server stop`。
+6. 恢复原 endpoint，确认第一个 server 仍可通过 status 访问。
+7. 强制终止第一个 server 进程，再次执行 `mineru server start`。
 
 预期:
 
 - 第二个进程 exit code 非 0，stderr 包含当前 home，但不显示 `doclib.lock` 路径。
 - 第二个进程不删除第一个实例的 endpoint 或 UDS socket。
-- endpoint 不可连接但 ownership lock 被占用时，status/start/stop 返回 `service_unavailable` 和统一的 home ownership 消息，
-  不得报告普通未运行状态；endpoint 含有效 PID 时，错误中包含 `reported PID <pid>`，但不自动终止进程。
+- endpoint 不可连接但 ownership lock 被占用时，`mineru server status --json` exit code = 0，stdout 为可直接解析的 JSON，
+  `status = starting`；endpoint 含有效 PID 时同时返回相同的 `pid`，不得报告普通未运行状态。
+- 同一状态下，`mineru server start` 和 `mineru server stop` exit code 非 0，stderr 包含统一的 home ownership 消息；
+  endpoint 含有效 PID 时消息包含 `reported PID <pid>`。错误输出不要求显示内部错误码 `service_unavailable`。
+- status/start/stop 的 ownership 诊断不得自动终止第一个 server；恢复原 endpoint 后，第一个 server 仍可访问。
 - 第一个进程退出后 OS lock 自动释放；replacement 能取得 ownership、清理 stale discovery 文件并正常启动。
 - `doclib.lock` 文件是否存在不表示 server 是否正在运行，其保留行为可能因平台而异。
 
@@ -883,7 +923,7 @@ mineru config get parse_server.local.mode --json
 
 前置条件:
 
-- 使用已完成 `mineru-kit models download --tier basic` 和 `mineru-kit models verify --tier basic` 的 `MINERU_HOME`。
+- 使用已完成 `mineru-kit models download --tier basic --stack light` 和 `mineru-kit models verify --tier basic --stack light` 的 `MINERU_HOME`。
 
 命令:
 
@@ -1497,6 +1537,8 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --for
 
 ### PARSE-007 默认 tier 行为
 
+Profile 前置条件: `MINERU_MODEL_STACK=light`，doclib server 及 managed parse-server 均在该环境下启动。PARSE-007、PARSE-007A、PARSE-007B、PARSE-007C 构成 `light` profile 的本地 PDF tier 覆盖。
+
 命令:
 
 ```bash
@@ -1521,7 +1563,7 @@ mineru show parse <created_parse_id> --json
 - 不允许静默返回 flash 内容
 - 不包含 Python traceback
 
-### PARSE-007A PDF local basic tier
+### PARSE-007A PDF local basic tier（light stack）
 
 命令:
 
@@ -1548,7 +1590,7 @@ mineru show parse <created_parse_id> --json
 - show JSON 中 `tier = basic`、`privacy = local`、`via = local`
 - 不包含 Python traceback
 
-### PARSE-007B PDF local standard tier
+### PARSE-007B PDF local standard tier（light stack）
 
 命令:
 
@@ -1575,7 +1617,7 @@ mineru show parse <created_parse_id> --json
 - show JSON 中 `tier = standard`、`privacy = local`、`via = local`
 - 不包含 Python traceback
 
-### PARSE-007C PDF local advanced tier
+### PARSE-007C PDF local advanced tier（light stack）
 
 命令:
 
@@ -1599,6 +1641,88 @@ mineru show parse <created_parse_id> --json
 - `parse.tier = advanced`
 - `parse.status = done`
 - `content` 不为 null
+- show JSON 中 `tier = advanced`、`privacy = local`、`via = local`
+- 不包含 Python traceback
+
+### PARSE-007A1 PDF local basic tier（full stack）
+
+前置条件:
+
+- 已按 2.2.2 停止 server、设置 `MINERU_MODEL_STACK=full` 并重新启动 server。
+- 已完成 `mineru-kit models download --tier standard --stack full` 和对应 verify。
+
+命令:
+
+```bash
+mineru config set parse_server.local.managed_tier basic
+mineru config set parse_server.local.mode managed
+mineru server status --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier basic --pages 1~1 --force --wait 120 --json
+mineru show parse <created_parse_id> --json
+```
+
+执行说明:
+
+- 重复执行 `mineru server status --json`，直到 local parse-server healthy 且 `supported_tiers` 包含 `basic`，再执行 parse。
+- `<created_parse_id>` 从 parse JSON 的 `parse.created_parse_ids[0]` 提取。
+
+预期:
+
+- 五条命令均 exit code = 0
+- parse JSON 和 show JSON 均可直接解析
+- `parse.tier = basic`、`parse.status = done`、`content` 不为 null
+- show JSON 中 `tier = basic`、`privacy = local`、`via = local`
+- 不包含 Python traceback
+
+### PARSE-007B1 PDF local standard tier（full stack）
+
+前置条件: PARSE-007A1 已完成，当前 profile 仍为 `MINERU_MODEL_STACK=full`。
+
+命令:
+
+```bash
+mineru config set parse_server.local.managed_tier standard
+mineru config set parse_server.local.mode managed
+mineru server status --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --pages 1~1 --force --wait 180 --json
+mineru show parse <created_parse_id> --json
+```
+
+执行说明:
+
+- 重复执行 `mineru server status --json`，直到 local parse-server healthy 且 `supported_tiers` 包含 `standard`，再执行 parse。
+- `<created_parse_id>` 从 parse JSON 的 `parse.created_parse_ids[0]` 提取。
+
+预期:
+
+- 五条命令均 exit code = 0
+- parse JSON 和 show JSON 均可直接解析
+- `parse.tier = standard`、`parse.status = done`、`content` 不为 null
+- show JSON 中 `tier = standard`、`privacy = local`、`via = local`
+- 不包含 Python traceback
+
+### PARSE-007C1 PDF local advanced tier（full stack）
+
+前置条件: PARSE-007B1 已完成，当前 profile 仍为 `MINERU_MODEL_STACK=full`；Standard managed server healthy 且 `supported_tiers` 包含 `advanced`。
+
+命令:
+
+```bash
+mineru server status --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier advanced --pages 1~1 --force --wait 300 --json
+mineru show parse <created_parse_id> --json
+```
+
+执行说明:
+
+- `<created_parse_id>` 从 parse JSON 的 `parse.created_parse_ids[0]` 提取。
+- 本用例完成后必须按 2.2.2 停止 server、恢复 `MINERU_MODEL_STACK=light` 并重新启动 server；等待 light local parse-server healthy 后再继续后续 case。
+
+预期:
+
+- 三条命令均 exit code = 0
+- parse JSON 和 show JSON 均可直接解析
+- `parse.tier = advanced`、`parse.status = done`、`content` 不为 null
 - show JSON 中 `tier = advanced`、`privacy = local`、`via = local`
 - 不包含 Python traceback
 
@@ -1738,11 +1862,11 @@ mineru show parse <created_parse_id> --json
 
 预期分支:
 
-- 如果 remote parse-server 暴露 quality tier:
+- 如果 remote parse-server 暴露 `standard` 或 `basic`:
   - parse 和 show 均 exit code = 0，stdout 均为可直接解析的 JSON
-  - 默认 tier 按 `standard`、`advanced`、`basic` 的顺序选择第一个受 remote 支持的 tier
+  - 默认 tier 按 `standard`、`basic` 的顺序选择第一个受 remote 支持的 tier
   - show JSON 中 `privacy = remote`、`via = remote`
-- 如果 remote parse-server 未暴露任何 quality tier:
+- 如果 remote parse-server 未暴露 `standard` 或 `basic`，包括仅暴露 `advanced`:
   - exit code != 0
   - stdout 为可直接解析的 JSON error
   - `error.code = quality_tier_unavailable`
@@ -3709,6 +3833,9 @@ mineru server start
 - PARSE-007A PDF local basic tier
 - PARSE-007B PDF local standard tier
 - PARSE-007C PDF local advanced tier
+- PARSE-007A1 PDF local basic tier（full stack）
+- PARSE-007B1 PDF local standard tier（full stack）
+- PARSE-007C1 PDF local advanced tier（full stack）
 - PARSE-007D 旧 tier 名称不可用
 - PARSE-008 输出到文件
 - PARSE-010 limit 截断与 next_request
@@ -3729,9 +3856,11 @@ mineru server start
 执行要求:
 
 - remote 路由必须通过 `show parse --json` 的 `privacy`、`via`、`tier` 验证，不能从 parse JSON 中推断。
-- 显式 quality tier 的 remote 请求在 remote 不可用时允许同 tier local fallback；未指定 tier 且 remote 无 quality tier 时应返回 `quality_tier_unavailable`。
+- 显式 quality tier 的 remote 请求在 remote 不可用时允许同 tier local fallback；未指定 tier 且 remote 无 `standard` 或 `basic` 时应返回 `quality_tier_unavailable`，不得隐式选择 `advanced`。
 - remote/local fallback 不得改变 tier，也不得降级到 `flash`。
 - PARSE-013A1 是 remote standard 硬性测试；remote 不可用或不支持 standard 均记录为失败，不能静默 fallback 到 local 或其它 tier。
+- PARSE-007A1、PARSE-007B1、PARSE-007C1 是 `full` stack 硬性测试；任何一项不得因 full runtime、模型或硬件不可用标记为 BLOCKED。
+- full profile 完成后必须恢复 `MINERU_MODEL_STACK=light` 并重启 server，避免影响后续 case。
 - force/cache/no-wait 用例必须记录 parse id/status 是否符合预期。
 
 ### COVERAGE-007 read 边界、续读、image 与 context 补充

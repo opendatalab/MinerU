@@ -123,7 +123,7 @@ mineru read "doc:ab12cd3/tier:standard/page:18" --json
 
 ## Installation And Setup
 
-This skill requires MinerU `>=4.0.0a3`. Before using any workflow, check whether the CLI is installed:
+This skill requires MinerU `>=4.0.0a6`. Before using any workflow, check whether the CLI is installed:
 
 ```bash
 command -v mineru
@@ -287,12 +287,12 @@ mineru telemetry flush
 
 MinerU has four tiers:
 
-| Tier | Chinese name | Quality and speed | Local requirements | Local model download | Use for |
-|---|---|---|---|---|---|
-| `flash` | 极速解析 | Lowest quality; fastest | No special hardware | None | Discovery, preview, and indexing; never default final reading quality |
-| `basic` | 基础解析 | Basic quality; moderate speed | At least 16 GB total memory; CPU works, GPU can accelerate | About 2 GB | Private local reading or lower-resource local parsing |
-| `standard` | 标准解析 | Standard high quality; similar speed to `basic` on suitable hardware | At least 16 GB total memory plus a supported accelerator | About 4 GB | Default for normal active reading and complex documents |
-| `advanced` | 高级解析 | Standard quality on ordinary documents and better quality on difficult documents; slowest | Same as Standard, with greater compute use | About 4 GB | Difficult documents and maximum-quality work when the user accepts a longer wait |
+| Tier | Chinese name | Quality and speed | Use for |
+|---|---|---|---|
+| `flash` | 极速解析 | Lowest quality; fastest | Discovery, preview, and indexing; never default final reading quality |
+| `basic` | 基础解析 | Basic quality; moderate speed | Private local reading or lower-resource local parsing |
+| `standard` | 标准解析 | Standard high quality; similar speed to `basic` on suitable hardware | Default for normal active reading and complex documents |
+| `advanced` | 高级解析 | Standard quality on ordinary documents and better quality on difficult documents; slowest | Difficult documents and maximum-quality work when the user accepts a longer wait |
 
 Default tier behavior:
 
@@ -320,6 +320,48 @@ mineru parse "paper.pdf" --tier basic
 mineru parse "paper.pdf" --tier standard
 mineru parse "paper.pdf" --tier advanced
 mineru parse "paper.pdf" --tier flash
+```
+
+## Model Stacks
+
+MinerU use neural network models for local `basic`, `standard`, and `advanced` parsing.
+To better support different hardwares, MinerU provide two model stacks: `light` and `full`.
+
+| Stack | Model engines | Install |
+|---|---|---|
+| `light` | ONNX + llama.cpp | Already in `mineru` base module |
+| `full` | PyTorch + vLLM/lmdeploy/mlx | Requires `mineru[full]` extra |
+
+Stack controls resource use and download size:
+
+| Tier | Stack | Model download | RAM (min) | Accelerator |
+|---|---|---|---|---|
+| `basic` | `light` | ~0.8 GB | 4 GB | None (CPU works) |
+| `basic` | `full` | ~2 GB | 16 GB | GPU/MPS recommended |
+| `standard` / `advanced` | `light` | ~2 GB | 8 GB | CPU works, Vulkan recommended |
+| `standard` / `advanced` | `full` | ~4 GB | 16 GB | GPU/MPS required, 8 GB+ VRAM |
+
+The default setting is `auto`: CPU uses `light`, while GPU, MPS, and other accelerators with `mineru[full]` installed use `full`.
+To select a stack explicitly for the current environment, set:
+
+```bash
+export MINERU_MODEL_STACK=light     # or full, or auto
+```
+
+To persist the selection, set it in `config.yaml`:
+
+```yaml
+model:
+  stack: light
+```
+
+Stop and restart the MinerU server after changing the stack because running processes do not reload startup configuration.
+
+Download and verify models for a specific stack:
+
+```bash
+mineru-kit models download --tier <tier> --stack <stack>
+mineru-kit models verify --tier <tier> --stack <stack>
 ```
 
 ## Server Rules
@@ -357,7 +399,7 @@ Agent rules:
 
 Use a local parse server when the user wants `basic`, `standard`, or `advanced` quality without sending the document to remote parsing.
 
-### Assess Local Hardware
+### Inspect Local Hardware
 
 When no local quality tier is available, inspect the current machine before presenting the recovery choices. `mineru server status --json` shows which tiers are currently configured and available. An empty local `supported_tiers` list may simply mean that the local parse server is disabled or not configured, so inspect the hardware before deciding whether local quality tiers can run.
 
@@ -368,61 +410,68 @@ Use available read-only system commands to inspect the OS, architecture, total m
 - Windows PowerShell: `(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory`, `Get-CimInstance Win32_Processor`, and `nvidia-smi` when available.
 - Other accelerators: use an already-installed vendor tool if available; do not install software merely to inspect hardware.
 
-Classify each local quality tier as `hardware-supported`, `hardware-unsupported`, or `hardware-unknown`. These labels describe hardware suitability only, not whether the required dependencies and models are installed or the tier is currently available:
+### Choose Local Stack
 
-- `basic`: `hardware-supported` with at least 16 GB total memory. A CPU is sufficient, but warn that CPU-only parsing may be slow and GPU acceleration can materially reduce parsing time.
-- `standard` and `advanced`: `hardware-supported` with at least 16 GB total memory and either a Volta-or-newer NVIDIA GPU with at least 8 GB available VRAM or Apple Silicon with at least 16 GB unified memory.
-- For `standard` and `advanced`, an `npu`, `gcu`, `musa`, `mlu`, or `sdaa` qualifies as `hardware-supported` only when MinerU compatibility with the exact device and runtime can be verified; otherwise report `hardware-unknown`.
-- Report `hardware-unsupported` when a requirement is clearly not met. If a required property cannot be verified, report `hardware-unknown`.
+The `light` stack is suitable for most hardwares, including CPU-only machines, Apple Silicon, and low-end iGPU/GPU machines.
 
-Before asking the user to choose a tier, summarize the detected hardware and identify each local tier's hardware status. Recommend local `standard` when `hardware-supported`, otherwise local `basic` when `hardware-supported`, otherwise offer remote `standard` when privacy rules allow or explicit `flash`. Mention `advanced` only when the user wants maximum quality and accepts the extra time. Do not install dependencies, download models, change config, or restart services without approval.
+Install and use `full` stack only when you have enough RAM and powerful GPU/accelerator, accept extra installation disk space, and want a higher throughput. Hardware requirements:
+- At least 16 GB total memory.
+- A Volta-or-newer NVIDIA GPU with at least 8 GB available VRAM, or an `npu`, `gcu`, `musa`, `mlu`, or `sdaa` accelerator.
+- Consumes ~5GB more disk space.
 
-### Configure Managed Local Parsing
-
-Change local parse-server config or restart the server only when the user asks for or approves local high-quality parsing.
-
-Managed local parsing requires optional runtime dependencies. Install the required extra with the same installation tool and environment that installed the current `mineru` command.
+To use the `full` stack, install the `mineru[full]` extra.
 
 The following examples assume the current install tool is `uv tool`. If `mineru` was installed with another tool or environment, use the equivalent command for that actual tool/environment.
 
-Installing extras with `uv tool install --force --prerelease allow` can replace the active `mineru` environment. Stop the MinerU server first, confirm `running=false`, and start it again after installing dependencies and models.
-
-Managed local parsing has two startup tiers: `basic` and `standard`. A Standard server provides `basic`, `standard`, and `advanced` request tiers. Advanced uses the same Standard dependencies, model set, and hardware setup; it differs only by spending more inference compute when the request selects `--tier advanced`.
-
-Enable managed local parsing for `basic`:
+Installing extras with `uv tool install --force --prerelease allow` can replace the active `mineru` environment. Stop the MinerU server first, confirm `running=false`, and start it again after installing dependencies.
 
 ```bash
 mineru server stop
 mineru server status --json
-uv tool install --force --prerelease allow "mineru[basic]"
-mineru-kit models download --tier basic
-mineru-kit models verify --tier basic
+uv tool install --force --prerelease allow "mineru[full]"
 mineru server start
-mineru config set parse_server.local.managed_tier basic
-mineru config set parse_server.local.mode managed
 mineru server status --json
 ```
 
-Enable managed local parsing for both `standard` and `advanced` requests:
+### Choose Local Tier
+
+Managed local parsing has two startup tiers: `basic` and `standard`. A Standard server provides `basic`, `standard`, and `advanced` request tiers. Advanced uses the same Standard dependencies, model set, and hardware setup; it differs only by spending more inference compute when the request selects `--tier advanced`.
+
+- `basic` tier with `light` stack, requires at least 4GB total memory.
+- `standard` tier with `light` stack, requires at least 8GB total memory, recommended for GPU/Metal.
+- `basic` tier with `full` stack, recommended for `npu`, `gcu`, `musa`, `mlu`, or `sdaa`.
+- `standard` tier with `full` stack, recommended for high-end nvidia GPU.
+
+### Recommend and Ask
+
+After hardware was inspected, you already know the suitable stack and tier for current machine. Before asking the user to choose a tier/stack, summarize the detected hardware and identify each tier's hardware status.
+
+You should recommend a tier for user when the machine meets such requirements, otherwise offer remote `standard` when privacy rules allow, or use explicit `flash`.
+
+Mention `advanced` only when the user wants maximum quality and accepts the extra time. Do not install dependencies, download models, change config, or restart services without approval.
+
+### Configure Managed Parse Server
+
+First, download the models for the target startup tier (`basic`, or `standard`).
+Replace `<tier>` with `basic` or `standard`.
 
 ```bash
-mineru server stop
-mineru server status --json
-uv tool install --force --prerelease allow "mineru[standard]"
-mineru-kit models download --tier standard
-mineru-kit models verify --tier standard
-mineru server start
-mineru config set parse_server.local.managed_tier standard
+mineru-kit models download --tier <tier> --stack <stack>
+mineru-kit models verify --tier <tier> --stack <stack>
+```
+
+Then, enable managed local parse server for the startup tier.
+
+```bash
+mineru config set parse_server.local.managed_tier <tier>
 mineru config set parse_server.local.mode managed
 mineru server status --json
 ```
 
 Rules:
 
-- Determine how the current `mineru` command was installed, then install the extra through that same tool/environment.
-- Stop the MinerU server and confirm `running=false` before replacing its environment, especially on Windows.
+- Change local parse-server config or restart the server only when the user asks for or approves.
 - Download and verify models for the startup tier (`basic` or `standard`) before enabling managed mode.
-- Start the MinerU server only after the extra and models are ready.
 - Set `parse_server.local.managed_tier` before `parse_server.local.mode=managed`.
 - Poll `mineru server status --json` and use managed parsing only after the target tier is healthy.
 - If local quality parsing cannot start, do not add `--remote` automatically; ask the user first.

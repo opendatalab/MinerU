@@ -44,9 +44,6 @@ _BASIC_REQUIRED_MODULES = [
     "torch",
     "torchvision",
     "transformers",
-]
-_STANDARD_REQUIRED_MODULES_COMMON = [
-    *_BASIC_REQUIRED_MODULES,
     "accelerate",
 ]
 _STANDARD_REQUIRED_MODULES_BY_PLATFORM = {
@@ -218,10 +215,7 @@ def required_modules_for_tier(tier: DeploymentTier) -> list[str]:
     platform_modules = list(_STANDARD_REQUIRED_MODULES_BY_PLATFORM.get(sys.platform, []))
     if sys.platform == "darwin" and platform.machine() == "arm64":
         platform_modules.extend(_APPLE_SILICON_STANDARD_REQUIRED_MODULES)
-    return [
-        *_STANDARD_REQUIRED_MODULES_COMMON,
-        *platform_modules,
-    ]
+    return [*_BASIC_REQUIRED_MODULES, *platform_modules]
 
 
 def missing_modules_for_tier(tier: DeploymentTier) -> list[str]:

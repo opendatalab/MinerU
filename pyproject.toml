@@ -82,23 +82,22 @@ dev = [
     "lxml-stubs",
 ]
 test = [
-    "mineru[standard]",
     "pytest",
     "pytest-cov",
     "coverage",
     "fuzzywuzzy",
     "tomli; python_version < '3.11'",
 ]
-basic = [
+torch = [
     "six>=1.17.0,<2",
     "torch>=2.6.0,<3",
     "torchvision",
     "transformers>=4.57.3,<5.0.0",
+    "accelerate>=1.5.1",
     "safetensors>=0.4.0,<1",
 ]
-standard = [
-    "mineru[basic]",
-    "accelerate>=1.5.1",
+full = [
+    "mineru[torch]",
     "vllm>=0.10.1.1,<0.22.0 ; sys_platform == 'linux'",
     "lmdeploy>=0.10.2,<0.12 ; sys_platform == 'win32'",
     "qwen-vl-utils>=0.0.14,<1 ; sys_platform == 'win32'",
@@ -110,13 +109,8 @@ gradio = [
     "gradio-pdf>=0.0.22",
 ]
 all = [
-    "mineru[standard]",
+    "mineru[full]",
     "mineru[gradio]",
-]
-
-[tool.uv]
-exclude-dependencies = [
-    "datasets",
 ]
 
 [project.urls]
