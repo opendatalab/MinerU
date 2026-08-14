@@ -61,7 +61,7 @@ MCP Server · LangChain / Dify / FastGPT 原生集成 · 10+ 国产算力适配 
 | 场景 | 方案 |
 |------|------|
 | AI 编程工具 | MCP Server — Cursor · Claude Desktop · Windsurf |
-| RAG 框架 | LangChain · LlamaIndex · RAGFlow · RAG-Anything · Flowise · Dify · FastGPT |
+| RAG 框架 | LangChain · LlamaIndex · RAGFlow · LightRAG · RAG-Anything · Flowise · Dify · FastGPT |
 | 开发集成 | Python / Go / TypeScript SDK · CLI · REST API · Docker |
 | 零代码 | mineru.net 在线版 · Gradio WebUI · 桌面客户端 |
 
