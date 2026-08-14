@@ -449,9 +449,16 @@ async def _async_process_vlm(
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+        doc_kwargs = dict(kwargs)
+        if doc_kwargs.get("mineru_task_id") is not None:
+            doc_kwargs["mineru_file_name"] = pdf_file_name
 
         middle_json, infer_result = await aio_vlm_doc_analyze(
-            pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
+            pdf_bytes,
+            image_writer=image_writer,
+            backend=backend,
+            server_url=server_url,
+            **doc_kwargs,
         )
 
         pdf_info = middle_json["pdf_info"]
@@ -490,9 +497,16 @@ def _process_vlm(
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+        doc_kwargs = dict(kwargs)
+        if doc_kwargs.get("mineru_task_id") is not None:
+            doc_kwargs["mineru_file_name"] = pdf_file_name
 
         middle_json, infer_result = vlm_doc_analyze(
-            pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
+            pdf_bytes,
+            image_writer=image_writer,
+            backend=backend,
+            server_url=server_url,
+            **doc_kwargs,
         )
 
         pdf_info = middle_json["pdf_info"]
@@ -591,6 +605,9 @@ async def _async_process_hybrid(
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+        doc_kwargs = dict(kwargs)
+        if doc_kwargs.get("mineru_task_id") is not None:
+            doc_kwargs["mineru_file_name"] = pdf_file_name
 
         middle_json, infer_result = await aio_hybrid_doc_analyze(
             pdf_bytes,
@@ -600,7 +617,7 @@ async def _async_process_hybrid(
             inline_formula_enable=inline_formula_enable,
             server_url=server_url,
             effort=validate_effort(effort),
-            **kwargs,
+            **doc_kwargs,
         )
 
         pdf_info = middle_json["pdf_info"]

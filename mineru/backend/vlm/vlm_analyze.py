@@ -35,6 +35,11 @@ from ...utils.pdfium_guard import (
     open_pdfium_document,
 )
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
+from mineru.cli.vllm_cancellation import (
+    patch_http_vlm_client_for_cancellation,
+    patch_vllm_async_llm_for_cancellation,
+    vllm_request_context,
+)
 
 from mineru_vl_utils import MinerUClient
 from packaging import version
@@ -172,6 +177,7 @@ class ModelSingleton:
                             kwargs["logits_processors"] = [MinerULogitsProcessor]
                         # 使用kwargs为 vllm初始化参数
                         vllm_async_llm = AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs))
+                        patch_vllm_async_llm_for_cancellation(vllm_async_llm)
                     elif backend == "lmdeploy-engine":
                         try:
                             from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig
@@ -245,6 +251,10 @@ class ModelSingleton:
                     "vllm_async_llm": vllm_async_llm,
                     "lmdeploy_engine": lmdeploy_engine,
                 }
+                if backend == "http-client":
+                    patch_http_vlm_client_for_cancellation(
+                        getattr(predictor, "client", None)
+                    )
                 _maybe_enable_serial_execution(predictor, backend)
                 self._models[key] = predictor
                 elapsed = round(time.time() - start_time, 2)
@@ -420,6 +430,53 @@ def _close_images(images_list):
                 pass
 
 
+async def _checkpoint_window_and_maybe_pause(
+    *,
+    checkpoint_store,
+    pause_registry,
+    task_output_dir,
+    task_id,
+    file_name,
+    backend,
+    parse_method,
+    page_count,
+    window_size,
+    window_index,
+    window_start,
+    window_end,
+    middle_json,
+    model_output,
+    window_result,
+):
+    if task_id is None:
+        return
+    checkpoint = None
+    pause_requested = (
+        pause_registry is not None and pause_registry.is_pause_requested(task_id)
+    )
+    if checkpoint_store is not None and task_output_dir is not None and file_name is not None:
+        checkpoint = await asyncio.to_thread(
+            checkpoint_store.write_processing_checkpoint,
+            task_output_dir=task_output_dir,
+            task_id=task_id,
+            file_name=file_name,
+            backend=f"vlm-{backend}",
+            parse_method=parse_method,
+            status="paused" if pause_requested else "processing",
+            page_count=page_count,
+            window_size=window_size,
+            window_index=window_index,
+            window_start=window_start,
+            window_end=window_end,
+            middle_json=middle_json,
+            model_output=model_output,
+            window_result=window_result,
+        )
+    if pause_requested:
+        pause_registry.mark_paused(task_id, checkpoint)
+        await pause_registry.wait_until_resumed(task_id)
+
+
 def doc_analyze(
     pdf_bytes,
     image_writer: DataWriter | None,
@@ -430,6 +487,13 @@ def doc_analyze(
     image_analysis: bool = True,
     **kwargs,
 ):
+    kwargs.pop("mineru_task_id", None)
+    kwargs.pop("mineru_file_name", None)
+    kwargs.pop("mineru_cancellation_registry", None)
+    kwargs.pop("mineru_pause_registry", None)
+    kwargs.pop("mineru_checkpoint_store", None)
+    kwargs.pop("mineru_task_output_dir", None)
+    kwargs.pop("mineru_parse_method", None)
     client_side_output_generation = bool(
         kwargs.pop("client_side_output_generation", False)
     )
@@ -530,6 +594,13 @@ async def aio_doc_analyze(
     image_analysis: bool = True,
     **kwargs,
 ):
+    mineru_task_id = kwargs.pop("mineru_task_id", None)
+    mineru_file_name = kwargs.pop("mineru_file_name", None)
+    mineru_cancellation_registry = kwargs.pop("mineru_cancellation_registry", None)
+    mineru_pause_registry = kwargs.pop("mineru_pause_registry", None)
+    mineru_checkpoint_store = kwargs.pop("mineru_checkpoint_store", None)
+    mineru_task_output_dir = kwargs.pop("mineru_task_output_dir", None)
+    mineru_parse_method = kwargs.pop("mineru_parse_method", "vlm")
     client_side_output_generation = bool(
         kwargs.pop("client_side_output_generation", False)
     )
@@ -574,11 +645,16 @@ async def aio_doc_analyze(
                         f'pages {window_start + 1}-{window_end + 1}/{page_count} '
                         f'({len(images_pil_list)} pages)'
                     )
-                    async with aio_predictor_execution_guard(predictor):
-                        window_results = await predictor.aio_batch_two_step_extract(
-                            images=images_pil_list,
-                            image_analysis=image_analysis,
-                        )
+                    with vllm_request_context(
+                        mineru_cancellation_registry,
+                        mineru_task_id,
+                        mineru_file_name,
+                    ):
+                        async with aio_predictor_execution_guard(predictor):
+                            window_results = await predictor.aio_batch_two_step_extract(
+                                images=images_pil_list,
+                                image_analysis=image_analysis,
+                            )
                     results.extend(window_results)
                     if progress_bar is None:
                         progress_bar = tqdm(total=page_count, desc="Processing pages")
@@ -598,6 +674,23 @@ async def aio_doc_analyze(
                         progress_bar=progress_bar,
                     )
                     last_append_end_time = time.time()
+                    await _checkpoint_window_and_maybe_pause(
+                        checkpoint_store=mineru_checkpoint_store,
+                        pause_registry=mineru_pause_registry,
+                        task_output_dir=mineru_task_output_dir,
+                        task_id=mineru_task_id,
+                        file_name=mineru_file_name,
+                        backend=backend,
+                        parse_method=mineru_parse_method,
+                        page_count=page_count,
+                        window_size=configured_window_size,
+                        window_index=window_index,
+                        window_start=window_start,
+                        window_end=window_end,
+                        middle_json=middle_json,
+                        model_output=results,
+                        window_result=window_results,
+                    )
                 finally:
                     _close_images(images_list)
         finally:
