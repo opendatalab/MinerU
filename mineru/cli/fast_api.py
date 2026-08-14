@@ -169,6 +169,7 @@ class AsyncParseTask:
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     error: Optional[str] = None
+    progress: Optional[dict[str, Any]] = None
 
     def to_status_payload(
         self,
@@ -184,6 +185,7 @@ class AsyncParseTask:
             "started_at": self.started_at,
             "completed_at": self.completed_at,
             "error": self.error,
+            "progress": self.progress,
             "status_url": str(
                 request.url_for("get_async_task_status", task_id=self.task_id)
             ),
@@ -198,6 +200,50 @@ class AsyncParseTask:
 
 class TaskWaitAbortedError(RuntimeError):
     """Raised when a synchronous file_parse request cannot keep waiting safely."""
+
+
+class TaskPageProgress:
+    def __init__(self, task: AsyncParseTask, file_names: list[str]):
+        self.task = task
+        file_count = len(file_names)
+        self.page_totals = [0] * file_count
+        self.page_currents = [0] * file_count
+
+    def update(
+        self,
+        *,
+        file_index: int = 0,
+        page_total: int = 0,
+        page_current: int = 0,
+        **_: Any,
+    ) -> None:
+        if not (0 <= file_index < len(self.page_totals)):
+            return
+        page_total = max(0, int(page_total or 0))
+        page_current = max(0, min(int(page_current or 0), page_total or page_current))
+        self.page_totals[file_index] = max(self.page_totals[file_index], page_total)
+        self.page_currents[file_index] = page_current
+
+        total_pages = sum(self.page_totals)
+        current_pages = sum(self.page_currents)
+        percent = int(current_pages * 100 / total_pages) if total_pages else 0
+        self.task.progress = {
+            "page_current": current_pages,
+            "page_total": total_pages,
+            "percent": max(0, min(100, percent)),
+            "text": f"{current_pages}/{total_pages} pages",
+        }
+
+    def complete(self) -> None:
+        if self.task.progress is None:
+            return
+        total_pages = self.task.progress.get("page_total", 0)
+        self.task.progress = {
+            **self.task.progress,
+            "page_current": total_pages,
+            "percent": 100,
+            "text": "completed",
+        }
 
 
 @asynccontextmanager
@@ -828,6 +874,11 @@ async def run_parse_job(
     pdf_file_names, pdf_bytes_list = await asyncio.to_thread(load_parse_inputs, uploads)
     actual_lang_list = normalize_lang_list(request_options.lang_list, len(pdf_file_names))
     response_file_names = list(pdf_file_names)
+    progress = (
+        TaskPageProgress(request_options, response_file_names)
+        if isinstance(request_options, AsyncParseTask)
+        else None
+    )
 
     parse_kwargs = dict(
         output_dir=output_dir,
@@ -857,6 +908,7 @@ async def run_parse_job(
             "client_side_output_generation",
             False,
         ),
+        progress_callback=progress.update if progress is not None else None,
         **config,
     )
 
@@ -864,6 +916,8 @@ async def run_parse_job(
         await asyncio.to_thread(do_parse, **parse_kwargs)
     else:
         await aio_do_parse(**parse_kwargs)
+    if progress is not None:
+        progress.complete()
     return response_file_names
 
 

@@ -886,6 +886,15 @@ def _close_images(images_list):
                 pass
 
 
+def _emit_progress(progress_callback, **payload):
+    if progress_callback is None:
+        return
+    try:
+        progress_callback(**payload)
+    except Exception:
+        logger.exception("Progress callback failed")
+
+
 def doc_analyze(
         pdf_bytes,
         image_writer: DataWriter | None,
@@ -901,6 +910,7 @@ def doc_analyze(
 ):
     effort = _validate_parse_effort(effort)
     effective_image_analysis = _resolve_effective_image_analysis(effort, image_analysis)
+    progress_callback = kwargs.pop("progress_callback", None)
     client_side_output_generation = bool(
         kwargs.pop("client_side_output_generation", False)
     )
@@ -932,6 +942,14 @@ def doc_analyze(
             f'Hybrid processing-window run. page_count={page_count}, '
             f'window_size={configured_window_size}, total_windows={total_windows}'
         )
+        _emit_progress(
+            progress_callback,
+            page_total=page_count,
+            page_current=0,
+            window_index=0,
+            window_total=total_windows,
+            text=f"0/{page_count} pages",
+        )
 
         batch_ratio = get_batch_ratio(device) if not _ocr_enable else 1
 
@@ -955,6 +973,16 @@ def doc_analyze(
                         f'Hybrid processing window {window_index + 1}/{total_windows}: '
                         f'pages {window_start + 1}-{window_end + 1}/{page_count} '
                         f'({len(images_pil_list)} pages)'
+                    )
+                    _emit_progress(
+                        progress_callback,
+                        page_total=page_count,
+                        page_current=window_start,
+                        window_index=window_index + 1,
+                        window_total=total_windows,
+                        window_start=window_start + 1,
+                        window_end=window_end + 1,
+                        text=f"pages {window_start + 1}-{window_end + 1}/{page_count}",
                     )
                     images_layout_res, hybrid_pipeline_model = _predict_layout_for_window(
                         images_pil_list,
@@ -1058,6 +1086,16 @@ def doc_analyze(
                         _ocr_enable=_ocr_enable,
                         progress_bar=progress_bar,
                     )
+                    _emit_progress(
+                        progress_callback,
+                        page_total=page_count,
+                        page_current=window_end + 1,
+                        window_index=window_index + 1,
+                        window_total=total_windows,
+                        window_start=window_start + 1,
+                        window_end=window_end + 1,
+                        text=f"pages {window_start + 1}-{window_end + 1}/{page_count}",
+                    )
                     last_append_end_time = time.time()
                 finally:
                     _close_images(images_list)
@@ -1109,6 +1147,7 @@ async def aio_doc_analyze(
 ):
     effort = _validate_parse_effort(effort)
     effective_image_analysis = _resolve_effective_image_analysis(effort, image_analysis)
+    progress_callback = kwargs.pop("progress_callback", None)
     client_side_output_generation = bool(
         kwargs.pop("client_side_output_generation", False)
     )
@@ -1140,6 +1179,14 @@ async def aio_doc_analyze(
             f'Hybrid processing-window run. page_count={page_count}, '
             f'window_size={configured_window_size}, total_windows={total_windows}'
         )
+        _emit_progress(
+            progress_callback,
+            page_total=page_count,
+            page_current=0,
+            window_index=0,
+            window_total=total_windows,
+            text=f"0/{page_count} pages",
+        )
 
         batch_ratio = get_batch_ratio(device) if not _ocr_enable else 1
 
@@ -1162,6 +1209,16 @@ async def aio_doc_analyze(
                         f'Hybrid processing window {window_index + 1}/{total_windows}: '
                         f'pages {window_start + 1}-{window_end + 1}/{page_count} '
                         f'({len(images_pil_list)} pages)'
+                    )
+                    _emit_progress(
+                        progress_callback,
+                        page_total=page_count,
+                        page_current=window_start,
+                        window_index=window_index + 1,
+                        window_total=total_windows,
+                        window_start=window_start + 1,
+                        window_end=window_end + 1,
+                        text=f"pages {window_start + 1}-{window_end + 1}/{page_count}",
                     )
                     images_layout_res, hybrid_pipeline_model = await asyncio.to_thread(
                         _predict_layout_for_window,
@@ -1271,6 +1328,16 @@ async def aio_doc_analyze(
                         page_start_index=window_start,
                         _ocr_enable=_ocr_enable,
                         progress_bar=progress_bar,
+                    )
+                    _emit_progress(
+                        progress_callback,
+                        page_total=page_count,
+                        page_current=window_end + 1,
+                        window_index=window_index + 1,
+                        window_total=total_windows,
+                        window_start=window_start + 1,
+                        window_end=window_end + 1,
+                        text=f"pages {window_start + 1}-{window_end + 1}/{page_count}",
                     )
                     last_append_end_time = time.time()
                 finally:

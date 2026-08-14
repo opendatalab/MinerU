@@ -30,6 +30,16 @@ from ...utils.pdfium_guard import (
 
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
 
+
+def _emit_progress(progress_callback, **payload):
+    if progress_callback is None:
+        return
+    try:
+        progress_callback(**payload)
+    except Exception:
+        logger.exception("Progress callback failed")
+
+
 class ModelSingleton:
     _instance = None
     _models = {}
@@ -163,6 +173,7 @@ def doc_analyze_streaming(
         formula_enable=True,
         table_enable=True,
         client_side_output_generation=False,
+        progress_callback=None,
 ):
     if not (len(pdf_bytes_list) == len(image_writer_list) == len(lang_list)):
         raise ValueError("pdf_bytes_list, image_writer_list, and lang_list must have the same length")
@@ -209,6 +220,15 @@ def doc_analyze_streaming(
         logger.info(
             f'Pipeline processing-window multi-file run. doc_count={len(doc_contexts)}, '
             f'total_pages={total_pages}, window_size={window_size}, total_batches={total_batches}'
+        )
+        _emit_progress(
+            progress_callback,
+            file_index=0,
+            page_total=total_pages,
+            page_current=0,
+            window_index=0,
+            window_total=total_batches,
+            text=f"0/{total_pages} pages",
         )
 
         _emit_zero_page_contexts(
@@ -266,6 +286,15 @@ def doc_analyze_streaming(
                     f'{processed_pages + len(batch_images)}/{total_pages} pages, '
                     f'batch_pages={len(batch_images)}, doc_slices={_format_doc_slices(batch_slices)}'
                 )
+                _emit_progress(
+                    progress_callback,
+                    file_index=0,
+                    page_total=total_pages,
+                    page_current=processed_pages,
+                    window_index=batch_index,
+                    window_total=total_batches,
+                    text=f"{processed_pages}/{total_pages} pages",
+                )
 
                 try:
                     batch_results = batch_image_analyze(
@@ -311,6 +340,15 @@ def doc_analyze_streaming(
 
                 last_append_end_time = time.time()
                 processed_pages += len(batch_images)
+                _emit_progress(
+                    progress_callback,
+                    file_index=0,
+                    page_total=total_pages,
+                    page_current=processed_pages,
+                    window_index=batch_index,
+                    window_total=total_batches,
+                    text=f"{processed_pages}/{total_pages} pages",
+                )
         finally:
             if progress_bar is not None:
                 progress_bar.close()
