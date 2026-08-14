@@ -91,10 +91,39 @@ FILE_PARSE_TASK_STATUS_URL_HEADER = "X-MinerU-Task-Status-Url"
 FILE_PARSE_TASK_RESULT_URL_HEADER = "X-MinerU-Task-Result-Url"
 MINERU_API_PUBLIC_BIND_EXPOSED_ENV = "MINERU_API_PUBLIC_BIND_EXPOSED"
 MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT_ENV = "MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT"
+FATAL_WORKER_ERROR_MARKERS = (
+    "engine dead",
+    "engine is dead",
+    "engine has died",
+    "enginecore",
+    "engine core",
+    "inference engine is gone",
+    "inference engine died",
+    "async llm engine has failed",
+)
+FATAL_WORKER_ERROR_NORMALIZED_MARKERS = (
+    "enginedead",
+    "enginecore",
+    "unrecoverableengine",
+    "engineunrecoverable",
+)
 
 # 并发控制器
 _request_semaphore: Optional[asyncio.Semaphore] = None
 _configured_max_concurrent_requests = 1
+
+
+def _is_fatal_worker_error(exc: BaseException) -> bool:
+    type_names = " ".join(cls.__name__ for cls in exc.__class__.mro() if cls.__name__ != "BaseException")
+    diagnostic = f"{exc.__class__.__module__} {type_names} {exc}".lower()
+    normalized_diagnostic = "".join(char for char in diagnostic if char.isalnum())
+
+    if any(marker in diagnostic for marker in FATAL_WORKER_ERROR_MARKERS):
+        return True
+    if any(marker in normalized_diagnostic for marker in FATAL_WORKER_ERROR_NORMALIZED_MARKERS):
+        return True
+    has_unrecoverable_marker = "unrecoverable" in diagnostic or "unrecoverably" in diagnostic
+    return has_unrecoverable_marker and ("engine" in diagnostic or "vllm" in diagnostic)
 
 
 def env_flag_enabled(name: str, default: bool = False) -> bool:
@@ -1147,10 +1176,15 @@ class AsyncTaskManager:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            error = str(exc) or exc.__class__.__name__
             task.status = TASK_FAILED
-            task.error = str(exc)
+            task.error = error
             task.completed_at = utc_now_iso()
-            self._signal_task_event(task_id)
+            if _is_fatal_worker_error(exc):
+                self.last_worker_error = error
+                self._wake_waiters()
+            else:
+                self._signal_task_event(task_id)
             logger.exception(f"Async task failed: {task_id}")
 
     async def _run_task(self, task: AsyncParseTask) -> None:
