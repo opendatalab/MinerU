@@ -182,7 +182,11 @@ def persist_downloaded_model_config(model_source: str, repo_mode: str, model_roo
     except Exception as exc:
         logger.warning(
             f"Failed to persist downloaded {repo_mode} model config "
-            f"to {config_file}: {exc}"
+            f"to {config_file}: {exc}. "
+            f"Models were downloaded successfully to '{model_root}' but the path will not be "
+            f"cached, so MinerU may re-download on the next run. "
+            f"To avoid this, manually add the following to {config_file}:\n"
+            f'  "models-dir": {{"{repo_mode}": "{model_root}"}}'
         )
 
 
