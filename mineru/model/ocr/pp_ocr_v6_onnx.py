@@ -11,6 +11,7 @@
 
 预处理/后处理参数与 PaddlePaddle 官方 ``inference.yml`` 一似。
 """
+
 from __future__ import annotations
 
 import copy
@@ -22,7 +23,6 @@ from typing import Any, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
-import onnxruntime as ort
 import pyclipper
 from loguru import logger
 from shapely.geometry import Polygon
@@ -36,6 +36,7 @@ from ...utils.ocr_utils import (
     sorted_boxes,
     update_det_boxes,
 )
+from ..utils.onnxruntime_provider import ort_session
 
 __all__ = ["PPOCRv6ONNX"]
 
@@ -43,14 +44,6 @@ __all__ = ["PPOCRv6ONNX"]
 # ------------------------------------------------------------------
 # 共享工具
 # ------------------------------------------------------------------
-def _build_providers(device: str) -> list[tuple[str, dict[str, Any]]]:
-    norm = (device or "cpu").lower().split(":", 1)[0]
-    if norm == "cuda":
-        return [
-            ("CUDAExecutionProvider", {"device_id": 0, "arena_extend_strategy": "kSameAsRequested"}),
-            ("CPUExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"}),
-        ]
-    return [("CPUExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"})]
 
 
 def _load_character_dict(dict_path: str) -> List[str]:
@@ -65,23 +58,7 @@ def _load_character_dict(dict_path: str) -> List[str]:
             raise ValueError(f"character_dict in {dict_path} is not a list")
         return chars
     # txt 文件：每行一个字符
-    return [
-        line.decode("utf-8").strip("\n").strip("\r\n")
-        for line in Path(dict_path).read_bytes().splitlines()
-    ]
-
-
-def _make_session(model_path: str, device: str, intra_op_num_threads: int = 0) -> ort.InferenceSession:
-    opts = ort.SessionOptions()
-    opts.log_severity_level = 3
-    opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-    if intra_op_num_threads > 0:
-        opts.intra_op_num_threads = intra_op_num_threads
-    return ort.InferenceSession(
-        model_path,
-        sess_options=opts,
-        providers=_build_providers(device),
-    )
+    return [line.decode("utf-8").strip("\n").strip("\r\n") for line in Path(dict_path).read_bytes().splitlines()]
 
 
 # ------------------------------------------------------------------
@@ -97,7 +74,7 @@ class TextDetectorONNX:
     def __init__(
         self,
         model_path: str,
-        device: str = "cpu",
+        device: Optional[str] = None,
         limit_side_len: int = 960,
         limit_type: str = "max",
         max_side_limit: int = 4000,
@@ -108,7 +85,7 @@ class TextDetectorONNX:
         use_dilation: bool = True,
         intra_op_num_threads: int = 0,
     ) -> None:
-        self.session = _make_session(model_path, device, intra_op_num_threads)
+        self.session = ort_session(model_path, device, intra_op_num_threads)
         self.input_name = self.session.get_inputs()[0].name
 
         self.limit_side_len = limit_side_len
@@ -332,13 +309,13 @@ class TextRecognizerONNX:
         self,
         model_path: str,
         dict_path: str,
-        device: str = "cpu",
+        device: Optional[str] = None,
         rec_image_shape: Tuple[int, int, int] = (3, 48, 320),
         rec_batch_num: int = 6,
         drop_score: float = 0.5,
         intra_op_num_threads: int = 0,
     ) -> None:
-        self.session = _make_session(model_path, device, intra_op_num_threads)
+        self.session = ort_session(model_path, device, intra_op_num_threads)
         self.input_name = self.session.get_inputs()[0].name
 
         self.img_c, self.img_h, self.img_w = rec_image_shape
@@ -446,7 +423,7 @@ class PPOCRv6ONNX:
         det_model_path: str,
         rec_model_path: str,
         dict_path: str,
-        device: str = "cpu",
+        device: Optional[str] = None,
         det_db_box_thresh: float = 0.5,
         det_db_unclip_ratio: float = 1.5,
         enable_merge_det_boxes: bool = True,
@@ -550,9 +527,7 @@ class PPOCRv6ONNX:
 
             return [None]
 
-    def _det_rec(
-        self, img: np.ndarray, mfd_res: Optional[List[dict]] = None
-    ) -> Tuple[np.ndarray, List[Tuple[str, float]]]:
+    def _det_rec(self, img: np.ndarray, mfd_res: Optional[List[dict]] = None) -> Tuple[np.ndarray, List[Tuple[str, float]]]:
         """det + crop + rec 的完整流程。"""
         ori_im = img
         dt_boxes, _elapse = self.text_detector(img)

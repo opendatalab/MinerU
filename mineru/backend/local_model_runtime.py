@@ -19,8 +19,7 @@ if TYPE_CHECKING:
     from ..model.layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
     from ..model.mfr.unimernet.Unimernet import UnimernetModel
     from ..model.ocr.pytorch_paddle import PytorchPaddleOCR
-from ..utils.config_reader import get_device
-from ..utils.config_reader import get_model_stack
+from ..utils.config_reader import get_device, get_model_stack
 from ..utils.model_registry import PDF_EXTRACT_KIT, ModelPath
 from ..utils.ocr_language import normalize_ocr_model_lang
 
@@ -36,6 +35,7 @@ class AtomicModel:
     WiredTable = "wired_table"
     TableCls = "table_cls"
     TableOrientationCls = "table_ori_cls"
+
 
 LOCAL_MODEL_INIT_LOCK = threading.RLock()
 # 这些锁保护 Hybrid medium/high/xhigh 共享的 atom model/native 模型推理调用，避免多线程同时进入同一个模型对象。
@@ -211,7 +211,7 @@ def atom_model_init(model_name: str, **kwargs: Any) -> Any:
 
             atom_model = PPDocLayoutV2LayoutModelONNX(
                 weight=str(PP_DOCLAYOUT_V2_ONNX.onnx.ensure()),
-                device=kwargs.get("device", "cpu"),
+                device=kwargs.get("device"),
             )
         else:
             atom_model = pp_doclayout_v2_model_init(kwargs.get("pp_doclayout_v2_weights"), kwargs.get("device"))
@@ -223,7 +223,7 @@ def atom_model_init(model_name: str, **kwargs: Any) -> Any:
             atom_model = PPFormulaNetPlusMONNX(
                 model_path=str(PP_FORMULANET_PLUS_M_ONNX.onnx.ensure()),
                 config_path=str(PP_FORMULANET_PLUS_M_ONNX.config.ensure()),
-                device=kwargs.get("device", "cpu"),
+                device=kwargs.get("device"),
             )
         else:
             atom_model = mfr_model_init(kwargs.get("mfr_weight_dir"), kwargs.get("device"))
@@ -236,7 +236,7 @@ def atom_model_init(model_name: str, **kwargs: Any) -> Any:
                 det_model_path=str(PP_OCR_V6_SMALL_DET_ONNX.onnx.ensure()),
                 rec_model_path=str(PP_OCR_V6_SMALL_REC_ONNX.onnx.ensure()),
                 dict_path=str(PP_OCR_V6_SMALL_REC_ONNX.config.ensure()),
-                device=kwargs.get("device", "cpu"),
+                device=kwargs.get("device"),
                 det_db_box_thresh=kwargs.get("det_db_box_thresh", 0.5),
                 det_db_unclip_ratio=kwargs.get("det_db_unclip_ratio", 1.5),
                 enable_merge_det_boxes=kwargs.get("enable_merge_det_boxes", True),

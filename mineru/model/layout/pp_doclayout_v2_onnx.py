@@ -15,28 +15,17 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import cv2
 import numpy as np
-import onnxruntime as ort
 from loguru import logger
 from PIL import Image
 from tqdm import tqdm
 
+from ..utils.onnxruntime_provider import ort_session
 from .pp_doclayout_v2_base import PP_DOCLAYOUT_V2_LABELS, PPDocLayoutV2PostProcessor
 
 __all__ = ["PPDocLayoutV2LayoutModelONNX"]
 
 # PaddlePaddle 官方 PP-DocLayoutV2_onnx 的输入尺寸（与 inference.yml 一致）。
 _INPUT_SIZE = (800, 800)
-
-
-def _build_providers(device: Optional[str]) -> list[tuple[str, dict[str, object]]]:
-    """根据 device 选择 onnxruntime providers。"""
-    norm = (device or "cpu").lower().split(":", 1)[0]
-    if norm == "cuda":
-        return [
-            ("CUDAExecutionProvider", {"device_id": 0, "arena_extend_strategy": "kSameAsRequested"}),
-            ("CPUExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"}),
-        ]
-    return [("CPUExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"})]
 
 
 class PPDocLayoutV2LayoutModelONNX(PPDocLayoutV2PostProcessor):
@@ -55,30 +44,19 @@ class PPDocLayoutV2LayoutModelONNX(PPDocLayoutV2PostProcessor):
     def __init__(
         self,
         weight: str,
-        device: Optional[str] = "cpu",
+        device: Optional[str] = None,
         imgsz: Tuple[int, int] = _INPUT_SIZE,
         conf: float = 0.45,
         use_paddlex_filter_boxes: bool = True,
         intra_op_num_threads: int = 0,
     ) -> None:
-        self.device = device or "cpu"
+        self.device = device
         self.conf = conf
         self.use_paddlex_filter_boxes = use_paddlex_filter_boxes
         self.model_path = str(weight)
         self.imgsz = imgsz
         self.rescale_factor = 1.0 / 255.0
-
-        opts = ort.SessionOptions()
-        opts.log_severity_level = 3
-        opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        if intra_op_num_threads > 0:
-            opts.intra_op_num_threads = intra_op_num_threads
-        self.session = ort.InferenceSession(
-            self.model_path,
-            sess_options=opts,
-            providers=_build_providers(self.device),
-        )
-
+        self.session = ort_session(self.model_path, device, intra_op_num_threads)
         self._input_names = [i.name for i in self.session.get_inputs()]
         self._output_name = self.session.get_outputs()[0].name
         logger.debug(

@@ -9,6 +9,7 @@ ONNX 模型输出 token IDs（int64），不是 logits——自回归循环已 b
 
 预处理/后处理参数与 RapidDoc ``inference.yml`` 一致。
 """
+
 from __future__ import annotations
 
 import json
@@ -18,12 +19,12 @@ from typing import Any, List, Optional, Tuple
 
 import cv2
 import numpy as np
-import onnxruntime as ort
 import yaml
 from loguru import logger
 from PIL import Image, ImageOps
 from tqdm import tqdm
 
+from ..utils.onnxruntime_provider import ort_session
 from .post_process import post_process_formula
 
 __all__ = ["PPFormulaNetPlusMONNX"]
@@ -37,16 +38,6 @@ _STD = np.array([0.1738, 0.1738, 0.1738], dtype=np.float32).reshape(1, 1, 3)
 _BOS_TOKEN_ID = 0
 _PAD_TOKEN_ID = 1
 _EOS_TOKEN_ID = 2
-
-
-def _build_providers(device: str) -> list[tuple[str, dict[str, Any]]]:
-    norm = (device or "cpu").lower().split(":", 1)[0]
-    if norm == "cuda":
-        return [
-            ("CUDAExecutionProvider", {"device_id": 0, "arena_extend_strategy": "kSameAsRequested"}),
-            ("CPUExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"}),
-        ]
-    return [("CPUExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"})]
 
 
 class PPFormulaNetPlusMONNX:
@@ -64,21 +55,11 @@ class PPFormulaNetPlusMONNX:
         self,
         model_path: str,
         config_path: str,
-        device: str = "cpu",
+        device: Optional[str] = None,
         intra_op_num_threads: int = 0,
     ) -> None:
-        self.device = device or "cpu"
-
-        opts = ort.SessionOptions()
-        opts.log_severity_level = 3
-        opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        if intra_op_num_threads > 0:
-            opts.intra_op_num_threads = intra_op_num_threads
-        self.session = ort.InferenceSession(
-            model_path,
-            sess_options=opts,
-            providers=_build_providers(self.device),
-        )
+        self.device = device
+        self.session = ort_session(model_path, device, intra_op_num_threads)
         self.input_name = self.session.get_inputs()[0].name
 
         # 从 yml 加载 tokenizer
