@@ -61,7 +61,14 @@ from mineru.doclib.services.parse_svc import (
 )
 from mineru.doclib.services.scan_svc import ScanService
 from mineru.doclib.services.search_svc import SearchService
-from mineru.doclib.types import DocContentExportRequest, FileInfo, InvalidateRequest, ParseResponse, WatchRequest
+from mineru.doclib.types import (
+    ConfigSetRequest,
+    DocContentExportRequest,
+    FileInfo,
+    InvalidateRequest,
+    ParseResponse,
+    WatchRequest,
+)
 from mineru.errors import InvalidRequestError, MineruError, NotFoundError
 from mineru.filetypes import file_type_for_extension
 from mineru.parser import backend_for_tier, resolve_tier_and_backend
@@ -891,6 +898,86 @@ def test_managed_parse_server_tier_change_detection_triggers_restart(monkeypatch
     assert calls == [("tier-change", "tier change standard->basic", False)]
 
 
+def test_config_changes_invalidate_stale_managed_tier_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _ConfigSvc:
+        value = "standard"
+        source = "default"
+
+        async def get(self, key: str) -> str:
+            assert key == "parse_server.local.managed_tier"
+            return self.value
+
+        async def set(self, key: str, value: str) -> None:
+            assert key == "parse_server.local.managed_tier"
+            self.value = value
+            self.source = "override"
+
+        async def unset(self, key: str) -> bool:
+            assert key == "parse_server.local.managed_tier"
+            self.value = "standard"
+            self.source = "default"
+            return True
+
+        async def get_source(self, key: str) -> str:
+            assert key == "parse_server.local.managed_tier"
+            return self.source
+
+    health = ParseServerHealth(
+        local=ProbeState(
+            url="http://127.0.0.1:16580",
+            probe=ProbeResult(healthy=True, tiers=["standard"]),
+        ),
+        local_mode="managed",
+        managed_url="http://127.0.0.1:16580",
+        managed_tier="standard",
+        running_managed_tier="standard",
+    )
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health._parse_server_health",
+        health,
+    )
+    monkeypatch.setattr(
+        "mineru.doclib.server._ensure_managed_parse_server_tier_available",
+        lambda tier, param: None,
+    )
+    config_svc = _ConfigSvc()
+    server = DoclibServer(SimpleNamespace(config_svc=config_svc))
+
+    response = asyncio.run(
+        server.set_config(
+            "parse_server.local.managed_tier",
+            ConfigSetRequest(value="basic"),
+        )
+    )
+
+    assert response.value == "basic"
+    assert health.managed_tier == "basic"
+    assert health.local_starting is True
+    assert health.local.probe.healthy is False
+    assert health.local.probe.tiers == []
+    assert health.local.probe.error_code == "parse_server_unavailable"
+
+    health.running_managed_tier = "basic"
+    health.managed_tier = "basic"
+    health.local_starting = False
+    health.local = ProbeState(
+        url="http://127.0.0.1:16580",
+        probe=ProbeResult(healthy=True, tiers=["basic"]),
+    )
+
+    unset_response = asyncio.run(
+        server.unset_config("parse_server.local.managed_tier")
+    )
+
+    assert unset_response.value == "standard"
+    assert unset_response.source == "default"
+    assert health.managed_tier == "standard"
+    assert health.local_starting is True
+    assert health.local.probe.healthy is False
+    assert health.local.probe.tiers == []
+    assert health.local.probe.error_code == "parse_server_unavailable"
+
+
 def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch: pytest.MonkeyPatch) -> None:
     events: list[str] = []
     old_proc = object()
@@ -947,6 +1034,9 @@ def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch:
     assert health.managed_proc.pid == 24680
     assert health.running_managed_tier == "basic"
     assert health.restart_count == 2
+    assert health.local_starting is True
+    assert health.local.probe.healthy is False
+    assert health.local.probe.tiers == []
 
 
 def test_get_file_stat_returns_typed_file_stat(tmp_path: Path) -> None:
