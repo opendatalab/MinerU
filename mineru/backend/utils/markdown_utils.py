@@ -5,8 +5,17 @@ from html import escape
 
 CONSERVATIVE_MARKDOWN_SPECIAL_CHARS = ("*", "_", "`", "~", "$")
 TEXT_BLOCK_MARKDOWN_PREFIX_RE = re.compile(
-    r"^(?P<indent>[ \t]{0,3})(?P<marker>#{1,6}|[+-])(?=[ \t])"
+    r"^(?P<indent>[ \t]{0,3})"
+    r"(?:"
+    r"(?P<marker>#{1,6}|[+-])(?=[ \t])"
+    r"|(?P<quote>>)"
+    r"|\d{1,9}(?P<ordered>[.)])(?=[ \t])"
+    r")"
 )
+# The backslash goes in front of whichever group matched: for an ordered list
+# the digits must stay unescaped, because `\1.` is not a Markdown escape while
+# `1\.` is.
+TEXT_BLOCK_MARKDOWN_PREFIX_GROUPS = ("marker", "quote", "ordered")
 
 
 def escape_conservative_markdown_text(content: str) -> str:
@@ -44,7 +53,11 @@ def escape_text_block_markdown_prefix(content: str) -> str:
     if not match:
         return content
 
-    marker_start = match.start("marker")
+    marker_start = next(
+        match.start(group)
+        for group in TEXT_BLOCK_MARKDOWN_PREFIX_GROUPS
+        if match.group(group) is not None
+    )
     return f"{content[:marker_start]}\\{content[marker_start:]}"
 
 
