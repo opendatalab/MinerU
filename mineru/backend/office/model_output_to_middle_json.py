@@ -136,6 +136,16 @@ def result_to_middle_json(model_output_blocks_list, image_writer):
                 continue
             level = block.get("level", 1)
             if block.get("is_numbered_style", False):
+                # DOCX conversion can provide the exact label rendered from
+                # numbering.xml (including punctuation and numbering level).
+                # Keep the level-based counter only as a compatibility fallback.
+                explicit_section_number = block.get("section_number")
+                if (
+                    isinstance(explicit_section_number, str)
+                    and explicit_section_number.strip()
+                ):
+                    block["section_number"] = explicit_section_number.strip()
+                    continue
                 # Ensure all ancestor levels start at 1 (never 0)
                 for ancestor in range(1, level):
                     if section_counters[ancestor] == 0:

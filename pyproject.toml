@@ -154,7 +154,7 @@ zip-safe = false
 addopts = "-s --cov=mineru --cov-report html"
 
 [tool.coverage.run]
-command_line = "-m pytest tests/unittest/test_e2e.py"
+command_line = "-m pytest tests/unittest/test_e2e.py tests/unittest/test_docx_heading_numbering.py"
 source = ["mineru/"]
 omit = [
     "*/gradio_app.py",
