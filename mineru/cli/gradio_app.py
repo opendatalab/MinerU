@@ -6,6 +6,7 @@ import httpx
 import os
 import re
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -231,6 +232,9 @@ STATUS_COMPLETED = "Completed"
 STATUS_QUEUED_ON_SERVER = "Queued on server"
 STATUS_PROCESSING_ON_SERVER = "Processing on server"
 STATUS_QUEUED_LOCALLY_PREFIX = "Queued locally:"
+DEFAULT_GRADIO_OUTPUT_ROOT = "./output"
+GRADIO_OUTPUT_ROOT_STORAGE_KEY = "mineru.gradioOutputRoot"
+GRADIO_OUTPUT_ROOT_STORAGE_SECRET = "mineru-gradio-output-root-v1"
 
 BACKEND_CHOICE_DEFINITIONS = list(LOCAL_BACKEND_CHOICES)
 HTTP_CLIENT_BACKEND_CHOICE_DEFINITIONS = list(HTTP_CLIENT_BACKEND_CHOICES)
@@ -882,7 +886,36 @@ def should_use_client_side_output_generation(client_side_output_generation):
     return client_side_output_generation
 
 
-def create_gradio_run_paths(file_path, output_root="./output"):
+def normalize_gradio_output_root(output_root=DEFAULT_GRADIO_OUTPUT_ROOT):
+    """创建并校验 Gradio 输出根目录，成功后返回规范化绝对路径。"""
+    raw_output_root = str(output_root or "").strip()
+    if not raw_output_root:
+        raise ValueError("output directory cannot be empty")
+
+    normalized_root = Path(raw_output_root).expanduser().resolve()
+    try:
+        normalized_root.mkdir(parents=True, exist_ok=True)
+        if not normalized_root.is_dir():
+            raise NotADirectoryError(f"{normalized_root} is not a directory")
+        with tempfile.NamedTemporaryFile(
+            dir=normalized_root,
+            prefix=".mineru-write-test-",
+        ):
+            pass
+    except OSError as exc:
+        raise ValueError(f"output directory is not writable: {normalized_root}") from exc
+    return str(normalized_root)
+
+
+def register_gradio_allowed_path(allowed_paths, output_root):
+    """把已校验输出目录加入 Gradio 可访问路径，保证结果下载与预览可用。"""
+    normalized_root = str(Path(output_root).expanduser().resolve())
+    if normalized_root not in allowed_paths:
+        allowed_paths.append(normalized_root)
+    return normalized_root
+
+
+def create_gradio_run_paths(file_path, output_root=DEFAULT_GRADIO_OUTPUT_ROOT):
     run_id = f"{time.strftime('%y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}_{safe_stem(Path(file_path).stem)}"
     run_root = Path(output_root) / "gradio" / run_id
     extract_root = run_root / "result"
@@ -890,7 +923,7 @@ def create_gradio_run_paths(file_path, output_root="./output"):
     return run_root, extract_root, archive_zip_path
 
 
-def build_gradio_allowed_paths(output_root="./output"):
+def build_gradio_allowed_paths(output_root=DEFAULT_GRADIO_OUTPUT_ROOT):
     """生成 Gradio 可公开访问目录，确保预览 HTTP 图片链接能被 /gradio_api/file= 读取。"""
     allowed_paths = []
     for item in os.environ.get("GRADIO_ALLOWED_PATHS", "").split(","):
@@ -1017,6 +1050,7 @@ async def _run_to_markdown_job(
     api_url=None,
     client_side_output_generation=False,
     status_callback: Callable[[str], None] | None = None,
+    output_root=DEFAULT_GRADIO_OUTPUT_ROOT,
 ):
     if file_path is None:
         return "", "", "", None, None
@@ -1032,7 +1066,10 @@ async def _run_to_markdown_job(
         client_side_output_generation
     )
     parse_method = resolve_parse_method(file_path, is_ocr, backend)
-    run_root, extract_root, archive_zip_path = create_gradio_run_paths(file_path)
+    run_root, extract_root, archive_zip_path = create_gradio_run_paths(
+        file_path,
+        output_root=output_root,
+    )
     run_root.mkdir(parents=True, exist_ok=True)
 
     form_data = _api_client.build_parse_request_form_data(
@@ -1168,6 +1205,7 @@ async def stream_to_markdown(
     url=None,
     api_url=None,
     client_side_output_generation=False,
+    output_root=DEFAULT_GRADIO_OUTPUT_ROOT,
 ):
     status_state = StatusPanelState()
     job_task: asyncio.Task | None = None
@@ -1200,6 +1238,7 @@ async def stream_to_markdown(
                 api_url=api_url,
                 client_side_output_generation=client_side_output_generation,
                 status_callback=enqueue_status,
+                output_root=output_root,
             )
         )
 
@@ -1594,6 +1633,11 @@ def main(ctx,
             "server_url_info": "OpenAI-compatible server URL for http-client backend.",
             "recognition_options": "**Recognition Options:**",
             "advanced_options": "Advanced options",
+            "output_root": "File save location",
+            "output_root_info": "Click Save to apply this location to subsequent conversions.",
+            "save_output_root": "Save",
+            "output_root_saved": "Save location updated: {path}",
+            "output_root_save_failed": "Unable to update save location: {error}",
             "table_enable": "Enable table recognition",
             "table_info": "If disabled, tables will be shown as images.",
             "image_analysis_enable": "Enable image analysis",
@@ -1670,6 +1714,11 @@ def main(ctx,
             "server_url_info": "http-client 后端的 OpenAI 兼容服务器地址。",
             "recognition_options": "**识别选项：**",
             "advanced_options": "高级选项",
+            "output_root": "文件保存位置",
+            "output_root_info": "点击保存后，该位置将用于后续转换。",
+            "save_output_root": "保存",
+            "output_root_saved": "保存位置已更新：{path}",
+            "output_root_save_failed": "无法更新保存位置：{error}",
             "table_enable": "启用表格识别",
             "table_info": "禁用后，表格将显示为图片。",
             "image_analysis_enable": "启用图片分析",
@@ -1795,9 +1844,11 @@ def main(ctx,
         language="ch",
         backend="pipeline",
         url=None,
+        output_root=DEFAULT_GRADIO_OUTPUT_ROOT,
         request: gr.Request = None,
     ):
         request_locale = resolve_request_locale(request)
+        normalized_output_root = normalize_gradio_output_root(output_root)
         async for update in stream_to_markdown(
             file_path=file_path,
             end_pages=end_pages,
@@ -1811,6 +1862,7 @@ def main(ctx,
             url=url,
             api_url=api_url,
             client_side_output_generation=client_side_output_generation,
+            output_root=normalized_output_root,
         ):
             update = (
                 render_status_steps_html(update[0], i18n, locale=request_locale),
@@ -1823,6 +1875,12 @@ def main(ctx,
     suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + office_suffixes]
     _blocks_kwargs = {} if IS_GRADIO_6 else {"css": APP_CSS, "js": APP_JS}
     with gr.Blocks(**_blocks_kwargs) as demo:
+        output_root_state = gr.State(DEFAULT_GRADIO_OUTPUT_ROOT)
+        output_root_browser_state = gr.BrowserState(
+            default_value=DEFAULT_GRADIO_OUTPUT_ROOT,
+            storage_key=GRADIO_OUTPUT_ROOT_STORAGE_KEY,
+            secret=GRADIO_OUTPUT_ROOT_STORAGE_SECRET,
+        )
         gr.HTML(render_header_html(i18n), elem_classes=["mineru-header-html"])
         with gr.Row(elem_classes=["mineru-workspace-row"]):
             with gr.Column(variant='panel', scale=2, min_width=280, elem_classes=["mineru-control-column"]):
@@ -1976,6 +2034,16 @@ def main(ctx,
                             value=False,
                             info=i18n(select_force_ocr_info_key(preferred_option)),
                         )
+                with gr.Group():
+                    output_root_input = gr.Textbox(
+                        label=i18n("output_root"),
+                        value=DEFAULT_GRADIO_OUTPUT_ROOT,
+                        info=i18n("output_root_info"),
+                    )
+                    save_output_root_button = gr.Button(
+                        i18n("save_output_root"),
+                        size="sm",
+                    )
 
         # 添加事件处理
         _private_api_kwargs = (
@@ -1994,6 +2062,59 @@ def main(ctx,
             fn=update_interface,
             inputs=[backend, hybrid_effort],
             outputs=[is_ocr, formula_enable, backend],
+            **_private_api_kwargs
+        )
+
+        def restore_output_root_for_ui(saved_output_root):
+            """恢复浏览器保存的路径；失效时静默回退默认目录。"""
+            try:
+                normalized_root = normalize_gradio_output_root(saved_output_root)
+            except ValueError:
+                normalized_root = normalize_gradio_output_root()
+            register_gradio_allowed_path(demo.allowed_paths, normalized_root)
+            return normalized_root, normalized_root, normalized_root
+
+        def save_output_root_for_ui(output_root, request: gr.Request):
+            """校验并提交新的输出目录，失败时不覆盖现有有效状态。"""
+            request_locale = resolve_request_locale(request)
+            try:
+                normalized_root = normalize_gradio_output_root(output_root)
+            except ValueError as exc:
+                message = translate_ui(
+                    i18n,
+                    "output_root_save_failed",
+                    request_locale,
+                ).format(error=str(exc))
+                raise gr.Error(message) from exc
+
+            register_gradio_allowed_path(demo.allowed_paths, normalized_root)
+            gr.Info(
+                translate_ui(
+                    i18n,
+                    "output_root_saved",
+                    request_locale,
+                ).format(path=normalized_root)
+            )
+            return normalized_root, normalized_root, normalized_root
+
+        demo.load(
+            fn=restore_output_root_for_ui,
+            inputs=[output_root_browser_state],
+            outputs=[
+                output_root_input,
+                output_root_state,
+                output_root_browser_state,
+            ],
+            **_private_api_kwargs
+        )
+        save_output_root_button.click(
+            fn=save_output_root_for_ui,
+            inputs=[output_root_input],
+            outputs=[
+                output_root_input,
+                output_root_state,
+                output_root_browser_state,
+            ],
             **_private_api_kwargs
         )
         clear_bu.add([input_file, md, doc_show, md_text, content_list_json, output_file, is_ocr, office_html, status_panel])
@@ -2049,7 +2170,19 @@ def main(ctx,
         )
         change_bu.click(
             fn=convert_to_markdown_stream,
-            inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, hybrid_effort, language, backend, url],
+            inputs=[
+                input_file,
+                max_pages,
+                is_ocr,
+                formula_enable,
+                table_enable,
+                image_analysis,
+                hybrid_effort,
+                language,
+                backend,
+                url,
+                output_root_state,
+            ],
             outputs=[status_panel, output_file, md, md_text, content_list_json, doc_show],
             **_to_md_api_kwargs
         )
