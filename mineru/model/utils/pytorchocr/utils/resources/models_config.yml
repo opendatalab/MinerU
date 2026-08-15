@@ -7,6 +7,13 @@ lang:
     det: ch_PP-OCRv6_small_det_infer.safetensors
     rec: ch_PP-OCRv6_small_rec_infer.safetensors
     dict: ppocrv6_dict.txt
+  vi:
+    # Vietnamese: PaddleOCR detection only; recognition is handled by VietOCR
+    # (see PytorchPaddleOCR, lang='vi'). rec/dict are placeholders that load but
+    # are not used for recognition when VietOCR is available.
+    det: ch_PP-OCRv6_small_det_infer.safetensors
+    rec: ch_PP-OCRv6_small_rec_infer.safetensors
+    dict: ppocrv6_dict.txt
   korean:
     det: ch_PP-OCRv6_small_det_infer.safetensors
     rec: korean_PP-OCRv5_rec_infer.pth

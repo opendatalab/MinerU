@@ -9,6 +9,7 @@ PUBLIC_OCR_LANGUAGES = (
     "ka",
     "th",
     "el",
+    "vi",
     "arabic",
     "east_slavic",
     "cyrillic",
@@ -24,6 +25,7 @@ _PUBLIC_OCR_LANGUAGE_DESCRIPTIONS = {
     "ka": "Kannada",
     "th": "Thai, English",
     "el": "Greek, English",
+    "vi": "Vietnamese (recognition via VietOCR; requires the 'vietocr' extra)",
     "arabic": (
         "Arabic, Persian, Uyghur, Urdu, Pashto, Kurdish, Sindhi, Balochi, English"
     ),

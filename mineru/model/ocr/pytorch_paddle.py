@@ -111,6 +111,58 @@ class PytorchPaddleOCR(TextSystem):
             self._seal_debug_counter = 0
             self._seal_debug_dir = self._resolve_seal_debug_dir()
 
+        # VietOCR recognizer for Vietnamese: PaddleOCR's shared "latin" rec
+        # model does not cover Vietnamese tone marks, so for lang='vi' we
+        # replace the recognition step with VietOCR (detection stays PaddleOCR).
+        # A fine-tuned checkpoint under vietocr_weights/ is used if present,
+        # else the stock vgg_transformer weights are downloaded.
+        self.vietocr_detector = None
+        if self.lang == 'vi':
+            try:
+                from vietocr.tool.predictor import Predictor
+                from vietocr.tool.config import Cfg
+                weights_dir = os.path.join(Path(__file__).resolve().parents[3], 'vietocr_weights')
+                finetuned_weights = os.path.join(weights_dir, 'vietocr_finetuned.pth')
+                finetuned_config = os.path.join(weights_dir, 'vgg_transformer.yml')
+                if os.path.isfile(finetuned_weights) and os.path.isfile(finetuned_config):
+                    self.vietocr_cfg = Cfg.load_config_from_file(finetuned_config)
+                    self.vietocr_cfg['weights'] = finetuned_weights
+                    logger.info(f"Using fine-tuned VietOCR weights: {finetuned_weights}")
+                else:
+                    self.vietocr_cfg = Cfg.load_config_from_name('vgg_transformer')
+                self.vietocr_cfg['device'] = device if 'cuda' in device or 'mps' in device else 'cpu'
+                self.vietocr_detector = Predictor(self.vietocr_cfg)
+                logger.info("Successfully loaded VietOCR (vgg_transformer) for Vietnamese recognition.")
+            except Exception as e:
+                logger.error(f"Failed to load VietOCR, falling back to PaddleOCR recognizer: {e}")
+                self.vietocr_detector = None
+
+    def _vietocr_predict_batch_chunked(self, crop_imgs, chunk_size=128):
+        # vietocr's predict_batch() concatenates every image sharing a resized
+        # width into one unbounded torch.cat() (can OOM on a full-page crop
+        # list) and its translate() steps the whole batch until the slowest
+        # sequence finishes. vietocr_fast_batch.predict_batch_grouped() sub-
+        # batches, sorts by estimated text length, KV-caches the decode and
+        # early-exits finished sequences.
+        from mineru.model.ocr.vietocr_fast_batch import predict_batch_grouped
+
+        return predict_batch_grouped(self.vietocr_detector, crop_imgs, sub_batch_size=chunk_size)
+
+    def _vietocr_rec(self, img_crop_list):
+        # Returns a list of (text, confidence) for the crops, or None if VietOCR
+        # is unavailable or fails (so the caller falls back to PaddleOCR rec).
+        if self.vietocr_detector is None or len(img_crop_list) == 0:
+            return None
+        try:
+            from PIL import Image
+            crop_imgs = [
+                Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)) for crop in img_crop_list
+            ]
+            return self._vietocr_predict_batch_chunked(crop_imgs)
+        except Exception as e:
+            logger.error(f"VietOCR recognition failed, falling back to PaddleOCR: {e}")
+            return None
+
     def _resolve_seal_debug_dir(self):
         if not self.is_seal:
             return None
@@ -229,13 +281,19 @@ class PytorchPaddleOCR(TextSystem):
                     if not isinstance(img, list):
                         img = preprocess_image(img)
                         img = [img]
-                    rec_res, elapse = self.text_recognizer(
-                        img,
-                        tqdm_enable=tqdm_enable,
-                        tqdm_desc=tqdm_desc,
-                        tqdm_progress_bar=tqdm_progress_bar,
-                    )
-                    # logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
+
+                    # Recognize with VietOCR when available; its confidence
+                    # (mean top-1 softmax prob) replaces PaddleOCR's score for
+                    # drop_score filtering, so the PaddleOCR rec pass is skipped
+                    # entirely. Fall back to PaddleOCR if VietOCR errors.
+                    rec_res = self._vietocr_rec(img)
+                    if rec_res is None:
+                        rec_res, elapse = self.text_recognizer(
+                            img,
+                            tqdm_enable=tqdm_enable,
+                            tqdm_desc=tqdm_desc,
+                            tqdm_progress_bar=tqdm_progress_bar,
+                        )
                     ocr_res.append(rec_res)
                 return ocr_res
 
@@ -276,7 +334,9 @@ class PytorchPaddleOCR(TextSystem):
                 img_crop = get_rotate_crop_image_for_text_rec(ori_im, tmp_box)
                 img_crop_list.append(img_crop)
 
-        rec_res, elapse = self.text_recognizer(img_crop_list)
+        rec_res = self._vietocr_rec(img_crop_list)
+        if rec_res is None:
+            rec_res, elapse = self.text_recognizer(img_crop_list)
         # logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
         if self.is_seal:
             self._dump_seal_debug_artifacts(ori_im, dt_boxes, img_crop_list, rec_res)
