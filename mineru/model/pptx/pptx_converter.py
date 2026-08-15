@@ -2,6 +2,7 @@
 import base64
 from collections import Counter
 from dataclasses import dataclass
+from html import escape
 from io import BytesIO
 from typing import Any, Final, BinaryIO, Optional
 
@@ -594,6 +595,51 @@ class PptxConverter:
         except Exception:
             return False
 
+    def _build_table_cell_html(self, cell, shape) -> str:
+        """Render table-cell text while preserving run-level hyperlinks."""
+        paragraph_parts = []
+        for paragraph in cell.text_frame.paragraphs:
+            run_map = {}
+            for run in paragraph.runs:
+                try:
+                    run_map[id(run._r)] = run
+                except Exception:
+                    continue
+
+            inline_parts = []
+            for node in paragraph._element.content_children:
+                if isinstance(node, CT_TextLineBreak):
+                    inline_parts.append("<br>")
+                    continue
+
+                if self._is_math_content_node(node):
+                    latex = self._convert_math_node_to_latex(node)
+                    if latex:
+                        inline_parts.append(self.equation_bookends.format(EQ=latex))
+                    continue
+
+                node_text = getattr(node, "text", None)
+                if not node_text:
+                    continue
+
+                rendered_text = escape(str(node_text), quote=False)
+                run = run_map.get(id(node))
+                hyperlink = (
+                    self._resolve_hyperlink_from_run(run, shape)
+                    if run is not None
+                    else None
+                )
+                if hyperlink:
+                    rendered_text = (
+                        f'<a href="{escape(str(hyperlink), quote=True)}">'
+                        f"{rendered_text}</a>"
+                    )
+                inline_parts.append(rendered_text)
+
+            paragraph_parts.append("".join(inline_parts))
+
+        return "<br>".join(paragraph_parts).strip()
+
     def _handle_tables(self, shape):
         """将PowerPoint表格转换为HTML格式。
 
@@ -663,14 +709,8 @@ class PptxConverter:
                 attr_str = " " + " ".join(attrs) if attrs else ""
 
                 # 获取单元格文本内容
-                cell_text = cell.text.strip() if cell.text else ""
+                cell_text = self._build_table_cell_html(cell, shape)
                 # 转义HTML特殊字符，防止XSS
-                cell_text = (
-                    cell_text.replace("&", "&amp;")
-                    .replace("<", "&lt;")
-                    .replace(">", "&gt;")
-                )
-
                 html_parts.append(f"    <{tag}{attr_str}>{cell_text}</{tag}>")
 
             html_parts.append("  </tr>")

@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import re
+from html import escape
 from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO, Optional, Union, Any, Final, Iterator
@@ -47,6 +48,7 @@ class DocxConverter:
         "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
         "wp": "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
         "mc": "http://schemas.openxmlformats.org/markup-compatibility/2006",
+        "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
         "v": "urn:schemas-microsoft-com:vml",
         "wps": "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
         "w10": "urn:schemas-microsoft-com:office:word",
@@ -1294,6 +1296,185 @@ class DocxConverter:
             return None
         return f'<p>{"".join(items)}</p>'
 
+    def _resolve_xml_hyperlink_target(self, hyperlink) -> str:
+        relationship_id = hyperlink.get(
+            "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+        )
+        if relationship_id and self.docx_obj is not None:
+            try:
+                relationship = self.docx_obj.part.rels[relationship_id]
+                target = getattr(relationship, "target_ref", None)
+                if target:
+                    return str(target).strip()
+            except (KeyError, AttributeError):
+                pass
+
+        anchor = hyperlink.get(
+            "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}anchor"
+        )
+        return f"#{anchor.strip()}" if anchor and anchor.strip() else ""
+
+    @staticmethod
+    def _wrap_table_cell_text_with_link(soup, html_cell, label: str, target: str) -> bool:
+        for text_node in html_cell.find_all(string=True):
+            if text_node.find_parent("a") is not None:
+                continue
+            node_text = str(text_node)
+            match_start = node_text.find(label)
+            if match_start < 0:
+                continue
+
+            link = soup.new_tag("a", href=target)
+            link.string = label
+            replacements = []
+            if match_start:
+                replacements.append(node_text[:match_start])
+            replacements.append(link)
+            match_end = match_start + len(label)
+            if match_end < len(node_text):
+                replacements.append(node_text[match_end:])
+            text_node.replace_with(*replacements)
+            return True
+        return False
+
+    def _inject_table_hyperlinks(self, html: str, xml_table) -> str:
+        """Restore DOCX relationships when a table used isolated XML fallback."""
+        hyperlinks = xml_table.findall(
+            ".//w:hyperlink", namespaces=DocxConverter._BLIP_NAMESPACES
+        )
+        if not html or not hyperlinks:
+            return html
+
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(html, "html.parser")
+        html_table = soup.find("table")
+        if html_table is None:
+            return html
+
+        w_ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        html_rows = html_table.find_all("tr")
+        xml_rows = xml_table.findall(f"{{{w_ns}}}tr")
+        if len(html_rows) != len(xml_rows):
+            return html
+
+        for html_row, xml_row in zip(html_rows, xml_rows):
+            html_cells = html_row.find_all(["td", "th"], recursive=False)
+            xml_cells = xml_row.findall(f"{{{w_ns}}}tc")
+            if len(html_cells) != len(xml_cells):
+                continue
+
+            for html_cell, xml_cell in zip(html_cells, xml_cells):
+                for hyperlink in xml_cell.findall(
+                    ".//w:hyperlink", namespaces=DocxConverter._BLIP_NAMESPACES
+                ):
+                    target = self._resolve_xml_hyperlink_target(hyperlink)
+                    if not target:
+                        continue
+                    label = "".join(
+                        node.text or ""
+                        for node in hyperlink.findall(
+                            ".//w:t", namespaces=DocxConverter._BLIP_NAMESPACES
+                        )
+                    )
+                    if not label:
+                        continue
+                    if html_cell.find("a", href=target) is not None:
+                        continue
+                    self._wrap_table_cell_text_with_link(
+                        soup, html_cell, label, target
+                    )
+
+        return str(html_table)
+
+    def _build_xml_paragraph_html(self, xml_paragraph) -> str:
+        """Build a minimal paragraph when Mammoth cannot parse a table."""
+        w_ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        parts = []
+        for child in xml_paragraph:
+            child_name = self._local_name(child)
+            if child_name == "hyperlink":
+                label = "".join(
+                    node.text or "" for node in child.findall(f".//{{{w_ns}}}t")
+                )
+                target = self._resolve_xml_hyperlink_target(child)
+                escaped_label = escape(label, quote=False)
+                if escaped_label and target:
+                    parts.append(
+                        f'<a href="{escape(target, quote=True)}">{escaped_label}</a>'
+                    )
+                elif target:
+                    fallback_label = re.split(r"[\\/]", target.rstrip("\\/"))[-1]
+                    parts.append(
+                        f'<a href="{escape(target, quote=True)}">'
+                        f"{escape(fallback_label or target, quote=False)}</a>"
+                    )
+                elif escaped_label:
+                    parts.append(escaped_label)
+                continue
+
+            if child_name == "r":
+                for run_child in child.iter():
+                    run_child_name = self._local_name(run_child)
+                    if run_child_name == "t" and run_child.text:
+                        parts.append(escape(run_child.text, quote=False))
+                    elif run_child_name == "tab":
+                        parts.append("&emsp;")
+                    elif run_child_name in {"br", "cr"}:
+                        parts.append("<br>")
+                continue
+
+            if child_name in {"oMath", "oMathPara"}:
+                math_nodes = (
+                    [child]
+                    if child_name == "oMath"
+                    else child.findall(
+                        ".//m:oMath", namespaces=DocxConverter._BLIP_NAMESPACES
+                    )
+                )
+                for math_node in math_nodes:
+                    try:
+                        latex = str(oMath2Latex(math_node)).strip()
+                    except Exception as exc:
+                        logger.debug(f"Failed to convert table OMML equation: {exc}")
+                        continue
+                    if latex:
+                        parts.append(self.equation_bookends.format(EQ=latex))
+
+        return f'<p>{"".join(parts)}</p>' if parts else "<p></p>"
+
+    def _build_table_html_from_xml(self, xml_table) -> str:
+        """Fallback table renderer that does not require Mammoth relationships."""
+        w_ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        val_attr = f"{{{w_ns}}}val"
+        html_parts = ["<table>"]
+        for xml_row in xml_table.findall(f"{{{w_ns}}}tr"):
+            html_parts.append("<tr>")
+            for xml_cell in xml_row.findall(f"{{{w_ns}}}tc"):
+                attrs = []
+                grid_span = xml_cell.find(f"{{{w_ns}}}tcPr/{{{w_ns}}}gridSpan")
+                if grid_span is not None:
+                    try:
+                        col_span = int(grid_span.get(val_attr, "1"))
+                    except (TypeError, ValueError):
+                        col_span = 1
+                    if col_span > 1:
+                        attrs.append(f'colspan="{col_span}"')
+
+                cell_parts = []
+                for child in xml_cell:
+                    child_name = self._local_name(child)
+                    if child_name == "p":
+                        cell_parts.append(self._build_xml_paragraph_html(child))
+                    elif child_name == "tbl":
+                        cell_parts.append(self._build_table_html_from_xml(child))
+
+                attr_text = f" {' '.join(attrs)}" if attrs else ""
+                html_parts.append(f"<td{attr_text}>{''.join(cell_parts)}</td>")
+            html_parts.append("</tr>")
+        html_parts.append("</table>")
+        return "".join(html_parts)
+
     def _handle_tables(self, element: BaseOxmlElement):
         """
         处理表格。
@@ -1312,6 +1493,7 @@ class DocxConverter:
             self._mammoth_table_idx += 1
             if html is not None:
                 html = self._normalize_table_colspans(html)
+                html = self._inject_table_hyperlinks(html, element)
                 table_block = {
                     "type": BlockType.TABLE,
                     "content": html,
@@ -1320,11 +1502,16 @@ class DocxConverter:
                 return
 
         # 回退：孤立 XML 解析模式（原始方案，不含文档上下文）
-        table = read_str(element.xml)
-        body_reader = body_xml.reader()
-        t = body_reader.read_all([table])
-        res = convert_document_element_to_html(t.value[0])
-        html = self._normalize_table_colspans(res.value)
+        try:
+            table = read_str(element.xml)
+            body_reader = body_xml.reader()
+            t = body_reader.read_all([table])
+            res = convert_document_element_to_html(t.value[0])
+            html = self._normalize_table_colspans(res.value)
+        except Exception as exc:
+            logger.debug(f"Falling back to native DOCX table rendering: {exc}")
+            html = self._build_table_html_from_xml(element)
+        html = self._inject_table_hyperlinks(html, element)
         table_block = {
             "type": BlockType.TABLE,
             "content": html,

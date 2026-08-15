@@ -12,6 +12,8 @@ from mineru.utils.language import detect_lang
 from mineru.backend.utils.markdown_utils import (
     escape_conservative_markdown_text,
     escape_text_block_markdown_prefix,
+    render_markdown_hyperlink,
+    render_page_anchor,
 )
 
 
@@ -372,6 +374,10 @@ def _render_span(span, escape_markdown=True):
         content = _normalize_text_content(span.get('content', ''))
         if escape_markdown:
             content = escape_special_markdown_char(content)
+    elif span_type == ContentType.HYPERLINK:
+        content = _normalize_text_content(span.get('content', ''))
+        if escape_markdown:
+            content = render_markdown_hyperlink(content, span.get('url', ''))
     elif span_type == ContentType.INLINE_EQUATION:
         if span.get('content', ''):
             content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
@@ -404,7 +410,7 @@ def _join_rendered_span(para_block, block_lang, line, line_idx, span_idx, span_t
             return content, ''
         return content, ' '
 
-    if span_type not in [ContentType.TEXT, ContentType.INLINE_EQUATION]:
+    if span_type not in [ContentType.TEXT, ContentType.HYPERLINK, ContentType.INLINE_EQUATION]:
         return content, ''
 
     if (
@@ -588,6 +594,16 @@ def merge_para_with_text_v2(para_block):
                     para_content.append({
                         'type': output_type,
                         'content': rendered_content,
+                    })
+            elif span_type == ContentType.HYPERLINK:
+                content = _normalize_text_content(span.get('content', ''))
+                if content.strip():
+                    if span_idx < len(line.get('spans', [])) - 1:
+                        content += ' '
+                    para_content.append({
+                        'type': ContentTypeV2.SPAN_TEXT,
+                        'content': render_markdown_hyperlink(content, span.get('url', '')),
+                        'url': span.get('url', ''),
                     })
             elif span_type == ContentType.INLINE_EQUATION:
                 content = span.get('content', '').strip()
@@ -977,8 +993,13 @@ def union_make(pdf_info_dict: list,
         page_size = page_info.get('page_size')
         if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
             if not paras_of_layout:
+                if page_info.get('page_anchor'):
+                    output_content.append(render_page_anchor(page_info['page_anchor']))
                 continue
             page_markdown = make_blocks_to_markdown(paras_of_layout, make_mode, img_buket_path)
+            page_anchor = page_info.get('page_anchor')
+            if page_anchor:
+                page_markdown.insert(0, render_page_anchor(page_anchor))
             output_content.extend(page_markdown)
         elif make_mode == MakeMode.CONTENT_LIST:
             para_blocks = merge_adjacent_ref_text_blocks_for_content(
