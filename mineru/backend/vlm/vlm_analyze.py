@@ -35,6 +35,7 @@ from ...utils.pdfium_guard import (
     open_pdfium_document,
 )
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
+from ...utils.model_utils import clean_memory
 
 from mineru_vl_utils import MinerUClient
 from packaging import version
@@ -518,6 +519,7 @@ def doc_analyze(
     finally:
         if not doc_closed:
             close_pdfium_document(pdf_doc)
+        clean_memory(get_device())
 
 
 async def aio_doc_analyze(
@@ -617,3 +619,4 @@ async def aio_doc_analyze(
     finally:
         if not doc_closed:
             close_pdfium_document(pdf_doc)
+        clean_memory(get_device())
