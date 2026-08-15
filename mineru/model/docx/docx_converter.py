@@ -1447,6 +1447,18 @@ class DocxConverter:
             else:
                 # 标记本节结束，处理完文本之后再分节
                 is_section_end = True
+
+        # Manual page breaks and pageBreakBefore are page-forcing constructs
+        # this splitter otherwise never sees at all (has_section_break above
+        # only catches Word *section* breaks). pageBreakBefore means THIS
+        # paragraph starts a new page, so it fires immediately; a manual
+        # <w:br w:type="page"/> run defers to end-of-paragraph like
+        # is_section_end (no intra-paragraph pre-break/post-break split is
+        # attempted here).
+        if self._has_page_break_before(element):
+            self._start_new_page()
+        has_manual_page_break = self._has_manual_page_break(element)
+
         paragraph = Paragraph(element, self.docx_obj)
         paragraph_elements = self._get_paragraph_elements(paragraph)
         paragraph_text = self._get_paragraph_text(paragraph)
@@ -1471,6 +1483,8 @@ class DocxConverter:
                 self._close_active_list()
             # 普通 TOC 段落被转换为 INDEX 后，也要保留段落末尾分节分页语义。
             if is_section_end:
+                self._start_new_page()
+            if has_manual_page_break and not is_section_end:
                 self._start_new_page()
             return None
         self._reset_index_state()
@@ -1645,6 +1659,8 @@ class DocxConverter:
                 self.cur_page.append(text_block)
 
         if is_section_end:
+            self._start_new_page()
+        if has_manual_page_break and not is_section_end:
             self._start_new_page()
 
     def _handle_pictures(self, picture_refs: Any):
@@ -2250,6 +2266,29 @@ class DocxConverter:
         if pPr is None:
             return None
         return pPr.find(child_tag, namespaces=namespaces)
+
+    def _has_page_break_before(self, element: BaseOxmlElement) -> bool:
+        """
+        True if this paragraph's pPr has <w:pageBreakBefore/> and it isn't
+        explicitly disabled via w:val="0"/"false"/"off" (OOXML boolean-toggle
+        convention: presence alone means true, an explicit falsy w:val means
+        the property is turned off, not a break).
+        """
+        pbb = self._get_paragraph_property_child(element, "w:pageBreakBefore")
+        if pbb is None:
+            return False
+        w_ns = DocxConverter._BLIP_NAMESPACES["w"]
+        val = pbb.get(f"{{{w_ns}}}val")
+        return val not in ("0", "false", "off")
+
+    def _has_manual_page_break(self, element: BaseOxmlElement) -> bool:
+        """True if this paragraph contains a manual page-break run (Ctrl+Enter)."""
+        return (
+            element.find(
+                ".//w:br[@w:type='page']", namespaces=DocxConverter._BLIP_NAMESPACES
+            )
+            is not None
+        )
 
     def _get_effective_numPr(
         self, paragraph: Paragraph
