@@ -30,7 +30,7 @@ The following sections provide detailed descriptions of each file's purpose and 
 - Verify if reading order is reasonable
 - Debug layout-related issues
 
-![layout page example](../images/layout_example.png)
+![layout page example](../../images/layout_example.png)
 
 ### Text Spans File (span.pdf)
 
@@ -50,7 +50,7 @@ The following sections provide detailed descriptions of each file's purpose and 
 - Check inline formula recognition
 - Verify text segmentation accuracy
 
-![span page example](../images/spans_example.png)
+![span page example](../../images/spans_example.png)
 
 ## Structured Data Files
 

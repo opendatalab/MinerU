@@ -30,7 +30,7 @@
 - 确认阅读顺序是否合理
 - 调试布局相关问题
 
-![layout 页面示例](../images/layout_example.png)
+![layout 页面示例](../../images/layout_example.png)
 
 ### 文本片段文件 (span.pdf)
 
@@ -50,7 +50,7 @@
 - 检查行内公式识别情况
 - 验证文本分割准确性
 
-![span 页面示例](../images/spans_example.png)
+![span 页面示例](../../images/spans_example.png)
 
 ## 结构化数据文件
 
