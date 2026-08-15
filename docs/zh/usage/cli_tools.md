@@ -37,12 +37,13 @@ mineru-api --help
 Usage: mineru-api [OPTIONS]
 
 Options:
-  --host TEXT     服务器主机地址（默认：127.0.0.1）
-  --port INTEGER  服务器端口（默认：8000）
-  --reload        启用自动重载（开发模式）
-  --enable-vlm-preload BOOLEAN
-                  在 mineru-api 启动阶段预加载本地 VLM 模型
-  --help          显示此帮助信息并退出
+  --host TEXT                   服务器主机地址（默认：127.0.0.1）
+  --port INTEGER                服务器端口（默认：8000）
+  --reload                      启用自动重载（开发模式）
+  --allow-public-http-client    即使 API 绑定到 0.0.0.0 或 ::，仍允许使用
+                                *-http-client 后端和 server_url
+  --enable-vlm-preload BOOLEAN  在 mineru-api 启动阶段预加载本地 VLM 模型
+  --help                        显示此帮助信息并退出
 ```
 ```bash
 mineru-gradio --help
@@ -74,17 +75,25 @@ mineru-router --help
 Usage: mineru-router [OPTIONS]
 
 Options:
-  --host TEXT             路由服务主机地址（默认：127.0.0.1）
-  --port INTEGER          路由服务端口（默认：8002）
-  --reload                启用自动重载（开发模式）
-  --upstream-url TEXT     现有 MinerU FastAPI 服务地址；可重复传入多个
-  --local-gpus TEXT       本地 GPU worker 配置：auto、none 或 0,1,2 形式
-  --worker-host TEXT      路由托管 worker 的监听地址（默认：127.0.0.1）
-  --enable-vlm-preload BOOLEAN
-                          在 router 托管的本地 mineru-api worker 中预加载本地
-                          VLM 模型
-  --help                  显示此帮助信息并退出
+  --host TEXT                   路由服务主机地址（默认：127.0.0.1）
+  --port INTEGER                路由服务端口（默认：8002）
+  --reload                      启用自动重载（开发模式）
+  --allow-public-http-client    即使 router 绑定到 0.0.0.0 或 ::，仍允许使用
+                                *-http-client 后端和 server_url
+  --upstream-url TEXT           现有 MinerU FastAPI 服务地址；可重复传入多个
+  --local-gpus TEXT             本地 GPU worker 配置：auto、none 或 0,1,2 形式
+  --worker-host TEXT            路由托管 worker 的监听地址（默认：127.0.0.1）
+  --enable-vlm-preload BOOLEAN  在 router 托管的本地 mineru-api worker 中预加载
+                                本地 VLM 模型
+  --help                        显示此帮助信息并退出
 ```
+
+> [!WARNING]
+> 当 `mineru-api` 或 `mineru-router` 监听 `0.0.0.0` 或 `::` 时，默认拒绝选择
+> `*-http-client` 后端或提供 `server_url` 的请求，因为这些输入允许调用方指定
+> 远程推理端点。`--allow-public-http-client` 会显式移除此保护，未受信任的调用方
+> 可能借此实施 SSRF 或探测内网。仅应在调用方可信且已合理限制出站网络访问时
+> 启用该参数。此公开绑定保护不影响 `127.0.0.1` 等回环地址。
 
 ## 环境变量说明
 

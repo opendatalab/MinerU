@@ -39,12 +39,14 @@ mineru-api --help
 Usage: mineru-api [OPTIONS]
 
 Options:
-  --host TEXT     Server host (default: 127.0.0.1)
-  --port INTEGER  Server port (default: 8000)
-  --reload        Enable auto-reload (development mode)
-  --enable-vlm-preload BOOLEAN
-                  Preload the local VLM model during mineru-api startup.
-  --help          Show this message and exit.
+  --host TEXT                   Server host (default: 127.0.0.1)
+  --port INTEGER                Server port (default: 8000)
+  --reload                      Enable auto-reload (development mode)
+  --allow-public-http-client    Allow *-http-client backends and server_url even
+                                when binding the API to 0.0.0.0 or ::.
+  --enable-vlm-preload BOOLEAN  Preload the local VLM model during mineru-api
+                                startup.
+  --help                        Show this message and exit.
 ```
 ```bash
 mineru-gradio --help
@@ -81,18 +83,31 @@ mineru-router --help
 Usage: mineru-router [OPTIONS]
 
 Options:
-  --host TEXT             Server host (default: 127.0.0.1)
-  --port INTEGER          Server port (default: 8002)
-  --reload                Enable auto-reload (development mode)
-  --upstream-url TEXT     Existing MinerU FastAPI base URL; repeat to add more
-  --local-gpus TEXT       Local GPU workers to launch: auto, none, or CSV such
-                          as 0,1,2
-  --worker-host TEXT      Host for router-managed workers (default: 127.0.0.1)
-  --enable-vlm-preload BOOLEAN
-                          Preload the local VLM model in router-managed
-                          mineru-api workers.
-  --help                  Show this message and exit.
+  --host TEXT                   Server host (default: 127.0.0.1)
+  --port INTEGER                Server port (default: 8002)
+  --reload                      Enable auto-reload (development mode)
+  --allow-public-http-client    Allow *-http-client backends and server_url even
+                                when binding the router to 0.0.0.0 or ::.
+  --upstream-url TEXT           Existing MinerU FastAPI base URL. Repeat to add
+                                multiple upstream servers.
+  --local-gpus TEXT             Local GPU workers to launch: auto, none, or CSV
+                                such as 0,1,2.
+  --worker-host TEXT            Host for router-managed mineru-api workers
+                                (default: 127.0.0.1).
+  --enable-vlm-preload BOOLEAN  Preload the local VLM model in router-managed
+                                mineru-api workers.
+  --help                        Show this message and exit.
 ```
+
+> [!WARNING]
+> When `mineru-api` or `mineru-router` listens on `0.0.0.0` or `::`, requests
+> that select a `*-http-client` backend or supply `server_url` are rejected by
+> default. These inputs let callers choose remote inference endpoints.
+> `--allow-public-http-client` explicitly removes that safeguard, so an
+> untrusted caller could use the service for SSRF or internal network probing.
+> Enable it only when callers are trusted and outbound network access is
+> appropriately restricted. Loopback bindings such as `127.0.0.1` are not
+> affected by this public-bind safeguard.
 
 ## Environment Variables Description
 
