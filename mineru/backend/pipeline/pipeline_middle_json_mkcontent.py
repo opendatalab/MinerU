@@ -217,6 +217,7 @@ display_left_delimiter = delimiters['display']['left']
 display_right_delimiter = delimiters['display']['right']
 inline_left_delimiter = delimiters['inline']['left']
 inline_right_delimiter = delimiters['inline']['right']
+INLINE_EQUATION_TRAILING_PUNCTUATION = ',.，。'
 
 CJK_LANGS = {'zh', 'ja', 'ko'}
 
@@ -362,6 +363,19 @@ def _normalize_text_content(content):
     return full_to_half_exclude_marks(content or '')
 
 
+def _render_inline_equation(content: str) -> str:
+    # OCR may attach sentence punctuation to the formula span. Keep that
+    # punctuation outside the Markdown math delimiters.
+    equation = content.rstrip(INLINE_EQUATION_TRAILING_PUNCTUATION)
+    trailing_punctuation = content[len(equation):]
+    if not equation.strip():
+        return f"{inline_left_delimiter}{content}{inline_right_delimiter}"
+    return (
+        f"{inline_left_delimiter}{equation}{inline_right_delimiter}"
+        f"{trailing_punctuation}"
+    )
+
+
 def _render_span(span, escape_markdown=True):
     # 将单个 span 渲染成 markdown 片段。
     # 这里只负责“渲染成什么文本”，不决定后面是否补空格。
@@ -374,7 +388,7 @@ def _render_span(span, escape_markdown=True):
             content = escape_special_markdown_char(content)
     elif span_type == ContentType.INLINE_EQUATION:
         if span.get('content', ''):
-            content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
+            content = _render_inline_equation(span['content'])
     elif span_type == ContentType.INTERLINE_EQUATION:
         if span.get('content', ''):
             content = f"\n{display_left_delimiter}\n{span['content']}\n{display_right_delimiter}\n"
