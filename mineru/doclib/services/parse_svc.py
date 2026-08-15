@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import ntpath
 import os
 import time
 from collections.abc import Sequence
@@ -27,6 +28,7 @@ from ...filetypes import (
 from ...parser.api_client import _APITransportError, _V1APIError
 from ...parser.base import ParseResult
 from ...types import QUALITY_TIERS, TIER_ORDER, PageInfo, Tier, select_default_quality_tier, select_parsing_rule_tier
+from ...utils.check_sys_env import is_windows_environment
 from ..core.db import DatabaseManager
 from ..core.file_io import FileStat, MetadataExtractionError, compute_sha256, extract_metadata, get_file_stat
 from ..core.fts import FTSManager
@@ -1484,6 +1486,20 @@ def parse_image_sidecar_dir(data_dir: str, sha256: str, tier: Tier) -> str:
     return os.path.join(os.path.expanduser(data_dir), "parsed", sha256[:2], sha256, tier, "images")
 
 
+def _windows_extended_path(path: str | os.PathLike[str]) -> str:
+    """Return a Windows extended-length path for internal cache I/O."""
+    raw_path = os.fspath(path)
+    if not is_windows_environment():
+        return raw_path
+
+    absolute_path = ntpath.abspath(raw_path)
+    if absolute_path.startswith("\\\\?\\"):
+        return absolute_path
+    if absolute_path.startswith("\\\\"):
+        return f"\\\\?\\UNC\\{absolute_path[2:]}"
+    return f"\\\\?\\{absolute_path}"
+
+
 def resolve_image_sidecar_path(image_dir: str, image_path: str) -> Path | None:
     """把 public image_path 安全映射到 doclib 缓存图片目录，拒绝绝对路径和上跳路径。"""
     if not image_path:
@@ -1491,7 +1507,8 @@ def resolve_image_sidecar_path(image_dir: str, image_path: str) -> Path | None:
     raw_path = PurePosixPath(image_path)
     if raw_path.is_absolute() or any(part in {"", ".", ".."} for part in raw_path.parts):
         return None
-    return Path(image_dir).joinpath(*raw_path.parts)
+    sidecar_path = Path(image_dir).joinpath(*raw_path.parts)
+    return Path(_windows_extended_path(sidecar_path))
 
 
 def _write_cached_image_sidecars(image_dir: str, images: dict[str, bytes]) -> None:

@@ -53,6 +53,7 @@ from mineru.doclib.services.parse_svc import (
     _local_parse_server_url,
     _resolve_default_tier,
     _resolve_parsing_rule_default_tier,
+    _windows_extended_path,
     expand_page_range,
     filter_pages_by_user_range,
     load_pages_from_done_batches,
@@ -4510,6 +4511,30 @@ def test_progressive_markdown_uses_sidecar_availability_for_bboxless_blocks(
 
     assert f"![Image block]({expected_target})" in response.content
     assert "figures/rendered.jpg" not in response.content
+
+
+def test_windows_extended_path_supports_long_sidecar_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "mineru.doclib.services.parse_svc.is_windows_environment",
+        lambda: True,
+    )
+
+    drive_path = "C:\\mineru\\" + ("nested\\" * 30) + "image.jpg"
+    unc_path = "\\\\server\\share\\" + ("nested\\" * 30) + "image.jpg"
+
+    assert _windows_extended_path(drive_path) == f"\\\\?\\{drive_path}"
+    assert _windows_extended_path(unc_path) == f"\\\\?\\UNC\\{unc_path[2:]}"
+    assert _windows_extended_path(f"\\\\?\\{drive_path}") == f"\\\\?\\{drive_path}"
+
+
+def test_windows_extended_path_is_noop_on_other_platforms(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "mineru.doclib.services.parse_svc.is_windows_environment",
+        lambda: False,
+    )
+    path = "/tmp/mineru/images/image.jpg"
+
+    assert _windows_extended_path(path) == path
 
 
 def test_doclib_office_image_asset_reads_cached_sidecar(tmp_path: Path) -> None:
