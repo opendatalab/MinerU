@@ -4,6 +4,9 @@ import re
 from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile, ZipInfo
 import xml.etree.ElementTree as ET
 
+from defusedxml.ElementTree import fromstring as _defused_fromstring
+from defusedxml.common import DefusedXmlException
+
 SPREADSHEETML_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 SHARED_STRINGS_PATH = "xl/sharedStrings.xml"
 STYLES_PATH = "xl/styles.xml"
@@ -71,8 +74,8 @@ def _normalize_xlsx_member(member_name: str, member_data: bytes) -> bytes:
 def _normalize_shared_strings_xml(xml_bytes: bytes) -> bytes:
     """规范化共享字符串 XML 中 openpyxl 无法接受的富文本属性。"""
     try:
-        root = ET.fromstring(xml_bytes)
-    except ET.ParseError:
+        root = _defused_fromstring(xml_bytes)
+    except (ET.ParseError, DefusedXmlException):
         return xml_bytes
 
     changed = False
@@ -89,8 +92,8 @@ def _normalize_shared_strings_xml(xml_bytes: bytes) -> bytes:
 def _normalize_styles_xml(xml_bytes: bytes) -> bytes:
     """规范化 styles.xml 中 openpyxl 无法接受的空 fill 节点。"""
     try:
-        root = ET.fromstring(xml_bytes)
-    except ET.ParseError:
+        root = _defused_fromstring(xml_bytes)
+    except (ET.ParseError, DefusedXmlException):
         return xml_bytes
 
     changed = False
@@ -109,8 +112,8 @@ def _normalize_styles_xml(xml_bytes: bytes) -> bytes:
 def _normalize_worksheet_xml(xml_bytes: bytes) -> bytes:
     """规范化 worksheet XML 中会阻断 openpyxl 加载的行范围筛选器。"""
     try:
-        root = ET.fromstring(xml_bytes)
-    except ET.ParseError:
+        root = _defused_fromstring(xml_bytes)
+    except (ET.ParseError, DefusedXmlException):
         return xml_bytes
 
     changed = False
