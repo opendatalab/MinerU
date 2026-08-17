@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import base64
+import inspect
+import threading
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -1146,6 +1149,68 @@ def test_log_infer_performance_uses_unrounded_elapsed(
     assert f"pages={page_count}" in message
     assert expected_cost in message
     assert expected_speed in message
+
+
+def test_aio_doc_analyze_matches_sync_signature() -> None:
+    """验证异步门面的参数、默认值和返回标注与同步入口保持一致。"""
+    sync_signature = inspect.signature(analyze.doc_analyze)
+    async_signature = inspect.signature(analyze.aio_doc_analyze)
+
+    assert async_signature.parameters == sync_signature.parameters
+    assert async_signature.return_annotation == sync_signature.return_annotation
+
+
+def test_aio_doc_analyze_runs_sync_entrypoint_in_thread_and_forwards_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证异步门面在线程中执行同步入口，并完整转发非默认参数和返回值。"""
+    caller_thread_id = threading.get_ident()
+    observed: dict[str, object] = {}
+    expected_result = (MagicMock(spec=MiddleJson), [[{"type": BlockType.TEXT, "content": "async"}]])
+
+    def fake_doc_analyze(**kwargs: object) -> tuple[MiddleJson, list[list[dict[str, object]]]]:
+        """记录工作线程及异步门面传入的全部关键字参数。"""
+        observed["thread_id"] = threading.get_ident()
+        observed["kwargs"] = kwargs
+        return expected_result
+
+    monkeypatch.setattr(analyze, "doc_analyze", fake_doc_analyze)
+
+    actual_result = asyncio.run(
+        analyze.aio_doc_analyze(
+            b"async-document",
+            effort="xhigh",
+            parse_mode="ocr",
+            image_analysis=False,
+            page_index_map=[3, 5],
+            file_suffix="pptx",
+        )
+    )
+
+    assert actual_result is expected_result
+    assert observed["kwargs"] == {
+        "file_bytes": b"async-document",
+        "effort": "xhigh",
+        "parse_mode": "ocr",
+        "image_analysis": False,
+        "page_index_map": [3, 5],
+        "file_suffix": "pptx",
+    }
+    assert observed["thread_id"] != caller_thread_id
+
+
+def test_aio_doc_analyze_propagates_sync_entrypoint_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证同步入口异常会穿过工作线程并由异步调用方原样收到。"""
+    def fake_doc_analyze(**_kwargs: object) -> tuple[MiddleJson, list[list[dict[str, object]]]]:
+        """模拟同步文档分析阶段抛出参数异常。"""
+        raise ValueError("async analyze failed")
+
+    monkeypatch.setattr(analyze, "doc_analyze", fake_doc_analyze)
+
+    with pytest.raises(ValueError, match="async analyze failed"):
+        asyncio.run(analyze.aio_doc_analyze(b"invalid-document"))
 
 
 @pytest.mark.parametrize("file_suffix", ["docx", "pptx", "xlsx"])

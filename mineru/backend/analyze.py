@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Literal, cast
 
 from loguru import logger
@@ -57,3 +58,23 @@ def doc_analyze(
         mineru_version=mineru_version,
     )
     return middle_json, result.model_list
+
+
+async def aio_doc_analyze(
+    file_bytes: bytes,
+    effort: Literal["flash", "low", "medium", "high", "xhigh"] = "high",
+    parse_mode: Literal["auto", "txt", "ocr"] = "auto",
+    image_analysis: bool = True,
+    page_index_map: list[int] | None = None,
+    file_suffix: Literal["pdf", "docx", "pptx", "xlsx"] = "pdf",
+) -> tuple[MiddleJson, list[list[dict[str, Any]]]]:
+    """在线程中执行统一文档分析，避免阻塞调用方事件循环。"""
+    return await asyncio.to_thread(
+        doc_analyze,
+        file_bytes=file_bytes,
+        effort=effort,
+        parse_mode=parse_mode,
+        image_analysis=image_analysis,
+        page_index_map=page_index_map,
+        file_suffix=file_suffix,
+    )
