@@ -4,6 +4,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
+from docx import Document
 from pptx import Presentation
 from pptx.enum.shapes import PP_PLACEHOLDER
 
@@ -106,19 +107,36 @@ def test_docx_model_splits_document_and_paragraph_titles() -> None:
 
     doc_title = _find_block_by_content(blocks, "MinerU supports DOCX document parsing now")
     assert doc_title["type"] == BlockType.DOC_TITLE
-    assert set(doc_title) <= {"type", "content", "anchor"}
-    assert "level" not in doc_title
+    assert set(doc_title) <= {"type", "content", "anchor", "level"}
+    assert doc_title["level"] == 1
     assert "is_numbered_style" not in doc_title
 
     heading = _find_block_by_content(blocks, "后面是正常的章节标题")
     assert heading["type"] == BlockType.PARAGRAPH_TITLE
-    assert heading["level"] == 1
+    assert heading["level"] == 2
     assert heading["is_numbered_style"] is False
 
     numbered_heading = _find_block_containing(blocks, "有序列表构成的章节标题")
     assert numbered_heading["type"] == BlockType.PARAGRAPH_TITLE
-    assert numbered_heading["level"] == 1
+    assert numbered_heading["level"] == 2
     assert numbered_heading["is_numbered_style"] is True
+
+
+def test_docx_heading_levels_are_shifted_below_document_title() -> None:
+    """验证 DOCX Title/Heading 1/Heading 2 输出全局一级、二级、三级层级。"""
+    document = Document()
+    document.add_paragraph("Document", style="Title")
+    document.add_heading("Heading one", level=1)
+    document.add_heading("Heading two", level=2)
+    stream = BytesIO()
+    document.save(stream)
+    stream.seek(0)
+
+    blocks = _flatten_pages(DocxModel().predict(stream))
+
+    assert _find_block_by_content(blocks, "Document")["level"] == 1
+    assert _find_block_containing(blocks, "Heading one")["level"] == 2
+    assert _find_block_containing(blocks, "Heading two")["level"] == 3
 
 
 def test_pptx_model_splits_title_placeholders_and_subtitle() -> None:
@@ -135,8 +153,8 @@ def test_pptx_model_splits_title_placeholders_and_subtitle() -> None:
 
     doc_title = _find_block_by_content(pages[0], "Test Table Slide")
     assert doc_title["type"] == BlockType.DOC_TITLE
-    assert set(doc_title) <= {"type", "content", "anchor"}
-    assert "level" not in doc_title
+    assert set(doc_title) <= {"type", "content", "anchor", "level"}
+    assert doc_title["level"] == 1
     assert "is_numbered_style" not in doc_title
 
     subtitle = _find_block_by_content(pages[0], "With footnote")
@@ -189,7 +207,7 @@ def test_pptx_title_candidates_are_finalized_without_losing_levels() -> None:
         BlockType.PARAGRAPH_TITLE,
         BlockType.PARAGRAPH_TITLE,
     ]
-    assert "level" not in blocks[0]
+    assert blocks[0]["level"] == 1
     assert "is_numbered_style" not in blocks[0]
     assert "level" not in blocks[1]
     assert blocks[2]["level"] == 2
@@ -266,7 +284,9 @@ def test_pptx_notes_only_slide_does_not_consume_document_title() -> None:
     blocks = _flatten_pages(pages)
 
     assert _find_block_by_content(blocks, "Presenter note")["type"] == BlockType.PAGE_FOOTNOTE
-    assert _find_block_by_content(blocks, "Document title")["type"] == BlockType.DOC_TITLE
+    document_title = _find_block_by_content(blocks, "Document title")
+    assert document_title["type"] == BlockType.DOC_TITLE
+    assert document_title["level"] == 1
     assert _find_block_by_content(blocks, "Document subtitle")["type"] == BlockType.TEXT
     later_title = _find_block_by_content(blocks, "Section cover")
     assert later_title["type"] == BlockType.PARAGRAPH_TITLE
@@ -274,13 +294,13 @@ def test_pptx_notes_only_slide_does_not_consume_document_title() -> None:
     assert all(_PPTX_TITLE_CANDIDATE_KEY not in block for block in blocks)
 
 
-def test_xlsx_model_emits_sheet_names_as_paragraph_titles() -> None:
-    """验证 XLSX 多 Sheet 名称全部输出为无 level 的段落标题。"""
+def test_xlsx_model_emits_sheet_names_as_level_two_paragraph_titles() -> None:
+    """验证 XLSX 多 Sheet 名称全部输出为二级段落标题。"""
     pages = _predict_sample(XlsxModel(), "xlsx")
     blocks = _flatten_pages(pages)
     sheet_titles = [_find_block_by_content(blocks, sheet_name) for sheet_name in ("Sheet1", "Sheet2", "Sheet3")]
 
     assert [page[0]["content"] for page in pages] == ["Sheet1", "Sheet2", "Sheet3"]
     assert all(block["type"] == BlockType.PARAGRAPH_TITLE for block in sheet_titles)
-    assert all("level" not in block for block in sheet_titles)
+    assert all(block["level"] == 2 for block in sheet_titles)
     assert all(block.get("type") != BlockType.DOC_TITLE for block in blocks)

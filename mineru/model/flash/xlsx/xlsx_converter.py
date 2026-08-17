@@ -267,6 +267,7 @@ class XlsxConverter:
         """构造工作表标题块，复用 Office 标题渲染链路输出 Markdown 标题。"""
         return {
             "type": BlockType.PARAGRAPH_TITLE,
+            "level": 2,
             "content": sheet_title,
         }
 

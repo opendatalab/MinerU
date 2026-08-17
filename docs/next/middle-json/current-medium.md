@@ -40,10 +40,15 @@
 | 字段 | 类型 | 要求 |
 |------|------|------|
 | `page_idx` | 非负整数 | 必填，使用实际页号映射 |
-| `blocks` | `list[Block]` | 必填，默认为空列表 |
+| `blocks` | `list[PageBlock]` | 必填，默认为空列表 |
 
 顶层 block 必须具有非负 `index`。同一页内的 index 必须唯一、严格递增，
 但允许缺号或从非零值开始。数组位置不能替代 index。
+
+`PageBlock` 只允许 16 种页面根类型：`text/ref_text/doc_title/paragraph_title`、
+`header/footer/page_number/page_footnote/aside_text`、`equation/list/index` 和
+`image/table/chart/code`。视觉 `body/caption/footnote` 只能出现在对应父块内部；
+通用 `Block` 联合仍可用于解析全部公开 discriminator。
 
 ## Block 公共字段
 
@@ -58,14 +63,14 @@
 bbox 必须是有限的 `[0, 1]` 归一化坐标，并满足 `x1 > x0`、`y1 > y0`。
 每个具体 block 都显式声明必填 `content`，公共基类不再杂糅类型专属字段。
 
-公开 discriminator 共 29 个：
+公开 discriminator 共 28 个：
 
 ```text
 aside_text
 chart, chart_body, chart_caption, chart_footnote
 code, code_body, code_caption, code_footnote
 doc_title, paragraph_title
-footer, formula_number, header
+footer, header
 image, image_body, image_caption, image_footnote
 equation, index, list
 page_footnote, page_number, ref_text
@@ -73,7 +78,7 @@ table, table_body, table_caption, table_footnote
 text
 ```
 
-仅 raw 阶段允许的 `algorithm/caption/footnote/title/phonetic` 不属于
+仅 raw 阶段允许的 `algorithm/caption/footnote/formula_number/phonetic` 不属于
 公开 union。其它旧 `BlockType` 常量也不会被严格反序列化接受。
 
 块级行间公式唯一使用 `equation`。Legacy Span 链中的
@@ -85,13 +90,15 @@ text
 |------|-----------|----------|
 | `TextBlock` | `str` | `continues_prev`；不允许 `anchor` |
 | `RefTextBlock` | `str` | 不允许 `continues_prev` |
-| `DocTitleBlock` | `str` | `anchor` |
-| `ParagraphTitleBlock` | `str` | `anchor`、正整数 `level` |
-| `TableBlock` | 有序视觉子块列表 | `continues_prev` |
-| `TableBodyBlock` | `str` | `cell_merge`、图片字段 |
+| `DocTitleBlock` | `str` | `anchor`、必填 `level=1` |
+| `ParagraphTitleBlock` | `str` | `anchor`、必填 `level>=2` |
+| `PageAuxTextBlock` | `str` | 共享页眉、页脚、页码、边栏和页脚注释结构 |
+| `TableBlock` | 有序视觉子块列表 | `continues_prev`、`cell_merge` |
+| `TableBodyBlock` | `str` | 图片字段 |
 | `CodeBlock` | 有序视觉子块列表 | `sub_type`、`guess_lang` |
 | `ImageBlock/ChartBlock` | 有序视觉子块列表 | 开放字符串 `sub_type` |
-| `ImageBodyBlock/ChartBodyBlock` | `str` 或 null | 图片字段 |
+| `EquationBlock/ImageBodyBlock/TableBodyBlock/ChartBodyBlock` | `str` | 共享图片载荷内容结构 |
+| `*AnnotationBlock` | `str` | 每个视觉家族共享 caption/footnote 结构 |
 | 其它叶子 block | `str` | 仅各自声明的字段 |
 
 `CodeBlock(sub_type="code")` 必须有非空 `guess_lang`；
@@ -99,7 +106,9 @@ text
 顶层 `text/list/table`，任何嵌套项即使显式写成 null 也会被拒绝。
 
 `merge_prev`、`is_numbered_style` 和 `section_number` 均不属于公开模型。
-Office 自动标题编号已在对象化前写入 `ParagraphTitleBlock.content`。
+标题使用全局文档层级：文档标题固定为一级，所有段落标题从二级开始。
+Office 自动标题编号按 `level - 1` 的段落深度计算，并在对象化前写入
+`ParagraphTitleBlock.content`。
 
 ## 递归容器
 
@@ -133,6 +142,8 @@ Office 目录规范化会递归移除普通 TextBlock 的 `anchor`。递归结�
 
 每个父块必须且只能有一个对应 body；caption 和 footnote 可以有多个。父块有
 index 时 body 必须使用相同 index；父子同时有 bbox 时必须相等。
+`cell_merge` 属于后一个 `table` 根块，描述其与前一个 table 的跨页视觉列续接；
+`table_body` 只保存 HTML/文本和图片载荷。
 
 ## 图片载荷与导出
 
@@ -142,6 +153,10 @@ index 时 body 必须使用相同 index；父子同时有 bbox 时必须相等�
 - `table_body`
 - `chart_body`
 - `equation`
+
+这四类图片载荷 block 的 `content` 都必须是字符串。Analyze 会将 image/chart
+缺失的文本表示或 raw `null` 规范化为空字符串；严格 Middle JSON 不接受
+`content: null`。
 
 普通 `to_dict()` / `to_json()` 不执行文件 I/O；可通过
 `exclude_block_fields={"image_base64"}` 递归排除图片字段。完整序列化保留
@@ -156,6 +171,9 @@ images/page_{page_idx}_{type}_{index}_{ordinal}.{ext}
 
 第二种名称用于同一 HTML block 中的多张内嵌图片，ordinal 从 1 开始。导出
 JSON 不包含 `image_base64` 或 `data:image/...`，原始 MiddleJson 对象保持不变。
+
+当前 schema 采用直接切换策略：缺失标题 `level`、`paragraph_title.level=1`、
+`table_body.cell_merge` 和视觉载荷 `content: null` 均不会在严格反序列化时兼容。
 
 ## Analyze 私有对象
 

@@ -10,7 +10,7 @@ from mineru_vl_utils.structs import ContentBlock as VlmContentBlock
 from mineru_vl_utils.structs import ExtractResult
 
 from mineru.backend import analyze
-from mineru.backend.analysis.pdf import constants, layout, ocr, pipeline, tables, window
+from mineru.backend.analysis.pdf import constants, layout, normalization, ocr, pipeline, tables, window
 from mineru.backend.analysis.pdf.text import content as text_content
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE
@@ -65,6 +65,24 @@ def _build_post_ocr_page_block_lines(
         line_bbox = (0.0, float(page_idx), float(len(page_spans)), float(page_idx + 1))
         page_block_lines_list.append({0: [_AnalyzeLine(bbox=line_bbox, spans=page_spans)]})
     return page_block_lines_list, spans
+
+
+def test_layout_title_split_assigns_global_title_levels() -> None:
+    """验证 PDF 标题拆分后文档标题为一级，段落标题从二级开始。"""
+    model_list = [
+        [
+            {"type": constants._VLM_UNCLASSIFIED_TITLE_TYPE, "bbox": [0.1, 0.1, 0.9, 0.2], "content": "Doc"},
+            {"type": constants._VLM_UNCLASSIFIED_TITLE_TYPE, "bbox": [0.1, 0.3, 0.9, 0.4], "content": "Section"},
+        ]
+    ]
+    layout_res = [[{"label": BlockType.DOC_TITLE, "bbox": [0.1, 0.1, 0.9, 0.2]}]]
+
+    normalization._apply_layout_title_split(model_list, layout_res, [(1000, 1000)])
+
+    assert [(block["type"], block["level"]) for block in model_list[0]] == [
+        (BlockType.DOC_TITLE, 1),
+        (BlockType.PARAGRAPH_TITLE, 2),
+    ]
 
 
 def test_convert_vlm_results_to_model_list_uses_builtin_containers() -> None:

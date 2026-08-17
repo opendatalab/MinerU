@@ -4,6 +4,7 @@ import pytest
 
 from mineru.backend.postprocess.pages import model_list_to_pages
 from mineru.types import (
+    ChartBlock,
     EquationBlock,
     ImageBlock,
     ListBlock,
@@ -120,11 +121,11 @@ def test_office_paragraph_numbering_is_document_wide_and_copy_only() -> None:
     model_list = [
         [
             {"type": "paragraph_title", "content": "<b>A</b>", "level": 1, "is_numbered_style": True},
-            {"type": "paragraph_title", "content": "B", "level": 2, "is_numbered_style": True},
+            {"type": "paragraph_title", "content": "B", "level": 3, "is_numbered_style": True},
         ],
         [
-            {"type": "paragraph_title", "content": "1.4 Explicit", "level": 2, "is_numbered_style": False},
-            {"type": "paragraph_title", "content": "C", "level": 2, "is_numbered_style": True},
+            {"type": "paragraph_title", "content": "1.4 Explicit", "level": 3, "is_numbered_style": False},
+            {"type": "paragraph_title", "content": "C", "level": 3, "is_numbered_style": True},
             {"type": "paragraph_title", "content": "No level", "is_numbered_style": True},
         ],
     ]
@@ -141,7 +142,7 @@ def test_office_paragraph_numbering_is_document_wide_and_copy_only() -> None:
         "1.5 C",
         "2 No level",
     ]
-    assert titles[-1].level is None
+    assert [title.level for title in titles] == [2, 3, 3, 3, 2]
     assert model_list == original
 
 
@@ -149,13 +150,13 @@ def test_office_paragraph_numbering_clears_deeper_levels() -> None:
     """验证标题返回浅层时会清理旧深层计数，后续重新从一开始编号。"""
     model_list = [
         [
-            {"type": "paragraph_title", "content": "A", "level": 1, "is_numbered_style": True},
-            {"type": "paragraph_title", "content": "B", "level": 2, "is_numbered_style": True},
-            {"type": "paragraph_title", "content": "C", "level": 3, "is_numbered_style": True},
-            {"type": "paragraph_title", "content": "D", "level": 2, "is_numbered_style": True},
-            {"type": "paragraph_title", "content": "E", "level": 3, "is_numbered_style": True},
-            {"type": "paragraph_title", "content": "F", "level": 1, "is_numbered_style": True},
-            {"type": "paragraph_title", "content": "G", "level": 2, "is_numbered_style": True},
+            {"type": "paragraph_title", "content": "A", "level": 2, "is_numbered_style": True},
+            {"type": "paragraph_title", "content": "B", "level": 3, "is_numbered_style": True},
+            {"type": "paragraph_title", "content": "C", "level": 4, "is_numbered_style": True},
+            {"type": "paragraph_title", "content": "D", "level": 3, "is_numbered_style": True},
+            {"type": "paragraph_title", "content": "E", "level": 4, "is_numbered_style": True},
+            {"type": "paragraph_title", "content": "F", "level": 2, "is_numbered_style": True},
+            {"type": "paragraph_title", "content": "G", "level": 3, "is_numbered_style": True},
         ]
     ]
 
@@ -179,6 +180,30 @@ def test_visual_body_drops_empty_parent_subtype() -> None:
     assert isinstance(page.blocks[0], ImageBlock)
     assert page.blocks[0].sub_type is None
     assert page.blocks[0].content[0].type == "image_body"
+    assert page.blocks[0].content[0].content == ""
+
+
+def test_chart_none_content_is_normalized_to_empty_string() -> None:
+    """验证 raw chart 的 null content 在严格对象化前规范为空字符串。"""
+    page = model_list_to_pages([[{"type": "chart", "content": None}]])[0]
+
+    assert isinstance(page.blocks[0], ChartBlock)
+    assert page.blocks[0].content[0].type == "chart_body"
+    assert page.blocks[0].content[0].content == ""
+
+
+def test_raw_title_levels_are_normalized_to_global_hierarchy() -> None:
+    """验证 raw 标题在严格对象化前补齐全局一级和二级层级。"""
+    page = model_list_to_pages(
+        [
+            [
+                {"type": "doc_title", "content": "Document"},
+                {"type": "paragraph_title", "content": "Section", "level": 1},
+            ]
+        ]
+    )[0]
+
+    assert [block.level for block in page.blocks] == [1, 2]
 
 
 def test_pdf_continuation_is_typed_and_line_metadata_is_removed() -> None:

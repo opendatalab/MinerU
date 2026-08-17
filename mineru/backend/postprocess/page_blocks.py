@@ -80,6 +80,14 @@ def _normalize_raw_blocks(page_model_list: list[BlockDict]) -> list[BlockDict]:
         elif block_type == BlockType.EQUATION:
             block_content = clean_isolated_formula(block_content)
 
+        if block_type in [BlockType.IMAGE_BODY, BlockType.CHART_BODY] and block_content is None:
+            block_content = ""
+        if block_type == BlockType.DOC_TITLE:
+            block["level"] = 1
+        elif block_type == BlockType.PARAGRAPH_TITLE:
+            raw_level = block.get("level")
+            block["level"] = raw_level if type(raw_level) is int and raw_level >= 2 else 2
+
         if block_type not in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.CHART_BODY]:
             if block_content:
                 block_content = clean_content(block_content) or ""

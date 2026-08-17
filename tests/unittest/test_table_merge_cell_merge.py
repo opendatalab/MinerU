@@ -17,14 +17,15 @@ def _build_table_block(index: int, html: str, cell_merge: list[int] | None = Non
         "bbox": [0.1, 0.1, 0.9, 0.9],
         "content": html,
     }
-    if cell_merge is not None:
-        body["cell_merge"] = cell_merge
-    return {
+    table = {
         "index": index,
         "type": BlockType.TABLE,
         "bbox": [0.1, 0.1, 0.9, 0.9],
         "content": [body],
     }
+    if cell_merge is not None:
+        table["cell_merge"] = cell_merge
+    return table
 
 
 def _row_texts(table: dict[str, Any]) -> list[list[str]]:
@@ -34,7 +35,7 @@ def _row_texts(table: dict[str, Any]) -> list[list[str]]:
     return [[cell.get_text() for cell in row.find_all(["td", "th"])] for row in soup.find_all("tr")]
 
 
-def test_merge_table_content_applies_partial_cell_merge_from_table_body() -> None:
+def test_merge_table_content_applies_partial_cell_merge_from_table() -> None:
     """验证部分视觉列续接后保留当前首行并清空已迁移单元格。"""
     previous_table = _build_table_block(
         0,

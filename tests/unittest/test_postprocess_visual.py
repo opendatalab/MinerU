@@ -291,12 +291,12 @@ def test_regroup_visual_blocks_preserves_dict_visual_metadata() -> None:
     assert "sub_type" not in table_block["content"][0]
     assert table_block["content"][0]["angle"] == 0
     assert table_block["content"][0]["score"] == 0.0
-    assert "cell_merge" not in table_block
-    assert table_block["content"][0]["cell_merge"] == [1, 0]
+    assert table_block["cell_merge"] == [1, 0]
+    assert "cell_merge" not in table_block["content"][0]
 
 
-def test_regroup_visual_blocks_keeps_cell_merge_on_dict_body() -> None:
-    """验证 raw dict 表格的 cell_merge 只保留在 table body。"""
+def test_regroup_visual_blocks_lifts_cell_merge_to_table() -> None:
+    """验证 raw dict 表体的 cell_merge 上浮到 table 根块。"""
     table_body = {
         "index": 0,
         "type": BlockType.TABLE_BODY,
@@ -309,9 +309,9 @@ def test_regroup_visual_blocks_keeps_cell_merge_on_dict_body() -> None:
 
     assert unmatched_blocks == []
     table_block = grouped_blocks[BlockType.TABLE][0]
-    assert "cell_merge" not in table_block
+    assert table_block["cell_merge"] == [1, 0]
     assert len(table_block["content"]) == 1
-    assert table_block["content"][0]["cell_merge"] == [1, 0]
+    assert "cell_merge" not in table_block["content"][0]
 
 
 def test_regroup_visual_blocks_without_bbox_prefers_previous_parent() -> None:

@@ -1800,7 +1800,7 @@ class PptxConverter:
 
             if title_role == _PPTX_TITLE_ROLE_CENTER and is_first_visible_slide:
                 block["type"] = BlockType.DOC_TITLE
-                block.pop("level", None)
+                block["level"] = 1
                 block.pop("is_numbered_style", None)
             else:
                 block["type"] = BlockType.PARAGRAPH_TITLE

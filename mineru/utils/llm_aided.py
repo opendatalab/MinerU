@@ -225,7 +225,11 @@ def _apply_levels_to_blocks(title_block_refs: list[tuple[PageInfo, Block]], leve
         return
 
     for i, (_, block) in enumerate(title_block_refs):
-        block.level = int(levels_by_index[i])
+        resolved_level = int(levels_by_index[i])
+        if block.type == BlockType.DOC_TITLE:
+            block.level = 1
+        elif block.type == BlockType.PARAGRAPH_TITLE:
+            block.level = max(resolved_level, 2)
 
 
 def _get_title_block_identity(block: Block) -> tuple[str, int] | tuple[str, BBox, str]:
@@ -291,7 +295,7 @@ def _offset_paragraph_title_levels(levels_by_index: dict[int, int] | None) -> di
     if not levels_by_index:
         return levels_by_index
 
-    return {index: 2 if level == 1 else level for index, level in levels_by_index.items()}
+    return {index: max(int(level), 2) for index, level in levels_by_index.items()}
 
 
 def _request_paragraph_group_levels(

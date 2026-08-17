@@ -57,8 +57,10 @@ def _apply_layout_title_split(
                 continue
             if _has_doc_title_overlap(title_bbox, doc_title_bboxes, overlap_threshold):
                 block["type"] = BlockType.DOC_TITLE
+                block["level"] = 1
             else:
                 block["type"] = BlockType.PARAGRAPH_TITLE
+                block["level"] = 2
 
 
 def _is_valid_pdf_text_block(block: dict[str, Any]) -> bool:

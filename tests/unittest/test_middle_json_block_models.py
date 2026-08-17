@@ -8,17 +8,25 @@ from pydantic import ValidationError
 
 import mineru.types as types_module
 from mineru.backend.postprocess.pages import model_list_to_pages
-from mineru.types import RAW_FORMULA_NUMBER, RAW_ONLY_BLOCK_TYPES
 from mineru.types import (
     BLOCK_ADAPTER,
     BLOCK_TYPES,
+    PAGE_BLOCK_TYPES,
+    RAW_FORMULA_NUMBER,
+    RAW_ONLY_BLOCK_TYPES,
     BlockType,
     BlockTypes,
+    ChartAnnotationBlock,
+    CodeAnnotationBlock,
     CodeBlock,
     EquationBlock,
+    ImageAnnotationBlock,
     ListBlock,
     MiddleJson,
+    PageAuxTextBlock,
+    PageBlockTypes,
     PageInfo,
+    TableAnnotationBlock,
     TextBlock,
     parse_block,
 )
@@ -29,7 +37,7 @@ def _public_block_payloads() -> dict[str, dict[str, object]]:
     text_leaf = {"type": "text", "content": "item"}
     payloads: dict[str, dict[str, object]] = {
         "aside_text": {"type": "aside_text", "content": "aside"},
-        "doc_title": {"type": "doc_title", "content": "title"},
+        "doc_title": {"type": "doc_title", "content": "title", "level": 1},
         "footer": {"type": "footer", "content": "footer"},
         "header": {"type": "header", "content": "header"},
         "index": {"type": "index", "content": [text_leaf]},
@@ -37,16 +45,16 @@ def _public_block_payloads() -> dict[str, dict[str, object]]:
         "list": {"type": "list", "content": [text_leaf]},
         "page_footnote": {"type": "page_footnote", "content": "note"},
         "page_number": {"type": "page_number", "content": "1"},
-        "paragraph_title": {"type": "paragraph_title", "content": "section"},
+        "paragraph_title": {"type": "paragraph_title", "content": "section", "level": 2},
         "ref_text": {"type": "ref_text", "content": "reference"},
         "text": {"type": "text", "content": "text"},
-        "image_body": {"type": "image_body", "content": None},
+        "image_body": {"type": "image_body", "content": ""},
         "image_caption": {"type": "image_caption", "content": "caption"},
         "image_footnote": {"type": "image_footnote", "content": "note"},
         "table_body": {"type": "table_body", "content": "<table></table>"},
         "table_caption": {"type": "table_caption", "content": "caption"},
         "table_footnote": {"type": "table_footnote", "content": "note"},
-        "chart_body": {"type": "chart_body", "content": None},
+        "chart_body": {"type": "chart_body", "content": ""},
         "chart_caption": {"type": "chart_caption", "content": "caption"},
         "chart_footnote": {"type": "chart_footnote", "content": "note"},
         "code_body": {"type": "code_body", "content": "print(1)"},
@@ -86,6 +94,52 @@ def test_public_block_type_declarations_match_block_union() -> None:
 
     assert class_values == BLOCK_TYPES
     assert set(get_args(BlockTypes)) == BLOCK_TYPES
+    assert set(get_args(PageBlockTypes)) == PAGE_BLOCK_TYPES
+
+
+def test_shared_models_preserve_all_discriminator_values() -> None:
+    """验证同结构 discriminator 共用模型，但仍保留原始 type 语义。"""
+    assert isinstance(parse_block({"type": "header", "content": "h"}), PageAuxTextBlock)
+    assert isinstance(parse_block({"type": "image_caption", "content": "c"}), ImageAnnotationBlock)
+    assert isinstance(parse_block({"type": "table_footnote", "content": "f"}), TableAnnotationBlock)
+    assert isinstance(parse_block({"type": "chart_caption", "content": "c"}), ChartAnnotationBlock)
+    assert isinstance(parse_block({"type": "code_footnote", "content": "f"}), CodeAnnotationBlock)
+
+
+def test_title_levels_follow_global_hierarchy() -> None:
+    """验证文档标题固定为一级，段落标题必须从二级开始。"""
+    doc_title = parse_block({"type": "doc_title", "content": "doc", "level": 1})
+    paragraph_title = parse_block({"type": "paragraph_title", "content": "section", "level": 2})
+
+    assert doc_title.to_dict()["level"] == 1
+    assert paragraph_title.to_dict()["level"] == 2
+    for payload in (
+        {"type": "doc_title", "content": "doc"},
+        {"type": "doc_title", "content": "doc", "level": 2},
+        {"type": "paragraph_title", "content": "section"},
+        {"type": "paragraph_title", "content": "section", "level": 1},
+    ):
+        with pytest.raises(ValidationError):
+            parse_block(payload)
+
+
+@pytest.mark.parametrize("block_type", ["equation", "image_body", "table_body", "chart_body"])
+def test_image_payload_content_must_be_string(block_type: str) -> None:
+    """验证所有图片载荷块在严格 Middle JSON 中都拒绝 null content。"""
+    with pytest.raises(ValidationError):
+        parse_block({"type": block_type, "content": None})
+
+
+def test_cell_merge_belongs_only_to_table_root() -> None:
+    """验证 cell_merge 只允许位于 table 根块。"""
+    table_payload = deepcopy(_public_block_payloads()["table"])
+    table_payload["cell_merge"] = [1, 0]
+
+    table = parse_block(table_payload)
+
+    assert table.cell_merge == [1, 0]
+    with pytest.raises(ValidationError):
+        parse_block({"type": "table_body", "content": "<table></table>", "cell_merge": [1, 0]})
 
 
 @pytest.mark.parametrize("raw_type", sorted(RAW_ONLY_BLOCK_TYPES))
@@ -154,6 +208,19 @@ def test_removed_block_classes_are_not_exposed() -> None:
     legacy_equation_model_name = "Interline" + "EquationBlock"
     removed_names = (
         "TitleBlock",
+        "AsideTextBlock",
+        "HeaderBlock",
+        "FooterBlock",
+        "PageNumberBlock",
+        "PageFootnoteBlock",
+        "ImageCaptionBlock",
+        "ImageFootnoteBlock",
+        "TableCaptionBlock",
+        "TableFootnoteBlock",
+        "ChartCaptionBlock",
+        "ChartFootnoteBlock",
+        "CodeCaptionBlock",
+        "CodeFootnoteBlock",
         "HeaderImageBlock",
         "FooterImageBlock",
         legacy_equation_model_name,
@@ -243,7 +310,7 @@ def test_visual_parent_body_location_contract() -> None:
             {
                 "type": "image",
                 "index": 1,
-                "content": [{"type": "image_body", "index": 2, "content": None}],
+                "content": [{"type": "image_body", "index": 2, "content": ""}],
             }
         )
     with pytest.raises(ValidationError, match="bbox"):
@@ -251,7 +318,21 @@ def test_visual_parent_body_location_contract() -> None:
             {
                 "type": "image",
                 "bbox": [0.1, 0.1, 0.9, 0.9],
-                "content": [{"type": "image_body", "bbox": [0.2, 0.2, 0.8, 0.8], "content": None}],
+                "content": [{"type": "image_body", "bbox": [0.2, 0.2, 0.8, 0.8], "content": ""}],
+            }
+        )
+
+
+def test_visual_parent_rejects_other_family_annotation() -> None:
+    """验证合并 annotation 模型后仍禁止视觉父块接收其他家族子块。"""
+    with pytest.raises(ValidationError):
+        parse_block(
+            {
+                "type": "image",
+                "content": [
+                    {"type": "image_body", "content": ""},
+                    {"type": "table_caption", "content": "wrong"},
+                ],
             }
         )
 
@@ -292,6 +373,33 @@ def test_page_info_requires_unique_strictly_increasing_top_indices() -> None:
             page_idx=0,
             blocks=[TextBlock(type="text", index=1, content="a"), TextBlock(type="text", index=1, content="b")],
         )
+
+
+@pytest.mark.parametrize("block_type", ["image_body", "table_caption", "code_footnote"])
+def test_page_info_rejects_visual_child_as_top_level(block_type: str) -> None:
+    """验证视觉 body/caption/footnote 只能出现在对应父块内部。"""
+    with pytest.raises(ValidationError):
+        PageInfo.model_validate(
+            {
+                "page_idx": 0,
+                "blocks": [{"type": block_type, "index": 0, "content": ""}],
+            }
+        )
+
+
+def test_page_info_accepts_all_page_root_discriminators() -> None:
+    """验证 PAGE_BLOCK_TYPES 中的全部页面根类型都能进入 PageInfo。"""
+    payloads = _public_block_payloads()
+    for block_type in PAGE_BLOCK_TYPES:
+        payload = deepcopy(payloads[block_type])
+        payload["index"] = 0
+        content = payload.get("content")
+        if isinstance(content, list):
+            for child in content:
+                if isinstance(child, dict) and str(child.get("type", "")).endswith("_body"):
+                    child["index"] = 0
+        page = PageInfo.model_validate({"page_idx": 0, "blocks": [payload]})
+        assert page.blocks[0].type == block_type
 
 
 def test_nested_continues_prev_is_rejected_by_page_tree() -> None:

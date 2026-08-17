@@ -1400,7 +1400,7 @@ class DocxConverter:
                 if content_text:
                     title_block = {
                         "type": BlockType.PARAGRAPH_TITLE,
-                        "level": ilevel + 1,
+                        "level": ilevel + 2,
                         "is_numbered_style": is_numbered,
                         "content": content_text,
                     }
@@ -1430,6 +1430,7 @@ class DocxConverter:
             if content_text != "":
                 title_block = {
                     "type": BlockType.DOC_TITLE,
+                    "level": 1,
                     "content": content_text,
                 }
                 if paragraph_anchor:
@@ -1443,7 +1444,7 @@ class DocxConverter:
             if content_text != "":
                 h_block = {
                     "type": BlockType.PARAGRAPH_TITLE,
-                    "level": p_level if p_level is not None else 2,
+                    "level": max(p_level + 1, 2) if p_level is not None else 2,
                     "is_numbered_style": is_numbered_style,
                     "content": content_text,
                 }

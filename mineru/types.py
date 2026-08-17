@@ -176,6 +176,25 @@ BlockTypes = Literal[
     BlockType.PARAGRAPH_TITLE,
 ]
 
+PageBlockTypes = Literal[
+    BlockType.IMAGE,
+    BlockType.TABLE,
+    BlockType.CHART,
+    BlockType.TEXT,
+    BlockType.EQUATION,
+    BlockType.LIST,
+    BlockType.INDEX,
+    BlockType.CODE,
+    BlockType.REF_TEXT,
+    BlockType.HEADER,
+    BlockType.FOOTER,
+    BlockType.PAGE_NUMBER,
+    BlockType.ASIDE_TEXT,
+    BlockType.PAGE_FOOTNOTE,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
+]
+
 BLOCK_TYPES = {
     BlockType.IMAGE,
     BlockType.TABLE,
@@ -197,6 +216,25 @@ BLOCK_TYPES = {
     BlockType.CODE_BODY,
     BlockType.CODE_CAPTION,
     BlockType.CODE_FOOTNOTE,
+    BlockType.REF_TEXT,
+    BlockType.HEADER,
+    BlockType.FOOTER,
+    BlockType.PAGE_NUMBER,
+    BlockType.ASIDE_TEXT,
+    BlockType.PAGE_FOOTNOTE,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
+}
+
+PAGE_BLOCK_TYPES = {
+    BlockType.IMAGE,
+    BlockType.TABLE,
+    BlockType.CHART,
+    BlockType.TEXT,
+    BlockType.EQUATION,
+    BlockType.LIST,
+    BlockType.INDEX,
+    BlockType.CODE,
     BlockType.REF_TEXT,
     BlockType.HEADER,
     BlockType.FOOTER,
@@ -330,53 +368,48 @@ class BlockBase(_StrictMiddleModel):
         return bbox  # type: ignore[return-value]
 
 
-class TextBlock(BlockBase):
-    type: Literal[BlockType.TEXT]
+class StringContentBlock(BlockBase):
+    """所有字符串内容 block 的共享结构。"""
+
     content: str
+
+
+class TextBlock(StringContentBlock):
+    type: Literal[BlockType.TEXT]
     continues_prev: bool | None = None
 
 
-class RefTextBlock(BlockBase):
+class RefTextBlock(StringContentBlock):
     type: Literal[BlockType.REF_TEXT]
-    content: str
 
 
-class DocTitleBlock(BlockBase):
+class TitleBlockBase(StringContentBlock):
+    """文档标题与段落标题的全局层级公共结构。"""
+
+    anchor: str | None = None
+    level: int
+
+
+class DocTitleBlock(TitleBlockBase):
     type: Literal[BlockType.DOC_TITLE]
-    content: str
-    anchor: str | None = None
+    level: Literal[1]
 
 
-class ParagraphTitleBlock(BlockBase):
+class ParagraphTitleBlock(TitleBlockBase):
     type: Literal[BlockType.PARAGRAPH_TITLE]
-    content: str
-    anchor: str | None = None
-    level: int | None = Field(default=None, ge=1)
+    level: int = Field(ge=2)
 
 
-class AsideTextBlock(BlockBase):
-    type: Literal[BlockType.ASIDE_TEXT]
-    content: str
+class PageAuxTextBlock(StringContentBlock):
+    """页眉、页脚、页码、边栏和页脚注释的共享文本结构。"""
 
-
-class HeaderBlock(BlockBase):
-    type: Literal[BlockType.HEADER]
-    content: str
-
-
-class FooterBlock(BlockBase):
-    type: Literal[BlockType.FOOTER]
-    content: str
-
-
-class PageNumberBlock(BlockBase):
-    type: Literal[BlockType.PAGE_NUMBER]
-    content: str
-
-
-class PageFootnoteBlock(BlockBase):
-    type: Literal[BlockType.PAGE_FOOTNOTE]
-    content: str
+    type: Literal[
+        BlockType.HEADER,
+        BlockType.FOOTER,
+        BlockType.PAGE_NUMBER,
+        BlockType.ASIDE_TEXT,
+        BlockType.PAGE_FOOTNOTE,
+    ]
 
 
 class ImagePayloadBlock(BlockBase):
@@ -396,70 +429,54 @@ class ImagePayloadBlock(BlockBase):
         return validate_image_sidecar_path(value)
 
 
-class EquationBlock(ImagePayloadBlock):
+class ImagePayloadContentBlock(ImagePayloadBlock):
+    """统一携带字符串内容和图片载荷的 block 结构。"""
+
+    content: str
+
+
+class EquationBlock(ImagePayloadContentBlock):
     type: Literal[BlockType.EQUATION]
-    content: str
 
 
-class ImageBodyBlock(ImagePayloadBlock):
+class ImageBodyBlock(ImagePayloadContentBlock):
     type: Literal[BlockType.IMAGE_BODY]
-    content: str | None
 
 
-class TableBodyBlock(ImagePayloadBlock):
+class TableBodyBlock(ImagePayloadContentBlock):
     type: Literal[BlockType.TABLE_BODY]
-    content: str
-    cell_merge: list[Literal[0, 1]] | None = None
 
 
-class ChartBodyBlock(ImagePayloadBlock):
+class ChartBodyBlock(ImagePayloadContentBlock):
     type: Literal[BlockType.CHART_BODY]
-    content: str | None
 
 
-class CodeBodyBlock(BlockBase):
+class CodeBodyBlock(StringContentBlock):
     type: Literal[BlockType.CODE_BODY]
-    content: str
 
 
-class ImageCaptionBlock(BlockBase):
-    type: Literal[BlockType.IMAGE_CAPTION]
-    content: str
+class ImageAnnotationBlock(StringContentBlock):
+    """图片标题与图片脚注的共享结构。"""
+
+    type: Literal[BlockType.IMAGE_CAPTION, BlockType.IMAGE_FOOTNOTE]
 
 
-class ImageFootnoteBlock(BlockBase):
-    type: Literal[BlockType.IMAGE_FOOTNOTE]
-    content: str
+class TableAnnotationBlock(StringContentBlock):
+    """表格标题与表格脚注的共享结构。"""
+
+    type: Literal[BlockType.TABLE_CAPTION, BlockType.TABLE_FOOTNOTE]
 
 
-class TableCaptionBlock(BlockBase):
-    type: Literal[BlockType.TABLE_CAPTION]
-    content: str
+class ChartAnnotationBlock(StringContentBlock):
+    """图表标题与图表脚注的共享结构。"""
+
+    type: Literal[BlockType.CHART_CAPTION, BlockType.CHART_FOOTNOTE]
 
 
-class TableFootnoteBlock(BlockBase):
-    type: Literal[BlockType.TABLE_FOOTNOTE]
-    content: str
+class CodeAnnotationBlock(StringContentBlock):
+    """代码标题与代码脚注的共享结构。"""
 
-
-class ChartCaptionBlock(BlockBase):
-    type: Literal[BlockType.CHART_CAPTION]
-    content: str
-
-
-class ChartFootnoteBlock(BlockBase):
-    type: Literal[BlockType.CHART_FOOTNOTE]
-    content: str
-
-
-class CodeCaptionBlock(BlockBase):
-    type: Literal[BlockType.CODE_CAPTION]
-    content: str
-
-
-class CodeFootnoteBlock(BlockBase):
-    type: Literal[BlockType.CODE_FOOTNOTE]
-    content: str
+    type: Literal[BlockType.CODE_CAPTION, BlockType.CODE_FOOTNOTE]
 
 
 ListChildBlock: TypeAlias = Annotated[
@@ -507,7 +524,7 @@ class _VisualBlockBase(BlockBase):
 
 
 ImageChildBlock: TypeAlias = Annotated[
-    Union[ImageBodyBlock, ImageCaptionBlock, ImageFootnoteBlock],
+    Union[ImageBodyBlock, ImageAnnotationBlock],
     Field(discriminator="type"),
 ]
 
@@ -520,7 +537,7 @@ class ImageBlock(_VisualBlockBase):
 
 
 TableChildBlock: TypeAlias = Annotated[
-    Union[TableBodyBlock, TableCaptionBlock, TableFootnoteBlock],
+    Union[TableBodyBlock, TableAnnotationBlock],
     Field(discriminator="type"),
 ]
 
@@ -529,11 +546,12 @@ class TableBlock(_VisualBlockBase):
     type: Literal[BlockType.TABLE]
     content: list[TableChildBlock]
     continues_prev: bool | None = None
+    cell_merge: list[Literal[0, 1]] | None = None
     _body_type: ClassVar[str] = BlockType.TABLE_BODY
 
 
 ChartChildBlock: TypeAlias = Annotated[
-    Union[ChartBodyBlock, ChartCaptionBlock, ChartFootnoteBlock],
+    Union[ChartBodyBlock, ChartAnnotationBlock],
     Field(discriminator="type"),
 ]
 
@@ -546,7 +564,7 @@ class ChartBlock(_VisualBlockBase):
 
 
 CodeChildBlock: TypeAlias = Annotated[
-    Union[CodeBodyBlock, CodeCaptionBlock, CodeFootnoteBlock],
+    Union[CodeBodyBlock, CodeAnnotationBlock],
     Field(discriminator="type"),
 ]
 
@@ -573,35 +591,46 @@ ListBlock.model_rebuild()
 IndexBlock.model_rebuild()
 
 
+PageBlock: TypeAlias = Annotated[
+    Union[
+        TextBlock,
+        RefTextBlock,
+        DocTitleBlock,
+        ParagraphTitleBlock,
+        PageAuxTextBlock,
+        EquationBlock,
+        ListBlock,
+        IndexBlock,
+        ImageBlock,
+        TableBlock,
+        ChartBlock,
+        CodeBlock,
+    ],
+    Field(discriminator="type"),
+]
+
+
 Block: TypeAlias = Annotated[
     Union[
         TextBlock,
         RefTextBlock,
         DocTitleBlock,
         ParagraphTitleBlock,
-        AsideTextBlock,
-        HeaderBlock,
-        FooterBlock,
-        PageNumberBlock,
-        PageFootnoteBlock,
+        PageAuxTextBlock,
         EquationBlock,
         ListBlock,
         IndexBlock,
         ImageBodyBlock,
-        ImageCaptionBlock,
-        ImageFootnoteBlock,
+        ImageAnnotationBlock,
         ImageBlock,
         TableBodyBlock,
-        TableCaptionBlock,
-        TableFootnoteBlock,
+        TableAnnotationBlock,
         TableBlock,
         ChartBodyBlock,
-        ChartCaptionBlock,
-        ChartFootnoteBlock,
+        ChartAnnotationBlock,
         ChartBlock,
         CodeBodyBlock,
-        CodeCaptionBlock,
-        CodeFootnoteBlock,
+        CodeAnnotationBlock,
         CodeBlock,
     ],
     Field(discriminator="type"),
@@ -627,7 +656,7 @@ class PageInfo(_StrictMiddleModel):
     """一页的严格 Middle JSON 内容。"""
 
     page_idx: int = Field(ge=0)
-    blocks: list[Block] = Field(default_factory=list)
+    blocks: list[PageBlock] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_page_tree(self) -> PageInfo:

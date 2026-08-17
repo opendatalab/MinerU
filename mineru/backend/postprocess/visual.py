@@ -432,6 +432,8 @@ def regroup_visual_blocks(
         body_block = deepcopy(main_block)
         _set_block_field(body_block, "type", mapping["body"])
         body_block.pop("sub_type", None)
+        table_cell_merge_is_set = visual_type == BlockType.TABLE and "cell_merge" in body_block
+        table_cell_merge = body_block.pop("cell_merge", None) if table_cell_merge_is_set else None
 
         captions: list[BlockDict] = []
         for caption in sorted(
@@ -464,6 +466,8 @@ def regroup_visual_blocks(
         }
         if main_sub_type:
             two_layer_block["sub_type"] = main_sub_type
+        if table_cell_merge_is_set:
+            two_layer_block["cell_merge"] = table_cell_merge
         if "bbox" in main_block:
             two_layer_block["bbox"] = deepcopy(main_block["bbox"])
 

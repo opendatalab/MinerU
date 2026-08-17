@@ -209,13 +209,13 @@ def _apply_cell_merge(
 
     cell_merge 按视觉列索引对齐，通过构建视觉列映射来正确匹配
     两个表格中可能因 rowspan 而具有不同 <td> 元素数量的行。
-    元数据仅从当前页 table body 读取，不依赖外层 table block。
+    元数据从当前页 table 根块读取，HTML 与列结构仍由唯一 table body 提供。
     """
-    current_body_block = current_state.body_block
-    if not isinstance(current_body_block, dict):
+    current_table_block = current_state.owner_block
+    if not isinstance(current_table_block, dict):
         return False
 
-    cell_merge = current_body_block.get("cell_merge")
+    cell_merge = current_table_block.get("cell_merge")
     if not isinstance(cell_merge, list) or not cell_merge:
         return False
 

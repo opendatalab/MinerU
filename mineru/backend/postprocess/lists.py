@@ -20,32 +20,34 @@ def fix_office_paragraph_titles(model_list: list[list[dict[str, Any]]]) -> None:
             if block.get("type") != BlockType.PARAGRAPH_TITLE:
                 continue
             raw_level = block.get("level")
-            level_is_valid = isinstance(raw_level, int) and not isinstance(raw_level, bool) and raw_level >= 1
-            level = raw_level if level_is_valid else 1
-            if not level_is_valid:
-                block.pop("level", None)
+            level_is_valid = isinstance(raw_level, int) and not isinstance(raw_level, bool) and raw_level >= 2
+            level = raw_level if level_is_valid else 2
+            block["level"] = level
+            numbering_depth = level - 1
             is_numbered_style = block.pop("is_numbered_style", None)
             block.pop("section_number", None)
             content = block.get("content")
             if not isinstance(content, str):
                 continue
             if is_numbered_style is True:
-                for ancestor_level in range(1, level):
+                for ancestor_level in range(1, numbering_depth):
                     counters.setdefault(ancestor_level, 1)
-                counters[level] = counters.get(level, 0) + 1
-                _clear_deeper_title_counters(counters, level)
-                section_number = ".".join(str(counters[ancestor_level]) for ancestor_level in range(1, level + 1))
+                counters[numbering_depth] = counters.get(numbering_depth, 0) + 1
+                _clear_deeper_title_counters(counters, numbering_depth)
+                section_number = ".".join(
+                    str(counters[ancestor_level]) for ancestor_level in range(1, numbering_depth + 1)
+                )
                 block["content"] = f"{section_number} {content}"
                 continue
-            if is_numbered_style is False and level_is_valid:
+            if is_numbered_style is False:
                 number_match = re.match(r"^\s*(\d+(?:\.\d+)*)\b", _visible_text(content))
                 if number_match is None:
                     continue
                 number_parts = [int(part) for part in number_match.group(1).split(".")]
-                if len(number_parts) != level:
+                if len(number_parts) != numbering_depth:
                     continue
                 counters.update((part_level, number) for part_level, number in enumerate(number_parts, start=1))
-                _clear_deeper_title_counters(counters, level)
+                _clear_deeper_title_counters(counters, numbering_depth)
 
 
 def fix_pdf_list_blocks(

@@ -18,7 +18,6 @@ def _table_body(
     *,
     index: int = 0,
     bbox: list[float] | None = None,
-    cell_merge: list[int] | None = None,
 ) -> dict[str, Any]:
     """构造归一化 bbox 的 table body 测试块。"""
     body: dict[str, Any] = {
@@ -27,8 +26,6 @@ def _table_body(
         "bbox": deepcopy(bbox or [0.1, 0.1, 0.9, 0.9]),
         "content": html,
     }
-    if cell_merge is not None:
-        body["cell_merge"] = cell_merge
     return body
 
 
@@ -71,14 +68,16 @@ def _table(
         html,
         index=index,
         bbox=table_bbox,
-        cell_merge=cell_merge,
     )
-    return {
+    table = {
         "type": BlockType.TABLE,
         "index": index,
         "bbox": table_bbox,
         "content": children if children is not None else [body],
     }
+    if cell_merge is not None:
+        table["cell_merge"] = cell_merge
+    return table
 
 
 def _page(page_idx: int, blocks: list[dict[str, Any]]) -> dict[str, Any]:
