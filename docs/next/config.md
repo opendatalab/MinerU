@@ -22,6 +22,22 @@ MinerU 有两类配置：
 - 默认 DB、日志和 UDS socket 从 `MINERU_HOME` 派生；默认 `data_dir` 是 `$MINERU_HOME/doclib`，其下包含 `parsed/` 和 `temp/`。
 - `MINERU_CONFIG` 仍可显式指定配置文件路径；`MINERU_HOME` 只影响默认 home 和默认配置文件位置。
 
+Markdown render 同样读取启动前 `config.yaml`，当前支持以下配置：
+
+```yaml
+render:
+  latex_delimiters:
+    display:
+      left: "$$"
+      right: "$$"
+    inline:
+      left: "$"
+      right: "$"
+```
+
+四个 delimiter 必须为非空字符串。缺省值如上；环境变量可按现有字段路径规则覆盖，
+例如 `MINERU_RENDER_LATEX_DELIMITERS_INLINE_LEFT`。
+
 配置必须服务两个产品原则：
 
 - 隐私优先：任何配置都不能导致静默上传文档。

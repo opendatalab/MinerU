@@ -123,11 +123,12 @@ TextBlock | RefTextBlock | ListBlock
 `IndexBlock.content` 同样递归：
 
 ```text
-TextBlock | IndexBlock
+TextBlock | DocTitleBlock | ParagraphTitleBlock | IndexBlock
 ```
 
-Office 目录规范化会递归移除普通 TextBlock 的 `anchor`。递归结构始终序列化到
-`content`，不产生通用 `blocks` 字段。
+Office 目录规范化会按 document-wide anchor 把匹配到真实目标标题的目录叶子
+转换为对应 TitleBlock，并继承目标 level；未匹配 anchor 的叶子降级为普通
+TextBlock。递归结构始终序列化到 `content`，不产生通用 `blocks` 字段。
 
 ## 视觉容器
 

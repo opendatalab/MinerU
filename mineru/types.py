@@ -493,7 +493,7 @@ class ListBlock(BlockBase):
 
 
 IndexChildBlock: TypeAlias = Annotated[
-    Union[TextBlock, "IndexBlock"],
+    Union[TextBlock, DocTitleBlock, ParagraphTitleBlock, "IndexBlock"],
     Field(discriminator="type"),
 ]
 

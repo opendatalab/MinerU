@@ -5,6 +5,7 @@ import pytest
 from mineru.backend.postprocess.pages import model_list_to_pages
 from mineru.types import (
     ChartBlock,
+    DocTitleBlock,
     EquationBlock,
     ImageBlock,
     ListBlock,
@@ -70,7 +71,7 @@ def test_model_list_to_pages_returns_typed_pdf_tree_without_mutating_input() -> 
 
 
 def test_model_list_to_pages_preserves_recursive_office_list_and_index() -> None:
-    """验证 Office list/index 任意深度递归对象化，并删除目录 text 的 anchor。"""
+    """验证 Office list/index 任意深度递归对象化，并清理未匹配目录 anchor。"""
     model_list = [
         [
             {
@@ -114,6 +115,73 @@ def test_model_list_to_pages_preserves_recursive_office_list_and_index() -> None
     assert isinstance(list_block.content[1].content[1], ListBlock)
     assert index_block.content[0].content[0].content == "section"
     assert "anchor" not in index_block.content[0].content[0].model_fields_set
+
+
+def test_model_list_to_pages_maps_index_anchor_to_document_title_type_and_level() -> None:
+    """验证 Office 目录叶子按跨页目标 anchor 继承真实标题类型与层级。"""
+    model_list = [
+        [
+            {
+                "type": "index",
+                "content": [
+                    {"type": "text", "content": "Document", "anchor": "doc-anchor"},
+                    {
+                        "type": "index",
+                        "content": [
+                            {"type": "text", "content": "Section", "anchor": "section-anchor"},
+                            {"type": "text", "content": "Missing", "anchor": "missing-anchor"},
+                        ],
+                    },
+                ],
+            },
+        ],
+        [
+            {"type": "doc_title", "content": "Document title", "level": 1, "anchor": "doc-anchor"},
+            {
+                "type": "paragraph_title",
+                "content": "Section title",
+                "level": 3,
+                "anchor": "section-anchor",
+            },
+        ],
+    ]
+
+    pages = model_list_to_pages(model_list)
+    index = pages[0].blocks[0]
+    doc_leaf = index.content[0]
+    section_leaf = index.content[1].content[0]
+    missing_leaf = index.content[1].content[1]
+
+    assert isinstance(doc_leaf, DocTitleBlock)
+    assert doc_leaf.level == 1
+    assert doc_leaf.anchor == "doc-anchor"
+    assert doc_leaf.content == "Document"
+    assert isinstance(section_leaf, ParagraphTitleBlock)
+    assert section_leaf.level == 3
+    assert section_leaf.anchor == "section-anchor"
+    assert section_leaf.content == "Section"
+    assert isinstance(missing_leaf, TextBlock)
+    assert "anchor" not in missing_leaf.model_fields_set
+
+
+def test_model_list_to_pages_uses_first_title_for_duplicate_anchor() -> None:
+    """验证重复 anchor 按文档顺序使用首个标题目标。"""
+    model_list = [
+        [
+            {"type": "paragraph_title", "content": "First", "level": 2, "anchor": "same"},
+            {"type": "paragraph_title", "content": "Second", "level": 4, "anchor": "same"},
+            {
+                "type": "index",
+                "content": [{"type": "text", "content": "Entry", "anchor": "same"}],
+            },
+        ]
+    ]
+
+    page = model_list_to_pages(model_list)[0]
+    index = page.blocks[2]
+
+    assert isinstance(index.content[0], ParagraphTitleBlock)
+    assert index.content[0].level == 2
 
 
 def test_office_paragraph_numbering_is_document_wide_and_copy_only() -> None:

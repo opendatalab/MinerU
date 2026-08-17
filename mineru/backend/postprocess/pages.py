@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import TypeAdapter
 
-from mineru.backend.postprocess.lists import fix_office_paragraph_titles
+from mineru.backend.postprocess.lists import fix_office_index_title_blocks, fix_office_paragraph_titles
 from mineru.backend.postprocess.page_blocks import process_page_blocks
 from mineru.backend.postprocess.paragraphs import merge_para_text_blocks
 from mineru.backend.postprocess.table_merge import merge_table
@@ -76,6 +76,7 @@ def blocks_to_page_info(
     resolved_use_bbox = _document_uses_bbox([copied_blocks]) if use_bbox is None else use_bbox
     if not resolved_use_bbox:
         fix_office_paragraph_titles([copied_blocks])
+        fix_office_index_title_blocks([copied_blocks])
     raw_page = _blocks_to_raw_page_info(
         copied_blocks,
         page_idx=page_idx,
@@ -96,6 +97,7 @@ def model_list_to_pages(
     use_bbox = _document_uses_bbox(copied_model_list)
     if not use_bbox:
         fix_office_paragraph_titles(copied_model_list)
+        fix_office_index_title_blocks(copied_model_list)
 
     raw_pages = [
         _blocks_to_raw_page_info(

@@ -50,6 +50,51 @@ def fix_office_paragraph_titles(model_list: list[list[dict[str, Any]]]) -> None:
                 _clear_deeper_title_counters(counters, numbering_depth)
 
 
+def fix_office_index_title_blocks(model_list: list[list[dict[str, Any]]]) -> None:
+    """按目标标题 anchor 将 Office 目录文本叶子转换为对应标题类型。"""
+    title_by_anchor: dict[str, tuple[str, int]] = {}
+    for page_model_list in model_list:
+        for block in page_model_list:
+            if block.get("type") not in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
+                continue
+            anchor = block.get("anchor")
+            level = block.get("level")
+            if not isinstance(anchor, str) or not anchor.strip() or type(level) is not int:
+                continue
+            title_by_anchor.setdefault(anchor.strip(), (block["type"], level))
+
+    for page_model_list in model_list:
+        for block in page_model_list:
+            if block.get("type") == BlockType.INDEX:
+                _rewrite_office_index_title_leaves(block, title_by_anchor)
+
+
+def _rewrite_office_index_title_leaves(
+    index_block: dict[str, Any],
+    title_by_anchor: dict[str, tuple[str, int]],
+) -> None:
+    """递归改写目录叶子；未匹配 anchor 时降级为不带 anchor 的普通文本。"""
+    content = index_block.get("content")
+    if not isinstance(content, list):
+        return
+    for child in content:
+        if not isinstance(child, dict):
+            continue
+        if child.get("type") == BlockType.INDEX:
+            _rewrite_office_index_title_leaves(child, title_by_anchor)
+            continue
+        if child.get("type") != BlockType.TEXT:
+            continue
+        anchor = child.get("anchor")
+        normalized_anchor = anchor.strip() if isinstance(anchor, str) else ""
+        target = title_by_anchor.get(normalized_anchor)
+        if target is None:
+            child.pop("anchor", None)
+            continue
+        child["type"], child["level"] = target
+        child["anchor"] = normalized_anchor
+
+
 def fix_pdf_list_blocks(
     list_blocks: list[dict[str, Any]],
     text_blocks: list[dict[str, Any]],
@@ -94,13 +139,11 @@ def fix_pdf_index_blocks(index_blocks: list[dict[str, Any]]) -> list[dict[str, A
 
 
 def fix_office_index_blocks(index_blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """递归移除 Office 目录私有字段，并禁止普通 text 子块携带 anchor。"""
+    """递归移除 Office 目录层级私有字段，保留已规范化的标题叶子。"""
     pending_blocks = list(index_blocks)
     while pending_blocks:
         block = pending_blocks.pop()
         block.pop("ilevel", None)
-        if block.get("type") == BlockType.TEXT:
-            block.pop("anchor", None)
         content = block.get("content")
         if isinstance(content, list):
             pending_blocks.extend(child for child in content if isinstance(child, dict))

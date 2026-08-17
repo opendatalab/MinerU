@@ -1,143 +1,82 @@
 # Rendering Contract
 
-状态: Draft
+状态: Markdown v1
 读者: render 开发者、backend 开发者、SDK 开发者
-范围: Markdown / Content List / Structured Content 对 Middle JSON 的消费约束和收敛计划
-来源: 由根目录旧 Middle JSON 底稿迁移整理而来
+范围: 严格 MiddleJson 到 Markdown 的消费契约
 
-## 当前状态
-
-当前已有统一入口:
+## 公共入口
 
 ```python
-from mineru.render import render_markdown, render_content_list, render_structured_content
+from mineru.render import MarkdownRenderMode, render_markdown
+
+markdown = render_markdown(
+    middle_json,
+    mode=MarkdownRenderMode.DEFAULT,
+    asset_base_url="",
+)
 ```
 
-`ParseResult` 也通过这些入口生成输出:
+`render_markdown()` 只接受 `MiddleJson`，不兼容旧 dict、`list[PageInfo]`、
+backend 参数或旧 `Line/Span` renderer。渲染过程基于深拷贝，不修改输入对象，
+也不负责把图片写到文件系统。
 
-- `ParseResult.markdown()`
-- `ParseResult.content_list()`
-- `ParseResult.structured_content()`
+图片优先使用 `image_path`，缺失时使用 `image_base64` data URI。
+`asset_base_url` 只给相对 `image_path` 和 HTML 内相对 `img src` 添加前缀。
 
-`structured_content` 是当前代码和 NEXT 版公开格式名，命名决策见 [ADR-0001](../decisions/0001-json-output-formats.md)。
+## 展示模式
 
-这说明底稿中“三套 union_make 完全割裂”的问题已经部分解决。
+`MarkdownRenderMode.DEFAULT`:
 
-## 仍未完全收敛
+- 隐藏 `header/footer/page_number/aside_text/page_footnote`。
+- 合并页内和跨页 `text.continues_prev`。
+- 只合并跨页 `table.continues_prev`。
+- 页面之间不输出分割线。
 
-统一入口内部仍存在 backend dispatch:
+`MarkdownRenderMode.FULL`:
 
-| 输出 | 当前状态 |
-|------|----------|
-| Markdown | 有统一 facade；Office 仍走 office-specific markdown。 |
-| Content List v1 | 有统一 facade；Office 仍走 office-specific converter。 |
-| Structured Content | PDF 后端共用 `render/structured_content.py`；Office 仍走 office-specific converter。 |
+- 展示全部顶层 block。
+- 只合并页内 `text.continues_prev`。
+- 不合并跨页 text/table。
+- 每两个相邻 `PageInfo` 之间输出 `---`，空白页边界同样保留。
 
-此外，render 当前通过 `PageInfo._backend` 判断 backend。这是临时实现，不应成为长期 schema。
+text 合并允许跨越任意其他 block，后一个 text 的内容被吸收到前一个 text，
+后块不再在原位置输出。table 只接受跨页合并；失败时保留两张原表。
 
-## Render 输入契约
+## Block 规则
 
-render 函数应接受:
+- `text/ref_text`: 解析行内公式、样式和超链接；普通 text 转义可能误触发的 Markdown block 前缀。
+- `doc_title/paragraph_title`: 使用全局 `level`，Markdown 标题最多六级；anchor 输出为 HTML id。
+- `list`: 递归缩进，直接使用 content 已内化的有序或无序前缀。
+- `index`: 递归输出 GFM 列表；标题叶子使用 anchor 生成内部链接，不当作 heading 输出。
+- `equation`: content 非空时输出行间 LaTeX，空 content 回退图片。
+- `image/chart`: 图片优先，识别内容放入折叠 details；无图片时输出已有 HTML/GFM 内容。
+- `table`: 简单单层 HTML 转 GFM；合并单元格或不可无损结构保留 HTML；空间投影文本使用动态 fenced block；空 content 回退图片。
+- `code`: 使用 `guess_lang` 和动态 fenced block。
+- `algorithm`: 使用等宽、`white-space: pre-wrap` 的 HTML div，只把 `<eq>` 转为行内公式。
 
-```python
-list[PageInfo]
+视觉父块严格按 `content` 原顺序渲染，body、重复 caption 和 footnote 不重新排序。
+
+## 行内语义
+
+行内 parser 只解释白名单标签，包括 `<eq>`、`<text style>`、
+`<hyperlink>/<url>`、`<sup>/<sub>`。未知或损坏标签作为普通文本转义保留。
+普通字体样式使用 Markdown；underline、emphasis、上下标和复杂组合使用安全 HTML。
+
+LaTeX 定界符来自 `$MINERU_HOME/config.yaml`:
+
+```yaml
+render:
+  latex_delimiters:
+    display:
+      left: "$$"
+      right: "$$"
+    inline:
+      left: "$"
+      right: "$"
 ```
 
-或 canonical envelope 经解析后的:
+## Index anchor
 
-```python
-payload["pages"] -> list[PageInfo]
-```
-
-render 不应直接依赖:
-
-- 原始模型输出。
-- doclib 数据库。
-- 文件系统路径，除非渲染图片链接需要 `img_bucket_path`。
-- 私有 `_meta` 之外的 backend-specific hidden state。
-
-## Block 消费规则
-
-| Block type | Markdown | Content List |
-|------------|----------|--------------|
-| `text` | 普通段落。 | text item。 |
-| `title` | heading，使用 `level`。 | text item with level。 |
-| `list` | 列表。 | list item。 |
-| `index` | 目录。 | index/list item。 |
-| `equation` | display math。 | equation item。 |
-| `image` | image markdown，包含 caption/footnote。 | image item。 |
-| `table` | HTML 或 table image。 | table item。 |
-| `chart` | chart image/content。 | chart item。 |
-| `code` | fenced code block。 | code item。 |
-| `header/footer/page_number` | 默认可忽略或作为 discarded。 | 可进入 content list，但需标注类型。 |
-
-## Unknown BBox
-
-render 不应因为 `bbox=EMPTY_BBOX` 失败。Content List 若输出 bbox，应遵循:
-
-- 已知 bbox: 输出 bbox。
-- unknown bbox: 省略 bbox 或输出 null。
-- 不应把 `(0,0,0,0)` 当成真实 bbox 给 UI 画框。
-
-## `_backend` 迁移
-
-当前:
-
-```python
-backend = pages[0]._backend
-```
-
-目标:
-
-```python
-backend = envelope["_meta"]["backend"]
-```
-
-迁移策略:
-
-1. render facade 新增可选 `backend` 参数。
-2. 如果传入 envelope，则从 `_meta.backend` 读取。
-3. 如果只传 pages，短期继续 fallback 到 `PageInfo._backend`。
-4. validator 提醒 `_backend` 是 legacy/internal。
-5. backend-specific 逻辑收敛后，render 不再需要 backend 判断。
-
-## Structured Content 收敛
-
-P0:
-
-- 明确 Structured Content 的目标 schema。
-- 确保所有 backend 输出都能生成 structured_content。
-- 保留当前 Office dispatch，先补 validator。
-
-P1:
-
-- PDF 已抽出通用 block-to-structured-content 映射。
-- 将 Office 特殊逻辑逐步变成 type-specific helper，而不是 backend-specific module。
-
-P2:
-
-- 删除 backend-specific structured_content converter。
-- render 只依赖 block type，不依赖 backend。
-
-## Agent Marker
-
-为了 Agent 引用，Markdown 可以支持可选 locator marker:
-
-```markdown
-<!-- mineru:locator doc:ab12cd3/tier:medium/page:3/block:12 -->
-正文内容
-```
-
-要求:
-
-- 默认不输出，避免影响普通用户。
-- SDK/Agent 可显式开启。
-- marker 中不得包含本地文件路径或 filename。
-
-## 验收
-
-- `render_markdown()` 可消费 migrated canonical envelope 的 pages。
-- `render_content_list()` 不依赖旧 `pdf_info`。
-- Office unknown bbox 不导致 content list 坐标错误。
-- 所有 render 输出可以带可选 Agent locator。
-- 逐步减少 backend-specific dispatch。
+Office model-list 在对象化前按 document-wide anchor 查找真实目标标题。匹配成功的
+目录 text 叶子改成相同的 `doc_title/paragraph_title` 类型与 level，同时保留目录
+显示文本；未匹配 anchor 降级为普通 TextBlock。已有旧 MiddleJson 不补造已丢失的 anchor。
