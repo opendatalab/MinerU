@@ -216,12 +216,11 @@ def _join_inline_node_sequences(previous: list[InlineNode], current: list[Inline
         first_text.content = first_text.content.lstrip()
 
     language = _detect_boundary_language(f"{previous_visible}{current_visible}")
-    next_starts_lowercase = current_visible[0].islower()
     if last_text is not None:
         processed, separator = resolve_text_line_boundary(
             last_text.content,
             block_language=language,
-            next_starts_with_lowercase=next_starts_lowercase,
+            next_content=current_visible,
         )
         last_text.content = processed
     else:

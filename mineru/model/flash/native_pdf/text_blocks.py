@@ -2712,7 +2712,7 @@ def _merge_text_line_content(line_texts: Sequence[str]) -> str:
         processed_previous, separator = resolve_text_line_boundary(
             content_parts[-1],
             block_language=block_language,
-            next_starts_with_lowercase=current_line[0].islower(),
+            next_content=current_line,
         )
         content_parts[-1] = processed_previous
         content_parts.extend([separator, current_line])

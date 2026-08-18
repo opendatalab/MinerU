@@ -490,6 +490,19 @@ def test_text_content_keeps_natural_paragraph_joining() -> None:
     assert content == "第一行第二行"
 
 
+def test_text_content_joins_structural_url_continuation_without_space() -> None:
+    """验证 PDF 内容重建不会在明确的跨行 URL 路径前插入空格。"""
+    content = text_content._lines_to_block_content(
+        _build_text_lines(
+            "Available at https://example.test/current-research",
+            "/image-processing/ for details.",
+        ),
+        BlockType.TEXT,
+    )
+
+    assert content == "Available at https://example.test/current-research/image-processing/ for details."
+
+
 @pytest.mark.parametrize("block_type", [BlockType.CODE, RAW_ALGORITHM])
 def test_code_content_keeps_existing_line_breaks(block_type: str) -> None:
     """验证 code/algorithm 原有的逐行拼接语义保持不变。"""

@@ -13,6 +13,7 @@ from mineru.config import LatexDelimitersConfig
 from mineru.render.utils.assets import prefix_html_image_sources
 
 _INLINE_EQ_RE = re.compile(r"<eq>(?P<latex>.*?)</eq>", re.IGNORECASE | re.DOTALL)
+_GFM_FORMULA_PIPE_RE = re.compile(r"(?P<slashes>\\*)\|")
 _COMPLEX_CELL_TAGS = {
     "blockquote",
     "div",
@@ -178,7 +179,12 @@ def _render_inline_children(node: Tag, delimiters: LatexDelimitersConfig) -> str
             parts.append(_render_inline_code(child.get_text()))
         elif name == "eq":
             latex = html.unescape(child.get_text()).strip()
-            parts.append(f"{delimiters.inline.left}{latex}{delimiters.inline.right}" if latex else "")
+            escaped_latex = _escape_gfm_formula_pipes(latex)
+            parts.append(
+                f"{delimiters.inline.left}{escaped_latex}{delimiters.inline.right}"
+                if escaped_latex
+                else ""
+            )
         elif name == "a":
             href = str(child.get("href", "")).strip()
             parts.append(f"[{rendered}]({_escape_link_url(href)})" if href else rendered)
@@ -200,6 +206,17 @@ def _render_inline_code(content: str) -> str:
     longest = max((len(match.group(0)) for match in re.finditer(r"`+", content)), default=0)
     fence = "`" * max(1, longest + 1)
     return f"{fence}{_escape_cell_text(content)}{fence}"
+
+
+def _escape_gfm_formula_pipes(latex: str) -> str:
+    """转义公式竖线，并保证 GFM 解析后恢复原始反斜杠数量。"""
+
+    def _replace(match: re.Match[str]) -> str:
+        """把竖线前 n 个反斜杠扩展为 2n+1 个 Markdown 反斜杠。"""
+        slash_count = len(match.group("slashes"))
+        return "\\" * (2 * slash_count + 1) + "|"
+
+    return _GFM_FORMULA_PIPE_RE.sub(_replace, latex)
 
 
 def _escape_link_url(url: str) -> str:

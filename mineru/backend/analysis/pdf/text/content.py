@@ -250,12 +250,10 @@ def _lines_to_block_content(lines: list[_AnalyzeLine], block_type: str) -> str:
     block_language = detect_lang(text_for_language)
     content_parts = [rendered_lines[0]]
     for line_idx in range(1, len(rendered_lines)):
-        current_type, current_content = content_lines[line_idx][0]
-        next_starts_with_lowercase = current_type == ContentType.TEXT and bool(current_content) and current_content[0].islower()
         content_parts[-1], separator = resolve_text_line_boundary(
             content_parts[-1],
             block_language=block_language,
-            next_starts_with_lowercase=next_starts_with_lowercase,
+            next_content=rendered_lines[line_idx],
         )
         content_parts.extend([separator, rendered_lines[line_idx]])
     return "".join(content_parts).strip()

@@ -1,3 +1,6 @@
+import markdown
+from bs4 import BeautifulSoup
+
 from mineru.config import LatexDelimitersConfig
 from mineru.render.utils.markdown_table import format_embedded_html, render_html_table
 
@@ -31,6 +34,29 @@ def test_render_html_table_preserves_supported_inline_markup() -> None:
         ]
     )
 
+
+def test_render_html_table_escapes_formula_pipes_without_changing_latex() -> None:
+    """验证 GFM 源码转义公式竖线，Markdown 解析后恢复原始 LaTeX。"""
+    formulas = [
+        r"\left|x\right|",
+        r"\|x\|",
+        r"\begin{array}{c|c}x\end{array}",
+    ]
+    rows = "".join(
+        f"<tr><td>F{index}</td><td><eq>{formula}</eq></td><td>ok</td></tr>"
+        for index, formula in enumerate(formulas, start=1)
+    )
+    html = f"<table><tr><th>Name</th><th>Formula</th><th>Note</th></tr>{rows}</table>"
+
+    rendered = render_html_table(html, asset_base_url="", delimiters=DELIMITERS)
+    assert rendered is not None
+    parsed = BeautifulSoup(markdown.markdown(rendered, extensions=["tables"]), "html.parser")
+    parsed_rows = parsed.find_all("tr")
+
+    assert [len(row.find_all(["th", "td"], recursive=False)) for row in parsed_rows] == [3, 3, 3, 3]
+    assert [row.find_all("td", recursive=False)[1].get_text() for row in parsed_rows[1:]] == [
+        f"${formula}$" for formula in formulas
+    ]
 
 def test_render_html_table_falls_back_for_span_attribute_even_when_value_is_one() -> None:
     """验证只要显式出现 rowspan/colspan 就按复杂 HTML 输出。"""

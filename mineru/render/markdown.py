@@ -425,7 +425,7 @@ def _render_algorithm_html(content: str, delimiters: LatexDelimitersConfig) -> s
     for match in _ALGORITHM_TOKEN_RE.finditer(content):
         plain = content[cursor : match.start()]
         if plain:
-            parts.append(html.escape(plain, quote=False))
+            parts.append(plain)
             previous_was_equation = False
         script_tag = match.group("script_tag")
         if script_tag is not None:
@@ -437,12 +437,10 @@ def _render_algorithm_html(content: str, delimiters: LatexDelimitersConfig) -> s
         if latex:
             if previous_was_equation and parts and not parts[-1].endswith((" ", "\n", "\t")):
                 parts.append(" ")
-            parts.append(
-                f"{delimiters.inline.left}{html.escape(latex, quote=False)}{delimiters.inline.right}"
-            )
+            parts.append(f"{delimiters.inline.left}{latex}{delimiters.inline.right}")
             previous_was_equation = True
         cursor = match.end()
-    parts.append(html.escape(content[cursor:], quote=False))
+    parts.append(content[cursor:])
     body = "".join(parts)
     return (
         '<div class="mineru-algorithm" style="white-space: pre-wrap; font-family:monospace;">\n'

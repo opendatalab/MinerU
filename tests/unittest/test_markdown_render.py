@@ -408,8 +408,8 @@ def test_code_uses_language_and_dynamic_fence() -> None:
     assert rendered.endswith("```txt\nx\n```")
 
 
-def test_algorithm_preserves_whitespace_escapes_html_and_renders_formula() -> None:
-    """验证算法 HTML 同时保留缩进、转义文本并支持相邻公式。"""
+def test_algorithm_preserves_whitespace_comparisons_scripts_and_formula() -> None:
+    """验证算法 HTML 原样保留缩进、比较符、上下标并支持相邻公式。"""
     algorithm = CodeBlock(
         type="code",
         index=0,
@@ -418,7 +418,10 @@ def test_algorithm_preserves_whitespace_escapes_html_and_renders_formula() -> No
             CodeBodyBlock(
                 type="code_body",
                 index=0,
-                content="if <x>:\n  T<sub>queue</sub><sup>2</sup> = <eq>a < b</eq><eq>c</eq>",
+                content=(
+                    "if a < b and c > d:\n  T<sub>queue</sub><sup>2</sup> = "
+                    "<eq>a < b</eq><eq>c > d</eq>"
+                ),
             )
         ],
     )
@@ -426,7 +429,9 @@ def test_algorithm_preserves_whitespace_escapes_html_and_renders_formula() -> No
     rendered = render_markdown(_middle(_page(0, algorithm)))
 
     assert 'class="mineru-algorithm"' in rendered
-    assert "if &lt;x&gt;:\n  T<sub>queue</sub><sup>2</sup> = $a &lt; b$ $c$" in rendered
+    assert "if a < b and c > d:\n  T<sub>queue</sub><sup>2</sup> = $a < b$ $c > d$" in rendered
+    assert "&lt;" not in rendered
+    assert "&gt;" not in rendered
 
 
 def test_image_path_precedes_base64_and_visual_child_order_is_preserved() -> None:

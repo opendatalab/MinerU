@@ -343,8 +343,8 @@ def test_demo2_pages2_to6_restore_paragraphs_formulas_and_reading_order() -> Non
     assert "Fp =" in formula7
     assert "otherwise" in formula7
     assert not [content for content in page3_contents if content.strip() in {"2", "p", "otherwise", "(7)"}]
-    assert "available at http://mc2.unl.edu/current-research" in page3_contents[-1]
-    assert "/image-processing/. Figure 2" in page3_contents[-1]
+    assert "available at http://mc2.unl.edu/current-research/image-processing/. Figure 2" in page3_contents[-1]
+    assert "current-research /image-processing" not in page3_contents[-1]
 
     page4_contents = [block["content"] for block in model_list[3]]
     figure2 = next(content for content in page4_contents if content.startswith("Figure 2:"))
