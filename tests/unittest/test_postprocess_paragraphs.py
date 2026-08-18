@@ -114,6 +114,11 @@ def test_merge_para_text_blocks_requires_consecutive_cross_page_indices(
     [
         (BlockType.IMAGE, True),
         (BlockType.CODE, True),
+        (BlockType.HEADER, True),
+        (BlockType.FOOTER, True),
+        (BlockType.PAGE_NUMBER, True),
+        (BlockType.PAGE_FOOTNOTE, True),
+        (BlockType.ASIDE_TEXT, True),
         (BlockType.DOC_TITLE, False),
         (BlockType.LIST, False),
         (BlockType.REF_TEXT, False),
@@ -123,7 +128,7 @@ def test_merge_para_text_blocks_respects_transparent_and_barrier_types(
     middle_type: str,
     expected_continuation: bool,
 ) -> None:
-    """验证视觉根块可跨过，标题、列表和其他语义块会阻断 text 查找。"""
+    """验证视觉根块和页面装饰块可跨过，其他语义块会阻断 text 查找。"""
     previous_block, current_block = _horizontal_pair()
     middle_block = {
         "index": 1,
@@ -137,6 +142,70 @@ def test_merge_para_text_blocks_respects_transparent_and_barrier_types(
     merge_para_text_blocks(pages)
 
     assert current_block.get("continues_prev", False) is expected_continuation
+
+
+def test_merge_para_text_blocks_ignores_cross_page_decorations() -> None:
+    """验证跨页正文会跳过前页尾部和后页头部的全部页面装饰块。"""
+    previous_block, current_block = _horizontal_pair()
+    current_block["index"] = 3
+    pages = [
+        {
+            "page_idx": 0,
+            "blocks": [
+                previous_block,
+                {"index": 1, "type": BlockType.FOOTER, "content": "footer"},
+                {"index": 2, "type": BlockType.PAGE_FOOTNOTE, "content": "page footnote"},
+            ],
+        },
+        {
+            "page_idx": 1,
+            "blocks": [
+                {"index": 0, "type": BlockType.HEADER, "content": "header"},
+                {"index": 1, "type": BlockType.PAGE_NUMBER, "content": "2"},
+                {"index": 2, "type": BlockType.ASIDE_TEXT, "content": "aside"},
+                current_block,
+            ],
+        },
+    ]
+
+    merge_para_text_blocks(pages)
+
+    assert current_block["continues_prev"] is True
+    assert previous_block["content"] == "previous continuation"
+    assert current_block["content"] == "current continuation"
+    assert "lines" not in previous_block
+    assert "lines" not in current_block
+
+
+@pytest.mark.parametrize(
+    "barrier_type",
+    [BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE, BlockType.EQUATION, BlockType.LIST],
+)
+def test_merge_para_text_blocks_keeps_cross_page_semantic_barriers(barrier_type: str) -> None:
+    """验证页面装饰块透明后，标题、公式和列表仍会阻断跨页正文连接。"""
+    previous_block, current_block = _horizontal_pair()
+    current_block["index"] = 2
+    pages = [
+        {
+            "page_idx": 0,
+            "blocks": [
+                previous_block,
+                {"index": 1, "type": BlockType.PAGE_FOOTNOTE, "content": "page footnote"},
+            ],
+        },
+        {
+            "page_idx": 1,
+            "blocks": [
+                {"index": 0, "type": BlockType.HEADER, "content": "header"},
+                {"index": 1, "type": barrier_type, "content": "barrier"},
+                current_block,
+            ],
+        },
+    ]
+
+    merge_para_text_blocks(pages)
+
+    assert "continues_prev" not in current_block
 
 
 def test_can_auto_merge_horizontal_text_blocks_rejects_paragraph_boundaries() -> None:

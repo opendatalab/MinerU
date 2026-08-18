@@ -7,6 +7,7 @@ from typing import Any
 import unicodedata
 
 from mineru.backend.postprocess.page_blocks import process_page_blocks
+from mineru.backend.postprocess.pages import model_list_to_pages
 from mineru.model.flash import PdfModel
 from mineru.model.flash.native_pdf import (
     formulas,
@@ -186,6 +187,13 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     assert sum(block["type"] == "equation" for page in model_list for block in page) == 7
     assert sum(block["type"] == "caption" for page in model_list for block in page) == 10
     assert sum(block["type"] == "footnote" for page in model_list for block in page) == 5
+    middle_pages = model_list_to_pages(model_list)
+    page3_continuation = next(
+        block
+        for block in middle_pages[2].blocks
+        if block.type == "text" and isinstance(block.content, str) and block.content.startswith("were to")
+    )
+    assert page3_continuation.continues_prev is True
     assert [block["bbox"] for block in model_list[5] if block["type"] == "table"] == [
         [0.087, 0.153, 0.922, 0.333],
         [0.087, 0.697, 0.922, 0.876],
@@ -1428,6 +1436,13 @@ def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
     """验证中文论文双语图注独立标记，正文图引用和参考文献保持 text。"""
 
     model_list = _auto_model_list("中文论文.pdf")
+    middle_pages = model_list_to_pages(model_list)
+    page2_continuation = next(
+        block
+        for block in middle_pages[1].blocks
+        if block.type == "text" and isinstance(block.content, str) and block.content.startswith("预测。")
+    )
+    assert page2_continuation.continues_prev is True
     page = model_list[8]
 
     captions = [block for page_blocks in model_list for block in page_blocks if block["type"] == "caption"]

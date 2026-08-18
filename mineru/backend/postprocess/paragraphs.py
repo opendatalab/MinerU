@@ -16,12 +16,17 @@ TEXT_MERGE_BARRIER_TYPES = {
     *SECTION_MERGE_BARRIER_TYPES,
     BlockType.LIST,
 }
-# 文本段落合并只允许跨过这些视觉根块，避免 ref_text/phonetic 等语义块被当作透明块。
+# 文本段落合并允许跨过视觉根块和页面装饰块，其他语义块仍会阻断候选查找。
 TEXT_MERGE_TRANSPARENT_TYPES = {
     BlockType.IMAGE,
     BlockType.TABLE,
     BlockType.CHART,
     BlockType.CODE,
+    BlockType.HEADER,
+    BlockType.FOOTER,
+    BlockType.PAGE_NUMBER,
+    BlockType.PAGE_FOOTNOTE,
+    BlockType.ASIDE_TEXT,
 }
 VERTICAL_LINE_HEIGHT_TO_WIDTH_RATIO_THRESHOLD = 2
 VERTICAL_LINE_IN_BLOCK_THRESHOLD = 0.8
@@ -133,7 +138,7 @@ def _find_previous_text_block(
     ordered_blocks: list[OrderedBlock],
     current_index: int,
 ) -> OrderedBlock | None:
-    """向前查找 text，视觉根块可跨过，结构或其他语义块会阻断查找。"""
+    """向前查找 text，视觉根块和页面装饰块可跨过，其他语义块会阻断查找。"""
     for previous_index in range(current_index - 1, -1, -1):
         previous_block = ordered_blocks[previous_index][2]
         previous_type = previous_block.get("type")
