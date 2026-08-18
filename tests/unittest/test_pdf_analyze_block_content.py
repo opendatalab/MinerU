@@ -10,10 +10,10 @@ from mineru_vl_utils.structs import ContentBlock as VlmContentBlock
 from mineru_vl_utils.structs import ExtractResult
 
 from mineru.backend import analyze
-from mineru.backend.analysis.pdf import constants, layout, normalization, ocr, pipeline, tables, window
+from mineru.backend.analysis.pdf import constants, formulas, layout, normalization, ocr, pipeline, tables, window
 from mineru.backend.analysis.pdf.text import content as text_content
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
-from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE
+from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_FORMULA_NUMBER
 from mineru.backend.analysis.pdf.text.native import (
     POST_OCR_FALLBACK_CONTENT_KEY,
     POST_OCR_FALLBACK_SCORE_KEY,
@@ -563,6 +563,136 @@ def test_low_txt_visual_runs_split_distant_text_before_layout_matching(
         ("Left", (5.0, 10.0, 21.0, 20.0)),
         ("Right", (70.0, 10.0, 90.0, 20.0)),
     ]
+
+
+def test_low_txt_native_formula_contents_extract_body_and_number_independently() -> None:
+    """验证 Low/TXT 按独立 layout 框提取多行公式和编号，再复用统一合并逻辑。"""
+    chars = []
+    char_idx = 0
+    for text, top, left in (("x=1", 12.0, 12.0), ("y=2", 28.0, 12.0), ("（1）", 20.0, 76.0)):
+        for offset, char in enumerate(text):
+            chars.append(
+                {
+                    "char": char,
+                    "bbox": (
+                        left + offset * 4.0,
+                        top,
+                        left + (offset + 1) * 4.0,
+                        top + 8.0,
+                    ),
+                    "char_idx": char_idx,
+                }
+            )
+            char_idx += 1
+
+    pdf_page = MagicMock(size=(100.0, 100.0))
+    pdf_page.get_chars.return_value = chars
+    model_list = [
+        [
+            {
+                "type": BlockType.EQUATION,
+                "bbox": [0.1, 0.1, 0.6, 0.4],
+                "angle": 0,
+            },
+            {
+                "type": RAW_FORMULA_NUMBER,
+                "bbox": [0.74, 0.18, 0.9, 0.3],
+                "angle": 0,
+            },
+        ]
+    ]
+
+    window._fill_low_txt_native_formula_contents([pdf_page], model_list)
+
+    pdf_page.get_chars.assert_called_once_with()
+    assert model_list[0][0]["content"] == "x=1\ny=2"
+    assert model_list[0][1]["content"] == "（1）"
+
+    optimized = formulas.optimize_hybrid_formula_number_blocks(model_list[0])
+
+    assert optimized == [
+        {
+            "type": BlockType.EQUATION,
+            "bbox": [0.1, 0.1, 0.9, 0.4],
+            "angle": 0,
+            "content": "x=1\ny=2\\tag{1}",
+        }
+    ]
+
+
+def test_low_txt_native_formula_contents_preserve_existing_and_skip_invalid_or_empty() -> None:
+    """验证已有公式内容不覆盖，无效框或空字符区域不会写入伪内容。"""
+    pdf_page = MagicMock(size=(100.0, 100.0))
+    pdf_page.get_chars.return_value = [
+        {
+            "char": "X",
+            "bbox": (12.0, 12.0, 20.0, 20.0),
+            "char_idx": 0,
+        }
+    ]
+    model_list = [
+        [
+            {
+                "type": BlockType.EQUATION,
+                "bbox": [0.1, 0.1, 0.3, 0.3],
+                "content": "existing",
+            },
+            {
+                "type": RAW_FORMULA_NUMBER,
+                "bbox": [0.8, 0.2, 0.7, 0.3],
+            },
+            {
+                "type": BlockType.EQUATION,
+                "bbox": [0.6, 0.6, 0.8, 0.8],
+            },
+        ]
+    ]
+
+    window._fill_low_txt_native_formula_contents([pdf_page], model_list)
+
+    pdf_page.get_chars.assert_called_once_with()
+    assert model_list[0][0]["content"] == "existing"
+    assert "content" not in model_list[0][1]
+    assert "content" not in model_list[0][2]
+
+
+def test_process_low_txt_fills_native_formulas_after_table_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 Low/TXT 先清理表内公式，再只为剩余 layout 公式回填原生内容。"""
+    events: list[str] = []
+    pdf_page = MagicMock(size=(100.0, 100.0))
+    model_list = [[{"type": BlockType.EQUATION, "bbox": [0.1, 0.1, 0.5, 0.2]}]]
+
+    monkeypatch.setattr(window, "_build_pdf_text_visual_run_spans", lambda _page: [])
+
+    def fake_fill_low_table_contents(*_args: object) -> None:
+        """模拟表格阶段认领并清理当前公式。"""
+        events.append("fill_tables")
+        model_list[0].clear()
+
+    def fake_fill_native_formulas(
+        _pdf_pages: object,
+        current_model_list: list[list[dict[str, object]]],
+    ) -> None:
+        """确认原生公式回填收到的是表格清理后的块列表。"""
+        events.append("fill_formulas")
+        assert current_model_list == [[]]
+
+    monkeypatch.setattr(window, "_fill_low_table_contents", fake_fill_low_table_contents)
+    monkeypatch.setattr(window, "_fill_low_txt_native_formula_contents", fake_fill_native_formulas)
+
+    result = window._process_low_text(
+        [{"img_pil": object(), "scale": 1.0}],
+        [pdf_page],
+        model_list,
+        "txt",
+        MagicMock(),
+        [[]],
+    )
+
+    assert result == [[]]
+    assert events == ["fill_tables", "fill_formulas"]
 
 
 def test_existing_text_content_is_preserved_while_lines_are_refreshed() -> None:

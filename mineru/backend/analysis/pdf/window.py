@@ -10,10 +10,11 @@ import numpy as np
 from loguru import logger
 
 from mineru.backend.local_model_runtime import HybridLocalModelContext
-from mineru.types import BlockType
+from mineru.types import RAW_FORMULA_NUMBER, BlockType
 from mineru.utils.config_reader import get_processing_window_size
 from mineru.utils.pdf_document import PDFDocument, PDFPage
 from mineru.utils.pdf_image_tools import load_images_from_pdf_bytes_range
+from mineru.utils.spatial_text import project_pdf_spatial_text
 
 from .constants import (
     BATCH_RATIO,
@@ -23,7 +24,7 @@ from .constants import (
     PIPELINE_DET_TYPE,
     TITLE_BLOCK_TYPES,
 )
-from .geometry import _normalize_page_size
+from .geometry import _bbox_to_pixel_bbox, _normalize_page_size
 from .layout import (
     _build_vl_style_layout_blocks,
     _collect_table_items,
@@ -123,6 +124,51 @@ def _close_images(images_list: list[dict[str, Any]]) -> None:
                 pass
 
 
+def _fill_low_txt_native_formula_contents(
+    pdf_pages: list[PDFPage],
+    model_list: list[list[dict[str, Any]]],
+) -> None:
+    """按 Low layout 公式框从 PDF 字符层独立回填公式正文和编号。"""
+    if len(pdf_pages) != len(model_list):
+        raise ValueError(
+            "Low TXT native formula page count mismatch: "
+            f"pdf_pages={len(pdf_pages)}, model_list={len(model_list)}"
+        )
+
+    target_block_types = {BlockType.EQUATION, RAW_FORMULA_NUMBER}
+    for pdf_page, page_model_list in zip(pdf_pages, model_list):
+        page_size = tuple(float(value) for value in pdf_page.size)
+        pending_blocks: list[tuple[dict[str, Any], tuple[float, float, float, float]]] = []
+        for block_item in page_model_list:
+            if block_item.get("type") not in target_block_types:
+                continue
+            block_content = block_item.get("content")
+            has_nonempty_content = (
+                bool(block_content.strip())
+                if isinstance(block_content, str)
+                else bool(block_content)
+            )
+            if has_nonempty_content:
+                continue
+            block_bbox = _bbox_to_pixel_bbox(block_item.get("bbox"), page_size)
+            if block_bbox is not None:
+                pending_blocks.append((block_item, block_bbox))
+
+        if not pending_blocks:
+            continue
+
+        page_chars = pdf_page.get_chars()
+        for block_item, block_bbox in pending_blocks:
+            native_content = project_pdf_spatial_text(
+                page_chars,
+                block_bbox,
+                block_item.get("angle", 0),
+                preserve_blank_rows=False,
+            ).strip()
+            if native_content:
+                block_item["content"] = native_content
+
+
 def _process_low_text(
     images_list: list[dict[str, Any]],
     pdf_pages: list[PDFPage],
@@ -187,6 +233,8 @@ def _process_low_text(
         parse_mode,
         local_model_context,
     )
+    if parse_mode == "txt":
+        _fill_low_txt_native_formula_contents(pdf_pages, model_list)
     return model_list
 
 
