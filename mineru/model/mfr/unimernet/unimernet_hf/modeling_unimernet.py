@@ -13,7 +13,7 @@ from transformers.models.vision_encoder_decoder.modeling_vision_encoder_decoder 
 
 from .unimer_swin import UnimerSwinConfig, UnimerSwinModel, UnimerSwinImageProcessor
 from .unimer_mbart import UnimerMBartConfig, UnimerMBartForCausalLM
-from ...utils import latex_rm_whitespace
+from ...utils import fix_unimernet_latex
 
 AutoConfig.register(UnimerSwinConfig.model_type, UnimerSwinConfig)
 AutoConfig.register(UnimerMBartConfig.model_type, UnimerMBartConfig)
@@ -149,7 +149,7 @@ class UnimernetModel(VisionEncoderDecoderModel):
         token_ids = outputs[:, 1:].cpu()
         result_tokens = token_ids.numpy() if return_full_result else token_ids
         pred_str = self.tokenizer.token2str(result_tokens)
-        fixed_str = [latex_rm_whitespace(s) for s in pred_str]
+        fixed_str = [fix_unimernet_latex(s) for s in pred_str]
 
         if not return_full_result:
             return {"fixed_str": fixed_str}
