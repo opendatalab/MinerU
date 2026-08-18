@@ -46,6 +46,9 @@ TABLE_OCR_REC_SINGLE_CHAR_REPLACEMENTS = {
 TABLE_OCR_REC_REGEX_REPLACEMENTS = (
     # 仅规范化完整的“单个数字 + 號”，避免影响“10號”“第6號”等普通文本。
     (re.compile(r"^([0-9])號$"), r"\1"),
+    # 表格 OCR 常见单位误识别：数字/字母混淆、单位内部多余空格
+    (re.compile(r"cmH20"), "cmH2O"),
+    (re.compile(r"bp m"), "bpm"),
 )
 
 
@@ -310,9 +313,8 @@ class BatchAnalyze:
         if text in TABLE_OCR_REC_SINGLE_CHAR_REPLACEMENTS:
             return TABLE_OCR_REC_SINGLE_CHAR_REPLACEMENTS[text]
         for pattern, replacement in TABLE_OCR_REC_REGEX_REPLACEMENTS:
-            match = pattern.fullmatch(text)
-            if match:
-                return match.expand(replacement)
+            if pattern.search(text):
+                return pattern.sub(replacement, text)
         return text
 
     @classmethod
