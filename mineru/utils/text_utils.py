@@ -77,3 +77,27 @@ def clean_isolated_formula(content: str) -> str:
     if latex.endswith("\\]"):
         latex = latex[:-2]
     return latex.strip()
+
+
+def normalize_formula_tag_content(tag_content: str) -> str:
+    """归一化公式编号文本，去掉全角字符和包裹括号后用于 \\tag{}。"""
+    tag_content = full_to_half(str(tag_content or "").strip())
+    if tag_content.startswith(("(", "﹙")):
+        tag_content = tag_content[1:].strip()
+    if tag_content.endswith((")", "﹚")):
+        tag_content = tag_content[:-1].strip()
+    return tag_content
+
+
+def normalize_formula_content_for_tag(formula_content: str) -> str:
+    """归一化待合并编号的公式正文，去掉模型可能携带的展示公式分隔符。"""
+    return clean_isolated_formula(str(formula_content or ""))
+
+
+def build_tagged_formula_content(formula_content: str, tag_content: str) -> str | None:
+    """将公式正文和编号文本合成为带 LaTeX tag 的纯公式内容。"""
+    formula_content = normalize_formula_content_for_tag(formula_content)
+    tag_content = normalize_formula_tag_content(tag_content)
+    if not formula_content or not tag_content:
+        return None
+    return f"{formula_content}\\tag{{{tag_content}}}"

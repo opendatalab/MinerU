@@ -755,6 +755,13 @@ def test_formula_number_optimizer_recognizes_canonical_and_upstream_equation_typ
     ]
 
 
+@pytest.mark.parametrize("tag_content", ["(4)", "（4）", "﹙4﹚", "(4）"])
+def test_formula_tag_builder_normalizes_supported_parentheses(tag_content: str) -> None:
+    """验证共享 tag 构造器兼容 Flash 已识别的多种圆括号编号。"""
+
+    assert formulas.build_tagged_formula_content("x=4", tag_content) == r"x=4\tag{4}"
+
+
 def test_formula_number_optimizer_merges_leading_number_bbox() -> None:
     """验证前置公式编号按既有相邻规则合并，并扩展后续公式 bbox。"""
     optimized = formulas.optimize_hybrid_formula_number_blocks(
@@ -1572,7 +1579,7 @@ def test_doc_analyze_flash_real_pdf_returns_typed_middle_json() -> None:
 
 
 def test_doc_analyze_flash_demo1_uses_canonical_equation_type() -> None:
-    """验证真实 demo1.pdf 的 model list 与 MiddleJson 统一输出 equation。"""
+    """验证真实 demo1.pdf 的两层 Flash 输出统一使用 equation 与 LaTeX tag。"""
     sample_path = _PROJECT_ROOT / "demo" / "pdfs" / "demo1.pdf"
 
     middle_json, model_list = analyze.doc_analyze(
@@ -1589,6 +1596,21 @@ def test_doc_analyze_flash_demo1_uses_canonical_equation_type() -> None:
 
     assert model_equations
     assert len(middle_equations) == len(model_equations)
+    assert [block.content for block in middle_equations] == [
+        block["content"]
+        for block in model_equations
+    ]
+    for formula_number in range(1, 8):
+        marker = rf"\tag{{{formula_number}}}"
+        assert sum(marker in block["content"] for block in model_equations) == 1
+    assert not [
+        block
+        for block in model_equations
+        if any(
+            block["content"].rstrip().endswith(f"({formula_number})")
+            for formula_number in range(1, 8)
+        )
+    ]
     assert "interline_equation" not in middle_json.to_json()
 
 

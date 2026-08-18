@@ -245,8 +245,8 @@ def test_detached_formula_sidecar_sharing_middle_row_moves_to_trailing_line() ->
 
 
 @pytest.mark.parametrize("marker", ["(4)", "（4）", "﹙4﹚", "(4）"])
-def test_adjacent_parenthesized_formula_number_moves_to_trailing_line(marker: str) -> None:
-    """验证贴近公式主体的多种圆括号序号后置，且前导逗号留在原视觉行。"""
+def test_adjacent_parenthesized_formula_number_serializes_as_tag(marker: str) -> None:
+    """验证贴近公式主体的多种圆括号序号转为 tag，且前导逗号留在正文。"""
 
     members = [
         _formula_member("numerator", (20.0, 0.0, 90.0, 10.0), 0),
@@ -266,7 +266,7 @@ def test_adjacent_parenthesized_formula_number_moves_to_trailing_line(marker: st
         "type": "equation",
         "bbox": (10.0, 0.0, 110.0, 30.0),
         "angle": 0,
-        "content": f"numerator,\nbody\ndenominator\n{marker}",
+        "content": "numerator,\nbody\ndenominator\\tag{4}",
     }
 
 
@@ -1232,7 +1232,8 @@ def test_split_visual_row_with_right_number_forms_one_equation() -> None:
 
     assert len(blocks) == 1
     assert blocks[0]["type"] == "equation"
-    assert "(8)" in blocks[0]["content"]
+    assert blocks[0]["content"].endswith(r"\tag{8}")
+    assert "(8)" not in blocks[0]["content"]
     assert {line.source_index for line in remaining} == {0, 4}
 
 
@@ -1361,7 +1362,7 @@ def test_split_visual_row_formula_tail_defers_to_spatial_growth() -> None:
             "type": "equation",
             "bbox": (10.0, 52.0, 100.0, 82.0),
             "angle": 0,
-            "content": "at = 1   ( 1 - εt)\n2 ln\nεt\n（3）",
+            "content": "at = 1   ( 1 - εt)\n2 ln\nεt\\tag{3}",
         }
     ]
     assert {line.source_index for line in remaining} == {0, 1, 2, 9, 10}

@@ -12,6 +12,7 @@ from typing import Any
 
 from mineru.types import BBox
 from mineru.utils.pdf_document import PDFPathInfo
+from mineru.utils.text_utils import build_tagged_formula_content
 
 from .models import (
     _FormulaAnchor,
@@ -1592,8 +1593,17 @@ def _formula_members_to_block(
     *,
     anchor_source_index: int,
 ) -> dict[str, Any] | None:
-    """把公式空间分量按视觉行聚类，并将非末视觉行的离散右侧 sidecar 后置。"""
+    """把公式空间分量按视觉行聚类，将编号序列化为 tag 并后置其他 sidecar。"""
 
+    anchor_line = next(
+        (line for line, _bbox in members if line.source_index == anchor_source_index),
+        None,
+    )
+    anchor_formula_number_parts = (
+        _split_trailing_formula_number(anchor_line.text)
+        if anchor_line is not None
+        else None
+    )
     heights = [_line_effective_height(line, bbox) for line, bbox in members]
     median_height = statistics.median(heights) if heights else 1.0
     row_tolerance = max(1.5, 0.35 * median_height)
@@ -1641,6 +1651,14 @@ def _formula_members_to_block(
     if trailing_sidecar_content is not None:
         row_contents.append(trailing_sidecar_content)
     content = _sanitize_pdf_control_text("\n".join(filter(None, row_contents)), preserve_newlines=True)
+    if anchor_formula_number_parts is not None:
+        _anchor_prefix, tag_content = anchor_formula_number_parts
+        stripped_content = content.rstrip()
+        if stripped_content.endswith(tag_content):
+            formula_content = stripped_content[: -len(tag_content)].rstrip()
+            tagged_content = build_tagged_formula_content(formula_content, tag_content)
+            if tagged_content is not None:
+                content = tagged_content
     if not content.strip():
         return None
     return {

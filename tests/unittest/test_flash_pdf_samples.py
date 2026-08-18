@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections import Counter
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
-import unicodedata
 
 from mineru.backend.postprocess.page_blocks import process_page_blocks
 from mineru.backend.postprocess.pages import model_list_to_pages
@@ -84,8 +85,9 @@ def _grouped_visual_blocks(
 
 
 def _normalized_content_probe(text: str) -> str:
-    """去除空白、标点与 dash 差异，生成原生行内容覆盖检查使用的探针。"""
+    """还原 LaTeX tag 并去除排版差异，生成原生行内容覆盖检查使用的探针。"""
 
+    text = re.sub(r"\\tag\{([^{}]+)\}", r"\1", text)
     return "".join(char.casefold() for char in text if char.isalnum())
 
 
@@ -314,7 +316,7 @@ def test_demo2_pages2_to6_restore_paragraphs_formulas_and_reading_order() -> Non
     humans = next(content for content in page2_contents if content.startswith("Humans group shapes"))
     matching = next(content for content in page2_contents if content.startswith("To identify a match"))
     dissimilarity = next(content for content in page2_contents if content.startswith("where the pixel dissimilarity"))
-    formula3 = next(content for content in page2_contents if content.endswith("(3)"))
+    formula3 = next(content for content in page2_contents if content.endswith(r"\tag{3}"))
     assert not [content for content in page2_contents if content.strip() == "by"]
     assert humans.endswith("is given by")
     assert "Sp denotes a set of matching candidates" in matching
@@ -329,15 +331,15 @@ def test_demo2_pages2_to6_restore_paragraphs_formulas_and_reading_order() -> Non
     assert "O(ω2) to O(ω)" in page3_contents[0]
     assert "disparity estimates Dip" in page3_contents[13]
     for formula_number in range(4, 10):
-        marker = f"({formula_number})"
+        marker = rf"\tag{{{formula_number}}}"
         assert sum(marker in content for content in page3_contents) == 1
-    formula7 = next(content for content in page3_contents if "(7)" in content)
-    formula4 = next(content for content in page3_contents if "(4)" in content)
-    formula8 = next(content for content in page3_contents if "(8)" in content)
-    assert formula4.splitlines()[-1] == "(4)"
-    assert formula8.splitlines()[-1] == "(8)"
-    assert "(4)" not in "\n".join(formula4.splitlines()[:-1])
-    assert "(8)" not in "\n".join(formula8.splitlines()[:-1])
+    formula7 = next(content for content in page3_contents if r"\tag{7}" in content)
+    formula4 = next(content for content in page3_contents if r"\tag{4}" in content)
+    formula8 = next(content for content in page3_contents if r"\tag{8}" in content)
+    assert formula4.endswith(r"\tag{4}")
+    assert formula8.endswith(r"\tag{8}")
+    assert "\n(4)" not in formula4
+    assert "\n(8)" not in formula8
     assert "Fp =" in formula7
     assert "otherwise" in formula7
     assert not [content for content in page3_contents if content.strip() in {"2", "p", "otherwise", "(7)"}]
@@ -692,12 +694,16 @@ def test_demo3_pages6_7_and10_fix_caption_inline_titles_and_reference_tail() -> 
 
     attention_bias = next(block for block in page7 if block["content"].startswith("Attention Bias Scaling."))
     positional_ids = next(block for block in page7 if block["content"].startswith("Row, Column, & Global Positional IDs."))
-    formula6 = next(block for block in page7 if block["type"] == "equation" and "(6)" in block["content"])
+    formula6 = next(
+        block
+        for block in page7
+        if block["type"] == "equation" and r"\tag{6}" in block["content"]
+    )
     assert attention_bias["type"] == "text"
     assert attention_bias["content"].endswith("attention score by:")
     assert positional_ids["type"] == "text"
     assert "With TAPASBASE" in positional_ids["content"]
-    assert formula6["content"].splitlines()[-1] == "(6)"
+    assert formula6["content"].endswith(r"\tag{6}")
     assert not [
         block
         for block in page7
@@ -743,7 +749,7 @@ def test_demo3_page3_form_image_formulas_titles_and_inline_body_are_whole() -> N
     assert "This example corresponds to table (a)" in caption_blocks[0]["content"]
     assert "associated text." in caption_blocks[0]["content"]
 
-    formula1 = next(block for block in page if "(1)" in block["content"])
+    formula1 = next(block for block in page if r"\tag{1}" in block["content"])
     section3 = next(block for block in page if block["content"].startswith("3 TABLEFORMER:"))
     inline_item = next(block for block in page if block["content"].startswith("2) Per cell positional ids."))
     inline_heading = next(block for block in page if block["content"].startswith("Positional Encoding in TABLEFORMER."))
@@ -768,12 +774,12 @@ def test_demo3_pages4_and5_fix_lists_formula_titles_italics_and_footnotes() -> N
     assert attention_biases["type"] == "text"
     assert "13 bias types" in attention_biases["content"]
 
-    formula3 = next(block for block in page4 if "(3)" in block["content"])
-    formula4 = next(block for block in page4 if "(4)" in block["content"])
+    formula3 = next(block for block in page4 if r"\tag{3}" in block["content"])
+    formula4 = next(block for block in page4 if r"\tag{4}" in block["content"])
     assert formula3["type"] == formula4["type"] == "equation"
     assert formula3 is not formula4
-    assert "A =" in formula3["content"] and "(4)" not in formula3["content"]
-    assert "(3)" not in formula4["content"]
+    assert "A =" in formula3["content"] and r"\tag{4}" not in formula3["content"]
+    assert r"\tag{3}" not in formula4["content"]
 
     relation_blocks = [
         block
@@ -1433,23 +1439,26 @@ def test_npu_numbered_figure_captions_are_independent_annotations() -> None:
 
 
 def test_frozen_soil_page3_formula3_remains_one_equation() -> None:
-    """验证中文论文第三页公式（3）完整归入单个公式块。"""
+    """验证中文论文第三页公式编号完整转为 tag 并归入单个公式块。"""
 
     page = _txt_model_list("中文论文.pdf")[2]
     equations = [block for block in page if block["type"] == "equation"]
-    formula3 = [block for block in equations if "（3）" in str(block.get("content", ""))]
+    formula3 = [block for block in equations if r"\tag{3}" in str(block.get("content", ""))]
 
     assert len(page) == 30
     assert len(equations) == 4
     assert len(formula3) == 1
     assert formula3[0]["bbox"] == [0.653, 0.703, 0.898, 0.751]
-    assert all(probe in str(formula3[0]["content"]) for probe in ("at = 1", "2 ln", "1 - εt", "εt", "（3）"))
+    assert all(
+        probe in str(formula3[0]["content"])
+        for probe in ("at = 1", "2 ln", "1 - εt", "εt", r"\tag{3}")
+    )
     assert not [
         block
         for block in page
         if block["type"] == "text" and any(probe in str(block.get("content", "")) for probe in ("at = 1", "2 ln", "1 - εt"))
     ]
-    for marker in ("（1）", "（2）", "（3）", "（4）"):
+    for marker in (r"\tag{1}", r"\tag{2}", r"\tag{3}", r"\tag{4}"):
         assert sum(marker in str(block.get("content", "")) for block in equations) == 1
 
 
@@ -1679,8 +1688,8 @@ def test_mixed_elements_pages_39_40_force_txt_regressions() -> None:
     equations = [block for block in page40 if block["type"] == "equation"]
 
     assert len(equations) == 3
-    assert sum("(8)" in str(block["content"]) for block in equations) == 1
-    assert sum("(9)" in str(block["content"]) for block in equations) == 1
+    assert sum(r"\tag{8}" in str(block["content"]) for block in equations) == 1
+    assert sum(r"\tag{9}" in str(block["content"]) for block in equations) == 1
     inequality = _blocks_containing(equations, "Mπ(Xn)")
     assert len(inequality) == 1
     assert inequality[0]["type"] == "equation"
