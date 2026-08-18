@@ -22,6 +22,51 @@ from mineru.model.flash.native_pdf import (
 from mineru.utils.pdf_document import PDFDocument, get_lines_from_chars
 
 
+# demo4 第 9 至 11 页中实际跨物理行显示的 URL，用于确保纯正则拼接覆盖全部形态。
+_DEMO4_WRAPPED_URLS = (
+    "https://doi.org/10.1007/s00259-025-07388-8",
+    "https://doi.org/10.37921/690910twdfoo",
+    "https://www.cancerimagingarchive.net/collection/acrin-nsclc-fdg-pet/",
+    "http://creativecommons.org/licenses/by/4.0/",
+    "https://doi.org/10.3322/caac.21660",
+    "https://doi.org/10.1016/j.mayocp.2019.01.013",
+    "https://doi.org/10.1016/j.jiph.2012.09.003",
+    "https://doi.org/10.1016/s0140-6736(02)08352-6",
+    "https://doi.org/10.1016/s0140-6736(02)08388-5",
+    "https://doi.org/10.1378/chest.123.1_suppl.137s",
+    "https://doi.org/10.1016/j.ejrad.2009.01.036",
+    "https://doi.org/10.2214/ajr.16.16532",
+    "https://doi.org/10.1200/jco.2012.47.5947",
+    "https://doi.org/10.1007/s00259-022-05832-7",
+    "https://doi.org/10.1016/j.radonc.2022.04.003",
+    "https://doi.org/10.1016/j.crad.2015.03.010",
+    "https://doi.org/10.3390/ijms22084120",
+    "https://doi.org/10.1016/j.bone.2015.05.046",
+    "https://doi.org/10.1016/j.cell.2007.05.047",
+    "https://doi.org/10.1016/j.cell.2010.06.003",
+    "https://doi.org/10.1038/s41577-019-0178-8",
+    "https://doi.org/10.3389/fmed.2021.740615",
+    "https://doi.org/10.1038/s41467-020-16878-2",
+    "https://doi.org/10.1186/s12957-018-1439-x",
+    "https://doi.org/10.1097/mnm.0000000000000483",
+    "https://doi.org/10.1080/00031305.1992.10475879",
+    "https://doi.org/10.3389/fmed.2025.1597844",
+    "https://doi.org/10.1109/tpami.2024.3400281",
+    "https://doi.org/10.3389/fonc.2022.922465",
+    "https://doi.org/10.1002/acn3.121",
+    "https://doi.org/10.36660/abc.20210463",
+    "https://doi.org/10.18632/oncotarget.11816",
+    "https://doi.org/10.1007/s00259-023-06192-6",
+    "https://doi.org/10.2215/cjn.04151206",
+    "https://doi.org/10.1038/s41593-018-0213-2",
+    "https://doi.org/10.1038/s41698-022-00286-4",
+    "https://doi.org/10.1016/j.bone.2022.116540",
+    "https://doi.org/10.3389/fimmu.2023.1222129",
+    "https://doi.org/10.5483/bmbrep.2008.41.7.495",
+    "https://doi.org/10.1016/j.xjon.2022.09.001",
+)
+
+
 def _native_model_list(pdf_name: str) -> list[list[dict[str, Any]]]:
     """运行仓库内数字 PDF 样例并返回 Flash 原生模型输出。"""
 
@@ -822,6 +867,9 @@ def test_demo4_nct00083083_targeted_flash_regressions() -> None:
     """验证 demo4 的跨栏图注、页眉脚注、续行、公式否决和参考文献分组。"""
 
     model_list = _native_model_list("demo4.pdf")
+    all_content = "\n".join(str(block.get("content", "")) for page in model_list for block in page)
+    assert len(_DEMO4_WRAPPED_URLS) == 40
+    assert not [url for url in _DEMO4_WRAPPED_URLS if url not in all_content]
 
     page1 = model_list[0]
     assert any(block["type"] == "header" and "07388-8" in str(block["content"]) for block in page1)
@@ -1425,7 +1473,7 @@ def test_iebm_left_indented_compact_formula_is_equation() -> None:
 
 
 def test_npu_numbered_figure_captions_are_independent_annotations() -> None:
-    """验证 NPU 指南十四个编号图注独立输出，且不产生视觉脚注误报。"""
+    """验证 NPU 图注稳定、跨行 URL 连续，且多条独立 URL 不会相连。"""
 
     model_list = _txt_model_list("NPU_开发环境部署_参考指南.pdf")
     expected_counts = {6: 1, 7: 1, 14: 2, 15: 2, 16: 2, 17: 1, 18: 1, 19: 2, 20: 2}
@@ -1436,6 +1484,22 @@ def test_npu_numbered_figure_captions_are_independent_annotations() -> None:
     assert sum(block["type"] == "caption" for page in model_list for block in page) == 14
     assert all(str(block["content"]).startswith("图 ") for page in model_list for block in page if block["type"] == "caption")
     assert not [block for page in model_list for block in page if block["type"] == "footnote"]
+
+    docker_url = "https://download.docker.com/linux/ubuntu/dists/"
+    assert any(docker_url in str(block.get("content", "")) for block in model_list[8])
+
+    reference_urls = [
+        "https://blog.csdn.net/hzgnet2021/article/details/134925349",
+        "https://blog.csdn.net/NuOne_plus/article/details/120330419",
+        "https://blog.csdn.net/qq_38567039/article/details/124848621",
+    ]
+    reference_block = next(
+        str(block.get("content", ""))
+        for block in model_list[21]
+        if reference_urls[0] in str(block.get("content", ""))
+    )
+    assert " ".join(reference_urls) in reference_block
+    assert not any(first + second in reference_block for first, second in zip(reference_urls, reference_urls[1:]))
 
 
 def test_frozen_soil_page3_formula3_remains_one_equation() -> None:

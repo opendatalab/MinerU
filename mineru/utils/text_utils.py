@@ -11,13 +11,16 @@ CJK_LANGS = frozenset({"zh", "ja", "ko"})
 LINE_END_HYPHEN_CHARS = "-\u00ad\u2010\u2011\u2043"
 LINE_END_HYPHEN_RE = re.compile(rf"[A-Za-z]+[{re.escape(LINE_END_HYPHEN_CHARS)}]\s*$")
 
-# 仅识别带协议或 www 前缀、且一直延伸到行末的 URL token，避免普通西文误判为链接。
-_URL_TOKEN_AT_LINE_END_RE = re.compile(
-    r"(?<![A-Za-z0-9])(?:(?:https?|ftp)://|www\.)[^\s<>]+$",
-    re.IGNORECASE,
+# URL 候选仅允许 RFC 3986 常见 ASCII 字符，避免把中文正文吞入链接。
+_URL_CANDIDATE_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?:(?:https?|ftp)://|www\.)[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+",
+    re.ASCII | re.IGNORECASE,
 )
-# 这些结构字符出现在下一物理行行首时，可以保守地判定为上一行 URL 的延续。
-_URL_CONTINUATION_PREFIX_CHARS = frozenset("/?#&=")
+# 下一行自身以完整 URL 开头时，必须保留边界，避免两条独立链接相连。
+_URL_AT_LINE_START_RE = re.compile(
+    r"(?:(?:https?|ftp)://|www\.)",
+    re.ASCII | re.IGNORECASE,
+)
 
 
 def is_hyphen_at_line_end(line: str) -> bool:
@@ -28,14 +31,15 @@ def is_hyphen_at_line_end(line: str) -> bool:
     return bool(LINE_END_HYPHEN_RE.search(line))
 
 
-def _is_url_line_continuation(previous_content: str, next_content: str) -> bool:
-    """判断下一物理行是否以明确的 URL 结构字符延续上一行末尾链接。"""
+def _url_spans_line_boundary(previous_content: str, next_content: str) -> bool:
+    """判断无空格候选中是否存在严格横跨当前物理行边界的 URL。"""
+    stripped_previous = previous_content.rstrip()
     stripped_next = next_content.lstrip()
-    return bool(
-        stripped_next
-        and stripped_next[0] in _URL_CONTINUATION_PREFIX_CHARS
-        and _URL_TOKEN_AT_LINE_END_RE.search(previous_content)
-    )
+    if not stripped_previous or not stripped_next:
+        return False
+    candidate = f"{stripped_previous}{stripped_next}"
+    boundary = len(stripped_previous)
+    return any(match.start() < boundary < match.end() for match in _URL_CANDIDATE_RE.finditer(candidate))
 
 
 def resolve_text_line_boundary(
@@ -46,20 +50,23 @@ def resolve_text_line_boundary(
 ) -> tuple[str, str]:
     """返回处理后的上一行内容和本次物理行边界分隔符。
 
-    CJK 文本直接连接物理行；明确的 URL 结构延续也直接连接；普通西文行插入
-    一个空格。西文行末如果是合法的 hyphen，则始终直接连接下一行，并仅在
-    下一行以小写字母开头时删除 hyphen。
+    严格横跨边界的 URL 候选直接连接，但下一行自身为完整 URL 时保留空格。
+    其余 CJK 文本直接连接物理行，普通西文行插入一个空格。西文行末如果是
+    合法的 hyphen，则始终直接连接下一行，并仅在下一行以小写字母开头时删除
+    hyphen。
     """
     processed_content = previous_content.rstrip()
     if not processed_content:
         return "", ""
-    if block_language in CJK_LANGS:
+    stripped_next = next_content.lstrip()
+    if _url_spans_line_boundary(processed_content, stripped_next):
+        if _URL_AT_LINE_START_RE.match(stripped_next):
+            return processed_content, " "
         return processed_content, ""
-    if _is_url_line_continuation(processed_content, next_content):
+    if block_language in CJK_LANGS:
         return processed_content, ""
     if not is_hyphen_at_line_end(processed_content):
         return processed_content, " "
-    stripped_next = next_content.lstrip()
     if stripped_next and stripped_next[0].islower():
         return processed_content[:-1], ""
     return processed_content, ""

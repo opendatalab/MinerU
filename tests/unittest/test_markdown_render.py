@@ -140,6 +140,27 @@ def test_text_continuation_handles_hyphen_and_cjk_boundaries() -> None:
     assert render_markdown(cjk) == "中文继续"
 
 
+def test_text_continuation_joins_url_candidates_but_separates_independent_urls() -> None:
+    """验证 Markdown 续写连接跨块 URL，同时保留两条独立 URL 的分隔。"""
+    continued_url = _middle(
+        _page(
+            0,
+            TextBlock(type="text", index=0, content="See https://doi.o"),
+            TextBlock(type="text", index=1, content="rg/10.1016/example", continues_prev=True),
+        )
+    )
+    independent_urls = _middle(
+        _page(
+            0,
+            TextBlock(type="text", index=0, content="https://example.test/first"),
+            TextBlock(type="text", index=1, content="https://example.test/second", continues_prev=True),
+        )
+    )
+
+    assert render_markdown(continued_url) == "See https://doi.org/10.1016/example"
+    assert render_markdown(independent_urls) == "https://example.test/first https://example.test/second"
+
+
 def test_text_continuation_does_not_rewrite_formula_or_style_wrappers() -> None:
     """验证续写边界不会越过末尾公式或破坏样式节点。"""
     formula = _middle(
