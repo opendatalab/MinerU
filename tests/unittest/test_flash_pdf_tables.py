@@ -272,6 +272,88 @@ def test_filled_grid_materialization_uses_existing_spatial_projection(
             "content": "inside-left   inside-right",
         }
     ]
+    assert projection.call_args.args[0] is source.chars
+
+
+def test_table_materialization_preserves_raw_page_line_breaks() -> None:
+    """验证短末列与下一行轻微重叠时使用原始换行，禁止跨行拼接。"""
+
+    def build_chars(
+        text: str,
+        left: float,
+        top: float,
+        start_index: int,
+    ) -> list[dict[str, object]]:
+        """构造带稳定字符序号和紧凑字符框的空间投影测试字符。"""
+
+        return [
+            {
+                "char": char,
+                "bbox": (
+                    left + 2.0 * offset,
+                    top,
+                    left + 2.0 * (offset + 1),
+                    top + 10.0,
+                ),
+                "char_idx": start_index + offset,
+            }
+            for offset, char in enumerate(text)
+        ]
+
+    error_chars = build_chars("6.20", 80.0, 10.0, 0)
+    method_chars = build_chars("CostFilter [10]", 10.0, 19.8, 6)
+    source = models._PageSource(
+        page_size=(100.0, 40.0),
+        lines=[
+            models._LineItem(
+                text="6.20",
+                bbox=(80.0, 10.0, 88.0, 20.0),
+                angle=0,
+                source_index=0,
+                chars=error_chars,
+                effective_height=10.0,
+                visual_row_id=0,
+            ),
+            models._LineItem(
+                text="CostFilter [10]",
+                bbox=(10.0, 19.8, 40.0, 29.8),
+                angle=0,
+                source_index=1,
+                chars=method_chars,
+                effective_height=10.0,
+                visual_row_id=1,
+            ),
+        ],
+        chars=[
+            *error_chars,
+            {"char": "\r", "bbox": (88.0, 18.0, 88.0, 18.0), "char_idx": 4},
+            {"char": "\n", "bbox": (88.0, 18.0, 88.0, 18.0), "char_idx": 5},
+            *method_chars,
+        ],
+        drawing_lines=[],
+    )
+    candidate = models._TableCandidate(
+        bbox=(0.0, 0.0, 100.0, 40.0),
+        local_bbox=(0.0, 0.0, 100.0, 40.0),
+        angle=0,
+        score=1.0,
+        core_bbox=(0.0, 0.0, 100.0, 40.0),
+        line_indices={0, 1},
+    )
+
+    blocks, annotation_blocks, claimed = tables._materialize_table_blocks(
+        source,
+        [candidate],
+    )
+
+    assert annotation_blocks == []
+    assert claimed == {0, 1}
+    assert len(blocks) == 1
+    assert blocks[0]["content"].splitlines() == [
+        "                                   6.20",
+        "CostFilter [10]",
+    ]
+    assert "6.20CostFilter" not in blocks[0]["content"]
 
 
 def test_table_core_reclaims_semantic_line_without_touching_outer_marginals(
@@ -337,6 +419,7 @@ def test_table_core_reclaims_semantic_line_without_touching_outer_marginals(
     assert len(blocks) == 1
     assert annotation_blocks == []
     assert claimed == {0, 1}
+    assert projection.call_args.args[0] is source.chars
     assert {line.source_index for line in lines if line.source_index not in claimed} == {
         2,
         3,
@@ -1240,6 +1323,7 @@ def test_materialize_table_externalizes_multiline_annotations_once(
         and len(block["_line_heights"]) == 2
         for block in annotation_blocks
     )
+    assert projection.call_args.args[0] is source.chars
     assert projection.call_args.args[1] == (10.0, 30.0, 90.0, 60.0)
     assert claimed == {0, 1, 2, 3, 4}
 
@@ -1284,6 +1368,7 @@ def test_invalid_table_annotation_falls_back_to_full_table_projection(
 
     assert annotation_blocks == []
     assert table_blocks[0]["bbox"] == candidate.bbox
+    assert projection.call_args.args[0] is source.chars
     assert projection.call_args.args[1] == candidate.bbox
     assert claimed == {0, 1}
 
@@ -1785,3 +1870,4 @@ def test_failed_table_projection_does_not_claim_text(
     assert blocks == []
     assert annotation_blocks == []
     assert claimed == set()
+    assert projection.call_args.args[0] is source.chars

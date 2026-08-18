@@ -457,6 +457,27 @@ def test_demo2_table_captions_and_numeric_footnotes_are_independent_blocks() -> 
     assert "To enable propagation" not in page4_table["content"]
     assert "Table II:" not in page5_table["content"]
     assert "Millions of Disparity" not in page5_table["content"]
+    expected_table2_rows = [
+        ("Method", "GPU", "MDE/s1", "FPS2", "Error3"),
+        ("Our Method", "GeForce GTX 680", "215.7", "90", "6.20"),
+        ("CostFilter [10]", "GeForce GTX 480", "57.9", "24", "5.55"),
+        ("FastBilateral [7]", "Tesla C2070", "50.6", "21", "7.31"),
+        ("RealtimeBFV [8]", "GeForce 8800 GTX", "114.3", "46", "7.65"),
+        ("RealtimeBP [21]", "GeForce 7900 GTX", "20.9", "8", "7.69"),
+        ("ESAW [6]", "GeForce 8800 GTX", "194.8", "79", "8.21"),
+        ("RealTimeGPU [5]", "Radeon XL1800", "52.8", "21", "9.82"),
+        ("DCBGrid [19]", "Quadro FX 5800", "25.1", "10", "10.90"),
+    ]
+    table2_lines = page5_table["content"].splitlines()
+    assert len(table2_lines) == len(expected_table2_rows)
+    for line, expected_cells in zip(
+        table2_lines,
+        expected_table2_rows,
+        strict=True,
+    ):
+        cell_offsets = [line.index(cell) for cell in expected_cells]
+        assert cell_offsets == sorted(cell_offsets)
+    assert "6.20CostFilter [10]" not in page5_table["content"]
     assert "ral stereo matching." not in residual_text
     assert "Millions of Disparity Estimates per Second." not in residual_text
     assert [page4_caption["bbox"], page4_table["bbox"], page4_footnote["bbox"]] == [

@@ -2034,11 +2034,9 @@ def _materialize_table_blocks(
             failed_annotations,
         )
         try:
-            candidate_chars = [
-                char for line in source.lines if line.source_index in projection_line_indices for char in line.chars
-            ]
+            # 使用完整原始字符流保留 PDF 物理换行；行索引仅负责表体与注释的所有权认领。
             content = project_pdf_table_text(
-                candidate_chars,
+                source.chars,
                 body_bbox,
                 angle=candidate.angle,
             )
