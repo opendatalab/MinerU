@@ -49,7 +49,7 @@ text 合并允许跨越任意其他 block，后一个 text 的内容被吸收到
 - `list`: 递归缩进，直接使用 content 已内化的有序或无序前缀。
 - `index`: 递归输出 GFM 列表；标题叶子使用 anchor 生成内部链接，不当作 heading 输出。
 - `equation`: content 非空时输出行间 LaTeX，空 content 回退图片。
-- `image/chart`: 图片优先，识别内容放入折叠 details；无图片时输出已有 HTML/GFM 内容。
+- `image/chart`: 图片优先，识别内容放入折叠 details；chart 的简单 HTML 表格转为 GFM，复杂表格保留 HTML，无图片时直接输出转换后的内容。
 - `table`: 简单单层 HTML 转 GFM；合并单元格或不可无损结构保留 HTML；空间投影文本使用动态 fenced block；空 content 回退图片。
 - `code`: 使用 `guess_lang` 和动态 fenced block。
 - `algorithm`: 使用等宽、`white-space: pre-wrap` 的 HTML div，只把 `<eq>` 转为行内公式。
@@ -61,6 +61,8 @@ text 合并允许跨越任意其他 block，后一个 text 的内容被吸收到
 行内 parser 只解释白名单标签，包括 `<eq>`、`<text style>`、
 `<hyperlink>/<url>`、`<sup>/<sub>`。未知或损坏标签作为普通文本转义保留。
 普通字体样式使用 Markdown；underline、emphasis、上下标和复杂组合使用安全 HTML。
+underline/strikethrough 包裹的 ASCII 空格按 dev 规则转为 `_`/`-` marker；
+整块 marker 会转义首字符，避免被识别为 Markdown 分割线。
 
 LaTeX 定界符来自 `$MINERU_HOME/config.yaml`:
 

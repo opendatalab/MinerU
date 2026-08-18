@@ -42,3 +42,10 @@ def escape_text_block_markdown_prefix(content: str) -> str:
 
     marker_start = match.start("marker")
     return f"{content[:marker_start]}\\{content[marker_start:]}"
+
+
+def escape_standalone_marker_rule(content: str) -> str:
+    """转义独立的下划线或短横线序列，避免被 Markdown 识别为分割线。"""
+    if content and (set(content) == {"_"} or set(content) == {"-"}):
+        return f"\\{content}"
+    return content

@@ -188,7 +188,61 @@ def test_inline_rich_text_unknown_tags_and_visible_spaces() -> None:
     assert "<local_dir>" in rendered
     assert "p <0.05 and x > 0" in rendered
     assert "<sup>2</sup>" in rendered
-    assert "<u>&nbsp;&nbsp;</u>" in rendered
+    assert rendered.endswith("<sup>2</sup>__")
+
+
+@pytest.mark.parametrize(
+    ("style", "expected"),
+    [
+        ("underline", "A___B"),
+        ("strikethrough", "A---B"),
+        ("underline,strikethrough", "A<s>___</s>B"),
+        ("bold,underline", "A<strong>___</strong>B"),
+    ],
+)
+def test_visible_style_ascii_spaces_use_dev_markers(style: str, expected: str) -> None:
+    """验证纯 ASCII 样式空格使用 dev 的下划线或短横线 marker。"""
+    content = f'A<text style="{style}">   </text>B'
+
+    assert render_markdown(_middle(_page(0, TextBlock(type="text", index=0, content=content)))) == expected
+
+
+@pytest.mark.parametrize(
+    ("style", "expected"),
+    [
+        ("underline", "<u>___广东__</u>"),
+        ("strikethrough", "~~---广东--~~"),
+        ("underline,strikethrough", "<s><u>___广东__</u></s>"),
+    ],
+)
+def test_visible_style_edge_spaces_use_dev_markers(style: str, expected: str) -> None:
+    """验证非空样式文本只替换首尾 ASCII 空格。"""
+    content = f'<text style="{style}">   广东  </text>'
+
+    assert render_markdown(_middle(_page(0, TextBlock(type="text", index=0, content=content)))) == expected
+
+
+@pytest.mark.parametrize(
+    ("style", "expected"),
+    [
+        ("underline", r"\___"),
+        ("strikethrough", r"\---"),
+    ],
+)
+def test_standalone_visible_space_markers_are_escaped(style: str, expected: str) -> None:
+    """验证整块 marker 会转义首字符，避免被当作 Markdown 分割线。"""
+    content = f'<text style="{style}">   </text>'
+
+    assert render_markdown(_middle(_page(0, TextBlock(type="text", index=0, content=content)))) == expected
+
+
+def test_emphasis_only_spaces_keep_existing_html_behavior() -> None:
+    """验证 emphasis-only 空格不进入 underline/strikethrough marker 规则。"""
+    content = '<text style="emphasis">  </text>'
+
+    rendered = render_markdown(_middle(_page(0, TextBlock(type="text", index=0, content=content))))
+
+    assert "&nbsp;&nbsp;" in rendered
 
 
 def test_text_block_escapes_markdown_prefix_and_malformed_tag() -> None:
@@ -411,6 +465,66 @@ def test_chart_without_image_outputs_existing_gfm_content() -> None:
     )
 
     assert render_markdown(_middle(_page(0, chart))) == "| A |\n| --- |\n| 1 |"
+
+
+def test_chart_without_image_converts_simple_html_table_to_gfm() -> None:
+    """验证无图片 chart 的简单 HTML table 直接转换为 GFM。"""
+    chart = ChartBlock(
+        type="chart",
+        index=0,
+        content=[
+            ChartBodyBlock(
+                type="chart_body",
+                index=0,
+                content="<table><tr><th>A</th></tr><tr><td>1</td></tr></table>",
+            )
+        ],
+    )
+
+    assert render_markdown(_middle(_page(0, chart))) == "| A |\n| --- |\n| 1 |"
+
+
+def test_chart_with_image_places_converted_gfm_in_details() -> None:
+    """验证有图片 chart 保留图片，并把简单表格 GFM 放入 details。"""
+    chart = ChartBlock(
+        type="chart",
+        index=0,
+        sub_type="line chart",
+        content=[
+            ChartBodyBlock(
+                type="chart_body",
+                index=0,
+                content="<table><tr><th>A</th></tr><tr><td>1</td></tr></table>",
+                image_path="images/chart.png",
+            )
+        ],
+    )
+
+    rendered = render_markdown(_middle(_page(0, chart)))
+
+    assert rendered.startswith("![](images/chart.png)\n\n<details>")
+    assert "| A |\n| --- |\n| 1 |" in rendered
+    assert "<table>" not in rendered
+
+
+def test_chart_complex_html_table_remains_html() -> None:
+    """验证 chart 的复杂 HTML table 不会被有损转换为 GFM。"""
+    chart = ChartBlock(
+        type="chart",
+        index=0,
+        content=[
+            ChartBodyBlock(
+                type="chart_body",
+                index=0,
+                content='<table><tr><td colspan="2">A</td></tr></table>',
+            )
+        ],
+    )
+
+    rendered = render_markdown(_middle(_page(0, chart)))
+
+    assert rendered.startswith("<table>")
+    assert 'colspan="2"' in rendered
 
 
 def test_direct_base64_image_fallback() -> None:

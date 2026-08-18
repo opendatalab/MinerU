@@ -302,10 +302,69 @@ def _apply_styles(content: str, plain_text: str, styles: tuple[str, ...]) -> str
     """按样式复杂度选择 Markdown wrapper 或安全 HTML 标签。"""
     if not content or not styles:
         return content
+    marker = _get_visible_space_marker(styles)
+    if marker is not None:
+        rendered_markers = _render_visible_space_marker_text(content, plain_text, styles, marker)
+        if rendered_markers is not None:
+            return rendered_markers
     if plain_text and not plain_text.strip() and any(
         style in styles for style in ("underline", "strikethrough", "emphasis")
     ):
         return _render_visible_whitespace(plain_text, styles)
+
+    return _apply_style_wrappers(content, styles)
+
+
+def _get_visible_space_marker(styles: tuple[str, ...]) -> str | None:
+    """按 dev 规则选择可见空格 marker，下划线优先于删除线。"""
+    if "underline" in styles:
+        return "_"
+    if "strikethrough" in styles:
+        return "-"
+    return None
+
+
+def _render_visible_space_marker_text(
+    content: str,
+    plain_text: str,
+    styles: tuple[str, ...],
+    marker: str,
+) -> str | None:
+    """把纯 ASCII 空格或非空文本首尾空格转换为可见 marker。"""
+    if not plain_text:
+        return None
+    style_key = frozenset(styles)
+    force_html = style_key not in _SIMPLE_STYLE_WRAPPERS
+    if all(char == " " for char in plain_text):
+        ignored_style = "underline" if marker == "_" else "strikethrough"
+        remaining_styles = tuple(style for style in styles if style != ignored_style)
+        return _apply_style_wrappers(
+            marker * len(plain_text),
+            remaining_styles,
+            force_html=force_html,
+        )
+
+    leading_count = len(plain_text) - len(plain_text.lstrip(" "))
+    trailing_count = len(plain_text) - len(plain_text.rstrip(" "))
+    if leading_count == 0 and trailing_count == 0:
+        return None
+    if not content.startswith(" " * leading_count) or not content.endswith(" " * trailing_count):
+        return None
+    content_end = len(content) - trailing_count if trailing_count else len(content)
+    core = content[leading_count:content_end]
+    rendered = f"{marker * leading_count}{core}{marker * trailing_count}"
+    return _apply_style_wrappers(rendered, styles, force_html=force_html)
+
+
+def _apply_style_wrappers(
+    content: str,
+    styles: tuple[str, ...],
+    *,
+    force_html: bool = False,
+) -> str:
+    """给已处理空格的内容添加 Markdown 或 HTML 样式 wrapper。"""
+    if not content or not styles:
+        return content
 
     leading = content[: len(content) - len(content.lstrip(" \t"))]
     trailing = content[len(content.rstrip(" \t")) :]
@@ -315,13 +374,13 @@ def _apply_styles(content: str, plain_text: str, styles: tuple[str, ...]) -> str
 
     style_key = frozenset(styles)
     wrapper = _SIMPLE_STYLE_WRAPPERS.get(style_key)
-    if wrapper is not None:
+    if wrapper is not None and not force_html:
         return f"{leading}{wrapper}{core}{wrapper}{trailing}"
     return f"{leading}{_apply_html_styles(core, styles)}{trailing}"
 
 
 def _render_visible_whitespace(content: str, styles: tuple[str, ...]) -> str:
-    """使用不换行空格保留带可见样式的纯空白。"""
+    """使用原 HTML 规则保留非 ASCII marker 场景的可见空白。"""
     visible = "".join("<br>" if char == "\n" else "&nbsp;" for char in content.expandtabs(4))
     return _apply_html_styles(visible, styles)
 

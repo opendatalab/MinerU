@@ -17,7 +17,7 @@ from mineru.render.utils.inline import (
 )
 from mineru.render.utils.logical_blocks import MarkdownRenderMode, PlannedBlock, build_render_plan
 from mineru.render.utils.markdown_table import format_embedded_html, render_html_table
-from mineru.render.utils.markdown_utils import escape_text_block_markdown_prefix
+from mineru.render.utils.markdown_utils import escape_standalone_marker_rule, escape_text_block_markdown_prefix
 from mineru.types import (
     RAW_ALGORITHM,
     BlockType,
@@ -118,13 +118,14 @@ def _render_planned_block(
     block = planned.block
     if isinstance(block, TextBlock):
         content = render_joined_inline_contents(planned.text_contents or [block.content], delimiters)
-        return escape_text_block_markdown_prefix(content)
+        return escape_standalone_marker_rule(escape_text_block_markdown_prefix(content))
     if isinstance(block, RefTextBlock):
-        return render_inline_content(block.content, delimiters)
+        return escape_standalone_marker_rule(render_inline_content(block.content, delimiters))
     if isinstance(block, (DocTitleBlock, ParagraphTitleBlock)):
         return _render_title(block, delimiters)
     if isinstance(block, PageAuxTextBlock):
-        return escape_text_block_markdown_prefix(render_inline_content(block.content, delimiters))
+        content = escape_text_block_markdown_prefix(render_inline_content(block.content, delimiters))
+        return escape_standalone_marker_rule(content)
     if isinstance(block, EquationBlock):
         return _render_equation(block, delimiters, asset_base_url)
     if isinstance(block, ListBlock):
@@ -180,6 +181,7 @@ def _render_list(block: ListBlock, delimiters: LatexDelimitersConfig, depth: int
         item = render_inline_content(child.content, delimiters)
         if not item:
             continue
+        item = escape_standalone_marker_rule(item)
         indent = "    " * depth
         lines.extend(f"{indent}{line}" for line in item.splitlines() or [item])
     return "\n".join(lines)
@@ -238,7 +240,7 @@ def _render_image_block(
                 asset_base_url=asset_base_url,
             )
         elif isinstance(child, ImageAnnotationBlock):
-            body = render_inline_content(child.content, delimiters)
+            body = escape_standalone_marker_rule(render_inline_content(child.content, delimiters))
         else:
             raise TypeError(f"Unsupported image child: {type(child).__name__}")
         if body:
@@ -255,14 +257,14 @@ def _render_chart_block(
     parts: list[str] = []
     for child in block.content:
         if isinstance(child, ChartBodyBlock):
-            body = _render_media_body(
+            body = _render_chart_body(
                 child,
                 summary=block.sub_type or "chart content",
                 delimiters=delimiters,
                 asset_base_url=asset_base_url,
             )
         elif isinstance(child, ChartAnnotationBlock):
-            body = render_inline_content(child.content, delimiters)
+            body = escape_standalone_marker_rule(render_inline_content(child.content, delimiters))
         else:
             raise TypeError(f"Unsupported chart child: {type(child).__name__}")
         if body:
@@ -271,7 +273,7 @@ def _render_chart_block(
 
 
 def _render_media_body(
-    block: ImageBodyBlock | ChartBodyBlock,
+    block: ImageBodyBlock,
     *,
     summary: str,
     delimiters: LatexDelimitersConfig,
@@ -283,23 +285,59 @@ def _render_media_body(
     if source:
         parts = [build_markdown_image(source)]
         if content:
-            parts.append(_render_details(content, summary, delimiters, asset_base_url))
+            normalized = format_embedded_html(
+                content,
+                asset_base_url=asset_base_url,
+                delimiters=delimiters,
+            )
+            parts.append(_render_details(normalized, summary))
         return "\n\n".join(part for part in parts if part)
     if not content:
         return ""
     return format_embedded_html(content, asset_base_url=asset_base_url, delimiters=delimiters)
 
 
-def _render_details(
-    content: str,
+def _render_chart_body(
+    block: ChartBodyBlock,
+    *,
     summary: str,
     delimiters: LatexDelimitersConfig,
     asset_base_url: str,
 ) -> str:
-    """构造保留视觉识别内容的折叠 HTML 详情块。"""
-    normalized = format_embedded_html(content.strip(), asset_base_url=asset_base_url, delimiters=delimiters)
+    """渲染 chart 图片，并统一转换其 HTML 表格内容。"""
+    source = resolve_image_source(block, asset_base_url)
+    rendered_content = _render_chart_content(block.content, delimiters, asset_base_url)
+    if source:
+        parts = [build_markdown_image(source)]
+        if rendered_content:
+            parts.append(_render_details(rendered_content, summary))
+        return "\n\n".join(part for part in parts if part)
+    return rendered_content
+
+
+def _render_chart_content(
+    content: str,
+    delimiters: LatexDelimitersConfig,
+    asset_base_url: str,
+) -> str:
+    """把 chart 内容中的简单 HTML 表格转为 GFM，其他内容保持原表示。"""
+    normalized = content.strip()
+    if not normalized:
+        return ""
+    html_table = render_html_table(
+        normalized,
+        asset_base_url=asset_base_url,
+        delimiters=delimiters,
+    )
+    if html_table is not None:
+        return html_table
+    return format_embedded_html(normalized, asset_base_url=asset_base_url, delimiters=delimiters)
+
+
+def _render_details(content: str, summary: str) -> str:
+    """构造保留已渲染视觉内容的折叠 HTML 详情块。"""
     safe_summary = html.escape(summary, quote=False)
-    return f"<details>\n<summary>{safe_summary}</summary>\n\n{normalized}\n</details>"
+    return f"<details>\n<summary>{safe_summary}</summary>\n\n{content.strip()}\n</details>"
 
 
 def _render_table_block(
@@ -313,7 +351,7 @@ def _render_table_block(
         if isinstance(child, TableBodyBlock):
             body = _render_table_body(child, delimiters, asset_base_url)
         elif isinstance(child, TableAnnotationBlock):
-            body = render_inline_content(child.content, delimiters)
+            body = escape_standalone_marker_rule(render_inline_content(child.content, delimiters))
         else:
             raise TypeError(f"Unsupported table child: {type(child).__name__}")
         if body:
@@ -352,7 +390,7 @@ def _render_code_block(block: CodeBlock, delimiters: LatexDelimitersConfig) -> s
             else:
                 raise ValueError(f"Unsupported code subtype: {block.sub_type}")
         elif isinstance(child, CodeAnnotationBlock):
-            body = render_inline_content(child.content, delimiters)
+            body = escape_standalone_marker_rule(render_inline_content(child.content, delimiters))
         else:
             raise TypeError(f"Unsupported code child: {type(child).__name__}")
         if body:
