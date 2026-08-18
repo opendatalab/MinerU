@@ -41,6 +41,101 @@ def _horizontal_pair() -> tuple[dict, dict]:
     return previous_block, current_block
 
 
+def _horizontal_multiline_block(
+    index: int,
+    content: str,
+    *,
+    left: float,
+    right: float,
+    top: float,
+    line_count: int = 5,
+    line_height: float = 0.04,
+    first_indent: float = 0.0,
+) -> dict:
+    """构造可控制首行缩进的横排多行正文块。"""
+    line_bboxes = [
+        [
+            left + (first_indent if line_index == 0 else 0.0),
+            top + line_index * line_height,
+            right,
+            top + (line_index + 1) * line_height,
+        ]
+        for line_index in range(line_count)
+    ]
+    return _text_block(
+        index,
+        content,
+        [min(line[0] for line in line_bboxes), top, right, top + line_count * line_height],
+        line_bboxes,
+    )
+
+
+def _horizontal_single_line_block(
+    index: int,
+    content: str,
+    *,
+    left: float,
+    right: float,
+    top: float,
+    line_height: float = 0.04,
+) -> dict:
+    """构造需要使用后续行补足虚拟宽度的横排单行块。"""
+    return _text_block(
+        index,
+        content,
+        [left, top, right, top + line_height],
+        [[left, top, right, top + line_height]],
+    )
+
+
+def _vertical_multicolumn_block(
+    index: int,
+    content: str,
+    *,
+    right: float,
+    top: float,
+    bottom: float,
+    column_count: int = 5,
+    column_width: float = 0.04,
+    column_gap: float = 0.02,
+    first_top_indent: float = 0.0,
+) -> dict:
+    """构造从右向左排列且可控制首列上边界的竖排多列正文块。"""
+    column_bboxes = [
+        [
+            right - column_width - column_index * (column_width + column_gap),
+            top + (first_top_indent if column_index == 0 else 0.0),
+            right - column_index * (column_width + column_gap),
+            bottom,
+        ]
+        for column_index in range(column_count)
+    ]
+    return _text_block(
+        index,
+        content,
+        [min(column[0] for column in column_bboxes), top, right, bottom],
+        column_bboxes,
+    )
+
+
+def _vertical_single_column_block(
+    index: int,
+    content: str,
+    *,
+    left: float,
+    right: float,
+    top: float,
+    bottom: float,
+) -> dict:
+    """构造需要使用后续列补足虚拟高度的竖排单列块。"""
+    return _text_block(
+        index,
+        content,
+        [left, top, right, bottom],
+        [[left, top, right, bottom]],
+    )
+
+
 def _vertical_pair() -> tuple[dict, dict]:
     """构造一组满足竖排段落延续规则的前后 text block。"""
     previous_block = _text_block(
@@ -201,6 +296,316 @@ def test_merge_para_text_blocks_keeps_cross_page_semantic_barriers(barrier_type:
                 current_block,
             ],
         },
+    ]
+
+    merge_para_text_blocks(pages)
+
+    assert "continues_prev" not in current_block
+
+
+def test_merge_para_text_blocks_uses_following_lines_for_horizontal_single_line_width() -> None:
+    """验证横排单行会忽略缩进首行并使用其余四行补足虚拟栏宽。"""
+    previous_block = _horizontal_multiline_block(
+        0,
+        "unfinished",
+        left=0.1,
+        right=0.45,
+        top=0.5,
+        line_count=4,
+    )
+    current_block = _horizontal_single_line_block(1, "tail.", left=0.55, right=0.67, top=0.1)
+    following_block = _horizontal_multiline_block(
+        2,
+        "following paragraph.",
+        left=0.55,
+        right=0.9,
+        top=0.2,
+        first_indent=0.08,
+    )
+    pages = [{"page_idx": 0, "blocks": [previous_block, current_block, following_block]}]
+
+    merge_para_text_blocks(pages)
+
+    assert current_block["continues_prev"] is True
+
+
+def test_merge_para_text_blocks_uses_next_page_lines_for_horizontal_single_line_width() -> None:
+    """验证横排跨页单行使用当前页后续五行补足宽度而不依赖栏位数量。"""
+    previous_block = _horizontal_multiline_block(
+        0,
+        "unfinished",
+        left=0.55,
+        right=0.9,
+        top=0.5,
+        line_count=4,
+    )
+    current_block = _horizontal_single_line_block(0, "tail.", left=0.1, right=0.22, top=0.1)
+    following_block = _horizontal_multiline_block(
+        1,
+        "following paragraph.",
+        left=0.1,
+        right=0.45,
+        top=0.2,
+    )
+    pages = [
+        {"page_idx": 0, "blocks": [previous_block]},
+        {"page_idx": 1, "blocks": [current_block, following_block]},
+    ]
+
+    merge_para_text_blocks(pages)
+
+    assert current_block["continues_prev"] is True
+
+
+def test_merge_para_text_blocks_uses_following_columns_for_vertical_single_column_height() -> None:
+    """验证竖排单列会忽略上边界缩进首列并使用其余四列补足虚拟栏高。"""
+    previous_block = _vertical_multicolumn_block(
+        0,
+        "未完",
+        right=0.9,
+        top=0.1,
+        bottom=0.9,
+        column_count=4,
+    )
+    current_block = _vertical_single_column_block(
+        0,
+        "续。",
+        left=0.85,
+        right=0.9,
+        top=0.1,
+        bottom=0.3,
+    )
+    following_block = _vertical_multicolumn_block(
+        1,
+        "後續正文。",
+        right=0.83,
+        top=0.1,
+        bottom=0.9,
+        first_top_indent=0.08,
+    )
+    pages = [
+        {"page_idx": 0, "blocks": [previous_block]},
+        {"page_idx": 1, "blocks": [current_block, following_block]},
+    ]
+
+    merge_para_text_blocks(pages)
+
+    assert current_block["continues_prev"] is True
+
+
+@pytest.mark.parametrize("is_vertical", [False, True])
+def test_merge_para_text_blocks_requires_three_aligned_lookahead_lines(is_vertical: bool) -> None:
+    """验证横排或竖排后续同轴行列不足三条时不会构造虚拟尺寸。"""
+    if is_vertical:
+        previous_block = _vertical_multicolumn_block(
+            0,
+            "未完",
+            right=0.9,
+            top=0.1,
+            bottom=0.9,
+            column_count=4,
+        )
+        current_block = _vertical_single_column_block(
+            0,
+            "續。",
+            left=0.85,
+            right=0.9,
+            top=0.1,
+            bottom=0.3,
+        )
+        following_block = _vertical_multicolumn_block(
+            1,
+            "短參考。",
+            right=0.83,
+            top=0.1,
+            bottom=0.9,
+            column_count=2,
+        )
+    else:
+        previous_block = _horizontal_multiline_block(
+            0,
+            "unfinished",
+            left=0.1,
+            right=0.45,
+            top=0.5,
+            line_count=4,
+        )
+        current_block = _horizontal_single_line_block(0, "tail.", left=0.55, right=0.67, top=0.1)
+        following_block = _horizontal_multiline_block(
+            1,
+            "short reference.",
+            left=0.55,
+            right=0.9,
+            top=0.2,
+            line_count=2,
+        )
+    pages = [
+        {"page_idx": 0, "blocks": [previous_block]},
+        {"page_idx": 1, "blocks": [current_block, following_block]},
+    ]
+
+    merge_para_text_blocks(pages)
+
+    assert "continues_prev" not in current_block
+
+
+@pytest.mark.parametrize("is_vertical", [False, True])
+def test_merge_para_text_blocks_stops_single_line_lookahead_at_semantic_barrier(is_vertical: bool) -> None:
+    """验证标题屏障会阻止横排或竖排单行读取更后的参考行列。"""
+    if is_vertical:
+        previous_block = _vertical_multicolumn_block(
+            0,
+            "未完",
+            right=0.9,
+            top=0.1,
+            bottom=0.9,
+            column_count=4,
+        )
+        current_block = _vertical_single_column_block(
+            0,
+            "續。",
+            left=0.85,
+            right=0.9,
+            top=0.1,
+            bottom=0.3,
+        )
+        following_block = _vertical_multicolumn_block(
+            2,
+            "後續正文。",
+            right=0.83,
+            top=0.1,
+            bottom=0.9,
+        )
+    else:
+        previous_block = _horizontal_multiline_block(
+            0,
+            "unfinished",
+            left=0.1,
+            right=0.45,
+            top=0.5,
+            line_count=4,
+        )
+        current_block = _horizontal_single_line_block(0, "tail.", left=0.55, right=0.67, top=0.1)
+        following_block = _horizontal_multiline_block(
+            2,
+            "following paragraph.",
+            left=0.55,
+            right=0.9,
+            top=0.2,
+        )
+    barrier = {"index": 1, "type": BlockType.PARAGRAPH_TITLE, "content": "barrier"}
+    pages = [
+        {"page_idx": 0, "blocks": [previous_block]},
+        {"page_idx": 1, "blocks": [current_block, barrier, following_block]},
+    ]
+
+    merge_para_text_blocks(pages)
+
+    assert "continues_prev" not in current_block
+
+
+@pytest.mark.parametrize("is_vertical", [False, True])
+def test_merge_para_text_blocks_rejects_unaligned_following_geometry(is_vertical: bool) -> None:
+    """验证后续五行或列的轴起点与当前单行不对齐时不会补足虚拟尺寸。"""
+    if is_vertical:
+        previous_block = _vertical_multicolumn_block(
+            0,
+            "未完",
+            right=0.9,
+            top=0.1,
+            bottom=0.9,
+            column_count=4,
+        )
+        current_block = _vertical_single_column_block(
+            0,
+            "續。",
+            left=0.85,
+            right=0.9,
+            top=0.1,
+            bottom=0.3,
+        )
+        following_block = _vertical_multicolumn_block(
+            1,
+            "錯位正文。",
+            right=0.83,
+            top=0.25,
+            bottom=0.9,
+        )
+    else:
+        previous_block = _horizontal_multiline_block(
+            0,
+            "unfinished",
+            left=0.1,
+            right=0.45,
+            top=0.5,
+            line_count=4,
+        )
+        current_block = _horizontal_single_line_block(0, "tail.", left=0.55, right=0.67, top=0.1)
+        following_block = _horizontal_multiline_block(
+            1,
+            "misaligned paragraph.",
+            left=0.7,
+            right=0.95,
+            top=0.2,
+        )
+    pages = [
+        {"page_idx": 0, "blocks": [previous_block]},
+        {"page_idx": 1, "blocks": [current_block, following_block]},
+    ]
+
+    merge_para_text_blocks(pages)
+
+    assert "continues_prev" not in current_block
+
+
+@pytest.mark.parametrize("is_vertical", [False, True])
+def test_merge_para_text_blocks_does_not_look_beyond_current_page(is_vertical: bool) -> None:
+    """验证当前页没有参考行列时不会读取再下一页的五行或列。"""
+    if is_vertical:
+        previous_block = _vertical_multicolumn_block(
+            0,
+            "未完",
+            right=0.9,
+            top=0.1,
+            bottom=0.9,
+            column_count=4,
+        )
+        current_block = _vertical_single_column_block(
+            0,
+            "續。",
+            left=0.85,
+            right=0.9,
+            top=0.1,
+            bottom=0.3,
+        )
+        later_block = _vertical_multicolumn_block(
+            0,
+            "更後正文。",
+            right=0.83,
+            top=0.1,
+            bottom=0.9,
+        )
+    else:
+        previous_block = _horizontal_multiline_block(
+            0,
+            "unfinished",
+            left=0.1,
+            right=0.45,
+            top=0.5,
+            line_count=4,
+        )
+        current_block = _horizontal_single_line_block(0, "tail.", left=0.55, right=0.67, top=0.1)
+        later_block = _horizontal_multiline_block(
+            0,
+            "later paragraph.",
+            left=0.55,
+            right=0.9,
+            top=0.2,
+        )
+    pages = [
+        {"page_idx": 0, "blocks": [previous_block]},
+        {"page_idx": 1, "blocks": [current_block]},
+        {"page_idx": 2, "blocks": [later_block]},
     ]
 
     merge_para_text_blocks(pages)

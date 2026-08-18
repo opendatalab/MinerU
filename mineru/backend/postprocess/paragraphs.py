@@ -30,6 +30,9 @@ TEXT_MERGE_TRANSPARENT_TYPES = {
 }
 VERTICAL_LINE_HEIGHT_TO_WIDTH_RATIO_THRESHOLD = 2
 VERTICAL_LINE_IN_BLOCK_THRESHOLD = 0.8
+SINGLE_LINE_LOOKAHEAD_LIMIT = 5
+SINGLE_LINE_MIN_ALIGNED_LOOKAHEAD = 3
+SINGLE_LINE_THICKNESS_RATIO_MAX = 1.5
 
 BlockDict: TypeAlias = dict[str, Any]
 CalculationBBox: TypeAlias = tuple[int, int, int, int]
@@ -71,7 +74,16 @@ def merge_para_text_blocks(pages: list[dict[str, Any]]) -> None:
             previous_page_idx, _, previous_text_block = previous_block
             if not _is_same_or_consecutive_page(current_page_idx, previous_page_idx):
                 continue
-            if can_auto_merge_text_blocks(current_block, previous_text_block):
+            if can_auto_merge_text_blocks(
+                current_block,
+                previous_text_block,
+            ) or _can_auto_merge_multiline_to_single_line(
+                current_block,
+                previous_text_block,
+                ordered_blocks=ordered_blocks,
+                current_index=current_index,
+                current_page_idx=current_page_idx,
+            ):
                 current_block["continues_prev"] = True
         elif current_type == BlockType.LIST:
             previous_block = _find_previous_ref_text_list_block(
@@ -177,6 +189,13 @@ def _is_same_or_consecutive_page(current_page_idx: int, previous_page_idx: int) 
     return current_page_idx == previous_page_idx or current_page_idx == previous_page_idx + 1
 
 
+def _positive_values_have_max_ratio(first: float, second: float, max_ratio: float) -> bool:
+    """判断两个正值的较大较小比是否不超过给定上限。"""
+    if first <= 0 or second <= 0:
+        return False
+    return max(first, second) / min(first, second) <= max_ratio
+
+
 def _bbox_for_calculation(bbox: Any) -> CalculationBBox | None:
     """复制并将 0～1 bbox 放大为千分位整数，原始 bbox 保持不变。"""
     if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
@@ -252,6 +271,144 @@ def _has_mergeable_text_boundary(current_content: str, previous_content: str) ->
         return False
     first_char = current_content[0]
     return not first_char.isdigit() and not first_char.isupper()
+
+
+def _collect_following_same_orientation_lines(
+    ordered_blocks: list[OrderedBlock],
+    current_index: int,
+    *,
+    current_page_idx: int,
+    is_vertical: bool,
+) -> list[CalculationBBox]:
+    """在当前页向后读取至多五条同方向正文行，语义屏障或非法文本会终止读取。"""
+    following_lines: list[CalculationBBox] = []
+    for page_idx, _, block in ordered_blocks[current_index + 1 :]:
+        if page_idx != current_page_idx:
+            break
+        block_type = block.get("type")
+        if block_type in TEXT_MERGE_BARRIER_TYPES:
+            break
+        if block_type != BlockType.TEXT:
+            if block_type in TEXT_MERGE_TRANSPARENT_TYPES:
+                continue
+            break
+
+        block_lines = _metric_line_bboxes(block)
+        if not block_lines or _is_vertical_text_block_by_lines(block_lines) != is_vertical:
+            break
+        for line_bbox in block_lines:
+            following_lines.append(line_bbox)
+            if len(following_lines) >= SINGLE_LINE_LOOKAHEAD_LIMIT:
+                return following_lines
+    return following_lines
+
+
+def _aligned_following_lines(
+    current_line: CalculationBBox,
+    following_lines: list[CalculationBBox],
+    *,
+    is_vertical: bool,
+) -> list[CalculationBBox]:
+    """按横排左边界或竖排上边界筛选同一虚拟栏内的后续行列。"""
+    current_start = current_line[1] if is_vertical else current_line[0]
+    current_thickness = _line_width(current_line) if is_vertical else _line_height(current_line)
+    aligned_lines: list[CalculationBBox] = []
+    for line_bbox in following_lines:
+        line_start = line_bbox[1] if is_vertical else line_bbox[0]
+        line_thickness = _line_width(line_bbox) if is_vertical else _line_height(line_bbox)
+        if not _positive_values_have_max_ratio(
+            current_thickness,
+            line_thickness,
+            SINGLE_LINE_THICKNESS_RATIO_MAX,
+        ):
+            continue
+        if abs(line_start - current_start) <= max(current_thickness, line_thickness):
+            aligned_lines.append(line_bbox)
+    return aligned_lines
+
+
+def _virtual_single_line_bbox(
+    current_line: CalculationBBox,
+    aligned_lines: list[CalculationBBox],
+    *,
+    is_vertical: bool,
+) -> CalculationBBox:
+    """仅沿文本主轴扩展单行计算框，原始 line 和 block bbox 保持不变。"""
+    if is_vertical:
+        return (
+            current_line[0],
+            current_line[1],
+            current_line[2],
+            max(current_line[3], *(line_bbox[3] for line_bbox in aligned_lines)),
+        )
+    return (
+        current_line[0],
+        current_line[1],
+        max(current_line[2], *(line_bbox[2] for line_bbox in aligned_lines)),
+        current_line[3],
+    )
+
+
+def _can_auto_merge_multiline_to_single_line(
+    current_block: BlockDict,
+    previous_block: BlockDict,
+    *,
+    ordered_blocks: list[OrderedBlock],
+    current_index: int,
+    current_page_idx: int,
+) -> bool:
+    """用后续五行或列补足单行主轴尺寸，再复用原横排或竖排连接规则。"""
+    current_lines = _metric_line_bboxes(current_block)
+    previous_lines = _metric_line_bboxes(previous_block)
+    if len(current_lines) != 1 or len(previous_lines) <= 1:
+        return False
+
+    current_is_vertical = _is_vertical_text_block_by_lines(current_lines)
+    if _is_vertical_text_block_by_lines(previous_lines) != current_is_vertical:
+        return False
+    following_lines = _collect_following_same_orientation_lines(
+        ordered_blocks,
+        current_index,
+        current_page_idx=current_page_idx,
+        is_vertical=current_is_vertical,
+    )
+    aligned_lines = _aligned_following_lines(
+        current_lines[0],
+        following_lines,
+        is_vertical=current_is_vertical,
+    )
+    if len(aligned_lines) < SINGLE_LINE_MIN_ALIGNED_LOOKAHEAD:
+        return False
+
+    current_bbox = _bbox_for_calculation(current_block.get("bbox"))
+    previous_bbox = _bbox_for_calculation(previous_block.get("bbox"))
+    current_content = _normalized_text_content(current_block)
+    previous_content = _normalized_text_content(previous_block)
+    if current_bbox is None or previous_bbox is None or not current_content or not previous_content:
+        return False
+
+    virtual_current_line = _virtual_single_line_bbox(
+        current_lines[0],
+        aligned_lines,
+        is_vertical=current_is_vertical,
+    )
+    if current_is_vertical:
+        return _can_auto_merge_vertical_text_blocks(
+            current_content,
+            previous_content,
+            current_bbox,
+            previous_bbox,
+            [virtual_current_line],
+            previous_lines,
+        )
+    return _can_auto_merge_horizontal_text_blocks(
+        current_content,
+        previous_content,
+        current_bbox,
+        previous_bbox,
+        [virtual_current_line],
+        previous_lines,
+    )
 
 
 def _can_auto_merge_horizontal_text_blocks(

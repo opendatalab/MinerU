@@ -1443,6 +1443,12 @@ def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
         if block.type == "text" and isinstance(block.content, str) and block.content.startswith("预测。")
     )
     assert page2_continuation.continues_prev is True
+    page1_single_line_tail = next(
+        block
+        for block in middle_pages[0].blocks
+        if block.type == "text" and isinstance(block.content, str) and block.content == "准的预测方法。"
+    )
+    assert page1_single_line_tail.continues_prev is True
     page = model_list[8]
 
     captions = [block for page_blocks in model_list for block in page_blocks if block["type"] == "caption"]
