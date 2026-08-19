@@ -2,6 +2,7 @@ from copy import deepcopy
 
 import pytest
 
+from mineru.backend.postprocess.lists import fix_office_list_blocks
 from mineru.backend.postprocess.pages import model_list_to_pages
 from mineru.types import (
     ChartBlock,
@@ -115,6 +116,103 @@ def test_model_list_to_pages_preserves_recursive_office_list_and_index() -> None
     assert isinstance(list_block.content[1].content[1], ListBlock)
     assert index_block.content[0].content[0].content == "section"
     assert "anchor" not in index_block.content[0].content[0].model_fields_set
+
+
+def test_fix_office_list_blocks_uses_local_ordered_markers_at_each_depth() -> None:
+    """验证多级 Office 有序列表按当前层独立编号，并保留富文本与各层起始值。"""
+    rich_content = (
+        '<text style="bold">root</text><eq>x</eq>'
+        '<hyperlink><text>link</text><url>https://example.com</url></hyperlink>'
+    )
+    list_block = {
+        "type": "list",
+        "attribute": "ordered",
+        "ilevel": 0,
+        "start": 3,
+        "content": [
+            {"type": "text", "content": rich_content},
+            {
+                "type": "list",
+                "attribute": "unordered",
+                "ilevel": 1,
+                "content": [
+                    {"type": "text", "content": "bullet before"},
+                    {
+                        "type": "list",
+                        "attribute": "ordered",
+                        "ilevel": 2,
+                        "start": 1,
+                        "content": [
+                            {"type": "text", "content": "level two first"},
+                            {"type": "text", "content": "level two second"},
+                            {
+                                "type": "list",
+                                "attribute": "ordered",
+                                "ilevel": 3,
+                                "start": 0,
+                                "content": [
+                                    {"type": "text", "content": "zero"},
+                                    {"type": "text", "content": "one"},
+                                ],
+                            },
+                            {"type": "text", "content": "level two third"},
+                            {
+                                "type": "list",
+                                "attribute": "ordered",
+                                "ilevel": 3,
+                                "start": 5,
+                                "content": [
+                                    {"type": "text", "content": "five"},
+                                    {"type": "text", "content": "six"},
+                                ],
+                            },
+                            {"type": "text", "content": "level two fourth"},
+                        ],
+                    },
+                    {"type": "text", "content": "bullet after"},
+                ],
+            },
+            {"type": "text", "content": "root after nested"},
+        ],
+    }
+    invalid_start_list = {
+        "type": "list",
+        "attribute": "ordered",
+        "ilevel": 0,
+        "start": "invalid",
+        "content": [{"type": "text", "content": "fallback"}],
+    }
+
+    result = fix_office_list_blocks([list_block, invalid_start_list])
+
+    assert result == [list_block, invalid_start_list]
+    assert list_block["content"][0]["content"] == f"3. {rich_content}"
+    assert list_block["content"][2]["content"] == "4. root after nested"
+    unordered = list_block["content"][1]
+    assert unordered["content"][0]["content"] == "- bullet before"
+    assert unordered["content"][2]["content"] == "- bullet after"
+    level_two = unordered["content"][1]
+    assert [level_two["content"][index]["content"] for index in (0, 1, 3, 5)] == [
+        "1. level two first",
+        "2. level two second",
+        "3. level two third",
+        "4. level two fourth",
+    ]
+    zero_start = level_two["content"][2]
+    assert [child["content"] for child in zero_start["content"]] == ["0. zero", "1. one"]
+    five_start = level_two["content"][4]
+    assert [child["content"] for child in five_start["content"]] == ["5. five", "6. six"]
+    assert invalid_start_list["content"][0]["content"] == "1. fallback"
+
+    pending_lists = list(result)
+    while pending_lists:
+        current = pending_lists.pop()
+        assert {"attribute", "ilevel", "start"}.isdisjoint(current)
+        pending_lists.extend(
+            child
+            for child in current.get("content", [])
+            if isinstance(child, dict) and child.get("type") == "list"
+        )
 
 
 def test_model_list_to_pages_maps_index_anchor_to_document_title_type_and_level() -> None:

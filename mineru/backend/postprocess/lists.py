@@ -162,16 +162,7 @@ def _visible_text(content: str) -> str:
 
 
 def fix_office_list_blocks(list_blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """将 Office 列表层级和起始序号写入文本内容，并移除原始元数据。"""
-
-    def get_list_ilevel(list_block: dict[str, Any], parent_ilevel: int | None) -> int:
-        """读取列表层级，非法值按递归深度回退。"""
-        fallback_ilevel = 0 if parent_ilevel is None else parent_ilevel + 1
-        try:
-            ilevel = int(list_block.get("ilevel"))
-        except (TypeError, ValueError):
-            return fallback_ilevel
-        return ilevel if ilevel >= 0 else fallback_ilevel
+    """将每层 Office 列表的局部序号写入文本内容，并移除原始元数据。"""
 
     def get_ordered_list_start(list_block: dict[str, Any]) -> int:
         """读取有序列表起始编号，保留合法的零值。"""
@@ -184,22 +175,8 @@ def fix_office_list_blocks(list_blocks: list[dict[str, Any]]) -> list[dict[str, 
             return 1
         return start if start >= 0 else 1
 
-    def format_ordered_prefix(ordered_numbers: dict[int, int]) -> str:
-        """按列表层级拼接有序编号。"""
-        number_parts = [str(number) for _, number in sorted(ordered_numbers.items())]
-        if len(number_parts) == 1:
-            return f"{number_parts[0]}. "
-        return f"{'.'.join(number_parts)} "
-
-    def fix_list_block(
-        list_block: dict[str, Any],
-        inherited_ordered_numbers: dict[int, int],
-        parent_ilevel: int | None,
-    ) -> None:
-        """递归处理单个列表块，并向嵌套列表传递有序编号。"""
-        ilevel = get_list_ilevel(list_block, parent_ilevel)
-        base_ordered_numbers = {level: number for level, number in inherited_ordered_numbers.items() if level < ilevel}
-        active_ordered_numbers = dict(base_ordered_numbers)
+    def fix_list_block(list_block: dict[str, Any]) -> None:
+        """递归处理列表树；每个有序列表只维护当前层的独立编号。"""
         is_ordered = list_block.get("attribute") == "ordered"
         ordered_number = get_ordered_list_start(list_block)
         content = list_block.get("content")
@@ -213,20 +190,18 @@ def fix_office_list_blocks(list_blocks: list[dict[str, Any]]) -> list[dict[str, 
                     if not isinstance(child_content, str):
                         continue
                     if is_ordered:
-                        active_ordered_numbers = dict(base_ordered_numbers)
-                        active_ordered_numbers[ilevel] = ordered_number
-                        prefix = format_ordered_prefix(active_ordered_numbers)
+                        prefix = f"{ordered_number}. "
                         ordered_number += 1
                     else:
                         prefix = "- "
                     child_block["content"] = f"{prefix}{child_content}"
                 elif child_type == BlockType.LIST:
-                    fix_list_block(child_block, dict(active_ordered_numbers), ilevel)
+                    fix_list_block(child_block)
         list_block.pop("attribute", None)
         list_block.pop("ilevel", None)
         list_block.pop("start", None)
 
     for list_block in list_blocks:
         if isinstance(list_block, dict):
-            fix_list_block(list_block, {}, None)
+            fix_list_block(list_block)
     return list_blocks
