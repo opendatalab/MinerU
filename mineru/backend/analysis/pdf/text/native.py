@@ -7,7 +7,9 @@ import collections
 import math
 import re
 import statistics
-from typing import Any, Callable
+import unicodedata
+from dataclasses import dataclass
+from typing import Any, Callable, Literal
 
 import cv2
 import numpy as np
@@ -397,9 +399,54 @@ LINE_START_FLAG = (
 )
 
 Span_Height_Ratio = 0.33  # 字符的中轴和span的中轴高度差不能超过1/3span高度
-SCRIPT_BODY_HEIGHT_RATIO = 0.9
-SCRIPT_CENTER_TOLERANCE_RATIO = 0.15
+# 正文带阈值：只允许接近最大高度的字符参与正文基线估计。
+SCRIPT_BODY_FULL_HEIGHT_RATIO = 0.9
+# 三类证据阈值：依次对应强几何、成对结构和相邻字体切换。
+SCRIPT_GEOMETRY_MAX_HEIGHT_RATIO = 0.8
+SCRIPT_GEOMETRY_MIN_OFFSET_RATIO = 0.24
+SCRIPT_STRUCTURE_MIN_OFFSET_RATIO = 0.18
+SCRIPT_TYPOGRAPHY_MIN_LOCAL_OFFSET_RATIO = 0.1
+# 连续组件阈值：弱证据只能扩展已有种子，不能独立产生上下标。
+SCRIPT_COMPONENT_MIN_OFFSET_RATIO = 0.08
+SCRIPT_COMPONENT_MAX_HEIGHT_RATIO = 1.1
+SCRIPT_BRACKET_PAIRS = {"[": "]", "［": "］", "(": ")", "（": "）"}
 CONTROL_LINE_BREAK_CHARS = {"\r", "\n"}
+
+_ScriptRole = Literal["body", "sup", "sub"]
+_ScriptMarkRole = Literal["sup", "sub"]
+_ScriptEvidenceKind = Literal["geometry", "typography", "structure"]
+
+
+@dataclass(frozen=True, slots=True)
+class _ScriptCharFeature:
+    """保存单个字符参与上下标判定所需的只读排版特征。"""
+
+    index: int
+    text: str
+    height: float
+    center_y: float
+    font_signature: tuple[Any, Any]
+    is_valid: bool
+    is_body_anchor: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _ScriptBodyBand:
+    """表示当前 span 的正文中心线和参考高度。"""
+
+    center_y: float
+    height: float
+
+
+@dataclass(frozen=True, slots=True)
+class _ScriptSeed:
+    """表示可让连续组件成立的高置信证据区间及其角色。"""
+
+    start: int
+    end: int
+    role: _ScriptMarkRole
+    evidence: _ScriptEvidenceKind
+    protected_body_indices: frozenset[int] = frozenset()
 
 
 def _is_private_use_char(char: str) -> bool:
@@ -533,44 +580,205 @@ def _is_valid_script_reference_char(char: Char, metrics: dict[str, float]) -> bo
     return metrics["height"] > 1 and metrics["width"] > 0
 
 
-def _get_body_axis(chars: list[Char], char_metrics: list[dict[str, float]]) -> dict[str, float] | None:
-    """根据同一 span 内最大高度字符簇估计正文中心线和正文高度。"""
-    valid_metrics = [metrics for char, metrics in zip(chars, char_metrics) if _is_valid_script_reference_char(char, metrics)]
-    if not valid_metrics:
+def _get_script_role(offset: float) -> _ScriptMarkRole:
+    """把相对正文中心的纵向偏移转换为上标或下标角色。"""
+    return "sub" if offset > 0 else "sup"
+
+
+def _build_script_features(
+    chars: list[Char],
+    char_metrics: list[dict[str, float]],
+) -> list[_ScriptCharFeature]:
+    """一次性构造字符几何、字体和正文锚点特征。"""
+    features = []
+    for index, (char, metrics) in enumerate(zip(chars, char_metrics)):
+        text = str(char.get("char", ""))
+        font = char.get("font") or {}
+        is_valid = _is_valid_script_reference_char(char, metrics)
+        features.append(
+            _ScriptCharFeature(
+                index=index,
+                text=text,
+                height=metrics["height"],
+                center_y=metrics["center_y"],
+                font_signature=(font.get("name"), font.get("flags")),
+                is_valid=is_valid,
+                is_body_anchor=is_valid and text.isalnum(),
+            )
+        )
+    return features
+
+
+def _estimate_script_body_band(features: list[_ScriptCharFeature]) -> _ScriptBodyBand | None:
+    """使用全高正文锚点的最低中心估计正文带，排除项目符号与标点干扰。"""
+    anchors = [feature for feature in features if feature.is_body_anchor]
+    if not anchors:
         return None
 
-    max_height = max(metrics["height"] for metrics in valid_metrics)
-    body_metrics = [metrics for metrics in valid_metrics if metrics["height"] >= max_height * SCRIPT_BODY_HEIGHT_RATIO]
-    if not body_metrics:
+    body_height = max(feature.height for feature in anchors)
+    full_height_anchors = [
+        feature for feature in anchors if feature.height >= body_height * SCRIPT_BODY_FULL_HEIGHT_RATIO
+    ]
+    if not full_height_anchors:
         return None
+    return _ScriptBodyBand(
+        center_y=max(feature.center_y for feature in full_height_anchors),
+        height=body_height,
+    )
 
-    return {
-        "center_y": statistics.median(metrics["center_y"] for metrics in body_metrics),
-        "height": statistics.median(metrics["height"] for metrics in body_metrics),
-    }
+
+def _collect_script_seeds(
+    features: list[_ScriptCharFeature],
+    body_band: _ScriptBodyBand,
+) -> list[_ScriptSeed]:
+    """统一收集强几何、局部字体和成对结构三类上下标证据。"""
+    seeds: list[_ScriptSeed] = []
+    claimed_indices: set[int] = set()
+
+    for feature in features:
+        is_symbol = len(feature.text) == 1 and unicodedata.category(feature.text).startswith("S")
+        offset = feature.center_y - body_band.center_y
+        if (
+            feature.is_valid
+            and (feature.text.isalnum() or is_symbol)
+            and feature.height <= body_band.height * SCRIPT_GEOMETRY_MAX_HEIGHT_RATIO
+            and abs(offset) >= body_band.height * SCRIPT_GEOMETRY_MIN_OFFSET_RATIO
+        ):
+            seeds.append(
+                _ScriptSeed(
+                    start=feature.index,
+                    end=feature.index,
+                    role=_get_script_role(offset),
+                    evidence="geometry",
+                )
+            )
+            claimed_indices.add(feature.index)
+
+    for index in range(1, len(features)):
+        feature = features[index]
+        previous_feature = features[index - 1]
+        if (
+            index in claimed_indices
+            or index - 1 in claimed_indices
+            or not feature.text.isalnum()
+            or not previous_feature.text.isalnum()
+            or feature.font_signature == previous_feature.font_signature
+            or feature.height > previous_feature.height * SCRIPT_COMPONENT_MAX_HEIGHT_RATIO
+        ):
+            continue
+
+        local_offset = feature.center_y - previous_feature.center_y
+        minimum_offset = previous_feature.height * SCRIPT_TYPOGRAPHY_MIN_LOCAL_OFFSET_RATIO
+        if abs(local_offset) >= minimum_offset:
+            seeds.append(
+                _ScriptSeed(
+                    start=index,
+                    end=index,
+                    role=_get_script_role(local_offset),
+                    evidence="typography",
+                    protected_body_indices=frozenset({index - 1}),
+                )
+            )
+            claimed_indices.add(index)
+
+    bracket_stack: list[tuple[int, str]] = []
+    for feature in features:
+        if feature.text in SCRIPT_BRACKET_PAIRS:
+            bracket_stack.append((feature.index, feature.text))
+            continue
+        if not bracket_stack or feature.text != SCRIPT_BRACKET_PAIRS[bracket_stack[-1][1]]:
+            continue
+
+        open_index, _open_text = bracket_stack.pop()
+        open_feature = features[open_index]
+        if not open_feature.is_valid or not feature.is_valid:
+            continue
+        if (
+            open_feature.height > body_band.height * SCRIPT_GEOMETRY_MAX_HEIGHT_RATIO
+            or feature.height > body_band.height * SCRIPT_GEOMETRY_MAX_HEIGHT_RATIO
+        ):
+            continue
+
+        open_offset = open_feature.center_y - body_band.center_y
+        close_offset = feature.center_y - body_band.center_y
+        minimum_offset = body_band.height * SCRIPT_STRUCTURE_MIN_OFFSET_RATIO
+        if (
+            open_offset * close_offset <= 0
+            or min(abs(open_offset), abs(close_offset)) < minimum_offset
+        ):
+            continue
+
+        seeds.append(
+            _ScriptSeed(
+                start=open_index,
+                end=feature.index,
+                role=_get_script_role((open_offset + close_offset) / 2),
+                evidence="structure",
+            )
+        )
+    return seeds
+
+
+def _assign_script_components(
+    features: list[_ScriptCharFeature],
+    body_band: _ScriptBodyBand,
+    seeds: list[_ScriptSeed],
+) -> list[_ScriptRole]:
+    """线性划分同侧连续组件，只有包含高置信种子的组件才输出上下标。"""
+    seed_roles: dict[int, _ScriptMarkRole] = {}
+    protected_body_indices: set[int] = set()
+    for seed in seeds:
+        protected_body_indices.update(seed.protected_body_indices)
+        for index in range(seed.start, seed.end + 1):
+            seed_roles[index] = seed.role
+
+    minimum_offset = body_band.height * SCRIPT_COMPONENT_MIN_OFFSET_RATIO
+    maximum_height = body_band.height * SCRIPT_COMPONENT_MAX_HEIGHT_RATIO
+    candidate_roles: list[_ScriptMarkRole | None] = []
+    for feature in features:
+        if feature.index in seed_roles:
+            candidate_roles.append(seed_roles[feature.index])
+            continue
+        if (
+            feature.index in protected_body_indices
+            or not feature.is_valid
+            or feature.text.isspace()
+            or feature.height > maximum_height
+        ):
+            candidate_roles.append(None)
+            continue
+
+        offset = feature.center_y - body_band.center_y
+        if abs(offset) < minimum_offset:
+            candidate_roles.append(None)
+        else:
+            candidate_roles.append(_get_script_role(offset))
+
+    roles: list[_ScriptRole] = ["body"] * len(features)
+    component_start = 0
+    while component_start < len(features):
+        component_role = candidate_roles[component_start]
+        if component_role is None:
+            component_start += 1
+            continue
+
+        component_end = component_start + 1
+        while component_end < len(features) and candidate_roles[component_end] == component_role:
+            component_end += 1
+        if any(index in seed_roles for index in range(component_start, component_end)):
+            roles[component_start:component_end] = [component_role] * (component_end - component_start)
+        component_start = component_end
+    return roles
 
 
 def _classify_char_script_roles(chars: list[Char], char_metrics: list[dict[str, float]]) -> list[str]:
-    """按正文主带判断每个字符属于正文、上标或下标。"""
-    body_axis = _get_body_axis(chars, char_metrics)
-    if body_axis is None or body_axis["height"] <= 0:
+    """按字符特征、正文带、证据和连续组件四步识别上下标。"""
+    features = _build_script_features(chars, char_metrics)
+    body_band = _estimate_script_body_band(features)
+    if body_band is None or body_band.height <= 0:
         return ["body"] * len(chars)
-
-    tolerance = body_axis["height"] * SCRIPT_CENTER_TOLERANCE_RATIO
-    roles = []
-    for char, metrics in zip(chars, char_metrics):
-        if not _is_valid_script_reference_char(char, metrics):
-            roles.append("body")
-            continue
-
-        char_center_y = metrics["center_y"]
-        if char_center_y < body_axis["center_y"] - tolerance:
-            roles.append("sup")
-        elif char_center_y > body_axis["center_y"] + tolerance:
-            roles.append("sub")
-        else:
-            roles.append("body")
-    return roles
+    seeds = _collect_script_seeds(features, body_band)
+    return _assign_script_components(features, body_band, seeds)
 
 
 def _append_script_wrapped_text(parts: list[str], role: str | None, text: str) -> None:
