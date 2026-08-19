@@ -42,11 +42,16 @@ content_list = render_content_list(
 `MarkdownRenderMode` 计划，因此不隐藏页面辅助块，也不合并 `continues_prev` 文本、
 列表或跨页表格；`continues_prev` 和 `cell_merge` 等消费提示仍保留在对应 block。
 
-每个输出 block 的 `content` 都是完整块级 Markdown。`list/index` 的递归子树会收敛为
-一个字符串；`image/table/chart/code` 的唯一 body 会提升为父块 `content`，说明文本则
-按源 `index` 排序后分别输出为 `captions: list[str]` 和 `footnotes: list[str]`。视觉数组
-始终存在，空说明保留为空字符串。所有输出 block 都删除 `index/level/guess_lang`；其中
-`level` 和 `guess_lang` 仍会先参与标题与代码 Markdown 的生成。
+`content` 保存适合结构化消费的文本表示，而不是可直接拼接成整篇文档的完整视觉
+Markdown。`list/index` 的递归子树会收敛为一个字符串；`image/table/chart/code` 的唯一
+body 会提升为父块 `content`，但图片资源只放在 `image_source`，不在 `content` 重复
+输出图片语法或 details。说明文本按源 `index` 排序后分别输出为 `captions: list[str]`
+和 `footnotes: list[str]`，视觉数组始终存在，空说明保留为空字符串。
+
+`doc_title/paragraph_title.content` 只包含行内 Markdown，不含 heading 标记或 HTML
+anchor；原始 `level` 和可选 `anchor` 作为独立字段保留。`equation.content` 是不带行间
+定界符的裸 LaTeX，公式图片同样只通过 `image_source` 表达。所有输出 block 都删除
+`index/guess_lang/image_path/image_base64`，`guess_lang` 仍会先参与代码 Markdown 的生成。
 
 ```json
 {
@@ -55,12 +60,15 @@ content_list = render_content_list(
       "page_idx": 0,
       "blocks": [
         {
-          "type": "code",
-          "bbox": [0.1, 0.2, 0.9, 0.8],
-          "sub_type": "code",
-          "content": "```python\nprint('hello')\n```",
-          "captions": ["**示例代码**"],
-          "footnotes": []
+          "type": "paragraph_title",
+          "anchor": "section-a",
+          "level": 2,
+          "content": "**章节标题**"
+        },
+        {
+          "type": "equation",
+          "content": "x^2+y^2=z^2",
+          "image_source": "images/equation.png"
         }
       ]
     }
@@ -72,9 +80,12 @@ content_list = render_content_list(
 }
 ```
 
-`image/table/chart` 的 body 有图片载荷时，还会输出最终选择的 `image_source`：
-`image_path` 优先，`image_base64` 兜底，并应用 `asset_base_url` 和 Markdown 地址转义。
-即使 table 的 `content` 选择 GFM/HTML 表示，图片来源也会保留。
+`image/table/chart/equation` 有图片载荷时，会输出最终选择的 `image_source`：`image_path`
+优先，`image_base64` 兜底，并应用 `asset_base_url` 和 Markdown 地址转义。即使 table
+选择 GFM/HTML、equation 已有 LaTeX，图片来源也会保留且只出现一次。
+
+如需完整可展示 Markdown，应调用 `render_markdown()`，不能简单拼接 content_list 中的
+`content`。
 
 该接口目前只属于严格 `mineru.render` 公共面；本契约不迁移旧 parser、CLI、API、
 doclib 或历史扁平 `content_list.json` 产物。

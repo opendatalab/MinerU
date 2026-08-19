@@ -170,11 +170,19 @@ def _render_title(
 ) -> str:
     """渲染带可选 HTML anchor 的 Markdown 标题。"""
     level = min(max(block.level, 1), 6)
-    title = f"{'#' * level} {render_inline_content(block.content, delimiters)}"
+    title = f"{'#' * level} {_render_title_inline_content(block, delimiters)}"
     if not block.anchor:
         return title
     anchor = html.escape(block.anchor.strip(), quote=True)
     return f'<a id="{anchor}"></a>\n{title}'
+
+
+def _render_title_inline_content(
+    block: DocTitleBlock | ParagraphTitleBlock,
+    delimiters: LatexDelimitersConfig,
+) -> str:
+    """只渲染标题的行内语义，不添加 heading 标记或 HTML anchor。"""
+    return render_inline_content(block.content, delimiters)
 
 
 def _render_equation(
@@ -327,17 +335,22 @@ def _render_media_body(
 ) -> str:
     """渲染图片载荷，并将识别内容放入折叠详情。"""
     source = resolve_image_source(block, asset_base_url)
-    content = block.content.strip()
+    rendered_content = _render_media_content(block, delimiters, asset_base_url)
     if source:
         parts = [build_markdown_image(source)]
-        if content:
-            normalized = format_embedded_html(
-                content,
-                asset_base_url=asset_base_url,
-                delimiters=delimiters,
-            )
-            parts.append(_render_details(normalized, summary))
+        if rendered_content:
+            parts.append(_render_details(rendered_content, summary))
         return "\n\n".join(part for part in parts if part)
+    return rendered_content
+
+
+def _render_media_content(
+    block: ImageBodyBlock,
+    delimiters: LatexDelimitersConfig,
+    asset_base_url: str,
+) -> str:
+    """渲染图片识别内容，不添加图片语法或折叠详情包装。"""
+    content = block.content.strip()
     if not content:
         return ""
     return format_embedded_html(content, asset_base_url=asset_base_url, delimiters=delimiters)
@@ -416,17 +429,29 @@ def _render_table_body(
     asset_base_url: str,
 ) -> str:
     """按 HTML、空间投影文本、图片的优先级渲染表格主体。"""
-    if block.content:
-        html_table = render_html_table(
-            block.content,
-            asset_base_url=asset_base_url,
-            delimiters=delimiters,
-        )
-        if html_table is not None:
-            return html_table
-        return _render_fenced_content(block.content)
+    rendered_content = _render_table_content(block, delimiters, asset_base_url)
+    if rendered_content:
+        return rendered_content
     source = resolve_image_source(block, asset_base_url)
     return build_markdown_image(source) if source else ""
+
+
+def _render_table_content(
+    block: TableBodyBlock,
+    delimiters: LatexDelimitersConfig,
+    asset_base_url: str,
+) -> str:
+    """渲染表格结构内容，不执行空内容时的图片回退。"""
+    if not block.content:
+        return ""
+    html_table = render_html_table(
+        block.content,
+        asset_base_url=asset_base_url,
+        delimiters=delimiters,
+    )
+    if html_table is not None:
+        return html_table
+    return _render_fenced_content(block.content)
 
 
 def _render_code_block(block: CodeBlock, delimiters: LatexDelimitersConfig) -> str:
@@ -449,21 +474,22 @@ def _render_code_block(block: CodeBlock, delimiters: LatexDelimitersConfig) -> s
     return _join_visual_parts(parts)
 
 
-def _render_visual_body(
+def _render_visual_body_content(
     block: ImageBlock | TableBlock | ChartBlock | CodeBlock,
     *,
     delimiters: LatexDelimitersConfig,
     asset_base_url: str,
 ) -> str:
-    """查找视觉父块唯一 body，并复用 Markdown body 规则渲染。"""
+    """查找视觉父块唯一 body，并只渲染可结构化消费的语义内容。"""
     for child in block.content:
-        if isinstance(child, (ImageBodyBlock, TableBodyBlock, ChartBodyBlock, CodeBodyBlock)):
-            return _render_visual_body_child(
-                block,
-                child,
-                delimiters=delimiters,
-                asset_base_url=asset_base_url,
-            )
+        if isinstance(block, ImageBlock) and isinstance(child, ImageBodyBlock):
+            return _render_media_content(child, delimiters, asset_base_url)
+        if isinstance(block, TableBlock) and isinstance(child, TableBodyBlock):
+            return _render_table_content(child, delimiters, asset_base_url)
+        if isinstance(block, ChartBlock) and isinstance(child, ChartBodyBlock):
+            return _render_chart_content(child.content, delimiters, asset_base_url)
+        if isinstance(block, CodeBlock) and isinstance(child, CodeBodyBlock):
+            return _render_code_body(block, child, delimiters)
     raise ValueError(f"Missing visual body: {block.type}")
 
 

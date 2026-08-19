@@ -6,11 +6,12 @@ from copy import deepcopy
 import pytest
 
 from mineru.config import Config
-from mineru.render import render_content_list
+from mineru.render import render_content_list, render_markdown
 from mineru.types import (
     ChartBlock,
     ChartBodyBlock,
     CodeBlock,
+    EquationBlock,
     ImageBlock,
     IndexBlock,
     ListBlock,
@@ -41,17 +42,19 @@ def _page(page_idx: int, *blocks: PageBlock) -> PageInfo:
     return PageInfo(page_idx=page_idx, blocks=list(blocks))
 
 
-def _assert_removed_fields_absent(value: object) -> None:
-    """递归确认 content_list 没有暴露被移除的 block 字段。"""
+def _assert_output_field_contract(value: object) -> None:
+    """递归确认输出只在标题保留 level，且不暴露内部或重复图片字段。"""
     if isinstance(value, list):
         for item in value:
-            _assert_removed_fields_absent(item)
+            _assert_output_field_contract(item)
         return
     if not isinstance(value, dict):
         return
-    assert not ({"index", "level", "guess_lang"} & value.keys())
+    assert not ({"index", "guess_lang", "image_path", "image_base64"} & value.keys())
+    if "level" in value:
+        assert value.get("type") in {"doc_title", "paragraph_title"}
     for item in value.values():
-        _assert_removed_fields_absent(item)
+        _assert_output_field_contract(item)
 
 
 def test_content_list_preserves_document_tree_without_merging_or_mutation() -> None:
@@ -62,9 +65,9 @@ def test_content_list_preserves_document_tree_without_merging_or_mutation() -> N
             ParagraphTitleBlock(
                 type="paragraph_title",
                 index=0,
-                level=2,
+                level=8,
                 anchor="section-a",
-                content="Section",
+                content='# <text style="bold">Section</text> <eq>x</eq>',
             ),
             TextBlock(type="text", index=1, content="first-"),
             PageAuxTextBlock(type="header", index=2, content="HEADER"),
@@ -90,13 +93,15 @@ def test_content_list_preserves_document_tree_without_merging_or_mutation() -> N
     assert result["pages"][0]["blocks"][0] == {
         "type": "paragraph_title",
         "anchor": "section-a",
-        "content": '<a id="section-a"></a>\n## Section',
+        "level": 8,
+        "content": r"\# **Section** $x$",
     }
+    assert render_markdown(middle).startswith('<a id="section-a"></a>\n###### # **Section** $x$')
     assert result["pages"][0]["blocks"][1]["content"] == "first-"
     assert result["pages"][0]["blocks"][2]["content"] == "HEADER"
     assert result["pages"][1]["blocks"][0]["content"] == "continued"
     assert result["pages"][1]["blocks"][0]["continues_prev"] is True
-    _assert_removed_fields_absent(result)
+    _assert_output_field_contract(result)
     assert middle == original
 
 
@@ -146,7 +151,7 @@ def test_content_list_flattens_recursive_list_index_and_code_metadata() -> None:
     assert blocks[2]["captions"] == ["**Example**"]
     assert blocks[2]["footnotes"] == ["note $x$"]
     assert "guess_lang" not in blocks[2]
-    _assert_removed_fields_absent(blocks)
+    _assert_output_field_contract(blocks)
 
 
 def test_content_list_sorts_visual_annotations_and_selects_image_source() -> None:
@@ -181,13 +186,14 @@ def test_content_list_sorts_visual_annotations_and_selects_image_source() -> Non
         asset_base_url="https://cdn.example/doc",
     )["pages"][0]["blocks"][0]
 
-    assert result["content"].startswith("![](https://cdn.example/doc/images/a%20b.png)\n\n<details>")
-    assert "description" in result["content"]
+    assert result["content"] == "description"
     assert result["image_source"] == "https://cdn.example/doc/images/a%20b.png"
     assert result["captions"] == ["**early**", "", "missing index"]
     assert result["footnotes"] == ["after"]
-    assert "data:image" not in result["content"]
-    _assert_removed_fields_absent(result)
+    assert "![](" not in result["content"]
+    assert "<details>" not in result["content"]
+    assert "data:image" not in json.dumps(result)
+    _assert_output_field_contract(result)
 
 
 def test_content_list_keeps_table_image_source_and_cross_page_metadata() -> None:
@@ -221,10 +227,23 @@ def test_content_list_keeps_table_image_source_and_cross_page_metadata() -> None
             ],
         }
     )
+    image_only = TableBlock(
+        type="table",
+        index=0,
+        content=[
+            TableBodyBlock(
+                type="table_body",
+                index=0,
+                content="",
+                image_path="images/image-only-table.png",
+            )
+        ],
+    )
 
-    result = render_content_list(_middle(_page(0, first), _page(1, second)))
+    result = render_content_list(_middle(_page(0, first), _page(1, second), _page(2, image_only)))
     first_output = result["pages"][0]["blocks"][0]
     second_output = result["pages"][1]["blocks"][0]
+    image_only_output = result["pages"][2]["blocks"][0]
 
     assert first_output["content"] == "| A |\n| --- |\n| 1 |"
     assert first_output["image_source"] == "images/table.png"
@@ -235,10 +254,12 @@ def test_content_list_keeps_table_image_source_and_cross_page_metadata() -> None
     assert second_output["cell_merge"] == [1]
     assert second_output["captions"] == ["Table 2"]
     assert second_output["footnotes"] == ["note"]
+    assert image_only_output["content"] == ""
+    assert image_only_output["image_source"] == "images/image-only-table.png"
 
 
-def test_content_list_uses_render_config_and_base64_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    """验证 content_list 复用公式配置，并在无路径时选择 base64 图片来源。"""
+def test_content_list_keeps_chart_content_separate_from_base64_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 chart 只在 image_source 保存 base64，结构内容继续复用行内公式配置。"""
     configured = Config(
         render={
             "latex_delimiters": {
@@ -264,8 +285,75 @@ def test_content_list_uses_render_config_and_base64_fallback(monkeypatch: pytest
     output = render_content_list(_middle(_page(0, chart)))["pages"][0]["blocks"][0]
 
     assert output["image_source"] == "data:image/png;base64,AAAA"
-    assert output["content"].startswith("![](data:image/png;base64,AAAA)\n\n<details>")
-    assert "| \\(x\\) |" in output["content"]
+    assert output["content"] == "| A |\n| --- |\n| \\(x\\) |"
+    assert json.dumps(output).count("data:image/png;base64,AAAA") == 1
+    assert "![](" not in output["content"]
+    assert "<details>" not in output["content"]
+
+
+def test_content_list_renders_equation_as_raw_latex_with_single_image_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 equation 不加行间定界符，并把选中的图片载荷唯一提升为 image_source。"""
+    configured = Config(
+        render={
+            "latex_delimiters": {
+                "display": {"left": "\\[", "right": "\\]"},
+                "inline": {"left": "\\(", "right": "\\)"},
+            }
+        }
+    )
+    monkeypatch.setattr("mineru.render.content_list.config", configured)
+    middle = _middle(
+        _page(
+            0,
+            EquationBlock(type="equation", index=0, content="  x=1  "),
+            EquationBlock(
+                type="equation",
+                index=1,
+                content="",
+                image_base64="data:image/png;base64,BBBB",
+            ),
+            EquationBlock(
+                type="equation",
+                index=2,
+                content="y=2",
+                image_base64="data:image/png;base64,CCCC",
+            ),
+            EquationBlock(
+                type="equation",
+                index=3,
+                content="z=3",
+                image_path="images/e q.png",
+                image_base64="data:image/png;base64,DDDD",
+            ),
+        )
+    )
+
+    blocks = render_content_list(middle, asset_base_url="https://cdn.example/doc")["pages"][0]["blocks"]
+
+    assert blocks[0] == {"type": "equation", "content": "x=1"}
+    assert blocks[1] == {
+        "type": "equation",
+        "content": "",
+        "image_source": "data:image/png;base64,BBBB",
+    }
+    assert blocks[2] == {
+        "type": "equation",
+        "content": "y=2",
+        "image_source": "data:image/png;base64,CCCC",
+    }
+    assert blocks[3] == {
+        "type": "equation",
+        "content": "z=3",
+        "image_source": "https://cdn.example/doc/images/e%20q.png",
+    }
+    serialized = json.dumps(blocks)
+    assert serialized.count("data:image/png;base64,BBBB") == 1
+    assert serialized.count("data:image/png;base64,CCCC") == 1
+    assert "data:image/png;base64,DDDD" not in serialized
+    assert "\\[" not in serialized and "\\]" not in serialized
+    _assert_output_field_contract(blocks)
 
 
 def test_content_list_rejects_legacy_dict_input() -> None:

@@ -8,10 +8,12 @@ from typing import Any, TypeAlias
 from mineru.config import LatexDelimitersConfig, config
 from mineru.render.markdown import (
     _render_single_block,
+    _render_title_inline_content,
     _render_visual_annotation,
-    _render_visual_body,
+    _render_visual_body_content,
 )
 from mineru.render.utils.assets import normalize_image_source, resolve_image_source
+from mineru.render.utils.markdown_utils import escape_standalone_marker_rule, escape_text_block_markdown_prefix
 from mineru.types import (
     BlockType,
     ChartAnnotationBlock,
@@ -19,11 +21,15 @@ from mineru.types import (
     ChartBodyBlock,
     CodeAnnotationBlock,
     CodeBlock,
+    DocTitleBlock,
+    EquationBlock,
     ImageAnnotationBlock,
     ImageBlock,
     ImageBodyBlock,
+    ImagePayloadBlock,
     MiddleJson,
     PageBlock,
+    ParagraphTitleBlock,
     TableAnnotationBlock,
     TableBlock,
     TableBodyBlock,
@@ -44,7 +50,7 @@ _FOOTNOTE_TYPES = {
     BlockType.CHART_FOOTNOTE,
     BlockType.CODE_FOOTNOTE,
 }
-_REMOVED_BLOCK_FIELDS = {"content", "index", "level", "guess_lang"}
+_REMOVED_BLOCK_FIELDS = {"content", "index", "guess_lang", "image_path", "image_base64"}
 
 
 def render_content_list(
@@ -91,6 +97,16 @@ def _render_content_block(
         exclude=_REMOVED_BLOCK_FIELDS,
         exclude_defaults=True,
     )
+    if isinstance(block, (DocTitleBlock, ParagraphTitleBlock)):
+        content = _render_title_inline_content(block, delimiters)
+        payload["content"] = escape_standalone_marker_rule(escape_text_block_markdown_prefix(content))
+        return payload
+    if isinstance(block, EquationBlock):
+        payload["content"] = block.content.strip()
+        image_source = _resolve_content_image_source(block, asset_base_url)
+        if image_source is not None:
+            payload["image_source"] = image_source
+        return payload
     if not isinstance(block, (ImageBlock, TableBlock, ChartBlock, CodeBlock)):
         payload["content"] = _render_single_block(
             block,
@@ -99,7 +115,7 @@ def _render_content_block(
         )
         return payload
 
-    payload["content"] = _render_visual_body(
+    payload["content"] = _render_visual_body_content(
         block,
         delimiters=delimiters,
         asset_base_url=asset_base_url,
@@ -145,9 +161,14 @@ def _resolve_visual_image_source(block: VisualBlock, asset_base_url: str) -> str
     for child in block.content:
         if not isinstance(child, (ImageBodyBlock, TableBodyBlock, ChartBodyBlock)):
             continue
-        source = resolve_image_source(child, asset_base_url)
-        return normalize_image_source(source) if source else None
+        return _resolve_content_image_source(child, asset_base_url)
     return None
+
+
+def _resolve_content_image_source(block: ImagePayloadBlock, asset_base_url: str) -> str | None:
+    """把图片载荷收敛为 content_list 中唯一且安全的 image_source。"""
+    source = resolve_image_source(block, asset_base_url)
+    return normalize_image_source(source) if source else None
 
 
 __all__ = ["render_content_list"]
