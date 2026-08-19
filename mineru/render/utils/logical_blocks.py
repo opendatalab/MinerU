@@ -7,7 +7,17 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from mineru.backend.postprocess.table_merge import merge_table_content
-from mineru.types import PAGE_AUXILIARY_BLOCK_TYPES, BlockType, ListBlock, MiddleJson, PageBlock, TableBlock, TextBlock
+from mineru.types import (
+    PAGE_AUXILIARY_BLOCK_TYPES,
+    BlockType,
+    ContinuableTextBlockBase,
+    ListBlock,
+    MiddleJson,
+    PageBlock,
+    RefTextBlock,
+    TableBlock,
+    TextBlock,
+)
 
 
 class MarkdownRenderMode(str, Enum):
@@ -35,7 +45,7 @@ def build_render_plan(middle_json: MiddleJson, mode: MarkdownRenderMode) -> list
             PlannedBlock(
                 page_idx=page.page_idx,
                 block=block,
-                text_contents=[block.content] if isinstance(block, TextBlock) else [],
+                text_contents=[block.content] if isinstance(block, ContinuableTextBlockBase) else [],
             )
             for block in page.blocks
         ]
@@ -52,7 +62,11 @@ def build_render_plan(middle_json: MiddleJson, mode: MarkdownRenderMode) -> list
 def _merge_continued_text_blocks(blocks: list[PlannedBlock], mode: MarkdownRenderMode) -> None:
     """把 continues_prev 文本吸收到最近的前序文本逻辑块。"""
     for current_index, current in enumerate(blocks):
-        if current.removed or not isinstance(current.block, TextBlock) or current.block.continues_prev is not True:
+        if (
+            current.removed
+            or not isinstance(current.block, ContinuableTextBlockBase)
+            or current.block.continues_prev is not True
+        ):
             continue
         previous = _find_previous_planned_text(blocks, current_index)
         if previous is None:
@@ -65,7 +79,23 @@ def _merge_continued_text_blocks(blocks: list[PlannedBlock], mode: MarkdownRende
 
 
 def _find_previous_planned_text(blocks: list[PlannedBlock], current_index: int) -> PlannedBlock | None:
-    """跨越任意类型查找最近且仍参与输出的前序文本。"""
+    """按 text/ref_text 各自的透明块规则查找仍参与输出的前序同类文本。"""
+    current = blocks[current_index]
+    if isinstance(current.block, RefTextBlock):
+        previous_index = current_index - 1
+        while previous_index >= 0:
+            candidate = blocks[previous_index]
+            if candidate.block.type in PAGE_AUXILIARY_BLOCK_TYPES:
+                previous_index -= 1
+                continue
+            if not isinstance(candidate.block, RefTextBlock):
+                return None
+            if not candidate.removed:
+                return candidate
+            previous_index -= 1
+        return None
+    if not isinstance(current.block, TextBlock):
+        return None
     for candidate in reversed(blocks[:current_index]):
         if not candidate.removed and isinstance(candidate.block, TextBlock):
             return candidate

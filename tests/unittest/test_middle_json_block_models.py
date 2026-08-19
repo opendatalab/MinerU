@@ -19,6 +19,7 @@ from mineru.types import (
     ChartAnnotationBlock,
     CodeAnnotationBlock,
     CodeBlock,
+    ContinuableTextBlockBase,
     EquationBlock,
     ImageAnnotationBlock,
     ListBlock,
@@ -26,6 +27,7 @@ from mineru.types import (
     PageAuxTextBlock,
     PageBlockTypes,
     PageInfo,
+    RefTextBlock,
     TableAnnotationBlock,
     TextBlock,
     parse_block,
@@ -184,12 +186,19 @@ def test_formula_number_is_rejected_by_middle_json_boundary_and_schema() -> None
         )
 
 
-def test_cross_type_fields_and_unknown_fields_are_rejected() -> None:
-    """验证 Text/RefText 的专属字段边界与 extra forbid。"""
+def test_continuable_text_models_share_marker_and_reject_unknown_fields() -> None:
+    """验证 Text/RefText 共用续接基类，同时继续执行严格字段校验。"""
+    text = parse_block({"type": "text", "content": "x", "continues_prev": True})
+    ref_text = parse_block({"type": "ref_text", "content": "r", "continues_prev": True})
+
+    assert isinstance(text, ContinuableTextBlockBase)
+    assert isinstance(ref_text, RefTextBlock)
+    assert isinstance(ref_text, ContinuableTextBlockBase)
+    assert set(TextBlock.model_fields) == set(RefTextBlock.model_fields)
+    assert text.continues_prev is True
+    assert ref_text.continues_prev is True
     with pytest.raises(ValidationError):
         parse_block({"type": "text", "content": "x", "anchor": "a"})
-    with pytest.raises(ValidationError):
-        parse_block({"type": "ref_text", "content": "x", "continues_prev": True})
     with pytest.raises(ValidationError):
         parse_block({"type": "text", "content": "x", "unknown": 1})
 
@@ -402,8 +411,10 @@ def test_page_info_accepts_all_page_root_discriminators() -> None:
         assert page.blocks[0].type == block_type
 
 
-def test_nested_continues_prev_is_rejected_by_page_tree() -> None:
-    """验证 continues_prev 只能出现在页面顶层 text/list/table。"""
+@pytest.mark.parametrize("child_type", [BlockType.TEXT, BlockType.REF_TEXT])
+@pytest.mark.parametrize("continues_prev", [True, None])
+def test_nested_continues_prev_is_rejected_by_page_tree(child_type: str, continues_prev: bool | None) -> None:
+    """验证 continues_prev 只能出现在页面顶层 text/ref_text/list/table。"""
     with pytest.raises(ValidationError, match="nested"):
         PageInfo.model_validate(
             {
@@ -412,21 +423,7 @@ def test_nested_continues_prev_is_rejected_by_page_tree() -> None:
                     {
                         "type": "list",
                         "index": 0,
-                        "content": [{"type": "text", "content": "x", "continues_prev": True}],
-                    }
-                ],
-            }
-        )
-
-    with pytest.raises(ValidationError, match="nested"):
-        PageInfo.model_validate(
-            {
-                "page_idx": 0,
-                "blocks": [
-                    {
-                        "type": "list",
-                        "index": 0,
-                        "content": [{"type": "text", "content": "x", "continues_prev": None}],
+                        "content": [{"type": child_type, "content": "x", "continues_prev": continues_prev}],
                     }
                 ],
             }

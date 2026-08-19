@@ -4,7 +4,11 @@ from copy import deepcopy
 
 import pytest
 
-from mineru.backend.postprocess.paragraphs import can_auto_merge_text_blocks, merge_para_text_blocks
+from mineru.backend.postprocess.paragraphs import (
+    can_auto_merge_ref_text_blocks,
+    can_auto_merge_text_blocks,
+    merge_para_text_blocks,
+)
 from mineru.types import BlockType
 
 
@@ -13,11 +17,13 @@ def _text_block(
     content: str,
     bbox: list[float],
     line_bboxes: list[list[float]],
+    *,
+    block_type: str = BlockType.TEXT,
 ) -> dict:
-    """构造使用归一化 block/line bbox 的 dict text block。"""
+    """构造使用归一化 block/line bbox 的 dict text/ref_text block。"""
     return {
         "index": index,
-        "type": BlockType.TEXT,
+        "type": block_type,
         "bbox": list(bbox),
         "content": content,
         "lines": [{"bbox": list(line_bbox)} for line_bbox in line_bboxes],
@@ -61,6 +67,15 @@ def _horizontal_pair() -> tuple[dict, dict]:
         [0.1, 0.25, 0.9, 0.45],
         [[0.1, 0.25, 0.9, 0.3], [0.1, 0.35, 0.9, 0.4]],
     )
+    return previous_block, current_block
+
+
+def _ref_text_horizontal_pair() -> tuple[dict, dict]:
+    """构造首行缩进但其余规则满足续接条件的 ref_text 块对。"""
+    previous_block, current_block = _horizontal_pair()
+    previous_block["type"] = BlockType.REF_TEXT
+    current_block["type"] = BlockType.REF_TEXT
+    current_block["lines"][0]["bbox"][0] = 0.2
     return previous_block, current_block
 
 
@@ -689,6 +704,233 @@ def test_merge_para_text_blocks_supports_vertical_but_rejects_mixed_orientation(
     merge_para_text_blocks(mixed_pages)
 
     assert "continues_prev" not in current_horizontal
+
+
+def test_ref_text_rule_relaxes_leading_edge_and_initial_character() -> None:
+    """验证 ref_text 放宽当前起始边界以及数字或大写字符开头限制。"""
+    previous_block, current_block = _ref_text_horizontal_pair()
+    assert can_auto_merge_ref_text_blocks(current_block, previous_block)
+    assert not can_auto_merge_text_blocks(current_block, previous_block)
+
+    previous_block, current_block = _ref_text_horizontal_pair()
+    previous_block["content"] = "finished."
+    assert not can_auto_merge_ref_text_blocks(current_block, previous_block)
+
+    previous_block, current_block = _ref_text_horizontal_pair()
+    current_block["content"] = "Uppercase"
+    assert can_auto_merge_ref_text_blocks(current_block, previous_block)
+    assert not can_auto_merge_text_blocks(current_block, previous_block)
+
+    previous_block, current_block = _ref_text_horizontal_pair()
+    current_block["content"] = "1470–1480, Beijing, China."
+    assert can_auto_merge_ref_text_blocks(current_block, previous_block)
+    assert not can_auto_merge_text_blocks(current_block, previous_block)
+
+    previous_block, current_block = _ref_text_horizontal_pair()
+    previous_block["lines"][-1]["bbox"][2] = 0.7
+    assert not can_auto_merge_ref_text_blocks(current_block, previous_block)
+
+    previous_block, current_block = _ref_text_horizontal_pair()
+    for line in current_block["lines"]:
+        line["bbox"][2] = 0.4
+    assert not can_auto_merge_ref_text_blocks(current_block, previous_block)
+
+    previous_block, current_block = _ref_text_horizontal_pair()
+    previous_block["lines"] = previous_block["lines"][:1]
+    current_block["lines"] = current_block["lines"][:1]
+    assert not can_auto_merge_ref_text_blocks(current_block, previous_block)
+
+    previous_block, current_block = _ref_text_horizontal_pair()
+    current_block["bbox"][1] = 0.31
+    assert not can_auto_merge_ref_text_blocks(current_block, previous_block)
+
+    previous_vertical, current_vertical = _vertical_pair()
+    previous_vertical["type"] = BlockType.REF_TEXT
+    current_vertical["type"] = BlockType.REF_TEXT
+    current_vertical["lines"][0]["bbox"][1] = 0.2
+    assert can_auto_merge_ref_text_blocks(current_vertical, previous_vertical)
+    assert not can_auto_merge_text_blocks(current_vertical, previous_vertical)
+
+
+def test_merge_para_text_blocks_marks_indented_ref_text_without_moving_content() -> None:
+    """验证页内 ref_text 只在后块写标记，并保留内容与 bbox。"""
+    previous_block, current_block = _ref_text_horizontal_pair()
+    pages = [{"page_idx": 0, "blocks": [previous_block, current_block]}]
+    original_contents = [previous_block["content"], current_block["content"]]
+    original_bboxes = deepcopy([previous_block["bbox"], current_block["bbox"]])
+
+    merge_para_text_blocks(pages)
+
+    assert "continues_prev" not in previous_block
+    assert current_block["continues_prev"] is True
+    assert [previous_block["content"], current_block["content"]] == original_contents
+    assert [previous_block["bbox"], current_block["bbox"]] == original_bboxes
+    assert "lines" not in previous_block
+    assert "lines" not in current_block
+
+    first_result = deepcopy(pages)
+    merge_para_text_blocks(pages)
+    assert pages == first_result
+
+
+def test_merge_para_text_blocks_marks_numeric_reference_page_range() -> None:
+    """验证数字页码范围开头的 ref_text 可以续接前一条未结束参考文献。"""
+    previous_block, current_block = _ref_text_horizontal_pair()
+    previous_block["content"] = "Proceedings of the conference, pages"
+    current_block["content"] = "1470–1480, Beijing, China."
+    pages = [{"page_idx": 0, "blocks": [previous_block, current_block]}]
+
+    merge_para_text_blocks(pages)
+
+    assert current_block["continues_prev"] is True
+
+
+@pytest.mark.parametrize(
+    ("page_indices", "expected_continuation"),
+    [((0, 1), True), ((0, 2), False), ((2, 1), False)],
+)
+def test_merge_para_text_blocks_requires_consecutive_ref_text_pages(
+    page_indices: tuple[int, int],
+    expected_continuation: bool,
+) -> None:
+    """验证 ref_text 仅允许从同一阅读链的前一连续页续接。"""
+    previous_block, current_block = _ref_text_horizontal_pair()
+    pages = [
+        {"page_idx": page_indices[0], "blocks": [previous_block]},
+        {"page_idx": page_indices[1], "blocks": [current_block]},
+    ]
+
+    merge_para_text_blocks(pages)
+
+    assert current_block.get("continues_prev", False) is expected_continuation
+
+
+def test_merge_para_text_blocks_skips_page_auxiliary_blocks_between_ref_text() -> None:
+    """验证跨页 ref_text 会跳过全部页面辅助块查找前序 ref_text。"""
+    previous_block, current_block = _ref_text_horizontal_pair()
+    current_block["index"] = 3
+    pages = [
+        {
+            "page_idx": 8,
+            "blocks": [
+                previous_block,
+                {"index": 1, "type": BlockType.FOOTER, "content": "footer"},
+                {"index": 2, "type": BlockType.PAGE_FOOTNOTE, "content": "page footnote"},
+            ],
+        },
+        {
+            "page_idx": 9,
+            "blocks": [
+                {"index": 0, "type": BlockType.HEADER, "content": "header"},
+                {"index": 1, "type": BlockType.PAGE_NUMBER, "content": "9"},
+                {"index": 2, "type": BlockType.ASIDE_TEXT, "content": "aside"},
+                current_block,
+            ],
+        },
+    ]
+
+    merge_para_text_blocks(pages)
+
+    assert current_block["continues_prev"] is True
+
+
+@pytest.mark.parametrize(
+    "barrier_type",
+    [BlockType.TEXT, BlockType.PARAGRAPH_TITLE, BlockType.IMAGE, BlockType.TABLE, BlockType.LIST],
+)
+def test_merge_para_text_blocks_keeps_semantic_barriers_between_ref_text(barrier_type: str) -> None:
+    """验证 ref_text 不能跨越页面辅助类型之外的语义块。"""
+    previous_block, current_block = _ref_text_horizontal_pair()
+    current_block["index"] = 2
+    barrier = {
+        "index": 1,
+        "type": barrier_type,
+        "content": [] if barrier_type == BlockType.LIST else "barrier",
+    }
+    pages = [{"page_idx": 0, "blocks": [previous_block, barrier, current_block]}]
+
+    merge_para_text_blocks(pages)
+
+    assert "continues_prev" not in current_block
+
+
+@pytest.mark.parametrize(
+    ("following_type", "expected_continuation"),
+    [(BlockType.REF_TEXT, True), (BlockType.TEXT, False)],
+)
+def test_ref_text_single_line_lookahead_uses_only_same_type(
+    following_type: str,
+    expected_continuation: bool,
+) -> None:
+    """验证 ref_text 单行只使用当前页后续 ref_text 补足虚拟栏宽。"""
+    previous_block = _horizontal_multiline_block(
+        0,
+        "unfinished",
+        left=0.55,
+        right=0.9,
+        top=0.5,
+        line_count=4,
+    )
+    current_block = _horizontal_single_line_block(0, "tail.", left=0.1, right=0.22, top=0.1)
+    following_block = _horizontal_multiline_block(
+        2,
+        "following reference.",
+        left=0.1,
+        right=0.45,
+        top=0.2,
+    )
+    previous_block["type"] = BlockType.REF_TEXT
+    current_block["type"] = BlockType.REF_TEXT
+    following_block["type"] = following_type
+    pages = [
+        {"page_idx": 0, "blocks": [previous_block]},
+        {
+            "page_idx": 1,
+            "blocks": [
+                current_block,
+                {"index": 1, "type": BlockType.PAGE_NUMBER, "content": "2"},
+                following_block,
+            ],
+        },
+    ]
+
+    merge_para_text_blocks(pages)
+
+    assert current_block.get("continues_prev", False) is expected_continuation
+
+
+def test_ref_list_and_ref_text_store_independent_continuation_markers() -> None:
+    """验证 xhigh 风格结果中的 ref list 与顶层 ref_text 分别保存续接标记。"""
+    previous_list = _list_block(0, "ref one")
+    current_list = _list_block(1, "ref two")
+    previous_ref_text, current_ref_text = _ref_text_horizontal_pair()
+    previous_ref_text["index"] = 2
+    current_ref_text["index"] = 3
+    pages = [
+        {
+            "page_idx": 0,
+            "blocks": [
+                previous_list,
+                {"index": 1, "type": BlockType.PAGE_FOOTNOTE, "content": "note"},
+            ],
+        },
+        {
+            "page_idx": 1,
+            "blocks": [
+                {"index": 0, "type": BlockType.HEADER, "content": "header"},
+                current_list,
+                previous_ref_text,
+                current_ref_text,
+            ],
+        },
+    ]
+
+    merge_para_text_blocks(pages)
+
+    assert current_list["continues_prev"] is True
+    assert current_ref_text["continues_prev"] is True
+    assert "continues_prev" not in previous_list
+    assert "continues_prev" not in previous_ref_text
 
 
 def test_merge_para_text_blocks_marks_adjacent_ref_lists_without_moving_items() -> None:

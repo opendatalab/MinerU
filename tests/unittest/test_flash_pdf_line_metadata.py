@@ -7,12 +7,12 @@ from mineru.model.flash.native_pdf import pipeline
 
 @pytest.mark.parametrize(
     "block_type",
-    ["text", "doc_title", "paragraph_title", "caption", "footnote"],
+    ["text", "ref_text", "doc_title", "paragraph_title", "caption", "footnote"],
 )
 def test_output_normalization_exposes_lines_for_pdf_text_types(
     block_type: str,
 ) -> None:
-    """验证五类 PDF 文本块会按原阅读顺序公开归一化行框。"""
+    """验证 Flash 对包括 ref_text 在内的 PDF 文本块公开归一化行框。"""
 
     block = pipeline._normalize_output_block(
         {
@@ -64,6 +64,7 @@ def test_output_normalization_restores_rotated_line_bbox_to_page(
     assert block["lines"] == [{"bbox": expected_bbox}]
 
 
+@pytest.mark.parametrize("block_type", ["text", "ref_text"])
 @pytest.mark.parametrize(
     "local_line_bboxes",
     [
@@ -74,13 +75,14 @@ def test_output_normalization_restores_rotated_line_bbox_to_page(
     ],
 )
 def test_output_normalization_fails_closed_for_invalid_line_bboxes(
+    block_type: str,
     local_line_bboxes: object,
 ) -> None:
-    """验证内部行框缺失、为空或任一非法时输出空 lines。"""
+    """验证 text/ref_text 内部行框缺失、为空或任一非法时输出空 lines。"""
 
     block = pipeline._normalize_output_block(
         {
-            "type": "text",
+            "type": block_type,
             "bbox": (10.0, 20.0, 40.0, 50.0),
             "angle": 0,
             "content": "value",

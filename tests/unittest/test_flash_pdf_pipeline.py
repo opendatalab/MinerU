@@ -249,6 +249,7 @@ def test_native_pdf_domain_modules_do_not_import_each_other() -> None:
     [
         "doc_title",
         "paragraph_title",
+        "ref_text",
         "header",
         "footer",
         "page_number",

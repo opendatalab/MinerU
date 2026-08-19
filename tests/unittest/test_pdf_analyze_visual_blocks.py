@@ -1035,6 +1035,7 @@ def test_normalize_pdf_model_list_rejects_unclassified_vlm_title() -> None:
     "block_type",
     [
         BlockType.TEXT,
+        BlockType.REF_TEXT,
         BlockType.DOC_TITLE,
         BlockType.PARAGRAPH_TITLE,
         RAW_CAPTION,
@@ -1059,11 +1060,11 @@ def test_normalize_pdf_model_list_rejects_unclassified_vlm_title() -> None:
         ],
     ],
 )
-def test_normalize_pdf_model_list_removes_five_text_types_with_invalid_lines(
+def test_normalize_pdf_model_list_removes_six_text_types_with_invalid_lines(
     block_type: str,
     invalid_lines: object,
 ) -> None:
-    """验证五类文本块只要任一行框非法就按 fail-closed 规则删除。"""
+    """验证包括 ref_text 在内的六类文本块遇到非法行框时按 fail-closed 规则删除。"""
 
     model_list = [[{"type": block_type, "content": "valid", "lines": invalid_lines}]]
 
@@ -1076,6 +1077,7 @@ def test_normalize_pdf_model_list_removes_five_text_types_with_invalid_lines(
     "block_type",
     [
         BlockType.TEXT,
+        BlockType.REF_TEXT,
         BlockType.DOC_TITLE,
         BlockType.PARAGRAPH_TITLE,
         RAW_CAPTION,
@@ -1083,11 +1085,11 @@ def test_normalize_pdf_model_list_removes_five_text_types_with_invalid_lines(
     ],
 )
 @pytest.mark.parametrize("invalid_content", [None, "", "   ", ["not a string"]])
-def test_normalize_pdf_model_list_removes_five_text_types_with_empty_content(
+def test_normalize_pdf_model_list_removes_six_text_types_with_empty_content(
     block_type: str,
     invalid_content: object,
 ) -> None:
-    """验证五类文本块即使行框有效，正文为空或非字符串时仍会删除。"""
+    """验证包括 ref_text 在内的六类文本块即使行框有效，正文无效时仍会删除。"""
 
     model_list = [
         [

@@ -12,6 +12,7 @@ from mineru.types import (
     ListBlock,
     PageInfo,
     ParagraphTitleBlock,
+    RefTextBlock,
     TableBlock,
     TextBlock,
 )
@@ -394,6 +395,33 @@ def test_pdf_continuation_is_typed_and_line_metadata_is_removed() -> None:
     page = model_list_to_pages(model_list)[0]
 
     assert all(isinstance(block, TextBlock) for block in page.blocks)
+    assert page.blocks[0].continues_prev is None
+    assert page.blocks[1].continues_prev is True
+    assert all("lines" not in type(block).model_fields for block in page.blocks)
+
+
+def test_pdf_ref_text_continuation_is_typed_and_line_metadata_is_removed() -> None:
+    """验证 ref_text 续段标记越过 raw 边界，严格对象不保留临时 lines。"""
+    model_list = [
+        [
+            {
+                "type": "ref_text",
+                "bbox": [0.1, 0.1, 0.9, 0.3],
+                "content": "previous continuation",
+                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.15]}, {"bbox": [0.1, 0.2, 0.9, 0.25]}],
+            },
+            {
+                "type": "ref_text",
+                "bbox": [0.1, 0.25, 0.9, 0.45],
+                "content": "current continuation",
+                "lines": [{"bbox": [0.2, 0.25, 0.9, 0.3]}, {"bbox": [0.1, 0.35, 0.9, 0.4]}],
+            },
+        ]
+    ]
+
+    page = model_list_to_pages(model_list)[0]
+
+    assert all(isinstance(block, RefTextBlock) for block in page.blocks)
     assert page.blocks[0].continues_prev is None
     assert page.blocks[1].continues_prev is True
     assert all("lines" not in type(block).model_fields for block in page.blocks)

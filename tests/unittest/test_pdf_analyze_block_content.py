@@ -275,16 +275,18 @@ def test_xhigh_vlm_blocks_normalize_visual_annotation_types() -> None:
     ]
 
 
-def test_five_pdf_text_types_keep_normalized_line_metadata() -> None:
-    """验证五类 PDF 文本块统一保留公开的归一化 lines。"""
+def test_six_pdf_text_types_keep_normalized_line_metadata() -> None:
+    """验证包括 ref_text 在内的六类 PDF 文本块统一保留归一化 lines。"""
     assert constants.LINE_METADATA_BLOCK_TYPES == {
         BlockType.TEXT,
+        BlockType.REF_TEXT,
         BlockType.DOC_TITLE,
         BlockType.PARAGRAPH_TITLE,
         RAW_CAPTION,
         RAW_FOOTNOTE,
     }
     text_block = {"type": BlockType.TEXT, "content": "text"}
+    ref_text_block = {"type": BlockType.REF_TEXT, "content": "reference"}
     doc_title_block = {"type": BlockType.DOC_TITLE, "content": "doc title"}
     paragraph_title_block = {
         "type": BlockType.PARAGRAPH_TITLE,
@@ -299,6 +301,7 @@ def test_five_pdf_text_types_keep_normalized_line_metadata() -> None:
     }
     page_blocks = [
         text_block,
+        ref_text_block,
         doc_title_block,
         paragraph_title_block,
         caption_block,
@@ -310,16 +313,18 @@ def test_five_pdf_text_types_keep_normalized_line_metadata() -> None:
         page_blocks,
         {
             0: _build_text_lines("text"),
-            1: _build_text_lines("doc title"),
-            2: _build_text_lines("paragraph title"),
-            3: _build_text_lines("caption line 1", "caption line 2"),
-            4: _build_text_lines("footnote"),
-            5: _build_text_lines("x=1"),
+            1: _build_text_lines("reference"),
+            2: _build_text_lines("doc title"),
+            3: _build_text_lines("paragraph title"),
+            4: _build_text_lines("caption line 1", "caption line 2"),
+            5: _build_text_lines("footnote"),
+            6: _build_text_lines("x=1"),
         },
         (200.0, 100.0),
     )
 
     assert text_block["lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
+    assert ref_text_block["lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
     assert doc_title_block["lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
     assert paragraph_title_block["lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
     assert caption_block["lines"] == [
@@ -331,10 +336,10 @@ def test_five_pdf_text_types_keep_normalized_line_metadata() -> None:
 
 
 @pytest.mark.parametrize("effort", ["high", "xhigh"])
-def test_high_ocr_detects_lines_for_all_five_pdf_text_types(
+def test_high_ocr_detects_lines_for_all_six_pdf_text_types(
     effort: str,
 ) -> None:
-    """验证 High/XHigh OCR 对标题、正文、caption 和 footnote 都执行行检测。"""
+    """验证 High/XHigh OCR 对 ref_text 和其余行框文本类型都执行行检测。"""
 
     ocr_det_type, mfr_enabled = ocr._build_ocr_det_type_and_mfr_enable(
         "ocr",
@@ -343,6 +348,13 @@ def test_high_ocr_detects_lines_for_all_five_pdf_text_types(
 
     assert ocr_det_type == constants.LINE_METADATA_BLOCK_TYPES
     assert mfr_enabled is False
+
+
+def test_all_hybrid_text_routes_collect_ref_text_lines() -> None:
+    """验证 Low/Medium 与 High/XHigh 的 TXT/OCR 路由都包含 ref_text。"""
+    assert BlockType.REF_TEXT in constants.PIPELINE_DET_TYPE
+    assert BlockType.REF_TEXT in constants.VLM_TXT_DET_TYPE
+    assert BlockType.REF_TEXT in constants.VLM_OCR_DET_TYPE
 
 
 def test_window_post_ocr_batches_all_pages_once() -> None:

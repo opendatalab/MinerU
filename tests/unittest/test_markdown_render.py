@@ -100,6 +100,16 @@ def _list(
     )
 
 
+def _ref_text(index: int, content: str, *, continues_prev: bool | None = None) -> RefTextBlock:
+    """构造可携带续段标记的顶层参考文献文本块。"""
+    return RefTextBlock(
+        type="ref_text",
+        index=index,
+        content=content,
+        continues_prev=continues_prev,
+    )
+
+
 def test_render_modes_filter_merge_and_preserve_input() -> None:
     """验证两种模式的过滤、页内/跨页合并、分页线及无副作用。"""
     middle = _middle(
@@ -160,6 +170,57 @@ def test_text_continuation_handles_hyphen_and_cjk_boundaries() -> None:
 
     assert render_markdown(western) == "international"
     assert render_markdown(cjk) == "中文继续"
+
+
+def test_ref_text_continuation_skips_page_auxiliary_blocks_by_mode() -> None:
+    """验证 ref_text 默认跨页合并，FULL 只合并页内链且不修改输入。"""
+    middle = _middle(
+        _page(
+            0,
+            _ref_text(0, "inter-"),
+            PageAuxTextBlock(type="page_footnote", index=1, content="NOTE"),
+        ),
+        _page(
+            1,
+            PageAuxTextBlock(type="header", index=0, content="HEADER"),
+            _ref_text(1, "national", continues_prev=True),
+            _ref_text(2, "continuation", continues_prev=True),
+        ),
+    )
+    original = deepcopy(middle)
+
+    assert render_markdown(middle) == "international continuation"
+    assert render_markdown(middle, mode=MarkdownRenderMode.FULL) == (
+        "inter-\n\nNOTE\n\n---\n\nHEADER\n\nnational continuation"
+    )
+    assert middle == original
+
+
+def test_ref_text_continuation_keeps_semantic_barrier() -> None:
+    """验证手工标记也不能让 ref_text 跨过正文等语义块。"""
+    middle = _middle(
+        _page(
+            0,
+            _ref_text(0, "first"),
+            TextBlock(type="text", index=1, content="separator"),
+            _ref_text(2, "second", continues_prev=True),
+        )
+    )
+
+    assert render_markdown(middle) == "first\n\nseparator\n\nsecond"
+
+
+def test_ref_text_continuation_reuses_url_boundary_joining() -> None:
+    """验证 ref_text 续段复用正文的跨块 URL 连接规则。"""
+    middle = _middle(
+        _page(
+            0,
+            _ref_text(0, "See https://doi.o"),
+            _ref_text(1, "rg/10.1016/example", continues_prev=True),
+        )
+    )
+
+    assert render_markdown(middle) == "See https://doi.org/10.1016/example"
 
 
 def test_list_continuation_merges_same_page_in_both_modes_without_mutating_input() -> None:

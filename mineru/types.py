@@ -376,12 +376,17 @@ class StringContentBlock(BlockBase):
     content: str
 
 
-class TextBlock(StringContentBlock):
-    type: Literal[BlockType.TEXT]
+class ContinuableTextBlockBase(StringContentBlock):
+    """正文与参考文献共享的跨块续接结构。"""
+
     continues_prev: bool | None = None
 
 
-class RefTextBlock(StringContentBlock):
+class TextBlock(ContinuableTextBlockBase):
+    type: Literal[BlockType.TEXT]
+
+
+class RefTextBlock(ContinuableTextBlockBase):
     type: Literal[BlockType.REF_TEXT]
 
 

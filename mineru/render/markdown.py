@@ -123,7 +123,8 @@ def _render_planned_block(
         content = render_joined_inline_contents(planned.text_contents or [block.content], delimiters)
         return escape_standalone_marker_rule(escape_text_block_markdown_prefix(content))
     if isinstance(block, RefTextBlock):
-        return escape_standalone_marker_rule(render_inline_content(block.content, delimiters))
+        content = render_joined_inline_contents(planned.text_contents or [block.content], delimiters)
+        return escape_standalone_marker_rule(content)
     if isinstance(block, (DocTitleBlock, ParagraphTitleBlock)):
         return _render_title(block, delimiters)
     if isinstance(block, PageAuxTextBlock):

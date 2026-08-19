@@ -101,6 +101,7 @@ from .visual_annotations import _classify_and_bind_visual_annotations
 _TEXT_SEMANTIC_TYPES = {
     "doc_title",
     "paragraph_title",
+    "ref_text",
     "header",
     "footer",
     "page_number",
@@ -115,6 +116,7 @@ _TEXT_SEMANTIC_TYPES = {
 _OUTPUT_BLOCK_TYPES = {"text", "table", "image", "equation", "code"} | _TEXT_SEMANTIC_TYPES
 _LINE_METADATA_OUTPUT_TYPES = {
     "text",
+    "ref_text",
     "doc_title",
     "paragraph_title",
     "caption",

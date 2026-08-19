@@ -89,7 +89,7 @@ text
 | 模型 | `content` | 专属字段 |
 |------|-----------|----------|
 | `TextBlock` | `str` | `continues_prev`；不允许 `anchor` |
-| `RefTextBlock` | `str` | 不允许 `continues_prev` |
+| `RefTextBlock` | `str` | `continues_prev`；不允许 `anchor` |
 | `DocTitleBlock` | `str` | `anchor`、必填 `level=1` |
 | `ParagraphTitleBlock` | `str` | `anchor`、必填 `level>=2` |
 | `PageAuxTextBlock` | `str` | 共享页眉、页脚、页码、边栏和页脚注释结构 |
@@ -101,9 +101,14 @@ text
 | `*AnnotationBlock` | `str` | 每个视觉家族共享 caption/footnote 结构 |
 | 其它叶子 block | `str` | 仅各自声明的字段 |
 
+`TextBlock` 与 `RefTextBlock` 共同继承 `ContinuableTextBlockBase`。PDF 分析阶段
+两者都必须具有合法的临时 `lines`，该字段只参与续段计算，不进入严格 Middle JSON。
+`ref_text` 复用正文的终止符和几何规则，但不要求续段首行或首列顶起始边界，
+也不因续段以数字或大写字符开头而拒绝合并。
+
 `CodeBlock(sub_type="code")` 必须有非空 `guess_lang`；
 `sub_type="algorithm"` 禁止 `guess_lang`。`continues_prev` 只允许出现在页面
-顶层 `text/list/table`，任何嵌套项即使显式写成 null 也会被拒绝。
+顶层 `text/ref_text/list/table`，任何嵌套项即使显式写成 null 也会被拒绝。
 
 `merge_prev`、`is_numbered_style` 和 `section_number` 均不属于公开模型。
 标题使用全局文档层级：文档标题固定为一级，所有段落标题从二级开始。
