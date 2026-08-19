@@ -143,6 +143,13 @@ def _is_supported_rotation(rotation: float) -> bool:
     return any(abs(rotation_degrees - angle) < 0.1 for angle in [0, 90, 180, 270])
 
 
+def _rotation_distance_degrees(first: float, second: float) -> float:
+    """返回两个弧度方向之间不超过 180 度的最短夹角。"""
+    first_degrees = math.degrees(first) % 360
+    second_degrees = math.degrees(second) % 360
+    return abs((first_degrees - second_degrees + 180) % 360 - 180)
+
+
 def _get_char_fill_key(char: Char) -> tuple[str, Any]:
     """生成字符回填判定 key，优先使用 pdftext 提供的页内 char_idx。"""
     char_idx = char.get("char_idx")
@@ -184,7 +191,8 @@ def _get_chars_for_span_fill(page_chars: list[Char] | dict[str, list[Char]]) -> 
         return [char for char in all_chars if _get_char_fill_key(char) in fill_char_keys]
 
     for line in get_lines_from_chars(all_chars):
-        if not _is_supported_rotation(float(line.get("rotation", 0))):
+        line_rotation = float(line.get("rotation", 0))
+        if not _is_supported_rotation(line_rotation):
             continue
 
         line_chars = _iter_line_chars(line)
@@ -193,7 +201,12 @@ def _get_chars_for_span_fill(page_chars: list[Char] | dict[str, list[Char]]) -> 
 
         # 标准方向正文行内的局部旋转字符通常是仿斜体强调，需要允许回填。
         for char in line_chars:
-            if not _is_supported_rotation(float(char.get("rotation", 0))):
+            char_rotation = float(char.get("rotation", 0))
+            if (
+                not _is_supported_rotation(char_rotation)
+                and _rotation_distance_degrees(char_rotation, line_rotation)
+                <= SPAN_FILL_LOCAL_ROTATION_MAX_DEGREES
+            ):
                 fill_char_keys.add(_get_char_fill_key(char))
 
     return [char for char in all_chars if _get_char_fill_key(char) in fill_char_keys]
@@ -410,6 +423,9 @@ SCRIPT_TYPOGRAPHY_MIN_LOCAL_OFFSET_RATIO = 0.1
 SCRIPT_COMPONENT_MIN_OFFSET_RATIO = 0.08
 SCRIPT_COMPONENT_MAX_HEIGHT_RATIO = 1.1
 SCRIPT_BRACKET_PAIRS = {"[": "]", "［": "］", "(": ")", "（": "）"}
+SCRIPT_NUMERIC_REFERENCE_OPENERS = {"[", "［"}
+SCRIPT_NUMERIC_REFERENCE_SEPARATORS = {"-", "–", "—", "‑", ",", "，", " ", "\u00a0"}
+SPAN_FILL_LOCAL_ROTATION_MAX_DEGREES = 30.0
 CONTROL_LINE_BREAK_CHARS = {"\r", "\n"}
 
 _ScriptRole = Literal["body", "sup", "sub"]
@@ -627,6 +643,85 @@ def _estimate_script_body_band(features: list[_ScriptCharFeature]) -> _ScriptBod
     )
 
 
+def _is_script_identifier_char(text: str) -> bool:
+    """判断字符是否属于可承载数学角标的非 CJK 字母或数字。"""
+    if len(text) != 1:
+        return False
+    if text.isdigit():
+        return True
+    if not text.isalpha():
+        return False
+    unicode_name = unicodedata.name(text, "")
+    return not any(
+        marker in unicode_name
+        for marker in ("CJK", "HIRAGANA", "KATAKANA", "HANGUL", "BOPOMOFO")
+    )
+
+
+def _estimate_main_font_body_band(features: list[_ScriptCharFeature]) -> _ScriptBodyBand | None:
+    """使用字母和汉字投票选出主字体，并据此估计局部正文带。"""
+    voters = [feature for feature in features if feature.is_body_anchor and feature.text.isalpha()]
+    if not voters:
+        return None
+
+    font_counts: dict[tuple[Any, Any], int] = collections.Counter(
+        feature.font_signature for feature in voters
+    )
+    first_indices: dict[tuple[Any, Any], int] = {}
+    for feature in voters:
+        first_indices.setdefault(feature.font_signature, feature.index)
+    main_font = min(
+        font_counts,
+        key=lambda signature: (-font_counts[signature], first_indices[signature]),
+    )
+    anchors = [feature for feature in voters if feature.font_signature == main_font]
+    body_height = max(feature.height for feature in anchors)
+    full_height_anchors = [
+        feature for feature in anchors if feature.height >= body_height * SCRIPT_BODY_FULL_HEIGHT_RATIO
+    ]
+    return _ScriptBodyBand(
+        center_y=max(feature.center_y for feature in full_height_anchors),
+        height=body_height,
+    )
+
+
+def _get_structure_script_role(
+    open_feature: _ScriptCharFeature,
+    close_feature: _ScriptCharFeature,
+    body_band: _ScriptBodyBand,
+) -> _ScriptMarkRole | None:
+    """按指定正文带判断成对括号是否构成同向缩小的结构角标。"""
+    if (
+        open_feature.height > body_band.height * SCRIPT_GEOMETRY_MAX_HEIGHT_RATIO
+        or close_feature.height > body_band.height * SCRIPT_GEOMETRY_MAX_HEIGHT_RATIO
+    ):
+        return None
+
+    open_offset = open_feature.center_y - body_band.center_y
+    close_offset = close_feature.center_y - body_band.center_y
+    minimum_offset = body_band.height * SCRIPT_STRUCTURE_MIN_OFFSET_RATIO
+    if (
+        open_offset * close_offset <= 0
+        or min(abs(open_offset), abs(close_offset)) < minimum_offset
+    ):
+        return None
+    return _get_script_role((open_offset + close_offset) / 2)
+
+
+def _is_numeric_square_reference(
+    features: list[_ScriptCharFeature],
+    open_index: int,
+    close_index: int,
+) -> bool:
+    """判断成对方括号内部是否只包含数字及引用范围分隔符。"""
+    if features[open_index].text not in SCRIPT_NUMERIC_REFERENCE_OPENERS:
+        return False
+    inner_text = [feature.text for feature in features[open_index + 1 : close_index]]
+    return bool(inner_text) and any(text.isdigit() for text in inner_text) and all(
+        text.isdigit() or text in SCRIPT_NUMERIC_REFERENCE_SEPARATORS for text in inner_text
+    )
+
+
 def _collect_script_seeds(
     features: list[_ScriptCharFeature],
     body_band: _ScriptBodyBand,
@@ -662,6 +757,8 @@ def _collect_script_seeds(
             or index - 1 in claimed_indices
             or not feature.text.isalnum()
             or not previous_feature.text.isalnum()
+            or not _is_script_identifier_char(feature.text)
+            or not _is_script_identifier_char(previous_feature.text)
             or feature.font_signature == previous_feature.font_signature
             or feature.height > previous_feature.height * SCRIPT_COMPONENT_MAX_HEIGHT_RATIO
         ):
@@ -682,6 +779,7 @@ def _collect_script_seeds(
             claimed_indices.add(index)
 
     bracket_stack: list[tuple[int, str]] = []
+    main_font_body_band = _estimate_main_font_body_band(features)
     for feature in features:
         if feature.text in SCRIPT_BRACKET_PAIRS:
             bracket_stack.append((feature.index, feature.text))
@@ -693,26 +791,21 @@ def _collect_script_seeds(
         open_feature = features[open_index]
         if not open_feature.is_valid or not feature.is_valid:
             continue
+        role = _get_structure_script_role(open_feature, feature, body_band)
         if (
-            open_feature.height > body_band.height * SCRIPT_GEOMETRY_MAX_HEIGHT_RATIO
-            or feature.height > body_band.height * SCRIPT_GEOMETRY_MAX_HEIGHT_RATIO
+            role is None
+            and main_font_body_band is not None
+            and _is_numeric_square_reference(features, open_index, feature.index)
         ):
-            continue
-
-        open_offset = open_feature.center_y - body_band.center_y
-        close_offset = feature.center_y - body_band.center_y
-        minimum_offset = body_band.height * SCRIPT_STRUCTURE_MIN_OFFSET_RATIO
-        if (
-            open_offset * close_offset <= 0
-            or min(abs(open_offset), abs(close_offset)) < minimum_offset
-        ):
+            role = _get_structure_script_role(open_feature, feature, main_font_body_band)
+        if role is None:
             continue
 
         seeds.append(
             _ScriptSeed(
                 start=open_index,
                 end=feature.index,
-                role=_get_script_role((open_offset + close_offset) / 2),
+                role=role,
                 evidence="structure",
             )
         )

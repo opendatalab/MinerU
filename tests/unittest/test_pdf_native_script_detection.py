@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import pytest
@@ -94,6 +95,37 @@ def _script_char(
     }
 
 
+def _rotated_char(index: int, text: str, rotation_degrees: float) -> Char:
+    """构造带指定字符方向的最小字符，用于 span 回填角度测试。"""
+    char = _script_char(index, text, height=10.0, center_y=10.0)
+    char["rotation"] = math.radians(rotation_degrees)
+    return char
+
+
+def test_span_fill_does_not_restore_315_degree_watermark(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证标准正文粗行中的 315 度水印字符不会被仿斜体分支重新放行。"""
+    body = _rotated_char(0, "A", 0.0)
+    watermark = _rotated_char(1, "水", 315.0)
+    line = {"rotation": 0.0, "spans": [{"chars": [body, watermark]}]}
+    monkeypatch.setattr(native, "get_lines_from_chars", lambda _chars: [line])
+
+    assert native._get_chars_for_span_fill([body, watermark]) == [body]
+
+
+def test_span_fill_restores_19_degree_sheared_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证标准正文粗行中的约 19 度仿斜体字符仍可参与 span 回填。"""
+    body = _rotated_char(0, "A", 0.0)
+    sheared = _rotated_char(1, "B", 19.2)
+    line = {"rotation": 0.0, "spans": [{"chars": [body, sheared]}]}
+    monkeypatch.setattr(native, "get_lines_from_chars", lambda _chars: [line])
+
+    assert native._get_chars_for_span_fill([body, sheared]) == [body, sheared]
+
+
 def test_weak_offset_component_without_seed_stays_body() -> None:
     """验证只有连续级弱偏移、没有高置信证据的组件不会产生标签。"""
     chars = [
@@ -125,6 +157,39 @@ def test_font_suffix_seed_keeps_its_base_character_body() -> None:
     ]
 
     assert _render_chars(chars) == "9 R<sup>2</sup>"
+
+
+@pytest.mark.parametrize(
+    ("chars", "expected"),
+    [
+        pytest.param(
+            [
+                _script_char(0, "N", height=10.0, center_y=10.0, font_name="Latin"),
+                _script_char(1, "P", height=10.0, center_y=10.0, font_name="Latin"),
+                _script_char(2, "U", height=10.0, center_y=10.0, font_name="Latin"),
+                _script_char(3, "开", height=10.0, center_y=8.5, font_name="CJK"),
+                _script_char(4, "发", height=10.0, center_y=8.5, font_name="CJK"),
+            ],
+            "NPU开发",
+            id="latin-to-cjk",
+        ),
+        pytest.param(
+            [
+                _script_char(0, "2", height=10.0, center_y=10.0, font_name="Digit"),
+                _script_char(1, "4", height=10.0, center_y=10.0, font_name="Digit"),
+                _script_char(2, "年", height=10.0, center_y=8.5, font_name="CJK"),
+            ],
+            "24年",
+            id="digit-to-cjk",
+        ),
+    ],
+)
+def test_cjk_font_boundary_does_not_seed_script_component(
+    chars: list[Char],
+    expected: str,
+) -> None:
+    """验证正常的 CJK 与拉丁或数字字体切换不会被解释为上下标后缀。"""
+    assert _render_chars(chars) == expected
 
 
 def test_shifted_brackets_seed_the_complete_reference_component() -> None:
@@ -195,6 +260,20 @@ def test_shifted_brackets_seed_the_complete_reference_component() -> None:
         pytest.param(
             "中文论文.pdf",
             0,
+            "等［7］",
+            ("等<sup>［7］</sup>",),
+            id="chinese-reference-7",
+        ),
+        pytest.param(
+            "中文论文.pdf",
+            0,
+            "Zhao等［8］",
+            ("Zhao等<sup>［8］</sup>",),
+            id="chinese-reference-8",
+        ),
+        pytest.param(
+            "中文论文.pdf",
+            0,
             "利用决定系数（R2",
             ("决定系数（R<sup>2</sup>",),
             id="same-size-font-suffix",
@@ -218,6 +297,36 @@ def test_real_pdf_scripts_keep_confirmed_markup(
     content = _render_pdf_line(_DEMO_PDF_DIR / pdf_name, page_index, probe)
 
     assert all(expected_fragment in content for expected_fragment in expected_fragments)
+
+
+@pytest.mark.parametrize(
+    ("probe", "expected_fragment"),
+    [
+        pytest.param(
+            "预测。Meng 等［10］利用机器学习对冻结岩土的力学",
+            "Meng 等<sup>［10］</sup>",
+            id="reference-10",
+        ),
+        pytest.param(
+            "特性进行了预测。Esmaeili-Falak 等［11］通过机器学习对冻土的轴向抗压强度",
+            "Esmaeili-Falak 等<sup>［11］</sup>",
+            id="reference-11",
+        ),
+        pytest.param(
+            "Li等［12］采用 ANN 模型对冻土应力应变进行预测和验证。",
+            "Li等<sup>［12］</sup>",
+            id="reference-12",
+        ),
+    ],
+)
+def test_chinese_mixed_font_reference_uses_local_main_font_body(
+    probe: str,
+    expected_fragment: str,
+) -> None:
+    """验证含拉丁姓名的中文 OCR 行使用主字体正文带识别数字引用。"""
+    chars = _contiguous_chars_containing(_DEMO_PDF_DIR / "中文论文.pdf", 1, probe)
+
+    assert expected_fragment in _render_chars(chars)
 
 
 def test_chinese_reference_line_only_marks_the_reference() -> None:
