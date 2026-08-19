@@ -29,18 +29,20 @@ backend 参数或旧 `Line/Span` renderer。渲染过程基于深拷贝，不修
 
 - 隐藏 `header/footer/page_number/aside_text/page_footnote`。
 - 合并页内和跨页 `text.continues_prev`。
+- 合并页内和跨页 `list.continues_prev`；ref list 可跨过页面辅助块查找前序列表。
 - 只合并跨页 `table.continues_prev`。
 - 页面之间不输出分割线。
 
 `MarkdownRenderMode.FULL`:
 
 - 展示全部顶层 block。
-- 只合并页内 `text.continues_prev`。
-- 不合并跨页 text/table。
+- 只合并页内 `text/list.continues_prev`。
+- 不合并跨页 text/list/table。
 - 每两个相邻 `PageInfo` 之间输出 `---`，空白页边界同样保留。
 
 text 合并允许跨越任意其他 block，后一个 text 的内容被吸收到前一个 text，
-后块不再在原位置输出。table 只接受跨页合并；失败时保留两张原表。
+后块不再在原位置输出。ref list 只跨过页面辅助块，其他语义块仍会阻断列表链；
+普通 list 仍要求物理相邻。table 只接受跨页合并；失败时保留两张原表。
 
 ## Block 规则
 

@@ -4,7 +4,7 @@
 import math
 from typing import Any, TypeAlias
 
-from ...types import BlockType
+from ...types import PAGE_AUXILIARY_BLOCK_TYPES, BlockType
 
 LINE_STOP_FLAG = (".", "!", "?", "。", "！", "？", ")", "）", '"', "”", ":", "：", ";", "；")
 SECTION_MERGE_BARRIER_TYPES = {
@@ -22,11 +22,7 @@ TEXT_MERGE_TRANSPARENT_TYPES = {
     BlockType.TABLE,
     BlockType.CHART,
     BlockType.CODE,
-    BlockType.HEADER,
-    BlockType.FOOTER,
-    BlockType.PAGE_NUMBER,
-    BlockType.PAGE_FOOTNOTE,
-    BlockType.ASIDE_TEXT,
+    *PAGE_AUXILIARY_BLOCK_TYPES,
 }
 VERTICAL_LINE_HEIGHT_TO_WIDTH_RATIO_THRESHOLD = 2
 VERTICAL_LINE_IN_BLOCK_THRESHOLD = 0.8
@@ -169,14 +165,17 @@ def _find_previous_ref_text_list_block(
     current_index: int,
     current_block: BlockDict,
 ) -> OrderedBlock | None:
-    """查找紧邻当前块的前一个 ref_text list，列表之间不允许跨过其他块。"""
-    previous_index = current_index - 1
-    if previous_index < 0:
+    """跳过页面辅助块查找前一个 ref_text list，其他语义块保持阻断。"""
+    if not _is_ref_text_list_block(current_block):
         return None
-    previous_block = ordered_blocks[previous_index][2]
-    if not _is_ref_text_list_block(current_block) or not _is_ref_text_list_block(previous_block):
+    for previous_index in range(current_index - 1, -1, -1):
+        previous_block = ordered_blocks[previous_index][2]
+        if previous_block.get("type") in PAGE_AUXILIARY_BLOCK_TYPES:
+            continue
+        if _is_ref_text_list_block(previous_block):
+            return ordered_blocks[previous_index]
         return None
-    return ordered_blocks[previous_index]
+    return None
 
 
 def _is_ref_text_list_block(block: BlockDict) -> bool:

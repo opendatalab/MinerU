@@ -24,6 +24,29 @@ def _text_block(
     }
 
 
+def _list_block(
+    index: int,
+    content: str,
+    *,
+    sub_type: str = BlockType.REF_TEXT,
+) -> dict:
+    """构造带直属文本子项和临时行框的 dict list block。"""
+    child_type = BlockType.REF_TEXT if sub_type == BlockType.REF_TEXT else BlockType.TEXT
+    return {
+        "index": index,
+        "type": BlockType.LIST,
+        "sub_type": sub_type,
+        "bbox": [0.1, 0.1, 0.9, 0.3],
+        "content": [
+            {
+                "type": child_type,
+                "content": content,
+                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
+            }
+        ],
+    }
+
+
 def _horizontal_pair() -> tuple[dict, dict]:
     """构造一组满足横排段落延续规则的前后 text block。"""
     previous_block = _text_block(
@@ -705,6 +728,86 @@ def test_merge_para_text_blocks_marks_adjacent_ref_lists_without_moving_items() 
         {"page_idx": 6, "blocks": [current_list]},
     ]
     merge_para_text_blocks(gap_pages)
+    assert "continues_prev" not in current_list
+
+    previous_list = _list_block(0, "ref one")
+    current_list = _list_block(0, "ordinary item", sub_type=BlockType.TEXT)
+    merge_para_text_blocks(
+        [
+            {"page_idx": 4, "blocks": [previous_list]},
+            {"page_idx": 5, "blocks": [current_list]},
+        ]
+    )
+    assert "continues_prev" not in current_list
+
+
+def test_merge_para_text_blocks_skips_page_auxiliary_blocks_between_ref_lists() -> None:
+    """验证跨页参考文献会跳过前后页的全部页面辅助块建立延续关系。"""
+    previous_list = _list_block(0, "ref one")
+    current_list = _list_block(3, "ref two")
+    pages = [
+        {
+            "page_idx": 8,
+            "blocks": [
+                previous_list,
+                {"index": 1, "type": BlockType.FOOTER, "content": "footer"},
+                {"index": 2, "type": BlockType.PAGE_FOOTNOTE, "content": "page footnote"},
+            ],
+        },
+        {
+            "page_idx": 9,
+            "blocks": [
+                {"index": 0, "type": BlockType.HEADER, "content": "header"},
+                {"index": 1, "type": BlockType.PAGE_NUMBER, "content": "9"},
+                {"index": 2, "type": BlockType.ASIDE_TEXT, "content": "aside"},
+                current_list,
+            ],
+        },
+    ]
+
+    merge_para_text_blocks(pages)
+
+    assert "continues_prev" not in previous_list
+    assert current_list["continues_prev"] is True
+    assert previous_list["content"][0]["content"] == "ref one"
+    assert current_list["content"][0]["content"] == "ref two"
+    assert "lines" not in previous_list["content"][0]
+    assert "lines" not in current_list["content"][0]
+
+
+@pytest.mark.parametrize(
+    "barrier_type",
+    [BlockType.TEXT, BlockType.PARAGRAPH_TITLE, BlockType.IMAGE, BlockType.TABLE, BlockType.LIST],
+)
+def test_merge_para_text_blocks_keeps_semantic_barriers_between_ref_lists(barrier_type: str) -> None:
+    """验证页面辅助块透明后，其他语义块仍会阻断参考文献列表延续。"""
+    previous_list = _list_block(0, "ref one")
+    current_list = _list_block(2, "ref two")
+    barrier = {
+        "index": 1,
+        "type": barrier_type,
+        "content": [] if barrier_type == BlockType.LIST else "barrier",
+    }
+    pages = [
+        {
+            "page_idx": 8,
+            "blocks": [
+                previous_list,
+                {"index": 1, "type": BlockType.PAGE_FOOTNOTE, "content": "page footnote"},
+            ],
+        },
+        {
+            "page_idx": 9,
+            "blocks": [
+                {"index": 0, "type": BlockType.HEADER, "content": "header"},
+                barrier,
+                current_list,
+            ],
+        },
+    ]
+
+    merge_para_text_blocks(pages)
+
     assert "continues_prev" not in current_list
 
 

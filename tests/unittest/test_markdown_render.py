@@ -197,8 +197,50 @@ def test_list_continuation_merges_cross_page_chain_only_in_default_mode() -> Non
     )
 
 
-def test_list_continuation_requires_adjacent_matching_subtype() -> None:
-    """验证列表续接不跨越其他块，且子类型不一致时保持独立输出。"""
+def test_ref_list_continuation_skips_page_auxiliary_blocks_without_mutating_input() -> None:
+    """验证默认模式跨页面辅助块合并参考文献，完整模式仍保留原始页界和顺序。"""
+    middle = _middle(
+        _page(
+            0,
+            _list(0, "[1] first", sub_type="ref_text"),
+            PageAuxTextBlock(type="page_footnote", index=1, content="NOTE"),
+        ),
+        _page(
+            1,
+            PageAuxTextBlock(type="header", index=0, content="HEADER"),
+            PageAuxTextBlock(type="page_number", index=1, content="2"),
+            _list(2, "[2] second", sub_type="ref_text", continues_prev=True),
+        ),
+    )
+    original = deepcopy(middle)
+
+    assert render_markdown(middle) == "[1] first\n[2] second"
+    assert render_markdown(middle, mode=MarkdownRenderMode.FULL) == (
+        "[1] first\n\nNOTE\n\n---\n\nHEADER\n\n2\n\n[2] second"
+    )
+    assert middle == original
+
+
+def test_ordinary_list_continuation_does_not_skip_page_auxiliary_blocks() -> None:
+    """验证页面辅助块透明规则只作用于参考文献，普通列表仍要求物理相邻。"""
+    middle = _middle(
+        _page(
+            0,
+            _list(0, "- first"),
+            PageAuxTextBlock(type="page_footnote", index=1, content="NOTE"),
+        ),
+        _page(
+            1,
+            PageAuxTextBlock(type="header", index=0, content="HEADER"),
+            _list(1, "- second", continues_prev=True),
+        ),
+    )
+
+    assert render_markdown(middle) == "- first\n\n- second"
+
+
+def test_list_continuation_keeps_semantic_barrier_and_matching_subtype() -> None:
+    """验证语义块仍会阻断列表续接，且子类型不一致时保持独立输出。"""
     non_adjacent = _middle(
         _page(
             0,

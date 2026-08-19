@@ -245,13 +245,15 @@ PAGE_BLOCK_TYPES = {
     BlockType.PARAGRAPH_TITLE,
 }
 
-VISUAL_RELATION_IGNORED_TYPES = {
+# 页面装饰与辅助文本不参与正文、列表和视觉对象之间的语义边界判断。
+PAGE_AUXILIARY_BLOCK_TYPES = {
     BlockType.HEADER,
     BlockType.FOOTER,
     BlockType.PAGE_NUMBER,
     BlockType.PAGE_FOOTNOTE,
     BlockType.ASIDE_TEXT,
 }
+VISUAL_RELATION_IGNORED_TYPES = PAGE_AUXILIARY_BLOCK_TYPES
 VISUAL_MAIN_TYPES = {
     BlockType.IMAGE_BODY: BlockType.IMAGE,
     BlockType.TABLE_BODY: BlockType.TABLE,
