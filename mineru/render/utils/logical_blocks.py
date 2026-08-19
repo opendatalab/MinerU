@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from mineru.backend.postprocess.table_merge import merge_table_content
-from mineru.types import MiddleJson, PageBlock, TableBlock, TextBlock
+from mineru.types import ListBlock, MiddleJson, PageBlock, TableBlock, TextBlock
 
 
 class MarkdownRenderMode(str, Enum):
@@ -43,6 +43,7 @@ def build_render_plan(middle_json: MiddleJson, mode: MarkdownRenderMode) -> list
     ]
     flattened = [planned for page in pages for planned in page]
     _merge_continued_text_blocks(flattened, mode)
+    _merge_continued_list_blocks(flattened, mode)
     if mode is MarkdownRenderMode.DEFAULT:
         _merge_continued_table_blocks(flattened)
     return pages
@@ -68,6 +69,39 @@ def _find_previous_planned_text(blocks: list[PlannedBlock], current_index: int) 
     for candidate in reversed(blocks[:current_index]):
         if not candidate.removed and isinstance(candidate.block, TextBlock):
             return candidate
+    return None
+
+
+def _merge_continued_list_blocks(blocks: list[PlannedBlock], mode: MarkdownRenderMode) -> None:
+    """把续接列表吸收到紧邻且子类型一致的前序列表。"""
+    for current_index, current in enumerate(blocks):
+        if current.removed or not isinstance(current.block, ListBlock) or current.block.continues_prev is not True:
+            continue
+        previous = _find_adjacent_previous_planned_list(blocks, current_index)
+        if previous is None or not isinstance(previous.block, ListBlock):
+            continue
+        if previous.block.sub_type != current.block.sub_type:
+            continue
+        is_cross_page = previous.page_idx != current.page_idx
+        if is_cross_page and mode is MarkdownRenderMode.FULL:
+            continue
+        previous.block.content.extend(current.block.content)
+        current.removed = True
+
+
+def _find_adjacent_previous_planned_list(
+    blocks: list[PlannedBlock],
+    current_index: int,
+) -> PlannedBlock | None:
+    """查找原始连续列表链中的前序有效列表，不跨越其他类型块。"""
+    previous_index = current_index - 1
+    while previous_index >= 0:
+        candidate = blocks[previous_index]
+        if not isinstance(candidate.block, ListBlock):
+            return None
+        if not candidate.removed:
+            return candidate
+        previous_index -= 1
     return None
 
 

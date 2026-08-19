@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from typing import Literal
 
 import pytest
 
@@ -15,11 +16,13 @@ from mineru.types import (
     ImageBlock,
     ImageBodyBlock,
     IndexBlock,
+    ListBlock,
     MiddleJson,
     PageAuxTextBlock,
     PageBlock,
     PageInfo,
     ParagraphTitleBlock,
+    RefTextBlock,
     TableBlock,
     TableBodyBlock,
     TextBlock,
@@ -75,6 +78,25 @@ def _pdf_table(
         bbox=bbox,
         continues_prev=continues_prev,
         content=[TableBodyBlock(type="table_body", index=index, bbox=bbox, content=content)],
+    )
+
+
+def _list(
+    index: int,
+    *items: str,
+    sub_type: Literal["text", "ref_text"] | None = None,
+    continues_prev: bool | None = None,
+) -> ListBlock:
+    """构造带归一化 bbox 的列表父块，并按子类型生成文本叶子。"""
+    child_type = sub_type or "text"
+    child_class = RefTextBlock if child_type == "ref_text" else TextBlock
+    return ListBlock(
+        type="list",
+        index=index,
+        bbox=(0.1, 0.1, 0.9, 0.3),
+        sub_type=sub_type,
+        continues_prev=continues_prev,
+        content=[child_class(type=child_type, content=item) for item in items],
     )
 
 
@@ -138,6 +160,65 @@ def test_text_continuation_handles_hyphen_and_cjk_boundaries() -> None:
 
     assert render_markdown(western) == "international"
     assert render_markdown(cjk) == "中文继续"
+
+
+def test_list_continuation_merges_same_page_in_both_modes_without_mutating_input() -> None:
+    """验证同页同子类型列表在两种模式下拼接，且不污染原始 MiddleJson。"""
+    middle = _middle(
+        _page(
+            0,
+            _list(0, "- first"),
+            _list(1, "- second", continues_prev=True),
+        ),
+        file_suffix="pdf",
+    )
+    original = deepcopy(middle)
+
+    assert render_markdown(middle) == "- first\n- second"
+    assert render_markdown(middle, mode=MarkdownRenderMode.FULL) == "- first\n- second"
+    assert middle == original
+
+
+def test_list_continuation_merges_cross_page_chain_only_in_default_mode() -> None:
+    """验证跨页列表链仅在默认模式整体拼接，完整模式保留页界并合并页内续段。"""
+    middle = _middle(
+        _page(0, _list(0, "[1] first", sub_type="ref_text")),
+        _page(
+            1,
+            _list(0, "[2] second", sub_type="ref_text", continues_prev=True),
+            _list(1, "[3] third", sub_type="ref_text", continues_prev=True),
+        ),
+        file_suffix="pdf",
+    )
+
+    assert render_markdown(middle) == "[1] first\n[2] second\n[3] third"
+    assert render_markdown(middle, mode=MarkdownRenderMode.FULL) == (
+        "[1] first\n\n---\n\n[2] second\n[3] third"
+    )
+
+
+def test_list_continuation_requires_adjacent_matching_subtype() -> None:
+    """验证列表续接不跨越其他块，且子类型不一致时保持独立输出。"""
+    non_adjacent = _middle(
+        _page(
+            0,
+            _list(0, "[1] first", sub_type="ref_text"),
+            TextBlock(type="text", index=1, bbox=(0.1, 0.4, 0.9, 0.5), content="separator"),
+            _list(2, "[2] second", sub_type="ref_text", continues_prev=True),
+        ),
+        file_suffix="pdf",
+    )
+    mismatched = _middle(
+        _page(
+            0,
+            _list(0, "[1] first", sub_type="ref_text"),
+            _list(1, "- second", sub_type="text", continues_prev=True),
+        ),
+        file_suffix="pdf",
+    )
+
+    assert render_markdown(non_adjacent) == "[1] first\n\nseparator\n\n[2] second"
+    assert render_markdown(mismatched) == "[1] first\n\n- second"
 
 
 def test_text_continuation_joins_url_candidates_but_separates_independent_urls() -> None:
