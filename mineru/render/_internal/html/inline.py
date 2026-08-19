@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""MiddleJson 共享行内语义到安全 HTML 的序列化工具。"""
+"""MiddleJson 共享行内语义到安全 HTML 的序列化。"""
 
 from __future__ import annotations
 
@@ -7,8 +7,7 @@ import html
 import re
 from dataclasses import dataclass
 
-from mineru.render.utils.html_sanitizer import sanitize_link_url
-from mineru.render.utils.inline import (
+from mineru.render._internal.common.inline import (
     InlineEquation,
     InlineLink,
     InlineNode,
@@ -18,6 +17,7 @@ from mineru.render.utils.inline import (
     join_inline_contents,
     parse_inline_content,
 )
+from mineru.render._internal.html.sanitizer import sanitize_link_url
 
 
 @dataclass(frozen=True, slots=True)

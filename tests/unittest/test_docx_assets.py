@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image, features
 import pytest
 
-from mineru.render.utils.docx_assets import (
+from mineru.render._internal.docx.assets import (
     DocxAssetError,
     PreparedImage,
     prepare_block_image,

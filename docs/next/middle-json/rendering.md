@@ -1,10 +1,53 @@
 # Rendering Contract
 
-状态: Markdown / Content List / DOCX / HTML v1
+状态: 统一入口 / Markdown / Content List / DOCX / HTML v1
 读者: render 开发者、backend 开发者、SDK 开发者
-范围: 严格 MiddleJson 到 Markdown、Content List、DOCX 和 HTML 的消费契约
+范围: 严格 MiddleJson 到 Markdown、Content List、DOCX 和 HTML 的统一消费契约
 
-## 公共入口
+## 统一入口
+
+```python
+from mineru.render import (
+    MarkdownRenderOptions,
+    RenderFormat,
+    RenderMode,
+    render,
+)
+
+markdown = render(
+    middle_json,
+    RenderFormat.MARKDOWN,
+    options=MarkdownRenderOptions(
+        mode=RenderMode.DEFAULT,
+        asset_base_url="",
+    ),
+)
+```
+
+`render()` 每次接收一个严格 `MiddleJson` 和一个 `RenderFormat`，返回目标格式的原生结果：
+
+| `RenderFormat` | Options | 返回类型 |
+| --- | --- | --- |
+| `MARKDOWN` | `MarkdownRenderOptions(mode, asset_base_url)` | `str` |
+| `HTML` | `HtmlRenderOptions(mode, asset_base_url, standalone, document_title)` | `str` |
+| `DOCX` | `DocxRenderOptions(mode, asset_resolver)` | `bytes` |
+| `CONTENT_LIST` | `ContentListRenderOptions(asset_base_url)` | `dict[str, Any]` |
+
+`options` 省略时使用对应格式的默认 Options。入口只接受 `RenderFormat` 枚举，格式与 Options
+类型不匹配时抛出 `TypeError`，不归一化字符串格式，也不在单次调用中批量渲染。四个专用
+`render_*()` 函数继续保留；统一入口只负责严格校验和分发，不改变底层渲染语义或异常类型。
+
+所有入口均不修改传入的 `MiddleJson`。renderer 不负责把结果或图片写到文件系统；DOCX
+需要读取相对图片 sidecar 时，只能通过显式 `asset_resolver` 获取字节。
+
+### 内部依赖边界
+
+`markdown.py`、`html.py`、`docx.py` 和 `content_list.py` 是稳定公共门面；实现代码位于非公共
+`mineru.render._internal`。`common` 只保存跨格式 AST、解析、列表/目录语义和 render planner，
+不得依赖任一格式实现。`markdown`、`html`、`docx` 子包只能依赖 `common` 与自身模块，彼此
+不交叉导入。`_internal` 路径不属于 SDK 兼容承诺。
+
+## Markdown
 
 ```python
 from mineru.render import MarkdownRenderMode, render_markdown

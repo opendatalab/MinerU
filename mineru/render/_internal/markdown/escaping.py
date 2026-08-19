@@ -1,5 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
+"""Markdown 文本转义与 block 前缀保护。"""
+
 import re
 
 CONSERVATIVE_MARKDOWN_SPECIAL_CHARS = ("*", "_", "`", "~", "$")

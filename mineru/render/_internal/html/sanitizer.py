@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""HTML renderer 使用的嵌入片段安全处理。"""
+"""HTML renderer 使用的嵌入片段与 URL 安全处理。"""
 
 from __future__ import annotations
 

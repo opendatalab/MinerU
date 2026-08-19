@@ -8,7 +8,7 @@ from docx import Document
 from docx.oxml.ns import qn
 from docx.table import _Cell
 
-from mineru.render.utils.docx_table import (
+from mineru.render._internal.docx.table import (
     DocxTableError,
     NestedTableWriter,
     materialize_docx_table,

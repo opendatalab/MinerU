@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from mineru.render.utils.index import looks_like_index_page_token, strip_index_page_tail
-from mineru.render.utils.list_items import (
+from mineru.render._internal.common.index import looks_like_index_page_token, strip_index_page_tail
+from mineru.render._internal.common.list_items import (
     has_markdown_unordered_marker,
     parse_list_item_marker,
     reference_list_needs_bullets,

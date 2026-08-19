@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from bs4 import BeautifulSoup, Tag
 
-from mineru.render.utils.html_sanitizer import (
+from mineru.render._internal.html.sanitizer import (
     is_supported_html_markup,
     sanitize_html_fragment,
     sanitize_image_source,
@@ -255,7 +255,7 @@ def test_svg_data_uri_is_rejected_before_strict_xml_parsing(monkeypatch: pytest.
         """若被调用即证明 SVG 快速拒绝失效。"""
         raise AssertionError("SVG parser must not run")
 
-    monkeypatch.setattr("mineru.render.utils.html_sanitizer.parse_image_data_uri_strict", _unexpected_parse)
+    monkeypatch.setattr("mineru.render._internal.html.sanitizer.parse_image_data_uri_strict", _unexpected_parse)
 
     assert sanitize_image_source("data:image/svg+xml;base64,PHN2Zz4=") is None
 

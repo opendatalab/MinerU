@@ -6,14 +6,14 @@ from __future__ import annotations
 from typing import Any, TypeAlias
 
 from mineru.config import LatexDelimitersConfig, config
-from mineru.render.markdown import (
-    _render_single_block,
-    _render_title_inline_content,
-    _render_visual_annotation,
-    _render_visual_body_content,
+from mineru.render._internal.markdown.blocks import (
+    render_single_block,
+    render_title_inline_content,
+    render_visual_annotation,
+    render_visual_body_content,
 )
-from mineru.render.utils.assets import normalize_image_source, resolve_image_source
-from mineru.render.utils.markdown_utils import escape_standalone_marker_rule, escape_text_block_markdown_prefix
+from mineru.render._internal.markdown.assets import normalize_image_source, resolve_image_source
+from mineru.render._internal.markdown.escaping import escape_standalone_marker_rule, escape_text_block_markdown_prefix
 from mineru.types import (
     BlockType,
     ChartAnnotationBlock,
@@ -98,7 +98,7 @@ def _render_content_block(
         exclude_defaults=True,
     )
     if isinstance(block, (DocTitleBlock, ParagraphTitleBlock)):
-        content = _render_title_inline_content(block, delimiters)
+        content = render_title_inline_content(block, delimiters)
         payload["content"] = escape_standalone_marker_rule(escape_text_block_markdown_prefix(content))
         return payload
     if isinstance(block, EquationBlock):
@@ -108,14 +108,14 @@ def _render_content_block(
             payload["image_source"] = image_source
         return payload
     if not isinstance(block, (ImageBlock, TableBlock, ChartBlock, CodeBlock)):
-        payload["content"] = _render_single_block(
+        payload["content"] = render_single_block(
             block,
             delimiters=delimiters,
             asset_base_url=asset_base_url,
         )
         return payload
 
-    payload["content"] = _render_visual_body_content(
+    payload["content"] = render_visual_body_content(
         block,
         delimiters=delimiters,
         asset_base_url=asset_base_url,
@@ -145,7 +145,7 @@ def _render_annotation_group(
         ):
             annotations.append((position, child))
     annotations.sort(key=_annotation_sort_key)
-    return [_render_visual_annotation(child, delimiters) for _, child in annotations]
+    return [render_visual_annotation(child, delimiters) for _, child in annotations]
 
 
 def _annotation_sort_key(

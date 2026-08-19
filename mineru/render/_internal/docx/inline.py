@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""MiddleJson 行内节点到 Word run、超链接、书签和 OMML 的写入工具。"""
+"""MiddleJson 行内节点到 Word run、超链接、书签和 OMML 的 DOCX 写入。"""
 
 from __future__ import annotations
 
@@ -17,8 +17,7 @@ from docx.shared import Pt, RGBColor
 from lxml import etree
 from loguru import logger
 
-from mineru.render.utils.docx_math import DocxFormulaError, latex_to_omml
-from mineru.render.utils.inline import (
+from mineru.render._internal.common.inline import (
     InlineEquation,
     InlineLink,
     InlineNode,
@@ -28,6 +27,7 @@ from mineru.render.utils.inline import (
     join_inline_contents,
     parse_inline_content,
 )
+from mineru.render._internal.docx.math import DocxFormulaError, latex_to_omml
 
 _BOOKMARK_SAFE_RE = re.compile(r"[^A-Za-z0-9_]+")
 _BOOKMARK_MAX_LENGTH = 40

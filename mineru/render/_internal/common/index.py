@@ -1,11 +1,11 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""目录页码尾清理的共享工具。"""
+"""各格式共用的目录页码尾部识别与清理。"""
 
 from __future__ import annotations
 
 import re
 
-from mineru.render.utils.inline import inline_plain_text, parse_inline_content
+from mineru.render._internal.common.inline import inline_plain_text, parse_inline_content
 
 _INDEX_ROMAN_RE = re.compile(r"[ivxlcdm]+", re.IGNORECASE)
 

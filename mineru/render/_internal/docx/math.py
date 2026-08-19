@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""DOCX 渲染使用的 LaTeX 与 OMML 转换工具。"""
+"""DOCX renderer 使用的 LaTeX 与 OMML 转换。"""
 
 from __future__ import annotations
 

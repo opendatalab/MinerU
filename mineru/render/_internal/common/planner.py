@@ -1,12 +1,12 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""MiddleJson 渲染前的逻辑块复制、延续合并与页面规划。"""
+"""各格式共用的逻辑块复制、延续合并与页面规划。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
 
 from mineru.backend.postprocess.table_merge import merge_table_content
+from mineru.render.contracts import MarkdownRenderMode, RenderMode
 from mineru.types import (
     PAGE_AUXILIARY_BLOCK_TYPES,
     BlockType,
@@ -18,17 +18,6 @@ from mineru.types import (
     TableBlock,
     TextBlock,
 )
-
-
-class RenderMode(str, Enum):
-    """MiddleJson renderer 共用的默认合并视图与完整分页视图。"""
-
-    DEFAULT = "default"
-    FULL = "full"
-
-
-# 保留既有 Markdown 公共名称，同时让新增 renderer 共用同一枚举类型。
-MarkdownRenderMode = RenderMode
 
 
 @dataclass(slots=True)

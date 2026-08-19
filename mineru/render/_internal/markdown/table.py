@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""HTML 表格判型、内嵌资源处理与无损 GFM 转换。"""
+"""Markdown renderer 的 HTML 表格判型与无损 GFM 转换。"""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 from bs4.element import NavigableString, Tag
 
 from mineru.config import LatexDelimitersConfig
-from mineru.render.utils.assets import prefix_html_image_sources
+from mineru.render._internal.markdown.assets import prefix_html_image_sources
 
 _INLINE_EQ_RE = re.compile(r"<eq>(?P<latex>.*?)</eq>", re.IGNORECASE | re.DOTALL)
 _GFM_FORMULA_PIPE_RE = re.compile(r"(?P<slashes>\\*)\|")

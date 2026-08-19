@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""列表条目标记与参考文献列表判定的共享工具。"""
+"""各格式共用的列表 marker 解析与参考文献判定。"""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import re
 from typing import Literal, TypeAlias
 
-from mineru.render.utils.inline import inline_plain_text, parse_inline_content
+from mineru.render._internal.common.inline import inline_plain_text, parse_inline_content
 from mineru.types import BlockType, ListBlock
 
 ListItemKind: TypeAlias = Literal["unordered", "ordered", "explicit", "none"]

@@ -1,11 +1,11 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""HTML renderer 使用的严格 GFM pipe table 转换工具。"""
+"""HTML renderer 使用的严格 GFM pipe table 转换。"""
 
 from __future__ import annotations
 
 import re
 
-from mineru.render.utils.html_inline import HtmlInlineResult, render_inline_content_html
+from mineru.render._internal.html.inline import HtmlInlineResult, render_inline_content_html
 
 _SEPARATOR_CELL_RE = re.compile(r"^:?-{3,}:?$")
 

@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""DOCX renderer 使用的安全图片素材解析与格式准备。"""
+"""DOCX renderer 的安全图片素材解析与格式准备。"""
 
 from __future__ import annotations
 
@@ -7,15 +7,13 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
 import re
-from typing import Callable, TypeAlias
 from urllib.parse import urlsplit
 
 from PIL import Image, UnidentifiedImageError
 
+from mineru.render.contracts import AssetResolver
 from mineru.types import ImagePayloadBlock
 from mineru.utils.image_payload import parse_image_data_uri_strict, validate_image_sidecar_path
-
-AssetResolver: TypeAlias = Callable[[str], bytes]
 
 _PIL_FORMAT_EXTENSIONS = {
     "BMP": "bmp",

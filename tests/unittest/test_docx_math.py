@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from lxml import etree
 
-from mineru.render.utils.docx_math import DocxFormulaError, latex_to_omml, split_formula_tag
+from mineru.render._internal.docx.math import DocxFormulaError, latex_to_omml, split_formula_tag
 
 _OFFICE_MATH_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 

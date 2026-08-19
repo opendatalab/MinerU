@@ -20,14 +20,24 @@ from docx.text.paragraph import Paragraph
 from lxml import etree
 from loguru import logger
 
-from mineru.render.utils.docx_assets import (
-    AssetResolver,
+from mineru.render._internal.common.index import strip_index_page_tail
+from mineru.render._internal.common.inline import (
+    InlineEquation,
+    InlineLink,
+    InlineNode,
+    InlineStyled,
+    InlineText,
+    parse_inline_content,
+)
+from mineru.render._internal.common.list_items import parse_list_item_marker
+from mineru.render._internal.common.planner import PlannedBlock, build_render_plan
+from mineru.render._internal.docx.assets import (
     DocxAssetError,
     PreparedImage,
     prepare_block_image,
     prepare_html_image,
 )
-from mineru.render.utils.docx_inline import (
+from mineru.render._internal.docx.inline import (
     BookmarkRegistry,
     InlineRenderContext,
     append_inline_content,
@@ -36,8 +46,8 @@ from mineru.render.utils.docx_inline import (
     append_joined_inline_contents,
     sanitize_xml_text,
 )
-from mineru.render.utils.docx_math import DocxFormulaError, latex_to_omml, split_formula_tag
-from mineru.render.utils.docx_styles import (
+from mineru.render._internal.docx.math import DocxFormulaError, latex_to_omml, split_formula_tag
+from mineru.render._internal.docx.styles import (
     AUXILIARY_STYLE,
     BODY_STYLE,
     CAPTION_STYLE,
@@ -48,11 +58,8 @@ from mineru.render.utils.docx_styles import (
     usable_width_emu,
     usable_width_twips,
 )
-from mineru.render.utils.docx_table import DocxTableError, NestedTableWriter, materialize_docx_tables
-from mineru.render.utils.inline import InlineEquation, InlineLink, InlineNode, InlineStyled, InlineText, parse_inline_content
-from mineru.render.utils.index import strip_index_page_tail
-from mineru.render.utils.list_items import parse_list_item_marker
-from mineru.render.utils.logical_blocks import PlannedBlock, RenderMode, build_render_plan
+from mineru.render._internal.docx.table import DocxTableError, NestedTableWriter, materialize_docx_tables
+from mineru.render.contracts import AssetResolver, RenderMode
 from mineru.types import (
     PAGE_AUXILIARY_BLOCK_TYPES,
     RAW_ALGORITHM,

@@ -12,23 +12,24 @@ from urllib.parse import quote
 from bs4 import BeautifulSoup
 from loguru import logger
 
-from mineru.render.utils.html_inline import (
+from mineru.render._internal.common.index import strip_index_page_tail
+from mineru.render._internal.common.inline import inline_plain_text, parse_inline_content
+from mineru.render._internal.common.list_items import ListItem, parse_list_item_marker, reference_list_needs_bullets
+from mineru.render._internal.common.planner import PlannedBlock, build_render_plan
+from mineru.render._internal.html.inline import (
     HtmlInlineResult,
     render_inline_content_html,
     render_inline_nodes_html,
     render_joined_inline_contents_html,
     render_math_html,
 )
-from mineru.render.utils.html_sanitizer import (
+from mineru.render._internal.html.sanitizer import (
     is_supported_html_markup,
     sanitize_html_fragment,
     sanitize_image_source,
 )
-from mineru.render.utils.html_table import looks_like_gfm_table, render_gfm_table_html
-from mineru.render.utils.index import strip_index_page_tail
-from mineru.render.utils.inline import inline_plain_text, parse_inline_content
-from mineru.render.utils.list_items import ListItem, parse_list_item_marker, reference_list_needs_bullets
-from mineru.render.utils.logical_blocks import PlannedBlock, RenderMode, build_render_plan
+from mineru.render._internal.html.table import looks_like_gfm_table, render_gfm_table_html
+from mineru.render.contracts import RenderMode
 from mineru.types import (
     PAGE_AUXILIARY_BLOCK_TYPES,
     RAW_ALGORITHM,
