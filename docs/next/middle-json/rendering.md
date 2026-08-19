@@ -46,7 +46,9 @@ text 合并允许跨越任意其他 block，后一个 text 的内容被吸收到
 
 - `text/ref_text`: 解析行内公式、样式和超链接；普通 text 转义可能误触发的 Markdown block 前缀。
 - `doc_title/paragraph_title`: 使用全局 `level`，Markdown 标题最多六级；anchor 输出为 HTML id。
-- `list`: 递归缩进，直接使用 content 已内化的有序或无序前缀。
+- `list`: 递归缩进；普通列表直接使用 content 已内化的前缀。`sub_type=ref_text`
+  时统计每个直属非空 item 的前五个可见字符，数字前缀未达到严格多数则给全部 item
+  补 `- `，已有 `- ` 不重复；嵌套列表独立判定。
 - `index`: 递归输出 GFM 列表；标题叶子使用 anchor 生成内部链接，不当作 heading 输出。
 - `equation`: content 非空时输出行间 LaTeX，空 content 回退图片。
 - `image/chart`: 图片优先，识别内容放入折叠 details；chart 的简单 HTML 表格转为 GFM，复杂表格保留 HTML，无图片时直接输出转换后的内容。

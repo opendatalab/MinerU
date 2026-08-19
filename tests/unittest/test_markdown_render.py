@@ -221,6 +221,83 @@ def test_list_continuation_requires_adjacent_matching_subtype() -> None:
     assert render_markdown(mismatched) == "[1] first\n\n- second"
 
 
+@pytest.mark.parametrize(
+    ("item", "expected"),
+    [
+        ("[1] bracket", "[1] bracket"),
+        ("1. dot", "1. dot"),
+        ("(1) parenthesized", "(1) parenthesized"),
+        ("1) closing parenthesis", "1) closing parenthesis"),
+        ("1、cjk delimiter", "1、cjk delimiter"),
+        ("［１］full width", "［１］full width"),
+        ('<text style="bold">[1]</text> styled', "**[1]** styled"),
+    ],
+)
+def test_reference_list_keeps_supported_numeric_prefix_styles(item: str, expected: str) -> None:
+    """验证数字出现在前五个可见字符内时，单条参考文献保留原有编号。"""
+    middle = _middle(_page(0, _list(0, item, sub_type="ref_text")), file_suffix="pdf")
+
+    assert render_markdown(middle) == expected
+
+
+def test_reference_list_uses_strict_numeric_prefix_majority() -> None:
+    """验证参考文献按全部直属非空条目的严格多数决定是否补无序标记。"""
+    numbered_majority = _middle(
+        _page(0, _list(0, "[1] first", "missing marker", "3) third", sub_type="ref_text")),
+        file_suffix="pdf",
+    )
+    unordered_majority = _middle(
+        _page(0, _list(0, "1470–1480 continuation", "Author A", "Author B", sub_type="ref_text")),
+        file_suffix="pdf",
+    )
+    tied = _middle(
+        _page(0, _list(0, "[1] first", "Author A", sub_type="ref_text")),
+        file_suffix="pdf",
+    )
+
+    assert render_markdown(numbered_majority) == "[1] first\nmissing marker\n3) third"
+    expected_unordered = "- 1470–1480 continuation\n- Author A\n- Author B"
+    assert render_markdown(unordered_majority) == expected_unordered
+    assert render_markdown(unordered_majority, mode=MarkdownRenderMode.FULL) == expected_unordered
+    assert render_markdown(tied) == "- [1] first\n- Author A"
+
+
+def test_reference_list_bullets_mixed_children_without_duplication() -> None:
+    """验证混合直属类型共同参与统计，已有短横线不重复且多行正文正确缩进。"""
+    block = ListBlock(
+        type="list",
+        index=0,
+        bbox=(0.1, 0.1, 0.9, 0.3),
+        sub_type="ref_text",
+        content=[
+            TextBlock(type="text", content="- existing"),
+            RefTextBlock(type="ref_text", content="Author A\ncontinued"),
+        ],
+    )
+
+    assert render_markdown(_middle(_page(0, block), file_suffix="pdf")) == (
+        "- existing\n- Author A\n  continued"
+    )
+
+
+def test_nested_reference_list_decides_bullets_independently() -> None:
+    """验证嵌套参考文献依据自身子类型判定，外层普通列表行为保持不变。"""
+    nested = ListBlock(
+        type="list",
+        sub_type="ref_text",
+        content=[RefTextBlock(type="ref_text", content="Author A")],
+    )
+    outer = ListBlock(
+        type="list",
+        index=0,
+        bbox=(0.1, 0.1, 0.9, 0.3),
+        sub_type="text",
+        content=[TextBlock(type="text", content="- outer"), nested],
+    )
+
+    assert render_markdown(_middle(_page(0, outer), file_suffix="pdf")) == "- outer\n    - Author A"
+
+
 def test_text_continuation_joins_url_candidates_but_separates_independent_urls() -> None:
     """验证 Markdown 续写连接跨块 URL，同时保留两条独立 URL 的分隔。"""
     continued_url = _middle(

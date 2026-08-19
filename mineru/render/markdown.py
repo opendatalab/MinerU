@@ -58,6 +58,9 @@ _ALGORITHM_TOKEN_RE = re.compile(
 )
 _VALID_CODE_LANGUAGE_RE = re.compile(r"[A-Za-z0-9_.+#-]+")
 _INDEX_ROMAN_RE = re.compile(r"[ivxlcdm]+", re.IGNORECASE)
+# 去除首部空白后，前五个可见字符内出现 Unicode 数字即视为单项命中。
+_REF_ITEM_NUMBER_PREFIX_RE = re.compile(r"^\D{0,4}\d")
+_UNORDERED_LIST_ITEM_RE = re.compile(r"^[ \t]*-[ \t]+")
 
 
 def render_markdown(
@@ -170,7 +173,8 @@ def _render_equation(
 
 
 def _render_list(block: ListBlock, delimiters: LatexDelimitersConfig, depth: int = 0) -> str:
-    """递归渲染已在 content 中内化编号的列表。"""
+    """递归渲染列表，并给多数条目无数字前缀的参考文献补无序标记。"""
+    add_ref_bullets = _should_add_reference_list_bullets(block)
     lines: list[str] = []
     for child in block.content:
         if isinstance(child, ListBlock):
@@ -183,8 +187,32 @@ def _render_list(block: ListBlock, delimiters: LatexDelimitersConfig, depth: int
             continue
         item = escape_standalone_marker_rule(item)
         indent = "    " * depth
-        lines.extend(f"{indent}{line}" for line in item.splitlines() or [item])
+        item_lines = item.splitlines() or [item]
+        if add_ref_bullets and not _UNORDERED_LIST_ITEM_RE.match(item):
+            lines.append(f"{indent}- {item_lines[0]}")
+            lines.extend(f"{indent}  {line}" for line in item_lines[1:])
+        else:
+            lines.extend(f"{indent}{line}" for line in item_lines)
     return "\n".join(lines)
+
+
+def _should_add_reference_list_bullets(block: ListBlock) -> bool:
+    """统计直属可见条目的数字前缀，未达到严格多数时给参考文献补项目符号。"""
+    if block.sub_type != BlockType.REF_TEXT:
+        return False
+
+    item_count = 0
+    numbered_count = 0
+    for child in block.content:
+        if isinstance(child, ListBlock):
+            continue
+        visible_text = inline_plain_text(parse_inline_content(child.content)).lstrip()
+        if not visible_text:
+            continue
+        item_count += 1
+        if _REF_ITEM_NUMBER_PREFIX_RE.match(visible_text):
+            numbered_count += 1
+    return item_count > 0 and numbered_count * 2 <= item_count
 
 
 def _render_index(block: IndexBlock, delimiters: LatexDelimitersConfig, depth: int = 0) -> str:
