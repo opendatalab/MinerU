@@ -1,8 +1,8 @@
 # Rendering Contract
 
-状态: Markdown / Content List / DOCX v1
+状态: Markdown / Content List / DOCX / HTML v1
 读者: render 开发者、backend 开发者、SDK 开发者
-范围: 严格 MiddleJson 到 Markdown、Content List 和 DOCX 的消费契约
+范围: 严格 MiddleJson 到 Markdown、Content List、DOCX 和 HTML 的消费契约
 
 ## 公共入口
 
@@ -62,6 +62,91 @@ HTML table 使用 occupancy grid 生成原生 Word table，支持 `rowspan/colsp
 `RenderMode.FULL` 保留全部页面辅助块，不跨源页合并，并在相邻 `PageInfo` 间写硬分页。
 `MarkdownRenderMode` 是 `RenderMode` 的既有公共别名。DOCX 是语义化可编辑输出，不承诺
 复刻源 PDF/Office 的字体、分栏、断行和页数；CLI、doclib 与 v1 API 不在本契约范围。
+
+## MPE/Crossnote 风格 HTML
+
+```python
+from mineru.render import RenderMode, render_html
+
+html_document = render_html(
+    middle_json,
+    mode=RenderMode.DEFAULT,
+    asset_base_url="",
+    standalone=True,
+    document_title=None,
+)
+```
+
+`render_html()` 只接受严格 `MiddleJson`，返回字符串且不写文件、不读取图片 sidecar、
+不访问网络。`standalone=True` 输出完整 HTML5 文档；`False` 输出单根
+`article.crossnote.markdown-preview.mineru-document` fragment，不包含 CSS、脚本或
+`head`。显式标题缺失时，HTML title 使用首个非空 `doc_title` 的纯文本，再回退为
+`MinerU Document`。
+
+HTML 与 DOCX/Markdown 共用 `RenderMode` 和续段/续表 planner。DEFAULT 输出无页面 wrapper
+的连续阅读内容；FULL 为每个 `PageInfo` 输出一个 `section.mineru-page`，包括空页，并在
+相邻页面之间输出 `hr.mineru-page-break`。每个顶层 block wrapper 保留来源 page/type/index
+元数据。行内内容直接消费共享 AST：普通文本始终 HTML escape，未知标签保持可见；公式只
+在 `mineru-math` carrier 内使用 `\(...\)` 或 `\[...\]`，不扫描普通正文中的美元符号。
+
+完整文档按原字节内联 Crossnote 0.9.31 的 `github-light.css`、`github.css` Prism theme 和
+`style-template.css`，并在 style 开头保留完整 NCSA notice；许可证与来源说明也随资源打包。
+MinerU 自有补充 CSS 只覆盖新增结构。
+有公式时按需加载固定 MathJax 4.1.2 `tex-chtml.js`，启用 `ui/safe`、禁用 `require`，并
+关闭菜单和 enrichment。有可高亮代码时按需加载固定 Prism 1.30.0 core 和 Autoloader，
+语言组件根固定到同版本 jsDelivr。入口脚本携带 SRI；动态 MathJax 扩展、字体和 Prism
+语言组件没有逐文件 SRI。renderer 不注入 CSP，HTTP 宿主需要自行允许相应 jsDelivr
+script/font/style，并评估 CDN 供应链策略。
+
+为保持与 MPE 导出 DOM/CSS 选择器完全兼容，standalone 保留其非标准
+`body[for="html-export"]` 属性；字节不变的上游 `style-template.css` 也包含 Nu validator
+会报告的既有 CSS `calc()` 表达式。这两项是已知兼容偏差，MinerU 自有 HTML 结构和补充
+CSS 仍按 HTML5/CSS 语义生成。
+
+fragment 调用方必须自行加载同版本 CSS、MathJax 和 Prism；三份 Crossnote CSS 未重新
+scope，会影响宿主页全局样式。MathJax 必须在初始化前复用 standalone 的 delimiter、
+`ignoreHtmlClass/processHtmlClass`、`ui/safe`、禁用 `require` 及 safeOptions 配置。动态插入后调用
+`MathJax.typesetPromise([root])` 与 `Prism.highlightAllUnder(root)`；替换已有公式前先调用
+`MathJax.typesetClear([root])`。fragment 内的相对图片以宿主页 URL 为基准，不能通过
+fragment 自带 `base` 修正。
+
+fragment 宿主的 MathJax 配置至少必须包含以下安全边界，并在加载 `tex-chtml.js` 前赋值：
+
+```javascript
+window.MathJax = {
+  loader: {load: ["ui/safe"]},
+  tex: {
+    inlineMath: [["\\(", "\\)"]],
+    displayMath: [["\\[", "\\]"]],
+    processEnvironments: false,
+    processRefs: false,
+    packages: {"[-]": ["require"]},
+  },
+  options: {
+    ignoreHtmlClass: "mineru-document",
+    processHtmlClass: "mineru-math",
+    enableMenu: false,
+    enableEnrichment: false,
+    safeOptions: {
+      allow: {URLs: "none", classes: "none", cssIDs: "none", styles: "none"},
+    },
+  },
+};
+```
+
+standalone 还会通过 `startup.ready` 把 menu/enrichment 选项重新施加到 live MathDocument；
+fragment 宿主如需完全相同行为，也必须复用该 hook，而不能只复制上面的静态字段。
+
+HTML table/chart/image body 只在识别为 markup 时经过 `nh3` allowlist。活动标签、事件属性、
+来源 style/class/id/data 属性和危险 URL 会被删除；链接只允许相对地址、fragment、
+`http/https/mailto/tel`，图片只允许安全 sidecar、根相对路径、HTTP(S) 与签名匹配的 raster
+data URI。安全 `<eq>` 在清洗后转换为公式 carrier。清洗后不可用的 table 优先回退整体
+图片，否则以转义后的 `pre` 可见保留；普通 `<local_dir>` 等尖括号文本不会进入 sanitizer。
+Chart 的 pipe table 只实现 GFM 列结构与反斜杠/pipe 解码，cell 内容继续消费 MiddleJson
+行内标签；`**bold**`、反引号和 Markdown link 等任意 GFM inline 语法不会二次解析。
+
+v1 只增加严格 `mineru.render` 公共面，不迁移旧 parser、CLI、API 或 doclib，也不提供
+Markdown 字符串转 HTML、离线单文件、主题切换、侧边 TOC 或用户自定义 head/CSS/script。
 
 ## 树形 Markdown Content List
 

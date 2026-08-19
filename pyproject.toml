@@ -52,6 +52,7 @@ dependencies = [
     "fast-langdetect>=0.2.3,<0.3.0",
     "openai>=1.70.0,<3",
     "beautifulsoup4>=4.13.5,<5",
+    "nh3>=0.3.6,<0.4",
     "magika>=0.6.2,<1.1.0",
     "mineru-vl-utils>=1.2.1,<2",
     "python-docx>=1.2.0,<2",

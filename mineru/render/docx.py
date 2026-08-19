@@ -34,7 +34,6 @@ from mineru.render.utils.docx_inline import (
     append_inline_nodes,
     append_internal_link,
     append_joined_inline_contents,
-    plain_inline_text,
     sanitize_xml_text,
 )
 from mineru.render.utils.docx_math import DocxFormulaError, latex_to_omml, split_formula_tag
@@ -51,6 +50,8 @@ from mineru.render.utils.docx_styles import (
 )
 from mineru.render.utils.docx_table import DocxTableError, NestedTableWriter, materialize_docx_tables
 from mineru.render.utils.inline import InlineEquation, InlineLink, InlineNode, InlineStyled, InlineText, parse_inline_content
+from mineru.render.utils.index import strip_index_page_tail
+from mineru.render.utils.list_items import parse_list_item_marker
 from mineru.render.utils.logical_blocks import PlannedBlock, RenderMode, build_render_plan
 from mineru.types import (
     PAGE_AUXILIARY_BLOCK_TYPES,
@@ -83,10 +84,6 @@ from mineru.types import (
     TitleBlockBase,
 )
 
-_INDEX_ROMAN_RE = re.compile(r"[ivxlcdm]+", re.IGNORECASE)
-_LIST_MARKER_RE = re.compile(
-    r"^(?P<leading>\s*)(?P<marker>[-*+]|\[[^\]\n]+\]|\(?\d+[.)]|[A-Za-z][.)]|[IVXLCDMivxlcdm]+[.)])(?P<space>\s+)"
-)
 _HTML_TABLE_RE = re.compile(r"<table\b", re.IGNORECASE)
 _ANNOTATION_CAPTION_TYPES = {
     BlockType.IMAGE_CAPTION,
@@ -300,8 +297,8 @@ class _DocxRenderer:
                 self._render_list(child, context, depth=depth + 1)
                 continue
             paragraph = self.document.add_paragraph(style=BODY_STYLE)
-            marker = _LIST_MARKER_RE.match(child.content)
-            if marker is None:
+            item = parse_list_item_marker(child.content)
+            if item.marker is None:
                 paragraph.paragraph_format.left_indent = Mm(depth * 6)
             else:
                 paragraph.paragraph_format.left_indent = Mm((depth + 1) * 6)
@@ -320,7 +317,7 @@ class _DocxRenderer:
             if isinstance(child, IndexBlock):
                 self._render_index(child, context, depth=depth + 1)
                 continue
-            content = _strip_index_page_tail(child.content)
+            content = strip_index_page_tail(child.content)
             nodes = parse_inline_content(content)
             if not nodes:
                 continue
@@ -769,25 +766,6 @@ def _iter_document_anchors(middle_json: MiddleJson) -> Iterable[str]:
         for block in page.blocks:
             if isinstance(block, TitleBlockBase) and block.anchor:
                 yield block.anchor
-
-
-def _strip_index_page_tail(content: str) -> str:
-    """删除目录末尾可信页码，并把其余 tab 转换为普通空格。"""
-    if "\t" not in content:
-        return content
-    head, tail = content.rsplit("\t", 1)
-    tail_text = plain_inline_text(tail).strip()
-    if _looks_like_index_page_token(tail_text):
-        content = head
-    return content.replace("\t", " ")
-
-
-def _looks_like_index_page_token(content: str) -> bool:
-    """判断目录 tab 后缀是否为数字、罗马数字或单字母页码。"""
-    if not content or len(content) > 12:
-        return False
-    return bool(content.isdigit() or _INDEX_ROMAN_RE.fullmatch(content) or re.fullmatch(r"[A-Za-z]", content))
-
 
 def _plain_html_text(content: str) -> str:
     """把图片或图表 body 内容收敛为适合 alt description 的纯文本。"""

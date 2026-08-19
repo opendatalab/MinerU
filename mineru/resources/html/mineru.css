@@ -1,0 +1,246 @@
+/* MinerU HTML 渲染器补充样式；除打印页边距外均限定在文档根节点内。 */
+.mineru-document {
+  box-sizing: border-box;
+}
+
+.mineru-document *,
+.mineru-document *::before,
+.mineru-document *::after {
+  box-sizing: inherit;
+}
+
+/* FULL 模式保留页面边界，空页也应维持可见的页面容器。 */
+.mineru-document .mineru-page {
+  min-width: 0;
+  position: relative;
+}
+
+.mineru-document--full .mineru-page {
+  min-height: 1.5rem;
+}
+
+.mineru-document .mineru-page-break {
+  background: transparent;
+  border: 0;
+  border-top: 1px dashed #d0d7de;
+  height: 0;
+  margin: 2rem 0;
+}
+
+/* 图片、表格、图表及其说明沿用同一视觉容器。 */
+.mineru-document .mineru-figure,
+.mineru-document figure[data-block-type] {
+  margin: 1.5rem 0;
+  max-width: 100%;
+}
+
+.mineru-document .mineru-figure > img,
+.mineru-document figure[data-block-type] > img {
+  display: block;
+  height: auto;
+  margin-inline: auto;
+  max-width: 100%;
+}
+
+.mineru-document .mineru-caption,
+.mineru-document figcaption {
+  color: #57606a;
+  font-size: 0.9em;
+  margin-top: 0.5rem;
+  text-align: center;
+}
+
+.mineru-document .mineru-footnote {
+  color: #57606a;
+  font-size: 0.875em;
+  margin-top: 0.4rem;
+}
+
+.mineru-document .mineru-details,
+.mineru-document details[data-block-type] {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  margin: 1rem 0;
+  padding: 0.65rem 0.85rem;
+}
+
+.mineru-document .mineru-details > summary,
+.mineru-document details[data-block-type] > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* 非标准或混合列表标记由渲染器显式输出，避免浏览器重新编号。 */
+.mineru-document .mineru-list--explicit {
+  list-style: none;
+  padding-left: 1.5rem;
+}
+
+.mineru-document .mineru-list--unmarked {
+  list-style: none;
+}
+
+.mineru-document .mineru-list-item--explicit {
+  align-items: start;
+  display: grid;
+  gap: 0.5em;
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.mineru-document .mineru-list-marker {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  user-select: none;
+  white-space: pre;
+}
+
+.mineru-document .mineru-list-item--orphan {
+  list-style: none;
+}
+
+.mineru-document .mineru-list-item--markerless {
+  list-style: none;
+}
+
+.mineru-document .mineru-list-item--orphan > .mineru-list-marker {
+  visibility: hidden;
+}
+
+.mineru-document .mineru-list-item--orphan > :is(ol, ul),
+.mineru-document .mineru-list-item--explicit > :is(ol, ul) {
+  grid-column: 2;
+  margin-bottom: 0;
+}
+
+/* 目录不显示普通列表项目符号，并为长标题保留可换行空间。 */
+.mineru-document .mineru-index,
+.mineru-document .mineru-index ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.mineru-document .mineru-index ul ul {
+  padding-left: 1.5rem;
+}
+
+.mineru-document .mineru-index a {
+  overflow-wrap: anywhere;
+}
+
+/* MathJax 接管前保留可见 TeX；块公式允许横向滚动。 */
+.mineru-document .mineru-math {
+  overflow-wrap: anywhere;
+}
+
+.mineru-document .mineru-math--block {
+  display: block;
+  margin: 1rem 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+}
+
+.mineru-document .mineru-preserve-whitespace {
+  white-space: pre-wrap;
+}
+
+.mineru-document .mineru-text-emphasis {
+  -webkit-text-emphasis: dot;
+  -webkit-text-emphasis-position: under right;
+  text-emphasis: dot;
+  text-emphasis-position: under right;
+}
+
+.mineru-document :is(th, td).mineru-align-left {
+  text-align: left;
+}
+
+.mineru-document :is(th, td).mineru-align-center {
+  text-align: center;
+}
+
+.mineru-document :is(th, td).mineru-align-right {
+  text-align: right;
+}
+
+.mineru-document mjx-container[display="true"] {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* 空间投影表格和不可解析原文必须保持空白与换行。 */
+.mineru-document .mineru-table-text,
+.mineru-document .mineru-raw-fallback {
+  overflow: auto;
+  tab-size: 4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mineru-document .mineru-table-text {
+  white-space: pre;
+}
+
+.mineru-document .mineru-raw-fallback {
+  border-left: 3px solid #d0d7de;
+  color: #57606a;
+}
+
+/* 算法文本保留缩进，同时允许行内公式和上下标参与排版。 */
+.mineru-document .mineru-algorithm {
+  font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+  max-width: 100%;
+  overflow-x: auto;
+  tab-size: 4;
+  white-space: pre-wrap;
+  word-break: normal;
+}
+
+/* Prism 异步加载语言组件时，补充少量通用 token 表现。 */
+.mineru-document pre[class*="language-"] {
+  max-width: 100%;
+}
+
+.mineru-document pre[class*="language-"] > code {
+  text-shadow: none;
+}
+
+.mineru-document .token.namespace {
+  opacity: 0.75;
+}
+
+.mineru-document .token.important {
+  font-weight: 700;
+}
+
+@media print {
+  body[for="html-export"] {
+    margin: 0;
+  }
+
+  .mineru-document {
+    max-width: none;
+  }
+
+  .mineru-document .mineru-page-break {
+    display: none;
+  }
+
+  .mineru-document--full .mineru-page {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .mineru-document--full .mineru-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .mineru-document .mineru-figure,
+  .mineru-document figure[data-block-type] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

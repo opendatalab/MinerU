@@ -2,6 +2,7 @@
 
 from .content_list import render_content_list
 from .docx import DocxRenderError, render_docx
+from .html import render_html
 from .markdown import MarkdownRenderMode, render_markdown
 from .utils.logical_blocks import RenderMode
 
@@ -11,5 +12,6 @@ __all__ = [
     "RenderMode",
     "render_content_list",
     "render_docx",
+    "render_html",
     "render_markdown",
 ]
