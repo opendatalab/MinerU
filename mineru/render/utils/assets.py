@@ -35,11 +35,15 @@ def build_markdown_image(source: str, alt: str = "") -> str:
     if not source:
         return ""
     safe_alt = alt.replace("[", r"\[").replace("]", r"\]")
-    if source.startswith("data:"):
-        destination = source
-    else:
-        destination = quote(source, safe="/:#?&=%@+~,;!$'*-._")
+    destination = normalize_image_source(source)
     return f"![{safe_alt}]({destination})"
+
+
+def normalize_image_source(source: str) -> str:
+    """把图片来源规范化为 Markdown 与 content_list 共用的安全地址。"""
+    if source.startswith("data:"):
+        return source
+    return quote(source, safe="/:#?&=%@+~,;!$'*-._")
 
 
 def prefix_html_image_sources(markup: str, asset_base_url: str = "") -> str:
@@ -67,6 +71,7 @@ def _is_absolute_image_source(source: str) -> bool:
 __all__ = [
     "build_markdown_image",
     "join_asset_base_url",
+    "normalize_image_source",
     "prefix_html_image_sources",
     "resolve_image_source",
 ]

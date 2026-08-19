@@ -23,6 +23,62 @@ backend 参数或旧 `Line/Span` renderer。渲染过程基于深拷贝，不修
 图片优先使用 `image_path`，缺失时使用 `image_base64` data URI。
 `asset_base_url` 只给相对 `image_path` 和 HTML 内相对 `img src` 添加前缀。
 
+## 树形 Markdown Content List
+
+严格 render 层还提供不合并、不丢块的树形内容输出：
+
+```python
+from mineru.render import render_content_list
+
+content_list = render_content_list(
+    middle_json,
+    asset_base_url="",
+)
+```
+
+`render_content_list()` 只接受 `MiddleJson`，返回可以直接交给 `json.dumps()` 的
+文档级 dict。顶层保留 `pages/file_suffix/effort/parse_mode/mineru_version`，每页保留
+`page_idx/blocks`，页面和顶层 block 的数量及顺序不变。它不使用下文的
+`MarkdownRenderMode` 计划，因此不隐藏页面辅助块，也不合并 `continues_prev` 文本、
+列表或跨页表格；`continues_prev` 和 `cell_merge` 等消费提示仍保留在对应 block。
+
+每个输出 block 的 `content` 都是完整块级 Markdown。`list/index` 的递归子树会收敛为
+一个字符串；`image/table/chart/code` 的唯一 body 会提升为父块 `content`，说明文本则
+按源 `index` 排序后分别输出为 `captions: list[str]` 和 `footnotes: list[str]`。视觉数组
+始终存在，空说明保留为空字符串。所有输出 block 都删除 `index/level/guess_lang`；其中
+`level` 和 `guess_lang` 仍会先参与标题与代码 Markdown 的生成。
+
+```json
+{
+  "pages": [
+    {
+      "page_idx": 0,
+      "blocks": [
+        {
+          "type": "code",
+          "bbox": [0.1, 0.2, 0.9, 0.8],
+          "sub_type": "code",
+          "content": "```python\nprint('hello')\n```",
+          "captions": ["**示例代码**"],
+          "footnotes": []
+        }
+      ]
+    }
+  ],
+  "file_suffix": "pdf",
+  "effort": "flash",
+  "parse_mode": "txt",
+  "mineru_version": "3.4.0"
+}
+```
+
+`image/table/chart` 的 body 有图片载荷时，还会输出最终选择的 `image_source`：
+`image_path` 优先，`image_base64` 兜底，并应用 `asset_base_url` 和 Markdown 地址转义。
+即使 table 的 `content` 选择 GFM/HTML 表示，图片来源也会保留。
+
+该接口目前只属于严格 `mineru.render` 公共面；本契约不迁移旧 parser、CLI、API、
+doclib 或历史扁平 `content_list.json` 产物。
+
 ## 展示模式
 
 `MarkdownRenderMode.DEFAULT`:

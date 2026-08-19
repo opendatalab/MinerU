@@ -36,6 +36,7 @@ from mineru.types import (
     ListBlock,
     MiddleJson,
     PageAuxTextBlock,
+    PageBlock,
     ParagraphTitleBlock,
     RefTextBlock,
     TableAnnotationBlock,
@@ -145,6 +146,22 @@ def _render_planned_block(
     if isinstance(block, CodeBlock):
         return _render_code_block(block, delimiters)
     raise TypeError(f"Unsupported PageBlock type: {type(block).__name__}")
+
+
+def _render_single_block(
+    block: PageBlock,
+    *,
+    delimiters: LatexDelimitersConfig,
+    asset_base_url: str,
+) -> str:
+    """不执行续段合并或页面过滤，直接渲染一个顶层 block。"""
+    text_contents = [block.content] if isinstance(block, (TextBlock, RefTextBlock)) else []
+    planned = PlannedBlock(page_idx=0, block=block, text_contents=text_contents)
+    return _render_planned_block(
+        planned,
+        delimiters=delimiters,
+        asset_base_url=asset_base_url,
+    )
 
 
 def _render_title(
@@ -262,14 +279,14 @@ def _render_image_block(
     parts: list[str] = []
     for child in block.content:
         if isinstance(child, ImageBodyBlock):
-            body = _render_media_body(
+            body = _render_visual_body_child(
+                block,
                 child,
-                summary=block.sub_type or "image content",
                 delimiters=delimiters,
                 asset_base_url=asset_base_url,
             )
         elif isinstance(child, ImageAnnotationBlock):
-            body = escape_standalone_marker_rule(render_inline_content(child.content, delimiters))
+            body = _render_visual_annotation(child, delimiters)
         else:
             raise TypeError(f"Unsupported image child: {type(child).__name__}")
         if body:
@@ -286,14 +303,14 @@ def _render_chart_block(
     parts: list[str] = []
     for child in block.content:
         if isinstance(child, ChartBodyBlock):
-            body = _render_chart_body(
+            body = _render_visual_body_child(
+                block,
                 child,
-                summary=block.sub_type or "chart content",
                 delimiters=delimiters,
                 asset_base_url=asset_base_url,
             )
         elif isinstance(child, ChartAnnotationBlock):
-            body = escape_standalone_marker_rule(render_inline_content(child.content, delimiters))
+            body = _render_visual_annotation(child, delimiters)
         else:
             raise TypeError(f"Unsupported chart child: {type(child).__name__}")
         if body:
@@ -378,9 +395,14 @@ def _render_table_block(
     parts: list[str] = []
     for child in block.content:
         if isinstance(child, TableBodyBlock):
-            body = _render_table_body(child, delimiters, asset_base_url)
+            body = _render_visual_body_child(
+                block,
+                child,
+                delimiters=delimiters,
+                asset_base_url=asset_base_url,
+            )
         elif isinstance(child, TableAnnotationBlock):
-            body = escape_standalone_marker_rule(render_inline_content(child.content, delimiters))
+            body = _render_visual_annotation(child, delimiters)
         else:
             raise TypeError(f"Unsupported table child: {type(child).__name__}")
         if body:
@@ -412,19 +434,87 @@ def _render_code_block(block: CodeBlock, delimiters: LatexDelimitersConfig) -> s
     parts: list[str] = []
     for child in block.content:
         if isinstance(child, CodeBodyBlock):
-            if block.sub_type == BlockType.CODE:
-                body = _render_fenced_content(child.content, _normalize_code_language(block.guess_lang))
-            elif block.sub_type == RAW_ALGORITHM:
-                body = _render_algorithm_html(child.content, delimiters)
-            else:
-                raise ValueError(f"Unsupported code subtype: {block.sub_type}")
+            body = _render_visual_body_child(
+                block,
+                child,
+                delimiters=delimiters,
+                asset_base_url="",
+            )
         elif isinstance(child, CodeAnnotationBlock):
-            body = escape_standalone_marker_rule(render_inline_content(child.content, delimiters))
+            body = _render_visual_annotation(child, delimiters)
         else:
             raise TypeError(f"Unsupported code child: {type(child).__name__}")
         if body:
             parts.append(body)
     return _join_visual_parts(parts)
+
+
+def _render_visual_body(
+    block: ImageBlock | TableBlock | ChartBlock | CodeBlock,
+    *,
+    delimiters: LatexDelimitersConfig,
+    asset_base_url: str,
+) -> str:
+    """查找视觉父块唯一 body，并复用 Markdown body 规则渲染。"""
+    for child in block.content:
+        if isinstance(child, (ImageBodyBlock, TableBodyBlock, ChartBodyBlock, CodeBodyBlock)):
+            return _render_visual_body_child(
+                block,
+                child,
+                delimiters=delimiters,
+                asset_base_url=asset_base_url,
+            )
+    raise ValueError(f"Missing visual body: {block.type}")
+
+
+def _render_visual_body_child(
+    block: ImageBlock | TableBlock | ChartBlock | CodeBlock,
+    child: ImageBodyBlock | TableBodyBlock | ChartBodyBlock | CodeBodyBlock,
+    *,
+    delimiters: LatexDelimitersConfig,
+    asset_base_url: str,
+) -> str:
+    """按视觉父子类型组合渲染一个 body 子块。"""
+    if isinstance(block, ImageBlock) and isinstance(child, ImageBodyBlock):
+        return _render_media_body(
+            child,
+            summary=block.sub_type or "image content",
+            delimiters=delimiters,
+            asset_base_url=asset_base_url,
+        )
+    if isinstance(block, TableBlock) and isinstance(child, TableBodyBlock):
+        return _render_table_body(child, delimiters, asset_base_url)
+    if isinstance(block, ChartBlock) and isinstance(child, ChartBodyBlock):
+        return _render_chart_body(
+            child,
+            summary=block.sub_type or "chart content",
+            delimiters=delimiters,
+            asset_base_url=asset_base_url,
+        )
+    if isinstance(block, CodeBlock) and isinstance(child, CodeBodyBlock):
+        return _render_code_body(block, child, delimiters)
+    raise TypeError(f"Unsupported visual body pair: {block.type}/{child.type}")
+
+
+def _render_visual_annotation(
+    block: ImageAnnotationBlock | TableAnnotationBlock | ChartAnnotationBlock | CodeAnnotationBlock,
+    delimiters: LatexDelimitersConfig,
+) -> str:
+    """把一个视觉说明子块渲染为独立 Markdown 字符串。"""
+    return escape_standalone_marker_rule(render_inline_content(block.content, delimiters))
+
+
+def _render_code_body(
+    block: CodeBlock,
+    child: CodeBodyBlock,
+    delimiters: LatexDelimitersConfig,
+) -> str:
+    """依据父块 subtype 渲染代码或算法 body。"""
+    if block.sub_type == BlockType.CODE:
+        return _render_fenced_content(child.content, _normalize_code_language(block.guess_lang))
+    if block.sub_type == RAW_ALGORITHM:
+        return _render_algorithm_html(child.content, delimiters)
+    raise ValueError(f"Unsupported code subtype: {block.sub_type}")
 
 
 def _normalize_code_language(language: str | None) -> str:
@@ -471,11 +561,7 @@ def _render_algorithm_html(content: str, delimiters: LatexDelimitersConfig) -> s
         cursor = match.end()
     parts.append(content[cursor:])
     body = "".join(parts)
-    return (
-        '<div class="mineru-algorithm" style="white-space: pre-wrap; font-family:monospace;">\n'
-        f"{body}\n"
-        "</div>"
-    )
+    return f'<div class="mineru-algorithm" style="white-space: pre-wrap; font-family:monospace;">\n{body}\n</div>'
 
 
 def _join_visual_parts(parts: list[str]) -> str:
