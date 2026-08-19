@@ -150,7 +150,7 @@ def _parse_hyperlink(inner: str) -> InlineLink | None:
     match = _URL_RE.search(inner)
     if match is None:
         return None
-    label_content = f"{inner[:match.start()]}{inner[match.end():]}"
+    label_content = f"{inner[: match.start()]}{inner[match.end() :]}"
     url = html.unescape(match.group("url")).strip()
     if not url:
         return None
@@ -190,6 +190,11 @@ def render_inline_content(content: str, delimiters: LatexDelimitersConfig) -> st
 
 def render_joined_inline_contents(contents: list[str], delimiters: LatexDelimitersConfig) -> str:
     """按物理段落边界规则合并多段 content 后渲染 Markdown。"""
+    return render_inline_nodes(join_inline_contents(contents), delimiters)
+
+
+def join_inline_contents(contents: list[str]) -> list[InlineNode]:
+    """按物理段落边界规则合并多段 content，并保留中性的行内节点。"""
     merged: list[InlineNode] = []
     for content in contents:
         current = parse_inline_content(content)
@@ -198,7 +203,7 @@ def render_joined_inline_contents(contents: list[str], delimiters: LatexDelimite
         if merged:
             _join_inline_node_sequences(merged, current)
         merged.extend(current)
-    return render_inline_nodes(merged, delimiters)
+    return merged
 
 
 def _join_inline_node_sequences(previous: list[InlineNode], current: list[InlineNode]) -> None:
@@ -306,9 +311,7 @@ def _apply_styles(content: str, plain_text: str, styles: tuple[str, ...]) -> str
         rendered_markers = _render_visible_space_marker_text(content, plain_text, styles, marker)
         if rendered_markers is not None:
             return rendered_markers
-    if plain_text and not plain_text.strip() and any(
-        style in styles for style in ("underline", "strikethrough", "emphasis")
-    ):
+    if plain_text and not plain_text.strip() and any(style in styles for style in ("underline", "strikethrough", "emphasis")):
         return _render_visible_whitespace(plain_text, styles)
 
     return _apply_style_wrappers(content, styles)
@@ -455,6 +458,7 @@ def inline_plain_text(nodes: list[InlineNode]) -> str:
 __all__ = [
     "InlineNode",
     "inline_plain_text",
+    "join_inline_contents",
     "parse_inline_content",
     "render_inline_content",
     "render_inline_nodes",

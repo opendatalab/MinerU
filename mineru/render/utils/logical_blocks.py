@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""Markdown 渲染前的逻辑块复制、延续合并与页面规划。"""
+"""MiddleJson 渲染前的逻辑块复制、延续合并与页面规划。"""
 
 from __future__ import annotations
 
@@ -20,11 +20,15 @@ from mineru.types import (
 )
 
 
-class MarkdownRenderMode(str, Enum):
-    """Markdown 的默认合并视图与完整分页视图。"""
+class RenderMode(str, Enum):
+    """MiddleJson renderer 共用的默认合并视图与完整分页视图。"""
 
     DEFAULT = "default"
     FULL = "full"
+
+
+# 保留既有 Markdown 公共名称，同时让新增 renderer 共用同一枚举类型。
+MarkdownRenderMode = RenderMode
 
 
 @dataclass(slots=True)
@@ -37,7 +41,7 @@ class PlannedBlock:
     removed: bool = False
 
 
-def build_render_plan(middle_json: MiddleJson, mode: MarkdownRenderMode) -> list[list[PlannedBlock]]:
+def build_render_plan(middle_json: MiddleJson, mode: RenderMode) -> list[list[PlannedBlock]]:
     """深拷贝 MiddleJson，并按模式生成不污染输入的逐页逻辑块计划。"""
     copied = middle_json.model_copy(deep=True)
     pages = [
@@ -54,12 +58,12 @@ def build_render_plan(middle_json: MiddleJson, mode: MarkdownRenderMode) -> list
     flattened = [planned for page in pages for planned in page]
     _merge_continued_text_blocks(flattened, mode)
     _merge_continued_list_blocks(flattened, mode)
-    if mode is MarkdownRenderMode.DEFAULT:
+    if mode is RenderMode.DEFAULT:
         _merge_continued_table_blocks(flattened)
     return pages
 
 
-def _merge_continued_text_blocks(blocks: list[PlannedBlock], mode: MarkdownRenderMode) -> None:
+def _merge_continued_text_blocks(blocks: list[PlannedBlock], mode: RenderMode) -> None:
     """把 continues_prev 文本吸收到最近的前序文本逻辑块。"""
     for current_index, current in enumerate(blocks):
         if (
@@ -72,7 +76,7 @@ def _merge_continued_text_blocks(blocks: list[PlannedBlock], mode: MarkdownRende
         if previous is None:
             continue
         is_cross_page = previous.page_idx != current.page_idx
-        if is_cross_page and mode is MarkdownRenderMode.FULL:
+        if is_cross_page and mode is RenderMode.FULL:
             continue
         previous.text_contents.extend(current.text_contents)
         current.removed = True
@@ -102,7 +106,7 @@ def _find_previous_planned_text(blocks: list[PlannedBlock], current_index: int) 
     return None
 
 
-def _merge_continued_list_blocks(blocks: list[PlannedBlock], mode: MarkdownRenderMode) -> None:
+def _merge_continued_list_blocks(blocks: list[PlannedBlock], mode: RenderMode) -> None:
     """把续接列表吸收到子类型一致的前序列表，参考文献可跨过页面辅助块。"""
     for current_index, current in enumerate(blocks):
         if current.removed or not isinstance(current.block, ListBlock) or current.block.continues_prev is not True:
@@ -113,7 +117,7 @@ def _merge_continued_list_blocks(blocks: list[PlannedBlock], mode: MarkdownRende
         if previous.block.sub_type != current.block.sub_type:
             continue
         is_cross_page = previous.page_idx != current.page_idx
-        if is_cross_page and mode is MarkdownRenderMode.FULL:
+        if is_cross_page and mode is RenderMode.FULL:
             continue
         previous.block.content.extend(current.block.content)
         current.removed = True
@@ -171,4 +175,4 @@ def _find_previous_planned_table(blocks: list[PlannedBlock], current_index: int)
     return None
 
 
-__all__ = ["MarkdownRenderMode", "PlannedBlock", "build_render_plan"]
+__all__ = ["MarkdownRenderMode", "PlannedBlock", "RenderMode", "build_render_plan"]

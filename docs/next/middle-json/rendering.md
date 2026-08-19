@@ -1,8 +1,8 @@
 # Rendering Contract
 
-状态: Markdown v1
+状态: Markdown / Content List / DOCX v1
 读者: render 开发者、backend 开发者、SDK 开发者
-范围: 严格 MiddleJson 到 Markdown 的消费契约
+范围: 严格 MiddleJson 到 Markdown、Content List 和 DOCX 的消费契约
 
 ## 公共入口
 
@@ -22,6 +22,46 @@ backend 参数或旧 `Line/Span` renderer。渲染过程基于深拷贝，不修
 
 图片优先使用 `image_path`，缺失时使用 `image_base64` data URI。
 `asset_base_url` 只给相对 `image_path` 和 HTML 内相对 `img src` 添加前缀。
+
+## 可编辑 DOCX
+
+```python
+from pathlib import Path
+
+from mineru.render import RenderMode, render_docx
+
+asset_dir = Path("output/document")
+docx_bytes = render_docx(
+    middle_json,
+    mode=RenderMode.DEFAULT,
+    asset_resolver=lambda relative_path: (asset_dir / relative_path).read_bytes(),
+)
+```
+
+`render_docx()` 只接受严格 `MiddleJson`，返回完整 `.docx` bytes，不写文件、不读取 cwd，
+也不访问网络。block 同时携带两种图片来源时优先解码 `image_base64`；仅有
+`image_path` 时必须提供 `asset_resolver(relative_path) -> bytes`。必需图片缺失、路径
+不安全、格式损坏或 SVG 输入会抛出带 `page_idx/block_index/block_type` 的
+`DocxRenderError`；WebP 在内存中转为 PNG。
+
+DOCX 输出固定使用 A4 纵向与 20 mm 页边距。标题是 Word Heading 1–9，anchor 是
+document-wide bookmark，Index 标题叶子写成内部链接；正文直接消费共享 inline AST，
+保留粗体、斜体、下划线、删除线、emphasis、上下标、外链及行内公式。列表保留 producer
+已经内化的 marker，只用缩进表达层级，不重建 `numbering.xml`。
+
+公式通过 `latex2mathml -> mathml2omml -> OMML` 输出为可编辑 Office Math。末端
+`\tag{...}` 会从公式主体剥离并通过右对齐 tab 单独写编号；转换失败的块公式依次回退
+公式图片和可见 LaTeX，行内公式回退可见 LaTeX，所有回退均记录 page/block 定位。
+
+HTML table 使用 occupancy grid 生成原生 Word table，支持 `rowspan/colspan`、嵌套表格、
+单元格富文本、公式、链接和图片。HTML 结构无效时只在存在表格图片时回退；空间投影
+文本表格按 v1 契约只输出表格图片。Image body 文本写入图片 alt description；Chart
+在图片后继续输出可用的 HTML 数据表。视觉父块仍严格保持 body/caption/footnote 原顺序。
+
+`RenderMode.DEFAULT` 与下文 Markdown DEFAULT 使用同一份续段/续表 planner；
+`RenderMode.FULL` 保留全部页面辅助块，不跨源页合并，并在相邻 `PageInfo` 间写硬分页。
+`MarkdownRenderMode` 是 `RenderMode` 的既有公共别名。DOCX 是语义化可编辑输出，不承诺
+复刻源 PDF/Office 的字体、分栏、断行和页数；CLI、doclib 与 v1 API 不在本契约范围。
 
 ## 树形 Markdown Content List
 
