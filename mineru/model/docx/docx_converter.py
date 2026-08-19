@@ -2246,6 +2246,160 @@ class DocxConverter:
 
         return current_number
 
+    @staticmethod
+    def _format_roman_number(value: int) -> str:
+        """Format a positive integer as an uppercase Roman numeral."""
+        if value <= 0:
+            return str(value)
+
+        numerals = (
+            (1000, "M"),
+            (900, "CM"),
+            (500, "D"),
+            (400, "CD"),
+            (100, "C"),
+            (90, "XC"),
+            (50, "L"),
+            (40, "XL"),
+            (10, "X"),
+            (9, "IX"),
+            (5, "V"),
+            (4, "IV"),
+            (1, "I"),
+        )
+        remaining = value
+        parts = []
+        for number, symbol in numerals:
+            count, remaining = divmod(remaining, number)
+            parts.append(symbol * count)
+        return "".join(parts)
+
+    @staticmethod
+    def _format_letter_number(value: int) -> str:
+        """Format a positive integer using Word's A..Z, AA..ZZ sequence."""
+        if value <= 0:
+            return str(value)
+
+        parts = []
+        remaining = value
+        while remaining:
+            remaining, offset = divmod(remaining - 1, 26)
+            parts.append(chr(ord("A") + offset))
+        return "".join(reversed(parts))
+
+    @staticmethod
+    def _format_chinese_counting_number(value: int) -> str:
+        """Format the common Chinese counting forms used by Word numbering."""
+        if value < 0:
+            return str(value)
+        if value == 0:
+            return "零"
+
+        digits = "零一二三四五六七八九"
+        small_units = ("", "十", "百", "千")
+        large_units = ("", "万", "亿", "兆")
+
+        def format_group(group: int) -> str:
+            result = []
+            pending_zero = False
+            for position in range(3, -1, -1):
+                divisor = 10**position
+                digit = group // divisor
+                group %= divisor
+                if digit:
+                    if pending_zero and result:
+                        result.append("零")
+                    result.append(digits[digit])
+                    result.append(small_units[position])
+                    pending_zero = False
+                elif result and group:
+                    pending_zero = True
+            return "".join(result)
+
+        groups = []
+        remaining = value
+        while remaining:
+            groups.append(remaining % 10000)
+            remaining //= 10000
+
+        result = []
+        pending_zero = False
+        for group_index in range(len(groups) - 1, -1, -1):
+            group = groups[group_index]
+            if not group:
+                if result:
+                    pending_zero = True
+                continue
+            if result and (pending_zero or group < 1000):
+                result.append("零")
+            result.append(format_group(group))
+            result.append(large_units[group_index])
+            pending_zero = False
+
+        formatted = "".join(result)
+        if formatted.startswith("一十"):
+            formatted = formatted[1:]
+        return formatted
+
+    @classmethod
+    def _format_numbering_value(cls, value: int, num_fmt: str) -> str:
+        """Render a Word numbering counter using its w:numFmt value."""
+        if num_fmt == "decimalZero":
+            return f"{value:02d}"
+        if num_fmt == "upperRoman":
+            return cls._format_roman_number(value)
+        if num_fmt == "lowerRoman":
+            return cls._format_roman_number(value).lower()
+        if num_fmt == "upperLetter":
+            return cls._format_letter_number(value)
+        if num_fmt == "lowerLetter":
+            return cls._format_letter_number(value).lower()
+        if num_fmt in {"chineseCounting", "chineseCountingThousand"}:
+            return cls._format_chinese_counting_number(value)
+        return str(value)
+
+    def _get_numbering_level_format(self, numId: int, ilvl: int) -> Optional[str]:
+        lvl_element = self._get_numbering_level_definition(numId, ilvl)
+        if lvl_element is None:
+            return None
+        namespaces = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+        num_fmt_element = lvl_element.find("w:numFmt", namespaces=namespaces)
+        if num_fmt_element is None:
+            return None
+        return num_fmt_element.get(self.XML_KEY)
+
+    def _get_numbering_level_text(self, numId: int, ilvl: int) -> Optional[str]:
+        lvl_element = self._get_numbering_level_definition(numId, ilvl)
+        if lvl_element is None:
+            return None
+        namespaces = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+        lvl_text_element = lvl_element.find("w:lvlText", namespaces=namespaces)
+        if lvl_text_element is None:
+            return None
+        return lvl_text_element.get(self.XML_KEY)
+
+    def _render_numbering_label(self, numId: int, ilvl: int) -> Optional[str]:
+        """Resolve w:lvlText placeholders against the active list counters."""
+        lvl_text = self._get_numbering_level_text(numId, ilvl)
+        if not lvl_text or not re.search(r"%[1-9]", lvl_text):
+            return None
+
+        def replace_placeholder(match: re.Match) -> str:
+            referenced_ilvl = int(match.group(1)) - 1
+            counter = self.list_counters.get((numId, referenced_ilvl))
+            if counter is None:
+                counter = self._get_numbering_level_start(numId, referenced_ilvl)
+            num_fmt = self._get_numbering_level_format(numId, referenced_ilvl) or "decimal"
+            return self._format_numbering_value(counter, num_fmt)
+
+        return re.sub(r"%([1-9])", replace_placeholder, lvl_text)
+
+    def _uses_markdown_ordered_marker(self, numId: int, ilvl: int) -> bool:
+        """Return whether Markdown's N. marker preserves the Word label."""
+        return (
+            self._get_numbering_level_format(numId, ilvl) == "decimal"
+            and self._get_numbering_level_text(numId, ilvl) == f"%{ilvl + 1}."
+        )
     def _is_numbered_list(self, numId: int, ilvl: int) -> bool:
         """
         根据 numFmt 值检查列表是否为编号列表。
@@ -2279,6 +2433,8 @@ class DocxConverter:
                 "lowerLetter",
                 "upperLetter",
                 "decimalZero",
+                "chineseCounting",
+                "chineseCountingThousand",
             }
 
             return num_fmt in numbered_formats
@@ -2334,9 +2490,18 @@ class DocxConverter:
         if content_text == "":
             return None
 
-        # 确定列表属性
-        list_attribute = "ordered" if is_numbered else "unordered"
+        # Markdown can only express decimal N. markers. Render other
+        # w:lvlText templates into the item text so their labels are preserved.
         list_start = self._advance_list_counter(numid, ilevel) if is_numbered else None
+        numbering_label = self._render_numbering_label(numid, ilevel) if is_numbered else None
+        use_markdown_marker = is_numbered and (
+            numbering_label is None or self._uses_markdown_ordered_marker(numid, ilevel)
+        )
+        if numbering_label and not use_markdown_marker:
+            content_text = f"{numbering_label} {content_text}"
+        list_attribute = "ordered" if use_markdown_marker else "unordered"
+        if not use_markdown_marker:
+            list_start = None
 
         # 情况 1: 不存在上一个列表ID，或遇到了不同 numId 的新列表，创建新的顶层列表
         if self.pre_num_id == -1 or self.pre_num_id != numid:
