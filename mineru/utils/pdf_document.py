@@ -128,6 +128,11 @@ class PDFPage:
     def get_chars(self) -> list[Char]:
         return self.pdf_doc.get_page_chars(self._idx)
 
+    def get_drawing_lines(self) -> list[PDFDrawingLine]:
+        """读取当前页已规范到视觉页面坐标的横竖 drawing。"""
+
+        return self.pdf_doc.get_page_drawing_lines(self._idx)
+
 
 class PDFDocument:
     """A PDF file loaded in memory, with lazy pypdfium2 access.

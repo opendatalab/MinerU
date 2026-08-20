@@ -60,8 +60,10 @@ def txt_spans_extract(
     scale: float,
     all_bboxes: list[tuple[Any, ...]],
     all_discarded_blocks: list[tuple[Any, ...]],
+    *,
+    page_chars: list[Char] | dict[str, list[Char]] | None = None,
 ) -> list[_AnalyzeSpan]:
-    """从 PDF 原生字符中提取文本 Span，必要时准备后置 OCR 兜底。"""
+    """从 PDF 原生字符中提取文本 Span，并允许复用调用方已读取的页面字符。"""
     page_char_count = None
     try:
         page_char_count = pdf_page.get_char_count()
@@ -73,7 +75,8 @@ def txt_spans_extract(
         need_ocr_spans = [span for span in spans if span.type == ContentType.TEXT]
         return _prepare_post_ocr_spans(need_ocr_spans, spans, pil_img, scale)
 
-    page_chars = pdf_page.get_chars()
+    if page_chars is None:
+        page_chars = pdf_page.get_chars()
     page_all_chars = _get_chars_for_span_fill(page_chars)
 
     # 计算所有span的高度的中位数

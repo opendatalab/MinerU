@@ -10,6 +10,11 @@ from typing import Any
 
 from mineru.model.flash.xycut import sort_entries
 from mineru.utils.pdf_document import PDFDocument, PDFImageInfo, get_lines_from_chars
+from mineru.utils.pdf_text_styles import (
+    PDFTextStyleLine,
+    apply_pdf_strikethrough_styles,
+    detect_pdf_strikethrough_lines,
+)
 
 from .models import (
     _DocumentBodyProfile,
@@ -201,6 +206,7 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
     )
 
     page_sources: list[_PageSource] = []
+    page_style_lines: list[list[PDFTextStyleLine]] = []
     for page_idx in range(pdf_doc.page_count):
         page_size = page_sizes[page_idx]
         chars = pdf_doc.get_page_chars(page_idx)
@@ -210,6 +216,9 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
             page_rotation=pdf_doc.page_rotation(page_idx),
         )
         drawing_lines = _get_pdf_drawing_lines(pdf_doc, page_idx)
+        page_style_lines.append(
+            detect_pdf_strikethrough_lines(lines, drawing_lines)
+        )
         source = _PageSource(
             page_size=page_size,
             lines=lines,
@@ -251,7 +260,7 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
         prepared_pages,
         document_body_profile,
     )
-    return [
+    finalized_pages = [
         _finalize_prepared_page(
             prepared,
             page_index,
@@ -260,6 +269,14 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
         )
         for page_index, prepared in enumerate(prepared_pages)
     ]
+    for page_blocks, style_lines, page_size in zip(
+        finalized_pages,
+        page_style_lines,
+        page_sizes,
+        strict=True,
+    ):
+        apply_pdf_strikethrough_styles(page_blocks, style_lines, page_size)
+    return finalized_pages
 
 
 def _prepare_page_source(source: _PageSource) -> _PreparedPage:

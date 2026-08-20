@@ -12,6 +12,7 @@ from mineru_vl_utils.structs import ExtractResult
 from mineru.backend import analyze
 from mineru.backend.analysis.pdf import constants, formulas, layout, normalization, ocr, pipeline, tables, window
 from mineru.backend.analysis.pdf.text import content as text_content
+from mineru.backend.analysis.pdf.text import styles as text_styles
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_FORMULA_NUMBER
 from mineru.backend.analysis.pdf.text.native import (
@@ -419,7 +420,16 @@ def test_fill_window_batches_txt_post_ocr_before_page_content(monkeypatch: pytes
     page_block_lines_list, _ = _build_post_ocr_page_block_lines(11, 22)
     grouped_page_lines = iter(page_block_lines_list)
     monkeypatch.setattr(text_content, "_build_page_text_formula_spans", lambda *_args: [])
-    monkeypatch.setattr(text_content, "_fill_native_pdf_text_spans", lambda _page, spans, *_args: spans)
+    monkeypatch.setattr(
+        text_content,
+        "build_pdf_native_visual_lines_and_styles",
+        lambda *_args, **_kwargs: ([], [], []),
+    )
+    monkeypatch.setattr(
+        text_content,
+        "_fill_native_pdf_text_spans",
+        lambda _page, spans, *_args, **_kwargs: spans,
+    )
     monkeypatch.setattr(text_content, "_group_page_spans_by_block", lambda *_args: next(grouped_page_lines))
     local_model_context = MagicMock()
     local_model_context.ocr_model.ocr.return_value = [[("窗口第一页", 0.9), ("窗口第二页", 0.8)]]
@@ -580,7 +590,8 @@ def test_low_txt_visual_runs_split_distant_text_before_layout_matching(
     pdf_page.size = (100.0, 100.0)
     pdf_page.rotation = 0
     pdf_page.get_chars.return_value = []
-    monkeypatch.setattr(tables, "get_lines_from_chars", lambda _chars: pdf_lines)
+    pdf_page.get_drawing_lines.return_value = []
+    monkeypatch.setattr(text_styles, "get_lines_from_chars", lambda _chars: pdf_lines)
 
     spans = tables._build_pdf_text_visual_run_spans(pdf_page)
 
@@ -689,7 +700,11 @@ def test_process_low_txt_fills_native_formulas_after_table_cleanup(
     pdf_page = MagicMock(size=(100.0, 100.0))
     model_list = [[{"type": BlockType.EQUATION, "bbox": [0.1, 0.1, 0.5, 0.2]}]]
 
-    monkeypatch.setattr(window, "_build_pdf_text_visual_run_spans", lambda _page: [])
+    monkeypatch.setattr(
+        window,
+        "_build_pdf_text_visual_run_data",
+        lambda _page: ([], []),
+    )
 
     def fake_fill_low_table_contents(*_args: object) -> None:
         """模拟表格阶段认领并清理当前公式。"""

@@ -7,12 +7,17 @@ from typing import Any, Literal
 
 import numpy as np
 from PIL import Image
+from pdftext.schema import Char
 
 from mineru.backend.local_model_runtime import HybridLocalModelContext, run_ocr_inference
 from mineru.types import BBox, BlockType, ContentType
 from mineru.utils.language import detect_lang
 from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from mineru.utils.pdf_document import PDFPage, get_lines_from_chars
+from mineru.utils.pdf_text_styles import (
+    PDFTextStyleLine,
+    apply_pdf_strikethrough_styles,
+)
 from mineru.utils.text_utils import resolve_text_line_boundary
 
 from ..constants import (
@@ -24,6 +29,7 @@ from ..geometry import _bbox_to_pixel_bbox, _sidecar_bbox_to_page_bbox
 from .lines import group_spans_to_lines
 from .models import _AnalyzeLine, _AnalyzeSpan
 from .native import (
+    MAX_NATIVE_TEXT_CHARS_PER_PAGE,
     SpanBlockMatcher,
     __replace_ligatures,
     __replace_unicode,
@@ -32,6 +38,7 @@ from .native import (
     _restore_post_ocr_fallback,
     txt_spans_extract,
 )
+from .styles import build_pdf_native_visual_lines_and_styles
 
 
 def _validate_text_formula_window_inputs(
@@ -139,8 +146,10 @@ def _fill_native_pdf_text_spans(
     page_pil_image: Image.Image,
     render_scale: float,
     page_size: tuple[float, float],
+    *,
+    page_chars: list[Char] | None = None,
 ) -> list[_AnalyzeSpan]:
-    """复用原生 PDF 字符回填逻辑，并为内容不足的 span 准备后置 OCR 裁图。"""
+    """复用原生 PDF 字符回填逻辑，并允许共享同页删除线检测读取的字符。"""
     page_width, page_height = page_size
     virtual_block = (0, 0, page_width, page_height, None, None, None, BlockType.TEXT)
     return txt_spans_extract(
@@ -150,6 +159,7 @@ def _fill_native_pdf_text_spans(
         render_scale,
         [virtual_block],
         [],
+        page_chars=page_chars,
     )
 
 
@@ -316,7 +326,14 @@ def _fill_window_block_content_and_lines(
         raise ValueError(f"Hybrid block content page count mismatch: {page_counts}")
 
     target_block_types = set(ocr_det_type) | TITLE_BLOCK_TYPES | {BlockType.TEXT}
-    page_block_line_results: list[tuple[list[dict[str, Any]], dict[int, list[_AnalyzeLine]], tuple[float, float]]] = []
+    page_block_line_results: list[
+        tuple[
+            list[dict[str, Any]],
+            dict[int, list[_AnalyzeLine]],
+            tuple[float, float],
+            list[PDFTextStyleLine],
+        ]
+    ] = []
     for image_dict, pdf_page, page_model_list, page_inline_formula_list, page_ocr_res_list in zip(
         images_list,
         pdf_pages,
@@ -333,13 +350,28 @@ def _fill_window_block_content_and_lines(
             page_size,
             render_scale,
         )
+        style_lines: list[PDFTextStyleLine] = []
         if parse_mode == "txt":
+            page_chars = None
+            try:
+                page_char_count = pdf_page.get_char_count()
+            except Exception:
+                page_char_count = None
+            if (
+                not isinstance(page_char_count, int)
+                or isinstance(page_char_count, bool)
+                or page_char_count <= MAX_NATIVE_TEXT_CHARS_PER_PAGE
+            ):
+                page_chars, _line_items, style_lines = build_pdf_native_visual_lines_and_styles(
+                    pdf_page,
+                )
             page_spans = _fill_native_pdf_text_spans(
                 pdf_page,
                 page_spans,
                 page_pil_image,
                 render_scale,
                 page_size,
+                page_chars=page_chars,
             )
 
         block_lines = _group_page_spans_by_block(
@@ -348,18 +380,28 @@ def _fill_window_block_content_and_lines(
             page_size,
             target_block_types,
         )
-        page_block_line_results.append((page_model_list, block_lines, page_size))
+        page_block_line_results.append(
+            (page_model_list, block_lines, page_size, style_lines)
+        )
 
     if parse_mode == "txt":
         _apply_window_post_ocr(
             local_model_context,
-            [block_lines for _, block_lines, _ in page_block_line_results],
+            [
+                block_lines
+                for _, block_lines, _, _style_lines in page_block_line_results
+            ],
         )
 
-    for page_model_list, block_lines, page_size in page_block_line_results:
+    for page_model_list, block_lines, page_size, style_lines in page_block_line_results:
         _apply_block_content_and_line_metadata(
             page_model_list,
             block_lines,
+            page_size,
+        )
+        apply_pdf_strikethrough_styles(
+            page_model_list,
+            style_lines,
             page_size,
         )
     return model_list

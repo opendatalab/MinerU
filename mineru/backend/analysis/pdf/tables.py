@@ -21,6 +21,7 @@ from mineru.utils.bbox_utils import (
 )
 from mineru.utils.ocr_utils import mask_formula_regions_for_ocr_det
 from mineru.utils.pdf_document import PDFPage, get_lines_from_chars
+from mineru.utils.pdf_text_styles import PDFTextStyleLine
 from mineru.utils.spatial_text import project_ocr_table_text, project_pdf_table_text
 
 from .constants import (
@@ -47,6 +48,7 @@ from .geometry import (
 )
 from .text.models import _AnalyzeSpan
 from .text.native import __replace_ligatures, __replace_unicode, _is_supported_rotation
+from .text.styles import build_pdf_native_visual_lines_and_styles
 
 
 def _apply_table_rotate_labels(
@@ -60,18 +62,9 @@ def _apply_table_rotate_labels(
         table_item["layout_item"]["angle"] = int(rotate_label or "0")
 
 
-def _build_pdf_text_visual_run_spans(pdf_page: PDFPage) -> list[_AnalyzeSpan]:
-    """将 Low/TXT 原生粗行按 Flash 字符间隙拆成可独立分配的视觉 run。"""
+def _visual_line_items_to_spans(line_items: list[Any]) -> list[_AnalyzeSpan]:
+    """把 Flash 视觉 run 转为 Hybrid 文本分配使用的私有 span。"""
 
-    # 延迟导入避免 Hybrid 模块初始化时提前加载完整 Flash PDF 流水线。
-    from mineru.model.flash.native_pdf.native_text import _build_native_line_items
-
-    line_items = _build_native_line_items(
-        get_lines_from_chars(pdf_page.get_chars()),
-        tuple(float(value) for value in pdf_page.size),
-        page_rotation=pdf_page.rotation,
-        supported_angles=_LOW_TXT_VISUAL_RUN_ANGLES,
-    )
     page_spans: list[_AnalyzeSpan] = []
     for line_item in line_items:
         content = __replace_ligatures(__replace_unicode(line_item.text)).strip()
@@ -85,6 +78,25 @@ def _build_pdf_text_visual_run_spans(pdf_page: PDFPage) -> list[_AnalyzeSpan]:
                 score=1.0,
             )
         )
+    return page_spans
+
+
+def _build_pdf_text_visual_run_data(
+    pdf_page: PDFPage,
+) -> tuple[list[_AnalyzeSpan], list[PDFTextStyleLine]]:
+    """一次构造 Low/TXT 视觉 span 和同页水平删除线证据。"""
+
+    _page_chars, line_items, style_lines = build_pdf_native_visual_lines_and_styles(
+        pdf_page,
+        supported_angles=_LOW_TXT_VISUAL_RUN_ANGLES,
+    )
+    return _visual_line_items_to_spans(line_items), style_lines
+
+
+def _build_pdf_text_visual_run_spans(pdf_page: PDFPage) -> list[_AnalyzeSpan]:
+    """将 Low/TXT 原生粗行按 Flash 字符间隙拆成可独立分配的视觉 run。"""
+
+    page_spans, _style_lines = _build_pdf_text_visual_run_data(pdf_page)
     return page_spans
 
 
