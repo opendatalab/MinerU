@@ -41,6 +41,15 @@ def test_minify_css_preserves_strings_escapes_and_calc_spacing() -> None:
     assert build_html_css.minify_css(source) == expected
 
 
+def test_minify_css_preserves_descendant_combinator_before_pseudo_class() -> None:
+    """验证伪类前的后代空格不会被误当作声明冒号旁的冗余空白。"""
+    source = ".root :is(h1, h2) { color: red; } .root:hover { color: blue; }"
+
+    assert build_html_css.minify_css(source) == (
+        ".root :is(h1,h2){color:red}.root:hover{color:blue}"
+    )
+
+
 @pytest.mark.parametrize(
     "source",
     [

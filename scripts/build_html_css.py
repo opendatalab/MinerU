@@ -74,7 +74,15 @@ def minify_css(source: str) -> str:
             continue
 
         if char in _COMPACT_PUNCTUATION:
-            if output and output[-1] == " ":
+            # 伪类前的空白可能是后代组合符，不能按声明冒号处理。
+            if (
+                char == ":"
+                and pending_space
+                and output
+                and output[-1] not in "{,;>"
+            ):
+                output.append(" ")
+            elif output and output[-1] == " ":
                 output.pop()
             if char == "}" and output and output[-1] == ";":
                 output.pop()
