@@ -60,6 +60,34 @@ def _list(index: int, *items: str, sub_type: str | None = None) -> ListBlock:
     )
 
 
+def _mermaid_fence(source: str, *, language: str = "mermaid") -> str:
+    """用标准三反引号构造 diagram fence，避免测试字符串散落围栏细节。"""
+    fence = chr(96) * 3
+    return f"{fence}{language}\n{source}\n{fence}"
+
+
+def _flowchart(content: str, *, with_raster: bool = True) -> ImageBlock:
+    """构造带可选 raster 回退的 flowchart 图片块。"""
+    body: dict[str, object] = {
+        "type": "image_body",
+        "index": 0,
+        "content": content,
+    }
+    if with_raster:
+        body["image_base64"] = _PNG_URI
+    return ImageBlock.model_validate(
+        {
+            "type": "image",
+            "index": 0,
+            "sub_type": "flowchart",
+            "content": [
+                body,
+                {"type": "image_caption", "index": 1, "content": "Flowchart caption"},
+            ],
+        }
+    )
+
+
 def test_public_contract_fragment_standalone_title_and_input_immutability() -> None:
     """验证严格公共参数、双输出形态、标题回退和输入无副作用。"""
     middle = _middle(
@@ -153,6 +181,183 @@ def test_inline_html_escapes_plain_text_and_renders_styles_links_and_math() -> N
     assert "loader: {load: ['ui/safe']}" in result
     assert "ignoreHtmlClass: 'mineru-document'" in result
     assert "packages: {'[-]': ['require']}" in result
+
+
+def test_plain_text_autolinks_mpe_style_urls_domains_and_email() -> None:
+    """验证显式 URL、www、裸域名、邮箱、括号和 CJK 句读按 MPE 风格转成链接。"""
+    content = (
+        "See https://example.com/a_(b), www.example.org/path?x=1, "
+        "example.net/docs。Email user+tag@example.co.uk；"
+        "local http://127.0.0.1:8080/a. "
+        "pair https://one.example/ahttps://two.example/b"
+    )
+    soup = BeautifulSoup(
+        render_html(_middle(_page(0, TextBlock(type="text", index=0, content=content))), standalone=False),
+        "html.parser",
+    )
+
+    links = soup.select(".mineru-text a")
+    assert [link["href"] for link in links] == [
+        "https://example.com/a_%28b%29",
+        "https://www.example.org/path?x=1",
+        "https://example.net/docs",
+        "mailto:user+tag@example.co.uk",
+        "http://127.0.0.1:8080/a",
+        "https://one.example/a",
+        "https://two.example/b",
+    ]
+    assert [link.get_text() for link in links] == [
+        "https://example.com/a_(b)",
+        "www.example.org/path?x=1",
+        "example.net/docs",
+        "user+tag@example.co.uk",
+        "http://127.0.0.1:8080/a",
+        "https://one.example/a",
+        "https://two.example/b",
+    ]
+    assert "docs。Email" in soup.select_one(".mineru-text").get_text()
+
+
+@pytest.mark.parametrize(
+    "tld",
+    [
+        "ai",
+        "app",
+        "au",
+        "biz",
+        "br",
+        "ca",
+        "cloud",
+        "cn",
+        "com",
+        "de",
+        "dev",
+        "edu",
+        "eu",
+        "fr",
+        "gov",
+        "hk",
+        "in",
+        "info",
+        "io",
+        "jp",
+        "kr",
+        "net",
+        "nl",
+        "nz",
+        "online",
+        "org",
+        "ru",
+        "sg",
+        "shop",
+        "site",
+        "store",
+        "tech",
+        "tw",
+        "uk",
+        "xyz",
+    ],
+)
+def test_common_engineering_bare_domain_suffixes_linkify(tld: str) -> None:
+    """验证 B 工程常用集中的裸域名后缀全部保持可链接。"""
+    content = f"Project.Example.{tld}/docs?x=1#intro"
+    soup = BeautifulSoup(
+        render_html(_middle(_page(0, TextBlock(type="text", index=0, content=content))), standalone=False),
+        "html.parser",
+    )
+
+    link = soup.select_one(".mineru-text a")
+    assert link["href"] == f"https://Project.Example.{tld}/docs?x=1#intro"
+    assert link.get_text() == content
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "machine.Aborted",
+        "HostID.lic",
+        "requirements.txt",
+        "600104.SH",
+        "000868.SZ",
+        "libcudart.so",
+        "TABLEFORMER.md",
+        "cs.CL",
+        "TSLA.US",
+        "A.Balakrishnan",
+        "R.Kohli",
+    ],
+)
+def test_non_common_bare_domain_suffixes_remain_plain_text(content: str) -> None:
+    """验证文件名、股票代码、作者姓名和非白名单后缀不再误生成链接。"""
+    soup = BeautifulSoup(
+        render_html(_middle(_page(0, TextBlock(type="text", index=0, content=content))), standalone=False),
+        "html.parser",
+    )
+
+    assert soup.select_one(".mineru-text a") is None
+    assert soup.select_one(".mineru-text").get_text() == content
+
+
+def test_strong_link_syntax_bypasses_bare_domain_suffix_allowlist() -> None:
+    """验证显式 HTTP、www 和邮箱不受裸域名 B 白名单限制。"""
+    content = "https://example.ch www.example.ch user@example.ua https://machine.Aborted"
+    soup = BeautifulSoup(
+        render_html(_middle(_page(0, TextBlock(type="text", index=0, content=content))), standalone=False),
+        "html.parser",
+    )
+
+    assert [link["href"] for link in soup.select(".mineru-text a")] == [
+        "https://example.ch",
+        "https://www.example.ch",
+        "mailto:user@example.ua",
+        "https://machine.Aborted",
+    ]
+
+
+def test_autolink_excludes_existing_links_code_math_algorithm_and_raw_html() -> None:
+    """验证 linkify 不嵌套显式链接，也不进入危险协议、代码、公式、算法和 raw HTML。"""
+    text = TextBlock(
+        type="text",
+        index=0,
+        content=(
+            "ftp://bad.example.com /relative.example.com 1.2.3.4 "
+            "javascript:evil.example.com data:text/html,data.example.com "
+            "bad..mail@example.com "
+            "<hyperlink>example.com<url>https://target.test</url></hyperlink> "
+            "<eq>math.example.com</eq>"
+        ),
+    )
+    code = CodeBlock(
+        type="code",
+        index=1,
+        sub_type="code",
+        guess_lang="txt",
+        content=[CodeBodyBlock(type="code_body", index=1, content="https://code.example.com")],
+    )
+    algorithm = CodeBlock(
+        type="code",
+        index=2,
+        sub_type="algorithm",
+        content=[CodeBodyBlock(type="code_body", index=2, content="visit algorithm.example.com")],
+    )
+    raw_html = ChartBlock(
+        type="chart",
+        index=3,
+        content=[ChartBodyBlock(type="chart_body", index=3, content="<p>raw.example.com</p>")],
+    )
+    soup = BeautifulSoup(
+        render_html(_middle(_page(0, text, code, algorithm, raw_html)), standalone=False),
+        "html.parser",
+    )
+
+    links = soup.select("a")
+    assert len(links) == 1
+    assert links[0]["href"] == "https://target.test"
+    assert links[0].get_text() == "example.com"
+    assert soup.select_one(".mineru-math").get_text() == r"\(math.example.com\)"
+    assert soup.select_one(".mineru-code").get_text() == "https://code.example.com"
+    assert soup.select_one(".mineru-algorithm").get_text() == "visit algorithm.example.com"
+    assert soup.select_one(".mineru-figure--chart p").get_text() == "raw.example.com"
 
 
 def test_formula_body_closing_delimiters_are_neutralized_before_mathjax_scanning() -> None:
@@ -338,6 +543,71 @@ def test_visual_child_order_image_details_and_asset_precedence() -> None:
     assert "data:image" not in rendered
     assert soup.select_one("details .mineru-math") is not None
     assert len(soup.select(".mineru-caption")) == 2
+
+
+def test_mermaid_flowchart_uses_live_canvas_raster_fallback_and_safe_config() -> None:
+    """验证受限 Mermaid 源生成 canvas，并保留 raster、源码和固定安全运行时。"""
+    source_text = '%% comment\ngraph LR\n  A["<script>alert(1)</script>"] --> B'
+    middle = _middle(_page(0, _flowchart(_mermaid_fence(source_text))))
+    fragment = render_html(middle, standalone=False)
+    standalone = render_html(middle)
+    soup = BeautifulSoup(fragment, "html.parser")
+
+    host = soup.select_one(".mineru-flowchart")
+    assert host["data-mermaid-state"] == "pending"
+    assert "mineru-flowchart--has-raster" in host["class"]
+    assert host.select_one('.mineru-flowchart-canvas[role="img"]') is not None
+    assert host.select_one(".mineru-flowchart-fallback")["src"].startswith("data:image/png")
+    details = host.find_next_sibling("details")
+    assert "open" not in details.attrs
+    assert details.select_one(".mineru-flowchart-source code").get_text() == source_text
+    assert soup.find("script") is None
+    assert "mermaid@" not in fragment
+    assert "mermaid@11.16.1/dist/mermaid.min.js" in standalone
+    assert "sha384-aBQXj4hK6Jm05i7aQAsUV3bLdSUrHX1BGYfMB0166TtWt/RRaw+h0Eelme9OCOvy" in standalone
+    assert "securityLevel: 'strict'" in standalone
+    assert "suppressErrorRendering: true" in standalone
+    assert "maxTextSize: 50000" in standalone and "maxEdges: 500" in standalone
+    assert "flowchart: {htmlLabels: false, useMaxWidth: true}" in standalone
+    assert "bindFunctions" not in standalone
+
+
+def test_mermaid_flowchart_without_raster_opens_source_fallback() -> None:
+    """验证无 raster 的有效 flowchart 默认展开源码，等待或替代浏览器渲染。"""
+    soup = BeautifulSoup(
+        render_html(
+            _middle(_page(0, _flowchart(_mermaid_fence("flowchart TD\n  A --> B"), with_raster=False))),
+            standalone=False,
+        ),
+        "html.parser",
+    )
+
+    host = soup.select_one(".mineru-flowchart")
+    assert "mineru-flowchart--has-raster" not in host.get("class", [])
+    assert host.select_one("img") is None
+    assert "open" in host.find_next_sibling("details").attrs
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        _mermaid_fence("sequenceDiagram\n  A->>B: example.com"),
+        _mermaid_fence('%%{init: {"securityLevel": "loose"}}%%\ngraph LR\n  A --> B'),
+        _mermaid_fence("---\ntheme: dark\n---\ngraph LR\n  A --> B"),
+        _mermaid_fence("graph LR\n  A --> B", language="python"),
+        _mermaid_fence(f"graph LR\n  A[{'x' * 50_001}]"),
+    ],
+)
+def test_invalid_or_out_of_scope_mermaid_keeps_existing_image_path(content: str) -> None:
+    """验证非流程图、配置注入、错误 fence 和超限源码不触发 Mermaid 依赖。"""
+    rendered = render_html(_middle(_page(0, _flowchart(content))))
+    soup = BeautifulSoup(rendered, "html.parser")
+
+    assert soup.select_one(".mineru-flowchart") is None
+    assert soup.select_one(".mineru-image") is not None
+    assert soup.select_one(".mineru-details") is not None
+    assert soup.select_one(".mineru-details a") is None
+    assert "mermaid@" not in rendered
 
 
 def test_table_keeps_safe_html_and_spatial_or_image_fallbacks() -> None:
@@ -599,6 +869,6 @@ def test_empty_document_and_equation_image_do_not_load_external_scripts() -> Non
     image_equation = render_html(_middle(_page(0, EquationBlock(type="equation", index=0, content="", image_base64=_PNG_URI))))
 
     assert '<article class="mineru-document mineru-document--default">\n\n</article>' in empty
-    assert "mathjax@" not in empty and "prismjs@" not in empty
-    assert "mathjax@" not in image_equation and "prismjs@" not in image_equation
+    assert "mathjax@" not in empty and "prismjs@" not in empty and "mermaid@" not in empty
+    assert "mathjax@" not in image_equation and "prismjs@" not in image_equation and "mermaid@" not in image_equation
     assert "data:image/png" in image_equation

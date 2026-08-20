@@ -137,18 +137,32 @@ HTML 与 DOCX/Markdown 共用 `RenderMode` 和续段/续表 planner。DEFAULT �
 相邻页面之间输出 `hr.mineru-page-break`。每个顶层 block wrapper 保留来源 page/type/index
 元数据。行内内容直接消费共享 AST：普通文本始终 HTML escape，未知标签保持可见；公式只
 在 `mineru-math` carrier 内使用 `\(...\)` 或 `\[...\]`，不扫描普通正文中的美元符号。
+HTML 的普通 `InlineText` 默认 linkify `http/https`、`www.`、邮箱和常见裸域名；裸域名统一补
+`https://`，邮箱补 `mailto:`。无协议裸域名的 TLD 必须属于工程常用白名单：
+`com cn org net edu gov io ai dev app de uk nl ru br fr au in eu jp`、
+`ca hk tw sg kr nz info biz xyz site online tech cloud shop store`。显式 HTTP(S)、`www.` 和邮箱
+不受该小白名单限制。已有 hyperlink、代码、算法、公式、raw HTML 及 Mermaid 源码不重复
+识别，候选 href 仍通过统一 URL sanitizer。
 
 完整文档只内联压缩后的 `mineru.min.css`。其可读源码为 `mineru.css`，所有文档规则均
 限定在 `.mineru-document` 内，standalone 外围布局规则限定在 `.mineru-html-body`，
 不会修改 fragment 宿主页的全局标签样式。样式使用系统字体，不加载外部字体。
 有公式时按需加载固定 MathJax 4.1.2 `tex-chtml.js`，启用 `ui/safe`、禁用 `require`，并
 关闭菜单和 enrichment。有可高亮代码时按需加载固定 Prism 1.30.0 core 和 Autoloader，
-语言组件根固定到同版本 jsDelivr。入口脚本携带 SRI；动态 MathJax 扩展、字体和 Prism
-语言组件没有逐文件 SRI。renderer 不注入 CSP，HTTP 宿主需要自行允许相应 jsDelivr
-script/font/style，并评估 CDN 供应链策略。
+语言组件根固定到同版本 jsDelivr。合法 flowchart 按需加载固定 Mermaid 11.16.1 UMD；
+该约 3.57 MB bundle 只在含流程图的文档下载并可由浏览器缓存。三个入口脚本均携带 SRI；
+动态 MathJax 扩展、字体和 Prism 语言组件没有逐文件 SRI。renderer 不注入 CSP，HTTP
+宿主需要自行允许相应 jsDelivr script/font/style，并评估 CDN 供应链策略。
 
-fragment 调用方需要加载随包提供的 `mineru.min.css`，并按实际内容加载同版本 MathJax
-和 Prism。MathJax 必须在初始化前复用 standalone 的 delimiter、
+`ImageBlock(sub_type="flowchart")` 仅在 body 是完整 `mermaid` fence，且首个有效语句为
+`graph|flowchart + TB|TD|BT|RL|LR` 时生成 `.mineru-flowchart`。frontmatter、init directive、
+其他 Mermaid 图类型及超过 50,000 字符的源码沿用普通图片/details 路径，不加载 Mermaid。
+合法流程图初始显示已有 raster；Mermaid 以 `securityLevel: "strict"`、禁用 HTML label、
+`maxTextSize=50000`、`maxEdges=500` 逐图生成 SVG，成功后替换 raster。无 JS、CDN/语法失败
+继续显示 raster；无 raster 时自动展开已转义源码。图源码只在浏览器本地参与渲染。
+
+fragment 调用方需要加载随包提供的 `mineru.min.css`，并按实际内容加载同版本
+MathJax、Prism 和 Mermaid。MathJax 必须在初始化前复用 standalone 的 delimiter、
 `ignoreHtmlClass/processHtmlClass`、`ui/safe`、禁用 `require` 及 safeOptions 配置。动态插入后调用
 `MathJax.typesetPromise([root])` 与 `Prism.highlightAllUnder(root)`；替换已有公式前先调用
 `MathJax.typesetClear([root])`。fragment 内的相对图片以宿主页 URL 为基准，不能通过
@@ -180,6 +194,9 @@ window.MathJax = {
 
 standalone 还会通过 `startup.ready` 把 menu/enrichment 选项重新施加到 live MathDocument；
 fragment 宿主如需完全相同行为，也必须复用该 hook，而不能只复制上面的静态字段。
+fragment 中的 flowchart 只包含 canvas、fallback 与源码 DOM；宿主必须复用 standalone 的
+Mermaid 11.16.1、SRI、安全配置、顺序 `mermaid.render()` 和失败状态切换，且不得调用
+`bindFunctions`。Mermaid 点击指令和 HTML label 在本契约中始终禁用。
 
 HTML table/chart/image body 只在识别为 markup 时经过 `nh3` allowlist。活动标签、事件属性、
 来源 style/class/id/data 属性和危险 URL 会被删除；链接只允许相对地址、fragment、

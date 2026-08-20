@@ -282,6 +282,49 @@
   margin-inline: auto;
 }
 
+/* Mermaid 成功后替换 raster；无 JS、加载或语法失败时保留图片/源码回退。 */
+.mineru-document .mineru-flowchart {
+  margin: 1rem auto;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.mineru-document .mineru-flowchart-canvas {
+  display: none;
+  min-width: 0;
+  text-align: center;
+}
+
+.mineru-document .mineru-flowchart-canvas svg {
+  display: block;
+  height: auto;
+  margin-inline: auto;
+  max-width: 100%;
+}
+
+.mineru-document .mineru-flowchart-fallback {
+  display: block;
+  margin-inline: auto;
+}
+
+.mineru-document .mineru-flowchart[data-mermaid-state="rendered"] .mineru-flowchart-canvas {
+  display: block;
+}
+
+.mineru-document .mineru-flowchart[data-mermaid-state="rendered"] .mineru-flowchart-fallback {
+  display: none;
+}
+
+.mineru-document .mineru-flowchart-details {
+  max-width: 100%;
+}
+
+.mineru-document .mineru-flowchart-source {
+  max-height: 24rem;
+  text-align: left;
+  white-space: pre;
+}
+
 .mineru-document .mineru-caption {
   color: var(--mineru-muted);
   font-size: 0.9em;

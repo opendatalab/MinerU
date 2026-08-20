@@ -66,6 +66,13 @@ _PRISM_CORE_INTEGRITY = "sha384-zLRFO4dwowZvh8kzutOb5AWhH7f39HeJp+N7PtHF1SQtTBni
 _PRISM_AUTOLOADER_URL = "https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/autoloader/prism-autoloader.min.js"
 _PRISM_AUTOLOADER_INTEGRITY = "sha384-Uq05+JLko69eOiPr39ta9bh7kld5PKZoU+fF7g0EXTAriEollhZ+DrN8Q/Oi8J2Q"
 _PRISM_LANGUAGES_PATH = "https://cdn.jsdelivr.net/npm/prismjs@1.30.0/components/"
+_MERMAID_URL = "https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js"
+_MERMAID_INTEGRITY = "sha384-aBQXj4hK6Jm05i7aQAsUV3bLdSUrHX1BGYfMB0166TtWt/RRaw+h0Eelme9OCOvy"
+_MERMAID_MAX_TEXT_SIZE = 50_000
+_MERMAID_FLOWCHART_HEADER_RE = re.compile(
+    r"(?:graph|flowchart)\s+(?:TB|TD|BT|RL|LR)\b",
+    re.IGNORECASE,
+)
 _SAFE_PRISM_LANGUAGE_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,31}")
 _BLOCKED_PRISM_LANGUAGE_NAMES = {"constructor", "prototype"}
 _PRISM_LANGUAGE_ALIASES = {
@@ -107,6 +114,7 @@ class _HtmlRenderer:
         self.emitted_anchors: set[str] = set()
         self.has_math = False
         self.has_prism = False
+        self.has_mermaid = False
 
     def render(self) -> str:
         """生成 fragment article，并按需包装完整 HTML 文档。"""
@@ -126,6 +134,7 @@ class _HtmlRenderer:
             for code in article_soup.find_all("code")
             if code.get_text()
         )
+        self.has_mermaid = article_soup.select_one(".mineru-flowchart") is not None
         return self._render_standalone(article)
 
     def _render_default_pages(self, planned_pages: list[list[PlannedBlock]]) -> str:
@@ -376,8 +385,12 @@ class _HtmlRenderer:
 
     def _render_image_body(self, parent: ImageBlock, block: ImageBodyBlock) -> str:
         """渲染图片，并把并存的识别内容放入原生 details。"""
+        if parent.sub_type == "flowchart":
+            mermaid_source = _extract_mermaid_flowchart_source(block.content)
+            if mermaid_source is not None:
+                return self._render_flowchart_body(block, mermaid_source)
         source = self._safe_block_image_source(block)
-        content = self._render_embedded_content(block.content)
+        content = self._render_embedded_content(block.content, linkify_text=parent.sub_type != "flowchart")
         alt = _plain_content_text(block.content) or parent.sub_type or "image"
         parts = [self._render_image(source, alt=alt, class_name="mineru-image")] if source else []
         if content.html:
@@ -386,6 +399,23 @@ class _HtmlRenderer:
             else:
                 parts.append(content.html)
         return "".join(parts)
+
+    def _render_flowchart_body(self, block: ImageBodyBlock, mermaid_source: str) -> str:
+        """输出 Mermaid canvas，并保留 raster 与源码两级失败回退。"""
+        source = self._safe_block_image_source(block)
+        escaped_source = html.escape(_replace_html_controls(mermaid_source), quote=False)
+        fallback = self._render_image(source, alt="flowchart", class_name="mineru-flowchart-fallback") if source else ""
+        fallback_class = " mineru-flowchart--has-raster" if fallback else ""
+        details_open = "" if fallback else " open"
+        return (
+            f'<div class="mineru-flowchart{fallback_class}" data-mermaid-state="pending">'
+            '<div class="mineru-flowchart-canvas" role="img" aria-label="flowchart"></div>'
+            f"{fallback}</div>"
+            f'<details class="mineru-details mineru-flowchart-details"{details_open}>'
+            '<summary>flowchart source</summary>'
+            f'<pre class="mineru-flowchart-source"><code>{escaped_source}</code></pre>'
+            "</details>"
+        )
 
     def _render_table_block(self, block: TableBlock) -> str:
         """按原始子块顺序渲染表格主体、标题与脚注。"""
@@ -490,6 +520,7 @@ class _HtmlRenderer:
         if parent.sub_type == RAW_ALGORITHM:
             rendered = render_inline_nodes_html(
                 parse_inline_content(block.content),
+                linkify_text=False,
                 separate_adjacent_math=True,
                 preserve_newlines=True,
             )
@@ -511,13 +542,13 @@ class _HtmlRenderer:
         type_class = html.escape(str(block.type).replace("_", "-"), quote=True)
         return f'<p class="{role_class} {role_class}--{type_class}">{rendered.html}</p>'
 
-    def _render_embedded_content(self, content: str) -> HtmlInlineResult:
+    def _render_embedded_content(self, content: str, *, linkify_text: bool = True) -> HtmlInlineResult:
         """安全处理 body 富 HTML；普通内容走共享 inline AST。"""
         normalized = content.strip()
         if not normalized:
             return HtmlInlineResult("")
         if not is_supported_html_markup(normalized):
-            rendered = render_inline_content_html(content)
+            rendered = render_inline_nodes_html(parse_inline_content(content), linkify_text=linkify_text)
             self._observe_inline(rendered)
             return rendered
         sanitized = sanitize_html_fragment(normalized, asset_base_url=self.asset_base_url)
@@ -579,6 +610,8 @@ class _HtmlRenderer:
             dependencies.append(_mathjax_head())
         if self.has_prism:
             dependencies.append(_prism_head())
+        if self.has_mermaid:
+            dependencies.append(_mermaid_head())
         dependency_html = "\n".join(dependencies)
         return (
             "<!doctype html>\n"
@@ -712,6 +745,34 @@ def _plain_content_text(content: str) -> str:
     return inline_plain_text(parse_inline_content(content)).strip()
 
 
+def _extract_mermaid_flowchart_source(content: str) -> str | None:
+    """提取受限 Mermaid flowchart fence，拒绝其他图类型和可改写配置的语法。"""
+    normalized = _replace_html_controls(content).replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not normalized:
+        return None
+    lines = normalized.split("\n")
+    if len(lines) < 3:
+        return None
+    opening = re.fullmatch(r"(?P<fence>\x60{3,})[ \t]*mermaid[ \t]*", lines[0], re.IGNORECASE)
+    if opening is None:
+        return None
+    fence_length = len(opening.group("fence"))
+    if re.fullmatch(rf"\x60{{{fence_length},}}[ \t]*", lines[-1]) is None:
+        return None
+    source = "\n".join(lines[1:-1]).strip("\n")
+    if not source or len(source) > _MERMAID_MAX_TEXT_SIZE:
+        return None
+    if source.lstrip().startswith("---") or "%%{" in source:
+        return None
+    first_statement = next(
+        (line.strip() for line in source.splitlines() if line.strip() and not line.lstrip().startswith("%%")),
+        "",
+    )
+    if _MERMAID_FLOWCHART_HEADER_RE.match(first_statement) is None:
+        return None
+    return source
+
+
 def _contains_usable_table(markup: str) -> bool:
     """确认清洗后的 markup 至少保留一个含单元格的 table。"""
     soup = BeautifulSoup(markup, "html.parser")
@@ -813,6 +874,66 @@ document.addEventListener('DOMContentLoaded', function () {{
   Prism.plugins.autoloader.languages_path = '{_PRISM_LANGUAGES_PATH}';
   var root = document.querySelector('.mineru-document');
   if (root) Prism.highlightAllUnder(root);
+}});
+</script>"""
+
+
+def _mermaid_head() -> str:
+    """返回固定 Mermaid 入口和逐图安全渲染、失败回退脚本。"""
+    return f"""<script defer src="{_MERMAID_URL}"
+  integrity="{_MERMAID_INTEGRITY}" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+function markMineruMermaidError(host) {{
+  host.dataset.mermaidState = 'error';
+  if (!host.classList.contains('mineru-flowchart--has-raster')) {{
+    var details = host.nextElementSibling;
+    if (details && details.classList.contains('mineru-flowchart-details')) details.open = true;
+  }}
+}}
+document.addEventListener('DOMContentLoaded', function () {{
+  var root = document.querySelector('.mineru-document');
+  var hosts = root ? Array.from(root.querySelectorAll('.mineru-flowchart')) : [];
+  if (!hosts.length) return;
+  if (!window.mermaid) {{
+    hosts.forEach(markMineruMermaidError);
+    return;
+  }}
+  try {{
+    window.mermaid.initialize({{
+      startOnLoad: false,
+      securityLevel: 'strict',
+      suppressErrorRendering: true,
+      theme: 'neutral',
+      maxTextSize: 50000,
+      maxEdges: 500,
+      flowchart: {{htmlLabels: false, useMaxWidth: true}}
+    }});
+  }} catch (_error) {{
+    hosts.forEach(markMineruMermaidError);
+    return;
+  }}
+  (async function () {{
+    for (var index = 0; index < hosts.length; index += 1) {{
+      var host = hosts[index];
+      var details = host.nextElementSibling;
+      var source = details && details.querySelector('.mineru-flowchart-source code');
+      var canvas = host.querySelector('.mineru-flowchart-canvas');
+      if (!source || !canvas) {{
+        markMineruMermaidError(host);
+        continue;
+      }}
+      var renderId = 'mineru-mermaid-' + index;
+      while (document.getElementById(renderId)) renderId += '-x';
+      host.dataset.mermaidState = 'rendering';
+      try {{
+        var result = await window.mermaid.render(renderId, source.textContent);
+        canvas.innerHTML = result.svg;
+        host.dataset.mermaidState = 'rendered';
+      }} catch (_error) {{
+        markMineruMermaidError(host);
+      }}
+    }}
+  }})();
 }});
 </script>"""
 
