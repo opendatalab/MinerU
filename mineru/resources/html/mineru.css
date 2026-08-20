@@ -12,8 +12,8 @@
 }
 
 .mineru-document {
-  --mineru-accent: #f97316;
-  --mineru-accent-hover: #c2410c;
+  --mineru-accent: #0b6fc2;
+  --mineru-accent-hover: #075a9c;
   --mineru-background: #ffffff;
   --mineru-border: #d1d5db;
   --mineru-muted: #6b7280;
@@ -269,6 +269,12 @@
 .mineru-document .mineru-figure {
   margin: 1.5rem 0;
   max-width: 100%;
+}
+
+/* 表格与结构化图表按内容收缩并整体居中，使说明与主体共享中心轴。 */
+.mineru-document :is(.mineru-figure--table, .mineru-figure--chart) {
+  margin-inline: auto;
+  width: fit-content;
 }
 
 .mineru-document .mineru-figure > img {

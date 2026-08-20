@@ -17,6 +17,20 @@ def test_committed_minified_css_matches_readable_source() -> None:
     assert minified == build_html_css.minify_css(source)
 
 
+def test_table_and_chart_figures_center_as_one_captioned_unit() -> None:
+    """验证表格和结构化图表按内容收缩，使 caption 与主体共享中心轴。"""
+    project_root = Path(__file__).resolve().parents[2]
+    css_path = project_root.joinpath("mineru", "resources", "html", "mineru.css")
+    source = css_path.read_text(encoding="utf-8")
+
+    assert (
+        ".mineru-document :is(.mineru-figure--table, .mineru-figure--chart) {\n"
+        "  margin-inline: auto;\n"
+        "  width: fit-content;\n"
+        "}"
+    ) in source
+
+
 def test_minify_css_preserves_strings_escapes_and_calc_spacing() -> None:
     """验证压缩过程只删除安全空白，不破坏字符串、转义和 calc 运算符。"""
     source = r"""
