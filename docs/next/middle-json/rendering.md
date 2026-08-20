@@ -89,17 +89,21 @@ docx_bytes = render_docx(
 
 DOCX 输出固定使用 A4 纵向与 20 mm 页边距。标题是 Word Heading 1–9，anchor 是
 document-wide bookmark，Index 标题叶子写成内部链接；正文直接消费共享 inline AST，
-保留粗体、斜体、下划线、删除线、emphasis、上下标、外链及行内公式。列表保留 producer
-已经内化的 marker，只用缩进表达层级，不重建 `numbering.xml`。
+保留粗体、斜体、下划线、删除线、emphasis、上下标、外链及行内公式。emphasis 使用下方
+着重号；带可见装饰的边界空格会等量写为 NBSP，避免 Word 隐藏下划线或删除线。列表保留
+producer 已经内化的 marker，只用缩进表达层级，不重建 `numbering.xml`。
 
 公式通过 `latex2mathml -> mathml2omml -> OMML` 输出为可编辑 Office Math。末端
 `\tag{...}` 会从公式主体剥离并通过右对齐 tab 单独写编号；转换失败的块公式依次回退
 公式图片和可见 LaTeX，行内公式回退可见 LaTeX，所有回退均记录 page/block 定位。
+Office producer 生成的规范无横线 `\genfrac{}{}{0pt}{}{num}{den}` 会在 DOCX adapter 内
+转换为双行 matrix，不改写 MiddleJson 中的原始 LaTeX。
 
 HTML table 使用 occupancy grid 生成原生 Word table，支持 `rowspan/colspan`、嵌套表格、
 单元格富文本、公式、链接和图片。HTML 结构无效时只在存在表格图片时回退；空间投影
-文本表格使用独立的等宽预格式样式，仅输出原始文本并保留空格、换行与 Tab，不读取或
-嵌入其表格图片。Image body 文本写入图片 alt description；Chart
+文本表格在 content 非空时使用独立的等宽预格式样式，仅输出原始文本并保留空格、换行
+与 Tab；content 为空或纯空白时改用其图片，两者都缺失才报错。Image body 文本写入图片
+alt description；Chart
 在图片后继续输出可用的 HTML 数据表。视觉父块仍严格保持 body/caption/footnote 原顺序。
 
 `RenderMode.DEFAULT` 与下文 Markdown DEFAULT 使用同一份续段/续表 planner；

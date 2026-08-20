@@ -33,6 +33,8 @@ _BOOKMARK_SAFE_RE = re.compile(r"[^A-Za-z0-9_]+")
 _BOOKMARK_MAX_LENGTH = 40
 _INVALID_XML_TEXT_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
 _BARE_SCRIPT_RE = re.compile(r"^\s*(?P<marker>[\^_])\s*\{(?P<content>[^{}]+)\}\s*$")
+_VISIBLE_SPACE_STYLES = frozenset({"underline", "strikethrough", "emphasis"})
+_NONBREAKING_SPACE = "\u00a0"
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,7 +317,8 @@ def _append_text_run(
     run_xml = OxmlElement("w:r")
     container.append(run_xml)
     run = Run(run_xml, paragraph)
-    run.text = sanitize_xml_text(content, context=context)
+    sanitized = sanitize_xml_text(content, context=context)
+    run.text = _make_visible_style_spaces(sanitized, styles)
     _apply_run_styles(run, styles)
     if hyperlink:
         run.font.color.rgb = _rgb_color("0563C1")
@@ -325,6 +328,22 @@ def _append_text_run(
         run.font.size = Pt(9)
         run.font.color.rgb = _rgb_color("555555")
     return run
+
+
+def _make_visible_style_spaces(content: str, styles: tuple[str, ...]) -> str:
+    """把可见样式 run 的边界 ASCII 空格等量转为 NBSP，避免 Word 隐藏装饰线。"""
+    if not content or not _VISIBLE_SPACE_STYLES.intersection(styles):
+        return content
+
+    leading_count = len(content) - len(content.lstrip(" "))
+    trailing_count = len(content) - len(content.rstrip(" "))
+    if leading_count == 0 and trailing_count == 0:
+        return content
+    if leading_count + trailing_count >= len(content):
+        return _NONBREAKING_SPACE * len(content)
+
+    content_end = len(content) - trailing_count if trailing_count else len(content)
+    return _NONBREAKING_SPACE * leading_count + content[leading_count:content_end] + _NONBREAKING_SPACE * trailing_count
 
 
 def sanitize_xml_text(content: str, *, context: InlineRenderContext) -> str:
@@ -351,7 +370,7 @@ def _apply_run_styles(run: Run, styles: tuple[str, ...]) -> None:
     if "emphasis" in style_set:
         run_properties = run._element.get_or_add_rPr()
         emphasis = OxmlElement("w:em")
-        emphasis.set(qn("w:val"), "dot")
+        emphasis.set(qn("w:val"), "underDot")
         run_properties.append(emphasis)
 
 

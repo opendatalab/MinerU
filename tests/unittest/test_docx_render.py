@@ -139,8 +139,34 @@ def test_heading_bookmark_forward_index_link_and_rich_inline_ooxml() -> None:
     assert "<w:u" in document_xml and "<w:strike" in document_xml
     assert '<w:vertAlign w:val="superscript"' in document_xml
     assert '<w:vertAlign w:val="subscript"' in document_xml
-    assert '<w:em w:val="dot"' in document_xml
+    assert '<w:em w:val="underDot"' in document_xml
     assert "<m:oMath" in document_xml
+
+
+def test_visible_styled_boundary_spaces_use_nbsp_without_mutating_input() -> None:
+    """验证可见样式的边界空格转为等量 NBSP，普通样式和内部空格保持原样。"""
+    content = (
+        '<text style="underline">  left</text>|'
+        '<text style="strikethrough">right  </text>|'
+        '<text style="underline,strikethrough">   </text>|'
+        '<text style="emphasis">  emphasis  </text>|'
+        '<text style="bold">  bold  </text>|'
+        '<text style="underline">a b</text>'
+    )
+    middle = _middle(_page(0, TextBlock(type="text", index=0, content=content)))
+    original = deepcopy(middle)
+
+    result = render_docx(middle)
+    document = Document(BytesIO(result))
+    document_xml = _part(result, "word/document.xml")
+
+    assert document.paragraphs[0].text == (
+        "\u00a0\u00a0left|right\u00a0\u00a0|\u00a0\u00a0\u00a0|\u00a0\u00a0emphasis\u00a0\u00a0|  bold  |a b"
+    )
+    assert document.paragraphs[0].text.count("\u00a0") == 11
+    assert '<w:em w:val="underDot"' in document_xml
+    assert '<w:em w:val="dot"' not in document_xml
+    assert middle == original
 
 
 def test_bookmark_names_are_sanitized_and_collision_safe() -> None:
@@ -270,7 +296,7 @@ def test_display_formula_without_tag_uses_math_paragraph() -> None:
 
 def test_formula_conversion_failure_falls_back_to_image_then_visible_latex() -> None:
     """验证块公式优先图片回退，行内公式保留可见 LaTeX。"""
-    unsupported = r"\genfrac{}{}{0pt}{}{a}{b}"
+    unsupported = r"\frac{a"
     middle = _middle(
         _page(
             0,
@@ -291,6 +317,33 @@ def test_formula_conversion_failure_falls_back_to_image_then_visible_latex() -> 
     assert len(document.inline_shapes) == 1
     assert unsupported in "".join(paragraph.text for paragraph in document.paragraphs)
     assert "<a:blip" in document_xml
+
+
+def test_genfrac_formula_renders_native_omml_in_title_and_list() -> None:
+    """验证正文标题和列表中的规范 genfrac 均输出原生双行 OMML。"""
+    formula = (
+        r"\left(x+a\right)^{n}=\sum_{k=0}^{n}"
+        r"\left(\genfrac{}{}{0pt}{}{n}{k}\right)x^{k}a^{n-k}"
+    )
+    title = ParagraphTitleBlock(
+        type="paragraph_title",
+        index=0,
+        level=2,
+        content=f"Title <eq>{formula}</eq>",
+    )
+    list_block = ListBlock(
+        type="list",
+        index=1,
+        content=[TextBlock(type="text", content=f"1. before <eq>{formula}</eq> after")],
+    )
+
+    result = render_docx(_middle(_page(0, title, list_block)))
+    document_xml = _part(result, "word/document.xml")
+
+    assert document_xml.count("<m:oMath") == 2
+    assert document_xml.count("<m:m>") == 2
+    assert document_xml.count("<m:d>") >= 2
+    assert r"\genfrac" not in document_xml
 
 
 def test_inline_bare_scripts_use_word_superscript_runs_without_placeholder_boxes() -> None:
@@ -567,8 +620,8 @@ def test_spatial_table_preserves_preformatted_text_without_assets(image_payload:
 
 
 @pytest.mark.parametrize("content", ["", " \n\t"])
-def test_spatial_table_without_text_raises_contextual_error(content: str) -> None:
-    """验证空空间表格即使带图也以父表格定位抛出公共异常。"""
+def test_spatial_table_without_text_uses_base64_image(content: str) -> None:
+    """验证空或纯空白空间表格优先使用内嵌图片。"""
     spatial = TableBlock(
         type="table",
         index=7,
@@ -578,11 +631,73 @@ def test_spatial_table_without_text_raises_contextual_error(content: str) -> Non
                 index=7,
                 content=content,
                 image_base64=_png_uri(),
+                image_path="images/unused.png",
+            )
+        ],
+    )
+    resolver = Mock(side_effect=AssertionError("内嵌图片存在时不应解析 sidecar"))
+
+    document = Document(BytesIO(render_docx(_middle(_page(3, spatial)), asset_resolver=resolver)))
+
+    resolver.assert_not_called()
+    assert len(document.inline_shapes) == 1
+
+
+def test_spatial_table_without_text_uses_sidecar_resolver() -> None:
+    """验证空空间表格的相对图片路径只通过注入的 resolver 加载。"""
+    spatial = TableBlock(
+        type="table",
+        index=7,
+        content=[
+            TableBodyBlock(
+                type="table_body",
+                index=7,
+                content="",
+                image_path="images/table.png",
+            )
+        ],
+    )
+    resolver = Mock(return_value=_png_bytes())
+
+    document = Document(BytesIO(render_docx(_middle(_page(3, spatial)), asset_resolver=resolver)))
+
+    resolver.assert_called_once_with("images/table.png")
+    assert len(document.inline_shapes) == 1
+
+
+@pytest.mark.parametrize("content", ["", " \n\t"])
+def test_spatial_table_without_text_or_image_raises_contextual_error(content: str) -> None:
+    """验证空间表格既无有效文本也无图片时抛出带父表格定位的异常。"""
+    spatial = TableBlock(
+        type="table",
+        index=7,
+        content=[TableBodyBlock(type="table_body", index=7, content=content)],
+    )
+
+    with pytest.raises(DocxRenderError, match="does not contain text content or image") as exc_info:
+        render_docx(_middle(_page(3, spatial)))
+
+    assert exc_info.value.page_idx == 3
+    assert exc_info.value.block_index == 7
+    assert exc_info.value.block_type == "table"
+
+
+def test_spatial_table_without_text_rejects_invalid_fallback_image() -> None:
+    """验证空空间表格的损坏图片不会被静默忽略。"""
+    spatial = TableBlock(
+        type="table",
+        index=7,
+        content=[
+            TableBodyBlock(
+                type="table_body",
+                index=7,
+                content="",
+                image_base64="data:image/png;base64,bm90LWEtcG5n",
             )
         ],
     )
 
-    with pytest.raises(DocxRenderError, match="Spatial table does not contain text content") as exc_info:
+    with pytest.raises(DocxRenderError) as exc_info:
         render_docx(_middle(_page(3, spatial)))
 
     assert exc_info.value.page_idx == 3

@@ -363,10 +363,16 @@ class _DocxRenderer:
                             ) from exc
                         self._append_block_image(child, context=context, alt_text="table")
                 else:
-                    if not child.content or child.content.isspace():
-                        raise self._render_error("Spatial table does not contain text content", context)
-                    paragraph = self.document.add_paragraph(style=SPATIAL_TABLE_STYLE)
-                    paragraph.add_run(sanitize_xml_text(child.content, context=context))
+                    if child.content and not child.content.isspace():
+                        paragraph = self.document.add_paragraph(style=SPATIAL_TABLE_STYLE)
+                        paragraph.add_run(sanitize_xml_text(child.content, context=context))
+                    elif child.image_base64 is not None or child.image_path is not None:
+                        self._append_block_image(child, context=context, alt_text="table")
+                    else:
+                        raise self._render_error(
+                            "Spatial table does not contain text content or image",
+                            context,
+                        )
             elif isinstance(child, TableAnnotationBlock):
                 self._render_annotation(child, context)
             else:

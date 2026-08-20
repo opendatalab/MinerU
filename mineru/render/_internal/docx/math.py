@@ -10,6 +10,8 @@ import re
 
 _OFFICE_MATH_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 _EMPTY_SCRIPT_RE = re.compile(r"(?:_\s*\{\s*\}|\^\s*\{\s*\})")
+_GENFRAC_COMMAND = r"\genfrac"
+_GENFRAC_ARGUMENT_COUNT = 6
 
 
 class DocxFormulaError(ValueError):
@@ -40,7 +42,8 @@ def split_formula_tag(content: str) -> tuple[str, str | None]:
 def latex_to_omml(latex: str, *, display: bool) -> etree._Element:
     """把 LaTeX 转换为带命名空间、可直接插入 DOCX 的 OMML 节点。"""
     try:
-        normalized_latex = _EMPTY_SCRIPT_RE.sub("", latex)
+        normalized_latex = _normalize_supported_genfrac(latex)
+        normalized_latex = _EMPTY_SCRIPT_RE.sub("", normalized_latex)
         mathml = latex_to_mathml(normalized_latex, display="block" if display else "inline")
         omml_xml = _repair_mathml2omml_xml(mathml_to_omml(mathml))
         equation = _parse_omml(omml_xml)
@@ -56,6 +59,66 @@ def latex_to_omml(latex: str, *, display: bool) -> etree._Element:
         return paragraph
     except Exception as exc:
         raise DocxFormulaError(f"LaTeX 公式无法转换为 OMML: {latex!r}") from exc
+
+
+def _normalize_supported_genfrac(content: str) -> str:
+    """把规范无横线 genfrac 转为 latex2mathml 支持的双行 matrix。"""
+    chunks: list[str] = []
+    preserved_start = 0
+    search_start = 0
+    while (command_start := content.find(_GENFRAC_COMMAND, search_start)) >= 0:
+        command_end = command_start + len(_GENFRAC_COMMAND)
+        if _is_escaped_command(content, command_start):
+            search_start = command_end
+            continue
+
+        parsed = _parse_braced_arguments(content, command_end, _GENFRAC_ARGUMENT_COUNT)
+        if parsed is None:
+            search_start = command_end
+            continue
+        arguments, expression_end = parsed
+        left_delimiter, right_delimiter, thickness, math_style, numerator, denominator = arguments
+        if left_delimiter.strip() or right_delimiter.strip() or thickness.strip() != "0pt" or math_style.strip():
+            search_start = expression_end
+            continue
+
+        normalized_numerator = _normalize_supported_genfrac(numerator)
+        normalized_denominator = _normalize_supported_genfrac(denominator)
+        replacement = (
+            rf"\begin{{matrix}}{{{normalized_numerator}}}"
+            r"\\"
+            rf"{{{normalized_denominator}}}\end{{matrix}}"
+        )
+        chunks.append(content[preserved_start:command_start])
+        chunks.append(replacement)
+        preserved_start = expression_end
+        search_start = expression_end
+
+    if not chunks:
+        return content
+    chunks.append(content[preserved_start:])
+    return "".join(chunks)
+
+
+def _parse_braced_arguments(
+    content: str,
+    cursor: int,
+    count: int,
+) -> tuple[tuple[str, ...], int] | None:
+    """从指定位置读取固定数量的平衡花括号参数，并返回参数与结束位置。"""
+    arguments: list[str] = []
+    content_end = len(content)
+    for _ in range(count):
+        while cursor < content_end and content[cursor].isspace():
+            cursor += 1
+        if cursor >= content_end or content[cursor] != "{":
+            return None
+        closing_brace = _find_balanced_closing_brace(content, cursor, content_end)
+        if closing_brace is None:
+            return None
+        arguments.append(content[cursor + 1 : closing_brace])
+        cursor = closing_brace + 1
+    return tuple(arguments), cursor
 
 
 def _repair_mathml2omml_xml(omml_xml: str) -> str:

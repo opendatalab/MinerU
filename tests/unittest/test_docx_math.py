@@ -104,15 +104,51 @@ def test_latex_to_omml_removes_explicitly_empty_operator_limits() -> None:
     assert "<m:sub>" not in serialized and "<m:sup>" not in serialized
 
 
+def test_latex_to_omml_normalizes_no_bar_genfrac_in_binomial_formula() -> None:
+    """验证 Office 无横线分式可转为带定界符的双行 OMML matrix。"""
+    formula = (
+        r"\left(x+a\right)^{n}=\sum_{k=0}^{n}"
+        r"\left(\genfrac{}{}{0pt}{}{n}{k}\right)x^{k}a^{n-k}"
+    )
+
+    equation = latex_to_omml(formula, display=False)
+    matrix = equation.find(f".//{{{_OFFICE_MATH_NAMESPACE}}}m")
+    delimiter = equation.find(f".//{{{_OFFICE_MATH_NAMESPACE}}}d")
+
+    assert matrix is not None
+    assert delimiter is not None
+    rows = matrix.findall(f"{{{_OFFICE_MATH_NAMESPACE}}}mr")
+    assert ["".join(row.itertext()) for row in rows] == ["n", "k"]
+
+
+@pytest.mark.parametrize(
+    ("latex", "expected_matrix_count"),
+    [
+        (r"\genfrac{}{}{0pt}{}{a_{i}}{\frac{b}{c}}", 1),
+        (r"\genfrac{}{}{0pt}{}{a}{b}+\genfrac{}{}{0pt}{}{c}{d}", 2),
+        (r"\genfrac{}{}{0pt}{}{\genfrac{}{}{0pt}{}{a}{b}}{c}", 2),
+    ],
+)
+def test_latex_to_omml_normalizes_nested_and_multiple_genfrac(
+    latex: str,
+    expected_matrix_count: int,
+) -> None:
+    """验证 genfrac 参数可含嵌套结构，且一条公式可转换多个实例。"""
+    equation = latex_to_omml(latex, display=False)
+
+    assert len(equation.findall(f".//{{{_OFFICE_MATH_NAMESPACE}}}m")) == expected_matrix_count
+
+
 @pytest.mark.parametrize(
     "latex",
     [
-        r"\genfrac{}{}{0pt}{}{a}{b}",
+        r"\frac{a",
+        r"\genfrac{(}{)}{1pt}{}{a}{b}",
         "x\x00y",
     ],
 )
 def test_latex_to_omml_wraps_conversion_failures_with_original_cause(latex: str) -> None:
-    """验证已知不支持或非法输入失败时保留原异常链。"""
+    """验证损坏或非规范输入失败时保留原异常链。"""
     with pytest.raises(DocxFormulaError, match="无法转换为 OMML") as exc_info:
         latex_to_omml(latex, display=True)
 
