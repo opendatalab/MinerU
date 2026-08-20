@@ -54,6 +54,7 @@ from mineru.render._internal.docx.styles import (
     CODE_STYLE,
     FOOTNOTE_STYLE,
     FORMULA_FALLBACK_STYLE,
+    SPATIAL_TABLE_STYLE,
     configure_document,
     usable_width_emu,
     usable_width_twips,
@@ -347,7 +348,7 @@ class _DocxRenderer:
                 raise TypeError(f"Unsupported image child: {type(child).__name__}")
 
     def _render_table_block(self, block: TableBlock, context: InlineRenderContext) -> None:
-        """按原始子块顺序写原生 HTML table 或用户选定的空间表格图片。"""
+        """按原始子块顺序写原生 HTML table 或预格式空间投影文本。"""
         for child in block.content:
             if isinstance(child, TableBodyBlock):
                 if _HTML_TABLE_RE.search(child.content):
@@ -362,7 +363,10 @@ class _DocxRenderer:
                             ) from exc
                         self._append_block_image(child, context=context, alt_text="table")
                 else:
-                    self._append_block_image(child, context=context, alt_text="table")
+                    if not child.content or child.content.isspace():
+                        raise self._render_error("Spatial table does not contain text content", context)
+                    paragraph = self.document.add_paragraph(style=SPATIAL_TABLE_STYLE)
+                    paragraph.add_run(sanitize_xml_text(child.content, context=context))
             elif isinstance(child, TableAnnotationBlock):
                 self._render_annotation(child, context)
             else:
@@ -773,6 +777,7 @@ def _iter_document_anchors(middle_json: MiddleJson) -> Iterable[str]:
         for block in page.blocks:
             if isinstance(block, TitleBlockBase) and block.anchor:
                 yield block.anchor
+
 
 def _plain_html_text(content: str) -> str:
     """把图片或图表 body 内容收敛为适合 alt description 的纯文本。"""

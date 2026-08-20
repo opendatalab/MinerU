@@ -13,6 +13,7 @@ from docx.styles.style import _ParagraphStyle
 
 BODY_STYLE = "Normal"
 CODE_STYLE = "MinerU Code"
+SPATIAL_TABLE_STYLE = "MinerU Spatial Table"
 CAPTION_STYLE = "MinerU Caption"
 FOOTNOTE_STYLE = "MinerU Footnote"
 AUXILIARY_STYLE = "MinerU Auxiliary"
@@ -66,6 +67,17 @@ def configure_document(document: Document) -> None:
         line_spacing=1.0,
     )
     _set_paragraph_shading(code, "F3F4F6")
+
+    spatial_table = _get_or_add_paragraph_style(document, SPATIAL_TABLE_STYLE)
+    _configure_paragraph_style(
+        spatial_table,
+        western_font="Courier New",
+        east_asia_font="宋体",
+        size_pt=9,
+        space_before_pt=4,
+        space_after_pt=6,
+        line_spacing=1.0,
+    )
 
     caption = _get_or_add_paragraph_style(document, CAPTION_STYLE)
     _configure_paragraph_style(
@@ -192,6 +204,7 @@ __all__ = [
     "CODE_STYLE",
     "FOOTNOTE_STYLE",
     "FORMULA_FALLBACK_STYLE",
+    "SPATIAL_TABLE_STYLE",
     "configure_document",
     "usable_width_emu",
     "usable_width_twips",

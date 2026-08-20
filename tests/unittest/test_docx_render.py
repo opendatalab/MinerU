@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from copy import deepcopy
 from io import BytesIO
+from unittest.mock import Mock
 import zipfile
 
 from docx import Document
@@ -26,6 +27,7 @@ from mineru.types import (
     PageBlock,
     PageInfo,
     ParagraphTitleBlock,
+    TableAnnotationBlock,
     TableBlock,
     TableBodyBlock,
     TextBlock,
@@ -518,8 +520,17 @@ def test_invalid_html_table_falls_back_to_table_image() -> None:
         render_docx(_middle(_page(0, without_fallback)))
 
 
-def test_spatial_table_outputs_only_image_and_requires_it() -> None:
-    """验证空间投影文本不进入 DOCX，并严格要求表格图片。"""
+@pytest.mark.parametrize(
+    "image_payload",
+    [
+        pytest.param({}, id="without-image"),
+        pytest.param({"image_base64": _png_uri()}, id="base64-image"),
+        pytest.param({"image_path": "images/table.png"}, id="sidecar-image"),
+    ],
+)
+def test_spatial_table_preserves_preformatted_text_without_assets(image_payload: dict[str, str]) -> None:
+    """验证空间表格原样保留排版字符，并完全忽略可选图片素材。"""
+    content = "  A    B\t说明\n\n1    2\t中\x01文\n" + "X" * 240
     spatial = TableBlock(
         type="table",
         index=0,
@@ -527,23 +538,82 @@ def test_spatial_table_outputs_only_image_and_requires_it() -> None:
             TableBodyBlock(
                 type="table_body",
                 index=0,
-                content="A    B\n1    2",
+                content=content,
+                **image_payload,
+            )
+        ],
+    )
+    resolver = Mock(side_effect=AssertionError("空间表格不应解析图片"))
+
+    result = render_docx(_middle(_page(0, spatial)), asset_resolver=resolver)
+    document = Document(BytesIO(result))
+    document_xml = _part(result, "word/document.xml")
+    relationships = _part(result, "word/_rels/document.xml.rels")
+
+    resolver.assert_not_called()
+    assert document.paragraphs[0].text == content.replace("\x01", "\ufffd")
+    assert document.paragraphs[0].style.name == "MinerU Spatial Table"
+    assert document.styles["MinerU Spatial Table"].font.name == document.styles["MinerU Code"].font.name
+    assert document.styles["MinerU Spatial Table"].font.size == document.styles["MinerU Code"].font.size
+    assert document.styles["MinerU Spatial Table"].paragraph_format.line_spacing == 1.0
+    assert 'w:pStyle w:val="MinerUSpatialTable"' in document_xml
+    assert 'xml:space="preserve"' in document_xml
+    assert "<w:tab/>" in document_xml
+    assert document_xml.count("<w:br/>") == 3
+    assert len(document.inline_shapes) == 0
+    assert "relationships/image" not in relationships
+    with zipfile.ZipFile(BytesIO(result)) as archive:
+        assert not any(name.startswith("word/media/") for name in archive.namelist())
+
+
+@pytest.mark.parametrize("content", ["", " \n\t"])
+def test_spatial_table_without_text_raises_contextual_error(content: str) -> None:
+    """验证空空间表格即使带图也以父表格定位抛出公共异常。"""
+    spatial = TableBlock(
+        type="table",
+        index=7,
+        content=[
+            TableBodyBlock(
+                type="table_body",
+                index=7,
+                content=content,
                 image_base64=_png_uri(),
             )
         ],
     )
-    missing = TableBlock(
+
+    with pytest.raises(DocxRenderError, match="Spatial table does not contain text content") as exc_info:
+        render_docx(_middle(_page(3, spatial)))
+
+    assert exc_info.value.page_idx == 3
+    assert exc_info.value.block_index == 7
+    assert exc_info.value.block_type == "table"
+
+
+def test_spatial_table_preserves_caption_body_footnote_order() -> None:
+    """验证空间表格正文仍严格位于原始 caption 与 footnote 之间。"""
+    spatial = TableBlock(
         type="table",
-        index=0,
-        content=[TableBodyBlock(type="table_body", index=0, content="A    B")],
+        index=1,
+        content=[
+            TableAnnotationBlock(type="table_caption", index=0, content="Table caption"),
+            TableBodyBlock(type="table_body", index=1, content="  A    B\n  1    2"),
+            TableAnnotationBlock(type="table_footnote", index=2, content="Table footnote"),
+        ],
     )
 
-    result = render_docx(_middle(_page(0, spatial)))
-    document = Document(BytesIO(result))
-    assert "A    B" not in "".join(paragraph.text for paragraph in document.paragraphs)
-    assert len(document.inline_shapes) == 1
-    with pytest.raises(DocxRenderError, match="does not contain"):
-        render_docx(_middle(_page(0, missing)))
+    document = Document(BytesIO(render_docx(_middle(_page(0, spatial)))))
+
+    assert [paragraph.text for paragraph in document.paragraphs] == [
+        "Table caption",
+        "  A    B\n  1    2",
+        "Table footnote",
+    ]
+    assert [paragraph.style.name for paragraph in document.paragraphs] == [
+        "MinerU Caption",
+        "MinerU Spatial Table",
+        "MinerU Footnote",
+    ]
 
 
 def test_chart_renders_image_then_structured_html_table() -> None:

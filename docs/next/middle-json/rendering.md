@@ -98,7 +98,8 @@ document-wide bookmark，Index 标题叶子写成内部链接；正文直接消�
 
 HTML table 使用 occupancy grid 生成原生 Word table，支持 `rowspan/colspan`、嵌套表格、
 单元格富文本、公式、链接和图片。HTML 结构无效时只在存在表格图片时回退；空间投影
-文本表格按 v1 契约只输出表格图片。Image body 文本写入图片 alt description；Chart
+文本表格使用独立的等宽预格式样式，仅输出原始文本并保留空格、换行与 Tab，不读取或
+嵌入其表格图片。Image body 文本写入图片 alt description；Chart
 在图片后继续输出可用的 HTML 数据表。视觉父块仍严格保持 body/caption/footnote 原顺序。
 
 `RenderMode.DEFAULT` 与下文 Markdown DEFAULT 使用同一份续段/续表 planner；
