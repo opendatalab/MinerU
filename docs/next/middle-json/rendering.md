@@ -107,7 +107,7 @@ HTML table 使用 occupancy grid 生成原生 Word table，支持 `rowspan/colsp
 `MarkdownRenderMode` 是 `RenderMode` 的既有公共别名。DOCX 是语义化可编辑输出，不承诺
 复刻源 PDF/Office 的字体、分栏、断行和页数；CLI、doclib 与 v1 API 不在本契约范围。
 
-## MPE/Crossnote 风格 HTML
+## MinerU 独立 HTML
 
 ```python
 from mineru.render import RenderMode, render_html
@@ -123,9 +123,10 @@ html_document = render_html(
 
 `render_html()` 只接受严格 `MiddleJson`，返回字符串且不写文件、不读取图片 sidecar、
 不访问网络。`standalone=True` 输出完整 HTML5 文档；`False` 输出单根
-`article.crossnote.markdown-preview.mineru-document` fragment，不包含 CSS、脚本或
+`article.mineru-document` fragment，不包含 CSS、脚本或
 `head`。显式标题缺失时，HTML title 使用首个非空 `doc_title` 的纯文本，再回退为
-`MinerU Document`。
+`MinerU Document`。完整文档使用 `body.mineru-html-body` 提供居中和响应式页面布局；
+fragment 调用方可以自行决定外围容器尺寸。
 
 HTML 与 DOCX/Markdown 共用 `RenderMode` 和续段/续表 planner。DEFAULT 输出无页面 wrapper
 的连续阅读内容；FULL 为每个 `PageInfo` 输出一个 `section.mineru-page`，包括空页，并在
@@ -133,22 +134,17 @@ HTML 与 DOCX/Markdown 共用 `RenderMode` 和续段/续表 planner。DEFAULT �
 元数据。行内内容直接消费共享 AST：普通文本始终 HTML escape，未知标签保持可见；公式只
 在 `mineru-math` carrier 内使用 `\(...\)` 或 `\[...\]`，不扫描普通正文中的美元符号。
 
-完整文档按原字节内联 Crossnote 0.9.31 的 `github-light.css`、`github.css` Prism theme 和
-`style-template.css`，并在 style 开头保留完整 NCSA notice；许可证与来源说明也随资源打包。
-MinerU 自有补充 CSS 只覆盖新增结构。
+完整文档只内联压缩后的 `mineru.min.css`。其可读源码为 `mineru.css`，所有文档规则均
+限定在 `.mineru-document` 内，standalone 外围布局规则限定在 `.mineru-html-body`，
+不会修改 fragment 宿主页的全局标签样式。样式使用系统字体，不加载外部字体。
 有公式时按需加载固定 MathJax 4.1.2 `tex-chtml.js`，启用 `ui/safe`、禁用 `require`，并
 关闭菜单和 enrichment。有可高亮代码时按需加载固定 Prism 1.30.0 core 和 Autoloader，
 语言组件根固定到同版本 jsDelivr。入口脚本携带 SRI；动态 MathJax 扩展、字体和 Prism
 语言组件没有逐文件 SRI。renderer 不注入 CSP，HTTP 宿主需要自行允许相应 jsDelivr
 script/font/style，并评估 CDN 供应链策略。
 
-为保持与 MPE 导出 DOM/CSS 选择器完全兼容，standalone 保留其非标准
-`body[for="html-export"]` 属性；字节不变的上游 `style-template.css` 也包含 Nu validator
-会报告的既有 CSS `calc()` 表达式。这两项是已知兼容偏差，MinerU 自有 HTML 结构和补充
-CSS 仍按 HTML5/CSS 语义生成。
-
-fragment 调用方必须自行加载同版本 CSS、MathJax 和 Prism；三份 Crossnote CSS 未重新
-scope，会影响宿主页全局样式。MathJax 必须在初始化前复用 standalone 的 delimiter、
+fragment 调用方需要加载随包提供的 `mineru.min.css`，并按实际内容加载同版本 MathJax
+和 Prism。MathJax 必须在初始化前复用 standalone 的 delimiter、
 `ignoreHtmlClass/processHtmlClass`、`ui/safe`、禁用 `require` 及 safeOptions 配置。动态插入后调用
 `MathJax.typesetPromise([root])` 与 `Prism.highlightAllUnder(root)`；替换已有公式前先调用
 `MathJax.typesetClear([root])`。fragment 内的相对图片以宿主页 URL 为基准，不能通过

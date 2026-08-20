@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""严格 MiddleJson 到 MPE/Crossnote 风格 HTML 的公共渲染实现。"""
+"""严格 MiddleJson 到 MinerU 风格 HTML 的公共渲染实现。"""
 
 from __future__ import annotations
 
@@ -58,12 +58,7 @@ from mineru.types import (
     TitleBlockBase,
 )
 
-_STYLE_RESOURCE_PATHS = (
-    ("crossnote", "github.css"),
-    ("crossnote", "github-light.css"),
-    ("crossnote", "style-template.css"),
-    ("mineru.css",),
-)
+_STYLE_RESOURCE_NAME = "mineru.min.css"
 _MATHJAX_URL = "https://cdn.jsdelivr.net/npm/mathjax@4.1.2/tex-chtml.js"
 _MATHJAX_INTEGRITY = "sha384-zAhQQhdaMeHsMProNntGGg6nOUVcfuF9F22C3d1qJ9NZAVzCplXk1X85D2O5iufn"
 _PRISM_CORE_URL = "https://cdn.jsdelivr.net/npm/prismjs@1.30.0/components/prism-core.min.js"
@@ -120,10 +115,7 @@ class _HtmlRenderer:
             body = self._render_full_pages(planned_pages)
         else:
             body = self._render_default_pages(planned_pages)
-        article = (
-            f'<article class="crossnote markdown-preview mineru-document '
-            f'mineru-document--{self.mode.value}">\n{body}\n</article>'
-        )
+        article = f'<article class="mineru-document mineru-document--{self.mode.value}">\n{body}\n</article>'
         if not self.standalone:
             return article
         # 最终依赖以真实 DOM 为准，避免回退分支或普通文本中的 class 字样误触发。
@@ -595,10 +587,10 @@ class _HtmlRenderer:
             '<meta charset="utf-8">\n'
             '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
             f"<title>{title}</title>\n"
-            f"<style>\n{styles}\n</style>\n"
+            f"<style>{styles}</style>\n"
             f"{dependency_html}\n"
             "</head>\n"
-            '<body for="html-export">\n'
+            '<body class="mineru-html-body">\n'
             f"{article}\n"
             "</body>\n"
             "</html>"
@@ -770,12 +762,9 @@ def _replace_html_controls(content: str) -> str:
 
 @lru_cache(maxsize=1)
 def _load_html_styles() -> str:
-    """从包资源读取并缓存固定 Crossnote CSS 与 MinerU 补充样式。"""
+    """从包资源读取并缓存压缩后的 MinerU 独立样式。"""
     root = resources.files("mineru").joinpath("resources", "html")
-    license_text = root.joinpath("crossnote", "LICENSE.md").read_text(encoding="utf-8")
-    notice = f"/*\nCrossnote 0.9.31 CSS license notice:\n{license_text}\n*/"
-    styles = [root.joinpath(*path).read_text(encoding="utf-8") for path in _STYLE_RESOURCE_PATHS]
-    return "\n".join([notice, *styles])
+    return root.joinpath(_STYLE_RESOURCE_NAME).read_text(encoding="utf-8")
 
 
 def _mathjax_head() -> str:

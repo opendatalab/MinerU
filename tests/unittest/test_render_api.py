@@ -117,7 +117,7 @@ def test_unified_render_forwards_format_specific_options() -> None:
     original_tree = render(middle, RenderFormat.CONTENT_LIST)
 
     assert "\n\n---\n\n" in markdown
-    assert html.startswith('<article class="crossnote markdown-preview mineru-document')
+    assert html.startswith('<article class="mineru-document mineru-document--full">')
     assert "<!doctype html>" not in html
     assert content_list["pages"][0]["blocks"][0]["image_source"] == (
         "https://cdn.example/doc/images/a%20b.png"

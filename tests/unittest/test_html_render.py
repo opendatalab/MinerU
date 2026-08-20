@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from hashlib import sha256
 from importlib import resources
 
 from bs4 import BeautifulSoup
@@ -80,13 +79,12 @@ def test_public_contract_fragment_standalone_title_and_input_immutability() -> N
     fragment = render_html(middle, standalone=False)
     standalone = render_html(middle)
 
-    assert fragment.startswith('<article class="crossnote markdown-preview mineru-document')
+    assert fragment.startswith('<article class="mineru-document mineru-document--default">')
     assert fragment in standalone
     assert '<html lang="und">' in standalone
     assert "<title>Demo &lt;unsafe&gt;</title>" in standalone
-    assert '<body for="html-export">' in standalone
+    assert '<body class="mineru-html-body">' in standalone
     assert "<style>" in standalone
-    assert "Crossnote 0.9.31 CSS license notice" in standalone
     assert "mathjax@" not in standalone
     assert "prismjs@" not in standalone
     assert middle == original
@@ -579,23 +577,20 @@ def test_chart_gfm_pipe_matches_markdown_it_backslash_decoding(slash_count: int,
     assert soup.select_one(".mineru-chart-table td").get_text() == expected
 
 
-def test_crossnote_resources_are_byte_exact_and_packaged_with_license() -> None:
-    """验证三份上游 CSS 字节、来源声明及 NCSA 许可证随包存在。"""
-    root = resources.files("mineru").joinpath("resources", "html", "crossnote")
-    expected = {
-        "github-light.css": "020bb992e41828c9ef14f687f2a71e99e2bf6f69e32de9d1ee1e292604f0d779",
-        "style-template.css": "054061cb501481af702df4adf8d2c224d666b6fe78a84a1c3a362e6a92cfdcdf",
-        "github.css": "885fa37a859ef386c471e7dee272e882d09c1c600b853b6f518daf40bbd1ba02",
-    }
+def test_mineru_styles_are_minified_scoped_and_inlined_byte_exact() -> None:
+    """验证独立样式产物体积、作用域及 standalone 的逐字内联契约。"""
+    root = resources.files("mineru").joinpath("resources", "html")
+    source = root.joinpath("mineru.css").read_text(encoding="utf-8")
+    minified = root.joinpath("mineru.min.css").read_text(encoding="utf-8")
+    standalone = render_html(_middle())
+    style = BeautifulSoup(standalone, "html.parser").style
 
-    for name, digest in expected.items():
-        assert sha256(root.joinpath(name).read_bytes()).hexdigest() == digest
-    assert "University of Illinois/NCSA" in root.joinpath("LICENSE.md").read_text(encoding="utf-8")
-    assert sha256(root.joinpath("LICENSE.md").read_bytes()).hexdigest() == (
-        "a0459e70cef4048eba8c05562387fb05913ad8bbc67904ac866edded85e9d073"
-    )
-    source = root.joinpath("SOURCE.md").read_text(encoding="utf-8")
-    assert "Crossnote 0.9.31" in source and "MPE 0.8.30" in source
+    assert len(minified.encode("utf-8")) <= 10 * 1024
+    assert "\n" not in minified and "/*" not in minified
+    assert ".mineru-document" in source and ".mineru-html-body" in source
+    assert style is not None and style.string == minified
+    assert f"<style>{minified}</style>" in standalone
+    assert not root.joinpath("crossnote").is_dir()
 
 
 def test_empty_document_and_equation_image_do_not_load_external_scripts() -> None:
@@ -603,7 +598,7 @@ def test_empty_document_and_equation_image_do_not_load_external_scripts() -> Non
     empty = render_html(_middle())
     image_equation = render_html(_middle(_page(0, EquationBlock(type="equation", index=0, content="", image_base64=_PNG_URI))))
 
-    assert '<article class="crossnote markdown-preview mineru-document mineru-document--default">\n\n</article>' in empty
+    assert '<article class="mineru-document mineru-document--default">\n\n</article>' in empty
     assert "mathjax@" not in empty and "prismjs@" not in empty
     assert "mathjax@" not in image_equation and "prismjs@" not in image_equation
     assert "data:image/png" in image_equation
