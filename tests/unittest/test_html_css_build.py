@@ -17,16 +17,30 @@ def test_committed_minified_css_matches_readable_source() -> None:
     assert minified == build_html_css.minify_css(source)
 
 
-def test_table_and_chart_figures_center_as_one_captioned_unit() -> None:
-    """验证表格和结构化图表按内容收缩，使 caption 与主体共享中心轴。"""
+def test_visual_bodies_captions_and_footnotes_align_left() -> None:
+    """验证视觉主体与说明统一贴正文左边，长说明也保持左对齐。"""
     project_root = Path(__file__).resolve().parents[2]
     css_path = project_root.joinpath("mineru", "resources", "html", "mineru.css")
     source = css_path.read_text(encoding="utf-8")
 
+    assert "width: fit-content" not in source
+    assert ".mineru-document .mineru-figure > img {\n  display: block;\n  margin-inline: 0;\n}" in source
+    assert ".mineru-document .mineru-flowchart {\n  margin: 1rem 0;" in source
+    assert ".mineru-document .mineru-flowchart-canvas {\n  display: none;\n  min-width: 0;\n  text-align: left;" in source
     assert (
-        ".mineru-document :is(.mineru-figure--table, .mineru-figure--chart) {\n"
-        "  margin-inline: auto;\n"
-        "  width: fit-content;\n"
+        ".mineru-document .mineru-caption {\n"
+        "  color: var(--mineru-muted);\n"
+        "  font-size: 0.9em;\n"
+        "  margin-top: 0.5rem;\n"
+        "  text-align: left;\n"
+        "}"
+    ) in source
+    assert (
+        ".mineru-document .mineru-footnote {\n"
+        "  color: var(--mineru-muted);\n"
+        "  font-size: 0.875em;\n"
+        "  margin-top: 0.4rem;\n"
+        "  text-align: left;\n"
         "}"
     ) in source
 

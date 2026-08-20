@@ -271,20 +271,14 @@
   max-width: 100%;
 }
 
-/* 表格与结构化图表按内容收缩并整体居中，使说明与主体共享中心轴。 */
-.mineru-document :is(.mineru-figure--table, .mineru-figure--chart) {
-  margin-inline: auto;
-  width: fit-content;
-}
-
 .mineru-document .mineru-figure > img {
   display: block;
-  margin-inline: auto;
+  margin-inline: 0;
 }
 
 /* Mermaid 成功后替换 raster；无 JS、加载或语法失败时保留图片/源码回退。 */
 .mineru-document .mineru-flowchart {
-  margin: 1rem auto;
+  margin: 1rem 0;
   max-width: 100%;
   overflow-x: auto;
 }
@@ -292,19 +286,19 @@
 .mineru-document .mineru-flowchart-canvas {
   display: none;
   min-width: 0;
-  text-align: center;
+  text-align: left;
 }
 
 .mineru-document .mineru-flowchart-canvas svg {
   display: block;
   height: auto;
-  margin-inline: auto;
+  margin-inline: 0;
   max-width: 100%;
 }
 
 .mineru-document .mineru-flowchart-fallback {
   display: block;
-  margin-inline: auto;
+  margin-inline: 0;
 }
 
 .mineru-document .mineru-flowchart[data-mermaid-state="rendered"] .mineru-flowchart-canvas {
@@ -329,13 +323,14 @@
   color: var(--mineru-muted);
   font-size: 0.9em;
   margin-top: 0.5rem;
-  text-align: center;
+  text-align: left;
 }
 
 .mineru-document .mineru-footnote {
   color: var(--mineru-muted);
   font-size: 0.875em;
   margin-top: 0.4rem;
+  text-align: left;
 }
 
 .mineru-document .mineru-details {

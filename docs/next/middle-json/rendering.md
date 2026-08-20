@@ -147,6 +147,9 @@ HTML 的普通 `InlineText` 默认 linkify `http/https`、`www.`、邮箱和常�
 完整文档只内联压缩后的 `mineru.min.css`。其可读源码为 `mineru.css`，所有文档规则均
 限定在 `.mineru-document` 内，standalone 外围布局规则限定在 `.mineru-html-body`，
 不会修改 fragment 宿主页的全局标签样式。样式使用系统字体，不加载外部字体。
+image、table、chart 和 code 主体均从正文内容区左边界开始；图片保持固有尺寸和宽高比，
+宽表格/流程图只在自身容器滚动。视觉 caption 与 footnote 使用 figure 可用宽度并统一左对齐，
+多行说明的每一行均从同一左边界开始，body/caption/footnote 的原始顺序不变。
 有公式时按需加载固定 MathJax 4.1.2 `tex-chtml.js`，启用 `ui/safe`、禁用 `require`，并
 关闭菜单和 enrichment。有可高亮代码时按需加载固定 Prism 1.30.0 core 和 Autoloader，
 语言组件根固定到同版本 jsDelivr。合法 flowchart 按需加载固定 Mermaid 11.16.1 UMD；
