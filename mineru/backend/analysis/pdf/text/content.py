@@ -15,10 +15,12 @@ from mineru.utils.language import detect_lang
 from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from mineru.utils.pdf_document import PDFPage, get_lines_from_chars
 from mineru.utils.pdf_text_styles import (
+    PDFTextLinkLine,
     PDFTextStyleLine,
+    apply_pdf_text_links,
     apply_pdf_text_styles,
 )
-from mineru.utils.text_utils import resolve_text_line_boundary
+from mineru.utils.text_utils import merge_text_line_contents
 
 from ..constants import (
     CODE_CONTENT_BLOCK_TYPES,
@@ -258,15 +260,10 @@ def _lines_to_block_content(lines: list[_AnalyzeLine], block_type: str) -> str:
         content for parts in content_lines for span_type, content in parts if span_type == ContentType.TEXT
     )
     block_language = detect_lang(text_for_language)
-    content_parts = [rendered_lines[0]]
-    for line_idx in range(1, len(rendered_lines)):
-        content_parts[-1], separator = resolve_text_line_boundary(
-            content_parts[-1],
-            block_language=block_language,
-            next_content=rendered_lines[line_idx],
-        )
-        content_parts.extend([separator, rendered_lines[line_idx]])
-    return "".join(content_parts).strip()
+    return merge_text_line_contents(
+        rendered_lines,
+        block_language=block_language,
+    )
 
 
 def _build_ocr_det_line_items(lines: list[_AnalyzeLine], page_size: tuple[float, float]) -> list[dict[str, Any]]:
@@ -332,6 +329,7 @@ def _fill_window_block_content_and_lines(
             dict[int, list[_AnalyzeLine]],
             tuple[float, float],
             list[PDFTextStyleLine],
+            list[PDFTextLinkLine],
         ]
     ] = []
     for image_dict, pdf_page, page_model_list, page_inline_formula_list, page_ocr_res_list in zip(
@@ -351,6 +349,7 @@ def _fill_window_block_content_and_lines(
             render_scale,
         )
         style_lines: list[PDFTextStyleLine] = []
+        link_lines: list[PDFTextLinkLine] = []
         if parse_mode == "txt":
             page_chars = None
             try:
@@ -362,8 +361,10 @@ def _fill_window_block_content_and_lines(
                 or isinstance(page_char_count, bool)
                 or page_char_count <= MAX_NATIVE_TEXT_CHARS_PER_PAGE
             ):
-                page_chars, _line_items, style_lines = build_pdf_native_visual_lines_and_styles(
-                    pdf_page,
+                page_chars, _line_items, style_lines, link_lines = (
+                    build_pdf_native_visual_lines_and_styles(
+                        pdf_page,
+                    )
                 )
             page_spans = _fill_native_pdf_text_spans(
                 pdf_page,
@@ -381,7 +382,13 @@ def _fill_window_block_content_and_lines(
             target_block_types,
         )
         page_block_line_results.append(
-            (page_model_list, block_lines, page_size, style_lines)
+            (
+                page_model_list,
+                block_lines,
+                page_size,
+                style_lines,
+                link_lines,
+            )
         )
 
     if parse_mode == "txt":
@@ -389,14 +396,25 @@ def _fill_window_block_content_and_lines(
             local_model_context,
             [
                 block_lines
-                for _, block_lines, _, _style_lines in page_block_line_results
+                for _, block_lines, _, _style_lines, _link_lines in page_block_line_results
             ],
         )
 
-    for page_model_list, block_lines, page_size, style_lines in page_block_line_results:
+    for (
+        page_model_list,
+        block_lines,
+        page_size,
+        style_lines,
+        link_lines,
+    ) in page_block_line_results:
         _apply_block_content_and_line_metadata(
             page_model_list,
             block_lines,
+            page_size,
+        )
+        apply_pdf_text_links(
+            page_model_list,
+            link_lines,
             page_size,
         )
         apply_pdf_text_styles(

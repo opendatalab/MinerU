@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from zipfile import ZipFile
@@ -14,15 +15,26 @@ from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.analysis.pdf.text.native import txt_spans_extract
 from mineru.backend.postprocess.pages import model_list_to_pages
 from mineru.model.flash import PdfModel
-from mineru.render import render_docx, render_html, render_markdown
-from mineru.types import RAW_CAPTION, RAW_FOOTNOTE, BlockType, ContentType, MiddleJson
-from mineru.utils.pdf_document import PDFDocument
+from mineru.render import render_content_list, render_docx, render_html, render_markdown
+from mineru.types import (
+    RAW_CAPTION,
+    RAW_FOOTNOTE,
+    BlockType,
+    ContentType,
+    MiddleJson,
+    PageInfo,
+)
+from mineru.utils.pdf_document import PDFDocument, PDFLinkAnnotation
 from mineru.utils.pdf_text_styles import (
     PDF_FONT_FORCE_BOLD_FLAG,
     PDF_FONT_ITALIC_FLAG,
+    PDFTextLinkLine,
+    PDFTextLinkRange,
     PDFTextStyleLine,
     PDFTextStyleRange,
+    apply_pdf_text_links,
     apply_pdf_text_styles,
+    detect_pdf_text_link_lines,
     detect_pdf_text_style_lines,
 )
 
@@ -141,6 +153,613 @@ def _char_span(line: SimpleNamespace, start: int, end: int) -> tuple[float, floa
     """返回指定字符区间的左右边缘。"""
 
     return line.chars[start]["bbox"][0], line.chars[end - 1]["bbox"][2]
+
+
+def _link_evidence_line(
+    text: str,
+    target: str,
+    source_index: int,
+    *,
+    start: int = 0,
+    end: int | None = None,
+) -> PDFTextLinkLine:
+    """构造跨行合并测试使用的轻量链接证据。"""
+
+    resolved_end = len(text) if end is None else end
+    top = 10.0 + (source_index % 10) * 10.0
+    return PDFTextLinkLine(
+        bbox=(10.0, top, 90.0, top + 8.0),
+        text=text,
+        link_ranges=(PDFTextLinkRange(start, resolved_end, target),),
+        source_index=source_index,
+    )
+
+
+@pytest.mark.parametrize("angle", [0, 90, 180, 270])
+def test_detect_and_apply_pdf_text_link_ranges_with_styles(angle: int) -> None:
+    """验证标准方向链接映射、内部空格、URL 转义、样式顺序和幂等性。"""
+
+    line = _text_line("alpha beta", angle=angle)
+    annotation = PDFLinkAnnotation(
+        target="https://example.test/a?x=1&y=2",
+        bboxes=((line.bbox[0], line.bbox[1], line.bbox[2], line.bbox[3]),),
+        source_index=0,
+    )
+    link_lines = detect_pdf_text_link_lines([line], [annotation])
+
+    assert link_lines == [
+        PDFTextLinkLine(
+            bbox=line.bbox,
+            text="alphabeta",
+            link_ranges=(
+                PDFTextLinkRange(
+                    0,
+                    9,
+                    "https://example.test/a?x=1&y=2",
+                ),
+            ),
+            source_index=0,
+        )
+    ]
+
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": (0.0, 0.0, 1.0, 1.0),
+            "content": "alpha beta",
+        }
+    ]
+    apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
+    apply_pdf_text_styles(
+        blocks,
+        [
+            PDFTextStyleLine(
+                bbox=line.bbox,
+                text="alphabeta",
+                style_ranges=(PDFTextStyleRange(5, 9, ("underline",)),),
+                source_index=0,
+            )
+        ],
+        (100.0, 100.0),
+    )
+    expected = (
+        '<hyperlink>alpha <text style="underline">beta</text>'
+        "<url>https://example.test/a?x=1&amp;y=2</url></hyperlink>"
+    )
+    assert blocks[0]["content"] == expected
+
+    apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
+    assert blocks[0]["content"] == expected
+
+
+def test_detect_pdf_text_links_keeps_partial_ranges_and_drops_conflicts() -> None:
+    """验证局部字符链接可保留，而不同目标重叠字符按歧义丢弃。"""
+
+    line = _text_line("alpha")
+    partial_bbox = (
+        line.chars[2]["bbox"][0],
+        line.bbox[1],
+        line.chars[3]["bbox"][2],
+        line.bbox[3],
+    )
+    partial = PDFLinkAnnotation(
+        target="https://partial.example.test",
+        bboxes=(partial_bbox,),
+        source_index=0,
+    )
+    partial_lines = detect_pdf_text_link_lines([line], [partial])
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": (0.0, 0.0, 1.0, 1.0),
+            "content": "alpha",
+        }
+    ]
+    apply_pdf_text_links(blocks, partial_lines, (100.0, 100.0))
+    assert blocks[0]["content"] == (
+        "al<hyperlink>ph<url>https://partial.example.test</url></hyperlink>a"
+    )
+
+    conflict = PDFLinkAnnotation(
+        target="https://conflict.example.test",
+        bboxes=(partial_bbox,),
+        source_index=1,
+    )
+    assert detect_pdf_text_link_lines([line], [partial, conflict]) == []
+
+
+def test_apply_pdf_text_links_splits_formula_gaps_and_maps_repeated_labels() -> None:
+    """验证链接不跨公式包装，并按物理行顺序定位重复标签。"""
+
+    formula_blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": (0.0, 0.0, 1.0, 1.0),
+            "content": "pre<eq>x</eq>post",
+        }
+    ]
+    apply_pdf_text_links(
+        formula_blocks,
+        [
+            PDFTextLinkLine(
+                bbox=(10.0, 10.0, 60.0, 20.0),
+                text="prexpost",
+                link_ranges=(
+                    PDFTextLinkRange(0, 8, "https://formula.example.test"),
+                ),
+                source_index=0,
+            )
+        ],
+        (100.0, 100.0),
+    )
+    assert formula_blocks[0]["content"] == (
+        "<hyperlink>pre<url>https://formula.example.test</url></hyperlink>"
+        "<eq>x</eq>"
+        "<hyperlink>post<url>https://formula.example.test</url></hyperlink>"
+    )
+
+    repeated_blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": (0.0, 0.0, 1.0, 1.0),
+            "content": "link and link",
+        }
+    ]
+    apply_pdf_text_links(
+        repeated_blocks,
+        [
+            PDFTextLinkLine(
+                bbox=(10.0, 10.0, 35.0, 20.0),
+                text="link",
+                link_ranges=(PDFTextLinkRange(0, 4, "https://first.test"),),
+                source_index=0,
+            ),
+            PDFTextLinkLine(
+                bbox=(10.0, 30.0, 35.0, 40.0),
+                text="link",
+                link_ranges=(PDFTextLinkRange(0, 4, "https://second.test"),),
+                source_index=1,
+            ),
+        ],
+        (100.0, 100.0),
+    )
+    assert repeated_blocks[0]["content"] == (
+        "<hyperlink>link<url>https://first.test</url></hyperlink> and "
+        "<hyperlink>link<url>https://second.test</url></hyperlink>"
+    )
+
+
+def test_apply_pdf_text_links_merges_three_line_visible_url() -> None:
+    """验证三行同 href URL 合成一个标签，并吸收边界点号且不插入空格。"""
+
+    target = "https://github.com/google-research/tapas/blob/master/TABLEFORMER.md"
+    blocks = [
+        {
+            "type": BlockType.PAGE_FOOTNOTE,
+            "bbox": (0.0, 0.0, 1.0, 1.0),
+            "content": f"1Code has been released at {target}",
+        }
+    ]
+    link_lines = [
+        _link_evidence_line(
+            "1Codehasbeenreleasedathttps://github.",
+            target,
+            51,
+            start=22,
+            end=36,
+        ),
+        _link_evidence_line(
+            "com/google-research/tapas/blob/master/",
+            target,
+            52,
+        ),
+        _link_evidence_line("TABLEFORMER.md", target, 53),
+    ]
+
+    apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
+
+    expected = (
+        "1Code has been released at "
+        f"<hyperlink>{target}<url>{target}</url></hyperlink>"
+    )
+    assert blocks[0]["content"] == expected
+    apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
+    assert blocks[0]["content"] == expected
+
+
+@pytest.mark.parametrize(
+    (
+        "content",
+        "first_text",
+        "first_start",
+        "second_text",
+        "second_end",
+        "label",
+    ),
+    [
+        (
+            "Müller. 2020. Understanding tables with intermediate pre-training. In Findings",
+            "Müller.2020.Understandingtableswithinterme-",
+            len("Müller.2020."),
+            "diatepre-training.InFindings",
+            len("diatepre-training"),
+            "Understanding tables with intermediate pre-training",
+        ),
+        (
+            "Search-based neural structured learning for sequential question answering. In Proceedings",
+            "Search-basedneuralstructuredlearningforsequen-",
+            0,
+            "tialquestionanswering.InProceedings",
+            len("tialquestionanswering"),
+            "Search-based neural structured learning for sequential question answering",
+        ),
+        (
+            "Yasemin Altun. 2019. Answering conversational questions",
+            "YaseminAltun.2019.An-",
+            len("YaseminAltun.2019."),
+            "sweringconversationalquestions",
+            len("sweringconversationalquestions"),
+            "Answering conversational questions",
+        ),
+        (
+            "Percy Liang. 2015. Compositional semantic parsing",
+            "PercyLiang.2015.Compo-",
+            len("PercyLiang.2015."),
+            "sitionalsemanticparsing",
+            len("sitionalsemanticparsing"),
+            "Compositional semantic parsing",
+        ),
+    ],
+)
+def test_apply_pdf_text_links_maps_dehyphenated_first_fragment(
+    content: str,
+    first_text: str,
+    first_start: int,
+    second_text: str,
+    second_end: int,
+    label: str,
+) -> None:
+    """验证同 href 相邻行的首段断词符被回填删除后仍能完整映射。"""
+
+    target = "https://doi.org/10.18653/v1/example"
+    blocks = [
+        {
+            "type": BlockType.REF_TEXT,
+            "bbox": (0.0, 0.0, 1.0, 1.0),
+            "content": content,
+        }
+    ]
+    apply_pdf_text_links(
+        blocks,
+        [
+            _link_evidence_line(
+                first_text,
+                target,
+                80,
+                start=first_start,
+            ),
+            _link_evidence_line(
+                second_text,
+                target,
+                81,
+                end=second_end,
+            ),
+        ],
+        (100.0, 100.0),
+    )
+
+    expected_link = f"<hyperlink>{label}<url>{target}</url></hyperlink>"
+    assert blocks[0]["content"] == content.replace(label, expected_link)
+
+
+def test_apply_pdf_text_links_maps_dehyphenated_middle_fragment() -> None:
+    """验证三行链接中间行的行末断词符不再阻断同 href 合并。"""
+
+    target = "https://doi.org/10.18653/v1/N19-1423"
+    label = (
+        "BERT: Pre-training of deep bidirectional transformers for language "
+        "understanding"
+    )
+    content = f"Kristina Toutanova. 2019. {label}. In Proceedings"
+    first_text = "KristinaToutanova.2019.BERT:Pre-trainingof"
+    blocks = [
+        {
+            "type": BlockType.REF_TEXT,
+            "bbox": (0.0, 0.0, 1.0, 1.0),
+            "content": content,
+        }
+    ]
+    link_lines = [
+        _link_evidence_line(
+            first_text,
+            target,
+            90,
+            start=len("KristinaToutanova.2019."),
+        ),
+        _link_evidence_line(
+            "deepbidirectionaltransformersforlanguageunder-",
+            target,
+            91,
+        ),
+        _link_evidence_line(
+            "standing.InProceedings",
+            target,
+            92,
+            end=len("standing"),
+        ),
+    ]
+
+    apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
+
+    expected = content.replace(
+        label,
+        f"<hyperlink>{label}<url>{target}</url></hyperlink>",
+    )
+    assert blocks[0]["content"] == expected
+    apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
+    assert blocks[0]["content"] == expected
+
+
+@pytest.mark.parametrize(
+    ("content", "first_line", "second_line"),
+    [
+        (
+            "international",
+            _link_evidence_line("inter-", "https://same.test", 100),
+            _link_evidence_line("national", "https://same.test", 102),
+        ),
+        (
+            "international",
+            _link_evidence_line("inter-", "https://same.test", 100),
+            _link_evidence_line("national", "https://different.test", 101),
+        ),
+        (
+            "interxnational",
+            _link_evidence_line("inter-", "https://same.test", 100),
+            _link_evidence_line(
+                "xnational",
+                "https://same.test",
+                101,
+                start=1,
+            ),
+        ),
+        (
+            "interxnational",
+            _link_evidence_line(
+                "interx-",
+                "https://same.test",
+                100,
+                end=len("inter"),
+            ),
+            _link_evidence_line("national", "https://same.test", 101),
+        ),
+    ],
+)
+def test_apply_pdf_text_links_rejects_unsafe_dehyphenated_boundaries(
+    content: str,
+    first_line: PDFTextLinkLine,
+    second_line: PDFTextLinkLine,
+) -> None:
+    """验证不同 href、非相邻行或非行首行尾链接不会启用断词投影。"""
+
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": (0.0, 0.0, 1.0, 1.0),
+            "content": content,
+        }
+    ]
+
+    apply_pdf_text_links(
+        blocks,
+        [first_line, second_line],
+        (100.0, 100.0),
+    )
+
+    assert f"<hyperlink>{content}<url>" not in blocks[0]["content"]
+
+
+def test_apply_pdf_text_links_preserves_hyphen_before_uppercase_continuation() -> None:
+    """验证下一行以大写字母开头时保留可见连字符并正常合并链接。"""
+
+    target = "https://same.test"
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": (0.0, 0.0, 1.0, 1.0),
+            "content": "inter-National",
+        }
+    ]
+
+    apply_pdf_text_links(
+        blocks,
+        [
+            _link_evidence_line("inter-", target, 110),
+            _link_evidence_line("National", target, 111),
+        ],
+        (100.0, 100.0),
+    )
+
+    assert blocks[0]["content"] == (
+        f"<hyperlink>inter-National<url>{target}</url></hyperlink>"
+    )
+
+
+def test_apply_pdf_text_links_skips_ambiguous_dehyphenated_occurrence() -> None:
+    """验证断词候选在 block 中重复时不会把前后片段错误桥接。"""
+
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": (0.0, 0.0, 1.0, 1.0),
+            "content": "international international",
+        }
+    ]
+
+    apply_pdf_text_links(
+        blocks,
+        [
+            _link_evidence_line("inter-", "https://same.test", 120),
+            _link_evidence_line("national", "https://same.test", 121),
+        ],
+        (100.0, 100.0),
+    )
+
+    assert "<hyperlink>international<url>" not in blocks[0]["content"]
+    assert blocks[0]["content"].startswith("inter<hyperlink>national")
+    assert blocks[0]["content"].endswith(" international")
+
+
+@pytest.mark.parametrize(
+    ("second_styles", "expected_label"),
+    [
+        (
+            ("bold",),
+            '<text style="bold">ETC: Encoding long and structured inputs in transformers</text>',
+        ),
+        (
+            ("underline",),
+            (
+                '<text style="bold">ETC: Encoding long and structured inputs</text> '
+                '<text style="underline">in transformers</text>'
+            ),
+        ),
+    ],
+)
+def test_apply_pdf_text_links_merges_title_and_preserves_style_segments(
+    second_styles: tuple[str, ...],
+    expected_label: str,
+) -> None:
+    """验证普通英文标签保留空格，同样式合并而不同样式保留子段。"""
+
+    target = "https://doi.org/10.18653/v1/2020.emnlp-main.19"
+    first_text = "ETC:Encodinglongandstructuredinputs"
+    second_text = "intransformers"
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": (0.0, 0.0, 1.0, 1.0),
+            "content": "ETC: Encoding long and structured inputs in transformers",
+        }
+    ]
+    link_lines = [
+        _link_evidence_line(first_text, target, 60),
+        _link_evidence_line(second_text, target, 61),
+    ]
+    style_lines = [
+        PDFTextStyleLine(
+            link_lines[0].bbox,
+            first_text,
+            (PDFTextStyleRange(0, len(first_text), ("bold",)),),
+            60,
+        ),
+        PDFTextStyleLine(
+            link_lines[1].bbox,
+            second_text,
+            (PDFTextStyleRange(0, len(second_text), second_styles),),
+            61,
+        ),
+    ]
+
+    apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
+    apply_pdf_text_styles(blocks, style_lines, (100.0, 100.0))
+
+    assert blocks[0]["content"] == (
+        f"<hyperlink>{expected_label}<url>{target}</url></hyperlink>"
+    )
+
+
+@pytest.mark.parametrize(
+    ("content", "first_source", "second_source", "second_target"),
+    [
+        ("first unlinked second", 70, 71, "https://same.test"),
+        ("first<eq>x</eq>second", 70, 71, "https://same.test"),
+        ("first second", 70, 72, "https://same.test"),
+        ("first second", 70, 71, "https://different.test"),
+    ],
+)
+def test_apply_pdf_text_links_does_not_cross_invalid_merge_boundaries(
+    content: str,
+    first_source: int,
+    second_source: int,
+    second_target: str,
+) -> None:
+    """验证无 href 正文、公式、非相邻行或不同目标都会阻断链接合并。"""
+
+    first_target = "https://same.test"
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": (0.0, 0.0, 1.0, 1.0),
+            "content": content,
+        }
+    ]
+    apply_pdf_text_links(
+        blocks,
+        [
+            _link_evidence_line("first", first_target, first_source),
+            _link_evidence_line("second", second_target, second_source),
+        ],
+        (100.0, 100.0),
+    )
+
+    assert blocks[0]["content"].count("<hyperlink>") == 2
+
+
+@pytest.mark.parametrize(
+    ("block_type", "should_link"),
+    [
+        (BlockType.TEXT, True),
+        (BlockType.REF_TEXT, True),
+        (BlockType.DOC_TITLE, True),
+        (BlockType.PARAGRAPH_TITLE, True),
+        (BlockType.LIST, True),
+        (BlockType.INDEX, True),
+        (BlockType.HEADER, True),
+        (BlockType.FOOTER, True),
+        (BlockType.PAGE_NUMBER, True),
+        (BlockType.ASIDE_TEXT, True),
+        (BlockType.PAGE_FOOTNOTE, True),
+        (RAW_CAPTION, True),
+        (RAW_FOOTNOTE, True),
+        (BlockType.TABLE, False),
+        (BlockType.CODE, False),
+        (BlockType.EQUATION, False),
+        (BlockType.IMAGE, False),
+    ],
+)
+def test_apply_pdf_text_links_only_enriches_natural_language_blocks(
+    block_type: str,
+    should_link: bool,
+) -> None:
+    """验证 PDF Link 只进入已批准的自然语言 block 类型。"""
+
+    blocks = [
+        {
+            "type": block_type,
+            "bbox": (0.0, 0.0, 1.0, 1.0),
+            "content": "label",
+        }
+    ]
+    apply_pdf_text_links(
+        blocks,
+        [
+            PDFTextLinkLine(
+                bbox=(10.0, 10.0, 40.0, 20.0),
+                text="label",
+                link_ranges=(PDFTextLinkRange(0, 5, "https://target.test"),),
+                source_index=0,
+            )
+        ],
+        (100.0, 100.0),
+    )
+
+    expected = (
+        "<hyperlink>label<url>https://target.test</url></hyperlink>"
+        if should_link
+        else "label"
+    )
+    assert blocks[0]["content"] == expected
 
 
 @pytest.mark.parametrize(
@@ -1090,6 +1709,49 @@ def test_flash_native_pdf_styles_reach_model_middle_and_renderers() -> None:
     assert '<w:i w:val="1"' not in document_xml
 
 
+def test_demo1_pdf_link_reaches_model_middle_and_all_renderers() -> None:
+    """验证真实 demo1 URI Link 贯穿 model、MiddleJson 和四类 renderer。"""
+
+    pdf_path = Path(__file__).parents[2] / "demo/pdfs/demo1.pdf"
+    with PDFDocument(str(pdf_path)) as document:
+        model_list = PdfModel().predict(document)
+
+    target = "http://www.elsevier.com/locate/jhydrol"
+    label = "www.elsevier.com/locate/jhydrol"
+    inline_markup = f"<hyperlink>{label}<url>{target}</url></hyperlink>"
+    assert any(
+        block.get("content") == inline_markup
+        for block in model_list[0]
+    )
+
+    middle = MiddleJson(
+        pages=model_list_to_pages(model_list),
+        file_suffix="pdf",
+        effort="flash",
+        parse_mode="txt",
+        mineru_version="test",
+    )
+    link_block = next(
+        block
+        for block in middle.pages[0].blocks
+        if getattr(block, "content", None) == inline_markup
+    )
+    link_middle = MiddleJson(
+        pages=[PageInfo(page_idx=0, blocks=[link_block])],
+        file_suffix="pdf",
+        effort="flash",
+        parse_mode="txt",
+        mineru_version="test",
+    )
+    assert f"[{label}]({target})" in render_markdown(link_middle)
+    assert f'href="{target}"' in render_html(link_middle, standalone=False)
+    relationships = ZipFile(BytesIO(render_docx(link_middle))).read(
+        "word/_rels/document.xml.rels"
+    ).decode("utf-8")
+    assert target in relationships
+    assert f"[{label}]({target})" in str(render_content_list(link_middle))
+
+
 def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1110,7 +1772,17 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
             0,
         )
     ]
-    build_styles = MagicMock(return_value=(page_chars, [], style_lines))
+    link_lines = [
+        PDFTextLinkLine(
+            (10.0, 10.0, 52.0, 20.0),
+            "deleted",
+            (PDFTextLinkRange(0, 7, "https://hybrid.example.test"),),
+            0,
+        )
+    ]
+    build_styles = MagicMock(
+        return_value=(page_chars, [], style_lines, link_lines)
+    )
     observed_chars: list[object] = []
 
     def fake_fill_native(
@@ -1181,7 +1853,104 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
 
     assert observed_chars == [page_chars]
     assert model_list[0][0]["content"] == (
-        '<text style="bold,underline,strikethrough">deleted</text>'
+        '<hyperlink><text style="bold,underline,strikethrough">deleted</text>'
+        "<url>https://hybrid.example.test</url></hyperlink>"
+    )
+
+
+@pytest.mark.parametrize("effort", ["medium", "high", "xhigh"])
+def test_hybrid_txt_efforts_apply_dehyphenated_links(
+    monkeypatch: pytest.MonkeyPatch,
+    effort: str,
+) -> None:
+    """验证 Medium、High 与 XHigh 共享的 TXT 回填路径应用断词链接投影。"""
+
+    target = f"https://{effort}.example.test"
+    link_lines = [
+        PDFTextLinkLine(
+            (10.0, 10.0, 52.0, 20.0),
+            "inter-",
+            (PDFTextLinkRange(0, 6, target),),
+            0,
+        ),
+        PDFTextLinkLine(
+            (10.0, 30.0, 52.0, 40.0),
+            "national",
+            (PDFTextLinkRange(0, 8, target),),
+            1,
+        ),
+    ]
+    monkeypatch.setattr(
+        text_content,
+        "build_pdf_native_visual_lines_and_styles",
+        lambda *_args, **_kwargs: ([], [], [], link_lines),
+    )
+    monkeypatch.setattr(
+        text_content,
+        "_build_page_text_formula_spans",
+        lambda *_args: [],
+    )
+    monkeypatch.setattr(
+        text_content,
+        "_fill_native_pdf_text_spans",
+        lambda _page, spans, *_args, **_kwargs: spans,
+    )
+    monkeypatch.setattr(
+        text_content,
+        "_group_page_spans_by_block",
+        lambda *_args: {
+            0: [
+                _AnalyzeLine(
+                    bbox=(10.0, 10.0, 52.0, 20.0),
+                    spans=[
+                        _AnalyzeSpan(
+                            type=ContentType.TEXT,
+                            bbox=(10.0, 10.0, 52.0, 20.0),
+                            content="inter-",
+                            score=1.0,
+                        )
+                    ],
+                ),
+                _AnalyzeLine(
+                    bbox=(10.0, 30.0, 52.0, 40.0),
+                    spans=[
+                        _AnalyzeSpan(
+                            type=ContentType.TEXT,
+                            bbox=(10.0, 30.0, 52.0, 40.0),
+                            content="national",
+                            score=1.0,
+                        )
+                    ],
+                ),
+            ]
+        },
+    )
+    monkeypatch.setattr(text_content, "_apply_window_post_ocr", lambda *_args: None)
+    pdf_page = MagicMock(size=(100.0, 100.0))
+    pdf_page.get_char_count.return_value = 1
+    model_list = [
+        [
+            {
+                "type": BlockType.TEXT,
+                "bbox": [0.1, 0.1, 0.52, 0.4],
+                "content": "",
+            }
+        ]
+    ]
+
+    text_content._fill_window_block_content_and_lines(
+        [{"img_pil": object(), "scale": 1.0}],
+        [pdf_page],
+        model_list,
+        [[]],
+        [[]],
+        "txt",
+        {BlockType.TEXT},
+        MagicMock(),
+    )
+
+    assert model_list[0][0]["content"] == (
+        f"<hyperlink>international<url>{target}</url></hyperlink>"
     )
 
 
@@ -1208,10 +1977,16 @@ def test_low_txt_applies_styles_after_native_content_fill(
         ),
         0,
     )
+    link_line = PDFTextLinkLine(
+        (10.0, 10.0, 52.0, 20.0),
+        "deleted",
+        (PDFTextLinkRange(0, 7, "https://low.example.test"),),
+        0,
+    )
     monkeypatch.setattr(
         window,
         "_build_pdf_text_visual_run_data",
-        lambda _page: ([span], [style_line]),
+        lambda _page: ([span], [style_line], [link_line]),
     )
     monkeypatch.setattr(window, "_fill_low_table_contents", lambda *_args: None)
     monkeypatch.setattr(
@@ -1231,14 +2006,84 @@ def test_low_txt_applies_styles_after_native_content_fill(
     )
 
     assert model_list[0][0]["content"] == (
-        '<text style="bold,underline,strikethrough">deleted</text>'
+        '<hyperlink><text style="bold,underline,strikethrough">deleted</text>'
+        "<url>https://low.example.test</url></hyperlink>"
+    )
+
+
+def test_low_txt_applies_dehyphenated_links_after_native_content_fill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 Low/TXT 在删除物理行断词符后恢复完整链接。"""
+
+    target = "https://low.example.test/dehyphenated"
+    spans = [
+        _AnalyzeSpan(
+            type=ContentType.TEXT,
+            bbox=(10.0, 10.0, 52.0, 20.0),
+            content="inter-",
+            score=1.0,
+        ),
+        _AnalyzeSpan(
+            type=ContentType.TEXT,
+            bbox=(10.0, 30.0, 52.0, 40.0),
+            content="national",
+            score=1.0,
+        ),
+    ]
+    link_lines = [
+        PDFTextLinkLine(
+            spans[0].bbox,
+            "inter-",
+            (PDFTextLinkRange(0, 6, target),),
+            0,
+        ),
+        PDFTextLinkLine(
+            spans[1].bbox,
+            "national",
+            (PDFTextLinkRange(0, 8, target),),
+            1,
+        ),
+    ]
+    monkeypatch.setattr(
+        window,
+        "_build_pdf_text_visual_run_data",
+        lambda _page: (spans, [], link_lines),
+    )
+    monkeypatch.setattr(window, "_fill_low_table_contents", lambda *_args: None)
+    monkeypatch.setattr(
+        window,
+        "_fill_low_txt_native_formula_contents",
+        lambda *_args: None,
+    )
+    model_list = [
+        [
+            {
+                "type": BlockType.TEXT,
+                "bbox": [0.1, 0.1, 0.52, 0.4],
+                "content": "",
+            }
+        ]
+    ]
+
+    window._process_low_text(
+        [{"img_pil": object(), "scale": 1.0}],
+        [MagicMock(size=(100.0, 100.0))],
+        model_list,
+        "txt",
+        MagicMock(),
+        [[]],
+    )
+
+    assert model_list[0][0]["content"] == (
+        f"<hyperlink>international<url>{target}</url></hyperlink>"
     )
 
 
 def test_ocr_path_does_not_collect_or_apply_pdf_styles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 OCR 路径不会读取 drawing 或应用 PDF 原生文本样式。"""
+    """验证 OCR 路径不会读取或应用 PDF 原生文本样式与超链接。"""
 
     build_styles = MagicMock()
     monkeypatch.setattr(
@@ -1292,6 +2137,74 @@ def test_ocr_path_does_not_collect_or_apply_pdf_styles(
 
     build_styles.assert_not_called()
     assert model_list[0][0]["content"] == "deleted"
+
+
+def test_high_char_count_txt_path_skips_pdf_text_enrichment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证超高字符页走 post-OCR 兜底时不读取样式或 Link 注解。"""
+
+    build_enrichment = MagicMock()
+    monkeypatch.setattr(
+        text_content,
+        "build_pdf_native_visual_lines_and_styles",
+        build_enrichment,
+    )
+    plain_span = _AnalyzeSpan(
+        type=ContentType.TEXT,
+        bbox=(10.0, 10.0, 52.0, 20.0),
+        content="plain",
+        score=1.0,
+    )
+    monkeypatch.setattr(
+        text_content,
+        "_build_page_text_formula_spans",
+        lambda *_args: [],
+    )
+    monkeypatch.setattr(
+        text_content,
+        "_fill_native_pdf_text_spans",
+        lambda *_args, **_kwargs: [plain_span],
+    )
+    monkeypatch.setattr(
+        text_content,
+        "_group_page_spans_by_block",
+        lambda *_args: {
+            0: [
+                _AnalyzeLine(
+                    bbox=plain_span.bbox,
+                    spans=[plain_span],
+                )
+            ]
+        },
+    )
+    pdf_page = MagicMock(size=(100.0, 100.0))
+    pdf_page.get_char_count.return_value = (
+        text_content.MAX_NATIVE_TEXT_CHARS_PER_PAGE + 1
+    )
+    model_list = [
+        [
+            {
+                "type": BlockType.TEXT,
+                "bbox": [0.1, 0.1, 0.52, 0.2],
+                "content": "",
+            }
+        ]
+    ]
+
+    text_content._fill_window_block_content_and_lines(
+        [{"img_pil": object(), "scale": 1.0}],
+        [pdf_page],
+        model_list,
+        [[]],
+        [[]],
+        "txt",
+        {BlockType.TEXT},
+        MagicMock(),
+    )
+
+    build_enrichment.assert_not_called()
+    assert model_list[0][0]["content"] == "plain"
 
 
 def test_native_span_fill_does_not_read_preloaded_page_chars_twice() -> None:

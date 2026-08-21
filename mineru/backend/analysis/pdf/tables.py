@@ -21,7 +21,7 @@ from mineru.utils.bbox_utils import (
 )
 from mineru.utils.ocr_utils import mask_formula_regions_for_ocr_det
 from mineru.utils.pdf_document import PDFPage, get_lines_from_chars
-from mineru.utils.pdf_text_styles import PDFTextStyleLine
+from mineru.utils.pdf_text_styles import PDFTextLinkLine, PDFTextStyleLine
 from mineru.utils.spatial_text import project_ocr_table_text, project_pdf_table_text
 
 from .constants import (
@@ -83,20 +83,24 @@ def _visual_line_items_to_spans(line_items: list[Any]) -> list[_AnalyzeSpan]:
 
 def _build_pdf_text_visual_run_data(
     pdf_page: PDFPage,
-) -> tuple[list[_AnalyzeSpan], list[PDFTextStyleLine]]:
-    """一次构造 Low/TXT 视觉 span 和同页水平文本样式证据。"""
+) -> tuple[list[_AnalyzeSpan], list[PDFTextStyleLine], list[PDFTextLinkLine]]:
+    """一次构造 Low/TXT 视觉 span、文本样式和超链接证据。"""
 
-    _page_chars, line_items, style_lines = build_pdf_native_visual_lines_and_styles(
-        pdf_page,
-        supported_angles=_LOW_TXT_VISUAL_RUN_ANGLES,
+    _page_chars, line_items, style_lines, link_lines = (
+        build_pdf_native_visual_lines_and_styles(
+            pdf_page,
+            supported_angles=_LOW_TXT_VISUAL_RUN_ANGLES,
+        )
     )
-    return _visual_line_items_to_spans(line_items), style_lines
+    return _visual_line_items_to_spans(line_items), style_lines, link_lines
 
 
 def _build_pdf_text_visual_run_spans(pdf_page: PDFPage) -> list[_AnalyzeSpan]:
     """将 Low/TXT 原生粗行按 Flash 字符间隙拆成可独立分配的视觉 run。"""
 
-    page_spans, _style_lines = _build_pdf_text_visual_run_data(pdf_page)
+    page_spans, _style_lines, _link_lines = _build_pdf_text_visual_run_data(
+        pdf_page
+    )
     return page_spans
 
 

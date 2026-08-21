@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Iterator, Literal, TypeAlias, cast
+from urllib.parse import urlsplit
 
 import numpy as np
 import pypdfium2 as pdfium
@@ -41,6 +42,7 @@ DRAWING_LINE_MIN_LENGTH = 1.0
 DRAWING_THIN_RECT_MAX_THICKNESS = 2.0
 DRAWING_THIN_RECT_MIN_ASPECT_RATIO = 4.0
 PDF_IMAGE_FINGERPRINT_MAX_RAW_BYTES = 16 * 1024 * 1024
+_PDF_EXTERNAL_LINK_SCHEMES = frozenset({"http", "https", "mailto", "tel"})
 
 try:
     from pdftext.pdf.chars import PageChars
@@ -75,6 +77,15 @@ class PDFDrawingLine:
     bbox: BBox
     width: float
     orientation: Literal["horizontal", "vertical"]
+
+
+@dataclass(frozen=True)
+class PDFLinkAnnotation:
+    """PDF 外部 URI Link 注解，区域坐标使用页面左上原点的 PDF point。"""
+
+    target: str
+    bboxes: tuple[BBox, ...]
+    source_index: int
 
 
 @dataclass(frozen=True)
@@ -132,6 +143,11 @@ class PDFPage:
         """读取当前页已规范到视觉页面坐标的横竖 drawing。"""
 
         return self.pdf_doc.get_page_drawing_lines(self._idx)
+
+    def get_link_annotations(self) -> list[PDFLinkAnnotation]:
+        """读取当前页已规范到视觉页面坐标的外部 URI Link 注解。"""
+
+        return self.pdf_doc.get_page_link_annotations(self._idx)
 
 
 class PDFDocument:
@@ -410,6 +426,22 @@ class PDFDocument:
                 page_bbox,
                 page_rotation,
                 form_handle=getattr(self._pdf_doc, "formenv", None),
+            )
+
+    def get_page_link_annotations(self, page_idx: int) -> list[PDFLinkAnnotation]:
+        """提取可见且目标安全的外部 URI Link 注解。"""
+
+        with self._open_page(page_idx) as page:
+            page_bbox = _normalize_pdf_page_bbox(page.get_bbox())
+            try:
+                page_rotation = int(page.get_rotation()) % 360
+            except Exception:
+                page_rotation = 0
+            return _extract_page_link_annotations(
+                page,
+                self._pdf_doc.raw,
+                page_bbox,
+                page_rotation,
             )
 
     # ------------------------------------------------------------------ #
@@ -1249,6 +1281,251 @@ def _form_bbox_from_object(
     if visual_right <= visual_left or visual_bottom <= visual_top:
         return None
     return visual_left, visual_top, visual_right, visual_bottom
+
+
+def _validate_pdf_external_link_target(value: str) -> str | None:
+    """校验 PDF URI Action，只保留显式且可安全输出的外部链接。"""
+
+    target = value.strip()
+    if not target or any(
+        ord(char) < 0x20
+        or ord(char) == 0x7F
+        or 0xD800 <= ord(char) <= 0xDFFF
+        for char in target
+    ):
+        return None
+    try:
+        parsed = urlsplit(target)
+    except ValueError:
+        return None
+    scheme = parsed.scheme.lower()
+    if scheme not in _PDF_EXTERNAL_LINK_SCHEMES:
+        return None
+    if scheme in {"http", "https"}:
+        try:
+            if not parsed.netloc or parsed.hostname is None:
+                return None
+        except ValueError:
+            return None
+    elif not parsed.path:
+        return None
+    return target
+
+
+def _get_pdfium_uri_path(raw_doc: Any, raw_action: Any) -> str | None:
+    """按 PDFium 两阶段缓冲区协议读取 URI Action 的 UTF-8 目标。"""
+
+    try:
+        required = int(
+            pdfium_c.FPDFAction_GetURIPath(
+                raw_doc,
+                raw_action,
+                None,
+                0,
+            )
+        )
+    except Exception:
+        return None
+    if required <= 1:
+        return None
+    try:
+        buffer = ctypes.create_string_buffer(required)
+        actual = int(
+            pdfium_c.FPDFAction_GetURIPath(
+                raw_doc,
+                raw_action,
+                buffer,
+                required,
+            )
+        )
+    except Exception:
+        return None
+    if actual <= 1 or actual > required:
+        return None
+    raw_value = bytes(buffer.raw[: actual - 1])
+    try:
+        return raw_value.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _pdf_link_annotation_is_visible(page: pdfium.PdfPage, raw_link: Any) -> bool:
+    """读取 Link 注解可见性；损坏或显式隐藏的注解均不参与文本富化。"""
+
+    raw_annot = None
+    try:
+        raw_annot = pdfium_c.FPDFLink_GetAnnot(page.raw, raw_link)
+        if not raw_annot:
+            return False
+        flags = int(pdfium_c.FPDFAnnot_GetFlags(raw_annot))
+    except Exception:
+        return False
+    finally:
+        if raw_annot:
+            try:
+                pdfium_c.FPDFPage_CloseAnnot(raw_annot)
+            except Exception:
+                pass
+    hidden_flags = (
+        pdfium_c.FPDF_ANNOT_FLAG_INVISIBLE
+        | pdfium_c.FPDF_ANNOT_FLAG_HIDDEN
+        | pdfium_c.FPDF_ANNOT_FLAG_NOVIEW
+    )
+    return not bool(flags & hidden_flags)
+
+
+def _visual_bbox_from_pdf_points(
+    points: list[tuple[float, float]],
+    page_bbox: BBox,
+    page_rotation: int,
+) -> BBox | None:
+    """把 PDF 底左坐标点集转换并裁剪为视觉页面左上坐标 bbox。"""
+
+    if not points or not all(
+        math.isfinite(coordinate)
+        for point in points
+        for coordinate in point
+    ):
+        return None
+    visual_points = [
+        _transform_drawing_point(point, page_bbox, page_rotation)
+        for point in points
+    ]
+    page_width, page_height = _drawing_page_size(page_bbox, page_rotation)
+    visual_bbox = (
+        max(0.0, min(point[0] for point in visual_points)),
+        max(0.0, min(point[1] for point in visual_points)),
+        min(page_width, max(point[0] for point in visual_points)),
+        min(page_height, max(point[1] for point in visual_points)),
+    )
+    if visual_bbox[2] <= visual_bbox[0] or visual_bbox[3] <= visual_bbox[1]:
+        return None
+    return visual_bbox
+
+
+def _pdf_link_region_bboxes(
+    raw_link: Any,
+    page_bbox: BBox,
+    page_rotation: int,
+) -> tuple[BBox, ...]:
+    """优先读取 Link QuadPoints，并在缺失时回退到注解矩形。"""
+
+    bboxes: list[BBox] = []
+    try:
+        quad_count = max(0, int(pdfium_c.FPDFLink_CountQuadPoints(raw_link)))
+    except Exception:
+        quad_count = 0
+    for quad_index in range(quad_count):
+        quad = pdfium_c.FS_QUADPOINTSF()
+        try:
+            ok = pdfium_c.FPDFLink_GetQuadPoints(
+                raw_link,
+                quad_index,
+                ctypes.byref(quad),
+            )
+        except Exception:
+            continue
+        if not ok:
+            continue
+        bbox = _visual_bbox_from_pdf_points(
+            [
+                (float(quad.x1), float(quad.y1)),
+                (float(quad.x2), float(quad.y2)),
+                (float(quad.x3), float(quad.y3)),
+                (float(quad.x4), float(quad.y4)),
+            ],
+            page_bbox,
+            page_rotation,
+        )
+        if bbox is not None and bbox not in bboxes:
+            bboxes.append(bbox)
+
+    if not bboxes:
+        rect = pdfium_c.FS_RECTF()
+        try:
+            ok = pdfium_c.FPDFLink_GetAnnotRect(raw_link, ctypes.byref(rect))
+        except Exception:
+            ok = False
+        if ok:
+            bbox = _visual_bbox_from_pdf_points(
+                [
+                    (float(rect.left), float(rect.bottom)),
+                    (float(rect.left), float(rect.top)),
+                    (float(rect.right), float(rect.bottom)),
+                    (float(rect.right), float(rect.top)),
+                ],
+                page_bbox,
+                page_rotation,
+            )
+            if bbox is not None:
+                bboxes.append(bbox)
+    return tuple(
+        sorted(
+            bboxes,
+            key=lambda bbox: (bbox[1], bbox[0], bbox[3], bbox[2]),
+        )
+    )
+
+
+def _extract_page_link_annotations(
+    page: pdfium.PdfPage,
+    raw_doc: Any,
+    page_bbox: BBox,
+    page_rotation: int,
+) -> list[PDFLinkAnnotation]:
+    """枚举页面外部 URI Link；单条损坏数据不会中断同页其他链接。"""
+
+    annotations: list[PDFLinkAnnotation] = []
+    position = ctypes.c_int(0)
+    source_index = 0
+    while True:
+        raw_link = pdfium_c.FPDF_LINK()
+        previous_position = int(position.value)
+        try:
+            found = pdfium_c.FPDFLink_Enumerate(
+                page.raw,
+                ctypes.byref(position),
+                ctypes.byref(raw_link),
+            )
+        except Exception:
+            break
+        if not found:
+            break
+        current_source_index = source_index
+        source_index += 1
+        if int(position.value) <= previous_position:
+            break
+        try:
+            if not raw_link or not _pdf_link_annotation_is_visible(page, raw_link):
+                continue
+            raw_action = pdfium_c.FPDFLink_GetAction(raw_link)
+            if not raw_action or int(pdfium_c.FPDFAction_GetType(raw_action)) != pdfium_c.PDFACTION_URI:
+                continue
+            raw_target = _get_pdfium_uri_path(raw_doc, raw_action)
+            target = (
+                _validate_pdf_external_link_target(raw_target)
+                if raw_target is not None
+                else None
+            )
+            if target is None:
+                continue
+            bboxes = _pdf_link_region_bboxes(
+                raw_link,
+                page_bbox,
+                page_rotation,
+            )
+            if not bboxes:
+                continue
+            annotations.append(
+                PDFLinkAnnotation(
+                    target=target,
+                    bboxes=bboxes,
+                    source_index=current_source_index,
+                )
+            )
+        except Exception:
+            continue
+    return annotations
 
 
 def _get_annotation_string(raw_annot: Any, key: bytes) -> str | None:

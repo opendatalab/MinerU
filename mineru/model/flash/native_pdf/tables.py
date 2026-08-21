@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 from loguru import logger
 
-from mineru.utils.text_utils import resolve_text_line_boundary
+from mineru.utils.text_utils import merge_text_line_contents
 from mineru.utils.spatial_text import project_pdf_table_text
 from mineru.types import BBox
 from mineru.utils.pdf_document import PDFPathInfo
@@ -2162,16 +2162,10 @@ def _merge_table_annotation_content(line_texts: list[str]) -> str:
         block_language = detect_lang("".join(normalized_lines))
     except Exception:
         block_language = ""
-    content_parts = [normalized_lines[0]]
-    for current_line in normalized_lines[1:]:
-        processed_previous, separator = resolve_text_line_boundary(
-            content_parts[-1],
-            block_language=block_language,
-            next_content=current_line,
-        )
-        content_parts[-1] = processed_previous
-        content_parts.extend([separator, current_line])
-    return "".join(content_parts).strip()
+    return merge_text_line_contents(
+        normalized_lines,
+        block_language=block_language,
+    )
 
 
 def _table_body_materialization_bbox(

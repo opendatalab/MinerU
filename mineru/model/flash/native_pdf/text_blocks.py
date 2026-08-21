@@ -11,7 +11,7 @@ from typing import Any, Sequence
 
 from mineru.utils.text_utils import (
     is_hyphen_at_line_end,
-    resolve_text_line_boundary,
+    merge_text_line_contents,
 )
 from mineru.types import BBox
 from mineru.utils.language import detect_lang
@@ -2707,13 +2707,7 @@ def _merge_text_line_content(line_texts: Sequence[str]) -> str:
         block_language = detect_lang("".join(normalized_lines))
     except Exception:
         block_language = ""
-    content_parts = [normalized_lines[0]]
-    for current_line in normalized_lines[1:]:
-        processed_previous, separator = resolve_text_line_boundary(
-            content_parts[-1],
-            block_language=block_language,
-            next_content=current_line,
-        )
-        content_parts[-1] = processed_previous
-        content_parts.extend([separator, current_line])
-    return "".join(content_parts).strip()
+    return merge_text_line_contents(
+        normalized_lines,
+        block_language=block_language,
+    )

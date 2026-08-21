@@ -660,10 +660,22 @@ def test_can_auto_merge_horizontal_text_blocks_rejects_paragraph_boundaries() ->
     previous_block["content"] = "finished."
     assert not can_auto_merge_text_blocks(current_block, previous_block)
 
+    previous_block, current_block = _horizontal_pair()
+    previous_block["content"] = (
+        "<hyperlink>finished.<url>https://example.test/no-period</url></hyperlink>"
+    )
+    assert not can_auto_merge_text_blocks(current_block, previous_block)
+
     for current_content in ("1 numbered", "Uppercase"):
         previous_block, current_block = _horizontal_pair()
         current_block["content"] = current_content
         assert not can_auto_merge_text_blocks(current_block, previous_block)
+
+    previous_block, current_block = _horizontal_pair()
+    current_block["content"] = (
+        "<hyperlink>Uppercase<url>https://example.test/lowercase</url></hyperlink>"
+    )
+    assert not can_auto_merge_text_blocks(current_block, previous_block)
 
     previous_block, current_block = _horizontal_pair()
     current_block["lines"][0]["bbox"][0] = 0.2

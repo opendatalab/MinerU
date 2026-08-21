@@ -14,7 +14,7 @@ from mineru.types import RAW_FORMULA_NUMBER, BlockType
 from mineru.utils.config_reader import get_processing_window_size
 from mineru.utils.pdf_document import PDFDocument, PDFPage
 from mineru.utils.pdf_image_tools import load_images_from_pdf_bytes_range
-from mineru.utils.pdf_text_styles import apply_pdf_text_styles
+from mineru.utils.pdf_text_styles import apply_pdf_text_links, apply_pdf_text_styles
 from mineru.utils.spatial_text import project_pdf_spatial_text
 
 from .constants import (
@@ -190,7 +190,9 @@ def _process_low_text(
         target_block_types = set(PIPELINE_DET_TYPE) | TITLE_BLOCK_TYPES | {BlockType.TEXT}
         for pdf_page, page_model_list in zip(pdf_pages, model_list):
             page_size = tuple(float(value) for value in pdf_page.size)
-            page_spans, style_lines = _build_pdf_text_visual_run_data(pdf_page)
+            page_spans, style_lines, link_lines = _build_pdf_text_visual_run_data(
+                pdf_page
+            )
             block_lines = _group_page_spans_by_block(
                 page_model_list,
                 page_spans,
@@ -200,6 +202,11 @@ def _process_low_text(
             _apply_block_content_and_line_metadata(
                 page_model_list,
                 block_lines,
+                page_size,
+            )
+            apply_pdf_text_links(
+                page_model_list,
+                link_lines,
                 page_size,
             )
             apply_pdf_text_styles(

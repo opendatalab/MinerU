@@ -650,6 +650,32 @@ def test_normalize_pdf_model_list_preserves_inline_formulas_during_full_width_cl
     assert model_list[0][0]["content"] == "前A1 <eq>Ｆ２+x</eq> 中B3 <eq>Ｃ４+y</eq> 后D5"
 
 
+def test_normalize_pdf_model_list_preserves_hyperlink_url_payload() -> None:
+    """验证可见链接文本正常清洗，而 URL 全角字符和公式样式字面量保持原样。"""
+
+    model_list = [
+        [
+            {
+                "type": BlockType.TEXT,
+                "content": (
+                    "前Ａ <hyperlink>标Ｂ"
+                    "<url>https://example.test/Ａ\\(x\\)?q=１&amp;y=2</url>"
+                    "</hyperlink> 后Ｃ \\(Ｄ\\)"
+                ),
+                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
+            }
+        ]
+    ]
+
+    normalization._normalize_pdf_model_list(model_list)
+
+    assert model_list[0][0]["content"] == (
+        "前A <hyperlink>标B"
+        "<url>https://example.test/Ａ\\(x\\)?q=１&amp;y=2</url>"
+        "</hyperlink> 后C <eq>Ｄ</eq>"
+    )
+
+
 @pytest.mark.parametrize(
     ("content", "expected"),
     [

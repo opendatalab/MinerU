@@ -2,6 +2,7 @@
 """跨模型共享的文本字符规范化与换行连接规则。"""
 
 import re
+from collections.abc import Sequence
 
 # 中日韩文本的物理换行通常不需要插入额外空格，集中定义以供各后端和渲染器共享。
 CJK_LANGS = frozenset({"zh", "ja", "ko"})
@@ -70,6 +71,31 @@ def resolve_text_line_boundary(
     if stripped_next and stripped_next[0].islower():
         return processed_content[:-1], ""
     return processed_content, ""
+
+
+def merge_text_line_contents(
+    line_contents: Sequence[str],
+    *,
+    block_language: str,
+) -> str:
+    """按累计文本上下文折叠物理行，支持跨越三行以上的 URL 连续拼接。"""
+
+    normalized_lines = [
+        str(content)
+        for content in line_contents
+        if str(content)
+    ]
+    if not normalized_lines:
+        return ""
+    merged_content = normalized_lines[0]
+    for current_line in normalized_lines[1:]:
+        merged_content, separator = resolve_text_line_boundary(
+            merged_content,
+            block_language=block_language,
+            next_content=current_line,
+        )
+        merged_content = f"{merged_content}{separator}{current_line}"
+    return merged_content.strip()
 
 
 def full_to_half_exclude_marks(text: str) -> str:

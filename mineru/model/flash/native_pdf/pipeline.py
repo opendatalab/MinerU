@@ -11,8 +11,11 @@ from typing import Any
 from mineru.model.flash.xycut import sort_entries
 from mineru.utils.pdf_document import PDFDocument, PDFImageInfo, get_lines_from_chars
 from mineru.utils.pdf_text_styles import (
+    PDFTextLinkLine,
     PDFTextStyleLine,
+    apply_pdf_text_links,
     apply_pdf_text_styles,
+    detect_pdf_text_link_lines,
     detect_pdf_text_style_lines,
 )
 
@@ -207,6 +210,7 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
 
     page_sources: list[_PageSource] = []
     page_style_lines: list[list[PDFTextStyleLine]] = []
+    page_link_lines: list[list[PDFTextLinkLine]] = []
     for page_idx in range(pdf_doc.page_count):
         page_size = page_sizes[page_idx]
         chars = pdf_doc.get_page_chars(page_idx)
@@ -218,6 +222,12 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
         drawing_lines = _get_pdf_drawing_lines(pdf_doc, page_idx)
         page_style_lines.append(
             detect_pdf_text_style_lines(lines, drawing_lines)
+        )
+        page_link_lines.append(
+            detect_pdf_text_link_lines(
+                lines,
+                pdf_doc.get_page_link_annotations(page_idx),
+            )
         )
         source = _PageSource(
             page_size=page_size,
@@ -269,12 +279,14 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
         )
         for page_index, prepared in enumerate(prepared_pages)
     ]
-    for page_blocks, style_lines, page_size in zip(
+    for page_blocks, style_lines, link_lines, page_size in zip(
         finalized_pages,
         page_style_lines,
+        page_link_lines,
         page_sizes,
         strict=True,
     ):
+        apply_pdf_text_links(page_blocks, link_lines, page_size)
         apply_pdf_text_styles(page_blocks, style_lines, page_size)
     return finalized_pages
 

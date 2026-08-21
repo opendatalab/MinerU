@@ -757,6 +757,14 @@ def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_formula() -> Non
         block for block in page1 if _visible_content(block) == "Abstract"
     )["type"] == "paragraph_title"
     assert released_code["type"] == "page_footnote"
+    github_target = (
+        "https://github.com/google-research/tapas/blob/master/TABLEFORMER.md"
+    )
+    assert released_code["content"].count("<hyperlink>") == 1
+    assert released_code["content"] == (
+        "1Code has been released at "
+        f"<hyperlink>{github_target}<url>{github_target}</url></hyperlink>"
+    )
     assert aside["angle"] == 270
     assert aside["bbox"][2] <= 0.12
     assert _visible_content(introduction).endswith(
@@ -806,6 +814,7 @@ def test_demo3_pages6_7_and10_fix_caption_inline_titles_and_reference_tail() -> 
     model_list = _native_model_list("demo3.pdf")
     page6 = model_list[5]
     page7 = model_list[6]
+    page9 = model_list[8]
     page10 = model_list[9]
 
     table2_caption = next(
@@ -866,6 +875,52 @@ def test_demo3_pages6_7_and10_fix_caption_inline_titles_and_reference_tail() -> 
         )
     )
     assert "**Attention Bias Scaling.** Unlike" in page7_markdown
+
+    etc_reference = next(
+        block
+        for block in page9
+        if "2020.emnlp-main.19" in str(block.get("content", ""))
+    )
+    assert etc_reference["content"].count("<hyperlink>") == 1
+    assert (
+        "<hyperlink>ETC: Encoding long and structured inputs in transformers"
+        "<url>https://doi.org/10.18653/v1/2020.emnlp-main.19</url>"
+        "</hyperlink>"
+    ) in etc_reference["content"]
+
+    dehyphenated_references = (
+        (
+            "https://doi.org/10.18653/v1/N19-1423",
+            "BERT: Pre-training of deep bidirectional transformers for language understanding",
+        ),
+        (
+            "https://doi.org/10.18653/v1/2020.findings-emnlp.27",
+            "Understanding tables with intermediate pre-training",
+        ),
+        (
+            "https://doi.org/10.18653/v1/P17-1167",
+            "Search-based neural structured learning for sequential question answering",
+        ),
+        (
+            "https://doi.org/10.18653/v1/D19-1603",
+            "Answering conversational questions on structured data without logical forms",
+        ),
+        (
+            "https://doi.org/10.3115/v1/P15-1142",
+            "Compositional semantic parsing on semi-structured tables",
+        ),
+    )
+    for target, label in dehyphenated_references:
+        reference = next(
+            block
+            for block in page10
+            if target in str(block.get("content", ""))
+        )
+        assert reference["content"].count("<hyperlink>") == 1
+        assert (
+            f"<hyperlink>{label}<url>{target}</url></hyperlink>"
+            in reference["content"]
+        )
 
     ying_reference = next(
         block
@@ -1703,8 +1758,15 @@ def test_npu_numbered_figure_captions_are_independent_annotations() -> None:
         for block in model_list[21]
         if reference_urls[0] in str(block.get("content", ""))
     )
-    assert " ".join(reference_urls) in reference_block
-    assert not any(first + second in reference_block for first, second in zip(reference_urls, reference_urls[1:]))
+    reference_visible_text = inline_plain_text(
+        parse_inline_content(reference_block)
+    )
+    assert " ".join(reference_urls) in reference_visible_text
+    assert not any(
+        first + second in reference_visible_text
+        for first, second in zip(reference_urls, reference_urls[1:])
+    )
+    assert all(f"<url>{url}</url>" in reference_block for url in reference_urls)
 
 
 def test_frozen_soil_page3_formula3_remains_one_equation() -> None:

@@ -1,7 +1,9 @@
 # Copyright (c) Opendatalab. All rights reserved.
 """PDF 段落延续关系的 raw model-list 后处理。"""
 
+import html
 import math
+import re
 from typing import Any, TypeAlias
 
 from ...types import PAGE_AUXILIARY_BLOCK_TYPES, BlockType
@@ -30,6 +32,14 @@ VERTICAL_LINE_IN_BLOCK_THRESHOLD = 0.8
 SINGLE_LINE_LOOKAHEAD_LIMIT = 5
 SINGLE_LINE_MIN_ALIGNED_LOOKAHEAD = 3
 SINGLE_LINE_THICKNESS_RATIO_MAX = 1.5
+_INLINE_URL_ELEMENT_RE = re.compile(
+    r"<url>.*?</url>",
+    re.IGNORECASE | re.DOTALL,
+)
+_KNOWN_INLINE_TAG_RE = re.compile(
+    r"</?(?:eq|text|hyperlink|sup|sub|strong|b|em|i|s|u)(?:\s[^<>]*?)?>",
+    re.IGNORECASE,
+)
 
 BlockDict: TypeAlias = dict[str, Any]
 CalculationBBox: TypeAlias = tuple[int, int, int, int]
@@ -291,9 +301,14 @@ def _metric_line_bboxes(block: BlockDict) -> list[CalculationBBox]:
 
 
 def _normalized_text_content(block: BlockDict) -> str:
-    """读取并去除 text block 内容首尾空白，非字符串内容按无文本处理。"""
+    """读取 text block 可见文本，排除富文本标签和 hyperlink URL 目标。"""
+
     content = block.get("content")
-    return content.strip() if isinstance(content, str) else ""
+    if not isinstance(content, str):
+        return ""
+    content = _INLINE_URL_ELEMENT_RE.sub("", content)
+    content = _KNOWN_INLINE_TAG_RE.sub("", content)
+    return html.unescape(content).strip()
 
 
 def _bbox_union(line_bboxes: list[CalculationBBox]) -> CalculationBBox:

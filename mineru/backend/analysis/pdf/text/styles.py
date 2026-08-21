@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""Hybrid TXT 路径复用的 PDF 原生文本样式准备入口。"""
+"""Hybrid TXT 路径复用的 PDF 原生文本富化准备入口。"""
 
 from __future__ import annotations
 
@@ -9,7 +9,9 @@ from pdftext.schema import Char
 
 from mineru.utils.pdf_document import PDFPage, get_lines_from_chars
 from mineru.utils.pdf_text_styles import (
+    PDFTextLinkLine,
     PDFTextStyleLine,
+    detect_pdf_text_link_lines,
     detect_pdf_text_style_lines,
 )
 
@@ -19,8 +21,13 @@ def build_pdf_native_visual_lines_and_styles(
     *,
     page_chars: list[Char] | None = None,
     supported_angles: Sequence[float] = (0.0,),
-) -> tuple[list[Char], list[Any], list[PDFTextStyleLine]]:
-    """一次读取当前页字符，构造视觉 run 及其水平文本样式证据。"""
+) -> tuple[
+    list[Char],
+    list[Any],
+    list[PDFTextStyleLine],
+    list[PDFTextLinkLine],
+]:
+    """一次读取当前页字符，构造视觉 run、文本样式和超链接证据。"""
 
     # 延迟导入避免 Hybrid 模块初始化时提前加载完整 Flash PDF 流水线。
     from mineru.model.flash.native_pdf.native_text import _build_native_line_items
@@ -36,7 +43,11 @@ def build_pdf_native_visual_lines_and_styles(
         line_items,
         pdf_page.get_drawing_lines(),
     )
-    return chars, line_items, style_lines
+    link_lines = detect_pdf_text_link_lines(
+        line_items,
+        pdf_page.get_link_annotations(),
+    )
+    return chars, line_items, style_lines, link_lines
 
 
 __all__ = ["build_pdf_native_visual_lines_and_styles"]

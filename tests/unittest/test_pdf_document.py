@@ -232,6 +232,119 @@ def _build_rotated_cropped_signature_pdf() -> bytes:
     return output.getvalue()
 
 
+def _build_rotated_cropped_link_pdf() -> bytes:
+    """构造带 QuadPoints、Rect 回退和无效动作的旋转 Link 注解测试 PDF。"""
+
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=100, height=200)
+    page.rotate(90)
+    page.cropbox.lower_left = (5, 10)
+    page.cropbox.upper_right = (95, 190)
+    annotations = ArrayObject()
+
+    def add_uri_link(
+        target: str,
+        rect: tuple[float, float, float, float],
+        *,
+        quad_points: tuple[float, ...] | None = None,
+        flags: int = 0,
+    ) -> None:
+        """追加一个可配置 URI Link，用于覆盖目标校验和区域读取分支。"""
+
+        annotation = DictionaryObject(
+            {
+                NameObject("/Type"): NameObject("/Annot"),
+                NameObject("/Subtype"): NameObject("/Link"),
+                NameObject("/Rect"): ArrayObject(
+                    [FloatObject(value) for value in rect]
+                ),
+                NameObject("/A"): DictionaryObject(
+                    {
+                        NameObject("/S"): NameObject("/URI"),
+                        NameObject("/URI"): TextStringObject(target),
+                    }
+                ),
+            }
+        )
+        if quad_points is not None:
+            annotation[NameObject("/QuadPoints")] = ArrayObject(
+                [FloatObject(value) for value in quad_points]
+            )
+        if flags:
+            annotation[NameObject("/F")] = NumberObject(flags)
+        annotations.append(writer._add_object(annotation))
+
+    add_uri_link(
+        "https://example.com/a?x=1&y=2",
+        (10, 20, 60, 40),
+        quad_points=(20, 35, 40, 35, 20, 25, 40, 25),
+    )
+    add_uri_link("mailto:user@example.com", (10, 50, 40, 60))
+    add_uri_link("tel:+123456", (10, 70, 40, 80))
+    add_uri_link("javascript:alert(1)", (10, 90, 40, 100))
+    add_uri_link("relative/path", (10, 110, 40, 120))
+    add_uri_link(
+        "https://hidden.example.com",
+        (10, 130, 40, 140),
+        flags=pdf_document.pdfium_c.FPDF_ANNOT_FLAG_HIDDEN,
+    )
+    add_uri_link(
+        "https://invisible.example.com",
+        (45, 130, 75, 140),
+        flags=pdf_document.pdfium_c.FPDF_ANNOT_FLAG_INVISIBLE,
+    )
+    add_uri_link(
+        "https://noview.example.com",
+        (10, 145, 40, 155),
+        flags=pdf_document.pdfium_c.FPDF_ANNOT_FLAG_NOVIEW,
+    )
+    annotations.append(
+        writer._add_object(
+            DictionaryObject(
+                {
+                    NameObject("/Type"): NameObject("/Annot"),
+                    NameObject("/Subtype"): NameObject("/Link"),
+                    NameObject("/Rect"): ArrayObject(
+                        [FloatObject(10), FloatObject(20)]
+                    ),
+                    NameObject("/A"): DictionaryObject(
+                        {
+                            NameObject("/S"): NameObject("/URI"),
+                            NameObject("/URI"): TextStringObject(
+                                "https://broken.example.com"
+                            ),
+                        }
+                    ),
+                }
+            )
+        )
+    )
+    annotations.append(
+        writer._add_object(
+            DictionaryObject(
+                {
+                    NameObject("/Type"): NameObject("/Annot"),
+                    NameObject("/Subtype"): NameObject("/Link"),
+                    NameObject("/Rect"): ArrayObject(
+                        [
+                            FloatObject(10),
+                            FloatObject(165),
+                            FloatObject(40),
+                            FloatObject(175),
+                        ]
+                    ),
+                    NameObject("/Dest"): TextStringObject("missing-destination"),
+                }
+            )
+        )
+    )
+    page[NameObject("/Annots")] = annotations
+
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
 class _TrackingLock:
     def __init__(self) -> None:
         self.depth = 0
@@ -286,6 +399,7 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
         def __init__(self, pdf_bytes: bytes) -> None:
             events.append(f"doc.open:{lock.depth}:{pdf_bytes!r}")
             self.page = _FakePage()
+            self.raw = object()
 
         def __len__(self) -> int:
             events.append(f"doc.__len__:{lock.depth}")
@@ -370,6 +484,18 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
         events.append(f"signature_bboxes:{lock.depth}:{page_bbox}:{page_rotation}")
         return []
 
+    def fake_extract_page_link_annotations(
+        page: _FakePage,
+        raw_doc: object,
+        page_bbox: tuple[float, float, float, float],
+        page_rotation: int,
+    ) -> list[pdf_document.PDFLinkAnnotation]:
+        """记录 Link 注解遍历时页面和文档句柄仍处于 PDFium 锁内。"""
+
+        assert raw_doc is doc._pdf_doc.raw
+        events.append(f"link_annotations:{lock.depth}:{page_bbox}:{page_rotation}")
+        return []
+
     monkeypatch.setattr(pdf_document.pdfium, "PdfDocument", _FakeDoc)
     monkeypatch.setattr(pdf_document, "get_chars", fake_get_chars, raising=False)
     monkeypatch.setattr(pdf_document, "pdftext_get_chars", fake_get_chars, raising=False)
@@ -379,6 +505,7 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
     monkeypatch.setattr(pdf_document, "_extract_page_image_infos", fake_extract_page_image_infos)
     monkeypatch.setattr(pdf_document, "_extract_page_form_bboxes", fake_extract_page_form_bboxes)
     monkeypatch.setattr(pdf_document, "_extract_page_signature_bboxes", fake_extract_page_signature_bboxes)
+    monkeypatch.setattr(pdf_document, "_extract_page_link_annotations", fake_extract_page_link_annotations)
 
     doc = pdf_document.PDFDocument(b"%PDF")
 
@@ -393,6 +520,7 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
     assert doc.get_page_image_infos(0) == []
     assert doc.get_page_form_bboxes(0) == []
     assert doc.get_page_signature_bboxes(0) == []
+    assert doc.get_page_link_annotations(0) == []
 
     assert any(event.startswith("doc.open:") and not event.startswith("doc.open:0:") for event in events)
     assert any(event.startswith("doc.__getitem__:") and not event.startswith("doc.__getitem__:0:") for event in events)
@@ -410,6 +538,7 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
     assert "image_infos:1:(0.0, 0.0, 20.0, 10.0):0" in events
     assert "form_bboxes:1:(0.0, 0.0, 20.0, 10.0):0" in events
     assert "signature_bboxes:1:(0.0, 0.0, 20.0, 10.0):0" in events
+    assert "link_annotations:1:(0.0, 0.0, 20.0, 10.0):0" in events
 
 
 def test_pdf_document_does_not_expose_legacy_compat_hooks() -> None:
@@ -653,6 +782,71 @@ def test_get_page_signature_bboxes_filters_visibility_and_applies_page_geometry(
             (10.0, 5.0, 50.0, 35.0),
         ]
     )
+
+
+def test_pdf_document_extracts_safe_external_link_annotations() -> None:
+    """验证外部 URI 白名单、QuadPoints 优先级和旋转 CropBox 坐标转换。"""
+
+    with pdf_document.PDFDocument(_build_rotated_cropped_link_pdf()) as document:
+        page_size = document.page_size(0)
+        links = document[0].get_link_annotations()
+
+    assert page_size == pytest.approx((180.0, 90.0))
+    assert [link.target for link in links] == [
+        "https://example.com/a?x=1&y=2",
+        "mailto:user@example.com",
+        "tel:+123456",
+    ]
+    assert links[0].bboxes[0] == pytest.approx((15.0, 15.0, 25.0, 35.0))
+    assert links[1].bboxes[0] == pytest.approx((40.0, 5.0, 50.0, 35.0))
+    assert links[2].bboxes[0] == pytest.approx((60.0, 5.0, 70.0, 35.0))
+    assert [link.source_index for link in links] == [0, 1, 2]
+
+
+@pytest.mark.parametrize(
+    ("target", "expected"),
+    [
+        ("HTTP://Example.com/path", "HTTP://Example.com/path"),
+        ("mailto:user@example.com", "mailto:user@example.com"),
+        ("tel:+123456", "tel:+123456"),
+        ("https:///missing-host", None),
+        ("mailto:", None),
+        ("javascript:alert(1)", None),
+        ("relative/path", None),
+        ("https://example.com/a\x01b", None),
+    ],
+)
+def test_pdf_external_link_target_validation(
+    target: str,
+    expected: str | None,
+) -> None:
+    """验证 PDF producer 只接受显式安全协议及完整目标。"""
+
+    assert pdf_document._validate_pdf_external_link_target(target) == expected
+
+
+@pytest.mark.parametrize(
+    ("rotation", "expected"),
+    [
+        (0, (15.0, 155.0, 35.0, 165.0)),
+        (90, (15.0, 15.0, 25.0, 35.0)),
+        (180, (55.0, 15.0, 75.0, 25.0)),
+        (270, (155.0, 55.0, 165.0, 75.0)),
+    ],
+)
+def test_pdf_link_region_geometry_supports_standard_page_rotations(
+    rotation: int,
+    expected: tuple[float, float, float, float],
+) -> None:
+    """验证 Link 点集在四个标准页面方向下转换到统一视觉坐标。"""
+
+    bbox = pdf_document._visual_bbox_from_pdf_points(
+        [(20.0, 25.0), (40.0, 25.0), (20.0, 35.0), (40.0, 35.0)],
+        (5.0, 10.0, 95.0, 190.0),
+        rotation,
+    )
+
+    assert bbox == pytest.approx(expected)
 
 
 def test_extract_page_signature_bboxes_closes_handles_and_skips_bad_annotation(

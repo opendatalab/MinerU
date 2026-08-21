@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import math
+import re
+from collections.abc import Callable
 from typing import Any
 
 from mineru.types import BBox, BlockType, RAW_PHONETIC
@@ -18,6 +20,8 @@ from .constants import (
     _VLM_UNCLASSIFIED_TITLE_TYPE,
 )
 from .geometry import _bbox_to_pixel_bbox
+
+_URL_ELEMENT_PATTERN = re.compile(r"<url>.*?</url>", re.IGNORECASE | re.DOTALL)
 
 
 def _collect_layout_doc_title_bboxes(layout_res: list[dict[str, Any]], page_size: tuple[int, int]) -> list[BBox]:
@@ -89,8 +93,25 @@ def _is_valid_pdf_text_block(block: dict[str, Any]) -> bool:
     return True
 
 
-def _normalize_natural_language_content(content: str) -> str:
-    """将自然语言中的全角字母和数字转为半角，同时原样保留行内公式片段。"""
+def _transform_outside_url_elements(
+    content: str,
+    transform: Callable[[str], str],
+) -> str:
+    """仅转换 hyperlink 可见内容，原样保留结构化 URL 标签及其正文。"""
+
+    parts: list[str] = []
+    cursor = 0
+    for match in _URL_ELEMENT_PATTERN.finditer(content):
+        parts.append(transform(content[cursor : match.start()]))
+        parts.append(match.group(0))
+        cursor = match.end()
+    parts.append(transform(content[cursor:]))
+    return "".join(parts)
+
+
+def _normalize_natural_language_fragment(content: str) -> str:
+    """规范自然语言片段中的全角字符，同时原样保留行内公式片段。"""
+
     normalized_parts: list[str] = []
     cursor = 0
     formula_markers = (("\\(", "\\)"), ("<eq>", "</eq>"))
@@ -115,6 +136,27 @@ def _normalize_natural_language_content(content: str) -> str:
         cursor = formula_end
 
     return "".join(normalized_parts)
+
+
+def _normalize_natural_language_content(content: str) -> str:
+    """规范自然语言可见文本，但不改写 hyperlink 的 URL 目标。"""
+
+    return _transform_outside_url_elements(
+        content,
+        _normalize_natural_language_fragment,
+    )
+
+
+def _normalize_inline_formula_markup(content: str) -> str:
+    """只在 URL 标签外把反斜杠圆括号公式转换为 eq 标签。"""
+
+    return _transform_outside_url_elements(
+        content,
+        lambda value: _INLINE_FORMULA_PATTERN.sub(
+            lambda match: f"<eq>{match.group(1)}</eq>",
+            value,
+        ),
+    )
 
 
 def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
@@ -142,10 +184,7 @@ def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
                 continue
             if block.get("type") in NATURAL_LANGUAGE_CONTENT_BLOCK_TYPES:
                 content = _normalize_natural_language_content(content)
-            block["content"] = _INLINE_FORMULA_PATTERN.sub(
-                lambda match: f"<eq>{match.group(1)}</eq>",
-                content,
-            )
+            block["content"] = _normalize_inline_formula_markup(content)
         page_model_list[:] = [
             block
             for block in page_model_list

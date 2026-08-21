@@ -427,7 +427,7 @@ def test_fill_window_batches_txt_post_ocr_before_page_content(monkeypatch: pytes
     monkeypatch.setattr(
         text_content,
         "build_pdf_native_visual_lines_and_styles",
-        lambda *_args, **_kwargs: ([], [], []),
+        lambda *_args, **_kwargs: ([], [], [], []),
     )
     monkeypatch.setattr(
         text_content,
@@ -527,6 +527,24 @@ def test_text_content_joins_cross_line_url_candidate_without_space() -> None:
     )
 
     assert content == "Available at https://doi.org/10.1016/example for details."
+
+
+def test_text_content_joins_three_line_url_with_accumulated_context() -> None:
+    """验证 Hybrid TXT 回填可跨三行保留 URL 协议上下文并连续拼接。"""
+
+    content = text_content._lines_to_block_content(
+        _build_text_lines(
+            "Code at https://github.",
+            "com/google-research/tapas/blob/master/",
+            "TABLEFORMER.md",
+        ),
+        BlockType.TEXT,
+    )
+
+    assert content == (
+        "Code at "
+        "https://github.com/google-research/tapas/blob/master/TABLEFORMER.md"
+    )
 
 
 @pytest.mark.parametrize("block_type", [BlockType.CODE, RAW_ALGORITHM])
@@ -707,7 +725,7 @@ def test_process_low_txt_fills_native_formulas_after_table_cleanup(
     monkeypatch.setattr(
         window,
         "_build_pdf_text_visual_run_data",
-        lambda _page: ([], []),
+        lambda _page: ([], [], []),
     )
 
     def fake_fill_low_table_contents(*_args: object) -> None:

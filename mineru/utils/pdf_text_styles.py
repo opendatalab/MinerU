@@ -1,17 +1,20 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""从 PDF 原生字符与绘图线中恢复文本字体和装饰线样式。"""
+"""从 PDF 原生字符、绘图线和 Link 注解恢复行内样式与超链接。"""
 
 from __future__ import annotations
 
+import html
 import math
 import re
 import statistics
 from dataclasses import dataclass
-from typing import Any, Iterable, Literal, Sequence, cast
+from typing import Any, Iterable, Literal, Sequence, TypeVar, cast
 
 from loguru import logger
 
 from mineru.types import BBox, BlockType, RAW_CAPTION, RAW_FOOTNOTE
+from mineru.utils.pdf_document import PDFLinkAnnotation
+from mineru.utils.text_utils import is_hyphen_at_line_end
 
 
 TEXT_DECORATION_MIN_LENGTH_HEIGHT_RATIO = 2.0
@@ -26,6 +29,7 @@ PDF_FONT_ITALIC_FLAG = 1 << 6
 PDF_FONT_FORCE_BOLD_FLAG = 1 << 18
 PDF_BOLD_MIN_WEIGHT = 600.0
 PDF_BOLD_MIN_COMPARABLE_CHAR_COUNT = 2
+PDF_LINK_CHAR_OVERLAP_THRESHOLD = 0.5
 
 PDFTextStyle = Literal["bold", "italic", "underline", "strikethrough"]
 PDFTextDecoration = Literal["underline", "strikethrough"]
@@ -115,6 +119,32 @@ class PDFTextStyleLine:
 
 
 @dataclass(frozen=True, slots=True)
+class PDFTextLinkRange:
+    """保存可比较文本中的一个半开超链接区间。"""
+
+    start: int
+    end: int
+    target: str
+
+
+@dataclass(frozen=True, slots=True)
+class PDFTextLinkLine:
+    """保存视觉文本 run 的几何、可比较文本和超链接区间。"""
+
+    bbox: BBox
+    text: str
+    link_ranges: tuple[PDFTextLinkRange, ...]
+    source_index: int
+
+
+PDFTextEvidenceLine = TypeVar(
+    "PDFTextEvidenceLine",
+    PDFTextStyleLine,
+    PDFTextLinkLine,
+)
+
+
+@dataclass(frozen=True, slots=True)
 class _VisibleChar:
     """保存参与文本装饰线几何判断的可见字符。"""
 
@@ -157,6 +187,7 @@ class _ProjectedChar:
     raw_end: int
     existing_styles: frozenset[PDFTextStyle]
     formula_gap_before: bool
+    inside_hyperlink: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,6 +206,26 @@ class _RawStyleInterval:
     start: int
     end: int
     styles: tuple[PDFTextStyle, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _MatchedLinkRange:
+    """保存已经对齐到 block 可比较文本的链接区间与物理行身份。"""
+
+    start: int
+    end: int
+    target: str
+    source_index: int
+
+
+@dataclass(frozen=True, slots=True)
+class _RawLinkInterval:
+    """保存 model content 原字符串中的半开链接区间。"""
+
+    start: int
+    end: int
+    target: str
+    source_index: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -700,6 +751,160 @@ def detect_pdf_text_style_lines(
     )
 
 
+def _bbox_intersection_area(first: BBox, second: BBox) -> float:
+    """返回两个合法 bbox 的相交面积。"""
+
+    width = max(0.0, min(first[2], second[2]) - max(first[0], second[0]))
+    height = max(0.0, min(first[3], second[3]) - max(first[1], second[1]))
+    return width * height
+
+
+def _link_region_hits_char(region: BBox, char_bbox: BBox) -> bool:
+    """按字符中心或字符面积覆盖率判断 Link 区域是否命中字符。"""
+
+    center_x = (char_bbox[0] + char_bbox[2]) / 2
+    center_y = (char_bbox[1] + char_bbox[3]) / 2
+    if (
+        region[0] <= center_x <= region[2]
+        and region[1] <= center_y <= region[3]
+    ):
+        return True
+    char_area = max(
+        0.01,
+        (char_bbox[2] - char_bbox[0]) * (char_bbox[3] - char_bbox[1]),
+    )
+    return (
+        _bbox_intersection_area(region, char_bbox) / char_area
+        >= PDF_LINK_CHAR_OVERLAP_THRESHOLD
+    )
+
+
+def _link_targets_for_char(
+    char_bbox: BBox,
+    annotations: Sequence[PDFLinkAnnotation],
+) -> set[str]:
+    """返回命中字符的全部不同链接目标，供冲突检测使用。"""
+
+    return {
+        annotation.target
+        for annotation in annotations
+        if any(
+            _link_region_hits_char(region, char_bbox)
+            for region in annotation.bboxes
+        )
+    }
+
+
+def _compact_link_ranges(
+    compact_targets: Sequence[str | None],
+) -> tuple[PDFTextLinkRange, ...]:
+    """把逐字符链接目标压缩为同目标连续区间。"""
+
+    ranges: list[PDFTextLinkRange] = []
+    active_start = 0
+    active_target: str | None = None
+    for offset, target in enumerate([*compact_targets, None]):
+        if target == active_target:
+            continue
+        if active_target is not None:
+            ranges.append(
+                PDFTextLinkRange(
+                    start=active_start,
+                    end=offset,
+                    target=active_target,
+                )
+            )
+        active_start = offset
+        active_target = target
+    return tuple(ranges)
+
+
+def _build_link_line_payload(
+    line: Any,
+    annotations: Sequence[PDFLinkAnnotation],
+    fallback_source_index: int,
+) -> PDFTextLinkLine | None:
+    """把一个视觉文本 run 与 Link 区域相交结果转换为紧凑链接证据。"""
+
+    try:
+        angle = int(getattr(line, "angle", 0) or 0) % 360
+    except (TypeError, ValueError):
+        return None
+    if angle not in {0, 90, 180, 270}:
+        return None
+    line_bbox = _coerce_bbox(getattr(line, "bbox", None))
+    if line_bbox is None:
+        return None
+    nearby_annotations = [
+        annotation
+        for annotation in annotations
+        if any(
+            _bbox_intersection_area(line_bbox, region) > 0
+            for region in annotation.bboxes
+        )
+    ]
+    if not nearby_annotations:
+        return None
+
+    compact_parts: list[str] = []
+    compact_targets: list[str | None] = []
+    for char in _ordered_line_chars(line):
+        fragment = _normalize_match_fragment(char.get("char"))
+        if not fragment:
+            continue
+        char_bbox = _coerce_bbox(char.get("bbox"))
+        targets = (
+            _link_targets_for_char(char_bbox, nearby_annotations)
+            if char_bbox is not None
+            else set()
+        )
+        # 同一字符落入不同目标时不猜测 PDF 点击层级，保留为普通文本。
+        target = next(iter(targets)) if len(targets) == 1 else None
+        compact_parts.append(fragment)
+        compact_targets.extend([target] * len(fragment))
+
+    text = "".join(compact_parts)
+    link_ranges = _compact_link_ranges(compact_targets)
+    if not text or not link_ranges:
+        return None
+    try:
+        source_index = int(getattr(line, "source_index", fallback_source_index))
+    except (TypeError, ValueError):
+        source_index = fallback_source_index
+    return PDFTextLinkLine(
+        bbox=line_bbox,
+        text=text,
+        link_ranges=link_ranges,
+        source_index=source_index,
+    )
+
+
+def detect_pdf_text_link_lines(
+    lines: Sequence[Any],
+    annotations: Sequence[PDFLinkAnnotation],
+) -> list[PDFTextLinkLine]:
+    """从视觉文本 run 与 PDF Link 注解生成字符级超链接证据。"""
+
+    if not annotations:
+        return []
+    payloads = [
+        payload
+        for line_index, line in enumerate(lines)
+        if (
+            payload := _build_link_line_payload(
+                line,
+                annotations,
+                line_index,
+            )
+        )
+        is not None
+    ]
+    return sorted(
+        payloads,
+        key=lambda line: (line.source_index, line.bbox[1], line.bbox[0]),
+    )
+
+
 def _block_bbox_to_page_bbox(value: Any, page_size: tuple[float, float]) -> BBox | None:
     """把 model-list 的归一化 bbox 转回页面 point，同时兼容已是绝对坐标的内部输入。"""
 
@@ -741,9 +946,9 @@ def _line_block_score(line_bbox: BBox, block_bbox: BBox) -> tuple[float, float, 
 
 def _assign_lines_to_blocks(
     blocks: list[dict[str, Any]],
-    lines: Sequence[PDFTextStyleLine],
+    lines: Sequence[PDFTextEvidenceLine],
     page_size: tuple[float, float],
-) -> dict[int, list[PDFTextStyleLine]]:
+) -> dict[int, list[PDFTextEvidenceLine]]:
     """把每个视觉文本行唯一分配给最匹配的自然语言 block。"""
 
     target_bboxes = {
@@ -753,7 +958,7 @@ def _assign_lines_to_blocks(
         and isinstance(block.get("content"), str)
         and (block_bbox := _block_bbox_to_page_bbox(block.get("bbox"), page_size)) is not None
     }
-    assignments: dict[int, list[PDFTextStyleLine]] = {}
+    assignments: dict[int, list[PDFTextEvidenceLine]] = {}
     for line in lines:
         matches = [
             (block_index, _line_block_score(line.bbox, block_bbox))
@@ -769,7 +974,13 @@ def _assign_lines_to_blocks(
         block_index, _score = max(matches, key=lambda item: (*item[1], -item[0]))
         assignments.setdefault(block_index, []).append(line)
     for block_lines in assignments.values():
-        block_lines.sort(key=_style_line_reading_order_key)
+        block_lines.sort(
+            key=lambda line: (
+                line.source_index,
+                line.bbox[1],
+                line.bbox[0],
+            )
+        )
     return assignments
 
 
@@ -906,6 +1117,10 @@ def _project_content_chars(content: str) -> list[_ProjectedChar]:
                         existing_styles=_active_inline_styles(stack),
                         formula_gap_before=(
                             pending_formula_gap and fragment_index == 0
+                        ),
+                        inside_hyperlink=any(
+                            state.tag == "hyperlink"
+                            for state in stack
                         ),
                     )
                 )
@@ -1203,6 +1418,487 @@ def _merge_style_ranges(ranges: Sequence[PDFTextStyleRange]) -> list[PDFTextStyl
     return merged
 
 
+def _resolve_link_fallback_occurrence(
+    content: str,
+    line: PDFTextLinkLine,
+    link_range: PDFTextLinkRange,
+    start: int,
+) -> int | None:
+    """整行无法对齐时，用唯一标签或两侧精确上下文定位链接片段。"""
+
+    target_text = line.text[link_range.start : link_range.end]
+    occurrences = _all_occurrences(content, target_text, start)
+    if not occurrences:
+        return None
+    if len(occurrences) == 1:
+        return occurrences[0]
+
+    left_context = line.text[max(0, link_range.start - 12) : link_range.start]
+    right_context = line.text[link_range.end : link_range.end + 12]
+    required_context_score = int(bool(left_context)) + int(bool(right_context))
+    if required_context_score == 0:
+        return None
+    scored = [
+        (
+            int(
+                bool(left_context)
+                and content[max(0, position - len(left_context)) : position]
+                == left_context
+            )
+            + int(
+                bool(right_context)
+                and content[
+                    position + len(target_text) :
+                    position + len(target_text) + len(right_context)
+                ]
+                == right_context
+            ),
+            position,
+        )
+        for position in occurrences
+    ]
+    best_score = max(score for score, _position in scored)
+    best_positions = [
+        position
+        for score, position in scored
+        if score == best_score
+    ]
+    return (
+        best_positions[0]
+        if best_score == required_context_score and len(best_positions) == 1
+        else None
+    )
+
+
+def _project_link_range_from_line_match(
+    link_range: PDFTextLinkRange,
+    match: _LineProjectionMatch,
+    source_index: int,
+) -> list[_MatchedLinkRange]:
+    """按行字符投影映射链接区间，并在缺失字符处安全分段。"""
+
+    output: list[_MatchedLinkRange] = []
+    current_start: int | None = None
+    previous_index: int | None = None
+    for projected_index in match.source_to_projected[
+        link_range.start : link_range.end
+    ]:
+        if projected_index is None:
+            if current_start is not None and previous_index is not None:
+                output.append(
+                    _MatchedLinkRange(
+                        current_start,
+                        previous_index + 1,
+                        link_range.target,
+                        source_index,
+                    )
+                )
+            current_start = None
+            previous_index = None
+            continue
+        if (
+            current_start is not None
+            and previous_index is not None
+            and projected_index != previous_index + 1
+        ):
+            output.append(
+                _MatchedLinkRange(
+                    current_start,
+                    previous_index + 1,
+                    link_range.target,
+                    source_index,
+                )
+            )
+            current_start = None
+        if current_start is None:
+            current_start = projected_index
+        previous_index = projected_index
+    if current_start is not None and previous_index is not None:
+        output.append(
+            _MatchedLinkRange(
+                current_start,
+                previous_index + 1,
+                link_range.target,
+                source_index,
+            )
+        )
+    return output
+
+
+def _link_lines_form_dehyphenated_continuation(
+    line: PDFTextLinkLine,
+    next_line: PDFTextLinkLine | None,
+) -> bool:
+    """判断相邻同 href 链接行是否符合文本回填的英文断词规则。"""
+
+    if (
+        next_line is None
+        or next_line.source_index != line.source_index + 1
+        or not line.text
+        or not next_line.text
+        or not is_hyphen_at_line_end(line.text)
+        or not next_line.text[0].islower()
+    ):
+        return False
+    tail_targets = {
+        link_range.target
+        for link_range in line.link_ranges
+        if link_range.start < link_range.end == len(line.text)
+    }
+    head_targets = {
+        link_range.target
+        for link_range in next_line.link_ranges
+        if link_range.start == 0 < link_range.end
+    }
+    return bool(tail_targets.intersection(head_targets))
+
+
+def _match_link_line_without_terminal_hyphen(
+    projected_text: str,
+    line: PDFTextLinkLine,
+    next_line: PDFTextLinkLine | None,
+    start: int,
+) -> _LineProjectionMatch | None:
+    """在严格跨行条件下将已被 block 回填删除的行末断词符投影为空洞。"""
+
+    if not _link_lines_form_dehyphenated_continuation(line, next_line):
+        return None
+    candidate = line.text[:-1]
+    next_first_char = next_line.text[0] if next_line is not None else ""
+    occurrences = [
+        position
+        for position in _all_occurrences(projected_text, candidate, start)
+        if (
+            position + len(candidate) < len(projected_text)
+            and projected_text[position + len(candidate)] == next_first_char
+        )
+    ]
+    if len(occurrences) != 1:
+        logger.debug(
+            "Skip ambiguous PDF hyperlink dehyphenation mapping: "
+            f"line={line.text!r}, occurrences={len(occurrences)}"
+        )
+        return None
+    position = occurrences[0]
+    return _LineProjectionMatch(
+        start=position,
+        end=position + len(candidate),
+        source_to_projected=(
+            *range(position, position + len(candidate)),
+            None,
+        ),
+    )
+
+
+def _merge_matched_link_ranges(
+    ranges: Sequence[_MatchedLinkRange],
+) -> list[_MatchedLinkRange]:
+    """删除不同目标重叠区，并合并同一物理行内的同目标相邻区间。"""
+
+    valid_ranges = [
+        link_range
+        for link_range in ranges
+        if link_range.start < link_range.end and link_range.target
+    ]
+    if not valid_ranges:
+        return []
+    boundaries = sorted(
+        {
+            position
+            for link_range in valid_ranges
+            for position in (link_range.start, link_range.end)
+        }
+    )
+    merged: list[_MatchedLinkRange] = []
+    for start, end in zip(boundaries, boundaries[1:]):
+        active = [
+            link_range
+            for link_range in valid_ranges
+            if link_range.start < end and link_range.end > start
+        ]
+        targets = {link_range.target for link_range in active}
+        if len(targets) != 1:
+            continue
+        target = next(iter(targets))
+        source_index = min(
+            link_range.source_index
+            for link_range in active
+            if link_range.target == target
+        )
+        if (
+            merged
+            and merged[-1].end == start
+            and merged[-1].target == target
+            and merged[-1].source_index == source_index
+        ):
+            merged[-1] = _MatchedLinkRange(
+                merged[-1].start,
+                end,
+                target,
+                source_index,
+            )
+        else:
+            merged.append(
+                _MatchedLinkRange(
+                    start,
+                    end,
+                    target,
+                    source_index,
+                )
+            )
+    return merged
+
+
+def _match_link_ranges(
+    projected: Sequence[_ProjectedChar],
+    lines: Sequence[PDFTextLinkLine],
+) -> list[_MatchedLinkRange]:
+    """按物理行顺序把 Link 几何证据确定性对齐到 block 文本。"""
+
+    projected_text = "".join(token.value for token in projected)
+    output: list[_MatchedLinkRange] = []
+    cursor = 0
+    for line_index, line in enumerate(lines):
+        next_line = lines[line_index + 1] if line_index + 1 < len(lines) else None
+        line_start = projected_text.find(line.text, cursor)
+        if line_start >= 0:
+            output.extend(
+                _MatchedLinkRange(
+                    line_start + link_range.start,
+                    line_start + link_range.end,
+                    link_range.target,
+                    line.source_index,
+                )
+                for link_range in line.link_ranges
+            )
+            cursor = line_start + len(line.text)
+            continue
+        formula_match = _match_line_across_formula_gaps(
+            line.text,
+            projected,
+            cursor,
+        )
+        if formula_match is not None:
+            for link_range in line.link_ranges:
+                output.extend(
+                    _project_link_range_from_line_match(
+                        link_range,
+                        formula_match,
+                        line.source_index,
+                    )
+                )
+            cursor = formula_match.end
+            continue
+
+        dehyphenated_match = _match_link_line_without_terminal_hyphen(
+            projected_text,
+            line,
+            next_line,
+            cursor,
+        )
+        if dehyphenated_match is not None:
+            for link_range in line.link_ranges:
+                output.extend(
+                    _project_link_range_from_line_match(
+                        link_range,
+                        dehyphenated_match,
+                        line.source_index,
+                    )
+                )
+            cursor = dehyphenated_match.end
+            continue
+
+        skipped_ranges: list[PDFTextLinkRange] = []
+        for link_range in line.link_ranges:
+            position = _resolve_link_fallback_occurrence(
+                projected_text,
+                line,
+                link_range,
+                cursor,
+            )
+            if position is None:
+                skipped_ranges.append(link_range)
+                continue
+            output.append(
+                _MatchedLinkRange(
+                    position,
+                    position + link_range.end - link_range.start,
+                    link_range.target,
+                    line.source_index,
+                )
+            )
+            cursor = position + link_range.end - link_range.start
+        if skipped_ranges:
+            logger.debug(
+                "Skip ambiguous PDF hyperlink mapping: "
+                f"line={line.text!r}, skipped={len(skipped_ranges)}, "
+                f"samples={[(line.text[item.start:item.end], item.target) for item in skipped_ranges[:3]]!r}"
+            )
+    return _merge_matched_link_ranges(output)
+
+
+def _append_raw_link_interval(
+    intervals: list[_RawLinkInterval],
+    start: int | None,
+    end: int,
+    target: str,
+    source_index: int,
+) -> None:
+    """向结果追加一个合法原字符串链接区间。"""
+
+    if start is not None and start < end and target:
+        intervals.append(
+            _RawLinkInterval(
+                start,
+                end,
+                target,
+                source_index,
+            )
+        )
+
+
+def _raw_link_intervals(
+    content: str,
+    projected: Sequence[_ProjectedChar],
+    ranges: Sequence[_MatchedLinkRange],
+) -> list[_RawLinkInterval]:
+    """把链接区间转换为不跨公式或已有 hyperlink 的原字符串区间。"""
+
+    intervals: list[_RawLinkInterval] = []
+    for link_range in ranges:
+        current_start: int | None = None
+        current_end = 0
+        for token in projected[link_range.start : link_range.end]:
+            if token.inside_hyperlink or (
+                token.formula_gap_before and current_start is not None
+            ):
+                _append_raw_link_interval(
+                    intervals,
+                    current_start,
+                    current_end,
+                    link_range.target,
+                    link_range.source_index,
+                )
+                current_start = None
+            if token.inside_hyperlink:
+                continue
+            if current_start is None:
+                current_start = token.raw_start
+                current_end = token.raw_end
+                continue
+            gap = content[current_end : token.raw_start]
+            if token.raw_start <= current_end or not gap or gap.isspace():
+                current_end = max(current_end, token.raw_end)
+            else:
+                _append_raw_link_interval(
+                    intervals,
+                    current_start,
+                    current_end,
+                    link_range.target,
+                    link_range.source_index,
+                )
+                current_start = token.raw_start
+                current_end = token.raw_end
+        _append_raw_link_interval(
+            intervals,
+            current_start,
+            current_end,
+            link_range.target,
+            link_range.source_index,
+        )
+    return intervals
+
+
+def _raw_link_gap_is_boundary_only(gap: str) -> bool:
+    """判断两个跨行链接片段之间是否只包含空白或非正文边界符号。"""
+
+    if not gap:
+        return True
+    if _KNOWN_INLINE_TAG_RE.search(gap) or r"\(" in gap or r"\)" in gap:
+        return False
+    return not any(char.isalnum() for char in html.unescape(gap))
+
+
+def _merge_raw_link_intervals(
+    content: str,
+    intervals: Sequence[_RawLinkInterval],
+) -> list[_RawLinkInterval]:
+    """合并相邻物理行中同 href 的首尾链接片段，不跨越正文或公式。"""
+
+    merged: list[_RawLinkInterval] = []
+    for interval in sorted(
+        intervals,
+        key=lambda item: (item.start, item.end, item.source_index, item.target),
+    ):
+        if interval.start >= interval.end or not interval.target:
+            continue
+        if (
+            merged
+            and merged[-1].target == interval.target
+            and interval.source_index == merged[-1].source_index + 1
+            and interval.start >= merged[-1].end
+            and _raw_link_gap_is_boundary_only(
+                content[merged[-1].end : interval.start]
+            )
+        ):
+            merged[-1] = _RawLinkInterval(
+                merged[-1].start,
+                interval.end,
+                interval.target,
+                interval.source_index,
+            )
+        else:
+            merged.append(interval)
+    return merged
+
+
+def _wrap_link_intervals(
+    content: str,
+    intervals: Sequence[_RawLinkInterval],
+) -> str:
+    """从右向左包装链接区间，并对 URL 标签正文执行实体转义。"""
+
+    output = content
+    for interval in sorted(
+        intervals,
+        key=lambda item: (item.start, item.end, item.target),
+        reverse=True,
+    ):
+        escaped_target = html.escape(interval.target, quote=False)
+        output = (
+            f"{output[: interval.start]}<hyperlink>"
+            f"{output[interval.start : interval.end]}"
+            f"<url>{escaped_target}</url></hyperlink>"
+            f"{output[interval.end :]}"
+        )
+    return output
+
+
+def apply_pdf_text_links(
+    blocks: list[dict[str, Any]],
+    lines: Sequence[PDFTextLinkLine],
+    page_size: tuple[float, float],
+) -> None:
+    """把页面 Link 几何证据写入自然语言 block，歧义时保持原文。"""
+
+    assignments = _assign_lines_to_blocks(blocks, lines, page_size)
+    for block_index, block_lines in assignments.items():
+        content = blocks[block_index].get("content")
+        if not isinstance(content, str) or not content:
+            continue
+        projected = _project_content_chars(content)
+        link_ranges = _match_link_ranges(projected, block_lines)
+        if not link_ranges:
+            continue
+        intervals = _raw_link_intervals(content, projected, link_ranges)
+        if intervals:
+            intervals = _merge_raw_link_intervals(content, intervals)
+            blocks[block_index]["content"] = _wrap_link_intervals(
+                content,
+                intervals,
+            )
+
+
 def _append_raw_style_interval(
     intervals: list[_RawStyleInterval],
     start: int | None,
@@ -1349,9 +2045,13 @@ def apply_pdf_text_styles(
 __all__ = [
     "PDF_FONT_FORCE_BOLD_FLAG",
     "PDF_FONT_ITALIC_FLAG",
+    "PDFTextLinkLine",
+    "PDFTextLinkRange",
     "PDFTextStyle",
     "PDFTextStyleLine",
     "PDFTextStyleRange",
+    "apply_pdf_text_links",
     "apply_pdf_text_styles",
+    "detect_pdf_text_link_lines",
     "detect_pdf_text_style_lines",
 ]
