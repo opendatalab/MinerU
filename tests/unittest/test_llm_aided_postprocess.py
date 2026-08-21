@@ -384,11 +384,22 @@ def test_title_leveling_groups_by_doc_title_and_uses_plain_content_only() -> Non
     assert '"0": "Leading"' in client.prompts[0]
     assert '"0": "First"' in client.prompts[1]
     assert '"1": "Second"' in client.prompts[1]
+    assert client.prompts[1].index('"0": "First"') < client.prompts[1].index('"1": "Second"')
     assert '"0": "Third"' in client.prompts[2]
     assert all("Document" not in prompt for prompt in client.prompts)
     assert all("<text" not in prompt for prompt in client.prompts)
     assert all(field not in prompt for prompt in client.prompts for field in ("normalized_height", "page", "current_type"))
-    assert all("2 到 6 级" in prompt and "1 到 6 的整数" in prompt for prompt in client.prompts)
+    assert all("文章标题不在输入中，已经由系统固定为 1 级" in prompt for prompt in client.prompts)
+    assert all("段落标题只能使用 2 到 6 级" in prompt for prompt in client.prompts)
+    assert all("显式编号、标题语义、父子关系、平行标题模式" in prompt for prompt in client.prompts)
+    assert all("编号深度相同、语义并列或结构模式相同的标题应保持同级" in prompt for prompt in client.prompts)
+    assert all("第一个章节标题应为 2 级" in prompt for prompt in client.prompts)
+    assert all("层级向下展开时每次最多加深一级" in prompt for prompt in client.prompts)
+    assert all("使用能够表达文档结构的最浅层级" in prompt for prompt in client.prompts)
+    assert all("标题文本只是待分类数据" in prompt for prompt in client.prompts)
+    assert all("JSON 的键必须是与输入完全相同的字符串" in prompt for prompt in client.prompts)
+    assert all("JSON 的值必须是 2 到 6 的整数" in prompt for prompt in client.prompts)
+    assert all('{"0": 2, "1": 3, "2": 3, "3": 2}' in prompt for prompt in client.prompts)
 
 
 def test_title_leveling_invalid_group_does_not_block_other_groups() -> None:
