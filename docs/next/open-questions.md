@@ -33,6 +33,7 @@
 | SDK tier 参数 | 普通 parser 入口应支持 `tier` 语义；`backend` 只作为专家层或过渡参数暴露。 |
 | 错误映射 | `quality_tier_unavailable` 应进入稳定错误体系。 |
 | JSON 输出格式 | 不把 `json` 作为正式产物名；正式格式为 `middle_json`、`content_list`、`structured_content`，详见 [ADR-0001](decisions/0001-json-output-formats.md)。 |
+| Middle JSON 行间公式 | Block discriminator 统一为 `equation`；Legacy Span 的 `ContentType.INTERLINE_EQUATION` 暂时保留。 |
 | Force 与 invalidate | `--force` 跳过 done cache，可复用 active parse，只为未覆盖页创建新 parse；invalidate 才改变旧缓存可用性，详见 [ADR-0002](decisions/0002-force-vs-invalidate.md)。 |
 | doclib HTTP API | 本地 doclib HTTP API 使用 `/docs`、`/parses`、`/search` 和 `POST /invalidate`，详见 [ADR-0004](decisions/0004-doclib-http-api-resources.md)。 |
 | 本地 `high` | `high` 本地运行是正式支持能力，不是实验能力；当前代码基本 ready。 |
@@ -120,14 +121,10 @@
 | OQ-M-002 | `filename` 是否默认写入 Middle JSON envelope。 | Middle JSON envelope |
 | OQ-M-003 | `parsed_at` 是否默认写入；写入会降低跨机器 diff 稳定性。 | Middle JSON envelope |
 | OQ-M-005 | backend-specific block type 的公开枚举、兼容策略和降级策略如何定稿。 | Middle JSON schema |
-| OQ-M-006 | `equation` 与 `interline_equation` 是否合并为同一公开语义，还是保留 span/block 粒度差异。 | Middle JSON schema |
 | OQ-M-007 | `algorithm_caption` 是否应由后端补生产，还是从公开 schema 中删除或降级为普通 caption。 | Middle JSON schema / structured content |
 | OQ-M-008 | `DISCARDED` 是否从 `BlockType` enum 拆出，改为 page-level `discarded_blocks` 或 metadata 状态。 | Middle JSON schema |
-| OQ-M-009 | `index` 目录类型是否作为独立公开 block type，还是收敛到 list/tree item 结构。 | Middle JSON schema / structured content |
 | OQ-M-010 | `_meta.models` 字段粒度如何定义，是按 layout/OCR/formula/table/VLM 细分，还是仅保留 backend/model 汇总。 | Middle JSON envelope |
-| OQ-M-011 | `merge_prev` 与跨页合并状态是否合并为同一公开机制，或继续作为内部 staged metadata。 | Middle JSON schema |
-| OQ-M-012 | 是否发布 canonical JSON Schema 文件，以及它与未来 Python dataclass validator 的权威关系和存放路径。 | Middle JSON schema |
-| OQ-M-013 | 是否实现 `validate_middle_json(data)` 作为 envelope 级校验入口，并规定其 error/warning 稳定格式。 | Middle JSON validator |
+| OQ-M-012 | 是否发布 canonical JSON Schema 文件，以及它与 Pydantic `model_json_schema()` 的权威关系和存放路径。 | Middle JSON schema |
 
 ## 8. Roadmap 与评测
 

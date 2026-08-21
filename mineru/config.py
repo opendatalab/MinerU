@@ -241,6 +241,36 @@ class ManagedParseServerConfig(BaseModel):
     port_probe_count: int = Field(default=100, ge=1)
 
 
+class LatexDelimiterConfig(BaseModel):
+    """单组 LaTeX 左右定界符配置。"""
+
+    left: str = Field(min_length=1)
+    right: str = Field(min_length=1)
+
+
+def _default_display_latex_delimiter() -> LatexDelimiterConfig:
+    """构造缺省行间公式定界符。"""
+    return LatexDelimiterConfig(left="$$", right="$$")
+
+
+def _default_inline_latex_delimiter() -> LatexDelimiterConfig:
+    """构造缺省行内公式定界符。"""
+    return LatexDelimiterConfig(left="$", right="$")
+
+
+class LatexDelimitersConfig(BaseModel):
+    """Markdown 行内与行间公式定界符配置。"""
+
+    display: LatexDelimiterConfig = Field(default_factory=_default_display_latex_delimiter)
+    inline: LatexDelimiterConfig = Field(default_factory=_default_inline_latex_delimiter)
+
+
+class RenderConfig(BaseModel):
+    """MiddleJson 输出渲染配置。"""
+
+    latex_delimiters: LatexDelimitersConfig = Field(default_factory=LatexDelimitersConfig)
+
+
 class DoclibConfig(BaseModel):
     """Doclib startup configuration.
 
@@ -286,7 +316,7 @@ class Config(BaseModel):
     """Top-level MinerU startup configuration."""
 
     doclib: DoclibConfig = Field(default_factory=DoclibConfig)
-    # render: RenderConfig
+    render: RenderConfig = Field(default_factory=RenderConfig)
 
 
 config = _apply_env_overrides(Config(**_read_config()))
@@ -302,6 +332,9 @@ __all__ = [
     "config",
     "Config",
     "DoclibConfig",
+    "LatexDelimiterConfig",
+    "LatexDelimitersConfig",
+    "RenderConfig",
     "TCPConfig",
     "LogConfig",
     "SQLiteConfig",

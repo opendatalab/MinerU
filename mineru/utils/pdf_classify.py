@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from ctypes import byref, c_int, create_string_buffer
 from io import BytesIO
 from typing import Any
@@ -10,6 +11,7 @@ import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
 from loguru import logger
 from pypdf import PdfReader
+from pypdf.generic import ContentStream
 
 from .pdfium_guard import close_pdfium_child, pdfium_guard
 
@@ -21,6 +23,11 @@ TEXT_QUALITY_BAD_THRESHOLD = 0.03
 UNICODE_MAP_ERROR_RATIO_THRESHOLD = 0.04
 CID_FONT_USAGE_RATIO_THRESHOLD = 0.01
 CID_FONT_USAGE_COUNT_THRESHOLD = 30
+LATIN_CJK_FONT_USAGE_RATIO_THRESHOLD = 0.01
+LATIN_CJK_FONT_USAGE_COUNT_THRESHOLD = 30
+LATIN_CJK_FONT_CJK_RATIO_THRESHOLD = 0.8
+LATIN_CHARSET_MIN_LATIN_GLYPHS = 10
+LATIN_CHARSET_MIN_LATIN_RATIO = 0.5
 MAX_PAGE_ASPECT_RATIO = 10.0
 SUSPICIOUS_CJK_72XX_START = 0x7280
 SUSPICIOUS_CJK_72XX_END = 0x72DF
@@ -125,10 +132,13 @@ def classify(pdf_doc: pdfium.PdfDocument, pdf_bytes: bytes) -> str:
                 )
                 return "ocr"
 
-            cid_font_signal = get_cid_font_signal_pypdf(pdf_bytes, page_indices)
+            font_resource_signals = _get_font_resource_signals_pypdf(
+                pdf_bytes,
+                page_indices,
+            )
             cid_font_usage_signal = _get_cid_font_usage_signal_from_samples(
                 text_samples,
-                cid_font_signal,
+                font_resource_signals["cid_without_to_unicode_usage"],
             )
             if cid_font_usage_signal["triggered"]:
                 logger.debug(
@@ -138,6 +148,26 @@ def classify(pdf_doc: pdfium.PdfDocument, pdf_bytes: bytes) -> str:
                     f"chars={cid_font_usage_signal['cid_font_char_count']}, "
                     f"total={cid_font_usage_signal['total_chars']}, "
                     f"ratio={cid_font_usage_signal['cid_font_usage_ratio']:.4f}"
+                )
+                return "ocr"
+
+            latin_cjk_font_usage_signal = _get_latin_font_cjk_usage_signal_from_samples(
+                text_samples,
+                font_resource_signals["latin_charset_with_to_unicode"],
+                count_threshold=LATIN_CJK_FONT_USAGE_COUNT_THRESHOLD,
+                usage_ratio_threshold=LATIN_CJK_FONT_USAGE_RATIO_THRESHOLD,
+                cjk_ratio_threshold=LATIN_CJK_FONT_CJK_RATIO_THRESHOLD,
+            )
+            if latin_cjk_font_usage_signal["triggered"]:
+                logger.debug(
+                    "Classify PDF as OCR due to Latin CharSet font decoding as CJK: "
+                    f"page={latin_cjk_font_usage_signal['page_index'] + 1}, "
+                    f"fonts={latin_cjk_font_usage_signal['font_names']}, "
+                    f"chars={latin_cjk_font_usage_signal['font_char_count']}, "
+                    f"cjk={latin_cjk_font_usage_signal['cjk_char_count']}, "
+                    f"total={latin_cjk_font_usage_signal['total_chars']}, "
+                    f"usage_ratio={latin_cjk_font_usage_signal['font_usage_ratio']:.4f}, "
+                    f"cjk_ratio={latin_cjk_font_usage_signal['font_cjk_ratio']:.4f}"
                 )
                 return "ocr"
 
@@ -261,9 +291,16 @@ def _collect_pdfium_text_sample_from_page(page_index: int, page: Any) -> dict[st
         private_use_char_count = 0
         unicode_map_error_count = 0
         font_name_counts = {}
+        non_generated_char_count = 0
+        font_non_generated_char_counts = {}
+        font_non_generated_cjk_char_counts = {}
 
         for char_index in range(char_count):
             unicode_code = pdfium_c.FPDFText_GetUnicode(text_page, char_index)
+            is_generated = pdfium_c.FPDFText_IsGenerated(text_page, char_index) == 1
+            if not is_generated:
+                non_generated_char_count += 1
+
             if unicode_code == 0:
                 null_char_count += 1
             elif unicode_code == 0xFFFD:
@@ -279,6 +316,14 @@ def _collect_pdfium_text_sample_from_page(page_index: int, page: Any) -> dict[st
             font_name = _normalize_pdf_font_name(_get_pdfium_char_font_name(text_page, char_index))
             if font_name:
                 font_name_counts[font_name] = font_name_counts.get(font_name, 0) + 1
+                if not is_generated:
+                    font_non_generated_char_counts[font_name] = (
+                        font_non_generated_char_counts.get(font_name, 0) + 1
+                    )
+                    if _is_cjk_unicode_code(unicode_code):
+                        font_non_generated_cjk_char_counts[font_name] = (
+                            font_non_generated_cjk_char_counts.get(font_name, 0) + 1
+                        )
 
         return {
             "page_index": page_index,
@@ -291,6 +336,9 @@ def _collect_pdfium_text_sample_from_page(page_index: int, page: Any) -> dict[st
             "private_use_char_count": private_use_char_count,
             "unicode_map_error_count": unicode_map_error_count,
             "font_name_counts": font_name_counts,
+            "non_generated_char_count": non_generated_char_count,
+            "font_non_generated_char_counts": font_non_generated_char_counts,
+            "font_non_generated_cjk_char_counts": font_non_generated_cjk_char_counts,
         }
     finally:
         close_pdfium_child(text_page)
@@ -385,11 +433,94 @@ def _get_unicode_map_error_signal_from_samples(text_samples: list[dict[str, Any]
     }
 
 
+def _is_cjk_unicode_code(unicode_code: int) -> bool:
+    """判断 Unicode 码点是否属于分类器认可的 CJK 文本范围。"""
+    return any(start <= unicode_code <= end for start, end in CJK_TEXT_RANGES)
+
+
+def _get_cjk_glyph_name_code(glyph_name: str) -> int | None:
+    """解析 uniXXXX/uXXXXX 形式的 CJK glyph name，其他名称返回 None。"""
+    match = re.fullmatch(
+        r"(?:uni([0-9A-Fa-f]{4,6})|u([0-9A-Fa-f]{4,6}))",
+        glyph_name,
+    )
+    if match is None:
+        return None
+    unicode_code = int(match.group(1) or match.group(2), 16)
+    if not _is_cjk_unicode_code(unicode_code):
+        return None
+    return unicode_code
+
+
+def _get_empty_latin_charset_with_to_unicode_signal() -> dict[str, Any]:
+    """构造未触发的 Type1 Latin CharSet 字体候选信号。"""
+    return {
+        "triggered": False,
+        "charset_glyph_count": 0,
+        "latin_glyph_count": 0,
+        "latin_glyph_ratio": 0.0,
+        "cjk_charset_glyph_count": 0,
+        "cjk_charset_glyph_ratio": 0.0,
+    }
+
+
+def _get_latin_charset_with_to_unicode_signal(font: Any) -> dict[str, Any]:
+    """识别带 ToUnicode 且 CharSet 明显为 Latin 的 Type1 字体候选。"""
+    signal = _get_empty_latin_charset_with_to_unicode_signal()
+    if str(font.get("/Subtype")) != "/Type1":
+        return signal
+
+    descriptor = _resolve_pdf_object(font.get("/FontDescriptor"))
+    to_unicode = _resolve_pdf_object(font.get("/ToUnicode"))
+    if descriptor is None or to_unicode is None:
+        return signal
+
+    charset = descriptor.get("/CharSet")
+    if charset is None:
+        return signal
+
+    glyph_names = set(re.findall(r"/([^/\s]+)", str(charset)))
+    charset_glyph_count = len(glyph_names)
+    latin_glyph_count = sum(
+        1 for glyph_name in glyph_names if re.fullmatch(r"[A-Za-z]", glyph_name)
+    )
+    cjk_charset_glyph_count = sum(
+        1
+        for glyph_name in glyph_names
+        if _get_cjk_glyph_name_code(glyph_name) is not None
+    )
+    latin_glyph_ratio = (
+        latin_glyph_count / charset_glyph_count if charset_glyph_count else 0.0
+    )
+    cjk_charset_glyph_ratio = (
+        cjk_charset_glyph_count / charset_glyph_count
+        if charset_glyph_count
+        else 0.0
+    )
+
+    signal.update(
+        {
+            "charset_glyph_count": charset_glyph_count,
+            "latin_glyph_count": latin_glyph_count,
+            "latin_glyph_ratio": latin_glyph_ratio,
+            "cjk_charset_glyph_count": cjk_charset_glyph_count,
+            "cjk_charset_glyph_ratio": cjk_charset_glyph_ratio,
+        }
+    )
+    signal["triggered"] = (
+        latin_glyph_count >= LATIN_CHARSET_MIN_LATIN_GLYPHS
+        and latin_glyph_ratio >= LATIN_CHARSET_MIN_LATIN_RATIO
+        and cjk_charset_glyph_count == 0
+    )
+    return signal
+
+
 def _normalize_pdf_font_name(font_name: Any) -> str:
     """规范化 PDF 字体名，统一 pypdf 的 NameObject 和 PDFium 返回值格式。"""
     if font_name is None:
         return ""
-    return str(font_name).strip().lstrip("/")
+    normalized_name = str(font_name).strip().lstrip("/")
+    return re.sub(r"^[A-Z]{6}\+", "", normalized_name, count=1)
 
 
 def _get_pdfium_char_font_name(text_page: Any, char_index: int) -> str:
@@ -420,9 +551,9 @@ def _get_pdfium_char_font_name(text_page: Any, char_index: int) -> str:
 
 
 def _get_cid_font_usage_signal_from_samples(
-    text_samples: list[dict[str, Any]], cid_font_signal: dict[str, Any]
+    text_samples: list[dict[str, Any]], cid_font_usage: dict[int, dict[str, Any]]
 ) -> dict[str, Any]:
-    """基于 PDFium 字符级字体名统计可疑 CID 字体在抽样页中的真实使用比例。"""
+    """结合内容流精确计数与 PDFium 总字符数计算可疑 CID 字体使用比例。"""
     best_signal = {
         "triggered": False,
         "page_index": None,
@@ -431,30 +562,22 @@ def _get_cid_font_usage_signal_from_samples(
         "total_chars": 0,
         "cid_font_usage_ratio": 0.0,
     }
-    if not cid_font_signal or not cid_font_signal.get("triggered"):
-        return best_signal
 
-    page_fonts = cid_font_signal.get("page_fonts") or {}
     for text_sample in text_samples:
         page_index = text_sample.get("page_index")
-        cid_font_names = {_normalize_pdf_font_name(font_name) for font_name in page_fonts.get(page_index, set())}
-        cid_font_names.discard("")
-        if not cid_font_names:
-            continue
-
         total_chars = text_sample["char_count"]
         if total_chars <= 0:
             continue
 
-        font_name_counts = text_sample.get("font_name_counts") or {}
-        matched_font_names = cid_font_names.intersection(font_name_counts)
-        cid_font_char_count = sum(font_name_counts[font_name] for font_name in matched_font_names)
+        page_usage = cid_font_usage.get(page_index) or {}
+        cid_font_char_count = int(page_usage.get("cid_font_char_count", 0))
+        matched_font_names = sorted(page_usage.get("font_names") or [])
 
         cid_font_usage_ratio = cid_font_char_count / total_chars
         signal = {
             "triggered": False,
             "page_index": page_index,
-            "font_names": sorted(matched_font_names),
+            "font_names": matched_font_names,
             "cid_font_char_count": cid_font_char_count,
             "total_chars": total_chars,
             "cid_font_usage_ratio": cid_font_usage_ratio,
@@ -471,6 +594,79 @@ def _get_cid_font_usage_signal_from_samples(
             best_signal["cid_font_char_count"],
         ):
             best_signal = signal
+
+    return best_signal
+
+
+def _get_latin_font_cjk_usage_signal_from_samples(
+    text_samples: list[dict[str, Any]],
+    font_signal: dict[str, Any],
+    count_threshold: int,
+    usage_ratio_threshold: float,
+    cjk_ratio_threshold: float,
+) -> dict[str, Any]:
+    """按单个 Latin 候选字体统计实际使用量及 PDFium 解码后的 CJK 比例。"""
+    best_signal = {
+        "triggered": False,
+        "page_index": None,
+        "font_names": [],
+        "font_char_count": 0,
+        "cjk_char_count": 0,
+        "total_chars": 0,
+        "font_usage_ratio": 0.0,
+        "font_cjk_ratio": 0.0,
+    }
+    if not font_signal or not font_signal.get("triggered"):
+        return best_signal
+
+    page_fonts = font_signal.get("page_fonts") or {}
+    for text_sample in text_samples:
+        page_index = text_sample.get("page_index")
+        total_chars = text_sample.get("non_generated_char_count", 0)
+        if total_chars <= 0:
+            continue
+
+        font_name_counts = text_sample.get("font_non_generated_char_counts") or {}
+        font_cjk_char_counts = text_sample.get("font_non_generated_cjk_char_counts") or {}
+        candidate_font_names = {
+            _normalize_pdf_font_name(font_name)
+            for font_name in page_fonts.get(page_index, set())
+        }
+        candidate_font_names.discard("")
+
+        for font_name in sorted(candidate_font_names):
+            font_char_count = font_name_counts.get(font_name, 0)
+            cjk_char_count = font_cjk_char_counts.get(font_name, 0)
+            font_usage_ratio = font_char_count / total_chars
+            font_cjk_ratio = cjk_char_count / font_char_count if font_char_count else 0.0
+            signal = {
+                "triggered": False,
+                "page_index": page_index,
+                "font_names": [font_name] if font_char_count else [],
+                "font_char_count": font_char_count,
+                "cjk_char_count": cjk_char_count,
+                "total_chars": total_chars,
+                "font_usage_ratio": font_usage_ratio,
+                "font_cjk_ratio": font_cjk_ratio,
+            }
+            if (
+                font_char_count >= count_threshold
+                and font_usage_ratio >= usage_ratio_threshold
+                and font_cjk_ratio >= cjk_ratio_threshold
+            ):
+                signal["triggered"] = True
+                return signal
+
+            if (
+                signal["font_cjk_ratio"],
+                signal["font_usage_ratio"],
+                signal["font_char_count"],
+            ) > (
+                best_signal["font_cjk_ratio"],
+                best_signal["font_usage_ratio"],
+                best_signal["font_char_count"],
+            ):
+                best_signal = signal
 
     return best_signal
 
@@ -517,8 +713,7 @@ def _get_sample_cleaned_text(text_sample: Any) -> str:
 
 def _is_cjk_text_char(char: str) -> bool:
     """判断字符是否属于中文文档中可接受的 CJK 文字范围。"""
-    unicode_code = ord(char)
-    return any(start <= unicode_code <= end for start, end in CJK_TEXT_RANGES)
+    return _is_cjk_unicode_code(ord(char))
 
 
 def _get_cross_script_name(char: str) -> str | None:
@@ -660,10 +855,208 @@ def _get_sampled_ascii_punct_signal_from_samples(text_samples: list[dict[str, An
     return best_signal
 
 
-def get_cid_font_signal_pypdf(pdf_bytes: bytes, page_indices: list[int]) -> dict[str, Any]:
-    """收集抽样页中无 ToUnicode 的 Identity CID 字体资源，供后续按实际字符使用量判定。"""
+def _get_pdf_object_cache_key(obj_ref: Any, obj: Any) -> tuple[Any, ...]:
+    """为 pypdf 间接或直接对象生成可复用的身份键。"""
+    idnum = getattr(obj_ref, "idnum", None)
+    generation = getattr(obj_ref, "generation", None)
+    if idnum is not None:
+        return "indirect", idnum, generation
+    return "direct", id(obj)
+
+
+def _get_font_resource_analysis(
+    font_ref: Any,
+    font_analysis_cache: dict[tuple[Any, ...], dict[str, bool]],
+) -> tuple[Any, dict[str, bool]]:
+    """按字体资源对象身份缓存 CID 与 Type1 字体语义分析结果。"""
+    font = _resolve_pdf_object(font_ref)
+    if not font:
+        raise ValueError("Unable to resolve PDF font resource")
+
+    cache_key = _get_pdf_object_cache_key(font_ref, font)
+    analysis = font_analysis_cache.get(cache_key)
+    if analysis is None:
+        subtype = str(font.get("/Subtype"))
+        encoding = str(font.get("/Encoding"))
+        cid_without_to_unicode = (
+            subtype == "/Type0"
+            and encoding in ("/Identity-H", "/Identity-V")
+            and "/DescendantFonts" in font
+            and "/ToUnicode" not in font
+        )
+        latin_charset_signal = _get_latin_charset_with_to_unicode_signal(font)
+        analysis = {
+            "cid_without_to_unicode": cid_without_to_unicode,
+            "latin_charset_with_to_unicode": latin_charset_signal["triggered"],
+        }
+        font_analysis_cache[cache_key] = analysis
+    return font, analysis
+
+
+def _get_pdf_string_raw_bytes(value: Any) -> bytes:
+    """读取 pypdf 字符串对象的原始字节，禁止用已解码文本替代。"""
+    raw_bytes = getattr(value, "original_bytes", None)
+    if isinstance(raw_bytes, bytes):
+        return raw_bytes
+    if isinstance(value, bytes):
+        return value
+    raise ValueError("PDF text string does not expose original bytes")
+
+
+def _count_identity_cid_string(value: Any) -> int:
+    """按 Identity-H/V 的双字节编码统计文本字符串中的 CID 数量。"""
+    raw_bytes = _get_pdf_string_raw_bytes(value)
+    if len(raw_bytes) % 2:
+        raise ValueError("Identity CID text string has an odd byte length")
+    return len(raw_bytes) // 2
+
+
+def _resource_graph_has_cid_without_to_unicode(
+    resources: Any,
+    font_analysis_cache: dict[tuple[Any, ...], dict[str, bool]],
+    active_form_keys: frozenset[tuple[Any, ...]] = frozenset(),
+) -> bool:
+    """递归检查页面及 Form 资源图中是否存在缺少 ToUnicode 的 Identity CID 字体。"""
+    resources = _resolve_pdf_object(resources)
+    if not resources:
+        return False
+
+    fonts = _resolve_pdf_object(resources.get("/Font")) or {}
+    for font_ref in fonts.values():
+        _font, analysis = _get_font_resource_analysis(
+            font_ref,
+            font_analysis_cache,
+        )
+        if analysis["cid_without_to_unicode"]:
+            return True
+
+    xobjects = _resolve_pdf_object(resources.get("/XObject")) or {}
+    for xobject_ref in xobjects.values():
+        xobject = _resolve_pdf_object(xobject_ref)
+        if not xobject or str(xobject.get("/Subtype")) != "/Form":
+            continue
+
+        form_key = _get_pdf_object_cache_key(xobject_ref, xobject)
+        if form_key in active_form_keys:
+            continue
+        form_resources = xobject.get("/Resources")
+        if form_resources is None:
+            continue
+        if _resource_graph_has_cid_without_to_unicode(
+            form_resources,
+            font_analysis_cache,
+            active_form_keys | {form_key},
+        ):
+            return True
+    return False
+
+
+def _count_cid_font_usage_in_content(
+    reader: PdfReader,
+    content: Any,
+    resources: Any,
+    font_analysis_cache: dict[tuple[Any, ...], dict[str, bool]],
+    *,
+    inherited_font: tuple[str, bool] | None = None,
+    active_form_keys: frozenset[tuple[Any, ...]] = frozenset(),
+) -> Counter[str]:
+    """按实际 Tf 资源递归统计内容流中缺少 ToUnicode 的 Identity CID 字形。"""
+    counts: Counter[str] = Counter()
+    if content is None:
+        return counts
+
+    resources = _resolve_pdf_object(resources)
+    if resources is None:
+        raise ValueError("PDF content stream has no resolvable resources")
+
+    fonts = _resolve_pdf_object(resources.get("/Font")) or {}
+    xobjects = _resolve_pdf_object(resources.get("/XObject")) or {}
+    current_font = inherited_font
+    font_stack: list[tuple[str, bool] | None] = []
+
+    for operands, operator in ContentStream(content, reader).operations:
+        if operator == b"q":
+            font_stack.append(current_font)
+            continue
+        if operator == b"Q":
+            current_font = font_stack.pop() if font_stack else inherited_font
+            continue
+        if operator == b"Tf":
+            if not operands:
+                raise ValueError("PDF Tf operator has no font resource name")
+            font_key = operands[0]
+            font_ref = fonts.get(font_key)
+            if font_ref is None:
+                raise ValueError(f"Unable to resolve PDF font resource {font_key}")
+            font, analysis = _get_font_resource_analysis(
+                font_ref,
+                font_analysis_cache,
+            )
+            font_name = _normalize_pdf_font_name(font.get("/BaseFont") or font_key)
+            current_font = (
+                font_name,
+                analysis["cid_without_to_unicode"],
+            )
+            continue
+
+        if operator in (b"Tj", b"'", b'"'):
+            if current_font is None:
+                raise ValueError("PDF text is shown before selecting a font")
+            if current_font[1]:
+                counts[current_font[0]] += _count_identity_cid_string(operands[-1])
+            continue
+        if operator == b"TJ":
+            if current_font is None:
+                raise ValueError("PDF text is shown before selecting a font")
+            if current_font[1]:
+                for value in operands[0]:
+                    if isinstance(value, (int, float)):
+                        continue
+                    counts[current_font[0]] += _count_identity_cid_string(value)
+            continue
+        if operator != b"Do":
+            continue
+
+        if not operands:
+            raise ValueError("PDF Do operator has no XObject resource name")
+        xobject_key = operands[0]
+        xobject_ref = xobjects.get(xobject_key)
+        if xobject_ref is None:
+            raise ValueError(f"Unable to resolve PDF XObject resource {xobject_key}")
+        xobject = _resolve_pdf_object(xobject_ref)
+        if not xobject:
+            raise ValueError(f"Unable to resolve PDF XObject {xobject_key}")
+        if str(xobject.get("/Subtype")) != "/Form":
+            continue
+
+        form_key = _get_pdf_object_cache_key(xobject_ref, xobject)
+        if form_key in active_form_keys:
+            raise ValueError(f"Cyclic PDF Form XObject reference {xobject_key}")
+        form_resources = xobject.get("/Resources")
+        child_resources = resources if form_resources is None else form_resources
+        counts.update(
+            _count_cid_font_usage_in_content(
+                reader,
+                xobject,
+                child_resources,
+                font_analysis_cache,
+                inherited_font=current_font,
+                active_form_keys=active_form_keys | {form_key},
+            )
+        )
+    return counts
+
+
+def _get_font_resource_signals_pypdf(
+    pdf_bytes: bytes,
+    page_indices: list[int],
+) -> dict[str, Any]:
+    """一次扫描抽样页字体资源，收集 CID 缺映射和 Type1 Latin 候选字体。"""
     reader = PdfReader(BytesIO(pdf_bytes))
-    page_fonts = {}
+    cid_page_fonts: dict[int, set[str]] = {}
+    cid_page_usage: dict[int, dict[str, Any]] = {}
+    latin_charset_page_fonts: dict[int, set[str]] = {}
+    font_analysis_cache: dict[tuple[Any, ...], dict[str, bool]] = {}
 
     for page_index in page_indices:
         page = reader.pages[page_index]
@@ -671,33 +1064,70 @@ def get_cid_font_signal_pypdf(pdf_bytes: bytes, page_indices: list[int]) -> dict
         if not resources:
             continue
 
-        fonts = _resolve_pdf_object(resources.get("/Font"))
-        if not fonts:
-            continue
+        fonts = _resolve_pdf_object(resources.get("/Font")) or {}
 
+        # Type1 Latin 信号仍按字体名使用 PDFium 统计；CID 用量在后续按资源对象精确计算。
+        page_latin_font_resources: dict[str, dict[tuple[Any, ...], bool]] = {}
         for font_key, font_ref in fonts.items():
-            font = _resolve_pdf_object(font_ref)
-            if not font:
+            font, analysis = _get_font_resource_analysis(
+                font_ref,
+                font_analysis_cache,
+            )
+            font_name = _normalize_pdf_font_name(font.get("/BaseFont") or font_key)
+            if not font_name:
                 continue
 
-            subtype = str(font.get("/Subtype"))
-            encoding = str(font.get("/Encoding"))
-            has_descendant_fonts = "/DescendantFonts" in font
-            has_to_unicode = "/ToUnicode" in font
+            cache_key = _get_pdf_object_cache_key(font_ref, font)
 
-            if (
-                subtype == "/Type0"
-                and encoding in ("/Identity-H", "/Identity-V")
-                and has_descendant_fonts
-                and not has_to_unicode
-            ):
-                font_name = font.get("/BaseFont") or font_key
-                page_fonts.setdefault(page_index, set()).add(_normalize_pdf_font_name(font_name))
+            if analysis["cid_without_to_unicode"]:
+                cid_page_fonts.setdefault(page_index, set()).add(font_name)
+
+            page_latin_font_resources.setdefault(font_name, {})[cache_key] = analysis[
+                "latin_charset_with_to_unicode"
+            ]
+
+        for font_name, resource_states in page_latin_font_resources.items():
+            if len(resource_states) == 1 and set(resource_states.values()) == {True}:
+                latin_charset_page_fonts.setdefault(page_index, set()).add(font_name)
+
+        if _resource_graph_has_cid_without_to_unicode(
+            resources,
+            font_analysis_cache,
+        ):
+            usage_counts = _count_cid_font_usage_in_content(
+                reader,
+                page.get_contents(),
+                resources,
+                font_analysis_cache,
+            )
+            cid_page_usage[page_index] = {
+                "font_names": sorted(
+                    font_name
+                    for font_name, char_count in usage_counts.items()
+                    if char_count > 0
+                ),
+                "cid_font_char_count": sum(usage_counts.values()),
+            }
 
     return {
-        "triggered": bool(page_fonts),
-        "page_fonts": page_fonts,
+        "cid_without_to_unicode": {
+            "triggered": bool(cid_page_fonts),
+            "page_fonts": cid_page_fonts,
+        },
+        "cid_without_to_unicode_usage": cid_page_usage,
+        "latin_charset_with_to_unicode": {
+            "triggered": bool(latin_charset_page_fonts),
+            "page_fonts": latin_charset_page_fonts,
+        },
     }
+
+
+def get_cid_font_signal_pypdf(pdf_bytes: bytes, page_indices: list[int]) -> dict[str, Any]:
+    """兼容旧接口：返回抽样页无 ToUnicode 的 Identity CID 字体资源。"""
+    return _get_font_resource_signals_pypdf(
+        pdf_bytes,
+        page_indices,
+    )["cid_without_to_unicode"]
 
 
 def detect_cid_font_signal_pypdf(pdf_bytes: bytes, page_indices: list[int]) -> bool:

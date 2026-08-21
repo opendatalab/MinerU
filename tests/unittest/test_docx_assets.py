@@ -1,0 +1,203 @@
+from __future__ import annotations
+
+import base64
+from dataclasses import FrozenInstanceError
+from io import BytesIO
+from pathlib import Path
+
+from PIL import Image, features
+import pytest
+
+from mineru.render._internal.docx.assets import (
+    DocxAssetError,
+    PreparedImage,
+    prepare_block_image,
+    prepare_html_image,
+    prepare_image_bytes,
+)
+from mineru.types import ImageBodyBlock
+
+
+def _image_bytes(image_format: str, *, size: tuple[int, int] = (7, 5)) -> bytes:
+    """生成指定格式的有效测试图片字节。"""
+    output = BytesIO()
+    Image.new("RGBA" if image_format == "PNG" else "RGB", size, (20, 40, 60, 128)).save(
+        output,
+        format=image_format,
+    )
+    return output.getvalue()
+
+
+def _data_uri(mime_subtype: str, payload: bytes) -> str:
+    """把测试图片包装成严格 base64 data URI。"""
+    encoded = base64.b64encode(payload).decode("ascii")
+    return f"data:image/{mime_subtype};base64,{encoded}"
+
+
+def _image_block(**values: str | None) -> ImageBodyBlock:
+    """构造最小图片 body block。"""
+    return ImageBodyBlock(type="image_body", index=0, content="", **values)
+
+
+def test_block_prefers_base64_over_sidecar() -> None:
+    """验证同时存在两种载荷时只解析 image_base64，不调用 resolver。"""
+    png_data = _image_bytes("PNG", size=(11, 9))
+
+    def unexpected_resolver(_path: str) -> bytes:
+        """若错误访问 sidecar，则立即让测试失败。"""
+        raise AssertionError("resolver must not be called")
+
+    prepared = prepare_block_image(
+        _image_block(image_base64=_data_uri("png", png_data), image_path="images/fallback.png"),
+        unexpected_resolver,
+    )
+
+    assert prepared == PreparedImage(png_data, "png", 11, 9)
+
+
+def test_block_loads_safe_sidecar_through_resolver() -> None:
+    """验证 sidecar 仅通过 resolver 读取，并返回真实格式和尺寸。"""
+    jpeg_data = _image_bytes("JPEG", size=(13, 8))
+    requested_paths: list[str] = []
+
+    def resolver(path: str) -> bytes:
+        """记录 renderer 交给调用方的规范化路径。"""
+        requested_paths.append(path)
+        return jpeg_data
+
+    prepared = prepare_block_image(_image_block(image_path="images/photo.jpeg"), resolver)
+
+    assert requested_paths == ["images/photo.jpeg"]
+    assert prepared == PreparedImage(jpeg_data, "jpg", 13, 8)
+
+
+def test_existing_cwd_file_is_never_read_without_resolver(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证即使 cwd 存在同名文件，helper 也不会自行读取。"""
+    image_path = tmp_path / "images/local.png"
+    image_path.parent.mkdir()
+    image_path.write_bytes(_image_bytes("PNG"))
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(DocxAssetError, match="asset_resolver is required"):
+        prepare_block_image(_image_block(image_path="images/local.png"))
+
+
+def test_resolver_error_is_wrapped_with_safe_path() -> None:
+    """验证 resolver 的底层异常被统一包装，并保留原始异常链。"""
+
+    def failing_resolver(_path: str) -> bytes:
+        """模拟调用方无法读取 sidecar。"""
+        raise OSError("disk unavailable")
+
+    with pytest.raises(DocxAssetError, match="images/missing.png") as error:
+        prepare_html_image("images/missing.png", failing_resolver)
+
+    assert isinstance(error.value.__cause__, OSError)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "https://example.com/image.png",
+        "http://example.com/image.png",
+        "//example.com/image.png",
+        "file:///tmp/image.png",
+        "/tmp/image.png",
+        "../image.png",
+        r"C:\\image.png",
+    ],
+)
+def test_html_image_rejects_remote_absolute_and_unsafe_sources(source: str) -> None:
+    """验证 HTML 图片不会触发联网、绝对路径读取或目录逃逸。"""
+    resolver_called = False
+
+    def resolver(_path: str) -> bytes:
+        """记录非法来源是否越过安全校验。"""
+        nonlocal resolver_called
+        resolver_called = True
+        return _image_bytes("PNG")
+
+    with pytest.raises(DocxAssetError):
+        prepare_html_image(source, resolver)
+
+    assert resolver_called is False
+
+
+def test_html_data_uri_and_relative_sidecar_use_the_expected_source() -> None:
+    """验证 HTML src 支持内联 data URI 以及由 resolver 提供的相对 sidecar。"""
+    gif_data = _image_bytes("GIF", size=(6, 4))
+    inline = prepare_html_image(_data_uri("gif", gif_data))
+    sidecar = prepare_html_image("images/figure.gif", lambda path: gif_data if path == "images/figure.gif" else b"")
+
+    assert inline == PreparedImage(gif_data, "gif", 6, 4)
+    assert sidecar == inline
+
+
+@pytest.mark.skipif(not features.check("webp"), reason="Pillow build does not support WebP")
+def test_webp_is_converted_to_png_in_memory() -> None:
+    """验证 WebP 会转为可嵌入 Word 的 PNG，且尺寸和像素保持有效。"""
+    webp_data = _image_bytes("WEBP", size=(9, 7))
+    prepared = prepare_html_image(_data_uri("webp", webp_data))
+
+    assert prepared.extension == "png"
+    assert prepared.data.startswith(b"\x89PNG\r\n\x1a\n")
+    assert (prepared.width_px, prepared.height_px) == (9, 7)
+    with Image.open(BytesIO(prepared.data)) as image:
+        assert image.format == "PNG"
+        assert image.size == (9, 7)
+
+
+@pytest.mark.parametrize(
+    ("image_format", "extension"),
+    [
+        ("PNG", "png"),
+        ("JPEG", "jpg"),
+        ("GIF", "gif"),
+        ("TIFF", "tiff"),
+        ("BMP", "bmp"),
+    ],
+)
+def test_supported_word_image_formats_keep_original_bytes(image_format: str, extension: str) -> None:
+    """验证 Word 可直接使用的五种格式不发生重编码。"""
+    data = _image_bytes(image_format)
+
+    prepared = prepare_image_bytes(data)
+
+    assert prepared.data is data
+    assert prepared.extension == extension
+    assert (prepared.width_px, prepared.height_px) == (7, 5)
+
+
+def test_svg_is_rejected_explicitly_for_data_uri_and_sidecar() -> None:
+    """验证内联与 sidecar SVG 都返回明确的不支持错误。"""
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'
+
+    with pytest.raises(DocxAssetError, match="SVG images are not supported"):
+        prepare_html_image(_data_uri("svg+xml", svg))
+    with pytest.raises(DocxAssetError, match="SVG images are not supported"):
+        prepare_html_image("images/vector.svg", lambda _path: svg)
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        lambda: prepare_html_image(_data_uri("jpeg", _image_bytes("PNG"))),
+        lambda: prepare_html_image("data:image/png;base64,not-base64!"),
+        lambda: prepare_image_bytes(b""),
+        lambda: prepare_image_bytes(b"\x89PNG\r\n\x1a\ntruncated"),
+        lambda: prepare_html_image("images/empty.png", lambda _path: b""),
+        lambda: prepare_html_image("images/wrong.jpg", lambda _path: _image_bytes("PNG")),
+    ],
+)
+def test_invalid_mime_empty_and_corrupt_payloads_are_rejected(action: object) -> None:
+    """验证 MIME 不符、坏 base64、空字节、坏签名和扩展名不符都报错。"""
+    with pytest.raises(DocxAssetError):
+        action()  # type: ignore[operator]
+
+
+def test_prepared_image_is_immutable() -> None:
+    """验证 PreparedImage 是不可变的值对象。"""
+    prepared = PreparedImage(b"image", "png", 1, 1)
+
+    with pytest.raises(FrozenInstanceError):
+        prepared.extension = "jpg"  # type: ignore[misc]

@@ -367,7 +367,6 @@ def get_ocr_result_list(
     useful_list: list[int],
     ocr_enable: bool,
     bgr_image: np.ndarray,
-    lang: str,
 ) -> list[dict[str, Any]]:
     paste_x, paste_y, xmin, ymin, xmax, ymax, new_width, new_height = useful_list
     ocr_result_list = []
@@ -430,8 +429,6 @@ def get_ocr_result_list(
         }
         if need_ocr_rec:
             ocr_item["np_img"] = img_crop
-            ocr_item["lang"] = lang
-            ocr_item["_need_ocr_rec"] = True
         ocr_result_list.append(ocr_item)
 
     return ocr_result_list

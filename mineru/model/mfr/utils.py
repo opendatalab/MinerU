@@ -250,6 +250,9 @@ ENV_TYPES = ['array', 'matrix', 'pmatrix', 'bmatrix', 'vmatrix',
 ENV_BEGIN_PATTERNS = {env: re.compile(r'\\begin\{' + env + r'\}') for env in ENV_TYPES}
 ENV_END_PATTERNS = {env: re.compile(r'\\end\{' + env + r'\}') for env in ENV_TYPES}
 ENV_FORMAT_PATTERNS = {env: re.compile(r'\\begin\{' + env + r'\}\{([^}]*)\}') for env in ENV_TYPES}
+MATHRING_FONT_ARGUMENT_PATTERN = re.compile(
+    r"\\mathring(?!\s*\{)\s*(?P<argument>\\mathrm\s*\{[^{}]*\})"
+)
 
 def fix_latex_environments(s):
     """
@@ -275,6 +278,16 @@ def fix_latex_environments(s):
                 s = s + (' \\end{' + env + '}') * missing_count
 
     return s
+
+
+def fix_mathring_font_arguments(s: str) -> str:
+    """为 mathring 后未分组的 mathrm 参数补充显式花括号。"""
+
+    def _replace(match: re.Match[str]) -> str:
+        """把单个 mathrm 字体参数包装成 mathring 的完整参数。"""
+        return "\\mathring{" + match.group("argument") + "}"
+
+    return MATHRING_FONT_ARGUMENT_PATTERN.sub(_replace, s)
 
 
 REPLACEMENTS_PATTERNS = {
@@ -314,14 +327,24 @@ def remove_unsupported_commands(s: str):
     return s
 
 
-def latex_rm_whitespace(s: str):
-    """Remove unnecessary whitespace from LaTeX code."""
-    s = fix_unbalanced_braces(s)
-    s = fix_latex_left_right(s)
+def _apply_shared_latex_repairs(s: str, *, fix_delimiter: bool) -> str:
+    """执行 PP-FormulaNet 与 UniMERNet 共有的 LaTeX 修复步骤。"""
+    s = fix_latex_left_right(s, fix_delimiter=fix_delimiter)
     s = fix_latex_environments(s)
-
+    s = fix_mathring_font_arguments(s)
     s = remove_up_commands(s)
-    s = remove_unsupported_commands(s)
+    return remove_unsupported_commands(s)
+
+
+def fix_pp_formulanet_latex(s: str) -> str:
+    """执行 PP-FormulaNet 专用 LaTeX 后处理，不补写 left/right 分隔符。"""
+    return _apply_shared_latex_repairs(s, fix_delimiter=False)
+
+
+def fix_unimernet_latex(s: str) -> str:
+    """执行 UniMERNet 专用 LaTeX 后处理与输出规范化。"""
+    s = fix_unbalanced_braces(s)
+    s = _apply_shared_latex_repairs(s, fix_delimiter=True)
 
     # 应用所有替换
     for pattern, replacement in REPLACEMENTS_PATTERNS.items():

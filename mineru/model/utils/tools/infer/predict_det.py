@@ -121,7 +121,10 @@ class TextDetector(BaseOCRV20):
         super(TextDetector, self).__init__(network_config, **kwargs)
         self.load_pytorch_weights(self.weights_path)
         self.net.eval()
-        self._apply_inference_precision(self.device)
+        self._apply_inference_precision(
+            self.device,
+            precision_override=getattr(args, "det_inference_precision", None),
+        )
         for module in self.net.modules():
             if hasattr(module, 'rep'):
                 module.rep()

@@ -114,10 +114,6 @@ Here are the environment variables and their descriptions:
     * Default is `false`, can be set to `true` via environment variable to enable Chinese formula parsing optimization.
     * Only effective for local Hybrid model execution.
   
-- `MINERU_TABLE_MERGE_ENABLE`:
-    * Used to enable table merging functionality
-    * Default is `true`, can be set to `false` via environment variable to disable table merging functionality.
-
 - `MINERU_PDF_RENDER_TIMEOUT`:
     * Used to set the timeout (in seconds) for rendering PDFs to images.
     * Default is `300` seconds; you can set a different value via an environment variable to adjust the rendering timeout.

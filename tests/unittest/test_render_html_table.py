@@ -1,243 +1,88 @@
-from mineru.render import render_markdown
-from mineru.render.markdown import blocks_to_markdown
-from mineru.render.markdown_table import to_markdown_table
-from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span
+import markdown
+from bs4 import BeautifulSoup
+
+from mineru.config import LatexDelimitersConfig
+from mineru.render._internal.markdown.table import format_embedded_html, render_html_table
 
 
-def test_table_span_ignores_legacy_html_payload_alias() -> None:
-    """表格 span 只接受 content 承载 HTML，不再兼容旧 html 别名。"""
-    span = Span.from_dict(
-        {
-            "type": ContentType.TABLE,
-            "bbox": [0.0, 0.0, 10.0, 10.0],
-            "html": "<table><tr><td>A</td></tr></table>",
-        }
-    )
-
-    assert span.content == ""
-    assert span.to_dict() == {
-        "type": ContentType.TABLE,
-        "bbox": (0.0, 0.0, 10.0, 10.0),
-    }
+DELIMITERS = LatexDelimitersConfig()
 
 
-def test_to_markdown_table_renders_simple_table() -> None:
-    html = """
-    <table>
-      <tr><th>Name</th><th>Score</th></tr>
-      <tr><td>Alice</td><td>90</td></tr>
-      <tr><td>Bob</td><td>85</td></tr>
-    </table>
-    """
+def test_render_html_table_uses_first_row_when_th_is_absent() -> None:
+    """验证普通 td 首行可作为 GFM 表头。"""
+    html = "<table><tr><td>A</td><td>B</td></tr><tr><td>1</td><td>2</td></tr></table>"
 
-    assert to_markdown_table(html) == "\n".join(
-        [
-            "| Name | Score |",
-            "| --- | --- |",
-            "| Alice | 90 |",
-            "| Bob | 85 |",
-        ]
+    assert render_html_table(html, asset_base_url="", delimiters=DELIMITERS) == "\n".join(
+        ["| A | B |", "| --- | --- |", "| 1 | 2 |"]
     )
 
 
-def test_to_markdown_table_falls_back_for_colspan_cells() -> None:
-    html = """
-    <table>
-      <tr><th colspan="2">User</th><th>Score</th></tr>
-      <tr><td>Alice</td><td>Math</td><td>90</td></tr>
-    </table>
-    """
+def test_render_html_table_preserves_supported_inline_markup() -> None:
+    """验证简单单元格保留链接、强调、代码、换行和上下标。"""
+    html = (
+        "<table><tr><th>Item</th><th>Note</th></tr>"
+        "<tr><td><code>x|y</code></td>"
+        '<td><a href="https://example.com">docs</a><br><strong>ready</strong><sup>2</sup></td></tr>'
+        "</table>"
+    )
 
-    assert to_markdown_table(html) == html.strip()
-
-
-def test_to_markdown_table_falls_back_for_rowspan_cells() -> None:
-    html = """
-    <table>
-      <tr><th>Name</th><th>Subject</th><th>Score</th></tr>
-      <tr><td rowspan="2">Alice</td><td>Math</td><td>90</td></tr>
-      <tr><td>English</td><td>95</td></tr>
-    </table>
-    """
-
-    assert to_markdown_table(html) == html.strip()
-
-
-def test_to_markdown_table_preserves_simple_inline_markup() -> None:
-    html = """
-    <table>
-      <tr><th>Item</th><th>Note</th></tr>
-      <tr><td><code>x|y</code></td><td><a href="https://example.com">docs</a><br>ready</td></tr>
-    </table>
-    """
-
-    assert to_markdown_table(html) == "\n".join(
+    assert render_html_table(html, asset_base_url="", delimiters=DELIMITERS) == "\n".join(
         [
             "| Item | Note |",
             "| --- | --- |",
-            r"| `x\|y` | [docs](https://example.com)<br>ready |",
+            r"| `x\|y` | [docs](https://example.com)<br>**ready**<sup>2</sup> |",
         ]
     )
 
 
-def test_to_markdown_table_falls_back_for_nested_tables() -> None:
-    html = """
-    <table>
-      <tr>
-        <td>
-          <table><tr><td>nested</td></tr></table>
-        </td>
-      </tr>
-    </table>
-    """
-
-    assert to_markdown_table(html) == html.strip()
-
-
-def test_to_markdown_table_falls_back_for_complex_block_content() -> None:
-    html = """
-    <table>
-      <tr><th>Item</th><th>Details</th></tr>
-      <tr><td>A</td><td><ul><li>one</li><li>two</li></ul></td></tr>
-    </table>
-    """
-
-    assert to_markdown_table(html) == html.strip()
-
-
-def test_blocks_to_markdown_prefers_markdown_table_when_enabled() -> None:
-    html = """
-    <table>
-      <tr><th>Name</th><th>Score</th></tr>
-      <tr><td>Alice</td><td>90</td></tr>
-    </table>
-    """.strip()
-    table_block = Block(
-        index=0,
-        type=BlockType.TABLE,
-        bbox=(0.0, 0.0, 10.0, 10.0),
-        blocks=[
-            Block(
-                index=0,
-                type=BlockType.TABLE_BODY,
-                bbox=(0.0, 0.0, 10.0, 10.0),
-                lines=[
-                    Line(
-                        bbox=(0.0, 0.0, 10.0, 10.0),
-                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
-                    )
-                ],
-            )
-        ],
+def test_render_html_table_escapes_formula_pipes_without_changing_latex() -> None:
+    """验证 GFM 源码转义公式竖线，Markdown 解析后恢复原始 LaTeX。"""
+    formulas = [
+        r"\left|x\right|",
+        r"\|x\|",
+        r"\begin{array}{c|c}x\end{array}",
+    ]
+    rows = "".join(
+        f"<tr><td>F{index}</td><td><eq>{formula}</eq></td><td>ok</td></tr>"
+        for index, formula in enumerate(formulas, start=1)
     )
+    html = f"<table><tr><th>Name</th><th>Formula</th><th>Note</th></tr>{rows}</table>"
 
-    assert blocks_to_markdown([table_block], prefer_markdown_table=False) == [html]
-    assert blocks_to_markdown([table_block], prefer_markdown_table=True) == [
-        "\n".join(
-            [
-                "| Name | Score |",
-                "| --- | --- |",
-                "| Alice | 90 |",
-            ]
-        )
+    rendered = render_html_table(html, asset_base_url="", delimiters=DELIMITERS)
+    assert rendered is not None
+    parsed = BeautifulSoup(markdown.markdown(rendered, extensions=["tables"]), "html.parser")
+    parsed_rows = parsed.find_all("tr")
+
+    assert [len(row.find_all(["th", "td"], recursive=False)) for row in parsed_rows] == [3, 3, 3, 3]
+    assert [row.find_all("td", recursive=False)[1].get_text() for row in parsed_rows[1:]] == [
+        f"${formula}$" for formula in formulas
     ]
 
+def test_render_html_table_falls_back_for_span_attribute_even_when_value_is_one() -> None:
+    """验证只要显式出现 rowspan/colspan 就按复杂 HTML 输出。"""
+    html = '<table><tr><td colspan="1">A</td></tr></table>'
 
-def test_blocks_to_markdown_keeps_merged_cell_tables_as_html() -> None:
-    html = """
-    <table>
-      <tr><th colspan="2">User</th><th>Score</th></tr>
-      <tr><td>Alice</td><td>Math</td><td>90</td></tr>
-    </table>
-    """.strip()
-    table_block = Block(
-        index=0,
-        type=BlockType.TABLE,
-        bbox=(0.0, 0.0, 10.0, 10.0),
-        blocks=[
-            Block(
-                index=0,
-                type=BlockType.TABLE_BODY,
-                bbox=(0.0, 0.0, 10.0, 10.0),
-                lines=[
-                    Line(
-                        bbox=(0.0, 0.0, 10.0, 10.0),
-                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
-                    )
-                ],
-            )
-        ],
+    assert render_html_table(html, asset_base_url="", delimiters=DELIMITERS) == html
+
+
+def test_format_embedded_html_rewrites_relative_images_and_equations() -> None:
+    """验证复杂 HTML 的相对图片和行内公式统一改写。"""
+    html = '<table><tr><td><img src="images/a.png"><eq>x&lt;y</eq></td></tr></table>'
+
+    formatted = format_embedded_html(html, asset_base_url="https://cdn.example/doc", delimiters=DELIMITERS)
+
+    assert 'src="https://cdn.example/doc/images/a.png"' in formatted
+    assert "$x<y$" in formatted
+
+
+def test_format_embedded_html_keeps_absolute_and_data_images() -> None:
+    """验证已经可访问的绝对图片来源不会重复添加 base URL。"""
+    html = (
+        '<table><tr><td><img src="https://example.com/a.png">'
+        '<img src="data:image/png;base64,AAAA"></td></tr></table>'
     )
 
-    assert blocks_to_markdown([table_block], prefer_markdown_table=True) == [html]
+    formatted = format_embedded_html(html, asset_base_url="https://cdn.example/doc", delimiters=DELIMITERS)
 
-
-def test_render_markdown_prefers_markdown_table_when_enabled() -> None:
-    html = """
-    <table>
-      <tr><th>Name</th><th>Score</th></tr>
-      <tr><td>Alice</td><td>90</td></tr>
-    </table>
-    """.strip()
-    table_block = Block(
-        index=0,
-        type=BlockType.TABLE,
-        bbox=(0.0, 0.0, 10.0, 10.0),
-        blocks=[
-            Block(
-                index=0,
-                type=BlockType.TABLE_BODY,
-                bbox=(0.0, 0.0, 10.0, 10.0),
-                lines=[
-                    Line(
-                        bbox=(0.0, 0.0, 10.0, 10.0),
-                        spans=[Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)],
-                    )
-                ],
-            )
-        ],
-    )
-    page = PageInfo(page_idx=0, para_blocks=[table_block], _backend="hybrid")
-
-    assert render_markdown([page], prefer_markdown_table=False) == html
-    assert render_markdown([page], prefer_markdown_table=True) == "\n".join(
-        [
-            "| Name | Score |",
-            "| --- | --- |",
-            "| Alice | 90 |",
-        ]
-    )
-
-
-def test_blocks_to_markdown_prefers_table_content_without_html_attribute() -> None:
-    html = """
-    <table>
-      <tr><th>Page</th><th>Status</th></tr>
-      <tr><td>10</td><td>ready</td></tr>
-    </table>
-    """.strip()
-    table_span = Span(type=ContentType.TABLE, bbox=(0.0, 0.0, 10.0, 10.0), content=html)
-    table_block = Block(
-        index=0,
-        type=BlockType.TABLE,
-        bbox=(0.0, 0.0, 10.0, 10.0),
-        blocks=[
-            Block(
-                index=0,
-                type=BlockType.TABLE_BODY,
-                bbox=(0.0, 0.0, 10.0, 10.0),
-                lines=[Line(bbox=(0.0, 0.0, 10.0, 10.0), spans=[table_span])],
-            )
-        ],
-    )
-
-    assert not hasattr(table_span, "html")
-    assert blocks_to_markdown([table_block], prefer_markdown_table=True) == [
-        "\n".join(
-            [
-                "| Page | Status |",
-                "| --- | --- |",
-                "| 10 | ready |",
-            ]
-        )
-    ]
+    assert "https://cdn.example/doc/https://" not in formatted
+    assert 'src="data:image/png;base64,AAAA"' in formatted

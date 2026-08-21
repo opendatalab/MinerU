@@ -47,11 +47,11 @@ lang:
     det: ch_PP-OCRv6_small_det_infer.safetensors
     rec: th_PP-OCRv5_rec_infer.pth
     dict: ppocrv5_th_dict.txt
+#  seal:
+#    det: seal_PP-OCRv4_det_server_infer.pth
+#    rec: ch_PP-OCRv6_medium_rec_infer.safetensors
+#    dict: ppocrv6_dict.txt
   seal:
-    det: seal_PP-OCRv4_det_server_infer.pth
-    rec: ch_PP-OCRv6_medium_rec_infer.safetensors
-    dict: ppocrv6_dict.txt
-  seal_lite:
     det: seal_PP-OCRv4_det_infer.pth
     rec: ch_PP-OCRv6_small_rec_infer.safetensors
     dict: ppocrv6_dict.txt

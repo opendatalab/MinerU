@@ -141,8 +141,8 @@ def normalize_ocr_model_lang(
     normalized_lang = lang or "ch"
     if normalized_lang in _CH_LANG_ALIASES:
         normalized_lang = "ch"
-    elif device == "cpu" and normalized_lang == "seal":
-        normalized_lang = "seal_lite"
+    # elif device == "cpu" and normalized_lang == "seal":
+    #     normalized_lang = "seal_lite"
     elif normalized_lang in _EAST_SLAVIC_LANG_ALIASES:
         normalized_lang = "east_slavic"
     elif normalized_lang in _ARABIC_LANG_ALIASES:

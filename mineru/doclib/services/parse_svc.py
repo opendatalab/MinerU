@@ -67,8 +67,6 @@ FTS_HEAD_HALF = 15_000
 DOC_TYPE_BY_EXT = {
     "md": "markdown",
     "markdown": "markdown",
-    "htm": "html",
-    "html": "html",
     **dict.fromkeys(IMAGE_EXTENSIONS, "image"),
 }
 

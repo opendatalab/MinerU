@@ -12,8 +12,7 @@ from loguru import logger
 from tokenizers import AddedToken
 from tokenizers import Tokenizer as TokenizerFast
 
-from mineru.model.mfr.utils import fix_latex_left_right, fix_latex_environments, remove_up_commands, \
-    remove_unsupported_commands
+from mineru.model.mfr.utils import fix_pp_formulanet_latex
 
 
 class UniMERNetImgDecode(object):
@@ -622,12 +621,7 @@ class UniMERNetDecode(object):
         Returns:
             str: Fixed string.
         """
-        text = fix_latex_left_right(text, fix_delimiter=False)
-        text = fix_latex_environments(text)
-        text = remove_up_commands(text)
-        text = remove_unsupported_commands(text)
-        # text = self.normalize(text)
-        return text
+        return fix_pp_formulanet_latex(text)
 
     def __call__(
             self,

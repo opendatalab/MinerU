@@ -30,8 +30,6 @@ SUPPORTED_SUFFIXES = {
     ".docx",
     ".pptx",
     ".xlsx",
-    ".html",
-    ".htm",
 }
 OUTPUT_FILE_SUFFIXES = {
     "markdown": ".md",

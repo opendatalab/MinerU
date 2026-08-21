@@ -1,165 +1,181 @@
 # Copyright (c) Opendatalab. All rights reserved.
+"""严格 MiddleJson 到树形 Markdown content_list 的公共渲染实现。"""
+
 from __future__ import annotations
 
-from ..types import EMPTY_BBOX, BBox, Block, BlockType, ContentItem, ContentType, IntBBox
-from .markdown import _build_media_path, _get_title_level
-from .merge import _merge_para_text, merge_para_text
-from .merge_visual import _format_embedded_html, _inherit_parent_code_render_metadata, _normalize_visual_content
+from typing import Any, TypeAlias
+
+from mineru.config import LatexDelimitersConfig, config
+from mineru.render._internal.markdown.blocks import (
+    render_single_block,
+    render_title_inline_content,
+    render_visual_annotation,
+    render_visual_body_content,
+)
+from mineru.render._internal.markdown.assets import normalize_image_source, resolve_image_source
+from mineru.render._internal.markdown.escaping import escape_standalone_marker_rule, escape_text_block_markdown_prefix
+from mineru.types import (
+    BlockType,
+    ChartAnnotationBlock,
+    ChartBlock,
+    ChartBodyBlock,
+    CodeAnnotationBlock,
+    CodeBlock,
+    DocTitleBlock,
+    EquationBlock,
+    ImageAnnotationBlock,
+    ImageBlock,
+    ImageBodyBlock,
+    ImagePayloadBlock,
+    MiddleJson,
+    PageBlock,
+    ParagraphTitleBlock,
+    TableAnnotationBlock,
+    TableBlock,
+    TableBodyBlock,
+)
+
+VisualBlock: TypeAlias = ImageBlock | TableBlock | ChartBlock | CodeBlock
+VisualAnnotationBlock: TypeAlias = ImageAnnotationBlock | TableAnnotationBlock | ChartAnnotationBlock | CodeAnnotationBlock
+
+_CAPTION_TYPES = {
+    BlockType.IMAGE_CAPTION,
+    BlockType.TABLE_CAPTION,
+    BlockType.CHART_CAPTION,
+    BlockType.CODE_CAPTION,
+}
+_FOOTNOTE_TYPES = {
+    BlockType.IMAGE_FOOTNOTE,
+    BlockType.TABLE_FOOTNOTE,
+    BlockType.CHART_FOOTNOTE,
+    BlockType.CODE_FOOTNOTE,
+}
+_REMOVED_BLOCK_FIELDS = {"content", "index", "guess_lang", "image_path", "image_base64"}
 
 
-def block_to_content_list(
-    para_block: Block,
-    img_bucket_path: str,
-    page_idx: int,
-    page_size: tuple[int, int] | None,
-) -> ContentItem | None:
-    para_type = para_block.type
-    if para_type in [
-        BlockType.TEXT,
-        BlockType.PHONETIC,
-        BlockType.HEADER,
-        BlockType.FOOTER,
-        BlockType.PAGE_NUMBER,
-        BlockType.ASIDE_TEXT,
-        BlockType.PAGE_FOOTNOTE,
-    ]:
-        item = ContentItem(
-            type=para_type,
-            text=merge_para_text(para_block),
-        )
-    elif para_type in [BlockType.INDEX, BlockType.ABSTRACT]:
-        item = ContentItem(
-            type=ContentType.TEXT,
-            text=merge_para_text(para_block),
-        )
-    elif para_type == BlockType.LIST:
-        if para_block.blocks:
-            # Some LayoutModel use LIST as a container.
-            item = ContentItem(type=para_type, sub_type=para_block.sub_type or None)
-            for block in para_block.blocks:
-                if (item_text := _merge_para_text(block)).strip():
-                    item.list_items.append(item_text)
-        else:
-            item = ContentItem(
-                type=ContentType.TEXT,
-                text=merge_para_text(para_block),
-            )
-    elif para_type == BlockType.REF_TEXT:
-        if para_block.blocks:
-            item = ContentItem(type=BlockType.LIST, sub_type=BlockType.REF_TEXT)
-            for block in para_block.blocks:
-                if (item_text := _merge_para_text(block)).strip():
-                    item.list_items.append(item_text)
-        else:
-            item = ContentItem(
-                type=para_type,
-                text=merge_para_text(para_block),
-            )
-    elif para_type == BlockType.TITLE:
-        title_level = _get_title_level(para_block)
-        item = ContentItem(
-            type=ContentType.TEXT,
-            text=merge_para_text(para_block),
-            text_level=title_level if title_level != 0 else None,
-        )
-    elif para_type == BlockType.INTERLINE_EQUATION:
-        item = ContentItem(
-            type=ContentType.EQUATION,
-            img_path=_body_data(para_block, img_bucket_path)[0],
-            text=merge_para_text(para_block),
-            text_format="latex",
-        )
-    elif para_type == BlockType.IMAGE:
-        item = ContentItem(
-            type=ContentType.IMAGE,
-            sub_type=para_block.sub_type or None,
-        )
-        for block in para_block.blocks:
-            if block.type == BlockType.IMAGE_BODY:
-                item.img_path, item.content = _body_data(block, img_bucket_path)
-            if block.type == BlockType.IMAGE_CAPTION:
-                item.image_caption.append(merge_para_text(block))
-            if block.type == BlockType.IMAGE_FOOTNOTE:
-                item.image_footnote.append(merge_para_text(block))
-    elif para_type == BlockType.TABLE:
-        item = ContentItem(type=ContentType.TABLE)
-        for block in para_block.blocks:
-            if block.type == BlockType.TABLE_BODY:
-                item.img_path, item.table_body = _body_data(block, img_bucket_path)
-            if block.type == BlockType.TABLE_CAPTION:
-                item.table_caption.append(merge_para_text(block))
-            if block.type == BlockType.TABLE_FOOTNOTE:
-                item.table_footnote.append(merge_para_text(block))
-    elif para_type == BlockType.CHART:
-        item = ContentItem(
-            type=ContentType.CHART,
-            sub_type=para_block.sub_type or None,
-        )
-        for block in para_block.blocks:
-            if block.type == BlockType.CHART_BODY:
-                item.img_path, item.content = _body_data(block, img_bucket_path)
-            if block.type == BlockType.CHART_CAPTION:
-                item.chart_caption.append(merge_para_text(block))
-            if block.type == BlockType.CHART_FOOTNOTE:
-                item.chart_footnote.append(merge_para_text(block))
-    elif para_type == BlockType.CODE:
-        item = ContentItem(
-            type=BlockType.CODE,
-            sub_type=para_block.sub_type or None,
-        )
-        for block in para_block.blocks:
-            if block.type == BlockType.CODE_BODY:
-                render_block = _inherit_parent_code_render_metadata(block, para_block)
-                item.code_body = merge_para_text(render_block)
-            if block.type == BlockType.CODE_CAPTION:
-                item.code_caption.append(merge_para_text(block))
-            if block.type == BlockType.CODE_FOOTNOTE:
-                item.code_footnote.append(merge_para_text(block))
-    else:
-        return None
+def render_content_list(
+    middle_json: MiddleJson,
+    *,
+    asset_base_url: str = "",
+) -> dict[str, Any]:
+    """把严格 MiddleJson 无副作用地渲染为树形 Markdown content_list。"""
+    if not isinstance(middle_json, MiddleJson):
+        raise TypeError("render_content_list expects a MiddleJson instance")
 
-    item.page_idx = page_idx
-    if bbox := _norm1k_bbox(para_block.bbox, page_size):
-        item.bbox = bbox
-    return item
-
-
-def _body_data(para_block: Block, img_bucket_path: str) -> tuple[str, str]:
-    image_path, content = "", ""
-    for span in (
-        span
-        for block in para_block.blocks or [para_block]
-        if block.type
-        in [
-            BlockType.IMAGE_BODY,
-            BlockType.TABLE_BODY,
-            BlockType.CHART_BODY,
-            BlockType.INTERLINE_EQUATION,
-        ]
-        for line in block.lines
-        for span in line.spans
-    ):
-        if span.type == ContentType.IMAGE:
-            image_path, content = span.image_path, _normalize_visual_content(span.content)
-        elif span.type == ContentType.TABLE:
-            image_path, content = span.image_path, _format_embedded_html(span.content, img_bucket_path)
-        elif span.type == ContentType.CHART:
-            image_path, content = span.image_path, span.content
-        elif span.type == ContentType.INTERLINE_EQUATION:
-            image_path, content = span.image_path, span.content
-        if image_path or content:
-            break
-    return _build_media_path(img_bucket_path, image_path), content
-
-
-def _norm1k_bbox(para_bbox: BBox, page_size: tuple[int, int] | None) -> IntBBox | None:
-    if para_bbox == EMPTY_BBOX or not page_size:
-        return None
-    page_width, page_height = page_size
-    x0, y0, x1, y1 = para_bbox
-    return (
-        int(x0 * 1000 / page_width),
-        int(y0 * 1000 / page_height),
-        int(x1 * 1000 / page_width),
-        int(y1 * 1000 / page_height),
+    delimiters = config.render.latex_delimiters
+    document_fields = middle_json.model_dump(
+        mode="json",
+        exclude={"pages"},
+        exclude_defaults=True,
     )
+    pages = [
+        {
+            "page_idx": page.page_idx,
+            "blocks": [
+                _render_content_block(
+                    block,
+                    delimiters=delimiters,
+                    asset_base_url=asset_base_url,
+                )
+                for block in page.blocks
+            ],
+        }
+        for page in middle_json.pages
+    ]
+    return {"pages": pages, **document_fields}
+
+
+def _render_content_block(
+    block: PageBlock,
+    *,
+    delimiters: LatexDelimitersConfig,
+    asset_base_url: str,
+) -> dict[str, Any]:
+    """保留父块元数据，并把 block 内容收敛为 Markdown 字符串。"""
+    payload = block.model_dump(
+        mode="json",
+        exclude=_REMOVED_BLOCK_FIELDS,
+        exclude_defaults=True,
+    )
+    if isinstance(block, (DocTitleBlock, ParagraphTitleBlock)):
+        content = render_title_inline_content(block, delimiters)
+        payload["content"] = escape_standalone_marker_rule(escape_text_block_markdown_prefix(content))
+        return payload
+    if isinstance(block, EquationBlock):
+        payload["content"] = block.content.strip()
+        image_source = _resolve_content_image_source(block, asset_base_url)
+        if image_source is not None:
+            payload["image_source"] = image_source
+        return payload
+    if not isinstance(block, (ImageBlock, TableBlock, ChartBlock, CodeBlock)):
+        payload["content"] = render_single_block(
+            block,
+            delimiters=delimiters,
+            asset_base_url=asset_base_url,
+        )
+        return payload
+
+    payload["content"] = render_visual_body_content(
+        block,
+        delimiters=delimiters,
+        asset_base_url=asset_base_url,
+    )
+    payload["captions"] = _render_annotation_group(block, _CAPTION_TYPES, delimiters)
+    payload["footnotes"] = _render_annotation_group(block, _FOOTNOTE_TYPES, delimiters)
+    image_source = _resolve_visual_image_source(block, asset_base_url)
+    if image_source is not None:
+        payload["image_source"] = image_source
+    return payload
+
+
+def _render_annotation_group(
+    block: VisualBlock,
+    accepted_types: set[str],
+    delimiters: LatexDelimitersConfig,
+) -> list[dict[str, Any]]:
+    """按源 index 稳定排序视觉说明，并保留可用 bbox 与 Markdown 内容。"""
+    annotations: list[tuple[int, VisualAnnotationBlock]] = []
+    for position, child in enumerate(block.content):
+        if (
+            isinstance(
+                child,
+                (ImageAnnotationBlock, TableAnnotationBlock, ChartAnnotationBlock, CodeAnnotationBlock),
+            )
+            and child.type in accepted_types
+        ):
+            annotations.append((position, child))
+    annotations.sort(key=_annotation_sort_key)
+    rendered_annotations: list[dict[str, Any]] = []
+    for _, child in annotations:
+        annotation_payload: dict[str, Any] = {}
+        if child.bbox is not None:
+            annotation_payload["bbox"] = list(child.bbox)
+        annotation_payload["content"] = render_visual_annotation(child, delimiters)
+        rendered_annotations.append(annotation_payload)
+    return rendered_annotations
+
+
+def _annotation_sort_key(
+    item: tuple[int, VisualAnnotationBlock],
+) -> tuple[bool, int, int]:
+    """让有 index 的说明升序优先，缺失 index 的说明稳定排在末尾。"""
+    position, block = item
+    return block.index is None, block.index if block.index is not None else 0, position
+
+
+def _resolve_visual_image_source(block: VisualBlock, asset_base_url: str) -> str | None:
+    """解析视觉 body 实际选择的图片来源，并返回安全的 Markdown 地址。"""
+    for child in block.content:
+        if not isinstance(child, (ImageBodyBlock, TableBodyBlock, ChartBodyBlock)):
+            continue
+        return _resolve_content_image_source(child, asset_base_url)
+    return None
+
+
+def _resolve_content_image_source(block: ImagePayloadBlock, asset_base_url: str) -> str | None:
+    """把图片载荷收敛为 content_list 中唯一且安全的 image_source。"""
+    source = resolve_image_source(block, asset_base_url)
+    return normalize_image_source(source) if source else None
+
+
+__all__ = ["render_content_list"]

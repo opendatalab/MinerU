@@ -22,9 +22,13 @@ class BaseOCRV20:
     def build_net(self, **kwargs):
         self.net = BaseModel(self.config, **kwargs)
 
-    def _resolve_inference_dtype(self, device):
-        """根据常量和设备类型解析 OCR 网络推理使用的浮点精度。"""
-        precision = OCR_INFERENCE_PRECISION.lower()
+    def _resolve_inference_dtype(self, device, precision_override=None):
+        """根据实例级覆盖、全局常量和设备类型解析 OCR 网络推理精度。"""
+        precision = (
+            OCR_INFERENCE_PRECISION
+            if precision_override is None
+            else precision_override
+        ).lower()
         device_name = str(device).lower()
         is_cpu = device_name.startswith("cpu")
 
@@ -36,10 +40,13 @@ class BaseOCRV20:
             return torch.float32
         return torch.float16
 
-    def _apply_inference_precision(self, device):
-        """将 OCR 网络移动到目标设备，并在非 CPU 半精度场景下切到 fp16。"""
+    def _apply_inference_precision(self, device, precision_override=None):
+        """将 OCR 网络移动到目标设备，并按实例级覆盖或默认规则设置精度。"""
         self.net.to(device)
-        self.ocr_inference_dtype = self._resolve_inference_dtype(device)
+        self.ocr_inference_dtype = self._resolve_inference_dtype(
+            device,
+            precision_override=precision_override,
+        )
         if self.ocr_inference_dtype == torch.float16:
             self.net.to(dtype=torch.float16)
 

@@ -4,20 +4,18 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..types import Tier
+from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
 from .api_client import MinerUApiParser
 from .base import MIDDLE_JSON_SCHEMA_VERSION, DocumentParser, ParseResult
-from .html import HtmlParser
 from .office import DocxParser, PptxParser, XlsxParser
 from .pdf import PdfFlashParser, PdfHybridParser, PdfPipelineParser, PdfVlmParser
 from .tier import PARSER_BACKENDS, backend_for_tier, resolve_runtime_options, resolve_tier_and_backend
-from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
 
 __all__ = [
     "backend_for_tier",
     "PARSER_BACKENDS",
     "DocumentParser",
     "DocxParser",
-    "HtmlParser",
     "MinerUApiParser",
     "MIDDLE_JSON_SCHEMA_VERSION",
     "ParseResult",
@@ -33,9 +31,8 @@ __all__ = [
 ]
 
 _OFFICE_SUFFIXES = frozenset({"docx", "pptx", "xlsx"})
-_HTML_SUFFIXES = frozenset({"html", "htm"})
 _PDF_INPUT_SUFFIXES = frozenset({"pdf", "png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"})
-_PATH_PRIORITY_SUFFIXES = _OFFICE_SUFFIXES | _HTML_SUFFIXES | _PDF_INPUT_SUFFIXES
+_PATH_PRIORITY_SUFFIXES = _OFFICE_SUFFIXES | _PDF_INPUT_SUFFIXES
 
 
 def _resolve_input_suffix(path: Path) -> str:
@@ -76,8 +73,6 @@ def _build_parser(
             "xlsx": XlsxParser,
         }[suffix]
         return parser_cls()
-    elif suffix in _HTML_SUFFIXES:
-        return HtmlParser()
 
     if suffix not in _PDF_INPUT_SUFFIXES:
         raise ValueError(f"Unsupported file type: {suffix or path.suffix or 'unknown'}")

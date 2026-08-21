@@ -1152,6 +1152,9 @@ class PPDocLayoutV2LayoutModel:
     def _is_header_footer_boundary_candidate(cls, box: Dict, anchor_labels: set[str]) -> bool:
         """判断普通块是否可被页眉/页脚/页码边界规则改标。"""
         label = box.get("label")
+        # 未被明确页眉页脚父框覆盖的公式仍保留公式身份，避免仅按页边位置误改标。
+        if cls._is_formula_box(box):
+            return False
         if label in cls.HEADER_FOOTER_BOUNDARY_EXEMPT_LABELS:
             return False
         return label not in anchor_labels
@@ -1420,6 +1423,38 @@ class PPDocLayoutV2LayoutModel:
         return boxes
 
     @classmethod
+    def _filter_formula_boxes_inside_page_marginals(
+        cls,
+        boxes: List[Dict],
+        cover_threshold: float = 0.8,
+    ) -> List[Dict]:
+        """删除被明确页眉页脚父框覆盖的公式框，避免页边小公式生成重叠文本 span。"""
+
+        marginal_labels = {"header", "header_image", "footer", "footer_image"}
+        marginal_parents = [
+            box
+            for box in boxes
+            if box.get("label") in marginal_labels
+        ]
+        if not marginal_parents:
+            return boxes
+
+        filtered_boxes = []
+        for box in boxes:
+            if not cls._is_formula_box(box):
+                filtered_boxes.append(box)
+                continue
+            # 仅按公式自身被明确父框覆盖的比例过滤，不使用页面上下坐标带猜测归属。
+            if any(
+                cls._calculate_cover_ratio(box["bbox"], parent["bbox"])
+                >= cover_threshold
+                for parent in marginal_parents
+            ):
+                continue
+            filtered_boxes.append(box)
+        return filtered_boxes
+
+    @classmethod
     def _relabel_header_footer_boundary_blocks(
         cls,
         boxes: List[Dict],
@@ -1549,6 +1584,10 @@ class PPDocLayoutV2LayoutModel:
         processed_boxes = cls._deduplicate_boxes_by_iou(processed_boxes, iou_threshold=0.9)
         processed_boxes = cls._merge_nested_formula_boxes(processed_boxes, overlap_threshold=0.7)
         processed_boxes = cls._relabel_formula_boxes(processed_boxes, overlap_threshold=0.7)
+        processed_boxes = cls._filter_formula_boxes_inside_page_marginals(
+            processed_boxes,
+            cover_threshold=0.8,
+        )
         processed_boxes = cls._relabel_header_footer_boundary_blocks(
             processed_boxes,
             image_size=image_size,
