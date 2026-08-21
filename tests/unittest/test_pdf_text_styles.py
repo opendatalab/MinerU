@@ -1168,6 +1168,31 @@ def test_rejects_thick_short_and_column_rules() -> None:
     assert all(not item.style_ranges for item in detected)
 
 
+@pytest.mark.parametrize(
+    ("drawing_length", "expected_styles"),
+    [
+        (17.99, ()),
+        (18.0, (PDFTextStyleRange(0, 3, ("strikethrough",)),)),
+    ],
+)
+def test_text_decoration_minimum_length_is_one_point_eight_heights(
+    drawing_length: float,
+    expected_styles: tuple[PDFTextStyleRange, ...],
+) -> None:
+    """验证文本装饰线长度达到 1.8 倍中位字高时才允许生成样式。"""
+
+    line = _text_line("abc")
+    detected = detect_pdf_text_style_lines(
+        [line],
+        [_drawing(line.bbox[0], line.bbox[0] + drawing_length, 15.0)],
+    )
+
+    if expected_styles:
+        assert detected[0].style_ranges == expected_styles
+    else:
+        assert detected == []
+
+
 def test_accepts_one_aligned_endpoint_and_merges_adjacent_drawings() -> None:
     """验证尾部延长 drawing 可由左端点确认，邻接命中区间会合并。"""
 
