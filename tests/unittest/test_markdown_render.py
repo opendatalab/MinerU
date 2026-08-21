@@ -561,7 +561,7 @@ def test_title_and_index_render_anchor_links_without_heading_leaves() -> None:
     title = ParagraphTitleBlock(
         type="paragraph_title",
         index=1,
-        level=8,
+        level=6,
         anchor="toc-a",
         content="Section",
     )

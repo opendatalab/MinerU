@@ -13,15 +13,6 @@
             "right": "$"
         }
     },
-    "llm-aided-config": {
-        "title_aided": {
-            "api_key": "your_api_key",
-            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "model": "qwen3.5-plus",
-            "enable_thinking": false,
-            "enable": false
-        }
-    },
     "models-dir": {
         "pipeline": "",
         "vlm": ""

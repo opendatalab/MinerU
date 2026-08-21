@@ -38,6 +38,34 @@ render:
 四个 delimiter 必须为非空字符串。缺省值如上；环境变量可按现有字段路径规则覆盖，
 例如 `MINERU_RENDER_LATEX_DELIMITERS_INLINE_LEFT`。
 
+PDF 的 LLM 辅助后处理同样读取启动前 `config.yaml`：
+
+```yaml
+llm_aided:
+  api_key: ${MINERU_LLM_API_KEY:-}
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  model: qwen3.5-plus
+  enable_thinking: false
+  max_concurrency: 16
+  features:
+    title_leveling: false
+    cross_page_table_cell_merge: false
+```
+
+两个功能默认关闭并共享同一套 OpenAI-compatible 连接参数。`title_leveling` 在严格
+`PageInfo.blocks` 上优化标题层级，但只在 `page_index_map` 为 `None` 的整本 PDF 输入中运行；
+抽页输入会跳过标题优化。`cross_page_table_cell_merge` 不受整本输入限制，只消费确定性后处理
+已经写入的 `continues_prev`，再把逐单元格的 `0/1` 结果写入后表根块 `cell_merge`。两个功能
+通过同一个异步客户端并发请求，`max_concurrency` 是不小于 1 的共享请求上限，默认值为 16。
+标题分级结果允许 1 到 6，段落标题的 1 会归一为 2，最终严格标题层级范围为 2 到 6。前置
+MinerU VLM 的跨页单元格检测保持关闭。任一功能启用时，`api_key`、`base_url` 和 `model`
+均必须为非空字符串；省略 `enable_thinking` 时不会发送该扩展参数。
+
+环境变量可覆盖任意强类型字段，例如 `MINERU_LLM_AIDED_API_KEY`、
+`MINERU_LLM_AIDED_MAX_CONCURRENCY`、
+`MINERU_LLM_AIDED_FEATURES_TITLE_LEVELING` 和
+`MINERU_LLM_AIDED_FEATURES_CROSS_PAGE_TABLE_CELL_MERGE`。
+
 配置必须服务两个产品原则：
 
 - 隐私优先：任何配置都不能导致静默上传文档。

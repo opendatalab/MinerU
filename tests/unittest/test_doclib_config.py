@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from mineru.config import (
     Config,
+    LLMAidedConfig,
     LogConfig,
     PatchedConfig,
     _apply_env_overrides,
@@ -43,7 +46,7 @@ def test_interpolate_env_rejects_missing_required_value(monkeypatch: pytest.Monk
         _interpolate_env("${MINERU_TEST_MISSING}")
 
 
-def test_load_config_reads_yaml_and_interpolates_env(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_config_reads_yaml_and_interpolates_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MINERU_TEST_DATA", str(tmp_path / "data"))
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
@@ -102,7 +105,7 @@ def test_apply_env_overrides_uses_greedy_field_path_matching(monkeypatch: pytest
     assert cfg.doclib.sqlite.mmap_size == 0
 
 
-def test_read_config_uses_default_config_under_mineru_home(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read_config_uses_default_config_under_mineru_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     mineru_home = tmp_path / "mineru-home"
     mineru_home.mkdir()
     monkeypatch.setenv("MINERU_HOME", str(mineru_home))
@@ -131,6 +134,115 @@ def test_apply_env_overrides_can_override_doclib_data_dir(monkeypatch: pytest.Mo
     cfg = _apply_env_overrides(Config(), prefix=prefix)
 
     assert cfg.doclib.data_dir == "/tmp/ignored-data-dir"
+
+
+def test_llm_aided_config_defaults_to_disabled() -> None:
+    """验证 LLM 辅助功能缺省关闭且不会要求 API 凭据。"""
+    llm_config = Config().llm_aided
+
+    assert llm_config.api_key == ""
+    assert llm_config.base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    assert llm_config.model == "qwen3.5-plus"
+    assert llm_config.enable_thinking is None
+    assert llm_config.max_concurrency == 16
+    assert llm_config.features.title_leveling is False
+    assert llm_config.features.cross_page_table_cell_merge is False
+
+
+def test_llm_aided_config_reads_yaml_shape(tmp_path: Path) -> None:
+    """验证 config.yaml 的共享连接参数和独立功能开关进入强类型配置。"""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        """
+llm_aided:
+  api_key: secret
+  base_url: https://example.test/v1
+  model: test-model
+  enable_thinking: false
+  max_concurrency: 24
+  features:
+    title_leveling: true
+    cross_page_table_cell_merge: true
+""".strip(),
+        encoding="utf-8",
+    )
+
+    cfg = Config(**_load_config(str(config_file)))
+
+    assert cfg.llm_aided.api_key == "secret"
+    assert cfg.llm_aided.base_url == "https://example.test/v1"
+    assert cfg.llm_aided.model == "test-model"
+    assert cfg.llm_aided.enable_thinking is False
+    assert cfg.llm_aided.max_concurrency == 24
+    assert cfg.llm_aided.features.title_leveling is True
+    assert cfg.llm_aided.features.cross_page_table_cell_merge is True
+
+
+def test_llm_aided_config_supports_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 LLM 连接参数和深层功能开关均可由环境变量覆盖。"""
+    prefix = "TEST_MINERU_"
+    monkeypatch.setenv(f"{prefix}LLM_AIDED_API_KEY", "env-secret")
+    monkeypatch.setenv(f"{prefix}LLM_AIDED_MODEL", "env-model")
+    monkeypatch.setenv(f"{prefix}LLM_AIDED_ENABLE_THINKING", "false")
+    monkeypatch.setenv(f"{prefix}LLM_AIDED_MAX_CONCURRENCY", "32")
+    monkeypatch.setenv(f"{prefix}LLM_AIDED_FEATURES_TITLE_LEVELING", "true")
+    monkeypatch.setenv(f"{prefix}LLM_AIDED_FEATURES_CROSS_PAGE_TABLE_CELL_MERGE", "true")
+
+    cfg = _apply_env_overrides(Config(), prefix=prefix)
+
+    assert cfg.llm_aided.api_key == "env-secret"
+    assert cfg.llm_aided.model == "env-model"
+    assert cfg.llm_aided.enable_thinking is False
+    assert cfg.llm_aided.max_concurrency == 32
+    assert cfg.llm_aided.features.title_leveling is True
+    assert cfg.llm_aided.features.cross_page_table_cell_merge is True
+
+
+@pytest.mark.parametrize("feature", ["title_leveling", "cross_page_table_cell_merge"])
+def test_llm_aided_config_requires_credentials_for_enabled_feature(feature: str) -> None:
+    """验证任一 LLM 功能启用时空 API key 会在配置边界报错。"""
+    with pytest.raises(ValueError, match="llm_aided.api_key"):
+        LLMAidedConfig(features={feature: True})
+
+
+@pytest.mark.parametrize("value", [0, -1, 1.5, "invalid", True])
+def test_llm_aided_config_rejects_invalid_max_concurrency(value: object) -> None:
+    """验证并发数无论功能是否启用都必须是正整数。"""
+    with pytest.raises(ValueError):
+        LLMAidedConfig(max_concurrency=value)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("field_name", ["api_key", "base_url", "model"])
+def test_llm_aided_config_rejects_each_empty_connection_field(field_name: str) -> None:
+    """验证启用功能时共享连接参数中的任一空值都会被拒绝。"""
+    values = {
+        "api_key": "secret",
+        "base_url": "https://example.test/v1",
+        "model": "test-model",
+    }
+    values[field_name] = " "
+
+    with pytest.raises(ValueError, match=f"llm_aided.{field_name}"):
+        LLMAidedConfig(
+            **values,
+            features={"title_leveling": True},
+        )
+
+
+def test_legacy_llm_aided_root_key_is_ignored() -> None:
+    """验证旧 llm-aided-config 不会再启用新的 YAML LLM 功能。"""
+    cfg = Config.model_validate(
+        {
+            "llm-aided-config": {
+                "title_aided": {
+                    "api_key": "legacy",
+                    "enable": True,
+                }
+            }
+        }
+    )
+
+    assert cfg.llm_aided.features.title_leveling is False
 
 
 def test_default_doclib_data_dir_uses_doclib_directory() -> None:

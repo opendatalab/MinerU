@@ -148,18 +148,6 @@ def get_latex_delimiter_config() -> dict[str, Any] | None:
         return latex_delimiter_config
 
 
-def get_llm_aided_config() -> dict[str, Any] | None:
-    config = read_config()
-    if config is None:
-        return None
-    llm_aided_config = config.get("llm-aided-config", None)
-    if llm_aided_config is None:
-        # logger.warning(f"'llm-aided-config' not found in {CONFIG_FILE_NAME}, use 'None' as default")
-        return None
-    else:
-        return llm_aided_config
-
-
 def get_local_models_dir() -> dict[str, str] | None:
     config = read_config()
     if config is None:

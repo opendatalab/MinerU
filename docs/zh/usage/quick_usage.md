@@ -114,6 +114,30 @@ mineru -p <input_path> -o <output_path>
 > 所有`vllm/lmdeploy`官方支持的参数都可用通过命令行参数传递给 MinerU，包括以下命令:`mineru`、`mineru-openai-server`、`mineru-gradio`、`mineru-api`、`mineru-router`，
 > 我们整理了一些`vllm/lmdeploy`使用中的常用参数和使用方法，可以在文档[命令行进阶参数](./advanced_cli_parameters.md)中获取。
 
+## 使用 config.yaml 配置 LLM 辅助后处理
+
+LLM 辅助标题分级和跨页表格单元格续接读取 `$MINERU_HOME/config.yaml`，兼容 OpenAI 协议的模型服务：
+
+```yaml
+llm_aided:
+  api_key: ${MINERU_LLM_API_KEY:-}
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  model: qwen3.5-plus
+  enable_thinking: false
+  max_concurrency: 16
+  features:
+    title_leveling: false
+    cross_page_table_cell_merge: false
+```
+
+- `title_leveling`：仅在 `page_index_map` 为 `None` 的整本 PDF 输入中，以文档标题为边界分组优化 2～6 级段落标题；抽页输入会跳过该功能。
+- `cross_page_table_cell_merge`：在现有规则确认跨页续表后，通过 LLM 判断边界行中各组相邻单元格是否续接。
+- table cell merge 不要求整本输入；两个功能默认关闭，并通过同一个异步客户端共享连接参数和 `max_concurrency` 请求上限，默认值为 16。
+- `max_concurrency` 必须是不小于 1 的整数，可通过 `MINERU_LLM_AIDED_MAX_CONCURRENCY` 覆盖。
+- 启用任一功能前必须配置非空的 `api_key`、`base_url` 和 `model`。
+- `enable_thinking` 可省略；省略后不会向模型服务发送该扩展参数。
+- 旧 `mineru.json` 中的 `llm-aided-config` 不再读取。
+
 ## 基于配置文件扩展 MinerU 功能
 
 MinerU 现已实现开箱即用，但也支持通过配置文件扩展功能。您可通过编辑用户目录下的 `mineru.json` 文件，添加自定义配置。
@@ -126,31 +150,6 @@ MinerU 现已实现开箱即用，但也支持通过配置文件扩展功能。�
 - `latex-delimiter-config`：
     * 用于配置 LaTeX 公式的分隔符
     * 默认为`$`符号，可根据需要修改为其他符号或字符串。
-  
-- `llm-aided-config`：
-    * 用于配置 LLM 辅助标题分级的相关参数，兼容所有支持`openai协议`的 LLM 模型
-    * 默认使用`阿里云百炼`的`qwen3-next-80b-a3b-instruct`模型
-    * 您需要自行配置 API 密钥并将`enable`设置为`true`来启用此功能
-    * 如果您的api供应商不支持`enable_thinking`参数，请手动将该参数删除
-        * 例如，在您的配置文件中，`llm-aided-config` 部分可能如下所示：
-          ```json
-          "llm-aided-config": {
-             "api_key": "your_api_key",
-             "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-             "model": "qwen3-next-80b-a3b-instruct",
-             "enable_thinking": false,
-             "enable": false
-          }
-          ```
-        * 要移除`enable_thinking`参数，只需删除包含`"enable_thinking": false`的那一行，结果如下:
-          ```json
-          "llm-aided-config": {
-             "api_key": "your_api_key",
-             "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-             "model": "qwen3-next-80b-a3b-instruct",
-             "enable": false
-          }
-          ```
   
 - `models-dir`：
     * 用于指定本地模型存储目录，请分别指定本地小模型 bundle（`models-dir.pipeline`）和 VLM bundle（`models-dir.vlm`）的模型目录，

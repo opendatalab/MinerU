@@ -447,7 +447,7 @@ def test_index_uses_real_forward_anchor_and_omits_duplicate_ids() -> None:
         ],
     )
     first = ParagraphTitleBlock(type="paragraph_title", index=1, level=2, anchor="sec 1", content="Section")
-    duplicate = ParagraphTitleBlock(type="paragraph_title", index=2, level=9, anchor="sec 1", content="Duplicate")
+    duplicate = ParagraphTitleBlock(type="paragraph_title", index=2, level=6, anchor="sec 1", content="Duplicate")
     soup = BeautifulSoup(render_html(_middle(_page(0, index, first, duplicate)), standalone=False), "html.parser")
 
     assert soup.select_one('.mineru-index a[href="#sec-1"]').get_text() == "Section"
@@ -455,7 +455,7 @@ def test_index_uses_real_forward_anchor_and_omits_duplicate_ids() -> None:
     assert soup.select_one(".mineru-index li ul") is not None
     assert soup.select_one(".mineru-index li ul a") is None
     assert len(soup.select('[id="sec-1"]')) == 1
-    assert soup.find("h6", attrs={"data-heading-level": "9"}).get_text() == "Duplicate"
+    assert soup.find("h6", attrs={"data-heading-level": "6"}).get_text() == "Duplicate"
 
 
 def test_empty_title_does_not_create_a_broken_index_target_and_anchor_controls_are_normalized() -> None:

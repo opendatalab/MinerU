@@ -114,6 +114,30 @@ If you need to adjust parsing options through custom parameters, you can also ch
 > All officially supported `vllm/lmdeploy` parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-openai-server`, `mineru-gradio`, `mineru-api`, `mineru-router`.
 > We have compiled some commonly used parameters and usage methods for `vllm/lmdeploy`, which can be found in the documentation [Advanced Command Line Parameters](./advanced_cli_parameters.md).
 
+## Configuring LLM-aided post-processing with config.yaml
+
+LLM-aided title leveling and cross-page table cell continuation read `$MINERU_HOME/config.yaml` and support OpenAI-compatible model services:
+
+```yaml
+llm_aided:
+  api_key: ${MINERU_LLM_API_KEY:-}
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  model: qwen3.5-plus
+  enable_thinking: false
+  max_concurrency: 16
+  features:
+    title_leveling: false
+    cross_page_table_cell_merge: false
+```
+
+- `title_leveling` groups paragraph titles into levels 2 through 6 by document-title boundaries and runs only for whole-PDF input where `page_index_map` is `None`. It is skipped for page-selected input.
+- `cross_page_table_cell_merge` asks the LLM whether each pair of boundary-row cells continues after the existing rules identify a cross-page table.
+- Table cell merge does not require whole-document input. Both features are disabled by default and share one asynchronous client, one connection configuration, and the `max_concurrency` request limit, which defaults to 16.
+- `max_concurrency` must be an integer of at least 1 and can be overridden with `MINERU_LLM_AIDED_MAX_CONCURRENCY`.
+- Enabling either feature requires non-empty `api_key`, `base_url`, and `model` values.
+- `enable_thinking` is optional. When omitted, the extension parameter is not sent to the model service.
+- The legacy `llm-aided-config` section in `mineru.json` is no longer read.
+
 ## Extending MinerU Functionality with Configuration Files
 
 MinerU is now ready to use out of the box, but also supports extending functionality through configuration files. You can edit `mineru.json` file in your user directory to add custom configurations.  
@@ -126,31 +150,6 @@ Here are some available configuration options:
 - `latex-delimiter-config`: 
     * Used to configure LaTeX formula delimiters
     * Defaults to `$` symbol, can be modified to other symbols or strings as needed.
-  
-- `llm-aided-config`:
-    * Used to configure parameters for LLM-assisted title hierarchy
-    * Compatible with all LLM models supporting `openai protocol`, defaults to using Alibaba Cloud Bailian's `qwen3-next-80b-a3b-instruct` model. 
-    * You need to configure your own API key and set `enable` to `true` to enable this feature.
-    * If your API provider does not support the `enable_thinking` parameter, please manually remove it.
-        * For example, in your configuration file, the `llm-aided-config` section may look like:
-          ```json
-          "llm-aided-config": {
-             "api_key": "your_api_key",
-             "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-             "model": "qwen3-next-80b-a3b-instruct",
-             "enable_thinking": false,
-             "enable": false
-          }
-          ```
-        * To remove the `enable_thinking` parameter, simply delete the line containing `"enable_thinking": false`, resulting in:
-          ```json
-          "llm-aided-config": {
-             "api_key": "your_api_key",
-             "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-             "model": "qwen3-next-80b-a3b-instruct",
-             "enable": false
-          }
-          ```
   
 - `models-dir`: 
     * Used to specify local model storage directory

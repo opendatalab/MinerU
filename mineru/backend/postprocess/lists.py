@@ -20,8 +20,8 @@ def fix_office_paragraph_titles(model_list: list[list[dict[str, Any]]]) -> None:
             if block.get("type") != BlockType.PARAGRAPH_TITLE:
                 continue
             raw_level = block.get("level")
-            level_is_valid = isinstance(raw_level, int) and not isinstance(raw_level, bool) and raw_level >= 2
-            level = raw_level if level_is_valid else 2
+            normalized_level = raw_level if type(raw_level) is int else 2
+            level = min(max(normalized_level, 2), 6)
             block["level"] = level
             numbering_depth = level - 1
             is_numbered_style = block.pop("is_numbered_style", None)

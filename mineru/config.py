@@ -10,7 +10,7 @@ import socket
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_core import to_jsonable_python
 
 _logger = logging.getLogger(__name__)
@@ -271,6 +271,45 @@ class RenderConfig(BaseModel):
     latex_delimiters: LatexDelimitersConfig = Field(default_factory=LatexDelimitersConfig)
 
 
+class LLMAidedFeaturesConfig(BaseModel):
+    """LLM 辅助后处理的独立功能开关。"""
+
+    title_leveling: bool = False
+    cross_page_table_cell_merge: bool = False
+
+
+class LLMAidedConfig(BaseModel):
+    """OpenAI-compatible LLM 辅助后处理配置。"""
+
+    api_key: str = Field(default="", repr=False)
+    base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    model: str = "qwen3.5-plus"
+    enable_thinking: bool | None = None
+    max_concurrency: int = Field(default=16, ge=1)
+    features: LLMAidedFeaturesConfig = Field(default_factory=LLMAidedFeaturesConfig)
+
+    @field_validator("max_concurrency", mode="before")
+    @classmethod
+    def _reject_boolean_max_concurrency(cls, value: Any) -> Any:
+        """拒绝被 Python 视作整数的布尔并发数，同时保留环境变量字符串转换。"""
+        if isinstance(value, bool):
+            raise ValueError("llm_aided.max_concurrency must be a positive integer")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_enabled_credentials(self) -> "LLMAidedConfig":
+        """任一 LLM 功能启用时要求连接参数均为非空字符串。"""
+        enabled = self.features.title_leveling or self.features.cross_page_table_cell_merge
+        if not enabled:
+            return self
+
+        for field_name in ("api_key", "base_url", "model"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"llm_aided.{field_name} must be a non-empty string when an LLM feature is enabled")
+        return self
+
+
 class DoclibConfig(BaseModel):
     """Doclib startup configuration.
 
@@ -317,6 +356,7 @@ class Config(BaseModel):
 
     doclib: DoclibConfig = Field(default_factory=DoclibConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
+    llm_aided: LLMAidedConfig = Field(default_factory=LLMAidedConfig)
 
 
 config = _apply_env_overrides(Config(**_read_config()))
@@ -332,6 +372,8 @@ __all__ = [
     "config",
     "Config",
     "DoclibConfig",
+    "LLMAidedConfig",
+    "LLMAidedFeaturesConfig",
     "LatexDelimiterConfig",
     "LatexDelimitersConfig",
     "RenderConfig",

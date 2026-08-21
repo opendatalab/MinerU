@@ -11,7 +11,9 @@ from loguru import logger
 from mineru.backend.analysis.contracts import AnalyzeEffort, OfficeSuffix, ParseMode
 from mineru.backend.analysis.office import analyze_office
 from mineru.backend.analysis.pdf.pipeline import analyze_pdf
+from mineru.backend.postprocess.llm_aided import apply_llm_aided_postprocess
 from mineru.backend.postprocess.pages import model_list_to_pages
+from mineru.config import config
 from mineru.types import MiddleJson
 from mineru.version import __version__ as mineru_version
 
@@ -50,8 +52,16 @@ def doc_analyze(
         result = analyze_office(file_bytes, cast(OfficeSuffix, file_suffix))
 
     _log_infer_performance(file_suffix, len(result.model_list), result.elapsed)
+    pages = model_list_to_pages(result.model_list, page_index_map)
+    if file_suffix == "pdf":
+        apply_llm_aided_postprocess(
+            pages,
+            config.llm_aided,
+            page_index_map=page_index_map,
+        )
+
     middle_json = MiddleJson(
-        pages=model_list_to_pages(result.model_list, page_index_map),
+        pages=pages,
         file_suffix=file_suffix,
         effort=result.effort,
         parse_mode=result.parse_mode,

@@ -109,17 +109,20 @@ def test_shared_models_preserve_all_discriminator_values() -> None:
 
 
 def test_title_levels_follow_global_hierarchy() -> None:
-    """验证文档标题固定为一级，段落标题必须从二级开始。"""
+    """验证文档标题固定为一级，段落标题严格限制在二至六级。"""
     doc_title = parse_block({"type": "doc_title", "content": "doc", "level": 1})
     paragraph_title = parse_block({"type": "paragraph_title", "content": "section", "level": 2})
+    deepest_title = parse_block({"type": "paragraph_title", "content": "deep", "level": 6})
 
     assert doc_title.to_dict()["level"] == 1
     assert paragraph_title.to_dict()["level"] == 2
+    assert deepest_title.to_dict()["level"] == 6
     for payload in (
         {"type": "doc_title", "content": "doc"},
         {"type": "doc_title", "content": "doc", "level": 2},
         {"type": "paragraph_title", "content": "section"},
         {"type": "paragraph_title", "content": "section", "level": 1},
+        {"type": "paragraph_title", "content": "section", "level": 7},
     ):
         with pytest.raises(ValidationError):
             parse_block(payload)

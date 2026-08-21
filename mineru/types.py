@@ -404,7 +404,7 @@ class DocTitleBlock(TitleBlockBase):
 
 class ParagraphTitleBlock(TitleBlockBase):
     type: Literal[BlockType.PARAGRAPH_TITLE]
-    level: int = Field(ge=2)
+    level: int = Field(ge=2, le=6)
 
 
 class PageAuxTextBlock(StringContentBlock):

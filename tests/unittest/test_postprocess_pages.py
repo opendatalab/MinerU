@@ -360,17 +360,57 @@ def test_chart_none_content_is_normalized_to_empty_string() -> None:
 
 
 def test_raw_title_levels_are_normalized_to_global_hierarchy() -> None:
-    """验证 raw 标题在严格对象化前补齐全局一级和二级层级。"""
+    """验证 raw 标题在严格对象化前归一为全局一至六级层级。"""
     page = model_list_to_pages(
         [
             [
                 {"type": "doc_title", "content": "Document"},
                 {"type": "paragraph_title", "content": "Section", "level": 1},
+                {"type": "paragraph_title", "content": "Deep", "level": 9},
             ]
         ]
     )[0]
 
-    assert [block.level for block in page.blocks] == [1, 2]
+    assert [block.level for block in page.blocks] == [1, 2, 6]
+
+
+def test_pdf_raw_paragraph_title_level_is_clamped_to_six() -> None:
+    """验证带 bbox 的 PDF raw 深层标题在严格对象化前归一为六级。"""
+    page = model_list_to_pages(
+        [[{"type": "paragraph_title", "content": "Deep", "level": 9, "bbox": [0.1, 0.1, 0.9, 0.2]}]]
+    )[0]
+
+    assert isinstance(page.blocks[0], ParagraphTitleBlock)
+    assert page.blocks[0].level == 6
+
+
+def test_office_title_level_is_clamped_before_numbering_and_index_mapping() -> None:
+    """验证 Office 深层标题在编号和目录映射前归一为六级。"""
+    model_list = [
+        [
+            {
+                "type": "paragraph_title",
+                "content": "Deep",
+                "level": 9,
+                "anchor": "deep-anchor",
+                "is_numbered_style": True,
+            },
+            {
+                "type": "index",
+                "content": [{"type": "text", "content": "Deep entry", "anchor": "deep-anchor"}],
+            },
+        ]
+    ]
+
+    page = model_list_to_pages(model_list)[0]
+    title = page.blocks[0]
+    index = page.blocks[1]
+
+    assert isinstance(title, ParagraphTitleBlock)
+    assert title.level == 6
+    assert title.content == "1.1.1.1.1 Deep"
+    assert isinstance(index.content[0], ParagraphTitleBlock)
+    assert index.content[0].level == 6
 
 
 def test_pdf_continuation_is_typed_and_line_metadata_is_removed() -> None:

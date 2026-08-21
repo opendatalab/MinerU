@@ -218,7 +218,7 @@ class _DocxRenderer:
         block: DocTitleBlock | ParagraphTitleBlock,
         context: InlineRenderContext,
     ) -> None:
-        """用 Heading 1–9 写标题，并在段落内容外添加 bookmark。"""
+        """用 Heading 1–6 写严格标题，并在段落内容外添加 bookmark。"""
         level = min(max(block.level, 1), 9)
         paragraph = self.document.add_paragraph(style=f"Heading {level}")
         append_inline_content(paragraph, block.content, context=context)

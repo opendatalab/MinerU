@@ -66,7 +66,7 @@ def test_structured_content_preserves_document_tree_without_merging_or_mutation(
             ParagraphTitleBlock(
                 type="paragraph_title",
                 index=0,
-                level=8,
+                level=6,
                 anchor="section-a",
                 content='# <text style="bold">Section</text> <eq>x</eq>',
             ),
@@ -94,7 +94,7 @@ def test_structured_content_preserves_document_tree_without_merging_or_mutation(
     assert result["pages"][0]["blocks"][0] == {
         "type": "paragraph_title",
         "anchor": "section-a",
-        "level": 8,
+        "level": 6,
         "content": r"\# **Section** $x$",
     }
     assert render_markdown(middle).startswith('<a id="section-a"></a>\n###### # **Section** $x$')

@@ -8,8 +8,12 @@ from typing import Any
 from mineru.parser.base import ParseResult
 from mineru.render import render_content_list, render_markdown, render_structured_content
 from mineru.types import PageInfo
-from mineru.utils.backend_options import DEFAULT_HYBRID_EFFORT, normalize_backend, resolve_backend_and_effort
-from mineru.utils.title_level_postprocess import finalize_client_side_pages
+from mineru.utils.backend_options import (
+    DEFAULT_HYBRID_EFFORT,
+    normalize_backend,
+    resolve_backend_and_effort,
+    validate_effort,
+)
 from mineru.version import __version__
 
 PDF_BACKENDS = {"hybrid"}
@@ -42,6 +46,20 @@ def _stamp_client_side_backend(pages: list[PageInfo], backend: str) -> None:
         page._backend = backend
 
 
+def _finalize_client_side_pages(
+    pages: list[PageInfo],
+    backend: str,
+    effort: str = DEFAULT_HYBRID_EFFORT,
+) -> None:
+    """按调用方传入的后端类型，对 pages 原地执行客户端可完成的 finalize。"""
+    if backend == "hybrid":
+        from mineru.backend.pdf.model_output_to_middle_json import finalize_middle_json_from_preproc
+
+        finalize_middle_json_from_preproc(pages, effort=validate_effort(effort))
+        return
+    raise ValueError(f"Unsupported client-side finalize backend '{backend}'")
+
+
 def regenerate_client_side_outputs(
     parse_dir: str | Path,
     doc_stem: str,
@@ -68,7 +86,7 @@ def regenerate_client_side_outputs(
     _stamp_client_side_backend(pages, normalized_backend)
 
     if normalized_backend in PDF_BACKENDS:
-        finalize_client_side_pages(pages, normalized_backend, effort=effort)
+        _finalize_client_side_pages(pages, normalized_backend, effort=effort)
 
     image_dir = "images"
 

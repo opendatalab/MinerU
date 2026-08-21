@@ -102,6 +102,22 @@ def test_backend_utils_package_is_removed() -> None:
     assert not utils_path.exists()
 
 
+def test_llm_postprocess_business_logic_is_not_kept_in_utils() -> None:
+    """守卫 LLM 客户端和标题业务统一归属 backend/postprocess。"""
+    removed_utils_paths = [
+        _PROJECT_ROOT / "mineru/utils/llm_aided.py",
+        _PROJECT_ROOT / "mineru/utils/title_level_postprocess.py",
+    ]
+    expected_backend_paths = [
+        _PROJECT_ROOT / "mineru/backend/postprocess/llm_client.py",
+        _PROJECT_ROOT / "mineru/backend/postprocess/title_leveling.py",
+        _PROJECT_ROOT / "mineru/backend/postprocess/table_merge/llm_cell_merge.py",
+    ]
+
+    assert not [path for path in removed_utils_paths if path.exists()]
+    assert all(path.is_file() for path in expected_backend_paths)
+
+
 def test_table_merge_package_keeps_one_way_internal_dependencies() -> None:
     """守卫 table_merge 低层模块不反向导入内容合并或文档编排模块。"""
     package_path = _PROJECT_ROOT / "mineru/backend/postprocess/table_merge"

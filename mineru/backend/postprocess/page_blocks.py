@@ -86,7 +86,8 @@ def _normalize_raw_blocks(page_model_list: list[BlockDict]) -> list[BlockDict]:
             block["level"] = 1
         elif block_type == BlockType.PARAGRAPH_TITLE:
             raw_level = block.get("level")
-            block["level"] = raw_level if type(raw_level) is int and raw_level >= 2 else 2
+            normalized_level = raw_level if type(raw_level) is int else 2
+            block["level"] = min(max(normalized_level, 2), 6)
 
         if block_type not in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.CHART_BODY]:
             if block_content:
