@@ -29,7 +29,7 @@ from mineru.utils.pdf_document import PDFDocument
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_NPU_PDF_PATH = _PROJECT_ROOT / "demo" / "pdfs" / "NPU_开发环境部署_参考指南.pdf"
+_SYNTHETIC_CJK_PDF_PATH = _PROJECT_ROOT / "tests" / "unittest" / "pdfs" / "native_cjk_layout_synthetic.pdf"
 
 
 def _build_text_lines(*contents: str) -> list[_AnalyzeLine]:
@@ -772,15 +772,16 @@ def test_existing_text_content_is_preserved_while_lines_are_refreshed() -> None:
     assert block["lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
 
 
-def test_npu_page_three_low_visual_runs_keep_index_line_structure() -> None:
-    """验证 Low/TXT 的 Flash visual run 拆分不会破坏 NPU 的 24 行目录。"""
-    document = PDFDocument(_NPU_PDF_PATH.read_bytes())
+def test_synthetic_cjk_low_visual_runs_keep_index_line_structure() -> None:
+    """验证 Low/TXT 的 Flash visual run 拆分不会破坏合成 PDF 的 24 行目录。"""
+
+    document = PDFDocument(_SYNTHETIC_CJK_PDF_PATH.read_bytes())
     try:
-        page = document[2]
+        page = document[1]
         page_size = tuple(float(value) for value in page.size)
         index_block = {
             "type": BlockType.INDEX,
-            "bbox": [0.064, 0.17, 0.943, 0.689],
+            "bbox": [0.109, 0.11, 0.874, 0.832],
             "angle": 0,
             "content": "",
         }
@@ -798,16 +799,16 @@ def test_npu_page_three_low_visual_runs_keep_index_line_structure() -> None:
             page_size,
         )
 
-        flash_index_block = next(block for block in PdfModel().predict(document)[2] if block.get("type") == BlockType.INDEX)
+        flash_index_block = next(block for block in PdfModel().predict(document)[1] if block.get("type") == BlockType.INDEX)
         flash_content = inline_plain_text(
             parse_inline_content(str(flash_index_block["content"]))
         )
         assert index_block["content"] == flash_content
         assert len(str(index_block["content"]).splitlines()) == 24
-        assert str(index_block["content"]).splitlines()[0] == "1 前言 1"
-        assert str(index_block["content"]).splitlines()[-1] == "5 附录： 19"
+        assert str(index_block["content"]).splitlines()[0] == "1 合成章节 1 1"
+        assert str(index_block["content"]).splitlines()[-1] == "24 合成章节 24 24"
         assert index_block["type"] == BlockType.INDEX
-        assert index_block["bbox"] == [0.064, 0.17, 0.943, 0.689]
+        assert index_block["bbox"] == [0.109, 0.11, 0.874, 0.832]
         assert index_block["angle"] == 0
     finally:
         document.close()

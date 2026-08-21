@@ -344,28 +344,38 @@ def test_chinese_reference_line_only_marks_the_reference() -> None:
 
 
 @pytest.mark.parametrize(
-    ("page_index", "probe"),
+    ("probe", "minimum_font_count"),
     [
-        pytest.param(4, "• 技术支持工程师", id="bullet-text"),
-        pytest.param(5, "• Acuity Toolkit", id="mixed-font-bullet-text"),
-        pytest.param(6, "• Ubuntu 16.04", id="version-bullet-text"),
+        pytest.param("• 合成支持工程师 Support Engineer", 2, id="bullet-text"),
+        pytest.param("• 混合字体工具 Acuity Toolkit", 2, id="mixed-font-bullet-text"),
+        pytest.param("• 测试系统 Ubuntu 24.04", 2, id="version-bullet-text"),
         pytest.param(
-            10,
-            "Vivante_acuity_toolkit_binary_6.6.1_20220329_ubuntu20.04.tgz",
+            "mineru_toolkit_binary_1.0.0_linux_x86_64.tgz",
+            1,
             id="filename-descender",
         ),
     ],
 )
-def test_npu_plain_text_does_not_gain_script_tags(page_index: int, probe: str) -> None:
-    """验证项目符号、混合字体和文件名降部字符不会驱动整行上下标误判。"""
+def test_synthetic_cjk_plain_text_does_not_gain_script_tags(
+    probe: str,
+    minimum_font_count: int,
+) -> None:
+    """验证合成项目符号、混合字体和文件名降部字符不会触发上下标误判。"""
+
     matching_lines = _lines_chars_containing(
-        _DEMO_PDF_DIR / "NPU_开发环境部署_参考指南.pdf",
-        page_index,
+        _FIXTURE_PDF_DIR / "native_cjk_layout_synthetic.pdf",
+        2,
         probe,
     )
     contents = [_render_chars(chars) for chars in matching_lines]
+    font_names = {
+        str((char.get("font") or {}).get("name", ""))
+        for chars in matching_lines
+        for char in chars
+    }
 
     assert contents
+    assert len(font_names) >= minimum_font_count
     assert all("<sup>" not in content and "<sub>" not in content for content in contents)
 
 

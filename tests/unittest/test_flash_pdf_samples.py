@@ -7,6 +7,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from pypdf import PdfReader
+
 from mineru.backend.postprocess.page_blocks import process_page_blocks
 from mineru.backend.postprocess.pages import model_list_to_pages
 from mineru.model.flash import PdfModel
@@ -26,6 +28,14 @@ from mineru.render._internal.common.inline import (
 )
 from mineru.types import MiddleJson
 from mineru.utils.pdf_document import PDFDocument, get_lines_from_chars
+
+
+_PROJECT_ROOT = Path(__file__).parents[2]
+_DEMO_PDF_DIR = _PROJECT_ROOT / "demo" / "pdfs"
+_FIXTURE_PDF_DIR = Path(__file__).resolve().parent / "pdfs"
+_FLASH_SYNTHETIC_PDF_NAME = "flash_table_annotations_synthetic.pdf"
+_CJK_SYNTHETIC_PDF_NAME = "native_cjk_layout_synthetic.pdf"
+_SAFE_WATERMARK_TEXT = "MINERU TEST WATERMARK"
 
 
 # demo4 第 9 至 11 页中实际跨物理行显示的 URL，用于确保纯正则拼接覆盖全部形态。
@@ -73,18 +83,26 @@ _DEMO4_WRAPPED_URLS = (
 )
 
 
-def _native_model_list(pdf_name: str) -> list[list[dict[str, Any]]]:
+def _native_model_list(
+    pdf_name: str,
+    *,
+    pdf_dir: Path = _DEMO_PDF_DIR,
+) -> list[list[dict[str, Any]]]:
     """运行仓库内数字 PDF 样例并返回 Flash 原生模型输出。"""
 
-    pdf_path = Path(__file__).parents[2] / "demo" / "pdfs" / pdf_name
+    pdf_path = pdf_dir / pdf_name
     with PDFDocument(str(pdf_path)) as pdf_doc:
         return PdfModel().predict(pdf_doc)
 
 
-def _txt_model_list(pdf_name: str) -> list[list[dict[str, Any]]]:
+def _txt_model_list(
+    pdf_name: str,
+    *,
+    pdf_dir: Path = _DEMO_PDF_DIR,
+) -> list[list[dict[str, Any]]]:
     """显式使用 Flash TXT 模式解析仓库内回归 PDF，禁止经过 auto 分类。"""
 
-    pdf_path = Path(__file__).parents[2] / "demo" / "pdfs" / pdf_name
+    pdf_path = pdf_dir / pdf_name
     with PDFDocument(pdf_path.read_bytes()) as pdf_doc:
         return PdfModel().predict(pdf_doc)
 
@@ -174,21 +192,210 @@ def _blocks_containing(
     return [block for block in blocks if normalized_probe in _normalized_content_probe(str(block.get("content", "")))]
 
 
-def test_all_demo_pdfs_keep_expected_txt_block_inventory() -> None:
-    """验证 15 份既有 demo PDF 在 TXT 模式下保持预期块库存与页脚迁移。"""
+def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
+    """验证显式登记的 demo 与合成 PDF 逐文件保持预期页数和块库存。"""
 
-    pdf_names = sorted(
-        path.name
-        for path in (Path(__file__).parents[2] / "demo" / "pdfs").glob("*.pdf")
-        if path.name != "2407.00079v4_origi-10.pdf"
-    )
-    inventory: Counter[str] = Counter()
-    page_count = 0
+    expected_inventory = {
+        "IEBM_A_2667169_O-5.pdf": (1, Counter({"equation": 16, "header": 2, "text": 12})),
+        "caibao1.pdf": (
+            22,
+            Counter(
+                {
+                    "caption": 15,
+                    "footer": 22,
+                    "footnote": 17,
+                    "header": 43,
+                    "image": 14,
+                    "page_number": 22,
+                    "paragraph_title": 26,
+                    "table": 20,
+                    "text": 70,
+                }
+            ),
+        ),
+        "demo1.pdf": (
+            13,
+            Counter(
+                {
+                    "caption": 10,
+                    "doc_title": 1,
+                    "equation": 7,
+                    "footer": 1,
+                    "footnote": 5,
+                    "header": 12,
+                    "image": 8,
+                    "page_footnote": 1,
+                    "page_number": 12,
+                    "paragraph_title": 18,
+                    "table": 5,
+                    "text": 85,
+                }
+            ),
+        ),
+        "demo2.pdf": (
+            6,
+            Counter(
+                {
+                    "caption": 7,
+                    "doc_title": 1,
+                    "equation": 9,
+                    "footer": 1,
+                    "footnote": 2,
+                    "image": 8,
+                    "paragraph_title": 10,
+                    "table": 2,
+                    "text": 62,
+                }
+            ),
+        ),
+        "demo3.pdf": (
+            10,
+            Counter(
+                {
+                    "aside_text": 1,
+                    "caption": 8,
+                    "doc_title": 1,
+                    "equation": 8,
+                    "image": 1,
+                    "page_footnote": 6,
+                    "paragraph_title": 21,
+                    "table": 9,
+                    "text": 118,
+                }
+            ),
+        ),
+        "demo4.pdf": (
+            11,
+            Counter(
+                {
+                    "caption": 10,
+                    "doc_title": 1,
+                    "footer": 11,
+                    "header": 11,
+                    "image": 5,
+                    "page_footnote": 9,
+                    "page_number": 10,
+                    "paragraph_title": 12,
+                    "table": 1,
+                    "text": 112,
+                }
+            ),
+        ),
+        "demo6.pdf": (7, Counter({"image": 2, "paragraph_title": 9, "text": 24})),
+        "mixed_elements_pages_03_06.pdf": (
+            4,
+            Counter(
+                {
+                    "caption": 4,
+                    "doc_title": 1,
+                    "equation": 1,
+                    "footer": 4,
+                    "header": 5,
+                    "image": 7,
+                    "page_number": 3,
+                    "paragraph_title": 5,
+                    "table": 1,
+                    "text": 32,
+                }
+            ),
+        ),
+        "mixed_elements_pages_07_10.pdf": (
+            4,
+            Counter(
+                {
+                    "caption": 6,
+                    "code": 3,
+                    "doc_title": 1,
+                    "footer": 3,
+                    "image": 2,
+                    "page_number": 4,
+                    "paragraph_title": 16,
+                    "table": 2,
+                    "text": 57,
+                }
+            ),
+        ),
+        "mixed_elements_pages_11_15.pdf": (
+            5,
+            Counter(
+                {
+                    "caption": 7,
+                    "doc_title": 1,
+                    "footer": 1,
+                    "header": 8,
+                    "image": 8,
+                    "page_footnote": 1,
+                    "page_number": 4,
+                    "paragraph_title": 13,
+                    "table": 1,
+                    "text": 50,
+                }
+            ),
+        ),
+        "mixed_elements_pages_39_40.pdf": (
+            2,
+            Counter({"equation": 3, "page_number": 2, "paragraph_title": 2, "text": 15}),
+        ),
+        "small_ocr.pdf": (8, Counter({"header": 49, "image": 447})),
+        "中文论文.pdf": (
+            10,
+            Counter(
+                {
+                    "caption": 18,
+                    "doc_title": 1,
+                    "equation": 6,
+                    "footnote": 1,
+                    "header": 22,
+                    "image": 8,
+                    "page_footnote": 4,
+                    "page_number": 9,
+                    "paragraph_title": 20,
+                    "table": 3,
+                    "text": 106,
+                }
+            ),
+        ),
+        _FLASH_SYNTHETIC_PDF_NAME: (
+            8,
+            Counter(
+                {
+                    "caption": 6,
+                    "footer": 1,
+                    "footnote": 3,
+                    "page_number": 8,
+                    "table": 6,
+                    "text": 16,
+                }
+            ),
+        ),
+        _CJK_SYNTHETIC_PDF_NAME: (
+            4,
+            Counter(
+                {
+                    "caption": 2,
+                    "image": 2,
+                    "index": 1,
+                    "page_number": 4,
+                    "paragraph_title": 2,
+                    "text": 12,
+                }
+            ),
+        ),
+    }
+    pdf_paths = {
+        pdf_name: _DEMO_PDF_DIR / pdf_name
+        for pdf_name in expected_inventory
+    }
+    pdf_paths[_FLASH_SYNTHETIC_PDF_NAME] = _FIXTURE_PDF_DIR / _FLASH_SYNTHETIC_PDF_NAME
+    pdf_paths[_CJK_SYNTHETIC_PDF_NAME] = _FIXTURE_PDF_DIR / _CJK_SYNTHETIC_PDF_NAME
+    actual_inventory: dict[str, tuple[int, Counter[str]]] = {}
     unsafe_content: list[tuple[str, int, int, list[str]]] = []
-    for pdf_name in pdf_names:
-        model_list = _txt_model_list(pdf_name)
-        page_count += len(model_list)
-        inventory.update(block["type"] for page in model_list for block in page)
+    for pdf_name, pdf_path in pdf_paths.items():
+        model_list = _txt_model_list(pdf_name, pdf_dir=pdf_path.parent)
+        actual_inventory[pdf_name] = (
+            len(model_list),
+            Counter(block["type"] for page in model_list for block in page),
+        )
         unsafe_content.extend(
             (pdf_name, page_index, block_index, unsafe_chars)
             for page_index, page in enumerate(model_list)
@@ -196,29 +403,8 @@ def test_all_demo_pdfs_keep_expected_txt_block_inventory() -> None:
             if (unsafe_chars := _unsafe_flash_content_characters(str(block.get("content", ""))))
         )
 
-    assert len(pdf_names) == 15
-    assert page_count == 218
-    assert sum(inventory.values()) == 2591
+    assert actual_inventory == expected_inventory
     assert unsafe_content == []
-    assert inventory == Counter(
-        {
-            "text": 896,
-            "image": 530,
-            "paragraph_title": 214,
-            "header": 180,
-            "page_number": 179,
-            "footer": 177,
-            "table": 135,
-            "caption": 124,
-            "equation": 50,
-            "footnote": 39,
-            "code": 33,
-            "page_footnote": 21,
-            "doc_title": 10,
-            "index": 2,
-            "aside_text": 1,
-        }
-    )
 
 
 def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
@@ -1265,192 +1451,83 @@ def test_demo4_nct00083083_targeted_flash_regressions() -> None:
     assert "fimmu.2023.1222129" in str(reference48["content"])
 
 
-def test_demo5_targeted_table_and_footer_regressions() -> None:
-    """验证 demo5 代表页表格完整、框内无残文且页码外图片成为页脚。"""
+def test_synthetic_flash_table_annotation_regressions() -> None:
+    """验证合成 Flash 夹具覆盖表格、表注、跨页边界和空图片页脚。"""
 
-    model_list = _native_model_list("demo5.pdf")
+    model_list = _native_model_list(
+        _FLASH_SYNTHETIC_PDF_NAME,
+        pdf_dir=_FIXTURE_PDF_DIR,
+    )
 
-    sparse_table_counts = {
-        4: 2,
-        49: 1,
-        55: 1,
-        56: 2,
-        59: 1,
-        61: 1,
-        83: 2,
-        84: 3,
-        85: 3,
-        87: 1,
-    }
-    for page_number, expected_count in sparse_table_counts.items():
-        page = model_list[page_number - 1]
-        table_blocks = [block for block in page if block["type"] == "table"]
-        assert len(table_blocks) == expected_count
-        for table_block in table_blocks:
-            table_bbox = table_block["bbox"]
-            assert not [
-                block
-                for block in page
-                if block["type"] == "text"
-                and table_bbox[0] <= (block["bbox"][0] + block["bbox"][2]) / 2 <= table_bbox[2]
-                and table_bbox[1] <= (block["bbox"][1] + block["bbox"][3]) / 2 <= table_bbox[3]
-            ]
+    assert len(model_list) == 8
 
-    for page_number in (9, 10, 22, 38, 70, 77):
-        page = model_list[page_number - 1]
-        table_blocks = [block for block in page if block["type"] == "table"]
-        assert len(table_blocks) == 1
-        table_bbox = table_blocks[0]["bbox"]
-        residual_text = [
+    page2 = model_list[1]
+    page2_tables = [block for block in page2 if block["type"] == "table"]
+    assert [block["bbox"] for block in page2_tables] == [
+        [0.121, 0.168, 0.877, 0.302],
+        [0.121, 0.37, 0.877, 0.504],
+    ]
+    assert [block["content"].splitlines()[0] for block in page2_tables] == [
+        "ITEM                         VALUE                       STATE",
+        "METRIC                          LOW                             HIGH",
+    ]
+    assert [[child["type"] for child in group["content"]] for group in _grouped_visual_blocks(page2, "table")] == [
+        ["table_caption", "table_body"],
+        ["table_caption", "table_body"],
+    ]
+    for table_block in page2_tables:
+        table_bbox = table_block["bbox"]
+        assert not [
             block
-            for block in page
+            for block in page2
             if block["type"] == "text"
             and table_bbox[0] <= (block["bbox"][0] + block["bbox"][2]) / 2 <= table_bbox[2]
             and table_bbox[1] <= (block["bbox"][1] + block["bbox"][3]) / 2 <= table_bbox[3]
         ]
-        assert not residual_text
 
-    repaired_table_bboxes = {
-        23: [0.034, 0.151, 0.968, 0.696],
-        24: [0.034, 0.151, 0.968, 0.696],
-        36: [0.033, 0.151, 0.967, 0.525],
-        71: [0.057, 0.151, 0.943, 0.685],
-        75: [0.057, 0.151, 0.943, 0.684],
-        81: [0.143, 0.086, 0.857, 0.785],
-    }
-    for page_number, expected_bbox in repaired_table_bboxes.items():
-        page = model_list[page_number - 1]
-        table_blocks = [block for block in page if block["type"] == "table"]
-        assert [block["bbox"] for block in table_blocks] == [expected_bbox]
-        assert not [block for block in page if block["type"] == "code"]
-        assert not [
-            block
-            for block in page
-            if block["type"] in {"text", "header"}
-            and expected_bbox[0] <= (block["bbox"][0] + block["bbox"][2]) / 2 <= expected_bbox[2]
-            and expected_bbox[1] <= (block["bbox"][1] + block["bbox"][3]) / 2 <= expected_bbox[3]
-        ]
-
-    page77_note = _blocks_containing(model_list[76], "注：（1）指气量")
-    assert len(page77_note) == 1
-    assert page77_note[0]["type"] == "footnote"
-
-    merged_table_footnotes = {
-        6: (
-            [0.086, 0.412, 0.522, 0.567],
-            "注：（1）指主要生产单元所采用的工艺名称。",
-            "（7）指设计年生产时间。",
-        ),
-        7: (
-            [0.086, 0.552, 0.572, 0.652],
-            "注：（1）指材料种类，选填“原料”或“辅料”。",
-            "（4）指有毒有害物质或元素",
-        ),
-        31: (
-            [0.086, 0.535, 0.36, 0.675],
-            "注：（1）指主要生产设施。",
-            "（4）指有组织排放或无组织排放。",
-        ),
-    }
-    for page_number, (expected_bbox, prefix, tail_probe) in merged_table_footnotes.items():
-        page = model_list[page_number - 1]
-        footnotes = [block for block in page if block["type"] == "footnote"]
-        assert len(footnotes) == 1
-        footnote = footnotes[0]
-        assert footnote["bbox"] == expected_bbox
-        assert str(footnote["content"]).startswith(prefix)
-        assert _blocks_containing(page, tail_probe) == [footnote]
-        assert not _blocks_containing(
-            [block for block in page if block["type"] == "text"],
-            tail_probe,
-        )
-
-        table_blocks = _grouped_visual_blocks(page, "table")
-        assert len(table_blocks) == 1
-        assert [child["type"] for child in table_blocks[0]["content"]][-2:] == [
-            "table_body",
-            "table_footnote",
-        ]
-        table_footnote = table_blocks[0]["content"][-1]
-        assert table_footnote["bbox"] == expected_bbox
-        assert _normalized_content_probe(tail_probe) in _normalized_content_probe(str(table_footnote["content"]))
-
-    expected_footnote_pages = {2, 6, 7, 31, 36, 39, 43, 49, 53, 55, 57, 58, 59, 77}
-    assert {
-        page_number
-        for page_number, page in enumerate(model_list, start=1)
-        if any(block["type"] == "footnote" for block in page)
-    } == expected_footnote_pages
-    assert sum(block["type"] == "footnote" for page in model_list for block in page) == 14
-    assert sum(block["type"] == "caption" for page in model_list for block in page) == 25
-
-    page2_visual_blocks = [block for block in model_list[1] if block["type"] in {"caption", "table", "footnote"}]
-    assert [block["type"] for block in page2_visual_blocks] == [
-        "caption",
-        "table",
-        "footnote",
-    ]
-    assert [block["bbox"] for block in page2_visual_blocks] == [
-        [0.403, 0.132, 0.597, 0.144],
-        [0.121, 0.147, 0.879, 0.871],
-        [0.151, 0.873, 0.53, 0.886],
-    ]
-    assert "表1 排污单位基本信息表" not in str(page2_visual_blocks[1]["content"])
-    assert "指生产经营场所地址所在地邮政编码" not in str(page2_visual_blocks[1]["content"])
-    assert [child["type"] for child in _grouped_visual_blocks(model_list[1], "table")[0]["content"]] == [
+    page3 = model_list[2]
+    page3_footnotes = [block for block in page3 if block["type"] == "footnote"]
+    assert len(page3_footnotes) == 1
+    assert page3_footnotes[0]["bbox"] == [0.128, 0.356, 0.505, 0.395]
+    assert str(page3_footnotes[0]["content"]).endswith(
+        "Its second indented continuation completes the annotation."
+    )
+    assert [child["type"] for child in _grouped_visual_blocks(page3, "table")[0]["content"]] == [
         "table_caption",
         "table_body",
         "table_footnote",
     ]
 
-    page4_table_groups = _grouped_visual_blocks(model_list[3], "table")
-    assert [[child["type"] for child in group["content"]] for group in page4_table_groups] == [
-        ["table_caption", "table_body"],
-        ["table_caption", "table_body"],
-    ]
-    assert [tuple(round(value * 1000) for value in group["content"][0]["bbox"]) for group in page4_table_groups] == [
-        (425, 308, 575, 326),
-        (406, 619, 594, 637),
+    page4 = model_list[3]
+    assert _blocks_containing(page4, "This sentence is inside the border")[0]["type"] == "table"
+    assert not [block for block in page4 if block["type"] == "footnote"]
+
+    page5 = model_list[4]
+    assert _blocks_containing(page5, "ITEM_001 and VALUE_002")[0]["type"] == "text"
+    assert not [block for block in page5 if block["type"] in {"caption", "code", "footnote", "table"}]
+
+    page6 = model_list[5]
+    token_table = _blocks_containing(page6, "ROW_001")
+    assert len(token_table) == 1
+    assert token_table[0]["type"] == "table"
+    assert not [block for block in page6 if block["type"] == "code"]
+    assert [child["type"] for child in _grouped_visual_blocks(page6, "table")[0]["content"]] == [
+        "table_caption",
+        "table_body",
+        "table_footnote",
     ]
 
-    for page_number in (65, 66):
-        in_border_note = _blocks_containing(
-            model_list[page_number - 1],
-            "注：设计贮存/处置危险废物数量",
-        )
-        assert len(in_border_note) == 1
-        assert in_border_note[0]["type"] == "table"
-        assert not [block for block in model_list[page_number - 1] if block["type"] == "footnote"]
-    page62_note = _blocks_containing(
-        model_list[61],
-        "排入城镇集中污水处理设施的生活污水",
-    )
-    page86_table20 = _blocks_containing(model_list[85], "表20 改正规定信息表")
-    assert len(page62_note) == len(page86_table20) == 1
-    assert page62_note[0]["type"] == page86_table20[0]["type"] == "text"
+    page7 = model_list[6]
+    page8 = model_list[7]
+    assert _blocks_containing(page7, "annotation ends on page seven")[0]["type"] == "footnote"
+    assert _blocks_containing(page8, "must not merge into the previous page footnote")[0]["type"] == "text"
+    assert not [block for block in page8 if block["type"] == "footnote"]
 
-    page36_footnotes = [block for block in model_list[35] if block["type"] == "footnote"]
-    assert [block["bbox"] for block in page36_footnotes] == [[0.086, 0.587, 0.404, 0.654]]
-    page57_footnotes = [block for block in model_list[56] if block["type"] == "footnote"]
-    page58_continuation = [
-        block
-        for block in _blocks_containing(
-            model_list[57],
-            "可通过排污许可证管理信息平台中的GIS系统点选后自动生成经纬度",
-        )
-        if block["type"] == "text"
-    ]
-    assert len(page57_footnotes) == len(page58_continuation) == 1
-    assert page57_footnotes[0]["type"] == "footnote"
-    assert page58_continuation[0]["type"] == "text"
-    assert page58_continuation[0]["bbox"] == [0.086, 0.155, 0.803, 0.221]
-
-    page9 = model_list[8]
-    page_number_block = next(block for block in page9 if block["type"] == "page_number")
-    empty_footer = next(block for block in page9 if block["type"] == "footer" and not str(block["content"]).strip())
+    page_number_block = next(block for block in page8 if block["type"] == "page_number")
+    empty_footer = next(block for block in page8 if block["type"] == "footer")
+    assert empty_footer["content"] == ""
+    assert empty_footer["bbox"] == [0.399, 0.968, 0.601, 0.999]
     assert empty_footer["bbox"][1] > page_number_block["bbox"][3]
-
-
 def test_demo6_default3_targeted_title_regressions() -> None:
     """验证 demo6 的五个正文负样本和九个真实章节标题。"""
 
@@ -1732,41 +1809,110 @@ def test_iebm_left_indented_compact_formula_is_equation() -> None:
     assert not [block for block in page if block["type"] in {"caption", "footnote"}]
 
 
-def test_npu_numbered_figure_captions_are_independent_annotations() -> None:
-    """验证 NPU 图注稳定、跨行 URL 连续，且多条独立 URL 不会相连。"""
+def test_synthetic_cjk_captions_and_urls_are_independent_annotations() -> None:
+    """验证合成 CJK 图注稳定、跨行 URL 连续且多条独立 URL 不相连。"""
 
-    model_list = _txt_model_list("NPU_开发环境部署_参考指南.pdf")
-    expected_counts = {6: 1, 7: 1, 14: 2, 15: 2, 16: 2, 17: 1, 18: 1, 19: 2, 20: 2}
+    model_list = _txt_model_list(
+        _CJK_SYNTHETIC_PDF_NAME,
+        pdf_dir=_FIXTURE_PDF_DIR,
+    )
+    page4 = model_list[3]
+    captions = [block for block in page4 if block["type"] == "caption"]
 
-    assert {
-        page_number: sum(block["type"] == "caption" for block in model_list[page_number - 1]) for page_number in expected_counts
-    } == expected_counts
-    assert sum(block["type"] == "caption" for page in model_list for block in page) == 14
-    assert all(str(block["content"]).startswith("图 ") for page in model_list for block in page if block["type"] == "caption")
+    assert [block["content"] for block in captions] == [
+        "图 1 合成示意图 A",
+        "图 2 合成示意图 B",
+    ]
     assert not [block for page in model_list for block in page if block["type"] == "footnote"]
 
-    docker_url = "https://download.docker.com/linux/ubuntu/dists/"
-    assert any(docker_url in str(block.get("content", "")) for block in model_list[8])
+    wrapped_url = "https://example.com/downloads/mineru/fixture/"
+    wrapped_block = next(
+        str(block.get("content", ""))
+        for block in page4
+        if wrapped_url in str(block.get("content", ""))
+    )
+    assert wrapped_block == f"<hyperlink>{wrapped_url}<url>{wrapped_url}</url></hyperlink>"
 
     reference_urls = [
-        "https://blog.csdn.net/hzgnet2021/article/details/134925349",
-        "https://blog.csdn.net/NuOne_plus/article/details/120330419",
-        "https://blog.csdn.net/qq_38567039/article/details/124848621",
+        "https://example.com/ref/a",
+        "https://example.com/ref/b",
+        "https://example.com/ref/c",
     ]
     reference_block = next(
         str(block.get("content", ""))
-        for block in model_list[21]
+        for block in page4
         if reference_urls[0] in str(block.get("content", ""))
     )
-    reference_visible_text = inline_plain_text(
-        parse_inline_content(reference_block)
-    )
-    assert " ".join(reference_urls) in reference_visible_text
-    assert not any(
-        first + second in reference_visible_text
-        for first, second in zip(reference_urls, reference_urls[1:])
-    )
+    reference_visible_text = inline_plain_text(parse_inline_content(reference_block))
+    assert reference_visible_text == " ".join(reference_urls)
+    assert not any(first + second in reference_visible_text for first, second in zip(reference_urls, reference_urls[1:]))
     assert all(f"<url>{url}</url>" in reference_block for url in reference_urls)
+
+
+def test_synthetic_cjk_fixture_contains_only_safe_watermarks_and_links() -> None:
+    """验证合成 CJK PDF 仅含安全旋转水印和预期 URI 注解。"""
+
+    pdf_path = _FIXTURE_PDF_DIR / _CJK_SYNTHETIC_PDF_NAME
+    with PDFDocument(pdf_path.read_bytes()) as document:
+        rotated_lines = [
+            "".join(str(span.get("text", "")) for span in line.get("spans", []))
+            for page_index in range(len(document))
+            for line in document.get_page_lines(page_index)
+            if float(line.get("rotation", 0.0))
+        ]
+        model_list = PdfModel().predict(document)
+
+    expected_watermark_row = " ".join([_SAFE_WATERMARK_TEXT] * 4)
+    assert len(rotated_lines) == 16
+    assert {text.replace("\r", "").replace("\n", "").strip() for text in rotated_lines} == {
+        expected_watermark_row
+    }
+    assert not [
+        block
+        for page in model_list
+        for block in page
+        if _SAFE_WATERMARK_TEXT in str(block.get("content", ""))
+    ]
+
+    reader = PdfReader(pdf_path)
+    link_targets = [
+        str(annotation.get_object()["/A"]["/URI"])
+        for annotation in reader.pages[3]["/Annots"]
+    ]
+    assert link_targets == [
+        "https://example.com/downloads/mineru/fixture/",
+        "https://example.com/downloads/mineru/fixture/",
+        "https://example.com/ref/a",
+        "https://example.com/ref/b",
+        "https://example.com/ref/c",
+    ]
+
+
+def test_synthetic_pdf_fixtures_have_neutral_metadata_and_catalogs() -> None:
+    """验证两份合成 PDF 均无加密、附件、脚本、隐藏元数据或无关批注。"""
+
+    expected_metadata = {
+        "/Author": "MinerU Test Suite",
+        "/CreationDate": "D:20000101000000+00'00'",
+        "/Creator": "MinerU Test Suite",
+        "/Keywords": "MinerU synthetic test fixture",
+        "/ModDate": "D:20000101000000+00'00'",
+        "/Producer": "MinerU Test Suite",
+        "/Subject": "Synthetic PDF regression fixture",
+        "/Title": "MinerU Test Suite",
+        "/Trapped": "/False",
+    }
+    expected_annotation_counts = {
+        _FLASH_SYNTHETIC_PDF_NAME: [0] * 8,
+        _CJK_SYNTHETIC_PDF_NAME: [0, 0, 0, 5],
+    }
+    for pdf_name, annotation_counts in expected_annotation_counts.items():
+        reader = PdfReader(_FIXTURE_PDF_DIR / pdf_name)
+
+        assert not reader.is_encrypted
+        assert dict(reader.metadata or {}) == expected_metadata
+        assert set(reader.trailer["/Root"]) == {"/PageMode", "/Pages", "/Type"}
+        assert [len(page.get("/Annots", [])) for page in reader.pages] == annotation_counts
 
 
 def test_frozen_soil_page3_formula3_remains_one_equation() -> None:

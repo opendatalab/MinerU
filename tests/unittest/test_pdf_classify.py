@@ -20,6 +20,7 @@ from mineru.utils.pdf_document import PDFDocument
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MIXED_ELEMENTS_PDF = REPO_ROOT / "demo" / "pdfs" / "mixed_elements_pages_07_10.pdf"
+SYNTHETIC_FLASH_PDF = REPO_ROOT / "tests" / "unittest" / "pdfs" / "flash_table_annotations_synthetic.pdf"
 
 
 def _write_single_sample_page(content_data: bytes) -> bytes:
@@ -292,7 +293,6 @@ def test_classifier_returns_ocr_when_exact_content_analysis_fails(
         ("demo2.pdf", "txt"),
         ("demo3.pdf", "txt"),
         ("demo4.pdf", "txt"),
-        ("demo5.pdf", "txt"),
         ("demo6.pdf", "txt"),
         ("mixed_elements_pages_03_06.pdf", "txt"),
         ("mixed_elements_pages_07_10.pdf", "txt"),
@@ -309,3 +309,10 @@ def test_demo_pdf_classification_regressions(
     pdf_path = REPO_ROOT / "demo" / "pdfs" / pdf_name
     with PDFDocument(str(pdf_path)) as pdf_doc:
         assert pdf_doc.classify() == expected_mode
+
+
+def test_synthetic_flash_fixture_classification_regression() -> None:
+    """验证脱敏合成表格夹具继续稳定分类为 TXT。"""
+
+    with PDFDocument(str(SYNTHETIC_FLASH_PDF)) as pdf_doc:
+        assert pdf_doc.classify() == "txt"
