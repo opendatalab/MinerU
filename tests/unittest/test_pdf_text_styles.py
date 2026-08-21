@@ -223,13 +223,68 @@ def test_detect_and_apply_pdf_text_link_ranges_with_styles(angle: int) -> None:
         (100.0, 100.0),
     )
     expected = (
-        '<hyperlink>alpha <text style="underline">beta</text>'
+        "<hyperlink>alpha beta"
         "<url>https://example.test/a?x=1&amp;y=2</url></hyperlink>"
     )
     assert blocks[0]["content"] == expected
 
     apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
+    apply_pdf_text_styles(
+        blocks,
+        [
+            PDFTextStyleLine(
+                bbox=line.bbox,
+                text="alphabeta",
+                style_ranges=(PDFTextStyleRange(5, 9, ("underline",)),),
+                source_index=0,
+            )
+        ],
+        (100.0, 100.0),
+    )
     assert blocks[0]["content"] == expected
+
+
+def test_pdf_underline_keeps_only_non_link_overlap() -> None:
+    """验证同一下划线跨越普通文本和链接时，仅保留链接外的真实下划线。"""
+
+    line = _text_line("under hyperlink")
+    annotation = PDFLinkAnnotation(
+        target="https://example.test/partial",
+        bboxes=(
+            (
+                line.chars[6]["bbox"][0],
+                line.bbox[1],
+                line.chars[-1]["bbox"][2],
+                line.bbox[3],
+            ),
+        ),
+        source_index=0,
+    )
+    link_lines = detect_pdf_text_link_lines([line], [annotation])
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": (0.0, 0.0, 1.0, 1.0),
+            "content": "under hyperlink",
+        }
+    ]
+    style_lines = [
+        PDFTextStyleLine(
+            bbox=line.bbox,
+            text="underhyperlink",
+            style_ranges=(PDFTextStyleRange(0, 14, ("underline",)),),
+            source_index=0,
+        )
+    ]
+
+    apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
+    apply_pdf_text_styles(blocks, style_lines, (100.0, 100.0))
+
+    assert blocks[0]["content"] == (
+        '<text style="underline">under</text> '
+        "<hyperlink>hyperlink"
+        "<url>https://example.test/partial</url></hyperlink>"
+    )
 
 
 def test_detect_pdf_text_links_keeps_partial_ranges_and_drops_conflicts() -> None:
@@ -621,16 +676,16 @@ def test_apply_pdf_text_links_skips_ambiguous_dehyphenated_occurrence() -> None:
             ("underline",),
             (
                 '<text style="bold">ETC: Encoding long and structured inputs</text> '
-                '<text style="underline">in transformers</text>'
+                "in transformers"
             ),
         ),
     ],
 )
-def test_apply_pdf_text_links_merges_title_and_preserves_style_segments(
+def test_apply_pdf_text_links_merges_title_and_preserves_non_underline_styles(
     second_styles: tuple[str, ...],
     expected_label: str,
 ) -> None:
-    """验证普通英文标签保留空格，同样式合并而不同样式保留子段。"""
+    """验证普通英文标签保留空格，并仅保留链接内非下划线样式。"""
 
     target = "https://doi.org/10.18653/v1/2020.emnlp-main.19"
     first_text = "ETC:Encodinglongandstructuredinputs"
@@ -1556,7 +1611,8 @@ def test_respects_existing_styles_and_skips_equation_and_url_payloads() -> None:
     assert '<text style="bold">A</text>' in str(blocks[0]["content"])
     assert "<sup>B</sup>" in str(blocks[0]["content"])
     assert "<eq>C</eq>" in str(blocks[0]["content"])
-    assert '<text style="bold,underline">D</text>' in str(blocks[0]["content"])
+    assert '<text style="bold">D</text>' in str(blocks[0]["content"])
+    assert 'style="bold,underline"' not in str(blocks[0]["content"])
     assert "<url>u</url>" in str(blocks[0]["content"])
     assert blocks[1]["content"] == (
         "<b>A</b><i>B</i><u>C</u><s>D</s>"
@@ -1853,7 +1909,7 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
 
     assert observed_chars == [page_chars]
     assert model_list[0][0]["content"] == (
-        '<hyperlink><text style="bold,underline,strikethrough">deleted</text>'
+        '<hyperlink><text style="bold,strikethrough">deleted</text>'
         "<url>https://hybrid.example.test</url></hyperlink>"
     )
 
@@ -2006,7 +2062,7 @@ def test_low_txt_applies_styles_after_native_content_fill(
     )
 
     assert model_list[0][0]["content"] == (
-        '<hyperlink><text style="bold,underline,strikethrough">deleted</text>'
+        '<hyperlink><text style="bold,strikethrough">deleted</text>'
         "<url>https://low.example.test</url></hyperlink>"
     )
 

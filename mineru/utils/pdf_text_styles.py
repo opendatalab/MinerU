@@ -1952,10 +1952,12 @@ def _raw_style_intervals(
         current_end = 0
         current_styles: tuple[PDFTextStyle, ...] = ()
         for token in projected[style_range.start : style_range.end]:
+            # Link 注解已提供语义，链接范围内的几何下划线不重复输出为文本样式。
             missing_styles = _canonical_styles(
                 style
                 for style in style_range.styles
                 if style not in token.existing_styles
+                and not (style == "underline" and token.inside_hyperlink)
             )
             if not missing_styles:
                 _append_raw_style_interval(
