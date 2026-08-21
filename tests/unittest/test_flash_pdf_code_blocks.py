@@ -7,8 +7,12 @@ import pytest
 
 from mineru.model.flash import PdfModel
 from mineru.model.flash.native_pdf import code_blocks, models, pipeline
-from mineru.utils.spatial_text import project_pdf_spatial_text
+from mineru.render._internal.common.inline import (
+    inline_plain_text,
+    parse_inline_content,
+)
 from mineru.utils.pdf_document import PDFDocument, PDFPathInfo
+from mineru.utils.spatial_text import project_pdf_spatial_text
 
 from _flash_pdf_test_utils import _text_line
 
@@ -311,7 +315,15 @@ def test_kvcache_algorithm_pdf_materializes_caption_and_code() -> None:
         page = PdfModel().predict(pdf_doc)[0]
 
     caption_text = "Algorithm 1 KVCache-centric Scheduling Algorithm"
-    captions = [block for block in page if block["type"] == "caption" and block.get("content") == caption_text]
+    captions = [
+        block
+        for block in page
+        if block["type"] == "caption"
+        and inline_plain_text(
+            parse_inline_content(str(block.get("content") or ""))
+        )
+        == caption_text
+    ]
     code = [block for block in page if block["type"] == "code"]
 
     assert len(captions) == 1
@@ -319,7 +331,15 @@ def test_kvcache_algorithm_pdf_materializes_caption_and_code() -> None:
     assert len(code) == 1
     assert code[0]["bbox"] == [0.176, 0.108, 0.824, 0.539]
     assert page.index(captions[0]) + 1 == page.index(code[0])
-    assert not [block for block in page if block["type"] == "header" and block.get("content") == caption_text]
+    assert not [
+        block
+        for block in page
+        if block["type"] == "header"
+        and inline_plain_text(
+            parse_inline_content(str(block.get("content") or ""))
+        )
+        == caption_text
+    ]
 
     code_content = str(code[0]["content"])
     probes = (

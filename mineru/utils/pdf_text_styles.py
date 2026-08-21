@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""从 PDF 原生字符与绘图线中恢复文本删除线样式。"""
+"""从 PDF 原生字符与绘图线中恢复文本字体和装饰线样式。"""
 
 from __future__ import annotations
 
@@ -7,18 +7,38 @@ import math
 import re
 import statistics
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Iterable, Literal, Sequence, cast
 
 from loguru import logger
 
 from mineru.types import BBox, BlockType, RAW_CAPTION, RAW_FOOTNOTE
 
 
-STRIKETHROUGH_MIN_LENGTH_HEIGHT_RATIO = 2.0
+TEXT_DECORATION_MIN_LENGTH_HEIGHT_RATIO = 2.0
 STRIKETHROUGH_CENTER_TOLERANCE_HEIGHT_RATIO = 0.2
-STRIKETHROUGH_MAX_WIDTH_HEIGHT_RATIO = 0.2
-STRIKETHROUGH_MIN_TEXT_COVERAGE_RATIO = 0.55
-STRIKETHROUGH_ENDPOINT_TOLERANCE_HEIGHT_RATIO = 0.5
+UNDERLINE_BOTTOM_TOLERANCE_HEIGHT_RATIO = 0.2
+TEXT_DECORATION_MAX_WIDTH_HEIGHT_RATIO = 0.2
+TEXT_DECORATION_MIN_TEXT_COVERAGE_RATIO = 0.55
+TEXT_DECORATION_ENDPOINT_TOLERANCE_HEIGHT_RATIO = 0.5
+UNDERLINE_FRACTION_MAX_GAP_HEIGHT_RATIO = 0.15
+UNDERLINE_FRACTION_MIN_LOWER_LINE_COVERAGE = 0.8
+PDF_FONT_ITALIC_FLAG = 1 << 6
+PDF_FONT_FORCE_BOLD_FLAG = 1 << 18
+PDF_BOLD_MIN_WEIGHT = 600.0
+PDF_BOLD_MIN_COMPARABLE_CHAR_COUNT = 2
+
+PDFTextStyle = Literal["bold", "italic", "underline", "strikethrough"]
+PDFTextDecoration = Literal["underline", "strikethrough"]
+PDF_TEXT_STYLE_ORDER: tuple[PDFTextStyle, ...] = (
+    "bold",
+    "italic",
+    "underline",
+    "strikethrough",
+)
+_PDF_TEXT_DECORATION_ORDER: tuple[PDFTextDecoration, ...] = (
+    "underline",
+    "strikethrough",
+)
 
 PDF_NATURAL_TEXT_STYLE_BLOCK_TYPES = frozenset(
     {
@@ -37,12 +57,27 @@ PDF_NATURAL_TEXT_STYLE_BLOCK_TYPES = frozenset(
         RAW_FOOTNOTE,
     }
 )
+_PDF_TEXT_STYLE_TARGET_BLOCK_TYPES: dict[PDFTextStyle, frozenset[str]] = {
+    "bold": frozenset({BlockType.TEXT}),
+    "italic": frozenset(),
+    "underline": frozenset({BlockType.TEXT}),
+    "strikethrough": PDF_NATURAL_TEXT_STYLE_BLOCK_TYPES,
+}
 
 _KNOWN_INLINE_TAG_RE = re.compile(
     r"<(?P<close>/)?(?P<tag>eq|text|hyperlink|url|sup|sub|strong|b|em|i|s|u)(?P<attrs>\s[^<>]*?)?>",
     re.IGNORECASE,
 )
 _STYLE_ATTR_RE = re.compile(r"\bstyle\s*=\s*([\"'])(?P<style>.*?)\1", re.IGNORECASE | re.DOTALL)
+_PDF_FONT_SUBSET_PREFIX_RE = re.compile(r"^[A-Z]{6}\+")
+_PDF_BOLD_FONT_NAME_RE = re.compile(
+    r"bold|demi|black|heavy|(?:^|[-_,])(?:bd|bi)(?:mt)?$|gbi$|(?:^|[-_,])w[6-9]$",
+    re.IGNORECASE,
+)
+_PDF_LIST_MARKER_CHARS = frozenset(
+    "•◦‣⁃▪▫●○■□∙·▶▷►▸▹\uf0b7"
+)
+_PDF_GEOMETRIC_TEXT_STYLES = frozenset({"underline", "strikethrough"})
 _PDF_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
 _PDF_SEPARATOR_SPACE_CHARS = frozenset(
     "\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006"
@@ -62,25 +97,26 @@ _LIGATURE_REPLACEMENTS = {
 
 @dataclass(frozen=True, slots=True)
 class PDFTextStyleRange:
-    """保存可比较文本中的一个半开删除线区间。"""
+    """保存可比较文本中的一个半开样式区间。"""
 
     start: int
     end: int
+    styles: tuple[PDFTextStyle, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class PDFTextStyleLine:
-    """保存一个视觉文本 run 的几何、可比较文本和删除线区间。"""
+    """保存一个视觉文本 run 的几何、可比较文本和样式区间。"""
 
     bbox: BBox
     text: str
-    strikethrough_ranges: tuple[PDFTextStyleRange, ...]
+    style_ranges: tuple[PDFTextStyleRange, ...]
     source_index: int
 
 
 @dataclass(frozen=True, slots=True)
 class _VisibleChar:
-    """保存参与删除线几何判断的可见字符。"""
+    """保存参与文本装饰线几何判断的可见字符。"""
 
     source_index: int
     bbox: BBox
@@ -88,24 +124,27 @@ class _VisibleChar:
 
 @dataclass(slots=True)
 class _LineCandidate:
-    """保存删除线匹配阶段使用的视觉文本行指标。"""
+    """保存字体与文本装饰线匹配阶段使用的视觉文本行指标。"""
 
     bbox: BBox
     chars: list[dict[str, Any]]
     visible_chars: list[_VisibleChar]
     median_height: float
     center_y: float
+    bottom_y: float
     source_index: int
-    ranges: list[tuple[int, int]]
+    font_styles: list[frozenset[PDFTextStyle]]
+    decoration_ranges: dict[PDFTextDecoration, list[tuple[int, int]]]
 
 
 @dataclass(frozen=True, slots=True)
 class _DrawingMatch:
     """保存单条 drawing 对单个文本行的匹配结果和排序指标。"""
 
+    style: PDFTextDecoration
     start_index: int
     end_index: int
-    center_distance_ratio: float
+    target_distance_ratio: float
     horizontal_overlap_ratio: float
 
 
@@ -116,7 +155,43 @@ class _ProjectedChar:
     value: str
     raw_start: int
     raw_end: int
-    styleable: bool
+    existing_styles: frozenset[PDFTextStyle]
+    formula_gap_before: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _InlineTagState:
+    """保存一个已打开行内标签的匹配排除状态和已有字体样式。"""
+
+    tag: str
+    excluded: bool
+    styles: frozenset[PDFTextStyle]
+
+
+@dataclass(frozen=True, slots=True)
+class _RawStyleInterval:
+    """保存 model content 原字符串中的半开样式区间。"""
+
+    start: int
+    end: int
+    styles: tuple[PDFTextStyle, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _LineProjectionMatch:
+    """保存物理行跨公式空洞对齐到 block 可比较文本的结果。"""
+
+    start: int
+    end: int
+    source_to_projected: tuple[int | None, ...]
+
+
+def _style_line_reading_order_key(
+    line: PDFTextStyleLine,
+) -> tuple[int, float, float]:
+    """优先使用原生 source_index 排序，重复索引时再以 bbox 保持稳定。"""
+
+    return line.source_index, line.bbox[1], line.bbox[0]
 
 
 def _coerce_bbox(value: Any) -> BBox | None:
@@ -168,6 +243,127 @@ def _normalize_match_fragment(value: Any) -> str:
     return "".join(output)
 
 
+def _canonical_styles(styles: Iterable[str]) -> tuple[PDFTextStyle, ...]:
+    """按公开富文本协议顺序过滤、去重并规范样式集合。"""
+
+    style_set = set(styles)
+    return cast(
+        tuple[PDFTextStyle, ...],
+        tuple(style for style in PDF_TEXT_STYLE_ORDER if style in style_set),
+    )
+
+
+def _pdf_font_metadata(char: dict[str, Any]) -> tuple[str, int, float | None]:
+    """读取单个字符的规范字体名、FontDescriptor flags 和有效字重。"""
+
+    font = char.get("font")
+    if not isinstance(font, dict):
+        return "", 0, None
+    font_name = _PDF_FONT_SUBSET_PREFIX_RE.sub(
+        "",
+        str(font.get("name") or ""),
+    )
+    try:
+        font_flags = int(font.get("flags") or 0)
+    except (TypeError, ValueError):
+        font_flags = 0
+    try:
+        font_weight = float(font.get("weight"))
+    except (TypeError, ValueError):
+        font_weight = math.nan
+    if not math.isfinite(font_weight) or font_weight <= 0:
+        font_weight = None
+    return font_name, font_flags, font_weight
+
+
+def _char_font_styles(char: dict[str, Any]) -> frozenset[PDFTextStyle]:
+    """只依据直接字体证据返回 PDF 字符粗体样式。"""
+
+    font_name, font_flags, font_weight = _pdf_font_metadata(char)
+    styles: set[PDFTextStyle] = set()
+    if (
+        font_flags & PDF_FONT_FORCE_BOLD_FLAG
+        or (font_weight is not None and font_weight >= PDF_BOLD_MIN_WEIGHT)
+        or bool(_PDF_BOLD_FONT_NAME_RE.search(font_name))
+    ):
+        styles.add("bold")
+    return frozenset(styles)
+
+
+def _has_list_marker_separator(
+    chars: Sequence[dict[str, Any]],
+    marker_source_index: int,
+    next_source_index: int,
+    median_height: float,
+) -> bool:
+    """判断行首项目符号与后续正文之间是否存在空白或明显视觉间隔。"""
+
+    if any(
+        str(chars[index].get("char") or "").isspace()
+        for index in range(marker_source_index + 1, next_source_index)
+    ):
+        return True
+    marker_bbox = _coerce_bbox(chars[marker_source_index].get("bbox"))
+    next_bbox = _coerce_bbox(chars[next_source_index].get("bbox"))
+    return bool(
+        marker_bbox is not None
+        and next_bbox is not None
+        and next_bbox[0] - marker_bbox[2] >= 0.5 * median_height
+    )
+
+
+def _filter_pdf_bold_runs(
+    chars: Sequence[dict[str, Any]],
+    font_styles: Sequence[frozenset[PDFTextStyle]],
+    median_height: float,
+) -> list[frozenset[PDFTextStyle]]:
+    """过滤过短粗体 run 和与正文分离的行首项目符号粗体。"""
+
+    output = list(font_styles)
+    comparable_chars = [
+        (source_index, fragment)
+        for source_index, char in enumerate(chars)
+        if (fragment := _normalize_match_fragment(char.get("char")))
+    ]
+    run_start = 0
+    while run_start < len(comparable_chars):
+        source_index, _fragment = comparable_chars[run_start]
+        if "bold" not in output[source_index]:
+            run_start += 1
+            continue
+        run_end = run_start + 1
+        while run_end < len(comparable_chars):
+            next_source_index, _next_fragment = comparable_chars[run_end]
+            if "bold" not in output[next_source_index]:
+                break
+            run_end += 1
+
+        run = comparable_chars[run_start:run_end]
+        run_text = "".join(fragment for _index, fragment in run)
+        is_short = len(run_text) < PDF_BOLD_MIN_COMPARABLE_CHAR_COUNT
+        is_isolated_leading_marker = (
+            run_start == 0
+            and run_end < len(comparable_chars)
+            and bool(run_text)
+            and all(char in _PDF_LIST_MARKER_CHARS for char in run_text)
+            and _has_list_marker_separator(
+                chars,
+                run[-1][0],
+                comparable_chars[run_end][0],
+                median_height,
+            )
+        )
+        if is_short or is_isolated_leading_marker:
+            for run_source_index, _run_fragment in run:
+                output[run_source_index] = frozenset(
+                    style
+                    for style in output[run_source_index]
+                    if style != "bold"
+                )
+        run_start = run_end
+    return output
+
+
 def _build_line_candidate(line: Any) -> _LineCandidate | None:
     """从视觉水平 line 构造字符几何候选，旋转文字和退化行返回空。"""
 
@@ -191,26 +387,43 @@ def _build_line_candidate(line: Any) -> _LineCandidate | None:
     median_height = statistics.median(heights)
     if median_height <= 0:
         return None
-    body_centers = [
-        (char.bbox[1] + char.bbox[3]) / 2
+    body_chars = [
+        char
         for char, height in zip(visible_chars, heights)
         if height >= 0.8 * median_height
     ]
-    if not body_centers:
+    if not body_chars:
         return None
+    font_styles = [_char_font_styles(char) for char in chars]
     return _LineCandidate(
         bbox=line_bbox,
         chars=chars,
         visible_chars=visible_chars,
         median_height=median_height,
-        center_y=statistics.median(body_centers),
+        center_y=statistics.median(
+            (char.bbox[1] + char.bbox[3]) / 2
+            for char in body_chars
+        ),
+        bottom_y=statistics.median(char.bbox[3] for char in body_chars),
         source_index=int(getattr(line, "source_index", 0) or 0),
-        ranges=[],
+        font_styles=_filter_pdf_bold_runs(
+            chars,
+            font_styles,
+            median_height,
+        ),
+        decoration_ranges={
+            "underline": [],
+            "strikethrough": [],
+        },
     )
 
 
-def _drawing_match_for_line(line: _LineCandidate, drawing: Any) -> _DrawingMatch | None:
-    """按长度、中带、线宽、字符覆盖和端点贴合校验单条删除线候选。"""
+def _drawing_match_for_line(
+    line: _LineCandidate,
+    drawing: Any,
+    style: PDFTextDecoration,
+) -> _DrawingMatch | None:
+    """按目标纵向锚点和公共几何规则校验单条文本装饰线。"""
 
     if getattr(drawing, "orientation", None) != "horizontal":
         return None
@@ -218,17 +431,23 @@ def _drawing_match_for_line(line: _LineCandidate, drawing: Any) -> _DrawingMatch
     if drawing_bbox is None:
         return None
     drawing_length = drawing_bbox[2] - drawing_bbox[0]
-    if drawing_length < STRIKETHROUGH_MIN_LENGTH_HEIGHT_RATIO * line.median_height:
+    if drawing_length < TEXT_DECORATION_MIN_LENGTH_HEIGHT_RATIO * line.median_height:
         return None
     drawing_center_y = (drawing_bbox[1] + drawing_bbox[3]) / 2
-    center_distance_ratio = abs(drawing_center_y - line.center_y) / line.median_height
-    if center_distance_ratio > STRIKETHROUGH_CENTER_TOLERANCE_HEIGHT_RATIO:
+    target_y = line.bottom_y if style == "underline" else line.center_y
+    target_tolerance = (
+        UNDERLINE_BOTTOM_TOLERANCE_HEIGHT_RATIO
+        if style == "underline"
+        else STRIKETHROUGH_CENTER_TOLERANCE_HEIGHT_RATIO
+    )
+    target_distance_ratio = abs(drawing_center_y - target_y) / line.median_height
+    if target_distance_ratio > target_tolerance:
         return None
     try:
         drawing_width = max(0.0, float(getattr(drawing, "width", 0.0) or 0.0))
     except (TypeError, ValueError):
         return None
-    if drawing_width > STRIKETHROUGH_MAX_WIDTH_HEIGHT_RATIO * line.median_height:
+    if drawing_width > TEXT_DECORATION_MAX_WIDTH_HEIGHT_RATIO * line.median_height:
         return None
 
     hit_chars = [
@@ -240,13 +459,13 @@ def _drawing_match_for_line(line: _LineCandidate, drawing: Any) -> _DrawingMatch
         return None
     hit_left = min(char.bbox[0] for char in hit_chars)
     hit_right = max(char.bbox[2] for char in hit_chars)
-    if (hit_right - hit_left) / drawing_length < STRIKETHROUGH_MIN_TEXT_COVERAGE_RATIO:
+    if (hit_right - hit_left) / drawing_length < TEXT_DECORATION_MIN_TEXT_COVERAGE_RATIO:
         return None
     endpoint_distance = min(
         abs(drawing_bbox[0] - hit_left),
         abs(drawing_bbox[2] - hit_right),
     )
-    if endpoint_distance > STRIKETHROUGH_ENDPOINT_TOLERANCE_HEIGHT_RATIO * line.median_height:
+    if endpoint_distance > TEXT_DECORATION_ENDPOINT_TOLERANCE_HEIGHT_RATIO * line.median_height:
         return None
 
     overlap = max(
@@ -258,9 +477,10 @@ def _drawing_match_for_line(line: _LineCandidate, drawing: Any) -> _DrawingMatch
         min(line.bbox[2] - line.bbox[0], drawing_length),
     )
     return _DrawingMatch(
+        style=style,
         start_index=min(char.source_index for char in hit_chars),
         end_index=max(char.source_index for char in hit_chars) + 1,
-        center_distance_ratio=center_distance_ratio,
+        target_distance_ratio=target_distance_ratio,
         horizontal_overlap_ratio=horizontal_overlap_ratio,
     )
 
@@ -280,109 +500,204 @@ def _merge_source_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]
 
 
 def _line_style_payload(line: _LineCandidate) -> PDFTextStyleLine | None:
-    """把来源字符和删除线索引转换为紧凑文本及其半开样式区间。"""
+    """把来源字符的字体与装饰线证据转换为紧凑文本样式区间。"""
 
-    source_ranges = _merge_source_ranges(line.ranges)
+    decoration_styles: list[set[PDFTextStyle]] = [
+        set()
+        for _char in line.chars
+    ]
+    for style in _PDF_TEXT_DECORATION_ORDER:
+        for start, end in _merge_source_ranges(line.decoration_ranges[style]):
+            for char_index in range(max(0, start), min(end, len(line.chars))):
+                decoration_styles[char_index].add(style)
     compact_parts: list[str] = []
-    compact_ranges: list[PDFTextStyleRange] = []
-    compact_length = 0
-    active_start: int | None = None
-    active_end = 0
+    compact_styles: list[tuple[PDFTextStyle, ...]] = []
     for char_index, char in enumerate(line.chars):
         fragment = _normalize_match_fragment(char.get("char"))
         if not fragment:
             continue
-        fragment_start = compact_length
         compact_parts.append(fragment)
-        fragment_end = fragment_start + len(fragment)
-        compact_length = fragment_end
-        is_struck = any(start <= char_index < end for start, end in source_ranges)
-        if is_struck:
-            if active_start is None:
-                active_start = fragment_start
-            active_end = fragment_end
-        elif active_start is not None:
-            compact_ranges.append(PDFTextStyleRange(active_start, active_end))
-            active_start = None
-    if active_start is not None:
-        compact_ranges.append(PDFTextStyleRange(active_start, active_end))
+        styles = set(line.font_styles[char_index])
+        styles.update(decoration_styles[char_index])
+        canonical_styles = _canonical_styles(styles)
+        compact_styles.extend([canonical_styles] * len(fragment))
 
     text = "".join(compact_parts)
     if not text:
         return None
+    compact_ranges: list[PDFTextStyleRange] = []
+    active_start = 0
+    active_styles: tuple[PDFTextStyle, ...] = ()
+    for offset, styles in enumerate([*compact_styles, ()]):
+        if styles == active_styles:
+            continue
+        if active_styles:
+            compact_ranges.append(
+                PDFTextStyleRange(active_start, offset, active_styles)
+            )
+        active_start = offset
+        active_styles = styles
     return PDFTextStyleLine(
         bbox=line.bbox,
         text=text,
-        strikethrough_ranges=tuple(compact_ranges),
+        style_ranges=tuple(compact_ranges),
         source_index=line.source_index,
     )
 
 
-def _build_line_center_grid(
+def _build_line_geometry_grids(
     candidates: Sequence[_LineCandidate],
-) -> tuple[float, dict[int, list[int]]]:
-    """按删除线允许的纵向中带建立行索引，避免逐 drawing 扫描整页文本行。"""
+) -> tuple[
+    float,
+    dict[int, list[tuple[int, PDFTextDecoration]]],
+    dict[int, list[int]],
+]:
+    """按装饰线锚点和行顶坐标建立网格，限制每条 drawing 的局部比较范围。"""
 
     grid_size = max(
         1.0,
         statistics.median(line.median_height for line in candidates),
     )
-    grid: dict[int, list[int]] = {}
+    anchor_grid: dict[int, list[tuple[int, PDFTextDecoration]]] = {}
+    top_grid: dict[int, list[int]] = {}
     for line_index, line in enumerate(candidates):
-        tolerance = STRIKETHROUGH_CENTER_TOLERANCE_HEIGHT_RATIO * line.median_height
-        start_cell = math.floor((line.center_y - tolerance) / grid_size)
-        end_cell = math.floor((line.center_y + tolerance) / grid_size)
-        for cell in range(start_cell, end_cell + 1):
-            grid.setdefault(cell, []).append(line_index)
-    return grid_size, grid
+        top_grid.setdefault(math.floor(line.bbox[1] / grid_size), []).append(
+            line_index
+        )
+        for style, target_y, tolerance_ratio in (
+            (
+                "underline",
+                line.bottom_y,
+                UNDERLINE_BOTTOM_TOLERANCE_HEIGHT_RATIO,
+            ),
+            (
+                "strikethrough",
+                line.center_y,
+                STRIKETHROUGH_CENTER_TOLERANCE_HEIGHT_RATIO,
+            ),
+        ):
+            tolerance = tolerance_ratio * line.median_height
+            start_cell = math.floor((target_y - tolerance) / grid_size)
+            end_cell = math.floor((target_y + tolerance) / grid_size)
+            for cell in range(start_cell, end_cell + 1):
+                anchor_grid.setdefault(cell, []).append((line_index, style))
+    return grid_size, anchor_grid, top_grid
 
 
-def detect_pdf_strikethrough_lines(
+def _is_fraction_bar_candidate(
+    candidates: Sequence[_LineCandidate],
+    top_grid: dict[int, list[int]],
+    grid_size: float,
+    line_index: int,
+    drawing_bbox: BBox,
+) -> bool:
+    """用紧邻且被横线覆盖的下方文本 run 排除公式分数线。"""
+
+    line = candidates[line_index]
+    drawing_center_y = (drawing_bbox[1] + drawing_bbox[3]) / 2
+    max_lower_top = (
+        drawing_center_y
+        + UNDERLINE_FRACTION_MAX_GAP_HEIGHT_RATIO * line.median_height
+    )
+    lower_indices: set[int] = set()
+    for cell in range(
+        math.floor(drawing_center_y / grid_size),
+        math.floor(max_lower_top / grid_size) + 1,
+    ):
+        lower_indices.update(top_grid.get(cell, ()))
+    for lower_index in lower_indices:
+        if lower_index == line_index:
+            continue
+        lower_line = candidates[lower_index]
+        if not drawing_center_y <= lower_line.bbox[1] <= max_lower_top:
+            continue
+        lower_width = lower_line.bbox[2] - lower_line.bbox[0]
+        horizontal_overlap = max(
+            0.0,
+            min(drawing_bbox[2], lower_line.bbox[2])
+            - max(drawing_bbox[0], lower_line.bbox[0]),
+        )
+        if (
+            horizontal_overlap / max(0.01, lower_width)
+            >= UNDERLINE_FRACTION_MIN_LOWER_LINE_COVERAGE
+        ):
+            return True
+    return False
+
+
+def detect_pdf_text_style_lines(
     lines: Sequence[Any],
     drawing_lines: Sequence[Any],
 ) -> list[PDFTextStyleLine]:
-    """从视觉文本 run 与页面 drawing 中生成全部水平行及其删除线证据。"""
+    """从视觉文本 run 与页面 drawing 中生成全部水平行样式证据。"""
 
+    candidates = [
+        candidate
+        for line in lines
+        if (candidate := _build_line_candidate(line)) is not None
+    ]
+    if not candidates:
+        return []
     horizontal_drawings = [
         drawing
         for drawing in drawing_lines
         if getattr(drawing, "orientation", None) == "horizontal"
     ]
-    if not horizontal_drawings:
-        return []
-    candidates = [candidate for line in lines if (candidate := _build_line_candidate(line)) is not None]
-    if not candidates:
-        return []
-    grid_size, line_grid = _build_line_center_grid(candidates)
-    for drawing in horizontal_drawings:
-        drawing_bbox = _coerce_bbox(getattr(drawing, "bbox", None))
-        if drawing_bbox is None:
-            continue
-        drawing_center_y = (drawing_bbox[1] + drawing_bbox[3]) / 2
-        candidate_indices = line_grid.get(math.floor(drawing_center_y / grid_size), [])
-        matches = [
-            (line_index, match)
-            for line_index in candidate_indices
-            if (match := _drawing_match_for_line(candidates[line_index], drawing)) is not None
-        ]
-        if not matches:
-            continue
-        line_index, best_match = min(
-            matches,
-            key=lambda item: (
-                item[1].center_distance_ratio,
-                -item[1].horizontal_overlap_ratio,
-                candidates[item[0]].source_index,
-            ),
-        )
-        candidates[line_index].ranges.append(
-            (best_match.start_index, best_match.end_index)
-        )
+    if horizontal_drawings:
+        grid_size, anchor_grid, top_grid = _build_line_geometry_grids(candidates)
+        for drawing in horizontal_drawings:
+            drawing_bbox = _coerce_bbox(getattr(drawing, "bbox", None))
+            if drawing_bbox is None:
+                continue
+            drawing_center_y = (drawing_bbox[1] + drawing_bbox[3]) / 2
+            candidate_anchors = anchor_grid.get(
+                math.floor(drawing_center_y / grid_size),
+                [],
+            )
+            matches: list[tuple[int, _DrawingMatch]] = []
+            for line_index, style in candidate_anchors:
+                match = _drawing_match_for_line(
+                    candidates[line_index],
+                    drawing,
+                    style,
+                )
+                if match is None:
+                    continue
+                if style == "underline" and _is_fraction_bar_candidate(
+                    candidates,
+                    top_grid,
+                    grid_size,
+                    line_index,
+                    drawing_bbox,
+                ):
+                    continue
+                matches.append((line_index, match))
+            if not matches:
+                continue
+            line_index, best_match = min(
+                matches,
+                key=lambda item: (
+                    item[1].target_distance_ratio,
+                    -item[1].horizontal_overlap_ratio,
+                    candidates[item[0]].source_index,
+                    _PDF_TEXT_DECORATION_ORDER.index(item[1].style),
+                ),
+            )
+            candidates[line_index].decoration_ranges[best_match.style].append(
+                (best_match.start_index, best_match.end_index)
+            )
 
-    if not any(line.ranges for line in candidates):
+    payloads = [
+        payload
+        for line in candidates
+        if (payload := _line_style_payload(line)) is not None
+    ]
+    if not any(line.style_ranges for line in payloads):
         return []
-    payloads = [payload for line in candidates if (payload := _line_style_payload(line)) is not None]
-    return sorted(payloads, key=lambda line: (line.bbox[1], line.bbox[0], line.source_index))
+    return sorted(
+        payloads,
+        key=_style_line_reading_order_key,
+    )
 
 
 def _block_bbox_to_page_bbox(value: Any, page_size: tuple[float, float]) -> BBox | None:
@@ -454,27 +769,90 @@ def _assign_lines_to_blocks(
         block_index, _score = max(matches, key=lambda item: (*item[1], -item[0]))
         assignments.setdefault(block_index, []).append(line)
     for block_lines in assignments.values():
-        block_lines.sort(key=lambda line: (line.bbox[1], line.bbox[0], line.source_index))
+        block_lines.sort(key=_style_line_reading_order_key)
     return assignments
 
 
-def _text_tag_has_strikethrough(attrs: str) -> bool:
-    """判断 text 标签是否已经显式携带删除线样式。"""
+def _filter_line_styles_for_block(
+    lines: Sequence[PDFTextStyleLine],
+    block_type: Any,
+) -> list[PDFTextStyleLine]:
+    """按目标 block 类型过滤样式区间，同时保留无样式物理行用于顺序对齐。"""
+
+    output: list[PDFTextStyleLine] = []
+    for line in lines:
+        filtered_ranges: list[PDFTextStyleRange] = []
+        for style_range in line.style_ranges:
+            styles = _canonical_styles(
+                style
+                for style in style_range.styles
+                if block_type
+                in _PDF_TEXT_STYLE_TARGET_BLOCK_TYPES.get(
+                    style,
+                    frozenset(),
+                )
+            )
+            if styles:
+                filtered_ranges.append(
+                    PDFTextStyleRange(
+                        style_range.start,
+                        style_range.end,
+                        styles,
+                    )
+                )
+        output.append(
+            PDFTextStyleLine(
+                bbox=line.bbox,
+                text=line.text,
+                style_ranges=tuple(filtered_ranges),
+                source_index=line.source_index,
+            )
+        )
+    return output
+
+
+def _text_tag_styles(attrs: str) -> frozenset[PDFTextStyle]:
+    """提取 text 标签中已存在且属于 PDF 富化范围的样式。"""
 
     match = _STYLE_ATTR_RE.search(attrs)
     if match is None:
-        return False
-    return "strikethrough" in {
-        style.strip().lower()
-        for style in match.group("style").split(",")
-    }
+        return frozenset()
+    return frozenset(
+        cast(PDFTextStyle, style)
+        for raw_style in match.group("style").split(",")
+        if (style := raw_style.strip().lower()) in PDF_TEXT_STYLE_ORDER
+    )
 
 
-def _pop_inline_tag(stack: list[tuple[str, bool, bool]], tag: str) -> None:
+def _direct_tag_styles(tag: str) -> frozenset[PDFTextStyle]:
+    """把直接 HTML 风格标签转换为当前 PDF 富化识别的样式。"""
+
+    style = {
+        "strong": "bold",
+        "b": "bold",
+        "em": "italic",
+        "i": "italic",
+        "u": "underline",
+        "s": "strikethrough",
+    }.get(tag)
+    return frozenset({cast(PDFTextStyle, style)}) if style is not None else frozenset()
+
+
+def _active_inline_styles(stack: Sequence[_InlineTagState]) -> frozenset[PDFTextStyle]:
+    """合并当前位置全部已打开标签携带的字体样式。"""
+
+    return frozenset(
+        style
+        for state in stack
+        for style in state.styles
+    )
+
+
+def _pop_inline_tag(stack: list[_InlineTagState], tag: str) -> None:
     """从行内标签栈弹出最近的同名元素，容忍损坏嵌套。"""
 
     for index in range(len(stack) - 1, -1, -1):
-        if stack[index][0] == tag:
+        if stack[index].tag == tag:
             del stack[index:]
             return
 
@@ -483,43 +861,56 @@ def _project_content_chars(content: str) -> list[_ProjectedChar]:
     """把 model content 投影为忽略空白和公式的可比较字符，并保留原始 offset。"""
 
     projected: list[_ProjectedChar] = []
-    stack: list[tuple[str, bool, bool]] = []
+    stack: list[_InlineTagState] = []
+    pending_formula_gap = False
     cursor = 0
     while cursor < len(content):
-        if not any(item[1] for item in stack) and content.startswith(r"\(", cursor):
+        if not any(state.excluded for state in stack) and content.startswith(r"\(", cursor):
             formula_end = content.find(r"\)", cursor + 2)
             if formula_end >= 0:
                 cursor = formula_end + 2
+                pending_formula_gap = True
                 continue
         tag_match = _KNOWN_INLINE_TAG_RE.match(content, cursor)
         if tag_match is not None:
             tag = tag_match.group("tag").lower()
             if tag_match.group("close"):
                 _pop_inline_tag(stack, tag)
+                if tag == "eq":
+                    pending_formula_gap = True
             else:
                 attrs = tag_match.group("attrs") or ""
                 stack.append(
-                    (
-                        tag,
-                        tag in {"eq", "url"},
-                        tag == "s" or (tag == "text" and _text_tag_has_strikethrough(attrs)),
+                    _InlineTagState(
+                        tag=tag,
+                        excluded=tag in {"eq", "url"},
+                        styles=(
+                            _text_tag_styles(attrs)
+                            if tag == "text"
+                            else _direct_tag_styles(tag)
+                        ),
                     )
                 )
             cursor = tag_match.end()
             continue
 
         raw_char = content[cursor]
-        if not any(item[1] for item in stack):
+        if not any(state.excluded for state in stack):
             fragment = _normalize_match_fragment(raw_char)
-            for value in fragment:
+            for fragment_index, value in enumerate(fragment):
                 projected.append(
                     _ProjectedChar(
                         value=value,
                         raw_start=cursor,
                         raw_end=cursor + 1,
-                        styleable=not any(item[2] for item in stack),
+                        existing_styles=_active_inline_styles(stack),
+                        formula_gap_before=(
+                            pending_formula_gap and fragment_index == 0
+                        ),
                     )
                 )
+            if fragment:
+                pending_formula_gap = False
         cursor += 1
     return projected
 
@@ -541,12 +932,10 @@ def _resolve_fallback_occurrence(
     style_range: PDFTextStyleRange,
     start: int,
 ) -> int | None:
-    """在整行无法对齐时，用唯一删除片段及两侧精确上下文选择位置。"""
+    """在整行无法对齐时，用唯一样式片段及两侧精确上下文选择位置。"""
 
     target = line.text[style_range.start : style_range.end]
     occurrences = _all_occurrences(content, target, start)
-    if len(occurrences) == 1:
-        return occurrences[0]
     if not occurrences:
         return None
     left_context = line.text[max(0, style_range.start - 12) : style_range.start]
@@ -565,17 +954,142 @@ def _resolve_fallback_occurrence(
         )
         for position in occurrences
     ]
+    has_geometric_style = bool(
+        _PDF_GEOMETRIC_TEXT_STYLES.intersection(style_range.styles)
+    )
+    if len(occurrences) == 1 and (
+        has_geometric_style or len(target) >= 3
+    ):
+        return occurrences[0]
     best_score = max(score for score, _position in scored)
     best_positions = [position for score, position in scored if score == best_score]
-    return best_positions[0] if best_score > 0 and len(best_positions) == 1 else None
+    if has_geometric_style:
+        return best_positions[0] if best_score > 0 and len(best_positions) == 1 else None
+    required_context_score = int(bool(left_context)) + int(bool(right_context))
+    return (
+        best_positions[0]
+        if required_context_score > 0
+        and best_score == required_context_score
+        and len(best_positions) == 1
+        else None
+    )
+
+
+def _match_line_across_formula_gaps(
+    line_text: str,
+    projected: Sequence[_ProjectedChar],
+    start: int,
+) -> _LineProjectionMatch | None:
+    """用精确字符序列跨过公式空洞，将一个物理行对齐到 block 文本。"""
+
+    if (
+        not line_text
+        or start >= len(projected)
+        or not any(token.formula_gap_before for token in projected[start:])
+    ):
+        return None
+    for projected_start in range(max(0, start), len(projected)):
+        first_token = projected[projected_start]
+        if not first_token.formula_gap_before and first_token.value != line_text[0]:
+            continue
+        states: dict[int, tuple[int | None, ...]] = {0: ()}
+        for projected_index in range(projected_start, len(projected)):
+            token = projected[projected_index]
+            next_states: dict[int, tuple[int | None, ...]] = {}
+            for source_index, mapping in states.items():
+                if source_index >= len(line_text):
+                    continue
+                if token.formula_gap_before:
+                    candidate_source_indices = range(
+                        source_index + 1,
+                        len(line_text),
+                    )
+                elif line_text[source_index] == token.value:
+                    candidate_source_indices = (source_index,)
+                else:
+                    continue
+                for matched_source_index in candidate_source_indices:
+                    if line_text[matched_source_index] != token.value:
+                        continue
+                    next_source_index = matched_source_index + 1
+                    next_mapping = (
+                        *mapping,
+                        *([None] * (matched_source_index - source_index)),
+                        projected_index,
+                    )
+                    next_states.setdefault(next_source_index, next_mapping)
+            complete = next_states.get(len(line_text))
+            if complete is not None:
+                return _LineProjectionMatch(
+                    start=projected_start,
+                    end=projected_index + 1,
+                    source_to_projected=complete,
+                )
+            if not next_states:
+                break
+            states = next_states
+    return None
+
+
+def _ranges_from_line_projection(
+    line: PDFTextStyleLine,
+    match: _LineProjectionMatch,
+) -> list[PDFTextStyleRange]:
+    """把物理行样式区间投影为公式字符被跳过后的 block 文本区间。"""
+
+    output: list[PDFTextStyleRange] = []
+    for style_range in line.style_ranges:
+        current_start: int | None = None
+        previous_index: int | None = None
+        for projected_index in match.source_to_projected[
+            style_range.start : style_range.end
+        ]:
+            if projected_index is None:
+                if current_start is not None and previous_index is not None:
+                    output.append(
+                        PDFTextStyleRange(
+                            current_start,
+                            previous_index + 1,
+                            style_range.styles,
+                        )
+                    )
+                current_start = None
+                previous_index = None
+                continue
+            if (
+                current_start is not None
+                and previous_index is not None
+                and projected_index != previous_index + 1
+            ):
+                output.append(
+                    PDFTextStyleRange(
+                        current_start,
+                        previous_index + 1,
+                        style_range.styles,
+                    )
+                )
+                current_start = None
+            if current_start is None:
+                current_start = projected_index
+            previous_index = projected_index
+        if current_start is not None and previous_index is not None:
+            output.append(
+                PDFTextStyleRange(
+                    current_start,
+                    previous_index + 1,
+                    style_range.styles,
+                )
+            )
+    return output
 
 
 def _match_style_ranges(
-    projected_text: str,
+    projected: Sequence[_ProjectedChar],
     lines: Sequence[PDFTextStyleLine],
 ) -> list[PDFTextStyleRange]:
-    """按物理行顺序把删除线证据确定性对齐到 block 的可比较文本。"""
+    """按物理行顺序把字体与装饰线证据确定性对齐到 block 文本。"""
 
+    projected_text = "".join(token.value for token in projected)
     output: list[PDFTextStyleRange] = []
     cursor = 0
     for line in lines:
@@ -585,12 +1099,23 @@ def _match_style_ranges(
                 PDFTextStyleRange(
                     line_start + style_range.start,
                     line_start + style_range.end,
+                    style_range.styles,
                 )
-                for style_range in line.strikethrough_ranges
+                for style_range in line.style_ranges
             )
             cursor = line_start + len(line.text)
             continue
-        for style_range in line.strikethrough_ranges:
+        formula_match = _match_line_across_formula_gaps(
+            line.text,
+            projected,
+            cursor,
+        )
+        if formula_match is not None:
+            output.extend(_ranges_from_line_projection(line, formula_match))
+            cursor = formula_match.end
+            continue
+        skipped_ranges: list[PDFTextStyleRange] = []
+        for style_range in line.style_ranges:
             position = _resolve_fallback_occurrence(
                 projected_text,
                 line,
@@ -598,35 +1123,123 @@ def _match_style_ranges(
                 cursor,
             )
             if position is None:
-                logger.debug(
-                    "Skip ambiguous PDF strikethrough mapping: "
-                    f"line={line.text!r}, target={line.text[style_range.start:style_range.end]!r}"
-                )
+                skipped_ranges.append(style_range)
                 continue
             output.append(
                 PDFTextStyleRange(
                     position,
                     position + style_range.end - style_range.start,
+                    style_range.styles,
                 )
             )
             cursor = position + style_range.end - style_range.start
+        if skipped_ranges:
+            skipped_samples = [
+                (
+                    line.text[style_range.start : style_range.end],
+                    style_range.styles,
+                )
+                for style_range in skipped_ranges[:3]
+            ]
+            logger.debug(
+                "Skip ambiguous PDF text style mapping: "
+                f"line={line.text!r}, skipped={len(skipped_ranges)}, "
+                f"samples={skipped_samples!r}"
+            )
     return _merge_style_ranges(output)
 
 
 def _merge_style_ranges(ranges: Sequence[PDFTextStyleRange]) -> list[PDFTextStyleRange]:
-    """合并可比较文本中重叠或直接相邻的样式区间。"""
+    """把重叠样式取并集，并合并相邻且样式集合相同的区间。"""
 
-    merged: list[PDFTextStyleRange] = []
-    for style_range in sorted(ranges, key=lambda item: (item.start, item.end)):
-        if style_range.start >= style_range.end:
+    events: dict[int, dict[PDFTextStyle, int]] = {}
+    for style_range in ranges:
+        styles = _canonical_styles(style_range.styles)
+        if style_range.start >= style_range.end or not styles:
             continue
-        if merged and style_range.start <= merged[-1].end:
-            merged[-1] = PDFTextStyleRange(
+        for position, delta in (
+            (style_range.start, 1),
+            (style_range.end, -1),
+        ):
+            position_events = events.setdefault(position, {})
+            for style in styles:
+                position_events[style] = position_events.get(style, 0) + delta
+
+    active_counts: dict[PDFTextStyle, int] = {}
+    merged: list[PDFTextStyleRange] = []
+    previous_position: int | None = None
+    for position in sorted(events):
+        active_styles = _canonical_styles(
+            style
+            for style, count in active_counts.items()
+            if count > 0
+        )
+        if (
+            previous_position is not None
+            and previous_position < position
+            and active_styles
+        ):
+            if (
+                merged
+                and merged[-1].end == previous_position
+                and merged[-1].styles == active_styles
+            ):
+                merged[-1] = PDFTextStyleRange(
+                    merged[-1].start,
+                    position,
+                    active_styles,
+                )
+            else:
+                merged.append(
+                    PDFTextStyleRange(
+                        previous_position,
+                        position,
+                        active_styles,
+                    )
+                )
+        for style, delta in events[position].items():
+            active_counts[style] = active_counts.get(style, 0) + delta
+        previous_position = position
+    return merged
+
+
+def _append_raw_style_interval(
+    intervals: list[_RawStyleInterval],
+    start: int | None,
+    end: int,
+    styles: tuple[PDFTextStyle, ...],
+) -> None:
+    """向结果追加一个合法原字符串样式区间。"""
+
+    if start is not None and start < end and styles:
+        intervals.append(_RawStyleInterval(start, end, styles))
+
+
+def _merge_raw_style_intervals(
+    content: str,
+    intervals: Sequence[_RawStyleInterval],
+) -> list[_RawStyleInterval]:
+    """合并原字符串中相邻且样式一致、仅由普通空白隔开的区间。"""
+
+    merged: list[_RawStyleInterval] = []
+    for interval in sorted(intervals, key=lambda item: (item.start, item.end, item.styles)):
+        if interval.start >= interval.end or not interval.styles:
+            continue
+        if (
+            merged
+            and merged[-1].styles == interval.styles
+            and (
+                interval.start <= merged[-1].end
+                or content[merged[-1].end : interval.start].isspace()
+            )
+        ):
+            merged[-1] = _RawStyleInterval(
                 merged[-1].start,
-                max(merged[-1].end, style_range.end),
+                max(merged[-1].end, interval.end),
+                merged[-1].styles,
             )
         else:
-            merged.append(style_range)
+            merged.append(interval)
     return merged
 
 
@@ -634,84 +1247,111 @@ def _raw_style_intervals(
     content: str,
     projected: Sequence[_ProjectedChar],
     ranges: Sequence[PDFTextStyleRange],
-) -> list[tuple[int, int]]:
-    """把可比较文本区间转换为不跨公式或现有标签的原字符串区间。"""
+) -> list[_RawStyleInterval]:
+    """把样式区间转换为不跨公式或已有行内标签的原字符串区间。"""
 
-    intervals: list[tuple[int, int]] = []
+    intervals: list[_RawStyleInterval] = []
     for style_range in ranges:
         current_start: int | None = None
         current_end = 0
+        current_styles: tuple[PDFTextStyle, ...] = ()
         for token in projected[style_range.start : style_range.end]:
-            if not token.styleable:
-                if current_start is not None:
-                    intervals.append((current_start, current_end))
-                    current_start = None
+            missing_styles = _canonical_styles(
+                style
+                for style in style_range.styles
+                if style not in token.existing_styles
+            )
+            if not missing_styles:
+                _append_raw_style_interval(
+                    intervals,
+                    current_start,
+                    current_end,
+                    current_styles,
+                )
+                current_start = None
+                current_styles = ()
                 continue
             if current_start is None:
                 current_start = token.raw_start
                 current_end = token.raw_end
+                current_styles = missing_styles
                 continue
             gap = content[current_end : token.raw_start]
-            if token.raw_start <= current_end or not gap or gap.isspace():
+            if (
+                missing_styles == current_styles
+                and (token.raw_start <= current_end or not gap or gap.isspace())
+            ):
                 current_end = max(current_end, token.raw_end)
             else:
-                intervals.append((current_start, current_end))
+                _append_raw_style_interval(
+                    intervals,
+                    current_start,
+                    current_end,
+                    current_styles,
+                )
                 current_start = token.raw_start
                 current_end = token.raw_end
-        if current_start is not None:
-            intervals.append((current_start, current_end))
-
-    merged: list[tuple[int, int]] = []
-    for start, end in sorted(intervals):
-        if start >= end:
-            continue
-        if merged and (start <= merged[-1][1] or content[merged[-1][1] : start].isspace()):
-            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
-        else:
-            merged.append((start, end))
-    return merged
+                current_styles = missing_styles
+        _append_raw_style_interval(
+            intervals,
+            current_start,
+            current_end,
+            current_styles,
+        )
+    return _merge_raw_style_intervals(content, intervals)
 
 
-def _wrap_strikethrough_intervals(content: str, intervals: Sequence[tuple[int, int]]) -> str:
-    """从右向左包装删除线区间，确保原 offset 在插入标签时保持有效。"""
+def _wrap_style_intervals(
+    content: str,
+    intervals: Sequence[_RawStyleInterval],
+) -> str:
+    """从右向左包装样式区间，确保插入标签时原 offset 保持有效。"""
 
     output = content
-    for start, end in reversed(intervals):
+    for interval in reversed(intervals):
+        style_attr = ",".join(interval.styles)
         output = (
-            f'{output[:start]}<text style="strikethrough">'
-            f"{output[start:end]}</text>{output[end:]}"
+            f'{output[: interval.start]}<text style="{style_attr}">'
+            f"{output[interval.start : interval.end]}</text>"
+            f"{output[interval.end :]}"
         )
     return output
 
 
-def apply_pdf_strikethrough_styles(
+def apply_pdf_text_styles(
     blocks: list[dict[str, Any]],
     lines: Sequence[PDFTextStyleLine],
     page_size: tuple[float, float],
 ) -> None:
-    """把页面删除线证据写入自然语言 block content，无法唯一对齐时保持原文。"""
+    """把页面字体和装饰线证据写入自然语言 block，歧义时保持原文。"""
 
     assignments = _assign_lines_to_blocks(blocks, lines, page_size)
     for block_index, block_lines in assignments.items():
         block = blocks[block_index]
+        block_lines = _filter_line_styles_for_block(
+            block_lines,
+            block.get("type"),
+        )
         content = block.get("content")
         if not isinstance(content, str) or not content or not any(
-            line.strikethrough_ranges for line in block_lines
+            line.style_ranges for line in block_lines
         ):
             continue
         projected = _project_content_chars(content)
-        projected_text = "".join(token.value for token in projected)
-        style_ranges = _match_style_ranges(projected_text, block_lines)
+        style_ranges = _match_style_ranges(projected, block_lines)
         if not style_ranges:
             continue
         intervals = _raw_style_intervals(content, projected, style_ranges)
         if intervals:
-            block["content"] = _wrap_strikethrough_intervals(content, intervals)
+            block["content"] = _wrap_style_intervals(content, intervals)
 
 
 __all__ = [
+    "PDF_FONT_FORCE_BOLD_FLAG",
+    "PDF_FONT_ITALIC_FLAG",
+    "PDFTextStyle",
     "PDFTextStyleLine",
     "PDFTextStyleRange",
-    "apply_pdf_strikethrough_styles",
-    "detect_pdf_strikethrough_lines",
+    "apply_pdf_text_styles",
+    "detect_pdf_text_style_lines",
 ]

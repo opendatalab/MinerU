@@ -14,7 +14,7 @@ from mineru.types import RAW_FORMULA_NUMBER, BlockType
 from mineru.utils.config_reader import get_processing_window_size
 from mineru.utils.pdf_document import PDFDocument, PDFPage
 from mineru.utils.pdf_image_tools import load_images_from_pdf_bytes_range
-from mineru.utils.pdf_text_styles import apply_pdf_strikethrough_styles
+from mineru.utils.pdf_text_styles import apply_pdf_text_styles
 from mineru.utils.spatial_text import project_pdf_spatial_text
 
 from .constants import (
@@ -202,7 +202,7 @@ def _process_low_text(
                 block_lines,
                 page_size,
             )
-            apply_pdf_strikethrough_styles(
+            apply_pdf_text_styles(
                 page_model_list,
                 style_lines,
                 page_size,

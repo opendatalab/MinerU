@@ -132,8 +132,8 @@ def _render_annotation_group(
     block: VisualBlock,
     accepted_types: set[str],
     delimiters: LatexDelimitersConfig,
-) -> list[str]:
-    """按源 index 稳定排序一组视觉说明，并逐项渲染为 Markdown。"""
+) -> list[dict[str, Any]]:
+    """按源 index 稳定排序视觉说明，并保留可用 bbox 与 Markdown 内容。"""
     annotations: list[tuple[int, VisualAnnotationBlock]] = []
     for position, child in enumerate(block.content):
         if (
@@ -145,7 +145,14 @@ def _render_annotation_group(
         ):
             annotations.append((position, child))
     annotations.sort(key=_annotation_sort_key)
-    return [render_visual_annotation(child, delimiters) for _, child in annotations]
+    rendered_annotations: list[dict[str, Any]] = []
+    for _, child in annotations:
+        annotation_payload: dict[str, Any] = {}
+        if child.bbox is not None:
+            annotation_payload["bbox"] = list(child.bbox)
+        annotation_payload["content"] = render_visual_annotation(child, delimiters)
+        rendered_annotations.append(annotation_payload)
+    return rendered_annotations
 
 
 def _annotation_sort_key(

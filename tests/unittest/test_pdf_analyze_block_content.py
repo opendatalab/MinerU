@@ -20,6 +20,10 @@ from mineru.backend.analysis.pdf.text.native import (
     POST_OCR_FALLBACK_SCORE_KEY,
 )
 from mineru.model.flash import PdfModel
+from mineru.render._internal.common.inline import (
+    inline_plain_text,
+    parse_inline_content,
+)
 from mineru.types import BlockType, ContentType, MiddleJson
 from mineru.utils.pdf_document import PDFDocument
 
@@ -777,7 +781,10 @@ def test_npu_page_three_low_visual_runs_keep_index_line_structure() -> None:
         )
 
         flash_index_block = next(block for block in PdfModel().predict(document)[2] if block.get("type") == BlockType.INDEX)
-        assert index_block["content"] == flash_index_block["content"]
+        flash_content = inline_plain_text(
+            parse_inline_content(str(flash_index_block["content"]))
+        )
+        assert index_block["content"] == flash_content
         assert len(str(index_block["content"]).splitlines()) == 24
         assert str(index_block["content"]).splitlines()[0] == "1 前言 1"
         assert str(index_block["content"]).splitlines()[-1] == "5 附录： 19"

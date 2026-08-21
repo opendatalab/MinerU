@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -14,18 +15,20 @@ from mineru.backend.analysis.pdf.text.native import txt_spans_extract
 from mineru.backend.postprocess.pages import model_list_to_pages
 from mineru.model.flash import PdfModel
 from mineru.render import render_docx, render_html, render_markdown
-from mineru.types import BlockType, ContentType, MiddleJson
+from mineru.types import RAW_CAPTION, RAW_FOOTNOTE, BlockType, ContentType, MiddleJson
 from mineru.utils.pdf_document import PDFDocument
 from mineru.utils.pdf_text_styles import (
+    PDF_FONT_FORCE_BOLD_FLAG,
+    PDF_FONT_ITALIC_FLAG,
     PDFTextStyleLine,
     PDFTextStyleRange,
-    apply_pdf_strikethrough_styles,
-    detect_pdf_strikethrough_lines,
+    apply_pdf_text_styles,
+    detect_pdf_text_style_lines,
 )
 
 
 def _build_native_text_style_pdf() -> bytes:
-    """构造包含删除线、下划线、整栏横线和短横线的单页原生 PDF。"""
+    """构造包含字体、删除线、下划线及其反例的单页原生 PDF。"""
 
     content = b"""0.8 w
 BT /F1 12 Tf 50 250 Td (strike: alpha ) Tj (deleted) Tj ( omega) Tj ET
@@ -38,13 +41,20 @@ BT /F1 12 Tf 50 130 Td (short: alpha ) Tj (x) Tj ( omega) Tj ET
 143.6 134 m 150.8 134 l S
 BT /F1 12 Tf 50 90 Td (filled: alpha ) Tj (filled strike) Tj ( omega) Tj ET
 150.8 93.4 93.6 1.2 re f
+BT /F2 12 Tf 50 50 Td (bold sample) Tj ET
+BT /F3 12 Tf 50 30 Td (italic sample) Tj ET
+BT /F4 12 Tf 50 10 Td (bold italic sample) Tj ET
 """
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 420 300] "
-        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"/Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R /F4 7 0 R >> >> "
+        b"/Contents 8 0 R >>",
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-BoldOblique >>",
         b"<< /Length " + str(len(content)).encode("ascii") + b" >>\nstream\n" + content + b"endstream",
     ]
     payload = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
@@ -76,6 +86,10 @@ def _text_line(
     height: float = 10.0,
     angle: int = 0,
     source_index: int = 0,
+    font_name: str = "",
+    font_flags: int = 0,
+    font_weight: object = None,
+    rotation_degrees: float = 0.0,
 ) -> SimpleNamespace:
     """构造带真实字符 bbox 的轻量视觉文本行。"""
 
@@ -88,6 +102,12 @@ def _text_line(
                 "char": char,
                 "bbox": (cursor, y, cursor + width, y + height),
                 "char_idx": char_index,
+                "rotation": math.radians(rotation_degrees),
+                "font": {
+                    "name": font_name,
+                    "flags": font_flags,
+                    "weight": font_weight,
+                },
             }
         )
         cursor += width
@@ -108,7 +128,7 @@ def _drawing(
     width: float = 1.0,
     orientation: str = "horizontal",
 ) -> SimpleNamespace:
-    """构造删除线检测使用的轻量 drawing。"""
+    """构造文本装饰线检测使用的轻量 drawing。"""
 
     return SimpleNamespace(
         bbox=(x0, y - width / 2, x1, y + width / 2),
@@ -123,6 +143,189 @@ def _char_span(line: SimpleNamespace, start: int, end: int) -> tuple[float, floa
     return line.chars[start]["bbox"][0], line.chars[end - 1]["bbox"][2]
 
 
+@pytest.mark.parametrize(
+    ("line_options", "expected_styles"),
+    [
+        ({"font_flags": PDF_FONT_FORCE_BOLD_FLAG}, ("bold",)),
+        ({"font_weight": 599}, None),
+        ({"font_weight": 600}, ("bold",)),
+        ({"font_weight": -1}, None),
+        ({"font_weight": "invalid"}, None),
+        ({"font_name": "ABCDEF+FrankRuhlHofshi-Bold"}, ("bold",)),
+        ({"font_name": "SourceSansPro-Semibold"}, ("bold",)),
+        ({"font_name": "Arial-Black"}, ("bold",)),
+        ({"font_name": "HiraginoSansGB-W6"}, ("bold",)),
+        ({"font_name": "HiraginoSansGB-W3"}, None),
+        (
+            {
+                "font_name": "LinuxLibertineGBI",
+                "font_flags": PDF_FONT_ITALIC_FLAG,
+            },
+            ("bold",),
+        ),
+        ({"font_name": "MyriadPro-SemiCn"}, None),
+        ({"font_flags": PDF_FONT_ITALIC_FLAG}, None),
+        ({"font_name": "TimesNewRomanPS-ItalicMT"}, None),
+        ({"font_name": "Helvetica-Oblique"}, None),
+        ({"rotation_degrees": 4.9}, None),
+        ({"rotation_degrees": 5.0}, None),
+        ({"rotation_degrees": 19.0}, None),
+        ({"rotation_degrees": 30.0}, None),
+        ({"rotation_degrees": 30.1}, None),
+    ],
+)
+def test_detects_font_styles_only_from_approved_direct_evidence(
+    line_options: dict[str, object],
+    expected_styles: tuple[str, ...] | None,
+) -> None:
+    """验证 PDF 只从批准的直接证据生成粗体，所有斜体证据均被忽略。"""
+
+    line = _text_line("styled", **line_options)
+
+    detected = detect_pdf_text_style_lines([line], [])
+
+    if expected_styles is None:
+        assert detected == []
+    else:
+        assert detected == [
+            PDFTextStyleLine(
+                line.bbox,
+                "styled",
+                (PDFTextStyleRange(0, 6, expected_styles),),
+                0,
+            )
+        ]
+
+
+def test_rotated_line_never_uses_local_rotation_as_italic_evidence() -> None:
+    """验证整行非标准方向即使字符角差落入区间也不会标为斜体。"""
+
+    line = _text_line(
+        "watermark",
+        angle=340,
+        rotation_degrees=20.0,
+    )
+
+    assert detect_pdf_text_style_lines([line], []) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_text"),
+    [
+        ("A", None),
+        ("中", None),
+        ("AB", "AB"),
+        ("ﬁ", "fi"),
+    ],
+)
+def test_filters_pdf_bold_runs_shorter_than_two_comparable_characters(
+    text: str,
+    expected_text: str | None,
+) -> None:
+    """验证单字符粗体被过滤，双字符和展开为双字符的 ligature 保留。"""
+
+    line = _text_line(text, font_name="Helvetica-Bold")
+
+    detected = detect_pdf_text_style_lines([line], [])
+
+    if expected_text is None:
+        assert detected == []
+    else:
+        assert detected == [
+            PDFTextStyleLine(
+                line.bbox,
+                expected_text,
+                (PDFTextStyleRange(0, len(expected_text), ("bold",)),),
+                0,
+            )
+        ]
+
+
+def test_filters_isolated_leading_bold_list_marker_cluster() -> None:
+    """验证达到最小长度的行首项目符号簇仍不会污染普通正文。"""
+
+    line = _text_line("•• body")
+    for char in line.chars[:2]:
+        char["font"] = {
+            "name": "Helvetica-Bold",
+            "flags": 0,
+            "weight": 400,
+        }
+
+    assert detect_pdf_text_style_lines([line], []) == []
+
+
+def test_filters_bold_bullet_but_keeps_later_bold_list_text() -> None:
+    """验证真实列表形态只移除行首粗体圆点，保留后续粗体正文。"""
+
+    line = _text_line("• 无序列表项 1：bold 粗体文本")
+    bold_indices = {0}
+    bold_start = line.text.index("bold")
+    bold_indices.update(range(bold_start, len(line.text)))
+    for char_index in bold_indices:
+        line.chars[char_index]["font"] = {
+            "name": "Helvetica-Bold",
+            "flags": 0,
+            "weight": 400,
+        }
+
+    detected = detect_pdf_text_style_lines([line], [])
+    bold_fragments = [
+        detected[0].text[style_range.start : style_range.end]
+        for style_range in detected[0].style_ranges
+        if "bold" in style_range.styles
+    ]
+
+    assert bold_fragments == ["bold粗体文本"]
+
+
+def test_keeps_list_marker_when_it_is_part_of_a_full_bold_run() -> None:
+    """验证项目符号与后续正文同属完整粗体 run 时不会被单独删除。"""
+
+    line = _text_line("• bold", font_name="Helvetica-Bold")
+
+    detected = detect_pdf_text_style_lines([line], [])
+
+    assert detected[0].style_ranges == (
+        PDFTextStyleRange(0, 5, ("bold",)),
+    )
+
+
+def test_combines_bold_and_strikethrough_styles_per_character() -> None:
+    """验证斜体字体保持普通文本，粗体与删除线仍按字符正确组合。"""
+
+    line = _text_line("ABCDEF", height=5.0)
+    for char_index in (1, 2):
+        line.chars[char_index]["font"] = {
+            "name": "Helvetica-Bold",
+            "flags": 0,
+            "weight": 400,
+        }
+    line.chars[3]["font"] = {
+        "name": "Helvetica-Oblique",
+        "flags": 0,
+        "weight": 400,
+    }
+    for char_index in (4, 5):
+        line.chars[char_index]["font"] = {
+            "name": "Helvetica-BoldOblique",
+            "flags": 0,
+            "weight": 400,
+        }
+    x0, x1 = _char_span(line, 1, 6)
+
+    detected = detect_pdf_text_style_lines(
+        [line],
+        [_drawing(x0, x1, 12.5)],
+    )
+
+    assert detected[0].style_ranges == (
+        PDFTextStyleRange(1, 3, ("bold", "strikethrough")),
+        PDFTextStyleRange(3, 4, ("strikethrough",)),
+        PDFTextStyleRange(4, 6, ("bold", "strikethrough")),
+    )
+
+
 def test_detects_long_strikethrough_and_preserves_internal_spaces() -> None:
     """验证长删除线按字符范围生成单个紧凑样式区间。"""
 
@@ -131,7 +334,7 @@ def test_detects_long_strikethrough_and_preserves_internal_spaces() -> None:
     end = start + len("deleted text")
     x0, x1 = _char_span(line, start, end)
 
-    detected = detect_pdf_strikethrough_lines(
+    detected = detect_pdf_text_style_lines(
         [line],
         [_drawing(x0, x1, 15.0)],
     )
@@ -139,12 +342,137 @@ def test_detects_long_strikethrough_and_preserves_internal_spaces() -> None:
     assert len(detected) == 1
     assert detected[0].text == "alphadeletedtextomega"
     assert detected[0].text[
-        detected[0].strikethrough_ranges[0].start : detected[0].strikethrough_ranges[0].end
+        detected[0].style_ranges[0].start : detected[0].style_ranges[0].end
     ] == "deletedtext"
 
 
-def test_rejects_underline_thick_short_and_column_rule() -> None:
-    """验证下划线、粗线、短线和贯穿整栏的分隔线均不产生样式。"""
+@pytest.mark.parametrize("drawing_y", [18.0, 20.0, 22.0])
+def test_detects_underline_inside_strict_bottom_band(drawing_y: float) -> None:
+    """验证主体字符下边界上下 0.20h 内的长横线产生下划线。"""
+
+    line = _text_line("alpha underlined omega")
+    start = line.text.index("underlined")
+    end = start + len("underlined")
+    x0, x1 = _char_span(line, start, end)
+
+    detected = detect_pdf_text_style_lines(
+        [line],
+        [_drawing(x0, x1, drawing_y)],
+    )
+
+    assert detected[0].style_ranges == (
+        PDFTextStyleRange(5, 15, ("underline",)),
+    )
+
+
+@pytest.mark.parametrize("drawing_y", [17.99, 22.01])
+def test_rejects_underline_outside_strict_bottom_band(
+    drawing_y: float,
+) -> None:
+    """验证超过主体下边界 0.20h 的横线不产生下划线。"""
+
+    line = _text_line("alpha underlined omega")
+    start = line.text.index("underlined")
+    end = start + len("underlined")
+    x0, x1 = _char_span(line, start, end)
+
+    assert detect_pdf_text_style_lines(
+        [line],
+        [_drawing(x0, x1, drawing_y)],
+    ) == []
+
+
+def test_combines_bold_underline_and_strikethrough_in_protocol_order() -> None:
+    """验证同一字符范围的粗体、下划线和删除线按固定顺序合并。"""
+
+    line = _text_line("styled", font_name="Helvetica-Bold")
+    x0, x1 = _char_span(line, 0, len(line.text))
+
+    detected = detect_pdf_text_style_lines(
+        [line],
+        [
+            _drawing(x0, x1, 15.0),
+            _drawing(x0, x1, 20.0),
+        ],
+    )
+
+    assert detected[0].style_ranges == (
+        PDFTextStyleRange(
+            0,
+            6,
+            ("bold", "underline", "strikethrough"),
+        ),
+    )
+
+
+def test_merges_repeated_underline_drawings() -> None:
+    """验证双线或重复共线 drawing 只生成一个下划线语义区间。"""
+
+    line = _text_line("underlined")
+    x0, x1 = _char_span(line, 0, len(line.text))
+
+    detected = detect_pdf_text_style_lines(
+        [line],
+        [
+            _drawing(x0, x1, 19.0),
+            _drawing(x0, x1, 20.0),
+        ],
+    )
+
+    assert detected[0].style_ranges == (
+        PDFTextStyleRange(0, 10, ("underline",)),
+    )
+
+
+def test_rejects_fraction_bar_with_tightly_contained_lower_run() -> None:
+    """验证横线下方紧邻且被覆盖的分母 run 会阻止下划线误判。"""
+
+    numerator = _text_line("numerator", source_index=0)
+    denominator = _text_line(
+        "den",
+        x=28.0,
+        y=21.4,
+        height=8.0,
+        source_index=1,
+    )
+    x0, x1 = _char_span(numerator, 0, len(numerator.text))
+
+    assert detect_pdf_text_style_lines(
+        [numerator, denominator],
+        [_drawing(x0, x1, 20.0)],
+    ) == []
+
+
+def test_keeps_underline_when_following_text_is_outside_fraction_gap() -> None:
+    """验证普通下一行即使水平重叠也不会触发分数线排除。"""
+
+    first = _text_line("underlined", source_index=0)
+    second = _text_line(
+        "next",
+        x=28.0,
+        y=22.1,
+        height=8.0,
+        source_index=1,
+    )
+    x0, x1 = _char_span(first, 0, len(first.text))
+
+    detected = detect_pdf_text_style_lines(
+        [first, second],
+        [_drawing(x0, x1, 20.0)],
+    )
+
+    ranges_by_source = {
+        line.source_index: line.style_ranges
+        for line in detected
+    }
+    assert ranges_by_source[0] == (
+        PDFTextStyleRange(0, 10, ("underline",)),
+    )
+    assert ranges_by_source[1] == ()
+
+
+def test_rejects_thick_short_and_column_rules() -> None:
+    """验证粗线、短线和贯穿整栏的分隔线均不产生文本样式。"""
 
     line = _text_line("alpha deleted omega")
     start = line.text.index("deleted")
@@ -154,17 +482,16 @@ def test_rejects_underline_thick_short_and_column_rule() -> None:
     short_start = short_line.text.index("xy")
     short_x0, short_x1 = _char_span(short_line, short_start, short_start + 2)
 
-    detected = detect_pdf_strikethrough_lines(
+    detected = detect_pdf_text_style_lines(
         [line, short_line],
         [
-            _drawing(x0, x1, 19.5),
             _drawing(x0, x1, 15.0, width=2.1),
             _drawing(short_x0, short_x1, 35.0),
             _drawing(0.0, 200.0, 15.0),
         ],
     )
 
-    assert all(not item.strikethrough_ranges for item in detected)
+    assert all(not item.style_ranges for item in detected)
 
 
 def test_accepts_one_aligned_endpoint_and_merges_adjacent_drawings() -> None:
@@ -178,7 +505,7 @@ def test_accepts_one_aligned_endpoint_and_merges_adjacent_drawings() -> None:
     deleted_x0, deleted_x1 = _char_span(line, deleted_start, deleted_end)
     text_x0, text_x1 = _char_span(line, text_start, text_end)
 
-    detected = detect_pdf_strikethrough_lines(
+    detected = detect_pdf_text_style_lines(
         [line],
         [
             _drawing(deleted_x0, deleted_x1 + 5.0, 15.0),
@@ -186,8 +513,8 @@ def test_accepts_one_aligned_endpoint_and_merges_adjacent_drawings() -> None:
         ],
     )
 
-    assert len(detected[0].strikethrough_ranges) == 1
-    style_range = detected[0].strikethrough_ranges[0]
+    assert len(detected[0].style_ranges) == 1
+    style_range = detected[0].style_ranges[0]
     assert detected[0].text[style_range.start : style_range.end] == "deletedtext"
 
 
@@ -208,7 +535,7 @@ def test_keeps_two_disjoint_strikethrough_ranges() -> None:
         removed_start + len("removed"),
     )
 
-    detected = detect_pdf_strikethrough_lines(
+    detected = detect_pdf_text_style_lines(
         [line],
         [
             _drawing(deleted_x0, deleted_x1, 15.0),
@@ -218,7 +545,7 @@ def test_keeps_two_disjoint_strikethrough_ranges() -> None:
 
     assert [
         detected[0].text[style_range.start : style_range.end]
-        for style_range in detected[0].strikethrough_ranges
+        for style_range in detected[0].style_ranges
     ] == ["deleted", "removed"]
 
 
@@ -229,16 +556,18 @@ def test_drawing_is_assigned_to_the_closest_overlapping_line() -> None:
     second = _text_line("deleted", y=11.0, source_index=1)
     x0, x1 = _char_span(first, 0, len(first.text))
 
-    detected = detect_pdf_strikethrough_lines(
+    detected = detect_pdf_text_style_lines(
         [first, second],
         [_drawing(x0, x1, 15.1)],
     )
 
     ranges_by_source = {
-        line.source_index: line.strikethrough_ranges
+        line.source_index: line.style_ranges
         for line in detected
     }
-    assert ranges_by_source[0] == (PDFTextStyleRange(0, 7),)
+    assert ranges_by_source[0] == (
+        PDFTextStyleRange(0, 7, ("strikethrough",)),
+    )
     assert ranges_by_source[1] == ()
 
 
@@ -247,7 +576,7 @@ def test_rotated_text_is_not_a_style_candidate() -> None:
 
     line = _text_line("rotated text", angle=90)
 
-    assert detect_pdf_strikethrough_lines(
+    assert detect_pdf_text_style_lines(
         [line],
         [_drawing(10.0, 80.0, 15.0)],
     ) == []
@@ -263,7 +592,7 @@ def test_invalid_line_and_char_bboxes_are_ignored() -> None:
         chars=[{"char": "x", "bbox": (10.0, 10.0, 10.0, 20.0)}],
     )
 
-    assert detect_pdf_strikethrough_lines(
+    assert detect_pdf_text_style_lines(
         [invalid_line],
         [_drawing(10.0, 40.0, 15.0)],
     ) == []
@@ -284,14 +613,64 @@ def test_applies_style_to_plain_content_and_duplicate_second_line() -> None:
         PDFTextStyleLine(
             (10.0, 30.0, 50.0, 40.0),
             "deleted",
-            (PDFTextStyleRange(0, 7),),
+            (PDFTextStyleRange(0, 7, ("strikethrough",)),),
             1,
         ),
     ]
 
-    apply_pdf_strikethrough_styles(blocks, lines, (100.0, 100.0))
+    apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
     assert blocks[0]["content"] == 'deleted <text style="strikethrough">deleted</text>'
+
+
+def test_same_visual_row_style_runs_follow_source_order_despite_bbox_jitter() -> None:
+    """验证同行 run 的细微顶边抖动不会把后方粗体片段提前映射。"""
+
+    attention = _text_line(
+        "Attention",
+        x=10.0,
+        y=10.01,
+        source_index=0,
+        font_name="Helvetica-Bold",
+    )
+    bias = _text_line(
+        "Bias",
+        x=80.0,
+        y=10.01,
+        source_index=1,
+        font_name="Helvetica-Bold",
+    )
+    scaling = _text_line(
+        "Scaling. Unlike",
+        x=120.0,
+        y=10.0,
+        source_index=2,
+    )
+    for char in scaling.chars[: len("Scaling.")]:
+        char["font"] = {
+            "name": "Helvetica-Bold",
+            "flags": 0,
+            "weight": 400,
+        }
+
+    style_lines = detect_pdf_text_style_lines(
+        [scaling, attention, bias],
+        [],
+    )
+    assert [line.source_index for line in style_lines] == [0, 1, 2]
+
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": [0.0, 0.0, 1.0, 1.0],
+            "content": "Attention Bias Scaling. Unlike",
+        }
+    ]
+    apply_pdf_text_styles(blocks, style_lines, (250.0, 100.0))
+
+    assert blocks[0]["content"] == (
+        '<text style="bold">Attention Bias Scaling.</text> Unlike'
+    )
 
 
 def test_applies_style_inside_superscript_without_crossing_tags() -> None:
@@ -308,15 +687,315 @@ def test_applies_style_inside_superscript_without_crossing_tags() -> None:
         PDFTextStyleLine(
             (10.0, 10.0, 90.0, 20.0),
             "valuedeletedtail",
-            (PDFTextStyleRange(5, 12),),
+            (PDFTextStyleRange(5, 12, ("strikethrough",)),),
             0,
         )
     ]
 
-    apply_pdf_strikethrough_styles(blocks, lines, (100.0, 100.0))
+    apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
     assert blocks[0]["content"] == (
         'value <sup><text style="strikethrough">deleted</text></sup> tail'
+    )
+
+
+def test_filters_italic_before_merging_overlapping_style_ranges() -> None:
+    """验证过滤斜体后仍正确合并粗体、下划线与删除线区间。"""
+
+    blocks = [
+        {
+            "type": "text",
+            "bbox": [0.0, 0.0, 1.0, 0.4],
+            "content": "abcdef",
+        }
+    ]
+    lines = [
+        PDFTextStyleLine(
+            (10.0, 10.0, 90.0, 20.0),
+            "abcdef",
+            (
+                PDFTextStyleRange(0, 4, ("bold",)),
+                PDFTextStyleRange(2, 6, ("italic",)),
+                PDFTextStyleRange(1, 5, ("underline",)),
+                PDFTextStyleRange(3, 5, ("strikethrough",)),
+            ),
+            0,
+        )
+    ]
+
+    apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
+
+    assert blocks[0]["content"] == (
+        '<text style="bold">a</text>'
+        '<text style="bold,underline">bc</text>'
+        '<text style="bold,underline,strikethrough">d</text>'
+        '<text style="underline,strikethrough">e</text>f'
+    )
+
+
+def test_preserves_internal_spaces_and_is_idempotent() -> None:
+    """验证字体样式保留内部空格，重复富化不会增加嵌套标签。"""
+
+    blocks = [
+        {
+            "type": "text",
+            "bbox": [0.0, 0.0, 1.0, 1.0],
+            "content": "bold text",
+        }
+    ]
+    lines = [
+        PDFTextStyleLine(
+            (10.0, 10.0, 90.0, 20.0),
+            "boldtext",
+            (PDFTextStyleRange(0, 8, ("bold",)),),
+            0,
+        )
+    ]
+
+    apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
+    first_result = blocks[0]["content"]
+    apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
+
+    assert first_result == '<text style="bold">bold text</text>'
+    assert blocks[0]["content"] == first_result
+
+
+def test_underline_does_not_wrap_boundary_spaces() -> None:
+    """验证下划线只保留命中字符之间的内部空格，不扩散到边界空格。"""
+
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": [0.0, 0.0, 1.0, 1.0],
+            "content": "  under lined  ",
+        }
+    ]
+    lines = [
+        PDFTextStyleLine(
+            (10.0, 10.0, 90.0, 20.0),
+            "underlined",
+            (PDFTextStyleRange(0, 10, ("underline",)),),
+            0,
+        )
+    ]
+
+    apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
+
+    assert blocks[0]["content"] == (
+        '  <text style="underline">under lined</text>  '
+    )
+
+
+@pytest.mark.parametrize(
+    "block_type",
+    [
+        BlockType.TEXT,
+        BlockType.REF_TEXT,
+        BlockType.DOC_TITLE,
+        BlockType.PARAGRAPH_TITLE,
+        BlockType.LIST,
+        BlockType.INDEX,
+        BlockType.HEADER,
+        BlockType.FOOTER,
+        BlockType.PAGE_NUMBER,
+        BlockType.ASIDE_TEXT,
+        BlockType.PAGE_FOOTNOTE,
+        RAW_CAPTION,
+        RAW_FOOTNOTE,
+    ],
+)
+def test_applies_style_specific_scope_to_natural_language_blocks(
+    block_type: str,
+) -> None:
+    """验证粗体和下划线仅进入 text，删除线保持自然语言范围。"""
+
+    blocks = [
+        {
+            "type": block_type,
+            "bbox": [0.0, 0.0, 1.0, 1.0],
+            "content": "styled",
+        }
+    ]
+    lines = [
+        PDFTextStyleLine(
+            (10.0, 10.0, 90.0, 20.0),
+            "styled",
+            (
+                PDFTextStyleRange(
+                    0,
+                    6,
+                    ("bold", "italic", "underline", "strikethrough"),
+                ),
+            ),
+            0,
+        )
+    ]
+
+    apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
+
+    expected_styles = (
+        "bold,underline,strikethrough"
+        if block_type == BlockType.TEXT
+        else "strikethrough"
+    )
+    assert blocks[0]["content"] == (
+        f'<text style="{expected_styles}">styled</text>'
+    )
+
+
+@pytest.mark.parametrize(
+    "block_type",
+    [
+        BlockType.TABLE,
+        BlockType.CODE,
+        BlockType.EQUATION,
+        BlockType.IMAGE,
+    ],
+)
+def test_does_not_apply_styles_to_visual_or_code_blocks(block_type: str) -> None:
+    """验证表格、代码、公式和图片 block 不进入 PDF 文本样式富化。"""
+
+    blocks = [
+        {
+            "type": block_type,
+            "bbox": [0.0, 0.0, 1.0, 1.0],
+            "content": "styled",
+        }
+    ]
+    lines = [
+        PDFTextStyleLine(
+            (10.0, 10.0, 90.0, 20.0),
+            "styled",
+            (
+                PDFTextStyleRange(
+                    0,
+                    6,
+                    ("bold", "italic", "underline", "strikethrough"),
+                ),
+            ),
+            0,
+        )
+    ]
+
+    apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
+
+    assert blocks[0]["content"] == "styled"
+
+
+def test_respects_existing_styles_and_skips_equation_and_url_payloads() -> None:
+    """验证已有样式保持幂等，公式和 URL 不进入 PDF 样式富化。"""
+
+    blocks = [
+        {
+            "type": "text",
+            "bbox": [0.0, 0.0, 1.0, 0.4],
+            "content": (
+                "A<sup>B</sup><eq>C</eq>"
+                "<hyperlink><text>D</text><url>u</url></hyperlink>"
+            ),
+        },
+        {
+            "type": "text",
+            "bbox": [0.0, 0.6, 1.0, 1.0],
+            "content": (
+                "<b>A</b><i>B</i><u>C</u><s>D</s>"
+                '<text style="underline">E</text>'
+            ),
+        },
+    ]
+    lines = [
+        PDFTextStyleLine(
+            (10.0, 10.0, 90.0, 20.0),
+            "ABCD",
+            (
+                PDFTextStyleRange(0, 1, ("bold",)),
+                PDFTextStyleRange(1, 2, ("italic",)),
+                PDFTextStyleRange(2, 3, ("bold",)),
+                PDFTextStyleRange(3, 4, ("bold", "italic", "underline")),
+            ),
+            0,
+        ),
+        PDFTextStyleLine(
+            (10.0, 70.0, 90.0, 80.0),
+            "ABCDE",
+            (
+                PDFTextStyleRange(0, 1, ("bold",)),
+                PDFTextStyleRange(1, 2, ("italic",)),
+                PDFTextStyleRange(2, 3, ("underline",)),
+                PDFTextStyleRange(3, 4, ("strikethrough",)),
+                PDFTextStyleRange(4, 5, ("underline",)),
+            ),
+            1,
+        ),
+    ]
+
+    apply_pdf_text_styles(blocks, lines[:1], (100.0, 100.0))
+    apply_pdf_text_styles(blocks[1:], lines[1:], (100.0, 100.0))
+    first_results = [block["content"] for block in blocks]
+    apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
+
+    assert '<text style="bold">A</text>' in str(blocks[0]["content"])
+    assert "<sup>B</sup>" in str(blocks[0]["content"])
+    assert "<eq>C</eq>" in str(blocks[0]["content"])
+    assert '<text style="bold,underline">D</text>' in str(blocks[0]["content"])
+    assert "<url>u</url>" in str(blocks[0]["content"])
+    assert blocks[1]["content"] == (
+        "<b>A</b><i>B</i><u>C</u><s>D</s>"
+        '<text style="underline">E</text>'
+    )
+    assert [block["content"] for block in blocks] == first_results
+
+
+def test_formula_style_does_not_fall_back_to_same_plain_character() -> None:
+    """验证公式内字体样式不会误映射到同一 block 的同名普通字符。"""
+
+    blocks = [
+        {
+            "type": "text",
+            "bbox": [0.0, 0.0, 1.0, 1.0],
+            "content": "A<eq>C</eq>C",
+        }
+    ]
+    lines = [
+        PDFTextStyleLine(
+            (10.0, 10.0, 90.0, 20.0),
+            "ACC",
+            (PDFTextStyleRange(1, 2, ("bold",)),),
+            0,
+        )
+    ]
+
+    apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
+
+    assert blocks[0]["content"] == "A<eq>C</eq>C"
+
+
+def test_unique_long_style_range_survives_omitted_list_marker() -> None:
+    """验证 layout 省略行首项目符号时，较长唯一字体片段仍能安全对齐。"""
+
+    blocks = [
+        {
+            "type": "text",
+            "bbox": [0.0, 0.0, 1.0, 1.0],
+            "content": "无序列表项1：bold 粗体文本",
+        }
+    ]
+    lines = [
+        PDFTextStyleLine(
+            (10.0, 10.0, 90.0, 20.0),
+            "•无序列表项1：bold粗体文本",
+            (
+                PDFTextStyleRange(0, 1, ("bold",)),
+                PDFTextStyleRange(8, 16, ("bold",)),
+            ),
+            0,
+        )
+    ]
+
+    apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
+
+    assert blocks[0]["content"] == (
+        '无序列表项1：<text style="bold">bold 粗体文本</text>'
     )
 
 
@@ -339,25 +1018,25 @@ def test_never_styles_equations_or_excluded_blocks() -> None:
         PDFTextStyleLine(
             (10.0, 10.0, 90.0, 20.0),
             "beforedeletedafter",
-            (PDFTextStyleRange(6, 13),),
+            (PDFTextStyleRange(6, 13, ("strikethrough",)),),
             0,
         ),
         PDFTextStyleLine(
             (10.0, 60.0, 90.0, 70.0),
             "deleted",
-            (PDFTextStyleRange(0, 7),),
+            (PDFTextStyleRange(0, 7, ("strikethrough",)),),
             1,
         ),
     ]
 
-    apply_pdf_strikethrough_styles(blocks, lines, (100.0, 100.0))
+    apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
     assert blocks[0]["content"] == "before <eq>deleted</eq> after"
     assert blocks[1]["content"] == "deleted"
 
 
-def test_flash_native_pdf_strikethrough_reaches_model_middle_and_renderers() -> None:
-    """验证真实 PDF drawing 删除线贯穿 model、MiddleJson 和三种渲染输出。"""
+def test_flash_native_pdf_styles_reach_model_middle_and_renderers() -> None:
+    """验证真实 PDF 字体和 drawing 样式贯穿 model、MiddleJson 与 renderer。"""
 
     document = PDFDocument(_build_native_text_style_pdf())
     try:
@@ -372,10 +1051,14 @@ def test_flash_native_pdf_strikethrough_reaches_model_middle_and_renderers() -> 
     joined_model_content = "\n".join(model_contents)
     assert '<text style="strikethrough">deleted</text>' in joined_model_content
     assert '<text style="strikethrough">filled strike</text>' in joined_model_content
-    assert "underlined" in joined_model_content
+    assert '<text style="underline">underlined</text>' in joined_model_content
     assert '<text style="strikethrough">underlined</text>' not in joined_model_content
     assert '<text style="strikethrough">x</text>' not in joined_model_content
     assert '<text style="strikethrough">separator' not in joined_model_content
+    assert '<text style="bold">bold sample</text>' in joined_model_content
+    assert "italic sample" in joined_model_content
+    assert '<text style="italic">' not in joined_model_content
+    assert '<text style="bold">bold italic sample</text>' in joined_model_content
 
     middle = MiddleJson(
         pages=model_list_to_pages(model_list),
@@ -391,21 +1074,39 @@ def test_flash_native_pdf_strikethrough_reaches_model_middle_and_renderers() -> 
     ).decode("utf-8")
 
     assert "~~deleted~~" in markdown
+    assert "<u>underlined</u>" in markdown
+    assert "**bold sample**" in markdown
+    assert "*italic sample*" not in markdown
+    assert "**bold italic sample**" in markdown
     assert "<s>deleted</s>" in html
+    assert "<u>underlined</u>" in html
+    assert "<strong>bold sample</strong>" in html
+    assert "<em>italic sample</em>" not in html
+    assert "<strong>bold italic sample</strong>" in html
     assert "<w:strike" in document_xml
+    assert "<w:u" in document_xml
+    assert "<w:b" in document_xml
+    assert "<w:i/>" not in document_xml
+    assert '<w:i w:val="1"' not in document_xml
 
 
 def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 Medium/High/XHigh 共用 TXT 回填入口复用 chars 并写入删除线。"""
+    """验证 Medium/High/XHigh 复用 chars，并应用允许的组合样式。"""
 
     page_chars = [{"char": "d", "bbox": (10.0, 10.0, 16.0, 20.0), "char_idx": 0}]
     style_lines = [
         PDFTextStyleLine(
             (10.0, 10.0, 52.0, 20.0),
             "deleted",
-            (PDFTextStyleRange(0, 7),),
+            (
+                PDFTextStyleRange(
+                    0,
+                    7,
+                    ("bold", "italic", "underline", "strikethrough"),
+                ),
+            ),
             0,
         )
     ]
@@ -479,13 +1180,15 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
     )
 
     assert observed_chars == [page_chars]
-    assert model_list[0][0]["content"] == '<text style="strikethrough">deleted</text>'
+    assert model_list[0][0]["content"] == (
+        '<text style="bold,underline,strikethrough">deleted</text>'
+    )
 
 
 def test_low_txt_applies_styles_after_native_content_fill(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 Low/TXT 在 block content 完成后应用同一删除线协议。"""
+    """验证 Low/TXT 在 block content 完成后应用相同的组合样式策略。"""
 
     span = _AnalyzeSpan(
         type=ContentType.TEXT,
@@ -496,7 +1199,13 @@ def test_low_txt_applies_styles_after_native_content_fill(
     style_line = PDFTextStyleLine(
         (10.0, 10.0, 52.0, 20.0),
         "deleted",
-        (PDFTextStyleRange(0, 7),),
+        (
+            PDFTextStyleRange(
+                0,
+                7,
+                ("bold", "italic", "underline", "strikethrough"),
+            ),
+        ),
         0,
     )
     monkeypatch.setattr(
@@ -521,13 +1230,15 @@ def test_low_txt_applies_styles_after_native_content_fill(
         [[]],
     )
 
-    assert model_list[0][0]["content"] == '<text style="strikethrough">deleted</text>'
+    assert model_list[0][0]["content"] == (
+        '<text style="bold,underline,strikethrough">deleted</text>'
+    )
 
 
 def test_ocr_path_does_not_collect_or_apply_pdf_styles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 OCR 路径不会读取 drawing 或应用原生文本删除线。"""
+    """验证 OCR 路径不会读取 drawing 或应用 PDF 原生文本样式。"""
 
     build_styles = MagicMock()
     monkeypatch.setattr(
@@ -584,7 +1295,7 @@ def test_ocr_path_does_not_collect_or_apply_pdf_styles(
 
 
 def test_native_span_fill_does_not_read_preloaded_page_chars_twice() -> None:
-    """验证删除线检测已加载 chars 后，原生 span 回填不会再次读取当前页字符。"""
+    """验证样式检测已加载 chars 后，原生 span 回填不会再次读取当前页字符。"""
 
     page_chars = [
         {

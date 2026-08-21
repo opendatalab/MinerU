@@ -19,6 +19,12 @@ from mineru.model.flash.native_pdf import (
     native_text,
     tables,
 )
+from mineru.render import render_markdown
+from mineru.render._internal.common.inline import (
+    inline_plain_text,
+    parse_inline_content,
+)
+from mineru.types import MiddleJson
 from mineru.utils.pdf_document import PDFDocument, get_lines_from_chars
 
 
@@ -129,9 +135,17 @@ def _grouped_visual_blocks(
     return [block for block in process_page_blocks(deepcopy(page_blocks), use_bbox=True) if block.get("type") == block_type]
 
 
+def _visible_content(value: Any) -> str:
+    """返回 model block 或 content 字符串去除行内样式协议后的可见文本。"""
+
+    content = value.get("content") if isinstance(value, dict) else value
+    return inline_plain_text(parse_inline_content(str(content or "")))
+
+
 def _normalized_content_probe(text: str) -> str:
     """还原 LaTeX tag 并去除排版差异，生成原生行内容覆盖检查使用的探针。"""
 
+    text = _visible_content(text)
     text = re.sub(r"\\tag\{([^{}]+)\}", r"\1", text)
     return "".join(char.casefold() for char in text if char.isalnum())
 
@@ -357,7 +371,7 @@ def test_demo2_pages2_to6_restore_paragraphs_formulas_and_reading_order() -> Non
     assert sum(block["type"] == "footnote" for page in model_list for block in page) == 2
 
     page2 = model_list[1]
-    page2_contents = [block["content"] for block in page2]
+    page2_contents = [_visible_content(block) for block in page2]
     humans = next(content for content in page2_contents if content.startswith("Humans group shapes"))
     matching = next(content for content in page2_contents if content.startswith("To identify a match"))
     dissimilarity = next(content for content in page2_contents if content.startswith("where the pixel dissimilarity"))
@@ -369,8 +383,12 @@ def test_demo2_pages2_to6_restore_paragraphs_formulas_and_reading_order() -> Non
     assert "green, and blue" not in formula3
 
     page3 = model_list[2]
-    page3_contents = [block["content"] for block in page3]
-    assert next(block for block in page3 if block["content"] == "B. Temporal cost aggregation")["type"] == "paragraph_title"
+    page3_contents = [_visible_content(block) for block in page3]
+    assert next(
+        block
+        for block in page3
+        if _visible_content(block) == "B. Temporal cost aggregation"
+    )["type"] == "paragraph_title"
     assert page3_contents[12] == "D. Iterative Disparity Refinement"
     assert all(block["bbox"][2] <= 0.5 for block in page3[:12])
     assert "O(ω2) to O(ω)" in page3_contents[0]
@@ -391,7 +409,7 @@ def test_demo2_pages2_to6_restore_paragraphs_formulas_and_reading_order() -> Non
     assert "available at http://mc2.unl.edu/current-research/image-processing/. Figure 2" in page3_contents[-1]
     assert "current-research /image-processing" not in page3_contents[-1]
 
-    page4_contents = [block["content"] for block in model_list[3]]
+    page4_contents = [_visible_content(block) for block in model_list[3]]
     figure2 = next(content for content in page4_contents if content.startswith("Figure 2:"))
     figure3 = next(content for content in page4_contents if content.startswith("Figure 3:"))
     results = next(content for content in page4_contents if content.startswith("The results of temporal stereo"))
@@ -402,16 +420,18 @@ def test_demo2_pages2_to6_restore_paragraphs_formulas_and_reading_order() -> Non
     assert improvements.endswith("has the effect")
 
     page5 = model_list[4]
-    page5_contents = [block["content"] for block in page5]
+    page5_contents = [_visible_content(block) for block in page5]
     optimal_feedback = next(content for content in page5_contents if content.startswith("The optimal value"))
     page5_references = [content for content in page5_contents if content.startswith("[")]
-    references_title = next(block for block in page5 if block["content"] == "REFERENCES")
+    references_title = next(
+        block for block in page5 if _visible_content(block) == "REFERENCES"
+    )
     assert "noise ranging between ±0 to ±40" in optimal_feedback
     assert optimal_feedback.endswith("temporal stereo matching is used.")
     assert references_title["type"] == "paragraph_title"
     assert [content.partition("]")[0] + "]" for content in page5_references] == [f"[{number}]" for number in range(1, 6)]
 
-    page6_contents = [block["content"] for block in model_list[5]]
+    page6_contents = [_visible_content(block) for block in model_list[5]]
     assert len(page6_contents) == 16
     assert [content.partition("]")[0] + "]" for content in page6_contents] == [f"[{number}]" for number in range(6, 22)]
 
@@ -467,7 +487,11 @@ def test_demo2_page4_groups_five_graphics_and_keeps_table1() -> None:
     assert len({id(block) for block in graphic_blocks}) == 5
     assert "Frame 90" in graphic_blocks[0]["content"]
     assert all("Figure" not in block["content"] for block in graphic_blocks)
-    body_tail_block = next(block for block in page if block["content"].startswith("of the synthetic stereo scene"))
+    body_tail_block = next(
+        block
+        for block in page
+        if _visible_content(block).startswith("of the synthetic stereo scene")
+    )
     assert body_tail_block["type"] == "text"
     assert body_tail_block["content"].endswith("discontinuity map.")
     assert "discontinuity map." not in graphic_blocks[0]["content"]
@@ -490,16 +514,21 @@ def test_demo2_table_captions_and_numeric_footnotes_are_independent_blocks() -> 
         "1 Millions of Disparity Estimates per Second",
     )[0]
     residual_text = "\n".join(
-        block["content"] for page_idx in (3, 4) for block in model_list[page_idx] if block["type"] == "text"
+        _visible_content(block)
+        for page_idx in (3, 4)
+        for block in model_list[page_idx]
+        if block["type"] == "text"
     )
 
     assert page4_caption["type"] == page5_caption["type"] == "caption"
     assert page4_footnote["type"] == page5_footnote["type"] == "footnote"
-    assert "ral stereo matching." in page4_caption["content"]
-    assert "0.01, respectively." in page4_footnote["content"]
+    assert "ral stereo matching." in _visible_content(page4_caption)
+    assert "0.01, respectively." in _visible_content(page4_footnote)
     assert "Noise: ±20" not in page4_table["content"]
-    assert "2 Assumes 320 × 240 images with 32 disparity levels." in page5_footnote["content"]
-    assert "the avgerage % of bad pixels." in page5_footnote["content"]
+    assert "2 Assumes 320 × 240 images with 32 disparity levels." in _visible_content(
+        page5_footnote
+    )
+    assert "the avgerage % of bad pixels." in _visible_content(page5_footnote)
     assert "Table I:" not in page4_table["content"]
     assert "To enable propagation" not in page4_table["content"]
     assert "Table II:" not in page5_table["content"]
@@ -590,12 +619,28 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
     assert sum(block["type"] == "caption" for page in model_list for block in page) == 8
     page7_tables = [block for block in model_list[6] if block["type"] == "table"]
     page7_table4 = next(block for block in page7_tables if "Number of parameters" in block["content"])
-    page7_table4_caption = next(block for block in model_list[6] if block["content"] == "Table 4: Model size comparison.")
-    page7_inline_body = next(
-        block for block in model_list[6] if block["content"].startswith("Row, Column, & Global Positional IDs.")
+    page7_table4_caption = next(
+        block
+        for block in model_list[6]
+        if _visible_content(block) == "Table 4: Model size comparison."
     )
-    page9_conclusion = next(block for block in model_list[8] if block["content"].startswith("In this paper, we identified"))
-    page10_first_reference = next(block for block in model_list[9] if block["content"].startswith("Xiang Deng, Huan Sun"))
+    page7_inline_body = next(
+        block
+        for block in model_list[6]
+        if _visible_content(block).startswith(
+            "Row, Column, & Global Positional IDs."
+        )
+    )
+    page9_conclusion = next(
+        block
+        for block in model_list[8]
+        if _visible_content(block).startswith("In this paper, we identified")
+    )
+    page10_first_reference = next(
+        block
+        for block in model_list[9]
+        if _visible_content(block).startswith("Xiang Deng, Huan Sun")
+    )
     assert all(
         marker in page7_table4["content"]
         for marker in (
@@ -662,7 +707,11 @@ def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_formula() -> Non
     """验证首页标题稳定，第二页标题、公式和栏尾正文各自保持完整。"""
 
     page1, page2 = _native_model_list("demo3.pdf")[:2]
-    title = next(block for block in page1 if block["content"].startswith("TABLEFORMER:"))
+    title = next(
+        block
+        for block in page1
+        if _visible_content(block).startswith("TABLEFORMER:")
+    )
     front_matter_contents = {
         "Aditya Gupta† Rahul Goel†",
         "Jingfeng Yang∗ Luheng He†",
@@ -672,34 +721,62 @@ def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_formula() -> Non
         "jingfengyangpku@gmail.com",
         "tableformer@google.com",
     }
-    front_matter = [block for block in page1 if block["content"] in front_matter_contents]
-    released_code = next(block for block in page1 if "TABLEFORMER.md" in block["content"])
+    front_matter = [
+        block for block in page1 if _visible_content(block) in front_matter_contents
+    ]
+    released_code = next(
+        block for block in page1 if "TABLEFORMER.md" in _visible_content(block)
+    )
     aside = next(block for block in page1 if block["type"] == "aside_text")
-    introduction = next(block for block in page1 if block["content"].startswith("Recently, semi-structured"))
-    nutshell = next(block for block in page1 if block["content"].startswith("In a nutshell"))
-    figure_caption = next(block for block in page1 if block["content"].startswith("Figure 1:"))
-    tables_body = next(block for block in page1 if block["content"].startswith("tables or rows"))
+    introduction = next(
+        block
+        for block in page1
+        if _visible_content(block).startswith("Recently, semi-structured")
+    )
+    nutshell = next(
+        block
+        for block in page1
+        if _visible_content(block).startswith("In a nutshell")
+    )
+    figure_caption = next(
+        block
+        for block in page1
+        if _visible_content(block).startswith("Figure 1:")
+    )
+    tables_body = next(
+        block
+        for block in page1
+        if _visible_content(block).startswith("tables or rows")
+    )
 
     assert title["type"] == "doc_title"
     assert len(front_matter) == len(front_matter_contents)
     assert all(block["type"] == "text" for block in front_matter)
-    assert not [block for block in page1 if block["content"] == "∗"]
-    assert next(block for block in page1 if block["content"] == "Abstract")["type"] == "paragraph_title"
+    assert not [block for block in page1 if _visible_content(block) == "∗"]
+    assert next(
+        block for block in page1 if _visible_content(block) == "Abstract"
+    )["type"] == "paragraph_title"
     assert released_code["type"] == "page_footnote"
     assert aside["angle"] == 270
     assert aside["bbox"][2] <= 0.12
-    assert introduction["content"].endswith("(Eisenschlos et al., 2021; Liu et al., 2021).")
+    assert _visible_content(introduction).endswith(
+        "(Eisenschlos et al., 2021; Liu et al., 2021)."
+    )
     assert nutshell["type"] == "text"
-    assert nutshell["content"].endswith("by serializing")
+    assert _visible_content(nutshell).endswith("by serializing")
     assert figure_caption["type"] == "text"
-    assert figure_caption["content"].endswith("both questions.")
-    assert "tables or rows" not in figure_caption["content"]
+    assert _visible_content(figure_caption).endswith("both questions.")
+    assert "tables or rows" not in _visible_content(figure_caption)
     assert tables_body["type"] == "text"
 
-    section_title = next(block for block in page2 if block["content"].startswith("2 Preliminaries:"))
+    section_title = next(
+        block
+        for block in page2
+        if _visible_content(block).startswith("2 Preliminaries:")
+    )
     equations = [block for block in page2 if block["type"] == "equation"]
     assert section_title["type"] == "paragraph_title"
-    assert section_title["content"] == "2 Preliminaries: TAPAS for Table Encoding"
+    assert _visible_content(section_title) == "2 Preliminaries: TAPAS for Table Encoding"
     assert len(equations) == 1
     assert equations[0]["content"].splitlines() == [
         "token ids (W) = {wv1, wv2, · · · , wvn }",
@@ -718,9 +795,9 @@ def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_formula() -> Non
     ]
     assert len(as_model_blocks) == 1
     assert as_model_blocks[0]["type"] == "text"
-    assert as_model_blocks[0]["content"].startswith("As for the model")
-    assert "attends to all the tokens." in as_model_blocks[0]["content"]
-    assert "Let the layer input" in as_model_blocks[0]["content"]
+    assert _visible_content(as_model_blocks[0]).startswith("As for the model")
+    assert "attends to all the tokens." in _visible_content(as_model_blocks[0])
+    assert "Let the layer input" in _visible_content(as_model_blocks[0])
 
 
 def test_demo3_pages6_7_and10_fix_caption_inline_titles_and_reference_tail() -> None:
@@ -731,37 +808,81 @@ def test_demo3_pages6_7_and10_fix_caption_inline_titles_and_reference_tail() -> 
     page7 = model_list[6]
     page10 = model_list[9]
 
-    table2_caption = next(block for block in page6 if block["content"].startswith("Table 2:"))
+    table2_caption = next(
+        block for block in page6 if _visible_content(block).startswith("Table 2:")
+    )
     assert table2_caption["type"] == "caption"
-    assert "Median of 5 independent runs are reported." in table2_caption["content"]
-    assert table2_caption["content"].endswith("not reported in the original paper.")
-    assert sum("not reported in the original paper." in block["content"] for block in page6) == 1
+    assert "Median of 5 independent runs are reported." in _visible_content(
+        table2_caption
+    )
+    assert _visible_content(table2_caption).endswith(
+        "not reported in the original paper."
+    )
+    assert sum(
+        "not reported in the original paper." in _visible_content(block)
+        for block in page6
+    ) == 1
 
-    attention_bias = next(block for block in page7 if block["content"].startswith("Attention Bias Scaling."))
-    positional_ids = next(block for block in page7 if block["content"].startswith("Row, Column, & Global Positional IDs."))
+    attention_bias = next(
+        block
+        for block in page7
+        if _visible_content(block).startswith("Attention Bias Scaling.")
+    )
+    positional_ids = next(
+        block
+        for block in page7
+        if _visible_content(block).startswith(
+            "Row, Column, & Global Positional IDs."
+        )
+    )
     formula6 = next(
         block
         for block in page7
         if block["type"] == "equation" and r"\tag{6}" in block["content"]
     )
     assert attention_bias["type"] == "text"
-    assert attention_bias["content"].endswith("attention score by:")
+    assert str(attention_bias["content"]).startswith(
+        '<text style="bold">Attention Bias Scaling.</text> Unlike'
+    )
+    assert _visible_content(attention_bias).endswith("attention score by:")
     assert positional_ids["type"] == "text"
-    assert "With TAPASBASE" in positional_ids["content"]
+    assert "With TAPASBASE" in _visible_content(positional_ids)
     assert formula6["content"].endswith(r"\tag{6}")
     assert not [
         block
         for block in page7
         if block["type"] == "paragraph_title"
-        and block["content"].startswith(("Attention Bias Scaling.", "Row, Column, & Global Positional IDs."))
+        and _visible_content(block).startswith(
+            ("Attention Bias Scaling.", "Row, Column, & Global Positional IDs.")
+        )
     ]
+    page7_markdown = render_markdown(
+        MiddleJson(
+            pages=model_list_to_pages([page7], page_index_map=[6]),
+            file_suffix="pdf",
+            effort="flash",
+            parse_mode="txt",
+            mineru_version="test",
+        )
+    )
+    assert "**Attention Bias Scaling.** Unlike" in page7_markdown
 
-    ying_reference = next(block for block in page10 if block["content"].startswith("Chengxuan Ying"))
-    yu_reference = next(block for block in page10 if block["content"].startswith("Tao Yu"))
+    ying_reference = next(
+        block
+        for block in page10
+        if _visible_content(block).startswith("Chengxuan Ying")
+    )
+    yu_reference = next(
+        block
+        for block in page10
+        if _visible_content(block).startswith("Tao Yu")
+    )
     assert ying_reference["type"] == yu_reference["type"] == "text"
-    assert ying_reference["content"].endswith("arXiv:2106.05234.")
-    assert "Tao Yu" not in ying_reference["content"]
-    assert not [block for block in page10 if block["content"] == "arXiv:2106.05234."]
+    assert _visible_content(ying_reference).endswith("arXiv:2106.05234.")
+    assert "Tao Yu" not in _visible_content(ying_reference)
+    assert not [
+        block for block in page10 if _visible_content(block) == "arXiv:2106.05234."
+    ]
 
 
 def test_demo3_page3_form_image_formulas_titles_and_inline_body_are_whole() -> None:
@@ -787,23 +908,46 @@ def test_demo3_page3_form_image_formulas_titles_and_inline_body_are_whole() -> N
         for block in page
     )
     caption_blocks = [
-        block for block in page if "Figure 2:" in block["content"] or "types of task independent biases" in block["content"]
+        block
+        for block in page
+        if "Figure 2:" in _visible_content(block)
+        or "types of task independent biases" in _visible_content(block)
     ]
     assert len(caption_blocks) == 1
     assert caption_blocks[0]["type"] == "caption"
-    assert "This example corresponds to table (a)" in caption_blocks[0]["content"]
-    assert "associated text." in caption_blocks[0]["content"]
+    assert "This example corresponds to table (a)" in _visible_content(
+        caption_blocks[0]
+    )
+    assert "associated text." in _visible_content(caption_blocks[0])
 
     formula1 = next(block for block in page if r"\tag{1}" in block["content"])
-    section3 = next(block for block in page if block["content"].startswith("3 TABLEFORMER:"))
-    inline_item = next(block for block in page if block["content"].startswith("2) Per cell positional ids."))
-    inline_heading = next(block for block in page if block["content"].startswith("Positional Encoding in TABLEFORMER."))
+    section3 = next(
+        block
+        for block in page
+        if _visible_content(block).startswith("3 TABLEFORMER:")
+    )
+    inline_item = next(
+        block
+        for block in page
+        if _visible_content(block).startswith("2) Per cell positional ids.")
+    )
+    inline_heading = next(
+        block
+        for block in page
+        if _visible_content(block).startswith(
+            "Positional Encoding in TABLEFORMER."
+        )
+    )
     assert formula1["type"] == "equation"
     assert "Q = HWQ" in formula1["content"] and "K = HWK" in formula1["content"]
     assert section3["type"] == "paragraph_title"
-    assert section3["content"] == "3 TABLEFORMER: Robust Structural Table Encoding"
-    assert inline_item["type"] == "text" and "To further remove any" in inline_item["content"]
-    assert inline_heading["type"] == "text" and "Transformer model" in inline_heading["content"]
+    assert _visible_content(section3) == "3 TABLEFORMER: Robust Structural Table Encoding"
+    assert inline_item["type"] == "text" and "To further remove any" in _visible_content(
+        inline_item
+    )
+    assert inline_heading["type"] == "text" and "Transformer model" in _visible_content(
+        inline_heading
+    )
 
 
 def test_demo3_pages4_and5_fix_lists_formula_titles_italics_and_footnotes() -> None:
@@ -811,13 +955,21 @@ def test_demo3_pages4_and5_fix_lists_formula_titles_italics_and_footnotes() -> N
 
     page4, page5 = _native_model_list("demo3.pdf")[3:5]
     left_bullets = [
-        block for block in page4 if block["type"] == "text" and block["content"].startswith("•") and block["bbox"][2] <= 0.5
+        block
+        for block in page4
+        if block["type"] == "text"
+        and _visible_content(block).startswith("•")
+        and block["bbox"][2] <= 0.5
     ]
     assert len(left_bullets) == 6
-    assert all(len(block["content"].split()) > 8 for block in left_bullets)
-    attention_biases = next(block for block in page4 if block["content"].startswith("Attention Biases in TABLEFORMER."))
+    assert all(len(_visible_content(block).split()) > 8 for block in left_bullets)
+    attention_biases = next(
+        block
+        for block in page4
+        if _visible_content(block).startswith("Attention Biases in TABLEFORMER.")
+    )
     assert attention_biases["type"] == "text"
-    assert "13 bias types" in attention_biases["content"]
+    assert "13 bias types" in _visible_content(attention_biases)
 
     formula3 = next(block for block in page4 if r"\tag{3}" in block["content"])
     formula4 = next(block for block in page4 if r"\tag{4}" in block["content"])
@@ -829,38 +981,69 @@ def test_demo3_pages4_and5_fix_lists_formula_titles_italics_and_footnotes() -> N
     relation_blocks = [
         block
         for block in page4
-        if "Relation between TABLEFORMER and ETC." in block["content"] or "ETC (Ainslie et al., 2020)" in block["content"]
+        if "Relation between TABLEFORMER and ETC." in _visible_content(block)
+        or "ETC (Ainslie et al., 2020)" in _visible_content(block)
     ]
     assert len(relation_blocks) == 1
     assert relation_blocks[0]["type"] == "text"
-    assert relation_blocks[0]["content"].startswith("Relation between TABLEFORMER and ETC.")
-    assert "uses vectors to represent relative position labels" in relation_blocks[0]["content"]
+    assert _visible_content(relation_blocks[0]).startswith(
+        "Relation between TABLEFORMER and ETC."
+    )
+    assert "uses vectors to represent relative position labels" in _visible_content(
+        relation_blocks[0]
+    )
 
-    title4 = next(block for block in page4 if block["content"] == "4 Experimental Setup")
-    title41 = next(block for block in page4 if block["content"] == "4.1 Datasets and Evaluation")
+    title4 = next(
+        block for block in page4 if _visible_content(block) == "4 Experimental Setup"
+    )
+    title41 = next(
+        block
+        for block in page4
+        if _visible_content(block) == "4.1 Datasets and Evaluation"
+    )
     assert title4["type"] == title41["type"] == "paragraph_title"
     for prefix, continuation in (
         ("Table Question Answering.", "conducted experiments"),
         ("Table-Text Entailment.", "TABFACT dataset"),
     ):
-        inline_block = next(block for block in page4 if block["content"].startswith(prefix))
+        inline_block = next(
+            block for block in page4 if _visible_content(block).startswith(prefix)
+        )
         assert inline_block["type"] == "text"
-        assert continuation in inline_block["content"]
+        assert continuation in _visible_content(inline_block)
 
-    assert next(block for block in page5 if block["content"] == "4.2 Baselines")["type"] == "paragraph_title"
+    assert next(
+        block for block in page5 if _visible_content(block) == "4.2 Baselines"
+    )["type"] == "paragraph_title"
     assert (
-        next(block for block in page5 if block["content"] == "4.3 Perturbing Tables as Augmented Data")["type"]
+        next(
+            block
+            for block in page5
+            if _visible_content(block) == "4.3 Perturbing Tables as Augmented Data"
+        )["type"]
         == "paragraph_title"
     )
-    italic_body = next(block for block in page5 if block["content"].startswith("Could we alleviate"))
+    italic_body = next(
+        block
+        for block in page5
+        if _visible_content(block).startswith("Could we alleviate")
+    )
     assert italic_body["type"] == "text"
-    assert italic_body["content"].endswith("without making any")
+    assert _visible_content(italic_body).endswith("without making any")
 
-    final_bullet = next(block for block in page5 if block["content"].startswith("• How does TABLEFORMER compare"))
-    final_footnote = next(block for block in page5 if block["content"].startswith("3By perturbation"))
+    final_bullet = next(
+        block
+        for block in page5
+        if _visible_content(block).startswith("• How does TABLEFORMER compare")
+    )
+    final_footnote = next(
+        block
+        for block in page5
+        if _visible_content(block).startswith("3By perturbation")
+    )
     assert final_bullet["type"] == "text"
     assert final_footnote["type"] == "page_footnote"
-    assert "3By perturbation" not in final_bullet["content"]
+    assert "3By perturbation" not in _visible_content(final_bullet)
 
 
 def test_demo4_nct00083083_targeted_flash_regressions() -> None:
@@ -873,9 +1056,11 @@ def test_demo4_nct00083083_targeted_flash_regressions() -> None:
 
     page1 = model_list[0]
     assert any(block["type"] == "header" and "07388-8" in str(block["content"]) for block in page1)
-    assert next(block for block in page1 if block["content"] == "ORIGINAL ARTICLE")["type"] == "text"
+    assert next(
+        block for block in page1 if _visible_content(block) == "ORIGINAL ARTICLE"
+    )["type"] == "text"
     author_line = _blocks_containing(page1, "Rucha Ronghe1")[0]
-    assert author_line["content"] == (
+    assert _visible_content(author_line) == (
         "Rucha Ronghe1 · Teresa Crespo Gonzalez2 · Catriona Wimberley3,4,5 · Karla Suchacki3,6 · Adriana A. S. Tavares3,4"
     )
     assert _blocks_containing(page1, "contributed equally")[0]["type"] == "page_footnote"
@@ -1227,7 +1412,11 @@ def test_demo6_default3_targeted_title_regressions() -> None:
         "八、监督部门",
         "九、联系方式",
     }
-    assert {block["content"] for block in blocks if block["type"] == "paragraph_title"} == expected_titles
+    assert {
+        _visible_content(block)
+        for block in blocks
+        if block["type"] == "paragraph_title"
+    } == expected_titles
 
     for probe in (
         "招标编号",
@@ -1353,8 +1542,8 @@ def test_caibao_table_reclaims_repeated_dates_but_keeps_real_marginals() -> None
         page_numbers = [block for block in page if block["type"] == "page_number"]
         assert len(tables_on_page) == len(footers) == len(page_numbers) == 1
         assert "2024 年 07 月" in str(tables_on_page[0]["content"])
-        assert footers[0]["content"] == "免责声明和披露以及分析师声明是报告的一部分，请务必一起阅读。"
-        assert "2024 年" not in str(footers[0]["content"])
+        assert _visible_content(footers[0]) == "免责声明和披露以及分析师声明是报告的一部分，请务必一起阅读。"
+        assert "2024 年" not in _visible_content(footers[0])
         assert tables_on_page[0]["bbox"][3] < footers[0]["bbox"][1]
         assert tables_on_page[0]["bbox"][3] < page_numbers[0]["bbox"][1]
         assert not [block for block in page if block["type"] == "footnote"]
@@ -1369,16 +1558,26 @@ def test_caibao_page2_parallel_chart_captions_stay_separate() -> None:
 
     model_list = _txt_model_list("caibao1.pdf")
     page = model_list[1]
-    first_caption = [block for block in page if block["type"] == "caption" and str(block["content"]).startswith("图表1")]
-    second_caption = [block for block in page if block["type"] == "caption" and str(block["content"]).startswith("图表2")]
+    first_caption = [
+        block
+        for block in page
+        if block["type"] == "caption"
+        and _visible_content(block).startswith("图表1")
+    ]
+    second_caption = [
+        block
+        for block in page
+        if block["type"] == "caption"
+        and _visible_content(block).startswith("图表2")
+    ]
 
     assert len(page) == 20
     assert len(first_caption) == len(second_caption) == 1
     assert first_caption[0]["type"] == second_caption[0]["type"] == "caption"
     assert first_caption[0]["bbox"] == [0.073, 0.235, 0.485, 0.245]
     assert second_caption[0]["bbox"] == [0.513, 0.235, 0.843, 0.245]
-    assert "行业周涨幅" not in str(first_caption[0]["content"])
-    assert "汽车指数上周下跌" not in str(second_caption[0]["content"])
+    assert "行业周涨幅" not in _visible_content(first_caption[0])
+    assert "汽车指数上周下跌" not in _visible_content(second_caption[0])
     assert [block["bbox"] for block in page if block["type"] == "image" and block["bbox"][1] < 0.5] == [
         [0.082, 0.267, 0.48, 0.447],
         [0.522, 0.254, 0.92, 0.46],
@@ -1398,7 +1597,10 @@ def test_caibao_page2_parallel_chart_captions_stay_separate() -> None:
     assert first_index + 3 == second_index
 
     page3_captions = [
-        block for block in model_list[2] if block["type"] == "caption" and str(block["content"]).startswith(("图表4", "图表5"))
+        block
+        for block in model_list[2]
+        if block["type"] == "caption"
+        and _visible_content(block).startswith(("图表4", "图表5"))
     ]
     assert [block["bbox"] for block in page3_captions] == [
         [0.073, 0.181, 0.298, 0.191],
@@ -1425,9 +1627,9 @@ def test_caibao_page2_parallel_chart_captions_stay_separate() -> None:
     assert len(page7_table_note) == 1
     assert page7_table_note[0]["type"] == "footnote"
     assert page7_table_note[0]["bbox"] == [0.073, 0.483, 0.219, 0.504]
-    assert "资料来源：Wind、华泰研究" in str(page7_table_note[0]["content"])
+    assert "资料来源：Wind、华泰研究" in _visible_content(page7_table_note[0])
     assert all(
-        str(block["content"]).startswith("资料来源：")
+        _visible_content(block).startswith("资料来源：")
         for page_number in expected_new_footnotes
         for block in model_list[page_number - 1]
         if block["type"] == "footnote" and block is not page7_table_note[0]
@@ -1451,7 +1653,10 @@ def test_caibao_page2_parallel_chart_captions_stay_separate() -> None:
         image_group = next(
             group
             for group in page2_image_groups
-            if any(str(child["content"]).startswith(caption_prefix) for child in group["content"])
+            if any(
+                _visible_content(child).startswith(caption_prefix)
+                for child in group["content"]
+            )
         )
         assert [child["type"] for child in image_group["content"]] == [
             "image_caption",
@@ -1662,7 +1867,10 @@ def test_mixed_elements_pages_07_10_force_txt_regressions() -> None:
     algorithm_groups = [
         group
         for group in _grouped_visual_blocks(page8, "code")
-        if any(str(child["content"]).startswith("Algorithm") for child in group["content"])
+        if any(
+            _visible_content(child).startswith("Algorithm")
+            for child in group["content"]
+        )
     ]
     assert len(algorithm_groups) == 2
     assert all([child["type"] for child in group["content"]] == ["code_caption", "code_body"] for group in algorithm_groups)

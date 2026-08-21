@@ -16,7 +16,7 @@ from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from mineru.utils.pdf_document import PDFPage, get_lines_from_chars
 from mineru.utils.pdf_text_styles import (
     PDFTextStyleLine,
-    apply_pdf_strikethrough_styles,
+    apply_pdf_text_styles,
 )
 from mineru.utils.text_utils import resolve_text_line_boundary
 
@@ -399,7 +399,7 @@ def _fill_window_block_content_and_lines(
             block_lines,
             page_size,
         )
-        apply_pdf_strikethrough_styles(
+        apply_pdf_text_styles(
             page_model_list,
             style_lines,
             page_size,

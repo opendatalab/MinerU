@@ -8,6 +8,7 @@ import pytest
 from mineru.config import Config
 from mineru.render import render_content_list, render_markdown
 from mineru.types import (
+    ChartAnnotationBlock,
     ChartBlock,
     ChartBodyBlock,
     CodeBlock,
@@ -136,9 +137,19 @@ def test_content_list_flattens_recursive_list_index_and_code_metadata() -> None:
             "sub_type": "code",
             "guess_lang": "python",
             "content": [
-                {"type": "code_caption", "index": 4, "content": '<text style="bold">Example</text>'},
+                {
+                    "type": "code_caption",
+                    "index": 4,
+                    "bbox": [0.1, 0.1, 0.5, 0.2],
+                    "content": '<text style="bold">Example</text>',
+                },
                 {"type": "code_body", "index": 2, "content": "print('x')\n```"},
-                {"type": "code_footnote", "index": 5, "content": "note <eq>x</eq>"},
+                {
+                    "type": "code_footnote",
+                    "index": 5,
+                    "bbox": [0.1, 0.8, 0.5, 0.9],
+                    "content": "note <eq>x</eq>",
+                },
             ],
         }
     )
@@ -148,8 +159,8 @@ def test_content_list_flattens_recursive_list_index_and_code_metadata() -> None:
     assert blocks[0]["content"] == "- outer\n    - inner"
     assert blocks[1]["content"] == "- [Section](#section-b)"
     assert blocks[2]["content"] == "````python\nprint('x')\n```\n````"
-    assert blocks[2]["captions"] == ["**Example**"]
-    assert blocks[2]["footnotes"] == ["note $x$"]
+    assert blocks[2]["captions"] == [{"bbox": [0.1, 0.1, 0.5, 0.2], "content": "**Example**"}]
+    assert blocks[2]["footnotes"] == [{"bbox": [0.1, 0.8, 0.5, 0.9], "content": "note $x$"}]
     assert "guess_lang" not in blocks[2]
     _assert_output_field_contract(blocks)
 
@@ -170,13 +181,24 @@ def test_content_list_sorts_visual_annotations_and_selects_image_source() -> Non
                     "image_path": "images/a b.png",
                     "image_base64": "data:image/png;base64,AAAA",
                 },
-                {"type": "image_caption", "index": 5, "content": ""},
+                {
+                    "type": "image_caption",
+                    "index": 5,
+                    "bbox": [0.1, 0.5, 0.4, 0.6],
+                    "content": "",
+                },
                 {
                     "type": "image_caption",
                     "index": 3,
+                    "bbox": [0.1, 0.2, 0.4, 0.3],
                     "content": '<text style="bold">early</text>',
                 },
-                {"type": "image_footnote", "index": 4, "content": "after"},
+                {
+                    "type": "image_footnote",
+                    "index": 4,
+                    "bbox": [0.1, 0.7, 0.4, 0.8],
+                    "content": "after",
+                },
             ],
         }
     )
@@ -188,8 +210,12 @@ def test_content_list_sorts_visual_annotations_and_selects_image_source() -> Non
 
     assert result["content"] == "description"
     assert result["image_source"] == "https://cdn.example/doc/images/a%20b.png"
-    assert result["captions"] == ["**early**", "", "missing index"]
-    assert result["footnotes"] == ["after"]
+    assert result["captions"] == [
+        {"bbox": [0.1, 0.2, 0.4, 0.3], "content": "**early**"},
+        {"bbox": [0.1, 0.5, 0.4, 0.6], "content": ""},
+        {"content": "missing index"},
+    ]
+    assert result["footnotes"] == [{"bbox": [0.1, 0.7, 0.4, 0.8], "content": "after"}]
     assert "![](" not in result["content"]
     assert "<details>" not in result["content"]
     assert "data:image" not in json.dumps(result)
@@ -222,8 +248,18 @@ def test_content_list_keeps_table_image_source_and_cross_page_metadata() -> None
                     "index": 0,
                     "content": "<table><tr><th>A</th></tr><tr><td>2</td></tr></table>",
                 },
-                {"type": "table_caption", "index": 2, "content": "Table 2"},
-                {"type": "table_footnote", "index": 3, "content": "note"},
+                {
+                    "type": "table_caption",
+                    "index": 2,
+                    "bbox": [0.1, 0.1, 0.9, 0.2],
+                    "content": "Table 2",
+                },
+                {
+                    "type": "table_footnote",
+                    "index": 3,
+                    "bbox": [0.1, 0.8, 0.9, 0.9],
+                    "content": "note",
+                },
             ],
         }
     )
@@ -252,8 +288,8 @@ def test_content_list_keeps_table_image_source_and_cross_page_metadata() -> None
     assert second_output["content"] == "| A |\n| --- |\n| 2 |"
     assert second_output["continues_prev"] is True
     assert second_output["cell_merge"] == [1]
-    assert second_output["captions"] == ["Table 2"]
-    assert second_output["footnotes"] == ["note"]
+    assert second_output["captions"] == [{"bbox": [0.1, 0.1, 0.9, 0.2], "content": "Table 2"}]
+    assert second_output["footnotes"] == [{"bbox": [0.1, 0.8, 0.9, 0.9], "content": "note"}]
     assert image_only_output["content"] == ""
     assert image_only_output["image_source"] == "images/image-only-table.png"
 
@@ -273,12 +309,21 @@ def test_content_list_keeps_chart_content_separate_from_base64_source(monkeypatc
         type="chart",
         index=0,
         content=[
+            ChartAnnotationBlock(
+                type="chart_caption",
+                bbox=(0.1, 0.1, 0.9, 0.2),
+                content='<text style="bold">Chart</text>',
+            ),
             ChartBodyBlock(
                 type="chart_body",
                 index=0,
                 content="<table><tr><th>A</th></tr><tr><td><eq>x</eq></td></tr></table>",
                 image_base64="data:image/png;base64,AAAA",
-            )
+            ),
+            ChartAnnotationBlock(
+                type="chart_footnote",
+                content="source",
+            ),
         ],
     )
 
@@ -286,6 +331,8 @@ def test_content_list_keeps_chart_content_separate_from_base64_source(monkeypatc
 
     assert output["image_source"] == "data:image/png;base64,AAAA"
     assert output["content"] == "| A |\n| --- |\n| \\(x\\) |"
+    assert output["captions"] == [{"bbox": [0.1, 0.1, 0.9, 0.2], "content": "**Chart**"}]
+    assert output["footnotes"] == [{"content": "source"}]
     assert json.dumps(output).count("data:image/png;base64,AAAA") == 1
     assert "![](" not in output["content"]
     assert "<details>" not in output["content"]

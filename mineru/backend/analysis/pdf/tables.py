@@ -84,7 +84,7 @@ def _visual_line_items_to_spans(line_items: list[Any]) -> list[_AnalyzeSpan]:
 def _build_pdf_text_visual_run_data(
     pdf_page: PDFPage,
 ) -> tuple[list[_AnalyzeSpan], list[PDFTextStyleLine]]:
-    """一次构造 Low/TXT 视觉 span 和同页水平删除线证据。"""
+    """一次构造 Low/TXT 视觉 span 和同页水平文本样式证据。"""
 
     _page_chars, line_items, style_lines = build_pdf_native_visual_lines_and_styles(
         pdf_page,

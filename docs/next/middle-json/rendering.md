@@ -234,8 +234,25 @@ content_list = render_content_list(
 `content` 保存适合结构化消费的文本表示，而不是可直接拼接成整篇文档的完整视觉
 Markdown。`list/index` 的递归子树会收敛为一个字符串；`image/table/chart/code` 的唯一
 body 会提升为父块 `content`，但图片资源只放在 `image_source`，不在 `content` 重复
-输出图片语法或 details。说明文本按源 `index` 排序后分别输出为 `captions: list[str]`
-和 `footnotes: list[str]`，视觉数组始终存在，空说明保留为空字符串。
+输出图片语法或 details。说明文本按源 `index` 排序后分别输出为
+`captions/footnotes: list[{bbox?: [x0, y0, x1, y1], content: str}]`。`bbox` 直接保留
+说明子块的归一化坐标，源坐标缺失时省略该键；不输出说明的 `type/index`。视觉数组始终
+存在，空说明保留为 `{"content": ""}`。这是相对于原字符串数组结构的直接契约变更，
+消费方必须通过对象的 `content` 字段读取说明文本。
+
+```json
+{
+  "captions": [
+    {
+      "bbox": [0.073, 0.235, 0.485, 0.245],
+      "content": "图表1：汽车指数上周下跌 2.29%"
+    },
+    {
+      "content": "没有源坐标的 Office 说明"
+    }
+  ]
+}
+```
 
 `doc_title/paragraph_title.content` 只包含行内 Markdown，不含 heading 标记或 HTML
 anchor；原始 `level` 和可选 `anchor` 作为独立字段保留。`equation.content` 是不带行间

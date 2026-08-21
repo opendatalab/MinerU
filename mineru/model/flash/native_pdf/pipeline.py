@@ -12,8 +12,8 @@ from mineru.model.flash.xycut import sort_entries
 from mineru.utils.pdf_document import PDFDocument, PDFImageInfo, get_lines_from_chars
 from mineru.utils.pdf_text_styles import (
     PDFTextStyleLine,
-    apply_pdf_strikethrough_styles,
-    detect_pdf_strikethrough_lines,
+    apply_pdf_text_styles,
+    detect_pdf_text_style_lines,
 )
 
 from .models import (
@@ -217,7 +217,7 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
         )
         drawing_lines = _get_pdf_drawing_lines(pdf_doc, page_idx)
         page_style_lines.append(
-            detect_pdf_strikethrough_lines(lines, drawing_lines)
+            detect_pdf_text_style_lines(lines, drawing_lines)
         )
         source = _PageSource(
             page_size=page_size,
@@ -275,7 +275,7 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
         page_sizes,
         strict=True,
     ):
-        apply_pdf_strikethrough_styles(page_blocks, style_lines, page_size)
+        apply_pdf_text_styles(page_blocks, style_lines, page_size)
     return finalized_pages
 
 

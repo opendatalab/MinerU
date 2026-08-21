@@ -10,6 +10,10 @@ from typing import Literal
 
 
 from mineru.types import BBox
+from mineru.utils.pdf_text_styles import (
+    PDF_FONT_FORCE_BOLD_FLAG,
+    PDF_FONT_ITALIC_FLAG,
+)
 
 from .models import (
     _DocumentBodyProfile,
@@ -38,12 +42,6 @@ from .line_layout import (
     _should_connect_semantic_rows,
     _title_fonts_compatible,
 )
-
-
-# PDF FontDescriptor 中 Italic 与 ForceBold 位用于排除非常规字体画像。
-_PDF_FONT_ITALIC_FLAG = 1 << 6
-_PDF_FONT_FORCE_BOLD_FLAG = 1 << 18
-
 
 def _classify_page_titles(
     lines: list[_LineItem],
@@ -682,7 +680,7 @@ def _document_font_is_regular(
 ) -> bool:
     """用字体样式位和全文正文基准过滤斜体、粗体等强调字体。"""
 
-    if font[1] & (_PDF_FONT_ITALIC_FLAG | _PDF_FONT_FORCE_BOLD_FLAG):
+    if font[1] & (PDF_FONT_ITALIC_FLAG | PDF_FONT_FORCE_BOLD_FLAG):
         return False
     if not weights or body_weight is None:
         return True
@@ -1298,7 +1296,7 @@ def _classify_cross_lane_emphasized_section_titles(
     for line, bbox in line_geometry:
         if line.semantic_type is not None or line.font_signature is None:
             continue
-        if not line.font_signature[1] & _PDF_FONT_ITALIC_FLAG:
+        if not line.font_signature[1] & PDF_FONT_ITALIC_FLAG:
             continue
         if _line_uses_document_regular_font(line, document_body_profile):
             continue
