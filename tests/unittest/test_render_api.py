@@ -7,8 +7,8 @@ from docx import Document
 from PIL import Image
 import pytest
 
+import mineru.render as render_module
 from mineru.render import (
-    ContentListRenderOptions,
     DocxRenderError,
     DocxRenderOptions,
     HtmlRenderOptions,
@@ -16,6 +16,7 @@ from mineru.render import (
     MarkdownRenderOptions,
     RenderFormat,
     RenderMode,
+    StructuredContentRenderOptions,
     render,
 )
 from mineru.types import ImageBlock, ImageBodyBlock, MiddleJson, PageBlock, PageInfo, TextBlock
@@ -52,18 +53,18 @@ def test_unified_render_dispatches_all_native_output_types_without_mutation() ->
     markdown = render(middle, RenderFormat.MARKDOWN)
     html = render(middle, RenderFormat.HTML)
     docx = render(middle, RenderFormat.DOCX)
-    content_list = render(middle, RenderFormat.CONTENT_LIST)
+    structured_content = render(middle, RenderFormat.STRUCTURED_CONTENT)
 
     assert markdown == "hello"
     assert isinstance(html, str) and "<html" in html and "hello" in html
     assert isinstance(docx, bytes) and docx.startswith(b"PK\x03\x04")
     assert Document(BytesIO(docx)).paragraphs[0].text == "hello"
-    assert content_list["pages"][0]["blocks"][0]["content"] == "hello"
+    assert structured_content["pages"][0]["blocks"][0]["content"] == "hello"
     assert middle == original
 
 
 def test_unified_render_forwards_format_specific_options() -> None:
-    """验证分页模式、HTML 文档形态和 Content List 资源地址分别透传。"""
+    """验证分页模式、HTML 文档形态和 Structured Content 资源地址分别透传。"""
     middle = _middle(
         _page(0, TextBlock(type="text", index=0, content="first-")),
         _page(1, TextBlock(type="text", index=0, content="second", continues_prev=True)),
@@ -96,10 +97,10 @@ def test_unified_render_forwards_format_specific_options() -> None:
         RenderFormat.HTML,
         options=HtmlRenderOptions(mode=RenderMode.FULL, standalone=False),
     )
-    content_list = render(
+    structured_content = render(
         image_middle,
-        RenderFormat.CONTENT_LIST,
-        options=ContentListRenderOptions(asset_base_url="https://cdn.example/doc"),
+        RenderFormat.STRUCTURED_CONTENT,
+        options=StructuredContentRenderOptions(asset_base_url="https://cdn.example/doc"),
     )
     image_markdown = render(
         image_middle,
@@ -114,12 +115,12 @@ def test_unified_render_forwards_format_specific_options() -> None:
             document_title="Unified Render",
         ),
     )
-    original_tree = render(middle, RenderFormat.CONTENT_LIST)
+    original_tree = render(middle, RenderFormat.STRUCTURED_CONTENT)
 
     assert "\n\n---\n\n" in markdown
     assert html.startswith('<article class="mineru-document mineru-document--full">')
     assert "<!doctype html>" not in html
-    assert content_list["pages"][0]["blocks"][0]["image_source"] == (
+    assert structured_content["pages"][0]["blocks"][0]["image_source"] == (
         "https://cdn.example/doc/images/a%20b.png"
     )
     assert "https://cdn.example/doc/images/a%20b.png" in image_markdown
@@ -179,22 +180,30 @@ def test_unified_render_rejects_legacy_format_and_mismatched_options() -> None:
         render(middle, "markdown")  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="MarkdownRenderOptions"):
         render(middle, RenderFormat.MARKDOWN, options=HtmlRenderOptions())  # type: ignore[arg-type]
-    with pytest.raises(TypeError, match="ContentListRenderOptions"):
-        render(middle, RenderFormat.CONTENT_LIST, options=DocxRenderOptions())  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="StructuredContentRenderOptions"):
+        render(middle, RenderFormat.STRUCTURED_CONTENT, options=DocxRenderOptions())  # type: ignore[arg-type]
 
 
 def test_public_options_validate_fields_and_preserve_mode_alias() -> None:
     """验证 Options 构造期类型检查和既有 Markdown 模式别名。"""
     assert MarkdownRenderMode is RenderMode
-    assert [item.value for item in RenderFormat] == ["markdown", "html", "docx", "content_list"]
+    assert [item.value for item in RenderFormat] == ["markdown", "html", "docx", "structured_content"]
 
     with pytest.raises(TypeError, match="RenderMode"):
         MarkdownRenderOptions(mode="default")  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="asset_base_url"):
-        ContentListRenderOptions(asset_base_url=1)  # type: ignore[arg-type]
+        StructuredContentRenderOptions(asset_base_url=1)  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="standalone"):
         HtmlRenderOptions(standalone=1)  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="document_title"):
         HtmlRenderOptions(document_title=1)  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="asset_resolver"):
         DocxRenderOptions(asset_resolver="images")  # type: ignore[arg-type]
+
+
+def test_public_render_exposes_only_structured_content_names() -> None:
+    """验证严格 render 公共面只暴露 Structured Content 新名称。"""
+    assert callable(render_module.render_structured_content)
+    assert not hasattr(render_module, "render_content_list")
+    assert not hasattr(render_module, "ContentListRenderOptions")
+    assert "CONTENT_LIST" not in RenderFormat.__members__

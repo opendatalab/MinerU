@@ -15,7 +15,7 @@ from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.analysis.pdf.text.native import txt_spans_extract
 from mineru.backend.postprocess.pages import model_list_to_pages
 from mineru.model.flash import PdfModel
-from mineru.render import render_content_list, render_docx, render_html, render_markdown
+from mineru.render import render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import (
     RAW_CAPTION,
     RAW_FOOTNOTE,
@@ -1830,7 +1830,7 @@ def test_demo1_pdf_link_reaches_model_middle_and_all_renderers() -> None:
         "word/_rels/document.xml.rels"
     ).decode("utf-8")
     assert target in relationships
-    assert f"[{label}]({target})" in str(render_content_list(link_middle))
+    assert f"[{label}]({target})" in str(render_structured_content(link_middle))
 
 
 def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(

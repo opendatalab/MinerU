@@ -2,7 +2,6 @@
 
 from .contracts import (
     AssetResolver,
-    ContentListRenderOptions,
     DocxRenderOptions,
     HtmlRenderOptions,
     MarkdownRenderMode,
@@ -11,16 +10,16 @@ from .contracts import (
     RenderMode,
     RenderOptions,
     RenderOutput,
+    StructuredContentRenderOptions,
 )
-from .content_list import render_content_list
 from .docx import DocxRenderError, render_docx
 from .html import render_html
 from .markdown import render_markdown
+from .structured_content import render_structured_content
 from .api import render
 
 __all__ = [
     "AssetResolver",
-    "ContentListRenderOptions",
     "DocxRenderError",
     "DocxRenderOptions",
     "HtmlRenderOptions",
@@ -30,9 +29,10 @@ __all__ = [
     "RenderMode",
     "RenderOptions",
     "RenderOutput",
+    "StructuredContentRenderOptions",
     "render",
-    "render_content_list",
     "render_docx",
     "render_html",
     "render_markdown",
+    "render_structured_content",
 ]

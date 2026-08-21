@@ -1,13 +1,15 @@
-# 当前 Structured Content 结构盘点
+# Legacy Structured Content 结构盘点
 
-状态: Draft
+状态: Legacy
 读者: Structured Content schema 设计者、render 开发者、backend 开发者、编程 Agent
-范围: 梳理当前代码中 `structured_content` 的事实输出结构，作为 NEXT 版 `structured_content` / `structured-content` schema 的起点
+范围: 记录已删除的 PageInfo Structured Content converter，供理解历史 backend 差异
 非目标: 定义最终 Structured Content schema；重写 render 实现
 
 ## 1. 定位
 
-NEXT 版公开格式名已经定为 `structured_content` / `structured-content`，当前代码也使用该命名。
+本文记录的是严格 MiddleJson render 公共面落地前的 legacy `list[list[dict]]` 实现。
+当前 `mineru.render.structured_content` 是严格 MiddleJson 到文档级 dict 的公共 renderer，
+其现行契约以 [Rendering Contract](rendering.md) 为准。下文中的“当前”均指 legacy 实现被删除前的历史快照。
 
 本文只回答:
 
@@ -19,13 +21,13 @@ NEXT 版公开格式名已经定为 `structured_content` / `structured-content`�
 
 ## 2. 生成路径
 
-当前统一入口:
+历史统一入口:
 
 ```text
-ParseResult.structured_content()
-  -> render_structured_content(pages, img_bucket_path="")
+Legacy ParseResult.structured_content()
+  -> legacy render_structured_content(pages, img_bucket_path="")
     -> 根据 PageInfo._backend 分发
-      -> PDF pipeline/vlm/hybrid: render/structured_content.py
+      -> PDF pipeline/vlm/hybrid: 已删除的 backend converter
       -> office: render/office/output.py
 ```
 
@@ -42,7 +44,7 @@ ParseResult.structured_content()
 
 ## 3. 顶层结构
 
-当前 `render_structured_content()` 返回:
+Legacy `render_structured_content()` 返回:
 
 ```text
 list[list[dict]]

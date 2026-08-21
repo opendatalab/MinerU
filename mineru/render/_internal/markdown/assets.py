@@ -40,7 +40,7 @@ def build_markdown_image(source: str, alt: str = "") -> str:
 
 
 def normalize_image_source(source: str) -> str:
-    """把图片来源规范化为 Markdown 与 content_list 共用的安全地址。"""
+    """把图片来源规范化为 Markdown 与 structured_content 共用的安全地址。"""
     if source.startswith("data:"):
         return source
     return quote(source, safe="/:#?&=%@+~,;!$'*-._")

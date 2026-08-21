@@ -35,7 +35,7 @@
 - 通常有 `page_size` 和 bbox。
 - 有 `preproc_blocks`，并经过 para split 生成 `para_blocks`。
 - `doc_title` / `paragraph_title` 等类型可能经后处理转为 `title`。
-- structured_content 的 PDF 后端实现已收敛到 `render/structured_content.py`；Office 仍保留 office-specific converter。
+- legacy structured_content 曾由 PDF/Office backend converter 分别生成；当前同名严格 renderer 直接消费 MiddleJson，不再承担该 backend 分发。
 
 已解决:
 

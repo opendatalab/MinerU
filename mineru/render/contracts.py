@@ -14,7 +14,7 @@ class RenderFormat(str, Enum):
     MARKDOWN = "markdown"
     HTML = "html"
     DOCX = "docx"
-    CONTENT_LIST = "content_list"
+    STRUCTURED_CONTENT = "structured_content"
 
 
 class RenderMode(str, Enum):
@@ -89,8 +89,8 @@ class DocxRenderOptions:
 
 
 @dataclass(frozen=True, slots=True)
-class ContentListRenderOptions:
-    """树形 Markdown Content List renderer 的统一入口选项。"""
+class StructuredContentRenderOptions:
+    """树形 Markdown Structured Content renderer 的统一入口选项。"""
 
     asset_base_url: str = ""
 
@@ -100,14 +100,13 @@ class ContentListRenderOptions:
 
 
 RenderOptions: TypeAlias = (
-    MarkdownRenderOptions | HtmlRenderOptions | DocxRenderOptions | ContentListRenderOptions
+    MarkdownRenderOptions | HtmlRenderOptions | DocxRenderOptions | StructuredContentRenderOptions
 )
 RenderOutput: TypeAlias = str | bytes | dict[str, Any]
 
 
 __all__ = [
     "AssetResolver",
-    "ContentListRenderOptions",
     "DocxRenderOptions",
     "HtmlRenderOptions",
     "MarkdownRenderMode",
@@ -116,4 +115,5 @@ __all__ = [
     "RenderMode",
     "RenderOptions",
     "RenderOutput",
+    "StructuredContentRenderOptions",
 ]

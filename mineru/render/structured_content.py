@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""严格 MiddleJson 到树形 Markdown content_list 的公共渲染实现。"""
+"""严格 MiddleJson 到树形 Markdown structured_content 的公共渲染实现。"""
 
 from __future__ import annotations
 
@@ -53,14 +53,14 @@ _FOOTNOTE_TYPES = {
 _REMOVED_BLOCK_FIELDS = {"content", "index", "guess_lang", "image_path", "image_base64"}
 
 
-def render_content_list(
+def render_structured_content(
     middle_json: MiddleJson,
     *,
     asset_base_url: str = "",
 ) -> dict[str, Any]:
-    """把严格 MiddleJson 无副作用地渲染为树形 Markdown content_list。"""
+    """把严格 MiddleJson 无副作用地渲染为树形 Markdown structured_content。"""
     if not isinstance(middle_json, MiddleJson):
-        raise TypeError("render_content_list expects a MiddleJson instance")
+        raise TypeError("render_structured_content expects a MiddleJson instance")
 
     delimiters = config.render.latex_delimiters
     document_fields = middle_json.model_dump(
@@ -173,9 +173,9 @@ def _resolve_visual_image_source(block: VisualBlock, asset_base_url: str) -> str
 
 
 def _resolve_content_image_source(block: ImagePayloadBlock, asset_base_url: str) -> str | None:
-    """把图片载荷收敛为 content_list 中唯一且安全的 image_source。"""
+    """把图片载荷收敛为 structured_content 中唯一且安全的 image_source。"""
     source = resolve_image_source(block, asset_base_url)
     return normalize_image_source(source) if source else None
 
 
-__all__ = ["render_content_list"]
+__all__ = ["render_structured_content"]

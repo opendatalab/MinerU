@@ -1,8 +1,8 @@
 # Rendering Contract
 
-状态: 统一入口 / Markdown / Content List / DOCX / HTML v1
+状态: 统一入口 / Markdown / Structured Content / DOCX / HTML v1
 读者: render 开发者、backend 开发者、SDK 开发者
-范围: 严格 MiddleJson 到 Markdown、Content List、DOCX 和 HTML 的统一消费契约
+范围: 严格 MiddleJson 到 Markdown、Structured Content、DOCX 和 HTML 的统一消费契约
 
 ## 统一入口
 
@@ -31,7 +31,7 @@ markdown = render(
 | `MARKDOWN` | `MarkdownRenderOptions(mode, asset_base_url)` | `str` |
 | `HTML` | `HtmlRenderOptions(mode, asset_base_url, standalone, document_title)` | `str` |
 | `DOCX` | `DocxRenderOptions(mode, asset_resolver)` | `bytes` |
-| `CONTENT_LIST` | `ContentListRenderOptions(asset_base_url)` | `dict[str, Any]` |
+| `STRUCTURED_CONTENT` | `StructuredContentRenderOptions(asset_base_url)` | `dict[str, Any]` |
 
 `options` 省略时使用对应格式的默认 Options。入口只接受 `RenderFormat` 枚举，格式与 Options
 类型不匹配时抛出 `TypeError`，不归一化字符串格式，也不在单次调用中批量渲染。四个专用
@@ -42,7 +42,7 @@ markdown = render(
 
 ### 内部依赖边界
 
-`markdown.py`、`html.py`、`docx.py` 和 `content_list.py` 是稳定公共门面；实现代码位于非公共
+`markdown.py`、`html.py`、`docx.py` 和 `structured_content.py` 是稳定公共门面；实现代码位于非公共
 `mineru.render._internal`。`common` 只保存跨格式 AST、解析、列表/目录语义和 render planner，
 不得依赖任一格式实现。`markdown`、`html`、`docx` 子包只能依赖 `common` 与自身模块，彼此
 不交叉导入。`_internal` 路径不属于 SDK 兼容承诺。
@@ -212,20 +212,20 @@ Chart 的 pipe table 只实现 GFM 列结构与反斜杠/pipe 解码，cell 内�
 v1 只增加严格 `mineru.render` 公共面，不迁移旧 parser、CLI、API 或 doclib，也不提供
 Markdown 字符串转 HTML、离线单文件、主题切换、侧边 TOC 或用户自定义 head/CSS/script。
 
-## 树形 Markdown Content List
+## 树形 Markdown Structured Content
 
 严格 render 层还提供不合并、不丢块的树形内容输出：
 
 ```python
-from mineru.render import render_content_list
+from mineru.render import render_structured_content
 
-content_list = render_content_list(
+structured_content = render_structured_content(
     middle_json,
     asset_base_url="",
 )
 ```
 
-`render_content_list()` 只接受 `MiddleJson`，返回可以直接交给 `json.dumps()` 的
+`render_structured_content()` 只接受 `MiddleJson`，返回可以直接交给 `json.dumps()` 的
 文档级 dict。顶层保留 `pages/file_suffix/effort/parse_mode/mineru_version`，每页保留
 `page_idx/blocks`，页面和顶层 block 的数量及顺序不变。它不使用下文的
 `MarkdownRenderMode` 计划，因此不隐藏页面辅助块，也不合并 `continues_prev` 文本、
@@ -290,7 +290,7 @@ anchor；原始 `level` 和可选 `anchor` 作为独立字段保留。`equation.
 优先，`image_base64` 兜底，并应用 `asset_base_url` 和 Markdown 地址转义。即使 table
 选择 GFM/HTML、equation 已有 LaTeX，图片来源也会保留且只出现一次。
 
-如需完整可展示 Markdown，应调用 `render_markdown()`，不能简单拼接 content_list 中的
+如需完整可展示 Markdown，应调用 `render_markdown()`，不能简单拼接 structured_content 中的
 `content`。
 
 该接口目前只属于严格 `mineru.render` 公共面；本契约不迁移旧 parser、CLI、API、

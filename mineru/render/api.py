@@ -7,19 +7,19 @@ from typing import Any, Literal, overload
 
 from mineru.types import MiddleJson
 
-from .content_list import render_content_list
 from .contracts import (
-    ContentListRenderOptions,
     DocxRenderOptions,
     HtmlRenderOptions,
     MarkdownRenderOptions,
     RenderFormat,
     RenderOptions,
     RenderOutput,
+    StructuredContentRenderOptions,
 )
 from .docx import render_docx
 from .html import render_html
 from .markdown import render_markdown
+from .structured_content import render_structured_content
 
 
 @overload
@@ -58,11 +58,11 @@ def render(
 @overload
 def render(
     middle_json: MiddleJson,
-    output_format: Literal[RenderFormat.CONTENT_LIST],
+    output_format: Literal[RenderFormat.STRUCTURED_CONTENT],
     *,
-    options: ContentListRenderOptions | None = None,
+    options: StructuredContentRenderOptions | None = None,
 ) -> dict[str, Any]:
-    """声明 Content List 目标对应的字典返回类型。"""
+    """声明 Structured Content 目标对应的字典返回类型。"""
     ...
 
 
@@ -110,11 +110,11 @@ def render(
             asset_resolver=resolved_options.asset_resolver,
         )
 
-    if output_format is RenderFormat.CONTENT_LIST:
-        resolved_options = options if options is not None else ContentListRenderOptions()
-        if not isinstance(resolved_options, ContentListRenderOptions):
-            raise TypeError("CONTENT_LIST output requires ContentListRenderOptions")
-        return render_content_list(
+    if output_format is RenderFormat.STRUCTURED_CONTENT:
+        resolved_options = options if options is not None else StructuredContentRenderOptions()
+        if not isinstance(resolved_options, StructuredContentRenderOptions):
+            raise TypeError("STRUCTURED_CONTENT output requires StructuredContentRenderOptions")
+        return render_structured_content(
             middle_json,
             asset_base_url=resolved_options.asset_base_url,
         )

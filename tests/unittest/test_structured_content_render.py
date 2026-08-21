@@ -6,7 +6,7 @@ from copy import deepcopy
 import pytest
 
 from mineru.config import Config
-from mineru.render import render_content_list, render_markdown
+from mineru.render import render_markdown, render_structured_content
 from mineru.types import (
     ChartAnnotationBlock,
     ChartBlock,
@@ -58,7 +58,7 @@ def _assert_output_field_contract(value: object) -> None:
         _assert_output_field_contract(item)
 
 
-def test_content_list_preserves_document_tree_without_merging_or_mutation() -> None:
+def test_structured_content_preserves_document_tree_without_merging_or_mutation() -> None:
     """验证文档树、辅助块和续段字段原样保留，且输入对象不被修改。"""
     middle = _middle(
         _page(
@@ -80,7 +80,7 @@ def test_content_list_preserves_document_tree_without_merging_or_mutation() -> N
     )
     original = deepcopy(middle)
 
-    result = render_content_list(middle)
+    result = render_structured_content(middle)
 
     assert json.loads(json.dumps(result, ensure_ascii=False)) == result
     assert result["file_suffix"] == "docx"
@@ -106,7 +106,7 @@ def test_content_list_preserves_document_tree_without_merging_or_mutation() -> N
     assert middle == original
 
 
-def test_content_list_flattens_recursive_list_index_and_code_metadata() -> None:
+def test_structured_content_flattens_recursive_list_index_and_code_metadata() -> None:
     """验证递归容器和代码 body 上浮为 Markdown，渲染元数据不进入输出。"""
     nested = ListBlock(
         type="list",
@@ -154,7 +154,7 @@ def test_content_list_flattens_recursive_list_index_and_code_metadata() -> None:
         }
     )
 
-    blocks = render_content_list(_middle(_page(0, list_block, index_block, code)))["pages"][0]["blocks"]
+    blocks = render_structured_content(_middle(_page(0, list_block, index_block, code)))["pages"][0]["blocks"]
 
     assert blocks[0]["content"] == "- outer\n    - inner"
     assert blocks[1]["content"] == "- [Section](#section-b)"
@@ -165,7 +165,7 @@ def test_content_list_flattens_recursive_list_index_and_code_metadata() -> None:
     _assert_output_field_contract(blocks)
 
 
-def test_content_list_sorts_visual_annotations_and_selects_image_source() -> None:
+def test_structured_content_sorts_visual_annotations_and_selects_image_source() -> None:
     """验证视觉说明稳定排序、空项保留及图片 path 优先规则。"""
     image = ImageBlock.model_validate(
         {
@@ -203,7 +203,7 @@ def test_content_list_sorts_visual_annotations_and_selects_image_source() -> Non
         }
     )
 
-    result = render_content_list(
+    result = render_structured_content(
         _middle(_page(0, image)),
         asset_base_url="https://cdn.example/doc",
     )["pages"][0]["blocks"][0]
@@ -222,7 +222,7 @@ def test_content_list_sorts_visual_annotations_and_selects_image_source() -> Non
     _assert_output_field_contract(result)
 
 
-def test_content_list_keeps_table_image_source_and_cross_page_metadata() -> None:
+def test_structured_content_keeps_table_image_source_and_cross_page_metadata() -> None:
     """验证表格 body 上浮后仍保留图片来源、续表字段且不执行跨页合并。"""
     first = TableBlock(
         type="table",
@@ -276,7 +276,7 @@ def test_content_list_keeps_table_image_source_and_cross_page_metadata() -> None
         ],
     )
 
-    result = render_content_list(_middle(_page(0, first), _page(1, second), _page(2, image_only)))
+    result = render_structured_content(_middle(_page(0, first), _page(1, second), _page(2, image_only)))
     first_output = result["pages"][0]["blocks"][0]
     second_output = result["pages"][1]["blocks"][0]
     image_only_output = result["pages"][2]["blocks"][0]
@@ -294,7 +294,9 @@ def test_content_list_keeps_table_image_source_and_cross_page_metadata() -> None
     assert image_only_output["image_source"] == "images/image-only-table.png"
 
 
-def test_content_list_keeps_chart_content_separate_from_base64_source(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_structured_content_keeps_chart_content_separate_from_base64_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """验证 chart 只在 image_source 保存 base64，结构内容继续复用行内公式配置。"""
     configured = Config(
         render={
@@ -304,7 +306,7 @@ def test_content_list_keeps_chart_content_separate_from_base64_source(monkeypatc
             }
         }
     )
-    monkeypatch.setattr("mineru.render.content_list.config", configured)
+    monkeypatch.setattr("mineru.render.structured_content.config", configured)
     chart = ChartBlock(
         type="chart",
         index=0,
@@ -327,7 +329,7 @@ def test_content_list_keeps_chart_content_separate_from_base64_source(monkeypatc
         ],
     )
 
-    output = render_content_list(_middle(_page(0, chart)))["pages"][0]["blocks"][0]
+    output = render_structured_content(_middle(_page(0, chart)))["pages"][0]["blocks"][0]
 
     assert output["image_source"] == "data:image/png;base64,AAAA"
     assert output["content"] == "| A |\n| --- |\n| \\(x\\) |"
@@ -338,7 +340,7 @@ def test_content_list_keeps_chart_content_separate_from_base64_source(monkeypatc
     assert "<details>" not in output["content"]
 
 
-def test_content_list_renders_equation_as_raw_latex_with_single_image_source(
+def test_structured_content_renders_equation_as_raw_latex_with_single_image_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """验证 equation 不加行间定界符，并把选中的图片载荷唯一提升为 image_source。"""
@@ -350,7 +352,7 @@ def test_content_list_renders_equation_as_raw_latex_with_single_image_source(
             }
         }
     )
-    monkeypatch.setattr("mineru.render.content_list.config", configured)
+    monkeypatch.setattr("mineru.render.structured_content.config", configured)
     middle = _middle(
         _page(
             0,
@@ -377,7 +379,7 @@ def test_content_list_renders_equation_as_raw_latex_with_single_image_source(
         )
     )
 
-    blocks = render_content_list(middle, asset_base_url="https://cdn.example/doc")["pages"][0]["blocks"]
+    blocks = render_structured_content(middle, asset_base_url="https://cdn.example/doc")["pages"][0]["blocks"]
 
     assert blocks[0] == {"type": "equation", "content": "x=1"}
     assert blocks[1] == {
@@ -403,9 +405,9 @@ def test_content_list_renders_equation_as_raw_latex_with_single_image_source(
     _assert_output_field_contract(blocks)
 
 
-def test_content_list_rejects_legacy_dict_input() -> None:
+def test_structured_content_rejects_legacy_dict_input() -> None:
     """验证公共入口只接受严格 MiddleJson。"""
     middle = _middle(_page(0))
 
     with pytest.raises(TypeError, match="MiddleJson"):
-        render_content_list(middle.to_dict())  # type: ignore[arg-type]
+        render_structured_content(middle.to_dict())  # type: ignore[arg-type]
