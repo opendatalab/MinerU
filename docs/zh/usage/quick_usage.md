@@ -151,6 +151,16 @@ MinerU 现已实现开箱即用，但也支持通过配置文件扩展功能。�
              "enable": false
           }
           ```
+    * 您也可以使用任何支持`openai协议`的网关，例如[OrcaRouter](https://www.orcarouter.ai)。将`base_url`指向网关地址，并在`model`中使用其模型标识，例如：
+          ```json
+          "llm-aided-config": {
+             "api_key": "your_api_key",
+             "base_url": "https://api.orcarouter.ai/v1",
+             "model": "orcarouter/auto",
+             "enable_thinking": false,
+             "enable": false
+          }
+          ```
   
 - `models-dir`：
     * 用于指定本地模型存储目录，请为`pipeline`和`vlm`后端分别指定模型目录，

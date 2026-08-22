@@ -151,6 +151,16 @@ Here are some available configuration options:
              "enable": false
           }
           ```
+    * You can also use any OpenAI-compatible gateway that speaks the `openai protocol`, such as [OrcaRouter](https://www.orcarouter.ai). Point `base_url` at the gateway and use one of its model identifiers as `model`, for example:
+          ```json
+          "llm-aided-config": {
+             "api_key": "your_api_key",
+             "base_url": "https://api.orcarouter.ai/v1",
+             "model": "orcarouter/auto",
+             "enable_thinking": false,
+             "enable": false
+          }
+          ```
   
 - `models-dir`: 
     * Used to specify local model storage directory
