@@ -62,6 +62,11 @@ def make_blocks_to_markdown(paras_of_layout,
         if para_text.strip() == '':
             continue
         else:
+            if para_block.get('has_colored_background') and para_block.get('color_confidence', 0) >= 0.7:
+                bg_color = para_block.get('background_color')
+                text_color = para_block.get('text_color')
+                if bg_color and text_color:
+                    para_text = f'<div style="background-color: {bg_color}; color: {text_color};">\n\n{para_text}\n\n</div>'
             page_markdown.append(para_text.strip())
 
     return page_markdown
@@ -738,6 +743,11 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
     if bbox:
         para_content['bbox'] = bbox
     para_content['page_idx'] = page_idx
+    
+    if para_content and "has_colored_background" in para_block:
+        for key in ["background_color", "text_color", "has_colored_background", "color_confidence"]:
+            if key in para_block:
+                para_content[key] = para_block[key]
 
     return para_content
 
@@ -961,6 +971,11 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
     bbox = _build_bbox(para_block.get('bbox'), page_size)
     if bbox:
         para_content['bbox'] = bbox
+
+    if para_content and "has_colored_background" in para_block:
+        for key in ["background_color", "text_color", "has_colored_background", "color_confidence"]:
+            if key in para_block:
+                para_content[key] = para_block[key]
 
     return para_content
 

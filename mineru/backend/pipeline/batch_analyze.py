@@ -34,6 +34,7 @@ from .model_init import (
     run_ocr_inference,
 )
 from .model_list import AtomicModel
+from ..utils.color_utils import extract_block_style
 
 LAYOUT_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
@@ -428,6 +429,16 @@ class BatchAnalyze:
             pil_images,
             batch_size=min(8, self.batch_ratio * LAYOUT_BASE_BATCH_SIZE),
         )
+        
+        # Color extraction for eligible NCERT-style boxes
+        eligible_labels = {"abstract", "aside_text", "text", "title", "paragraph_title", "doc_title", "reference_content"}
+        for img_idx, layout_res in enumerate(images_layout_res):
+            np_img = np_images[img_idx]
+            for res in layout_res:
+                if res.get("label") in eligible_labels:
+                    style_meta = extract_block_style(np_img, res.get("bbox"))
+                    res.update(style_meta)
+                    
         # 清理显存
         clean_vram(self.model.device, vram_threshold=8)
 
