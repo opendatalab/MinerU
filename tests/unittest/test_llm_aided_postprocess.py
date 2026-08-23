@@ -209,6 +209,18 @@ def _merged_row_texts(middle_json: MiddleJson) -> list[list[str]]:
     return [[cell.get_text() for cell in row.find_all(["td", "th"])] for row in soup.find_all("tr")]
 
 
+def _middle_json(pages: list[PageInfo], *, is_full_document: bool = True) -> MiddleJson:
+    """为 LLM 后处理单元测试构造最小严格 MiddleJson。"""
+    return MiddleJson(
+        pages=pages,
+        is_full_document=is_full_document,
+        file_suffix="docx",
+        effort="flash",
+        parse_mode="txt",
+        mineru_version="test",
+    )
+
+
 def test_llm_client_injects_optional_thinking_parameter() -> None:
     """验证显式 enable_thinking 通过 extra_body 发送且返回经过结构校验。"""
     completions = _FakeCompletions(['</think>{"0": 2}'])
@@ -520,6 +532,7 @@ def test_mixed_cell_merge_flows_through_strict_middle_json_and_renderer() -> Non
     asyncio.run(apply_llm_cross_page_cell_merge(pages, client))  # type: ignore[arg-type]
     middle_json = MiddleJson(
         pages=pages,
+        is_full_document=True,
         file_suffix="pdf",
         effort="high",
         parse_mode="txt",
@@ -555,9 +568,10 @@ def test_postprocess_reuses_one_client_for_both_features() -> None:
         table_pages[1],
     ]
     client = _QueuedValidatedClient([{"0": 3}, [0, 1]])
+    middle_json = _middle_json(pages)
 
     apply_llm_aided_postprocess(
-        pages,
+        middle_json,
         _llm_config(title=True, table=True),
         client=client,  # type: ignore[arg-type]
     )
@@ -606,9 +620,10 @@ def test_title_groups_and_table_candidates_run_concurrently() -> None:
         PageInfo(page_idx=3, blocks=second_pair[1].blocks),
     ]
     client = _ConcurrentValidatedClient(expected_calls=4)
+    middle_json = _middle_json(pages)
 
     apply_llm_aided_postprocess(
-        pages,
+        middle_json,
         _llm_config(title=True, table=True),
         client=client,  # type: ignore[arg-type]
     )
@@ -627,7 +642,7 @@ def test_disabled_postprocess_does_not_construct_client(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(llm_aided, "LLMAidedClient", lambda _config: pytest.fail("client must not be created"))
 
-    apply_llm_aided_postprocess([], LLMAidedConfig())
+    apply_llm_aided_postprocess(_middle_json([]), LLMAidedConfig())
 
 
 def test_partial_input_skips_title_without_constructing_client(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -636,20 +651,26 @@ def test_partial_input_skips_title_without_constructing_client(monkeypatch: pyte
 
     monkeypatch.setattr(llm_aided, "LLMAidedClient", lambda _config: pytest.fail("client must not be created"))
 
-    apply_llm_aided_postprocess([], _llm_config(title=True), page_index_map=[])
+    apply_llm_aided_postprocess(_middle_json([], is_full_document=False), _llm_config(title=True))
 
 
 def test_partial_input_skips_title_but_keeps_table_cell_merge() -> None:
     """验证抽页输入不会触发标题请求，但仍会执行跨页单元格分析。"""
     pages = _cross_page_table_pages()
+    pages[0].blocks[0] = pages[0].blocks[0].model_copy(  # type: ignore[union-attr]
+        update={
+            "index": 1,
+            "content": [pages[0].blocks[0].content[0].model_copy(update={"index": 1})],  # type: ignore[union-attr]
+        }
+    )
     title = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=0, content="Section", level=2)
     pages[0].blocks.insert(0, title)
     client = _QueuedValidatedClient([[0, 1]])
+    middle_json = _middle_json(pages, is_full_document=False)
 
     apply_llm_aided_postprocess(
-        pages,
+        middle_json,
         _llm_config(title=True, table=True),
-        page_index_map=[10, 11],
         client=client,  # type: ignore[arg-type]
     )
 
@@ -665,9 +686,14 @@ def test_front_vlm_cell_merge_detection_remains_disabled() -> None:
     assert "enable_cross_page_table_merge=False" in runtime_path.read_text(encoding="utf-8")
 
 
-def test_doc_analyze_runs_llm_after_deterministic_table_detection(monkeypatch: pytest.MonkeyPatch) -> None:
-    """验证 PDF 主链路先产生 continues_prev，再执行后置 LLM 并构造 MiddleJson。"""
+@pytest.mark.parametrize("page_index_map", [None, []])
+def test_doc_analyze_runs_llm_after_deterministic_table_detection(
+    monkeypatch: pytest.MonkeyPatch,
+    page_index_map: list[int] | None,
+) -> None:
+    """验证默认或空映射的整本 PDF 均先检测续表，再执行后置 LLM。"""
     from mineru.backend import analyze
+    from mineru.backend.postprocess import document
 
     previous_html = "<table><tr><th>H1</th><th>H2</th></tr><tr><td>A</td><td>X</td></tr></table>"
     current_html = "<table><tr><th>H1</th><th>H2</th></tr><tr><td>B</td><td>Y</td></tr></table>"
@@ -683,14 +709,12 @@ def test_doc_analyze_runs_llm_after_deterministic_table_detection(monkeypatch: p
     calls: list[str] = []
 
     def fake_llm_postprocess(
-        pages: list[PageInfo],
+        middle_json: MiddleJson,
         _config: LLMAidedConfig,
-        *,
-        page_index_map: list[int] | None,
     ) -> None:
         """断言确定性续表标记已存在，并模拟新增 cell_merge。"""
-        assert page_index_map is None
-        current_table = pages[1].blocks[0]
+        assert middle_json.is_full_document is True
+        current_table = middle_json.pages[1].blocks[0]
         assert isinstance(current_table, TableBlock)
         assert current_table.continues_prev is True
         assert current_table.cell_merge is None
@@ -698,19 +722,23 @@ def test_doc_analyze_runs_llm_after_deterministic_table_detection(monkeypatch: p
         calls.append("llm")
 
     monkeypatch.setattr(analyze, "analyze_pdf", lambda *_args, **_kwargs: result)
-    monkeypatch.setattr(analyze, "apply_llm_aided_postprocess", fake_llm_postprocess)
+    monkeypatch.setattr(document, "apply_llm_aided_postprocess", fake_llm_postprocess)
 
-    middle_json, _ = analyze.doc_analyze(b"pdf")
+    middle_json, model_json = analyze.doc_analyze(b"pdf", page_index_map=page_index_map)
 
     current_table = middle_json.pages[1].blocks[0]
     assert isinstance(current_table, TableBlock)
     assert current_table.cell_merge == [1, 0]
+    assert model_json.page_index_map == []
+    assert model_json.is_full_document is True
+    assert middle_json.is_full_document is True
     assert calls == ["llm"]
 
 
 def test_doc_analyze_does_not_run_llm_for_office(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证 Office 统一入口不会进入仅限 PDF 的 LLM 后处理。"""
     from mineru.backend import analyze
+    from mineru.backend.postprocess import document
 
     result = AnalysisResult(
         model_list=[[{"type": BlockType.PARAGRAPH_TITLE, "content": "Slide", "level": 2}]],
@@ -720,9 +748,10 @@ def test_doc_analyze_does_not_run_llm_for_office(monkeypatch: pytest.MonkeyPatch
     )
     calls: list[str] = []
     monkeypatch.setattr(analyze, "analyze_office", lambda *_args, **_kwargs: result)
-    monkeypatch.setattr(analyze, "apply_llm_aided_postprocess", lambda *_args, **_kwargs: calls.append("llm"))
+    monkeypatch.setattr(document, "apply_llm_aided_postprocess", lambda *_args, **_kwargs: calls.append("llm"))
 
     middle_json, _ = analyze.doc_analyze(b"office", file_suffix="pptx")
 
     assert middle_json.file_suffix == "pptx"
+    assert middle_json.is_full_document is True
     assert calls == []

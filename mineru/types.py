@@ -304,7 +304,7 @@ def _remove_block_fields(value: Any, excluded_fields: set[str]) -> Any:
 
 
 class _StrictMiddleModel(BaseModel):
-    """Middle JSON 严格模型基类，提供无副作用的统一序列化入口。"""
+    """Model/Middle JSON 严格模型基类，提供无副作用的统一序列化入口。"""
 
     model_config = ConfigDict(extra="forbid", strict=True, validate_assignment=True)
 
@@ -659,6 +659,44 @@ def _iter_child_blocks(block: BlockBase) -> list[BlockBase]:
     return [child for child in content if isinstance(child, BlockBase)]
 
 
+class ModelJson(_StrictMiddleModel):
+    """Analyze 返回的完整严格 Model JSON 对象。"""
+
+    pages: list[list[dict[str, Any]]]
+    page_index_map: list[int]
+    file_suffix: Literal["pdf", "docx", "pptx", "xlsx"]
+    effort: Literal["flash", "low", "medium", "high", "xhigh"]
+    parse_mode: Literal["txt", "ocr"]
+    mineru_version: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_page_index_map(self) -> ModelJson:
+        """校验显式抽页映射，并保留空列表作为整本解析标记。"""
+        if not self.page_index_map:
+            return self
+        if len(self.page_index_map) != len(self.pages):
+            raise ValueError(f"page_index_map length mismatch: pages={len(self.pages)}, mapping={len(self.page_index_map)}")
+        if any(page_idx < 0 for page_idx in self.page_index_map):
+            raise ValueError("page_index_map values must be non-negative integers")
+        if len(self.page_index_map) != len(set(self.page_index_map)):
+            raise ValueError("page_index_map values must be unique")
+        if any(current <= previous for previous, current in zip(self.page_index_map, self.page_index_map[1:])):
+            raise ValueError("page_index_map values must preserve strictly increasing order")
+        return self
+
+    @property
+    def is_full_document(self) -> bool:
+        """返回当前 Model JSON 是否表示整本文档解析。"""
+        return not self.page_index_map
+
+    @property
+    def resolved_page_indices(self) -> list[int]:
+        """返回显式抽页映射或整本文档的顺序页号副本。"""
+        if self.is_full_document:
+            return list(range(len(self.pages)))
+        return list(self.page_index_map)
+
+
 class PageInfo(_StrictMiddleModel):
     """一页的严格 Middle JSON 内容。"""
 
@@ -691,6 +729,7 @@ class MiddleJson(_StrictMiddleModel):
     """Analyze 返回的完整严格 Middle JSON 对象。"""
 
     pages: list[PageInfo]
+    is_full_document: bool
     file_suffix: Literal["pdf", "docx", "pptx", "xlsx"]
     effort: Literal["flash", "low", "medium", "high", "xhigh"]
     parse_mode: Literal["txt", "ocr"]

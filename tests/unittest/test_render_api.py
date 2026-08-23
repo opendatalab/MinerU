@@ -26,6 +26,7 @@ def _middle(*pages: PageInfo) -> MiddleJson:
     """构造无需 PDF bbox 的最小严格 MiddleJson。"""
     return MiddleJson(
         pages=list(pages),
+        is_full_document=True,
         file_suffix="docx",
         effort="flash",
         parse_mode="txt",

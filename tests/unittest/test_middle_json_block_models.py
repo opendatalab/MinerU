@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 import mineru.types as types_module
-from mineru.backend.postprocess.pages import model_list_to_pages
+from mineru.backend.postprocess.pages import model_json_to_pages
 from mineru.types import (
     BLOCK_ADAPTER,
     BLOCK_TYPES,
@@ -24,6 +24,7 @@ from mineru.types import (
     ImageAnnotationBlock,
     ListBlock,
     MiddleJson,
+    ModelJson,
     PageAuxTextBlock,
     PageBlockTypes,
     PageInfo,
@@ -184,8 +185,15 @@ def test_formula_number_is_rejected_by_middle_json_boundary_and_schema() -> None
     with pytest.raises(ValidationError):
         parse_block({"type": RAW_FORMULA_NUMBER, "content": "(1)"})
     with pytest.raises(ValidationError):
-        model_list_to_pages(
-            [[{"type": RAW_FORMULA_NUMBER, "bbox": [0.7, 0.3, 0.8, 0.4], "content": "(1)"}]]
+        model_json_to_pages(
+            ModelJson(
+                pages=[[{"type": RAW_FORMULA_NUMBER, "bbox": [0.7, 0.3, 0.8, 0.4], "content": "(1)"}]],
+                page_index_map=[],
+                file_suffix="pdf",
+                effort="flash",
+                parse_mode="txt",
+                mineru_version="test",
+            )
         )
 
 
@@ -438,6 +446,7 @@ def test_middle_json_pdf_requires_top_level_bbox_and_round_trips() -> None:
     with pytest.raises(ValidationError, match="requires bbox"):
         MiddleJson(
             pages=[PageInfo(page_idx=0, blocks=[TextBlock(type="text", index=0, content="x")])],
+            is_full_document=True,
             file_suffix="pdf",
             effort="flash",
             parse_mode="txt",
@@ -450,6 +459,7 @@ def test_middle_json_pdf_requires_top_level_bbox_and_round_trips() -> None:
                 blocks=[TextBlock(type="text", index=0, bbox=(0.1, 0.1, 0.9, 0.9), content="x")],
             )
         ],
+        is_full_document=True,
         file_suffix="pdf",
         effort="flash",
         parse_mode="txt",

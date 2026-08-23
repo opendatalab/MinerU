@@ -130,7 +130,7 @@ llm_aided:
     cross_page_table_cell_merge: false
 ```
 
-- `title_leveling` groups paragraph titles into levels 2 through 6 by document-title boundaries and runs only for whole-PDF input where `page_index_map` is `None`. It is skipped for page-selected input.
+- `title_leveling` groups paragraph titles into levels 2 through 6 by document-title boundaries and runs only when `MiddleJson.is_full_document` is `true`. Page-selected input is persisted as `false` and skips title leveling.
 - `cross_page_table_cell_merge` asks the LLM whether each pair of boundary-row cells continues after the existing rules identify a cross-page table.
 - Table cell merge does not require whole-document input. Both features are disabled by default and share one asynchronous client, one connection configuration, and the `max_concurrency` request limit, which defaults to 16.
 - `max_concurrency` must be an integer of at least 1 and can be overridden with `MINERU_LLM_AIDED_MAX_CONCURRENCY`.

@@ -8,7 +8,7 @@ import asyncio
 from loguru import logger
 
 from mineru.config import LLMAidedConfig
-from mineru.types import PageInfo
+from mineru.types import MiddleJson
 
 from .llm_client import LLMAidedClient
 from .table_merge.llm_cell_merge import apply_llm_cross_page_cell_merge
@@ -17,18 +17,18 @@ from .title_leveling import apply_llm_title_leveling
 
 def _resolve_enabled_features(
     config: LLMAidedConfig,
-    page_index_map: list[int] | None,
+    middle_json: MiddleJson,
 ) -> tuple[bool, bool]:
     """根据整本输入约束解析本次实际启用的标题与表格功能。"""
-    title_enabled = config.features.title_leveling and page_index_map is None
+    title_enabled = config.features.title_leveling and middle_json.is_full_document
     table_enabled = config.features.cross_page_table_cell_merge
-    if config.features.title_leveling and page_index_map is not None:
-        logger.info("Skipping LLM title leveling because page_index_map is not None")
+    if config.features.title_leveling and not middle_json.is_full_document:
+        logger.info("Skipping LLM title leveling because the input is not a full document")
     return title_enabled, table_enabled
 
 
 async def _apply_llm_aided_postprocess(
-    pages: list[PageInfo],
+    middle_json: MiddleJson,
     config: LLMAidedConfig,
     *,
     title_enabled: bool,
@@ -40,9 +40,9 @@ async def _apply_llm_aided_postprocess(
     try:
         tasks = []
         if title_enabled:
-            tasks.append(apply_llm_title_leveling(pages, resolved_client))
+            tasks.append(apply_llm_title_leveling(middle_json.pages, resolved_client))
         if table_enabled:
-            tasks.append(apply_llm_cross_page_cell_merge(pages, resolved_client))
+            tasks.append(apply_llm_cross_page_cell_merge(middle_json.pages, resolved_client))
         await asyncio.gather(*tasks)
     finally:
         if client is None:
@@ -50,20 +50,19 @@ async def _apply_llm_aided_postprocess(
 
 
 def apply_llm_aided_postprocess(
-    pages: list[PageInfo],
+    middle_json: MiddleJson,
     config: LLMAidedConfig,
     *,
-    page_index_map: list[int] | None = None,
     client: LLMAidedClient | None = None,
 ) -> None:
     """按配置和整本输入约束同步桥接异步 LLM 后处理。"""
-    title_enabled, table_enabled = _resolve_enabled_features(config, page_index_map)
+    title_enabled, table_enabled = _resolve_enabled_features(config, middle_json)
     if not title_enabled and not table_enabled:
         return
 
     asyncio.run(
         _apply_llm_aided_postprocess(
-            pages,
+            middle_json,
             config,
             title_enabled=title_enabled,
             table_enabled=table_enabled,

@@ -16,7 +16,8 @@ from mineru.backend import analyze
 from mineru.backend.analysis import office
 from mineru.backend.analysis.pdf import constants, formulas, normalization, pipeline, tables, visuals, window
 from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_FORMULA_NUMBER, RAW_PHONETIC
-from mineru.types import BlockType, MiddleJson
+from mineru.types import BlockType, MiddleJson, ModelJson
+from mineru.version import __version__ as mineru_version
 
 
 JPEG_DATA_URI_PREFIX = "data:image/jpeg;base64,"
@@ -1201,9 +1202,9 @@ def test_aio_doc_analyze_runs_sync_entrypoint_in_thread_and_forwards_arguments(
     """验证异步门面在线程中执行同步入口，并完整转发非默认参数和返回值。"""
     caller_thread_id = threading.get_ident()
     observed: dict[str, object] = {}
-    expected_result = (MagicMock(spec=MiddleJson), [[{"type": BlockType.TEXT, "content": "async"}]])
+    expected_result = (MagicMock(spec=MiddleJson), MagicMock(spec=ModelJson))
 
-    def fake_doc_analyze(**kwargs: object) -> tuple[MiddleJson, list[list[dict[str, object]]]]:
+    def fake_doc_analyze(**kwargs: object) -> tuple[MiddleJson, ModelJson]:
         """记录工作线程及异步门面传入的全部关键字参数。"""
         observed["thread_id"] = threading.get_ident()
         observed["kwargs"] = kwargs
@@ -1238,7 +1239,8 @@ def test_aio_doc_analyze_propagates_sync_entrypoint_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """验证同步入口异常会穿过工作线程并由异步调用方原样收到。"""
-    def fake_doc_analyze(**_kwargs: object) -> tuple[MiddleJson, list[list[dict[str, object]]]]:
+
+    def fake_doc_analyze(**_kwargs: object) -> tuple[MiddleJson, ModelJson]:
         """模拟同步文档分析阶段抛出参数异常。"""
         raise ValueError("async analyze failed")
 
@@ -1249,11 +1251,11 @@ def test_aio_doc_analyze_propagates_sync_entrypoint_error(
 
 
 @pytest.mark.parametrize("file_suffix", ["docx", "pptx", "xlsx"])
-def test_doc_analyze_office_returns_model_list_without_pdf_processing(
+def test_doc_analyze_office_returns_model_json_without_pdf_processing(
     monkeypatch: pytest.MonkeyPatch,
     file_suffix: str,
 ) -> None:
-    """验证三类 Office 文件直接返回模型结果，且不进入任何 PDF 处理阶段。"""
+    """验证三类 Office 文件返回严格 ModelJson，且不进入任何 PDF 处理阶段。"""
     source_model_list = [[{"type": BlockType.TEXT, "content": "原始 \\(office\\) 内容"}]]
     events: list[str] = []
     model_factories: dict[str, MagicMock] = {}
@@ -1294,7 +1296,7 @@ def test_doc_analyze_office_returns_model_list_without_pdf_processing(
     monkeypatch.setattr(pipeline, "_normalize_pdf_model_list", model_list_normalizer)
     monkeypatch.setattr(office.time, "perf_counter", fake_perf_counter)
 
-    middle_json, model_list = analyze.doc_analyze(
+    middle_json, model_json = analyze.doc_analyze(
         b"office-bytes",
         effort="xhigh",
         parse_mode="ocr",
@@ -1306,8 +1308,16 @@ def test_doc_analyze_office_returns_model_list_without_pdf_processing(
     assert middle_json.file_suffix == file_suffix
     assert middle_json.effort == "flash"
     assert middle_json.parse_mode == "txt"
-    assert model_list is source_model_list
-    assert model_list[0][0]["content"] == "原始 \\(office\\) 内容"
+    assert middle_json.is_full_document is True
+    assert isinstance(model_json, ModelJson)
+    assert model_json.pages == source_model_list
+    assert model_json.page_index_map == []
+    assert model_json.is_full_document is True
+    assert model_json.file_suffix == file_suffix
+    assert model_json.effort == "flash"
+    assert model_json.parse_mode == "txt"
+    assert model_json.mineru_version == mineru_version
+    assert model_json.pages[0][0]["content"] == "原始 \\(office\\) 内容"
     for suffix, model_factory in model_factories.items():
         assert model_factory.call_count == (1 if suffix == file_suffix else 0)
     file_stream = selected_model.predict.call_args.args[0]
@@ -1472,7 +1482,7 @@ def test_pdf_infer_timer_excludes_hybrid_vlm_initialization_and_cleanup(
     monkeypatch.setattr(pipeline, "_normalize_pdf_model_list", fake_normalize_model_list)
     monkeypatch.setattr(pipeline, "clean_memory", fake_clean_memory)
 
-    middle_json, model_list = analyze.doc_analyze(
+    middle_json, model_json = analyze.doc_analyze(
         b"empty-pdf",
         effort="high",
         parse_mode="txt",
@@ -1480,7 +1490,11 @@ def test_pdf_infer_timer_excludes_hybrid_vlm_initialization_and_cleanup(
 
     assert isinstance(middle_json, MiddleJson)
     assert middle_json.pages == []
-    assert model_list == []
+    assert middle_json.is_full_document is True
+    assert isinstance(model_json, ModelJson)
+    assert model_json.pages == []
+    assert model_json.page_index_map == []
+    assert model_json.is_full_document is True
     assert events == [
         "hybrid_init",
         "vlm_init",
@@ -1566,7 +1580,7 @@ def test_doc_analyze_office_real_samples(file_suffix: str, expected_page_count: 
     """验证统一入口可直接分析三类真实 Office 样例并返回完整分页结果。"""
     sample_path = _OFFICE_SAMPLE_DIR / f"{file_suffix}_01.{file_suffix}"
 
-    middle_json, model_list = analyze.doc_analyze(
+    middle_json, model_json = analyze.doc_analyze(
         sample_path.read_bytes(),
         effort="high",
         parse_mode="ocr",
@@ -1574,13 +1588,22 @@ def test_doc_analyze_office_real_samples(file_suffix: str, expected_page_count: 
     )
 
     assert isinstance(middle_json, MiddleJson)
+    assert isinstance(model_json, ModelJson)
+    assert middle_json.is_full_document is True
     assert len(middle_json.pages) == expected_page_count
     assert all(page.page_idx == page_idx for page_idx, page in enumerate(middle_json.pages))
-    assert len(model_list) == expected_page_count
-    assert all(isinstance(page, list) for page in model_list)
+    assert len(model_json.pages) == expected_page_count
+    assert all(isinstance(page, list) for page in model_json.pages)
+    assert model_json.page_index_map == []
+    assert model_json.file_suffix == file_suffix
+    assert model_json.effort == "flash"
+    assert model_json.parse_mode == "txt"
     if file_suffix == "docx":
         model_equations = [
-            block for page_model_list in model_list for block in page_model_list if block.get("type") == BlockType.EQUATION
+            block
+            for page_model_list in model_json.pages
+            for block in page_model_list
+            if block.get("type") == BlockType.EQUATION
         ]
         middle_equations = [block for page in middle_json.pages for block in page.blocks if block.type == BlockType.EQUATION]
         assert model_equations
@@ -1592,7 +1615,7 @@ def test_doc_analyze_flash_real_pdf_returns_typed_middle_json() -> None:
     """验证一页真实 PDF 经 Flash Analyze 后返回严格对象且 raw 结果无废弃字段。"""
     sample_path = _PROJECT_ROOT / "demo" / "pdfs" / "2407.00079v4_origi-10.pdf"
 
-    middle_json, model_list = analyze.doc_analyze(
+    middle_json, model_json = analyze.doc_analyze(
         sample_path.read_bytes(),
         effort="flash",
         parse_mode="txt",
@@ -1600,17 +1623,25 @@ def test_doc_analyze_flash_real_pdf_returns_typed_middle_json() -> None:
     )
 
     assert isinstance(middle_json, MiddleJson)
-    assert len(middle_json.pages) == len(model_list) == 1
+    assert isinstance(model_json, ModelJson)
+    assert middle_json.is_full_document is True
+    assert len(middle_json.pages) == len(model_json.pages) == 1
     assert all(block.bbox is not None for block in middle_json.pages[0].blocks)
-    assert all("merge_prev" not in block for page in model_list for block in page)
+    assert all("merge_prev" not in block for page in model_json.pages for block in page)
+    assert model_json.page_index_map == []
+    assert model_json.file_suffix == "pdf"
+    assert model_json.effort == "flash"
+    assert model_json.parse_mode == "txt"
+    assert model_json.mineru_version == mineru_version
     assert MiddleJson.model_validate_json(middle_json.to_json()) == middle_json
+    assert ModelJson.model_validate_json(model_json.to_json()) == model_json
 
 
 def test_doc_analyze_flash_demo1_uses_canonical_equation_type() -> None:
     """验证真实 demo1.pdf 的两层 Flash 输出统一使用 equation 与 LaTeX tag。"""
     sample_path = _PROJECT_ROOT / "demo" / "pdfs" / "demo1.pdf"
 
-    middle_json, model_list = analyze.doc_analyze(
+    middle_json, model_json = analyze.doc_analyze(
         sample_path.read_bytes(),
         effort="flash",
         parse_mode="txt",
@@ -1618,32 +1649,27 @@ def test_doc_analyze_flash_demo1_uses_canonical_equation_type() -> None:
     )
 
     model_equations = [
-        block for page_model_list in model_list for block in page_model_list if block.get("type") == BlockType.EQUATION
+        block for page_model_list in model_json.pages for block in page_model_list if block.get("type") == BlockType.EQUATION
     ]
     middle_equations = [block for page in middle_json.pages for block in page.blocks if block.type == BlockType.EQUATION]
 
+    assert middle_json.is_full_document is True
     assert model_equations
     assert len(middle_equations) == len(model_equations)
-    assert [block.content for block in middle_equations] == [
-        block["content"]
-        for block in model_equations
-    ]
+    assert [block.content for block in middle_equations] == [block["content"] for block in model_equations]
     for formula_number in range(1, 8):
         marker = rf"\tag{{{formula_number}}}"
         assert sum(marker in block["content"] for block in model_equations) == 1
     assert not [
         block
         for block in model_equations
-        if any(
-            block["content"].rstrip().endswith(f"({formula_number})")
-            for formula_number in range(1, 8)
-        )
+        if any(block["content"].rstrip().endswith(f"({formula_number})") for formula_number in range(1, 8))
     ]
     assert "interline_equation" not in middle_json.to_json()
 
 
-def test_doc_analyze_flash_returns_complete_model_list_and_typed_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    """验证 Flash 多窗口补充完整 raw model list，并返回严格 MiddleJson。"""
+def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 Flash 多窗口补充完整 raw pages，并返回严格 ModelJson 与 MiddleJson。"""
     from mineru.model import flash as flash_model
 
     events: list[str] = []
@@ -1740,7 +1766,7 @@ def test_doc_analyze_flash_returns_complete_model_list_and_typed_middle_json(mon
     monkeypatch.setattr(pipeline.time, "perf_counter", fake_perf_counter)
     monkeypatch.setattr(flash_model, "PdfModel", MagicMock(return_value=fake_pdf_model))
 
-    middle_json, model_list = analyze.doc_analyze(
+    middle_json, model_json = analyze.doc_analyze(
         b"fake-pdf",
         effort="flash",
         parse_mode="txt",
@@ -1748,16 +1774,20 @@ def test_doc_analyze_flash_returns_complete_model_list_and_typed_middle_json(mon
     )
 
     assert isinstance(middle_json, MiddleJson)
+    assert isinstance(model_json, ModelJson)
+    assert middle_json.is_full_document is False
     assert [page.page_idx for page in middle_json.pages] == [7, 8, 9]
-    assert model_list is source_model_list
+    assert model_json.pages == source_model_list
+    assert model_json.page_index_map == [7, 8, 9]
+    assert model_json.is_full_document is False
     assert requested_ranges == [(0, 1), (2, 2)]
-    assert model_list[0][0]["content"] == "第一页 <eq>x+y</eq>"
-    assert model_list[2][0]["content"] == "第三页 <eq>z</eq>"
-    assert model_list[2][0]["type"] == BlockType.EQUATION
+    assert model_json.pages[0][0]["content"] == "第一页 <eq>x+y</eq>"
+    assert model_json.pages[2][0]["content"] == "第三页 <eq>z</eq>"
+    assert model_json.pages[2][0]["type"] == BlockType.EQUATION
     assert middle_json.pages[2].blocks[0].type == BlockType.EQUATION
     assert "interline_equation" not in middle_json.to_json()
-    assert "image_base64" not in model_list[0][0]
-    for block in (model_list[1][0], model_list[2][0]):
+    assert "image_base64" not in model_json.pages[0][0]
+    for block in (model_json.pages[1][0], model_json.pages[2][0]):
         crop_image = _decode_jpeg_data_uri(block["image_base64"])
         crop_image.close()
     for image in rendered_images:

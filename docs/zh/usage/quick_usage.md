@@ -130,7 +130,7 @@ llm_aided:
     cross_page_table_cell_merge: false
 ```
 
-- `title_leveling`：仅在 `page_index_map` 为 `None` 的整本 PDF 输入中，以文档标题为边界分组优化 2～6 级段落标题；抽页输入会跳过该功能。
+- `title_leveling`：仅在 `MiddleJson.is_full_document=true` 的整本 PDF 输入中，以文档标题为边界分组优化 2～6 级段落标题；抽页结果持久化为 `false` 并跳过该功能。
 - `cross_page_table_cell_merge`：在现有规则确认跨页续表后，通过 LLM 判断边界行中各组相邻单元格是否续接。
 - table cell merge 不要求整本输入；两个功能默认关闭，并通过同一个异步客户端共享连接参数和 `max_concurrency` 请求上限，默认值为 16。
 - `max_concurrency` 必须是不小于 1 的整数，可通过 `MINERU_LLM_AIDED_MAX_CONCURRENCY` 覆盖。

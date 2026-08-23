@@ -1,15 +1,16 @@
 from copy import deepcopy
+from typing import Any
 
-import pytest
-
+from mineru.backend.postprocess import pages as pages_module
 from mineru.backend.postprocess.lists import fix_office_list_blocks
-from mineru.backend.postprocess.pages import model_list_to_pages
+from mineru.backend.postprocess.pages import model_json_to_pages
 from mineru.types import (
     ChartBlock,
     DocTitleBlock,
     EquationBlock,
     ImageBlock,
     ListBlock,
+    ModelJson,
     PageInfo,
     ParagraphTitleBlock,
     RefTextBlock,
@@ -18,7 +19,29 @@ from mineru.types import (
 )
 
 
-def test_model_list_to_pages_keeps_equation_type_without_mutating_input() -> None:
+def _model_json(
+    pages: list[list[dict[str, Any]]],
+    *,
+    page_index_map: list[int] | None = None,
+) -> ModelJson:
+    """为 PageInfo 后处理测试构造最小严格 ModelJson。"""
+    return ModelJson(
+        pages=pages,
+        page_index_map=page_index_map or [],
+        file_suffix="pdf",
+        effort="flash",
+        parse_mode="txt",
+        mineru_version="test",
+    )
+
+
+def test_model_json_to_pages_replaces_raw_model_list_entrypoint() -> None:
+    """验证严格 ModelJson 是唯一文档级 PageInfo 转换入口。"""
+    assert callable(pages_module.model_json_to_pages)
+    assert not hasattr(pages_module, "model_list_to_pages")
+
+
+def test_model_json_to_pages_keeps_equation_type_without_mutating_input() -> None:
     """验证 equation 经单页后处理和严格对象化后保持类型、内容与图片载荷。"""
     model_list = [
         [
@@ -32,7 +55,7 @@ def test_model_list_to_pages_keeps_equation_type_without_mutating_input() -> Non
     ]
     original = deepcopy(model_list)
 
-    page = model_list_to_pages(model_list)[0]
+    page = model_json_to_pages(_model_json(model_list))[0]
 
     assert model_list == original
     assert isinstance(page.blocks[0], EquationBlock)
@@ -41,7 +64,7 @@ def test_model_list_to_pages_keeps_equation_type_without_mutating_input() -> Non
     assert page.blocks[0].image_base64 == "data:image/jpeg;base64,/9j/2Q=="
 
 
-def test_model_list_to_pages_returns_typed_pdf_tree_without_mutating_input() -> None:
+def test_model_json_to_pages_returns_typed_pdf_tree_without_mutating_input() -> None:
     """验证 PDF raw dict 只在副本上分组，并返回具体 PageInfo/Block 对象。"""
     model_list = [
         [
@@ -58,7 +81,7 @@ def test_model_list_to_pages_returns_typed_pdf_tree_without_mutating_input() -> 
     ]
     original = deepcopy(model_list)
 
-    pages = model_list_to_pages(model_list, page_index_map=[7])
+    pages = model_json_to_pages(_model_json(model_list, page_index_map=[7]))
 
     assert model_list == original
     assert isinstance(pages[0], PageInfo)
@@ -72,7 +95,7 @@ def test_model_list_to_pages_returns_typed_pdf_tree_without_mutating_input() -> 
     assert isinstance(pages[0].blocks[1].content[0], TextBlock)
 
 
-def test_model_list_to_pages_preserves_recursive_office_list_and_index() -> None:
+def test_model_json_to_pages_preserves_recursive_office_list_and_index() -> None:
     """验证 Office list/index 任意深度递归对象化，并清理未匹配目录 anchor。"""
     model_list = [
         [
@@ -106,7 +129,7 @@ def test_model_list_to_pages_preserves_recursive_office_list_and_index() -> None
         ]
     ]
 
-    page = model_list_to_pages(model_list)[0]
+    page = model_json_to_pages(_model_json(model_list))[0]
     list_block = page.blocks[0]
     index_block = page.blocks[1]
 
@@ -216,7 +239,7 @@ def test_fix_office_list_blocks_uses_local_ordered_markers_at_each_depth() -> No
         )
 
 
-def test_model_list_to_pages_maps_index_anchor_to_document_title_type_and_level() -> None:
+def test_model_json_to_pages_maps_index_anchor_to_document_title_type_and_level() -> None:
     """验证 Office 目录叶子按跨页目标 anchor 继承真实标题类型与层级。"""
     model_list = [
         [
@@ -245,7 +268,7 @@ def test_model_list_to_pages_maps_index_anchor_to_document_title_type_and_level(
         ],
     ]
 
-    pages = model_list_to_pages(model_list)
+    pages = model_json_to_pages(_model_json(model_list))
     index = pages[0].blocks[0]
     doc_leaf = index.content[0]
     section_leaf = index.content[1].content[0]
@@ -263,7 +286,7 @@ def test_model_list_to_pages_maps_index_anchor_to_document_title_type_and_level(
     assert "anchor" not in missing_leaf.model_fields_set
 
 
-def test_model_list_to_pages_uses_first_title_for_duplicate_anchor() -> None:
+def test_model_json_to_pages_uses_first_title_for_duplicate_anchor() -> None:
     """验证重复 anchor 按文档顺序使用首个标题目标。"""
     model_list = [
         [
@@ -276,7 +299,7 @@ def test_model_list_to_pages_uses_first_title_for_duplicate_anchor() -> None:
         ]
     ]
 
-    page = model_list_to_pages(model_list)[0]
+    page = model_json_to_pages(_model_json(model_list))[0]
     index = page.blocks[2]
 
     assert isinstance(index.content[0], ParagraphTitleBlock)
@@ -298,7 +321,7 @@ def test_office_paragraph_numbering_is_document_wide_and_copy_only() -> None:
     ]
     original = deepcopy(model_list)
 
-    pages = model_list_to_pages(model_list)
+    pages = model_json_to_pages(_model_json(model_list))
     titles = [block for page in pages for block in page.blocks]
 
     assert all(isinstance(block, ParagraphTitleBlock) for block in titles)
@@ -327,7 +350,7 @@ def test_office_paragraph_numbering_clears_deeper_levels() -> None:
         ]
     ]
 
-    titles = model_list_to_pages(model_list)[0].blocks
+    titles = model_json_to_pages(_model_json(model_list))[0].blocks
 
     assert [title.content for title in titles] == [
         "1 A",
@@ -342,7 +365,7 @@ def test_office_paragraph_numbering_clears_deeper_levels() -> None:
 
 def test_visual_body_drops_empty_parent_subtype() -> None:
     """验证 raw visual 的空 subtype 只用于父块判断，不会泄漏到严格 body 模型。"""
-    page = model_list_to_pages([[{"type": "image", "content": None, "sub_type": None}]])[0]
+    page = model_json_to_pages(_model_json([[{"type": "image", "content": None, "sub_type": None}]]))[0]
 
     assert isinstance(page.blocks[0], ImageBlock)
     assert page.blocks[0].sub_type is None
@@ -352,7 +375,7 @@ def test_visual_body_drops_empty_parent_subtype() -> None:
 
 def test_chart_none_content_is_normalized_to_empty_string() -> None:
     """验证 raw chart 的 null content 在严格对象化前规范为空字符串。"""
-    page = model_list_to_pages([[{"type": "chart", "content": None}]])[0]
+    page = model_json_to_pages(_model_json([[{"type": "chart", "content": None}]]))[0]
 
     assert isinstance(page.blocks[0], ChartBlock)
     assert page.blocks[0].content[0].type == "chart_body"
@@ -361,14 +384,16 @@ def test_chart_none_content_is_normalized_to_empty_string() -> None:
 
 def test_raw_title_levels_are_normalized_to_global_hierarchy() -> None:
     """验证 raw 标题在严格对象化前归一为全局一至六级层级。"""
-    page = model_list_to_pages(
-        [
+    page = model_json_to_pages(
+        _model_json(
             [
-                {"type": "doc_title", "content": "Document"},
-                {"type": "paragraph_title", "content": "Section", "level": 1},
-                {"type": "paragraph_title", "content": "Deep", "level": 9},
+                [
+                    {"type": "doc_title", "content": "Document"},
+                    {"type": "paragraph_title", "content": "Section", "level": 1},
+                    {"type": "paragraph_title", "content": "Deep", "level": 9},
+                ]
             ]
-        ]
+        )
     )[0]
 
     assert [block.level for block in page.blocks] == [1, 2, 6]
@@ -376,8 +401,8 @@ def test_raw_title_levels_are_normalized_to_global_hierarchy() -> None:
 
 def test_pdf_raw_paragraph_title_level_is_clamped_to_six() -> None:
     """验证带 bbox 的 PDF raw 深层标题在严格对象化前归一为六级。"""
-    page = model_list_to_pages(
-        [[{"type": "paragraph_title", "content": "Deep", "level": 9, "bbox": [0.1, 0.1, 0.9, 0.2]}]]
+    page = model_json_to_pages(
+        _model_json([[{"type": "paragraph_title", "content": "Deep", "level": 9, "bbox": [0.1, 0.1, 0.9, 0.2]}]])
     )[0]
 
     assert isinstance(page.blocks[0], ParagraphTitleBlock)
@@ -402,7 +427,7 @@ def test_office_title_level_is_clamped_before_numbering_and_index_mapping() -> N
         ]
     ]
 
-    page = model_list_to_pages(model_list)[0]
+    page = model_json_to_pages(_model_json(model_list))[0]
     title = page.blocks[0]
     index = page.blocks[1]
 
@@ -432,7 +457,7 @@ def test_pdf_continuation_is_typed_and_line_metadata_is_removed() -> None:
         ]
     ]
 
-    page = model_list_to_pages(model_list)[0]
+    page = model_json_to_pages(_model_json(model_list))[0]
 
     assert all(isinstance(block, TextBlock) for block in page.blocks)
     assert page.blocks[0].continues_prev is None
@@ -459,7 +484,7 @@ def test_pdf_ref_text_continuation_is_typed_and_line_metadata_is_removed() -> No
         ]
     ]
 
-    page = model_list_to_pages(model_list)[0]
+    page = model_json_to_pages(_model_json(model_list))[0]
 
     assert all(isinstance(block, RefTextBlock) for block in page.blocks)
     assert page.blocks[0].continues_prev is None
@@ -469,11 +494,13 @@ def test_pdf_ref_text_continuation_is_typed_and_line_metadata_is_removed() -> No
 
 def test_pdf_detection_scans_past_empty_first_page() -> None:
     """验证整份文档 bbox 判定不会把 PDF 空白首页误认为 Office。"""
-    pages = model_list_to_pages(
-        [
-            [],
-            [{"type": "text", "bbox": [0.1, 0.1, 0.9, 0.3], "content": "later", "lines": []}],
-        ]
+    pages = model_json_to_pages(
+        _model_json(
+            [
+                [],
+                [{"type": "text", "bbox": [0.1, 0.1, 0.9, 0.3], "content": "later", "lines": []}],
+            ]
+        )
     )
 
     assert pages[0].blocks == []
@@ -484,23 +511,15 @@ def test_cross_page_table_continuation_remains_raw_postprocess() -> None:
     """验证连续页表格仍在对象化前写入 continues_prev。"""
     html_a = "<table><tr><td>A</td><td>B</td></tr></table>"
     html_b = "<table><tr><td>C</td><td>D</td></tr></table>"
-    pages = model_list_to_pages(
-        [
-            [{"type": "table", "bbox": [0.1, 0.1, 0.9, 0.85], "content": html_a}],
-            [{"type": "table", "bbox": [0.1, 0.1, 0.9, 0.85], "content": html_b}],
-        ]
+    pages = model_json_to_pages(
+        _model_json(
+            [
+                [{"type": "table", "bbox": [0.1, 0.1, 0.9, 0.85], "content": html_a}],
+                [{"type": "table", "bbox": [0.1, 0.1, 0.9, 0.85], "content": html_b}],
+            ]
+        )
     )
 
     assert isinstance(pages[0].blocks[0], TableBlock)
     assert pages[0].blocks[0].continues_prev is None
     assert pages[1].blocks[0].continues_prev is True
-
-
-@pytest.mark.parametrize(
-    ("page_index_map", "message"),
-    [([0], "length mismatch"), ([0, 0], "unique"), ([1, 0], "increasing"), ([0, -1], "non-negative")],
-)
-def test_page_index_map_is_strict(page_index_map: list[int], message: str) -> None:
-    """验证页号映射不允许截断、重复、逆序或负数。"""
-    with pytest.raises(ValueError, match=message):
-        model_list_to_pages([[], []], page_index_map=page_index_map)

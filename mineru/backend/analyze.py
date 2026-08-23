@@ -4,17 +4,16 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
 from loguru import logger
 
 from mineru.backend.analysis.contracts import AnalyzeEffort, OfficeSuffix, ParseMode
 from mineru.backend.analysis.office import analyze_office
 from mineru.backend.analysis.pdf.pipeline import analyze_pdf
-from mineru.backend.postprocess.llm_aided import apply_llm_aided_postprocess
-from mineru.backend.postprocess.pages import model_list_to_pages
+from mineru.backend.postprocess.document import model_json_to_middle_json
 from mineru.config import config
-from mineru.types import MiddleJson
+from mineru.types import MiddleJson, ModelJson
 from mineru.version import __version__ as mineru_version
 
 _SUPPORTED_FILE_SUFFIXES = {"pdf", "docx", "pptx", "xlsx"}
@@ -36,8 +35,8 @@ def doc_analyze(
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
     file_suffix: Literal["pdf", "docx", "pptx", "xlsx"] = "pdf",
-) -> tuple[MiddleJson, list[list[dict[str, Any]]]]:
-    """生产 model-list，并在统一边界构造严格 MiddleJson。"""
+) -> tuple[MiddleJson, ModelJson]:
+    """生产严格 ModelJson，并在统一边界构造严格 MiddleJson。"""
     if file_suffix not in _SUPPORTED_FILE_SUFFIXES:
         raise ValueError(f"Unsupported file suffix: {file_suffix!r}")
 
@@ -52,22 +51,19 @@ def doc_analyze(
         result = analyze_office(file_bytes, cast(OfficeSuffix, file_suffix))
 
     _log_infer_performance(file_suffix, len(result.model_list), result.elapsed)
-    pages = model_list_to_pages(result.model_list, page_index_map)
-    if file_suffix == "pdf":
-        apply_llm_aided_postprocess(
-            pages,
-            config.llm_aided,
-            page_index_map=page_index_map,
-        )
-
-    middle_json = MiddleJson(
-        pages=pages,
+    model_json = ModelJson(
+        pages=result.model_list,
+        page_index_map=page_index_map or [],
         file_suffix=file_suffix,
         effort=result.effort,
         parse_mode=result.parse_mode,
         mineru_version=mineru_version,
     )
-    return middle_json, result.model_list
+    middle_json = model_json_to_middle_json(
+        model_json,
+        llm_aided_config=config.llm_aided,
+    )
+    return middle_json, model_json
 
 
 async def aio_doc_analyze(
@@ -77,7 +73,7 @@ async def aio_doc_analyze(
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
     file_suffix: Literal["pdf", "docx", "pptx", "xlsx"] = "pdf",
-) -> tuple[MiddleJson, list[list[dict[str, Any]]]]:
+) -> tuple[MiddleJson, ModelJson]:
     """在线程中执行统一文档分析，避免阻塞调用方事件循环。"""
     return await asyncio.to_thread(
         doc_analyze,

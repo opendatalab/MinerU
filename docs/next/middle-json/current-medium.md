@@ -4,12 +4,13 @@
 
 读者: backend 开发者、SDK 开发者、输出开发者
 
-范围: `doc_analyze()` 第一返回值及 `mineru/types.py` 中的公开 Middle JSON 对象
+范围: `doc_analyze()` 返回值及 `mineru/types.py` 中的公开 Model/Middle JSON 对象
 
 ## 标准来源
 
 当前事实标准由以下 Pydantic v2 模型定义：
 
+- `ModelJson`
 - `MiddleJson`
 - `PageInfo`
 - `Block` discriminated union
@@ -19,21 +20,44 @@
 `model_validate()` / `model_validate_json()`，序列化入口是 `to_dict()` /
 `to_json()`。不再提供旧 `Block(...)` 通用构造器或 dict-like 兼容接口。
 
-本轮未迁移的 `ParseResult`、renderer、LLM 标题修正和 Structured Content
-不属于本文档描述的对象链路。
+本轮未迁移的 `ParseResult`、renderer 和 Structured Content 不属于本文档描述的对象链路。
+
+`doc_analyze()` 与 `aio_doc_analyze()` 固定返回
+`tuple[MiddleJson, ModelJson]`，不再把第二返回值暴露为裸 model list。
+
+## `ModelJson`
+
+| 字段 | 类型 | 要求 |
+|------|------|------|
+| `pages` | `list[list[dict]]` | 必填，保存 Analyze 产生的 raw blocks |
+| `page_index_map` | `list[int]` | 必填；空列表表示整本默认顺序，非空时与 pages 等长且唯一递增 |
+| `file_suffix` | `pdf/docx/pptx/xlsx` | 必填 |
+| `effort` | `flash/low/medium/high/xhigh` | 必填，使用分析后实际值 |
+| `parse_mode` | `txt/ocr` | 必填，使用分析后实际值 |
+| `mineru_version` | 非空字符串 | 必填 |
+
+`ModelJson.is_full_document` 是由 `page_index_map` 是否为空计算的运行时属性，
+不进入 JSON；`resolved_page_indices` 同样不序列化，并把空映射展开为顺序页号。
+任意非空映射均表示显式抽页，不根据映射值猜测是否覆盖整本。
+
+文档级转换只接受完整 ModelJson：`model_json_to_pages(model_json)` 负责严格页面
+对象化，`model_json_to_middle_json(model_json, llm_aided_config=...)` 负责构造
+MiddleJson 并执行适用的 PDF 后处理。不再提供裸 model list 加独立页映射的转换入口。
 
 ## `MiddleJson`
 
 | 字段 | 类型 | 要求 |
 |------|------|------|
 | `pages` | `list[PageInfo]` | 必填，`page_idx` 唯一且严格递增 |
+| `is_full_document` | `bool` | 必填，保存整本或抽页语义，不提供默认值 |
 | `file_suffix` | `pdf/docx/pptx/xlsx` | 必填 |
 | `effort` | `flash/low/medium/high/xhigh` | 必填 |
 | `parse_mode` | `txt/ocr` | 必填 |
 | `mineru_version` | 非空字符串 | 必填 |
 
 当 `file_suffix="pdf"` 时，每个页面顶层 block 必须具有有效 bbox。Office
-顶层 block 可以没有 bbox。
+顶层 block 可以没有 bbox。PDF 标题分级直接读取 `is_full_document`；缺少该字段的
+旧 Middle JSON 无法通过严格解析，需要从 ModelJson 重新生成。
 
 ## `PageInfo`
 

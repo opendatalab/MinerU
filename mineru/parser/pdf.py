@@ -315,7 +315,7 @@ class PdfVlmParser(PdfHybridParser):
         """将旧 PdfVlmParser 构造参数归一到 Hybrid extra_high，避免继续暴露独立 VLM backend。"""
         backend = kwargs.pop("backend", "vlm-engine")
         kwargs.pop("effort", None)
-        resolved_backend, resolved_effort = resolve_backend_and_effort(backend, MAX_HYBRID_EFFORT)
+        resolved_=backend, resolved_effort = resolve_backend_and_effort(backend, MAX_HYBRID_EFFORT)
         super().__init__(backend=resolved_backend, effort=resolved_effort, **kwargs)
 
 

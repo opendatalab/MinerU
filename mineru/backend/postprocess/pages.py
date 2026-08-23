@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""raw model-list 到严格 PageInfo 列表的唯一转换边界。"""
+"""严格 ModelJson 到 PageInfo 列表的唯一转换边界。"""
 
 from __future__ import annotations
 
@@ -12,27 +12,9 @@ from mineru.backend.postprocess.lists import fix_office_index_title_blocks, fix_
 from mineru.backend.postprocess.page_blocks import process_page_blocks
 from mineru.backend.postprocess.paragraphs import merge_para_text_blocks
 from mineru.backend.postprocess.table_merge import merge_table
-from mineru.types import PageInfo
+from mineru.types import ModelJson, PageInfo
 
 PAGE_INFO_LIST_ADAPTER = TypeAdapter(list[PageInfo])
-
-
-def _validate_page_index_map(
-    page_count: int,
-    page_index_map: list[int] | None,
-) -> list[int]:
-    """校验实际页号映射，禁止 zip 截断、重复页号或逆序页号。"""
-    if page_index_map is None:
-        return list(range(page_count))
-    if len(page_index_map) != page_count:
-        raise ValueError(f"page_index_map length mismatch: pages={page_count}, mapping={len(page_index_map)}")
-    if any(isinstance(page_idx, bool) or not isinstance(page_idx, int) or page_idx < 0 for page_idx in page_index_map):
-        raise ValueError("page_index_map values must be non-negative integers")
-    if len(page_index_map) != len(set(page_index_map)):
-        raise ValueError("page_index_map values must be unique")
-    if any(current <= previous for previous, current in zip(page_index_map, page_index_map[1:])):
-        raise ValueError("page_index_map values must preserve strictly increasing order")
-    return list(page_index_map)
 
 
 def _document_uses_bbox(model_list: list[list[dict[str, Any]]]) -> bool:
@@ -87,13 +69,10 @@ def blocks_to_page_info(
     return PageInfo.model_validate(raw_page)
 
 
-def model_list_to_pages(
-    model_list: list[list[dict[str, Any]]],
-    page_index_map: list[int] | None = None,
-) -> list[PageInfo]:
-    """在 raw 后处理结束后，一次性构造严格且可递归序列化的 PageInfo。"""
-    page_indices = _validate_page_index_map(len(model_list), page_index_map)
-    copied_model_list = deepcopy(model_list)
+def model_json_to_pages(model_json: ModelJson) -> list[PageInfo]:
+    """从严格 ModelJson 无副作用地构造可递归序列化的 PageInfo。"""
+    page_indices = model_json.resolved_page_indices
+    copied_model_list = deepcopy(model_json.pages)
     use_bbox = _document_uses_bbox(copied_model_list)
     if not use_bbox:
         fix_office_paragraph_titles(copied_model_list)

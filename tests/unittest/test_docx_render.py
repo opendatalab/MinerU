@@ -38,6 +38,7 @@ def _middle(*pages: PageInfo) -> MiddleJson:
     """构造最小严格 MiddleJson 测试对象。"""
     return MiddleJson(
         pages=list(pages),
+        is_full_document=True,
         file_suffix="docx",
         effort="flash",
         parse_mode="txt",

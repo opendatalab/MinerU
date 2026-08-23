@@ -4,6 +4,7 @@ import math
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock
 from zipfile import ZipFile
 
@@ -13,7 +14,7 @@ from mineru.backend.analysis.pdf import window
 from mineru.backend.analysis.pdf.text import content as text_content
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.analysis.pdf.text.native import txt_spans_extract
-from mineru.backend.postprocess.pages import model_list_to_pages
+from mineru.backend.postprocess.pages import model_json_to_pages
 from mineru.model.flash import PdfModel
 from mineru.render import render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import (
@@ -22,6 +23,7 @@ from mineru.types import (
     BlockType,
     ContentType,
     MiddleJson,
+    ModelJson,
     PageInfo,
 )
 from mineru.utils.pdf_document import PDFDocument, PDFLinkAnnotation
@@ -37,6 +39,18 @@ from mineru.utils.pdf_text_styles import (
     detect_pdf_text_link_lines,
     detect_pdf_text_style_lines,
 )
+
+
+def _model_json(pages: list[list[dict[str, Any]]]) -> ModelJson:
+    """为 PDF 文本样式渲染测试构造最小严格 ModelJson。"""
+    return ModelJson(
+        pages=pages,
+        page_index_map=[],
+        file_suffix="pdf",
+        effort="flash",
+        parse_mode="txt",
+        mineru_version="test",
+    )
 
 
 def _build_native_text_style_pdf() -> bytes:
@@ -1761,7 +1775,8 @@ def test_flash_native_pdf_styles_reach_model_middle_and_renderers() -> None:
     assert '<text style="bold">bold italic sample</text>' in joined_model_content
 
     middle = MiddleJson(
-        pages=model_list_to_pages(model_list),
+        pages=model_json_to_pages(_model_json(model_list)),
+        is_full_document=True,
         file_suffix="pdf",
         effort="flash",
         parse_mode="txt",
@@ -1806,7 +1821,8 @@ def test_demo1_pdf_link_reaches_model_middle_and_all_renderers() -> None:
     )
 
     middle = MiddleJson(
-        pages=model_list_to_pages(model_list),
+        pages=model_json_to_pages(_model_json(model_list)),
+        is_full_document=True,
         file_suffix="pdf",
         effort="flash",
         parse_mode="txt",
@@ -1819,6 +1835,7 @@ def test_demo1_pdf_link_reaches_model_middle_and_all_renderers() -> None:
     )
     link_middle = MiddleJson(
         pages=[PageInfo(page_idx=0, blocks=[link_block])],
+        is_full_document=True,
         file_suffix="pdf",
         effort="flash",
         parse_mode="txt",

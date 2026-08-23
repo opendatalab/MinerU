@@ -10,7 +10,7 @@ from typing import Any
 from pypdf import PdfReader
 
 from mineru.backend.postprocess.page_blocks import process_page_blocks
-from mineru.backend.postprocess.pages import model_list_to_pages
+from mineru.backend.postprocess.pages import model_json_to_pages
 from mineru.model.flash import PdfModel
 from mineru.model.flash.native_pdf import (
     formulas,
@@ -26,7 +26,7 @@ from mineru.render._internal.common.inline import (
     inline_plain_text,
     parse_inline_content,
 )
-from mineru.types import MiddleJson
+from mineru.types import MiddleJson, ModelJson
 from mineru.utils.pdf_document import PDFDocument, get_lines_from_chars
 
 
@@ -36,6 +36,22 @@ _FIXTURE_PDF_DIR = Path(__file__).resolve().parent / "pdfs"
 _FLASH_SYNTHETIC_PDF_NAME = "flash_table_annotations_synthetic.pdf"
 _CJK_SYNTHETIC_PDF_NAME = "native_cjk_layout_synthetic.pdf"
 _SAFE_WATERMARK_TEXT = "MINERU TEST WATERMARK"
+
+
+def _model_json(
+    pages: list[list[dict[str, Any]]],
+    *,
+    page_index_map: list[int] | None = None,
+) -> ModelJson:
+    """为 Flash 样例后处理构造最小严格 ModelJson。"""
+    return ModelJson(
+        pages=pages,
+        page_index_map=page_index_map or [],
+        file_suffix="pdf",
+        effort="flash",
+        parse_mode="txt",
+        mineru_version="test",
+    )
 
 
 # demo4 第 9 至 11 页中实际跨物理行显示的 URL，用于确保纯正则拼接覆盖全部形态。
@@ -434,7 +450,7 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     assert sum(block["type"] == "equation" for page in model_list for block in page) == 7
     assert sum(block["type"] == "caption" for page in model_list for block in page) == 10
     assert sum(block["type"] == "footnote" for page in model_list for block in page) == 5
-    middle_pages = model_list_to_pages(model_list)
+    middle_pages = model_json_to_pages(_model_json(model_list))
     page3_continuation = next(
         block
         for block in middle_pages[2].blocks
@@ -1053,7 +1069,8 @@ def test_demo3_pages6_7_and10_fix_caption_inline_titles_and_reference_tail() -> 
     ]
     page7_markdown = render_markdown(
         MiddleJson(
-            pages=model_list_to_pages([page7], page_index_map=[6]),
+            pages=model_json_to_pages(_model_json([page7], page_index_map=[6])),
+            is_full_document=False,
             file_suffix="pdf",
             effort="flash",
             parse_mode="txt",
@@ -1943,7 +1960,7 @@ def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
     """验证中文论文双语图注独立标记，正文图引用和参考文献保持 text。"""
 
     model_list = _auto_model_list("中文论文.pdf")
-    middle_pages = model_list_to_pages(model_list)
+    middle_pages = model_json_to_pages(_model_json(model_list))
     page2_continuation = next(
         block
         for block in middle_pages[1].blocks

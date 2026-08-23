@@ -53,8 +53,8 @@ llm_aided:
 ```
 
 两个功能默认关闭并共享同一套 OpenAI-compatible 连接参数。`title_leveling` 在严格
-`PageInfo.blocks` 上优化标题层级，但只在 `page_index_map` 为 `None` 的整本 PDF 输入中运行；
-抽页输入会跳过标题优化。`cross_page_table_cell_merge` 不受整本输入限制，只消费确定性后处理
+`MiddleJson.pages` 上优化标题层级，但只在 `MiddleJson.is_full_document=true` 的整本 PDF 输入中运行；
+抽页结果会跳过标题优化。`cross_page_table_cell_merge` 不受整本输入限制，只消费确定性后处理
 已经写入的 `continues_prev`，再把逐单元格的 `0/1` 结果写入后表根块 `cell_merge`。两个功能
 通过同一个异步客户端并发请求，`max_concurrency` 是不小于 1 的共享请求上限，默认值为 16。
 标题分级结果允许 1 到 6，段落标题的 1 会归一为 2，最终严格标题层级范围为 2 到 6。前置

@@ -81,7 +81,7 @@ def _table(
 
 
 def _page(page_idx: int, blocks: list[dict[str, Any]]) -> dict[str, Any]:
-    """构造 model_list_to_pages 输出契约的页面。"""
+    """构造 ModelJson 后处理阶段使用的 raw 页面。"""
     return {"page_idx": page_idx, "blocks": blocks}
 
 

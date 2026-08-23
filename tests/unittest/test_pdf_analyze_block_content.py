@@ -24,7 +24,7 @@ from mineru.render._internal.common.inline import (
     inline_plain_text,
     parse_inline_content,
 )
-from mineru.types import BlockType, ContentType, MiddleJson
+from mineru.types import BlockType, ContentType, MiddleJson, ModelJson
 from mineru.utils.pdf_document import PDFDocument
 
 
@@ -215,21 +215,36 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
     monkeypatch.setattr(window, "_apply_seal_ocr", MagicMock())
     monkeypatch.setattr(window, "_supplement_missing_image_block_containers", MagicMock())
     monkeypatch.setattr(window, "_attach_visual_block_images", MagicMock())
-    monkeypatch.setattr(analyze, "model_list_to_pages", MagicMock(return_value=[]))
+    expected_middle_json = MiddleJson(
+        pages=[],
+        is_full_document=True,
+        file_suffix="pdf",
+        effort=effort,  # type: ignore[arg-type]
+        parse_mode=parse_mode,  # type: ignore[arg-type]
+        mineru_version="test",
+    )
+    monkeypatch.setattr(analyze, "model_json_to_middle_json", MagicMock(return_value=expected_middle_json))
     monkeypatch.setattr(pipeline, "clean_memory", MagicMock())
 
-    middle_json, model_list = analyze.doc_analyze(
+    middle_json, model_json = analyze.doc_analyze(
         b"fake-pdf",
         effort=effort,  # type: ignore[arg-type]
         parse_mode=parse_mode,  # type: ignore[arg-type]
     )
 
-    assert type(model_list) is list
-    assert type(model_list[0]) is list
-    assert type(model_list[0][0]) is dict
-    assert model_list == [[{"type": BlockType.PAGE_NUMBER, "bbox": [0.45, 0.9, 0.55, 0.95], "content": "1"}]]
+    assert isinstance(model_json, ModelJson)
+    assert type(model_json.pages) is list
+    assert type(model_json.pages[0]) is list
+    assert type(model_json.pages[0][0]) is dict
+    assert model_json.pages == [[{"type": BlockType.PAGE_NUMBER, "bbox": [0.45, 0.9, 0.55, 0.95], "content": "1"}]]
+    assert model_json.page_index_map == []
+    assert model_json.file_suffix == "pdf"
+    assert model_json.effort == effort
+    assert model_json.parse_mode == parse_mode
     assert isinstance(middle_json, MiddleJson)
+    assert middle_json is expected_middle_json
     assert middle_json.pages == []
+    assert middle_json.is_full_document is True
     assert middle_json.effort == effort
     assert middle_json.parse_mode == parse_mode
     assert type(source_page) is ExtractResult
