@@ -14,32 +14,37 @@
 
 ## 2. search
 
-`mineru search` 面向已解析内容检索。
+`mineru search` 面向已建立内容索引的文档检索，包括解析内容和直接索引的 text 源内容。
 
 ```bash
 mineru search "keyword"
-mineru search "keyword" --tier medium
-mineru search "keyword" --min-tier medium --type pdf
+mineru search "keyword" --tier basic
+mineru search "keyword" --min-tier basic --type pdf
 ```
 
 行为：
 
-- 查询 `fts_contents`，未解析或未建立内容索引的文件不会命中正文检索。
+- 查询 `fts_contents`，未建立内容索引的文件不会命中正文检索。
 - 按文档 SHA256 去重。
 - 支持按 `file_type`、`tier`、`min_tier` 过滤。
-- 返回文件名、文件大小、页数、命中片段和 snippet 来源 tier。
-- 默认优先返回 active file paths；如果某个已索引 doc 没有任何 active file，则 fallback 返回非 active file paths。
+- 返回文档大小、页数、命中片段、可空的 snippet 来源 tier，以及关联的全部 file aliases。
+- text 源内容的 `tier` 为 `null`；指定 `--tier` 或 `--min-tier` 时不返回这类结果。
+- JSON 返回全部 file aliases 及其状态，并按 file id 降序排列。
+- 非 JSON 输出存在 active files 时只展示 active paths；没有 active file 时展示全部 inactive paths。
+- 已索引的 orphan 文档仍可命中，非 JSON 输出提示文件已不存在。
 - 通过 `--json` 提供结构化输出。
 
 JSON 输出中的每条结果至少包含:
 
 | 字段 | 说明 |
 |------|------|
-| `filename` | 文件名，不含完整路径。 |
 | `size_bytes` | 文件大小。 |
 | `page_count` | 文档页数；未知时为 `null`。 |
 | `snippet` | 命中的内容片段。 |
-| `tier` | snippet 来源 tier。 |
+| `tier` | snippet 来源解析 tier；直接索引的 text 源内容为 `null`。 |
+| `files` | 与文档 SHA 关联的全部 files，包含 `path`、`filename`、`ext`、`status`。 |
+
+`search` 不匹配 filename；按文件名定位使用 `mineru find`。
 
 `search` 不应在 telemetry 中记录 query 或 snippet，但 CLI JSON 可以返回 snippet 供用户和 Agent 使用。
 
@@ -122,7 +127,7 @@ JSON 输出至少包含:
 ```json
 [
   {"tier": "flash", "page_range": "1~20"},
-  {"tier": "medium", "page_range": "1~5,18~20"}
+  {"tier": "basic", "page_range": "1~5,18~20"}
 ]
 ```
 
@@ -130,7 +135,7 @@ JSON 输出至少包含:
 
 ```json
 [
-  {"id": 123, "tier": "high", "page_range": "6~17", "status": "parsing"}
+  {"id": 123, "tier": "standard", "page_range": "6~17", "status": "parsing"}
 ]
 ```
 
@@ -175,7 +180,7 @@ watch 用于自动发现文件并建立本地索引。
 
 - watch 默认使用 `flash`。
 - watch 的目标是发现和搜索，不是最终阅读质量。
-- Agent 或用户主动读取文档时，应通过 `mineru parse` 使用默认选择策略或显式 tier。
+- Agent 或用户主动读取 PDF/image 文档时，应通过 `mineru parse` 使用默认选择策略或显式 tier；Office/HTML 读取按 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 归一为 `flash` 语义；text 直接读取源文件。
 - 可插拔设备不可达时，watch 标记为 `unreachable`，该 watch 下的 active 文件标记为 `unreachable`，而不是永久删除。
 - 可插拔设备恢复时，watch 和文件恢复为 `active`，并立即对该 watch 执行一次 scan。
 - scan 发现文件真实缺失时，文件标记为 `deleted`，保留 `sha256`。
@@ -307,6 +312,7 @@ mineru invalidate ~/Documents/a.pdf --tier flash
 - 省略 `--tier` 时作废该文档所有 tier 的 done batch。
 - 指定 `--tier` 时只作废对应 tier。
 - 作废后再次 `mineru parse` 会重新创建或复用新的解析任务。
+- text 文件没有 parse batch，返回 `parse_not_required`，应直接读取源文件。
 - 当前命令不暴露 `--json`。
 
 ## 13. telemetry
@@ -330,13 +336,13 @@ parsing-rules 用于按路径规则指定自动解析策略。
 示例：
 
 ```bash
-mineru config parsing-rules add "*/论文/*" --tier medium --pages all
-mineru config parsing-rules add "*/合同/*" --tier high --remote
+mineru config parsing-rules add "*/论文/*" --tier basic --pages all
+mineru config parsing-rules add "*/合同/*" --tier standard --remote
 ```
 
-规则命中时，系统必须检查本地或远端能力是否支持对应 tier。不满足时应记录错误或提示用户，不静默降级到 `flash`。
+parsing-rule 的 `tier` 和 `remote` 只适用于 PDF 和 image。Office 和 HTML 命中规则时忽略 `tier` 和 `remote`，按 `flash` 解析，并且 parse row 记录为 `flash`；text 只入库和索引，不创建 parse row。
 
-parsing-rules 允许不指定 tier。执行时必须解析成实际实体 tier，并记录实际 tier；默认选择不能解析为 `flash`。
+PDF/image 命中规则时，系统必须检查本地或远端能力是否支持对应 tier。rule 未指定 tier 时，按 `standard` -> `advanced` -> `basic` -> `flash` 选择可用 tier，并记录实际 tier。完整文件类型归一规则见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。
 
 ## 已收敛规则
 

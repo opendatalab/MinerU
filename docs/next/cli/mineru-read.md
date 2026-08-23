@@ -19,6 +19,8 @@ read(locator) = read existing parsed content by stable locator
 
 `read` 不负责 discover、scan、ingest，也不默认创建 parse task。它读取的是 doclib 中已有的解析结果。
 
+text 文件没有解析结果；当 locator 指向 text doc 时，返回 `parse_not_required`，调用方应直接读取源文件。
+
 ## 2. Usage
 
 ```bash
@@ -46,11 +48,11 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 规则：
 
 - `short_id` 是 doclib 为文档生成的稳定短 ID。
-- `tier` 取值为 `flash`、`medium`、`high`。
+- `tier` 取值为 `flash`、`basic`、`standard`、`advanced`。
 - `page_no` 和 `block_no` 使用 1-based 编号。
 - `char:{offset}` 使用 block 渲染文本内的 0-based 字符 offset。
 
-当只给出 `doc:{short_id}` 时，系统会选择当前已缓存的最高可用非 `flash` tier；如果不存在 `medium` 或 `high` 结果，则返回错误，不静默降级到 `flash`。
+当只给出 `doc:{short_id}` 时，系统不会创建新解析，而是在当前已缓存的非 `flash` 质量 tier 中选择最高质量结果，顺序为 `advanced` -> `standard` -> `basic`。如果不存在非 `flash` 质量 tier 结果，则返回错误，不静默降级到 `flash`。
 
 ## 4. 核心参数
 
@@ -82,6 +84,17 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 
 `--limit` 是软截断，尽量在页、block、段落、句子、换行或空白边界停止。
 
+### 可视 block 引用
+
+Markdown 继续优先输出 table、chart 和 formula 的结构化内容。需要输出图片时，doclib 使用可读取的 block locator，不暴露 Middle JSON 内部的 `image_path`：
+
+```markdown
+![Image block](doc:ab12cd3/tier:standard/page:1/block:4)
+![Table block]()
+```
+
+非空 locator 表示该 block 当前可通过 `mineru read <locator> --format image` 读取；空 locator 表示没有可用图片。`--output` 只写 Markdown 文件，保留这些虚拟引用，不创建 `images/` 目录。
+
 ### `--context`
 
 `--context N` 的含义随 locator 粒度变化：
@@ -102,15 +115,15 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 
 | 文档类型 | doc locator | doc/tier locator | page locator | block locator |
 |----------|:-----------:|:----------------:|:------------:|:-------------:|
-| PDF | 不支持 | 不支持 | 支持 | 有 bbox 且 bbox 非 empty 时支持 |
-| Office | 不支持 | 不支持 | 不支持 | 仅 image block 支持 |
-| 其它 | 不支持 | 不支持 | 不支持 | 暂不支持 |
+| PDF / image | 不支持 | 不支持 | 支持 | 有有效 bbox 时支持；否则可回退到 sidecar |
+| Office / HTML | 不支持 | 不支持 | 不支持 | visual block 有可访问 image sidecar 时支持 |
 
 实现语义：
 
-- PDF page image：从原 PDF page 渲染。
-- PDF block image：从原 PDF page 渲染后按 bbox 裁剪。
-- Office image block：从 Middle JSON 中的 image 数据生成临时 asset。
+- PDF / image page image：从源文件重新渲染页面。
+- 有有效 bbox 的 block image：从源页面渲染后按 bbox 裁剪。
+- 无有效 bbox 的 visual block：读取 doclib parsed 目录中的 image sidecar，并按请求格式生成临时 asset。
+- Markdown 中出现的非空 visual block locator 即表示该 block 支持 image 读取；源文件或 sidecar 在读取前被外部删除时，读取仍可能失败。
 - `read --output` 是 CLI 本地写文件行为，不是 doclib HTTP API 写文件行为。
 
 如果不带 `--output`，image 模式默认输出 server 返回的临时 asset path。
@@ -142,7 +155,7 @@ locator-first 读取时：
 普通 markdown 输出中，如果还有下一段可读内容，CLI 会输出：
 
 ```text
-<!-- Next: mineru read doc:ab12cd3/tier:medium/page:5 -->
+<!-- Next: mineru read doc:ab12cd3/tier:basic/page:5 -->
 ```
 
 `--json` 时，通过 `next_request.locator` 表示下一次建议读取的位置。

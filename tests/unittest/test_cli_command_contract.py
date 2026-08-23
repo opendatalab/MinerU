@@ -14,12 +14,7 @@ ALLOWED_TYPER_EXIT_CALLS: set[tuple[str, str]] = set()
 
 ALLOWED_EXIT_WITH_ERROR_CALLS: set[tuple[str, str]] = set()
 
-ALLOWED_EMIT_RESULT_CALLS = {
-    ("commands/parse.py", "_emit_notice"),
-    ("commands/parse.py", "_parse"),
-    ("commands/parse.py", "_output_parse_result"),
-    ("commands/parse.py", "_emit_parse_json_response"),
-}
+ALLOWED_EMIT_RESULT_CALLS = {("commands/parse.py", "_emit_notice")}
 
 MIGRATED_QUERY_COMMANDS = {
     "commands/config.py",
@@ -34,6 +29,7 @@ MIGRATED_QUERY_COMMANDS = {
     "commands/server.py",
     "commands/show.py",
     "commands/telemetry.py",
+    "commands/usage.py",
     "commands/watch.py",
 }
 

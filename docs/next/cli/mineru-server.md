@@ -25,13 +25,15 @@
 
 启动时：
 
-1. 初始化数据目录和 SQLite。
-2. 运行 migration 和默认配置种子。
-3. 清理 stale lock 和崩溃前未完成任务。
-4. 创建 services。
-5. managed 模式下拉起 local parse-server。
-6. 启动 watch、ingest、parse、health check、device monitor 和 compaction。
-7. 通过 UDS 或 TCP loopback 提供本地 HTTP + JSON 协议。
+1. 获取 `$MINERU_HOME/doclib.lock`，确保当前 home 只有一个 doclib owner。
+2. 清理 stale endpoint 和 UDS socket。
+3. 写入包含当前 PID、`server_id` 和空 transports 的启动阶段 endpoint。
+4. 绑定 UDS/TCP listener，并用实际 transports 更新 endpoint。
+5. 初始化数据目录和 SQLite。
+6. 运行 migration 和默认配置种子。
+7. 清理 stale task lock 和崩溃前未完成任务。
+8. 创建 services，并按需拉起 managed local parse-server。
+9. 启动 watch、ingest、parse、health check、device monitor 和 compaction。
 
 默认情况下，UDS 可用时使用 `$MINERU_HOME/doclib.sock`；UDS 不可用时自动启用 TCP loopback fallback。server 启动成功后会写入 `$MINERU_HOME/doclib.endpoint.json`，供 CLI / SDK 发现实际 endpoint。
 
@@ -42,7 +44,19 @@
 1. 停止后台任务。
 2. managed 模式下停止 local parse-server。
 3. 关闭数据库资源。
-4. 删除 socket 文件和 endpoint discovery 文件。
+4. 在 ownership 保护下清理 socket 文件和 endpoint discovery 文件；CLI stop 在取得已释放的锁后执行兜底清理。
+5. 释放 ownership lock；`doclib.lock` 文件是否保留取决于平台锁实现。
+
+`mineru server stop` 会等待 server 不可连接且 `doclib.lock` 已释放后才返回成功。`restart` 只有在 stop 完成后才启动
+replacement，避免两个 server 同时操作一个 MinerU home。
+
+`doclib.start.lock` 只序列化 CLI spawn；`doclib.lock` 由 server 进程持有整个生命周期，是判断 home ownership 的唯一权威锁。
+直接执行 `python -m mineru.doclib.app` 也必须获取该锁。未取得 ownership 的进程不得清理 endpoint、socket 或数据库状态；
+lock 文件是否存在不能用于判断 ownership。
+
+如果 endpoint 不可连接但 `doclib.lock` 仍被占用，status/start/stop 返回 `service_unavailable`，说明当前 home 已由另一个 doclib
+server process 持有；如果 endpoint 中存在有效 PID，错误会将其标记为 `reported PID` 供诊断。用户消息不显示 lock 路径，PID
+不参与 ownership 判断，CLI 也不会据此自动终止进程。不能将该状态降级为普通的“server 未运行”，也不能自动抢占或清理。
 
 ## 4. 状态输出
 
@@ -52,6 +66,7 @@
 
 - `running`
 - `pid`
+- `server_id`
 - `uptime_seconds`
 - `mineru_home`
 - `socket_path`
@@ -129,11 +144,11 @@ local parse-server 是独立进程，由 `mineru-kit api-server` 提供。doclib
 
 | 模式 | 行为 |
 |------|------|
-| `disabled` | 不启用本地 medium/high 解析 |
+| `disabled` | 不启用本地质量解析 |
 | `managed` | doclib 启停时自动管理 parse-server |
 | `self_hosted` | 用户自己启动 parse-server，doclib 只连接 URL |
 
-默认选择策略需要通过 local 或 remote parse-server 的能力发现解析为可用的非 `flash` tier，例如 `medium`、`high` 或 `extra_high`。
+PDF/image 默认选择策略需要通过 local 或 remote parse-server 的能力发现解析为可用的非 `flash` tier，选择顺序见 [解析 Tier](../tiers.md)。Office/HTML 的归一规则见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)；text 直接读取。
 
 ## 6. 崩溃恢复
 

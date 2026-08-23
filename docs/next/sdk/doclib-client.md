@@ -46,7 +46,11 @@ class DoclibClient:
 
 - 构造 client 不应启动 doclib server。
 - 默认通过 `$MINERU_HOME/doclib.endpoint.json` 发现 doclib endpoint。
+- 默认发现不从启动配置推导 UDS 或 TCP；endpoint 文件不存在或无效时，方法调用抛出 `ServerNotRunningError`。
+- 默认发现会在首次请求前校验 endpoint 与 `/server/status` 的 `server_id`；不匹配的 transport 不会承载业务请求。
+- version 1 endpoint 仅用于升级迁移，通过 endpoint/status PID 对应关系识别旧 server；version 2 的 PID 不参与身份判断。
 - `socket_path` 表示显式 UDS endpoint；`base_url` 只表示显式 TCP endpoint，例如 `http://127.0.0.1:15980`。
+- 显式 `socket_path` / `base_url` 代表调用方明确选择的 server，不执行 endpoint `server_id` 校验。
 - `socket_path` 和 `base_url` 不能同时传入。
 - 无法连接任何候选 endpoint 时，方法调用抛出 `ServerNotRunningError`。
 - client 当前支持 `close()`；是否增加 context manager 仍是迁移任务。
@@ -75,7 +79,7 @@ def ensure_parse(self, request: ParseRequest) -> ParseResponse: ...
 | 参数 | 说明 |
 |------|------|
 | `path` | 本地文件路径。 |
-| `tier` | `flash`、`medium`、`high`、`extra_high` 或 `None`。`None` 表示使用 doclib 规则和默认策略。 |
+| `tier` | `flash`、`basic`、`standard`、`advanced` 或 `None`。`None` 表示使用 doclib 规则和默认策略；非 PDF/image 单文件未指定 tier 时归一为 `flash`，显式质量 tier 报错。 |
 | `page_range` | 页码范围。 |
 | `force` | 跳过已有 done 缓存并重新解析；可复用 active parse，只为未覆盖页创建新 parse。 |
 | `remote` | 是否允许调用远端 parse-server。默认 `False`。远端 URL 来自 doclib config；API Key 优先来自 doclib config，未配置时使用环境变量。 |
@@ -122,6 +126,8 @@ class ParseResponse:
 
 `force=True` 与 `invalidate()` 不等价。`force=True` 跳过 done cache，并通过 `wait_parse_ids` 等待复用或新建的 active parse；旧结果仍然有效。`invalidate()` 会让旧结果退出缓存命中、读取合并、搜索刷新和 compaction 选择。
 
+Markdown 响应中的 visual block 图片使用 `doc:.../page:.../block:...` locator。非空图片 locator 可以原样传给 `read_content(..., format="image")`；空 locator 表示该 block 没有可用图片。SDK 调用方不应依赖或拼接 Middle JSON 内部的 `image_path`。
+
 ## Search 与 Info
 
 ```python
@@ -144,11 +150,20 @@ def info(self, file_path: str) -> dict: ...
 
 | 方法 | 响应 |
 |------|------|
-| `search()` | `SearchResponse`，包含全文结果、snippet、paths、tier；支持 `file_type`、`tier`、`min_tier` 过滤。 |
+| `search()` | `SearchResponse`，包含全文结果、snippet、files、可空 tier；支持 `file_type`、`tier`、`min_tier` 过滤。 |
 | `find()` | `FindResponse`，包含文件名搜索结果；支持 `ext` 过滤。 |
 | `get_file_by_path()` | `FileInfoResponse`，包含文件元信息、doc metadata 和 parse tiers。 |
 
-`search()` 的 `paths` 优先返回 active files；如果某个已索引 doc 没有任何 active file，则 fallback 返回非 active file paths。搜索结果可信度只通过 `tier` 表达。
+`search()` 的 `files` 返回与文档 SHA 关联的全部 file aliases，按 file id 降序排列；每项包含 path、filename、ext 和 status。已索引的 orphan 文档使用空列表。active 优先只属于非 JSON CLI 展示策略，不改变 SDK 响应。解析内容的 `tier` 表示索引来源 tier；直接索引的 text 源内容为 `null`。传入 `tier` 或 `min_tier` 时，`tier=null` 的结果不参与匹配。
+
+## Remote API 方法
+
+| 方法 | 响应 |
+|------|------|
+| `get_remote_usage()` | `RemoteUsageResponse`，返回当前配置 Remote API 的 access level、billing period、current usage 和 limits。 |
+
+该方法通过 doclib 读取 Remote URL 和有效 API Key，并调用本地 doclib route `GET /api/v1/remote-usage`。它不返回 Local Parse
+Server 运行统计。
 
 ## Config 方法
 

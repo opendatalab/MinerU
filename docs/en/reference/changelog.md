@@ -72,7 +72,6 @@ This document records the release history of MinerU, including major capability 
 
 **`pipeline` backend optimizations**
 
-- Added experimental support for Chinese formulas, which can be enabled by setting the environment variable `export MINERU_FORMULA_CH_SUPPORT=1`. This feature may cause a slight decrease in MFR speed and failures in recognizing some long formulas. It is recommended to enable it only when parsing Chinese formulas is needed. To disable this feature, set the environment variable to `0`.
 - `OCR` speed significantly improved by 200%~300%, thanks to the optimization solution provided by [@cjsdurj](https://github.com/cjsdurj)
 - `OCR` models optimized for improved accuracy and coverage of Latin script recognition, and updated Cyrillic, Arabic, Devanagari, Telugu (te), and Tamil (ta) language systems to `ppocr-v5` version, with accuracy improved by over 40% compared to previous models 
 

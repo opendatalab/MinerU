@@ -140,17 +140,10 @@ llm_aided:
 
 ## 基于配置文件扩展 MinerU 功能
 
-MinerU 现已实现开箱即用，但也支持通过配置文件扩展功能。您可通过编辑用户目录下的 `mineru.json` 文件，添加自定义配置。
-
->[!IMPORTANT]
->`mineru.json` 文件会在您使用内置模型下载命令 `mineru-kit models download all` 时自动生成，也可以通过将[配置模板文件](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json)复制到用户目录下并重命名为 `mineru.json` 来创建。
+MinerU 现已实现开箱即用，但也支持通过配置文件扩展功能。LaTeX 分隔符、LLM 辅助标题分级等旧工具配置仍使用用户目录下的 `mineru.json`。模型存储目录和模型源配置使用 `config.yaml`，详见[模型源说明](./model_source.md)。
 
 以下是一些可用的配置选项： 
 
-- `latex-delimiter-config`：
-    * 用于配置 LaTeX 公式的分隔符
-    * 默认为`$`符号，可根据需要修改为其他符号或字符串。
-  
 - `models-dir`：
     * 用于指定本地模型存储目录，请分别指定本地小模型 bundle（`models-dir.pipeline`）和 VLM bundle（`models-dir.vlm`）的模型目录，
     * 指定目录后您可通过配置环境变量`export MINERU_MODEL_SOURCE=local`来使用本地模型。

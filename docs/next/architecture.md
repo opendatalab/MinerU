@@ -19,11 +19,11 @@ mineru CLI / MCP Server / MinerU.app
        - SQLite + FTS5
   -> local parse-server
        - 独立进程
-       - medium / high / extra_high tier
+       - basic / standard / advanced tier
        - HTTP API
 ```
 
-`doclib` 是默认常驻的本地文档库服务，负责文件入库、SHA256 去重、解析任务调度、缓存、搜索、配置和本地 API。`local parse-server` 是可选独立进程，负责加载较重模型并执行 `medium` / `high` / `extra_high` 等质量 tier 解析。
+`doclib` 是默认常驻的本地文档库服务，负责文件入库、SHA256 去重、解析任务调度、缓存、搜索、配置和本地 API。`local parse-server` 是可选独立进程，负责加载较重模型并执行 `basic` / `standard` / `advanced` 等质量 tier 解析。
 
 Tier 的产品语义以 [解析 Tier](tiers.md) 为准；本文只描述它们在 doclib 和 ParseWorker 中的执行路径。
 
@@ -151,7 +151,7 @@ metadata 更新规则：入库阶段写基础 metadata；解析完成后，只�
 | 字段 | 含义 |
 |------|------|
 | `sha256` | 指向文档内容 |
-| `tier` | 实体 tier：`flash` / `medium` / `high` / `extra_high`；未指定 tier 应在入队前或执行前解析为实体 tier |
+| `tier` | 实体 tier：`flash` / `basic` / `standard` / `advanced`；未指定 tier 应在入队前或执行前解析为实体 tier |
 | `page_range` | 正值页码范围字符串，如 `1~5,46~50` |
 | `status` | `pending` / `parsing` / `done` / `failed` / `superseded` |
 | `priority` | Agent 同步请求高于 watch 后台任务 |
@@ -165,7 +165,7 @@ metadata 更新规则：入库阶段写基础 metadata；解析完成后，只�
 
 | 表 | 作用 |
 |----|------|
-| `fts_contents` | 内容全文搜索，只保留最高 tier 文本 |
+| `fts_contents` | 内容全文搜索；解析内容保留最高 tier 文本，text 源内容的 tier 为 `null` |
 | `fts_filenames` | 文件名搜索 |
 | `watches` | 监控目录、可插拔设备状态 |
 | `exclude_rules` | exclude 路径规则 |
@@ -173,7 +173,7 @@ metadata 更新规则：入库阶段写基础 metadata；解析完成后，只�
 | `config` | SQLite KV 配置 |
 | `_migrations` | schema 版本追踪 |
 
-SQLite 运行在 WAL 模式，使用 FTS5 提供搜索能力。每次 DB 操作打开独立 `aiosqlite` 连接，提交后关闭，避免跨 worker 游标冲突。
+SQLite 运行在 WAL 模式，使用 FTS5 提供搜索能力。每次 DB 操作打开独立 `aiosqlite` 连接，提交后关闭，避免跨 worker 游标冲突。WAL mode 只在初始化时设置；运行期连接配置显式 busy timeout。单 doclib 进程内的写操作通过共享写锁串行化，普通读取保持并发；`SQLITE_BUSY` / `SQLITE_LOCKED` 使用有上限的指数退避重试，耗尽后对外返回可重试的 `server_busy`。
 
 ## 4. 数据流
 
@@ -192,7 +192,7 @@ SQLite 运行在 WAL 模式，使用 FTS5 提供搜索能力。每次 DB 操作�
 阶段 2: 解析
   -> flash: 本地轻量解析
   -> 默认选择: 通过 parse-server 能力发现解析为质量 tier
-  -> medium/high/extra_high: local 或 remote parse-server
+  -> basic/standard/advanced: local 或 remote parse-server
   -> 写 parsed artifacts
   -> 更新 fts_contents
   -> 更新 parses/docs 状态
@@ -200,7 +200,7 @@ SQLite 运行在 WAL 模式，使用 FTS5 提供搜索能力。每次 DB 操作�
 
 这样用户无需理解“索引”和“解析”两个概念；不同 tier 只是解析深度和执行路径不同。
 
-注意：`flash` 是 watch 自动发现和搜索索引的低成本 tier，不应作为用户主动阅读文档时的默认最终质量。主动阅读未指定 tier 时应使用默认选择策略，解析为当前可发现的最高非 `flash` tier，具体语义见 [解析 Tier](tiers.md)。
+注意：`flash` 是 watch 自动发现和搜索索引的低成本 tier，不应作为 PDF/image 主动阅读时的默认最终质量。PDF/image 主动阅读未指定 tier 时应使用默认选择策略；有能力发现上下文时按 `standard` -> `advanced` -> `basic` 解析。Office/HTML 的归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)；text 只入库和索引，直接读取源文件。
 
 ### 4.2 文件发现到入库
 
@@ -241,7 +241,7 @@ watch 流程也调用同一发现/刷新步骤:
 - watch file event、所有 scan 操作和上述 4 个同步 path 操作，都必须检查 path 当前是否存在。
 - 如果 path 不存在，且所属 removable watch root 不可达，则标记为 `unreachable`。
 - 如果 path 不存在，且不是设备整体不可达导致，则标记为 `deleted`，写入 `deleted_at`，保留 `sha256`。
-- 标记 `deleted` 或 `unreachable` 时不清理 FTS；find 默认只返回 active file，search 默认优先返回 active file paths，只有在已索引 doc 没有任何 active file 时才 fallback 返回非 active file paths。
+- 标记 `deleted` 或 `unreachable` 时不清理 FTS；find 默认只返回 active file。search JSON 返回全部 file aliases 及状态，非 JSON CLI 才使用 active 优先展示。
 
 失败时按错误绑定对象写入对应层级:
 
@@ -272,9 +272,9 @@ ParseWorker 按 `tier`、`privacy` 和 parse-server 健康状态路由：
 
 | 条件 | 执行路径 |
 |------|----------|
-| 未指定 tier | 通过当前目标 parse-server 能力发现解析为最高可用质量 tier；不可解析为 `flash` |
+| 未指定 tier | PDF/image 通过当前目标 parse-server 能力发现，按 `standard` -> `advanced` -> `basic` 解析；Office/HTML 归一为 `flash`；text 直接读取 |
 | `tier=flash` | 直接本地调用轻量 parser，`via=local` |
-| `tier=medium/high/extra_high` 且 `privacy=remote` | 优先调用 config 中的远端地址；产品正式目标是 `mineru.net/api`，当前代码默认值暂为 `https://staging.mineru.org.cn/api` |
+| `tier=basic/standard/advanced` 且 `privacy=remote` | 优先调用 config 中的远端地址，默认使用 `https://mineru.net/api` |
 | remote 不可用 | 尝试 fallback 到 local parse-server |
 | `privacy=local` 且 local parse-server disabled | 返回 `no_engine` |
 | local parse-server 配置但探活失败 | 返回可重试错误 |
@@ -283,7 +283,7 @@ ParseWorker 按 `tier`、`privacy` 和 parse-server 健康状态路由：
 关键约束：
 
 - 用户显式 `--remote` 才允许上传文档。
-- 未指定 tier 使用默认选择策略，但永远不会降级到 `flash`。
+- PDF/image 未指定 tier 使用默认选择策略，但永远不会降级到 `flash`。
 - 远端解析失败且属于文件损坏、加密等非网络错误时，不 fallback 到本地。
 - 重试时保持原始 `privacy` 不变。
 - `via` 只在解析完成后写入，避免失败记录误导。
@@ -311,24 +311,24 @@ ParseWorker 按 `tier`、`privacy` 和 parse-server 健康状态路由：
           flash/
             1~5_1710000000000.json
             98~102_1710000123000.json
-          medium/
+          basic/
             1~10_1710001234000.json
             11~20_1710002234000.json
-          high/
+            images/              # 仅在解析结果包含必要 sidecar 时存在
+          standard/
             1~20_1710003234000.json
-          extra_high/
+          advanced/
             1~20_1710004234000.json
-            images/
 ```
 
 每个 JSON 文件表示一次解析批次，文件名由页码范围和完成时间组成。每个 tier 独立目录，互不覆盖。remote 解析完成后也写入同一结构，供 CLI、SDK、搜索和缓存统一读取。
 
-doclib 不在 `parsed/` 中保存 Markdown、Content List 或 HTML。它们都从 Middle JSON 读取时转换得到；搜索索引可以使用临时渲染出的 Markdown 文本，但不把这份 Markdown 保存为产物文件。
+doclib 不在 `parsed/` 中保存 Markdown、Content List 或 HTML。它们都从 Middle JSON 读取时转换得到；搜索索引可以使用临时渲染出的 Markdown 文本，但不把这份 Markdown 保存为产物文件。PDF 和 image 通常不保存 block 图片，读取时从源页面按 bbox 裁剪；Office 等后端只有在解析结果包含图片时才保存 `images/` sidecar。
 
 搜索策略：
 
 - `fts_filenames` 用于文件名搜索。
-- `fts_contents` 用于内容搜索，同一文档只保留最高 tier 文本。
+- `fts_contents` 用于正文、标题和作者搜索，同一文档只保留一份内容，不存储或匹配 filename。解析内容记录实际 tier，直接索引的 text 源内容记录 `tier=null`。
 - 内容超过 30K 字符时，保留 head + tail，完整内容仍从解析产物读取。
 - 中文分词采用 jieba + FTS5 `unicode61` 的组合方案。
 
@@ -338,14 +338,17 @@ doclib 不在 `parsed/` 中保存 Markdown、Content List 或 HTML。它们都�
 
 启动顺序：
 
-1. 创建 `data_dir`。
-2. 初始化 SQLite schema、migration 和种子配置。
-3. 清理 stale ingest 锁。
-4. 将崩溃前 `parsing` 状态任务标记为 `failed` 并释放锁。
-5. 创建 services。
-6. managed 模式下启动 local parse-server。
-7. 启动后台 asyncio tasks。
-8. 启动 UDS 上的 uvicorn。
+1. 获取 `$MINERU_HOME/doclib.lock`，独占当前 home。
+2. 清理 stale endpoint 和 UDS socket。
+3. 原子写入包含当前 PID、`server_id` 和空 transports 的 endpoint，供启动阶段诊断。
+4. 启动本地 HTTP transport，并用实际 transports 原子更新 endpoint。
+5. 创建 `data_dir`。
+6. 初始化 SQLite schema、migration 和种子配置。
+7. 清理 stale ingest 锁。
+8. 将崩溃前 `parsing` 状态任务标记为 `failed` 并释放锁。
+9. 创建 services。
+10. managed 模式下启动 local parse-server。
+11. 启动后台 asyncio tasks。
 
 ### 6.2 关闭
 
@@ -354,7 +357,11 @@ doclib 不在 `parsed/` 中保存 Markdown、Content List 或 HTML。它们都�
 1. 通知后台任务停止，等待当前任务收尾。
 2. managed 模式下终止 local parse-server。
 3. 关闭数据库资源。
-4. 删除 socket 文件。
+4. 在仍持有 `doclib.lock` 时尝试清理 socket 和 endpoint discovery 文件。
+5. 释放 `doclib.lock`；lock 文件本身是否保留属于平台实现细节。
+
+CLI 的 stop/restart 同时等待 endpoint 不可连接和 ownership lock 可重新获取，并在临时持有该锁时兜底清理 discovery 文件；
+不能只用 endpoint 消失判断 shutdown 完成。
 
 ### 6.3 崩溃恢复
 
@@ -385,9 +392,9 @@ parse-server 配置：
 | key | 默认值 | 说明 |
 |-----|--------|------|
 | `parse_server.local.mode` | `disabled` | `disabled` / `managed` / `self_hosted` |
-| `parse_server.local.managed_tier` | `high` | managed 模式启动的 tier；当前允许 `medium` / `high` / `extra_high` |
+| `parse_server.local.managed_tier` | `standard` | managed 模式的启动能力上限；只允许 `basic` / `standard`，Standard 同时提供 Advanced 请求能力 |
 | `parse_server.local.self_hosted_url` | 无 | self-hosted 地址 |
-| `parse_server.remote.url` | 当前代码默认 `https://staging.mineru.org.cn/api` | 远端地址；产品正式目标是 `https://mineru.net/api` |
+| `parse_server.remote.url` | `https://mineru.net/api` | 默认远端地址 |
 | `parse_server.remote.api_key` | 无 | 远端 API Key |
 
 API Key 优先级：config 表中的 API Key 高于环境变量 `MINERU_API_KEY`；环境变量仅作为未配置 API Key 时的默认值。
@@ -406,7 +413,7 @@ Watch、parsing-rules 和 exclude 规则也由 CLI 写入 SQLite。Parsing-rules
 |------|------|
 | 纯文本 | 直接读取，无需模型解析 |
 | Office / HTML | 本地 CPU 全量解析 |
-| PDF / Image | 按 tier 路由到默认选择 / flash / medium / high / extra_high |
+| PDF / Image | 按 tier 路由到默认选择 / flash / basic / standard / advanced |
 
 ## 9. 错误与恢复
 
@@ -498,7 +505,7 @@ parse-server 相关错误：
 
 | code | 含义 | 可重试 |
 |------|------|:--:|
-| `quality_tier_unavailable` | 主动阅读需要质量 tier，但只有 `flash` 可用 | 否 |
+| `quality_tier_unavailable` | PDF/image 主动阅读需要质量 tier，但只有 `flash` 可用 | 否 |
 | `no_engine` | 本地请求质量 tier，但 local parse-server disabled | 否 |
 | `engine_unavailable` | local parse-server 已配置但探活失败 | 是 |
 | `parse_server_unavailable` | remote 不可用且 local fallback 不可用 | 是 |

@@ -194,7 +194,7 @@ Content-Type: application/json
       "dimensions": {
         "source": "cli",
         "caller": "agent",
-        "tier": "medium(default)",
+        "tier": "basic(default)",
         "status": "succeeded"
       }
     },
@@ -204,7 +204,7 @@ Content-Type: application/json
       "dimensions": {
         "source": "cli",
         "caller": "agent",
-        "tier": "medium(default)"
+        "tier": "basic(default)"
       }
     }
   ]
@@ -257,7 +257,7 @@ Metric 的 `name` 表示数值指标，`value` 表示计数或数值累加。
   "name": "parse.completed.count",
   "value": 1,
   "dimensions": {
-    "tier": "medium",
+    "tier": "basic",
     "status": "succeeded"
   }
 }
@@ -268,7 +268,7 @@ Metric 的 `name` 表示数值指标，`value` 表示计数或数值累加。
 ```json
 {
   "name": "parse.tier",
-  "value": "medium"
+  "value": "basic"
 }
 ```
 
@@ -278,7 +278,7 @@ Dimension 只允许低基数字段:
 |------|-------------|
 | `source` | `http_api` / `sdk` / `cli` / `mcp` / `web` / `app` / `watch` / `background` / `unknown` |
 | `caller` | `agent` / `user` / `http_client` / `sdk` / `web` / `app` / `system` / `unknown` |
-| `tier` | `default` / `flash` / `medium` / `high` / `medium(default)` / `high(default)` / `unknown` |
+| `tier` | `default` / `flash` / `basic` / `standard` / `advanced` / `basic(default)` / `standard(default)` / `advanced(default)` / `unknown` |
 | `status` | `succeeded` / `failed` / `partial` / `canceled` |
 | `input_type` | `pdf` / `docx` / `pptx` / `xlsx` / `html` / `other` / `unknown` |
 | `output_format` | `middle_json` / `markdown` / `structured_content` / `other` |
@@ -324,8 +324,8 @@ CLI 的 `caller` 可以通过父进程识别。若父进程是 Claude Code、Cod
 `tier` 同时表达请求档位和实际解析档位:
 
 - 用户未指定 tier，且尚未解析到实体 tier 时，使用 `default`。
-- 用户显式指定实体 tier，或任务已经完成且没有必要保留默认来源时，使用 `flash`、`medium` 或 `high`。
-- 用户未指定 tier，且已经解析到实体 tier，同时仍需要保留来源信息时，使用 `medium(default)` 或 `high(default)`。
+- 用户显式指定实体 tier，或任务已经完成且没有必要保留默认来源时，使用 `flash`、`basic`、`standard` 或 `advanced`。
+- 用户未指定 tier，且已经解析到实体 tier，同时仍需要保留来源信息时，使用 `basic(default)`、`standard(default)` 或 `advanced(default)`。
 - 默认选择不会解析为 `flash`，因此不定义 `flash(default)`。
 - parse-server 相关 metric 也使用同一个 `tier` 维度，不再单独使用 `parse_server_tier`。
 
@@ -457,7 +457,7 @@ Parse-server 相关 metric 必须带以下维度，便于区分用户是否使�
 
 ```text
 server: local(managed) | local(self-hosted) | remote(official) | remote(custom) | unknown
-tier: medium | high | medium(default) | high(default) | unknown
+tier: basic | standard | advanced | basic(default) | standard(default) | advanced(default) | unknown
 status: succeeded | failed | partial | canceled
 ```
 
@@ -476,7 +476,7 @@ Parse-server 配置口径:
 - 数量: `parse_server.requested.count`、`parse_server.completed.count`、`parse_server.files.count`、`parse_server.processed_page_count`，且 `server=local(managed)` 或 `local(self-hosted)`。
 - 性能: `parse_server.duration.bucket.count`，且 `server=local(managed)` 或 `local(self-hosted)`。
 - 模式: 由 `server=local(managed)` 或 `local(self-hosted)` 区分。
-- tier: `tier=medium`、`high`、`medium(default)` 或 `high(default)`。
+- tier: `tier=basic`、`standard`、`advanced`、`basic(default)`、`standard(default)` 或 `advanced(default)`。
 
 Telemetry 自身:
 
@@ -494,7 +494,7 @@ P0 不一定实现所有候选 metric。裁剪时必须保留能回答以下问�
 1. 使用规模: WAI、DAU、parse 次数、文件数、页数。
 2. Agent 入口: `caller=agent` 与 `caller=user` 的使用差异。
 3. 调用通道: HTTP API、SDK、CLI、MCP、Web、App、watch 和后台任务的来源分布。
-4. 解析服务: 是否使用 parse-server，使用 `local(managed)`、`local(self-hosted)`、`remote(official)` 还是 `remote(custom)`，medium 还是 high。
+4. 解析服务: 是否使用 parse-server，使用 `local(managed)`、`local(self-hosted)`、`remote(official)` 还是 `remote(custom)`，以及具体解析 tier。
 5. 主链路质量: parse、ingest、render、search index 的成功和失败。
 6. 关键性能: parse 耗时、parse-server 耗时、queue wait、render 耗时的 bucket。
 7. 隐私边界: remote 是否被请求、允许、拒绝，以及 remote 失败后是否 fallback 到 local。

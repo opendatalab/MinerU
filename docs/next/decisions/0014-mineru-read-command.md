@@ -62,6 +62,8 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 
 ## Markdown 读取语义
 
+> visual block 的 Markdown 引用与 image 可用性规则已由 [ADR-0027](0027-doclib-visual-block-locators.md) 补充；`image_path` 不再作为 doclib 用户接口暴露。
+
 `--format markdown` 是默认格式。
 
 | Locator | 默认读取范围 |
@@ -94,25 +96,21 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 
 | 文档类型 | doc locator | doc/tier locator | page locator | block locator |
 |----------|:-----------:|:----------------:|:------------:|:-------------:|
-| PDF | 不支持 | 不支持 | 支持 | 有 bbox 且 bbox 非 empty 时支持 |
-| Office | 不支持 | 不支持 | 不支持 | 仅 image block 支持 |
-| 其它 | 不支持 | 不支持 | 不支持 | 暂不支持 |
+| PDF / image | 不支持 | 不支持 | 支持 | 有有效 bbox 时支持；否则可回退到 sidecar |
+| Office / HTML | 不支持 | 不支持 | 不支持 | visual block 有可访问 image sidecar 时支持 |
 
-PDF 的 image 输出规则:
+PDF / image 的 image 输出规则:
 
-- page image 从原 PDF page 渲染得到。
-- block image 从原 PDF page 渲染后按 bbox 裁剪得到。
+- page image 从源文件重新渲染得到。
+- block image 从源页面渲染后按 bbox 裁剪得到。
 - block image 不按 block type 判断；只要 bbox 存在且非 empty，就可以输出 image。
-- 实现时复用 `PDFDocument.render_page()` / `PDFDocument.crop_image()`，并从 `files` 表按 `sha256` 查找 active source path 读取原 PDF bytes。
+- PDF 直接构造 `PDFDocument`；image 使用 `PDFDocument.from_image()` 重建解析时使用的单页 PDF。两者复用 `render_page()` / `crop_image()`。
 
-Office 的 image 输出规则:
+Office / HTML 的 image 输出规则:
 
-- Office 不支持 doc、doc/tier、page locator 输出 image。
-- Office 只有 image block 支持输出 image。
-- Office image block 只能从 Middle JSON 中读取 image asset。
-- 实现时优先使用 image block 内的 `span.image_base64` 解码生成临时 asset。
-- 如果 Middle JSON 中只有 `span.image_path`，仅在该 path 可访问时作为 fallback。
-- 当前 doclib parsed 目录只持久化 JSON，不保证已额外持久化 Office image 文件；因此不能依赖 `ParseResult.save()` 产物存在。
+- Office / HTML 不支持 doc、doc/tier、page locator 输出 image。
+- image、table、chart、formula 等 visual block 仅在 doclib parsed 目录中存在对应 image sidecar 时支持 image 输出。
+- `image_path` 只用于 doclib 内部安全解析 sidecar，不向 Markdown 读取者暴露。
 
 默认情况下，image 输出打印 asset path。传入 `--output` 时，CLI 先根据输出路径后缀选择 `image_format`，由 server 生成匹配编码的临时 asset，再由 CLI 在 client 侧 copy 到指定路径。传入 `--json` 时输出完整 `DocContentResponse`。
 
@@ -179,7 +177,7 @@ parse read 返回示例:
 {
   "sha256": "...",
   "short_id": "ab12cd3",
-  "tier": "medium",
+  "tier": "basic",
   "format": "markdown",
   "content": "...",
   "request_scope": {
@@ -192,8 +190,8 @@ parse read 返回示例:
   "content_ranges": [
     {
       "page_range": "1~10",
-      "start": "doc:ab12cd3/tier:medium/page:1",
-      "end": "doc:ab12cd3/tier:medium/page:10/block:18"
+      "start": "doc:ab12cd3/tier:basic/page:1",
+      "end": "doc:ab12cd3/tier:basic/page:10/block:18"
     }
   ],
   "truncated": false,
@@ -212,21 +210,21 @@ locator read 返回示例:
 {
   "sha256": "...",
   "short_id": "ab12cd3",
-  "tier": "medium",
+  "tier": "basic",
   "format": "markdown",
   "content": "...",
   "request_scope": {
     "page_range": "4",
     "after": null,
     "limit": 30000,
-    "locator": "doc:ab12cd3/tier:medium/page:4/block:12",
+    "locator": "doc:ab12cd3/tier:basic/page:4/block:12",
     "context": 2
   },
   "content_ranges": [
     {
       "page_range": "4",
-      "start": "doc:ab12cd3/tier:medium/page:4/block:10",
-      "end": "doc:ab12cd3/tier:medium/page:4/block:14"
+      "start": "doc:ab12cd3/tier:basic/page:4/block:10",
+      "end": "doc:ab12cd3/tier:basic/page:4/block:14"
     }
   ],
   "truncated": false,
@@ -241,21 +239,21 @@ image read 返回示例:
 {
   "sha256": "...",
   "short_id": "ab12cd3",
-  "tier": "medium",
+  "tier": "basic",
   "format": "image",
   "content": "",
   "request_scope": {
     "page_range": "4",
     "after": null,
     "limit": 30000,
-    "locator": "doc:ab12cd3/tier:medium/page:4/block:12",
+    "locator": "doc:ab12cd3/tier:basic/page:4/block:12",
     "context": 0
   },
   "content_ranges": [
     {
       "page_range": "4",
-      "start": "doc:ab12cd3/tier:medium/page:4/block:12",
-      "end": "doc:ab12cd3/tier:medium/page:4/block:12"
+      "start": "doc:ab12cd3/tier:basic/page:4/block:12",
+      "end": "doc:ab12cd3/tier:basic/page:4/block:12"
     }
   ],
   "truncated": false,
@@ -283,7 +281,7 @@ read 使用 locator continuation:
 - CLI continuation marker 渲染为:
 
 ```markdown
-<!-- Next: mineru read doc:ab12cd3/tier:medium/page:5 -->
+<!-- Next: mineru read doc:ab12cd3/tier:basic/page:5 -->
 ```
 
 P0 暂不实现 block locator marker，即不在每个 block 前默认输出:
@@ -373,7 +371,7 @@ def execute_read_plan(plan: ReadPlan) -> DocContentResponse: ...
 - select page/block/char/context。
 - render markdown。
 - render page/block image。
-- PDF image 使用原 PDF 渲染/crop；Office image 使用 Middle JSON 中的 `span.image_base64` 或可访问的 `span.image_path`。
+- 有有效 bbox 的 block 使用 PDF/image 源页面渲染和裁剪；其他 visual block 使用 doclib parsed 目录中可访问的 sidecar。
 - apply soft limit。
 - build `content_ranges`。
 - build `next_request`。
@@ -421,8 +419,8 @@ def read_content(
 HTTP 路由:
 
 ```http
-GET /api/v1/content?locator=doc:ab12cd3/tier:medium/page:4&format=markdown&limit=30000
-GET /api/v1/content?locator=doc:ab12cd3/tier:medium/page:4/block:12&format=image&image_format=png
+GET /api/v1/content?locator=doc:ab12cd3/tier:basic/page:4&format=markdown&limit=30000
+GET /api/v1/content?locator=doc:ab12cd3/tier:basic/page:4/block:12&format=image&image_format=png
 ```
 
 P0 不为 locator-first content API 提供 POST export。`GET /api/v1/content` 可以在 server 内部生成临时 image asset，并接受 `image_format=jpeg|png|webp` 控制 asset 编码，但不接受 client 指定的 output path。CLI `read --output` 是 client 侧文件写入/copy 行为，不是 doclib HTTP API 行为。
@@ -442,7 +440,7 @@ P0 不为 locator-first content API 提供 POST export。`GET /api/v1/content` �
 | `context_not_applicable` | doc 或 doc/tier locator 使用了 context。 |
 | `format_not_supported` | 当前 locator 或文档类型不支持该 format。 |
 | `multi_page_image_not_supported` | 请求范围覆盖多页 image。 |
-| `bbox_not_available` | PDF block 没有 bbox 或 bbox empty。 |
+| `bbox_not_available` | block 没有有效 bbox。 |
 | `asset_not_available` | Office image block 没有可读取 asset。 |
 
 ## P0 范围

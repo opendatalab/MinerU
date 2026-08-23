@@ -21,7 +21,7 @@
 - 错误格式兼容 OpenAI API。
 - `message` 面向人类，`code`、`param`、`retryable` 和 `user_action` 面向程序。
 - 不显式 `--remote` 时，不用错误恢复逻辑静默上传文档。
-- 默认选择策略永远不能降级为 `flash`；找不到 `medium/high` 时必须报错。
+- PDF/image 的默认选择策略不能降级为 `flash`；找不到非 `flash` 质量 tier 时必须报错。Office/HTML 这类仅支持 flash tier 的输入归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)。文本文件无需解析，显式 parse 请求返回 `parse_not_required`。
 - 未来新增 `code` 只能追加，不改变既有语义。
 
 ## 3. 错误响应格式
@@ -33,7 +33,7 @@
   "error": {
     "type": "engine_error",
     "code": "quality_tier_unavailable",
-    "message": "Default tier selection requires medium or high, but only flash is available. Start a parse-server, use --remote, or explicitly pass --tier flash.",
+    "message": "Default tier selection requires basic, standard, or advanced, but only flash is available. Start a parse-server, use --remote, or explicitly pass --tier flash.",
     "param": "tier",
     "retryable": false,
     "user_action": "start_parse_server_or_use_remote_or_explicit_flash",
@@ -64,15 +64,16 @@
 | `rate_limit_error` | 限流 | 429 |
 | `engine_error` | 解析引擎、tier、parse-server 或解析执行错误 | 500 / 503 / 504 |
 | `timeout_error` | 客户端或请求等待窗口到期，但后台任务不一定失败 | 408 |
-| `api_error` | 服务端内部错误或通信不可用 | 500 / 503 |
+| `internal_error` | CLI 或服务端未预期的内部错误 | 500 |
+| `api_error` | 服务通信失败或暂不可用 | 500 / 503 |
 
 ## 5. Tier 与引擎错误
 
-Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`medium`、`high` 和默认选择策略相关错误。
+Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`basic`、`standard` 和默认选择策略相关错误。
 
 | type | code | HTTP | retryable | param | 触发场景 | user_action |
 |------|------|------|:--:|-------|----------|-------------|
-| `engine_error` | `quality_tier_unavailable` | 503 | 否 | `tier` | 主动阅读场景需要 `medium/high`，但只有 `flash` 可用 | `start_parse_server_or_use_remote_or_explicit_flash` |
+| `engine_error` | `quality_tier_unavailable` | 503 | 否 | `tier` | PDF/image 主动阅读场景需要非 `flash` 质量 tier，但只有 `flash` 可用 | `start_parse_server_or_use_remote_or_explicit_flash` |
 | `engine_error` | `no_engine` | 503 | 否 | `tier` | 本地无匹配实体 tier 的引擎 | `enable_parse_server_or_change_tier` |
 | `engine_error` | `engine_unavailable` | 503 | 是 | null | 引擎进程未启动、崩溃或暂不可用 | `wait_or_restart_parse_server` |
 | `engine_error` | `parse_server_unavailable` | 503 | 是 | null | local 或 remote parse-server 不可达 | `wait_or_check_parse_server` |
@@ -81,11 +82,20 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`medium`、`high
 | `engine_error` | `parse_timeout` | 504 | 是 | null | 解析超时 | `retry_or_use_lower_tier` |
 | `timeout_error` | `parse_wait_timeout` | 408 | 是 | `wait` | CLI `parse --wait` 等待窗口到期，解析任务仍在运行 | `poll_parse_or_rerun_with_longer_wait` |
 | `engine_error` | `parse_oom` | 500 | 是 | null | 本地显存或内存不足 | `use_lower_tier_or_remote` |
+| `engine_error` | `model_preload_dependency_missing` | 503 | 否 | null | parse-server 预加载时缺少目标 tier 的运行依赖 | `install_local_tier_dependencies` |
+| `engine_error` | `model_preload_files_missing` | 503 | 否 | null | parse-server 预加载时模型文件缺失或不可用 | `download_and_verify_local_models` |
+| `engine_error` | `model_preload_device_unavailable` | 503 | 否 | null | 当前设备不支持所选本地模型 | `choose_supported_tier_device_or_remote` |
+| `engine_error` | `model_preload_failed` | 503 | 是 | null | 本地模型预加载出现未分类错误 | `retry_or_inspect_parse_server_logs` |
+| `invalid_request_error` | `parse_server_model_not_ready` | 400 | 否 | `parse_server.local.mode` / `parse_server.local.managed_tier` | 配置 managed local parse-server 时，目标 tier 的本地模型文件未准备好 | `run_mineru_kit_models_download_for_tier` |
+| `invalid_request_error` | `remote_unsupported_for_file_type` | 400 | 否 | `remote` | Office/HTML 单文件主动解析请求 remote | `use_local_flash_or_choose_pdf_image` |
+| `invalid_request_error` | `tier_unsupported_for_file_type` | 400 | 否 | `tier` | Office/HTML 单文件主动解析显式请求质量 tier | `use_tier_flash_or_choose_pdf_image` |
+| `invalid_request_error` | `tier_unsupported_for_remote` | 400 | 否 | `tier` | PDF/image remote 解析显式请求 `flash` | `choose_remote_quality_tier_or_local_flash` |
+| `invalid_request_error` | `parse_not_required` | 400 | 否 | `path` / `doc_ref` / `locator` | 对文本文件请求解析、读取解析结果或作废解析结果 | `read_source_file_directly` |
 
 关键约束：
 
 - `quality_tier_unavailable` 不能自动 fallback 到 `flash`。
-- `tier_mismatch` 不自动降级。例如用户请求 `high`，server 只支持 `medium`，必须报错。
+- `tier_mismatch` 不自动降级。例如用户请求 `standard`，server 只支持 `basic`，必须报错。
 - `parse_failed` 不做 remote/local fallback；文件级解析失败应直接暴露。
 - `engine_unavailable` 和 `parse_server_unavailable` 可重试，但重试不得改变 `privacy`。
 
@@ -109,6 +119,8 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`medium`、`high
 | type | code | HTTP | retryable | param | 触发场景 |
 |------|------|------|:--:|-------|----------|
 | `invalid_request_error` | `invalid_request` | 400 | 否 | 出错参数 | 参数格式或组合非法 |
+| `invalid_request_error` | `unsupported_output_format` | 400 | 否 | `output_formats` | 输出格式不支持 |
+| `invalid_request_error` | `unsupported_source` | 400 | 否 | `source` | 当前部署不支持该 source 类型或 source 策略 |
 | `invalid_request_error` | `page_range_invalid` | 400 | 否 | `page_range` | 页码范围格式非法或超出文档页数 |
 | `invalid_request_error` | `file_type_unsupported` | 400 | 否 | `file` | 文件类型不支持 |
 | `invalid_request_error` | `file_encrypted` | 400 | 否 | `file` | 文件加密或受密码保护 |
@@ -152,8 +164,9 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`medium`、`high
 | type | code | HTTP | retryable | param | 触发场景 | user_action |
 |------|------|------|:--:|-------|----------|-------------|
 | `invalid_request_error` | `model_not_found` | 404 | 否 | `model` | 请求的模型不存在 | `check_model_id` |
-| `api_error` | `internal_error` | 500 | 否 | null | 服务端未预期错误 | `report_with_request_id` |
+| `internal_error` | `internal_error` | 500 | 否 | null | 服务端未预期错误 | `report_with_request_id` |
 | `api_error` | `service_unavailable` | 503 | 是 | null | 服务暂不可用或依赖暂不可用 | `retry_later` |
+| `api_error` | `server_busy` | 503 | 是 | null | server 暂时无法接收请求，或 SQLite 锁竞争在有限重试后仍未恢复 | `retry_later` |
 
 ## 10. CLI 本地错误
 
@@ -163,8 +176,9 @@ CLI 在调用 server 前或通信层面产生本地错误。它们使用同一 `
 |------|------|:--:|----------|-------------|
 | `invalid_request_error` | `file_not_found` | 否 | 本地文件路径不存在 | `check_path` |
 | `invalid_request_error` | `file_permission_denied` | 否 | 本地文件无读取权限 | `fix_file_permission` |
+| `internal_error` | `cli_internal_error` | 否 | CLI 未预期的内部错误 | `report_with_command_output` |
 | `api_error` | `server_not_running` | 是 | CLI 无法连接 doclib UDS | `run_mineru_server_start` |
-| `api_error` | `server_busy` | 是 | server 队列满或无法接收新任务 | `retry_later` |
+| `api_error` | `server_instance_mismatch` | 是 | endpoint 指向的进程不是写入该 endpoint 的 server 实例 | `restart_server` |
 | `api_error` | `server_protocol_error` | 是 | CLI 与 server 协议不兼容或响应损坏 | `upgrade_or_restart_server` |
 
 CLI 在 TTY 中可以用表格或 rich 文本展示，但非 TTY、`--json` 或 Agent 调用场景应输出结构化错误。
@@ -178,7 +192,7 @@ CLI 在 TTY 中可以用表格或 rich 文本展示，但非 TTY、`--json` 或 
   "error": {
     "type": "engine_error",
     "code": "quality_tier_unavailable",
-    "message": "Default tier selection requires medium or high, but only flash is available. Start a local parse-server, use --remote, or explicitly pass --tier flash.",
+    "message": "Default tier selection requires basic, standard, or advanced, but only flash is available. Start a local parse-server, use --remote, or explicitly pass --tier flash.",
     "param": "tier",
     "retryable": false,
     "user_action": "start_parse_server_or_use_remote_or_explicit_flash",
@@ -226,7 +240,7 @@ CLI 在 TTY 中可以用表格或 rich 文本展示，但非 TTY、`--json` 或 
   "error": {
     "type": "engine_error",
     "code": "no_engine",
-    "message": "No local engine available for tier 'medium'. Available tiers: flash. Use --remote or --tier flash.",
+    "message": "No local engine available for tier 'basic'. Available tiers: flash. Use --remote or --tier flash.",
     "param": "tier",
     "retryable": false,
     "user_action": "enable_parse_server_or_change_tier",

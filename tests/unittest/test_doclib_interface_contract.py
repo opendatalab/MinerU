@@ -50,6 +50,7 @@ from mineru.doclib.types import (
     RemoveParsingRuleResponse,
     RemoveWatchResponse,
     SearchResponse,
+    SearchFile,
     SearchResult,
     ServerStatusResponse,
     ShutdownResponse,
@@ -86,6 +87,7 @@ def test_doclib_interface_declares_expected_methods() -> None:
         "search",
         "find",
         "get_file_by_path",
+        "get_remote_usage",
         "get_config",
         "get_config_key",
         "set_config",
@@ -206,6 +208,7 @@ def test_interface_app_uses_doclib_server_routes(tmp_path) -> None:
     assert "/api/v1/docs" in route_paths
     assert "/api/v1/docs/{doc_ref}" in route_paths
     assert "/api/v1/content" in route_paths
+    assert "/api/v1/remote-usage" in route_paths
     assert "/api/v1/docs/{doc_ref}/exports" in route_paths
     assert "/api/docs" in route_paths
     assert "/docs" not in route_paths
@@ -422,7 +425,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
         keywords="a,b",
         page_count=3,
         is_image_based=0,
-        meta_tier="high",
+        meta_tier="standard",
         first_seen_at=40,
         updated_at=50,
         files=[file_info],
@@ -432,7 +435,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
         id=1,
         sha256="abc",
         short_id="abc",
-        tier="high",
+        tier="standard",
         page_range="1~2",
         status="pending",
         priority=10,
@@ -444,7 +447,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
         error_code="parse_failed",
         error_msg="failed",
     )
-    tier_info = TierParseInfo(tier="high", page_range="1~2", status="pending")
+    tier_info = TierParseInfo(tier="standard", page_range="1~2", status="pending")
     info = FileInfoResponse(
         file=file_info,
         doc=doc_info,
@@ -453,7 +456,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     )
     watch = WatchInfo(id=1, path="/tmp", recursive=True, status="active", last_scan_at=100, last_scan_files=3)
     exclude_rule = ExcludeRuleInfo(id=2, pattern="*.tmp", hit_count=4)
-    parsing_rule = ParsingRuleInfo(id=3, pattern="*.pdf", tier="high", page_range="1~5", remote=True)
+    parsing_rule = ParsingRuleInfo(id=3, pattern="*.pdf", tier="standard", page_range="1~5", remote=True)
     watches = WatchListResponse(watches=[watch])
     exclude_rules = ExcludeRuleListResponse(rules=[exclude_rule])
     parsing_rules = ParsingRuleListResponse(rules=[parsing_rule])
@@ -467,7 +470,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
             last_probe_at=1000,
             last_success_at=900,
             last_failure_at=800,
-            supported_tiers=["high"],
+            supported_tiers=["standard"],
         ),
         remote=RemoteParseServerStatus(
             healthy=False,
@@ -481,10 +484,9 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     search_result = SearchResult(
         sha256="abc",
         short_id="abc",
-        filename="a.pdf",
-        tier="high",
+        tier="standard",
         snippet="matched text",
-        paths=["/tmp/a.pdf"],
+        files=[SearchFile(path="/tmp/a.pdf", filename="a.pdf", ext="pdf", status="active")],
     )
     find_result = FindResult(filename="a.pdf", ext="pdf", size_bytes=123, page_count=3, paths=["/tmp/a.pdf"])
     search_response = SearchResponse(results=[search_result], total=1, query="matched")
@@ -492,11 +494,11 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     config = ConfigResponse(config={"parse_server.local.mode": "managed"}, sources={"parse_server.local.mode": "override"})
     shutdown_response = ShutdownResponse(accepted=True, message="Server shutting down...")
     remove_watch_response = RemoveWatchResponse(watch_id=1, removed=True)
-    export_request = DocContentExportRequest(tier="high", output="/tmp/a.md")
+    export_request = DocContentExportRequest(tier="standard", output="/tmp/a.md")
     remove_exclude_response = RemoveExcludeRuleResponse(rule_id=2, removed=True)
     remove_parsing_response = RemoveParsingRuleResponse(rule_id=3, removed=True)
     exclude_rule_request = ExcludeRuleRequest(pattern="*.tmp")
-    parsing_rule_request = ParsingRuleRequest(pattern="*.pdf", tier="high", page_range="1~5")
+    parsing_rule_request = ParsingRuleRequest(pattern="*.pdf", tier="standard", page_range="1~5")
     error_info = ErrorInfo(type="invalid_request_error", code="file_not_found", message="missing", param="path")
     error_response = ErrorResponse(error=error_info)
 
@@ -547,7 +549,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     assert remove_exclude_response.rule_id == 2
     assert remove_parsing_response.rule_id == 3
     assert exclude_rule_request.pattern == "*.tmp"
-    assert parsing_rule_request.tier == "high"
+    assert parsing_rule_request.tier == "standard"
     assert error_response.error.code == "file_not_found"
 
 

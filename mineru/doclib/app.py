@@ -8,6 +8,7 @@ import logging
 import os
 import socket
 import time
+import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
@@ -18,9 +19,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from loguru import logger as loguru_logger
 
-from ..config import Config, LogConfig, _mineru_home, config
+from ..config import Config, LogConfig, _mineru_home, config, get_config_source
 from ..errors import MineruError, error_response, http_status_for
-from .endpoint import EndpointTransport, remove_endpoint_file, uds_available, write_endpoint_file
+from ..utils.stdio import configure_standard_streams
+from .endpoint import EndpointTransport, read_endpoint_file, remove_endpoint_file, uds_available, write_endpoint_file
+from .instance_lock import DoclibLockUnavailable, build_doclib_home_owned_message, doclib_home_lock
 from .server import DoclibServer
 from .types import PARSE_STATUS_FAILED, PARSE_STATUS_PARSING, SCAN_STATUS_FAILED, SCAN_STATUS_RUNNING
 
@@ -28,6 +31,8 @@ if TYPE_CHECKING:
     from loguru import Message as LoguruMessage
 else:
     LoguruMessage = Any
+
+logger = logging.getLogger("mineru.doclib.app")
 
 
 def create_app(cfg: Config | None = None) -> FastAPI:
@@ -124,7 +129,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             managed_tier = await get_managed_parse_server_tier(state.config_svc)
             health.managed_tier = managed_tier
             try:
-                proc, managed_url = start_managed_parse_server(
+                proc, managed_url, control = start_managed_parse_server(
                     tier=managed_tier,
                     managed_cfg=cfg.doclib.managed_parse_server,
                     log_cfg=cfg.doclib.log,
@@ -133,6 +138,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                 health.managed_url = managed_url
                 logging.info("Managed parse-server started (PID %d, tier=%s)", proc.pid, managed_tier)
                 health.managed_proc = proc
+                health.managed_control = control
                 health.running_managed_tier = managed_tier
                 health.local_starting = True
                 health.local_started_at = asyncio.get_event_loop().time()
@@ -165,6 +171,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             interval_sec=cfg.doclib.parse_server_health_check_interval_sec,
             probe_timeout_sec=cfg.doclib.parse_server_probe_timeout_sec,
             startup_grace_sec=cfg.doclib.parse_server_startup_grace_sec,
+            startup_timeout_sec=cfg.doclib.parse_server_startup_timeout_sec,
             stop_timeout_sec=cfg.doclib.parse_server_stop_timeout_sec,
             managed_parse_server=cfg.doclib.managed_parse_server,
             log_cfg=cfg.doclib.log,
@@ -203,10 +210,13 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         if health.managed_proc:
             stop_managed_parse_server(
                 health.managed_proc,
+                control=health.managed_control,
                 timeout_sec=cfg.doclib.parse_server_stop_timeout_sec,
                 reason="doclib shutdown",
+                startup_in_progress=health.local_starting,
             )
             health.managed_proc = None
+            health.managed_control = None
 
         for comp in [
             "watch",
@@ -233,7 +243,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         try:
             yield
         finally:
-            await shutdown()
+            try:
+                await shutdown()
+            finally:
+                _run_discovery_cleanup(state)
 
     app.router.lifespan_context = lifespan
 
@@ -299,6 +312,7 @@ class AppState:
         self.background_tasks: list[asyncio.Task[Any]] = []
         self.start_time: float = 0.0
         self.pid: int = 0
+        self.server_id: str = str(uuid.uuid4())
         self.mineru_home: str = ""
         self.socket_path: str = ""
         self.data_dir: str = ""
@@ -313,6 +327,7 @@ class AppState:
         self.tcp_host: str = ""
         self.tcp_port: int | None = None
         self.config: Config | None = None
+        self.discovery_cleanup: Callable[[], None] | None = None
 
 
 REQUIRED_SCHEMA_TABLES = {
@@ -426,7 +441,16 @@ def _bind_tcp_socket(host: str, port: int, *, strict_port: bool, port_probe_coun
 
 def main() -> None:
     """Entry point: python -m mineru.doclib.app"""
-    cfg = config
+    configure_standard_streams()
+    try:
+        with doclib_home_lock():
+            _run_server(config)
+    except DoclibLockUnavailable:
+        raise SystemExit(build_doclib_home_owned_message()) from None
+
+
+def _run_server(cfg: Config) -> None:
+    """Run the doclib server while the caller holds the home ownership lock."""
     uds_path = os.path.expanduser(cfg.doclib.uds.path)
     endpoint_path = os.path.expanduser(cfg.doclib.endpoint_path)
     uds_enabled = cfg.doclib.resolved_uds_enabled
@@ -436,74 +460,181 @@ def main() -> None:
         raise RuntimeError("At least one doclib local transport must be enabled.")
     if uds_enabled and not uds_available():
         raise RuntimeError(
-            "Unix domain socket is enabled but is not available in this Python runtime. Enable doclib.tcp or disable doclib.uds."
+            "Unix domain socket is enabled but is not available in this Python runtime. "
+            "Enable doclib.tcp or disable doclib.uds."
         )
 
     app = create_app(cfg)
-    uv_config = uvicorn.Config(
-        app,
-        log_config=None,
-        lifespan="on",
-        timeout_keep_alive=cfg.doclib.tcp.timeout,
+    server_id = app.state.doclib_state.server_id
+    log_source = get_config_source("doclib.log.level") if cfg is config else "provided"
+    logger.info(
+        "Doclib logging configured level=%s source=%s path=%s",
+        logging.getLevelName(_resolve_log_level(cfg.doclib.log)),
+        log_source,
+        os.path.expanduser(cfg.doclib.log.resolved_app_path),
     )
-    server = uvicorn.Server(uv_config)
-
+    _remove_stale_discovery_files(endpoint_path, uds_path if uds_enabled else None)
     sockets: list[socket.socket] = []
     transports: list[EndpointTransport] = []
+    uds_identity: tuple[int, int] | None = None
+    loop: asyncio.AbstractEventLoop | None = None
 
-    if uds_enabled:
+    def cleanup_discovery() -> None:
+        _remove_owned_endpoint_file(endpoint_path, server_id)
+        if uds_enabled and uds_identity is not None:
+            _remove_owned_uds_path(uds_path, uds_identity)
+
+    app.state.doclib_state.discovery_cleanup = cleanup_discovery
+    try:
+        write_endpoint_file(
+            endpoint_path,
+            pid=os.getpid(),
+            server_id=server_id,
+            transports=[],
+        )
+        uv_config = uvicorn.Config(
+            app,
+            log_config=None,
+            lifespan="on",
+            timeout_keep_alive=cfg.doclib.tcp.timeout,
+        )
+        server = uvicorn.Server(uv_config)
+
+        if uds_enabled:
+            uds_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            uds_sock.bind(uds_path)
+            os.chmod(uds_path, cfg.doclib.uds.permission)
+            uds_identity = _path_identity(uds_path)
+            uds_sock.listen(cfg.doclib.tcp.backlog)
+            sockets.append(uds_sock)
+            transports.append(EndpointTransport(type="uds", path=uds_path))
+
+        if tcp_enabled:
+            tcp_sock, port = _bind_tcp_socket(
+                cfg.doclib.tcp.host,
+                cfg.doclib.tcp.port,
+                strict_port=cfg.doclib.tcp.strict_port,
+                port_probe_count=cfg.doclib.tcp.port_probe_count,
+            )
+            if cfg.doclib.tcp.port != 0 and port != cfg.doclib.tcp.port:
+                logger.warning("Port %d in use, using %d", cfg.doclib.tcp.port, port)
+            tcp_sock.listen(cfg.doclib.tcp.backlog)
+            sockets.append(tcp_sock)
+            app.state.doclib_state.tcp_port = port
+            transports.append(EndpointTransport(type="tcp", base_url=f"http://{cfg.doclib.tcp.host}:{port}"))
+        else:
+            app.state.doclib_state.tcp_port = None
+
+        write_endpoint_file(
+            endpoint_path,
+            pid=os.getpid(),
+            server_id=server_id,
+            transports=transports,
+        )
+        logger.debug(
+            "Doclib endpoint published path=%s pid=%d server_id=%s transports=%d",
+            endpoint_path,
+            os.getpid(),
+            server_id,
+            len(transports),
+        )
+
+        logger.info("MinerU server listening on %s", " and ".join(_format_transport(transport) for transport in transports))
+
+        loop = asyncio.new_event_loop()
+
+        async def serve() -> None:
+            await server.serve(sockets=sockets)
+
+        try:
+            loop.run_until_complete(serve())
+        except KeyboardInterrupt:
+            pass
+    finally:
+        if loop is not None:
+            _cancel_pending_loop_tasks(loop)
+            loop.close()
+        for bound_socket in sockets:
+            bound_socket.close()
+        _run_discovery_cleanup(app.state.doclib_state)
+
+
+def _path_identity(path: str) -> tuple[int, int] | None:
+    try:
+        stat_result = os.stat(path, follow_symlinks=False)
+    except OSError:
+        return None
+    return stat_result.st_dev, stat_result.st_ino
+
+
+def _run_discovery_cleanup(state: AppState) -> None:
+    cleanup = state.discovery_cleanup
+    if cleanup is None:
+        return
+    state.discovery_cleanup = None
+    cleanup()
+
+
+def _remove_stale_discovery_files(endpoint_path: str, uds_path: str | None) -> None:
+    previous = read_endpoint_file(endpoint_path)
+    logger.debug(
+        "Removing stale doclib discovery files endpoint=%s previous_pid=%s previous_server_id=%s uds=%s",
+        endpoint_path,
+        previous.pid if previous is not None else None,
+        previous.server_id if previous is not None else None,
+        uds_path,
+    )
+    remove_endpoint_file(endpoint_path, reason="startup_stale_cleanup")
+    if uds_path is not None:
         try:
             os.unlink(uds_path)
-        except OSError:
+        except FileNotFoundError:
             pass
-        uds_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        uds_sock.bind(uds_path)
-        os.chmod(uds_path, cfg.doclib.uds.permission)
-        uds_sock.listen(cfg.doclib.tcp.backlog)
-        sockets.append(uds_sock)
-        transports.append(EndpointTransport(type="uds", path=uds_path))
 
-    if tcp_enabled:
-        tcp_sock, port = _bind_tcp_socket(
-            cfg.doclib.tcp.host,
-            cfg.doclib.tcp.port,
-            strict_port=cfg.doclib.tcp.strict_port,
-            port_probe_count=cfg.doclib.tcp.port_probe_count,
+
+def _remove_owned_endpoint_file(endpoint_path: str, server_id: str) -> None:
+    current = read_endpoint_file(endpoint_path)
+    if current is None:
+        logger.debug("Doclib endpoint already absent during shutdown path=%s server_id=%s", endpoint_path, server_id)
+        return
+    if current.server_id != server_id:
+        logger.warning(
+            "Skipping doclib endpoint cleanup because ownership changed path=%s expected_server_id=%s current_server_id=%s",
+            endpoint_path,
+            server_id,
+            current.server_id,
         )
-        if cfg.doclib.tcp.port != 0 and port != cfg.doclib.tcp.port:
-            print(f"Port {cfg.doclib.tcp.port} in use, using {port}")
-        tcp_sock.listen(cfg.doclib.tcp.backlog)
-        sockets.append(tcp_sock)
-        app.state.doclib_state.tcp_port = port
-        transports.append(EndpointTransport(type="tcp", base_url=f"http://{cfg.doclib.tcp.host}:{port}"))
-    else:
-        app.state.doclib_state.tcp_port = None
+        return
+    remove_endpoint_file(endpoint_path, reason="shutdown_owned_cleanup")
+    logger.debug("Removed owned doclib endpoint path=%s server_id=%s", endpoint_path, server_id)
 
-    write_endpoint_file(endpoint_path, pid=os.getpid(), transports=transports)
-    print("MinerU server listening on " + " and ".join(_format_transport(transport) for transport in transports))
 
-    loop = asyncio.new_event_loop()
-
-    async def serve() -> None:
-        await server.serve(sockets=sockets)
-
+def _remove_owned_uds_path(uds_path: str, expected_identity: tuple[int, int]) -> None:
+    current_identity = _path_identity(uds_path)
+    if current_identity is None:
+        logger.debug("Doclib UDS path already absent during shutdown path=%s", uds_path)
+        return
+    if current_identity != expected_identity:
+        logger.warning(
+            "Skipping doclib UDS cleanup because path identity changed path=%s expected=%s current=%s",
+            uds_path,
+            expected_identity,
+            current_identity,
+        )
+        return
     try:
-        loop.run_until_complete(serve())
-    except KeyboardInterrupt:
-        pass
-    finally:
-        if uds_enabled:
-            try:
-                os.unlink(uds_path)
-            except OSError:
-                pass
-        remove_endpoint_file(endpoint_path)
-        _cancel_pending_loop_tasks(loop)
-        loop.close()
+        os.unlink(uds_path)
+    except FileNotFoundError:
+        return
+    logger.debug("Removed owned doclib UDS path=%s identity=%s", uds_path, expected_identity)
+
+
+def _resolve_log_level(log_cfg: LogConfig) -> int:
+    return getattr(logging, log_cfg.level.upper(), logging.INFO)
 
 
 def _setup_logging(log_cfg: LogConfig) -> None:
-    level = getattr(logging, log_cfg.level.upper(), logging.INFO)
+    level = _resolve_log_level(log_cfg)
     log_path = os.path.expanduser(log_cfg.resolved_app_path)
     access_log_path = os.path.expanduser(log_cfg.resolved_access_path)
     _ensure_log_dir(log_path)
@@ -537,7 +668,7 @@ def _setup_logging(log_cfg: LogConfig) -> None:
         logger.addHandler(access_handler)
 
     logging.captureWarnings(True)
-    _setup_loguru_bridge(log_cfg.level.upper())
+    _setup_loguru_bridge(logging.getLevelName(level))
 
 
 def _ensure_log_dir(path: str) -> None:
@@ -572,7 +703,13 @@ def _forward_loguru_to_logging(message: LoguruMessage) -> None:
 
 
 def _rotating_log_handler(path: str, level: int) -> RotatingFileHandler:
-    handler = RotatingFileHandler(path, maxBytes=5 * 1024 * 1024, backupCount=3)
+    handler = RotatingFileHandler(
+        path,
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
+        errors="backslashreplace",
+    )
     handler.setLevel(level)
     handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
     return handler

@@ -6,22 +6,23 @@ import typer
 
 from ...doclib.client import DoclibClient
 from ...doclib.types import FindResponse, SearchResponse
+from ...filetypes import FILE_TYPE_BY_EXTENSION
 from ...types import Tier
 from ..contracts import CliContext
 from ..runtime import run_cli
 
-FILE_TYPES = "pdf, image, docx, pptx, xlsx, markdown, csv, rst, tex, txt"
-FILE_EXTS = "pdf, png, jpg, jpeg, jp2, webp, gif, bmp, tiff, docx, pptx, xlsx, md, markdown, csv, rst, tex, txt"
+FILE_TYPES = ", ".join(dict.fromkeys(FILE_TYPE_BY_EXTENSION.values()))
+FILE_EXTS = ", ".join(FILE_TYPE_BY_EXTENSION)
 
 
 def search_cmd(
     query: str = typer.Argument(..., help="Search query"),
     file_type: str | None = typer.Option(None, "--type", help=f"File type filter: {FILE_TYPES}"),
-    tier: Tier | None = typer.Option(None, "--tier", help="Exact search index tier: flash, medium, high, extra_high"),
+    tier: Tier | None = typer.Option(None, "--tier", help="Exact search index tier: flash, basic, standard, advanced"),
     min_tier: Tier | None = typer.Option(
         None,
         "--min-tier",
-        help="Minimum search index tier: flash, medium, high, extra_high",
+        help="Minimum search index tier: flash, basic, standard, advanced",
     ),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
     offset: int = typer.Option(0, "--offset", help="Result offset"),
@@ -62,12 +63,20 @@ def _render_search_results(data: SearchResponse) -> str:
 
     lines = [f"Search results ({data.total} total)"]
     for index, result in enumerate(data.results, start=1):
-        filename = result.title or result.filename or "?"
-        path = _format_result_path(result.paths)
-        item_line = f"{index}. {filename}{path}"
+        label = result.title or f"Document {result.short_id}"
+        item_line = f"{index}. {label}"
         if result.tier:
             item_line += f" Tier: {result.tier}"
         lines.append(item_line)
+        active_files = [file for file in result.files if file.status == "active"]
+        display_files = active_files or result.files
+        if display_files:
+            lines.append("   Files:")
+            for file in display_files:
+                suffix = f" ({file.status})" if file.status != "active" else ""
+                lines.append(f"   {file.path}{suffix}")
+        else:
+            lines.append("   File no longer exists.")
         snippet = _format_snippet(result.snippet)
         if snippet:
             lines.append(f"   {snippet}")

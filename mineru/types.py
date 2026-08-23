@@ -4,13 +4,20 @@ from __future__ import annotations
 import json
 import math
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Annotated, Any, ClassVar, Literal, TypeAlias, Union
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
-
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 
 # 这些字符串不能作为公开 Block.type discriminator，只用于 raw 阶段或 Block 内部枚举值。
 RawBlockType: TypeAlias = Literal[
@@ -39,32 +46,99 @@ RAW_ONLY_BLOCK_TYPES = frozenset(
 
 Tier = Literal[
     "flash",
-    "medium",
-    "high",
-    "extra_high",
+    "basic",
+    "standard",
+    "advanced",
 ]
 
-TIERS: set[Tier] = {
+TIERS: tuple[Tier, ...] = (
     "flash",
-    "medium",
-    "high",
-    "extra_high",
-}
+    "basic",
+    "standard",
+    "advanced",
+)
 
 TIER_ORDER: dict[Tier, int] = {
     "flash": 0,
-    "medium": 1,
-    "high": 2,
-    "extra_high": 3,
+    "basic": 1,
+    "standard": 2,
+    "advanced": 3,
 }
+
+ServerTier = Literal[
+    "flash",
+    "basic",
+    "standard",
+]
+
+SERVER_TIERS: tuple[ServerTier, ...] = (
+    "flash",
+    "basic",
+    "standard",
+)
+
+TIERS_BY_SERVER_TIER: dict[ServerTier, tuple[Tier, ...]] = {
+    "flash": ("flash",),
+    "basic": ("flash", "basic"),
+    "standard": ("flash", "basic", "standard", "advanced"),
+}
+
+DeploymentTier = Literal[
+    "basic",
+    "standard",
+]
+
+DEPLOYMENT_TIERS: tuple[DeploymentTier, ...] = (
+    "basic",
+    "standard",
+)
+
+
+DEFAULT_QUALITY_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("standard", "basic")
+QUALITY_TIERS: frozenset[Tier] = frozenset(("basic", "standard", "advanced"))
+CACHED_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("advanced", "standard", "basic", "flash")
+PARSING_RULE_TIER_SELECTION_ORDER: tuple[Tier, ...] = (*DEFAULT_QUALITY_TIER_SELECTION_ORDER, "flash")
 
 
 def validate_tier(tier: str | None) -> Tier:
-    """校验公开 tier 取值，保证入口只接受 flash/medium/high/extra_high。"""
+    """校验公开 tier 取值，保证入口只接受 flash/basic/standard/advanced。"""
     normalized = (tier or "").strip().lower()
     if normalized in TIERS:
         return normalized  # type: ignore[return-value]
     raise ValueError(f"Unsupported tier '{tier}'. Supported tiers: {', '.join(TIERS)}")
+
+
+def _validated_tier_set(available_tiers: Iterable[object] | str) -> set[Tier]:
+    if isinstance(available_tiers, str):
+        return {validate_tier(available_tiers)}
+    return {validate_tier(str(item)) for item in available_tiers}
+
+
+def select_default_quality_tier(available_tiers: Iterable[object] | str) -> Tier | None:
+    """Select the default quality tier from discovered parse-server capabilities."""
+    available = _validated_tier_set(available_tiers)
+    for candidate in DEFAULT_QUALITY_TIER_SELECTION_ORDER:
+        if candidate in available:
+            return candidate
+    return None
+
+
+def select_highest_cached_tier(available_tiers: Iterable[object] | str) -> Tier | None:
+    """Select the highest already-cached tier without creating a new parse."""
+    available = _validated_tier_set(available_tiers)
+    for candidate in CACHED_TIER_SELECTION_ORDER:
+        if candidate in available:
+            return candidate
+    return None
+
+
+def select_parsing_rule_tier(available_tiers: Iterable[object] | str | None = None) -> Tier:
+    """Select parsing-rule default tier, allowing flash as a final fallback."""
+    available = _validated_tier_set(available_tiers or PARSING_RULE_TIER_SELECTION_ORDER)
+    for candidate in PARSING_RULE_TIER_SELECTION_ORDER:
+        if candidate in available:
+            return candidate
+    return "flash"
 
 
 class BlockType:
@@ -752,7 +826,10 @@ def _register_export_file(files: dict[str, bytes], relative_path: str, payload: 
 
 def _prepare_export_copy(middle_json: MiddleJson) -> tuple[MiddleJson, dict[str, bytes]]:
     """复制对象、解析直接及 HTML 图片，并回填副本中的相对路径。"""
-    from .utils.image_payload import INLINE_IMAGE_DATA_URI_RE, parse_image_data_uri_strict
+    from .utils.image_payload import (
+        INLINE_IMAGE_DATA_URI_RE,
+        parse_image_data_uri_strict,
+    )
 
     exported = middle_json.model_copy(deep=True)
     image_files: dict[str, bytes] = {}

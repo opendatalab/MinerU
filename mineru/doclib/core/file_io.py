@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from ...filetypes import OFFICE_EXTENSIONS
 from ...utils.pdf_document import PDFDocument
 
 # Optional office doc support
@@ -89,7 +90,7 @@ async def extract_metadata(filepath: str) -> dict:
     if ext == "pdf":
         await _extract_pdf_meta(filepath, result)
 
-    elif ext in ("docx", "pptx", "xlsx"):
+    elif ext in OFFICE_EXTENSIONS:
         await _extract_office_meta(filepath, ext, result)
 
     # truncate all string fields

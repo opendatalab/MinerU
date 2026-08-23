@@ -87,7 +87,7 @@ Agent 领取任务时，应先读本节。如果任务标记为“已实现需�
 | M0 | 锁定当前行为与测试骨架 | 后续任务有稳定测试入口。 |
 | M1 | Middle JSON 和 ParseResult 基础设施 | JSON 批次可恢复、校验、渲染。 |
 | M2 | doclib 主链路 | watch/ingest/parse/cache/compaction/read-time render 可闭环。 |
-| M3 | tier、privacy、parse-server 路由 | 默认选择、local/remote、medium/high 行为可验证。 |
+| M3 | tier、privacy、parse-server 路由 | 默认选择、local/remote、质量 tier 行为可验证。 |
 | M4 | CLI / SDK / API 对齐 | 用户入口使用同一语义和错误模型。 |
 | M5 | Agent-native 输出 | locator、marker、citation 基础可用。 |
 | M6 | Telemetry | doclib server 聚合、flush、CLI 管理入口和隐私边界可验证。 |
@@ -804,7 +804,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 - FTS 有内容。
 - Markdown 不落盘。
-- tier-gated 更新符合 `flash < medium < high`。
+- tier-gated 更新符合 `flash < basic < standard < advanced`。
 
 验证方式:
 
@@ -843,11 +843,11 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 具体步骤:
 
-1. 构造 health: local supported tiers = `["medium", "high"]`。
+1. 构造 health: local supported tiers = `["basic", "standard"]`。
 2. 请求 `tier=None`。
-3. 期望入队 tier 为 `high`。
-4. 构造 health: local supported tiers = `["medium"]`。
-5. 期望入队 tier 为 `medium`。
+3. 期望入队 tier 为 `standard`。
+4. 构造 health: local supported tiers = `["basic"]`。
+5. 期望入队 tier 为 `basic`。
 6. 构造 health: only `flash` 或空。
 7. 期望返回 `quality_tier_unavailable` 或等价错误。
 
@@ -988,10 +988,10 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 具体步骤:
 
-1. mock parse-server supported tiers = `["medium"]`。
-2. 请求 `tier="high"`。
+1. mock parse-server supported tiers = `["basic"]`。
+2. 请求 `tier="standard"`。
 3. 期望 `tier_mismatch`。
-4. 确认不会改成 `medium`。
+4. 确认不会改成 `basic`。
 5. 确认不会改成 `flash`。
 
 完成边界:
@@ -1090,14 +1090,14 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 2. 增加 `tier: str | None = None`。
 3. `backend` 显式传入时覆盖 `tier`。
 4. `tier=flash` 映射到 `flash` backend。
-5. `tier=medium` 映射到默认 medium backend。
-6. `tier=high` 映射到默认 high backend。
-7. `tier=None` 在 Tool SDK 场景中如果不能发现 medium/high，应报错，不静默 flash。
+5. `tier=basic` 映射到默认 basic backend。
+6. `tier=standard` 映射到默认 standard backend。
+7. `tier=None` 在 Tool SDK 的 PDF/image 场景中如果不能发现非 `flash` 质量 tier，应报错，不静默 flash；Office/HTML 这类仅支持 flash tier 的输入按实际能力归一为 `flash`。
 
 完成边界:
 
 - `parse(path, tier="flash")` 可用。
-- `parse(path, tier="medium")` 可用或返回明确能力错误。
+- `parse(path, tier="basic")` 可用或返回明确能力错误。
 - `parse(path, backend="pipeline")` 兼容。
 - `backend` 覆盖 `tier` 有测试。
 
@@ -1189,7 +1189,7 @@ API-backed parser、Doclib SDK、本地 parser 的错误都能被统一捕获，
 1. 测试 `GET /v1/health`。
 2. 测试 `GET /v1/tiers`。
 3. 测试 `POST /v1/parse/jobs` 的最小本地路径 source。
-4. local source 必须校验 allowlist。
+4. local source 默认关闭；开启 `--allow-local-source` 后允许 server 进程权限范围内的本地路径。
 5. 未实现 webhook 时 health features 应标记 false。
 6. 使用同一个 `MinerUApiParser` 调用本地 server。
 
@@ -1517,7 +1517,7 @@ P0 完成需要满足:
 
 P1 完成需要满足:
 
-1. Agent 主动读取默认升级到 `medium` / `high`。
+1. Agent 主动读取默认升级到非 `flash` 质量 tier。
 2. Markdown 可选输出 locator marker。
 3. 高质量解析完成后刷新搜索索引。
 

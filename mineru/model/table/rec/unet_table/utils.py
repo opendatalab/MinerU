@@ -3,21 +3,13 @@ import os
 import traceback
 from io import BytesIO
 from pathlib import Path
-from typing import List, Union, Dict, Any, Tuple, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import cv2
 import loguru
 import numpy as np
-from onnxruntime import (
-    GraphOptimizationLevel,
-    InferenceSession,
-    SessionOptions,
-    get_available_providers,
-)
+from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
 from PIL import Image, UnidentifiedImageError
-
-from ..onnxruntime_provider import build_table_onnx_providers
-
 
 root_dir = Path(__file__).resolve().parent
 InputType = Union[str, np.ndarray, bytes, Path]
@@ -26,17 +18,12 @@ InputType = Union[str, np.ndarray, bytes, Path]
 class OrtInferSession:
     def __init__(self, config: Dict[str, Any]):
         self.logger = loguru.logger
-
         model_path = config.get("model_path", None)
 
-        self.had_providers: List[str] = get_available_providers()
-        EP_list = self._get_ep_list()
-
-        sess_opt = self._init_sess_opts(config)
         self.session = InferenceSession(
             model_path,
-            sess_options=sess_opt,
-            providers=EP_list,
+            sess_options=self._init_sess_opts(config),
+            providers=[("CPUExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"})],
         )
 
     @staticmethod
@@ -56,9 +43,6 @@ class OrtInferSession:
             sess_opt.inter_op_num_threads = inter_op_num_threads
 
         return sess_opt
-
-    def _get_ep_list(self) -> List[Tuple[str, Dict[str, Any]]]:
-        return build_table_onnx_providers(self.had_providers)
 
     def __call__(self, input_content: List[np.ndarray]) -> np.ndarray:
         input_dict = dict(zip(self.get_input_names(), input_content))
@@ -84,9 +68,7 @@ class LoadImage:
 
     def __call__(self, img: InputType) -> np.ndarray:
         if not isinstance(img, InputType.__args__):
-            raise LoadImageError(
-                f"The img type {type(img)} does not in {InputType.__args__}"
-            )
+            raise LoadImageError(f"The img type {type(img)} does not in {InputType.__args__}")
 
         img = self.load_img(img)
         img = self.convert_img(img)
@@ -128,9 +110,7 @@ class LoadImage:
             if channel == 3:
                 return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
-            raise LoadImageError(
-                f"The channel({channel}) of the img is not in [1, 2, 3, 4]"
-            )
+            raise LoadImageError(f"The channel({channel}) of the img is not in [1, 2, 3, 4]")
 
         raise LoadImageError(f"The ndim({img.ndim}) of the img is not in [2, 3]")
 
@@ -209,9 +189,7 @@ def resize_img(img, scale, keep_ratio=True):
             interpolation = "area"
         else:
             interpolation = "bicubic"  # bilinear
-        img_new, scale_factor = imrescale(
-            img, scale, return_scale=True, interpolation=interpolation
-        )
+        img_new, scale_factor = imrescale(img, scale, return_scale=True, interpolation=interpolation)
         # the w_scale and h_scale has minor difference
         # a real fix should be done in the mmcv.imrescale in the future
         new_h, new_w = img_new.shape[:2]
@@ -249,9 +227,7 @@ def imrescale(img, scale, return_scale=False, interpolation="bilinear", backend=
         return rescaled_img
 
 
-def imresize(
-    img, size, return_scale=False, interpolation="bilinear", out=None, backend=None
-):
+def imresize(img, size, return_scale=False, interpolation="bilinear", out=None, backend=None):
     """Resize image to a given size.
 
     Args:
@@ -274,10 +250,7 @@ def imresize(
     if backend is None:
         backend = "cv2"
     if backend not in ["cv2", "pillow"]:
-        raise ValueError(
-            f"backend: {backend} is not supported for resize."
-            f"Supported backends are 'cv2', 'pillow'"
-        )
+        raise ValueError(f"backend: {backend} is not supported for resize.Supported backends are 'cv2', 'pillow'")
 
     if backend == "pillow":
         assert img.dtype == np.uint8, "Pillow backend only support uint8 type"
@@ -285,9 +258,7 @@ def imresize(
         pil_image = pil_image.resize(size, pillow_interp_codes[interpolation])
         resized_img = np.array(pil_image)
     else:
-        resized_img = cv2.resize(
-            img, size, dst=out, interpolation=cv2_interp_codes[interpolation]
-        )
+        resized_img = cv2.resize(img, size, dst=out, interpolation=cv2_interp_codes[interpolation])
     if not return_scale:
         return resized_img
     else:
@@ -321,9 +292,7 @@ def rescale_size(old_size, scale, return_scale=False):
         max_short_edge = min(scale)
         scale_factor = min(max_long_edge / max(h, w), max_short_edge / min(h, w))
     else:
-        raise TypeError(
-            f"Scale must be a number or tuple of int, but got {type(scale)}"
-        )
+        raise TypeError(f"Scale must be a number or tuple of int, but got {type(scale)}")
 
     new_size = _scale_size((w, h), scale_factor)
 
@@ -385,9 +354,7 @@ class VisTable:
 
         if save_logic_path:
             polygons = [[box[0], box[1], box[4], box[5]] for box in table_cell_bboxes]
-            self.plot_rec_box_with_logic_info(
-                img, save_logic_path, table_logic_points, polygons
-            )
+            self.plot_rec_box_with_logic_info(img, save_logic_path, table_logic_points, polygons)
         return drawed_img
 
     def insert_border_style(self, table_html_str: str):
@@ -410,9 +377,7 @@ class VisTable:
         html_with_border = f"{prefix_table}{style_res}<body>{suffix_table}"
         return html_with_border
 
-    def plot_rec_box_with_logic_info(
-        self, img, output_path, logic_points, sorted_polygons
-    ):
+    def plot_rec_box_with_logic_info(self, img, output_path, logic_points, sorted_polygons):
         """
         :param img_path
         :param output_path
@@ -421,9 +386,7 @@ class VisTable:
         :return:
         """
         # 读取原图
-        img = cv2.copyMakeBorder(
-            img, 0, 0, 0, 100, cv2.BORDER_CONSTANT, value=[255, 255, 255]
-        )
+        img = cv2.copyMakeBorder(img, 0, 0, 0, 100, cv2.BORDER_CONSTANT, value=[255, 255, 255])
         # 绘制 polygons 矩形
         for idx, polygon in enumerate(sorted_polygons):
             x0, y0, x1, y1 = polygon[0], polygon[1], polygon[2], polygon[3]

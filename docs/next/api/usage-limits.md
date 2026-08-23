@@ -16,7 +16,7 @@
 | 单任务文件数 | 100 | 100 |
 | 并发任务 | 10+ | 10+ |
 | 队列优先级 | 默认 | 优先 |
-| `tier` | 当前服务可用 tier。`mineru.net/api` 当前为 `high`；可省略或传 `null` | 当前服务可用 tier。`mineru.net/api` 当前为 `high`；可省略或传 `null` |
+| `tier` | 当前服务可用 tier。`mineru.net/api` 当前为 `standard`；可省略或传 `null` | 当前服务可用 tier。`mineru.net/api` 当前为 `standard`；可省略或传 `null` |
 | 高级输出格式 | 不支持 `html`、`latex`、`docx` | 支持 |
 | `callback` | 不支持 | 支持 |
 | 产物保留期 | 30 天 | 30 天 |

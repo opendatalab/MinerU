@@ -13,23 +13,30 @@ def _load_old_router() -> Any:
 
 
 def router_cmd(
-    *,
-    ctx: typer.Context | None = None,
-    host: str = "127.0.0.1",
-    port: int = 8002,
-    reload: bool = False,
-    allow_public_http_client: bool = False,
-    upstream_urls: list[str] | None = None,
-    local_gpus: str = "auto",
-    worker_host: str = "127.0.0.1",
-    enable_vlm_preload: bool = False,
+    ctx: typer.Context,
+    host: str = typer.Option("127.0.0.1", "--host", help="Server host"),
+    port: int = typer.Option(8002, "--port", help="Server port"),
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload"),
+    allow_public_http_client: bool = typer.Option(
+        False,
+        "--allow-public-http-client",
+        help="Allow *-http-client backends when binding to a public host",
+    ),
+    upstream_url: list[str] | None = typer.Option(
+        None,
+        "--upstream-url",
+        help="Existing MinerU FastAPI base URL; repeat to add multiple upstreams",
+    ),
+    local_gpus: str = typer.Option("auto", "--local-gpus", help="Local GPU workers: auto, none, or CSV such as 0,1,2"),
+    worker_host: str = typer.Option("127.0.0.1", "--worker-host", help="Host for router-managed API workers"),
+    enable_vlm_preload: bool = typer.Option(
+        False,
+        "--enable-vlm-preload",
+        help="Preload the local VLM model in router-managed API workers",
+    ),
 ) -> None:
-    """通过 mineru-kit 入口转发 router 参数，避免当前入口继续依赖旧脚本名。"""
-    upstream_args = [
-        item
-        for upstream_url in upstream_urls or []
-        for item in ("--upstream-url", upstream_url)
-    ]
+    """Start the MinerU router service."""
+    upstream_args = [item for url in upstream_url or [] for item in ("--upstream-url", url)]
     args = [
         "--host",
         host,
@@ -43,7 +50,7 @@ def router_cmd(
         "--worker-host",
         worker_host,
         *(["--enable-vlm-preload", "true"] if enable_vlm_preload else []),
-        *(list(ctx.args) if ctx is not None else []),
+        *list(ctx.args),
     ]
     try:
         old_router = _load_old_router()

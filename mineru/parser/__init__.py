@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..filetypes import OFFICE_EXTENSIONS, TIERED_PARSE_EXTENSIONS, ensure_tier_supported_for_parse_extension
 from ..types import Tier
 from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
 from .api_client import MinerUApiParser
@@ -30,9 +31,7 @@ __all__ = [
     "resolve_tier_and_backend",
 ]
 
-_OFFICE_SUFFIXES = frozenset({"docx", "pptx", "xlsx"})
-_PDF_INPUT_SUFFIXES = frozenset({"pdf", "png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"})
-_PATH_PRIORITY_SUFFIXES = _OFFICE_SUFFIXES | _PDF_INPUT_SUFFIXES
+_PATH_PRIORITY_SUFFIXES = OFFICE_EXTENSIONS | TIERED_PARSE_EXTENSIONS
 
 
 def _resolve_input_suffix(path: Path) -> str:
@@ -61,12 +60,14 @@ def _build_parser(
 ) -> DocumentParser:
     path = Path(path)
     suffix = _resolve_input_suffix(path)
-    runtime = resolve_runtime_options(tier=tier, backend=backend, effort=effort)
     resolved_ocr_mode = method or ocr_mode
     resolved_language = lang or language
     resolved_image_analysis = (not disable_image_analysis) if image_analysis is None else image_analysis
 
-    if suffix in _OFFICE_SUFFIXES:
+    if suffix in OFFICE_EXTENSIONS:
+        if tier is not None or backend is not None:
+            runtime = resolve_runtime_options(tier=tier, backend=backend, effort=effort)
+            ensure_tier_supported_for_parse_extension(runtime.tier, suffix)
         parser_cls: type[DocumentParser] = {
             "docx": DocxParser,
             "pptx": PptxParser,
@@ -74,9 +75,10 @@ def _build_parser(
         }[suffix]
         return parser_cls()
 
-    if suffix not in _PDF_INPUT_SUFFIXES:
+    if suffix not in TIERED_PARSE_EXTENSIONS:
         raise ValueError(f"Unsupported file type: {suffix or path.suffix or 'unknown'}")
 
+    runtime = resolve_runtime_options(tier=tier, backend=backend, effort=effort)
     if runtime.backend.startswith("hybrid-"):
         return PdfHybridParser(
             backend=runtime.backend,

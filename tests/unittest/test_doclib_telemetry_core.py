@@ -176,7 +176,7 @@ def test_telemetry_service_preview_returns_next_period_body(tmp_path) -> None:
     asyncio.run(_run())
 
 
-def test_signed_headers_match_staging_api_contract() -> None:
+def test_signed_headers_match_official_api_contract() -> None:
     body = b'{"api_version":"v2"}'
     headers = signed_headers(body, timestamp=1_700_000_000_000)
 
@@ -216,6 +216,32 @@ def test_flush_once_sends_enabled_period_and_deletes_on_success(monkeypatch, tmp
     asyncio.run(_run())
 
 
+def test_flush_once_sends_unset_period_during_alpha(monkeypatch, tmp_path) -> None:
+    async def _run() -> None:
+        captured: list[dict] = []
+
+        async def _send(payload: dict) -> str:
+            captured.append(payload)
+            return "success"
+
+        monkeypatch.setattr(telemetry_service_module, "send_payload", _send)
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        store = TelemetryStore(db)
+        service = TelemetryService(store)
+        await service.initialize()
+        await service.record_count("search.request.count", timestamp_ms=1_700_000_000_000)
+
+        result = await service.flush_once()
+
+        assert result.status == "success"
+        assert result.succeeded == 1
+        assert len(captured) == 1
+        assert await store.list_periods_for_flush() == []
+
+    asyncio.run(_run())
+
+
 def test_flush_once_keeps_period_on_retry(monkeypatch, tmp_path) -> None:
     async def _run() -> None:
         async def _send(_payload: dict) -> str:
@@ -244,7 +270,7 @@ def test_parse_route_records_request_finished_and_duration_metrics(tmp_path) -> 
         async def request_parse(self, *args, **kwargs) -> dict:
             return {
                 "sha256": "abc",
-                "tier": "high",
+                "tier": "standard",
                 "page_range": "1",
                 "status": "pending",
                 "cache_hit": False,
@@ -261,7 +287,7 @@ def test_parse_route_records_request_finished_and_duration_metrics(tmp_path) -> 
         await telemetry.initialize()
         server = DoclibServer(SimpleNamespace(parse_svc=_ParseService(), telemetry_svc=telemetry))
 
-        await server.ensure_parse(ParseRequest(path="/tmp/a.pdf", tier="high"))
+        await server.ensure_parse(ParseRequest(path="/tmp/a.pdf", tier="standard"))
         body = await telemetry.preview_body()
 
         metric_names = {metric["name"] for metric in body["metrics"]}
@@ -273,7 +299,7 @@ def test_parse_route_records_request_finished_and_duration_metrics(tmp_path) -> 
             "caller": "unknown",
             "source": "unknown",
             "status": "queued",
-            "tier": "high",
+            "tier": "standard",
         }
 
     asyncio.run(_run())
@@ -499,7 +525,7 @@ def test_parse_wait_observation_uses_parse_rows_for_tier_and_pages_bucket(tmp_pa
         )
         await db.execute(
             "INSERT INTO parses (sha256, tier, page_range, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            ("sha", "high", "1~3", "done", now, now),
+            ("sha", "standard", "1~3", "done", now, now),
         )
         row = await db.fetchone("SELECT id FROM parses WHERE sha256=?", ("sha",))
 
@@ -523,7 +549,7 @@ def test_parse_wait_observation_uses_parse_rows_for_tier_and_pages_bucket(tmp_pa
             "pages_bucket": "2_5",
             "source": "unknown",
             "status": "succeeded",
-            "tier": "high",
+            "tier": "standard",
         }
         assert by_name["parse.wait_duration_bucket.count"]["dimensions"]["bucket"] == "1_5s"
 

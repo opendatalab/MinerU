@@ -2,22 +2,24 @@
 from __future__ import annotations
 
 import importlib
+import platform
 import sys
 from dataclasses import dataclass
 from importlib import metadata as importlib_metadata
 
-from ..types import Tier, validate_tier
+from ..types import DEPLOYMENT_TIERS, DeploymentTier, Tier, validate_tier
 from ..utils.backend_options import (
     CANONICAL_HYBRID_ENGINE,
+    DEFAULT_HYBRID_EFFORT,
     LEGACY_PIPELINE_BACKEND_ALIASES,
     LEGACY_VLM_BACKEND_ALIASES,
     LOCAL_HYBRID_EFFORT,
     SUPPORTED_BACKENDS,
-    DEFAULT_HYBRID_EFFORT,
     effort_for_tier,
     is_hybrid_backend,
     normalize_backend,
     resolve_backend_and_effort,
+    tier_for_effort,
 )
 
 __all__ = [
@@ -37,28 +39,25 @@ __all__ = [
 
 PARSER_BACKENDS = SUPPORTED_BACKENDS
 
-_STANDARD_REQUIRED_MODULES = [
-    "ftfy",
-    "shapely",
-    "pyclipper",
+_BASIC_REQUIRED_MODULES = [
     "six",
     "torch",
     "torchvision",
     "transformers",
-]
-_PRO_REQUIRED_MODULES_COMMON = [
-    *_STANDARD_REQUIRED_MODULES,
     "accelerate",
 ]
-_PRO_REQUIRED_MODULES_BY_PLATFORM = {
+_STANDARD_REQUIRED_MODULES_BY_PLATFORM = {
     "linux": ["vllm"],
     "win32": ["lmdeploy", "qwen_vl_utils"],
-    "darwin": ["mlx", "mlx_vlm"],
 }
+_APPLE_SILICON_STANDARD_REQUIRED_MODULES = [
+    "mlx",
+    "mlx_vlm",
+]
 
 
 class TierDependencyError(RuntimeError):
-    def __init__(self, tier: Tier, missing_modules: list[str]) -> None:
+    def __init__(self, tier: DeploymentTier, missing_modules: list[str]) -> None:
         self.tier = tier
         self.missing_modules = missing_modules
         missing = ", ".join(missing_modules)
@@ -92,9 +91,9 @@ def backend_for_tier(tier: Tier) -> str:
     tier = validate_tier(tier)
     mapping = {
         "flash": "flash",
-        "medium": CANONICAL_HYBRID_ENGINE,
-        "high": CANONICAL_HYBRID_ENGINE,
-        "extra_high": CANONICAL_HYBRID_ENGINE,
+        "basic": CANONICAL_HYBRID_ENGINE,
+        "standard": CANONICAL_HYBRID_ENGINE,
+        "advanced": CANONICAL_HYBRID_ENGINE,
     }
     return mapping[tier]
 
@@ -103,14 +102,14 @@ def tier_for_backend(backend: str) -> Tier:
     """根据旧 backend 专家输入推断等价 tier，仅服务本地 parser 兼容入口。"""
     raw_backend = (backend or "").strip()
     if raw_backend in LEGACY_PIPELINE_BACKEND_ALIASES:
-        return "medium"
+        return "basic"
     if raw_backend in LEGACY_VLM_BACKEND_ALIASES:
-        return "extra_high"
+        return "advanced"
     normalized_backend = normalize_backend(backend)
     if normalized_backend == "flash":
         return "flash"
     if is_hybrid_backend(normalized_backend):
-        return DEFAULT_HYBRID_EFFORT  # type: ignore[return-value]
+        return _tier_for_effort(DEFAULT_HYBRID_EFFORT)
     raise ValueError(f"Unsupported backend '{backend}'. Supported backends: {', '.join(PARSER_BACKENDS)}")
 
 
@@ -119,24 +118,28 @@ def _backend_supports_tier(backend: str, tier: Tier) -> bool:
     normalized_backend = normalize_backend(backend)
     if tier == "flash":
         return normalized_backend == "flash"
-    if tier == "medium":
+    if tier == "basic":
         return raw_backend in LEGACY_PIPELINE_BACKEND_ALIASES or (
             is_hybrid_backend(normalized_backend) and raw_backend not in LEGACY_VLM_BACKEND_ALIASES
         )
-    if tier == "high":
+    if tier == "standard":
         return (
             is_hybrid_backend(normalized_backend)
             and raw_backend not in LEGACY_PIPELINE_BACKEND_ALIASES
             and raw_backend not in LEGACY_VLM_BACKEND_ALIASES
         )
-    if tier == "extra_high":
+    if tier == "advanced":
         return is_hybrid_backend(normalized_backend) and raw_backend not in LEGACY_PIPELINE_BACKEND_ALIASES
     return False
 
 
+def _tier_for_effort(effort: str) -> Tier:
+    return validate_tier(tier_for_effort(effort))
+
+
 def resolve_tier_and_backend(tier: Tier | None = None, backend: str | None = None) -> tuple[Tier, str]:
     """将公开 tier 和本地专家 backend 解析为可执行 parser backend。"""
-    resolved_tier: Tier = validate_tier(tier) if tier is not None else "high"
+    resolved_tier: Tier = validate_tier(tier) if tier is not None else "standard"
     if backend:
         normalized_backend = normalize_backend(backend)
         if tier is None:
@@ -185,7 +188,7 @@ def resolve_runtime_options(
         explicit_tier=explicit_tier,
     )
     if not explicit_tier and resolved_backend != "flash":
-        resolved_tier = validate_tier(resolved_effort)
+        resolved_tier = _tier_for_effort(resolved_effort)
     return ParserRuntimeOptions(tier=resolved_tier, backend=resolved_backend, effort=resolved_effort)
 
 
@@ -199,19 +202,23 @@ def runtime_options_for_tier(
     return resolve_runtime_options(tier=tier, backend=backend, effort=effort)
 
 
-def required_modules_for_tier(tier: Tier) -> list[str]:
-    tier = validate_tier(tier)
-    if tier == "medium":
-        return list(_STANDARD_REQUIRED_MODULES)
-    if tier in {"high", "extra_high"}:
-        return [
-            *_PRO_REQUIRED_MODULES_COMMON,
-            *_PRO_REQUIRED_MODULES_BY_PLATFORM.get(sys.platform, []),
-        ]
-    return []
+def required_modules_for_tier(tier: DeploymentTier) -> list[str]:
+    if tier not in DEPLOYMENT_TIERS:
+        raise ValueError(f"Unsupported deployment tier '{tier}'. Supported tiers: {', '.join(DEPLOYMENT_TIERS)}")
+    from ..utils.config_reader import get_model_stack
+
+    stack = get_model_stack()
+    if stack == "light":
+        return []
+    if tier == "basic":
+        return list(_BASIC_REQUIRED_MODULES)
+    platform_modules = list(_STANDARD_REQUIRED_MODULES_BY_PLATFORM.get(sys.platform, []))
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        platform_modules.extend(_APPLE_SILICON_STANDARD_REQUIRED_MODULES)
+    return [*_BASIC_REQUIRED_MODULES, *platform_modules]
 
 
-def missing_modules_for_tier(tier: Tier) -> list[str]:
+def missing_modules_for_tier(tier: DeploymentTier) -> list[str]:
     missing_modules = []
     for module_name in required_modules_for_tier(tier):
         try:
@@ -231,7 +238,7 @@ def installed_distribution_name(import_package: str = "mineru") -> str:
     return distributions[0] if distributions else import_package
 
 
-def ensure_tier_runtime_dependencies(tier: Tier) -> None:
+def ensure_tier_runtime_dependencies(tier: DeploymentTier) -> None:
     missing_modules = missing_modules_for_tier(tier)
     if missing_modules:
         raise TierDependencyError(tier, missing_modules)

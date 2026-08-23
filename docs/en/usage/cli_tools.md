@@ -14,14 +14,14 @@ Options:
   -m, --method [auto|txt|ocr]     Parsing method: auto (default), txt, ocr (hybrid* backend only)
   -b, --backend [hybrid-engine|hybrid-http-client]
                                   Parsing backend (default: hybrid-engine)
-  --effort [low|medium|high]      Hybrid parsing effort (default: medium)
+  --effort [medium|high|xhigh]    Hybrid parsing effort (default: high)
   -l, --lang [ch|ch_server|korean|ta|te|ka|th|el|arabic|east_slavic|cyrillic|devanagari]
                                   Specify document language (improves OCR accuracy, hybrid* backend only)
   -u, --url TEXT                  OpenAI-compatible backend URL passed through to the server when using http-client
   -s, --start INTEGER             Starting page number for parsing (0-based)
   -e, --end INTEGER               Ending page number for parsing (0-based)
   --image-analysis BOOLEAN        Enable image/chart analysis for hybrid
-                                  backend. Hybrid low and medium efforts
+                                  backend. Hybrid medium and high efforts
                                   automatically disable image/chart analysis
                                   (default: enabled)
   --client-side-output-generation BOOLEAN
@@ -113,7 +113,7 @@ Here are the environment variables and their descriptions:
     * Used to enable Chinese formula parsing optimization (experimental feature)
     * Default is `false`, can be set to `true` via environment variable to enable Chinese formula parsing optimization.
     * Only effective for local Hybrid model execution.
-  
+
 - `MINERU_PDF_RENDER_TIMEOUT`:
     * Used to set the timeout (in seconds) for rendering PDFs to images.
     * Default is `300` seconds; you can set a different value via an environment variable to adjust the rendering timeout.

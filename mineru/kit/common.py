@@ -2,51 +2,26 @@
 
 from __future__ import annotations
 
-import json
-import os
 import zipfile
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypeAlias
 
+from ..filetypes import PARSEABLE_EXTENSIONS
 from ..parser.base import ParseResult
 from ..render.writer import FileBasedDataWriter
 from ..types import Tier
 from ..utils.image_payload import validate_image_sidecar_path
 
-SupportedBundle = Literal["pipeline", "vlm", "all"]
 KitFormat = Literal["markdown", "middle_json", "zip"]
-LocalTier = Literal["flash", "medium", "high", "extra_high"]
+LocalTier: TypeAlias = Tier
 
-SUPPORTED_SUFFIXES = {
-    ".pdf",
-    ".png",
-    ".jpeg",
-    ".jp2",
-    ".webp",
-    ".gif",
-    ".bmp",
-    ".jpg",
-    ".tiff",
-    ".docx",
-    ".pptx",
-    ".xlsx",
-}
+
+PARSEABLE_SUFFIXES = frozenset(f".{ext}" for ext in PARSEABLE_EXTENSIONS)
 OUTPUT_FILE_SUFFIXES = {
     "markdown": ".md",
     "middle_json": ".json",
     "zip": ".zip",
 }
-
-PIPELINE_MODEL_PATHS = (
-    "models/Layout/PP-DocLayoutV2",
-    "models/MFR/unimernet_hf_small_2503",
-    "models/MFR/pp_formulanet_plus_m",
-    "models/OCR/paddleocr_torch",
-    "models/TabRec/SlanetPlus/slanet-plus.onnx",
-    "models/TabRec/UnetStructure/unet.onnx",
-    "models/TabCls/paddle_table_cls/PP-LCNet_x1_0_table_cls.onnx",
-)
-VLM_MODEL_MARKERS = ("config.json", "preprocessor_config.json", "tokenizer_config.json")
 
 
 def expand_input_paths(inputs: list[str]) -> list[Path]:
@@ -55,7 +30,7 @@ def expand_input_paths(inputs: list[str]) -> list[Path]:
     for path in paths:
         if path.is_dir():
             for child in sorted(path.iterdir()):
-                if child.is_file() and child.suffix.lower() in SUPPORTED_SUFFIXES:
+                if child.is_file() and child.suffix.lower() in PARSEABLE_SUFFIXES:
                     expanded.append(child)
         else:
             expanded.append(path)
@@ -70,7 +45,7 @@ def ensure_supported_inputs(paths: list[Path]) -> None:
             raise FileNotFoundError(path)
         if path.is_dir():
             raise ValueError(f"Directory input must be expanded before validation: {path}")
-        if path.suffix.lower() not in SUPPORTED_SUFFIXES:
+        if path.suffix.lower() not in PARSEABLE_SUFFIXES:
             raise ValueError(f"Unsupported file type: {path}")
 
 
@@ -121,10 +96,10 @@ def effective_local_tier_and_backend(tier: Tier | None, backend: str | None) -> 
     from ..parser.tier import backend_for_tier, resolve_tier_and_backend
 
     if tier is None and backend is None:
-        return "high", backend_for_tier("high")
+        return "standard", backend_for_tier("standard")
     resolved_tier, resolved_backend = resolve_tier_and_backend(tier=tier, backend=backend)
     if tier is None and backend is None:
-        resolved_backend = backend_for_tier("high")
+        resolved_backend = backend_for_tier("standard")
     return resolved_tier, resolved_backend
 
 
@@ -199,22 +174,3 @@ def parse_result_payload(path: Path, dest: Path, format: KitFormat) -> dict[str,
         "output": str(dest),
         "format": format,
     }
-
-
-def resolve_models_config_path() -> Path:
-    config_name = os.getenv("MINERU_TOOLS_CONFIG_JSON", "mineru.json")
-    config_path = Path(config_name)
-    if config_path.is_absolute():
-        return config_path
-    return Path.home() / config_path
-
-
-def read_json_file(path: Path) -> dict | None:
-    if not path.exists():
-        return None
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def write_json_file(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=4), encoding="utf-8")

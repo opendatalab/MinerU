@@ -1,8 +1,4 @@
 {
-    "bucket_info":{
-        "bucket-name-1":["ak", "sk", "endpoint"],
-        "bucket-name-2":["ak", "sk", "endpoint"]
-    },
     "latex-delimiter-config": {
         "display": {
             "left": "$$",

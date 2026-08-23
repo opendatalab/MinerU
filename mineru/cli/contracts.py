@@ -17,6 +17,12 @@ CliRenderer = Callable[[T], RenderableOutput | None]
 
 
 @dataclass(frozen=True)
+class CliGuidance:
+    data: dict[str, object]
+    text: str
+
+
+@dataclass(frozen=True)
 class CliContext:
     json_mode: bool
     verbose: bool = False

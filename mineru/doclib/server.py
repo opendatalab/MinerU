@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 import re
 import signal
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -17,14 +19,28 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 from PIL import Image
+from pydantic import ValidationError
 
 from ..config import config
 from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
+from ..filetypes import IMAGE_EXTENSIONS, TEXT_EXTENSIONS, TEXT_FILE_TYPES
 from ..parser.tier import TierDependencyError, ensure_tier_runtime_dependencies
-from ..render import render_markdown
 from ..render.markdown import blocks_to_markdown
 from ..render.office.output import blocks_to_markdown as office_blocks_to_markdown
-from ..types import EMPTY_BBOX, TIER_ORDER, TIERS, Block, PageInfo, Span, Tier
+from ..types import (
+    EMPTY_BBOX,
+    DEPLOYMENT_TIERS,
+    TIERS,
+    Block,
+    BlockType,
+    DeploymentTier,
+    PageInfo,
+    Span,
+    Tier,
+    select_highest_cached_tier,
+)
+from ..utils.model_registry import ModelRepo, model_repos_for_tier
+from ..utils.models_download_utils import verify_model_repo
 from ..utils.pdf_document import PDFDocument
 from ..version import __version__
 from .background.parse_server_health import get_health, get_managed_parse_server_tier
@@ -32,6 +48,7 @@ from .base import AsyncDoclibInterface
 from .config_schema import validate_config_value
 from .core.db import DatabaseManager
 from .locators import ContentCursor, block_char_ref, block_ref, page_ref, parse_content_cursor
+from .remote_api import REMOTE_API_KEY_CONFIG, resolve_remote_api_key
 from .rows import (
     ContentSearchResultRow,
     DocRow,
@@ -79,6 +96,7 @@ from .types import (
     ConfigResponse,
     ConfigSetRequest,
     ConfigSetResponse,
+    ConfigSource,
     ConfigUnsetResponse,
     ConfigValueResponse,
     ContentAsset,
@@ -119,6 +137,7 @@ from .types import (
     ParsingRuleListResponse,
     ParsingRuleRequest,
     RemoteParseServerStatus,
+    RemoteUsageResponse,
     RemoveExcludeRuleResponse,
     RemoveParsingRuleResponse,
     RemoveWatchResponse,
@@ -177,8 +196,20 @@ class _ReadPlan:
     next_mode: str = "parse"
 
 
-_PUBLIC_IMAGE_BUCKET_PATH = "images"
 _NO_MATCHING_DOC_SHA256 = "__mineru_no_matching_doc__"
+
+_VISUAL_BLOCK_LABELS = {
+    BlockType.IMAGE: "Image block",
+    BlockType.TABLE: "Table block",
+    BlockType.CHART: "Chart block",
+    BlockType.INTERLINE_EQUATION: "Formula block",
+}
+
+
+@dataclass(frozen=True)
+class _BlockImageSource:
+    kind: str
+    sidecar_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -258,6 +289,7 @@ class DoclibServer(AsyncDoclibInterface):
         return ServerStatusResponse(
             running=True,
             pid=getattr(self.state, "pid", os.getpid()),
+            server_id=getattr(self.state, "server_id", ""),
             uptime_seconds=uptime,
             mineru_home=getattr(self.state, "mineru_home", ""),
             version=__version__,
@@ -397,12 +429,19 @@ class DoclibServer(AsyncDoclibInterface):
         if request.target != "parses":
             raise InvalidRequestError("invalid_request", f"Unsupported invalidate target: {request.target}", "target")
         doc_row = await self._doc_for_ref(request.doc_ref, param="doc_ref") if request.doc_ref else None
+        file_row: FileRow | None = None
         sha256 = doc_row["sha256"] if doc_row else None
         if sha256 is None and request.path:
             file_row = await self.state.parse_svc.ensure_ingested(request.path)
             sha256 = file_row["sha256"] if file_row and file_row.get("sha256") else None
         if sha256 is None:
             raise NotFoundError("file_not_found", "Document not found.", "path")
+        if (file_row and file_row["ext"] in TEXT_EXTENSIONS) or (doc_row and doc_row["file_type"] in TEXT_FILE_TYPES):
+            raise InvalidRequestError(
+                "parse_not_required",
+                "Text files do not require MinerU parsing. Read the file directly.",
+                "doc_ref" if doc_row else "path",
+            )
 
         short_id = doc_row["short_id"] if doc_row else await self._short_id_for_sha256(sha256)
         count = await self.state.parse_svc.invalidate(sha256, request.tier)
@@ -656,6 +695,12 @@ class DoclibServer(AsyncDoclibInterface):
         doc = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE short_id=?", (cursor.short_id,)))
         if doc is None:
             raise NotFoundError("doc_not_found", f"Document {cursor.short_id} not found.", "locator")
+        if doc["file_type"] in TEXT_FILE_TYPES:
+            raise InvalidRequestError(
+                "parse_not_required",
+                "Text files do not require MinerU parsing. Read the file directly.",
+                "locator",
+            )
 
         tier = cursor.tier or await self._default_read_tier(doc["sha256"])
         if tier is None:
@@ -671,7 +716,7 @@ class DoclibServer(AsyncDoclibInterface):
             short_id=doc["short_id"],
             tier=tier,
             page_range=page_range,
-            after=_locator_after(cursor),
+            after=_locator_after(cursor, tier),
             locator=_canonical_locator(doc["short_id"], tier, cursor),
             context=context,
             limit=limit,
@@ -742,9 +787,7 @@ class DoclibServer(AsyncDoclibInterface):
                 limit=limit,
                 offset=offset,
             )
-            response = SearchResponse(
-                results=[_search_result(row) for row in results if row.get("tier") in TIERS], total=total, query=query
-            )
+            response = SearchResponse(results=[_search_result(row) for row in results], total=total, query=query)
             dims = {"status": "succeeded"}
             await _record_telemetry_count(self.state, "search.finished.count", dimensions=dims)
             await _record_telemetry_duration(self.state, "search.duration_bucket.count", start_ms, dimensions=dims)
@@ -822,24 +865,55 @@ class DoclibServer(AsyncDoclibInterface):
             active_parses=active_parses,
         )
 
+    @route("GET", "/remote-usage", tags=("remote",))
+    async def get_remote_usage(self) -> RemoteUsageResponse:
+        from ..parser.api_client import MinerUApiParser, _APITransportError, _V1APIError
+
+        remote_url = cast(str, await self.state.config_svc.get("parse_server.remote.url"))
+        resolved_api_key = await resolve_remote_api_key(self.state.config_svc)
+        client = MinerUApiParser(api_url=remote_url, api_key=resolved_api_key.value)
+        try:
+            payload = await client.get_usage_async()
+        except _APITransportError as exc:
+            code = "remote_timeout" if exc.timed_out else "remote_unreachable"
+            raise MineruError(
+                code,
+                f"Remote API transport failed during {exc.stage} after {exc.attempts} attempt(s) ({type(exc.cause).__name__}).",
+            ) from exc
+        except _V1APIError as exc:
+            raise MineruError(exc.code, exc.message, exc.param) from exc
+        try:
+            return RemoteUsageResponse.model_validate(payload)
+        except ValidationError as exc:
+            raise MineruError("api_error", "Remote API returned an invalid usage response.") from exc
+
     @route("GET", "/configs", tags=("config",))
     async def get_config(self) -> ConfigResponse:
         config, sources = await self.state.config_svc.get_all_with_sources()
+        resolved_api_key = await resolve_remote_api_key(self.state.config_svc)
+        if resolved_api_key.value is not None:
+            config[REMOTE_API_KEY_CONFIG] = resolved_api_key.value
+            sources[REMOTE_API_KEY_CONFIG] = resolved_api_key.source
         return ConfigResponse(config=_mask_config(config), sources=sources)
 
     @route("GET", "/configs/{key}", tags=("config",))
     async def get_config_key(self, key: str) -> ConfigValueResponse:
-        value = await self.state.config_svc.get(key)
-        source = await self.state.config_svc.get_source(key)
+        value, source = await self._effective_config_value(key)
         return ConfigValueResponse(key=key, value=_mask_config_value(key, value or ""), source=source)
 
     @route("PUT", "/configs/{key}", tags=("config",))
     async def set_config(self, key: str, request: ConfigSetRequest) -> ConfigSetResponse:
         await self._validate_config_set(key, request.value)
         await self.state.config_svc.set(key, request.value)
-        value = await self.state.config_svc.get(key)
-        source = await self.state.config_svc.get_source(key)
+        value, source = await self._effective_config_value(key)
         return ConfigSetResponse(key=key, value=_mask_config_value(key, value or ""), source=source)
+
+    async def _effective_config_value(self, key: str) -> tuple[str | None, ConfigSource]:
+        if key == REMOTE_API_KEY_CONFIG:
+            resolved = await resolve_remote_api_key(self.state.config_svc)
+            source = "default" if resolved.source == "anonymous" else resolved.source
+            return resolved.value, source
+        return await self.state.config_svc.get(key), await self.state.config_svc.get_source(key)
 
     async def _validate_config_set(self, key: str, value: str) -> None:
         validate_config_value(key, value)
@@ -856,8 +930,7 @@ class DoclibServer(AsyncDoclibInterface):
     @route("DELETE", "/configs/{key}", tags=("config",))
     async def unset_config(self, key: str) -> ConfigUnsetResponse:
         removed = await self.state.config_svc.unset(key)
-        value = await self.state.config_svc.get(key)
-        source = await self.state.config_svc.get_source(key)
+        value, source = await self._effective_config_value(key)
         return ConfigUnsetResponse(key=key, value=_mask_config_value(key, value or ""), source=source, removed=removed)
 
     @route("POST", "/watches", tags=("watches",))
@@ -1140,12 +1213,25 @@ class DoclibServer(AsyncDoclibInterface):
             loaded_pages = filter_pages_by_user_range(loaded_pages, page_range)
         if not loaded_pages:
             raise NotFoundError("not_cached", "Requested parsed content is not cached.", "page_range")
-        return render_markdown(
-            loaded_pages,
-            img_bucket_path=_PUBLIC_IMAGE_BUCKET_PATH,
-            add_markers=not no_marker,
-            prefer_markdown_table=True,
-        )
+        doc = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,)))
+        if doc is None:
+            raise NotFoundError("doc_not_found", f"Document {sha256} not found.", "doc_ref")
+        output: list[str] = []
+        page_count = doc["page_count"]
+        for page in loaded_pages:
+            if not no_marker:
+                output.append(_page_marker(page.page_idx + 1, page_count))
+            output.extend(
+                text
+                for _, text in _page_markdown_blocks(
+                    page,
+                    data_dir=data_dir,
+                    sha256=sha256,
+                    short_id=doc["short_id"],
+                    tier=tier,
+                )
+            )
+        return "\n\n".join(output)
 
     async def _execute_read_plan(self, plan: _ReadPlan) -> DocContentResponse:
         data_dir = _effective_data_dir(self.state)
@@ -1159,12 +1245,15 @@ class DoclibServer(AsyncDoclibInterface):
         if not loaded_pages:
             raise NotFoundError("not_cached", "Requested parsed content is not cached.", "page_range")
 
+        doc = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (plan.sha256,)))
         if plan.format == "image":
             return await self._render_image_response(plan, loaded_pages)
 
         pages_for_render = _select_context_pages(loaded_pages, plan.target, plan.context)
         rendered = _render_progressive_markdown(
             pages_for_render,
+            data_dir=data_dir,
+            sha256=plan.sha256,
             short_id=plan.short_id,
             tier=plan.tier,
             after=_parse_after_cursor(plan.after),
@@ -1172,12 +1261,11 @@ class DoclibServer(AsyncDoclibInterface):
             add_markers=not plan.no_marker,
             target=plan.target,
             context=plan.context,
-            img_bucket_path=_PUBLIC_IMAGE_BUCKET_PATH,
+            page_count=doc["page_count"] if doc else None,
         )
         if not rendered.content_ranges:
             raise NotFoundError("not_cached", "Requested parsed content is not cached after cursor.", "after")
 
-        doc = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (plan.sha256,)))
         page_count = doc["page_count"] if doc else None
         paginated = _is_paginated_doc(doc) if doc else True
         next_request = (
@@ -1209,7 +1297,11 @@ class DoclibServer(AsyncDoclibInterface):
             next_request=next_request,
         )
 
-    async def _render_image_response(self, plan: _ReadPlan, loaded_pages: list[PageInfo]) -> DocContentResponse:
+    async def _render_image_response(
+        self,
+        plan: _ReadPlan,
+        loaded_pages: list[PageInfo],
+    ) -> DocContentResponse:
         if plan.target is None or plan.target.page_no is None:
             raise InvalidRequestError("format_not_supported", "image format requires a page or block locator.", "format")
         if plan.page_range and len(parse_page_range_set(plan.page_range)) != 1:
@@ -1218,10 +1310,21 @@ class DoclibServer(AsyncDoclibInterface):
         if page is None:
             raise NotFoundError("page_not_cached", f"Page {plan.target.page_no} is not cached.", "locator")
 
-        if _is_office_page(page):
-            asset = await self._render_office_image_asset(plan, page)
+        if plan.target.block_no is None:
+            asset = await self._render_source_image_asset(plan, page)
         else:
-            asset = await self._render_pdf_image_asset(plan, page)
+            block = _find_block_by_no(page, plan.target.block_no)
+            if block is None:
+                raise NotFoundError("block_not_found", f"Block {plan.target.block_no} not found.", "locator")
+            image_dir = parse_image_sidecar_dir(_effective_data_dir(self.state), plan.sha256, plan.tier)
+            source = _resolve_block_image_source(block, image_dir=image_dir)
+            if source is None:
+                raise NotFoundError("asset_not_available", "Block image asset is not available.", "locator")
+            if source.kind == "source_bbox":
+                asset = await self._render_source_image_asset(plan, page)
+            else:
+                assert source.sidecar_path is not None
+                asset = self._render_sidecar_image_asset(plan, source.sidecar_path)
 
         target_ref = plan.locator or page_ref(plan.short_id, plan.tier, plan.target.page_no)
         return DocContentResponse(
@@ -1303,9 +1406,9 @@ class DoclibServer(AsyncDoclibInterface):
         tiers: set[Tier] = {row["tier"] for row in rows if row["tier"] in TIERS and row["tier"] != "flash"}
         if not tiers:
             return None
-        return max(tiers, key=lambda t: TIER_ORDER[t])
+        return select_highest_cached_tier(tiers)
 
-    async def _render_pdf_image_asset(self, plan: _ReadPlan, page: PageInfo) -> ContentAsset:
+    async def _render_source_image_asset(self, plan: _ReadPlan, page: PageInfo) -> ContentAsset:
         if plan.target is None:
             raise InvalidRequestError("format_not_supported", "image format requires a page or block locator.", "format")
         file_row = cast(
@@ -1318,16 +1421,26 @@ class DoclibServer(AsyncDoclibInterface):
         if file_row is None:
             raise NotFoundError("no_accessible_file", "No active source file found for this document.", "locator")
         source_path = file_row["path"]
-        if not source_path.lower().endswith(".pdf"):
+        source_ext = str(file_row.get("ext") or Path(source_path).suffix).lower().lstrip(".")
+        source_bytes = Path(source_path).read_bytes()
+        if source_ext == "pdf":
+            doc = PDFDocument(source_bytes)
+        elif source_ext in IMAGE_EXTENSIONS:
+            doc = PDFDocument.from_image(source_bytes)
+        else:
             raise InvalidRequestError(
-                "format_not_supported", "image format for page/block is only supported for PDF sources.", "format"
+                "format_not_supported",
+                "Page and bbox image output is only supported for PDF and image sources.",
+                "format",
             )
-        pdf_bytes = Path(source_path).read_bytes()
-        with PDFDocument(pdf_bytes) as doc:
+        with doc:
             if plan.target.block_no is None:
-                image = doc.render_page(plan.target.page_no - 1, scale=2).pil_image
-                image_bytes = _pil_image_to_bytes(image, plan.image_format)
-                width, height = image.size
+                image = doc.render_page(plan.target.page_no - 1).pil_image
+                try:
+                    image_bytes = _pil_image_to_bytes(image, plan.image_format)
+                    width, height = image.size
+                finally:
+                    image.close()
             else:
                 block = _find_block_by_no(page, plan.target.block_no)
                 if block is None:
@@ -1335,7 +1448,8 @@ class DoclibServer(AsyncDoclibInterface):
                 if _is_empty_bbox(block.bbox):
                     raise InvalidRequestError("bbox_not_available", "Block bbox is not available for image output.", "locator")
                 image_bytes = _transcode_image_bytes(
-                    doc.crop_image(block.bbox, plan.target.page_no - 1, scale=2), plan.image_format
+                    doc.crop_image(block.bbox, plan.target.page_no - 1, scale=doc.render_scale),
+                    plan.image_format,
                 )
                 width, height = _image_size_from_bytes(image_bytes)
         return _write_temp_asset(
@@ -1348,25 +1462,8 @@ class DoclibServer(AsyncDoclibInterface):
             height=height,
         )
 
-    async def _render_office_image_asset(self, plan: _ReadPlan, page: PageInfo) -> ContentAsset:
-        if plan.target is None or plan.target.block_no is None:
-            raise InvalidRequestError("format_not_supported", "Office image output requires an image block locator.", "format")
-        block = _find_block_by_no(page, plan.target.block_no)
-        if block is None:
-            raise NotFoundError("block_not_found", f"Block {plan.target.block_no} not found.", "locator")
-        image_span = _first_image_span(block)
-        if image_span is None:
-            raise InvalidRequestError(
-                "format_not_supported", "Office image output is only supported for image blocks.", "format"
-            )
-        image_bytes = None
-        if image_span.image_path:
-            image_dir = parse_image_sidecar_dir(self.state.data_dir, plan.sha256, plan.tier)
-            candidate = resolve_image_sidecar_path(image_dir, image_span.image_path)
-            if candidate is not None and candidate.is_file():
-                image_bytes = candidate.read_bytes()
-        if image_bytes is None:
-            raise NotFoundError("asset_not_available", "Office image asset is not available.", "locator")
+    def _render_sidecar_image_asset(self, plan: _ReadPlan, sidecar_path: Path) -> ContentAsset:
+        image_bytes = sidecar_path.read_bytes()
         image_bytes = _transcode_image_bytes(image_bytes, plan.image_format)
         width, height = _image_size_from_bytes(image_bytes)
         return _write_temp_asset(
@@ -1382,7 +1479,7 @@ class DoclibServer(AsyncDoclibInterface):
 
 _READ_LOCATOR_RE = re.compile(
     r"^doc:(?P<short_id>[0-9a-fA-F]+)"
-    r"(?:/tier:(?P<tier>flash|medium|high|extra_high)"
+    r"(?:/tier:(?P<tier>flash|basic|standard|advanced)"
     r"(?:/page:(?P<page_no>[1-9][0-9]*)"
     r"(?:/block:(?P<block_no>[1-9][0-9]*)(?:/char:(?P<char_offset>0|[1-9][0-9]*))?)?)?)?$"
 )
@@ -1414,12 +1511,12 @@ def _canonical_locator(short_id: str, tier: Tier, locator: _LocatorParts) -> str
     return block_char_ref(short_id, tier, locator.page_no, locator.block_no, locator.char_offset)
 
 
-def _locator_after(locator: _LocatorParts) -> str | None:
+def _locator_after(locator: _LocatorParts, tier: Tier) -> str | None:
     if locator.page_no is None:
         return None
     if locator.block_no is None:
         return None
-    return _canonical_locator(locator.short_id, locator.tier or "high", locator) if locator.char_offset is not None else None
+    return _canonical_locator(locator.short_id, tier, locator) if locator.char_offset is not None else None
 
 
 def _locator_page_range(locator: _LocatorParts, doc: DocRow, context: int) -> str | None:
@@ -1495,7 +1592,7 @@ def _parse_server_status(
     return ParseServerStatus(
         local=LocalParseServerStatus(
             mode=local_mode,
-            healthy=health.local_healthy,
+            healthy=health.local.probe.healthy,
             starting=health.local_starting,
             started_at=health.local_started_at or None,
             url=local_url,
@@ -1506,38 +1603,68 @@ def _parse_server_status(
             self_hosted_url=self_hosted_url,
             restart_count=getattr(health, "restart_count", 0),
             max_restart_attempts=3,
-            last_probe_at=health.local_last_probe_at,
-            last_success_at=health.local_last_success_at,
-            last_failure_at=health.local_last_failure_at,
-            supported_tiers=health.local_supported_tiers,
+            last_probe_at=health.local.last_probe_at,
+            last_success_at=health.local.last_success_at,
+            last_failure_at=health.local.last_failure_at,
+            supported_tiers=health.local.probe.tiers,
+            error_code=health.local.probe.error_code,
+            error_msg=health.local.probe.error_msg,
         ),
         remote=RemoteParseServerStatus(
-            healthy=health.remote_healthy,
+            healthy=health.remote.probe.healthy,
             url=remote_url,
             port=_port_from_url(remote_url),
-            last_probe_at=health.remote_last_probe_at,
-            last_success_at=health.remote_last_success_at,
-            last_failure_at=health.remote_last_failure_at,
-            supported_tiers=health.remote_supported_tiers,
+            last_probe_at=health.remote.last_probe_at,
+            last_success_at=health.remote.last_success_at,
+            last_failure_at=health.remote.last_failure_at,
+            supported_tiers=health.remote.probe.tiers,
+            error_code=health.remote.probe.error_code,
+            error_msg=health.remote.probe.error_msg,
         ),
     )
 
 
-def _ensure_managed_parse_server_tier_available(tier: Tier, param: str) -> None:
+def _ensure_managed_parse_server_tier_available(tier: DeploymentTier, param: str) -> None:
     try:
         ensure_tier_runtime_dependencies(tier)
     except TierDependencyError as exc:
         raise InvalidRequestError("parse_server_dependency_missing", str(exc), param) from exc
+    _ensure_managed_parse_server_models_ready(tier, param)
 
 
-def _validate_managed_parse_server_tier(value: str, param: str) -> Tier:
-    if value not in ("flash", "medium", "high", "extra_high"):
+def _ensure_managed_parse_server_models_ready(tier: DeploymentTier, param: str) -> None:
+    missing_repos: list[str] = []
+    for repo in model_repos_for_tier(tier):
+        result = verify_model_repo(repo)
+        if result.ready:
+            continue
+        missing_repos.append(_format_missing_model_repo(repo, result.missing_paths))
+
+    if not missing_repos:
+        return
+
+    details = "; ".join(missing_repos)
+    raise InvalidRequestError(
+        "parse_server_model_not_ready",
+        f"Local managed tier '{tier}' requires model files that are not ready. {details}. "
+        f"Run: mineru-kit models download --tier {tier}",
+        param,
+    )
+
+
+def _format_missing_model_repo(repo: ModelRepo, missing_paths: list[str]) -> str:
+    missing = ", ".join(missing_paths)
+    return f"{repo.name} missing: {missing}"
+
+
+def _validate_managed_parse_server_tier(value: str, param: str) -> DeploymentTier:
+    if value not in DEPLOYMENT_TIERS:
         raise InvalidRequestError(
             "invalid_config_value",
-            "parse_server.local.managed_tier must be one of: flash, medium, high, extra_high.",
+            "parse_server.local.managed_tier must be one of: basic, standard.",
             param,
         )
-    return cast(Tier, value)
+    return cast(DeploymentTier, value)
 
 
 def _port_from_url(url: str | None) -> int | None:
@@ -1663,29 +1790,7 @@ def _find_page(pages: list[PageInfo], page_no: int) -> PageInfo | None:
 
 def _find_block_by_no(page: PageInfo, block_no: int) -> Block | None:
     target_index = block_no - 1
-    for block in page.para_blocks:
-        found = _find_block_by_index(block, target_index)
-        if found is not None:
-            return found
-    for block in page.discarded_blocks:
-        found = _find_block_by_index(block, target_index)
-        if found is not None:
-            return found
-    return None
-
-
-def _find_block_by_index(block: Block, index: int) -> Block | None:
-    if block.index == index:
-        return block
-    for child in block.blocks:
-        found = _find_block_by_index(child, index)
-        if found is not None:
-            return found
-    return None
-
-
-def _is_office_page(page: PageInfo) -> bool:
-    return page._backend == "office"
+    return next((block for block in page.para_blocks if block.index == target_index), None)
 
 
 def _is_empty_bbox(bbox: object) -> bool:
@@ -1695,14 +1800,40 @@ def _is_empty_bbox(bbox: object) -> bool:
         values = [float(v) for v in bbox]
     except (TypeError, ValueError):
         return True
+    if not all(math.isfinite(value) for value in values):
+        return True
     return tuple(values) == tuple(float(v) for v in EMPTY_BBOX) or values[0] >= values[2] or values[1] >= values[3]
 
 
-def _first_image_span(block: Block) -> Span | None:
+def _resolve_block_image_source(block: Block, *, image_dir: str) -> _BlockImageSource | None:
+    if not _is_empty_bbox(block.bbox):
+        return _BlockImageSource(kind="source_bbox")
     for span in _iter_block_spans(block):
-        if span.type == "image":
-            return span
+        if not span.image_path:
+            continue
+        candidate = resolve_image_sidecar_path(image_dir, span.image_path)
+        if candidate is not None and candidate.is_file():
+            return _BlockImageSource(kind="sidecar", sidecar_path=candidate)
     return None
+
+
+def _make_doclib_image_renderer(
+    *,
+    data_dir: str,
+    sha256: str,
+    short_id: str,
+    tier: Tier,
+    page_no: int,
+) -> Callable[[Block], str]:
+    image_dir = parse_image_sidecar_dir(data_dir, sha256, tier)
+
+    def _render(block: Block) -> str:
+        label = _VISUAL_BLOCK_LABELS.get(block.type, "Image block")
+        source = _resolve_block_image_source(block, image_dir=image_dir)
+        locator = block_ref(short_id, tier, page_no, block.index + 1) if source is not None else ""
+        return f"![{label}]({locator})"
+
+    return _render
 
 
 def _iter_block_spans(block: Block) -> Iterator[Span]:
@@ -1795,7 +1926,9 @@ def _render_progressive_markdown(
     add_markers: bool,
     target: ContentCursor | None = None,
     context: int = 0,
-    img_bucket_path: str = "",
+    data_dir: str = "",
+    sha256: str = "",
+    page_count: int | None = None,
 ) -> _RenderedContent:
     output: list[str] = []
     ranges: list[ContentRange] = []
@@ -1808,7 +1941,13 @@ def _render_progressive_markdown(
         page_no = page.page_idx + 1
         if after and page_no < after.page_no:
             continue
-        page_blocks = _page_markdown_blocks(page, img_bucket_path=img_bucket_path)
+        page_blocks = _page_markdown_blocks(
+            page,
+            data_dir=data_dir,
+            sha256=sha256,
+            short_id=short_id,
+            tier=tier,
+        )
         if target and target.block_no is not None and page_no == target.page_no:
             start_block_no = max(1, target.block_no - context)
             end_block_no = target.block_no + context
@@ -1880,12 +2019,12 @@ def _render_progressive_markdown(
             started = True
             empty_page_selected = True
             if add_markers:
-                page_output.append(f"<!-- page {page_no} -->")
+                page_output.append(_page_marker(page_no, page_count))
 
         if not started or (not page_output and not empty_page_selected):
             continue
         if add_markers:
-            marker = f"<!-- page {page_no} -->"
+            marker = _page_marker(page_no, page_count)
             if not page_output or page_output[0] != marker:
                 page_output.insert(0, marker)
         if page_output:
@@ -1924,14 +2063,42 @@ def _render_progressive_markdown(
     )
 
 
-def _page_markdown_blocks(page: PageInfo, *, img_bucket_path: str = "") -> list[tuple[int, str]]:
+def _page_marker(page_no: int, page_count: int | None) -> str:
+    if page_count is None:
+        return f"<!-- page {page_no} -->"
+    return f"<!-- page {page_no} of {page_count} -->"
+
+
+def _page_markdown_blocks(
+    page: PageInfo,
+    *,
+    data_dir: str = "",
+    sha256: str = "",
+    short_id: str = "",
+    tier: Tier = "standard",
+) -> list[tuple[int, str]]:
     backend = page._backend
     result: list[tuple[int, str]] = []
+    image_renderer = _make_doclib_image_renderer(
+        data_dir=data_dir,
+        sha256=sha256,
+        short_id=short_id,
+        tier=tier,
+        page_no=page.page_idx + 1,
+    )
     for block in page.para_blocks:
         if backend == "office":
-            rendered = office_blocks_to_markdown([block], img_bucket_path=img_bucket_path, prefer_markdown_table=True)
+            rendered = office_blocks_to_markdown(
+                [block],
+                prefer_markdown_table=True,
+                image_renderer=image_renderer,
+            )
         else:
-            rendered = blocks_to_markdown([block], img_bucket_path=img_bucket_path, prefer_markdown_table=True)
+            rendered = blocks_to_markdown(
+                [block],
+                prefer_markdown_table=True,
+                image_renderer=image_renderer,
+            )
         text = _join_markdown([item for item in rendered if item.strip()])
         if text.strip():
             result.append((block.index, text))
@@ -2249,9 +2416,7 @@ def _parsing_rule_info(row: ParsingRuleRow | None) -> ParsingRuleInfo:
 
 
 def _search_result(row: ContentSearchResultRow) -> SearchResult:
-    data = dict(row)
-    data["tier"] = cast(Tier, data["tier"])
-    return SearchResult.model_validate(data)
+    return SearchResult.model_validate(row)
 
 
 def _find_result(row: FilenameSearchResultRow) -> FindResult:

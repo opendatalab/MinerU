@@ -8,21 +8,33 @@ import sys
 import time
 import uuid
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any
 
 import typer
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from ...config import config
-from ...doclib.endpoint import remove_endpoint_file
+from ...doclib.endpoint import read_endpoint_file
+from ...doclib.instance_lock import DoclibLockUnavailable, build_doclib_home_owned_message, doclib_home_lock
 from ...doclib.types import ServerStatusResponse, TCPServerStatus
 from ...errors import MineruError
+from ...utils.stdio import utf8_subprocess_env
 from ...version import __version__
 from ..contracts import CliContext, RenderableObject
 from ..runtime import run_cli
 
 app = typer.Typer(help="Server lifecycle management", no_args_is_help=True)
+
+SERVER_START_TIMEOUT_SEC = 30.0
+
+
+@dataclass(frozen=True)
+class _ServerStartingStatus:
+    status: str = "starting"
+    pid: int | None = None
 
 
 def _socket_path() -> str:
@@ -153,17 +165,42 @@ def _server_running() -> bool:
         return False
 
 
-def _wait_for_server(timeout: float = 15.0) -> bool:
+def _doclib_lock_available() -> bool:
+    try:
+        with doclib_home_lock():
+            return True
+    except DoclibLockUnavailable:
+        return False
+
+
+def _home_owner_unavailable_error() -> MineruError:
+    return MineruError("service_unavailable", build_doclib_home_owned_message())
+
+
+def _wait_for_started_server(proc: subprocess.Popen[bytes], timeout: float = SERVER_START_TIMEOUT_SEC) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         if _server_running():
             return True
+        if proc.poll() is not None:
+            return False
         time.sleep(0.3)
     return False
 
 
-def _wait_for_sock(timeout: float = 15.0) -> bool:
-    return _wait_for_server(timeout)
+def _wait_for_server_stop(timeout: float = 15.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not _server_running():
+            try:
+                with doclib_home_lock():
+                    if _server_running():
+                        continue
+                    return True
+            except DoclibLockUnavailable:
+                pass
+        time.sleep(0.3)
+    return False
 
 
 @app.command()
@@ -187,14 +224,8 @@ def _start() -> str:
         with _ServerStartLock(_server_start_lock_path()) as start_lock:
             if not start_lock.acquired or _server_running():
                 return "Server is already running."
-
-            socket_path = _socket_path()
-            # Clean stale socket
-            try:
-                os.unlink(socket_path)
-            except OSError:
-                pass
-            remove_endpoint_file(_endpoint_path())
+            if not _doclib_lock_available():
+                raise _home_owner_unavailable_error()
 
             with open(log_path, "a", encoding="utf-8") as log_file:
                 log_file.write("\n--- mineru server start ---\n")
@@ -212,13 +243,15 @@ def _start() -> str:
                     stdout=stdout_log_file,
                     stderr=stderr_log_file,
                     start_new_session=True,
+                    env=utf8_subprocess_env(),
                 )
 
-                if not _wait_for_server():
-                    proc.kill()
+                if not _wait_for_started_server(proc):
+                    if proc.poll() is None:
+                        return f"Server is still starting (PID {proc.pid}).\nCheck status: mineru server status"
                     raise MineruError(
                         "service_unavailable",
-                        "Server failed to start within 15 seconds. "
+                        f"Server failed to start within {int(SERVER_START_TIMEOUT_SEC)} seconds. "
                         f"See log: {log_path}; stdout: {stdout_log_path}; stderr: {stderr_log_path}",
                     )
     except MineruError:
@@ -240,7 +273,8 @@ def stop() -> None:
 
 def _stop() -> str:
     if not _server_running():
-        _cleanup_local_endpoint_files()
+        if not _doclib_lock_available():
+            raise _home_owner_unavailable_error()
         return "Server is not running."
 
     try:
@@ -248,11 +282,14 @@ def _stop() -> str:
 
         c = DoclibClient(timeout=5)
         c.shutdown_server()
-    except Exception:
-        pass
+    except Exception as exc:
+        raise MineruError("service_unavailable", f"Failed to request MinerU server shutdown: {exc}") from exc
 
-    time.sleep(0.5)
-    _cleanup_local_endpoint_files()
+    if not _wait_for_server_stop():
+        raise MineruError(
+            "service_unavailable",
+            "MinerU server did not stop within 15 seconds. The server was not restarted.",
+        )
 
     return "Server stopped."
 
@@ -266,7 +303,6 @@ def restart() -> None:
 def _restart() -> str:
     if _server_running():
         stop_message = _stop()
-        time.sleep(1)
         start_message = _start()
         return f"{stop_message}\n{start_message}"
     return _start()
@@ -279,8 +315,11 @@ def status(json_mode: bool = typer.Option(False, "--json", help="JSON output")) 
     run_cli(ctx, _server_status, render=_render_server_status)
 
 
-def _server_status() -> ServerStatusResponse:
+def _server_status() -> ServerStatusResponse | _ServerStartingStatus:
     if not _server_running():
+        if not _doclib_lock_available():
+            endpoint = read_endpoint_file(_endpoint_path())
+            return _ServerStartingStatus(pid=endpoint.pid if endpoint is not None else None)
         return _not_running_status()
     from ...doclib.client import DoclibClient
 
@@ -288,7 +327,14 @@ def _server_status() -> ServerStatusResponse:
     return c.get_server_status()
 
 
-def _render_server_status(data: ServerStatusResponse) -> Iterator[RenderableObject]:
+def _render_server_status(data: ServerStatusResponse | _ServerStartingStatus) -> Iterator[RenderableObject]:
+    if isinstance(data, _ServerStartingStatus):
+        if data.pid is None:
+            yield "Server is still starting."
+        else:
+            yield f"Server is still starting (PID {data.pid})."
+        yield "Check again: mineru server status"
+        return
     if not _get(data, "running"):
         yield "Server is not running."
         return
@@ -497,7 +543,7 @@ def _render_server_status(data: ServerStatusResponse) -> Iterator[RenderableObje
         logs = _get(data, key, [])
         if logs:
             log_text = "".join(logs)
-            panel = Panel(log_text.strip() or "(empty)", title=title, border_style="dim")
+            panel = Panel(Text(log_text.strip() or "(empty)"), title=title, border_style="dim")
             yield panel
 
 
@@ -565,14 +611,6 @@ def _error_summary_rows(error_summary: Any) -> list[tuple[str, str, int]]:
         for bucket in _get(error_summary, attr, []):
             rows.append((scope, _get(bucket, "code", ""), int(_get(bucket, "count", 0))))
     return rows
-
-
-def _cleanup_local_endpoint_files() -> None:
-    try:
-        os.unlink(_socket_path())
-    except OSError:
-        pass
-    remove_endpoint_file(_endpoint_path())
 
 
 def _ensure_log_dir(path: str) -> None:

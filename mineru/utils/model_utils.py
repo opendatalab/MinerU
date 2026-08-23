@@ -14,8 +14,9 @@ from ..types import BBox, IntBBox
 try:
     import torch
     import torch_npu
+    _TORCH_AVAILABLE = True
 except ImportError:
-    pass
+    _TORCH_AVAILABLE = False
 
 TEXT_REGION_LABELS = {
     "abstract",
@@ -193,6 +194,9 @@ def get_res_list_from_layout_res(
 
 
 def clean_memory(device: str = "cuda") -> None:
+    if not _TORCH_AVAILABLE:
+        gc.collect()
+        return
     if str(device).startswith("cuda"):
         if torch.cuda.is_available():  # type: ignore
             torch.cuda.empty_cache()  # type: ignore
@@ -244,6 +248,8 @@ def get_vram(device: str) -> int:
 
     # 环境变量未配置或配置错误,根据device自动获取
     total_memory = 1
+    if not _TORCH_AVAILABLE:
+        return total_memory
     if torch.cuda.is_available() and str(device).startswith("cuda"):  # type: ignore
         total_memory = round(torch.cuda.get_device_properties(device).total_memory / (1024**3))  # type: ignore  # 将字节转换为 GB
     elif str(device).startswith("npu"):

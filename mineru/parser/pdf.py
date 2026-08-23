@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
+import time
 from abc import abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from ..errors import InvalidRequestError
+from ..filetypes import IMAGE_EXTENSIONS
 from ..types import PageInfo
 from ..utils.backend_options import (
     CANONICAL_HYBRID_ENGINE,
@@ -21,7 +24,7 @@ from ..utils.backend_options import (
 from ..utils.image_payload import ImagePayloadCache
 from .base import DocumentParser, ParseResult
 
-_IMAGE_SUFFIXES = frozenset({"png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"})
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -149,8 +152,24 @@ class PdfBaseParser(DocumentParser):
         pdf_bytes = path.read_bytes()
 
         suffix = guess_suffix_by_path(path)
-        if suffix in _IMAGE_SUFFIXES:
+        if suffix in IMAGE_EXTENSIONS:
+            conversion_started_at = time.perf_counter()
+            input_size = len(pdf_bytes)
+            logger.debug(
+                "Image input conversion started filename=%s suffix=%s input_bytes=%d",
+                path.name,
+                suffix,
+                input_size,
+            )
             pdf_bytes = PDFDocument.from_image(pdf_bytes).bytes
+            logger.debug(
+                "Image input conversion completed filename=%s suffix=%s input_bytes=%d pdf_bytes=%d elapsed_ms=%d",
+                path.name,
+                suffix,
+                input_size,
+                len(pdf_bytes),
+                round((time.perf_counter() - conversion_started_at) * 1000),
+            )
 
         pdf_bytes, retained_page_indices, broken_page_indices = self._maybe_adjust_pdf_bytes(
             pdf_bytes,
@@ -299,20 +318,20 @@ class PdfHybridParser(PdfBaseParser):
 
 
 class PdfPipelineParser(PdfHybridParser):
-    """保留旧 SDK 类名，内部统一委托 Hybrid medium 解析。"""
+    """保留旧 SDK 类名，内部统一委托 Hybrid medium effort 解析。"""
 
     def __init__(self, **kwargs: Any) -> None:
-        """将旧 PdfPipelineParser 构造参数归一到 Hybrid medium，避免继续加载旧 backend。"""
+        """将旧 PdfPipelineParser 构造参数归一到 Hybrid medium effort，避免继续加载旧 backend。"""
         kwargs.pop("backend", None)
         kwargs.pop("effort", None)
         super().__init__(backend=CANONICAL_HYBRID_ENGINE, effort=LOCAL_HYBRID_EFFORT, **kwargs)
 
 
 class PdfVlmParser(PdfHybridParser):
-    """保留旧 SDK 类名，内部统一委托 Hybrid extra_high 解析。"""
+    """保留旧 SDK 类名，内部统一委托 Hybrid xhigh effort 解析。"""
 
     def __init__(self, **kwargs: Any) -> None:
-        """将旧 PdfVlmParser 构造参数归一到 Hybrid extra_high，避免继续暴露独立 VLM backend。"""
+        """将旧 PdfVlmParser 构造参数归一到 Hybrid xhigh effort，避免继续暴露独立 VLM backend。"""
         backend = kwargs.pop("backend", "vlm-engine")
         kwargs.pop("effort", None)
         resolved_backend, resolved_effort = resolve_backend_and_effort(backend, MAX_HYBRID_EFFORT)
@@ -334,6 +353,12 @@ class PdfFlashParser(PdfBaseParser):
         from ..types import Block, Line, PageInfo, Span
         from ..utils.page_index import resolve_output_page_idx
 
+        extraction_started_at = time.perf_counter()
+        logger.debug(
+            "Flash PDF extraction started pdf_bytes=%d mapped_pages=%s",
+            len(pdf_bytes),
+            len(page_index_map) if page_index_map is not None else "all",
+        )
         filepath = self._pdf_bytes_to_tempfile(pdf_bytes)
         try:
             pages_text = extract_pages_text(filepath)
@@ -342,6 +367,11 @@ class PdfFlashParser(PdfBaseParser):
                 os.unlink(filepath)
             except OSError:
                 pass
+        logger.debug(
+            "Flash PDF extraction completed pages=%d elapsed_ms=%d",
+            len(pages_text),
+            round((time.perf_counter() - extraction_started_at) * 1000),
+        )
 
         pages: list[PageInfo] = []
         block_idx = 0

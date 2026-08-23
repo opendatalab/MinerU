@@ -1,5 +1,5 @@
 -- v001: Initial schema
--- Applied to new databases.  For existing databases, see 002_add_parse_columns.sql.
+-- Applied to new databases. Existing databases advance through later numbered migrations.
 
 -- STABLE
 CREATE TABLE IF NOT EXISTS files (
@@ -96,7 +96,6 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts_contents USING fts5(
     text,
     title,
     author,
-    filename,
     tokenize='unicode61'
 );
 

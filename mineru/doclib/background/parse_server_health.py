@@ -18,8 +18,11 @@ import httpx
 
 from ...config import LogConfig, ManagedParseServerConfig, config
 from ...parser.api_client import should_trust_env_for_url
-from ...types import TIERS, Tier, validate_tier
+from ...types import DEPLOYMENT_TIERS, TIERS, DeploymentTier, Tier
+from ...utils.managed_process_control import ManagedProcessControl
+from ...utils.stdio import utf8_subprocess_env
 from ..config_defaults import CONFIG_DEFAULTS
+from ..remote_api import resolve_remote_api_key
 
 logger = logging.getLogger("mineru.health_check")
 
@@ -28,31 +31,46 @@ if TYPE_CHECKING:
 
 MAX_RESTART_ATTEMPTS = 3
 DEFAULT_MANAGED_URL = "http://127.0.0.1:16580"
-MANAGED_PARSE_SERVER_ENV = "MINERU_MANAGED_PARSE_SERVER"
+_NON_RETRYABLE_MODEL_PRELOAD_ERRORS = frozenset(
+    {
+        "model_preload_dependency_missing",
+        "model_preload_files_missing",
+        "model_preload_device_unavailable",
+    }
+)
+
+
+@dataclass
+class ProbeResult:
+    healthy: bool = False
+    tiers: list[Tier] = field(default_factory=list)
+    error_code: str | None = None
+    error_msg: str | None = None
+
+
+@dataclass
+class ProbeState:
+    url: str | None = None
+    probe: ProbeResult = field(default_factory=ProbeResult)
+    last_probe_at: int | None = None
+    last_success_at: int | None = None
+    last_failure_at: int | None = None
 
 
 @dataclass
 class ParseServerHealth:
-    local_healthy: bool = False
+    local: ProbeState = field(default_factory=ProbeState)
+    remote: ProbeState = field(default_factory=ProbeState)
     local_starting: bool = False
     local_started_at: float = 0.0
-    local_supported_tiers: list[Tier] = field(default_factory=list)
     local_mode: str = "disabled"
     self_hosted_url: str | None = None
     managed_url: str = DEFAULT_MANAGED_URL
-    managed_tier: Tier | None = None
-    running_managed_tier: Tier | None = None
-    local_last_probe_at: int | None = None
-    local_last_success_at: int | None = None
-    local_last_failure_at: int | None = None
-    remote_healthy: bool = False
-    remote_url: str | None = None
-    remote_last_probe_at: int | None = None
-    remote_last_success_at: int | None = None
-    remote_last_failure_at: int | None = None
-    remote_supported_tiers: list[Tier] = field(default_factory=list)
+    managed_tier: DeploymentTier | None = None
+    running_managed_tier: DeploymentTier | None = None
     restart_count: int = 0
     managed_proc: subprocess.Popen | None = None
+    managed_control: ManagedProcessControl | None = None
 
 
 _parse_server_health = ParseServerHealth()
@@ -62,23 +80,21 @@ def get_health() -> ParseServerHealth:
     return _parse_server_health
 
 
-async def get_managed_parse_server_tier(config_svc: "ConfigService") -> Tier:
-    """读取 managed parse-server tier；发现旧非法 override 时清理并回退到默认合法值。"""
+async def get_managed_parse_server_tier(config_svc: "ConfigService") -> DeploymentTier:
+    """读取 managed parse-server tier；忽略非法存量值并回退到默认值。"""
     key = "parse_server.local.managed_tier"
     raw_tier = await config_svc.get(key) or CONFIG_DEFAULTS[key]
-    try:
-        return validate_tier(raw_tier)
-    except ValueError:
-        logger.warning(
-            "Invalid managed parse-server tier override %r; clearing override and using default %r",
-            raw_tier,
-            CONFIG_DEFAULTS[key],
-        )
-        await config_svc.unset(key)
-        return validate_tier(CONFIG_DEFAULTS[key])
+    if raw_tier in DEPLOYMENT_TIERS:
+        return cast(DeploymentTier, raw_tier)
+    logger.warning(
+        "Ignoring invalid managed parse-server tier override %r and using default %r",
+        raw_tier,
+        CONFIG_DEFAULTS[key],
+    )
+    return cast(DeploymentTier, CONFIG_DEFAULTS[key])
 
 
-def api_server_args_for_tier(tier: Tier, *, host: str, port: int) -> list[str]:
+def api_server_args_for_tier(tier: DeploymentTier, *, host: str, port: int) -> list[str]:
     """Return managed api-server process args for a doclib tier.
 
     Managed doclib startup uses ``--tier`` so the api-server resolves its own
@@ -93,6 +109,8 @@ def api_server_args_for_tier(tier: Tier, *, host: str, port: int) -> list[str]:
         "--port",
         str(port),
         "--allow-local-source",
+        "--no-flash",
+        "--preload-models",
     ]
 
 
@@ -165,11 +183,11 @@ def open_managed_parse_server_logs(*, marker: str, log_cfg: LogConfig | None = N
 
 def start_managed_parse_server(
     *,
-    tier: Tier,
+    tier: DeploymentTier,
     managed_cfg: ManagedParseServerConfig,
     log_cfg: LogConfig | None,
     marker: str,
-) -> tuple[subprocess.Popen, str]:
+) -> tuple[subprocess.Popen, str, ManagedProcessControl]:
     port = select_available_managed_port(
         managed_cfg.host,
         managed_cfg.port,
@@ -183,40 +201,68 @@ def start_managed_parse_server(
         "mineru.parser.api_server",
         *api_server_args_for_tier(tier, host=managed_cfg.host, port=port),
     ]
-    env = os.environ.copy()
-    env[MANAGED_PARSE_SERVER_ENV] = "1"
+    env = utf8_subprocess_env()
+    control = ManagedProcessControl.create()
+    env.update(control.child_env())
     logger.info("Starting managed parse-server (%s): %s", marker, " ".join(cmd))
-    with open_managed_parse_server_logs(marker=marker, log_cfg=log_cfg) as (
-        stdout_log_file,
-        stderr_log_file,
-    ):
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=stdout_log_file, stderr=stderr_log_file, env=env)
-    return proc, managed_url
+    control.start_accepting()
+    try:
+        with open_managed_parse_server_logs(marker=marker, log_cfg=log_cfg) as (
+            stdout_log_file,
+            stderr_log_file,
+        ):
+            proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=stdout_log_file, stderr=stderr_log_file, env=env)
+    except Exception:
+        control.close()
+        raise
+    return proc, managed_url, control
 
 
-def stop_managed_parse_server(proc: subprocess.Popen | None, *, timeout_sec: int, reason: str) -> None:
-    if proc is None or proc.poll() is not None:
+def stop_managed_parse_server(
+    proc: subprocess.Popen | None,
+    *,
+    control: ManagedProcessControl | None = None,
+    timeout_sec: int,
+    reason: str,
+    startup_in_progress: bool = False,
+) -> None:
+    if proc is None:
+        if control is not None:
+            control.close()
+        return
+    if proc.poll() is not None:
+        if control is not None:
+            control.close()
         return
 
     pid = proc.pid
-    stdin = getattr(proc, "stdin", None)
-    if stdin is not None and not getattr(stdin, "closed", False):
+    total_timeout = max(float(timeout_sec), 0.0)
+    deadline = time.monotonic() + total_timeout
+    graceful_cap = min(2.0, total_timeout * 0.2) if startup_in_progress else total_timeout * 0.5
+    shutdown_sent = control.request_shutdown(graceful_cap) if control is not None else False
+    if shutdown_sent:
         try:
-            stdin.close()
-        except Exception as exc:
-            logger.debug("Failed to close managed parse-server stdin (PID %d, reason=%s): %s", pid, reason, exc)
-
-    try:
-        proc.wait(timeout=timeout_sec)
-        logger.info("Managed parse-server stopped after stdin EOF (PID %d, reason=%s)", pid, reason)
-        return
-    except subprocess.TimeoutExpired:
-        logger.warning("Managed parse-server did not stop after stdin EOF (PID %d, reason=%s), terminating", pid, reason)
+            proc.wait(timeout=min(graceful_cap, max(deadline - time.monotonic(), 0.0)))
+            logger.info("Managed parse-server stopped after control shutdown (PID %d, reason=%s)", pid, reason)
+            if control is not None:
+                control.close()
+            return
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "Managed parse-server did not stop after control shutdown (PID %d, reason=%s), terminating",
+                pid,
+                reason,
+            )
+    else:
+        logger.warning("Managed parse-server control channel unavailable (PID %d, reason=%s), terminating", pid, reason)
 
     try:
         proc.terminate()
-        proc.wait(timeout=timeout_sec)
+        terminate_cap = total_timeout * 0.3
+        proc.wait(timeout=min(terminate_cap, max(deadline - time.monotonic(), 0.0)))
         logger.info("Managed parse-server terminated (PID %d, reason=%s)", pid, reason)
+        if control is not None:
+            control.close()
         return
     except subprocess.TimeoutExpired:
         logger.warning("Managed parse-server did not terminate within timeout (PID %d, reason=%s), killing", pid, reason)
@@ -225,10 +271,27 @@ def stop_managed_parse_server(proc: subprocess.Popen | None, *, timeout_sec: int
 
     try:
         proc.kill()
-        proc.wait(timeout=timeout_sec)
+        proc.wait(timeout=max(deadline - time.monotonic(), 0.0))
         logger.info("Managed parse-server killed (PID %d, reason=%s)", pid, reason)
     except Exception as exc:
         logger.error("Failed to kill managed parse-server (PID %d, reason=%s): %s", pid, reason, exc)
+    finally:
+        if control is not None:
+            control.close()
+
+
+def _managed_parse_server_needs_restart(
+    health: ParseServerHealth,
+    *,
+    now: float,
+    startup_timeout_sec: int,
+) -> bool:
+    if health.local.probe.error_code in _NON_RETRYABLE_MODEL_PRELOAD_ERRORS:
+        return False
+    proc = health.managed_proc
+    if health.local_starting and proc is not None and proc.poll() is None:
+        return now - health.local_started_at >= startup_timeout_sec
+    return True
 
 
 class ParseServerHealthCheck:
@@ -242,6 +305,7 @@ class ParseServerHealthCheck:
         probe_timeout_sec: int,
         startup_grace_sec: int,
         stop_timeout_sec: int,
+        startup_timeout_sec: int | None = None,
         managed_parse_server: ManagedParseServerConfig | None = None,
         log_cfg: LogConfig | None = None,
     ) -> None:
@@ -249,6 +313,9 @@ class ParseServerHealthCheck:
         self.interval_sec = interval_sec
         self.probe_timeout_sec = probe_timeout_sec
         self.startup_grace_sec = startup_grace_sec
+        self.startup_timeout_sec = (
+            startup_timeout_sec if startup_timeout_sec is not None else config.doclib.parse_server_startup_timeout_sec
+        )
         self.stop_timeout_sec = stop_timeout_sec
         self.managed_parse_server = managed_parse_server or config.doclib.managed_parse_server
         self.log_cfg = log_cfg
@@ -271,45 +338,83 @@ class ParseServerHealthCheck:
             if health.local_mode != "disabled":
                 url = self._local_url(health)
                 if url:
-                    healthy, tiers = await self._probe(url)
+                    api_key = None
+                    if health.local_mode == "self_hosted":
+                        api_key = (await self.config_svc.get("parse_server.local.self_hosted_api_key")) or None
+                    probe = await self._probe(url, api_key=api_key)
                     now_ms = int(time.time() * 1000)
-                    health.local_last_probe_at = now_ms
-                    health.local_healthy = healthy
-                    health.local_supported_tiers = tiers
-                    if healthy:
-                        health.local_last_success_at = now_ms
+                    health.local.url = url
+                    health.local.probe = probe
+                    health.local.last_probe_at = now_ms
+                    if probe.healthy:
+                        health.local.last_success_at = now_ms
                         health.local_starting = False
                     else:
-                        health.local_last_failure_at = now_ms
+                        health.local.last_failure_at = now_ms
+                        if probe.error_code != "parse_server_unavailable":
+                            health.local_starting = False
+                else:
+                    health.local = ProbeState()
+            else:
+                health.local = ProbeState()
 
             # probe remote
             remote_url = cast(str, await self.config_svc.get("parse_server.remote.url"))
-            health.remote_url = remote_url
-            healthy, tiers = await self._probe(remote_url)
+            remote_api_key = (await resolve_remote_api_key(self.config_svc)).value
+            probe = await self._probe(remote_url, api_key=remote_api_key)
             now_ms = int(time.time() * 1000)
-            health.remote_last_probe_at = now_ms
-            health.remote_healthy = healthy
-            health.remote_supported_tiers = tiers
-            if healthy:
-                health.remote_last_success_at = now_ms
+            health.remote.url = remote_url
+            health.remote.probe = probe
+            health.remote.last_probe_at = now_ms
+            if probe.healthy:
+                health.remote.last_success_at = now_ms
             else:
-                health.remote_last_failure_at = now_ms
+                health.remote.last_failure_at = now_ms
 
-            # managed mode: restart if crashed (skip if still starting — give it 30s)
-            if health.local_mode == "managed" and not health.local_healthy:
-                if health.local_starting:
-                    elapsed = asyncio.get_event_loop().time() - health.local_started_at
-                    if elapsed < self.startup_grace_sec:
-                        continue  # still loading models, don't restart
-                logger.warning("Managed parse-server is unhealthy, attempting restart")
-                await self._try_restart_managed(health)
-            elif health.local_mode == "managed" and health.local_healthy:
-                await self._try_restart_managed_for_tier_change(health, desired_managed_tier)
+            if health.local_mode == "managed":
+                tier_changed = await self._try_restart_managed_for_tier_change(health, desired_managed_tier)
+                proc = health.managed_proc
+                now = asyncio.get_event_loop().time()
+                startup_elapsed_sec = now - health.local_started_at
+                if (
+                    not tier_changed
+                    and health.local_starting
+                    and proc is not None
+                    and proc.poll() is None
+                    and startup_elapsed_sec >= self.startup_grace_sec
+                    and startup_elapsed_sec < self.startup_timeout_sec
+                ):
+                    logger.info(
+                        "Managed parse-server is still preparing startup tier %s (PID %d)",
+                        health.running_managed_tier,
+                        proc.pid,
+                    )
+                if (
+                    not tier_changed
+                    and not health.local.probe.healthy
+                    and _managed_parse_server_needs_restart(
+                        health,
+                        now=now,
+                        startup_timeout_sec=self.startup_timeout_sec,
+                    )
+                ):
+                    if health.local_starting and proc is not None and proc.poll() is None:
+                        logger.warning(
+                            "Managed parse-server startup exceeded %ds for tier %s (PID %d), attempting restart",
+                            self.startup_timeout_sec,
+                            health.running_managed_tier,
+                            proc.pid,
+                        )
+                    else:
+                        logger.warning("Managed parse-server is unhealthy, attempting restart")
+                    await self._try_restart_managed(health)
 
             await asyncio.sleep(self.interval_sec)
 
     async def _try_restart_managed_for_tier_change(
-        self, health: ParseServerHealth, desired_managed_tier: Tier
+        self,
+        health: ParseServerHealth,
+        desired_managed_tier: DeploymentTier,
     ) -> bool:
         running_managed_tier = health.running_managed_tier
         if running_managed_tier is None or running_managed_tier == desired_managed_tier:
@@ -337,20 +442,25 @@ class ParseServerHealthCheck:
         count_restart: bool = True,
     ) -> None:
         if count_restart and health.restart_count >= MAX_RESTART_ATTEMPTS:
-            logger.error(
-                "Managed parse-server failed %d restarts, disabling", MAX_RESTART_ATTEMPTS
-            )
+            logger.error("Managed parse-server failed %d restarts, disabling", MAX_RESTART_ATTEMPTS)
             health.local_mode = "disabled"
             return
 
         if count_restart:
             health.restart_count += 1
         managed_tier = await get_managed_parse_server_tier(self.config_svc)
-        stop_managed_parse_server(health.managed_proc, timeout_sec=self.stop_timeout_sec, reason=reason)
+        stop_managed_parse_server(
+            health.managed_proc,
+            control=health.managed_control,
+            timeout_sec=self.stop_timeout_sec,
+            reason=reason,
+            startup_in_progress=health.local_starting,
+        )
         health.managed_proc = None
+        health.managed_control = None
         health.running_managed_tier = None
         try:
-            proc, managed_url = start_managed_parse_server(
+            proc, managed_url, control = start_managed_parse_server(
                 tier=managed_tier,
                 managed_cfg=self.managed_parse_server,
                 log_cfg=self.log_cfg,
@@ -359,19 +469,21 @@ class ParseServerHealthCheck:
             health.managed_url = managed_url
             logger.info("Managed parse-server restarted (PID %d, tier=%s)", proc.pid, managed_tier)
             health.managed_proc = proc
+            health.managed_control = control
             health.running_managed_tier = managed_tier
             health.local_starting = True
             health.local_started_at = asyncio.get_event_loop().time()
         except Exception as exc:
             logger.error(f"Failed to restart managed parse-server: {exc}")
 
-    async def _probe(self, base_url: str) -> tuple[bool, list[Tier]]:
+    async def _probe(self, base_url: str, *, api_key: str | None = None) -> ProbeResult:
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
         try:
             async with httpx.AsyncClient(
                 timeout=self.probe_timeout_sec,
                 trust_env=should_trust_env_for_url(base_url),
             ) as client:
-                resp = await client.get(f"{base_url}/v1/tiers")
+                resp = await client.get(f"{base_url}/v1/tiers", headers=headers)
                 if resp.status_code == 200:
                     data = resp.json()
                     tiers: list[Tier] = []
@@ -379,10 +491,18 @@ class ParseServerHealthCheck:
                         tier_id = t.get("id")
                         if tier_id in TIERS:
                             tiers.append(cast(Tier, tier_id))
-                    return True, tiers
-        except Exception:
-            pass
-        return False, []
+                    return ProbeResult(healthy=True, tiers=tiers)
+                error_code, error_msg = _probe_error(resp)
+                return ProbeResult(error_code=error_code, error_msg=error_msg)
+        except httpx.TimeoutException as exc:
+            return ProbeResult(error_code="parse_server_unavailable", error_msg=str(exc) or "Parse-server probe timed out.")
+        except httpx.TransportError as exc:
+            return ProbeResult(
+                error_code="parse_server_unavailable",
+                error_msg=str(exc) or "Parse-server probe transport failed.",
+            )
+        except Exception as exc:
+            return ProbeResult(error_code="parse_server_unavailable", error_msg=str(exc) or "Parse-server probe failed.")
 
     @staticmethod
     def _local_url(health: ParseServerHealth) -> str | None:
@@ -395,5 +515,45 @@ class ParseServerHealthCheck:
     async def stop(self) -> None:
         self.running = False
         health = get_health()
-        stop_managed_parse_server(health.managed_proc, timeout_sec=self.stop_timeout_sec, reason="health check stop")
+        stop_managed_parse_server(
+            health.managed_proc,
+            control=health.managed_control,
+            timeout_sec=self.stop_timeout_sec,
+            reason="health check stop",
+            startup_in_progress=health.local_starting,
+        )
         health.managed_proc = None
+        health.managed_control = None
+
+
+def _probe_error(resp: httpx.Response) -> tuple[str, str]:
+    data: dict[str, object] = {}
+    try:
+        loaded = resp.json()
+        if isinstance(loaded, dict):
+            data = loaded
+    except Exception:
+        data = {}
+
+    error = data.get("error")
+    if isinstance(error, dict):
+        code = str(error.get("code") or "http_error")
+        message = str(error.get("message") or error)
+        return code, message
+
+    remote_message = _remote_auth_message(data)
+    if resp.status_code == 401 or remote_message is not None:
+        return "invalid_api_key", remote_message or "API key invalid or remote authentication failed."
+
+    text = resp.text[:500]
+    return "http_error", f"HTTP {resp.status_code}: {text}"
+
+
+def _remote_auth_message(data: dict[str, object]) -> str | None:
+    msg_code = data.get("msgCode")
+    msg = data.get("msg")
+    if msg_code == "A0202":
+        return str(msg or "user authenticate failed")
+    if isinstance(msg, str) and "authenticate failed" in msg.lower():
+        return msg
+    return None

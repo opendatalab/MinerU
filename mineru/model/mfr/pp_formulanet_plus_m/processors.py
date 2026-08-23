@@ -1,26 +1,22 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import json
-import numpy as np
-import cv2
 import math
 import re
+from typing import Any, Dict, List, Optional, Tuple, Union
 
+import cv2
+import numpy as np
 from PIL import Image, ImageOps
-from typing import List, Optional, Tuple, Union, Dict, Any
-
-from loguru import logger
 from tokenizers import AddedToken
 from tokenizers import Tokenizer as TokenizerFast
 
-from mineru.model.mfr.utils import fix_pp_formulanet_latex
+from mineru.model.mfr.post_process import post_process_formula
 
 
 class UniMERNetImgDecode(object):
     """Class for decoding images for UniMERNet, including cropping margins, resizing, and padding."""
 
-    def __init__(
-            self, input_size: Tuple[int, int], random_padding: bool = False, **kwargs
-    ) -> None:
+    def __init__(self, input_size: Tuple[int, int], random_padding: bool = False, **kwargs) -> None:
         """Initializes the UniMERNetImgDecode class with input size and random padding options.
 
         Args:
@@ -66,10 +62,10 @@ class UniMERNetImgDecode(object):
         return [channels, height, width]
 
     def _compute_resized_output_size(
-            self,
-            image_size: Tuple[int, int],
-            size: Union[int, Tuple[int, int]],
-            max_size: Optional[int] = None,
+        self,
+        image_size: Tuple[int, int],
+        size: Union[int, Tuple[int, int]],
+        max_size: Optional[int] = None,
     ) -> List[int]:
         """Computes the resized output size of the image.
 
@@ -85,9 +81,7 @@ class UniMERNetImgDecode(object):
             short, long = (w, h) if w <= h else (h, w)
             requested_new_short = size if isinstance(size, int) else size[0]
 
-            new_short, new_long = requested_new_short, int(
-                requested_new_short * long / short
-            )
+            new_short, new_long = requested_new_short, int(requested_new_short * long / short)
 
             if max_size is not None:
                 if max_size <= requested_new_short:
@@ -103,9 +97,7 @@ class UniMERNetImgDecode(object):
             new_w, new_h = size[1], size[0]
         return [new_h, new_w]
 
-    def resize(
-            self, img: Image.Image, size: Union[int, Tuple[int, int]]
-    ) -> Image.Image:
+    def resize(self, img: Image.Image, size: Union[int, Tuple[int, int]]) -> Image.Image:
         """Resizes the image to the specified size.
 
         Args:
@@ -118,9 +110,7 @@ class UniMERNetImgDecode(object):
         if isinstance(size, int):
             size = [size]
         max_size = None
-        output_size = self._compute_resized_output_size(
-            (image_height, image_width), size, max_size
-        )
+        output_size = self._compute_resized_output_size((image_height, image_width), size, max_size)
         img = img.resize(tuple(output_size[::-1]), resample=2)
         return img
 
@@ -234,9 +224,7 @@ class LatexImageFormat:
         divide_h = math.ceil(im_h / 16) * 16
         divide_w = math.ceil(im_w / 16) * 16
         img = img[:, :, 0]
-        img = np.pad(
-            img, ((0, divide_h - im_h), (0, divide_w - im_w)), constant_values=(1, 1)
-        )
+        img = np.pad(img, ((0, divide_h - im_h), (0, divide_w - im_w)), constant_values=(1, 1))
         img_expanded = img[:, :, np.newaxis].transpose(2, 0, 1)
         return img_expanded[np.newaxis, :]
 
@@ -307,9 +295,9 @@ class UniMERNetDecode(object):
     ]
 
     def __init__(
-            self,
-            character_list: Dict[str, Any],
-            **kwargs,
+        self,
+        character_list: Dict[str, Any],
+        **kwargs,
     ) -> None:
         """Initializes the UniMERNetDecode class.
 
@@ -340,11 +328,7 @@ class UniMERNetDecode(object):
         fast_tokenizer_str = json.dumps(character_list["fast_tokenizer_file"])
         fast_tokenizer_buffer = fast_tokenizer_str.encode("utf-8")
         self.tokenizer = TokenizerFast.from_buffer(fast_tokenizer_buffer)
-        tokenizer_config = (
-            character_list["tokenizer_config_file"]
-            if "tokenizer_config_file" in character_list
-            else None
-        )
+        tokenizer_config = character_list["tokenizer_config_file"] if "tokenizer_config_file" in character_list else None
         added_tokens_decoder = {}
         added_tokens_map = {}
         if tokenizer_config is not None:
@@ -364,19 +348,13 @@ class UniMERNetDecode(object):
             added_tokens_decoder = init_kwargs.pop("added_tokens_decoder", {})
             tokens_to_add = [
                 token
-                for index, token in sorted(
-                    added_tokens_decoder.items(), key=lambda x: x[0]
-                )
+                for index, token in sorted(added_tokens_decoder.items(), key=lambda x: x[0])
                 if token not in added_tokens_decoder
             ]
             added_tokens_encoder = self.added_tokens_encoder(added_tokens_decoder)
-            encoder = list(added_tokens_encoder.keys()) + [
-                str(token) for token in tokens_to_add
-            ]
+            encoder = list(added_tokens_encoder.keys()) + [str(token) for token in tokens_to_add]
             tokens_to_add += [
-                token
-                for token in self.all_special_tokens_extended
-                if token not in encoder and token not in tokens_to_add
+                token for token in self.all_special_tokens_extended if token not in encoder and token not in tokens_to_add
             ]
             if len(tokens_to_add) > 0:
                 is_last_special = None
@@ -398,7 +376,7 @@ class UniMERNetDecode(object):
                     self._add_tokens(tokens, special_tokens=is_last_special)
 
     def _add_tokens(
-            self, new_tokens: "List[Union[AddedToken, str]]", special_tokens: bool = False
+        self, new_tokens: "List[Union[AddedToken, str]]", special_tokens: bool = False
     ) -> "List[Union[AddedToken, str]]":
         """Adds new tokens to the tokenizer.
 
@@ -414,9 +392,7 @@ class UniMERNetDecode(object):
 
         return self.tokenizer.add_tokens(new_tokens)
 
-    def added_tokens_encoder(
-            self, added_tokens_decoder: "Dict[int, AddedToken]"
-    ) -> Dict[str, int]:
+    def added_tokens_encoder(self, added_tokens_decoder: "Dict[int, AddedToken]") -> Dict[str, int]:
         """Creates an encoder dictionary from added tokens.
 
         Args:
@@ -425,10 +401,7 @@ class UniMERNetDecode(object):
         Returns:
             Dict[str, int]: Dictionary mapping token strings to IDs.
         """
-        return {
-            k.content: v
-            for v, k in sorted(added_tokens_decoder.items(), key=lambda item: item[0])
-        }
+        return {k.content: v for v, k in sorted(added_tokens_decoder.items(), key=lambda item: item[0])}
 
     @property
     def all_special_tokens(self) -> List[str]:
@@ -472,9 +445,7 @@ class UniMERNetDecode(object):
                 set_attr[attr] = attr_value
         return set_attr
 
-    def convert_ids_to_tokens(
-            self, ids: Union[int, List[int]], skip_special_tokens: bool = False
-    ) -> Union[str, List[str]]:
+    def convert_ids_to_tokens(self, ids: Union[int, List[int]], skip_special_tokens: bool = False) -> Union[str, List[str]]:
         """Converts token IDs to token strings.
 
         Args:
@@ -513,11 +484,11 @@ class UniMERNetDecode(object):
                     toks[b][i] = ""
                 toks[b][i] = toks[b][i].replace("Ġ", " ").strip()
                 if toks[b][i] in (
-                        [
-                            self.tokenizer.bos_token,
-                            self.tokenizer.eos_token,
-                            self.tokenizer.pad_token,
-                        ]
+                    [
+                        self.tokenizer.bos_token,
+                        self.tokenizer.eos_token,
+                        self.tokenizer.pad_token,
+                    ]
                 ):
                     del toks[b][i]
         return toks
@@ -537,10 +508,8 @@ class UniMERNetDecode(object):
             if len(end_idx) > 0:
                 end_idx = int(end_idx[0][0])
                 tok_id = tok_id[: end_idx + 1]
-            generated_text.append(
-                self.tokenizer.decode(tok_id, skip_special_tokens=True)
-            )
-        generated_text = [self.post_process(text) for text in generated_text]
+            generated_text.append(self.tokenizer.decode(tok_id, skip_special_tokens=True))
+        generated_text = [post_process_formula(text) for text in generated_text]
         return generated_text
 
     def normalize(self, s: str) -> str:
@@ -561,14 +530,14 @@ class UniMERNetDecode(object):
             matches = re.findall(pattern, x[0])
             for m in matches:
                 if (
-                        m
-                        not in [
-                    "\\operatorname",
-                    "\\mathrm",
-                    "\\text",
-                    "\\mathbf",
-                ]
-                        and m.strip() != ""
+                    m
+                    not in [
+                        "\\operatorname",
+                        "\\mathrm",
+                        "\\text",
+                        "\\mathbf",
+                    ]
+                    and m.strip() != ""
                 ):
                     s = s.replace(m, m + "XXXXXXX")
                     s = s.replace(" ", "")
@@ -585,51 +554,13 @@ class UniMERNetDecode(object):
                 break
         return s.replace("XXXXXXX", " ")
 
-    def remove_chinese_text_wrapping(self, formula):
-        pattern = re.compile(r"\\text\s*{\s*([^}]*?[\u4e00-\u9fff]+[^}]*?)\s*}")
-
-        def replacer(match):
-            return match.group(1)
-
-        replaced_formula = pattern.sub(replacer, formula)
-        return replaced_formula.replace('"', "")
-
-    def post_process(self, text: str) -> str:
-        """Post-processes a string by fixing text and normalizing it.
-
-        Args:
-            text (str): String to post-process.
-
-        Returns:
-            str: Post-processed string.
-        """
-        from ftfy import fix_text
-
-        text = self.remove_chinese_text_wrapping(text)
-        text = fix_text(text)
-        # logger.debug(f"Text after ftfy fix: {text}")
-        text = self.fix_latex(text)
-        # logger.debug(f"Text after LaTeX fix: {text}")
-        return text
-
-    def fix_latex(self, text: str) -> str:
-        """Fixes LaTeX formatting in a string.
-
-        Args:
-            text (str): String to fix.
-
-        Returns:
-            str: Fixed string.
-        """
-        return fix_pp_formulanet_latex(text)
-
     def __call__(
-            self,
-            preds: np.ndarray,
-            label: Optional[np.ndarray] = None,
-            mode: str = "eval",
-            *args,
-            **kwargs,
+        self,
+        preds: np.ndarray,
+        label: Optional[np.ndarray] = None,
+        mode: str = "eval",
+        *args,
+        **kwargs,
     ) -> Union[List[str], tuple]:
         """Processes predictions and optionally labels, returning the decoded text.
 

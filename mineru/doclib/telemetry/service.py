@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .buckets import duration_bucket
-from .constants import CONSENT_DISABLED, CONSENT_ENABLED, DIMENSION_VALUES, METRIC_SPECS, TELEMETRY_MAX_FLUSH_PERIODS, TelemetryConsentState
+from .constants import CONSENT_DISABLED, DIMENSION_VALUES, METRIC_SPECS, TELEMETRY_MAX_FLUSH_PERIODS, TelemetryConsentState
 from .context import get_telemetry_context
 from .payload import build_period_payload, collect_environment_context
 from .store import TelemetryStore, period_bounds
@@ -97,7 +97,8 @@ class TelemetryService:
         )
 
     async def flush_once(self) -> TelemetryFlushResult:
-        if await self.store.consent_state() != CONSENT_ENABLED:
+        # if await self.store.consent_state() != CONSENT_ENABLED:  (recover after prerelease)
+        if await self.store.consent_state() == CONSENT_DISABLED:
             return TelemetryFlushResult(status="disabled")
         if not await self.store.try_acquire_flush_lock():
             return TelemetryFlushResult(status="locked")
@@ -234,9 +235,9 @@ def _int_or_none(value: str | None) -> int | None:
 async def send_payload(payload: dict[str, Any]) -> str:
     import httpx
 
-    from .transport import signed_headers
-    from .payload import compact_json_bytes
     from .constants import TELEMETRY_ENDPOINT, TELEMETRY_HTTP_TIMEOUT_SEC
+    from .payload import compact_json_bytes
+    from .transport import signed_headers
 
     body = compact_json_bytes(payload)
     headers = signed_headers(body)

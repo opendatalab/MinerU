@@ -12,7 +12,7 @@
 它串联以下专题:
 
 - 术语以 [术语表](glossary.md) 为准。
-- 默认选择 / `flash` / `medium` / `high` / `extra_high` 的语义以 [解析 Tier](tiers.md) 为准。
+- 默认选择 / `flash` / `basic` / `standard` / `advanced` 的语义以 [解析 Tier](tiers.md) 为准。
 - doclib、worker、SQLite 和 parse-server 的内部结构以 [系统架构](architecture.md) 为准。
 - CLI 行为以 [CLI 规格](cli.md) 为准。
 - v1 API 行为以 [Unified API](api.md) 为准。
@@ -36,7 +36,7 @@
 | Doclib SDK | 本地文档库 SDK | 连接 doclib server，使用 parse/search/watch/config 能力。 |
 | Tool SDK | 工具 SDK | 进程内直接解析文件，返回 `ParseResult`。 |
 | doclib server | 本地文档库服务 | 入库、缓存、搜索、watch、配置、任务调度。 |
-| parse-server | 解析服务 | 无状态解析服务，提供 v1 Unified API，执行 `medium` / `high` / `extra_high` 等质量 tier。 |
+| parse-server | 解析服务 | 无状态解析服务，提供 v1 Unified API，执行 `basic` / `standard` / `advanced` 等质量 tier。 |
 | Local Parse Server | 本地解析服务 | 用户可信环境内的 parse-server。 |
 | Remote Parse Server | 远端解析服务 | `mineru.net/api` 或显式配置的远端兼容服务。 |
 | Backend | 解析后端 | 实际解析实现，例如 `flash`、`pipeline`、`vlm`、`hybrid`。 |
@@ -47,8 +47,8 @@
 这些规则在所有流程中都成立:
 
 1. **隐私优先**: 未显式允许 remote 时，不上传用户文档。
-2. **质量优先**: 用户或 Agent 主动读取文档时，默认使用默认选择策略，且不会解析为 `flash`。
-3. **发现与阅读分离**: watch 可以自动使用 `flash`；主动阅读不能静默使用 `flash`。
+2. **质量优先**: 用户或 Agent 主动读取 PDF/image 文档时，默认使用默认选择策略，且不会解析为 `flash`。
+3. **发现与阅读分离**: watch 可以自动使用 `flash`；PDF/image 主动阅读不能静默使用 `flash`。
 4. **结果记录实际 tier**: 默认选择是请求时选择逻辑，任务、缓存、产物和 metadata 记录实际使用的实体 tier。
 5. **backend 只在专家层和 Tool SDK parser 层暴露**: Tool SDK 的直接 parser 可以接受专家 `backend` 参数；API-backed parser、Doclib SDK、doclib server API 和 v1 API 只面向 `tier`，不暴露 `backend`。
 6. **缓存按内容和 tier 隔离**: 同一 `sha256 + tier` 的解析结果可以复用；不同 tier 的结果不能互相覆盖。
@@ -68,7 +68,7 @@
   ├─ mineru parse / Agent 主动读取
   │   -> doclib ParseService
   │   -> 查缓存
-  │   -> 默认选择/flash/medium/high/extra_high 路由
+  │   -> 默认选择/flash/basic/standard/advanced 路由
   │   -> ParseWorker
   │   -> Tool SDK 或 parse-server
   │   -> Middle JSON batch JSON
@@ -102,7 +102,8 @@ watch 的目标是发现文件、建立基础索引和支持后续搜索，不�
 | 场景 | 默认 tier |
 |------|-----------|
 | watch 自动发现 | `flash` |
-| parsing-rule 明确指定 | rule 中的 tier |
+| parsing-rule 明确指定 | PDF/image 使用 rule 中的 tier；Office/HTML 归一为 `flash`；text 只入库和索引 |
+| parsing-rule 未指定 tier | PDF/image 按 `standard` -> `advanced` -> `basic` -> `flash`；Office/HTML 归一为 `flash`；text 只入库和索引 |
 
 ### 5.3 步骤
 
@@ -279,7 +280,7 @@ client.parse("report.pdf")
 
 ### 6.2 默认目标
 
-主动读取的目标是尽可能准确地理解文档。未指定 tier 时，使用默认选择策略，并至少解析到 `medium`。
+主动读取 PDF/image 的目标是尽可能准确地理解文档。未指定 tier 时，使用默认选择策略，并解析到可用的非 `flash` 质量 tier。Office/HTML 没有质量 tier，未指定 tier 时归一为 `flash`。text 应直接读取，不进入解析流程。
 
 ### 6.3 步骤
 
@@ -288,7 +289,7 @@ client.parse("report.pdf")
 3. 如果文件尚未入库，先同步执行 ingest，得到 `sha256`。
 4. 确定页码范围、输出格式、等待策略和隐私偏好。
 5. 如果用户未指定 tier，使用默认选择策略。
-6. 默认选择策略通过当前可用 parse-server 能力发现选择最高非 `flash` tier。
+6. PDF/image 默认选择策略通过当前可用 parse-server 能力发现，按 `standard` -> `advanced` -> `basic` 选择；Office/HTML 归一为 `flash`；text 直接读取。
 7. 将任务和缓存键落到实际使用的实体 tier。
 8. 查询 `(sha256, tier, page_range)` 是否已有可复用结果。
 9. 缓存命中则直接 render 并返回。
@@ -305,13 +306,13 @@ client.parse("report.pdf")
 
 | 请求 | 实际行为 |
 |------|----------|
-| 未指定 tier | 选择最高可用非 `flash` tier |
+| 未指定 tier | PDF/image 按 `standard` -> `advanced` -> `basic` 选择可用的非 `flash` tier；Office/HTML 归一为 `flash`；text 直接读取 |
 | `tier=flash` | 显式使用本地 `flash` backend |
-| `tier=medium` | 使用本地或自部署 parse-server 的 `medium` 能力 |
-| `tier=high` | 使用本地 `high` 或 `mineru.net/api` 的 `high` 能力 |
-| `tier=extra_high` | 使用本地或自部署 parse-server 的 `extra_high` 能力 |
+| `tier=basic` | 使用本地或自部署 parse-server 的 `basic` 能力 |
+| `tier=standard` | 使用本地 `standard` 或 `mineru.net/api` 的 `standard` 能力 |
+| `tier=advanced` | 使用本地或自部署 parse-server 的 `advanced` 能力 |
 
-结果只需要记录实际使用的 `tier`。如果默认选择最终选择 `high`，产物、缓存和 metadata 使用 `high`。
+结果只需要记录实际使用的 `tier`。如果默认选择最终选择 `standard`，产物、缓存和 metadata 使用 `standard`。
 
 ### 6.5 隐私决策
 
@@ -332,11 +333,11 @@ client.parse("report.pdf")
 | Markdown | 默认阅读输出；读取时从 Middle JSON 转换 |
 | Content List / HTML | 读取时从 Middle JSON 转换 |
 
-doclib 不持久化 Markdown、Content List 或 HTML。它们都是 CPU-only 的派生格式，转换成本低，按需生成即可。
+doclib 不持久化 Markdown、Content List 或 HTML。它们都是 CPU-only 的派生格式，转换成本低，按需生成即可。Markdown 中的图片使用 visual block locator；`image_path` 是 doclib 内部 sidecar 定位信息，不向读取者暴露。
 
 ### 6.7 约束
 
-- 如果只有 `flash` 可用，默认选择应失败，不静默返回 `flash`。
+- 对 PDF/image，如果只有 `flash` 可用，默认选择应失败，不静默返回 `flash`。
 - 如果本地没有可用质量 tier 且未允许 remote，应返回可操作错误。
 - 如果缓存中只有 `flash`，主动读取未指定 tier 不能直接命中该缓存。
 - 如果用户显式 `tier=flash`，可以返回 `flash` 缓存或重新解析。
@@ -356,11 +357,11 @@ watch -> flash index -> search result -> Agent chooses document -> mineru parse
 ### 7.2 步骤
 
 1. Agent 调用 search。
-2. doclib 查询文件名索引和内容索引。
-3. search result 返回路径、sha256、snippet、当前索引来源 tier。
+2. doclib 查询内容索引；文件名查询由 find 负责。
+3. search result 返回完整 file aliases、sha256、snippet 和可空的索引来源 tier；text 源内容的 tier 为 `null`。
 4. Agent 选择具体文档。
 5. Agent 发起主动 parse 请求。
-6. 请求未指定 tier 时使用默认选择策略。
+6. PDF/image 请求未指定 tier 时使用默认选择策略；Office/HTML 按 `flash` 语义处理；text 不发起 parse 请求。
 7. doclib 检查是否已有可用质量 tier 缓存。
 8. 如果没有，则创建高优先级 parse 任务。
 9. 解析完成后返回可阅读输出，并写入更高质量索引。
@@ -374,7 +375,7 @@ watch -> flash index -> search result -> Agent chooses document -> mineru parse
 | 自动发现 | `flash` |
 | 搜索召回 | `flash` |
 | 搜索 snippet | `flash`，但应可标记来源 tier |
-| Agent 主动阅读 | `medium`，除非显式选择 `flash` |
+| Agent 主动阅读 | `basic`，除非显式选择 `flash` |
 | Agent 引用/citation | 应优先来自质量 tier |
 
 ### 7.4 Agent marker
@@ -382,7 +383,7 @@ watch -> flash index -> search result -> Agent chooses document -> mineru parse
 当输出被截断或只解析部分页时，应输出可机器理解的 marker:
 
 ```text
-<!-- mineru:next page_range=6~10 tier=high -->
+<!-- mineru:next page_range=6~10 tier=standard -->
 ```
 
 marker 不应依赖自然语言提示。具体 marker 格式可在 CLI 或 Agent 文档中继续细化。
@@ -397,12 +398,12 @@ marker 不应依赖自然语言提示。具体 marker 格式可在 CLI 或 Agent
 
 1. 客户端创建 upload 或提供已有 `file_id`。
 2. 客户端创建 parse job。
-3. 请求可以携带 `tier`；省略或传 JSON `null` 时使用默认选择策略。
+3. 请求可以携带 `tier`；省略或传 JSON `null` 时，PDF/image 使用默认选择策略，Office/HTML 按批量规则归一为 `flash`；text 不作为解析输入。
 4. API service 做鉴权、配额和输入校验。
 5. 调度到可用解析能力。
 6. 解析服务生成 Middle JSON 和请求的输出格式。
 7. job 进入终态。
-8. 客户端轮询、等待、SSE 或 webhook 获取结果。
+8. 客户端通过轮询或 webhook 获取结果。
 
 ### 8.3 Local Parse Server 差异
 
@@ -411,7 +412,7 @@ Local Parse Server 复用同一套客户端协议，但可以简化:
 - 鉴权默认可关闭。
 - Webhook 可以不实现。
 - 上传可以使用本地临时存储。
-- `local` source 可以引用 allowlist 内路径。
+- `local` source 只有在 `features.sources` 包含 `local` 时可用；开启后可以引用 server 进程权限范围内的本地路径。
 - 文件下载可以直接返回 body。
 
 ### 8.4 与 doclib 的关系
@@ -434,7 +435,7 @@ doclib 可以调用 parse-server，但 parse-server 不依赖 doclib。
 ```python
 from mineru.parser import parse
 
-result = parse("report.pdf", tier="medium")
+result = parse("report.pdf", tier="basic")
 ```
 
 或使用具体 parser:
@@ -442,7 +443,7 @@ result = parse("report.pdf", tier="medium")
 ```python
 from mineru.parser import PdfHybridParser
 
-with PdfHybridParser(effort="low") as parser:
+with PdfHybridParser(effort="medium") as parser:
     result = parser.parse("report.pdf")
 ```
 
@@ -482,14 +483,14 @@ doclib 解析产物按内容和实际使用的 tier 隔离。`parsed/` 目录下
           flash/
             1~5_1710000000000.json
             98~102_1710000123000.json
-          medium/
+          basic/
             1~10_1710001234000.json
             11~20_1710002234000.json
-          high/
+            images/              # 可选，仅保存解析产生的必要 sidecar
+          standard/
             1~20_1710003234000.json
-          extra_high/
+          advanced/
             1~20_1710004234000.json
-            images/
 ```
 
 单个 JSON 文件表示一次解析批次，基本形态:
@@ -507,6 +508,8 @@ doclib 不在 `parsed/` 中保存:
 - `output.md`
 - `content_list.json`
 - `structured_content.json`
+
+PDF 和 image block 图片通常在读取时从源页面按 bbox 裁剪，不写入 `images/`。无 bbox 的 visual block 只有在对应 sidecar 文件存在时才输出非空图片 locator。
 - `output.html`
 
 这些格式都由 Middle JSON 读取时转换得到。
@@ -569,20 +572,12 @@ compaction 不生成 Markdown 或 Content List。
 
 ### 10.5 Metadata 更新
 
-文档 metadata 可由更高质量 tier 覆盖低质量 tier。
-
-建议优先级:
-
-```text
-flash < medium < high < extra_high
-```
+文档 metadata 可由更高质量 tier 覆盖低质量 tier，优先级以 [解析 Tier](tiers.md) 为准。
 
 约束:
 
 - `flash` 不应覆盖来自质量 tier 的 metadata。
-- `medium` 可以覆盖 `flash`。
-- `high` 可以覆盖 `medium` 和 `flash`。
-- `extra_high` 可以覆盖 `high`、`medium` 和 `flash`。
+- 质量 tier 可以覆盖低质量 tier 的 metadata。
 
 ### 10.6 搜索索引
 
@@ -596,7 +591,7 @@ FTS 更新可以在解析完成后临时从 ParseResult 或 Middle JSON 渲染 M
 
 | 错误 | 典型原因 | 恢复建议 |
 |------|----------|----------|
-| `quality_tier_unavailable` | 主动阅读需要高质量 tier，但只有 `flash` | 启动本地解析服务或允许远端解析 |
+| `quality_tier_unavailable` | PDF/image 主动阅读需要非 `flash` 质量 tier，但只有 `flash` | 启动本地解析服务或允许远端解析 |
 | `no_engine` | 请求 tier 没有可用解析服务或解析后端 | 配置 local parse-server、调整 tier |
 | `engine_unavailable` | 解析服务或解析后端暂不可用 | 稍后重试或重启 parse-server |
 | `parse_server_unavailable` | Local/Remote Parse Server 不可达 | 检查 URL、进程、网络和 API Key |
@@ -667,16 +662,16 @@ FTS 更新可以在解析完成后临时从 ParseResult 或 Middle JSON 渲染 M
 输入:
 
 ```bash
-mineru parse report.pdf --tier medium --wait 60
+mineru parse report.pdf --tier basic --wait 60
 ```
 
 期望:
 
 1. 不上传远端。
-2. 使用 Local Parse Server 或本地可用 medium 能力。
-3. JSON 产物写入 `parsed/<sha-prefix>/<sha>/medium/<page_range>_<done_at>.json`。
+2. 使用 Local Parse Server 或本地可用 Basic 能力。
+3. JSON 产物写入 `parsed/<sha-prefix>/<sha>/basic/<page_range>_<done_at>.json`。
 4. 返回 Markdown 或指定格式；非 JSON 格式从 JSON 转换得到。
-5. `tier` 记录为 `medium`。
+5. `tier` 记录为 `basic`。
 
 ### 13.3 主动 parse 默认选择成功
 
@@ -688,13 +683,13 @@ mineru parse report.pdf --wait 60
 
 前提:
 
-- 可发现 Local Parse Server 支持 `medium` 和 `high`。
+- 可发现 Local Parse Server 支持 `standard`。
 
 期望:
 
 1. 请求未指定 tier，进入默认选择策略。
-2. 实际选择 `high`。
-3. 任务和 JSON 产物记录 `tier=high`。
+2. 实际选择 `standard`。
+3. 任务和 JSON 产物记录 `tier=standard`。
 4. 不记录 `requested_tier` 字段。
 5. 不创建默认选择专用缓存目录。
 
@@ -737,14 +732,14 @@ mineru parse report.pdf --tier flash
 输入:
 
 ```bash
-mineru parse report.pdf --tier medium --pages 1~5
-mineru parse report.pdf --tier medium --pages 6~10
+mineru parse report.pdf --tier basic --pages 1~5
+mineru parse report.pdf --tier basic --pages 6~10
 ```
 
 期望:
 
 1. 两次请求可以生成两个 done parse batch。
-2. `parsed/<sha-prefix>/<sha>/medium/` 下保存两个 JSON 文件。
+2. `parsed/<sha-prefix>/<sha>/basic/` 下保存两个 JSON 文件。
 3. 每个 JSON 文件只包含对应页码范围的 `pages`。
 4. 后续请求 `--pages 1~10` 可以由已完成批次覆盖，不需要重新解析。
 5. compaction 可以将两个批次合并成更少的 parse row 和 JSON 文件。
@@ -755,8 +750,8 @@ mineru parse report.pdf --tier medium --pages 6~10
 输入:
 
 ```bash
-mineru parse report.pdf --tier medium --pages 1~5
-mineru parse report.pdf --tier medium --pages 1~5 --force
+mineru parse report.pdf --tier basic --pages 1~5
+mineru parse report.pdf --tier basic --pages 1~5 --force
 ```
 
 期望:
@@ -774,7 +769,7 @@ mineru parse report.pdf --tier medium --pages 1~5 --force
 输入:
 
 ```bash
-mineru library invalidate report.pdf --tier medium
+mineru library invalidate report.pdf --tier basic
 ```
 
 期望:
@@ -791,12 +786,12 @@ mineru library invalidate report.pdf --tier medium
 输入:
 
 ```bash
-mineru parse report.pdf --tier high
+mineru parse report.pdf --tier standard
 ```
 
 前提:
 
-- 本地没有 `high`。
+- 本地没有 `standard`。
 - 未显式 `--remote`。
 
 期望:
@@ -808,7 +803,7 @@ mineru parse report.pdf --tier high
 输入:
 
 ```bash
-mineru parse report.pdf --tier high --remote
+mineru parse report.pdf --tier standard --remote
 ```
 
 期望:

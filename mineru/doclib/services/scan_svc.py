@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ...errors import InvalidRequestError, NotFoundError
-from ..constants import DISCOVERABLE_EXTENSIONS, is_office_temp_lock_file
+from ...filetypes import DISCOVERABLE_EXTENSIONS, is_office_temp_lock_file
 from ..core.file_io import get_file_stat
 from ..rows import PathRow, ScanRow, WatchTargetRow
 from ..types import (
@@ -114,8 +114,7 @@ class ScanService:
 
         now = _now_ms()
         scan_id = await self.db.execute_insert(
-            "INSERT INTO scans (path, kind, source, watch_id, status, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO scans (path, kind, source, watch_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (normalized_path, kind, source, watch_id, SCAN_STATUS_PENDING, now, now),
         )
         row = cast(ScanRow | None, await self.db.fetchone("SELECT * FROM scans WHERE id=?", (scan_id,)))
@@ -168,7 +167,7 @@ class ScanService:
         timeout = now - self.scan_lock_timeout_ms
         return cast(
             ScanRow | None,
-            await self.db.fetchone(
+            await self.db.fetchone_write(
                 "UPDATE scans SET locked_at=?, status=?, started_at=COALESCE(started_at, ?), updated_at=? "
                 "WHERE id = ("
                 "  SELECT id FROM scans WHERE status=? AND (locked_at IS NULL OR locked_at < ?) "

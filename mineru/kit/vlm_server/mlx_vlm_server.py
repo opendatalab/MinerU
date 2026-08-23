@@ -9,7 +9,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from mineru_vl_utils.mlx_compat import load_mlx_model
 
-from ...utils.models_download_utils import auto_download_and_get_model_root_path
+from ...utils.model_registry import MINERU_2_5_PRO_2605_1_2B
 
 
 async def _resolve_result(value: Any) -> Any:
@@ -21,7 +21,7 @@ async def _resolve_result(value: Any) -> Any:
 def _default_model_id(configured_model: str | None) -> str:
     if configured_model:
         return configured_model
-    return auto_download_and_get_model_root_path("/", "vlm")
+    return str(MINERU_2_5_PRO_2605_1_2B.ensure())
 
 
 def _load_mlx_model_for_server(path_or_hf_repo: str, adapter_path: str | None = None, **kwargs: Any) -> Any:

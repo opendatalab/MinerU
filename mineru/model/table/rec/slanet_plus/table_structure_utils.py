@@ -18,15 +18,10 @@ from typing import Any, Dict, List, Tuple, Union
 
 import cv2
 import numpy as np
-from onnxruntime import (
-    GraphOptimizationLevel,
-    InferenceSession,
-    SessionOptions,
-    get_available_providers,
-)
-
 from loguru import logger
-from ..onnxruntime_provider import build_table_onnx_providers
+from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
+
+from ....utils.onnxruntime_provider import ort_providers
 
 
 class OrtInferSession:
@@ -36,14 +31,10 @@ class OrtInferSession:
         model_path = config.get("model_path", None)
         self._verify_model(model_path)
 
-        self.had_providers: List[str] = get_available_providers()
-        EP_list = self._get_ep_list()
-
-        sess_opt = self._init_sess_opts(config)
         self.session = InferenceSession(
             model_path,
-            sess_options=sess_opt,
-            providers=EP_list,
+            sess_options=self._init_sess_opts(config),
+            providers=ort_providers(),
         )
 
     @staticmethod
@@ -68,9 +59,6 @@ class OrtInferSession:
         meta_dict = self.session.get_modelmeta().custom_metadata_map
         content_list = meta_dict[key].splitlines()
         return content_list
-
-    def _get_ep_list(self) -> List[Tuple[str, Dict[str, Any]]]:
-        return build_table_onnx_providers(self.had_providers)
 
     def __call__(self, input_content: List[np.ndarray]) -> np.ndarray:
         input_dict = dict(zip(self.get_input_names(), input_content))
@@ -267,14 +255,10 @@ class TablePreprocess:
         Args:
             params(list): a dict list, used to create some operators
         """
-        assert isinstance(
-            self.pre_process_list, list
-        ), "operator config should be a list"
+        assert isinstance(self.pre_process_list, list), "operator config should be a list"
         ops = []
         for operator in self.pre_process_list:
-            assert (
-                isinstance(operator, dict) and len(operator) == 1
-            ), "yaml format error"
+            assert isinstance(operator, dict) and len(operator) == 1, "yaml format error"
             op_name = list(operator)[0]
             param = {} if operator[op_name] is None else operator[op_name]
             op = eval(op_name)(**param)
@@ -287,9 +271,7 @@ class TablePreprocess:
                 "max_len": self.table_max_len,
             }
         }
-        pad_op = {
-            "PaddingTableImage": {"size": [self.table_max_len, self.table_max_len]}
-        }
+        pad_op = {"PaddingTableImage": {"size": [self.table_max_len, self.table_max_len]}}
         normalize_op = {
             "NormalizeImage": {
                 "std": [0.229, 0.224, 0.225],
@@ -310,13 +292,10 @@ class TablePreprocess:
 
 
 class BatchTablePreprocess:
-
     def __init__(self):
         self.preprocess = TablePreprocess()
 
-    def __call__(
-        self, img_list: List[np.ndarray]
-    ) -> Tuple[List[np.ndarray], List[List[float]]]:
+    def __call__(self, img_list: List[np.ndarray]) -> Tuple[List[np.ndarray], List[List[float]]]:
         """批量处理图像
 
         Args:

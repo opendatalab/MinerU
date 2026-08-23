@@ -20,7 +20,8 @@ TelemetryConsentState = Literal["unset", "enabled", "disabled"]
 TelemetryAction = Literal["enable", "disable", "flush"]
 InvalidateTarget = Literal["parses"]
 ForgetMatchedAs = Literal["file", "directory", "none"]
-ConfigSource = Literal["default", "override"]
+ConfigSource = Literal["default", "override", "environment"]
+RemoteAccessLevel = Literal["anonymous", "registered"]
 ContentFormat = Literal["markdown", "image"]
 ImageFormat = Literal["jpeg", "png", "webp"]
 
@@ -318,18 +319,23 @@ class DocContentExportResponse(DoclibModel):
     output: str
 
 
+class SearchFile(DoclibModel):
+    path: str
+    filename: str
+    ext: str
+    status: FileStatus
+
+
 class SearchResult(DoclibModel):
     sha256: str
     short_id: str
     title: str | None = None
     author: str | None = None
-    filename: str | None = None
-    ext: str | None = None
     size_bytes: int | None = None
     page_count: int | None = None
-    tier: Tier
+    tier: Tier | None = None
     snippet: str
-    paths: list[str] = Field(default_factory=list)
+    files: list[SearchFile] = Field(default_factory=list)
 
 
 class FindResult(DoclibModel):
@@ -391,6 +397,33 @@ class ConfigSetResponse(ConfigValueResponse):
 
 class ConfigUnsetResponse(ConfigValueResponse):
     removed: bool = True
+
+
+class RemoteUsageBillingPeriod(DoclibModel):
+    start: str
+    end: str | None = None
+
+
+class RemoteUsageCurrent(DoclibModel):
+    pages_processed: int = 0
+    files_processed: int = 0
+    jobs_created: int = 0
+
+
+class RemoteUsageLimits(DoclibModel):
+    max_pages_per_file: int
+    max_file_size_bytes: int
+    max_files_per_job: int
+    max_concurrent_jobs: int
+    max_file_retention_days: int | None = None
+
+
+class RemoteUsageResponse(DoclibModel):
+    object: Literal["usage"] = "usage"
+    access_level: RemoteAccessLevel
+    billing_period: RemoteUsageBillingPeriod
+    current: RemoteUsageCurrent
+    limits: RemoteUsageLimits
 
 
 class WatchRequest(DoclibModel):
@@ -483,6 +516,8 @@ class LocalParseServerStatus(DoclibModel):
     last_success_at: int | None = None
     last_failure_at: int | None = None
     supported_tiers: list[Tier] = Field(default_factory=list)
+    error_code: str | None = None
+    error_msg: str | None = None
 
 
 class RemoteParseServerStatus(DoclibModel):
@@ -493,6 +528,8 @@ class RemoteParseServerStatus(DoclibModel):
     last_success_at: int | None = None
     last_failure_at: int | None = None
     supported_tiers: list[Tier] = Field(default_factory=list)
+    error_code: str | None = None
+    error_msg: str | None = None
 
 
 class ParseServerStatus(DoclibModel):
@@ -554,6 +591,7 @@ class ErrorSummary(DoclibModel):
 class ServerStatusResponse(DoclibModel):
     running: bool
     pid: int | None = None
+    server_id: str = ""
     uptime_seconds: float | None = None
     mineru_home: str = ""
     version: str = ""

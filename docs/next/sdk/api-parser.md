@@ -17,7 +17,7 @@ from mineru.parser import MinerUApiParser
 parser = MinerUApiParser(
     api_url="https://mineru.net/api",
     api_key="...",
-    tier="high",
+    tier="standard",
 )
 
 result = parser.parse("report.pdf")
@@ -59,7 +59,7 @@ class MinerUApiParser(DocumentParser):
 |------|------|
 | `api_url` | v1 API base URL，如 `https://mineru.net/api` 或 `http://127.0.0.1:16580`。省略时读取 `MINERU_API_URL`，再退回默认官方 API。 |
 | `api_key` | Bearer token。省略时读取 `MINERU_API_KEY`；Local Parse Server 未启用鉴权时可为空。 |
-| `tier` | `flash`、`medium`、`high`、`extra_high` 或 `None`。`None` 表示 SDK 在 HTTP 请求中省略 `tier`，让 v1 API 使用默认选择策略。 |
+| `tier` | `flash`、`basic`、`standard`、`advanced` 或 `None`。`None` 表示 SDK 在 HTTP 请求中省略 `tier`，让 v1 API 使用默认选择策略；非 PDF/image 文件按 API Server 批量规则归一，见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。 |
 | `include_images` | 是否从 zip 产物读取图片 sidecar，并挂载到 `ParseResult` 图片缓存。 |
 | `include_model_output` | 是否请求并保留模型原始输出；开启时通过 zip 产物读取。 |
 
@@ -76,6 +76,18 @@ class MinerUApiParser(DocumentParser):
 7. 普通模式下载 `middle_json` output file；zip 模式下载 `zip` output file。
 8. zip 模式从 zip 中读取 middle JSON，并在 `include_images=True` 时读取 middle JSON 引用的图片 sidecar。
 9. 将 middle JSON 转为 `ParseResult`。
+
+### 传输重试
+
+客户端对可安全重放的传输操作执行有限重试:
+
+- health、upload 状态、job 轮询和产物下载使用 `GET`，可以重试。
+- 向 `upload_url` 写入相同文件字节使用 `PUT`，可以重试。
+- upload complete 的响应丢失后，客户端先查询 upload 状态；已经完成则读取其中的 File，仍为 pending 才再次 complete。
+
+`POST /v1/parse/jobs` 在 API 提供幂等键契约前不会自动重试。该请求的响应丢失时，服务端可能已经创建任务；直接重放会产生重复任务和费用。
+
+重试耗尽后，doclib 远端解析分别使用 `remote_timeout` 或 `remote_unreachable`，不把客户端传输错误归类为 `parse_failed`。远端 job 自身返回的结构化 `parse_failed` 保持原语义，客户端不根据错误消息文本猜测错误来源。
 
 本地 source:
 
@@ -109,9 +121,9 @@ Local Parse Server 必须通过 `--allow-local-source` 开启，并在 `features
 |----------|----------|
 | `None` | 省略 |
 | `flash` | `flash` |
-| `medium` | `medium` |
-| `high` | `high` |
-| `extra_high` | `extra_high` |
+| `basic` | `basic` |
+| `standard` | `standard` |
+| `advanced` | `advanced` |
 
 它不接受也不保存 backend 参数。backend 是本地 parser 层的高级实现概念，不应出现在 API-backed parser 的公开构造参数、实例属性或请求 payload 中。
 
@@ -137,6 +149,8 @@ API error envelope 应映射为 SDK exception:
 | `quality_tier_unavailable` | 抛出引擎不可用错误。 |
 | `rate_limit_exceeded` | 抛出可重试错误，并保留 `Retry-After`。 |
 | `service_unavailable` | 抛出可重试错误。 |
+| `remote_timeout` | 远端传输超时，有限重试后仍未恢复。 |
+| `remote_unreachable` | 远端连接或协议错误，有限重试后仍未恢复。 |
 
 当前实现有内部 `_V1APIError`。目标公开契约应复用 `mineru.errors.MineruError` 或统一 SDK exception hierarchy。
 

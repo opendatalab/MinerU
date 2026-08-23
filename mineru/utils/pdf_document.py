@@ -4,8 +4,10 @@ from __future__ import annotations
 import asyncio
 import ctypes
 import hashlib
+import logging
 import math
 import os
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
@@ -25,6 +27,8 @@ from .pdf_classify import classify, get_sample_page_indices
 from .pdf_image_tools import get_crop_img, load_images_from_pdf_bytes_range
 from .pdf_reader import image_to_bytes
 from .pdfium_guard import _pdfium_lock, safe_rewrite_pdf_bytes_with_pdfium
+
+logger = logging.getLogger(__name__)
 
 POINTS_PER_INCH: int = 72
 DEFAULT_RENDER_DPI: int = 200
@@ -188,8 +192,78 @@ class PDFDocument:
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def from_image(image_bytes: bytes) -> "PDFDocument":
-        return PDFDocument(images_bytes_to_pdf_bytes(image_bytes))
+    def from_image(
+        image_bytes: bytes,
+        render_scale: float = DEFAULT_RENDER_SCALE,
+        render_max_edge: int = DEFAULT_RENDER_MAX_EDGE,
+    ) -> "PDFDocument":
+        open_started_at = time.perf_counter()
+        logger.debug("Pillow image open started input_bytes=%d", len(image_bytes))
+        image = Image.open(BytesIO(image_bytes))
+        logger.debug(
+            "Pillow image open completed format=%s mode=%s size=%sx%s elapsed_ms=%d",
+            image.format,
+            image.mode,
+            image.width,
+            image.height,
+            round((time.perf_counter() - open_started_at) * 1000),
+        )
+
+        # 根据 EXIF 信息自动转正（处理手机拍摄的带 Orientation 标记的图片）
+        transpose_started_at = time.perf_counter()
+        logger.debug("Pillow EXIF transpose started")
+        image = ImageOps.exif_transpose(image) or image
+        logger.debug(
+            "Pillow EXIF transpose completed mode=%s size=%sx%s elapsed_ms=%d",
+            image.mode,
+            image.width,
+            image.height,
+            round((time.perf_counter() - transpose_started_at) * 1000),
+        )
+
+        # 只在必要时转换
+        if image.mode != "RGB":
+            source_mode = image.mode
+            conversion_started_at = time.perf_counter()
+            logger.debug("Pillow RGB conversion started source_mode=%s", source_mode)
+            image = image.convert("RGB")
+            logger.debug(
+                "Pillow RGB conversion completed source_mode=%s elapsed_ms=%d",
+                source_mode,
+                round((time.perf_counter() - conversion_started_at) * 1000),
+            )
+
+        render_dpi = max(1, int(round(render_scale * POINTS_PER_INCH)))
+
+        with BytesIO() as pdf_buffer:
+            # 第一张图保存为 PDF，其余追加
+            save_started_at = time.perf_counter()
+            logger.debug(
+                "Pillow PDF encoding started mode=%s size=%sx%s dpi=%d",
+                image.mode,
+                image.width,
+                image.height,
+                render_dpi,
+            )
+            image.save(
+                pdf_buffer,
+                format="PDF",
+                resolution=render_dpi,
+                quality=95,
+                subsampling=0,
+            )
+            pdf_bytes = pdf_buffer.getvalue()
+            logger.debug(
+                "Pillow PDF encoding completed output_bytes=%d elapsed_ms=%d",
+                len(pdf_bytes),
+                round((time.perf_counter() - save_started_at) * 1000),
+            )
+
+        return PDFDocument(
+            pdf_bytes,
+            render_scale=render_scale,
+            render_max_edge=render_max_edge,
+        )
 
     # ------------------------------------------------------------------ #
     #  Lifecycle
@@ -299,7 +373,7 @@ class PDFDocument:
         return await asyncio.to_thread(self.render_pages, start, end, scale=scale)
 
     # TODO: move
-    def crop_image(self, bbox: BBox, page_idx: int, *, scale: int = 2) -> bytes:
+    def crop_image(self, bbox: BBox, page_idx: int, *, scale: float = 2) -> bytes:
         image = self.render_page(page_idx, scale=scale)
         crop = None
         try:
@@ -1287,12 +1361,7 @@ def _validate_pdf_external_link_target(value: str) -> str | None:
     """校验 PDF URI Action，只保留显式且可安全输出的外部链接。"""
 
     target = value.strip()
-    if not target or any(
-        ord(char) < 0x20
-        or ord(char) == 0x7F
-        or 0xD800 <= ord(char) <= 0xDFFF
-        for char in target
-    ):
+    if not target or any(ord(char) < 0x20 or ord(char) == 0x7F or 0xD800 <= ord(char) <= 0xDFFF for char in target):
         return None
     try:
         parsed = urlsplit(target)
@@ -1366,11 +1435,7 @@ def _pdf_link_annotation_is_visible(page: pdfium.PdfPage, raw_link: Any) -> bool
                 pdfium_c.FPDFPage_CloseAnnot(raw_annot)
             except Exception:
                 pass
-    hidden_flags = (
-        pdfium_c.FPDF_ANNOT_FLAG_INVISIBLE
-        | pdfium_c.FPDF_ANNOT_FLAG_HIDDEN
-        | pdfium_c.FPDF_ANNOT_FLAG_NOVIEW
-    )
+    hidden_flags = pdfium_c.FPDF_ANNOT_FLAG_INVISIBLE | pdfium_c.FPDF_ANNOT_FLAG_HIDDEN | pdfium_c.FPDF_ANNOT_FLAG_NOVIEW
     return not bool(flags & hidden_flags)
 
 
@@ -1381,16 +1446,9 @@ def _visual_bbox_from_pdf_points(
 ) -> BBox | None:
     """把 PDF 底左坐标点集转换并裁剪为视觉页面左上坐标 bbox。"""
 
-    if not points or not all(
-        math.isfinite(coordinate)
-        for point in points
-        for coordinate in point
-    ):
+    if not points or not all(math.isfinite(coordinate) for point in points for coordinate in point):
         return None
-    visual_points = [
-        _transform_drawing_point(point, page_bbox, page_rotation)
-        for point in points
-    ]
+    visual_points = [_transform_drawing_point(point, page_bbox, page_rotation) for point in points]
     page_width, page_height = _drawing_page_size(page_bbox, page_rotation)
     visual_bbox = (
         max(0.0, min(point[0] for point in visual_points)),
@@ -1502,11 +1560,7 @@ def _extract_page_link_annotations(
             if not raw_action or int(pdfium_c.FPDFAction_GetType(raw_action)) != pdfium_c.PDFACTION_URI:
                 continue
             raw_target = _get_pdfium_uri_path(raw_doc, raw_action)
-            target = (
-                _validate_pdf_external_link_target(raw_target)
-                if raw_target is not None
-                else None
-            )
+            target = _validate_pdf_external_link_target(raw_target) if raw_target is not None else None
             if target is None:
                 continue
             bboxes = _pdf_link_region_bboxes(
@@ -1571,19 +1625,13 @@ def _signature_bbox_from_annotation(
         flags = int(pdfium_c.FPDFAnnot_GetFlags(raw_annot))
     except Exception:
         return None
-    hidden_flags = (
-        pdfium_c.FPDF_ANNOT_FLAG_INVISIBLE
-        | pdfium_c.FPDF_ANNOT_FLAG_HIDDEN
-        | pdfium_c.FPDF_ANNOT_FLAG_NOVIEW
-    )
+    hidden_flags = pdfium_c.FPDF_ANNOT_FLAG_INVISIBLE | pdfium_c.FPDF_ANNOT_FLAG_HIDDEN | pdfium_c.FPDF_ANNOT_FLAG_NOVIEW
     if flags & hidden_flags:
         return None
     field_type: int | None = None
     if form_handle is not None:
         try:
-            field_type = int(
-                pdfium_c.FPDFAnnot_GetFormFieldType(form_handle, raw_annot)
-            )
+            field_type = int(pdfium_c.FPDFAnnot_GetFormFieldType(form_handle, raw_annot))
         except Exception:
             field_type = None
     if field_type == pdfium_c.FPDF_FORMFIELD_SIGNATURE:
@@ -1615,9 +1663,7 @@ def _signature_bbox_from_annotation(
             return None
     except Exception:
         return None
-    raw_bbox = _normalize_pdf_page_bbox(
-        (float(rect.left), float(rect.bottom), float(rect.right), float(rect.top))
-    )
+    raw_bbox = _normalize_pdf_page_bbox((float(rect.left), float(rect.bottom), float(rect.right), float(rect.top)))
     if not all(math.isfinite(value) for value in raw_bbox):
         return None
     page_points = [
@@ -1715,12 +1761,7 @@ def _get_raw_image_fingerprint(raw_obj: Any, page: pdfium.PdfPage) -> str | None
         raw_size = int(pdfium_c.FPDFImageObj_GetImageDataRaw(raw_obj, None, 0))
     except Exception:
         return None
-    if (
-        width <= 0
-        or height <= 0
-        or raw_size <= 0
-        or raw_size > PDF_IMAGE_FINGERPRINT_MAX_RAW_BYTES
-    ):
+    if width <= 0 or height <= 0 or raw_size <= 0 or raw_size > PDF_IMAGE_FINGERPRINT_MAX_RAW_BYTES:
         return None
 
     try:
@@ -1795,9 +1836,7 @@ def _extract_page_path_infos(
     """在调用方持有 PDFium 锁时提取 Path 信息，并隔离单对象异常。"""
 
     path_infos: list[PDFPathInfo] = []
-    for source_index, (raw_obj, matrix, form_depth) in enumerate(
-        _iter_raw_path_objects_with_depth(page)
-    ):
+    for source_index, (raw_obj, matrix, form_depth) in enumerate(_iter_raw_path_objects_with_depth(page)):
         try:
             path_info = _path_info_from_object(
                 raw_obj,
@@ -1869,10 +1908,7 @@ def _is_near_identical_bbox(
     bbox_b: tuple[float, float, float, float],
 ) -> bool:
     """判断两个字符 bbox 是否属于同一视觉位置的一点内抖动。"""
-    return all(
-        abs(coord_a - coord_b) <= NEAR_IDENTICAL_CHAR_BBOX_TOLERANCE
-        for coord_a, coord_b in zip(bbox_a, bbox_b)
-    )
+    return all(abs(coord_a - coord_b) <= NEAR_IDENTICAL_CHAR_BBOX_TOLERANCE for coord_a, coord_b in zip(bbox_a, bbox_b))
 
 
 def _calculate_bbox_overlap_in_smaller_area(
@@ -1928,19 +1964,12 @@ def _is_adjacent_offset_duplicate_char(
         return False
 
     if not (
-        NEAR_IDENTICAL_CHAR_BBOX_TOLERANCE
-        < abs(x_start_offset)
-        <= OFFSET_DUPLICATE_CHAR_BBOX_TOLERANCE
-        and NEAR_IDENTICAL_CHAR_BBOX_TOLERANCE
-        < abs(y_start_offset)
-        <= OFFSET_DUPLICATE_CHAR_BBOX_TOLERANCE
+        NEAR_IDENTICAL_CHAR_BBOX_TOLERANCE < abs(x_start_offset) <= OFFSET_DUPLICATE_CHAR_BBOX_TOLERANCE
+        and NEAR_IDENTICAL_CHAR_BBOX_TOLERANCE < abs(y_start_offset) <= OFFSET_DUPLICATE_CHAR_BBOX_TOLERANCE
     ):
         return False
 
-    return (
-        _calculate_bbox_overlap_in_smaller_area(previous_bbox, current_bbox)
-        >= OFFSET_DUPLICATE_MIN_BBOX_OVERLAP_RATIO
-    )
+    return _calculate_bbox_overlap_in_smaller_area(previous_bbox, current_bbox) >= OFFSET_DUPLICATE_MIN_BBOX_OVERLAP_RATIO
 
 
 def _get_near_identical_bbox_bucket_key(
@@ -2054,9 +2083,7 @@ def _restore_pdfium_surrogate_pairs(
 ) -> list[Char]:
     """利用 PDFium 原始 UTF-16 code unit 恢复 pdftext 丢失的补充平面字符。"""
     if not any(
-        len(text := str(char.get("char", ""))) == 1
-        and (text == "\uFFFD" or 0xD800 <= ord(text) <= 0xDFFF)
-        for char in chars
+        len(text := str(char.get("char", ""))) == 1 and (text == "\ufffd" or 0xD800 <= ord(text) <= 0xDFFF) for char in chars
     ):
         return chars
 
@@ -2087,7 +2114,7 @@ def _restore_pdfium_surrogate_pairs(
             textpage_raw is not None
             and 0 <= char_idx < char_count
             and len(text) == 1
-            and (text == "\uFFFD" or 0xD800 <= ord(text) <= 0xDFFF)
+            and (text == "\ufffd" or 0xD800 <= ord(text) <= 0xDFFF)
         ):
             raw_code = int(get_unicode(textpage_raw, char_idx))
 
@@ -2107,17 +2134,13 @@ def _restore_pdfium_surrogate_pairs(
 
         if high_surrogate is not None and low_surrogate is not None:
             restored_char = cast(Char, dict(char))
-            restored_char["char"] = chr(
-                0x10000
-                + ((high_surrogate - 0xD800) << 10)
-                + (low_surrogate - 0xDC00)
-            )
+            restored_char["char"] = chr(0x10000 + ((high_surrogate - 0xD800) << 10) + (low_surrogate - 0xDC00))
             restored_chars.append(restored_char)
             continue
 
         if len(text) == 1 and 0xD800 <= ord(text) <= 0xDFFF:
             restored_char = cast(Char, dict(char))
-            restored_char["char"] = "\uFFFD"
+            restored_char["char"] = "\ufffd"
             restored_chars.append(restored_char)
             continue
 
@@ -2144,7 +2167,7 @@ def _get_single_char_text(char: Char) -> str:
     text = str(char.get("char", ""))
     if len(text) == 1:
         return text
-    return text[:1] or "\uFFFD"
+    return text[:1] or "\ufffd"
 
 
 def _get_char_font_id(
@@ -2239,28 +2262,6 @@ def get_lines_from_chars(
         line_distance_threshold=line_distance_threshold,
     )
     return lines
-
-
-def images_bytes_to_pdf_bytes(image_bytes: bytes) -> bytes:
-    # 载入并转换所有图像为 RGB 模式
-    image = Image.open(BytesIO(image_bytes))
-    # 根据 EXIF 信息自动转正（处理手机拍摄的带 Orientation 标记的图片）
-    image = ImageOps.exif_transpose(image) or image
-
-    # 只在必要时转换
-    if image.mode != "RGB":
-        image = image.convert("RGB")
-
-    with BytesIO() as pdf_buffer:
-        # 第一张图保存为 PDF，其余追加
-        image.save(
-            pdf_buffer,
-            format="PDF",
-            resolution=DEFAULT_RENDER_DPI,
-            quality=95,
-            subsampling=0,
-        )
-        return pdf_buffer.getvalue()
 
 
 def _page_to_image(page: pdfium.PdfPage, scale: float, max_edge: int) -> PDFPageImage:

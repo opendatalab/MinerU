@@ -53,7 +53,7 @@ Agent 使用场景是下一阶段的设计原点。CLI、SDK、MCP 和输出格�
 
 ### 2.4 SaaS 只做高质量后端
 
-SaaS 不承担 MinerU 的全部产品体验。它的定位是最高质量、最快速度的远程解析能力，通过统一 API 为 CLI、SDK、MCP 和开发者服务。
+SaaS 不承担 MinerU 的全部产品体验。它的定位是高质量、可扩展的远程解析能力，通过统一 API 为 CLI、SDK、MCP 和开发者服务。
 
 ### 2.5 数据驱动但不被指标绑架
 
@@ -137,7 +137,7 @@ Agent 使用 MinerU 有两条通道：
 | 搜索 | P0 | 文件名与内容检索，属于 watch、rules、search 主链路 |
 | 桌面端 | P1 | CLI 的 GUI 壳 |
 
-解析能力通过 `flash`、`medium`、`high`、`extra_high` 暴露；用户未指定 tier 时使用默认选择策略。tier 的用户语义、硬件边界和质量策略见 [解析 Tier](tiers.md)。
+解析能力通过 `flash`、`basic`、`standard`、`advanced` 暴露；用户未指定 tier 时使用默认选择策略。tier 的用户语义、硬件边界和质量策略见 [解析 Tier](tiers.md)。
 
 命令分工：
 

@@ -29,32 +29,6 @@ def read_config() -> dict[str, Any] | None:
         return config
 
 
-def get_configured_model_source(default: str | None = None) -> str | None:
-    """读取配置文件中的固定模型来源配置，auto 或缺失时返回默认值。"""
-    supported_sources = {"huggingface", "modelscope"}
-    config = read_config()
-    if config is None:
-        return default
-
-    model_source = config.get("model-source")
-    if model_source is None:
-        return default
-    if not isinstance(model_source, str):
-        logger.warning(f"'model-source' in {get_tools_config_file_path()} must be a string, use {default} as default")
-        return default
-
-    normalized_model_source = model_source.strip().lower()
-    if not normalized_model_source:
-        return default
-    if normalized_model_source == "auto":
-        return default
-    if normalized_model_source in supported_sources:
-        return normalized_model_source
-
-    logger.warning(f"Unsupported 'model-source' in {get_tools_config_file_path()}: {model_source}, use {default} as default")
-    return default
-
-
 def get_device() -> str:
     device_mode = os.getenv("MINERU_DEVICE_MODE", None)
     if device_mode is not None:
@@ -101,6 +75,23 @@ def get_device() -> str:
     except Exception:
         pass
     return "cpu"
+
+
+def get_model_stack() -> str:
+    """返回模型推理技术栈：``"light"`` 或 ``"full"``。
+
+    优先读取 ``config.model.stack``（支持环境变量 ``MINERU_MODEL_STACK``）。
+    当值为 ``"auto"`` 时，根据 ``get_device()`` 的结果自动选择：
+    device 为 ``"cpu"`` 时用 ``"light"``（onnxruntime / llama.cpp），否则用 ``"full"``（PyTorch / transformers）。
+    """
+    from ..config import config
+
+    stack = config.model.stack
+    if stack in ("light", "full"):
+        return stack
+    # auto: cpu → light, 其他 → full
+    device = get_device()
+    return "light" if device == "cpu" else "full"
 
 
 def get_ocr_det_mask_inline_formula_enable(enable: bool) -> bool:

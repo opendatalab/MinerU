@@ -2,12 +2,14 @@ import asyncio
 import logging
 import subprocess
 import tomllib
+import uuid
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from loguru import logger as loguru_logger
+from packaging.requirements import Requirement
 
 from mineru.config import LogConfig, PatchedConfig, config as mineru_config
 from mineru.doclib import app as doclib_app
@@ -15,6 +17,7 @@ from mineru.doclib.app import _assert_required_schema
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.server import _tail_log, _write_temp_asset
 from mineru.parser import tier as parser_tier
+from mineru.utils import model_registry
 from mineru.version import __version__
 
 
@@ -54,37 +57,52 @@ def test_doclib_runtime_dependencies_are_in_base_install() -> None:
     assert "watchfiles" in dependency_names
 
 
-def test_pdftext_dependency_is_capped_below_pagechars_api() -> None:
+def test_huggingface_hub_base_dependency_enables_xet() -> None:
     pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
     pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-    dependencies = pyproject["project"]["dependencies"]
-    pdftext_dependencies = [dependency for dependency in dependencies if dependency.lower().startswith("pdftext")]
+    dependencies = (Requirement(raw_dependency) for raw_dependency in pyproject["project"]["dependencies"])
+    huggingface_hub = next(dependency for dependency in dependencies if dependency.name == "huggingface-hub")
 
-    assert pdftext_dependencies == ["pdftext>=0.6.3,<0.7.0"]
+    assert huggingface_hub.extras == {"hf_xet"}
 
 
-def test_standard_extra_includes_preflight_runtime_dependencies() -> None:
+def test_basic_extra_includes_preflight_runtime_dependencies() -> None:
     pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
     pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-    standard_dependencies = pyproject["project"]["optional-dependencies"]["standard"]
-    dependency_names = {dependency.split(">", 1)[0].split("=", 1)[0].lower() for dependency in standard_dependencies}
+    basic_dependencies = pyproject["project"]["optional-dependencies"]["basic"]
+    dependency_names = {dependency.split(">", 1)[0].split("=", 1)[0].lower() for dependency in basic_dependencies}
     module_to_distribution = {
-        "ftfy": "ftfy",
-        "pyclipper": "pyclipper",
-        "shapely": "shapely",
         "six": "six",
         "torch": "torch",
         "torchvision": "torchvision",
         "transformers": "transformers",
     }
 
+    # light backend 跳过所有模块检查，只验证 full backend 的依赖完整性
+    import os
+    os.environ["MINERU_MODEL_STACK"] = "full"
+    import mineru.config as cfg
+    import importlib
+    importlib.reload(cfg)
+    cfg._loaded_config = cfg._load_effective_config()
+    cfg.config = cfg._loaded_config.config
+
     missing = [
         module_name
-        for module_name in parser_tier.required_modules_for_tier("standard")
+        for module_name in parser_tier.required_modules_for_tier("basic")
         if module_to_distribution[module_name] not in dependency_names
     ]
 
     assert missing == []
+
+
+def test_standard_is_the_highest_model_runtime_extra() -> None:
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    extras = pyproject["project"]["optional-dependencies"]
+
+    assert "advanced" not in extras
+    assert "mineru[standard]" in extras["test"]
 
 
 @pytest.mark.parametrize(
@@ -114,18 +132,56 @@ def test_config_set_rejects_invalid_known_config_values(key: str, value: str, mo
     assert config_response.json()["source"] == "default"
 
 
-def test_config_set_managed_mode_preflights_managed_tier_dependencies(monkeypatch, tmp_path) -> None:
+def test_config_set_managed_tier_rejects_missing_models(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     def _skip_background_task(*args, **kwargs):
         return None
 
-    def _import_module(module_name: str):
-        if module_name == "torch":
-            raise ModuleNotFoundError("No module named 'torch'")
-        return object()
+    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
+    monkeypatch.setattr("mineru.doclib.server.ensure_tier_runtime_dependencies", lambda tier: None)
+    monkeypatch.setattr(model_registry.config.model, "base_dir", str(tmp_path / "models"))
+
+    cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
+    with TestClient(doclib_app.create_app(cfg)) as client:
+        response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "basic"})
+        config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "parse_server_model_not_ready"
+    assert payload["error"]["param"] == "parse_server.local.managed_tier"
+    assert "PDF-Extract-Kit-1.0" in payload["error"]["message"]
+    assert "mineru-kit models download --tier basic" in payload["error"]["message"]
+    assert config_response.json()["value"] == "standard"
+    assert config_response.json()["source"] == "default"
+
+
+def test_config_set_managed_advanced_is_rejected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def _skip_background_task(*args, **kwargs):
+        return None
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
-    monkeypatch.setattr(parser_tier.importlib, "import_module", _import_module)
-    monkeypatch.setattr(parser_tier.importlib_metadata, "packages_distributions", lambda: {"mineru": ["mineru-next-dev"]})
+    monkeypatch.setattr("mineru.doclib.server.ensure_tier_runtime_dependencies", lambda tier: None)
+    monkeypatch.setattr(model_registry.config.model, "base_dir", str(tmp_path / "models"))
+
+    cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
+    with TestClient(doclib_app.create_app(cfg)) as client:
+        response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "advanced"})
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "invalid_config_value"
+    assert "basic, standard" in payload["error"]["message"]
+
+
+def test_config_set_managed_mode_rejects_missing_models_for_current_tier(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def _skip_background_task(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
+    monkeypatch.setattr("mineru.doclib.server.ensure_tier_runtime_dependencies", lambda tier: None)
+    monkeypatch.setattr(model_registry.config.model, "base_dir", str(tmp_path / "models"))
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
     with TestClient(doclib_app.create_app(cfg)) as client:
@@ -134,39 +190,11 @@ def test_config_set_managed_mode_preflights_managed_tier_dependencies(monkeypatc
 
     assert response.status_code == 400
     payload = response.json()
-    assert payload["error"]["code"] == "parse_server_dependency_missing"
+    assert payload["error"]["code"] == "parse_server_model_not_ready"
     assert payload["error"]["param"] == "parse_server.local.mode"
-    assert "torch" in payload["error"]["message"]
-    assert "pip install 'mineru-next-dev[high]'" in payload["error"]["message"]
+    assert "mineru-kit models download --tier standard" in payload["error"]["message"]
     assert config_response.json()["value"] == "disabled"
-
-
-def test_config_set_managed_tier_preflights_even_when_mode_is_disabled(monkeypatch, tmp_path) -> None:
-    def _skip_background_task(*args, **kwargs):
-        return None
-
-    def _import_module(module_name: str):
-        if module_name == "mlx":
-            raise ModuleNotFoundError("No module named 'mlx'")
-        return object()
-
-    monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
-    monkeypatch.setattr(parser_tier.importlib, "import_module", _import_module)
-    monkeypatch.setattr(parser_tier.importlib_metadata, "packages_distributions", lambda: {"mineru": ["mineru-next-dev"]})
-    monkeypatch.setattr(parser_tier.sys, "platform", "darwin")
-
-    cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
-    with TestClient(doclib_app.create_app(cfg)) as client:
-        response = client.put("/api/v1/configs/parse_server.local.managed_tier", json={"value": "extra_high"})
-        config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
-
-    assert response.status_code == 400
-    payload = response.json()
-    assert payload["error"]["code"] == "parse_server_dependency_missing"
-    assert payload["error"]["param"] == "parse_server.local.managed_tier"
-    assert "mlx" in payload["error"]["message"]
-    assert "pip install 'mineru-next-dev[extra_high]'" in payload["error"]["message"]
-    assert config_response.json()["value"] == "high"
+    assert config_response.json()["source"] == "default"
 
 
 def test_background_task_crash_is_logged(caplog: pytest.LogCaptureFixture) -> None:
@@ -287,17 +315,25 @@ def test_setup_logging_routes_application_logs_to_rotating_file_without_stderr_d
 
         assert len(mineru_rotating_handlers) == 1
         assert mineru_rotating_handlers[0].baseFilename == str(log_path)
+        assert mineru_rotating_handlers[0].encoding == "utf-8"
+        assert mineru_rotating_handlers[0].errors == "backslashreplace"
         assert mineru_plain_stream_handlers == []
         assert mineru_logger.propagate is False
-        assert [handler.baseFilename for handler in uvicorn_error_logger.handlers if isinstance(handler, RotatingFileHandler)] == [
-            str(log_path)
+        uvicorn_error_log_paths = [
+            handler.baseFilename for handler in uvicorn_error_logger.handlers if isinstance(handler, RotatingFileHandler)
         ]
+        assert uvicorn_error_log_paths == [str(log_path)]
         assert [handler.baseFilename for handler in warnings_logger.handlers if isinstance(handler, RotatingFileHandler)] == [
             str(log_path)
         ]
-        assert [handler.baseFilename for handler in uvicorn_access_logger.handlers if isinstance(handler, RotatingFileHandler)] == [
-            str(access_log_path)
+        uvicorn_access_log_paths = [
+            handler.baseFilename for handler in uvicorn_access_logger.handlers if isinstance(handler, RotatingFileHandler)
         ]
+        assert uvicorn_access_log_paths == [str(access_log_path)]
+
+        mineru_logger.info("Unicode log: \u223c \u4e2d\u6587 \u2713")
+        mineru_rotating_handlers[0].flush()
+        assert "Unicode log: \u223c \u4e2d\u6587 \u2713" in log_path.read_text(encoding="utf-8")
     finally:
         _clear_test_loggers()
 
@@ -320,6 +356,45 @@ def test_setup_logging_routes_loguru_records_to_application_log(tmp_path: Path) 
         assert "loguru bridged message" in content
     finally:
         _clear_test_loggers()
+
+
+def test_shutdown_removes_only_endpoint_owned_by_current_server(tmp_path: Path) -> None:
+    endpoint_path = tmp_path / "doclib.endpoint.json"
+    doclib_app.write_endpoint_file(endpoint_path, pid=123, server_id="current-server", transports=[])
+
+    doclib_app._remove_owned_endpoint_file(str(endpoint_path), "old-server")
+    assert endpoint_path.exists()
+
+    doclib_app._remove_owned_endpoint_file(str(endpoint_path), "current-server")
+    assert not endpoint_path.exists()
+
+
+def test_shutdown_removes_only_uds_path_with_bound_identity(tmp_path: Path) -> None:
+    uds_path = tmp_path / "doclib.sock"
+    uds_path.write_text("original", encoding="utf-8")
+    original_identity = doclib_app._path_identity(str(uds_path))
+    assert original_identity is not None
+
+    uds_path.unlink()
+    uds_path.write_text("replacement", encoding="utf-8")
+    doclib_app._remove_owned_uds_path(str(uds_path), original_identity)
+    assert uds_path.read_text(encoding="utf-8") == "replacement"
+
+    replacement_identity = doclib_app._path_identity(str(uds_path))
+    assert replacement_identity is not None
+    doclib_app._remove_owned_uds_path(str(uds_path), replacement_identity)
+    assert not uds_path.exists()
+
+
+def test_discovery_cleanup_runs_only_once() -> None:
+    state = doclib_app.AppState()
+    events: list[str] = []
+    state.discovery_cleanup = lambda: events.append("cleanup")
+
+    doclib_app._run_discovery_cleanup(state)
+    doclib_app._run_discovery_cleanup(state)
+
+    assert events == ["cleanup"]
 
 
 def test_server_status_reports_configured_socket_path(monkeypatch, tmp_path) -> None:
@@ -365,6 +440,7 @@ def test_server_status_reports_configured_socket_path(monkeypatch, tmp_path) -> 
 
     assert response.status_code == 200
     payload = response.json()
+    assert uuid.UUID(payload["server_id"])
     assert payload["mineru_home"]
     assert payload["version"] == __version__
     assert isinstance(payload["python_version"], str)
@@ -442,8 +518,8 @@ def test_managed_parse_server_startup_writes_stdout_and_stderr_logs(monkeypatch,
         assert kwargs["stdout"] is not subprocess.DEVNULL
         assert kwargs["stderr"] is not subprocess.DEVNULL
         assert kwargs["stdout"] is not kwargs["stderr"]
-        assert kwargs["stdin"] is subprocess.PIPE
-        assert kwargs["env"]["MINERU_MANAGED_PARSE_SERVER"] == "1"
+        assert kwargs["stdin"] is subprocess.DEVNULL
+        assert kwargs["env"]["MINERU_MANAGED_CONTROL"]
         kwargs["stdout"].write("parse stdout\n")
         kwargs["stdout"].flush()
         kwargs["stderr"].write("parse stderr\n")
@@ -473,7 +549,9 @@ def test_managed_parse_server_startup_writes_stdout_and_stderr_logs(monkeypatch,
         return None
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
-    monkeypatch.setattr("mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582)
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582
+    )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
 
     with TestClient(doclib_app.create_app(cfg)) as client:
@@ -485,13 +563,11 @@ def test_managed_parse_server_startup_writes_stdout_and_stderr_logs(monkeypatch,
     assert parse_stderr_log_path.read_text(encoding="utf-8").endswith("parse stderr\n")
 
 
-def test_managed_parse_server_startup_clears_invalid_tier_override(monkeypatch, tmp_path) -> None:
+def test_managed_parse_server_startup_ignores_invalid_tier_override(monkeypatch, tmp_path) -> None:
     db = DatabaseManager(str(tmp_path / "doclib.db"))
     asyncio.run(db.initialize())
     asyncio.run(db.execute("INSERT INTO config (key, value) VALUES (?, ?)", ("parse_server.local.mode", "managed")))
-    asyncio.run(
-        db.execute("INSERT INTO config (key, value) VALUES (?, ?)", ("parse_server.local.managed_tier", "standard"))
-    )
+    asyncio.run(db.execute("INSERT INTO config (key, value) VALUES (?, ?)", ("parse_server.local.managed_tier", "ultra")))
 
     class _Proc:
         pid = 12345
@@ -505,14 +581,16 @@ def test_managed_parse_server_startup_clears_invalid_tier_override(monkeypatch, 
     def _popen(*args: object, **kwargs: object) -> _Proc:
         cmd = args[0]
         assert "--tier" in cmd
-        assert cmd[cmd.index("--tier") + 1] == "high"
+        assert cmd[cmd.index("--tier") + 1] == "standard"
         return _Proc()
 
     def _skip_background_task(*args, **kwargs):
         return None
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
-    monkeypatch.setattr("mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582)
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582
+    )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
 
     cfg = PatchedConfig(
@@ -534,8 +612,8 @@ def test_managed_parse_server_startup_clears_invalid_tier_override(monkeypatch, 
         config_response = client.get("/api/v1/configs/parse_server.local.managed_tier")
         status_response = client.get("/api/v1/server/status")
 
-    assert config_response.json()["value"] == "high"
-    assert status_response.json()["parse_server"]["local"]["managed_tier"] == "high"
+    assert config_response.json()["value"] == "ultra"
+    assert status_response.json()["parse_server"]["local"]["managed_tier"] == "standard"
 
 
 def test_managed_parse_server_shutdown_uses_health_proc(monkeypatch, tmp_path) -> None:
@@ -590,7 +668,9 @@ def test_managed_parse_server_shutdown_uses_health_proc(monkeypatch, tmp_path) -
         return None
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
-    monkeypatch.setattr("mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582)
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.select_available_managed_port", lambda *args, **kwargs: 16582
+    )
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.subprocess.Popen", _popen)
 
     with TestClient(doclib_app.create_app(cfg)) as client:
@@ -598,7 +678,7 @@ def test_managed_parse_server_shutdown_uses_health_proc(monkeypatch, tmp_path) -
         assert not hasattr(state, "parse_server_proc")
         assert client.get("/api/v1/server/status").status_code == 200
 
-    assert events == ["stdin.close", "wait:10"]
+    assert events == ["terminate", "wait:3.0"]
 
 
 def test_startup_resets_running_scans_to_failed(monkeypatch, tmp_path) -> None:
