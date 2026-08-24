@@ -16,7 +16,7 @@ from mineru.config import config
 from mineru.types import MiddleJson, ModelJson
 from mineru.version import __version__ as mineru_version
 
-_SUPPORTED_FILE_SUFFIXES = {"pdf", "docx", "pptx", "xlsx"}
+_SUPPORTED_FILE_SUFFIXES = {"pdf", "docx", "ppt", "pptx", "xls", "xlsx"}
 
 
 def _log_infer_performance(file_suffix: str, page_count: int, elapsed: float) -> None:
@@ -34,7 +34,7 @@ def doc_analyze(
     parse_mode: Literal["auto", "txt", "ocr"] = "auto",
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
-    file_suffix: Literal["pdf", "docx", "pptx", "xlsx"] = "pdf",
+    file_suffix: Literal["pdf", "docx", "ppt", "pptx", "xls", "xlsx"] = "pdf",
 ) -> tuple[MiddleJson, ModelJson]:
     """生产严格 ModelJson，并在统一边界构造严格 MiddleJson。"""
     if file_suffix not in _SUPPORTED_FILE_SUFFIXES:
@@ -72,7 +72,7 @@ async def aio_doc_analyze(
     parse_mode: Literal["auto", "txt", "ocr"] = "auto",
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
-    file_suffix: Literal["pdf", "docx", "pptx", "xlsx"] = "pdf",
+    file_suffix: Literal["pdf", "docx", "ppt", "pptx", "xls", "xlsx"] = "pdf",
 ) -> tuple[MiddleJson, ModelJson]:
     """在线程中执行统一文档分析，避免阻塞调用方事件循环。"""
     return await asyncio.to_thread(

@@ -48,6 +48,34 @@ class PptxModel:
         return converter.pages
 
 
+class PptModel:
+    """将 PowerPoint 97–2003 Converter 包装为无状态模型。"""
+
+    def predict(self, file_binary: BinaryIO) -> list[list[dict[str, Any]]]:
+        """转换调用方持有的 PPT 二进制流，并返回逐幻灯片 model-list。"""
+
+        # 延迟加载旧版 PPT 解析器，避免其他格式提前加载 olefile。
+        from .ppt.ppt_converter import PptConverter
+
+        converter = PptConverter()
+        converter.convert(file_binary)
+        return converter.pages
+
+
+class XlsModel:
+    """将 Excel 97–2003 Converter 包装为无状态模型。"""
+
+    def predict(self, file_binary: BinaryIO) -> list[list[dict[str, Any]]]:
+        """转换调用方持有的 XLS 二进制流，并返回逐工作表 model-list。"""
+
+        # 延迟加载旧版 XLS 解析器，避免其他格式提前加载 olefile/openpyxl。
+        from .xls.xls_converter import XlsConverter
+
+        converter = XlsConverter()
+        converter.convert(file_binary)
+        return converter.pages
+
+
 class XlsxModel:
     """将 XLSX Converter 包装为无状态模型。"""
 

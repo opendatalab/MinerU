@@ -12,11 +12,13 @@ import pytest
 
 import mineru.model.flash as flash_models
 import mineru.model.flash.model as flat_model_module
-from mineru.model.flash import DocxModel, PdfModel, PptxModel, XlsxModel
+from mineru.model.flash import DocxModel, PdfModel, PptModel, PptxModel, XlsModel, XlsxModel
 from mineru.model.flash.docx import docx_converter as docx_converter_module
 from mineru.model.flash.docx import main as docx_main
 from mineru.model.flash.pptx import main as pptx_main
 from mineru.model.flash.pptx import pptx_converter as pptx_converter_module
+from mineru.model.flash.ppt import ppt_converter as ppt_converter_module
+from mineru.model.flash.xls import xls_converter as xls_converter_module
 from mineru.model.flash.xlsx import main as xlsx_main
 from mineru.model.flash.xlsx import xlsx_converter as xlsx_converter_module
 
@@ -59,6 +61,8 @@ def test_flash_office_model_conversion(
     [
         (DocxModel, docx_converter_module, "DocxConverter"),
         (PptxModel, pptx_converter_module, "PptxConverter"),
+        (PptModel, ppt_converter_module, "PptConverter"),
+        (XlsModel, xls_converter_module, "XlsConverter"),
         (XlsxModel, xlsx_converter_module, "XlsxConverter"),
     ],
 )
@@ -145,12 +149,21 @@ def test_convert_path_delegates_to_binary_helper(
 
 
 def test_models_are_exported_from_flash_root() -> None:
-    """验证四个模型统一由 Flash 根包公开。"""
+    """验证全部模型统一由 Flash 根包公开。"""
 
-    assert flash_models.__all__ == ["PdfModel", "DocxModel", "PptxModel", "XlsxModel"]
+    assert flash_models.__all__ == [
+        "PdfModel",
+        "DocxModel",
+        "PptModel",
+        "PptxModel",
+        "XlsModel",
+        "XlsxModel",
+    ]
     assert PdfModel is flat_model_module.PdfModel
     assert DocxModel is flat_model_module.DocxModel
     assert PptxModel is flat_model_module.PptxModel
+    assert PptModel is flat_model_module.PptModel
+    assert XlsModel is flat_model_module.XlsModel
     assert XlsxModel is flat_model_module.XlsxModel
 
 
@@ -159,6 +172,8 @@ def test_models_are_exported_from_flash_root() -> None:
     [
         ("mineru.model.flash.docx", "DocxModel"),
         ("mineru.model.flash.pptx", "PptxModel"),
+        ("mineru.model.flash.ppt", "PptModel"),
+        ("mineru.model.flash.xls", "XlsModel"),
         ("mineru.model.flash.xlsx", "XlsxModel"),
     ],
 )
@@ -180,6 +195,9 @@ def test_importing_pdf_model_does_not_load_office_converters() -> None:
             "assert PdfModel.__name__ == 'PdfModel'",
             "assert 'mineru.model.flash.docx.docx_converter' not in sys.modules",
             "assert 'mineru.model.flash.pptx.pptx_converter' not in sys.modules",
+            "assert 'mineru.model.flash.ppt.ppt_converter' not in sys.modules",
+            "assert 'mineru.model.flash.xls.xls_converter' not in sys.modules",
+            "assert 'olefile' not in sys.modules",
             "assert 'mineru.model.flash.xlsx.xlsx_converter' not in sys.modules",
         ]
     )
@@ -196,7 +214,13 @@ def test_importing_pdf_model_does_not_load_office_converters() -> None:
 
 @pytest.mark.parametrize(
     "module_name",
-    ["mineru.model.docx", "mineru.model.pptx", "mineru.model.xlsx"],
+    [
+        "mineru.model.docx",
+        "mineru.model.ppt",
+        "mineru.model.pptx",
+        "mineru.model.xls",
+        "mineru.model.xlsx",
+    ],
 )
 def test_legacy_office_model_paths_are_removed(module_name: str) -> None:
     """验证迁移后不再暴露旧的 Office 模型包路径。"""

@@ -62,6 +62,7 @@ dependencies = [
     "pylatexenc>=2.10,<3",
     "lxml>=4.0.0,<7.0.0",
     "openpyxl>=3.1.5,<4",
+    "olefile>=0.47,<1",
     "aiosqlite>=0.20.0,<1",
     "watchfiles>=1.0.0,<2",
     "fastapi",

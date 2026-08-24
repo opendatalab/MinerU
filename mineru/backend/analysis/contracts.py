@@ -10,7 +10,7 @@ AnalyzeEffort: TypeAlias = Literal["flash", "low", "medium", "high", "xhigh"]
 # 请求阶段允许自动分类，分析结果中的模式必须已经收敛为 txt 或 ocr。
 ParseMode: TypeAlias = Literal["auto", "txt", "ocr"]
 ResolvedParseMode: TypeAlias = Literal["txt", "ocr"]
-OfficeSuffix: TypeAlias = Literal["docx", "pptx", "xlsx"]
+OfficeSuffix: TypeAlias = Literal["docx", "ppt", "pptx", "xls", "xlsx"]
 
 
 @dataclass(slots=True)

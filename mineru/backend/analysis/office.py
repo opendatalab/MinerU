@@ -6,13 +6,15 @@ from __future__ import annotations
 import time
 from io import BytesIO
 
-from mineru.model.flash import DocxModel, PptxModel, XlsxModel
+from mineru.model.flash import DocxModel, PptModel, PptxModel, XlsModel, XlsxModel
 
 from .contracts import AnalysisResult, OfficeSuffix
 
 _OFFICE_MODEL_MAP = {
     "docx": DocxModel,
+    "ppt": PptModel,
     "pptx": PptxModel,
+    "xls": XlsModel,
     "xlsx": XlsxModel,
 }
 
