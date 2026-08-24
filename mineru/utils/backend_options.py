@@ -27,6 +27,7 @@ HYBRID_EFFORT_CHOICES: Final[tuple[str, ...]] = (
     MAX_HYBRID_EFFORT,
 )
 HYBRID_EFFORT_BY_TIER: Final[dict[str, str]] = {
+    "flash": "flash",
     "basic": LOCAL_HYBRID_EFFORT,
     "standard": LAYOUT_HYBRID_EFFORT,
     "advanced": MAX_HYBRID_EFFORT,

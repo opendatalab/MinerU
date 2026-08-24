@@ -12,7 +12,7 @@
 它承担两件事:
 
 - 持有结构化 pages。
-- 基于 pages 派生 markdown、content list、images 等输出。
+- 基于 pages 派生 markdown、structured content、images 等输出。
 
 ## 当前字段
 
@@ -43,7 +43,6 @@ class ParseResult:
     def from_json(s: str) -> "ParseResult": ...
 
     def markdown(self, *, add_markers: bool = False) -> str: ...
-    def content_list(self) -> list[dict]: ...
     def structured_content(self) -> list[list[dict]]: ...
     def images(self) -> dict[str, bytes]: ...
     def save(self, writer) -> None: ...
@@ -58,7 +57,6 @@ class ParseResult:
 | `from_dict()` | 已有 | 保持，用于 API JSON / 缓存恢复；继续收紧兼容边界。 |
 | `from_json()` | 已有 | 保持。 |
 | `markdown()` | 已有 | 保持，参数名稳定。 |
-| `content_list()` | 已有 | 保持。 |
 | `structured_content()` | 已有 | 保持。 |
 | `images()` | 已有 | 保持，返回 path -> bytes。 |
 | `save()` | 已有 | 需要稳定输出文件命名。 |
@@ -125,7 +123,6 @@ writer.write(path: str, data: bytes) -> None
 |------|------|
 | `{prefix}.md` | Markdown。 |
 | `{prefix}_middle.json` | `to_json()`。 |
-| `{prefix}_content_list.json` | content list。 |
 | `{prefix}_structured_content.json` | structured content。 |
 | `{prefix}_model.json` | 原始模型输出，可选。 |
 | image paths | 图片 bytes。 |
@@ -139,7 +136,7 @@ writer.write(path: str, data: bytes) -> None
 SDK 设计约束:
 
 - `ParseResult` 可以暴露 `pages` 给高级用户。
-- 普通用户应通过 `markdown()`、`content_list()`、`images()` 消费结果。
+- 普通用户应通过 `markdown()`、`structured_content()`、`images()` 消费结果。
 - middle structure 的 schema 变化应通过 `from_dict()` 做兼容。
 
 ## 未决问题

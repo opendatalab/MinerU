@@ -23,7 +23,7 @@ GET /v1/health HTTP/1.1
   "version": "1.0.0",
   "features": {
     "webhook": true,
-    "output_formats": ["markdown", "middle_json", "content_list", "structured_content", "html", "latex", "docx", "zip"],
+    "output_formats": ["markdown", "middle_json", "structured_content", "html", "latex", "docx", "zip"],
     "sources": ["file_id", "url", "inline"]
   }
 }
@@ -169,7 +169,7 @@ Local Parse Server 的 `health` 通常返回:
   "version": "1.0.0",
   "features": {
     "webhook": false,
-    "output_formats": ["markdown", "middle_json", "content_list", "structured_content", "zip"],
+    "output_formats": ["markdown", "middle_json", "structured_content", "zip"],
     "sources": ["file_id", "url", "inline"]
   }
 }

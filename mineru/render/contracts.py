@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, TypeAlias
 
+from .image import ImageRenderer
+
 
 class RenderFormat(str, Enum):
     """统一渲染入口支持的目标格式。"""
@@ -48,11 +50,14 @@ class MarkdownRenderOptions:
 
     mode: RenderMode = RenderMode.DEFAULT
     asset_base_url: str = ""
+    image_renderer: ImageRenderer | None = None
 
     def __post_init__(self) -> None:
         """在构造时拒绝不符合严格公共契约的选项值。"""
         _validate_mode(self.mode)
         _validate_asset_base_url(self.asset_base_url)
+        if self.image_renderer is not None and not callable(self.image_renderer):
+            raise TypeError("image_renderer must be callable or None")
 
 
 @dataclass(frozen=True, slots=True)

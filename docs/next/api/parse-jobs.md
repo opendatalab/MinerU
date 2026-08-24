@@ -132,7 +132,6 @@ OCR 策略和图片分析能力由 `tier` 与服务端实际引擎自动决定�
 |------|----------|------|:--:|
 | `markdown` | 文本 | Markdown 文本。 | 否 |
 | `middle_json` | 文本 | 完整 Middle JSON，中间结构和高级调试。 | 否 |
-| `content_list` | 文本 | 扁平内容列表。 | 否 |
 | `structured_content` | 文本 | 面向 Agent 和新客户端的结构化内容 JSON。 | 否 |
 | `html` | 文本 | HTML 导出。 | 是 |
 | `latex` | 文本 | LaTeX 导出。 | 是 |
@@ -349,7 +348,7 @@ OCR 策略和图片分析能力由 `tier` 与服务端实际引擎自动决定�
 Local Parse Server 的任务 API 与官方 API 保持同一结构，但有以下实现差异:
 
 - 不支持 Webhook 时，`health.features.webhook` 必须为 `false`；收到 `callback` 时应返回 `400 invalid_request` 或明确忽略。
-- `health.features.output_formats` 必须反映本地 server 实际支持的输出格式；当前本地实现支持 `markdown`、`middle_json`、`content_list`、`structured_content` 和 `zip`。
+- `health.features.output_formats` 必须反映本地 server 实际支持的输出格式；当前本地实现支持 `markdown`、`middle_json`、`structured_content` 和 `zip`。
 - `health.features.sources` 必须反映本地 server 实际允许的 source 类型；只有启动时开启 `--allow-local-source` 才包含 `local`。
 - `local` source 可以不生成输入 `file_id`；响应中应保留 `name` 和文件级状态。
 - 对 PDF/image，省略 `tier` 或传 `null` 时，只能按默认选择策略选择本地可发现的非 `flash` 质量 tier，不能回退到 `flash`；如果只有 `flash` 可用，应返回 `quality_tier_unavailable`。

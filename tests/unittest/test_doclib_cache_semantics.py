@@ -64,12 +64,30 @@ from mineru.doclib.services.search_svc import SearchService
 from mineru.doclib.types import DocContentExportRequest, FileInfo, InvalidateRequest, ParseResponse, WatchRequest
 from mineru.errors import InvalidRequestError, MineruError, NotFoundError
 from mineru.filetypes import file_type_for_extension
-from mineru.parser import backend_for_tier, resolve_tier_and_backend
+from mineru.parser import backend_for_tier
+from mineru.parser.tier import resolve_tier_and_backend
 from mineru.parser.api_client import _APITransportError, _V1APIError
 from mineru.parser.base import ParseResult
 from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
-from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span, Tier
+from mineru.parser.base import _LEGACY_SCHEMA_VERSION
+from mineru.types import (
+    BlockBase,
+    BlockType,
+    ChartBlock,
+    ChartBodyBlock,
+    EquationBlock,
+    ImageAnnotationBlock,
+    ImageBlock,
+    ImageBodyBlock,
+    MiddleJson,
+    PageInfo,
+    TableBlock,
+    TableBodyBlock,
+    TextBlock,
+    Tier,
+)
 from mineru.utils.image_payload import ImagePayloadCache
+from mineru.version import __version__
 
 
 class _Cursor:
@@ -233,48 +251,53 @@ class _OrderRecordingDB:
         return await self.db.execute(sql, params)
 
 
-def _write_batch(data_dir: Path, sha256: str, tier: Tier, page_range: str, done_at: int, json_pages: list[dict]) -> None:
+def _write_batch(
+    data_dir: Path,
+    sha256: str,
+    tier: Tier,
+    page_range: str,
+    done_at: int,
+    json_pages: list[dict],
+    *,
+    file_suffix: str = "pdf",
+) -> None:
     path = Path(parse_batch_json_path(str(data_dir), sha256, tier, page_range, done_at))
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"pages": json_pages}), encoding="utf-8")
+    payload = {
+        "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
+        "pages": json_pages,
+        "file_suffix": file_suffix,
+        "effort": "medium",
+        "parse_mode": "txt",
+        "mineru_version": __version__,
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=4), encoding="utf-8")
 
 
 def _image_page(image_path: str) -> PageInfo:
-    image_span = Span(
-        type=ContentType.IMAGE,
-        bbox=(1, 1, 20, 20),
-        image_path=image_path,
-    )
-    body = Block(
-        index=0,
-        type=BlockType.IMAGE_BODY,
-        bbox=(1, 1, 20, 20),
-        lines=[Line(bbox=(1, 1, 20, 20), spans=[image_span])],
-    )
-    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(1, 1, 20, 20), blocks=[body])
-    return PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="hybrid")
+    body = ImageBodyBlock(type=BlockType.IMAGE_BODY, index=0, bbox=(0.1, 0.1, 0.2, 0.2), content="", image_path=image_path)
+    image_block = ImageBlock(type=BlockType.IMAGE, index=0, bbox=(0.1, 0.1, 0.2, 0.2), content=[body])
+    return PageInfo(page_idx=0, blocks=[image_block])
 
 
 def _image_result(image_path: str, image_bytes: bytes = b"image-bytes") -> ParseResult:
     """构造带顶层图片缓存的 ParseResult，避免在 span 中保留 base64。"""
     image_cache = ImagePayloadCache()
     image_cache.register_bytes(image_bytes, "jpeg", image_path=image_path)
-    return ParseResult(pages=[_image_page(image_path)], _image_cache=image_cache)
+    return ParseResult(middle_json=MiddleJson(pages=[_image_page(image_path)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__), _image_cache=image_cache)
 
 
 def _text_page(text: str) -> PageInfo:
-    span = Span(type=ContentType.TEXT, bbox=(1, 1, 20, 10), content=text)
-    line = Line(bbox=(1, 1, 20, 10), spans=[span])
-    block = Block(index=0, type=BlockType.TEXT, bbox=(1, 1, 20, 10), lines=[line])
-    return PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[block], _backend="vlm")
+    block = TextBlock(type=BlockType.TEXT, index=0, bbox=(0.0, 0.0, 0.1, 0.1), content=text)
+    return PageInfo(page_idx=0, blocks=[block])
 
 
 def test_load_pages_from_done_batches_keeps_newest_page_idx(tmp_path: Path) -> None:
     sha256 = "a" * 64
     tier = "standard"
-    older_page = {"page_idx": 1, "page_size": [100, 100], "para_blocks": []}
-    older_duplicate = {"page_idx": 2, "page_size": [100, 100], "para_blocks": []}
-    newer_duplicate = {"page_idx": 2, "page_size": [200, 200], "para_blocks": []}
+    older_page = {"page_idx": 1, "blocks": []}
+    older_duplicate = {"page_idx": 2, "blocks": [{"type": "text", "index": 0, "bbox": [0.0, 0.0, 0.1, 0.1], "content": "older"}]}
+    newer_duplicate = {"page_idx": 2, "blocks": [{"type": "text", "index": 0, "bbox": [0.0, 0.0, 0.1, 0.1], "content": "newer"}]}
 
     _write_batch(tmp_path, sha256, tier, "1~2", 1000, [older_page, older_duplicate])
     _write_batch(tmp_path, sha256, tier, "2", 2000, [newer_duplicate])
@@ -287,8 +310,7 @@ def test_load_pages_from_done_batches_keeps_newest_page_idx(tmp_path: Path) -> N
     pages = load_pages_from_done_batches(str(tmp_path), sha256, tier, done_rows)
 
     assert [page.page_idx for page in pages] == [1, 2]
-    assert pages[0].page_size == (100, 100)
-    assert pages[1].page_size == (200, 200)
+    assert pages[1].blocks[0].content == "newer"  # type: ignore[union-attr]
 
 
 def test_parser_tier_backend_mapping_is_parser_layer_only() -> None:
@@ -1199,7 +1221,7 @@ def test_compaction_uses_configured_data_dir(tmp_path: Path) -> None:
     compacted_path = Path(parse_batch_json_path(str(tmp_path), sha256, tier, "1~2", 2000))
     compacted = json.loads(compacted_path.read_text(encoding="utf-8"))
 
-    assert compacted["schema_version"] == MIDDLE_JSON_SCHEMA_VERSION
+    assert compacted["schema_version"] == _LEGACY_SCHEMA_VERSION
     assert compacted["pages"] == [older_page, newer_duplicate]
     assert sorted(path.name for path in compacted_path.parent.glob("*.json")) == ["1~2_2000.json"]
 
@@ -1221,8 +1243,8 @@ def test_invalidate_deletes_fts_when_no_done_batches_remain(tmp_path: Path) -> N
 
 def test_invalidate_rebuilds_fts_from_highest_remaining_done_tier(tmp_path: Path) -> None:
     sha256 = "d" * 64
-    _write_batch(tmp_path, sha256, "flash", "1", 1000, [{"page_idx": 1, "page_size": [100, 100], "para_blocks": []}])
-    _write_batch(tmp_path, sha256, "standard", "1", 2000, [{"page_idx": 1, "page_size": [200, 200], "para_blocks": []}])
+    _write_batch(tmp_path, sha256, "flash", "1", 1000, [{"page_idx": 1, "blocks": []}])
+    _write_batch(tmp_path, sha256, "standard", "1", 2000, [{"page_idx": 1, "blocks": []}])
     parses = [
         {"sha256": sha256, "tier": "flash", "page_range": "1", "status": "done", "done_at": 1000},
         {"sha256": sha256, "tier": "standard", "page_range": "1", "status": "done", "done_at": 2000},
@@ -1817,7 +1839,7 @@ def test_expand_page_range_rejects_empty_available_subset() -> None:
 def test_remap_api_result_pages_to_non_contiguous_page_range() -> None:
     from mineru.doclib.services.parse_svc import _remap_api_result_pages_to_page_range
 
-    result = ParseResult(pages=[PageInfo(page_idx=0), PageInfo(page_idx=1), PageInfo(page_idx=2)])
+    result = ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0), PageInfo(page_idx=1), PageInfo(page_idx=2)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
 
     _remap_api_result_pages_to_page_range(result, "11,13~14")
 
@@ -1839,7 +1861,7 @@ def test_remap_api_result_pages_refreshes_attached_export_cache() -> None:
 def test_remap_api_result_pages_rejects_count_mismatch() -> None:
     from mineru.doclib.services.parse_svc import ParseFailure, _remap_api_result_pages_to_page_range
 
-    result = ParseResult(pages=[PageInfo(page_idx=0), PageInfo(page_idx=1)])
+    result = ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0), PageInfo(page_idx=1)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
 
     with pytest.raises(ParseFailure) as exc:
         _remap_api_result_pages_to_page_range(result, "11~13")
@@ -3129,7 +3151,7 @@ def test_doclib_server_accepts_short_id_for_sha256_doc_inputs(tmp_path: Path) ->
             "standard",
             "1",
             now,
-            ParseResult([_text_page("hello short id")]).to_dict(skip_defaults=True)["pages"],
+            [_text_page("hello short id").to_dict(skip_defaults=True)],
         )
 
         doc_by_short_id = await server.get_doc(short_id, expand_files=True)
@@ -4042,7 +4064,7 @@ def test_process_doc_marks_empty_page_result_failed(tmp_path: Path) -> None:
     service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
 
     async def _empty_parse(file_row: dict, tier: Tier, page_range: str) -> ParseResult:
-        return ParseResult(pages=[])
+        return ParseResult(middle_json=MiddleJson(pages=[], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
 
     service._parse_via_local = _empty_parse  # type: ignore[method-assign]
 
@@ -4194,7 +4216,7 @@ def test_parse_via_api_requests_image_cache_only_for_office(
         async def parse_async(self, _path: str, *, page_range: str = "") -> ParseResult:
             assert _path == path
             assert page_range == "1"
-            return ParseResult(pages=[])
+            return ParseResult(middle_json=MiddleJson(pages=[], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
 
     service._resolve_api_target = _resolve_api_target  # type: ignore[method-assign]
     service._resolve_tier = lambda tier, _via: tier  # type: ignore[method-assign]
@@ -4252,7 +4274,7 @@ def test_process_doc_fails_when_batch_json_cannot_be_written(tmp_path: Path) -> 
     blocked_output_dir.write_text("not a directory", encoding="utf-8")
 
     async def _parse(file_row: dict, tier: Tier, page_range: str) -> ParseResult:
-        return ParseResult(pages=[PageInfo(page_idx=0)])
+        return ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
 
     service._parse_via_local = _parse  # type: ignore[method-assign]
 
@@ -4318,16 +4340,16 @@ def test_process_doc_writes_cached_image_sidecars(tmp_path: Path) -> None:
     assert sidecar.read_bytes() == b"fresh-image"
     batch_path = Path(parse_batch_json_path(str(tmp_path), sha256, "flash", "1", parses[0]["done_at"]))
     batch = json.loads(batch_path.read_text(encoding="utf-8"))
-    image_span = batch["pages"][0]["para_blocks"][0]["blocks"][0]["lines"][0]["spans"][0]
-    assert image_span["image_path"] == "figures/cache-hit.jpg"
-    assert "image_base64" not in image_span
+    image_body = batch["pages"][0]["blocks"][0]["content"][0]
+    assert image_body["image_path"] == "figures/cache-hit.jpg"
+    assert "image_base64" not in image_body
 
 
 def test_load_pages_from_done_batches_keeps_existing_image_sidecar(tmp_path: Path) -> None:
     sha256 = "e" * 64
     tier = "standard"
     page = _image_page("figures/existing.jpg")
-    _write_batch(tmp_path, sha256, tier, "1", 1000, ParseResult([page]).to_dict(skip_defaults=True)["pages"])
+    _write_batch(tmp_path, sha256, tier, "1", 1000, [page.to_dict(skip_defaults=True)])
     sidecar = tmp_path / "parsed" / sha256[:2] / sha256 / tier / "images" / "figures" / "existing.jpg"
     sidecar.parent.mkdir(parents=True, exist_ok=True)
     sidecar.write_bytes(b"existing-sidecar")
@@ -4347,7 +4369,7 @@ def test_progressive_markdown_uses_readable_pdf_block_locator(tmp_path: Path) ->
     sha256 = "e" * 64
     tier = "standard"
     page = _image_page("figures/rendered.jpg")
-    _write_batch(tmp_path, sha256, tier, "1", 1000, ParseResult([page]).to_dict(skip_defaults=True)["pages"])
+    _write_batch(tmp_path, sha256, tier, "1", 1000, [page.to_dict(skip_defaults=True)])
     db = _FakeDB(
         parses=[
             {
@@ -4394,7 +4416,7 @@ def test_doc_content_marker_uses_document_page_count_only(
     tier = "standard"
     page = _text_page("selected page")
     page.page_idx = 4
-    _write_batch(tmp_path, sha256, tier, "5", 1000, ParseResult([page]).to_dict(skip_defaults=True)["pages"])
+    _write_batch(tmp_path, sha256, tier, "5", 1000, [page.to_dict(skip_defaults=True)])
     db = _FakeDB(
         parses=[{"sha256": sha256, "tier": tier, "status": "done", "page_range": "5", "done_at": 1000}],
         file_row=None,
@@ -4422,7 +4444,7 @@ def test_doc_content_marker_uses_document_page_count_only(
         (BlockType.IMAGE, "Image block"),
         (BlockType.TABLE, "Table block"),
         (BlockType.CHART, "Chart block"),
-        (BlockType.INTERLINE_EQUATION, "Formula block"),
+        (BlockType.EQUATION, "Formula block"),
     ],
 )
 def test_doclib_image_renderer_uses_type_label_and_canonical_locator(
@@ -4437,7 +4459,7 @@ def test_doclib_image_renderer_uses_type_label_and_canonical_locator(
         tier="standard",
         page_no=2,
     )
-    block = Block(index=3, type=block_type, bbox=(1, 2, 30, 40))
+    block = BlockBase(type=block_type, index=3, bbox=(0.1, 0.2, 0.3, 0.4))
 
     assert renderer(block) == f"![{label}](doc:eeeeeee/tier:standard/page:2/block:4)"
 
@@ -4450,20 +4472,28 @@ def test_doclib_image_renderer_rejects_non_finite_bbox(tmp_path: Path) -> None:
         tier="standard",
         page_no=1,
     )
-    block = Block(index=0, type=BlockType.IMAGE, bbox=(0, 0, float("nan"), 10))
+    block = BlockBase(type=BlockType.IMAGE, index=0, bbox=None)
 
     assert renderer(block) == "![Image block]()"
 
 
 def test_find_block_by_no_ignores_conflicting_child_indexes() -> None:
-    first = Block(
-        index=0,
+    first = ImageBlock(
         type=BlockType.IMAGE,
-        bbox=(0, 0, 5, 5),
-        blocks=[Block(index=1, type=BlockType.IMAGE_CAPTION, bbox=(1, 1, 2, 2))],
+        index=0,
+        bbox=(0.0, 0.0, 0.05, 0.05),
+        content=[
+            ImageBodyBlock(type=BlockType.IMAGE_BODY, index=0, bbox=(0.0, 0.0, 0.05, 0.05), content=""),
+            ImageAnnotationBlock(type=BlockType.IMAGE_CAPTION, index=1, bbox=(0.01, 0.01, 0.02, 0.02), content="caption"),
+        ],
     )
-    second = Block(index=1, type=BlockType.IMAGE, bbox=(10, 10, 20, 20))
-    page = PageInfo(page_idx=0, para_blocks=[first, second])
+    second = ImageBlock(
+        type=BlockType.IMAGE,
+        index=1,
+        bbox=(0.1, 0.1, 0.2, 0.2),
+        content=[ImageBodyBlock(type=BlockType.IMAGE_BODY, index=1, bbox=(0.1, 0.1, 0.2, 0.2), content="")],
+    )
+    page = PageInfo(page_idx=0, blocks=[first, second])
 
     assert _find_block_by_no(page, 2) is second
 
@@ -4480,9 +4510,9 @@ def test_progressive_markdown_uses_sidecar_availability_for_bboxless_blocks(
     sha256 = "e" * 64
     tier = "standard"
     page = _image_page("figures/rendered.jpg")
-    page._backend = "office"
-    page.para_blocks[0].bbox = (0, 0, 0, 0)
-    _write_batch(tmp_path, sha256, tier, "1", 1000, ParseResult([page]).to_dict(skip_defaults=True)["pages"])
+    page.blocks[0].bbox = None
+    page.blocks[0].content[0].bbox = None  # type: ignore[union-attr]
+    _write_batch(tmp_path, sha256, tier, "1", 1000, [page.to_dict(skip_defaults=True)], file_suffix="docx")
     if sidecar_exists:
         sidecar = Path(parse_image_sidecar_dir(str(tmp_path), sha256, tier)) / "figures/rendered.jpg"
         sidecar.parent.mkdir(parents=True)
@@ -4523,15 +4553,9 @@ def test_doclib_office_image_asset_reads_cached_sidecar(tmp_path: Path) -> None:
         base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC")
     )
 
-    image_span = Span(type=ContentType.IMAGE, bbox=(1, 1, 20, 20), image_path=image_path)
-    body = Block(
-        index=0,
-        type=BlockType.IMAGE_BODY,
-        bbox=(1, 1, 20, 20),
-        lines=[Line(bbox=(1, 1, 20, 20), spans=[image_span])],
-    )
-    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(0, 0, 0, 0), blocks=[body])
-    page = PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="office")
+    body = ImageBodyBlock(type=BlockType.IMAGE_BODY, index=0, bbox=None, content="", image_path=image_path)
+    image_block = ImageBlock(type=BlockType.IMAGE, index=0, bbox=None, content=[body])
+    page = PageInfo(page_idx=0, blocks=[image_block])
     server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=None))
     plan = _ReadPlan(
         sha256=sha256,
@@ -4558,18 +4582,17 @@ def test_doclib_office_image_asset_reads_cached_sidecar(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("block_type", "body_type", "content_type"),
+    ("block_type", "body_type"),
     [
-        (BlockType.TABLE, BlockType.TABLE_BODY, ContentType.TABLE),
-        (BlockType.CHART, BlockType.CHART_BODY, ContentType.CHART),
-        (BlockType.INTERLINE_EQUATION, None, ContentType.INTERLINE_EQUATION),
+        (BlockType.TABLE, BlockType.TABLE_BODY),
+        (BlockType.CHART, BlockType.CHART_BODY),
+        (BlockType.EQUATION, None),
     ],
 )
 def test_doclib_visual_block_asset_reads_cached_sidecar(
     tmp_path: Path,
     block_type: str,
     body_type: str | None,
-    content_type: str,
 ) -> None:
     sha256 = "f" * 64
     tier = "standard"
@@ -4579,14 +4602,15 @@ def test_doclib_visual_block_asset_reads_cached_sidecar(
     sidecar.write_bytes(
         base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC")
     )
-    span = Span(type=content_type, bbox=(0, 0, 0, 0), image_path=image_path)
-    line = Line(bbox=(0, 0, 0, 0), spans=[span])
     if body_type is None:
-        visual_block = Block(index=0, type=block_type, bbox=(0, 0, 0, 0), lines=[line])
+        visual_block = EquationBlock(type=BlockType.EQUATION, index=0, bbox=None, content="", image_path=image_path)
+    elif block_type == BlockType.TABLE:
+        body = TableBodyBlock(type=BlockType.TABLE_BODY, index=0, bbox=None, content="", image_path=image_path)
+        visual_block = TableBlock(type=BlockType.TABLE, index=0, bbox=None, content=[body])
     else:
-        body = Block(index=0, type=body_type, bbox=(0, 0, 0, 0), lines=[line])
-        visual_block = Block(index=0, type=block_type, bbox=(0, 0, 0, 0), blocks=[body])
-    page = PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[visual_block], _backend="office")
+        body = ChartBodyBlock(type=BlockType.CHART_BODY, index=0, bbox=None, content="", image_path=image_path)
+        visual_block = ChartBlock(type=BlockType.CHART, index=0, bbox=None, content=[body])
+    page = PageInfo(page_idx=0, blocks=[visual_block])
     server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=None))
     plan = _ReadPlan(
         sha256=sha256,
@@ -4654,8 +4678,8 @@ def test_doclib_image_block_locator_crops_source_image_at_original_resolution(tm
     source_path = tmp_path / "source.png"
     Image.new("RGB", (1000, 500), color="white").save(source_path)
     page = _image_page("internal/not-persisted.png")
-    page.page_size = (360, 180)
-    page.para_blocks[0].bbox = (0, 0, 360, 180)
+    page.blocks[0].content[0].bbox = (0.0, 0.0, 1.0, 1.0)  # type: ignore[union-attr]
+    page.blocks[0].bbox = (0.0, 0.0, 1.0, 1.0)
     db = _FakeDB(
         parses=[],
         file_row={"path": str(source_path), "ext": "png", "sha256": sha256, "status": "active"},
@@ -4696,15 +4720,9 @@ def test_doclib_office_image_asset_transcodes_to_requested_format(tmp_path: Path
         base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC")
     )
 
-    image_span = Span(type=ContentType.IMAGE, bbox=(1, 1, 20, 20), image_path=image_path)
-    body = Block(
-        index=0,
-        type=BlockType.IMAGE_BODY,
-        bbox=(1, 1, 20, 20),
-        lines=[Line(bbox=(1, 1, 20, 20), spans=[image_span])],
-    )
-    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(0, 0, 0, 0), blocks=[body])
-    page = PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="office")
+    body = ImageBodyBlock(type=BlockType.IMAGE_BODY, index=0, bbox=None, content="", image_path=image_path)
+    image_block = ImageBlock(type=BlockType.IMAGE, index=0, bbox=None, content=[body])
+    page = PageInfo(page_idx=0, blocks=[image_block])
     server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=None))
     plan = _ReadPlan(
         sha256=sha256,
@@ -4734,15 +4752,9 @@ def test_doclib_office_image_asset_missing_sidecar_reports_asset_not_available(t
     sha256 = "f" * 64
     tier = "basic"
     image_path = "figures/missing.png"
-    image_span = Span(type=ContentType.IMAGE, bbox=(1, 1, 20, 20), image_path=image_path)
-    body = Block(
-        index=0,
-        type=BlockType.IMAGE_BODY,
-        bbox=(1, 1, 20, 20),
-        lines=[Line(bbox=(1, 1, 20, 20), spans=[image_span])],
-    )
-    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(0, 0, 0, 0), blocks=[body])
-    page = PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="office")
+    body = ImageBodyBlock(type=BlockType.IMAGE_BODY, index=0, bbox=None, content="", image_path=image_path)
+    image_block = ImageBlock(type=BlockType.IMAGE, index=0, bbox=None, content=[body])
+    page = PageInfo(page_idx=0, blocks=[image_block])
     server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=None))
     plan = _ReadPlan(
         sha256=sha256,

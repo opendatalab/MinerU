@@ -2,36 +2,47 @@ from __future__ import annotations
 
 import pytest
 
+from mineru.config import LatexDelimitersConfig, config
+from mineru.render._internal.markdown.blocks import render_single_block
 from mineru.render.image import image_path_renderer
-from mineru.render.markdown import blocks_to_markdown
-from mineru.render.office.output import blocks_to_markdown as office_blocks_to_markdown
-from mineru.types import Block, BlockType, ContentType, Line, Span
+from mineru.types import (
+    BlockBase,
+    BlockType,
+    ChartBlock,
+    ChartBodyBlock,
+    EquationBlock,
+    ImageAnnotationBlock,
+    ImageBlock,
+    ImageBodyBlock,
+    TableBlock,
+    TableBodyBlock,
+)
 
 
-def _image_block(*, image_path: str = "internal/hash.jpg") -> Block:
-    body = Block(
-        index=0,
+def _delimiters() -> LatexDelimitersConfig:
+    return config.render.latex_delimiters
+
+
+def _image_block() -> ImageBlock:
+    body = ImageBodyBlock(
         type=BlockType.IMAGE_BODY,
-        bbox=(1, 1, 20, 20),
-        lines=[
-            Line(
-                bbox=(1, 1, 20, 20),
-                spans=[Span(type=ContentType.IMAGE, bbox=(1, 1, 20, 20), image_path=image_path)],
-            )
-        ],
+        index=0,
+        bbox=(0.0, 0.0, 0.1, 0.1),
+        content="",
+        image_path="internal/hash.jpg",
     )
-    caption = Block(
-        index=1,
+    caption = ImageAnnotationBlock(
         type=BlockType.IMAGE_CAPTION,
-        bbox=(1, 21, 20, 25),
-        lines=[
-            Line(
-                bbox=(1, 21, 20, 25),
-                spans=[Span(type=ContentType.TEXT, bbox=(1, 21, 20, 25), content="Figure caption")],
-            )
-        ],
+        index=0,
+        bbox=(0.0, 0.0, 0.1, 0.01),
+        content="Figure caption",
     )
-    return Block(index=0, type=BlockType.IMAGE, bbox=(1, 1, 20, 25), blocks=[body, caption])
+    return ImageBlock(
+        type=BlockType.IMAGE,
+        index=0,
+        bbox=(0.0, 0.0, 0.1, 0.1),
+        content=[body, caption],
+    )
 
 
 def test_image_path_renderer_preserves_existing_relative_path_behavior() -> None:
@@ -43,110 +54,111 @@ def test_image_path_renderer_preserves_existing_relative_path_behavior() -> None
 def test_pipeline_markdown_uses_custom_block_image_renderer_and_keeps_caption() -> None:
     block = _image_block()
 
-    rendered = blocks_to_markdown(
-        [block],
+    rendered = render_single_block(
+        block,
+        delimiters=_delimiters(),
+        asset_base_url="",
         image_renderer=lambda _block: "![Image block](doc:aaaaaaa/tier:standard/page:1/block:1)",
     )
 
-    assert len(rendered) == 1
-    assert "![Image block](doc:aaaaaaa/tier:standard/page:1/block:1)" in rendered[0]
-    assert "Figure caption" in rendered[0]
-    assert "internal/hash.jpg" not in rendered[0]
+    assert "![Image block](doc:aaaaaaa/tier:standard/page:1/block:1)" in rendered
+    assert "Figure caption" in rendered
+    assert "internal/hash.jpg" not in rendered
 
 
 def test_office_markdown_uses_custom_block_image_renderer_and_keeps_caption() -> None:
     block = _image_block()
 
-    rendered = office_blocks_to_markdown(
-        [block],
+    rendered = render_single_block(
+        block,
+        delimiters=_delimiters(),
+        asset_base_url="",
         image_renderer=lambda _block: "![Image block]()",
     )
 
-    assert len(rendered) == 1
-    assert "![Image block]()" in rendered[0]
-    assert "Figure caption" in rendered[0]
-    assert "internal/hash.jpg" not in rendered[0]
+    assert "![Image block]()" in rendered
+    assert "Figure caption" in rendered
+    assert "internal/hash.jpg" not in rendered
 
 
-@pytest.mark.parametrize(
-    ("block_type", "body_type", "span_type"),
-    [
-        (BlockType.TABLE, BlockType.TABLE_BODY, ContentType.TABLE),
-        (BlockType.CHART, BlockType.CHART_BODY, ContentType.CHART),
-    ],
-)
+@pytest.mark.parametrize("block_type", [BlockType.TABLE, BlockType.CHART])
 def test_pipeline_markdown_uses_custom_renderer_for_image_only_visual_blocks(
-    block_type: str,
-    body_type: str,
-    span_type: str,
+    block_type: BlockType,
 ) -> None:
-    body = Block(
-        index=0,
-        type=body_type,
-        bbox=(1, 1, 20, 20),
-        lines=[
-            Line(
-                bbox=(1, 1, 20, 20),
-                spans=[Span(type=span_type, bbox=(1, 1, 20, 20), image_path="internal/hash.jpg")],
-            )
-        ],
-    )
-    block = Block(index=0, type=block_type, bbox=(1, 1, 20, 20), blocks=[body])
+    if block_type == BlockType.TABLE:
+        block: BlockBase = TableBlock(
+            type=BlockType.TABLE,
+            index=0,
+            bbox=(0.0, 0.0, 0.1, 0.1),
+            content=[
+                TableBodyBlock(
+                    type=BlockType.TABLE_BODY,
+                    index=0,
+                    bbox=(0.0, 0.0, 0.1, 0.1),
+                    content="",
+                    image_path="internal/hash.jpg",
+                )
+            ],
+        )
+    else:
+        block = ChartBlock(
+            type=BlockType.CHART,
+            index=0,
+            bbox=(0.0, 0.0, 0.1, 0.1),
+            content=[
+                ChartBodyBlock(
+                    type=BlockType.CHART_BODY,
+                    index=0,
+                    bbox=(0.0, 0.0, 0.1, 0.1),
+                    content="",
+                    image_path="internal/hash.jpg",
+                )
+            ],
+        )
 
-    rendered = blocks_to_markdown([block], image_renderer=lambda _block: "![Visual block](doc:locator)")
+    rendered = render_single_block(block, delimiters=_delimiters(), asset_base_url="", image_renderer=lambda _block: "![Visual block](doc:locator)")
 
-    assert rendered == ["![Visual block](doc:locator)"]
+    assert rendered == "![Visual block](doc:locator)"
 
 
 def test_pipeline_markdown_uses_custom_renderer_for_image_only_formula() -> None:
-    block = Block(
+    block = EquationBlock(
+        type=BlockType.EQUATION,
         index=0,
-        type=BlockType.INTERLINE_EQUATION,
-        bbox=(1, 1, 20, 20),
-        lines=[
-            Line(
-                bbox=(1, 1, 20, 20),
-                spans=[
-                    Span(
-                        type=ContentType.INTERLINE_EQUATION,
-                        bbox=(1, 1, 20, 20),
-                        image_path="internal/hash.jpg",
-                    )
-                ],
-            )
-        ],
+        bbox=(0.0, 0.0, 0.1, 0.1),
+        content="",
+        image_path="internal/hash.jpg",
     )
 
-    rendered = blocks_to_markdown([block], image_renderer=lambda _block: "![Formula block](doc:locator)")
+    rendered = render_single_block(block, delimiters=_delimiters(), asset_base_url="", image_renderer=lambda _block: "![Formula block](doc:locator)")
 
-    assert rendered == ["![Formula block](doc:locator)"]
+    assert rendered == "![Formula block](doc:locator)"
 
 
-@pytest.mark.parametrize("backend", ["pipeline", "office"])
-def test_custom_renderer_removes_internal_images_from_structured_table_html(backend: str) -> None:
+def test_custom_renderer_removes_internal_images_from_structured_table_html() -> None:
     internal_path = "internal/cell-image.png"
     html = f'<table><tr><td>Text<img src="{internal_path}"></td></tr></table>'
-    body = Block(
+    block = TableBlock(
+        type=BlockType.TABLE,
         index=0,
-        type=BlockType.TABLE_BODY,
-        bbox=(1, 1, 20, 20),
-        lines=[
-            Line(
-                bbox=(1, 1, 20, 20),
-                spans=[Span(type=ContentType.TABLE, bbox=(1, 1, 20, 20), content=html)],
+        bbox=(0.0, 0.0, 0.1, 0.1),
+        content=[
+            TableBodyBlock(
+                type=BlockType.TABLE_BODY,
+                index=0,
+                bbox=(0.0, 0.0, 0.1, 0.1),
+                content=html,
             )
         ],
     )
-    block = Block(index=0, type=BlockType.TABLE, bbox=(1, 1, 20, 20), blocks=[body])
-    renderer = office_blocks_to_markdown if backend == "office" else blocks_to_markdown
 
-    rendered = renderer(
-        [block],
-        prefer_markdown_table=True,
+    rendered = render_single_block(
+        block,
+        delimiters=_delimiters(),
+        asset_base_url="",
         image_renderer=lambda _block: "![Table block](doc:locator)",
     )
 
-    assert len(rendered) == 1
-    assert "Text" in rendered[0]
-    assert internal_path not in rendered[0]
-    assert "<img" not in rendered[0]
+    assert "Text" in rendered
+    assert internal_path not in rendered
+    assert "<img" not in rendered

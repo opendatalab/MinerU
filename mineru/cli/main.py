@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import typer
-from click.core import Context
+from typer._click.core import Context
 from typer.core import TyperGroup
 
 from ..utils.stdio import configure_standard_streams
@@ -16,7 +16,6 @@ from .commands.scan import scan_cmd
 from .commands.search import find_cmd, search_cmd
 from .telemetry import prepare_cli_telemetry
 from .version_command import show_version, version_cmd
-
 
 # Typer stores commands and command groups separately before building the Click
 # command tree, so source registration order alone does not preserve the mixed

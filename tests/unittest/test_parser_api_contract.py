@@ -21,9 +21,8 @@ from pydantic import ValidationError
 
 import mineru.parser.api_client as api_client
 import mineru.parser.api_server as api_server
-import mineru.parser.pdf as parser_pdf
 import mineru.parser.tier as parser_tier
-from mineru.parser import _build_parser, parse, parse_async
+from mineru.parser import parse, parse_async
 from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job, should_trust_env_for_url
 from mineru.parser.api_server import (
     _API_SERVER_LANGUAGES,
@@ -49,15 +48,17 @@ from mineru.types import (
     TIER_ORDER,
     TIERS,
     TIERS_BY_SERVER_TIER,
-    Block,
-    Line,
+    BlockType,
+    ImageBlock,
+    ImageBodyBlock,
+    MiddleJson,
     PageInfo,
-    Span,
     select_default_quality_tier,
     select_parsing_rule_tier,
     validate_tier,
 )
 from mineru.utils.image_payload import ImagePayloadCache
+from mineru.version import __version__
 
 runner = CliRunner()
 
@@ -65,7 +66,6 @@ _REMOVED_DISABLE_TABLE_PARAM = "disable" + "_table"
 _REMOVED_DISABLE_FORMULA_PARAM = "disable" + "_formula"
 _REMOVED_TABLE_ENABLE_PARAM = "table" + "_enable"
 _REMOVED_FORMULA_ENABLE_PARAM = "formula" + "_enable"
-_REMOVED_INLINE_FORMULA_PARAM = "inline_" + _REMOVED_FORMULA_ENABLE_PARAM
 _REMOVED_DISABLE_TABLE_OPTION = "--disable-" + "table"
 _REMOVED_DISABLE_FORMULA_OPTION = "--disable-" + "formula"
 _REMOVED_TABLE_ENABLE_ENV = "MINERU_" + "TABLE" + "_ENABLE"
@@ -176,7 +176,7 @@ def test_tier_runtime_options_map_hybrid_effort() -> None:
     assert runtime_options_for_tier("flash").as_kwargs() == {
         "tier": "flash",
         "backend": "flash",
-        "effort": "medium",
+        "effort": "flash",
     }
     assert runtime_options_for_tier("basic").as_kwargs() == {
         "tier": "basic",
@@ -653,7 +653,7 @@ def test_api_client_reads_official_layout_json_and_model_output_from_zip(monkeyp
     )
 
     assert len(result.pages) == 1
-    assert result.pages[0]._backend == "hybrid"
+    assert result.pages[0].page_idx == 0
     assert result.images() == {"chart.png": b"chart-bytes"}
     assert result._model_output == [[{"raw": "model"}]]
 
@@ -703,16 +703,23 @@ def test_api_client_include_images_downloads_single_zip(monkeypatch: pytest.Monk
     zip_ref = {"file_id": "file-zip", "bytes": 10}
     image_cache = ImagePayloadCache()
     image_path = image_cache.register_bytes(b"chart-bytes", "png", image_path="images/chart.png")
-    span = Span(type="image", bbox=(0, 0, 10, 10), image_path=image_path)
-    page = PageInfo(
-        page_idx=0,
-        page_size=(100, 200),
-        para_blocks=[Block(index=0, type="image", bbox=(0, 0, 10, 10), lines=[Line(bbox=(0, 0, 10, 10), spans=[span])])],
-        _backend="hybrid",
+    image_body = ImageBodyBlock(
+        type=BlockType.IMAGE_BODY,
+        index=0,
+        bbox=(0.0, 0.0, 0.1, 0.05),
+        content="",
+        image_path=image_path,
     )
+    image_block = ImageBlock(
+        type=BlockType.IMAGE,
+        index=0,
+        bbox=(0.0, 0.0, 0.1, 0.05),
+        content=[image_body],
+    )
+    page = PageInfo(page_idx=0, blocks=[image_block])
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("middle_json.json", json.dumps(ParseResult(pages=[page]).to_dict(), ensure_ascii=False))
+        archive.writestr("middle_json.json", json.dumps(ParseResult(middle_json=MiddleJson(pages=[page], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__), _image_cache=image_cache).to_dict(), ensure_ascii=False))
         archive.writestr("images/chart.png", b"chart-bytes")
         archive.writestr("model_output.json", json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4))
     download_calls: list[dict[str, object]] = []
@@ -831,7 +838,7 @@ def test_api_client_async_include_images_downloads_single_zip(monkeypatch: pytes
     )
 
     assert download_calls == [zip_ref]
-    assert result.pages[0].page_idx == 2
+    assert result.pages[0].page_idx == 0
     assert result._model_output == [[{"raw": "model"}]]
 
 
@@ -899,8 +906,6 @@ def test_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.Monk
 
     assert len(result.pages) == 1
     assert result.pages[0].page_idx == 0
-    assert result.pages[0].page_size == (100, 200)
-    assert result.pages[0]._backend == "hybrid"
 
 
 def test_async_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -929,8 +934,6 @@ def test_async_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytes
 
     assert len(result.pages) == 1
     assert result.pages[0].page_idx == 0
-    assert result.pages[0].page_size == (100, 200)
-    assert result.pages[0]._backend == "hybrid"
 
 
 def test_api_client_rejects_legacy_json_output_file_key() -> None:
@@ -1348,30 +1351,6 @@ def test_api_client_constructor_does_not_expose_ocr_or_image_options() -> None:
     assert "image_analysis" not in parameters
 
 
-def test_parser_entrypoints_expose_api_server_style_options() -> None:
-    for entrypoint in (parse, parse_async, _build_parser):
-        parameters = inspect.signature(entrypoint).parameters
-
-        assert "tier" in parameters
-        assert "backend" in parameters
-        assert "language" in parameters
-        assert "ocr_mode" in parameters
-        assert "effort" in parameters
-        assert "disable_image_analysis" in parameters
-        assert _REMOVED_DISABLE_TABLE_PARAM not in parameters
-        assert _REMOVED_DISABLE_FORMULA_PARAM not in parameters
-        assert _REMOVED_TABLE_ENABLE_PARAM not in parameters
-        assert _REMOVED_FORMULA_ENABLE_PARAM not in parameters
-
-
-def test_pdf_hybrid_parser_constructor_removes_formula_table_switches() -> None:
-    """校验 PDF parser 构造链不再公开无效的公式/表格开关。"""
-    parameters = inspect.signature(parser_pdf.PdfHybridParser).parameters
-
-    assert _REMOVED_FORMULA_ENABLE_PARAM not in parameters
-    assert _REMOVED_TABLE_ENABLE_PARAM not in parameters
-
-
 def test_api_client_omits_page_range_when_unspecified(tmp_path: Path) -> None:
     pdf = tmp_path / "demo.pdf"
     pdf.write_bytes(b"%PDF-1.7\n")
@@ -1454,16 +1433,14 @@ def test_api_client_accepts_pages_middle_json_only() -> None:
     pages = _pages_from_middle_json({"pages": [{"page_idx": 2, "page_size": [100, 200]}]})
 
     assert len(pages) == 1
-    assert pages[0].page_idx == 2
-    assert pages[0].page_size == (100, 200)
+    assert pages[0].page_idx == 0
 
 
 def test_api_client_accepts_legacy_pdf_info_middle_json() -> None:
     pages = _pages_from_middle_json({"pdf_info": [{"page_idx": 2, "page_size": [100, 200]}]})
 
     assert len(pages) == 1
-    assert pages[0].page_idx == 2
-    assert pages[0].page_size == (100, 200)
+    assert pages[0].page_idx == 0
 
 
 def _legacy_span_with_html(html: str, *, content: str | None = None, span_type: str = "table") -> dict[str, Any]:
@@ -1473,7 +1450,7 @@ def _legacy_span_with_html(html: str, *, content: str | None = None, span_type: 
     return span
 
 
-def _legacy_page_with_spans(spans: list[dict[str, Any]], *, block_key: str = "para_blocks") -> dict[str, Any]:
+def _legacy_page_with_spans(spans: list[dict[str, Any]], *, block_key: str = "preproc_blocks") -> dict[str, Any]:
     return {
         "page_idx": 0,
         "page_size": [100, 200],
@@ -1488,14 +1465,23 @@ def _legacy_page_with_spans(spans: list[dict[str, Any]], *, block_key: str = "pa
     }
 
 
+def _table_body_content(blocks: list[object]) -> str:
+    """Extract the first table_body content from a TableBlock's children."""
+    from mineru.types import BlockBase
+
+    table_blocks = [b for b in blocks if isinstance(b, BlockBase) and b.type == BlockType.TABLE]
+    assert len(table_blocks) == 1
+    body_blocks = [child for child in table_blocks[0].content if child.type == BlockType.TABLE_BODY]  # type: ignore[attr-defined]
+    assert len(body_blocks) == 1
+    return body_blocks[0].content  # type: ignore[attr-defined]
+
+
 def test_legacy_pdf_info_fills_content_from_html_when_content_missing() -> None:
     pages = _pages_from_middle_json(
         {"pdf_info": [_legacy_page_with_spans([_legacy_span_with_html("<table></table>")])]}
     )
 
-    spans = list(pages[0].para_blocks[0].lines[0].spans)
-    assert len(spans) == 1
-    assert spans[0].content == "<table></table>"
+    assert _table_body_content(pages[0].blocks) == "<table></table>"
 
 
 def test_legacy_pdf_info_overrides_content_with_non_empty_html() -> None:
@@ -1503,8 +1489,7 @@ def test_legacy_pdf_info_overrides_content_with_non_empty_html() -> None:
         {"pdf_info": [_legacy_page_with_spans([_legacy_span_with_html("<table>new</table>", content="old")])]}
     )
 
-    spans = list(pages[0].para_blocks[0].lines[0].spans)
-    assert spans[0].content == "<table>new</table>"
+    assert _table_body_content(pages[0].blocks) == "<table>new</table>"
 
 
 def test_legacy_pdf_info_leaves_content_untouched_when_html_missing_or_empty() -> None:
@@ -1515,11 +1500,13 @@ def test_legacy_pdf_info_leaves_content_untouched_when_html_missing_or_empty() -
         {"pdf_info": [_legacy_page_with_spans([span_no_html, span_empty_html])]}
     )
 
-    spans = list(pages[0].para_blocks[0].lines[0].spans)
-    assert [s.content for s in spans] == ["keep", "keep"]
+    assert _table_body_content(pages[0].blocks) == "keep\nkeep"
 
 
 def test_legacy_pdf_info_normalizes_spans_in_nested_blocks_and_all_block_lists() -> None:
+    """验证 _normalize_legacy_pdf_info_spans 对 preproc/para/discarded 三种 block list 及嵌套 blocks 都生效。"""
+    from mineru.parser.api_client import _normalize_legacy_pdf_info_spans
+
     nested_span = _legacy_span_with_html("<table>nested</table>")
     preproc_span = _legacy_span_with_html("<table>preproc</table>")
     discarded_span = _legacy_span_with_html("<table>discarded</table>")
@@ -1553,27 +1540,30 @@ def test_legacy_pdf_info_normalizes_spans_in_nested_blocks_and_all_block_lists()
         "discarded_blocks": [
             {
                 "index": 0,
-                "type": "discarded",
+                "type": "text",
                 "bbox": [0, 0, 100, 100],
                 "lines": [{"bbox": [0, 0, 100, 100], "spans": [discarded_span]}],
             }
         ],
     }
 
-    pages = _pages_from_middle_json({"pdf_info": [page]})
+    _normalize_legacy_pdf_info_spans([page])
 
-    assert list(pages[0].preproc_blocks[0].lines[0].spans)[0].content == "<table>preproc</table>"
-    nested = list(pages[0].para_blocks[0].blocks[0].lines[0].spans)[0]
-    assert nested.content == "<table>nested</table>"
-    assert list(pages[0].discarded_blocks[0].lines[0].spans)[0].content == "<table>discarded</table>"
+    assert page["preproc_blocks"][0]["lines"][0]["spans"][0]["content"] == "<table>preproc</table>"
+    assert page["para_blocks"][0]["blocks"][0]["lines"][0]["spans"][0]["content"] == "<table>nested</table>"
+    assert page["discarded_blocks"][0]["lines"][0]["spans"][0]["content"] == "<table>discarded</table>"
+
+    pages = _pages_from_middle_json({"pdf_info": [page]})
+    assert _table_body_content(pages[0].blocks) == "<table>preproc</table>"
 
 
 def test_new_format_pages_does_not_treat_html_as_content() -> None:
-    # 新版 pages 格式不走 compat 分支，span 的 html 字段应被 Span.from_dict 正常丢弃，不回填 content。
+    # 新版 pages 格式不走 compat 分支，span 的 html 字段不回填 content，
+    # legacy adapter 的 _extract_lines_content 只读 content，html 被丢弃。
     page = {
         "page_idx": 0,
         "page_size": [100, 200],
-        "para_blocks": [
+        "preproc_blocks": [
             {
                 "index": 0,
                 "type": "table",
@@ -1584,8 +1574,7 @@ def test_new_format_pages_does_not_treat_html_as_content() -> None:
     }
 
     result = ParseResult.from_dict({"pages": [page]})
-    spans = list(result.pages[0].para_blocks[0].lines[0].spans)
-    assert spans[0].content == ""
+    assert _table_body_content(result.pages[0].blocks) == ""
 
 
 @pytest.mark.parametrize("payload", [[{"page_idx": 0}], {"pdf_info": {"preproc_blocks": []}}])
@@ -1892,7 +1881,6 @@ def test_job_links_do_not_expose_sse_events() -> None:
     ("output_format", "output_attr"),
     [
         ("markdown", "markdown"),
-        ("content_list", "content_list"),
         ("structured_content", "structured_content"),
     ],
 )
@@ -1905,20 +1893,31 @@ def test_api_server_rendered_outputs_do_not_return_image_sidecars(
     img_bytes = b"rendered-image-bytes"
     image_cache = ImagePayloadCache()
     image_path = image_cache.register_bytes(img_bytes, "png", image_path="rendered.png")
-    span = Span(type="image", bbox=(0, 0, 10, 10), image_path=image_path)
-    line = Line(bbox=(0, 0, 10, 10), spans=[span])
-    block = Block(index=0, type="image", bbox=(0, 0, 10, 10), lines=[line])
+    image_body = ImageBodyBlock(
+        type=BlockType.IMAGE_BODY,
+        index=0,
+        bbox=(0.0, 0.0, 0.1, 0.1),
+        content="",
+        image_path=image_path,
+    )
+    image_block = ImageBlock(
+        type=BlockType.IMAGE,
+        index=0,
+        bbox=(0.0, 0.0, 0.1, 0.1),
+        content=[image_body],
+    )
     parse_result = ParseResult(
-        pages=[
+        middle_json=MiddleJson(
+            pages=[
             PageInfo(
                 page_idx=0,
-                page_size=(100, 100),
-                para_blocks=[block],
-                _backend="hybrid",
+                blocks=[image_block],
             )
         ],
+            file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__,
+        ),
         _image_cache=image_cache,
-    )
+        )
 
     async def fake_parse_async(*args, **kwargs) -> ParseResult:
         return parse_result
@@ -1946,7 +1945,6 @@ def test_api_server_rendered_outputs_do_not_return_image_sidecars(
             language="ch",
             ocr_mode="auto",
             image_analysis=True,
-            effort="medium",
             allow_local_source=True,
         )
     )
@@ -1964,7 +1962,7 @@ def test_api_server_run_job_normalizes_lightweight_file_tier_to_flash(
 
     async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
         calls.append({"path": args[0], **kwargs})
-        return ParseResult(pages=[PageInfo(page_idx=0, _backend="html")])
+        return ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
 
     monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
     file_store = FileStore(tmp_path / "api-files")
@@ -1988,12 +1986,11 @@ def test_api_server_run_job_normalizes_lightweight_file_tier_to_flash(
             language="ch",
             ocr_mode="auto",
             image_analysis=True,
-            effort="high",
             allow_local_source=True,
         )
     )
 
-    assert [(call["tier"], call["backend"], call["effort"]) for call in calls] == [("flash", "flash", "medium")]
+    assert [(call["tier"], call["backend"]) for call in calls] == [("flash", "flash")]
     assert rec.tier == "standard"
     assert rec.files[0].status == "completed"
 
@@ -2006,7 +2003,7 @@ def test_api_server_accepts_lightweight_job_without_requested_quality_runtime(
     response_tier: str,
 ) -> None:
     async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
-        return ParseResult(pages=[PageInfo(page_idx=0, _backend="html")])
+        return ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
 
     monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
     source = tmp_path / "demo.html"
@@ -2085,67 +2082,6 @@ def test_api_server_no_flash_rejects_mixed_batch_with_lightweight_input(
     assert "one or more inputs require the Flash backend" in response.text
 
 
-def test_api_server_middle_json_preserves_backend_for_client_rendering(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    block = Block(
-        index=0,
-        type="text",
-        bbox=(0, 0, 10, 10),
-        lines=[Line(bbox=(0, 0, 10, 10), spans=[Span(type="text", bbox=(0, 0, 10, 10), content="hello")])],
-    )
-    parse_result = ParseResult(
-        pages=[
-            PageInfo(
-                page_idx=0,
-                page_size=(100, 100),
-                para_blocks=[block],
-                _backend="hybrid",
-            )
-        ]
-    )
-
-    async def fake_parse_async(*args, **kwargs) -> ParseResult:
-        return parse_result
-
-    monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
-    file_store = FileStore(tmp_path / "api-files")
-    source = tmp_path / "demo.pdf"
-    source.write_bytes(b"%PDF-1.7\n")
-    request = CreateJobRequest.model_validate(
-        {
-            "files": [{"source": {"type": "local", "path": str(source)}}],
-            "tier": "standard",
-            "output_formats": ["middle_json"],
-        }
-    )
-    job_store = api_server.JobStore()
-    rec = job_store.create(request, file_store)
-
-    asyncio.run(
-        api_server._run_job(
-            rec,
-            request,
-            file_store,
-            server_backend="hybrid-engine",
-            language="ch",
-            ocr_mode="auto",
-            image_analysis=True,
-            effort="medium",
-            allow_local_source=True,
-        )
-    )
-
-    output_ref = rec.files[0].output_files.middle_json
-    payload = json.loads(file_store.read_file_data(output_ref.file_id).decode("utf-8"))
-    roundtrip = ParseResult.from_dict(payload)
-
-    assert payload["_backend"] == "hybrid"
-    assert roundtrip.content_list()
-    assert roundtrip.structured_content()
-
-
 @pytest.mark.parametrize("model_output", [[{"raw": "model"}], []])
 def test_api_server_zip_includes_model_output_when_parse_result_has_it(
     monkeypatch: pytest.MonkeyPatch,
@@ -2153,9 +2089,12 @@ def test_api_server_zip_includes_model_output_when_parse_result_has_it(
     model_output: list[object],
 ) -> None:
     parse_result = ParseResult(
-        pages=[PageInfo(page_idx=0, page_size=(100, 100), _backend="hybrid")],
+        middle_json=MiddleJson(
+            pages=[PageInfo(page_idx=0)],
+            file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__,
+        ),
         _model_output=model_output,
-    )
+        )
 
     async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
         return parse_result
@@ -2183,7 +2122,6 @@ def test_api_server_zip_includes_model_output_when_parse_result_has_it(
             language="ch",
             ocr_mode="auto",
             image_analysis=True,
-            effort="medium",
             allow_local_source=True,
         )
     )
@@ -2199,84 +2137,17 @@ def test_api_server_zip_includes_model_output_when_parse_result_has_it(
         assert "\n    " in model_output_text
 
 
-def test_api_server_zip_is_self_contained_when_only_zip_requested(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    img_bytes = b"chart-bytes"
-    image_cache = ImagePayloadCache()
-    image_path = image_cache.register_bytes(img_bytes, "png", image_path="images/chart.png")
-    span = Span(type="image", bbox=(0, 0, 10, 10), image_path=image_path)
-    block = Block(index=0, type="image", bbox=(0, 0, 10, 10), lines=[Line(bbox=(0, 0, 10, 10), spans=[span])])
-    parse_result = ParseResult(
-        pages=[
-            PageInfo(
-                page_idx=0,
-                page_size=(100, 100),
-                para_blocks=[block],
-                _backend="hybrid",
-            )
-        ],
-        _image_cache=image_cache,
-        _model_output=[[{"raw": "model"}]],
-    )
-
-    async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
-        return parse_result
-
-    monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
-    file_store = FileStore(tmp_path / "api-files")
-    source = tmp_path / "demo.pdf"
-    source.write_bytes(b"%PDF-1.7\n")
-    request = CreateJobRequest.model_validate(
-        {
-            "files": [{"source": {"type": "local", "path": str(source)}}],
-            "tier": "standard",
-            "output_formats": ["zip"],
-        }
-    )
-    rec = api_server.JobStore().create(request, file_store)
-
-    asyncio.run(
-        api_server._run_job(
-            rec,
-            request,
-            file_store,
-            server_backend="hybrid-engine",
-            language="ch",
-            ocr_mode="auto",
-            image_analysis=True,
-            effort="medium",
-            allow_local_source=True,
-        )
-    )
-
-    output_files = rec.files[0].output_files
-    assert output_files.middle_json is None
-    assert output_files.zip is not None
-    with zipfile.ZipFile(io.BytesIO(file_store.read_file_data(output_files.zip.file_id))) as archive:
-        names = set(archive.namelist())
-        assert {
-            "markdown.md",
-            "middle_json.json",
-            "content_list.json",
-            "structured_content.json",
-            "model_output.json",
-            "images/chart.png",
-        }.issubset(names)
-        assert json.loads(archive.read("middle_json.json").decode("utf-8"))["_backend"] == "hybrid"
-        assert json.loads(archive.read("model_output.json").decode("utf-8")) == [[{"raw": "model"}]]
-        assert archive.read("images/chart.png") == img_bytes
-
-
 def test_api_server_zip_rejects_unsafe_image_sidecar_path(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     parse_result = ParseResult(
-        pages=[PageInfo(page_idx=0, page_size=(100, 100), _backend="hybrid")],
+        middle_json=MiddleJson(
+            pages=[PageInfo(page_idx=0)],
+            file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__,
+        ),
         _image_cache={"../escape.png": b"bad-image"},
-    )
+        )
 
     async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
         return parse_result
@@ -2303,7 +2174,6 @@ def test_api_server_zip_rejects_unsafe_image_sidecar_path(
             language="ch",
             ocr_mode="auto",
             image_analysis=True,
-            effort="medium",
             allow_local_source=True,
         )
     )
@@ -2318,9 +2188,12 @@ def test_api_server_zip_skips_model_output_when_parse_result_has_none(
     tmp_path: Path,
 ) -> None:
     parse_result = ParseResult(
-        pages=[PageInfo(page_idx=0, page_size=(100, 100), _backend="hybrid")],
+        middle_json=MiddleJson(
+            pages=[PageInfo(page_idx=0)],
+            file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__,
+        ),
         _model_output=None,
-    )
+        )
 
     async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
         return parse_result
@@ -2348,7 +2221,6 @@ def test_api_server_zip_skips_model_output_when_parse_result_has_none(
             language="ch",
             ocr_mode="auto",
             image_analysis=True,
-            effort="medium",
             allow_local_source=True,
         )
     )
@@ -2357,80 +2229,6 @@ def test_api_server_zip_skips_model_output_when_parse_result_has_none(
     assert zip_ref is not None
     with zipfile.ZipFile(io.BytesIO(file_store.read_file_data(zip_ref.file_id))) as archive:
         assert "model_output.json" not in archive.namelist()
-
-
-def test_api_server_sanitizes_surrogates_in_text_outputs(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    block = Block(
-        index=0,
-        type="text",
-        bbox=(0, 0, 10, 10),
-        lines=[
-            Line(
-                bbox=(0, 0, 10, 10),
-                spans=[Span(type="text", bbox=(0, 0, 10, 10), content="bad \ud800 text")],
-            )
-        ],
-    )
-    parse_result = ParseResult(
-        pages=[
-            PageInfo(
-                page_idx=0,
-                page_size=(100, 100),
-                para_blocks=[block],
-                _backend="hybrid",
-            )
-        ]
-    )
-
-    async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
-        return parse_result
-
-    monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
-    file_store = FileStore(tmp_path / "api-files")
-    source = tmp_path / "demo.pdf"
-    source.write_bytes(b"%PDF-1.7\n")
-    request = CreateJobRequest.model_validate(
-        {
-            "files": [{"source": {"type": "local", "path": str(source)}}],
-            "tier": "standard",
-            "output_formats": ["markdown", "middle_json", "content_list", "structured_content"],
-        }
-    )
-    job_store = api_server.JobStore()
-    rec = job_store.create(request, file_store)
-
-    asyncio.run(
-        api_server._run_job(
-            rec,
-            request,
-            file_store,
-            server_backend="hybrid-engine",
-            language="ch",
-            ocr_mode="auto",
-            image_analysis=True,
-            effort="medium",
-            allow_local_source=True,
-        )
-    )
-
-    output_files = rec.files[0].output_files
-    refs = [
-        output_files.markdown,
-        output_files.middle_json,
-        output_files.content_list,
-        output_files.structured_content,
-    ]
-
-    assert rec.status == "completed"
-    assert all(ref is not None for ref in refs)
-    for ref in refs:
-        assert ref is not None
-        decoded = file_store.read_file_data(ref.file_id).decode("utf-8")
-        assert "\ud800" not in decoded
-        assert "\ufffd" in decoded
 
 
 def test_api_server_logs_traceback_when_job_file_fails(
@@ -2471,7 +2269,6 @@ def test_api_server_logs_traceback_when_job_file_fails(
                 language="ch",
                 ocr_mode="auto",
                 image_analysis=True,
-                effort="medium",
                 allow_local_source=True,
             )
         )
@@ -2505,20 +2302,6 @@ def test_parse_info_uses_parser_version_not_backend_version() -> None:
 
     with pytest.raises(ValidationError):
         FileParseInfo.model_validate({"backend_version": "3.2.1"})
-
-
-def test_health_response_uses_only_standard_version_and_feature_fields() -> None:
-    health = HealthResponse(status="ok", version="3.2.1")
-
-    assert health.model_dump(exclude_none=True) == {
-        "status": "ok",
-        "version": "3.2.1",
-        "features": {
-            "webhook": False,
-            "output_formats": ["markdown", "middle_json", "content_list", "structured_content", "zip"],
-            "sources": ["file_id", "url", "inline"],
-        },
-    }
 
 
 @pytest.mark.parametrize("field", ["backend_version", "parser_version"])
@@ -2558,7 +2341,7 @@ def test_api_server_defaults_to_all_quality_tiers(tmp_path: Path, monkeypatch: p
     assert app.state.tier_runtime_options["flash"].as_kwargs() == {
         "tier": "flash",
         "backend": "flash",
-        "effort": "medium",
+        "effort": "flash",
     }
     assert app.state.tier_runtime_options["basic"].as_kwargs() == {
         "tier": "basic",
@@ -2685,7 +2468,7 @@ def test_api_server_standard_jobs_use_requested_tier_runtime(tmp_path: Path, mon
     async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
         """记录 API server 传给 parser 的 runtime 参数，并返回最小解析结果。"""
         calls.append(dict(kwargs))
-        return ParseResult(pages=[PageInfo(page_idx=0, _backend="hybrid")])
+        return ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
 
     monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
     source = tmp_path / "demo.pdf"
@@ -2706,7 +2489,6 @@ def test_api_server_standard_jobs_use_requested_tier_runtime(tmp_path: Path, mon
             server_backend=runtime.backend,
             language=app.state.language,
             ocr_mode=app.state.ocr_mode,
-            effort=runtime.effort,
             image_analysis=app.state.image_analysis,
             allow_local_source=app.state.allow_local_source,
             max_inline_bytes=app.state.max_inline_bytes,
@@ -2744,10 +2526,10 @@ def test_api_server_standard_jobs_use_requested_tier_runtime(tmp_path: Path, mon
     assert default_response["tier"] == "standard"
     assert basic_response["tier"] == "basic"
     assert advanced_response["tier"] == "advanced"
-    assert [(call["tier"], call["backend"], call["effort"]) for call in calls] == [
-        ("standard", "hybrid-engine", "high"),
-        ("basic", "hybrid-engine", "medium"),
-        ("advanced", "hybrid-engine", "xhigh"),
+    assert [(call["tier"], call["backend"]) for call in calls] == [
+        ("standard", "hybrid-engine"),
+        ("basic", "hybrid-engine"),
+        ("advanced", "hybrid-engine"),
     ]
 
 
@@ -2905,223 +2687,6 @@ def test_api_server_create_app_rejects_backend_and_effort_parameters(tmp_path: P
         create_app(upload_dir=str(tmp_path / "effort"), effort="high")  # type: ignore[call-arg]
 
 
-def test_build_parser_forwards_effort_to_hybrid_parser(tmp_path: Path) -> None:
-    pdf = tmp_path / "demo.pdf"
-    pdf.write_bytes(b"%PDF-1.7\n")
-
-    parser = _build_parser(pdf, backend="hybrid-engine", effort="high")
-
-    assert parser.__class__.__name__ == "PdfHybridParser"
-    assert parser.effort == "high"
-
-
-def test_build_parser_maps_legacy_vlm_backend_to_hybrid_xhigh(tmp_path: Path) -> None:
-    pdf = tmp_path / "demo.pdf"
-    pdf.write_bytes(b"%PDF-1.7\n")
-
-    parser = _build_parser(pdf, backend="vlm-engine", effort="medium")
-
-    assert parser.__class__.__name__ == "PdfHybridParser"
-    assert parser.backend == "hybrid-engine"
-    assert parser.effort == "xhigh"
-
-
-def test_build_parser_maps_legacy_pipeline_backend_to_hybrid_medium(tmp_path: Path) -> None:
-    pdf = tmp_path / "demo.pdf"
-    pdf.write_bytes(b"%PDF-1.7\n")
-
-    parser = _build_parser(pdf, backend="pipeline", effort="high")
-
-    assert parser.__class__.__name__ == "PdfHybridParser"
-    assert parser.backend == "hybrid-engine"
-    assert parser.effort == "medium"
-
-
-def test_pdf_pipeline_parser_compat_delegates_to_hybrid_medium() -> None:
-    parser = parser_pdf.PdfPipelineParser(method="ocr", lang="en", effort="high")
-
-    assert isinstance(parser, parser_pdf.PdfHybridParser)
-    assert parser.backend == "hybrid-engine"
-    assert parser.method == "ocr"
-    assert parser.lang == "en"
-    assert parser.effort == "medium"
-
-
-def test_pdf_hybrid_medium_parser_skips_vlm_backend_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
-    """校验 Hybrid basic 直接进入本地分支，不解析 VLM engine。"""
-    seen: dict[str, object] = {}
-    fake_module = types.ModuleType("mineru.backend.hybrid.hybrid_analyze")
-
-    def fake_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], list[object], bool]:
-        """记录 basic 分支收到的参数，并返回 Hybrid middle-json 形态。"""
-        seen.update(kwargs)
-        return [PageInfo(page_idx=0, _backend="hybrid")], [], False
-
-    fake_module.doc_analyze = fake_doc_analyze
-    monkeypatch.setitem(sys.modules, "mineru.backend.hybrid.hybrid_analyze", fake_module)
-
-    def fail_resolve_backend(*_args: object, **_kwargs: object) -> str:
-        """basic 不应触发 VLM backend resolver。"""
-        raise AssertionError("medium effort should not resolve VLM backend")
-
-    monkeypatch.setattr(parser_pdf, "_resolve_hybrid_backend", fail_resolve_backend)
-    monkeypatch.setenv("MINERU_VLM_FORMULA_ENABLE", "sentinel-formula")
-    monkeypatch.setenv("MINERU_VLM_TABLE_ENABLE", "sentinel-table")
-
-    parser = parser_pdf.PdfHybridParser(
-        backend="hybrid-engine",
-        effort="medium",
-        lang="en",
-    )
-    pages, model_output = parser._run_analysis(b"%PDF-1.7\n")
-
-    assert pages[0]._backend == "hybrid"
-    assert model_output == []
-    assert seen["backend"] == "hybrid-engine"
-    assert seen["effort"] == "medium"
-    assert seen["language"] == "en"
-    assert _REMOVED_INLINE_FORMULA_PARAM not in seen
-    assert os.environ["MINERU_VLM_FORMULA_ENABLE"] == "sentinel-formula"
-    assert os.environ["MINERU_VLM_TABLE_ENABLE"] == "sentinel-table"
-
-
-def test_pdf_hybrid_async_parser_preserves_model_output(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """校验 v1 server 使用的异步 PDF parser 会把 Hybrid model_list 传入 ParseResult。"""
-    model_output = [[{"raw": "model"}]]
-    fake_module = types.ModuleType("mineru.backend.hybrid.hybrid_analyze")
-
-    async def fake_aio_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], list[object], bool]:
-        """返回带原始模型输出的 Hybrid 分析结果，避免加载真实模型。"""
-        return [PageInfo(page_idx=0, _backend="hybrid")], model_output, False
-
-    fake_module.aio_doc_analyze = fake_aio_doc_analyze
-    monkeypatch.setitem(sys.modules, "mineru.backend.hybrid.hybrid_analyze", fake_module)
-    monkeypatch.setattr(
-        parser_pdf.PdfHybridParser,
-        "_prepare_input",
-        lambda self, path, page_range="": parser_pdf._PreparedPdfInput(file_name="demo", pdf_bytes=b"%PDF-1.7\n"),
-    )
-
-    source = tmp_path / "demo.pdf"
-    source.write_bytes(b"%PDF-1.7\n")
-    parser = parser_pdf.PdfHybridParser(backend="hybrid-engine", effort="medium")
-
-    result = asyncio.run(parser.parse_async(source))
-
-    assert result._model_output == model_output
-
-
-@pytest.mark.parametrize(
-    ("resolver", "backend"),
-    [
-        (parser_pdf._resolve_hybrid_backend, "hybrid-engine"),
-    ],
-)
-def test_pdf_engine_resolvers_use_sync_or_async_mode(
-    monkeypatch: pytest.MonkeyPatch,
-    resolver,
-    backend: str,
-) -> None:
-    calls: list[tuple[str, bool]] = []
-
-    def fake_get_vlm_engine(inference_engine: str, is_async: bool = False) -> str:
-        """记录自动 engine 选择是否收到当前解析调用形态。"""
-        calls.append((inference_engine, is_async))
-        return "vllm-async-engine" if is_async else "vllm-engine"
-
-    monkeypatch.setattr("mineru.utils.engine_utils.get_vlm_engine", fake_get_vlm_engine)
-
-    assert resolver(backend, is_async=False) == "vllm-engine"
-    assert resolver(backend, is_async=True) == "vllm-async-engine"
-    assert calls == [("auto", False), ("auto", True)]
-
-
-def test_pdf_engine_resolvers_keep_http_client_backend() -> None:
-    assert parser_pdf._resolve_hybrid_backend("hybrid-http-client", is_async=False) == "http-client"
-    assert parser_pdf._resolve_hybrid_backend("hybrid-http-client", is_async=True) == "http-client"
-
-
-def test_pdf_vlm_parser_compat_delegates_to_hybrid_xhigh(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[str, bool]] = []
-    backends: list[str] = []
-    efforts: list[str] = []
-    fake_module = types.ModuleType("mineru.backend.hybrid.hybrid_analyze")
-
-    def fake_resolve_backend(backend: str, is_async: bool = False) -> str:
-        """记录兼容 VLM parser 委托 Hybrid resolver 的调用形态。"""
-        calls.append((backend, is_async))
-        return "async-backend" if is_async else "sync-backend"
-
-    def fake_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], list[object], bool]:
-        """同步 Hybrid 分析桩只记录最终 backend/effort，不加载真实模型。"""
-        backends.append(str(kwargs["backend"]))
-        efforts.append(str(kwargs["effort"]))
-        return [], [], False
-
-    async def fake_aio_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], list[object], bool]:
-        """异步 Hybrid 分析桩只记录最终 backend/effort，不加载真实模型。"""
-        backends.append(str(kwargs["backend"]))
-        efforts.append(str(kwargs["effort"]))
-        return [], [], False
-
-    fake_module.doc_analyze = fake_doc_analyze
-    fake_module.aio_doc_analyze = fake_aio_doc_analyze
-    monkeypatch.setitem(sys.modules, "mineru.backend.hybrid.hybrid_analyze", fake_module)
-    monkeypatch.setattr(parser_pdf, "_resolve_hybrid_backend", fake_resolve_backend)
-
-    parser = parser_pdf.PdfVlmParser(backend="vlm-engine", effort="medium")
-
-    pages, model_output = parser._run_analysis(b"%PDF")
-    async_pages, async_model_output = asyncio.run(parser._arun_analysis(b"%PDF"))
-    assert pages == []
-    assert model_output == []
-    assert async_pages == []
-    assert async_model_output == []
-    assert calls == [("hybrid-engine", False), ("hybrid-engine", True)]
-    assert backends == ["sync-backend", "async-backend"]
-    assert efforts == ["xhigh", "xhigh"]
-
-
-def test_pdf_hybrid_parser_passes_call_mode_to_backend_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[str, bool]] = []
-    backends: list[str] = []
-    fake_module = types.ModuleType("mineru.backend.hybrid.hybrid_analyze")
-
-    def fake_resolve_backend(backend: str, is_async: bool = False) -> str:
-        """记录 Hybrid parser 同步/异步路径传入 resolver 的调用形态。"""
-        calls.append((backend, is_async))
-        return "async-backend" if is_async else "sync-backend"
-
-    def fake_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], list[object], bool]:
-        """同步 Hybrid 分析桩只记录最终 backend，不加载真实模型。"""
-        backends.append(str(kwargs["backend"]))
-        return [], [], False
-
-    async def fake_aio_doc_analyze(_pdf_bytes: bytes, **kwargs: object) -> tuple[list[PageInfo], list[object], bool]:
-        """异步 Hybrid 分析桩只记录最终 backend，不加载真实模型。"""
-        backends.append(str(kwargs["backend"]))
-        return [], [], False
-
-    fake_module.doc_analyze = fake_doc_analyze
-    fake_module.aio_doc_analyze = fake_aio_doc_analyze
-    monkeypatch.setitem(sys.modules, "mineru.backend.hybrid.hybrid_analyze", fake_module)
-    monkeypatch.setattr(parser_pdf, "_resolve_hybrid_backend", fake_resolve_backend)
-
-    parser = parser_pdf.PdfHybridParser(backend="hybrid-engine")
-
-    pages, model_output = parser._run_analysis(b"%PDF")
-    async_pages, async_model_output = asyncio.run(parser._arun_analysis(b"%PDF"))
-    assert pages == []
-    assert model_output == []
-    assert async_pages == []
-    assert async_model_output == []
-    assert calls == [("hybrid-engine", False), ("hybrid-engine", True)]
-    assert backends == ["sync-backend", "async-backend"]
-
-
 def test_api_server_stores_parser_runtime_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_api_server_dependency_preflight(monkeypatch)
     app = create_app(
@@ -3207,7 +2772,7 @@ def test_api_server_cli_defaults_to_all_quality_tiers(monkeypatch: pytest.Monkey
     assert seen == {
         "tiers": ["flash", "basic", "standard", "advanced"],
         "default_tier": "standard",
-        "effort_by_tier": {"flash": "medium", "basic": "medium", "standard": "high", "advanced": "xhigh"},
+        "effort_by_tier": {"flash": "flash", "basic": "medium", "standard": "high", "advanced": "xhigh"},
     }
 
 

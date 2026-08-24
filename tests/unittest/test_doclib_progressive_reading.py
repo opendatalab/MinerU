@@ -8,20 +8,15 @@ from mineru.doclib.server import (
 )
 from mineru.doclib.types import ContentRange
 from mineru.errors import InvalidRequestError
-from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span
+from mineru.types import BlockType, PageInfo, TableBlock, TableBodyBlock, TextBlock
 
 
 def _page(page_idx: int, *texts: str) -> PageInfo:
     blocks = [
-        Block(
-            index=index,
-            type=BlockType.TEXT,
-            bbox=(0, 0, 10, 10),
-            lines=[Line(bbox=(0, 0, 10, 10), spans=[Span(type=ContentType.TEXT, bbox=(0, 0, 10, 10), content=text)])],
-        )
+        TextBlock(type=BlockType.TEXT, index=index, bbox=(0.0, 0.0, 0.1, 0.1), content=text)
         for index, text in enumerate(texts)
     ]
-    return PageInfo(page_idx=page_idx, page_size=(100, 100), para_blocks=blocks, _backend="hybrid")
+    return PageInfo(page_idx=page_idx, blocks=blocks)
 
 
 def test_paginated_default_content_pages_are_first_ten() -> None:
@@ -188,7 +183,7 @@ def test_paginated_empty_page_renders_page_marker_and_content_range(
     expected_marker: str,
 ) -> None:
     rendered = _render_progressive_markdown(
-        [PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[], _backend="flash")],
+        [PageInfo(page_idx=0)],
         short_id="ab12cd3",
         tier="flash",
         after=None,
@@ -213,28 +208,19 @@ def test_page_markdown_blocks_prefers_markdown_table_in_doclib() -> None:
     """.strip()
     page = PageInfo(
         page_idx=0,
-        page_size=(100, 100),
-        para_blocks=[
-            Block(
-                index=0,
+        blocks=[
+            TableBlock(
                 type=BlockType.TABLE,
-                bbox=(0, 0, 10, 10),
-                blocks=[
-                    Block(
-                        index=0,
+                index=0,
+                content=[
+                    TableBodyBlock(
                         type=BlockType.TABLE_BODY,
-                        bbox=(0, 0, 10, 10),
-                        lines=[
-                            Line(
-                                bbox=(0, 0, 10, 10),
-                                spans=[Span(type=ContentType.TABLE, bbox=(0, 0, 10, 10), content=html)],
-                            )
-                        ],
+                        index=0,
+                        content=html,
                     )
                 ],
             )
         ],
-        _backend="hybrid",
     )
 
     assert _page_markdown_blocks(page) == [

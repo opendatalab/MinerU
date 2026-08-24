@@ -36,6 +36,6 @@ API 不提供在创建请求中同步等待完成的模式，也不内联返回 
 
 `images` 不再是 `POST /v1/parse/jobs` 的合法 `output_formats` 值，parse job 响应中也不再返回 `output_files.images`。
 
-图片 sidecar 只通过 `zip` 产物返回。`markdown`、`middle_json`、`content_list`、`structured_content` 输出仍可能包含 `image_path` 引用，但这些引用对应的图片字节不再作为独立 parse output 暴露。
+图片 sidecar 只通过 `zip` 产物返回。`markdown`、`middle_json`、`structured_content` 输出仍可能包含 `image_path` 引用，但这些引用对应的图片字节不再作为独立 parse output 暴露。
 
 这样可以避免同一批图片同时通过独立 output 和 zip 两条路径返回，减少产物语义重复，并让需要自包含解析结果的客户端统一依赖 `zip`。

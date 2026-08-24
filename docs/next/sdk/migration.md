@@ -55,7 +55,7 @@ SDK 迁移的目标不是重写现有 parser，而是稳定已经成形的边界
 
 - 本地 parser result 可以 round-trip: `to_json()` -> `from_json()`。
 - API `middle_json` output 可以恢复为 `ParseResult`。
-- Office/PDF/HTML 的 markdown 和 content_list 输出不回退。
+- Office/PDF/HTML 的 markdown 和 structured_content 输出不回退。
 
 ## Phase 3: Tier 进入 Tool SDK
 

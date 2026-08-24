@@ -47,7 +47,7 @@ from ..filetypes import (
 )
 from ..render.writer import DataWriter
 from ..types import SERVER_TIERS, TIERS_BY_SERVER_TIER, DeploymentTier, PageInfo, ServerTier, Tier, select_default_quality_tier
-from ..utils.backend_options import DEFAULT_HYBRID_EFFORT
+from ..utils.backend_options import effort_for_tier
 from ..utils.image_payload import validate_image_sidecar_path
 from ..utils.managed_process_control import ManagedProcessControlWatcher
 from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
@@ -68,7 +68,6 @@ _MAX_INLINE_BYTES_DEFAULT = 1024 * 1024
 _LOCAL_PARSE_OUTPUT_FORMATS: tuple[OutputFormat, ...] = (
     "markdown",
     "middle_json",
-    "content_list",
     "structured_content",
     "zip",
 )
@@ -130,7 +129,6 @@ UploadStatus = Literal["pending", "completed", "cancelled", "expired"]
 OutputFormat = Literal[
     "markdown",
     "middle_json",
-    "content_list",
     "structured_content",
     "html",
     "latex",
@@ -498,7 +496,6 @@ class OutputFiles(BaseModel):
     model_config = _PYDANTIC_CONFIG
     markdown: OutputFileRef | None = None
     middle_json: OutputFileRef | None = None
-    content_list: OutputFileRef | None = None
     structured_content: OutputFileRef | None = None
     html: OutputFileRef | None = None
     latex: OutputFileRef | None = None
@@ -1336,7 +1333,6 @@ async def _run_job(
     language: str,
     ocr_mode: str,
     image_analysis: bool,
-    effort: str = DEFAULT_HYBRID_EFFORT,
     url_timeout: int = 60,
     allow_local_source: bool = False,
     max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
@@ -1371,18 +1367,12 @@ async def _run_job(
 
                 page_range = entry.page_range or ""
                 effective_tier = batch_effective_parse_tier(rec.tier, fr.name)
-                effective_runtime = runtime_options_for_tier(effective_tier) if effective_tier != rec.tier else None
-                file_backend = effective_runtime.backend if effective_runtime is not None else server_backend
-                file_effort = effective_runtime.effort if effective_runtime is not None else effort
 
                 result = await parse_async(
                     str(tmp_path),
                     tier=effective_tier,
-                    backend=file_backend,
-                    language=language,
                     ocr_mode=ocr_mode,
-                    effort=file_effort,
-                    disable_image_analysis=not image_analysis,
+                    image_analysis=image_analysis,
                     page_range=page_range,
                 )
 
@@ -1393,7 +1383,6 @@ async def _run_job(
                 for fmt in (
                     "markdown",
                     "middle_json",
-                    "content_list",
                     "structured_content",
                 ):
                     if fmt not in out_formats:
@@ -1411,12 +1400,6 @@ async def _run_job(
                         file_store.store_blob(mj, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.middle.json", mj, sha256hex=sha)
                         output_files.middle_json = OutputFileRef(file_id=fid, bytes=len(mj))
-                    elif fmt == "content_list":
-                        cl = _json_utf8_bytes(result.content_list())
-                        sha = hashlib.sha256(cl).hexdigest()
-                        file_store.store_blob(cl, sha256hex=sha)
-                        fid = file_store.create_file_for_output(f"{fr.name}.content_list.json", cl, sha256hex=sha)
-                        output_files.content_list = OutputFileRef(file_id=fid, bytes=len(cl))
                     elif fmt == "structured_content":
                         cl2 = _json_utf8_bytes(result.structured_content())
                         sha = hashlib.sha256(cl2).hexdigest()
@@ -1842,7 +1825,6 @@ async def create_job(
     allow_http_source_val: bool = request.app.state.allow_http_source
     language_val: str = request.app.state.language
     ocr_mode_val: str = request.app.state.ocr_mode
-    effort_val = runtime.effort
     image_analysis_val: bool = request.app.state.image_analysis
 
     # async — fire and forget
@@ -1855,7 +1837,6 @@ async def create_job(
                 server_backend=backend,
                 language=language_val,
                 ocr_mode=ocr_mode_val,
-                effort=effort_val,
                 image_analysis=image_analysis_val,
                 url_timeout=url_timeout_val,
                 allow_local_source=allow_local_source_val,
@@ -2074,7 +2055,7 @@ def _preload_local_models(language: str) -> None:
     from ..backend.local_model_runtime import HybridLocalModelContextSingleton
     from ..model.model_types import AtomicModelName
 
-    context = HybridLocalModelContextSingleton().get_model(lang=language, formula_enable=True)
+    context = HybridLocalModelContextSingleton().get_model()
     manager = context.atom_model_manager
     manager.get_atom_model(atom_model_name=AtomicModelName.TableOrientationCls)
     manager.get_atom_model(atom_model_name=AtomicModelName.TableCls)
@@ -2154,7 +2135,7 @@ def create_app(
     default_tier = select_default_quality_tier(tier_runtime_options)
     startup_runtime = runtime_options_for_tier(tier)
     backend = startup_runtime.backend
-    effort = startup_runtime.effort
+    effort = effort_for_tier(tier)
     _preflight_tier_dependencies(tier)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))

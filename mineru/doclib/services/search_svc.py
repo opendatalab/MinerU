@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from ...types import TIER_ORDER, Tier
 from ..core.db import DatabaseManager
 from ..core.fts import FTSManager, strip_sep
-from ..rows import ContentSearchResultRow, DocRow, FileRow, FilenameSearchFileRow, FilenameSearchResultRow
+from ..rows import ContentSearchResultRow, DocRow, FilenameSearchFileRow, FilenameSearchResultRow, FileRow
 from ..types import FILE_STATUS_ACTIVE
 
 if TYPE_CHECKING:
@@ -127,7 +127,7 @@ class SearchService:
             f"FROM files f LEFT JOIN docs d ON f.sha256 = d.sha256 "
             f"WHERE f.id IN ({placeholders})"
         )
-        params = [*file_ids]
+        params: list[Any] = [*file_ids]
         if refresh_file is None:
             sql += " AND f.status = ?"
             params.append(FILE_STATUS_ACTIVE)

@@ -17,7 +17,7 @@ from ..filetypes import IMAGE_EXTENSIONS, OFFICE_EXTENSIONS, PDF_EXTENSIONS
 from ..parser.base import ParseResult
 from ..render import render_markdown, render_structured_content
 from ..render.writer import FileBasedDataWriter
-from ..types import PageInfo
+from ..types import MiddleJson, PageInfo
 from ..utils.backend_options import DEFAULT_BACKEND, DEFAULT_HYBRID_EFFORT, LOCAL_HYBRID_EFFORT, resolve_backend_and_effort
 from ..utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from ..utils.engine_utils import get_vlm_engine
@@ -285,8 +285,16 @@ def _process_output(
             )
 
     image_dir = str(os.path.basename(local_image_dir))
+    from ..version import __version__ as mineru_version
+
     export_result = ParseResult(
-        pages=middle_json,
+        middle_json=MiddleJson(
+            pages=middle_json,
+            file_suffix="pdf",
+            effort="medium",
+            parse_mode="txt",
+            mineru_version=mineru_version,
+        ),
         _image_cache=image_cache,
         _retained_page_indices=retained_page_indices,
         _broken_page_indices=broken_page_indices,

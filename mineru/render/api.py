@@ -86,6 +86,7 @@ def render(
             middle_json,
             mode=resolved_options.mode,
             asset_base_url=resolved_options.asset_base_url,
+            image_renderer=resolved_options.image_renderer,
         )
 
     if output_format is RenderFormat.HTML:

@@ -10,16 +10,12 @@ from importlib import metadata as importlib_metadata
 from ..types import DEPLOYMENT_TIERS, DeploymentTier, Tier, validate_tier
 from ..utils.backend_options import (
     CANONICAL_HYBRID_ENGINE,
-    DEFAULT_HYBRID_EFFORT,
     LEGACY_PIPELINE_BACKEND_ALIASES,
     LEGACY_VLM_BACKEND_ALIASES,
-    LOCAL_HYBRID_EFFORT,
     SUPPORTED_BACKENDS,
     effort_for_tier,
     is_hybrid_backend,
     normalize_backend,
-    resolve_backend_and_effort,
-    tier_for_effort,
 )
 
 __all__ = [
@@ -109,7 +105,7 @@ def tier_for_backend(backend: str) -> Tier:
     if normalized_backend == "flash":
         return "flash"
     if is_hybrid_backend(normalized_backend):
-        return _tier_for_effort(DEFAULT_HYBRID_EFFORT)
+        return "standard"
     raise ValueError(f"Unsupported backend '{backend}'. Supported backends: {', '.join(PARSER_BACKENDS)}")
 
 
@@ -133,10 +129,6 @@ def _backend_supports_tier(backend: str, tier: Tier) -> bool:
     return False
 
 
-def _tier_for_effort(effort: str) -> Tier:
-    return validate_tier(tier_for_effort(effort))
-
-
 def resolve_tier_and_backend(tier: Tier | None = None, backend: str | None = None) -> tuple[Tier, str]:
     """将公开 tier 和本地专家 backend 解析为可执行 parser backend。"""
     resolved_tier: Tier = validate_tier(tier) if tier is not None else "standard"
@@ -150,45 +142,20 @@ def resolve_tier_and_backend(tier: Tier | None = None, backend: str | None = Non
     return resolved_tier, backend_for_tier(resolved_tier)
 
 
-def _effort_for_runtime(
-    *,
-    tier: Tier,
-    backend: str,
-    requested_effort: str | None,
-    raw_backend: str | None,
-    explicit_tier: bool,
-) -> str:
-    """按 tier 优先解析 Hybrid effort；无 tier 时保留旧 backend/effort 兼容输入。"""
+def _effort_for_runtime(*, tier: Tier, backend: str) -> str:
+    """按 tier 派生 Hybrid effort；flash tier 直接返回 flash effort。"""
     if backend == "flash":
-        return LOCAL_HYBRID_EFFORT
-    if explicit_tier:
-        return effort_for_tier(tier)
-    _resolved_backend, resolved_effort = resolve_backend_and_effort(
-        raw_backend or backend,
-        requested_effort or DEFAULT_HYBRID_EFFORT,
-    )
-    return resolved_effort
+        return "flash"
+    return effort_for_tier(tier)
 
 
 def resolve_runtime_options(
     tier: Tier | None = None,
     backend: str | None = None,
-    effort: str | None = None,
 ) -> ParserRuntimeOptions:
-    """统一解析 parser 运行所需的 tier/backend/effort，避免入口各自硬编码映射。"""
-    explicit_tier = tier is not None
+    """统一解析 parser 运行所需的 tier/backend，effort 作为派生值不暴露为入参。"""
     resolved_tier, resolved_backend = resolve_tier_and_backend(tier=tier, backend=backend)
-    if resolved_backend != "flash":
-        resolved_backend, _ = resolve_backend_and_effort(backend or resolved_backend, effort)
-    resolved_effort = _effort_for_runtime(
-        tier=resolved_tier,
-        backend=resolved_backend,
-        requested_effort=effort,
-        raw_backend=backend,
-        explicit_tier=explicit_tier,
-    )
-    if not explicit_tier and resolved_backend != "flash":
-        resolved_tier = _tier_for_effort(resolved_effort)
+    resolved_effort = _effort_for_runtime(tier=resolved_tier, backend=resolved_backend)
     return ParserRuntimeOptions(tier=resolved_tier, backend=resolved_backend, effort=resolved_effort)
 
 
@@ -196,10 +163,9 @@ def runtime_options_for_tier(
     tier: Tier,
     *,
     backend: str | None = None,
-    effort: str | None = None,
 ) -> ParserRuntimeOptions:
     """解析指定 tier 的默认 runtime；调用端可传 backend 覆盖本地/远端执行形态。"""
-    return resolve_runtime_options(tier=tier, backend=backend, effort=effort)
+    return resolve_runtime_options(tier=tier, backend=backend)
 
 
 def required_modules_for_tier(tier: DeploymentTier) -> list[str]:

@@ -1395,9 +1395,22 @@ class ParseService:
             if not pages:
                 continue
 
-            from ...render import render_markdown
+            from mineru.config import config
+            from ...render._internal.markdown.blocks import render_single_block
 
-            text = truncate_head_tail(render_markdown(pages, add_markers=False, image_renderer=lambda _block: ""))
+            delimiters = config.render.latex_delimiters
+            parts: list[str] = []
+            for page in pages:
+                for block in page.blocks:
+                    rendered = render_single_block(
+                        block,
+                        delimiters=delimiters,
+                        asset_base_url="",
+                        image_renderer=lambda _block: "",
+                    )
+                    if rendered and rendered.strip():
+                        parts.append(rendered.strip())
+            text = truncate_head_tail("\n\n".join(parts))
             await self.fts.replace(
                 sha256=sha256,
                 tier=tier,

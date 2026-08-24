@@ -438,12 +438,12 @@ from mineru.parser import parse
 result = parse("report.pdf", tier="basic")
 ```
 
-或使用具体 parser:
+或使用统一 parser 类:
 
 ```python
-from mineru.parser import PdfHybridParser
+from mineru.parser import MinerUParser
 
-with PdfHybridParser(effort="medium") as parser:
+with MinerUParser(tier="basic") as parser:
     result = parser.parse("report.pdf")
 ```
 
@@ -506,7 +506,6 @@ doclib 解析产物按内容和实际使用的 tier 隔离。`parsed/` 目录下
 doclib 不在 `parsed/` 中保存:
 
 - `output.md`
-- `content_list.json`
 - `structured_content.json`
 
 PDF 和 image block 图片通常在读取时从源页面按 bbox 裁剪，不写入 `images/`。无 bbox 的 visual block 只有在对应 sidecar 文件存在时才输出非空图片 locator。

@@ -141,7 +141,7 @@
 
 1. 实现 `normalize_middle_json()`。
 2. 增加 envelope-level validator。
-3. 修正 `HtmlParser` 必填字段。
+3. 修正 HTML 解析必填字段。
 4. 定义 `locator_for_block()`。
 5. 给 Pipeline/VLM/Office 各加一个 fixture。
 6. 设计历史 `pdf_info` 离线 migration。

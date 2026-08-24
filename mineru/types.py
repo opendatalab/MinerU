@@ -4,8 +4,9 @@ from __future__ import annotations
 import json
 import math
 import os
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Annotated, Any, ClassVar, Literal, TypeAlias, Union
@@ -141,7 +142,7 @@ def select_parsing_rule_tier(available_tiers: Iterable[object] | str | None = No
     return "flash"
 
 
-class BlockType:
+class BlockType(str, Enum):
     IMAGE = "image"
     IMAGE_BODY = "image_body"
     IMAGE_CAPTION = "image_caption"
@@ -179,6 +180,9 @@ class BlockType:
     # Added in pp_doclayout_v2
     DOC_TITLE = "doc_title"
     PARAGRAPH_TITLE = "paragraph_title"
+
+    def __str__(self) -> str:
+        return self.value
 
 
 class ContentType:
@@ -457,11 +461,11 @@ class ContinuableTextBlockBase(StringContentBlock):
 
 
 class TextBlock(ContinuableTextBlockBase):
-    type: Literal[BlockType.TEXT]
+    type: Literal[BlockType.TEXT]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class RefTextBlock(ContinuableTextBlockBase):
-    type: Literal[BlockType.REF_TEXT]
+    type: Literal[BlockType.REF_TEXT]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class TitleBlockBase(StringContentBlock):
@@ -472,19 +476,19 @@ class TitleBlockBase(StringContentBlock):
 
 
 class DocTitleBlock(TitleBlockBase):
-    type: Literal[BlockType.DOC_TITLE]
-    level: Literal[1]
+    type: Literal[BlockType.DOC_TITLE]  # type: ignore[reportIncompatibleVariableOverride]
+    level: int = Field(ge=1, le=1)
 
 
 class ParagraphTitleBlock(TitleBlockBase):
-    type: Literal[BlockType.PARAGRAPH_TITLE]
+    type: Literal[BlockType.PARAGRAPH_TITLE]  # type: ignore[reportIncompatibleVariableOverride]
     level: int = Field(ge=2, le=6)
 
 
 class PageAuxTextBlock(StringContentBlock):
     """页眉、页脚、页码、边栏和页脚注释的共享文本结构。"""
 
-    type: Literal[
+    type: Literal[  # type: ignore[reportIncompatibleVariableOverride]
         BlockType.HEADER,
         BlockType.FOOTER,
         BlockType.PAGE_NUMBER,
@@ -517,47 +521,47 @@ class ImagePayloadContentBlock(ImagePayloadBlock):
 
 
 class EquationBlock(ImagePayloadContentBlock):
-    type: Literal[BlockType.EQUATION]
+    type: Literal[BlockType.EQUATION]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class ImageBodyBlock(ImagePayloadContentBlock):
-    type: Literal[BlockType.IMAGE_BODY]
+    type: Literal[BlockType.IMAGE_BODY]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class TableBodyBlock(ImagePayloadContentBlock):
-    type: Literal[BlockType.TABLE_BODY]
+    type: Literal[BlockType.TABLE_BODY]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class ChartBodyBlock(ImagePayloadContentBlock):
-    type: Literal[BlockType.CHART_BODY]
+    type: Literal[BlockType.CHART_BODY]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class CodeBodyBlock(StringContentBlock):
-    type: Literal[BlockType.CODE_BODY]
+    type: Literal[BlockType.CODE_BODY]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class ImageAnnotationBlock(StringContentBlock):
     """图片标题与图片脚注的共享结构。"""
 
-    type: Literal[BlockType.IMAGE_CAPTION, BlockType.IMAGE_FOOTNOTE]
+    type: Literal[BlockType.IMAGE_CAPTION, BlockType.IMAGE_FOOTNOTE]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class TableAnnotationBlock(StringContentBlock):
     """表格标题与表格脚注的共享结构。"""
 
-    type: Literal[BlockType.TABLE_CAPTION, BlockType.TABLE_FOOTNOTE]
+    type: Literal[BlockType.TABLE_CAPTION, BlockType.TABLE_FOOTNOTE]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class ChartAnnotationBlock(StringContentBlock):
     """图表标题与图表脚注的共享结构。"""
 
-    type: Literal[BlockType.CHART_CAPTION, BlockType.CHART_FOOTNOTE]
+    type: Literal[BlockType.CHART_CAPTION, BlockType.CHART_FOOTNOTE]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class CodeAnnotationBlock(StringContentBlock):
     """代码标题与代码脚注的共享结构。"""
 
-    type: Literal[BlockType.CODE_CAPTION, BlockType.CODE_FOOTNOTE]
+    type: Literal[BlockType.CODE_CAPTION, BlockType.CODE_FOOTNOTE]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 ListChildBlock: TypeAlias = Annotated[
@@ -567,7 +571,7 @@ ListChildBlock: TypeAlias = Annotated[
 
 
 class ListBlock(BlockBase):
-    type: Literal[BlockType.LIST]
+    type: Literal[BlockType.LIST]  # type: ignore[reportIncompatibleVariableOverride]
     content: list[ListChildBlock]
     sub_type: Literal[BlockType.TEXT, BlockType.REF_TEXT] | None = None
     continues_prev: bool | None = None
@@ -580,7 +584,7 @@ IndexChildBlock: TypeAlias = Annotated[
 
 
 class IndexBlock(BlockBase):
-    type: Literal[BlockType.INDEX]
+    type: Literal[BlockType.INDEX]  # type: ignore[reportIncompatibleVariableOverride]
     content: list[IndexChildBlock]
 
 
@@ -611,7 +615,7 @@ ImageChildBlock: TypeAlias = Annotated[
 
 
 class ImageBlock(_VisualBlockBase):
-    type: Literal[BlockType.IMAGE]
+    type: Literal[BlockType.IMAGE]  # type: ignore[reportIncompatibleVariableOverride]
     content: list[ImageChildBlock]
     sub_type: str | None = None
     _body_type: ClassVar[str] = BlockType.IMAGE_BODY
@@ -624,7 +628,7 @@ TableChildBlock: TypeAlias = Annotated[
 
 
 class TableBlock(_VisualBlockBase):
-    type: Literal[BlockType.TABLE]
+    type: Literal[BlockType.TABLE]  # type: ignore[reportIncompatibleVariableOverride]
     content: list[TableChildBlock]
     continues_prev: bool | None = None
     cell_merge: list[Literal[0, 1]] | None = None
@@ -638,7 +642,7 @@ ChartChildBlock: TypeAlias = Annotated[
 
 
 class ChartBlock(_VisualBlockBase):
-    type: Literal[BlockType.CHART]
+    type: Literal[BlockType.CHART]  # type: ignore[reportIncompatibleVariableOverride]
     content: list[ChartChildBlock]
     sub_type: str | None = None
     _body_type: ClassVar[str] = BlockType.CHART_BODY
@@ -651,7 +655,7 @@ CodeChildBlock: TypeAlias = Annotated[
 
 
 class CodeBlock(_VisualBlockBase):
-    type: Literal[BlockType.CODE]
+    type: Literal[BlockType.CODE]  # type: ignore[reportIncompatibleVariableOverride]
     content: list[CodeChildBlock]
     sub_type: Literal[BlockType.CODE, RAW_ALGORITHM]
     guess_lang: str | None = None
@@ -805,7 +809,7 @@ class MiddleJsonExportResult:
     image_paths: tuple[Path, ...]
 
 
-def _iter_page_blocks(blocks: list[Block]) -> list[BlockBase]:
+def _iter_page_blocks(blocks: Sequence[BlockBase]) -> list[BlockBase]:
     """按深度优先顺序展开页面 block 树，供图片外置统一遍历。"""
     result: list[BlockBase] = []
     pending: list[BlockBase] = list(reversed(blocks))

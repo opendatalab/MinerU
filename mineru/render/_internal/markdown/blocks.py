@@ -18,6 +18,7 @@ from mineru.render._internal.markdown.inline import (
     render_joined_inline_contents,
 )
 from mineru.render._internal.markdown.table import format_embedded_html, render_html_table
+from mineru.render.image import ImageRenderer
 from mineru.types import (
     RAW_ALGORITHM,
     BlockType,
@@ -56,6 +57,7 @@ def render_planned_block(
     *,
     delimiters: LatexDelimitersConfig,
     asset_base_url: str,
+    image_renderer: ImageRenderer | None = None,
 ) -> str:
     """按具体 Pydantic block 类型分发 Markdown 渲染。"""
     block = planned.block
@@ -71,17 +73,17 @@ def render_planned_block(
         content = escape_text_block_markdown_prefix(render_inline_content(block.content, delimiters))
         return escape_standalone_marker_rule(content)
     if isinstance(block, EquationBlock):
-        return _render_equation(block, delimiters, asset_base_url)
+        return _render_equation(block, delimiters, asset_base_url, image_renderer)
     if isinstance(block, ListBlock):
         return _render_list(block, delimiters)
     if isinstance(block, IndexBlock):
         return _render_index(block, delimiters)
     if isinstance(block, ImageBlock):
-        return _render_image_block(block, delimiters, asset_base_url)
+        return _render_image_block(block, delimiters, asset_base_url, image_renderer)
     if isinstance(block, TableBlock):
-        return _render_table_block(block, delimiters, asset_base_url)
+        return _render_table_block(block, delimiters, asset_base_url, image_renderer)
     if isinstance(block, ChartBlock):
-        return _render_chart_block(block, delimiters, asset_base_url)
+        return _render_chart_block(block, delimiters, asset_base_url, image_renderer)
     if isinstance(block, CodeBlock):
         return _render_code_block(block, delimiters)
     raise TypeError(f"Unsupported PageBlock type: {type(block).__name__}")
@@ -92,6 +94,7 @@ def render_single_block(
     *,
     delimiters: LatexDelimitersConfig,
     asset_base_url: str,
+    image_renderer: ImageRenderer | None = None,
 ) -> str:
     """不执行续段合并或页面过滤，直接渲染一个顶层 block。"""
     text_contents = [block.content] if isinstance(block, (TextBlock, RefTextBlock)) else []
@@ -100,6 +103,7 @@ def render_single_block(
         planned,
         delimiters=delimiters,
         asset_base_url=asset_base_url,
+        image_renderer=image_renderer,
     )
 
 
@@ -128,11 +132,16 @@ def _render_equation(
     block: EquationBlock,
     delimiters: LatexDelimitersConfig,
     asset_base_url: str,
+    image_renderer: ImageRenderer | None,
 ) -> str:
-    """优先渲染行间 LaTeX，空公式内容回退到公式图片。"""
+    """优先渲染行间 LaTeX，空公式内容回退到 image_renderer 或公式图片。"""
     latex = block.content.strip()
     if latex:
         return f"{delimiters.display.left}\n{latex}\n{delimiters.display.right}"
+    if image_renderer is not None:
+        rendered = image_renderer(block)
+        if rendered:
+            return rendered
     source = resolve_image_source(block, asset_base_url)
     return build_markdown_image(source) if source else ""
 
@@ -182,6 +191,7 @@ def _render_image_block(
     block: ImageBlock,
     delimiters: LatexDelimitersConfig,
     asset_base_url: str,
+    image_renderer: ImageRenderer | None,
 ) -> str:
     """按原始子块顺序渲染图片主体及说明文本。"""
     parts: list[str] = []
@@ -192,6 +202,7 @@ def _render_image_block(
                 child,
                 delimiters=delimiters,
                 asset_base_url=asset_base_url,
+                image_renderer=image_renderer,
             )
         elif isinstance(child, ImageAnnotationBlock):
             body = render_visual_annotation(child, delimiters)
@@ -206,6 +217,7 @@ def _render_chart_block(
     block: ChartBlock,
     delimiters: LatexDelimitersConfig,
     asset_base_url: str,
+    image_renderer: ImageRenderer | None,
 ) -> str:
     """按原始子块顺序渲染图表图片、结构内容和说明文本。"""
     parts: list[str] = []
@@ -216,6 +228,7 @@ def _render_chart_block(
                 child,
                 delimiters=delimiters,
                 asset_base_url=asset_base_url,
+                image_renderer=image_renderer,
             )
         elif isinstance(child, ChartAnnotationBlock):
             body = render_visual_annotation(child, delimiters)
@@ -232,16 +245,20 @@ def _render_media_body(
     summary: str,
     delimiters: LatexDelimitersConfig,
     asset_base_url: str,
+    image_renderer: ImageRenderer | None,
+    parent_block: ImageBlock,
 ) -> str:
-    """渲染图片载荷，并将识别内容放入折叠详情。"""
-    source = resolve_image_source(block, asset_base_url)
+    """渲染图片载荷，并将识别内容放入折叠详情。image_renderer 优先于 image_path。"""
     rendered_content = _render_media_content(block, delimiters, asset_base_url)
-    if source:
-        parts = [build_markdown_image(source)]
-        if rendered_content:
-            parts.append(_render_details(rendered_content, summary))
-        return "\n\n".join(part for part in parts if part)
-    return rendered_content
+    if image_renderer is not None:
+        image_ref = image_renderer(parent_block)
+        parts = [image_ref] if image_ref else []
+    else:
+        source = resolve_image_source(block, asset_base_url)
+        parts = [build_markdown_image(source)] if source else []
+    if rendered_content:
+        parts.append(_render_details(rendered_content, summary))
+    return "\n\n".join(part for part in parts if part)
 
 
 def _render_media_content(
@@ -262,14 +279,31 @@ def _render_chart_body(
     summary: str,
     delimiters: LatexDelimitersConfig,
     asset_base_url: str,
+    image_renderer: ImageRenderer | None,
+    parent_block: ChartBlock,
 ) -> str:
-    """渲染 chart 图片，并统一转换其 HTML 表格内容。"""
-    source = resolve_image_source(block, asset_base_url)
+    """渲染 chart 图片，并统一转换其 HTML 表格内容。内容为空时回退到 image_renderer 或图片。"""
     rendered_content = _render_chart_content(block.content, delimiters, asset_base_url)
+    if rendered_content:
+        return _render_chart_with_details(rendered_content, block, asset_base_url, summary)
+    if image_renderer is not None:
+        rendered = image_renderer(parent_block)
+        if rendered:
+            return rendered
+    source = resolve_image_source(block, asset_base_url)
+    return build_markdown_image(source) if source else ""
+
+
+def _render_chart_with_details(
+    rendered_content: str,
+    block: ChartBodyBlock,
+    asset_base_url: str,
+    summary: str,
+) -> str:
+    """chart 有结构化内容时，附上图片与折叠详情。"""
+    source = resolve_image_source(block, asset_base_url)
     if source:
-        parts = [build_markdown_image(source)]
-        if rendered_content:
-            parts.append(_render_details(rendered_content, summary))
+        parts = [build_markdown_image(source), _render_details(rendered_content, summary)]
         return "\n\n".join(part for part in parts if part)
     return rendered_content
 
@@ -303,6 +337,7 @@ def _render_table_block(
     block: TableBlock,
     delimiters: LatexDelimitersConfig,
     asset_base_url: str,
+    image_renderer: ImageRenderer | None,
 ) -> str:
     """按原始子块顺序渲染表格主体及说明文本。"""
     parts: list[str] = []
@@ -313,6 +348,7 @@ def _render_table_block(
                 child,
                 delimiters=delimiters,
                 asset_base_url=asset_base_url,
+                image_renderer=image_renderer,
             )
         elif isinstance(child, TableAnnotationBlock):
             body = render_visual_annotation(child, delimiters)
@@ -327,11 +363,17 @@ def _render_table_body(
     block: TableBodyBlock,
     delimiters: LatexDelimitersConfig,
     asset_base_url: str,
+    image_renderer: ImageRenderer | None,
+    parent_block: TableBlock,
 ) -> str:
-    """按 HTML、空间投影文本、图片的优先级渲染表格主体。"""
+    """按 HTML、空间投影文本、image_renderer、图片的优先级渲染表格主体。"""
     rendered_content = _render_table_content(block, delimiters, asset_base_url)
     if rendered_content:
         return rendered_content
+    if image_renderer is not None:
+        rendered = image_renderer(parent_block)
+        if rendered:
+            return rendered
     source = resolve_image_source(block, asset_base_url)
     return build_markdown_image(source) if source else ""
 
@@ -364,6 +406,7 @@ def _render_code_block(block: CodeBlock, delimiters: LatexDelimitersConfig) -> s
                 child,
                 delimiters=delimiters,
                 asset_base_url="",
+                image_renderer=None,
             )
         elif isinstance(child, CodeAnnotationBlock):
             body = render_visual_annotation(child, delimiters)
@@ -399,6 +442,7 @@ def _render_visual_body_child(
     *,
     delimiters: LatexDelimitersConfig,
     asset_base_url: str,
+    image_renderer: ImageRenderer | None = None,
 ) -> str:
     """按视觉父子类型组合渲染一个 body 子块。"""
     if isinstance(block, ImageBlock) and isinstance(child, ImageBodyBlock):
@@ -407,15 +451,19 @@ def _render_visual_body_child(
             summary=block.sub_type or "image content",
             delimiters=delimiters,
             asset_base_url=asset_base_url,
+            image_renderer=image_renderer,
+            parent_block=block,
         )
     if isinstance(block, TableBlock) and isinstance(child, TableBodyBlock):
-        return _render_table_body(child, delimiters, asset_base_url)
+        return _render_table_body(child, delimiters, asset_base_url, image_renderer, block)
     if isinstance(block, ChartBlock) and isinstance(child, ChartBodyBlock):
         return _render_chart_body(
             child,
             summary=block.sub_type or "chart content",
             delimiters=delimiters,
             asset_base_url=asset_base_url,
+            image_renderer=image_renderer,
+            parent_block=block,
         )
     if isinstance(block, CodeBlock) and isinstance(child, CodeBodyBlock):
         return _render_code_body(block, child, delimiters)

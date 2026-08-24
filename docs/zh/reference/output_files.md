@@ -55,9 +55,9 @@
 ## 结构化数据文件
 
 > [!IMPORTANT]
-> 当前结构化输出合约仅使用 `hybrid` 和 `office` 后端。旧 middle-json 中标记 `_backend: "pipeline"` 的产物不再被当前读取逻辑兼容。
+> 当前结构化输出合约使用统一的 `MinerUParser`，通过 `tier`（flash/basic/standard/advanced）和 `parse_mode`（txt/ocr）参数控制。旧 middle-json 中标记 `_backend: "pipeline"`/`_backend: "hybrid"`/`_backend: "office"` 的产物不再被当前读取逻辑兼容，请使用 schema 2.0 的 `MiddleJson`。
 
-### Hybrid 本地模型输出结果
+### 统一模型输出结果
 
 #### 模型推理结果 (model.json)
 
@@ -68,40 +68,40 @@
 ```json
 [
     {
-        "cls_id": 12,
-        "label": "header",
-        "score": 0.93,
-        "bbox": [
+        “cls_id”: 12,
+        “label”: “header”,
+        “score”: 0.93,
+        “bbox”: [
             1217,
             104,
             1516,
             134
         ],
-        "index": 2
+        “index”: 2
     },
     {
-        "cls_id": 6,
-        "label": "doc_title",
-        "score": 0.9751,
-        "bbox": [
+        “cls_id”: 6,
+        “label”: “doc_title”,
+        “score”: 0.9751,
+        “bbox”: [
             275,
             181,
             1512,
             292
         ],
-        "index": 3
+        “index”: 3
     },
     {
-        "cls_id": 22,
-        "label": "text",
-        "score": 0.9217,
-        "bbox": [
+        “cls_id”: 22,
+        “label”: “text”,
+        “score”: 0.9217,
+        “bbox”: [
             275,
             330,
             524,
             370
         ],
-        "index": 4
+        “index”: 4
     }
 ]
 ```
@@ -110,288 +110,119 @@
 
 **文件命名格式**：`{原文件名}_middle.json`
 
-##### 顶层结构
+##### 顶层结构（schema 2.0）
 
 | 字段名 | 类型 | 说明 |
 |--------|------|------|
-| `pdf_info` | `list[dict]` | 每一页的解析结果数组 |
-| `_backend` | `string` | 解析模式：`hybrid` 或 `office` |
-| `_version_name` | `string` | MinerU 版本号 |
+| `pages` | `list[PageInfo]` | 每一页的解析结果数组，按 `page_idx` 严格升序 |
+| `file_suffix` | `string` | 输入文件类型：`pdf`、`docx`、`pptx` 或 `xlsx` |
+| `effort` | `string` | 分析强度：`flash`、`low`、`medium`、`high` 或 `xhigh` |
+| `parse_mode` | `string` | 解析模式：`txt` 或 `ocr` |
+| `mineru_version` | `string` | MinerU 版本号 |
 
-##### 页面信息结构 (pdf_info)
+schema 2.0 已移除旧字段 `pdf_info`/`_backend`/`_version_name`/`_ocr_enable`/`_vlm_ocr_enable`。
+
+##### 页面信息结构 (pages)
 
 | 字段名 | 说明 |
 |--------|------|
-| `preproc_blocks` | PDF 预处理后的未分段中间结果 |
 | `page_idx` | 页码，从 0 开始 |
-| `page_size` | 页面的宽度和高度 `[width, height]` |
-| `images` | 图片块信息列表 |
-| `tables` | 表格块信息列表 |
-| `interline_equations` | 行间公式块信息列表 |
-| `discarded_blocks` | 需要丢弃的块信息 |
-| `para_blocks` | 分段后的内容块结果 |
+| `blocks` | 顶层页面块列表（唯一内容字段） |
+
+schema 2.0 已移除旧字段 `preproc_blocks`/`para_blocks`/`page_size`/`images`/`tables`/`interline_equations`/`discarded_blocks`/`_layout_tree`/`layout_bboxes`——所有内容统一在 `blocks` 树里表达。
 
 ##### 块结构层次
 
 ```
-一级块 (table | image | chart)
-└── 二级块
-    └── 行 (line)
-        └── 片段 (span)
+顶层页面块 (text | title | equation | image | table | chart | code | list | index | ...)
+└── 视觉父块 (image | table | chart | code) 包含子块
+    └── body 块 + 可选 caption/footnote 块
 ```
 
-##### 一级块字段
+叶子块（text、title、equation 等）直接持有 `content: str`。视觉父块（image、table、chart、code）持有 `content: list[子块]`，子块包含唯一 body 加可选 caption/footnote。schema 2.0 不再有独立的 `Line`/`Span` 类型。
 
-| 字段名 | 说明 |
-|--------|------|
-| `type` | 块类型：`table`、`image` 或 `chart` |
-| `bbox` | 块的矩形框坐标 `[x0, y0, x1, y1]` |
-| `blocks` | 包含的二级块列表 |
-
-##### 二级块字段
+##### 通用块字段
 
 | 字段名 | 说明 |
 |--------|------|
 | `type` | 块类型（详见下表） |
-| `bbox` | 块的矩形框坐标 |
-| `lines` | 包含的行信息列表 |
+| `bbox` | 块的矩形框坐标 `[x0, y0, x1, y1]`，归一化到 `[0, 1]` |
+| `index` | 块的阅读序号（顶层块必填） |
+| `content` | 叶子块为字符串；视觉父块为子块列表 |
 
-##### 二级块类型
+##### 块类型
 
 | 类型 | 说明 |
 |------|------|
-| `image_body` | 图像本体 |
-| `image_caption` | 图像描述文本 |
-| `image_footnote` | 图像脚注 |
-| `table_body` | 表格本体 |
-| `table_caption` | 表格描述文本 |
-| `table_footnote` | 表格脚注 |
-| `chart_body` | 图表本体 |
-| `chart_caption` | 图表描述文本 |
-| `chart_footnote` | 图表脚注 |
-| `text` | 文本块 |
-| `title` | 标题块 |
-| `index` | 目录块 |
-| `list` | 列表块 |
-| `interline_equation` | 行间公式块 |
+| `text` | 文本块（叶子块，`content: str`） |
+| `doc_title` | 文档标题（level=1） |
+| `paragraph_title` | 段落标题（level 2-6） |
+| `equation` | 行间公式块（由 `interline_equation` 重命名） |
+| `image` | 图片容器；`content` 包含 `image_body` + 可选 `image_caption`/`image_footnote` |
+| `table` | 表格容器；`content` 包含 `table_body` + 可选 `table_caption`/`table_footnote` |
+| `chart` | 图表容器；`content` 包含 `chart_body` + 可选 `chart_caption`/`chart_footnote` |
+| `code` | 代码容器；`content` 包含 `code_body` + 可选 `code_caption`/`code_footnote`；`sub_type` 为 `code` 或 `algorithm` |
+| `list` | 列表容器；`content` 为 `text`/`ref_text`/嵌套 `list` 块列表；`sub_type` 为 `text` 或 `ref_text` |
+| `index` | 目录容器；`content` 为 `text`/`doc_title`/`paragraph_title`/嵌套 `index` 块列表 |
+| `ref_text` | 参考文献/引用文本块 |
+| `header` / `footer` / `page_number` / `aside_text` / `page_footnote` | 页面辅助块（叶子块，`content: str`） |
 
-##### 行和片段结构
-
-**行 (line) 字段**：
-- `bbox`：行的矩形框坐标
-- `spans`：包含的片段列表
-
-**片段 (span) 字段**：
-- `bbox`：片段的矩形框坐标
-- `type`：片段类型（`image`、`table`、`chart`、`text`、`inline_equation`、`interline_equation`）
-- `content` | `image_path`：文本内容或图片路径
-
-##### 示例数据
+##### 示例数据（schema 2.0）
 
 ```json
 {
-    "pdf_info": [
+    “pages”: [
         {
-            "preproc_blocks": [
+            “page_idx”: 0,
+            “blocks”: [
                 {
-                    "type": "text",
-                    "bbox": [
-                        52,
-                        61.956024169921875,
-                        294,
-                        82.99800872802734
-                    ],
-                    "lines": [
+                    “type”: “doc_title”,
+                    “index”: 0,
+                    “bbox”: [0.45, 0.23, 0.55, 0.28],
+                    “content”: “1 Introduction”,
+                    “level”: 1
+                },
+                {
+                    “type”: “text”,
+                    “index”: 1,
+                    “bbox”: [0.08, 0.30, 0.46, 0.40],
+                    “content”: “dependent on the service headway and the reliability of the departure”
+                },
+                {
+                    “type”: “image”,
+                    “index”: 2,
+                    “bbox”: [0.52, 0.30, 0.95, 0.55],
+                    “content”: [
                         {
-                            "bbox": [
-                                52,
-                                61.956024169921875,
-                                294,
-                                72.0000228881836
-                            ],
-                            "spans": [
-                                {
-                                    "bbox": [
-                                        54.0,
-                                        61.956024169921875,
-                                        296.2261657714844,
-                                        72.0000228881836
-                                    ],
-                                    "content": "dependent on the service headway and the reliability of the departure ",
-                                    "type": "text",
-                                    "score": 1.0
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ],
-            "layout_bboxes": [
-                {
-                    "layout_bbox": [
-                        52,
-                        61,
-                        294,
-                        731
-                    ],
-                    "layout_label": "V",
-                    "sub_layout": []
-                }
-            ],
-            "page_idx": 0,
-            "page_size": [
-                612.0,
-                792.0
-            ],
-            "_layout_tree": [],
-            "images": [],
-            "tables": [],
-            "interline_equations": [],
-            "discarded_blocks": [],
-            "para_blocks": [
-                {
-                    "type": "text",
-                    "bbox": [
-                        52,
-                        61.956024169921875,
-                        294,
-                        82.99800872802734
-                    ],
-                    "lines": [
+                            “type”: “image_body”,
+                            “index”: 2,
+                            “bbox”: [0.52, 0.30, 0.95, 0.55],
+                            “content”: “”,
+                            “image_path”: “images/page_0_image_body_2.png”
+                        },
                         {
-                            "bbox": [
-                                52,
-                                61.956024169921875,
-                                294,
-                                72.0000228881836
-                            ],
-                            "spans": [
-                                {
-                                    "bbox": [
-                                        54.0,
-                                        61.956024169921875,
-                                        296.2261657714844,
-                                        72.0000228881836
-                                    ],
-                                    "content": "dependent on the service headway and the reliability of the departure ",
-                                    "type": "text",
-                                    "score": 1.0
-                                }
-                            ]
+                            “type”: “image_caption”,
+                            “index”: 3,
+                            “bbox”: [0.52, 0.56, 0.95, 0.58],
+                            “content”: “Figure 1: Example figure”
                         }
-                    ]
+                    ],
+                    “sub_type”: null
                 }
             ]
         }
     ],
-    "_backend": "hybrid",
-    "_version_name": "0.6.1"
+    “file_suffix”: “pdf”,
+    “effort”: “high”,
+    “parse_mode”: “ocr”,
+    “mineru_version”: “1.x.x”
 }
 ```
 
 #### 内容列表 (content_list.json)
 
-**文件命名格式**：`{原文件名}_content_list.json`
-
-##### 功能说明
-
-这是一个简化版的 `middle.json`，按阅读顺序平铺存储所有可读内容块，去除了复杂的布局信息，便于后续处理。
-
-##### 内容类型
-
-| 类型 | 说明 |
-|------|------|
-| `image` | 图片 |
-| `table` | 表格 |
-| `chart` | 图表 |
-| `text` | 文本/标题 |
-| `equation` | 行间公式 |
-| `code` | 代码块 / 算法块 |
-| `list` | 列表 / 参考文献列表 |
-| `header` / `footer` / `page_number` / `aside_text` / `page_footnote` | 页面辅助块 |
-
-##### 文本层级标识
-
-通过 `text_level` 字段区分文本层级：
-
-- 无 `text_level` 或 `text_level: 0`：正文文本
-- `text_level: 1`：一级标题
-- `text_level: 2`：二级标题
-- 以此类推...
-
-##### 通用字段
-
-- 所有内容块都包含 `page_idx` 字段，表示所在页码（从 0 开始）。
-- 所有内容块都包含 `bbox` 字段，表示内容块的边界框坐标 `[x0, y0, x1, y1]` 映射在0-1000范围内的结果。
-- `code` 类型会通过 `sub_type` 区分 `code` 和 `algorithm`，并可包含 `code_body`、`code_caption`、`code_footnote` 等字段。
-- `list` 类型可通过 `sub_type` 区分普通列表和参考文献列表。
-- `image` / `chart` 类型可包含可选 `sub_type` 字段，用于透传视觉子类型。
-- 印章内容通过 `sub_type: "seal"` 的 `image` 类型表示。
-
-##### 示例数据
-
-```json
-[
-        {
-        "type": "text",
-        "text": "The response of flow duration curves to afforestation ",
-        "text_level": 1, 
-        "bbox": [
-            62,
-            480,
-            946,
-            904
-        ],
-        "page_idx": 0
-    },
-    {
-        "type": "image",
-        "img_path": "images/a8ecda1c69b27e4f79fce1589175a9d721cbdc1cf78b4cc06a015f3746f6b9d8.jpg",
-        "image_caption": [
-            "Fig. 1. Annual flow duration curves of daily flows from Pine Creek, Australia, 1989–2000. "
-        ],
-        "image_footnote": [],
-        "bbox": [
-            62,
-            480,
-            946,
-            904
-        ],
-        "page_idx": 1
-    },
-    {
-        "type": "equation",
-        "img_path": "images/181ea56ef185060d04bf4e274685f3e072e922e7b839f093d482c29bf89b71e8.jpg",
-        "text": "$$\nQ _ { \\% } = f ( P ) + g ( T )\n$$",
-        "text_format": "latex",
-        "bbox": [
-            62,
-            480,
-            946,
-            904
-        ],
-        "page_idx": 2
-    },
-    {
-        "type": "table",
-        "img_path": "images/e3cb413394a475e555807ffdad913435940ec637873d673ee1b039e3bc3496d0.jpg",
-        "table_caption": [
-            "Table 2 Significance of the rainfall and time terms "
-        ],
-        "table_footnote": [
-            "indicates that the rainfall term was significant at the $5 \\%$ level, $T$ indicates that the time term was significant at the $5 \\%$ level, \\* represents significance at the $10 \\%$ level, and na denotes too few data points for meaningful analysis. "
-        ],
-        "table_body": "<html><body><table><tr><td rowspan=\"2\">Site</td><td colspan=\"10\">Percentile</td></tr><tr><td>10</td><td>20</td><td>30</td><td>40</td><td>50</td><td>60</td><td>70</td><td>80</td><td>90</td><td>100</td></tr><tr><td>Traralgon Ck</td><td>P</td><td>P,*</td><td>P</td><td>P</td><td>P,</td><td>P,</td><td>P,</td><td>P,</td><td>P</td><td>P</td></tr><tr><td>Redhill</td><td>P,T</td><td>P,T</td><td>，*</td><td>**</td><td>P.T</td><td>P,*</td><td>P*</td><td>P*</td><td>*</td><td>，*</td></tr><tr><td>Pine Ck</td><td></td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td><td>T</td><td>T</td><td>na</td><td>na</td></tr><tr><td>Stewarts Ck 5</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P.T</td><td>P.T</td><td>P,T</td><td>na</td><td>na</td><td>na</td></tr><tr><td>Glendhu 2</td><td>P</td><td>P,T</td><td>P,*</td><td>P,T</td><td>P.T</td><td>P,ns</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td></tr><tr><td>Cathedral Peak 2</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>*,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td></tr><tr><td>Cathedral Peak 3</td><td>P.T</td><td>P.T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td></tr><tr><td>Lambrechtsbos A</td><td>P,T</td><td>P</td><td>P</td><td>P,T</td><td>*,T</td><td>*,T</td><td>*,T</td><td>*,T</td><td>*,T</td><td>T</td></tr><tr><td>Lambrechtsbos B</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td><td>T</td></tr><tr><td>Biesievlei</td><td>P,T</td><td>P.T</td><td>P,T</td><td>P,T</td><td>*,T</td><td>*,T</td><td>T</td><td>T</td><td>P,T</td><td>P,T</td></tr></table></body></html>",
-        "bbox": [
-            62,
-            480,
-            946,
-            904
-        ],  
-        "page_idx": 5
-    }
-]
-```
+> [!NOTE]
+> `content_list.json` 已废弃，不再生成。结构化内容输出请使用 `structured_content.json`，详见下文”通用结构化内容”章节。
 
 ### 通用结构化内容 (structured_content.json)(开发中，格式可能调整)
 
@@ -399,7 +230,7 @@
 
 ##### 功能说明
 
-`structured_content.json` 是 3.0 起新增的结构化输出文件，所有后端都会在保留 `content_list.json` 的同时额外输出该文件：
+`structured_content.json` 是 3.0 起新增的结构化输出文件，所有后端都会输出该文件：
 
 - 顶层是按页分组的列表，便于按页消费结果
 - 每个内容块使用统一的 `type + content` 结构，适合程序化处理
@@ -478,7 +309,7 @@
 ]
 ```
 
-### Hybrid 多模态输出结果
+### 多模态模型输出结果
 
 #### 模型推理结果 (model.json)
 
@@ -486,7 +317,7 @@
 
 ##### 文件格式说明
 
-- 该文件为 Hybrid 多模态模型的原始输出结果，包含两层嵌套list，外层表示页面，内层表示该页的内容块
+- 该文件为多模态模型的原始输出结果，包含两层嵌套list，外层表示页面，内层表示该页的内容块
 - 每个内容块都是一个dict，包含 `type`、`bbox`、`angle`、`content` 字段
 
 
@@ -494,26 +325,26 @@
 
 ```json
 {
-    "text": "文本",
-    "title": "标题", 
-    "equation": "行间公式",
-    "image": "图片",
-    "image_caption": "图片描述",
-    "image_footnote": "图片脚注",
-    "table": "表格",
-    "table_caption": "表格描述",
-    "table_footnote": "表格脚注",
-    "phonetic": "拼音",
-    "code": "代码块",
-    "code_caption": "代码描述",
-    "ref_text": "参考文献",
-    "algorithm": "算法块",
-    "list": "列表",
-    "header": "页眉",
-    "footer": "页脚",
-    "page_number": "页码",
-    "aside_text": "装订线旁注", 
-    "page_footnote": "页面脚注"
+    “text”: “文本”,
+    “title”: “标题”,
+    “equation”: “行间公式”,
+    “image”: “图片”,
+    “image_caption”: “图片描述”,
+    “image_footnote”: “图片脚注”,
+    “table”: “表格”,
+    “table_caption”: “表格描述”,
+    “table_footnote”: “表格脚注”,
+    “phonetic”: “拼音”,
+    “code”: “代码块”,
+    “code_caption”: “代码描述”,
+    “ref_text”: “参考文献”,
+    “algorithm”: “算法块”,
+    “list”: “列表”,
+    “header”: “页眉”,
+    “footer”: “页脚”,
+    “page_number”: “页码”,
+    “aside_text”: “装订线旁注”,
+    “page_footnote”: “页面脚注”
 }
 ```
 
@@ -531,34 +362,34 @@
 [
     [
         {
-            "type": "header",
-            "bbox": [
+            “type”: “header”,
+            “bbox”: [
                 0.077,
                 0.095,
                 0.18,
                 0.181
             ],
-            "angle": 0,
-            "score": null,
-            "block_tags": null,
-            "content": "ELSEVIER",
-            "format": null,
-            "content_tags": null
+            “angle”: 0,
+            “score”: null,
+            “block_tags”: null,
+            “content”: “ELSEVIER”,
+            “format”: null,
+            “content_tags”: null
         },
         {
-            "type": "title",
-            "bbox": [
+            “type”: “title”,
+            “bbox”: [
                 0.157,
                 0.228,
                 0.833,
                 0.253
             ],
-            "angle": 0,
-            "score": null,
-            "block_tags": null,
-            "content": "The response of flow duration curves to afforestation",
-            "format": null,
-            "content_tags": null
+            “angle”: 0,
+            “score”: null,
+            “block_tags”: null,
+            “content”: “The response of flow duration curves to afforestation”,
+            “format”: null,
+            “content_tags”: null
         }
     ]
 ]
@@ -569,283 +400,74 @@
 **文件命名格式**：`{原文件名}_middle.json`
 
 ##### 文件格式说明
-Hybrid 多模态 `middle.json` 在基础块结构上包含以下扩展：
 
-- list变成二级block，增加`sub_type`字段区分list类型:
+在 schema 2.0 中，多模态 tier 与其他 tier 产出相同的统一 `MiddleJson` 结构。以下块类型是标准 `blocks` 树的一部分（不再是扩展）：
+
+- list 是容器块，`content` 持有子 `text`/`ref_text`/嵌套 `list` 块，`sub_type` 区分 list 类型:
     * `text`（文本类型）
     * `ref_text`（引用类型）
 
-- 增加code类型block，code类型包含两种"sub_type":
-    * 分别是`code`和`algorithm`
-    * 至少有`code_body`, 可选`code_caption`
+- code 是容器块，`content` 持有 `code_body` 加可选 `code_caption`/`code_footnote`，`sub_type` 为:
+    * `code`
+    * `algorithm`
 
-- `discarded_blocks`内元素type增加以下类型:
-    * `header`（页眉）
-    * `footer`（页脚）
-    * `page_number`（页码）
-    * `aside_text`（装订线文本）
-    * `page_footnote`（脚注）
-- 所有block增加`angle`字段，用来表示旋转角度，0，90，180，270
+- 页面辅助块（`header`、`footer`、`page_number`、`aside_text`、`page_footnote`）作为顶层叶子块出现在 `blocks` 中，`content: str`——schema 2.0 不再有独立的 `discarded_blocks` 字段。
+- 所有 block 可能包含 `angle` 字段，用来表示旋转角度，0，90，180，270
 
 
 ##### 示例数据
 - list block 示例
     ```json
     {
-        "bbox": [
-            174,
-            155,
-            818,
-            333
-        ],
-        "type": "list",
-        "angle": 0,
-        "index": 11,
-        "blocks": [
+        “type”: “list”,
+        “bbox”: [0.068, 0.121, 0.319, 0.260],
+        “index”: 11,
+        “content”: [
             {
-                "bbox": [
-                    174,
-                    157,
-                    311,
-                    175
-                ],
-                "type": "text",
-                "angle": 0,
-                "lines": [
-                    {
-                        "bbox": [
-                            174,
-                            157,
-                            311,
-                            175
-                        ],
-                        "spans": [
-                            {
-                                "bbox": [
-                                    174,
-                                    157,
-                                    311,
-                                    175
-                                ],
-                                "type": "text",
-                                "content": "H.1 Introduction"
-                            }
-                        ]
-                    }
-                ],
-                "index": 3
+                “type”: “text”,
+                “bbox”: [0.068, 0.123, 0.122, 0.137],
+                “index”: 3,
+                “content”: “H.1 Introduction”
             },
             {
-                "bbox": [
-                    175,
-                    182,
-                    464,
-                    229
-                ],
-                "type": "text",
-                "angle": 0,
-                "lines": [
-                    {
-                        "bbox": [
-                            175,
-                            182,
-                            464,
-                            229
-                        ],
-                        "spans": [
-                            {
-                                "bbox": [
-                                    175,
-                                    182,
-                                    464,
-                                    229
-                                ],
-                                "type": "text",
-                                "content": "H.2 Example: Divide by Zero without Exception Handling"
-                            }
-                        ]
-                    }
-                ],
-                "index": 4
+                “type”: “text”,
+                “bbox”: [0.068, 0.142, 0.181, 0.179],
+                “index”: 4,
+                “content”: “H.2 Example: Divide by Zero without Exception Handling”
             }
         ],
-        "sub_type": "text"
+        “sub_type”: “text”
     }
     ```
 - code block 示例
     ```json
     {
-        "type": "code",
-        "bbox": [
-            114,
-            780,
-            885,
-            1231
-        ],
-        "blocks": [
+        “type”: “code”,
+        “bbox”: [0.045, 0.610, 0.346, 0.964],
+        “index”: 17,
+        “content”: [
             {
-                "bbox": [
-                    114,
-                    780,
-                    885,
-                    1231
-                ],
-                "lines": [
-                    {
-                        "bbox": [
-                            114,
-                            780,
-                            885,
-                            1231
-                        ],
-                        "spans": [
-                            {
-                                "bbox": [
-                                    114,
-                                    780,
-                                    885,
-                                    1231
-                                ],
-                                "type": "text",
-                                "content": "1 // Fig. H.1: DivideByZeroNoExceptionHandling.java  \n2 // Integer division without exception handling.  \n3 import java.util.Scanner;  \n4  \n5 public class DivideByZeroNoExceptionHandling  \n6 {  \n7 // demonstrates throwing an exception when a divide-by-zero occurs  \n8 public static int quotient( int numerator, int denominator )  \n9 {  \n10 return numerator / denominator; // possible division by zero  \n11 } // end method quotient  \n12  \n13 public static void main(String[] args)  \n14 {  \n15 Scanner scanner = new Scanner(System.in); // scanner for input  \n16  \n17 System.out.print(\"Please enter an integer numerator: \");  \n18 int numerator = scanner.nextInt();  \n19 System.out.print(\"Please enter an integer denominator: \");  \n20 int denominator = scanner.nextInt();  \n21"
-                            }
-                        ]
-                    }
-                ],
-                "index": 17,
-                "angle": 0,
-                "type": "code_body"
+                “type”: “code_body”,
+                “bbox”: [0.045, 0.610, 0.346, 0.964],
+                “index”: 17,
+                “content”: “1 // Fig. H.1: DivideByZeroNoExceptionHandling.java  \n2 // Integer division without exception handling.  \n3 import java.util.Scanner;  \n4  \n5 public class DivideByZeroNoExceptionHandling  \n6 {  \n7 // demonstrates throwing an exception when a divide-by-zero occurs  \n8 public static int quotient( int numerator, int denominator )  \n9 {  \n10 return numerator / denominator; // possible division by zero  \n11 } // end method quotient  \n12  \n13 public static void main(String[] args)  \n14 {  \n15 Scanner scanner = new Scanner(System.in); // scanner for input  \n16  \n17 System.out.print(\”Please enter an integer numerator: \”);  \n18 int numerator = scanner.nextInt();  \n19 System.out.print(\”Please enter an integer denominator: \”);  \n20 int denominator = scanner.nextInt();  \n21”
             },
             {
-                "bbox": [
-                    867,
-                    160,
-                    1280,
-                    189
-                ],
-                "lines": [
-                    {
-                        "bbox": [
-                            867,
-                            160,
-                            1280,
-                            189
-                        ],
-                        "spans": [
-                            {
-                                "bbox": [
-                                    867,
-                                    160,
-                                    1280,
-                                    189
-                                ],
-                                "type": "text",
-                                "content": "Algorithm 1 Modules for MCTSteg"
-                            }
-                        ]
-                    }
-                ],
-                "index": 19,
-                "angle": 0,
-                "type": "code_caption"
+                “type”: “code_caption”,
+                “bbox”: [0.339, 0.125, 0.500, 0.148],
+                “index”: 19,
+                “content”: “Algorithm 1 Modules for MCTSteg”
             }
         ],
-        "index": 17,
-        "sub_type": "code"
+        “sub_type”: “code”,
+        “guess_lang”: “java”
     }
     ```
 
 #### 内容列表 (content_list.json)
 
-**文件命名格式**：`{原文件名}_content_list.json`
-
-##### 文件格式说明
-Hybrid 多模态 `content_list.json` 包含以下扩展：
-
-- 新增`code`类型，code类型包含两种"sub_type":
-    * 分别是`code`和`algorithm`
-    * 至少有`code_body`, 可选`code_caption`
-  
-- 新增`list`类型，list类型包含两种"sub_type":
-    * `text`
-    * `ref_text` 
-
-- `image` / `chart` 类型可能带有可选 `sub_type` 字段，用于透传视觉子类型
-- `chart` 类型除 `img_path` 外，还可包含 `content`、`chart_caption`、`chart_footnote`，其中 `content` 保持原始 Markdown 表格文本
-
-- 增加所有所有`discarded_blocks`的输出内容
-    * `header`
-    * `footer`
-    * `page_number`
-    * `aside_text`
-    * `page_footnote`
-- 3.0 起，Hybrid 多模态输出也会同时输出 `*_structured_content.json`，其通用结构见上文“通用结构化内容”。
-
-##### 示例数据
-- code 类型 content
-    ```json
-    {
-        "type": "code",
-        "sub_type": "algorithm",
-        "code_caption": [
-            "Algorithm 1 Modules for MCTSteg"
-        ],
-        "code_body": "1: function GETCOORDINATE(d)  \n2:  $x \\gets d / l$ ,  $y \\gets d$  mod  $l$   \n3: return  $(x, y)$   \n4: end function  \n5: function BESTCHILD(v)  \n6:  $C \\gets$  child set of  $v$   \n7:  $v' \\gets \\arg \\max_{c \\in C} \\mathrm{UCTScore}(c)$   \n8:  $v'.n \\gets v'.n + 1$   \n9: return  $v'$   \n10: end function  \n11: function BACK PROPAGATE(v)  \n12: Calculate  $R$  using Equation 11  \n13: while  $v$  is not a root node do  \n14:  $v.r \\gets v.r + R$ ,  $v \\gets v.p$   \n15: end while  \n16: end function  \n17: function RANDOMSEARCH(v)  \n18: while  $v$  is not a leaf node do  \n19: Randomly select an untried action  $a \\in A(v)$   \n20: Create a new node  $v'$   \n21:  $(x, y) \\gets \\mathrm{GETCOORDINATE}(v'.d)$   \n22:  $v'.p \\gets v$ ,  $v'.d \\gets v.d + 1$ ,  $v'.\\Gamma \\gets v.\\Gamma$   \n23:  $v'.\\gamma_{x,y} \\gets a$   \n24: if  $a = -1$  then  \n25:  $v.lc \\gets v'$   \n26: else if  $a = 0$  then  \n27:  $v.mc \\gets v'$   \n28: else  \n29:  $v.rc \\gets v'$   \n30: end if  \n31:  $v \\gets v'$   \n32: end while  \n33: return  $v$   \n34: end function  \n35: function SEARCH(v)  \n36: while  $v$  is fully expanded do  \n37:  $v \\gets$  BESTCHILD(v)  \n38: end while  \n39: if  $v$  is not a leaf node then  \n40:  $v \\gets$  RANDOMSEARCH(v)  \n41: end if  \n42: return  $v$   \n43: end function",
-        "bbox": [
-            510,
-            87,
-            881,
-            740
-        ],
-        "page_idx": 0
-    }
-    ```
-- list 类型 content
-    ```json
-    {
-        "type": "list",
-        "sub_type": "text",
-        "list_items": [
-            "H.1 Introduction",
-            "H.2 Example: Divide by Zero without Exception Handling",
-            "H.3 Example: Divide by Zero with Exception Handling",
-            "H.4 Summary"
-        ],
-        "bbox": [
-            174,
-            155,
-            818,
-            333
-        ],
-        "page_idx": 0
-    }
-    ```
-- discarded 类型 content
-  ```json
-  [{
-      "type": "header",
-      "text": "Journal of Hydrology 310 (2005) 253-265",
-      "bbox": [
-          363,
-          164,
-          623,
-          177
-      ],
-      "page_idx": 0
-  },
-  {
-      "type": "page_footnote",
-      "text": "* Corresponding author. Address: Forest Science Centre, Department of Sustainability and Environment, P.O. Box 137, Heidelberg, Vic. 3084, Australia. Tel.: +61 3 9450 8719; fax: +61 3 9450 8644.",
-      "bbox": [
-          71,
-          815,
-          915,
-          841
-      ],
-      "page_idx": 0
-  }]
-  ```
-
+> [!NOTE]
+> `content_list.json` 已废弃，不再生成。结构化内容输出请使用 `structured_content.json`，其通用结构见上文”通用结构化内容”章节。
 
 ## 总结
 
@@ -853,14 +475,13 @@ Hybrid 多模态 `content_list.json` 包含以下扩展：
 
 - **模型输出**(使用原始输出):
     * model.json
-  
+
 - **调试和验证**(使用可视化文件):
     * layout.pdf
     * span.pdf 
   
 - **内容提取**(使用简化文件):
     * *.md
-    * content_list.json
     * structured_content.json
   
 - **二次开发**(使用结构化文件):

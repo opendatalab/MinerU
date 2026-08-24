@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import typer
-from click.core import Context
+from typer._click.core import Context
 from typer.core import TyperGroup
 
 from ..cli.version_command import show_version, version_cmd

@@ -25,18 +25,18 @@ from ..config import config
 from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
 from ..filetypes import IMAGE_EXTENSIONS, TEXT_EXTENSIONS, TEXT_FILE_TYPES
 from ..parser.tier import TierDependencyError, ensure_tier_runtime_dependencies
-from ..render.markdown import blocks_to_markdown
-from ..render.office.output import blocks_to_markdown as office_blocks_to_markdown
+from ..render._internal.markdown.blocks import render_single_block
 from ..types import (
-    EMPTY_BBOX,
     DEPLOYMENT_TIERS,
     TIERS,
-    Block,
+    BlockBase,
     BlockType,
     DeploymentTier,
+    ImagePayloadBlock,
+    PageBlock,
     PageInfo,
-    Span,
     Tier,
+    _iter_child_blocks,
     select_highest_cached_tier,
 )
 from ..utils.model_registry import ModelRepo, model_repos_for_tier
@@ -202,7 +202,7 @@ _VISUAL_BLOCK_LABELS = {
     BlockType.IMAGE: "Image block",
     BlockType.TABLE: "Table block",
     BlockType.CHART: "Chart block",
-    BlockType.INTERLINE_EQUATION: "Formula block",
+    BlockType.EQUATION: "Formula block",
 }
 
 
@@ -1445,7 +1445,7 @@ class DoclibServer(AsyncDoclibInterface):
                 block = _find_block_by_no(page, plan.target.block_no)
                 if block is None:
                     raise NotFoundError("block_not_found", f"Block {plan.target.block_no} not found.", "locator")
-                if _is_empty_bbox(block.bbox):
+                if block.bbox is None or _is_empty_bbox(block.bbox):
                     raise InvalidRequestError("bbox_not_available", "Block bbox is not available for image output.", "locator")
                 image_bytes = _transcode_image_bytes(
                     doc.crop_image(block.bbox, plan.target.page_no - 1, scale=doc.render_scale),
@@ -1788,9 +1788,9 @@ def _find_page(pages: list[PageInfo], page_no: int) -> PageInfo | None:
     return next((page for page in pages if page.page_idx + 1 == page_no), None)
 
 
-def _find_block_by_no(page: PageInfo, block_no: int) -> Block | None:
+def _find_block_by_no(page: PageInfo, block_no: int) -> PageBlock | None:
     target_index = block_no - 1
-    return next((block for block in page.para_blocks if block.index == target_index), None)
+    return next((block for block in page.blocks if block.index == target_index), None)
 
 
 def _is_empty_bbox(bbox: object) -> bool:
@@ -1802,16 +1802,16 @@ def _is_empty_bbox(bbox: object) -> bool:
         return True
     if not all(math.isfinite(value) for value in values):
         return True
-    return tuple(values) == tuple(float(v) for v in EMPTY_BBOX) or values[0] >= values[2] or values[1] >= values[3]
+    return values[0] >= values[2] or values[1] >= values[3]
 
 
-def _resolve_block_image_source(block: Block, *, image_dir: str) -> _BlockImageSource | None:
+def _resolve_block_image_source(block: BlockBase, *, image_dir: str) -> _BlockImageSource | None:
     if not _is_empty_bbox(block.bbox):
         return _BlockImageSource(kind="source_bbox")
-    for span in _iter_block_spans(block):
-        if not span.image_path:
+    for payload in _iter_block_image_payloads(block):
+        if not payload.image_path:
             continue
-        candidate = resolve_image_sidecar_path(image_dir, span.image_path)
+        candidate = resolve_image_sidecar_path(image_dir, payload.image_path)
         if candidate is not None and candidate.is_file():
             return _BlockImageSource(kind="sidecar", sidecar_path=candidate)
     return None
@@ -1824,23 +1824,24 @@ def _make_doclib_image_renderer(
     short_id: str,
     tier: Tier,
     page_no: int,
-) -> Callable[[Block], str]:
+) -> Callable[[BlockBase], str]:
     image_dir = parse_image_sidecar_dir(data_dir, sha256, tier)
 
-    def _render(block: Block) -> str:
+    def _render(block: BlockBase) -> str:
         label = _VISUAL_BLOCK_LABELS.get(block.type, "Image block")
         source = _resolve_block_image_source(block, image_dir=image_dir)
-        locator = block_ref(short_id, tier, page_no, block.index + 1) if source is not None else ""
+        block_no = block.index + 1 if block.index is not None else 0  # TODO: change after block.index's type changed.
+        locator = block_ref(short_id, tier, page_no, block_no) if source is not None else ""
         return f"![{label}]({locator})"
 
     return _render
 
 
-def _iter_block_spans(block: Block) -> Iterator[Span]:
-    for line in block.lines:
-        yield from line.spans
-    for child in block.blocks:
-        yield from _iter_block_spans(child)
+def _iter_block_image_payloads(block: BlockBase) -> Iterator[ImagePayloadBlock]:
+    if isinstance(block, ImagePayloadBlock):
+        yield block
+    for child in _iter_child_blocks(block):
+        yield from _iter_block_image_payloads(child)
 
 
 _PIL_IMAGE_FORMATS: dict[ImageFormat, str] = {
@@ -2077,7 +2078,8 @@ def _page_markdown_blocks(
     short_id: str = "",
     tier: Tier = "standard",
 ) -> list[tuple[int, str]]:
-    backend = page._backend
+    from mineru.config import config
+
     result: list[tuple[int, str]] = []
     image_renderer = _make_doclib_image_renderer(
         data_dir=data_dir,
@@ -2086,22 +2088,19 @@ def _page_markdown_blocks(
         tier=tier,
         page_no=page.page_idx + 1,
     )
-    for block in page.para_blocks:
-        if backend == "office":
-            rendered = office_blocks_to_markdown(
-                [block],
-                prefer_markdown_table=True,
-                image_renderer=image_renderer,
-            )
-        else:
-            rendered = blocks_to_markdown(
-                [block],
-                prefer_markdown_table=True,
-                image_renderer=image_renderer,
-            )
-        text = _join_markdown([item for item in rendered if item.strip()])
-        if text.strip():
-            result.append((block.index, text))
+    delimiters = config.render.latex_delimiters
+    for block in page.blocks:
+        rendered = render_single_block(
+            block,
+            delimiters=delimiters,
+            asset_base_url="",
+            image_renderer=image_renderer,
+        )
+        text = rendered.strip() if rendered else ""
+        if text:
+            # TODO: simplify after BlockBase.index type narrows to int (top-level blocks always have index)
+            block_index = block.index if block.index is not None else -1
+            result.append((block_index, text))
     return result
 
 

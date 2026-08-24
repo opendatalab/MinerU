@@ -111,11 +111,7 @@
 |--------|------|
 | `parse()` | Tool SDK 的便捷函数 |
 | `DocumentParser` | Parser 抽象接口 |
-| `PdfPipelineParser` | 旧 SDK 兼容类，内部委托 Hybrid medium effort |
-| `PdfVlmParser` | 调用 VLM backend 的 parser |
-| `PdfHybridParser` | 调用 hybrid backend 的 parser |
-| `DocxParser` / `PptxParser` / `XlsxParser` | Office parser |
-| `HtmlParser` | HTML parser |
+| `MinerUParser` | 统一解析器，支持 PDF/图片/DOCX/PPTX/XLSX |
 | `MinerUApiParser` | 通过 v1 API 委托解析的 parser |
 
 规范:

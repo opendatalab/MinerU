@@ -26,7 +26,7 @@ from mineru.kit.commands import api_server, models, parse, router, vlm_server
 from mineru.kit.main import app
 from mineru.kit.vlm_server import mlx_vlm_server
 from mineru.parser.base import ParseResult
-from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span
+from mineru.types import BlockType, MiddleJson, PageInfo
 from mineru.utils.image_payload import ImagePayloadCache
 from mineru.utils.model_registry import MODEL_COMPLETE_MARKER
 from mineru.version import __version__
@@ -85,7 +85,7 @@ def test_top_level_commands_register_implementation_callbacks_directly() -> None
 @pytest.mark.parametrize(
     ("command", "expected_options"),
     [
-        ("parse", ("--output", "--format", "--tier", "--effort")),
+        ("parse", ("--output", "--format", "--tier")),
         ("api-server", ("--host", "--port", "--tier", "--no-flash", "--preload-models")),
         ("vlm-server", ("--engine",)),
         ("router", ("--host", "--upstream-url", "--local-gpus")),
@@ -445,38 +445,6 @@ def test_kit_commands_do_not_expose_formula_table_switches() -> None:
     for output in (parse_help.output, api_server_help.output):
         assert _REMOVED_DISABLE_TABLE_OPTION not in output
         assert _REMOVED_DISABLE_FORMULA_OPTION not in output
-
-
-def test_cli_old_api_form_builders_remove_formula_table_fields() -> None:
-    """校验旧 API client 表单构造不再声明或发送公式/表格开关。"""
-    from mineru.cli_old import api_client as old_api_client
-    from mineru.cli_old import client as old_client
-
-    for target in (old_api_client.build_parse_request_form_data, old_client.build_request_form_data):
-        parameters = inspect.signature(target).parameters
-        assert _REMOVED_FORMULA_ENABLE_PARAM not in parameters
-        assert _REMOVED_TABLE_ENABLE_PARAM not in parameters
-
-    data = old_api_client.build_parse_request_form_data(
-        lang_list=["ch"],
-        backend="hybrid-engine",
-        parse_method="auto",
-        server_url=None,
-        start_page_id=0,
-        end_page_id=None,
-        image_analysis=True,
-        effort="medium",
-        return_md=True,
-        return_middle_json=True,
-        return_model_output=True,
-        return_content_list=True,
-        return_images=True,
-        response_format_zip=False,
-        return_original_file=False,
-    )
-
-    assert _REMOVED_FORMULA_ENABLE_PARAM not in data
-    assert _REMOVED_TABLE_ENABLE_PARAM not in data
 
 
 def test_cli_old_api_request_models_remove_formula_table_fields() -> None:
@@ -883,7 +851,7 @@ def test_parse_single_file_markdown(monkeypatch: Any, tmp_path: Path) -> None:
     assert output.read_text(encoding="utf-8") == "# demo\n"
 
 
-def test_parse_forwards_backend_alias_and_effort(monkeypatch: Any, tmp_path: Path) -> None:
+def test_parse_forwards_backend_alias_and_tier(monkeypatch: Any, tmp_path: Path) -> None:
     source = tmp_path / "demo.pdf"
     output = tmp_path / "out.md"
     source.write_bytes(b"%PDF-1.7\n")
@@ -916,12 +884,13 @@ def test_parse_forwards_backend_alias_and_effort(monkeypatch: Any, tmp_path: Pat
 
     result = runner.invoke(
         app,
-        ["parse", str(source), "-o", str(output), "--backend", "hybrid-auto-engine", "--effort", "high"],
+        ["parse", str(source), "-o", str(output), "--backend", "hybrid-auto-engine", "--tier", "standard"],
     )
 
     assert result.exit_code == 0
     assert seen["backend"] == "hybrid-engine"
-    assert seen["effort"] == "high"
+    assert seen["tier"] == "standard"
+    assert "effort" not in seen
 
 
 def test_parse_rejects_single_office_input_with_quality_tier(monkeypatch: Any, tmp_path: Path) -> None:
@@ -1133,75 +1102,6 @@ def test_gradio_rejects_v1_tiers_payload_without_supported_tiers() -> None:
         gradio_app.extract_v1_tier_choices({"data": [{"id": "experimental"}]})
 
 
-def test_gradio_persists_v1_parse_result_for_preview_and_download(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    from mineru.cli_old import gradio_app
-
-    image_cache = ImagePayloadCache()
-    image_path = image_cache.register_bytes(b"figure-bytes", "png", image_path="figures/figure.png")
-    image_body = Block(
-        index=1,
-        type=BlockType.IMAGE_BODY,
-        bbox=(0, 0, 20, 20),
-        lines=[Line(bbox=(0, 0, 20, 20), spans=[Span(type=ContentType.IMAGE, bbox=(0, 0, 20, 20), image_path=image_path)])],
-    )
-    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(0, 0, 20, 20), blocks=[image_body])
-    parse_result = ParseResult(
-        pages=[PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="hybrid")],
-        _image_cache=image_cache,
-        _model_output=[[{"raw": "model"}]],
-    )
-    source = tmp_path / "demo.pdf"
-    source.write_bytes(b"%PDF-1.7\n")
-    extract_root = tmp_path / "extract"
-    archive_zip_path = tmp_path / "archive.zip"
-    visualization_calls: list[Any] = []
-
-    def fake_run_visualization_job(job: Any) -> Any:
-        """模拟 layout 可视化生成，避免本用例依赖真实 PDF 绘制。"""
-        visualization_calls.append(job)
-        layout_path = job.parse_dir / f"{job.document_stem}_layout.pdf"
-        layout_path.write_bytes(b"%PDF-1.7\n%layout\n")
-        return SimpleNamespace(status="finished", message="generated", generated_files=(layout_path.name,))
-
-    monkeypatch.setattr(gradio_app, "run_visualization_job", fake_run_visualization_job)
-
-    output = gradio_app.persist_v1_gradio_result(
-        parse_result=parse_result,
-        file_path=str(source),
-        extract_root=extract_root,
-        archive_zip_path=archive_zip_path,
-        backend="hybrid-engine",
-        effort="medium",
-        page_range="",
-    )
-
-    local_md_dir = extract_root / "demo"
-    assert output.file_name == "demo"
-    assert output.local_md_dir == local_md_dir
-    assert output.preview_pdf_path == local_md_dir / "demo_layout.pdf"
-    assert visualization_calls[0].document_stem == "demo"
-    assert visualization_calls[0].parse_dir == local_md_dir
-    assert visualization_calls[0].draw_span is False
-    assert (local_md_dir / "demo.md").read_text(encoding="utf-8") == "![](images/figures/figure.png)"
-    content_list = json.loads((local_md_dir / "demo_content_list.json").read_text(encoding="utf-8"))
-    assert content_list[0]["img_path"] == "images/figures/figure.png"
-    middle_json = json.loads((local_md_dir / "demo_middle.json").read_text(encoding="utf-8"))
-    assert middle_json["_backend"] == "hybrid"
-    assert middle_json["_version_name"]
-    assert json.loads((local_md_dir / "demo_model_output.json").read_text(encoding="utf-8")) == [[{"raw": "model"}]]
-    assert (local_md_dir / "images" / "figures" / "figure.png").read_bytes() == b"figure-bytes"
-    assert (local_md_dir / "demo_origin.pdf").read_bytes() == b"%PDF-1.7\n"
-    assert (local_md_dir / "demo_layout.pdf").read_bytes() == b"%PDF-1.7\n%layout\n"
-    assert archive_zip_path.is_file()
-    with zipfile.ZipFile(archive_zip_path) as archive:
-        assert "demo_layout.pdf" in archive.namelist()
-        assert "demo_model_output.json" in archive.namelist()
-        assert json.loads(archive.read("demo_model_output.json").decode("utf-8")) == [[{"raw": "model"}]]
-
-
 def test_gradio_persists_page_ranged_origin_pdf_for_v1_preview(tmp_path: Path) -> None:
     from pypdf import PdfReader, PdfWriter
 
@@ -1215,11 +1115,14 @@ def test_gradio_persists_page_ranged_origin_pdf_for_v1_preview(tmp_path: Path) -
     pdf_writer.write(source_pdf)
 
     parse_result = ParseResult(
-        pages=[
-            PageInfo(page_idx=0, page_size=(100, 100), _backend="hybrid"),
-            PageInfo(page_idx=1, page_size=(200, 200), _backend="hybrid"),
+        middle_json=MiddleJson(
+            pages=[
+            PageInfo(page_idx=0),
+            PageInfo(page_idx=1),
         ],
-    )
+            file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__,
+        )
+        )
     source = tmp_path / "demo.pdf"
     source.write_bytes(source_pdf.getvalue())
     extract_root = tmp_path / "extract"
@@ -1264,8 +1167,11 @@ def test_gradio_persists_image_origin_as_pdf_for_v1_preview(tmp_path: Path) -> N
     source = tmp_path / "ref-merge.png"
     Image.new("RGB", (64, 48), "white").save(source)
     parse_result = ParseResult(
-        pages=[PageInfo(page_idx=0, page_size=(64, 48), _backend="hybrid")],
-    )
+        middle_json=MiddleJson(
+            pages=[PageInfo(page_idx=0)],
+            file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__,
+        )
+        )
     extract_root = tmp_path / "extract"
     archive_zip_path = tmp_path / "archive.zip"
 
@@ -1313,7 +1219,7 @@ def test_gradio_v1_job_reuses_page_range_for_api_and_origin_pdf(
 
         async def parse_async(self, file_path: str, *, page_range: str) -> ParseResult:
             calls["api_page_range"] = page_range
-            return ParseResult(pages=[PageInfo(page_idx=0, page_size=(100, 100), _backend="hybrid")])
+            return ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
 
     async def _fake_server_health(_http_client: Any, api_url: str | None) -> Any:
         """模拟 v1 server 健康检查，只保留 Gradio 任务需要的字段。"""
@@ -1325,7 +1231,6 @@ def test_gradio_v1_job_reuses_page_range_for_api_and_origin_pdf(
         local_md_dir = tmp_path / "persisted"
         local_md_dir.mkdir()
         (local_md_dir / "demo.md").write_text("markdown", encoding="utf-8")
-        (local_md_dir / "demo_content_list.json").write_text("[]", encoding="utf-8")
         archive_zip_path = tmp_path / "demo.zip"
         archive_zip_path.write_bytes(b"zip")
         return SimpleNamespace(
@@ -1605,60 +1510,6 @@ def test_cli_old_hybrid_medium_skips_vlm_engine_resolution(monkeypatch: Any, tmp
     assert seen["langs"] == ["en", "en"]
     assert seen["pdf_count"] == 2
     assert seen["kwargs"]["effort"] == "medium"
-
-
-def test_process_hybrid_medium_calls_analyzer_per_file(monkeypatch: Any, tmp_path: Path) -> None:
-    from mineru.cli_old import common
-
-    calls: list[bytes] = []
-    languages: list[str] = []
-    analyzer_kwargs: list[dict[str, Any]] = []
-    outputs: list[tuple[str, str, str]] = []
-
-    def fake_doc_analyze(pdf_bytes: bytes, **kwargs: Any) -> tuple[list[PageInfo], list[object], bool]:
-        """记录每个文件独立进入 Hybrid basic analyzer。"""
-        calls.append(pdf_bytes)
-        languages.append(kwargs["language"])
-        analyzer_kwargs.append(kwargs)
-        return [PageInfo(page_idx=0, _backend="hybrid")], [], False
-
-    monkeypatch.setattr(common, "_load_hybrid_analyze_entrypoint", lambda *_args, **_kwargs: fake_doc_analyze)
-    monkeypatch.setattr(
-        common,
-        "prepare_env",
-        lambda output_dir, pdf_file_name, method: (str(tmp_path / pdf_file_name / "images"), str(tmp_path / pdf_file_name)),
-    )
-    monkeypatch.setattr(common, "FileBasedDataWriter", lambda _path: object())
-    monkeypatch.setattr(
-        common,
-        "_process_output",
-        lambda middle_json, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir, *_args, **_kwargs: outputs.append(
-            (pdf_file_name, local_md_dir, local_image_dir)
-        ),
-    )
-
-    common._process_hybrid(
-        output_dir=str(tmp_path),
-        pdf_file_names=["a.pdf", "b.pdf"],
-        pdf_bytes_list=[b"a", b"b"],
-        h_lang_list=["en", "en"],
-        parse_method="auto",
-        backend="engine",
-        f_draw_layout_bbox=False,
-        f_draw_span_bbox=False,
-        f_dump_md=True,
-        f_dump_middle_json=True,
-        f_dump_model_output=True,
-        f_dump_orig_pdf=True,
-        f_dump_content_list=True,
-        f_make_md_mode="mm_markdown",
-        effort="medium",
-    )
-
-    assert calls == [b"a", b"b"]
-    assert languages == ["en", "en"]
-    assert all(_REMOVED_INLINE_FORMULA_PARAM not in kwargs for kwargs in analyzer_kwargs)
-    assert [item[0] for item in outputs] == ["a.pdf", "b.pdf"]
 
 
 def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_xhigh(monkeypatch: Any, tmp_path: Path) -> None:

@@ -7,6 +7,7 @@ from mineru.config import LatexDelimitersConfig, config
 from mineru.render._internal.common.planner import PlannedBlock, build_render_plan
 from mineru.render._internal.markdown.blocks import render_planned_block
 from mineru.render.contracts import MarkdownRenderMode
+from mineru.render.image import ImageRenderer
 from mineru.types import PAGE_AUXILIARY_BLOCK_TYPES, MiddleJson
 
 _PAGE_SEPARATOR = "\n\n---\n\n"
@@ -17,6 +18,7 @@ def render_markdown(
     *,
     mode: MarkdownRenderMode = MarkdownRenderMode.DEFAULT,
     asset_base_url: str = "",
+    image_renderer: ImageRenderer | None = None,
 ) -> str:
     """把严格 MiddleJson 纯函数式渲染为 Markdown 字符串。"""
     if not isinstance(middle_json, MiddleJson):
@@ -32,6 +34,7 @@ def render_markdown(
             mode=mode,
             delimiters=delimiters,
             asset_base_url=asset_base_url,
+            image_renderer=image_renderer,
         )
         for page in planned_pages
     ]
@@ -46,6 +49,7 @@ def _render_page(
     mode: MarkdownRenderMode,
     delimiters: LatexDelimitersConfig,
     asset_base_url: str,
+    image_renderer: ImageRenderer | None = None,
 ) -> str:
     """渲染单页逻辑块，并在默认模式中过滤重复页元素。"""
     rendered: list[str] = []
@@ -54,7 +58,12 @@ def _render_page(
             continue
         if mode is MarkdownRenderMode.DEFAULT and planned.block.type in PAGE_AUXILIARY_BLOCK_TYPES:
             continue
-        text = render_planned_block(planned, delimiters=delimiters, asset_base_url=asset_base_url)
+        text = render_planned_block(
+            planned,
+            delimiters=delimiters,
+            asset_base_url=asset_base_url,
+            image_renderer=image_renderer,
+        )
         if text and text.strip():
             rendered.append(text.strip("\n"))
     return "\n\n".join(rendered)
