@@ -21,6 +21,10 @@ from mineru.model.flash.office.chart import extract_chart_html_from_ooxml
 from mineru.model.flash.office.image import (
     serialize_office_image,
 )
+from mineru.model.flash.office.ooxml_equation import (
+    OoxmlEquationDecoder,
+    is_equation_3_prog_id,
+)
 from mineru.types import RAW_CAPTION
 from mineru.model.flash.docx.package_normalizer import normalize_docx_package
 from mineru.model.flash.docx.tools.math.omml import oMath2Latex
@@ -49,6 +53,7 @@ class DocxConverter:
         "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
         "wp": "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
         "mc": "http://schemas.openxmlformats.org/markup-compatibility/2006",
+        "o": "urn:schemas-microsoft-com:office:office",
         "v": "urn:schemas-microsoft-com:vml",
         "wps": "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
         "w10": "urn:schemas-microsoft-com:office:word",
@@ -106,6 +111,8 @@ class DocxConverter:
         self._numbering_start_cache: dict[tuple[int, int], int] = {}
         self._style_lookup_cache: dict[tuple[Any, Optional[str]], Any] = {}
         self._style_bool_cache: dict[tuple[int, str], Optional[bool]] = {}
+        self._ooxml_equation_decoder = OoxmlEquationDecoder()
+        self._mtef_warned_relations: set[tuple[str, str]] = set()
 
     @staticmethod
     def _local_name(element: Any) -> Optional[str]:
@@ -122,6 +129,133 @@ class DocxConverter:
         """重置样式查询缓存，避免同一 converter 实例多次转换时复用旧文档样式。"""
         self._style_lookup_cache = {}
         self._style_bool_cache = {}
+
+    @staticmethod
+    def _docx_part_key(part: Any) -> str:
+        """返回用于公式关系缓存和告警去重的 DOCX part 名称。"""
+
+        return str(getattr(part, "partname", ""))
+
+    def _require_document_part(self) -> Any:
+        """返回已加载的主文档 part，生命周期异常时立即失败。"""
+
+        if self.docx_obj is None:
+            raise ValueError("DOCX document part is not initialized")
+        return self.docx_obj.part
+
+    def _decode_docx_ole_equation(
+        self,
+        ole_element: Any,
+        part: Any,
+    ) -> str | None:
+        """从当前 DOCX part 的内部 OLE relationship 解码 Equation.3。"""
+
+        prog_id = ole_element.get("ProgID") or ole_element.get("ProgId")
+        if not is_equation_3_prog_id(prog_id):
+            return None
+        object_type = (ole_element.get("Type") or "Embed").strip().casefold()
+        if object_type != "embed":
+            return None
+        draw_aspect = (ole_element.get("DrawAspect") or "Content").strip().casefold()
+        if draw_aspect == "icon":
+            return None
+
+        relationship_id = ole_element.get(
+            "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+        )
+        relationships = getattr(part, "rels", None)
+        relationship = relationships.get(relationship_id) if relationships is not None else None
+        if relationship is None or getattr(relationship, "is_external", False):
+            return None
+        reltype = str(getattr(relationship, "reltype", ""))
+        if not reltype.rstrip("/").casefold().endswith("/oleobject"):
+            return None
+        try:
+            blob = relationship.target_part.blob
+        except (AttributeError, KeyError, ValueError):
+            blob = None
+        latex = self._ooxml_equation_decoder.decode(
+            blob,
+            prog_id=prog_id,
+        )
+        if latex is not None:
+            return latex
+
+        warning_key = (self._docx_part_key(part), str(relationship_id))
+        if warning_key not in self._mtef_warned_relations:
+            self._mtef_warned_relations.add(warning_key)
+            logger.warning(
+                "DOCX_MTEF_FALLBACK: part={!r}, relationship={!r} has an invalid or unsupported Equation.3 object",
+                warning_key[0],
+                relationship_id,
+            )
+        return None
+
+    def _docx_formula_tokens(
+        self,
+        element: Any,
+        part: Any,
+    ) -> list[tuple[str, str]]:
+        """按文档顺序提取文本、OMML 和 MTEF，并选择单一兼容分支。"""
+
+        tag_name = self._local_name(element)
+        if tag_name is None:
+            return []
+        tag = str(getattr(element, "tag", ""))
+
+        if tag_name == "AlternateContent":
+            branch_tokens = [
+                self._docx_formula_tokens(child, part)
+                for child in element
+                if self._local_name(child) in {"Choice", "Fallback"}
+            ]
+            for token_kind in ("omml", "mtef"):
+                for tokens in branch_tokens:
+                    if any(kind == token_kind for kind, _value in tokens):
+                        return tokens
+            return branch_tokens[0] if branch_tokens else []
+
+        if tag_name == "txbxContent":
+            # 外层段落会单独遍历文本框内容，避免在此重复提取公式和文字。
+            return []
+
+        if tag_name == "oMath" and "officeDocument/2006/math" in tag:
+            try:
+                latex = str(oMath2Latex(element)).strip()
+            except Exception as exc:
+                logger.debug(f"Failed to convert DOCX OMML equation to LaTeX: {exc}")
+                return []
+            return [("omml", latex)] if latex else []
+
+        if tag_name == "OLEObject":
+            latex = self._decode_docx_ole_equation(element, part)
+            return [("mtef", latex)] if latex else []
+
+        if tag_name == "t" and "officeDocument/2006/math" not in tag:
+            return [("text", element.text)] if isinstance(element.text, str) else []
+
+        tokens: list[tuple[str, str]] = []
+        for child in element:
+            tokens.extend(self._docx_formula_tokens(child, part))
+        return tokens
+
+    def _picture_is_equation_preview(self, image: Any, part: Any) -> bool:
+        """判断图片是否属于同一容器中已恢复的 OMML/MTEF 公式预览。"""
+
+        for ancestor in image.iterancestors():
+            ancestor_name = self._local_name(ancestor)
+            if ancestor_name == "object":
+                for ole_element in ancestor.findall(
+                    ".//o:OLEObject",
+                    namespaces=DocxConverter._BLIP_NAMESPACES,
+                ):
+                    if self._decode_docx_ole_equation(ole_element, part):
+                        return True
+                continue
+            if ancestor_name == "AlternateContent":
+                tokens = self._docx_formula_tokens(ancestor, part)
+                return any(kind in {"omml", "mtef"} for kind, _value in tokens)
+        return False
 
     def _get_style_id_from_property(
         self,
@@ -730,6 +864,8 @@ class DocxConverter:
         self._numbering_level_cache = {}
         self._numbering_start_cache = {}
         self._reset_style_caches()
+        self._ooxml_equation_decoder = OoxmlEquationDecoder()
+        self._mtef_warned_relations = set()
         # 读取文件字节，以便 mammoth 和 python-docx 各自使用独立读取流
         file_bytes = self._sanitize_missing_internal_relationships(file_stream.read())
         # 使用完整 DOCX 上下文预解析顶层表格，避免转换非表格正文带来的资源浪费
@@ -852,10 +988,16 @@ class DocxConverter:
                 # 锚定图片在段落中浮动定位，段落文本应出现在图片之前
                 if is_anchored and tag_name == "p":
                     self._handle_text_elements(element)
-                    self._handle_pictures(picture_refs)
+                    self._handle_pictures(
+                        picture_refs,
+                        part=self._require_document_part(),
+                    )
                 else:
                     # 处理图片元素
-                    self._handle_pictures(picture_refs)
+                    self._handle_pictures(
+                        picture_refs,
+                        part=self._require_document_part(),
+                    )
                     # 如果是段落元素，同时处理其中的文本内容（如描述性文字）
                     if tag_name == "p":
                         self._handle_text_elements(element)
@@ -900,7 +1042,7 @@ class DocxConverter:
 
         图片会被 mammoth 转换为内联 data-URI base64 格式（<img src="data:...">）。
 
-        注意：mammoth 不支持 OMML（Office Math Markup Language）公式，会静默丢弃
+        注意：mammoth 不支持 OMML 或 Equation.3/MTEF 公式，会静默丢弃
         表格单元格内的公式。本方法在获取 mammoth HTML 后，会同步遍历原始 DOCX XML，
         将丢失的公式重新注入对应的 HTML 单元格。
 
@@ -928,13 +1070,22 @@ class DocxConverter:
 
             logger.debug(f"Pre-parsed {len(top_level_tables)} top-level tables via filtered mammoth conversion")
 
-            result_tables = self._align_mammoth_tables_to_xml_tables(top_level_tables, xml_top_tables)
+            result_tables = self._align_mammoth_tables_to_xml_tables(
+                top_level_tables,
+                xml_top_tables,
+                docx_obj.part,
+            )
             return result_tables
         except Exception as e:
             logger.debug(f"Could not pre-parse tables with filtered mammoth conversion: {e}")
             return []
 
-    def _align_mammoth_tables_to_xml_tables(self, html_tables, xml_tables) -> list:
+    def _align_mammoth_tables_to_xml_tables(
+        self,
+        html_tables: Any,
+        xml_tables: Any,
+        source_part: Any,
+    ) -> list:
         """
         将 Mammoth 输出表格按正文顶层 XML 表格重新对齐。
 
@@ -964,7 +1115,11 @@ class DocxConverter:
                 aligned_tables.append(None)
                 continue
 
-            matched_html_table = self._inject_equations_into_table(matched_html_table, xml_table)
+            matched_html_table = self._inject_equations_into_table(
+                matched_html_table,
+                xml_table,
+                source_part,
+            )
             aligned_tables.append(str(matched_html_table))
 
         if len(html_tables) != len(xml_tables):
@@ -1050,7 +1205,11 @@ class DocxConverter:
         return {
             "row_count": len(xml_table.xpath('./*[local-name()="tr"]')),
             "cell_count": len(xml_table.xpath('.//*[local-name()="tc"]')),
-            "image_count": len(xml_table.xpath('.//*[local-name()="blip"]')),
+            "image_count": len(
+                xml_table.xpath(
+                    './/*[local-name()="blip" or local-name()="imagedata"]'
+                )
+            ),
             "text": DocxConverter._normalize_table_match_text(text),
         }
 
@@ -1078,11 +1237,16 @@ class DocxConverter:
             return True
         return xml_text.startswith(html_text) or html_text.startswith(xml_text)
 
-    def _inject_equations_into_table(self, html_table, xml_table):
+    def _inject_equations_into_table(
+        self,
+        html_table: Any,
+        xml_table: Any,
+        source_part: Any,
+    ) -> Any:
         """
-        将 DOCX XML 表格中的 OMML 公式注入到 mammoth 生成的 HTML 表格中。
+        将 DOCX XML 表格中的 OMML/MTEF 公式注入 mammoth HTML 表格。
 
-        mammoth 会静默丢弃 OMML（Office Math Markup Language）公式，导致含公式
+        mammoth 会静默丢弃 OMML 与 Equation.3 公式，导致含公式
         的表格单元格在 HTML 中为空。本方法并行遍历 HTML 表格（BeautifulSoup 对象）
         和 XML 表格（lxml 元素），对含有 OMML 公式的单元格用包含公式占位符的内容
         替换原来的空内容。
@@ -1094,11 +1258,13 @@ class DocxConverter:
         Returns:
             BeautifulSoup Tag: 注入公式后的 <table> 元素（原地修改并返回）
         """
-        OMML_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
         W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
         # 快速检查：该表格是否含有任何公式
-        if not xml_table.findall(f".//{{{OMML_NS}}}oMath"):
+        if not any(
+            kind in {"omml", "mtef"}
+            for kind, _value in self._docx_formula_tokens(xml_table, source_part)
+        ):
             return html_table
 
         from bs4 import BeautifulSoup
@@ -1118,11 +1284,20 @@ class DocxConverter:
                 continue
 
             for html_cell, xml_cell in zip(html_cells, xml_cells):
-                if not xml_cell.findall(f".//{{{OMML_NS}}}oMath"):
+                if not any(
+                    kind in {"omml", "mtef"}
+                    for kind, _value in self._docx_formula_tokens(
+                        xml_cell,
+                        source_part,
+                    )
+                ):
                     continue
 
                 # 该单元格含公式，重建其 HTML 内容以保留公式
-                new_content = self._build_cell_html_with_equations(xml_cell)
+                new_content = self._build_cell_html_with_equations(
+                    xml_cell,
+                    source_part,
+                )
                 if new_content:
                     html_cell.clear()
                     new_soup = BeautifulSoup(new_content, "html.parser")
@@ -1131,11 +1306,15 @@ class DocxConverter:
 
         return html_table
 
-    def _build_cell_html_with_equations(self, xml_cell) -> str:
+    def _build_cell_html_with_equations(
+        self,
+        xml_cell: Any,
+        source_part: Any,
+    ) -> str:
         """
-        为含 OMML 公式的表格单元格构建 HTML 内容字符串。
+        为含 OMML/MTEF 公式的表格单元格构建 HTML 内容字符串。
 
-        遍历单元格内的段落，将普通文本和 OMML 公式（转换为 LaTeX 占位符）
+        遍历单元格内的段落，将普通文本和 OMML/MTEF 公式
         混合在一起，生成与 mammoth 输出风格一致的 HTML 片段。
 
         Args:
@@ -1145,23 +1324,50 @@ class DocxConverter:
             str: 单元格内容的 HTML 字符串，如 "<p>text<eq>latex</eq></p>"；
                  若单元格为空则返回空字符串
         """
-        W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-
         parts = []
         for child in xml_cell:
             child_tag = self._local_name(child)
             if child_tag is None:
                 continue
             if child_tag == "p":
-                para_html = self._build_paragraph_html_with_equations(child)
+                para_html = self._build_paragraph_html_with_equations(
+                    child,
+                    source_part,
+                )
                 if para_html is not None:
                     parts.append(para_html)
             # 嵌套表格暂不处理，由外层逻辑负责
         return "".join(parts)
 
-    def _build_paragraph_html_with_equations(self, xml_para) -> Optional[str]:
+    def _inject_equations_into_table_html(
+        self,
+        html: str,
+        xml_table: Any,
+        source_part: Any,
+    ) -> str:
+        """把孤立表格 HTML 包装为 Tag 后复用 OMML/MTEF 注入逻辑。"""
+
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(html, "html.parser")
+        html_table = soup.find("table")
+        if html_table is None:
+            return html
+        return str(
+            self._inject_equations_into_table(
+                html_table,
+                xml_table,
+                source_part,
+            )
+        )
+
+    def _build_paragraph_html_with_equations(
+        self,
+        xml_para: Any,
+        source_part: Any,
+    ) -> Optional[str]:
         """
-        为可能含 OMML 公式的段落构建 HTML 字符串。
+        为可能含 OMML/MTEF 公式的段落构建 HTML 字符串。
 
         使用与 _handle_equations_in_text 相同的迭代逻辑：
         - 普通 <w:t> 元素的文本直接收集
@@ -1175,24 +1381,12 @@ class DocxConverter:
         Returns:
             str | None: 格式为 "<p>...</p>" 的 HTML 字符串；段落为空时返回 None
         """
-        items = []
-        for subt in xml_para.iter():
-            tag_name = self._local_name(subt)
-            if tag_name is None:
-                continue
-            tag = subt.tag
-            # 普通文本节点（排除 math 命名空间下的 <m:t>）
-            if tag_name == "t" and "math" not in tag:
-                if isinstance(subt.text, str) and subt.text:
-                    items.append(subt.text)
-            # OMML 公式元素（排除 oMathPara 容器避免重复处理）
-            elif "oMath" in tag and "oMathPara" not in tag:
-                try:
-                    latex = str(oMath2Latex(subt)).strip()
-                    if latex:
-                        items.append(self.equation_bookends.format(EQ=latex))
-                except Exception as e:
-                    logger.debug(f"Failed to convert OMML equation to LaTeX: {e}")
+        items: list[str] = []
+        for token_kind, value in self._docx_formula_tokens(xml_para, source_part):
+            if token_kind == "text":
+                items.append(value)
+            else:
+                items.append(self.equation_bookends.format(EQ=value))
 
         if not items:
             return None
@@ -1229,6 +1423,11 @@ class DocxConverter:
         t = body_reader.read_all([table])
         res = convert_document_element_to_html(t.value[0])
         html = self._normalize_table_colspans(res.value)
+        html = self._inject_equations_into_table_html(
+            html,
+            element,
+            self._require_document_part(),
+        )
         table_block = {
             "type": BlockType.TABLE,
             "content": html,
@@ -1354,7 +1553,11 @@ class DocxConverter:
         paragraph_elements = self._get_paragraph_elements(paragraph)
         paragraph_text = self._get_paragraph_text(paragraph)
         paragraph_anchor = self._extract_paragraph_bookmark(element)
-        text, equations = self._handle_equations_in_text(element=element, text=paragraph_text)
+        text, equations = self._handle_equations_in_text(
+            element=element,
+            text=paragraph_text,
+            part=paragraph.part,
+        )
 
         if text is None:
             return None
@@ -1521,7 +1724,12 @@ class DocxConverter:
         if is_section_end:
             self._start_new_page()
 
-    def _handle_pictures(self, picture_refs: Any):
+    def _handle_pictures(
+        self,
+        picture_refs: Any,
+        *,
+        part: Any | None = None,
+    ) -> None:
         """
         处理图片。
 
@@ -1538,6 +1746,8 @@ class DocxConverter:
                 rel_id = image.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
             return rel_id
 
+        source_part = part or self._require_document_part()
+
         def get_docx_image_part(image: Any) -> Optional[Any]:
             """
             获取 DOCX 图像 part。
@@ -1550,14 +1760,16 @@ class DocxConverter:
                 Optional[Any]: 图像 part
             """
             rId = get_docx_image_rel_id(image)
-            if rId in self.docx_obj.part.rels:
+            if rId in source_part.rels:
                 # 使用关系 ID 访问图像部分
-                return self.docx_obj.part.rels[rId].target_part
+                return source_part.rels[rId].target_part
             return None
 
         seen_rel_ids: set[str] = set()
         # 遍历所有图片引用元素，支持 DrawingML blip 和 VML imagedata。
         for image in picture_refs:
+            if self._picture_is_equation_preview(image, source_part):
+                continue
             rel_id = get_docx_image_rel_id(image)
             if rel_id and rel_id in seen_rel_ids:
                 continue
@@ -1966,38 +2178,36 @@ class DocxConverter:
             script=script,
         )
 
-    def _handle_equations_in_text(self, element, text):
+    def _handle_equations_in_text(
+        self,
+        element: Any,
+        text: str,
+        *,
+        part: Any | None = None,
+    ) -> tuple[str, list[str]]:
         """
         处理文本中的公式。
 
         Args:
             element: 元素对象
             text: 文本内容
+            part: 当前段落所属的 OOXML part，用于解析局部 relationship
 
         Returns:
             tuple: (处理后的文本, 公式列表)
         """
-        only_texts = []
-        only_equations = []
-        texts_and_equations = []
-        for subt in element.iter():
-            tag_name = self._local_name(subt)
-            if tag_name is None:
+        source_part = part or self._require_document_part()
+        only_texts: list[str] = []
+        only_equations: list[str] = []
+        texts_and_equations: list[str] = []
+        for token_kind, value in self._docx_formula_tokens(element, source_part):
+            if token_kind == "text":
+                only_texts.append(value)
+                texts_and_equations.append(value)
                 continue
-            tag = subt.tag
-            if tag_name == "t" and "math" not in tag:
-                if isinstance(subt.text, str):
-                    only_texts.append(subt.text)
-                    texts_and_equations.append(subt.text)
-            elif "oMath" in tag and "oMathPara" not in tag:
-                try:
-                    latex_equation = str(oMath2Latex(subt)).strip()
-                except Exception as e:
-                    logger.debug(f"Failed to convert OMML equation to LaTeX: {e}")
-                    continue
-                if len(latex_equation) > 0:
-                    only_equations.append(self.equation_bookends.format(EQ=latex_equation))
-                    texts_and_equations.append(self.equation_bookends.format(EQ=latex_equation))
+            equation = self.equation_bookends.format(EQ=value)
+            only_equations.append(equation)
+            texts_and_equations.append(equation)
 
         if len(only_equations) < 1:
             return text, []
@@ -2927,7 +3137,11 @@ class DocxConverter:
             try:
                 p_obj = Paragraph(p, self.docx_obj)
                 paragraph_elements = self._get_paragraph_elements(p_obj)
-                text, equations = self._handle_equations_in_text(element=p, text=p_obj.text)
+                text, equations = self._handle_equations_in_text(
+                    element=p,
+                    text=p_obj.text,
+                    part=p_obj.part,
+                )
                 target_anchor = self._extract_toc_target_anchor(p)
                 if target_anchor and target_anchor.startswith("_Toc"):
                     self.toc_anchor_set.add(target_anchor)
@@ -3044,7 +3258,11 @@ class DocxConverter:
         """
         paragraph_elements = self._get_paragraph_elements(paragraph)
         paragraph_text = self._get_paragraph_text(paragraph)
-        text, equations = self._handle_equations_in_text(element=paragraph._element, text=paragraph_text)
+        text, equations = self._handle_equations_in_text(
+            element=paragraph._element,
+            text=paragraph_text,
+            part=paragraph.part,
+        )
 
         if text is None:
             return ""

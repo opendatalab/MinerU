@@ -20,9 +20,19 @@ from pydantic import BaseModel, Field, NonNegativeInt, PositiveInt
 from pydantic.dataclasses import dataclass
 
 from mineru.model.flash.office.image import is_vector_image, serialize_vector_image_with_placeholder
+from mineru.model.flash.office.ooxml_equation import OoxmlEquationDecoder
 from mineru.model.flash.docx.tools.math.omml import oMath2Latex
 from mineru.model.office_stream import read_stream_bytes_from_start, rewind_stream
-from mineru.model.flash.xlsx.package_normalizer import normalize_xlsx_package
+from mineru.model.flash.xlsx.package_normalizer import (
+    normalize_xlsx_package,
+    strip_xlsx_ole_objects_for_openpyxl,
+)
+from mineru.model.flash.xlsx.ooxml_ole import (
+    XlsxOleEquationArtifact,
+    package_has_sheet_ole_objects,
+    read_sheet_equation_artifacts,
+    workbook_sheet_parts,
+)
 from mineru.types import BlockType
 from mineru.utils.pdf_reader import image_to_b64str
 
@@ -165,6 +175,14 @@ class XlsxConverter:
         self.sheet_images = []
         self.table_image_map = {}
         self.math_map = {}
+        self._sheet_part_by_title: dict[str, str] = {}
+        self._ole_artifacts: list[XlsxOleEquationArtifact] = []
+        self._omml_shape_ids: set[str] = set()
+        self._omml_artifacts: list[tuple[int, int, str, int]] = []
+        self._suppressed_ole_previews: set[
+            tuple[tuple[int, int], str]
+        ] = set()
+        self._ooxml_equation_decoder = OoxmlEquationDecoder()
         self._merged_cell_lookup_cache = {}
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
 
@@ -200,6 +218,12 @@ class XlsxConverter:
         self.table_image_map = {}
         self.cell_image_map = {}
         self.math_map = {}
+        self._sheet_part_by_title = {}
+        self._ole_artifacts = []
+        self._omml_shape_ids = set()
+        self._omml_artifacts = []
+        self._suppressed_ole_previews = set()
+        self._ooxml_equation_decoder = OoxmlEquationDecoder()
         self._merged_cell_lookup_cache = {}
 
     def _convert_package_bytes(self, file_bytes: bytes) -> None:
@@ -211,14 +235,25 @@ class XlsxConverter:
         self._reset_state()
         try:
             self.zf = zipfile.ZipFile(file_stream)
+            self._sheet_part_by_title = workbook_sheet_parts(self.zf)
         except Exception as e:
             logger.warning(f"Failed to open zip file: {e}")
             self.zf = None
 
         try:
-            rewind_stream(file_stream)
+            workbook_stream: BinaryIO = file_stream
+            if self.zf is not None and package_has_sheet_ole_objects(
+                self.zf,
+                self._sheet_part_by_title,
+            ):
+                file_bytes = read_stream_bytes_from_start(file_stream)
+                workbook_stream = BytesIO(
+                    strip_xlsx_ole_objects_for_openpyxl(file_bytes)
+                )
+            else:
+                rewind_stream(file_stream)
             self.workbook = load_workbook(
-                filename=file_stream,
+                filename=workbook_stream,
                 data_only=True,
                 rich_text=True,
             )
@@ -287,22 +322,130 @@ class XlsxConverter:
         if isinstance(sheet, Worksheet):
             # Pre-calc maps
             self.math_map = self._map_math_formulas_to_cells(sheet)
+            self._ole_artifacts = self._read_ole_equation_artifacts(sheet)
+            self._suppressed_ole_previews = {
+                ((artifact.row, artifact.col), artifact.preview_base64)
+                for artifact in self._ole_artifacts
+                if artifact.shape_id in self._omml_shape_ids
+                and artifact.row is not None
+                and artifact.col is not None
+                and artifact.preview_base64 is not None
+            }
+            self._ole_artifacts = [
+                artifact
+                for artifact in self._ole_artifacts
+                if artifact.shape_id not in self._omml_shape_ids
+            ]
+            for artifact in self._ole_artifacts:
+                if artifact.latex is None or artifact.row is None or artifact.col is None:
+                    continue
+                self.math_map[(artifact.row, artifact.col)].append(artifact.latex)
             self.sheet_images = self._collect_sheet_images(sheet)
+            ole_previews = self._suppressed_ole_previews | {
+                ((artifact.row, artifact.col), artifact.preview_base64)
+                for artifact in self._ole_artifacts
+                if artifact.row is not None
+                and artifact.col is not None
+                and artifact.preview_base64
+            }
+            self.sheet_images = [
+                image_info
+                for image_info in self.sheet_images
+                if (image_info.get("anchor"), image_info.get("base64"))
+                not in ole_previews
+            ]
             self.table_image_map = collections.defaultdict(list)
             for image_info in self.sheet_images:
                 anchor = image_info["anchor"]
                 if anchor[0] is None or anchor[1] is None:
                     continue
                 self.table_image_map[anchor].append(f'<img src="{image_info["base64"]}" />')
+            for artifact in self._ole_artifacts:
+                if (
+                    artifact.latex is not None
+                    or artifact.preview_base64 is None
+                    or artifact.row is None
+                    or artifact.col is None
+                ):
+                    continue
+                self.table_image_map[(artifact.row, artifact.col)].append(
+                    f'<img src="{artifact.preview_base64}" />'
+                )
 
             used_cells, visual_artifacts = self._find_tables_in_sheet(sheet)
             visual_artifacts.extend(self._find_charts_in_sheet(sheet))
+            visual_artifacts.extend(
+                self._find_equation_artifacts_in_sheet(used_cells)
+            )
             for _, _, block in sorted(
                 visual_artifacts,
                 key=lambda item: (item[0][0], item[0][1], item[1]),
             ):
                 self.cur_page.append(block)
             self._find_images_in_sheet(used_cells)  # 提取图片
+
+    def _read_ole_equation_artifacts(
+        self,
+        sheet: Worksheet,
+    ) -> list[XlsxOleEquationArtifact]:
+        """从当前 worksheet part 读取 Equation.3 公式和预览。"""
+
+        if self.zf is None:
+            return []
+        worksheet_part = self._sheet_part_by_title.get(sheet.title)
+        if worksheet_part is None:
+            return []
+        return read_sheet_equation_artifacts(
+            self.zf,
+            worksheet_part,
+            self._ooxml_equation_decoder,
+        )
+
+    def _find_equation_artifacts_in_sheet(
+        self,
+        used_cells: set[tuple[int, int]],
+    ) -> list[tuple[tuple[int, int], int, dict]]:
+        """输出未被表格吸收的 OMML/MTEF 公式或缓存预览。"""
+
+        artifacts: list[tuple[tuple[int, int], int, dict]] = []
+        for row, col, latex, order in self._omml_artifacts:
+            if (row, col) in used_cells:
+                continue
+            artifacts.append(
+                (
+                    (row, col),
+                    15_000 + order,
+                    {
+                        "type": BlockType.EQUATION,
+                        "content": latex,
+                    },
+                )
+            )
+        for artifact in self._ole_artifacts:
+            coordinate = (
+                artifact.row if artifact.row is not None else 10**9,
+                artifact.col if artifact.col is not None else 10**9,
+            )
+            if (
+                artifact.row is not None
+                and artifact.col is not None
+                and (artifact.row, artifact.col) in used_cells
+            ):
+                continue
+            block = None
+            if artifact.latex is not None:
+                block = {
+                    "type": BlockType.EQUATION,
+                    "content": artifact.latex,
+                }
+            elif artifact.preview_base64 is not None:
+                block = {
+                    "type": BlockType.IMAGE,
+                    "image_base64": artifact.preview_base64,
+                }
+            if block is not None:
+                artifacts.append((coordinate, 20_000 + artifact.order, block))
+        return artifacts
 
     @staticmethod
     def _serialize_sheet_image(image: XlsImage) -> str:
@@ -337,6 +480,8 @@ class XlsxConverter:
     def _map_math_formulas_to_cells(self, sheet: Worksheet) -> dict:
         """Parse drawings to find math formulas and map them to cells."""
         math_map = collections.defaultdict(list)
+        self._omml_shape_ids = set()
+        self._omml_artifacts = []
         if not self.zf:
             return math_map
 
@@ -402,6 +547,7 @@ class XlsxConverter:
                     # Usually in graphicalFrame -> graphic -> graphicData -> oMathPara
                     # But simpler to search descendant m:oMath
                     maths = anchor.findall(".//m:oMath", ns)
+                    anchor_latex: list[str] = []
                     for math in maths:
                         # # Simple text extraction
                         # text = "".join(math.itertext())
@@ -413,6 +559,15 @@ class XlsxConverter:
                         latex = str(oMath2Latex(math)).strip()
                         if latex:
                             math_map[(r, c)].append(latex)
+                            anchor_latex.append(latex)
+                            self._omml_artifacts.append(
+                                (r, c, latex, len(self._omml_artifacts))
+                            )
+                    if anchor_latex:
+                        for node in anchor.findall(".//xdr:cNvPr", ns):
+                            shape_id = node.get("id")
+                            if shape_id:
+                                self._omml_shape_ids.add(shape_id)
 
         except Exception as e:
             logger.warning(f"Error parsing math formulas: {e}")
@@ -446,7 +601,6 @@ class XlsxConverter:
         used_cells = set()
         visual_artifacts = []
         if self.workbook is not None:
-            content_layer = self._get_sheet_content_layer(sheet)  # 检测工作表的可见性
             tables = self._find_data_tables(sheet)  # 检测工作表中的所有数据表格
 
             for order, excel_table in enumerate(tables):

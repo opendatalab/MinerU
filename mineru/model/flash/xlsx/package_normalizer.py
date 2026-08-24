@@ -57,6 +57,43 @@ def normalize_xlsx_package(file_bytes: bytes) -> bytes:
     return _write_package(rewritten_members)
 
 
+def strip_xlsx_ole_objects_for_openpyxl(file_bytes: bytes) -> bytes:
+    """仅为 openpyxl 读取副本移除会被误判为列定义的 oleObjects。"""
+
+    try:
+        with ZipFile(BytesIO(file_bytes)) as source:
+            rewritten_members: list[tuple[ZipInfo, bytes]] = []
+            changed = False
+            for info in source.infolist():
+                member_data = source.read(info.filename)
+                if _is_worksheet_xml(info.filename):
+                    normalized_data = _remove_worksheet_ole_objects(member_data)
+                    changed = changed or normalized_data != member_data
+                    member_data = normalized_data
+                rewritten_members.append((info, member_data))
+    except BadZipFile as exc:
+        raise ValueError("Invalid XLSX package: file is not a ZIP archive.") from exc
+    return _write_package(rewritten_members) if changed else file_bytes
+
+
+def _remove_worksheet_ole_objects(xml_bytes: bytes) -> bytes:
+    """删除 worksheet 的 oleObjects 容器，原始 ZIP 仍由公式解析器持有。"""
+
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError:
+        return xml_bytes
+    changed = False
+    for child in list(root):
+        if child.tag.rsplit("}", 1)[-1] != "oleObjects":
+            continue
+        root.remove(child)
+        changed = True
+    if not changed:
+        return xml_bytes
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
 def _normalize_xlsx_member(member_name: str, member_data: bytes) -> bytes:
     """根据 XLSX 包内成员路径分发 XML 兼容性规范化逻辑。"""
     if member_name == SHARED_STRINGS_PATH:

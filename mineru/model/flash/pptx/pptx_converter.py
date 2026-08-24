@@ -14,6 +14,10 @@ from pptx.oxml.text import CT_TextLineBreak
 
 from mineru.model.flash.office.chart import extract_chart_html_from_ooxml
 from mineru.model.flash.office.image import PIL_IMAGE_LOAD_ERRORS, is_vector_image, serialize_vector_image_with_placeholder
+from mineru.model.flash.office.ooxml_equation import (
+    OoxmlEquationDecoder,
+    is_equation_3_prog_id,
+)
 from mineru.model.flash.docx.tools.math.omml import oMath2Latex
 from mineru.model.office_stream import read_stream_bytes_from_start, rewind_stream
 from mineru.model.flash.pptx.package_normalizer import normalize_pptx_package
@@ -107,6 +111,8 @@ class PptxConverter:
             Optional[MSO_SHAPE_TYPE],
         ] = {}
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
+        self._ooxml_equation_decoder = OoxmlEquationDecoder()
+        self._mtef_warned_shapes: set[tuple[str, int | None]] = set()
 
     def convert(
         self,
@@ -135,6 +141,76 @@ class PptxConverter:
         self._shape_type_cache = {}
         self.file_stream = None
         self.pptx_obj = None
+        self._ooxml_equation_decoder = OoxmlEquationDecoder()
+        self._mtef_warned_shapes = set()
+
+    @staticmethod
+    def _pptx_ole_format(shape: Any) -> Any | None:
+        """安全返回 PPTX graphic-frame 的 OLE format。"""
+
+        try:
+            return shape.ole_format
+        except (AttributeError, KeyError, ValueError):
+            return None
+
+    def _is_equation_ole_shape(self, shape: Any) -> bool:
+        """判断 PPTX OLE shape 的 ProgID 是否为 Equation.3。"""
+
+        ole_format = self._pptx_ole_format(shape)
+        return bool(
+            ole_format is not None
+            and is_equation_3_prog_id(getattr(ole_format, "prog_id", None))
+        )
+
+    def _decode_pptx_ole_equation(self, shape: Any) -> str | None:
+        """解码 PPTX 内嵌 Equation.3；链接、图标和坏对象返回空。"""
+
+        ole_format = self._pptx_ole_format(shape)
+        if ole_format is None:
+            return None
+        prog_id = getattr(ole_format, "prog_id", None)
+        if not is_equation_3_prog_id(prog_id):
+            return None
+        if bool(getattr(ole_format, "show_as_icon", False)):
+            return None
+        if self._safe_shape_type(shape) != MSO_SHAPE_TYPE.EMBEDDED_OLE_OBJECT:
+            return None
+        try:
+            blob = ole_format.blob
+        except (AttributeError, KeyError, ValueError):
+            blob = None
+        latex = self._ooxml_equation_decoder.decode(
+            blob,
+            prog_id=prog_id,
+        )
+        if latex is not None:
+            return latex
+
+        warning_key = (
+            str(getattr(getattr(shape, "part", None), "partname", "")),
+            getattr(shape, "shape_id", None),
+        )
+        if warning_key not in self._mtef_warned_shapes:
+            self._mtef_warned_shapes.add(warning_key)
+            logger.warning(
+                "PPTX_MTEF_FALLBACK: part={!r}, shape_id={!r} has an invalid or unsupported Equation.3 object",
+                warning_key[0],
+                warning_key[1],
+            )
+        return None
+
+    def _pptx_ole_shape_omml(self, shape: Any) -> list[str]:
+        """提取 OLE 兼容容器内可表达的 OMML，作为 MTEF 的高优先级分支。"""
+
+        element = getattr(shape, "_element", None)
+        if element is None:
+            return []
+        equations: list[str] = []
+        for math in element.findall(f".//{{{OMML_NS}}}oMath"):
+            latex = self._convert_math_node_to_latex(math)
+            if latex:
+                equations.append(latex)
+        return equations
 
     def _convert_package_bytes(self, file_bytes: bytes) -> None:
         """用独立字节流解析 PPTX 包，便于原始包失败后用规范化包重试。"""
@@ -308,13 +384,40 @@ class PptxConverter:
         self.list_block_stack = []
 
         try:
+            shape_type = self._safe_shape_type(shape)
+            if shape_type in {
+                MSO_SHAPE_TYPE.EMBEDDED_OLE_OBJECT,
+                MSO_SHAPE_TYPE.LINKED_OLE_OBJECT,
+            }:
+                if self._is_equation_ole_shape(shape):
+                    omml_equations = self._pptx_ole_shape_omml(shape)
+                    if omml_equations:
+                        self.cur_page.extend(
+                            {
+                                "type": BlockType.EQUATION,
+                                "content": latex,
+                            }
+                            for latex in omml_equations
+                        )
+                        return shape_blocks
+                    latex = self._decode_pptx_ole_equation(shape)
+                    if latex:
+                        self.cur_page.append(
+                            {
+                                "type": BlockType.EQUATION,
+                                "content": latex,
+                            }
+                        )
+                    else:
+                        self._handle_pictures(shape)
+                return shape_blocks
+
             if shape.has_table:
                 self._handle_tables(shape)
 
             if getattr(shape, "has_chart", False):
                 self._handle_chart(shape)
 
-            shape_type = self._safe_shape_type(shape)
             if shape_type == MSO_SHAPE_TYPE.PICTURE:
                 later_shapes = linear_shapes[shape_index + 1 :]
                 if not self._should_skip_picture(
@@ -559,6 +662,31 @@ class PptxConverter:
             if shape_type == MSO_SHAPE_TYPE.GROUP:
                 for grouped_shape in shape.shapes:
                     handle_notes_shape(grouped_shape)
+                return
+
+            if shape_type in {
+                MSO_SHAPE_TYPE.EMBEDDED_OLE_OBJECT,
+                MSO_SHAPE_TYPE.LINKED_OLE_OBJECT,
+            }:
+                if self._is_equation_ole_shape(shape):
+                    omml_equations = self._pptx_ole_shape_omml(shape)
+                    if omml_equations:
+                        self.cur_page.extend(
+                            {
+                                "type": BlockType.PAGE_FOOTNOTE,
+                                "content": self.equation_bookends.format(EQ=latex),
+                            }
+                            for latex in omml_equations
+                        )
+                        return
+                    latex = self._decode_pptx_ole_equation(shape)
+                    if latex:
+                        self.cur_page.append(
+                            {
+                                "type": BlockType.PAGE_FOOTNOTE,
+                                "content": self.equation_bookends.format(EQ=latex),
+                            }
+                        )
                 return
 
             if self._should_skip_notes_shape(shape):

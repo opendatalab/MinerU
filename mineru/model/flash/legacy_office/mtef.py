@@ -10,6 +10,7 @@ import struct
 
 from loguru import logger
 
+from .errors import LegacyOfficeResourceLimitError
 from .limits import MAX_RECORD_DEPTH, MAX_RECORDS
 from .ole import BoundedOleReader
 
@@ -606,6 +607,8 @@ def decode_equation_object(data: bytes) -> str | None:
     try:
         with BoundedOleReader(data) as ole:
             native = ole.read_stream("Equation Native")
+    except LegacyOfficeResourceLimitError:
+        raise
     except ValueError:
         return None
     return decode_equation_native(native)
