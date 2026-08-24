@@ -1250,7 +1250,7 @@ def test_aio_doc_analyze_propagates_sync_entrypoint_error(
         asyncio.run(analyze.aio_doc_analyze(b"invalid-document"))
 
 
-@pytest.mark.parametrize("file_suffix", ["docx", "ppt", "pptx", "xls", "xlsx"])
+@pytest.mark.parametrize("file_suffix", ["doc", "docx", "ppt", "pptx", "xls", "xlsx"])
 def test_doc_analyze_office_returns_model_json_without_pdf_processing(
     monkeypatch: pytest.MonkeyPatch,
     file_suffix: str,
@@ -1267,7 +1267,7 @@ def test_doc_analyze_office_returns_model_json_without_pdf_processing(
         return source_model_list
 
     selected_model.predict.side_effect = fake_office_predict
-    for suffix in ("docx", "ppt", "pptx", "xls", "xlsx"):
+    for suffix in ("doc", "docx", "ppt", "pptx", "xls", "xlsx"):
         model = selected_model if suffix == file_suffix else MagicMock()
         model_factories[suffix] = MagicMock(return_value=model)
 
@@ -1340,7 +1340,7 @@ def test_doc_analyze_rejects_unsupported_suffix_before_resource_initialization(
     """验证非法后缀会在创建 PDF 文档或 Office 模型前直接报错。"""
     pdf_document = MagicMock()
     model_factories = {
-        suffix: MagicMock() for suffix in ("docx", "ppt", "pptx", "xls", "xlsx")
+        suffix: MagicMock() for suffix in ("doc", "docx", "ppt", "pptx", "xls", "xlsx")
     }
     monkeypatch.setattr(pipeline, "PDFDocument", pdf_document)
     monkeypatch.setattr(office, "_OFFICE_MODEL_MAP", model_factories)

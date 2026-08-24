@@ -12,7 +12,8 @@ import pytest
 
 import mineru.model.flash as flash_models
 import mineru.model.flash.model as flat_model_module
-from mineru.model.flash import DocxModel, PdfModel, PptModel, PptxModel, XlsModel, XlsxModel
+from mineru.model.flash import DocModel, DocxModel, PdfModel, PptModel, PptxModel, XlsModel, XlsxModel
+from mineru.model.flash.doc import doc_converter as doc_converter_module
 from mineru.model.flash.docx import docx_converter as docx_converter_module
 from mineru.model.flash.docx import main as docx_main
 from mineru.model.flash.pptx import main as pptx_main
@@ -59,6 +60,7 @@ def test_flash_office_model_conversion(
 @pytest.mark.parametrize(
     ("model_class", "converter_module", "converter_name"),
     [
+        (DocModel, doc_converter_module, "DocConverter"),
         (DocxModel, docx_converter_module, "DocxConverter"),
         (PptxModel, pptx_converter_module, "PptxConverter"),
         (PptModel, ppt_converter_module, "PptConverter"),
@@ -153,6 +155,7 @@ def test_models_are_exported_from_flash_root() -> None:
 
     assert flash_models.__all__ == [
         "PdfModel",
+        "DocModel",
         "DocxModel",
         "PptModel",
         "PptxModel",
@@ -160,6 +163,7 @@ def test_models_are_exported_from_flash_root() -> None:
         "XlsxModel",
     ]
     assert PdfModel is flat_model_module.PdfModel
+    assert DocModel is flat_model_module.DocModel
     assert DocxModel is flat_model_module.DocxModel
     assert PptxModel is flat_model_module.PptxModel
     assert PptModel is flat_model_module.PptModel
@@ -170,6 +174,7 @@ def test_models_are_exported_from_flash_root() -> None:
 @pytest.mark.parametrize(
     ("package_name", "model_name"),
     [
+        ("mineru.model.flash.doc", "DocModel"),
         ("mineru.model.flash.docx", "DocxModel"),
         ("mineru.model.flash.pptx", "PptxModel"),
         ("mineru.model.flash.ppt", "PptModel"),
@@ -194,6 +199,7 @@ def test_importing_pdf_model_does_not_load_office_converters() -> None:
             "from mineru.model.flash import PdfModel",
             "assert PdfModel.__name__ == 'PdfModel'",
             "assert 'mineru.model.flash.docx.docx_converter' not in sys.modules",
+            "assert 'mineru.model.flash.doc.doc_converter' not in sys.modules",
             "assert 'mineru.model.flash.pptx.pptx_converter' not in sys.modules",
             "assert 'mineru.model.flash.ppt.ppt_converter' not in sys.modules",
             "assert 'mineru.model.flash.xls.xls_converter' not in sys.modules",
@@ -215,6 +221,7 @@ def test_importing_pdf_model_does_not_load_office_converters() -> None:
 @pytest.mark.parametrize(
     "module_name",
     [
+        "mineru.model.doc",
         "mineru.model.docx",
         "mineru.model.ppt",
         "mineru.model.pptx",

@@ -202,22 +202,50 @@ def extract_excel_shapes(
     return shapes
 
 
+def _bitmap_payload(body: bytes, instance: int) -> bytes | None:
+    """跳过 BLIP UID 和 tag，返回位图原始载荷。"""
+
+    doubled = instance in {0x46B, 0x6E3, 0x6E1, 0x7A9}
+    start = (32 if doubled else 16) + 1
+    return body[start:] if start < len(body) else None
+
+
+def _dib_to_bmp(data: bytes) -> bytes:
+    """为裸 DIB 补齐 BMP 文件头，无法推断时仍保留原始载荷。"""
+
+    if data.startswith(b"BM") or len(data) < 4:
+        return data
+    header_size = int(struct.unpack_from("<I", data, 0)[0])
+    if header_size < 12 or header_size > len(data):
+        return data
+    palette_bytes = 0
+    if header_size >= 40 and len(data) >= 36:
+        bit_count = int(struct.unpack_from("<H", data, 14)[0])
+        colors_used = int(struct.unpack_from("<I", data, 32)[0])
+        colors = colors_used or ((1 << bit_count) if bit_count <= 8 else 0)
+        palette_bytes = colors * 4
+    pixel_offset = min(14 + header_size + palette_bytes, 14 + len(data))
+    return b"BM" + struct.pack("<IHHI", 14 + len(data), 0, 0, pixel_offset) + data
+
+
 def decode_blip(record: OfficeArtRecord) -> OfficeImagePayload | None:
-    """解码 JPEG、PNG、EMF 或 WMF BLIP，并限制矢量解压输出。"""
+    """解码常见位图和 EMF/WMF BLIP，并限制矢量解压输出。"""
 
     instance = record.instance
     body = record.payload
-    if record.record_type in {0xF01D, 0xF01E}:
-        doubled = instance in {0x46B, 0x6E3, 0x6E1}
-        start = (32 if doubled else 16) + 1
-        if start >= len(body):
+    if record.record_type in {0xF01D, 0xF01E, 0xF01F, 0xF029}:
+        data = _bitmap_payload(body, instance)
+        if data is None:
             return None
-        data = body[start:]
         if len(data) > MAX_ENTRY_BYTES:
             raise LegacyOfficeResourceLimitError("bitmap BLIP exceeds max_entry_bytes")
         if record.record_type == 0xF01D:
             return OfficeImagePayload(data=data, extension="jpg", content_type="image/jpeg")
-        return OfficeImagePayload(data=data, extension="png", content_type="image/png")
+        if record.record_type == 0xF01E:
+            return OfficeImagePayload(data=data, extension="png", content_type="image/png")
+        if record.record_type == 0xF029:
+            return OfficeImagePayload(data=data, extension="tiff", content_type="image/tiff")
+        return OfficeImagePayload(data=_dib_to_bmp(data), extension="bmp", content_type="image/bmp")
 
     if record.record_type not in {0xF01A, 0xF01B}:
         return None
@@ -233,13 +261,22 @@ def decode_blip(record: OfficeArtRecord) -> OfficeImagePayload | None:
     if declared_size > MAX_ENTRY_BYTES:
         raise LegacyOfficeResourceLimitError("metafile BLIP exceeds max_entry_bytes")
     if compression == 0:
-        try:
-            inflater = zlib.decompressobj(-zlib.MAX_WBITS)
-            data = inflater.decompress(payload, MAX_ENTRY_BYTES + 1)
-            data += inflater.flush(MAX_ENTRY_BYTES + 1 - len(data))
-        except zlib.error:
+        data = b""
+        reached_eof = False
+        for window_bits in (-zlib.MAX_WBITS, zlib.MAX_WBITS):
+            try:
+                inflater = zlib.decompressobj(window_bits)
+                candidate = inflater.decompress(payload, MAX_ENTRY_BYTES + 1)
+                candidate += inflater.flush(MAX_ENTRY_BYTES + 1 - len(candidate))
+            except zlib.error:
+                continue
+            if inflater.eof:
+                data = candidate
+                reached_eof = True
+                break
+        if not reached_eof:
             return None
-        if len(data) > MAX_ENTRY_BYTES or not inflater.eof:
+        if len(data) > MAX_ENTRY_BYTES:
             raise LegacyOfficeResourceLimitError(
                 "metafile BLIP decompression exceeded its limit"
             )
@@ -252,17 +289,61 @@ def decode_blip(record: OfficeArtRecord) -> OfficeImagePayload | None:
     return OfficeImagePayload(data=data, extension="wmf", content_type="image/wmf")
 
 
+def first_blip(
+    data: bytes,
+    *,
+    charge: Callable[[], None] | None = None,
+) -> OfficeImagePayload | None:
+    """深度优先返回一段 OfficeArt 数据中的首个可支持 BLIP。"""
+
+    for record in iter_descendants(data, charge=charge):
+        if record.record_type == OFFICEART_BSE:
+            decoded = _decode_bse_body(record.payload, charge=charge)
+            if decoded is not None:
+                return decoded
+        decoded = decode_blip(record)
+        if decoded is not None:
+            return decoded
+    return None
+
+
+def extract_word_shapes(
+    data: bytes,
+    *,
+    charge: Callable[[], None] | None = None,
+) -> list[OfficeArtShape]:
+    """按 Word drawing 顺序提取 shape id、pib 和隐藏状态。"""
+
+    shapes: list[OfficeArtShape] = []
+    for record in iter_descendants(data, charge=charge):
+        if record.record_type != OFFICEART_SP_CONTAINER:
+            continue
+        shape = _shape_from_container(record, charge=charge)
+        if shape is not None:
+            shapes.append(shape)
+    return shapes
+
+
 def _decode_bse_body(
     body: bytes,
     *,
     charge: Callable[[], None] | None = None,
+    delay_stream: bytes | None = None,
 ) -> OfficeImagePayload | None:
-    """从 FBSE body 的可选内嵌 BLIP 中恢复图片。"""
+    """从 FBSE body 的内嵌或延迟 BLIP 中恢复图片。"""
 
     if len(body) < 36:
         return None
     inner_offset = 36 + int(body[33])
-    inner = record_at(body, inner_offset, charge=charge)
+    inner = record_at(body, inner_offset, charge=charge) if inner_offset < len(body) else None
+    if inner is None and delay_stream is not None:
+        delayed_size = int(struct.unpack_from("<I", body, 20)[0])
+        reference_count = int(struct.unpack_from("<I", body, 24)[0])
+        delayed_offset = int(struct.unpack_from("<I", body, 28)[0])
+        if reference_count and delayed_offset != 0xFFFF_FFFF:
+            delayed_end = delayed_offset + delayed_size
+            if delayed_end >= delayed_offset and delayed_end <= len(delay_stream):
+                inner = record_at(delay_stream, delayed_offset, end=delayed_end, charge=charge)
     return decode_blip(inner) if inner is not None else None
 
 
@@ -270,6 +351,7 @@ def decode_bstore(
     data: bytes,
     *,
     charge: Callable[[], None] | None = None,
+    delay_stream: bytes | None = None,
 ) -> dict[int, OfficeImagePayload]:
     """按一基 BSE 序号解码 drawing group 中的图片资源。"""
 
@@ -281,7 +363,11 @@ def decode_bstore(
     result: dict[int, OfficeImagePayload] = {}
     asset_total = 0
     for index, bse in enumerate(bse_records[:MAX_PICTURE_RECORDS], start=1):
-        decoded = _decode_bse_body(bse.payload, charge=charge)
+        decoded = _decode_bse_body(
+            bse.payload,
+            charge=charge,
+            delay_stream=delay_stream,
+        )
         if decoded is None:
             continue
         asset_total += len(decoded.data)

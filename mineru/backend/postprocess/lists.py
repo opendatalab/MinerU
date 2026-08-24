@@ -188,8 +188,14 @@ def fix_office_list_blocks(list_blocks: list[dict[str, Any]]) -> list[dict[str, 
                 if child_type == BlockType.TEXT:
                     child_content = child_block.get("content")
                     if not isinstance(child_content, str):
+                        child_block.pop("list_label", None)
                         continue
-                    if is_ordered:
+                    exact_label = child_block.pop("list_label", None)
+                    if isinstance(exact_label, str) and exact_label.strip():
+                        prefix = f"{exact_label.strip()} "
+                        if is_ordered:
+                            ordered_number += 1
+                    elif is_ordered:
                         prefix = f"{ordered_number}. "
                         ordered_number += 1
                     else:

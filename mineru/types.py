@@ -664,7 +664,7 @@ class ModelJson(_StrictMiddleModel):
 
     pages: list[list[dict[str, Any]]]
     page_index_map: list[int]
-    file_suffix: Literal["pdf", "docx", "ppt", "pptx", "xls", "xlsx"]
+    file_suffix: Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"]
     effort: Literal["flash", "low", "medium", "high", "xhigh"]
     parse_mode: Literal["txt", "ocr"]
     mineru_version: str = Field(min_length=1)
@@ -730,7 +730,7 @@ class MiddleJson(_StrictMiddleModel):
 
     pages: list[PageInfo]
     is_full_document: bool
-    file_suffix: Literal["pdf", "docx", "ppt", "pptx", "xls", "xlsx"]
+    file_suffix: Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"]
     effort: Literal["flash", "low", "medium", "high", "xhigh"]
     parse_mode: Literal["txt", "ocr"]
     mineru_version: str = Field(min_length=1)

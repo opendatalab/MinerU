@@ -34,6 +34,20 @@ class DocxModel:
         return converter.pages
 
 
+class DocModel:
+    """将 Word 97–2003 Converter 包装为无状态模型。"""
+
+    def predict(self, file_binary: BinaryIO) -> list[list[dict[str, Any]]]:
+        """转换调用方持有的 DOC 二进制流，并返回逐 section model-list。"""
+
+        # 延迟加载旧版 DOC 解析器，避免其他格式提前加载 olefile。
+        from .doc.doc_converter import DocConverter
+
+        converter = DocConverter()
+        converter.convert(file_binary)
+        return converter.pages
+
+
 class PptxModel:
     """将 PPTX Converter 包装为无状态模型。"""
 
