@@ -56,6 +56,15 @@ class XlsImage:
 
 
 @dataclass(frozen=True, slots=True)
+class XlsEquation:
+    """绑定到工作表 cell anchor 的 Equation Editor 原生公式。"""
+
+    row: int
+    col: int
+    latex: str
+
+
+@dataclass(frozen=True, slots=True)
 class XlsChart:
     """由嵌入 chart 引用恢复出的源数据坐标。"""
 
@@ -75,6 +84,7 @@ class XlsSheet:
     cells: dict[tuple[int, int], XlsCell] = field(default_factory=dict)
     merges: list[tuple[int, int, int, int]] = field(default_factory=list)
     images: list[XlsImage] = field(default_factory=list)
+    equations: list[XlsEquation] = field(default_factory=list)
     charts: list[XlsChart] = field(default_factory=list)
     recovered: bool = False
 

@@ -27,6 +27,7 @@ from .chart import chart_source_axes
 from .models import (
     XlsCell,
     XlsChart,
+    XlsEquation,
     XlsFontStyle,
     XlsImage,
     XlsRichRun,
@@ -159,6 +160,7 @@ class _SheetObject:
     object_type: int
     object_id: int
     checked: bool | None = None
+    embedding_storage: str | None = None
     text: XlsRichText | None = None
     shape: OfficeArtShape | None = None
 
@@ -457,13 +459,42 @@ def _read_label_string(
     return DecodedString(decoded.text, tuple(starts))
 
 
+def _pict_embedding_storage(payload: bytes, picture_flags: int | None) -> str | None:
+    """从 FtPictFmla 读取嵌入对象的 MBD storage 名称。"""
+
+    if picture_flags is None:
+        return None
+    # DDE、ActiveX、controls stream 与 camera picture 都不是内嵌 Equation.3 对象。
+    if picture_flags & (0x0002 | 0x0010 | 0x0020 | 0x0080):
+        return None
+    if len(payload) < 10:
+        return None
+    cb_fmla = int(get_u16(payload, 0) or 0)
+    formula_end = 2 + cb_fmla
+    if cb_fmla <= 0 or cb_fmla % 2 or formula_end + 4 > len(payload):
+        return None
+    formula = payload[2:formula_end]
+    if len(formula) < 7 or int(get_u16(formula, 0) or 0) & 0x7FFF != 5:
+        return None
+    # ObjectParsedFormula 的四字节 unused 在部分生产器中省略，因此兼容两个合法落点。
+    if not any(
+        offset + 5 <= len(formula) and formula[offset] == 0x02
+        for offset in (6, 2)
+    ):
+        return None
+    location = get_u32(payload, formula_end)
+    return f"MBD{int(location):08X}" if location is not None else None
+
+
 def _read_obj(payload: bytes) -> _SheetObject | None:
-    """解析 OBJ subrecords 中的对象类型、id 与 checkbox 状态。"""
+    """解析 OBJ subrecords 中的对象类型、id、状态与嵌入 storage。"""
 
     cursor = 0
     object_type: int | None = None
     object_id = 0
     checked: bool | None = None
+    picture_flags: int | None = None
+    picture_formula: bytes | None = None
     while cursor + 4 <= len(payload):
         sub_type, length = struct.unpack_from("<HH", payload, cursor)
         data_start = cursor + 4
@@ -476,12 +507,25 @@ def _read_obj(payload: bytes) -> _SheetObject | None:
         elif sub_type == 0x0012 and len(body) >= 2:
             state = int(get_u16(body, 0) or 0)
             checked = state == 1 if state in {0, 1} else None
+        elif sub_type == 0x0008 and len(body) >= 2:
+            picture_flags = int(get_u16(body, 0) or 0)
+        elif sub_type == 0x0009:
+            picture_formula = body
         if sub_type == 0:
             break
         cursor = data_end
     if object_type is None:
         return None
-    return _SheetObject(int(object_type), int(object_id), checked=checked)
+    return _SheetObject(
+        int(object_type),
+        int(object_id),
+        checked=checked,
+        embedding_storage=(
+            _pict_embedding_storage(picture_formula, picture_flags)
+            if picture_formula is not None
+            else None
+        ),
+    )
 
 
 def _sanitize_hyperlink_target(target: str) -> str | None:
@@ -631,6 +675,7 @@ def _bind_objects(
     *,
     globals_: _Globals,
     sheet_index: int,
+    native_equations: dict[str, str],
     budget: RecordBudget,
 ) -> None:
     """按 drawing/OBJ 顺序绑定文本框、复选框、图片与嵌入图表。"""
@@ -654,6 +699,14 @@ def _bind_objects(
         if anchor is None:
             continue
         row, col = anchor
+        equation = (
+            native_equations.get(object_.embedding_storage.casefold())
+            if object_.object_type == OBJ_PICTURE and object_.embedding_storage
+            else None
+        )
+        if equation:
+            sheet.equations.append(XlsEquation(row=row, col=col, latex=equation))
+            continue
         if object_.object_type == OBJ_TEXTBOX and object_.text is not None:
             _append_cell_text(sheet, row, col, object_.text)
         elif object_.object_type == OBJ_CHECKBOX and object_.checked is not None:
@@ -724,6 +777,7 @@ def _read_sheet(
     *,
     sheet_index: int,
     recovered: bool,
+    native_equations: dict[str, str],
     budget: RecordBudget,
 ) -> XlsSheet | None:
     """解析一个 worksheet substream 并绑定其 drawing/chart 对象。"""
@@ -964,6 +1018,7 @@ def _read_sheet(
         chart_streams,
         globals_=globals_,
         sheet_index=sheet_index,
+        native_equations=native_equations,
         budget=budget,
     )
     return sheet
@@ -990,12 +1045,20 @@ def _is_worksheet_offset(data: bytes, offset: int) -> bool:
     )
 
 
-def parse_xls_workbook(data: bytes) -> XlsWorkbook:
-    """解析一个 Workbook/Book stream，并按目录顺序恢复 worksheets。"""
+def parse_xls_workbook(
+    data: bytes,
+    *,
+    native_equations: dict[str, str] | None = None,
+) -> XlsWorkbook:
+    """解析 Workbook/Book stream，并按目录顺序恢复 worksheets 与原生公式。"""
 
     if not data:
         raise LegacyOfficeMalformedError("empty Workbook stream")
     budget = RecordBudget()
+    normalized_equations = {
+        storage.casefold(): latex
+        for storage, latex in (native_equations or {}).items()
+    }
     globals_ = _read_globals(data, budget)
     candidates = _worksheet_bof_offsets(data)
     used_offsets: set[int] = set()
@@ -1055,6 +1118,7 @@ def parse_xls_workbook(data: bytes) -> XlsWorkbook:
             resolved_offset,
             sheet_index=sheet_index,
             recovered=recovered,
+            native_equations=normalized_equations,
             budget=budget,
         )
         if parsed is None:

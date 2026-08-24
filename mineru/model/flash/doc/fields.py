@@ -105,5 +105,4 @@ def apply_field_result(instruction: str, runs: list[DocTextRun]) -> list[DocText
     target = hyperlink_target(instruction)
     if target is None:
         return runs
-    return [DocTextRun(run.text, run.style, target) for run in runs]
-
+    return [DocTextRun(run.text, run.style, target, run.formula) for run in runs]

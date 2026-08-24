@@ -54,6 +54,17 @@ class BoundedOleReader:
 
         return name.casefold() in self._stream_names
 
+    def stream_names(self, *, prefix: str | None = None) -> tuple[str, ...]:
+        """返回完整 stream 名称；可按大小写无关前缀筛选。"""
+
+        normalized_prefix = prefix.casefold() if prefix is not None else None
+        names = (
+            "/".join(parts)
+            for key, parts in self._stream_names.items()
+            if normalized_prefix is None or key.startswith(normalized_prefix)
+        )
+        return tuple(sorted(names, key=str.casefold))
+
     def read_stream(self, name: str, *, required: bool = True) -> bytes:
         """有界读取指定 stream；可选 stream 不存在时返回空字节。"""
 

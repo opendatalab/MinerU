@@ -14,6 +14,7 @@ from mineru.types import BlockType
 from mineru.utils.office_rich_text import OfficeRichTextSegment, build_rich_text_from_segments
 
 from .models import (
+    PptEquationElement,
     PptImageElement,
     PptParagraph,
     PptPresentation,
@@ -198,7 +199,7 @@ class PptConverter:
     @classmethod
     def _element_blocks(
         cls,
-        element: PptTextElement | PptImageElement | PptTableElement,
+        element: PptTextElement | PptImageElement | PptEquationElement | PptTableElement,
         *,
         slide_height: int,
         is_first_text_element: bool,
@@ -207,6 +208,8 @@ class PptConverter:
 
         if isinstance(element, PptImageElement):
             return [{"type": BlockType.IMAGE, "image_base64": element.image_base64}]
+        if isinstance(element, PptEquationElement):
+            return [{"type": BlockType.EQUATION, "content": element.latex}]
         if isinstance(element, PptTableElement):
             return [{"type": BlockType.TABLE, "content": cls._table_html(element)}]
 

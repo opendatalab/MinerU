@@ -55,6 +55,16 @@ class PptImageElement:
 
 
 @dataclass(frozen=True, slots=True)
+class PptEquationElement:
+    """已经从 Equation Editor 原生对象恢复的 LaTeX 公式。"""
+
+    latex: str
+    bbox: tuple[float, float, float, float]
+    order: int
+    shape_offset: int
+
+
+@dataclass(frozen=True, slots=True)
 class PptTableCell:
     """表格原点单元格及其跨行跨列范围。"""
 
@@ -77,7 +87,9 @@ class PptTableElement:
     shape_offsets: frozenset[tuple[int, ...]]
 
 
-PptSlideElement: TypeAlias = PptTextElement | PptImageElement | PptTableElement
+PptSlideElement: TypeAlias = (
+    PptTextElement | PptImageElement | PptEquationElement | PptTableElement
+)
 
 
 @dataclass(slots=True)

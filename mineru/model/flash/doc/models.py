@@ -30,6 +30,7 @@ class DocTextRun:
     text: str
     style: DocCharStyle = DocCharStyle()
     hyperlink: str | None = None
+    formula: bool = False
 
 
 @dataclass(frozen=True, slots=True)

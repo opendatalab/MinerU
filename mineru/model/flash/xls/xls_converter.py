@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import collections
+import re
 from typing import Any, BinaryIO
 
 from loguru import logger
@@ -15,12 +17,38 @@ from openpyxl.worksheet.worksheet import Worksheet  # type: ignore[reportMissing
 from mineru.model.flash.legacy_office import BoundedOleReader, LegacyOfficeEncryptedError
 from mineru.model.flash.legacy_office.errors import LegacyOfficeResourceLimitError
 from mineru.model.flash.legacy_office.limits import MAX_GRID_SLOTS
+from mineru.model.flash.legacy_office.mtef import decode_equation_native
 from mineru.model.flash.xlsx.xlsx_converter import ExcelTable, XlsxConverter
 from mineru.model.office_stream import read_stream_bytes_from_start
 from mineru.types import BlockType
 
 from .models import XlsChart, XlsRichText, XlsSheet, XlsWorkbook
 from .parser import parse_xls_workbook
+
+_XLS_EQUATION_STREAM_RE = re.compile(
+    r"^(MBD[0-9A-F]{8})/Equation Native$",
+    re.IGNORECASE,
+)
+
+
+def _read_embedded_equations(ole: BoundedOleReader) -> dict[str, str]:
+    """读取 XLS embedding storages 中可安全解码的 Equation Native。"""
+
+    equations: dict[str, str] = {}
+    for stream_name in ole.stream_names(prefix="MBD"):
+        match = _XLS_EQUATION_STREAM_RE.match(stream_name)
+        if match is None:
+            continue
+        storage = match.group(1)
+        latex = decode_equation_native(ole.read_stream(stream_name))
+        if latex is None:
+            logger.warning(
+                "XLS_MTEF_FALLBACK: storage={!r} has an invalid or unsupported Equation Native stream",
+                storage,
+            )
+            continue
+        equations.setdefault(storage, latex)
+    return equations
 
 
 def _inline_font(rich_text: XlsRichText, start: int) -> InlineFont | None:
@@ -81,6 +109,7 @@ class _XlsPageBuilder(XlsxConverter):
         self.workbook_model = workbook_model
         self._sheet_by_title: dict[str, XlsSheet] = {}
         self._active_xls_sheet: XlsSheet | None = None
+        self._used_cells: set[tuple[int, int]] = set()
         self._grid_slots = 0
 
     def _build_openpyxl_workbook(self) -> Workbook:
@@ -137,6 +166,27 @@ class _XlsPageBuilder(XlsxConverter):
             for image in sheet_model.images
         ]
 
+    def _map_math_formulas_to_cells(self, sheet: Worksheet) -> dict:
+        """把 legacy Equation Editor 公式映射到表格 cell anchor。"""
+
+        math_map: dict[tuple[int, int], list[str]] = collections.defaultdict(list)
+        sheet_model = self._sheet_by_title.get(sheet.title)
+        if sheet_model is None:
+            return math_map
+        for equation in sheet_model.equations:
+            math_map[(equation.row, equation.col)].append(equation.latex)
+        return math_map
+
+    def _find_tables_in_sheet(
+        self,
+        sheet: Worksheet,
+    ) -> tuple[set[tuple[int, int]], list[tuple[tuple[int, int], int, dict]]]:
+        """记录表格已吸收坐标，供独立公式去重。"""
+
+        used_cells, artifacts = super()._find_tables_in_sheet(sheet)
+        self._used_cells = used_cells
+        return used_cells, artifacts
+
     def _find_data_tables(self, sheet: Worksheet) -> list[ExcelTable]:
         """复用 XLSX 区域发现并累计限制实际物化网格。"""
 
@@ -189,6 +239,17 @@ class _XlsPageBuilder(XlsxConverter):
             if block is None:
                 continue
             artifacts.append(((chart.row, chart.col), 10_000 + order, block))
+        for order, equation in enumerate(sheet_model.equations):
+            anchor = (equation.row, equation.col)
+            if anchor in self._used_cells:
+                continue
+            artifacts.append(
+                (
+                    anchor,
+                    20_000 + order,
+                    {"type": BlockType.EQUATION, "content": equation.latex},
+                )
+            )
         return artifacts
 
 
@@ -211,7 +272,11 @@ class XlsConverter:
                 workbook_stream = ole.read_stream("Workbook")
             else:
                 workbook_stream = ole.read_stream("Book")
-            workbook = parse_xls_workbook(workbook_stream)
+            native_equations = _read_embedded_equations(ole)
+            workbook = parse_xls_workbook(
+                workbook_stream,
+                native_equations=native_equations,
+            )
         builder = _XlsPageBuilder(workbook)
         self.pages = builder.build_pages()
         logger.debug("XLS parsing produced {} visible worksheet pages", len(self.pages))

@@ -15,6 +15,7 @@ from mineru.types import RAW_CAPTION, BlockType
 from mineru.utils.office_rich_text import OfficeRichTextSegment, build_rich_text_from_segments
 
 from .fib import parse_fib
+from mineru.model.flash.legacy_office.mtef import read_object_pool_equations
 from .models import (
     DocCharStyle,
     DocDocument,
@@ -55,7 +56,14 @@ class DocConverter:
             if not table_stream:
                 table_stream = ole.read_stream(alternate, required=bool(fib.base.complex))
             data_stream = ole.read_stream("Data", required=False)
-            document = parse_doc_document(word_document, table_stream, data_stream, fib)
+            native_equations = read_object_pool_equations(ole)
+            document = parse_doc_document(
+                word_document,
+                table_stream,
+                data_stream,
+                fib,
+                native_equations=native_equations,
+            )
         self.pages = self._document_pages(document)
 
     @staticmethod
@@ -83,16 +91,39 @@ class DocConverter:
     def _rich_text(cls, runs: Iterable[DocTextRun], *, trim: bool = True) -> str:
         """把 DOC runs 转换为已转义的 Office 富文本协议。"""
 
-        segments = [
-            OfficeRichTextSegment(
-                text=escape(run.text, quote=False).replace("\n", "<br/>"),
-                style=cls._style_names(run.style),
-                hyperlink=escape(run.hyperlink, quote=True) if run.hyperlink else None,
+        parts: list[str] = []
+        segments: list[OfficeRichTextSegment] = []
+
+        def flush_segments() -> None:
+            """输出公式边界前累计的普通富文本。"""
+
+            if not segments:
+                return
+            parts.append(
+                build_rich_text_from_segments(
+                    segments,
+                    trim_plain_edges=trim and not parts,
+                )
             )
-            for run in runs
-            if run.text
-        ]
-        return build_rich_text_from_segments(segments, trim_plain_edges=trim)
+            segments.clear()
+
+        for run in runs:
+            if not run.text:
+                continue
+            if run.formula:
+                flush_segments()
+                latex = run.text.replace("<", r"\lt ").replace(">", r"\gt ")
+                parts.append(f"<eq>{latex}</eq>")
+                continue
+            segments.append(
+                OfficeRichTextSegment(
+                    text=escape(run.text, quote=False).replace("\n", "<br/>"),
+                    style=cls._style_names(run.style),
+                    hyperlink=escape(run.hyperlink, quote=True) if run.hyperlink else None,
+                )
+            )
+        flush_segments()
+        return "".join(parts).strip() if trim else "".join(parts)
 
     @staticmethod
     def _plain_text(paragraph: DocParagraph) -> str:
@@ -228,11 +259,23 @@ class DocConverter:
 
         content = cls._rich_text(paragraph.runs)
         blocks: list[dict[str, Any]] = []
+        formula_runs = [run for run in paragraph.runs if run.formula and run.text]
+        ordinary_text = "".join(run.text for run in paragraph.runs if not run.formula).strip()
         list_info = paragraph.list_info
         exact_label = list_info.label if list_info is not None and list_info.ordered else None
         if exact_label and (paragraph.is_title or paragraph.heading_level is not None):
             content = f"{escape(exact_label, quote=False)} {content}".strip()
-        if content:
+        if formula_runs and not ordinary_text and not (
+            paragraph.is_title
+            or paragraph.heading_level is not None
+            or paragraph.is_caption
+            or paragraph.is_code
+        ):
+            blocks.extend(
+                {"type": BlockType.EQUATION, "content": run.text}
+                for run in formula_runs
+            )
+        elif content:
             if paragraph.is_title:
                 block: dict[str, Any] = {
                     "type": BlockType.DOC_TITLE,

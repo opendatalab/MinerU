@@ -9,6 +9,7 @@ import struct
 from typing import Iterable
 import unicodedata
 from urllib.parse import urlparse
+import zlib
 
 from loguru import logger
 
@@ -19,10 +20,12 @@ from mineru.model.flash.legacy_office import (
 )
 from mineru.model.flash.legacy_office.limits import (
     MAX_ASSET_TOTAL_BYTES,
+    MAX_ENTRY_BYTES,
     MAX_GRID_SLOTS,
     MAX_PICTURE_RECORDS,
     MAX_USER_EDIT_CHAIN,
 )
+from mineru.model.flash.legacy_office.mtef import decode_equation_object
 from mineru.model.flash.legacy_office.officeart import (
     OfficeArtRecord,
     OfficeImagePayload,
@@ -31,6 +34,7 @@ from mineru.model.flash.legacy_office.officeart import (
 from mineru.model.flash.office.image import serialize_office_image
 
 from .models import (
+    PptEquationElement,
     PptImageElement,
     PptParagraph,
     PptPresentation,
@@ -80,6 +84,9 @@ RT_USER_EDIT_ATOM = 0x0FF5
 RT_OUTLINE_TEXT_REF_ATOM = 0x0F9E
 RT_PERSIST_DIRECTORY_ATOM = 0x1772
 RT_CRYPT_SESSION10_CONTAINER = 0x2F14
+RT_EXTERNAL_OBJECT_REF_ATOM = 0x0BC1
+RT_EXTERNAL_OLE_OBJECT_ATOM = 0x0FC3
+RT_EXTERNAL_OLE_OBJECT_STG = 0x1011
 
 # OfficeArt records and properties.
 RT_OFFICEART_DGG_CONTAINER = 0xF000
@@ -748,6 +755,130 @@ def _shape_properties(shape: PptRecord, budget: RecordBudget) -> dict[int, int]:
     return properties
 
 
+def _shape_external_object_id(shape: PptRecord, budget: RecordBudget) -> int | None:
+    """从 OfficeArtClientData 读取 ExObjRefAtom 的外部对象 id。"""
+
+    for child in _direct_children(shape, budget):
+        if child.record_type != RT_OFFICEART_CLIENT_DATA:
+            continue
+        candidates: Iterable[PptRecord]
+        if child.version == CONTAINER_VERSION:
+            candidates = iter_descendants(child, budget=budget)
+        else:
+            candidates = iter_records(child.payload, budget=budget)
+        for candidate in candidates:
+            if candidate.record_type != RT_EXTERNAL_OBJECT_REF_ATOM:
+                continue
+            reference = get_u32(candidate.payload, 0)
+            return int(reference) if reference else None
+    return None
+
+
+def _equation_object_references(
+    document: PptRecord,
+    budget: RecordBudget,
+) -> dict[int, int]:
+    """收集 Equation subtype 的 exObjId 到 persistIdRef 映射。"""
+
+    references: dict[int, int] = {}
+    for atom in iter_descendants(document, budget=budget):
+        if atom.record_type != RT_EXTERNAL_OLE_OBJECT_ATOM or len(atom.payload) < 24:
+            continue
+        object_type = get_u32(atom.payload, 4)
+        object_id = get_u32(atom.payload, 8)
+        object_subtype = get_u32(atom.payload, 12)
+        persist_id = get_u32(atom.payload, 16)
+        if (
+            object_type == 0
+            and object_subtype == 0x0000_0006
+            and object_id
+            and persist_id
+        ):
+            references.setdefault(int(object_id), int(persist_id))
+    return references
+
+
+def _decompress_ole_storage(record: PptRecord) -> bytes | None:
+    """按 ExOleObjStg instance 有界恢复独立 CFB 字节。"""
+
+    if record.record_type != RT_EXTERNAL_OLE_OBJECT_STG:
+        return None
+    if record.instance == 0:
+        if len(record.payload) > MAX_ENTRY_BYTES:
+            raise LegacyOfficeResourceLimitError(
+                f"OLE object exceeds max_entry_bytes={MAX_ENTRY_BYTES}"
+            )
+        return record.payload
+    if record.instance != 1 or len(record.payload) < 4:
+        return None
+    declared_size = int(get_u32(record.payload, 0) or 0)
+    if declared_size <= 0:
+        return None
+    if declared_size > MAX_ENTRY_BYTES:
+        raise LegacyOfficeResourceLimitError(
+            f"OLE object exceeds max_entry_bytes={MAX_ENTRY_BYTES}"
+        )
+    try:
+        inflater = zlib.decompressobj(zlib.MAX_WBITS)
+        storage = inflater.decompress(record.payload[4:], MAX_ENTRY_BYTES + 1)
+        if len(storage) > MAX_ENTRY_BYTES:
+            raise LegacyOfficeResourceLimitError(
+                f"OLE object exceeds max_entry_bytes={MAX_ENTRY_BYTES}"
+            )
+        storage += inflater.flush(MAX_ENTRY_BYTES + 1 - len(storage))
+    except (ValueError, zlib.error):
+        return None
+    if len(storage) > MAX_ENTRY_BYTES:
+        raise LegacyOfficeResourceLimitError(
+            f"OLE object exceeds max_entry_bytes={MAX_ENTRY_BYTES}"
+        )
+    if not inflater.eof or len(storage) != declared_size:
+        return None
+    return storage
+
+
+def _equation_map(
+    layout: _PersistLayout,
+    data: bytes,
+    budget: RecordBudget,
+) -> dict[int, str]:
+    """解析 PPT persist OLE storages 中可用的 Equation Native。"""
+
+    equations: dict[int, str] = {}
+    asset_total = 0
+    for object_id, persist_id in _equation_object_references(layout.document, budget).items():
+        offset = layout.persist.get(persist_id)
+        record = record_at(data, offset, budget=budget) if offset is not None else None
+        if record is None:
+            logger.warning(
+                "PPT_MTEF_FALLBACK: exObjId={} persistIdRef={} is missing",
+                object_id,
+                persist_id,
+            )
+            continue
+        storage = _decompress_ole_storage(record)
+        if storage is None:
+            logger.warning(
+                "PPT_MTEF_FALLBACK: exObjId={} has an invalid OLE storage",
+                object_id,
+            )
+            continue
+        asset_total += len(storage)
+        if asset_total > MAX_ASSET_TOTAL_BYTES:
+            raise LegacyOfficeResourceLimitError(
+                f"embedded assets exceed max_asset_total_bytes={MAX_ASSET_TOTAL_BYTES}"
+            )
+        latex = decode_equation_object(storage)
+        if latex is None:
+            logger.warning(
+                "PPT_MTEF_FALLBACK: exObjId={} has an invalid or unsupported Equation Native stream",
+                object_id,
+            )
+            continue
+        equations[object_id] = latex
+    return equations
+
+
 def _shape_complex_properties(shape: PptRecord, budget: RecordBudget) -> dict[int, bytes]:
     """合并 shape 的复杂 FOPT 属性。"""
 
@@ -1367,10 +1498,11 @@ def _slide_elements(
     master_styles: dict[int, list[MasterLevel]],
     hyperlinks: dict[int, str],
     image_map: dict[int, _ImagePayload],
+    equation_map: dict[int, str],
     slide_width: int,
     slide_height: int,
     budget: RecordBudget,
-) -> list[PptTextElement | PptImageElement | PptTableElement]:
+) -> list[PptTextElement | PptImageElement | PptEquationElement | PptTableElement]:
     """把一张 slide 的 shapes 转换为文本、表格和图片语义元素。"""
 
     collection = _collect_shapes(slide, budget)
@@ -1397,9 +1529,23 @@ def _slide_elements(
         tables.append(table)
         consumed_keys.update(shape.key for shape in group.shapes)
 
-    elements: list[PptTextElement | PptImageElement | PptTableElement] = list(tables)
+    elements: list[
+        PptTextElement | PptImageElement | PptEquationElement | PptTableElement
+    ] = list(tables)
     for shape in collection.shapes:
         if shape.key in consumed_keys or _is_background_shape(shape.record, budget):
+            continue
+        external_object_id = _shape_external_object_id(shape.record, budget)
+        equation = equation_map.get(external_object_id or 0)
+        if equation:
+            elements.append(
+                PptEquationElement(
+                    latex=equation,
+                    bbox=shape.bbox,
+                    order=shape.order,
+                    shape_offset=shape.order,
+                )
+            )
             continue
         content = _shape_text_content(
             shape,
@@ -1612,6 +1758,7 @@ def parse_ppt_document(
     width, height = _presentation_size(layout.document, budget)
     hyperlinks = _hyperlink_targets(layout.document, budget)
     image_map = _picture_map(layout.document, pictures, budget)
+    native_equations = _equation_map(layout, powerpoint_document, budget)
     master_map, fallback_master = _collect_masters(
         layout,
         powerpoint_document,
@@ -1673,6 +1820,7 @@ def parse_ppt_document(
                     master_styles,
                     hyperlinks,
                     image_map,
+                    native_equations,
                     width,
                     height,
                     budget,
@@ -1697,6 +1845,7 @@ def parse_ppt_document(
                         master_styles,
                         hyperlinks,
                         image_map,
+                        native_equations,
                         width,
                         height,
                         budget,

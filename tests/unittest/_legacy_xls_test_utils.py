@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import struct
 import uuid
 
+from _mtef_test_utils import _TINY_PNG, _build_nested_cfb, equation_native
 from _legacy_ppt_test_utils import _build_cfb
 
 
@@ -22,6 +23,152 @@ def biff_record(record_type: int, payload: bytes = b"") -> bytes:
     """构造一条 BIFF record。"""
 
     return struct.pack("<HH", record_type, len(payload)) + payload
+
+
+def _officeart_record(
+    record_type: int,
+    payload: bytes,
+    *,
+    version: int = 0,
+    instance: int = 0,
+) -> bytes:
+    """构造一条 OfficeArt record。"""
+
+    return struct.pack(
+        "<HHI",
+        (instance << 4) | version,
+        record_type,
+        len(payload),
+    ) + payload
+
+
+def _equation_shape(row: int, col: int, object_id: int, *, preview: bool) -> bytes:
+    """构造带 cell anchor、可选 pib 与 ExObj 对应顺序的 Excel shape。"""
+
+    fsp = _officeart_record(
+        0xF00A,
+        struct.pack("<II", object_id + 1024, 0),
+        version=2,
+        instance=1,
+    )
+    fopt = (
+        _officeart_record(
+            0xF00B,
+            struct.pack("<HI", 0x0104, 1),
+            version=3,
+            instance=1,
+        )
+        if preview
+        else b""
+    )
+    anchor = _officeart_record(
+        0xF010,
+        struct.pack(
+            "<9H",
+            0,
+            col,
+            0,
+            row,
+            0,
+            min(col + 2, 255),
+            0,
+            min(row + 3, 65_535),
+            0,
+        ),
+    )
+    return _officeart_record(
+        0xF004,
+        fsp + fopt + anchor,
+        version=0xF,
+    )
+
+
+def _equation_obj(location: int, object_id: int) -> bytes:
+    """构造以 FtPictFmla 指向 MBD storage 的 picture OBJ。"""
+
+    cmo = struct.pack("<HHH", 0x0008, object_id, 0) + b"\x00" * 12
+    pict_flags = struct.pack("<H", 0)
+    parsed_formula = struct.pack("<H", 5) + b"\x00" * 4 + b"\x02" + b"\x00" * 4
+    embed_info = b"\x03\x00\x00"
+    obj_formula = parsed_formula + embed_info
+    pict_formula = (
+        struct.pack("<H", len(obj_formula))
+        + obj_formula
+        + struct.pack("<I", location)
+    )
+    payload = b"".join(
+        (
+            struct.pack("<HH", 0x0015, len(cmo)) + cmo,
+            struct.pack("<HH", 0x0008, len(pict_flags)) + pict_flags,
+            struct.pack("<HH", 0x0009, len(pict_formula)) + pict_formula,
+            struct.pack("<HH", 0, 0),
+        )
+    )
+    return biff_record(0x005D, payload)
+
+
+def _preview_bstore() -> bytes:
+    """构造一个可由 XLS/PPT 共用解码器读取的内嵌 PNG BStore。"""
+
+    blip = _officeart_record(0xF01E, b"\x00" * 17 + _TINY_PNG)
+    bse = _officeart_record(0xF007, b"\x00" * 36 + blip, version=2)
+    return _officeart_record(0xF001, bse, version=0xF, instance=1)
+
+
+def _build_xls_with_embeddings(workbook: bytes, equations: dict[int, bytes]) -> bytes:
+    """把 Workbook 与多个 MBD Equation Native storage 写入同一 CFB。"""
+
+    none = 0xFFFF_FFFF
+    entries: list[dict[str, object]] = [
+        {"name": "Root Entry", "kind": 5},
+    ]
+    storage_indexes: list[int] = []
+    for location, mtef in equations.items():
+        storage_index = len(entries)
+        storage_indexes.append(storage_index)
+        entries.append(
+            {
+                "name": f"MBD{location:08X}",
+                "kind": 1,
+                "child": storage_index + 1,
+            }
+        )
+        entries.extend(
+            [
+                {
+                    "name": "Equation Native",
+                    "kind": 2,
+                    "right": storage_index + 2,
+                    "data": equation_native(mtef),
+                },
+                {
+                    "name": "\x01CompObj",
+                    "kind": 2,
+                    "right": storage_index + 3,
+                    "data": b"Equation.3\x00",
+                },
+                {
+                    "name": "\x03ObjInfo",
+                    "kind": 2,
+                    "right": none,
+                    "data": b"\x00" * 6,
+                },
+            ]
+        )
+    workbook_index = len(entries)
+    entries.append(
+        {
+            "name": "Workbook",
+            "kind": 2,
+            "right": none,
+            "data": workbook,
+        }
+    )
+    root_children = storage_indexes + [workbook_index]
+    for current, following in zip(root_children, root_children[1:]):
+        entries[current]["right"] = following
+    entries[0]["child"] = root_children[0]
+    return _build_nested_cfb(entries)
 
 
 def biff_bof(substream_type: int, *, version: int = 0x0600) -> bytes:
@@ -157,6 +304,7 @@ def build_xls(
     globals_records: bytes = b"",
     corrupt_first_offset: bool = False,
     encrypted: bool = False,
+    equations: dict[int, bytes] | None = None,
 ) -> bytes:
     """构造含 Workbook Globals 与多个 worksheet substreams 的 OLE 文件。"""
 
@@ -191,7 +339,36 @@ def build_xls(
         for offset, sheet in zip(offsets, sheets, strict=True)
     )
     workbook = prefix + directory + biff_record(0x000A) + b"".join(sheet_streams)
+    if equations:
+        return _build_xls_with_embeddings(workbook, equations)
     return _build_cfb([("Workbook", workbook)])
+
+
+def build_equation_xls(
+    formulas: list[tuple[int, bytes]],
+    *,
+    cell_records: bytes = b"",
+    preview: bool = True,
+) -> bytes:
+    """构造带 Equation.3 picture OBJ、MBD storages 和可选预览的 XLS。"""
+
+    drawing_records = b""
+    for index, (location, _mtef) in enumerate(formulas, start=1):
+        drawing_records += biff_record(
+            0x00EC,
+            _equation_shape(index - 1, 0, index, preview=preview),
+        )
+        drawing_records += _equation_obj(location, index)
+    globals_records = (
+        biff_record(0x00EB, _preview_bstore())
+        if preview
+        else b""
+    )
+    return build_xls(
+        [SheetFixture("Equations", cell_records + drawing_records)],
+        globals_records=globals_records,
+        equations=dict(formulas),
+    )
 
 
 def build_biff5_xls(text: str) -> bytes:

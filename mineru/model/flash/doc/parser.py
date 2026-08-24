@@ -68,6 +68,7 @@ class _FieldFrame:
     in_result: bool = False
     transparent: bool = False
     runs: list[DocTextRun] = field(default_factory=list)
+    native_formula: bool = False
 
 
 @dataclass(slots=True)
@@ -93,6 +94,7 @@ class _Assembler:
         data_stream: bytes,
         image_store: ImageStore,
         budget: DocBudget,
+        native_equations: dict[int, str] | None = None,
     ) -> None:
         """保存解析上下文；每个 story 开始时会重置字段栈。"""
 
@@ -105,6 +107,7 @@ class _Assembler:
         self.data_stream = data_stream
         self.image_store = image_store
         self.budget = budget
+        self.native_equations = native_equations or {}
         self._fields: list[_FieldFrame] = []
 
     def _piece_prm(self, char_index: int) -> bytes:
@@ -152,9 +155,19 @@ class _Assembler:
 
         if not run.text:
             return
-        if target and target[-1].style == run.style and target[-1].hyperlink == run.hyperlink:
+        if (
+            target
+            and target[-1].style == run.style
+            and target[-1].hyperlink == run.hyperlink
+            and target[-1].formula == run.formula
+        ):
             previous = target[-1]
-            target[-1] = DocTextRun(previous.text + run.text, previous.style, previous.hyperlink)
+            target[-1] = DocTextRun(
+                previous.text + run.text,
+                previous.style,
+                previous.hyperlink,
+                previous.formula,
+            )
         else:
             target.append(run)
 
@@ -292,6 +305,12 @@ class _Assembler:
                 continue
             if char == "\x14":
                 self._field_separator(keywords)
+                character_run = self.formatting.character_at(fc)
+                location = chpx_picture_location(character_run.grpprl) if character_run is not None else None
+                formula = self.native_equations.get(location) if location is not None else None
+                if formula is not None and self._fields:
+                    self._fields[-1].native_formula = True
+                    self._push_visible_run(visible, DocTextRun(formula, formula=True))
                 continue
             if char == "\x15":
                 self._field_end(visible, keywords)
@@ -321,6 +340,8 @@ class _Assembler:
                 paragraph_start = cp + 1
                 continue
             if char == "\x01":
+                if self._fields and self._fields[-1].native_formula:
+                    continue
                 character_run = self.formatting.character_at(fc)
                 location = chpx_picture_location(character_run.grpprl) if character_run is not None else None
                 if location is not None:
@@ -675,6 +696,8 @@ def parse_doc_document(
     table_stream: bytes,
     data_stream: bytes,
     fib: FileInformationBlock,
+    *,
+    native_equations: dict[int, str] | None = None,
 ) -> DocDocument:
     """解析三个核心 streams 并返回逐 section 语义文档。"""
 
@@ -784,6 +807,7 @@ def parse_doc_document(
         data_stream=data_stream,
         image_store=store,
         budget=budget,
+        native_equations=native_equations,
     )
     main_paragraphs = assembler.paragraphs(0, fib.ccp_text, note_refs=note_refs)
     shape_pair = fib.pair(FCLCB_SHAPE_MAIN)
