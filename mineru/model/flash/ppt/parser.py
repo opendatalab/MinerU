@@ -32,6 +32,9 @@ from mineru.model.flash.legacy_office.officeart import (
     decode_blip as decode_officeart_blip,
 )
 from mineru.model.flash.office.image import serialize_office_image
+from mineru.model.flash.office.image_equation import (
+    OfficeImageEquationDecoder,
+)
 
 from .models import (
     PptEquationElement,
@@ -1445,9 +1448,10 @@ def _picture_map(
 def _image_from_shape(
     shape: _ShapeInfo,
     image_map: dict[int, _ImagePayload],
+    equation_decoder: OfficeImageEquationDecoder,
     budget: RecordBudget,
-) -> PptImageElement | None:
-    """把 shape 的 pib 属性解析为可输出的 slide 图片。"""
+) -> PptImageElement | PptEquationElement | None:
+    """把 shape 的 pib 属性解析为图片或 comment 内公式。"""
 
     reference = _shape_properties(shape.record, budget).get(FOPT_PIB)
     if reference is None:
@@ -1458,6 +1462,18 @@ def _image_from_shape(
             f"PPT_IMAGE_REFERENCE_MISSING: shape={shape.key}, pib={reference}"
         )
         return None
+    latex = equation_decoder.decode(
+        image.data,
+        part_name=f"picture.{image.extension}",
+        content_type=image.content_type,
+    )
+    if latex:
+        return PptEquationElement(
+            latex=latex,
+            bbox=shape.bbox,
+            order=shape.order,
+            shape_offset=shape.order,
+        )
     data_uri = serialize_office_image(
         image.data,
         part_name=f"picture.{image.extension}",
@@ -1499,6 +1515,7 @@ def _slide_elements(
     hyperlinks: dict[int, str],
     image_map: dict[int, _ImagePayload],
     equation_map: dict[int, str],
+    image_equation_decoder: OfficeImageEquationDecoder,
     slide_width: int,
     slide_height: int,
     budget: RecordBudget,
@@ -1565,9 +1582,20 @@ def _slide_elements(
                     is_placeholder=_is_placeholder(shape.record, budget),
                 )
             )
-        image = _image_from_shape(shape, image_map, budget)
-        if image is not None and not _is_small_picture(image.bbox, slide_width, slide_height):
-            elements.append(image)
+        image_or_equation = _image_from_shape(
+            shape,
+            image_map,
+            image_equation_decoder,
+            budget,
+        )
+        if isinstance(image_or_equation, PptEquationElement):
+            elements.append(image_or_equation)
+        elif image_or_equation is not None and not _is_small_picture(
+            image_or_equation.bbox,
+            slide_width,
+            slide_height,
+        ):
+            elements.append(image_or_equation)
     if not any(isinstance(element, PptTextElement) for element in elements):
         # Handmade、早期生产器或恢复路径可能把文本直接放在 SlideContainer 中。
         raw_contents = _parse_text_contents(
@@ -1758,6 +1786,7 @@ def parse_ppt_document(
     width, height = _presentation_size(layout.document, budget)
     hyperlinks = _hyperlink_targets(layout.document, budget)
     image_map = _picture_map(layout.document, pictures, budget)
+    image_equation_decoder = OfficeImageEquationDecoder()
     native_equations = _equation_map(layout, powerpoint_document, budget)
     master_map, fallback_master = _collect_masters(
         layout,
@@ -1821,6 +1850,7 @@ def parse_ppt_document(
                     hyperlinks,
                     image_map,
                     native_equations,
+                    image_equation_decoder,
                     width,
                     height,
                     budget,
@@ -1846,6 +1876,7 @@ def parse_ppt_document(
                         hyperlinks,
                         image_map,
                         native_equations,
+                        image_equation_decoder,
                         width,
                         height,
                         budget,

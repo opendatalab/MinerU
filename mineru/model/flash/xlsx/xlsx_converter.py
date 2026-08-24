@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import collections
+import hashlib
 import html
 import posixpath
 import re
@@ -20,7 +21,13 @@ from pydantic import BaseModel, Field, NonNegativeInt, PositiveInt
 from pydantic.dataclasses import dataclass
 
 from mineru.model.flash.office.image import is_vector_image, serialize_vector_image_with_placeholder
+from mineru.model.flash.office.image import serialize_office_image
+from mineru.model.flash.office.image_equation import (
+    OfficeImageEquationDecoder,
+)
 from mineru.model.flash.office.ooxml_equation import OoxmlEquationDecoder
+from mineru.model.flash.legacy_office.errors import LegacyOfficeResourceLimitError
+from mineru.model.flash.legacy_office.limits import MAX_ENTRY_BYTES
 from mineru.model.flash.docx.tools.math.omml import oMath2Latex
 from mineru.model.office_stream import read_stream_bytes_from_start, rewind_stream
 from mineru.model.flash.xlsx.package_normalizer import (
@@ -30,6 +37,7 @@ from mineru.model.flash.xlsx.package_normalizer import (
 from mineru.model.flash.xlsx.ooxml_ole import (
     XlsxOleEquationArtifact,
     package_has_sheet_ole_objects,
+    read_sheet_image_artifacts,
     read_sheet_equation_artifacts,
     workbook_sheet_parts,
 )
@@ -183,6 +191,7 @@ class XlsxConverter:
             tuple[tuple[int, int], str]
         ] = set()
         self._ooxml_equation_decoder = OoxmlEquationDecoder()
+        self._image_equation_decoder = OfficeImageEquationDecoder()
         self._merged_cell_lookup_cache = {}
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
 
@@ -224,6 +233,7 @@ class XlsxConverter:
         self._omml_artifacts = []
         self._suppressed_ole_previews = set()
         self._ooxml_equation_decoder = OoxmlEquationDecoder()
+        self._image_equation_decoder = OfficeImageEquationDecoder()
         self._merged_cell_lookup_cache = {}
 
     def _convert_package_bytes(self, file_bytes: bytes) -> None:
@@ -359,7 +369,14 @@ class XlsxConverter:
                 anchor = image_info["anchor"]
                 if anchor[0] is None or anchor[1] is None:
                     continue
-                self.table_image_map[anchor].append(f'<img src="{image_info["base64"]}" />')
+                if image_info.get("latex"):
+                    self.table_image_map[anchor].append(
+                        self.equation_bookends.format(EQ=image_info["latex"])
+                    )
+                elif image_info.get("base64"):
+                    self.table_image_map[anchor].append(
+                        f'<img src="{image_info["base64"]}" />'
+                    )
             for artifact in self._ole_artifacts:
                 if (
                     artifact.latex is not None
@@ -377,6 +394,9 @@ class XlsxConverter:
             visual_artifacts.extend(
                 self._find_equation_artifacts_in_sheet(used_cells)
             )
+            visual_artifacts.extend(
+                self._find_image_equation_artifacts_in_sheet(used_cells)
+            )
             for _, _, block in sorted(
                 visual_artifacts,
                 key=lambda item: (item[0][0], item[0][1], item[1]),
@@ -388,7 +408,7 @@ class XlsxConverter:
         self,
         sheet: Worksheet,
     ) -> list[XlsxOleEquationArtifact]:
-        """从当前 worksheet part 读取 Equation.3 公式和预览。"""
+        """从当前 worksheet part 读取 MathType/Equation 公式和预览。"""
 
         if self.zf is None:
             return []
@@ -399,6 +419,7 @@ class XlsxConverter:
             self.zf,
             worksheet_part,
             self._ooxml_equation_decoder,
+            self._image_equation_decoder,
         )
 
     def _find_equation_artifacts_in_sheet(
@@ -447,29 +468,154 @@ class XlsxConverter:
                 artifacts.append((coordinate, 20_000 + artifact.order, block))
         return artifacts
 
-    @staticmethod
-    def _serialize_sheet_image(image: XlsImage) -> str:
-        pil_image = Image.open(image.ref)  # type: ignore[arg-type]
-        if is_vector_image(pil_image):
-            return serialize_vector_image_with_placeholder(pil_image)
+    def _find_image_equation_artifacts_in_sheet(
+        self,
+        used_cells: set[tuple[int, int]],
+    ) -> list[tuple[tuple[int, int], int, dict]]:
+        """按原始 drawing anchor 输出未被表格吸收的图片 comment 公式。"""
 
-        if pil_image.mode != "RGB":
-            return image_to_b64str(pil_image, image_format="PNG")
+        artifacts: list[tuple[tuple[int, int], int, dict]] = []
+        for image_info in self.sheet_images:
+            latex = image_info.get("latex")
+            if not latex:
+                continue
+            row, col = image_info["anchor"]
+            if (
+                row is not None
+                and col is not None
+                and (row, col) in used_cells
+            ):
+                continue
+            coordinate = (
+                row if row is not None else 10**9,
+                col if col is not None else 10**9,
+            )
+            artifacts.append(
+                (
+                    coordinate,
+                    25_000 + int(image_info.get("order", 0)),
+                    {"type": BlockType.EQUATION, "content": latex},
+                )
+            )
+        return artifacts
 
-        return image_to_b64str(pil_image, image_format="JPEG")
+    def _read_xlsx_image_member(self, part_name: str) -> bytes | None:
+        """从原始 XLSX ZIP 有界读取 media member。"""
+
+        if self.zf is None:
+            return None
+        normalized = posixpath.normpath(part_name.lstrip("/"))
+        if normalized.startswith("../") or normalized not in self.zf.namelist():
+            return None
+        info = self.zf.getinfo(normalized)
+        if info.file_size > MAX_ENTRY_BYTES:
+            raise LegacyOfficeResourceLimitError(
+                f"XLSX image exceeds max_entry_bytes={MAX_ENTRY_BYTES}"
+            )
+        with self.zf.open(info) as stream:
+            payload = stream.read(MAX_ENTRY_BYTES + 1)
+        if len(payload) > MAX_ENTRY_BYTES:
+            raise LegacyOfficeResourceLimitError(
+                f"XLSX image exceeds max_entry_bytes={MAX_ENTRY_BYTES}"
+            )
+        return payload
+
+    def _raw_sheet_image(
+        self,
+        image: XlsImage,
+    ) -> tuple[bytes, str | None, str | None] | None:
+        """优先从原 ZIP 读取 openpyxl 图片的未转码原始字节。"""
+
+        part_name = str(getattr(image, "path", "") or "") or None
+        payload = (
+            self._read_xlsx_image_member(part_name)
+            if part_name is not None
+            else None
+        )
+        if payload is None:
+            try:
+                payload = image._data()  # type: ignore[attr-defined]
+            except Exception:
+                return None
+            if len(payload) > MAX_ENTRY_BYTES:
+                raise LegacyOfficeResourceLimitError(
+                    f"XLSX image exceeds max_entry_bytes={MAX_ENTRY_BYTES}"
+                )
+        image_format = str(getattr(image, "format", "") or "").casefold()
+        content_type = f"image/{image_format}" if image_format else None
+        return payload, part_name, content_type
 
     def _collect_sheet_images(self, sheet: Worksheet) -> list[dict]:
         images = []
         if self.workbook is None:
             return images
 
-        for item in getattr(sheet, "_images", []):  # type: ignore[attr-defined]
-            try:
-                image: XlsImage = cast(XlsImage, item)
+        seen: set[tuple[tuple[int | None, int | None], bytes]] = set()
+        worksheet_part = self._sheet_part_by_title.get(sheet.title)
+        if self.zf is not None and worksheet_part is not None:
+            for artifact in read_sheet_image_artifacts(
+                self.zf,
+                worksheet_part,
+            ):
+                anchor = (artifact.row, artifact.col)
+                digest = hashlib.sha256(artifact.payload).digest()
+                key = (anchor, digest)
+                if key in seen:
+                    continue
+                seen.add(key)
+                latex = self._image_equation_decoder.decode(
+                    artifact.payload,
+                    part_name=artifact.part_name,
+                )
+                image_base64 = serialize_office_image(
+                    artifact.payload,
+                    part_name=artifact.part_name,
+                    content_type=None,
+                )
+                if latex is None and image_base64 is None:
+                    continue
                 images.append(
                     {
-                        "anchor": self._get_anchor_pos(item.anchor),
-                        "base64": self._serialize_sheet_image(image),
+                        "anchor": anchor,
+                        "base64": image_base64,
+                        "latex": latex,
+                        "order": artifact.order,
+                    }
+                )
+
+        for image_order, item in enumerate(
+            getattr(sheet, "_images", []),  # type: ignore[attr-defined]
+            start=10_000,
+        ):
+            try:
+                image: XlsImage = cast(XlsImage, item)
+                raw_image = self._raw_sheet_image(image)
+                if raw_image is None:
+                    continue
+                payload, part_name, content_type = raw_image
+                anchor = self._get_anchor_pos(item.anchor)
+                key = (anchor, hashlib.sha256(payload).digest())
+                if key in seen:
+                    continue
+                seen.add(key)
+                latex = self._image_equation_decoder.decode(
+                    payload,
+                    part_name=part_name,
+                    content_type=content_type,
+                )
+                image_base64 = serialize_office_image(
+                    payload,
+                    part_name=part_name,
+                    content_type=content_type,
+                )
+                if latex is None and image_base64 is None:
+                    continue
+                images.append(
+                    {
+                        "anchor": anchor,
+                        "base64": image_base64,
+                        "latex": latex,
+                        "order": image_order,
                     }
                 )
             except Exception as e:
@@ -1140,12 +1286,15 @@ class XlsxConverter:
                 if used_cells and r is not None and c is not None and (r, c) in used_cells:
                     continue
 
-                self.cur_page.append(
-                    {
-                        "type": BlockType.IMAGE,
-                        "image_base64": image_info["base64"],
-                    }
-                )
+                if image_info.get("latex"):
+                    continue
+                if image_info.get("base64"):
+                    self.cur_page.append(
+                        {
+                            "type": BlockType.IMAGE,
+                            "image_base64": image_info["base64"],
+                        }
+                    )
 
         return
 
@@ -1403,7 +1552,16 @@ class XlsxConverter:
             return ""
 
         try:
-            with self.zf.open(zip_target_path) as image_file:
+            image_payload = self._read_xlsx_image_member(zip_target_path)
+            if image_payload is None:
+                return ""
+            latex = self._image_equation_decoder.decode(
+                image_payload,
+                part_name=zip_target_path,
+            )
+            if latex:
+                return self.equation_bookends.format(EQ=latex)
+            with BytesIO(image_payload) as image_file:
                 pil_image = Image.open(image_file)
                 if is_vector_image(pil_image):
                     img_base64 = serialize_vector_image_with_placeholder(pil_image)

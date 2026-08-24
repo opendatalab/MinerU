@@ -57,7 +57,7 @@ class XlsImage:
 
 @dataclass(frozen=True, slots=True)
 class XlsEquation:
-    """绑定到工作表 cell anchor 的 Equation Editor 原生公式。"""
+    """绑定到工作表 cell anchor 的原生或图片 comment 公式。"""
 
     row: int
     col: int

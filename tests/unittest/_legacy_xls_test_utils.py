@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import struct
 import uuid
+import zlib
 
 from _mtef_test_utils import _TINY_PNG, _build_nested_cfb, equation_native
 from _legacy_ppt_test_utils import _build_cfb
@@ -107,15 +108,31 @@ def _equation_obj(location: int, object_id: int) -> bytes:
     return biff_record(0x005D, payload)
 
 
-def _preview_bstore() -> bytes:
-    """构造一个可由 XLS/PPT 共用解码器读取的内嵌 PNG BStore。"""
+def _preview_bstore(preview_payload: bytes | None = None) -> bytes:
+    """构造一个可由 XLS/PPT 共用解码器读取的 PNG/WMF BStore。"""
 
-    blip = _officeart_record(0xF01E, b"\x00" * 17 + _TINY_PNG)
+    if preview_payload is None:
+        blip = _officeart_record(0xF01E, b"\x00" * 17 + _TINY_PNG)
+    else:
+        compressed = zlib.compress(preview_payload)
+        metafile_header = bytearray(34)
+        struct.pack_into("<I", metafile_header, 0, len(preview_payload))
+        struct.pack_into("<I", metafile_header, 28, len(compressed))
+        metafile_header[32] = 0
+        blip = _officeart_record(
+            0xF01B,
+            b"\x00" * 16 + bytes(metafile_header) + compressed,
+        )
     bse = _officeart_record(0xF007, b"\x00" * 36 + blip, version=2)
     return _officeart_record(0xF001, bse, version=0xF, instance=1)
 
 
-def _build_xls_with_embeddings(workbook: bytes, equations: dict[int, bytes]) -> bytes:
+def _build_xls_with_embeddings(
+    workbook: bytes,
+    equations: dict[int, bytes],
+    *,
+    prog_id: str,
+) -> bytes:
     """把 Workbook 与多个 MBD Equation Native storage 写入同一 CFB。"""
 
     none = 0xFFFF_FFFF
@@ -145,7 +162,7 @@ def _build_xls_with_embeddings(workbook: bytes, equations: dict[int, bytes]) -> 
                     "name": "\x01CompObj",
                     "kind": 2,
                     "right": storage_index + 3,
-                    "data": b"Equation.3\x00",
+                    "data": prog_id.encode("ascii") + b"\x00",
                 },
                 {
                     "name": "\x03ObjInfo",
@@ -305,6 +322,7 @@ def build_xls(
     corrupt_first_offset: bool = False,
     encrypted: bool = False,
     equations: dict[int, bytes] | None = None,
+    equation_prog_id: str = "Equation.3",
 ) -> bytes:
     """构造含 Workbook Globals 与多个 worksheet substreams 的 OLE 文件。"""
 
@@ -340,7 +358,11 @@ def build_xls(
     )
     workbook = prefix + directory + biff_record(0x000A) + b"".join(sheet_streams)
     if equations:
-        return _build_xls_with_embeddings(workbook, equations)
+        return _build_xls_with_embeddings(
+            workbook,
+            equations,
+            prog_id=equation_prog_id,
+        )
     return _build_cfb([("Workbook", workbook)])
 
 
@@ -349,8 +371,10 @@ def build_equation_xls(
     *,
     cell_records: bytes = b"",
     preview: bool = True,
+    prog_id: str = "Equation.3",
+    preview_payload: bytes | None = None,
 ) -> bytes:
-    """构造带 Equation.3 picture OBJ、MBD storages 和可选预览的 XLS。"""
+    """构造带公式 picture OBJ、MBD storages 和可选预览的 XLS。"""
 
     drawing_records = b""
     for index, (location, _mtef) in enumerate(formulas, start=1):
@@ -360,7 +384,7 @@ def build_equation_xls(
         )
         drawing_records += _equation_obj(location, index)
     globals_records = (
-        biff_record(0x00EB, _preview_bstore())
+        biff_record(0x00EB, _preview_bstore(preview_payload))
         if preview
         else b""
     )
@@ -368,6 +392,7 @@ def build_equation_xls(
         [SheetFixture("Equations", cell_records + drawing_records)],
         globals_records=globals_records,
         equations=dict(formulas),
+        equation_prog_id=prog_id,
     )
 
 

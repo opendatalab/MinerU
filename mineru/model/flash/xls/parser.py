@@ -22,6 +22,9 @@ from mineru.model.flash.legacy_office.officeart import (
     extract_excel_shapes,
 )
 from mineru.model.flash.office.image import serialize_office_image
+from mineru.model.flash.office.image_equation import (
+    OfficeImageEquationDecoder,
+)
 
 from .chart import chart_source_axes
 from .models import (
@@ -464,7 +467,7 @@ def _pict_embedding_storage(payload: bytes, picture_flags: int | None) -> str | 
 
     if picture_flags is None:
         return None
-    # DDE、ActiveX、controls stream 与 camera picture 都不是内嵌 Equation.3 对象。
+    # DDE、ActiveX、controls stream 与 camera picture 都不是内嵌公式 OLE 对象。
     if picture_flags & (0x0002 | 0x0010 | 0x0020 | 0x0080):
         return None
     if len(payload) < 10:
@@ -676,6 +679,7 @@ def _bind_objects(
     globals_: _Globals,
     sheet_index: int,
     native_equations: dict[str, str],
+    image_equation_decoder: OfficeImageEquationDecoder,
     budget: RecordBudget,
 ) -> None:
     """按 drawing/OBJ 顺序绑定文本框、复选框、图片与嵌入图表。"""
@@ -707,6 +711,21 @@ def _bind_objects(
         if equation:
             sheet.equations.append(XlsEquation(row=row, col=col, latex=equation))
             continue
+        if (
+            object_.object_type == OBJ_PICTURE
+            and shape.pib is not None
+            and (payload := globals_.images.get(int(shape.pib))) is not None
+        ):
+            image_latex = image_equation_decoder.decode(
+                payload.data,
+                part_name=f"picture.{payload.extension}",
+                content_type=payload.content_type,
+            )
+            if image_latex:
+                sheet.equations.append(
+                    XlsEquation(row=row, col=col, latex=image_latex)
+                )
+                continue
         if object_.object_type == OBJ_TEXTBOX and object_.text is not None:
             _append_cell_text(sheet, row, col, object_.text)
         elif object_.object_type == OBJ_CHECKBOX and object_.checked is not None:
@@ -778,6 +797,7 @@ def _read_sheet(
     sheet_index: int,
     recovered: bool,
     native_equations: dict[str, str],
+    image_equation_decoder: OfficeImageEquationDecoder,
     budget: RecordBudget,
 ) -> XlsSheet | None:
     """解析一个 worksheet substream 并绑定其 drawing/chart 对象。"""
@@ -1019,6 +1039,7 @@ def _read_sheet(
         globals_=globals_,
         sheet_index=sheet_index,
         native_equations=native_equations,
+        image_equation_decoder=image_equation_decoder,
         budget=budget,
     )
     return sheet
@@ -1059,6 +1080,7 @@ def parse_xls_workbook(
         storage.casefold(): latex
         for storage, latex in (native_equations or {}).items()
     }
+    image_equation_decoder = OfficeImageEquationDecoder()
     globals_ = _read_globals(data, budget)
     candidates = _worksheet_bof_offsets(data)
     used_offsets: set[int] = set()
@@ -1119,6 +1141,7 @@ def parse_xls_workbook(
             sheet_index=sheet_index,
             recovered=recovered,
             native_equations=normalized_equations,
+            image_equation_decoder=image_equation_decoder,
             budget=budget,
         )
         if parsed is None:

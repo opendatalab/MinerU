@@ -1,6 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-"""读取 XLSX worksheet 中的 Equation.3 OLE 对象、anchor 与预览。"""
+"""读取 XLSX worksheet 中的 MathType/Equation OLE 对象、anchor 与预览。"""
 
 from __future__ import annotations
 
@@ -15,9 +15,12 @@ from loguru import logger
 from mineru.model.flash.legacy_office.errors import LegacyOfficeResourceLimitError
 from mineru.model.flash.legacy_office.limits import MAX_ENTRY_BYTES
 from mineru.model.flash.office.image import serialize_office_image
+from mineru.model.flash.office.image_equation import (
+    OfficeImageEquationDecoder,
+)
 from mineru.model.flash.office.ooxml_equation import (
     OoxmlEquationDecoder,
-    is_equation_3_prog_id,
+    is_mathtype_equation_prog_id,
 )
 
 WORKBOOK_PART = "xl/workbook.xml"
@@ -26,7 +29,7 @@ RELATIONSHIP_NS_SUFFIX = "/relationships"
 
 @dataclass(frozen=True, slots=True)
 class XlsxOleEquationArtifact:
-    """一个已绑定 worksheet anchor 的 Equation.3 公式或预览。"""
+    """一个已绑定 worksheet anchor 的公式 OLE 结果或预览。"""
 
     row: int | None
     col: int | None
@@ -34,6 +37,17 @@ class XlsxOleEquationArtifact:
     preview_base64: str | None
     order: int
     shape_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class XlsxImageArtifact:
+    """一个从原始 worksheet drawing 读取的图片和 cell anchor。"""
+
+    row: int | None
+    col: int | None
+    payload: bytes
+    part_name: str
+    order: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,6 +318,76 @@ def _drawing_shape_info(
     return None, None
 
 
+def read_sheet_image_artifacts(
+    source: ZipFile,
+    worksheet_part: str,
+) -> list[XlsxImageArtifact]:
+    """从原始 worksheet DrawingML 读取未经过 openpyxl 转码的图片。"""
+
+    worksheet_relationships = _relationships(source, worksheet_part)
+    drawing_parts = [
+        relationship.target
+        for relationship in worksheet_relationships.values()
+        if not relationship.external
+        and relationship.target is not None
+        and relationship.reltype.rstrip("/").casefold().endswith("/drawing")
+    ]
+    artifacts: list[XlsxImageArtifact] = []
+    order = 0
+    for drawing_part in drawing_parts:
+        root = _read_xml(source, drawing_part)
+        if root is None:
+            continue
+        relationships = _relationships(source, drawing_part)
+        for anchor in root:
+            if _local_name(anchor.tag) not in {
+                "oneCellAnchor",
+                "twoCellAnchor",
+                "absoluteAnchor",
+            }:
+                continue
+            from_marker = next(
+                (
+                    child
+                    for child in anchor
+                    if _local_name(child.tag) == "from"
+                ),
+                None,
+            )
+            coordinate = None
+            if from_marker is not None:
+                row = _child_int(from_marker, "row")
+                col = _child_int(from_marker, "col")
+                if row is not None and col is not None and row >= 0 and col >= 0:
+                    coordinate = (row, col)
+            for node in anchor.iter():
+                if _local_name(node.tag) != "blip":
+                    continue
+                relationship = relationships.get(
+                    _relationship_embed_id(node) or ""
+                )
+                if (
+                    relationship is None
+                    or relationship.external
+                    or relationship.target is None
+                ):
+                    continue
+                payload = _read_member_bounded(source, relationship.target)
+                if payload is None:
+                    continue
+                artifacts.append(
+                    XlsxImageArtifact(
+                        row=coordinate[0] if coordinate is not None else None,
+                        col=coordinate[1] if coordinate is not None else None,
+                        payload=payload,
+                        part_name=relationship.target,
+                        order=order,
+                    )
+                )
+                order += 1
+    return artifacts
+
+
 def _vml_shape_info(
     source: ZipFile,
     drawing_part: str,
@@ -392,25 +476,13 @@ def _shape_anchor_and_preview(
     return None, None
 
 
-def _preview_data_uri(source: ZipFile, part_name: str | None) -> str | None:
-    """读取并按现有 Office 图片策略序列化 OLE 缓存预览。"""
-
-    payload = _read_member_bounded(source, part_name)
-    if payload is None:
-        return None
-    return serialize_office_image(
-        payload,
-        part_name=part_name,
-        content_type=None,
-    )
-
-
 def read_sheet_equation_artifacts(
     source: ZipFile,
     worksheet_part: str,
     decoder: OoxmlEquationDecoder,
+    image_decoder: OfficeImageEquationDecoder,
 ) -> list[XlsxOleEquationArtifact]:
-    """读取一个 worksheet 的 Equation.3 对象并绑定公式或图片回退。"""
+    """读取一个 worksheet 的公式 OLE 对象并绑定公式或图片回退。"""
 
     worksheet = _read_xml(source, worksheet_part)
     if worksheet is None:
@@ -421,7 +493,7 @@ def read_sheet_equation_artifacts(
         node for node in worksheet.iter() if _local_name(node.tag) == "oleObject"
     ):
         prog_id = ole_object.get("progId") or ole_object.get("ProgID")
-        if not is_equation_3_prog_id(prog_id):
+        if not is_mathtype_equation_prog_id(prog_id):
             continue
         relationship = relationships.get(_relationship_id(ole_object) or "")
         is_linked = bool(ole_object.get("link")) or (
@@ -443,12 +515,6 @@ def read_sheet_equation_artifacts(
                 prog_id=prog_id,
                 show_as_icon=show_as_icon,
             )
-            if latex is None and not show_as_icon:
-                logger.warning(
-                    "XLSX_MTEF_FALLBACK: worksheet={!r}, relationship={!r} has an invalid or unsupported Equation.3 object",
-                    worksheet_part,
-                    _relationship_id(ole_object),
-                )
 
         coordinate = _anchor_from_object_properties(ole_object)
         preview_relationship = relationships.get(
@@ -466,7 +532,27 @@ def read_sheet_equation_artifacts(
         )
         coordinate = coordinate or shape_coordinate
         preview_part = preview_part or shape_preview
-        preview = _preview_data_uri(source, preview_part)
+        preview_payload = _read_member_bounded(source, preview_part)
+        if latex is None and not show_as_icon and preview_payload is not None:
+            latex = image_decoder.decode(
+                preview_payload,
+                part_name=preview_part,
+            )
+        if latex is None and not show_as_icon and not is_linked:
+            logger.warning(
+                "XLSX_MTEF_FALLBACK: worksheet={!r}, relationship={!r} has no recoverable native or image-comment equation",
+                worksheet_part,
+                _relationship_id(ole_object),
+            )
+        preview = (
+            serialize_office_image(
+                preview_payload,
+                part_name=preview_part,
+                content_type=None,
+            )
+            if preview_payload is not None
+            else None
+        )
 
         if latex is None and preview is None:
             continue

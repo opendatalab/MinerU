@@ -56,7 +56,7 @@ class PptImageElement:
 
 @dataclass(frozen=True, slots=True)
 class PptEquationElement:
-    """已经从 Equation Editor 原生对象恢复的 LaTeX 公式。"""
+    """已经从原生对象或图片 comment 恢复的 LaTeX 公式。"""
 
     latex: str
     bbox: tuple[float, float, float, float]

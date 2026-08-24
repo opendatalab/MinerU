@@ -273,14 +273,23 @@ def _build_nested_cfb(entries: list[dict[str, object]]) -> bytes:
     return header + b"".join(sectors)
 
 
-def build_equation_object(mtef: bytes) -> bytes:
-    """构造含 Equation Native 的独立 Equation.3 OLE 对象。"""
+def build_equation_object(
+    mtef: bytes,
+    *,
+    prog_id: str = "Equation.3",
+) -> bytes:
+    """构造含 Equation Native 和指定 ProgID 的独立公式 OLE 对象。"""
 
     none = 0xFFFF_FFFF
     equation_clsid = uuid.UUID("0002CE02-0000-0000-C000-000000000046").bytes_le
     entries = [
         {"name": "Root Entry", "kind": 5, "child": 1, "clsid": equation_clsid},
-        {"name": "\x01CompObj", "kind": 2, "right": 2, "data": b"Equation.3\x00"},
+        {
+            "name": "\x01CompObj",
+            "kind": 2,
+            "right": 2,
+            "data": prog_id.encode("ascii") + b"\x00",
+        },
         {"name": "\x03ObjInfo", "kind": 2, "right": 3, "data": b"\x00" * 6},
         {"name": "Equation Native", "kind": 2, "right": none, "data": equation_native(mtef)},
     ]
@@ -349,26 +358,49 @@ def _png_picf(png: bytes) -> bytes:
     return bytes(header) + blip
 
 
+def _raw_picf(payload: bytes) -> bytes:
+    """把可由 magic fallback 识别的原始图片放入最小 PICF。"""
+
+    header_size = 68
+    header = bytearray(header_size)
+    struct.pack_into(
+        "<IH",
+        header,
+        0,
+        header_size + len(payload),
+        header_size,
+    )
+    return bytes(header) + payload
+
+
 def build_equation_doc(
     formulas: list[tuple[int, bytes]],
     *,
     preview_storage_ids: set[int] | None = None,
+    preview_payloads: dict[int, bytes] | None = None,
+    prog_id: str = "Equation.3",
 ) -> bytes:
-    """构造多个 ObjectPool Equation.3 字段的最小 DOC 集成 fixture。"""
+    """构造多个 ObjectPool 公式字段的最小 DOC 集成 fixture。"""
 
     text_parts: list[str] = []
     anchors: list[tuple[int, int, bool]] = []
     data_stream = bytearray()
     previews = preview_storage_ids or set()
+    custom_previews = preview_payloads or {}
     cp_cursor = 0
     for storage_id, _mtef in formulas:
-        prefix = "\x13 EMBED Equation.3 "
+        prefix = f"\x13 EMBED {prog_id} "
         field = prefix + "\x14\x01\x15\r"
         separator_cp = cp_cursor + len(prefix)
         anchors.append((separator_cp, storage_id, True))
         if storage_id in previews:
             preview_offset = len(data_stream)
-            data_stream.extend(_png_picf(_TINY_PNG))
+            preview_payload = custom_previews.get(storage_id)
+            data_stream.extend(
+                _raw_picf(preview_payload)
+                if preview_payload is not None
+                else _png_picf(_TINY_PNG)
+            )
             anchors.append((separator_cp + 1, preview_offset, False))
         text_parts.append(field)
         cp_cursor += len(field)
@@ -437,7 +469,7 @@ def build_equation_doc(
                     "name": "\x01CompObj",
                     "kind": 2,
                     "right": storage_index + 3,
-                    "data": b"Equation.3\x00",
+                    "data": prog_id.encode("ascii") + b"\x00",
                 },
                 {
                     "name": "\x03ObjInfo",

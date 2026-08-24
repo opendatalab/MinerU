@@ -1,4 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import hashlib
 import re
 from io import BytesIO
 from pathlib import Path
@@ -23,9 +24,13 @@ from mineru.model.flash.office.image import (
 )
 from mineru.model.flash.office.ooxml_equation import (
     OoxmlEquationDecoder,
-    is_equation_3_prog_id,
+    is_mathtype_equation_prog_id,
+)
+from mineru.model.flash.office.image_equation import (
+    OfficeImageEquationDecoder,
 )
 from mineru.types import RAW_CAPTION
+from mineru.model.flash.docx.equationxml import DocxEquationXmlDecoder
 from mineru.model.flash.docx.package_normalizer import normalize_docx_package
 from mineru.model.flash.docx.tools.math.omml import oMath2Latex
 from mineru.model.flash.docx.tools.office_xml import read_str
@@ -69,6 +74,15 @@ class DocxConverter:
         "moveTo",
         "smartTag",
     }
+    _FORMULA_TOKEN_KINDS: Final = frozenset(
+        {"omml", "equationxml", "mtef", "image_mtef"}
+    )
+    _FORMULA_SOURCE_PRIORITY: Final = (
+        "omml",
+        "equationxml",
+        "mtef",
+        "image_mtef",
+    )
     """
     Word 文档中使用的 XML 命名空间映射。
 
@@ -113,6 +127,9 @@ class DocxConverter:
         self._style_bool_cache: dict[tuple[int, str], Optional[bool]] = {}
         self._ooxml_equation_decoder = OoxmlEquationDecoder()
         self._mtef_warned_relations: set[tuple[str, str]] = set()
+        self._equationxml_decoder = DocxEquationXmlDecoder()
+        self._equationxml_warned_shapes: set[tuple[str, str, str]] = set()
+        self._image_equation_decoder = OfficeImageEquationDecoder()
 
     @staticmethod
     def _local_name(element: Any) -> Optional[str]:
@@ -148,10 +165,10 @@ class DocxConverter:
         ole_element: Any,
         part: Any,
     ) -> str | None:
-        """从当前 DOCX part 的内部 OLE relationship 解码 Equation.3。"""
+        """从当前 DOCX part 的内部 OLE relationship 解码公式对象。"""
 
         prog_id = ole_element.get("ProgID") or ole_element.get("ProgId")
-        if not is_equation_3_prog_id(prog_id):
+        if not is_mathtype_equation_prog_id(prog_id):
             return None
         object_type = (ole_element.get("Type") or "Embed").strip().casefold()
         if object_type != "embed":
@@ -185,18 +202,115 @@ class DocxConverter:
         if warning_key not in self._mtef_warned_relations:
             self._mtef_warned_relations.add(warning_key)
             logger.warning(
-                "DOCX_MTEF_FALLBACK: part={!r}, relationship={!r} has an invalid or unsupported Equation.3 object",
+                "DOCX_MTEF_FALLBACK: part={!r}, relationship={!r} has an invalid or unsupported equation OLE object",
                 warning_key[0],
                 relationship_id,
             )
         return None
+
+    def _decode_docx_equationxml(
+        self,
+        shape_element: Any,
+        part: Any,
+    ) -> str | None:
+        """解码当前 VML shape 的 ``equationxml`` 并对失败告警去重。"""
+
+        vml_shape_tag = f"{{{DocxConverter._BLIP_NAMESPACES['v']}}}shape"
+        if getattr(shape_element, "tag", None) != vml_shape_tag:
+            return None
+        equation_xml = shape_element.get("equationxml")
+        if equation_xml is None:
+            return None
+
+        latex = self._equationxml_decoder.decode(equation_xml)
+        if latex is not None:
+            return latex
+
+        digest = hashlib.sha256(
+            equation_xml.encode("utf-8", errors="replace")
+        ).hexdigest()[:16]
+        warning_key = (
+            self._docx_part_key(part),
+            str(shape_element.get("id") or ""),
+            digest,
+        )
+        if warning_key not in self._equationxml_warned_shapes:
+            self._equationxml_warned_shapes.add(warning_key)
+            logger.warning(
+                "DOCX_EQUATIONXML_FALLBACK: part={!r}, shape_id={!r}, payload_sha256={!r} is malformed or unsupported",
+                warning_key[0],
+                warning_key[1],
+                warning_key[2],
+            )
+        return None
+
+    @staticmethod
+    def _docx_image_relationship_id(image: Any) -> str | None:
+        """读取 DrawingML/VML 图片元素的内部 relationship id。"""
+
+        relationship_id = image.get(
+            "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
+        )
+        if not relationship_id:
+            relationship_id = image.get(
+                "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+            )
+        return str(relationship_id) if relationship_id else None
+
+    @classmethod
+    def _docx_image_part(cls, image: Any, part: Any) -> Any | None:
+        """通过当前 part 的内部关系解析图片 part。"""
+
+        relationship_id = cls._docx_image_relationship_id(image)
+        relationships = getattr(part, "rels", None)
+        if not relationship_id or relationships is None:
+            return None
+        relationship = relationships.get(relationship_id)
+        if relationship is None or getattr(relationship, "is_external", False):
+            return None
+        try:
+            return relationship.target_part
+        except (AttributeError, KeyError, ValueError):
+            return None
+
+    def _decode_docx_image_equation(
+        self,
+        image: Any,
+        part: Any,
+    ) -> str | None:
+        """从当前图片 part 的 WMF/GIF comment 解码 MTEF。"""
+
+        image_part = self._docx_image_part(image, part)
+        if image_part is None:
+            return None
+        try:
+            blob = image_part.blob
+        except (AttributeError, KeyError, ValueError):
+            return None
+        return self._image_equation_decoder.decode(
+            blob,
+            part_name=getattr(image_part, "partname", None),
+            content_type=getattr(image_part, "content_type", None),
+        )
+
+    @staticmethod
+    def _select_docx_compatibility_tokens(
+        token_groups: list[list[tuple[str, str]]],
+    ) -> list[tuple[str, str]]:
+        """按 OMML、Equation XML、OLE MTEF、图片 MTEF 选择兼容分支。"""
+
+        for token_kind in DocxConverter._FORMULA_SOURCE_PRIORITY:
+            for tokens in token_groups:
+                if any(kind == token_kind for kind, _value in tokens):
+                    return tokens
+        return token_groups[0] if token_groups else []
 
     def _docx_formula_tokens(
         self,
         element: Any,
         part: Any,
     ) -> list[tuple[str, str]]:
-        """按文档顺序提取文本、OMML 和 MTEF，并选择单一兼容分支。"""
+        """按文档顺序提取文本、OMML、Equation XML 和 MTEF。"""
 
         tag_name = self._local_name(element)
         if tag_name is None:
@@ -209,11 +323,17 @@ class DocxConverter:
                 for child in element
                 if self._local_name(child) in {"Choice", "Fallback"}
             ]
-            for token_kind in ("omml", "mtef"):
-                for tokens in branch_tokens:
-                    if any(kind == token_kind for kind, _value in tokens):
-                        return tokens
-            return branch_tokens[0] if branch_tokens else []
+            return self._select_docx_compatibility_tokens(branch_tokens)
+
+        if (
+            tag_name == "object"
+            and tag
+            == f"{{{DocxConverter._BLIP_NAMESPACES['w']}}}object"
+        ):
+            child_tokens = [
+                self._docx_formula_tokens(child, part) for child in element
+            ]
+            return self._select_docx_compatibility_tokens(child_tokens)
 
         if tag_name == "txbxContent":
             # 外层段落会单独遍历文本框内容，避免在此重复提取公式和文字。
@@ -227,9 +347,28 @@ class DocxConverter:
                 return []
             return [("omml", latex)] if latex else []
 
+        if (
+            tag_name == "shape"
+            and tag == f"{{{DocxConverter._BLIP_NAMESPACES['v']}}}shape"
+        ):
+            latex = self._decode_docx_equationxml(element, part)
+            if latex is not None:
+                return [("equationxml", latex)]
+
         if tag_name == "OLEObject":
             latex = self._decode_docx_ole_equation(element, part)
             return [("mtef", latex)] if latex else []
+
+        if (
+            tag_name == "blip"
+            and tag
+            == "{http://schemas.openxmlformats.org/drawingml/2006/main}blip"
+        ) or (
+            tag_name == "imagedata"
+            and tag == f"{{{DocxConverter._BLIP_NAMESPACES['v']}}}imagedata"
+        ):
+            latex = self._decode_docx_image_equation(element, part)
+            return [("image_mtef", latex)] if latex else []
 
         if tag_name == "t" and "officeDocument/2006/math" not in tag:
             return [("text", element.text)] if isinstance(element.text, str) else []
@@ -240,21 +379,25 @@ class DocxConverter:
         return tokens
 
     def _picture_is_equation_preview(self, image: Any, part: Any) -> bool:
-        """判断图片是否属于同一容器中已恢复的 OMML/MTEF 公式预览。"""
+        """判断图片是否属于同一容器中已恢复的公式预览。"""
+
+        if self._decode_docx_image_equation(image, part):
+            return True
 
         for ancestor in image.iterancestors():
             ancestor_name = self._local_name(ancestor)
-            if ancestor_name == "object":
-                for ole_element in ancestor.findall(
-                    ".//o:OLEObject",
-                    namespaces=DocxConverter._BLIP_NAMESPACES,
-                ):
-                    if self._decode_docx_ole_equation(ole_element, part):
-                        return True
+            if ancestor_name == "shape":
+                if self._decode_docx_equationxml(ancestor, part):
+                    return True
                 continue
-            if ancestor_name == "AlternateContent":
+            if ancestor_name in {"object", "AlternateContent"}:
                 tokens = self._docx_formula_tokens(ancestor, part)
-                return any(kind in {"omml", "mtef"} for kind, _value in tokens)
+                if any(
+                    kind in DocxConverter._FORMULA_TOKEN_KINDS
+                    for kind, _value in tokens
+                ):
+                    return True
+                continue
         return False
 
     def _get_style_id_from_property(
@@ -866,6 +1009,9 @@ class DocxConverter:
         self._reset_style_caches()
         self._ooxml_equation_decoder = OoxmlEquationDecoder()
         self._mtef_warned_relations = set()
+        self._equationxml_decoder = DocxEquationXmlDecoder()
+        self._equationxml_warned_shapes = set()
+        self._image_equation_decoder = OfficeImageEquationDecoder()
         # 读取文件字节，以便 mammoth 和 python-docx 各自使用独立读取流
         file_bytes = self._sanitize_missing_internal_relationships(file_stream.read())
         # 使用完整 DOCX 上下文预解析顶层表格，避免转换非表格正文带来的资源浪费
@@ -1042,7 +1188,7 @@ class DocxConverter:
 
         图片会被 mammoth 转换为内联 data-URI base64 格式（<img src="data:...">）。
 
-        注意：mammoth 不支持 OMML 或 Equation.3/MTEF 公式，会静默丢弃
+        注意：mammoth 不支持 OMML、Equation XML 或 MTEF OLE 公式，会静默丢弃
         表格单元格内的公式。本方法在获取 mammoth HTML 后，会同步遍历原始 DOCX XML，
         将丢失的公式重新注入对应的 HTML 单元格。
 
@@ -1244,9 +1390,9 @@ class DocxConverter:
         source_part: Any,
     ) -> Any:
         """
-        将 DOCX XML 表格中的 OMML/MTEF 公式注入 mammoth HTML 表格。
+        将 DOCX XML 表格中的 OMML/Equation XML/MTEF 公式注入 mammoth HTML 表格。
 
-        mammoth 会静默丢弃 OMML 与 Equation.3 公式，导致含公式
+        mammoth 会静默丢弃 OMML、Equation XML 与 MTEF OLE 公式，导致含公式
         的表格单元格在 HTML 中为空。本方法并行遍历 HTML 表格（BeautifulSoup 对象）
         和 XML 表格（lxml 元素），对含有 OMML 公式的单元格用包含公式占位符的内容
         替换原来的空内容。
@@ -1262,7 +1408,7 @@ class DocxConverter:
 
         # 快速检查：该表格是否含有任何公式
         if not any(
-            kind in {"omml", "mtef"}
+            kind in DocxConverter._FORMULA_TOKEN_KINDS
             for kind, _value in self._docx_formula_tokens(xml_table, source_part)
         ):
             return html_table
@@ -1285,7 +1431,7 @@ class DocxConverter:
 
             for html_cell, xml_cell in zip(html_cells, xml_cells):
                 if not any(
-                    kind in {"omml", "mtef"}
+                    kind in DocxConverter._FORMULA_TOKEN_KINDS
                     for kind, _value in self._docx_formula_tokens(
                         xml_cell,
                         source_part,
@@ -1312,9 +1458,9 @@ class DocxConverter:
         source_part: Any,
     ) -> str:
         """
-        为含 OMML/MTEF 公式的表格单元格构建 HTML 内容字符串。
+        为含 OMML/Equation XML/MTEF 公式的表格单元格构建 HTML 内容字符串。
 
-        遍历单元格内的段落，将普通文本和 OMML/MTEF 公式
+        遍历单元格内的段落，将普通文本和 OMML/Equation XML/MTEF 公式
         混合在一起，生成与 mammoth 输出风格一致的 HTML 片段。
 
         Args:
@@ -1345,7 +1491,7 @@ class DocxConverter:
         xml_table: Any,
         source_part: Any,
     ) -> str:
-        """把孤立表格 HTML 包装为 Tag 后复用 OMML/MTEF 注入逻辑。"""
+        """把孤立表格 HTML 包装为 Tag 后复用统一公式注入逻辑。"""
 
         from bs4 import BeautifulSoup
 
@@ -1367,7 +1513,7 @@ class DocxConverter:
         source_part: Any,
     ) -> Optional[str]:
         """
-        为可能含 OMML/MTEF 公式的段落构建 HTML 字符串。
+        为可能含 OMML/Equation XML/MTEF 公式的段落构建 HTML 字符串。
 
         使用与 _handle_equations_in_text 相同的迭代逻辑：
         - 普通 <w:t> 元素的文本直接收集
@@ -1740,42 +1886,19 @@ class DocxConverter:
 
         """
 
-        def get_docx_image_rel_id(image: Any) -> Optional[str]:
-            rel_id = image.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed")
-            if not rel_id:
-                rel_id = image.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
-            return rel_id
-
         source_part = part or self._require_document_part()
-
-        def get_docx_image_part(image: Any) -> Optional[Any]:
-            """
-            获取 DOCX 图像 part。
-
-            Args:
-                image: 单个 blip 元素
-
-            Returns:
-
-                Optional[Any]: 图像 part
-            """
-            rId = get_docx_image_rel_id(image)
-            if rId in source_part.rels:
-                # 使用关系 ID 访问图像部分
-                return source_part.rels[rId].target_part
-            return None
 
         seen_rel_ids: set[str] = set()
         # 遍历所有图片引用元素，支持 DrawingML blip 和 VML imagedata。
         for image in picture_refs:
             if self._picture_is_equation_preview(image, source_part):
                 continue
-            rel_id = get_docx_image_rel_id(image)
+            rel_id = self._docx_image_relationship_id(image)
             if rel_id and rel_id in seen_rel_ids:
                 continue
             if rel_id:
                 seen_rel_ids.add(rel_id)
-            image_part = get_docx_image_part(image)
+            image_part = self._docx_image_part(image, source_part)
             if image_part is None:
                 logger.warning("Warning: image cannot be found")
                 continue

@@ -14,9 +14,12 @@ from pptx.oxml.text import CT_TextLineBreak
 
 from mineru.model.flash.office.chart import extract_chart_html_from_ooxml
 from mineru.model.flash.office.image import PIL_IMAGE_LOAD_ERRORS, is_vector_image, serialize_vector_image_with_placeholder
+from mineru.model.flash.office.image_equation import (
+    OfficeImageEquationDecoder,
+)
 from mineru.model.flash.office.ooxml_equation import (
     OoxmlEquationDecoder,
-    is_equation_3_prog_id,
+    is_mathtype_equation_prog_id,
 )
 from mineru.model.flash.docx.tools.math.omml import oMath2Latex
 from mineru.model.office_stream import read_stream_bytes_from_start, rewind_stream
@@ -112,6 +115,7 @@ class PptxConverter:
         ] = {}
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
         self._ooxml_equation_decoder = OoxmlEquationDecoder()
+        self._image_equation_decoder = OfficeImageEquationDecoder()
         self._mtef_warned_shapes: set[tuple[str, int | None]] = set()
 
     def convert(
@@ -142,6 +146,7 @@ class PptxConverter:
         self.file_stream = None
         self.pptx_obj = None
         self._ooxml_equation_decoder = OoxmlEquationDecoder()
+        self._image_equation_decoder = OfficeImageEquationDecoder()
         self._mtef_warned_shapes = set()
 
     @staticmethod
@@ -154,22 +159,22 @@ class PptxConverter:
             return None
 
     def _is_equation_ole_shape(self, shape: Any) -> bool:
-        """判断 PPTX OLE shape 的 ProgID 是否为 Equation.3。"""
+        """判断 PPTX OLE shape 的 ProgID 是否为 MathType/Equation 公式。"""
 
         ole_format = self._pptx_ole_format(shape)
         return bool(
             ole_format is not None
-            and is_equation_3_prog_id(getattr(ole_format, "prog_id", None))
+            and is_mathtype_equation_prog_id(getattr(ole_format, "prog_id", None))
         )
 
     def _decode_pptx_ole_equation(self, shape: Any) -> str | None:
-        """解码 PPTX 内嵌 Equation.3；链接、图标和坏对象返回空。"""
+        """解码 PPTX 内嵌公式 OLE；链接、图标和坏对象返回空。"""
 
         ole_format = self._pptx_ole_format(shape)
         if ole_format is None:
             return None
         prog_id = getattr(ole_format, "prog_id", None)
-        if not is_equation_3_prog_id(prog_id):
+        if not is_mathtype_equation_prog_id(prog_id):
             return None
         if bool(getattr(ole_format, "show_as_icon", False)):
             return None
@@ -193,7 +198,7 @@ class PptxConverter:
         if warning_key not in self._mtef_warned_shapes:
             self._mtef_warned_shapes.add(warning_key)
             logger.warning(
-                "PPTX_MTEF_FALLBACK: part={!r}, shape_id={!r} has an invalid or unsupported Equation.3 object",
+                "PPTX_MTEF_FALLBACK: part={!r}, shape_id={!r} has an invalid or unsupported equation OLE object",
                 warning_key[0],
                 warning_key[1],
             )
@@ -419,6 +424,15 @@ class PptxConverter:
                 self._handle_chart(shape)
 
             if shape_type == MSO_SHAPE_TYPE.PICTURE:
+                image_latex = self._decode_pptx_shape_image_equation(shape)
+                if image_latex:
+                    self.cur_page.append(
+                        {
+                            "type": BlockType.EQUATION,
+                            "content": image_latex,
+                        }
+                    )
+                    return shape_blocks
                 later_shapes = linear_shapes[shape_index + 1 :]
                 if not self._should_skip_picture(
                     shape_entry,
@@ -687,7 +701,31 @@ class PptxConverter:
                                 "content": self.equation_bookends.format(EQ=latex),
                             }
                         )
+                        return
+                    image_latex = self._decode_pptx_shape_image_equation(shape)
+                    if image_latex:
+                        self.cur_page.append(
+                            {
+                                "type": BlockType.PAGE_FOOTNOTE,
+                                "content": self.equation_bookends.format(
+                                    EQ=image_latex
+                                ),
+                            }
+                        )
                 return
+
+            if shape_type == MSO_SHAPE_TYPE.PICTURE:
+                image_latex = self._decode_pptx_shape_image_equation(shape)
+                if image_latex:
+                    self.cur_page.append(
+                        {
+                            "type": BlockType.PAGE_FOOTNOTE,
+                            "content": self.equation_bookends.format(
+                                EQ=image_latex
+                            ),
+                        }
+                    )
+                    return
 
             if self._should_skip_notes_shape(shape):
                 return
@@ -845,6 +883,19 @@ class PptxConverter:
 
         image_bytes, content_type = image_data
 
+        latex = self._image_equation_decoder.decode(
+            image_bytes,
+            content_type=content_type,
+        )
+        if latex:
+            self.cur_page.append(
+                {
+                    "type": BlockType.EQUATION,
+                    "content": latex,
+                }
+            )
+            return
+
         if content_type == "image/svg+xml":
             image_block = {
                 "type": BlockType.IMAGE,
@@ -863,6 +914,18 @@ class PptxConverter:
         }
         self.cur_page.append(image_block)
         return
+
+    def _decode_pptx_shape_image_equation(self, shape: Any) -> str | None:
+        """从普通 picture 或 OLE preview 的 WMF/GIF comment 恢复公式。"""
+
+        image_data = self._get_shape_image_data(shape)
+        if image_data is None:
+            return None
+        image_bytes, content_type = image_data
+        return self._image_equation_decoder.decode(
+            image_bytes,
+            content_type=content_type,
+        )
 
     @classmethod
     def _serialize_picture_image_best_effort(cls, image_bytes: bytes) -> Optional[str]:

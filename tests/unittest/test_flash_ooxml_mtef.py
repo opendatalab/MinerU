@@ -13,7 +13,10 @@ from mineru.model.flash import DocxModel, PptxModel, XlsxModel
 from mineru.model.flash.docx.docx_converter import DocxConverter
 from mineru.model.flash.legacy_office import LegacyOfficeResourceLimitError
 from mineru.model.flash.legacy_office.limits import MAX_ASSET_TOTAL_BYTES
-from mineru.model.flash.office.ooxml_equation import OoxmlEquationDecoder
+from mineru.model.flash.office.ooxml_equation import (
+    OoxmlEquationDecoder,
+    is_mathtype_equation_prog_id,
+)
 from mineru.model.flash.pptx.pptx_converter import PptxConverter
 from mineru.model.flash.xlsx.xlsx_converter import XlsxConverter
 from mineru.types import BlockType, MiddleJson, ModelJson
@@ -38,7 +41,7 @@ def _equation_contents(pages: list[list[dict]]) -> list[str]:
 
 
 def test_ooxml_equation_decoder_enforces_scope_icon_and_total_budget() -> None:
-    """验证共享入口只接受 Equation.3、非图标及预算内的 CFB。"""
+    """验证共享入口只接受公式 ProgID、非图标及预算内的 CFB。"""
 
     _name, mtef, expected = formula_corpus()[0]
     blob = build_equation_object(mtef)
@@ -46,13 +49,38 @@ def test_ooxml_equation_decoder_enforces_scope_icon_and_total_budget() -> None:
 
     assert decoder.decode(blob, prog_id="Equation.3") == expected
     assert decoder.decode(blob, prog_id="equation.3") == expected
-    assert decoder.decode(blob, prog_id="Equation.DSMT4") is None
+    assert decoder.decode(blob, prog_id="Equation.DSMT4") == expected
+    assert decoder.decode(blob, prog_id="Equation") == expected
+    assert decoder.decode(blob, prog_id="Equation.") is None
+    assert decoder.decode(blob, prog_id="Package") is None
     assert decoder.decode(blob, prog_id="Equation.3", show_as_icon=True) is None
     assert decoder.decode(b"not CFB", prog_id="Equation.3") is None
 
     exhausted = OoxmlEquationDecoder(total_bytes=MAX_ASSET_TOTAL_BYTES)
     with pytest.raises(LegacyOfficeResourceLimitError, match="max_asset_total_bytes"):
         exhausted.decode(blob, prog_id="Equation.3")
+
+
+@pytest.mark.parametrize(
+    ("prog_id", "expected"),
+    [
+        ("Equation", True),
+        ("equation.3", True),
+        ("EQUATION.DSMT4", True),
+        (" Equation.Custom ", True),
+        ("Equation.", False),
+        ("EquationXML", False),
+        ("Package", False),
+        (None, False),
+    ],
+)
+def test_mathtype_equation_prog_id_matching(
+    prog_id: object | None,
+    expected: bool,
+) -> None:
+    """验证 OLE1 Equation 和 OLE2 Equation.* 的大小写无关匹配。"""
+
+    assert is_mathtype_equation_prog_id(prog_id) is expected
 
 
 def test_docx_pptx_xlsx_decode_the_full_mtef_corpus_exactly() -> None:

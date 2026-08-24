@@ -32,6 +32,16 @@ STANDARD_VECTOR_PLACEHOLDER_LINES: Final = (
 )
 
 
+def _is_wmf_payload(image_data: bytes) -> bool:
+    """根据 placeable 或标准 METAHEADER magic 判断原始载荷是否为 WMF。"""
+
+    return image_data.startswith(b"\xd7\xcd\xc6\x9a") or (
+        len(image_data) >= 4
+        and image_data[:2] in {b"\x01\x00", b"\x02\x00"}
+        and image_data[2:4] == b"\x09\x00"
+    )
+
+
 def is_vector_image(pil_image: Image.Image) -> bool:
     """判断已由 Pillow 打开的图片是否属于 WMF/EMF 矢量格式。"""
     return (getattr(pil_image, "format", None) or "").upper() in VECTOR_IMAGE_FORMATS
@@ -171,7 +181,11 @@ def serialize_office_image(
     content_type: str | None = None,
 ) -> str | None:
     """识别并序列化 Office 图片，透明图保留 PNG，普通位图优先使用 JPEG。"""
-    if is_vector_image_part(part_name, content_type):
+    is_wmf_payload = _is_wmf_payload(image_data)
+    if is_wmf_payload:
+        part_name = "image.wmf"
+        content_type = "image/wmf"
+    if is_wmf_payload or is_vector_image_part(part_name, content_type):
         if not is_windows_environment():
             return serialize_vector_part_with_placeholder(part_name, content_type)
 

@@ -18,9 +18,14 @@ from mineru.model.flash.legacy_office.officeart import (
     first_blip,
     record_at,
 )
+from mineru.model.flash.office.image_equation import (
+    OfficeImageEquationDecoder,
+)
 
 from .models import DocImage, DocImagePayload
 from .records import DocBudget, bounded_slice, get_u16, get_u32, parse_plc
+
+_PLACEABLE_WMF_MAGIC = b"\xd7\xcd\xc6\x9a"
 
 
 @dataclass(slots=True)
@@ -29,6 +34,9 @@ class ImageStore:
 
     total: int = 0
     cache: dict[bytes, DocImagePayload] = field(default_factory=dict)
+    equation_decoder: OfficeImageEquationDecoder = field(
+        default_factory=OfficeImageEquationDecoder
+    )
 
     def add(self, payload: OfficeImagePayload) -> DocImagePayload:
         """计入一张唯一图片并返回内部载荷。"""
@@ -41,7 +49,16 @@ class ImageStore:
             raise LegacyOfficeResourceLimitError(
                 f"embedded assets exceed max_asset_total_bytes={MAX_ASSET_TOTAL_BYTES}"
             )
-        converted = DocImagePayload(payload.data, payload.extension, payload.content_type)
+        converted = DocImagePayload(
+            payload.data,
+            payload.extension,
+            payload.content_type,
+            self.equation_decoder.decode(
+                payload.data,
+                part_name=f"image.{payload.extension}",
+                content_type=payload.content_type,
+            ),
+        )
         self.total += len(payload.data)
         self.cache[digest] = converted
         return converted
@@ -69,6 +86,7 @@ def inline_picture(
     if decoded is None:
         # 少量旧文件把原始位图直接放在 PICF 尾部，按 magic 尽力保留。
         signatures = (
+            (_PLACEABLE_WMF_MAGIC, "wmf", "image/wmf"),
             (b"\x89PNG\r\n\x1a\n", "png", "image/png"),
             (b"\xff\xd8\xff", "jpg", "image/jpeg"),
             (b"GIF8", "gif", "image/gif"),

@@ -1,6 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-"""现代 Office OOXML 包中的 Equation.3 OLE 公式解码适配器。"""
+"""现代 Office OOXML 包中的 MathType/Equation OLE 公式解码适配器。"""
 
 from __future__ import annotations
 
@@ -15,18 +15,25 @@ from mineru.model.flash.legacy_office.limits import (
 from mineru.model.flash.legacy_office.mtef import decode_equation_object
 
 CFB_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
-EQUATION_3_PROG_ID = "equation.3"
+EQUATION_PROG_ID = "equation"
+EQUATION_PROG_ID_PREFIX = "equation."
 
 
-def is_equation_3_prog_id(prog_id: object | None) -> bool:
-    """判断 OOXML OLE ProgID 是否精确指向 Equation.3。"""
+def is_mathtype_equation_prog_id(prog_id: object | None) -> bool:
+    """判断 OLE ProgID 是否为 Equation 或带非空版本后缀的 Equation.*。"""
 
-    return isinstance(prog_id, str) and prog_id.strip().casefold() == EQUATION_3_PROG_ID
+    if not isinstance(prog_id, str):
+        return False
+    normalized = prog_id.strip().casefold()
+    return normalized == EQUATION_PROG_ID or (
+        normalized.startswith(EQUATION_PROG_ID_PREFIX)
+        and len(normalized) > len(EQUATION_PROG_ID_PREFIX)
+    )
 
 
 @dataclass(slots=True)
 class OoxmlEquationDecoder:
-    """按共享资源上限缓存并解码 OOXML 中的 Equation.3 对象。"""
+    """按共享资源上限缓存并解码 OOXML 中的公式 OLE 对象。"""
 
     total_bytes: int = 0
     _cache: dict[bytes, str | None] = field(default_factory=dict)
@@ -38,15 +45,15 @@ class OoxmlEquationDecoder:
         prog_id: object | None,
         show_as_icon: bool = False,
     ) -> str | None:
-        """校验 ProgID、图标模式、CFB 头和资源预算后返回 LaTeX。"""
+        """校验公式 ProgID、图标模式、CFB 头和资源预算后返回 LaTeX。"""
 
-        if show_as_icon or not is_equation_3_prog_id(prog_id) or blob is None:
+        if show_as_icon or not is_mathtype_equation_prog_id(prog_id) or blob is None:
             return None
         if not isinstance(blob, bytes):
             return None
         if len(blob) > MAX_ENTRY_BYTES:
             raise LegacyOfficeResourceLimitError(
-                f"OOXML Equation.3 object exceeds max_entry_bytes={MAX_ENTRY_BYTES}"
+                f"OOXML equation object exceeds max_entry_bytes={MAX_ENTRY_BYTES}"
             )
         if not blob.startswith(CFB_MAGIC):
             return None
@@ -56,7 +63,7 @@ class OoxmlEquationDecoder:
             return self._cache[digest]
         if self.total_bytes + len(blob) > MAX_ASSET_TOTAL_BYTES:
             raise LegacyOfficeResourceLimitError(
-                "OOXML Equation.3 objects exceed "
+                "OOXML equation objects exceed "
                 f"max_asset_total_bytes={MAX_ASSET_TOTAL_BYTES}"
             )
 

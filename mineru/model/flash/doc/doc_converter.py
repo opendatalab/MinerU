@@ -143,7 +143,13 @@ class DocConverter:
 
     @classmethod
     def _image_block(cls, payload: DocImagePayload) -> dict[str, Any] | None:
-        """把原始图片载荷转换为 raw image block。"""
+        """把原始图片载荷转换为 equation 或 image block。"""
+
+        if payload.equation_latex:
+            return {
+                "type": BlockType.EQUATION,
+                "content": payload.equation_latex,
+            }
 
         image_base64 = cls._serialize_image(payload)
         if image_base64 is None:
@@ -183,6 +189,11 @@ class DocConverter:
         """把一个 TOC 段落追加到对应层级的 index 树。"""
 
         content = cls._rich_text(cls._toc_runs(paragraph))
+        content += "".join(
+            f"<eq>{escape(payload.equation_latex, quote=False)}</eq>"
+            for payload in paragraph.images
+            if payload.equation_latex
+        )
         if not content:
             return
         level = min(max(paragraph.toc_level or 0, 0), 8)
@@ -219,6 +230,11 @@ class DocConverter:
         if info is None:
             return identity or -1
         content = cls._rich_text(paragraph.runs)
+        content += "".join(
+            f"<eq>{escape(payload.equation_latex, quote=False)}</eq>"
+            for payload in paragraph.images
+            if payload.equation_latex
+        )
         if not content and not paragraph.images:
             return identity or info.identity
         if identity != info.identity:
@@ -328,7 +344,10 @@ class DocConverter:
                 result.append(f"</{stack.pop()}><{tag}>")
                 stack.append(tag)
             label = f"{escape(info.label)} " if info.label and info.ordered else ""
-            result.append(f"<li>{label}{cls._rich_text(paragraph.runs)}</li>")
+            result.append(
+                f"<li>{label}{cls._rich_text(paragraph.runs)}"
+                f"{cls._cell_images_html(paragraph.images)}</li>"
+            )
         while stack:
             result.append(f"</{stack.pop()}>")
         return "".join(result)
@@ -341,7 +360,23 @@ class DocConverter:
         content = cls._rich_text(paragraph.runs, trim=False)
         if content:
             parts.append(f"<p>{content}</p>")
-        for payload in paragraph.images:
+        parts.append(cls._cell_images_html(paragraph.images))
+        return "".join(parts)
+
+    @classmethod
+    def _cell_images_html(
+        cls,
+        payloads: list[DocImagePayload],
+    ) -> str:
+        """把表格段落中的图片或 comment 公式序列化为内联 HTML。"""
+
+        parts: list[str] = []
+        for payload in payloads:
+            if payload.equation_latex:
+                parts.append(
+                    f"<eq>{escape(payload.equation_latex, quote=False)}</eq>"
+                )
+                continue
             image = cls._serialize_image(payload)
             if image:
                 parts.append(f'<img src="{escape(image, quote=True)}"/>')
@@ -370,6 +405,13 @@ class DocConverter:
                 parts.append(cls._table_html(block))
             elif isinstance(block, DocImage):
                 flush()
+                if block.payload.equation_latex:
+                    parts.append(
+                        "<eq>"
+                        f"{escape(block.payload.equation_latex, quote=False)}"
+                        "</eq>"
+                    )
+                    continue
                 image = cls._serialize_image(block.payload)
                 if image:
                     parts.append(f'<img src="{escape(image, quote=True)}"/>')
@@ -435,6 +477,8 @@ class DocConverter:
                 list_identity = None
                 cls._append_index_item(page, index_stack, element)
                 for payload in element.images:
+                    if payload.equation_latex:
+                        continue
                     image = cls._image_block(payload)
                     if image is not None:
                         page.append(image)
@@ -445,6 +489,8 @@ class DocConverter:
             ):
                 list_identity = cls._append_list_item(page, list_stack, list_identity, element)
                 for payload in element.images:
+                    if payload.equation_latex:
+                        continue
                     image = cls._image_block(payload)
                     if image is not None:
                         page.append(image)

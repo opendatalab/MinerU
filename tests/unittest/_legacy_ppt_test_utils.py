@@ -32,10 +32,21 @@ def _officeart_record(
     return _ppt_record((instance << 4) | version, record_type, payload)
 
 
-def _equation_preview_bse() -> bytes:
-    """构造一个内嵌 PNG 的 OfficeArt BSE。"""
+def _equation_preview_bse(preview_payload: bytes | None = None) -> bytes:
+    """构造一个内嵌 PNG 或 WMF 的 OfficeArt BSE。"""
 
-    blip = _officeart_record(0xF01E, b"\x00" * 17 + _TINY_PNG)
+    if preview_payload is None:
+        blip = _officeart_record(0xF01E, b"\x00" * 17 + _TINY_PNG)
+    else:
+        compressed = zlib.compress(preview_payload)
+        metafile_header = bytearray(34)
+        struct.pack_into("<I", metafile_header, 0, len(preview_payload))
+        struct.pack_into("<I", metafile_header, 28, len(compressed))
+        metafile_header[32] = 0
+        blip = _officeart_record(
+            0xF01B,
+            b"\x00" * 16 + bytes(metafile_header) + compressed,
+        )
     return _officeart_record(0xF007, b"\x00" * 36 + blip, version=2)
 
 
@@ -79,6 +90,8 @@ def build_equation_ppt(
     preview: bool = True,
     compressed: bool = True,
     declared_size: int | None = None,
+    prog_id: str = "Equation.3",
+    preview_payload: bytes | None = None,
 ) -> bytes:
     """构造每页一个 Equation Editor OLE 对象的 PPT persist fixture。"""
 
@@ -114,15 +127,27 @@ def build_equation_ppt(
             0x0FC3,
             struct.pack("<6I", 1, 0, index, 6, storage_id, 0),
         )
-        prog_id = _ppt_record(2 << 4, 0x0FBA, "Equation.3".encode("utf-16le"))
+        prog_id_record = _ppt_record(
+            2 << 4,
+            0x0FBA,
+            prog_id.encode("utf-16le"),
+        )
         external_objects.append(
-            _ppt_container(0, 0x0FCC, embed_atom + object_atom + prog_id)
+            _ppt_container(
+                0,
+                0x0FCC,
+                embed_atom + object_atom + prog_id_record,
+            )
         )
     object_list = _ppt_container(0, 0x0409, b"".join(external_objects))
     drawing_group = (
         _officeart_record(
             0xF000,
-            _officeart_record(0xF001, _equation_preview_bse(), version=0xF),
+            _officeart_record(
+                0xF001,
+                _equation_preview_bse(preview_payload),
+                version=0xF,
+            ),
             version=0xF,
         )
         if preview

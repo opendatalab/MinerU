@@ -95,6 +95,7 @@ class DocImagePayload:
     data: bytes
     extension: str
     content_type: str
+    equation_latex: str | None = None
 
 
 @dataclass(slots=True)

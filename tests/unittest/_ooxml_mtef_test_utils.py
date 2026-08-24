@@ -1,4 +1,4 @@
-"""构造带 Equation.3 OLE 对象的确定性 DOCX/PPTX/XLSX 测试包。"""
+"""构造带 MathType/Equation OLE 对象的确定性 DOCX/PPTX/XLSX 测试包。"""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def _rewrite_zip(
 
 
 def _content_types_with_ole(content_types: bytes) -> bytes:
-    """为 .bin Equation.3 persistence part 添加默认内容类型。"""
+    """为 .bin 公式 OLE persistence part 添加默认内容类型。"""
 
     root = etree.fromstring(content_types)
     if not any(
@@ -119,6 +119,7 @@ def _word_ole_run(
     object_index: int,
     ole_relationship_id: str,
     image_relationship_id: str,
+    prog_id: str,
 ) -> etree._Element:
     """构造包含 VML 预览和 o:OLEObject 的 Word run。"""
 
@@ -141,7 +142,7 @@ def _word_ole_run(
         f"{{{O_NS}}}OLEObject",
         {
             "Type": "Embed",
-            "ProgID": "Equation.3",
+            "ProgID": prog_id,
             "ShapeID": shape_id,
             "DrawAspect": "Content",
             "ObjectID": f"_{1200000000 + object_index}",
@@ -178,8 +179,10 @@ def _patch_word_part(
     part_name: str,
     formulas: list[tuple[str, bytes, bool]],
     additions: dict[str, bytes],
+    prog_id: str,
+    preview_image: bytes,
 ) -> tuple[bytes, bytes]:
-    """向一个 Word XML part 及其 relationships 注入多个 Equation.3 对象。"""
+    """向一个 Word XML part 及其 relationships 注入多个公式 OLE 对象。"""
 
     root = etree.fromstring(source.read(part_name))
     directory, basename = part_name.rsplit("/", 1)
@@ -207,9 +210,12 @@ def _patch_word_part(
             if directory != "word"
             else f"media/{image_part.rsplit('/', 1)[-1]}",
         )
-        additions[object_part] = build_equation_object(mtef)
-        additions[image_part] = _TINY_PNG
-        ole_run = _word_ole_run(index, ole_rid, image_rid)
+        additions[object_part] = build_equation_object(
+            mtef,
+            prog_id=prog_id,
+        )
+        additions[image_part] = preview_image
+        ole_run = _word_ole_run(index, ole_rid, image_rid, prog_id)
         if alternate_omml:
             alternate = etree.Element(f"{{{MC_NS}}}AlternateContent")
             choice = etree.SubElement(
@@ -286,8 +292,10 @@ def build_equation_docx(
     alternate_omml: bool = False,
     textbox: bool = False,
     show_as_icon: bool = False,
+    prog_id: str = "Equation.3",
+    preview_image: bytes = _TINY_PNG,
 ) -> bytes:
-    """构造正文、表格或页眉页脚中含 Equation.3 对象的 DOCX。"""
+    """构造正文、表格或页眉页脚中含公式 OLE 对象的 DOCX。"""
 
     document = Document()
     target_part = "word/document.xml"
@@ -340,7 +348,14 @@ def build_equation_docx(
                 part = header_parts[0] if index % 2 == 0 else footer_parts[0]
                 assignments.setdefault(part, []).append((placeholder, mtef, False))
             for part, entries in assignments.items():
-                xml, rels = _patch_word_part(source, part, entries, additions)
+                xml, rels = _patch_word_part(
+                    source,
+                    part,
+                    entries,
+                    additions,
+                    prog_id,
+                    preview_image,
+                )
                 replacements[part] = xml
                 directory, basename = part.rsplit("/", 1)
                 rels_name = f"{directory}/_rels/{basename}.rels"
@@ -359,7 +374,14 @@ def build_equation_docx(
                     zip(placeholders, formulas, strict=True)
                 )
             ]
-            xml, rels = _patch_word_part(source, target_part, entries, additions)
+            xml, rels = _patch_word_part(
+                source,
+                target_part,
+                entries,
+                additions,
+                prog_id,
+                preview_image,
+            )
             if textbox:
                 xml = _wrap_word_equations_in_textboxes(xml)
             if show_as_icon:
@@ -378,8 +400,10 @@ def build_equation_pptx(
     show_as_icon: bool = False,
     notes: bool = False,
     alternate_omml: bool = False,
+    prog_id: str = "Equation.3",
+    preview_image: bytes = _TINY_PNG,
 ) -> bytes:
-    """使用 python-pptx 生成每页一个 Equation.3 OLE 对象的 PPTX。"""
+    """使用 python-pptx 生成每页一个公式 OLE 对象的 PPTX。"""
 
     presentation = Presentation()
     presentation.slides.add_slide(presentation.slide_layouts[6])
@@ -390,8 +414,8 @@ def build_equation_pptx(
             else presentation.slides.add_slide(presentation.slide_layouts[6])
         )
         slide.shapes.add_ole_object(
-            BytesIO(build_equation_object(mtef)),
-            "Equation.3",
+            BytesIO(build_equation_object(mtef, prog_id=prog_id)),
+            prog_id,
             Inches(1),
             Inches(1),
             Inches(4),
@@ -403,6 +427,15 @@ def build_equation_pptx(
     buffer = BytesIO()
     presentation.save(buffer)
     package = buffer.getvalue()
+    if preview_image != _TINY_PNG:
+        replacements = {}
+        with ZipFile(BytesIO(package)) as source:
+            replacements = {
+                name: preview_image
+                for name in source.namelist()
+                if name.startswith("ppt/media/")
+            }
+        package = _rewrite_zip(package, replacements, {})
     if notes:
         return _move_pptx_equations_to_notes(
             package,
@@ -615,8 +648,10 @@ def build_equation_xlsx(
     linked: bool = False,
     show_as_icon: bool = False,
     alternate_omml: bool = False,
+    prog_id: str = "Equation.3",
+    preview_image: bytes = _TINY_PNG,
 ) -> bytes:
-    """构造使用 objectPr、DrawingML 或 VML anchor 的 Equation.3 XLSX。"""
+    """构造使用 objectPr、DrawingML 或 VML anchor 的公式 OLE XLSX。"""
 
     workbook = Workbook()
     worksheet = workbook.active
@@ -648,7 +683,7 @@ def build_equation_xlsx(
                 ole_objects,
                 f"{{{X_NS}}}oleObject",
                 {
-                    "progId": "Equation.3",
+                    "progId": prog_id,
                     "shapeId": str(shape_id),
                     f"{{{REL_NS}}}id": ole_rid,
                 },
@@ -677,7 +712,12 @@ def build_equation_xlsx(
             if linked:
                 ole_object.set("link", "https://example.test/equation.bin")
             else:
-                additions[f"xl/embeddings/oleObjectMtef{index}.bin"] = build_equation_object(mtef)
+                additions[
+                    f"xl/embeddings/oleObjectMtef{index}.bin"
+                ] = build_equation_object(
+                    mtef,
+                    prog_id=prog_id,
+                )
 
         if anchor_mode == "drawing":
             etree.SubElement(root, f"{{{X_NS}}}drawing", {f"{{{REL_NS}}}id": "rIdMtefDrawing"})
@@ -709,7 +749,7 @@ def build_equation_xlsx(
         elif anchor_mode not in {"objectPr", "none"}:
             raise ValueError(f"unsupported XLSX equation anchor fixture: {anchor_mode}")
 
-        additions["xl/media/equationMtef.png"] = _TINY_PNG
+        additions["xl/media/equationMtef.png"] = preview_image
         replacements[worksheet_part] = etree.tostring(
             root,
             xml_declaration=True,

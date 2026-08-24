@@ -1,6 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-"""安全解析 Equation Editor 3.x 的 Equation Native/MTEF v3 公式。"""
+"""安全解析 Equation Native 中的 MTEF v3/v5 公式。"""
 
 from __future__ import annotations
 
@@ -57,7 +57,9 @@ class _MtefReader:
 
         self.records += 1
         if self.records > MAX_RECORDS:
-            raise _MtefError("MTEF record count exceeds the safety limit")
+            raise LegacyOfficeResourceLimitError(
+                f"MTEF record count exceeds max_records={MAX_RECORDS}"
+            )
 
     def _u8(self) -> int:
         """有界读取一个无符号字节。"""
@@ -91,7 +93,9 @@ class _MtefReader:
 
         self.depth += 1
         if self.depth > MAX_RECORD_DEPTH:
-            raise _MtefError("MTEF nesting exceeds the safety limit")
+            raise LegacyOfficeResourceLimitError(
+                f"MTEF nesting exceeds max_record_depth={MAX_RECORD_DEPTH}"
+            )
 
     def _leave(self) -> None:
         """离开一个嵌套 object list。"""
@@ -360,7 +364,11 @@ _CHAR_LATEX = {
     "↔": r"\leftrightarrow ",
     "·": r"\cdot ",
     "∑": r"\sum ",
+    "∏": r"\prod ",
+    "∐": r"\coprod ",
     "∫": r"\int ",
+    "∮": r"\oint ",
+    "ℏ": r"\hbar ",
 }
 
 
@@ -387,6 +395,24 @@ def _render_character(character: int) -> str:
     return value
 
 
+def _escape_latex_text(value: str) -> str:
+    """转义 ``\text{}`` 中会改变 LaTeX 结构的字符。"""
+
+    replacements = {
+        "\\": r"\textbackslash{}",
+        "{": r"\{",
+        "}": r"\}",
+        "#": r"\#",
+        "$": r"\$",
+        "%": r"\%",
+        "&": r"\&",
+        "_": r"\_",
+        "^": r"\textasciicircum{}",
+        "~": r"\textasciitilde{}",
+    }
+    return "".join(replacements.get(character, character) for character in value)
+
+
 def _apply_embellishments(value: str, embellishments: tuple[int, ...]) -> str:
     """按记录顺序把常见 embellishment 转为 LaTeX。"""
 
@@ -401,6 +427,8 @@ def _apply_embellishments(value: str, embellishments: tuple[int, ...]) -> str:
             value = f"{value}'"
         elif embellishment == 6:
             value = f"{value}''"
+        elif embellishment == 7:
+            value = f"{{}}'{value}"
         elif embellishment == 8:
             value = rf"\widetilde{{{value}}}"
         elif embellishment == 9:
@@ -413,6 +441,10 @@ def _apply_embellishments(value: str, embellishments: tuple[int, ...]) -> str:
             value = rf"\overleftarrow{{{value}}}"
         elif embellishment == 13:
             value = rf"\overleftrightarrow{{{value}}}"
+        elif embellishment == 14:
+            value = rf"\overrightharpoon{{{value}}}"
+        elif embellishment == 15:
+            value = rf"\overleftharpoon{{{value}}}"
         elif embellishment == 16:
             value = rf"\bar{{{value}}}"
         elif embellishment == 17:
@@ -423,6 +455,40 @@ def _apply_embellishments(value: str, embellishments: tuple[int, ...]) -> str:
             value = rf"\overparen{{{value}}}"
         elif embellishment == 20:
             value = rf"\underparen{{{value}}}"
+        elif embellishment == 21:
+            value = rf"\xcancel{{{value}}}"
+        elif embellishment == 22:
+            value = rf"\cancel{{{value}}}"
+        elif embellishment == 23:
+            value = rf"\bcancel{{{value}}}"
+        elif embellishment == 24:
+            value = rf"\overset{{\cdots}}{{{value}}}"
+        elif embellishment == 25:
+            value = rf"\underset{{\cdot}}{{{value}}}"
+        elif embellishment == 26:
+            value = rf"\underset{{\cdot\cdot}}{{{value}}}"
+        elif embellishment == 27:
+            value = rf"\underset{{\cdots}}{{{value}}}"
+        elif embellishment == 28:
+            value = rf"\underset{{\cdots\cdot}}{{{value}}}"
+        elif embellishment == 29:
+            value = rf"\underline{{{value}}}"
+        elif embellishment == 30:
+            value = rf"\underset{{\sim}}{{{value}}}"
+        elif embellishment == 31:
+            value = rf"\underparen{{{value}}}"
+        elif embellishment == 32:
+            value = rf"\underset{{\frown}}{{{value}}}"
+        elif embellishment == 33:
+            value = rf"\underrightarrow{{{value}}}"
+        elif embellishment == 34:
+            value = rf"\underleftarrow{{{value}}}"
+        elif embellishment == 35:
+            value = rf"\underleftrightarrow{{{value}}}"
+        elif embellishment == 36:
+            value = rf"\underrightharpoon{{{value}}}"
+        elif embellishment == 37:
+            value = rf"\underleftharpoon{{{value}}}"
         else:
             raise _MtefError(f"unsupported MTEF embellishment: {embellishment}")
     return value
@@ -561,9 +627,180 @@ def _render_node(node: _Node) -> str:
     if node.kind == "character":
         _typeface, character, embellishments = node.value  # type: ignore[misc]
         return _apply_embellishments(_render_character(int(character)), tuple(embellishments))
+    if node.kind == "character_v5":
+        character, embellishments, style_bits, typeface, _function_start = node.value  # type: ignore[misc]
+        value = _apply_embellishments(
+            _render_character(character)
+            if isinstance(character, int)
+            else str(character),
+            tuple(embellishments),
+        )
+        if int(typeface) in {1, 12}:
+            value = rf"\mathrm{{{value}}}"
+        if int(style_bits) == 1:
+            return rf"\mathbf{{{value}}}"
+        if int(style_bits) == 2:
+            return rf"\mathit{{{value}}}"
+        if int(style_bits) == 3:
+            return rf"\boldsymbol{{\mathit{{{value}}}}}"
+        return value
+    if node.kind == "text":
+        return rf"\text{{{_escape_latex_text(str(node.value))}}}"
+    if node.kind == "function":
+        function_name = str(node.value)
+        known = {
+            "arccos",
+            "arcsin",
+            "arctan",
+            "cos",
+            "cosh",
+            "cot",
+            "coth",
+            "csc",
+            "det",
+            "exp",
+            "gcd",
+            "hom",
+            "ker",
+            "lg",
+            "lim",
+            "ln",
+            "log",
+            "max",
+            "min",
+            "sec",
+            "sin",
+            "sinh",
+            "sup",
+            "tan",
+            "tanh",
+        }
+        return rf"\{function_name} " if function_name in known else rf"\operatorname{{{function_name}}}"
     if node.kind == "template":
         selector, variation, options = node.value  # type: ignore[misc]
         return _render_template(int(selector), int(variation), int(options), node.children)
+    if node.kind == "fraction_semantic":
+        numerator = _slot(node.children, 0)
+        denominator = _slot(node.children, 1)
+        if bool(node.value):
+            return rf"{{{numerator}}}/{{{denominator}}}"
+        return rf"\frac{{{numerator}}}{{{denominator}}}"
+    if node.kind == "root_semantic":
+        radicand = _slot(node.children, 0)
+        index = _slot(node.children, 1)
+        return rf"\sqrt[{index}]{{{radicand}}}" if bool(node.value) and index else rf"\sqrt{{{radicand}}}"
+    if node.kind == "scripts_semantic":
+        subscript = _slot(node.children, 0)
+        superscript = _slot(node.children, 1)
+        scripts = (rf"_{{{subscript}}}" if subscript else "") + (rf"^{{{superscript}}}" if superscript else "")
+        return ("{}" if bool(node.value) else "") + scripts
+    if node.kind == "fence_semantic":
+        default_left, default_right = node.value  # type: ignore[misc]
+        body = _slot(node.children, 0)
+        left = _slot(node.children, 1) or str(default_left)
+        right = _slot(node.children, 2) or str(default_right)
+        if re.fullmatch(r"\\[A-Za-z]+", left):
+            left += " "
+        if re.fullmatch(r"\\[A-Za-z]+", right):
+            right += " "
+        return rf"\left{left}{body}\right{right}"
+    if node.kind == "bar_semantic":
+        under, doubled = node.value  # type: ignore[misc]
+        command = "underline" if bool(under) else "overline"
+        value = rf"\{command}{{{_slot(node.children, 0)}}}"
+        return rf"\{command}{{{value}}}" if bool(doubled) else value
+    if node.kind == "arrow_semantic":
+        if not isinstance(node.value, int):
+            raise _MtefError("MTEF arrow semantic value is invalid")
+        variation = node.value
+        body = _slot(node.children, 0)
+        arrow = _slot(node.children, 1)
+        if not arrow:
+            if variation & 0x02:
+                arrow = r"\leftrightharpoons"
+            elif variation & 0x01:
+                arrow = r"\Leftrightarrow"
+            elif variation & 0x10 and not variation & 0x20:
+                arrow = r"\leftarrow"
+            elif variation & 0x20 and not variation & 0x10:
+                arrow = r"\rightarrow"
+            else:
+                arrow = r"\leftrightarrow"
+        if variation & 0x08 and not variation & 0x04:
+            return rf"\underset{{{body}}}{{{arrow}}}"
+        return rf"\overset{{{body}}}{{{arrow}}}" if body else arrow
+    if node.kind == "big_operator_semantic":
+        main = _slot(node.children, 0)
+        upper = _slot(node.children, 1)
+        lower = _slot(node.children, 2)
+        default_operator = str(node.value)
+        if default_operator in {
+            r"\sum",
+            r"\prod",
+            r"\coprod",
+            r"\bigcup",
+            r"\bigcap",
+        }:
+            operator = default_operator
+        else:
+            operator = _slot(node.children, 3) or default_operator
+        if not operator:
+            raise _MtefError("MTEF big operator has no visible operator")
+        limits = (rf"_{{{lower}}}" if lower else "") + (rf"^{{{upper}}}" if upper else "")
+        return operator + limits + rf"{{{main}}}"
+    if node.kind == "limit_semantic":
+        main = _slot(node.children, 0)
+        lower = _slot(node.children, 1)
+        upper = _slot(node.children, 2)
+        return r"\lim" + (rf"_{{{lower}}}" if lower else "") + (rf"^{{{upper}}}" if upper else "") + rf"{{{main}}}"
+    if node.kind == "horizontal_fence_semantic":
+        brace, top = node.value  # type: ignore[misc]
+        main = _slot(node.children, 0)
+        small = _slot(node.children, 1)
+        if bool(brace):
+            command = "overbrace" if bool(top) else "underbrace"
+        else:
+            command = "overbracket" if bool(top) else "underbracket"
+        suffix = rf"^{{{small}}}" if bool(top) and small else rf"_{{{small}}}" if small else ""
+        return rf"\{command}{{{main}}}{suffix}"
+    if node.kind == "long_division_semantic":
+        dividend = _slot(node.children, 0)
+        quotient = _slot(node.children, 1)
+        return rf"\overline{{{quotient}}}\smash{{\big) {dividend}}}" if bool(node.value) else rf"\smash{{\big) {dividend}}}"
+    if node.kind == "dirac_semantic":
+        if not isinstance(node.value, int):
+            raise _MtefError("MTEF Dirac semantic value is invalid")
+        variation = node.value
+        left = _slot(node.children, 0)
+        right = _slot(node.children, 1)
+        if variation == 0x01:
+            return rf"\left\langle {left}\right|"
+        if variation == 0x02:
+            return rf"\left|{right}\right\rangle"
+        return rf"\left\langle {left}\middle|{right}\right\rangle"
+    if node.kind == "vector_semantic":
+        if not isinstance(node.value, int):
+            raise _MtefError("MTEF vector semantic value is invalid")
+        variation = node.value
+        left = bool(variation & 0x01)
+        right = bool(variation & 0x02)
+        under = bool(variation & 0x04)
+        harpoon = bool(variation & 0x08)
+        if harpoon:
+            direction = "leftharpoon" if left else "rightharpoon"
+        elif left and right:
+            direction = "leftrightarrow"
+        elif left:
+            direction = "leftarrow"
+        else:
+            direction = "rightarrow"
+        return rf"\{'under' if under else 'over'}{direction}{{{_slot(node.children, 0)}}}"
+    if node.kind == "accent_semantic":
+        return rf"\{str(node.value)}{{{_slot(node.children, 0)}}}"
+    if node.kind == "strike_semantic":
+        return rf"\{str(node.value)}{{{_slot(node.children, 0)}}}"
+    if node.kind == "box_semantic":
+        return rf"\boxed{{{_slot(node.children, 0)}}}"
     if node.kind == "pile":
         rows = [_render_node(child).strip() for child in node.children]
         return r"\begin{gathered}" + r"\\".join(rows) + r"\end{gathered}"
@@ -582,13 +819,35 @@ def decode_mtef_v3(data: bytes) -> str | None:
 
     try:
         latex = _render_node(_MtefReader(data).parse()).strip()
+    except LegacyOfficeResourceLimitError:
+        raise
     except (ArithmeticError, IndexError, struct.error, UnicodeError, _MtefError, ValueError):
         return None
     return latex or None
 
 
+def decode_mtef_v5(data: bytes) -> str | None:
+    """延迟加载独立 v5 reader，并返回其完整 LaTeX 结果。"""
+
+    from .mtef_v5 import decode_mtef_v5 as _decode_mtef_v5
+
+    return _decode_mtef_v5(data)
+
+
+def decode_mtef(data: bytes) -> str | None:
+    """仅按 MTEF header 首字节分派 v3/v5，其他版本整体拒绝。"""
+
+    if not data:
+        return None
+    if data[0] == 3:
+        return decode_mtef_v3(data)
+    if data[0] == 5:
+        return decode_mtef_v5(data)
+    return None
+
+
 def decode_equation_native(data: bytes) -> str | None:
-    """校验 28 字节 EQNOLEFILEHDR 并解码其中的 MTEF v3。"""
+    """校验 28 字节 EQNOLEFILEHDR 并按 header 解码 MTEF v3/v5。"""
 
     if len(data) < 28:
         return None
@@ -598,11 +857,11 @@ def decode_equation_native(data: bytes) -> str | None:
     object_end = header_size + object_size
     if object_end < header_size or object_end > len(data):
         return None
-    return decode_mtef_v3(data[header_size:object_end])
+    return decode_mtef(data[header_size:object_end])
 
 
 def decode_equation_object(data: bytes) -> str | None:
-    """从独立 Equation Editor OLE 对象读取 Equation Native 并转为 LaTeX。"""
+    """从独立公式 OLE 对象读取 Equation Native 并转为 LaTeX。"""
 
     try:
         with BoundedOleReader(data) as ole:
