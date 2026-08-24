@@ -12,7 +12,6 @@ from mineru.render import (
     DocxRenderError,
     DocxRenderOptions,
     HtmlRenderOptions,
-    MarkdownRenderMode,
     MarkdownRenderOptions,
     RenderFormat,
     RenderMode,
@@ -185,9 +184,8 @@ def test_unified_render_rejects_legacy_format_and_mismatched_options() -> None:
         render(middle, RenderFormat.STRUCTURED_CONTENT, options=DocxRenderOptions())  # type: ignore[arg-type]
 
 
-def test_public_options_validate_fields_and_preserve_mode_alias() -> None:
-    """验证 Options 构造期类型检查和既有 Markdown 模式别名。"""
-    assert MarkdownRenderMode is RenderMode
+def test_public_options_validate_fields() -> None:
+    """验证 Options 构造期的严格字段类型检查。"""
     assert [item.value for item in RenderFormat] == ["markdown", "html", "docx", "structured_content"]
 
     with pytest.raises(TypeError, match="RenderMode"):
@@ -205,6 +203,7 @@ def test_public_options_validate_fields_and_preserve_mode_alias() -> None:
 def test_public_render_exposes_only_structured_content_names() -> None:
     """验证严格 render 公共面只暴露 Structured Content 新名称。"""
     assert callable(render_module.render_structured_content)
+    assert not hasattr(render_module, "MarkdownRenderMode")
     assert not hasattr(render_module, "render_content_list")
     assert not hasattr(render_module, "ContentListRenderOptions")
     assert "CONTENT_LIST" not in RenderFormat.__members__

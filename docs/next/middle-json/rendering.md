@@ -50,11 +50,11 @@ markdown = render(
 ## Markdown
 
 ```python
-from mineru.render import MarkdownRenderMode, render_markdown
+from mineru.render import RenderMode, render_markdown
 
 markdown = render_markdown(
     middle_json,
-    mode=MarkdownRenderMode.DEFAULT,
+    mode=RenderMode.DEFAULT,
     asset_base_url="",
 )
 ```
@@ -108,7 +108,7 @@ alt description；Chart
 
 `RenderMode.DEFAULT` 与下文 Markdown DEFAULT 使用同一份续段/续表 planner；
 `RenderMode.FULL` 保留全部页面辅助块，不跨源页合并，并在相邻 `PageInfo` 间写硬分页。
-`MarkdownRenderMode` 是 `RenderMode` 的既有公共别名。DOCX 是语义化可编辑输出，不承诺
+Markdown、HTML 和 DOCX 统一使用 `RenderMode`。DOCX 是语义化可编辑输出，不承诺
 复刻源 PDF/Office 的字体、分栏、断行和页数；CLI、doclib 与 v1 API 不在本契约范围。
 
 ## MinerU 独立 HTML
@@ -228,7 +228,7 @@ structured_content = render_structured_content(
 `render_structured_content()` 只接受 `MiddleJson`，返回可以直接交给 `json.dumps()` 的
 文档级 dict。顶层保留 `pages/file_suffix/effort/parse_mode/mineru_version`，每页保留
 `page_idx/blocks`，页面和顶层 block 的数量及顺序不变。它不使用下文的
-`MarkdownRenderMode` 计划，因此不隐藏页面辅助块，也不合并 `continues_prev` 文本、
+`RenderMode` 计划，因此不隐藏页面辅助块，也不合并 `continues_prev` 文本、
 列表或跨页表格；`continues_prev` 和 `cell_merge` 等消费提示仍保留在对应 block。
 
 `content` 保存适合结构化消费的文本表示，而不是可直接拼接成整篇文档的完整视觉
@@ -298,7 +298,7 @@ doclib 或历史扁平 `content_list.json` 产物。
 
 ## 展示模式
 
-`MarkdownRenderMode.DEFAULT`:
+`RenderMode.DEFAULT`:
 
 - 隐藏 `header/footer/page_number/aside_text/page_footnote`。
 - 合并页内和跨页 `text/ref_text.continues_prev`；ref_text 可跨过页面辅助块查找前序 ref_text。
@@ -306,7 +306,7 @@ doclib 或历史扁平 `content_list.json` 产物。
 - 只合并跨页 `table.continues_prev`。
 - 页面之间不输出分割线。
 
-`MarkdownRenderMode.FULL`:
+`RenderMode.FULL`:
 
 - 展示全部顶层 block。
 - 只合并页内 `text/ref_text/list.continues_prev`。

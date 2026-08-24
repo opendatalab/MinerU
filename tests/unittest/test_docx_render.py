@@ -12,7 +12,7 @@ from lxml import etree
 from PIL import Image
 import pytest
 
-from mineru.render import DocxRenderError, MarkdownRenderMode, RenderMode, render_docx
+from mineru.render import DocxRenderError, RenderMode, render_docx
 from mineru.types import (
     ChartBlock,
     ChartBodyBlock,
@@ -71,16 +71,15 @@ def _part(docx_bytes: bytes, name: str) -> str:
 
 
 def test_public_contract_returns_reopenable_docx_without_mutation() -> None:
-    """验证严格入口、枚举别名、可重开 bytes 和输入无副作用。"""
+    """验证严格入口、可重开 bytes 和输入无副作用。"""
     middle = _middle(_page(0, TextBlock(type="text", index=0, content="hello")))
     original = deepcopy(middle)
 
-    result = render_docx(middle, mode=MarkdownRenderMode.DEFAULT)
+    result = render_docx(middle, mode=RenderMode.DEFAULT)
 
     assert result.startswith(b"PK\x03\x04")
     assert Document(BytesIO(result)).paragraphs[0].text == "hello"
     assert middle == original
-    assert MarkdownRenderMode is RenderMode
     with pytest.raises(TypeError, match="MiddleJson"):
         render_docx(middle.to_dict())  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="RenderMode"):

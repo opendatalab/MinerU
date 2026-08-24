@@ -24,9 +24,6 @@ class RenderMode(str, Enum):
     FULL = "full"
 
 
-# 保留既有 Markdown 公共名称，同时让全部展示型 renderer 共用同一枚举类型。
-MarkdownRenderMode = RenderMode
-
 AssetResolver: TypeAlias = Callable[[str], bytes]
 
 
@@ -109,7 +106,6 @@ __all__ = [
     "AssetResolver",
     "DocxRenderOptions",
     "HtmlRenderOptions",
-    "MarkdownRenderMode",
     "MarkdownRenderOptions",
     "RenderFormat",
     "RenderMode",

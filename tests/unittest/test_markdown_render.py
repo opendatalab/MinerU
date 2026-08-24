@@ -6,7 +6,7 @@ from typing import Literal
 import pytest
 
 from mineru.config import Config
-from mineru.render import MarkdownRenderMode, render_markdown
+from mineru.render import RenderMode, render_markdown
 from mineru.types import (
     ChartBlock,
     ChartBodyBlock,
@@ -132,7 +132,7 @@ def test_render_modes_filter_merge_and_preserve_input() -> None:
     before = middle.to_json(skip_defaults=False)
 
     default = render_markdown(middle)
-    full = render_markdown(middle, mode=MarkdownRenderMode.FULL)
+    full = render_markdown(middle, mode=RenderMode.FULL)
 
     assert default == "Hello world again\n\n![](images/a.png)"
     assert full == "\n\n---\n\n".join(
@@ -148,7 +148,7 @@ def test_full_mode_preserves_empty_page_boundaries() -> None:
     """验证 FULL 对空白页仍保留相邻页分割线。"""
     middle = _middle(_page(0), _page(1, TextBlock(type="text", index=0, content="x")), _page(2))
 
-    assert render_markdown(middle, mode=MarkdownRenderMode.FULL) == "\n\n---\n\nx\n\n---\n\n"
+    assert render_markdown(middle, mode=RenderMode.FULL) == "\n\n---\n\nx\n\n---\n\n"
     assert render_markdown(middle) == "x"
 
 
@@ -191,7 +191,7 @@ def test_ref_text_continuation_skips_page_auxiliary_blocks_by_mode() -> None:
     original = deepcopy(middle)
 
     assert render_markdown(middle) == "international continuation"
-    assert render_markdown(middle, mode=MarkdownRenderMode.FULL) == (
+    assert render_markdown(middle, mode=RenderMode.FULL) == (
         "inter-\n\nNOTE\n\n---\n\nHEADER\n\nnational continuation"
     )
     assert middle == original
@@ -237,7 +237,7 @@ def test_list_continuation_merges_same_page_in_both_modes_without_mutating_input
     original = deepcopy(middle)
 
     assert render_markdown(middle) == "- first\n- second"
-    assert render_markdown(middle, mode=MarkdownRenderMode.FULL) == "- first\n- second"
+    assert render_markdown(middle, mode=RenderMode.FULL) == "- first\n- second"
     assert middle == original
 
 
@@ -254,7 +254,7 @@ def test_list_continuation_merges_cross_page_chain_only_in_default_mode() -> Non
     )
 
     assert render_markdown(middle) == "[1] first\n[2] second\n[3] third"
-    assert render_markdown(middle, mode=MarkdownRenderMode.FULL) == (
+    assert render_markdown(middle, mode=RenderMode.FULL) == (
         "[1] first\n\n---\n\n[2] second\n[3] third"
     )
 
@@ -277,7 +277,7 @@ def test_ref_list_continuation_skips_page_auxiliary_blocks_without_mutating_inpu
     original = deepcopy(middle)
 
     assert render_markdown(middle) == "[1] first\n[2] second"
-    assert render_markdown(middle, mode=MarkdownRenderMode.FULL) == (
+    assert render_markdown(middle, mode=RenderMode.FULL) == (
         "[1] first\n\nNOTE\n\n---\n\nHEADER\n\n2\n\n[2] second"
     )
     assert middle == original
@@ -362,7 +362,7 @@ def test_reference_list_uses_strict_numeric_prefix_majority() -> None:
     assert render_markdown(numbered_majority) == "[1] first\nmissing marker\n3) third"
     expected_unordered = "- 1470–1480 continuation\n- Author A\n- Author B"
     assert render_markdown(unordered_majority) == expected_unordered
-    assert render_markdown(unordered_majority, mode=MarkdownRenderMode.FULL) == expected_unordered
+    assert render_markdown(unordered_majority, mode=RenderMode.FULL) == expected_unordered
     assert render_markdown(tied) == "- [1] first\n- Author A"
 
 
@@ -450,7 +450,7 @@ def test_render_rejects_legacy_inputs_and_string_mode() -> None:
 
     with pytest.raises(TypeError, match="MiddleJson"):
         render_markdown(middle.to_dict())  # type: ignore[arg-type]
-    with pytest.raises(TypeError, match="MarkdownRenderMode"):
+    with pytest.raises(TypeError, match="RenderMode"):
         render_markdown(middle, mode="full")  # type: ignore[arg-type]
 
 
@@ -660,7 +660,7 @@ def test_cross_page_table_merges_only_in_default_mode() -> None:
     original = deepcopy(middle)
 
     default = render_markdown(middle)
-    full = render_markdown(middle, mode=MarkdownRenderMode.FULL)
+    full = render_markdown(middle, mode=RenderMode.FULL)
 
     assert default == "\n".join(["| H |", "| --- |", "| A |", "| B |"])
     assert full.count("| --- |") == 2

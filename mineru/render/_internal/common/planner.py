@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from mineru.backend.postprocess.table_merge import merge_table_content
-from mineru.render.contracts import MarkdownRenderMode, RenderMode
+from mineru.render.contracts import RenderMode
 from mineru.types import (
     PAGE_AUXILIARY_BLOCK_TYPES,
     BlockType,
@@ -164,4 +164,4 @@ def _find_previous_planned_table(blocks: list[PlannedBlock], current_index: int)
     return None
 
 
-__all__ = ["MarkdownRenderMode", "PlannedBlock", "RenderMode", "build_render_plan"]
+__all__ = ["PlannedBlock", "RenderMode", "build_render_plan"]
