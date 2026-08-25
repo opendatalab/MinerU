@@ -122,6 +122,7 @@ class _FakeV1Upstream:
                 "sha256sum": upload.get("sha256sum"),
                 "content": upload["content"],
             }
+            upload["file_id"] = file_id
             return self._response(request, 200, self._upload_payload(upload_id, file_id=file_id))
         if request.method == "POST" and action == "cancel":
             upload["status"] = "canceled"
@@ -232,6 +233,7 @@ class _FakeV1Upstream:
     def _upload_payload(self, upload_id: str, *, file_id: str | None = None) -> dict[str, Any]:
         """构造 pending/completed upload response。"""
         upload = self.uploads[upload_id]
+        file_id = file_id or upload.get("file_id")
         payload: dict[str, Any] = {
             "id": upload_id,
             "object": "upload",
@@ -508,6 +510,44 @@ def test_router_discards_staged_upload_with_wrong_sha256() -> None:
         assert next(iter(upstream.uploads.values()))["content"] == b""
 
 
+def test_router_maps_empty_malformed_and_non_object_json_to_400() -> None:
+    """验证手工 JSON 入口对客户端 body 错误返回稳定 400 而非 500。"""
+    upstream = _FakeV1Upstream("worker-a", ("standard",))
+    router_app, _ = _make_router(upstream)
+
+    with TestClient(router_app, raise_server_exceptions=False) as client:
+        for path in ("/v1/uploads", "/v1/parse/jobs"):
+            empty = client.post(path, content=b"", headers={"content-type": "application/json"})
+            malformed = client.post(path, content=b"{", headers={"content-type": "application/json"})
+            non_object = client.post(path, json=[])
+            assert empty.status_code == 400
+            assert empty.json()["error"]["code"] == "invalid_json"
+            assert malformed.status_code == 400
+            assert malformed.json()["error"]["code"] == "invalid_json"
+            assert non_object.status_code == 400
+            assert non_object.json()["error"]["code"] == "invalid_request"
+
+        created = client.post(
+            "/v1/uploads",
+            json={"filename": "input.pdf", "bytes": 3, "mime_type": "application/pdf", "purpose": "parse"},
+        )
+        upload_id = created.json()["id"]
+        client.put(f"/v1/uploads/{upload_id}/content", content=b"pdf")
+        malformed_complete = client.post(
+            f"/v1/uploads/{upload_id}/complete",
+            content=b"{",
+            headers={"content-type": "application/json"},
+        )
+        completed_with_empty_body = client.post(f"/v1/uploads/{upload_id}/complete", content=b"")
+
+        assert malformed_complete.status_code == 400
+        assert malformed_complete.json()["error"]["code"] == "invalid_json"
+        assert completed_with_empty_body.status_code == 200
+
+    assert upstream.upload_counter == 1
+    assert upstream.job_counter == 0
+
+
 def test_completed_upload_rejects_content_rewrite_without_touching_bound_source() -> None:
     """验证 completed Upload 的后续 PUT 返回 409 且绑定源文件保持不可变。"""
     upstream = _FakeV1Upstream("worker-a", ("standard",))
@@ -735,6 +775,72 @@ def test_v1_router_reports_capability_transport_and_resource_errors() -> None:
         )
         assert response.status_code == 502
         assert response.json()["error"]["code"] == "upstream_unavailable"
+
+
+def test_cross_worker_copy_cancels_target_upload_after_put_failure() -> None:
+    """验证 target PUT 失败时取消已创建的内部 Upload，不留下 pending 状态。"""
+    first = _FakeV1Upstream("worker-a", ("standard",))
+    second = _FakeV1Upstream("worker-b", ("standard",))
+    router_app, _ = _make_router(first, second)
+    headers = {"authorization": "Bearer copy-put-failure"}
+
+    with TestClient(router_app) as client:
+        file_ids = _upload_files_on_distinct_workers(client, router_app, token="copy-put-failure")
+        original_handle = first.handle
+
+        async def _fail_copy_put(request: httpx.Request) -> httpx.Response:
+            """仅让 cross-worker target PUT 返回 500。"""
+            if request.method == "PUT" and request.url.path.startswith("/v1/uploads/"):
+                return httpx.Response(500, json={"error": {"message": "copy put failed"}}, request=request)
+            return await original_handle(request)
+
+        first.handle = _fail_copy_put
+        response = client.post(
+            "/v1/parse/jobs",
+            headers=headers,
+            json={
+                "tier": "standard",
+                "files": [{"source": {"type": "file_id", "file_id": file_id}} for file_id in file_ids],
+            },
+        )
+
+        assert response.status_code == 500
+        assert not any(upload["status"] == "pending" for upload in first.uploads.values())
+        assert sum(upload["status"] == "canceled" for upload in first.uploads.values()) == 1
+
+
+def test_cross_worker_copy_deletes_file_after_completion_timeout() -> None:
+    """验证 complete 已成功但响应超时时，通过 Upload 查询删除孤立 File。"""
+    first = _FakeV1Upstream("worker-a", ("standard",))
+    second = _FakeV1Upstream("worker-b", ("standard",))
+    router_app, _ = _make_router(first, second)
+    headers = {"authorization": "Bearer copy-complete-timeout"}
+
+    with TestClient(router_app) as client:
+        file_ids = _upload_files_on_distinct_workers(client, router_app, token="copy-complete-timeout")
+        original_file_ids = set(first.files)
+        original_handle = first.handle
+
+        async def _timeout_after_complete(request: httpx.Request) -> httpx.Response:
+            """先完成 target Upload，再模拟 completion response 丢失。"""
+            if request.method == "POST" and request.url.path.endswith("/complete"):
+                await original_handle(request)
+                raise httpx.ReadTimeout("completion response lost", request=request)
+            return await original_handle(request)
+
+        first.handle = _timeout_after_complete
+        response = client.post(
+            "/v1/parse/jobs",
+            headers=headers,
+            json={
+                "tier": "standard",
+                "files": [{"source": {"type": "file_id", "file_id": file_id}} for file_id in file_ids],
+            },
+        )
+
+        assert response.status_code == 504
+        assert set(first.files) == original_file_ids
+        assert not any(upload["status"] == "pending" for upload in first.uploads.values())
 
 
 def test_managed_router_worker_builds_new_api_server_command(tmp_path: Path) -> None:

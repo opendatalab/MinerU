@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import hashlib
+import json
 import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Literal
@@ -78,6 +79,22 @@ def _successful_json(upstream: httpx.Response) -> dict[str, Any] | Response:
     if upstream.status_code >= 400:
         return passthrough_response(upstream)
     return json_or_error(upstream)
+
+
+async def _read_json_object(request: Request, *, allow_empty: bool = False) -> dict[str, Any]:
+    """读取 JSON object body，并把空体、解码错误和非 object 映射为稳定 400。"""
+    raw_body = await request.body()
+    if not raw_body:
+        if allow_empty:
+            return {}
+        raise RouterProxyError(400, "invalid_json", "Request body must be a non-empty JSON object")
+    try:
+        payload = json.loads(raw_body)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise RouterProxyError(400, "invalid_json", "Request body contains malformed JSON") from exc
+    if not isinstance(payload, dict):
+        raise RouterProxyError(400, "invalid_request", "Request JSON body must be an object")
+    return payload
 
 
 def _healthy_worker_or_503(pool: WorkerPool) -> WorkerState:
@@ -493,9 +510,7 @@ def create_app(
         worker = pool.select(tier=None, required_sources={"file_id"}, affinity_key=_affinity_key(request))
         if worker is None:
             raise RouterProxyError(503, "upstream_unavailable", "No upstream accepts file uploads")
-        body = await request.json()
-        if not isinstance(body, dict):
-            raise RouterProxyError(400, "invalid_request", "Upload request body must be an object")
+        body = await _read_json_object(request)
         upstream_body = dict(body)
         # Router 必须收到源字节才能跨 worker 转移，因此禁止 upstream 在 PUT 前按 sha256 提前完成。
         upstream_body.pop("sha256sum", None)
@@ -574,10 +589,7 @@ def create_app(
         stored = source_store.find_upload(upload_id)
         if stored is None:
             raise RouterProxyError(409, "upload_not_ready", "Upload bytes have not been received by Router")
-        raw_body = await request.body()
-        body = await request.json() if raw_body else {}
-        if not isinstance(body, dict):
-            raise RouterProxyError(400, "invalid_request", "Upload complete body must be an object")
+        body = await _read_json_object(request, allow_empty=True)
         body.setdefault("sha256sum", stored.sha256sum)
         upstream = await request_upstream(
             pool,
@@ -707,9 +719,7 @@ def create_app(
     async def create_job(request: Request) -> Response:
         """选择匹配 tier/source 的 worker，迁移跨 worker files 后创建 V1 job。"""
         owner_scope = _caller_scope(request)
-        body = await request.json()
-        if not isinstance(body, dict):
-            raise RouterProxyError(400, "invalid_request", "Job request body must be an object")
+        body = await _read_json_object(request)
         files = body.get("files")
         if not isinstance(files, list) or not files:
             raise RouterProxyError(400, "invalid_request", "Job request must contain at least one file", "files")

@@ -273,6 +273,51 @@ def rewrite_job_payload(
     return rewritten
 
 
+async def _cleanup_failed_target_transfer(
+    target: WorkerState,
+    upload_id: str,
+    *,
+    request: Request,
+    pool: WorkerPool,
+) -> None:
+    """尽力取消失败 transfer 的 Upload，或删除已完成但响应丢失的 File。"""
+    try:
+        lookup = await request_upstream(
+            pool,
+            target,
+            "GET",
+            f"/v1/uploads/{upload_id}",
+            request=request,
+        )
+        if lookup.status_code == 200:
+            try:
+                payload = lookup.json()
+            except ValueError:
+                payload = {}
+            file_payload = payload.get("file") if isinstance(payload, dict) else None
+            if isinstance(file_payload, dict) and isinstance(file_payload.get("id"), str):
+                await request_upstream(
+                    pool,
+                    target,
+                    "DELETE",
+                    f"/v1/files/{file_payload['id']}",
+                    request=request,
+                )
+                return
+    except RouterProxyError:
+        pass
+    try:
+        await request_upstream(
+            pool,
+            target,
+            "POST",
+            f"/v1/uploads/{upload_id}/cancel",
+            request=request,
+        )
+    except RouterProxyError:
+        pass
+
+
 async def copy_file_to_worker(
     route: ResourceRoute,
     target: WorkerState,
@@ -341,31 +386,42 @@ async def copy_file_to_worker(
         target_file_id = str(upload_payload["file"]["id"])
         registry.alias_upstream(route, worker_id=target.worker_id, upstream_id=target_file_id)
         return target_file_id
-    upload_id = str(upload_payload["id"])
-    put_response = await request_upstream(
-        pool,
-        target,
-        "PUT",
-        f"/v1/uploads/{upload_id}/content",
-        request=request,
-        content=content,
-        headers={"content-type": "application/octet-stream"},
-    )
-    if put_response.status_code >= 400:
-        json_or_error(put_response)
-    complete_response = await request_upstream(
-        pool,
-        target,
-        "POST",
-        f"/v1/uploads/{upload_id}/complete",
-        request=request,
-        json_body={"sha256sum": content_sha256} if content_sha256 else {},
-    )
-    complete_payload = json_or_error(complete_response)
-    file_payload = complete_payload.get("file")
-    if not isinstance(file_payload, dict) or not isinstance(file_payload.get("id"), str):
-        raise RouterProxyError(502, "invalid_upstream_response", "Completed upload did not return a file")
-    target_file_id = file_payload["id"]
+    upload_id = upload_payload.get("id")
+    if not isinstance(upload_id, str):
+        raise RouterProxyError(502, "invalid_upstream_response", "Target upload response did not return an upload ID")
+    try:
+        put_response = await request_upstream(
+            pool,
+            target,
+            "PUT",
+            f"/v1/uploads/{upload_id}/content",
+            request=request,
+            content=content,
+            headers={"content-type": "application/octet-stream"},
+        )
+        if put_response.status_code >= 400:
+            json_or_error(put_response)
+        complete_response = await request_upstream(
+            pool,
+            target,
+            "POST",
+            f"/v1/uploads/{upload_id}/complete",
+            request=request,
+            json_body={"sha256sum": content_sha256} if content_sha256 else {},
+        )
+        complete_payload = json_or_error(complete_response)
+        file_payload = complete_payload.get("file")
+        if not isinstance(file_payload, dict) or not isinstance(file_payload.get("id"), str):
+            raise RouterProxyError(502, "invalid_upstream_response", "Completed upload did not return a file")
+        target_file_id = file_payload["id"]
+    except Exception:
+        await _cleanup_failed_target_transfer(
+            target,
+            upload_id,
+            request=request,
+            pool=pool,
+        )
+        raise
     registry.alias_upstream(route, worker_id=target.worker_id, upstream_id=target_file_id)
     return target_file_id
 
