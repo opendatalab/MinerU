@@ -11,6 +11,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -300,12 +301,18 @@ class WorkerState:
     source: str
     local_worker: ManagedLocalWorker | None = None
     healthy: bool = False
-    tiers: set[Tier] = field(default_factory=set)
+    tier_metadata: dict[Tier, dict[str, Any]] = field(default_factory=dict)
     models: list[dict[str, Any]] = field(default_factory=list)
     features: dict[str, Any] = field(default_factory=dict)
     active_jobs: int = 0
     max_concurrent_jobs: int = 1
     last_error: str | None = None
+    generation: int = 0
+
+    @property
+    def tiers(self) -> set[Tier]:
+        """返回当前 generation 保留的 tier 标识集合。"""
+        return set(self.tier_metadata)
 
 
 class WorkerPool:
@@ -316,10 +323,12 @@ class WorkerPool:
         settings: RouterSettings,
         *,
         transport: httpx.AsyncBaseTransport | None = None,
+        on_local_worker_replaced: Callable[[WorkerState], Awaitable[None]] | None = None,
     ) -> None:
         """按显式 upstream 与本地 GPU 配置创建 worker 状态。"""
         self.settings = settings
         self.client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0), transport=transport)
+        self._on_local_worker_replaced = on_local_worker_replaced
         self._workers: dict[str, WorkerState] = {}
         self._monitor_task: asyncio.Task[None] | None = None
         self._built = False
@@ -364,6 +373,7 @@ class WorkerPool:
             try:
                 await worker.local_worker.start(self.client)
                 worker.base_url = worker.local_worker.base_url
+                worker.generation = 1
             except Exception as exc:
                 worker.healthy = False
                 worker.last_error = str(exc)
@@ -402,8 +412,21 @@ class WorkerPool:
             process = worker.local_worker.process
             if process is None or process.poll() is not None:
                 try:
+                    replacing = worker.generation > 0 and process is not None
+                    if replacing:
+                        worker.healthy = False
+                        worker.base_url = ""
+                        worker.active_jobs = 0
+                        worker.tier_metadata.clear()
+                        worker.models.clear()
+                        worker.features.clear()
+                        await worker.local_worker.stop()
+                        if self._on_local_worker_replaced is not None:
+                            await self._on_local_worker_replaced(worker)
+                        worker.generation += 1
                     await worker.local_worker.start(self.client)
                     worker.base_url = worker.local_worker.base_url
+                    worker.generation = max(worker.generation, 1)
                 except Exception as exc:
                     worker.healthy = False
                     worker.last_error = str(exc)
@@ -421,7 +444,9 @@ class WorkerPool:
             tier_payload = tiers.json()
             model_payload = models.json()
             worker.features = dict(health_payload.get("features") or {})
-            worker.tiers = {cast(Tier, item["id"]) for item in tier_payload.get("data", []) if item.get("id")}
+            worker.tier_metadata = {
+                cast(Tier, item["id"]): dict(item) for item in tier_payload.get("data", []) if item.get("id")
+            }
             worker.models = [dict(item) for item in model_payload.get("data", [])]
             worker.healthy = health_payload.get("status") == "ok"
             worker.last_error = None if worker.healthy else health.text

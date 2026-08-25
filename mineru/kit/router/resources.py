@@ -241,6 +241,21 @@ class ResourceRegistry:
             self._by_upstream.pop((kind, route.owner_scope, route.worker_id, route.upstream_id), None)
         return route
 
+    def remove_worker(self, worker_id: str) -> list[ResourceRoute]:
+        """删除指定 worker generation 拥有的公共路由及相关反向 aliases。"""
+        removed: list[ResourceRoute] = []
+        for routes in self._by_public.values():
+            for public_id, route in list(routes.items()):
+                if route.worker_id != worker_id:
+                    continue
+                removed.append(route)
+                routes.pop(public_id, None)
+        removed_route_ids = {id(route) for route in removed}
+        for key, route in list(self._by_upstream.items()):
+            if key[2] == worker_id or id(route) in removed_route_ids:
+                self._by_upstream.pop(key, None)
+        return removed
+
     @staticmethod
     def _new_public_id(kind: ResourceKind) -> str:
         """生成保持 V1 前缀约定的随机 Router 公共标识。"""

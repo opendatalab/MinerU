@@ -363,7 +363,20 @@ def create_app(
     resolved_settings = settings or RouterSettings.from_env()
     registry = ResourceRegistry()
     source_store = SourceFileStore()
-    pool = WorkerPool(resolved_settings, transport=transport)
+
+    async def _invalidate_replaced_worker(worker: WorkerState) -> None:
+        """在本地 worker replacement 发布前移除旧 generation 的资源状态。"""
+        for route in registry.remove_worker(worker.worker_id):
+            if route.kind == "upload":
+                source_store.discard_upload(route.public_id)
+            elif route.kind == "file":
+                source_store.delete_file(route.public_id)
+
+    pool = WorkerPool(
+        resolved_settings,
+        transport=transport,
+        on_local_worker_replaced=_invalidate_replaced_worker,
+    )
 
     @asynccontextmanager
     async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -462,17 +475,15 @@ def create_app(
         for tier in TIERS:
             if tier not in available:
                 continue
-            model_id = next(
+            tier_info = next(
                 (
-                    item.get("id")
+                    copy.deepcopy(worker.tier_metadata[tier])
                     for worker in pool.healthy_workers()
-                    if tier in worker.tiers
-                    for item in worker.models
-                    if item.get("id")
+                    if tier in worker.tier_metadata
                 ),
-                None,
+                {"id": tier, "description": f"Router-discovered {tier} parsing tier.", "current_model": None},
             )
-            data.append({"id": tier, "description": f"Router-discovered {tier} parsing tier.", "current_model": model_id})
+            data.append(tier_info)
         return {"object": "list", "data": data}
 
     @application.post("/v1/uploads")

@@ -11,6 +11,7 @@ import types
 import zipfile
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -206,6 +207,39 @@ print("ok")
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "ok"
+
+
+def test_hybrid_context_does_not_resolve_full_weights_before_stack_selection() -> None:
+    """校验 Context 获取 Layout/MFR 时不提前解析 full-stack 权重路径。"""
+    from mineru.model.download import ModelPath
+    from mineru.model.runtime.contracts import AtomicModelName
+    from mineru.model.runtime.hybrid import HybridLocalModelContext
+
+    class _RecordingAtomManager:
+        """记录 Context 交给 atom model 分派器的参数。"""
+
+        def __init__(self) -> None:
+            """初始化原子模型请求列表。"""
+            self.calls: list[dict[str, Any]] = []
+
+        def get_atom_model(self, **kwargs: Any) -> dict[str, Any]:
+            """记录原子模型请求并原样返回。"""
+            self.calls.append(dict(kwargs))
+            return dict(kwargs)
+
+    context = object.__new__(HybridLocalModelContext)
+    manager = _RecordingAtomManager()
+    context.device = "cpu"
+    context.atom_model_manager = manager  # type: ignore[assignment]
+
+    with patch.object(ModelPath, "ensure", side_effect=AssertionError("full weight path resolved too early")):
+        context.get_layout_model()
+        context.get_mfr_model()
+
+    assert manager.calls == [
+        {"atom_model_name": AtomicModelName.Layout, "device": "cpu"},
+        {"atom_model_name": AtomicModelName.MFR, "device": "cpu"},
+    ]
 
 
 def test_public_parser_import_does_not_load_opencv() -> None:

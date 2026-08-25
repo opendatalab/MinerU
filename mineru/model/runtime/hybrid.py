@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from ..mfr.unimernet.Unimernet import UnimernetModel
     from ..ocr.pytorch_paddle import PytorchPaddleOCR
 
-from ..registry import PDF_EXTRACT_KIT, ModelPath
 from .device import get_device, get_model_stack
 
 LOCAL_MODEL_INIT_LOCK = threading.RLock()
@@ -76,11 +75,6 @@ def run_mfr_inference(inference_callable: Callable[..., Any], *args: Any, **kwar
 def run_ocr_inference(inference_callable: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """按实验开关执行共享 OCR native 模型调用。"""
     return _run_with_inference_lock(LOCAL_MODEL_OCR_INFERENCE_LOCK, inference_callable, *args, **kwargs)
-
-
-def _resolve_mfr_model_path() -> ModelPath:
-    """解析公式识别模型路径。"""
-    return PDF_EXTRACT_KIT.unimernet_small
 
 
 def table_orientation_cls_model_init() -> MineruTableOrientationClsModel:
@@ -225,7 +219,12 @@ def atom_model_init(model_name: str, **kwargs: Any) -> Any:
                 device=kwargs.get("device"),
             )
         else:
-            atom_model = pp_doclayout_v2_model_init(kwargs.get("pp_doclayout_v2_weights"), kwargs.get("device"))
+            from ..registry import PDF_EXTRACT_KIT
+
+            atom_model = pp_doclayout_v2_model_init(
+                str(PDF_EXTRACT_KIT.pp_doclayout_v2.ensure()),
+                kwargs.get("device"),
+            )
     elif model_name == AtomicModelName.MFR:
         if stack == "light":
             from ..mfr.pp_formulanet_plus_m_onnx import PPFormulaNetPlusMONNX
@@ -237,7 +236,12 @@ def atom_model_init(model_name: str, **kwargs: Any) -> Any:
                 device=kwargs.get("device"),
             )
         else:
-            atom_model = mfr_model_init(kwargs.get("mfr_weight_dir"), kwargs.get("device"))
+            from ..registry import PDF_EXTRACT_KIT
+
+            atom_model = mfr_model_init(
+                str(PDF_EXTRACT_KIT.unimernet_small.ensure()),
+                kwargs.get("device"),
+            )
     elif model_name == AtomicModelName.OCR:
         if stack == "light":
             from ..ocr.pp_ocr_v6_onnx import PPOCRv6ONNX
@@ -410,16 +414,13 @@ class HybridLocalModelContext:
         """获取 Layout 原子模型，供 Hybrid 本地 layout、标题拆分和公式框检测复用。"""
         return self.atom_model_manager.get_atom_model(
             atom_model_name=AtomicModelName.Layout,
-            pp_doclayout_v2_weights=str(PDF_EXTRACT_KIT.pp_doclayout_v2.ensure()),
             device=self.device,
         )
 
     def get_mfr_model(self) -> "UnimernetModel":
         """获取公式识别原子模型，统一复用当前公式模型配置和设备。"""
-        mfr_model_path = _resolve_mfr_model_path()
         return self.atom_model_manager.get_atom_model(
             atom_model_name=AtomicModelName.MFR,
-            mfr_weight_dir=str(mfr_model_path.ensure()),
             device=self.device,
         )
 

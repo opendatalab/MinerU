@@ -13,7 +13,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mineru.kit.router import RouterSettings, create_app
-from mineru.kit.router.workers import ManagedLocalWorker, parse_local_gpus, worker_base_url, worker_connect_host
+from mineru.kit.router.workers import (
+    ManagedLocalWorker,
+    WorkerState,
+    parse_local_gpus,
+    worker_base_url,
+    worker_connect_host,
+)
 from mineru.parser.api_server import create_app as create_api_server_app
 
 
@@ -23,6 +29,7 @@ class _FakeV1Upstream:
 
     name: str
     tiers: tuple[str, ...]
+    tier_models: dict[str, str] = field(default_factory=dict)
     upload_counter: int = 0
     file_counter: int = 0
     job_counter: int = 0
@@ -58,7 +65,11 @@ class _FakeV1Upstream:
                 {
                     "object": "list",
                     "data": [
-                        {"id": tier, "description": f"{self.name}-{tier}", "current_model": f"{self.name}-model"}
+                        {
+                            "id": tier,
+                            "description": f"{self.name}-{tier}",
+                            "current_model": self.tier_models.get(tier, f"{self.name}-model"),
+                        }
                         for tier in self.tiers
                     ],
                 },
@@ -411,6 +422,29 @@ def test_v1_router_aggregates_capabilities_and_routes_cross_worker_job() -> None
     assert second.source_download_attempts == 0
     assert staged_path is not None
     assert not staged_path.exists()
+
+
+def test_v1_router_preserves_upstream_tier_metadata() -> None:
+    """验证 Router 不再从全局 models 列表推断各 tier 的 current_model。"""
+    upstream = _FakeV1Upstream(
+        "worker-a",
+        ("flash", "basic", "standard"),
+        tier_models={
+            "flash": "flash",
+            "basic": "hybrid-basic",
+            "standard": "MinerU2.5-Pro-2605-1.2B",
+        },
+    )
+    router_app, _ = _make_router(upstream)
+
+    with TestClient(router_app) as client:
+        tier_data = client.get("/v1/tiers").json()["data"]
+
+    assert [(item["id"], item["description"], item["current_model"]) for item in tier_data] == [
+        ("flash", "worker-a-flash", "flash"),
+        ("basic", "worker-a-basic", "hybrid-basic"),
+        ("standard", "worker-a-standard", "MinerU2.5-Pro-2605-1.2B"),
+    ]
 
 
 def test_real_v1_api_rejects_public_download_of_parse_source(tmp_path: Path) -> None:
@@ -832,6 +866,85 @@ def test_managed_router_worker_uses_control_shutdown() -> None:
     assert process.exited is True
     assert process.terminated is False
     assert process.killed is False
+
+
+def test_local_worker_replacement_invalidates_previous_generation_routes() -> None:
+    """验证本地 worker 崩溃后，新 generation 发布前清除旧资源和负载。"""
+
+    class _ExitedProcess:
+        """模拟已经退出的本地 api-server 进程。"""
+
+        @staticmethod
+        def poll() -> int:
+            """返回非零退出码。"""
+            return 1
+
+    class _RunningProcess:
+        """模拟 replacement 启动后的存活进程。"""
+
+        @staticmethod
+        def poll() -> None:
+            """返回 None 表示进程仍在运行。"""
+            return None
+
+    class _ReplacementLocalWorker:
+        """模拟复用同一 worker ID 的本地 api-server replacement。"""
+
+        def __init__(self) -> None:
+            """初始化退出进程和旧 base URL。"""
+            self.process: Any = _ExitedProcess()
+            self.base_url = "http://old-worker"
+
+        async def stop(self) -> None:
+            """清理旧 generation 的进程状态。"""
+            self.process = None
+            self.base_url = ""
+
+        async def start(self, _client: Any) -> None:
+            """发布 replacement 测试 upstream。"""
+            self.process = _RunningProcess()
+            self.base_url = "http://worker-a"
+
+    upstream = _FakeV1Upstream("worker-a", ("standard",))
+    router_app, _ = _make_router(upstream)
+
+    with TestClient(router_app) as client:
+        pool = router_app.state.worker_pool
+        registry = router_app.state.registry
+        local_worker = _ReplacementLocalWorker()
+        state = WorkerState(
+            worker_id="local-replaced",
+            base_url=local_worker.base_url,
+            source="local",
+            local_worker=local_worker,  # type: ignore[arg-type]
+            healthy=True,
+            active_jobs=2,
+            generation=1,
+            tier_metadata={"standard": {"id": "standard", "current_model": "old-model"}},
+        )
+        pool._workers[state.worker_id] = state
+        file_route = registry.register(
+            "file",
+            owner_scope="anonymous",
+            worker_id=state.worker_id,
+            upstream_id="file-old",
+        )
+        job_route = registry.register(
+            "job",
+            owner_scope="anonymous",
+            worker_id=state.worker_id,
+            upstream_id="job-old",
+        )
+
+        client.portal.call(pool.refresh, state)
+
+        assert state.generation == 2
+        assert state.base_url == "http://worker-a"
+        assert state.healthy is True
+        assert state.active_jobs == 0
+        assert state.tier_metadata["standard"]["current_model"] == "worker-a-model"
+        assert registry.find("file", file_route.public_id) is None
+        assert registry.find("job", job_route.public_id) is None
 
 
 def test_router_console_script_points_to_new_cli() -> None:
